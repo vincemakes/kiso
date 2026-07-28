@@ -1,0 +1,21 @@
+{
+  "name": "atto",
+  "version": "0.0.0",
+  "description": "The smallest agent kernel that actually works. ~2,000 lines, every decision documented.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./protocol": "./src/protocol/index.ts"
+  },
+  "files": ["src", "README.md", "adrs"],
+  "scripts": {
+    "size": "node scripts/check-size.mjs",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run size"
+  },
+  "keywords": ["agent", "llm", "kernel", "minimal", "anthropic", "openai"],
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Runs before install on purpose: the size gate has zero dependencies,
+      # so a PR can never break it by breaking the install.
+      - name: size budget
+        run: node scripts/check-size.mjs
+
+      - run: npm install
+      - name: typecheck
+        run: npm run typecheck
