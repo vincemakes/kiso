@@ -17,6 +17,7 @@
 
 import type { FauxScript } from "../../src/adapters/faux";
 import type { Event } from "../../src/protocol/events";
+import type { EventInput } from "../../src/kernel/event-log";
 
 export interface Fixture {
 	readonly name: string;
@@ -29,7 +30,7 @@ export interface Fixture {
 	 * Static analysis over the script's events — the failure signature.
 	 * Returns violation strings; empty = the shape is present as expected.
 	 */
-	readonly staticCheck?: (events: readonly Omit<Event, "seq">[]) => readonly string[];
+	readonly staticCheck?: (events: readonly EventInput[]) => readonly string[];
 	/**
 	 * Full-trajectory assertion, wired once the loop exists.
 	 * Returns violation strings; empty = pass.

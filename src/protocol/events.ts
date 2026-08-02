@@ -99,6 +99,8 @@ export interface ToolCallEnd {
 	readonly seq: number;
 	readonly type: "tool_call_end";
 	readonly callId: string;
+	/** The tool being called — the registry lookup key. */
+	readonly name: string;
 	readonly input: Readonly<Record<string, unknown>> | null;
 }
 

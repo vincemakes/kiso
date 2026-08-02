@@ -10,9 +10,11 @@
  * of finished work that never happened").
  *
  * The kernel-side shape the fixture pins: an isError tool_result in the
- * trajectory must be distinguishable from success downstream — the harness
- * can then decide (fail the turn, surface the error, re-route). The kernel
- * never lets an error result masquerade as a clean one.
+ * trajectory must carry its errorKind and remain distinguishable from
+ * success downstream — the harness can then decide (fail the turn, surface
+ * the error, re-route). The kernel never lets an error result masquerade
+ * as a clean one. The failing tool itself is scripted in the loop test
+ * (a defineTool'd web_search returning errorKind "transient").
  */
 
 import type { Fixture } from "./types";
@@ -36,20 +38,17 @@ export const silentToolFailure: Fixture = {
 				{ type: "text_end" },
 				{ type: "stop", reason: "end_turn" },
 			],
-			toolResults: {
-				c1: { content: "overloaded — try again", isError: true, errorKind: "transient" },
-			},
 		},
 	],
 	staticCheck: (events) => {
 		const violations: string[] = [];
-		const failureShape = events.some((e) => e.type === "tool_call_end" && e.name === "web_search");
-		if (!failureShape) {
+		if (!events.some((e) => e.type === "tool_call_end" && e.name === "web_search")) {
 			violations.push("script lost the failing tool call");
 		}
-		// toolResults live in the script, not the events — the static check
-		// verifies the script still carries an error result for the call.
+		if (!events.some((e) => e.type === "text_delta" && /很好|成功|done/i.test(e.text))) {
+			violations.push("script lost the success narration that swallows the error");
+		}
 		return violations;
 	},
-	requiredTerminal: ["completed_with_error_visible"], // wired in M1 — harness decides
+	requiredTerminal: ["completed"], // the loop completes; the error must stay VISIBLE in the trajectory
 };
