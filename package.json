@@ -9,17 +9,43 @@
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
-    "./protocol": "./src/protocol/index.ts"
+    "./protocol": "./src/protocol/index.ts",
+    "./adapters": "./src/adapters/index.ts"
   },
-  "files": ["src", "README.md", "adrs"],
+  "files": [
+    "src",
+    "README.md",
+    "adrs"
+  ],
   "scripts": {
     "size": "node scripts/check-size.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check": "npm run typecheck && npm run size && npm run test"
   },
-  "keywords": ["agent", "llm", "kernel", "minimal", "anthropic", "openai"],
+  "keywords": [
+    "agent",
+    "llm",
+    "kernel",
+    "minimal",
+    "anthropic",
+    "openai"
+  ],
+  "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.100",
+    "openai": ">=5.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "openai": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "openai": "^7.3.0",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
   }
