@@ -15,10 +15,12 @@
   "scripts": {
     "size": "node scripts/check-size.mjs",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run size"
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run size && npm run test"
   },
   "keywords": ["agent", "llm", "kernel", "minimal", "anthropic", "openai"],
   "devDependencies": {
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
   }
 }
