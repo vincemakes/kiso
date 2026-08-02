@@ -75,7 +75,13 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 
 	let messages: readonly Message[] = [...(config.messages ?? [])];
 
-	const terminal = (outcome: Terminal): Event => log.append({ type: "terminal", outcome });
+	/** Yield a terminal: onStop (lifecycle) → event → onEvent (observer). */
+	const terminal = async (outcome: Terminal): Promise<Event> => {
+		if (hooks.onStop) await hooks.onStop(outcome.kind, {}).catch(() => {});
+		const full = log.append({ type: "terminal", outcome });
+		if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
+		return full;
+	};
 	const aborted = (): boolean => signal?.aborted === true;
 
 	// Assemble: the incoming user message may be rewritten or vetoed.
@@ -92,18 +98,18 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	let turns = 0;
 	while (true) {
 		if (aborted()) {
-			yield terminal({ kind: "aborted", by: "user" });
+			yield await terminal({ kind: "aborted", by: "user" });
 			return;
 		}
 		if (turns >= maxTurns) {
-			yield terminal({ kind: "max_turns", turns });
+			yield await terminal({ kind: "max_turns", turns });
 			return;
 		}
 		turns += 1;
 
 		if (hooks.onPreLlm) await hooks.onPreLlm({ model: config.model, turns }, {});
 		if (aborted()) {
-			yield terminal({ kind: "aborted", by: "user" });
+			yield await terminal({ kind: "aborted", by: "user" });
 			return;
 		}
 
@@ -118,6 +124,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				const stream = config.adapter.stream({
 					model: config.model,
 					messages,
+					...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
 					tools: registry.toSpecs(),
 					...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
 					...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
@@ -125,8 +132,8 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				});
 				for await (const ev of stream) {
 					streamed = true;
-					if (hooks.onEvent) await hooks.onEvent(ev, {}).catch(() => {});
 					const full = log.append(ev);
+					if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
 					yield full;
 					if (ev.type === "text_delta") textBuffer += ev.text;
 					if (ev.type === "tool_call_end") pending.push(ev);
@@ -139,14 +146,14 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					await sleep(attempts * 250); // backoff lives in the frame
 					continue;
 				}
-				yield terminal({ kind: "error", error: structured });
+				yield await terminal({ kind: "error", error: structured });
 				return;
 			}
 		}
 
 		// ── Terminal check: no tool call this turn → done ──────────────────
 		if (pending.length === 0) {
-			yield terminal({ kind: "completed" });
+			yield await terminal({ kind: "completed" });
 			return;
 		}
 
@@ -156,13 +163,15 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		});
 
 		for (const { callId, result } of results) {
-			yield log.append({
+			const full = log.append({
 				type: "tool_result",
 				callId,
 				content: result.content,
 				isError: result.isError,
 				...(result.errorKind ? { errorKind: result.errorKind } : {}),
 			});
+			if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
+			yield full;
 		}
 
 		// ── Advance history: assistant turn + tool results ─────────────────

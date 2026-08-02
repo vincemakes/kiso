@@ -43,6 +43,8 @@ export interface AbortSignalLike {
 export interface StreamOptions {
 	readonly model: string;
 	readonly messages: readonly Message[];
+	/** Provider-level system prompt. The kernel never composes prompts. */
+	readonly systemPrompt?: string;
 	readonly tools?: readonly ToolSpec[];
 	readonly maxTokens?: number;
 	readonly temperature?: number;
