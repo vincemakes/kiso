@@ -12,6 +12,13 @@
  *
  * See ADR-0003. Read it before changing anything in this file.
  *
+ * `seq` — every event carries a monotonically increasing sequence number,
+ * assigned by the kernel's EventLog at append time. Consumers (surfaces,
+ * persistence, eval) sync by `seq`; a trajectory is the complete replay of
+ * `seq` 0..N. Without `seq`, "what happened" can only be reconstructed by
+ * array-shape heuristics — the exact failure Claude Code's transcript sync
+ * lives in. See ADR-0002.
+ *
  * This module is types-only: it compiles to nothing.
  */
 
@@ -51,15 +58,18 @@ export type ToolErrorKind = "invalid_input" | "precondition" | "transient" | "fa
  * intervening `TextStart` belong to the same block.
  */
 export interface TextStart {
+	readonly seq: number;
 	readonly type: "text_start";
 }
 
 export interface TextDelta {
+	readonly seq: number;
 	readonly type: "text_delta";
 	readonly text: string;
 }
 
 export interface ToolCallStart {
+	readonly seq: number;
 	readonly type: "tool_call_start";
 	readonly callId: string;
 	readonly name: string;
@@ -73,6 +83,7 @@ export interface ToolCallStart {
  * parse mid-stream must tolerate failure, or wait.
  */
 export interface ToolCallInputDelta {
+	readonly seq: number;
 	readonly type: "tool_call_input_delta";
 	readonly callId: string;
 	readonly inputJsonDelta: string;
@@ -85,6 +96,7 @@ export interface ToolCallInputDelta {
  * a null here is a fact about the model's output, not a defect to hide.
  */
 export interface ToolCallEnd {
+	readonly seq: number;
 	readonly type: "tool_call_end";
 	readonly callId: string;
 	readonly input: Readonly<Record<string, unknown>> | null;
@@ -95,6 +107,7 @@ export interface ToolCallEnd {
  * The next `adapter.stream()` call translates it back into a provider message.
  */
 export interface ToolResultEvent {
+	readonly seq: number;
 	readonly type: "tool_result";
 	readonly callId: string;
 	readonly content: string;
@@ -105,6 +118,7 @@ export interface ToolResultEvent {
 
 /** Extended-thinking content. Providers without it emit nothing here. */
 export interface Thinking {
+	readonly seq: number;
 	readonly type: "thinking";
 	readonly text: string;
 }
@@ -115,6 +129,7 @@ export interface Thinking {
  * report its cost is a turn you cannot bill, cap, or trust.
  */
 export interface Usage {
+	readonly seq: number;
 	readonly type: "usage";
 	readonly inputTokens: number;
 	readonly outputTokens: number;
@@ -123,8 +138,67 @@ export interface Usage {
 }
 
 export interface Stop {
+	readonly seq: number;
 	readonly type: "stop";
 	readonly reason: StopReason;
+}
+
+/**
+ * Structured failure classification for MODEL / TRANSPORT errors.
+ *
+ * Distinct from `ToolErrorKind` (which classifies a tool's own failure and
+ * which the kernel never branches on): a `StructuredError` is an error the
+ * LOOP itself may branch on — `retryable: true` means the loop may retry
+ * (backoff, max attempts, state entirely inside the loop — see ADR-0005).
+ * Adapters translate provider wire errors into this shape. No regex over
+ * error strings anywhere: classification happens at the adapter boundary.
+ */
+export type ErrorCode =
+	| "rate_limit"
+	| "overloaded"
+	| "network"
+	| "timeout"
+	| "quota"
+	| "api_5xx"
+	| "context_overflow"
+	| "invalid_request"
+	| "unknown";
+
+export interface StructuredError {
+	readonly code: ErrorCode;
+	readonly status?: number;
+	readonly retryable: boolean;
+	readonly message: string;
+}
+
+/**
+ * Why the whole run ended. The ONE terminal shape every run converges to.
+ *
+ * Every consumer switches on `kind`; with `exactOptionalPropertyTypes` and
+ * `strictNullChecks` on, a terminal that nobody handles is a compile error,
+ * not a production mystery. CC's query() returns 11 different reasons that
+ * every consumer discards — here the terminal is an event like any other,
+ * so it cannot be lost. See ADR-0004.
+ *
+ * - `completed`      — the loop ended on its own terms (no tool call, or the
+ *                      mode's stop predicate fired).
+ * - `max_turns`      — the round budget was consumed.
+ * - `error`          — a `StructuredError` the loop could not retry past.
+ * - `aborted`        — a human (user) or the parent agent stopped it.
+ * - `hook_stopped`   — a Stop-hook prevented continuation.
+ */
+export type Terminal =
+	| { kind: "completed" }
+	| { kind: "max_turns"; turns: number }
+	| { kind: "error"; error: StructuredError }
+	| { kind: "aborted"; by: "user" | "parent" }
+	| { kind: "hook_stopped"; hook: string };
+
+/** The kernel yields exactly one of these per run, as its last event. */
+export interface TerminalEvent {
+	readonly seq: number;
+	readonly type: "terminal";
+	readonly outcome: Terminal;
 }
 
 /**
@@ -140,4 +214,5 @@ export type Event =
 	| ToolResultEvent
 	| Thinking
 	| Usage
-	| Stop;
+	| Stop
+	| TerminalEvent;

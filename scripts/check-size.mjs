@@ -6,7 +6,7 @@
  * so that it survives contact with good ideas.
  *
  * WHAT COUNTS: source lines in `src/`, excluding blank lines and comment-only
- * lines. Comments are free ON PURPOSE — the whole point of atto is that every
+ * lines. Comments are free ON PURPOSE — the whole point of kiso is that every
  * decision is explained, and a budget that taxes explanation would produce a
  * terse, unreadable kernel. Explain freely; implement tersely.
  *

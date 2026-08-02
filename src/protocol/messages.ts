@@ -45,9 +45,28 @@ export interface ImageContentBlock {
 
 export type ContentBlock = TextContentBlock | ImageContentBlock;
 
+/**
+ * Provenance — where a message actually came from.
+ *
+ * The model treats this as evidence about intent; a "user" line that the UI
+ * recycled from a suggestion chip is NOT user intent, and a model that cannot
+ * tell the difference drifts on its own recycled wording (Claude Code
+ * #60087). The kernel preserves the label; product code decides how to render
+ * it. Defaults (when absent): role `user` → "user", role `assistant` →
+ * "model", role `tool` → "tool_result".
+ */
+export type MessageSource =
+	| "user"
+	| "suggestion"
+	| "tool_result"
+	| "subagent"
+	| "system"
+	| "model";
+
 export interface UserMessage {
 	readonly role: "user";
 	readonly content: string | readonly ContentBlock[];
+	readonly source?: MessageSource;
 }
 
 export interface AssistantTextBlock {
@@ -67,6 +86,7 @@ export type AssistantBlock = AssistantTextBlock | AssistantToolUseBlock;
 export interface AssistantMessage {
 	readonly role: "assistant";
 	readonly blocks: readonly AssistantBlock[];
+	readonly source?: MessageSource;
 }
 
 /**
@@ -74,7 +94,7 @@ export interface AssistantMessage {
  *
  * `tags` are product-defined labels that the kernel honors but never defines.
  * The canonical use is marking a result as do-not-compact (a safety notice, a
- * billing receipt, a trace anchor). atto prescribes no vocabulary: the kernel
+ * billing receipt, a trace anchor). kiso prescribes no vocabulary: the kernel
  * matches tags it was configured with and ignores the rest.
  */
 export interface ToolResultMessage {
@@ -82,6 +102,7 @@ export interface ToolResultMessage {
 	readonly callId: string;
 	readonly content: string | readonly ContentBlock[];
 	readonly isError: boolean;
+	readonly source?: MessageSource;
 	readonly tags?: readonly string[];
 }
 

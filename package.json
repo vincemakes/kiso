@@ -1,7 +1,10 @@
 {
-  "name": "atto",
+  "name": "@kiso/core",
   "version": "0.0.0",
-  "description": "The smallest agent kernel that actually works. ~2,000 lines, every decision documented.",
+  "description": "kiso(基礎) — the agent kernel that actually works. ~2,000 lines, every decision documented.",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "license": "MIT",
   "exports": {

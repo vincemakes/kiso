@@ -1,10 +1,11 @@
-# atto
+# kiso
 
-**The smallest agent kernel that actually works.** ~2,000 lines. Read it in one sitting.
+**kiso(基礎) — the agent kernel that actually works.** ~2,000 lines. Read it in one sitting.
 
-Distilled from reading Claude Code, [pi](https://github.com/badlogic/pi-mono), and
+The smallest agent kernel that actually works: distilled from reading Claude Code,
+[pi](https://github.com/badlogic/pi-mono), and
 [oh-my-pi](https://github.com/can1357/oh-my-pi) at the source level — and from running
-three agent products in production.
+three agent products in production on its validated predecessor (mauri, Python).
 
 Every design decision ships with an ADR explaining **why**, and **when to overturn it**.
 
@@ -35,22 +36,31 @@ every agent product:
 
 | Layer | Owns |
 |---|---|
-| **L1 Protocol** | Event sum type · message union · adapter interface |
+| **L1 Protocol** | Event sum type (with `seq`) · message union · adapter interface |
 | **L2 Kernel** | The loop · hooks · compaction · pause/resume |
 | **L3 Tool** | Tool contract · registry · repair · concurrency |
 | **L7 Eval** | Faux provider · cross-provider matrix |
 
+Two properties the harness gets for free:
+
+- **Replayable trajectories** — every event carries a monotonic `seq`; a run is
+  the replay of `seq` 0..N. Eval fixtures, incremental UI, and skill
+  distillation all consume the same stream. See ADR-0002.
+- **Honest terminals** — every run ends with exactly one `Terminal` event;
+  an API error never wears the reason `completed`. See ADR-0004.
+
 ## What this is not
 
 Loop *business logic*. UI. Permission policy. Billing. Skills content. Retrieval.
-Those are yours. A kernel that decides them for you is a framework, and a framework
-is the thing you eventually fight.
+Session persistence. Those are yours. A kernel that decides them for you is a
+framework, and a framework is the thing you eventually fight.
 
 ## Status
 
-Early. The protocol layer is in; the kernel, tools, adapters, and eval harness are
-being ported from a validated Python implementation. Not usable yet — watch the repo
-if you want the first release.
+Early. The protocol layer (events / messages / adapter) is in, with ADRs
+0001-0005 + 0020. The kernel, tools, adapters, and eval harness are being
+ported from the validated Python implementation (mauri). Not usable yet —
+watch the repo if you want the first release.
 
 ## Why another one
 
