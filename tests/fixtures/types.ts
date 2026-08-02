@@ -24,6 +24,8 @@ export interface Fixture {
 	/** Which real incident this abstracts. */
 	readonly incident: string;
 	readonly script: FauxScript;
+	/** Delivery expectations — runs analyzeDelivery over the trajectory. */
+	readonly delivery?: { readonly required: boolean; readonly producers: ReadonlySet<string> };
 	/** The loop's terminal MUST be one of these for the fixture to pass. */
 	readonly requiredTerminal?: readonly string[];
 	/**

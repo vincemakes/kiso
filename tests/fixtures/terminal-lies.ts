@@ -14,12 +14,18 @@
  * clean `completed` — the harness's delivery tracker must see the signal.
  */
 
+import type { Event } from "../../src/protocol/events";
+import { analyzeDelivery } from "../../src/governance/delivery";
 import type { Fixture } from "./types";
 
 export const terminalLies: Fixture = {
 	name: "terminal-lies",
 	incident:
 		"uooki long-document turn: model claimed '已创建文档产物', canvas stayed empty, turn reported completed (document_create trap, 2026-07-31)",
+	delivery: {
+		required: true,
+		producers: new Set(["create_artifact", "docx_create"]),
+	},
 	script: [
 		{
 			events: [
@@ -38,7 +44,6 @@ export const terminalLies: Fixture = {
 		const produced = events.some((e) => e.type === "tool_call_end" && e.name === "create_artifact");
 		if (claimsDelivery && !produced) {
 			// This IS the failure shape: a claim with zero producers.
-			// The loop must surface it as delivery-incomplete, not clean completed.
 			return [];
 		}
 		violations.push(
@@ -46,5 +51,19 @@ export const terminalLies: Fixture = {
 		);
 		return violations;
 	},
-	requiredTerminal: ["delivery_incomplete"], // wired in M1 — see runner
+	// Loop-integrated: the claim exists, the ledger says zero deliveries.
+	assert: (trajectory: readonly Event[]) => {
+		const verdict = analyzeDelivery(trajectory, {
+			required: true,
+			producers: new Set(["create_artifact", "docx_create"]),
+		});
+		const violations: string[] = [];
+		if (!verdict.claimedInText) violations.push("the claim must still be in the text");
+		if (verdict.completedProducers.length !== 0) violations.push("no producer may have completed");
+		if (verdict.passed) {
+			violations.push("delivery must FAIL: claimed delivery with zero completed producers");
+		}
+		return violations;
+	},
+	requiredTerminal: ["completed"], // the loop is honest; the VERDICT is the harness's
 };

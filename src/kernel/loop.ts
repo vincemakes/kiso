@@ -21,6 +21,7 @@
 
 import type { Adapter } from "../protocol/adapter";
 import type { Event, StructuredError, Terminal, ToolCallEnd } from "../protocol/events";
+import { estimateTokens, microcompact } from "./compaction";
 import type { EventInput } from "./event-log";
 
 /** Zero-dependency sleep: the kernel must not import host globals (ADR-0001). */
@@ -53,6 +54,9 @@ export interface LoopConfig {
 	readonly maxTurns?: number;
 	readonly maxRetries?: number;
 	readonly messages?: readonly Message[];
+	/** Auto-compaction: when the estimated context exceeds the threshold,
+	 *  microcompact old tool results before the next model call. */
+	readonly compaction?: { readonly thresholdTokens: number };
 	readonly signal?: import("../protocol/adapter").AbortSignalLike;
 	readonly temperature?: number;
 	readonly maxTokens?: number;
@@ -106,6 +110,16 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			return;
 		}
 		turns += 1;
+
+		// ── Auto-compaction: identity-preserving relief before the call ────
+		if (config.compaction && estimateTokens(messages) > config.compaction.thresholdTokens) {
+			if (hooks.onPreCompact) await hooks.onPreCompact(messages, {}).catch(() => {});
+			const result = microcompact(messages);
+			if (result.clearedCallIds.length > 0) {
+				messages = result.messages;
+				if (hooks.onPostCompact) await hooks.onPostCompact(messages, {}).catch(() => {});
+			}
+		}
 
 		if (hooks.onPreLlm) await hooks.onPreLlm({ model: config.model, turns }, {});
 		if (aborted()) {
