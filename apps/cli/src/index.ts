@@ -122,9 +122,9 @@ function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<
 /** Decide every uncertain execution with the human (r)erun/(a)bandon. */
 async function resolveUncertains(session: AgentSession, rl: ReturnType<typeof createInterface>): Promise<void> {
 	for (const uncertain of session.uncertainExecutions()) {
-		const answer = await ask(rl, `⚠ interrupted execution: ${uncertain.name} — did it apply? (r)erun / (a)bandon: `);
+		const answer = await ask(rl, `⚠ interrupted execution: ${uncertain.name} (${uncertain.executionId}) — did it apply? (r)erun / (a)bandon: `);
 		const resolution = answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned";
-		session.resolveUncertain(uncertain.callId, resolution);
+		session.resolveUncertain(uncertain.executionId, resolution);
 		console.log(`  ${resolution}\n`);
 	}
 }

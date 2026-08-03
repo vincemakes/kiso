@@ -139,10 +139,13 @@ export interface ToolResultEvent {
 	readonly seq: number;
 	readonly type: "tool_result";
 	readonly callId: string;
-	readonly content: string;
+	/** Full content — blocks preserved losslessly (D 组). */
+	readonly content: string | readonly import("./messages.js").ContentBlock[];
 	readonly isError: boolean;
 	/** Present only when `isError` is true and the handler classified it. */
 	readonly errorKind?: ToolErrorKind;
+	/** The execution that produced this result (B 组) — receipt pairing key. */
+	readonly executionId?: string;
 	/** Provenance + product tags — preserved losslessly (Area 6). */
 	readonly source?: import("./messages.js").MessageSource;
 	readonly tags?: readonly string[];
@@ -250,8 +253,22 @@ export interface PermissionDecided {
 	readonly seq: number;
 	readonly type: "permission_decided";
 	readonly decisionId: string;
+	/** The invocation this decision binds to (B 组). */
+	readonly callId?: string;
 	readonly decision: "approved" | "denied";
 	readonly reason?: string;
+}
+
+/**
+ * A permission request was CLOSED because its run terminated first (B 组):
+ * an aborted/completed/error run's dangling approval is dead — it is never
+ * re-presented and a late approve() cannot resurrect the run.
+ */
+export interface PermissionExpired {
+	readonly seq: number;
+	readonly type: "permission_expired";
+	readonly decisionId: string;
+	readonly reason: string;
 }
 
 /** Extended-thinking content. Providers without it emit nothing here. */
@@ -369,6 +386,7 @@ export type Event =
 	| ToolExecutionResolved
 	| PermissionRequested
 	| PermissionDecided
+	| PermissionExpired
 	| TerminalEvent;
 
 /**
@@ -412,6 +430,7 @@ const EVENT_VALIDATORS = {
 		typeof v.decisionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.input === "object",
 	permission_decided: (v: Record<string, unknown>) =>
 		typeof v.decisionId === "string" && (v.decision === "approved" || v.decision === "denied"),
+	permission_expired: (v: Record<string, unknown>) => typeof v.decisionId === "string" && typeof v.reason === "string",
 	terminal: (v: Record<string, unknown>) =>
 		typeof v.outcome === "object" && v.outcome !== null && typeof (v.outcome as { kind?: unknown }).kind === "string",
 } satisfies Record<Event["type"], (v: Record<string, unknown>) => boolean>;

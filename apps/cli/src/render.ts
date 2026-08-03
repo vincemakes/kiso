@@ -44,12 +44,14 @@ export function renderEvent(ev: Event): RenderResult {
 			return { text: `${GREEN}  ok${RESET}\n`, newline: true, prompt: false };
 		case "tool_execution_failed":
 			return { text: `${RED}  failed: ${ev.error.slice(0, 160)}${RESET}\n`, newline: true, prompt: false };
-		case "tool_result":
+		case "tool_result": {
+			const content = typeof ev.content === "string" ? ev.content : ev.content.map((b) => (b.type === "text" ? b.text : "(image)")).join("");
 			return {
-				text: `${DIM}${ev.isError ? RED : DIM}  [result${ev.isError ? " ✗" : ""}] ${ev.content.slice(0, 400).replaceAll("\n", " ")}${RESET}\n`,
+				text: `${DIM}${ev.isError ? RED : DIM}  [result${ev.isError ? " ✗" : ""}] ${content.slice(0, 400).replaceAll("\n", " ")}${RESET}\n`,
 				newline: true,
 				prompt: false,
 			};
+		}
 		case "permission_requested":
 			return {
 				text: `${YELLOW}⏸ ${ev.name} needs approval${RESET} ${DIM}${approvalDetail(ev.name, ev.input)}${RESET} `,

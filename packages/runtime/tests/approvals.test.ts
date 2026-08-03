@@ -167,7 +167,7 @@ describe("uncertain executions", () => {
 		// ── abandoned: the human says the attempt did not apply ──
 		const { store: store1 } = crashedStore();
 		const session1 = await searchAgent(store1).session({ id: "s" });
-		session1.resolveUncertain("c1", "abandoned");
+		session1.resolveUncertain("ex-2", "abandoned");
 		const rec1 = store1.load("s");
 		expect(rec1.some((r) => r.event.type === "tool_execution_resolved" && r.event.resolution === "abandoned")).toBe(true);
 		expect(rec1.some((r) => r.event.type === "tool_result" && r.event.isError && r.event.errorKind === "precondition")).toBe(true);
@@ -179,7 +179,7 @@ describe("uncertain executions", () => {
 		//    with the rerun verdict (review finding 1).
 		const { store: store2 } = crashedStore();
 		const session2 = await searchAgent(store2).session({ id: "s" });
-		session2.resolveUncertain("c1", "rerun");
+		session2.resolveUncertain("ex-2", "rerun");
 		const rec2 = store2.load("s");
 		expect(rec2.some((r) => r.event.type === "tool_execution_resolved" && r.event.resolution === "rerun")).toBe(true);
 		const filled = rec2.find((r) => r.event.type === "tool_result");

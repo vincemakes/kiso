@@ -364,13 +364,14 @@ async function* executeOne(
 		input: call.input ?? {},
 	};
 
-	const emitResult = (result: ToolResult): Event =>
+	const emitResult = (result: ToolResult, executionId?: string): Event =>
 		log.append({
 			type: "tool_result",
 			callId: call.callId,
 			content: result.content,
 			isError: result.isError,
 			...(result.errorKind ? { errorKind: result.errorKind } : {}),
+			...(executionId !== undefined ? { executionId } : {}),
 		});
 
 	// Unknown tool or unparseable args — refuse before anything runs.
@@ -446,6 +447,7 @@ async function* executeOne(
 				log.append({
 					type: "permission_decided",
 					decisionId,
+					callId: call.callId, // binds the decision to the invocation (B 组)
 					decision: finalDecision.action === "allow" ? "approved" : "denied",
 					...(finalDecision.action === "deny" && finalDecision.reason !== undefined
 						? { reason: finalDecision.reason }
@@ -514,7 +516,7 @@ async function* executeOne(
 		});
 	}
 
-	yield emitResult(result);
+	yield emitResult(result, executionId);
 }
 
 /** Thrown when an abort lands while the loop awaits a human decision. */

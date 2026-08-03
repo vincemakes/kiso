@@ -26,7 +26,6 @@
 
 import {
 	EventLog,
-	executionForCallId,
 	executionLedger,
 	loop,
 	projectMessages,
@@ -44,12 +43,12 @@ import type { SessionStore } from "./store.js";
 
 /** resume() refuses while interrupted executions still await a human verdict. */
 export class ResumeBlockedError extends Error {
-	readonly uncertain: readonly { callId: string; name: string }[];
-	constructor(uncertain: readonly { callId: string; name: string }[]) {
+	readonly uncertain: readonly { executionId: string; callId: string; name: string }[];
+	constructor(uncertain: readonly { executionId: string; callId: string; name: string }[]) {
 		super(
 			`resume is blocked by ${uncertain.length} uncertain execution(s): ` +
-				uncertain.map((u) => `${u.name}(${u.callId})`).join(", ") +
-				" — resolve each with resolveUncertain(callId, 'rerun'|'abandoned') first",
+				uncertain.map((u) => `${u.name}(${u.executionId})`).join(", ") +
+				" — resolve each with resolveUncertain(executionId, 'rerun'|'abandoned') first",
 		);
 		this.name = "ResumeBlockedError";
 		this.uncertain = uncertain;
@@ -117,13 +116,34 @@ export class AgentSession {
 
 	// ── Phase D: approvals ───────────────────────────────────────────────
 
-	/** Pauses that still await a human decision (durable, survives restart). */
+	/**
+	 * Pauses that still await a human decision (durable, survives restart).
+	 * B 组: a request whose RUN has terminated is DEAD — it is neither
+	 * re-presented here nor recoverable; expired requests are excluded too.
+	 */
 	pendingApprovals(): ApprovalRequest[] {
+		const records = this.#store.load(this.id);
+		const terminatedRuns = new Set<string>();
+		for (const r of records) {
+			if (r.event.type === "terminal") terminatedRuns.add(r.runId);
+		}
+		const requestRun = new Map<string, string>();
+		for (const r of records) {
+			if (r.event.type === "permission_requested") requestRun.set(r.event.decisionId, r.runId);
+		}
 		const decided = new Set(
 			this.log.all.filter((e) => e.type === "permission_decided").map((e) => (e as { decisionId: string }).decisionId),
 		);
+		const expired = new Set(
+			this.log.all.filter((e) => e.type === "permission_expired").map((e) => (e as { decisionId: string }).decisionId),
+		);
 		return this.log.all
-			.filter((e): e is Event & { type: "permission_requested" } => e.type === "permission_requested" && !decided.has(e.decisionId))
+			.filter((e): e is Event & { type: "permission_requested" } => {
+				if (e.type !== "permission_requested") return false;
+				if (decided.has(e.decisionId) || expired.has(e.decisionId)) return false;
+				const runId = requestRun.get(e.decisionId);
+				return runId === undefined || !terminatedRuns.has(runId);
+			})
 			.map((e) => ({
 				decisionId: e.decisionId,
 				callId: e.callId,
@@ -151,20 +171,27 @@ export class AgentSession {
 		if (this.#answered.has(decisionId)) return;
 		this.#answered.add(decisionId);
 		if (this.log.all.some((e) => e.type === "permission_decided" && e.decisionId === decisionId)) return;
+		// B 组: a late approve() on a TERMINATED run writes nothing and
+		// executes nothing — a dead run's approval cannot resurrect it.
+		const records = this.#store.load(this.id);
+		const request = records.find(
+			(r) => r.event.type === "permission_requested" && (r.event as { decisionId: string }).decisionId === decisionId,
+		);
+		if (request) {
+			const runTerminated = records.some((r) => r.runId === request.runId && r.event.type === "terminal");
+			if (runTerminated) return;
+		}
 		const resolver = this.#pendingResolvers.get(decisionId);
 		if (resolver !== undefined) {
 			this.#pendingResolvers.delete(decisionId);
 			resolver(allow ? { action: "allow" } : { action: "deny", reason: "denied by user" });
 			return;
 		}
-		const runId =
-			this.#store
-				.load(this.id)
-				.find((r) => r.event.type === "permission_requested" && (r.event as { decisionId: string }).decisionId === decisionId)
-				?.runId ?? "approval";
+		const runId = request?.runId ?? "approval";
 		const decided = this.log.append({
 			type: "permission_decided",
 			decisionId,
+			...(request !== undefined ? { callId: (request.event as { callId: string }).callId } : {}),
 			decision: allow ? "approved" : "denied",
 			...(allow ? {} : { reason: "denied by user" }),
 		});
@@ -179,25 +206,27 @@ export class AgentSession {
 	}
 
 	/**
-	 * The human's verdict on an interrupted execution: "rerun" (the human
-	 * says the side effect did NOT happen — the attempt is completed with a
-	 * recorded failure so the model may re-issue it as a new logical call,
-	 * which then executes) or "abandoned" (treated as failed forever). Both
-	 * fill a model-facing result: a dangling tool_use with NO result would
-	 * otherwise be rejected by real providers and stall the run (review
-	 * finding 1). Durable, write-ahead, keyed by executionId.
+	 * The human's verdict on an interrupted execution, keyed by EXECUTION ID
+	 * (B 组): "rerun" (the human says the side effect did NOT happen — the
+	 * attempt is completed with a recorded failure so the model may re-issue
+	 * it as a new logical call) or "abandoned" (treated as failed forever).
+	 * Only uncertain → rerun/abandoned is legal; a resolved or successful
+	 * execution is left untouched (idempotent, irreversible). Both fill a
+	 * model-facing result — a dangling tool_use with NO result would be
+	 * rejected by real providers (review finding 1).
 	 */
-	resolveUncertain(callId: string, resolution: "rerun" | "abandoned"): void {
-		const record = executionForCallId(this.log.all, callId);
-		if (!record) throw new Error(`no execution record for call ${callId}`);
+	resolveUncertain(executionId: string, resolution: "rerun" | "abandoned"): void {
+		const record = executionLedger(this.log.all).get(executionId);
+		if (!record) throw new Error(`no execution record for ${executionId}`);
+		if (record.status !== "uncertain") return; // idempotent + irreversible
 		const resolved = this.log.append({
 			type: "tool_execution_resolved",
-			executionId: record.executionId,
-			callId,
+			executionId,
+			callId: record.callId,
 			resolution,
 		});
 		this.#store.append(this.id, "resolution", resolved);
-		if (!this.log.all.some((e) => e.type === "tool_result" && e.callId === callId)) {
+		if (!this.log.all.some((e) => e.type === "tool_result" && e.callId === record.callId)) {
 			const denial = denialResult(
 				resolution === "rerun"
 					? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
@@ -205,7 +234,7 @@ export class AgentSession {
 			);
 			const result = this.log.append({
 				type: "tool_result",
-				callId,
+				callId: record.callId,
 				content: denial.content,
 				isError: true,
 				errorKind: denial.errorKind,
@@ -320,21 +349,60 @@ export class Run implements AsyncIterable<Event> {
 			};
 
 			if (this.#resume) {
-				// ── Area 2: durable continuation of the interrupted run ──
+				// ── B 组: recovery is PER-RUN, keyed by StoreRecord.runId ──
+				// Rebuild run boundaries; only the LAST unterminated run is
+				// recovered. Earlier runs that DID terminate have their
+				// dangling approvals closed (permission_expired) — a dead
+				// run's approval is never re-presented or resurrected.
+				const records = this.#store.load(this.#session.id);
+				const runs = new Map<string, Event[]>();
+				const order: string[] = [];
+				for (const r of records) {
+					if (!runs.has(r.runId)) {
+						runs.set(r.runId, []);
+						order.push(r.runId);
+					}
+					runs.get(r.runId)!.push(r.event);
+				}
+				let lastOpen: { runId: string; events: Event[] } | undefined;
+				for (const runId of order) {
+					const events = runs.get(runId)!;
+					if (!events.some((e) => e.type === "terminal")) lastOpen = { runId, events };
+				}
+				if (!lastOpen) return; // everything terminated — nothing to resume
+
 				// Adopt the ORIGINAL runId so the whole trajectory stays one
 				// run in the audit.
-				const firstRequest = this.#store
-					.load(this.#session.id)
-					.find((r) => r.event.type === "permission_requested");
-				if (firstRequest) this.runId = firstRequest.runId;
+				this.runId = lastOpen.runId;
+
+				// Close dangling approvals of TERMINATED runs.
+				for (const [runId, events] of runs) {
+					if (runId === lastOpen.runId) continue;
+					if (!events.some((e) => e.type === "terminal")) continue; // an open earlier run? impossible — lastOpen is the LAST
+					for (const ev of events) {
+						if (ev.type !== "permission_requested") continue;
+						const dead = this.#session.log.all.some(
+							(e) =>
+								(e.type === "permission_decided" || e.type === "permission_expired") &&
+								e.decisionId === ev.decisionId,
+						);
+						if (dead) continue;
+						const expired = this.#session.log.append({
+							type: "permission_expired",
+							decisionId: ev.decisionId,
+							reason: `run ${runId} terminated before the request was answered`,
+						});
+						this.#store.append(this.#session.id, runId, expired);
+					}
+				}
 
 				// Uncertain executions block until a human decides.
 				const uncertain = this.#session.uncertainExecutions();
 				if (uncertain.length > 0) {
-					throw new ResumeBlockedError(uncertain.map((u) => ({ callId: u.callId, name: u.name })));
+					throw new ResumeBlockedError(uncertain.map((u) => ({ executionId: u.executionId, callId: u.callId, name: u.name })));
 				}
 
-				// 1. Recovery: apply decisions and fill receipts. The recover
+				// 1. Recovery scoped to the LAST OPEN RUN's events. The recover
 				//    phase re-announces ALREADY-PERSISTED events (the stored
 				//    permission_requested) for the consumer to re-prompt on —
 				//    those must never be written to the store again, or seq
@@ -344,15 +412,14 @@ export class Run implements AsyncIterable<Event> {
 				const persist = (ev: Event): void => {
 					if (ev.seq > baseSeq) this.#store.append(this.#session.id, this.runId, ev);
 				};
-				for await (const ev of this.#recover(log, signal)) {
+				for await (const ev of this.#recover(log, signal, lastOpen.events)) {
 					persist(ev);
 					yield ev;
 				}
-				// 2. Continuation: drive the original run to its terminal —
-				//    only when there IS a trajectory (the log has events) and
-				//    it never reached one. An empty log is a fresh session:
-				//    resume() yields nothing and never invents a turn.
-				if (log.all.length > 0 && !log.all.some((e) => e.type === "terminal")) {
+				// 2. Continuation: drive the LAST OPEN run to its terminal.
+				//    The guard is scoped to that run — an earlier run's
+				//    terminal must not suppress it (B 组).
+				if (!lastOpen.events.some((e) => e.type === "terminal")) {
 					for await (const ev of runLoop()) yield ev;
 				}
 				return;
@@ -391,8 +458,8 @@ export class Run implements AsyncIterable<Event> {
 	 * execution whose tool_result never landed is completed from the
 	 * receipt. Undecided requests pause and await approve().
 	 */
-	async *#recover(log: EventLog, signal: AbortSignalLike): AsyncGenerator<Event> {
-		const requests = log.all.filter(
+	async *#recover(log: EventLog, signal: AbortSignalLike, scope: readonly Event[]): AsyncGenerator<Event> {
+		const requests = scope.filter(
 			(e): e is Event & { type: "permission_requested" } => e.type === "permission_requested",
 		);
 		for (const pending of requests) {
@@ -418,6 +485,7 @@ export class Run implements AsyncIterable<Event> {
 				yield log.append({
 					type: "permission_decided",
 					decisionId: pending.decisionId,
+					callId: pending.callId, // binds the decision to the invocation (B 组)
 					decision: final.action === "allow" ? "approved" : "denied",
 					...(final.action === "deny" && final.reason !== undefined ? { reason: final.reason } : {}),
 				});
@@ -439,24 +507,52 @@ export class Run implements AsyncIterable<Event> {
 
 		// Receipt repair: an execution that reached a terminal state but
 		// whose model-facing result never landed is completed FROM THE
-		// RECEIPT — never re-executed. Snapshot the log first: this phase
+		// RECEIPT — never re-executed. Snapshot the scope first: this phase
 		// appends the repaired results, and iterating a growing array would
 		// re-visit them.
-		for (const ev of [...log.all]) {
+		for (const ev of [...scope]) {
 			if (ev.type !== "tool_execution_succeeded" && ev.type !== "tool_execution_failed") continue;
 			const hasResult = log.all.some((e) => e.type === "tool_result" && e.callId === ev.callId);
 			if (hasResult) continue;
 			yield log.append(
 				ev.type === "tool_execution_succeeded"
-					? { type: "tool_result", callId: ev.callId, content: ev.result.content, isError: false }
+					? {
+							type: "tool_result",
+							callId: ev.callId,
+							content: ev.result.content,
+							isError: false,
+							executionId: ev.executionId,
+						}
 					: {
 							type: "tool_result",
 							callId: ev.callId,
 							content: ev.error,
 							isError: true,
 							...(ev.errorKind !== undefined ? { errorKind: ev.errorKind } : {}),
+							executionId: ev.executionId,
 						},
 			);
+		}
+
+		// B 组 crash window: a resolution was persisted but its tool_result
+		// fill never landed — complete it so the model is never left staring
+		// at a dangling tool_use.
+		for (const ev of [...scope]) {
+			if (ev.type !== "tool_execution_resolved") continue;
+			const hasResult = log.all.some((e) => e.type === "tool_result" && e.callId === ev.callId);
+			if (hasResult) continue;
+			const denial = denialResult(
+				ev.resolution === "rerun"
+					? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
+					: "abandoned by human decision — the interrupted attempt must not be treated as applied",
+			);
+			yield log.append({
+				type: "tool_result",
+				callId: ev.callId,
+				content: denial.content,
+				isError: true,
+				errorKind: denial.errorKind,
+			});
 		}
 	}
 
@@ -526,6 +622,7 @@ export class Run implements AsyncIterable<Event> {
 			content: result.content,
 			isError: result.isError,
 			...(result.errorKind !== undefined ? { errorKind: result.errorKind } : {}),
+			executionId,
 		});
 	}
 
