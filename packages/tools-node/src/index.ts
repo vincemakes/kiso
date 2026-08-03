@@ -92,6 +92,33 @@ export function resolveWithinRoot(root: string, input: string): string {
 	return canonical;
 }
 
+/**
+ * 十: the canonical path a tool will actually touch, as an ABSOLUTE path.
+ * Symlinks in the deepest EXISTING ancestor are resolved — a file to be
+ * created under a symlinked directory lands in the TARGET, not in the
+ * link — and the not-yet-existing tail is re-appended. Shared by the
+ * tools (which then re-verify the workspace boundary) and the CLI
+ * approval UI, so the human and the tool see THE SAME path.
+ */
+export function canonicalTargetPath(input: string): string {
+	const candidate = resolve(input);
+	let ancestor = candidate;
+	const missingTail: string[] = [];
+	while (!existsSync(ancestor)) {
+		const parent = dirname(ancestor);
+		if (parent === ancestor) break;
+		missingTail.unshift(basename(ancestor));
+		ancestor = parent;
+	}
+	let ancestorReal: string;
+	try {
+		ancestorReal = realpathSync(ancestor);
+	} catch {
+		return candidate; // unresolvable — show the plain resolved path
+	}
+	return missingTail.length > 0 ? join(ancestorReal, ...missingTail) : ancestorReal;
+}
+
 export interface WorkspaceToolsOptions {
 	/** The workspace the tools may touch; everything else is refused. */
 	readonly workspaceRoot: string;

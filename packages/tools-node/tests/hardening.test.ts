@@ -19,14 +19,16 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	statSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AbortSignalLike, ToolContext } from "@kiso/core";
-import { editFileTool, readFileTool, searchTextTool, shellTool, writeFileTool } from "../src/index.js";
+import { canonicalTargetPath, editFileTool, readFileTool, searchTextTool, shellTool, writeFileTool } from "../src/index.js";
 
 function root(): string {
 	return mkdtempSync(join(tmpdir(), "kiso-hard-"));
@@ -205,5 +207,29 @@ describe("read_file inode boundary (八)", () => {
 		linkSync(a, join(dir, "b\nline.txt")); // a second inside link with a newline name
 		const result = await readFileTool({ workspaceRoot: dir }).execute({ path: "a.txt" }, CTX());
 		expect(result).toMatchObject({ isError: false, content: "internal-shared" });
+	});
+});
+
+describe("canonicalTargetPath (十)", () => {
+	it("a file to be created under a SYMLINKED directory resolves to the REAL target", async () => {
+		const dir = root();
+		const realDir = join(realpathSync(dir), "real-dir"); // /var → /private/var on macOS
+		mkdirSync(realDir, { recursive: true });
+		symlinkSync(realDir, join(dir, "link-dir"));
+		const canonical = canonicalTargetPath(join(dir, "link-dir", "new-file.txt"));
+		expect(canonical).toBe(join(realDir, "new-file.txt")); // the TARGET, not the link
+	});
+
+	it("an existing file through a symlink resolves to the real file", async () => {
+		const dir = root();
+		const real = join(realpathSync(dir), "real.txt");
+		writeFileSync(real, "x", "utf8");
+		symlinkSync(real, join(dir, "link.txt"));
+		expect(canonicalTargetPath(join(dir, "link.txt"))).toBe(real);
+	});
+
+	it("a plain path is resolved as-is", async () => {
+		const dir = root();
+		expect(canonicalTargetPath(join(dir, "plain.txt"))).toBe(join(realpathSync(dir), "plain.txt"));
 	});
 });

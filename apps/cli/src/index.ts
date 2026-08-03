@@ -122,27 +122,44 @@ function fauxScript(): FauxScript {
 		},
 	];
 }
+/** 十: a question cancelled by Ctrl+C — NEVER the empty string, which is a
+ *  real user answer (the empty line). The empty answer and the cancellation
+ *  are distinct facts. */
+const CANCELLED = Symbol("kiso-question-cancelled");
+
 /**
  * Ask the human a question. Non-interactive stdin (piped, CI) cannot wait
  * forever: approvals auto-deny and uncertain executions auto-abandon, both
  * printed loudly — never silently ignored, never hung (Area 7).
  *
- * 八: the question is ABORTABLE — a pending rl.question is registered in
- * `pendingAsk` and the SIGINT handler resolves it, so Ctrl+C unblocks a
- * question that is waiting for a line instead of hanging the REPL.
+ * 八/十: the question is ABORTABLE — a pending rl.question is registered in
+ * `pendingAsk` and the SIGINT handler resolves it with the CANCELLED
+ * sentinel. The rl.question callback is NOT left dangling: an input that
+ * arrives after the cancellation is re-emitted as a fresh "line" — it
+ * becomes the next user turn instead of being swallowed by the dead
+ * question.
  */
 let pendingAsk: (() => void) | null = null;
-function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<string> {
+function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<string | typeof CANCELLED> {
 	if (!process.stdin.isTTY) {
 		console.log(`[non-interactive — no human to ask: ${question}]`);
 		return Promise.resolve("");
 	}
 	return new Promise((resolve) => {
+		let settled = false;
 		pendingAsk = () => {
+			if (settled) return;
+			settled = true;
 			pendingAsk = null;
-			resolve(""); // the run is aborting — the conservative answer
+			resolve(CANCELLED); // the run is aborting — the question is dead
 		};
 		rl.question(question, (answer) => {
+			if (settled) {
+				// The question was cancelled; this line is a NEW user turn.
+				rl.emit("line", answer);
+				return;
+			}
+			settled = true;
 			pendingAsk = null;
 			resolve(answer);
 		});
@@ -160,7 +177,11 @@ async function resolveUncertains(
 			rl,
 			`⚠ interrupted execution: ${escapeTerminal(uncertain.name)} (${uncertain.executionId}) — did it apply? (r)erun / (a)bandon: `,
 		);
-		if (isCancelled()) return; // Ctrl+C with no run: stop deciding, exit
+		if (isCancelled() || answer === CANCELLED) {
+			// 十: a cancellation NEVER records a verdict — the execution
+			// stays uncertain and durable; no rerun/abandoned is fabricated.
+			return;
+		}
 		const resolution = answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned";
 		await session.resolveUncertain(uncertain.executionId, resolution);
 		console.log(`  ${resolution}\n`);
@@ -185,6 +206,13 @@ async function consumeRun(
 				`\n⚠ ${escapeTerminal(ev.name)} FAILED — the side effect may have applied.\n  ${escapeTerminal(ev.error)}\n`,
 			);
 			const answer = await ask(rl, `did it apply? (r)erun / (a)bandon: `);
+			if (answer === CANCELLED) {
+				// 十: a cancellation records NO verdict — the execution stays
+				// uncertain; the run's own abort produces the aborted
+				// terminal, which the consumer keeps consuming.
+				console.log("[cancelled — the execution stays uncertain]\n");
+				continue;
+			}
 			await session.resolveUncertain(ev.executionId, answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned");
 			continue;
 		}
@@ -195,6 +223,13 @@ async function consumeRun(
 			const name = (ev as { name: string }).name;
 			// 八: the tool name is model text — escaped on every output path.
 			const answer = await ask(rl, `approve ${escapeTerminal(name)}? (y/n) `);
+			if (answer === CANCELLED) {
+				// 十: a cancellation is a CONSERVATIVE denial, explicitly
+				// distinguished from the user typing "n".
+				console.log("[approval cancelled — treated as a denial]\n");
+				await session.approve(decisionId, false);
+				continue;
+			}
 			await session.approve(decisionId, answer.trim().toLowerCase().startsWith("y"));
 		} else {
 			process.stdout.write(rendered.text);
@@ -203,23 +238,35 @@ async function consumeRun(
 	return last;
 }
 
-/**
- * 八: a faux-mode run whose scripted turns are exhausted must NOT print a
+/** 十: a faux-mode run whose scripted turns are exhausted must NOT print a
  * provider error and exit 0 — the honest outcome is a loud message and a
- * non-zero exit. Only the exhaustion signature (the empty stream after the
- * declared turns) triggers the script-specific message; any other error
- * terminal still exits non-zero.
- */
-function failOnFauxExhaustion(last: import("@kiso/core").Event | undefined, faux: boolean): void {
+ * non-zero exit. Thrown as a CONTROLLED exception (never process.exit):
+ * the REPL closes, the error propagates through main's finally (so
+ * agent.close() runs and no lock is left behind), and main's catch sets
+ * the exit code. Only the exhaustion signature (the empty stream after
+ * the declared turns) triggers the script-specific message; any other
+ * error terminal still exits non-zero. */
+class FauxExhaustionError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "FauxExhaustionError";
+	}
+}
+
+function failOnFauxExhaustion(
+	last: import("@kiso/core").Event | undefined,
+	faux: boolean,
+	rl: ReturnType<typeof createInterface> | undefined,
+): void {
 	if (!faux) return;
 	if (last?.type !== "terminal" || last.outcome.kind !== "error") return;
 	const message = last.outcome.error.message;
-	console.error(
+	rl?.close(); // the REPL must not stay open waiting for a line
+	throw new FauxExhaustionError(
 		message.startsWith("provider stream ended without a stop event")
-			? "\n[faux mode] the scripted demo turns are exhausted — set ANTHROPIC_API_KEY or OPENAI_API_KEY for a real model"
-			: `\n[faux mode] the scripted model failed: ${escapeTerminal(message.slice(0, 200))}`,
+			? "[faux mode] the scripted demo turns are exhausted — set ANTHROPIC_API_KEY or OPENAI_API_KEY for a real model"
+			: `[faux mode] the scripted model failed: ${escapeTerminal(message.slice(0, 200))}`,
 	);
-	process.exit(1);
 }
 
 /** Interactive REPL: stream events, pause for approvals, Ctrl+C aborts. */
@@ -244,7 +291,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 				currentRun = null;
 				// 八: a faux script that ran out of declared turns exits
 				// loudly with a non-zero status — never a silent status 0.
-				failOnFauxExhaustion(last, faux);
+				failOnFauxExhaustion(last, faux, rl);
 				// 八: after EVERY turn the prompt is re-armed — the human
 				// never types blind after the first turn.
 				rl.setPrompt("you> ");
@@ -280,7 +327,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 		currentRun = recoveryRun;
 		const last = await consumeRun(session, recoveryRun, rl);
 		currentRun = null;
-		failOnFauxExhaustion(last, faux);
+		failOnFauxExhaustion(last, faux, rl);
 	}
 	if (cancelled) {
 		rl.close();
@@ -320,7 +367,7 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 		currentRun = run;
 		try {
 			const last = await consumeRun(session, run, rl);
-			failOnFauxExhaustion(last, faux);
+			failOnFauxExhaustion(last, faux, rl);
 		} finally {
 			currentRun = null;
 		}
@@ -335,12 +382,15 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 			rl.close();
 		}
 	});
-	await resolveUncertains(session, rl, () => false);
-	await withRun(session.resume());
-	if (prompt !== undefined && prompt !== "") {
-		await withRun(session.run(prompt));
+	try {
+		await resolveUncertains(session, rl, () => false);
+		await withRun(session.resume());
+		if (prompt !== undefined && prompt !== "") {
+			await withRun(session.run(prompt));
+		}
+	} finally {
+		rl.close();
 	}
-	rl.close();
 }
 
 async function main(): Promise<void> {
@@ -396,6 +446,9 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-	console.error(err);
-	process.exit(1);
+	// 十: top-level errors are terminal-escaped, and the exit code is set
+	// WITHOUT process.exit — main's finally already ran (agent.close), so
+	// the event loop drains naturally and no lock is left behind.
+	console.error(escapeTerminal(err instanceof Error ? err.message : String(err)));
+	process.exitCode = 1;
 });

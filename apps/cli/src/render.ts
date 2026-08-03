@@ -3,9 +3,8 @@
  * the lines a human sees. Colors are raw ANSI — no dependencies.
  */
 
-import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
 import type { Event } from "@kiso/core";
+import { canonicalTargetPath } from "@kiso/tools-node";
 
 const DIM = "\x1b[2m";
 const GREEN = "\x1b[32m";
@@ -30,13 +29,14 @@ export function escapeTerminal(text: string): string {
 }
 
 
-export function canonicalPath(input: string): string {
-	try {
-		return realpathSync(resolve(input));
-	} catch {
-		return resolve(input);
-	}
-}
+/**
+ * 八/十: the path the human is asked to approve is the CANONICAL one the
+ * tool will actually touch — the tools' OWN resolution (deepest existing
+ * ancestor realpath'd, the not-yet-existing tail re-appended), so a file
+ * to be created under a symlinked directory shows the REAL target, and
+ * the UI and the tool share ONE resolution (canonicalTargetPath).
+ */
+export const canonicalPath = canonicalTargetPath;
 
 export interface RenderResult {
 	readonly text: string;
