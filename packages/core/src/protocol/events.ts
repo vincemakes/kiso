@@ -19,7 +19,8 @@
  * array-shape heuristics — the exact failure Claude Code's transcript sync
  * lives in. See ADR-0002.
  *
- * This module is types-only: it compiles to nothing.
+ * This module is almost types-only: the only runtime value it emits is
+ * `isKisoEvent`, the type guard the session store validates records with.
  */
 
 /** Why the model stopped producing. */
@@ -331,3 +332,40 @@ export type Event =
 	| PermissionRequested
 	| PermissionDecided
 	| TerminalEvent;
+
+/**
+ * Every event type name, as a `satisfies Record<Event["type"], boolean>`:
+ * adding a variant without registering it here is a compile error — the
+ * store's corruption check must never drift from the union (ADR-0003).
+ */
+const EVENT_TYPES = {
+	text_start: true,
+	text_delta: true,
+	text_end: true,
+	tool_call_start: true,
+	tool_call_input_delta: true,
+	tool_call_end: true,
+	tool_result: true,
+	thinking: true,
+	usage: true,
+	stop: true,
+	user_input: true,
+	compacted: true,
+	tool_execution_started: true,
+	tool_execution_succeeded: true,
+	tool_execution_failed: true,
+	tool_execution_resolved: true,
+	permission_requested: true,
+	permission_decided: true,
+	terminal: true,
+} satisfies Record<Event["type"], boolean>;
+
+/**
+ * Runtime type guard for the union. The store validates every JSONL record
+ * with it: valid JSON that is not a kiso event is corruption, not history.
+ */
+export function isKisoEvent(value: unknown): value is Event {
+	if (typeof value !== "object" || value === null) return false;
+	const v = value as Record<string, unknown>;
+	return typeof v.type === "string" && typeof v.seq === "number" && EVENT_TYPES[v.type as Event["type"]] === true;
+}

@@ -82,6 +82,7 @@ describe("session.approve", () => {
 			if (ev.type === "permission_requested") break;
 		}
 		// Process restart: fresh store handle, fresh agent.
+		store.closeAll(); // old process released its writer lock
 		const store2 = new SessionStore(dir);
 		const agent2 = searchAgent(store2);
 		const reloaded = await agent2.session({ id: "s" });
@@ -146,7 +147,8 @@ describe("uncertain executions", () => {
 		expect(blocked.find((e) => e.type === "tool_result")).toMatchObject({ isError: true, errorKind: "precondition" });
 
 		// rerun: the human takes responsibility — the side effect may run.
-		const dir2 = crashedStore().dir;
+		const { dir: dir2, store: crashed } = crashedStore();
+		crashed.closeAll(); // the crashed process is gone
 		const store2 = new SessionStore(dir2);
 		const agent2 = searchAgent(store2);
 		const session2 = await agent2.session({ id: "s" });

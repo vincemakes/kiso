@@ -29,11 +29,18 @@ export class EventLog {
 
 	/**
 	 * A log may be seeded with an existing trajectory (a session rebuilt
-	 * from disk, Phase C): the events are trusted IN ORDER — a JSONL was
-	 * appended in seq order — and numbering continues after them. `seq`
-	 * remains the single allocator for anything appended from here on.
+	 * from disk, Phase C). The seed is STRICTLY validated: seq must be
+	 * exactly 0..N. A gap or duplicate means the trajectory is damaged —
+	 * the array length must never mask it (Area 1). Numbering continues
+	 * after the seed; `seq` remains the single allocator from here on.
 	 */
 	constructor(initial: readonly Event[] = []) {
+		for (let i = 0; i < initial.length; i++) {
+			const seq = initial[i]!.seq;
+			if (seq !== i) {
+				throw new Error(`EventLog: seq discontinuity — expected ${i}, got ${seq}`);
+			}
+		}
 		this.#events = [...initial];
 		this.#next = initial.length;
 	}

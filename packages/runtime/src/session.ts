@@ -54,12 +54,27 @@ export class AgentSession {
 	readonly #config: SessionConfig;
 	readonly #pendingResolvers = new Map<string, (decision: PermissionDecision) => void>();
 
+	readonly #activeRuns = new Set<Run>();
+
 	constructor(id: string, log: EventLog, store: SessionStore, adapter: Adapter, config: SessionConfig) {
 		this.id = id;
 		this.log = log;
 		this.#store = store;
 		this.#adapter = adapter;
 		this.#config = config;
+	}
+
+	// ── one active run per session (Area 1) ──────────────────────────────
+
+	beginRun(run: Run): void {
+		if (this.#activeRuns.size > 0) {
+			throw new Error("this session already has an active run — one run at a time");
+		}
+		this.#activeRuns.add(run);
+	}
+
+	endRun(run: Run): void {
+		this.#activeRuns.delete(run);
 	}
 
 	/** The conversation so far, as the model sees it. */
@@ -198,20 +213,25 @@ export class Run implements AsyncIterable<Event> {
 		if (this.#started) throw new Error("a run may only be consumed once");
 		this.#started = true;
 
-		const log = this.#session.log;
-
-		// 1. Durable first: the prompt enters the log and the store before
-		//    any model call — a crash here leaves a restorable session. The
-		//    prompt is also the first event the consumer sees, so what was
-		//    asked and what happened live in the same stream.
-		const inputEvent = log.append({ type: "user_input", content: this.#input });
-		this.#store.append(this.#session.id, this.runId, inputEvent);
-		yield inputEvent;
-
-		// 2. The loop projects from the session log — multi-turn context is
-		//    the projection, not a second copy. `resolveApproval` bridges
-		//    the loop's pause to the session's approval surface.
+		// The WHOLE body is one try/finally: a consumer that abandons the
+		// run at ANY yield (even the user_input one) must release the
+		// session's single-run slot and its approval resolvers.
 		try {
+			this.#session.beginRun(this);
+			const log = this.#session.log;
+
+			// 1. Durable first: the prompt enters the log and the store
+			//    before any model call — a crash here leaves a restorable
+			//    session. The prompt is also the first event the consumer
+			//    sees, so what was asked and what happened live in the same
+			//    stream.
+			const inputEvent = log.append({ type: "user_input", content: this.#input });
+			this.#store.append(this.#session.id, this.runId, inputEvent);
+			yield inputEvent;
+
+			// 2. The loop projects from the session log — multi-turn context
+			//    is the projection, not a second copy. `resolveApproval`
+			//    bridges the loop's pause to the session's approval surface.
 			for await (const ev of loop({
 				adapter: this.#adapter,
 				model: this.#config.model,
@@ -242,6 +262,7 @@ export class Run implements AsyncIterable<Event> {
 			for (const decisionId of this.#decisionIds) {
 				this.#session.dropResolver(decisionId);
 			}
+			this.#session.endRun(this);
 		}
 	}
 }

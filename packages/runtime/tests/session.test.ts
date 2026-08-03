@@ -92,6 +92,7 @@ describe("AgentSession durability", () => {
 		expect(first.some((e) => e.type === "tool_result" && e.content === "5")).toBe(true);
 
 		// ── process B: fresh store handle, fresh agent, SAME directory ──
+		storeA.closeAll(); // the old process released its writer lock
 		const storeB = new SessionStore(dir);
 		const agentB = createAgent({
 			model: "faux",
@@ -152,6 +153,7 @@ describe("AgentSession durability", () => {
 		const last1 = store.load("s").at(-1)?.event.seq ?? -1;
 
 		// fresh instances = restart
+		store.closeAll(); // old process released its writer lock
 		const store2 = new SessionStore(dir);
 		const agent2 = createAgent({
 			model: "faux",
