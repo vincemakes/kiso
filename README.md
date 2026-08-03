@@ -24,9 +24,9 @@ $ npm run size
   packages/core/src/kernel/loop.ts  560
   packages/core/src/protocol/events.ts 389
   ...
-  total                               1714  / 2000
+  total                               1747  / 2000
 
-  ✓ 286 lines of headroom remaining.
+  ✓ 253 lines of headroom remaining.
 ```
 
 Comments do not count. Explain freely; implement tersely.
@@ -140,7 +140,7 @@ Reliable Session Alpha, including the four hardening rounds (areas 1-7,
 A-F, 一-九, and the 第四轮 adversarial round), is complete (see
 `docs/plans/2026-08-03-reliable-session-alpha.md`):
 
-- **core** (1,714/2,000 lines) — protocol, loop (single honest terminal;
+- **core** (1,747/2,000 lines) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; retry only before anything streamed; one abort signal reaches
   backoff, approval waits, every pending tool, and the SDK), hooks,
@@ -174,7 +174,7 @@ tarball) → whitespace gate (no trailing whitespace, every file ends with a new
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
-→ demo start-and-exit gate. 294 tests green. 11 ADRs. 6 incident fixtures
+→ demo start-and-exit gate. 320 tests green. 11 ADRs. 6 incident fixtures
 running on the real runtime.
 
 ## Why another one

@@ -391,6 +391,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 async function resume(session: AgentSession, prompt: string | undefined, faux: boolean): Promise<void> {
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	let currentRun: { abort: () => void } | null = null;
+	let cancelled = false;
 	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
 		currentRun = run;
 		try {
@@ -406,19 +407,24 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 			console.log("\n[aborting run]");
 			pendingAsk?.();
 			currentRun.abort();
-		} else {
+		} else if (!cancelled) {
 			// 第四轮(对抗): also unblock a pending startup question — the
 			// readline close alone would leave ask() hanging forever.
+			// 第五轮(P2-2): the cancellation is recorded so the recovery is
+			// NOT started afterwards — Ctrl+C exits cleanly.
+			cancelled = true;
 			console.log("\n[exit requested]");
 			pendingAsk?.();
 			rl.close();
 		}
 	});
 	try {
-		await resolveUncertains(session, rl, () => false);
-		await withRun(session.resume());
-		if (prompt !== undefined && prompt !== "") {
-			await withRun(session.run(prompt));
+		await resolveUncertains(session, rl, () => cancelled);
+		if (!cancelled) {
+			await withRun(session.resume());
+			if (prompt !== undefined && prompt !== "") {
+				await withRun(session.run(prompt));
+			}
 		}
 	} finally {
 		rl.close();

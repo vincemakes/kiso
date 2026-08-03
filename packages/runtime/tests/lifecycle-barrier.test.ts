@@ -153,3 +153,32 @@ describe("store write lifecycle (第五轮 P1)", () => {
 		expect(helperPids(id)).toHaveLength(0); // no helper outlives the instance
 	});
 });
+
+	it("P2-1: a missing python3 (empty PATH) is an HONEST locking-unavailable error, never a lock conflict", async () => {
+		// Run a real child with PATH emptied so spawn("python3") fails.
+		const script = `
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { SessionStore } from ${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)};
+const dir = mkdtempSync(join(tmpdir(), "kiso-spawn-"));
+const store = new SessionStore(dir);
+try {
+  await store.append("s", "r1", { seq: 0, type: "stop", reason: "end_turn" });
+  console.log("NO-ERROR");
+  process.exit(1);
+} catch (e) {
+  console.log(e.message);
+  process.exit(e.message.includes("locking unavailable") && !e.message.includes("locked by another writer") ? 0 : 1);
+}
+`;
+		const { spawnSync } = await import("node:child_process");
+		const r = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+			encoding: "utf8",
+			env: { ...process.env, PATH: "" },
+			timeout: 20_000,
+		});
+		expect(r.status).toBe(0);
+		expect(r.stdout).toContain("locking unavailable");
+		expect(r.stdout).not.toContain("locked by another writer");
+	});

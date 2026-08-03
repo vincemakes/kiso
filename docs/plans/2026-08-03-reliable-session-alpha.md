@@ -308,6 +308,41 @@ the decision record:
   provider smoke claims only install/resolution/construction, and README
   numbers match the real size gate (1,714/2,000) and test count (294).
 
+
+## 6e. Fifth hardening round (2026-08-03, 一-十二 — all delivered)
+
+- **Store lifecycle** (P1-1/2/3): the WHOLE append critical section is
+  serialized per session and a rejected write propagates to every append
+  queued behind it; the lock is held only while the helper PROCESS lives
+  (dead helper detected, re-acquire or honest failure); close() is a
+  lifecycle barrier — in-flight appends fail and no helper survives.
+- **Upgrade contract** (P1-4): the pidfile guard for old-format writers is
+  a best-effort refusal, NOT a seamless rolling upgrade — the documented
+  contract is QUARANTINE (stop every old-format process, then start the
+  new version).
+- **Verdict durability** (P1-5/6): approve()/resolveUncertain() submit the
+  verdict and the Run's finally FLUSHES it to disk if the generator never
+  persists it (an abandoned generator cannot lose a verdict); the
+  recovery abort path records a same-tick verdict with its callId.
+- **Veto** (P1-7): a durable null replacement restores the vetoed flag —
+  the provider is never called on resume, even with prior history.
+- **Trust gate** (P1-8): isAdapterEvent validates STRUCTURE via the same
+  per-variant validator the store uses — illegal fields are forgeries,
+  never persisted.
+- **ToolResult** (P1-9): a discriminated union — isError:false cannot
+  carry errorKind (type-pinned by @ts-expect-error) and the emit sites
+  runtime-guard it too.
+- **Provider** (P1-10): the first OpenAI finish reason is FINAL — later
+  content is ignored; late usage chunks are still honored.
+- **CLI** (P1-11): the persistent line listener is installed BEFORE the
+  startup recovery with a queue — a cancelled question's re-emitted line
+  becomes the next turn (verified on a REAL PTY).
+- **P2**: missing python3 is an honest locking-unavailable error; kiso
+  resume's Ctrl+C exits cleanly without starting the recovery; the inode
+  scan canonicalizes a symlinked workspaceRoot; README numbers are the
+  measured ones (1,747/2,000, 320 tests); the shell tests use
+  per-test-unique markers and run concurrently without cross-talk.
+
 ## 7. Boundaries (this round)
 
 No npm publish, no tag, no push. No oohki/uooki/mauri/pi/CC changes (read-only

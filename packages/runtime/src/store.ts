@@ -523,7 +523,14 @@ function helperVerdict(child: ChildProcess): Promise<string> {
 		});
 		child.stdout?.on("end", () => done(buf.trim()));
 		child.stdout?.on("error", () => done("FAILED"));
-		child.on("error", () => done("FAILED")); // python3 missing etc.
+		// 第五轮(P2-1): a spawn failure (python3 missing, exec denied) is
+		// DISTINCT from a busy lock — the caller must not report "locked by
+		// another writer" for a missing helper. The verdict is SPAWN_FAILED
+		// and the acquire path checks exactly that string.
+		child.on("error", (err) => {
+			void err;
+			done("SPAWN_FAILED");
+		});
 	});
 }
 

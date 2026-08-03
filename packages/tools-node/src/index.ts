@@ -145,11 +145,16 @@ function inodeReadPolicy(root: string, full: string): string | null {
 	// re-statted and checked for the EXACT dev+ino pair (an inode number
 	// alone is not identity across devices). Any failure to verify every
 	// link is fail-closed: the file is refused.
+	// 第五轮(P2-3): the workspace root is CANONICALIZED before the scan —
+	// find on a symlinked root would not follow the symlink into the real
+	// tree, undercounting the in-workspace links and misjudging a legal
+	// hard link as an external escape.
 	let inside = 0;
 	try {
+		const rootReal = realpathSync(root);
 		const out = execFileSync(
 			"find",
-			[root, "-xdev", "-inum", String(st.ino), "-print0"],
+			[rootReal, "-xdev", "-inum", String(st.ino), "-print0"],
 			{ encoding: "utf8", maxBuffer: 1 << 20 },
 		);
 		for (const path of out.split("\0")) {

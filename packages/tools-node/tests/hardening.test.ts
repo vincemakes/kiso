@@ -53,7 +53,10 @@ describe("shell: the whole tree dies (八)", () => {
 		"a setsid()-escaped descendant is killed and CONFIRMED exited",
 		async () => {
 			const dir = root();
-			const marker = `sleep 8127`;
+			// P2-5: a per-test unique marker — sleep accepts decimal seconds,
+			// and the pid+random suffix keeps concurrent suites from
+			// matching each other's processes.
+			const marker = `sleep 8127.${Math.floor(Math.random() * 1e6)}`;
 			// The command escapes its process group via setsid(): a plain
 			// group kill would miss it — only the pid-table sweep finds it.
 			// `& wait` keeps the outer shell alive AND forces a fork, so the
@@ -81,7 +84,8 @@ describe("shell: the whole tree dies (八)", () => {
 		"十一: EVERY setsid()-escaped descendant of a MULTI-fork command dies and is confirmed gone",
 		async () => {
 			const dir = root();
-			const markers = [`sleep 8127`, `sleep 8128`, `sleep 8129`];
+			const uid = Math.floor(Math.random() * 1e6);
+			const markers = [`sleep 8127.${uid}01`, `sleep 8128.${uid}02`, `sleep 8129.${uid}03`];
 			// Three independent setsid()-escaped descendants, each forked by
 			// its own backgrounded python; the outer shell waits on them all.
 			const command = markers.map((m) => `python3 -c "import os; os.setsid(); os.system('${m}')" &`).join(" ") + " wait";
@@ -237,6 +241,20 @@ describe("read_file inode boundary (八)", () => {
 });
 
 describe("canonicalTargetPath (十)", () => {
+	it("P2-3: a SYMLINKED workspaceRoot still admits its own internal hard links", async () => {
+		const dir = root();
+		const realWorkspace = join(dir, "real-ws");
+		mkdirSync(realWorkspace, { recursive: true });
+		const linkWorkspace = join(dir, "link-ws");
+		symlinkSync(realWorkspace, linkWorkspace);
+		// Two internal hard links inside the (symlinked) workspace.
+		const a = join(linkWorkspace, "a.txt");
+		writeFileSync(a, "internal-shared", "utf8");
+		linkSync(a, join(linkWorkspace, "b.txt"));
+		const result = await readFileTool({ workspaceRoot: linkWorkspace }).execute({ path: "a.txt" }, CTX());
+		expect(result).toMatchObject({ isError: false, content: "internal-shared" });
+	});
+
 	it("a file to be created under a SYMLINKED directory resolves to the REAL target", async () => {
 		const dir = root();
 		const realDir = join(realpathSync(dir), "real-dir"); // /var → /private/var on macOS
