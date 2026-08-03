@@ -21,7 +21,8 @@
     "size": "node scripts/check-size.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run size && npm run test"
+    "check": "npm run typecheck && npm run size && npm run test",
+    "demo": "tsx scripts/demo.ts"
   },
   "keywords": [
     "agent",
@@ -46,6 +47,7 @@
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "openai": "^7.3.0",
+    "tsx": "^4.23.5",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
   }

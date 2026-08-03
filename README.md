@@ -55,6 +55,42 @@ Loop *business logic*. UI. Permission policy. Billing. Skills content. Retrieval
 Session persistence. Those are yours. A kernel that decides them for you is a
 framework, and a framework is the thing you eventually fight.
 
+## Using it
+
+```ts
+import { defineTool, ToolRegistry, loop } from "@kiso/core";
+import { createAnthropicAdapter } from "@kiso/core/adapters";
+import Anthropic from "@anthropic-ai/sdk";
+
+const registry = new ToolRegistry();
+registry.register(defineTool({
+  name: "add",
+  description: "Add two numbers",
+  parameters: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } } },
+  execute: async ({ a, b }) => ({ content: String(a + b), isError: false }),
+}));
+
+for await (const ev of loop({
+  adapter: createAnthropicAdapter(new Anthropic()),
+  model: "claude-sonnet-5",
+  registry,
+  messages: [{ role: "user", content: "What is 2+3?" }],
+})) {
+  switch (ev.type) {
+    case "text_delta": process.stdout.write(ev.text); break;
+    case "terminal": console.log("\n", ev.outcome); break;
+  }
+}
+```
+
+- The kernel imports zero runtime dependencies; provider SDKs are optional
+  peers (`@kiso/core/adapters` subpath).
+- `npm run demo` runs a REPL — faux provider by default, real Anthropic with
+  `ANTHROPIC_API_KEY` set.
+- Every fixture in `tests/fixtures/` is a real production incident
+  (uooki, 2026); the loop is proven against them, not just against happy
+  paths.
+
 ## Status
 
 Early. The protocol layer (events / messages / adapter) is in, with ADRs
