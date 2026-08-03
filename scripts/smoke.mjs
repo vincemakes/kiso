@@ -2,7 +2,7 @@
 /**
  * Consumer smoke test — the publish pipeline's last gate (Area 7).
  *
- * FOUR ISOLATED tiers, each a clean temp project installing only the
+ * FIVE ISOLATED tiers, each a clean temp project installing only the
  * closure it needs (never all seven preinstalled, which would mask missing
  * dependencies):
  *

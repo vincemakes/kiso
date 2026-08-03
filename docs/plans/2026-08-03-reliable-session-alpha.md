@@ -241,6 +241,73 @@ the decision record:
   README numbers match the real size gate (1,636/2,000) and test count
   (250); the smoke header matches the five tiers.
 
+
+## 6d. Fourth hardening round (2026-08-03, 一-十二 — all delivered)
+
+- **Workspace hardlink boundary** (一): the inode-boundary verification is
+  STRUCTURAL — `find -print0` with NUL-separated output, every match
+  re-statted and checked for the exact dev+ino pair, -xdev bounded, and
+  fail-closed on any unverifiable link: a hard link named "inside\nspoof"
+  can no longer fool the count, and read_file and search_text share the
+  policy.
+- **Permanent poison** (二): ANY rejected disk write poisons the session —
+  not only the typed stale/corruption errors (a live external writer's
+  lock error is the realistic case); the run iterator re-checks health
+  when it STARTS, and approve/resolveUncertain refuse a poisoned session;
+  runs pre-constructed before the poison all fail on consumption and
+  nothing of their context ever lands.
+- **Kernel single-writer lock** (三): the O_EXCL pidfile + rename-away
+  scheme is GONE. The lock is an EXCLUSIVE kernel flock held by a
+  dedicated helper process (fcntl.flock via python3, macOS + Linux): the
+  kernel arbitrates every race, there is nothing to delete or overwrite,
+  legacy live-PID lock files are refused (JSON.parse("123") is a bare pid,
+  never an object without one), empty/half-written locks are harmless,
+  close/closeAll release only this instance's helper, and a
+  three-process barrier race has exactly one writer.
+- **Old-session upgrade** (四): v1 compacted records ({callId, content})
+  remain legal — the projection replays them with v1 semantics and v2
+  eventSeq records with exact replacement; a schema audit found no other
+  record the old framework could legally have written.
+- **Adapter trust boundary** (五): a narrowed AdapterEvent type plus a
+  runtime whitelist — a kernel-owned event from the stream (terminal,
+  tool_execution_*, permission_*, user_input, ...) is a forgery: never
+  persisted, exactly one invalid_request terminal, tools never execute.
+- **Rewrite/veto exactly-once** (六): the hook runs AT MOST ONCE per
+  input (a durable replacement blocks re-invocation on resume); the
+  projection renders the FINAL replacement at the input's own position;
+  a persisted veto never re-runs the hook or the provider.
+- **Uncertainty flow** (七): with a live resolver, resolveUncertain only
+  passes the verdict — the loop/recovery generator appends, yields, and
+  persists tool_execution_resolved, so the yielded stream and the
+  durable seqs are IDENTICAL (no hidden 6 → 8 gap); offline verdicts
+  persist directly; an abort records no resolution and the execution
+  stays uncertain.
+- **Receipt tags** (八): tool_execution_succeeded/failed carry the result
+  tags on the durable receipt; crash-window repair reproduces the
+  normal-path tool_result losslessly.
+- **Provider boundaries** (九): Anthropic distinguishes usage-SEEN from
+  usage-YIELDED (a message_start with usage then a bare stop yields an
+  honest KNOWN usage); OpenAI adopts the first non-empty tool-call id
+  forever and a different later id is a structured error; schema counts
+  are safe integers, known usage reports at least one token, image
+  payloads are strictly exclusive, errorKind is forbidden on non-errors.
+- **CLI cancellation** (十): a CANCELLED sentinel (never the empty
+  string) — a cancelled question does not swallow the next input (it is
+  re-emitted as a fresh turn); Ctrl+C on an uncertain question records
+  no verdict; approval cancellation is a printed conservative denial;
+  faux exhaustion is a controlled exception (agent.close() always runs,
+  exitCode instead of process.exit); top-level errors are escaped; the
+  approval UI and the tools share one canonicalTargetPath resolution.
+- **Shell termination** (十一): the root is SIGSTOPped first, descendants
+  are discovered and frozen until the set is STABLE, then killed and
+  polled to death; if any tracked pid survives the deadline the verdict
+  is an explicit UNCERTAIN error naming the survivors — never a claimed
+  "aborted" while a tracked pid lives.
+- **Release truth** (十二): the CLI bin path is published as-is (no
+  auto-clean warning), the smoke header names all FIVE tiers, nested
+  provider smoke claims only install/resolution/construction, and README
+  numbers match the real size gate (1,714/2,000) and test count (294).
+
 ## 7. Boundaries (this round)
 
 No npm publish, no tag, no push. No oohki/uooki/mauri/pi/CC changes (read-only
