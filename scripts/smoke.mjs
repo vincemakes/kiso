@@ -82,7 +82,7 @@ registry.register(defineTool({
 const events = [];
 for await (const ev of loop({
   adapter: createFauxProvider([
-    { events: [{ type: "tool_call_end", callId: "c1", name: "add", input: { a: 2, b: 3 } }] },
+    { events: [{ type: "tool_call_end", callId: "c1", name: "add", input: { a: 2, b: 3 } }, { type: "stop", reason: "tool_use" }] },
     { events: [{ type: "stop", reason: "end_turn" }] },
   ]),
   model: "faux",
@@ -112,7 +112,7 @@ const guarded = createAgent({
   store,
   tools: [defineTool({ name: "write_file", description: "Write", parameters: { type: "object" }, execute: async () => ({ content: "written", isError: false }) })],
   adapter: createFauxProvider([
-    { events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "x" } }] },
+    { events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "x" } }, { type: "stop", reason: "tool_use" }] },
     { events: [{ type: "stop", reason: "end_turn" }] },
   ]),
   permissionPolicy: { rules: [{ tool: "write_file", action: "defer" }] },
@@ -237,4 +237,4 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 	rmSync(proj, { recursive: true, force: true });
 }
 
-console.log("\n[smoke] PASS — 3 isolated consumer tiers on packed artifacts");
+console.log("\n[smoke] PASS — 4 isolated consumer tiers (runtime, nested, providers, CLI) on packed artifacts");

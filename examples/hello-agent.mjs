@@ -17,7 +17,7 @@ const agent = createAgent({
   ],
   store: new SessionStore("./sessions"),
   adapter: createFauxProvider([
-    { events: [{ type: "tool_call_end", callId: "c1", name: "add", input: { a: 2, b: 3 } }] },
+    { events: [{ type: "tool_call_end", callId: "c1", name: "add", input: { a: 2, b: 3 } }, { type: "stop", reason: "tool_use" }] },
     { events: [{ type: "stop", reason: "end_turn" }] },
   ]),
 });
