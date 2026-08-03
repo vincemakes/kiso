@@ -148,14 +148,19 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			// ALREADY exists (persisted before a crash, or before a resume)
 			// means the hook already spoke for this input — it must never
 			// run again, and the run continues from the durable fact.
-			const alreadyReplaced =
-				inputEvent !== undefined &&
-				log.all.some(
-					(e) =>
-						e.type === "user_input_replaced" &&
-						(e as { replaces: number }).replaces === inputEvent.seq,
-				);
-			if (!alreadyReplaced && inputEvent) {
+			const replacement = log.all.find(
+				(e): e is Event & { type: "user_input_replaced" } =>
+					e.type === "user_input_replaced" && e.replaces === inputEvent?.seq,
+			);
+			if (replacement !== undefined) {
+				// 六/第五轮(P1-7): the hook ALREADY spoke for this input — a
+				// durable null content is a TRUE veto: restore the vetoed
+				// flag so the provider is NEVER called, even when earlier
+				// history exists (previously only an empty history happened
+				// to stop).
+				if (replacement.content === null) vetoed = true;
+			}
+			if (replacement === undefined && inputEvent) {
 				const rewritten = await hooks.onUserMessage(last, {});
 				// 一: the rewrite/veto is a NORMAL stream event — persisted by
 				// the harness and visible to consumers, never a hidden append.
@@ -697,6 +702,7 @@ async function* executeOne(
 					// recorded (exactly once), never lost; the abort then
 					// ends the run with its honest aborted terminal.
 					const verdict = resolveApprovalVerdict?.(decisionId);
+					console.error("[DBG] executeOne ABORTED catch, verdict:", verdict, "decisionId:", decisionId);
 					if (verdict !== undefined) {
 						yield log.append({
 							type: "permission_decided",
@@ -819,10 +825,12 @@ async function raceAbort<T>(
 	if (signal.aborted) throw ABORTED;
 	return new Promise<T>((resolve, reject) => {
 		const onAbort = (): void => {
+			console.error("[DBG] raceAbort onAbort fired");
 			signal.removeEventListener("abort", onAbort);
 			reject(ABORTED);
 		};
 		signal.addEventListener("abort", onAbort, { once: true });
+		console.error("[DBG] raceAbort registered; pendingDecision then:", typeof pendingDecision.then);
 		pendingDecision.then(
 			(value) => {
 				signal.removeEventListener("abort", onAbort);

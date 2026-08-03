@@ -318,3 +318,45 @@ describe("rewrite exactly-once across recovery (六)", () => {
 		expect(users[0]).toMatchObject({ content: "final", source: "suggestion" });
 	});
 });
+
+	it("P1-7: a persisted veto with PRIOR history never calls the provider on resume", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-rw-"));
+		let providerCalls = 0;
+		const agent = createAgent({
+			model: "faux",
+			store: new SessionStore(dir),
+			tools: [],
+			adapter: {
+				stream: (opts) => {
+					providerCalls += 1;
+					return createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]).stream(opts);
+				},
+			},
+			hooks: {
+				onUserMessage: async (msg) =>
+					(msg as { content: string }).content === "blocked"
+						? null // veto the second input only
+						: { ...msg, content: "rewritten-history", source: "suggestion" as const },
+			},
+		});
+		// Round 1: normal history (rewritten), the run completes.
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("hello")) {
+			// drain
+		}
+		expect(providerCalls).toBeGreaterThan(0);
+		// Round 2: a veto, crash right after the replacement persisted.
+		const session2 = await agent.session({ id: "s" });
+		for await (const ev of session2.run("blocked")) {
+			if (ev.type === "user_input_replaced") break;
+		}
+		expect(providerCalls).toBe(1); // the vetoed turn itself never called the provider
+		// Resume: the persisted veto must hold — the provider is NOT called
+		// again, despite the earlier history.
+		const session3 = await agent.session({ id: "s" });
+		for await (const _ev of session3.resume()) {
+			// drain
+		}
+		expect(providerCalls).toBe(1);
+		expect(new SessionStore(dir).load("s").some((r) => r.event.type === "terminal")).toBe(true);
+	});
