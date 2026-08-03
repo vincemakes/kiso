@@ -152,6 +152,73 @@ export interface CompactedEvent {
 	readonly clearedCallIds: readonly string[];
 }
 
+/**
+ * A tool execution is about to run — the durable START of the side effect
+ * (Phase D). Written BEFORE the handler is invoked, so an interruption
+ * between this event and its result leaves an auditably UNCERTAIN state
+ * that requires a human decision; it is never silently re-run.
+ */
+export interface ToolExecutionStarted {
+	readonly seq: number;
+	readonly type: "tool_execution_started";
+	readonly callId: string;
+	readonly name: string;
+	readonly input: Readonly<Record<string, unknown>>;
+}
+
+/** The side effect completed successfully. A confirmed success never re-runs. */
+export interface ToolExecutionSucceeded {
+	readonly seq: number;
+	readonly type: "tool_execution_succeeded";
+	readonly callId: string;
+	readonly result: { readonly content: string; readonly isError: false };
+}
+
+/** The side effect ran and failed — a failed attempt is not a side effect. */
+export interface ToolExecutionFailed {
+	readonly seq: number;
+	readonly type: "tool_execution_failed";
+	readonly callId: string;
+	readonly error: string;
+	readonly errorKind?: ToolErrorKind;
+}
+
+/**
+ * A human resolved an interrupted execution: "rerun" (the human takes
+ * responsibility for a possibly-completed side effect) or "abandoned"
+ * (the attempt is treated as failed, forever blocked).
+ */
+export interface ToolExecutionResolved {
+	readonly seq: number;
+	readonly type: "tool_execution_resolved";
+	readonly callId: string;
+	readonly resolution: "rerun" | "abandoned";
+}
+
+/**
+ * A permission `defer` became a real pause (Phase D): the run yields this
+ * event, persists the request, and waits for the human decision. The
+ * decision id is the durable handle `session.approve(decisionId, ...)`
+ * resolves.
+ */
+export interface PermissionRequested {
+	readonly seq: number;
+	readonly type: "permission_requested";
+	readonly decisionId: string;
+	readonly callId: string;
+	readonly name: string;
+	readonly input: Readonly<Record<string, unknown>>;
+}
+
+/** The durable answer to a PermissionRequested. */
+export interface PermissionDecided {
+	readonly seq: number;
+	readonly type: "permission_decided";
+	readonly decisionId: string;
+	readonly decision: "approved" | "denied";
+	readonly reason?: string;
+}
+
 /** Extended-thinking content. Providers without it emit nothing here. */
 export interface Thinking {
 	readonly seq: number;
@@ -257,4 +324,10 @@ export type Event =
 	| Stop
 	| UserInputEvent
 	| CompactedEvent
+	| ToolExecutionStarted
+	| ToolExecutionSucceeded
+	| ToolExecutionFailed
+	| ToolExecutionResolved
+	| PermissionRequested
+	| PermissionDecided
 	| TerminalEvent;

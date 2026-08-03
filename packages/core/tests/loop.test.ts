@@ -158,28 +158,28 @@ describe("loop", () => {
 		expect(denied).toMatchObject({ isError: true, errorKind: "precondition" });
 	});
 
-	it("runs concurrency-safe calls in parallel and serial calls in order", async () => {
+	it("executes calls strictly in order, each fully ledgered (Phase D sequencing)", async () => {
+		// Phase D made execution sequential: the exactly-once ledger and the
+		// approval pause require deterministic, write-ahead ordering (see
+		// kernel/loop.ts). Windowed parallel batching returns as an
+		// optimization once the ledger contract is stable.
 		const order: string[] = [];
-		const mk = (name: string, safe: boolean): Tool => {
-			let n = 0;
-			return defineTool({
+		const mk = (name: string): Tool =>
+			defineTool({
 				name,
 				description: name,
 				parameters: { type: "object", properties: {} },
-				concurrencySafe: () => safe,
 				execute: async () => {
-					const id = `${name}#${++n}`;
-					order.push(`${id}:start`);
+					order.push(`${name}:start`);
 					await new Promise((r) => setTimeout(r, name === "slow" ? 20 : 5));
-					order.push(`${id}:end`);
+					order.push(`${name}:end`);
 					return { content: name, isError: false };
 				},
 			});
-		};
 		const registry = new ToolRegistry();
-		registry.register(mk("fast", true));
-		registry.register(mk("fast2", true));
-		registry.register(mk("serial", false));
+		registry.register(mk("fast"));
+		registry.register(mk("fast2"));
+		registry.register(mk("slow"));
 
 		const events = await run(
 			[
@@ -187,23 +187,32 @@ describe("loop", () => {
 					events: [
 						{ type: "tool_call_end", callId: "a", name: "fast", input: {} },
 						{ type: "tool_call_end", callId: "b", name: "fast2", input: {} },
-						{ type: "tool_call_end", callId: "c", name: "serial", input: {} },
+						{ type: "tool_call_end", callId: "c", name: "slow", input: {} },
 					],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			],
 			registry,
 		);
-		// Parallel pair overlaps (fast2 starts before fast ends); the serial
-		// call runs strictly after both.
-		const fastEnd = order.findIndex((o) => o === "fast#1:end");
-		const fast2Start = order.findIndex((o) => o === "fast2#1:start");
-		const serialStart = order.findIndex((o) => o === "serial#1:start");
-		expect(fast2Start).toBeLessThan(fastEnd);
-		expect(serialStart).toBeGreaterThan(fastEnd);
-		// Results come back in call order regardless.
-		const results = events.filter((e) => e.type === "tool_result").map((e) => e.callId);
-		expect(results).toEqual(["a", "b", "c"]);
+		// Strict order: each call finishes before the next starts.
+		expect(order).toEqual(["fast:start", "fast:end", "fast2:start", "fast2:end", "slow:start", "slow:end"]);
+		// The ledger wraps each call: started before its result, and each
+		// call's result before the next call's started event.
+		const flow = events.filter((e) =>
+			["tool_execution_started", "tool_execution_succeeded", "tool_result"].includes(e.type),
+		);
+		const kinds = flow.map((e) => e.type);
+		expect(kinds).toEqual([
+			"tool_execution_started",
+			"tool_execution_succeeded",
+			"tool_result",
+			"tool_execution_started",
+			"tool_execution_succeeded",
+			"tool_result",
+			"tool_execution_started",
+			"tool_execution_succeeded",
+			"tool_result",
+		]);
 	});
 
 	it("stops at maxTurns with an honest terminal", async () => {

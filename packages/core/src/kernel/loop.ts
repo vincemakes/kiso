@@ -45,7 +45,8 @@ import type { HookHost, ToolCallPayload } from "./hooks.js";
 import { NoOpHooks } from "./hooks.js";
 import type { ModeProfile } from "./mode.js";
 import { resolveModeProfile } from "./mode.js";
-import { denialResult } from "./permission.js";
+import { denialResult, type PermissionDecision } from "./permission.js";
+import { latestExecutionFor } from "./ledger.js";
 import { messagesToEvents, projectMessages } from "./project.js";
 
 /** Zero-dependency sleep: the kernel must not import host globals (ADR-0001). */
@@ -75,6 +76,13 @@ export interface LoopConfig {
 	readonly signal?: AbortSignalLike;
 	readonly temperature?: number;
 	readonly maxTokens?: number;
+	/**
+	 * Phase D: the channel that resolves a `defer` permission. When the
+	 * onPreTool hook defers, the loop persists a `permission_requested`
+	 * event, yields it, and AWAITS this promise — the same run resumes when
+	 * a human decides. Absent, a defer degrades to an honest denial.
+	 */
+	readonly resolveApproval?: (decisionId: string) => Promise<PermissionDecision>;
 }
 
 export const DEFAULT_MAX_TURNS = 10;
@@ -209,21 +217,16 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			return;
 		}
 
-		// ── Execute: validate + permission + handler, batched by safety ────
-		const results = await executeCalls(pending, registry, hooks, {
-			signal: signal ?? NEVER_ABORT,
-		});
-
-		for (const { callId, result } of results) {
-			const full = log.append({
-				type: "tool_result",
-				callId,
-				content: result.content,
-				isError: result.isError,
-				...(result.errorKind ? { errorKind: result.errorKind } : {}),
-			});
-			if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
-			yield full;
+		// ── Execute: sequential, ledgered, pause-capable (Phase D) ──────────
+		// Sequential on purpose: the ledger (started → succeeded/failed) and
+		// the approval pause need deterministic, write-ahead ordering; the
+		// windowed parallel batching (ADR-0015) returns as an optimization
+		// once the ledger contract is stable.
+		for (const call of pending) {
+			for await (const ev of executeOne(call, registry, hooks, { signal: signal ?? NEVER_ABORT }, log, config.resolveApproval)) {
+				if (hooks.onEvent) await hooks.onEvent(ev, {}).catch(() => {});
+				yield ev;
+			}
 		}
 
 		// ── Advance history: the log grew; re-derive for the next turn ─────
@@ -250,103 +253,142 @@ function terminalForStop(reason: StopReason | undefined): Terminal {
 
 // ── Execution ──────────────────────────────────────────────────────────
 
-interface ExecutedCall {
-	readonly callId: string;
-	readonly result: ToolResult;
-}
-
 /**
- * Batch execution with CC's per-call concurrency predicate: `concurrencySafe`
- * is decided on INPUT, not per tool — the same tool may be parallel-safe for
- * one call and serial for another (visual generation with a chain reference).
- * Safe calls within a window run concurrently; a serial call drains the
- * window first. Results always come back in call order.
+ * Execute one tool call as a ledgered sequence of events:
+ *
+ *   [guards] → permission (allow / deny / DEFER→pause+resume)
+ *   → tool_execution_started (durable BEFORE the side effect)
+ *   → handler → tool_execution_succeeded|failed
+ *   → tool_result (the model's view)
+ *
+ * Exactly-once (Phase D): before anything runs, the guard asks the ledger
+ * whether this tool+input reached a terminal state before. A confirmed
+ * success is replayed, an interrupted (uncertain) or abandoned attempt
+ * blocks with a precondition result — the handler never auto-runs a
+ * possibly-executed side effect.
  */
-async function executeCalls(
-	calls: readonly ToolCallEnd[],
-	registry: ToolRegistry,
-	hooks: HookHost,
-	ctx: ToolContext,
-): Promise<ExecutedCall[]> {
-	const run = (call: ToolCallEnd) => executeOne(call, registry, hooks, ctx);
-	const results: ExecutedCall[] = [];
-	let window: ToolCallEnd[] = [];
-
-	for (const call of calls) {
-		const tool = registry.get(call.name);
-		const safe = tool?.concurrencySafe ? tool.concurrencySafe(call.input ?? {}) : true;
-		if (safe) {
-			window.push(call);
-			continue;
-		}
-		results.push(...(await Promise.all(window.map(run))));
-		results.push(await run(call));
-		window = [];
-	}
-	if (window.length > 0) {
-		results.push(...(await Promise.all(window.map(run))));
-	}
-	return results;
-}
-
-async function executeOne(
+async function* executeOne(
 	call: ToolCallEnd,
 	registry: ToolRegistry,
 	hooks: HookHost,
 	ctx: ToolContext,
-): Promise<ExecutedCall> {
+	log: EventLog,
+	resolveApproval: ((decisionId: string) => Promise<PermissionDecision>) | undefined,
+): AsyncGenerator<Event> {
 	const payload: ToolCallPayload = {
 		callId: call.callId,
 		name: call.name,
 		input: call.input ?? {},
 	};
 
+	const emitResult = (result: ToolResult): Event =>
+		log.append({
+			type: "tool_result",
+			callId: call.callId,
+			content: result.content,
+			isError: result.isError,
+			...(result.errorKind ? { errorKind: result.errorKind } : {}),
+		});
+
 	// Unknown tool or unparseable args — refuse before anything runs.
 	const tool: Tool | undefined = registry.get(call.name);
 	if (!tool) {
-		return {
-			callId: call.callId,
-			result: {
-				content: `Unknown tool: ${call.name}`,
-				isError: true,
-				errorKind: "invalid_input",
-			},
-		};
+		yield emitResult({
+			content: `Unknown tool: ${call.name}`,
+			isError: true,
+			errorKind: "invalid_input",
+		});
+		return;
 	}
 	if (call.input === null) {
-		return {
-			callId: call.callId,
-			result: {
-				content: "Arguments failed to parse as JSON",
-				isError: true,
-				errorKind: "invalid_input",
-			},
-		};
+		yield emitResult({
+			content: "Arguments failed to parse as JSON",
+			isError: true,
+			errorKind: "invalid_input",
+		});
+		return;
 	}
 
 	// Phase B: real JSON Schema validation — the handler never sees garbage.
 	const schemaError = validateArgs(tool.parameters, call.input);
 	if (schemaError !== null) {
-		return {
-			callId: call.callId,
-			result: {
-				content: `Arguments failed schema validation:${schemaError}`,
-				isError: true,
-				errorKind: "invalid_input",
-			},
-		};
+		yield emitResult({
+			content: `Arguments failed schema validation:${schemaError}`,
+			isError: true,
+			errorKind: "invalid_input",
+		});
+		return;
 	}
 
-	// Permission negotiation.
+	// Phase D: exactly-once guard — did this side effect already reach a
+	// terminal state?
+	const prior = latestExecutionFor(log.all, call.name, call.input);
+	if (prior !== undefined) {
+		if (prior.status === "succeeded" && !tool.idempotent) {
+			yield emitResult(prior.result ?? { content: "(recorded success)", isError: false });
+			return;
+		}
+		if (prior.status === "uncertain" || prior.status === "abandoned") {
+			yield emitResult(blockedResult(prior.status));
+			return;
+		}
+		// "failed" → a failed attempt ran nothing, re-run is safe.
+		// "rerun" → a human cleared it, the side effect may run.
+	}
+
+	// Permission negotiation — defer is a REAL pause (Phase D).
 	if (hooks.onPreTool) {
 		const decision = await hooks.onPreTool(payload, ctx);
-		if (decision.action !== "allow") {
-			const reason = decision.reason ?? (decision.action === "defer" ? "awaiting user approval" : "denied");
-			return { callId: call.callId, result: denialResult(reason) };
+		if (decision.action === "defer") {
+			const decisionId = `d-${log.lastSeq + 1}`;
+			// Register the resolver BEFORE announcing the pause: a consumer
+			// that answers the request the moment it sees it must find the
+			// resolver already waiting (no deadlock between yield and await).
+			const pendingDecision =
+				resolveApproval !== undefined
+					? resolveApproval(decisionId)
+					: Promise.resolve({ action: "deny", reason: "no approval channel configured" } as const);
+			const requested = log.append({
+				type: "permission_requested",
+				decisionId,
+				callId: call.callId,
+				name: call.name,
+				input: payload.input,
+			});
+			if (hooks.onPause) await hooks.onPause("awaiting approval", {}).catch(() => {});
+			yield requested;
+
+			const finalDecision = await pendingDecision;
+			const decided = log.append({
+				type: "permission_decided",
+				decisionId,
+				decision: finalDecision.action === "allow" ? "approved" : "denied",
+				...(finalDecision.action === "deny" && finalDecision.reason !== undefined
+					? { reason: finalDecision.reason }
+					: {}),
+			});
+			yield decided;
+
+			if (finalDecision.action !== "allow") {
+				yield emitResult(denialResult(finalDecision.reason ?? "denied"));
+				return;
+			}
+		} else if (decision.action !== "allow") {
+			yield emitResult(denialResult(decision.reason ?? "denied"));
+			return;
 		}
 	}
 
-	// The handler. A thrown error is a fatal classification, never a crash.
+	// The ledgered execution. The started event is durable BEFORE the side
+	// effect; a crash between it and the result leaves "uncertain".
+	const started = log.append({
+		type: "tool_execution_started",
+		callId: call.callId,
+		name: call.name,
+		input: call.input,
+	});
+	yield started;
+
 	let result: ToolResult;
 	try {
 		result = await tool.execute(call.input, ctx);
@@ -361,7 +403,35 @@ async function executeOne(
 	if (hooks.onPostTool) {
 		result = await hooks.onPostTool(payload, result, ctx);
 	}
-	return { callId: call.callId, result };
+
+	if (result.isError) {
+		yield log.append({
+			type: "tool_execution_failed",
+			callId: call.callId,
+			error: result.content,
+			...(result.errorKind ? { errorKind: result.errorKind } : {}),
+		});
+	} else {
+		yield log.append({
+			type: "tool_execution_succeeded",
+			callId: call.callId,
+			result: { content: result.content, isError: false },
+		});
+	}
+
+	yield emitResult(result);
+}
+
+/** The result a blocked tool carries — always a precondition, never a run. */
+function blockedResult(status: "uncertain" | "abandoned"): ToolResult {
+	return {
+		content:
+			status === "uncertain"
+				? "[blocked] a previous execution of this tool was interrupted and never reported — a human must resolve it before it can run again"
+				: "[blocked] a previous execution of this tool was abandoned by a human and may not run again",
+		isError: true,
+		errorKind: "precondition",
+	};
 }
 
 // ── Error structuring ───────────────────────────────────────────────────

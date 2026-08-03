@@ -83,9 +83,35 @@ if (t2?.outcome?.kind !== "completed") throw new Error("runtime session failed: 
 const reloaded = await agent.session({ id: "smoke" });
 if (!reloaded.projected().some((m) => m.role === "user")) throw new Error("session did not survive reload");
 
+// 3. approval pause: defer -> paused -> approve -> same run resumes
+const guarded = createAgent({
+  model: "faux",
+  store,
+  tools: [defineTool({ name: "write_file", description: "Write", parameters: { type: "object" }, execute: async () => ({ content: "written", isError: false }) })],
+  adapter: createFauxProvider([
+    { events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "x" } }] },
+    { events: [{ type: "stop", reason: "end_turn" }] },
+  ]),
+  permissionPolicy: { rules: [{ tool: "write_file", action: "defer" }] },
+});
+const gs = await guarded.session({ id: "guarded" });
+let executed = false;
+let paused = false;
+for await (const ev of gs.run("write x")) {
+  if (ev.type === "permission_requested") {
+    paused = true;
+    gs.approve(ev.decisionId, true); // the human approves
+  }
+  if (ev.type === "tool_execution_succeeded") executed = true;
+}
+if (!paused) throw new Error("approval never paused the run");
+if (!executed) throw new Error("approved tool never executed");
+const resumed = await guarded.session({ id: "guarded" });
+if (resumed.pendingApprovals().length !== 0) throw new Error("approval not durable");
+
 if (mapApiError(429, "x").code !== "rate_limit") throw new Error("mapApiError broken");
 if (typeof createAnthropicAdapter !== "function" || typeof createOpenAICompatAdapter !== "function") throw new Error("adapter factories missing");
-console.log("smoke OK — installed artifacts run a complete agent + durable session");
+console.log("smoke OK — loop + durable session + approval pause/resume, all on installed artifacts");
 `,
 	);
 

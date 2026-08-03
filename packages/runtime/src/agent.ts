@@ -31,9 +31,12 @@ export interface PermissionPolicy {
 export interface AgentDefinition {
 	readonly model: string;
 	readonly systemPrompt?: string;
-	readonly tools: readonly Tool[];
+	/** `Tool<any>` like the registry: typed tools register without casts. */
+	readonly tools: readonly Tool<any>[];
 	readonly store: SessionStore;
 	readonly permissionPolicy?: PermissionPolicy;
+	/** Raw loop hooks (observers, custom permission logic). */
+	readonly hooks?: HookHost;
 	/** Direct adapter injection (tests, faux, custom providers). */
 	readonly adapter?: Adapter;
 	/** Lazy provider: "anthropic" | "openai-compat" (imports the peer package). */
@@ -73,7 +76,14 @@ export class AgentRuntime {
 			model: this.#definition.model,
 			...(this.#definition.systemPrompt !== undefined ? { systemPrompt: this.#definition.systemPrompt } : {}),
 			registry: this.#registry,
-			...(this.#definition.permissionPolicy !== undefined ? { hooks: policyHooks(this.#definition.permissionPolicy) } : {}),
+			...(this.#definition.permissionPolicy !== undefined || this.#definition.hooks !== undefined
+				? {
+						hooks: {
+							...this.#definition.hooks,
+							...(this.#definition.permissionPolicy !== undefined ? policyHooks(this.#definition.permissionPolicy) : {}),
+						},
+					}
+				: {}),
 			...(this.#definition.maxTurns !== undefined ? { maxTurns: this.#definition.maxTurns } : {}),
 			...(this.#definition.maxTokens !== undefined ? { maxTokens: this.#definition.maxTokens } : {}),
 			...(this.#definition.temperature !== undefined ? { temperature: this.#definition.temperature } : {}),

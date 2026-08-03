@@ -52,6 +52,14 @@ export interface Tool<I = unknown> {
 	readonly concurrencySafe?: (input: I) => boolean;
 	/** Marks this tool as an artifact producer (harness-side delivery truth). */
 	readonly delivers?: { readonly kind: string };
+	/**
+	 * Exactly-once guard escape hatch (Phase D): a tool whose side effects
+	 * are safe to repeat (reads, searches, pure computations) declares
+	 * `idempotent: true`. Without it, the kernel refuses to run the same
+	 * tool+input twice in a session — a confirmed success is replayed, an
+	 * interrupted attempt blocks. The default is the safe side.
+	 */
+	readonly idempotent?: boolean;
 	readonly execute: (input: I, ctx: ToolContext) => Promise<ToolResult>;
 }
 

@@ -23,4 +23,5 @@ export { compactionRegrowth } from "./compaction-regrowth.js";
 export { userAbort } from "./user-abort.js";
 export { unknownTool } from "./unknown-tool.js";
 export { permissionNegotiation } from "./permission-negotiation.js";
+export { makeAbortSignal } from "./user-abort.js";
 export { runStaticFixture, flattenScript } from "./runner.js";
