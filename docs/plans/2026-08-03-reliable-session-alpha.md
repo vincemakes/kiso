@@ -192,3 +192,33 @@ No npm publish, no tag, no push. No oohki/uooki/mauri/pi/CC changes (read-only
 reference). No Web UI/TUI. No memory/RAG/scheduler/workflow. No "continuous
 learning" claims. No empty packages waiting for consumers. The 2,000-line
 gate constrains only `packages/core`.
+
+## 6b. Second hardening round (2026-08-03, Areas A-F — all delivered)
+
+- **Storage identity** (A): lock owner tokens (foreign-close safe), id
+  validation before ANY file side effect, expected-last-seq CAS (stale
+  handles refused), torn-tail repair before EVERY append, closeAll
+  completeness, full per-variant event schema validation.
+- **Per-run recovery** (B): run boundaries rebuilt from StoreRecord.runId;
+  only the LAST unterminated run recovers; terminated runs' dangling
+  approvals are closed (permission_expired) and late approve() cannot
+  resurrect; resolveUncertain is executionId-keyed, idempotent,
+  irreversible.
+- **Execution gate** (C): no tool runs unless the turn is well-formed
+  (exactly one compatible stop); onPreTool is cancelable; failed
+  non-idempotent executions pause as uncertain_pending until a human
+  decides (no siblings, no auto-retry); onUserMessage veto/rewrite are
+  persisted as the only fact later turns see.
+- **Projection/providers** (D): tool results carry full blocks; explicit
+  assistant boundaries; absent/unknown stops are errors; 500-599
+  retryable; connection errors recognized; real usage (OpenAI
+  include_usage, Anthropic cache counters); compacted applies persisted
+  replacements verbatim.
+- **Tools/CLI safety** (E): pre-aborted shell never spawns; listener
+  cleanup; safe replacement (external hard links survive); terminal
+  escaping (ESC/C0/C1/CR/backspace/bidi); CLI closes all locks on exit;
+  SIGINT binds to the resumed run.
+- **Release truth** (F): CLI provider resolution via the runtime (no
+  direct SDK imports); nested-install smoke tier; two-turn faux chat;
+  Node >= 22 engines; README + LICENSE in every tarball; README claims
+  match reality.
