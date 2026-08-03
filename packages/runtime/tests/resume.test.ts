@@ -166,8 +166,8 @@ describe("receipt repair", () => {
 		const store = new SessionStore(dir);
 		store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
 		store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "r1", { seq: 2, type: "tool_execution_started", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "r1", { seq: 3, type: "tool_execution_succeeded", callId: "c1", result: { content: "results for k", isError: false } });
+		store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
+		store.append("s", "r1", { seq: 3, type: "tool_execution_succeeded", executionId: "ex-2", callId: "c1", result: { content: "results for k", isError: false } });
 		store.closeAll();
 
 		const agent = pausedAgent(new SessionStore(dir), marker, STOP_SCRIPT);
@@ -206,10 +206,10 @@ describe("resume boundaries", () => {
 		const store = new SessionStore(dir);
 		store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
 		store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "r1", { seq: 2, type: "tool_execution_started", callId: "c1", name: "web_search", input: { query: "k" } });
+		store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
 		store.closeAll();
 
-		const agent = pausedAgent(store, join(dir, "m.txt"));
+		const agent = pausedAgent(new SessionStore(dir), join(dir, "m.txt"));
 		const session = await agent.session({ id: "s" });
 		await expect(async () => {
 			for await (const _ev of session.resume()) {

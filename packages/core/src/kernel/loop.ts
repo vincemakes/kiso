@@ -46,7 +46,6 @@ import { NoOpHooks } from "./hooks.js";
 import type { ModeProfile } from "./mode.js";
 import { resolveModeProfile } from "./mode.js";
 import { denialResult, type PermissionDecision } from "./permission.js";
-import { latestExecutionFor } from "./ledger.js";
 import { messagesToEvents, projectMessages } from "./project.js";
 
 /** Zero-dependency sleep: the kernel must not import host globals (ADR-0001). */
@@ -171,6 +170,12 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		let attempts = 0;
 
 		while (true) {
+			// Area 4: the backoff is abortable — a cancel landing during a
+			// retry wait ends the run now, not after the backoff.
+			if (aborted()) {
+				yield await terminal({ kind: "aborted", by: "user" });
+				return;
+			}
 			try {
 				const stream = config.adapter.stream({
 					model: config.model,
@@ -191,12 +196,19 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				}
 				break;
 			} catch (err) {
+				// Area 4: a user cancel surfaced by the SDK (APIUserAbortError
+				// or any error while the signal is set) is an honest `aborted`
+				// terminal, never a generic error.
+				if (aborted()) {
+					yield await terminal({ kind: "aborted", by: "user" });
+					return;
+				}
 				const structured = toStructuredError(err);
 				// Phase B: never silently re-stream a turn that already
 				// emitted content — duplicates are worse than failures.
 				if (structured.retryable && !streamed && attempts < maxRetries) {
 					attempts += 1;
-					await sleep(attempts * 250); // backoff lives in the frame
+					await sleep(attempts * 250, signal); // abortable backoff
 					continue;
 				}
 				yield await terminal({ kind: "error", error: structured });
@@ -223,9 +235,25 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		// windowed parallel batching (ADR-0015) returns as an optimization
 		// once the ledger contract is stable.
 		for (const call of pending) {
-			for await (const ev of executeOne(call, registry, hooks, { signal: signal ?? NEVER_ABORT }, log, config.resolveApproval)) {
-				if (hooks.onEvent) await hooks.onEvent(ev, {}).catch(() => {});
-				yield ev;
+			// Area 4: an abort after the first tool must never start a
+			// sibling tool — each pending call checks the signal first.
+			if (aborted()) {
+				yield await terminal({ kind: "aborted", by: "user" });
+				return;
+			}
+			try {
+				for await (const ev of executeOne(call, registry, hooks, { signal: signal ?? NEVER_ABORT }, log, config.resolveApproval, signal)) {
+					if (hooks.onEvent) await hooks.onEvent(ev, {}).catch(() => {});
+					yield ev;
+				}
+			} catch (err) {
+				// An abort during the approval pause propagates here as the
+				// sentinel — end the run honestly; the request stays durable.
+				if (err === ABORTED || aborted()) {
+					yield await terminal({ kind: "aborted", by: "user" });
+					return;
+				}
+				throw err;
 			}
 		}
 
@@ -274,6 +302,7 @@ async function* executeOne(
 	ctx: ToolContext,
 	log: EventLog,
 	resolveApproval: ((decisionId: string) => Promise<PermissionDecision>) | undefined,
+	signal: AbortSignalLike | undefined,
 ): AsyncGenerator<Event> {
 	const payload: ToolCallPayload = {
 		callId: call.callId,
@@ -320,21 +349,10 @@ async function* executeOne(
 		return;
 	}
 
-	// Phase D: exactly-once guard — did this side effect already reach a
-	// terminal state?
-	const prior = latestExecutionFor(log.all, call.name, call.input);
-	if (prior !== undefined) {
-		if (prior.status === "succeeded" && !tool.idempotent) {
-			yield emitResult(prior.result ?? { content: "(recorded success)", isError: false });
-			return;
-		}
-		if (prior.status === "uncertain" || prior.status === "abandoned") {
-			yield emitResult(blockedResult(prior.status));
-			return;
-		}
-		// "failed" → a failed attempt ran nothing, re-run is safe.
-		// "rerun" → a human cleared it, the side effect may run.
-	}
+	// Area 3: NO (name, input) dedup — a new logical call with identical
+	// parameters is a new execution and runs normally. Exactly-once is
+	// enforced by the receipt repair (Area 2) and the human decisions on
+	// uncertain executions, not by swallowing repeats.
 
 	// Permission negotiation — defer is a REAL pause (Phase D).
 	if (hooks.onPreTool) {
@@ -358,7 +376,9 @@ async function* executeOne(
 			if (hooks.onPause) await hooks.onPause("awaiting approval", {}).catch(() => {});
 			yield requested;
 
-			const finalDecision = await pendingDecision;
+			// Area 4: the pause is abortable — a cancel during the human's
+			// wait ends the run now; the request stays durable and pending.
+			const finalDecision = await raceAbort(pendingDecision, signal);
 			// The approval channel (session.approve) persists the decision
 			// write-ahead BEFORE waking the resolver (Area 2): if it already
 			// landed in the log, this is the same decision, not a duplicate.
@@ -385,9 +405,14 @@ async function* executeOne(
 	}
 
 	// The ledgered execution. The started event is durable BEFORE the side
-	// effect; a crash between it and the result leaves "uncertain".
+	// effect; a crash between it and the result leaves "uncertain". The
+	// executionId is the persistent identity of THIS logical execution
+	// (Area 3): generated from the log's next seq, so it is unique per log
+	// and survives restarts.
+	const executionId = `ex-${log.lastSeq + 1}`;
 	const started = log.append({
 		type: "tool_execution_started",
+		executionId,
 		callId: call.callId,
 		name: call.name,
 		input: call.input,
@@ -410,15 +435,21 @@ async function* executeOne(
 	}
 
 	if (result.isError) {
+		// Area 3: only a tool that PROVED safe-to-retry (idempotent) gets a
+		// clean failure; a non-idempotent failure may have produced a side
+		// effect and is uncertain until a human decides.
 		yield log.append({
 			type: "tool_execution_failed",
+			executionId,
 			callId: call.callId,
 			error: result.content,
 			...(result.errorKind ? { errorKind: result.errorKind } : {}),
+			safeToRetry: tool.idempotent === true,
 		});
 	} else {
 		yield log.append({
 			type: "tool_execution_succeeded",
+			executionId,
 			callId: call.callId,
 			result: { content: result.content, isError: false },
 		});
@@ -427,16 +458,37 @@ async function* executeOne(
 	yield emitResult(result);
 }
 
-/** The result a blocked tool carries — always a precondition, never a run. */
-function blockedResult(status: "uncertain" | "abandoned"): ToolResult {
-	return {
-		content:
-			status === "uncertain"
-				? "[blocked] a previous execution of this tool was interrupted and never reported — a human must resolve it before it can run again"
-				: "[blocked] a previous execution of this tool was abandoned by a human and may not run again",
-		isError: true,
-		errorKind: "precondition",
-	};
+/** Thrown when an abort lands while the loop awaits a human decision. */
+const ABORTED = Symbol("kiso-aborted-during-approval");
+
+/**
+ * Wait for the approval decision, but WAKE on abort (Area 4): a cancel
+ * during the human's wait must end the run, not leave the iterator hung.
+ * Throws ABORTED; the loop converts it to an `aborted` terminal.
+ */
+async function raceAbort(
+	pendingDecision: Promise<PermissionDecision>,
+	signal: AbortSignalLike | undefined,
+): Promise<PermissionDecision> {
+	if (signal === undefined) return pendingDecision;
+	if (signal.aborted) throw ABORTED;
+	return new Promise<PermissionDecision>((resolve, reject) => {
+		const onAbort = (): void => {
+			signal.removeEventListener("abort", onAbort);
+			reject(ABORTED);
+		};
+		signal.addEventListener("abort", onAbort, { once: true });
+		pendingDecision.then(
+			(decision) => {
+				signal.removeEventListener("abort", onAbort);
+				resolve(decision);
+			},
+			(err) => {
+				signal.removeEventListener("abort", onAbort);
+				reject(err);
+			},
+		);
+	});
 }
 
 // ── Error structuring ───────────────────────────────────────────────────
@@ -465,8 +517,23 @@ export function toStructuredError(err: unknown): StructuredError {
 	};
 }
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+/** Abortable sleep: a cancel during backoff wakes the run immediately. */
+function sleep(ms: number, signal?: AbortSignalLike): Promise<void> {
+	return new Promise((resolve) => {
+		if (signal?.aborted) {
+			resolve();
+			return;
+		}
+		const timer = setTimeout(resolve, ms) as unknown as ReturnType<typeof globalThis.setTimeout>;
+		signal?.addEventListener(
+			"abort",
+			() => {
+				clearTimeout(timer);
+				resolve();
+			},
+			{ once: true },
+		);
+	});
 }
 
 /** A signal that never aborts — for executions outside any abort scope. */

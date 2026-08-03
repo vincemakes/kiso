@@ -104,60 +104,63 @@ describe("uncertain executions", () => {
 		// followed, and the run has no terminal.
 		store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
 		store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "r1", { seq: 2, type: "tool_execution_started", callId: "c1", name: "web_search", input: { query: "k" } });
+		store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
 		return { dir, store };
 	}
 
-	it("lists interrupted executions as uncertain and blocks them in the next run", async () => {
-		const { dir, store } = crashedStore();
+	it("lists interrupted executions as uncertain; resume() refuses until resolved", async () => {
+		const { store } = crashedStore();
 		const agent = searchAgent(store);
 		const session = await agent.session({ id: "s" });
 		const uncertain = session.uncertainExecutions();
 		expect(uncertain).toHaveLength(1);
 		expect(uncertain[0]).toMatchObject({ callId: "c1", name: "web_search", status: "uncertain" });
 
-		// The next run's model re-issues the same call: it must be blocked,
-		// not executed.
+		// The continuation is BLOCKED until a human decides — the model is
+		// never silently allowed past an interrupted side effect.
+		await expect(async () => {
+			for await (const _ev of session.resume()) {
+				// never reached
+			}
+		}).rejects.toThrow(/uncertain|resolve/i);
+	});
+
+	it("a NEW logical call with the same input executes normally even after an uncertain one", async () => {
+		const { store } = crashedStore();
+		const agent = searchAgent(store);
+		const session = await agent.session({ id: "s" });
+		// The model re-issues the call (new logical call): it executes —
+		// exactly-once comes from human decisions on the UNCERTAIN one, not
+		// from swallowing repeats.
 		const events: Event[] = [];
 		for await (const ev of session.run("again")) {
 			events.push(ev);
 			if (ev.type === "permission_requested") session.approve(ev.decisionId, true);
 		}
-		const result = events.find((e) => e.type === "tool_result");
-		expect(result).toMatchObject({ isError: true, errorKind: "precondition" });
-		expect((result as { content: string }).content).toMatch(/uncertain|interrupted|human/i);
+		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
+		// The old interrupted execution stays uncertain and unresolved.
+		expect(session.uncertainExecutions()).toHaveLength(1);
 	});
 
-	it("resolving as abandoned keeps it blocked; resolving as rerun allows execution", async () => {
-		const { dir, store } = crashedStore();
-		const agent = searchAgent(store);
-		const session = await agent.session({ id: "s" });
+	it("abandoned fills a recorded denial; rerun leaves the attempt open for the model", async () => {
+		// ── abandoned: the human says the attempt did not apply ──
+		const { store: store1 } = crashedStore();
+		const session1 = await searchAgent(store1).session({ id: "s" });
+		session1.resolveUncertain("c1", "abandoned");
+		const rec1 = store1.load("s");
+		expect(rec1.some((r) => r.event.type === "tool_execution_resolved" && r.event.resolution === "abandoned")).toBe(true);
+		// The trajectory continues with a recorded denial — the model is
+		// never left staring at an unanswered tool call.
+		expect(rec1.some((r) => r.event.type === "tool_result" && r.event.isError && r.event.errorKind === "precondition")).toBe(true);
+		expect(session1.uncertainExecutions()).toEqual([]);
 
-		// Human decision: abandon the interrupted attempt.
-		session.resolveUncertain("c1", "abandoned");
-		const reloaded = await agent.session({ id: "s" });
-		expect(reloaded.uncertainExecutions()).toEqual([]);
-
-		// abandoned: still blocked.
-		const blocked: Event[] = [];
-		for await (const ev of reloaded.run("again")) {
-			blocked.push(ev);
-			if (ev.type === "permission_requested") reloaded.approve(ev.decisionId, true);
-		}
-		expect(blocked.find((e) => e.type === "tool_result")).toMatchObject({ isError: true, errorKind: "precondition" });
-
-		// rerun: the human takes responsibility — the side effect may run.
-		const { dir: dir2, store: crashed } = crashedStore();
-		crashed.closeAll(); // the crashed process is gone
-		const store2 = new SessionStore(dir2);
-		const agent2 = searchAgent(store2);
-		const session2 = await agent2.session({ id: "s" });
+		// ── rerun: the human takes responsibility — the side effect may run ──
+		const { store: store2 } = crashedStore();
+		const session2 = await searchAgent(store2).session({ id: "s" });
 		session2.resolveUncertain("c1", "rerun");
-		const rerun: Event[] = [];
-		for await (const ev of session2.run("again")) {
-			rerun.push(ev);
-			if (ev.type === "permission_requested") session2.approve(ev.decisionId, true);
-		}
-		expect(rerun.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
+		const rec2 = store2.load("s");
+		expect(rec2.some((r) => r.event.type === "tool_execution_resolved" && r.event.resolution === "rerun")).toBe(true);
+		expect(rec2.some((r) => r.event.type === "tool_result")).toBe(false); // no denial fill
+		expect(session2.uncertainExecutions()).toEqual([]);
 	});
 });

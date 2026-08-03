@@ -4,6 +4,7 @@
  */
 
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -83,6 +84,20 @@ describe("edit / shell", () => {
 		const result = await shellTool().execute({ command: "sleep 5", timeoutMs: 200 }, CTX);
 		expect(result).toMatchObject({ isError: true });
 		expect(result.content).toMatch(/timed out/);
+	});
+
+	it("shell timeout kills the WHOLE process tree, including backgrounded children", async () => {
+		// A command that backgrounds a child and keeps the parent alive.
+		const result = await shellTool().execute(
+			{ command: "sh -c 'sleep 30 & echo $! > /tmp/kiso-child.pid; wait'", timeoutMs: 300 },
+			CTX,
+		);
+		expect(result).toMatchObject({ isError: true });
+		expect(result.content).toMatch(/timed out/);
+		// The backgrounded child must be dead too — not just the outer shell.
+		const childPid = readFileSync("/tmp/kiso-child.pid", "utf8").trim();
+		const alive = spawnSync("ps", ["-p", childPid, "-o", "pid="]).stdout.toString().trim();
+		expect(alive).toBe("");
 	});
 });
 

@@ -188,17 +188,45 @@ export function shellTool(): Tool<{ command: string; timeoutMs?: number }> {
 		execute: async ({ command, timeoutMs }, ctx) => {
 			const timeout = timeoutMs ?? DEFAULT_SHELL_TIMEOUT_MS;
 			return new Promise((resolvePromise) => {
-				const child = spawn(command, { shell: true, stdio: ["ignore", "pipe", "pipe"] });
+				// detached: the command gets its OWN process group, so a
+				// timeout/abort can kill the WHOLE TREE (children included),
+				// not just the outer shell (Area 4).
+				const child = spawn(command, { shell: true, detached: true, stdio: ["ignore", "pipe", "pipe"] });
 				let stdout = "";
 				let stderr = "";
-				let done = false;
+				let exited = false;
+				let settled = false;
+				let killing = false;
 
-				const finish = (result: { content: string; isError: boolean; errorKind?: "fatal" }) => {
-					if (done) return;
-					done = true;
-					child.kill("SIGKILL");
+				const settle = (result: { content: string; isError: boolean; errorKind?: "fatal" }): void => {
+					if (settled) return;
+					settled = true;
+					clearTimeout(timer);
 					resolvePromise(result);
 				};
+
+				/** SIGKILL the entire process group, then confirm it exited. */
+				const killTree = (): Promise<void> =>
+					new Promise((resolveKill) => {
+						try {
+							process.kill(-(child.pid ?? 0), "SIGKILL");
+						} catch {
+							try {
+								child.kill("SIGKILL");
+							} catch {
+								// already gone
+							}
+						}
+						if (exited) {
+							resolveKill();
+							return;
+						}
+						const fallback = setTimeout(resolveKill, 2000);
+						child.once("close", () => {
+							clearTimeout(fallback);
+							resolveKill();
+						});
+					});
 
 				child.stdout?.on("data", (d: Buffer) => {
 					stdout = cap(stdout + d.toString());
@@ -207,25 +235,33 @@ export function shellTool(): Tool<{ command: string; timeoutMs?: number }> {
 					stderr = cap(stderr + d.toString());
 				});
 				child.on("error", (err) => {
-					finish({ content: `shell failed: ${err.message}`, isError: true, errorKind: "fatal" });
+					settle({ content: `shell failed: ${err.message}`, isError: true, errorKind: "fatal" });
 				});
 				child.on("close", (code) => {
+					exited = true;
+					if (killing) return; // the timeout/abort verdict owns the result
 					const combined = (stdout + (stderr ? `\n[stderr] ${stderr}` : "")).trim();
-					finish(
+					settle(
 						code === 0
 							? { content: combined || "(no output)", isError: false }
 							: { content: `exit ${code}: ${combined}`, isError: true, errorKind: "fatal" },
 					);
 				});
 
-				// The kernel's abort reaches the command (Phase D).
+				// The kernel's abort reaches the command AND its whole tree.
 				if (ctx.signal) {
 					ctx.signal.addEventListener("abort", () => {
-						finish({ content: "shell aborted", isError: true, errorKind: "fatal" });
+						killing = true;
+						void killTree().then(() =>
+							settle({ content: "shell aborted", isError: true, errorKind: "fatal" }),
+						);
 					});
 				}
 				const timer = setTimeout(() => {
-					finish({ content: `shell timed out after ${timeout}ms`, isError: true, errorKind: "fatal" });
+					killing = true;
+					void killTree().then(() =>
+						settle({ content: `shell timed out after ${timeout}ms`, isError: true, errorKind: "fatal" }),
+					);
 				}, timeout);
 				timer.unref?.();
 			});

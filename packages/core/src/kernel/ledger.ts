@@ -1,27 +1,34 @@
 /**
  * L2 — the execution ledger: exactly-once side effects from the event log.
  *
- * Phase D. Every tool execution writes `tool_execution_started` before the
- * handler and `tool_execution_succeeded` / `tool_execution_failed` after
+ * Every tool execution writes `tool_execution_started` before the handler
+ * and `tool_execution_succeeded` / `tool_execution_failed` after
  * (kernel/loop.ts). From those events alone — no second store — this module
- * answers the two questions recovery needs:
+ * answers the recovery questions:
  *
- *   1. What is the durable status of call X? (`executionLedger`)
- *   2. Has this tool+input ever reached a terminal state? (`latestExecutionFor`)
+ *   1. What is the durable status of execution X? (`executionLedger`)
+ *   2. What is the latest execution of call Y? (`executionForCallId`)
  *
- * Status derivation per call:
- *   started, no result yet      → "uncertain"   (interrupted: human decision)
- *   succeeded                   → "succeeded"   (never re-run, non-idempotent)
- *   failed                      → "failed"      (a failed attempt ran nothing)
- *   resolved "rerun"            → "rerun"       (human cleared it: may run)
- *   resolved "abandoned"        → "abandoned"   (human killed it: always blocked)
+ * IDENTITY (Area 3): the ledger is keyed by `executionId` — a persistent,
+ * framework-generated id unique per log (one per started event). The
+ * provider's `callId` is correlation only and may repeat; two logical calls
+ * with identical (name, input) are two executions.
+ *
+ * Status derivation:
+ *   started, no terminal event yet   → "uncertain"   (interrupted: human)
+ *   succeeded                        → "succeeded"   (confirmed, never re-run)
+ *   failed, safeToRetry (idempotent) → "failed"      (clean failure)
+ *   failed, not safeToRetry          → "uncertain"   (side effects possible)
+ *   resolved "rerun"                 → "rerun"       (human cleared it)
+ *   resolved "abandoned"             → "abandoned"   (human killed it)
  */
 
-import type { Event, ToolResultEvent } from "../protocol/events.js";
+import type { Event } from "../protocol/events.js";
 
 export type ExecutionStatus = "uncertain" | "succeeded" | "failed" | "rerun" | "abandoned";
 
 export interface ExecutionRecord {
+	readonly executionId: string;
 	readonly callId: string;
 	readonly name: string;
 	readonly input: Readonly<Record<string, unknown>>;
@@ -31,13 +38,14 @@ export interface ExecutionRecord {
 	readonly error?: string;
 }
 
-/** callId → durable status, rebuilt purely from events (ADR-0002). */
+/** executionId → durable status, rebuilt purely from events (ADR-0002). */
 export function executionLedger(events: readonly Event[]): Map<string, ExecutionRecord> {
 	const ledger = new Map<string, ExecutionRecord>();
 	for (const ev of events) {
 		switch (ev.type) {
 			case "tool_execution_started":
-				ledger.set(ev.callId, {
+				ledger.set(ev.executionId, {
+					executionId: ev.executionId,
 					callId: ev.callId,
 					name: ev.name,
 					input: ev.input,
@@ -45,27 +53,30 @@ export function executionLedger(events: readonly Event[]): Map<string, Execution
 				});
 				break;
 			case "tool_execution_succeeded": {
-				const prior = ledger.get(ev.callId);
+				const prior = ledger.get(ev.executionId);
 				if (prior) {
-					ledger.set(ev.callId, { ...prior, status: "succeeded", result: ev.result });
+					ledger.set(ev.executionId, { ...prior, status: "succeeded", result: ev.result });
 				}
 				break;
 			}
 			case "tool_execution_failed": {
-				const prior = ledger.get(ev.callId);
+				const prior = ledger.get(ev.executionId);
 				if (prior) {
-					ledger.set(ev.callId, {
+					ledger.set(ev.executionId, {
 						...prior,
-						status: "failed",
+						// Area 3: only a tool that proved safe-to-retry gets a
+						// clean "failed"; everything else may have produced a
+						// side effect and is uncertain until a human decides.
+						status: ev.safeToRetry ? "failed" : "uncertain",
 						...(ev.error !== undefined ? { error: ev.error } : {}),
 					});
 				}
 				break;
 			}
 			case "tool_execution_resolved": {
-				const prior = ledger.get(ev.callId);
+				const prior = ledger.get(ev.executionId);
 				if (prior) {
-					ledger.set(ev.callId, {
+					ledger.set(ev.executionId, {
 						...prior,
 						status: ev.resolution === "rerun" ? "rerun" : "abandoned",
 					});
@@ -79,43 +90,14 @@ export function executionLedger(events: readonly Event[]): Map<string, Execution
 	return ledger;
 }
 
-/**
- * The latest durable execution of a tool with this exact input, across
- * calls — the key the exactly-once guard matches on. Call ids are
- * provider-chosen and never repeat, so the side effect is identified by
- * (name, input), not by call id.
- */
-export function latestExecutionFor(
-	events: readonly Event[],
-	name: string,
-	input: Readonly<Record<string, unknown>>,
-): ExecutionRecord | undefined {
-	const key = stableKey(input);
+/** The LATEST execution record for a provider call id (correlation only). */
+export function executionForCallId(events: readonly Event[], callId: string): ExecutionRecord | undefined {
 	const ledger = executionLedger(events);
 	let found: ExecutionRecord | undefined;
 	for (const ev of events) {
 		if (ev.type !== "tool_execution_started") continue;
-		if (ev.name !== name) continue;
-		if (stableKey(ev.input) !== key) continue;
-		found = ledger.get(ev.callId);
+		if (ev.callId !== callId) continue;
+		found = ledger.get(ev.executionId);
 	}
 	return found;
 }
-
-/** Order-insensitive JSON key for input equality. */
-function stableKey(value: unknown): string {
-	const sorted = (v: unknown): unknown => {
-		if (Array.isArray(v)) return v.map(sorted);
-		if (typeof v === "object" && v !== null) {
-			const out: Record<string, unknown> = {};
-			for (const k of Object.keys(v as Record<string, unknown>).sort()) {
-				out[k] = sorted((v as Record<string, unknown>)[k]);
-			}
-			return out;
-		}
-		return v;
-	};
-	return JSON.stringify(sorted(value));
-}
-
-export type { ToolResultEvent };

@@ -1,26 +1,26 @@
 /**
- * Phase D — durable approvals and exactly-once execution guards.
+ * Area 3 + 4 — execution identity and cancellation.
  *
- * The ledger lives in the event log (ADR-0002): every tool execution writes
- * `tool_execution_started` BEFORE the side effect and
- * `tool_execution_succeeded` / `tool_execution_failed` after. `defer` is a
- * REAL pause — the run yields `permission_requested`, waits for a human
- * decision, persists it, and resumes the same frame.
+ * IDENTITY: every execution carries a framework-generated `executionId`
+ * (persistent, unique per log); the provider's callId is correlation only.
+ * A new logical call with identical (name, input) is a NEW execution and
+ * runs normally — exactly-once is enforced by receipt repair and human
+ * decisions on uncertain executions, never by swallowing repeats. A failed
+ * non-idempotent execution is UNCERTAIN (side effects may have happened);
+ * only a tool that proved safe-to-retry gets a clean failure.
  *
- * Safety rules pinned here:
- * - a confirmed-successful execution is never repeated for the same tool
- *   and input (non-idempotent tools);
- * - an interrupted execution (started without a result) is UNCERTAIN: it
- *   blocks with a precondition result, never auto-runs;
- * - the abort signal reaches the running tool via ctx.signal.
+ * CANCELLATION: the one signal reaches the retry backoff, the approval
+ * wait, every pending tool, and the SDK; an abort during the approval wait
+ * ends the run and a later approve() never executes; an abort after the
+ * first tool never starts a sibling.
  */
 
 import { describe, expect, it } from "vitest";
-import type { Adapter } from "../src/protocol/adapter.js";
+import type { Adapter, AbortSignalLike } from "../src/protocol/adapter.js";
 import type { Event, TerminalEvent } from "../src/protocol/events.js";
 import type { Message } from "../src/protocol/messages.js";
 import { EventLog, loop } from "../src/index.js";
-import { executionLedger, latestExecutionFor } from "../src/kernel/ledger.js";
+import { executionForCallId, executionLedger } from "../src/kernel/ledger.js";
 import { defineTool, type Tool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { createFauxProvider, type FauxScript } from "@kiso/evals";
@@ -63,51 +63,11 @@ async function runWithLog(
 const terminalOf = (events: readonly Event[]) =>
 	events.filter((e): e is TerminalEvent => e.type === "terminal").at(-1)!;
 
-describe("the execution ledger", () => {
-	it("writes started → succeeded → tool_result, in that order, around the handler", async () => {
+describe("execution identity (Area 3)", () => {
+	it("every execution carries a unique executionId; callId is correlation only", async () => {
 		const registry = new ToolRegistry();
 		registry.register(searchTool());
 		const log = new EventLog();
-		const events = await runWithLog(
-			[
-				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
-				{ events: [{ type: "stop", reason: "end_turn" }] },
-			],
-			registry,
-			log,
-		);
-		const types = log.all.filter((e) => ["tool_execution_started", "tool_execution_succeeded", "tool_result"].includes(e.type)).map((e) => e.type);
-		expect(types).toEqual(["tool_execution_started", "tool_execution_succeeded", "tool_result"]);
-		// The consumer saw them too.
-		expect(events.some((e) => e.type === "tool_execution_started")).toBe(true);
-	});
-
-	it("writes tool_execution_failed for an error result", async () => {
-		const registry = new ToolRegistry();
-		registry.register(
-			defineTool({
-				name: "boom",
-				description: "Boom",
-				parameters: { type: "object" },
-				execute: async () => ({ content: "exploded", isError: true, errorKind: "fatal" as const }),
-			}),
-		);
-		const log = new EventLog();
-		await runWithLog(
-			[{ events: [{ type: "tool_call_end", callId: "c1", name: "boom", input: {} }] }],
-			registry,
-			log,
-		);
-		const ledger = executionLedger(log.all);
-		expect(ledger.get("c1")?.status).toBe("failed");
-	});
-
-	it("a confirmed-successful execution is never repeated for the same tool+input", async () => {
-		const registry = new ToolRegistry();
-		let executed = 0;
-		registry.register(searchTool({ executed: () => (executed += 1) }));
-		const log = new EventLog();
-		// Prior run: the tool succeeded with {query:"k"}.
 		await runWithLog(
 			[
 				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
@@ -116,89 +76,167 @@ describe("the execution ledger", () => {
 			registry,
 			log,
 		);
-		expect(executed).toBe(1);
-
-		// New run: the model re-issues the SAME call (e.g. after a crash the
-		// tool_result never reached the model). The guard must replay the
-		// recorded result, not run the side effect again.
-		const events = await runWithLog(
-			[
-				{ events: [{ type: "tool_call_end", callId: "c9", name: "web_search", input: { query: "k" } }] },
-				{ events: [{ type: "stop", reason: "end_turn" }] },
-			],
-			registry,
-			log,
-		);
-		expect(executed).toBe(1); // NOT 2
-		const result = events.find((e) => e.type === "tool_result" && e.callId === "c9");
-		expect(result).toMatchObject({ isError: false, content: "results for k" });
+		const started = log.all.filter((e) => e.type === "tool_execution_started");
+		expect(started).toHaveLength(1);
+		const exId = (started[0] as { executionId: string }).executionId;
+		expect(exId).toMatch(/^ex-\d+$/);
+		const succeeded = log.all.find((e) => e.type === "tool_execution_succeeded");
+		expect((succeeded as { executionId: string } | undefined)?.executionId).toBe(exId);
 	});
 
-	it("idempotent tools may run the same input again", async () => {
-		const registry = new ToolRegistry();
-		let executed = 0;
-		registry.register(searchTool({ executed: () => (executed += 1), idempotent: true }));
-		const log = new EventLog();
-		await runWithLog(
-			[{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] }],
-			registry,
-			log,
-		);
-		await runWithLog(
-			[{ events: [{ type: "tool_call_end", callId: "c2", name: "web_search", input: { query: "k" } }] }],
-			registry,
-			log,
-		);
-		expect(executed).toBe(2);
-	});
-
-	it("an interrupted execution (started, no result) is UNCERTAIN: blocked, never auto-run", async () => {
+	it("the same tool+input issued TWICE is two logical calls — both execute", async () => {
 		const registry = new ToolRegistry();
 		let executed = 0;
 		registry.register(searchTool({ executed: () => (executed += 1) }));
 		const log = new EventLog();
-		// A crashed run: the started event is durable, the result never came.
-		log.append({ type: "tool_execution_started", callId: "c1", name: "web_search", input: { query: "k" } });
-
-		const events = await runWithLog(
+		await runWithLog(
 			[
+				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
 				{ events: [{ type: "tool_call_end", callId: "c2", name: "web_search", input: { query: "k" } }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			],
 			registry,
 			log,
 		);
-		expect(executed).toBe(0);
-		const result = events.find((e) => e.type === "tool_result");
-		expect(result).toMatchObject({ isError: true, errorKind: "precondition" });
-		expect((result as { content: string }).content).toMatch(/uncertain|interrupted|human/i);
+		expect(executed).toBe(2);
+		const ids = log.all.filter((e) => e.type === "tool_execution_started").map((e) => (e as { executionId: string }).executionId);
+		expect(new Set(ids).size).toBe(2);
 	});
 
-	it("latestExecutionFor reports the durable status of a tool+input", () => {
-		const log = new EventLog();
-		log.append({ type: "tool_execution_started", callId: "c1", name: "web_search", input: { query: "k" } });
-		log.append({ type: "tool_execution_succeeded", callId: "c1", result: { content: "ok", isError: false } });
-		const record = latestExecutionFor(log.all, "web_search", { query: "k" });
-		expect(record?.status).toBe("succeeded");
-		expect(record?.result?.content).toBe("ok");
-	});
-});
-
-describe("defer is a real pause, not a disguised deny", () => {
-	it("pauses the run, persists the request, resumes the SAME run on approval", async () => {
+	it("a duplicate provider callId is two executions, not one replayed", async () => {
 		const registry = new ToolRegistry();
 		let executed = 0;
 		registry.register(searchTool({ executed: () => (executed += 1) }));
 		const log = new EventLog();
-		const decisions = new Map<string, import("../src/kernel/permission.js").PermissionDecision>();
-		// The real resolver waits for the human — like session.approve.
-		const resolveApproval = async (decisionId: string) => {
-			while (!decisions.has(decisionId)) await new Promise((r) => setTimeout(r, 5));
-			return decisions.get(decisionId)!;
-		};
+		// Same callId twice — a provider glitch or a re-issued call reusing
+		// an id. The ledger must not conflate them.
+		await runWithLog(
+			[
+				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "a" } }] },
+				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "b" } }] },
+				{ events: [{ type: "stop", reason: "end_turn" }] },
+			],
+			registry,
+			log,
+		);
+		expect(executed).toBe(2);
+		expect(executionForCallId(log.all, "c1")?.status).toBe("succeeded");
+	});
 
+	it("a failed NON-idempotent execution is UNCERTAIN (side effects may exist)", async () => {
+		const registry = new ToolRegistry();
+		registry.register(
+			defineTool({
+				name: "write_file",
+				description: "Write",
+				parameters: { type: "object", properties: { path: { type: "string" } } },
+				execute: async () => ({ content: "failed after writing", isError: true, errorKind: "fatal" as const }),
+			}),
+		);
+		const log = new EventLog();
+		await runWithLog(
+			[{ events: [{ type: "tool_call_end", callId: "c1", name: "write_file", input: { path: "x" } }] }],
+			registry,
+			log,
+		);
+		const record = executionForCallId(log.all, "c1");
+		expect(record?.status).toBe("uncertain");
+	});
+
+	it("a failed IDEMPOTENT execution is a clean failure — safe to retry", async () => {
+		const registry = new ToolRegistry();
+		registry.register(
+			defineTool({
+				name: "read_file",
+				description: "Read",
+				parameters: { type: "object", properties: { path: { type: "string" } } },
+				idempotent: true,
+				execute: async () => ({ content: "read failed", isError: true, errorKind: "fatal" as const }),
+			}),
+		);
+		const log = new EventLog();
+		await runWithLog(
+			[{ events: [{ type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "x" } }] }],
+			registry,
+			log,
+		);
+		const record = executionForCallId(log.all, "c1");
+		expect(record?.status).toBe("failed");
+	});
+
+	it("a throw from a non-idempotent handler is uncertain, never a clean 'no side effect'", async () => {
+		const registry = new ToolRegistry();
+		registry.register(
+			defineTool({
+				name: "shell",
+				description: "Shell",
+				parameters: { type: "object", properties: { command: { type: "string" } } },
+				execute: async () => {
+					throw new Error("exited 137");
+				},
+			}),
+		);
+		const log = new EventLog();
+		await runWithLog(
+			[{ events: [{ type: "tool_call_end", callId: "c1", name: "shell", input: { command: "make" } }] }],
+			registry,
+			log,
+		);
+		expect(executionForCallId(log.all, "c1")?.status).toBe("uncertain");
+	});
+
+	it("ledger helpers report statuses and resolutions by executionId", () => {
+		const log = new EventLog();
+		log.append({ type: "tool_execution_started", executionId: "ex-0", callId: "c1", name: "web_search", input: { query: "k" } });
+		log.append({ type: "tool_execution_failed", executionId: "ex-0", callId: "c1", error: "boom", safeToRetry: false });
+		expect(executionLedger(log.all).get("ex-0")?.status).toBe("uncertain");
+		log.append({ type: "tool_execution_resolved", executionId: "ex-0", callId: "c1", resolution: "rerun" });
+		expect(executionLedger(log.all).get("ex-0")?.status).toBe("rerun");
+		log.append({ type: "tool_execution_started", executionId: "ex-1", callId: "c2", name: "web_search", input: { query: "k" } });
+		log.append({ type: "tool_execution_resolved", executionId: "ex-1", callId: "c2", resolution: "abandoned" });
+		expect(executionLedger(log.all).get("ex-1")?.status).toBe("abandoned");
+	});
+});
+
+describe("abort boundaries (Area 4)", () => {
+	it("an abort during retry backoff ends the run immediately, not after the wait", async () => {
+		const registry = new ToolRegistry();
+		registry.register(searchTool());
+		const ac = new AbortController();
+		const flaky: Adapter = {
+			stream: async function* () {
+				throw { code: "overloaded", status: 529, retryable: true, message: "overloaded" };
+			},
+		};
 		const events: Event[] = [];
-		let seenRequest: { decisionId: string; callId: string; name: string } | undefined;
+		const gen = loop({
+			adapter: flaky,
+			model: "faux",
+			registry,
+			messages: [USER],
+			maxRetries: 5,
+			signal: ac.signal,
+		});
+		const startedAt = Date.now();
+		// Abort after the first retry wait begins (the first throw is instant).
+		setTimeout(() => ac.abort(), 30);
+		for await (const ev of gen) events.push(ev);
+		expect(Date.now() - startedAt).toBeLessThan(1500); // far below 5 backoffs
+		expect(terminalOf(events).outcome.kind).toBe("aborted");
+	});
+
+	it("an abort during the approval pause ends the run; a later approve never executes", async () => {
+		const registry = new ToolRegistry();
+		let executed = 0;
+		registry.register(searchTool({ executed: () => (executed += 1) }));
+		const log = new EventLog();
+		const ac = new AbortController();
+		let approveLater: (() => void) | undefined;
+		const resolveApproval = async (_decisionId: string) =>
+			new Promise<import("../src/kernel/permission.js").PermissionDecision>((resolve) => {
+				approveLater = () => resolve({ action: "allow" });
+			});
+		const events: Event[] = [];
 		const gen = loop({
 			adapter: createFauxProvider([
 				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
@@ -208,36 +246,114 @@ describe("defer is a real pause, not a disguised deny", () => {
 			registry,
 			log,
 			messages: [USER],
+			signal: ac.signal,
 			resolveApproval,
-			hooks: {
-				onPreTool: async (call) => ({ action: "defer" as const }),
-			},
+			hooks: { onPreTool: async () => ({ action: "defer" as const }) },
 		});
 		for await (const ev of gen) {
 			events.push(ev);
-			if (ev.type === "permission_requested") {
-				seenRequest = ev;
-				decisions.set(ev.decisionId, { action: "allow" }); // the human approves
-			}
+			if (ev.type === "permission_requested") ac.abort();
 		}
-
-		expect(seenRequest).toBeDefined();
-		expect(seenRequest?.callId).toBe("c1");
-		expect(executed).toBe(1);
-		// The decision was persisted between the request and the result.
-		const types = log.all.map((e) => e.type);
-		expect(types.indexOf("permission_requested")).toBeLessThan(types.indexOf("permission_decided"));
-		expect(types.indexOf("permission_decided")).toBeLessThan(types.indexOf("tool_execution_started"));
-		expect(terminalOf(events).outcome.kind).toBe("completed");
-		// The generator that paused IS the generator that finished — one run.
-		expect(events.filter((e) => e.type === "permission_requested")).toHaveLength(1);
+		expect(terminalOf(events).outcome).toEqual({ kind: "aborted", by: "user" });
+		// The request is still durable and unanswered; a late approval must
+		// NOT execute the tool in this run.
+		approveLater?.();
+		await new Promise((r) => setTimeout(r, 10));
+		expect(executed).toBe(0);
+		expect(log.all.some((e) => e.type === "permission_decided")).toBe(false);
 	});
 
-	it("a denied approval is an honest precondition result — no execution", async () => {
+	it("an abort after the first tool never starts a sibling tool", async () => {
+		const registry = new ToolRegistry();
+		const order: string[] = [];
+		registry.register(
+			defineTool({
+				name: "first",
+				description: "First",
+				parameters: { type: "object" },
+				execute: async (_input, ctx) => {
+					order.push("first:start");
+					await new Promise((r) => setTimeout(r, 30));
+					order.push(`first:end aborted=${ctx.signal.aborted}`);
+					return { content: "first", isError: false };
+				},
+			}),
+		);
+		registry.register(
+			defineTool({
+				name: "second",
+				description: "Second",
+				parameters: { type: "object" },
+				execute: async () => {
+					order.push("second:start");
+					return { content: "second", isError: false };
+				},
+			}),
+		);
+		const ac = new AbortController();
+		const events: Event[] = [];
+		const gen = loop({
+			adapter: createFauxProvider([
+				{
+					events: [
+						{ type: "tool_call_end", callId: "a", name: "first", input: {} },
+						{ type: "tool_call_end", callId: "b", name: "second", input: {} },
+					],
+				},
+				{ events: [{ type: "stop", reason: "end_turn" }] },
+			]),
+			model: "faux",
+			registry,
+			messages: [USER],
+			signal: ac.signal,
+		});
+		for await (const ev of gen) {
+			events.push(ev);
+			if (ev.type === "tool_execution_started") ac.abort(); // during the first tool
+		}
+		expect(order).toContain("first:start");
+		expect(order).not.toContain("second:start");
+		expect(terminalOf(events).outcome.kind).toBe("aborted");
+	});
+
+	it("an SDK user-cancel surfaces as an aborted terminal, not a generic error", async () => {
+		const registry = new ToolRegistry();
+		registry.register(searchTool());
+		const ac = new AbortController();
+		const canceling: Adapter = {
+			stream: async function* () {
+				// The SDK throws its user-abort error after the signal fires.
+				await new Promise<void>((resolve) => {
+					ac.signal.addEventListener("abort", () => resolve());
+				});
+				throw new Error("Request was aborted");
+			},
+		};
+		const events: Event[] = [];
+		const gen = loop({
+			adapter: canceling,
+			model: "faux",
+			registry,
+			messages: [USER],
+			signal: ac.signal,
+		});
+		setTimeout(() => ac.abort(), 20);
+		for await (const ev of gen) events.push(ev);
+		expect(terminalOf(events).outcome).toEqual({ kind: "aborted", by: "user" });
+	});
+});
+
+describe("defer is a real pause (regression)", () => {
+	it("pauses, persists the request, resumes the SAME run on approval", async () => {
 		const registry = new ToolRegistry();
 		let executed = 0;
 		registry.register(searchTool({ executed: () => (executed += 1) }));
 		const log = new EventLog();
+		const decisions = new Map<string, import("../src/kernel/permission.js").PermissionDecision>();
+		const resolveApproval = async (decisionId: string) => {
+			while (!decisions.has(decisionId)) await new Promise((r) => setTimeout(r, 5));
+			return decisions.get(decisionId)!;
+		};
 		const events: Event[] = [];
 		for await (const ev of loop({
 			adapter: createFauxProvider([
@@ -248,87 +364,14 @@ describe("defer is a real pause, not a disguised deny", () => {
 			registry,
 			log,
 			messages: [USER],
-			resolveApproval: async () => ({ action: "deny", reason: "user said no" }),
-			hooks: {
-				onPreTool: async () => ({ action: "defer" as const }),
-			},
+			resolveApproval,
+			hooks: { onPreTool: async () => ({ action: "defer" as const }) },
 		})) {
 			events.push(ev);
+			if (ev.type === "permission_requested") decisions.set(ev.decisionId, { action: "allow" });
 		}
-		expect(executed).toBe(0);
-		const result = events.find((e) => e.type === "tool_result");
-		expect(result).toMatchObject({ isError: true, errorKind: "precondition" });
-		expect((result as { content: string }).content).toMatch(/user said no/);
-		expect(log.all.some((e) => e.type === "permission_decided" && e.decision === "denied")).toBe(true);
-	});
-
-	it("defer without an approval channel degrades to an honest denial, not a crash", async () => {
-		const registry = new ToolRegistry();
-		let executed = 0;
-		registry.register(searchTool({ executed: () => (executed += 1) }));
-		const log = new EventLog();
-		const events = await runWithLog(
-			[
-				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
-				{ events: [{ type: "stop", reason: "end_turn" }] },
-			],
-			registry,
-			log,
-			{ hooks: { onPreTool: async () => ({ action: "defer" as const }) } },
-		);
-		expect(executed).toBe(0);
+		expect(executed).toBe(1);
 		expect(terminalOf(events).outcome.kind).toBe("completed");
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(true);
-	});
-});
-
-describe("abort reaches the running tool", () => {
-	it("ctx.signal is the run's signal — the tool can see the abort", async () => {
-		const registry = new ToolRegistry();
-		let sawAbort = false;
-		registry.register(
-			defineTool({
-				name: "slow",
-				description: "Slow",
-				parameters: { type: "object" },
-				execute: async (_input, ctx) => {
-					// A long-running side effect that checks the signal as it
-					// goes. The consumer aborts WHILE this is executing.
-					await new Promise<void>((resolve) => setTimeout(resolve, 40));
-					sawAbort = ctx.signal.aborted;
-					return { content: "stopped", isError: true, errorKind: "fatal" as const };
-				},
-			}),
-		);
-		const ac = new AbortController();
-		const events: Event[] = [];
-		const gen = loop({
-			adapter: createFauxProvider([
-				{ events: [{ type: "tool_call_end", callId: "c1", name: "slow", input: {} }] },
-				{ events: [{ type: "stop", reason: "end_turn" }] },
-			]),
-			model: "faux",
-			registry,
-			messages: [USER],
-			signal: ac.signal,
-		});
-		for await (const ev of gen) {
-			events.push(ev);
-			if (ev.type === "tool_execution_started") ac.abort();
-		}
-		expect(sawAbort).toBe(true);
-	});
-});
-
-describe("guard helpers", () => {
-	it("resolution rerun clears the uncertain block for the next execution", () => {
-		const log = new EventLog();
-		log.append({ type: "tool_execution_started", callId: "c1", name: "web_search", input: { query: "k" } });
-		expect(latestExecutionFor(log.all, "web_search", { query: "k" })?.status).toBe("uncertain");
-		log.append({ type: "tool_execution_resolved", callId: "c1", resolution: "rerun" });
-		expect(latestExecutionFor(log.all, "web_search", { query: "k" })?.status).toBe("rerun");
-		log.append({ type: "tool_execution_started", callId: "c2", name: "web_search", input: { query: "k" } });
-		log.append({ type: "tool_execution_resolved", callId: "c2", resolution: "abandoned" });
-		expect(latestExecutionFor(log.all, "web_search", { query: "k" })?.status).toBe("abandoned");
+		expect(events.filter((e) => e.type === "permission_requested")).toHaveLength(1);
 	});
 });

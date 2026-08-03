@@ -155,13 +155,16 @@ export interface CompactedEvent {
 
 /**
  * A tool execution is about to run — the durable START of the side effect
- * (Phase D). Written BEFORE the handler is invoked, so an interruption
- * between this event and its result leaves an auditably UNCERTAIN state
- * that requires a human decision; it is never silently re-run.
+ * (Phase D / Area 3). `executionId` is the framework-generated, persistent
+ * identity of THIS logical execution; the provider's `callId` only
+ * correlates messages and may repeat across runs. Written BEFORE the
+ * handler is invoked, so an interruption between this event and its result
+ * leaves an auditably UNCERTAIN state that requires a human decision.
  */
 export interface ToolExecutionStarted {
 	readonly seq: number;
 	readonly type: "tool_execution_started";
+	readonly executionId: string;
 	readonly callId: string;
 	readonly name: string;
 	readonly input: Readonly<Record<string, unknown>>;
@@ -171,27 +174,36 @@ export interface ToolExecutionStarted {
 export interface ToolExecutionSucceeded {
 	readonly seq: number;
 	readonly type: "tool_execution_succeeded";
+	readonly executionId: string;
 	readonly callId: string;
 	readonly result: { readonly content: string; readonly isError: false };
 }
 
-/** The side effect ran and failed — a failed attempt is not a side effect. */
+/**
+ * The side effect ran and FAILED. `safeToRetry` is the tool's own proof
+ * (declared idempotent): only then is a failure a clean "failed"; a
+ * non-idempotent failure may have produced a side effect and is UNCERTAIN
+ * until a human decides (Area 3).
+ */
 export interface ToolExecutionFailed {
 	readonly seq: number;
 	readonly type: "tool_execution_failed";
+	readonly executionId: string;
 	readonly callId: string;
 	readonly error: string;
 	readonly errorKind?: ToolErrorKind;
+	readonly safeToRetry: boolean;
 }
 
 /**
- * A human resolved an interrupted execution: "rerun" (the human takes
- * responsibility for a possibly-completed side effect) or "abandoned"
- * (the attempt is treated as failed, forever blocked).
+ * A human resolved an execution: "rerun" (the human takes responsibility —
+ * the side effect may run again) or "abandoned" (the attempt is treated as
+ * failed; the trajectory continues with a recorded denial).
  */
 export interface ToolExecutionResolved {
 	readonly seq: number;
 	readonly type: "tool_execution_resolved";
+	readonly executionId: string;
 	readonly callId: string;
 	readonly resolution: "rerun" | "abandoned";
 }

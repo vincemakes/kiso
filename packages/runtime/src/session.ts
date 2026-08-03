@@ -26,6 +26,7 @@
 
 import {
 	EventLog,
+	executionForCallId,
 	executionLedger,
 	loop,
 	projectMessages,
@@ -171,11 +172,31 @@ export class AgentSession {
 	/**
 	 * The human's verdict on an interrupted execution: "rerun" (the human
 	 * takes responsibility — the side effect may run again) or "abandoned"
-	 * (treated as failed forever). Durable, write-ahead.
+	 * (treated as failed; the trajectory continues with a recorded denial
+	 * so the model is never left staring at an un-answered tool call).
+	 * Durable, write-ahead, keyed by the executionId resolved from the call.
 	 */
 	resolveUncertain(callId: string, resolution: "rerun" | "abandoned"): void {
-		const resolved = this.log.append({ type: "tool_execution_resolved", callId, resolution });
+		const record = executionForCallId(this.log.all, callId);
+		if (!record) throw new Error(`no execution record for call ${callId}`);
+		const resolved = this.log.append({
+			type: "tool_execution_resolved",
+			executionId: record.executionId,
+			callId,
+			resolution,
+		});
 		this.#store.append(this.id, "resolution", resolved);
+		if (resolution === "abandoned" && !this.log.all.some((e) => e.type === "tool_result" && e.callId === callId)) {
+			const denial = denialResult("abandoned by human decision — the interrupted attempt must not be treated as applied");
+			const result = this.log.append({
+				type: "tool_result",
+				callId,
+				content: denial.content,
+				isError: true,
+				errorKind: denial.errorKind,
+			});
+			this.#store.append(this.id, "resolution", result);
+		}
 	}
 
 	// ── internal: the resolver registry ──────────────────────────────────
@@ -371,7 +392,11 @@ export class Run implements AsyncIterable<Event> {
 					this.#session.registerResolver(pending.decisionId, resolve);
 				});
 				yield pending;
-				const final = await pendingDecision;
+				// Area 4: an abort during the resumed approval wait ends the
+				// run; the request stays durable and pending.
+				if (signal.aborted) return;
+				const final = await abortable(pendingDecision, signal);
+				if (final === ABORTED) return;
 				// The decision is written here — exactly one writer per event.
 				yield log.append({
 					type: "permission_decided",
@@ -427,8 +452,9 @@ export class Run implements AsyncIterable<Event> {
 	): AsyncGenerator<Event> {
 		const log = this.#session.log;
 		const tool = this.#config.registry.get(name);
+		const executionId = `ex-${log.lastSeq + 1}`;
 
-		yield log.append({ type: "tool_execution_started", callId, name, input });
+		yield log.append({ type: "tool_execution_started", executionId, callId, name, input });
 
 		let result: ToolResult;
 		if (tool === undefined) {
@@ -451,13 +477,16 @@ export class Run implements AsyncIterable<Event> {
 		if (result.isError) {
 			yield log.append({
 				type: "tool_execution_failed",
+				executionId,
 				callId,
 				error: result.content,
 				...(result.errorKind !== undefined ? { errorKind: result.errorKind } : {}),
+				safeToRetry: tool?.idempotent === true,
 			});
 		} else {
 			yield log.append({
 				type: "tool_execution_succeeded",
+				executionId,
 				callId,
 				result: { content: result.content, isError: false },
 			});
@@ -482,6 +511,31 @@ export class Run implements AsyncIterable<Event> {
 			errorKind: denial.errorKind,
 		});
 	}
+}
+
+/** Sentinel: the signal aborted while the recovery awaited a decision. */
+const ABORTED = Symbol("kiso-resume-aborted");
+
+/** Resolve with the decision, or ABORTED when the signal fires first. */
+async function abortable<T>(promise: Promise<T>, signal: AbortSignalLike): Promise<T | typeof ABORTED> {
+	if (signal.aborted) return ABORTED;
+	return new Promise<T | typeof ABORTED>((resolve) => {
+		const onAbort = (): void => {
+			signal.removeEventListener("abort", onAbort);
+			resolve(ABORTED);
+		};
+		signal.addEventListener("abort", onAbort, { once: true });
+		promise.then(
+			(value) => {
+				signal.removeEventListener("abort", onAbort);
+				resolve(value);
+			},
+			(err) => {
+				signal.removeEventListener("abort", onAbort);
+				throw err;
+			},
+		);
+	});
 }
 
 /**
