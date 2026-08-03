@@ -16,7 +16,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { MessageStreamEvent } from "@anthropic-ai/sdk/resources/messages";
 import type { Adapter, StreamOptions } from "@kiso/core";
-import type { Event, StopReason } from "@kiso/core";
+import type { AdapterEvent, Event, StopReason } from "@kiso/core";
 import type { AssistantBlock, ContentBlock, Message, ToolSpec } from "@kiso/core";
 import { mapApiError } from "@kiso/core";
 
@@ -43,7 +43,7 @@ export function createAnthropicProvider(config: AnthropicProviderConfig = {}): A
 
 export function createAnthropicAdapter(client: Anthropic): Adapter {
 	return {
-		async *stream(options: StreamOptions): AsyncIterable<Event> {
+		async *stream(options: StreamOptions): AsyncIterable<AdapterEvent> {
 			// D4: the stream CREATION is inside the error normalization —
 			// connection/timeout/5xx failures before the first byte are
 			// mapped, retryable StructuredErrors.

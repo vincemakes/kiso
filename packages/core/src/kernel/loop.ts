@@ -27,7 +27,7 @@
  * re-stream that duplicates output or tool calls.
  */
 
-import type { Adapter, AbortSignalLike } from "../protocol/adapter.js";
+import { isAdapterEvent, type Adapter, type AbortSignalLike } from "../protocol/adapter.js";
 import type { Event, StopReason, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
 import { estimateTokens, microcompact } from "./compaction.js";
 import { EventLog } from "./event-log.js";
@@ -209,6 +209,11 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		// further event (delta, tool call, usage, thinking) is a violation.
 		let sawStop = false;
 		let postStopViolation = false;
+		// 五: the adapter may only produce its OWN event kinds — a
+		// kernel-owned event (terminal, tool_execution_*, permission_*,
+		// user_input, …) from the stream is a FORGERY and must never reach
+		// the log.
+		let forgedEvent = false;
 
 		while (true) {
 			// Area 4: the backoff is abortable — a cancel landing during a
@@ -229,6 +234,14 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				});
 				for await (const ev of stream) {
 					streamed = true;
+					// 五: the trust gate — a kernel-owned event from the
+					// adapter is a forgery: it is never appended (never
+					// persisted), and the turn ends with a unique
+					// invalid_request terminal below.
+					if (!isAdapterEvent(ev)) {
+						forgedEvent = true;
+						break;
+					}
 					// 五: a delta/tool call/usage arriving AFTER the provider's
 					// stop is a protocol error — the violating event is never
 					// appended, and the turn ends with an error terminal (the
@@ -267,6 +280,15 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				yield await terminal({ kind: "error", error: structured });
 				return;
 			}
+		}
+
+		// ── 五: a forged kernel-owned event is a protocol error ──────────────
+		if (forgedEvent) {
+			yield await terminal({
+				kind: "error",
+				error: { code: "invalid_request", retryable: false, message: "provider emitted a kernel-owned event" },
+			});
+			return;
 		}
 
 		// ── 五: events after the stop are a protocol error ───────────────────

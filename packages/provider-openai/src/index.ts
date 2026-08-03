@@ -17,7 +17,7 @@
 import OpenAI from "openai";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions";
 import type { Adapter, StreamOptions } from "@kiso/core";
-import type { Event, StopReason } from "@kiso/core";
+import type { AdapterEvent, Event, StopReason } from "@kiso/core";
 import type { AssistantBlock, ContentBlock, Message } from "@kiso/core";
 import type { ToolSpec } from "@kiso/core";
 import { mapApiError } from "@kiso/core";
@@ -62,7 +62,7 @@ export function createOpenAICompatProvider(config: OpenAICompatProviderConfig = 
 
 export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 	return {
-		async *stream(options: StreamOptions): AsyncIterable<Event> {
+		async *stream(options: StreamOptions): AsyncIterable<AdapterEvent> {
 			// Area 6: the stream CREATION is inside the error normalization —
 			// a 429/5xx/connection failure before the first byte is a mapped,
 			// retryable StructuredError, so the loop's pre-stream retry works.

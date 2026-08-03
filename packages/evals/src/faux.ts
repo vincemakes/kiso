@@ -21,7 +21,7 @@
  * EventLog re-asserts monotonicity across sources (ADR-0002).
  */
 
-import type { Adapter, StreamOptions } from "@kiso/core";
+import type { Adapter, AdapterEvent, StreamOptions } from "@kiso/core";
 import type { Event } from "@kiso/core";
 import type { EventInput } from "@kiso/core";
 
@@ -40,16 +40,19 @@ export function createFauxProvider(script: FauxScript): Adapter {
 	// (retry tests use their own throwing adapter).
 	let nextTurn = 0;
 	return {
-		stream(_options: StreamOptions): AsyncIterable<Event> {
+		stream(_options: StreamOptions): AsyncIterable<AdapterEvent> {
 			const turn = script[nextTurn];
 			nextTurn += 1;
 			return {
-				async *[Symbol.asyncIterator](): AsyncIterator<Event> {
+				// The script is a playbook — a script MAY contain forged
+				// kernel-owned events on purpose (the trust-gate tests need
+				// them); the LOOP is the trust boundary, not the faux adapter.
+				async *[Symbol.asyncIterator](): AsyncIterator<AdapterEvent> {
 					// An exhausted script is an empty stream: the loop sees
 					// no tool calls and converges on `completed`.
 					let seq = 0;
 					for (const ev of turn?.events ?? []) {
-						yield { ...ev, seq: seq++ } as Event;
+						yield { ...ev, seq: seq++ } as AdapterEvent;
 					}
 				},
 			};
