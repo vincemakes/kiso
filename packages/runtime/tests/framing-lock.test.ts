@@ -96,9 +96,14 @@ describe("kernel-flock lock semantics (第四轮)", () => {
 		writeFileSync(join(dir, "s.lock"), String(process.pid)); // legacy bare pid
 		const store = new SessionStore(dir);
 		await expect(store.append("s", "r1", ev(0))).rejects.toThrow(/locked by another writer \(pid/);
-		// The modern JSON form is refused the same way.
-		writeFileSync(join(dir, "s.lock"), JSON.stringify({ pid: process.pid, token: "t" }));
+		// The modern JSON form is refused the same way — with a FOREIGN live
+		// pid. (A modern lock naming OUR OWN process is a same-process
+		// writer's residue: it is tolerated and retried, not refused.)
+		const { spawn } = await import("node:child_process");
+		const sleeper = spawn("python3", ["-c", "import time; time.sleep(30)"]);
+		writeFileSync(join(dir, "s.lock"), JSON.stringify({ pid: sleeper.pid, token: "foreign" }));
 		await expect(store.append("s", "r1", ev(0))).rejects.toThrow(/locked by another writer \(pid/);
+		sleeper.kill();
 	});
 
 	it("JSON.parse('123') is a bare legacy pid, never an object without a pid", async () => {

@@ -256,8 +256,12 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 					} else if (entry.isFile()) {
 						try {
 							// 八: same inode boundary as read_file — a hard link
-							// to an external inode is not searched.
-							if (inodeReadPolicy(root, full) !== null) continue;
+							// to an external inode is not searched. 第四轮(对抗):
+							// the link count is verified against the WORKSPACE
+							// root, not the search subroot — a link that lives
+							// inside the workspace but outside the search dir is
+							// legal and must not be silently skipped.
+							if (inodeReadPolicy(opts.workspaceRoot, full) !== null) continue;
 							const text = readFileSync(full, "utf8");
 							for (const [i, line] of text.split("\n").entries()) {
 								if (regex.test(line)) {
@@ -458,7 +462,22 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				const killTree = (): Promise<{ unconfirmed: number[] }> =>
 					new Promise((resolveKill) => {
 						const tracked = new Set<number>();
+						// 十一(对抗): the ROOT itself is tracked too — the
+						// verdict must not read "aborted" while the root
+						// survives. DOCUMENTED LIMITS: (1) a process that
+						// forks between SIGSTOP delivery and the next scan,
+						// setsids, and is then reparented when its parent is
+						// killed can escape the enumeration entirely — it is
+						// untracked and unknowable from the pid table; the
+						// platform cannot confirm it. (2) if THIS process is
+						// killed between the first SIGSTOP and the SIGKILL
+						// sweep, the stopped descendants stay permanently
+						// stopped (nobody SIGCONTs orphans) — the inherent
+						// cost of freeze-first. Both limits are recorded here
+						// so no claim of "the whole tree is gone" is ever
+						// stronger than what the platform can prove.
 						if (child.pid !== undefined && child.pid > 0) {
+							tracked.add(child.pid);
 							try {
 								process.kill(child.pid, "SIGSTOP"); // freeze the root
 							} catch {

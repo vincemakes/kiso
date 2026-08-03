@@ -83,12 +83,21 @@ export interface LoopConfig {
 	 */
 	readonly resolveApproval?: (decisionId: string) => Promise<PermissionDecision>;
 	/**
+	 * 第四轮(对抗): a verdict the human ALREADY gave before an abort landed.
+	 * The abort path consults this BEFORE yielding the aborted terminal: a
+	 * consumed verdict must be recorded (exactly once), never lost — the
+	 * human's decision outranks the abort.
+	 */
+	readonly approvalVerdict?: (decisionId: string) => boolean | undefined;
+	/**
 	 * C 组: the channel that resolves a failed NON-idempotent execution.
 	 * The loop persists `uncertain_pending`, yields it, and AWAITS the
 	 * human verdict — no next model turn, no sibling tool, no auto-retry.
 	 * Absent, the failure is recorded `abandoned` (never retried).
 	 */
 	readonly resolveUncertainty?: (executionId: string) => Promise<"rerun" | "abandoned">;
+	/** 第四轮(对抗): the uncertainty twin of `approvalVerdict`. */
+	readonly uncertaintyVerdict?: (executionId: string) => "rerun" | "abandoned" | undefined;
 }
 
 export const DEFAULT_MAX_TURNS = 10;
@@ -411,7 +420,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			}
 			let currentExecutionId: string | undefined;
 			try {
-				for await (const ev of executeOne(call, registry, hooks, { signal: signal ?? NEVER_ABORT }, log, config.resolveApproval, signal)) {
+				for await (const ev of executeOne(call, registry, hooks, { signal: signal ?? NEVER_ABORT }, log, config.resolveApproval, config.approvalVerdict, signal)) {
 					// 四: the identity of THIS execution comes from the stream —
 					// a historical same-callId execution must never be mistaken
 					// for this call's (the provider callId may repeat across runs).
@@ -466,9 +475,24 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					try {
 						resolution = await raceAbort(pendingResolution, signal);
 					} catch (err) {
-						// The human never answered (abort): end the run; the
-						// execution stays uncertain and blocks the next resume.
 						if (err === ABORTED) {
+							// 第四轮(对抗): the human may have answered in the
+							// same instant the abort landed — a CONSUMED verdict
+							// must be recorded (exactly once), never lost. It is
+							// appended here, then the run ends with its honest
+							// aborted terminal; the execution is resolved, not
+							// bricked.
+							const verdict = config.uncertaintyVerdict?.(failed.executionId);
+							if (verdict !== undefined) {
+								const verdictEvent = log.append({
+									type: "tool_execution_resolved",
+									executionId: failed.executionId,
+									callId: call.callId,
+									resolution: verdict,
+								});
+								if (hooks.onEvent) await hooks.onEvent(verdictEvent, {}).catch(() => {});
+								yield verdictEvent;
+							}
 							yield await terminal({ kind: "aborted", by: "user" });
 							return;
 						}
@@ -574,6 +598,7 @@ async function* executeOne(
 	ctx: ToolContext,
 	log: EventLog,
 	resolveApproval: ((decisionId: string) => Promise<PermissionDecision>) | undefined,
+	resolveApprovalVerdict: ((decisionId: string) => boolean | undefined) | undefined,
 	signal: AbortSignalLike | undefined,
 ): AsyncGenerator<Event> {
 	const payload: ToolCallPayload = {
@@ -662,7 +687,28 @@ async function* executeOne(
 
 			// Area 4: the pause is abortable — a cancel during the human's
 			// wait ends the run now; the request stays durable and pending.
-			const finalDecision = await raceAbort(pendingDecision, signal);
+			let finalDecision: PermissionDecision;
+			try {
+				finalDecision = await raceAbort(pendingDecision, signal);
+			} catch (err) {
+				if (err === ABORTED) {
+					// 第四轮(对抗): the human may have answered in the same
+					// instant the abort landed — a CONSUMED verdict must be
+					// recorded (exactly once), never lost; the abort then
+					// ends the run with its honest aborted terminal.
+					const verdict = resolveApprovalVerdict?.(decisionId);
+					if (verdict !== undefined) {
+						yield log.append({
+							type: "permission_decided",
+							decisionId,
+							callId: call.callId,
+							decision: verdict ? "approved" : "denied",
+							...(verdict ? {} : { reason: "denied by user" }),
+						});
+					}
+				}
+				throw err;
+			}
 			// The approval channel (session.approve) persists the decision
 			// write-ahead BEFORE waking the resolver (Area 2): if it already
 			// landed in the log, this is the same decision, not a duplicate.

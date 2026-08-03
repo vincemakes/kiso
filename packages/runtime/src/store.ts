@@ -91,6 +91,9 @@ export class SessionStore {
 	readonly #fds = new Map<string, number>();
 	/** sessionId → the lock helper process THIS instance spawned. */
 	readonly #lockHelpers = new Map<string, ChildProcess>();
+	/** 第四轮(对抗): serialize concurrent acquireLock calls ON this instance —
+	 *  two racing appends must not spawn two helpers and fight each other. */
+	readonly #lockAcquiring = new Map<string, Promise<void>>();
 	readonly #closed = new Set<string>();
 
 	constructor(root: string) {
@@ -124,6 +127,14 @@ export class SessionStore {
 	 */
 	private async acquireLock(sessionId: string): Promise<void> {
 		if (this.#lockHelpers.has(sessionId)) return;
+		const inFlight = this.#lockAcquiring.get(sessionId);
+		if (inFlight !== undefined) return inFlight;
+		const attempt = this.#acquireLockOnce(sessionId).finally(() => this.#lockAcquiring.delete(sessionId));
+		this.#lockAcquiring.set(sessionId, attempt);
+		return attempt;
+	}
+
+	async #acquireLockOnce(sessionId: string): Promise<void> {
 		const lockPath = this.lockPathFor(sessionId);
 		for (let attempt = 0; ; attempt++) {
 			const child = spawn("python3", ["-c", LOCK_HELPER_SCRIPT, lockPath], {
@@ -134,9 +145,11 @@ export class SessionStore {
 				// The kernel flock is ours. One last compatibility gate: an
 				// OLD-format writer (which does not honor flock) may still
 				// be alive — its lock file names it. Refuse, and release
-				// the flock (the helper dies).
+				// the flock (the helper dies). A MODERN lock (with a token)
+				// naming OUR OWN process is a same-process writer's residue
+				// (第四轮: the file is advisory; the flock is the authority).
 				const legacy = readLockIdentity(lockPath);
-				if (legacy?.pid !== undefined && isAlive(legacy.pid)) {
+				if (legacy?.pid !== undefined && isAlive(legacy.pid) && (legacy.token === undefined || legacy.pid !== process.pid)) {
 					child.kill();
 					throw new Error(`session ${sessionId} is locked by another writer (pid ${legacy.pid})`);
 				}
@@ -152,16 +165,25 @@ export class SessionStore {
 				return;
 			}
 			child.kill();
+			if (verdict === "SPAWN_FAILED") {
+				// 第四轮(对抗): the helper could not start (python3 missing) —
+				// an HONEST error, never a fake lock conflict.
+				throw new Error(
+					`session locking unavailable: the flock helper (python3) failed to start for ${sessionId}`,
+				);
+			}
 			// BUSY: either a live modern writer, or a holder that is just
-			// exiting (its helper is dying). A live writer's identity is in
-			// the file — refuse at once; otherwise retry briefly so a
-			// just-released lock is actually acquirable (no deadlock after
-			// close()).
+			// exiting (its helper is dying). A FOREIGN live writer's identity
+			// is in the file — refuse at once. A MODERN lock (with a token)
+			// naming OUR OWN process is a same-process writer — it will
+			// release its helper; retry until it does (第四轮: never a
+			// spurious self-conflict). A legacy bare-pid lock naming our own
+			// process is still a live foreign owner and is refused.
 			const legacy = readLockIdentity(lockPath);
-			if (legacy?.pid !== undefined && isAlive(legacy.pid)) {
+			if (legacy?.pid !== undefined && isAlive(legacy.pid) && (legacy.token === undefined || legacy.pid !== process.pid)) {
 				throw new Error(`session ${sessionId} is locked by another writer (pid ${legacy.pid})`);
 			}
-			if (attempt >= 5) {
+			if (attempt >= 25) {
 				throw new Error(`session ${sessionId} is locked by another writer`);
 			}
 			await new Promise((resolve) => setTimeout(resolve, 20));
@@ -178,12 +200,16 @@ export class SessionStore {
 		const child = this.#lockHelpers.get(sessionId);
 		if (child === undefined) return;
 		this.#lockHelpers.delete(sessionId);
-		child.kill();
+		// 第四轮(对抗): the identity is cleared BEFORE the helper dies — a
+		// contender that acquires the flock in the release gap writes its
+		// own identity AFTER our clear, so it is never wiped by us (the
+		// file is advisory; the kernel flock is the authority).
 		try {
 			writeFileSync(this.lockPathFor(sessionId), "");
 		} catch {
 			// advisory only
 		}
+		child.kill();
 	}
 
 	// ── append: lock, open, repair, CAS, write, fsync ────────────────────

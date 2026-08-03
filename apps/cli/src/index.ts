@@ -276,27 +276,40 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 	let cancelled = false;
 
 	const turn = (input: string): Promise<void> =>
-		new Promise((resolve) => {
+		new Promise((resolve, reject) => {
 			const run = session.run(input);
 			currentRun = run;
 			(async () => {
 				let last: import("@kiso/core").Event | undefined;
 				try {
 					last = await consumeRun(session, run, rl);
+					currentRun = null;
+					// 八: a faux script that ran out of declared turns exits
+					// loudly with a non-zero status — never a silent status 0.
+					// 第四轮(对抗): the exhaustion is a CONTROLLED rejection of
+					// this turn's promise — it propagates through the chain to
+					// chat to main's finally/catch, never an orphaned
+					// unhandled rejection from the IIFE.
+					failOnFauxExhaustion(last, faux, rl);
+					// 八: after EVERY turn the prompt is re-armed — the human
+					// never types blind after the first turn.
+					rl.setPrompt("you> ");
+					rl.prompt();
+					resolve();
 				} catch (err) {
 					// A run failure must not freeze the REPL (review finding
 					// 11): surface it and re-arm the prompt.
+					if (err instanceof FauxExhaustionError) {
+						currentRun = null;
+						reject(err);
+						return;
+					}
 					console.error(`\n[run failed] ${err instanceof Error ? err.message : String(err)}\n`);
+					currentRun = null;
+					rl.setPrompt("you> ");
+					rl.prompt();
+					resolve();
 				}
-				currentRun = null;
-				// 八: a faux script that ran out of declared turns exits
-				// loudly with a non-zero status — never a silent status 0.
-				failOnFauxExhaustion(last, faux, rl);
-				// 八: after EVERY turn the prompt is re-armed — the human
-				// never types blind after the first turn.
-				rl.setPrompt("you> ");
-				rl.prompt();
-				resolve();
 			})();
 		});
 
@@ -379,6 +392,10 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 			pendingAsk?.();
 			currentRun.abort();
 		} else {
+			// 第四轮(对抗): also unblock a pending startup question — the
+			// readline close alone would leave ask() hanging forever.
+			console.log("\n[exit requested]");
+			pendingAsk?.();
 			rl.close();
 		}
 	});

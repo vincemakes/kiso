@@ -84,6 +84,11 @@ export class AgentSession {
 	 *  lands in the log asynchronously (the loop owns it), so the ledger
 	 *  alone cannot make resolveUncertain idempotent across the same tick. */
 	readonly #uncertaintyAnswered = new Set<string>();
+	/** 第四轮(对抗): verdicts the human GAVE, recorded when passed to a live
+	 *  resolver. If an abort races the verdict, the loop / recovery queries
+	 *  these and records the decision (exactly once) instead of losing it. */
+	readonly #approvalVerdicts = new Map<string, boolean>();
+	readonly #uncertaintyVerdicts = new Map<string, "rerun" | "abandoned">();
 	#poisoned: string | null = null;
 
 	/** Permanently invalidate the session after a rejected disk write (一). */
@@ -231,6 +236,9 @@ export class AgentSession {
 		}
 		const resolver = this.#pendingResolvers.get(decisionId);
 		if (resolver !== undefined) {
+			// 第四轮(对抗): recorded so an abort racing the verdict cannot
+			// lose it — the loop's abort path consults approvalVerdict.
+			this.#approvalVerdicts.set(decisionId, allow);
 			this.#pendingResolvers.delete(decisionId);
 			resolver(allow ? { action: "allow" } : { action: "deny", reason: "denied by user" });
 			return;
@@ -278,9 +286,11 @@ export class AgentSession {
 		// OWNS the resolution event — it appends, yields, and persists it
 		// through the Run, so the consumer's stream and the durable log
 		// stay identical. We only pass the verdict; a hidden append here
-		// would leave a seq gap.
+		// would leave a seq gap. 第四轮(对抗): the verdict is recorded so an
+		// abort racing it cannot lose it.
 		const resolver = this.#uncertaintyResolvers.get(executionId);
 		if (resolver !== undefined) {
+			this.#uncertaintyVerdicts.set(executionId, resolution);
 			this.#uncertaintyResolvers.delete(executionId);
 			resolver(resolution);
 			return;
@@ -299,18 +309,29 @@ export class AgentSession {
 		// 四: the fill is keyed by THIS execution — a tool_result belonging to
 		// a different (same-callId) execution must not suppress the verdict's
 		// model-facing result, and the fill itself carries the executionId.
+		// 八(对抗): the fill also carries the tags from the durable RECEIPT —
+		// the normal live path emits the result with tags before the pause,
+		// so a crash-window repair reproduces them.
 		if (!this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId)) {
 			const denial = denialResult(
 				resolution === "rerun"
 					? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
 					: "abandoned by human decision — the interrupted attempt must not be treated as applied",
 			);
+			const receipt = [...this.log.all]
+				.reverse()
+				.find(
+					(e): e is Event & { type: "tool_execution_failed" | "tool_execution_succeeded"; tags?: readonly string[] } =>
+						(e.type === "tool_execution_failed" || e.type === "tool_execution_succeeded") &&
+						e.executionId === executionId,
+				);
 			const result = this.log.append({
 				type: "tool_result",
 				callId: record.callId,
 				content: denial.content,
 				isError: true,
 				errorKind: denial.errorKind,
+				...(receipt?.tags !== undefined ? { tags: receipt.tags } : {}),
 				executionId: record.executionId,
 			});
 			await this.persist(runId, result);
@@ -342,6 +363,16 @@ export class AgentSession {
 
 	registerResolver(decisionId: string, resolve: (decision: PermissionDecision) => void): void {
 		this.#pendingResolvers.set(decisionId, resolve);
+	}
+
+	/** 第四轮(对抗): a verdict the human already gave for a live decision. */
+	approvalVerdict(decisionId: string): boolean | undefined {
+		return this.#approvalVerdicts.get(decisionId);
+	}
+
+	/** 第四轮(对抗): a verdict the human already gave for a live execution. */
+	uncertaintyVerdict(executionId: string): "rerun" | "abandoned" | undefined {
+		return this.#uncertaintyVerdicts.get(executionId);
 	}
 
 	dropResolver(decisionId: string): void {
@@ -438,6 +469,11 @@ export class Run implements AsyncIterable<Event> {
 							this.#decisionIds.push(decisionId);
 							this.#session.registerResolver(decisionId, resolve);
 						}),
+					// 第四轮(对抗): the abort paths consult these so a verdict
+					// the human gave in the same instant as the abort is
+					// recorded, exactly once.
+					approvalVerdict: (decisionId: string) => this.#session.approvalVerdict(decisionId),
+					uncertaintyVerdict: (executionId: string) => this.#session.uncertaintyVerdict(executionId),
 					resolveUncertainty: (executionId: string) =>
 						new Promise<"rerun" | "abandoned">((resolve) => {
 							this.#uncertaintyIds.push(executionId);
@@ -497,7 +533,7 @@ export class Run implements AsyncIterable<Event> {
 							decisionId: ev.decisionId,
 							reason: `run ${runId} terminated before the request was answered`,
 						});
-						this.#session.persist(runId, expired);
+						await this.#session.persist(runId, expired);
 					}
 				}
 
@@ -606,7 +642,21 @@ export class Run implements AsyncIterable<Event> {
 				// run; the request stays durable and pending.
 				if (signal.aborted) return;
 				const final = await abortable(pendingDecision, signal);
-				if (final === ABORTED) return;
+				if (final === ABORTED) {
+					// 第四轮(对抗): a verdict given in the same instant as the
+					// abort is recorded (exactly once), never lost.
+					const verdict = this.#session.approvalVerdict(pending.decisionId);
+					if (verdict !== undefined) {
+						yield log.append({
+							type: "permission_decided",
+							decisionId: pending.decisionId,
+							callId: pending.callId,
+							decision: verdict ? "approved" : "denied",
+							...(verdict ? {} : { reason: "denied by user" }),
+						});
+					}
+					return;
+				}
 				// The decision is written here — exactly one writer per event.
 				yield log.append({
 					type: "permission_decided",
@@ -781,7 +831,20 @@ export class Run implements AsyncIterable<Event> {
 			});
 			yield pendingUncertain;
 			const verdict = await abortable(pendingResolution, signal);
-			if (verdict === ABORTED) return;
+			if (verdict === ABORTED) {
+				// 第四轮(对抗): a verdict given in the same instant as the
+				// abort is recorded (exactly once), never lost.
+				const given = this.#session.uncertaintyVerdict(executionId);
+				if (given !== undefined) {
+					yield log.append({
+						type: "tool_execution_resolved",
+						executionId,
+						callId,
+						resolution: given,
+					});
+				}
+				return;
+			}
 			// 七: the recovery generator owns the resolution event — appended
 			// and yielded here, persisted by the Run's wrapper (a live
 			// resolveUncertain() only passed the verdict).
