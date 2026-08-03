@@ -29,7 +29,7 @@
 
 import type { Adapter, AbortSignalLike } from "../protocol/adapter.js";
 import type { Event, StopReason, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
-import { estimateTokens, isClearedMarker, microcompact } from "./compaction.js";
+import { estimateTokens, microcompact } from "./compaction.js";
 import { EventLog } from "./event-log.js";
 import type { EventInput } from "./event-log.js";
 import type {
@@ -170,17 +170,20 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		}
 		turns += 1;
 
-		// ── Auto-compaction: the EXACT replacements are persisted in the
-		//    event; the projection applies them verbatim (A 组/D 组).
+		// ── Auto-compaction: ONLY this turn's NEWLY cleared results are
+		//    persisted, keyed by the replaced tool-result event's seq; the
+		//    projection applies them verbatim (A 组/D 组/五).
 		if (config.compaction && estimateTokens(messages) > config.compaction.thresholdTokens) {
 			if (hooks.onPreCompact) await hooks.onPreCompact(messages, {}).catch(() => {});
 			const result = microcompact(messages);
-			const cleared = result.messages
-				.filter(
-					(m): m is ToolResultMessage & { content: string } =>
-						m.role === "tool" && typeof m.content === "string" && isClearedMarker(m.content),
-				)
-				.map((m) => ({ callId: m.callId, content: m.content }));
+			// 五: the delta only — messages already carrying the clear marker
+			// are never re-cleared (microcompact's idempotence gate), so the
+			// same replacement is never recorded twice across turns.
+			const cleared = result.cleared.map((c) => ({
+				eventSeq: c.eventSeq!,
+				callId: c.callId,
+				content: c.content,
+			}));
 			if (cleared.length > 0) {
 				const full = log.append({ type: "compacted", cleared });
 				if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
@@ -202,6 +205,10 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		let stopCount = 0;
 		let streamed = false;
 		let attempts = 0;
+		// 五: the turn is a strict protocol — once the provider stops, ANY
+		// further event (delta, tool call, usage, thinking) is a violation.
+		let sawStop = false;
+		let postStopViolation = false;
 
 		while (true) {
 			// Area 4: the backoff is abortable — a cancel landing during a
@@ -222,7 +229,16 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				});
 				for await (const ev of stream) {
 					streamed = true;
+					// 五: a delta/tool call/usage arriving AFTER the provider's
+					// stop is a protocol error — the violating event is never
+					// appended, and the turn ends with an error terminal (the
+					// pending tools must NOT execute).
+					if (sawStop && ev.type !== "stop") {
+						postStopViolation = true;
+						break;
+					}
 					if (ev.type === "stop") {
+						sawStop = true;
 						lastStop = ev.reason;
 						stopCount += 1;
 					}
@@ -251,6 +267,15 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				yield await terminal({ kind: "error", error: structured });
 				return;
 			}
+		}
+
+		// ── 五: events after the stop are a protocol error ───────────────────
+		if (postStopViolation) {
+			yield await terminal({
+				kind: "error",
+				error: { code: "invalid_request", retryable: false, message: "provider emitted events after its stop event" },
+			});
+			return;
 		}
 
 		// ── Terminal check: no tool call this turn → done, honestly ────────
@@ -527,6 +552,9 @@ async function* executeOne(
 			content: result.content,
 			isError: result.isError,
 			...(result.errorKind ? { errorKind: result.errorKind } : {}),
+			// 五: a live tool's tags are preserved losslessly (do-not-compact,
+			// billing receipts, trace anchors) — never dropped at the loop.
+			...(result.tags !== undefined ? { tags: result.tags } : {}),
 			...(executionId !== undefined ? { executionId } : {}),
 		});
 

@@ -10,6 +10,7 @@ import type { Message, ToolResultMessage } from "../src/protocol/messages.js";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { EventLog } from "../src/kernel/event-log.js";
 import {
 	CLEARED_MARKER_PREFIX,
 	estimateTokens,
@@ -46,7 +47,7 @@ describe("microcompact", () => {
 		const result = microcompact(turns);
 		expect(result.messages).not.toBe(turns); // new array
 		expect(result.messages).toHaveLength(before); // same length, no drops
-		expect(result.clearedCallIds.length).toBeGreaterThan(0);
+		expect(result.cleared.length).toBeGreaterThan(0);
 		// Recent window intact.
 		const recent = result.messages.slice(-KEEP_RECENT_TURNS * 3);
 		expect(recent.some((m) => m.role === "tool" && typeof m.content === "string" && m.content.includes("result-"))).toBe(true);
@@ -65,7 +66,7 @@ describe("microcompact", () => {
 		}
 		const first = microcompact(turns);
 		const second = microcompact(first.messages);
-		expect(second.clearedCallIds).toEqual([]);
+		expect(second.cleared).toEqual([]);
 		expect(second.messages).toBe(first.messages); // untouched array identity
 	});
 
@@ -128,6 +129,61 @@ describe("loop auto-compaction", () => {
 		expect(pre).toBeGreaterThan(0);
 		expect(post).toBeGreaterThan(0);
 		expect(events.at(-1)).toMatchObject({ type: "terminal", outcome: { kind: "completed" } });
+	});
+
+	it("五: compacted events record ONLY newly cleared results — no replacement is ever recorded twice", async () => {
+		const registry = new ToolRegistry();
+		registry.register(
+			defineTool({
+				name: "web_search",
+				description: "s",
+				parameters: { type: "object", properties: {} },
+				execute: async () => ({ content: "x".repeat(200), isError: false }),
+			}),
+		);
+		// A long session: 7 prior user turns with chunky tool results.
+		const history: Message[] = [];
+		for (let i = 0; i < 7; i++) {
+			history.push(userMsg(`turn ${i}`));
+			history.push(assistantWithTool(`h${i}`, "web_search"));
+			history.push(toolMsg(`h${i}`, "x".repeat(200)));
+		}
+		// Two more model turns keep the context over the threshold — the
+		// second turn must NOT re-record what the first turn cleared.
+		const script: FauxScript = [
+			{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} }, { type: "stop", reason: "tool_use" }] },
+			{ events: [{ type: "tool_call_end", callId: "c2", name: "web_search", input: {} }, { type: "stop", reason: "tool_use" }] },
+			{ events: [{ type: "stop", reason: "end_turn" }] },
+		];
+
+		const log = new EventLog();
+		for await (const _ev of loop({
+			adapter: createFauxProvider(script),
+			model: "faux",
+			registry,
+			log,
+			messages: [...history, userMsg("do it")],
+			compaction: { thresholdTokens: 100 },
+		})) {
+			// drain
+		}
+
+		const compacted = log.all.filter((e) => e.type === "compacted");
+		expect(compacted.length).toBeGreaterThan(0);
+		// Every cleared entry names a DIFFERENT tool-result event: the same
+		// replacement never appears in a second compacted event (五).
+		const seen = new Set<number>();
+		for (const ev of compacted) {
+			for (const cleared of ev.cleared) {
+				expect(seen.has(cleared.eventSeq)).toBe(false);
+				seen.add(cleared.eventSeq);
+			}
+		}
+		// The cleared entries carry the identity of real tool_result events.
+		const toolResultSeqs = new Set(
+			log.all.filter((e) => e.type === "tool_result").map((e) => e.seq),
+		);
+		for (const seq of seen) expect(toolResultSeqs.has(seq)).toBe(true);
 	});
 });
 

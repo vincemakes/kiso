@@ -80,10 +80,29 @@ describe("D6: compacted replay applies the PERSISTED replacements verbatim", () 
 		log.append({ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
 		log.append({ type: "tool_result", callId: "c1", content: "original content", isError: false });
 		// A FUTURE compaction version might write a completely different
-		// marker — the replay must apply exactly what was persisted.
-		log.append({ type: "compacted", cleared: [{ callId: "c1", content: "[future-marker v9]" }] });
+		// marker — the replay must apply exactly what was persisted. The
+		// identity is the replaced tool_result event's SEQ (seq 2 here).
+		log.append({ type: "compacted", cleared: [{ eventSeq: 2, callId: "c1", content: "[future-marker v9]" }] });
 		const projected = projectMessages(log.all);
 		const tool = projected.find((m): m is Extract<Message, { role: "tool" }> => m.role === "tool");
 		expect(tool?.content).toBe("[future-marker v9]");
+	});
+
+	it("五: compaction replaces ONLY the named tool-result event — a same-callId sibling stays intact", () => {
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		log.append({ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		// The SAME provider callId appears twice (two logical calls), each
+		// with its own result at its own event seq.
+		log.append({ type: "tool_result", callId: "c1", content: "first result", isError: false }); // seq 2
+		log.append({ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		log.append({ type: "tool_result", callId: "c1", content: "second result", isError: false }); // seq 4
+		// Compaction clears ONLY the second result (eventSeq 4).
+		log.append({ type: "compacted", cleared: [{ eventSeq: 4, callId: "c1", content: "[cleared]" }] });
+		const projected = projectMessages(log.all);
+		const tools = projected.filter((m): m is Extract<Message, { role: "tool" }> => m.role === "tool");
+		expect(tools).toHaveLength(2);
+		expect(tools[0]?.content).toBe("first result"); // untouched sibling
+		expect(tools[1]?.content).toBe("[cleared]"); // only the named one
 	});
 });

@@ -180,4 +180,42 @@ describe("AgentSession + reload (三)", () => {
 		// The original never made it to disk.
 		expect(reloaded.projected().some((m) => m.role === "user" && (m as { content: string }).content === "ask something")).toBe(false);
 	});
+
+	it("五: a rewrite with ContentBlock[] content is a legal event — persisted and reloaded", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-rw-"));
+		const store = new SessionStore(dir);
+		const blocks: Message = {
+			role: "user",
+			content: [
+				{ type: "text", text: "look at this:" },
+				{ type: "image", sourceType: "base64", data: "cG5n", mediaType: "image/png" },
+			],
+		};
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]),
+			hooks: {
+				onUserMessage: async () => blocks,
+			},
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("plain text in")) {
+			// drain
+		}
+		store.closeAll();
+
+		// The block content survived persistence (deep schema validation) and
+		// reloads exactly.
+		const store2 = new SessionStore(dir);
+		const reloaded = await createAgent({
+			model: "faux",
+			store: store2,
+			tools: [],
+			adapter: createFauxProvider([]),
+		}).session({ id: "s" });
+		const user = reloaded.projected().find((m) => m.role === "user") as { content: unknown };
+		expect(user.content).toEqual(blocks.content);
+	});
 });

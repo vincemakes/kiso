@@ -184,15 +184,21 @@ export interface UserInputEvent {
 
 /**
  * Compaction happened at this point in the trajectory. The EXACT
- * replacements are persisted (callId → the replacement content); the
+ * replacements are persisted (eventSeq → the replacement content); the
  * projection applies them verbatim — it never re-runs a future version of
  * the compaction algorithm (A 组/D 组). The replay therefore equals the
  * live run byte for byte, independent of algorithm drift.
+ *
+ * 五: `eventSeq` is the STABLE identity — the seq of the specific
+ * `tool_result` event that was replaced. The provider callId may repeat
+ * across runs and is correlation-only; `callId` is kept for traceability.
+ * Only THIS turn's NEWLY cleared results are listed, never a cumulative
+ * set of already-cleared markers (五).
  */
 export interface CompactedEvent {
 	readonly seq: number;
 	readonly type: "compacted";
-	readonly cleared: readonly { readonly callId: string; readonly content: string }[];
+	readonly cleared: readonly { readonly eventSeq: number; readonly callId: string; readonly content: string }[];
 }
 
 /**
@@ -442,56 +448,209 @@ export type Event =
 	| UserInputReplaced
 	| TerminalEvent;
 
+// ── deep-shape helpers (五): every variant is validated field by field —
+// legal enums, Terminal union members, Usage known/token combos, content
+// blocks, plain-object inputs, optional fields when present. A record that
+// parses as JSON but violates its variant's shape is corruption, never
+// history.
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null && !Array.isArray(v);
+
+const isNonNegativeInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
+
+const STOP_REASONS = new Set<StopReason>([
+	"end_turn",
+	"tool_use",
+	"max_tokens",
+	"stop_sequence",
+	"abort",
+	"error",
+	"refusal",
+	"pause_turn",
+	"content_filter",
+	"context_window",
+	"function_call",
+]);
+
+const TOOL_ERROR_KINDS = new Set<ToolErrorKind>(["invalid_input", "precondition", "transient", "fatal"]);
+
+const ERROR_CODES = new Set<ErrorCode>([
+	"rate_limit",
+	"overloaded",
+	"network",
+	"timeout",
+	"quota",
+	"api_5xx",
+	"context_overflow",
+	"invalid_request",
+	"unknown",
+]);
+
+const MESSAGE_SOURCES = new Set<import("./messages.js").MessageSource>([
+	"user",
+	"suggestion",
+	"tool_result",
+	"subagent",
+	"system",
+	"model",
+]);
+
+const MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+
 /**
- * Per-variant runtime validation (A 组): every persistent event is checked
- * field by field — not just `type`/`seq`. A record that parses as JSON but
- * violates its variant's shape is corruption, never history. The table is
- * `satisfies Record<Event["type"], ...>`: adding a variant without a
+ * A ContentBlock: text (text: string) or image (sourceType with the
+ * documented payload — url for "url", data + mediaType for "base64").
+ */
+function isContentBlock(v: unknown): boolean {
+	if (!isPlainObject(v)) return false;
+	if (v.type === "text") return typeof v.text === "string";
+	if (v.type !== "image") return false;
+	if (v.sourceType !== "url" && v.sourceType !== "base64") return false;
+	if (v.sourceType === "url") return typeof v.url === "string";
+	return typeof v.data === "string" && typeof v.mediaType === "string" && MEDIA_TYPES.has(v.mediaType);
+}
+
+/** string content, or an array whose EVERY element is a legal ContentBlock. */
+function isContent(v: unknown): boolean {
+	return typeof v === "string" || (Array.isArray(v) && v.every(isContentBlock));
+}
+
+function isSource(v: Record<string, unknown>): boolean {
+	return v.source === undefined || MESSAGE_SOURCES.has(v.source as import("./messages.js").MessageSource);
+}
+
+function isTags(v: Record<string, unknown>): boolean {
+	return v.tags === undefined || (Array.isArray(v.tags) && v.tags.every((t) => typeof t === "string"));
+}
+
+function isErrorKind(v: Record<string, unknown>): boolean {
+	return v.errorKind === undefined || TOOL_ERROR_KINDS.has(v.errorKind as ToolErrorKind);
+}
+
+function isExecutionId(v: Record<string, unknown>): boolean {
+	return v.executionId === undefined || typeof v.executionId === "string";
+}
+
+/** A StructuredError — the shape the `error` terminal carries. */
+function isStructuredError(v: unknown): boolean {
+	if (!isPlainObject(v)) return false;
+	return (
+		ERROR_CODES.has(v.code as ErrorCode) &&
+		typeof v.retryable === "boolean" &&
+		typeof v.message === "string" &&
+		(v.status === undefined || typeof v.status === "number")
+	);
+}
+
+/** Terminal union members validated by their own required fields. */
+function isTerminal(v: unknown): boolean {
+	if (!isPlainObject(v)) return false;
+	switch (v.kind) {
+		case "completed":
+		case "max_tokens":
+			return true;
+		case "max_turns":
+			return typeof v.turns === "number";
+		case "error":
+			return isStructuredError(v.error);
+		case "aborted":
+			return v.by === "user" || v.by === "parent";
+		case "hook_stopped":
+			return typeof v.hook === "string";
+		default:
+			return false;
+	}
+}
+
+/**
+ * Usage invariant (Area 6): `known: false` means the provider reported NO
+ * usage — every token field is null, never faked as zero. `known: true`
+ * means SOME usage was reported; each field is a non-negative number when
+ * the provider reported it, null otherwise.
+ */
+function isUsage(v: Record<string, unknown>): boolean {
+	if (typeof v.known !== "boolean") return false;
+	const tokens = [v.inputTokens, v.outputTokens, v.cacheRead, v.cacheWrite];
+	if (v.known === false) return tokens.every((t) => t === null);
+	return tokens.every((t) => t === null || (typeof t === "number" && t >= 0));
+}
+
+/**
+ * Per-variant runtime validation (五): the table is
+ * `satisfies Record<Event["type"], ...>` — adding a variant without a
  * validator here is a compile error (ADR-0003).
  */
 const EVENT_VALIDATORS = {
-	assistant_start: () => true,
+	assistant_start: (v: Record<string, unknown>) => isSource(v),
 	assistant_end: () => true,
-	text_start: () => true,
+	text_start: (v: Record<string, unknown>) => isSource(v),
 	text_delta: (v: Record<string, unknown>) => typeof v.text === "string",
 	text_end: () => true,
-	tool_call_start: (v: Record<string, unknown>) => typeof v.callId === "string" && typeof v.name === "string",
+	tool_call_start: (v: Record<string, unknown>) =>
+		typeof v.callId === "string" && typeof v.name === "string" && isSource(v),
 	tool_call_input_delta: (v: Record<string, unknown>) =>
 		typeof v.callId === "string" && typeof v.inputJsonDelta === "string",
 	tool_call_end: (v: Record<string, unknown>) =>
-		typeof v.callId === "string" && typeof v.name === "string" && (v.input === null || typeof v.input === "object"),
+		typeof v.callId === "string" && typeof v.name === "string" && (v.input === null || isPlainObject(v.input)),
 	tool_result: (v: Record<string, unknown>) =>
 		typeof v.callId === "string" &&
-		(typeof v.content === "string" || Array.isArray(v.content)) &&
-		typeof v.isError === "boolean",
+		isContent(v.content) &&
+		typeof v.isError === "boolean" &&
+		isErrorKind(v) &&
+		isExecutionId(v) &&
+		isSource(v) &&
+		isTags(v),
 	thinking: (v: Record<string, unknown>) => typeof v.text === "string",
-	usage: (v: Record<string, unknown>) => typeof v.known === "boolean",
-	stop: (v: Record<string, unknown>) => typeof v.reason === "string",
-	user_input: (v: Record<string, unknown>) => typeof v.content === "string" || Array.isArray(v.content),
-	compacted: (v: Record<string, unknown>) => Array.isArray(v.cleared),
+	usage: isUsage,
+	stop: (v: Record<string, unknown>) => STOP_REASONS.has(v.reason as StopReason),
+	user_input: (v: Record<string, unknown>) => isContent(v.content) && isSource(v),
+	compacted: (v: Record<string, unknown>) =>
+		Array.isArray(v.cleared) &&
+		v.cleared.every(
+			(c) =>
+				isPlainObject(c) &&
+				isNonNegativeInt(c.eventSeq) &&
+				typeof c.callId === "string" &&
+				typeof c.content === "string",
+		),
 	tool_execution_started: (v: Record<string, unknown>) =>
-		typeof v.executionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.input === "object",
+		typeof v.executionId === "string" &&
+		typeof v.callId === "string" &&
+		typeof v.name === "string" &&
+		isPlainObject(v.input),
 	tool_execution_succeeded: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" &&
 		typeof v.callId === "string" &&
-		typeof (v.result as { content?: unknown } | undefined)?.content === "string",
+		isPlainObject(v.result) &&
+		typeof (v.result as Record<string, unknown>).content === "string" &&
+		(v.result as Record<string, unknown>).isError === false,
 	tool_execution_failed: (v: Record<string, unknown>) =>
-		typeof v.executionId === "string" && typeof v.callId === "string" && typeof v.error === "string" && typeof v.safeToRetry === "boolean",
+		typeof v.executionId === "string" &&
+		typeof v.callId === "string" &&
+		typeof v.error === "string" &&
+		typeof v.safeToRetry === "boolean" &&
+		isErrorKind(v),
 	tool_execution_resolved: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" &&
 		typeof v.callId === "string" &&
 		(v.resolution === "rerun" || v.resolution === "abandoned"),
 	permission_requested: (v: Record<string, unknown>) =>
-		typeof v.decisionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.input === "object",
+		typeof v.decisionId === "string" &&
+		typeof v.callId === "string" &&
+		typeof v.name === "string" &&
+		isPlainObject(v.input),
 	permission_decided: (v: Record<string, unknown>) =>
-		typeof v.decisionId === "string" && (v.decision === "approved" || v.decision === "denied"),
+		typeof v.decisionId === "string" &&
+		(v.decision === "approved" || v.decision === "denied") &&
+		(v.callId === undefined || typeof v.callId === "string") &&
+		(v.reason === undefined || typeof v.reason === "string"),
 	permission_expired: (v: Record<string, unknown>) => typeof v.decisionId === "string" && typeof v.reason === "string",
 	uncertain_pending: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.error === "string",
 	user_input_replaced: (v: Record<string, unknown>) =>
-		typeof v.replaces === "number" && (typeof v.content === "string" || v.content === null),
-	terminal: (v: Record<string, unknown>) =>
-		typeof v.outcome === "object" && v.outcome !== null && typeof (v.outcome as { kind?: unknown }).kind === "string",
+		isNonNegativeInt(v.replaces) && (v.content === null || isContent(v.content)) && isSource(v),
+	terminal: (v: Record<string, unknown>) => isTerminal(v.outcome),
 } satisfies Record<Event["type"], (v: Record<string, unknown>) => boolean>;
 
 /**
@@ -501,7 +660,7 @@ const EVENT_VALIDATORS = {
 export function isKisoEvent(value: unknown): value is Event {
 	if (typeof value !== "object" || value === null) return false;
 	const v = value as Record<string, unknown>;
-	if (typeof v.type !== "string" || typeof v.seq !== "number") return false;
+	if (typeof v.type !== "string" || !isNonNegativeInt(v.seq)) return false;
 	const validate = EVENT_VALIDATORS[v.type as Event["type"]];
 	return validate !== undefined && validate(v);
 }

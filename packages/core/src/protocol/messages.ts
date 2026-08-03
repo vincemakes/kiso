@@ -104,6 +104,15 @@ export interface ToolResultMessage {
 	readonly isError: boolean;
 	readonly source?: MessageSource;
 	readonly tags?: readonly string[];
+	/**
+	 * The seq of the `tool_result` EVENT this message was projected from —
+	 * the stable identity compaction uses to name WHICH result it replaced
+	 * (五: the callId may repeat across runs). DERIVED, never persisted: the
+	 * projection attaches it as a non-enumerable field, so it is invisible
+	 * to deep equality with seed messages and never survives a re-derive
+	 * from anywhere but the log.
+	 */
+	readonly eventSeq?: number;
 }
 
 export type Message = UserMessage | AssistantMessage | ToolResultMessage;

@@ -148,24 +148,37 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				break;
 			case "tool_result": {
 				flushAssistant();
-				out.push({
+				const message: ToolResultMessage = {
 					role: "tool",
 					callId: ev.callId,
 					content: ev.content,
 					isError: ev.isError,
 					...(ev.source !== undefined ? { source: ev.source } : {}),
 					...(ev.tags !== undefined ? { tags: ev.tags } : {}),
-				} satisfies ToolResultMessage);
+				};
+				// 五: the originating event's seq rides on the message as a
+				// NON-ENUMERABLE correlation field — the stable identity
+				// compaction uses to name WHICH result it replaced. Deep
+				// equality with seed messages (which carry no such field)
+				// still holds; a spread drops it, which is fine because the
+				// projection re-derives everything fresh from the log.
+				if ("seq" in ev && typeof ev.seq === "number") {
+					Object.defineProperty(message, "eventSeq", { value: ev.seq, enumerable: false, configurable: true });
+				}
+				out.push(message);
 				break;
 			}
 			case "compacted": {
 				flushAssistant();
 				// Apply the EXACT persisted replacements — never re-run the
-				// compaction algorithm (a future version could differ).
-				const byCallId = new Map(ev.cleared.map((c) => [c.callId, c.content]));
+				// compaction algorithm (a future version could differ). 五:
+				// keyed by the replaced tool-result EVENT's seq, so only the
+				// specific result is rewritten — never a same-callId sibling
+				// from another turn or run.
+				const byEventSeq = new Map(ev.cleared.map((c) => [c.eventSeq, c.content]));
 				const replaced = out.map((m) =>
-					m.role === "tool" && byCallId.has(m.callId)
-						? { ...m, content: byCallId.get(m.callId)! }
+					m.role === "tool" && m.eventSeq !== undefined && byEventSeq.has(m.eventSeq)
+						? { ...m, content: byEventSeq.get(m.eventSeq)! }
 						: m,
 				);
 				out.splice(0, out.length, ...replaced);

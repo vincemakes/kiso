@@ -723,6 +723,8 @@ export class Run implements AsyncIterable<Event> {
 			content: result.content,
 			isError: result.isError,
 			...(result.errorKind !== undefined ? { errorKind: result.errorKind } : {}),
+			// 五: live tags survive the resumed path too.
+			...(result.tags !== undefined ? { tags: result.tags } : {}),
 			executionId,
 		});
 		// 四: a failed NON-idempotent execution after a cross-process approval

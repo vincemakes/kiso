@@ -90,6 +90,50 @@ describe("stop reasons map to explicit terminals (never blanket completed)", () 
 		expect(terminalOf(events).outcome).toMatchObject({ kind: "error", error: { code: "invalid_request" } });
 	});
 
+	it("五: a delta AFTER the stop is a protocol error — never appended, never completed", async () => {
+		const events = await run([
+			{ events: [{ type: "stop", reason: "end_turn" }, { type: "text_delta", text: "after the stop" }] },
+		]);
+		expect(events.at(-1)).toMatchObject({
+			type: "terminal",
+			outcome: { kind: "error", error: { code: "invalid_request" } },
+		});
+		// The violating event never entered the trajectory.
+		expect(events.some((e) => e.type === "text_delta")).toBe(false);
+	});
+
+	it("五: a tool call AFTER the stop is a protocol error — the tool NEVER executes", async () => {
+		const events = await run([
+			{
+				events: [
+					{ type: "stop", reason: "end_turn" },
+					{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } },
+				],
+			},
+		]);
+		expect(events.at(-1)).toMatchObject({
+			type: "terminal",
+			outcome: { kind: "error", error: { code: "invalid_request" } },
+		});
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+	});
+
+	it("五: a usage AFTER the stop is a protocol error", async () => {
+		const events = await run([
+			{
+				events: [
+					{ type: "stop", reason: "end_turn" },
+					{ type: "usage", known: true, inputTokens: 1, outputTokens: 1, cacheRead: 0, cacheWrite: 0 },
+				],
+			},
+		]);
+		expect(events.at(-1)).toMatchObject({
+			type: "terminal",
+			outcome: { kind: "error", error: { code: "invalid_request" } },
+		});
+		expect(events.some((e) => e.type === "usage")).toBe(false);
+	});
+
 	it("a DUPLICATE stop event is an error terminal, not completed", async () => {
 		const events = await run([
 			{ events: [{ type: "stop", reason: "end_turn" }, { type: "stop", reason: "end_turn" }] },

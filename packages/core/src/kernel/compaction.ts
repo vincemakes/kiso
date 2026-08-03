@@ -71,8 +71,14 @@ export interface MicrocompactResult {
 	readonly messages: readonly Message[];
 	/** How much content (chars) was cleared this pass. */
 	readonly clearedChars: number;
-	/** Which tool results were cleared (callIds), for tracking/archive. */
-	readonly clearedCallIds: readonly string[];
+	/**
+	 * ONLY the tool results cleared THIS pass — the delta, never the
+	 * cumulative marker set (五: a replayable trajectory must not record the
+	 * same replacement on every turn). `eventSeq` is the cleared result's
+	 * stable identity (the tool_result event's seq, attached by the
+	 * projection); it is undefined for hand-built messages outside the loop.
+	 */
+	readonly cleared: readonly { readonly eventSeq?: number; readonly callId: string; readonly content: string }[];
 }
 
 export function microcompact(messages: readonly Message[]): MicrocompactResult {
@@ -81,14 +87,14 @@ export function microcompact(messages: readonly Message[]): MicrocompactResult {
 		if (messages[i]?.role === "user") userIndices.push(i);
 	}
 	if (userIndices.length <= KEEP_RECENT_TURNS) {
-		return { messages, clearedChars: 0, clearedCallIds: [] };
+		return { messages, clearedChars: 0, cleared: [] };
 	}
 
 	const recentBoundary = userIndices[userIndices.length - KEEP_RECENT_TURNS]!;
 	const nameByCallId = buildToolNameMap(messages);
 
 	let clearedChars = 0;
-	const clearedCallIds: string[] = [];
+	const cleared: { eventSeq?: number; callId: string; content: string }[] = [];
 	let changed = false;
 
 	const result = messages.map((msg, i) => {
@@ -97,8 +103,13 @@ export function microcompact(messages: readonly Message[]): MicrocompactResult {
 		if (!shouldClearContent(msg.content)) return msg; // idempotence gate
 
 		const toolName = nameByCallId.get(msg.callId) ?? "unknown";
+		const eventSeq = (msg as ToolResultMessage).eventSeq;
 		clearedChars += msg.content.length;
-		clearedCallIds.push(msg.callId);
+		cleared.push({
+			...(eventSeq !== undefined ? { eventSeq } : {}),
+			callId: msg.callId,
+			content: `${CLEARED_MARKER_PREFIX} ${toolName} returned ${msg.content.length.toLocaleString()} chars — compacted`,
+		});
 		changed = true;
 		return {
 			...msg,
@@ -109,7 +120,7 @@ export function microcompact(messages: readonly Message[]): MicrocompactResult {
 	return {
 		messages: changed ? result : messages,
 		clearedChars,
-		clearedCallIds,
+		cleared,
 	};
 }
 
