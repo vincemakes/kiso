@@ -271,6 +271,36 @@ export interface PermissionExpired {
 	readonly reason: string;
 }
 
+/**
+ * A non-idempotent execution FAILED and the run PAUSES until a human
+ * decides (C 组): no next model turn, no sibling tool, no auto-retry. The
+ * verdict is recorded by the session (resolveUncertain) and the ledger
+ * transitions uncertain → rerun/abandoned; the event itself is the durable
+ * pause marker.
+ */
+export interface UncertainPending {
+	readonly seq: number;
+	readonly type: "uncertain_pending";
+	readonly executionId: string;
+	readonly callId: string;
+	readonly name: string;
+	readonly error: string;
+}
+
+/**
+ * A user input was VETOED or REWRITTEN by the harness (C 组). `replaces`
+ * is the seq of the original user_input; the projection skips the original
+ * and, when `content` is non-null, produces the replacement instead — the
+ * rewritten fact is the ONLY fact every later turn sees. null content = a
+ * true veto (the model never receives the message).
+ */
+export interface UserInputReplaced {
+	readonly seq: number;
+	readonly type: "user_input_replaced";
+	readonly replaces: number;
+	readonly content: string | readonly import("./messages.js").ContentBlock[] | null;
+}
+
 /** Extended-thinking content. Providers without it emit nothing here. */
 export interface Thinking {
 	readonly seq: number;
@@ -387,6 +417,8 @@ export type Event =
 	| PermissionRequested
 	| PermissionDecided
 	| PermissionExpired
+	| UncertainPending
+	| UserInputReplaced
 	| TerminalEvent;
 
 /**
@@ -431,6 +463,10 @@ const EVENT_VALIDATORS = {
 	permission_decided: (v: Record<string, unknown>) =>
 		typeof v.decisionId === "string" && (v.decision === "approved" || v.decision === "denied"),
 	permission_expired: (v: Record<string, unknown>) => typeof v.decisionId === "string" && typeof v.reason === "string",
+	uncertain_pending: (v: Record<string, unknown>) =>
+		typeof v.executionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.error === "string",
+	user_input_replaced: (v: Record<string, unknown>) =>
+		typeof v.replaces === "number" && (typeof v.content === "string" || v.content === null),
 	terminal: (v: Record<string, unknown>) =>
 		typeof v.outcome === "object" && v.outcome !== null && typeof (v.outcome as { kind?: unknown }).kind === "string",
 } satisfies Record<Event["type"], (v: Record<string, unknown>) => boolean>;

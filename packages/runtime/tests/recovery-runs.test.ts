@@ -35,13 +35,13 @@ function markerTool(markerPath: string): Tool<{ query: string }> {
 const STOP: FauxScript = [{ events: [{ type: "stop", reason: "end_turn" }] }];
 // Two tool-calling turns: run 1 consumes turns 1-2, run 2 consumes 3-4.
 const CALL_TWICE: FauxScript = [
-	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
+	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "stop", reason: "end_turn" }] },
-	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
+	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "stop", reason: "end_turn" }] },
 ];
 const CALL: FauxScript = [
-	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
+	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "stop", reason: "end_turn" }] },
 ];
 

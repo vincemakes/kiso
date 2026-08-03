@@ -67,15 +67,32 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		assistantSource = undefined;
 	};
 
+	// C 组: vetoed/rewritten user inputs. Collect the replacement map
+	// first — a user_input is skipped when a later user_input_replaced
+	// supersedes it, and the replacement (non-null content) produces the
+	// only user message later turns see.
+	const replaced = new Map<number, string | readonly import("../protocol/messages.js").ContentBlock[] | null>();
+	for (const ev of events) {
+		if (ev.type === "user_input_replaced") replaced.set(ev.replaces, ev.content);
+	}
+
 	for (const ev of events) {
 		switch (ev.type) {
 			case "user_input": {
+				if ("seq" in ev && typeof ev.seq === "number" && replaced.has(ev.seq)) break; // superseded — the replacement speaks for it
 				flushAssistant();
 				out.push({
 					role: "user",
 					content: ev.content,
 					...(ev.source !== undefined ? { source: ev.source } : {}),
 				} satisfies UserMessage);
+				break;
+			}
+			case "user_input_replaced": {
+				flushAssistant();
+				if (ev.content !== null) {
+					out.push({ role: "user", content: ev.content } satisfies UserMessage);
+				}
 				break;
 			}
 			case "text_start":
@@ -137,6 +154,8 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			case "tool_execution_resolved":
 			case "permission_requested":
 			case "permission_decided":
+			case "permission_expired":
+			case "uncertain_pending":
 				flushAssistant();
 				break;
 		}

@@ -70,7 +70,7 @@ describe("execution identity (Area 3)", () => {
 		const log = new EventLog();
 		await runWithLog(
 			[
-				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
+				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			],
 			registry,
@@ -91,8 +91,8 @@ describe("execution identity (Area 3)", () => {
 		const log = new EventLog();
 		await runWithLog(
 			[
-				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
-				{ events: [{ type: "tool_call_end", callId: "c2", name: "web_search", input: { query: "k" } }] },
+				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "tool_call_end", callId: "c2", name: "web_search", input: { query: "k" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			],
 			registry,
@@ -112,8 +112,8 @@ describe("execution identity (Area 3)", () => {
 		// an id. The ledger must not conflate them.
 		await runWithLog(
 			[
-				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "a" } }] },
-				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "b" } }] },
+				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "a" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "b" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			],
 			registry,
@@ -123,7 +123,7 @@ describe("execution identity (Area 3)", () => {
 		expect(executionForCallId(log.all, "c1")?.status).toBe("succeeded");
 	});
 
-	it("a failed NON-idempotent execution is UNCERTAIN (side effects may exist)", async () => {
+	it("a failed NON-idempotent execution PAUSES as uncertain, never a clean failure (C 组)", async () => {
 		const registry = new ToolRegistry();
 		registry.register(
 			defineTool({
@@ -134,13 +134,16 @@ describe("execution identity (Area 3)", () => {
 			}),
 		);
 		const log = new EventLog();
-		await runWithLog(
-			[{ events: [{ type: "tool_call_end", callId: "c1", name: "write_file", input: { path: "x" } }] }],
+		const events = await runWithLog(
+			[{ events: [{ type: "tool_call_end", callId: "c1", name: "write_file", input: { path: "x" } }, { type: "stop", reason: "tool_use" }] }],
 			registry,
 			log,
 		);
-		const record = executionForCallId(log.all, "c1");
-		expect(record?.status).toBe("uncertain");
+		// The pause is announced…
+		expect(events.some((e) => e.type === "uncertain_pending")).toBe(true);
+		// …and without a human channel the conservative verdict is recorded:
+		// the attempt is abandoned, NEVER retried, NEVER a clean "failed".
+		expect(executionForCallId(log.all, "c1")?.status).toBe("abandoned");
 	});
 
 	it("a failed IDEMPOTENT execution is a clean failure — safe to retry", async () => {
@@ -156,7 +159,7 @@ describe("execution identity (Area 3)", () => {
 		);
 		const log = new EventLog();
 		await runWithLog(
-			[{ events: [{ type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "x" } }] }],
+			[{ events: [{ type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "x" } }, { type: "stop", reason: "tool_use" }] }],
 			registry,
 			log,
 		);
@@ -164,7 +167,7 @@ describe("execution identity (Area 3)", () => {
 		expect(record?.status).toBe("failed");
 	});
 
-	it("a throw from a non-idempotent handler is uncertain, never a clean 'no side effect'", async () => {
+	it("a throw from a non-idempotent handler pauses as uncertain, never a clean 'no side effect' (C 组)", async () => {
 		const registry = new ToolRegistry();
 		registry.register(
 			defineTool({
@@ -177,12 +180,13 @@ describe("execution identity (Area 3)", () => {
 			}),
 		);
 		const log = new EventLog();
-		await runWithLog(
-			[{ events: [{ type: "tool_call_end", callId: "c1", name: "shell", input: { command: "make" } }] }],
+		const events = await runWithLog(
+			[{ events: [{ type: "tool_call_end", callId: "c1", name: "shell", input: { command: "make" } }, { type: "stop", reason: "tool_use" }] }],
 			registry,
 			log,
 		);
-		expect(executionForCallId(log.all, "c1")?.status).toBe("uncertain");
+		expect(events.some((e) => e.type === "uncertain_pending")).toBe(true);
+		expect(executionForCallId(log.all, "c1")?.status).toBe("abandoned");
 	});
 
 	it("ledger helpers report statuses and resolutions by executionId", () => {
@@ -239,7 +243,7 @@ describe("abort boundaries (Area 4)", () => {
 		const events: Event[] = [];
 		const gen = loop({
 			adapter: createFauxProvider([
-				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
+				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
 			model: "faux",
@@ -298,7 +302,8 @@ describe("abort boundaries (Area 4)", () => {
 					events: [
 						{ type: "tool_call_end", callId: "a", name: "first", input: {} },
 						{ type: "tool_call_end", callId: "b", name: "second", input: {} },
-					],
+					
+				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
@@ -307,11 +312,15 @@ describe("abort boundaries (Area 4)", () => {
 			messages: [USER],
 			signal: ac.signal,
 		});
+		// Abort WHILE the first handler is running (after it started) — a
+		// cancel before the handler begins is caught by the C 组 gate and
+		// correctly prevents the side effect entirely.
+		setTimeout(() => ac.abort(), 10);
 		for await (const ev of gen) {
 			events.push(ev);
-			if (ev.type === "tool_execution_started") ac.abort(); // during the first tool
 		}
 		expect(order).toContain("first:start");
+		expect(order).toContain("first:end aborted=true"); // the handler SAW the signal
 		expect(order).not.toContain("second:start");
 		expect(terminalOf(events).outcome.kind).toBe("aborted");
 	});
@@ -357,7 +366,7 @@ describe("defer is a real pause (regression)", () => {
 		const events: Event[] = [];
 		for await (const ev of loop({
 			adapter: createFauxProvider([
-				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
+				{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
 			model: "faux",

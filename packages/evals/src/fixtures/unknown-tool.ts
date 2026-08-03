@@ -24,7 +24,8 @@ export const unknownTool: Fixture = {
 					name: "text_to_speech_toolkit", // the ghost: a class name, not a function
 					input: {},
 				},
-			],
+			
+				{ type: "stop", reason: "tool_use" }],
 		},
 		{ events: [{ type: "stop", reason: "end_turn" }] },
 	],

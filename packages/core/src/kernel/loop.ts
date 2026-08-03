@@ -82,6 +82,13 @@ export interface LoopConfig {
 	 * a human decides. Absent, a defer degrades to an honest denial.
 	 */
 	readonly resolveApproval?: (decisionId: string) => Promise<PermissionDecision>;
+	/**
+	 * C 组: the channel that resolves a failed NON-idempotent execution.
+	 * The loop persists `uncertain_pending`, yields it, and AWAITS the
+	 * human verdict — no next model turn, no sibling tool, no auto-retry.
+	 * Absent, the failure is recorded `abandoned` (never retried).
+	 */
+	readonly resolveUncertainty?: (executionId: string) => Promise<"rerun" | "abandoned">;
 }
 
 export const DEFAULT_MAX_TURNS = 10;
@@ -118,18 +125,30 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	const aborted = (): boolean => signal?.aborted === true;
 
 	// Assemble: the incoming user message may be rewritten or vetoed.
-	// This is a live per-run transform, not part of the projection — the log
-	// keeps the original input; session-level rewrite policy (Phase C) writes
-	// the rewritten input into the log instead.
+	// C 组: the outcome is PERSISTED as a user_input_replaced event — the
+	// projection skips the original and produces the replacement (or
+	// nothing, for a true veto), so the rewritten fact is the ONLY fact
+	// every later turn of the run sees.
 	let messages = derive();
 	if (hooks.onUserMessage && messages.length > 0) {
 		const last = messages.at(-1);
 		if (last?.role === "user") {
+			const inputEvent = [...log.all].reverse().find((e): e is Event & { type: "user_input" } => e.type === "user_input");
 			const rewritten = await hooks.onUserMessage(last, {});
-			if (rewritten !== null) {
-				messages = [...messages.slice(0, -1), rewritten];
+			if (inputEvent) {
+				log.append({
+					type: "user_input_replaced",
+					replaces: inputEvent.seq,
+					content: rewritten?.content ?? null,
+				});
+				messages = derive();
 			}
 		}
+	}
+	// A true veto leaves nothing to process — the run ends honestly.
+	if (messages.length === 0) {
+		yield await terminal({ kind: "completed" });
+		return;
 	}
 
 	let turns = 0;
@@ -257,6 +276,62 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			return;
 		}
 
+		// ── C 组: the turn is verified BEFORE any tool runs ────────────────
+		// A tool may only execute when the provider turn is well-formed:
+		// exactly one stop, whose reason is compatible with complete calls.
+		// Missing/duplicate stops, max_tokens, refusal, content_filter,
+		// pause_turn, context_window, abort, and the contradictory
+		// end_turn-with-pending-calls all terminate WITHOUT executing.
+		if (pending.length > 0) {
+			if (stopCount === 0) {
+				yield await terminal({
+					kind: "error",
+					error: { code: "invalid_request", retryable: false, message: "provider stream ended without a stop event" },
+				});
+				return;
+			}
+			if (stopCount > 1) {
+				yield await terminal({
+					kind: "error",
+					error: { code: "invalid_request", retryable: false, message: `provider emitted ${stopCount} stop events in one turn` },
+				});
+				return;
+			}
+			switch (lastStop) {
+				case "tool_use":
+				case "function_call":
+					break; // compatible with complete calls — execute
+				case "max_tokens":
+					yield await terminal({ kind: "max_tokens" });
+					return;
+				case "abort":
+					yield await terminal({ kind: "aborted", by: "user" });
+					return;
+				case "error":
+					yield await terminal({
+						kind: "error",
+						error: { code: "unknown", retryable: false, message: "provider stopped with an error" },
+					});
+					return;
+				case "refusal":
+				case "pause_turn":
+				case "content_filter":
+				case "context_window":
+				case "end_turn":
+				case "stop_sequence":
+				default:
+					yield await terminal({
+						kind: "error",
+						error: {
+							code: "invalid_request",
+							retryable: false,
+							message: `provider stopped with '${String(lastStop)}' but left ${pending.length} tool call(s) unexecuted`,
+						},
+					});
+					return;
+			}
+		}
+
 		// ── Execute: sequential, ledgered, pause-capable (Phase D) ──────────
 		// Sequential on purpose: the ledger (started → succeeded/failed) and
 		// the approval pause need deterministic, write-ahead ordering; the
@@ -282,6 +357,58 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					return;
 				}
 				throw err;
+			}
+
+			// C 组: a failed NON-idempotent execution is a persistent
+			// uncertain PAUSE — no sibling tool, no auto-retry, and the next
+			// model turn waits for the human verdict.
+			const failed = [...log.all].reverse().find(
+				(e): e is Event & { type: "tool_execution_failed" } => e.type === "tool_execution_failed" && e.callId === call.callId,
+			);
+			if (failed !== undefined && !failed.safeToRetry) {
+				// Register the human channel BEFORE announcing the pause —
+				// a consumer that answers the moment it sees the event must
+				// find the resolver already waiting (no deadlock between
+				// yield and await, mirroring the approval pause).
+				const pendingResolution =
+					config.resolveUncertainty !== undefined ? config.resolveUncertainty(failed.executionId) : undefined;
+				const pendingUncertain = log.append({
+					type: "uncertain_pending",
+					executionId: failed.executionId,
+					callId: call.callId,
+					name: call.name,
+					error: failed.error,
+				});
+				if (hooks.onEvent) await hooks.onEvent(pendingUncertain, {}).catch(() => {});
+				yield pendingUncertain;
+
+				let resolution: "rerun" | "abandoned";
+				if (pendingResolution !== undefined) {
+					try {
+						resolution = await raceAbort(pendingResolution, signal);
+					} catch (err) {
+						// The human never answered (abort): end the run; the
+						// execution stays uncertain and blocks the next resume.
+						if (err === ABORTED) {
+							yield await terminal({ kind: "aborted", by: "user" });
+							return;
+						}
+						throw err;
+					}
+				} else {
+					// No channel: record the conservative verdict — the
+					// failure is NEVER auto-retried, and the ledger stays
+					// consistent for future resumes.
+					resolution = "abandoned";
+					log.append({
+						type: "tool_execution_resolved",
+						executionId: failed.executionId,
+						callId: call.callId,
+						resolution,
+					});
+				}
+				// Either verdict ends the pending list: siblings never run.
+				break;
 			}
 		}
 
@@ -414,9 +541,12 @@ async function* executeOne(
 	// all. Checked again here, after any permission path.
 	if (signal?.aborted) throw ABORTED;
 
-	// Permission negotiation — defer is a REAL pause (Phase D).
+	// Permission negotiation — defer is a REAL pause (Phase D). C 组: the
+	// hook itself is cancelable (a slow policy query must not outlive an
+	// abort), and the signal is re-checked after it returns.
 	if (hooks.onPreTool) {
-		const decision = await hooks.onPreTool(payload, ctx);
+		const decision = await raceAbort(hooks.onPreTool(payload, ctx), signal);
+		if (signal?.aborted) throw ABORTED;
 		if (decision.action === "defer") {
 			const decisionId = `d-${log.lastSeq + 1}`;
 			// Register the resolver BEFORE announcing the pause: a consumer
@@ -471,6 +601,10 @@ async function* executeOne(
 	// (Area 3): generated from the log's next seq, so it is unique per log
 	// and survives restarts.
 	const executionId = `ex-${log.lastSeq + 1}`;
+	// C 组: the signal is re-checked immediately before the started event —
+	// an abort that landed in any permission path must not let the side
+	// effect begin.
+	if (signal?.aborted) throw ABORTED;
 	const started = log.append({
 		type: "tool_execution_started",
 		executionId,
@@ -482,7 +616,12 @@ async function* executeOne(
 
 	let result: ToolResult;
 	try {
-		result = await tool.execute(call.input, ctx);
+		// C 组: re-checked again right before the handler — the handler also
+		// observes ctx.signal, but the gate itself must not invoke it after
+		// a cancel.
+		result = signal?.aborted
+			? { content: "aborted before execution", isError: true, errorKind: "fatal" }
+			: await tool.execute(call.input, ctx);
 	} catch (err) {
 		result = {
 			content: err instanceof Error ? err.message : String(err),
@@ -523,26 +662,27 @@ async function* executeOne(
 const ABORTED = Symbol("kiso-aborted-during-approval");
 
 /**
- * Wait for the approval decision, but WAKE on abort (Area 4): a cancel
- * during the human's wait must end the run, not leave the iterator hung.
- * Throws ABORTED; the loop converts it to an `aborted` terminal.
+ * Wait for a human decision (approval or uncertain verdict), but WAKE on
+ * abort (Area 4 / C 组): a cancel during the wait must end the run, not
+ * leave the iterator hung. Throws ABORTED; the loop converts it to an
+ * `aborted` terminal.
  */
-async function raceAbort(
-	pendingDecision: Promise<PermissionDecision>,
+async function raceAbort<T>(
+	pendingDecision: Promise<T>,
 	signal: AbortSignalLike | undefined,
-): Promise<PermissionDecision> {
+): Promise<T> {
 	if (signal === undefined) return pendingDecision;
 	if (signal.aborted) throw ABORTED;
-	return new Promise<PermissionDecision>((resolve, reject) => {
+	return new Promise<T>((resolve, reject) => {
 		const onAbort = (): void => {
 			signal.removeEventListener("abort", onAbort);
 			reject(ABORTED);
 		};
 		signal.addEventListener("abort", onAbort, { once: true });
 		pendingDecision.then(
-			(decision) => {
+			(value) => {
 				signal.removeEventListener("abort", onAbort);
-				resolve(decision);
+				resolve(value);
 			},
 			(err) => {
 				signal.removeEventListener("abort", onAbort);

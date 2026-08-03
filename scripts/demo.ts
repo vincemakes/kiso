@@ -49,7 +49,8 @@ function makeAdapter() {
 				{ type: "text_start" },
 				{ type: "text_delta", text: "I'm the faux model. Try asking me to add: " },
 				{ type: "tool_call_end", callId: "c1", name: "add", input: { a: 2, b: 3 } },
-			],
+			
+				{ type: "stop", reason: "tool_use" }],
 		},
 		{ events: [{ type: "stop", reason: "end_turn" }] },
 		{

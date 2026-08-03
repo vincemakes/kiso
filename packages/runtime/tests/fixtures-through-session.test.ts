@@ -69,6 +69,10 @@ describe("incident fixtures on the real session runtime", () => {
 			const run = session.run("fixture", abort !== undefined ? { signal: abort.signal } : undefined);
 			for await (const ev of run) {
 				events.push(ev);
+				if (ev.type === "uncertain_pending") {
+					// The human decides: the interrupted attempt did not apply.
+					session.resolveUncertain(ev.executionId, "abandoned");
+				}
 				if (abort !== undefined && events.length === wiring.abortAfter) {
 					// The user-abort fixture's signal is flipped mid-run,
 					// mirroring a user hitting stop.
@@ -92,7 +96,10 @@ describe("incident fixtures on the real session runtime", () => {
 
 			// The trajectory is durable: reload and replay equals it.
 			const reloaded = await agent.session({ id: fixture.name });
-			expect(reloaded.log.all.map((e) => e.type)).toEqual(events.map((e) => e.type));
+			// The reloaded log equals the SESSION's own log — the durable truth,
+			// which includes session-appended records (resolutions) that are
+			// not consumer-visible yields.
+			expect(reloaded.log.all.map((e) => e.type)).toEqual(session.log.all.map((e) => e.type));
 		});
 	}
 });

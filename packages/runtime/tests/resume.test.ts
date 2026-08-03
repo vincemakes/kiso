@@ -31,7 +31,7 @@ function markerTool(markerPath: string): Tool<{ query: string }> {
 const STOP_SCRIPT: FauxScript = [{ events: [{ type: "stop", reason: "end_turn" }] }];
 
 const SCRIPT: FauxScript = [
-	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
+	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "stop", reason: "end_turn" }] },
 ];
 

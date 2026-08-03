@@ -95,7 +95,8 @@ function fauxScript(): FauxScript {
 				{ type: "text_start" },
 				{ type: "text_delta", text: "I'm the faux model. Let me look at the working directory." },
 				{ type: "tool_call_end", callId: "c1", name: "list_dir", input: {} },
-			],
+			
+				{ type: "stop", reason: "tool_use" }],
 		},
 		{
 			events: [
@@ -139,6 +140,13 @@ async function consumeRun(
 	rl: ReturnType<typeof createInterface>,
 ): Promise<void> {
 	for await (const ev of run) {
+		if (ev.type === "uncertain_pending") {
+			// C 组: a failed non-idempotent execution pauses for a verdict.
+			console.log(`\n⚠ ${ev.name} FAILED — the side effect may have applied.\n  ${ev.error}\n`);
+			const answer = await ask(rl, `did it apply? (r)erun / (a)bandon: `);
+			session.resolveUncertain(ev.executionId, answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned");
+			continue;
+		}
 		const rendered = renderEvent(ev);
 		if (rendered.prompt) {
 			process.stdout.write(rendered.text);

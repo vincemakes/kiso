@@ -76,6 +76,12 @@ export function renderEvent(ev: Event): RenderResult {
 		}
 		case "compacted":
 			return { text: `${DIM}  [compacted ${ev.cleared.length} results]${RESET}\n`, newline: true, prompt: false };
+		case "uncertain_pending":
+			return {
+				text: `${RED}⚠ ${ev.name} failed (${ev.executionId}): ${ev.error.slice(0, 160)}${RESET}\n`,
+				newline: true,
+				prompt: false,
+			};
 		default:
 			return { text: "", newline: false, prompt: false };
 	}

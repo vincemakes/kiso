@@ -13,7 +13,7 @@ import { defineTool, type Event } from "@kiso/core";
 import { createAgent, SessionStore } from "../src/index.js";
 
 const SEARCH_SCRIPT: FauxScript = [
-	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }] },
+	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "stop", reason: "end_turn" }] },
 ];
 

@@ -105,7 +105,8 @@ describe("stop reasons map to explicit terminals (never blanket completed)", () 
 				events: [
 					{ type: "text_delta", text: "working" },
 					{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "x" } },
-				],
+				
+				{ type: "stop", reason: "tool_use" }],
 			},
 		];
 		const gen = loop({

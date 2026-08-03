@@ -103,7 +103,8 @@ describe("a real run's trajectory is its own truth", () => {
 				events: [
 					{ type: "text_delta", text: "searching" },
 					{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } },
-				],
+				
+				{ type: "stop", reason: "tool_use" }],
 			},
 			{ events: [{ type: "stop", reason: "end_turn" }] },
 		]);
@@ -161,7 +162,7 @@ describe("a real run's trajectory is its own truth", () => {
 
 		for await (const _ev of loop({
 			adapter: createFauxProvider([
-				{ events: [{ type: "tool_call_end", callId: "c99", name: "web_search", input: { query: "go" } }] },
+				{ events: [{ type: "tool_call_end", callId: "c99", name: "web_search", input: { query: "go" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
 			model: "faux",

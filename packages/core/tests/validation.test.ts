@@ -37,7 +37,8 @@ describe("JSON Schema validation at the execution gate", () => {
 				{
 					events: [
 						{ type: "tool_call_end", callId: "c1", name: "add", input: { a: "not a number", b: 2 } },
-					],
+					
+				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
@@ -75,7 +76,7 @@ describe("JSON Schema validation at the execution gate", () => {
 		const events: Event[] = [];
 		for await (const ev of loop({
 			adapter: createFauxProvider([
-				{ events: [{ type: "tool_call_end", callId: "c1", name: "add", input: {} }] },
+				{ events: [{ type: "tool_call_end", callId: "c1", name: "add", input: {} }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
 			model: "faux",
@@ -109,7 +110,7 @@ describe("JSON Schema validation at the execution gate", () => {
 		const events: Event[] = [];
 		for await (const ev of loop({
 			adapter: createFauxProvider([
-				{ events: [{ type: "tool_call_end", callId: "c1", name: "add", input: { a: 5 } }] },
+				{ events: [{ type: "tool_call_end", callId: "c1", name: "add", input: { a: 5 } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
 			model: "faux",

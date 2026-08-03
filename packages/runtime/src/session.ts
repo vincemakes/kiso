@@ -69,6 +69,7 @@ export class AgentSession {
 	readonly #adapter: Adapter;
 	readonly #config: SessionConfig;
 	readonly #pendingResolvers = new Map<string, (decision: PermissionDecision) => void>();
+	readonly #uncertaintyResolvers = new Map<string, (resolution: "rerun" | "abandoned") => void>();
 	readonly #answered = new Set<string>();
 
 	readonly #activeRuns = new Set<Run>();
@@ -241,6 +242,20 @@ export class AgentSession {
 			});
 			this.#store.append(this.id, "resolution", result);
 		}
+		// C 组: wake a LIVE paused run waiting on this verdict.
+		const resolver = this.#uncertaintyResolvers.get(executionId);
+		if (resolver !== undefined) {
+			this.#uncertaintyResolvers.delete(executionId);
+			resolver(resolution);
+		}
+	}
+
+	registerUncertaintyResolver(executionId: string, resolve: (resolution: "rerun" | "abandoned") => void): void {
+		this.#uncertaintyResolvers.set(executionId, resolve);
+	}
+
+	dropUncertaintyResolver(executionId: string): void {
+		this.#uncertaintyResolvers.delete(executionId);
 	}
 
 	// ── internal: the resolver registry ──────────────────────────────────
@@ -282,6 +297,7 @@ export class Run implements AsyncIterable<Event> {
 	readonly #abort = new AbortController();
 	readonly #externalSignal: AbortSignalLike | undefined;
 	readonly #decisionIds: string[] = [];
+	readonly #uncertaintyIds: string[] = [];
 	#started = false;
 
 	constructor(
@@ -337,6 +353,11 @@ export class Run implements AsyncIterable<Event> {
 						new Promise<PermissionDecision>((resolve) => {
 							this.#decisionIds.push(decisionId);
 							this.#session.registerResolver(decisionId, resolve);
+						}),
+					resolveUncertainty: (executionId: string) =>
+						new Promise<"rerun" | "abandoned">((resolve) => {
+							this.#uncertaintyIds.push(executionId);
+							this.#session.registerUncertaintyResolver(executionId, resolve);
 						}),
 				}) satisfies Parameters<typeof loop>[0];
 
@@ -443,6 +464,9 @@ export class Run implements AsyncIterable<Event> {
 			// still durable.
 			for (const decisionId of this.#decisionIds) {
 				this.#session.dropResolver(decisionId);
+			}
+			for (const executionId of this.#uncertaintyIds) {
+				this.#session.dropUncertaintyResolver(executionId);
 			}
 			this.#session.endRun(this);
 		}

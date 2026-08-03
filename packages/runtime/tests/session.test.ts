@@ -62,7 +62,8 @@ describe("AgentSession durability", () => {
 				events: [
 					{ type: "text_delta", text: "looking" },
 					{ type: "tool_call_end", callId: "c1", name: "add", input: { a: 2, b: 3 } },
-				],
+				
+				{ type: "stop", reason: "tool_use" }],
 			},
 			{ events: [{ type: "stop", reason: "end_turn" }] },
 		];
