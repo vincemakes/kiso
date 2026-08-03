@@ -1,7 +1,7 @@
 {
   "name": "@kiso/provider-anthropic",
-  "version": "0.0.0",
-  "description": "kiso Anthropic adapter — official SDK wire events mapped to the kiso event union.",
+  "version": "0.1.0",
+  "description": "kiso Anthropic adapter \u2014 official SDK wire events mapped to the kiso event union.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -22,11 +22,20 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
-    "@kiso/core": "0.0.0"
+    "@kiso/core": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vincemakes/kiso.git",
+    "directory": "packages/provider-anthropic"
+  },
+  "bugs": {
+    "url": "https://github.com/vincemakes/kiso/issues"
+  },
+  "homepage": "https://github.com/vincemakes/kiso/tree/main/packages/provider-anthropic#readme"
 }

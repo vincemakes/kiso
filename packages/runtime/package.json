@@ -1,7 +1,7 @@
 {
   "name": "@kiso/runtime",
-  "version": "0.0.0",
-  "description": "kiso runtime — durable multi-turn agent sessions: AgentDefinition, AgentRuntime, AgentSession, Run, append-only JSONL store.",
+  "version": "0.1.0",
+  "description": "kiso runtime \u2014 durable multi-turn agent sessions: AgentDefinition, AgentRuntime, AgentSession, Run, append-only JSONL store.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -21,11 +21,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kiso/core": "0.0.0"
+    "@kiso/core": "0.1.0"
   },
   "peerDependencies": {
-    "@kiso/provider-anthropic": "0.0.0",
-    "@kiso/provider-openai": "0.0.0"
+    "@kiso/provider-anthropic": "0.1.0",
+    "@kiso/provider-openai": "0.1.0"
   },
   "peerDependenciesMeta": {
     "@kiso/provider-anthropic": {
@@ -36,9 +36,18 @@
     }
   },
   "devDependencies": {
-    "@kiso/evals": "0.0.0",
+    "@kiso/evals": "0.1.0",
     "@types/node": "^26.1.2",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vincemakes/kiso.git",
+    "directory": "packages/runtime"
+  },
+  "bugs": {
+    "url": "https://github.com/vincemakes/kiso/issues"
+  },
+  "homepage": "https://github.com/vincemakes/kiso/tree/main/packages/runtime#readme"
 }

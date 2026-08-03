@@ -1,7 +1,7 @@
 {
   "name": "@kiso/tools-node",
-  "version": "0.0.0",
-  "description": "kiso coding tools for Node hosts — read file, list directory, search text, write/edit file, shell command.",
+  "version": "0.1.0",
+  "description": "kiso coding tools for Node hosts \u2014 read file, list directory, search text, write/edit file, shell command.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -21,11 +21,20 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kiso/core": "0.0.0"
+    "@kiso/core": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vincemakes/kiso.git",
+    "directory": "packages/tools-node"
+  },
+  "bugs": {
+    "url": "https://github.com/vincemakes/kiso/issues"
+  },
+  "homepage": "https://github.com/vincemakes/kiso/tree/main/packages/tools-node#readme"
 }
