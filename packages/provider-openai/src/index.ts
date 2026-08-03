@@ -24,10 +24,19 @@ import { mapApiError } from "@kiso/core";
 
 interface PendingToolCall {
 	readonly index: number;
+	/**
+	 * 六: the call's id is only adopted once the provider actually sent it.
+	 * The fallback (`call_<index>`) is reserved for calls whose id NEVER
+	 * arrives — then no start/delta was ever emitted under that name, so the
+	 * identity stays consistent from start to end.
+	 */
 	id: string;
 	name: string;
 	json: string;
 	emittedStart: boolean;
+	/** Argument deltas that arrived BEFORE the id: buffered, flushed under
+	 *  the REAL id once it arrives (identity consistency, 六). */
+	pendingDeltas: string[];
 }
 
 export function createOpenAICompatAdapter(client: OpenAI): Adapter {
@@ -81,13 +90,15 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 					for (const tc of delta?.tool_calls ?? []) {
 						const buffered = pending.get(tc.index);
 						if (!buffered) {
-							const id = tc.id ?? `call_${tc.index}`;
+							// 六: no fallback id is adopted yet — the id must
+							// arrive from the provider to become the identity.
 							pending.set(tc.index, {
 								index: tc.index,
-								id,
+								id: "",
 								name: tc.function?.name ?? "",
 								json: "",
 								emittedStart: false,
+								pendingDeltas: [],
 							});
 						}
 						const call = pending.get(tc.index)!;
@@ -95,36 +106,62 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 						// delta; update on every delta so tool_call_end never
 						// carries an empty name (review finding 10).
 						if (tc.function?.name) call.name = tc.function.name;
-						if (tc.id) call.id = tc.id;
-						if (!call.emittedStart) {
-							call.emittedStart = true;
-							yield {
-								seq: 0,
-								type: "tool_call_start",
-								callId: call.id,
-								name: call.name,
-							};
+						if (tc.id) {
+							call.id = tc.id;
+							// The identity is now known: emit the start, then
+							// flush the argument deltas that arrived before it
+							// under the SAME id (六: start → delta → end all
+							// share one identity, never the fallback).
+							if (!call.emittedStart) {
+								call.emittedStart = true;
+								yield {
+									seq: 0,
+									type: "tool_call_start",
+									callId: call.id,
+									name: call.name,
+								};
+								for (const d of call.pendingDeltas) {
+									yield {
+										seq: 0,
+										type: "tool_call_input_delta",
+										callId: call.id,
+										inputJsonDelta: d,
+									};
+								}
+								call.pendingDeltas = [];
+							}
 						}
 						if (tc.function?.arguments) {
 							call.json += tc.function.arguments;
-							yield {
-								seq: 0,
-								type: "tool_call_input_delta",
-								callId: call.id,
-								inputJsonDelta: tc.function.arguments,
-							};
+							if (call.emittedStart) {
+								yield {
+									seq: 0,
+									type: "tool_call_input_delta",
+									callId: call.id,
+									inputJsonDelta: tc.function.arguments,
+								};
+							} else {
+								call.pendingDeltas.push(tc.function.arguments);
+							}
 						}
 					}
 
 					if (chunk.usage) {
 						usageSent = true;
+						// 六: REAL cached-token data is read from the provider's
+						// prompt_tokens_details — an absent value is null, NEVER
+						// faked as a zero-cache turn. OpenAI does not report a
+						// cache write; null is the honest answer.
+						const details = (chunk.usage as {
+							prompt_tokens_details?: { cached_tokens?: number };
+						}).prompt_tokens_details;
 						yield {
 							seq: 0,
 							type: "usage",
 							inputTokens: chunk.usage.prompt_tokens ?? null,
 							outputTokens: chunk.usage.completion_tokens ?? null,
-							cacheRead: 0,
-							cacheWrite: 0,
+							cacheRead: details?.cached_tokens ?? null,
+							cacheWrite: null,
 							known: true,
 						};
 					}
@@ -147,7 +184,16 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 				} catch {
 					input = null; // never a silent repair
 				}
-				yield { seq: 0, type: "tool_call_end", callId: call.id, name: call.name, input };
+				// 六: a call whose id NEVER arrived adopts the index fallback
+				// here — no start/delta was emitted under any other identity,
+				// so this end is the call's first and only identity.
+				yield {
+					seq: 0,
+					type: "tool_call_end",
+					callId: call.id || `call_${call.index}`,
+					name: call.name,
+					input,
+				};
 			}
 
 			if (!usageSent) {
@@ -204,9 +250,33 @@ function toOpenAIContent(
 			? ({ type: "text", text: block.text } as const)
 			: ({
 					type: "image_url",
-					image_url: { url: block.url ?? "" },
+					// 六: a base64 block becomes a REAL data URL —
+					// `data:<media>;base64,<data>` — never an empty string URL.
+					// URL-sourced blocks pass the provider URL through.
+					image_url: {
+						url:
+							block.sourceType === "base64"
+								? `data:${block.mediaType ?? "image/png"};base64,${block.data ?? ""}`
+								: (block.url ?? ""),
+					},
 				} as const),
 	);
+}
+
+/**
+ * 六: OpenAI tool results accept TEXT ONLY — an image block is converted to
+ * an explicit, honest text note (what kind of image was omitted and why),
+ * never silently dropped.
+ */
+function toOpenAIToolResultContent(content: string | readonly ContentBlock[]): string {
+	if (typeof content === "string") return content;
+	return content
+		.map((b) =>
+			b.type === "text"
+				? b.text
+				: `[image omitted — OpenAI tool results accept text only: ${b.sourceType === "base64" ? `${b.mediaType ?? "image"} (${b.data?.length ?? 0} base64 chars)` : `url ${b.url ?? ""}`}]`,
+		)
+		.join("");
 }
 
 function toOpenAIMessages(
@@ -239,18 +309,13 @@ function toOpenAIMessages(
 					}),
 			});
 		} else {
-			// tool messages accept text only — images fall back to their
-			// text representation (or are dropped).
+			// tool messages accept text only — images are converted to an
+			// EXPLICIT text note (toOpenAIToolResultContent), never dropped
+			// (六).
 			out.push({
 				role: "tool",
 				tool_call_id: msg.callId,
-				content:
-					typeof msg.content === "string"
-						? msg.content
-						: msg.content
-								.filter((b) => b.type === "text")
-								.map((b) => (b as { text: string }).text)
-								.join(""),
+				content: toOpenAIToolResultContent(msg.content),
 			});
 		}
 	}

@@ -137,6 +137,22 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 							};
 							break;
 						case "message_stop":
+							// 六: EVERY stop path emits a usage first — even a
+							// degenerate message_stop with no delta gets an
+							// HONEST unknown (nulls, known:false), never a
+							// missing or faked cost. The ADR-0003 invariant
+							// "usage precedes stop" holds structurally.
+							if (!usageSeen) {
+								yield {
+									seq: 0,
+									type: "usage",
+									inputTokens: null,
+									outputTokens: null,
+									cacheRead: null,
+									cacheWrite: null,
+									known: false,
+								};
+							}
 							// D3: a message_stop with NO delta means the
 							// provider never reported a stop reason — that is
 							// an error, never a default end_turn.
