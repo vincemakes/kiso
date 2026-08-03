@@ -102,15 +102,20 @@ export class AgentSession {
 	}
 
 	/** Write-ahead through the store; a rejected write POISONS the session
-	 *  (一): the in-memory log no longer matches the disk, so no further run
-	 *  may proceed. */
+	 *  (一/第四轮): the in-memory log no longer matches the disk — whatever
+	 *  the cause (stale handle, corruption, a live external writer, an I/O
+	 *  fault) — so no further run, resume, or log mutation may proceed.
+	 *  The health check runs BEFORE every write, on every path. */
 	persist(runId: string, event: Event): void {
+		this.ensureHealthy();
 		try {
 			this.#store.append(this.id, runId, event);
 		} catch (err) {
-			if (err instanceof StaleWriterError || (err as Error).name === "StoreCorruptionError") {
-				this.poison((err as Error).message);
-			}
+			// 第四轮: ANY rejected write poisons — not only the typed
+			// stale/corruption errors. A live external writer's lock error
+			// is the realistic case; the in-memory log is ahead of the disk
+			// in all of them.
+			this.poison((err as Error).message);
 			throw err;
 		}
 	}
@@ -199,6 +204,9 @@ export class AgentSession {
 	 * lost decision only re-presents the request.
 	 */
 	approve(decisionId: string, allow: boolean): void {
+		// 第四轮: a poisoned session may not mutate the log — checked before
+		// anything is recorded.
+		this.ensureHealthy();
 		// Idempotent: one decision per request (review finding 7). The
 		// in-memory answered-set covers the same-tick double answer — the
 		// loop writes the durable record asynchronously after the resolver
@@ -252,6 +260,8 @@ export class AgentSession {
 	 * rejected by real providers (review finding 1).
 	 */
 	resolveUncertain(executionId: string, resolution: "rerun" | "abandoned"): void {
+		// 第四轮: a poisoned session may not mutate the log.
+		this.ensureHealthy();
 		const record = executionLedger(this.log.all).get(executionId);
 		if (!record) throw new Error(`no execution record for ${executionId}`);
 		if (record.status !== "uncertain") return; // idempotent + irreversible
@@ -387,6 +397,10 @@ export class Run implements AsyncIterable<Event> {
 		// run at ANY yield (even the user_input one) must release the
 		// session's single-run slot and its approval resolvers.
 		try {
+			// 第四轮: health is re-checked when the iterator ACTUALLY starts —
+			// a run constructed before the session was poisoned must fail
+			// here, before any log or disk mutation.
+			this.#session.ensureHealthy();
 			this.#session.beginRun(this);
 			const log = this.#session.log;
 			const signal = this.#externalSignal ? new MergedSignal(this.#abort.signal, this.#externalSignal) : this.#abort.signal;
