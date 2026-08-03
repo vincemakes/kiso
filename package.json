@@ -7,8 +7,8 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build -w @kiso/core && npm run build -w @kiso/evals && npm run build -w @kiso/runtime && npm run build -w @kiso/tools-node && npm run build -w @kiso/provider-anthropic && npm run build -w @kiso/provider-openai && npm run build -w @kiso/cli",
-    "typecheck": "tsc -p tsconfig.json && npm run typecheck -w @kiso/core && npm run typecheck -w @kiso/evals && npm run typecheck -w @kiso/runtime && npm run typecheck -w @kiso/tools-node && npm run typecheck -w @kiso/provider-anthropic && npm run typecheck -w @kiso/provider-openai && npm run typecheck -w @kiso/cli",
+    "build": "npm run build -w @kiso/core && npm run build -w @kiso/evals && npm run build -w @kiso/provider-anthropic && npm run build -w @kiso/provider-openai && npm run build -w @kiso/runtime && npm run build -w @kiso/tools-node && npm run build -w @kiso/cli",
+    "typecheck": "tsc -p tsconfig.json && npm run typecheck -w @kiso/core && npm run typecheck -w @kiso/evals && npm run typecheck -w @kiso/provider-anthropic && npm run typecheck -w @kiso/provider-openai && npm run typecheck -w @kiso/runtime && npm run typecheck -w @kiso/tools-node && npm run typecheck -w @kiso/cli",
     "test": "vitest run",
     "size": "node scripts/check-size.mjs",
     "pack:check": "node scripts/pack-check.mjs",
