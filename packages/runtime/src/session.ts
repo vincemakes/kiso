@@ -334,8 +334,10 @@ export class Run implements AsyncIterable<Event> {
 					yield ev;
 				}
 				// 2. Continuation: drive the original run to its terminal —
-				//    only if it never reached one.
-				if (!log.all.some((e) => e.type === "terminal")) {
+				//    only when there IS a trajectory (the log has events) and
+				//    it never reached one. An empty log is a fresh session:
+				//    resume() yields nothing and never invents a turn.
+				if (log.all.length > 0 && !log.all.some((e) => e.type === "terminal")) {
 					for await (const ev of runLoop()) yield ev;
 				}
 				return;
@@ -419,8 +421,10 @@ export class Run implements AsyncIterable<Event> {
 
 		// Receipt repair: an execution that reached a terminal state but
 		// whose model-facing result never landed is completed FROM THE
-		// RECEIPT — never re-executed.
-		for (const ev of log.all) {
+		// RECEIPT — never re-executed. Snapshot the log first: this phase
+		// appends the repaired results, and iterating a growing array would
+		// re-visit them.
+		for (const ev of [...log.all]) {
 			if (ev.type !== "tool_execution_succeeded" && ev.type !== "tool_execution_failed") continue;
 			const hasResult = log.all.some((e) => e.type === "tool_result" && e.callId === ev.callId);
 			if (hasResult) continue;

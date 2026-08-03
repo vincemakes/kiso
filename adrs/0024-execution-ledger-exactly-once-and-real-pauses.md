@@ -1,6 +1,8 @@
 # ADR-0024: The execution ledger, exactly-once recovery, and real approval pauses
 
-- **Status:** Accepted
+- **Status:** Accepted; decision #2 (the (name, input) dedup guard) is
+  SUPERSEDED by ADR-0025 (executionId identity) — see 0025 for the current
+  exactly-once mechanism
 - **Date:** 2026-08-03
 - **Layer:** L2 Kernel / L3 Tool / runtime
 

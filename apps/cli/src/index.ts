@@ -177,7 +177,11 @@ async function chat(session: AgentSession): Promise<void> {
 		}
 	});
 
+	// Recovery first: a session with a dangling pause or uncertain
+	// executions must resolve them BEFORE the REPL accepts new turns —
+	// otherwise the interrupted run dangles while a new one starts.
 	await resolveUncertains(session, rl);
+	await consumeRun(session, session.resume(), rl);
 	const prompt = (): void => {
 		rl.question("you> ", async (line) => {
 			if (line.trim().toLowerCase() === "exit" || line.trim() === "") {

@@ -126,26 +126,38 @@ kiso sessions                  list durable sessions
 
 ## Status
 
-**Reliable Session Alpha is done** (see
-`docs/plans/2026-08-03-reliable-session-alpha.md`):
+Reliable Session Alpha, including the failure-path hardening round, is
+complete (see `docs/plans/2026-08-03-reliable-session-alpha.md`):
 
-- **core** — protocol, loop (single honest terminal, retry only before
-  anything streamed, abort checks), 9 hooks, ModeProfile, permissions,
-  microcompact, delivery truth, the event-log projection (messages are a
-  pure function of the log, ADR-0002) and the execution ledger
-  (exactly-once, ADR-0024).
-- **runtime** — `createAgent` / durable multi-turn sessions / write-ahead
-  JSONL store / cross-process resume / real approval pauses / uncertain
-  side-effect resolution.
-- **cli** — `kiso chat|resume|sessions` with coding tools, approvals, faux
-  + real provider modes (above).
+- **core** (1,264/2,000 lines) — protocol, loop (single honest terminal;
+  missing/duplicate stops and tool_use-without-a-call are structured
+  errors; retry only before anything streamed; one abort signal reaches
+  backoff, approval waits, every pending tool, and the SDK), hooks,
+  ModeProfile, permissions, microcompact, delivery truth, the lossless
+  event-log projection (messages are a pure function of the log,
+  ADR-0002), and the execution ledger keyed by framework `executionId`
+  (ADR-0025): a failed non-idempotent execution is UNCERTAIN until a
+  human decides — a confirmed success is never re-run, a new logical call
+  always runs.
+- **runtime** — `createAgent` / durable multi-turn sessions / crash-safe
+  JSONL store (torn-tail repair under a cross-process writer lock, strict
+  load, contiguous-seq validation) / `session.resume()` continues the
+  INTERRUPTED run across processes: durable approvals are applied (the
+  original call executes once, denials write their result), missing
+  receipts are filled, and the original run completes — no invented turns.
+- **cli** — `kiso chat|resume|sessions`; resume is the recovery flow
+  (uncertain executions are decided rerun/abandon, approvals pause and
+  ask); coding tools are bound to the workspace root (absolute paths,
+  `..`, and symlink escapes are refused); the approval prompt shows the
+  full shell command and full paths.
 - **workspace** — publishable monorepo (core, evals, runtime, tools-node,
-  provider-anthropic, provider-openai, cli), ESM + d.ts, consumer smoke.
+  provider-anthropic, provider-openai, cli), ESM + d.ts, synchronized
+  internal versions; CI is clean-checkout `npm ci` + the full gate.
 
-`npm run check` = build → typecheck (all packages incl. tests) → tests →
-size gate (core only) → pack gate → consumer smoke (clean project installs
-the tarballs, runs a session, an approval pause, and the README example).
-106 tests green. 9 ADRs. 6 incident fixtures running on the real runtime.
+`npm run check` = build → typecheck (packages + root scripts + tests) →
+tests → size gate (core only) → pack gate → three isolated consumer smoke
+tiers (runtime / providers / CLI) → demo start-and-exit gate. 144 tests
+green. 11 ADRs. 6 incident fixtures running on the real runtime.
 
 ## Why another one
 

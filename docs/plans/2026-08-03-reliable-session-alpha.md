@@ -157,6 +157,35 @@ full check, one commit, then continue automatically.
 - the README example executes successfully in a clean environment;
 - git workspace clean.
 
+## 6a. Hardening round (2026-08-03, Areas 1-7 — all delivered)
+
+The first pass met the acceptance but not the failure paths. The hardening
+round made the claims true under adversarial conditions; see ADR-0025 for
+the decision record:
+
+- **Storage** (Area 1): torn-tail repair under the writer lock, strict
+  load (mid-file corruption / invalid records / seq gaps throw), O_EXCL
+  cross-process single-writer locks, one active run per session, EventLog
+  seq validation, fd/lock/dir lifecycle.
+- **Cross-process continuation** (Area 2): `session.resume()` is a durable
+  state machine — approvals are applied (the ORIGINAL call executes once,
+  denials write their result), receipts are filled, and the original run
+  completes; the CLI uses resume, never a fake new prompt.
+- **Execution identity** (Area 3): framework `executionId` replaces the
+  (name, input) guard; non-idempotent failures are uncertain until a human
+  decides (rerun/abandon); only safe-to-retry tools get clean failures.
+- **Abort** (Area 4): one signal reaches backoff, approval waits, every
+  pending tool, and the SDK; shell kills its process tree.
+- **Workspace safety** (Area 5): tools bound to a canonical workspaceRoot;
+  absolute paths, `..`, and symlink escapes are refused; approval UI shows
+  security-critical parameters in full.
+- **Honest terminals** (Area 6): lossless projection; missing/duplicate
+  stops and tool_use-without-a-call are error terminals; provider stop
+  reasons map exhaustively; usage is never faked.
+- **CLI/CI/release** (Area 7): resume argv fixed; demo has real multi-turn
+  context; CI is clean-checkout `npm ci` + full check; three isolated
+  consumer smoke tiers; the CLI is publishable.
+
 ## 7. Boundaries (this round)
 
 No npm publish, no tag, no push. No oohki/uooki/mauri/pi/CC changes (read-only
