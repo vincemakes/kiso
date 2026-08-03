@@ -121,7 +121,9 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 
 	it("五: validates compacted.cleared elements and the seq itself", () => {
 		expect(isKisoEvent({ seq: 0, type: "compacted", cleared: [{ eventSeq: 3, callId: "c1", content: "m" }] })).toBe(true);
-		expect(isKisoEvent({ seq: 0, type: "compacted", cleared: [{ callId: "c1", content: "m" }] })).toBe(false); // eventSeq required
+		// 第四轮: a v1 entry WITHOUT eventSeq is legal (round-three sessions)
+		// — but it must still be a string callId/content pair.
+		expect(isKisoEvent({ seq: 0, type: "compacted", cleared: [{ callId: "c1", content: "m" }] })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "compacted", cleared: [{ eventSeq: "3", callId: "c1", content: "m" }] })).toBe(false);
 		expect(isKisoEvent({ seq: 0, type: "compacted", cleared: [{ eventSeq: 3, content: "m" }] })).toBe(false); // callId required
 		expect(isKisoEvent({ seq: 0.5, type: "stop", reason: "end_turn" })).toBe(false); // seq must be an integer

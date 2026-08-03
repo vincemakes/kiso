@@ -184,21 +184,27 @@ export interface UserInputEvent {
 
 /**
  * Compaction happened at this point in the trajectory. The EXACT
- * replacements are persisted (eventSeq → the replacement content); the
- * projection applies them verbatim — it never re-runs a future version of
- * the compaction algorithm (A 组/D 组). The replay therefore equals the
- * live run byte for byte, independent of algorithm drift.
+ * replacements are persisted; the projection applies them verbatim — it
+ * never re-runs a future version of the compaction algorithm (A 组/D 组).
+ * The replay therefore equals the live run byte for byte, independent of
+ * algorithm drift.
  *
  * 五: `eventSeq` is the STABLE identity — the seq of the specific
  * `tool_result` event that was replaced. The provider callId may repeat
  * across runs and is correlation-only; `callId` is kept for traceability.
  * Only THIS turn's NEWLY cleared results are listed, never a cumulative
  * set of already-cleared markers (五).
+ *
+ * 第四轮: `eventSeq` is OPTIONAL because sessions written by round three
+ * (v1) carry `{callId, content}` entries without it. Those are legal and
+ * replay with v1 semantics (replace every tool result with that callId,
+ * exactly as the old framework did); records written from now on always
+ * carry the eventSeq and replace exactly one result.
  */
 export interface CompactedEvent {
 	readonly seq: number;
 	readonly type: "compacted";
-	readonly cleared: readonly { readonly eventSeq: number; readonly callId: string; readonly content: string }[];
+	readonly cleared: readonly { readonly eventSeq?: number; readonly callId: string; readonly content: string }[];
 }
 
 /**
@@ -610,7 +616,10 @@ const EVENT_VALIDATORS = {
 		v.cleared.every(
 			(c) =>
 				isPlainObject(c) &&
-				isNonNegativeInt(c.eventSeq) &&
+				// 第四轮: eventSeq is optional — v1 (round three) entries are
+				// {callId, content} and remain legal; v2 entries must carry a
+				// valid eventSeq.
+				(c.eventSeq === undefined || isNonNegativeInt(c.eventSeq)) &&
 				typeof c.callId === "string" &&
 				typeof c.content === "string",
 		),

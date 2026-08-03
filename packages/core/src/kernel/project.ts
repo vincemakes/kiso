@@ -172,15 +172,26 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				flushAssistant();
 				// Apply the EXACT persisted replacements — never re-run the
 				// compaction algorithm (a future version could differ). 五:
-				// keyed by the replaced tool-result EVENT's seq, so only the
-				// specific result is rewritten — never a same-callId sibling
-				// from another turn or run.
-				const byEventSeq = new Map(ev.cleared.map((c) => [c.eventSeq, c.content]));
-				const replaced = out.map((m) =>
-					m.role === "tool" && m.eventSeq !== undefined && byEventSeq.has(m.eventSeq)
-						? { ...m, content: byEventSeq.get(m.eventSeq)! }
-						: m,
+				// v2 entries are keyed by the replaced tool-result EVENT's
+				// seq, so only the specific result is rewritten — never a
+				// same-callId sibling from another turn or run. 第四轮: v1
+				// entries (round-three sessions, no eventSeq) replay with v1
+				// semantics — every tool result with that callId is replaced,
+				// exactly as the old framework did.
+				const byEventSeq = new Map(
+					ev.cleared.filter((c) => c.eventSeq !== undefined).map((c) => [c.eventSeq!, c.content]),
 				);
+				const byCallId = new Map(
+					ev.cleared.filter((c) => c.eventSeq === undefined).map((c) => [c.callId, c.content]),
+				);
+				const replaced = out.map((m) => {
+					if (m.role !== "tool") return m;
+					if (m.eventSeq !== undefined && byEventSeq.has(m.eventSeq)) {
+						return { ...m, content: byEventSeq.get(m.eventSeq)! };
+					}
+					if (byCallId.has(m.callId)) return { ...m, content: byCallId.get(m.callId)! };
+					return m;
+				});
 				out.splice(0, out.length, ...replaced);
 				break;
 			}
