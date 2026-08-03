@@ -137,6 +137,33 @@ console.log("smoke OK — loop + durable session + approval pause/resume, all on
 	if (!hello.includes("completed")) throw new Error(`README example failed:\n${hello}`);
 	console.log("[smoke] README example ran in the clean project");
 
+	// 4c. A TypeScript consumer compiles against the installed .d.ts files
+	//     (strict, NodeNext) — types are real, not tsx-dependent.
+	execSync("npm install --no-audit --no-fund --no-package-lock typescript@^5.7.2 @types/node@^26.1.2", { cwd: proj, stdio: "inherit" });
+	writeFileSync(
+		join(proj, "check-types.ts"),
+		`import { createAgent, SessionStore } from "@kiso/runtime";
+import { defineTool, loop, type Event } from "@kiso/core";
+import { createFauxProvider, FIXTURES } from "@kiso/evals";
+import { readFileTool, shellTool } from "@kiso/tools-node";
+import { createAnthropicAdapter } from "@kiso/provider-anthropic";
+import { createOpenAICompatAdapter } from "@kiso/provider-openai";
+const agent = createAgent({ model: "m", tools: [readFileTool(), shellTool()], store: new SessionStore("./s"), adapter: createFauxProvider([]) });
+const ev: Event | undefined = undefined;
+void agent; void defineTool; void loop; void createAnthropicAdapter; void createOpenAICompatAdapter; void ev; void FIXTURES;
+`,
+	);
+	writeFileSync(
+		join(proj, "tsconfig.json"),
+		JSON.stringify(
+			{ compilerOptions: { module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true, skipLibCheck: true, target: "ES2022", types: ["node"] }, include: ["check-types.ts"] },
+			null,
+			2,
+		),
+	);
+	execSync("./node_modules/.bin/tsc -p tsconfig.json", { cwd: proj, stdio: "inherit" });
+	console.log("[smoke] TS consumer compiled against installed .d.ts");
+
 	// 5. The installed CLI bin runs against the sessions the smoke program
 	//    just created (same store — KISO_HOME points at the project).
 	const sessions = execSync("npx kiso sessions", {
