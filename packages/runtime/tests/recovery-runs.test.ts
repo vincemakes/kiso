@@ -245,4 +245,3 @@ describe("execution identity across runs (B 组)", () => {
 		expect(terminalOf(events)?.outcome.kind).toBe("completed");
 	});
 });
-
