@@ -69,7 +69,12 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 			let outputTokens: number | null = null;
 			let cacheRead: number | null = null;
 			let cacheWrite: number | null = null;
+			// 九: "usage SEEN" (data arrived) is distinct from "usage YIELDED"
+			// (an event left the adapter). message_start may report usage with
+			// no message_delta ever following — the stop must then still be
+			// preceded by an honest usage event built from that data.
 			let usageSeen = false;
+			let usageYielded = false;
 			let stopReasonSeen = false;
 			let stopReason: StopReason = "end_turn";
 			const toolBuffer = new Map<number, { id: string; name: string; json: string }>();
@@ -147,6 +152,7 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 							stopReason = mapStopReason((event.delta.stop_reason ?? "error") as Anthropic.Messages.StopReason);
 							outputTokens = event.usage?.output_tokens ?? null;
 							if (event.usage?.output_tokens !== undefined) usageSeen = true;
+							usageYielded = true;
 							yield {
 								seq: 0,
 								type: "usage",
@@ -158,20 +164,22 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 							};
 							break;
 						case "message_stop":
-							// 六: EVERY stop path emits a usage first — even a
-							// degenerate message_stop with no delta gets an
-							// HONEST unknown (nulls, known:false), never a
-							// missing or faked cost. The ADR-0003 invariant
-							// "usage precedes stop" holds structurally.
-							if (!usageSeen) {
+							// 六/九: EVERY stop path emits a usage first. If no
+							// message_delta yielded one, but message_start DID
+							// report usage data, an honest KNOWN usage is built
+							// from that data now — only a truly silent provider
+							// gets known:false (nulls, never faked). The
+							// ADR-0003 invariant "usage precedes stop" holds
+							// structurally.
+							if (!usageYielded) {
 								yield {
 									seq: 0,
 									type: "usage",
-									inputTokens: null,
-									outputTokens: null,
-									cacheRead: null,
-									cacheWrite: null,
-									known: false,
+									inputTokens,
+									outputTokens,
+									cacheRead,
+									cacheWrite,
+									known: usageSeen,
 								};
 							}
 							// D3: a message_stop with NO delta means the

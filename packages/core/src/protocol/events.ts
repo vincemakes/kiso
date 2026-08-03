@@ -468,7 +468,10 @@ export type Event =
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null && !Array.isArray(v);
 
-const isNonNegativeInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
+/** 九: counts (seq, tokens, turns, status) are non-negative SAFE integers —
+ *  negative values, NaN, Infinity, and fractional values are rejected. */
+const isNonNegativeInt = (v: unknown): v is number =>
+	typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 
 const STOP_REASONS = new Set<StopReason>([
 	"end_turn",
@@ -512,14 +515,20 @@ const MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif
 /**
  * A ContentBlock: text (text: string) or image (sourceType with the
  * documented payload — url for "url", data + mediaType for "base64").
+ * 九: the two payload kinds are STRICTLY EXCLUSIVE — a url block must not
+ * carry data, a base64 block must not carry url.
  */
 function isContentBlock(v: unknown): boolean {
 	if (!isPlainObject(v)) return false;
 	if (v.type === "text") return typeof v.text === "string";
 	if (v.type !== "image") return false;
-	if (v.sourceType !== "url" && v.sourceType !== "base64") return false;
-	if (v.sourceType === "url") return typeof v.url === "string";
-	return typeof v.data === "string" && typeof v.mediaType === "string" && MEDIA_TYPES.has(v.mediaType);
+	if (v.sourceType === "url") {
+		return typeof v.url === "string" && v.data === undefined;
+	}
+	if (v.sourceType === "base64") {
+		return typeof v.data === "string" && typeof v.mediaType === "string" && MEDIA_TYPES.has(v.mediaType) && v.url === undefined;
+	}
+	return false;
 }
 
 /** string content, or an array whose EVERY element is a legal ContentBlock. */
@@ -543,14 +552,16 @@ function isExecutionId(v: Record<string, unknown>): boolean {
 	return v.executionId === undefined || typeof v.executionId === "string";
 }
 
-/** A StructuredError — the shape the `error` terminal carries. */
+/** A StructuredError — the shape the `error` terminal carries. 九: a
+ *  status, when present, is a non-negative safe integer (no negatives,
+ *  NaN, Infinity, or fractions). */
 function isStructuredError(v: unknown): boolean {
 	if (!isPlainObject(v)) return false;
 	return (
 		ERROR_CODES.has(v.code as ErrorCode) &&
 		typeof v.retryable === "boolean" &&
 		typeof v.message === "string" &&
-		(v.status === undefined || typeof v.status === "number")
+		(v.status === undefined || isNonNegativeInt(v.status))
 	);
 }
 
@@ -562,7 +573,7 @@ function isTerminal(v: unknown): boolean {
 		case "max_tokens":
 			return true;
 		case "max_turns":
-			return typeof v.turns === "number";
+			return isNonNegativeInt(v.turns); // 九: a turn count is a safe integer
 		case "error":
 			return isStructuredError(v.error);
 		case "aborted":
@@ -575,16 +586,17 @@ function isTerminal(v: unknown): boolean {
 }
 
 /**
- * Usage invariant (Area 6): `known: false` means the provider reported NO
- * usage — every token field is null, never faked as zero. `known: true`
- * means SOME usage was reported; each field is a non-negative number when
- * the provider reported it, null otherwise.
+ * Usage invariant (Area 6/九): `known: false` means the provider reported
+ * NO usage — every token field is null, never faked as zero. `known: true`
+ * means SOME usage was reported — AT LEAST ONE field is a non-negative
+ * safe integer; the others are null when the provider did not report
+ * them.
  */
 function isUsage(v: Record<string, unknown>): boolean {
 	if (typeof v.known !== "boolean") return false;
 	const tokens = [v.inputTokens, v.outputTokens, v.cacheRead, v.cacheWrite];
 	if (v.known === false) return tokens.every((t) => t === null);
-	return tokens.every((t) => t === null || (typeof t === "number" && t >= 0));
+	return tokens.some((t) => isNonNegativeInt(t)) && tokens.every((t) => t === null || isNonNegativeInt(t));
 }
 
 /**
@@ -608,6 +620,8 @@ const EVENT_VALIDATORS = {
 		typeof v.callId === "string" &&
 		isContent(v.content) &&
 		typeof v.isError === "boolean" &&
+		// 九: an errorKind is only meaningful on an ERROR result.
+		(v.isError === true || v.errorKind === undefined) &&
 		isErrorKind(v) &&
 		isExecutionId(v) &&
 		isSource(v) &&

@@ -260,3 +260,86 @@ describe("六: every Anthropic stop path is preceded by an honest usage", () => 
 		expect(events.indexOf(usage)).toBeLessThan(events.indexOf(stop));
 	});
 });
+
+describe("九: Anthropic usage-yielded vs usage-seen", () => {
+	it("message_start with usage, then bare message_stop: an honest KNOWN usage precedes the stop", async () => {
+		const events = (await drain(
+			createAnthropicAdapter(
+				{
+					messages: {
+						stream: () => ({
+							async *[Symbol.asyncIterator]() {
+								yield {
+									type: "message_start",
+									message: { usage: { input_tokens: 12, cache_read_input_tokens: 5, cache_creation_input_tokens: 7 } },
+								};
+								yield { type: "message_stop" }; // no delta
+							},
+						}),
+					},
+				} as unknown as Anthropic,
+			),
+		)) as { type: string; known?: boolean; inputTokens?: number | null; cacheRead?: number | null }[];
+		const usage = events.filter((e) => e.type === "usage");
+		expect(usage).toHaveLength(1);
+		expect(usage[0]).toMatchObject({ known: true, inputTokens: 12, cacheRead: 5, cacheWrite: 7 });
+		const stop = events.at(-1);
+		expect(stop).toMatchObject({ type: "stop" });
+		expect(events.indexOf(usage[0]!)).toBeLessThan(events.indexOf(stop!));
+	});
+
+	it("a normal message_delta yields the usage ONCE (received data is not re-emitted at the stop)", async () => {
+		const events = (await drain(
+			createAnthropicAdapter(
+				{
+					messages: {
+						stream: () => ({
+							async *[Symbol.asyncIterator]() {
+								yield { type: "message_start", message: { usage: { input_tokens: 12 } } };
+								yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } };
+								yield { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 3 } };
+								yield { type: "message_stop" };
+							},
+						}),
+					},
+				} as unknown as Anthropic,
+			),
+		)) as { type: string; known?: boolean }[];
+		expect(events.filter((e) => e.type === "usage")).toHaveLength(1);
+		const stop = events.at(-1);
+		expect(stop).toMatchObject({ type: "stop", reason: "end_turn" });
+	});
+});
+
+describe("九: OpenAI tool-call id conflicts are loud, never silent", () => {
+	it("a SECOND different id for the same call is a STRUCTURED error — no silent switch", async () => {
+		const adapter = createOpenAICompatAdapter(
+			fakeOpenAI({
+				chunks: [
+					CHUNK(null, { tool_calls: [{ index: 0, id: "call_A", type: "function", function: { name: "f", arguments: "{}" } }] }),
+					CHUNK(null, { tool_calls: [{ index: 0, id: "call_B", type: "function", function: { name: "f", arguments: "" } }] }),
+				],
+			}),
+		);
+		await expect(async () => {
+			for await (const _ev of adapter.stream(OPTS)) {
+				// drain
+			}
+		}).rejects.toMatchObject({ code: "invalid_request", retryable: false });
+	});
+
+	it("the SAME id repeated is fine — one identity from start to end", async () => {
+		const adapter = createOpenAICompatAdapter(
+			fakeOpenAI({
+				chunks: [
+					CHUNK(null, { tool_calls: [{ index: 0, id: "call_A", type: "function", function: { name: "f", arguments: "{}" } }] }),
+					CHUNK(null, { tool_calls: [{ index: 0, id: "call_A", type: "function", function: { name: "f", arguments: "" } }] }),
+					CHUNK("tool_calls"),
+				],
+			}),
+		);
+		const events = (await drain(adapter)) as { type: string; callId?: string }[];
+		const ids = events.filter((e) => e.type === "tool_call_start" || e.type === "tool_call_end").map((e) => e.callId);
+		expect(ids).toEqual(["call_A", "call_A"]);
+	});
+});

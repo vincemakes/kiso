@@ -137,3 +137,38 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ type: "stop", reason: "end_turn" })).toBe(false); // no seq
 	});
 });
+
+	it("九: counts are non-negative SAFE integers — no negatives, NaN, Infinity, or fractions", () => {
+		expect(isKisoEvent({ seq: 0, type: "stop", reason: "end_turn" })).toBe(true);
+		expect(isKisoEvent({ seq: 1.5, type: "stop", reason: "end_turn" })).toBe(false);
+		expect(isKisoEvent({ seq: Number.NaN, type: "stop", reason: "end_turn" })).toBe(false);
+		expect(isKisoEvent({ seq: Number.POSITIVE_INFINITY, type: "stop", reason: "end_turn" })).toBe(false);
+		expect(isKisoEvent({ seq: -1, type: "stop", reason: "end_turn" })).toBe(false);
+		expect(isKisoEvent({ seq: 0, type: "terminal", outcome: { kind: "max_turns", turns: 2.5 } })).toBe(false);
+		expect(isKisoEvent({ seq: 0, type: "terminal", outcome: { kind: "max_turns", turns: -2 } })).toBe(false);
+		expect(isKisoEvent({ seq: 0, type: "terminal", outcome: { kind: "error", error: { code: "rate_limit", status: 429.5, retryable: true, message: "m" } } })).toBe(false);
+		expect(isKisoEvent({ seq: 0, type: "terminal", outcome: { kind: "error", error: { code: "rate_limit", status: -1, retryable: true, message: "m" } } })).toBe(false);
+		expect(isKisoEvent({ seq: 0, type: "terminal", outcome: { kind: "error", error: { code: "rate_limit", status: 429, retryable: true, message: "m" } } })).toBe(true);
+	});
+
+	it("九: known:true usage must report at least one real token", () => {
+		expect(isKisoEvent({ seq: 0, type: "usage", known: true, inputTokens: 1, outputTokens: null, cacheRead: null, cacheWrite: null })).toBe(true);
+		expect(isKisoEvent({ seq: 0, type: "usage", known: true, inputTokens: null, outputTokens: null, cacheRead: null, cacheWrite: null })).toBe(false);
+		expect(isKisoEvent({ seq: 0, type: "usage", known: true, inputTokens: 1.5, outputTokens: null, cacheRead: null, cacheWrite: null })).toBe(false);
+	});
+
+	it("九: image url/base64 payloads are strictly exclusive", () => {
+		const url = { type: "image", sourceType: "url", url: "https://x/y.png" };
+		const base64 = { type: "image", sourceType: "base64", data: "cG5n", mediaType: "image/png" };
+		expect(isKisoEvent({ seq: 0, type: "user_input", content: [url] })).toBe(true);
+		expect(isKisoEvent({ seq: 0, type: "user_input", content: [base64] })).toBe(true);
+		// url block with data, or base64 block with url: rejected.
+		expect(isKisoEvent({ seq: 0, type: "user_input", content: [{ type: "image", sourceType: "url", url: "x", data: "y" }] })).toBe(false);
+		expect(isKisoEvent({ seq: 0, type: "user_input", content: [{ type: "image", sourceType: "base64", data: "x", mediaType: "image/png", url: "y" }] })).toBe(false);
+	});
+
+	it("九: errorKind is forbidden on a non-error tool_result", () => {
+		expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: "ok", isError: false })).toBe(true);
+		expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: "ok", isError: false, errorKind: "fatal" })).toBe(false);
+		expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: "boom", isError: true, errorKind: "fatal" })).toBe(true);
+	});

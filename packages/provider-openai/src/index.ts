@@ -128,6 +128,17 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 						// carries an empty name (review finding 10).
 						if (tc.function?.name) call.name = tc.function.name;
 						if (tc.id) {
+							// 九: the FIRST non-empty id is the call's identity,
+							// forever. A DIFFERENT id later is a protocol
+							// violation — a structured error, never a silent
+							// switch (start/delta/end must share one identity).
+							if (call.id !== "" && tc.id !== call.id) {
+								throw {
+									code: "invalid_request",
+									retryable: false,
+									message: `tool call ${call.index} changed id mid-stream: ${call.id} → ${tc.id}`,
+								};
+							}
 							call.id = tc.id;
 							// The identity is now known: emit the start, then
 							// flush the argument deltas that arrived before it
