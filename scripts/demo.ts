@@ -15,7 +15,7 @@ import { createInterface } from "node:readline";
 import { createFauxProvider } from "@kiso/evals";
 import Anthropic from "@anthropic-ai/sdk";
 import { createAnthropicAdapter } from "@kiso/provider-anthropic";
-import { defineTool, ToolRegistry, loop } from "@kiso/core";
+import { defineTool, ToolRegistry, EventLog, loop } from "@kiso/core";
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -52,16 +52,31 @@ function makeAdapter() {
 			],
 		},
 		{ events: [{ type: "stop", reason: "end_turn" }] },
+		{
+			events: [
+				{ type: "text_delta", text: "Now I can see the whole conversation. Ask me anything." },
+				{ type: "stop", reason: "end_turn" },
+			],
+		},
 	]);
 }
 
+/**
+ * One EventLog spans the whole session: every turn's prompt and events are
+ * appended to the SAME log, so the loop's projection carries real multi-turn
+ * context — the model sees what it said and did before (the old demo started
+ * a fresh conversation every turn).
+ */
+const log = new EventLog();
+const adapter = makeAdapter();
+
 async function turn(input: string): Promise<void> {
-	const adapter = makeAdapter();
+	log.append({ type: "user_input", content: input });
 	for await (const ev of loop({
 		adapter,
 		model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5",
 		registry,
-		messages: [{ role: "user", content: input }],
+		log,
 	})) {
 		switch (ev.type) {
 			case "text_delta":
@@ -91,5 +106,5 @@ function prompt(): void {
 	});
 }
 
-console.log("kiso — framework demo (faux provider). Type "exit" to quit.\n");
+console.log("kiso — framework demo (faux provider). Type 'exit' to quit.\n");
 prompt();

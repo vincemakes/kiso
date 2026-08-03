@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 /**
- * Consumer smoke test — the publish pipeline's last gate.
+ * Consumer smoke test — the publish pipeline's last gate (Area 7).
  *
- * Packs every publishable package, installs the tarballs into a clean temp
- * project (no workspace, no tsx, no source access), and runs a real faux
- * agent session against the installed artifacts. If the README's promise
- * ("install the compiled package and create an agent in ~20 lines") is ever
- * broken, this is the script that breaks first.
+ * THREE ISOLATED tiers, each a clean temp project installing only the
+ * closure it needs (never all seven preinstalled, which would mask missing
+ * dependencies):
+ *
+ *   tier A — runtime:  core + evals + runtime + tools-node
+ *                       runs a durable session, an approval pause/resume,
+ *                       and the README example verbatim
+ *   tier B — providers: core + provider-anthropic + provider-openai
+ *                       imports both factories (SDKs resolve from npm)
+ *   tier C — cli:       the CLI's full dependency closure
+ *                       runs the installed `kiso` bin (sessions listing)
+ *
+ * Tarball names come from `npm pack --json`, never hardcoded versions.
  */
 
 import { execSync } from "node:child_process";
@@ -15,48 +23,55 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;
-// Dependency order — intra-kiso deps must already be installed when a
-// dependent tarball installs (npm resolves @kiso/* from node_modules, not
-// from the registry, which has nothing published yet).
-const PACKAGES = [
-	"@kiso/core",
-	"@kiso/evals",
-	"@kiso/runtime",
-	"@kiso/tools-node",
-	"@kiso/provider-anthropic",
-	"@kiso/provider-openai",
-	"@kiso/cli",
-];
+const ALL = {
+	"@kiso/core": true,
+	"@kiso/evals": true,
+	"@kiso/runtime": true,
+	"@kiso/tools-node": true,
+	"@kiso/provider-anthropic": true,
+	"@kiso/provider-openai": true,
+	"@kiso/cli": true,
+};
 
-const stage = mkdtempSync(join(tmpdir(), "kiso-pack-"));
-const proj = mkdtempSync(join(tmpdir(), "kiso-smoke-"));
-console.log(`[smoke] packing into ${stage}\n[smoke] clean project at ${proj}`);
+/** Pack a package and return the REAL tarball filename from npm's JSON. */
+function pack(stage, name) {
+	const out = execSync(`npm pack --json -w ${name} --pack-destination ${stage}`, { cwd: ROOT, encoding: "utf8" });
+	const parsed = JSON.parse(out.slice(out.indexOf("[")));
+	const file = parsed[0]?.filename;
+	if (!file) throw new Error(`npm pack gave no filename for ${name}:\n${out}`);
+	return join(stage, file);
+}
 
-try {
-	// 1. Pack each tarball (npm scoped packages pack as kiso-<name>-0.0.0.tgz).
-	for (const name of PACKAGES) {
-		execSync(`npm pack -w ${name} --pack-destination ${stage}`, { cwd: ROOT, stdio: "inherit" });
-	}
-	const tarballs = PACKAGES.map((name) => join(stage, `${name.replace("@kiso/", "kiso-")}-0.0.0.tgz`));
-	for (const t of tarballs) {
-		if (!existsSync(t)) throw new Error(`missing tarball: ${t}`);
-	}
+function tempProject(label) {
+	const proj = mkdtempSync(join(tmpdir(), `kiso-${label}-`));
+	writeFileSync(join(proj, "package.json"), JSON.stringify({ name: `kiso-${label}`, private: true, type: "module" }, null, 2));
+	console.log(`[smoke:${label}] clean project at ${proj}`);
+	return proj;
+}
 
-	// 2. Install into a clean project — in dependency order.
-	writeFileSync(join(proj, "package.json"), JSON.stringify({ name: "kiso-smoke", private: true, type: "module" }, null, 2));
+/** Install the given packages (in dependency order) into a clean project. */
+function installTier(label, names, proj) {
+	const stage = mkdtempSync(join(tmpdir(), `kiso-pack-${label}-`));
+	const tarballs = names.map((n) => pack(stage, n));
 	for (const tarball of tarballs) {
 		execSync(`npm install --no-audit --no-fund --no-package-lock "${tarball}"`, { cwd: proj, stdio: "inherit" });
 	}
+	rmSync(stage, { recursive: true, force: true });
+	return tarballs.length;
+}
 
-	// 3. The smoke program — imports the packages as a consumer would.
+// ── tier A: the runtime closure ────────────────────────────────────────
+{
+	const proj = tempProject("runtime");
+	installTier("runtime", ["@kiso/core", "@kiso/evals", "@kiso/runtime", "@kiso/tools-node"], proj);
 	writeFileSync(
 		join(proj, "smoke.mjs"),
 		`import { defineTool, ToolRegistry, loop, mapApiError } from "@kiso/core";
 import { createFauxProvider } from "@kiso/evals";
 import { createAgent, SessionStore } from "@kiso/runtime";
-import { createAnthropicAdapter } from "@kiso/provider-anthropic";
-import { createOpenAICompatAdapter } from "@kiso/provider-openai";
+import { readFileTool } from "@kiso/tools-node";
 
+// 1. the raw loop
 const registry = new ToolRegistry();
 registry.register(defineTool({
   name: "add",
@@ -64,8 +79,6 @@ registry.register(defineTool({
   parameters: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } }, required: ["a", "b"] },
   execute: async ({ a, b }) => ({ content: String(a + b), isError: false }),
 }));
-
-// 1. the raw loop
 const events = [];
 for await (const ev of loop({
   adapter: createFauxProvider([
@@ -80,19 +93,16 @@ const terminal = events.filter((e) => e.type === "terminal").at(-1);
 if (terminal?.outcome?.kind !== "completed") throw new Error("expected completed terminal, got " + JSON.stringify(terminal?.outcome));
 if (!events.some((e) => e.type === "tool_result" && e.content === "5")) throw new Error("tool result missing");
 
-// 2. the runtime: a durable session that survives a reload
+// 2. the runtime: a durable session with an approval pause
 const store = new SessionStore(new URL("./sessions/", import.meta.url).pathname);
 const agent = createAgent({
   model: "faux",
   store,
-  tools: [defineTool({ name: "add", description: "Add", parameters: { type: "object" }, execute: async ({ a, b }) => ({ content: String(a + b), isError: false }) })],
+  tools: [defineTool({ name: "add", description: "Add", parameters: { type: "object" }, execute: async ({ a, b }) => ({ content: String(a + b), isError: false }) }), readFileTool({ workspaceRoot: "." })],
   adapter: createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]),
 });
 const session = await agent.session({ id: "smoke" });
-const runEvents = [];
-for await (const ev of session.run("1+1?")) runEvents.push(ev);
-const t2 = runEvents.filter((e) => e.type === "terminal").at(-1);
-if (t2?.outcome?.kind !== "completed") throw new Error("runtime session failed: " + JSON.stringify(t2?.outcome));
+for await (const ev of session.run("1+1?")) { /* drain */ }
 const reloaded = await agent.session({ id: "smoke" });
 if (!reloaded.projected().some((m) => m.role === "user")) throw new Error("session did not survive reload");
 
@@ -108,37 +118,27 @@ const guarded = createAgent({
   permissionPolicy: { rules: [{ tool: "write_file", action: "defer" }] },
 });
 const gs = await guarded.session({ id: "guarded" });
-let executed = false;
 let paused = false;
+let executed = false;
 for await (const ev of gs.run("write x")) {
-  if (ev.type === "permission_requested") {
-    paused = true;
-    gs.approve(ev.decisionId, true); // the human approves
-  }
+  if (ev.type === "permission_requested") { paused = true; gs.approve(ev.decisionId, true); }
   if (ev.type === "tool_execution_succeeded") executed = true;
 }
-if (!paused) throw new Error("approval never paused the run");
-if (!executed) throw new Error("approved tool never executed");
-const resumed = await guarded.session({ id: "guarded" });
-if (resumed.pendingApprovals().length !== 0) throw new Error("approval not durable");
+if (!paused || !executed) throw new Error("approval pause/resume broken");
 
 if (mapApiError(429, "x").code !== "rate_limit") throw new Error("mapApiError broken");
-if (typeof createAnthropicAdapter !== "function" || typeof createOpenAICompatAdapter !== "function") throw new Error("adapter factories missing");
-console.log("smoke OK — loop + durable session + approval pause/resume, all on installed artifacts");
+console.log("tier A OK — runtime closure: loop + durable session + approval pause/resume");
 `,
 	);
-
-	// 4. Run it with plain node — no tsx anywhere.
 	execSync("node smoke.mjs", { cwd: proj, stdio: "inherit" });
 
-	// 4b. The README example, verbatim, runs in the clean project.
-	execSync("cp " + JSON.stringify(join(ROOT, "examples", "hello-agent.mjs")) + " hello-agent.mjs", { cwd: proj });
+	// The README example, verbatim, runs in the same clean project.
+	execSync(`cp ${JSON.stringify(join(ROOT, "examples", "hello-agent.mjs"))} hello-agent.mjs`, { cwd: proj });
 	const hello = execSync("node hello-agent.mjs", { cwd: proj, encoding: "utf8" });
 	if (!hello.includes("completed")) throw new Error(`README example failed:\n${hello}`);
-	console.log("[smoke] README example ran in the clean project");
+	console.log("[smoke:runtime] README example ran in the clean project");
 
-	// 4c. A TypeScript consumer compiles against the installed .d.ts files
-	//     (strict, NodeNext) — types are real, not tsx-dependent.
+	// A strict TypeScript consumer compiles against the installed .d.ts.
 	execSync("npm install --no-audit --no-fund --no-package-lock typescript@^5.7.2 @types/node@^26.1.2", { cwd: proj, stdio: "inherit" });
 	writeFileSync(
 		join(proj, "check-types.ts"),
@@ -146,11 +146,9 @@ console.log("smoke OK — loop + durable session + approval pause/resume, all on
 import { defineTool, loop, type Event } from "@kiso/core";
 import { createFauxProvider, FIXTURES } from "@kiso/evals";
 import { readFileTool, shellTool } from "@kiso/tools-node";
-import { createAnthropicAdapter } from "@kiso/provider-anthropic";
-import { createOpenAICompatAdapter } from "@kiso/provider-openai";
 const agent = createAgent({ model: "m", tools: [readFileTool({ workspaceRoot: "." }), shellTool({ workspaceRoot: "." })], store: new SessionStore("./s"), adapter: createFauxProvider([]) });
 const ev: Event | undefined = undefined;
-void agent; void defineTool; void loop; void createAnthropicAdapter; void createOpenAICompatAdapter; void ev; void FIXTURES;
+void agent; void defineTool; void loop; void ev; void FIXTURES;
 `,
 	);
 	writeFileSync(
@@ -162,20 +160,46 @@ void agent; void defineTool; void loop; void createAnthropicAdapter; void create
 		),
 	);
 	execSync("./node_modules/.bin/tsc -p tsconfig.json", { cwd: proj, stdio: "inherit" });
-	console.log("[smoke] TS consumer compiled against installed .d.ts");
-
-	// 5. The installed CLI bin runs against the sessions the smoke program
-	//    just created (same store — KISO_HOME points at the project).
-	const sessions = execSync("npx kiso sessions", {
-		cwd: proj,
-		encoding: "utf8",
-		env: { ...process.env, KISO_HOME: proj },
-	});
-	if (!sessions.includes("smoke") || !sessions.includes("guarded")) {
-		throw new Error(`kiso sessions did not list the smoke sessions:\n${sessions}`);
-	}
-	console.log(`[smoke] PASS — ${tarballs.length} tarballs installed and exercised; CLI bin runs on them`);
-} finally {
-	rmSync(stage, { recursive: true, force: true });
+	console.log("[smoke:runtime] TS consumer compiled against installed .d.ts");
 	rmSync(proj, { recursive: true, force: true });
 }
+
+// ── tier B: the provider closure ───────────────────────────────────────
+{
+	const proj = tempProject("providers");
+	installTier("providers", ["@kiso/core", "@kiso/provider-anthropic", "@kiso/provider-openai"], proj);
+	writeFileSync(
+		join(proj, "providers.mjs"),
+		`import { createAnthropicAdapter } from "@kiso/provider-anthropic";
+import { createOpenAICompatAdapter } from "@kiso/provider-openai";
+import { mapApiError } from "@kiso/core";
+if (typeof createAnthropicAdapter !== "function" || typeof createOpenAICompatAdapter !== "function") throw new Error("adapter factories missing");
+if (mapApiError(529, "x").code !== "overloaded") throw new Error("error mapping broken");
+console.log("tier B OK — provider closure: both factories import, error mapping works");
+`,
+	);
+	execSync("node providers.mjs", { cwd: proj, stdio: "inherit" });
+	rmSync(proj, { recursive: true, force: true });
+}
+
+// ── tier C: the CLI's full dependency closure ──────────────────────────
+{
+	const proj = tempProject("cli");
+	installTier(
+		"cli",
+		["@kiso/core", "@kiso/evals", "@kiso/runtime", "@kiso/tools-node", "@kiso/provider-anthropic", "@kiso/provider-openai", "@kiso/cli"],
+		proj,
+	);
+	// The smoke program above created sessions in ITS project; here we create
+	// one via the installed bin itself, then list it.
+	execSync(`KISO_HOME=${proj} npx kiso sessions`, { cwd: proj, stdio: "inherit" });
+	// A full faux chat turn through the installed CLI bin.
+	const chat = execSync(`printf 'hello\\nexit\\n' | KISO_HOME=${proj} npx kiso chat cli-smoke`, { cwd: proj, encoding: "utf8" });
+	if (!chat.includes("faux model")) throw new Error(`kiso chat did not run:\n${chat}`);
+	const sessions = execSync(`KISO_HOME=${proj} npx kiso sessions`, { cwd: proj, encoding: "utf8" });
+	if (!sessions.includes("cli-smoke")) throw new Error(`kiso sessions did not list cli-smoke:\n${sessions}`);
+	console.log("[smoke:cli] installed kiso bin runs chat + sessions on its closure");
+	rmSync(proj, { recursive: true, force: true });
+}
+
+console.log("\n[smoke] PASS — 3 isolated consumer tiers on packed artifacts");

@@ -106,15 +106,49 @@ function fauxScript(): FauxScript {
 	];
 }
 
-async function showRecovery(session: AgentSession): Promise<void> {
-	for (const pending of session.pendingApprovals()) {
-		console.log(`⏸ pending approval: ${pending.name} (${JSON.stringify(pending.input).slice(0, 100)})`);
+/**
+ * Ask the human a question. Non-interactive stdin (piped, CI) cannot wait
+ * forever: approvals auto-deny and uncertain executions auto-abandon, both
+ * printed loudly — never silently ignored, never hung (Area 7).
+ */
+function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<string> {
+	if (!process.stdin.isTTY) {
+		console.log(`[non-interactive — no human to ask: ${question}]`);
+		return Promise.resolve("");
 	}
+	return new Promise((resolve) => rl.question(question, resolve));
+}
+
+/** Decide every uncertain execution with the human (r)erun/(a)bandon. */
+async function resolveUncertains(session: AgentSession, rl: ReturnType<typeof createInterface>): Promise<void> {
 	for (const uncertain of session.uncertainExecutions()) {
-		console.log(`⚠ interrupted execution: ${uncertain.name} — was it applied?`);
+		const answer = await ask(rl, `⚠ interrupted execution: ${uncertain.name} — did it apply? (r)erun / (a)bandon: `);
+		const resolution = answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned";
+		session.resolveUncertain(uncertain.callId, resolution);
+		console.log(`  ${resolution}\n`);
 	}
-	if (session.pendingApprovals().length > 0 || session.uncertainExecutions().length > 0) {
-		console.log("  resume the session to answer these.\n");
+}
+
+/**
+ * Consume a run, answering approval pauses as they arrive. `resumeMode`
+ * marks a session.resume() continuation.
+ */
+async function consumeRun(
+	session: AgentSession,
+	run: AsyncIterable<import("@kiso/core").Event>,
+	rl: ReturnType<typeof createInterface>,
+): Promise<void> {
+	for await (const ev of run) {
+		const rendered = renderEvent(ev);
+		if (rendered.prompt) {
+			process.stdout.write(rendered.text);
+			const decisionId = (ev as { decisionId: string }).decisionId;
+			const name = (ev as { name: string }).name;
+			const answer = await ask(rl, `approve ${name}? (y/n) `);
+			session.approve(decisionId, answer.trim().toLowerCase().startsWith("y"));
+		} else {
+			process.stdout.write(rendered.text);
+		}
 	}
 }
 
@@ -123,31 +157,12 @@ async function chat(session: AgentSession): Promise<void> {
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	let currentRun: { abort: () => void } | null = null;
 
-	const askApproval = (decisionId: string, name: string): Promise<boolean> =>
-		new Promise((resolve) => {
-			rl.question(`approve ${name}? (y/n) `, (answer) => {
-				resolve(answer.trim().toLowerCase().startsWith("y"));
-			});
-		});
-
 	const turn = (input: string): Promise<void> =>
 		new Promise((resolve) => {
 			const run = session.run(input);
 			currentRun = run;
 			(async () => {
-				for await (const ev of run) {
-					const rendered = renderEvent(ev);
-					if (rendered.prompt) {
-						process.stdout.write(rendered.text);
-						const allow = await askApproval(
-							(ev as { decisionId: string }).decisionId,
-							(ev as { name: string }).name,
-						);
-						session.approve((ev as { decisionId: string }).decisionId, allow);
-					} else {
-						process.stdout.write(rendered.text);
-					}
-				}
+				await consumeRun(session, run, rl);
 				currentRun = null;
 				resolve();
 			})();
@@ -162,7 +177,7 @@ async function chat(session: AgentSession): Promise<void> {
 		}
 	});
 
-	await showRecovery(session);
+	await resolveUncertains(session, rl);
 	const prompt = (): void => {
 		rl.question("you> ", async (line) => {
 			if (line.trim().toLowerCase() === "exit" || line.trim() === "") {
@@ -177,13 +192,19 @@ async function chat(session: AgentSession): Promise<void> {
 	await new Promise<void>((resolve) => rl.on("close", () => resolve()));
 }
 
-/** One-shot: run a single input against an existing session, then exit. */
-async function resume(session: AgentSession, input: string): Promise<void> {
-	await showRecovery(session);
-	for await (const ev of session.run(input)) {
-		const rendered = renderEvent(ev);
-		process.stdout.write(rendered.text);
+/**
+ * Resume = the RECOVERY flow (Area 2/7): uncertain executions are decided,
+ * the interrupted run is continued via session.resume() — never faked with
+ * a new prompt. An optional prompt afterwards starts a genuinely new turn.
+ */
+async function resume(session: AgentSession, prompt?: string): Promise<void> {
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	await resolveUncertains(session, rl);
+	await consumeRun(session, session.resume(), rl);
+	if (prompt !== undefined && prompt !== "") {
+		await consumeRun(session, session.run(prompt), rl);
 	}
+	rl.close();
 }
 
 async function main(): Promise<void> {
@@ -203,8 +224,11 @@ async function main(): Promise<void> {
 				console.error("usage: kiso resume <sessionId> [\"prompt\"]");
 				process.exit(2);
 			}
+			// argv[4] is the optional prompt; argv[3] is the session id
+			// (argv = [node, script, resume, id, prompt?]).
+			const prompt = process.argv[4];
 			const session = await agent.session({ id: arg });
-			await resume(session, process.argv[3] ?? "continue");
+			await resume(session, prompt);
 			break;
 		}
 		case "sessions": {

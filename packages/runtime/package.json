@@ -20,24 +20,34 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kiso/core": "*"
+    "@kiso/core": "0.0.0"
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.100",
-    "@kiso/evals": "*",
-    "@kiso/provider-anthropic": "*",
-    "@kiso/provider-openai": "*",
+    "@kiso/evals": "0.0.0",
+    "@kiso/provider-anthropic": "0.0.0",
+    "@kiso/provider-openai": "0.0.0",
     "openai": ">=5.0"
   },
   "peerDependenciesMeta": {
-    "@anthropic-ai/sdk": { "optional": true },
-    "@kiso/evals": { "optional": true },
-    "@kiso/provider-anthropic": { "optional": true },
-    "@kiso/provider-openai": { "optional": true },
-    "openai": { "optional": true }
+    "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "@kiso/evals": {
+      "optional": true
+    },
+    "@kiso/provider-anthropic": {
+      "optional": true
+    },
+    "@kiso/provider-openai": {
+      "optional": true
+    },
+    "openai": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "@kiso/evals": "*",
+    "@kiso/evals": "0.0.0",
     "@types/node": "^26.1.2",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"

@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
-    "@kiso/core": "*"
+    "@kiso/core": "0.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",

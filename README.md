@@ -21,12 +21,12 @@ Every design decision ships with an ADR explaining **why**, and **when to overtu
 ```
 $ npm run size
 
-  packages/core/src/kernel/loop.ts  170
-  packages/core/src/protocol/events.ts 116
+  packages/core/src/kernel/loop.ts  234
+  packages/core/src/protocol/events.ts 218
   ...
-  total                                764  / 2000
+  total                               1264  / 2000
 
-  ✓ 1236 lines of headroom remaining.
+  ✓ 736 lines of headroom remaining.
 ```
 
 Comments do not count. Explain freely; implement tersely.
