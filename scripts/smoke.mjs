@@ -2,17 +2,28 @@
 /**
  * Consumer smoke test — the publish pipeline's last gate (Area 7).
  *
- * THREE ISOLATED tiers, each a clean temp project installing only the
+ * FOUR ISOLATED tiers, each a clean temp project installing only the
  * closure it needs (never all seven preinstalled, which would mask missing
  * dependencies):
  *
- *   tier A — runtime:  core + evals + runtime + tools-node
+ *   tier A  — runtime:  core + evals + runtime + tools-node
  *                       runs a durable session, an approval pause/resume,
  *                       and the README example verbatim
- *   tier B — providers: core + provider-anthropic + provider-openai
- *                       imports both factories (SDKs resolve from npm)
- *   tier C — cli:       the CLI's full dependency closure
- *                       runs the installed `kiso` bin (sessions listing)
+ *   tier A2 — nested:   the runtime closure under --install-strategy=nested
+ *                       (pnpm-style, no npm flattening — missing intra-kiso
+ *                       deps cannot hide behind a hoisted root)
+ *   tier B  — providers: core + provider-anthropic + provider-openai
+ *                       imports both adapter factories (SDKs resolve)
+ *   tier C  — cli:       the CLI's full dependency closure
+ *                       runs the installed `kiso` bin (sessions + a faux
+ *                       chat turn)
+ *   tier D  — nested CLI with REAL provider env: ALL SEVEN tarballs under
+ *             --install-strategy=nested; the installed CLI starts with
+ *             ANTHROPIC_API_KEY and with OPENAI_API_KEY (dummy values —
+ *             construction and `kiso sessions` need no network), exercising
+ *             the runtime's lazy provider import through the provider
+ *             packages' OWN SDK ownership — no ERR_MODULE_NOT_FOUND either
+ *             way. Never a faux adapter on this path.
  *
  * Tarball names come from `npm pack --json`, never hardcoded versions.
  */
@@ -237,4 +248,44 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 	rmSync(proj, { recursive: true, force: true });
 }
 
-console.log("\n[smoke] PASS — 4 isolated consumer tiers (runtime, nested, providers, CLI) on packed artifacts");
+// ── tier D: NESTED install of ALL SEVEN tarballs, real provider env ──
+// The runtime's provider path imports ONLY the provider packages, whose
+// high-level factories own their SDKs as private dependencies — so under a
+// nested node_modules layout the SDK resolves NEXT TO the provider, and the
+// installed CLI constructs the real adapter with no ERR_MODULE_NOT_FOUND.
+// Dummy keys: construction and `kiso sessions` never touch the network;
+// a faux adapter is NOT allowed on this path (七).
+{
+	const proj = tempProject("nested-cli");
+	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-cli-"));
+	const tarballs = ["@kiso/core", "@kiso/evals", "@kiso/runtime", "@kiso/tools-node", "@kiso/provider-anthropic", "@kiso/provider-openai", "@kiso/cli"].map((n) =>
+		pack(stage, n),
+	);
+	for (const tarball of tarballs) {
+		execSync(`npm install --install-strategy=nested --no-audit --no-fund --no-package-lock "${tarball}"`, {
+			cwd: proj,
+			stdio: "inherit",
+		});
+	}
+	rmSync(stage, { recursive: true, force: true });
+
+	// Anthropic env: provider construction + the sessions listing, through
+	// the installed bin. An empty sessions dir is a valid listing.
+	const anthropic = execSync(
+		`ANTHROPIC_API_KEY=sk-test KISO_HOME=${proj}/home npx kiso sessions`,
+		{ cwd: proj, encoding: "utf8" },
+	);
+	if (/ERR_MODULE_NOT_FOUND/.test(anthropic)) throw new Error(`nested anthropic CLI failed to resolve:\n${anthropic}`);
+
+	// OpenAI-compat env: same path, same gate.
+	const openai = execSync(
+		`OPENAI_API_KEY=sk-test KISO_HOME=${proj}/home2 npx kiso sessions`,
+		{ cwd: proj, encoding: "utf8" },
+	);
+	if (/ERR_MODULE_NOT_FOUND/.test(openai)) throw new Error(`nested openai CLI failed to resolve:\n${openai}`);
+
+	console.log("[smoke:nested-cli] all 7 tarballs nested; CLI constructs BOTH real providers (Anthropic + OpenAI) and lists sessions");
+	rmSync(proj, { recursive: true, force: true });
+}
+
+console.log("\n[smoke] PASS — 5 isolated consumer tiers (runtime, nested, providers, CLI, nested CLI with real providers) on packed artifacts");

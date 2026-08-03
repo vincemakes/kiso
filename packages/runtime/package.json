@@ -24,26 +24,14 @@
     "@kiso/core": "0.0.0"
   },
   "peerDependencies": {
-    "@anthropic-ai/sdk": ">=0.100",
-    "@kiso/evals": "0.0.0",
     "@kiso/provider-anthropic": "0.0.0",
-    "@kiso/provider-openai": "0.0.0",
-    "openai": ">=5.0"
+    "@kiso/provider-openai": "0.0.0"
   },
   "peerDependenciesMeta": {
-    "@anthropic-ai/sdk": {
-      "optional": true
-    },
-    "@kiso/evals": {
-      "optional": true
-    },
     "@kiso/provider-anthropic": {
       "optional": true
     },
     "@kiso/provider-openai": {
-      "optional": true
-    },
-    "openai": {
       "optional": true
     }
   },

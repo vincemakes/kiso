@@ -137,24 +137,24 @@ function policyHooks(policy: PermissionPolicy): HookHost {
 async function resolveAdapter(definition: AgentDefinition): Promise<Adapter> {
 	if (definition.adapter) return definition.adapter;
 	switch (definition.provider) {
+		// 七: the runtime imports ONLY the provider package — its high-level
+		// factory owns the SDK and builds the adapter from config. The SDKs
+		// are private dependencies of the provider packages, so a nested
+		// consumer install resolves them next to the provider, never through
+		// a hoisted root that may not exist.
 		case "anthropic": {
-			const [{ default: Anthropic }, { createAnthropicAdapter }] = await Promise.all([
-				import("@anthropic-ai/sdk"),
-				import("@kiso/provider-anthropic"),
-			]);
-			return createAnthropicAdapter(new Anthropic({ apiKey: definition.apiKey }));
+			const { createAnthropicProvider } = await import("@kiso/provider-anthropic");
+			return createAnthropicProvider({
+				...(definition.apiKey !== undefined ? { apiKey: definition.apiKey } : {}),
+				...(definition.baseUrl !== undefined ? { baseUrl: definition.baseUrl } : {}),
+			});
 		}
 		case "openai-compat": {
-			const [{ default: OpenAI }, { createOpenAICompatAdapter }] = await Promise.all([
-				import("openai"),
-				import("@kiso/provider-openai"),
-			]);
-			return createOpenAICompatAdapter(
-				new OpenAI({
-					...(definition.apiKey !== undefined ? { apiKey: definition.apiKey } : {}),
-					...(definition.baseUrl !== undefined ? { baseURL: definition.baseUrl } : {}),
-				}),
-			);
+			const { createOpenAICompatProvider } = await import("@kiso/provider-openai");
+			return createOpenAICompatProvider({
+				...(definition.apiKey !== undefined ? { apiKey: definition.apiKey } : {}),
+				...(definition.baseUrl !== undefined ? { baseUrl: definition.baseUrl } : {}),
+			});
 		}
 		default:
 			throw new Error("createAgent: pass an `adapter` or a `provider` (\"anthropic\" | \"openai-compat\")");

@@ -39,6 +39,27 @@ interface PendingToolCall {
 	pendingDeltas: string[];
 }
 
+/** Config accepted by the high-level factory (七: the provider owns its SDK). */
+export interface OpenAICompatProviderConfig {
+	readonly apiKey?: string;
+	readonly baseUrl?: string;
+}
+
+/**
+ * High-level factory (七): builds the adapter FROM CONFIG, owning the SDK
+ * inside this package. Consumers (and the runtime's lazy provider path)
+ * import ONLY @kiso/provider-openai — the SDK stays a private dependency
+ * of this package, so nested installs resolve it next to here, never
+ * through a hoisted root.
+ */
+export function createOpenAICompatProvider(config: OpenAICompatProviderConfig = {}): Adapter {
+	const client = new OpenAI({
+		...(config.apiKey !== undefined ? { apiKey: config.apiKey } : {}),
+		...(config.baseUrl !== undefined ? { baseURL: config.baseUrl } : {}),
+	});
+	return createOpenAICompatAdapter(client);
+}
+
 export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 	return {
 		async *stream(options: StreamOptions): AsyncIterable<Event> {
