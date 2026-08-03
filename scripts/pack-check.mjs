@@ -9,7 +9,7 @@
 import { execSync } from "node:child_process";
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const PACKAGES = ["@kiso/core", "@kiso/evals", "@kiso/provider-anthropic", "@kiso/provider-openai"];
+const PACKAGES = ["@kiso/core", "@kiso/evals", "@kiso/runtime", "@kiso/provider-anthropic", "@kiso/provider-openai"];
 
 let failed = false;
 for (const name of PACKAGES) {

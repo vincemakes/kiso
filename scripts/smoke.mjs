@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const PACKAGES = ["@kiso/core", "@kiso/evals", "@kiso/provider-anthropic", "@kiso/provider-openai"];
+const PACKAGES = ["@kiso/core", "@kiso/evals", "@kiso/runtime", "@kiso/provider-anthropic", "@kiso/provider-openai"];
 
 const stage = mkdtempSync(join(tmpdir(), "kiso-pack-"));
 const proj = mkdtempSync(join(tmpdir(), "kiso-smoke-"));
@@ -40,6 +40,7 @@ try {
 		join(proj, "smoke.mjs"),
 		`import { defineTool, ToolRegistry, loop, mapApiError } from "@kiso/core";
 import { createFauxProvider } from "@kiso/evals";
+import { createAgent, SessionStore } from "@kiso/runtime";
 import { createAnthropicAdapter } from "@kiso/provider-anthropic";
 import { createOpenAICompatAdapter } from "@kiso/provider-openai";
 
@@ -51,6 +52,7 @@ registry.register(defineTool({
   execute: async ({ a, b }) => ({ content: String(a + b), isError: false }),
 }));
 
+// 1. the raw loop
 const events = [];
 for await (const ev of loop({
   adapter: createFauxProvider([
@@ -61,13 +63,29 @@ for await (const ev of loop({
   registry,
   messages: [{ role: "user", content: "What is 2+3?" }],
 })) events.push(ev);
-
 const terminal = events.filter((e) => e.type === "terminal").at(-1);
 if (terminal?.outcome?.kind !== "completed") throw new Error("expected completed terminal, got " + JSON.stringify(terminal?.outcome));
 if (!events.some((e) => e.type === "tool_result" && e.content === "5")) throw new Error("tool result missing");
+
+// 2. the runtime: a durable session that survives a reload
+const store = new SessionStore(new URL("./sessions/", import.meta.url).pathname);
+const agent = createAgent({
+  model: "faux",
+  store,
+  tools: [defineTool({ name: "add", description: "Add", parameters: { type: "object" }, execute: async ({ a, b }) => ({ content: String(a + b), isError: false }) })],
+  adapter: createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]),
+});
+const session = await agent.session({ id: "smoke" });
+const runEvents = [];
+for await (const ev of session.run("1+1?")) runEvents.push(ev);
+const t2 = runEvents.filter((e) => e.type === "terminal").at(-1);
+if (t2?.outcome?.kind !== "completed") throw new Error("runtime session failed: " + JSON.stringify(t2?.outcome));
+const reloaded = await agent.session({ id: "smoke" });
+if (!reloaded.projected().some((m) => m.role === "user")) throw new Error("session did not survive reload");
+
 if (mapApiError(429, "x").code !== "rate_limit") throw new Error("mapApiError broken");
 if (typeof createAnthropicAdapter !== "function" || typeof createOpenAICompatAdapter !== "function") throw new Error("adapter factories missing");
-console.log("smoke OK — installed artifacts run a complete agent session");
+console.log("smoke OK — installed artifacts run a complete agent + durable session");
 `,
 	);
 

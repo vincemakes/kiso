@@ -24,8 +24,19 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 export type EventInput = DistributiveOmit<Event, "seq">;
 
 export class EventLog {
-	readonly #events: Event[] = [];
-	#next = 0;
+	readonly #events: Event[];
+	#next: number;
+
+	/**
+	 * A log may be seeded with an existing trajectory (a session rebuilt
+	 * from disk, Phase C): the events are trusted IN ORDER — a JSONL was
+	 * appended in seq order — and numbering continues after them. `seq`
+	 * remains the single allocator for anything appended from here on.
+	 */
+	constructor(initial: readonly Event[] = []) {
+		this.#events = [...initial];
+		this.#next = initial.length;
+	}
 
 	/**
 	 * Append an event; assigns the authoritative seq and returns it.

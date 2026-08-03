@@ -7,8 +7,8 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build -w @kiso/core && npm run build -w @kiso/evals && npm run build -w @kiso/provider-anthropic && npm run build -w @kiso/provider-openai",
-    "typecheck": "npm run typecheck -w @kiso/core && npm run typecheck -w @kiso/evals && npm run typecheck -w @kiso/provider-anthropic && npm run typecheck -w @kiso/provider-openai",
+    "build": "npm run build -w @kiso/core && npm run build -w @kiso/evals && npm run build -w @kiso/runtime && npm run build -w @kiso/provider-anthropic && npm run build -w @kiso/provider-openai",
+    "typecheck": "npm run typecheck -w @kiso/core && npm run typecheck -w @kiso/evals && npm run typecheck -w @kiso/runtime && npm run typecheck -w @kiso/provider-anthropic && npm run typecheck -w @kiso/provider-openai",
     "test": "vitest run",
     "size": "node scripts/check-size.mjs",
     "pack:check": "node scripts/pack-check.mjs",
