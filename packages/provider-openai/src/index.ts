@@ -16,11 +16,11 @@
 
 import OpenAI from "openai";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions";
-import type { Adapter, StreamOptions } from "@kiso/core";
-import type { AdapterEvent, Event, StopReason } from "@kiso/core";
-import type { AssistantBlock, ContentBlock, Message } from "@kiso/core";
-import type { ToolSpec } from "@kiso/core";
-import { mapApiError } from "@kiso/core";
+import type { Adapter, StreamOptions } from "@vincemakes/kiso-core";
+import type { AdapterEvent, Event, StopReason } from "@vincemakes/kiso-core";
+import type { AssistantBlock, ContentBlock, Message } from "@vincemakes/kiso-core";
+import type { ToolSpec } from "@vincemakes/kiso-core";
+import { mapApiError } from "@vincemakes/kiso-core";
 
 interface PendingToolCall {
 	readonly index: number;
@@ -48,7 +48,7 @@ export interface OpenAICompatProviderConfig {
 /**
  * High-level factory (七): builds the adapter FROM CONFIG, owning the SDK
  * inside this package. Consumers (and the runtime's lazy provider path)
- * import ONLY @kiso/provider-openai — the SDK stays a private dependency
+ * import ONLY @vincemakes/kiso-provider-openai — the SDK stays a private dependency
  * of this package, so nested installs resolve it next to here, never
  * through a hoisted root.
  */

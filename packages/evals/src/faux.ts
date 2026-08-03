@@ -21,9 +21,9 @@
  * EventLog re-asserts monotonicity across sources (ADR-0002).
  */
 
-import type { Adapter, AdapterEvent, StreamOptions } from "@kiso/core";
-import type { Event } from "@kiso/core";
-import type { EventInput } from "@kiso/core";
+import type { Adapter, AdapterEvent, StreamOptions } from "@vincemakes/kiso-core";
+import type { Event } from "@vincemakes/kiso-core";
+import type { EventInput } from "@vincemakes/kiso-core";
 
 /** One model turn: the events it emits. Tool results live in fixture tools. */
 export interface FauxTurn {

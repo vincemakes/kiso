@@ -27,7 +27,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { AbortSignalLike, ToolContext } from "@kiso/core";
+import type { AbortSignalLike, ToolContext } from "@vincemakes/kiso-core";
 import { canonicalTargetPath, editFileTool, readFileTool, searchTextTool, shellTool, writeFileTool } from "../src/index.js";
 
 function root(): string {

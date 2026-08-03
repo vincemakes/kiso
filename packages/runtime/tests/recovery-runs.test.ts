@@ -16,8 +16,8 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
-import { defineTool, type Event, type Tool } from "@kiso/core";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
+import { defineTool, type Event, type Tool } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
 
 function markerTool(markerPath: string): Tool<{ query: string }> {
@@ -176,7 +176,7 @@ describe("execution identity across runs (B 组)", () => {
 			// drain — run 2 does NOT call the tool
 		}
 		storeB.closeAll();
-		const { executionLedger } = await import("@kiso/core");
+		const { executionLedger } = await import("@vincemakes/kiso-core");
 		const ledger = executionLedger(storeB.load("s").map((r) => r.event));
 		const executions = [...ledger.values()].filter((e) => e.callId === "c1");
 		expect(executions).toHaveLength(1); // only run 1's c1

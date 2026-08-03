@@ -12,7 +12,7 @@
  * itself stays dependency-free; the SDKs live in the provider packages.
  */
 
-import { EventLog, ToolRegistry, type Adapter, type HookHost, type Tool } from "@kiso/core";
+import { EventLog, ToolRegistry, type Adapter, type HookHost, type Tool } from "@vincemakes/kiso-core";
 import { AgentSession, type SessionConfig } from "./session.js";
 import type { SessionStore } from "./store.js";
 
@@ -143,14 +143,14 @@ async function resolveAdapter(definition: AgentDefinition): Promise<Adapter> {
 		// consumer install resolves them next to the provider, never through
 		// a hoisted root that may not exist.
 		case "anthropic": {
-			const { createAnthropicProvider } = await import("@kiso/provider-anthropic");
+			const { createAnthropicProvider } = await import("@vincemakes/kiso-provider-anthropic");
 			return createAnthropicProvider({
 				...(definition.apiKey !== undefined ? { apiKey: definition.apiKey } : {}),
 				...(definition.baseUrl !== undefined ? { baseUrl: definition.baseUrl } : {}),
 			});
 		}
 		case "openai-compat": {
-			const { createOpenAICompatProvider } = await import("@kiso/provider-openai");
+			const { createOpenAICompatProvider } = await import("@vincemakes/kiso-provider-openai");
 			return createOpenAICompatProvider({
 				...(definition.apiKey !== undefined ? { apiKey: definition.apiKey } : {}),
 				...(definition.baseUrl !== undefined ? { baseUrl: definition.baseUrl } : {}),

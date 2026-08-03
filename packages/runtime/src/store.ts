@@ -53,7 +53,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { isKisoEvent, type Event } from "@kiso/core";
+import { isKisoEvent, type Event } from "@vincemakes/kiso-core";
 
 /** History that does not parse as a contiguous kiso trajectory. */
 export class StoreCorruptionError extends Error {

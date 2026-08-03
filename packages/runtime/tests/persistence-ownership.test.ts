@@ -15,8 +15,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
-import { defineTool, EventLog, loop, type Event } from "@kiso/core";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
+import { defineTool, EventLog, loop, type Event } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore, StaleWriterError } from "../src/index.js";
 
 const STOP: FauxScript = [{ events: [{ type: "stop", reason: "end_turn" }] }];
@@ -90,7 +90,7 @@ describe("persistence ownership (一)", () => {
 
 	it("every loop event is yielded exactly once and persisted exactly once (no hidden appends)", async () => {
 		const log = new EventLog();
-		const registry = new (await import("@kiso/core")).ToolRegistry();
+		const registry = new (await import("@vincemakes/kiso-core")).ToolRegistry();
 		registry.register(
 			defineTool({
 				name: "web_search",

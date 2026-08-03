@@ -12,8 +12,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
-import { defineTool } from "@kiso/core";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
+import { defineTool } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
 
 const CALL: FauxScript = [
@@ -24,10 +24,10 @@ const CALL: FauxScript = [
 describe("ToolResult discriminated union (P1-9)", () => {
 	it("an isError:false result with an errorKind is a TYPE ERROR", () => {
 		// @ts-expect-error P1-9: errorKind does not exist on a non-error ToolResult
-		const bad: import("@kiso/core").ToolResult = { content: "x", isError: false, errorKind: "fatal" };
+		const bad: import("@vincemakes/kiso-core").ToolResult = { content: "x", isError: false, errorKind: "fatal" };
 		void bad;
 		// The legal success shape has NO errorKind key.
-		const ok: import("@kiso/core").ToolResult = { content: "fine", isError: false };
+		const ok: import("@vincemakes/kiso-core").ToolResult = { content: "fine", isError: false };
 		expect(ok.isError).toBe(false);
 	});
 

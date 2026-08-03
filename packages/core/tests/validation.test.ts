@@ -9,7 +9,7 @@ import type { Event } from "../src/protocol/events.js";
 import { loop } from "../src/kernel/loop.js";
 import { defineTool, type Tool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
-import { createFauxProvider } from "@kiso/evals";
+import { createFauxProvider } from "@vincemakes/kiso-evals";
 
 describe("JSON Schema validation at the execution gate", () => {
 	it("rejects arguments that fail the schema — handler never runs", async () => {

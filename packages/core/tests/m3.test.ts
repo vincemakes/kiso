@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import type { Event } from "../src/protocol/events.js";
 import type { Message, ToolResultMessage } from "../src/protocol/messages.js";
 import { defineTool } from "../src/tools/tool.js";
@@ -18,7 +18,7 @@ import {
 	KEEP_RECENT_TURNS,
 } from "../src/kernel/compaction.js";
 import { analyzeDelivery } from "../src/governance/delivery.js";
-import { FIXTURES } from "@kiso/evals";
+import { FIXTURES } from "@vincemakes/kiso-evals";
 
 function toolMsg(callId: string, content: string, isError = false): Message {
 	return { role: "tool", callId, content, isError };

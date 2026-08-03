@@ -14,7 +14,7 @@
  * before archiving. The fixture fails if the predicate regresses.
  */
 
-import { CLEARED_MARKER_PREFIX, isClearedMarker, shouldClearContent } from "@kiso/core";
+import { CLEARED_MARKER_PREFIX, isClearedMarker, shouldClearContent } from "@vincemakes/kiso-core";
 import type { Fixture } from "./types.js";
 
 export const compactionRegrowth: Fixture = {

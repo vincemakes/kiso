@@ -9,8 +9,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createFauxProvider, FIXTURES, makeAbortSignal } from "@kiso/evals";
-import { defineTool, type Event, type HookHost, type Tool } from "@kiso/core";
+import { createFauxProvider, FIXTURES, makeAbortSignal } from "@vincemakes/kiso-evals";
+import { defineTool, type Event, type HookHost, type Tool } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
 
 /** Per-fixture wiring the incidents need (tools, hooks, signals). */

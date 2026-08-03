@@ -1,4 +1,4 @@
-# @kiso/tools-node
+# @vincemakes/kiso-tools-node
 
 Coding tools for Node hosts, bound to an explicit workspace root:
 read_file, list_dir, search_text (idempotent reads), write_file,

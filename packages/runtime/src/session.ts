@@ -37,8 +37,8 @@ import {
 	type PermissionDecision,
 	type Tool,
 	type ToolResult,
-} from "@kiso/core";
-import { denialResult } from "@kiso/core";
+} from "@vincemakes/kiso-core";
+import { denialResult } from "@vincemakes/kiso-core";
 import { StaleWriterError, type SessionStore, type StoreRecord } from "./store.js";
 
 /** A session whose disk write was rejected (stale handle) is PERMANENTLY
@@ -443,8 +443,8 @@ export interface SessionConfig {
 	readonly model: string;
 	readonly systemPrompt?: string;
 	readonly tools?: readonly Tool<any>[];
-	readonly registry: import("@kiso/core").ToolRegistry;
-	readonly hooks?: import("@kiso/core").HookHost;
+	readonly registry: import("@vincemakes/kiso-core").ToolRegistry;
+	readonly hooks?: import("@vincemakes/kiso-core").HookHost;
 	readonly maxTurns?: number;
 	readonly maxTokens?: number;
 	readonly temperature?: number;

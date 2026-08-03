@@ -22,8 +22,8 @@ import type { Message } from "../src/protocol/messages.js";
 import { EventLog, loop, projectMessages } from "../src/index.js";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
-import { createAgent, SessionStore } from "@kiso/runtime";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
+import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";
 
 const TOOL_TURN: FauxScript = [
 	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} }, { type: "stop", reason: "tool_use" }] },

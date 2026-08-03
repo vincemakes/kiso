@@ -15,8 +15,8 @@ import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createFauxProvider } from "@kiso/evals";
-import { defineTool, EventLog, type Event } from "@kiso/core";
+import { createFauxProvider } from "@vincemakes/kiso-evals";
+import { defineTool, EventLog, type Event } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
 
 function tempStore(): { dir: string; store: SessionStore } {

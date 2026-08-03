@@ -40,8 +40,8 @@ A framework, in two layers:
 
 | Layer | Owns |
 |---|---|
-| **core** (`@kiso/core`, ≤ 2,000 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · modes · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
-| **packages** (unbounded) | `@kiso/evals` (faux provider · incident fixtures · contract tests) · `@kiso/provider-anthropic` · `@kiso/provider-openai` · `@kiso/runtime` (durable sessions, approvals) · `@kiso/tools-node` (file/search/edit/shell) · `@kiso/cli` (the coding-agent reference product) |
+| **core** (`@vincemakes/kiso-core`, ≤ 2,000 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · modes · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
+| **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-cli` (the coding-agent reference product) |
 
 The core stays a kernel: it decides nothing that repeats across products. The
 framework around it is where product-shaped capability grows — and that growth
@@ -66,9 +66,9 @@ and a blob is the thing you eventually fight.
 ## Using it
 
 ```ts
-import { defineTool } from "@kiso/core";
-import { createAgent, SessionStore } from "@kiso/runtime";
-import { createAnthropicAdapter } from "@kiso/provider-anthropic";
+import { defineTool } from "@vincemakes/kiso-core";
+import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";
+import { createAnthropicAdapter } from "@vincemakes/kiso-provider-anthropic";
 import Anthropic from "@anthropic-ai/sdk";
 
 const agent = createAgent({
@@ -102,7 +102,7 @@ tarballs.
   on any Node project, no tsx, no source access (`scripts/smoke.mjs` proves it
   in a clean temp project every check).
 - `npm run demo` runs the raw-loop REPL; the reference product is the CLI.
-- Every fixture in `@kiso/evals` is a real production incident (uooki, 2026);
+- Every fixture in `@vincemakes/kiso-evals` is a real production incident (uooki, 2026);
   the loop is proven against them, not just against happy paths — and the
   fixtures run on the real session runtime, not a test harness.
 
@@ -112,10 +112,12 @@ Node **>= 22** (the OpenAI-compat provider and the CLI declare it in `engines`).
 
 ## The CLI — the coding-agent reference product
 
-The CLI is a real npm package — install it or run it directly:
+The CLI is a real npm package — install it globally, or run it directly:
 
 ```
-npx @kiso/cli chat
+npm install -g @vincemakes/kiso-cli
+kiso chat          # after the global install, the command is `kiso`
+npx @vincemakes/kiso-cli chat   # or run without installing
 ```
 
 (Inside this repo, `npm run cli` runs the same binary.) The command set:

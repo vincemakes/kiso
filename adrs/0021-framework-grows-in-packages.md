@@ -22,7 +22,7 @@ agent-session hub is the source of five of pi's ten documented weaknesses.
 
 kiso is a framework in two layers:
 
-1. **The core (`@kiso/core`) stays a kernel.** The 2,000-line cap, the ADR
+1. **The core (`@vincemakes/kiso-core`) stays a kernel.** The 2,000-line cap, the ADR
    discipline, and the closed contract surface (event union, message union,
    adapter, tool, hooks) are unchanged. ADR-0001's decision stands for
    everything inside the core.

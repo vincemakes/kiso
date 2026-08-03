@@ -35,13 +35,13 @@ import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const ALL = {
-	"@kiso/core": true,
-	"@kiso/evals": true,
-	"@kiso/runtime": true,
-	"@kiso/tools-node": true,
-	"@kiso/provider-anthropic": true,
-	"@kiso/provider-openai": true,
-	"@kiso/cli": true,
+	"@vincemakes/kiso-core": true,
+	"@vincemakes/kiso-evals": true,
+	"@vincemakes/kiso-runtime": true,
+	"@vincemakes/kiso-tools-node": true,
+	"@vincemakes/kiso-provider-anthropic": true,
+	"@vincemakes/kiso-provider-openai": true,
+	"@vincemakes/kiso-cli": true,
 };
 
 /** Pack a package and return the REAL tarball filename from npm's JSON. */
@@ -74,13 +74,13 @@ function installTier(label, names, proj) {
 // ── tier A: the runtime closure ────────────────────────────────────────
 {
 	const proj = tempProject("runtime");
-	installTier("runtime", ["@kiso/core", "@kiso/evals", "@kiso/runtime", "@kiso/tools-node"], proj);
+	installTier("runtime", ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node"], proj);
 	writeFileSync(
 		join(proj, "smoke.mjs"),
-		`import { defineTool, ToolRegistry, loop, mapApiError } from "@kiso/core";
-import { createFauxProvider } from "@kiso/evals";
-import { createAgent, SessionStore } from "@kiso/runtime";
-import { readFileTool } from "@kiso/tools-node";
+		`import { defineTool, ToolRegistry, loop, mapApiError } from "@vincemakes/kiso-core";
+import { createFauxProvider } from "@vincemakes/kiso-evals";
+import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";
+import { readFileTool } from "@vincemakes/kiso-tools-node";
 
 // 1. the raw loop
 const registry = new ToolRegistry();
@@ -153,10 +153,10 @@ console.log("tier A OK — runtime closure: loop + durable session + approval pa
 	execSync("npm install --no-audit --no-fund --no-package-lock typescript@^5.7.2 @types/node@^26.1.2", { cwd: proj, stdio: "inherit" });
 	writeFileSync(
 		join(proj, "check-types.ts"),
-		`import { createAgent, SessionStore } from "@kiso/runtime";
-import { defineTool, loop, type Event } from "@kiso/core";
-import { createFauxProvider, FIXTURES } from "@kiso/evals";
-import { readFileTool, shellTool } from "@kiso/tools-node";
+		`import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";
+import { defineTool, loop, type Event } from "@vincemakes/kiso-core";
+import { createFauxProvider, FIXTURES } from "@vincemakes/kiso-evals";
+import { readFileTool, shellTool } from "@vincemakes/kiso-tools-node";
 const agent = createAgent({ model: "m", tools: [readFileTool({ workspaceRoot: "." }), shellTool({ workspaceRoot: "." })], store: new SessionStore("./s"), adapter: createFauxProvider([]) });
 const ev: Event | undefined = undefined;
 void agent; void defineTool; void loop; void ev; void FIXTURES;
@@ -181,7 +181,7 @@ void agent; void defineTool; void loop; void ev; void FIXTURES;
 {
 	const proj = tempProject("nested");
 	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-"));
-	const tarballs = ["@kiso/core", "@kiso/evals", "@kiso/runtime", "@kiso/tools-node"].map((n) => pack(stage, n));
+	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node"].map((n) => pack(stage, n));
 	for (const tarball of tarballs) {
 		execSync(`npm install --install-strategy=nested --no-audit --no-fund --no-package-lock "${tarball}"`, {
 			cwd: proj,
@@ -191,8 +191,8 @@ void agent; void defineTool; void loop; void ev; void FIXTURES;
 	rmSync(stage, { recursive: true, force: true });
 	writeFileSync(
 		join(proj, "nested.mjs"),
-		`import { createAgent, SessionStore } from "@kiso/runtime";
-import { createFauxProvider } from "@kiso/evals";
+		`import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";
+import { createFauxProvider } from "@vincemakes/kiso-evals";
 const store = new SessionStore("./s");
 const agent = createAgent({
   model: "faux",
@@ -213,12 +213,12 @@ console.log("tier A2 OK — nested install resolves the runtime closure");
 // ── tier B: the provider closure ───────────────────────────────────────
 {
 	const proj = tempProject("providers");
-	installTier("providers", ["@kiso/core", "@kiso/provider-anthropic", "@kiso/provider-openai"], proj);
+	installTier("providers", ["@vincemakes/kiso-core", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai"], proj);
 	writeFileSync(
 		join(proj, "providers.mjs"),
-		`import { createAnthropicAdapter } from "@kiso/provider-anthropic";
-import { createOpenAICompatAdapter } from "@kiso/provider-openai";
-import { mapApiError } from "@kiso/core";
+		`import { createAnthropicAdapter } from "@vincemakes/kiso-provider-anthropic";
+import { createOpenAICompatAdapter } from "@vincemakes/kiso-provider-openai";
+import { mapApiError } from "@vincemakes/kiso-core";
 if (typeof createAnthropicAdapter !== "function" || typeof createOpenAICompatAdapter !== "function") throw new Error("adapter factories missing");
 if (mapApiError(529, "x").code !== "overloaded") throw new Error("error mapping broken");
 console.log("tier B OK — provider closure: both factories import, error mapping works");
@@ -233,7 +233,7 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 	const proj = tempProject("cli");
 	installTier(
 		"cli",
-		["@kiso/core", "@kiso/evals", "@kiso/runtime", "@kiso/tools-node", "@kiso/provider-anthropic", "@kiso/provider-openai", "@kiso/cli"],
+		["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-cli"],
 		proj,
 	);
 	// The smoke program above created sessions in ITS project; here we create
@@ -258,7 +258,7 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 {
 	const proj = tempProject("nested-cli");
 	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-cli-"));
-	const tarballs = ["@kiso/core", "@kiso/evals", "@kiso/runtime", "@kiso/tools-node", "@kiso/provider-anthropic", "@kiso/provider-openai", "@kiso/cli"].map((n) =>
+	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-cli"].map((n) =>
 		pack(stage, n),
 	);
 	for (const tarball of tarballs) {

@@ -11,8 +11,8 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
-import { defineTool, type Event, type Tool } from "@kiso/core";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
+import { defineTool, type Event, type Tool } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
 
 /** A tool whose side effect is a marker FILE — observable across processes. */

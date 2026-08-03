@@ -6,10 +6,10 @@
 
 import { describe, expect, it } from "vitest";
 import { createFauxProvider } from "../src/faux.js";
-import type { Event, TerminalEvent } from "@kiso/core";
-import { defineTool } from "@kiso/core";
-import { ToolRegistry } from "@kiso/core";
-import { loop } from "@kiso/core";
+import type { Event, TerminalEvent } from "@vincemakes/kiso-core";
+import { defineTool } from "@vincemakes/kiso-core";
+import { ToolRegistry } from "@vincemakes/kiso-core";
+import { loop } from "@vincemakes/kiso-core";
 import { FIXTURES, runStaticFixture } from "../src/fixtures/index.js";
 import { makeAbortSignal } from "../src/fixtures/user-abort.js";
 

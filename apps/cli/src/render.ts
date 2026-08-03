@@ -3,8 +3,8 @@
  * the lines a human sees. Colors are raw ANSI — no dependencies.
  */
 
-import type { Event } from "@kiso/core";
-import { canonicalTargetPath } from "@kiso/tools-node";
+import type { Event } from "@vincemakes/kiso-core";
+import { canonicalTargetPath } from "@vincemakes/kiso-tools-node";
 
 const DIM = "\x1b[2m";
 const GREEN = "\x1b[32m";

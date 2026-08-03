@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { ToolContext } from "@kiso/core";
+import type { ToolContext } from "@vincemakes/kiso-core";
 import {
 	createCodingTools,
 	editFileTool,

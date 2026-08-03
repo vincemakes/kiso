@@ -15,10 +15,10 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { MessageStreamEvent } from "@anthropic-ai/sdk/resources/messages";
-import type { Adapter, StreamOptions } from "@kiso/core";
-import type { AdapterEvent, Event, StopReason } from "@kiso/core";
-import type { AssistantBlock, ContentBlock, Message, ToolSpec } from "@kiso/core";
-import { mapApiError } from "@kiso/core";
+import type { Adapter, StreamOptions } from "@vincemakes/kiso-core";
+import type { AdapterEvent, Event, StopReason } from "@vincemakes/kiso-core";
+import type { AssistantBlock, ContentBlock, Message, ToolSpec } from "@vincemakes/kiso-core";
+import { mapApiError } from "@vincemakes/kiso-core";
 
 /** Config accepted by the high-level factory (七: the provider owns its SDK). */
 export interface AnthropicProviderConfig {
@@ -29,7 +29,7 @@ export interface AnthropicProviderConfig {
 /**
  * High-level factory (七): builds the adapter FROM CONFIG, owning the SDK
  * inside this package. Consumers (and the runtime's lazy provider path)
- * import ONLY @kiso/provider-anthropic — the SDK stays a private
+ * import ONLY @vincemakes/kiso-provider-anthropic — the SDK stays a private
  * dependency of this package, so nested installs resolve it next to here,
  * never through a hoisted root.
  */

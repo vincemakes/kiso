@@ -15,10 +15,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AdapterEvent, Event, EventInput } from "../src/index.js";
 import { EventLog, loop } from "../src/index.js";
-import { createAgent, SessionStore } from "@kiso/runtime";
+import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
-import { createFauxProvider } from "@kiso/evals";
+import { createFauxProvider } from "@vincemakes/kiso-evals";
 
 const registry = new ToolRegistry();
 registry.register(

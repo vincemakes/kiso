@@ -39,18 +39,18 @@ The framework stays generic; the CLI is its consumer.
 kiso/
 ├── package.json               private root; workspace scripts only
 ├── packages/
-│   ├── core/                  @kiso/core — protocol, event log, loop, hooks,
+│   ├── core/                  @vincemakes/kiso-core — protocol, event log, loop, hooks,
 │   │                          modes, permissions, compaction, delivery truth
-│   ├── runtime/               @kiso/runtime — AgentDefinition/AgentRuntime/
+│   ├── runtime/               @vincemakes/kiso-runtime — AgentDefinition/AgentRuntime/
 │   │                          AgentSession/Run, JSONL SessionStore, reducer,
 │   │                          durable approvals, recovery guards
-│   ├── provider-anthropic/    @kiso/provider-anthropic — Anthropic adapter
-│   ├── provider-openai/       @kiso/provider-openai — OpenAI-compat adapter
-│   ├── tools-node/            @kiso/tools-node — read/list/search/write/edit/shell
-│   └── evals/                 @kiso/evals — faux provider, incident fixtures,
+│   ├── provider-anthropic/    @vincemakes/kiso-provider-anthropic — Anthropic adapter
+│   ├── provider-openai/       @vincemakes/kiso-provider-openai — OpenAI-compat adapter
+│   ├── tools-node/            @vincemakes/kiso-tools-node — read/list/search/write/edit/shell
+│   └── evals/                 @vincemakes/kiso-evals — faux provider, incident fixtures,
 │                              contract + matrix tests
 ├── apps/
-│   └── cli/                   @kiso/cli — coding-agent reference product
+│   └── cli/                   @vincemakes/kiso-cli — coding-agent reference product
 ├── docs/plans/                this plan
 └── adrs/                      ADR trail (0001-0005, 0020-0022)
 ```

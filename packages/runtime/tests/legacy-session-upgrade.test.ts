@@ -16,8 +16,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
-import { isKisoEvent, projectMessages } from "@kiso/core";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
+import { isKisoEvent, projectMessages } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
 
 /**
@@ -91,7 +91,7 @@ describe("v1 compacted sessions upgrade (第四轮)", () => {
 			adapter: createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]),
 		});
 		const session = await agent.session({ id: "s" });
-		const events: import("@kiso/core").Event[] = [];
+		const events: import("@vincemakes/kiso-core").Event[] = [];
 		for await (const ev of session.resume()) events.push(ev);
 		const terminal = events.find((e) => e.type === "terminal");
 		expect(terminal?.outcome.kind).toBe("completed");

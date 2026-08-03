@@ -1,4 +1,4 @@
-# @kiso/provider-anthropic
+# @vincemakes/kiso-provider-anthropic
 
 The Anthropic adapter on the official SDK: wire events mapped to the
 kiso event union, cancellation via the run signal, exhaustive stop-reason

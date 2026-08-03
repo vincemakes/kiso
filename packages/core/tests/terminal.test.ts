@@ -14,7 +14,7 @@ import type { Event, TerminalEvent } from "../src/protocol/events.js";
 import { loop } from "../src/kernel/loop.js";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 
 const registry = new ToolRegistry();
 registry.register(

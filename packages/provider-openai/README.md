@@ -1,4 +1,4 @@
-# @kiso/provider-openai
+# @vincemakes/kiso-provider-openai
 
 The OpenAI-compatible adapter on the official SDK (OpenAI, GLM, Kimi,
 DeepSeek, OpenRouter via base_url): reasoning dialects digested into

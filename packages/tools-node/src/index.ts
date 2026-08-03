@@ -25,7 +25,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { defineTool, type Tool, type ToolResult } from "@kiso/core";
+import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 
 const OUTPUT_CAP = 100_000; // chars of output a tool result may carry
 const DEFAULT_SHELL_TIMEOUT_MS = 30_000;

@@ -1,9 +1,9 @@
 // The README example, as an executable file. The consumer smoke test runs
 // this exact code in a clean project against the installed tarballs — if
 // the README's promise breaks, this file is what fails first.
-import { defineTool } from "@kiso/core";
-import { createAgent, SessionStore } from "@kiso/runtime";
-import { createFauxProvider } from "@kiso/evals";
+import { defineTool } from "@vincemakes/kiso-core";
+import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";
+import { createFauxProvider } from "@vincemakes/kiso-evals";
 
 const agent = createAgent({
   model: "faux",

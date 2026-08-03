@@ -19,10 +19,10 @@
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { createAgent, SessionStore, type AgentDefinition, type AgentSession } from "@kiso/runtime";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
-import { createCodingTools } from "@kiso/tools-node";
-import type { PermissionPolicy } from "@kiso/runtime";
+import { createAgent, SessionStore, type AgentDefinition, type AgentSession } from "@vincemakes/kiso-runtime";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
+import { createCodingTools } from "@vincemakes/kiso-tools-node";
+import type { PermissionPolicy } from "@vincemakes/kiso-runtime";
 import { escapeTerminal, renderEvent, renderSessionLine } from "./render.js";
 
 const PERMISSION_POLICY: PermissionPolicy = {
@@ -194,10 +194,10 @@ async function resolveUncertains(
  */
 async function consumeRun(
 	session: AgentSession,
-	run: AsyncIterable<import("@kiso/core").Event>,
+	run: AsyncIterable<import("@vincemakes/kiso-core").Event>,
 	rl: ReturnType<typeof createInterface>,
-): Promise<import("@kiso/core").Event | undefined> {
-	let last: import("@kiso/core").Event | undefined;
+): Promise<import("@vincemakes/kiso-core").Event | undefined> {
+	let last: import("@vincemakes/kiso-core").Event | undefined;
 	for await (const ev of run) {
 		last = ev;
 		if (ev.type === "uncertain_pending") {
@@ -254,7 +254,7 @@ class FauxExhaustionError extends Error {
 }
 
 function failOnFauxExhaustion(
-	last: import("@kiso/core").Event | undefined,
+	last: import("@vincemakes/kiso-core").Event | undefined,
 	faux: boolean,
 	rl: ReturnType<typeof createInterface> | undefined,
 ): void {
@@ -280,7 +280,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 			const run = session.run(input);
 			currentRun = run;
 			(async () => {
-				let last: import("@kiso/core").Event | undefined;
+				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
 					last = await consumeRun(session, run, rl);
 					currentRun = null;

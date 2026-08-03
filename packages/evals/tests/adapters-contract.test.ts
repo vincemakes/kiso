@@ -5,10 +5,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createAnthropicAdapter } from "@kiso/provider-anthropic";
-import { createOpenAICompatAdapter } from "@kiso/provider-openai";
-import type { Adapter, StreamOptions } from "@kiso/core";
-import type { Event, StructuredError } from "@kiso/core";
+import { createAnthropicAdapter } from "@vincemakes/kiso-provider-anthropic";
+import { createOpenAICompatAdapter } from "@vincemakes/kiso-provider-openai";
+import type { Adapter, StreamOptions } from "@vincemakes/kiso-core";
+import type { Event, StructuredError } from "@vincemakes/kiso-core";
 
 const OPTS: StreamOptions = { model: "test", messages: [] };
 
@@ -229,7 +229,7 @@ describe("openai-compat adapter", () => {
 
 describe("mapApiError classification", () => {
 	it("classifies by status only", async () => {
-		const { mapApiError } = await import("@kiso/core");
+		const { mapApiError } = await import("@vincemakes/kiso-core");
 		const cases: Array<[number | undefined, string]> = [
 			[429, "rate_limit"],
 			[529, "overloaded"],

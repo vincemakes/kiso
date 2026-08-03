@@ -10,10 +10,10 @@
 import { describe, expect, it } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import type { Adapter, StreamOptions } from "@kiso/core";
-import { mapApiError } from "@kiso/core";
-import { createAnthropicAdapter } from "@kiso/provider-anthropic";
-import { createOpenAICompatAdapter } from "@kiso/provider-openai";
+import type { Adapter, StreamOptions } from "@vincemakes/kiso-core";
+import { mapApiError } from "@vincemakes/kiso-core";
+import { createAnthropicAdapter } from "@vincemakes/kiso-provider-anthropic";
+import { createOpenAICompatAdapter } from "@vincemakes/kiso-provider-openai";
 
 const OPTS: StreamOptions = { model: "m", messages: [{ role: "user", content: "hi" }] };
 

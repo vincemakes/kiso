@@ -5,15 +5,15 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import type { Adapter } from "../src/protocol/adapter.js";
 import type { Event, TerminalEvent } from "../src/protocol/events.js";
 import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type Tool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
-import { terminalLies } from "@kiso/evals";
-import { silentToolFailure } from "@kiso/evals";
+import { terminalLies } from "@vincemakes/kiso-evals";
+import { silentToolFailure } from "@vincemakes/kiso-evals";
 
 async function run(
 	script: FauxScript,

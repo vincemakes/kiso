@@ -16,7 +16,7 @@ import {
 	messagesToEvents,
 	projectMessages,
 } from "../src/index.js";
-import { createFauxProvider } from "@kiso/evals";
+import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 

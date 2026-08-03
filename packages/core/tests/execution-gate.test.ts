@@ -17,7 +17,7 @@ import type { Message } from "../src/protocol/messages.js";
 import { EventLog, loop } from "../src/index.js";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 
 const USER: Message = { role: "user", content: "go" };
 

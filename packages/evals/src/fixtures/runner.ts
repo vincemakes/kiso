@@ -3,7 +3,7 @@
  * checks. Loop integration (trajectory + requiredTerminal) lands in M1.
  */
 
-import type { EventInput } from "@kiso/core";
+import type { EventInput } from "@vincemakes/kiso-core";
 import type { Fixture } from "./types.js";
 
 export function flattenScript(fixture: Fixture): readonly EventInput[] {

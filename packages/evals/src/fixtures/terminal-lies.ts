@@ -14,8 +14,8 @@
  * clean `completed` — the harness's delivery tracker must see the signal.
  */
 
-import type { Event } from "@kiso/core";
-import { analyzeDelivery } from "@kiso/core";
+import type { Event } from "@vincemakes/kiso-core";
+import { analyzeDelivery } from "@vincemakes/kiso-core";
 import type { Fixture } from "./types.js";
 
 export const terminalLies: Fixture = {

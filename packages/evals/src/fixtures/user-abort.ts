@@ -9,7 +9,7 @@
  * and the terminal is honest about who ended the run.
  */
 
-import type { AbortSignalLike } from "@kiso/core";
+import type { AbortSignalLike } from "@vincemakes/kiso-core";
 import type { Fixture } from "./types.js";
 
 /** A signal that flips to aborted after N events (test-controlled). */

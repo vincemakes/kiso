@@ -1,4 +1,4 @@
-# @kiso/evals
+# @vincemakes/kiso-evals
 
 The faux provider (a scripted model — zero keys, deterministic), the
 incident fixture library (every fixture is a real production accident

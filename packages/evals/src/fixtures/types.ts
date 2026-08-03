@@ -16,8 +16,8 @@
  */
 
 import type { FauxScript } from "../faux.js";
-import type { Event } from "@kiso/core";
-import type { EventInput } from "@kiso/core";
+import type { Event } from "@vincemakes/kiso-core";
+import type { EventInput } from "@vincemakes/kiso-core";
 
 export interface Fixture {
 	readonly name: string;

@@ -12,10 +12,10 @@
  */
 
 import { createInterface } from "node:readline";
-import { createFauxProvider } from "@kiso/evals";
+import { createFauxProvider } from "@vincemakes/kiso-evals";
 import Anthropic from "@anthropic-ai/sdk";
-import { createAnthropicAdapter } from "@kiso/provider-anthropic";
-import { defineTool, ToolRegistry, EventLog, loop } from "@kiso/core";
+import { createAnthropicAdapter } from "@vincemakes/kiso-provider-anthropic";
+import { defineTool, ToolRegistry, EventLog, loop } from "@vincemakes/kiso-core";
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createFauxProvider, type FauxScript } from "@kiso/evals";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import type { Event, TerminalEvent } from "../src/protocol/events.js";
 import type { Message, UserMessage } from "../src/protocol/messages.js";
 import { defineTool } from "../src/tools/tool.js";

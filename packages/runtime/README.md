@@ -1,4 +1,4 @@
-# @kiso/runtime
+# @vincemakes/kiso-runtime
 
 The durable session layer: createAgent, AgentSession, Run, the
 crash-safe append-only JSONL store (torn-tail repair, cross-process
