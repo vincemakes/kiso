@@ -39,9 +39,18 @@ import {
 	type ToolResult,
 } from "@kiso/core";
 import { denialResult } from "@kiso/core";
-import type { SessionStore } from "./store.js";
+import { StaleWriterError, type SessionStore } from "./store.js";
 
-/** resume() refuses while interrupted executions still await a human verdict. */
+/** A session whose disk write was rejected (stale handle) is PERMANENTLY
+ * poisoned: its in-memory log no longer matches the disk, so no further
+ * run may proceed — reload the session (一). */
+export class PoisonedSessionError extends Error {
+	constructor(reason: string) {
+		super(`session is poisoned: ${reason} — reload it; the in-memory log no longer matches the disk`);
+		this.name = "PoisonedSessionError";
+	}
+}
+
 export class ResumeBlockedError extends Error {
 	readonly uncertain: readonly { executionId: string; callId: string; name: string }[];
 	constructor(uncertain: readonly { executionId: string; callId: string; name: string }[]) {
@@ -71,6 +80,16 @@ export class AgentSession {
 	readonly #pendingResolvers = new Map<string, (decision: PermissionDecision) => void>();
 	readonly #uncertaintyResolvers = new Map<string, (resolution: "rerun" | "abandoned") => void>();
 	readonly #answered = new Set<string>();
+	#poisoned: string | null = null;
+
+	/** Permanently invalidate the session after a rejected disk write (一). */
+	poison(reason: string): void {
+		if (this.#poisoned === null) this.#poisoned = reason;
+	}
+
+	ensureHealthy(): void {
+		if (this.#poisoned !== null) throw new PoisonedSessionError(this.#poisoned);
+	}
 
 	readonly #activeRuns = new Set<Run>();
 
@@ -80,6 +99,20 @@ export class AgentSession {
 		this.#store = store;
 		this.#adapter = adapter;
 		this.#config = config;
+	}
+
+	/** Write-ahead through the store; a rejected write POISONS the session
+	 *  (一): the in-memory log no longer matches the disk, so no further run
+	 *  may proceed. */
+	persist(runId: string, event: Event): void {
+		try {
+			this.#store.append(this.id, runId, event);
+		} catch (err) {
+			if (err instanceof StaleWriterError || (err as Error).name === "StoreCorruptionError") {
+				this.poison((err as Error).message);
+			}
+			throw err;
+		}
 	}
 
 	// ── one active run per session (Area 1) ──────────────────────────────
@@ -102,6 +135,7 @@ export class AgentSession {
 
 	/** Run one user turn. Iterate to consume; `run.abort()` cancels. */
 	run(input: string, options?: { signal?: AbortSignalLike }): Run {
+		this.ensureHealthy();
 		return new Run(this.#store, this.#adapter, this.#config, this, input, options?.signal, false);
 	}
 
@@ -112,6 +146,7 @@ export class AgentSession {
 	 * Yields nothing when the session already completed.
 	 */
 	resume(): Run {
+		this.ensureHealthy();
 		return new Run(this.#store, this.#adapter, this.#config, this, undefined, undefined, true);
 	}
 
@@ -196,7 +231,7 @@ export class AgentSession {
 			decision: allow ? "approved" : "denied",
 			...(allow ? {} : { reason: "denied by user" }),
 		});
-		this.#store.append(this.id, runId, decided);
+		this.persist(runId, decided);
 	}
 
 	// ── Phase D: the uncertain-execution ledger ──────────────────────────
@@ -220,13 +255,16 @@ export class AgentSession {
 		const record = executionLedger(this.log.all).get(executionId);
 		if (!record) throw new Error(`no execution record for ${executionId}`);
 		if (record.status !== "uncertain") return; // idempotent + irreversible
+		// 四: the verdict is attributed to the ORIGINAL run of the execution
+		// — never the fake runId "resolution".
+		const runId = this.runIdFor(executionId);
 		const resolved = this.log.append({
 			type: "tool_execution_resolved",
 			executionId,
 			callId: record.callId,
 			resolution,
 		});
-		this.#store.append(this.id, "resolution", resolved);
+		this.persist(runId, resolved);
 		if (!this.log.all.some((e) => e.type === "tool_result" && e.callId === record.callId)) {
 			const denial = denialResult(
 				resolution === "rerun"
@@ -240,7 +278,7 @@ export class AgentSession {
 				isError: true,
 				errorKind: denial.errorKind,
 			});
-			this.#store.append(this.id, "resolution", result);
+			this.persist(runId, result);
 		}
 		// C 组: wake a LIVE paused run waiting on this verdict.
 		const resolver = this.#uncertaintyResolvers.get(executionId);
@@ -248,6 +286,19 @@ export class AgentSession {
 			this.#uncertaintyResolvers.delete(executionId);
 			resolver(resolution);
 		}
+	}
+
+	/** The runId that owns an execution — from its durable started record. */
+	private runIdFor(executionId: string): string {
+		const rec = this.#store
+			.load(this.id)
+			.find(
+				(r) =>
+					r.event.type === "tool_execution_started" &&
+					(r.event as { executionId?: string }).executionId === executionId,
+			);
+		if (!rec) throw new Error(`no durable execution record for ${executionId}`);
+		return rec.runId;
 	}
 
 	registerUncertaintyResolver(executionId: string, resolve: (resolution: "rerun" | "abandoned") => void): void {
@@ -364,7 +415,7 @@ export class Run implements AsyncIterable<Event> {
 			const self = this;
 			const runLoop = async function* (): AsyncGenerator<Event> {
 				for await (const ev of loop(loopConfig())) {
-					self.#store.append(self.#session.id, self.runId, ev);
+					self.#session.persist(self.runId, ev);
 					yield ev;
 				}
 			};
@@ -413,7 +464,7 @@ export class Run implements AsyncIterable<Event> {
 							decisionId: ev.decisionId,
 							reason: `run ${runId} terminated before the request was answered`,
 						});
-						this.#store.append(this.#session.id, runId, expired);
+						this.#session.persist(runId, expired);
 					}
 				}
 
@@ -431,7 +482,7 @@ export class Run implements AsyncIterable<Event> {
 				//    entry are durable.
 				const baseSeq = log.lastSeq;
 				const persist = (ev: Event): void => {
-					if (ev.seq > baseSeq) this.#store.append(this.#session.id, this.runId, ev);
+					if (ev.seq > baseSeq) this.#session.persist(this.runId, ev);
 				};
 				for await (const ev of this.#recover(log, signal, lastOpen.events)) {
 					persist(ev);
@@ -452,7 +503,7 @@ export class Run implements AsyncIterable<Event> {
 			//    sees, so what was asked and what happened live in the same
 			//    stream.
 			const inputEvent = log.append({ type: "user_input", content: this.#input! });
-			this.#store.append(this.#session.id, this.runId, inputEvent);
+			this.#session.persist(this.runId, inputEvent);
 			yield inputEvent;
 
 			// 2. The loop projects from the session log — multi-turn context

@@ -136,12 +136,15 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			const inputEvent = [...log.all].reverse().find((e): e is Event & { type: "user_input" } => e.type === "user_input");
 			const rewritten = await hooks.onUserMessage(last, {});
 			if (inputEvent) {
-				log.append({
+				// 一: the rewrite/veto is a NORMAL stream event — persisted by
+				// the harness and visible to consumers, never a hidden append.
+				const replaced = log.append({
 					type: "user_input_replaced",
 					replaces: inputEvent.seq,
 					content: rewritten?.content ?? null,
 				});
 				messages = derive();
+				yield replaced;
 			}
 		}
 	}
@@ -398,14 +401,17 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				} else {
 					// No channel: record the conservative verdict — the
 					// failure is NEVER auto-retried, and the ledger stays
-					// consistent for future resumes.
+					// consistent for future resumes. Yielded like every
+					// other event (一).
 					resolution = "abandoned";
-					log.append({
+					const resolvedEvent = log.append({
 						type: "tool_execution_resolved",
 						executionId: failed.executionId,
 						callId: call.callId,
 						resolution,
 					});
+					if (hooks.onEvent) await hooks.onEvent(resolvedEvent, {}).catch(() => {});
+					yield resolvedEvent;
 				}
 				// Either verdict ends the pending list: siblings never run.
 				break;
