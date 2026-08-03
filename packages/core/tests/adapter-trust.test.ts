@@ -9,9 +9,13 @@
  * accepted, and no tool ever executes on a forged turn.
  */
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { AdapterEvent, Event } from "../src/index.js";
+import type { AdapterEvent, Event, EventInput } from "../src/index.js";
 import { EventLog, loop } from "../src/index.js";
+import { createAgent, SessionStore } from "@kiso/runtime";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { createFauxProvider } from "@kiso/evals";
@@ -147,5 +151,56 @@ describe("adapter trust boundary (五)", () => {
 		const terminals = events.filter((e) => e.type === "terminal");
 		expect(terminals).toHaveLength(1);
 		expect(terminals[0]).toMatchObject({ outcome: { kind: "completed" } });
+	});
+});
+
+describe("adapter trust: STRUCTURAL validation (P1-8)", () => {
+	const BAD_FIELD_EVENTS: EventInput[] = [
+		{ type: "text_delta" }, // missing text
+		{ type: "text_start", source: "assistant" }, // illegal source enum
+		{ type: "tool_call_start", callId: "c1" }, // missing name
+		{ type: "tool_call_end", callId: "c1", name: "x", input: ["a"] }, // array input
+		{ type: "stop", reason: "keep_going" }, // illegal stop reason
+		{ type: "usage", known: true, inputTokens: null, outputTokens: null, cacheRead: null, cacheWrite: null }, // known with no real token
+		{ type: "tool_call_input_delta", callId: "c1" }, // missing delta
+	];
+
+	it.each(BAD_FIELD_EVENTS.map((ev, i) => [i, ev] as const))(
+		"a legal TYPE with illegal FIELDS (%i) is a forgery — never appended, one invalid_request terminal",
+		async (_i, forged) => {
+			const log = new EventLog();
+			const events: Event[] = [];
+			for await (const ev of loop({
+				adapter: createFauxProvider([{ events: [forged] }]),
+				model: "faux",
+				registry,
+				log,
+				messages: [{ role: "user", content: "go" }],
+			})) {
+				events.push(ev);
+			}
+			const terminals = events.filter((e) => e.type === "terminal");
+			expect(terminals).toHaveLength(1);
+			expect(terminals[0]).toMatchObject({ outcome: { kind: "error", error: { code: "invalid_request" } } });
+			// Nothing of the forged event landed in the log.
+			expect(log.all.filter((e) => e.type === forged.type)).toHaveLength(0);
+		},
+	);
+
+	it("the session stays loadable after a structural forgery — no persistent damage", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-trust-"));
+		const store = new SessionStore(dir);
+		const session = await createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider([{ events: [{ type: "stop" }] }]), // stop without a reason
+		}).session({ id: "s" });
+		for await (const _ev of session.run("go")) {
+			// drain — the forged stop is an invalid_request terminal
+		}
+		// The disk holds a contiguous, loadable trajectory.
+		const records = new SessionStore(dir).load("s");
+		expect(records.map((r) => r.event.seq)).toEqual([...records.map((_, i) => i)]);
 	});
 });

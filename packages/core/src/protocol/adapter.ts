@@ -18,7 +18,7 @@
  * reasoning_content) are digested HERE and never leak into the union.
  */
 
-import type { Event } from "./events.js";
+import { isKisoEvent, type Event } from "./events.js";
 import type { Message, ToolSpec } from "./messages.js";
 
 /**
@@ -95,8 +95,17 @@ export const ADAPTER_EVENT_TYPES: ReadonlySet<string> = new Set([
 	"stop",
 ]);
 
-export function isAdapterEvent(value: { readonly type: string }): value is AdapterEvent {
-	return ADAPTER_EVENT_TYPES.has(value.type);
+/**
+ * 第五轮(P1-8): the trust gate validates STRUCTURE, not just the type name.
+ * A third-party adapter can emit a legal type with illegal fields (a stop
+ * without a reason, a usage with known:true and no token, an array tool
+ * input) — persisted, that would poison the next load. The gate reuses the
+ * same per-variant validator the store relies on (isKisoEvent), so there
+ * is exactly ONE set of rules: an invalid event is a forgery, never
+ * appended, and the turn ends with an invalid_request terminal.
+ */
+export function isAdapterEvent(value: Event): value is AdapterEvent {
+	return ADAPTER_EVENT_TYPES.has(value.type) && isKisoEvent(value);
 }
 
 export interface Adapter {
