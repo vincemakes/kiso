@@ -67,13 +67,23 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		assistantSource = undefined;
 	};
 
-	// C 组: vetoed/rewritten user inputs. Collect the replacement map
-	// first — a user_input is skipped when a later user_input_replaced
-	// supersedes it, and the replacement (non-null content) produces the
-	// only user message later turns see.
-	const replaced = new Map<number, string | readonly import("../protocol/messages.js").ContentBlock[] | null>();
+	// C 组/六: vetoed/rewritten user inputs. Collect the replacement map
+	// first — the FINAL replacement for each input wins (later replacements
+	// never produce extra messages), and the replacement renders AT THE
+	// INPUT'S OWN POSITION: the original is skipped, the final non-null
+	// content speaks for it there, a null content is a true veto (nothing
+	// at that position).
+	const replaced = new Map<
+		number,
+		{ content: string | readonly import("../protocol/messages.js").ContentBlock[] | null; source?: MessageSource }
+	>();
 	for (const ev of events) {
-		if (ev.type === "user_input_replaced") replaced.set(ev.replaces, ev.content);
+		if (ev.type === "user_input_replaced") {
+			replaced.set(ev.replaces, {
+				content: ev.content,
+				...(ev.source !== undefined ? { source: ev.source } : {}),
+			});
+		}
 	}
 
 	let explicitAssistant = false;
@@ -81,7 +91,22 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	for (const ev of events) {
 		switch (ev.type) {
 			case "user_input": {
-				if ("seq" in ev && typeof ev.seq === "number" && replaced.has(ev.seq)) break; // superseded — the replacement speaks for it
+				// 六: the final replacement renders HERE, at the input's own
+				// position — the original is skipped, the replacement event
+				// itself produces nothing (a later replacement for the same
+				// input never becomes a second message).
+				if ("seq" in ev && typeof ev.seq === "number" && replaced.has(ev.seq)) {
+					const replacement = replaced.get(ev.seq)!;
+					flushAssistant();
+					if (replacement.content !== null) {
+						out.push({
+							role: "user",
+							content: replacement.content,
+							...(replacement.source !== undefined ? { source: replacement.source } : {}),
+						} satisfies UserMessage);
+					}
+					break;
+				}
 				flushAssistant();
 				out.push({
 					role: "user",
@@ -90,17 +115,10 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				} satisfies UserMessage);
 				break;
 			}
-			case "user_input_replaced": {
-				flushAssistant();
-				if (ev.content !== null) {
-					out.push({
-						role: "user",
-						content: ev.content,
-						...(ev.source !== undefined ? { source: ev.source } : {}),
-					} satisfies UserMessage);
-				}
+			case "user_input_replaced":
+				// The replacement already rendered at its input's position —
+				// this event carries no message of its own (六).
 				break;
-			}
 			case "assistant_start":
 				// D 组: an explicit message boundary — close any open message
 				// and begin a new one (adjacent assistants stay separate).

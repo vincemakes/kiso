@@ -126,7 +126,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 
 	// Assemble: the incoming user message may be rewritten or vetoed.
 	// C 组: the outcome is PERSISTED as a user_input_replaced event — the
-	// projection skips the original and produces the replacement (or
+	// projection renders the final replacement AT THE INPUT'S POSITION (or
 	// nothing, for a true veto), so the rewritten fact is the ONLY fact
 	// every later turn of the run sees.
 	let messages = derive();
@@ -135,8 +135,19 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		const last = messages.at(-1);
 		if (last?.role === "user") {
 			const inputEvent = [...log.all].reverse().find((e): e is Event & { type: "user_input" } => e.type === "user_input");
-			const rewritten = await hooks.onUserMessage(last, {});
-			if (inputEvent) {
+			// 六: the hook runs AT MOST ONCE per input. A replacement that
+			// ALREADY exists (persisted before a crash, or before a resume)
+			// means the hook already spoke for this input — it must never
+			// run again, and the run continues from the durable fact.
+			const alreadyReplaced =
+				inputEvent !== undefined &&
+				log.all.some(
+					(e) =>
+						e.type === "user_input_replaced" &&
+						(e as { replaces: number }).replaces === inputEvent.seq,
+				);
+			if (!alreadyReplaced && inputEvent) {
+				const rewritten = await hooks.onUserMessage(last, {});
 				// 一: the rewrite/veto is a NORMAL stream event — persisted by
 				// the harness and visible to consumers, never a hidden append.
 				const replaced = log.append({

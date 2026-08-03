@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 import type { Adapter } from "../src/protocol/adapter.js";
 import type { Event } from "../src/protocol/events.js";
 import type { Message } from "../src/protocol/messages.js";
-import { EventLog, loop } from "../src/index.js";
+import { EventLog, loop, projectMessages } from "../src/index.js";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { createFauxProvider, type FauxScript } from "@kiso/evals";
@@ -217,5 +217,104 @@ describe("AgentSession + reload (三)", () => {
 		}).session({ id: "s" });
 		const user = reloaded.projected().find((m) => m.role === "user") as { content: unknown };
 		expect(user.content).toEqual(blocks.content);
+	});
+});
+
+describe("rewrite exactly-once across recovery (六)", () => {
+	it("a replacement yielded then interrupted: reload + resume calls the hook ONCE and keeps ONE replacement", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-rw-"));
+		let hookCalls = 0;
+		const seen: Message[][] = [];
+		const makeAgent = (store: SessionStore) =>
+			createAgent({
+				model: "faux",
+				store,
+				tools: [],
+				adapter: seenAdapter(seen, [{ events: [{ type: "stop", reason: "end_turn" }] }]),
+				hooks: {
+					onUserMessage: async (msg) => {
+						hookCalls += 1;
+						return { ...msg, content: `rewrite-${hookCalls}`, source: "suggestion" as const };
+					},
+				},
+			});
+
+		// First process: consume until the replacement is YIELDED, then
+		// abandon the run (a crash right after the replacement persisted,
+		// before the provider was called).
+		const store = new SessionStore(dir);
+		const session = await makeAgent(store).session({ id: "s" });
+		for await (const ev of session.run("original")) {
+			if (ev.type === "user_input_replaced") break; // crash here
+		}
+		store.closeAll();
+		expect(hookCalls).toBe(1);
+		expect(new SessionStore(dir).load("s").filter((r) => r.event.type === "user_input_replaced")).toHaveLength(1);
+
+		// Reload + resume: the hook must NOT run again, the provider must
+		// see exactly one user message (the replacement), and the disk must
+		// still hold exactly one replacement.
+		const store2 = new SessionStore(dir);
+		const session2 = await makeAgent(store2).session({ id: "s" });
+		for await (const _ev of session2.resume()) {
+			// drain
+		}
+		expect(hookCalls).toBe(1); // never re-invoked
+		expect(new SessionStore(dir).load("s").filter((r) => r.event.type === "user_input_replaced")).toHaveLength(1);
+		// The provider saw exactly one user message, the rewrite.
+		expect(seen.length).toBeGreaterThan(0);
+		for (const messages of seen) {
+			const users = messages.filter((m) => m.role === "user");
+			expect(users).toHaveLength(1);
+			expect(users[0]!.content).toBe("rewrite-1");
+		}
+	});
+
+	it("a veto crash before the terminal: resume does NOT call the hook or the provider", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-rw-"));
+		let hookCalls = 0;
+		let providerCalls = 0;
+		const agent = createAgent({
+			model: "faux",
+			store: new SessionStore(dir),
+			tools: [],
+			adapter: {
+				stream: (opts) => {
+					providerCalls += 1;
+					return createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]).stream(opts);
+				},
+			},
+			hooks: {
+				onUserMessage: async () => {
+					hookCalls += 1;
+					return null; // veto
+				},
+			},
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const ev of session.run("blocked")) {
+			if (ev.type === "user_input_replaced") break; // crash before the terminal
+		}
+		expect(hookCalls).toBe(1);
+		expect(providerCalls).toBe(0);
+
+		const session2 = await agent.session({ id: "s" });
+		for await (const _ev of session2.resume()) {
+			// drain
+		}
+		// Neither the hook nor the provider ran again — the veto is durable.
+		expect(hookCalls).toBe(1);
+		expect(providerCalls).toBe(0);
+	});
+
+	it("the projection renders the FINAL replacement at the input's position — never one message per replacement", () => {
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "original" });
+		log.append({ type: "user_input_replaced", replaces: 0, content: "first", source: "suggestion" });
+		log.append({ type: "user_input_replaced", replaces: 0, content: "final", source: "suggestion" });
+		const projected = projectMessages(log.all);
+		const users = projected.filter((m) => m.role === "user");
+		expect(users).toHaveLength(1);
+		expect(users[0]).toMatchObject({ content: "final", source: "suggestion" });
 	});
 });
