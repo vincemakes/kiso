@@ -359,14 +359,19 @@ async function* executeOne(
 			yield requested;
 
 			const finalDecision = await pendingDecision;
-			const decided = log.append({
-				type: "permission_decided",
-				decisionId,
-				decision: finalDecision.action === "allow" ? "approved" : "denied",
-				...(finalDecision.action === "deny" && finalDecision.reason !== undefined
-					? { reason: finalDecision.reason }
-					: {}),
-			});
+			// The approval channel (session.approve) persists the decision
+			// write-ahead BEFORE waking the resolver (Area 2): if it already
+			// landed in the log, this is the same decision, not a duplicate.
+			const decided =
+				log.all.find((e) => e.type === "permission_decided" && e.decisionId === decisionId) ??
+				log.append({
+					type: "permission_decided",
+					decisionId,
+					decision: finalDecision.action === "allow" ? "approved" : "denied",
+					...(finalDecision.action === "deny" && finalDecision.reason !== undefined
+						? { reason: finalDecision.reason }
+						: {}),
+				});
 			yield decided;
 
 			if (finalDecision.action !== "allow") {
