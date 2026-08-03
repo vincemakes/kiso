@@ -5,42 +5,51 @@
  * turn into a list — the agno failure), and converges on exactly one
  * `terminal` event per run (ADR-0004).
  *
+ * SINGLE TRUTH (Phase B): the loop holds ONE EventLog. Messages are never
+ * stored alongside it — every adapter call derives them via
+ * `projectMessages(log.all)` (kernel/project.ts). A fresh log encodes the
+ * seed `messages` into events first, so even a one-shot call replays
+ * exactly. Compaction is recorded as a `compacted` event and re-applied by
+ * the projection, keeping the replay identical to the live run.
+ *
  * Per iteration:
  *   assemble (onUserMessage / onPreLlm)
  *     → adapter.stream(): events yielded straight through, tool calls collected
- *     → execute: permission (onPreTool) → handler → rewrite (onPostTool),
- *       concurrency-safe calls batched parallel, the rest serial
- *     → tool_result events appended, messages advanced
- *   no tool calls / maxTurns / abort → terminal event, return
+ *     → execute: validation → permission (onPreTool) → handler → rewrite
+ *       (onPostTool), concurrency-safe calls batched parallel, the rest serial
+ *     → tool_result events appended
+ *   no tool calls / maxTurns / abort / max_tokens → terminal event, return
  *
  * Retry lives HERE and only here (ADR-0005): a retryable StructuredError
- * from the adapter is retried with backoff inside the generator frame — no
- * promise handed to a side channel that can leak or desync. All mutable
- * state (attempts, turns, messages) is local to the frame.
+ * from the adapter is retried with backoff inside the generator frame — and
+ * ONLY before anything streamed (Phase B): once a text delta or tool call
+ * left the adapter, a failure is an `error` terminal, never a silent
+ * re-stream that duplicates output or tool calls.
  */
 
-import type { Adapter } from "../protocol/adapter.js";
-import type { Event, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
+import type { Adapter, AbortSignalLike } from "../protocol/adapter.js";
+import type { Event, StopReason, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
 import { estimateTokens, microcompact } from "./compaction.js";
+import { EventLog } from "./event-log.js";
 import type { EventInput } from "./event-log.js";
-
-/** Zero-dependency sleep: the kernel must not import host globals (ADR-0001). */
-declare function setTimeout(cb: () => void, ms: number): unknown;
 import type {
 	AssistantBlock,
 	AssistantMessage,
 	Message,
 	ToolResultMessage,
-	UserMessage,
 } from "../protocol/messages.js";
 import type { Tool, ToolContext, ToolResult } from "../tools/tool.js";
 import { ToolRegistry } from "../tools/registry.js";
-import { EventLog } from "./event-log.js";
+import { validateArgs } from "../tools/validate.js";
 import type { HookHost, ToolCallPayload } from "./hooks.js";
 import { NoOpHooks } from "./hooks.js";
 import type { ModeProfile } from "./mode.js";
 import { resolveModeProfile } from "./mode.js";
 import { denialResult } from "./permission.js";
+import { messagesToEvents, projectMessages } from "./project.js";
+
+/** Zero-dependency sleep: the kernel must not import host globals (ADR-0001). */
+declare function setTimeout(cb: () => void, ms: number): unknown;
 
 export interface LoopConfig {
 	readonly adapter: Adapter;
@@ -53,11 +62,17 @@ export interface LoopConfig {
 	readonly mode?: string;
 	readonly maxTurns?: number;
 	readonly maxRetries?: number;
+	/**
+	 * Seed history. When a `log` is provided, the log IS the truth and this
+	 * is only used if the log is empty. See ADR-0002 / kernel/project.ts.
+	 */
 	readonly messages?: readonly Message[];
+	/** The run's event log. Pass the session's log to make this run durable. */
+	readonly log?: EventLog;
 	/** Auto-compaction: when the estimated context exceeds the threshold,
 	 *  microcompact old tool results before the next model call. */
 	readonly compaction?: { readonly thresholdTokens: number };
-	readonly signal?: import("../protocol/adapter.js").AbortSignalLike;
+	readonly signal?: AbortSignalLike;
 	readonly temperature?: number;
 	readonly maxTokens?: number;
 }
@@ -66,7 +81,7 @@ export const DEFAULT_MAX_TURNS = 10;
 export const DEFAULT_MAX_RETRIES = 2;
 
 export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
-	const log = new EventLog();
+	const log = config.log ?? new EventLog();
 	const hooks: HookHost = config.hooks ?? NoOpHooks;
 	const maxTurns = config.maxTurns ?? DEFAULT_MAX_TURNS;
 	const maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
@@ -77,7 +92,14 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			? config.registry.subset(mode.visibleToolNames)
 			: config.registry;
 
-	let messages: readonly Message[] = [...(config.messages ?? [])];
+	// Seed: a fresh log encodes the seed history as events so the projection
+	// (and any later replay) contains it. A non-empty log (session resume)
+	// is never re-seeded — the log already holds everything.
+	if (log.all.length === 0) {
+		for (const ev of messagesToEvents(config.messages ?? [])) log.append(ev);
+	}
+
+	const derive = (): readonly Message[] => projectMessages(log.all);
 
 	/** Yield a terminal: onStop (lifecycle) → event → onEvent (observer). */
 	const terminal = async (outcome: Terminal): Promise<Event> => {
@@ -89,6 +111,10 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	const aborted = (): boolean => signal?.aborted === true;
 
 	// Assemble: the incoming user message may be rewritten or vetoed.
+	// This is a live per-run transform, not part of the projection — the log
+	// keeps the original input; session-level rewrite policy (Phase C) writes
+	// the rewritten input into the log instead.
+	let messages = derive();
 	if (hooks.onUserMessage && messages.length > 0) {
 		const last = messages.at(-1);
 		if (last?.role === "user") {
@@ -111,12 +137,15 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		}
 		turns += 1;
 
-		// ── Auto-compaction: identity-preserving relief before the call ────
+		// ── Auto-compaction: recorded as an event, applied by the projection ─
 		if (config.compaction && estimateTokens(messages) > config.compaction.thresholdTokens) {
 			if (hooks.onPreCompact) await hooks.onPreCompact(messages, {}).catch(() => {});
-			const result = microcompact(messages);
-			if (result.clearedCallIds.length > 0) {
-				messages = result.messages;
+			const cleared = microcompact(messages).clearedCallIds;
+			if (cleared.length > 0) {
+				const full = log.append({ type: "compacted", clearedCallIds: cleared });
+				if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
+				yield full;
+				messages = derive();
 				if (hooks.onPostCompact) await hooks.onPostCompact(messages, {}).catch(() => {});
 			}
 		}
@@ -129,9 +158,9 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 
 		// ── Model turn: stream events through, collect tool calls ──────────
 		const pending: ToolCallEnd[] = [];
-		let textBuffer = "";
-		let attempts = 0;
+		let lastStop: StopReason | undefined;
 		let streamed = false;
+		let attempts = 0;
 
 		while (true) {
 			try {
@@ -146,16 +175,18 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				});
 				for await (const ev of stream) {
 					streamed = true;
+					if (ev.type === "stop") lastStop = ev.reason;
+					if (ev.type === "tool_call_end") pending.push(ev);
 					const full = log.append(ev);
 					if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
 					yield full;
-					if (ev.type === "text_delta") textBuffer += ev.text;
-					if (ev.type === "tool_call_end") pending.push(ev);
 				}
 				break;
 			} catch (err) {
 				const structured = toStructuredError(err);
-				if (structured.retryable && attempts < maxRetries) {
+				// Phase B: never silently re-stream a turn that already
+				// emitted content — duplicates are worse than failures.
+				if (structured.retryable && !streamed && attempts < maxRetries) {
 					attempts += 1;
 					await sleep(attempts * 250); // backoff lives in the frame
 					continue;
@@ -165,9 +196,9 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			}
 		}
 
-		// ── Terminal check: no tool call this turn → done ──────────────────
+		// ── Terminal check: no tool call this turn → done, honestly ────────
 		if (pending.length === 0) {
-			yield await terminal({ kind: "completed" });
+			yield await terminal(terminalForStop(lastStop));
 			return;
 		}
 
@@ -178,7 +209,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			return;
 		}
 
-		// ── Execute: concurrency-safe calls batched parallel, rest serial ──
+		// ── Execute: validate + permission + handler, batched by safety ────
 		const results = await executeCalls(pending, registry, hooks, {
 			signal: signal ?? NEVER_ABORT,
 		});
@@ -195,8 +226,25 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			yield full;
 		}
 
-		// ── Advance history: assistant turn + tool results ─────────────────
-		messages = appendTurn(messages, textBuffer, pending, results);
+		// ── Advance history: the log grew; re-derive for the next turn ─────
+		messages = derive();
+	}
+}
+
+/**
+ * The terminal for a turn that stopped without tool calls — mapped from the
+ * provider's OWN stop reason, never blanket `completed` (Phase B).
+ */
+function terminalForStop(reason: StopReason | undefined): Terminal {
+	switch (reason) {
+		case "max_tokens":
+			return { kind: "max_tokens" };
+		case "abort":
+			return { kind: "aborted", by: "user" };
+		case "error":
+			return { kind: "error", error: { code: "unknown", retryable: false, message: "provider stopped with an error" } };
+		default:
+			return { kind: "completed" };
 	}
 }
 
@@ -276,6 +324,19 @@ async function executeOne(
 		};
 	}
 
+	// Phase B: real JSON Schema validation — the handler never sees garbage.
+	const schemaError = validateArgs(tool.parameters, call.input);
+	if (schemaError !== null) {
+		return {
+			callId: call.callId,
+			result: {
+				content: `Arguments failed schema validation:${schemaError}`,
+				isError: true,
+				errorKind: "invalid_input",
+			},
+		};
+	}
+
 	// Permission negotiation.
 	if (hooks.onPreTool) {
 		const decision = await hooks.onPreTool(payload, ctx);
@@ -301,36 +362,6 @@ async function executeOne(
 		result = await hooks.onPostTool(payload, result, ctx);
 	}
 	return { callId: call.callId, result };
-}
-
-// ── History advancement ─────────────────────────────────────────────────
-
-function appendTurn(
-	messages: readonly Message[],
-	text: string,
-	calls: readonly ToolCallEnd[],
-	results: readonly ExecutedCall[],
-): readonly Message[] {
-	const blocks: AssistantBlock[] = [];
-	if (text !== "") {
-		blocks.push({ type: "text", text });
-	}
-	for (const call of calls) {
-		blocks.push({
-			type: "tool_use",
-			callId: call.callId,
-			name: call.name,
-			input: call.input ?? {},
-		});
-	}
-	const assistant: AssistantMessage = { role: "assistant", blocks };
-	const toolMessages: ToolResultMessage[] = results.map((r) => ({
-		role: "tool",
-		callId: r.callId,
-		content: r.result.content,
-		isError: r.result.isError,
-	}));
-	return [...messages, assistant, ...toolMessages];
 }
 
 // ── Error structuring ───────────────────────────────────────────────────
@@ -368,4 +399,6 @@ const NEVER_ABORT = {
 	aborted: false,
 	addEventListener: () => {},
 	removeEventListener: () => {},
-} satisfies import("../protocol/adapter.js").AbortSignalLike;
+} satisfies AbortSignalLike;
+
+export type { EventInput, AssistantBlock, AssistantMessage, Message, ToolResultMessage };

@@ -33,14 +33,19 @@ interface PendingToolCall {
 export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 	return {
 		async *stream(options: StreamOptions): AsyncIterable<Event> {
-			const stream = await client.chat.completions.create({
-				model: options.model,
-				messages: toOpenAIMessages(options.messages),
-				stream: true,
-				...(options.tools?.length ? { tools: options.tools.map(toOpenAITool) } : {}),
-				...(options.maxTokens !== undefined ? { max_tokens: options.maxTokens } : {}),
-				...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-			});
+			const stream = await client.chat.completions.create(
+				{
+					model: options.model,
+					messages: toOpenAIMessages(options.messages, options.systemPrompt),
+					stream: true,
+					...(options.tools?.length ? { tools: options.tools.map(toOpenAITool) } : {}),
+					...(options.maxTokens !== undefined ? { max_tokens: options.maxTokens } : {}),
+					...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+				},
+				// Phase B: cancellation reaches the SDK; the system prompt is a
+				// first-class message, not a dropped option.
+				options.signal !== undefined ? { signal: options.signal as AbortSignal } : undefined,
+			);
 
 			const pending = new Map<number, PendingToolCall>();
 			let finishReason: string | null = null;
@@ -167,8 +172,17 @@ function toOpenAIContent(
 	);
 }
 
-function toOpenAIMessages(messages: readonly Message[]): OpenAI.Chat.ChatCompletionMessageParam[] {
+function toOpenAIMessages(
+	messages: readonly Message[],
+	systemPrompt?: string,
+): OpenAI.Chat.ChatCompletionMessageParam[] {
 	const out: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+	// The OpenAI API takes the system prompt as a system-role message; compat
+	// providers (GLM/Kimi/DeepSeek/OpenRouter) follow the same shape. It was
+	// silently dropped before Phase B.
+	if (systemPrompt !== undefined) {
+		out.push({ role: "system", content: systemPrompt });
+	}
 	for (const msg of messages) {
 		if (msg.role === "user") {
 			out.push({ role: "user", content: toOpenAIContent(msg.content) });

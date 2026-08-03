@@ -23,14 +23,18 @@ import { mapApiError } from "@kiso/core";
 export function createAnthropicAdapter(client: Anthropic): Adapter {
 	return {
 		async *stream(options: StreamOptions): AsyncIterable<Event> {
-			const stream = client.messages.stream({
-				model: options.model,
-				...(options.systemPrompt !== undefined ? { system: options.systemPrompt } : {}),
-				max_tokens: options.maxTokens ?? 4096,
-				messages: toAnthropicMessages(options.messages),
-				...(options.tools?.length ? { tools: toAnthropicTools(options.tools) } : {}),
-				...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-			});
+			const stream = client.messages.stream(
+				{
+					model: options.model,
+					...(options.systemPrompt !== undefined ? { system: options.systemPrompt } : {}),
+					max_tokens: options.maxTokens ?? 4096,
+					messages: toAnthropicMessages(options.messages),
+					...(options.tools?.length ? { tools: toAnthropicTools(options.tools) } : {}),
+					...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+				},
+				// Phase B: cancellation reaches the SDK, which aborts the fetch.
+				options.signal !== undefined ? { signal: options.signal as AbortSignal } : undefined,
+			);
 
 			let inputTokens = 0;
 			let stopReason: StopReason = "end_turn";

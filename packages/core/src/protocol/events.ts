@@ -129,6 +129,29 @@ export interface ToolResultEvent {
 	readonly errorKind?: ToolErrorKind;
 }
 
+/**
+ * A human/user input entered the run. Emitted by the harness (session layer)
+ * or by the loop's seed encoder — never by a provider. This is what makes a
+ * trajectory self-contained: ADR-0002's replay of `seq` 0..N must include the
+ * prompts, or the run cannot be rebuilt from its own log.
+ */
+export interface UserInputEvent {
+	readonly seq: number;
+	readonly type: "user_input";
+	readonly content: string | readonly import("./messages.js").ContentBlock[];
+}
+
+/**
+ * Compaction happened at this point in the trajectory. The projection
+ * re-applies microcompact here (idempotent by contract), so the replay and
+ * the live run see the same history. `clearedCallIds` is the audit trail.
+ */
+export interface CompactedEvent {
+	readonly seq: number;
+	readonly type: "compacted";
+	readonly clearedCallIds: readonly string[];
+}
+
 /** Extended-thinking content. Providers without it emit nothing here. */
 export interface Thinking {
 	readonly seq: number;
@@ -195,6 +218,8 @@ export interface StructuredError {
  *
  * - `completed`      — the loop ended on its own terms (no tool call, or the
  *                      mode's stop predicate fired).
+ * - `max_tokens`     — the provider stopped on its output budget; the model's
+ *                      turn is truncated, NOT a clean completion (Phase B).
  * - `max_turns`      — the round budget was consumed.
  * - `error`          — a `StructuredError` the loop could not retry past.
  * - `aborted`        — a human (user) or the parent agent stopped it.
@@ -202,6 +227,7 @@ export interface StructuredError {
  */
 export type Terminal =
 	| { kind: "completed" }
+	| { kind: "max_tokens" }
 	| { kind: "max_turns"; turns: number }
 	| { kind: "error"; error: StructuredError }
 	| { kind: "aborted"; by: "user" | "parent" }
@@ -229,4 +255,6 @@ export type Event =
 	| Thinking
 	| Usage
 	| Stop
+	| UserInputEvent
+	| CompactedEvent
 	| TerminalEvent;

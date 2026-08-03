@@ -8,4 +8,5 @@ export * from "./kernel/mode.js";
 export * from "./kernel/permission.js";
 export * from "./kernel/loop.js";
 export * from "./kernel/compaction.js";
+export * from "./kernel/project.js";
 export * from "./governance/delivery.js";

@@ -22,20 +22,26 @@ import type { Event } from "./events.js";
 import type { Message, ToolSpec } from "./messages.js";
 
 /**
- * Structural stand-in for AbortSignal. The kernel must not depend on Node or
- * DOM globals — it runs in any host. Anything with `aborted` + `addEventListener`
- * satisfies it: a real AbortSignal, a test stub, a timeout wrapper.
+ * What the kernel accepts as a cancellation signal: a REAL AbortSignal
+ * (the universal host type — every Node and browser host has one) or a
+ * minimal structural stub for tests and exotic hosts. `AbortSignal` itself
+ * is not structurally assignable to a hand-rolled interface (its listener
+ * and options shapes are richer), so the union is the honest contract:
+ * real signals pass without casts, stubs stay possible.
  */
-export interface AbortSignalLike {
+export type AbortSignalLike = AbortSignal | AbortSignalStub;
+
+/** Minimal structural stand-in: `aborted` + `addEventListener` + `removeEventListener`. */
+export interface AbortSignalStub {
 	readonly aborted: boolean;
 	addEventListener(
-		type: "abort",
-		listener: (this: AbortSignalLike, ev: Event) => void,
+		type: string,
+		listener: (this: AbortSignalStub, ev: unknown) => void,
 		options?: { once?: boolean },
 	): void;
 	removeEventListener(
-		type: "abort",
-		listener: (this: AbortSignalLike, ev: Event) => void,
+		type: string,
+		listener: (this: AbortSignalStub, ev: unknown) => void,
 		options?: { once?: boolean },
 	): void;
 }
