@@ -13,7 +13,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { defineTool, type Tool, type ToolResult } from "@kiso/core";
 
@@ -212,7 +212,14 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				throw err;
 			}
 			try {
-				writeFileSync(full, content, "utf8");
+				// E 组: SAFE REPLACEMENT — write a temp file next to the
+				// target and rename it over the directory entry. A hard link
+				// inside the workspace that shares an EXTERNAL inode is
+				// therefore never overwritten: rename replaces the entry,
+				// not the shared inode.
+				const tmp = `${full}.kiso-tmp-${process.pid}-${crypto.randomUUID()}`;
+				writeFileSync(tmp, content, "utf8");
+				renameSync(tmp, full);
 				// Post-write re-check (review finding 8): if a concurrent
 				// swap turned the verified path into a symlink mid-write,
 				// the write landed outside the workspace — say so instead of
@@ -257,7 +264,10 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				if (index === -1) {
 					return { content: `edit_file: pattern not found in ${path}`, isError: true, errorKind: "invalid_input" };
 				}
-				writeFileSync(full, text.slice(0, index) + replace + text.slice(index + search.length), "utf8");
+				// E 组: safe replacement — never rewrite a shared external inode via a hard link.
+				const tmp = `${full}.kiso-tmp-${process.pid}-${crypto.randomUUID()}`;
+				writeFileSync(tmp, text.slice(0, index) + replace + text.slice(index + search.length), "utf8");
+				renameSync(tmp, full);
 				const written = realpathSync(full);
 				if (!isWithin(realpathSync(opts.workspaceRoot), written)) {
 					return escapeResult(`edit escaped the workspace via a swapped path (${path})`);
@@ -285,6 +295,10 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 		},
 		execute: async ({ command, timeoutMs }, ctx) => {
 			const timeout = timeoutMs ?? DEFAULT_SHELL_TIMEOUT_MS;
+			// E 组: a PRE-aborted signal never spawns the command.
+			if (ctx.signal.aborted) {
+				return { content: "shell aborted before start", isError: true, errorKind: "fatal" };
+			}
 			return new Promise((resolvePromise) => {
 				// detached: the command gets its OWN process group, so a
 				// timeout/abort can kill the WHOLE TREE (children included),
@@ -305,19 +319,25 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 					if (settled) return;
 					settled = true;
 					clearTimeout(timer);
+					// E 组: the abort listener is removed once settled — it
+					// must not accumulate across runs.
+					ctx.signal.removeEventListener("abort", onAbort);
 					resolvePromise(result);
 				};
 
 				/** SIGKILL the entire process group, then confirm it exited. */
 				const killTree = (): Promise<void> =>
 					new Promise((resolveKill) => {
-						try {
-							process.kill(-(child.pid ?? 0), "SIGKILL");
-						} catch {
+						// E 组: never kill an undefined/0 pid.
+						if (child.pid !== undefined && child.pid > 0) {
 							try {
-								child.kill("SIGKILL");
+								process.kill(-child.pid, "SIGKILL");
 							} catch {
-								// already gone
+								try {
+									child.kill("SIGKILL");
+								} catch {
+									// already gone
+								}
 							}
 						}
 						if (exited) {
@@ -352,14 +372,14 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				});
 
 				// The kernel's abort reaches the command AND its whole tree.
-				if (ctx.signal) {
-					ctx.signal.addEventListener("abort", () => {
-						killing = true;
-						void killTree().then(() =>
-							settle({ content: "shell aborted", isError: true, errorKind: "fatal" }),
-						);
-					});
-				}
+				// The listener is removed by settle (E 组).
+				const onAbort = (): void => {
+					killing = true;
+					void killTree().then(() =>
+						settle({ content: "shell aborted", isError: true, errorKind: "fatal" }),
+					);
+				};
+				ctx.signal.addEventListener("abort", onAbort);
 				const timer = setTimeout(() => {
 					killing = true;
 					void killTree().then(() =>

@@ -12,6 +12,20 @@ const YELLOW = "\x1b[33m";
 const CYAN = "\x1b[36m";
 const RESET = "\x1b[0m";
 
+/**
+ * E 组: strip terminal-injection vectors from MODEL/TOOL text before it
+ * reaches the terminal — ESC, C0 (except \t \n \r), C1, backspace, and
+ * bidi overrides. The kiso colors are applied by render, not by the data.
+ */
+function escapeTerminal(text: string): string {
+	// eslint-disable-next-line no-control-regex
+	return text
+		.replace(/[\u0000-\u0008\u000d\u000e-\u001f\u007f]/g, "") // C0 (keeps only \t and \n)
+		.replace(/\u001b/g, "") // ESC
+		.replace(/[\u0080-\u009f]/g, "") // C1
+		.replace(/[\u202a-\u202e\u2066-\u2069]/g, ""); // bidi
+}
+
 export interface RenderResult {
 	readonly text: string;
 	readonly newline: boolean;
@@ -25,16 +39,16 @@ export interface RenderResult {
 export function renderEvent(ev: Event): RenderResult {
 	switch (ev.type) {
 		case "user_input":
-			return { text: `${YELLOW}you> ${typeof ev.content === "string" ? ev.content : "(content)"}${RESET}\n`, newline: true, prompt: false };
+			return { text: `${YELLOW}you> ${escapeTerminal(typeof ev.content === "string" ? ev.content : "(content)")}${RESET}\n`, newline: true, prompt: false };
 		case "text_delta":
-			return { text: ev.text, newline: false, prompt: false };
+			return { text: escapeTerminal(ev.text), newline: false, prompt: false };
 		case "text_end":
 			return { text: "\n", newline: true, prompt: false };
 		case "thinking":
-			return { text: `${DIM}…${ev.text.slice(0, 200)}${RESET}\n`, newline: true, prompt: false };
+			return { text: `${DIM}…${escapeTerminal(ev.text.slice(0, 200))}${RESET}\n`, newline: true, prompt: false };
 		case "tool_call_end":
 			return {
-				text: `${CYAN}→ ${ev.name}(${ev.input ? JSON.stringify(ev.input).slice(0, 200) : ""})${RESET}\n`,
+				text: `${CYAN}→ ${escapeTerminal(ev.name)}(${ev.input ? escapeTerminal(JSON.stringify(ev.input).slice(0, 200)) : ""})${RESET}\n`,
 				newline: true,
 				prompt: false,
 			};
@@ -43,11 +57,11 @@ export function renderEvent(ev: Event): RenderResult {
 		case "tool_execution_succeeded":
 			return { text: `${GREEN}  ok${RESET}\n`, newline: true, prompt: false };
 		case "tool_execution_failed":
-			return { text: `${RED}  failed: ${ev.error.slice(0, 160)}${RESET}\n`, newline: true, prompt: false };
+			return { text: `${RED}  failed: ${escapeTerminal(ev.error.slice(0, 160))}${RESET}\n`, newline: true, prompt: false };
 		case "tool_result": {
 			const content = typeof ev.content === "string" ? ev.content : ev.content.map((b) => (b.type === "text" ? b.text : "(image)")).join("");
 			return {
-				text: `${DIM}${ev.isError ? RED : DIM}  [result${ev.isError ? " ✗" : ""}] ${content.slice(0, 400).replaceAll("\n", " ")}${RESET}\n`,
+				text: `${DIM}${ev.isError ? RED : DIM}  [result${ev.isError ? " ✗" : ""}] ${escapeTerminal(content.slice(0, 400).replaceAll("\n", " "))}${RESET}\n`,
 				newline: true,
 				prompt: false,
 			};
@@ -60,7 +74,7 @@ export function renderEvent(ev: Event): RenderResult {
 			};
 		case "permission_decided":
 			return {
-				text: `${ev.decision === "approved" ? GREEN : RED}  ${ev.decision === "approved" ? "approved" : "denied"}${ev.reason ? `: ${ev.reason}` : ""}${RESET}\n`,
+				text: `${ev.decision === "approved" ? GREEN : RED}  ${ev.decision === "approved" ? "approved" : "denied"}${ev.reason ? `: ${escapeTerminal(ev.reason)}` : ""}${RESET}\n`,
 				newline: true,
 				prompt: false,
 			};
@@ -78,7 +92,7 @@ export function renderEvent(ev: Event): RenderResult {
 			return { text: `${DIM}  [compacted ${ev.cleared.length} results]${RESET}\n`, newline: true, prompt: false };
 		case "uncertain_pending":
 			return {
-				text: `${RED}⚠ ${ev.name} failed (${ev.executionId}): ${ev.error.slice(0, 160)}${RESET}\n`,
+				text: `${RED}⚠ ${escapeTerminal(ev.name)} failed (${ev.executionId}): ${escapeTerminal(ev.error.slice(0, 160))}${RESET}\n`,
 				newline: true,
 				prompt: false,
 			};
@@ -95,16 +109,16 @@ export function renderEvent(ev: Event): RenderResult {
  */
 function approvalDetail(name: string, input: Record<string, unknown>): string {
 	if (name === "shell") {
-		return `\n  $ ${String(input.command ?? "")}`;
+		return `\n  $ ${escapeTerminal(String(input.command ?? ""))}`;
 	}
 	if (name === "write_file") {
 		const content = String(input.content ?? "");
-		return `\n  ${String(input.path ?? "?")} (${content.length} chars)\n  ${content.slice(0, 200)}${content.length > 200 ? "…" : ""}`;
+		return `\n  ${escapeTerminal(String(input.path ?? "?"))} (${content.length} chars)\n  ${escapeTerminal(content.slice(0, 200))}${content.length > 200 ? "…" : ""}`;
 	}
 	if (name === "edit_file") {
-		return `\n  ${String(input.path ?? "?")}\n  replace: ${String(input.search ?? "")}\n  with:    ${String(input.replace ?? "")}`;
+		return `\n  ${escapeTerminal(String(input.path ?? "?"))}\n  replace: ${escapeTerminal(String(input.search ?? ""))}\n  with:    ${escapeTerminal(String(input.replace ?? ""))}`;
 	}
-	return `\n  ${JSON.stringify(input)}`;
+	return `\n  ${escapeTerminal(JSON.stringify(input))}`;
 }
 
 /** One-line summary of a session, for `kiso sessions`. */

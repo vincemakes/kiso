@@ -214,13 +214,32 @@ async function chat(session: AgentSession): Promise<void> {
  * Resume = the RECOVERY flow (Area 2/7): uncertain executions are decided,
  * the interrupted run is continued via session.resume() — never faked with
  * a new prompt. An optional prompt afterwards starts a genuinely new turn.
+ * E 组: SIGINT aborts the run being resumed; every exit path closes the
+ * session store so no lock is left behind.
  */
 async function resume(session: AgentSession, prompt?: string): Promise<void> {
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	let currentRun: { abort: () => void } | null = null;
+	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
+		currentRun = run;
+		try {
+			await consumeRun(session, run, rl);
+		} finally {
+			currentRun = null;
+		}
+	};
+	rl.on("SIGINT", () => {
+		if (currentRun) {
+			console.log("\n[aborting run]");
+			currentRun.abort();
+		} else {
+			rl.close();
+		}
+	});
 	await resolveUncertains(session, rl);
-	await consumeRun(session, session.resume(), rl);
+	await withRun(session.resume());
 	if (prompt !== undefined && prompt !== "") {
-		await consumeRun(session, session.run(prompt), rl);
+		await withRun(session.run(prompt));
 	}
 	rl.close();
 }
@@ -229,42 +248,48 @@ async function main(): Promise<void> {
 	const [command, arg] = process.argv.slice(2);
 	const agent = await makeAgent();
 
-	switch (command) {
-		case "chat": {
-			const id = arg ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
-			const session = await agent.session({ id });
-			console.log(`session ${id}\n`);
-			await chat(session);
-			break;
-		}
-		case "resume": {
-			if (!arg) {
-				console.error("usage: kiso resume <sessionId> [\"prompt\"]");
-				process.exit(2);
+	try {
+		switch (command) {
+			case "chat": {
+				const id = arg ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+				const session = await agent.session({ id });
+				console.log(`session ${id}\n`);
+				await chat(session);
+				break;
 			}
-			// argv[4] is the optional prompt; argv[3] is the session id
-			// (argv = [node, script, resume, id, prompt?]).
-			const prompt = process.argv[4];
-			const session = await agent.session({ id: arg });
-			await resume(session, prompt);
-			break;
-		}
-		case "sessions": {
-			for (const meta of agent.sessions()) {
-				console.log(renderSessionLine(meta));
+			case "resume": {
+				if (!arg) {
+					console.error("usage: kiso resume <sessionId> [\"prompt\"]");
+					process.exit(2);
+				}
+				// argv[4] is the optional prompt; argv[3] is the session id
+				// (argv = [node, script, resume, id, prompt?]).
+				const prompt = process.argv[4];
+				const session = await agent.session({ id: arg });
+				await resume(session, prompt);
+				break;
 			}
-			break;
+			case "sessions": {
+				for (const meta of agent.sessions()) {
+					console.log(renderSessionLine(meta));
+				}
+				break;
+			}
+			case "help":
+			case undefined:
+			default:
+				console.log(
+					"kiso — the coding-agent reference product\n\n" +
+						"  kiso chat [sessionId]   interactive session\n" +
+						"  kiso resume <id> [prompt]   continue a session (one-shot)\n" +
+						"  kiso sessions           list durable sessions\n" +
+						"  kiso help               this help\n",
+				);
 		}
-		case "help":
-		case undefined:
-		default:
-			console.log(
-				"kiso — the coding-agent reference product\n\n" +
-					"  kiso chat [sessionId]   interactive session\n" +
-					"  kiso resume <id> [prompt]   continue a session (one-shot)\n" +
-					"  kiso sessions           list durable sessions\n" +
-					"  kiso help               this help\n",
-			);
+	} finally {
+		// E 组: every normal and abnormal exit releases the fds and writer
+		// locks — no lock file is left behind.
+		agent.close();
 	}
 }
 

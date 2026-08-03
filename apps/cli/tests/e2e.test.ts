@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { SessionStore } from "@kiso/runtime";
+import { readdirSync } from "node:fs";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
@@ -54,6 +55,9 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		// seq is contiguous across the process boundary.
 		const seqs = records.map((r) => r.event.seq);
 		expect(seqs).toEqual([...seqs.keys()]);
+		// E 组: no writer lock is left behind after the CLI exits.
+				const leftovers = readdirSync(join(home, "sessions")).filter((f) => f.endsWith(".lock"));
+		expect(leftovers).toEqual([]);
 	});
 
 	it("help exits cleanly", () => {

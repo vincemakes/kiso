@@ -71,6 +71,11 @@ export class AgentRuntime {
 		return this.#definition.store.list();
 	}
 
+	/** Release every held fd and writer lock (E 组: the CLI closes on exit). */
+	close(): void {
+		this.#definition.store.closeAll();
+	}
+
 	/** Load an existing session from disk, or create a fresh one. */
 	async session(options: { id: string }): Promise<AgentSession> {
 		const store = this.#definition.store;
