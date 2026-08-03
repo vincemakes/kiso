@@ -22,7 +22,7 @@ import { join, relative } from "node:path";
 
 const LIMIT = 2000;
 const ROOT = new URL("..", import.meta.url).pathname;
-const SRC = join(ROOT, "src");
+const SRC = join(ROOT, "packages", "core", "src");
 
 /** @param {string} dir @returns {string[]} */
 function walk(dir) {

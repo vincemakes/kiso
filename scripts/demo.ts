@@ -12,10 +12,10 @@
  */
 
 import { createInterface } from "node:readline";
-import { createFauxProvider } from "../src/adapters/faux";
+import { createFauxProvider } from "@kiso/evals";
 import Anthropic from "@anthropic-ai/sdk";
-import { createAnthropicAdapter } from "../src/adapters/anthropic";
-import { defineTool, ToolRegistry, loop } from "../src/index";
+import { createAnthropicAdapter } from "@kiso/provider-anthropic";
+import { defineTool, ToolRegistry, loop } from "@kiso/core";
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -91,5 +91,5 @@ function prompt(): void {
 	});
 }
 
-console.log("kiso — a ~1,150-line agent kernel. Type 'exit' to quit.\n");
+console.log("kiso — framework demo (faux provider). Type "exit" to quit.\n");
 prompt();

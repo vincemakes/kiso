@@ -1,0 +1,31 @@
+{
+  "name": "@kiso/provider-openai",
+  "version": "0.0.0",
+  "description": "kiso OpenAI-compatible adapter — OpenAI + the compat family (GLM, Kimi, DeepSeek, OpenRouter) via base_url swap, reasoning dialects digested.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kiso/core": "*",
+    "openai": "^7.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "@kiso/evals",
+  "version": "0.0.0",
+  "description": "kiso evals — the faux provider, the incident fixture library, and the cross-provider contract tests.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kiso/core": "*"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@kiso/provider-anthropic": "*",
+    "@kiso/provider-openai": "*",
+    "@types/node": "^26.1.2",
+    "openai": "^7.3.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

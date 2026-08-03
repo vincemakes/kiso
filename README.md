@@ -21,12 +21,12 @@ Every design decision ships with an ADR explaining **why**, and **when to overtu
 ```
 $ npm run size
 
-  src/protocol/events.ts       112
-  src/protocol/messages.ts      55
+  packages/core/src/kernel/loop.ts  170
+  packages/core/src/protocol/events.ts 116
   ...
-  total                       1152  / 2000
+  total                                764  / 2000
 
-  ✓ 848 lines of headroom remaining.
+  ✓ 1236 lines of headroom remaining.
 ```
 
 Comments do not count. Explain freely; implement tersely.
@@ -37,12 +37,13 @@ A framework, in two layers:
 
 | Layer | Owns |
 |---|---|
-| **core** (`@kiso/core`, ≤ 2,000 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · 9 hooks · compaction · modes · permissions) · L3 tool (contract · registry · repair · concurrency) · L7 eval (faux provider · incident fixtures) |
-| **packages** (unbounded) | session (append-only + seq restore) · CLI · settings + built-in tools · extensions. Each package is small and owns its identity; packages talk through the event stream and hooks, not through a central hub |
+| **core** (`@kiso/core`, ≤ 2,000 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · modes · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
+| **packages** (unbounded) | `@kiso/evals` (faux provider · incident fixtures · contract tests) · `@kiso/provider-anthropic` · `@kiso/provider-openai` · `@kiso/runtime` (durable sessions, approvals) · `@kiso/tools-node` (file/search/edit/shell) · `@kiso/cli` (the coding-agent reference product) |
 
 The core stays a kernel: it decides nothing that repeats across products. The
 framework around it is where product-shaped capability grows — and that growth
-is the point, not a violation. See ADR-0021.
+is the point, not a violation. Packages talk through the event stream and
+hooks, never through a central hub. See ADR-0021.
 
 Two properties every layer gets for free:
 
@@ -63,7 +64,7 @@ and a blob is the thing you eventually fight.
 
 ```ts
 import { defineTool, ToolRegistry, loop } from "@kiso/core";
-import { createAnthropicAdapter } from "@kiso/core/adapters";
+import { createAnthropicAdapter } from "@kiso/provider-anthropic";
 import Anthropic from "@anthropic-ai/sdk";
 
 const registry = new ToolRegistry();
@@ -87,28 +88,27 @@ for await (const ev of loop({
 }
 ```
 
-- The core imports zero runtime dependencies; provider SDKs are optional
-  peers (`@kiso/core/adapters` subpath).
+- Packages build to plain ESM JavaScript + `.d.ts` — installed artifacts run
+  on any Node project, no tsx, no source access (`scripts/smoke.mjs` proves it
+  in a clean temp project every check).
 - `npm run demo` runs a REPL — faux provider by default, real Anthropic with
   `ANTHROPIC_API_KEY` set.
-- Every fixture in `tests/fixtures/` is a real production incident
-  (uooki, 2026); the loop is proven against them, not just against happy
-  paths.
+- Every fixture in `@kiso/evals` is a real production incident (uooki, 2026);
+  the loop is proven against them, not just against happy paths.
 
 ## Status
 
-M0–M3 are in: protocol, kernel (loop · hooks · ModeProfile · permissions ·
-microcompact), dual adapters (Anthropic / OpenAI-compat), governance (delivery
-truth from the ledger, never from model self-report) — 43 tests green, 6 ADRs,
-6 incident fixtures, an end-to-end REPL demo. `npm run check` = typecheck +
-size gate + tests.
+Reliable Session Alpha in progress (see `docs/plans/2026-08-03-reliable-session-alpha.md`):
 
-**Roadmap:**
+- **core** done: protocol, loop (single terminal, retry in-frame, abort
+  check before execute), 9 hooks, ModeProfile, permissions, microcompact,
+  delivery truth — 43 tests green, 8 ADRs, 6 incident fixtures.
+- **workspace** done: publishable monorepo, ESM + d.ts build, consumer smoke.
+- **runtime** (durable multi-turn sessions, approvals, exactly-once recovery)
+  and **cli** (`kiso chat|resume|sessions`, coding tools) in progress.
 
-- **G1** `@kiso/session` — append-only session log, restore from `seq`
-- **G2** CLI 完整化 — `/compact`, resume, REPL polish
-- **G3** settings + built-in tools (behind the permission gate)
-- **G4** extensions · **0.1.0 on npm**
+`npm run check` = build → typecheck (all packages incl. tests) → tests →
+size gate (core only) → pack gate → consumer smoke.
 
 ## Why another one
 

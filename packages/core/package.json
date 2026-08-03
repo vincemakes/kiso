@@ -1,0 +1,40 @@
+{
+  "name": "@kiso/core",
+  "version": "0.0.0",
+  "description": "kiso(基礎) core — protocol, event log, loop, hooks, modes, permissions, compaction, delivery truth. The 2,000-line kernel at the bottom of the kiso framework.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol/index.d.ts",
+      "default": "./dist/protocol/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "agent",
+    "llm",
+    "framework",
+    "kernel",
+    "anthropic",
+    "openai"
+  ],
+  "devDependencies": {
+    "@kiso/evals": "*",
+    "@types/node": "^26.1.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,51 +1,27 @@
 {
-  "name": "@kiso/core",
-  "version": "0.0.0",
-  "description": "kiso(基礎) — a growable TS agent framework: a 2,000-line core kernel, packages on top, every decision documented.",
-  "publishConfig": {
-    "access": "public"
-  },
+  "name": "kiso",
+  "private": true,
   "type": "module",
-  "license": "MIT",
-  "exports": {
-    ".": "./src/index.ts",
-    "./protocol": "./src/protocol/index.ts",
-    "./adapters": "./src/adapters/index.ts"
-  },
-  "files": [
-    "src",
-    "README.md",
-    "adrs"
+  "workspaces": [
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
-    "size": "node scripts/check-size.mjs",
-    "typecheck": "tsc --noEmit",
+    "build": "npm run build -w @kiso/core && npm run build -w @kiso/evals && npm run build -w @kiso/provider-anthropic && npm run build -w @kiso/provider-openai",
+    "typecheck": "npm run typecheck -w @kiso/core && npm run typecheck -w @kiso/evals && npm run typecheck -w @kiso/provider-anthropic && npm run typecheck -w @kiso/provider-openai",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run size && npm run test",
+    "size": "node scripts/check-size.mjs",
+    "pack:check": "node scripts/pack-check.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "check": "npm run build && npm run typecheck && npm run test && npm run size && npm run pack:check && npm run smoke",
     "demo": "tsx scripts/demo.ts"
-  },
-  "keywords": [
-    "agent",
-    "llm",
-    "framework",
-    "kernel",
-    "anthropic",
-    "openai"
-  ],
-  "peerDependencies": {
-    "@anthropic-ai/sdk": ">=0.100",
-    "openai": ">=5.0"
-  },
-  "peerDependenciesMeta": {
-    "@anthropic-ai/sdk": {
-      "optional": true
-    },
-    "openai": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
+    "@kiso/core": "*",
+    "@kiso/evals": "*",
+    "@kiso/provider-anthropic": "*",
+    "@kiso/provider-openai": "*",
     "@types/node": "^26.1.2",
     "openai": "^7.3.0",
     "tsx": "^4.23.5",
