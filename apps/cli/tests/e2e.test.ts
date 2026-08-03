@@ -67,6 +67,18 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		// Two turns rendered, two honest terminals ("done").
 		const doneCount = (result.stdout.match(/done/g) ?? []).length;
 		expect(doneCount).toBe(2);
+		// 八: the prompt is RE-ARMED after every turn — never type blind.
+		expect((result.stdout.match(/you> /g) ?? []).length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("八: a faux script exhausted mid-session exits NON-ZERO with a clear message, never status 0", () => {
+		const home = mkdtempSync(join(tmpdir(), "kiso-cli-"));
+		// The script declares 4 provider turns (the first user turn consumes
+		// two — call + summary); the FOURTH user turn hits the empty stream —
+		// an honest failure, not a silent status-0 provider error.
+		const result = runCli(["chat", "exhaust"], "one\ntwo\nthree\nfour\nexit\n", { KISO_HOME: home });
+		expect(result.status).toBe(1);
+		expect(result.stdout + result.stderr).toContain("exhausted");
 	});
 
 	it("help exits cleanly", () => {

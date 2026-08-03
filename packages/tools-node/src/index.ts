@@ -12,8 +12,18 @@
  * context.
  */
 
-import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import {
+	chmodSync,
+	existsSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	renameSync,
+	statSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { defineTool, type Tool, type ToolResult } from "@kiso/core";
 
@@ -87,6 +97,34 @@ export interface WorkspaceToolsOptions {
 	readonly workspaceRoot: string;
 }
 
+/**
+ * The inode-boundary policy for READS (八): a hard link inside the workspace
+ * may point at an inode whose OTHER links live outside (e.g. /etc/passwd) —
+ * reading it would silently exfiltrate external content. Policy:
+ *   - regular, single-link files: read;
+ *   - multi-link files whose EVERY link is inside the workspace: read;
+ *   - multi-link files with ANY link outside the workspace: refused
+ *     (fail-closed when the link count cannot be verified);
+ *   - non-regular files (sockets, devices, fifos): refused.
+ * Returns a denial reason, or null when the file is safe to read.
+ */
+function inodeReadPolicy(root: string, full: string): string | null {
+	const st = statSync(full);
+	if (!st.isFile()) return `not a regular file — refusing to read (${full})`;
+	if (st.nlink <= 1) return null;
+	let inside = 0;
+	try {
+		const out = execFileSync("find", [root, "-inum", String(st.ino)], { encoding: "utf8", maxBuffer: 1 << 20 });
+		inside = out.trim() === "" ? 0 : out.trim().split("\n").length;
+	} catch {
+		inside = 0; // cannot verify — refuse (fail-closed)
+	}
+	if (inside < st.nlink) {
+		return `file has ${st.nlink - inside} hard link(s) outside the workspace — refusing to read (${full})`;
+	}
+	return null;
+}
+
 export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string }> {
 	return defineTool<{ path: string }>({
 		name: "read_file",
@@ -100,6 +138,8 @@ export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string }
 		execute: async ({ path }) => {
 			try {
 				const full = resolveWithinRoot(opts.workspaceRoot, path);
+				const denied = inodeReadPolicy(opts.workspaceRoot, full);
+				if (denied !== null) return escapeResult(denied);
 				const content = readFileSync(full, "utf8");
 				return { content: cap(content), isError: false };
 			} catch (err) {
@@ -168,6 +208,9 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 						walk(full, depth + 1);
 					} else if (entry.isFile()) {
 						try {
+							// 八: same inode boundary as read_file — a hard link
+							// to an external inode is not searched.
+							if (inodeReadPolicy(root, full) !== null) continue;
 							const text = readFileSync(full, "utf8");
 							for (const [i, line] of text.split("\n").entries()) {
 								if (regex.test(line)) {
@@ -211,14 +254,20 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				throw err;
 			}
+			const tmp = `${full}.kiso-tmp-${process.pid}-${crypto.randomUUID()}`;
+			let preservedMode: number | undefined;
 			try {
 				// E 组: SAFE REPLACEMENT — write a temp file next to the
 				// target and rename it over the directory entry. A hard link
 				// inside the workspace that shares an EXTERNAL inode is
 				// therefore never overwritten: rename replaces the entry,
 				// not the shared inode.
-				const tmp = `${full}.kiso-tmp-${process.pid}-${crypto.randomUUID()}`;
+				// 八: an existing file keeps its mode — a 0755 script stays
+				// 0755 after replacement (rename drops the temp's default
+				// mode, so it is copied onto the temp first).
+				if (existsSync(full)) preservedMode = statSync(full).mode & 0o7777;
 				writeFileSync(tmp, content, "utf8");
+				if (preservedMode !== undefined) chmodSync(tmp, preservedMode);
 				renameSync(tmp, full);
 				// Post-write re-check (review finding 8): if a concurrent
 				// swap turned the verified path into a symlink mid-write,
@@ -230,6 +279,13 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				}
 				return { content: `wrote ${path} (${content.length} chars)`, isError: false };
 			} catch (err) {
+				// 八: a failed write never leaves a temp file with the FULL
+				// content behind — it is unlinked in every failure path.
+				try {
+					unlinkSync(tmp);
+				} catch {
+					// already renamed or never created
+				}
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				return { content: `write_file failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
 			}
@@ -258,6 +314,8 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				throw err;
 			}
+			const tmp = `${full}.kiso-tmp-${process.pid}-${crypto.randomUUID()}`;
+			let preservedMode: number | undefined;
 			try {
 				const text = readFileSync(full, "utf8");
 				const index = text.indexOf(search);
@@ -265,8 +323,10 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 					return { content: `edit_file: pattern not found in ${path}`, isError: true, errorKind: "invalid_input" };
 				}
 				// E 组: safe replacement — never rewrite a shared external inode via a hard link.
-				const tmp = `${full}.kiso-tmp-${process.pid}-${crypto.randomUUID()}`;
+				// 八: the edited file keeps its mode.
+				preservedMode = statSync(full).mode & 0o7777;
 				writeFileSync(tmp, text.slice(0, index) + replace + text.slice(index + search.length), "utf8");
+				chmodSync(tmp, preservedMode);
 				renameSync(tmp, full);
 				const written = realpathSync(full);
 				if (!isWithin(realpathSync(opts.workspaceRoot), written)) {
@@ -274,6 +334,12 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				}
 				return { content: `edited ${path}`, isError: false };
 			} catch (err) {
+				// 八: a failed edit never leaves a temp file behind.
+				try {
+					unlinkSync(tmp);
+				} catch {
+					// already renamed or never created
+				}
 				return { content: `edit_file failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
 			}
 		},
@@ -325,10 +391,28 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 					resolvePromise(result);
 				};
 
-				/** SIGKILL the entire process group, then confirm it exited. */
+				/**
+				 * Kill the whole tree and CONFIRM it exited (八): the process
+				 * group covers the shell and its in-group children, but a
+				 * descendant that called setsid() has its own group — only the
+				 * pid table can find it. Every tracked descendant is killed and
+				 * polled to death before the tool returns.
+				 */
 				const killTree = (): Promise<void> =>
 					new Promise((resolveKill) => {
-						// E 组: never kill an undefined/0 pid.
+						const tracked = new Set<number>();
+						// 1. The pid-table sweep FIRST, while the child is still
+						//    alive — its descendants are still traceable.
+						for (const pid of descendantsOf(child.pid ?? 0)) {
+							tracked.add(pid);
+							try {
+								process.kill(pid, "SIGKILL");
+							} catch {
+								// already gone
+							}
+						}
+						// 2. The process group (E 组: never kill an undefined/0
+						//    pid), which also takes the direct shell down.
 						if (child.pid !== undefined && child.pid > 0) {
 							try {
 								process.kill(-child.pid, "SIGKILL");
@@ -347,7 +431,9 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 						const fallback = setTimeout(resolveKill, 2000);
 						child.once("close", () => {
 							clearTimeout(fallback);
-							resolveKill();
+							// 3. 八: the timeout/abort verdict is not final until
+							//    EVERY tracked descendant has actually exited.
+							void waitAllDead([...tracked]).then(() => resolveKill());
 						});
 					});
 
@@ -389,6 +475,67 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				timer.unref?.();
 			});
 		},
+	});
+}
+
+/**
+ * All live pids whose ancestor chain includes `pid`, from the pid table
+ * (八: `ps -axo pid=,ppid=` — the ONLY way to see a setsid()-escaped
+ * process, which is in its own group and invisible to a group kill).
+ */
+function descendantsOf(pid: number): number[] {
+	if (pid <= 0) return [];
+	let table: string;
+	try {
+		table = execFileSync("ps", ["-axo", "pid=,ppid="], { encoding: "utf8", maxBuffer: 1 << 20 });
+	} catch {
+		return [];
+	}
+	const children = new Map<number, number[]>();
+	for (const line of table.split("\n")) {
+		const m = line.trim().match(/^(\d+)\s+(\d+)$/);
+		if (m === null) continue;
+		const child = Number(m[1]);
+		const parent = Number(m[2]);
+		if (!children.has(parent)) children.set(parent, []);
+		children.get(parent)!.push(child);
+	}
+	const out: number[] = [];
+	const queue = [pid];
+	while (queue.length > 0) {
+		const current = queue.shift()!;
+		for (const c of children.get(current) ?? []) {
+			out.push(c);
+			queue.push(c);
+		}
+	}
+	return out;
+}
+
+/** Poll the pid table until NONE of the tracked pids is alive (bounded). */
+function waitAllDead(pids: readonly number[]): Promise<void> {
+	if (pids.length === 0) return Promise.resolve();
+	return new Promise((resolve) => {
+		const deadline = Date.now() + 2000;
+		const poll = (): void => {
+			for (const pid of pids) {
+				try {
+					process.kill(pid, 0);
+					if (Date.now() > deadline) return resolve();
+					setTimeout(poll, 50);
+					return;
+				} catch (err) {
+					if ((err as NodeJS.ErrnoException).code === "EPERM") {
+						if (Date.now() > deadline) return resolve();
+						setTimeout(poll, 50);
+						return;
+					}
+					// ESRCH — gone
+				}
+			}
+			resolve();
+		};
+		poll();
 	});
 }
 

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { renderEvent } from "../src/render.js";
+import { canonicalPath, renderEvent, renderSessionLine } from "../src/render.js";
 
 const NUL = "\u0000";
 const BS = "\u0008";
@@ -64,5 +64,70 @@ describe("terminal escaping (E 组)", () => {
 		});
 		expect(rendered.text).not.toContain(`${ESC}[31m`); // the injected sequence
 		expect(rendered.text).toContain("echo safe");
+	});
+
+	it("八: an ESC-injected TOOL NAME in the approval prompt is stripped", () => {
+		const rendered = renderEvent({
+			seq: 0,
+			type: "permission_requested",
+			decisionId: "d-1",
+			callId: "c1",
+			name: `shell${ESC}[2Jevil`,
+			input: { command: "ls" },
+		});
+		expect(rendered.text).not.toContain(`${ESC}[2J`);
+		expect(rendered.text).toContain("shell");
+	});
+
+	it("八: the terminal error message is escaped", () => {
+		const rendered = renderEvent({
+			seq: 0,
+			type: "terminal",
+			outcome: { kind: "error", error: { code: "unknown", retryable: false, message: `boom ${ESC}[31mRED${ESC}[0m` } },
+		});
+		// The ESC byte is stripped from the MESSAGE (the renderer's own color
+		// codes legitimately contain ESC — the injection is the message text
+		// glued to it: ESC[31m followed by "RED").
+		expect(rendered.text).not.toContain(`${ESC}[31mRED`);
+		expect(rendered.text).toContain("boom");
+		expect(rendered.text).toContain("[31mRED[0m"); // the inert remnant
+	});
+
+	it("八: the session title is escaped", () => {
+		const line = renderSessionLine({
+			id: "s1",
+			title: `safe${ESC}[31mRED${ESC}[0m`,
+			events: 1,
+			runs: 1,
+			updatedAt: 0,
+		});
+		expect(line).not.toContain(`${ESC}[31m`);
+		expect(line).toContain("safe");
+	});
+
+	it("八: write_file approval shows the CANONICAL path and the FULL content", async () => {
+		const { mkdtempSync, realpathSync, writeFileSync, symlinkSync } = await import("node:fs");
+		const { tmpdir } = await import("node:os");
+		const { join } = await import("node:path");
+		const dir = realpathSync(mkdtempSync(join(tmpdir(), "kiso-render-"))); // /var → /private/var
+		const real = join(dir, "real.txt");
+		writeFileSync(real, "actual-target", "utf8");
+		symlinkSync(real, join(dir, "link.txt"));
+		expect(canonicalPath(join(dir, "link.txt"))).toBe(real);
+
+		const longContent = "X".repeat(500);
+		const rendered = renderEvent({
+			seq: 0,
+			type: "permission_requested",
+			decisionId: "d-1",
+			callId: "c1",
+			name: "write_file",
+			input: { path: join(dir, "link.txt"), content: longContent },
+		});
+		// The canonical path is shown, and the ENTIRE content — no truncated
+		// tail hiding a dangerous payload.
+		expect(rendered.text).toContain(real);
+		expect(rendered.text).toContain(longContent);
+		expect(rendered.text).not.toContain("…");
 	});
 });

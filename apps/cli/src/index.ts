@@ -23,7 +23,7 @@ import { createAgent, SessionStore, type AgentDefinition, type AgentSession } fr
 import { createFauxProvider, type FauxScript } from "@kiso/evals";
 import { createCodingTools } from "@kiso/tools-node";
 import type { PermissionPolicy } from "@kiso/runtime";
-import { renderEvent, renderSessionLine } from "./render.js";
+import { escapeTerminal, renderEvent, renderSessionLine } from "./render.js";
 
 const PERMISSION_POLICY: PermissionPolicy = {
 	rules: [
@@ -126,19 +126,41 @@ function fauxScript(): FauxScript {
  * Ask the human a question. Non-interactive stdin (piped, CI) cannot wait
  * forever: approvals auto-deny and uncertain executions auto-abandon, both
  * printed loudly — never silently ignored, never hung (Area 7).
+ *
+ * 八: the question is ABORTABLE — a pending rl.question is registered in
+ * `pendingAsk` and the SIGINT handler resolves it, so Ctrl+C unblocks a
+ * question that is waiting for a line instead of hanging the REPL.
  */
+let pendingAsk: (() => void) | null = null;
 function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<string> {
 	if (!process.stdin.isTTY) {
 		console.log(`[non-interactive — no human to ask: ${question}]`);
 		return Promise.resolve("");
 	}
-	return new Promise((resolve) => rl.question(question, resolve));
+	return new Promise((resolve) => {
+		pendingAsk = () => {
+			pendingAsk = null;
+			resolve(""); // the run is aborting — the conservative answer
+		};
+		rl.question(question, (answer) => {
+			pendingAsk = null;
+			resolve(answer);
+		});
+	});
 }
 
 /** Decide every uncertain execution with the human (r)erun/(a)bandon. */
-async function resolveUncertains(session: AgentSession, rl: ReturnType<typeof createInterface>): Promise<void> {
+async function resolveUncertains(
+	session: AgentSession,
+	rl: ReturnType<typeof createInterface>,
+	isCancelled: () => boolean,
+): Promise<void> {
 	for (const uncertain of session.uncertainExecutions()) {
-		const answer = await ask(rl, `⚠ interrupted execution: ${uncertain.name} (${uncertain.executionId}) — did it apply? (r)erun / (a)bandon: `);
+		const answer = await ask(
+			rl,
+			`⚠ interrupted execution: ${escapeTerminal(uncertain.name)} (${uncertain.executionId}) — did it apply? (r)erun / (a)bandon: `,
+		);
+		if (isCancelled()) return; // Ctrl+C with no run: stop deciding, exit
 		const resolution = answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned";
 		session.resolveUncertain(uncertain.executionId, resolution);
 		console.log(`  ${resolution}\n`);
@@ -153,11 +175,15 @@ async function consumeRun(
 	session: AgentSession,
 	run: AsyncIterable<import("@kiso/core").Event>,
 	rl: ReturnType<typeof createInterface>,
-): Promise<void> {
+): Promise<import("@kiso/core").Event | undefined> {
+	let last: import("@kiso/core").Event | undefined;
 	for await (const ev of run) {
+		last = ev;
 		if (ev.type === "uncertain_pending") {
 			// C 组: a failed non-idempotent execution pauses for a verdict.
-			console.log(`\n⚠ ${ev.name} FAILED — the side effect may have applied.\n  ${ev.error}\n`);
+			console.log(
+				`\n⚠ ${escapeTerminal(ev.name)} FAILED — the side effect may have applied.\n  ${escapeTerminal(ev.error)}\n`,
+			);
 			const answer = await ask(rl, `did it apply? (r)erun / (a)bandon: `);
 			session.resolveUncertain(ev.executionId, answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned");
 			continue;
@@ -167,41 +193,78 @@ async function consumeRun(
 			process.stdout.write(rendered.text);
 			const decisionId = (ev as { decisionId: string }).decisionId;
 			const name = (ev as { name: string }).name;
-			const answer = await ask(rl, `approve ${name}? (y/n) `);
+			// 八: the tool name is model text — escaped on every output path.
+			const answer = await ask(rl, `approve ${escapeTerminal(name)}? (y/n) `);
 			session.approve(decisionId, answer.trim().toLowerCase().startsWith("y"));
 		} else {
 			process.stdout.write(rendered.text);
 		}
 	}
+	return last;
+}
+
+/**
+ * 八: a faux-mode run whose scripted turns are exhausted must NOT print a
+ * provider error and exit 0 — the honest outcome is a loud message and a
+ * non-zero exit. Only the exhaustion signature (the empty stream after the
+ * declared turns) triggers the script-specific message; any other error
+ * terminal still exits non-zero.
+ */
+function failOnFauxExhaustion(last: import("@kiso/core").Event | undefined, faux: boolean): void {
+	if (!faux) return;
+	if (last?.type !== "terminal" || last.outcome.kind !== "error") return;
+	const message = last.outcome.error.message;
+	console.error(
+		message.startsWith("provider stream ended without a stop event")
+			? "\n[faux mode] the scripted demo turns are exhausted — set ANTHROPIC_API_KEY or OPENAI_API_KEY for a real model"
+			: `\n[faux mode] the scripted model failed: ${escapeTerminal(message.slice(0, 200))}`,
+	);
+	process.exit(1);
 }
 
 /** Interactive REPL: stream events, pause for approvals, Ctrl+C aborts. */
-async function chat(session: AgentSession): Promise<void> {
+async function chat(session: AgentSession, faux: boolean): Promise<void> {
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	let currentRun: { abort: () => void } | null = null;
+	let cancelled = false;
 
 	const turn = (input: string): Promise<void> =>
 		new Promise((resolve) => {
 			const run = session.run(input);
 			currentRun = run;
 			(async () => {
+				let last: import("@kiso/core").Event | undefined;
 				try {
-					await consumeRun(session, run, rl);
+					last = await consumeRun(session, run, rl);
 				} catch (err) {
 					// A run failure must not freeze the REPL (review finding
 					// 11): surface it and re-arm the prompt.
 					console.error(`\n[run failed] ${err instanceof Error ? err.message : String(err)}\n`);
 				}
 				currentRun = null;
+				// 八: a faux script that ran out of declared turns exits
+				// loudly with a non-zero status — never a silent status 0.
+				failOnFauxExhaustion(last, faux);
+				// 八: after EVERY turn the prompt is re-armed — the human
+				// never types blind after the first turn.
+				rl.setPrompt("you> ");
+				rl.prompt();
 				resolve();
 			})();
 		});
 
 	rl.on("SIGINT", () => {
 		if (currentRun) {
+			// 八: Ctrl+C cancels BOTH the pending question (if one is
+			// awaiting a line) and the run — the run then writes its unique
+			// aborted terminal, which the consumer keeps consuming.
 			console.log("\n[aborting run]");
+			pendingAsk?.();
 			currentRun.abort();
-		} else {
+		} else if (!cancelled) {
+			cancelled = true;
+			console.log("\n[exit requested]");
+			pendingAsk?.(); // unblock a startup question
 			rl.close();
 		}
 	});
@@ -209,8 +272,21 @@ async function chat(session: AgentSession): Promise<void> {
 	// Recovery first: a session with a dangling pause or uncertain
 	// executions must resolve them BEFORE the REPL accepts new turns —
 	// otherwise the interrupted run dangles while a new one starts.
-	await resolveUncertains(session, rl);
-	await consumeRun(session, session.resume(), rl);
+	// 八: the startup resume is bound to currentRun — Ctrl+C during it
+	// aborts the recovery, exactly like the interactive turns.
+	await resolveUncertains(session, rl, () => cancelled);
+	if (!cancelled) {
+		const recoveryRun = session.resume();
+		currentRun = recoveryRun;
+		const last = await consumeRun(session, recoveryRun, rl);
+		currentRun = null;
+		failOnFauxExhaustion(last, faux);
+	}
+	if (cancelled) {
+		rl.close();
+		await new Promise<void>((resolve) => rl.on("close", () => resolve()));
+		return;
+	}
 	// A PERSISTENT line listener: rl.question attaches a one-shot listener,
 	// and a line arriving while no question is pending is silently LOST
 	// (piped stdin). The REPL loop must never drop a user turn (F 组).
@@ -237,26 +313,29 @@ async function chat(session: AgentSession): Promise<void> {
  * E 组: SIGINT aborts the run being resumed; every exit path closes the
  * session store so no lock is left behind.
  */
-async function resume(session: AgentSession, prompt?: string): Promise<void> {
+async function resume(session: AgentSession, prompt: string | undefined, faux: boolean): Promise<void> {
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	let currentRun: { abort: () => void } | null = null;
 	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
 		currentRun = run;
 		try {
-			await consumeRun(session, run, rl);
+			const last = await consumeRun(session, run, rl);
+			failOnFauxExhaustion(last, faux);
 		} finally {
 			currentRun = null;
 		}
 	};
 	rl.on("SIGINT", () => {
 		if (currentRun) {
+			// 八: Ctrl+C cancels the pending question AND the run.
 			console.log("\n[aborting run]");
+			pendingAsk?.();
 			currentRun.abort();
 		} else {
 			rl.close();
 		}
 	});
-	await resolveUncertains(session, rl);
+	await resolveUncertains(session, rl, () => false);
 	await withRun(session.resume());
 	if (prompt !== undefined && prompt !== "") {
 		await withRun(session.run(prompt));
@@ -267,6 +346,9 @@ async function resume(session: AgentSession, prompt?: string): Promise<void> {
 async function main(): Promise<void> {
 	const [command, arg] = process.argv.slice(2);
 	const agent = await makeAgent();
+	// 八: faux mode is the keyless demo script — an exhausted script must
+	// exit non-zero, never masquerade as a successful provider run.
+	const faux = process.env.ANTHROPIC_API_KEY === undefined && process.env.OPENAI_API_KEY === undefined;
 
 	try {
 		switch (command) {
@@ -274,7 +356,7 @@ async function main(): Promise<void> {
 				const id = arg ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
 				const session = await agent.session({ id });
 				console.log(`session ${id}\n`);
-				await chat(session);
+				await chat(session, faux);
 				break;
 			}
 			case "resume": {
@@ -286,7 +368,7 @@ async function main(): Promise<void> {
 				// (argv = [node, script, resume, id, prompt?]).
 				const prompt = process.argv[4];
 				const session = await agent.session({ id: arg });
-				await resume(session, prompt);
+				await resume(session, prompt, faux);
 				break;
 			}
 			case "sessions": {

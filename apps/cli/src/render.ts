@@ -3,6 +3,8 @@
  * the lines a human sees. Colors are raw ANSI — no dependencies.
  */
 
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import type { Event } from "@kiso/core";
 
 const DIM = "\x1b[2m";
@@ -13,17 +15,27 @@ const CYAN = "\x1b[36m";
 const RESET = "\x1b[0m";
 
 /**
- * E 组: strip terminal-injection vectors from MODEL/TOOL text before it
- * reaches the terminal — ESC, C0 (except \t \n \r), C1, backspace, and
+ * E 组/八: strip terminal-injection vectors from MODEL/TOOL text before it
+ * reaches the terminal — ESC, C0 (except \t \n), C1, CR, backspace, and
  * bidi overrides. The kiso colors are applied by render, not by the data.
+ * EVERY externally-sourced string must pass through this before any output.
  */
-function escapeTerminal(text: string): string {
+export function escapeTerminal(text: string): string {
 	// eslint-disable-next-line no-control-regex
 	return text
 		.replace(/[\u0000-\u0008\u000d\u000e-\u001f\u007f]/g, "") // C0 (keeps only \t and \n)
 		.replace(/\u001b/g, "") // ESC
 		.replace(/[\u0080-\u009f]/g, "") // C1
 		.replace(/[\u202a-\u202e\u2066-\u2069]/g, ""); // bidi
+}
+
+
+export function canonicalPath(input: string): string {
+	try {
+		return realpathSync(resolve(input));
+	} catch {
+		return resolve(input);
+	}
 }
 
 export interface RenderResult {
@@ -67,8 +79,9 @@ export function renderEvent(ev: Event): RenderResult {
 			};
 		}
 		case "permission_requested":
+			// 八: the tool NAME is model text — escaped like everything else.
 			return {
-				text: `${YELLOW}⏸ ${ev.name} needs approval${RESET} ${DIM}${approvalDetail(ev.name, ev.input)}${RESET} `,
+				text: `${YELLOW}⏸ ${escapeTerminal(ev.name)} needs approval${RESET} ${DIM}${approvalDetail(ev.name, ev.input)}${RESET} `,
 				newline: false,
 				prompt: true,
 			};
@@ -85,7 +98,7 @@ export function renderEvent(ev: Event): RenderResult {
 					? `${GREEN}done${RESET}`
 					: outcome.kind === "aborted"
 						? `${YELLOW}aborted (${outcome.by})${RESET}`
-						: `${RED}${outcome.kind}${RESET}${"error" in outcome && "message" in outcome.error ? `: ${(outcome.error as { message: string }).message.slice(0, 200)}` : ""}`;
+						: `${RED}${outcome.kind}${RESET}${"error" in outcome && "message" in outcome.error ? `: ${escapeTerminal((outcome.error as { message: string }).message.slice(0, 200))}` : ""}`;
 			return { text: `\n${label}\n`, newline: true, prompt: false };
 		}
 		case "compacted":
@@ -102,10 +115,11 @@ export function renderEvent(ev: Event): RenderResult {
 }
 
 /**
- * The approval prompt detail (Area 5): security-critical parameters are
- * NEVER truncated. The shell command is shown in full; write/edit show the
- * full path with a content summary; the decision is bound to the complete
- * input via the decisionId, whatever the display.
+ * The approval prompt detail (Area 5/八): the human must be able to see
+ * EVERYTHING they are approving. The shell command is shown in full; the
+ * path is the CANONICAL one the tool will touch; write/edit show the FULL
+ * content (never a truncated tail that hides a dangerous payload). The
+ * decision is bound to the complete input via the decisionId.
  */
 function approvalDetail(name: string, input: Record<string, unknown>): string {
 	if (name === "shell") {
@@ -113,10 +127,10 @@ function approvalDetail(name: string, input: Record<string, unknown>): string {
 	}
 	if (name === "write_file") {
 		const content = String(input.content ?? "");
-		return `\n  ${escapeTerminal(String(input.path ?? "?"))} (${content.length} chars)\n  ${escapeTerminal(content.slice(0, 200))}${content.length > 200 ? "…" : ""}`;
+		return `\n  ${escapeTerminal(canonicalPath(String(input.path ?? "?")))}\n  ${escapeTerminal(content)}`;
 	}
 	if (name === "edit_file") {
-		return `\n  ${escapeTerminal(String(input.path ?? "?"))}\n  replace: ${escapeTerminal(String(input.search ?? ""))}\n  with:    ${escapeTerminal(String(input.replace ?? ""))}`;
+		return `\n  ${escapeTerminal(canonicalPath(String(input.path ?? "?")))}\n  replace: ${escapeTerminal(String(input.search ?? ""))}\n  with:    ${escapeTerminal(String(input.replace ?? ""))}`;
 	}
 	return `\n  ${escapeTerminal(JSON.stringify(input))}`;
 }
@@ -124,5 +138,6 @@ function approvalDetail(name: string, input: Record<string, unknown>): string {
 /** One-line summary of a session, for `kiso sessions`. */
 export function renderSessionLine(meta: { id: string; title: string; events: number; runs: number; updatedAt: number }): string {
 	const when = meta.updatedAt ? new Date(meta.updatedAt).toISOString().slice(0, 16) : "—";
-	return `${meta.id.padEnd(24)} ${meta.runs} runs ${String(meta.events).padStart(5)} events  ${when}  ${meta.title}`;
+	// 八: the title is the user's first prompt — model/user text, escaped.
+	return `${meta.id.padEnd(24)} ${meta.runs} runs ${String(meta.events).padStart(5)} events  ${when}  ${escapeTerminal(meta.title)}`;
 }
