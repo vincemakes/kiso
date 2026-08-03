@@ -99,7 +99,7 @@ describe("adversarial races (第四轮)", () => {
 		]);
 		const records = store.load("s");
 		expect(records.map((r) => r.event.seq)).toEqual([0, 1]);
-		expect(records.map((r) => r.event.content)).toEqual(["a", "b"]);
+		expect(records.map((r) => (r.event as { content?: string }).content)).toEqual(["a", "b"]);
 		// The instance is still healthy — a follow-up append works.
 		await store.append("s", "r1", { seq: 2, type: "user_input", content: "c" });
 		expect(store.load("s")).toHaveLength(3);
