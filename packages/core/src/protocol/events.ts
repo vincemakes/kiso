@@ -23,14 +23,25 @@
  * `isKisoEvent`, the type guard the session store validates records with.
  */
 
-/** Why the model stopped producing. */
+/**
+ * Why the model stopped producing. Provider-specific reasons are mapped at
+ * the ADAPTER boundary into this closed union (Area 6) — `refusal`,
+ * `pause_turn`, `content_filter`, and `context_window` are never allowed
+ * to degrade into a normal `end_turn`. A new SDK enum that lacks a mapping
+ * is a compile error in the adapters' exhaustive switches.
+ */
 export type StopReason =
 	| "end_turn"
 	| "tool_use"
 	| "max_tokens"
 	| "stop_sequence"
 	| "abort"
-	| "error";
+	| "error"
+	| "refusal"
+	| "pause_turn"
+	| "content_filter"
+	| "context_window"
+	| "function_call";
 
 /**
  * Structured failure classification, layered ON TOP OF `isError: boolean`.
@@ -61,6 +72,8 @@ export type ToolErrorKind = "invalid_input" | "precondition" | "transient" | "fa
 export interface TextStart {
 	readonly seq: number;
 	readonly type: "text_start";
+	/** Provenance of the assistant message this block belongs to (Area 6). */
+	readonly source?: import("./messages.js").MessageSource;
 }
 
 export interface TextDelta {
@@ -85,6 +98,8 @@ export interface ToolCallStart {
 	readonly type: "tool_call_start";
 	readonly callId: string;
 	readonly name: string;
+	/** Provenance of the assistant message this call belongs to (Area 6). */
+	readonly source?: import("./messages.js").MessageSource;
 }
 
 /**
@@ -128,6 +143,9 @@ export interface ToolResultEvent {
 	readonly isError: boolean;
 	/** Present only when `isError` is true and the handler classified it. */
 	readonly errorKind?: ToolErrorKind;
+	/** Provenance + product tags — preserved losslessly (Area 6). */
+	readonly source?: import("./messages.js").MessageSource;
+	readonly tags?: readonly string[];
 }
 
 /**
@@ -140,6 +158,8 @@ export interface UserInputEvent {
 	readonly seq: number;
 	readonly type: "user_input";
 	readonly content: string | readonly import("./messages.js").ContentBlock[];
+	/** Provenance of the prompt (Area 6) — preserved losslessly. */
+	readonly source?: import("./messages.js").MessageSource;
 }
 
 /**
@@ -243,14 +263,18 @@ export interface Thinking {
  * Token accounting.
  * INVARIANT: at least one `Usage` MUST precede each `Stop`. A turn that cannot
  * report its cost is a turn you cannot bill, cap, or trust.
+ *
+ * `known: false` means the provider reported NO usage — the token fields
+ * are null, never faked as zero (Area 6).
  */
 export interface Usage {
 	readonly seq: number;
 	readonly type: "usage";
-	readonly inputTokens: number;
-	readonly outputTokens: number;
-	readonly cacheRead: number;
-	readonly cacheWrite: number;
+	readonly inputTokens: number | null;
+	readonly outputTokens: number | null;
+	readonly cacheRead: number | null;
+	readonly cacheWrite: number | null;
+	readonly known: boolean;
 }
 
 export interface Stop {

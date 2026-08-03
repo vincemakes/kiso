@@ -166,6 +166,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		// ── Model turn: stream events through, collect tool calls ──────────
 		const pending: ToolCallEnd[] = [];
 		let lastStop: StopReason | undefined;
+		let stopCount = 0;
 		let streamed = false;
 		let attempts = 0;
 
@@ -188,7 +189,10 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				});
 				for await (const ev of stream) {
 					streamed = true;
-					if (ev.type === "stop") lastStop = ev.reason;
+					if (ev.type === "stop") {
+						lastStop = ev.reason;
+						stopCount += 1;
+					}
 					if (ev.type === "tool_call_end") pending.push(ev);
 					const full = log.append(ev);
 					if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
@@ -218,6 +222,23 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 
 		// ── Terminal check: no tool call this turn → done, honestly ────────
 		if (pending.length === 0) {
+			// Area 6: protocol anomalies are STRUCTURED ERRORS, never a
+			// default `completed` — a stream with no stop, a duplicate stop,
+			// or a tool_use that never produced a complete call.
+			if (stopCount === 0) {
+				yield await terminal({
+					kind: "error",
+					error: { code: "invalid_request", retryable: false, message: "provider stream ended without a stop event" },
+				});
+				return;
+			}
+			if (stopCount > 1) {
+				yield await terminal({
+					kind: "error",
+					error: { code: "invalid_request", retryable: false, message: `provider emitted ${stopCount} stop events in one turn` },
+				});
+				return;
+			}
 			yield await terminal(terminalForStop(lastStop));
 			return;
 		}
@@ -264,7 +285,10 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 
 /**
  * The terminal for a turn that stopped without tool calls — mapped from the
- * provider's OWN stop reason, never blanket `completed` (Phase B).
+ * provider's OWN stop reason, never blanket `completed` (Phase B, Area 6).
+ * `refusal`, `pause_turn`, `content_filter`, `context_window`, and a
+ * tool_use/function_call that produced no complete call are all explicit
+ * non-completions.
  */
 function terminalForStop(reason: StopReason | undefined): Terminal {
 	switch (reason) {
@@ -274,6 +298,29 @@ function terminalForStop(reason: StopReason | undefined): Terminal {
 			return { kind: "aborted", by: "user" };
 		case "error":
 			return { kind: "error", error: { code: "unknown", retryable: false, message: "provider stopped with an error" } };
+		case "refusal":
+			return { kind: "error", error: { code: "invalid_request", retryable: false, message: "the model refused the request" } };
+		case "pause_turn":
+			return { kind: "error", error: { code: "unknown", retryable: false, message: "the provider paused the turn (pause_turn)" } };
+		case "content_filter":
+			return { kind: "error", error: { code: "invalid_request", retryable: false, message: "the provider's content filter triggered" } };
+		case "context_window":
+			return {
+				kind: "error",
+				error: { code: "context_overflow", retryable: false, message: "the model's context window was exceeded" },
+			};
+		case "tool_use":
+		case "function_call":
+			return {
+				kind: "error",
+				error: {
+					code: "invalid_request",
+					retryable: false,
+					message: "provider stopped with a tool call that was never completed",
+				},
+			};
+		case "end_turn":
+		case "stop_sequence":
 		default:
 			return { kind: "completed" };
 	}

@@ -64,11 +64,37 @@ describe("stop reasons map to explicit terminals (never blanket completed)", () 
 		expect(terminalOf(events).outcome).toEqual({ kind: "completed" });
 	});
 
-	it("stop reason tool_use with pending calls continues; end_turn completes", async () => {
+	it("tool_use WITHOUT a complete tool call is a protocol error, not completed", async () => {
+		const events = await run([{ events: [{ type: "stop", reason: "tool_use" }] }]);
+		expect(terminalOf(events).outcome.kind).toBe("error");
+	});
+
+	it("refusal / pause_turn / content_filter / context_window are never completed (Area 6)", async () => {
+		for (const reason of ["refusal", "pause_turn", "content_filter", "context_window"] as const) {
+			const events = await run([{ events: [{ type: "stop", reason }] }]);
+			expect(terminalOf(events).outcome.kind, reason).toBe("error");
+			expect(terminalOf(events).outcome, reason).not.toEqual({ kind: "completed" });
+		}
+	});
+
+	it("a stream that ends WITHOUT a stop event is an error terminal, not completed", async () => {
+		const events = await run([{ events: [{ type: "text_delta", text: "hello" }] }]);
+		expect(terminalOf(events).outcome).toMatchObject({
+			kind: "error",
+			error: { code: "invalid_request" },
+		});
+	});
+
+	it("an EMPTY provider stream is an error terminal, not completed", async () => {
+		const events = await run([{ events: [] }]);
+		expect(terminalOf(events).outcome).toMatchObject({ kind: "error", error: { code: "invalid_request" } });
+	});
+
+	it("a DUPLICATE stop event is an error terminal, not completed", async () => {
 		const events = await run([
-			{ events: [{ type: "stop", reason: "tool_use" }] }, // no calls actually… treated as completed
+			{ events: [{ type: "stop", reason: "end_turn" }, { type: "stop", reason: "end_turn" }] },
 		]);
-		expect(terminalOf(events).outcome).toEqual({ kind: "completed" });
+		expect(terminalOf(events).outcome).toMatchObject({ kind: "error", error: { code: "invalid_request" } });
 	});
 
 	it("an abort mid-run yields exactly one terminal of kind aborted", async () => {

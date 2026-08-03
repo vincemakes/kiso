@@ -36,7 +36,9 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 				options.signal !== undefined ? { signal: options.signal as AbortSignal } : undefined,
 			);
 
-			let inputTokens = 0;
+			let inputTokens: number | null = null;
+			let outputTokens: number | null = null;
+			let usageSeen = false;
 			let stopReason: StopReason = "end_turn";
 			const toolBuffer = new Map<number, { id: string; name: string; json: string }>();
 
@@ -44,7 +46,8 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 				for await (const event of stream) {
 					switch (event.type) {
 						case "message_start":
-							inputTokens = event.message.usage.input_tokens ?? 0;
+							inputTokens = event.message.usage.input_tokens ?? null;
+							if (event.message.usage.input_tokens !== undefined) usageSeen = true;
 							break;
 						case "content_block_start": {
 							const block = event.content_block;
@@ -104,17 +107,18 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 							break;
 						}
 						case "message_delta":
-							stopReason = mapStopReason(event.delta.stop_reason);
-							if (event.usage?.output_tokens) {
-								yield {
-									seq: 0,
-									type: "usage",
-									inputTokens,
-									outputTokens: event.usage.output_tokens,
-									cacheRead: 0,
-									cacheWrite: 0,
-								};
-							}
+							stopReason = mapStopReason(event.delta.stop_reason ?? "end_turn");
+							outputTokens = event.usage?.output_tokens ?? null;
+							if (event.usage?.output_tokens !== undefined) usageSeen = true;
+							yield {
+								seq: 0,
+								type: "usage",
+								inputTokens,
+								outputTokens,
+								cacheRead: 0,
+								cacheWrite: 0,
+								known: usageSeen,
+							};
 							break;
 						case "message_stop":
 							yield { seq: 0, type: "stop", reason: stopReason };
@@ -130,18 +134,31 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 
 // ── Mapping helpers ────────────────────────────────────────────────────
 
-function mapStopReason(reason: string | null | undefined): StopReason {
+/**
+ * Exhaustive over the SDK's CLOSED StopReason union (Area 6): a new SDK
+ * enum is a compile error here, and none of them degrades into `end_turn`.
+ * `pause_turn` and `refusal` are explicit non-completions.
+ */
+function mapStopReason(reason: Anthropic.Messages.StopReason): StopReason {
 	switch (reason) {
-		case "tool_use":
-			return "tool_use";
+		case "end_turn":
+			return "end_turn";
 		case "max_tokens":
 			return "max_tokens";
 		case "stop_sequence":
 			return "stop_sequence";
-		case "end_turn":
+		case "tool_use":
+			return "tool_use";
 		case "pause_turn":
-		default:
-			return "end_turn";
+			return "pause_turn";
+		case "refusal":
+			return "refusal";
+		case "model_context_window_exceeded":
+			return "context_window";
+		default: {
+			const _exhaustive: never = reason;
+			return _exhaustive;
+		}
 	}
 }
 

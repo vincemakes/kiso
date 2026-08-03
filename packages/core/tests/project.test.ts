@@ -37,6 +37,30 @@ describe("messagesToEvents / projectMessages round-trip", () => {
 		expect(projectMessages(messagesToEvents(seed))).toEqual(seed);
 	});
 
+	it("is LOSSLESS: source, tags, image blocks, and text-block boundaries survive (Area 6)", () => {
+		const rich: readonly Message[] = [
+			{
+				role: "user",
+				content: [
+					{ type: "text", text: "describe this" },
+					{ type: "image", sourceType: "base64", data: "aGVsbG8=", mediaType: "image/png" },
+				],
+				source: "suggestion",
+			},
+			{
+				role: "assistant",
+				blocks: [
+					{ type: "text", text: "first block" },
+					{ type: "text", text: "second block" },
+					{ type: "tool_use", callId: "c1", name: "web_search", input: { query: "k" } },
+				],
+				source: "model",
+			},
+			{ role: "tool", callId: "c1", content: "results", isError: false, source: "tool_result", tags: ["do-not-compact"] },
+		];
+		expect(projectMessages(messagesToEvents(rich))).toEqual(rich);
+	});
+
 	it("user input has an explicit event — reconstructable without the seed array", () => {
 		const events = messagesToEvents([{ role: "user", content: "hi" }]);
 		expect(events.some((e) => e.type === "user_input")).toBe(true);

@@ -5,11 +5,13 @@
  * make that claim enforceable: `projectMessages(log.all)` rebuilds the exact
  * message array the loop hands to the adapter, and `messagesToEvents`
  * encodes seed history into the log. Round-trip property:
- * `projectMessages(messagesToEvents(m)) === m` — pinned by tests.
+ * `projectMessages(messagesToEvents(m)) === m` — pinned by tests, and
+ * LOSSLESS (Area 6): `source`, `tags`, image content blocks, and assistant
+ * text-block boundaries survive the round trip.
  *
- * The loop no longer keeps a parallel `messages` array (the Phase B fix):
- * every adapter call derives from the log, so there is one store and the
- * replay of `seq` 0..N reproduces the run exactly.
+ * The loop no longer keeps a parallel `messages` array: every adapter call
+ * derives from the log, so there is one store and the replay of `seq` 0..N
+ * reproduces the run exactly.
  *
  * Events with no message shape (usage, stop, thinking, terminal, compacted's
  * own record) are skipped by the projection; `compacted` REPLAYS the
@@ -22,83 +24,113 @@ import type { Event } from "../protocol/events.js";
 import type { EventInput } from "./event-log.js";
 import type {
 	AssistantBlock,
-	ContentBlock,
+	AssistantMessage,
 	Message,
+	MessageSource,
 	ToolResultMessage,
+	UserMessage,
 } from "../protocol/messages.js";
 import { microcompact } from "./compaction.js";
-
-interface PendingCall {
-	readonly callId: string;
-	readonly name: string;
-	readonly input: Readonly<Record<string, unknown>> | null;
-}
 
 /**
  * Rebuild the message array from events. Deterministic and order-sensitive:
  * replaying the same log always produces the same messages.
+ *
+ * Text block boundaries are preserved: `text_end` closes the current text
+ * block (an explicit boundary); `text_start` after a block opens a new one.
+ * A stream of deltas WITHOUT `text_end` (the adapters' common shape) closes
+ * at the next block/tool/result boundary.
  */
 export function projectMessages(events: readonly (Event | EventInput)[]): readonly Message[] {
 	const out: Message[] = [];
-	let text = "";
-	let calls: PendingCall[] = [];
+	let blocks: AssistantBlock[] = [];
+	let text: string | null = null;
+	let assistantSource: MessageSource | undefined;
 
-	const flushAssistant = (): void => {
-		if (text === "" && calls.length === 0) return;
-		const blocks: AssistantBlock[] = [];
-		if (text !== "") blocks.push({ type: "text", text });
-		for (const call of calls) {
-			blocks.push({
-				type: "tool_use",
-				callId: call.callId,
-				name: call.name,
-				input: call.input ?? {},
-			});
+	const pushText = (): void => {
+		if (text !== null) {
+			blocks.push({ type: "text", text });
+			text = null;
 		}
-		out.push({ role: "assistant", blocks });
-		text = "";
-		calls = [];
+	};
+	const flushAssistant = (): void => {
+		pushText();
+		if (blocks.length === 0) {
+			assistantSource = undefined;
+			return;
+		}
+		out.push({
+			role: "assistant",
+			blocks: [...blocks],
+			...(assistantSource !== undefined ? { source: assistantSource } : {}),
+		} satisfies AssistantMessage);
+		blocks = [];
+		assistantSource = undefined;
 	};
 
 	for (const ev of events) {
 		switch (ev.type) {
-			case "user_input":
+			case "user_input": {
 				flushAssistant();
-				out.push({ role: "user", content: ev.content });
+				out.push({
+					role: "user",
+					content: ev.content,
+					...(ev.source !== undefined ? { source: ev.source } : {}),
+				} satisfies UserMessage);
 				break;
+			}
 			case "text_start":
+				pushText(); // an explicit boundary: a new block begins
+				if (ev.source !== undefined) assistantSource = ev.source;
+				break;
 			case "text_end":
-				break; // boundaries are implicit; text accumulates
+				pushText(); // an explicit boundary: the block closes
+				break;
 			case "text_delta":
-				text += ev.text;
+				text = (text ?? "") + ev.text;
 				break;
 			case "tool_call_start":
-				break; // identity arrives at tool_call_end
+				if (ev.source !== undefined) assistantSource = ev.source;
+				break;
 			case "tool_call_input_delta":
 				break; // the parsed input arrives at tool_call_end
 			case "tool_call_end":
-				calls.push({ callId: ev.callId, name: ev.name, input: ev.input });
+				pushText();
+				blocks.push({
+					type: "tool_use",
+					callId: ev.callId,
+					name: ev.name,
+					input: ev.input ?? {},
+				});
 				break;
-			case "tool_result":
+			case "tool_result": {
 				flushAssistant();
 				out.push({
 					role: "tool",
 					callId: ev.callId,
 					content: ev.content,
 					isError: ev.isError,
+					...(ev.source !== undefined ? { source: ev.source } : {}),
+					...(ev.tags !== undefined ? { tags: ev.tags } : {}),
 				} satisfies ToolResultMessage);
 				break;
-			case "compacted":
+			}
+			case "compacted": {
 				flushAssistant();
-				{
-					const compacted = microcompact(out);
-					out.splice(0, out.length, ...compacted.messages);
-				}
+				const compacted = microcompact(out);
+				out.splice(0, out.length, ...compacted.messages);
 				break;
+			}
 			case "thinking":
 			case "usage":
 			case "stop":
 			case "terminal":
+			case "tool_execution_started":
+			case "tool_execution_succeeded":
+			case "tool_execution_failed":
+			case "tool_execution_resolved":
+			case "permission_requested":
+			case "permission_decided":
 				flushAssistant();
 				break;
 		}
@@ -108,37 +140,42 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 }
 
 /**
- * Encode seed messages into log events. Used by the loop when it starts with
- * a fresh log: the seed enters the log as events, so the projection (and the
- * replay) contains it. Not a lossless serializer for every Message shape —
- * content blocks and error kinds pass through, tags do not.
+ * Encode seed messages into log events — LOSSLESSLY for the framework's own
+ * shapes (Area 6): one `text_delta` per text block (boundaries preserved),
+ * `source` on the first event of each message, `tags` on tool results,
+ * content blocks passed through. Nothing a legal Message can express is
+ * dropped.
  */
 export function messagesToEvents(messages: readonly Message[]): EventInput[] {
 	const out: EventInput[] = [];
 	for (const msg of messages) {
 		switch (msg.role) {
-			case "user":
-				out.push({ type: "user_input", content: msg.content });
+			case "user": {
+				out.push({
+					type: "user_input",
+					content: msg.content,
+					...(msg.source !== undefined ? { source: msg.source } : {}),
+				});
 				break;
+			}
 			case "assistant": {
-				let pendingText: string | null = null;
+				// One event sequence PER BLOCK: text blocks keep their
+				// boundaries (text_start/delta/end each), tool calls their
+				// own start/end pair — the round trip is lossless.
 				for (const block of msg.blocks) {
 					if (block.type === "text") {
-						if (pendingText === null) {
-							out.push({ type: "text_start" });
-							pendingText = "";
-						}
-						pendingText += block.text;
+						out.push({
+							type: "text_start",
+							...(msg.source !== undefined ? { source: msg.source } : {}),
+						});
+						out.push({ type: "text_delta", text: block.text });
+						out.push({ type: "text_end" });
 					} else {
-						if (pendingText !== null) {
-							out.push({ type: "text_delta", text: pendingText });
-							out.push({ type: "text_end" });
-							pendingText = null;
-						}
 						out.push({
 							type: "tool_call_start",
 							callId: block.callId,
 							name: block.name,
+							...(msg.source !== undefined ? { source: msg.source } : {}),
 						});
 						out.push({
 							type: "tool_call_end",
@@ -148,13 +185,9 @@ export function messagesToEvents(messages: readonly Message[]): EventInput[] {
 						});
 					}
 				}
-				if (pendingText !== null) {
-					out.push({ type: "text_delta", text: pendingText });
-					out.push({ type: "text_end" });
-				}
 				break;
 			}
-			case "tool":
+			case "tool": {
 				out.push({
 					type: "tool_result",
 					callId: msg.callId,
@@ -166,11 +199,14 @@ export function messagesToEvents(messages: readonly Message[]): EventInput[] {
 									.map((b) => b.text)
 									.join(""),
 					isError: msg.isError,
+					...(msg.source !== undefined ? { source: msg.source } : {}),
+					...(msg.tags !== undefined ? { tags: msg.tags } : {}),
 				});
 				break;
+			}
 		}
 	}
 	return out;
 }
 
-export type { ContentBlock };
+export type { AssistantBlock, MessageSource };

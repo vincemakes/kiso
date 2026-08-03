@@ -33,19 +33,27 @@ interface PendingToolCall {
 export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 	return {
 		async *stream(options: StreamOptions): AsyncIterable<Event> {
-			const stream = await client.chat.completions.create(
-				{
-					model: options.model,
-					messages: toOpenAIMessages(options.messages, options.systemPrompt),
-					stream: true,
-					...(options.tools?.length ? { tools: options.tools.map(toOpenAITool) } : {}),
-					...(options.maxTokens !== undefined ? { max_tokens: options.maxTokens } : {}),
-					...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-				},
-				// Phase B: cancellation reaches the SDK; the system prompt is a
-				// first-class message, not a dropped option.
-				options.signal !== undefined ? { signal: options.signal as AbortSignal } : undefined,
-			);
+			// Area 6: the stream CREATION is inside the error normalization —
+			// a 429/5xx/connection failure before the first byte is a mapped,
+			// retryable StructuredError, so the loop's pre-stream retry works.
+			let stream;
+			try {
+				stream = await client.chat.completions.create(
+					{
+						model: options.model,
+						messages: toOpenAIMessages(options.messages, options.systemPrompt),
+						stream: true,
+						...(options.tools?.length ? { tools: options.tools.map(toOpenAITool) } : {}),
+						...(options.maxTokens !== undefined ? { max_tokens: options.maxTokens } : {}),
+						...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+					},
+					// Phase B: cancellation reaches the SDK; the system prompt is a
+					// first-class message, not a dropped option.
+					options.signal !== undefined ? { signal: options.signal as AbortSignal } : undefined,
+				);
+			} catch (err) {
+				throw toOpenAIError(err);
+			}
 
 			const pending = new Map<number, PendingToolCall>();
 			let finishReason: string | null = null;
@@ -106,10 +114,11 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 						yield {
 							seq: 0,
 							type: "usage",
-							inputTokens: chunk.usage.prompt_tokens ?? 0,
-							outputTokens: chunk.usage.completion_tokens ?? 0,
+							inputTokens: chunk.usage.prompt_tokens ?? null,
+							outputTokens: chunk.usage.completion_tokens ?? null,
 							cacheRead: 0,
 							cacheWrite: 0,
+							known: true,
 						};
 					}
 
@@ -135,7 +144,9 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 			}
 
 			if (!usageSent) {
-				yield { seq: 0, type: "usage", inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0 };
+				// Area 6: no usage reported is expressed as UNKNOWN — nulls
+				// and known:false — never faked as a zero-cost turn.
+				yield { seq: 0, type: "usage", inputTokens: null, outputTokens: null, cacheRead: null, cacheWrite: null, known: false };
 			}
 			yield { seq: 0, type: "stop", reason: stopReason };
 		},
@@ -144,15 +155,29 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 
 // ── Mapping helpers ────────────────────────────────────────────────────
 
-function mapFinishReason(reason: string | null | undefined): StopReason {
+/**
+ * Exhaustive over the SDK's CLOSED finish_reason union (Area 6): a new SDK
+ * enum is a compile error here; `content_filter` and `function_call` are
+ * explicit non-completions, never degraded into `end_turn`.
+ */
+function mapFinishReason(reason: OpenAI.Chat.ChatCompletionChunk.Choice["finish_reason"]): StopReason {
 	switch (reason) {
-		case "tool_calls":
-			return "tool_use";
+		case "stop":
+			return "end_turn";
 		case "length":
 			return "max_tokens";
-		case "stop":
-		default:
+		case "tool_calls":
+			return "tool_use";
+		case "function_call":
+			return "function_call";
+		case "content_filter":
+			return "content_filter";
+		case null:
 			return "end_turn";
+		default: {
+			const _exhaustive: never = reason;
+			return _exhaustive;
+		}
 	}
 }
 
