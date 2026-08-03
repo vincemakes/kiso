@@ -94,6 +94,27 @@ describe("session.approve", () => {
 		const again = await agent2.session({ id: "s" });
 		expect(again.pendingApprovals()).toEqual([]);
 	});
+
+	it("approve() is idempotent — a second answer never writes a contradictory decision (review finding 7)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-appr-"));
+		const store = new SessionStore(dir);
+		const agent = searchAgent(store);
+		const session = await agent.session({ id: "s" });
+		const events: Event[] = [];
+		for await (const ev of session.run("search")) {
+			events.push(ev);
+			if (ev.type === "permission_requested") {
+				session.approve(ev.decisionId, true); // the live answer
+				session.approve(ev.decisionId, false); // a stray second answer
+			}
+		}
+		const decided = store
+			.load("s")
+			.filter((r) => r.event.type === "permission_decided")
+			.map((r) => (r.event as { decision: string }).decision);
+		expect(decided).toEqual(["approved"]); // exactly one, the first
+		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
+	});
 });
 
 describe("uncertain executions", () => {
@@ -142,25 +163,28 @@ describe("uncertain executions", () => {
 		expect(session.uncertainExecutions()).toHaveLength(1);
 	});
 
-	it("abandoned fills a recorded denial; rerun leaves the attempt open for the model", async () => {
+	it("both rerun and abandoned fill a model-facing result — never a dangling tool_use", async () => {
 		// ── abandoned: the human says the attempt did not apply ──
 		const { store: store1 } = crashedStore();
 		const session1 = await searchAgent(store1).session({ id: "s" });
 		session1.resolveUncertain("c1", "abandoned");
 		const rec1 = store1.load("s");
 		expect(rec1.some((r) => r.event.type === "tool_execution_resolved" && r.event.resolution === "abandoned")).toBe(true);
-		// The trajectory continues with a recorded denial — the model is
-		// never left staring at an unanswered tool call.
 		expect(rec1.some((r) => r.event.type === "tool_result" && r.event.isError && r.event.errorKind === "precondition")).toBe(true);
 		expect(session1.uncertainExecutions()).toEqual([]);
 
-		// ── rerun: the human takes responsibility — the side effect may run ──
+		// ── rerun: the human says the side effect did NOT happen; the model
+		//    must be able to retry — which real providers REQUIRE (a dangling
+		//    tool_use is rejected by the Anthropic API). A result is filled
+		//    with the rerun verdict (review finding 1).
 		const { store: store2 } = crashedStore();
 		const session2 = await searchAgent(store2).session({ id: "s" });
 		session2.resolveUncertain("c1", "rerun");
 		const rec2 = store2.load("s");
 		expect(rec2.some((r) => r.event.type === "tool_execution_resolved" && r.event.resolution === "rerun")).toBe(true);
-		expect(rec2.some((r) => r.event.type === "tool_result")).toBe(false); // no denial fill
+		const filled = rec2.find((r) => r.event.type === "tool_result");
+		expect(filled).toBeDefined();
+		expect((filled?.event as { content: string }).content).toMatch(/rerun|NOT applied/i);
 		expect(session2.uncertainExecutions()).toEqual([]);
 	});
 });

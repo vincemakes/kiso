@@ -401,6 +401,11 @@ async function* executeOne(
 	// enforced by the receipt repair (Area 2) and the human decisions on
 	// uncertain executions, not by swallowing repeats.
 
+	// Area 4 hardening (review finding 5): an abort that landed while a
+	// slow permission hook was answering must not let the tool run after
+	// all. Checked again here, after any permission path.
+	if (signal?.aborted) throw ABORTED;
+
 	// Permission negotiation — defer is a REAL pause (Phase D).
 	if (hooks.onPreTool) {
 		const decision = await hooks.onPreTool(payload, ctx);

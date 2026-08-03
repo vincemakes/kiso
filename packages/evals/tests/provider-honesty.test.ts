@@ -167,4 +167,35 @@ describe("openai-compat stream creation errors are normalized", () => {
 		expect(usage?.known).toBe(false);
 		expect(usage?.inputTokens).toBeNull();
 	});
+
+	it("a TRUNCATED stream (no finish_reason) stops with an error — never completed (review finding 4)", async () => {
+		const events = await drain(
+			createOpenAICompatAdapter(
+				fakeOpenAI({
+					// Chunks stream content but the connection dies before any
+					// finish_reason — the SDK does not throw on premature end.
+					chunks: [CHUNK(null, { content: "half a sentence" })],
+				}),
+			),
+		);
+		const stop = events.find((e) => (e as { type?: string }).type === "stop");
+		expect((stop as { reason?: string }).reason).toBe("error");
+	});
+
+	it("a tool name arriving in a LATER delta is captured, not lost (review finding 10)", async () => {
+		const events = await drain(
+			createOpenAICompatAdapter(
+				fakeOpenAI({
+					chunks: [
+						CHUNK(null, { tool_calls: [{ index: 0, id: "call_1", function: { arguments: "" } }] }),
+						CHUNK(null, { tool_calls: [{ index: 0, function: { name: "web_search", arguments: '{"q":"k"}' } }] }),
+						CHUNK("tool_calls"),
+					],
+				}),
+			),
+		);
+		const end = events.find((e) => (e as { type?: string }).type === "tool_call_end");
+		expect((end as { name?: string }).name).toBe("web_search");
+		expect((end as { input?: unknown }).input).toEqual({ q: "k" });
+	});
 });

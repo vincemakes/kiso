@@ -112,7 +112,12 @@ export class SessionStore {
 			if (holder !== null && isAlive(holder)) {
 				throw new Error(`session ${sessionId} is locked by another writer (pid ${holder})`);
 			}
-			unlinkSync(lockPath); // stale — the holder died without releasing
+			try {
+				unlinkSync(lockPath); // stale — the holder died without releasing
+			} catch {
+				// A concurrent recovery already took the stale lock over —
+				// retry the acquire, don't die on the race.
+			}
 			this.acquireLock(sessionId);
 		}
 	}
@@ -126,6 +131,11 @@ export class SessionStore {
 		}
 		this.acquireLock(sessionId);
 		const fd = this.fd(sessionId);
+		// Repair the tail BEFORE EVERY append (Area 1 hardening): a failed
+		// append in THIS process (ENOSPC/EIO after a partial write) leaves
+		// a fragment; the cached fd must not glue new JSON onto it. The
+		// check is one fstat + one-byte read — cheap per event.
+		repairTornTail(fd);
 		appendFileSync(fd, `${JSON.stringify({ runId, ts: Date.now(), event })}\n`);
 		fsyncSync(fd);
 	}
@@ -143,16 +153,7 @@ export class SessionStore {
 
 		const path = this.pathFor(sessionId);
 		const fd = openSync(path, "a+");
-		const size = fstatSync(fd).size;
-		if (size > 0) {
-			const lastNewline = lastNewlineOffset(fd, size);
-			if (lastNewline !== size - 1) {
-				// The file ends in a fragment: truncate to the last \n
-				// (or 0 when there is none) before anything is appended.
-				ftruncateSync(fd, lastNewline + 1);
-				fsyncSync(fd);
-			}
-		}
+		repairTornTail(fd);
 		fsyncDir(dirname(path));
 		this.#fds.set(sessionId, fd);
 		return fd;
@@ -272,6 +273,22 @@ function isAlive(pid: number): boolean {
 	} catch (err) {
 		return (err as NodeJS.ErrnoException).code === "EPERM";
 	}
+}
+
+/**
+ * If the file does not end with a newline, truncate to the last complete
+ * line (or 0) — the torn-tail repair. Runs on open AND before every append,
+ * so an in-process append failure cannot poison the next one.
+ */
+function repairTornTail(fd: number): void {
+	const size = fstatSync(fd).size;
+	if (size === 0) return;
+	const last = Buffer.alloc(1);
+	readSync(fd, last, 0, 1, size - 1);
+	if (last[0] === 0x0a) return; // ends cleanly
+	const lastNewline = lastNewlineOffset(fd, size);
+	ftruncateSync(fd, lastNewline + 1);
+	fsyncSync(fd);
 }
 
 /** Offset of the last '\n' in the file, or -1 when none exists. */

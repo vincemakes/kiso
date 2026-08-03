@@ -213,8 +213,17 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			}
 			try {
 				writeFileSync(full, content, "utf8");
+				// Post-write re-check (review finding 8): if a concurrent
+				// swap turned the verified path into a symlink mid-write,
+				// the write landed outside the workspace — say so instead of
+				// claiming success. (The write itself cannot be undone.)
+				const written = realpathSync(full);
+				if (!isWithin(realpathSync(opts.workspaceRoot), written)) {
+					return escapeResult(`write escaped the workspace via a swapped path (${path})`);
+				}
 				return { content: `wrote ${path} (${content.length} chars)`, isError: false };
 			} catch (err) {
+				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				return { content: `write_file failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
 			}
 		},
@@ -249,6 +258,10 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 					return { content: `edit_file: pattern not found in ${path}`, isError: true, errorKind: "invalid_input" };
 				}
 				writeFileSync(full, text.slice(0, index) + replace + text.slice(index + search.length), "utf8");
+				const written = realpathSync(full);
+				if (!isWithin(realpathSync(opts.workspaceRoot), written)) {
+					return escapeResult(`edit escaped the workspace via a swapped path (${path})`);
+				}
 				return { content: `edited ${path}`, isError: false };
 			} catch (err) {
 				return { content: `edit_file failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };

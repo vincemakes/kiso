@@ -87,10 +87,13 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 							});
 						}
 						const call = pending.get(tc.index)!;
+						// Some compat providers stream the name/id in a LATER
+						// delta; update on every delta so tool_call_end never
+						// carries an empty name (review finding 10).
+						if (tc.function?.name) call.name = tc.function.name;
+						if (tc.id) call.id = tc.id;
 						if (!call.emittedStart) {
 							call.emittedStart = true;
-							call.name = tc.function?.name ?? call.name;
-							call.id = tc.id ?? call.id;
 							yield {
 								seq: 0,
 								type: "tool_call_start",
@@ -148,7 +151,10 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 				// and known:false — never faked as a zero-cost turn.
 				yield { seq: 0, type: "usage", inputTokens: null, outputTokens: null, cacheRead: null, cacheWrite: null, known: false };
 			}
-			yield { seq: 0, type: "stop", reason: stopReason };
+			// Area 6 hardening (review finding 4): a stream that ended with
+			// NO finish_reason is a TRUNCATED turn — the stop is an explicit
+			// error, never a default end_turn/completed.
+			yield { seq: 0, type: "stop", reason: finishReason === null ? "error" : stopReason };
 		},
 	};
 }

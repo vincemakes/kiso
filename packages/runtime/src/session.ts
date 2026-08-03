@@ -70,6 +70,7 @@ export class AgentSession {
 	readonly #adapter: Adapter;
 	readonly #config: SessionConfig;
 	readonly #pendingResolvers = new Map<string, (decision: PermissionDecision) => void>();
+	readonly #answered = new Set<string>();
 
 	readonly #activeRuns = new Set<Run>();
 
@@ -142,6 +143,14 @@ export class AgentSession {
 	 * lost decision only re-presents the request.
 	 */
 	approve(decisionId: string, allow: boolean): void {
+		// Idempotent: one decision per request (review finding 7). The
+		// in-memory answered-set covers the same-tick double answer — the
+		// loop writes the durable record asynchronously after the resolver
+		// wakes, so the log cannot be consulted yet. The durable check below
+		// covers answers arriving after the record landed.
+		if (this.#answered.has(decisionId)) return;
+		this.#answered.add(decisionId);
+		if (this.log.all.some((e) => e.type === "permission_decided" && e.decisionId === decisionId)) return;
 		const resolver = this.#pendingResolvers.get(decisionId);
 		if (resolver !== undefined) {
 			this.#pendingResolvers.delete(decisionId);
@@ -171,10 +180,12 @@ export class AgentSession {
 
 	/**
 	 * The human's verdict on an interrupted execution: "rerun" (the human
-	 * takes responsibility — the side effect may run again) or "abandoned"
-	 * (treated as failed; the trajectory continues with a recorded denial
-	 * so the model is never left staring at an un-answered tool call).
-	 * Durable, write-ahead, keyed by the executionId resolved from the call.
+	 * says the side effect did NOT happen — the attempt is completed with a
+	 * recorded failure so the model may re-issue it as a new logical call,
+	 * which then executes) or "abandoned" (treated as failed forever). Both
+	 * fill a model-facing result: a dangling tool_use with NO result would
+	 * otherwise be rejected by real providers and stall the run (review
+	 * finding 1). Durable, write-ahead, keyed by executionId.
 	 */
 	resolveUncertain(callId: string, resolution: "rerun" | "abandoned"): void {
 		const record = executionForCallId(this.log.all, callId);
@@ -186,8 +197,12 @@ export class AgentSession {
 			resolution,
 		});
 		this.#store.append(this.id, "resolution", resolved);
-		if (resolution === "abandoned" && !this.log.all.some((e) => e.type === "tool_result" && e.callId === callId)) {
-			const denial = denialResult("abandoned by human decision — the interrupted attempt must not be treated as applied");
+		if (!this.log.all.some((e) => e.type === "tool_result" && e.callId === callId)) {
+			const denial = denialResult(
+				resolution === "rerun"
+					? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
+					: "abandoned by human decision — the interrupted attempt must not be treated as applied",
+			);
 			const result = this.log.append({
 				type: "tool_result",
 				callId,
@@ -413,6 +428,9 @@ export class Run implements AsyncIterable<Event> {
 				}
 			} else if (decided.decision === "approved") {
 				// Decided while no process was running: apply without pausing.
+				// An abort during recovery must stop the pending executions,
+				// exactly like the live loop's sibling guard (finding 3).
+				if (signal.aborted) return;
 				if (!hasExecution) yield* this.#executePersisted(pending.callId, pending.name, pending.input, signal);
 			} else if (!hasResult) {
 				yield* this.#denialResult(pending.callId, decided.reason ?? "denied by user");
@@ -458,6 +476,9 @@ export class Run implements AsyncIterable<Event> {
 		const tool = this.#config.registry.get(name);
 		const executionId = `ex-${log.lastSeq + 1}`;
 
+		// An abort that landed while the decision was being applied must
+		// not start the side effect (finding 3).
+		if (signal.aborted) return;
 		yield log.append({ type: "tool_execution_started", executionId, callId, name, input });
 
 		let result: ToolResult;
@@ -465,7 +486,11 @@ export class Run implements AsyncIterable<Event> {
 			result = { content: `Unknown tool: ${name}`, isError: true, errorKind: "invalid_input" };
 		} else {
 			try {
-				result = await tool.execute(input, { signal });
+				if (signal.aborted) {
+					result = { content: "aborted before execution", isError: true, errorKind: "fatal" };
+				} else {
+					result = await tool.execute(input, { signal });
+				}
 			} catch (err) {
 				result = {
 					content: err instanceof Error ? err.message : String(err),

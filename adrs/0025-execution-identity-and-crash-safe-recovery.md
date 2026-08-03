@@ -94,6 +94,20 @@ assumptions of ADR-0024 wrong under adversarial review:
 - The runtime's `resume()` is the CLI's recovery flow; a new prompt is a
   separate, explicit step.
 
+## Known residuals (adversarial review, 2026-08-03)
+
+- **PID reuse can wedge a session lock**: a crashed writer's `.lock` holds
+  a pid the OS later reuses for an unrelated live process → the lock looks
+  alive forever. A time-based staleness fallback would break legitimate
+  long-lived writers, so this stays; the error message names the pid.
+- **Path TOCTOU**: `resolveWithinRoot` canonicalizes, then the filesystem
+  is touched separately; a concurrent attacker swapping a verified
+  directory for a symlink in the window can land a write outside the
+  workspace. Post-write re-checks report the escape (the write itself
+  cannot be undone). All non-concurrent escape scenarios are refused.
+- The stale-lock takeover race (two processes recovering one crash) is
+  tolerated: the loser retries instead of dying.
+
 ## When to revisit
 
 - The `ex-<seq>` executionId scheme: if trajectories from multiple sessions

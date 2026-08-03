@@ -54,6 +54,17 @@ describe("torn-tail repair", () => {
 		store.append("s", "r1", ev(0));
 		expect(store.load("s")).toHaveLength(1);
 	});
+
+	it("an in-process append failure cannot poison the next append (repair runs before EVERY append)", () => {
+		const { dir, store } = tempStore();
+		store.append("s", "r1", ev(0));
+		// Simulate a partial write in THIS process (ENOSPC/EIO): a fragment
+		// lands while the fd stays cached.
+		appendFileSync(join(dir, "s.jsonl"), '{"runId":"r1","event":');
+		store.append("s", "r1", ev(1)); // cached fd — must repair first
+		const records = store.load("s");
+		expect(records.map((r) => r.event.seq)).toEqual([0, 1]);
+	});
 });
 
 describe("corruption is loud, never silently read as a prefix", () => {

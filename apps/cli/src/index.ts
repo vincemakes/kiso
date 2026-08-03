@@ -162,7 +162,13 @@ async function chat(session: AgentSession): Promise<void> {
 			const run = session.run(input);
 			currentRun = run;
 			(async () => {
-				await consumeRun(session, run, rl);
+				try {
+					await consumeRun(session, run, rl);
+				} catch (err) {
+					// A run failure must not freeze the REPL (review finding
+					// 11): surface it and re-arm the prompt.
+					console.error(`\n[run failed] ${err instanceof Error ? err.message : String(err)}\n`);
+				}
 				currentRun = null;
 				resolve();
 			})();
