@@ -9,11 +9,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createFauxProvider } from "@kiso/evals";
+import { createFauxProvider, type FauxScript } from "@kiso/evals";
 import { defineTool, isKisoEvent, type Event } from "@kiso/core";
 import { createAgent, SessionStore } from "../src/index.js";
 
-const CALL_TURN = [
+const CALL_TURN: FauxScript = [
 	{ events: [{ type: "tool_call_end", callId: "c1", name: "sign_off", input: {} }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "stop", reason: "end_turn" }] },
 ];
@@ -50,7 +50,10 @@ describe("live tool results (五)", () => {
 			if (ev.type === "permission_requested") session.approve(ev.decisionId, true);
 		}
 		// The live stream carries the tags.
-		const streamed = events.find((e) => e.type === "tool_result") as Event & { tags?: readonly string[] };
+		const streamed = events.find(
+			(e): e is Event & { type: "tool_result"; tags?: readonly string[]; content: string } =>
+				e.type === "tool_result",
+		)!;
 		expect(streamed.tags).toEqual(["do-not-compact", "billing"]);
 		expect(streamed.content).toBe("signed");
 		store.closeAll();
@@ -90,7 +93,9 @@ describe("live tool results (五)", () => {
 			events.push(ev);
 			if (ev.type === "permission_requested") second.approve(ev.decisionId, true);
 		}
-		const streamed = events.find((e) => e.type === "tool_result") as Event & { tags?: readonly string[] };
+		const streamed = events.find(
+			(e): e is Event & { type: "tool_result"; tags?: readonly string[] } => e.type === "tool_result",
+		)!;
 		expect(streamed.tags).toEqual(["do-not-compact", "billing"]);
 		expect(events.some((e) => e.type === "terminal")).toBe(true);
 	});

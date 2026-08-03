@@ -189,7 +189,10 @@ describe("execution identity end to end (四)", () => {
 
 		// The repair fill exists, keyed ex-9 — NOT suppressed by run-zero's
 		// same-callId ex-2 result, and carries ITS executionId.
-		const fill = events.find((e) => e.type === "tool_result" && (e as { executionId?: string }).executionId === "ex-9");
+		const fill = events.find(
+			(e): e is Event & { type: "tool_result"; executionId?: string } =>
+				e.type === "tool_result" && (e as { executionId?: string }).executionId === "ex-9",
+		);
 		expect(fill).toBeDefined();
 		expect(fill!.isError).toBe(false);
 		expect(fill!.content).toBe("new ok");
@@ -223,7 +226,10 @@ describe("execution identity end to end (四)", () => {
 		const events: Event[] = [];
 		for await (const ev of session.resume()) events.push(ev);
 
-		const fill = events.find((e) => e.type === "tool_result" && (e as { executionId?: string }).executionId === "ex-9");
+		const fill = events.find(
+			(e): e is Event & { type: "tool_result"; executionId?: string } =>
+				e.type === "tool_result" && (e as { executionId?: string }).executionId === "ex-9",
+		);
 		expect(fill).toBeDefined();
 		expect(fill!.isError).toBe(true);
 		expect(String(fill!.content)).toContain("abandoned");
