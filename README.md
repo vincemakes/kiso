@@ -1,7 +1,10 @@
 # kiso
 
-**kiso(基礎) — a growable TS agent framework.** A 2,000-line core that owns what
-genuinely repeats, and packages that grow on top of it without limit.
+**kiso(基礎) — a growable TS agent framework for building coding agents and
+durable multi-turn AI tools.** A 2,000-line core that owns what genuinely
+repeats, and packages that grow on top of it without limit. For TypeScript
+developers who want a real agent framework — event-sourced sessions, durable
+human approvals, exactly-once tool execution — without a 50k-line runtime.
 
 Distilled from reading Claude Code, [pi](https://github.com/badlogic/pi-mono),
 and [oh-my-pi](https://github.com/can1357/oh-my-pi) at the source level — and
