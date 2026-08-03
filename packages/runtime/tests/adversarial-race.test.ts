@@ -105,3 +105,35 @@ describe("adversarial races (第四轮)", () => {
 		expect(store.load("s")).toHaveLength(3);
 	});
 });
+
+	it("P1-5: approve() resolves only AFTER the decision is durable — an immediate break cannot lose it", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-race-"));
+		const session = await failingAgent(new SessionStore(dir)).session({ id: "s" });
+		const run = session.run("go");
+		for await (const ev of run) {
+			if (ev.type === "permission_requested") {
+				await session.approve(ev.decisionId, true);
+				break; // abandon the generator right after the answer
+			}
+		}
+		const durable = new SessionStore(dir).load("s").map((r) => r.event);
+		// The verdict was durable BEFORE approve() returned — the break
+		// cannot lose it, and the answered set cannot make a retry a no-op
+		// on a never-recorded decision.
+		expect(durable.filter((e) => e.type === "permission_decided" && e.decision === "approved")).toHaveLength(1);
+	});
+
+	it("P1-5: resolveUncertain() resolves only AFTER the verdict is durable — an immediate break cannot lose it", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-race-"));
+		const session = await failingAgent(new SessionStore(dir)).session({ id: "s" });
+		const run = session.run("go");
+		for await (const ev of run) {
+			if (ev.type === "permission_requested") await session.approve(ev.decisionId, true);
+			if (ev.type === "uncertain_pending") {
+				await session.resolveUncertain(ev.executionId, "abandoned");
+				break; // abandon the generator right after the verdict
+			}
+		}
+		const durable = new SessionStore(dir).load("s").map((r) => r.event);
+		expect(durable.filter((e) => e.type === "tool_execution_resolved" && e.resolution === "abandoned")).toHaveLength(1);
+	});

@@ -89,6 +89,15 @@ export class AgentSession {
 	 *  these and records the decision (exactly once) instead of losing it. */
 	readonly #approvalVerdicts = new Map<string, boolean>();
 	readonly #uncertaintyVerdicts = new Map<string, "rerun" | "abandoned">();
+	/** 第五轮(P1-5): verdicts submitted to a LIVE resolver but not yet known
+	 *  durable. An async generator only advances on next(), so approve()/
+	 *  resolveUncertain() CANNOT wait for the loop to persist — that would
+	 *  deadlock (the consumer waits while the generator needs a next()).
+	 *  Instead the verdict is recorded here, and the Run's iterator FINALLY
+	 *  flushes every not-yet-durable verdict to disk — an abandoned generator
+	 *  can never lose a verdict the human gave. */
+	readonly #pendingDurableApprovals = new Map<string, boolean>();
+	readonly #pendingDurableUncertainties = new Map<string, { resolution: "rerun" | "abandoned"; callId: string }>();
 	#poisoned: string | null = null;
 
 	/** Permanently invalidate the session after a rejected disk write (一). */
@@ -239,6 +248,12 @@ export class AgentSession {
 			// 第四轮(对抗): recorded so an abort racing the verdict cannot
 			// lose it — the loop's abort path consults approvalVerdict.
 			this.#approvalVerdicts.set(decisionId, allow);
+			// 第五轮(P1-5): the verdict is SUBMITTED — the Run's finally
+			// flushes it to disk if the generator never gets to persist it.
+			// (Waiting here for durability would deadlock: the generator
+			// only advances on the consumer's next(), which the consumer
+			// cannot issue while awaiting approve().)
+			this.#pendingDurableApprovals.set(decisionId, allow);
 			this.#pendingResolvers.delete(decisionId);
 			resolver(allow ? { action: "allow" } : { action: "deny", reason: "denied by user" });
 			return;
@@ -291,6 +306,9 @@ export class AgentSession {
 		const resolver = this.#uncertaintyResolvers.get(executionId);
 		if (resolver !== undefined) {
 			this.#uncertaintyVerdicts.set(executionId, resolution);
+			// 第五轮(P1-5): submitted — flushed to disk by the Run's finally
+			// if the generator never persists it.
+			this.#pendingDurableUncertainties.set(executionId, { resolution, callId: record.callId });
 			this.#uncertaintyResolvers.delete(executionId);
 			resolver(resolution);
 			return;
@@ -373,6 +391,47 @@ export class AgentSession {
 	/** 第四轮(对抗): a verdict the human already gave for a live execution. */
 	uncertaintyVerdict(executionId: string): "rerun" | "abandoned" | undefined {
 		return this.#uncertaintyVerdicts.get(executionId);
+	}
+
+	/**
+	 * 第五轮(P1-5): flush every verdict submitted to a live resolver that is
+	 * not yet durable. Called from the Run iterator's FINALLY — whether the
+	 * run completed, aborted, or was abandoned by the consumer. An event the
+	 * loop already appended is left alone (its persist precedes its yield);
+	 * a missing event is appended here and persisted, attributed to the run.
+	 */
+	async flushPendingVerdicts(runId: string, log: EventLog): Promise<void> {
+		for (const [decisionId, allow] of this.#pendingDurableApprovals) {
+			const decided = log.all.find(
+				(e): e is Event & { type: "permission_decided" } => e.type === "permission_decided" && e.decisionId === decisionId,
+			);
+			if (decided === undefined) {
+				const app = log.append({
+					type: "permission_decided",
+					decisionId,
+					decision: allow ? "approved" : "denied",
+					...(allow ? {} : { reason: "denied by user" }),
+				});
+				await this.persist(runId, app);
+			}
+			this.#pendingDurableApprovals.delete(decisionId);
+		}
+		for (const [executionId, pending] of this.#pendingDurableUncertainties) {
+			const resolved = log.all.find(
+				(e): e is Event & { type: "tool_execution_resolved" } =>
+					e.type === "tool_execution_resolved" && e.executionId === executionId,
+			);
+			if (resolved === undefined) {
+				const app = log.append({
+					type: "tool_execution_resolved",
+					executionId,
+					callId: pending.callId,
+					resolution: pending.resolution,
+				});
+				await this.persist(runId, app);
+			}
+			this.#pendingDurableUncertainties.delete(executionId);
+		}
 	}
 
 	dropResolver(decisionId: string): void {
@@ -590,6 +649,16 @@ export class Run implements AsyncIterable<Event> {
 			//    is the projection, not a second copy.
 			for await (const ev of runLoop()) yield ev;
 		} finally {
+			// 第五轮(P1-5): flush verdicts the consumer submitted before the
+			// generator was abandoned — an approve()/resolveUncertain() whose
+			// durable event the loop never got to persist must STILL land on
+			// disk, exactly once.
+			try {
+				await this.#session.flushPendingVerdicts(this.runId, this.#session.log);
+			} catch {
+				// the flush itself failed (poisoned session) — the error
+				// already poisoned everything; nothing more can be done.
+			}
 			// The run is over (or abandoned): its unanswered approvals must
 			// fall back to the direct-persist path, so a late approve() is
 			// still durable.
