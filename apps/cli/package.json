@@ -9,7 +9,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -25,10 +26,11 @@
     "@kiso/tools-node": "0.0.0"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.115.0",
     "@types/node": "^26.1.2",
-    "openai": "^7.3.0",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

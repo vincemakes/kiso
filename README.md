@@ -21,12 +21,12 @@ Every design decision ships with an ADR explaining **why**, and **when to overtu
 ```
 $ npm run size
 
-  packages/core/src/kernel/loop.ts  234
-  packages/core/src/protocol/events.ts 218
+  packages/core/src/kernel/loop.ts  302
+  packages/core/src/protocol/events.ts 246
   ...
-  total                               1264  / 2000
+  total                               1473  / 2000
 
-  ✓ 736 lines of headroom remaining.
+  ✓ 527 lines of headroom remaining.
 ```
 
 Comments do not count. Explain freely; implement tersely.
@@ -103,9 +103,19 @@ tarballs.
   the loop is proven against them, not just against happy paths — and the
   fixtures run on the real session runtime, not a test harness.
 
+## Support
+
+Node **>= 22** (the OpenAI-compat provider and the CLI declare it in `engines`).
+
 ## The CLI — the coding-agent reference product
 
-`npm run cli` (or `npx kiso` from the installed package):
+The CLI is a real npm package — install it or run it directly:
+
+```
+npx @kiso/cli chat
+```
+
+(Inside this repo, `npm run cli` runs the same binary.) The command set:
 
 ```
 kiso chat [sessionId]          interactive multi-turn session
@@ -129,7 +139,7 @@ kiso sessions                  list durable sessions
 Reliable Session Alpha, including the failure-path hardening round, is
 complete (see `docs/plans/2026-08-03-reliable-session-alpha.md`):
 
-- **core** (1,264/2,000 lines) — protocol, loop (single honest terminal;
+- **core** (1,473/2,000 lines) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; retry only before anything streamed; one abort signal reaches
   backoff, approval waits, every pending tool, and the SDK), hooks,
@@ -155,9 +165,10 @@ complete (see `docs/plans/2026-08-03-reliable-session-alpha.md`):
   internal versions; CI is clean-checkout `npm ci` + the full gate.
 
 `npm run check` = build → typecheck (packages + root scripts + tests) →
-tests → size gate (core only) → pack gate → three isolated consumer smoke
-tiers (runtime / providers / CLI) → demo start-and-exit gate. 144 tests
-green. 11 ADRs. 6 incident fixtures running on the real runtime.
+tests → size gate (core only) → pack gate (dist + README + LICENSE in every
+tarball) → consumer smoke tiers (runtime, NESTED install, providers, CLI)
+→ demo start-and-exit gate. 196 tests green. 11 ADRs. 6 incident fixtures
+running on the real runtime.
 
 ## Why another one
 

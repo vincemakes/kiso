@@ -12,7 +12,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -27,5 +28,8 @@
     "@types/node": "^26.1.2",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -164,6 +164,41 @@ void agent; void defineTool; void loop; void ev; void FIXTURES;
 	rmSync(proj, { recursive: true, force: true });
 }
 
+// ── tier A2: NESTED install strategy (pnpm-style, no npm flattening) ──
+// A nested node_modules layout must resolve the same way — missing
+// intra-kiso deps cannot hide behind a flattened root (F 组).
+{
+	const proj = tempProject("nested");
+	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-"));
+	const tarballs = ["@kiso/core", "@kiso/evals", "@kiso/runtime", "@kiso/tools-node"].map((n) => pack(stage, n));
+	for (const tarball of tarballs) {
+		execSync(`npm install --install-strategy=nested --no-audit --no-fund --no-package-lock "${tarball}"`, {
+			cwd: proj,
+			stdio: "inherit",
+		});
+	}
+	rmSync(stage, { recursive: true, force: true });
+	writeFileSync(
+		join(proj, "nested.mjs"),
+		`import { createAgent, SessionStore } from "@kiso/runtime";
+import { createFauxProvider } from "@kiso/evals";
+const store = new SessionStore("./s");
+const agent = createAgent({
+  model: "faux",
+  store,
+  tools: [],
+  adapter: createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]),
+});
+const session = await agent.session({ id: "n" });
+for await (const _ev of session.run("hi")) { /* drain */ }
+if (!(await agent.session({ id: "n" })).projected().some((m) => m.role === "user")) throw new Error("nested install broken");
+console.log("tier A2 OK — nested install resolves the runtime closure");
+`,
+	);
+	execSync("node nested.mjs", { cwd: proj, stdio: "inherit" });
+	rmSync(proj, { recursive: true, force: true });
+}
+
 // ── tier B: the provider closure ───────────────────────────────────────
 {
 	const proj = tempProject("providers");

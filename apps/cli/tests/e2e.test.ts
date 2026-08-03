@@ -60,6 +60,15 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		expect(leftovers).toEqual([]);
 	});
 
+	it("faux chat supports at least two consecutive user turns in ONE process (F 组)", () => {
+		const home = mkdtempSync(join(tmpdir(), "kiso-cli-"));
+		const result = runCli(["chat", "twoturns"], "first question\nsecond question\nexit\n", { KISO_HOME: home });
+		expect(result.status, result.stderr).toBe(0);
+		// Two turns rendered, two honest terminals ("done").
+		const doneCount = (result.stdout.match(/done/g) ?? []).length;
+		expect(doneCount).toBe(2);
+	});
+
 	it("help exits cleanly", () => {
 		const result = runCli(["help"], "", {});
 		expect(result.status).toBe(0);

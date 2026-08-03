@@ -19,7 +19,7 @@
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { createAgent, SessionStore, type AgentSession } from "@kiso/runtime";
+import { createAgent, SessionStore, type AgentDefinition, type AgentSession } from "@kiso/runtime";
 import { createFauxProvider, type FauxScript } from "@kiso/evals";
 import { createCodingTools } from "@kiso/tools-node";
 import type { PermissionPolicy } from "@kiso/runtime";
@@ -44,50 +44,54 @@ function sessionsDir(): string {
 async function makeAgent() {
 	const store = new SessionStore(sessionsDir());
 
-	// Provider wiring: real key → real adapter; none → faux.
+	// Provider wiring (F 组): the CLI never imports provider SDKs directly —
+	// the runtime's lazy provider resolution owns them. Real key → real
+	// provider; none → faux.
 	const anthropicKey = process.env.ANTHROPIC_API_KEY;
 	const openaiKey = process.env.OPENAI_API_KEY;
 
-	let adapter;
+	let provider: "anthropic" | "openai-compat" | undefined;
 	let model: string;
 	if (anthropicKey) {
-		const { createAnthropicAdapter } = await import("@kiso/provider-anthropic");
-		const { default: Anthropic } = await import("@anthropic-ai/sdk");
-		adapter = createAnthropicAdapter(new Anthropic({ apiKey: anthropicKey }));
+		provider = "anthropic";
 		model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
 	} else if (openaiKey) {
-		const { createOpenAICompatAdapter } = await import("@kiso/provider-openai");
-		const { default: OpenAI } = await import("openai");
-		adapter = createOpenAICompatAdapter(
-			new OpenAI({
-				apiKey: openaiKey,
-				...(process.env.OPENAI_BASE_URL !== undefined ? { baseURL: process.env.OPENAI_BASE_URL } : {}),
-			}),
-		);
+		provider = "openai-compat";
 		model = process.env.OPENAI_MODEL ?? "gpt-4o";
 	} else {
 		console.log("[faux mode — set ANTHROPIC_API_KEY or OPENAI_API_KEY for a real model]\n");
-		adapter = createFauxProvider(fauxScript());
 		model = "faux";
 	}
 
-	return createAgent({
+	const definition: AgentDefinition = {
 		model,
 		store,
 		// Area 5: the coding tools are bound to the workspace — every path
 		// they touch is canonicalized inside cwd, escapes are refused.
 		tools: [...createCodingTools({ workspaceRoot: process.cwd() })],
-		adapter,
 		permissionPolicy: PERMISSION_POLICY,
 		systemPrompt:
 			"You are kiso, a coding agent. Read files and search before editing. " +
 			"Use write_file/edit_file for changes and shell for commands. " +
 			"Never claim a file was changed unless a tool confirmed it.",
 		maxTurns: 20,
-	});
+		...(provider !== undefined
+			? {
+					provider,
+					apiKey: (anthropicKey ?? openaiKey) as string,
+					...(process.env.OPENAI_BASE_URL !== undefined ? { baseUrl: process.env.OPENAI_BASE_URL } : {}),
+				}
+			: { adapter: createFauxProvider(fauxScript()) }),
+	};
+	return createAgent(definition);
 }
 
-/** The keyless demo script: tours the tools so `kiso chat` exercises them. */
+/**
+ * The keyless demo script: tours the tools so `kiso chat` exercises them.
+ * FOUR turns: each user turn consumes two model rounds (call → result →
+ * summary), so at least two consecutive user turns work in one process
+ * (F 组).
+ */
 function fauxScript(): FauxScript {
 	return [
 		{
@@ -95,8 +99,8 @@ function fauxScript(): FauxScript {
 				{ type: "text_start" },
 				{ type: "text_delta", text: "I'm the faux model. Let me look at the working directory." },
 				{ type: "tool_call_end", callId: "c1", name: "list_dir", input: {} },
-			
-				{ type: "stop", reason: "tool_use" }],
+				{ type: "stop", reason: "tool_use" },
+			],
 		},
 		{
 			events: [
@@ -104,9 +108,20 @@ function fauxScript(): FauxScript {
 				{ type: "stop", reason: "end_turn" },
 			],
 		},
+		{
+			events: [
+				{ type: "text_delta", text: "The faux model is still here, with full context." },
+				{ type: "stop", reason: "end_turn" },
+			],
+		},
+		{
+			events: [
+				{ type: "text_delta", text: "And this is the end of the scripted tour." },
+				{ type: "stop", reason: "end_turn" },
+			],
+		},
 	];
 }
-
 /**
  * Ask the human a question. Non-interactive stdin (piped, CI) cannot wait
  * forever: approvals auto-deny and uncertain executions auto-abandon, both
@@ -196,18 +211,23 @@ async function chat(session: AgentSession): Promise<void> {
 	// otherwise the interrupted run dangles while a new one starts.
 	await resolveUncertains(session, rl);
 	await consumeRun(session, session.resume(), rl);
-	const prompt = (): void => {
-		rl.question("you> ", async (line) => {
-			if (line.trim().toLowerCase() === "exit" || line.trim() === "") {
-				rl.close();
-				return;
-			}
-			await turn(line);
-			prompt();
-		});
-	};
-	prompt();
+	// A PERSISTENT line listener: rl.question attaches a one-shot listener,
+	// and a line arriving while no question is pending is silently LOST
+	// (piped stdin). The REPL loop must never drop a user turn (F 组).
+	// Turns are SERIALIZED on a chain — piped lines arrive faster than
+	// turns complete, and concurrent runs are forbidden.
+	let chain: Promise<void> = Promise.resolve();
+	rl.on("line", (line) => {
+		if (line.trim().toLowerCase() === "exit" || line.trim() === "") {
+			rl.close();
+			return;
+		}
+		chain = chain.then(() => turn(line));
+	});
+	rl.setPrompt("you> ");
+	rl.prompt();
 	await new Promise<void>((resolve) => rl.on("close", () => resolve()));
+	await chain; // never exit while a turn is in flight
 }
 
 /**

@@ -24,13 +24,19 @@ for (const name of PACKAGES) {
 	const out = execSync(`npm pack --dry-run --json -w ${name}`, { cwd: ROOT, encoding: "utf8" });
 	const parsed = JSON.parse(out.slice(out.indexOf("[")));
 	const files = parsed[0]?.files ?? [];
-	const bad = files.filter((f) => f.path.endsWith(".tsx") || (f.path.endsWith(".ts") && !f.path.endsWith(".d.ts")));
-	const missingDist = !files.some((f) => f.path.startsWith("dist/"));
-	if (bad.length > 0 || missingDist) {
+	const paths = files.map((f) => f.path);
+	const bad = paths.filter((p) => p.endsWith(".tsx") || (p.endsWith(".ts") && !p.endsWith(".d.ts")));
+	const missingDist = !paths.some((p) => p.startsWith("dist/"));
+	// F 组: every tarball must actually contain README and LICENSE.
+	const missingReadme = !paths.some((p) => p === "README.md" || p.endsWith("/README.md"));
+	const missingLicense = !paths.some((p) => p === "LICENSE" || p.endsWith("/LICENSE"));
+	if (bad.length > 0 || missingDist || missingReadme || missingLicense) {
 		failed = true;
-		console.error(`✗ ${name}: tarball ${missingDist ? "has no dist/ output" : "contains raw TS"}`, bad.map((f) => f.path));
+		console.error(
+			`✗ ${name}: ${missingDist ? "has no dist/ output" : ""} ${missingReadme ? "missing README" : ""} ${missingLicense ? "missing LICENSE" : ""} ${bad.length ? "contains raw TS " + JSON.stringify(bad) : ""}`,
+		);
 	} else {
-		console.log(`✓ ${name}: ${files.length} files, dist-only, no raw TS`);
+		console.log(`✓ ${name}: ${files.length} files, dist + README + LICENSE, no raw TS`);
 	}
 }
 if (failed) process.exit(1);
