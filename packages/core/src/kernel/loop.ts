@@ -29,7 +29,7 @@
 
 import type { Adapter, AbortSignalLike } from "../protocol/adapter.js";
 import type { Event, StopReason, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
-import { estimateTokens, microcompact } from "./compaction.js";
+import { estimateTokens, isClearedMarker, microcompact } from "./compaction.js";
 import { EventLog } from "./event-log.js";
 import type { EventInput } from "./event-log.js";
 import type {
@@ -144,12 +144,19 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		}
 		turns += 1;
 
-		// ── Auto-compaction: recorded as an event, applied by the projection ─
+		// ── Auto-compaction: the EXACT replacements are persisted in the
+		//    event; the projection applies them verbatim (A 组/D 组).
 		if (config.compaction && estimateTokens(messages) > config.compaction.thresholdTokens) {
 			if (hooks.onPreCompact) await hooks.onPreCompact(messages, {}).catch(() => {});
-			const cleared = microcompact(messages).clearedCallIds;
+			const result = microcompact(messages);
+			const cleared = result.messages
+				.filter(
+					(m): m is ToolResultMessage & { content: string } =>
+						m.role === "tool" && typeof m.content === "string" && isClearedMarker(m.content),
+				)
+				.map((m) => ({ callId: m.callId, content: m.content }));
 			if (cleared.length > 0) {
-				const full = log.append({ type: "compacted", clearedCallIds: cleared });
+				const full = log.append({ type: "compacted", cleared });
 				if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
 				yield full;
 				messages = derive();

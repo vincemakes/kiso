@@ -68,11 +68,13 @@ describe("torn-tail repair", () => {
 });
 
 describe("corruption is loud, never silently read as a prefix", () => {
-	it("mid-file garbage throws", () => {
+	it("mid-file garbage throws — at append time, before any further write", () => {
 		const { dir, store } = tempStore();
 		store.append("s", "r1", ev(0));
 		appendFileSync(join(dir, "s.jsonl"), "THIS IS NOT JSON\n");
-		store.append("s", "r1", ev(1)); // a complete line AFTER the garbage
+		// The CAS reads the file's real last committed seq — the garbage
+		// line is detected here, so no new JSON is ever glued after it.
+		expect(() => store.append("s", "r1", ev(1))).toThrow(/corrupt|not JSON|record/i);
 		expect(() => store.load("s")).toThrow();
 	});
 
@@ -80,7 +82,7 @@ describe("corruption is loud, never silently read as a prefix", () => {
 		const { dir, store } = tempStore();
 		store.append("s", "r1", ev(0));
 		appendFileSync(join(dir, "s.jsonl"), '{"foo": 1}\n');
-		store.append("s", "r1", ev(1));
+		expect(() => store.append("s", "r1", ev(1))).toThrow(/corrupt|not JSON|record/i);
 		expect(() => store.load("s")).toThrow();
 	});
 

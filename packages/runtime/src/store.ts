@@ -1,22 +1,27 @@
 /**
- * SessionStore — append-only JSONL durability, crash-safe (Area 1).
+ * SessionStore — append-only JSONL durability, identity-safe (A 组).
  *
  * One file per session: `<root>/<id>.jsonl`, lines of
  * `{"runId": string, "ts": number, "event": Event}`. A sibling `<id>.lock`
- * file is the cross-process single-writer lock (O_EXCL create, pid inside;
- * a dead pid's lock is stale and taken over).
+ * carries `{"pid": number, "token": string}` — the random owner TOKEN is
+ * what makes lock release safe: only the instance whose token still
+ * matches may unlink (a foreign close can never steal another writer's
+ * lock).
  *
- * Durability contract:
- * - `append` fsyncs the file BEFORE it returns (write-ahead);
- * - a crash mid-write leaves a partial tail line; the next append repairs
- *   it (truncate to the last complete newline) UNDER THE LOCK, so new JSON
- *   is never concatenated onto a fragment;
- * - `load` is strict: a partial LAST line is the only tolerated damage;
- *   mid-file garbage, valid-JSON-but-not-a-record lines, and seq
- *   discontinuities throw `StoreCorruptionError` — history is never
- *   silently read as a prefix;
- * - the session directory is fsynced after creation, so a new session
- *   survives a crash of the machine, not just the process.
+ * Consistency contract (A 组):
+ * - every id is validated BEFORE any file side effect (append, close,
+ *   load, lock paths);
+ * - append runs an expected-last-seq CAS against the file's REAL last
+ *   committed seq: a stale preloaded handle writing a duplicate seq is
+ *   refused with StaleWriterError — and the run that fed it terminates,
+ *   so the in-memory EventLog never continues past a rejected write;
+ * - the torn tail is repaired before EVERY append, and committed records
+ *   (newline-terminated) are never truncated;
+ * - close() releases only the lock this instance holds; closeAll()
+ *   releases every held lock, including the case where the lock was
+ *   acquired but opening the JSONL failed;
+ * - load is strict (A 组 round 1): a partial final line is the only
+ *   tolerated damage; everything else throws StoreCorruptionError.
  */
 
 import {
@@ -45,6 +50,14 @@ export class StoreCorruptionError extends Error {
 	}
 }
 
+/** A write that would duplicate or skip a seq — the handle is stale. */
+export class StaleWriterError extends Error {
+	constructor(expected: number, got: number) {
+		super(`stale session handle: expected seq ${expected}, got ${got} — reload the session`);
+		this.name = "StaleWriterError";
+	}
+}
+
 /** A durable record: the run that produced it, and the event itself. */
 export interface StoreRecord {
 	readonly runId: string;
@@ -67,7 +80,8 @@ const ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 export class SessionStore {
 	readonly root: string;
 	readonly #fds = new Map<string, number>();
-	readonly #locks = new Set<string>();
+	/** sessionId → the owner token THIS instance wrote (and may unlink). */
+	readonly #locks = new Map<string, string>();
 	readonly #closed = new Set<string>();
 
 	constructor(root: string) {
@@ -89,28 +103,33 @@ export class SessionStore {
 		return join(this.root, `${sessionId}.lock`);
 	}
 
-	/** Take the single-writer lock (O_EXCL). Stale locks (dead pid) are
-	 *  taken over; a live writer's lock is a loud error, not a queue. */
+	/**
+	 * Take the single-writer lock (O_EXCL) with a random owner token. A
+	 * stale lock (dead pid) is taken over; a live writer's lock is a loud
+	 * error. The takeover race between two contenders is tolerated: the
+	 * loser's unlink ENOENT retries the acquire.
+	 */
 	private acquireLock(sessionId: string): void {
 		if (this.#locks.has(sessionId)) return;
 		const lockPath = this.lockPathFor(sessionId);
+		const token = crypto.randomUUID();
 		try {
 			const fd = openSync(lockPath, "wx");
-			writeFileSync(fd, String(process.pid));
+			writeFileSync(fd, JSON.stringify({ pid: process.pid, token }));
 			fsyncSync(fd);
 			closeSync(fd);
-			this.#locks.add(sessionId);
+			this.#locks.set(sessionId, token);
 		} catch (err) {
 			const code = (err as NodeJS.ErrnoException).code;
 			if (code !== "EEXIST") throw err;
-			let holder: number | null = null;
+			let holder: { pid?: number; token?: string } | null = null;
 			try {
-				holder = Number.parseInt(readFileSync(lockPath, "utf8"), 10);
+				holder = JSON.parse(readFileSync(lockPath, "utf8")) as { pid?: number; token?: string };
 			} catch {
 				holder = null; // unreadable lock — treat as stale
 			}
-			if (holder !== null && isAlive(holder)) {
-				throw new Error(`session ${sessionId} is locked by another writer (pid ${holder})`);
+			if (holder?.pid !== undefined && isAlive(holder.pid)) {
+				throw new Error(`session ${sessionId} is locked by another writer (pid ${holder.pid})`);
 			}
 			try {
 				unlinkSync(lockPath); // stale — the holder died without releasing
@@ -122,30 +141,60 @@ export class SessionStore {
 		}
 	}
 
-	// ── append: lock, repair, write, fsync ───────────────────────────────
+	/**
+	 * Release OUR lock only: read the lock back and unlink only when the
+	 * owner token still matches. A lock another instance took over is left
+	 * alone (foreign-close protection).
+	 */
+	private releaseLock(sessionId: string): void {
+		const token = this.#locks.get(sessionId);
+		if (token === undefined) return;
+		try {
+			const lock = JSON.parse(readFileSync(this.lockPathFor(sessionId), "utf8")) as { token?: string };
+			if (lock.token === token) {
+				unlinkSync(this.lockPathFor(sessionId));
+			}
+		} catch {
+			// already gone
+		}
+		this.#locks.delete(sessionId);
+	}
+
+	// ── append: lock, open, repair, CAS, write, fsync ────────────────────
 
 	/** Write-ahead: durable (written + fsynced) before returning. */
 	append(sessionId: string, runId: string, event: Event): void {
 		if (this.#closed.has(sessionId)) {
 			throw new Error(`session store is closed for ${sessionId}`);
 		}
+		this.pathFor(sessionId); // id validated before ANY file side effect
 		this.acquireLock(sessionId);
-		const fd = this.fd(sessionId);
-		// Repair the tail BEFORE EVERY append (Area 1 hardening): a failed
-		// append in THIS process (ENOSPC/EIO after a partial write) leaves
-		// a fragment; the cached fd must not glue new JSON onto it. The
-		// check is one fstat + one-byte read — cheap per event.
+		let fd: number;
+		try {
+			fd = this.fd(sessionId);
+		} catch (err) {
+			// The lock was acquired but the JSONL could not be opened:
+			// release the lock — it must not leak (A 组).
+			this.releaseLock(sessionId);
+			throw err;
+		}
 		repairTornTail(fd);
+		// Expected-last-seq CAS against the file's REAL last committed seq
+		// (A 组): a stale preloaded handle cannot write a duplicate seq.
+		const last = lastCommittedSeq(fd);
+		const expected = (last ?? -1) + 1;
+		if (event.seq !== expected) {
+			throw new StaleWriterError(expected, event.seq);
+		}
 		appendFileSync(fd, `${JSON.stringify({ runId, ts: Date.now(), event })}\n`);
 		fsyncSync(fd);
 	}
 
 	/**
-	 * Open (creating if needed) the session file, repairing a torn tail
-	 * FIRST: if the file does not end with a newline, truncate to the last
-	 * complete newline — under the writer lock, so no other writer can be
-	 * mid-append. The parent directory is fsynced so the file's existence
-	 * survives a crash.
+	 * Open (creating if needed) the session file. The torn tail is repaired
+	 * here AND before every append — an in-process append failure cannot
+	 * poison the next one. The parent directory is fsynced so the file's
+	 * existence survives a crash.
 	 */
 	private fd(sessionId: string): number {
 		const existing = this.#fds.get(sessionId);
@@ -172,14 +221,10 @@ export class SessionStore {
 		if (!existsSync(path)) return [];
 		const raw = readFileSync(path, "utf8");
 		const lines = raw.split("\n");
-		// The torn tail is the last NON-EMPTY fragment; only it may be damaged.
 		const nonEmpty: number[] = [];
 		for (let i = 0; i < lines.length; i++) {
 			if (lines[i] !== "") nonEmpty.push(i);
 		}
-		// A torn tail is a PARTIAL line — the file ends without a newline.
-		// A complete final line (ends with \n) that is garbage is corruption,
-		// never silently dropped.
 		const tolerantTail = !raw.endsWith("\n");
 		const records: StoreRecord[] = [];
 		for (let k = 0; k < nonEmpty.length; k++) {
@@ -199,8 +244,6 @@ export class SessionStore {
 			records.push(parsed);
 		}
 
-		// seq must be exactly 0..N — a gap or duplicate is a lost or
-		// forged event, and array length must never mask it.
 		for (let i = 0; i < records.length; i++) {
 			const seq = records[i]!.event.seq;
 			if (seq !== i) {
@@ -239,24 +282,23 @@ export class SessionStore {
 
 	// ── lifecycle ────────────────────────────────────────────────────────
 
-	/** Release a session's fd and writer lock. Idempotent. */
+	/** Release a session's fd and OUR writer lock. Idempotent. */
 	close(sessionId: string): void {
+		this.pathFor(sessionId); // id validated before ANY file side effect
 		const fd = this.#fds.get(sessionId);
 		if (fd !== undefined) {
 			closeSync(fd);
 			this.#fds.delete(sessionId);
 		}
-		this.#locks.delete(sessionId);
+		this.releaseLock(sessionId);
 		this.#closed.add(sessionId);
-		try {
-			unlinkSync(this.lockPathFor(sessionId));
-		} catch {
-			// already gone
-		}
 	}
 
+	/** Release every held fd and lock, including locks whose JSONL open failed. */
 	closeAll(): void {
-		for (const id of [...this.#fds.keys()]) this.close(id);
+		for (const id of new Set([...this.#fds.keys(), ...this.#locks.keys()])) {
+			this.close(id);
+		}
 	}
 }
 
@@ -304,6 +346,42 @@ function lastNewlineOffset(fd: number, size: number): number {
 		if (idx !== -1) return offset + idx;
 	}
 	return -1;
+}
+
+/**
+ * The seq of the file's last COMMITTED (newline-terminated) record —
+ * the CAS anchor. Grows the tail read until the last record parses.
+ */
+function lastCommittedSeq(fd: number): number | undefined {
+	const size = fstatSync(fd).size;
+	if (size === 0) return undefined;
+	let chunk = 4096;
+	while (true) {
+		const readLen = Math.min(chunk, size);
+		const buf = Buffer.alloc(readLen);
+		readSync(fd, buf, 0, readLen, size - readLen);
+		const lines = buf
+			.toString("utf8")
+			.split("\n")
+			.filter((l) => l.trim() !== "");
+		if (lines.length > 0) {
+			try {
+				const parsed = JSON.parse(lines[lines.length - 1]!) as { event?: { seq?: unknown } };
+				if (typeof parsed?.event?.seq !== "number") {
+					throw new Error("not a record");
+				}
+				return parsed.event.seq;
+			} catch {
+				if (readLen >= size) {
+					throw new StoreCorruptionError("cannot determine the last committed seq — the tail is not a record");
+				}
+				chunk *= 2;
+				continue;
+			}
+		}
+		if (readLen >= size) return undefined;
+		chunk *= 2;
+	}
 }
 
 /** Durability of directory entries: fsync the directory itself. */

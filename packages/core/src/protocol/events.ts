@@ -163,14 +163,16 @@ export interface UserInputEvent {
 }
 
 /**
- * Compaction happened at this point in the trajectory. The projection
- * re-applies microcompact here (idempotent by contract), so the replay and
- * the live run see the same history. `clearedCallIds` is the audit trail.
+ * Compaction happened at this point in the trajectory. The EXACT
+ * replacements are persisted (callId → the replacement content); the
+ * projection applies them verbatim — it never re-runs a future version of
+ * the compaction algorithm (A 组/D 组). The replay therefore equals the
+ * live run byte for byte, independent of algorithm drift.
  */
 export interface CompactedEvent {
 	readonly seq: number;
 	readonly type: "compacted";
-	readonly clearedCallIds: readonly string[];
+	readonly cleared: readonly { readonly callId: string; readonly content: string }[];
 }
 
 /**
@@ -370,31 +372,49 @@ export type Event =
 	| TerminalEvent;
 
 /**
- * Every event type name, as a `satisfies Record<Event["type"], boolean>`:
- * adding a variant without registering it here is a compile error — the
- * store's corruption check must never drift from the union (ADR-0003).
+ * Per-variant runtime validation (A 组): every persistent event is checked
+ * field by field — not just `type`/`seq`. A record that parses as JSON but
+ * violates its variant's shape is corruption, never history. The table is
+ * `satisfies Record<Event["type"], ...>`: adding a variant without a
+ * validator here is a compile error (ADR-0003).
  */
-const EVENT_TYPES = {
-	text_start: true,
-	text_delta: true,
-	text_end: true,
-	tool_call_start: true,
-	tool_call_input_delta: true,
-	tool_call_end: true,
-	tool_result: true,
-	thinking: true,
-	usage: true,
-	stop: true,
-	user_input: true,
-	compacted: true,
-	tool_execution_started: true,
-	tool_execution_succeeded: true,
-	tool_execution_failed: true,
-	tool_execution_resolved: true,
-	permission_requested: true,
-	permission_decided: true,
-	terminal: true,
-} satisfies Record<Event["type"], boolean>;
+const EVENT_VALIDATORS = {
+	text_start: () => true,
+	text_delta: (v: Record<string, unknown>) => typeof v.text === "string",
+	text_end: () => true,
+	tool_call_start: (v: Record<string, unknown>) => typeof v.callId === "string" && typeof v.name === "string",
+	tool_call_input_delta: (v: Record<string, unknown>) =>
+		typeof v.callId === "string" && typeof v.inputJsonDelta === "string",
+	tool_call_end: (v: Record<string, unknown>) =>
+		typeof v.callId === "string" && typeof v.name === "string" && (v.input === null || typeof v.input === "object"),
+	tool_result: (v: Record<string, unknown>) =>
+		typeof v.callId === "string" &&
+		(typeof v.content === "string" || Array.isArray(v.content)) &&
+		typeof v.isError === "boolean",
+	thinking: (v: Record<string, unknown>) => typeof v.text === "string",
+	usage: (v: Record<string, unknown>) => typeof v.known === "boolean",
+	stop: (v: Record<string, unknown>) => typeof v.reason === "string",
+	user_input: (v: Record<string, unknown>) => typeof v.content === "string" || Array.isArray(v.content),
+	compacted: (v: Record<string, unknown>) => Array.isArray(v.cleared),
+	tool_execution_started: (v: Record<string, unknown>) =>
+		typeof v.executionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.input === "object",
+	tool_execution_succeeded: (v: Record<string, unknown>) =>
+		typeof v.executionId === "string" &&
+		typeof v.callId === "string" &&
+		typeof (v.result as { content?: unknown } | undefined)?.content === "string",
+	tool_execution_failed: (v: Record<string, unknown>) =>
+		typeof v.executionId === "string" && typeof v.callId === "string" && typeof v.error === "string" && typeof v.safeToRetry === "boolean",
+	tool_execution_resolved: (v: Record<string, unknown>) =>
+		typeof v.executionId === "string" &&
+		typeof v.callId === "string" &&
+		(v.resolution === "rerun" || v.resolution === "abandoned"),
+	permission_requested: (v: Record<string, unknown>) =>
+		typeof v.decisionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.input === "object",
+	permission_decided: (v: Record<string, unknown>) =>
+		typeof v.decisionId === "string" && (v.decision === "approved" || v.decision === "denied"),
+	terminal: (v: Record<string, unknown>) =>
+		typeof v.outcome === "object" && v.outcome !== null && typeof (v.outcome as { kind?: unknown }).kind === "string",
+} satisfies Record<Event["type"], (v: Record<string, unknown>) => boolean>;
 
 /**
  * Runtime type guard for the union. The store validates every JSONL record
@@ -403,5 +423,7 @@ const EVENT_TYPES = {
 export function isKisoEvent(value: unknown): value is Event {
 	if (typeof value !== "object" || value === null) return false;
 	const v = value as Record<string, unknown>;
-	return typeof v.type === "string" && typeof v.seq === "number" && EVENT_TYPES[v.type as Event["type"]] === true;
+	if (typeof v.type !== "string" || typeof v.seq !== "number") return false;
+	const validate = EVENT_VALIDATORS[v.type as Event["type"]];
+	return validate !== undefined && validate(v);
 }

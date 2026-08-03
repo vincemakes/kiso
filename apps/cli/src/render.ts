@@ -73,7 +73,7 @@ export function renderEvent(ev: Event): RenderResult {
 			return { text: `\n${label}\n`, newline: true, prompt: false };
 		}
 		case "compacted":
-			return { text: `${DIM}  [compacted ${ev.clearedCallIds.length} results]${RESET}\n`, newline: true, prompt: false };
+			return { text: `${DIM}  [compacted ${ev.cleared.length} results]${RESET}\n`, newline: true, prompt: false };
 		default:
 			return { text: "", newline: false, prompt: false };
 	}

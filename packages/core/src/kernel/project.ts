@@ -30,7 +30,6 @@ import type {
 	ToolResultMessage,
 	UserMessage,
 } from "../protocol/messages.js";
-import { microcompact } from "./compaction.js";
 
 /**
  * Rebuild the message array from events. Deterministic and order-sensitive:
@@ -117,8 +116,15 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			}
 			case "compacted": {
 				flushAssistant();
-				const compacted = microcompact(out);
-				out.splice(0, out.length, ...compacted.messages);
+				// Apply the EXACT persisted replacements — never re-run the
+				// compaction algorithm (a future version could differ).
+				const byCallId = new Map(ev.cleared.map((c) => [c.callId, c.content]));
+				const replaced = out.map((m) =>
+					m.role === "tool" && byCallId.has(m.callId)
+						? { ...m, content: byCallId.get(m.callId)! }
+						: m,
+				);
+				out.splice(0, out.length, ...replaced);
 				break;
 			}
 			case "thinking":
