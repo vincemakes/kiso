@@ -10,26 +10,39 @@
  */
 
 import { execSync } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const PACKAGES = ["@kiso/core", "@kiso/evals", "@kiso/runtime", "@kiso/provider-anthropic", "@kiso/provider-openai"];
+// Dependency order — intra-kiso deps must already be installed when a
+// dependent tarball installs (npm resolves @kiso/* from node_modules, not
+// from the registry, which has nothing published yet).
+const PACKAGES = [
+	"@kiso/core",
+	"@kiso/evals",
+	"@kiso/runtime",
+	"@kiso/tools-node",
+	"@kiso/provider-anthropic",
+	"@kiso/provider-openai",
+	"@kiso/cli",
+];
 
 const stage = mkdtempSync(join(tmpdir(), "kiso-pack-"));
 const proj = mkdtempSync(join(tmpdir(), "kiso-smoke-"));
 console.log(`[smoke] packing into ${stage}\n[smoke] clean project at ${proj}`);
 
 try {
-	// 1. Pack each tarball.
+	// 1. Pack each tarball (npm scoped packages pack as kiso-<name>-0.0.0.tgz).
 	for (const name of PACKAGES) {
 		execSync(`npm pack -w ${name} --pack-destination ${stage}`, { cwd: ROOT, stdio: "inherit" });
 	}
-	const tarballs = readdirSync(stage).filter((f) => f.endsWith(".tgz")).map((f) => join(stage, f));
+	const tarballs = PACKAGES.map((name) => join(stage, `${name.replace("@kiso/", "kiso-")}-0.0.0.tgz`));
+	for (const t of tarballs) {
+		if (!existsSync(t)) throw new Error(`missing tarball: ${t}`);
+	}
 
-	// 2. Install into a clean project — dependency order so intra-kiso deps
-	//    resolve from the already-installed node_modules, never from a registry.
+	// 2. Install into a clean project — in dependency order.
 	writeFileSync(join(proj, "package.json"), JSON.stringify({ name: "kiso-smoke", private: true, type: "module" }, null, 2));
 	for (const tarball of tarballs) {
 		execSync(`npm install --no-audit --no-fund --no-package-lock "${tarball}"`, { cwd: proj, stdio: "inherit" });
@@ -117,7 +130,24 @@ console.log("smoke OK — loop + durable session + approval pause/resume, all on
 
 	// 4. Run it with plain node — no tsx anywhere.
 	execSync("node smoke.mjs", { cwd: proj, stdio: "inherit" });
-	console.log(`\n[smoke] PASS — ${tarballs.length} tarballs installed and exercised`);
+
+	// 4b. The README example, verbatim, runs in the clean project.
+	execSync("cp " + JSON.stringify(join(ROOT, "examples", "hello-agent.mjs")) + " hello-agent.mjs", { cwd: proj });
+	const hello = execSync("node hello-agent.mjs", { cwd: proj, encoding: "utf8" });
+	if (!hello.includes("completed")) throw new Error(`README example failed:\n${hello}`);
+	console.log("[smoke] README example ran in the clean project");
+
+	// 5. The installed CLI bin runs against the sessions the smoke program
+	//    just created (same store — KISO_HOME points at the project).
+	const sessions = execSync("npx kiso sessions", {
+		cwd: proj,
+		encoding: "utf8",
+		env: { ...process.env, KISO_HOME: proj },
+	});
+	if (!sessions.includes("smoke") || !sessions.includes("guarded")) {
+		throw new Error(`kiso sessions did not list the smoke sessions:\n${sessions}`);
+	}
+	console.log(`[smoke] PASS — ${tarballs.length} tarballs installed and exercised; CLI bin runs on them`);
 } finally {
 	rmSync(stage, { recursive: true, force: true });
 	rmSync(proj, { recursive: true, force: true });

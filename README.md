@@ -63,52 +63,89 @@ and a blob is the thing you eventually fight.
 ## Using it
 
 ```ts
-import { defineTool, ToolRegistry, loop } from "@kiso/core";
+import { defineTool } from "@kiso/core";
+import { createAgent, SessionStore } from "@kiso/runtime";
 import { createAnthropicAdapter } from "@kiso/provider-anthropic";
 import Anthropic from "@anthropic-ai/sdk";
 
-const registry = new ToolRegistry();
-registry.register(defineTool({
-  name: "add",
-  description: "Add two numbers",
-  parameters: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } } },
-  execute: async ({ a, b }) => ({ content: String(a + b), isError: false }),
-}));
-
-for await (const ev of loop({
-  adapter: createAnthropicAdapter(new Anthropic()),
+const agent = createAgent({
   model: "claude-sonnet-5",
-  registry,
-  messages: [{ role: "user", content: "What is 2+3?" }],
-})) {
+  tools: [
+    defineTool({
+      name: "add",
+      description: "Add two numbers",
+      parameters: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } } },
+      execute: async ({ a, b }) => ({ content: String(a + b), isError: false }),
+    }),
+  ],
+  store: new SessionStore("./sessions"),          // append-only JSONL
+  adapter: createAnthropicAdapter(new Anthropic()),
+});
+
+const session = await agent.session({ id: "demo" });
+for await (const ev of session.run("What is 2+3?")) {
   switch (ev.type) {
     case "text_delta": process.stdout.write(ev.text); break;
-    case "terminal": console.log("\n", ev.outcome); break;
+    case "terminal": console.log("\n", ev.outcome.kind); break;
   }
 }
 ```
 
+This is `examples/hello-agent.mjs` (faux adapter there — zero keys) and the
+consumer smoke test runs it verbatim in a clean project against the packed
+tarballs.
+
 - Packages build to plain ESM JavaScript + `.d.ts` — installed artifacts run
   on any Node project, no tsx, no source access (`scripts/smoke.mjs` proves it
   in a clean temp project every check).
-- `npm run demo` runs a REPL — faux provider by default, real Anthropic with
-  `ANTHROPIC_API_KEY` set.
+- `npm run demo` runs the raw-loop REPL; the reference product is the CLI.
 - Every fixture in `@kiso/evals` is a real production incident (uooki, 2026);
-  the loop is proven against them, not just against happy paths.
+  the loop is proven against them, not just against happy paths — and the
+  fixtures run on the real session runtime, not a test harness.
+
+## The CLI — the coding-agent reference product
+
+`npm run cli` (or `npx kiso` from the installed package):
+
+```
+kiso chat [sessionId]          interactive multi-turn session
+kiso resume <id> [prompt]      continue a session in a new process
+kiso sessions                  list durable sessions
+```
+
+- Tools: read file · list directory · search text · write/edit file · shell.
+  Writes and shell sit behind the approval policy: the run **pauses**, asks
+  `approve write_file? (y/n)`, persists the decision, and resumes the same
+  run (ADR-0024).
+- Sessions are append-only JSONL under `$KISO_HOME/sessions` — exit, restart,
+  `kiso resume <id>`, and the conversation continues with a contiguous seq.
+- Keyless faux mode out of the box; `ANTHROPIC_API_KEY` (or
+  `OPENAI_API_KEY` + `OPENAI_BASE_URL`) switches to a real provider.
+- Interrupted side effects are surfaced on resume (`⚠ interrupted execution`)
+  and block until a human resolves them — a confirmed success never re-runs.
 
 ## Status
 
-Reliable Session Alpha in progress (see `docs/plans/2026-08-03-reliable-session-alpha.md`):
+**Reliable Session Alpha is done** (see
+`docs/plans/2026-08-03-reliable-session-alpha.md`):
 
-- **core** done: protocol, loop (single terminal, retry in-frame, abort
-  check before execute), 9 hooks, ModeProfile, permissions, microcompact,
-  delivery truth — 43 tests green, 8 ADRs, 6 incident fixtures.
-- **workspace** done: publishable monorepo, ESM + d.ts build, consumer smoke.
-- **runtime** (durable multi-turn sessions, approvals, exactly-once recovery)
-  and **cli** (`kiso chat|resume|sessions`, coding tools) in progress.
+- **core** — protocol, loop (single honest terminal, retry only before
+  anything streamed, abort checks), 9 hooks, ModeProfile, permissions,
+  microcompact, delivery truth, the event-log projection (messages are a
+  pure function of the log, ADR-0002) and the execution ledger
+  (exactly-once, ADR-0024).
+- **runtime** — `createAgent` / durable multi-turn sessions / write-ahead
+  JSONL store / cross-process resume / real approval pauses / uncertain
+  side-effect resolution.
+- **cli** — `kiso chat|resume|sessions` with coding tools, approvals, faux
+  + real provider modes (above).
+- **workspace** — publishable monorepo (core, evals, runtime, tools-node,
+  provider-anthropic, provider-openai, cli), ESM + d.ts, consumer smoke.
 
 `npm run check` = build → typecheck (all packages incl. tests) → tests →
-size gate (core only) → pack gate → consumer smoke.
+size gate (core only) → pack gate → consumer smoke (clean project installs
+the tarballs, runs a session, an approval pause, and the README example).
+106 tests green. 9 ADRs. 6 incident fixtures running on the real runtime.
 
 ## Why another one
 

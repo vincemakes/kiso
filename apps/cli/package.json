@@ -1,0 +1,35 @@
+{
+  "name": "@kiso/cli",
+  "version": "0.0.0",
+  "description": "kiso CLI — the coding-agent reference product: kiso chat / kiso resume / kiso sessions.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "bin": {
+    "kiso": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kiso/core": "*",
+    "@kiso/evals": "*",
+    "@kiso/provider-anthropic": "*",
+    "@kiso/provider-openai": "*",
+    "@kiso/runtime": "*",
+    "@kiso/tools-node": "*"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@types/node": "^26.1.2",
+    "openai": "^7.3.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

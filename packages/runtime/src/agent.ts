@@ -66,6 +66,11 @@ export class AgentRuntime {
 		return this.#definition.store.list().map((m) => m.id);
 	}
 
+	/** Session metadata for listings (`kiso sessions`). */
+	sessions() {
+		return this.#definition.store.list();
+	}
+
 	/** Load an existing session from disk, or create a fresh one. */
 	async session(options: { id: string }): Promise<AgentSession> {
 		const store = this.#definition.store;

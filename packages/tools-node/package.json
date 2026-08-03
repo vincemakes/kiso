@@ -1,0 +1,30 @@
+{
+  "name": "@kiso/tools-node",
+  "version": "0.0.0",
+  "description": "kiso coding tools for Node hosts — read file, list directory, search text, write/edit file, shell command.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kiso/core": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}
