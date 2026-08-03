@@ -80,6 +80,10 @@ export class AgentSession {
 	readonly #pendingResolvers = new Map<string, (decision: PermissionDecision) => void>();
 	readonly #uncertaintyResolvers = new Map<string, (resolution: "rerun" | "abandoned") => void>();
 	readonly #answered = new Set<string>();
+	/** 七: verdicts already passed to a live resolver — the resolution event
+	 *  lands in the log asynchronously (the loop owns it), so the ledger
+	 *  alone cannot make resolveUncertain idempotent across the same tick. */
+	readonly #uncertaintyAnswered = new Set<string>();
 	#poisoned: string | null = null;
 
 	/** Permanently invalidate the session after a rejected disk write (一). */
@@ -265,6 +269,23 @@ export class AgentSession {
 		const record = executionLedger(this.log.all).get(executionId);
 		if (!record) throw new Error(`no execution record for ${executionId}`);
 		if (record.status !== "uncertain") return; // idempotent + irreversible
+		// 七: a verdict already passed to a live resolver is FINAL — the
+		// loop's resolution event lands asynchronously, so the ledger alone
+		// cannot make this idempotent across the same tick.
+		if (this.#uncertaintyAnswered.has(executionId)) return;
+		this.#uncertaintyAnswered.add(executionId);
+		// 七: with a LIVE resolver, the active loop / recovery generator
+		// OWNS the resolution event — it appends, yields, and persists it
+		// through the Run, so the consumer's stream and the durable log
+		// stay identical. We only pass the verdict; a hidden append here
+		// would leave a seq gap.
+		const resolver = this.#uncertaintyResolvers.get(executionId);
+		if (resolver !== undefined) {
+			this.#uncertaintyResolvers.delete(executionId);
+			resolver(resolution);
+			return;
+		}
+		// 七: OFFLINE verdict — no live resolver: persist directly.
 		// 四: the verdict is attributed to the ORIGINAL run of the execution
 		// — never the fake runId "resolution".
 		const runId = this.runIdFor(executionId);
@@ -293,12 +314,6 @@ export class AgentSession {
 				executionId: record.executionId,
 			});
 			await this.persist(runId, result);
-		}
-		// C 组: wake a LIVE paused run waiting on this verdict.
-		const resolver = this.#uncertaintyResolvers.get(executionId);
-		if (resolver !== undefined) {
-			this.#uncertaintyResolvers.delete(executionId);
-			resolver(resolution);
 		}
 	}
 
@@ -761,6 +776,15 @@ export class Run implements AsyncIterable<Event> {
 			yield pendingUncertain;
 			const verdict = await abortable(pendingResolution, signal);
 			if (verdict === ABORTED) return;
+			// 七: the recovery generator owns the resolution event — appended
+			// and yielded here, persisted by the Run's wrapper (a live
+			// resolveUncertain() only passed the verdict).
+			yield log.append({
+				type: "tool_execution_resolved",
+				executionId,
+				callId,
+				resolution: verdict,
+			});
 		}
 	}
 

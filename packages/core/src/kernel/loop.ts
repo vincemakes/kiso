@@ -477,18 +477,22 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				} else {
 					// No channel: record the conservative verdict — the
 					// failure is NEVER auto-retried, and the ledger stays
-					// consistent for future resumes. Yielded like every
-					// other event (一).
+					// consistent for future resumes.
 					resolution = "abandoned";
-					const resolvedEvent = log.append({
-						type: "tool_execution_resolved",
-						executionId: failed.executionId,
-						callId: call.callId,
-						resolution,
-					});
-					if (hooks.onEvent) await hooks.onEvent(resolvedEvent, {}).catch(() => {});
-					yield resolvedEvent;
 				}
+				// 七: the LOOP owns the resolution event — appended and
+				// yielded on EVERY verdict path (channel or not), so the Run
+				// persists it and the consumer's stream has no hidden gap.
+				// A live resolveUncertain() only passed the verdict; the
+				// event itself is created here, exactly once.
+				const resolvedEvent = log.append({
+					type: "tool_execution_resolved",
+					executionId: failed.executionId,
+					callId: call.callId,
+					resolution,
+				});
+				if (hooks.onEvent) await hooks.onEvent(resolvedEvent, {}).catch(() => {});
+				yield resolvedEvent;
 				// Either verdict ends the pending list: siblings never run.
 				break;
 			}
