@@ -148,8 +148,31 @@ describe("uncertain executions", () => {
 
 	it("a NEW logical call with the same input executes normally even after an uncertain one", async () => {
 		const { store } = crashedStore();
-		const agent = searchAgent(store);
+		// The recovery (resume) consumes its own provider turns, and the new
+		// run consumes its own — the script has four turns so neither starves.
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [
+				defineTool<{ query: string }>({
+					name: "web_search",
+					description: "Search",
+					parameters: { type: "object", properties: { query: { type: "string" } } },
+					execute: async (input) => ({ content: `results for ${input.query}`, isError: false }),
+				}),
+			],
+			adapter: createFauxProvider([...SEARCH_SCRIPT, ...SEARCH_SCRIPT]),
+			permissionPolicy: { rules: [{ tool: "web_search", action: "defer" }] },
+		});
 		const session = await agent.session({ id: "s" });
+		// The human closes the interrupted execution, and the OPEN run reaches
+		// its terminal first (四: a new run is refused while an open run
+		// lingers — resume is the only way past it).
+		session.resolveUncertain("ex-2", "abandoned");
+		for await (const ev of session.resume()) {
+			if (ev.type === "permission_requested") session.approve(ev.decisionId, true);
+		}
+		expect(session.uncertainExecutions()).toEqual([]);
 		// The model re-issues the call (new logical call): it executes —
 		// exactly-once comes from human decisions on the UNCERTAIN one, not
 		// from swallowing repeats.
@@ -159,8 +182,6 @@ describe("uncertain executions", () => {
 			if (ev.type === "permission_requested") session.approve(ev.decisionId, true);
 		}
 		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
-		// The old interrupted execution stays uncertain and unresolved.
-		expect(session.uncertainExecutions()).toHaveLength(1);
 	});
 
 	it("both rerun and abandoned fill a model-facing result — never a dangling tool_use", async () => {

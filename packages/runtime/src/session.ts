@@ -39,7 +39,7 @@ import {
 	type ToolResult,
 } from "@kiso/core";
 import { denialResult } from "@kiso/core";
-import { StaleWriterError, type SessionStore } from "./store.js";
+import { StaleWriterError, type SessionStore, type StoreRecord } from "./store.js";
 
 /** A session whose disk write was rejected (stale handle) is PERMANENTLY
  * poisoned: its in-memory log no longer matches the disk, so no further
@@ -265,7 +265,10 @@ export class AgentSession {
 			resolution,
 		});
 		this.persist(runId, resolved);
-		if (!this.log.all.some((e) => e.type === "tool_result" && e.callId === record.callId)) {
+		// 四: the fill is keyed by THIS execution — a tool_result belonging to
+		// a different (same-callId) execution must not suppress the verdict's
+		// model-facing result, and the fill itself carries the executionId.
+		if (!this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId)) {
 			const denial = denialResult(
 				resolution === "rerun"
 					? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
@@ -277,6 +280,7 @@ export class AgentSession {
 				content: denial.content,
 				isError: true,
 				errorKind: denial.errorKind,
+				executionId: record.executionId,
 			});
 			this.persist(runId, result);
 		}
@@ -497,6 +501,17 @@ export class Run implements AsyncIterable<Event> {
 				return;
 			}
 
+			// 四: a session with an open run REFUSES new runs at the
+			// persistence layer — a second open run would be permanently
+			// orphaned (recovery only ever recovers the last one). The
+			// open run is continued via resume(), never by starting another.
+			const openRun = openRunId(this.#store.load(this.#session.id));
+			if (openRun !== undefined) {
+				throw new Error(
+					`session ${this.#session.id} still has an open run (${openRun}) — resume() it instead of starting a new run`,
+				);
+			}
+
 			// 1. Durable first: the prompt enters the log and the store
 			//    before any model call — a crash here leaves a restorable
 			//    session. The prompt is also the first event the consumer
@@ -541,8 +556,15 @@ export class Run implements AsyncIterable<Event> {
 			const decided = log.all.find(
 				(e): e is Event & { type: "permission_decided" } => e.type === "permission_decided" && e.decisionId === pending.decisionId,
 			);
-			const hasExecution = log.all.some((e) => e.type === "tool_execution_started" && e.callId === pending.callId);
-			const hasResult = log.all.some((e) => e.type === "tool_result" && e.callId === pending.callId);
+			// 四: paired by events NEWER than the request — a historical
+			// same-callId execution from an earlier run must not count as THIS
+			// request's execution (the provider callId may repeat across runs).
+			const hasExecution = log.all.some(
+				(e) => e.type === "tool_execution_started" && e.callId === pending.callId && e.seq > pending.seq,
+			);
+			const hasResult = log.all.some(
+				(e) => e.type === "tool_result" && e.callId === pending.callId && e.seq > pending.seq,
+			);
 
 			if (decided === undefined) {
 				// Pause: announce the stored request, await the human.
@@ -584,10 +606,11 @@ export class Run implements AsyncIterable<Event> {
 		// whose model-facing result never landed is completed FROM THE
 		// RECEIPT — never re-executed. Snapshot the scope first: this phase
 		// appends the repaired results, and iterating a growing array would
-		// re-visit them.
+		// re-visit them. 四: pairing is by executionId — a same-callId result
+		// from a different execution never suppresses the repair.
 		for (const ev of [...scope]) {
 			if (ev.type !== "tool_execution_succeeded" && ev.type !== "tool_execution_failed") continue;
-			const hasResult = log.all.some((e) => e.type === "tool_result" && e.callId === ev.callId);
+			const hasResult = log.all.some((e) => e.type === "tool_result" && e.executionId === ev.executionId);
 			if (hasResult) continue;
 			yield log.append(
 				ev.type === "tool_execution_succeeded"
@@ -611,10 +634,12 @@ export class Run implements AsyncIterable<Event> {
 
 		// B 组 crash window: a resolution was persisted but its tool_result
 		// fill never landed — complete it so the model is never left staring
-		// at a dangling tool_use.
+		// at a dangling tool_use. 四: keyed by executionId, and the fill
+		// carries it, so a same-callId result from another execution is never
+		// confused with this one.
 		for (const ev of [...scope]) {
 			if (ev.type !== "tool_execution_resolved") continue;
-			const hasResult = log.all.some((e) => e.type === "tool_result" && e.callId === ev.callId);
+			const hasResult = log.all.some((e) => e.type === "tool_result" && e.executionId === ev.executionId);
 			if (hasResult) continue;
 			const denial = denialResult(
 				ev.resolution === "rerun"
@@ -627,6 +652,7 @@ export class Run implements AsyncIterable<Event> {
 				content: denial.content,
 				isError: true,
 				errorKind: denial.errorKind,
+				executionId: ev.executionId,
 			});
 		}
 	}
@@ -699,6 +725,27 @@ export class Run implements AsyncIterable<Event> {
 			...(result.errorKind !== undefined ? { errorKind: result.errorKind } : {}),
 			executionId,
 		});
+		// 四: a failed NON-idempotent execution after a cross-process approval
+		// is a durable uncertain PAUSE, exactly like the live loop's — the
+		// provider and any sibling executions stop until a human decides.
+		// An abort during the wait leaves the execution uncertain; the next
+		// resume blocks on it (ResumeBlockedError) instead of continuing.
+		if (result.isError && tool !== undefined && tool.idempotent !== true) {
+			const pendingResolution = new Promise<"rerun" | "abandoned">((resolve) => {
+				this.#uncertaintyIds.push(executionId);
+				this.#session.registerUncertaintyResolver(executionId, resolve);
+			});
+			const pendingUncertain = log.append({
+				type: "uncertain_pending",
+				executionId,
+				callId,
+				name,
+				error: result.content,
+			});
+			yield pendingUncertain;
+			const verdict = await abortable(pendingResolution, signal);
+			if (verdict === ABORTED) return;
+		}
 	}
 
 	/** The model-facing result of a durable denial — no execution happened. */
@@ -712,6 +759,20 @@ export class Run implements AsyncIterable<Event> {
 			errorKind: denial.errorKind,
 		});
 	}
+}
+
+/**
+ * The most recent run WITHOUT a terminal, or undefined when every recorded
+ * run terminated. Recovery can only drive ONE run to its terminal, so an
+ * open run must be the exclusive reason a session refuses new runs (四).
+ */
+function openRunId(records: readonly StoreRecord[]): string | undefined {
+	const terminated = new Set(records.filter((r) => r.event.type === "terminal").map((r) => r.runId));
+	for (let i = records.length - 1; i >= 0; i--) {
+		const runId = records[i]!.runId;
+		if (!terminated.has(runId)) return runId;
+	}
+	return undefined;
 }
 
 /** Sentinel: the signal aborted while the recovery awaited a decision. */

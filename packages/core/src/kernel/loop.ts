@@ -351,8 +351,13 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				yield await terminal({ kind: "aborted", by: "user" });
 				return;
 			}
+			let currentExecutionId: string | undefined;
 			try {
 				for await (const ev of executeOne(call, registry, hooks, { signal: signal ?? NEVER_ABORT }, log, config.resolveApproval, signal)) {
+					// 四: the identity of THIS execution comes from the stream —
+					// a historical same-callId execution must never be mistaken
+					// for this call's (the provider callId may repeat across runs).
+					if (ev.type === "tool_execution_started") currentExecutionId = ev.executionId;
 					if (hooks.onEvent) await hooks.onEvent(ev, {}).catch(() => {});
 					yield ev;
 				}
@@ -368,10 +373,19 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 
 			// C 组: a failed NON-idempotent execution is a persistent
 			// uncertain PAUSE — no sibling tool, no auto-retry, and the next
-			// model turn waits for the human verdict.
-			const failed = [...log.all].reverse().find(
-				(e): e is Event & { type: "tool_execution_failed" } => e.type === "tool_execution_failed" && e.callId === call.callId,
-			);
+			// model turn waits for the human verdict. 四: the failed event is
+			// found by THIS execution's id — never by the repeatable callId,
+			// which would let a historical same-callId failure pollute a fresh
+			// successful execution with a stale uncertain pause.
+			const failed =
+				currentExecutionId === undefined
+					? undefined
+					: [...log.all]
+							.reverse()
+							.find(
+								(e): e is Event & { type: "tool_execution_failed" } =>
+									e.type === "tool_execution_failed" && e.executionId === currentExecutionId,
+							);
 			if (failed !== undefined && !failed.safeToRetry) {
 				// Register the human channel BEFORE announcing the pause —
 				// a consumer that answers the moment it sees the event must

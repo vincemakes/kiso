@@ -160,9 +160,16 @@ describe("one session, one active run", () => {
 		const first = session.run("one");
 		const second = session.run("two");
 		// Consuming the first marks it active; the second must refuse.
+		let refused = false;
 		for await (const _ev of first) {
-			await expect(second[Symbol.asyncIterator]().next()).rejects.toThrow(/active run/);
-			break;
+			if (!refused) {
+				// next() once: a rejected first next() already marks the
+				// generator consumed, so it may only be probed a single time.
+				await expect(second[Symbol.asyncIterator]().next()).rejects.toThrow(/active run|open run/);
+				refused = true;
+			}
+			// drain to completion — a fresh run needs the first TERMINATED
+			// (the persistence layer refuses new runs while one stays open).
 		}
 		// After the first completes, a fresh run is fine.
 		for await (const _ev of session.run("three")) {
