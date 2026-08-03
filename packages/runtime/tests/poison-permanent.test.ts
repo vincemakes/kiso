@@ -33,16 +33,16 @@ function fauxAgent(store: SessionStore) {
 }
 
 /** A terminated run owns the lock so a second writer's run() is legal. */
-function seedTerminated(store: SessionStore, seq0: number): void {
-	store.append("s", "r0", { seq: seq0, type: "user_input", content: "seed" });
-	store.append("s", "r0", { seq: seq0 + 1, type: "terminal", outcome: { kind: "completed" } });
+async function seedTerminated(store: SessionStore, seq0: number): Promise<void> {
+	await store.append("s", "r0", { seq: seq0, type: "user_input", content: "seed" });
+	await store.append("s", "r0", { seq: seq0 + 1, type: "terminal", outcome: { kind: "completed" } });
 }
 
 describe("permanent poison (第四轮)", () => {
 	it("a session whose writes failed against a LIVE writer stays poisoned forever — even after the lock frees", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-poison-"));
 		const storeA = new SessionStore(dir);
-		seedTerminated(storeA, 0);
+		await seedTerminated(storeA, 0);
 
 		// B loads the session; every write conflicts with A's live lock.
 		const sessionB = await fauxAgent(new SessionStore(dir)).session({ id: "s" });
@@ -53,7 +53,7 @@ describe("permanent poison (第四轮)", () => {
 		}).rejects.toThrow(/locked by another writer/);
 
 		// The disk moves on while B is poisoned.
-		storeA.append("s", "r1", { seq: 2, type: "user_input", content: "a-2" });
+		await storeA.append("s", "r1", { seq: 2, type: "user_input", content: "a-2" });
 		storeA.closeAll(); // the lock frees — but B is permanently poisoned
 
 		// Every path fails fast with PoisonedSessionError; NOTHING of B's
@@ -68,8 +68,8 @@ describe("permanent poison (第四轮)", () => {
 				// never
 			}
 		}).rejects.toThrow(/poisoned/i);
-		expect(() => sessionB.approve("d-1", true)).toThrow(/poisoned/i);
-		expect(() => sessionB.resolveUncertain("ex-1", "abandoned")).toThrow(/poisoned/i);
+		await expect(sessionB.approve("d-1", true)).rejects.toThrow(/poisoned/i);
+		await expect(sessionB.resolveUncertain("ex-1", "abandoned")).rejects.toThrow(/poisoned/i);
 
 		const records = new SessionStore(dir).load("s");
 		expect(records.map((r) => r.event.seq)).toEqual([0, 1, 2]); // only A's writes
@@ -80,7 +80,7 @@ describe("permanent poison (第四轮)", () => {
 	it("runs constructed BEFORE the poison all fail on consumption — nothing of their context reaches the disk", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-poison-"));
 		const storeA = new SessionStore(dir);
-		seedTerminated(storeA, 0);
+		await seedTerminated(storeA, 0);
 
 		const sessionB = await fauxAgent(new SessionStore(dir)).session({ id: "s" });
 		// PRE-CONSTRUCT two runs while the session is still healthy.
@@ -92,8 +92,8 @@ describe("permanent poison (第四轮)", () => {
 		// guard lets B's run reach the write.
 		storeA.closeAll();
 		const storeC = new SessionStore(dir);
-		storeC.append("s", "r1", { seq: 2, type: "user_input", content: "c-1" });
-		storeC.append("s", "r1", { seq: 3, type: "terminal", outcome: { kind: "completed" } });
+		await storeC.append("s", "r1", { seq: 2, type: "user_input", content: "c-1" });
+		await storeC.append("s", "r1", { seq: 3, type: "terminal", outcome: { kind: "completed" } });
 		await expect(async () => {
 			for await (const _ev of run1) {
 				// never

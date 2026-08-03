@@ -106,10 +106,10 @@ export class AgentSession {
 	 *  the cause (stale handle, corruption, a live external writer, an I/O
 	 *  fault) — so no further run, resume, or log mutation may proceed.
 	 *  The health check runs BEFORE every write, on every path. */
-	persist(runId: string, event: Event): void {
+	async persist(runId: string, event: Event): Promise<void> {
 		this.ensureHealthy();
 		try {
-			this.#store.append(this.id, runId, event);
+			await this.#store.append(this.id, runId, event);
 		} catch (err) {
 			// 第四轮: ANY rejected write poisons — not only the typed
 			// stale/corruption errors. A live external writer's lock error
@@ -203,7 +203,7 @@ export class AgentSession {
 	 * resolve and the run's write is benign: nothing has executed yet, so a
 	 * lost decision only re-presents the request.
 	 */
-	approve(decisionId: string, allow: boolean): void {
+	async approve(decisionId: string, allow: boolean): Promise<void> {
 		// 第四轮: a poisoned session may not mutate the log — checked before
 		// anything is recorded.
 		this.ensureHealthy();
@@ -239,7 +239,7 @@ export class AgentSession {
 			decision: allow ? "approved" : "denied",
 			...(allow ? {} : { reason: "denied by user" }),
 		});
-		this.persist(runId, decided);
+		await this.persist(runId, decided);
 	}
 
 	// ── Phase D: the uncertain-execution ledger ──────────────────────────
@@ -259,7 +259,7 @@ export class AgentSession {
 	 * model-facing result — a dangling tool_use with NO result would be
 	 * rejected by real providers (review finding 1).
 	 */
-	resolveUncertain(executionId: string, resolution: "rerun" | "abandoned"): void {
+	async resolveUncertain(executionId: string, resolution: "rerun" | "abandoned"): Promise<void> {
 		// 第四轮: a poisoned session may not mutate the log.
 		this.ensureHealthy();
 		const record = executionLedger(this.log.all).get(executionId);
@@ -274,7 +274,7 @@ export class AgentSession {
 			callId: record.callId,
 			resolution,
 		});
-		this.persist(runId, resolved);
+		await this.persist(runId, resolved);
 		// 四: the fill is keyed by THIS execution — a tool_result belonging to
 		// a different (same-callId) execution must not suppress the verdict's
 		// model-facing result, and the fill itself carries the executionId.
@@ -292,7 +292,7 @@ export class AgentSession {
 				errorKind: denial.errorKind,
 				executionId: record.executionId,
 			});
-			this.persist(runId, result);
+			await this.persist(runId, result);
 		}
 		// C 组: wake a LIVE paused run waiting on this verdict.
 		const resolver = this.#uncertaintyResolvers.get(executionId);
@@ -433,7 +433,7 @@ export class Run implements AsyncIterable<Event> {
 			const self = this;
 			const runLoop = async function* (): AsyncGenerator<Event> {
 				for await (const ev of loop(loopConfig())) {
-					self.#session.persist(self.runId, ev);
+					await self.#session.persist(self.runId, ev);
 					yield ev;
 				}
 			};
@@ -499,11 +499,11 @@ export class Run implements AsyncIterable<Event> {
 				//    would duplicate. Only events newer than the base log
 				//    entry are durable.
 				const baseSeq = log.lastSeq;
-				const persist = (ev: Event): void => {
-					if (ev.seq > baseSeq) this.#session.persist(this.runId, ev);
+				const persist = async (ev: Event): Promise<void> => {
+					if (ev.seq > baseSeq) await this.#session.persist(this.runId, ev);
 				};
 				for await (const ev of this.#recover(log, signal, lastOpen.events)) {
-					persist(ev);
+					await persist(ev);
 					yield ev;
 				}
 				// 2. Continuation: drive the LAST OPEN run to its terminal.
@@ -532,7 +532,7 @@ export class Run implements AsyncIterable<Event> {
 			//    sees, so what was asked and what happened live in the same
 			//    stream.
 			const inputEvent = log.append({ type: "user_input", content: this.#input! });
-			this.#session.persist(this.runId, inputEvent);
+			await this.#session.persist(this.runId, inputEvent);
 			yield inputEvent;
 
 			// 2. The loop projects from the session log — multi-turn context

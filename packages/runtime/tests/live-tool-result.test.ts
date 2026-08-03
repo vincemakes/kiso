@@ -47,7 +47,7 @@ describe("live tool results (五)", () => {
 		const events: Event[] = [];
 		for await (const ev of session.run("go")) {
 			events.push(ev);
-			if (ev.type === "permission_requested") session.approve(ev.decisionId, true);
+			if (ev.type === "permission_requested") await session.approve(ev.decisionId, true);
 		}
 		// The live stream carries the tags.
 		const streamed = events.find(
@@ -91,7 +91,7 @@ describe("live tool results (五)", () => {
 		const events: Event[] = [];
 		for await (const ev of second.resume()) {
 			events.push(ev);
-			if (ev.type === "permission_requested") second.approve(ev.decisionId, true);
+			if (ev.type === "permission_requested") await second.approve(ev.decisionId, true);
 		}
 		const streamed = events.find(
 			(e): e is Event & { type: "tool_result"; tags?: readonly string[] } => e.type === "tool_result",

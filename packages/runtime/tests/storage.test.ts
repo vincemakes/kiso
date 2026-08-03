@@ -27,17 +27,17 @@ function tempStore(): { dir: string; store: SessionStore } {
 const ev = (seq: number, type = "stop" as const): Event => ({ seq, type, reason: "end_turn" });
 
 describe("torn-tail repair", () => {
-	it("a crash fragment is truncated before the next append — no JSON gets glued to it", () => {
+	it("a crash fragment is truncated before the next append — no JSON gets glued to it", async () => {
 		const { dir, store } = tempStore();
-		store.append("s", "r1", ev(0));
-		store.append("s", "r1", ev(1));
+		await store.append("s", "r1", ev(0));
+		await store.append("s", "r1", ev(1));
 		// Crash mid-write: a partial line, no trailing newline. The first
 		// store "process" is gone — close releases its lock and fd.
 		appendFileSync(join(dir, "s.jsonl"), '{"runId":"r1","event":');
 		store.close("s");
 		// A NEW store (new process) appends next.
 		const store2 = new SessionStore(dir);
-		store2.append("s", "r2", ev(2));
+		await store2.append("s", "r2", ev(2));
 		const records = store2.load("s");
 		expect(records.map((r) => r.event.seq)).toEqual([0, 1, 2]);
 		expect(records.map((r) => r.event.type)).toEqual(["stop", "stop", "stop"]);
@@ -49,59 +49,59 @@ describe("torn-tail repair", () => {
 		expect(raw).not.toContain('"runId":"r1","event":');
 	});
 
-	it("an empty file appends cleanly", () => {
+	it("an empty file appends cleanly", async () => {
 		const { store } = tempStore();
-		store.append("s", "r1", ev(0));
+		await store.append("s", "r1", ev(0));
 		expect(store.load("s")).toHaveLength(1);
 	});
 
-	it("an in-process append failure cannot poison the next append (repair runs before EVERY append)", () => {
+	it("an in-process append failure cannot poison the next append (repair runs before EVERY append)", async () => {
 		const { dir, store } = tempStore();
-		store.append("s", "r1", ev(0));
+		await store.append("s", "r1", ev(0));
 		// Simulate a partial write in THIS process (ENOSPC/EIO): a fragment
 		// lands while the fd stays cached.
 		appendFileSync(join(dir, "s.jsonl"), '{"runId":"r1","event":');
-		store.append("s", "r1", ev(1)); // cached fd — must repair first
+		await store.append("s", "r1", ev(1)); // cached fd — must repair first
 		const records = store.load("s");
 		expect(records.map((r) => r.event.seq)).toEqual([0, 1]);
 	});
 });
 
 describe("corruption is loud, never silently read as a prefix", () => {
-	it("mid-file garbage throws — at append time, before any further write", () => {
+	it("mid-file garbage throws — at append time, before any further write", async () => {
 		const { dir, store } = tempStore();
-		store.append("s", "r1", ev(0));
+		await store.append("s", "r1", ev(0));
 		appendFileSync(join(dir, "s.jsonl"), "THIS IS NOT JSON\n");
 		// The CAS reads the file's real last committed seq — the garbage
 		// line is detected here, so no new JSON is ever glued after it.
-		expect(() => store.append("s", "r1", ev(1))).toThrow(/corrupt|not JSON|record/i);
+		await expect(store.append("s", "r1", ev(1))).rejects.toThrow(/corrupt|not JSON|record/i);
 		expect(() => store.load("s")).toThrow();
 	});
 
-	it("valid JSON that is not a store record throws", () => {
+	it("valid JSON that is not a store record throws", async () => {
 		const { dir, store } = tempStore();
-		store.append("s", "r1", ev(0));
+		await store.append("s", "r1", ev(0));
 		appendFileSync(join(dir, "s.jsonl"), '{"foo": 1}\n');
-		expect(() => store.append("s", "r1", ev(1))).toThrow(/corrupt|not JSON|record/i);
+		await expect(store.append("s", "r1", ev(1))).rejects.toThrow(/corrupt|not JSON|record/i);
 		expect(() => store.load("s")).toThrow();
 	});
 
-	it("a valid record whose event is not a kiso event throws", () => {
+	it("a valid record whose event is not a kiso event throws", async () => {
 		const { dir, store } = tempStore();
-		store.append("s", "r1", ev(0));
+		await store.append("s", "r1", ev(0));
 		appendFileSync(join(dir, "s.jsonl"), '{"runId":"r1","ts":1,"event":{"seq":1,"type":"nonsense"}}\n');
 		expect(() => store.load("s")).toThrow();
 	});
 
-	it("seq discontinuity throws (missing or duplicated sequence numbers)", () => {
+	it("seq discontinuity throws (missing or duplicated sequence numbers)", async () => {
 		const { dir, store } = tempStore();
-		store.append("s", "r1", ev(0));
+		await store.append("s", "r1", ev(0));
 		appendFileSync(join(dir, "s.jsonl"), `${JSON.stringify({ runId: "r1", ts: 1, event: ev(2) })}\n`);
 		expect(() => store.load("s")).toThrow(/seq/);
 
 		const dir2 = mkdtempSync(join(tmpdir(), "kiso-sto-"));
 		const store2 = new SessionStore(dir2);
-		store2.append("s", "r1", ev(0));
+		await store2.append("s", "r1", ev(0));
 		appendFileSync(join(dir2, "s.jsonl"), `${JSON.stringify({ runId: "r1", ts: 1, event: ev(1) })}\n`);
 		appendFileSync(join(dir2, "s.jsonl"), `${JSON.stringify({ runId: "r1", ts: 1, event: ev(1) })}\n`);
 		expect(() => store2.load("s")).toThrow(/seq/);
@@ -109,37 +109,37 @@ describe("corruption is loud, never silently read as a prefix", () => {
 });
 
 describe("cross-process single-writer", () => {
-	it("a second writer cannot append while the first holds the lock", () => {
+	it("a second writer cannot append while the first holds the lock", async () => {
 		const { dir, store } = tempStore();
-		store.append("s", "r1", ev(0));
+		await store.append("s", "r1", ev(0));
 		const other = new SessionStore(dir);
-		expect(() => other.append("s", "r2", ev(1))).toThrow(/locked|writer/);
+		await expect(other.append("s", "r2", ev(1))).rejects.toThrow(/locked|writer/);
 		// The first writer still owns the session.
-		store.append("s", "r1", ev(1));
+		await store.append("s", "r1", ev(1));
 		expect(store.load("s")).toHaveLength(2);
 	});
 
-	it("a stale lock (dead pid) is taken over", () => {
+	it("a stale lock (dead pid) is taken over", async () => {
 		const { dir } = tempStore();
 		writeFileSync(join(dir, "s.lock"), "99999999"); // a pid that is not alive
 		const store = new SessionStore(dir);
-		store.append("s", "r1", ev(0));
+		await store.append("s", "r1", ev(0));
 		expect(store.load("s")).toHaveLength(1);
 	});
 
-	it("close releases the lock and the fd; appends after close are refused", () => {
+	it("close releases the lock and the fd; appends after close are refused", async () => {
 		const { dir, store } = tempStore();
-		store.append("s", "r1", ev(0));
+		await store.append("s", "r1", ev(0));
 		store.close("s");
 		const other = new SessionStore(dir);
-		other.append("s", "r2", ev(1)); // lock released → other writer may proceed
+		await other.append("s", "r2", ev(1)); // lock released → other writer may proceed
 		expect(other.load("s")).toHaveLength(2);
-		expect(() => store.append("s", "r3", ev(2))).toThrow(/closed/);
+		await expect(store.append("s", "r3", ev(2))).rejects.toThrow(/closed/);
 	});
 });
 
 describe("EventLog restore validation", () => {
-	it("strictly validates seq === 0..N — array length never masks gaps or duplicates", () => {
+	it("strictly validates seq === 0..N — array length never masks gaps or duplicates", async () => {
 		expect(() => new EventLog([ev(0), ev(2)])).toThrow(/seq/);
 		expect(() => new EventLog([ev(0), ev(1), ev(1)])).toThrow(/seq/);
 		expect(() => new EventLog([ev(5)])).toThrow(/seq/);

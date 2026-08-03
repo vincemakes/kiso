@@ -162,7 +162,7 @@ async function resolveUncertains(
 		);
 		if (isCancelled()) return; // Ctrl+C with no run: stop deciding, exit
 		const resolution = answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned";
-		session.resolveUncertain(uncertain.executionId, resolution);
+		await session.resolveUncertain(uncertain.executionId, resolution);
 		console.log(`  ${resolution}\n`);
 	}
 }
@@ -185,7 +185,7 @@ async function consumeRun(
 				`\n⚠ ${escapeTerminal(ev.name)} FAILED — the side effect may have applied.\n  ${escapeTerminal(ev.error)}\n`,
 			);
 			const answer = await ask(rl, `did it apply? (r)erun / (a)bandon: `);
-			session.resolveUncertain(ev.executionId, answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned");
+			await session.resolveUncertain(ev.executionId, answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned");
 			continue;
 		}
 		const rendered = renderEvent(ev);
@@ -195,7 +195,7 @@ async function consumeRun(
 			const name = (ev as { name: string }).name;
 			// 八: the tool name is model text — escaped on every output path.
 			const answer = await ask(rl, `approve ${escapeTerminal(name)}? (y/n) `);
-			session.approve(decisionId, answer.trim().toLowerCase().startsWith("y"));
+			await session.approve(decisionId, answer.trim().toLowerCase().startsWith("y"));
 		} else {
 			process.stdout.write(rendered.text);
 		}

@@ -67,7 +67,7 @@ describe("per-run recovery (B 组)", () => {
 
 		// Run 1: completes normally (script: CALL → stop → completed).
 		for await (const ev of sessionA.run("first")) {
-			if (ev.type === "permission_requested") sessionA.approve(ev.decisionId, true);
+			if (ev.type === "permission_requested") await sessionA.approve(ev.decisionId, true);
 		}
 		// Run 2: pauses on the deferred tool, then the process exits.
 		for await (const ev of sessionA.run("second")) {
@@ -82,7 +82,7 @@ describe("per-run recovery (B 组)", () => {
 		const events: Event[] = [];
 		for await (const ev of sessionB.resume()) {
 			events.push(ev);
-			if (ev.type === "permission_requested") sessionB.approve(ev.decisionId, true);
+			if (ev.type === "permission_requested") await sessionB.approve(ev.decisionId, true);
 		}
 
 		expect(readFileSync(marker, "utf8")).toBe("k"); // run 2's call ran once
@@ -150,7 +150,7 @@ describe("per-run recovery (B 组)", () => {
 		const storeB = new SessionStore(dir);
 		const agentB = agent(storeB, marker, STOP);
 		const sessionB = await agentB.session({ id: "s" });
-		sessionB.approve(decisionId, true);
+		await sessionB.approve(decisionId, true);
 		const records = storeB.load("s");
 		expect(records.some((r) => r.event.type === "permission_decided")).toBe(false);
 		expect(existsSync(marker)).toBe(false);
@@ -165,7 +165,7 @@ describe("execution identity across runs (B 组)", () => {
 		const agentA = agent(store, marker, CALL);
 		const sessionA = await agentA.session({ id: "s" });
 		for await (const ev of sessionA.run("first")) {
-			if (ev.type === "permission_requested") sessionA.approve(ev.decisionId, true); // executes c1
+			if (ev.type === "permission_requested") await sessionA.approve(ev.decisionId, true); // executes c1
 		}
 		store.closeAll();
 
@@ -185,7 +185,7 @@ describe("execution identity across runs (B 组)", () => {
 		const agentC = agent(storeC, marker, CALL);
 		const sessionC = await agentC.session({ id: "s" });
 		for await (const ev of sessionC.run("third")) {
-			if (ev.type === "permission_requested") sessionC.approve(ev.decisionId, true);
+			if (ev.type === "permission_requested") await sessionC.approve(ev.decisionId, true);
 		}
 		const ledger2 = executionLedger(storeC.load("s").map((r) => r.event));
 		const c1s = [...ledger2.values()].filter((e) => e.callId === "c1");
@@ -197,11 +197,11 @@ describe("execution identity across runs (B 组)", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-rr-"));
 		const store = new SessionStore(dir);
 		// Two interrupted executions, both uncertain.
-		store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
-		store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "a" } });
-		store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "a" } });
-		store.append("s", "r1", { seq: 3, type: "tool_call_end", callId: "c2", name: "web_search", input: { query: "b" } });
-		store.append("s", "r1", { seq: 4, type: "tool_execution_started", executionId: "ex-4", callId: "c2", name: "web_search", input: { query: "b" } });
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
+		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "a" } });
+		await store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "a" } });
+		await store.append("s", "r1", { seq: 3, type: "tool_call_end", callId: "c2", name: "web_search", input: { query: "b" } });
+		await store.append("s", "r1", { seq: 4, type: "tool_execution_started", executionId: "ex-4", callId: "c2", name: "web_search", input: { query: "b" } });
 		store.closeAll();
 
 		const agentA = agent(new SessionStore(dir), join(dir, "m.txt"));
@@ -210,27 +210,27 @@ describe("execution identity across runs (B 组)", () => {
 		expect(uncertain.map((u) => u.executionId).sort()).toEqual(["ex-2", "ex-4"]);
 
 		// Resolve one as rerun, the other as abandoned — by executionId.
-		session.resolveUncertain("ex-2", "rerun");
-		session.resolveUncertain("ex-4", "abandoned");
+		await session.resolveUncertain("ex-2", "rerun");
+		await session.resolveUncertain("ex-4", "abandoned");
 		expect(session.uncertainExecutions()).toEqual([]);
 		// Idempotent: re-resolving does nothing.
-		session.resolveUncertain("ex-2", "abandoned");
+		await session.resolveUncertain("ex-2", "abandoned");
 		const records = session.log.all.filter((e) => e.type === "tool_execution_resolved");
 		expect(records).toHaveLength(2);
 		// Irreversible: a resolved execution is not uncertain anymore.
 		expect(session.uncertainExecutions()).toEqual([]);
 		// Unknown executionId → loud error.
-		expect(() => session.resolveUncertain("ex-999", "rerun")).toThrow(/no execution/);
+		await expect(session.resolveUncertain("ex-999", "rerun")).rejects.toThrow(/no execution/);
 	});
 
 	it("resolution persisted but tool_result lost (crash window) is repaired on resume", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-rr-"));
 		const store = new SessionStore(dir);
-		store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
-		store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
+		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
 		// The resolution landed…
-		store.append("s", "r1", { seq: 3, type: "tool_execution_resolved", executionId: "ex-2", callId: "c1", resolution: "abandoned" });
+		await store.append("s", "r1", { seq: 3, type: "tool_execution_resolved", executionId: "ex-2", callId: "c1", resolution: "abandoned" });
 		// …but the process crashed before the tool_result fill was written.
 		store.closeAll();
 

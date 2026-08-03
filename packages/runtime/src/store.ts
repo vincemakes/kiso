@@ -2,11 +2,21 @@
  * SessionStore — append-only JSONL durability, identity-safe (A 组).
  *
  * One file per session: `<root>/<id>.jsonl`, lines of
- * `{"runId": string, "ts": number, "event": Event}`. A sibling `<id>.lock`
- * carries `{"pid": number, "token": string}` — the random owner TOKEN is
- * what makes lock release safe: only the instance whose token still
- * matches may unlink (a foreign close can never steal another writer's
- * lock).
+ * `{"runId": string, "ts": number, "event": Event}`. The single-writer
+ * lock (第四轮) is an EXCLUSIVE KERNEL flock on `<id>.lock`, held by a
+ * dedicated helper process:
+ *
+ * - the kernel arbitrates every race — a contender can never remove or
+ *   overwrite a live holder's lock, because there is nothing to remove;
+ *   the lock simply exists while the helper lives and vanishes with it;
+ * - the lock file ALSO carries `{"pid": number, "token": string}` written
+ *   by the holder, so an OLD-format writer (whose O_EXCL pidfile scheme
+ *   does not honor flock) still sees a live owner and refuses to take
+ *   over; conversely a dead/empty/unreadable legacy lock is harmless —
+ *   flock ignores content, and the kernel lock is what matters;
+ * - `close()` releases only THIS instance's helper; `closeAll()` every
+ *   held helper — a foreign close can never release another writer's
+ *   kernel lock (flock is tied to the helper's open file description).
  *
  * Consistency contract (A 组):
  * - every id is validated BEFORE any file side effect (append, close,
@@ -17,13 +27,11 @@
  *   so the in-memory EventLog never continues past a rejected write;
  * - the torn tail is repaired before EVERY append, and committed records
  *   (newline-terminated) are never truncated;
- * - close() releases only the lock this instance holds; closeAll()
- *   releases every held lock, including the case where the lock was
- *   acquired but opening the JSONL failed;
  * - load is strict (A 组 round 1): a partial final line is the only
  *   tolerated damage; everything else throws StoreCorruptionError.
  */
 
+import { spawn, type ChildProcess } from "node:child_process";
 import {
 	appendFileSync,
 	closeSync,
@@ -81,8 +89,8 @@ const ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 export class SessionStore {
 	readonly root: string;
 	readonly #fds = new Map<string, number>();
-	/** sessionId → the owner token THIS instance wrote (and may unlink). */
-	readonly #locks = new Map<string, string>();
+	/** sessionId → the lock helper process THIS instance spawned. */
+	readonly #lockHelpers = new Map<string, ChildProcess>();
 	readonly #closed = new Set<string>();
 
 	constructor(root: string) {
@@ -105,103 +113,88 @@ export class SessionStore {
 	}
 
 	/**
-	 * Take the single-writer lock (O_EXCL) with a random owner token. A
-	 * stale lock (dead pid) is taken over; a live writer's lock is a loud
-	 * error. The takeover race between two contenders is tolerated: the
-	 * loser's unlink ENOENT retries the acquire.
+	 * Take the single-writer lock (第四轮): an EXCLUSIVE kernel flock held
+	 * by a dedicated helper process. The KERNEL arbitrates every race —
+	 * there is no stale lock to delete and no takeover to race: a
+	 * contender either gets the flock (the previous holder is gone) or it
+	 * fails. The lock file also carries the holder's identity so an
+	 * OLD-format writer (which does not honor flock) still sees a live
+	 * owner and refuses to take over. No recursion, no deletion, no
+	 * window.
 	 */
-	private acquireLock(sessionId: string): void {
-		if (this.#locks.has(sessionId)) return;
+	private async acquireLock(sessionId: string): Promise<void> {
+		if (this.#lockHelpers.has(sessionId)) return;
 		const lockPath = this.lockPathFor(sessionId);
-		const token = crypto.randomUUID();
-		try {
-			const fd = openSync(lockPath, "wx");
-			writeFileSync(fd, JSON.stringify({ pid: process.pid, token }));
-			fsyncSync(fd);
-			closeSync(fd);
-			this.#locks.set(sessionId, token);
-		} catch (err) {
-			const code = (err as NodeJS.ErrnoException).code;
-			if (code !== "EEXIST") throw err;
-			let holder: { pid?: number; token?: string } | null = null;
-			try {
-				holder = parseLock(readFileSync(lockPath, "utf8"));
-			} catch {
-				holder = null; // unreadable lock — treat as stale
-			}
-			if (holder?.pid !== undefined && isAlive(holder.pid)) {
-				throw new Error(`session ${sessionId} is locked by another writer (pid ${holder.pid})`);
-			}
-			// 二: takeover is IDENTITY-CONFIRMED, never a blind delete. The
-			// stale lock is renamed AWAY atomically; then we verify that what
-			// we moved is the SAME lock we read. If a rival created a live
-			// lock in between, the rename moved THAT — we restore it and
-			// retry (the live lock is never deleted).
-			const tomb = `${lockPath}.takeover-${crypto.randomUUID()}`;
-			try {
-				renameSync(lockPath, tomb);
-			} catch (err) {
-				if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-					// A concurrent recovery already took it over — retry.
-					return this.acquireLock(sessionId);
+		for (let attempt = 0; ; attempt++) {
+			const child = spawn("python3", ["-c", LOCK_HELPER_SCRIPT, lockPath], {
+				stdio: ["pipe", "pipe", "ignore"],
+			});
+			const verdict = await helperVerdict(child);
+			if (verdict === "LOCKED") {
+				// The kernel flock is ours. One last compatibility gate: an
+				// OLD-format writer (which does not honor flock) may still
+				// be alive — its lock file names it. Refuse, and release
+				// the flock (the helper dies).
+				const legacy = readLockIdentity(lockPath);
+				if (legacy?.pid !== undefined && isAlive(legacy.pid)) {
+					child.kill();
+					throw new Error(`session ${sessionId} is locked by another writer (pid ${legacy.pid})`);
 				}
-				throw err;
-			}
-			let moved: { pid?: number; token?: string } | null = null;
-			try {
-				moved = parseLock(readFileSync(tomb, "utf8"));
-			} catch {
-				moved = null;
-			}
-			// Identity confirmed: the moved lock has the same token AND pid as
-			// the one we read. A rival's live lock has a different token.
-			const sameIdentity =
-				moved !== null &&
-				(moved.token ?? null) === (holder?.token ?? null) &&
-				(moved.pid ?? null) === (holder?.pid ?? null);
-			if (!sameIdentity) {
-				// We moved a DIFFERENT lock (a live one) — put it back.
+				// Record our identity in the file: irrelevant to flock, but
+				// an OLD-format contender reads it and refuses to take over
+				// a live writer's lock.
 				try {
-					renameSync(tomb, lockPath);
+					writeFileSync(lockPath, JSON.stringify({ pid: process.pid, token: crypto.randomUUID() }));
 				} catch {
-					// the rival already re-created it — drop the tomb
-					unlinkSync(tomb);
+					// the file itself is advisory — the kernel lock holds
 				}
-				return this.acquireLock(sessionId);
+				this.#lockHelpers.set(sessionId, child);
+				return;
 			}
-			unlinkSync(tomb); // our stale lock — now gone
-			this.acquireLock(sessionId);
+			child.kill();
+			// BUSY: either a live modern writer, or a holder that is just
+			// exiting (its helper is dying). A live writer's identity is in
+			// the file — refuse at once; otherwise retry briefly so a
+			// just-released lock is actually acquirable (no deadlock after
+			// close()).
+			const legacy = readLockIdentity(lockPath);
+			if (legacy?.pid !== undefined && isAlive(legacy.pid)) {
+				throw new Error(`session ${sessionId} is locked by another writer (pid ${legacy.pid})`);
+			}
+			if (attempt >= 5) {
+				throw new Error(`session ${sessionId} is locked by another writer`);
+			}
+			await new Promise((resolve) => setTimeout(resolve, 20));
 		}
 	}
 
 	/**
-	 * Release OUR lock only: read the lock back and unlink only when the
-	 * owner token still matches. A lock another instance took over is left
-	 * alone (foreign-close protection).
+	 * Release OUR lock only: kill OUR helper. The kernel releases the
+	 * flock with the helper's death; the identity file is CLEARED so a
+	 * same-process successor is never mistaken for a live legacy owner —
+	 * the flock is the authority, the file is advisory (第四轮).
 	 */
 	private releaseLock(sessionId: string): void {
-		const token = this.#locks.get(sessionId);
-		if (token === undefined) return;
+		const child = this.#lockHelpers.get(sessionId);
+		if (child === undefined) return;
+		this.#lockHelpers.delete(sessionId);
+		child.kill();
 		try {
-			const lock = JSON.parse(readFileSync(this.lockPathFor(sessionId), "utf8")) as { token?: string };
-			if (lock.token === token) {
-				unlinkSync(this.lockPathFor(sessionId));
-			}
+			writeFileSync(this.lockPathFor(sessionId), "");
 		} catch {
-			// already gone
+			// advisory only
 		}
-		this.#locks.delete(sessionId);
 	}
 
 	// ── append: lock, open, repair, CAS, write, fsync ────────────────────
 
 	/** Write-ahead: durable (written + fsynced) before returning. */
-	append(sessionId: string, runId: string, event: Event): void {
+	async append(sessionId: string, runId: string, event: Event): Promise<void> {
 		if (this.#closed.has(sessionId)) {
 			throw new Error(`session store is closed for ${sessionId}`);
 		}
 		this.pathFor(sessionId); // id validated before ANY file side effect
-		this.acquireLock(sessionId);
+		await this.acquireLock(sessionId);
 		let fd: number;
 		try {
 			fd = this.fd(sessionId);
@@ -331,7 +324,7 @@ export class SessionStore {
 
 	/** Release every held fd and lock, including locks whose JSONL open failed. */
 	closeAll(): void {
-		for (const id of new Set([...this.#fds.keys(), ...this.#locks.keys()])) {
+		for (const id of new Set([...this.#fds.keys(), ...this.#lockHelpers.keys()])) {
 			this.close(id);
 		}
 	}
@@ -344,17 +337,101 @@ function isRecord(value: unknown): value is StoreRecord {
 }
 
 /**
- * Parse a lock file: modern JSON {pid, token} or the legacy bare-pid
- * string. Legacy locks have no token — a takeover can still verify the
- * pid (the moved file's pid must match the one we read).
+ * Read a lock file's holder identity (第四轮). Formats:
+ *   modern:  {"pid": 123, "token": "..."}
+ *   legacy:  a bare pid — either the STRING "123" or, because
+ *            JSON.parse("123") yields the NUMBER 123, the number itself.
+ *            Neither may be mistaken for an object without a pid.
+ * Empty, unreadable, or half-written locks have no identity — the kernel
+ * flock supersedes them (there is nothing to refuse, and nothing to
+ * delete).
  */
-function parseLock(raw: string): { pid?: number; token?: string } | null {
+function readLockIdentity(lockPath: string): { pid?: number; token?: string } | null {
+	let raw: string;
 	try {
-		return JSON.parse(raw) as { pid?: number; token?: string };
+		raw = readFileSync(lockPath, "utf8");
 	} catch {
-		const pid = Number.parseInt(raw.trim(), 10);
+		return null;
+	}
+	const trimmed = raw.trim();
+	if (trimmed === "") return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(trimmed);
+	} catch {
+		parsed = trimmed; // half-written JSON — try as a bare pid
+	}
+	if (typeof parsed === "number" && Number.isInteger(parsed)) {
+		return { pid: parsed }; // JSON.parse("123") — a legacy bare pid
+	}
+	if (typeof parsed === "string") {
+		const pid = Number.parseInt(parsed, 10);
 		return Number.isFinite(pid) ? { pid } : null;
 	}
+	if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+		const v = parsed as Record<string, unknown>;
+		return {
+			...(typeof v.pid === "number" ? { pid: v.pid } : {}),
+			...(typeof v.token === "string" ? { token: v.token } : {}),
+		};
+	}
+	return null;
+}
+
+/**
+ * The lock helper: a python3 process that takes an EXCLUSIVE flock on the
+ * lock path and HOLDS it until it dies (its stdin is closed / it is
+ * killed). The kernel releases the flock with the helper — the lock is
+ * tied to the open file description, so a dead helper can never leave a
+ * stale lock behind, and no contender can ever remove a live one.
+ * python3's `fcntl` module provides flock on both macOS and Linux.
+ */
+const LOCK_HELPER_SCRIPT = [
+	"import fcntl, os, sys",
+	"fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644)",
+	"try:",
+	"    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)",
+	"except OSError:",
+	"    print('BUSY', flush=True)",
+	"    sys.exit(0)",
+	"print('LOCKED', flush=True)",
+	"try:",
+	"    while sys.stdin.buffer.read(1):",
+	"        pass",
+	"except Exception:",
+	"    pass",
+].join("\n");
+
+/** The helper's first stdout line: "LOCKED" or anything else = busy/dead. */
+function helperVerdict(child: ChildProcess): Promise<string> {
+	return new Promise((resolve) => {
+		let buf = "";
+		let settled = false;
+		const done = (verdict: string): void => {
+			if (settled) return;
+			settled = true;
+			child.stdout?.removeAllListeners();
+			// The helper is a LOCK DAEMON: it must never keep the parent's
+			// event loop alive (a finished store exits cleanly), and when the
+			// parent DOES exit the pipes close, the helper's read hits EOF,
+			// the helper exits, and the kernel releases the flock. The child
+			// process handle, its stdin hold, and its verdict channel are all
+			// unref'd — the lock outlives nothing the parent does not.
+			const unref = (s: unknown): void => (s as { unref?: () => void })?.unref?.();
+			unref(child);
+			unref(child.stdin);
+			unref(child.stdout);
+			resolve(verdict);
+		};
+		child.stdout?.on("data", (d: Buffer) => {
+			buf += d.toString();
+			const nl = buf.indexOf("\n");
+			if (nl !== -1) done(buf.slice(0, nl).trim());
+		});
+		child.stdout?.on("end", () => done(buf.trim()));
+		child.stdout?.on("error", () => done("FAILED"));
+		child.on("error", () => done("FAILED")); // python3 missing etc.
+	});
 }
 
 function isAlive(pid: number): boolean {

@@ -26,7 +26,7 @@ function runCli(args: string[], input: string, env: Record<string, string>) {
 }
 
 describe("kiso CLI (built artifact, faux mode)", () => {
-	it("chat → resume in a new process → sessions listing → durable two-run history", () => {
+	it("chat → resume in a new process → sessions listing → durable two-run history", async () => {
 		const home = mkdtempSync(join(tmpdir(), "kiso-cli-"));
 		const id = "e2e";
 
@@ -55,9 +55,15 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		// seq is contiguous across the process boundary.
 		const seqs = records.map((r) => r.event.seq);
 		expect(seqs).toEqual([...seqs.keys()]);
-		// E 组: no writer lock is left behind after the CLI exits.
-				const leftovers = readdirSync(join(home, "sessions")).filter((f) => f.endsWith(".lock"));
-		expect(leftovers).toEqual([]);
+		// 第四轮: the lock FILE persists (it is never deleted), but the
+		// CLI released the kernel lock — a fresh writer acquires it at once.
+		const leftovers = readdirSync(join(home, "sessions")).filter((f) => f.endsWith(".lock"));
+		expect(leftovers).toEqual(["e2e.lock"]);
+		await new SessionStore(join(home, "sessions")).append("e2e", "post-exit", {
+			seq: records.length,
+			type: "stop",
+			reason: "end_turn",
+		});
 	});
 
 	it("faux chat supports at least two consecutive user turns in ONE process (F 组)", () => {

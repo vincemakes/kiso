@@ -44,7 +44,7 @@ describe("session.approve", () => {
 			events.push(ev);
 			if (ev.type === "permission_requested") {
 				expect(session.pendingApprovals().map((p) => p.decisionId)).toContain(ev.decisionId);
-				session.approve(ev.decisionId, true);
+				await session.approve(ev.decisionId, true);
 			}
 		}
 		const terminal = events.find((e) => e.type === "terminal");
@@ -62,7 +62,7 @@ describe("session.approve", () => {
 		const events: Event[] = [];
 		for await (const ev of session.run("search")) {
 			events.push(ev);
-			if (ev.type === "permission_requested") session.approve(ev.decisionId, false);
+			if (ev.type === "permission_requested") await session.approve(ev.decisionId, false);
 		}
 		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
 		const result = events.find((e) => e.type === "tool_result");
@@ -90,7 +90,7 @@ describe("session.approve", () => {
 		expect(pending).toHaveLength(1);
 		expect(pending[0]?.name).toBe("web_search");
 		// Answering persists and clears it.
-		reloaded.approve(pending[0]!.decisionId, false);
+		await reloaded.approve(pending[0]!.decisionId, false);
 		const again = await agent2.session({ id: "s" });
 		expect(again.pendingApprovals()).toEqual([]);
 	});
@@ -104,8 +104,8 @@ describe("session.approve", () => {
 		for await (const ev of session.run("search")) {
 			events.push(ev);
 			if (ev.type === "permission_requested") {
-				session.approve(ev.decisionId, true); // the live answer
-				session.approve(ev.decisionId, false); // a stray second answer
+				await session.approve(ev.decisionId, true); // the live answer
+				await session.approve(ev.decisionId, false); // a stray second answer
 			}
 		}
 		const decided = store
@@ -118,19 +118,19 @@ describe("session.approve", () => {
 });
 
 describe("uncertain executions", () => {
-	function crashedStore(): { dir: string; store: SessionStore } {
+	async function crashedStore(): Promise<{ dir: string; store: SessionStore }> {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-unc-"));
 		const store = new SessionStore(dir);
 		// Simulate a crash mid-execution: started is durable, no result ever
 		// followed, and the run has no terminal.
-		store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
-		store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
+		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
 		return { dir, store };
 	}
 
 	it("lists interrupted executions as uncertain; resume() refuses until resolved", async () => {
-		const { store } = crashedStore();
+		const { store } = await crashedStore();
 		const agent = searchAgent(store);
 		const session = await agent.session({ id: "s" });
 		const uncertain = session.uncertainExecutions();
@@ -147,7 +147,7 @@ describe("uncertain executions", () => {
 	});
 
 	it("a NEW logical call with the same input executes normally even after an uncertain one", async () => {
-		const { store } = crashedStore();
+		const { store } = await crashedStore();
 		// The recovery (resume) consumes its own provider turns, and the new
 		// run consumes its own — the script has four turns so neither starves.
 		const agent = createAgent({
@@ -168,9 +168,9 @@ describe("uncertain executions", () => {
 		// The human closes the interrupted execution, and the OPEN run reaches
 		// its terminal first (四: a new run is refused while an open run
 		// lingers — resume is the only way past it).
-		session.resolveUncertain("ex-2", "abandoned");
+		await session.resolveUncertain("ex-2", "abandoned");
 		for await (const ev of session.resume()) {
-			if (ev.type === "permission_requested") session.approve(ev.decisionId, true);
+			if (ev.type === "permission_requested") await session.approve(ev.decisionId, true);
 		}
 		expect(session.uncertainExecutions()).toEqual([]);
 		// The model re-issues the call (new logical call): it executes —
@@ -179,16 +179,16 @@ describe("uncertain executions", () => {
 		const events: Event[] = [];
 		for await (const ev of session.run("again")) {
 			events.push(ev);
-			if (ev.type === "permission_requested") session.approve(ev.decisionId, true);
+			if (ev.type === "permission_requested") await session.approve(ev.decisionId, true);
 		}
 		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
 	});
 
 	it("both rerun and abandoned fill a model-facing result — never a dangling tool_use", async () => {
 		// ── abandoned: the human says the attempt did not apply ──
-		const { store: store1 } = crashedStore();
+		const { store: store1 } = await crashedStore();
 		const session1 = await searchAgent(store1).session({ id: "s" });
-		session1.resolveUncertain("ex-2", "abandoned");
+		await session1.resolveUncertain("ex-2", "abandoned");
 		const rec1 = store1.load("s");
 		expect(rec1.some((r) => r.event.type === "tool_execution_resolved" && r.event.resolution === "abandoned")).toBe(true);
 		expect(rec1.some((r) => r.event.type === "tool_result" && r.event.isError && r.event.errorKind === "precondition")).toBe(true);
@@ -198,9 +198,9 @@ describe("uncertain executions", () => {
 		//    must be able to retry — which real providers REQUIRE (a dangling
 		//    tool_use is rejected by the Anthropic API). A result is filled
 		//    with the rerun verdict (review finding 1).
-		const { store: store2 } = crashedStore();
+		const { store: store2 } = await crashedStore();
 		const session2 = await searchAgent(store2).session({ id: "s" });
-		session2.resolveUncertain("ex-2", "rerun");
+		await session2.resolveUncertain("ex-2", "rerun");
 		const rec2 = store2.load("s");
 		expect(rec2.some((r) => r.event.type === "tool_execution_resolved" && r.event.resolution === "rerun")).toBe(true);
 		const filled = rec2.find((r) => r.event.type === "tool_result");

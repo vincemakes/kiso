@@ -71,7 +71,7 @@ describe("incident fixtures on the real session runtime", () => {
 				events.push(ev);
 				if (ev.type === "uncertain_pending") {
 					// The human decides: the interrupted attempt did not apply.
-					session.resolveUncertain(ev.executionId, "abandoned");
+					await session.resolveUncertain(ev.executionId, "abandoned");
 				}
 				if (abort !== undefined && events.length === wiring.abortAfter) {
 					// The user-abort fixture's signal is flipped mid-run,

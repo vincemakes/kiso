@@ -21,33 +21,33 @@ function tempStore(): SessionStore {
 }
 
 describe("SessionStore", () => {
-	it("appends durably and replays in order", () => {
+	it("appends durably and replays in order", async () => {
 		const store = tempStore();
-		store.append("s1", "r1", { seq: 0, type: "user_input", content: "hi" });
-		store.append("s1", "r1", { seq: 1, type: "stop", reason: "end_turn" });
+		await store.append("s1", "r1", { seq: 0, type: "user_input", content: "hi" });
+		await store.append("s1", "r1", { seq: 1, type: "stop", reason: "end_turn" });
 		const records = store.load("s1");
 		expect(records.map((r) => r.event.type)).toEqual(["user_input", "stop"]);
 		expect(records[0]?.runId).toBe("r1");
 	});
 
-	it("skips a partial tail line (crash mid-write) without losing the prefix", () => {
+	it("skips a partial tail line (crash mid-write) without losing the prefix", async () => {
 		const store = tempStore();
-		store.append("s1", "r1", { seq: 0, type: "user_input", content: "hi" });
+		await store.append("s1", "r1", { seq: 0, type: "user_input", content: "hi" });
 		appendFileSync(join(store.root, "s1.jsonl"), '{"runId":"r1","event":');
 		const records = store.load("s1");
 		expect(records).toHaveLength(1);
 		expect(records[0]?.event.type).toBe("user_input");
 	});
 
-	it("rejects session ids that would escape the store directory", () => {
+	it("rejects session ids that would escape the store directory", async () => {
 		const store = tempStore();
-		expect(() => store.append("../evil", "r1", { seq: 0, type: "user_input", content: "x" })).toThrow();
+		await expect(store.append("../evil", "r1", { seq: 0, type: "user_input", content: "x" })).rejects.toThrow();
 	});
 
-	it("lists session metadata with titles from the first prompt", () => {
+	it("lists session metadata with titles from the first prompt", async () => {
 		const store = tempStore();
-		store.append("demo", "r1", { seq: 0, type: "user_input", content: "Inspect this repository" });
-		store.append("other", "r1", { seq: 0, type: "user_input", content: "hi" });
+		await store.append("demo", "r1", { seq: 0, type: "user_input", content: "Inspect this repository" });
+		await store.append("other", "r1", { seq: 0, type: "user_input", content: "hi" });
 		const metas = store.list();
 		expect(metas.map((m) => m.id).sort()).toEqual(["demo", "other"]);
 		expect(metas.find((m) => m.id === "demo")?.title).toBe("Inspect this repository");

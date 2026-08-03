@@ -72,7 +72,7 @@ describe("resume: process A paused and exited, process B decides", () => {
 		const events: Event[] = [];
 		for await (const ev of sessionB.resume()) {
 			events.push(ev);
-			if (ev.type === "permission_requested") sessionB.approve(ev.decisionId, true);
+			if (ev.type === "permission_requested") await sessionB.approve(ev.decisionId, true);
 		}
 
 		// The original call ran exactly once, in process B, with the ORIGINAL input.
@@ -111,7 +111,7 @@ describe("resume: process A paused and exited, process B decides", () => {
 		const events: Event[] = [];
 		for await (const ev of sessionB.resume()) {
 			events.push(ev);
-			if (ev.type === "permission_requested") sessionB.approve(ev.decisionId, false);
+			if (ev.type === "permission_requested") await sessionB.approve(ev.decisionId, false);
 		}
 
 		expect(existsSync(marker)).toBe(false);
@@ -140,7 +140,7 @@ describe("resume: process A paused and exited, process B decides", () => {
 		const sessionMid = await agentMid.session({ id: "s" });
 		const pending = sessionMid.pendingApprovals();
 		expect(pending).toHaveLength(1);
-		sessionMid.approve(pending[0]!.decisionId, true);
+		await sessionMid.approve(pending[0]!.decisionId, true);
 		storeMid.closeAll();
 
 		// The real resume applies the decision WITHOUT pausing again.
@@ -164,10 +164,10 @@ describe("receipt repair", () => {
 		// The crashed trajectory: execution succeeded, but the tool_result
 		// write never made it before the process died.
 		const store = new SessionStore(dir);
-		store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
-		store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "r1", { seq: 3, type: "tool_execution_succeeded", executionId: "ex-2", callId: "c1", result: { content: "results for k", isError: false } });
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
+		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "r1", { seq: 3, type: "tool_execution_succeeded", executionId: "ex-2", callId: "c1", result: { content: "results for k", isError: false } });
 		store.closeAll();
 
 		const agent = pausedAgent(new SessionStore(dir), marker, STOP_SCRIPT);
@@ -191,7 +191,7 @@ describe("resume boundaries", () => {
 		const agent = pausedAgent(store, join(dir, "m.txt"));
 		const session = await agent.session({ id: "s" });
 		for await (const _ev of session.run("search")) {
-			if (_ev.type === "permission_requested") session.approve((_ev as { decisionId: string }).decisionId, true);
+			if (_ev.type === "permission_requested") await session.approve((_ev as { decisionId: string }).decisionId, true);
 		}
 		store.closeAll();
 
@@ -204,9 +204,9 @@ describe("resume boundaries", () => {
 	it("resume() refuses while uncertain executions await a human decision", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-res-"));
 		const store = new SessionStore(dir);
-		store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
-		store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
+		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
 		store.closeAll();
 
 		const agent = pausedAgent(new SessionStore(dir), join(dir, "m.txt"));

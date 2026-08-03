@@ -68,7 +68,7 @@ describe("execution identity end to end (四)", () => {
 		const sessionA = await agentA.session({ id: "s" });
 		const run1 = sessionA.run("first");
 		for await (const ev of run1) {
-			if (ev.type === "uncertain_pending") sessionA.resolveUncertain(ev.executionId, "abandoned");
+			if (ev.type === "uncertain_pending") await sessionA.resolveUncertain(ev.executionId, "abandoned");
 		}
 		storeA.closeAll();
 
@@ -81,7 +81,7 @@ describe("execution identity end to end (四)", () => {
 		const events: Event[] = [];
 		for await (const ev of sessionB.run("second")) {
 			events.push(ev);
-			if (ev.type === "permission_requested") sessionB.approve(ev.decisionId, true);
+			if (ev.type === "permission_requested") await sessionB.approve(ev.decisionId, true);
 		}
 		expect(events.some((e) => e.type === "uncertain_pending")).toBe(false); // not polluted
 		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
@@ -94,9 +94,9 @@ describe("execution identity end to end (四)", () => {
 	it("resolutions are attributed to the ORIGINAL runId — never the fake 'resolution'", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-eid-"));
 		const store = new SessionStore(dir);
-		store.append("s", "run-one", { seq: 0, type: "user_input", content: "go" });
-		store.append("s", "run-one", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "run-one", {
+		await store.append("s", "run-one", { seq: 0, type: "user_input", content: "go" });
+		await store.append("s", "run-one", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "run-one", {
 			seq: 2,
 			type: "tool_execution_started",
 			executionId: "ex-2",
@@ -107,7 +107,7 @@ describe("execution identity end to end (四)", () => {
 		store.closeAll();
 
 		const session = await agent(new SessionStore(dir), join(dir, "m.txt")).session({ id: "s" });
-		session.resolveUncertain("ex-2", "abandoned");
+		await session.resolveUncertain("ex-2", "abandoned");
 		const records = new SessionStore(dir).load("s");
 		// Every record after the crash belongs to the ORIGINAL run.
 		for (const r of records) {
@@ -143,13 +143,13 @@ describe("execution identity end to end (四)", () => {
 		for await (const ev of sessionB.resume()) {
 			events.push(ev);
 			if (ev.type === "permission_requested") {
-				sessionB.approve(ev.decisionId, true);
+				await sessionB.approve(ev.decisionId, true);
 			}
 			if (ev.type === "uncertain_pending") {
 				paused = true;
 				// The human decides BEFORE anything continues.
 				expect(events.some((e) => e.type === "terminal")).toBe(false);
-				sessionB.resolveUncertain(ev.executionId, "abandoned");
+				await sessionB.resolveUncertain(ev.executionId, "abandoned");
 			}
 		}
 		expect(paused).toBe(true);
@@ -167,20 +167,20 @@ describe("execution identity end to end (四)", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-eid-"));
 		const store = new SessionStore(dir);
 		// run-zero is TERMINATED and its callId-c1 execution has a result.
-		store.append("s", "run-zero", { seq: 0, type: "user_input", content: "zero" });
-		store.append("s", "run-zero", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "run-zero", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "run-zero", { seq: 3, type: "tool_execution_succeeded", executionId: "ex-2", callId: "c1", result: { content: "old ok", isError: false } });
-		store.append("s", "run-zero", { seq: 4, type: "tool_result", callId: "c1", content: "old ok", isError: false, executionId: "ex-2" });
-		store.append("s", "run-zero", { seq: 5, type: "stop", reason: "end_turn" });
-		store.append("s", "run-zero", { seq: 6, type: "terminal", outcome: { kind: "completed" } });
+		await store.append("s", "run-zero", { seq: 0, type: "user_input", content: "zero" });
+		await store.append("s", "run-zero", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "run-zero", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "run-zero", { seq: 3, type: "tool_execution_succeeded", executionId: "ex-2", callId: "c1", result: { content: "old ok", isError: false } });
+		await store.append("s", "run-zero", { seq: 4, type: "tool_result", callId: "c1", content: "old ok", isError: false, executionId: "ex-2" });
+		await store.append("s", "run-zero", { seq: 5, type: "stop", reason: "end_turn" });
+		await store.append("s", "run-zero", { seq: 6, type: "terminal", outcome: { kind: "completed" } });
 		// run-one is OPEN: its execution SUCCEEDED but the tool_result never
 		// landed (crash between the receipt and the result). The receipt's
 		// callId is c1 again — only the executionId distinguishes it.
-		store.append("s", "run-one", { seq: 7, type: "user_input", content: "one" });
-		store.append("s", "run-one", { seq: 8, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "run-one", { seq: 9, type: "tool_execution_started", executionId: "ex-9", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "run-one", { seq: 10, type: "tool_execution_succeeded", executionId: "ex-9", callId: "c1", result: { content: "new ok", isError: false } });
+		await store.append("s", "run-one", { seq: 7, type: "user_input", content: "one" });
+		await store.append("s", "run-one", { seq: 8, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "run-one", { seq: 9, type: "tool_execution_started", executionId: "ex-9", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "run-one", { seq: 10, type: "tool_execution_succeeded", executionId: "ex-9", callId: "c1", result: { content: "new ok", isError: false } });
 		store.closeAll();
 
 		const session = await agent(new SessionStore(dir), join(dir, "m.txt")).session({ id: "s" });
@@ -207,19 +207,19 @@ describe("execution identity end to end (四)", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-eid-"));
 		const store = new SessionStore(dir);
 		// run-zero is TERMINATED with a same-callId result.
-		store.append("s", "run-zero", { seq: 0, type: "user_input", content: "zero" });
-		store.append("s", "run-zero", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "run-zero", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "run-zero", { seq: 3, type: "tool_execution_succeeded", executionId: "ex-2", callId: "c1", result: { content: "old ok", isError: false } });
-		store.append("s", "run-zero", { seq: 4, type: "tool_result", callId: "c1", content: "old ok", isError: false, executionId: "ex-2" });
-		store.append("s", "run-zero", { seq: 5, type: "stop", reason: "end_turn" });
-		store.append("s", "run-zero", { seq: 6, type: "terminal", outcome: { kind: "completed" } });
+		await store.append("s", "run-zero", { seq: 0, type: "user_input", content: "zero" });
+		await store.append("s", "run-zero", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "run-zero", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "run-zero", { seq: 3, type: "tool_execution_succeeded", executionId: "ex-2", callId: "c1", result: { content: "old ok", isError: false } });
+		await store.append("s", "run-zero", { seq: 4, type: "tool_result", callId: "c1", content: "old ok", isError: false, executionId: "ex-2" });
+		await store.append("s", "run-zero", { seq: 5, type: "stop", reason: "end_turn" });
+		await store.append("s", "run-zero", { seq: 6, type: "terminal", outcome: { kind: "completed" } });
 		// run-one is OPEN: the human resolved ex-8 (started, no result —
 		// the uncertain execution) but the crash hit before the denial fill.
-		store.append("s", "run-one", { seq: 7, type: "user_input", content: "one" });
-		store.append("s", "run-one", { seq: 8, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "run-one", { seq: 9, type: "tool_execution_started", executionId: "ex-9", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.append("s", "run-one", { seq: 10, type: "tool_execution_resolved", executionId: "ex-9", callId: "c1", resolution: "abandoned" });
+		await store.append("s", "run-one", { seq: 7, type: "user_input", content: "one" });
+		await store.append("s", "run-one", { seq: 8, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "run-one", { seq: 9, type: "tool_execution_started", executionId: "ex-9", callId: "c1", name: "web_search", input: { query: "k" } });
+		await store.append("s", "run-one", { seq: 10, type: "tool_execution_resolved", executionId: "ex-9", callId: "c1", resolution: "abandoned" });
 		store.closeAll();
 
 		const session = await agent(new SessionStore(dir), join(dir, "m.txt")).session({ id: "s" });
@@ -248,7 +248,7 @@ describe("execution identity end to end (四)", () => {
 		const liveEvents: Event[] = [];
 		for await (const ev of live.run("hello")) {
 			liveEvents.push(ev);
-			if (ev.type === "permission_requested") live.approve(ev.decisionId, true);
+			if (ev.type === "permission_requested") await live.approve(ev.decisionId, true);
 		}
 		liveStore.closeAll();
 
@@ -265,7 +265,7 @@ describe("execution identity end to end (四)", () => {
 		const resumeEvents: Event[] = [];
 		for await (const ev of after.resume()) {
 			resumeEvents.push(ev);
-			if (ev.type === "permission_requested") after.approve(ev.decisionId, true);
+			if (ev.type === "permission_requested") await after.approve(ev.decisionId, true);
 		}
 
 		// The same logical execution gets the SAME executionId on both paths
