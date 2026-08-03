@@ -93,7 +93,11 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			case "user_input_replaced": {
 				flushAssistant();
 				if (ev.content !== null) {
-					out.push({ role: "user", content: ev.content } satisfies UserMessage);
+					out.push({
+						role: "user",
+						content: ev.content,
+						...(ev.source !== undefined ? { source: ev.source } : {}),
+					} satisfies UserMessage);
 				}
 				break;
 			}

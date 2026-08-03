@@ -130,6 +130,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// nothing, for a true veto), so the rewritten fact is the ONLY fact
 	// every later turn of the run sees.
 	let messages = derive();
+	let vetoed = false;
 	if (hooks.onUserMessage && messages.length > 0) {
 		const last = messages.at(-1);
 		if (last?.role === "user") {
@@ -142,14 +143,17 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					type: "user_input_replaced",
 					replaces: inputEvent.seq,
 					content: rewritten?.content ?? null,
+					...(rewritten !== null && rewritten.source !== undefined ? { source: rewritten.source } : {}),
 				});
 				messages = derive();
 				yield replaced;
+				if (rewritten === null) vetoed = true; // 三: a true veto ends the run
 			}
 		}
 	}
-	// A true veto leaves nothing to process — the run ends honestly.
-	if (messages.length === 0) {
+	// 三: a true veto ends the run — the provider is NEVER called, even
+	// when earlier history exists.
+	if (vetoed || messages.length === 0) {
 		yield await terminal({ kind: "completed" });
 		return;
 	}

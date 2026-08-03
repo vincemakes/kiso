@@ -316,6 +316,8 @@ export interface UserInputReplaced {
 	readonly type: "user_input_replaced";
 	readonly replaces: number;
 	readonly content: string | readonly import("./messages.js").ContentBlock[] | null;
+	/** Provenance of the replacement — preserved from the hook (三). */
+	readonly source?: import("./messages.js").MessageSource;
 }
 
 /** Extended-thinking content. Providers without it emit nothing here. */
