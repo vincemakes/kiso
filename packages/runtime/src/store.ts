@@ -94,6 +94,11 @@ export class SessionStore {
 	/** 第四轮(对抗): serialize concurrent acquireLock calls ON this instance —
 	 *  two racing appends must not spawn two helpers and fight each other. */
 	readonly #lockAcquiring = new Map<string, Promise<void>>();
+	/** 第五轮(P1-1): serialize the WHOLE append critical section per session on
+	 *  this instance — lock check → CAS → write → fsync. A rejected write
+	 *  propagates to every append queued behind it, so a concurrent write can
+	 *  never land after a stale failure (which would fork memory and disk). */
+	readonly #appendQueues = new Map<string, Promise<void>>();
 	readonly #closed = new Set<string>();
 
 	constructor(root: string) {
@@ -126,12 +131,22 @@ export class SessionStore {
 	 * window.
 	 */
 	private async acquireLock(sessionId: string): Promise<void> {
-		if (this.#lockHelpers.has(sessionId)) return;
+		// 第五轮(P1-2): the lock is held only while the helper PROCESS is
+		// alive — flock is bound to the helper's lifetime. A dead helper's
+		// entry must never be trusted as "locked".
+		if (this.lockHeld(sessionId)) return;
 		const inFlight = this.#lockAcquiring.get(sessionId);
 		if (inFlight !== undefined) return inFlight;
 		const attempt = this.#acquireLockOnce(sessionId).finally(() => this.#lockAcquiring.delete(sessionId));
 		this.#lockAcquiring.set(sessionId, attempt);
 		return attempt;
+	}
+
+	/** 第五轮(P1-2): true only while the helper process is alive. */
+	private lockHeld(sessionId: string): boolean {
+		const child = this.#lockHelpers.get(sessionId);
+		if (child === undefined || child.pid === undefined || child.pid <= 0) return false;
+		return isAlive(child.pid);
 	}
 
 	async #acquireLockOnce(sessionId: string): Promise<void> {
@@ -162,6 +177,14 @@ export class SessionStore {
 					// the file itself is advisory — the kernel lock holds
 				}
 				this.#lockHelpers.set(sessionId, child);
+				// 第五轮(P1-2): the helper's death removes the entry — the
+				// flock dies with the process; a later append re-acquires
+				// (and fails honestly if a rival holds the flock now).
+				child.on("exit", () => {
+					if (this.#lockHelpers.get(sessionId) === child) {
+						this.#lockHelpers.delete(sessionId);
+					}
+				});
 				return;
 			}
 			child.kill();
@@ -185,6 +208,11 @@ export class SessionStore {
 			}
 			if (attempt >= 25) {
 				throw new Error(`session ${sessionId} is locked by another writer`);
+			}
+			// 第五轮(P1-3): a close() that landed while we waited ends the
+			// acquisition immediately — no 500ms wait, no lock at all.
+			if (this.#closed.has(sessionId)) {
+				throw new Error(`session store is closed for ${sessionId}`);
 			}
 			await new Promise((resolve) => setTimeout(resolve, 20));
 		}
@@ -220,7 +248,35 @@ export class SessionStore {
 			throw new Error(`session store is closed for ${sessionId}`);
 		}
 		this.pathFor(sessionId); // id validated before ANY file side effect
+		// 第五轮(P1-1): the WHOLE critical section is serialized per session
+		// on this instance — and a rejection PROPAGATES to every append
+		// queued behind it: a concurrent write can never land after a
+		// stale failure that poisoned the session.
+		const previous = this.#appendQueues.get(sessionId) ?? Promise.resolve();
+		const run = previous.then(() => this.#appendOnce(sessionId, runId, event));
+		this.#appendQueues.set(sessionId, run);
+		try {
+			await run;
+		} finally {
+			if (this.#appendQueues.get(sessionId) === run) {
+				this.#appendQueues.delete(sessionId);
+			}
+		}
+	}
+
+	async #appendOnce(sessionId: string, runId: string, event: Event): Promise<void> {
+		// 第五轮(P1-3): close() may have returned while we waited — the
+		// lifecycle barrier is re-checked after the lock acquisition.
+		if (this.#closed.has(sessionId)) {
+			throw new Error(`session store is closed for ${sessionId}`);
+		}
 		await this.acquireLock(sessionId);
+		if (this.#closed.has(sessionId)) {
+			// The lock was acquired AFTER close() returned — release it and
+			// fail; nothing of this instance may outlive close().
+			this.releaseLock(sessionId);
+			throw new Error(`session store is closed for ${sessionId}`);
+		}
 		let fd: number;
 		try {
 			fd = this.fd(sessionId);
@@ -240,6 +296,11 @@ export class SessionStore {
 		}
 		appendFileSync(fd, `${JSON.stringify({ runId, ts: Date.now(), event })}\n`);
 		fsyncSync(fd);
+		// 第五轮(P1-3): a close() that landed during the write must not
+		// leave our helper behind.
+		if (this.#closed.has(sessionId)) {
+			this.releaseLock(sessionId);
+		}
 	}
 
 	/**
