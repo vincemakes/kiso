@@ -648,6 +648,9 @@ export class Run implements AsyncIterable<Event> {
 							callId: ev.callId,
 							content: ev.result.content,
 							isError: false,
+							// 八: the repaired result reproduces the normal path
+							// losslessly — the tags ride on the durable receipt.
+							...(ev.tags !== undefined ? { tags: ev.tags } : {}),
 							executionId: ev.executionId,
 						}
 					: {
@@ -656,6 +659,7 @@ export class Run implements AsyncIterable<Event> {
 							content: ev.error,
 							isError: true,
 							...(ev.errorKind !== undefined ? { errorKind: ev.errorKind } : {}),
+							...(ev.tags !== undefined ? { tags: ev.tags } : {}),
 							executionId: ev.executionId,
 						},
 			);
@@ -737,6 +741,7 @@ export class Run implements AsyncIterable<Event> {
 				error: result.content,
 				...(result.errorKind !== undefined ? { errorKind: result.errorKind } : {}),
 				safeToRetry: tool?.idempotent === true,
+				...(result.tags !== undefined ? { tags: result.tags } : {}),
 			});
 		} else {
 			yield log.append({
@@ -744,6 +749,7 @@ export class Run implements AsyncIterable<Event> {
 				executionId,
 				callId,
 				result: { content: result.content, isError: false },
+				...(result.tags !== undefined ? { tags: result.tags } : {}),
 			});
 		}
 		yield log.append({

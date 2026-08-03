@@ -732,6 +732,8 @@ async function* executeOne(
 		// Area 3: only a tool that PROVED safe-to-retry (idempotent) gets a
 		// clean failure; a non-idempotent failure may have produced a side
 		// effect and is uncertain until a human decides.
+		// 八: the tags ride on the RECEIPT too — a crash-window repair of the
+		// tool_result reproduces the normal path losslessly.
 		yield log.append({
 			type: "tool_execution_failed",
 			executionId,
@@ -739,6 +741,7 @@ async function* executeOne(
 			error: result.content,
 			...(result.errorKind ? { errorKind: result.errorKind } : {}),
 			safeToRetry: tool.idempotent === true,
+			...(result.tags !== undefined ? { tags: result.tags } : {}),
 		});
 	} else {
 		yield log.append({
@@ -746,6 +749,7 @@ async function* executeOne(
 			executionId,
 			callId: call.callId,
 			result: { content: result.content, isError: false },
+			...(result.tags !== undefined ? { tags: result.tags } : {}),
 		});
 	}
 

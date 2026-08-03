@@ -231,6 +231,9 @@ export interface ToolExecutionSucceeded {
 	readonly executionId: string;
 	readonly callId: string;
 	readonly result: { readonly content: string; readonly isError: false };
+	/** 八: the tags ride on the durable RECEIPT so a crash-window repair
+	 *  of the tool_result can reproduce the normal path losslessly. */
+	readonly tags?: readonly string[];
 }
 
 /**
@@ -247,6 +250,8 @@ export interface ToolExecutionFailed {
 	readonly error: string;
 	readonly errorKind?: ToolErrorKind;
 	readonly safeToRetry: boolean;
+	/** 八: tags on the durable receipt, preserved across crash-window repair. */
+	readonly tags?: readonly string[];
 }
 
 /**
@@ -633,13 +638,15 @@ const EVENT_VALIDATORS = {
 		typeof v.callId === "string" &&
 		isPlainObject(v.result) &&
 		typeof (v.result as Record<string, unknown>).content === "string" &&
-		(v.result as Record<string, unknown>).isError === false,
+		(v.result as Record<string, unknown>).isError === false &&
+		isTags(v),
 	tool_execution_failed: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" &&
 		typeof v.callId === "string" &&
 		typeof v.error === "string" &&
 		typeof v.safeToRetry === "boolean" &&
-		isErrorKind(v),
+		isErrorKind(v) &&
+		isTags(v),
 	tool_execution_resolved: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" &&
 		typeof v.callId === "string" &&
