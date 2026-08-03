@@ -35,6 +35,7 @@ import {
 	openSync,
 	readFileSync,
 	readdirSync,
+	renameSync,
 	readSync,
 	unlinkSync,
 	writeFileSync,
@@ -124,19 +125,51 @@ export class SessionStore {
 			if (code !== "EEXIST") throw err;
 			let holder: { pid?: number; token?: string } | null = null;
 			try {
-				holder = JSON.parse(readFileSync(lockPath, "utf8")) as { pid?: number; token?: string };
+				holder = parseLock(readFileSync(lockPath, "utf8"));
 			} catch {
 				holder = null; // unreadable lock — treat as stale
 			}
 			if (holder?.pid !== undefined && isAlive(holder.pid)) {
 				throw new Error(`session ${sessionId} is locked by another writer (pid ${holder.pid})`);
 			}
+			// 二: takeover is IDENTITY-CONFIRMED, never a blind delete. The
+			// stale lock is renamed AWAY atomically; then we verify that what
+			// we moved is the SAME lock we read. If a rival created a live
+			// lock in between, the rename moved THAT — we restore it and
+			// retry (the live lock is never deleted).
+			const tomb = `${lockPath}.takeover-${crypto.randomUUID()}`;
 			try {
-				unlinkSync(lockPath); // stale — the holder died without releasing
-			} catch {
-				// A concurrent recovery already took the stale lock over —
-				// retry the acquire, don't die on the race.
+				renameSync(lockPath, tomb);
+			} catch (err) {
+				if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+					// A concurrent recovery already took it over — retry.
+					return this.acquireLock(sessionId);
+				}
+				throw err;
 			}
+			let moved: { pid?: number; token?: string } | null = null;
+			try {
+				moved = parseLock(readFileSync(tomb, "utf8"));
+			} catch {
+				moved = null;
+			}
+			// Identity confirmed: the moved lock has the same token AND pid as
+			// the one we read. A rival's live lock has a different token.
+			const sameIdentity =
+				moved !== null &&
+				(moved.token ?? null) === (holder?.token ?? null) &&
+				(moved.pid ?? null) === (holder?.pid ?? null);
+			if (!sameIdentity) {
+				// We moved a DIFFERENT lock (a live one) — put it back.
+				try {
+					renameSync(tomb, lockPath);
+				} catch {
+					// the rival already re-created it — drop the tomb
+					unlinkSync(tomb);
+				}
+				return this.acquireLock(sessionId);
+			}
+			unlinkSync(tomb); // our stale lock — now gone
 			this.acquireLock(sessionId);
 		}
 	}
@@ -225,20 +258,22 @@ export class SessionStore {
 		for (let i = 0; i < lines.length; i++) {
 			if (lines[i] !== "") nonEmpty.push(i);
 		}
+		// 二: a line WITHOUT a trailing newline is NOT committed — whether
+		// or not it happens to parse. load and append must agree: append's
+		// torn-tail repair truncates exactly what load refuses to return.
 		const tolerantTail = !raw.endsWith("\n");
 		const records: StoreRecord[] = [];
 		for (let k = 0; k < nonEmpty.length; k++) {
 			const line = lines[nonEmpty[k]!]!;
 			const isLast = k === nonEmpty.length - 1;
+			if (isLast && tolerantTail) break; // uncommitted — drop it
 			let parsed: unknown;
 			try {
 				parsed = JSON.parse(line);
 			} catch {
-				if (isLast && tolerantTail) break; // torn tail — the one tolerated damage
 				throw new StoreCorruptionError(`line ${nonEmpty[k]! + 1} is not JSON`);
 			}
 			if (!isRecord(parsed)) {
-				if (isLast && tolerantTail) break; // a truncated object that happens to parse
 				throw new StoreCorruptionError(`line ${nonEmpty[k]! + 1} is not a session record`);
 			}
 			records.push(parsed);
@@ -306,6 +341,20 @@ function isRecord(value: unknown): value is StoreRecord {
 	if (typeof value !== "object" || value === null) return false;
 	const v = value as Record<string, unknown>;
 	return typeof v.runId === "string" && typeof v.ts === "number" && isKisoEvent(v.event);
+}
+
+/**
+ * Parse a lock file: modern JSON {pid, token} or the legacy bare-pid
+ * string. Legacy locks have no token — a takeover can still verify the
+ * pid (the moved file's pid must match the one we read).
+ */
+function parseLock(raw: string): { pid?: number; token?: string } | null {
+	try {
+		return JSON.parse(raw) as { pid?: number; token?: string };
+	} catch {
+		const pid = Number.parseInt(raw.trim(), 10);
+		return Number.isFinite(pid) ? { pid } : null;
+	}
 }
 
 function isAlive(pid: number): boolean {
