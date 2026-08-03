@@ -5,7 +5,7 @@
  * (npm run check builds before testing).
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -91,5 +91,55 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		const result = runCli(["help"], "", {});
 		expect(result.status).toBe(0);
 		expect(result.stdout).toContain("kiso chat");
+	});
+	it("P1-11: Ctrl+C during startup recovery does not swallow the next user input (real PTY)", async () => {
+		const home = mkdtempSync(join(tmpdir(), "kiso-cli-"));
+		// Seed a session with a PENDING approval so the startup recovery
+		// pauses at a question.
+		const store = new SessionStore(join(home, "sessions"));
+		await store.append("prep", "r1", { seq: 0, type: "user_input", content: "go" });
+		await store.append("prep", "r1", { seq: 1, type: "permission_requested", decisionId: "d-1", callId: "c1", name: "web_search", input: {} });
+		store.closeAll();
+
+		// A REAL PTY via python3's pty module (ISIG enabled): Ctrl+C at the
+		// question (cancels it and aborts the recovery run), then a user
+		// line, then exit. The post-cancellation line must become a NEW
+		// turn — the dead question must not swallow it.
+		const helper = `
+import pty, os, sys, time, select
+pid, fd = pty.fork()
+if pid == 0:
+    os.environ["KISO_HOME"] = ${JSON.stringify(home)}
+    os.execvp("node", ["node", ${JSON.stringify(CLI)}, "chat", "prep"])
+out = b""
+def read_until(needle, timeout):
+    global out
+    end = time.time() + timeout
+    while needle not in out and time.time() < end:
+        r, _, _ = select.select([fd], [], [], 0.2)
+        if r:
+            try:
+                out += os.read(fd, 4096)
+            except OSError:
+                break
+    return needle in out
+read_until(b"approve web_search", 15)   # the recovery question is up
+os.write(fd, b"\\x03")                   # Ctrl+C: cancel the question, abort the run
+time.sleep(0.8)
+os.write(fd, b"hello\\n")                # the NEXT user input
+processed = read_until(b"faux model", 15)  # it became a turn and was answered
+os.write(fd, b"exit\\n")
+time.sleep(1)
+try:
+    os.kill(pid, 15)
+except ProcessLookupError:
+    pass
+sys.stdout.write(out.decode(errors="replace"))
+sys.exit(0 if processed else 1)
+`;
+		const result = spawnSync("python3", ["-c", helper], { encoding: "utf8", timeout: 60_000 });
+		expect(result.status, result.stdout.slice(-600)).toBe(0);
+		// The line after the cancellation produced a real turn.
+		expect(result.stdout).toContain("faux model");
 	});
 });

@@ -705,7 +705,6 @@ async function* executeOne(
 					// recorded (exactly once), never lost; the abort then
 					// ends the run with its honest aborted terminal.
 					const verdict = resolveApprovalVerdict?.(decisionId);
-					console.error("[DBG] executeOne ABORTED catch, verdict:", verdict, "decisionId:", decisionId);
 					if (verdict !== undefined) {
 						yield log.append({
 							type: "permission_decided",
@@ -831,12 +830,10 @@ async function raceAbort<T>(
 	if (signal.aborted) throw ABORTED;
 	return new Promise<T>((resolve, reject) => {
 		const onAbort = (): void => {
-			console.error("[DBG] raceAbort onAbort fired");
 			signal.removeEventListener("abort", onAbort);
 			reject(ABORTED);
 		};
 		signal.addEventListener("abort", onAbort, { once: true });
-		console.error("[DBG] raceAbort registered; pendingDecision then:", typeof pendingDecision.then);
 		pendingDecision.then(
 			(value) => {
 				signal.removeEventListener("abort", onAbort);

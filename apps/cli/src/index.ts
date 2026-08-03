@@ -329,6 +329,28 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 		}
 	});
 
+	// 第五轮(P1-11): the PERSISTENT line listener is installed BEFORE the
+	// startup recovery — a cancelled question's re-emitted "line" needs a
+	// listener from the very first instant, or the input is silently lost.
+	// Turns are SERIALIZED on a chain — piped lines arrive faster than
+	// turns complete, and concurrent runs are forbidden. Lines that arrive
+	// while the recovery is still running are QUEUED and replayed once the
+	// REPL is ready (they are never dropped).
+	let chain: Promise<void> = Promise.resolve();
+	let replReady = false;
+	const queuedLines: string[] = [];
+	rl.on("line", (line) => {
+		if (line.trim().toLowerCase() === "exit" || line.trim() === "") {
+			rl.close();
+			return;
+		}
+		if (!replReady) {
+			queuedLines.push(line);
+			return;
+		}
+		chain = chain.then(() => turn(line));
+	});
+
 	// Recovery first: a session with a dangling pause or uncertain
 	// executions must resolve them BEFORE the REPL accepts new turns —
 	// otherwise the interrupted run dangles while a new one starts.
@@ -347,19 +369,12 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 		await new Promise<void>((resolve) => rl.on("close", () => resolve()));
 		return;
 	}
-	// A PERSISTENT line listener: rl.question attaches a one-shot listener,
-	// and a line arriving while no question is pending is silently LOST
-	// (piped stdin). The REPL loop must never drop a user turn (F 组).
-	// Turns are SERIALIZED on a chain — piped lines arrive faster than
-	// turns complete, and concurrent runs are forbidden.
-	let chain: Promise<void> = Promise.resolve();
-	rl.on("line", (line) => {
-		if (line.trim().toLowerCase() === "exit" || line.trim() === "") {
-			rl.close();
-			return;
-		}
+	// The REPL is ready: replay anything that arrived during recovery.
+	replReady = true;
+	for (const line of queuedLines) {
 		chain = chain.then(() => turn(line));
-	});
+	}
+	queuedLines.length = 0;
 	rl.setPrompt("you> ");
 	rl.prompt();
 	await new Promise<void>((resolve) => rl.on("close", () => resolve()));
