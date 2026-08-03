@@ -76,6 +76,32 @@ describe("shell: the whole tree dies (八)", () => {
 		},
 		15_000,
 	);
+
+	it(
+		"十一: EVERY setsid()-escaped descendant of a MULTI-fork command dies and is confirmed gone",
+		async () => {
+			const dir = root();
+			const markers = [`sleep 8127`, `sleep 8128`, `sleep 8129`];
+			// Three independent setsid()-escaped descendants, each forked by
+			// its own backgrounded python; the outer shell waits on them all.
+			const command = markers.map((m) => `python3 -c "import os; os.setsid(); os.system('${m}')" &`).join(" ") + " wait";
+			const promise = shellTool({ workspaceRoot: dir }).execute(
+				{ command },
+				CTX({
+					aborted: false,
+					addEventListener: (_t, listener) => setTimeout(() => (listener as () => void)(), 800),
+					removeEventListener: () => {},
+				}),
+			);
+			const result = await promise;
+			expect(result).toMatchObject({ isError: true });
+			expect(result.content).toMatch(/abort/i);
+			expect(result.content).not.toMatch(/UNCERTAIN/i); // confirmed, not hedged
+			await new Promise((r) => setTimeout(r, 500));
+			for (const marker of markers) expect(liveWith(marker)).toBe(0);
+		},
+		15_000,
+	);
 });
 
 describe("write/edit: mode and temp hygiene (八)", () => {

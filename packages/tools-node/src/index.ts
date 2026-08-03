@@ -439,27 +439,52 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				};
 
 				/**
-				 * Kill the whole tree and CONFIRM it exited (八): the process
-				 * group covers the shell and its in-group children, but a
-				 * descendant that called setsid() has its own group — only the
-				 * pid table can find it. Every tracked descendant is killed and
-				 * polled to death before the tool returns.
+				 * Kill the whole tree and CONFIRM it exited (八/十一):
+				 *
+				 * 1. FREEZE the root (SIGSTOP) FIRST — a stopped shell cannot
+				 *    fork new descendants while we enumerate;
+				 * 2. repeatedly discover AND freeze descendants (pid-table
+				 *    sweep — the only way to see a setsid()-escaped process)
+				 *    until the set is STABLE (two identical scans), so the
+				 *    enumeration cannot miss a mid-sweep fork;
+				 * 3. SIGKILL the process group and every tracked pid;
+				 * 4. poll every tracked pid to death. If ANY tracked pid is
+				 *    still alive at the deadline, the verdict is NOT
+				 *    "aborted"/"timed out" — it is an explicit UNCERTAIN
+				 *    error naming the survivors: the side effect may have
+				 *    outlived the tool, and the caller must not assume it
+				 *    was killed.
 				 */
-				const killTree = (): Promise<void> =>
+				const killTree = (): Promise<{ unconfirmed: number[] }> =>
 					new Promise((resolveKill) => {
 						const tracked = new Set<number>();
-						// 1. The pid-table sweep FIRST, while the child is still
-						//    alive — its descendants are still traceable.
-						for (const pid of descendantsOf(child.pid ?? 0)) {
-							tracked.add(pid);
+						if (child.pid !== undefined && child.pid > 0) {
 							try {
-								process.kill(pid, "SIGKILL");
+								process.kill(child.pid, "SIGSTOP"); // freeze the root
 							} catch {
 								// already gone
 							}
 						}
-						// 2. The process group (E 组: never kill an undefined/0
-						//    pid), which also takes the direct shell down.
+						// Stable discovery: freeze as we go; stop when two
+						// consecutive scans are identical.
+						let previous = new Set<number>();
+						for (let i = 0; i < 10; i++) {
+							const current = new Set(descendantsOf(child.pid ?? 0));
+							for (const pid of current) {
+								tracked.add(pid);
+								try {
+									process.kill(pid, "SIGSTOP"); // freeze each descendant
+								} catch {
+									// already gone
+								}
+							}
+							if (current.size === previous.size && [...current].every((pid) => previous.has(pid))) {
+								break;
+							}
+							previous = current;
+						}
+						// The process group (E 组: never kill an undefined/0
+						// pid), which also takes the frozen root down.
 						if (child.pid !== undefined && child.pid > 0) {
 							try {
 								process.kill(-child.pid, "SIGKILL");
@@ -471,16 +496,24 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 								}
 							}
 						}
+						for (const pid of tracked) {
+							try {
+								process.kill(pid, "SIGKILL");
+							} catch {
+								// already gone
+							}
+						}
+						const confirm = (): void => {
+							void waitAllDead([...tracked]).then((unconfirmed) => resolveKill({ unconfirmed }));
+						};
 						if (exited) {
-							resolveKill();
+							confirm();
 							return;
 						}
-						const fallback = setTimeout(resolveKill, 2000);
+						const fallback = setTimeout(confirm, 2000);
 						child.once("close", () => {
 							clearTimeout(fallback);
-							// 3. 八: the timeout/abort verdict is not final until
-							//    EVERY tracked descendant has actually exited.
-							void waitAllDead([...tracked]).then(() => resolveKill());
+							confirm();
 						});
 					});
 
@@ -506,17 +539,29 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 
 				// The kernel's abort reaches the command AND its whole tree.
 				// The listener is removed by settle (E 组).
+				const uncertainVerdict = (unconfirmed: number[]): string =>
+					unconfirmed.length > 0
+						? `could not confirm ${unconfirmed.length} descendant(s) exited (pids ${unconfirmed.join(", ")}) — treat the side effect as UNCERTAIN`
+						: "";
 				const onAbort = (): void => {
 					killing = true;
-					void killTree().then(() =>
-						settle({ content: "shell aborted", isError: true, errorKind: "fatal" }),
+					void killTree().then(({ unconfirmed }) =>
+						settle({
+							content: `shell aborted${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}`,
+							isError: true,
+							errorKind: "fatal",
+						}),
 					);
 				};
 				ctx.signal.addEventListener("abort", onAbort);
 				const timer = setTimeout(() => {
 					killing = true;
-					void killTree().then(() =>
-						settle({ content: `shell timed out after ${timeout}ms`, isError: true, errorKind: "fatal" }),
+					void killTree().then(({ unconfirmed }) =>
+						settle({
+							content: `shell timed out after ${timeout}ms${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}`,
+							isError: true,
+							errorKind: "fatal",
+						}),
 					);
 				}, timeout);
 				timer.unref?.();
@@ -559,28 +604,28 @@ function descendantsOf(pid: number): number[] {
 	return out;
 }
 
-/** Poll the pid table until NONE of the tracked pids is alive (bounded). */
-function waitAllDead(pids: readonly number[]): Promise<void> {
-	if (pids.length === 0) return Promise.resolve();
+/**
+ * Poll the pid table until NONE of the tracked pids is alive (bounded).
+ * Returns the pids still alive at the deadline — the caller MUST NOT
+ * report "aborted"/"timed out" while any tracked pid survives (十一).
+ */
+function waitAllDead(pids: readonly number[]): Promise<number[]> {
+	if (pids.length === 0) return Promise.resolve([]);
 	return new Promise((resolve) => {
 		const deadline = Date.now() + 2000;
 		const poll = (): void => {
+			const alive: number[] = [];
 			for (const pid of pids) {
 				try {
 					process.kill(pid, 0);
-					if (Date.now() > deadline) return resolve();
-					setTimeout(poll, 50);
-					return;
+					alive.push(pid);
 				} catch (err) {
-					if ((err as NodeJS.ErrnoException).code === "EPERM") {
-						if (Date.now() > deadline) return resolve();
-						setTimeout(poll, 50);
-						return;
-					}
+					if ((err as NodeJS.ErrnoException).code === "EPERM") alive.push(pid);
 					// ESRCH — gone
 				}
 			}
-			resolve();
+			if (alive.length === 0 || Date.now() > deadline) return resolve(alive);
+			setTimeout(poll, 50);
 		};
 		poll();
 	});
