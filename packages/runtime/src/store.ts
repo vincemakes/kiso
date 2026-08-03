@@ -10,9 +10,13 @@
  *   overwrite a live holder's lock, because there is nothing to remove;
  *   the lock simply exists while the helper lives and vanishes with it;
  * - the lock file ALSO carries `{"pid": number, "token": string}` written
- *   by the holder, so an OLD-format writer (whose O_EXCL pidfile scheme
- *   does not honor flock) still sees a live owner and refuses to take
- *   over; conversely a dead/empty/unreadable legacy lock is harmless —
+ *   by the holder, as a best-effort guard for OLD-format writers (whose
+ *   O_EXCL pidfile scheme does not honor flock). 第五轮(P1-4): this guard
+ *   is NOT a seamless rolling upgrade — an old writer that created an
+ *   empty lock file before writing its pid creates a split-brain window
+ *   that a pidfile read cannot close. The documented upgrade contract is
+ *   QUARANTINE: stop every old-format process, THEN start the new
+ *   version. A dead/empty/unreadable legacy lock is otherwise harmless —
  *   flock ignores content, and the kernel lock is what matters;
  * - `close()` releases only THIS instance's helper; `closeAll()` every
  *   held helper — a foreign close can never release another writer's
@@ -125,10 +129,12 @@ export class SessionStore {
 	 * by a dedicated helper process. The KERNEL arbitrates every race —
 	 * there is no stale lock to delete and no takeover to race: a
 	 * contender either gets the flock (the previous holder is gone) or it
-	 * fails. The lock file also carries the holder's identity so an
-	 * OLD-format writer (which does not honor flock) still sees a live
-	 * owner and refuses to take over. No recursion, no deletion, no
-	 * window.
+	 * fails. The lock file also carries the holder's identity so an OLD-format
+	 * writer (which does not honor flock) still sees a live owner and
+	 * refuses to take over — a best-effort guard, NOT a seamless rolling
+	 * upgrade (第五轮 P1-4): the documented upgrade contract is quarantine —
+	 * stop every old-format process, then start the new version.
+	 * No recursion, no deletion, no window between NEW-format writers.
 	 */
 	private async acquireLock(sessionId: string): Promise<void> {
 		// 第五轮(P1-2): the lock is held only while the helper PROCESS is

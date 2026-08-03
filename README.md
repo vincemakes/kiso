@@ -151,7 +151,10 @@ A-F, 一-九, and the 第四轮 adversarial round), is complete (see
   human decides — a confirmed success is never re-run, a new logical call
   always runs.
 - **runtime** — `createAgent` / durable multi-turn sessions / crash-safe
-  JSONL store (torn-tail repair under a cross-process writer lock, strict
+  JSONL store (torn-tail repair under a kernel-flock cross-process writer
+  lock — upgrade requires QUARANTINE: stop every old-format process before
+  starting the new version; the pidfile guard is best-effort, not a
+  seamless rolling upgrade (第五轮 P1-4), strict
   load, contiguous-seq validation) / `session.resume()` continues the
   INTERRUPTED run across processes: durable approvals are applied (the
   original call executes once, denials write their result), missing
