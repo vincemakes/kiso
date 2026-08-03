@@ -171,6 +171,13 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			return;
 		}
 
+		// ── Abort check before side effects: a stop landing during the
+		//    model turn must never let the pending tools run ────────────────
+		if (aborted()) {
+			yield await terminal({ kind: "aborted", by: "user" });
+			return;
+		}
+
 		// ── Execute: concurrency-safe calls batched parallel, rest serial ──
 		const results = await executeCalls(pending, registry, hooks, {
 			signal: signal ?? NEVER_ABORT,
