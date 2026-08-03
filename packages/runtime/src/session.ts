@@ -709,7 +709,22 @@ export class Run implements AsyncIterable<Event> {
 				yield pending;
 				// Area 4: an abort during the resumed approval wait ends the
 				// run; the request stays durable and pending.
-				if (signal.aborted) return;
+				if (signal.aborted) {
+					// 第五轮(P1-6): a verdict given in the same instant as the
+					// abort is still recorded — the abort must not bypass the
+					// durable fallback (aligned with the loop's abort path).
+					const verdict = this.#session.approvalVerdict(pending.decisionId);
+					if (verdict !== undefined) {
+						yield log.append({
+							type: "permission_decided",
+							decisionId: pending.decisionId,
+							callId: pending.callId,
+							decision: verdict ? "approved" : "denied",
+							...(verdict ? {} : { reason: "denied by user" }),
+						});
+					}
+					return;
+				}
 				const final = await abortable(pendingDecision, signal);
 				if (final === ABORTED) {
 					// 第四轮(对抗): a verdict given in the same instant as the

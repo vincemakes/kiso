@@ -137,3 +137,33 @@ describe("adversarial races (第四轮)", () => {
 		const durable = new SessionStore(dir).load("s").map((r) => r.event);
 		expect(durable.filter((e) => e.type === "tool_execution_resolved" && e.resolution === "abandoned")).toHaveLength(1);
 	});
+
+	it("P1-6: RECOVERY path — a verdict given in the same instant as the abort is durable, with its callId", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-race-"));
+		const storeA = new SessionStore(dir);
+		const agentA = failingAgent(storeA, CALL);
+		const sessionA = await agentA.session({ id: "s" });
+		for await (const ev of sessionA.run("first")) {
+			if (ev.type === "permission_requested") break; // pause, exit
+		}
+		storeA.closeAll();
+
+		// Process B resumes; the human answers and aborts in the SAME tick.
+		const storeB = new SessionStore(dir);
+		const sessionB = await failingAgent(storeB, STOP).session({ id: "s" });
+		const run = sessionB.resume();
+		for await (const ev of run) {
+			if (ev.type === "permission_requested") {
+				const p = sessionB.approve(ev.decisionId, true);
+				run.abort();
+				await p;
+			}
+		}
+		const durable = new SessionStore(dir).load("s").map((r) => r.event);
+		const decided = durable.filter((e) => e.type === "permission_decided");
+		expect(decided).toHaveLength(1);
+		expect(decided[0]).toMatchObject({ decision: "approved" });
+		// B 组: the decision is bound to the invocation — the recovery
+		// fallback (not the flush) carries the callId.
+		expect((decided[0] as { callId?: string }).callId).toBe("c1");
+	});
