@@ -873,7 +873,8 @@ export class Run implements AsyncIterable<Event> {
 				executionId,
 				callId,
 				error: result.content,
-				...(result.errorKind !== undefined ? { errorKind: result.errorKind } : {}),
+				// P1-9: errorKind only exists on errors — runtime-guarded too.
+			...(result.isError && result.errorKind !== undefined ? { errorKind: result.errorKind } : {}),
 				safeToRetry: tool?.idempotent === true,
 				...(result.tags !== undefined ? { tags: result.tags } : {}),
 			});
@@ -891,7 +892,8 @@ export class Run implements AsyncIterable<Event> {
 			callId,
 			content: result.content,
 			isError: result.isError,
-			...(result.errorKind !== undefined ? { errorKind: result.errorKind } : {}),
+			// P1-9: errorKind only exists on errors — runtime-guarded too.
+			...(result.isError && result.errorKind !== undefined ? { errorKind: result.errorKind } : {}),
 			// 五: live tags survive the resumed path too.
 			...(result.tags !== undefined ? { tags: result.tags } : {}),
 			executionId,

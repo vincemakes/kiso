@@ -29,14 +29,21 @@ export interface ToolContext {
 	readonly meta?: Readonly<Record<string, unknown>>;
 }
 
-export interface ToolResult {
-	readonly content: string;
-	readonly isError: boolean;
-	/** Present only when `isError` is true and the handler classified it. */
-	readonly errorKind?: ToolErrorKind;
-	/** Product-defined labels (do-not-compact, billing receipt, ...). */
-	readonly tags?: readonly string[];
-}
+/**
+ * 第五轮(P1-9): a DISCRIMINATED union — `errorKind` is structurally
+ * impossible on a non-error result, matching the persisted-event schema
+ * (an isError:false result with an errorKind would be rejected by the
+ * store's validator and poison the next load).
+ */
+export type ToolResult =
+	| { readonly content: string; readonly isError: false; readonly tags?: readonly string[] }
+	| {
+			readonly content: string;
+			readonly isError: true;
+			/** Present only when the handler classified the failure. */
+			readonly errorKind?: ToolErrorKind;
+			readonly tags?: readonly string[];
+	  };
 
 export interface Tool<I = unknown> {
 	readonly name: string;

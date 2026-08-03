@@ -618,7 +618,10 @@ async function* executeOne(
 			callId: call.callId,
 			content: result.content,
 			isError: result.isError,
-			...(result.errorKind ? { errorKind: result.errorKind } : {}),
+			// P1-9: errorKind only exists on errors (the type now enforces it;
+			// the runtime guard keeps a JS tool's illegal combination out of
+			// the persisted event too).
+			...(result.isError && result.errorKind ? { errorKind: result.errorKind } : {}),
 			// 五: a live tool's tags are preserved losslessly (do-not-compact,
 			// billing receipts, trace anchors) — never dropped at the loop.
 			...(result.tags !== undefined ? { tags: result.tags } : {}),
@@ -791,7 +794,10 @@ async function* executeOne(
 			executionId,
 			callId: call.callId,
 			error: result.content,
-			...(result.errorKind ? { errorKind: result.errorKind } : {}),
+			// P1-9: errorKind only exists on errors (the type now enforces it;
+			// the runtime guard keeps a JS tool's illegal combination out of
+			// the persisted event too).
+			...(result.isError && result.errorKind ? { errorKind: result.errorKind } : {}),
 			safeToRetry: tool.idempotent === true,
 			...(result.tags !== undefined ? { tags: result.tags } : {}),
 		});
