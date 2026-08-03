@@ -112,15 +112,35 @@ function inodeReadPolicy(root: string, full: string): string | null {
 	const st = statSync(full);
 	if (!st.isFile()) return `not a regular file — refusing to read (${full})`;
 	if (st.nlink <= 1) return null;
+	// 第四轮: the link count is verified STRUCTURALLY, never by counting
+	// newline-split text. `find -print0` emits NUL-separated paths — a file
+	// named "inside\nspoof" is ONE path, not two — and every match is then
+	// re-statted and checked for the EXACT dev+ino pair (an inode number
+	// alone is not identity across devices). Any failure to verify every
+	// link is fail-closed: the file is refused.
 	let inside = 0;
 	try {
-		const out = execFileSync("find", [root, "-inum", String(st.ino)], { encoding: "utf8", maxBuffer: 1 << 20 });
-		inside = out.trim() === "" ? 0 : out.trim().split("\n").length;
+		const out = execFileSync(
+			"find",
+			[root, "-xdev", "-inum", String(st.ino), "-print0"],
+			{ encoding: "utf8", maxBuffer: 1 << 20 },
+		);
+		for (const path of out.split("\0")) {
+			if (path === "") continue;
+			try {
+				const match = statSync(path);
+				if (match.dev === st.dev && match.ino === st.ino) inside += 1;
+			} catch {
+				inside = -1; // an unverifiable match — fail closed
+				break;
+			}
+		}
 	} catch {
-		inside = 0; // cannot verify — refuse (fail-closed)
+		inside = -1; // cannot verify — refuse (fail-closed)
 	}
-	if (inside < st.nlink) {
-		return `file has ${st.nlink - inside} hard link(s) outside the workspace — refusing to read (${full})`;
+	if (inside < 0 || inside < st.nlink) {
+		const verified = inside < 0 ? "unverifiable" : `${inside}/${st.nlink}`;
+		return `file has hard links outside the workspace (${verified} inside) — refusing to read (${full})`;
 	}
 	return null;
 }

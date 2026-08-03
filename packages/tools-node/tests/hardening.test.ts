@@ -26,7 +26,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AbortSignalLike, ToolContext } from "@kiso/core";
-import { editFileTool, readFileTool, shellTool, writeFileTool } from "../src/index.js";
+import { editFileTool, readFileTool, searchTextTool, shellTool, writeFileTool } from "../src/index.js";
 
 function root(): string {
 	return mkdtempSync(join(tmpdir(), "kiso-hard-"));
@@ -167,5 +167,43 @@ describe("read_file inode boundary (八)", () => {
 		const result = await readFileTool({ workspaceRoot: dir }).execute({ path: "pipe" }, CTX());
 		expect(result).toMatchObject({ isError: true, errorKind: "precondition" });
 		expect(result.content).toMatch(/not a regular file/);
+	});
+
+	it("第四轮: a hard link named with a NEWLINE cannot fool the link count — read_file refuses and leaks nothing", async () => {
+		const dir = root();
+		const outside = join(dirname(dir), "external-newline-secret.txt");
+		writeFileSync(outside, "NEWLINE-TOP-SECRET", "utf8");
+		// The in-workspace link's name contains "\n" — newline-splitting the
+		// find output would count ONE path as TWO and pass the boundary.
+		const spoof = join(dir, "inside\nspoof");
+		linkSync(outside, spoof);
+
+		const result = await readFileTool({ workspaceRoot: dir }).execute({ path: "inside\nspoof" }, CTX());
+		expect(result).toMatchObject({ isError: true, errorKind: "precondition" });
+		expect(result.content).toMatch(/hard link/);
+		expect(result.content).not.toContain("NEWLINE-TOP-SECRET"); // nothing leaked
+	});
+
+	it("第四轮: search_text applies the same newline-proof boundary and leaks nothing", async () => {
+		const dir = root();
+		const outside = join(dirname(dir), "external-search-secret.txt");
+		writeFileSync(outside, "SEARCH-SECRET-MARKER", "utf8");
+		linkSync(outside, join(dir, "inside\nspoof"));
+
+		const result = await searchTextTool({ workspaceRoot: dir }).execute(
+			{ pattern: "SEARCH-SECRET-MARKER" },
+			CTX(),
+		);
+		expect(result).toMatchObject({ isError: false });
+		expect(String(result.content)).not.toContain("SEARCH-SECRET-MARKER"); // never read
+	});
+
+	it("第四轮: a multi-link file whose every link is INSIDE the workspace still reads (even with odd names)", async () => {
+		const dir = root();
+		const a = join(dir, "a.txt");
+		writeFileSync(a, "internal-shared", "utf8");
+		linkSync(a, join(dir, "b\nline.txt")); // a second inside link with a newline name
+		const result = await readFileTool({ workspaceRoot: dir }).execute({ path: "a.txt" }, CTX());
+		expect(result).toMatchObject({ isError: false, content: "internal-shared" });
 	});
 });
