@@ -30,7 +30,7 @@ export const silentToolFailure: Fixture = {
 				{ type: "tool_call_start", callId: "c1", name: "web_search" },
 				{ type: "tool_call_input_delta", callId: "c1", inputJsonDelta: '{"query": "latest"}' },
 				{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "latest" } },
-			
+
 				{ type: "stop", reason: "tool_use" }],
 		},
 		{

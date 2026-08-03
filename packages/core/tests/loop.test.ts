@@ -87,7 +87,7 @@ describe("loop", () => {
 							name: "web_search",
 							input: { query: "kiso" },
 						},
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },
@@ -144,7 +144,7 @@ describe("loop", () => {
 							name: "web_search",
 							input: { query: "x" },
 						},
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },
@@ -190,7 +190,7 @@ describe("loop", () => {
 						{ type: "tool_call_end", callId: "a", name: "fast", input: {} },
 						{ type: "tool_call_end", callId: "b", name: "fast2", input: {} },
 						{ type: "tool_call_end", callId: "c", name: "slow", input: {} },
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },
@@ -226,19 +226,19 @@ describe("loop", () => {
 				{
 					events: [
 						{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} },
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{
 					events: [
 						{ type: "tool_call_end", callId: "c2", name: "web_search", input: {} },
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{
 					events: [
 						{ type: "tool_call_end", callId: "c3", name: "web_search", input: {} },
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 			],

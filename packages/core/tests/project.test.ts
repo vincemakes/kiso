@@ -103,7 +103,7 @@ describe("a real run's trajectory is its own truth", () => {
 				events: [
 					{ type: "text_delta", text: "searching" },
 					{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } },
-				
+
 				{ type: "stop", reason: "tool_use" }],
 			},
 			{ events: [{ type: "stop", reason: "end_turn" }] },

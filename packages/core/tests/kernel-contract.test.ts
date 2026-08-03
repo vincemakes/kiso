@@ -64,7 +64,7 @@ describe("mode: visibleToolNames is a structural filter", () => {
 				{
 					events: [
 						{ type: "tool_call_end", callId: "c1", name: "create_artifact", input: {} },
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },
@@ -92,7 +92,7 @@ describe("mode: visibleToolNames is a structural filter", () => {
 				{
 					events: [
 						{ type: "tool_call_end", callId: "c1", name: "create_artifact", input: {} },
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },
@@ -144,7 +144,7 @@ describe("hooks: transforms and observers", () => {
 				{
 					events: [
 						{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} },
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },
@@ -178,7 +178,7 @@ describe("hooks: transforms and observers", () => {
 				{
 					events: [
 						{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} },
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },
@@ -207,7 +207,7 @@ describe("hooks: transforms and observers", () => {
 					events: [
 						{ type: "text_delta", text: "hi" },
 						{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} },
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },

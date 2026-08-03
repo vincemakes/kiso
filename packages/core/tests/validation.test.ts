@@ -37,7 +37,7 @@ describe("JSON Schema validation at the execution gate", () => {
 				{
 					events: [
 						{ type: "tool_call_end", callId: "c1", name: "add", input: { a: "not a number", b: 2 } },
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },

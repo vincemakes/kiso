@@ -24,7 +24,7 @@ export const permissionNegotiation: Fixture = {
 					name: "code_execute",
 					input: { code: "1+1" },
 				},
-			
+
 				{ type: "stop", reason: "tool_use" }],
 		},
 		{
@@ -35,7 +35,7 @@ export const permissionNegotiation: Fixture = {
 					name: "code_execute",
 					input: { code: "1+1" },
 				},
-			
+
 				{ type: "stop", reason: "tool_use" }],
 		},
 		{ events: [{ type: "stop", reason: "end_turn" }] },

@@ -186,6 +186,61 @@ the decision record:
   context; CI is clean-checkout `npm ci` + full check; three isolated
   consumer smoke tiers; the CLI is publishable.
 
+## 6c. Third hardening round (2026-08-03, 一-九 — all delivered)
+
+- **Event/persistence ownership** (一): a rejected disk write (stale
+  handle / corruption) POISONS the session permanently — the in-memory log
+  can never keep accumulating seqs and "catch up" to the disk; every
+  persist site routes through the session, every appended event is
+  yielded exactly once (no hidden appends).
+- **Framing & lock races** (二): a line WITHOUT a trailing newline is never
+  committed — load and append's torn-tail repair agree; stale-lock
+  takeover is IDENTITY-CONFIRMED (rename away, verify token+pid, restore
+  and retry on mismatch) — a live lock is never deleted; two-contender
+  tests run as REAL concurrent processes behind a barrier.
+- **User rewrite/veto** (三): `user_input_replaced` is a normal gapless
+  stream event; rewritten content is the only content every later turn
+  sees; the hook's `source` survives; a true veto ends the run without
+  ever calling the provider — verified through the raw loop, a real
+  AgentSession, and a disk reload.
+- **Execution identity** (四): executionId is the ONLY recovery key —
+  receipt/resolution/failure pairing never uses the repeatable provider
+  callId; a fresh success is never polluted by a historical same-callId
+  failure; resolutions belong to the ORIGINAL runId (the fake
+  "resolution" runId is gone); a failed non-idempotent execution after a
+  cross-process approval enters a durable uncertain pause; new runs are
+  REFUSED while an open run lingers (resume is the only way past it).
+- **Schema, turn gate, compaction** (五): every persisted variant is
+  deep-validated (enums, Terminal members, Usage known/token combos,
+  ContentBlocks, plain-object inputs, optional fields); `user_input_replaced`
+  carries ContentBlock[]; ANY event after the provider's stop is a
+  protocol error and tools never execute; compaction is keyed by the
+  replaced tool-result EVENT SEQ and records only the delta; live tool
+  results keep tags on both paths.
+- **Provider content/usage** (六): OpenAI base64 images become real data
+  URLs; tool-result images convert to an explicit text note; a tool call
+  keeps ONE identity from start to end even when its id arrives late;
+  cached tokens are read for real (absent = null, never 0); every
+  Anthropic stop path emits an honest usage first.
+- **Consumer installs** (七): the provider packages OWN their SDKs and
+  export config-driven factories; the runtime imports only the provider
+  packages; smoke tier D installs all seven tarballs with
+  `--install-strategy=nested` and starts the CLI with real
+  Anthropic/OpenAI env — no ERR_MODULE_NOT_FOUND on either path.
+- **Tools/CLI failure paths** (八): shell kills the whole tree including
+  setsid()-escaped descendants and confirms their exit; write/edit
+  preserve modes and never leak `.kiso-tmp-*`; read_file enforces the
+  inode-boundary policy (external hard links and non-regular files
+  refused); every terminal path escapes ESC/C0/C1/CR/backspace/bidi;
+  approvals show the canonical path and the full content; Ctrl+C cancels
+  the run AND a pending question; the startup resume is SIGINT-bound;
+  "you> " re-arms after every turn; an exhausted faux script exits
+  non-zero.
+- **Release truth** (九): trailing whitespace and EOF-newline checks are a
+  gate (`scripts/whitespace-check.mjs` + `git diff --check` in `check`);
+  README numbers match the real size gate (1,636/2,000) and test count
+  (250); the smoke header matches the five tiers.
+
 ## 7. Boundaries (this round)
 
 No npm publish, no tag, no push. No oohki/uooki/mauri/pi/CC changes (read-only

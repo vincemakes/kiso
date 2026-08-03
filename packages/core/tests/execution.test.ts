@@ -302,7 +302,7 @@ describe("abort boundaries (Area 4)", () => {
 					events: [
 						{ type: "tool_call_end", callId: "a", name: "first", input: {} },
 						{ type: "tool_call_end", callId: "b", name: "second", input: {} },
-					
+
 				{ type: "stop", reason: "tool_use" }],
 				},
 				{ events: [{ type: "stop", reason: "end_turn" }] },

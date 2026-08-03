@@ -21,12 +21,12 @@ Every design decision ships with an ADR explaining **why**, and **when to overtu
 ```
 $ npm run size
 
-  packages/core/src/kernel/loop.ts  302
-  packages/core/src/protocol/events.ts 246
+  packages/core/src/kernel/loop.ts  560
+  packages/core/src/protocol/events.ts 389
   ...
-  total                               1473  / 2000
+  total                               1636  / 2000
 
-  ✓ 527 lines of headroom remaining.
+  ✓ 364 lines of headroom remaining.
 ```
 
 Comments do not count. Explain freely; implement tersely.
@@ -136,10 +136,11 @@ kiso sessions                  list durable sessions
 
 ## Status
 
-Reliable Session Alpha, including the failure-path hardening round, is
-complete (see `docs/plans/2026-08-03-reliable-session-alpha.md`):
+Reliable Session Alpha, including the three hardening rounds (areas 1-7
+and A-F, and the 一-九 round), is complete (see
+`docs/plans/2026-08-03-reliable-session-alpha.md`):
 
-- **core** (1,473/2,000 lines) — protocol, loop (single honest terminal;
+- **core** (1,636/2,000 lines) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; retry only before anything streamed; one abort signal reaches
   backoff, approval waits, every pending tool, and the SDK), hooks,
@@ -166,8 +167,11 @@ complete (see `docs/plans/2026-08-03-reliable-session-alpha.md`):
 
 `npm run check` = build → typecheck (packages + root scripts + tests) →
 tests → size gate (core only) → pack gate (dist + README + LICENSE in every
-tarball) → consumer smoke tiers (runtime, NESTED install, providers, CLI)
-→ demo start-and-exit gate. 196 tests green. 11 ADRs. 6 incident fixtures
+tarball) → whitespace gate (no trailing whitespace, every file ends with a newline)
+→ `git diff --check` on the working tree and the index
+→ consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
+  CLI with real Anthropic/OpenAI env)
+→ demo start-and-exit gate. 250 tests green. 11 ADRs. 6 incident fixtures
 running on the real runtime.
 
 ## Why another one

@@ -44,7 +44,7 @@ export const userAbort: Fixture = {
 				{ type: "text_delta", text: "working on it…" },
 				{ type: "text_end" },
 				{ type: "tool_call_end", callId: "c1", name: "create_artifact", input: {} },
-			
+
 				{ type: "stop", reason: "tool_use" }],
 		},
 		{ events: [{ type: "stop", reason: "end_turn" }] },
