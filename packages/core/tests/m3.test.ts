@@ -175,8 +175,10 @@ describe("loop auto-compaction", () => {
 		const seen = new Set<number>();
 		for (const ev of compacted) {
 			for (const cleared of ev.cleared) {
-				expect(seen.has(cleared.eventSeq)).toBe(false);
-				seen.add(cleared.eventSeq);
+				// The loop always writes v2 entries (eventSeq present).
+				expect(cleared.eventSeq).toBeTypeOf("number");
+				expect(seen.has(cleared.eventSeq!)).toBe(false);
+				seen.add(cleared.eventSeq!);
 			}
 		}
 		// The cleared entries carry the identity of real tool_result events.

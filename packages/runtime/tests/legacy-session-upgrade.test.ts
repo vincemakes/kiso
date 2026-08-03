@@ -97,6 +97,6 @@ describe("v1 compacted sessions upgrade (第四轮)", () => {
 		expect(terminal?.outcome.kind).toBe("completed");
 		// The v1 compacted record survived untouched in the log.
 		const records = new SessionStore(dir).load("s");
-		expect(records.some((r) => r.event.type === "compacted" && (r.event as { cleared: unknown[] }).cleared.length === 1)).toBe(true);
+		expect(records.some((r) => r.event.type === "compacted" && (r.event as unknown as { cleared: unknown[] }).cleared.length === 1)).toBe(true);
 	});
 });
