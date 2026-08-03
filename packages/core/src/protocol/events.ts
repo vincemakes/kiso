@@ -76,6 +76,23 @@ export interface TextStart {
 	readonly source?: import("./messages.js").MessageSource;
 }
 
+/**
+ * The explicit boundary of an assistant message (D 组). Adapters never emit
+ * these (their implicit boundaries — tool_result/user_input/terminal — are
+ * enough); the seed encoder uses them so ADJACENT assistant messages and
+ * EMPTY assistant messages round-trip losslessly.
+ */
+export interface AssistantStart {
+	readonly seq: number;
+	readonly type: "assistant_start";
+	readonly source?: import("./messages.js").MessageSource;
+}
+
+export interface AssistantEnd {
+	readonly seq: number;
+	readonly type: "assistant_end";
+}
+
 export interface TextDelta {
 	readonly seq: number;
 	readonly type: "text_delta";
@@ -398,6 +415,8 @@ export interface TerminalEvent {
  * `strictNullChecks` on, an unhandled variant is a compile error.
  */
 export type Event =
+	| AssistantStart
+	| AssistantEnd
 	| TextStart
 	| TextDelta
 	| TextEnd
@@ -429,6 +448,8 @@ export type Event =
  * validator here is a compile error (ADR-0003).
  */
 const EVENT_VALIDATORS = {
+	assistant_start: () => true,
+	assistant_end: () => true,
 	text_start: () => true,
 	text_delta: (v: Record<string, unknown>) => typeof v.text === "string",
 	text_end: () => true,

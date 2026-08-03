@@ -23,22 +23,33 @@ import { mapApiError } from "@kiso/core";
 export function createAnthropicAdapter(client: Anthropic): Adapter {
 	return {
 		async *stream(options: StreamOptions): AsyncIterable<Event> {
-			const stream = client.messages.stream(
-				{
-					model: options.model,
-					...(options.systemPrompt !== undefined ? { system: options.systemPrompt } : {}),
-					max_tokens: options.maxTokens ?? 4096,
-					messages: toAnthropicMessages(options.messages),
-					...(options.tools?.length ? { tools: toAnthropicTools(options.tools) } : {}),
-					...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-				},
-				// Phase B: cancellation reaches the SDK, which aborts the fetch.
-				options.signal !== undefined ? { signal: options.signal as AbortSignal } : undefined,
-			);
+			// D4: the stream CREATION is inside the error normalization —
+			// connection/timeout/5xx failures before the first byte are
+			// mapped, retryable StructuredErrors.
+			let stream;
+			try {
+				stream = client.messages.stream(
+					{
+						model: options.model,
+						...(options.systemPrompt !== undefined ? { system: options.systemPrompt } : {}),
+						max_tokens: options.maxTokens ?? 4096,
+						messages: toAnthropicMessages(options.messages),
+						...(options.tools?.length ? { tools: toAnthropicTools(options.tools) } : {}),
+						...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+					},
+					// Phase B: cancellation reaches the SDK, which aborts the fetch.
+					options.signal !== undefined ? { signal: options.signal as AbortSignal } : undefined,
+				);
+			} catch (err) {
+				throw toAnthropicError(err);
+			}
 
 			let inputTokens: number | null = null;
 			let outputTokens: number | null = null;
+			let cacheRead: number | null = null;
+			let cacheWrite: number | null = null;
 			let usageSeen = false;
+			let stopReasonSeen = false;
 			let stopReason: StopReason = "end_turn";
 			const toolBuffer = new Map<number, { id: string; name: string; json: string }>();
 
@@ -47,6 +58,10 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 					switch (event.type) {
 						case "message_start":
 							inputTokens = event.message.usage.input_tokens ?? null;
+							// D5: cache counters are READ from the SDK — never
+							// faked as zero.
+							cacheRead = event.message.usage.cache_read_input_tokens ?? null;
+							cacheWrite = event.message.usage.cache_creation_input_tokens ?? null;
 							if (event.message.usage.input_tokens !== undefined) usageSeen = true;
 							break;
 						case "content_block_start": {
@@ -107,7 +122,8 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 							break;
 						}
 						case "message_delta":
-							stopReason = mapStopReason(event.delta.stop_reason ?? "end_turn");
+							stopReasonSeen = true;
+							stopReason = mapStopReason((event.delta.stop_reason ?? "error") as Anthropic.Messages.StopReason);
 							outputTokens = event.usage?.output_tokens ?? null;
 							if (event.usage?.output_tokens !== undefined) usageSeen = true;
 							yield {
@@ -115,13 +131,16 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 								type: "usage",
 								inputTokens,
 								outputTokens,
-								cacheRead: 0,
-								cacheWrite: 0,
+								cacheRead,
+								cacheWrite,
 								known: usageSeen,
 							};
 							break;
 						case "message_stop":
-							yield { seq: 0, type: "stop", reason: stopReason };
+							// D3: a message_stop with NO delta means the
+							// provider never reported a stop reason — that is
+							// an error, never a default end_turn.
+							yield { seq: 0, type: "stop", reason: stopReasonSeen ? stopReason : "error" };
 							break;
 					}
 				}
@@ -156,8 +175,12 @@ function mapStopReason(reason: Anthropic.Messages.StopReason): StopReason {
 		case "model_context_window_exceeded":
 			return "context_window";
 		default: {
+			// The `never` annotation fails the typecheck when the SDK grows
+			// a new member; at runtime an unexpected value is an honest
+			// `error`, never a completed.
 			const _exhaustive: never = reason;
-			return _exhaustive;
+			void _exhaustive;
+			return "error";
 		}
 	}
 }
@@ -224,6 +247,13 @@ function toAnthropicTools(tools: readonly ToolSpec[]): Anthropic.Tool[] {
 }
 
 function toAnthropicError(err: unknown): unknown {
+	// D4: connection-level failures are recognized, not lumped into unknown.
+	if (err instanceof Anthropic.APIConnectionTimeoutError) {
+		return { code: "timeout", retryable: true, message: err.message };
+	}
+	if (err instanceof Anthropic.APIConnectionError) {
+		return { code: "network", retryable: true, message: err.message };
+	}
 	if (err instanceof Anthropic.APIError) {
 		return mapApiError(err.status, err.message);
 	}

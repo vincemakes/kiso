@@ -76,6 +76,8 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		if (ev.type === "user_input_replaced") replaced.set(ev.replaces, ev.content);
 	}
 
+	let explicitAssistant = false;
+
 	for (const ev of events) {
 		switch (ev.type) {
 			case "user_input": {
@@ -95,6 +97,27 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				}
 				break;
 			}
+			case "assistant_start":
+				// D 组: an explicit message boundary — close any open message
+				// and begin a new one (adjacent assistants stay separate).
+				flushAssistant();
+				explicitAssistant = true;
+				if (ev.source !== undefined) assistantSource = ev.source;
+				break;
+			case "assistant_end":
+				// Close the message; an EMPTY explicit message is preserved.
+				if (explicitAssistant && blocks.length === 0 && text === null) {
+					out.push({
+						role: "assistant",
+						blocks: [],
+						...(assistantSource !== undefined ? { source: assistantSource } : {}),
+					} satisfies AssistantMessage);
+					assistantSource = undefined;
+				} else {
+					flushAssistant();
+				}
+				explicitAssistant = false;
+				break;
 			case "text_start":
 				pushText(); // an explicit boundary: a new block begins
 				if (ev.source !== undefined) assistantSource = ev.source;
@@ -184,9 +207,12 @@ export function messagesToEvents(messages: readonly Message[]): EventInput[] {
 				break;
 			}
 			case "assistant": {
-				// One event sequence PER BLOCK: text blocks keep their
-				// boundaries (text_start/delta/end each), tool calls their
-				// own start/end pair — the round trip is lossless.
+				// D 组: an explicit assistant_start/assistant_end pair frames
+				// the message — adjacent and empty assistants round-trip.
+				out.push({
+					type: "assistant_start",
+					...(msg.source !== undefined ? { source: msg.source } : {}),
+				});
 				for (const block of msg.blocks) {
 					if (block.type === "text") {
 						out.push({
@@ -210,19 +236,16 @@ export function messagesToEvents(messages: readonly Message[]): EventInput[] {
 						});
 					}
 				}
+				out.push({ type: "assistant_end" });
 				break;
 			}
 			case "tool": {
+				// D1: the FULL content (blocks included) is preserved — never
+				// flattened to text.
 				out.push({
 					type: "tool_result",
 					callId: msg.callId,
-					content:
-						typeof msg.content === "string"
-							? msg.content
-							: msg.content
-									.filter((b) => b.type === "text")
-									.map((b) => b.text)
-									.join(""),
+					content: msg.content,
 					isError: msg.isError,
 					...(msg.source !== undefined ? { source: msg.source } : {}),
 					...(msg.tags !== undefined ? { tags: msg.tags } : {}),

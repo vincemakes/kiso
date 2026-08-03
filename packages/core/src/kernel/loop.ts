@@ -455,8 +455,13 @@ function terminalForStop(reason: StopReason | undefined): Terminal {
 			};
 		case "end_turn":
 		case "stop_sequence":
-		default:
 			return { kind: "completed" };
+		default:
+			// D3: an unknown stop reason is an error, never completed.
+			return {
+				kind: "error",
+				error: { code: "unknown", retryable: false, message: `unrecognized stop reason: ${String(reason)}` },
+			};
 	}
 }
 

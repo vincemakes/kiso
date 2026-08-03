@@ -22,14 +22,13 @@ export function mapApiError(status: number | undefined, message: string): Struct
 			return withStatus({ code: "rate_limit", retryable: true, message });
 		case 529:
 			return withStatus({ code: "overloaded", retryable: true, message });
-		case 500:
-		case 502:
-		case 503:
-		case 504:
-			return withStatus({ code: "api_5xx", retryable: true, message });
 		case 400:
 			return withStatus({ code: "invalid_request", retryable: false, message });
 		default:
+			if (status !== undefined && status >= 500 && status < 600) {
+				// D4: every 500-599 is api_5xx and retryable.
+				return withStatus({ code: "api_5xx", retryable: true, message });
+			}
 			return withStatus({ code: "unknown", retryable: false, message });
 	}
 }

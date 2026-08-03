@@ -43,6 +43,10 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 						model: options.model,
 						messages: toOpenAIMessages(options.messages, options.systemPrompt),
 						stream: true,
+						// D5: request real streaming usage — without this the
+						// provider never sends a usage chunk and we would
+						// report known:false forever.
+						stream_options: { include_usage: true },
 						...(options.tools?.length ? { tools: options.tools.map(toOpenAITool) } : {}),
 						...(options.maxTokens !== undefined ? { max_tokens: options.maxTokens } : {}),
 						...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
@@ -179,10 +183,12 @@ function mapFinishReason(reason: OpenAI.Chat.ChatCompletionChunk.Choice["finish_
 		case "content_filter":
 			return "content_filter";
 		case null:
-			return "end_turn";
+			// D3: a chunk with NO finish reason is not a stop — the caller
+			// decides; the trailing stop is only emitted when one was seen.
+			return "error";
 		default: {
-			const _exhaustive: never = reason;
-			return _exhaustive;
+			// D3: an unknown finish reason is an error, never completed.
+			return "error";
 		}
 	}
 }
@@ -259,6 +265,13 @@ function toOpenAITool(tool: ToolSpec): OpenAI.Chat.ChatCompletionTool {
 }
 
 function toOpenAIError(err: unknown): unknown {
+	// D4: connection-level failures are recognized, not lumped into unknown.
+	if (err instanceof OpenAI.APIConnectionTimeoutError) {
+		return { code: "timeout", retryable: true, message: err.message };
+	}
+	if (err instanceof OpenAI.APIConnectionError) {
+		return { code: "network", retryable: true, message: err.message };
+	}
 	if (err instanceof OpenAI.APIError) {
 		return mapApiError(err.status, err.message);
 	}
