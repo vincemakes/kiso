@@ -93,9 +93,33 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 			let finishReason: string | null = null;
 			let usageSent = false;
 			let stopReason: StopReason = "end_turn";
+			// P1-10: the FIRST finish reason is FINAL — later content and
+			// finish reasons are ignored (a provider that emits text after a
+			// content_filter must not be reported as a clean end_turn). The
+			// usage chunk is still accepted after the finish: some compat
+			// providers send it late.
+			let finishSeen = false;
 
 			try {
 				for await (const chunk of stream) {
+					if (finishSeen) {
+						if (chunk.usage) {
+							usageSent = true;
+							const details = (chunk.usage as {
+								prompt_tokens_details?: { cached_tokens?: number };
+							}).prompt_tokens_details;
+							yield {
+								seq: 0,
+								type: "usage",
+								inputTokens: chunk.usage.prompt_tokens ?? null,
+								outputTokens: chunk.usage.completion_tokens ?? null,
+								cacheRead: details?.cached_tokens ?? null,
+								cacheWrite: null,
+								known: true,
+							};
+						}
+						continue; // content and finish reasons after the first finish: ignored
+					}
 					// Reasoning dialect → thinking (digested here, not in the union).
 					const reasoning = (chunk.choices?.[0]?.delta as { reasoning_content?: string } | undefined)
 						?.reasoning_content;
@@ -200,8 +224,10 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 
 					const fr = chunk.choices?.[0]?.finish_reason;
 					if (fr) {
+						// P1-10: the FIRST finish is the terminal one.
 						finishReason = fr;
 						stopReason = mapFinishReason(fr);
+						finishSeen = true;
 					}
 				}
 			} catch (err) {

@@ -343,3 +343,36 @@ describe("九: OpenAI tool-call id conflicts are loud, never silent", () => {
 		expect(ids).toEqual(["call_A", "call_A"]);
 	});
 });
+
+describe("P1-10: the first OpenAI finish reason is FINAL", () => {
+	it("content_filter then text+stop: the stop stays content_filter and the later text never mixes in", async () => {
+		const adapter = createOpenAICompatAdapter(
+			fakeOpenAI({
+				chunks: [
+					CHUNK("content_filter"),
+					CHUNK(null, { content: "after the filter" }),
+					CHUNK("stop", { content: "more after" }),
+				],
+			}),
+		);
+		const events = (await drain(adapter)) as { type: string; reason?: string; text?: string }[];
+		const stop = events.find((e) => e.type === "stop");
+		expect(stop?.reason).toBe("content_filter"); // the FIRST finish is final
+		// The post-finish content never entered the stream.
+		expect(events.filter((e) => e.type === "text_delta" && (e.text === "after the filter" || e.text === "more after"))).toHaveLength(0);
+	});
+
+	it("a usage chunk AFTER the finish is still accepted (compat providers send it late)", async () => {
+		const adapter = createOpenAICompatAdapter(
+			fakeOpenAI({
+				chunks: [
+					CHUNK("stop"),
+					{ id: "x", object: "chat.completion.chunk", created: 0, model: "m", choices: [], usage: { prompt_tokens: 10, completion_tokens: 2 } },
+				],
+			}),
+		);
+		const events = (await drain(adapter)) as { type: string; known?: boolean }[];
+		expect(events.filter((e) => e.type === "usage")).toHaveLength(1);
+		expect(events.find((e) => e.type === "usage")).toMatchObject({ known: true });
+	});
+});
