@@ -148,7 +148,7 @@ import { createFauxProvider, FIXTURES } from "@kiso/evals";
 import { readFileTool, shellTool } from "@kiso/tools-node";
 import { createAnthropicAdapter } from "@kiso/provider-anthropic";
 import { createOpenAICompatAdapter } from "@kiso/provider-openai";
-const agent = createAgent({ model: "m", tools: [readFileTool(), shellTool()], store: new SessionStore("./s"), adapter: createFauxProvider([]) });
+const agent = createAgent({ model: "m", tools: [readFileTool({ workspaceRoot: "." }), shellTool({ workspaceRoot: "." })], store: new SessionStore("./s"), adapter: createFauxProvider([]) });
 const ev: Event | undefined = undefined;
 void agent; void defineTool; void loop; void createAnthropicAdapter; void createOpenAICompatAdapter; void ev; void FIXTURES;
 `,

@@ -13,9 +13,9 @@
  */
 
 import { spawn } from "node:child_process";
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { defineTool, type Tool } from "@kiso/core";
+import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { defineTool, type Tool, type ToolResult } from "@kiso/core";
 
 const OUTPUT_CAP = 100_000; // chars of output a tool result may carry
 const DEFAULT_SHELL_TIMEOUT_MS = 30_000;
@@ -24,67 +24,139 @@ function cap(text: string): string {
 	return text.length > OUTPUT_CAP ? `${text.slice(0, OUTPUT_CAP)}\n…[truncated]` : text;
 }
 
-export function readFileTool(): Tool<{ path: string }> {
+/**
+ * A path that the workspace boundary refuses — never attempted, reported as
+ * a precondition (the tool COULD run it, the gate refused it).
+ */
+export function escapeResult(reason: string): ToolResult {
+	return { content: `[path denied] ${reason}`, isError: true, errorKind: "precondition" };
+}
+
+function isWithin(root: string, target: string): boolean {
+	const rel = relative(root, target);
+	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/**
+ * Resolve an input path strictly inside the workspace (Area 5):
+ * - absolute inputs are refused (paths are workspace-relative);
+ * - `..` components cannot escape because the joined path is re-checked
+ *   against the canonical root;
+ * - SYMLINKS cannot escape: the deepest existing ancestor is realpath'd
+ *   and must stay inside the canonical root (this covers symlinked files,
+ *   symlinked directories, and the parents of files to be created);
+ * - returns the canonical absolute path, or throws PathEscapeError.
+ */
+export class PathEscapeError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "PathEscapeError";
+	}
+}
+
+export function resolveWithinRoot(root: string, input: string): string {
+	if (isAbsolute(input)) {
+		throw new PathEscapeError(`absolute paths are not allowed — use workspace-relative paths: ${input}`);
+	}
+	const rootReal = realpathSync(root);
+	const candidate = resolve(root, input);
+
+	// Walk up to the deepest EXISTING ancestor (files to be created have a
+	// not-yet-existing tail), then canonicalize it.
+	let ancestor = candidate;
+	const missingTail: string[] = [];
+	while (!existsSync(ancestor)) {
+		const parent = dirname(ancestor);
+		if (parent === ancestor) break;
+		missingTail.unshift(basename(ancestor));
+		ancestor = parent;
+	}
+	const ancestorReal = realpathSync(ancestor);
+	if (!isWithin(rootReal, ancestorReal)) {
+		throw new PathEscapeError(`path escapes the workspace (${input})`);
+	}
+	const canonical = missingTail.length > 0 ? join(ancestorReal, ...missingTail) : ancestorReal;
+	if (!isWithin(rootReal, canonical)) {
+		throw new PathEscapeError(`path escapes the workspace (${input})`);
+	}
+	return canonical;
+}
+
+export interface WorkspaceToolsOptions {
+	/** The workspace the tools may touch; everything else is refused. */
+	readonly workspaceRoot: string;
+}
+
+export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string }> {
 	return defineTool<{ path: string }>({
 		name: "read_file",
-		description: "Read a file's content from disk. Relative paths resolve against the working directory.",
+		description: "Read a file's content from disk. Relative to the workspace root.",
 		parameters: {
 			type: "object",
-			properties: { path: { type: "string", description: "Path of the file to read" } },
+			properties: { path: { type: "string", description: "Workspace-relative path of the file to read" } },
 			required: ["path"],
 		},
 		idempotent: true,
 		execute: async ({ path }) => {
 			try {
-				const content = readFileSync(resolve(path), "utf8");
+				const full = resolveWithinRoot(opts.workspaceRoot, path);
+				const content = readFileSync(full, "utf8");
 				return { content: cap(content), isError: false };
 			} catch (err) {
+				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				return { content: `read_file failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
 			}
 		},
 	});
 }
 
-export function listDirTool(): Tool<{ path?: string }> {
+export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string }> {
 	return defineTool<{ path?: string }>({
 		name: "list_dir",
-		description: "List the entries of a directory. Omit path to list the working directory.",
+		description: "List the entries of a directory. Omit path to list the workspace root.",
 		parameters: {
 			type: "object",
-			properties: { path: { type: "string", description: "Directory to list" } },
+			properties: { path: { type: "string", description: "Workspace-relative directory to list" } },
 		},
 		idempotent: true,
 		execute: async ({ path }) => {
 			try {
-				const dir = resolve(path ?? ".");
+				const dir = resolveWithinRoot(opts.workspaceRoot, path ?? ".");
 				const entries = readdirSync(dir, { withFileTypes: true }).map((e) => {
 					const isDir = e.isDirectory();
 					return `${isDir ? "dir " : "file"} ${e.name}${isDir ? "/" : ""}`;
 				});
 				return { content: entries.length ? cap(entries.join("\n")) : "(empty directory)", isError: false };
 			} catch (err) {
+				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				return { content: `list_dir failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
 			}
 		},
 	});
 }
 
-export function searchTextTool(): Tool<{ pattern: string; path?: string }> {
+export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: string; path?: string }> {
 	return defineTool<{ pattern: string; path?: string }>({
 		name: "search_text",
 		description:
-			"Search files under a directory (recursive) for a regular expression. Returns matching file:line excerpts, capped.",
+			"Search files under a workspace directory (recursive) for a regular expression. Returns matching file:line excerpts, capped.",
 		parameters: {
 			type: "object",
 			properties: {
 				pattern: { type: "string", description: "Regular expression to search for" },
-				path: { type: "string", description: "Root directory (default: working directory)" },
+				path: { type: "string", description: "Workspace-relative root directory (default: workspace root)" },
 			},
 			required: ["pattern"],
 		},
 		idempotent: true,
 		execute: async ({ pattern, path }) => {
-			const root = resolve(path ?? ".");
+			let root: string;
+			try {
+				root = resolveWithinRoot(opts.workspaceRoot, path ?? ".");
+			} catch (err) {
+				if (err instanceof PathEscapeError) return escapeResult(err.message);
+				throw err;
+			}
 			const regex = new RegExp(pattern, "i");
 			const matches: string[] = [];
 			const walk = (dir: string, depth: number): void => {
@@ -119,21 +191,28 @@ export function searchTextTool(): Tool<{ pattern: string; path?: string }> {
 	});
 }
 
-export function writeFileTool(): Tool<{ path: string; content: string }> {
+export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; content: string }> {
 	return defineTool<{ path: string; content: string }>({
 		name: "write_file",
-		description: "Write content to a file, replacing it entirely. A side effect — approval required.",
+		description: "Write content to a file inside the workspace, replacing it entirely. A side effect — approval required.",
 		parameters: {
 			type: "object",
 			properties: {
-				path: { type: "string", description: "File to write" },
+				path: { type: "string", description: "Workspace-relative file to write" },
 				content: { type: "string", description: "Full new content" },
 			},
 			required: ["path", "content"],
 		},
 		execute: async ({ path, content }) => {
+			let full: string;
 			try {
-				writeFileSync(resolve(path), content, "utf8");
+				full = resolveWithinRoot(opts.workspaceRoot, path);
+			} catch (err) {
+				if (err instanceof PathEscapeError) return escapeResult(err.message);
+				throw err;
+			}
+			try {
+				writeFileSync(full, content, "utf8");
 				return { content: `wrote ${path} (${content.length} chars)`, isError: false };
 			} catch (err) {
 				return { content: `write_file failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
@@ -142,21 +221,27 @@ export function writeFileTool(): Tool<{ path: string; content: string }> {
 	});
 }
 
-export function editFileTool(): Tool<{ path: string; search: string; replace: string }> {
+export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; search: string; replace: string }> {
 	return defineTool<{ path: string; search: string; replace: string }>({
 		name: "edit_file",
-		description: "Replace the FIRST occurrence of a literal string in a file. A side effect — approval required.",
+		description: "Replace the FIRST occurrence of a literal string in a workspace file. A side effect — approval required.",
 		parameters: {
 			type: "object",
 			properties: {
-				path: { type: "string" },
+				path: { type: "string", description: "Workspace-relative file" },
 				search: { type: "string", description: "Exact literal text to find" },
 				replace: { type: "string", description: "Replacement text" },
 			},
 			required: ["path", "search", "replace"],
 		},
 		execute: async ({ path, search, replace }) => {
-			const full = resolve(path);
+			let full: string;
+			try {
+				full = resolveWithinRoot(opts.workspaceRoot, path);
+			} catch (err) {
+				if (err instanceof PathEscapeError) return escapeResult(err.message);
+				throw err;
+			}
 			try {
 				const text = readFileSync(full, "utf8");
 				const index = text.indexOf(search);
@@ -172,11 +257,11 @@ export function editFileTool(): Tool<{ path: string; search: string; replace: st
 	});
 }
 
-export function shellTool(): Tool<{ command: string; timeoutMs?: number }> {
+export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; timeoutMs?: number }> {
 	return defineTool<{ command: string; timeoutMs?: number }>({
 		name: "shell",
 		description:
-			"Run a shell command in the working directory. A side effect — approval required. Fails loudly on timeout or non-zero exit.",
+			"Run a shell command with the workspace as the working directory. A side effect — approval required. Fails loudly on timeout or non-zero exit.",
 		parameters: {
 			type: "object",
 			properties: {
@@ -190,8 +275,13 @@ export function shellTool(): Tool<{ command: string; timeoutMs?: number }> {
 			return new Promise((resolvePromise) => {
 				// detached: the command gets its OWN process group, so a
 				// timeout/abort can kill the WHOLE TREE (children included),
-				// not just the outer shell (Area 4).
-				const child = spawn(command, { shell: true, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+				// not just the outer shell (Area 4). cwd is the workspace.
+				const child = spawn(command, {
+					shell: true,
+					detached: true,
+					cwd: opts.workspaceRoot,
+					stdio: ["ignore", "pipe", "pipe"],
+				});
 				let stdout = "";
 				let stderr = "";
 				let exited = false;
@@ -269,11 +359,14 @@ export function shellTool(): Tool<{ command: string; timeoutMs?: number }> {
 	});
 }
 
-export const CODING_TOOLS: readonly Tool<any>[] = [
-	readFileTool(),
-	listDirTool(),
-	searchTextTool(),
-	writeFileTool(),
-	editFileTool(),
-	shellTool(),
-];
+/** The full coding toolset, bound to one workspace root (Area 5). */
+export function createCodingTools(opts: WorkspaceToolsOptions): readonly Tool<any>[] {
+	return [
+		readFileTool(opts),
+		listDirTool(opts),
+		searchTextTool(opts),
+		writeFileTool(opts),
+		editFileTool(opts),
+		shellTool(opts),
+	];
+}

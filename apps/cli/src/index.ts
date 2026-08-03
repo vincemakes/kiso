@@ -21,7 +21,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createAgent, SessionStore, type AgentSession } from "@kiso/runtime";
 import { createFauxProvider, type FauxScript } from "@kiso/evals";
-import { CODING_TOOLS } from "@kiso/tools-node";
+import { createCodingTools } from "@kiso/tools-node";
 import type { PermissionPolicy } from "@kiso/runtime";
 import { renderEvent, renderSessionLine } from "./render.js";
 
@@ -74,7 +74,9 @@ async function makeAgent() {
 	return createAgent({
 		model,
 		store,
-		tools: CODING_TOOLS,
+		// Area 5: the coding tools are bound to the workspace — every path
+		// they touch is canonicalized inside cwd, escapes are refused.
+		tools: [...createCodingTools({ workspaceRoot: process.cwd() })],
 		adapter,
 		permissionPolicy: PERMISSION_POLICY,
 		systemPrompt:

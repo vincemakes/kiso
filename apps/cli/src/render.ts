@@ -52,7 +52,7 @@ export function renderEvent(ev: Event): RenderResult {
 			};
 		case "permission_requested":
 			return {
-				text: `${YELLOW}⏸ ${ev.name} needs approval${RESET} ${DIM}(${JSON.stringify(ev.input).slice(0, 120)})${RESET} `,
+				text: `${YELLOW}⏸ ${ev.name} needs approval${RESET} ${DIM}${approvalDetail(ev.name, ev.input)}${RESET} `,
 				newline: false,
 				prompt: true,
 			};
@@ -77,6 +77,26 @@ export function renderEvent(ev: Event): RenderResult {
 		default:
 			return { text: "", newline: false, prompt: false };
 	}
+}
+
+/**
+ * The approval prompt detail (Area 5): security-critical parameters are
+ * NEVER truncated. The shell command is shown in full; write/edit show the
+ * full path with a content summary; the decision is bound to the complete
+ * input via the decisionId, whatever the display.
+ */
+function approvalDetail(name: string, input: Record<string, unknown>): string {
+	if (name === "shell") {
+		return `\n  $ ${String(input.command ?? "")}`;
+	}
+	if (name === "write_file") {
+		const content = String(input.content ?? "");
+		return `\n  ${String(input.path ?? "?")} (${content.length} chars)\n  ${content.slice(0, 200)}${content.length > 200 ? "…" : ""}`;
+	}
+	if (name === "edit_file") {
+		return `\n  ${String(input.path ?? "?")}\n  replace: ${String(input.search ?? "")}\n  with:    ${String(input.replace ?? "")}`;
+	}
+	return `\n  ${JSON.stringify(input)}`;
 }
 
 /** One-line summary of a session, for `kiso sessions`. */
