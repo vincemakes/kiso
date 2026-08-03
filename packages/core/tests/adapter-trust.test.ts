@@ -46,8 +46,6 @@ async function runWithForgery(forged: EventInput): Promise<{ events: Event[]; lo
 	return { events, log };
 }
 
-type EventInput = Parameters<EventLog["append"]>[0];
-
 describe("adapter trust boundary (五)", () => {
 	it("a forged TERMINAL from the adapter is an invalid_request error, never accepted", async () => {
 		const { events, log } = await runWithForgery({
@@ -155,7 +153,9 @@ describe("adapter trust boundary (五)", () => {
 });
 
 describe("adapter trust: STRUCTURAL validation (P1-8)", () => {
-	const BAD_FIELD_EVENTS: EventInput[] = [
+	// Deliberately ILLEGAL field combinations — cast through unknown because
+	// the type system (correctly) rejects them.
+	const BAD_FIELD_EVENTS = [
 		{ type: "text_delta" }, // missing text
 		{ type: "text_start", source: "assistant" }, // illegal source enum
 		{ type: "tool_call_start", callId: "c1" }, // missing name
@@ -163,7 +163,7 @@ describe("adapter trust: STRUCTURAL validation (P1-8)", () => {
 		{ type: "stop", reason: "keep_going" }, // illegal stop reason
 		{ type: "usage", known: true, inputTokens: null, outputTokens: null, cacheRead: null, cacheWrite: null }, // known with no real token
 		{ type: "tool_call_input_delta", callId: "c1" }, // missing delta
-	];
+	] as unknown as EventInput[];
 
 	it.each(BAD_FIELD_EVENTS.map((ev, i) => [i, ev] as const))(
 		"a legal TYPE with illegal FIELDS (%i) is a forgery — never appended, one invalid_request terminal",
@@ -194,7 +194,7 @@ describe("adapter trust: STRUCTURAL validation (P1-8)", () => {
 			model: "faux",
 			store,
 			tools: [],
-			adapter: createFauxProvider([{ events: [{ type: "stop" }] }]), // stop without a reason
+			adapter: createFauxProvider([{ events: [{ type: "stop" } as unknown as EventInput] }]), // stop without a reason
 		}).session({ id: "s" });
 		for await (const _ev of session.run("go")) {
 			// drain — the forged stop is an invalid_request terminal
