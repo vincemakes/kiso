@@ -1,6 +1,7 @@
 # ADR-0001: kiso is a microkernel, not a framework
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0021 (2026-08-03) — the core stays a kernel;
+  the framework grows in packages on top of it
 - **Date:** 2026-08-02
 - **Layer:** Cross-cutting
 
