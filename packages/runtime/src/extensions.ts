@@ -16,6 +16,26 @@ import type { KisoExtension } from "@vincemakes/kiso-core";
 
 export type { KisoExtension }; // re-exported so consumers import it from here
 
+/**
+ * E3 — project-level extensions: load <dir>/.kiso/extensions/*.mjs AFTER
+ * the trust gate (the CLI decides trust; this loader only loads). A name
+ * that exists in BOTH the user level and the project level is a LOUD
+ * startup error — silent shadowing of a user-level extension by a
+ * project-level one would change behavior without anyone noticing.
+ * `existing` are the already-loaded user-level extensions.
+ */
+export async function loadProjectExtensions(dir: string, existing: readonly KisoExtension[] = []): Promise<KisoExtension[]> {
+	const projectExts = await loadExtensions(join(dir, ".kiso", "extensions"));
+	for (const ext of projectExts) {
+		if (existing.some((e) => e.name === ext.name)) {
+			throw new Error(
+				`[extensions] extension name "${ext.name}" exists in both the user-level and the project-level extensions — refusing to shadow`,
+			);
+		}
+	}
+	return projectExts;
+}
+
 export async function loadExtensions(dir: string): Promise<KisoExtension[]> {
 	let files: string[];
 	try {
