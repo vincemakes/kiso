@@ -337,6 +337,21 @@ export interface UserInputReplaced {
 	readonly source?: import("./messages.js").MessageSource;
 }
 
+/**
+ * C 区: a MICROCOMPACT boundary — the durable record of a context-clearing
+ * decision. `beforeSeq` is the event seq up to which eligible tool results
+ * are cleared: the projection replaces every tool_result with seq <=
+ * beforeSeq (whose tool is in the compactable whitelist and carries no
+ * do-not-compact tag) with a fixed placeholder derived from the stream
+ * itself. The decision is a PERSISTED FACT — replaying the same events
+ * derives the same messages, byte for byte, after a crash or resume.
+ */
+export interface MicroCompactEvent {
+	readonly seq: number;
+	readonly type: "microcompacted";
+	readonly beforeSeq: number;
+}
+
 /** Extended-thinking content. Providers without it emit nothing here. */
 export interface Thinking {
 	readonly seq: number;
@@ -457,6 +472,7 @@ export type Event =
 	| PermissionExpired
 	| UncertainPending
 	| UserInputReplaced
+	| MicroCompactEvent
 	| TerminalEvent;
 
 // ── deep-shape helpers (五): every variant is validated field by field —
@@ -678,6 +694,7 @@ const EVENT_VALIDATORS = {
 	permission_expired: (v: Record<string, unknown>) => typeof v.decisionId === "string" && typeof v.reason === "string",
 	uncertain_pending: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.error === "string",
+	microcompacted: (v: Record<string, unknown>) => isNonNegativeInt(v.beforeSeq),
 	user_input_replaced: (v: Record<string, unknown>) =>
 		isNonNegativeInt(v.replaces) && (v.content === null || isContent(v.content)) && isSource(v),
 	terminal: (v: Record<string, unknown>) => isTerminal(v.outcome),

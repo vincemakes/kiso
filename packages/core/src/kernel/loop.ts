@@ -29,7 +29,7 @@
 
 import { isAdapterEvent, type Adapter, type AbortSignalLike } from "../protocol/adapter.js";
 import type { Event, StopReason, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
-import { estimateTokens, microcompact } from "./compaction.js";
+import { estimateTokens, KEEP_RECENT_TURNS, microcompact } from "./compaction.js";
 import { EventLog } from "./event-log.js";
 import type { EventInput } from "./event-log.js";
 import type {
@@ -72,6 +72,15 @@ export interface LoopConfig {
 	/** Auto-compaction: when the estimated context exceeds the threshold,
 	 *  microcompact old tool results before the next model call. */
 	readonly compaction?: { readonly thresholdTokens: number };
+	/**
+	 * C 区: MICROCOMPACT — when the projected context exceeds the threshold,
+	 * append ONE durable `microcompacted` boundary (clearing compactable tool
+	 * results older than the recent turns). The decision is a persisted fact:
+	 * the projection derives the same cleared view from the same events,
+	 * byte for byte, across crash/resume. Never a per-turn progressive
+	 * clearing.
+	 */
+	readonly microcompact?: { readonly thresholdTokens: number };
 	readonly signal?: AbortSignalLike;
 	readonly temperature?: number;
 	readonly maxTokens?: number;
@@ -215,6 +224,17 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				yield full;
 				messages = derive();
 				if (hooks.onPostCompact) await hooks.onPostCompact(messages, {}).catch(() => {});
+			}
+		}
+
+		// ── C 区: one-shot microcompact boundary when over the threshold ──
+		if (config.microcompact !== undefined && estimateTokens(messages) > config.microcompact.thresholdTokens) {
+			const beforeSeq = microcompactBoundarySeq(log.all);
+			if (beforeSeq !== undefined) {
+				const full = log.append({ type: "microcompacted", beforeSeq });
+				if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
+				yield full;
+				messages = derive();
 			}
 		}
 
@@ -890,6 +910,21 @@ function sleep(ms: number, signal?: AbortSignalLike): Promise<void> {
 			{ once: true },
 		);
 	});
+}
+
+/**
+ * C 区: the boundary seq for a microcompact — the seq of the user input
+ * KEEP_RECENT_TURNS+1 places from the end (everything BEFORE that user
+ * input is old enough to clear; the recent turns stay intact). Undefined
+ * when the history is too short to clear anything.
+ */
+function microcompactBoundarySeq(events: readonly Event[]): number | undefined {
+	const userSeqs: number[] = [];
+	for (const ev of events) {
+		if (ev.type === "user_input") userSeqs.push(ev.seq);
+	}
+	const boundary = userSeqs[userSeqs.length - KEEP_RECENT_TURNS - 1];
+	return boundary !== undefined ? boundary - 1 : undefined;
 }
 
 /** A signal that never aborts — for executions outside any abort scope. */

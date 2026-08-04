@@ -32,8 +32,42 @@ import type {
 } from "../protocol/messages.js";
 
 /**
+ * C 区: tools whose output is eligible for microcompact clearing — reads,
+ * listings, searches, and shell output. write/edit outputs are short and
+ * never cleared.
+ */
+const MICROCOMPACTABLE = new Set(["read_file", "list_dir", "search_text", "shell"]);
+
+/** The tag that makes a tool result un-clearable (C 区). */
+export const DO_NOT_COMPACT = "do-not-compact";
+
+/**
+ * C 区: the fixed placeholder for a cleared tool output, derived ONLY from
+ * the event stream (deterministic across replay): the tool's name and its
+ * primary argument (the first string-valued field of its input).
+ */
+function microPlaceholder(name: string, arg: string | undefined): string {
+	return arg === undefined
+		? `[old tool output cleared: ${name}]`
+		: `[old tool output cleared: ${name} ${arg}]`;
+}
+
+/** The first string-valued argument of a tool input, if any. */
+function primaryArg(input: Readonly<Record<string, unknown>> | null | undefined): string | undefined {
+	if (input === null || input === undefined) return undefined;
+	for (const value of Object.values(input)) {
+		if (typeof value === "string" && value !== "") return value;
+	}
+	return undefined;
+}
+
+/**
  * Rebuild the message array from events. Deterministic and order-sensitive:
- * replaying the same log always produces the same messages.
+ * replaying the same log always produces the same messages — BYTE FOR BYTE
+ * (D 区): the same event prefix derives the same message prefix; the only
+ * events that change already-derived messages are `microcompacted`
+ * boundaries, which are themselves persisted facts (their replay derives
+ * the same projection every time).
  *
  * Text block boundaries are preserved: `text_end` closes the current text
  * block (an explicit boundary); `text_start` after a block opens a new one.
@@ -84,6 +118,11 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				...(ev.source !== undefined ? { source: ev.source } : {}),
 			});
 		}
+	}
+	// C 区: callId → {name, input} for the microcompact placeholder.
+	const callMeta = new Map<string, { name: string; input: Readonly<Record<string, unknown>> | null }>();
+	for (const ev of events) {
+		if (ev.type === "tool_call_end") callMeta.set(ev.callId, { name: ev.name, input: ev.input });
 	}
 
 	let explicitAssistant = false;
@@ -186,6 +225,23 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				out.push(message);
 				break;
 			}
+			case "microcompacted": {
+				flushAssistant();
+				// C 区: replace every eligible OLD tool result with the fixed
+				// placeholder. Eligibility: the result's own event seq <= the
+				// boundary, its tool in the whitelist, and no do-not-compact
+				// tag. Deterministic — the boundary event IS the decision.
+				const replaced = out.map((m) => {
+					if (m.role !== "tool") return m;
+					if (m.eventSeq === undefined || m.eventSeq > ev.beforeSeq) return m;
+					const meta = callMeta.get(m.callId);
+					if (meta === undefined || !MICROCOMPACTABLE.has(meta.name)) return m;
+					if ((m.tags ?? []).includes(DO_NOT_COMPACT)) return m;
+					return { ...m, content: microPlaceholder(meta.name, primaryArg(meta.input)) };
+				});
+				out.splice(0, out.length, ...replaced);
+				break;
+			}
 			case "compacted": {
 				flushAssistant();
 				// Apply the EXACT persisted replacements — never re-run the
@@ -217,6 +273,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			case "usage":
 			case "stop":
 			case "terminal":
+			case "microcompacted":
 			case "tool_execution_started":
 			case "tool_execution_succeeded":
 			case "tool_execution_failed":
