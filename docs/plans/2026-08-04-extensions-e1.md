@@ -137,7 +137,7 @@ the registry; hooks compose after the harness's own.
   systemPrompt?: { append: string }` (`packages/core/src/protocol/
   extension.ts:50-56`) — append-only, never replace (monotonicity: adding
   an extension never removes existing guidance). The session's own prompt
-  comes first, then each extension's append in load order, 
+  comes first, then each extension's append in load order,
 
 -joined —
   deterministic (same extensions → same prompt), no appends → byte-
