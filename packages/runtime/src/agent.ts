@@ -12,7 +12,7 @@
  * itself stays dependency-free; the SDKs live in the provider packages.
  */
 
-import { EventLog, ToolRegistry, type Adapter, type HookHost, type Tool } from "@vincemakes/kiso-core";
+import { EventLog, ToolRegistry, type Adapter, type HookHost, type KisoExtension, type Tool } from "@vincemakes/kiso-core";
 import { AgentSession, type SessionConfig } from "./session.js";
 import type { SessionStore } from "./store.js";
 
@@ -50,6 +50,11 @@ export interface AgentDefinition {
 	/** C 区: microcompact threshold — passed through to every session. */
 	readonly microcompact?: { readonly thresholdTokens: number };
 	readonly maxRetries?: number;
+	/** E1: loaded extensions — their tools merge into the registry (a name
+	 *  collision with a built-in is a loud startup error), their hooks
+	 *  compose after the agent's own (既有先行), their approvals join the
+	 *  loop's policy chain. */
+	readonly extensions?: readonly KisoExtension[];
 }
 
 export class AgentRuntime {
@@ -61,6 +66,11 @@ export class AgentRuntime {
 		this.#definition = definition;
 		this.#registry = new ToolRegistry();
 		for (const tool of definition.tools) this.#registry.register(tool);
+		// E1: extension tools join the registry — a collision with a built-in
+		// name throws here, at agent creation: a loud startup failure.
+		for (const ext of definition.extensions ?? []) {
+			for (const tool of ext.tools ?? []) this.#registry.register(tool);
+		}
 		this.#adapterPromise = resolveAdapter(definition);
 	}
 
@@ -102,6 +112,7 @@ export class AgentRuntime {
 			...(this.#definition.compaction !== undefined ? { compaction: this.#definition.compaction } : {}),
 			...(this.#definition.microcompact !== undefined ? { microcompact: this.#definition.microcompact } : {}),
 			...(this.#definition.maxRetries !== undefined ? { maxRetries: this.#definition.maxRetries } : {}),
+			...(this.#definition.extensions !== undefined ? { extensions: this.#definition.extensions } : {}),
 		};
 		return new AgentSession(options.id, log, store, adapter, config);
 	}

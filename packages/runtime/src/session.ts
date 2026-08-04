@@ -33,6 +33,9 @@ import {
 	type AbortSignalStub,
 	type Adapter,
 	type Event,
+	type HookContext,
+	type HookHost,
+	type KisoExtension,
 	type Message,
 	type PermissionDecision,
 	type Tool,
@@ -116,7 +119,16 @@ export class AgentSession {
 		this.log = log;
 		this.#store = store;
 		this.#adapter = adapter;
-		this.#config = config;
+		// E1: extension tools join the registry. The collision check already
+		// happened at agent creation (loud startup error); the idempotent
+		// skip keeps a second session on the same registry from re-registering.
+		for (const ext of config.extensions ?? []) {
+			for (const tool of ext.tools ?? []) {
+				if (!config.registry.has(tool.name)) config.registry.register(tool);
+			}
+		}
+		const composedHooks = composeHooks(config.hooks, config.extensions ?? []);
+		this.#config = composedHooks === undefined ? config : { ...config, hooks: composedHooks };
 	}
 
 	/** Write-ahead through the store; a rejected write POISONS the session
@@ -452,6 +464,13 @@ export interface SessionConfig {
 	/** C 区: microcompact threshold — passed through to the loop verbatim. */
 	readonly microcompact?: { readonly thresholdTokens: number };
 	readonly maxRetries?: number;
+	/**
+	 * E1: loaded extensions — their tools join the registry (idempotently;
+	 * a collision with a built-in name was already rejected at agent
+	 * creation), their hooks compose AFTER the existing ones (既有先行),
+	 * their approval policies enter the loop's policy chain.
+	 */
+	readonly extensions?: readonly KisoExtension[];
 }
 
 /**
@@ -524,6 +543,9 @@ export class Run implements AsyncIterable<Event> {
 					...(this.#config.compaction !== undefined ? { compaction: this.#config.compaction } : {}),
 					...(this.#config.microcompact !== undefined ? { microcompact: this.#config.microcompact } : {}),
 					...(this.#config.maxRetries !== undefined ? { maxRetries: this.#config.maxRetries } : {}),
+					approvalPolicies: (this.#config.extensions ?? []).flatMap((e) =>
+						(e.approvals ?? []).map((policy) => ({ extension: e.name, policy })),
+					),
 					log,
 					signal,
 					resolveApproval: (decisionId: string) =>
@@ -957,6 +979,62 @@ export class Run implements AsyncIterable<Event> {
 			errorKind: denial.errorKind,
 		});
 	}
+}
+
+/**
+ * E1: extension hooks compose AFTER the agent's own (既有先行 — the existing
+ * hook sees every event first). Observers all run, in order; onUserMessage
+ * and onPreTool — the FIRST decisive answer wins (the existing hook
+ * outranks extensions; defers fall through); onPostTool folds — each
+ * transforms the previous result. Returns the existing host unchanged when
+ * no extension provides hooks.
+ */
+function composeHooks(existing: HookHost | undefined, extensions: readonly KisoExtension[]): HookHost | undefined {
+	const extHooks = extensions.flatMap((e) => (e.hooks === undefined ? [] : [e.hooks]));
+	if (extHooks.length === 0) return existing;
+	const out: HookHost = { ...existing };
+	const sources: readonly HookHost[] = existing === undefined ? extHooks : [existing, ...extHooks];
+	type Observer = (payload: never, ctx: HookContext) => Promise<void>;
+	const observers = (key: (h: HookHost) => Observer | undefined): Observer | undefined => {
+		const handlers = sources.map(key).filter((h): h is Observer => h !== undefined);
+		if (handlers.length <= 1) return handlers[0];
+		return async (payload, ctx) => {
+			for (const h of handlers) await h(payload, ctx);
+		};
+	};
+	for (const key of ["onPreLlm", "onEvent", "onPreCompact", "onPostCompact", "onPause", "onStop"] as const) {
+		const handler = observers((h) => h[key]);
+		if (handler !== undefined) (out as Record<string, unknown>)[key] = handler;
+	}
+	const messageHandlers = sources.map((h) => h.onUserMessage).filter((h) => h !== undefined);
+	if (messageHandlers.length > 1) {
+		out.onUserMessage = async (msg, ctx) => {
+			for (const h of messageHandlers) {
+				const r = await h(msg, ctx);
+				if (r !== null) return r;
+			}
+			return null;
+		};
+	}
+	const preToolHandlers = sources.map((h) => h.onPreTool).filter((h) => h !== undefined);
+	if (preToolHandlers.length > 1) {
+		out.onPreTool = async (call, ctx) => {
+			for (const h of preToolHandlers) {
+				const d = await h(call, ctx);
+				if (d.action !== "defer") return d;
+			}
+			return { action: "defer" };
+		};
+	}
+	const postToolHandlers = sources.map((h) => h.onPostTool).filter((h) => h !== undefined);
+	if (postToolHandlers.length > 1) {
+		out.onPostTool = async (call, result, ctx) => {
+			let r = result;
+			for (const h of postToolHandlers) r = await h(call, r, ctx);
+			return r;
+		};
+	}
+	return out;
 }
 
 /**
