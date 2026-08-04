@@ -16,12 +16,24 @@
  * the run pauses, asks, and resumes — durably (ADR-0024).
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAgent, disposeExtensions, loadExtensions, SessionStore, type AgentDefinition, type AgentSession } from "@vincemakes/kiso-runtime";
+import {
+	createAgent,
+	disposeExtensions,
+	loadExtensions,
+	loadProjectExtensions,
+	projectArtifacts,
+	recordTrust,
+	SessionStore,
+	trustFor,
+	type AgentDefinition,
+	type AgentSession,
+	type ProjectArtifacts,
+} from "@vincemakes/kiso-runtime";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import type { PermissionPolicy } from "@vincemakes/kiso-runtime";
@@ -58,6 +70,17 @@ function extensionsDir(): string {
 /** E1: the extensions loaded by makeAgent — their names feed the banner. */
 let loadedExtensions: readonly import("@vincemakes/kiso-runtime").KisoExtension[] = [];
 
+/** E1: the USER-level extensions alone — the banner's unmarked part (E3:
+ *  loadedExtensions later includes the project-level ones too). */
+let userExtensions: readonly import("@vincemakes/kiso-runtime").KisoExtension[] = [];
+
+/** E3: the PROJECT-level extensions (loaded after the trust gate) — the
+ *  banner distinguishes them from the user-level ones. */
+let projectExtensions: readonly import("@vincemakes/kiso-runtime").KisoExtension[] = [];
+
+/** E3: temp artifacts of the mcp/skills merge — removed on exit. */
+const mergedTempPaths: string[] = [];
+
 /** The CLI's own version — read from the package.json next to the build. */
 let VERSION = "?";
 try {
@@ -77,12 +100,23 @@ const RESET = "\x1b[0m";
 const LOGO = "█ █ ▀█▀ █▀▀ █▀█\n█▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9\n▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀";
 function startupBanner(): string {
 	// The historical `[N extensions: names]` text merges VERBATIM into the
-	// third row — the existing e2e assertions keep matching (天然不破).
-	const names =
-		loadedExtensions.length > 0
-			? ` · [${loadedExtensions.length} extension${loadedExtensions.length === 1 ? "" : "s"}: ${loadedExtensions.map((e) => e.name).join(", ")}]`
-			: "";
+	// third row — the existing e2e assertions keep matching (天然不破). E3:
+	// project-level extensions are counted in N and listed after `project:`
+	// — `[3 extensions: safe-defaults · project: lint-rules, mcp]`.
+	const names = bannerExtensionText();
 	return `${DIM}${LOGO}   v${VERSION}${names}${RESET}\n`;
+}
+
+/** E3: the `[N extensions: ...]` text — user-level names, then project-level
+ *  ones marked with `project:`. Byte-identical to the historical text when
+ *  no project extensions are loaded. */
+function bannerExtensionText(): string {
+	const total = userExtensions.length + projectExtensions.length;
+	if (total === 0) return "";
+	const parts: string[] = [];
+	if (userExtensions.length > 0) parts.push(userExtensions.map((e) => e.name).join(", "));
+	if (projectExtensions.length > 0) parts.push(`project: ${projectExtensions.map((e) => e.name).join(", ")}`);
+	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
 }
 
 /** E1: the startup banner line(s) — TTY: logo + merged extensions; off-TTY:
@@ -92,10 +126,139 @@ function extensionsBanner(): void {
 		console.log(startupBanner());
 		return;
 	}
-	if (loadedExtensions.length === 0) return;
-	console.log(
-		`[${loadedExtensions.length} extension${loadedExtensions.length === 1 ? "" : "s"}: ${loadedExtensions.map((e) => e.name).join(", ")}]\n`,
-	);
+	const text = bannerExtensionText();
+	if (text === "") return;
+	console.log(`${text}\n`);
+}
+
+/**
+ * E3 — the project-level trust gate (ADR-0037): capability is trusted by
+ * content digest, not by directory. Runs BEFORE any extension loads — the
+ * mcp/skills merges must be in the env before the user-level extensions are
+ * loaded (the mcp factory reads KISO_MCP_CONFIG at load time, the skills
+ * extension scans KISO_SKILLS_DIR at load time).
+ *
+ * Verdicts: granted → load; refused → never load, never re-ask (refused is
+ * sticky — re-evaluate by deleting the trust line or changing a file); no
+ * record → only a HUMAN may decide, TTY only — non-TTY refuses with one
+ * stderr line. Returns the artifacts on grant, null on anything else.
+ */
+async function resolveProjectTrust(): Promise<ProjectArtifacts | null> {
+	const artifacts = await projectArtifacts(process.cwd());
+	if (artifacts === null) return null; // no .kiso artifacts — nothing to gate
+	const record = trustFor(artifacts.root, artifacts.digest);
+	if (record?.decision === "granted") {
+		applyProjectMerges(artifacts);
+		return artifacts;
+	}
+	if (record?.decision === "refused") return null; // refused is sticky — no re-ask
+	// First discovery — list every artifact (file name + digest short
+	// prefix) and ask the human ONCE.
+	if (!process.stdin.isTTY) {
+		console.error(
+			`[project .kiso] found ${artifacts.files.length} artifact(s) in ${artifacts.root} — not trusted, not loaded (run kiso interactively once to decide)`,
+		);
+		return null;
+	}
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	try {
+		console.log(`[project .kiso] ${artifacts.root}`);
+		for (const f of artifacts.files) {
+			console.log(`  ${f.path}  (${f.digest.slice(0, 6)})`);
+		}
+		const answer = await new Promise<string>((resolve) => rl.question(`trust this project's .kiso? (y/n) `, resolve));
+		const granted = answer.trim().toLowerCase().startsWith("y");
+		recordTrust({ root: artifacts.root, digest: artifacts.digest, decision: granted ? "granted" : "refused" });
+		if (!granted) return null;
+		applyProjectMerges(artifacts);
+		return artifacts;
+	} finally {
+		rl.close();
+	}
+}
+
+/**
+ * E3 — merge the project's mcp.json and skills into the env BEFORE the
+ * extension load. A server name in BOTH configs is a LOUD error (a silent
+ * override would be a supply-chain surprise); a skill name in both merges
+ * with project-wins and a stderr note. Exported for tests.
+ */
+export function applyProjectMerges(artifacts: ProjectArtifacts): void {
+	if (artifacts.files.some((f) => f.kind === "mcp")) applyMcpMerge(artifacts.root);
+	if (artifacts.files.some((f) => f.kind === "skill")) applySkillsMerge(artifacts.root);
+}
+
+/** Read an mcp.json with the mcp extension's tolerance: absent/unreadable →
+ *  {}, present-but-broken → throw (the loader convention). */
+function readMcpConfig(path: string): { mcpServers?: Record<string, unknown> } {
+	let text: string;
+	try {
+		text = readFileSync(path, "utf8");
+	} catch {
+		return {};
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(text);
+	} catch (err) {
+		throw new Error(`[project .kiso] cannot parse ${path}: ${(err as Error).message}`);
+	}
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new Error(`[project .kiso] ${path} must be an object with an mcpServers map`);
+	}
+	return parsed as { mcpServers?: Record<string, unknown> };
+}
+
+/** Merge user-level + project-level mcp.json into one temp file and point
+ *  KISO_MCP_CONFIG at it — the mcp extension reads it at load time. */
+function applyMcpMerge(root: string): void {
+	const userPath = process.env.KISO_MCP_CONFIG ?? join(homedir(), ".kiso", "mcp.json");
+	const user = readMcpConfig(userPath);
+	const project = readMcpConfig(join(root, "mcp.json"));
+	const userServers = user.mcpServers ?? {};
+	const projectServers = project.mcpServers ?? {};
+	if (Object.keys(projectServers).length === 0) return; // nothing to merge
+	for (const name of Object.keys(projectServers)) {
+		if (name in userServers) {
+			throw new Error(`[project .kiso] mcp server "${name}" exists in both the user-level and the project-level mcp.json`);
+		}
+	}
+	const merged = { mcpServers: { ...userServers, ...projectServers } };
+	const temp = join(tmpdir(), `kiso-mcp-merged-${process.pid}.json`);
+	writeFileSync(temp, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+	process.env.KISO_MCP_CONFIG = temp;
+	mergedTempPaths.push(temp);
+}
+
+/** Merge user-level + project-level skills into one temp scan dir (project
+ *  skill dirs symlinked first; a name in both → project wins + a stderr
+ *  note) and point KISO_SKILLS_DIR at it — the skills extension's existing
+ *  scan reads it at load time and per read_skill call. */
+function applySkillsMerge(root: string): void {
+	const userDir = process.env.KISO_SKILLS_DIR ?? join(homedir(), ".kiso", "skills");
+	const projectDir = join(root, "skills");
+	const merged = mkdtempSync(join(tmpdir(), "kiso-skills-"));
+	mergedTempPaths.push(merged);
+	for (const dir of readdirSyncSafe(projectDir)) {
+		symlinkSync(join(projectDir, dir), join(merged, dir)); // project wins on collision
+	}
+	for (const dir of readdirSyncSafe(userDir)) {
+		const target = join(merged, dir);
+		if (existsSync(target)) {
+			console.error(`[project .kiso] skill "${dir}" exists in both user and project skills — project wins`);
+			continue;
+		}
+		symlinkSync(join(userDir, dir), target);
+	}
+	process.env.KISO_SKILLS_DIR = merged;
+}
+
+function readdirSyncSafe(dir: string): string[] {
+	try {
+		return readdirSync(dir);
+	} catch {
+		return []; // no skills dir on either level = nothing to merge
+	}
 }
 
 /**
@@ -182,9 +345,20 @@ function fauxSkip(id: string): number {
 async function makeAgent(fauxSkipTurns = 0) {
 	const store = new SessionStore(sessionsDir());
 
+	// E3: the project-level trust gate runs BEFORE any extension load (the
+	// mcp/skills merges must be in the env when the user-level extensions
+	// load). Untrusted project capability is never loaded — never silently.
+	const project = await resolveProjectTrust();
 	// E1: the startup extension scan — a broken extension fails the process
 	// LOUDLY here (loadExtensions throws), never silently.
-	loadedExtensions = await loadExtensions(extensionsDir());
+	userExtensions = await loadExtensions(extensionsDir());
+	if (project !== null) {
+		projectExtensions = await loadProjectExtensions(process.cwd(), userExtensions);
+		loadedExtensions = [...userExtensions, ...projectExtensions];
+	} else {
+		projectExtensions = [];
+		loadedExtensions = userExtensions;
+	}
 
 	// Provider wiring (F 组): the CLI never imports provider SDKs directly —
 	// the runtime's lazy provider resolution owns them. Real key → real
@@ -790,6 +964,15 @@ async function main(): Promise<void> {
 		// 发现#8 (P1): extension dispose runs on the same exit path — a
 		// dispose failure prints one line and NEVER changes the exit code.
 		await disposeExtensions(loadedExtensions);
+		// E3: the merged mcp/skills temp artifacts are best-effort removed on
+		// the same exit path — a cleanup failure is silent (tmpdir reaps).
+		for (const p of mergedTempPaths) {
+			try {
+				rmSync(p, { recursive: true, force: true });
+			} catch {
+				// best-effort — the temp dir would be reaped by the OS
+			}
+		}
 	}
 }
 

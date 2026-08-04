@@ -23,5 +23,5 @@ export interface CliResult {
 export function runCli(
 	args: readonly string[],
 	env: NodeJS.ProcessEnv,
-	options?: { readonly input?: string; readonly timeout?: number },
+	options?: { readonly input?: string; readonly timeout?: number; readonly cwd?: string },
 ): CliResult;

@@ -45,12 +45,15 @@ export function isolatedEnv(extra = {}) {
 }
 
 /** Run the built CLI with the given env — the timeout is explicit and
- *  generous (≥30s): these tests measure correctness, not speed. */
+ *  generous (≥30s): these tests measure correctness, not speed. E3: the
+ *  project-trust e2e needs a working directory with .kiso artifacts, so
+ *  options.cwd passes the CLI's process.cwd. */
 export function runCli(args, env, options = {}) {
 	return spawnSync("node", [CLI, ...args], {
 		input: options.input ?? "",
 		encoding: "utf8",
 		env,
+		cwd: options.cwd,
 		timeout: options.timeout ?? 30_000,
 	});
 }
