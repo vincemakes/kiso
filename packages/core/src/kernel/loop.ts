@@ -81,7 +81,7 @@ export interface LoopConfig {
 	 * byte for byte, across crash/resume. Never a per-turn progressive
 	 * clearing.
 	 */
-	readonly microcompact?: { readonly thresholdTokens: number };
+	readonly microcompact?: { readonly thresholdTokens: number; readonly keepResults?: number };
 	readonly signal?: AbortSignalLike;
 	readonly temperature?: number;
 	readonly maxTokens?: number;
@@ -240,7 +240,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 
 		// ── C 区: one-shot microcompact boundary when over the threshold ──
 		if (config.microcompact !== undefined && estimateTokens(messages) > config.microcompact.thresholdTokens) {
-			const beforeSeq = microcompactBoundarySeq(log.all);
+			const beforeSeq = microcompactBoundarySeq(log.all, config.microcompact.keepResults ?? KEEP_COMPACTABLE_RESULTS);
 			if (beforeSeq !== undefined) {
 				const full = log.append({ type: "microcompacted", beforeSeq });
 				if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
@@ -999,9 +999,10 @@ function sleep(ms: number, signal?: AbortSignalLike): Promise<void> {
 }
 
 /**
- * C 区 (自举 #3): how many of the NEWEST compactable tool results survive a
- * microcompact boundary — the model must keep reasoning over the recent
- * results, whatever turn they belong to.
+ * C 区 (自举 #3): the DEFAULT for how many of the NEWEST compactable tool
+ * results survive a microcompact boundary (overridable per config via
+ * microcompact.keepResults) — the model must keep reasoning over the
+ * recent results, whatever turn they belong to.
  */
 const KEEP_COMPACTABLE_RESULTS = 4;
 
@@ -1009,14 +1010,14 @@ const KEEP_COMPACTABLE_RESULTS = 4;
  * C 区: the boundary seq for a microcompact — drawn by COMPACTABLE-RESULT
  * recentness, never user turns: a SINGLE user turn that reads several big
  * files (the coding agent's main overflow shape) crosses the threshold and
- * must trigger. The newest KEEP_COMPACTABLE_RESULTS still-visible
- * compactable tool results stay intact; the boundary points AT the
- * (K+1)th-newest of them, so it and everything older is cleared. Results
- * already cleared by an earlier boundary do not count toward the kept
- * window — each new boundary makes progress. Undefined when fewer than
- * K+1 compactable results remain (the kept window is the whole context).
+ * must trigger. The newest `keepResults` still-visible compactable tool
+ * results stay intact; the boundary points AT the (K+1)th-newest of them,
+ * so it and everything older is cleared. Results already cleared by an
+ * earlier boundary do not count toward the kept window — each new boundary
+ * makes progress. Undefined when fewer than keepResults+1 compactable
+ * results remain (the kept window is the whole context).
  */
-function microcompactBoundarySeq(events: readonly Event[]): number | undefined {
+function microcompactBoundarySeq(events: readonly Event[], keepResults: number): number | undefined {
 	const callName = new Map<string, string>();
 	let lastCleared = -1;
 	for (const ev of events) {
@@ -1029,8 +1030,8 @@ function microcompactBoundarySeq(events: readonly Event[]): number | undefined {
 		const name = callName.get(ev.callId);
 		if (name !== undefined && MICROCOMPACTABLE.has(name)) visible.push(ev.seq);
 	}
-	if (visible.length <= KEEP_COMPACTABLE_RESULTS) return undefined;
-	return visible[visible.length - KEEP_COMPACTABLE_RESULTS - 1]!;
+	if (visible.length <= keepResults) return undefined;
+	return visible[visible.length - keepResults - 1]!;
 }
 
 /** A signal that never aborts — for executions outside any abort scope. */

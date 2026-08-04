@@ -159,6 +159,37 @@ describe("E1: AgentSession integration", () => {
 		const decided = session.log.all.find((e) => e.type === "permission_decided");
 		expect(decided).toMatchObject({ decision: "denied", reason: "reads not allowed", decidedBy: "no-reads" });
 	});
+
+	it("an extension's compaction config produces a microcompacted boundary event", async () => {
+		// No session microcompact is set, so the FIRST extension providing a
+		// compaction config supplies the loop's microcompact (keepResults: 1
+		// keeps only the newest 1 compactable result — two big reads cross
+		// the tiny threshold and the boundary fires on the second iteration).
+		const dir = extDir();
+		const agent = createAgent({
+			model: "faux",
+			store: new SessionStore(dir),
+			tools: [defineTool({
+				name: "read_file",
+				description: "r",
+				parameters: { type: "object", properties: {} },
+				execute: async () => ({ content: "x".repeat(400), isError: false }),
+			})],
+			adapter: createFauxProvider([
+				{ events: [{ type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "a.ts" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "tool_call_end", callId: "r2", name: "read_file", input: { path: "b.ts" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "stop", reason: "end_turn" }] },
+			]),
+			extensions: [{ name: "compacter", compaction: { thresholdTokens: 50, keepResults: 1 } }],
+		});
+		const session = await agent.session({ id: "s-cmp" });
+		const out: Event[] = [];
+		for await (const ev of session.run("go")) out.push(ev);
+		expect(out.some((e) => e.type === "microcompacted")).toBe(true); // yielded
+		const boundary = session.log.all.find((e) => e.type === "microcompacted");
+		expect(boundary).toBeDefined();
+		expect(boundary).toMatchObject({ beforeSeq: expect.any(Number) });
+	});
 });
 
 describe("E1-P2 (复审): onUserMessage composes as a pipe with veto short-circuit", () => {

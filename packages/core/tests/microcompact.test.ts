@@ -206,4 +206,37 @@ describe("C: the loop appends the boundary when over the threshold", () => {
 		expect(content("r5")).toBe("line\n".repeat(200));
 		expect(content("r8")).toBe("line\n".repeat(200));
 	});
+
+	it("keepResults 2 keeps only the 2 newest compactable results", async () => {
+		// The config's keepResults overrides the default K = 4: with 6 big
+		// reads in one turn, only the 2 newest survive — r0..r3 cleared.
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		for (let i = 0; i < 6; i++) {
+			log.append({ type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: `f${i}.ts` } });
+			log.append({ type: "tool_result", callId: `r${i}`, content: "line\n".repeat(200), isError: false });
+		}
+		const events: import("@vincemakes/kiso-core").Event[] = [];
+		for await (const ev of loop({
+			adapter: createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]),
+			model: "faux",
+			registry: new ToolRegistry(),
+			log,
+			microcompact: { thresholdTokens: 100, keepResults: 2 },
+		})) {
+			events.push(ev);
+		}
+		const boundaries = log.all.filter((e) => e.type === "microcompacted");
+		expect(boundaries).toHaveLength(1);
+		expect(events.some((e) => e.type === "microcompacted")).toBe(true); // yielded
+		const projected = projectMessages(log.all);
+		const tools = projected.filter((m) => m.role === "tool");
+		const content = (callId: string): string | undefined =>
+			tools.find((m) => m.callId === callId)?.content as string | undefined;
+		// keepResults 2: only the 2 NEWEST compactable results stay intact.
+		expect(content("r0")).toBe("[old tool output cleared: read_file f0.ts]");
+		expect(content("r3")).toBe("[old tool output cleared: read_file f3.ts]");
+		expect(content("r4")).toBe("line\n".repeat(200));
+		expect(content("r5")).toBe("line\n".repeat(200));
+	});
 });

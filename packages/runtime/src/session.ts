@@ -530,6 +530,9 @@ export class Run implements AsyncIterable<Event> {
 			this.#session.beginRun(this);
 			const log = this.#session.log;
 			const signal = this.#externalSignal ? new MergedSignal(this.#abort.signal, this.#externalSignal) : this.#abort.signal;
+			// E2: the session's own microcompact wins; otherwise the FIRST
+			// extension providing a compaction config supplies it.
+			const microcompact = microcompactFor(this.#config);
 			const loopConfig = () =>
 				({
 					adapter: this.#adapter,
@@ -541,7 +544,7 @@ export class Run implements AsyncIterable<Event> {
 					...(this.#config.maxTokens !== undefined ? { maxTokens: this.#config.maxTokens } : {}),
 					...(this.#config.temperature !== undefined ? { temperature: this.#config.temperature } : {}),
 					...(this.#config.compaction !== undefined ? { compaction: this.#config.compaction } : {}),
-					...(this.#config.microcompact !== undefined ? { microcompact: this.#config.microcompact } : {}),
+					...(microcompact !== undefined ? { microcompact } : {}),
 					...(this.#config.maxRetries !== undefined ? { maxRetries: this.#config.maxRetries } : {}),
 					approvalPolicies: (this.#config.extensions ?? []).flatMap((e) =>
 						(e.approvals ?? []).map((policy) => ({ extension: e.name, policy })),
@@ -1055,6 +1058,23 @@ function composeHooks(existing: HookHost | undefined, extensions: readonly KisoE
 		};
 	}
 	return out;
+}
+
+/**
+ * E2: the loop's microcompact config — the session's own microcompact wins;
+ * otherwise the FIRST extension providing a compaction config supplies it.
+ * An extension config without a threshold contributes nothing (a boundary
+ * needs a threshold to ever fire).
+ */
+function microcompactFor(config: SessionConfig): { readonly thresholdTokens: number; readonly keepResults?: number } | undefined {
+	if (config.microcompact !== undefined) return config.microcompact;
+	for (const ext of config.extensions ?? []) {
+		const c = ext.compaction;
+		if (c !== undefined && c.thresholdTokens !== undefined) {
+			return { thresholdTokens: c.thresholdTokens, ...(c.keepResults !== undefined ? { keepResults: c.keepResults } : {}) };
+		}
+	}
+	return undefined;
 }
 
 /**

@@ -40,4 +40,10 @@ export interface KisoExtension {
 	readonly hooks?: HookHost;
 	readonly tools?: readonly Tool[];
 	readonly approvals?: readonly ApprovalPolicy[];
+	/**
+	 * E2: the extension's compaction config — supplies the loop's microcompact
+	 * parameters (threshold + optional keepResults) when the session config
+	 * does not set its own microcompact.
+	 */
+	readonly compaction?: { readonly thresholdTokens?: number; readonly keepResults?: number };
 }
