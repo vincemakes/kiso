@@ -156,7 +156,41 @@ EXT APPEND`); ② `E2-2: two extensions join in LOAD
   test.
 - `npm run check` all green (376+3 tests; core 1,907/2,000, cli 713/1,200).
 
-## 7. What was NOT done (explicitly out of scope)
+## 7. 裁决 A (2026-08-04) — E1 ask 语义修正 (core 唯一许可 diff)
+
+**冲突**: ③ MCP 桥的 e2e 要求 mcp__ 工具出现审批提问(ask 档),但 E1 已落地的 ask
+路径路由进 `hooks.onPreTool`——CLI 的静态自动策略(`PERMISSION_POLICY` 对无规则
+工具 default deny)代答了人,模型收到拒绝,无提问;四包零改动条款下无任何配置面
+能改变这一点。
+
+**三方案**: A) core 一处改 ask 路径直达人类暂停(permission_requested +
+resolveApproval),绕过 hook; B) 零内核改动,e2e 改断言为"不自动放行"(人根本
+见不到外部工具,"必须人工过目"落空); C) CLI 默认 deny→defer(产品级安全行为
+变化)。
+
+**裁决: A** — 定性为修正 E1 的 ask 语义,不是给 MCP 开例外: ask 的本义是"必须
+由人决定",路由进 onPreTool 让静态自动策略代答了人,语义错在 E1。
+
+**落地** (`packages/core/src/kernel/loop.ts`, core 允许且仅允许此一处 diff;
+runtime/cli/tools-node 零改动):
+- ask 分支直达人类暂停(`awaitHumanApproval`, 原 defer 暂停机制提取为共享
+  helper): `loop.ts:769-787`; hook 门改为 `chainVerdict === undefined`(ask 已
+  由人类暂停解决,静态 hook 不再发言,也不二次暂停): `loop.ts:789-808`。
+- "ask 无人类流=诚实拒绝"判据由 hooks.onPreTool 改为 resolveApproval。
+- 回归钉死: 无扩展场景未知工具仍被 CLI 静态策略 default deny
+  (`packages/runtime/tests/extensions.test.ts` — `the CLI's static default
+  deny for unknown tools is untouched — denial, never a pause`); ask + hook
+  在场但无通道 → 诚实拒绝、hook 零调用 (`packages/core/tests/
+  extensions.test.ts` — `裁决 A: ask with a hook but NO approval channel
+  still degrades — the static hook never speaks for an ask`)。
+- E1 既有测试逐个核对: 全部按新路由成立、零改动 ("ask outranks allow — the
+  existing human flow pauses, decided WITHOUT decidedBy" 等; 实施中途曾出现
+  双暂停 (d-3+d-5), 系 ask 放行后落入 hook 块二次暂停的实现 bug, 以 hook 门
+  修正, 非测试改动)。
+- 无扩展时全部行为逐字节不变 (回归测试 + 全量套件 136 core / 122 runtime /
+  32 cli 全绿)。
+
+## 8. What was NOT done (explicitly out of scope)
 
 - registerCommand / shortcuts / renderers / sendMessage-like APIs;
 - project-level extensions; MCP; subagents;

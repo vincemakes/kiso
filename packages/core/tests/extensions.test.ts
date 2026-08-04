@@ -186,6 +186,34 @@ describe("E1: policy failures and absent flows degrade honestly", () => {
 		expect(resultOf(log)?.content).toContain("[Permission denied]");
 		expect(log.all.some((e) => e.type === "tool_execution_started")).toBe(false); // never executed
 	});
+
+	it("裁决 A: ask with a hook but NO approval channel still degrades — the static hook never speaks for an ask", async () => {
+		// An ask means "a HUMAN must decide" — the automated policy hook must
+		// not answer for the human, not even with an allow. The no-flow
+		// judgment keys on resolveApproval, not on the hook's presence.
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		let hookRan = false;
+		for await (const _ev of loop({
+			adapter: createFauxProvider(scriptedCall("read_file", "r1", { path: "a.ts" })),
+			model: "faux",
+			registry: makeRegistry(),
+			log,
+			hooks: {
+				onPreTool: async () => {
+					hookRan = true;
+					return { action: "allow" };
+				},
+			},
+			approvalPolicies: [{ extension: "ask-all", policy: { decide: askAll } }],
+		})) {
+			// drain
+		}
+		expect(hookRan).toBe(false); // the hook was never consulted for the ask
+		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false); // no channel — no pause
+		expect(resultOf(log)?.content).toContain("[Permission denied]");
+		expect(log.all.some((e) => e.type === "tool_execution_started")).toBe(false);
+	});
 });
 
 describe("E1: a durable decision takes effect on resume — the chain never re-runs", () => {

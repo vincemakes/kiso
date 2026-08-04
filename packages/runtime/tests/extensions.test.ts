@@ -192,6 +192,35 @@ describe("E1: AgentSession integration", () => {
 	});
 });
 
+describe("裁决 A (E1 ask 语义修正): no extensions — the static policy still governs", () => {
+	it("the CLI's static default deny for unknown tools is untouched — denial, never a pause", async () => {
+		// 条款1 regression: with NO extension policies the static automated
+		// policy (the CLI's PermissionPolicy shape: default deny) still
+		// answers for tools without a rule — byte-for-byte the pre-ask-fix
+		// behavior. The ask re-routing must not leak into extension-less runs.
+		const dir = extDir();
+		let paused = false;
+		const agent = createAgent({
+			model: "faux",
+			store: new SessionStore(dir),
+			tools: [readTool()],
+			permissionPolicy: { rules: [], default: "deny" }, // the CLI's unknown-tool shape
+			adapter: createFauxProvider([
+				{ events: [{ type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "x" } }, { type: "stop", reason: "tool_use" }] },
+			]),
+			hooks: { onPause: async () => { paused = true; } },
+		});
+		const session = await agent.session({ id: "ruling-a1" });
+		const out: Event[] = [];
+		for await (const ev of session.run("go")) out.push(ev);
+		const result = out.find((e) => e.type === "tool_result");
+		expect(result?.content).toContain("[Permission denied] no policy rule for read_file");
+		expect(out.some((e) => e.type === "permission_requested")).toBe(false); // never paused
+		expect(paused).toBe(false);
+		expect(out.some((e) => e.type === "permission_decided")).toBe(false); // the static hook writes no verdict event
+	});
+});
+
 describe("E2 (收尾): extension systemPrompt appends", () => {
 	/** A minimal adapter that captures the REQUEST it was given — the
 	 *  systemPrompt is invisible in the CLI, so the runtime layer IS the

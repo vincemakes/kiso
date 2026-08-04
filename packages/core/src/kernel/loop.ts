@@ -700,6 +700,71 @@ async function* executeOne(
 	// all. Checked again here, after any permission path.
 	if (signal?.aborted) throw ABORTED;
 
+	/**
+	 * The human approval pause (Phase D / 裁决 A): register the resolver
+	 * BEFORE announcing the request (a consumer that answers the moment it
+	 * sees the event must find the resolver already waiting — no deadlock
+	 * between yield and await), persist the request, yield it, await the
+	 * human's decision — abortable (an abort during the wait ends the run;
+	 * a verdict given in the same instant is still recorded exactly once) —
+	 * then persist and yield the decision. Returns the human's verdict.
+	 */
+	async function* awaitHumanApproval(decisionId: string): AsyncGenerator<Event, PermissionDecision> {
+		const pendingDecision =
+			resolveApproval !== undefined
+				? resolveApproval(decisionId)
+				: Promise.resolve({ action: "deny", reason: "no approval channel configured" } as const);
+		const requested = log.append({
+			type: "permission_requested",
+			decisionId,
+			callId: call.callId,
+			name: call.name,
+			input: payload.input,
+		});
+		if (hooks.onPause) await hooks.onPause("awaiting approval", {}).catch(() => {});
+		yield requested;
+		// Area 4: the pause is abortable — a cancel during the human's wait
+		// ends the run now; the request stays durable and pending.
+		let finalDecision: PermissionDecision;
+		try {
+			finalDecision = await raceAbort(pendingDecision, signal);
+		} catch (err) {
+			if (err === ABORTED) {
+				// 第四轮(对抗): the human may have answered in the same instant
+				// the abort landed — a CONSUMED verdict must be recorded
+				// (exactly once), never lost; the abort then ends the run with
+				// its honest aborted terminal.
+				const verdict = resolveApprovalVerdict?.(decisionId);
+				if (verdict !== undefined) {
+					yield log.append({
+						type: "permission_decided",
+						decisionId,
+						callId: call.callId,
+						decision: verdict ? "approved" : "denied",
+						...(verdict ? {} : { reason: "denied by user" }),
+					});
+				}
+			}
+			throw err;
+		}
+		// The approval channel (session.approve) persists the decision
+		// write-ahead BEFORE waking the resolver (Area 2): if it already
+		// landed in the log, this is the same decision, not a duplicate.
+		const decided =
+			log.all.find((e) => e.type === "permission_decided" && e.decisionId === decisionId) ??
+			log.append({
+				type: "permission_decided",
+				decisionId,
+				callId: call.callId, // binds the decision to the invocation (B 组)
+				decision: finalDecision.action === "allow" ? "approved" : "denied",
+				...(finalDecision.action === "deny" && finalDecision.reason !== undefined
+					? { reason: finalDecision.reason }
+					: {}),
+			});
+		yield decided;
+		return finalDecision;
+	}
+
 	// ── E1: the extension policy chain, decided BEFORE the human flow ─────
 	// A durable POLICY decision for THIS call takes effect on resume — the
 	// chain never re-runs when its verdict is already in the log (同构
@@ -766,79 +831,37 @@ async function* executeOne(
 		yield emitResult(denialResult(durable.reason ?? "denied"));
 		return;
 	}
-	if (chainVerdict?.action === "ask" && hooks.onPreTool === undefined) {
-		// No human flow exists — the ask degrades to an honest denial, never
-		// an unasked execution (mirrors the defer-without-channel path).
-		yield emitResult(denialResult("a policy asked for a human decision, but no approval flow is configured"));
-		return;
+	if (chainVerdict?.action === "ask") {
+		// 裁决 A (E1 ask 语义修正): an ask means "a HUMAN must decide" — it
+		// routes DIRECTLY to the human approval pause, never through
+		// onPreTool: a static automated policy (e.g. the CLI's default deny
+		// for unknown tools) must not answer for the human. No approval
+		// channel configured → an honest denial (judged by resolveApproval,
+		// not by the hook's presence).
+		if (resolveApproval === undefined) {
+			yield emitResult(denialResult("a policy asked for a human decision, but no approval flow is configured"));
+			return;
+		}
+		const decisionId = `d-${log.lastSeq + 1}`;
+		const finalDecision = yield* awaitHumanApproval(decisionId);
+		if (finalDecision.action !== "allow") {
+			yield emitResult(denialResult(finalDecision.reason ?? "denied"));
+			return;
+		}
 	}
 
 	// Permission negotiation — defer is a REAL pause (Phase D). C 组: the
 	// hook itself is cancelable (a slow policy query must not outlive an
-	// abort), and the signal is re-checked after it returns. Skipped when
-	// the policy chain already decided (durable or all-allow).
-	if (durable === undefined && chainVerdict?.action !== "allow" && hooks.onPreTool) {
+	// abort), and the signal is re-checked after it returns. Runs only when
+	// the policy chain did not run at all (裁决 A: an ask was already
+	// resolved by the human pause above — the static hook never speaks for
+	// it, and a durable decision already spoke for the call).
+	if (durable === undefined && chainVerdict === undefined && hooks.onPreTool) {
 		const decision = await raceAbort(hooks.onPreTool(payload, ctx), signal);
 		if (signal?.aborted) throw ABORTED;
 		if (decision.action === "defer") {
 			const decisionId = `d-${log.lastSeq + 1}`;
-			// Register the resolver BEFORE announcing the pause: a consumer
-			// that answers the request the moment it sees it must find the
-			// resolver already waiting (no deadlock between yield and await).
-			const pendingDecision =
-				resolveApproval !== undefined
-					? resolveApproval(decisionId)
-					: Promise.resolve({ action: "deny", reason: "no approval channel configured" } as const);
-			const requested = log.append({
-				type: "permission_requested",
-				decisionId,
-				callId: call.callId,
-				name: call.name,
-				input: payload.input,
-			});
-			if (hooks.onPause) await hooks.onPause("awaiting approval", {}).catch(() => {});
-			yield requested;
-
-			// Area 4: the pause is abortable — a cancel during the human's
-			// wait ends the run now; the request stays durable and pending.
-			let finalDecision: PermissionDecision;
-			try {
-				finalDecision = await raceAbort(pendingDecision, signal);
-			} catch (err) {
-				if (err === ABORTED) {
-					// 第四轮(对抗): the human may have answered in the same
-					// instant the abort landed — a CONSUMED verdict must be
-					// recorded (exactly once), never lost; the abort then
-					// ends the run with its honest aborted terminal.
-					const verdict = resolveApprovalVerdict?.(decisionId);
-					if (verdict !== undefined) {
-						yield log.append({
-							type: "permission_decided",
-							decisionId,
-							callId: call.callId,
-							decision: verdict ? "approved" : "denied",
-							...(verdict ? {} : { reason: "denied by user" }),
-						});
-					}
-				}
-				throw err;
-			}
-			// The approval channel (session.approve) persists the decision
-			// write-ahead BEFORE waking the resolver (Area 2): if it already
-			// landed in the log, this is the same decision, not a duplicate.
-			const decided =
-				log.all.find((e) => e.type === "permission_decided" && e.decisionId === decisionId) ??
-				log.append({
-					type: "permission_decided",
-					decisionId,
-					callId: call.callId, // binds the decision to the invocation (B 组)
-					decision: finalDecision.action === "allow" ? "approved" : "denied",
-					...(finalDecision.action === "deny" && finalDecision.reason !== undefined
-						? { reason: finalDecision.reason }
-						: {}),
-				});
-			yield decided;
-
+			const finalDecision = yield* awaitHumanApproval(decisionId);
 			if (finalDecision.action !== "allow") {
 				yield emitResult(denialResult(finalDecision.reason ?? "denied"));
 				return;

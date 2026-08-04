@@ -262,10 +262,13 @@ reason }`, or `{ action: "ask" }`. The chain runs **before** the human
 approval flow and composes across all loaded policies:
 
 - **deny > ask > allow** — any deny wins (the FIRST denial's reason reaches
-  the model); else any ask falls into the existing human flow (the CLI
-  prompts `approve ...? (y/n)`); only an **all-allow** chain auto-approves.
-- A policy that throws counts as **ask**; `ask` with no human flow
-  configured degrades to an honest denial.
+  the model); else any ask goes DIRECTLY to the human approval pause (the
+  CLI prompts `approve ...? (y/n)` — never through the static policy hook,
+  which must not answer for the human; 裁决 A, E1 ask 语义修正); only an
+  **all-allow** chain auto-approves.
+- A policy that throws counts as **ask**; `ask` with no approval channel
+  configured (no `resolveApproval`) degrades to an honest denial — judged
+  by the channel's presence, not the hook's.
 - allow/deny are recorded durably as `permission_decided` with
   `decidedBy: <extension>` — never a human pause. A policy verdict is a
   PERSISTED FACT like any human decision: `kill -9` the agent and the
