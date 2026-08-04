@@ -7,7 +7,7 @@
  * read_skill is allowed (local docs, read_file trust).
  */
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -73,6 +73,30 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 		writeSkill(dir, "a-skill", "\nbody\n", { description: long });
 		const ext = await extWith(dir);
 		expect(ext.systemPrompt?.append).toContain(`- a-skill: ${"d".repeat(200)}…[truncated]`);
+	});
+
+	it("⑧ a symlinked skill dir is discovered and indexed — the CC-compatible migration path (`ln -s ~/.claude/skills/x ~/.kiso/skills/x`)", async () => {
+		const dir = skillDir();
+		const real = skillDir();
+		writeSkill(real, "linked-skill", "\n# Linked\nbody\n", { name: "linked-skill", description: "desc linked" });
+		symlinkSync(join(real, "linked-skill"), join(dir, "linked-skill"));
+		const ext = await extWith(dir);
+		expect(ext.systemPrompt?.append).toContain("- linked-skill: desc linked");
+		const r = await readSkill(ext).execute({ name: "linked-skill" }, ctx);
+		expect(r.isError).toBe(false);
+		expect(String(r.content)).toContain("# Linked");
+	});
+
+	it("⑨ a broken symlink is a SOFT failure — one warning line, never an error", async () => {
+		const dir = skillDir();
+		writeSkill(dir, "good", "\n# Good\nbody\n", { description: "fine" });
+		symlinkSync(join(dir, "no-such-target"), join(dir, "dangling")); // → nowhere
+		symlinkSync(join(dir, "good", "SKILL.md"), join(dir, "file-link")); // → a file, not a dir
+		const ext = await extWith(dir);
+		expect(ext.systemPrompt?.append).toContain("- good: fine");
+		expect(ext.systemPrompt?.append).toContain("skipped 2 broken skill");
+		expect(ext.systemPrompt?.append).toContain("dangling");
+		expect(ext.systemPrompt?.append).toContain("file-link");
 	});
 
 	it("⑥ a missing or empty skills dir is zero skills, never an error", async () => {

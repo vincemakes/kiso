@@ -23,7 +23,7 @@
  * subset parses CC skill files — drop one in and it works.
  */
 
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -45,19 +45,35 @@ export default async function createSkillsExtension() {
 }
 
 /** Scan ${dir}/<name>/SKILL.md, parse the frontmatter subset, sort by
- *  directory name. Broken entries are SOFT failures — recorded, skipped. */
+ *  directory name. Broken entries are SOFT failures — recorded, skipped.
+ *  发现#9 (P2): a symlink to a directory IS a skill dir — the
+ *  CC-compatible migration path (`ln -s ~/.claude/skills/x
+ *  ~/.kiso/skills/x`) must work; a broken link (target missing or not a
+ *  directory) is a soft failure like any other broken skill, never an
+ *  error. */
 function loadIndex(skillsDir) {
 	let dirs;
+	let brokenLinks = [];
 	try {
-		dirs = readdirSync(skillsDir, { withFileTypes: true })
-			.filter((d) => d.isDirectory())
-			.map((d) => d.name)
-			.sort();
+		const entries = readdirSync(skillsDir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+		dirs = [];
+		for (const d of entries) {
+			if (d.isDirectory()) {
+				dirs.push(d.name);
+			} else if (d.isSymbolicLink()) {
+				try {
+					if (statSync(join(skillsDir, d.name)).isDirectory()) dirs.push(d.name);
+					else brokenLinks.push(`${d.name} (symlink target is not a directory)`);
+				} catch {
+					brokenLinks.push(`${d.name} (broken symlink)`);
+				}
+			}
+		}
 	} catch {
 		return { index: [], broken: [] }; // no skills dir = no skills, never an error
 	}
 	const index = [];
-	const broken = [];
+	const broken = brokenLinks; // 发现#9: broken links join the existing soft-failure path
 	for (const dir of dirs) {
 		const path = join(skillsDir, dir, "SKILL.md");
 		let text;

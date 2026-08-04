@@ -7,7 +7,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -122,6 +122,43 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		expect(out).toContain("[2 extensions: safe-defaults, skills]"); // sorted by file name
 		expect(out).not.toContain("approve read_skill"); // auto-allowed — no prompt
 		expect(out).toContain("UNIQUE-BODY-a-skill"); // the SKILL.md body returned to the model
+		expect(out).toContain("done");
+	}, 180_000);
+
+	it("⑨ a SYMLINKED skill works end to end (发现#9: `ln -s ~/.claude/skills/x ~/.kiso/skills/x` — the CC-compatible migration path)", () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-skills-e2e-"));
+		const home = join(dir, "home");
+		const workdir = join(dir, "work");
+		const extdir = join(dir, "ext");
+		const skillsdir = join(dir, "skills");
+		const realSkills = join(dir, "real-skills"); // the CC home — outside KISO_SKILLS_DIR
+		mkdirSync(home, { recursive: true });
+		mkdirSync(workdir, { recursive: true });
+		mkdirSync(extdir, { recursive: true });
+		mkdirSync(join(realSkills, "a-skill"), { recursive: true });
+		writeFileSync(
+			join(realSkills, "a-skill", "SKILL.md"),
+			"---\ndescription: desc a\n---\n\n# a-skill\n\nUNIQUE-BODY-LINKED\n",
+			"utf8",
+		);
+		mkdirSync(skillsdir, { recursive: true });
+		symlinkSync(join(realSkills, "a-skill"), join(skillsdir, "a-skill"));
+		copyFileSync(BUNDLE, join(extdir, "skills.mjs"));
+		copyFileSync(SAFE_DEFAULTS, join(extdir, "safe-defaults.mjs"));
+		const scriptPath = join(dir, "faux.json");
+		writeFileSync(scriptPath, JSON.stringify(FAUX_TRAJECTORY), "utf8");
+		writeFileSync(join(dir, "driver.py"), PTY_DRIVER, "utf8");
+
+		const phase = `
+import sys
+sys.argv = [""]
+exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir)}, ${JSON.stringify(extdir)}, ${JSON.stringify(skillsdir)}, ${JSON.stringify(scriptPath)})
+`;
+		const { env } = isolatedEnv();
+		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
+		expect(out).toContain("UNIQUE-BODY-LINKED"); // the symlinked skill's body returned to the model
+		expect(out).not.toContain("unknown skill"); // it was discovered, not skipped
 		expect(out).toContain("done");
 	}, 180_000);
 });
