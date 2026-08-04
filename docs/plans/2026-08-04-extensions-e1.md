@@ -190,6 +190,38 @@ runtime/cli/tools-node 零改动):
 - 无扩展时全部行为逐字节不变 (回归测试 + 全量套件 136 core / 122 runtime /
   32 cli 全绿)。
 
+## ③ MCP 桥 (2026-08-04) — 官方扩展,内核零改动
+
+- 新 workspace `extensions/mcp`(private,不发 npm):`@modelcontextprotocol/sdk`
+  运行依赖 + esbuild devDep;`npm run build` 产出自包含单文件
+  `dist/kiso-mcp.mjs`(SDK 内联,`createRequire` banner 解决 cross-spawn 的
+  CJS 动态 require)。core/runtime/cli/tools-node 四包零改动(裁决 A 之外的
+  唯一 core diff 即 裁决 A 本身);E1 loader 不改。
+- 行为: 工厂读 `${KISO_MCP_CONFIG:-~/.kiso/mcp.json}`;stdio/url 双传输
+  (SDK 1.30,headers 经 requestInit);连接失败=软失败,错误聚合进
+  `mcp__status`(零参工具,连接态是运行时信息、CLI 无新 UI,用工具自身呈现);
+  工具映射 `mcp__<server>__<tool>`(description 原样、parameters 原样、
+  text 直通/其他块显式 `[MCP <type> content: <mimeType|kind>]` 文本行、
+  isError→isError、callTool 异常→isError+errorKind:"fatal");ctx.signal →
+  callTool 的 signal + CALL_TIMEOUT_MS=60s;stdio env 剥离 provider 凭据
+  (复制 tools-node #7 清单,注明保持同步)后叠加配置 env(显式优先)。
+- 测试: 仓库内 fake MCP server(`tests/fake-server.mjs`,McpServer + stdio,
+  echo/env_probe/fail/slow 四工具;注: SDK 1.30 的 registerTool 要 Zod raw
+  shape,JSON schema 会被拒);单测 9 个(①schema 原样 ②echo 往返 ③fail→
+  isError ④剥离+env 叠加 ⑤坏 JSON/结构非法 throw ⑥缺席配置→仅
+  mcp__status ⑦不可达 server 软失败、其余可用 ⑧slow+立即 abort 及时
+  isError + ⑤b)—— 红→绿: 首跑 6 失败(connect 崩,根因: Server 类无
+  registerTool 需 McpServer + Zod 形状),修复后 9/9;CLI e2e 1 个(真进程,
+  穿最上层入口: bundle+safe-defaults 进 KISO_EXTENSIONS_DIR,faux 调
+  mcp__fake__echo —— 横幅 `[2 extensions: mcp, safe-defaults]`、ask 档经
+  裁决 A 直达人类暂停出现审批提问、y 注入、echo 结果回模型、done)—— 首跑
+  红(CLI 路径层级错,`../../` 只到 extensions/),修复后绿。根 `npm run
+  check` 已纳入 mcp 的 build+typecheck+test(build 在七包之后;pack/size
+  门禁不涉及)。
+- 文档: README 新增 MCP 段(stdio/url 配置示例各一、命名空间、审批默认
+  ask + 自写 policy 放行示例、软失败语义、mcp__status、构建安装两步、仅
+  tools);本 plan 记录 ③。
+
 ## 8. What was NOT done (explicitly out of scope)
 
 - registerCommand / shortcuts / renderers / sendMessage-like APIs;

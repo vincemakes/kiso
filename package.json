@@ -4,11 +4,12 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "extensions/*"
   ],
   "scripts": {
-    "build": "npm run build -w @vincemakes/kiso-core && npm run build -w @vincemakes/kiso-evals && npm run build -w @vincemakes/kiso-provider-anthropic && npm run build -w @vincemakes/kiso-provider-openai && npm run build -w @vincemakes/kiso-runtime && npm run build -w @vincemakes/kiso-tools-node && npm run build -w @vincemakes/kiso-cli",
-    "typecheck": "tsc -p tsconfig.json && npm run typecheck -w @vincemakes/kiso-core && npm run typecheck -w @vincemakes/kiso-evals && npm run typecheck -w @vincemakes/kiso-provider-anthropic && npm run typecheck -w @vincemakes/kiso-provider-openai && npm run typecheck -w @vincemakes/kiso-runtime && npm run typecheck -w @vincemakes/kiso-tools-node && npm run typecheck -w @vincemakes/kiso-cli",
+    "build": "npm run build -w @vincemakes/kiso-core && npm run build -w @vincemakes/kiso-evals && npm run build -w @vincemakes/kiso-provider-anthropic && npm run build -w @vincemakes/kiso-provider-openai && npm run build -w @vincemakes/kiso-runtime && npm run build -w @vincemakes/kiso-tools-node && npm run build -w @vincemakes/kiso-cli && npm run build -w @vincemakes/kiso-mcp-ext",
+    "typecheck": "tsc -p tsconfig.json && npm run typecheck -w @vincemakes/kiso-core && npm run typecheck -w @vincemakes/kiso-evals && npm run typecheck -w @vincemakes/kiso-provider-anthropic && npm run typecheck -w @vincemakes/kiso-provider-openai && npm run typecheck -w @vincemakes/kiso-runtime && npm run typecheck -w @vincemakes/kiso-tools-node && npm run typecheck -w @vincemakes/kiso-cli && npm run typecheck -w @vincemakes/kiso-mcp-ext",
     "test": "vitest run",
     "size": "node scripts/check-size.mjs",
     "pack:check": "node scripts/pack-check.mjs",

@@ -296,6 +296,66 @@ shell is denied, and the resume re-presents only the one undecided request
 while the extension's own call log (a marker file written per `decide`
 call) proves the policy never re-runs across the kill.
 
+## MCP — external tools over the MCP bridge
+
+`extensions/mcp` is the official MCP bridge: an ordinary extension — a
+self-contained single file (`dist/kiso-mcp.mjs`, the MCP SDK inlined) —
+with the four kernel packages untouched. Configure servers, build, install:
+
+```
+cd extensions/mcp && npm install && npm run build   # step 1 — dist/kiso-mcp.mjs
+cp dist/kiso-mcp.mjs ~/.kiso/extensions/            # step 2 — the E1 loader picks it up
+```
+
+Configuration: `$KISO_MCP_CONFIG` (default `~/.kiso/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "env": { "SOME_VAR": "1" }
+    },
+    "remote": {
+      "url": "https://mcp.example.com/mcp",
+      "headers": { "Authorization": "Bearer ..." }
+    },
+    "legacy": { "command": "node", "args": ["server.js"], "disabled": true }
+  }
+}
+```
+
+- Every MCP tool becomes a kiso tool named `mcp__<server>__<tool>`; the
+  input schema passes through as-is. `mcp__status` (zero args) reports each
+  server's connection state and errors — connection is a load-time fact
+  and the CLI has no new UI for it, so the tool itself presents it.
+- A server that fails to connect is a SOFT failure: its error lands in
+  `mcp__status`, every other server keeps working. A missing config file
+  means no servers (never an error); a broken config throws loudly at
+  startup (the E1 loader convention).
+- stdio children get provider credentials STRIPPED (the same list as the
+  shell tool — `ANTHROPIC_/OPENAI_` KEY/BASE_URL/MODEL plus every
+  `*_API_KEY`/`*_AUTH_TOKEN`) plus the config's `env` — the explicit env
+  wins and may deliberately re-add a variable.
+- Calls carry the run's abort signal and a 60s timeout — an interrupted
+  call returns an error, never a hang.
+- **Approval: no auto-allow.** `mcp__` tools fall in the ask tier — an
+  external tool must pass human review before it runs. Write your own
+  policy extension to allow specific ones:
+
+```ts
+export default {
+  name: "allow-my-mcp",
+  approvals: [{
+    decide: (call) => call.name === "mcp__filesystem__read_text_file"
+      ? { action: "allow" } : { action: "ask" },
+  }],
+};
+```
+
+Tools only: MCP resources/prompts and OAuth are not bridged this round.
+
 ## Status
 
 Reliable Session Alpha, including the four hardening rounds (areas 1-7,

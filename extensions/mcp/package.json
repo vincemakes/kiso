@@ -1,0 +1,21 @@
+{
+  "name": "@vincemakes/kiso-mcp-ext",
+  "version": "0.1.6",
+  "description": "kiso(基礎) official MCP bridge extension — MCP servers become mcp__ tools, kernel untouched",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@vincemakes/kiso-core": "0.1.6",
+    "@types/node": "^26.1.2",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}
