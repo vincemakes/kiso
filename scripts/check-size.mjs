@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * The 2,000-line gate.
+ * The line gates: 2,000 for core, 1,200 for the CLI.
  *
- * This is not a lint rule. It is the project's central promise, enforced in CI
- * so that it survives contact with good ideas.
+ * These are not lint rules. They are the project's central promise, enforced
+ * in CI so that they survive contact with good ideas.
  *
  * WHAT COUNTS: source lines in `src/`, excluding blank lines and comment-only
  * lines. Comments are free ON PURPOSE — the whole point of kiso is that every
@@ -11,8 +11,9 @@
  * terse, unreadable kernel. Explain freely; implement tersely.
  *
  * The comment stripper is a heuristic (it does not parse TypeScript). It can
- * miscount a line whose string literal contains `//`. That is acceptable for a
- * budget with 2,000 lines of headroom, and cheaper than a real parser.
+ * miscount a line whose string literal contains `//`. That is acceptable for
+ * a budget with hundreds of lines of headroom, and cheaper than a real
+ * parser.
  *
  * Zero dependencies: this must run in CI before any install step.
  */
@@ -20,9 +21,11 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
-const LIMIT = 2000;
+const GATES = [
+	{ name: "core", limit: 2000, dir: join("packages", "core", "src") },
+	{ name: "cli", limit: 1200, dir: join("apps", "cli", "src") },
+];
 const ROOT = new URL("..", import.meta.url).pathname;
-const SRC = join(ROOT, "packages", "core", "src");
 
 /** @param {string} dir @returns {string[]} */
 function walk(dir) {
@@ -61,30 +64,36 @@ function countCode(source) {
 	return count;
 }
 
-const files = walk(SRC).sort();
-let total = 0;
-const rows = [];
+let failed = false;
+for (const { name, limit, dir } of GATES) {
+	const files = walk(join(ROOT, dir)).sort();
+	let total = 0;
+	const rows = [];
 
-for (const file of files) {
-	const lines = countCode(readFileSync(file, "utf8"));
-	total += lines;
-	rows.push([relative(ROOT, file), lines]);
+	for (const file of files) {
+		const lines = countCode(readFileSync(file, "utf8"));
+		total += lines;
+		rows.push([relative(ROOT, file), lines]);
+	}
+
+	const width = Math.max(...rows.map(([n]) => n.length), 5);
+	console.log(`${name}:`);
+	for (const [n, lines] of rows) {
+		console.log(`  ${n.padEnd(width)}  ${String(lines).padStart(5)}`);
+	}
+	console.log(`  ${"".padEnd(width, "-")}  -----`);
+	console.log(`  ${"total".padEnd(width)}  ${String(total).padStart(5)}  / ${limit}`);
+
+	if (total > limit) {
+		failed = true;
+		console.error(
+			`\n✗ ${name} is ${total - limit} lines over budget.\n` +
+				`  The limit is not negotiable — that is what makes it a limit.\n` +
+				`  Remove something, or fork atto and grow your own.\n`,
+		);
+	} else {
+		console.log(`  ✓ ${limit - total} lines of headroom remaining.\n`);
+	}
 }
 
-const width = Math.max(...rows.map(([name]) => name.length), 5);
-for (const [name, lines] of rows) {
-	console.log(`  ${name.padEnd(width)}  ${String(lines).padStart(5)}`);
-}
-console.log(`  ${"".padEnd(width, "-")}  -----`);
-console.log(`  ${"total".padEnd(width)}  ${String(total).padStart(5)}  / ${LIMIT}`);
-
-if (total > LIMIT) {
-	console.error(
-		`\n✗ core is ${total - LIMIT} lines over budget.\n` +
-			`  The limit is not negotiable — that is what makes it a limit.\n` +
-			`  Remove something, or fork atto and grow your own.\n`,
-	);
-	process.exit(1);
-}
-
-console.log(`\n✓ ${LIMIT - total} lines of headroom remaining.\n`);
+if (failed) process.exit(1);
