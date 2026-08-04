@@ -181,3 +181,25 @@ describe("B: tool summary lines and the status line", () => {
 		expect(line).toContain("cache ?");
 	});
 });
+
+describe("自举 P1: thinking blocks stream as one segment", () => {
+	const think = (seq: number, text: string) => ({ seq, type: "thinking" as const, text });
+
+	it("consecutive deltas of ONE block append to the SAME segment, no newline", () => {
+		const first = renderEvent(think(0, "Let me look at "));
+		const second = renderEvent(think(1, "the file first."), true);
+		expect(first.newline).toBe(false);
+		expect(second.newline).toBe(false);
+		// The … prefix marks the block start only — the continuation appends.
+		expect(first.text).toContain("…Let me look at ");
+		expect(second.text).not.toContain("…");
+		// ANSI colors sit between the deltas — strip them for the text assertion.
+		const merged = (first.text + second.text).replace(/\u001b\[[0-9;]*m/g, "");
+		expect(merged).toContain("…Let me look at the file first.");
+	});
+
+	it("the first delta of a NEW block gets the … prefix again", () => {
+		const after = renderEvent(think(2, "Now let me answer."), false);
+		expect(after.text).toContain("…Now let me answer.");
+	});
+});

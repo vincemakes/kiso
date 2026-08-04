@@ -47,8 +47,13 @@ export interface RenderResult {
 /**
  * Render one event. `text` may be a continuation (text_delta appends to the
  * current line); `newline` says whether the line is complete.
+ *
+ * 自举 P1: `prevThinking` marks a thinking delta that continues the SAME
+ * block — it renders appended to the segment, without the … prefix. The
+ * consumer closes the segment with a newline at the next non-thinking
+ * event.
  */
-export function renderEvent(ev: Event): RenderResult {
+export function renderEvent(ev: Event, prevThinking = false): RenderResult {
 	switch (ev.type) {
 		case "user_input":
 			return { text: `${YELLOW}you> ${escapeTerminal(typeof ev.content === "string" ? ev.content : "(content)")}${RESET}\n`, newline: true, prompt: false };
@@ -57,7 +62,13 @@ export function renderEvent(ev: Event): RenderResult {
 		case "text_end":
 			return { text: "\n", newline: true, prompt: false };
 		case "thinking":
-			return { text: `${DIM}…${escapeTerminal(ev.text.slice(0, 200))}${RESET}\n`, newline: true, prompt: false };
+			// 自举 P1: ONE thinking block streams as ONE segment — deltas
+			// append inline; the … prefix marks the block start only.
+			return {
+				text: `${DIM}${prevThinking ? "" : "…"}${escapeTerminal(ev.text.slice(0, 200))}${RESET}`,
+				newline: false,
+				prompt: false,
+			};
 		case "tool_call_end":
 			return {
 				text: `${CYAN}→ ${escapeTerminal(ev.name)}(${ev.input ? escapeTerminal(JSON.stringify(ev.input).slice(0, 200)) : ""})${RESET}\n`,

@@ -205,6 +205,11 @@ function fauxScript(): FauxScript {
 	return [
 		{
 			events: [
+				// 自举 P1: a multi-delta thinking block — renders as ONE
+				// streaming segment, not one line per token.
+				{ type: "thinking", text: "Let me think about" },
+				{ type: "thinking", text: " the workspace" },
+				{ type: "thinking", text: " before acting." },
 				{ type: "text_start" },
 				{ type: "text_delta", text: "I'm the faux model. Let me look at the working directory." },
 				{ type: "tool_call_end", callId: "c1", name: "list_dir", input: {} },
@@ -344,8 +349,15 @@ async function consumeRun(
 	// one summary line. Usage events feed the status line.
 	const pendingCalls = new Map<string, { name: string; input: Record<string, unknown> }>();
 	let usage: RunUsage = { in: null, out: null, cache: null, known: false };
+	// 自举 P1: a thinking block streams as ONE segment — consecutive deltas
+	// append inline; the segment closes with a newline at the next
+	// non-thinking event.
+	let thinkingOpen = false;
 	for await (const ev of run) {
 		last = ev;
+		const prevThinking = thinkingOpen;
+		thinkingOpen = ev.type === "thinking";
+		if (prevThinking && !thinkingOpen) process.stdout.write("\n");
 		if (ev.type === "tool_call_end") {
 			pendingCalls.set(ev.callId, { name: ev.name, input: ev.input ?? {} });
 		}
@@ -382,7 +394,7 @@ async function consumeRun(
 			await session.resolveUncertain(ev.executionId, answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned");
 			continue;
 		}
-		const rendered = renderEvent(ev);
+		const rendered = renderEvent(ev, prevThinking);
 		if (rendered.prompt) {
 			process.stdout.write(rendered.text);
 			const decisionId = (ev as { decisionId: string }).decisionId;
