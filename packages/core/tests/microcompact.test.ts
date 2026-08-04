@@ -65,7 +65,9 @@ describe("C: projection applies the microcompact boundary deterministically", ()
 		log.append({ type: "tool_result", callId: "r2", content: "fresh content", isError: false });
 		log.append({ type: "microcompacted", beforeSeq: 0 });
 		const projected = projectMessages(log.all);
-		const fresh = projected.find((m) => m.role === "tool" && m.callId === "r2");
+		const fresh = projected.find(
+			(m): m is import("@vincemakes/kiso-core").ToolResultMessage => m.role === "tool" && m.callId === "r2",
+		);
 		expect(fresh?.content).toBe("fresh content"); // inside the recent window
 	});
 
@@ -118,7 +120,7 @@ describe("C: the loop appends the boundary once when over the threshold", () => 
 		// the persisted fact derives the same view (D 区).
 		const inMemory = projectMessages(log.all);
 		const reloaded = projectMessages(
-			(JSON.parse(JSON.stringify(log.all)) as Event[]),
+			JSON.parse(JSON.stringify(log.all)) as Parameters<typeof projectMessages>[0],
 		);
 		expect(JSON.stringify(reloaded)).toBe(JSON.stringify(inMemory));
 	});

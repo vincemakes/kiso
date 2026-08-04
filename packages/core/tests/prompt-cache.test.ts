@@ -58,7 +58,7 @@ describe("D: byte-identical projection discipline", () => {
 		log.append({ type: "microcompacted", beforeSeq: 3 });
 		const inMemory = projectMessages(log.all);
 		// A crash + resume replays the SAME events from disk.
-		const reloaded = projectMessages(JSON.parse(JSON.stringify(log.all)) as Parameters<typeof projectMessages>[0][]);
+		const reloaded = projectMessages(JSON.parse(JSON.stringify(log.all)) as Parameters<typeof projectMessages>[0]);
 		expect(JSON.stringify(reloaded)).toBe(JSON.stringify(inMemory));
 	});
 });
