@@ -569,8 +569,8 @@ file ends with a newline)
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
-→ demo start-and-exit gate. 372 tests green. 11 ADRs. 6 incident fixtures
-running on the real runtime.
+→ demo start-and-exit gate. 417 tests green. 16 ADRs (index: `adrs/README.md`).
+6 incident fixtures running on the real runtime.
 
 ## Why another one
 
