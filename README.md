@@ -458,6 +458,36 @@ description: a review checklist for pull requests
   safe-defaults example allows it (read_file trust); everything else
   about skills is plain file access governed by the existing policy.
 
+## Project-level `.kiso` — trusted by content digest, not by directory
+
+A repo's own `.kiso` directory is a capability surface: cloned code that
+executes on your machine the moment you run `kiso chat` in it. Three
+artifact kinds are recognized there — `extensions/*.mjs`, `mcp.json`, and
+`skills/<name>/SKILL.md` — and they share ONE trust gate (ADR-0037):
+
+- **First discovery.** The CLI lists every artifact (file name + digest
+  short prefix) and asks once: `trust this project's .kiso? (y/n)`. The
+  verdict is recorded in `~/.kiso/trust.jsonl` (append-only,
+  `KISO_HOME`-aware).
+- **Granted** — the project's extensions load (marked `project:` in the
+  banner: `[3 extensions: safe-defaults · project: lint-rules, mcp]`), its
+  `mcp.json` merges with your user config (a server name in both is a loud
+  startup error), and its skills merge into the skills scan (a skill name
+  in both: project wins, one stderr note).
+- **Refused** — nothing loads, and the refusal is sticky: it is never
+  re-asked. Re-evaluate by deleting the `trust.jsonl` line for that
+  project, or by changing an artifact file.
+- **The trust dies with the files.** The digest is a sha256 over the
+  sorted artifact paths and contents — `git pull` that changes `.kiso`
+  makes you decide again. Same project, same files, same verdict: the
+  gate never re-asks.
+- **Non-TTY (CI, pipes).** Never asks, never loads — one stderr line
+  explains. To pre-grant for CI, run `kiso chat` interactively once in
+  the repo, or write the record yourself: a `trust.jsonl` line
+  `{"root": "<realpath of <repo>/.kiso>", "digest": "<bundle sha256>", "decision": "granted", "ts": "..."}`.
+  There is deliberately NO `KISO_TRUST`-style skip-ask environment
+  variable — the gate is not a toggle.
+
 ## Comparison
 
 The bench (`bench/`, same model, same tasks, three agents) measures
@@ -475,6 +505,7 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | subagents | official extension, role-policy children | `extensions/subagent/tests` |
 | skills | official extension, two-tier progressive | `extensions/skills/tests` |
 | context economy | microcompact + prompt-cache byte discipline | `packages/core/tests/prompt-cache.test.ts` |
+| project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
 
 The bench, one fixture, one model, mean of two runs (kiso 0.1.7 · pi ·
 Claude Code via a DeepSeek endpoint):
@@ -569,7 +600,7 @@ file ends with a newline)
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
-→ demo start-and-exit gate. 417 tests green. 16 ADRs (index: `adrs/README.md`).
+→ demo start-and-exit gate. 445 tests green. 17 ADRs (index: `adrs/README.md`).
 6 incident fixtures running on the real runtime.
 
 ## Why another one

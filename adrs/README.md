@@ -40,6 +40,8 @@ that has not finished speaking.
   Accepted
 - 0036 — The single-writer lock is a kernel flock held by a helper
   process — Accepted
+- 0037 — Project-level capability is trusted by content digest, not by
+  directory — Accepted
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
