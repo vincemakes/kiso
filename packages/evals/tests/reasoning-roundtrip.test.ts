@@ -1,18 +1,19 @@
 /**
- * 自举 P1 — DeepSeek thinking-mode reasoning_content round-trip.
+ * 自举 P1/P2 — DeepSeek thinking-mode reasoning_content round-trip.
  *
- * DeepSeek's thinking mode REQUIRES the assistant messages of a follow-up
- * request to carry the reasoning_content they were generated with —
- * otherwise the API rejects the request with 400 ("The reasoning_content
- * in the thinking mode must be passed back to the API"). Every
- * 思考→工具→继续 trajectory breaks at the request after the tool result.
+ * DeepSeek's thinking mode REQUIRES the CURRENT turn's assistant messages
+ * to carry reasoning_content (their own, or "" when the step produced no
+ * thinking) — otherwise the API rejects the request with 400 ("The
+ * reasoning_content in the thinking mode must be passed back to the API").
+ * OLD turns' CoT (before the last user message) must NOT be echoed —
+ * DeepSeek explicitly does not need it, and echoing is pure token waste.
  *
- * The adapter must therefore attach reasoning_content to assistant
- * messages, DERIVED deterministically from the event stream: the thinking
- * deltas are already persisted facts, the projection attaches them to the
- * assistant message they belong to (same events → same request body,
- * D 区), and the OpenAI-compat adapter passes them through. Real OpenAI
- * never emits thinking events, so it is never affected.
+ * The adapter derives everything deterministically from the projected
+ * messages (D 区): the projection attaches each turn's reasoning to its
+ * assistant message. The adapter detects thinking mode by the presence of
+ * ANY reasoning in the projection (real OpenAI never emits thinking
+ * events, so it never sees the field), and attaches reasoning_content only
+ * to assistant messages AFTER the last user message.
  */
 
 import { describe, expect, it } from "vitest";
@@ -38,11 +39,12 @@ function fakeOpenAI(params: { onCreate?: (p: unknown) => void }) {
 	} as unknown as OpenAI;
 }
 
-describe("自举 P1: reasoning_content round-trip (DeepSeek thinking mode)", () => {
-	it("the follow-up request's assistant message carries the reasoning_content of its turn", async () => {
+describe("自举 P1/P2: reasoning_content round-trip (DeepSeek thinking mode)", () => {
+	it("the continuation request after a tool result carries the CURRENT turn's reasoning", async () => {
 		// The DeepSeek shape: thinking deltas → tool call → stop, then the
-		// tool result, then the next user turn. The follow-up request must
-		// send the assistant message WITH reasoning_content.
+		// tool result. The continuation request (no new user turn yet) must
+		// send the current turn's assistant message WITH its reasoning —
+		// this is the request that used to 400.
 		const messages = projectMessages([
 			{ type: "user_input", content: "read the file" },
 			{ type: "thinking", text: "I should look at" },
@@ -50,7 +52,6 @@ describe("自举 P1: reasoning_content round-trip (DeepSeek thinking mode)", () 
 			{ type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "a.txt" } },
 			{ type: "stop", reason: "tool_use" },
 			{ type: "tool_result", callId: "c1", content: "file contents", isError: false },
-			{ type: "user_input", content: "summarize" },
 		]);
 
 		let captured: unknown;
@@ -70,9 +71,10 @@ describe("自举 P1: reasoning_content round-trip (DeepSeek thinking mode)", () 
 		expect(assistant?.reasoning_content).toBe("I should look at the file first.");
 	});
 
-	it("a text-only answer turn with reasoning also round-trips it", async () => {
-		// The answer turn of a 读文件→回答 task: thinking + text, no tool
-		// call. A THIRD turn's request must still carry the reasoning.
+	it("OLD turns' reasoning is omitted — a new user turn's request does not echo it", async () => {
+		// The third request of a 读→答 session: the answer turn reasoned,
+		// but it lies BEFORE the new user message — DeepSeek does not need
+		// old CoT, so neither assistant carries reasoning_content.
 		const messages = projectMessages([
 			{ type: "user_input", content: "read the file" },
 			{ type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "a.txt" } },
@@ -93,10 +95,71 @@ describe("自举 P1: reasoning_content round-trip (DeepSeek thinking mode)", () 
 		}
 
 		const request = captured as { messages: Array<Record<string, unknown>> };
-		// The LAST assistant message is the answer turn — the earlier one is
-		// the tool-call turn, which reasoned nothing.
-		const assistant = [...request.messages].reverse().find((m) => m.role === "assistant");
-		expect(assistant?.reasoning_content).toBe("The file says hello.");
+		const assistants = request.messages.filter((m) => m.role === "assistant");
+		expect(assistants).toHaveLength(2);
+		for (const assistant of assistants) {
+			expect(assistant).not.toHaveProperty("reasoning_content");
+		}
+	});
+
+	it("a current-turn step that produced NO thinking attaches an EMPTY string", async () => {
+		// Real shape: after the tool result the model answers WITHOUT
+		// reasoning (thinking mode can skip it). The turn is still in
+		// thinking mode (an earlier assistant reasoned), so this assistant
+		// must carry reasoning_content — its own, which is "".
+		const messages = projectMessages([
+			{ type: "user_input", content: "read the file" },
+			{ type: "thinking", text: "I should look" },
+			{ type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "a.txt" } },
+			{ type: "stop", reason: "tool_use" },
+			{ type: "tool_result", callId: "c1", content: "file contents", isError: false },
+			{ type: "text_delta", text: "It says hello." },
+			{ type: "stop", reason: "end_turn" },
+		]);
+
+		let captured: unknown;
+		const adapter: Adapter = createOpenAICompatAdapter(
+			fakeOpenAI({ onCreate: (p) => (captured = p) }),
+		);
+		for await (const _ev of adapter.stream({ model: "deepseek-v4-flash", messages })) {
+			// drain
+		}
+
+		const request = captured as { messages: Array<Record<string, unknown>> };
+		const assistants = request.messages.filter((m) => m.role === "assistant");
+		expect(assistants).toHaveLength(2);
+		// The tool-call turn carries its reasoning…
+		expect(assistants[0]!.reasoning_content).toBe("I should look");
+		// …and the no-thinking answer turn carries the empty string —
+		// the field must be PRESENT, or DeepSeek 400s.
+		expect(assistants[1]!.reasoning_content).toBe("");
+	});
+
+	it("NON-thinking mode never carries the field — real OpenAI is untouched", async () => {
+		// No reasoning anywhere in the projection: the provider is not in
+		// thinking mode, so no assistant message gets reasoning_content —
+		// even the current-turn one. Real OpenAI never emits thinking
+		// events, so its requests never see the field.
+		const messages = projectMessages([
+			{ type: "user_input", content: "hi" },
+			{ type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "a.txt" } },
+			{ type: "tool_result", callId: "c1", content: "file contents", isError: false },
+			{ type: "text_delta", text: "Done." },
+			{ type: "stop", reason: "end_turn" },
+		]);
+
+		let captured: unknown;
+		const adapter: Adapter = createOpenAICompatAdapter(
+			fakeOpenAI({ onCreate: (p) => (captured = p) }),
+		);
+		for await (const _ev of adapter.stream({ model: "gpt-4o", messages })) {
+			// drain
+		}
+
+		const request = captured as { messages: Array<Record<string, unknown>> };
+		for (const m of request.messages) {
+			expect(m).not.toHaveProperty("reasoning_content");
+		}
 	});
 
 	it("a text-only assistant message serializes WITHOUT a tool_calls key", async () => {

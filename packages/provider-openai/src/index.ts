@@ -348,7 +348,20 @@ function toOpenAIMessages(
 	if (systemPrompt !== undefined) {
 		out.push({ role: "system", content: systemPrompt });
 	}
-	for (const msg of messages) {
+	// 自举 P1/P2: thinking mode is detected by the presence of ANY
+	// reasoning in the projection (real OpenAI never emits thinking events,
+	// so its requests never see the field). In thinking mode, ONLY the
+	// CURRENT turn's assistant messages (after the last user message) carry
+	// reasoning_content — their own, or "" when the step produced no
+	// thinking (the field must still be present, or DeepSeek 400s); OLD
+	// turns' CoT is never echoed (DeepSeek does not need it, and echoing
+	// it is token waste).
+	const thinkingMode = messages.some((m) => m.role === "assistant" && m.reasoning !== undefined);
+	let lastUser = -1;
+	for (const [i, m] of messages.entries()) {
+		if (m.role === "user") lastUser = i;
+	}
+	for (const [i, msg] of messages.entries()) {
 		if (msg.role === "user") {
 			out.push({ role: "user", content: toOpenAIContent(msg.content) });
 		} else if (msg.role === "assistant") {
@@ -369,12 +382,7 @@ function toOpenAIMessages(
 				role: "assistant",
 				content: msg.blocks.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(""),
 				...(toolCalls.length ? { tool_calls: toolCalls } : {}),
-				// 自举 P1: DeepSeek's thinking mode REQUIRES the turn's
-				// reasoning back on follow-up requests (else 400) — the
-				// projection derived it from the thinking events; the compat
-				// wire field is reasoning_content. Real OpenAI never emits
-				// thinking events, so it never sees this field.
-				...(msg.reasoning !== undefined ? { reasoning_content: msg.reasoning } : {}),
+				...(thinkingMode && i > lastUser ? { reasoning_content: msg.reasoning ?? "" } : {}),
 			});
 		} else {
 			// tool messages accept text only — images are converted to an
