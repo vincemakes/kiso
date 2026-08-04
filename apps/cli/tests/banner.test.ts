@@ -6,6 +6,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -46,30 +47,32 @@ def driver(cli, home):
 
 describe("the startup banner (logo)", () => {
 	it("TTY: the three logo rows appear with the version line", () => {
+		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-banner-"));
 		writeFileSync(join(dir, "driver.py"), PTY_DRIVER, "utf8");
 		const phase = `
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(join(dir, "home"))})
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(dirs.home)})
 `;
-		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 60_000 });
+		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 60_000, env });
 		expect(out).toContain("█ █ ▀█▀ █▀▀ █▀█");
 		expect(out).toContain("the coding agent that survives kill -9");
 		expect(out).toContain("▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀");
 		expect(out).toMatch(/v0\.1\.\d+/); // the version rides the third row
-	}, 120_000);
+	}, 90_000);
 
 	it("piped: the logo is byte-for-byte ABSENT — the historical output shape is intact", () => {
-		const home = mkdtempSync(join(tmpdir(), "kiso-banner-"));
+		const { env } = isolatedEnv();
 		const out = execFileSync("node", [CLI, "chat", "banner-p"], {
 			input: "exit\n",
 			encoding: "utf8",
-			env: { ...process.env, KISO_HOME: home },
+			env,
+			timeout: 30_000,
 		});
 		expect(out).not.toContain("█");
 		expect(out).not.toContain("the coding agent that survives kill -9");
 		expect(out).toContain("session banner-p");
-	});
+	}, 60_000);
 });

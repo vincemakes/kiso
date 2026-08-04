@@ -51,20 +51,20 @@ describe("③ MCP bridge: tools", () => {
 		const echo = tool(ext, "mcp__fake__echo");
 		expect(echo.parameters).toMatchObject({ type: "object", properties: { text: { type: "string" } } });
 		expect(echo.description).toBe("Echo the given text");
-	});
+	}, 30_000);
 
 	it("② echo roundtrips through the real server", async () => {
 		const ext = await extWith({ mcpServers: { fake: fakeConfig() } });
 		const r = await tool(ext, "mcp__fake__echo").execute({ text: "hello mcp" }, ctx);
 		expect(r).toEqual({ content: "hello mcp", isError: false });
-	});
+	}, 30_000);
 
 	it("③ an MCP isError result maps to kiso isError: true", async () => {
 		const ext = await extWith({ mcpServers: { fake: fakeConfig() } });
 		const r = await tool(ext, "mcp__fake__fail").execute({}, ctx);
 		expect(r.isError).toBe(true);
 		expect(String(r.content)).toContain("intentional failure");
-	});
+	}, 30_000);
 });
 
 describe("③ MCP bridge: environment", () => {
@@ -90,7 +90,7 @@ describe("③ MCP bridge: environment", () => {
 			delete process.env.ANTHROPIC_BASE_URL;
 			delete process.env.GLM_AUTH_TOKEN;
 		}
-	});
+	}, 30_000);
 });
 
 describe("③ MCP bridge: config and failure modes", () => {
@@ -104,11 +104,11 @@ describe("③ MCP bridge: config and failure modes", () => {
 		} finally {
 			delete process.env.KISO_MCP_CONFIG;
 		}
-	});
+	}, 30_000);
 
 	it("⑤b a structurally invalid server entry throws LOUDLY", async () => {
 		await expect(extWith({ mcpServers: { lonely: { args: [] } } })).rejects.toThrow(/needs a command/);
-	});
+	}, 30_000);
 
 	it("⑥ an absent config is no servers — only mcp__status, never an error", async () => {
 		const ext = await extWith(null);
@@ -116,7 +116,7 @@ describe("③ MCP bridge: config and failure modes", () => {
 		expect(ext.tools?.map((t) => t.name)).toEqual(["mcp__status"]);
 		const r = await ext.tools![0]!.execute({}, ctx);
 		expect(String(r.content)).toContain("no MCP servers configured");
-	});
+	}, 30_000);
 
 	it("⑦ an unreachable server is a SOFT failure — its error lands in mcp__status, the other server still works", async () => {
 		const ext = await extWith({
@@ -131,7 +131,7 @@ describe("③ MCP bridge: config and failure modes", () => {
 		expect(String(r.content)).toContain("fake: connected");
 		const echo = tool(ext, "mcp__fake__echo");
 		expect(String((await echo.execute({ text: "still alive" }, ctx)).content)).toBe("still alive");
-	});
+	}, 30_000);
 
 	it("⑧ slow + immediate abort returns a timely isError — it never waits the 5s", async () => {
 		const ext = await extWith({ mcpServers: { fake: fakeConfig() } });
@@ -143,5 +143,5 @@ describe("③ MCP bridge: config and failure modes", () => {
 		const r = await pending;
 		expect(r.isError).toBe(true);
 		expect(Date.now() - started).toBeLessThan(4000); // abort cut it short
-	});
+	}, 30_000);
 });

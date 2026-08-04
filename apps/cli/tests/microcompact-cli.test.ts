@@ -11,6 +11,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,7 +44,8 @@ function seedSession(home: string, id: string): void {
 describe("C 区 cli: microcompact is on by default at half the model window", () => {
 	it("a resume over the threshold records the boundary and completes", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-mc-cli-"));
-		const home = join(dir, "home");
+		const { env: isoEnv, dirs } = isolatedEnv();
+		const home = dirs.home;
 		seedSession(home, "k9");
 		// fauxSkip (the durable script position) = 7 completed turns — the
 		// script must cover them: 8 end_turn turns, the resume serves the
@@ -57,16 +59,11 @@ describe("C 区 cli: microcompact is on by default at half the model window", ()
 		const out = execFileSync(process.execPath, [CLI, "resume", "k9"], {
 			encoding: "utf8",
 			timeout: 60_000,
-			env: {
-				...process.env,
-				KISO_HOME: home,
-				KISO_FAUX_SCRIPT: scriptPath,
-				KISO_CONTEXT_WINDOW: "600",
-			},
+			env: { ...isoEnv, KISO_FAUX_SCRIPT: scriptPath, KISO_CONTEXT_WINDOW: "600" },
 		});
 		const durable = readFileSync(join(home, "sessions", "k9.jsonl"), "utf8");
 		expect(durable).toContain('"type":"microcompacted"');
 		expect(durable).toContain('"kind":"completed"');
 		expect(out).toContain("[turn");
-	});
+	}, 90_000);
 });

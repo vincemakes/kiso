@@ -5,10 +5,17 @@
  *   env_probe  — echoes the named environment variable ("" when absent)
  *   fail       — returns isError: true
  *   slow       — sleeps 5s then returns
+ *
+ * P2 (测试卫生): an optional run-id argv rides in the process command line
+ * so an ORPHAN check can pgrep THIS server uniquely — the machine-wide
+ * "fake-server.mjs" pattern would catch a parallel test's live server.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+
+// eslint-disable-next-line no-unused-vars
+const RUN_ID = process.argv[2] ?? null; // carried for the orphan check only
 
 const server = new McpServer({ name: "fake", version: "0.1.0" }, { capabilities: { tools: {} } });
 

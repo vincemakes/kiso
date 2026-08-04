@@ -14,6 +14,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { composeSystemPrompt, readProjectInstructions } from "../src/index.js";
@@ -67,15 +68,15 @@ describe("A: system prompt composition", () => {
 
 describe("A: bare `kiso` enters chat", () => {
 	it("no subcommand runs the chat REPL (faux)", () => {
-		const home = mkdtempSync(join(tmpdir(), "kiso-cli-"));
+		const { env } = isolatedEnv();
 		const result = spawnSync("node", [CLI], {
 			input: "hello\nexit\n",
 			encoding: "utf8",
-			env: { ...process.env, KISO_HOME: home },
+			env,
 			timeout: 30_000,
 		});
 		expect(result.status, result.stderr).toBe(0);
 		expect(result.stdout).toContain("session ");
 		expect(result.stdout).toContain("faux model");
-	});
+	}, 60_000);
 });

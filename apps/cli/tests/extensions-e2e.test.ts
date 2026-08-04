@@ -22,6 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 import { SessionStore } from "@vincemakes/kiso-runtime";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
@@ -181,7 +182,8 @@ sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(dir, "faux.json"))}, ${JSON.stringify(extdir)}, ${JSON.stringify(marker)}, "e1", ${JSON.stringify(workdir)}, False)
 `;
-		const out1 = execFileSync("python3", ["-c", phase1], { encoding: "utf8", timeout: 90_000 });
+		const { env } = isolatedEnv();
+		const out1 = execFileSync("python3", ["-c", phase1], { encoding: "utf8", timeout: 90_000, env });
 		expect(out1).toContain("[1 extension: safe-test]");
 		expect(out1).not.toContain("read_file needs approval"); // the read was AUTO-allowed — no prompt
 		expect(out1).toContain("approve write_file"); // the write WAS asked of the human
@@ -209,7 +211,7 @@ sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(dir, "faux.json"))}, ${JSON.stringify(extdir)}, ${JSON.stringify(marker)}, "e1", ${JSON.stringify(workdir)}, True)
 `;
-		const out2 = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000 });
+		const out2 = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000, env });
 		expect(out2).toContain("done"); // the trajectory completed
 		expect((out2.match(/approve write_file/g) ?? [])).toHaveLength(1); // ONLY the new request — 已裁决的不再问
 		expect(out2).not.toContain("read_file needs approval");

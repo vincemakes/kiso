@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("../../../apps/cli", import.meta.url)), "dist", "index.js");
 const BUNDLE = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "kiso-subagent.mjs");
@@ -118,7 +119,8 @@ sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir)}, ${JSON.stringify(extdir)}, ${JSON.stringify(scriptPath)}, "sub-e2e")
 `;
-		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000 });
+		const { env } = isolatedEnv();
+		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
 		expect(out).toContain("[2 extensions: safe-defaults, subagent]"); // sorted by file name
 		expect(out).toContain("approve delegate"); // the ask tier reached the human (裁决 A)
 		expect(out).toContain("outcome: completed"); // the child's result section returned to the model
@@ -150,7 +152,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		);
 		const child = spawn(process.execPath, [CLI, "chat", "sub-depth"], {
 			env: {
-				...process.env,
+				...isolatedEnv().env, // P2: the full isolation set — the host ~/.kiso never leaks
 				KISO_HOME: home,
 				KISO_SUBAGENT_DEPTH: "1",
 				KISO_EXTENSIONS_DIR: extdir,

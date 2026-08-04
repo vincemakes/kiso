@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("../../../apps/cli", import.meta.url)), "dist", "index.js");
 const BUNDLE = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "kiso-skills.mjs");
@@ -116,7 +117,8 @@ sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir)}, ${JSON.stringify(extdir)}, ${JSON.stringify(skillsdir)}, ${JSON.stringify(scriptPath)})
 `;
-		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000 });
+		const { env } = isolatedEnv();
+		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
 		expect(out).toContain("[2 extensions: safe-defaults, skills]"); // sorted by file name
 		expect(out).not.toContain("approve read_skill"); // auto-allowed — no prompt
 		expect(out).toContain("UNIQUE-BODY-a-skill"); // the SKILL.md body returned to the model

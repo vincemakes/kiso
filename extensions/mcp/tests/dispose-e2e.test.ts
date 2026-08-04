@@ -13,11 +13,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("../../../apps/cli", import.meta.url)), "dist", "index.js");
 const BUNDLE = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "kiso-mcp.mjs");
 const SAFE_DEFAULTS = join(fileURLToPath(new URL("../../../examples", import.meta.url)), "extensions", "safe-defaults.mjs");
 const FAKE_SERVER = join(fileURLToPath(new URL(".", import.meta.url)), "fake-server.mjs");
+
+/** A unique per-run marker in the fake server's command line — the orphan
+ *  check pgreps THIS id, never the machine-wide "fake-server.mjs". */
+const RUN_ID = `dispose-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
 
 function fauxEnv(): void {
 	delete process.env.ANTHROPIC_API_KEY;
@@ -87,14 +92,17 @@ def driver(cli, home, ext_dir, mcp_config):
 describe("发现#8: MCP dispose + connect timeout", () => {
 	it("the CLI exits within 5s of the exit command and leaves NO orphan MCP children", () => {
 		fauxEnv();
-		const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-dispose-"));
-		const home = join(dir, "home");
-		const extdir = join(dir, "ext");
-		mkdirSync(home, { recursive: true });
-		mkdirSync(extdir, { recursive: true });
+		const { env, dirs } = isolatedEnv();
+		const home = dirs.home;
+		const extdir = dirs.extensions;
+		const mcpConfig = dirs.mcpConfig;
 		copyFileSync(BUNDLE, join(extdir, "kiso-mcp.mjs"));
-		const mcpConfig = join(dir, "mcp.json");
-		writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { fake: { command: "node", args: [FAKE_SERVER] } } }), "utf8");
+		writeFileSync(
+			mcpConfig,
+			JSON.stringify({ mcpServers: { fake: { command: "node", args: [FAKE_SERVER, RUN_ID] } } }),
+			"utf8",
+		);
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-dispose-"));
 		writeFileSync(join(dir, "driver.py"), DISPOSE_DRIVER, "utf8");
 		const phase = `
 import sys
@@ -103,9 +111,11 @@ exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(extdir)}, ${JSON.stringify(mcpConfig)})
 `;
 		// exit 3 = the process did NOT exit within 5s — the test fails.
-		execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 60_000 });
-		// No orphaned fake-server children by command-line feature.
-		expect(() => execFileSync("pgrep", ["-f", "fake-server.mjs"], { stdio: "ignore" })).toThrow();
+		execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 60_000, env });
+		// No orphaned children of THIS server — the pgrep is keyed on the
+		// unique run-id, never the machine-wide "fake-server.mjs" pattern
+		// (a parallel test's live server must not trip this assertion).
+		expect(() => execFileSync("pgrep", ["-f", RUN_ID], { stdio: "ignore" })).toThrow();
 	}, 90_000);
 
 	it("发现#8b: a server that never answers the handshake is a bounded SOFT failure — mcp__status shows the timeout, the other server works", () => {
@@ -209,7 +219,8 @@ sys.argv = [""]
 exec(open(${JSON.stringify(driver)}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir)}, ${JSON.stringify(extdir)}, ${JSON.stringify(mcpConfig)}, ${JSON.stringify(script)})
 `;
-		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000 });
+		const { env } = isolatedEnv();
+		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
 		expect(out).toContain("sleepy: error"); // the timeout is a SOFT failure
 		expect(out).toContain("timed out after 15000ms");
 		expect(out).toContain("fake: connected"); // the other server works

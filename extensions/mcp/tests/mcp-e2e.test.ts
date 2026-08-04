@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("../../../apps/cli", import.meta.url)), "dist", "index.js");
 const BUNDLE = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "kiso-mcp.mjs");
@@ -115,7 +116,8 @@ sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir)}, ${JSON.stringify(extdir)}, ${JSON.stringify(mcpConfig)}, ${JSON.stringify(scriptPath)}, "mcp-e2e")
 `;
-		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000 });
+		const { env } = isolatedEnv();
+		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
 		expect(out).toContain("[2 extensions: mcp, safe-defaults]"); // the banner names the bundle
 		expect(out).toContain("approve mcp__fake__echo"); // 审批提问出现 — the ask tier reached the human
 		expect(out).toContain("hello from mcp"); // the echo result returned to the model

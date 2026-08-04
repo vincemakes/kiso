@@ -3,6 +3,11 @@
  * across process boundaries — chat in one process, resume in another,
  * sessions listing, and the JSONL shows both runs. Requires the CLI build
  * (npm run check builds before testing).
+ *
+ * P2 (测试卫生): every real-process spawn runs against a FULLY isolated
+ * environment (the shared helper — the host's ~/.kiso must never leak in)
+ * with an explicit generous timeout: these tests measure correctness, not
+ * speed.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -13,37 +18,30 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { SessionStore } from "@vincemakes/kiso-runtime";
 import { readdirSync } from "node:fs";
+import { isolatedEnv, runCli } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
-function runCli(args: string[], input: string, env: Record<string, string>) {
-	return spawnSync("node", [CLI, ...args], {
-		input,
-		encoding: "utf8",
-		env: { ...process.env, ...env },
-		timeout: 30_000,
-	});
-}
-
 describe("kiso CLI (built artifact, faux mode)", () => {
 	it("chat → resume in a new process → sessions listing → durable two-run history", async () => {
-		const home = mkdtempSync(join(tmpdir(), "kiso-cli-"));
+		const { env, dirs } = isolatedEnv();
+		const home = dirs.home;
 		const id = "e2e";
 
 		// Process 1: interactive chat, one turn, exit.
-		const first = runCli(["chat", id], "look around\nexit\n", { KISO_HOME: home });
+		const first = runCli(["chat", id], env, { input: "look around\nexit\n" });
 		expect(first.status, first.stderr).toBe(0);
 		expect(first.stdout).toContain(`session ${id}`);
 		expect(first.stdout).toContain("faux model");
 
 		// Process 2: resume the same session from disk — a NEW process sees
 		// the first run's history and completes another turn.
-		const second = runCli(["resume", id, "continue"], "", { KISO_HOME: home });
+		const second = runCli(["resume", id, "continue"], env);
 		expect(second.status, second.stderr).toBe(0);
 		expect(second.stdout).toContain("done"); // the honest terminal
 
 		// Process 3: sessions lists the durable session.
-		const sessions = runCli(["sessions"], "", { KISO_HOME: home });
+		const sessions = runCli(["sessions"], env);
 		expect(sessions.status).toBe(0);
 		expect(sessions.stdout).toContain(id);
 
@@ -64,36 +62,39 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 			type: "stop",
 			reason: "end_turn",
 		});
-	});
+	}, 60_000);
 
 	it("faux chat supports at least two consecutive user turns in ONE process (F 组)", () => {
-		const home = mkdtempSync(join(tmpdir(), "kiso-cli-"));
-		const result = runCli(["chat", "twoturns"], "first question\nsecond question\nexit\n", { KISO_HOME: home });
+		const { env } = isolatedEnv();
+		const result = runCli(["chat", "twoturns"], env, { input: "first question\nsecond question\nexit\n" });
 		expect(result.status, result.stderr).toBe(0);
 		// Two turns rendered, two honest terminals ("done").
 		const doneCount = (result.stdout.match(/done/g) ?? []).length;
 		expect(doneCount).toBe(2);
 		// 八: the prompt is RE-ARMED after every turn — never type blind.
 		expect((result.stdout.match(/you> /g) ?? []).length).toBeGreaterThanOrEqual(2);
-	});
+	}, 60_000);
 
 	it("八: a faux script exhausted mid-session exits NON-ZERO with a clear message, never status 0", () => {
-		const home = mkdtempSync(join(tmpdir(), "kiso-cli-"));
+		const { env } = isolatedEnv();
 		// The script declares 4 provider turns (the first user turn consumes
 		// two — call + summary); the FOURTH user turn hits the empty stream —
 		// an honest failure, not a silent status-0 provider error.
-		const result = runCli(["chat", "exhaust"], "one\ntwo\nthree\nfour\nexit\n", { KISO_HOME: home });
+		const result = runCli(["chat", "exhaust"], env, { input: "one\ntwo\nthree\nfour\nexit\n" });
 		expect(result.status).toBe(1);
 		expect(result.stdout + result.stderr).toContain("exhausted");
-	});
+	}, 60_000);
 
 	it("help exits cleanly", () => {
-		const result = runCli(["help"], "", {});
+		const { env } = isolatedEnv();
+		const result = runCli(["help"], env);
 		expect(result.status).toBe(0);
 		expect(result.stdout).toContain("kiso chat");
-	});
+	}, 60_000);
+
 	it("P1-11: Ctrl+C during startup recovery does not swallow the next user input (real PTY)", async () => {
-		const home = mkdtempSync(join(tmpdir(), "kiso-cli-"));
+		const { env, dirs } = isolatedEnv();
+		const home = dirs.home;
 		// Seed a session with a PENDING approval so the startup recovery
 		// pauses at a question.
 		const store = new SessionStore(join(home, "sessions"));
@@ -137,16 +138,15 @@ except ProcessLookupError:
 sys.stdout.write(out.decode(errors="replace"))
 sys.exit(0 if processed else 1)
 `;
-		const result = spawnSync("python3", ["-c", helper], { encoding: "utf8", timeout: 60_000 });
+		const result = spawnSync("python3", ["-c", helper], { encoding: "utf8", timeout: 60_000, env });
 		expect(result.status, result.stdout.slice(-600)).toBe(0);
 		// The line after the cancellation produced a real turn.
 		expect(result.stdout).toContain("faux model");
-	});
-});
+	}, 90_000);
 
 	it("B: tool summary lines and the status line appear in a real chat run", () => {
-		const home = mkdtempSync(join(tmpdir(), "kiso-cli-"));
-		const result = runCli(["chat", "bsum"], "hello\n/last\nexit\n", { KISO_HOME: home });
+		const { env } = isolatedEnv();
+		const result = runCli(["chat", "bsum"], env, { input: "hello\n/last\nexit\n" });
 		expect(result.status, result.stderr).toBe(0);
 		// The tool summary line: a list_dir completion with the root marker.
 		expect(result.stdout).toContain("✓ list_dir (root)");
@@ -155,4 +155,5 @@ sys.exit(0 if processed else 1)
 		// /last printed the full input/output from the event stream.
 		expect(result.stdout).toContain("--- list_dir input ---");
 		expect(result.stdout).toContain("--- list_dir output ---");
-	});
+	}, 60_000);
+});
