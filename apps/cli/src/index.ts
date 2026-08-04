@@ -16,6 +16,7 @@
  * the run pauses, asks, and resumes — durably (ADR-0024).
  */
 
+import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -39,6 +40,64 @@ const PERMISSION_POLICY: PermissionPolicy = {
 
 function sessionsDir(): string {
 	return join(process.env.KISO_HOME ?? join(homedir(), ".kiso"), "sessions");
+}
+
+/**
+ * A 区: the coding-agent system prompt — ONE constant, byte-stable for the
+ * session's lifetime (D 区). Kept under ~80 lines; no template engine.
+ */
+const SYSTEM_PROMPT = `You are kiso, a coding agent. You work in a workspace
+directory and change code with tools. Be concise: answer in a few lines
+unless the task genuinely needs more. Never claim a file was changed
+unless a tool confirmed it.
+
+Tool discipline:
+- READ BEFORE YOU EDIT. For any file you are about to change, read it
+  first — never guess its content.
+- Use edit_file for targeted changes and write_file for full rewrites.
+  Prefer many small edits over one large write.
+- shell is for commands: builds, tests, git, grep. Be careful — shell has
+  side effects and may take time. Run one command at a time and inspect
+  the output before continuing.
+- search_text and list_dir are cheap — use them to orient before reading
+  whole files.
+- When a tool fails, read the error and adjust; do not repeat the same
+  call blindly.
+
+Workflow: understand the request, find the relevant code, make the
+smallest change that works, then verify with a command (tests/build).
+Report what you did in one or two lines per change.`;
+
+/** The project-instructions file names, in priority order (A 区). */
+const INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md"] as const;
+/** Hard cap for injected instructions — truncate and say so. */
+const INSTRUCTION_MAX = 8 * 1024;
+
+/**
+ * A 区: read the FIRST present instruction file (AGENTS.md preferred) and
+ * return it as an injected section, or "" when none exists. Truncated at
+ * 8KB with an explicit note. Pure — read once per session, so the prompt
+ * is byte-stable for the session's lifetime.
+ */
+export function readProjectInstructions(cwd: string): string {
+	for (const name of INSTRUCTION_FILES) {
+		let text: string;
+		try {
+			text = readFileSync(join(cwd, name), "utf8");
+		} catch {
+			continue; // not present — try the next
+		}
+		const body = text.length > INSTRUCTION_MAX ? text.slice(0, INSTRUCTION_MAX) + `\n\n[truncated at ${INSTRUCTION_MAX} chars]` : text;
+		return `\n\n=== Project instructions (${name}) ===\n${body}`;
+	}
+	return "";
+}
+
+/** A 区: the session's system prompt — the constant plus any project
+ *  instructions found in the workspace. Deterministic per cwd. */
+export function composeSystemPrompt(cwd: string): string {
+	const injected = readProjectInstructions(cwd);
+	return injected === "" ? SYSTEM_PROMPT : `${SYSTEM_PROMPT}\n${injected}`;
 }
 
 async function makeAgent() {
@@ -70,10 +129,7 @@ async function makeAgent() {
 		// they touch is canonicalized inside cwd, escapes are refused.
 		tools: [...createCodingTools({ workspaceRoot: process.cwd() })],
 		permissionPolicy: PERMISSION_POLICY,
-		systemPrompt:
-			"You are kiso, a coding agent. Read files and search before editing. " +
-			"Use write_file/edit_file for changes and shell for commands. " +
-			"Never claim a file was changed unless a tool confirmed it.",
+		systemPrompt: composeSystemPrompt(process.cwd()),
 		maxTurns: 20,
 		...(provider !== undefined
 			? {
@@ -466,15 +522,34 @@ async function main(): Promise<void> {
 				break;
 			}
 			case "help":
-			case undefined:
-			default:
 				console.log(
-					"kiso — the coding-agent reference product\n\n" +
-						"  kiso chat [sessionId]   interactive session\n" +
+					"kiso — the coding agent that survives kill -9\n\n" +
+						"  kiso [sessionId]         interactive session (default command)\n" +
+						"  kiso chat [sessionId]    same as above\n" +
 						"  kiso resume <id> [prompt]   continue a session (one-shot)\n" +
 						"  kiso sessions           list durable sessions\n" +
 						"  kiso help               this help\n",
 				);
+				break;
+			case undefined: {
+				// A 区: no subcommand = chat.
+				const id = arg ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+				const session = await agent.session({ id });
+				console.log(`session ${id}\n`);
+				await chat(session, faux);
+				break;
+			}
+			default:
+				console.error(`unknown command: ${command}\n`);
+				console.log(
+					"kiso — the coding agent that survives kill -9\n\n" +
+						"  kiso [sessionId]         interactive session (default command)\n" +
+						"  kiso chat [sessionId]    same as above\n" +
+						"  kiso resume <id> [prompt]   continue a session (one-shot)\n" +
+						"  kiso sessions           list durable sessions\n" +
+						"  kiso help               this help\n",
+				);
+				process.exitCode = 2;
 		}
 	} finally {
 		// E 组: every normal and abnormal exit releases the fds and writer
