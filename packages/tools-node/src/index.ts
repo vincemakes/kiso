@@ -122,6 +122,14 @@ export function canonicalTargetPath(input: string): string {
 export interface WorkspaceToolsOptions {
 	/** The workspace the tools may touch; everything else is refused. */
 	readonly workspaceRoot: string;
+	/**
+	 * 自举 #3 (发现#7): "inherit" keeps kiso's own provider credentials in
+	 * the shell child's environment. DEFAULT (absent): the credentials are
+	 * STRIPPED — a shell command must not inherit the agent's API keys (a
+	 * nested kiso would hit the REAL provider and blow up faux e2e runs;
+	 * the keys are an exposure surface for any command).
+	 */
+	readonly shellEnv?: "inherit";
 }
 
 /**
@@ -402,6 +410,32 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 	});
 }
 
+/**
+ * 自举 #3 (发现#7): the explicit credential list stripped from shell
+ * children — the agent's own provider surface (both families' keys, base
+ * URLs, and model choices) plus the generic API-key / auth-token patterns
+ * that cover other providers. Everything else in the environment passes
+ * through untouched.
+ */
+const SHELL_STRIP_EXACT = new Set([
+	"ANTHROPIC_API_KEY",
+	"OPENAI_API_KEY",
+	"ANTHROPIC_BASE_URL",
+	"OPENAI_BASE_URL",
+	"ANTHROPIC_MODEL",
+	"OPENAI_MODEL",
+]);
+
+function strippedShellEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	const out: NodeJS.ProcessEnv = {};
+	for (const [key, value] of Object.entries(env)) {
+		if (SHELL_STRIP_EXACT.has(key)) continue;
+		if (key.endsWith("_API_KEY") || key.endsWith("_AUTH_TOKEN")) continue;
+		if (value !== undefined) out[key] = value;
+	}
+	return out;
+}
+
 export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; timeoutMs?: number }> {
 	return defineTool<{ command: string; timeoutMs?: number }>({
 		name: "shell",
@@ -425,11 +459,15 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				// detached: the command gets its OWN process group, so a
 				// timeout/abort can kill the WHOLE TREE (children included),
 				// not just the outer shell (Area 4). cwd is the workspace.
+				// 自举 #3 (发现#7): the shell child NEVER inherits kiso's own
+				// provider credentials by default — only the explicit
+				// shellEnv: "inherit" opt-in keeps them.
 				const child = spawn(command, {
 					shell: true,
 					detached: true,
 					cwd: opts.workspaceRoot,
 					stdio: ["ignore", "pipe", "pipe"],
+					env: opts.shellEnv === "inherit" ? process.env : strippedShellEnv(process.env),
 				});
 				let stdout = "";
 				let stderr = "";

@@ -136,3 +136,52 @@ describe("safe replacement (E 组)", () => {
 		expect(readFileSync(join(dir2, "linked.txt"), "utf8")).toBe("TWO"); // workspace entry replaced
 	});
 });
+
+describe("自举 #3 (发现#7): shell children never inherit kiso's credentials by default", () => {
+	it("the provider credential variables are stripped; the rest of the env passes through", async () => {
+		const dir = root();
+		// Plant kiso's own credential surface in the parent env, plus a
+		// benign variable that MUST survive the strip.
+		process.env.ANTHROPIC_API_KEY = "sk-test-anthropic";
+		process.env.OPENAI_API_KEY = "sk-test-openai";
+		process.env.OPENAI_BASE_URL = "https://api.example.com";
+		process.env.OPENAI_MODEL = "test-model";
+		process.env.GLM_AUTH_TOKEN = "glm-test";
+		process.env.KISO_TEST_BENIGN = "kept";
+		try {
+			const result = await shellTool({ workspaceRoot: dir }).execute(
+				{ command: "env" },
+				CTX(NEVER_ABORT),
+			);
+			expect(result.isError).toBe(false);
+			expect(result.content).toContain("KISO_TEST_BENIGN=kept"); // intact
+			expect(result.content).not.toContain("ANTHROPIC_API_KEY=");
+			expect(result.content).not.toContain("OPENAI_API_KEY=");
+			expect(result.content).not.toContain("OPENAI_BASE_URL=");
+			expect(result.content).not.toContain("OPENAI_MODEL=");
+			expect(result.content).not.toContain("GLM_AUTH_TOKEN=");
+		} finally {
+			delete process.env.ANTHROPIC_API_KEY;
+			delete process.env.OPENAI_API_KEY;
+			delete process.env.OPENAI_BASE_URL;
+			delete process.env.OPENAI_MODEL;
+			delete process.env.GLM_AUTH_TOKEN;
+			delete process.env.KISO_TEST_BENIGN;
+		}
+	});
+
+	it("the explicit shellEnv: 'inherit' opt-in keeps the credentials", async () => {
+		const dir = root();
+		process.env.ANTHROPIC_API_KEY = "sk-keep-me";
+		try {
+			const result = await shellTool({ workspaceRoot: dir, shellEnv: "inherit" }).execute(
+				{ command: "env" },
+				CTX(NEVER_ABORT),
+			);
+			expect(result.isError).toBe(false);
+			expect(result.content).toContain("ANTHROPIC_API_KEY=sk-keep-me");
+		} finally {
+			delete process.env.ANTHROPIC_API_KEY;
+		}
+	});
+});
