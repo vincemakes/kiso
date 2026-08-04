@@ -356,6 +356,54 @@ export default {
 
 Tools only: MCP resources/prompts and OAuth are not bridged this round.
 
+## Subagents — delegate to child kiso processes
+
+`extensions/subagent` is the official subagent extension: a zero-dependency
+single file (`src/kiso-subagent.mjs` is the artifact; `dist/` is a copy) —
+no SDK, no build step beyond the copy. Build and install:
+
+```
+cd extensions/subagent && npm install && npm run build   # step 1 — dist/kiso-subagent.mjs
+cp dist/kiso-subagent.mjs ~/.kiso/extensions/            # step 2 — the E1 loader picks it up
+```
+
+The extension adds ONE tool, `delegate`, which runs 1-8 subagent tasks in
+child kiso processes (the same binary), at most 4 concurrently:
+
+| role | allowed tools | cwd | isolation |
+|---|---|---|---|
+| explorer | read/list/search | parent's cwd | role policy |
+| reviewer | read/list/search | parent's cwd | role policy |
+| tester | all six | parent's cwd | role policy |
+| implementer | all six | a detached `git worktree` | diff comes back |
+
+- **Role policies are generated per child** (a temporary extensions dir):
+  only allow/deny — never ask (a headless child cannot answer an approval
+  prompt). Explorer/reviewer may only read; implementer/tester may change.
+- **implementer isolation**: the child works in a detached `git worktree`
+  (parent must be a git repo — otherwise the task fails honestly); after
+  the child exits, `git diff` (with its `--stat` header) comes back in the
+  result. A worktree with changes is KEPT and its path returned; a clean
+  one is deleted.
+- **Results come from the child's own session JSONL** — terminal outcome,
+  the final assistant text, and the tool-call count — never from stdout
+  (stdout rides along only as a diagnostic when the child exits non-zero
+  or the JSONL is missing). Children land in the normal sessions directory
+  (`sub-<parent>-<n>-<role>`): they are durable, auditable, and resumable
+  with `kiso resume` even if the parent is killed — the subagent selling
+  point.
+- **Depth guard**: `KISO_SUBAGENT_DEPTH ≥ 1` (set on every child) makes
+  the factory return no tools — subagents can never nest.
+- **Timeouts**: 10 minutes per child by default (`KISO_SUBAGENT_TIMEOUT_MS`
+  overrides); a timeout or the parent run's abort SIGKILLs the child's
+  whole process group.
+- **Provider credentials deliberately pass down** with the parent's
+  environment — the difference from the shell tool (#7): shell runs
+  arbitrary commands (stripped by default); delegate is a CONTROLLED spawn
+  the human just approved.
+- **Approval: no auto-allow.** `delegate` falls in the ask tier — a human
+  sees every delegation and can deny it.
+
 ## Status
 
 Reliable Session Alpha, including the four hardening rounds (areas 1-7,

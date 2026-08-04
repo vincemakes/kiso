@@ -1,0 +1,19 @@
+{
+  "name": "@vincemakes/kiso-subagent-ext",
+  "version": "0.1.7",
+  "description": "kiso(基礎) official subagent extension — child kiso processes with role policies, kernel untouched",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@vincemakes/kiso-core": "0.1.6",
+    "@types/node": "^26.1.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

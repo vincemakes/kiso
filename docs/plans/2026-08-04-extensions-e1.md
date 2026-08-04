@@ -222,6 +222,50 @@ runtime/cli/tools-node 零改动):
   ask + 自写 policy 放行示例、软失败语义、mcp__status、构建安装两步、仅
   tools);本 plan 记录 ③。
 
+## ④ subagent (2026-08-04) — 官方扩展,内核零改动
+
+- 新 workspace `extensions/subagent`(private,不发 npm):**零运行依赖**
+  (child_process/fs 均内建)——不需要 esbuild,`src/kiso-subagent.mjs` 即最终
+  产物,build 仅拷贝到 dist/(与 mcp 消费方式对齐)。四包 + E1 loader 零改动。
+- `delegate` 工具: 参数 schema { tasks: [{role: explorer|implementer|
+  reviewer|tester, task(minLength 1)}] },1..8 项,并发上限 4(runLimited);
+  KISO_SUBAGENT_DEPTH>=1 时工厂返回 {name:"subagent",tools:[]}(深度护栏,
+  禁嵌套)。每任务 spawn 子 kiso: process.execPath + (KISO_SUBAGENT_BIN ??
+  process.argv[1]);子 session id = sub-<父sessionId>-<序号>-<role>(父 id 由
+  KISO_SESSION_ID 或 sessions 目录最新 mtime 发现,兜底 "parent");stdin 写
+  "任务文本\nexit\n" 后关闭;超时默认 10 分钟(KISO_SUBAGENT_TIMEOUT_MS 可
+  覆盖),超时或 ctx.signal abort → SIGKILL 子进程组(detached)。
+- 子进程 env 显式构造 {...process.env, KISO_SUBAGENT_DEPTH: +1,
+  KISO_EXTENSIONS_DIR: 角色策略临时目录}——provider 凭据随 process.env 显式
+  下传(注释写明与 #7 的区别: shell=任意命令默认剥离;delegate=人工 ask 批准
+  的受控 spawn)。角色策略(临时 .mjs,子进程专用): explorer/reviewer →
+  read/list/search allow 其余 deny(带 reason);implementer/tester → 六件套
+  allow;只 allow/deny 永不 ask(headless 死锁,注释写明);临时目录进程退出后
+  清理。
+- implementer 隔离: `git worktree add --detach`(系统临时目录),子进程 cwd=
+  worktree;退出后 `git -C <worktree> add -N . && git diff`(含 --stat 头,
+  add -N 让新文件进 diff)收进结果;有 diff 保留并回传路径、无 diff 删除;
+  非 git 仓库 → 诚实失败。explorer/reviewer/tester cwd=父 cwd。
+- 结果提取(硬条款): 子进程退出后从子 session JSONL 提取(store 记录
+  {runId,ts,event} 解包 + 短暂重试,因 exit 事件可能早于终笔写入一拍)——terminal
+  outcome、最终 assistant 文本(投影等价解析)、工具调用计数;stdout 仅作诊断
+  (非零退出或 JSONL 缺失时附上)。content=逐任务小节,部分失败不整体失败,
+  全失败 → isError:true。审批零放行——delegate 落 ask 档(裁决 A 后真到人)。
+- 测试(红→绿): 单测 7 个(①深度护栏 ②角色策略生成物 explorer deny write/
+  allow read + 全文无 "ask" ③JSONL 提取(伪造完成子 session)④慢子任务+短
+  超时→及时 isError+子进程组已死 ⑤6 任务并发峰值 ≤4(探针)⑥implementer
+  worktree 有 diff 保留/无 diff 删除 ⑦非 git 诚实失败)——首跑 4 失败,根因:
+  runProcess 的 try/finally 立即清定时器、提取未解包 store 包装、测试断言
+  过严;修复后 7/7。CLI e2e(真进程穿最上层入口): 父 kiso(faux 脚本调
+  delegate 一个 explorer 任务)+ 扩展目录含 subagent+safe-defaults → 横幅
+  [2 extensions: safe-defaults, subagent]、delegate 审批提问出现(ask 档,
+  裁决 A)、y 注入、子任务跑完、JSONL 结果小节回模型、done;子 session JSONL
+  存在且有 terminal(durable 卖点钉死)。深度 e2e: 子进程(faux 脚本调
+  delegate)→ "Unknown tool: delegate"(护栏在子进程生效)。根 check 纳入
+  subagent build+typecheck+test。
+- 文档: README 新 Subagent 段(角色表、并发/超时、worktree 语义、深度护栏、
+  durable 子 session 卖点、凭据下传与 #7 区别、安装两步);本 plan 记录 ④。
+
 ## 8. What was NOT done (explicitly out of scope)
 
 - registerCommand / shortcuts / renderers / sendMessage-like APIs;
