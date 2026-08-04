@@ -47,6 +47,8 @@ export interface AgentDefinition {
 	readonly maxTokens?: number;
 	readonly temperature?: number;
 	readonly compaction?: { readonly thresholdTokens: number };
+	/** C 区: microcompact threshold — passed through to every session. */
+	readonly microcompact?: { readonly thresholdTokens: number };
 	readonly maxRetries?: number;
 }
 
@@ -98,6 +100,7 @@ export class AgentRuntime {
 			...(this.#definition.maxTokens !== undefined ? { maxTokens: this.#definition.maxTokens } : {}),
 			...(this.#definition.temperature !== undefined ? { temperature: this.#definition.temperature } : {}),
 			...(this.#definition.compaction !== undefined ? { compaction: this.#definition.compaction } : {}),
+			...(this.#definition.microcompact !== undefined ? { microcompact: this.#definition.microcompact } : {}),
 			...(this.#definition.maxRetries !== undefined ? { maxRetries: this.#definition.maxRetries } : {}),
 		};
 		return new AgentSession(options.id, log, store, adapter, config);

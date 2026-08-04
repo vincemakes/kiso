@@ -449,6 +449,8 @@ export interface SessionConfig {
 	readonly maxTokens?: number;
 	readonly temperature?: number;
 	readonly compaction?: { readonly thresholdTokens: number };
+	/** C 区: microcompact threshold — passed through to the loop verbatim. */
+	readonly microcompact?: { readonly thresholdTokens: number };
 	readonly maxRetries?: number;
 }
 
@@ -520,6 +522,7 @@ export class Run implements AsyncIterable<Event> {
 					...(this.#config.maxTokens !== undefined ? { maxTokens: this.#config.maxTokens } : {}),
 					...(this.#config.temperature !== undefined ? { temperature: this.#config.temperature } : {}),
 					...(this.#config.compaction !== undefined ? { compaction: this.#config.compaction } : {}),
+					...(this.#config.microcompact !== undefined ? { microcompact: this.#config.microcompact } : {}),
 					...(this.#config.maxRetries !== undefined ? { maxRetries: this.#config.maxRetries } : {}),
 					log,
 					signal,

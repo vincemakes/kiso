@@ -160,6 +160,11 @@ async function makeAgent(fauxSkipTurns = 0) {
 		tools: [...createCodingTools({ workspaceRoot: process.cwd() })],
 		permissionPolicy: PERMISSION_POLICY,
 		systemPrompt: composeSystemPrompt(process.cwd()),
+		// C 区: microcompact is ON by default in the product — threshold =
+		// half the model window (KISO_CONTEXT_WINDOW override included;
+		// 200k window → 100k tokens). Long sessions compact old read/list/
+		// search/shell outputs instead of silently growing past the window.
+		microcompact: { thresholdTokens: contextWindowTokens() / 2 },
 		maxTurns: 20,
 		...(provider !== undefined
 			? {
@@ -271,16 +276,24 @@ function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<
 }
 
 /**
- * B 区: approximate context ratio — chars/4 of the projected messages vs
- * the model window (default 200k, KISO_CONTEXT_WINDOW overrides). Marked
- * ~ everywhere it is shown; no counting API is called.
+ * C 区: the model window in tokens — KISO_CONTEXT_WINDOW overrides the
+ * 200k default. The microcompact threshold is derived from it (50%), and
+ * the status line's ~ctx estimate is measured against it — one source of
+ * truth for the window.
  */
-function estimateCtxRatio(session: AgentSession, windowEnv: string | undefined): number {
-	const window = Number.parseInt(windowEnv ?? "", 10);
-	const modelWindow = Number.isFinite(window) && window > 0 ? window : DEFAULT_CONTEXT_WINDOW;
+function contextWindowTokens(): number {
+	const window = Number.parseInt(process.env.KISO_CONTEXT_WINDOW ?? "", 10);
+	return Number.isFinite(window) && window > 0 ? window : DEFAULT_CONTEXT_WINDOW;
+}
+
+/**
+ * B 区: approximate context ratio — chars/4 of the projected messages vs
+ * the model window. Marked ~ everywhere it is shown; no counting API.
+ */
+function estimateCtxRatio(session: AgentSession): number {
 	const projected = session.projected();
 	const chars = JSON.stringify(projected).length;
-	return chars / 4 / modelWindow;
+	return chars / 4 / contextWindowTokens();
 }
 
 /** Decide every uncertain execution with the human (r)erun/(a)bandon. */
@@ -350,7 +363,7 @@ async function consumeRun(
 		}
 		if (ev.type === "terminal") {
 			// B 区: the status line after every terminal.
-			const ctxRatio = estimateCtxRatio(session, process.env.KISO_CONTEXT_WINDOW);
+			const ctxRatio = estimateCtxRatio(session);
 			console.log(renderStatusLine(turnNo, usage, ctxRatio));
 		}
 		if (ev.type === "uncertain_pending") {
