@@ -86,16 +86,23 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			text = null;
 		}
 	};
+	// 自举 P1: the reasoning of the turn being built, accumulated from its
+	// `thinking` events and attached to the assistant message at flush —
+	// deterministic (same events → same messages → same request body, D 区).
+	let pendingReasoning: string | null = null;
 	const flushAssistant = (): void => {
 		pushText();
 		if (blocks.length === 0) {
 			assistantSource = undefined;
 			return;
 		}
+		const reasoning = pendingReasoning;
+		pendingReasoning = null;
 		out.push({
 			role: "assistant",
 			blocks: [...blocks],
 			...(assistantSource !== undefined ? { source: assistantSource } : {}),
+			...(reasoning !== null ? { reasoning } : {}),
 		} satisfies AssistantMessage);
 		blocks = [];
 		assistantSource = undefined;
@@ -270,6 +277,12 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				break;
 			}
 			case "thinking":
+				// 自举 P1: accumulate the turn's reasoning — the flush (an
+				// empty one at the turn's start) keeps the pending text, and
+				// the assistant message that follows carries it.
+				flushAssistant();
+				pendingReasoning = (pendingReasoning ?? "") + ev.text;
+				break;
 			case "usage":
 			case "stop":
 			case "terminal":
@@ -312,6 +325,11 @@ export function messagesToEvents(messages: readonly Message[]): EventInput[] {
 			case "assistant": {
 				// D 组: an explicit assistant_start/assistant_end pair frames
 				// the message — adjacent and empty assistants round-trip.
+				// 自举 P1: the reasoning re-enters the log as its ORIGINAL
+				// thinking event — the projection re-attaches it identically.
+				if (msg.reasoning !== undefined) {
+					out.push({ type: "thinking", text: msg.reasoning });
+				}
 				out.push({
 					type: "assistant_start",
 					...(msg.source !== undefined ? { source: msg.source } : {}),

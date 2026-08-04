@@ -87,6 +87,12 @@ export interface AssistantMessage {
 	readonly role: "assistant";
 	readonly blocks: readonly AssistantBlock[];
 	readonly source?: MessageSource;
+	/**
+	 * 自举 P1: the turn's reasoning, derived deterministically from its
+	 * `thinking` events (DeepSeek's thinking mode requires it back on
+	 * follow-up requests). Present only when the turn actually reasoned.
+	 */
+	readonly reasoning?: string;
 }
 
 /**

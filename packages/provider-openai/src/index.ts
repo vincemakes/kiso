@@ -365,6 +365,12 @@ function toOpenAIMessages(
 							function: { name: t.name, arguments: JSON.stringify(t.input) },
 						};
 					}),
+				// 自举 P1: DeepSeek's thinking mode REQUIRES the turn's
+				// reasoning back on follow-up requests (else 400) — the
+				// projection derived it from the thinking events; the compat
+				// wire field is reasoning_content. Real OpenAI never emits
+				// thinking events, so it never sees this field.
+				...(msg.reasoning !== undefined ? { reasoning_content: msg.reasoning } : {}),
 			});
 		} else {
 			// tool messages accept text only — images are converted to an
