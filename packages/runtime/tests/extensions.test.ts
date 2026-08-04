@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
-import { defineTool, type Event, type Tool } from "@vincemakes/kiso-core";
+import { defineTool, type Adapter, type Event, type Message, type Tool, type UserMessage } from "@vincemakes/kiso-core";
 import { createAgent, loadExtensions, SessionStore } from "../src/index.js";
 
 function extDir(): string {
@@ -69,15 +69,15 @@ describe("E1: loadExtensions", () => {
 	});
 });
 
-describe("E1: AgentSession integration", () => {
-	const readTool = (name = "read_file"): Tool =>
-		defineTool({
-			name,
-			description: "r",
-			parameters: { type: "object", properties: {} },
-			execute: async () => ({ content: "ok", isError: false }),
-		});
+const readTool = (name = "read_file"): Tool =>
+	defineTool({
+		name,
+		description: "r",
+		parameters: { type: "object", properties: {} },
+		execute: async () => ({ content: "ok", isError: false }),
+	});
 
+describe("E1: AgentSession integration", () => {
 	it("extension tools join the registry and are callable; a built-in collision is a startup error", async () => {
 		const dir = extDir();
 		const store = new SessionStore(dir);
@@ -158,5 +158,119 @@ describe("E1: AgentSession integration", () => {
 		}
 		const decided = session.log.all.find((e) => e.type === "permission_decided");
 		expect(decided).toMatchObject({ decision: "denied", reason: "reads not allowed", decidedBy: "no-reads" });
+	});
+});
+
+describe("E1-P2 (复审): onUserMessage composes as a pipe with veto short-circuit", () => {
+	/** A minimal adapter that records the messages it received (and whether it
+	 *  was called at all) — the veto paths must never reach it. */
+	const spyAdapter = (onStream: (messages: readonly Message[]) => void): Adapter => ({
+		stream(options) {
+			onStream(options.messages);
+			return (async function* () {
+				yield { type: "stop", reason: "end_turn", seq: 0 };
+			})();
+		},
+	});
+
+	const textOf = (msg: UserMessage | undefined): string | undefined =>
+		msg !== undefined && typeof msg.content === "string" ? msg.content : undefined;
+
+	it("P2-1: a veto short-circuits — a later extension's rewrite never swallows it", async () => {
+		let providerCalled = false;
+		const agent = createAgent({
+			model: "faux",
+			store: new SessionStore(extDir()),
+			tools: [readTool()],
+			adapter: spyAdapter(() => {
+				providerCalled = true;
+			}),
+			extensions: [
+				{ name: "vetoer", hooks: { onUserMessage: async () => null } },
+				{ name: "rewriter", hooks: { onUserMessage: async (msg) => ({ ...msg, content: "rewritten" }) } },
+			],
+		});
+		const session = await agent.session({ id: "p2-1" });
+		const out: Event[] = [];
+		for await (const ev of session.run("go")) out.push(ev);
+		expect(providerCalled).toBe(false); // the veto ended the run before the model
+		expect(out.at(-1)).toMatchObject({ type: "terminal", outcome: { kind: "completed" } });
+	});
+
+	it("P2-2: rewrites PIPE — each handler sees the message the previous one left", async () => {
+		let seenBySecond: string | undefined;
+		let modelSaw: string | undefined;
+		const agent = createAgent({
+			model: "faux",
+			store: new SessionStore(extDir()),
+			tools: [readTool()],
+			adapter: spyAdapter((messages) => {
+				modelSaw = textOf([...messages].reverse().find((m) => m.role === "user"));
+			}),
+			extensions: [
+				{ name: "first", hooks: { onUserMessage: async (msg) => ({ ...msg, content: "ext1-says" }) } },
+				{
+					name: "second",
+					hooks: {
+						onUserMessage: async (msg) => {
+							seenBySecond = textOf(msg);
+							return msg;
+						},
+					},
+				},
+			],
+		});
+		const session = await agent.session({ id: "p2-2" });
+		for await (const _ev of session.run("go")) {
+			// drain
+		}
+		expect(seenBySecond).toBe("ext1-says"); // the second handler saw the FIRST's rewrite
+		expect(modelSaw).toBe("ext1-says"); // and that rewrite is what the model received
+	});
+
+	it("P2-3: the existing hook runs FIRST and its veto short-circuits every extension", async () => {
+		let existingSeen: string | undefined;
+		let extCalled = false;
+		let providerCalled = false;
+		const agent = createAgent({
+			model: "faux",
+			store: new SessionStore(extDir()),
+			tools: [readTool()],
+			adapter: spyAdapter(() => {
+				providerCalled = true;
+			}),
+			hooks: {
+				onUserMessage: async (msg) => {
+					existingSeen = textOf(msg);
+					return null; // the EXISTING hook vetoes
+				},
+			},
+			extensions: [{ name: "ext", hooks: { onUserMessage: async () => { extCalled = true; return null; } } }],
+		});
+		const session = await agent.session({ id: "p2-3" });
+		const out: Event[] = [];
+		for await (const ev of session.run("go")) out.push(ev);
+		expect(existingSeen).toBe("go"); // 既有先行 — the existing hook saw the original
+		expect(extCalled).toBe(false); // the existing veto short-circuited the extension
+		expect(providerCalled).toBe(false);
+		expect(out.at(-1)).toMatchObject({ type: "terminal", outcome: { kind: "completed" } });
+	});
+
+	it("P2-4: a single extension handler still runs — never dropped", async () => {
+		let modelSaw: string | undefined;
+		const agent = createAgent({
+			model: "faux",
+			store: new SessionStore(extDir()),
+			tools: [readTool()],
+			adapter: spyAdapter((messages) => {
+				modelSaw = textOf([...messages].reverse().find((m) => m.role === "user"));
+			}),
+			extensions: [{ name: "rewriter", hooks: { onUserMessage: async (msg) => ({ ...msg, content: "rewritten" }) } }],
+		});
+		const session = await agent.session({ id: "p2-4" });
+		for await (const _ev of session.run("go")) {
+			// drain
+		}
+		expect(modelSaw).toBe("rewritten"); // the single handler's rewrite reached the model
 	});
 });

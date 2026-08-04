@@ -1006,18 +1006,34 @@ function composeHooks(existing: HookHost | undefined, extensions: readonly KisoE
 		const handler = observers((h) => h[key]);
 		if (handler !== undefined) (out as Record<string, unknown>)[key] = handler;
 	}
-	const messageHandlers = sources.map((h) => h.onUserMessage).filter((h) => h !== undefined);
-	if (messageHandlers.length > 1) {
+	const messageHandlers = sources
+		.map((h) => h.onUserMessage)
+		.filter((h): h is NonNullable<HookHost["onUserMessage"]> => h !== undefined);
+	if (messageHandlers.length === 1) {
+		out.onUserMessage = messageHandlers[0]!; // length 1 guarantees the element
+	} else if (messageHandlers.length > 1) {
+		// 复审 E1-P2: the pipe + veto short-circuit — each handler sees the
+		// message as the PREVIOUS one left it (既有先行), and a null (veto)
+		// anywhere ends the chain immediately: never "no opinion" for the
+		// next handler to outvote. Adding an extension can therefore never
+		// make the chain MORE permissive (the approval chain's deny>ask>allow
+		// monotonicity, on the message side).
 		out.onUserMessage = async (msg, ctx) => {
+			let current = msg;
 			for (const h of messageHandlers) {
-				const r = await h(msg, ctx);
-				if (r !== null) return r;
+				const r = await h(current, ctx);
+				if (r === null) return null;
+				current = r;
 			}
-			return null;
+			return current;
 		};
 	}
-	const preToolHandlers = sources.map((h) => h.onPreTool).filter((h) => h !== undefined);
-	if (preToolHandlers.length > 1) {
+	const preToolHandlers = sources
+		.map((h) => h.onPreTool)
+		.filter((h): h is NonNullable<HookHost["onPreTool"]> => h !== undefined);
+	if (preToolHandlers.length === 1) {
+		out.onPreTool = preToolHandlers[0]!;
+	} else if (preToolHandlers.length > 1) {
 		out.onPreTool = async (call, ctx) => {
 			for (const h of preToolHandlers) {
 				const d = await h(call, ctx);
@@ -1026,8 +1042,12 @@ function composeHooks(existing: HookHost | undefined, extensions: readonly KisoE
 			return { action: "defer" };
 		};
 	}
-	const postToolHandlers = sources.map((h) => h.onPostTool).filter((h) => h !== undefined);
-	if (postToolHandlers.length > 1) {
+	const postToolHandlers = sources
+		.map((h) => h.onPostTool)
+		.filter((h): h is NonNullable<HookHost["onPostTool"]> => h !== undefined);
+	if (postToolHandlers.length === 1) {
+		out.onPostTool = postToolHandlers[0]!;
+	} else if (postToolHandlers.length > 1) {
 		out.onPostTool = async (call, result, ctx) => {
 			let r = result;
 			for (const h of postToolHandlers) r = await h(call, r, ctx);

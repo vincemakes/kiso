@@ -76,8 +76,12 @@ the registry; hooks compose after the harness's own.
   collision is a loud startup error.
 - `packages/runtime/src/session.ts:114-131` — `SessionConfig.extensions`:
   tools join the registry idempotently; hooks compose AFTER the existing
-  ones (`composeHooks`, `session.ts:992-1057` — 既有先行: observers all
-  run, onUserMessage/onPreTool first-decisive-wins, onPostTool folds);
+  ones (`composeHooks`, `session.ts:992-1058` — 既有先行: observers all
+  run; onUserMessage is a PIPE with veto short-circuit (复审 E1-P2: each
+  handler sees the message the previous one left, a null veto ends the
+  chain immediately — a later rewrite can never swallow an earlier veto,
+  so adding an extension never makes the chain MORE permissive; single
+  handler preserved); onPreTool first-decisive-wins; onPostTool folds);
   approvals enter the loop's policy chain (`session.ts:546-549`).
 - Tests `packages/runtime/tests/extensions.test.ts` (9) — red first (9
   failures) → green: loader (absent dir, sorted load, factory, bad file,
