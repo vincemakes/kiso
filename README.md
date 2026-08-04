@@ -1,5 +1,14 @@
 # kiso
 
+```
+█ █ ▀█▀ █▀▀ █▀█
+█▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.1.x
+```
+
+(The block letter above is `assets/logo.svg` in pixel form — an 8×8 K
+whose bottom row is the 磐石 foundation the framework is named for.)
+
 **kiso code = the coding agent that survives `kill -9`.** Interrupted
 executions get human verdicts, approvals persist across processes, and every
 event is auditable and replayable — the whole trajectory is on disk, and

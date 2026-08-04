@@ -118,6 +118,8 @@ export interface LoopConfig {
 	 * effect and the chain never re-runs.
 	 */
 	readonly approvalPolicies?: readonly { readonly extension: string; readonly policy: ApprovalPolicy }[];
+	/** P3: the session's id — carried to tools via ToolContext.sessionId. */
+	readonly sessionId?: string;
 }
 
 export const DEFAULT_MAX_TURNS = 10;
@@ -456,7 +458,17 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			}
 			let currentExecutionId: string | undefined;
 			try {
-				for await (const ev of executeOne(call, registry, hooks, { signal: signal ?? NEVER_ABORT }, log, config.resolveApproval, config.approvalVerdict, signal, config.approvalPolicies)) {
+				for await (const ev of executeOne(
+					call,
+					registry,
+					hooks,
+					{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) },
+					log,
+					config.resolveApproval,
+					config.approvalVerdict,
+					signal,
+					config.approvalPolicies,
+				)) {
 					// 四: the identity of THIS execution comes from the stream —
 					// a historical same-callId execution must never be mistaken
 					// for this call's (the provider callId may repeat across runs).

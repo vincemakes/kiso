@@ -19,8 +19,9 @@
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { createAgent, loadExtensions, SessionStore, type AgentDefinition, type AgentSession } from "@vincemakes/kiso-runtime";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createAgent, disposeExtensions, loadExtensions, SessionStore, type AgentDefinition, type AgentSession } from "@vincemakes/kiso-runtime";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import type { PermissionPolicy } from "@vincemakes/kiso-runtime";
@@ -57,9 +58,40 @@ function extensionsDir(): string {
 /** E1: the extensions loaded by makeAgent — their names feed the banner. */
 let loadedExtensions: readonly import("@vincemakes/kiso-runtime").KisoExtension[] = [];
 
-/** E1: one banner line with the loaded extensions, e.g. `[2 extensions:
- *  safe-defaults, foo]` — silent when none are installed. */
+/** The CLI's own version — read from the package.json next to the build. */
+let VERSION = "?";
+try {
+	const pkg = JSON.parse(
+		readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"),
+	) as { version?: string };
+	VERSION = pkg.version ?? "?";
+} catch {
+	// a packed CLI without a readable package.json still works
+}
+
+/** 横幅: the block-letter logo (design fixed). TTY only — pipes, e2e
+ *  drivers, and CI see byte-for-byte the old output; the extensions line
+ *  merges into the third row on TTY and stays a standalone line off-TTY. */
+const DIM = "\x1b[2m";
+const RESET = "\x1b[0m";
+const LOGO = "█ █ ▀█▀ █▀▀ █▀█\n█▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9\n▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀";
+function startupBanner(): string {
+	// The historical `[N extensions: names]` text merges VERBATIM into the
+	// third row — the existing e2e assertions keep matching (天然不破).
+	const names =
+		loadedExtensions.length > 0
+			? ` · [${loadedExtensions.length} extension${loadedExtensions.length === 1 ? "" : "s"}: ${loadedExtensions.map((e) => e.name).join(", ")}]`
+			: "";
+	return `${DIM}${LOGO}   v${VERSION}${names}${RESET}\n`;
+}
+
+/** E1: the startup banner line(s) — TTY: logo + merged extensions; off-TTY:
+ *  the historical `[N extensions: ...]` standalone line (zero change). */
 function extensionsBanner(): void {
+	if (process.stdout.isTTY) {
+		console.log(startupBanner());
+		return;
+	}
 	if (loadedExtensions.length === 0) return;
 	console.log(
 		`[${loadedExtensions.length} extension${loadedExtensions.length === 1 ? "" : "s"}: ${loadedExtensions.map((e) => e.name).join(", ")}]\n`,
@@ -729,7 +761,8 @@ async function main(): Promise<void> {
 			}
 			case "help":
 				console.log(
-					"kiso — the coding agent that survives kill -9\n\n" +
+					`${DIM}${LOGO}${RESET}\n\n` +
+						"kiso — the coding agent that survives kill -9\n\n" +
 						"  kiso [sessionId]         interactive session (default command)\n" +
 						"  kiso chat [sessionId]    same as above\n" +
 						"  kiso resume <id> [prompt]   continue a session (one-shot)\n" +
@@ -754,6 +787,9 @@ async function main(): Promise<void> {
 		// E 组: every normal and abnormal exit releases the fds and writer
 		// locks — no lock file is left behind.
 		agent?.close();
+		// 发现#8 (P1): extension dispose runs on the same exit path — a
+		// dispose failure prints one line and NEVER changes the exit code.
+		await disposeExtensions(loadedExtensions);
 	}
 }
 

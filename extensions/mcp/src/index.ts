@@ -29,6 +29,10 @@ import type { KisoExtension, Tool, ToolContext, ToolResult } from "@vincemakes/k
 /** Default single-call timeout (ms) — an external tool must never hang the
  *  agent forever. */
 const CALL_TIMEOUT_MS = 60_000;
+/** Per-server connect timeout (ms) — 发现#8b: a server that does not
+ *  answer the handshake is a SOFT failure (mcp__status), never a hung
+ *  startup. */
+const CONNECT_TIMEOUT_MS = 15_000;
 
 interface McpServerConfig {
 	readonly command?: string;
@@ -54,10 +58,11 @@ export default async function createMcpExtension(): Promise<KisoExtension> {
 	const config = readConfig(process.env.KISO_MCP_CONFIG ?? join(homedir(), ".kiso", "mcp.json"));
 	const status: ServerStatus[] = [];
 	const tools: Tool[] = [statusTool(status)];
+	const clients: Client[] = [];
 	for (const [name, server] of Object.entries(config.mcpServers ?? {})) {
 		if (server.disabled === true) continue;
 		try {
-			const mapped = await connectServer(name, server);
+			const mapped = await connectServer(name, server, clients);
 			status.push({ server: name, state: "connected", detail: `${mapped.length} tools` });
 			tools.push(...mapped);
 		} catch (err) {
@@ -65,7 +70,16 @@ export default async function createMcpExtension(): Promise<KisoExtension> {
 		}
 	}
 	if (status.length === 0) status.push({ server: "(none)", state: "idle", detail: "no MCP servers configured" });
-	return { name: "mcp", tools };
+	return {
+		name: "mcp",
+		tools,
+		// 发现#8 (P1): the LOADER calls this on exit — closing every client
+		// terminates its transport (the stdio children end; a hung process
+		// would otherwise keep the host alive forever).
+		dispose: async () => {
+			await Promise.allSettled(clients.map((client) => client.close()));
+		},
+	};
 }
 
 /** Absent config file = no servers = no tools, never an error; a present
@@ -113,8 +127,9 @@ function statusTool(status: readonly ServerStatus[]): Tool {
 	};
 }
 
-async function connectServer(name: string, cfg: McpServerConfig): Promise<Tool[]> {
-	const client = new Client({ name: "kiso-mcp", version: "0.1.6" });
+async function connectServer(name: string, cfg: McpServerConfig, clients: Client[]): Promise<Tool[]> {
+	const client = new Client({ name: "kiso-mcp", version: "0.1.7" });
+	clients.push(client);
 	if (cfg.url !== undefined) {
 		const transport = new StreamableHTTPClientTransport(new URL(cfg.url), {
 			...(cfg.headers !== undefined ? { requestInit: { headers: { ...cfg.headers } } } : {}),
@@ -122,7 +137,7 @@ async function connectServer(name: string, cfg: McpServerConfig): Promise<Tool[]
 		// The SDK's own transports are structurally `Transport`; their
 		// optional-property declarations do not satisfy this project's
 		// exactOptionalPropertyTypes, so the SDK's interface is asserted.
-		await client.connect(transport as unknown as Transport);
+		await connectWithTimeout(client, transport);
 	} else {
 		// Provider credentials are stripped (the tools-node #7 list — keep in
 		// sync), then the config's explicit env overlays it (explicit wins).
@@ -133,10 +148,24 @@ async function connectServer(name: string, cfg: McpServerConfig): Promise<Tool[]
 			env,
 			...(cfg.cwd !== undefined ? { cwd: cfg.cwd } : {}),
 		});
-		await client.connect(transport as unknown as Transport);
+		await connectWithTimeout(client, transport);
 	}
 	const { tools } = await client.listTools();
 	return tools.map((t) => mapTool(name, client, t));
+}
+
+/** 发现#8b: the handshake is bounded — a server that never answers the
+ *  initialize exchange times out and becomes a SOFT failure, exactly like
+ *  an unreachable one. */
+async function connectWithTimeout(client: Client, transport: StdioClientTransport | StreamableHTTPClientTransport): Promise<void> {
+	await Promise.race([
+		client.connect(transport as unknown as Transport),
+		// unref'd: when the handshake wins the race, the abandoned timeout
+		// must not hold the host's event loop (发现#8: prompt exits).
+		new Promise<never>((_, reject) =>
+			setTimeout(() => reject(new Error(`connect timed out after ${CONNECT_TIMEOUT_MS}ms`)), CONNECT_TIMEOUT_MS).unref(),
+		),
+	]);
 }
 
 function mapTool(server: string, client: Client, mcpTool: { name: string; description?: string | undefined; inputSchema?: unknown }): Tool {

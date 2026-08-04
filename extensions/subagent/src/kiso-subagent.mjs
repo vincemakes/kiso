@@ -12,6 +12,10 @@
  * sees every delegation (裁决 A: the ask reaches the human directly).
  *
  * Zero runtime dependencies: child_process/fs/os/path are builtins.
+ *
+ * 发现#8: this extension holds NO persistent resources — children are
+ * spawned per call and exit on their own, the role-policy temp dirs are
+ * cleaned in runChild's finally — so NO dispose is needed, explicitly.
  */
 
 import { spawn, execFileSync } from "node:child_process";
@@ -62,7 +66,10 @@ export default async function createSubagentExtension() {
 					const tasks = ((input ?? {}).tasks ?? []).slice(0, 8);
 					if (tasks.length === 0) return { content: "delegate: no tasks", isError: true };
 					const sessionsDir = join(process.env.KISO_HOME ?? join(homedir(), ".kiso"), "sessions");
-					const parentId = discoverParentId(sessionsDir);
+					// P3: the loop now threads the session id through
+					// ToolContext.sessionId — the discovery heuristic below is
+					// kept ONLY as a fallback for direct tool use / tests.
+					const parentId = ctx.sessionId ?? discoverParentId(sessionsDir);
 					const bin = process.env.KISO_SUBAGENT_BIN ?? process.argv[1];
 					const timeout = Number.parseInt(process.env.KISO_SUBAGENT_TIMEOUT_MS ?? "", 10) || TIMEOUT_MS;
 					const sections = await runLimited(tasks, CONCURRENCY, (task, i) =>

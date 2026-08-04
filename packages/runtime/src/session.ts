@@ -541,6 +541,7 @@ export class Run implements AsyncIterable<Event> {
 				({
 					adapter: this.#adapter,
 					model: this.#config.model,
+					sessionId: this.#session.id, // P3: tools see their session (ToolContext.sessionId)
 					...(systemPrompt !== undefined ? { systemPrompt } : {}),
 					registry: this.#config.registry,
 					...(this.#config.hooks !== undefined ? { hooks: this.#config.hooks } : {}),

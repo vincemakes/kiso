@@ -212,6 +212,28 @@ describe("④ subagent: real child processes", () => {
 		expect(String(r2.content)).toContain("outcome: completed");
 	}, 120_000);
 
+	it("P3: the child session id uses ctx.sessionId when the loop provides it", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-subagent-p3-"));
+		const home = join(dir, "home");
+		mkdirSync(join(home, "sessions"), { recursive: true });
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([{ events: [{ type: "text_delta", text: "quick" }, { type: "stop", reason: "end_turn" }] }]),
+			"utf8",
+		);
+		fauxEnv({ KISO_HOME: home, KISO_FAUX_SCRIPT: script });
+		const ext = await createSubagentExtension();
+		const delegate = ext.tools!.find((t) => t.name === "delegate")!;
+		const r = (await delegate.execute(
+			{ tasks: [{ role: "explorer", task: "quick" }] },
+			{ signal: new AbortController().signal, sessionId: "parent-sess-42" },
+		)) as { content: string; isError: boolean };
+		expect(r.isError).toBe(false);
+		const file = readdirSync(join(home, "sessions")).find((f) => f.startsWith("sub-parent-sess-42-1-explorer.jsonl"));
+		expect(file).toBeDefined(); // the threaded session id names the child
+	}, 60_000);
+
 	it("⑦ a non-git parent fails implementer tasks HONESTLY — the git requirement is stated", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-subagent-ng-"));
 		const home = join(dir, "home");

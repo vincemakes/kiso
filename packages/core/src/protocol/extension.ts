@@ -55,4 +55,10 @@ export interface KisoExtension {
 	 * \n\n-joined.
 	 */
 	readonly systemPrompt?: { readonly append: string };
+	/**
+	 * 发现#8 (P1): the extension's shutdown action — the closing of external
+	 * resources it holds (child processes, connections). The LOADER is
+	 * responsible for calling it.
+	 */
+	readonly dispose?: () => Promise<void> | void;
 }

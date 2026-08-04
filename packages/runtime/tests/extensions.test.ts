@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { defineTool, type Adapter, type Event, type Message, type Tool, type UserMessage } from "@vincemakes/kiso-core";
-import { createAgent, loadExtensions, SessionStore } from "../src/index.js";
+import { createAgent, disposeExtensions, loadExtensions, SessionStore } from "../src/index.js";
 
 function extDir(): string {
 	const dir = mkdtempSync(join(tmpdir(), "kiso-ext-"));
@@ -218,6 +218,55 @@ describe("裁决 A (E1 ask 语义修正): no extensions — the static policy st
 		expect(out.some((e) => e.type === "permission_requested")).toBe(false); // never paused
 		expect(paused).toBe(false);
 		expect(out.some((e) => e.type === "permission_decided")).toBe(false); // the static hook writes no verdict event
+	});
+});
+
+describe("发现#8 / P3 (dogfood #5)", () => {
+	it("disposeExtensions runs every dispose; a failure never blocks the rest; a hung dispose is abandoned at 5s", async () => {
+		const order: string[] = [];
+		await disposeExtensions([
+			{ name: "a", dispose: async () => { order.push("a"); } },
+			{
+				name: "b",
+				dispose: () => {
+					order.push("b");
+					throw new Error("b broke");
+				},
+			},
+			{ name: "c", dispose: async () => { order.push("c"); } },
+		]);
+		expect(order).toEqual(["a", "b", "c"]); // b's failure did not block c
+		const started = Date.now();
+		await disposeExtensions([{ name: "hung", dispose: () => new Promise<void>(() => {}) }]);
+		expect(Date.now() - started).toBeLessThan(10_000); // the 5s cap abandoned it
+	}, 30_000);
+
+	it("P3: a tool's execute receives ctx.sessionId === the session id", async () => {
+		const dir = extDir();
+		let seen: string | undefined;
+		const agent = createAgent({
+			model: "faux",
+			store: new SessionStore(dir),
+			tools: [
+				defineTool({
+					name: "spy",
+					description: "s",
+					parameters: { type: "object", properties: {} },
+					execute: async (_input, ctx) => {
+						seen = ctx.sessionId;
+						return { content: "ok", isError: false };
+					},
+				}),
+			],
+			adapter: createFauxProvider([
+				{ events: [{ type: "tool_call_end", callId: "x1", name: "spy", input: {} }, { type: "stop", reason: "tool_use" }] },
+			]),
+		});
+		const session = await agent.session({ id: "session-id-abc" });
+		for await (const _ev of session.run("go")) {
+			// drain
+		}
+		expect(seen).toBe("session-id-abc");
 	});
 });
 

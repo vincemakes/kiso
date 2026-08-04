@@ -47,6 +47,32 @@ export async function loadExtensions(dir: string): Promise<KisoExtension[]> {
 	return out;
 }
 
+/**
+ * 发现#8 (P1): dispose every extension's external resources — each call
+ * guarded (one failure never blocks the rest), each capped at 5s (a
+ * timeout is abandoned and recorded — Promise.allSettled semantics).
+ * Whoever LOADS extensions is responsible for disposing them.
+ */
+export async function disposeExtensions(extensions: readonly KisoExtension[]): Promise<void> {
+	const DISPOSE_TIMEOUT_MS = 5_000;
+	const settled = await Promise.allSettled(
+		extensions.map(async (ext) => {
+			if (ext.dispose === undefined) return;
+			await Promise.race([
+				Promise.resolve(ext.dispose()),
+				// unref'd: a prompt dispose must not leave the abandoned cap
+				// timer holding the host's event loop after the exit path.
+				new Promise<void>((resolve) => setTimeout(resolve, DISPOSE_TIMEOUT_MS).unref()),
+			]);
+		}),
+	);
+	for (const r of settled) {
+		if (r.status === "rejected") {
+			console.error(`[extensions] ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+		}
+	}
+}
+
 function isExtension(v: unknown): v is KisoExtension {
 	if (typeof v !== "object" || v === null) return false;
 	const e = v as { name?: unknown; hooks?: unknown; tools?: unknown; approvals?: unknown };
