@@ -225,28 +225,91 @@ identically twice, ② appending a turn leaves the old prefix byte-identical,
 ③ a microcompact boundary replays byte-identically after a JSON round-trip
 (the crash + resume shape).
 
+## Extensions — approval policies beyond the human
+
+An extension is a plain `.mjs` file — no SDK, no build step. kiso scans
+`~/.kiso/extensions/*.mjs` at startup (`KISO_EXTENSIONS_DIR` overrides) and
+names what loaded in the startup banner: `[2 extensions: safe-defaults,
+foo]`. Loading is **loud**: a broken file or a duplicate extension name
+fails the process at startup with the file name — an extension that cannot
+load must never silently change behavior.
+
+The contract is pure types (`packages/core/src/protocol/extension.ts`):
+each file's default export is the extension, or a factory returning it.
+
+```ts
+export default {
+  name: "safe-defaults",              // unique per installation
+  hooks: { /* ... */ },               // optional — compose AFTER the harness's
+  tools: [ /* ... */ ],               // optional — merged into the registry
+  approvals: [{ decide(call, ctx) { /* ... */ } }], // optional — the policy chain
+};
+```
+
+A policy's `decide` returns `{ action: "allow" }`, `{ action: "deny",
+reason }`, or `{ action: "ask" }`. The chain runs **before** the human
+approval flow and composes across all loaded policies:
+
+- **deny > ask > allow** — any deny wins (the FIRST denial's reason reaches
+  the model); else any ask falls into the existing human flow (the CLI
+  prompts `approve ...? (y/n)`); only an **all-allow** chain auto-approves.
+- A policy that throws counts as **ask**; `ask` with no human flow
+  configured degrades to an honest denial.
+- allow/deny are recorded durably as `permission_decided` with
+  `decidedBy: <extension>` — never a human pause. A policy verdict is a
+  PERSISTED FACT like any human decision: `kill -9` the agent and the
+  already-decided calls are never re-asked — a fresh-process resume applies
+  the durable verdicts and the policy's `decide` is never re-run for them.
+
+### safe-defaults — the tutorial
+
+`examples/extensions/safe-defaults.mjs` is the reference extension: allow
+the cheap read-only tools outright, deny the most dangerous shell
+commands, ask for everything else. Install it with one line:
+
+```
+mkdir -p ~/.kiso/extensions && cp examples/extensions/safe-defaults.mjs ~/.kiso/extensions/
+kiso chat     # → [1 extension: safe-defaults]
+```
+
+Now every `read_file`/`list_dir`/`search_text` auto-allows (no prompt); a
+`shell` command matching `\bgit\s+(stash|reset|checkout\s+--)|rm\s+-rf` is
+denied, with the reason fed back to the model; every write and every other
+shell command is still asked of the human. The gate is automated in
+`apps/cli/tests/extensions-e2e.test.ts` — a real PTY session, a real
+`kill -9`: the read is auto-allowed, the write is asked, the destructive
+shell is denied, and the resume re-presents only the one undecided request
+while the extension's own call log (a marker file written per `decide`
+call) proves the policy never re-runs across the kill.
+
 ## Status
 
 Reliable Session Alpha, including the four hardening rounds (areas 1-7,
 A-F, 一-九, and the 第四轮 adversarial round), is complete (see
-`docs/plans/2026-08-03-reliable-session-alpha.md`), and the **kiso code**
+`docs/plans/2026-08-03-reliable-session-alpha.md`), the **kiso code**
 round (the coding agent: kill -9 gate, microcompact, byte discipline) is
-done (see `docs/plans/2026-08-04-kiso-code.md`):
+done (see `docs/plans/2026-08-04-kiso-code.md`), and the **extensions**
+round (E1: the approval-policy extension system — see
+`docs/plans/2026-08-04-extensions-e1.md`) is done:
 
-- **core** (1,804/2,000 lines) — protocol, loop (single honest terminal;
+- **core** (1,905/2,000 lines) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; retry only before anything streamed; one abort signal reaches
   backoff, approval waits, every pending tool, and the SDK), hooks,
   ModeProfile, permissions, microcompact (a `microcompacted` boundary is a
   persisted fact — the projection derives the compacted view
   deterministically; whitelist read/list/search/shell, `do-not-compact`
-  respected, recent turns intact), delivery truth, the lossless event-log
-  projection (messages are a pure function of the log, ADR-0002 — and the
-  prompt-cache byte discipline: the same event prefix projects to the same
-  message prefix, byte for byte, pinned by three regression tests), and the
-  execution ledger keyed by framework `executionId` (ADR-0025): a failed
-  non-idempotent execution is UNCERTAIN until a human decides — a confirmed
-  success is never re-run, a new logical call always runs.
+  respected, recent turns intact), the extension policy chain (E1: a
+  deny > ask > allow composition decided BEFORE the human flow — allow/deny
+  recorded durably with `decidedBy`, a throwing policy counts as ask, a
+  durable verdict survives kill -9 and the policy never re-runs), delivery
+  truth, the lossless event-log projection (messages are a pure function of
+  the log, ADR-0002 — and the prompt-cache byte discipline: the same event
+  prefix projects to the same message prefix, byte for byte, pinned by
+  three regression tests), and the execution ledger keyed by framework
+  `executionId` (ADR-0025): a failed non-idempotent execution is UNCERTAIN
+  until a human decides — a confirmed success is never re-run, a new
+  logical call always runs.
 - **runtime** — `createAgent` / durable multi-turn sessions / crash-safe
   JSONL store (torn-tail repair under a kernel-flock cross-process writer
   lock — upgrade requires QUARANTINE: stop every old-format process before
@@ -255,8 +318,14 @@ done (see `docs/plans/2026-08-04-kiso-code.md`):
   load, contiguous-seq validation) / `session.resume()` continues the
   INTERRUPTED run across processes: durable approvals are applied (the
   original call executes once, denials write their result), missing
-  receipts are filled, and the original run completes — no invented turns.
-- **cli** (662/1,200 lines) — the coding agent: bare `kiso` enters chat;
+  receipts are filled, and the original run completes — no invented turns /
+  `loadExtensions(dir)`: every *.mjs default export (or factory), loud
+  startup failure on a bad file or duplicate name; extension tools merge
+  into the registry (built-in collision = startup error), hooks compose
+  AFTER the harness's own (既有先行), approvals enter the policy chain.
+- **cli** (713/1,200 lines) — the coding agent: bare `kiso` enters chat;
+  the startup extension scan (`~/.kiso/extensions/*.mjs`, banner
+  `[2 extensions: safe-defaults, foo]`);
   a system prompt (coding-agent discipline: read before edit, careful
   shell) composed from a constant, with AGENTS.md/CLAUDE.md injected and
   truncated at 8KB; one-line tool summaries per call
@@ -282,7 +351,7 @@ file ends with a newline)
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
-→ demo start-and-exit gate. 342 tests green. 11 ADRs. 6 incident fixtures
+→ demo start-and-exit gate. 372 tests green. 11 ADRs. 6 incident fixtures
 running on the real runtime.
 
 ## Why another one

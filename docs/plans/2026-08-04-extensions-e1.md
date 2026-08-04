@@ -1,0 +1,131 @@
+# Extensions E1 — the approval-policy extension system
+
+> Date: 2026-08-04
+> Status: complete — spec sections 1-7 delivered, acceptance gate green
+> Authority: direction ruling 2026-08-04 (user): the E1 spec. Extensions
+> carry approval policies, tools, and hooks; the CLI scans a directory at
+> startup; the whole story is proven end to end through the CLI's topmost
+> entry with a real kill -9.
+
+## 1. Goal
+
+An extension is a plain `.mjs` file — no SDK, no build step. Its approval
+policies run BEFORE the human flow (deny > ask > allow), its allow/deny
+verdicts are PERSISTED FACTS recorded with `decidedBy`, and a kill -9 never
+re-asks an already-decided call nor re-runs the policy. Tools merge into
+the registry; hooks compose after the harness's own.
+
+## 2. Non-goals (violations counted as scope creep)
+
+- No registerCommand / shortcuts / renderers / sendMessage-like APIs.
+- No project-level extensions; no MCP; no subagents.
+- No compaction parameter surface (that is E2).
+- No new npm dependencies; the core 2,000-line cap is immutable (176 lines
+  of headroom at ruling time; 95 at completion).
+
+## 3. Baseline (recorded before starting)
+
+- core: 1,824/2,000 lines (176 headroom) — the whole E1 core surface had to
+  fit inside (ended at 1,905/2,000).
+- cli: 699/1,200 lines (ended at 713).
+- 355 tests green (ended at 372).
+
+## 4. Delivery areas (with the evidence discipline: commit + file:line + test + red→green)
+
+### a. core — protocol/extension.ts (pure types), decidedBy, the policy chain
+
+- `packages/core/src/protocol/extension.ts` — `KisoExtension{name,
+  hooks?, tools?, approvals?}`, `PolicyVerdict{allow|deny+reason|ask}`,
+  `ApprovalPolicy.decide(call, ctx)` — types only, no runtime.
+- `packages/core/src/protocol/events.ts:286-297` — `permission_decided`
+  gains optional `decidedBy?: string` (absent = human; old logs compatible);
+  deep validation at `events.ts:693-698`.
+- `packages/core/src/kernel/loop.ts:703-767` — the policy chain in
+  `executeOne`, before the human flow: any deny wins (the FIRST denial's
+  reason), else any ask falls into the existing flow, all allow
+  auto-approves — recorded durably with `decidedBy`, never a human pause; a
+  throwing policy counts as ask; ask with no flow configured degrades to an
+  honest denial. The durable check (`loop.ts:715-725`) keys on the SAME
+  logical call — callId + identical input + decidedBy set — so a re-issued
+  call with different arguments is a new call and re-decided (同构
+  alreadyReplaced: the persisted fact speaks for the call).
+- Tests `packages/core/tests/extensions.test.ts` (7) — red first:
+  `expected [] to have a length of 1 but got +0` → green after the chain
+  landed: ① deny outranks ask and allow (first reason, decidedBy, no pause)
+  — `deny outranks ask and allow — the FIRST denial's reason, decidedBy
+  recorded, no human pause`; ② ask outranks allow (human flow, no decidedBy)
+  — `ask outranks allow — the existing human flow pauses, decided WITHOUT
+  decidedBy`; ③ all allow (auto-approve, hook never ran) — `all allow —
+  auto-approved with the extension's name, never a human pause`; ④ throw =
+  ask — `a policy that throws counts as ask — the human flow decides`; ⑤
+  ask with no flow = honest denial — `ask with no approval flow configured
+  degrades to an honest denial`; ⑥⑦ resume durability with a decide-call
+  counter — `a durable APPROVAL executes the call with the policy called
+  ZERO times` / `a durable DENIAL emits the denial result with the policy
+  called ZERO times`. Deep validation synced at
+  `packages/core/tests/event-schema.test.ts` (decidedBy accepted / rejected).
+
+### b. runtime — loadExtensions + AgentSession integration
+
+- `packages/runtime/src/extensions.ts:19-48` — `loadExtensions(dir)`: native
+  `import()` of every *.mjs default export (or factory); absent dir = [];
+  a bad file or a duplicate name throws with the file name(s) — loud
+  startup failure.
+- `packages/runtime/src/agent.ts:57-62` — `AgentDefinition.extensions`:
+  tools merge into the registry at agent creation — a built-in name
+  collision is a loud startup error.
+- `packages/runtime/src/session.ts:114-131` — `SessionConfig.extensions`:
+  tools join the registry idempotently; hooks compose AFTER the existing
+  ones (`composeHooks`, `session.ts:992-1057` — 既有先行: observers all
+  run, onUserMessage/onPreTool first-decisive-wins, onPostTool folds);
+  approvals enter the loop's policy chain (`session.ts:546-549`).
+- Tests `packages/runtime/tests/extensions.test.ts` (9) — red first (9
+  failures) → green: loader (absent dir, sorted load, factory, bad file,
+  syntax error, duplicate name), tools merge + collision, hooks 合成序
+  (`extension hooks compose AFTER the agent's own (既有先行)`), approvals →
+  chain with decidedBy.
+
+### c. CLI — startup scan + banner + the e2e gate
+
+- `apps/cli/src/index.ts:53-61` — `extensionsDir()`: KISO_EXTENSIONS_DIR
+  override, default `~/.kiso/extensions`; scan in `makeAgent`
+  (`index.ts:155-157`) — a broken extension fails the process loudly; the
+  banner (`index.ts:62-71`) prints `[N extensions: name, ...]`.
+- `examples/extensions/safe-defaults.mjs` — the reference extension: allow
+  read/list/search, deny `\bgit\s+(stash|reset|checkout\s+--)|rm\s+-rf`
+  shell commands with a reason, ask the rest.
+- E2E `apps/cli/tests/extensions-e2e.test.ts` — real PTY, real processes,
+  real SIGKILL through the CLI's topmost entry (red→green: the extension
+  surface was absent, so the driver's needles never appeared). Phase 1: the
+  read is auto-allowed (`read_file needs approval` never appears), the
+  write IS asked (y injected), the destructive shell is denied (`[Permission
+  denied]` reaches the model), and the process is SIGKILLed while a SECOND
+  write's pause is pending (a pause is a stable kill point). Phase 2: a
+  fresh process resumes — exactly the ONE undecided request is re-presented
+  (`(out2.match(/approve write_file/g)).length === 1`), the already-decided
+  calls are never re-asked, no uncertain executions, the trajectory
+  completes (`done`), both writes landed, and the extension's marker file
+  (one line per decide() call, across processes) proves the policy never
+  re-runs after the kill.
+
+## 5. Acceptance
+
+1. Core single-turn tests: composition order (deny>ask>allow, ask>allow,
+   all allow), throw=ask, decidedBy persisted, resume durability with a
+   decide-call counter = 0.
+2. Runtime tests: loader loud failure, duplicate failure, tools merge,
+   hooks composition order.
+3. CLI e2e through the topmost entry with a real kill -9: read auto-allows,
+   dangerous shell denied, write still asked; resume never re-asks the
+   decided and the policy never re-runs (marker proof).
+4. `npm run check` all green — byte discipline / microcompact / kill -9
+   gates unregressed (372 tests, core 1,905/2,000, cli 713/1,200).
+5. Commit discipline: small commits, English messages; push allowed after
+   green; no npm publish (release is the user's decision).
+
+## 6. What was NOT done (explicitly out of scope)
+
+- registerCommand / shortcuts / renderers / sendMessage-like APIs;
+- project-level extensions; MCP; subagents;
+- the compaction parameter surface (E2);
+- any new npm dependency; any change to the core line cap.
