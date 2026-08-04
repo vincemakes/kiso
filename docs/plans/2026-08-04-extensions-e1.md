@@ -127,9 +127,38 @@ the registry; hooks compose after the harness's own.
 5. Commit discipline: small commits, English messages; push allowed after
    green; no npm publish (release is the user's decision).
 
-## 6. What was NOT done (explicitly out of scope)
+## 6. E2 (2026-08-04, 收尾) — the remaining extension surfaces
+
+- **compaction parameter surface** — landed by 自举 #4 (dogfood), commit
+  `679bfa2`: `KisoExtension.compaction?: { thresholdTokens?, keepResults? }`
+  supplies the loop's microcompact params when the session sets none
+  (`packages/runtime/src/session.ts` `microcompactFor`).
+- **systemPrompt append surface** — this round: `KisoExtension.
+  systemPrompt?: { append: string }` (`packages/core/src/protocol/
+  extension.ts:50-56`) — append-only, never replace (monotonicity: adding
+  an extension never removes existing guidance). The session's own prompt
+  comes first, then each extension's append in load order, 
+
+-joined —
+  deterministic (same extensions → same prompt), no appends → byte-
+  identical to the extension-less run (`packages/runtime/src/session.ts:996-1002` `composeSystemPrompt`, wired at `session.ts:539-540`).
+- Tests `packages/runtime/tests/extensions.test.ts` (red→green, E2-1/E2-2
+  failed `"BASE PROMPT"` vs the appended prompt → 17/17): ① `E2-1: a single
+  extension's append lands at the END — the session's own prompt FIRST`
+  (`BASE PROMPT
+
+EXT APPEND`); ② `E2-2: two extensions join in LOAD
+  order, \n\n-separated`; ③ `E2-3: no appends — byte-identical to the
+  extension-less prompt`. The "topmost entry" acceptance lands at the
+  runtime layer (a real AgentSession + a faux adapter capturing the
+  request) — the system prompt is invisible in CLI output, so the CLI e2e
+  has nothing to assert; this is the spec's stated deviation, not a missed
+  test.
+- `npm run check` all green (376+3 tests; core 1,907/2,000, cli 713/1,200).
+
+## 7. What was NOT done (explicitly out of scope)
 
 - registerCommand / shortcuts / renderers / sendMessage-like APIs;
 - project-level extensions; MCP; subagents;
-- the compaction parameter surface (E2);
+- systemPrompt replace / any template engine;
 - any new npm dependency; any change to the core line cap.

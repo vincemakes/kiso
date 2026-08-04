@@ -243,8 +243,19 @@ export default {
   hooks: { /* ... */ },               // optional — compose AFTER the harness's
   tools: [ /* ... */ ],               // optional — merged into the registry
   approvals: [{ decide(call, ctx) { /* ... */ } }], // optional — the policy chain
+  compaction: { thresholdTokens: 50_000 }, // optional — supplies the loop's
+                                        // microcompact params when the
+                                        // session sets none
+  systemPrompt: { append: "..." },   // optional — EXTEND the system prompt
 };
 ```
+
+`systemPrompt.append` is appended to the end of the session's own system
+prompt (`\n\n`-joined, extensions in load order) — append-only, never
+replace: adding an extension can never remove existing guidance (the same
+monotonicity as the approval chain and the veto short-circuit). The
+composition is deterministic — the same extension list always assembles
+the same prompt, byte for byte.
 
 A policy's `decide` returns `{ action: "allow" }`, `{ action: "deny",
 reason }`, or `{ action: "ask" }`. The chain runs **before** the human
@@ -289,7 +300,8 @@ A-F, 一-九, and the 第四轮 adversarial round), is complete (see
 `docs/plans/2026-08-03-reliable-session-alpha.md`), the **kiso code**
 round (the coding agent: kill -9 gate, microcompact, byte discipline) is
 done (see `docs/plans/2026-08-04-kiso-code.md`), and the **extensions**
-round (E1: the approval-policy extension system — see
+round (E1: the approval-policy extension system; E2: the compaction
+parameter and systemPrompt append surfaces — see
 `docs/plans/2026-08-04-extensions-e1.md`) is done:
 
 - **core** (1,905/2,000 lines) — protocol, loop (single honest terminal;

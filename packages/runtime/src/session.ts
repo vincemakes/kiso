@@ -533,11 +533,15 @@ export class Run implements AsyncIterable<Event> {
 			// E2: the session's own microcompact wins; otherwise the FIRST
 			// extension providing a compaction config supplies it.
 			const microcompact = microcompactFor(this.#config);
+			// E2: the session's own systemPrompt first, then every extension
+			// append in LOAD order — deterministic (same extensions → same
+			// prompt); no appends → byte-identical to the extension-less run.
+			const systemPrompt = composeSystemPrompt(this.#config.systemPrompt, this.#config.extensions ?? []);
 			const loopConfig = () =>
 				({
 					adapter: this.#adapter,
 					model: this.#config.model,
-					...(this.#config.systemPrompt !== undefined ? { systemPrompt: this.#config.systemPrompt } : {}),
+					...(systemPrompt !== undefined ? { systemPrompt } : {}),
 					registry: this.#config.registry,
 					...(this.#config.hooks !== undefined ? { hooks: this.#config.hooks } : {}),
 					...(this.#config.maxTurns !== undefined ? { maxTurns: this.#config.maxTurns } : {}),
@@ -982,6 +986,17 @@ export class Run implements AsyncIterable<Event> {
 			errorKind: denial.errorKind,
 		});
 	}
+}
+
+/**
+ * E2: the session's systemPrompt plus every extension's append, in LOAD
+ * order, \n\n-joined — deterministic (same extension list → same prompt).
+ * No appends → the base passes through byte-identical.
+ */
+function composeSystemPrompt(base: string | undefined, extensions: readonly KisoExtension[]): string | undefined {
+	const appends = extensions.flatMap((e) => (e.systemPrompt?.append === undefined ? [] : [e.systemPrompt.append]));
+	if (appends.length === 0) return base;
+	return base === undefined ? appends.join("\n\n") : `${base}\n\n${appends.join("\n\n")}`;
 }
 
 /**

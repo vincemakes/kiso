@@ -46,4 +46,13 @@ export interface KisoExtension {
 	 * does not set its own microcompact.
 	 */
 	readonly compaction?: { readonly thresholdTokens?: number; readonly keepResults?: number };
+	/**
+	 * E2: EXTEND the system prompt — append-only, never replace (a replace
+	 * is a footgun; appends guarantee "adding an extension never removes
+	 * existing guidance" — the monotonicity family of the approval chain's
+	 * deny>ask>allow and the veto short-circuit). The session's own
+	 * systemPrompt comes first, then each extension's append in load order,
+	 * \n\n-joined.
+	 */
+	readonly systemPrompt?: { readonly append: string };
 }

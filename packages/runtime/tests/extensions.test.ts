@@ -192,6 +192,51 @@ describe("E1: AgentSession integration", () => {
 	});
 });
 
+describe("E2 (收尾): extension systemPrompt appends", () => {
+	/** A minimal adapter that captures the REQUEST it was given — the
+	 *  systemPrompt is invisible in the CLI, so the runtime layer IS the
+	 *  topmost entry for this surface (the spec's stated deviation). */
+	const promptSpyAdapter = (onStream: (options: { systemPrompt?: string }) => void): Adapter => ({
+		stream(options) {
+			onStream(options);
+			return (async function* () {
+				yield { type: "stop", reason: "end_turn", seq: 0 };
+			})();
+		},
+	});
+
+	const promptOf = async (extensions: { name: string; append?: string }[]): Promise<string | undefined> => {
+		let seen: string | undefined;
+		const agent = createAgent({
+			model: "faux",
+			store: new SessionStore(extDir()),
+			tools: [readTool()],
+			systemPrompt: "BASE PROMPT",
+			adapter: promptSpyAdapter((o) => {
+				seen = o.systemPrompt;
+			}),
+			extensions: extensions.map((e) => (e.append === undefined ? { name: e.name } : { name: e.name, systemPrompt: { append: e.append } })),
+		});
+		const session = await agent.session({ id: "e2" });
+		for await (const _ev of session.run("go")) {
+			// drain
+		}
+		return seen;
+	};
+
+	it("E2-1: a single extension's append lands at the END — the session's own prompt FIRST", async () => {
+		expect(await promptOf([{ name: "ext", append: "EXT APPEND" }])).toBe("BASE PROMPT\n\nEXT APPEND");
+	});
+
+	it("E2-2: two extensions join in LOAD order, \\n\\n-separated", async () => {
+		expect(await promptOf([{ name: "a", append: "A" }, { name: "b", append: "B" }])).toBe("BASE PROMPT\n\nA\n\nB");
+	});
+
+	it("E2-3: no appends — byte-identical to the extension-less prompt", async () => {
+		expect(await promptOf([{ name: "quiet" }])).toBe("BASE PROMPT");
+	});
+});
+
 describe("E1-P2 (复审): onUserMessage composes as a pipe with veto short-circuit", () => {
 	/** A minimal adapter that records the messages it received (and whether it
 	 *  was called at all) — the veto paths must never reach it. */
