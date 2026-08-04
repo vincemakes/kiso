@@ -527,9 +527,10 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 		if (trimmed === "/help") {
 			// Prints the available commands with one-line descriptions.
 			chain = chain.then(async () => {
-				console.log("/help   print this list of commands");
-				console.log("/last   show the most recent tool call's input and output");
-				console.log("exit    leave the session");
+				console.log("/help    print this list of commands");
+				console.log("/last    show the most recent tool call's input and output");
+				console.log("/status  show session id, event count, and context estimate");
+				console.log("exit     leave the session");
 				rl.setPrompt("you> ");
 				rl.prompt();
 			});
@@ -549,6 +550,21 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 					console.log(`--- ${tool.name} output${tool.result.isError ? " (error)" : ""} ---`);
 					console.log(escapeTerminal(tool.result.content));
 				}
+				rl.setPrompt("you> ");
+				rl.prompt();
+			});
+			return;
+		}
+		if (trimmed === "/status") {
+			// B 区: session id, durable event count, and the ~ context
+			// estimate — all read straight from the live session, nothing
+			// stored separately. Runs on the chain after any in-flight turn.
+			chain = chain.then(async () => {
+				const ctxRatio = estimateCtxRatio(session);
+				const ctx = Number.isFinite(ctxRatio) ? `~${Math.round(ctxRatio * 100)}%` : "~?";
+				console.log(`session ${session.id}`);
+				console.log(`${session.log.all.length} events`);
+				console.log(`ctx ${ctx}`);
 				rl.setPrompt("you> ");
 				rl.prompt();
 			});
