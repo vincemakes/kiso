@@ -5,7 +5,7 @@ executions get human verdicts, approvals persist across processes, and every
 event is auditable and replayable — the whole trajectory is on disk, and
 `kiso resume` continues it exactly.
 
-**kiso(基礎) — a growable TS agent framework for building coding agents and
+**kiso — a growable TS agent framework for building coding agents and
 durable multi-turn AI tools.** A 2,000-line core that owns what genuinely
 repeats, and packages that grow on top of it without limit. For TypeScript
 developers who want a real agent framework — event-sourced sessions, durable
