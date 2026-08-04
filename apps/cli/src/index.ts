@@ -512,6 +512,17 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 	const lastToolRef: { current: LastToolCall | null } = { current: null };
 	rl.on("line", (line) => {
 		const trimmed = line.trim();
+		if (trimmed === "/help") {
+			// Prints the available commands with one-line descriptions.
+			chain = chain.then(async () => {
+				console.log("/help   print this list of commands");
+				console.log("/last   show the most recent tool call's input and output");
+				console.log("exit    leave the session");
+				rl.setPrompt("you> ");
+				rl.prompt();
+			});
+			return;
+		}
 		if (trimmed === "/last") {
 			// B 区: print the FULL input/output of the most recent tool call,
 			// straight from the event stream — nothing is stored separately.
