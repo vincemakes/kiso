@@ -107,7 +107,30 @@ export function composeSystemPrompt(cwd: string): string {
 	return injected === "" ? SYSTEM_PROMPT : `${SYSTEM_PROMPT}\n${injected}`;
 }
 
-async function makeAgent() {
+/**
+ * E 区: how many faux-script turns a session has already consumed. The faux
+ * provider's script counter is per-process, so a FRESH process that resumes
+ * a session would restart the script at turn 0 — re-issuing the first
+ * scripted call instead of continuing the trajectory. The session log is
+ * the durable position: a turn is consumed when it produced a tool_result
+ * or an end_turn stop — AND when its tool call is unfinished (started but
+ * no result): the recovery completes those turns WITHOUT a provider call
+ * (executes the approved call, or fills the human verdict), so the model's
+ * next response is the turn AFTER them.
+ */
+function fauxSkip(id: string): number {
+	const events = new SessionStore(sessionsDir())
+		.load(id)
+		.map((r) => r.event);
+	const results = new Set(events.filter((e) => e.type === "tool_result").map((e) => e.callId));
+	return (
+		events.filter((e) => e.type === "tool_result").length +
+		events.filter((e) => e.type === "stop" && e.reason === "end_turn").length +
+		events.filter((e) => e.type === "tool_call_end" && !results.has(e.callId)).length
+	);
+}
+
+async function makeAgent(fauxSkipTurns = 0) {
 	const store = new SessionStore(sessionsDir());
 
 	// Provider wiring (F 组): the CLI never imports provider SDKs directly —
@@ -144,9 +167,27 @@ async function makeAgent() {
 					apiKey: (anthropicKey ?? openaiKey) as string,
 					...(process.env.OPENAI_BASE_URL !== undefined ? { baseUrl: process.env.OPENAI_BASE_URL } : {}),
 				}
-			: { adapter: createFauxProvider(fauxScript()) }),
+			: { adapter: createFauxProvider(readFauxScript().slice(fauxSkipTurns)) }),
 	};
 	return createAgent(definition);
+}
+
+/**
+ * E 区: KISO_FAUX_SCRIPT=<path> overrides the demo script with a JSON
+ * FauxScript file — the kill -9 e2e drives the CLI through an exact
+ * multi-tool trajectory. Absent → the built-in demo script.
+ */
+function readFauxScript(): FauxScript {
+	const path = process.env.KISO_FAUX_SCRIPT;
+	if (path === undefined) return fauxScript();
+	try {
+		const parsed = JSON.parse(readFileSync(path, "utf8")) as FauxScript;
+		if (!Array.isArray(parsed)) throw new Error("not an array");
+		return parsed;
+	} catch (err) {
+		console.error(`[KISO_FAUX_SCRIPT] cannot load ${path}: ${(err as Error).message}`);
+		process.exit(1);
+	}
 }
 
 /**
@@ -574,15 +615,18 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 
 async function main(): Promise<void> {
 	const [command, arg] = process.argv.slice(2);
-	const agent = await makeAgent();
 	// 八: faux mode is the keyless demo script — an exhausted script must
 	// exit non-zero, never masquerade as a successful provider run.
 	const faux = process.env.ANTHROPIC_API_KEY === undefined && process.env.OPENAI_API_KEY === undefined;
+	let agent: Awaited<ReturnType<typeof makeAgent>> | undefined;
 
 	try {
 		switch (command) {
 			case "chat": {
 				const id = arg ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+				// E 区: a resumed session continues the script at its durable
+				// position — never restarts it (fauxSkip).
+				const agent = await makeAgent(fauxSkip(id));
 				const session = await agent.session({ id });
 				console.log(`session ${id}\n`);
 				await chat(session, faux);
@@ -596,11 +640,13 @@ async function main(): Promise<void> {
 				// argv[4] is the optional prompt; argv[3] is the session id
 				// (argv = [node, script, resume, id, prompt?]).
 				const prompt = process.argv[4];
+				const agent = await makeAgent(fauxSkip(arg));
 				const session = await agent.session({ id: arg });
 				await resume(session, prompt, faux);
 				break;
 			}
 			case "sessions": {
+				const agent = await makeAgent();
 				for (const meta of agent.sessions()) {
 					console.log(renderSessionLine(meta));
 				}
@@ -619,8 +665,9 @@ async function main(): Promise<void> {
 			case undefined:
 			default: {
 				// A 区: no subcommand (or any non-command first argument) IS
-				// chat — the argument is the session id.
-				const id = arg ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+				// chat — the first argument is the session id.
+				const id = command ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+				const agent = await makeAgent(fauxSkip(id));
 				const session = await agent.session({ id });
 				console.log(`session ${id}\n`);
 				await chat(session, faux);
@@ -630,7 +677,7 @@ async function main(): Promise<void> {
 	} finally {
 		// E 组: every normal and abnormal exit releases the fds and writer
 		// locks — no lock file is left behind.
-		agent.close();
+		agent?.close();
 	}
 }
 
