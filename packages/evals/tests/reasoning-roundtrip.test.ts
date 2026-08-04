@@ -98,4 +98,30 @@ describe("自举 P1: reasoning_content round-trip (DeepSeek thinking mode)", () 
 		const assistant = [...request.messages].reverse().find((m) => m.role === "assistant");
 		expect(assistant?.reasoning_content).toBe("The file says hello.");
 	});
+
+	it("a text-only assistant message serializes WITHOUT a tool_calls key", async () => {
+		// A turn with no tool calls must not send an empty tool_calls array —
+		// OpenAI-compat APIs reject that with 400 ("expected an array with
+		// minimum length 1"). The field is omitted entirely.
+		const messages = projectMessages([
+			{ type: "user_input", content: "hi" },
+			{ type: "text_delta", text: "Hello!" },
+			{ type: "stop", reason: "end_turn" },
+			{ type: "user_input", content: "and then?" },
+		]);
+
+		let captured: unknown;
+		const adapter: Adapter = createOpenAICompatAdapter(
+			fakeOpenAI({ onCreate: (p) => (captured = p) }),
+		);
+		for await (const _ev of adapter.stream({ model: "deepseek-v4-flash", messages })) {
+			// drain
+		}
+
+		const request = captured as { messages: Array<Record<string, unknown>> };
+		const assistant = request.messages.find((m) => m.role === "assistant");
+		expect(assistant).toBeDefined();
+		expect(assistant).not.toHaveProperty("tool_calls");
+		expect(assistant?.content).toBe("Hello!");
+	});
 });

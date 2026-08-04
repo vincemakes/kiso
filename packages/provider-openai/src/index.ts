@@ -352,19 +352,23 @@ function toOpenAIMessages(
 		if (msg.role === "user") {
 			out.push({ role: "user", content: toOpenAIContent(msg.content) });
 		} else if (msg.role === "assistant") {
+			// OpenAI-compat APIs reject an EMPTY tool_calls array with 400
+			// ("expected an array with minimum length 1") — when the turn
+			// made no tool calls, the field is omitted entirely.
+			const toolCalls = msg.blocks
+				.filter((b) => b.type === "tool_use")
+				.map((b) => {
+					const t = b as { callId: string; name: string; input: unknown };
+					return {
+						id: t.callId,
+						type: "function" as const,
+						function: { name: t.name, arguments: JSON.stringify(t.input) },
+					};
+				});
 			out.push({
 				role: "assistant",
 				content: msg.blocks.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(""),
-				tool_calls: msg.blocks
-					.filter((b) => b.type === "tool_use")
-					.map((b) => {
-						const t = b as { callId: string; name: string; input: unknown };
-						return {
-							id: t.callId,
-							type: "function" as const,
-							function: { name: t.name, arguments: JSON.stringify(t.input) },
-						};
-					}),
+				...(toolCalls.length ? { tool_calls: toolCalls } : {}),
 				// 自举 P1: DeepSeek's thinking mode REQUIRES the turn's
 				// reasoning back on follow-up requests (else 400) — the
 				// projection derived it from the thinking events; the compat
