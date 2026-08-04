@@ -7,9 +7,12 @@
  *   always derive the same messages, byte for byte, across crash/resume;
  * - the whitelist is read/list/search/shell; write/edit outputs are never
  *   cleared; do-not-compact tagged results are never cleared;
- * - recent turns stay intact (KEEP_RECENT_TURNS);
- * - the loop appends the boundary ONCE when the estimated context exceeds
- *   the threshold — never a per-turn progressive clearing.
+ * - the boundary is drawn by COMPACTABLE-RESULT recentness (自举 #3): the
+ *   newest K = 4 compactable results stay intact whatever turn they belong
+ *   to — a single giant turn with many reads triggers;
+ * - the loop appends at most ONE boundary per iteration when the estimated
+ *   context exceeds the threshold; a context that is STILL over may append
+ *   another at the next iteration — each boundary makes progress.
  */
 
 import { describe, expect, it } from "vitest";
@@ -80,7 +83,7 @@ describe("C: projection applies the microcompact boundary deterministically", ()
 	});
 });
 
-describe("C: the loop appends the boundary once when over the threshold", () => {
+describe("C: the loop appends the boundary when over the threshold", () => {
 	it("a long session crosses the threshold and records exactly ONE boundary, then replays identically", async () => {
 		const registry = new ToolRegistry();
 		registry.register(
@@ -114,7 +117,7 @@ describe("C: the loop appends the boundary once when over the threshold", () => 
 			events.push(ev);
 		}
 		const boundaries = log.all.filter((e) => e.type === "microcompacted");
-		expect(boundaries).toHaveLength(1); // ONE decision, never per-turn
+		expect(boundaries).toHaveLength(1); // at most one per loop iteration
 		expect(events.some((e) => e.type === "microcompacted")).toBe(true); // yielded
 		// The projection with the boundary equals the in-memory projection:
 		// the persisted fact derives the same view (D 区).
@@ -123,5 +126,84 @@ describe("C: the loop appends the boundary once when over the threshold", () => 
 			JSON.parse(JSON.stringify(log.all)) as Parameters<typeof projectMessages>[0],
 		);
 		expect(JSON.stringify(reloaded)).toBe(JSON.stringify(inMemory));
+	});
+
+	it("自举 #3: a SINGLE user turn with 6 big reads triggers — the oldest cleared, the newest 4 kept", async () => {
+		// The coding agent's main overflow shape: one turn, many reads.
+		// The old user-turn boundary never fired here; the new one draws
+		// the line by compactable-result recentness (K = 4).
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		for (let i = 0; i < 6; i++) {
+			log.append({ type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: `f${i}.ts` } });
+			log.append({ type: "tool_result", callId: `r${i}`, content: "line\n".repeat(200), isError: false });
+		}
+		const events: import("@vincemakes/kiso-core").Event[] = [];
+		for await (const ev of loop({
+			adapter: createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]),
+			model: "faux",
+			registry: new ToolRegistry(),
+			log,
+			microcompact: { thresholdTokens: 100 },
+		})) {
+			events.push(ev);
+		}
+		const boundaries = log.all.filter((e) => e.type === "microcompacted");
+		expect(boundaries).toHaveLength(1);
+		const projected = projectMessages(log.all);
+		const tools = projected.filter((m) => m.role === "tool");
+		const content = (callId: string): string | undefined =>
+			tools.find((m) => m.callId === callId)?.content as string | undefined;
+		// The two OLDEST reads were cleared, the newest K = 4 are intact.
+		expect(content("r0")).toBe("[old tool output cleared: read_file f0.ts]");
+		expect(content("r1")).toBe("[old tool output cleared: read_file f1.ts]");
+		expect(content("r2")).toBe("line\n".repeat(200));
+		expect(content("r5")).toBe("line\n".repeat(200));
+	});
+
+	it("自举 #3: still over after clearing — the NEXT iteration appends a second boundary that makes progress", async () => {
+		// 8 giant reads in one turn; the model then reads AGAIN (a new big
+		// result lands). Boundary 1 keeps the newest 4; the context is still
+		// over, so the next iteration's boundary 2 clears the oldest
+		// still-visible result — progress, never a repeated no-op.
+		const registry = new ToolRegistry();
+		registry.register(
+			defineTool({
+				name: "read_file",
+				description: "s",
+				parameters: { type: "object" },
+				execute: async () => ({ content: "line\n".repeat(200), isError: false }),
+			}),
+		);
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		for (let i = 0; i < 8; i++) {
+			log.append({ type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: `f${i}.ts` } });
+			log.append({ type: "tool_result", callId: `r${i}`, content: "line\n".repeat(200), isError: false });
+		}
+		const script: FauxScript = [
+			{ events: [{ type: "tool_call_end", callId: "r8", name: "read_file", input: { path: "f8.ts" } }, { type: "stop", reason: "tool_use" }] },
+			{ events: [{ type: "stop", reason: "end_turn" }] },
+		];
+		for await (const _ev of loop({
+			adapter: createFauxProvider(script),
+			model: "faux",
+			registry,
+			log,
+			microcompact: { thresholdTokens: 100 },
+		})) {
+			// drain
+		}
+		const boundaries = log.all.filter((e) => e.type === "microcompacted");
+		expect(boundaries).toHaveLength(2);
+		const projected = projectMessages(log.all);
+		const tools = projected.filter((m) => m.role === "tool");
+		const content = (callId: string): string | undefined =>
+			tools.find((m) => m.callId === callId)?.content as string | undefined;
+		// Cleared: r0..r4. Intact: the newest K = 4 (r5..r8).
+		expect(content("r0")).toBe("[old tool output cleared: read_file f0.ts]");
+		expect(content("r4")).toBe("[old tool output cleared: read_file f4.ts]");
+		expect(content("r5")).toBe("line\n".repeat(200));
+		expect(content("r8")).toBe("line\n".repeat(200));
 	});
 });

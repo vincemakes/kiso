@@ -34,9 +34,10 @@ import type {
 /**
  * C 区: tools whose output is eligible for microcompact clearing — reads,
  * listings, searches, and shell output. write/edit outputs are short and
- * never cleared.
+ * never cleared. Exported so the loop's boundary computation (自举 #3)
+ * counts exactly the results the projection can clear.
  */
-const MICROCOMPACTABLE = new Set(["read_file", "list_dir", "search_text", "shell"]);
+export const MICROCOMPACTABLE = new Set(["read_file", "list_dir", "search_text", "shell"]);
 
 /** The tag that makes a tool result un-clearable (C 区). */
 export const DO_NOT_COMPACT = "do-not-compact";
