@@ -20,7 +20,7 @@ import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { createAgent, SessionStore, type AgentDefinition, type AgentSession } from "@vincemakes/kiso-runtime";
+import { createAgent, loadExtensions, SessionStore, type AgentDefinition, type AgentSession } from "@vincemakes/kiso-runtime";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import type { PermissionPolicy } from "@vincemakes/kiso-runtime";
@@ -47,6 +47,23 @@ const PERMISSION_POLICY: PermissionPolicy = {
 
 function sessionsDir(): string {
 	return join(process.env.KISO_HOME ?? join(homedir(), ".kiso"), "sessions");
+}
+
+/** E1: the extension scan directory — KISO_EXTENSIONS_DIR overrides. */
+function extensionsDir(): string {
+	return process.env.KISO_EXTENSIONS_DIR ?? join(homedir(), ".kiso", "extensions");
+}
+
+/** E1: the extensions loaded by makeAgent — their names feed the banner. */
+let loadedExtensions: readonly import("@vincemakes/kiso-runtime").KisoExtension[] = [];
+
+/** E1: one banner line with the loaded extensions, e.g. `[2 extensions:
+ *  safe-defaults, foo]` — silent when none are installed. */
+function extensionsBanner(): void {
+	if (loadedExtensions.length === 0) return;
+	console.log(
+		`[${loadedExtensions.length} extension${loadedExtensions.length === 1 ? "" : "s"}: ${loadedExtensions.map((e) => e.name).join(", ")}]\n`,
+	);
 }
 
 /**
@@ -133,6 +150,10 @@ function fauxSkip(id: string): number {
 async function makeAgent(fauxSkipTurns = 0) {
 	const store = new SessionStore(sessionsDir());
 
+	// E1: the startup extension scan — a broken extension fails the process
+	// LOUDLY here (loadExtensions throws), never silently.
+	loadedExtensions = await loadExtensions(extensionsDir());
+
 	// Provider wiring (F 组): the CLI never imports provider SDKs directly —
 	// the runtime's lazy provider resolution owns them. Real key → real
 	// provider; none → faux.
@@ -166,6 +187,7 @@ async function makeAgent(fauxSkipTurns = 0) {
 		// search/shell outputs instead of silently growing past the window.
 		microcompact: { thresholdTokens: contextWindowTokens() / 2 },
 		maxTurns: 20,
+		extensions: loadedExtensions,
 		...(provider !== undefined
 			? {
 					provider,
@@ -681,6 +703,7 @@ async function main(): Promise<void> {
 				const agent = await makeAgent(fauxSkip(id));
 				const session = await agent.session({ id });
 				console.log(`session ${id}\n`);
+				extensionsBanner();
 				await chat(session, faux);
 				break;
 			}
@@ -722,6 +745,7 @@ async function main(): Promise<void> {
 				const agent = await makeAgent(fauxSkip(id));
 				const session = await agent.session({ id });
 				console.log(`session ${id}\n`);
+				extensionsBanner();
 				await chat(session, faux);
 				break;
 			}

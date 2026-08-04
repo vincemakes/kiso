@@ -14,6 +14,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { KisoExtension } from "@vincemakes/kiso-core";
 
+export type { KisoExtension }; // re-exported so consumers import it from here
+
 export async function loadExtensions(dir: string): Promise<KisoExtension[]> {
 	let files: string[];
 	try {
