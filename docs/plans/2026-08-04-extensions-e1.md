@@ -266,6 +266,34 @@ runtime/cli/tools-node 零改动):
 - 文档: README 新 Subagent 段(角色表、并发/超时、worktree 语义、深度护栏、
   durable 子 session 卖点、凭据下传与 #7 区别、安装两步);本 plan 记录 ④。
 
+## ⑤ skills (2026-08-04) — 官方扩展,内核零改动
+
+- 新 workspace `extensions/skills`(private,不发 npm,零运行依赖,源即产物
+  build 仅拷贝——subagent 同款)。工厂扫 `${KISO_SKILLS_DIR:-~/.kiso/skills}/
+  <name>/SKILL.md`:frontmatter(--- 包围的 YAML 子集,只认 name/description,
+  手写解析 ≤20 行,零依赖);name 缺省用目录名;description 必需且 ≤200 字符
+  (超长截断加注);无/空目录 → {name:"skills",tools:[]} 不报错;损坏(无
+  frontmatter)→ 跳过 + 索引尾部警告行(软失败,与 mcp 同哲学)。
+- tier 1(常驻):systemPrompt.append = "Available skills (load with
+  read_skill):" + 逐行 "- <name>: <description>",按目录名排序,确定性。
+  tier 2(按需):read_skill {name} → SKILL.md 全文(≤32KB 截断加注);未知名 →
+  isError + 现有名单(诚实错误可行动);skill 目录其他文件不自动加载——正文
+  让模型用 read_file 按相对路径取(渐进第三层,零新机制,README 说明)。
+  发现#8:无持久资源,dispose 显式一行说明不需要。
+- safe-defaults 更新(本轮唯一 extensions/ 外改动):read_skill 入 allow
+  清单(读用户自装本地文档,信任级别同 read_file)。
+- 测试(红→绿,进根 check):①索引入 systemPrompt(两 skill 排序确定)
+  ②read_skill 往返全文 ③未知名诚实错误含名单 ④损坏 SKILL.md 软失败+警告
+  行 ⑤description 超长截断 ⑥空/缺目录零 skill 不报错——7 单测 + 1 CLI e2e
+  (真进程:两 skill,faux 调 read_skill → safe-defaults 自动放行(无审批提
+  问)、正文回模型、done;横幅 [2 extensions: safe-defaults, skills])——首跑
+  即绿;safe-defaults 测试 import 示例断言 read_skill allow。
+- 文档:README Skills 段(SKILL.md 格式、两层渐进+第三层 read_file 约定、
+  CC skills 兼容性——frontmatter name/description 子集兼容,CC skill 可直接
+  放入)+ Comparison 段(能力矩阵与 bench 数字并排,诚实脚注保持);
+  plan 记录 ⑤。范围外:allowed-tools/model 字段、skill 市场/安装命令、
+  bench 新任务(T4 另轮)、会话树。
+
 ## 8. What was NOT done (explicitly out of scope)
 
 - registerCommand / shortcuts / renderers / sendMessage-like APIs;

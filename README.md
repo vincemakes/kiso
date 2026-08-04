@@ -413,6 +413,92 @@ child kiso processes (the same binary), at most 4 concurrently:
 - **Approval: no auto-allow.** `delegate` falls in the ask tier — a human
   sees every delegation and can deny it.
 
+## Skills — two-tier progressive skill loading
+
+`extensions/skills` is the official skills extension: a zero-dependency
+single file (`src/kiso-skills.mjs` is the artifact; `dist/` is a copy).
+Build and install:
+
+```
+cd extensions/skills && npm install && npm run build   # step 1 — dist/kiso-skills.mjs
+cp dist/kiso-skills.mjs ~/.kiso/extensions/            # step 2 — the E1 loader picks it up
+```
+
+A skill is a directory with a `SKILL.md` under `$KISO_SKILLS_DIR`
+(default `~/.kiso/skills`), e.g. `~/.kiso/skills/review/SKILL.md`:
+
+```markdown
+---
+name: review
+description: a review checklist for pull requests
+---
+
+# Review checklist
+
+... the skill body ...
+```
+
+- **Tier 1 — resident index.** Every skill's frontmatter (a `---` wrapped
+  YAML subset; only `name`/`description` are read — no dependency, no
+  parser) becomes one line of the system prompt, sorted by directory name:
+  `Available skills (load with read_skill):` followed by one
+  `- <name>: <description>` per skill. A `SKILL.md` without frontmatter is
+  skipped with a warning line at the index tail — a soft failure, like the
+  MCP bridge. No/empty skills dir → an empty extension, never an error.
+- **Tier 2 — on demand.** The `read_skill` tool returns the full `SKILL.md`
+  (capped at 32KB with a truncation note); an unknown name is an honest,
+  actionable error listing the installed skills.
+- **Tier 3 — progressive, zero new mechanisms.** Files other than
+  `SKILL.md` are NOT auto-loaded: the skill body tells the model to read
+  them with `read_file` by relative path when it needs them.
+- **Claude Code compatibility.** CC skills use the same frontmatter
+  shape; the name/description subset parses them as-is — drop a CC skill
+  directory into `~/.kiso/skills/` and it works.
+- **Approval:** `read_skill` reads user-installed local docs — the
+  safe-defaults example allows it (read_file trust); everything else
+  about skills is plain file access governed by the existing policy.
+
+## Comparison
+
+The bench (`bench/`, same model, same tasks, three agents) measures
+efficiency on small tasks — capability was equal there. The capability
+matrix below is what kiso itself delivers, each row proven by a gate in
+this repo; the numbers beside it are the bench's, honest footnotes kept.
+
+| capability | delivered by | proven in |
+|---|---|---|
+| survives `kill -9` | event-sourced sessions; resume continues the interrupted run | `apps/cli/tests/kill9.test.ts` |
+| durable human approvals | pauses persist across processes; verdicts never lost | `packages/runtime/tests/approvals.test.ts` |
+| exactly-once execution | execution ledger keyed by `executionId` | `packages/core/tests/execution-gate.test.ts` |
+| extensions | policies / tools / hooks / systemPrompt / dispose | `packages/runtime/tests/extensions.test.ts` |
+| MCP bridge | official extension, kernel untouched | `extensions/mcp/tests` |
+| subagents | official extension, role-policy children | `extensions/subagent/tests` |
+| skills | official extension, two-tier progressive | `extensions/skills/tests` |
+| context economy | microcompact + prompt-cache byte discipline | `packages/core/tests/prompt-cache.test.ts` |
+
+The bench, one fixture, one model, mean of two runs (kiso 0.1.7 · pi ·
+Claude Code via a DeepSeek endpoint):
+
+| task | tool | fresh in | cached in | total in | out | reqs | wall |
+|------|--------|-------:|-------:|-------:|-----:|----:|-----:|
+| T1 read+answer | **kiso** | **839** | 1,536 | **2,375** | 126 | 2 | **4.0s** |
+| | pi | 2,885 | 6,016 | 8,901 | 156 | 2 | 4.0s |
+| | claude | 28,407 | 22,464 | 50,871 | 227 | 2 | 9.5s |
+| T2 fix+verify | **kiso** | **672** | 4,864 | **5,536** | 275 | 4 | **6.5s** |
+| | pi | 3,876 | 14,784 | 18,660 | 325 | 4 | 7.5s |
+| | claude | 29,435 | 73,856 | 103,291 | 708 | 4.5 | 13.5s |
+| T3 cross-file rename | **kiso** | **1,854** | 7,680 | **9,534** | 788 | 5 | **9.5s** |
+| | pi | 3,673 | 20,992 | 24,665 | 836 | 5 | 11.0s |
+| | claude | 32,109 | 170,880 | 202,989 | 2,278 | 15.5 | 30.5s |
+
+Honest footnotes (from `bench/README.md`): these tasks are SMALL — Claude
+Code's large system prompt buys real product capability (task tracking,
+richer exploration) that pays off on complex work these tasks do not
+exercise; Claude Code ran off-label (DeepSeek endpoint) and its prompts
+are tuned for Claude models; n=2, one fixture, one model, token accounting
+normalized per provider convention; kiso is our own tool — reproduce it
+yourself, everything needed is in `bench/`.
+
 ## Status
 
 Reliable Session Alpha, including the four hardening rounds (areas 1-7,

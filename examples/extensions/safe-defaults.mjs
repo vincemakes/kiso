@@ -21,7 +21,12 @@ export default {
 	approvals: [
 		{
 			decide(call) {
-				if (call.name === "read_file" || call.name === "list_dir" || call.name === "search_text") {
+				if (
+					call.name === "read_file" ||
+					call.name === "list_dir" ||
+					call.name === "search_text" ||
+					call.name === "read_skill" // ⑤: local user-installed docs — trust level same as read_file
+				) {
 					return { action: "allow" };
 				}
 				if (

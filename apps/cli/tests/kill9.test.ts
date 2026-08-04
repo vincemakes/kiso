@@ -42,6 +42,13 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
     if pid == 0:
         os.environ["KISO_HOME"] = home
         os.environ["KISO_FAUX_SCRIPT"] = script_path
+        # Hermetic: the real ~/.kiso may hold extensions + an MCP config —
+        # the gate must never load them (an MCP npx server at startup makes
+        # the CLI un-killable mid-connect).
+        ext_dir = os.path.join(home, "ext")
+        os.makedirs(ext_dir, exist_ok=True)
+        os.environ["KISO_EXTENSIONS_DIR"] = ext_dir
+        os.environ["KISO_MCP_CONFIG"] = os.path.join(home, "mcp.json")
         os.chdir(workdir)
         if resume_keys is None:
             os.execvp("node", ["node", cli, session_id])
