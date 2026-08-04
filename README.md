@@ -189,12 +189,15 @@ And after phase 2 (the resume, in a fresh process, zero human typing):
 
 ## MicroCompact — zero-API context relief
 
-When a long session's projected context crosses the threshold (50% of the
-model window by default, configurable), the loop appends **one** `microcompacted`
-boundary event to the stream — never a per-turn progressive clearing. The
-projection then derives the compacted view deterministically: tool results
-older than the boundary whose tool is in the whitelist (`read_file`,
-`list_dir`, `search_text`, `shell`) are replaced by the fixed placeholder
+**The CLI ships it ON by default**: threshold = half the model window
+(`KISO_CONTEXT_WINDOW` override included — 200k window → 100k tokens).
+Library users opt in with `microcompact: { thresholdTokens }` in
+`createAgent`. When a session's projected context crosses the threshold,
+the loop appends **one** `microcompacted` boundary event to the stream —
+never a per-turn progressive clearing. The projection then derives the
+compacted view deterministically: tool results older than the boundary
+whose tool is in the whitelist (`read_file`, `list_dir`, `search_text`,
+`shell`) are replaced by the fixed placeholder
 `[old tool output cleared: <tool> <arg>]`. write/edit outputs are never
 touched; results tagged `do-not-compact` are never touched; recent turns
 stay intact.
@@ -203,6 +206,12 @@ The decision is a persisted fact, not runtime state: the same events always
 derive the same messages — a crash/resume replays the boundary and lands on
 the byte-identical projection (see the byte discipline below). No counting
 API, no price table, no tokens spent on the compaction itself.
+
+Wired end to end and test-verified: a session running through the real
+runtime records the boundary on disk and a reloaded session projects the
+placeholders (`packages/runtime/tests/microcompact-e2e.test.ts`); the CLI
+resumes an over-threshold session with a tiny window and the boundary
+lands (`apps/cli/tests/microcompact-cli.test.ts`).
 
 ## Prompt-cache byte discipline
 
