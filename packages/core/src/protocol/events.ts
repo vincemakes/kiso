@@ -291,6 +291,9 @@ export interface PermissionDecided {
 	readonly callId?: string;
 	readonly decision: "approved" | "denied";
 	readonly reason?: string;
+	/** E1: the deciding extension's name — present ONLY on policy decisions;
+	 *  absent = the human decided (old logs stay compatible). */
+	readonly decidedBy?: string;
 }
 
 /**
@@ -690,7 +693,8 @@ const EVENT_VALIDATORS = {
 		typeof v.decisionId === "string" &&
 		(v.decision === "approved" || v.decision === "denied") &&
 		(v.callId === undefined || typeof v.callId === "string") &&
-		(v.reason === undefined || typeof v.reason === "string"),
+		(v.reason === undefined || typeof v.reason === "string") &&
+		(v.decidedBy === undefined || typeof v.decidedBy === "string"),
 	permission_expired: (v: Record<string, unknown>) => typeof v.decisionId === "string" && typeof v.reason === "string",
 	uncertain_pending: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.error === "string",

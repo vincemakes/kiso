@@ -29,6 +29,7 @@
 
 import { isAdapterEvent, type Adapter, type AbortSignalLike } from "../protocol/adapter.js";
 import type { Event, StopReason, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
+import type { ApprovalPolicy, PolicyVerdict } from "../protocol/extension.js";
 import { estimateTokens, microcompact } from "./compaction.js";
 import { EventLog } from "./event-log.js";
 import type { EventInput } from "./event-log.js";
@@ -107,6 +108,16 @@ export interface LoopConfig {
 	readonly resolveUncertainty?: (executionId: string) => Promise<"rerun" | "abandoned">;
 	/** 第四轮(对抗): the uncertainty twin of `approvalVerdict`. */
 	readonly uncertaintyVerdict?: (executionId: string) => "rerun" | "abandoned" | undefined;
+	/**
+	 * E1: extension approval policies, tagged by their owning extension —
+	 * decided BEFORE the human flow. Any deny wins (the FIRST denial's
+	 * reason); else any ask falls into the existing flow; all allow
+	 * auto-approves. A policy that throws counts as ask. Allow/deny are
+	 * recorded durably with decidedBy = the extension's name, never pausing
+	 * for a human; a durable decision already recorded (resume) takes
+	 * effect and the chain never re-runs.
+	 */
+	readonly approvalPolicies?: readonly { readonly extension: string; readonly policy: ApprovalPolicy }[];
 }
 
 export const DEFAULT_MAX_TURNS = 10;
@@ -445,7 +456,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			}
 			let currentExecutionId: string | undefined;
 			try {
-				for await (const ev of executeOne(call, registry, hooks, { signal: signal ?? NEVER_ABORT }, log, config.resolveApproval, config.approvalVerdict, signal)) {
+				for await (const ev of executeOne(call, registry, hooks, { signal: signal ?? NEVER_ABORT }, log, config.resolveApproval, config.approvalVerdict, signal, config.approvalPolicies)) {
 					// 四: the identity of THIS execution comes from the stream —
 					// a historical same-callId execution must never be mistaken
 					// for this call's (the provider callId may repeat across runs).
@@ -625,6 +636,7 @@ async function* executeOne(
 	resolveApproval: ((decisionId: string) => Promise<PermissionDecision>) | undefined,
 	resolveApprovalVerdict: ((decisionId: string) => boolean | undefined) | undefined,
 	signal: AbortSignalLike | undefined,
+	approvalPolicies: readonly { readonly extension: string; readonly policy: ApprovalPolicy }[] | undefined,
 ): AsyncGenerator<Event> {
 	const payload: ToolCallPayload = {
 		callId: call.callId,
@@ -688,10 +700,84 @@ async function* executeOne(
 	// all. Checked again here, after any permission path.
 	if (signal?.aborted) throw ABORTED;
 
+	// ── E1: the extension policy chain, decided BEFORE the human flow ─────
+	// A durable POLICY decision for THIS call takes effect on resume — the
+	// chain never re-runs when its verdict is already in the log (同构
+	// alreadyReplaced: the persisted fact speaks for the call). The match is
+	// the same logical call: same callId, decidedBy set (a policy verdict,
+	// never a human's), and input identical to the original tool_call_end —
+	// a re-issued call with different arguments is a NEW call and re-decided.
+	// Composition: deny > ask > allow — any deny wins (the FIRST denial's
+	// reason), else any ask falls into the existing human flow below, and
+	// only an ALL-allow chain auto-approves: recorded durably with decidedBy
+	// = the extension's name, never a human-visible pause. A policy that
+	// throws counts as ask.
+	const originalCall = [...log.all].reverse().find(
+		(e): e is Event & { type: "tool_call_end" } => e.type === "tool_call_end" && e.callId === call.callId,
+	);
+	const durable =
+		originalCall !== undefined && JSON.stringify(originalCall.input) === JSON.stringify(call.input)
+			? log.all.find(
+					(e): e is Event & { type: "permission_decided" } =>
+						e.type === "permission_decided" && e.decidedBy !== undefined && e.callId === call.callId,
+				)
+			: undefined;
+	let chainVerdict: PolicyVerdict | undefined;
+	let deniedReason: string | undefined;
+	let deniedBy: string | undefined;
+	if (durable === undefined && approvalPolicies !== undefined && approvalPolicies.length > 0) {
+		for (const { extension, policy } of approvalPolicies) {
+			let v: PolicyVerdict;
+			try {
+				v = await raceAbort(Promise.resolve(policy.decide(payload, ctx)), signal);
+			} catch {
+				v = { action: "ask" }; // 抛错 = 该扩展计为 ask
+			}
+			if (v.action === "deny") {
+				deniedBy ??= extension;
+				deniedReason ??= v.reason; // the FIRST denial's reason
+			} else if (v.action === "ask") {
+				chainVerdict = { action: "ask" };
+			}
+		}
+		if (deniedBy !== undefined) {
+			chainVerdict = { action: "deny", reason: deniedReason ?? "denied" };
+		} else if (chainVerdict === undefined) {
+			chainVerdict = { action: "allow" };
+		}
+		if (chainVerdict.action !== "ask") {
+			// allow/deny are PERSISTED FACTS (decidedBy = the extension) —
+			// never a human pause.
+			yield log.append({
+				type: "permission_decided",
+				decisionId: `d-${log.lastSeq + 1}`,
+				callId: call.callId,
+				decision: chainVerdict.action === "allow" ? "approved" : "denied",
+				...(chainVerdict.action === "deny" ? { reason: chainVerdict.reason } : {}),
+				decidedBy: deniedBy ?? approvalPolicies[0]!.extension,
+			});
+		}
+	}
+	if (chainVerdict?.action === "deny") {
+		yield emitResult(denialResult(chainVerdict.reason));
+		return;
+	}
+	if (durable !== undefined && durable.decision === "denied") {
+		yield emitResult(denialResult(durable.reason ?? "denied"));
+		return;
+	}
+	if (chainVerdict?.action === "ask" && hooks.onPreTool === undefined) {
+		// No human flow exists — the ask degrades to an honest denial, never
+		// an unasked execution (mirrors the defer-without-channel path).
+		yield emitResult(denialResult("a policy asked for a human decision, but no approval flow is configured"));
+		return;
+	}
+
 	// Permission negotiation — defer is a REAL pause (Phase D). C 组: the
 	// hook itself is cancelable (a slow policy query must not outlive an
-	// abort), and the signal is re-checked after it returns.
-	if (hooks.onPreTool) {
+	// abort), and the signal is re-checked after it returns. Skipped when
+	// the policy chain already decided (durable or all-allow).
+	if (durable === undefined && chainVerdict?.action !== "allow" && hooks.onPreTool) {
 		const decision = await raceAbort(hooks.onPreTool(payload, ctx), signal);
 		if (signal?.aborted) throw ABORTED;
 		if (decision.action === "defer") {

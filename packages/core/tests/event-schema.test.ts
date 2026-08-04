@@ -22,6 +22,10 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ seq: 0, type: "tool_execution_resolved", executionId: "ex-1", callId: "c1", resolution: "rerun" })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "permission_requested", decisionId: "d-1", callId: "c1", name: "x", input: {} })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "permission_decided", decisionId: "d-1", decision: "approved" })).toBe(true);
+		// E1: decidedBy rides on policy decisions; absent = a human decision.
+		expect(
+			isKisoEvent({ seq: 0, type: "permission_decided", decisionId: "d-1", decision: "denied", reason: "no", decidedBy: "safe-defaults" }),
+		).toBe(true);
 	});
 
 	it("rejects shape violations per variant — type/seq alone is not enough", () => {
@@ -47,6 +51,8 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ seq: 0, type: "tool_execution_resolved", executionId: "ex-1", callId: "c1", resolution: "maybe" })).toBe(false);
 		// permission decided with a bogus decision
 		expect(isKisoEvent({ seq: 0, type: "permission_decided", decisionId: "d-1", decision: "maybe" })).toBe(false);
+		// E1: decidedBy must be a string when present
+		expect(isKisoEvent({ seq: 0, type: "permission_decided", decisionId: "d-1", decision: "approved", decidedBy: 42 })).toBe(false);
 	});
 
 	it("五: rejects illegal enum values and bad optional fields", () => {
