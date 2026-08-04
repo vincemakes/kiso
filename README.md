@@ -1,5 +1,10 @@
 # kiso
 
+**kiso code = the coding agent that survives `kill -9`.** Interrupted
+executions get human verdicts, approvals persist across processes, and every
+event is auditable and replayable — the whole trajectory is on disk, and
+`kiso resume` continues it exactly.
+
 **kiso(基礎) — a growable TS agent framework for building coding agents and
 durable multi-turn AI tools.** A 2,000-line core that owns what genuinely
 repeats, and packages that grow on top of it without limit. For TypeScript
@@ -24,12 +29,19 @@ Every design decision ships with an ADR explaining **why**, and **when to overtu
 ```
 $ npm run size
 
-  packages/core/src/kernel/loop.ts  560
-  packages/core/src/protocol/events.ts 389
+core:
+  packages/core/src/kernel/loop.ts  630
+  packages/core/src/protocol/events.ts 406
   ...
-  total                               1747  / 2000
+  total                               1804  / 2000
+  ✓ 196 lines of headroom remaining.
 
-  ✓ 253 lines of headroom remaining.
+cli:
+  apps/cli/src/index.ts  496
+  apps/cli/src/render.ts 166
+  ...
+  total                   662  / 1200
+  ✓ 538 lines of headroom remaining.
 ```
 
 Comments do not count. Explain freely; implement tersely.
@@ -123,9 +135,11 @@ npx @vincemakes/kiso-cli chat   # or run without installing
 (Inside this repo, `npm run cli` runs the same binary.) The command set:
 
 ```
-kiso chat [sessionId]          interactive multi-turn session
+kiso [sessionId]               interactive session (default command)
+kiso chat [sessionId]          same as above
 kiso resume <id> [prompt]      continue a session in a new process
 kiso sessions                  list durable sessions
+kiso help                      this help
 ```
 
 - Tools: read file · list directory · search text · write/edit file · shell.
@@ -139,22 +153,91 @@ kiso sessions                  list durable sessions
 - Interrupted side effects are surfaced on resume (`⚠ interrupted execution`)
   and block until a human resolves them — a confirmed success never re-runs.
 
+### The `kill -9` test
+
+This is the product's scripted proof, automated end to end in
+`apps/cli/tests/kill9.test.ts` (real PTY, real processes, real SIGKILL —
+no mocks, no signal simulation). It is exactly what a `kill -9` user
+experiences:
+
+```
+$ kiso chat k9                        # faux trajectory: edit f1.txt → slow
+                                      # shell (sleep 30 && touch marker.txt)
+                                      # → edit f3.txt; approve both tools
+...                                   # the shell is mid-execution...
+$ kill -9 -PGID                       # the agent's whole process group —
+                                      # and the shell's own detached group
+$ kiso resume k9
+⚠ interrupted execution: shell (ex-12) — did it apply? (r)erun / (a)bandon: r
+  rerun
+→ edit_file({"path":"f3.txt",...})    # the ORIGINAL trajectory continues
+```
+
+What the test asserts on disk and on the filesystem after phase 1 (the kill):
+
+- the event stream loads without corruption;
+- **exactly one** execution is `uncertain` — the shell started, never reported;
+- `marker.txt` does not exist; `f1.txt` was edited before the kill; no
+  terminal was written.
+
+And after phase 2 (the resume, in a fresh process, zero human typing):
+
+- the uncertain verdict question is presented, `rerun` is injected;
+- the third edit happens — the trajectory continues, it does not replay;
+- the terminal lands and is durable; `marker.txt` still does not exist;
+- exactly one `tool_execution_resolved` is on disk.
+
+## MicroCompact — zero-API context relief
+
+When a long session's projected context crosses the threshold (50% of the
+model window by default, configurable), the loop appends **one** `microcompacted`
+boundary event to the stream — never a per-turn progressive clearing. The
+projection then derives the compacted view deterministically: tool results
+older than the boundary whose tool is in the whitelist (`read_file`,
+`list_dir`, `search_text`, `shell`) are replaced by the fixed placeholder
+`[old tool output cleared: <tool> <arg>]`. write/edit outputs are never
+touched; results tagged `do-not-compact` are never touched; recent turns
+stay intact.
+
+The decision is a persisted fact, not runtime state: the same events always
+derive the same messages — a crash/resume replays the boundary and lands on
+the byte-identical projection (see the byte discipline below). No counting
+API, no price table, no tokens spent on the compaction itself.
+
+## Prompt-cache byte discipline
+
+Contract: the same event-stream prefix projects to a **byte-identical**
+message prefix (`JSON.stringify`, element for element). New events only ever
+change the projection at the tail — the one exception is the `microcompacted`
+boundary, itself a persisted fact whose replay derives the same projection
+every time. The contract is pinned by three regression tests
+(`packages/core/tests/prompt-cache.test.ts`): ① the same log projects
+identically twice, ② appending a turn leaves the old prefix byte-identical,
+③ a microcompact boundary replays byte-identically after a JSON round-trip
+(the crash + resume shape).
+
 ## Status
 
 Reliable Session Alpha, including the four hardening rounds (areas 1-7,
 A-F, 一-九, and the 第四轮 adversarial round), is complete (see
-`docs/plans/2026-08-03-reliable-session-alpha.md`):
+`docs/plans/2026-08-03-reliable-session-alpha.md`), and the **kiso code**
+round (the coding agent: kill -9 gate, microcompact, byte discipline) is
+done (see `docs/plans/2026-08-04-kiso-code.md`):
 
-- **core** (1,747/2,000 lines) — protocol, loop (single honest terminal;
+- **core** (1,804/2,000 lines) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; retry only before anything streamed; one abort signal reaches
   backoff, approval waits, every pending tool, and the SDK), hooks,
-  ModeProfile, permissions, microcompact, delivery truth, the lossless
-  event-log projection (messages are a pure function of the log,
-  ADR-0002), and the execution ledger keyed by framework `executionId`
-  (ADR-0025): a failed non-idempotent execution is UNCERTAIN until a
-  human decides — a confirmed success is never re-run, a new logical call
-  always runs.
+  ModeProfile, permissions, microcompact (a `microcompacted` boundary is a
+  persisted fact — the projection derives the compacted view
+  deterministically; whitelist read/list/search/shell, `do-not-compact`
+  respected, recent turns intact), delivery truth, the lossless event-log
+  projection (messages are a pure function of the log, ADR-0002 — and the
+  prompt-cache byte discipline: the same event prefix projects to the same
+  message prefix, byte for byte, pinned by three regression tests), and the
+  execution ledger keyed by framework `executionId` (ADR-0025): a failed
+  non-idempotent execution is UNCERTAIN until a human decides — a confirmed
+  success is never re-run, a new logical call always runs.
 - **runtime** — `createAgent` / durable multi-turn sessions / crash-safe
   JSONL store (torn-tail repair under a kernel-flock cross-process writer
   lock — upgrade requires QUARANTINE: stop every old-format process before
@@ -164,22 +247,33 @@ A-F, 一-九, and the 第四轮 adversarial round), is complete (see
   INTERRUPTED run across processes: durable approvals are applied (the
   original call executes once, denials write their result), missing
   receipts are filled, and the original run completes — no invented turns.
-- **cli** — `kiso chat|resume|sessions`; resume is the recovery flow
-  (uncertain executions are decided rerun/abandon, approvals pause and
-  ask); coding tools are bound to the workspace root (absolute paths,
-  `..`, and symlink escapes are refused); the approval prompt shows the
-  full shell command and full paths.
+- **cli** (662/1,200 lines) — the coding agent: bare `kiso` enters chat;
+  a system prompt (coding-agent discipline: read before edit, careful
+  shell) composed from a constant, with AGENTS.md/CLAUDE.md injected and
+  truncated at 8KB; one-line tool summaries per call
+  (`✓ edit src/foo.ts (+12 -3)` / `✗ shell npm test (exit 1)`), the status
+  line (`[turn 3 · in 12.4k out 1.8k · cache 9.2k · ctx ~14%]` — usage
+  events only, `?` when unknown, `~` marks the estimate), and `/last` to
+  print the most recent tool call's full input/output straight from the
+  event stream. `resume` is the recovery flow (uncertain executions are
+  decided rerun/abandon, approvals pause and ask); coding tools are bound
+  to the workspace root (absolute paths, `..`, and symlink escapes are
+  refused); the approval prompt shows the full shell command and full
+  paths. The **kill -9 gate** (`apps/cli/tests/kill9.test.ts`) SIGKILLs a
+  real chat mid-execution and resumes it in a fresh process — see the
+  section above.
 - **workspace** — publishable monorepo (core, evals, runtime, tools-node,
   provider-anthropic, provider-openai, cli), ESM + d.ts, synchronized
   internal versions; CI is clean-checkout `npm ci` + the full gate.
 
 `npm run check` = build → typecheck (packages + root scripts + tests) →
-tests → size gate (core only) → pack gate (dist + README + LICENSE in every
-tarball) → whitespace gate (no trailing whitespace, every file ends with a newline)
+tests → size gate (core 2,000 + cli 1,200) → pack gate (dist + README +
+LICENSE in every tarball) → whitespace gate (no trailing whitespace, every
+file ends with a newline)
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
-→ demo start-and-exit gate. 320 tests green. 11 ADRs. 6 incident fixtures
+→ demo start-and-exit gate. 342 tests green. 11 ADRs. 6 incident fixtures
 running on the real runtime.
 
 ## Why another one
