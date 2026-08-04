@@ -143,3 +143,16 @@ sys.exit(0 if processed else 1)
 		expect(result.stdout).toContain("faux model");
 	});
 });
+
+	it("B: tool summary lines and the status line appear in a real chat run", () => {
+		const home = mkdtempSync(join(tmpdir(), "kiso-cli-"));
+		const result = runCli(["chat", "bsum"], "hello\n/last\nexit\n", { KISO_HOME: home });
+		expect(result.status, result.stderr).toBe(0);
+		// The tool summary line: a list_dir completion with the root marker.
+		expect(result.stdout).toContain("✓ list_dir (root)");
+		// The status line after the terminal, with unknown usage rendered ?.
+		expect(result.stdout).toMatch(/\[turn \d+ · in \? out \? · cache \? · ctx ~\d+%\]/);
+		// /last printed the full input/output from the event stream.
+		expect(result.stdout).toContain("--- list_dir input ---");
+		expect(result.stdout).toContain("--- list_dir output ---");
+	});

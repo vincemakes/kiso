@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { canonicalPath, renderEvent, renderSessionLine } from "../src/render.js";
+import { canonicalPath, renderEvent, renderSessionLine, renderStatusLine, renderToolSummary } from "../src/render.js";
 
 const NUL = "\u0000";
 const BS = "\u0008";
@@ -129,5 +129,55 @@ describe("terminal escaping (E 组)", () => {
 		expect(rendered.text).toContain(real);
 		expect(rendered.text).toContain(longContent);
 		expect(rendered.text).not.toContain("…");
+	});
+});
+
+describe("B: tool summary lines and the status line", () => {
+	it("read_file summary shows the line count", () => {
+		const line = renderToolSummary("read_file", { path: "src/foo.ts" }, { content: "a\nb\nc\n", isError: false });
+		expect(line).toContain("read src/foo.ts");
+		expect(line).toContain("(3 lines)");
+		expect(line.startsWith("✓")).toBe(true);
+	});
+
+	it("edit_file summary shows +replace -search line counts", () => {
+		const line = renderToolSummary("edit_file", { path: "src/foo.ts", search: "a\nb", replace: "a\nb\nc\nd" }, { content: "edited src/foo.ts", isError: false });
+		expect(line).toContain("edit src/foo.ts");
+		expect(line).toContain("(+4 -2)");
+	});
+
+	it("write_file summary shows the written line count", () => {
+		const line = renderToolSummary("write_file", { path: "x.ts", content: "a\nb" }, { content: "wrote x.ts", isError: false });
+		expect(line).toContain("write x.ts");
+		expect(line).toContain("(+2)");
+	});
+
+	it("a FAILED shell summary shows ✗ and the exit code", () => {
+		const line = renderToolSummary("shell", { command: "npm test" }, { content: "exit 1: boom", isError: true });
+		expect(line.startsWith("✗")).toBe(true);
+		expect(line).toContain("shell npm test");
+		expect(line).toContain("(exit 1)");
+	});
+
+	it("a successful shell summary shows exit 0", () => {
+		const line = renderToolSummary("shell", { command: "npm test" }, { content: "ok", isError: false });
+		expect(line.startsWith("✓")).toBe(true);
+		expect(line).toContain("(exit 0)");
+	});
+
+	it("the status line formats known usage with k-units and ~ctx", () => {
+		const line = renderStatusLine(3, { in: 12345, out: 1800, cache: 9200, known: true }, 0.14);
+		expect(line).toContain("turn 3");
+		expect(line).toContain("in 12.3k");
+		expect(line).toContain("out 1.8k");
+		expect(line).toContain("cache 9.2k");
+		expect(line).toContain("ctx ~14%");
+	});
+
+	it("unknown usage renders ? — never a faked zero", () => {
+		const line = renderStatusLine(1, { in: null, out: null, cache: null, known: false }, 0.05);
+		expect(line).toContain("in ?");
+		expect(line).toContain("out ?");
+		expect(line).toContain("cache ?");
 	});
 });

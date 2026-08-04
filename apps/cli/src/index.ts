@@ -24,7 +24,14 @@ import { createAgent, SessionStore, type AgentDefinition, type AgentSession } fr
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import type { PermissionPolicy } from "@vincemakes/kiso-runtime";
-import { escapeTerminal, renderEvent, renderSessionLine } from "./render.js";
+import {
+	escapeTerminal,
+	renderEvent,
+	renderSessionLine,
+	renderStatusLine,
+	renderToolSummary,
+	type RunUsage,
+} from "./render.js";
 
 const PERMISSION_POLICY: PermissionPolicy = {
 	rules: [
@@ -222,6 +229,19 @@ function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<
 	});
 }
 
+/**
+ * B 区: approximate context ratio — chars/4 of the projected messages vs
+ * the model window (default 200k, KISO_CONTEXT_WINDOW overrides). Marked
+ * ~ everywhere it is shown; no counting API is called.
+ */
+function estimateCtxRatio(session: AgentSession, windowEnv: string | undefined): number {
+	const window = Number.parseInt(windowEnv ?? "", 10);
+	const modelWindow = Number.isFinite(window) && window > 0 ? window : DEFAULT_CONTEXT_WINDOW;
+	const projected = session.projected();
+	const chars = JSON.stringify(projected).length;
+	return chars / 4 / modelWindow;
+}
+
 /** Decide every uncertain execution with the human (r)erun/(a)bandon. */
 async function resolveUncertains(
 	session: AgentSession,
@@ -244,6 +264,16 @@ async function resolveUncertains(
 	}
 }
 
+/** B 区: the last completed tool call, for the /last slash command. */
+interface LastToolCall {
+	readonly name: string;
+	readonly input: Record<string, unknown>;
+	readonly result: { content: string; isError: boolean };
+}
+
+/** B 区: default context window for the ~ctx estimate (config overridable). */
+const DEFAULT_CONTEXT_WINDOW = 200_000;
+
 /**
  * Consume a run, answering approval pauses as they arrive. `resumeMode`
  * marks a session.resume() continuation.
@@ -252,10 +282,36 @@ async function consumeRun(
 	session: AgentSession,
 	run: AsyncIterable<import("@vincemakes/kiso-core").Event>,
 	rl: ReturnType<typeof createInterface>,
+	turnNo: number,
+	lastToolRef: { current: LastToolCall | null },
 ): Promise<import("@vincemakes/kiso-core").Event | undefined> {
 	let last: import("@vincemakes/kiso-core").Event | undefined;
+	// B 区: tool_call_end → (name, input) for the summary; tool_result →
+	// one summary line. Usage events feed the status line.
+	const pendingCalls = new Map<string, { name: string; input: Record<string, unknown> }>();
+	let usage: RunUsage = { in: null, out: null, cache: null, known: false };
 	for await (const ev of run) {
 		last = ev;
+		if (ev.type === "tool_call_end") {
+			pendingCalls.set(ev.callId, { name: ev.name, input: ev.input ?? {} });
+		}
+		if (ev.type === "tool_result") {
+			const call = pendingCalls.get(ev.callId);
+			pendingCalls.delete(ev.callId);
+			if (call !== undefined) {
+				const text = typeof ev.content === "string" ? ev.content : "";
+				lastToolRef.current = { name: call.name, input: call.input, result: { content: text, isError: ev.isError } };
+				console.log(renderToolSummary(call.name, call.input, { content: text, isError: ev.isError }));
+			}
+		}
+		if (ev.type === "usage") {
+			usage = { in: ev.inputTokens, out: ev.outputTokens, cache: ev.cacheRead, known: ev.known };
+		}
+		if (ev.type === "terminal") {
+			// B 区: the status line after every terminal.
+			const ctxRatio = estimateCtxRatio(session, process.env.KISO_CONTEXT_WINDOW);
+			console.log(renderStatusLine(turnNo, usage, ctxRatio));
+		}
 		if (ev.type === "uncertain_pending") {
 			// C 组: a failed non-idempotent execution pauses for a verdict.
 			console.log(
@@ -335,10 +391,12 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 		new Promise((resolve, reject) => {
 			const run = session.run(input);
 			currentRun = run;
+			turnNo += 1;
+			const myTurn = turnNo;
 			(async () => {
 				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
-					last = await consumeRun(session, run, rl);
+					last = await consumeRun(session, run, rl, myTurn, lastToolRef);
 					currentRun = null;
 					// 八: a faux script that ran out of declared turns exits
 					// loudly with a non-zero status — never a silent status 0.
@@ -395,8 +453,31 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 	let chain: Promise<void> = Promise.resolve();
 	let replReady = false;
 	const queuedLines: string[] = [];
+	// B 区: user-turn counter for the status line, and the /last buffer.
+	let turnNo = 0;
+	const lastToolRef: { current: LastToolCall | null } = { current: null };
 	rl.on("line", (line) => {
-		if (line.trim().toLowerCase() === "exit" || line.trim() === "") {
+		const trimmed = line.trim();
+		if (trimmed === "/last") {
+			// B 区: print the FULL input/output of the most recent tool call,
+			// straight from the event stream — nothing is stored separately.
+			// Runs on the chain: after any in-flight turn completes.
+			chain = chain.then(async () => {
+				const tool = lastToolRef.current;
+				if (tool === null) {
+					console.log("[no tool call yet]");
+				} else {
+					console.log(`--- ${tool.name} input ---`);
+					console.log(escapeTerminal(JSON.stringify(tool.input, null, 2)));
+					console.log(`--- ${tool.name} output${tool.result.isError ? " (error)" : ""} ---`);
+					console.log(escapeTerminal(tool.result.content));
+				}
+				rl.setPrompt("you> ");
+				rl.prompt();
+			});
+			return;
+		}
+		if (trimmed === "exit" || trimmed === "") {
 			rl.close();
 			return;
 		}
@@ -416,7 +497,8 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 	if (!cancelled) {
 		const recoveryRun = session.resume();
 		currentRun = recoveryRun;
-		const last = await consumeRun(session, recoveryRun, rl);
+		turnNo += 1;
+		const last = await consumeRun(session, recoveryRun, rl, turnNo, lastToolRef);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, rl);
 	}
@@ -448,10 +530,13 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	let currentRun: { abort: () => void } | null = null;
 	let cancelled = false;
+	let turnNo = 0;
+	const lastToolRef: { current: LastToolCall | null } = { current: null };
 	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
 		currentRun = run;
 		try {
-			const last = await consumeRun(session, run, rl);
+			turnNo += 1;
+			const last = await consumeRun(session, run, rl, turnNo, lastToolRef);
 			failOnFauxExhaustion(last, faux, rl);
 		} finally {
 			currentRun = null;
@@ -531,25 +616,16 @@ async function main(): Promise<void> {
 						"  kiso help               this help\n",
 				);
 				break;
-			case undefined: {
-				// A 区: no subcommand = chat.
+			case undefined:
+			default: {
+				// A 区: no subcommand (or any non-command first argument) IS
+				// chat — the argument is the session id.
 				const id = arg ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
 				const session = await agent.session({ id });
 				console.log(`session ${id}\n`);
 				await chat(session, faux);
 				break;
 			}
-			default:
-				console.error(`unknown command: ${command}\n`);
-				console.log(
-					"kiso — the coding agent that survives kill -9\n\n" +
-						"  kiso [sessionId]         interactive session (default command)\n" +
-						"  kiso chat [sessionId]    same as above\n" +
-						"  kiso resume <id> [prompt]   continue a session (one-shot)\n" +
-						"  kiso sessions           list durable sessions\n" +
-						"  kiso help               this help\n",
-				);
-				process.exitCode = 2;
 		}
 	} finally {
 		// E 组: every normal and abnormal exit releases the fds and writer

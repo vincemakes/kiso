@@ -135,6 +135,93 @@ function approvalDetail(name: string, input: Record<string, unknown>): string {
 	return `\n  ${escapeTerminal(JSON.stringify(input))}`;
 }
 
+/**
+ * B 区: one-line summary of a completed tool call, e.g.
+ *   ✓ edit src/foo.ts (+12 -3)    ✓ read src/bar.ts (140 lines)
+ *   ✗ shell npm test (exit 1)
+ * edit/write show +/- line counts, read shows lines, shell shows the exit
+ * code; failures (isError) are ✗. Pure and deterministic.
+ */
+export function renderToolSummary(
+	name: string,
+	input: Record<string, unknown>,
+	result: { content: string; isError: boolean },
+): string {
+	const mark = result.isError ? "✗" : "✓";
+	const shortName = name.replace("_file", "");
+	const detail = toolSummaryDetail(name, input, result);
+	return `${mark} ${escapeTerminal(`${shortName} ${detail}`)}`;
+}
+
+function toolSummaryDetail(name: string, input: Record<string, unknown>, result: { content: string; isError: boolean }): string {
+	// Line count without the phantom empty line after a trailing newline.
+	const lines = (text: string): number => {
+		if (text === "") return 0;
+		const parts = text.split("\n");
+		return parts[parts.length - 1] === "" ? parts.length - 1 : parts.length;
+	};
+	switch (name) {
+		case "read_file": {
+			const path = String(input.path ?? "?");
+			const count = lines(String(result.content));
+			return `${path} (${count} line${count === 1 ? "" : "s"})`;
+		}
+		case "write_file": {
+			const path = String(input.path ?? "?");
+			const count = lines(String(input.content ?? ""));
+			return `${path} (+${count})`;
+		}
+		case "edit_file": {
+			const path = String(input.path ?? "?");
+			const removed = lines(String(input.search ?? ""));
+			const added = lines(String(input.replace ?? ""));
+			return `${path} (+${added} -${removed})`;
+		}
+		case "shell": {
+			const command = String(input.command ?? "?");
+			const exit = exitCodeOf(result);
+			return `${command} (exit ${exit})`;
+		}
+		case "list_dir":
+			return String(input.path ?? "(root)");
+		default:
+			return String(input.path ?? input.command ?? "");
+	}
+}
+
+/** The exit code of a shell result: parsed from the failure text, 0 on success. */
+function exitCodeOf(result: { content: string; isError: boolean }): number {
+	if (!result.isError) return 0;
+	const m = /exit (\d+)/.exec(result.content);
+	return m !== null ? Number(m[1]) : 1;
+}
+
+/** k-units for the status line: 12345 → 12.3k, 800 → 800, null → ?. */
+function kUnit(value: number | null): string {
+	if (value === null) return "?";
+	if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+	return String(value);
+}
+
+/** B 区: usage data gathered from the run's usage events. */
+export interface RunUsage {
+	readonly in: number | null;
+	readonly out: number | null;
+	readonly cache: number | null;
+	readonly known: boolean;
+}
+
+/**
+ * B 区: the one-line status bar after a terminal, e.g.
+ *   [turn 3 · in 12.4k out 1.8k · cache 9.2k · ctx ~14%]
+ * All data comes from usage events (known:false renders ?); ctx is the
+ * approximate estimate passed in (chars/4 vs the window), marked with ~.
+ */
+export function renderStatusLine(turn: number, usage: RunUsage, ctxRatio: number): string {
+	const ctx = Number.isFinite(ctxRatio) ? `~${Math.round(ctxRatio * 100)}%` : "~?";
+	return `[turn ${turn} · in ${kUnit(usage.in)} out ${kUnit(usage.out)} · cache ${kUnit(usage.cache)} · ctx ${ctx}]`;
+}
+
 /** One-line summary of a session, for `kiso sessions`. */
 export function renderSessionLine(meta: { id: string; title: string; events: number; runs: number; updatedAt: number }): string {
 	const when = meta.updatedAt ? new Date(meta.updatedAt).toISOString().slice(0, 16) : "—";
