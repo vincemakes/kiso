@@ -567,7 +567,12 @@ function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<
 			pendingAsk = null;
 			resolve(CANCELLED); // the run is aborting — the question is dead
 		};
-		rl.question(dock.active ? "" : question, (answer) => {
+		// v2b: docked — the question reads at the input line, whose prompt
+		// is the SAME blue you> (interactivePrompt). readline tracks its
+		// cursor against its own prompt: an empty prompt starts at column
+		// 1 while the dock renders "you> " — the typed answer would land
+		// on the prompt and drift (probe-confirmed).
+		rl.question(dock.active ? interactivePrompt() : question, (answer) => {
 			if (settled) {
 				// The question was cancelled; this line is a NEW user turn.
 				rl.emit("line", answer);
@@ -683,7 +688,16 @@ async function consumeRun(
 		// Replayed history (recovery/resume — nobody typed) keeps the event
 		// render. Deterministic: exact content match with the consumed line,
 		// on a TTY (the only place an echo exists to hand over).
-		if (ev.type === "user_input" && liveInput !== null && liveInput.current === (typeof ev.content === "string" ? ev.content : "") && process.stdin.isTTY) {
+		// v2b: DOCKED — the echo lives in the input row (H), NOT the body;
+		// the body render is the ONLY visible copy of the sent line. The
+		// user's typed text must not vanish after Enter.
+		if (
+			ev.type === "user_input" &&
+			liveInput !== null &&
+			liveInput.current === (typeof ev.content === "string" ? ev.content : "") &&
+			process.stdin.isTTY &&
+			!dock.active
+		) {
 			continue;
 		}
 		const prevThinking = thinkingOpen;
