@@ -39,6 +39,8 @@ import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import type { PermissionPolicy } from "@vincemakes/kiso-runtime";
 import {
 	escapeTerminal,
+	foldResult,
+	foldThinking,
 	palette,
 	renderEvent,
 	renderSessionLine,
@@ -47,6 +49,7 @@ import {
 	renderToolSummary,
 	type RunUsage,
 } from "./render.js";
+import { Dock } from "./dock.js";
 
 const PERMISSION_POLICY: PermissionPolicy = {
 	rules: [
@@ -127,26 +130,48 @@ function interactivePrompt(): string {
 	return `${p.blue}you> ${p.reset}`;
 }
 
-/** v2a: the pi Loader minimal — one rotating blue glyph (◐◓◑◒, 200ms)
- *  between the request and the first event, cleared in place. Non-TTY or
- *  NO_COLOR → a no-op (pipes already carry zero ANSI). */
-function startSpinner(): () => void {
-	const p = palette();
-	if (p.blue === "" || !process.stdout.isTTY) return () => {};
+/** v2b: the bottom-anchored UI — docked only on a color TTY; pipes and
+ *  NO_COLOR stay the v2a line mode byte-for-byte. */
+const dock = new Dock();
+
+/** v2b: body output routes through the dock when docked (the cursor into
+ *  the scroll region, then back to the input line); otherwise a plain
+ *  write — pipes are byte-identical to v2a. */
+function bodyWrite(text: string): void {
+	if (dock.active) dock.writeBody(text);
+	else process.stdout.write(text);
+}
+
+function bodyLog(text: string): void {
+	bodyWrite(`${text}\n`);
+}
+
+/** v2b: the spinner merged into the STATUS BAR (the v2a standalone glyph
+ *  is gone) — docked only, 200ms rotation between the request and the
+ *  first event. */
+function startStatusSpinner(): () => void {
+	if (!dock.active) return () => {};
 	const GLYPHS = ["◐", "◓", "◑", "◒"];
 	let i = 0;
-	let stopped = false;
-	const timer = setInterval(() => {
-		process.stdout.write(`\r${p.blue}${GLYPHS[i++ % GLYPHS.length]}${p.reset}`);
-	}, 200);
-	timer.unref(); // a prompt exit must not be held by the glyph timer
+	const timer = setInterval(() => dock.setTail(GLYPHS[i++ % GLYPHS.length]!), 200);
+	timer.unref();
+	return () => dock.setTail("");
+}
+
+/** v2b: "running <tool> Ns" in the status bar while a tool executes. */
+function startRunningTimer(name: string): () => void {
+	if (!dock.active) return () => {};
+	const started = Date.now();
+	const timer = setInterval(() => dock.setTail(`running ${name} ${Math.round((Date.now() - started) / 1000)}s`), 1000);
+	timer.unref();
 	return () => {
-		if (stopped) return;
-		stopped = true;
 		clearInterval(timer);
-		process.stdout.write("\r   \r"); // clear the glyph in place
+		dock.setTail("");
 	};
 }
+
+/** The model name for the status bar — set by makeAgent. */
+let agentModel = "faux";
 
 /** E3: the `[N extensions: ...]` text — user-level names, then project-level
  *  ones marked with `project:`. Byte-identical to the historical text when
@@ -164,12 +189,12 @@ function bannerExtensionText(): string {
  *  the historical `[N extensions: ...]` standalone line (zero change). */
 function extensionsBanner(): void {
 	if (process.stdout.isTTY) {
-		console.log(startupBanner());
+		bodyLog(startupBanner());
 		return;
 	}
 	const text = bannerExtensionText();
 	if (text === "") return;
-	console.log(`${text}\n`);
+	bodyLog(`${text}\n`);
 }
 
 /**
@@ -202,13 +227,15 @@ async function resolveProjectTrust(): Promise<ProjectArtifacts | null> {
 		return null;
 	}
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	// v2b: docked — the trust question takes over the status position.
+	dock.bindInput(() => ({ line: rl.line, cursor: rl.cursor }), interactivePrompt());
 	try {
-		console.log(`[project .kiso] ${artifacts.root}`);
+		bodyLog(`[project .kiso] ${artifacts.root}`);
 		for (const f of artifacts.files) {
-			console.log(`  ${f.path}  (${f.digest.slice(0, 6)})`);
+			bodyLog(`  ${f.path}  (${f.digest.slice(0, 6)})`);
 		}
-		const answer = await new Promise<string>((resolve) => rl.question(`trust this project's .kiso? (y/n) `, resolve));
-		const granted = answer.trim().toLowerCase().startsWith("y");
+		const answer = await ask(rl, `trust this project's .kiso? (y/n) `);
+		const granted = answer !== CANCELLED && answer.trim().toLowerCase().startsWith("y");
 		recordTrust({ root: artifacts.root, digest: artifacts.digest, decision: granted ? "granted" : "refused" });
 		if (!granted) return null;
 		applyProjectMerges(artifacts);
@@ -419,6 +446,7 @@ async function makeAgent(fauxSkipTurns = 0) {
 		console.log("[faux mode — set ANTHROPIC_API_KEY or OPENAI_API_KEY for a real model]\n");
 		model = "faux";
 	}
+	agentModel = model; // v2b: the status bar shows it
 
 	const definition: AgentDefinition = {
 		model,
@@ -528,6 +556,9 @@ function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<
 		console.log(`[non-interactive — no human to ask: ${question}]`);
 		return Promise.resolve("");
 	}
+	// v2b: docked — the question takes over the status position, the
+	// answer lands at the input line.
+	if (dock.active) dock.showQuestion(question);
 	return new Promise((resolve) => {
 		let settled = false;
 		pendingAsk = () => {
@@ -536,7 +567,7 @@ function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<
 			pendingAsk = null;
 			resolve(CANCELLED); // the run is aborting — the question is dead
 		};
-		rl.question(question, (answer) => {
+		rl.question(dock.active ? "" : question, (answer) => {
 			if (settled) {
 				// The question was cancelled; this line is a NEW user turn.
 				rl.emit("line", answer);
@@ -544,6 +575,7 @@ function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<
 			}
 			settled = true;
 			pendingAsk = null;
+			if (dock.active) dock.clearQuestion();
 			resolve(answer);
 		});
 	});
@@ -616,18 +648,28 @@ async function consumeRun(
 	lastToolRef: { current: LastToolCall | null },
 	faux: boolean,
 	liveInput: { current: string | null } | null,
+	lastThinking: { current: string | null },
+	statusCb: ((usage: RunUsage, ctxRatio: number) => void) | null,
 ): Promise<import("@vincemakes/kiso-core").Event | undefined> {
 	let last: import("@vincemakes/kiso-core").Event | undefined;
 	// B 区: tool_call_end → (name, input) for the summary; tool_result →
 	// one summary line. Usage events feed the status line.
 	const pendingCalls = new Map<string, { name: string; input: Record<string, unknown> }>();
 	let usage: RunUsage = { in: null, out: null, cache: null, known: false };
-	// 自举 P1: a thinking block streams as ONE segment — consecutive deltas
-	// append inline; the segment closes with a newline at the next
-	// non-thinking event.
+	// v2b: thinking blocks buffer and fold to ONE dim line at the block's
+	// end (foldThinking); the FULL text goes to /think.
+	let thinkingBuf = "";
+	const flushThinking = (): void => {
+		if (thinkingBuf === "") return;
+		lastThinking.current = thinkingBuf;
+		bodyWrite(foldThinking(thinkingBuf));
+		thinkingBuf = "";
+	};
 	let thinkingOpen = false;
-	// v2a: liveness between the request and the first event.
-	const stopSpinner = startSpinner();
+	// v2b: liveness merged into the status bar (docked); a running timer
+	// shows "running <tool> Ns" during a tool execution.
+	const stopSpinner = startStatusSpinner();
+	let stopRunning: (() => void) | null = null;
 	let firstEvent = true;
 	try {
 	for await (const ev of run) {
@@ -646,35 +688,48 @@ async function consumeRun(
 		}
 		const prevThinking = thinkingOpen;
 		thinkingOpen = ev.type === "thinking";
-		if (prevThinking && !thinkingOpen) process.stdout.write("\n");
+		if (prevThinking && !thinkingOpen) flushThinking();
+		if (ev.type === "thinking") {
+			thinkingBuf += ev.text;
+			continue;
+		}
 		if (ev.type === "tool_call_end") {
 			pendingCalls.set(ev.callId, { name: ev.name, input: ev.input ?? {} });
 		}
+		if (ev.type === "tool_execution_started") {
+			stopRunning = startRunningTimer(ev.name);
+		}
 		if (ev.type === "tool_result") {
+			stopRunning?.();
+			stopRunning = null;
 			const call = pendingCalls.get(ev.callId);
 			pendingCalls.delete(ev.callId);
 			if (call !== undefined) {
 				const text = typeof ev.content === "string" ? ev.content : "";
 				lastToolRef.current = { name: call.name, input: call.input, result: { content: text, isError: ev.isError } };
-				console.log(renderToolSummary(call.name, call.input, { content: text, isError: ev.isError }));
+				bodyLog(renderToolSummary(call.name, call.input, { content: text, isError: ev.isError }));
 			}
 		}
 		if (ev.type === "usage") {
 			usage = { in: ev.inputTokens, out: ev.outputTokens, cache: ev.cacheRead, known: ev.known };
+			statusCb?.(usage, estimateCtxRatio(session));
 		}
 		if (ev.type === "uncertain_pending") {
 			// 裁决 #12 (ADR-0038): the ⚠ line is pure INFORMATION now — the
 			// approval chain guards retries, and the human question belongs
 			// only to the crash window's recovery flow (resolveUncertains).
 			// Old logs may still carry the event; replay shows the fact.
-			console.log(
+			bodyLog(
 				`\n⚠ ${escapeTerminal(ev.name)} FAILED — the side effect may have applied.\n  ${escapeTerminal(ev.error)}\n`,
 			);
 			continue;
 		}
 		const rendered = renderEvent(ev, prevThinking);
 		if (rendered.prompt) {
-			process.stdout.write(rendered.text);
+			// v2b (docked): the detail scrolls into the body; the question
+			// takes over the status position; the answer lands at the input
+			// line. Pipes keep the v2a inline render.
+			bodyWrite(rendered.text);
 			const decisionId = (ev as { decisionId: string }).decisionId;
 			const name = (ev as { name: string }).name;
 			// 八: the tool name is model text — escaped on every output path.
@@ -682,23 +737,26 @@ async function consumeRun(
 			if (answer === CANCELLED) {
 				// 十: a cancellation is a CONSERVATIVE denial, explicitly
 				// distinguished from the user typing "n".
-				console.log("[approval cancelled — treated as a denial]\n");
+				bodyLog("[approval cancelled — treated as a denial]\n");
 				await session.approve(decisionId, false);
 				continue;
 			}
 			await session.approve(decisionId, answer.trim().toLowerCase().startsWith("y"));
 		} else {
-			process.stdout.write(rendered.text);
+			bodyWrite(rendered.text);
 		}
 		if (ev.type === "terminal") {
+			statusCb?.(usage, estimateCtxRatio(session));
 			// v2a rhythm: the status line hugs the terminal (有什么显什么 —
 			// null = nothing to show), then EXACTLY one blank line before
 			// the next prompt.
-			process.stdout.write(renderTerminalGap(renderStatusLine(turnNo, usage, estimateCtxRatio(session), faux)));
+			bodyWrite(renderTerminalGap(renderStatusLine(turnNo, usage, estimateCtxRatio(session), faux)));
 		}
 	}
+	flushThinking();
 	} finally {
 		stopSpinner();
+		stopRunning?.();
 	}
 	return last;
 }
@@ -753,7 +811,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 			(async () => {
 				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
-					last = await consumeRun(session, run, rl, myTurn, lastToolRef, faux, liveInput);
+					last = await consumeRun(session, run, rl, myTurn, lastToolRef, faux, liveInput, lastThinking, statusCb);
 					currentRun = null;
 					// 八: a faux script that ran out of declared turns exits
 					// loudly with a non-zero status — never a silent status 0.
@@ -816,6 +874,15 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 	// v2a: the last line THIS process's readline consumed — the double-echo
 	// filter (see consumeRun). Only interactive chat sets it.
 	const liveInput: { current: string | null } = { current: null };
+	// v2b: the last complete thinking block, for /think.
+	const lastThinking: { current: string | null } = { current: null };
+	// v2b: the live status bar (docked only).
+	const statusCb = (u: RunUsage, ctx: number): void => {
+		if (!dock.active) return;
+		const st = renderStatusLine(turnNo, u, ctx, faux);
+		dock.setStatus(st === null ? `${session.id} · ${agentModel}` : `${session.id} · ${agentModel} · ${st}`);
+	};
+	dock.bindInput(() => ({ line: rl.line, cursor: rl.cursor }), interactivePrompt());
 	rl.on("line", (line) => {
 		const trimmed = line.trim();
 		if (trimmed === "/help") {
@@ -824,10 +891,26 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 			const p = palette();
 			const cmd = (name: string, desc: string): string => `${p.blue}${name}${p.reset}    ${desc}`;
 			chain = chain.then(async () => {
-				console.log(cmd("/help", "print this list of commands"));
-				console.log(cmd("/last", "show the most recent tool call's input and output"));
-				console.log(cmd("/status", "show session id, event count, and context estimate"));
-				console.log(cmd("exit", "leave the session"));
+				bodyLog(cmd("/help", "print this list of commands"));
+				bodyLog(cmd("/think", "show the last full thinking block"));
+				bodyLog(cmd("/last", "show the most recent tool call's input and output"));
+				bodyLog(cmd("/status", "show session id, event count, and context estimate"));
+				bodyLog(cmd("exit", "leave the session"));
+				rl.setPrompt(interactivePrompt());
+				rl.prompt();
+			});
+			return;
+		}
+		if (trimmed === "/think") {
+			// v2b: print the last COMPLETE thinking block — straight from the
+			// event stream, nothing stored separately (the /last pattern).
+			chain = chain.then(async () => {
+				const t = lastThinking.current;
+				if (t === null) {
+					bodyLog("[no thinking yet]");
+				} else {
+					bodyLog(escapeTerminal(t));
+				}
 				rl.setPrompt(interactivePrompt());
 				rl.prompt();
 			});
@@ -840,12 +923,12 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 			chain = chain.then(async () => {
 				const tool = lastToolRef.current;
 				if (tool === null) {
-					console.log("[no tool call yet]");
+					bodyLog("[no tool call yet]");
 				} else {
-					console.log(`--- ${tool.name} input ---`);
-					console.log(escapeTerminal(JSON.stringify(tool.input, null, 2)));
-					console.log(`--- ${tool.name} output${tool.result.isError ? " (error)" : ""} ---`);
-					console.log(escapeTerminal(tool.result.content));
+					bodyLog(`--- ${tool.name} input ---`);
+					bodyLog(escapeTerminal(JSON.stringify(tool.input, null, 2)));
+					bodyLog(`--- ${tool.name} output${tool.result.isError ? " (error)" : ""} ---`);
+					bodyLog(escapeTerminal(tool.result.content));
 				}
 				rl.setPrompt(interactivePrompt());
 				rl.prompt();
@@ -859,9 +942,9 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 			chain = chain.then(async () => {
 				const ctxRatio = estimateCtxRatio(session);
 				const ctx = Number.isFinite(ctxRatio) ? `~${Math.round(ctxRatio * 100)}%` : "~?";
-				console.log(`session ${session.id}`);
-				console.log(`${session.log.all.length} events`);
-				console.log(`ctx ${ctx}`);
+				bodyLog(`session ${session.id}`);
+				bodyLog(`${session.log.all.length} events`);
+				bodyLog(`ctx ${ctx}`);
 				rl.setPrompt(interactivePrompt());
 				rl.prompt();
 			});
@@ -888,7 +971,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 		const recoveryRun = session.resume();
 		currentRun = recoveryRun;
 		turnNo += 1;
-		const last = await consumeRun(session, recoveryRun, rl, turnNo, lastToolRef, faux, liveInput);
+		const last = await consumeRun(session, recoveryRun, rl, turnNo, lastToolRef, faux, liveInput, lastThinking, statusCb);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, rl);
 	}
@@ -922,11 +1005,19 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 	let cancelled = false;
 	let turnNo = 0;
 	const lastToolRef: { current: LastToolCall | null } = { current: null };
+	const lastThinking: { current: string | null } = { current: null };
+	// v2b: the live status bar (docked only).
+	const statusCb = (u: RunUsage, ctx: number): void => {
+		if (!dock.active) return;
+		const st = renderStatusLine(turnNo, u, ctx, faux);
+		dock.setStatus(st === null ? `${session.id} · ${agentModel}` : `${session.id} · ${agentModel} · ${st}`);
+	};
+	dock.bindInput(() => ({ line: rl.line, cursor: rl.cursor }), interactivePrompt());
 	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
 		currentRun = run;
 		try {
 			turnNo += 1;
-			const last = await consumeRun(session, run, rl, turnNo, lastToolRef, faux, null);
+			const last = await consumeRun(session, run, rl, turnNo, lastToolRef, faux, null, lastThinking, statusCb);
 			failOnFauxExhaustion(last, faux, rl);
 		} finally {
 			currentRun = null;
@@ -973,11 +1064,14 @@ async function main(): Promise<void> {
 		switch (command) {
 			case "chat": {
 				const id = arg ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+				// v2b: the dock (TTY only) wraps the whole session — the
+				// trust question, the banner, the body, and the input line.
+				dock.enter();
 				// E 区: a resumed session continues the script at its durable
 				// position — never restarts it (fauxSkip).
 				const agent = await makeAgent(fauxSkip(id));
 				const session = await agent.session({ id });
-				console.log(`session ${id}\n`);
+				bodyLog(`session ${id}\n`);
 				extensionsBanner();
 				await chat(session, faux);
 				break;
@@ -990,6 +1084,7 @@ async function main(): Promise<void> {
 				// argv[4] is the optional prompt; argv[3] is the session id
 				// (argv = [node, script, resume, id, prompt?]).
 				const prompt = process.argv[4];
+				dock.enter();
 				const agent = await makeAgent(fauxSkip(arg));
 				const session = await agent.session({ id: arg });
 				await resume(session, prompt, faux);
@@ -1020,9 +1115,10 @@ async function main(): Promise<void> {
 				// A 区: no subcommand (or any non-command first argument) IS
 				// chat — the first argument is the session id.
 				const id = command ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+				dock.enter();
 				const agent = await makeAgent(fauxSkip(id));
 				const session = await agent.session({ id });
-				console.log(`session ${id}\n`);
+				bodyLog(`session ${id}\n`);
 				extensionsBanner();
 				await chat(session, faux);
 				break;
@@ -1032,6 +1128,10 @@ async function main(): Promise<void> {
 		// E 组: every normal and abnormal exit releases the fds and writer
 		// locks — no lock file is left behind.
 		agent?.close();
+		// v2b: the dock tears down on EVERY exit path — CSI r resets the
+		// scroll region, the cursor lands at the input line, no broken
+		// terminal (kill -9 excepted; `reset` saves it).
+		dock.exit();
 		// 发现#8 (P1): extension dispose runs on the same exit path — a
 		// dispose failure prints one line and NEVER changes the exit code.
 		await disposeExtensions(loadedExtensions);

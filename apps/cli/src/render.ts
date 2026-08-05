@@ -66,6 +66,27 @@ export interface RenderResult {
  * consumer closes the segment with a newline at the next non-thinking
  * event.
  */
+/**
+ * v2b — one thinking BLOCK folds to ONE dim line: the first 100 chars, a
+ * " (… /think shows full)" marker when the block is longer. The consumer
+ * buffers the block's deltas, renders this at the block's end, and keeps
+ * the full text for /think. Pipes get the same fold — the content
+ * strategy is presentation-independent.
+ */
+export function foldThinking(block: string): string {
+	const p = palette();
+	const trimmed = escapeTerminal(block.trim());
+	const truncated = trimmed.length > 100;
+	return `${p.dim}…${trimmed.slice(0, 100)}${truncated ? " (… /think shows full)" : ""}${p.reset}\n`;
+}
+
+/** v2b — the [result] echo truncates at 160 chars + a /last hint. */
+export function foldResult(content: string): string {
+	const flat = content.replaceAll("\n", " ");
+	const truncated = flat.length > 160;
+	return `${escapeTerminal(flat.slice(0, 160))}${truncated ? " (/last for full)" : ""}`;
+}
+
 export function renderEvent(ev: Event, prevThinking = false): RenderResult {
 	const p = palette();
 	switch (ev.type) {
@@ -78,11 +99,12 @@ export function renderEvent(ev: Event, prevThinking = false): RenderResult {
 		case "text_end":
 			return { text: "\n", newline: true, prompt: false };
 		case "thinking":
-			// 自举 P1: ONE thinking block streams as ONE segment — deltas
-			// append inline; the … prefix marks the block start only.
+			// 自举 P1/v2b: the CONSUMER buffers each thinking block and folds
+			// it to ONE dim line (foldThinking); this render is the generic
+			// path for tests. The full block goes to /think.
 			return {
-				text: `${p.dim}${prevThinking ? "" : "…"}${escapeTerminal(ev.text.slice(0, 200))}${p.reset}`,
-				newline: false,
+				text: foldThinking(ev.text),
+				newline: true,
 				prompt: false,
 			};
 		case "tool_call_end":
@@ -101,7 +123,9 @@ export function renderEvent(ev: Event, prevThinking = false): RenderResult {
 		case "tool_result": {
 			const content = typeof ev.content === "string" ? ev.content : ev.content.map((b) => (b.type === "text" ? b.text : "(image)")).join("");
 			return {
-				text: `${p.dim}${ev.isError ? p.red : p.dim}  [result${ev.isError ? " ✗" : ""}] ${escapeTerminal(content.slice(0, 400).replaceAll("\n", " "))}${p.reset}\n`,
+				// v2b: the echo truncates at 160 chars + a /last hint — the
+				// full content stays in the event stream.
+				text: `${p.dim}${ev.isError ? p.red : p.dim}  [result${ev.isError ? " ✗" : ""}] ${foldResult(content)}${p.reset}\n`,
 				newline: true,
 				prompt: false,
 			};
