@@ -35,8 +35,8 @@ import {
 	renderToolSummary,
 } from "./render.js";
 
-/** The spinner glyphs, cycled by the heartbeat. */
-const SPINNER = ["◐", "◓", "◑", "◒"];
+/** The spinner glyphs, cycled by the heartbeat (v3 §05 — the working family). */
+const SPINNER = ["▖", "▘", "▝", "▗"];
 
 const TOOL_SUMMARY_MAX = 60; // the tool line's parameter summary, chars
 const FRAME_MS = 16; // state changes coalesce to ≥16ms frames
@@ -108,6 +108,13 @@ export class Body {
 		this.#active = opts.active();
 		if (this.#isActive()) {
 			this.#heartbeat = setInterval(() => {
+				// #14 (P1): the idle heartbeat PAINTS NOTHING. An idle body
+				// (every cell frozen) has no glyph/elapsed to advance — a
+				// beat that renders anyway re-paints the tail + the dock
+				// every 200ms with ZERO change (12s idle = 61 copies /
+				// ~47KB — the measured defect). Only an ACTIVE tail makes
+				// the beat matter: paint, then.
+				if (!this.#cells.some((c) => !c.done)) return;
 				this.#spinnerI = (this.#spinnerI + 1) % SPINNER.length;
 				this.#dirty = true; // the running cells' glyph/elapsed advance
 				this.#scheduleFrame();
@@ -385,7 +392,7 @@ export class Body {
 		while (nextFrozen < this.#cells.length && this.#cells[nextFrozen]!.done) nextFrozen += 1;
 		const tail = this.#cells.slice(nextFrozen);
 		const tailHeight = tail.reduce((n, c) => n + this.#cellHeight(c, W), 0);
-		const tailTop = Math.max(1, H - 2 - tailHeight);
+		const tailTop = Math.max(1, H - 3 - tailHeight); // v3 §03: 4 dock rows below
 		const writeRow = Math.max(1, tailTop - 1); // the frozen area's bottom row
 		let scrolled = 0;
 		for (let i = this.#nextFrozen; i < nextFrozen; i += 1) {
@@ -405,7 +412,7 @@ export class Body {
 		// scrolls) and the current area, draw the cells at the body's bottom.
 		out.push("\x1b[?2026h");
 		const clearFrom = Math.min(this.#oldTailTop === 0 ? tailTop : this.#oldTailTop - scrolled, tailTop);
-		for (let row = clearFrom; row <= H - 3; row += 1) {
+		for (let row = clearFrom; row <= H - 4; row += 1) {
 			out.push(`\x1b[${row};1H\x1b[0K`);
 		}
 		let row = tailTop;
@@ -430,12 +437,15 @@ export class Body {
 		const p = palette();
 		switch (cell.kind) {
 			case "user":
-				return [`${p.blue}you> ${escapeTerminal(cell.text)}${p.reset}`];
+				// v3 §02: the user message is a SGR BACKGROUND block, no
+				// prefix — every line carries the block's background
+				// (multi-line whole; resize-safe). Pipes stay plain.
+				return cell.text.split("\n").map((l) => `${p.bg}${escapeTerminal(l)}${p.reset}`);
 			case "thinking": {
 				const block = cell.text;
 				const trimmed = escapeTerminal(block.trim());
 				if (trimmed.length <= 100) return [`${p.dim}…${trimmed}${p.reset}`];
-				return [`${p.dim}…${trimmed.slice(0, 100)} (… ${block.length} chars · /think shows full)${p.reset}`];
+				return [`${p.dim}…${trimmed.slice(0, 100)} (${block.length} chars · /think)${p.reset}`];
 			}
 			case "tool": {
 				const name = escapeTerminal(cell.name);
