@@ -57,6 +57,19 @@ import { palette } from "./render.js";
 export const PROMPT = "▌you> "; // the kiso brick motif: one blue half-block, then you>
 export const PROMPT_WIDTH = displayWidth(PROMPT);
 
+/** v3 §04 — the slash-command menu's command table (English one-liners). */
+export interface MenuItem {
+	readonly name: string;
+	readonly desc: string;
+}
+export const MENU_ITEMS: readonly MenuItem[] = [
+	{ name: "/mode", desc: "switch the approval tier (manual/default/accept-edits/plan/bypass)" },
+	{ name: "/think", desc: "show the last full thinking block" },
+	{ name: "/last", desc: "show the most recent tool call's input and output" },
+	{ name: "/status", desc: "show session id, event count, and context estimate" },
+	{ name: "/help", desc: "print this list of commands" },
+];
+
 /**
  * The editor. Raw mode + bracketed paste (?2004h) on enter, restored on
  * exit. The input row is rendered by `onRender` (the CLI wires it to the
@@ -76,6 +89,8 @@ export class Editor {
 	#eotCb: (() => void) | null = null;
 	#escapeCb: (() => void) | null = null;
 	#onRender: () => void;
+	#menuOpen = false; // v3 §04: the slash-command menu
+	#menuSel = 0;
 	#pending = ""; // an incomplete ESC/CSI prefix across chunks
 	#decoder = new TextDecoder();
 	#entered = false;
@@ -130,6 +145,27 @@ export class Editor {
 		const prefix = this.#scroll > 0 ? "\x1b[2m…\x1b[0m" : "";
 		const col = (this.#scroll > 0 ? 1 : 0) + widthOf(this.#chars.slice(this.#scroll, this.#cursor));
 		return { line: `${prefix}${visible}`, cursor: col };
+	}
+
+	/** v3 §04: the menu's visible state for the dock — null when closed. */
+	menuState(): { items: readonly MenuItem[]; selected: number } | null {
+		if (!this.#menuOpen) return null;
+		return { items: this.#menuFiltered(), selected: this.#menuSel };
+	}
+
+	/** v3 §04: the filtered command list for the current buffer — open
+	 *  only while the line is "/" + something (a bare "/" waits). */
+	#menuFiltered(): MenuItem[] {
+		const line = this.line();
+		if (!line.startsWith("/") || line === "/") return [];
+		return MENU_ITEMS.filter((m) => m.name.startsWith(line));
+	}
+
+	#refreshMenu(): void {
+		const f = this.#menuFiltered();
+		this.#menuOpen = f.length > 0;
+		if (this.#menuSel >= f.length) this.#menuSel = 0;
+		this.#onRender();
 	}
 
 	/** One-shot question mode: the NEXT submit answers, not a turn. */
@@ -193,6 +229,12 @@ export class Editor {
 					i += m[0]!.length + 1;
 				} else if (rest.startsWith("O")) {
 					i += 3; // SS3 (function keys) — ignored
+				} else if (this.#menuOpen) {
+					// v3 §04: Esc closes the menu and clears the buffer.
+					this.#chars = [];
+					this.#cursor = 0;
+					this.#scroll = 0;
+					this.#refreshMenu();
 				} else {
 					this.#escapeCb?.();
 					i += 1;
@@ -232,6 +274,17 @@ export class Editor {
 				this.#reflow();
 				this.#onRender();
 				i += 1;
+			} else if (c === "\t" && this.#menuOpen) {
+				// v3 §04: Tab completes the buffer to the selected command.
+				const f = this.#menuFiltered();
+				const m = f[this.#menuSel];
+				if (m !== undefined) {
+					this.#chars = [...m.name].map((ch) => ch.codePointAt(0)!);
+					this.#cursor = this.#chars.length;
+					this.#reflow();
+					this.#refreshMenu();
+				}
+				i += 1;
 			} else if (c !== undefined && c < " ") {
 				i += 1; // other control — ignored
 			} else {
@@ -250,6 +303,13 @@ export class Editor {
 				this.#pasting = false;
 				this.#onRender();
 			}
+		} else if (final === "A" && this.#menuOpen) {
+			// v3 §04: ↑↓ move the menu selection, never the cursor.
+			this.#menuSel = Math.max(0, this.#menuSel - 1);
+			this.#onRender();
+		} else if (final === "B" && this.#menuOpen) {
+			this.#menuSel = Math.min(this.#menuFiltered().length - 1, this.#menuSel + 1);
+			this.#onRender();
 		} else if (final === "D") {
 			this.#move(-1);
 		} else if (final === "C") {
@@ -269,7 +329,7 @@ export class Editor {
 		this.#chars.splice(this.#cursor, 0, cp);
 		this.#cursor += 1;
 		this.#reflow();
-		if (!this.#pasting) this.#onRender();
+		if (!this.#pasting) this.#refreshMenu();
 	}
 
 	#backspace(): void {
@@ -277,14 +337,14 @@ export class Editor {
 		this.#chars.splice(this.#cursor - 1, 1);
 		this.#cursor -= 1;
 		this.#reflow();
-		if (!this.#pasting) this.#onRender();
+		if (!this.#pasting) this.#refreshMenu();
 	}
 
 	#delete(): void {
 		if (this.#cursor >= this.#chars.length) return;
 		this.#chars.splice(this.#cursor, 1);
 		this.#reflow();
-		if (!this.#pasting) this.#onRender();
+		if (!this.#pasting) this.#refreshMenu();
 	}
 
 	#move(delta: number): void {
@@ -316,10 +376,17 @@ export class Editor {
 	}
 
 	#submit(): void {
-		const line = String.fromCodePoint(...this.#chars);
+		let line = String.fromCodePoint(...this.#chars);
+		if (this.#menuOpen) {
+			// v3 §04: Enter submits the SELECTED command.
+			const m = this.#menuFiltered()[this.#menuSel];
+			if (m !== undefined) line = m.name;
+		}
 		this.#chars = [];
 		this.#cursor = 0;
 		this.#scroll = 0;
+		this.#menuOpen = false;
+		this.#menuSel = 0;
 		const cb = this.#questionCb;
 		this.#questionCb = null;
 		if (cb !== null) {

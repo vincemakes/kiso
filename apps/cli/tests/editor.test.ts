@@ -164,3 +164,56 @@ describe("the editor's editing surface", () => {
 		expect(escape).toBe(1);
 	});
 });
+
+describe("v3 §04: the slash-command menu", () => {
+	const make = () => {
+		const events: string[] = [];
+		const editor = new Editor(() => events.push("render"));
+		return { editor, events };
+	};
+
+	it("opens on a slash prefix, filters by the buffer, closes on a bare slash or a non-slash line", () => {
+		const { editor } = make();
+		expect(editor.menuState()).toBeNull();
+		editor.feed(enc("/"));
+		expect(editor.menuState()).toBeNull(); // a bare "/" waits
+		editor.feed(enc("m"));
+		const s1 = editor.menuState();
+		expect(s1?.items.map((m) => m.name)).toEqual(["/mode"]);
+		editor.feed(enc("ode"));
+		expect(editor.menuState()?.items.map((m) => m.name)).toEqual(["/mode"]);
+		editor.feed(enc("x")); // "/modex" matches nothing — closed
+		expect(editor.menuState()).toBeNull();
+	});
+
+	it("↑↓ stay within the filtered list (the command table has no shared prefix — the selection logic still bounds); Tab completes", () => {
+		const { editor } = make();
+		editor.feed(enc("/st"));
+		expect(editor.menuState()!.items.map((m) => m.name)).toEqual(["/status"]);
+		editor.feed(enc("\x1b[B")); // ↓ at the bottom — stays
+		expect(editor.menuState()!.selected).toBe(0);
+		editor.feed(enc("\x1b[A")); // ↑ at the top — stays
+		expect(editor.menuState()!.selected).toBe(0);
+		editor.feed(enc("\t")); // Tab completes to the selection
+		expect(editor.line()).toBe("/status");
+	});
+
+	it("Enter submits the SELECTED command; Esc closes the menu and clears the buffer", () => {
+		const { editor } = make();
+		const lines: string[] = [];
+		editor.onLine((l) => lines.push(l));
+		editor.feed(enc("/st"));
+		editor.feed(enc("\x1b[B")); // ↓ → /status
+		editor.feed(enc("\r")); // Enter — submits the selection, not the typed line
+		expect(lines).toEqual(["/status"]);
+		expect(editor.line()).toBe("");
+		expect(editor.menuState()).toBeNull();
+		// Esc: open the menu, then cancel it — the buffer clears, nothing submits.
+		editor.feed(enc("/mo"));
+		expect(editor.menuState()).not.toBeNull();
+		editor.feed(enc("\x1b"));
+		expect(editor.menuState()).toBeNull();
+		expect(editor.line()).toBe("");
+		expect(lines).toEqual(["/status"]);
+	});
+});

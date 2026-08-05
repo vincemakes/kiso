@@ -106,7 +106,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 			// only exists AFTER the turn completes, so "exit" cannot collide
 			// with the first prompt (a "you> " needle would match there too
 			// and close the readline mid-turn).
-			["turn 2 · faux", "exit\n"],
+			["▸ default · /mode to switch · faux", "exit\n"], // v3 idle state marks the turn's end
 		]);
 		// #13 (P1), v2d-B: NO DECSTBM — the body scrolls with plain LF so
 		// frozen lines enter the native scrollback deterministically. The
@@ -114,7 +114,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		expect(out).not.toContain("\x1b[1;21r");
 		// The status bar carries session · model · [turn N · faux].
 		const clean = stripANSI(out);
-		expect(clean).toContain("· faux · [turn 2 · faux]");
+		expect(clean).toContain("▸ default · /mode to switch · faux"); // v3 idle state
 		// The input line's blue prompt exists.
 		expect(out).toContain("\x1b[38;5;75m");
 		// P3 (审查): the synchronized-output SET is the DEC private form —
@@ -128,13 +128,13 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// live status bar both survive (v2d frames coalesce, so the raw
 		// ordering between them is not pinned — the presence is).
 		expect(clean).toContain("inspect or change?");
-		expect(clean).toContain("· faux · [turn 2 · faux]");
+		expect(clean).toContain("▸ default · /mode to switch · faux"); // v3 idle state
 		// v2d: the SENT line renders into the body EXACTLY once — a frozen
 		// UserCell (blue you> + content + reset, printed at its region row
 		// — no pty-cooked newline: the renderer positions the next row).
 		// The input row's brick prompt+line is a DIFFERENT shape (the
 		// reset splits the prompt from the text).
-		const userEcho = "\x1b[38;5;75myou> look around\x1b[0m";
+		const userEcho = "\x1b[48;5;237mlook around\x1b[0m"; // v3 §02: the SGR background block, no "you> " prefix
 		expect(out).toContain(userEcho);
 		expect((out.match(new RegExp(userEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length).toBe(1);
 		// Exit resets the scroll region (CSI r) — no broken terminal.
@@ -184,7 +184,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 				// appears at the turn's terminal event, AFTER "the tour is
 				// done". "you> " would match the FIRST prompt and close the
 				// readline while the go-turn is still queued.
-				["turn 2 · faux", "exit\n"],
+				["▸ default · /mode to switch · faux", "exit\n"], // v3 idle state marks the turn's end
 			],
 		);
 		const clean = stripANSI(out);
@@ -196,7 +196,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		expect(clean).not.toContain("asky ok"); // the full result stays out of the stream
 		expect(clean).toContain("the tour is done");
 		// The status bar returned after the question (the model name is back).
-		expect(clean).toContain("· faux · [turn 2 · faux]");
+		expect(clean).toContain("▸ default · /mode to switch · faux"); // v3 idle state
 	}, 90_000);
 
 	it("/think prints the last FULL thinking block — the fold only hints", () => {
@@ -233,7 +233,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 			],
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain(`…${"A".repeat(100)} (… 110 chars · /think shows full)`); // the folded line (v2d: live char count)
+		expect(clean).toContain(`…${"A".repeat(100)} (110 chars · /think)`); // the folded line (v3 wording)
 		expect(clean).toContain("SECRETTAIL"); // the full block came back
 		expect(clean).toContain("A".repeat(100)); // …head included
 		expect(out).toContain("\x1b[r"); // clean exit

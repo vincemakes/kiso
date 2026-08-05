@@ -77,17 +77,18 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
  *  does not fully match one of these is an interleaved (concatenated)
  *  line, which the single-writer rule makes impossible. */
 const CELL_LINE = [
-	/^you> .*$/, // the UserCell
+	/^\[.*extensions?:.*\]$/, // the banner extensions row (v3 info row)
 	/^….*$/, // the ThinkingCell fold
-	/^→ \S+ .*[⏸◐◓◑◒]?.*\d*s?$/, // the ToolCell pending/running
+	/^→ \S+ .*[⏸▖▘▝▗]?.*\d*s?$/, // the ToolCell pending/running (v3 glyph family)
 	/^→ \S+ .*⏸$/, // the approval badge
 	/^→ \S+ .*$/, // the ToolCell pending (no badge)
 	/^✓ \S+ \(.*, \d+\.\ds\)$/, // the ToolCell done
 	/^✗ \S+ \(.*, \d+\.\ds\)$/, // the ToolCell failed
-	/^done$/, // the terminal label
+	/^▞.*$/, // v3: the recap line ends the run
 	/^aborted \(.*\)$/, // the aborted terminal label
 	/^error: .*$/, // the error terminal label
-	/^\[turn \d+ · faux\]$/, // the status line
+	/^▸ .* · \/mode to switch.*$/, // v3 idle status line
+	/^▖ working \d+s.*$/, // v3 running status line
 	/^streaming text.*$/, // the TextCell body
 	/^session \S+$/, // the session header
 	/^\[faux mode.*$/, // the faux banner line
@@ -112,7 +113,14 @@ const lint = (raw: string): string[] => {
 	const bad: string[] = [];
 	const segments = raw.split(/\x1b\[[0-9;]*H/);
 	for (const seg of segments) {
-		const t = seg.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\r/g, "").trim();
+		// v3 §02: the user block is the SGR-background cell — its identity
+		// is the background code itself (there is no "you> " prefix left).
+		if (seg.includes("\x1b[48;5;237m")) continue;
+		const t = seg
+			.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
+			.replace(/\[[0-9;]*m/g, "") // any residual SGR fragment (the split can strand a "[2m")
+			.replace(/\r/g, "")
+			.trim();
 		if (t === "") continue;
 		if (CELL_LINE.some((re) => re.test(t))) continue;
 		bad.push(t);

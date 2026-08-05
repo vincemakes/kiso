@@ -4,14 +4,16 @@
  * implementation: zero dependencies, line-level ANSI, no differential
  * renderer.
  *
- * Layout (H = terminal height): rows 1..H-3 = the scroll region (the body
- * streams and scrolls here, never touching the bottom), row H-2 = the dim
- * dotted separator (╌), row H-1 = the live status bar (or a takeover
- * question), row H = the input line (the blue brick ▌you> + the v2c
- * editor's row — readline is gone from the TTY path). Bottom redraws are
- * wrapped in CSI 2026 (synchronized output) to avoid flicker — the pi
- * trick. The visual identity is the kiso brick motif — ▌ half-block,
- * dotted separator — deliberately NOT the CC rounded frame nor the pi
+ * Layout (H = terminal height): rows 1..H-4 = the scroll region (the body
+ * streams and scrolls here, never touching the bottom), row H-3 = the
+ * upper dim dotted separator (╌), row H-2 = the input line (the blue
+ * brick ▌you> + the v2c editor's row — readline is gone from the TTY
+ * path), row H-1 = the lower dotted separator, row H = the live status
+ * bar (v3 §03: idle "▸ <mode> · /mode to switch · …", running
+ * "▖ working Ns · …"; a takeover question replaces it). Bottom redraws
+ * are wrapped in CSI 2026 (synchronized output) to avoid flicker — the
+ * pi trick. The visual identity is the kiso brick motif — ▌ half-block,
+ * dotted separators — deliberately NOT the CC rounded frame nor the pi
  * editor (ADR-0039 Amendment 2).
  *
  * Pipes / NO_COLOR: the dock never activates; the v2a line mode stays
@@ -79,8 +81,8 @@ export class Dock {
 		}
 		const H = this.#height;
 		process.stdout.write("\x1b[r"); // reset the scroll region
-		for (let row = H - 2; row <= H; row += 1) {
-			process.stdout.write(`\x1b[${row};1H\x1b[0K`); // clear the three rows
+		for (let row = H - 3; row <= H; row += 1) {
+			process.stdout.write(`\x1b[${row};1H\x1b[0K`); // clear the four rows
 		}
 		process.stdout.write(`\x1b[${H};1H`);
 	}
@@ -91,6 +93,15 @@ export class Dock {
 		this.#height = process.stdout.rows ?? this.#height;
 		this.#width = process.stdout.columns ?? this.#width;
 		this.redraw();
+	}
+
+	#menuState: (() => { items: readonly import("./editor.js").MenuItem[]; selected: number } | null) | null = null;
+
+	/** v3 §04: bind the editor's slash-command menu state — the menu rows
+	 *  render ABOVE the chrome (over the body's bottom rows; the menu
+	 *  opens while the buffer is a "/" prefix, when no tail is live). */
+	bindMenu(state: () => { items: readonly import("./editor.js").MenuItem[]; selected: number } | null): void {
+		this.#menuState = state;
 	}
 
 	/** The input line's edit column — prompt width + cursor + 1. The
@@ -133,12 +144,11 @@ export class Dock {
 		this.redraw();
 	}
 
-	/** The bottom three rows, wrapped in CSI 2026 (synchronized output —
+	/** The bottom four rows, wrapped in CSI 2026 (synchronized output —
 	 *  the pi trick against flicker). The cursor ends at the input line's
-	 *  edit position. v2c: the separator is the dim dotted ╌ (a weaker
-	 *  presence than the solid ─), the status line is dim (blue accents
-	 *  inside come from the CLI's composition), the input row is the blue
-	 *  brick ▌you> + the editor's visible slice. */
+	 *  edit position. v3 §03: the upper ╌ row, the input row, the lower
+	 *  ╌ row, the status row — the status is dim (blue accents inside
+	 *  come from the CLI's composition). */
 	redraw(): void {
 		if (!this.#active) return;
 		const p = palette();
@@ -153,10 +163,26 @@ export class Dock {
 		// \x1b[?2026h/l, the pi source's exact form. Without it terminals
 		// silently ignore the mode and the anti-flicker never engages.
 		out.push("\x1b[?2026h"); // synchronized output ON (DEC 2026)
-		out.push(`\x1b[${H - 2};1H\x1b[0K${sep}`);
-		out.push(`\x1b[${H - 1};1H\x1b[0K${statusLine}`);
-		out.push(`\x1b[${H};1H\x1b[0K${this.#inputPrompt}${inp.line}`);
-		out.push(`\x1b[${H};${this.#inputCol()}H`); // back to the edit position
+		// v3 §04: the slash-command menu — above the chrome, one row per
+		// filtered command, the selection highlighted. Drawn first so the
+		// chrome rows repaint on top of any overlap.
+		const menu = this.#menuState?.();
+		if (menu !== null && menu !== undefined) {
+			for (let i = 0; i < menu.items.length; i += 1) {
+				const item = menu.items[i]!;
+				const row = H - 4 - (menu.items.length - 1 - i);
+				const text =
+					i === menu.selected
+						? `${p.blue}▸ ${item.name}${p.reset} ${item.desc}`
+						: `${p.dim}  ${item.name} ${item.desc}${p.reset}`;
+				out.push(`\x1b[${row};1H\x1b[0K${text}`);
+			}
+		}
+		out.push(`\x1b[${H - 3};1H\x1b[0K${sep}`);
+		out.push(`\x1b[${H - 2};1H\x1b[0K${this.#inputPrompt}${inp.line}`);
+		out.push(`\x1b[${H - 1};1H\x1b[0K${sep}`);
+		out.push(`\x1b[${H};1H\x1b[0K${statusLine}`);
+		out.push(`\x1b[${H - 2};${this.#inputCol()}H`); // back to the edit position
 		out.push("\x1b[?2026l"); // synchronized output OFF
 		process.stdout.write(out.join(""));
 	}

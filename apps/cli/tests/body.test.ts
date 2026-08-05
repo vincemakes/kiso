@@ -38,7 +38,7 @@ describe("v2d: cell → line forms", () => {
 		c.body.userLine("hello");
 		flush(c);
 		// The frozen print positions the row, clears, writes the blue line.
-		expect(c.out).toContain("\x1b[1;1H\x1b[0Kyou> hello"); // v2d-B: the body fills from the top; the LFs take over once full
+		expect(c.out).toContain("\x1b[1;1H\x1b[0Khello"); // v3 §02: the user block has no "you> " prefix (the bg only shows on a color TTY)
 	});
 
 	it("the ToolCell runs the lifecycle: pending → running (spinner + elapsed) → done ✓ (summary, Ns)", () => {
@@ -49,7 +49,7 @@ describe("v2d: cell → line forms", () => {
 		c.body.toolRunning("c1");
 		flush(c);
 		// The running line carries a spinner glyph and the elapsed seconds.
-		expect(c.out).toMatch(/→ list_dir \{"path":"\/"\} [◐◓◑◒] \d+s/);
+		expect(c.out).toMatch(/→ list_dir \{"path":"\/"\} [▖▘▝▗] \d+s/);
 		c.body.toolResult("c1", { content: "ok", isError: false });
 		flush(c);
 		expect(c.out).toMatch(/✓ list_dir \(\{"path":"\/"\}, \d+\.\ds\)/);
@@ -76,7 +76,7 @@ describe("v2d: cell → line forms", () => {
 		const c = make();
 		c.body.thinkingAppend("A".repeat(110));
 		flush(c);
-		expect(c.out).toContain(`…${"A".repeat(100)} (… 110 chars · /think shows full)`);
+		expect(c.out).toContain(`…${"A".repeat(100)} (110 chars · /think)`);
 	});
 
 	it("the terminal cell freezes as label + status + the rhythm gap blank", () => {
@@ -98,8 +98,8 @@ describe("v2d: freeze semantics — printed once, never touched again", () => {
 		const once = c.out;
 		c.body.toolStart("x", "c1", {});
 		flush(c); // a later render must NOT reprint the frozen user cells
-		expect((c.out.match(/you> hello/g) ?? []).length).toBe(1);
-		expect((c.out.match(/you> world/g) ?? []).length).toBe(1);
+		expect((c.out.match(/hello/g) ?? []).length).toBe(1);
+		expect((c.out.match(/world/g) ?? []).length).toBe(1);
 		expect(c.out.length).toBeGreaterThan(once.length); // the tail redrew
 	});
 
@@ -110,13 +110,13 @@ describe("v2d: freeze semantics — printed once, never touched again", () => {
 		c.body.toolRunning("c1");
 		flush(c);
 		// The live (running) form sits at the region bottom (row 21 = H-3).
-		expect(c.out).toContain("\x1b[21;1H\x1b[0K\x1b[21;1H→ list_dir {\"path\":\"/\"} ");
+		expect(c.out).toContain("\x1b[20;1H\x1b[0K\x1b[20;1H→ list_dir {\"path\":\"/\"} "); // v3 §03: 4 dock rows — the tail sits at H-4=20
 		c.body.toolResult("c1", { content: "ok", isError: false });
 		flush(c);
 		// The completed form FREEZES into the region at the frozen area's
 		// next row (row 2 — after the user cell) and is never touched again.
 		expect(c.out).toContain("\x1b[2;1H\x1b[0K✓ list_dir ({\"path\":\"/\"}, ");
 		// The user cell (frozen at row 1) was never reprinted.
-		expect((c.out.match(/you> go/g) ?? []).length).toBe(1);
+		expect((c.out.match(/go/g) ?? []).length).toBe(1);
 	});
 });

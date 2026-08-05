@@ -199,13 +199,13 @@ describe("自举 P1 + v2b: thinking blocks fold to ONE dim line (foldThinking)",
 		// the fold carries EXACTLY the block's ending newline
 		expect(folded.match(/\n/g)?.length).toBe(1);
 		// a short block carries no truncation marker
-		expect(folded).not.toContain("/think shows full");
+		expect(folded).not.toContain("/think shows full"); // v3: the hint is "(N chars · /think)"
 	});
 
 	it("a block over 100 chars truncates with the /think hint", () => {
 		const long = "x".repeat(101);
 		const folded = foldThinking(long);
-		expect(strip(folded)).toBe(`…${"x".repeat(100)} (… /think shows full)\n`);
+		expect(strip(folded)).toBe(`…${"x".repeat(100)} (101 chars · /think)\n`);
 	});
 
 	it("the first delta of a NEW block gets the … prefix again", () => {

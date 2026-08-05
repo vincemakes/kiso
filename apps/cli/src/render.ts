@@ -13,16 +13,18 @@ import { canonicalTargetPath } from "@vincemakes/kiso-tools-node";
  * errors; dim for metadata. NO_COLOR set, or a non-TTY output → every
  * code is empty, so pipes and CI carry ZERO ANSI (the existing byte-level
  * e2e assertions guard it). Everything not listed here is plain.
+ * v3: `bg` — the user-message block background (SGR 48, dark gray 237).
  */
 export interface Palette {
 	readonly blue: string;
 	readonly dim: string;
 	readonly red: string;
 	readonly green: string; // v2e: the diff additions — diff-only (NO_COLOR falls back to the + prefix)
+	readonly bg: string; // v3: the user-message block background
 	readonly reset: string;
 }
-export const COLOR_ON: Palette = { blue: "\x1b[38;5;75m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", reset: "\x1b[0m" };
-export const COLOR_OFF: Palette = { blue: "", dim: "", red: "", green: "", reset: "" };
+export const COLOR_ON: Palette = { blue: "\x1b[38;5;75m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", bg: "\x1b[48;5;237m", reset: "\x1b[0m" };
+export const COLOR_OFF: Palette = { blue: "", dim: "", red: "", green: "", bg: "", reset: "" };
 export function palette(): Palette {
 	return process.env.NO_COLOR === undefined && process.stdout.isTTY ? COLOR_ON : COLOR_OFF;
 }
@@ -78,7 +80,7 @@ export function foldThinking(block: string): string {
 	const p = palette();
 	const trimmed = escapeTerminal(block.trim());
 	const truncated = trimmed.length > 100;
-	return `${p.dim}…${trimmed.slice(0, 100)}${truncated ? " (… /think shows full)" : ""}${p.reset}\n`;
+	return `${p.dim}…${trimmed.slice(0, 100)}${truncated ? ` (${block.length} chars · /think)` : ""}${p.reset}\n`;
 }
 
 /** v2b — the [result] echo truncates at 160 chars + a /last hint. */
@@ -253,7 +255,7 @@ function exitCodeOf(result: { content: string; isError: boolean }): number {
 }
 
 /** k-units for the status line: 12345 → 12.3k, 800 → 800, null → ?. */
-function kUnit(value: number | null): string {
+export function kUnit(value: number | null): string {
 	if (value === null) return "?";
 	if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k`;
 	return String(value);
@@ -297,6 +299,76 @@ export function renderStatusLine(turn: number, usage: RunUsage, ctxRatio: number
  */
 export function renderTerminalGap(statusLine: string | null): string {
 	return `${statusLine === null ? "" : `${statusLine}\n`}\n`;
+}
+
+/**
+ * v3 §01 — the banner, block-split. The logo is three INDEPENDENT rows
+ * (TOP / the tagline / BOTTOM), then TWO info rows (version,
+ * extensions). Every row truncates at the terminal width with a " (+N)"
+ * marker (N = the hidden display width); a window narrower than 40
+ * columns skips the logo entirely — only the info rows. Pure.
+ */
+export const TAGLINE = "the coding agent that survives kill -9";
+const LOGO_ROWS = ["█ █ ▀█▀ █▀▀ █▀█", TAGLINE, "▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀"] as const;
+
+/** Display width of a row (1-cell ASCII; 2-cell CJK/wide). */
+function displayW(row: string): number {
+	let w = 0;
+	for (let i = 0; i < row.length; i += 1) {
+		const cp = row.codePointAt(i)!;
+		w += cp > 0xff ? 2 : 1;
+	}
+	return w;
+}
+
+/** v3 §01: truncate a row at `width`, marking the hidden span " (+N)". */
+export function truncateRow(row: string, width: number): string {
+	if (displayW(row) <= width) return row;
+	const cut = Math.max(0, width - 4);
+	let w = 0;
+	let i = 0;
+	for (; i < row.length; i += 1) {
+		const cw = row.codePointAt(i)! > 0xff ? 2 : 1;
+		if (w + cw > cut) break;
+		w += cw;
+	}
+	return `${row.slice(0, i)} (+${displayW(row) - w})`;
+}
+
+/** v3 §01: the banner lines for a width W — logo (skipped under 40
+ *  columns) + version + extensions. */
+export function bannerLines(W: number, version: string, extensionsText: string): string[] {
+	const rows: string[] = [];
+	if (W >= 40) for (const r of LOGO_ROWS) rows.push(truncateRow(r, W));
+	rows.push(truncateRow(`v${version}`, W));
+	if (extensionsText !== "") rows.push(truncateRow(extensionsText, W));
+	return rows;
+}
+
+/** v3 §02 — the recap line that ends a run, replacing the "done" label +
+ *  the old status line. All fields derive LOCALLY from the event stream
+ *  (zero tokens): wall seconds, tool counts, usage, cache hit %, ctx left.
+ */
+export interface RecapStats {
+	readonly seconds: number;
+	readonly tools: number;
+	readonly edits: number;
+	readonly usage: RunUsage;
+	readonly ctxLeftPct: number | null; // 0..100, null when unknowable
+}
+
+export function renderRecap(s: RecapStats): string {
+	const p = palette();
+	const parts = [`${s.seconds}s`, `${s.tools} tool${s.tools === 1 ? "" : "s"}${s.edits > 0 ? ` (${s.edits} edit${s.edits === 1 ? "" : "s"})` : ""}`];
+	if (s.usage.known) {
+		const seg = `${s.usage.in !== null ? `in ${kUnit(s.usage.in)}` : ""}${s.usage.in !== null && s.usage.out !== null ? " " : ""}${s.usage.out !== null ? `out ${kUnit(s.usage.out)}` : ""}`;
+		if (seg !== "") parts.push(seg);
+		if (s.usage.cache !== null && s.usage.in !== null && s.usage.in > 0) {
+			parts.push(`cache ${Math.round((s.usage.cache / s.usage.in) * 100)}%`);
+		}
+	}
+	if (s.ctxLeftPct !== null) parts.push(`ctx left ~${Math.round(s.ctxLeftPct)}%`);
+	return `${p.blue}▞${p.reset} ${parts.join(" · ")}\n`;
 }
 
 /** One-line summary of a session, for `kiso sessions`. */

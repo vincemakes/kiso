@@ -110,10 +110,12 @@ describe("TUI v2e (real PTY, 24×80) — the #13 scrollback gate", () => {
 		// beyond the initial fit... in v2d-B EVERY frozen line emits exactly
 		// one LF, so the floor is the full frozen-line count.
 		const lf = (out.match(/\n/g) ?? []).length;
-		// v2 geometry: the body fills from the top WITHOUT scrolling (the
-		// first ~21 rows write absolutely); every frozen line beyond the
-		// initial fit emits its REAL LF. Floor = total frozen lines - fit.
-		const frozenFloor = 25 * 5 - 21; // 104
+		// v3 geometry: each turn freezes THREE lines (the user block, the
+		// text cell, the recap — the recap replaced the old done label +
+		// status + gap); the body fills from the top WITHOUT scrolling (the
+		// first ~20 rows write absolutely — 4 dock rows now). Floor =
+		// total frozen lines - fit.
+		const frozenFloor = 25 * 3 - 20; // 55
 		expect(lf).toBeGreaterThanOrEqual(frozenFloor);
 		// 2. THE FREEZE SEMANTICS: the FIRST turn's content appears EXACTLY
 		// once — the old overwrite-in-place defect would show it repeated or

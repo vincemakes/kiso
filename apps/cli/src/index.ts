@@ -52,6 +52,10 @@ import {
 	renderTerminalGap,
 	renderToolSummary,
 	type RunUsage,
+	bannerLines,
+	kUnit,
+	renderRecap,
+	truncateRow,
 } from "./render.js";
 import { Dock } from "./dock.js";
 
@@ -104,17 +108,18 @@ try {
  *  merges into the third row on TTY and stays a standalone line off-TTY.
  *  v2a: the logo rows stay dim; the TAGLINE (row 2) is the blue identity
  *  accent. */
-const LOGO_TOP = "█ █ ▀█▀ █▀▀ █▀█\n█▀▄  █  ▀▀█ █ █   ";
-const TAGLINE = "the coding agent that survives kill -9";
-const LOGO_BOTTOM = "\n▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀";
 function startupBanner(): string {
-	// The historical `[N extensions: names]` text merges VERBATIM into the
-	// third row — the existing e2e assertions keep matching (天然不破). E3:
-	// project-level extensions are counted in N and listed after `project:`
-	// — `[3 extensions: safe-defaults · project: lint-rules, mcp]`.
+	// v3 §01: the banner is block-split — three independent logo rows
+	// (TOP / tagline / BOTTOM), then TWO info rows (version,
+	// extensions), each truncated at the window width; < 40 columns
+	// skips the logo. The historical `[N extensions: names]` text rides
+	// the extensions row verbatim (the e2e assertions keep matching).
 	const p = palette();
-	const names = bannerExtensionText();
-	return `${p.dim}${LOGO_TOP}${p.blue}${TAGLINE}${p.reset}${p.dim}${LOGO_BOTTOM}   v${VERSION}${names}${p.reset}\n`;
+	// A pty without a winsize reports columns = 0 (not undefined) — treat
+	// it as the default width, never as a 0-column truncation.
+	const W = process.stdout.columns ?? 0;
+	const rows = bannerLines(W > 0 ? W : 80, VERSION, bannerExtensionText().replace(/^ · /, ""));
+	return `${rows.map((r) => `${p.dim}${r}${p.reset}`).join("\n")}\n`;
 }
 
 /** v2a: the interactive prompt — blue, the identity accent. readline owns
@@ -254,6 +259,7 @@ function makeLineInput(): LineInput {
 		editor.enter();
 		const p = palette();
 		dock.bindInput(() => editor.dockState(), `${p.blue}${EDITOR_PROMPT}${p.reset}`);
+		dock.bindMenu(() => editor.menuState()); // v3 §04: the slash-command menu
 		return editorInput(editor);
 	}
 	return readlineInput(createInterface({ input: process.stdin, output: process.stdout }));
@@ -278,26 +284,19 @@ function bodyLog(text: string): void {
 /** v2b: the spinner merged into the STATUS BAR (the v2a standalone glyph
  *  is gone) — docked only, 200ms rotation between the request and the
  *  first event. */
-function startStatusSpinner(): () => void {
+function startStatusSpinner(onTick: (glyph: string) => void): () => void {
 	if (!dock.active) return () => {};
-	const GLYPHS = ["◐", "◓", "◑", "◒"];
+	// v3 §03/§05: the working glyph family ▖▘▝▗, 200ms rotation — the
+	// callback repaints the running status line with the new glyph.
+	const GLYPHS = ["▖", "▘", "▝", "▗"];
 	let i = 0;
-	const timer = setInterval(() => dock.setTail(GLYPHS[i++ % GLYPHS.length]!), 200);
+	const timer = setInterval(() => onTick(GLYPHS[i++ % GLYPHS.length]!), 200);
 	timer.unref();
-	return () => dock.setTail("");
+	return () => clearInterval(timer);
 }
 
-/** v2b: "running <tool> Ns" in the status bar while a tool executes. */
-function startRunningTimer(name: string): () => void {
-	if (!dock.active) return () => {};
-	const started = Date.now();
-	const timer = setInterval(() => dock.setTail(`running ${name} ${Math.round((Date.now() - started) / 1000)}s`), 1000);
-	timer.unref();
-	return () => {
-		clearInterval(timer);
-		dock.setTail("");
-	};
-}
+/** v3 §03: "running <tool> Ns" is gone — the running status line owns
+ *  the wall clock; the per-tool timer was the old tail mechanism. */
 
 /** The model name for the status bar — set by makeAgent. */
 let agentModel = "faux";
@@ -312,22 +311,6 @@ function bannerExtensionText(): string {
 	if (userExtensions.length > 0) parts.push(userExtensions.map((e) => e.name).join(", "));
 	if (projectExtensions.length > 0) parts.push(`project: ${projectExtensions.map((e) => e.name).join(", ")}`);
 	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
-}
-
-/** Modes: the status-bar indicator — the default tier shows nothing; the
- *  others show their blue name, the dangerous ones (plan/bypass) with the
- *  ⚠ prefix. */
-function modeStatusText(): string {
-	if (getMode() === "default") return "";
-	const p = palette();
-	const danger = getMode() === "plan" || getMode() === "bypass" ? "⚠ " : "";
-	return `${p.blue}${danger}${getMode()}${p.reset}`;
-}
-
-/** Modes: append the mode indicator to a composed status base. */
-function statusWithMode(base: string): string {
-	const mode = modeStatusText();
-	return mode === "" ? base : `${base} · ${mode}`;
 }
 
 /** E1: the startup banner line(s) — TTY: logo + merged extensions; off-TTY:
@@ -841,6 +824,11 @@ async function consumeRun(
 ): Promise<import("@vincemakes/kiso-core").Event | undefined> {
 	let last: import("@vincemakes/kiso-core").Event | undefined;
 	let usage: RunUsage = { in: null, out: null, cache: null, known: false };
+	// v3 §02: the recap line derives ENTIRELY from the local event stream
+	// (zero tokens) — wall seconds, tool/edit counts, usage, ctx left.
+	const turnStart = Date.now();
+	let toolCount = 0;
+	let editCount = 0;
 	try {
 	for await (const ev of run) {
 		last = ev;
@@ -868,6 +856,8 @@ async function consumeRun(
 				body.thinkingAppend(ev.text);
 				break;
 			case "tool_call_end":
+				toolCount += 1;
+				if (ev.name === "edit_file") editCount += 1;
 				body.toolStart(ev.name, ev.callId, ev.input ?? {});
 				break;
 			case "tool_execution_started":
@@ -920,14 +910,23 @@ async function consumeRun(
 				await session.approve(decisionId, answer.trim().toLowerCase().startsWith("y"));
 				break;
 			}
-			case "terminal":
+			case "terminal": {
+				// v3 §02: the run's recap line REPLACES the old "done" label
+				// + status line — one local line, derived from this run's
+				// events (zero tokens). The dock's status bar still paints.
 				statusCb?.(usage, estimateCtxRatio(session));
-				statusCb?.(usage, estimateCtxRatio(session));
-				// v2a rhythm: the honest label (\ndone\n — the completed
-				// marker), the status line hugging it, then EXACTLY one blank
-				// line before the next prompt.
-				body.terminal(renderEvent(ev).text, renderStatusLine(turnNo, usage, estimateCtxRatio(session), faux) ?? "");
+				const ratio = estimateCtxRatio(session);
+				bodyLog(
+					renderRecap({
+						seconds: Math.round((Date.now() - turnStart) / 1000),
+						tools: toolCount,
+						edits: editCount,
+						usage,
+						ctxLeftPct: Number.isFinite(ratio) ? (1 - ratio) * 100 : null,
+					}),
+				);
 				break;
+			}
 			default: {
 				// Events without a cell (stop, …) — the generic render, byte-
 				// preserved for the pipe path.
@@ -992,10 +991,20 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 			currentRun = run;
 			turnNo += 1;
 			const myTurn = turnNo;
+			// v3 §03: the running state owns the status bar — the glyph
+			// rotates every 200ms; the idle state returns after the run.
+			runStart = Date.now();
+			runUsage = { in: null, out: null, cache: null, known: false };
+			const stopSpinner = startStatusSpinner((g) => {
+				runGlyph = g;
+				paintRunning();
+			});
 			(async () => {
 				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
 					last = await consumeRun(session, run, input, myTurn, faux, liveInput, statusCb);
+					stopSpinner();
+					paintIdle();
 					currentRun = null;
 					// 八: a faux script that ran out of declared turns exits
 					// loudly with a non-zero status — never a silent status 0.
@@ -1078,16 +1087,31 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 	let queued = 0;
 	// v2b: the live status bar (docked only). Modes: /mode switches repaint
 	// it immediately through paintStatus (the last turn stats are kept).
-	let statusSt: string | null = null;
-	const statusCb = (u: RunUsage, ctx: number): void => {
+	// v3 §03: the status bar has TWO states. Idle: the mode is ALWAYS
+	// shown (default included) with the /mode hint. Running: the working
+	// glyph (▖▘▝▗ — the spinner drives it) + wall seconds + ↓ out tokens
+	// + the interrupt hint. ctx left is the live estimate everywhere.
+	let runUsage: RunUsage = { in: null, out: null, cache: null, known: false };
+	let runGlyph = "▖";
+	let runStart = Date.now();
+	const paintRunning = (): void => {
 		if (!dock.active) return;
-		statusSt = renderStatusLine(turnNo, u, ctx, faux);
-		paintStatus();
+		const ratio = estimateCtxRatio(session);
+		const pct = Number.isFinite(ratio) ? Math.round((1 - ratio) * 100) : null;
+		const out = runUsage.out !== null ? ` ↓ ${kUnit(runUsage.out)} tokens` : "";
+		dock.setStatus(
+			`${runGlyph} working ${Math.max(1, Math.round((Date.now() - runStart) / 1000))}s${out} · esc to interrupt · ctx left ~${pct}%`,
+		);
 	};
-	const paintStatus = (): void => {
+	const paintIdle = (): void => {
 		if (!dock.active) return;
-		const base = statusSt === null ? `${session.id} · ${agentModel}` : `${session.id} · ${agentModel} · ${statusSt}`;
-		dock.setStatus(`${statusWithMode(base)}${queued > 0 ? ` · +${queued} queued` : ""}`);
+		const ratio = estimateCtxRatio(session);
+		const pct = Number.isFinite(ratio) ? Math.round((1 - ratio) * 100) : null;
+		dock.setStatus(`▸ ${getMode()} · /mode to switch · ${agentModel} · ctx left ~${pct}%`);
+	};
+	const statusCb = (u: RunUsage, ctx: number): void => {
+		runUsage = u;
+		paintRunning();
 	};
 	// The ONE dispatcher: slash commands, exit, and turns. The recovery
 	// replay routes through it too — a queued "/last" must never become a
@@ -1172,7 +1196,7 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 				} else {
 					setMode(m);
 					body.notice(`mode → ${m}`);
-					paintStatus();
+					paintIdle();
 				}
 				input.prompt();
 			});
@@ -1241,20 +1265,40 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 	let currentRun: { abort: () => void } | null = null;
 	let cancelled = false;
 	let turnNo = 0;
-	// v2b: the live status bar (docked only).
+	// v3 §03: the two-state status bar (see chat — same shapes).
+	let runUsage: RunUsage = { in: null, out: null, cache: null, known: false };
+	let runGlyph = "▖";
+	let runStart = Date.now();
 	const statusCb = (u: RunUsage, ctx: number): void => {
+		runUsage = u;
 		if (!dock.active) return;
-		const st = renderStatusLine(turnNo, u, ctx, faux);
-		const base = st === null ? `${session.id} · ${agentModel}` : `${session.id} · ${agentModel} · ${st}`;
-		dock.setStatus(statusWithMode(base));
+		const pct = Number.isFinite(ctx) ? Math.round((1 - ctx) * 100) : null;
+		const out = runUsage.out !== null ? ` ↓ ${kUnit(runUsage.out)} tokens` : "";
+		dock.setStatus(
+			`${runGlyph} working ${Math.max(1, Math.round((Date.now() - runStart) / 1000))}s${out} · esc to interrupt · ctx left ~${pct}%`,
+		);
+	};
+	const paintIdle = (): void => {
+		if (!dock.active) return;
+		const ratio = estimateCtxRatio(session);
+		const pct = Number.isFinite(ratio) ? Math.round((1 - ratio) * 100) : null;
+		dock.setStatus(`▸ ${getMode()} · /mode to switch · ${agentModel} · ctx left ~${pct}%`);
 	};
 	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
 		currentRun = run;
+		runStart = Date.now();
+		runUsage = { in: null, out: null, cache: null, known: false };
+		const stopSpinner = startStatusSpinner((g) => {
+			runGlyph = g;
+			statusCb(runUsage, estimateCtxRatio(session));
+		});
 		try {
 			turnNo += 1;
 			const last = await consumeRun(session, run, input, turnNo, faux, null, statusCb);
 			failOnFauxExhaustion(last, faux, input);
 		} finally {
+			stopSpinner();
+			paintIdle();
 			currentRun = null;
 		}
 	};
@@ -1379,7 +1423,7 @@ async function main(): Promise<void> {
 			case "help": {
 				const p = palette();
 				console.log(
-					`${p.dim}${LOGO_TOP}${p.blue}${TAGLINE}${p.reset}${p.dim}${LOGO_BOTTOM}${p.reset}\n\n` +
+					`${p.dim}${bannerLines(80, VERSION, "").join("\n")}${p.reset}\n\n` +
 						"kiso — the coding agent that survives kill -9\n\n" +
 						"  kiso [sessionId]         interactive session (default command)\n" +
 						"  kiso chat [sessionId]    same as above\n" +

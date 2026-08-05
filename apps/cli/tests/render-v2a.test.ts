@@ -15,6 +15,7 @@ import {
 	renderStatusLine,
 	renderTerminalGap,
 	renderToolSummary,
+	renderRecap,
 } from "../src/render.js";
 
 const ORIG_TTY = process.stdout.isTTY;
@@ -142,5 +143,42 @@ describe("v2a: the rhythm — 渲染序列→期望字节", () => {
 			"\ndone\n" + // the terminal render
 			"[turn 1 · faux]\n\n"; // the status hugs done, then EXACTLY one blank
 		expect(bytes).toBe(expected);
+	});
+});
+
+describe("v3 §02: the recap line (all fields derived locally — zero tokens)", () => {
+	const usage = (u: Partial<import("../src/render.js").RunUsage> = {}): import("../src/render.js").RunUsage => ({
+		in: 8200,
+		out: 410,
+		cache: 7954,
+		known: true,
+		...u,
+	});
+
+	it("the full form: seconds · tools (edits) · in/out · cache % · ctx left %", () => {
+		expect(renderRecap({ seconds: 47, tools: 3, edits: 1, usage: usage(), ctxLeftPct: 96 })).toBe(
+			"▞ 47s · 3 tools (1 edit) · in 8.2k out 410 · cache 97% · ctx left ~96%\n",
+		);
+	});
+
+	it("singulars and omissions: 1 tool, no edits, unknown usage → the parts drop", () => {
+		expect(renderRecap({ seconds: 2, tools: 1, edits: 0, usage: usage({ known: false }), ctxLeftPct: null })).toBe(
+			"▞ 2s · 1 tool\n",
+		);
+	});
+
+	it("cache % is cache/in — in 0 or null cache drops it", () => {
+		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: 0 }), ctxLeftPct: null })).toBe(
+			"▞ 1s · 1 tool · in 0 out 410\n", // in 0 is honest — only the cache % drops (a 0 denominator)
+		);
+		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ cache: null }), ctxLeftPct: null })).toBe(
+			"▞ 1s · 1 tool · in 8.2k out 410\n",
+		);
+	});
+
+	it("k-units: 12345 → 12.3k, 800 → 800", () => {
+		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: 12345, out: 800 }), ctxLeftPct: null })).toBe(
+			"▞ 1s · 1 tool · in 12.3k out 800 · cache 64%\n", // 7954/12345
+		);
 	});
 });

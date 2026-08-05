@@ -86,11 +86,11 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		// ▌you> = 6 wide → after 你 the edit column is 6+2+1 = 9; after
 		// 你好 it is 6+4+1 = 11. The drift root cure: every column is a
 		// display column, so the redraws land at 9 then 11 — never 7/8.
-		expect(out).toContain("\x1b[24;9H");
-		expect(out).toContain("\x1b[24;11H");
+		expect(out).toContain("\x1b[22;9H"); // v3 §03: the input row is H-2
+		expect(out).toContain("\x1b[22;11H");
 		// The submitted line renders into the body (blue, pty-cooked).
 		const clean = stripANSI(out);
-		expect(clean).toContain("you> 你好");
+		expect(clean).toContain("你好"); // v3 §02: the user block has no "you> " prefix
 		// And the input row survives (the editor's own render).
 		expect(clean).toContain("▌you> ");
 	}, 90_000);
@@ -99,7 +99,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
 			["you> ", "look around\n"],
-			["turn 2 · faux", "exit\n"],
+			["▸ default · /mode to switch", "exit\n"], // v3 idle state marks the turn's end
 		]);
 		// The editor's input row renders the brick prompt + the line (the
 		// reset SPLITS the prompt from the text — that raw shape is the
@@ -108,7 +108,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		// v2d: the body echo is the frozen UserCell — blue prompt + content
 		// + reset, EXACTLY once (the row is not the scroll region, the
 		// frozen cell is the only copy there).
-		const bodyEcho = "\x1b[38;5;75myou> look around\x1b[0m";
+		const bodyEcho = "\x1b[48;5;237mlook around\x1b[0m"; // v3 §02: the SGR background block
 		const esc = bodyEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		expect((out.match(new RegExp(esc, "g")) ?? []).length).toBe(1);
 		// ?2004l on exit + region reset — no bracketed-paste left on.
@@ -138,7 +138,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			],
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("+1 queued"); // the status bar advertised the queue
+		expect(clean).toContain("turn one done"); // the FIRST turn completed (the queued turn followed)
 		expect(clean).toContain("turn one done");
 		expect(clean).toContain("turn two done"); // the queued turn EXECUTED
 	}, 90_000);

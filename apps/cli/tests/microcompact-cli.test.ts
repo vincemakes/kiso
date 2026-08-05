@@ -64,6 +64,6 @@ describe("C 区 cli: microcompact is on by default at half the model window", ()
 		const durable = readFileSync(join(home, "sessions", "k9.jsonl"), "utf8");
 		expect(durable).toContain('"type":"microcompacted"');
 		expect(durable).toContain('"kind":"completed"');
-		expect(out).toContain("[turn");
+		expect(out).toContain("▞"); // the recap line ends the resumed run
 	}, 90_000);
 });

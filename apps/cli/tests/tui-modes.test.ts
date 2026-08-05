@@ -63,7 +63,11 @@ def driver(cli, env, feeds, workdir, timeout, mode_flag, env_mode, session):
                 done = True
                 break
             full += data
-            if idx < len(feeds) and feeds[idx][0].encode() in full:
+            # The while (not if): several needles can sit in the SAME
+            # data batch (e.g. "[Permission denied]" and "plan turn done"
+            # on one line) — an if would consume one per read and stall
+            # forever once the child stops emitting.
+            while idx < len(feeds) and feeds[idx][0].encode() in full:
                 os.write(fd, feeds[idx][1].encode())
                 idx += 1
     try:
@@ -148,10 +152,10 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["you> ", "go\n"],
-				["⚠ plan", ""], // the status bar: the danger prefix for plan
 				["[Permission denied]", ""], // the write is denied, not asked
 				["plan mode: read-only", ""], // the guiding reason reaches the model
 				["plan turn done", ""],
+				["▸ plan · /mode to switch", ""], // v3 idle state — the mode shows after the run ends
 				["you> ", "/mode default\n"],
 				["mode → default", ""], // the notice cell — the switch is on the record
 				["you> ", "go\n"],
@@ -166,7 +170,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ modeFlag: "plan", session: "modes1" },
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("⚠ plan");
+		expect(clean).toContain("▸ plan · /mode to switch");
 		expect(clean).toContain("[Permission denied]");
 		expect(clean).toContain("plan mode: read-only");
 		expect(clean).toContain("mode → default");
@@ -175,7 +179,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		expect(clean).toContain("+ hello"); // the diff row (new file, all +)
 		expect(clean).toContain("✓ write_file");
 		expect(clean).toContain("+1 -0"); // the frozen ± stats
-		expect(clean).not.toContain("⚠ default"); // the danger prefix is gone after the switch
+		expect(clean).toContain("▸ default · /mode to switch"); // after /mode default the idle state shows the default tier
 
 		// The audit trail: r1 + w1 decided by the plan tier (decidedBy
 		// "mode:plan"); w2 by the HUMAN (no decidedBy).
@@ -234,7 +238,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["you> ", "go\n"],
-				["⚠ bypass", ""], // the danger prefix for bypass too
+				["▸ bypass", ""], // v3 idle state under bypass
 				["[Permission denied]", ""],
 				["refused by safe-test", ""], // the EXTENSION's deny — bypass can't override it
 				["shell done", "exit\n"],
@@ -243,7 +247,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ modeFlag: "bypass", session: "modes2" },
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("⚠ bypass");
+		expect(clean).toContain("▸ bypass · /mode to switch");
 		expect(clean).toContain("[Permission denied]");
 		expect(clean).toContain("refused by safe-test");
 		// decidedBy names the extension, not the mode.
