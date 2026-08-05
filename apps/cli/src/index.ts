@@ -1241,6 +1241,7 @@ async function main(): Promise<void> {
 		height: () => process.stdout.rows ?? 24,
 		width: () => process.stdout.columns ?? 80,
 		editCol: () => dock.editCol(),
+		onDock: () => dock.redraw(), // v2d-B: the freeze scrolls the dock up — re-pin it
 	});
 	try {
 		switch (command) {

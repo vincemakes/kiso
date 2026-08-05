@@ -46,7 +46,11 @@ export class Dock {
 		this.#inputPrompt = prompt;
 	}
 
-	/** Enter docked mode: DECSTBM the scroll region, draw the chrome. A
+	/** Enter docked mode: draw the chrome. #13 (P1): the DECSTBM scroll
+	 *  region is GONE — v2d-B (ADR-0040): the body uses plain LF scrolling
+	 *  so frozen lines enter the native scrollback deterministically
+	 *  (region-scrolled lines are terminal-dependent — some terminals drop
+	 *  them). The dock rows are redrawn by the body after every scroll. A
 	 *  TTY without a real window size (rows < 4) stays in the v2a line
 	 *  mode — the bottom three rows need room to exist. */
 	enter(): void {
@@ -57,7 +61,6 @@ export class Dock {
 		this.#width = process.stdout.columns ?? 80;
 		this.#bodyRow = 1;
 		this.#bodyCol = 1;
-		process.stdout.write(`\x1b[1;${this.#height - 3}r`); // scroll region: top .. H-3
 		this.redraw();
 		this.#resizeHandler = () => this.onResize();
 		process.stdout.on("resize", this.#resizeHandler);
@@ -82,45 +85,12 @@ export class Dock {
 		process.stdout.write(`\x1b[${H};1H`);
 	}
 
-	/** SIGWINCH: recompute the region, redraw the chrome. */
+	/** SIGWINCH: recompute the size, redraw the chrome. */
 	onResize(): void {
 		if (!this.#active) return;
 		this.#height = process.stdout.rows ?? this.#height;
 		this.#width = process.stdout.columns ?? this.#width;
-		process.stdout.write(`\x1b[1;${this.#height - 3}r`);
 		this.redraw();
-	}
-
-	/** Body output: position the cursor inside the scroll region at the
-	 *  body's tracked position, write, and hand the cursor back to the
-	 *  input line's EDIT position. The row/col tracking is approximate for
-	 *  width-wrapped and wide-char lines (documented) — the region clamp
-	 *  keeps the bottom rows safe regardless.
-	 *
-	 *  The edit-position return is a correctness requirement, not
-	 *  cosmetics: readline tracks its cursor internally and NEVER
-	 *  re-syncs after an external move — a body write that left the
-	 *  cursor at column 1 made the next keystroke overwrite the prompt
-	 *  (probe-confirmed; the dock's redraw self-repaired ~200ms later,
-	 *  which read the user as cursor drift). */
-	writeBody(text: string): void {
-		if (!this.#active) {
-			process.stdout.write(text);
-			return;
-		}
-		const row = Math.min(this.#bodyRow, this.#height - 3);
-		const col = this.#bodyCol > this.#width ? this.#width : this.#bodyCol;
-		process.stdout.write(`\x1b[${row};${col}H`);
-		process.stdout.write(text);
-		for (const ch of text) {
-			if (ch === "\n") {
-				this.#bodyRow += 1;
-				this.#bodyCol = 1;
-			} else {
-				this.#bodyCol += 1;
-			}
-		}
-		process.stdout.write(`\x1b[${this.#height};${this.#inputCol()}H`); // back to the edit position
 	}
 
 	/** The input line's edit column — prompt width + cursor + 1. The

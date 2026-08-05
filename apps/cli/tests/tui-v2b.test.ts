@@ -108,8 +108,10 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 			// and close the readline mid-turn).
 			["turn 2 · faux", "exit\n"],
 		]);
-		// The DECSTBM scroll region is applied at startup.
-		expect(out).toContain("\x1b[1;21r"); // rows 1..21 (24 - 3)
+		// #13 (P1), v2d-B: NO DECSTBM — the body scrolls with plain LF so
+		// frozen lines enter the native scrollback deterministically. The
+		// dock pins the bottom three rows by redrawing after every scroll.
+		expect(out).not.toContain("\x1b[1;21r");
 		// The status bar carries session · model · [turn N · faux].
 		const clean = stripANSI(out);
 		expect(clean).toContain("· faux · [turn 2 · faux]");
@@ -248,8 +250,11 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 			// land in the same poll and tear the dock down first).
 			{ winch: [30, 100], winchAt: "inspect or change", exitAfterWinch: 0.5 },
 		);
-		// The region is re-applied for the NEW height (30 - 3 = 27).
-		expect(out).toContain("\x1b[1;27r");
+		// #13 (P1), v2d-B: no scroll region to re-apply — the resize just
+		// recomputes the dock rows; the separator re-renders at the new
+		// width (100).
+		expect(out).not.toContain("\x1b[1;27r");
+		expect(out).toContain("\x1b[28;1H"); // the new H-2 = 30 - 2
 		expect(out).toContain("\x1b[r"); // and reset at exit
 	}, 90_000);
 });

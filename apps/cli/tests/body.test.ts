@@ -38,7 +38,7 @@ describe("v2d: cell → line forms", () => {
 		c.body.userLine("hello");
 		flush(c);
 		// The frozen print positions the row, clears, writes the blue line.
-		expect(c.out).toContain("\x1b[1;1H\x1b[0Kyou> hello"); // no-color env — palette empty
+		expect(c.out).toContain("\x1b[1;1H\x1b[0Kyou> hello"); // v2d-B: the body fills from the top; the LFs take over once full
 	});
 
 	it("the ToolCell runs the lifecycle: pending → running (spinner + elapsed) → done ✓ (summary, Ns)", () => {

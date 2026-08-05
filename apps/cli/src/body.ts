@@ -83,7 +83,7 @@ export class Body {
 	#opts: BodyOptions;
 	#cells: BodyCell[] = [];
 	#nextFrozen = 0; // index of the first not-yet-printed cell
-	#frozenRows = 0; // rows of the region occupied by printed cells
+	#frozenRows = 0; // the frozen area's rows filled WITHOUT scrolling (then the real LFs take over)
 	#oldTailTop = 0; // the tail's previous first row — for the clear pass
 	#frameTimer: NodeJS.Timeout | null = null;
 	#heartbeat: NodeJS.Timeout | null = null;
@@ -144,11 +144,13 @@ export class Body {
 	userLine(text: string): void {
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
+		this.#closeOpenText();
 			const p = palette();
 			this.#write(`${p.blue}you> ${escapeTerminal(text)}${p.reset}\n`);
 			return;
 		}
 		this.#closeOpenThinking();
+		this.#closeOpenText();
 		this.#cells.push({ kind: "user", text, done: true });
 		this.#mark();
 	}
@@ -184,6 +186,7 @@ export class Body {
 		this.#pendingCalls.set(callId, { name, input, result: { content: "", isError: false } });
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
+		this.#closeOpenText();
 			process.stdout.write(`→ ${escapeTerminal(name)}(${escapeTerminal(JSON.stringify(input).slice(0, 200))})\n`);
 			return;
 		}
@@ -257,6 +260,7 @@ export class Body {
 	textAppend(text: string): void {
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
+		this.#closeOpenText();
 			process.stdout.write(escapeTerminal(text));
 			return;
 		}
@@ -265,6 +269,7 @@ export class Body {
 			last.text += text;
 		} else {
 			this.#closeOpenThinking();
+		this.#closeOpenText();
 			this.#cells.push({ kind: "text", text, done: false });
 		}
 		this.#mark();
@@ -284,11 +289,13 @@ export class Body {
 	terminal(label: string, statusLine: string): void {
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
+		this.#closeOpenText();
 			// the v2c bytes: the terminal label (\ndone\n) + the status gap.
 			process.stdout.write(label + renderTerminalGap(statusLine));
 			return;
 		}
 		this.#closeOpenThinking();
+		this.#closeOpenText();
 		this.#cells.push({ kind: "terminal", label: label.trim(), line: statusLine, done: true });
 		this.#mark();
 	}
@@ -296,10 +303,12 @@ export class Body {
 	notice(text: string): void {
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
+		this.#closeOpenText();
 			process.stdout.write(`${text}\n`);
 			return;
 		}
 		this.#closeOpenThinking();
+		this.#closeOpenText();
 		this.#cells.push({ kind: "notice", text, done: true });
 		this.#mark();
 	}
@@ -309,10 +318,12 @@ export class Body {
 	raw(lines: string[]): void {
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
+		this.#closeOpenText();
 			for (const line of lines) process.stdout.write(`${line}\n`);
 			return;
 		}
 		this.#closeOpenThinking();
+		this.#closeOpenText();
 		this.#cells.push({ kind: "raw", lines, done: true });
 		this.#mark();
 	}
@@ -343,32 +354,44 @@ export class Body {
 		if (!this.#isActive()) return;
 		const H = this.#opts.height();
 		const W = this.#opts.width();
-		const regionBottom = H - 3;
-		if (regionBottom < 1) return;
+		if (H < 4) return;
 		const out: string[] = [];
-		out.push("\x1b[?2026h");
-		// 1. freeze completed cells — print their final form at the frozen
-		// area's next rows. The terminal scrolls the region when full.
-		while (this.#nextFrozen < this.#cells.length && this.#cells[this.#nextFrozen]!.done) {
-			const cell = this.#cells[this.#nextFrozen]!;
-			const lines = this.#cellLines(cell, W);
-			for (const line of lines) {
-				const row = Math.min(this.#frozenRows + 1, regionBottom);
-				out.push(`\x1b[${row};1H\x1b[0K${line}`);
-				if (this.#frozenRows + 1 > regionBottom) {
-					out.push("\n"); // the region scrolls — the frozen rows shift up
-				} else {
+		// #13 (P1), v2d-B: NO DECSTBM — overflow scrolls with a REAL LF at
+		// the screen's last row, so the frozen lines enter the terminal's
+		// NATIVE scrollback deterministically (region-scrolled lines are
+		// terminal-dependent; some terminals drop them — the measured v2d-A
+		// defect). The body fills from the top without scrolling; once full,
+		// every new frozen line scrolls the whole screen (\x1b[H;1H\n — the
+		// top line leaves into the scrollback) and lands at the body's
+		// bottom row, just above the active tail. The dock is redrawn after.
+		// The tail (the remaining ACTIVE cells) and its geometry — computed
+		// FIRST from the final nextFrozen, so the frozen cells are NOT in it
+		// (a stale tail would re-draw them — the double-render).
+		let nextFrozen = this.#nextFrozen;
+		while (nextFrozen < this.#cells.length && this.#cells[nextFrozen]!.done) nextFrozen += 1;
+		const tail = this.#cells.slice(nextFrozen);
+		const tailHeight = tail.reduce((n, c) => n + this.#cellHeight(c, W), 0);
+		const tailTop = Math.max(1, H - 2 - tailHeight);
+		const writeRow = Math.max(1, tailTop - 1); // the frozen area's bottom row
+		let scrolled = 0;
+		for (let i = this.#nextFrozen; i < nextFrozen; i += 1) {
+			for (const line of this.#cellLines(this.#cells[i]!, W)) {
+				if (this.#frozenRows < writeRow) {
 					this.#frozenRows += 1;
+					out.push(`\x1b[${this.#frozenRows};1H\x1b[0K${line}`);
+				} else {
+					out.push(`\x1b[${H};1H\n`); // the REAL LF — the whole screen scrolls
+					out.push(`\x1b[${writeRow};1H\x1b[0K${line}`);
+					scrolled += 1;
 				}
 			}
 			this.#nextFrozen += 1;
 		}
-		// 2. the active tail — clear its old area, draw the cells.
-		const tail = this.#cells.slice(this.#nextFrozen);
-		const tailHeight = tail.reduce((n, c) => n + this.#cellHeight(c, W), 0);
-		const tailTop = Math.max(1, regionBottom - tailHeight + 1);
-		const clearFrom = Math.min(this.#oldTailTop === 0 ? tailTop : this.#oldTailTop, tailTop);
-		for (let row = clearFrom; row <= regionBottom; row += 1) {
+		// 2. the active tail — clear its old area (shifted up by the freeze
+		// scrolls) and the current area, draw the cells at the body's bottom.
+		out.push("\x1b[?2026h");
+		const clearFrom = Math.min(this.#oldTailTop === 0 ? tailTop : this.#oldTailTop - scrolled, tailTop);
+		for (let row = clearFrom; row <= H - 3; row += 1) {
 			out.push(`\x1b[${row};1H\x1b[0K`);
 		}
 		let row = tailTop;
@@ -378,11 +401,13 @@ export class Body {
 				row += 1;
 			}
 		}
-		this.#oldTailTop = tailTop;
 		// 3. the cursor home — the input line's edit column.
 		out.push(`\x1b[${H};${this.#opts.editCol()}H`);
 		out.push("\x1b[?2026l");
 		this.#write(out.join(""));
+		// 4. the dock rows — the freeze scrolls shifted them; redraw (the
+		// dock's own redraw re-pins the cursor at the edit position).
+		this.#opts.onDock?.();
 	}
 
 	// ---- cell → lines ----
@@ -462,6 +487,16 @@ export class Body {
 	#toolCell(callId: string): BodyCell | null {
 		const i = this.#toolCells.get(callId);
 		return i === undefined ? null : (this.#cells[i] ?? null);
+	}
+
+	/** Close an open TEXT cell when a new cell starts — the runtime emits
+	 *  no text_end (it is an adapter-level event), so the stream's next
+	 *  cell is the close signal; without it the freeze blocks behind the
+	 *  open text and everything after it re-renders in the tail forever
+	 *  (the #13 flood reproduced the overwrite). */
+	#closeOpenText(): void {
+		const last = this.#cells[this.#cells.length - 1];
+		if (last !== undefined && last.kind === "text" && !last.done) last.done = true;
 	}
 
 	/** Close an open thinking cell when a new cell starts (the block's
