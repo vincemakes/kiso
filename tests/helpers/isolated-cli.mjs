@@ -57,3 +57,10 @@ export function runCli(args, env, options = {}) {
 		timeout: options.timeout ?? 30_000,
 	});
 }
+
+/** v2b: strip ANSI CSI sequences and CR from a PTY transcript — the dock's
+ *  cursor moves and the pty's \r\n cooking sit between content chunks, so
+ *  content assertions run on the stripped stream. */
+export function stripANSI(text) {
+	return text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\r/g, "");
+}

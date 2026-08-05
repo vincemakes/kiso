@@ -25,3 +25,6 @@ export function runCli(
 	env: NodeJS.ProcessEnv,
 	options?: { readonly input?: string; readonly timeout?: number; readonly cwd?: string },
 ): CliResult;
+
+/** v2b: strip ANSI CSI sequences and CR from a PTY transcript. */
+export function stripANSI(text: string): string;
