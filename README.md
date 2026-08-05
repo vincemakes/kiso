@@ -50,7 +50,7 @@ cli:
   apps/cli/src/render.ts 200
   apps/cli/src/dock.ts   109
   ...
-  total                   1544  / 1600
+  total                   1922  / 2100
   ✓ 479 lines of headroom remaining.
 ```
 
@@ -580,7 +580,7 @@ parameter and systemPrompt append surfaces — see
   startup failure on a bad file or duplicate name; extension tools merge
   into the registry (built-in collision = startup error), hooks compose
   AFTER the harness's own (既有先行), approvals enter the policy chain.
-- **cli** (1,544/1,600 lines) — the coding agent: bare `kiso` enters chat;
+- **cli** (1,922/2,100 lines) — the coding agent: bare `kiso` enters chat;
   the startup extension scan (`~/.kiso/extensions/*.mjs`, banner
   `[2 extensions: safe-defaults, foo]`);
   a system prompt (coding-agent discipline: read before edit, careful
@@ -617,7 +617,14 @@ parameter and systemPrompt append surfaces — see
   separator; the sent line renders into the body exactly once, a turn
   submitted while another runs queues with a live `+N queued` status, and
   Esc aborts. Known limitation: emoji ZWJ clusters are not width-perfect.
-  Pipes keep readline byte-for-byte. `resume` is the recovery flow (uncertain executions are
+  Pipes keep readline byte-for-byte. v2d (ADR-0040): the body becomes a
+  cell renderer — ONE writer owns the scroll region (event handlers only
+  mutate cells, so interleaving is impossible by construction); completed
+  cells freeze once, unfinished cells render in an active tail at the
+  region's bottom and redraw in place; a tool's life is ONE line
+  (`→ name 摘要` → ⏸ → running spinner + Ns → `✓ name (摘要, 1.2s)`),
+  the [result] no longer flows into the stream (`/last` holds it); the
+  pipe bytes stay byte-identical. `resume` is the recovery flow (uncertain executions are
   decided rerun/abandon — uncertainty belongs to the crash window alone,
   ADR-0038; a receipted failure is a clean failure whose result carries an
   honest partial-side-effect note, and a retry re-passes the approval
