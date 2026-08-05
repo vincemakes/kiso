@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { canonicalPath, renderEvent, renderSessionLine, renderStatusLine, renderToolSummary } from "../src/render.js";
+import { canonicalPath, foldThinking, renderEvent, renderSessionLine, renderStatusLine, renderToolSummary } from "../src/render.js";
 
 const NUL = "\u0000";
 const BS = "\u0008";
@@ -185,24 +185,33 @@ describe("B: tool summary lines and the status line", () => {
 	});
 });
 
-describe("自举 P1: thinking blocks stream as one segment", () => {
-	const think = (seq: number, text: string) => ({ seq, type: "thinking" as const, text });
+describe("自举 P1 + v2b: thinking blocks fold to ONE dim line (foldThinking)", () => {
+	const strip = (s: string) => s.replace(/\u001b\[[0-9;]*m/g, "");
 
-	it("consecutive deltas of ONE block append to the SAME segment, no newline", () => {
-		const first = renderEvent(think(0, "Let me look at "));
-		const second = renderEvent(think(1, "the file first."), true);
-		expect(first.newline).toBe(false);
-		expect(second.newline).toBe(false);
-		// The … prefix marks the block start only — the continuation appends.
-		expect(first.text).toContain("…Let me look at ");
-		expect(second.text).not.toContain("…");
-		// ANSI colors sit between the deltas — strip them for the text assertion.
-		const merged = (first.text + second.text).replace(/\u001b\[[0-9;]*m/g, "");
-		expect(merged).toContain("…Let me look at the file first.");
+	it("a block's deltas append to the SAME segment — the fold renders the WHOLE block on one line, no mid-block newline", () => {
+		// v2b: the CONSUMER buffers the block's deltas (flushThinking) and
+		// folds the accumulated text ONCE at the block's end — deltas never
+		// render between themselves, so the one-segment property survives.
+		const block = "Let me look at " + "the file first.";
+		const folded = foldThinking(block);
+		expect(folded).toContain("…Let me look at the file first.");
+		expect(strip(folded)).toBe(`…Let me look at the file first.\n`);
+		// the fold carries EXACTLY the block's ending newline
+		expect(folded.match(/\n/g)?.length).toBe(1);
+		// a short block carries no truncation marker
+		expect(folded).not.toContain("/think shows full");
+	});
+
+	it("a block over 100 chars truncates with the /think hint", () => {
+		const long = "x".repeat(101);
+		const folded = foldThinking(long);
+		expect(strip(folded)).toBe(`…${"x".repeat(100)} (… /think shows full)\n`);
 	});
 
 	it("the first delta of a NEW block gets the … prefix again", () => {
-		const after = renderEvent(think(2, "Now let me answer."), false);
-		expect(after.text).toContain("…Now let me answer.");
+		const after = foldThinking("Now let me answer.");
+		expect(after).toContain("…Now let me answer.");
+		// whitespace is trimmed before the fold
+		expect(foldThinking("  hi  ")).toContain("…hi");
 	});
 });

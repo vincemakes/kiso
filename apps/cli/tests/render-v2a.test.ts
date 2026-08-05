@@ -116,17 +116,13 @@ describe("v2a: the rhythm — 渲染序列→期望字节", () => {
 			{ seq: 5, type: "tool_result", callId: "c1", content: "…entries…", isError: false },
 			{ seq: 6, type: "terminal", outcome: { kind: "completed" } },
 		];
-		// The consumer's exact composition: the thinking block closes with a
-		// newline at the next non-thinking event; the summary line is printed
-		// per tool_result; the gap follows the terminal. (The interactive
-		// echo filter skips the turn's own user_input — the sequence starts
-		// at the model's first output.)
+		// The consumer's exact composition (v2b): the thinking block FOLDS to
+		// one dim line — the fold owns the block's newline; the summary line
+		// is printed per tool_result; the gap follows the terminal. (The
+		// interactive echo filter skips the turn's own user_input — the
+		// sequence starts at the model's first output.)
 		let bytes = "";
-		let thinkingOpen = false;
 		for (const ev of events) {
-			const prevThinking = thinkingOpen;
-			thinkingOpen = ev.type === "thinking";
-			if (prevThinking && !thinkingOpen) bytes += "\n";
 			if (ev.type === "tool_result") {
 				bytes += `${renderToolSummary("list_dir", { path: "notes" }, { content: "…entries…", isError: false })}\n`;
 			}
@@ -136,9 +132,8 @@ describe("v2a: the rhythm — 渲染序列→期望字节", () => {
 			}
 		}
 		const expected =
-			`${COLOR_ON.dim}…Let me look${COLOR_ON.reset}` + // thinking streams, no newline
-			"\n" + // the consumer closes the thinking segment
-			"I see the workspace." + // text continues the line
+			`${COLOR_ON.dim}…Let me look${COLOR_ON.reset}\n` + // the folded block, one line
+			"I see the workspace." + // text continues on the next line
 			"→ list_dir({})\n" +
 			`${COLOR_ON.dim}  running…${COLOR_ON.reset}\n` +
 			"  ok\n" +
