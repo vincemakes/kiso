@@ -108,13 +108,15 @@ export class Body {
 		this.#active = opts.active();
 		if (this.#isActive()) {
 			this.#heartbeat = setInterval(() => {
-				// #14 (P1): the idle heartbeat PAINTS NOTHING. An idle body
-				// (every cell frozen) has no glyph/elapsed to advance — a
-				// beat that renders anyway re-paints the tail + the dock
-				// every 200ms with ZERO change (12s idle = 61 copies /
-				// ~47KB — the measured defect). Only an ACTIVE tail makes
-				// the beat matter: paint, then.
-				if (!this.#cells.some((c) => !c.done)) return;
+				// #14/#15: the idle heartbeat PAINTS NOTHING unless an
+				// ANIMATION advances — only a RUNNING tool's glyph/elapsed
+				// changes between beats. The #14 fix skipped an all-frozen
+				// body; #15 widened the skip to ANY no-change body: a cell
+				// that stays unfinished without animating (an unclosed text
+				// or thinking block) would otherwise re-paint the tail AND
+				// the dock every 200ms with zero change — the short-session
+				// leak (measured: 51KB / 46 beats after the recap, LF=0).
+				if (!this.#cells.some((c) => c.kind === "tool" && c.state === "running")) return;
 				this.#spinnerI = (this.#spinnerI + 1) % SPINNER.length;
 				this.#dirty = true; // the running cells' glyph/elapsed advance
 				this.#scheduleFrame();

@@ -25,7 +25,7 @@ const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.j
 const PTY_DRIVER = `
 import pty, os, sys, time, select, signal, struct, fcntl, termios
 
-def driver(cli, env, workdir, idle_secs):
+def driver(cli, env, workdir, idle_secs, done_needle):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ.update(env)
@@ -52,7 +52,7 @@ def driver(cli, env, workdir, idle_secs):
         return False
     read_until(b"you> ", 20)
     os.write(fd, b"go\\n")
-    read_until(b"idle done", 30)
+    read_until(done_needle.encode(), 30)
     # The idle window: nothing fed, everything collected.
     end = time.time() + idle_secs
     idle = b""
@@ -108,7 +108,7 @@ describe("#14 idle probe (real PTY, 24×80) — the idle heartbeat paints NOTHIN
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(workdir)}, 8)
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(workdir)}, 8, "idle done")
 `;
 		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
 		const idle = Buffer.from(/IDLE=(.*)\n/.exec(out)![1]!, "hex").toString("binary");
@@ -121,6 +121,43 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(workdir)
 		//    nothing enters the native scrollback).
 		expect(idle.includes("\n")).toBe(false);
 		// ④ no dangling CSI — every ESC opens a complete sequence.
+		const esces = idle.match(/\x1b/g) ?? [];
+		const csis = idle.match(/\x1b\[/g) ?? [];
+		expect(esces.length).toBe(csis.length);
+	}, 90_000);
+});
+
+describe("#15 idle probe (short session) — the screen is NOT full, still silent", () => {
+	it("8s idle after ONE text-only round (no tool, no freeze): <2KB, once, no LF, no dangling CSI", () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-idle-short-"));
+		const workdir = join(dir, "work");
+		mkdirSync(workdir, { recursive: true });
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				// A bare text round — the screen never fills, nothing ever
+				// freezes; any unfinished-cell residue (or a re-paint while
+				// the body has live cells) must not beat.
+				{ events: [{ type: "text_delta", text: "short done" }, { type: "stop", reason: "end_turn" }] },
+			]),
+			"utf8",
+		);
+		const driverPath = join(dir, "driver.py");
+		writeFileSync(driverPath, PTY_DRIVER, "utf8");
+		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script });
+		const phase = `
+import sys
+sys.argv = [""]
+exec(open(${JSON.stringify(driverPath)}).read())
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(workdir)}, 8, "short done")
+`;
+		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
+		const idle = Buffer.from(/IDLE=(.*)\n/.exec(out)![1]!, "hex").toString("binary");
+		const full = Buffer.from(/FULL=(.*)\n/.exec(out)![1]!, "hex").toString("binary");
+		expect(idle.length).toBeLessThan(2048);
+		expect((full.match(/short done/g) ?? []).length).toBe(1);
+		expect(idle.includes("\n")).toBe(false);
 		const esces = idle.match(/\x1b/g) ?? [];
 		const csis = idle.match(/\x1b\[/g) ?? [];
 		expect(esces.length).toBe(csis.length);
