@@ -79,6 +79,17 @@ for a real long-session need.
   refused (replReady false) — the refusal only fires when currentRun is
   set.
 
-## 6. Post-publish notes
+## 6. Post-publish notes (0.1.20, eight packages)
 
-(to fill after 0.1.20 ships: registry, smoke, bare runs.)
+- Registry: all eight @vincemakes/kiso-* at 0.1.20 (direct curl, all
+  present immediately — no metadata lag this round).
+- Fresh-install smoke: tier D nested tarballs — "added 8 packages" (the
+  kiso-tui tarball nested before the CLI); smoke PASS across all five
+  consumer tiers on packed artifacts.
+- Three bare runs of the installed CLI (exit 0): ~ (real extensions load:
+  mcp/skills/subagent/safe-defaults), /, and an empty non-git dir.
+- Published-artifact idle probes: long + short scenarios, 8s idle each —
+  649B (<2KB), the round's response exactly once, zero LF, no dangling
+  CSI.
+- Published-artifact /compact smoke: seeded 7-round session +
+  `/compact` → "saved ~1,637 tokens", exit 0.
