@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-core",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "kiso(基礎) core — protocol, event log, loop, hooks, modes, permissions, compaction, delivery truth. The 2,000-line kernel at the bottom of the kiso framework.",
   "type": "module",
   "license": "MIT",
@@ -33,7 +33,7 @@
     "openai"
   ],
   "devDependencies": {
-    "@vincemakes/kiso-evals": "0.1.15",
+    "@vincemakes/kiso-evals": "0.1.16",
     "@types/node": "^26.1.2",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
