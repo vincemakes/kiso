@@ -73,3 +73,44 @@ rich render without touching the writer rule.
   the body unit tests (freeze-once, in-place redraw), the EMPTY pipe
   diff vs the v2c baseline, the plan record
   `docs/plans/2026-08-05-tui-v2d.md`.
+
+## Amendment 1 (2026-08-05): #13 (P1) — the DECSTBM region is GONE; the B route (plain LF scrolling)
+
+- **Status:** Accepted
+- **Date:** 2026-08-05
+
+**Context.** The v2d freeze printed overflow lines at the region's bottom
+row and relied on the DECSTBM region scrolling — but whether a
+region-scrolled line enters the terminal's scrollback is terminal-
+dependent (the v2d spec's ⚠): measured on a real terminal, LF=2 /
+CSI-S=0 / ESC-D=0 — the region scroll dropped the lines, the old content
+was overwritten in place, and the scrollback received zero bytes. The
+v2d core clause — frozen cells enter the scroll region with native
+scrolling preserved — was violated.
+
+**Decision.** The DECSTBM scroll region is removed entirely (the B
+route, the spec's preferred line). The body fills from the top without
+scrolling; once full, every new frozen line scrolls the whole screen
+with a REAL LF (`\x1b[H;1H\n`) and lands at the body's bottom row —
+plain full-screen scrolling, which every terminal pushes into the native
+scrollback deterministically. The dock rows are redrawn by the body
+after every scroll. The cost is slightly more redraw traffic; the
+correctness no longer depends on the terminal's region-scroll behavior.
+
+Two defects surfaced and fixed while reproducing: (1) the runtime emits
+no `text_end` (an adapter-level event) — the TextCell never closed, the
+freeze blocked behind it, and everything after re-rendered in the tail
+forever (the flood reproduced the overwrite ×38); the stream's next cell
+is now the close signal. (2) the tail was sliced before the freeze —
+a stale tail re-drew the frozen cells (×2); the tail is computed from
+the final nextFrozen.
+
+**Consequences.** The gate probe (tui-v2e) is a standing fixture: 3×
+viewport flood, LF ≥ 104, early content exactly once, no DECSTBM. The
+tmux scrollback (`capture-pane -S`) confirms the early content in the
+native scrollback; Terminal.app and iTerm2 run the same sequence. The
+pipe bytes stay byte-identical to the v2c baseline.
+
+## Evidence
+- `tui-v2e.test.ts` (the #13 gate), the body renderer's LF-scroll path,
+  the plan record §10.
