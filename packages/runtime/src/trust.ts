@@ -70,6 +70,21 @@ export async function projectArtifacts(cwd: string): Promise<ProjectArtifacts | 
 		throw err;
 	}
 	const root = await realpath(kisoDir);
+	// 发现#10 (P1): when cwd IS the KISO_HOME parent (the user's home
+	// directory), <cwd>/.kiso IS the user-level config directory itself —
+	// trusting your own configuration is nonsense, and the mcp merge would
+	// mirror the same file onto itself and loudly conflict. The home is
+	// never a project (KISO_HOME override respected the same way); a
+	// stale trust.jsonl grant for the home becomes inert — discovery
+	// returns null and never queries it.
+	const homeDir = process.env.KISO_HOME ?? join(homedir(), ".kiso");
+	let homeRoot: string | null = null;
+	try {
+		homeRoot = await realpath(homeDir);
+	} catch {
+		homeRoot = null; // no home dir yet — nothing to mirror
+	}
+	if (homeRoot !== null && root === homeRoot) return null;
 
 	const entries: { path: string; buf: Buffer }[] = [];
 	for (const f of await readdirOrEmpty(join(root, "extensions"))) {

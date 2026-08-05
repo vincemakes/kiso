@@ -108,6 +108,15 @@ describe("E3: projectArtifacts", () => {
 		expect(artifacts!.files.map((f) => f.path)).toEqual(["extensions/real.mjs"]);
 	});
 
+	it("⑩ the KISO_HOME dir itself is never a project — cwd = the KISO_HOME parent returns null (发现#10)", async () => {
+		const home = isolatedHome();
+		const kiso = join(home, ".kiso");
+		process.env.KISO_HOME = kiso; // the user-level config dir IS a .kiso dir
+		mkdirSync(join(kiso, "extensions"), { recursive: true });
+		writeFileSync(join(kiso, "extensions", "x.mjs"), "x\n", "utf8");
+		expect(await projectArtifacts(home)).toBeNull(); // <cwd>/.kiso === KISO_HOME — the home is never a project
+	});
+
 	it("the root is the realpath of the .kiso dir", async () => {
 		const cwd = makeProject({ "extensions/a.mjs": "x\n" });
 		const artifacts = await projectArtifacts(cwd);

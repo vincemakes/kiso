@@ -222,6 +222,21 @@ describe("E3: the project trust gate (project-trust)", () => {
 		expect(trustLines(dirs.home)).toHaveLength(1);
 	});
 
+	it("⑩ (发现#10) cwd = the KISO_HOME parent — the home's own .kiso is the user level: no self-trust question, no self-mirror collision, normal REPL", () => {
+		const { env, dirs } = isolatedEnv();
+		const kiso = join(dirs.home, ".kiso");
+		env.KISO_HOME = kiso; // the user-level config dir itself
+		mkdirSync(join(kiso, "extensions"), { recursive: true });
+		writeFileSync(join(kiso, "extensions", "x.mjs"), "export default { name: \"x\", tools: [] };\n", "utf8");
+		writeFileSync(join(kiso, "mcp.json"), JSON.stringify({ mcpServers: { fs: { command: "/bin/echo", args: ["a"] } } }), "utf8");
+		env.KISO_MCP_CONFIG = join(kiso, "mcp.json"); // user config = the same file — the self-mirror the real user hit
+		const cwd = dirs.home; // the KISO_HOME parent — the user's home-directory scenario
+		const out = ptyRun(env, cwd, [["you> ", "\n"]]);
+		expect(out).not.toContain("trust this project's"); // never asks to trust its own configuration
+		expect(out).not.toContain("exists in both"); // no self-mirror mcp collision
+		expect(out).toContain("you> "); // normal REPL entry
+	});
+
 	it("an mcp server name in both configs is a loud startup error", async () => {
 		const { env, dirs } = isolatedEnv();
 		const cwd = projectWorkdir({
