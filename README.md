@@ -50,7 +50,7 @@ cli:
   apps/cli/src/render.ts 200
   apps/cli/src/dock.ts   109
   ...
-  total                   1121  / 1600
+  total                   1544  / 1600
   ✓ 479 lines of headroom remaining.
 ```
 
@@ -580,7 +580,7 @@ parameter and systemPrompt append surfaces — see
   startup failure on a bad file or duplicate name; extension tools merge
   into the registry (built-in collision = startup error), hooks compose
   AFTER the harness's own (既有先行), approvals enter the policy chain.
-- **cli** (1,121/1,600 lines) — the coding agent: bare `kiso` enters chat;
+- **cli** (1,544/1,600 lines) — the coding agent: bare `kiso` enters chat;
   the startup extension scan (`~/.kiso/extensions/*.mjs`, banner
   `[2 extensions: safe-defaults, foo]`);
   a system prompt (coding-agent discipline: read before edit, careful
@@ -609,7 +609,15 @@ parameter and systemPrompt append surfaces — see
   re-applies the region, bottom redraws are wrapped in CSI 2026
   synchronized output, and every exit path resets the terminal in a
   finally (`\x1b[r`) — a `kill -9` can leave the bottom rows stuck, and
-  the terminal's `reset` command saves it. `resume` is the recovery flow (uncertain executions are
+  the terminal's `reset` command saves it. v2c: the TTY path draws its own input line (ADR-0039
+  Amendment 2) — a zero-dependency raw-mode editor (display-width cursor
+  math — CJK wide chars land on the right column, the hard acceptance —
+  bracketed paste, horizontal scrolling with a dim … marker) with the
+  kiso brick motif: a blue half-block ▌you> row and a dim dotted ╌
+  separator; the sent line renders into the body exactly once, a turn
+  submitted while another runs queues with a live `+N queued` status, and
+  Esc aborts. Known limitation: emoji ZWJ clusters are not width-perfect.
+  Pipes keep readline byte-for-byte. `resume` is the recovery flow (uncertain executions are
   decided rerun/abandon — uncertainty belongs to the crash window alone,
   ADR-0038; a receipted failure is a clean failure whose result carries an
   honest partial-side-effect note, and a retry re-passes the approval
