@@ -30,8 +30,14 @@ import { join } from "node:path";
 const MAX_DESCRIPTION = 200;
 const MAX_BODY = 32 * 1024;
 
+/** 发现#11: KISO_HOME is the ONE root — the default skills dir derives
+ *  from it (KISO_SKILLS_DIR still overrides). */
+function kisoHome() {
+	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
+}
+
 export default async function createSkillsExtension() {
-	const skillsDir = process.env.KISO_SKILLS_DIR ?? join(homedir(), ".kiso", "skills");
+	const skillsDir = process.env.KISO_SKILLS_DIR ?? join(kisoHome(), "skills");
 	const { index, broken } = loadIndex(skillsDir);
 	// 发现#8: no persistent resources — SKILL.md files are read per call;
 	// nothing is spawned or connected — no dispose is needed, explicitly.

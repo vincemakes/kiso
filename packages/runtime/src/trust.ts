@@ -77,7 +77,7 @@ export async function projectArtifacts(cwd: string): Promise<ProjectArtifacts | 
 	// never a project (KISO_HOME override respected the same way); a
 	// stale trust.jsonl grant for the home becomes inert — discovery
 	// returns null and never queries it.
-	const homeDir = process.env.KISO_HOME ?? join(homedir(), ".kiso");
+	const homeDir = kisoHome();
 	let homeRoot: string | null = null;
 	try {
 		homeRoot = await realpath(homeDir);
@@ -144,8 +144,13 @@ function isMissing(err: unknown): boolean {
 	return (err as NodeJS.ErrnoException).code === "ENOENT" || (err as NodeJS.ErrnoException).code === "ENOTDIR";
 }
 
+/** 发现#11: KISO_HOME is the ONE root — the store derives from it. */
+export function kisoHome(): string {
+	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
+}
+
 function trustFile(): string {
-	return join(process.env.KISO_HOME ?? join(homedir(), ".kiso"), "trust.jsonl");
+	return join(kisoHome(), "trust.jsonl");
 }
 
 /**
@@ -178,7 +183,7 @@ export function trustFor(root: string, digest: string): TrustRecord | null {
 /** Append one verdict. The same (root, digest) may be re-recorded — the
  *  newest record wins on read. */
 export function recordTrust(record: { root: string; digest: string; decision: TrustDecision; ts?: string }): void {
-	const home = process.env.KISO_HOME ?? join(homedir(), ".kiso");
+	const home = kisoHome();
 	mkdirSync(home, { recursive: true });
 	appendFileSync(
 		join(home, "trust.jsonl"),

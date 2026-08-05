@@ -45,6 +45,21 @@ const tool = (ext: KisoExtension, name: string): Tool => {
 };
 
 describe("③ MCP bridge: tools", () => {
+	it("⑪ KISO_HOME is the ONE root — the config defaults under it (发现#11)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-"));
+		const home = join(dir, "home"); // KISO_HOME IS the .kiso dir itself
+		mkdirSync(home, { recursive: true });
+		writeFileSync(join(home, "mcp.json"), JSON.stringify({ mcpServers: { fake: fakeConfig() } }), "utf8");
+		process.env.KISO_HOME = home;
+		delete process.env.KISO_MCP_CONFIG;
+		try {
+			const ext = await createMcpExtension();
+			expect(ext.tools?.some((t) => t.name === "mcp__fake__echo")).toBe(true);
+		} finally {
+			delete process.env.KISO_HOME;
+		}
+	}, 30_000);
+
 	it("① connects the fake server — mcp__fake__echo exists with its schema INTACT", async () => {
 		const ext = await extWith({ mcpServers: { fake: fakeConfig() } });
 		expect(ext.name).toBe("mcp");

@@ -60,13 +60,21 @@ const PERMISSION_POLICY: PermissionPolicy = {
 	default: "deny",
 };
 
+/** 发现#11: KISO_HOME is the ONE root — every default path derives from
+ *  it (sessions, trust, extensions, mcp config, skills). The dedicated
+ *  env vars (KISO_EXTENSIONS_DIR / KISO_MCP_CONFIG / KISO_SKILLS_DIR)
+ *  still override their own path; nothing hard-codes ~/.kiso anymore. */
+function kisoHome(): string {
+	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
+}
+
 function sessionsDir(): string {
-	return join(process.env.KISO_HOME ?? join(homedir(), ".kiso"), "sessions");
+	return join(kisoHome(), "sessions");
 }
 
 /** E1: the extension scan directory — KISO_EXTENSIONS_DIR overrides. */
 function extensionsDir(): string {
-	return process.env.KISO_EXTENSIONS_DIR ?? join(homedir(), ".kiso", "extensions");
+	return process.env.KISO_EXTENSIONS_DIR ?? join(kisoHome(), "extensions");
 }
 
 /** E1: the extensions loaded by makeAgent — their names feed the banner. */
@@ -245,7 +253,7 @@ function readMcpConfig(path: string): { mcpServers?: Record<string, unknown> } {
 /** Merge user-level + project-level mcp.json into one temp file and point
  *  KISO_MCP_CONFIG at it — the mcp extension reads it at load time. */
 function applyMcpMerge(root: string): void {
-	const userPath = process.env.KISO_MCP_CONFIG ?? join(homedir(), ".kiso", "mcp.json");
+	const userPath = process.env.KISO_MCP_CONFIG ?? join(kisoHome(), "mcp.json");
 	const user = readMcpConfig(userPath);
 	const project = readMcpConfig(join(root, "mcp.json"));
 	const userServers = user.mcpServers ?? {};
@@ -268,7 +276,7 @@ function applyMcpMerge(root: string): void {
  *  note) and point KISO_SKILLS_DIR at it — the skills extension's existing
  *  scan reads it at load time and per read_skill call. */
 function applySkillsMerge(root: string): void {
-	const userDir = process.env.KISO_SKILLS_DIR ?? join(homedir(), ".kiso", "skills");
+	const userDir = process.env.KISO_SKILLS_DIR ?? join(kisoHome(), "skills");
 	const projectDir = join(root, "skills");
 	const merged = mkdtempSync(join(tmpdir(), "kiso-skills-"));
 	mergedTempPaths.push(merged);

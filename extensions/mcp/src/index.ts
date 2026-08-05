@@ -54,8 +54,14 @@ interface ServerStatus {
 	readonly detail: string;
 }
 
+/** 发现#11: KISO_HOME is the ONE root — the default config path derives
+ *  from it (KISO_MCP_CONFIG still overrides). */
+function kisoHome(): string {
+	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
+}
+
 export default async function createMcpExtension(): Promise<KisoExtension> {
-	const config = readConfig(process.env.KISO_MCP_CONFIG ?? join(homedir(), ".kiso", "mcp.json"));
+	const config = readConfig(process.env.KISO_MCP_CONFIG ?? join(kisoHome(), "mcp.json"));
 	const status: ServerStatus[] = [];
 	const tools: Tool[] = [statusTool(status)];
 	const clients: Client[] = [];

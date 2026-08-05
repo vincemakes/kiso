@@ -99,6 +99,40 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 		expect(ext.systemPrompt?.append).toContain("file-link");
 	});
 
+	it("⑪ KISO_HOME is the ONE root — the skills dir defaults under it (发现#11)", async () => {
+		const dir = skillDir();
+		const home = join(dir, "home");
+		mkdirSync(join(home, "skills", "home-skill"), { recursive: true });
+		writeFileSync(join(home, "skills", "home-skill", "SKILL.md"), "---\ndescription: from home\n---\nbody\n", "utf8");
+		process.env.KISO_HOME = home;
+		delete process.env.KISO_SKILLS_DIR;
+		try {
+			const ext = await createSkillsExtension();
+			expect(ext.systemPrompt?.append).toContain("- home-skill: from home");
+		} finally {
+			delete process.env.KISO_HOME;
+		}
+	});
+
+	it("⑪ no KISO_HOME, no override — the default derives from HOME (发现#11)", async () => {
+		const dir = skillDir();
+		const fakeHome = join(dir, "fake-home");
+		mkdirSync(join(fakeHome, ".kiso", "skills", "home-skill"), { recursive: true });
+		writeFileSync(join(fakeHome, ".kiso", "skills", "home-skill", "SKILL.md"), "---\ndescription: from home\n---\nbody\n", "utf8");
+		const origHome = process.env.HOME;
+		process.env.HOME = fakeHome;
+		delete process.env.KISO_HOME;
+		delete process.env.KISO_SKILLS_DIR;
+		try {
+			const ext = await createSkillsExtension();
+			expect(ext.systemPrompt?.append).toContain("- home-skill: from home");
+		} finally {
+			delete process.env.KISO_HOME;
+			if (origHome === undefined) delete process.env.HOME;
+			else process.env.HOME = origHome;
+		}
+	});
+
 	it("⑥ a missing or empty skills dir is zero skills, never an error", async () => {
 		const missing = await extWith(join(tmpdir(), "kiso-no-skills-dir-xyz"));
 		expect(missing.name).toBe("skills");

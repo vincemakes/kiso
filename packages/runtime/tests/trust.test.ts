@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadProjectExtensions, projectArtifacts, recordTrust, trustFor } from "../src/index.js";
+import { kisoHome, loadProjectExtensions, projectArtifacts, recordTrust, trustFor } from "../src/index.js";
 
 const homes: string[] = [];
 function isolatedHome(): string {
@@ -106,6 +106,24 @@ describe("E3: projectArtifacts", () => {
 		});
 		const artifacts = await projectArtifacts(cwd);
 		expect(artifacts!.files.map((f) => f.path)).toEqual(["extensions/real.mjs"]);
+	});
+
+	it("⑪ kisoHome — KISO_HOME first, then HOME, never a hard-coded ~ (发现#11)", () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-trust-"));
+		const origHome = process.env.HOME;
+		const origKiso = process.env.KISO_HOME;
+		process.env.HOME = join(dir, "fake-home");
+		delete process.env.KISO_HOME;
+		try {
+			expect(kisoHome()).toBe(join(process.env.HOME!, ".kiso"));
+			process.env.KISO_HOME = join(dir, "custom");
+			expect(kisoHome()).toBe(join(dir, "custom"));
+		} finally {
+			if (origKiso === undefined) delete process.env.KISO_HOME;
+			else process.env.KISO_HOME = origKiso;
+			if (origHome === undefined) delete process.env.HOME;
+			else process.env.HOME = origHome;
+		}
 	});
 
 	it("⑩ the KISO_HOME dir itself is never a project — cwd = the KISO_HOME parent returns null (发现#10)", async () => {
