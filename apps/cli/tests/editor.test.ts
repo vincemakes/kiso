@@ -1,0 +1,166 @@
+/**
+ * v2c — the raw-mode editor, unit-tested through its pure surface: the
+ * eastAsianWidth table, display-width cursor math, the edit keys, the
+ * bracketed-paste unwrap, the question mode, and the startup submit queue.
+ */
+
+import { describe, expect, it } from "vitest";
+import { charWidth, displayWidth, Editor, PROMPT_WIDTH } from "../src/editor.js";
+
+const enc = (s: string) => new TextEncoder().encode(s);
+
+describe("eastAsianWidth (the drift root cure)", () => {
+	it("ASCII and narrow punctuation are 1", () => {
+		expect(charWidth("a".codePointAt(0)!)).toBe(1);
+		expect(charWidth(" ".codePointAt(0)!)).toBe(1);
+		expect(charWidth("▌".codePointAt(0)!)).toBe(1); // the brick half-block stays narrow
+		expect(charWidth("─".codePointAt(0)!)).toBe(1); // box drawing
+	});
+
+	it("CJK ideographs, kana, hangul, fullwidth forms, emoji are 2", () => {
+		expect(charWidth("你".codePointAt(0)!)).toBe(2); // CJK unified
+		expect(charWidth("あ".codePointAt(0)!)).toBe(2); // kana
+		expect(charWidth("한".codePointAt(0)!)).toBe(2); // hangul syllable
+		expect(charWidth("Ａ".codePointAt(0)!)).toBe(2); // fullwidth form
+		expect(charWidth("。".codePointAt(0)!)).toBe(2); // CJK punctuation
+		expect(charWidth("😀".codePointAt(0)!)).toBe(2); // emoji
+		expect(charWidth("\u{20000}".codePointAt(0)!)).toBe(2); // CJK ext B
+	});
+
+	it("displayWidth sums per code point — the cursor math base", () => {
+		expect(displayWidth("hello")).toBe(5);
+		expect(displayWidth("你好a")).toBe(5); // 2+2+1
+		expect(displayWidth("中文输入")).toBe(8);
+		expect(PROMPT_WIDTH).toBe(6); // ▌you> = 1+5
+	});
+});
+
+describe("the editor's editing surface", () => {
+	const make = () => {
+		const events: string[] = [];
+		const editor = new Editor(() => events.push("render"));
+		return { editor, events };
+	};
+
+	it("UTF-8 printable inserts; dockState reports the visible line and the WIDTH-based cursor column", () => {
+		const { editor } = make();
+		editor.feed(enc("ab"));
+		editor.feed(enc("你")); // wide — split across the buffer boundary too
+		expect(editor.line()).toBe("ab你");
+		const st = editor.dockState();
+		expect(st.line).toBe("ab你");
+		expect(st.cursor).toBe(4); // 1+1+2 — display columns, not chars
+	});
+
+	it("the cursor moves by display width — ←→, Home/End, Ctrl+A/E", () => {
+		const { editor } = make();
+		editor.feed(enc("你好"));
+		expect(editor.dockState().cursor).toBe(4);
+		editor.feed(enc("\x1b[D")); // ← over 好 (2 cells)
+		expect(editor.dockState().cursor).toBe(2);
+		editor.feed(enc("\x1b[C")); // →
+		expect(editor.dockState().cursor).toBe(4);
+		editor.feed(enc("\x1b[H")); // Home
+		expect(editor.dockState().cursor).toBe(0);
+		editor.feed(enc("\x1b[F")); // End
+		expect(editor.dockState().cursor).toBe(4);
+		editor.feed(enc("\x01")); // Ctrl+A
+		expect(editor.dockState().cursor).toBe(0);
+		editor.feed(enc("\x05")); // Ctrl+E
+		expect(editor.dockState().cursor).toBe(4);
+	});
+
+	it("Backspace/Delete edit at the code-point boundary, wide chars intact", () => {
+		const { editor } = make();
+		editor.feed(enc("你好ab"));
+		editor.feed(enc("\x7f")); // backspace over 'b'
+		expect(editor.line()).toBe("你好a");
+		editor.feed(enc("\x7f")); // backspace over 'a'
+		expect(editor.line()).toBe("你好");
+		editor.feed(enc("\x7f")); // backspace over 好 — ONE key removes the whole 2-cell char
+		expect(editor.line()).toBe("你");
+		editor.feed(enc("\x01")); // home
+		editor.feed(enc("\x1b[3~")); // Delete removes the first char
+		expect(editor.line()).toBe("");
+	});
+
+	it("Ctrl+U/K/W kill to start/end/word", () => {
+		const { editor } = make();
+		editor.feed(enc("hello world"));
+		editor.feed(enc("\x01")); // home
+		editor.feed(enc("\x1b[C".repeat(6))); // → past "hello " — cursor after the space
+		editor.feed(enc("\x15")); // Ctrl+U — kill the head
+		expect(editor.line()).toBe("world");
+		editor.feed(enc("\x0b")); // Ctrl+K — kill the tail (cursor is at 0 now)
+		expect(editor.line()).toBe("");
+		editor.feed(enc("hello world"));
+		editor.feed(enc("\x17")); // Ctrl+W at the end — kill the last word
+		expect(editor.line()).toBe("hello ");
+	});
+
+	it("bracketed paste unwraps; internal newlines become spaces (single-line editor)", () => {
+		const { editor } = make();
+		editor.feed(enc("\x1b[200~multi\nline\x1b[201~"));
+		expect(editor.line()).toBe("multi line");
+	});
+
+	it("a paste's Enter does NOT submit; a real Enter does", () => {
+		const { editor } = make();
+		const lines: string[] = [];
+		editor.onLine((l) => lines.push(l));
+		editor.feed(enc("\x1b[200~a\nb\x1b[201~"));
+		expect(lines).toEqual([]); // the paste's newline became a space
+		editor.feed(enc("\r"));
+		expect(lines).toEqual(["a b"]);
+		expect(editor.line()).toBe(""); // the buffer cleared on submit
+	});
+
+	it("question mode: the NEXT submit answers, not a turn", () => {
+		const { editor } = make();
+		const lines: string[] = [];
+		const answers: string[] = [];
+		editor.onLine((l) => lines.push(l));
+		editor.question("q?", (a) => answers.push(a));
+		editor.feed(enc("y\r"));
+		expect(answers).toEqual(["y"]);
+		expect(lines).toEqual([]);
+		editor.feed(enc("next\r"));
+		expect(lines).toEqual(["next"]); // the turn path resumed
+	});
+
+	it("a cancelled question keeps the buffer — its text becomes the next turn", () => {
+		const { editor } = make();
+		const lines: string[] = [];
+		editor.onLine((l) => lines.push(l));
+		editor.question("q?", () => {});
+		editor.feed(enc("typed answer"));
+		editor.cancelQuestion();
+		editor.feed(enc("\r"));
+		expect(lines).toEqual(["typed answer"]);
+	});
+
+	it("submits before onLine is wired are queued, never dropped (the startup race)", () => {
+		const { editor } = make();
+		editor.feed(enc("early\r"));
+		expect(editor.line()).toBe("");
+		const lines: string[] = [];
+		editor.onLine((l) => lines.push(l));
+		expect(lines).toEqual(["early"]);
+	});
+
+	it("Esc / Ctrl+C / Ctrl+D dispatch to the CLI handlers", () => {
+		const { editor } = make();
+		let sigint = 0;
+		let eot = 0;
+		let escape = 0;
+		editor.onSigint(() => sigint += 1);
+		editor.onEot(() => eot += 1);
+		editor.onEscape(() => escape += 1);
+		editor.feed(enc("\x1b"));
+		editor.feed(enc("\x03"));
+		editor.feed(enc("\x04"));
+		expect(sigint).toBe(1);
+		expect(eot).toBe(1);
+		expect(escape).toBe(1);
+	});
+});
