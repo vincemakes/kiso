@@ -1,19 +1,24 @@
 /**
- * v2b — the bottom-anchored UI (TTY + color only). Borrows pi-tui's IDEA —
- * a DECSTBM scroll region with a reserved bottom — without its
+ * v2b/v2c — the bottom-anchored UI (TTY + color only). Borrows pi-tui's
+ * IDEA — a DECSTBM scroll region with a reserved bottom — without its
  * implementation: zero dependencies, line-level ANSI, no differential
  * renderer.
  *
  * Layout (H = terminal height): rows 1..H-3 = the scroll region (the body
  * streams and scrolls here, never touching the bottom), row H-2 = the dim
- * separator, row H-1 = the live status bar (or a takeover question), row
- * H = the input line (blue you> + readline). Bottom redraws are wrapped in
- * CSI 2026 (synchronized output) to avoid flicker — the pi trick.
+ * dotted separator (╌), row H-1 = the live status bar (or a takeover
+ * question), row H = the input line (the blue brick ▌you> + the v2c
+ * editor's row — readline is gone from the TTY path). Bottom redraws are
+ * wrapped in CSI 2026 (synchronized output) to avoid flicker — the pi
+ * trick. The visual identity is the kiso brick motif — ▌ half-block,
+ * dotted separator — deliberately NOT the CC rounded frame nor the pi
+ * editor (ADR-0039 Amendment 2).
  *
  * Pipes / NO_COLOR: the dock never activates; the v2a line mode stays
  * byte-for-byte (the existing e2e assertions guard it).
  */
 
+import { displayWidth } from "./editor.js";
 import { palette } from "./render.js";
 
 export class Dock {
@@ -120,10 +125,12 @@ export class Dock {
 
 	/** The input line's edit column — prompt width + cursor + 1. The
 	 *  dock's redraw and the body's cursor return both end here, so the
-	 *  ACTUAL cursor always equals what readline tracks. */
+	 *  ACTUAL cursor always equals what the editor tracks. The width is
+	 *  DISPLAY width (the editor's cursor column is already width-based —
+	 *  the CJK drift root cause, editor.ts). */
 	#inputCol(): number {
 		const inp = this.#inputState();
-		const promptWidth = this.#inputPrompt.replace(/\x1b\[[0-9;]*m/g, "").length;
+		const promptWidth = displayWidth(this.#inputPrompt.replace(/\x1b\[[0-9;]*m/g, ""));
 		return promptWidth + inp.cursor + 1;
 	}
 
@@ -153,15 +160,18 @@ export class Dock {
 
 	/** The bottom three rows, wrapped in CSI 2026 (synchronized output —
 	 *  the pi trick against flicker). The cursor ends at the input line's
-	 *  edit position. */
+	 *  edit position. v2c: the separator is the dim dotted ╌ (a weaker
+	 *  presence than the solid ─), the status line is dim (blue accents
+	 *  inside come from the CLI's composition), the input row is the blue
+	 *  brick ▌you> + the editor's visible slice. */
 	redraw(): void {
 		if (!this.#active) return;
 		const p = palette();
 		const H = this.#height;
 		const W = this.#width;
-		const sep = `${p.dim}${"─".repeat(W)}${p.reset}`;
+		const sep = `${p.dim}${"╌".repeat(W)}${p.reset}`;
 		const status = `${this.#status}${this.#tail === "" ? "" : ` · ${this.#tail}`}`;
-		const statusLine = this.#question ?? status;
+		const statusLine = this.#question ?? `${p.dim}${status}${p.reset}`;
 		const inp = this.#inputState();
 		const out: string[] = [];
 		// P3 (审查): the DEC private-mode SET/RESET needs the "?" prefix —
