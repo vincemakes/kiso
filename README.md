@@ -576,7 +576,7 @@ parameter and systemPrompt append surfaces — see
   startup failure on a bad file or duplicate name; extension tools merge
   into the registry (built-in collision = startup error), hooks compose
   AFTER the harness's own (既有先行), approvals enter the policy chain.
-- **cli** (713/1,200 lines) — the coding agent: bare `kiso` enters chat;
+- **cli** (930/1,200 lines) — the coding agent: bare `kiso` enters chat;
   the startup extension scan (`~/.kiso/extensions/*.mjs`, banner
   `[2 extensions: safe-defaults, foo]`);
   a system prompt (coding-agent discipline: read before edit, careful
@@ -584,9 +584,15 @@ parameter and systemPrompt append surfaces — see
   truncated at 8KB; one-line tool summaries per call
   (`✓ edit src/foo.ts (+12 -3)` / `✗ shell npm test (exit 1)`), the status
   line (`[turn 3 · in 12.4k out 1.8k · cache 9.2k · ctx ~14%]` — usage
-  events only, `?` when unknown, `~` marks the estimate), and `/last` to
-  print the most recent tool call's full input/output straight from the
-  event stream. `resume` is the recovery flow (uncertain executions are
+  events only, unknown fields omitted entirely, faux mode shows
+  `[turn N · faux]`), and `/last` to print the most recent tool call's
+  full input/output straight from the event stream. v2a: the color
+  identity is ONE blue accent (ANSI 256 color 75 — the you> prompt, the
+  banner tagline, ✓ marks, command names), red for errors, dim for
+  metadata — everything else plain; `NO_COLOR` or a pipe disables it all
+  (pipes carry zero ANSI); typed input is echoed by readline itself, never
+  rendered twice; a spinner glyph shows liveness between the request and
+  the first delta. `resume` is the recovery flow (uncertain executions are
   decided rerun/abandon, approvals pause and ask); coding tools are bound
   to the workspace root (absolute paths, `..`, and symlink escapes are
   refused); the approval prompt shows the full shell command and full
@@ -604,7 +610,7 @@ file ends with a newline)
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
-→ demo start-and-exit gate. 445 tests green. 17 ADRs (index: `adrs/README.md`).
+→ demo start-and-exit gate. 461 tests green. 17 ADRs (index: `adrs/README.md`).
 6 incident fixtures running on the real runtime.
 
 ## Why another one
