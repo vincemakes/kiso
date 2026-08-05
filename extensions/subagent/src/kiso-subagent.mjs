@@ -201,6 +201,13 @@ function runProcess(childId, bin, cwd, policyDir, task, timeout, signal) {
 			...process.env,
 			KISO_SUBAGENT_DEPTH: String(depth + 1),
 			KISO_EXTENSIONS_DIR: policyDir,
+			// Modes: a headless child has no human — the mode tiers'
+			// ask would stall it. Bypass is the neutral tier here; the
+			// role policy dir (allow/deny only — a child must never
+			// see an ask) stays the child's ONLY gate, exactly as
+			// before the mode tiers existed (deny>ask>allow honors its
+			// denials; the mode's all-allow never overrides them).
+			KISO_MODE: "bypass",
 		},
 		detached: true,
 		stdio: ["pipe", "pipe", "inherit"],

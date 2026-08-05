@@ -20,6 +20,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync
 import { createInterface } from "node:readline";
 import { Body } from "./body.js";
 import { editFileDiff, writeFileDiff, type DiffResult } from "./diff.js";
+import { MODES, getMode, modeExtensions, modeFromEnv, modeSystemPrompt, setMode, type Mode } from "./mode.js";
 import { Editor, PROMPT as EDITOR_PROMPT } from "./editor.js";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -54,17 +55,7 @@ import {
 } from "./render.js";
 import { Dock } from "./dock.js";
 
-const PERMISSION_POLICY: PermissionPolicy = {
-	rules: [
-		{ tool: "read_file", action: "allow" },
-		{ tool: "list_dir", action: "allow" },
-		{ tool: "search_text", action: "allow" },
-		{ tool: "write_file", action: "defer" },
-		{ tool: "edit_file", action: "defer" },
-		{ tool: "shell", action: "defer" },
-	],
-	default: "deny",
-};
+
 
 /** 发现#11: KISO_HOME is the ONE root — every default path derives from
  *  it (sessions, trust, extensions, mcp config, skills). The dedicated
@@ -321,6 +312,22 @@ function bannerExtensionText(): string {
 	if (userExtensions.length > 0) parts.push(userExtensions.map((e) => e.name).join(", "));
 	if (projectExtensions.length > 0) parts.push(`project: ${projectExtensions.map((e) => e.name).join(", ")}`);
 	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
+}
+
+/** Modes: the status-bar indicator — the default tier shows nothing; the
+ *  others show their blue name, the dangerous ones (plan/bypass) with the
+ *  ⚠ prefix. */
+function modeStatusText(): string {
+	if (getMode() === "default") return "";
+	const p = palette();
+	const danger = getMode() === "plan" || getMode() === "bypass" ? "⚠ " : "";
+	return `${p.blue}${danger}${getMode()}${p.reset}`;
+}
+
+/** Modes: append the mode indicator to a composed status base. */
+function statusWithMode(base: string): string {
+	const mode = modeStatusText();
+	return mode === "" ? base : `${base} · ${mode}`;
 }
 
 /** E1: the startup banner line(s) — TTY: logo + merged extensions; off-TTY:
@@ -587,15 +594,26 @@ async function makeAgent(fauxSkipTurns = 0, input?: LineInput) {
 		// Area 5: the coding tools are bound to the workspace — every path
 		// they touch is canonicalized inside cwd, escapes are refused.
 		tools: [...createCodingTools({ workspaceRoot: process.cwd() })],
-		permissionPolicy: PERMISSION_POLICY,
-		systemPrompt: composeSystemPrompt(process.cwd()),
+		// Modes: the five tiers ride the E1 policy chain (mode:<tier>
+		// extensions, current tier first) — the old static PERMISSION_POLICY
+		// is gone, its semantics live in the "default" tier. The banner
+		// still counts loadedExtensions only — the modes are in-process,
+		// never a file extension.
+		systemPrompt: (() => {
+			const sp = composeSystemPrompt(process.cwd());
+			const extra = modeSystemPrompt();
+			return extra === undefined ? sp : `${sp}\n\n${extra}`;
+		})(),
 		// C 区: microcompact is ON by default in the product — threshold =
 		// half the model window (KISO_CONTEXT_WINDOW override included;
 		// 200k window → 100k tokens). Long sessions compact old read/list/
 		// search/shell outputs instead of silently growing past the window.
 		microcompact: { thresholdTokens: contextWindowTokens() / 2 },
 		maxTurns: 20,
-		extensions: loadedExtensions,
+		// Modes: the five tiers join at the CHAIN HEAD, before the user/
+		// project extensions (the deny>ask>allow composition keeps a user
+		// deny winning over any mode tier — bypass included).
+		extensions: [...modeExtensions(), ...loadedExtensions],
 		...(provider !== undefined
 			? {
 					provider,
@@ -1058,12 +1076,18 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 	// v2c: turns submitted while another runs are QUEUED on the chain — the
 	// live count rides the status bar (+N queued).
 	let queued = 0;
-	// v2b: the live status bar (docked only).
+	// v2b: the live status bar (docked only). Modes: /mode switches repaint
+	// it immediately through paintStatus (the last turn stats are kept).
+	let statusSt: string | null = null;
 	const statusCb = (u: RunUsage, ctx: number): void => {
 		if (!dock.active) return;
-		const st = renderStatusLine(turnNo, u, ctx, faux);
-		const base = st === null ? `${session.id} · ${agentModel}` : `${session.id} · ${agentModel} · ${st}`;
-		dock.setStatus(queued > 0 ? `${base} · +${queued} queued` : base);
+		statusSt = renderStatusLine(turnNo, u, ctx, faux);
+		paintStatus();
+	};
+	const paintStatus = (): void => {
+		if (!dock.active) return;
+		const base = statusSt === null ? `${session.id} · ${agentModel}` : `${session.id} · ${agentModel} · ${statusSt}`;
+		dock.setStatus(`${statusWithMode(base)}${queued > 0 ? ` · +${queued} queued` : ""}`);
 	};
 	// The ONE dispatcher: slash commands, exit, and turns. The recovery
 	// replay routes through it too — a queued "/last" must never become a
@@ -1081,6 +1105,7 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 				bodyLog(cmd("/think", "show the last full thinking block"));
 				bodyLog(cmd("/last", "show the most recent tool call's input and output"));
 				bodyLog(cmd("/status", "show session id, event count, and context estimate"));
+				bodyLog(cmd("/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"));
 				bodyLog(cmd("exit", "leave the session"));
 				input.prompt();
 			});
@@ -1128,6 +1153,27 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 				bodyLog(`session ${session.id}`);
 				bodyLog(`${session.log.all.length} events`);
 				bodyLog(`ctx ${ctx}`);
+				input.prompt();
+			});
+			return;
+		}
+		if (trimmed === "/mode" || trimmed.startsWith("/mode ")) {
+			// Modes: /mode alone prints the current tier + the list;
+			// /mode <name> switches — the notice cell leaves the audit
+			// line in the body, the status bar repaints at once.
+			chain = chain.then(async () => {
+				const m = MODES.find((x) => x === trimmed.slice(5).trim());
+				if (trimmed.slice(5).trim() === "") {
+					bodyLog(`mode ${getMode()}`);
+					bodyLog(`tiers: ${MODES.join(" ")}`);
+				} else if (m === undefined) {
+					bodyLog(`no such mode: ${trimmed.slice(5).trim()}`);
+					bodyLog(`tiers: ${MODES.join(" ")}`);
+				} else {
+					setMode(m);
+					body.notice(`mode → ${m}`);
+					paintStatus();
+				}
 				input.prompt();
 			});
 			return;
@@ -1199,7 +1245,8 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 	const statusCb = (u: RunUsage, ctx: number): void => {
 		if (!dock.active) return;
 		const st = renderStatusLine(turnNo, u, ctx, faux);
-		dock.setStatus(st === null ? `${session.id} · ${agentModel}` : `${session.id} · ${agentModel} · ${st}`);
+		const base = st === null ? `${session.id} · ${agentModel}` : `${session.id} · ${agentModel} · ${st}`;
+		dock.setStatus(statusWithMode(base));
 	};
 	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
 		currentRun = run;
@@ -1256,7 +1303,23 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 }
 
 async function main(): Promise<void> {
-	const [command, arg] = process.argv.slice(2);
+	// Modes: --mode <name> wins over KISO_MODE — both applied before the
+	// first makeAgent (the tier extensions read `current` live). The flag
+	// is stripped from the positional args, so it works in any position.
+	const args = process.argv.slice(2);
+	const modeFlag = args.indexOf("--mode");
+	if (modeFlag !== -1) {
+		const m = MODES.find((x) => x === args[modeFlag + 1]);
+		if (m === undefined) {
+			console.error(`unknown mode: ${args[modeFlag + 1]} (tiers: ${MODES.join(", ")})`);
+			process.exit(2);
+		}
+		setMode(m);
+		args.splice(modeFlag, 2);
+	} else {
+		setMode(modeFromEnv());
+	}
+	const [command, arg] = args;
 	// 八: faux mode is the keyless demo script — an exhausted script must
 	// exit non-zero, never masquerade as a successful provider run.
 	const faux = process.env.ANTHROPIC_API_KEY === undefined && process.env.OPENAI_API_KEY === undefined;
