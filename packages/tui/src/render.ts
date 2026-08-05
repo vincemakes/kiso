@@ -4,7 +4,6 @@
  */
 
 import type { Event } from "@vincemakes/kiso-core";
-import { canonicalTargetPath } from "@vincemakes/kiso-tools-node";
 
 /**
  * v2a — the palette, centralized (no hard-coded codes elsewhere): ONE
@@ -45,14 +44,10 @@ export function escapeTerminal(text: string): string {
 }
 
 
-/**
- * 八/十: the path the human is asked to approve is the CANONICAL one the
- * tool will actually touch — the tools' OWN resolution (deepest existing
- * ancestor realpath'd, the not-yet-existing tail re-appended), so a file
- * to be created under a symlinked directory shows the REAL target, and
- * the UI and the tool share ONE resolution (canonicalTargetPath).
- */
-export const canonicalPath = canonicalTargetPath;
+/** The canonical-path resolver for the approval detail — injected by the
+ *  caller (the CLI passes the tools' own resolution). The tui package is
+ *  pure terminal: input is data, output is bytes, zero runtime deps. */
+export type PathResolver = (path: string) => string;
 
 export interface RenderResult {
 	readonly text: string;
@@ -90,7 +85,7 @@ export function foldResult(content: string): string {
 	return `${escapeTerminal(flat.slice(0, 160))}${truncated ? " (/last for full)" : ""}`;
 }
 
-export function renderEvent(ev: Event, prevThinking = false): RenderResult {
+export function renderEvent(ev: Event, prevThinking = false, resolvePath: PathResolver = (p) => p): RenderResult {
 	const p = palette();
 	switch (ev.type) {
 		case "user_input":
@@ -136,7 +131,7 @@ export function renderEvent(ev: Event, prevThinking = false): RenderResult {
 		case "permission_requested":
 			// 八: the tool NAME is model text — escaped like everything else.
 			return {
-				text: `⏸ ${escapeTerminal(ev.name)} needs approval ${p.dim}${approvalDetail(ev.name, ev.input)}${p.reset} `,
+				text: `⏸ ${escapeTerminal(ev.name)} needs approval ${p.dim}${approvalDetail(ev.name, ev.input, resolvePath)}${p.reset} `,
 				newline: false,
 				prompt: true,
 			};
@@ -177,16 +172,16 @@ export function renderEvent(ev: Event, prevThinking = false): RenderResult {
  * content (never a truncated tail that hides a dangerous payload). The
  * decision is bound to the complete input via the decisionId.
  */
-function approvalDetail(name: string, input: Record<string, unknown>): string {
+function approvalDetail(name: string, input: Record<string, unknown>, resolvePath: PathResolver): string {
 	if (name === "shell") {
 		return `\n  $ ${escapeTerminal(String(input.command ?? ""))}`;
 	}
 	if (name === "write_file") {
 		const content = String(input.content ?? "");
-		return `\n  ${escapeTerminal(canonicalPath(String(input.path ?? "?")))}\n  ${escapeTerminal(content)}`;
+		return `\n  ${escapeTerminal(resolvePath(String(input.path ?? "?")))}\n  ${escapeTerminal(content)}`;
 	}
 	if (name === "edit_file") {
-		return `\n  ${escapeTerminal(canonicalPath(String(input.path ?? "?")))}\n  replace: ${escapeTerminal(String(input.search ?? ""))}\n  with:    ${escapeTerminal(String(input.replace ?? ""))}`;
+		return `\n  ${escapeTerminal(resolvePath(String(input.path ?? "?")))}\n  replace: ${escapeTerminal(String(input.search ?? ""))}\n  with:    ${escapeTerminal(String(input.replace ?? ""))}`;
 	}
 	return `\n  ${escapeTerminal(JSON.stringify(input))}`;
 }

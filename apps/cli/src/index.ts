@@ -18,10 +18,10 @@
 
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
-import { Body } from "./body.js";
-import { editFileDiff, writeFileDiff, type DiffResult } from "./diff.js";
+import { Body } from "@vincemakes/kiso-tui";
+import { editFileDiff, writeFileDiff, type DiffResult } from "@vincemakes/kiso-tui";
 import { MODES, getMode, modeExtensions, modeFromEnv, modeSystemPrompt, setMode, type Mode } from "./mode.js";
-import { Editor, PROMPT as EDITOR_PROMPT } from "./editor.js";
+import { Editor, PROMPT as EDITOR_PROMPT } from "@vincemakes/kiso-tui";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,7 +39,7 @@ import {
 	type ProjectArtifacts,
 } from "@vincemakes/kiso-runtime";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
-import { createCodingTools } from "@vincemakes/kiso-tools-node";
+import { canonicalTargetPath, createCodingTools } from "@vincemakes/kiso-tools-node";
 import type { PermissionPolicy } from "@vincemakes/kiso-runtime";
 import {
 	escapeTerminal,
@@ -56,8 +56,8 @@ import {
 	kUnit,
 	renderRecap,
 	truncateRow,
-} from "./render.js";
-import { Dock } from "./dock.js";
+} from "@vincemakes/kiso-tui";
+import { Dock } from "@vincemakes/kiso-tui";
 
 
 
@@ -930,7 +930,7 @@ async function consumeRun(
 			default: {
 				// Events without a cell (stop, …) — the generic render, byte-
 				// preserved for the pipe path.
-				const rendered = renderEvent(ev);
+				const rendered = renderEvent(ev, false, canonicalTargetPath);
 				if (rendered.text !== "") {
 					body.raw(rendered.text.replace(/\n$/, "").split("\n"));
 				}

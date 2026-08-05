@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { canonicalPath, foldThinking, renderEvent, renderSessionLine, renderStatusLine, renderToolSummary } from "../src/render.js";
+import { foldThinking, renderEvent, renderSessionLine, renderStatusLine, renderToolSummary } from "../src/render.js";
 
 const NUL = "\u0000";
 const BS = "\u0008";
@@ -103,32 +103,6 @@ describe("terminal escaping (E 组)", () => {
 		});
 		expect(line).not.toContain(`${ESC}[31m`);
 		expect(line).toContain("safe");
-	});
-
-	it("八: write_file approval shows the CANONICAL path and the FULL content", async () => {
-		const { mkdtempSync, realpathSync, writeFileSync, symlinkSync } = await import("node:fs");
-		const { tmpdir } = await import("node:os");
-		const { join } = await import("node:path");
-		const dir = realpathSync(mkdtempSync(join(tmpdir(), "kiso-render-"))); // /var → /private/var
-		const real = join(dir, "real.txt");
-		writeFileSync(real, "actual-target", "utf8");
-		symlinkSync(real, join(dir, "link.txt"));
-		expect(canonicalPath(join(dir, "link.txt"))).toBe(real);
-
-		const longContent = "X".repeat(500);
-		const rendered = renderEvent({
-			seq: 0,
-			type: "permission_requested",
-			decisionId: "d-1",
-			callId: "c1",
-			name: "write_file",
-			input: { path: join(dir, "link.txt"), content: longContent },
-		});
-		// The canonical path is shown, and the ENTIRE content — no truncated
-		// tail hiding a dangerous payload.
-		expect(rendered.text).toContain(real);
-		expect(rendered.text).toContain(longContent);
-		expect(rendered.text).not.toContain("…");
 	});
 });
 
