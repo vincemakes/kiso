@@ -23,7 +23,7 @@ import { join, relative } from "node:path";
 
 const GATES = [
 	{ name: "core", limit: 2000, dir: join("packages", "core", "src") },
-	{ name: "cli", limit: 1200, dir: join("apps", "cli", "src") },
+	{ name: "cli", limit: 1600, dir: join("apps", "cli", "src") },
 ];
 const ROOT = new URL("..", import.meta.url).pathname;
 

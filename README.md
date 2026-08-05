@@ -46,12 +46,16 @@ core:
   ✓ 196 lines of headroom remaining.
 
 cli:
-  apps/cli/src/index.ts  496
-  apps/cli/src/render.ts 166
+  apps/cli/src/index.ts  812
+  apps/cli/src/render.ts 200
+  apps/cli/src/dock.ts   109
   ...
-  total                   662  / 1200
-  ✓ 538 lines of headroom remaining.
+  total                   1121  / 1600
+  ✓ 479 lines of headroom remaining.
 ```
+
+(The cli gate moved 1200 → 1600 in v2b — a deliberate, recorded budget
+for the bottom-anchored UI, ADR-0039.)
 
 Comments do not count. Explain freely; implement tersely.
 
@@ -62,7 +66,7 @@ A framework, in two layers:
 | Layer | Owns |
 |---|---|
 | **core** (`@vincemakes/kiso-core`, ≤ 2,000 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · modes · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
-| **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-cli` (the coding-agent reference product) |
+| **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-code` (the coding-agent reference product) |
 
 The core stays a kernel: it decides nothing that repeats across products. The
 framework around it is where product-shaped capability grows — and that growth
@@ -136,9 +140,9 @@ Node **>= 22** (the OpenAI-compat provider and the CLI declare it in `engines`).
 The CLI is a real npm package — install it globally, or run it directly:
 
 ```
-npm install -g @vincemakes/kiso-cli
+npm install -g @vincemakes/kiso-code
 kiso chat          # after the global install, the command is `kiso`
-npx @vincemakes/kiso-cli chat   # or run without installing
+npx @vincemakes/kiso-code chat   # or run without installing
 ```
 
 (Inside this repo, `npm run cli` runs the same binary.) The command set:
@@ -576,7 +580,7 @@ parameter and systemPrompt append surfaces — see
   startup failure on a bad file or duplicate name; extension tools merge
   into the registry (built-in collision = startup error), hooks compose
   AFTER the harness's own (既有先行), approvals enter the policy chain.
-- **cli** (930/1,200 lines) — the coding agent: bare `kiso` enters chat;
+- **cli** (1,121/1,600 lines) — the coding agent: bare `kiso` enters chat;
   the startup extension scan (`~/.kiso/extensions/*.mjs`, banner
   `[2 extensions: safe-defaults, foo]`);
   a system prompt (coding-agent discipline: read before edit, careful
@@ -592,7 +596,20 @@ parameter and systemPrompt append surfaces — see
   metadata — everything else plain; `NO_COLOR` or a pipe disables it all
   (pipes carry zero ANSI); typed input is echoed by readline itself, never
   rendered twice; a spinner glyph shows liveness between the request and
-  the first delta. `resume` is the recovery flow (uncertain executions are
+  the first delta. v2b: thinking blocks fold to ONE dim line per block
+  (first 100 chars + ` (… /think shows full)`, `/think` prints the last
+  complete block), the `[result]` echo truncates at 160 chars +
+  ` (/last for full)` — the content strategy is the same in pipes; on a
+  color TTY the UI docks to the bottom (ADR-0039): a DECSTBM scroll
+  region keeps the body above three pinned rows — a dim separator, a
+  LIVE status bar (session · model · turn · tokens · ctx, `running
+  <tool> Ns` while a tool executes, the spinner merged in) and the blue
+  `you>` input line; approval/uncertainty/trust questions take over the
+  status position and are answered at the input line; SIGWINCH
+  re-applies the region, bottom redraws are wrapped in CSI 2026
+  synchronized output, and every exit path resets the terminal in a
+  finally (`\x1b[r`) — a `kill -9` can leave the bottom rows stuck, and
+  the terminal's `reset` command saves it. `resume` is the recovery flow (uncertain executions are
   decided rerun/abandon — uncertainty belongs to the crash window alone,
   ADR-0038; a receipted failure is a clean failure whose result carries an
   honest partial-side-effect note, and a retry re-passes the approval
@@ -607,7 +624,7 @@ parameter and systemPrompt append surfaces — see
   internal versions; CI is clean-checkout `npm ci` + the full gate.
 
 `npm run check` = build → typecheck (packages + root scripts + tests) →
-tests → size gate (core 2,000 + cli 1,200) → pack gate (dist + README +
+tests → size gate (core 2,000 + cli 1,600) → pack gate (dist + README +
 LICENSE in every tarball) → whitespace gate (no trailing whitespace, every
 file ends with a newline)
 → `git diff --check` on the working tree and the index
