@@ -127,9 +127,10 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		expect(clean.indexOf("· faux · [turn 2 · faux]")).toBeGreaterThan(clean.indexOf("done"));
 		// v2b: the SENT line renders into the body (blue you> + content +
 		// reset + pty-cooked newline, then the cursor RETURNS TO THE EDIT
-		// POSITION \x1b[24;6H — the drift fix — distinct from the input
+		// POSITION — the drift fix; v2c the brick prompt ▌you> is 6 wide,
+		// so the empty-line edit column is 7 — distinct from the input
 		// row's prompt+line): the typed text must not vanish after Enter.
-		expect(out).toContain("\x1b[38;5;75myou> look around\x1b[0m\r\n\x1b[24;6H");
+		expect(out).toContain("\x1b[38;5;75myou> look around\x1b[0m\r\n\x1b[24;7H");
 		// Exit resets the scroll region (CSI r) — no broken terminal.
 		expect(out).toContain("\x1b[r");
 	}, 90_000);
