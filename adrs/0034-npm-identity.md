@@ -55,3 +55,28 @@ with deprecation notices — a mechanical operation, not a design change.
 - The publish pipeline and its per-release template are documented in the
   release records of `docs/plans/2026-08-04-*-md`; the live artifacts:
   `npm view @vincemakes/kiso-cli`.
+
+## Amendment 1 (2026-08-05): the CLI package is named after the product
+
+- **Status:** Accepted
+- **Date:** 2026-08-05
+
+**Context.** The product name is kiso; the CLI is its front door. The
+convention in this product class is a product-named package — `claude-code`,
+`pi-coding-agent` — so `@vincemakes/kiso-cli` reads as a generic internal
+name, not the product. The binary was already always `kiso`; only the
+package name lagged.
+
+**Decision.** `@vincemakes/kiso-cli` is renamed to
+`@vincemakes/kiso-code` (0.1.13 is its first release). The old package is
+deprecated with `npm deprecate @vincemakes/kiso-cli@"*" "renamed: npm i -g
+@vincemakes/kiso-code"` — never deleted (published artifacts stay
+installable; the deprecation message routes consumers). The bin stays
+`kiso`. Every ACTIVE reference in the repo moves with the rename; the
+historical record (CHANGELOG, earlier ADRs, plans) keeps the old name —
+history is not rewritten.
+
+**Consequences.** Old `npm i -g @vincemakes/kiso-cli` installs keep
+working forever (deprecated, not unpublished). New installs land on the
+product name. The rename is a publishing-level identity, not a design
+change: no runtime, API, or storage format is touched.
