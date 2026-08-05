@@ -88,9 +88,16 @@ export class Dock {
 
 	/** Body output: position the cursor inside the scroll region at the
 	 *  body's tracked position, write, and hand the cursor back to the
-	 *  input line. The row/col tracking is approximate for width-wrapped
-	 *  and wide-char lines (documented) — the region clamp keeps the
-	 *  bottom rows safe regardless. */
+	 *  input line's EDIT position. The row/col tracking is approximate for
+	 *  width-wrapped and wide-char lines (documented) — the region clamp
+	 *  keeps the bottom rows safe regardless.
+	 *
+	 *  The edit-position return is a correctness requirement, not
+	 *  cosmetics: readline tracks its cursor internally and NEVER
+	 *  re-syncs after an external move — a body write that left the
+	 *  cursor at column 1 made the next keystroke overwrite the prompt
+	 *  (probe-confirmed; the dock's redraw self-repaired ~200ms later,
+	 *  which read the user as cursor drift). */
 	writeBody(text: string): void {
 		if (!this.#active) {
 			process.stdout.write(text);
@@ -108,7 +115,16 @@ export class Dock {
 				this.#bodyCol += 1;
 			}
 		}
-		process.stdout.write(`\x1b[${this.#height};1H`); // back to the input line
+		process.stdout.write(`\x1b[${this.#height};${this.#inputCol()}H`); // back to the edit position
+	}
+
+	/** The input line's edit column — prompt width + cursor + 1. The
+	 *  dock's redraw and the body's cursor return both end here, so the
+	 *  ACTUAL cursor always equals what readline tracks. */
+	#inputCol(): number {
+		const inp = this.#inputState();
+		const promptWidth = this.#inputPrompt.replace(/\x1b\[[0-9;]*m/g, "").length;
+		return promptWidth + inp.cursor + 1;
 	}
 
 	/** The status bar's base text (usage, ctx, session, …). */
@@ -147,14 +163,16 @@ export class Dock {
 		const status = `${this.#status}${this.#tail === "" ? "" : ` · ${this.#tail}`}`;
 		const statusLine = this.#question ?? status;
 		const inp = this.#inputState();
-		const promptWidth = this.#inputPrompt.replace(/\x1b\[[0-9;]*m/g, "").length;
 		const out: string[] = [];
-		out.push("\x1b[2026h"); // synchronized output ON
+		// P3 (审查): the DEC private-mode SET/RESET needs the "?" prefix —
+		// \x1b[?2026h/l, the pi source's exact form. Without it terminals
+		// silently ignore the mode and the anti-flicker never engages.
+		out.push("\x1b[?2026h"); // synchronized output ON (DEC 2026)
 		out.push(`\x1b[${H - 2};1H\x1b[0K${sep}`);
 		out.push(`\x1b[${H - 1};1H\x1b[0K${statusLine}`);
 		out.push(`\x1b[${H};1H\x1b[0K${this.#inputPrompt}${inp.line}`);
-		out.push(`\x1b[${H};${promptWidth + inp.cursor + 1}H`); // back to the edit position
-		out.push("\x1b[2026l"); // synchronized output OFF
+		out.push(`\x1b[${H};${this.#inputCol()}H`); // back to the edit position
+		out.push("\x1b[?2026l"); // synchronized output OFF
 		process.stdout.write(out.join(""));
 	}
 }
