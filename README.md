@@ -309,6 +309,32 @@ shell is denied, and the resume re-presents only the one undecided request
 while the extension's own call log (a marker file written per `decide`
 call) proves the policy never re-runs across the kill.
 
+## Modes — the five built-in approval tiers
+
+`/mode` switches the whole session's approval posture. Five tiers, built
+ON the extension chain above — the kernel is untouched: each tier is an
+in-process `mode:<name>` extension (chain head), so its automated
+verdicts record `decidedBy: "mode:<name>"` — the audit trail names the
+tier that decided, exactly like it names the extension.
+
+| tier | semantics |
+|---|---|
+| `default` | reads allow; write/edit/shell ask the human; extension tools are the extensions' business (the tier stays out of it) |
+| `manual` | EVERY tool asks the human |
+| `accept-edits` | `default` + write_file/edit_file allow |
+| `plan` | read/list/search/read_skill allow; everything else denied with `plan mode: read-only` (the deny reason guides the model to output a plan; the startup prompt adds a plan directive) |
+| `bypass` | everything allows — but a user extension's `deny` still wins (the chain's deny>ask>allow monotonicity; bypass cannot override an extension) |
+
+- `/mode` prints the current tier and the list; `/mode <name>` switches
+  immediately (the change applies to the next tool call), leaving a
+  notice line in the session body. Startup: `--mode <name>` or
+  `KISO_MODE=<name>`; default is `default`.
+- The status bar shows the non-default tier in blue — `plan`/`bypass`
+  carry a ⚠ prefix (danger visible at a glance).
+- This is kiso's answer to Claude Code's permission modes: a CLI-side
+  policy layer over the same extension approval chain — user extensions
+  keep their votes on every call, and their denies always win.
+
 ## MCP — external tools over the MCP bridge
 
 `extensions/mcp` is the official MCP bridge: an ordinary extension — a
