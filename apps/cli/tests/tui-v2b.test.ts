@@ -115,9 +115,21 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		expect(clean).toContain("· faux · [turn 2 · faux]");
 		// The input line's blue prompt exists.
 		expect(out).toContain("\x1b[38;5;75m");
+		// P3 (审查): the synchronized-output SET is the DEC private form —
+		// \x1b[?2026h — the bare \x1b[2026h is silently ignored by
+		// terminals, so the anti-flicker never engages. Pinned here so the
+		// byte assertion catches a regression the terminal transcripts
+		// cannot.
+		expect(out).toContain("\x1b[?2026h");
+		expect(out).not.toContain("\x1b[2026h");
 		// The body scrolls inside the region — the status bar survives a
 		// long body (the status reappears AFTER the last body chunk).
 		expect(clean.indexOf("· faux · [turn 2 · faux]")).toBeGreaterThan(clean.indexOf("done"));
+		// v2b: the SENT line renders into the body (blue you> + content +
+		// reset + pty-cooked newline, then the cursor RETURNS TO THE EDIT
+		// POSITION \x1b[24;6H — the drift fix — distinct from the input
+		// row's prompt+line): the typed text must not vanish after Enter.
+		expect(out).toContain("\x1b[38;5;75myou> look around\x1b[0m\r\n\x1b[24;6H");
 		// Exit resets the scroll region (CSI r) — no broken terminal.
 		expect(out).toContain("\x1b[r");
 	}, 90_000);
