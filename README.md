@@ -487,6 +487,10 @@ artifact kinds are recognized there — `extensions/*.mjs`, `mcp.json`, and
   `{"root": "<realpath of <repo>/.kiso>", "digest": "<bundle sha256>", "decision": "granted", "ts": "..."}`.
   There is deliberately NO `KISO_TRUST`-style skip-ask environment
   variable — the gate is not a toggle.
+- **Your home is never a project.** When you run kiso in your home
+  directory, `<cwd>/.kiso` IS your user-level config directory — discovery
+  returns nothing and the gate never runs (discovery#10). A stale
+  `trust.jsonl` grant for the home dir is inert and can be left alone.
 
 ## Comparison
 

@@ -140,6 +140,7 @@ describe("⑤ safe-defaults (本轮唯一 extensions/ 外改动)", () => {
 		};
 		const decide = mod.default.approvals![0]!.decide;
 		expect(decide({ name: "read_skill", input: {} }, ctx)).toMatchObject({ action: "allow" });
+		expect(decide({ name: "mcp__status", input: {} }, ctx)).toMatchObject({ action: "allow" }); // 发现#10 round: zero-arg read-only
 		expect(decide({ name: "write_file", input: {} }, ctx)).toMatchObject({ action: "ask" });
 	});
 });

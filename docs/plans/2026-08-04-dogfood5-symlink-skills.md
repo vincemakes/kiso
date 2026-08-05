@@ -46,10 +46,31 @@ at the index tail, never an error.
 
 ## 4. Observed, deliberately NOT fixed (记录不修)
 
-- `mcp__status` is a zero-arg read-only tool but lands in the ask tier
-  (the mcp extension's tools all fall to ask). It could join the
-  safe-defaults allow list — a separate small PR-level change, NOT part
-  of this round.
+- ~~`mcp__status` is a zero-arg read-only tool but lands in the ask tier~~ —
+  **已修 (0.1.11 round)**: joined the safe-defaults allow list (trust level
+  same as read_file), one line + the safe-defaults test assertion.
 - Each `mcp__fs__*` call asks individually — by design (external tools
   must pass human review). If dogfood friction recurs, a custom policy
   can allow specific servers; the default stays.
+
+## 5. 发现#10 (P1) — the trust gate read the user-level .kiso as a project
+
+Real-machine record: running kiso with cwd = the home directory made
+projectArtifacts discover `<cwd>/.kiso` — which IS the user-level config
+directory itself. The CLI asked to trust your own configuration, and a
+grant then self-mirrored mcp.json onto itself ("fs in both user-level and
+project-level") and exited loudly — the home directory could not start
+kiso at all.
+
+Fix (`packages/runtime/src/trust.ts`): projectArtifacts compares
+realpath(<cwd>/.kiso) with realpath(KISO_HOME, default ~/.kiso) and
+returns null when equal — the home is never a project, KISO_HOME
+overrides respected the same way. A stale trust.jsonl grant for the home
+becomes inert (discovery never queries it) — no cleanup needed, README
+troubleshooting states it in one line.
+
+Acceptance (red → green): unit `⑩ the KISO_HOME dir itself is never a
+project` (red: artifacts returned); CLI e2e `⑩ (发现#10) cwd = the
+KISO_HOME parent` (red: the trust prompt appeared on the home dir —
+the user's exact transcript shape); project-trust.test.ts full suite
+zero regression.
