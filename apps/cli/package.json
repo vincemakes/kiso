@@ -1,5 +1,5 @@
 {
-  "name": "@vincemakes/kiso-cli",
+  "name": "@vincemakes/kiso-code",
   "version": "0.1.12",
   "description": "kiso CLI — the coding-agent reference product: kiso chat / kiso resume / kiso sessions.",
   "type": "module",

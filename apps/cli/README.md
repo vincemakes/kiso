@@ -1,7 +1,7 @@
-# @vincemakes/kiso-cli
+# @vincemakes/kiso-code
 
 The coding-agent reference product: kiso chat / kiso resume / kiso
-sessions. Install it or run directly with npx @vincemakes/kiso-cli. Keyless faux
+sessions. Install it or run directly with npx @vincemakes/kiso-code. Keyless faux
 mode out of the box; ANTHROPIC_API_KEY or OPENAI_API_KEY + OPENAI_BASE_URL
 switch to real providers.
 

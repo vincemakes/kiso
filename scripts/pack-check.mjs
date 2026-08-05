@@ -16,7 +16,7 @@ const PACKAGES = [
 	"@vincemakes/kiso-tools-node",
 	"@vincemakes/kiso-provider-anthropic",
 	"@vincemakes/kiso-provider-openai",
-	"@vincemakes/kiso-cli",
+	"@vincemakes/kiso-code",
 ];
 
 let failed = false;

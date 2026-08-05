@@ -41,7 +41,7 @@ const ALL = {
 	"@vincemakes/kiso-tools-node": true,
 	"@vincemakes/kiso-provider-anthropic": true,
 	"@vincemakes/kiso-provider-openai": true,
-	"@vincemakes/kiso-cli": true,
+	"@vincemakes/kiso-code": true,
 };
 
 /** Pack a package and return the REAL tarball filename from npm's JSON. */
@@ -233,7 +233,7 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 	const proj = tempProject("cli");
 	installTier(
 		"cli",
-		["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-cli"],
+		["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-code"],
 		proj,
 	);
 	// The smoke program above created sessions in ITS project; here we create
@@ -258,7 +258,7 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 {
 	const proj = tempProject("nested-cli");
 	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-cli-"));
-	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-cli"].map((n) =>
+	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-code"].map((n) =>
 		pack(stage, n),
 	);
 	for (const tarball of tarballs) {
