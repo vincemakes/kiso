@@ -19,6 +19,7 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { Body } from "./body.js";
+import { editFileDiff, writeFileDiff, type DiffResult } from "./diff.js";
 import { Editor, PROMPT as EDITOR_PROMPT } from "./editor.js";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -783,6 +784,34 @@ const DEFAULT_CONTEXT_WINDOW = 200_000;
  * line's form; `liveInput` (non-null only in interactive chat) carries the
  * last line THIS process's readline consumed — the double-echo filter.
  */
+/** v2e: the approval-moment mini-diff — edit_file/write_file changes as
+ *  ± lines; other tools get null (no diff, no cost). The file read is
+ *  best-effort: an unreadable file yields NO diff, never a failure —
+ *  the diff must never break the approval. */
+function approvalDiff(name: string, input: Record<string, unknown>): DiffResult | null {
+	if (name !== "edit_file" && name !== "write_file") return null;
+	const path = typeof input.path === "string" ? input.path : "";
+	if (path === "") return null;
+	let oldContent: string | null = null;
+	try {
+		oldContent = readFileSync(path, "utf8");
+	} catch {
+		// a new write_file target (or an unreadable one) — all + degrades
+	}
+	try {
+		if (name === "edit_file") {
+			const search = typeof input.search === "string" ? input.search : "";
+			const replace = typeof input.replace === "string" ? input.replace : "";
+			if (search === "") return null;
+			return editFileDiff(oldContent ?? "", search, replace);
+		}
+		const content = typeof input.content === "string" ? input.content : "";
+		return writeFileDiff(oldContent, content);
+	} catch {
+		return null; // never let the diff break the approval
+	}
+}
+
 async function consumeRun(
 	session: AgentSession,
 	run: AsyncIterable<import("@vincemakes/kiso-core").Event>,
@@ -856,9 +885,12 @@ async function consumeRun(
 			case "permission_requested": {
 				// v2d: the ToolCell shows the ⏸ badge; the question takes over
 				// the dock status position; the answer lands at the input line.
-				body.toolApproval(ev.callId);
-				const decisionId = (ev as { decisionId: string }).decisionId;
+				// v2e: the mini-diff for edit/write at the approval moment —
+				// the human sees the change BEFORE deciding (auto-allowed tools
+				// skip the diff: nobody is looking).
 				const name = (ev as { name: string }).name;
+				body.toolApproval(ev.callId, approvalDiff(name, ev.input ?? {}));
+				const decisionId = (ev as { decisionId: string }).decisionId;
 				const answer = await ask(input, `approve ${escapeTerminal(name)}? (y/n) `);
 				if (answer === CANCELLED) {
 					// 十: a cancellation is a CONSERVATIVE denial, explicitly
@@ -871,6 +903,7 @@ async function consumeRun(
 				break;
 			}
 			case "terminal":
+				statusCb?.(usage, estimateCtxRatio(session));
 				statusCb?.(usage, estimateCtxRatio(session));
 				// v2a rhythm: the honest label (\ndone\n — the completed
 				// marker), the status line hugging it, then EXACTLY one blank

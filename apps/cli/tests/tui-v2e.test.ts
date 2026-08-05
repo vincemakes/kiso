@@ -1,32 +1,29 @@
 /**
- * v2e — the #13 (P1) gate: the body MUST scroll into the terminal's
- * native scrollback. A 24-row terminal floods 3× the viewport with
- * frozen content; the machine evidence is the LF count (every frozen
- * line is written at H-2 followed by a REAL line feed — the scroll
- * mechanism's bytes) and the freeze semantics (early content appears
- * EXACTLY once — the old overwrite-in-place defect is gone).
- *
- * v2d-B (ADR-0040): no DECSTBM — plain LF scrolling, so the scrollback
- * correctness does not depend on the terminal's region-scroll behavior.
+ * v2e — the approval-moment mini-diff through the CLI's topmost entry, on
+ * a REAL PTY (24×80): an edit_file approval shows the ± diff below the
+ * tool line (the human sees the change BEFORE deciding); after the
+ * approval the frozen summary stays ONE line — no diff residue (v2d's
+ * anti-leak principle).
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
+import { isolatedEnv, stripANSI } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
 const PTY_DRIVER = `
 import pty, os, sys, time, select, signal, struct, fcntl, termios
 
-def driver(cli, env, feeds, timeout):
+def driver(cli, env, feeds, workdir, timeout):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ.update(env)
+        os.chdir(workdir)
         os.execvp("node", ["node", cli, "chat"])
     def winsize(rows, cols):
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
@@ -62,7 +59,7 @@ def driver(cli, env, feeds, timeout):
     sys.exit(0)
 `;
 
-function ptyRun(env: NodeJS.ProcessEnv, feeds: [string, string][], timeout = 60): string {
+function ptyRun(env: NodeJS.ProcessEnv, feeds: [string, string][], workdir: string, timeout = 40): string {
 	const dir = mkdtempSync(join(tmpdir(), "kiso-v2e-"));
 	const driverPath = join(dir, "driver.py");
 	writeFileSync(driverPath, PTY_DRIVER, "utf8");
@@ -70,59 +67,57 @@ function ptyRun(env: NodeJS.ProcessEnv, feeds: [string, string][], timeout = 60)
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout})
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${JSON.stringify(workdir)}, ${timeout})
 `;
-	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 120_000, env: process.env });
+	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
 }
 
-describe("TUI v2e (real PTY, 24×80) — the #13 scrollback gate", () => {
-	it("floods 3× the viewport with frozen content: every frozen line emits a REAL LF (the scroll mechanism) and early content appears EXACTLY once", () => {
+describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
+	it("edit_file shows the ± diff at the approval, the frozen summary stays ONE line", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v2e-"));
+		const workdir = join(dir, "work");
+		mkdirSync(workdir, { recursive: true });
+		writeFileSync(join(workdir, "work.txt"), "line1\nOLD\nline2\n", "utf8");
 		const script = join(dir, "faux.json");
-		// 25 distinct turns — each freezes a userLine + a text cell + a
-		// terminal (label + status + gap) = 5 frozen lines per turn = 125
-		// lines, far past the 21-row viewport (3× viewport = 63).
 		writeFileSync(
 			script,
-			JSON.stringify(
-				Array.from({ length: 25 }, (_, i) => ({
+			JSON.stringify([
+				{
 					events: [
-						{ type: "text_delta", text: `flood ${String(i + 1).padStart(2, "0")}` },
-						{ type: "stop", reason: "end_turn" },
+						{
+							type: "tool_call_end",
+							callId: "c1",
+							name: "edit_file",
+							input: { path: "work.txt", search: "OLD", replace: "NEW" },
+						},
+						{ type: "stop", reason: "tool_use" },
 					],
-				})),
-			),
+				},
+				{ events: [{ type: "text_delta", text: "the tour is done" }, { type: "stop", reason: "end_turn" }] },
+			]),
 			"utf8",
 		);
-		const batch = Array.from({ length: 25 }, (_, i) => `go ${i + 1}`).join("\n") + "\n";
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["you> ", batch],
-				["flood 25", "exit\n"],
+				["you> ", "go\n"],
+				["approve edit_file", "y\n"],
+				["the tour is done", "exit\n"],
 			],
+			workdir,
 		);
-		// 1. THE SCROLL MECHANISM'S MACHINE EVIDENCE: every frozen line is
-		// written at H-2 (row 22) followed by a REAL line feed. 25 turns ×
-		// (userLine + text + terminal-label + status + gap) = 125 frozen
-		// lines — assert the LF floor: at least the number of frozen lines
-		// beyond the initial fit... in v2d-B EVERY frozen line emits exactly
-		// one LF, so the floor is the full frozen-line count.
-		const lf = (out.match(/\n/g) ?? []).length;
-		// v2 geometry: the body fills from the top WITHOUT scrolling (the
-		// first ~21 rows write absolutely); every frozen line beyond the
-		// initial fit emits its REAL LF. Floor = total frozen lines - fit.
-		const frozenFloor = 25 * 5 - 21; // 104
-		expect(lf).toBeGreaterThanOrEqual(frozenFloor);
-		// 2. THE FREEZE SEMANTICS: the FIRST turn's content appears EXACTLY
-		// once — the old overwrite-in-place defect would show it repeated or
-		// missing; a working scroll shows it once in the stream (it scrolled
-		// away into the terminal's scrollback, never rewritten).
-		expect((out.match(/flood 01/g) ?? []).length).toBe(1);
-		// 3. The LAST turn completed — the flood ran to the end.
-		expect(out).toContain("flood 25");
-		// 4. No DECSTBM anywhere (v2d-B).
-		expect(out).not.toContain("\x1b[1;21r");
-	}, 120_000);
+		const clean = stripANSI(out);
+		// The approval-moment diff: - OLD / + NEW visible BEFORE the decision.
+		expect(clean).toContain("- OLD");
+		expect(clean).toContain("+ NEW");
+		// The frozen summary: ONE line with the ± stats.
+		expect(clean).toContain("✓ edit_file");
+		expect(clean).toContain("+1 -1");
+		// NO diff residue after the freeze — the last diff row precedes the
+		// frozen summary, and the summary line itself is a single line.
+		const lastMinus = clean.lastIndexOf("- OLD");
+		const frozen = clean.indexOf("✓ edit_file");
+		expect(lastMinus).toBeLessThan(frozen);
+	}, 90_000);
 });

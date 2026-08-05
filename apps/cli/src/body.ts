@@ -24,6 +24,7 @@
  * shape (ADR-0040).
  */
 
+import { truncateDiff } from "./diff.js";
 import { displayWidth } from "./editor.js";
 import {
 	escapeTerminal,
@@ -52,6 +53,11 @@ export type BodyCell =
 			state: "pending" | "approval" | "running" | "done";
 			isError: boolean;
 			resultText: string;
+			// v2e: the approval-moment mini-diff + the FULL ± stats (the
+			// frozen summary shows +N -M).
+			diff: import("./diff.js").DiffLine[] | null;
+			added: number;
+			removed: number;
 			startedAt: number | null;
 			doneAt: number | null;
 			done: boolean;
@@ -191,14 +197,22 @@ export class Body {
 			return;
 		}
 		this.#toolCells.set(callId, this.#cells.length);
-		this.#cells.push({ kind: "tool", name, input: summary, state: "pending", isError: false, resultText: "", startedAt: null, doneAt: null, done: false });
+		this.#cells.push({ kind: "tool", name, input: summary, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false });
 		this.#mark();
 	}
 
-	toolApproval(callId: string): void {
+	toolApproval(callId: string, diff: import("./diff.js").DiffResult | null): void {
 		if (!this.#isActive()) return;
 		const cell = this.#toolCell(callId);
-		if (cell !== null && cell.kind === "tool" && !cell.done) cell.state = "approval";
+		if (cell !== null && cell.kind === "tool" && !cell.done) {
+			cell.state = "approval";
+			// v2e: the mini-diff renders BELOW the tool line at the approval
+			// moment — the human sees the change before deciding. Auto-allowed
+			// tools pass null (nobody is looking — no diff, no cost).
+			cell.diff = diff === null ? null : truncateDiff(diff.lines);
+			cell.added = diff?.added ?? 0;
+			cell.removed = diff?.removed ?? 0;
+		}
 		this.#mark();
 	}
 
@@ -432,9 +446,26 @@ export class Body {
 						const err = escapeTerminal(cell.resultText.split("\n")[0]!.slice(0, 60));
 						return [`${p.red}✗ ${name} (${err}, ${elapsed}s)${p.reset}`];
 					}
-					return [`${p.blue}✓ ${name}${p.reset} (${summary}, ${elapsed}s)`];
+					const delta = cell.added + cell.removed > 0 ? `, +${cell.added} -${cell.removed}` : "";
+					return [`${p.blue}✓ ${name}${p.reset} (${summary}${delta}, ${elapsed}s)`];
 				}
-				if (cell.state === "approval") return [`→ ${name} ${summary} ${p.blue}⏸${p.reset}`];
+				if (cell.state === "approval") {
+					const lines = [`→ ${name} ${summary} ${p.blue}⏸${p.reset}`];
+					// v2e: the mini-diff — ▎ blue edge (the brick motif), - red /
+					// + green / context dim; NO_COLOR keeps the ± prefixes plain.
+					if (cell.diff !== null) {
+						for (const d of cell.diff) {
+							const body =
+								d.kind === "-"
+									? `${p.red}- ${escapeTerminal(d.text)}${p.reset}`
+									: d.kind === "+"
+										? `${p.green}+ ${escapeTerminal(d.text)}${p.reset}`
+										: `${p.dim}  ${escapeTerminal(d.text)}${p.reset}`;
+							lines.push(`${p.blue}▎${p.reset}${body}`);
+						}
+					}
+					return lines;
+				}
 				if (cell.state === "running") {
 					const elapsed = cell.startedAt !== null ? Math.max(1, Math.round((Date.now() - cell.startedAt) / 1000)) : 1;
 					return [`→ ${name} ${summary} ${p.blue}${SPINNER[this.#spinnerI % SPINNER.length]}${p.reset} ${elapsed}s`];

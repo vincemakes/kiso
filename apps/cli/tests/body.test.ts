@@ -67,7 +67,7 @@ describe("v2d: cell → line forms", () => {
 	it("the approval state shows the inline ⏸ badge", () => {
 		const c = make();
 		c.body.toolStart("asky_read", "c1", {});
-		c.body.toolApproval("c1");
+		c.body.toolApproval("c1", null);
 		flush(c);
 		expect(c.out).toContain("→ asky_read {} ⏸");
 	});

@@ -23,9 +23,11 @@ import { join, relative } from "node:path";
 
 const GATES = [
 	{ name: "core", limit: 2000, dir: join("packages", "core", "src") },
-	// v2d: 1600 → 2100 — the user-authorized raise for the body renderer
-	// (ADR-0040: the cell model + frozen/tail architecture).
-	{ name: "cli", limit: 2100, dir: join("apps", "cli", "src") },
+	// v2e: 2100 → 2400 — the THIRD and FINAL raise (ADR-0041): 2400 is the
+	// terminal cap for apps/cli/src, never raised again; the way past it is
+	// structural extraction or scope cuts, decided by ruling — the gate
+	// number is no longer a variable.
+	{ name: "cli", limit: 2400, dir: join("apps", "cli", "src") },
 ];
 const ROOT = new URL("..", import.meta.url).pathname;
 

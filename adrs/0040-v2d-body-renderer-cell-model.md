@@ -105,12 +105,12 @@ is now the close signal. (2) the tail was sliced before the freeze —
 a stale tail re-drew the frozen cells (×2); the tail is computed from
 the final nextFrozen.
 
-**Consequences.** The gate probe (tui-v2e) is a standing fixture: 3×
+**Consequences.** The gate probe (scrollback-flood) is a standing fixture: 3×
 viewport flood, LF ≥ 104, early content exactly once, no DECSTBM. The
 tmux scrollback (`capture-pane -S`) confirms the early content in the
 native scrollback; Terminal.app and iTerm2 run the same sequence. The
 pipe bytes stay byte-identical to the v2c baseline.
 
 ## Evidence
-- `tui-v2e.test.ts` (the #13 gate), the body renderer's LF-scroll path,
+- `scrollback-flood.test.ts` (the #13 gate), the body renderer's LF-scroll path,
   the plan record §10.

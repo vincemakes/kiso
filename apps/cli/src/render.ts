@@ -18,10 +18,11 @@ export interface Palette {
 	readonly blue: string;
 	readonly dim: string;
 	readonly red: string;
+	readonly green: string; // v2e: the diff additions — diff-only (NO_COLOR falls back to the + prefix)
 	readonly reset: string;
 }
-export const COLOR_ON: Palette = { blue: "\x1b[38;5;75m", dim: "\x1b[2m", red: "\x1b[31m", reset: "\x1b[0m" };
-export const COLOR_OFF: Palette = { blue: "", dim: "", red: "", reset: "" };
+export const COLOR_ON: Palette = { blue: "\x1b[38;5;75m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", reset: "\x1b[0m" };
+export const COLOR_OFF: Palette = { blue: "", dim: "", red: "", green: "", reset: "" };
 export function palette(): Palette {
 	return process.env.NO_COLOR === undefined && process.stdout.isTTY ? COLOR_ON : COLOR_OFF;
 }
