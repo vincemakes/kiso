@@ -593,7 +593,10 @@ parameter and systemPrompt append surfaces — see
   (pipes carry zero ANSI); typed input is echoed by readline itself, never
   rendered twice; a spinner glyph shows liveness between the request and
   the first delta. `resume` is the recovery flow (uncertain executions are
-  decided rerun/abandon, approvals pause and ask); coding tools are bound
+  decided rerun/abandon — uncertainty belongs to the crash window alone,
+  ADR-0038; a receipted failure is a clean failure whose result carries an
+  honest partial-side-effect note, and a retry re-passes the approval
+  chain); coding tools are bound
   to the workspace root (absolute paths, `..`, and symlink escapes are
   refused); the approval prompt shows the full shell command and full
   paths. The **kill -9 gate** (`apps/cli/tests/kill9.test.ts`) SIGKILLs a

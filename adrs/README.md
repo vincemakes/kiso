@@ -42,6 +42,8 @@ that has not finished speaking.
   process — Accepted
 - 0037 — Project-level capability is trusted by content digest, not by
   directory — Accepted
+- 0038 — Uncertainty belongs to the crash window alone; the approval
+  chain guards retries — Accepted (supersedes 0024 in part)
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
