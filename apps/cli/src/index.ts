@@ -39,9 +39,11 @@ import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import type { PermissionPolicy } from "@vincemakes/kiso-runtime";
 import {
 	escapeTerminal,
+	palette,
 	renderEvent,
 	renderSessionLine,
 	renderStatusLine,
+	renderTerminalGap,
 	renderToolSummary,
 	type RunUsage,
 } from "./render.js";
@@ -94,17 +96,48 @@ try {
 
 /** 横幅: the block-letter logo (design fixed). TTY only — pipes, e2e
  *  drivers, and CI see byte-for-byte the old output; the extensions line
- *  merges into the third row on TTY and stays a standalone line off-TTY. */
-const DIM = "\x1b[2m";
-const RESET = "\x1b[0m";
-const LOGO = "█ █ ▀█▀ █▀▀ █▀█\n█▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9\n▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀";
+ *  merges into the third row on TTY and stays a standalone line off-TTY.
+ *  v2a: the logo rows stay dim; the TAGLINE (row 2) is the blue identity
+ *  accent. */
+const LOGO_TOP = "█ █ ▀█▀ █▀▀ █▀█\n█▀▄  █  ▀▀█ █ █   ";
+const TAGLINE = "the coding agent that survives kill -9";
+const LOGO_BOTTOM = "\n▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀";
 function startupBanner(): string {
 	// The historical `[N extensions: names]` text merges VERBATIM into the
 	// third row — the existing e2e assertions keep matching (天然不破). E3:
 	// project-level extensions are counted in N and listed after `project:`
 	// — `[3 extensions: safe-defaults · project: lint-rules, mcp]`.
+	const p = palette();
 	const names = bannerExtensionText();
-	return `${DIM}${LOGO}   v${VERSION}${names}${RESET}\n`;
+	return `${p.dim}${LOGO_TOP}${p.blue}${TAGLINE}${p.reset}${p.dim}${LOGO_BOTTOM}   v${VERSION}${names}${p.reset}\n`;
+}
+
+/** v2a: the interactive prompt — blue, the identity accent. readline owns
+ *  the echo of what the user types; we own the prompt's color. */
+function interactivePrompt(): string {
+	const p = palette();
+	return `${p.blue}you> ${p.reset}`;
+}
+
+/** v2a: the pi Loader minimal — one rotating blue glyph (◐◓◑◒, 200ms)
+ *  between the request and the first event, cleared in place. Non-TTY or
+ *  NO_COLOR → a no-op (pipes already carry zero ANSI). */
+function startSpinner(): () => void {
+	const p = palette();
+	if (p.blue === "" || !process.stdout.isTTY) return () => {};
+	const GLYPHS = ["◐", "◓", "◑", "◒"];
+	let i = 0;
+	let stopped = false;
+	const timer = setInterval(() => {
+		process.stdout.write(`\r${p.blue}${GLYPHS[i++ % GLYPHS.length]}${p.reset}`);
+	}, 200);
+	timer.unref(); // a prompt exit must not be held by the glyph timer
+	return () => {
+		if (stopped) return;
+		stopped = true;
+		clearInterval(timer);
+		process.stdout.write("\r   \r"); // clear the glyph in place
+	};
 }
 
 /** E3: the `[N extensions: ...]` text — user-level names, then project-level
@@ -563,7 +596,9 @@ const DEFAULT_CONTEXT_WINDOW = 200_000;
 
 /**
  * Consume a run, answering approval pauses as they arrive. `resumeMode`
- * marks a session.resume() continuation.
+ * marks a session.resume() continuation. v2a: `faux` picks the status
+ * line's form; `liveInput` (non-null only in interactive chat) carries the
+ * last line THIS process's readline consumed — the double-echo filter.
  */
 async function consumeRun(
 	session: AgentSession,
@@ -571,6 +606,8 @@ async function consumeRun(
 	rl: ReturnType<typeof createInterface>,
 	turnNo: number,
 	lastToolRef: { current: LastToolCall | null },
+	faux: boolean,
+	liveInput: { current: string | null } | null,
 ): Promise<import("@vincemakes/kiso-core").Event | undefined> {
 	let last: import("@vincemakes/kiso-core").Event | undefined;
 	// B 区: tool_call_end → (name, input) for the summary; tool_result →
@@ -581,8 +618,24 @@ async function consumeRun(
 	// append inline; the segment closes with a newline at the next
 	// non-thinking event.
 	let thinkingOpen = false;
+	// v2a: liveness between the request and the first event.
+	const stopSpinner = startSpinner();
+	let firstEvent = true;
+	try {
 	for await (const ev of run) {
+		if (firstEvent) {
+			firstEvent = false;
+			stopSpinner();
+		}
 		last = ev;
+		// v2a (双回显): the interactive readline already echoed an input THIS
+		// process consumed — rendering the event again is the double echo.
+		// Replayed history (recovery/resume — nobody typed) keeps the event
+		// render. Deterministic: exact content match with the consumed line,
+		// on a TTY (the only place an echo exists to hand over).
+		if (ev.type === "user_input" && liveInput !== null && liveInput.current === (typeof ev.content === "string" ? ev.content : "") && process.stdin.isTTY) {
+			continue;
+		}
 		const prevThinking = thinkingOpen;
 		thinkingOpen = ev.type === "thinking";
 		if (prevThinking && !thinkingOpen) process.stdout.write("\n");
@@ -600,11 +653,6 @@ async function consumeRun(
 		}
 		if (ev.type === "usage") {
 			usage = { in: ev.inputTokens, out: ev.outputTokens, cache: ev.cacheRead, known: ev.known };
-		}
-		if (ev.type === "terminal") {
-			// B 区: the status line after every terminal.
-			const ctxRatio = estimateCtxRatio(session);
-			console.log(renderStatusLine(turnNo, usage, ctxRatio));
 		}
 		if (ev.type === "uncertain_pending") {
 			// C 组: a failed non-idempotent execution pauses for a verdict.
@@ -640,6 +688,15 @@ async function consumeRun(
 		} else {
 			process.stdout.write(rendered.text);
 		}
+		if (ev.type === "terminal") {
+			// v2a rhythm: the status line hugs the terminal (有什么显什么 —
+			// null = nothing to show), then EXACTLY one blank line before
+			// the next prompt.
+			process.stdout.write(renderTerminalGap(renderStatusLine(turnNo, usage, estimateCtxRatio(session), faux)));
+		}
+	}
+	} finally {
+		stopSpinner();
 	}
 	return last;
 }
@@ -683,6 +740,10 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 
 	const turn = (input: string): Promise<void> =>
 		new Promise((resolve, reject) => {
+			// v2a: the echo filter compares the user_input event against THIS
+			// turn's own input — lines that arrive ahead of their turn (piped
+			// bursts, queued replays) must not overwrite the reference.
+			liveInput.current = input;
 			const run = session.run(input);
 			currentRun = run;
 			turnNo += 1;
@@ -690,7 +751,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 			(async () => {
 				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
-					last = await consumeRun(session, run, rl, myTurn, lastToolRef);
+					last = await consumeRun(session, run, rl, myTurn, lastToolRef, faux, liveInput);
 					currentRun = null;
 					// 八: a faux script that ran out of declared turns exits
 					// loudly with a non-zero status — never a silent status 0.
@@ -701,7 +762,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 					failOnFauxExhaustion(last, faux, rl);
 					// 八: after EVERY turn the prompt is re-armed — the human
 					// never types blind after the first turn.
-					rl.setPrompt("you> ");
+					rl.setPrompt(interactivePrompt());
 					rl.prompt();
 					resolve();
 				} catch (err) {
@@ -714,7 +775,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 					}
 					console.error(`\n[run failed] ${err instanceof Error ? err.message : String(err)}\n`);
 					currentRun = null;
-					rl.setPrompt("you> ");
+					rl.setPrompt(interactivePrompt());
 					rl.prompt();
 					resolve();
 				}
@@ -750,16 +811,22 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 	// B 区: user-turn counter for the status line, and the /last buffer.
 	let turnNo = 0;
 	const lastToolRef: { current: LastToolCall | null } = { current: null };
+	// v2a: the last line THIS process's readline consumed — the double-echo
+	// filter (see consumeRun). Only interactive chat sets it.
+	const liveInput: { current: string | null } = { current: null };
 	rl.on("line", (line) => {
 		const trimmed = line.trim();
 		if (trimmed === "/help") {
 			// Prints the available commands with one-line descriptions.
+			// v2a: the command names are the blue identity accent.
+			const p = palette();
+			const cmd = (name: string, desc: string): string => `${p.blue}${name}${p.reset}    ${desc}`;
 			chain = chain.then(async () => {
-				console.log("/help    print this list of commands");
-				console.log("/last    show the most recent tool call's input and output");
-				console.log("/status  show session id, event count, and context estimate");
-				console.log("exit     leave the session");
-				rl.setPrompt("you> ");
+				console.log(cmd("/help", "print this list of commands"));
+				console.log(cmd("/last", "show the most recent tool call's input and output"));
+				console.log(cmd("/status", "show session id, event count, and context estimate"));
+				console.log(cmd("exit", "leave the session"));
+				rl.setPrompt(interactivePrompt());
 				rl.prompt();
 			});
 			return;
@@ -778,7 +845,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 					console.log(`--- ${tool.name} output${tool.result.isError ? " (error)" : ""} ---`);
 					console.log(escapeTerminal(tool.result.content));
 				}
-				rl.setPrompt("you> ");
+				rl.setPrompt(interactivePrompt());
 				rl.prompt();
 			});
 			return;
@@ -793,7 +860,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 				console.log(`session ${session.id}`);
 				console.log(`${session.log.all.length} events`);
 				console.log(`ctx ${ctx}`);
-				rl.setPrompt("you> ");
+				rl.setPrompt(interactivePrompt());
 				rl.prompt();
 			});
 			return;
@@ -819,7 +886,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 		const recoveryRun = session.resume();
 		currentRun = recoveryRun;
 		turnNo += 1;
-		const last = await consumeRun(session, recoveryRun, rl, turnNo, lastToolRef);
+		const last = await consumeRun(session, recoveryRun, rl, turnNo, lastToolRef, faux, liveInput);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, rl);
 	}
@@ -834,7 +901,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 		chain = chain.then(() => turn(line));
 	}
 	queuedLines.length = 0;
-	rl.setPrompt("you> ");
+	rl.setPrompt(interactivePrompt());
 	rl.prompt();
 	await new Promise<void>((resolve) => rl.on("close", () => resolve()));
 	await chain; // never exit while a turn is in flight
@@ -857,7 +924,7 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 		currentRun = run;
 		try {
 			turnNo += 1;
-			const last = await consumeRun(session, run, rl, turnNo, lastToolRef);
+			const last = await consumeRun(session, run, rl, turnNo, lastToolRef, faux, null);
 			failOnFauxExhaustion(last, faux, rl);
 		} finally {
 			currentRun = null;
@@ -933,9 +1000,10 @@ async function main(): Promise<void> {
 				}
 				break;
 			}
-			case "help":
+			case "help": {
+				const p = palette();
 				console.log(
-					`${DIM}${LOGO}${RESET}\n\n` +
+					`${p.dim}${LOGO_TOP}${p.blue}${TAGLINE}${p.reset}${p.dim}${LOGO_BOTTOM}${p.reset}\n\n` +
 						"kiso — the coding agent that survives kill -9\n\n" +
 						"  kiso [sessionId]         interactive session (default command)\n" +
 						"  kiso chat [sessionId]    same as above\n" +
@@ -944,6 +1012,7 @@ async function main(): Promise<void> {
 						"  kiso help               this help\n",
 				);
 				break;
+			}
 			case undefined:
 			default: {
 				// A 区: no subcommand (or any non-command first argument) IS
@@ -976,10 +1045,14 @@ async function main(): Promise<void> {
 	}
 }
 
-main().catch((err) => {
-	// 十: top-level errors are terminal-escaped, and the exit code is set
-	// WITHOUT process.exit — main's finally already ran (agent.close), so
-	// the event loop drains naturally and no lock is left behind.
-	console.error(escapeTerminal(err instanceof Error ? err.message : String(err)));
-	process.exitCode = 1;
-});
+main()
+	.then(() => process.exit(0))
+	.catch((err) => {
+		// 十: top-level errors are terminal-escaped. v2a: the exit is EXPLICIT
+		// — natural drain is racy on a TTY (readline leaves the stdio handles
+		// active and the loop sometimes never drains). main's finally already
+		// ran (agent.close, dispose, temp cleanup) — nothing is skipped, no
+		// lock is left behind; the exit code is honest.
+		console.error(escapeTerminal(err instanceof Error ? err.message : String(err)));
+		process.exit(1);
+	});

@@ -6,12 +6,25 @@
 import type { Event } from "@vincemakes/kiso-core";
 import { canonicalTargetPath } from "@vincemakes/kiso-tools-node";
 
-const DIM = "\x1b[2m";
-const GREEN = "\x1b[32m";
-const RED = "\x1b[31m";
-const YELLOW = "\x1b[33m";
-const CYAN = "\x1b[36m";
-const RESET = "\x1b[0m";
+/**
+ * v2a — the palette, centralized (no hard-coded codes elsewhere): ONE
+ * accent — blue, ANSI 256 color 75 — for the identity accents (the you>
+ * prompt, the banner tagline, ✓ marks, slash-command names); red for
+ * errors; dim for metadata. NO_COLOR set, or a non-TTY output → every
+ * code is empty, so pipes and CI carry ZERO ANSI (the existing byte-level
+ * e2e assertions guard it). Everything not listed here is plain.
+ */
+export interface Palette {
+	readonly blue: string;
+	readonly dim: string;
+	readonly red: string;
+	readonly reset: string;
+}
+export const COLOR_ON: Palette = { blue: "\x1b[38;5;75m", dim: "\x1b[2m", red: "\x1b[31m", reset: "\x1b[0m" };
+export const COLOR_OFF: Palette = { blue: "", dim: "", red: "", reset: "" };
+export function palette(): Palette {
+	return process.env.NO_COLOR === undefined && process.stdout.isTTY ? COLOR_ON : COLOR_OFF;
+}
 
 /**
  * E 组/八: strip terminal-injection vectors from MODEL/TOOL text before it
@@ -54,9 +67,12 @@ export interface RenderResult {
  * event.
  */
 export function renderEvent(ev: Event, prevThinking = false): RenderResult {
+	const p = palette();
 	switch (ev.type) {
 		case "user_input":
-			return { text: `${YELLOW}you> ${escapeTerminal(typeof ev.content === "string" ? ev.content : "(content)")}${RESET}\n`, newline: true, prompt: false };
+			// v2a: blue (the identity accent — the interactive prompt echoes
+			// itself; this render is the REPLAY path).
+			return { text: `${p.blue}you> ${escapeTerminal(typeof ev.content === "string" ? ev.content : "(content)")}${p.reset}\n`, newline: true, prompt: false };
 		case "text_delta":
 			return { text: escapeTerminal(ev.text), newline: false, prompt: false };
 		case "text_end":
@@ -65,26 +81,27 @@ export function renderEvent(ev: Event, prevThinking = false): RenderResult {
 			// 自举 P1: ONE thinking block streams as ONE segment — deltas
 			// append inline; the … prefix marks the block start only.
 			return {
-				text: `${DIM}${prevThinking ? "" : "…"}${escapeTerminal(ev.text.slice(0, 200))}${RESET}`,
+				text: `${p.dim}${prevThinking ? "" : "…"}${escapeTerminal(ev.text.slice(0, 200))}${p.reset}`,
 				newline: false,
 				prompt: false,
 			};
 		case "tool_call_end":
+			// v2a: plain — the call line is information, not decoration.
 			return {
-				text: `${CYAN}→ ${escapeTerminal(ev.name)}(${ev.input ? escapeTerminal(JSON.stringify(ev.input).slice(0, 200)) : ""})${RESET}\n`,
+				text: `→ ${escapeTerminal(ev.name)}(${ev.input ? escapeTerminal(JSON.stringify(ev.input).slice(0, 200)) : ""})\n`,
 				newline: true,
 				prompt: false,
 			};
 		case "tool_execution_started":
-			return { text: `${DIM}  running…${RESET}\n`, newline: true, prompt: false };
+			return { text: `${p.dim}  running…${p.reset}\n`, newline: true, prompt: false };
 		case "tool_execution_succeeded":
-			return { text: `${GREEN}  ok${RESET}\n`, newline: true, prompt: false };
+			return { text: `  ok\n`, newline: true, prompt: false }; // v2a: plain — success is not an accent
 		case "tool_execution_failed":
-			return { text: `${RED}  failed: ${escapeTerminal(ev.error.slice(0, 160))}${RESET}\n`, newline: true, prompt: false };
+			return { text: `${p.red}  failed: ${escapeTerminal(ev.error.slice(0, 160))}${p.reset}\n`, newline: true, prompt: false };
 		case "tool_result": {
 			const content = typeof ev.content === "string" ? ev.content : ev.content.map((b) => (b.type === "text" ? b.text : "(image)")).join("");
 			return {
-				text: `${DIM}${ev.isError ? RED : DIM}  [result${ev.isError ? " ✗" : ""}] ${escapeTerminal(content.slice(0, 400).replaceAll("\n", " "))}${RESET}\n`,
+				text: `${p.dim}${ev.isError ? p.red : p.dim}  [result${ev.isError ? " ✗" : ""}] ${escapeTerminal(content.slice(0, 400).replaceAll("\n", " "))}${p.reset}\n`,
 				newline: true,
 				prompt: false,
 			};
@@ -92,13 +109,14 @@ export function renderEvent(ev: Event, prevThinking = false): RenderResult {
 		case "permission_requested":
 			// 八: the tool NAME is model text — escaped like everything else.
 			return {
-				text: `${YELLOW}⏸ ${escapeTerminal(ev.name)} needs approval${RESET} ${DIM}${approvalDetail(ev.name, ev.input)}${RESET} `,
+				text: `⏸ ${escapeTerminal(ev.name)} needs approval ${p.dim}${approvalDetail(ev.name, ev.input)}${p.reset} `,
 				newline: false,
 				prompt: true,
 			};
 		case "permission_decided":
+			// v2a: verdicts are plain — neither success accents nor errors.
 			return {
-				text: `${ev.decision === "approved" ? GREEN : RED}  ${ev.decision === "approved" ? "approved" : "denied"}${ev.reason ? `: ${escapeTerminal(ev.reason)}` : ""}${RESET}\n`,
+				text: `  ${ev.decision === "approved" ? "approved" : "denied"}${ev.reason ? `: ${escapeTerminal(ev.reason)}` : ""}\n`,
 				newline: true,
 				prompt: false,
 			};
@@ -106,17 +124,17 @@ export function renderEvent(ev: Event, prevThinking = false): RenderResult {
 			const outcome = ev.outcome;
 			const label =
 				outcome.kind === "completed"
-					? `${GREEN}done${RESET}`
+					? `done` // v2a: plain — the ✓ mark is the success accent
 					: outcome.kind === "aborted"
-						? `${YELLOW}aborted (${outcome.by})${RESET}`
-						: `${RED}${outcome.kind}${RESET}${"error" in outcome && "message" in outcome.error ? `: ${escapeTerminal((outcome.error as { message: string }).message.slice(0, 200))}` : ""}`;
+						? `aborted (${outcome.by})`
+						: `${p.red}${outcome.kind}${p.reset}${"error" in outcome && "message" in outcome.error ? `: ${escapeTerminal((outcome.error as { message: string }).message.slice(0, 200))}` : ""}`;
 			return { text: `\n${label}\n`, newline: true, prompt: false };
 		}
 		case "compacted":
-			return { text: `${DIM}  [compacted ${ev.cleared.length} results]${RESET}\n`, newline: true, prompt: false };
+			return { text: `${p.dim}  [compacted ${ev.cleared.length} results]${p.reset}\n`, newline: true, prompt: false };
 		case "uncertain_pending":
 			return {
-				text: `${RED}⚠ ${escapeTerminal(ev.name)} failed (${ev.executionId}): ${escapeTerminal(ev.error.slice(0, 160))}${RESET}\n`,
+				text: `${p.red}⚠ ${escapeTerminal(ev.name)} failed (${ev.executionId}): ${escapeTerminal(ev.error.slice(0, 160))}${p.reset}\n`,
 				newline: true,
 				prompt: false,
 			};
@@ -158,7 +176,9 @@ export function renderToolSummary(
 	input: Record<string, unknown>,
 	result: { content: string; isError: boolean },
 ): string {
-	const mark = result.isError ? "✗" : "✓";
+	// v2a: ✓ is a blue identity accent; ✗ stays red.
+	const p = palette();
+	const mark = result.isError ? `${p.red}✗${p.reset}` : `${p.blue}✓${p.reset}`;
 	const shortName = name.replace("_file", "");
 	const detail = toolSummaryDetail(name, input, result);
 	return `${mark} ${escapeTerminal(`${shortName} ${detail}`)}`;
@@ -223,14 +243,35 @@ export interface RunUsage {
 }
 
 /**
- * B 区: the one-line status bar after a terminal, e.g.
+ * B 区/v2a: the one-line status bar after a terminal, e.g.
  *   [turn 3 · in 12.4k out 1.8k · cache 9.2k · ctx ~14%]
- * All data comes from usage events (known:false renders ?); ctx is the
- * approximate estimate passed in (chars/4 vs the window), marked with ~.
+ * 降噪: unknown fields are OMITTED ENTIRELY (有什么显什么); a fully unknown
+ * usage → null (the caller prints nothing); faux mode → [turn N · faux].
+ * All data comes from usage events; ctx is the approximate estimate
+ * passed in (chars/4 vs the window), marked with ~.
  */
-export function renderStatusLine(turn: number, usage: RunUsage, ctxRatio: number): string {
-	const ctx = Number.isFinite(ctxRatio) ? `~${Math.round(ctxRatio * 100)}%` : "~?";
-	return `[turn ${turn} · in ${kUnit(usage.in)} out ${kUnit(usage.out)} · cache ${kUnit(usage.cache)} · ctx ${ctx}]`;
+export function renderStatusLine(turn: number, usage: RunUsage, ctxRatio: number, faux = false): string | null {
+	if (faux) return `[turn ${turn} · faux]`;
+	if (!usage.known) return null; // everything unknown — nothing worth showing
+	const parts: string[] = [];
+	if (usage.in !== null || usage.out !== null) {
+		const seg = `${usage.in !== null ? `in ${kUnit(usage.in)}` : ""}${usage.in !== null && usage.out !== null ? " " : ""}${usage.out !== null ? `out ${kUnit(usage.out)}` : ""}`;
+		parts.push(seg);
+	}
+	if (usage.cache !== null) parts.push(`cache ${kUnit(usage.cache)}`);
+	if (Number.isFinite(ctxRatio)) parts.push(`ctx ~${Math.round(ctxRatio * 100)}%`);
+	if (parts.length === 0) return null;
+	return `[turn ${turn} · ${parts.join(" · ")}]`;
+}
+
+/**
+ * v2a rhythm — the exact bytes after a terminal event: the status line
+ * hugs the terminal (有什么显什么 — omitted when there is nothing to show),
+ * then EXACTLY one blank line before the next prompt. The consumer prints
+ * this verbatim; the render tests pin the sequence.
+ */
+export function renderTerminalGap(statusLine: string | null): string {
+	return `${statusLine === null ? "" : `${statusLine}\n`}\n`;
 }
 
 /** One-line summary of a session, for `kiso sessions`. */
