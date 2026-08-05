@@ -17,8 +17,10 @@
  * Status derivation:
  *   started, no terminal event yet   → "uncertain"   (interrupted: human)
  *   succeeded                        → "succeeded"   (confirmed, never re-run)
- *   failed, safeToRetry (idempotent) → "failed"      (clean failure)
- *   failed, not safeToRetry          → "uncertain"   (side effects possible)
+ *   failed (any)                     → "failed"      (a complete receipt IS
+ *                                       the outcome — 裁决 #12 / ADR-0038;
+ *                                       safeToRetry stays on the event for
+ *                                       history, it no longer feeds status)
  *   resolved "rerun"                 → "rerun"       (human cleared it)
  *   resolved "abandoned"             → "abandoned"   (human killed it)
  */
@@ -64,10 +66,10 @@ export function executionLedger(events: readonly Event[]): Map<string, Execution
 				if (prior) {
 					ledger.set(ev.executionId, {
 						...prior,
-						// Area 3: only a tool that proved safe-to-retry gets a
-						// clean "failed"; everything else may have produced a
-						// side effect and is uncertain until a human decides.
-						status: ev.safeToRetry ? "failed" : "uncertain",
+						// 裁决 #12 (ADR-0038): a complete receipt IS the outcome —
+						// failed is "failed", never "uncertain"; uncertainty
+						// belongs to the crash window alone (started, no receipt).
+						status: "failed",
 						...(ev.error !== undefined ? { error: ev.error } : {}),
 					});
 				}

@@ -456,7 +456,6 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				yield await terminal({ kind: "aborted", by: "user" });
 				return;
 			}
-			let currentExecutionId: string | undefined;
 			try {
 				for await (const ev of executeOne(
 					call,
@@ -469,10 +468,6 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					signal,
 					config.approvalPolicies,
 				)) {
-					// 四: the identity of THIS execution comes from the stream —
-					// a historical same-callId execution must never be mistaken
-					// for this call's (the provider callId may repeat across runs).
-					if (ev.type === "tool_execution_started") currentExecutionId = ev.executionId;
 					if (hooks.onEvent) await hooks.onEvent(ev, {}).catch(() => {});
 					yield ev;
 				}
@@ -486,88 +481,14 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				throw err;
 			}
 
-			// C 组: a failed NON-idempotent execution is a persistent
-			// uncertain PAUSE — no sibling tool, no auto-retry, and the next
-			// model turn waits for the human verdict. 四: the failed event is
-			// found by THIS execution's id — never by the repeatable callId,
-			// which would let a historical same-callId failure pollute a fresh
-			// successful execution with a stale uncertain pause.
-			const failed =
-				currentExecutionId === undefined
-					? undefined
-					: [...log.all]
-							.reverse()
-							.find(
-								(e): e is Event & { type: "tool_execution_failed" } =>
-									e.type === "tool_execution_failed" && e.executionId === currentExecutionId,
-							);
-			if (failed !== undefined && !failed.safeToRetry) {
-				// Register the human channel BEFORE announcing the pause —
-				// a consumer that answers the moment it sees the event must
-				// find the resolver already waiting (no deadlock between
-				// yield and await, mirroring the approval pause).
-				const pendingResolution =
-					config.resolveUncertainty !== undefined ? config.resolveUncertainty(failed.executionId) : undefined;
-				const pendingUncertain = log.append({
-					type: "uncertain_pending",
-					executionId: failed.executionId,
-					callId: call.callId,
-					name: call.name,
-					error: failed.error,
-				});
-				if (hooks.onEvent) await hooks.onEvent(pendingUncertain, {}).catch(() => {});
-				yield pendingUncertain;
-
-				let resolution: "rerun" | "abandoned";
-				if (pendingResolution !== undefined) {
-					try {
-						resolution = await raceAbort(pendingResolution, signal);
-					} catch (err) {
-						if (err === ABORTED) {
-							// 第四轮(对抗): the human may have answered in the
-							// same instant the abort landed — a CONSUMED verdict
-							// must be recorded (exactly once), never lost. It is
-							// appended here, then the run ends with its honest
-							// aborted terminal; the execution is resolved, not
-							// bricked.
-							const verdict = config.uncertaintyVerdict?.(failed.executionId);
-							if (verdict !== undefined) {
-								const verdictEvent = log.append({
-									type: "tool_execution_resolved",
-									executionId: failed.executionId,
-									callId: call.callId,
-									resolution: verdict,
-								});
-								if (hooks.onEvent) await hooks.onEvent(verdictEvent, {}).catch(() => {});
-								yield verdictEvent;
-							}
-							yield await terminal({ kind: "aborted", by: "user" });
-							return;
-						}
-						throw err;
-					}
-				} else {
-					// No channel: record the conservative verdict — the
-					// failure is NEVER auto-retried, and the ledger stays
-					// consistent for future resumes.
-					resolution = "abandoned";
-				}
-				// 七: the LOOP owns the resolution event — appended and
-				// yielded on EVERY verdict path (channel or not), so the Run
-				// persists it and the consumer's stream has no hidden gap.
-				// A live resolveUncertain() only passed the verdict; the
-				// event itself is created here, exactly once.
-				const resolvedEvent = log.append({
-					type: "tool_execution_resolved",
-					executionId: failed.executionId,
-					callId: call.callId,
-					resolution,
-				});
-				if (hooks.onEvent) await hooks.onEvent(resolvedEvent, {}).catch(() => {});
-				yield resolvedEvent;
-				// Either verdict ends the pending list: siblings never run.
-				break;
-			}
+			// 裁决 #12 (ADR-0038): the failed-receipt uncertain PAUSE is
+			// REMOVED — with a complete receipt (succeeded or failed) the
+			// outcome is KNOWN, and uncertainty belongs to the crash window
+			// alone (started, no receipt; surfaced through the ledger's
+			// uncertainExecutions and resolved offline). A retry is a NEW
+			// call — it passes the approval chain again, which is the correct
+			// guard for partial side effects; the honest note on
+			// non-idempotent failures rides the result (修正一).
 		}
 
 		// ── Advance history: the log grew; re-derive for the next turn ─────
@@ -921,6 +842,19 @@ async function* executeOne(
 
 	if (hooks.onPostTool) {
 		result = await hooks.onPostTool(payload, result, ctx);
+	}
+
+	// 裁决 #12 修正一: a non-idempotent failure's side effects may have
+	// partially applied — an honest note rides the RESULT (and the failed
+	// receipt below, losslessly — a crash-window repair of the tool_result
+	// reproduces the normal path). Idempotent failures carry no note; the
+	// MCP bridge maps tools without declaring idempotency, so unknown
+	// idempotency = the note applies (honest).
+	if (result.isError && tool.idempotent !== true) {
+		result = {
+			...result,
+			content: `${result.content}\n[non-idempotent tool failed — its side effects may have partially applied; verify before retrying]`,
+		};
 	}
 
 	if (result.isError) {

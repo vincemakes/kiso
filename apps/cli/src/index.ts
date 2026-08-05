@@ -663,19 +663,13 @@ async function consumeRun(
 			usage = { in: ev.inputTokens, out: ev.outputTokens, cache: ev.cacheRead, known: ev.known };
 		}
 		if (ev.type === "uncertain_pending") {
-			// C 组: a failed non-idempotent execution pauses for a verdict.
+			// 裁决 #12 (ADR-0038): the ⚠ line is pure INFORMATION now — the
+			// approval chain guards retries, and the human question belongs
+			// only to the crash window's recovery flow (resolveUncertains).
+			// Old logs may still carry the event; replay shows the fact.
 			console.log(
 				`\n⚠ ${escapeTerminal(ev.name)} FAILED — the side effect may have applied.\n  ${escapeTerminal(ev.error)}\n`,
 			);
-			const answer = await ask(rl, `did it apply? (r)erun / (a)bandon: `);
-			if (answer === CANCELLED) {
-				// 十: a cancellation records NO verdict — the execution stays
-				// uncertain; the run's own abort produces the aborted
-				// terminal, which the consumer keeps consuming.
-				console.log("[cancelled — the execution stays uncertain]\n");
-				continue;
-			}
-			await session.resolveUncertain(ev.executionId, answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned");
 			continue;
 		}
 		const rendered = renderEvent(ev, prevThinking);

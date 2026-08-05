@@ -900,6 +900,16 @@ export class Run implements AsyncIterable<Event> {
 			}
 		}
 
+		// 裁决 #12 修正一: the honest note rides the recovered failure too —
+		// the receipt and the repaired tool_result reproduce the live path
+		// losslessly.
+		if (result.isError && tool?.idempotent !== true) {
+			result = {
+				...result,
+				content: `${result.content}\n[non-idempotent tool failed — its side effects may have partially applied; verify before retrying]`,
+			};
+		}
+
 		if (result.isError) {
 			yield log.append({
 				type: "tool_execution_failed",
@@ -931,49 +941,10 @@ export class Run implements AsyncIterable<Event> {
 			...(result.tags !== undefined ? { tags: result.tags } : {}),
 			executionId,
 		});
-		// 四: a failed NON-idempotent execution after a cross-process approval
-		// is a durable uncertain PAUSE, exactly like the live loop's — the
-		// provider and any sibling executions stop until a human decides.
-		// An abort during the wait leaves the execution uncertain; the next
-		// resume blocks on it (ResumeBlockedError) instead of continuing.
-		if (result.isError && tool !== undefined && tool.idempotent !== true) {
-			const pendingResolution = new Promise<"rerun" | "abandoned">((resolve) => {
-				this.#uncertaintyIds.push(executionId);
-				this.#session.registerUncertaintyResolver(executionId, resolve);
-			});
-			const pendingUncertain = log.append({
-				type: "uncertain_pending",
-				executionId,
-				callId,
-				name,
-				error: result.content,
-			});
-			yield pendingUncertain;
-			const verdict = await abortable(pendingResolution, signal);
-			if (verdict === ABORTED) {
-				// 第四轮(对抗): a verdict given in the same instant as the
-				// abort is recorded (exactly once), never lost.
-				const given = this.#session.uncertaintyVerdict(executionId);
-				if (given !== undefined) {
-					yield log.append({
-						type: "tool_execution_resolved",
-						executionId,
-						callId,
-						resolution: given,
-					});
-				}
-				return;
-			}
-			// 七: the recovery generator owns the resolution event — appended
-			// and yielded here, persisted by the Run's wrapper (a live
-			// resolveUncertain() only passed the verdict).
-			yield log.append({
-				type: "tool_execution_resolved",
-				executionId,
-				callId,
-				resolution: verdict,
-			});
-		}
+		// 裁决 #12 (ADR-0038): the failed-receipt uncertain PAUSE is REMOVED
+		// here too (it mirrored the live loop's C 组 pause) — a complete
+		// receipt IS the outcome; uncertainty belongs to the crash window
+		// alone. A retry passes the approval chain again.
 	}
 
 	/** The model-facing result of a durable denial — no execution happened. */
