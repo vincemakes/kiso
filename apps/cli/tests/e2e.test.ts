@@ -150,8 +150,9 @@ sys.exit(0 if processed else 1)
 		expect(result.status, result.stderr).toBe(0);
 		// The tool summary line: a list_dir completion with the root marker.
 		expect(result.stdout).toContain("✓ list_dir (root)");
-		// The status line after the terminal, with unknown usage rendered ?.
-		expect(result.stdout).toMatch(/\[turn \d+ · in \? out \? · cache \? · ctx ~\d+%\]/);
+		// The status line after the terminal — v2a: faux mode is [turn N · faux]
+		// (unknown usage is omitted entirely, 有什么显什么).
+		expect(result.stdout).toMatch(/\[turn \d+ · faux\]/);
 		// /last printed the full input/output from the event stream.
 		expect(result.stdout).toContain("--- list_dir input ---");
 		expect(result.stdout).toContain("--- list_dir output ---");

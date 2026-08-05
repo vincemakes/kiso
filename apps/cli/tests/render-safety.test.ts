@@ -174,11 +174,14 @@ describe("B: tool summary lines and the status line", () => {
 		expect(line).toContain("ctx ~14%");
 	});
 
-	it("unknown usage renders ? — never a faked zero", () => {
-		const line = renderStatusLine(1, { in: null, out: null, cache: null, known: false }, 0.05);
-		expect(line).toContain("in ?");
-		expect(line).toContain("out ?");
-		expect(line).toContain("cache ?");
+	it("v2a denoise: fully unknown usage → null (the whole line is omitted); partial fields are omitted, never ?", () => {
+		expect(renderStatusLine(1, { in: null, out: null, cache: null, known: false }, 0.05)).toBeNull();
+		expect(renderStatusLine(1, { in: 800, out: null, cache: null, known: true }, 0.05)).toBe("[turn 1 · in 800 · ctx ~5%]");
+		expect(renderStatusLine(1, { in: 800, out: 200, cache: null, known: true }, NaN)).toBe("[turn 1 · in 800 out 200]");
+	});
+
+	it("v2a faux mode: [turn N · faux]", () => {
+		expect(renderStatusLine(2, { in: null, out: null, cache: null, known: false }, 0.05, true)).toBe("[turn 2 · faux]");
 	});
 });
 
