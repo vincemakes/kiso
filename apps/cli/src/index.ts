@@ -18,6 +18,7 @@
 
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { Body } from "./body.js";
 import { Editor, PROMPT as EDITOR_PROMPT } from "./editor.js";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -270,16 +271,16 @@ function makeLineInput(): LineInput {
  *  NO_COLOR stay the v2a line mode byte-for-byte. */
 const dock = new Dock();
 
-/** v2b: body output routes through the dock when docked (the cursor into
- *  the scroll region, then back to the input line); otherwise a plain
- *  write — pipes are byte-identical to v2a. */
-function bodyWrite(text: string): void {
-	if (dock.active) dock.writeBody(text);
-	else process.stdout.write(text);
-}
+/** v2d: the body renderer — the ONE writer of the stdout scroll region
+ *  (the frozen area + the active tail). Pipes run it in passthrough (the
+ *  v2b/v2c line-mode bytes, byte-for-byte). Created in main; closed on
+ *  every exit path. */
+let body: Body;
 
+/** v2d: body output routes through the cell renderer — the single writer.
+ *  bodyLog adds the trailing newline; internal newlines are preserved. */
 function bodyLog(text: string): void {
-	bodyWrite(`${text}\n`);
+	body.raw(text.split("\n"));
 }
 
 /** v2b: the spinner merged into the STATUS BAR (the v2a standalone glyph
@@ -787,47 +788,19 @@ async function consumeRun(
 	run: AsyncIterable<import("@vincemakes/kiso-core").Event>,
 	input: LineInput,
 	turnNo: number,
-	lastToolRef: { current: LastToolCall | null },
 	faux: boolean,
 	liveInput: { current: string | null } | null,
-	lastThinking: { current: string | null },
 	statusCb: ((usage: RunUsage, ctxRatio: number) => void) | null,
 ): Promise<import("@vincemakes/kiso-core").Event | undefined> {
 	let last: import("@vincemakes/kiso-core").Event | undefined;
-	// B 区: tool_call_end → (name, input) for the summary; tool_result →
-	// one summary line. Usage events feed the status line.
-	const pendingCalls = new Map<string, { name: string; input: Record<string, unknown> }>();
 	let usage: RunUsage = { in: null, out: null, cache: null, known: false };
-	// v2b: thinking blocks buffer and fold to ONE dim line at the block's
-	// end (foldThinking); the FULL text goes to /think.
-	let thinkingBuf = "";
-	const flushThinking = (): void => {
-		if (thinkingBuf === "") return;
-		lastThinking.current = thinkingBuf;
-		bodyWrite(foldThinking(thinkingBuf));
-		thinkingBuf = "";
-	};
-	let thinkingOpen = false;
-	// v2b: liveness merged into the status bar (docked); a running timer
-	// shows "running <tool> Ns" during a tool execution.
-	const stopSpinner = startStatusSpinner();
-	let stopRunning: (() => void) | null = null;
-	let firstEvent = true;
 	try {
 	for await (const ev of run) {
-		if (firstEvent) {
-			firstEvent = false;
-			stopSpinner();
-		}
 		last = ev;
-		// v2a (双回显): the interactive readline already echoed an input THIS
-		// process consumed — rendering the event again is the double echo.
-		// Replayed history (recovery/resume — nobody typed) keeps the event
-		// render. Deterministic: exact content match with the consumed line,
-		// on a TTY (the only place an echo exists to hand over).
+		// v2a (双回显): the interactive echo was already rendered by the
+		// input source — rendering the event again is the double echo.
 		// v2b: DOCKED — the echo lives in the input row (H), NOT the body;
-		// the body render is the ONLY visible copy of the sent line. The
-		// user's typed text must not vanish after Enter.
+		// the body render is the ONLY visible copy of the sent line.
 		if (
 			ev.type === "user_input" &&
 			liveInput !== null &&
@@ -837,77 +810,86 @@ async function consumeRun(
 		) {
 			continue;
 		}
-		const prevThinking = thinkingOpen;
-		thinkingOpen = ev.type === "thinking";
-		if (prevThinking && !thinkingOpen) flushThinking();
-		if (ev.type === "thinking") {
-			thinkingBuf += ev.text;
-			continue;
-		}
-		if (ev.type === "tool_call_end") {
-			pendingCalls.set(ev.callId, { name: ev.name, input: ev.input ?? {} });
-		}
-		if (ev.type === "tool_execution_started") {
-			stopRunning = startRunningTimer(ev.name);
-		}
-		if (ev.type === "tool_result") {
-			stopRunning?.();
-			stopRunning = null;
-			const call = pendingCalls.get(ev.callId);
-			pendingCalls.delete(ev.callId);
-			if (call !== undefined) {
+		// v2d: EVERY event only mutates a cell — the Body is the single
+		// writer of the scroll region, so interleaving is impossible by
+		// construction (ADR-0040).
+		switch (ev.type) {
+			case "user_input":
+				body.userLine(typeof ev.content === "string" ? ev.content : "");
+				break;
+			case "thinking":
+				body.thinkingAppend(ev.text);
+				break;
+			case "tool_call_end":
+				body.toolStart(ev.name, ev.callId, ev.input ?? {});
+				break;
+			case "tool_execution_started":
+				body.toolRunning(ev.callId);
+				break;
+			case "tool_execution_succeeded":
+				body.toolSucceeded(ev.callId);
+				break;
+			case "tool_execution_failed":
+				body.toolFailed(ev.callId, ev.error);
+				break;
+			case "tool_result": {
 				const text = typeof ev.content === "string" ? ev.content : "";
-				lastToolRef.current = { name: call.name, input: call.input, result: { content: text, isError: ev.isError } };
-				bodyLog(renderToolSummary(call.name, call.input, { content: text, isError: ev.isError }));
+				body.toolResult(ev.callId, { content: text, isError: ev.isError });
+				break;
 			}
-		}
-		if (ev.type === "usage") {
-			usage = { in: ev.inputTokens, out: ev.outputTokens, cache: ev.cacheRead, known: ev.known };
-			statusCb?.(usage, estimateCtxRatio(session));
-		}
-		if (ev.type === "uncertain_pending") {
-			// 裁决 #12 (ADR-0038): the ⚠ line is pure INFORMATION now — the
-			// approval chain guards retries, and the human question belongs
-			// only to the crash window's recovery flow (resolveUncertains).
-			// Old logs may still carry the event; replay shows the fact.
-			bodyLog(
-				`\n⚠ ${escapeTerminal(ev.name)} FAILED — the side effect may have applied.\n  ${escapeTerminal(ev.error)}\n`,
-			);
-			continue;
-		}
-		const rendered = renderEvent(ev, prevThinking);
-		if (rendered.prompt) {
-			// v2b (docked): the detail scrolls into the body; the question
-			// takes over the status position; the answer lands at the input
-			// line. Pipes keep the v2a inline render.
-			bodyWrite(rendered.text);
-			const decisionId = (ev as { decisionId: string }).decisionId;
-			const name = (ev as { name: string }).name;
-			// 八: the tool name is model text — escaped on every output path.
-			const answer = await ask(input, `approve ${escapeTerminal(name)}? (y/n) `);
-			if (answer === CANCELLED) {
-				// 十: a cancellation is a CONSERVATIVE denial, explicitly
-				// distinguished from the user typing "n".
-				bodyLog("[approval cancelled — treated as a denial]\n");
-				await session.approve(decisionId, false);
-				continue;
+			case "text_delta":
+				body.textAppend(ev.text);
+				break;
+			case "text_end":
+				body.textEnd();
+				break;
+			case "usage":
+				usage = { in: ev.inputTokens, out: ev.outputTokens, cache: ev.cacheRead, known: ev.known };
+				statusCb?.(usage, estimateCtxRatio(session));
+				break;
+			case "uncertain_pending":
+				// 裁决 #12 (ADR-0038): the ⚠ line is pure INFORMATION now — the
+				// approval chain guards retries, and the human question belongs
+				// only to the crash window's recovery flow (resolveUncertains).
+				body.notice(`⚠ ${escapeTerminal(ev.name)} FAILED — the side effect may have applied. ${escapeTerminal(ev.error)}`);
+				break;
+			case "permission_requested": {
+				// v2d: the ToolCell shows the ⏸ badge; the question takes over
+				// the dock status position; the answer lands at the input line.
+				body.toolApproval(ev.callId);
+				const decisionId = (ev as { decisionId: string }).decisionId;
+				const name = (ev as { name: string }).name;
+				const answer = await ask(input, `approve ${escapeTerminal(name)}? (y/n) `);
+				if (answer === CANCELLED) {
+					// 十: a cancellation is a CONSERVATIVE denial, explicitly
+					// distinguished from the user typing "n".
+					body.notice("[approval cancelled — treated as a denial]");
+					await session.approve(decisionId, false);
+					continue;
+				}
+				await session.approve(decisionId, answer.trim().toLowerCase().startsWith("y"));
+				break;
 			}
-			await session.approve(decisionId, answer.trim().toLowerCase().startsWith("y"));
-		} else {
-			bodyWrite(rendered.text);
-		}
-		if (ev.type === "terminal") {
-			statusCb?.(usage, estimateCtxRatio(session));
-			// v2a rhythm: the status line hugs the terminal (有什么显什么 —
-			// null = nothing to show), then EXACTLY one blank line before
-			// the next prompt.
-			bodyWrite(renderTerminalGap(renderStatusLine(turnNo, usage, estimateCtxRatio(session), faux)));
+			case "terminal":
+				statusCb?.(usage, estimateCtxRatio(session));
+				// v2a rhythm: the honest label (\ndone\n — the completed
+				// marker), the status line hugging it, then EXACTLY one blank
+				// line before the next prompt.
+				body.terminal(renderEvent(ev).text, renderStatusLine(turnNo, usage, estimateCtxRatio(session), faux) ?? "");
+				break;
+			default: {
+				// Events without a cell (stop, …) — the generic render, byte-
+				// preserved for the pipe path.
+				const rendered = renderEvent(ev);
+				if (rendered.text !== "") {
+					body.raw(rendered.text.replace(/\n$/, "").split("\n"));
+				}
+				break;
+			}
 		}
 	}
-	flushThinking();
+	body.thinkingEnd(); // a trailing thinking block folds at the run's end
 	} finally {
-		stopSpinner();
-		stopRunning?.();
 	}
 	return last;
 }
@@ -962,7 +944,7 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 			(async () => {
 				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
-					last = await consumeRun(session, run, input, myTurn, lastToolRef, faux, liveInput, lastThinking, statusCb);
+					last = await consumeRun(session, run, input, myTurn, faux, liveInput, statusCb);
 					currentRun = null;
 					// 八: a faux script that ran out of declared turns exits
 					// loudly with a non-zero status — never a silent status 0.
@@ -1034,14 +1016,12 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 	let chain: Promise<void> = Promise.resolve();
 	let replReady = false;
 	const queuedLines: string[] = [];
-	// B 区: user-turn counter for the status line, and the /last buffer.
+	// B 区: user-turn counter for the status line. /last and /think read
+	// the body (the ToolCell / ThinkingCell final states).
 	let turnNo = 0;
-	const lastToolRef: { current: LastToolCall | null } = { current: null };
 	// v2a: the last line THIS process's readline consumed — the double-echo
 	// filter (see consumeRun). Only interactive chat sets it.
 	const liveInput: { current: string | null } = { current: null };
-	// v2b: the last complete thinking block, for /think.
-	const lastThinking: { current: string | null } = { current: null };
 	// v2c: turns submitted while another runs are QUEUED on the chain — the
 	// live count rides the status bar (+N queued).
 	let queued = 0;
@@ -1074,10 +1054,10 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 			return;
 		}
 		if (trimmed === "/think") {
-			// v2b: print the last COMPLETE thinking block — straight from the
-			// event stream, nothing stored separately (the /last pattern).
+			// v2b/v2d: print the last COMPLETE thinking block — the body holds
+			// it (the ThinkingCell's fold closes at the block's end).
 			chain = chain.then(async () => {
-				const t = lastThinking.current;
+				const t = body.lastThinking();
 				if (t === null) {
 					bodyLog("[no thinking yet]");
 				} else {
@@ -1088,11 +1068,11 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 			return;
 		}
 		if (trimmed === "/last") {
-			// B 区: print the FULL input/output of the most recent tool call,
-			// straight from the event stream — nothing is stored separately.
-			// Runs on the chain: after any in-flight turn completes.
+			// B 区/v2d: print the FULL input/output of the most recent tool
+			// call — the body holds it (the ToolCell's final state). Runs on
+			// the chain: after any in-flight turn completes.
 			chain = chain.then(async () => {
-				const tool = lastToolRef.current;
+				const tool = body.lastTool();
 				if (tool === null) {
 					bodyLog("[no tool call yet]");
 				} else {
@@ -1146,7 +1126,7 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 		const recoveryRun = session.resume();
 		currentRun = recoveryRun;
 		turnNo += 1;
-		const last = await consumeRun(session, recoveryRun, input, turnNo, lastToolRef, faux, liveInput, lastThinking, statusCb);
+		const last = await consumeRun(session, recoveryRun, input, turnNo, faux, liveInput, statusCb);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, input);
 	}
@@ -1182,8 +1162,6 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 	let currentRun: { abort: () => void } | null = null;
 	let cancelled = false;
 	let turnNo = 0;
-	const lastToolRef: { current: LastToolCall | null } = { current: null };
-	const lastThinking: { current: string | null } = { current: null };
 	// v2b: the live status bar (docked only).
 	const statusCb = (u: RunUsage, ctx: number): void => {
 		if (!dock.active) return;
@@ -1194,7 +1172,7 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 		currentRun = run;
 		try {
 			turnNo += 1;
-			const last = await consumeRun(session, run, input, turnNo, lastToolRef, faux, null, lastThinking, statusCb);
+			const last = await consumeRun(session, run, input, turnNo, faux, null, statusCb);
 			failOnFauxExhaustion(last, faux, input);
 		} finally {
 			currentRun = null;
@@ -1256,6 +1234,14 @@ async function main(): Promise<void> {
 	// readline elsewhere. The trust question, chat, and resume all read
 	// through it; main's finally closes it on every exit path.
 	const input = makeLineInput();
+	// v2d: the body renderer — active only where the dock is (a color
+	// TTY with a real size); pipes run it in passthrough, byte-for-byte.
+	body = new Body({
+		active: () => process.stdin.isTTY && palette().blue !== "" && (process.stdout.rows ?? 0) >= 4,
+		height: () => process.stdout.rows ?? 24,
+		width: () => process.stdout.columns ?? 80,
+		editCol: () => dock.editCol(),
+	});
 	try {
 		switch (command) {
 			case "chat": {
@@ -1321,6 +1307,7 @@ async function main(): Promise<void> {
 			}
 		}
 	} finally {
+		body.close(); // flush the pending frame, stop the heartbeat
 		input.close();
 		// E 组: every normal and abnormal exit releases the fds and writer
 		// locks — no lock file is left behind.

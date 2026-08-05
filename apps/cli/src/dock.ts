@@ -127,7 +127,12 @@ export class Dock {
 	 *  dock's redraw and the body's cursor return both end here, so the
 	 *  ACTUAL cursor always equals what the editor tracks. The width is
 	 *  DISPLAY width (the editor's cursor column is already width-based —
-	 *  the CJK drift root cause, editor.ts). */
+	 *  the CJK drift root cause, editor.ts). v2d: public — the Body's
+	 *  render loop ends at this column. */
+	editCol(): number {
+		return this.#inputCol();
+	}
+
 	#inputCol(): number {
 		const inp = this.#inputState();
 		const promptWidth = displayWidth(this.#inputPrompt.replace(/\x1b\[[0-9;]*m/g, ""));

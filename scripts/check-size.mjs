@@ -23,7 +23,9 @@ import { join, relative } from "node:path";
 
 const GATES = [
 	{ name: "core", limit: 2000, dir: join("packages", "core", "src") },
-	{ name: "cli", limit: 1600, dir: join("apps", "cli", "src") },
+	// v2d: 1600 → 2100 — the user-authorized raise for the body renderer
+	// (ADR-0040: the cell model + frozen/tail architecture).
+	{ name: "cli", limit: 2100, dir: join("apps", "cli", "src") },
 ];
 const ROOT = new URL("..", import.meta.url).pathname;
 
