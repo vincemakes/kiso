@@ -61,3 +61,47 @@ ADR.
 - Commits: the v2b round (dock.ts, index.ts plumbing, render folds).
 - The gate: `scripts/check-size.mjs` (cli 1600); the pipe byte diff is in
   the plan record `docs/plans/2026-08-05-tui-v2b.md`.
+
+## Amendment 2 (2026-08-05): v2c — the dock draws its own input line; the kiso brick motif
+
+- **Status:** Accepted
+- **Date:** 2026-08-05
+
+**Context.** The v2b real-machine report (four symptoms: cursor drift while
+typing, the sent text invisible after Enter, input swallowed during a run,
+weak contrast) traced to ONE structural cause: readline's redraw assumes it
+owns the row exclusively and positions by CHARACTER count — a CJK wide
+character (2 cells) shifts every following column, and the dock's redraws
+make the mismatch permanent (probe-confirmed: readline never re-syncs its
+tracked cursor after an external move). Patching readline is a dead end.
+
+**Decision.**
+1. **The TTY path replaces readline with a zero-dependency raw-mode
+   editor** (editor.ts): its own eastAsianWidth subset table (~40 lines),
+   display-width cursor math and horizontal scrolling (a Chinese input
+   landing on the correct display column is the hard acceptance), the
+   minimal key set (UTF-8 printable, Enter, Backspace/Delete, arrows,
+   Home/End, Ctrl+A/E/U/K/W, Ctrl+C/D, Esc), bracketed paste (?2004h/l)
+   with newlines flattened to spaces (single-line editor). Non-TTY paths
+   keep readline untouched — the pipe bytes are byte-identical to v2b
+   (pinned by the diff). The idea is pi-tui's raw editor; the code is
+   ours, still zero dependencies.
+2. **The visual identity is the kiso brick motif** — the input row opens
+   with a blue half-block ▌ (echoing the pixel logo) then blue you>;
+   the separator is a dim dotted ╌ (a weaker presence than ─); the
+   status bar is dim with blue accents. Deliberately NOT the CC rounded
+   frame and NOT the pi editor.
+3. **The user_input echo prints EXACTLY once into the scroll region** —
+   the dock-era input row is not part of the body, so the event render is
+   the only body copy; the line-mode (rows < 4) echo stays the editor's
+   row. Turn submissions during a run queue on the chain with a live
+   "+N queued" status.
+
+**Consequences.** The cli gate holds at 1544/1600 (the editor is +~390
+over v2b). Known limitation, documented in the README: emoji ZWJ clusters
+are not width-perfect (each code point counts its own width). readline
+remains in the non-TTY path only.
+
+## Evidence
+- `apps/cli/src/editor.ts`, the tui-v2c PTY e2e (Chinese cursor columns,
+  exactly-once echo, +N queued, Esc abort, ?2004l), the pipe diff vs v2b.
