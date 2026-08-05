@@ -46,16 +46,23 @@ core:
   ✓ 196 lines of headroom remaining.
 
 cli:
-  apps/cli/src/index.ts  812
-  apps/cli/src/render.ts 200
-  apps/cli/src/dock.ts   109
+  apps/cli/src/index.ts  1042
+  apps/cli/src/mode.ts     57
   ...
-  total                   1922  / 2100
-  ✓ 479 lines of headroom remaining.
+  total                   1099  / 1320
+  ✓ 221 lines of headroom remaining.
+
+tui:
+  packages/tui/src/body.ts   427
+  packages/tui/src/editor.ts 335
+  ...
+  total                      1261  / 1520
+  ✓ 259 lines of headroom remaining.
 ```
 
-(The cli gate moved 1200 → 1600 in v2b — a deliberate, recorded budget
-for the bottom-anchored UI, ADR-0039.)
+(The cli gate's single 2400 terminal cap was replaced by per-package
+gates when the terminal layer was extracted into @vincemakes/kiso-tui —
+the ADR-0041 escape hatch, ADR-0043. Each gate = actual + 20%.)
 
 Comments do not count. Explain freely; implement tersely.
 
@@ -66,7 +73,7 @@ A framework, in two layers:
 | Layer | Owns |
 |---|---|
 | **core** (`@vincemakes/kiso-core`, ≤ 2,000 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · modes · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
-| **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-code` (the coding-agent reference product) |
+| **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-tui` (the pure terminal layer — cell renderer, dock, raw editor, diff; zero runtime deps, input is data / output is bytes — reusable standalone, **experimental**, no API-stability promise yet) · `@vincemakes/kiso-code` (the coding-agent reference product) |
 
 The core stays a kernel: it decides nothing that repeats across products. The
 framework around it is where product-shaped capability grows — and that growth

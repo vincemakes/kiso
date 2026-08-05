@@ -23,11 +23,14 @@ import { join, relative } from "node:path";
 
 const GATES = [
 	{ name: "core", limit: 2000, dir: join("packages", "core", "src") },
-	// v2e: 2100 → 2400 — the THIRD and FINAL raise (ADR-0041): 2400 is the
-	// terminal cap for apps/cli/src, never raised again; the way past it is
-	// structural extraction or scope cuts, decided by ruling — the gate
-	// number is no longer a variable.
-	{ name: "cli", limit: 2400, dir: join("apps", "cli", "src") },
+	// ADR-0043 (the extraction ruling): the 2400 single-package terminal
+	// cap is REPLACED by per-package gates — each = the actual after the
+	// extraction + 20%. The terminal layer left the CLI for packages/tui
+	// (the ADR-0041 escape hatch: extraction, not a fifth raise); the sum
+	// of the two gates may exceed 2400 — the layering's breathing room is
+	// the legitimate yield of extraction.
+	{ name: "cli", limit: 1320, dir: join("apps", "cli", "src") },
+	{ name: "tui", limit: 1520, dir: join("packages", "tui", "src") },
 ];
 const ROOT = new URL("..", import.meta.url).pathname;
 
