@@ -723,14 +723,19 @@ async function* executeOne(
 	let chainVerdict: PolicyVerdict | undefined;
 	let deniedReason: string | undefined;
 	let deniedBy: string | undefined;
+	let firstSpeaker: string | undefined; // the first non-abstain verdict's extension
+	let anySpoke = false;
 	if (durable === undefined && approvalPolicies !== undefined && approvalPolicies.length > 0) {
 		for (const { extension, policy } of approvalPolicies) {
 			let v: PolicyVerdict;
 			try {
 				v = await raceAbort(Promise.resolve(policy.decide(payload, ctx)), signal);
 			} catch {
-				v = { action: "ask" }; // 抛错 = 该扩展计为 ask
+				v = { action: "ask" }; // 抛错 = 该扩展计为 ask —— 发声,绝不静默
 			}
+			if (v.action === "abstain") continue; // no opinion — not a verdict
+			anySpoke = true;
+			firstSpeaker ??= extension;
 			if (v.action === "deny") {
 				deniedBy ??= extension;
 				deniedReason ??= v.reason; // the FIRST denial's reason
@@ -740,19 +745,25 @@ async function* executeOne(
 		}
 		if (deniedBy !== undefined) {
 			chainVerdict = { action: "deny", reason: deniedReason ?? "denied" };
+		} else if (chainVerdict === undefined && anySpoke) {
+			chainVerdict = { action: "allow" }; // 全发声者皆 allow
 		} else if (chainVerdict === undefined) {
-			chainVerdict = { action: "allow" };
+			// 全员 abstain (ADR-0042): NO policy speaks — the call falls to
+			// the ask flow below, never to a silent auto-approve. The human
+			// decides; absent a channel, awaitHumanApproval's honest denial.
+			chainVerdict = { action: "ask" };
 		}
 		if (chainVerdict.action !== "ask") {
-			// allow/deny are PERSISTED FACTS (decidedBy = the extension) —
-			// never a human pause.
+			// allow/deny are PERSISTED FACTS (decidedBy = a SPEAKING
+			// extension — never the chain head on behalf of a non-speaker)
+			// — never a human pause.
 			yield log.append({
 				type: "permission_decided",
 				decisionId: `d-${log.lastSeq + 1}`,
 				callId: call.callId,
 				decision: chainVerdict.action === "allow" ? "approved" : "denied",
 				...(chainVerdict.action === "deny" ? { reason: chainVerdict.reason } : {}),
-				decidedBy: deniedBy ?? approvalPolicies[0]!.extension,
+				decidedBy: deniedBy ?? (firstSpeaker as string),
 			});
 		}
 	}

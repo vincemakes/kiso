@@ -2,8 +2,8 @@
  * Modes — the five built-in approval tiers, built ON the E1 policy chain
  * (the kernel is untouched). Each tier is an in-process "mode:<name>"
  * extension whose decide() is live — it only speaks when it is the
- * CURRENT tier (otherwise allow = no opinion), so /mode switches take
- * effect immediately. The extension NAME rides the runtime's decidedBy
+ * CURRENT tier (otherwise abstain = no opinion, ADR-0042), so /mode
+ * switches take effect immediately. The extension NAME rides the runtime's decidedBy
  * field: an automated denial records decidedBy: "mode:<name>" — the
  * audit sell. User-level extensions stay on the chain AFTER the mode
  * tiers; a user deny always wins (the chain's deny>ask>allow
@@ -41,29 +41,29 @@ export function modeFromEnv(): Mode {
 
 /** The per-tier verdict for a tool call — only when this tier is current. */
 function tierVerdict(tier: Mode, call: { name: string }): PolicyVerdict {
-	if (tier !== current) return { action: "allow" }; // not our tier — no opinion
+	if (tier !== current) return { action: "abstain" }; // not our tier — no opinion
 	switch (tier) {
 		case "manual":
 			return { action: "ask" }; // every tool asks
 		case "default":
 			if (READ_TOOLS.has(call.name)) return { action: "allow" };
 			if (call.name === "write_file" || call.name === "edit_file" || call.name === "shell") return { action: "ask" };
-			// No opinion: an extension-provided tool is the EXTENSIONS'
-			// business — the tier's deny would preempt their allow/ask
-			// (the old PERMISSION_POLICY's unknown-deny backstop retired
-			// with it; the chain's deny>ask>allow still honors any
-			// extension deny on the same call).
-			return { action: "allow" };
+			// Abstain (ADR-0042): an extension-provided tool is the
+			// EXTENSIONS' business — the tier neither allows nor denies.
+			// The chain falls to the ask flow when nobody else speaks, so
+			// an uncovered external tool STILL meets the human (the P2
+			// finding: "allow"-as-no-opinion auto-approved it).
+			return { action: "abstain" };
 		case "accept-edits":
 			if (READ_TOOLS.has(call.name)) return { action: "allow" };
 			if (call.name === "write_file" || call.name === "edit_file") return { action: "allow" };
 			if (call.name === "shell") return { action: "ask" };
-			return { action: "allow" }; // no opinion — see "default"
+			return { action: "abstain" }; // see "default"
 		case "plan":
 			if (READ_TOOLS.has(call.name)) return { action: "allow" };
 			return { action: "deny", reason: "plan mode: read-only" };
 		case "bypass":
-			return { action: "allow" }; // everything
+			return { action: "allow" }; // everything — a REAL allow, never an abstain
 	}
 }
 
@@ -71,10 +71,11 @@ function tierVerdict(tier: Mode, call: { name: string }): PolicyVerdict {
  *  so the runtime's decidedBy records exactly that (the runtime derives
  *  approvalPolicies from extensions[].approvals, tagging each with the
  *  extension name). The CURRENT tier is first: an all-allow chain records
- *  decidedBy = the FIRST policy, so an auto-allow under the startup mode
+ *  decidedBy = the FIRST SPEAKER, so an auto-allow under the startup mode
  *  names that mode honestly. Order never affects verdicts — the chain is
- *  deny>ask>allow over ALL policies, so a user extension's deny wins over
- *  any mode tier, bypass included (the monotonicity e2e pins it). */
+ *  deny>ask>allow over the SPEAKING verdicts (abstain = no opinion), so a
+ *  user extension's deny wins over any mode tier, bypass included (the
+ *  monotonicity e2e pins it). */
 export function modeExtensions(): readonly KisoExtension[] {
 	return [...MODES.filter((m) => m === current), ...MODES.filter((m) => m !== current)].map((m) => ({
 		name: `mode:${m}`,

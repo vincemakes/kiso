@@ -289,3 +289,104 @@ describe("E1: a durable decision takes effect on resume — the chain never re-r
 	});
 });
 
+
+describe("E1 (ADR-0042): abstain — no opinion is never a silent allow", () => {
+	const abstainAll = (): PolicyVerdict => ({ action: "abstain" });
+
+	it("all-abstain + a configured approval channel → the call ASKS the human (never auto-approves)", async () => {
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		for await (const _ev of loop({
+			adapter: createFauxProvider(scriptedCall("shell", "s1", { command: "curl example.com" })),
+			model: "faux",
+			registry: makeRegistry(),
+			log,
+			resolveApproval: async () => ({ action: "allow" }),
+			approvalPolicies: [
+				{ extension: "silent-1", policy: { decide: abstainAll } },
+				{ extension: "silent-2", policy: { decide: abstainAll } },
+			],
+		})) {
+			// drain
+		}
+		// The all-abstain chain fell to the human flow — the external tool
+		// meets the human, exactly the P2 finding's fix.
+		expect(log.all.some((e) => e.type === "permission_requested")).toBe(true);
+		const ds = decided(log);
+		expect(ds).toHaveLength(1);
+		expect(ds[0]!.decision).toBe("approved");
+		expect(ds[0]!.decidedBy).toBeUndefined(); // the HUMAN decided — no speaker to record
+		expect(resultOf(log)?.content).toBe("ran");
+	});
+
+	it("all-abstain with NO approval channel → the honest denial, never a silent run", async () => {
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		for await (const _ev of loop({
+			adapter: createFauxProvider(scriptedCall("shell", "s1", { command: "curl example.com" })),
+			model: "faux",
+			registry: makeRegistry(),
+			log,
+			approvalPolicies: [
+				{ extension: "silent-1", policy: { decide: abstainAll } },
+				{ extension: "silent-2", policy: { decide: abstainAll } },
+			],
+		})) {
+			// drain
+		}
+		// No channel → the ask degrades to an honest denial WITHOUT even a
+		// request event (nothing could ever answer it) — never a silent run.
+		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false);
+		expect(resultOf(log)).toMatchObject({ isError: true });
+		expect(resultOf(log)?.content).toContain("no approval flow is configured");
+		expect(log.all.some((e) => e.type === "tool_execution_started")).toBe(false);
+	});
+
+	it("abstain + a user allow → auto-approved with decidedBy = the SPEAKER, never the abstainer", async () => {
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		for await (const _ev of loop({
+			adapter: createFauxProvider(scriptedCall("read_file", "r1", { path: "a.ts" })),
+			model: "faux",
+			registry: makeRegistry(),
+			log,
+			approvalPolicies: [
+				{ extension: "mode:default", policy: { decide: abstainAll } }, // the non-speaker sits FIRST
+				{ extension: "allow-mcp", policy: { decide: allowAll } },
+			],
+		})) {
+			// drain
+		}
+		const ds = decided(log);
+		expect(ds).toHaveLength(1);
+		expect(ds[0]!).toMatchObject({ decision: "approved", decidedBy: "allow-mcp" }); // the FIRST SPEAKER, not the chain head
+		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false); // never paused
+	});
+
+	it("abstain does not weaken a deny — the deny still wins and records its own name", async () => {
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		for await (const _ev of loop({
+			adapter: createFauxProvider(scriptedCall("shell", "s1", { command: "git reset --hard" })),
+			model: "faux",
+			registry: makeRegistry(),
+			log,
+			approvalPolicies: [
+				{ extension: "mode:bypass", policy: { decide: allowAll } },
+				{ extension: "safe-test", policy: { decide: abstainAll } },
+				{
+					extension: "danger-guard",
+					policy: {
+						decide: (call) =>
+							call.name === "shell" ? { action: "deny", reason: "no destructive git" } : { action: "allow" },
+					},
+				},
+			],
+		})) {
+			// drain
+		}
+		const ds = decided(log);
+		expect(ds).toHaveLength(1);
+		expect(ds[0]!).toMatchObject({ decision: "denied", reason: "no destructive git", decidedBy: "danger-guard" });
+	});
+});

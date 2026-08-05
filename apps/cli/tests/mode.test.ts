@@ -33,19 +33,21 @@ describe("Modes: the five-tier verdict matrix", () => {
 		}
 	});
 
-	it("default keeps the safe-defaults semantics: reads allowed, write/edit/shell asked, unknown tools UNTOUCHED", async () => {
+	it("default keeps the safe-defaults semantics: reads allowed, write/edit/shell asked, unknown tools ABSTAINED", async () => {
 		for (const tool of READ) expect(await verdict("default", tool)).toEqual({ action: "allow" });
 		for (const tool of [...WRITE_EDIT, "shell"]) expect(await verdict("default", tool)).toEqual({ action: "ask" });
 		// An extension-provided tool is the extensions' business — the tier
-		// has no opinion (the chain then honors their allow/ask/deny).
-		expect(await verdict("default", "some_tool")).toEqual({ action: "allow" });
+		// has no opinion. Abstain (ADR-0042), NEVER allow-as-no-opinion:
+		// the chain falls to the ask flow when nobody else speaks, so an
+		// uncovered external tool still meets the human.
+		expect(await verdict("default", "some_tool")).toEqual({ action: "abstain" });
 	});
 
-	it("accept-edits allows edits too — shell is still asked, unknowns untouched", async () => {
+	it("accept-edits allows edits too — shell is still asked, unknowns abstained", async () => {
 		for (const tool of READ) expect(await verdict("accept-edits", tool)).toEqual({ action: "allow" });
 		for (const tool of WRITE_EDIT) expect(await verdict("accept-edits", tool)).toEqual({ action: "allow" });
 		expect(await verdict("accept-edits", "shell")).toEqual({ action: "ask" });
-		expect(await verdict("accept-edits", "some_tool")).toEqual({ action: "allow" });
+		expect(await verdict("accept-edits", "some_tool")).toEqual({ action: "abstain" });
 	});
 
 	it("plan is read-only: reads allowed, EVERYTHING else denied with the guiding reason", async () => {
@@ -63,16 +65,21 @@ describe("Modes: the five-tier verdict matrix", () => {
 });
 
 describe("Modes: the chain shape", () => {
-	it("only the CURRENT tier speaks — the others have no opinion (all-allow)", async () => {
+	it("only the CURRENT tier speaks — the others ABSTAIN (no opinion, never a silent allow)", async () => {
 		setMode("plan");
 		for (const e of modeExtensions()) {
 			const v = await e.approvals![0]!.decide({ name: "write_file" } as never, {} as never);
 			if (e.name === "mode:plan") {
 				expect(v).toEqual({ action: "deny", reason: "plan mode: read-only" });
 			} else {
-				expect(v).toEqual({ action: "allow" });
+				expect(v).toEqual({ action: "abstain" });
 			}
 		}
+		// bypass is a REAL allow — never an abstain (the neutral tier for
+		// headless children; abstaining would stall them on asks).
+		setMode("bypass");
+		const bypass = modeExtensions().find((e) => e.name === "mode:bypass");
+		expect(await bypass!.approvals![0]!.decide({ name: "some_tool" } as never, {} as never)).toEqual({ action: "allow" });
 	});
 
 	it("the CURRENT tier is FIRST in the chain — an all-allow chain records it as decidedBy", () => {

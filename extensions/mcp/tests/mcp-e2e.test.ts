@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
+import { SessionStore } from "@vincemakes/kiso-runtime";
 
 const CLI = join(fileURLToPath(new URL("../../../apps/cli", import.meta.url)), "dist", "index.js");
 const BUNDLE = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "kiso-mcp.mjs");
@@ -122,5 +123,55 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		expect(out).toContain("approve mcp__fake__echo"); // 审批提问出现 — the ask tier reached the human
 		expect(out).toContain("hello from mcp"); // the echo result returned to the model
 		expect(out).toContain("the echo worked");
+	}, 180_000);
+});
+
+describe("③b MCP bare install (ADR-0042) — no safe-defaults, the external tool STILL meets the human", () => {
+	it("only the mcp bundle installed: mcp__ is ASKED under default mode — never silently auto-allowed", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-bare-"));
+		const home = join(dir, "home");
+		const workdir = join(dir, "work");
+		const extdir = join(dir, "ext");
+		mkdirSync(home, { recursive: true });
+		mkdirSync(workdir, { recursive: true });
+		mkdirSync(extdir, { recursive: true });
+		// The P2 finding's exact profile: the mcp bundle WITHOUT
+		// safe-defaults. The mode:default tier abstains on mcp__ (an
+		// extension tool) and the bundle has no approvals — an all-abstain
+		// chain must fall to the human, never to a silent auto-approve.
+		copyFileSync(BUNDLE, join(extdir, "kiso-mcp.mjs"));
+		const mcpConfig = join(dir, "mcp.json");
+		writeFileSync(
+			mcpConfig,
+			JSON.stringify({ mcpServers: { fake: { command: "node", args: [FAKE_SERVER] } } }),
+			"utf8",
+		);
+		const scriptPath = join(dir, "faux.json");
+		writeFileSync(scriptPath, JSON.stringify(FAUX_TRAJECTORY), "utf8");
+		writeFileSync(join(dir, "driver.py"), PTY_DRIVER, "utf8");
+
+		const phase = `
+import sys
+sys.argv = [""]
+exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir)}, ${JSON.stringify(extdir)}, ${JSON.stringify(mcpConfig)}, ${JSON.stringify(scriptPath)}, "mcp-bare")
+`;
+		const { env } = isolatedEnv();
+		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
+		expect(out).toContain("[1 extension: mcp]"); // only the bundle, no safe-defaults
+		expect(out).toContain("approve mcp__fake__echo"); // 审批提问出现 — the human gate held
+		expect(out).toContain("hello from mcp"); // the echo result returned after the approval
+		expect(out).toContain("the echo worked");
+
+		// The audit: the approval was HUMAN-decided — no policy's name is
+		// on it (a silent-allow would have recorded "mode:default").
+		const store = new SessionStore(join(home, "sessions"));
+		const decided = store
+			.load("mcp-bare")
+			.map((r) => r.event)
+			.filter((e): e is import("@vincemakes/kiso-core").Event & { type: "permission_decided" } => e.type === "permission_decided");
+		expect(decided).toHaveLength(1);
+		expect(decided[0]!.decidedBy).toBeUndefined();
+		expect(decided[0]!.decision).toBe("approved");
 	}, 180_000);
 });

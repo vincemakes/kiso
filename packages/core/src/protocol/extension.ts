@@ -19,12 +19,19 @@ export interface PolicyCall {
 
 /**
  * A policy's verdict. `ask` defers to the existing human approval flow;
- * `deny` carries the reason the model sees; `allow` auto-approves.
+ * `deny` carries the reason the model sees; `allow` auto-approves;
+ * `abstain` is NO opinion — the policy does not speak (it neither allows,
+ * denies, nor asks), and the chain composes only over the SPEAKING
+ * verdicts. An all-abstain chain falls to the ask flow (the human
+ * decides; absent a channel, an honest denial) — abstaining is never a
+ * silent allow (ADR-0042: `allow` as "no opinion" auto-approved tools no
+ * policy meant to approve and misattributed decidedBy to a non-speaker).
  */
 export type PolicyVerdict =
 	| { readonly action: "allow" }
 	| { readonly action: "deny"; readonly reason: string }
-	| { readonly action: "ask" };
+	| { readonly action: "ask" }
+	| { readonly action: "abstain" };
 
 /** One approval policy — a pure decide function over a tool call. */
 export interface ApprovalPolicy {
