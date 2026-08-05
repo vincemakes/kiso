@@ -123,7 +123,7 @@ describe("execution identity (Area 3)", () => {
 		expect(executionForCallId(log.all, "c1")?.status).toBe("succeeded");
 	});
 
-	it("a failed NON-idempotent execution PAUSES as uncertain, never a clean failure (C 组)", async () => {
+	it("a failed NON-idempotent execution is a clean failure carrying the honest note — no uncertain pause (裁决 #12; supersedes the C 组 pause, ADR-0038)", async () => {
 		const registry = new ToolRegistry();
 		registry.register(
 			defineTool({
@@ -139,14 +139,20 @@ describe("execution identity (Area 3)", () => {
 			registry,
 			log,
 		);
-		// The pause is announced…
-		expect(events.some((e) => e.type === "uncertain_pending")).toBe(true);
-		// …and without a human channel the conservative verdict is recorded:
-		// the attempt is abandoned, NEVER retried, NEVER a clean "failed".
-		expect(executionForCallId(log.all, "c1")?.status).toBe("abandoned");
+		// No pause: the receipt IS the outcome — the model got the ✗ and may
+		// retry (a retry is a NEW call: it passes the approval chain again).
+		expect(events.some((e) => e.type === "uncertain_pending")).toBe(false);
+		// The result carries the honest note about partial side effects.
+		const result = events.find((e): e is Event & { type: "tool_result" } => e.type === "tool_result");
+		expect(result).toBeDefined();
+		expect(String(result!.content)).toContain(
+			"[non-idempotent tool failed — its side effects may have partially applied; verify before retrying]",
+		);
+		// The ledger records a plain failure — never abandoned, never bricked.
+		expect(executionForCallId(log.all, "c1")?.status).toBe("failed");
 	});
 
-	it("a failed IDEMPOTENT execution is a clean failure — safe to retry", async () => {
+	it("a failed IDEMPOTENT execution is a clean failure — safe to retry, and NO note (nothing may have applied)", async () => {
 		const registry = new ToolRegistry();
 		registry.register(
 			defineTool({
@@ -158,16 +164,19 @@ describe("execution identity (Area 3)", () => {
 			}),
 		);
 		const log = new EventLog();
-		await runWithLog(
+		const events = await runWithLog(
 			[{ events: [{ type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "x" } }, { type: "stop", reason: "tool_use" }] }],
 			registry,
 			log,
 		);
 		const record = executionForCallId(log.all, "c1");
 		expect(record?.status).toBe("failed");
+		const result = events.find((e): e is Event & { type: "tool_result" } => e.type === "tool_result");
+		expect(result).toBeDefined();
+		expect(String(result!.content)).not.toContain("non-idempotent tool failed");
 	});
 
-	it("a throw from a non-idempotent handler pauses as uncertain, never a clean 'no side effect' (C 组)", async () => {
+	it("a THROW from a non-idempotent handler is a clean failure with the note — never a pause (裁决 #12)", async () => {
 		const registry = new ToolRegistry();
 		registry.register(
 			defineTool({
@@ -185,15 +194,19 @@ describe("execution identity (Area 3)", () => {
 			registry,
 			log,
 		);
-		expect(events.some((e) => e.type === "uncertain_pending")).toBe(true);
-		expect(executionForCallId(log.all, "c1")?.status).toBe("abandoned");
+		expect(events.some((e) => e.type === "uncertain_pending")).toBe(false);
+		const result = events.find((e): e is Event & { type: "tool_result" } => e.type === "tool_result");
+		expect(String(result!.content)).toContain("non-idempotent tool failed");
+		expect(executionForCallId(log.all, "c1")?.status).toBe("failed");
 	});
 
 	it("ledger helpers report statuses and resolutions by executionId", () => {
 		const log = new EventLog();
 		log.append({ type: "tool_execution_started", executionId: "ex-0", callId: "c1", name: "web_search", input: { query: "k" } });
 		log.append({ type: "tool_execution_failed", executionId: "ex-0", callId: "c1", error: "boom", safeToRetry: false });
-		expect(executionLedger(log.all).get("ex-0")?.status).toBe("uncertain");
+		// 裁决 #12: a complete receipt is the outcome — failed is failed,
+		// never uncertain; uncertainty belongs to the crash window alone.
+		expect(executionLedger(log.all).get("ex-0")?.status).toBe("failed");
 		log.append({ type: "tool_execution_resolved", executionId: "ex-0", callId: "c1", resolution: "rerun" });
 		expect(executionLedger(log.all).get("ex-0")?.status).toBe("rerun");
 		log.append({ type: "tool_execution_started", executionId: "ex-1", callId: "c2", name: "web_search", input: { query: "k" } });

@@ -39,29 +39,24 @@ function failingAgent(store: SessionStore, script: FauxScript = CALL) {
 }
 
 describe("adversarial races (第四轮)", () => {
-	it("an UNCERTAIN verdict given in the same instant as the abort is RECORDED, exactly once", async () => {
+	it("an OFFLINE uncertain verdict is recorded exactly once and a later resume cannot double-record it (裁决 #12)", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-race-"));
-		const session = await failingAgent(new SessionStore(dir)).session({ id: "s" });
-		const ac = new AbortController();
-		const run = session.run("go", { signal: ac.signal });
-		const yielded: Event[] = [];
-		for await (const ev of run) {
-			yielded.push(ev);
-			if (ev.type === "permission_requested") await session.approve(ev.decisionId, true);
-			if (ev.type === "uncertain_pending") {
-				// The human answers and the abort fires in the SAME tick.
-				const p = session.resolveUncertain(ev.executionId, "abandoned");
-				ac.abort();
-				await p;
-			}
-		}
-		const terminal = yielded.find((e) => e.type === "terminal");
-		expect(terminal?.outcome.kind).toBe("aborted");
+		const store = new SessionStore(dir);
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
+		await store.append("s", "r1", {
+			seq: 1,
+			type: "tool_execution_started",
+			executionId: "ex-1",
+			callId: "c1",
+			name: "web_search",
+			input: {},
+		});
+		const session = await failingAgent(store, STOP).session({ id: "s" });
+		await session.resolveUncertain("ex-1", "abandoned");
 		const durable = new SessionStore(dir).load("s").map((r) => r.event);
-		// The verdict was consumed — it must be durable exactly once, and the
-		// session must NOT be bricked for this execution.
 		expect(durable.filter((e) => e.type === "tool_execution_resolved")).toHaveLength(1);
 		expect(durable.filter((e) => e.type === "tool_execution_resolved")[0]).toMatchObject({ resolution: "abandoned" });
+		store.closeAll(); // release the writer before a fresh process's resume
 		// A later resume does not block on it, and cannot double-record it.
 		const session2 = await failingAgent(new SessionStore(dir), STOP).session({ id: "s" });
 		for await (const _ev of session2.resume()) {
@@ -123,17 +118,21 @@ describe("adversarial races (第四轮)", () => {
 		expect(durable.filter((e) => e.type === "permission_decided" && e.decision === "approved")).toHaveLength(1);
 	});
 
-	it("P1-5: resolveUncertain() resolves only AFTER the verdict is durable — an immediate break cannot lose it", async () => {
+	it("P1-5: resolveUncertain() resolves only AFTER the verdict is durable — an immediate close cannot lose it", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-race-"));
-		const session = await failingAgent(new SessionStore(dir)).session({ id: "s" });
-		const run = session.run("go");
-		for await (const ev of run) {
-			if (ev.type === "permission_requested") await session.approve(ev.decisionId, true);
-			if (ev.type === "uncertain_pending") {
-				await session.resolveUncertain(ev.executionId, "abandoned");
-				break; // abandon the generator right after the verdict
-			}
-		}
+		const store = new SessionStore(dir);
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
+		await store.append("s", "r1", {
+			seq: 1,
+			type: "tool_execution_started",
+			executionId: "ex-1",
+			callId: "c1",
+			name: "web_search",
+			input: {},
+		});
+		const session = await failingAgent(store, STOP).session({ id: "s" });
+		await session.resolveUncertain("ex-1", "abandoned");
+		store.closeAll(); // the process dies right after the verdict
 		const durable = new SessionStore(dir).load("s").map((r) => r.event);
 		expect(durable.filter((e) => e.type === "tool_execution_resolved" && e.resolution === "abandoned")).toHaveLength(1);
 	});

@@ -99,8 +99,8 @@ describe("C1: the turn is verified BEFORE any tool runs", () => {
 	});
 });
 
-describe("C3: a failed non-idempotent execution is a persistent uncertain pause", () => {
-	it("pauses for a human decision; no sibling runs, no auto-retry, the next model turn waits", async () => {
+describe("C3: a failed execution is a clean failure — the approval chain guards retries (裁决 #12, ADR-0038)", () => {
+	it("a failure does NOT pause its siblings — the pending list runs on, the model retries", async () => {
 		const registry = new ToolRegistry();
 		const order: string[] = [];
 		registry.register(
@@ -126,13 +126,8 @@ describe("C3: a failed non-idempotent execution is a persistent uncertain pause"
 			}),
 		);
 		const log = new EventLog();
-		const decisions: string[] = [];
-		const resolveUncertainty = async (executionId: string) => {
-			while (decisions.length === 0) await new Promise((r) => setTimeout(r, 5));
-			return decisions.shift()! as "rerun" | "abandoned";
-		};
 		const events: Event[] = [];
-		const gen = loop({
+		for await (const ev of loop({
 			adapter: createFauxProvider([
 				{
 					events: [
@@ -147,24 +142,15 @@ describe("C3: a failed non-idempotent execution is a persistent uncertain pause"
 			registry,
 			log,
 			messages: [USER],
-			resolveUncertainty,
-		});
-		for await (const ev of gen) {
+		})) {
 			events.push(ev);
-			if (ev.type === "uncertain_pending") {
-				// The human is asked; meanwhile no sibling may run.
-				expect(order).toEqual(["first"]);
-				decisions.push("abandoned");
-			}
 		}
-		expect(order).toEqual(["first"]); // sibling NEVER ran
-		expect(events.some((e) => e.type === "uncertain_pending")).toBe(true);
-		expect(terminalOf(events).outcome.kind).toBe("completed"); // next model turn resumed after the verdict
-		// The pause is durable in the log.
-		expect(log.all.some((e) => e.type === "uncertain_pending")).toBe(true);
+		expect(order).toEqual(["first", "second"]); // the sibling RAN — no pause, no auto-retry block
+		expect(events.some((e) => e.type === "uncertain_pending")).toBe(false);
+		expect(terminalOf(events).outcome.kind).toBe("completed");
 	});
 
-	it("without an uncertainty channel the failure is recorded abandoned — never retried automatically", async () => {
+	it("no channel, no verdict — the failure is simply recorded failed, never abandoned", async () => {
 		const registry = new ToolRegistry();
 		let executed = 0;
 		registry.register(
@@ -190,7 +176,8 @@ describe("C3: a failed non-idempotent execution is a persistent uncertain pause"
 		})) {
 			events.push(ev);
 		}
-		expect(executed).toBe(1); // never auto-retried
+		expect(executed).toBe(1); // one attempt; a retry would be a NEW call through the approval chain
+		expect(events.some((e) => e.type === "uncertain_pending")).toBe(false);
 		expect(terminalOf(events).outcome.kind).toBe("completed");
 	});
 });

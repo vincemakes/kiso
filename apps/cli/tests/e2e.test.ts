@@ -11,7 +11,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -143,6 +143,49 @@ sys.exit(0 if processed else 1)
 		// The line after the cancellation produced a real turn.
 		expect(result.stdout).toContain("faux model");
 	}, 90_000);
+
+	it("裁决 #12: an approved-then-failed tool is a clean failure — zero uncertainty questions, the honest note rides the result", () => {
+		const { env, dirs } = isolatedEnv();
+		// The extension mirrors the MCP bridge: a tool with NO idempotent
+		// declaration (unknown idempotency — the note applies), allowed by
+		// its own policy so the call executes (the user's real case:
+		// mcp__fs__directory_tree, ENOENT, receipt + ✗ both delivered).
+		writeFileSync(
+			join(dirs.extensions, "flaky.mjs"),
+			`export default {
+	name: "flaky",
+	approvals: [{ decide: () => ({ action: "allow" }) }],
+	tools: [{
+		name: "flaky_read",
+		description: "a read that fails",
+		parameters: { type: "object", properties: {} },
+		execute: async () => ({ content: "ENOENT: no such file or directory", isError: true, errorKind: "fatal" }),
+	}],
+};
+`,
+			"utf8",
+		);
+		const dir = mkdtempSync(join(tmpdir(), "kiso-unc12-"));
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{
+					events: [
+						{ type: "tool_call_end", callId: "c1", name: "flaky_read", input: {} },
+						{ type: "stop", reason: "tool_use" },
+					],
+				},
+				{ events: [{ type: "text_delta", text: "the tour is done" }, { type: "stop", reason: "end_turn" }] },
+			]),
+			"utf8",
+		);
+		const res = runCli(["chat", "unc12"], { ...env, KISO_FAUX_SCRIPT: script }, { input: "go\nexit\n" });
+		expect(res.status, res.stderr).toBe(0);
+		expect(res.stdout).not.toContain("did it apply"); // 零 uncertainty 提问
+		expect(res.stdout).toContain("non-idempotent tool failed"); // the honest note rides the result
+		expect(res.stdout).toContain("the tour is done"); // the run completes — the model may retry
+	}, 60_000);
 
 	it("B: tool summary lines and the status line appear in a real chat run", () => {
 		const { env } = isolatedEnv();

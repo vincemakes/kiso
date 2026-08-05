@@ -116,7 +116,7 @@ describe("execution identity end to end (四)", () => {
 		expect(records.some((r) => r.runId === "resolution")).toBe(false);
 	});
 
-	it("a non-idempotent failure after a cross-process approval enters a durable uncertain pause", async () => {
+	it("a non-idempotent failure after a cross-process approval is a clean failure with the note — no pause (裁决 #12)", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-eid-"));
 		const marker = join(dir, "m.txt");
 		const storeA = new SessionStore(dir);
@@ -128,8 +128,8 @@ describe("execution identity end to end (四)", () => {
 		storeA.closeAll();
 
 		// Process B resumes and approves; the resumed execution FAILS
-		// non-idempotently → durable uncertain pause, provider and siblings
-		// stop until a human decides.
+		// non-idempotently — the receipt IS the outcome: a clean failure
+		// with the honest note, no uncertain pause (ADR-0038).
 		const storeB = new SessionStore(dir);
 		const agentB = createAgent({
 			model: "faux",
@@ -139,28 +139,19 @@ describe("execution identity end to end (四)", () => {
 		});
 		const sessionB = await agentB.session({ id: "s" });
 		const events: Event[] = [];
-		let paused = false;
 		for await (const ev of sessionB.resume()) {
 			events.push(ev);
 			if (ev.type === "permission_requested") {
 				await sessionB.approve(ev.decisionId, true);
 			}
-			if (ev.type === "uncertain_pending") {
-				paused = true;
-				// The human decides BEFORE anything continues.
-				expect(events.some((e) => e.type === "terminal")).toBe(false);
-				await sessionB.resolveUncertain(ev.executionId, "abandoned");
-			}
 		}
-		expect(paused).toBe(true);
-		expect(terminalOf(events)?.outcome.kind).toBe("completed"); // continues after the verdict
-		// The pause is durable.
+		expect(events.some((e) => e.type === "uncertain_pending")).toBe(false);
+		const result = events.find((e): e is Event & { type: "tool_result" } => e.type === "tool_result");
+		expect(String(result?.content ?? "")).toContain("non-idempotent tool failed");
+		expect(terminalOf(events)?.outcome.kind).toBe("completed");
+		// The failure's receipt pairs by executionId — never the repeatable callId.
 		const records = storeB.load("s");
-		expect(records.some((r) => r.event.type === "uncertain_pending")).toBe(true);
-		// The verdict is attributed to the original run.
-		for (const r of records) {
-			expect(r.runId).not.toBe("resolution");
-		}
+		expect(records.some((r) => r.event.type === "tool_execution_failed")).toBe(true);
 	});
 
 	it("receipt repair pairs by executionId — a same-callId result from an earlier execution never suppresses the fill", async () => {
