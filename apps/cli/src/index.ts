@@ -18,6 +18,7 @@
 
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { Editor, PROMPT as EDITOR_PROMPT } from "./editor.js";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -124,10 +125,145 @@ function startupBanner(): string {
 }
 
 /** v2a: the interactive prompt — blue, the identity accent. readline owns
- *  the echo of what the user types; we own the prompt's color. */
+ *  the echo of what the user types; we own the prompt's color. (v2c: the
+ *  readline prompt keeps "you> " — the brick ▌ is the dock's row only;
+ *  pipe bytes must not change.) */
 function interactivePrompt(): string {
 	const p = palette();
 	return `${p.blue}you> ${p.reset}`;
+}
+
+/**
+ * v2c — the interactive input source. TTYs use the raw-mode Editor (the
+ * self-drawn input row — width-aware, the CJK-drift root cause retired,
+ * editor.ts); everything else keeps readline exactly as v2b (pipe bytes
+ * unchanged). ask()/chat()/resume() talk to this, never to a concrete
+ * source.
+ */
+interface LineInput {
+	onLine(cb: (line: string) => void): void;
+	onSigint(cb: () => void): void;
+	onEot(cb: () => void): void;
+	onEscape(cb: () => void): void;
+	question(query: string, cb: (answer: string) => void): void;
+	cancelQuestion(): void;
+	emitLine(line: string): void;
+	line(): string;
+	clearLine(): void;
+	prompt(): void;
+	close(): void;
+	readonly closed: Promise<void>;
+}
+
+/** The v2b behavior, unchanged: readline owns the line, SIGINT, and the
+ *  prompt. Only ever constructed when stdin is NOT a TTY. The rl starts
+ *  consuming stdin at construction (main), so 'line' events are buffered
+ *  until chat() wires the handler — pipe input must never be dropped. */
+function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
+	let lineCb: ((line: string) => void) | null = null;
+	const pending: string[] = [];
+	rl.on("line", (line) => {
+		if (lineCb === null) pending.push(line);
+		else lineCb(line);
+	});
+	return {
+		onLine(cb) {
+			lineCb = cb;
+			for (const line of pending) cb(line);
+			pending.length = 0;
+		},
+		onSigint(cb) {
+			rl.on("SIGINT", cb);
+		},
+		onEot() {
+			/* readline's Ctrl+D on an empty line is EOF → 'close' — the
+			 * exit path is the close, nothing to wire here. */
+		},
+		onEscape() {
+			/* readline has no bare-Esc semantics — ignored. */
+		},
+		question(query, cb) {
+			rl.question(query, cb);
+		},
+		cancelQuestion() {
+			/* the rl.question stays pending; the settled branch re-emits
+			 * the answer as a new line. */
+		},
+		emitLine(line) {
+			rl.emit("line", line);
+		},
+		line() {
+			return rl.line;
+		},
+		clearLine() {
+			/* readline: Ctrl+C is exit/abort only — nothing to clear. */
+		},
+		prompt() {
+			rl.setPrompt(interactivePrompt());
+			rl.prompt();
+		},
+		close() {
+			rl.close();
+		},
+		closed: new Promise((resolve) => rl.on("close", () => resolve())),
+	};
+}
+
+/** The v2c TTY path: the editor's events map 1:1 onto the interface; the
+ *  input row renders on every state change (the CLI's onRender wiring). */
+function editorInput(editor: Editor): LineInput {
+	return {
+		onLine(cb) {
+			editor.onLine(cb);
+		},
+		onSigint(cb) {
+			editor.onSigint(cb);
+		},
+		onEot(cb) {
+			editor.onEot(cb);
+		},
+		onEscape(cb) {
+			editor.onEscape(cb);
+		},
+		question(query, cb) {
+			editor.question(query, cb);
+		},
+		cancelQuestion() {
+			editor.cancelQuestion();
+		},
+		emitLine() {
+			/* the editor's buffer survives a cancelled question — its text
+			 * becomes the next turn on Enter (the readline re-emit
+			 * equivalent). */
+		},
+		line() {
+			return editor.line();
+		},
+		clearLine() {
+			editor.clearLine();
+		},
+		prompt() {
+			/* the editor renders on every state change — nothing to arm. */
+		},
+		close() {
+			editor.exit();
+		},
+		closed: editor.closed,
+	};
+}
+
+/** One input source per process: the raw-mode Editor on a TTY (entered
+ *  here, bound to the dock once — the trust question, chat, and resume
+ *  all read through it), readline elsewhere. */
+function makeLineInput(): LineInput {
+	if (process.stdin.isTTY) {
+		const editor = new Editor(() => (dock.active ? dock.redraw() : editor.selfRender()));
+		editor.enter();
+		const p = palette();
+		dock.bindInput(() => editor.dockState(), `${p.blue}${EDITOR_PROMPT}${p.reset}`);
+		return editorInput(editor);
+	}
+	return readlineInput(createInterface({ input: process.stdin, output: process.stdout }));
 }
 
 /** v2b: the bottom-anchored UI — docked only on a color TTY; pipes and
@@ -209,7 +345,7 @@ function extensionsBanner(): void {
  * record → only a HUMAN may decide, TTY only — non-TTY refuses with one
  * stderr line. Returns the artifacts on grant, null on anything else.
  */
-async function resolveProjectTrust(): Promise<ProjectArtifacts | null> {
+async function resolveProjectTrust(input: LineInput): Promise<ProjectArtifacts | null> {
 	const artifacts = await projectArtifacts(process.cwd());
 	if (artifacts === null) return null; // no .kiso artifacts — nothing to gate
 	const record = trustFor(artifacts.root, artifacts.digest);
@@ -226,23 +362,18 @@ async function resolveProjectTrust(): Promise<ProjectArtifacts | null> {
 		);
 		return null;
 	}
-	const rl = createInterface({ input: process.stdin, output: process.stdout });
-	// v2b: docked — the trust question takes over the status position.
-	dock.bindInput(() => ({ line: rl.line, cursor: rl.cursor }), interactivePrompt());
-	try {
-		bodyLog(`[project .kiso] ${artifacts.root}`);
-		for (const f of artifacts.files) {
-			bodyLog(`  ${f.path}  (${f.digest.slice(0, 6)})`);
-		}
-		const answer = await ask(rl, `trust this project's .kiso? (y/n) `);
-		const granted = answer !== CANCELLED && answer.trim().toLowerCase().startsWith("y");
-		recordTrust({ root: artifacts.root, digest: artifacts.digest, decision: granted ? "granted" : "refused" });
-		if (!granted) return null;
-		applyProjectMerges(artifacts);
-		return artifacts;
-	} finally {
-		rl.close();
+	// v2c: the shared input (the editor on a TTY) reads the answer; the
+	// dock shows the question at the status position.
+	bodyLog(`[project .kiso] ${artifacts.root}`);
+	for (const f of artifacts.files) {
+		bodyLog(`  ${f.path}  (${f.digest.slice(0, 6)})`);
 	}
+	const answer = await ask(input, `trust this project's .kiso? (y/n) `);
+	const granted = answer !== CANCELLED && answer.trim().toLowerCase().startsWith("y");
+	recordTrust({ root: artifacts.root, digest: artifacts.digest, decision: granted ? "granted" : "refused" });
+	if (!granted) return null;
+	applyProjectMerges(artifacts);
+	return artifacts;
 }
 
 /**
@@ -410,13 +541,13 @@ function fauxSkip(id: string): number {
 	);
 }
 
-async function makeAgent(fauxSkipTurns = 0) {
+async function makeAgent(fauxSkipTurns = 0, input?: LineInput) {
 	const store = new SessionStore(sessionsDir());
 
 	// E3: the project-level trust gate runs BEFORE any extension load (the
 	// mcp/skills merges must be in the env when the user-level extensions
 	// load). Untrusted project capability is never loaded — never silently.
-	const project = await resolveProjectTrust();
+	const project = input !== undefined ? await resolveProjectTrust(input) : await resolveProjectTrust(undefined as unknown as LineInput);
 	// E1: the startup extension scan — a broken extension fails the process
 	// LOUDLY here (loadExtensions throws), never silently.
 	userExtensions = await loadExtensions(extensionsDir());
@@ -551,31 +682,37 @@ const CANCELLED = Symbol("kiso-question-cancelled");
  * question.
  */
 let pendingAsk: (() => void) | null = null;
-function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<string | typeof CANCELLED> {
+function ask(input: LineInput, question: string): Promise<string | typeof CANCELLED> {
 	if (!process.stdin.isTTY) {
 		console.log(`[non-interactive — no human to ask: ${question}]`);
 		return Promise.resolve("");
 	}
 	// v2b: docked — the question takes over the status position, the
-	// answer lands at the input line.
-	if (dock.active) dock.showQuestion(question);
+	// answer lands at the input line. v2c: a TTY without a dock (rows < 4)
+	// prints the question into the body — the editor cannot show it.
+	if (dock.active) {
+		dock.showQuestion(question);
+	} else {
+		bodyLog(question);
+	}
 	return new Promise((resolve) => {
 		let settled = false;
 		pendingAsk = () => {
 			if (settled) return;
 			settled = true;
 			pendingAsk = null;
+			input.cancelQuestion();
 			resolve(CANCELLED); // the run is aborting — the question is dead
 		};
 		// v2b: docked — the question reads at the input line, whose prompt
-		// is the SAME blue you> (interactivePrompt). readline tracks its
-		// cursor against its own prompt: an empty prompt starts at column
-		// 1 while the dock renders "you> " — the typed answer would land
-		// on the prompt and drift (probe-confirmed).
-		rl.question(dock.active ? interactivePrompt() : question, (answer) => {
+		// is the same blue you> (the editor's brick row; the readline path
+		// passes the plain question). An empty prompt would start readline
+		// at column 1 while the dock renders "you> " — the typed answer
+		// would land on the prompt and drift (probe-confirmed).
+		input.question(dock.active ? interactivePrompt() : question, (answer) => {
 			if (settled) {
 				// The question was cancelled; this line is a NEW user turn.
-				rl.emit("line", answer);
+				input.emitLine(answer);
 				return;
 			}
 			settled = true;
@@ -610,12 +747,12 @@ function estimateCtxRatio(session: AgentSession): number {
 /** Decide every uncertain execution with the human (r)erun/(a)bandon. */
 async function resolveUncertains(
 	session: AgentSession,
-	rl: ReturnType<typeof createInterface>,
+	input: LineInput,
 	isCancelled: () => boolean,
 ): Promise<void> {
 	for (const uncertain of session.uncertainExecutions()) {
 		const answer = await ask(
-			rl,
+			input,
 			`⚠ interrupted execution: ${escapeTerminal(uncertain.name)} (${uncertain.executionId}) — did it apply? (r)erun / (a)bandon: `,
 		);
 		if (isCancelled() || answer === CANCELLED) {
@@ -648,7 +785,7 @@ const DEFAULT_CONTEXT_WINDOW = 200_000;
 async function consumeRun(
 	session: AgentSession,
 	run: AsyncIterable<import("@vincemakes/kiso-core").Event>,
-	rl: ReturnType<typeof createInterface>,
+	input: LineInput,
 	turnNo: number,
 	lastToolRef: { current: LastToolCall | null },
 	faux: boolean,
@@ -747,7 +884,7 @@ async function consumeRun(
 			const decisionId = (ev as { decisionId: string }).decisionId;
 			const name = (ev as { name: string }).name;
 			// 八: the tool name is model text — escaped on every output path.
-			const answer = await ask(rl, `approve ${escapeTerminal(name)}? (y/n) `);
+			const answer = await ask(input, `approve ${escapeTerminal(name)}? (y/n) `);
 			if (answer === CANCELLED) {
 				// 十: a cancellation is a CONSERVATIVE denial, explicitly
 				// distinguished from the user typing "n".
@@ -793,12 +930,12 @@ class FauxExhaustionError extends Error {
 function failOnFauxExhaustion(
 	last: import("@vincemakes/kiso-core").Event | undefined,
 	faux: boolean,
-	rl: ReturnType<typeof createInterface> | undefined,
+	input: LineInput | undefined,
 ): void {
 	if (!faux) return;
 	if (last?.type !== "terminal" || last.outcome.kind !== "error") return;
 	const message = last.outcome.error.message;
-	rl?.close(); // the REPL must not stay open waiting for a line
+	input?.close(); // the REPL must not stay open waiting for a line
 	throw new FauxExhaustionError(
 		message.startsWith("provider stream ended without a stop event")
 			? "[faux mode] the scripted demo turns are exhausted — set ANTHROPIC_API_KEY or OPENAI_API_KEY for a real model"
@@ -807,25 +944,25 @@ function failOnFauxExhaustion(
 }
 
 /** Interactive REPL: stream events, pause for approvals, Ctrl+C aborts. */
-async function chat(session: AgentSession, faux: boolean): Promise<void> {
-	const rl = createInterface({ input: process.stdin, output: process.stdout });
+async function chat(session: AgentSession, faux: boolean, input: LineInput): Promise<void> {
 	let currentRun: { abort: () => void } | null = null;
 	let cancelled = false;
 
-	const turn = (input: string): Promise<void> =>
+	const turn = (text: string): Promise<void> =>
 		new Promise((resolve, reject) => {
+			queued = Math.max(0, queued - 1); // a queued turn starts
 			// v2a: the echo filter compares the user_input event against THIS
 			// turn's own input — lines that arrive ahead of their turn (piped
 			// bursts, queued replays) must not overwrite the reference.
-			liveInput.current = input;
-			const run = session.run(input);
+			liveInput.current = text;
+			const run = session.run(text);
 			currentRun = run;
 			turnNo += 1;
 			const myTurn = turnNo;
 			(async () => {
 				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
-					last = await consumeRun(session, run, rl, myTurn, lastToolRef, faux, liveInput, lastThinking, statusCb);
+					last = await consumeRun(session, run, input, myTurn, lastToolRef, faux, liveInput, lastThinking, statusCb);
 					currentRun = null;
 					// 八: a faux script that ran out of declared turns exits
 					// loudly with a non-zero status — never a silent status 0.
@@ -833,11 +970,10 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 					// this turn's promise — it propagates through the chain to
 					// chat to main's finally/catch, never an orphaned
 					// unhandled rejection from the IIFE.
-					failOnFauxExhaustion(last, faux, rl);
+					failOnFauxExhaustion(last, faux, input);
 					// 八: after EVERY turn the prompt is re-armed — the human
 					// never types blind after the first turn.
-					rl.setPrompt(interactivePrompt());
-					rl.prompt();
+					input.prompt();
 					resolve();
 				} catch (err) {
 					// A run failure must not freeze the REPL (review finding
@@ -849,14 +985,13 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 					}
 					console.error(`\n[run failed] ${err instanceof Error ? err.message : String(err)}\n`);
 					currentRun = null;
-					rl.setPrompt(interactivePrompt());
-					rl.prompt();
+					input.prompt();
 					resolve();
 				}
 			})();
 		});
 
-	rl.on("SIGINT", () => {
+	input.onSigint(() => {
 		if (currentRun) {
 			// 八: Ctrl+C cancels BOTH the pending question (if one is
 			// awaiting a line) and the run — the run then writes its unique
@@ -864,11 +999,28 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 			console.log("\n[aborting run]");
 			pendingAsk?.();
 			currentRun.abort();
-		} else if (!cancelled) {
+		} else if (pendingAsk !== null) {
+			pendingAsk?.(); // a startup/trust question — cancel it
+		} else if (input.line() === "") {
 			cancelled = true;
 			console.log("\n[exit requested]");
-			pendingAsk?.(); // unblock a startup question
-			rl.close();
+			input.close();
+		} else {
+			input.clearLine(); // v2c: Ctrl+C on a non-empty line clears it
+		}
+	});
+	input.onEot(() => {
+		if (!currentRun && pendingAsk === null && input.line() === "") {
+			cancelled = true;
+			console.log("\n[exit requested]");
+			input.close();
+		}
+	});
+	input.onEscape(() => {
+		if (currentRun) {
+			console.log("\n[aborting run]");
+			pendingAsk?.();
+			currentRun.abort();
 		}
 	});
 
@@ -890,14 +1042,21 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 	const liveInput: { current: string | null } = { current: null };
 	// v2b: the last complete thinking block, for /think.
 	const lastThinking: { current: string | null } = { current: null };
+	// v2c: turns submitted while another runs are QUEUED on the chain — the
+	// live count rides the status bar (+N queued).
+	let queued = 0;
 	// v2b: the live status bar (docked only).
 	const statusCb = (u: RunUsage, ctx: number): void => {
 		if (!dock.active) return;
 		const st = renderStatusLine(turnNo, u, ctx, faux);
-		dock.setStatus(st === null ? `${session.id} · ${agentModel}` : `${session.id} · ${agentModel} · ${st}`);
+		const base = st === null ? `${session.id} · ${agentModel}` : `${session.id} · ${agentModel} · ${st}`;
+		dock.setStatus(queued > 0 ? `${base} · +${queued} queued` : base);
 	};
-	dock.bindInput(() => ({ line: rl.line, cursor: rl.cursor }), interactivePrompt());
-	rl.on("line", (line) => {
+	// The ONE dispatcher: slash commands, exit, and turns. The recovery
+	// replay routes through it too — a queued "/last" must never become a
+	// user turn (v2c: the rl lives in main, so lines arrive earlier and
+	// the queue is the common path).
+	const dispatch = (line: string): void => {
 		const trimmed = line.trim();
 		if (trimmed === "/help") {
 			// Prints the available commands with one-line descriptions.
@@ -910,8 +1069,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 				bodyLog(cmd("/last", "show the most recent tool call's input and output"));
 				bodyLog(cmd("/status", "show session id, event count, and context estimate"));
 				bodyLog(cmd("exit", "leave the session"));
-				rl.setPrompt(interactivePrompt());
-				rl.prompt();
+				input.prompt();
 			});
 			return;
 		}
@@ -925,8 +1083,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 				} else {
 					bodyLog(escapeTerminal(t));
 				}
-				rl.setPrompt(interactivePrompt());
-				rl.prompt();
+				input.prompt();
 			});
 			return;
 		}
@@ -944,8 +1101,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 					bodyLog(`--- ${tool.name} output${tool.result.isError ? " (error)" : ""} ---`);
 					bodyLog(escapeTerminal(tool.result.content));
 				}
-				rl.setPrompt(interactivePrompt());
-				rl.prompt();
+				input.prompt();
 			});
 			return;
 		}
@@ -959,20 +1115,25 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 				bodyLog(`session ${session.id}`);
 				bodyLog(`${session.log.all.length} events`);
 				bodyLog(`ctx ${ctx}`);
-				rl.setPrompt(interactivePrompt());
-				rl.prompt();
+				input.prompt();
 			});
 			return;
 		}
 		if (trimmed === "exit" || trimmed === "") {
-			rl.close();
+			input.close();
 			return;
 		}
+		// v2c: a turn submitted while another runs waits on the chain — the
+		// live count rides the status bar (+N queued).
+		queued += 1;
+		chain = chain.then(() => turn(line));
+	};
+	input.onLine((line) => {
 		if (!replReady) {
 			queuedLines.push(line);
 			return;
 		}
-		chain = chain.then(() => turn(line));
+		dispatch(line);
 	});
 
 	// Recovery first: a session with a dangling pause or uncertain
@@ -980,29 +1141,33 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
 	// otherwise the interrupted run dangles while a new one starts.
 	// 八: the startup resume is bound to currentRun — Ctrl+C during it
 	// aborts the recovery, exactly like the interactive turns.
-	await resolveUncertains(session, rl, () => cancelled);
+	await resolveUncertains(session, input, () => cancelled);
 	if (!cancelled) {
 		const recoveryRun = session.resume();
 		currentRun = recoveryRun;
 		turnNo += 1;
-		const last = await consumeRun(session, recoveryRun, rl, turnNo, lastToolRef, faux, liveInput, lastThinking, statusCb);
+		const last = await consumeRun(session, recoveryRun, input, turnNo, lastToolRef, faux, liveInput, lastThinking, statusCb);
 		currentRun = null;
-		failOnFauxExhaustion(last, faux, rl);
+		failOnFauxExhaustion(last, faux, input);
 	}
 	if (cancelled) {
-		rl.close();
-		await new Promise<void>((resolve) => rl.on("close", () => resolve()));
+		input.close();
+		await input.closed;
 		return;
 	}
 	// The REPL is ready: replay anything that arrived during recovery.
 	replReady = true;
+	// v2c: dispatch SYNCHRONOUSLY — each call appends its segment to the
+	// chain variable; the final `await chain` then covers every replayed
+	// turn. A chain.then(() => dispatch()) indirection would capture the
+	// chain BEFORE the appends and the replayed turns would never be
+	// awaited (the F-group regression).
 	for (const line of queuedLines) {
-		chain = chain.then(() => turn(line));
+		dispatch(line);
 	}
 	queuedLines.length = 0;
-	rl.setPrompt(interactivePrompt());
-	rl.prompt();
-	await new Promise<void>((resolve) => rl.on("close", () => resolve()));
+	input.prompt();
+	await input.closed;
 	await chain; // never exit while a turn is in flight
 }
 
@@ -1013,8 +1178,7 @@ async function chat(session: AgentSession, faux: boolean): Promise<void> {
  * E 组: SIGINT aborts the run being resumed; every exit path closes the
  * session store so no lock is left behind.
  */
-async function resume(session: AgentSession, prompt: string | undefined, faux: boolean): Promise<void> {
-	const rl = createInterface({ input: process.stdin, output: process.stdout });
+async function resume(session: AgentSession, prompt: string | undefined, faux: boolean, input: LineInput): Promise<void> {
 	let currentRun: { abort: () => void } | null = null;
 	let cancelled = false;
 	let turnNo = 0;
@@ -1026,18 +1190,17 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 		const st = renderStatusLine(turnNo, u, ctx, faux);
 		dock.setStatus(st === null ? `${session.id} · ${agentModel}` : `${session.id} · ${agentModel} · ${st}`);
 	};
-	dock.bindInput(() => ({ line: rl.line, cursor: rl.cursor }), interactivePrompt());
 	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
 		currentRun = run;
 		try {
 			turnNo += 1;
-			const last = await consumeRun(session, run, rl, turnNo, lastToolRef, faux, null, lastThinking, statusCb);
-			failOnFauxExhaustion(last, faux, rl);
+			const last = await consumeRun(session, run, input, turnNo, lastToolRef, faux, null, lastThinking, statusCb);
+			failOnFauxExhaustion(last, faux, input);
 		} finally {
 			currentRun = null;
 		}
 	};
-	rl.on("SIGINT", () => {
+	input.onSigint(() => {
 		if (currentRun) {
 			// 八: Ctrl+C cancels the pending question AND the run.
 			console.log("\n[aborting run]");
@@ -1051,11 +1214,25 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 			cancelled = true;
 			console.log("\n[exit requested]");
 			pendingAsk?.();
-			rl.close();
+			input.close();
+		}
+	});
+	input.onEot(() => {
+		if (!currentRun && !cancelled && input.line() === "") {
+			cancelled = true;
+			console.log("\n[exit requested]");
+			input.close();
+		}
+	});
+	input.onEscape(() => {
+		if (currentRun) {
+			console.log("\n[aborting run]");
+			pendingAsk?.();
+			currentRun.abort();
 		}
 	});
 	try {
-		await resolveUncertains(session, rl, () => cancelled);
+		await resolveUncertains(session, input, () => cancelled);
 		if (!cancelled) {
 			await withRun(session.resume());
 			if (prompt !== undefined && prompt !== "") {
@@ -1063,7 +1240,7 @@ async function resume(session: AgentSession, prompt: string | undefined, faux: b
 			}
 		}
 	} finally {
-		rl.close();
+		input.close();
 	}
 }
 
@@ -1074,6 +1251,11 @@ async function main(): Promise<void> {
 	const faux = process.env.ANTHROPIC_API_KEY === undefined && process.env.OPENAI_API_KEY === undefined;
 	let agent: Awaited<ReturnType<typeof makeAgent>> | undefined;
 
+	// v2c: ONE input source per process — the raw-mode editor on a TTY
+	// (entered here, dock-bound, trusted before any extension loads),
+	// readline elsewhere. The trust question, chat, and resume all read
+	// through it; main's finally closes it on every exit path.
+	const input = makeLineInput();
 	try {
 		switch (command) {
 			case "chat": {
@@ -1083,11 +1265,11 @@ async function main(): Promise<void> {
 				dock.enter();
 				// E 区: a resumed session continues the script at its durable
 				// position — never restarts it (fauxSkip).
-				const agent = await makeAgent(fauxSkip(id));
+				const agent = await makeAgent(fauxSkip(id), input);
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
 				extensionsBanner();
-				await chat(session, faux);
+				await chat(session, faux, input);
 				break;
 			}
 			case "resume": {
@@ -1099,9 +1281,9 @@ async function main(): Promise<void> {
 				// (argv = [node, script, resume, id, prompt?]).
 				const prompt = process.argv[4];
 				dock.enter();
-				const agent = await makeAgent(fauxSkip(arg));
+				const agent = await makeAgent(fauxSkip(arg), input);
 				const session = await agent.session({ id: arg });
-				await resume(session, prompt, faux);
+				await resume(session, prompt, faux, input);
 				break;
 			}
 			case "sessions": {
@@ -1134,11 +1316,12 @@ async function main(): Promise<void> {
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
 				extensionsBanner();
-				await chat(session, faux);
+				await chat(session, faux, input);
 				break;
 			}
 		}
 	} finally {
+		input.close();
 		// E 组: every normal and abnormal exit releases the fds and writer
 		// locks — no lock file is left behind.
 		agent?.close();
