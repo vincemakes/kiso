@@ -60,11 +60,11 @@ export interface StreamOptions {
 /**
  * The NARROW event set an adapter may produce (五). Everything else in the
  * union is kernel-owned — `terminal`, `tool_execution_*`, `permission_*`,
- * `user_input`, `compacted`, `uncertain_pending`, `user_input_replaced`,
- * `assistant_start`/`assistant_end` — and a provider that yields any of
- * those is FORGING kernel state. The type narrows the adapter contract;
- * the loop ALSO enforces it at runtime (JS and third-party adapters are
- * not trusted — see kernel/loop.ts).
+ * `user_input`, `compacted`, `summarized`, `uncertain_pending`,
+ * `user_input_replaced`, `assistant_start`/`assistant_end` — and a
+ * provider that yields any of those is FORGING kernel state. The type
+ * narrows the adapter contract; the loop ALSO enforces it at runtime (JS
+ * and third-party adapters are not trusted — see kernel/loop.ts).
  */
 export type AdapterEvent = Extract<
 	Event,

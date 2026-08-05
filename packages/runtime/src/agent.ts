@@ -46,6 +46,12 @@ export interface AgentDefinition {
 	readonly maxTurns?: number;
 	readonly maxTokens?: number;
 	readonly temperature?: number;
+	/**
+	 * DEPRECATED (ADR-0044): the classic auto-compaction path is retired —
+	 * the loop ignores this (microcompact absorbed the responsibility; old
+	 * sessions' `compacted` events still replay). Kept so old definitions
+	 * type-check; removed at 1.0.
+	 */
 	readonly compaction?: { readonly thresholdTokens: number };
 	/** C 区: microcompact threshold — passed through to every session. */
 	readonly microcompact?: { readonly thresholdTokens: number };

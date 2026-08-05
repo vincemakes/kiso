@@ -154,6 +154,10 @@ export function renderEvent(ev: Event, prevThinking = false, resolvePath: PathRe
 		}
 		case "compacted":
 			return { text: `${p.dim}  [compacted ${ev.cleared.length} results]${p.reset}\n`, newline: true, prompt: false };
+		case "summarized":
+			// ADR-0044: the /compact event is OFF-LOOP — it never appears in
+			// a run stream; rendered for the switch's completeness only.
+			return { text: `${p.dim}  [summarized up to seq ${ev.coversToSeq}]${p.reset}\n`, newline: true, prompt: false };
 		case "uncertain_pending":
 			return {
 				text: `${p.red}⚠ ${escapeTerminal(ev.name)} failed (${ev.executionId}): ${escapeTerminal(ev.error.slice(0, 160))}${p.reset}\n`,

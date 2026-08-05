@@ -1130,6 +1130,7 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 				bodyLog(cmd("/last", "show the most recent tool call's input and output"));
 				bodyLog(cmd("/status", "show session id, event count, and context estimate"));
 				bodyLog(cmd("/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"));
+				bodyLog(cmd("/compact", "summarize the older conversation to free context"));
 				bodyLog(cmd("exit", "leave the session"));
 				input.prompt();
 			});
@@ -1197,6 +1198,32 @@ async function chat(session: AgentSession, faux: boolean, input: LineInput): Pro
 					setMode(m);
 					body.notice(`mode → ${m}`);
 					paintIdle();
+				}
+				input.prompt();
+			});
+			return;
+		}
+		if (trimmed === "/compact") {
+			// /compact (ADR-0044): the older conversation becomes one
+			// model summary — an OFF-LOOP call through the session's own
+			// adapter, so it must never race a running turn: refused
+			// mid-run, with a hint to wait for the turn to end.
+			if (currentRun !== null) {
+				body.notice("[/compact] a turn is running — wait for it to finish");
+				return;
+			}
+			chain = chain.then(async () => {
+				try {
+					const result = await session.summarize();
+					if (result === null) {
+						body.notice("[/compact] nothing to compact — fewer than 5 rounds yet");
+					} else {
+						body.notice(`[/compact] saved ~${result.savedTokens.toLocaleString("en-US")} tokens`);
+					}
+				} catch (err) {
+					// Honest failure: nothing was persisted, the session
+					// is unchanged (ADR-0044 crash semantics).
+					body.notice(`[/compact] failed: ${err instanceof Error ? err.message : String(err)}`);
 				}
 				input.prompt();
 			});

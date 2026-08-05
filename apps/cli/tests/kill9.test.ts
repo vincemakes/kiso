@@ -28,6 +28,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { executionLedger } from "@vincemakes/kiso-core";
 import { SessionStore } from "@vincemakes/kiso-runtime";
+import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
@@ -249,4 +250,69 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptP
 		// The resolution is durable, exactly one.
 		expect(records2.filter((r) => r.event.type === "tool_execution_resolved")).toHaveLength(1);
 	}, 180_000);
+
+	it("compact crash semantics (ADR-0044): the post-persist state resumes COMPRESSED, the pre-persist state resumes untouched", () => {
+		// The two sides of the /compact persist window, as crash states a
+		// killed process leaves on disk — deterministic, no race on a
+		// microsecond window. "pre" = the process died BEFORE the
+		// summarized event reached disk: nothing happened, the resume
+		// projects the original conversation. "post" = it died AFTER: the
+		// event is durable, and the resume projects the compressed view —
+		// the recap's ctx left is measurably HIGHER.
+		const dir = mkdtempSync(join(tmpdir(), "kiso-k9c-"));
+		const home = join(dir, "home");
+		mkdirSync(join(home, "sessions"), { recursive: true });
+		const seed = (id: string, withSummary: boolean): void => {
+			const lines: string[] = [];
+			let seq = 0;
+			const push = (event: Record<string, unknown>): void => {
+				lines.push(JSON.stringify({ runId: "r1", ts: seq, event }));
+				seq += 1;
+			};
+			push({ seq, type: "user_input", content: "start" });
+			for (let i = 0; i < 7; i++) {
+				push({ seq, type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: `f${i}.ts` } });
+				push({ seq, type: "tool_result", callId: `r${i}`, content: "line\n".repeat(300), isError: false });
+				push({ seq, type: "user_input", content: `t${i}` });
+			}
+			if (withSummary) {
+				// The post-persist state: the covered rounds 1-4 (0..11)
+				// are replaced by the summary; the run stays open.
+				push({ seq, type: "summarized", coversToSeq: 11, summary: "Four rounds of file reads, summarized." });
+			}
+			writeFileSync(join(home, "sessions", `${id}.jsonl`), lines.join("\n") + "\n", "utf8");
+		};
+		seed("pre", false);
+		seed("post", true);
+		// fauxSkip = 7 (the results); turn 7 serves each resume.
+		const script = [
+			...Array.from({ length: 7 }, () => ({ events: [{ type: "stop", reason: "end_turn" }] })),
+			{ events: [{ type: "stop", reason: "end_turn" }] },
+		];
+		writeFileSync(join(dir, "faux.json"), JSON.stringify(script), "utf8");
+		const env = {
+			...isolatedEnv().env,
+			KISO_HOME: home,
+			KISO_FAUX_SCRIPT: join(dir, "faux.json"),
+			KISO_CONTEXT_WINDOW: "20000",
+		};
+
+		const preOut = execFileSync(process.execPath, [CLI, "resume", "pre"], { encoding: "utf8", timeout: 60_000, env });
+		const postOut = execFileSync(process.execPath, [CLI, "resume", "post"], { encoding: "utf8", timeout: 60_000, env });
+		const ctxLeft = (s: string): number => {
+			const m = s.match(/ctx left ~(\d+)%/);
+			return m === null ? -1 : Number(m[1]);
+		};
+		// Post-persist: ~7.5k chars of kept rounds + a short summary vs the
+		// full ~15k chars — the compressed projection's ctx left is higher.
+		expect(ctxLeft(postOut)).toBeGreaterThan(ctxLeft(preOut));
+		// Both states load without corruption; only the post state carries
+		// the summarized fact.
+		const postRecords = new SessionStore(join(home, "sessions")).load("post");
+		const preRecords = new SessionStore(join(home, "sessions")).load("pre");
+		expect(postRecords.some((r) => r.event.type === "summarized")).toBe(true);
+		expect(preRecords.some((r) => r.event.type === "summarized")).toBe(false);
+		expect(postRecords.some((r) => r.event.type === "terminal")).toBe(true);
+		expect(preRecords.some((r) => r.event.type === "terminal")).toBe(true);
+	}, 90_000);
 });

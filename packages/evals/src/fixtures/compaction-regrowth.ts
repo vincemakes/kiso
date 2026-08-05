@@ -9,12 +9,17 @@
  * to the same revision key and overwriting the original. The fix was one
  * line of idempotence: a marked message is never archived again.
  *
- * The kernel-side shape the fixture pins: `shouldClearContent` returns false
- * for already-marked content — the predicate the compaction loop MUST apply
- * before archiving. The fixture fails if the predicate regresses.
+ * ADR-0044 merged the classic auto-compaction into the microcompact
+ * boundary. The incident's lesson is now STRUCTURAL: a boundary is a
+ * persisted fact, so the projection derives the same cleared view from
+ * the same events, byte for byte — "re-running compaction" is a pure
+ * re-derivation that can never re-archive, overwrite, or grow. The
+ * fixture pins that idempotence: replaying the log is identical, and the
+ * cleared results carry exactly the ONE placeholder, never a grown
+ * re-cleared copy.
  */
 
-import { CLEARED_MARKER_PREFIX, isClearedMarker, shouldClearContent } from "@vincemakes/kiso-core";
+import { projectMessages, type EventInput } from "@vincemakes/kiso-core";
 import type { Fixture } from "./types.js";
 
 export const compactionRegrowth: Fixture = {
@@ -31,18 +36,38 @@ export const compactionRegrowth: Fixture = {
 			],
 		},
 	],
-	staticCheck: (events) => {
+	staticCheck: () => {
 		const violations: string[] = [];
-		// The one-line idempotence rule — present in the kernel or the
-		// fixture fails on the first regression.
-		if (shouldClearContent(CLEARED_MARKER_PREFIX + "x")) {
-			violations.push("already-cleared content must never be re-cleared");
+		// A compacted log: two read results, a boundary clearing the first.
+		const ev = (seq: number, e: Record<string, unknown>): EventInput =>
+			({ seq, ...e }) as unknown as EventInput;
+		const log: EventInput[] = [
+			ev(0, { type: "user_input", content: "start" }),
+			ev(1, { type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "a.ts" } }),
+			ev(2, { type: "tool_result", callId: "c1", content: "x".repeat(100), isError: false }),
+			ev(3, { type: "user_input", content: "again" }),
+			ev(4, { type: "tool_call_end", callId: "c2", name: "read_file", input: { path: "b.ts" } }),
+			ev(5, { type: "tool_result", callId: "c2", content: "y".repeat(100), isError: false }),
+			ev(6, { type: "microcompacted", beforeSeq: 2 }),
+		];
+		const first = projectMessages(log);
+		// Idempotence: replaying the same events derives the SAME
+		// projection — nothing grows, nothing is re-archived (the regrowth
+		// incident's fix, now structural).
+		if (JSON.stringify(first) !== JSON.stringify(projectMessages(log))) {
+			violations.push("projection is not byte-stable across replay");
 		}
-		if (!shouldClearContent("real tool output")) {
-			violations.push("real content must remain clearable");
+		// The boundary cleared exactly the ONE eligible result (seq ≤ 2,
+		// a whitelisted tool): the second result is untouched — never a
+		// grown re-cleared copy of the first.
+		const tools = first.filter((m): m is Extract<(typeof first)[number], { role: "tool" }> => m.role === "tool");
+		const cleared = tools.filter((m) => String(m.content).includes("cleared"));
+		const kept = tools.filter((m) => !String(m.content).includes("cleared"));
+		if (cleared.length !== 1) {
+			violations.push("expected exactly one cleared result after the boundary");
 		}
-		if (!isClearedMarker(CLEARED_MARKER_PREFIX + "x")) {
-			violations.push("marker prefix detection regressed");
+		if (kept.length !== 1) {
+			violations.push("the second result must stay untouched");
 		}
 		return violations;
 	},

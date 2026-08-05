@@ -13,11 +13,14 @@
  * derives from the log, so there is one store and the replay of `seq` 0..N
  * reproduces the run exactly.
  *
- * Events with no message shape (usage, stop, thinking, terminal, compacted's
- * own record) are skipped by the projection; `compacted` REPLAYS the
- * compaction by re-running microcompact at that point in the sequence —
- * microcompact is deterministic and idempotent, so the replay equals the
- * live run. See ADR-0002.
+ * Events with no message shape (usage, stop, thinking, terminal, the
+ * compaction events' own records) are skipped by the projection;
+ * `compacted` applies the EXACT persisted replacements verbatim — it never
+ * re-runs the compaction algorithm (a future version could differ, A 组/D
+ * 组); `microcompacted` boundaries re-derive the cleared view from the
+ * stream itself (deterministic and idempotent); `summarized` (ADR-0044)
+ * replaces its covered range with one assistant summary message. All
+ * three are persisted facts — the replay equals the live run. See ADR-0002.
  */
 
 import type { Event } from "../protocol/events.js";
@@ -67,8 +70,8 @@ function primaryArg(input: Readonly<Record<string, unknown>> | null | undefined)
  * replaying the same log always produces the same messages — BYTE FOR BYTE
  * (D 区): the same event prefix derives the same message prefix; the only
  * events that change already-derived messages are `microcompacted`
- * boundaries, which are themselves persisted facts (their replay derives
- * the same projection every time).
+ * boundaries and `summarized` facts, which are themselves persisted facts
+ * (their replay derives the same projection every time).
  *
  * Text block boundaries are preserved: `text_end` closes the current text
  * block (an explicit boundary); `text_start` after a block opens a new one.
@@ -132,10 +135,53 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	for (const ev of events) {
 		if (ev.type === "tool_call_end") callMeta.set(ev.callId, { name: ev.name, input: ev.input });
 	}
+	// ADR-0044: summarized coverage — each `summarized` event covers the
+	// range (previous coversToSeq, coversToSeq] of ORDINARY events. The
+	// ranges are disjoint and in seq order; boundaries are turn boundaries
+	// by construction (summaryBoundarySeq cuts before a user_input), so a
+	// skipped event never splits a message. Each summary message renders
+	// AT ITS BOUNDARY — the first event after the covered range — NOT at
+	// the summarized event itself: the event sits at the log's END (the
+	// kept rounds live between the boundary and it), and the summary must
+	// precede the kept conversation in reading order.
+	const summaryRanges: { from: number; to: number; summary: string }[] = [];
+	{
+		let prev = -1;
+		for (const ev of events) {
+			if (ev.type === "summarized") {
+				summaryRanges.push({ from: prev, to: ev.coversToSeq, summary: ev.summary });
+				prev = ev.coversToSeq;
+			}
+		}
+	}
+	const isCovered = (seq: number): boolean =>
+		summaryRanges.some((r) => seq > r.from && seq <= r.to);
+	// Summaries render in range order as the pass crosses their boundaries.
+	let renderedSummaries = 0;
 
 	let explicitAssistant = false;
 
 	for (const ev of events) {
+		// ADR-0044: covered events are replaced by their summary — seed
+		// events (EventInput, no seq) precede any summarized fact and are
+		// never covered. The summarized events themselves are exempt (their
+		// own event sits inside the NEXT range's coverage; the boundary
+		// render below is where their message lands).
+		if (ev.type !== "summarized" && isCovered((ev as { seq?: number }).seq ?? -1)) continue;
+		// The boundary render: every range whose end this event crosses
+		// yields its assistant summary message, before this event renders.
+		while (
+			renderedSummaries < summaryRanges.length &&
+			(ev as { seq?: number }).seq !== undefined &&
+			(ev as { seq?: number }).seq! > summaryRanges[renderedSummaries]!.to
+		) {
+			flushAssistant();
+			out.push({
+				role: "assistant",
+				blocks: [{ type: "text", text: summaryRanges[renderedSummaries]!.summary }],
+			} satisfies AssistantMessage);
+			renderedSummaries += 1;
+		}
 		switch (ev.type) {
 			case "user_input": {
 				// 六: the final replacement renders HERE, at the input's own
@@ -283,6 +329,11 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				// the assistant message that follows carries it.
 				flushAssistant();
 				pendingReasoning = (pendingReasoning ?? "") + ev.text;
+				break;
+			case "summarized":
+				// ADR-0044: this event produced nothing itself — its summary
+				// message was rendered at the boundary render above, in the
+				// covered range's position.
 				break;
 			case "usage":
 			case "stop":

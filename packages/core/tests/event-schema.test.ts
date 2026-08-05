@@ -136,6 +136,20 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ seq: -1, type: "stop", reason: "end_turn" })).toBe(false);
 	});
 
+	it("ADR-0044: validates the summarized event (coversToSeq, non-empty summary, covers only the past)", () => {
+		expect(isKisoEvent({ seq: 10, type: "summarized", coversToSeq: 8, summary: "the summary" })).toBe(true);
+		// coversToSeq must be a non-negative safe integer...
+		expect(isKisoEvent({ seq: 10, type: "summarized", coversToSeq: "8", summary: "s" })).toBe(false);
+		expect(isKisoEvent({ seq: 10, type: "summarized", coversToSeq: -1, summary: "s" })).toBe(false);
+		expect(isKisoEvent({ seq: 10, type: "summarized", coversToSeq: 8.5, summary: "s" })).toBe(false);
+		// ...the summary must be non-empty text...
+		expect(isKisoEvent({ seq: 10, type: "summarized", coversToSeq: 8, summary: "" })).toBe(false);
+		expect(isKisoEvent({ seq: 10, type: "summarized", coversToSeq: 8 })).toBe(false);
+		// ...and it covers only what PRECEDED it.
+		expect(isKisoEvent({ seq: 8, type: "summarized", coversToSeq: 8, summary: "s" })).toBe(false);
+		expect(isKisoEvent({ seq: 5, type: "summarized", coversToSeq: 8, summary: "s" })).toBe(false);
+	});
+
 	it("rejects unknown types and non-objects", () => {
 		expect(isKisoEvent({ seq: 0, type: "nonsense" })).toBe(false);
 		expect(isKisoEvent(null)).toBe(false);

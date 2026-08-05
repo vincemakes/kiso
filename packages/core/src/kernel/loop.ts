@@ -9,8 +9,9 @@
  * stored alongside it — every adapter call derives them via
  * `projectMessages(log.all)` (kernel/project.ts). A fresh log encodes the
  * seed `messages` into events first, so even a one-shot call replays
- * exactly. Compaction is recorded as a `compacted` event and re-applied by
- * the projection, keeping the replay identical to the live run.
+ * exactly. Compaction is recorded as a `microcompacted` boundary (old
+ * sessions: a `compacted` event) and re-applied by the projection, keeping
+ * the replay identical to the live run.
  *
  * Per iteration:
  *   assemble (onUserMessage / onPreLlm)
@@ -30,7 +31,7 @@
 import { isAdapterEvent, type Adapter, type AbortSignalLike } from "../protocol/adapter.js";
 import type { Event, StopReason, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
 import type { ApprovalPolicy, PolicyVerdict } from "../protocol/extension.js";
-import { estimateTokens, microcompact } from "./compaction.js";
+import { estimateTokens } from "./compaction.js";
 import { EventLog } from "./event-log.js";
 import type { EventInput } from "./event-log.js";
 import type {
@@ -70,8 +71,13 @@ export interface LoopConfig {
 	readonly messages?: readonly Message[];
 	/** The run's event log. Pass the session's log to make this run durable. */
 	readonly log?: EventLog;
-	/** Auto-compaction: when the estimated context exceeds the threshold,
-	 *  microcompact old tool results before the next model call. */
+	/**
+	 * DEPRECATED (ADR-0044): the classic auto-compaction path is retired —
+	 * the loop no longer produces `compacted` events; the microcompact
+	 * boundary (below) absorbed the responsibility. Kept so old configs
+	 * type-check; IGNORED. Old sessions' `compacted` events still replay
+	 * verbatim (the projection). Removed at 1.0.
+	 */
 	readonly compaction?: { readonly thresholdTokens: number };
 	/**
 	 * C 区: MICROCOMPACT — when the projected context exceeds the threshold,
@@ -216,29 +222,6 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			return;
 		}
 		turns += 1;
-
-		// ── Auto-compaction: ONLY this turn's NEWLY cleared results are
-		//    persisted, keyed by the replaced tool-result event's seq; the
-		//    projection applies them verbatim (A 组/D 组/五).
-		if (config.compaction && estimateTokens(messages) > config.compaction.thresholdTokens) {
-			if (hooks.onPreCompact) await hooks.onPreCompact(messages, {}).catch(() => {});
-			const result = microcompact(messages);
-			// 五: the delta only — messages already carrying the clear marker
-			// are never re-cleared (microcompact's idempotence gate), so the
-			// same replacement is never recorded twice across turns.
-			const cleared = result.cleared.map((c) => ({
-				eventSeq: c.eventSeq!,
-				callId: c.callId,
-				content: c.content,
-			}));
-			if (cleared.length > 0) {
-				const full = log.append({ type: "compacted", cleared });
-				if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
-				yield full;
-				messages = derive();
-				if (hooks.onPostCompact) await hooks.onPostCompact(messages, {}).catch(() => {});
-			}
-		}
 
 		// ── C 区: one-shot microcompact boundary when over the threshold ──
 		if (config.microcompact !== undefined && estimateTokens(messages) > config.microcompact.thresholdTokens) {

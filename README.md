@@ -227,6 +227,21 @@ derive the same messages — a crash/resume replays the boundary and lands on
 the byte-identical projection (see the byte discipline below). No counting
 API, no price table, no tokens spent on the compaction itself.
 
+**The model-summary layer (`/compact`, ADR-0044)**: the mechanical clearing
+works on tool results only — the CONVERSATION still grows. `/compact`
+(summarize the older conversation to free context) compresses the covered
+rounds — everything before the most recent 4 rounds, from the last summary
+point — into one durable `summarized` event via an off-loop call through
+the session's own adapter. The projection replaces the covered range with
+a single assistant summary message; the original events stay on disk
+forever (the raw log, /last, and /think still reach them); a crash before
+the persist is "nothing happened", after it the resume projects the
+compressed view. The classic auto-compaction (`config.compaction` +
+`compacted` events) was retired into the boundary by ADR-0044 — old logs
+with `compacted` events replay verbatim, forever. (Matrix note: context
+economy ◐→● — ◐ was the mechanical clearing alone, 0.1.19; ● adds the
+model summary, 0.1.20.)
+
 Wired end to end and test-verified: a session running through the real
 runtime records the boundary on disk and a reloaded session projects the
 placeholders (`packages/runtime/tests/microcompact-e2e.test.ts`); the CLI
@@ -545,7 +560,7 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | MCP bridge | official extension, kernel untouched | `extensions/mcp/tests` |
 | subagents | official extension, role-policy children | `extensions/subagent/tests` |
 | skills | official extension, two-tier progressive | `extensions/skills/tests` |
-| context economy | microcompact + prompt-cache byte discipline | `packages/core/tests/prompt-cache.test.ts` |
+| context economy ● | microcompact + /compact (model summary) + prompt-cache discipline | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
 
 The bench, one fixture, one model, mean of two runs (kiso 0.1.7 · pi ·

@@ -355,6 +355,30 @@ export interface MicroCompactEvent {
 	readonly beforeSeq: number;
 }
 
+/**
+ * ADR-0044 — a model-generated summary replaced the covered conversation
+ * range. `coversToSeq` is the seq of the LAST covered event; the covered
+ * range runs from just past the previous `summarized` event's coversToSeq
+ * (or the trajectory's start for the first) up to coversToSeq. The
+ * projection replaces exactly those events with ONE assistant summary
+ * message (`summary`); every `summarized` event always renders its own
+ * message. Byte-stable: a summarized event is a persisted fact, so the
+ * same events derive the same messages on every replay.
+ *
+ * The summary is generated OFF-LOOP through the session's own adapter —
+ * the summary request itself never enters the log, and a failed summary
+ * never leaves a record ("nothing happened"). The ORIGINAL events stay on
+ * disk forever: /last, /think, and the raw log still reach them.
+ */
+export interface SummarizedEvent {
+	readonly seq: number;
+	readonly type: "summarized";
+	/** The last covered event's seq; the range is (previous coversToSeq, coversToSeq]. */
+	readonly coversToSeq: number;
+	/** The model's compression — replaces the covered range in the projection. */
+	readonly summary: string;
+}
+
 /** Extended-thinking content. Providers without it emit nothing here. */
 export interface Thinking {
 	readonly seq: number;
@@ -476,6 +500,7 @@ export type Event =
 	| UncertainPending
 	| UserInputReplaced
 	| MicroCompactEvent
+	| SummarizedEvent
 	| TerminalEvent;
 
 // ── deep-shape helpers (五): every variant is validated field by field —
@@ -699,6 +724,13 @@ const EVENT_VALIDATORS = {
 	uncertain_pending: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.error === "string",
 	microcompacted: (v: Record<string, unknown>) => isNonNegativeInt(v.beforeSeq),
+	// ADR-0044: coversToSeq is a seq boundary BEFORE this event (a summary
+	// covers only what preceded it), and the summary is non-empty text.
+	summarized: (v: Record<string, unknown>) =>
+		isNonNegativeInt(v.coversToSeq) &&
+		typeof v.summary === "string" &&
+		v.summary.length > 0 &&
+		(v.coversToSeq as number) < (v.seq as number),
 	user_input_replaced: (v: Record<string, unknown>) =>
 		isNonNegativeInt(v.replaces) && (v.content === null || isContent(v.content)) && isSource(v),
 	terminal: (v: Record<string, unknown>) => isTerminal(v.outcome),

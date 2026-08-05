@@ -139,9 +139,9 @@ describe("a real run's trajectory is its own truth", () => {
 		const registry = new ToolRegistry();
 		registry.register(
 			defineTool({
-				name: "web_search",
-				description: "Search",
-				parameters: { type: "object", properties: { query: { type: "string" } } },
+				name: "read_file",
+				description: "Read",
+				parameters: { type: "object", properties: { path: { type: "string" } } },
 				execute: async () => ({ content: "x".repeat(200), isError: false }),
 			}),
 		);
@@ -153,7 +153,7 @@ describe("a real run's trajectory is its own truth", () => {
 			seedTurns.push({ role: "user", content: `u${i}` });
 			seedTurns.push({
 				role: "assistant",
-				blocks: [{ type: "tool_use", callId: `c${i}`, name: "web_search", input: { query: `q${i}` } }],
+				blocks: [{ type: "tool_use", callId: `c${i}`, name: "read_file", input: { path: `p${i}.ts` } }],
 			});
 			seedTurns.push({ role: "tool", callId: `c${i}`, content: "x".repeat(200), isError: false });
 		}
@@ -162,21 +162,24 @@ describe("a real run's trajectory is its own truth", () => {
 
 		for await (const _ev of loop({
 			adapter: createFauxProvider([
-				{ events: [{ type: "tool_call_end", callId: "c99", name: "web_search", input: { query: "go" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "tool_call_end", callId: "c99", name: "read_file", input: { path: "go.ts" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
 			model: "faux",
 			registry,
 			log,
-			compaction: { thresholdTokens: 200 },
+			microcompact: { thresholdTokens: 200 },
 		})) {
 			// no-op
 		}
 
-		expect(log.all.some((e) => e.type === "compacted")).toBe(true);
+		// The boundary is the durable fact (C 区); the projection derives
+		// the cleared view from it — never a silent second copy.
+		expect(log.all.some((e) => e.type === "microcompacted")).toBe(true);
+		expect(log.all.some((e) => e.type === "compacted")).toBe(false); // ADR-0044: never produced
 		const projected = projectMessages(log.all);
-		// The old tool results carry the clear marker in the projection.
-		expect(projected.some((m) => m.role === "tool" && typeof m.content === "string" && m.content.includes("compacted"))).toBe(true);
+		// The old tool results carry the placeholder in the projection.
+		expect(projected.some((m) => m.role === "tool" && typeof m.content === "string" && m.content.includes("cleared"))).toBe(true);
 	});
 });
 

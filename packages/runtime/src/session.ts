@@ -42,6 +42,13 @@ import {
 	type ToolResult,
 } from "@vincemakes/kiso-core";
 import { denialResult } from "@vincemakes/kiso-core";
+import {
+	estimateSummarySavings,
+	KEEP_RECENT_ROUNDS,
+	lastSummaryPoint,
+	summarizeConversation,
+	summaryBoundarySeq,
+} from "@vincemakes/kiso-core";
 import { StaleWriterError, type SessionStore, type StoreRecord } from "./store.js";
 
 /** A session whose disk write was rejected (stale handle) is PERMANENTLY
@@ -72,6 +79,14 @@ export interface ApprovalRequest {
 	readonly callId: string;
 	readonly name: string;
 	readonly input: Readonly<Record<string, unknown>>;
+}
+
+/** The /compact result — what the NoticeCell shows (ADR-0044). */
+export interface SummarizeResult {
+	readonly coversToSeq: number;
+	readonly summary: string;
+	/** The estimated tokens the compression saved (chars/4 proxy). */
+	readonly savedTokens: number;
 }
 
 export class AgentSession {
@@ -183,6 +198,44 @@ export class AgentSession {
 	resume(): Run {
 		this.ensureHealthy();
 		return new Run(this.#store, this.#adapter, this.#config, this, undefined, undefined, true);
+	}
+
+	/**
+	 * /compact (ADR-0044): compress the older conversation with a model
+	 * summary. Covers the range (previous summary point, boundary] —
+	 * boundary = the event before the keepRounds-th most recent round —
+	 * and persists ONE `summarized` event. The summary call is OFF-LOOP
+	 * through the session's OWN adapter: it writes nothing; a failure
+	 * throws and the session is unchanged ("nothing happened"). Returns
+	 * null when fewer than keepRounds+1 uncovered rounds exist (nothing
+	 * worth covering yet). Crash semantics: a crash BEFORE the persist is
+	 * "nothing happened"; after it, a resume projects the compressed view.
+	 */
+	async summarize(options: { keepRounds?: number; signal?: AbortSignalLike } = {}): Promise<SummarizeResult | null> {
+		this.ensureHealthy();
+		const keepRounds = options.keepRounds ?? KEEP_RECENT_ROUNDS;
+		const events = this.log.all;
+		const boundary = summaryBoundarySeq(events, keepRounds);
+		if (boundary === undefined) return null;
+		const prevPoint = lastSummaryPoint(events);
+		const covered = projectMessages(
+			events.filter((e) => e.seq > prevPoint && e.seq <= boundary && e.type !== "summarized"),
+		);
+		const summary = await summarizeConversation({
+			adapter: this.#adapter,
+			model: this.#config.model,
+			messages: covered,
+			...(options.signal !== undefined ? { signal: options.signal } : {}),
+		});
+		const full = this.log.append({ type: "summarized", coversToSeq: boundary, summary });
+		// The record rides the LAST recorded run's id — a summarized fact
+		// must never open a run of its own: the open-run gate keys on
+		// terminal-less runIds, and a "compact" runId would block the next
+		// run() ("still has an open run").
+		const records = this.#store.load(this.id);
+		const runId = records.length > 0 ? records[records.length - 1]!.runId : "compact";
+		await this.persist(runId, full);
+		return { coversToSeq: boundary, summary, savedTokens: estimateSummarySavings(covered, summary) };
 	}
 
 	// ── Phase D: approvals ───────────────────────────────────────────────
@@ -460,6 +513,10 @@ export interface SessionConfig {
 	readonly maxTurns?: number;
 	readonly maxTokens?: number;
 	readonly temperature?: number;
+	/**
+	 * DEPRECATED (ADR-0044): forwarded to the loop's deprecated field,
+	 * which IGNORES it — kept for type compatibility, removed at 1.0.
+	 */
 	readonly compaction?: { readonly thresholdTokens: number };
 	/** C 区: microcompact threshold — passed through to the loop verbatim. */
 	readonly microcompact?: { readonly thresholdTokens: number };
