@@ -105,10 +105,10 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		// reset SPLITS the prompt from the text — that raw shape is the
 		// row, not the body echo).
 		expect(out).toContain("\x1b[38;5;75m▌you> \x1b[0mlook around");
-		// The body echo: blue prompt + content + reset + pty-cooked
-		// newline — EXACTLY once (v2c: 恰一次 — the row is not the scroll
-		// region, the body render is the only copy there).
-		const bodyEcho = "\x1b[38;5;75myou> look around\x1b[0m\r\n";
+		// v2d: the body echo is the frozen UserCell — blue prompt + content
+		// + reset, EXACTLY once (the row is not the scroll region, the
+		// frozen cell is the only copy there).
+		const bodyEcho = "\x1b[38;5;75myou> look around\x1b[0m";
 		const esc = bodyEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		expect((out.match(new RegExp(esc, "g")) ?? []).length).toBe(1);
 		// ?2004l on exit + region reset — no bracketed-paste left on.

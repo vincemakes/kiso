@@ -79,7 +79,10 @@ describe("TUI v2a (real PTY)", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
 			["you> ", "probe-one\n"],
-			["you> ", "exit\n"],
+			// "turn 2 · faux" — only exists AFTER the turn completes, so
+			// "exit" cannot collide with the first prompt (a "you> " needle
+			// would close the input before the turn ever runs).
+			["turn 2 · faux", "exit\n"],
 		]);
 		// ① 双回显: readline echoed "probe-one" — the user_input event render
 		// must NOT print it again. The content appears exactly once.
@@ -93,8 +96,9 @@ describe("TUI v2a (real PTY)", () => {
 		expect(out).toContain("\x1b[38;5;75m");
 		// ③ faux status form.
 		expect(out).toMatch(/\[turn \d+ · faux\]/);
-		// ④ rhythm: done, then the status hugging it, then exactly one blank
-		// line before the next prompt (the pty cooks \n into \r\n).
+		// ④ rhythm: the honest terminal label (done), then the status
+		// hugging it, then exactly one blank line before the next prompt
+		// (the pty cooks \n into \r\n).
 		expect(out).toContain("done\r\n[turn 2 · faux]\r\n\r\n");
 	}, 90_000);
 });

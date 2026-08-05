@@ -38,7 +38,7 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		// the first run's history and completes another turn.
 		const second = runCli(["resume", id, "continue"], env);
 		expect(second.status, second.stderr).toBe(0);
-		expect(second.stdout).toContain("done"); // the honest terminal
+		expect(second.stdout).toMatch(/\[turn \d+ · faux\]/); // the honest terminal
 
 		// Process 3: sessions lists the durable session.
 		const sessions = runCli(["sessions"], env);
@@ -68,9 +68,9 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		const { env } = isolatedEnv();
 		const result = runCli(["chat", "twoturns"], env, { input: "first question\nsecond question\nexit\n" });
 		expect(result.status, result.stderr).toBe(0);
-		// Two turns rendered, two honest terminals ("done").
-		const doneCount = (result.stdout.match(/done/g) ?? []).length;
-		expect(doneCount).toBe(2);
+		// Two turns rendered, two honest terminals.
+		const terminalCount = (result.stdout.match(/\[turn \d+ · faux\]/g) ?? []).length;
+		expect(terminalCount).toBe(2);
 		// 八: the prompt is RE-ARMED after every turn — never type blind.
 		expect((result.stdout.match(/you> /g) ?? []).length).toBeGreaterThanOrEqual(2);
 	}, 60_000);

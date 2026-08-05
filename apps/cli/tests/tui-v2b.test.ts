@@ -122,15 +122,19 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// cannot.
 		expect(out).toContain("\x1b[?2026h");
 		expect(out).not.toContain("\x1b[2026h");
-		// The body scrolls inside the region — the status bar survives a
-		// long body (the status reappears AFTER the last body chunk).
-		expect(clean.indexOf("· faux · [turn 2 · faux]")).toBeGreaterThan(clean.indexOf("done"));
-		// v2b: the SENT line renders into the body (blue you> + content +
-		// reset + pty-cooked newline, then the cursor RETURNS TO THE EDIT
-		// POSITION — the drift fix; v2c the brick prompt ▌you> is 6 wide,
-		// so the empty-line edit column is 7 — distinct from the input
-		// row's prompt+line): the typed text must not vanish after Enter.
-		expect(out).toContain("\x1b[38;5;75myou> look around\x1b[0m\r\n\x1b[24;7H");
+		// The body scrolls inside the region — the turn's text AND the
+		// live status bar both survive (v2d frames coalesce, so the raw
+		// ordering between them is not pinned — the presence is).
+		expect(clean).toContain("inspect or change?");
+		expect(clean).toContain("· faux · [turn 2 · faux]");
+		// v2d: the SENT line renders into the body EXACTLY once — a frozen
+		// UserCell (blue you> + content + reset, printed at its region row
+		// — no pty-cooked newline: the renderer positions the next row).
+		// The input row's brick prompt+line is a DIFFERENT shape (the
+		// reset splits the prompt from the text).
+		const userEcho = "\x1b[38;5;75myou> look around\x1b[0m";
+		expect(out).toContain(userEcho);
+		expect((out.match(new RegExp(userEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length).toBe(1);
 		// Exit resets the scroll region (CSI r) — no broken terminal.
 		expect(out).toContain("\x1b[r");
 	}, 90_000);
@@ -183,7 +187,11 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		);
 		const clean = stripANSI(out);
 		expect(clean).toContain("approve asky_read? (y/n)"); // the takeover question
-		expect(clean).toContain("asky ok"); // the tool ran after the approval
+		// v2d: the ToolCell carries the ⏸ badge and freezes at the done
+		// form — the [result] no longer flows into the body (/last has it).
+		expect(clean).toContain("→ asky_read {} ⏸"); // the pending badge
+		expect(clean).toContain("✓ asky_read ({}, "); // the frozen done line
+		expect(clean).not.toContain("asky ok"); // the full result stays out of the stream
 		expect(clean).toContain("the tour is done");
 		// The status bar returned after the question (the model name is back).
 		expect(clean).toContain("· faux · [turn 2 · faux]");
@@ -223,7 +231,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 			],
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain(`…${"A".repeat(100)} (… /think shows full)`); // the folded line
+		expect(clean).toContain(`…${"A".repeat(100)} (… 110 chars · /think shows full)`); // the folded line (v2d: live char count)
 		expect(clean).toContain("SECRETTAIL"); // the full block came back
 		expect(clean).toContain("A".repeat(100)); // …head included
 		expect(out).toContain("\x1b[r"); // clean exit
@@ -234,11 +242,11 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			env,
 			[["you> ", "look around\n"]],
-			// The winch fires when "done" reaches the driver — the CLI is
-			// back at the prompt by then, so the rebuild lands on a live
-			// dock; "exit" is typed 0.5s AFTER the winch (a feed would land
-			// in the same poll and tear the dock down first).
-			{ winch: [30, 100], winchAt: "done", exitAfterWinch: 0.5 },
+			// The winch fires when the turn's text reaches the driver — the
+			// CLI is back at the prompt by then, so the rebuild lands on a
+			// live dock; "exit" is typed 0.5s AFTER the winch (a feed would
+			// land in the same poll and tear the dock down first).
+			{ winch: [30, 100], winchAt: "inspect or change", exitAfterWinch: 0.5 },
 		);
 		// The region is re-applied for the NEW height (30 - 3 = 27).
 		expect(out).toContain("\x1b[1;27r");

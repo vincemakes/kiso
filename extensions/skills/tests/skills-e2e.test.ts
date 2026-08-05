@@ -66,7 +66,7 @@ def driver(cli, home, workdir, ext_dir, skills_dir, script_path):
     read_until(b"you> ", 20)
     os.write(fd, b"go\\n")
     # read_skill is AUTO-allowed by safe-defaults — no approval prompt.
-    read_until(b"done", 40)
+    read_until(b"skill loaded", 40)
     os.write(fd, b"exit\\n")
     wait_exit(10)
     sys.stdout.write(full.decode(errors="replace"))
@@ -122,7 +122,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		expect(out).toContain("[2 extensions: safe-defaults, skills]"); // sorted by file name
 		expect(out).not.toContain("approve read_skill"); // auto-allowed — no prompt
 		expect(out).toContain("UNIQUE-BODY-a-skill"); // the SKILL.md body returned to the model
-		expect(out).toContain("done");
+		expect(out).toContain("skill loaded");
 	}, 180_000);
 
 	it("⑨ a SYMLINKED skill works end to end (发现#9: `ln -s ~/.claude/skills/x ~/.kiso/skills/x` — the CC-compatible migration path)", () => {
@@ -159,6 +159,6 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
 		expect(out).toContain("UNIQUE-BODY-LINKED"); // the symlinked skill's body returned to the model
 		expect(out).not.toContain("unknown skill"); // it was discovered, not skipped
-		expect(out).toContain("done");
+		expect(out).toContain("skill loaded");
 	}, 180_000);
 });

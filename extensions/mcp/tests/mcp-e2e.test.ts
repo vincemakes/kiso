@@ -72,7 +72,7 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
     os.write(fd, b"go\\n")
     read_until(b"approve mcp__fake__echo", 30)
     os.write(fd, b"y\\n")
-    read_until(b"done", 30)
+    read_until(b"the echo worked", 30)
     os.write(fd, b"exit\\n")
     wait_exit(10)
     sys.stdout.write(full.decode(errors="replace"))
@@ -121,6 +121,6 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		expect(out).toContain("[2 extensions: mcp, safe-defaults]"); // the banner names the bundle
 		expect(out).toContain("approve mcp__fake__echo"); // 审批提问出现 — the ask tier reached the human
 		expect(out).toContain("hello from mcp"); // the echo result returned to the model
-		expect(out).toContain("done"); // the run completed
+		expect(out).toContain("the echo worked");
 	}, 180_000);
 });
