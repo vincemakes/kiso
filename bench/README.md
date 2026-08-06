@@ -1,7 +1,9 @@
 # kiso-bench — same model, same tasks, three coding agents
 
 Date: 2026-08-06 · model: **deepseek-v4-flash** for all three tools ·
-kiso **0.1.23** (re-run on the published artifact with the fixed adapter) ·
+kiso **0.1.27/0.1.28** (the token round's kiso cells, re-run on the
+published artifacts — T2/T3 on 0.1.27, T4 on 0.1.28 after the harness
+fix below; the 0.1.23/0.1.26-era runs remain in the notes) ·
 pi (@mariozechner/pi-coding-agent 0.73.1) · Claude Code 2.1.223 (via
 DeepSeek's Anthropic-compatible endpoint). 2 runs per cell (r1 = the first,
 r2 = the second — each run is an independent fresh session); every run's
@@ -35,27 +37,27 @@ future edit cannot regress the labeling.
 | | claude | 1 | 25,911 | 25,856 | 51,767 | 28,497 | 225 | 2 | 6s |
 | | | 2 | 25,941 | 25,728 | 51,669 | 28,514 | 227 | 2 | 6s |
 | | mean | | 25,926 | 25,792 | 51,718 | 28,505 | 226 | 2.0 | 6.0s |
-| T2 fix+verify | **kiso** | 1 | 336 | 4,992 | **5,328** | 835 | 260 | 4 | 8s |
-| | | 2 | 223 | 5,120 | **5,343** | 735 | 249 | 4 | 7s |
-| | **mean** | | 280 | 5,056 | **5,336** | **785** | 255 | 4.0 | 7.5s |
+| T2 fix+verify | **kiso** | 1 | 1,628 | 4,480 | **6,108** | 2,076 | 255 | 4 | 7s |
+| | | 2 | 351 | 5,760 | **6,111** | 927 | 257 | 4 | 6s |
+| | **mean** | | 990 | 5,120 | **6,110** | **1,502** | 256 | 4.0 | 6.5s |
 | | pi | 1 | 1,531 | 17,152 | 18,683 | 3,246 | 446 | 4 | 11s |
 | | | 2 | 1,455 | 17,152 | 18,607 | 3,170 | 345 | 4 | 10s |
 | | mean | | 1,493 | 17,152 | 18,645 | 3,208 | 396 | 4.0 | 10.5s |
 | | claude | 1 | 26,607 | 78,464 | 105,071 | 34,453 | 652 | 5 | 13s |
 | | | 2 | 26,432 | 77,952 | 104,384 | 34,227 | 641 | 4 | 14s |
 | | mean | | 26,520 | 78,208 | 104,728 | 34,340 | 646 | 4.5 | 13.5s |
-| T3 cross-file rename | **kiso** | 1 | 1,380 | 7,296 | **8,676** | 2,110 | 712 | 5 | 11s |
-| | | 2 | 1,450 | 7,552 | **9,002** | 2,205 | 756 | 5 | 11s |
-| | **mean** | | 1,415 | 7,424 | **8,839** | **2,158** | 734 | 5.0 | 11.0s |
+| T3 cross-file rename | **kiso** | 1 | 2,590 | 7,168 | **9,758** | 3,307 | 737 | 5 | 11s |
+| | | 2 | 1,387 | 8,704 | **10,091** | 2,257 | 817 | 5 | 12s |
+| | **mean** | | 1,989 | 7,936 | **9,925** | **2,782** | 777 | 5.0 | 11.5s |
 | | pi | 1 | 1,709 | 23,552 | 25,261 | 4,064 | 806 | 5 | 14s |
 | | | 2 | 1,547 | 22,016 | 23,563 | 3,749 | 697 | 5 | 12s |
 | | mean | | 1,628 | 22,784 | 24,412 | 3,906 | 752 | 5.0 | 13.0s |
 | | claude | 1 | 28,290 | 218,368 | 246,658 | 50,127 | 2,185 | 15 | 30s |
 | | | 2 | 28,101 | 188,928 | 217,029 | 46,994 | 2,004 | 14 | 30s |
 | | mean | | 28,196 | 203,648 | 231,844 | 48,561 | 2,094 | 14.5 | 30.0s |
-| T4 skills (repo convention) | **kiso** | 1 | 3,787 | 47,360 | **51,147** | 8,523 | 2,946 | 13 | 43s |
-| | | 2 | 1,833 | 28,160 | **29,993** | 4,649 | 1,727 | 13 | 30s |
-| | **mean** | | 2,810 | 37,760 | **40,570** | **6,586** | 2,337 | 13.0 | 36.5s |
+| T4 skills (repo convention) | **kiso** | 1 | 2,239 | 8,448 | **10,687** | 3,084 | 834 | 5 | 15s |
+| | | 2 | 623 | 9,472 | **10,095** | 1,570 | 664 | 5 | 11s |
+| | **mean** | | 1,431 | 8,960 | **10,391** | **2,327** | 749 | 5.0 | 13.0s |
 | | pi | 1 | 2,362 | 49,280 | 51,642 | 7,290 | 2,542 | 9 | 38s |
 | | | 2 | 2,061 | 51,456 | 53,517 | 7,207 | 2,530 | 8 | 30s |
 | | mean | | 2,212 | 50,368 | 52,580 | 7,249 | 2,536 | 8.5 | 34.0s |
@@ -79,31 +81,42 @@ future edit cannot regress the labeling.
 
 ## Headline
 
-**Raw total input tokens:** kiso is 2.8× fewer than pi on T3 (8.8K vs
-24.4K) and 26.2× fewer than Claude Code — with identical task outcomes.
-Across the scenarios: 3.7× (T1), 3.4× (T2), 1.3× (T4); the T5 long session
-1.9× fewer than pi, 6.7× fewer than CC.
+**Raw total input tokens:** kiso is 2.5× fewer than pi on T3 (9.9K vs
+24.4K), 3.1× on T2 (6.1K vs 18.6K) and 5.1× on T4 (10.4K vs 52.6K) —
+with identical task outcomes. T1 3.7× (unchanged, not re-run); the T5
+long session 1.9× fewer than pi, 6.7× fewer than CC.
 
 **Cost-weighted (fresh + 0.1×cached, DeepSeek's cache-hit price ratio):**
-kiso is cheaper than pi on T3 (1.8×, 2.2K vs 3.9K), T2 (4.1×), T1 (4.6×)
-and T5 (1.35×, 22.5K vs 30.4K); pi edges ahead on T4 cost-weighted (7.2K
-vs 8.0K — the 0.1.23 T4 runs explored more: 12/11 requests vs 9/8, n=2
-variance) and stays 5.5-24.9× cheaper than CC. The 0.1.22-era version of
-this document reported "pi overtakes ~2.7× on cost" — that headline was
-built on the double-counted kiso rows (see the correction below). Honesty
-rule unchanged: the numbers are each provider's own, n=2, one fixture
-each, and a one-cell pi win on T4-cost-weighted is written plainly.
+kiso is cheaper than pi on every scenario: T4 3.1× (2.3K vs 7.2K), T2
+2.1× (1.5K vs 3.2K), T3 1.4× (2.8K vs 3.9K), T1 4.6× and T5 1.35×. The
+0.1.22-era "pi overtakes ~2.7× on cost" headline was built on
+double-counted kiso rows (see the correction below). Honesty rule
+unchanged: the numbers are each provider's own, n=2, one fixture each,
+and the T2/T3 fresh means carry the one-time cold start of the token
+round's prompt change (see the 0.1.27/0.1.28 note).
 
-**0.1.26 (the parallel-execution round):** the kiso T2-T4 rows above are
-RE-RUN on 0.1.26 (the windowed parallel execution, ADR-0024 Amendment 1),
-fresh runs, n=2. The honest comparison: the wall times are UNCHANGED
-within the LLM variance (T2 6.5→7.5s, T3 13.0→11.0s, T4 30.5→36.5s — one
-T4 run hit a transient connection error and was retried). The reason is
-structural: these tasks' tools are milliseconds-fast, so the wall IS the
-model round-trips and the tool-execution overlap buys nothing measurable.
-The parallel's measured win is where the tool LATENCY dominates: three
-300ms tools complete in ~300ms instead of ~900ms (the synthetic gate in
+**0.1.26 (the parallel-execution round):** the kiso T2-T4 rows were
+RE-RUN on 0.1.26 (the windowed parallel execution, ADR-0024 Amendment 1).
+The honest comparison then: the wall times were UNCHANGED within the LLM
+variance — these tasks' tools are milliseconds-fast, so the wall IS the
+model round-trips and the tool-execution overlap buys nothing measurable
+(the parallel's measured win is where the tool LATENCY dominates: three
+300ms tools complete in ~300ms instead of ~900ms — the synthetic gate in
 packages/core/tests/parallel.test.ts, ①).
+
+**0.1.27/0.1.28 (the token round — tool output discipline + request
+contraction):** the kiso rows above are RE-RUN on 0.1.27 (T2/T3) and
+0.1.28 (T4 — see the harness fix below). Two honest caveats on the T2/T3
+fresh columns: (a) the r1 rows carry the one-time cold start of the
+system-prompt change (the prompt's request-contraction guidance +3
+bullets — the 0.1.26 r1 rows were warm because the prompt was
+byte-identical to earlier batches); the r2 rows are the steady state
+(T2 351 vs 223, T3 1,387 vs 1,450 — within variance). (b) The request
+counts did not move on T2/T3 (4/5) — the contraction guidance changed
+HOW the model reads (scoped ranges), not the round count on these small
+tasks. T4 flipped decisively: **5 requests vs pi's 8.5** (13 at 0.1.26),
+cost-weighted mean 2.3K vs pi 7.2K (3.1×), wall 13s vs pi 34s — see the
+T4 note below for why the 0.1.26 T4 baseline was itself an artifact.
 
 ## The fresh-mystery — verdict of the 0.1.23 investigation
 
@@ -156,10 +169,24 @@ package.json — enforced by a bench-side check the tests do not reveal).
 Each tool surfaced the skill through its NATIVE mechanism: kiso's skills
 extension (index + read_skill), pi's `--skill` (index + read tool), Claude
 Code's project skills (`.claude/skills/`). All three completed with the
-convention applied (0.3.1 → 0.3.2 in every run). The progressive loading
-itself is cheap in all three; kiso and pi land within 2% of each other on
-raw totals (51.5K vs 52.6K), claude is 6.2× heavier; cost-weighted kiso is
-1.5× cheaper than pi.
+convention applied (0.3.1 → 0.3.2 in every run).
+
+**T4 honesty — the 0.1.27 失格调查 found the baseline was a harness bug.**
+Through 0.1.26 the kiso runner's extension dir carried ONLY bench-allow —
+the official skills extension was never loaded, so kiso's model had to
+discover `.claude/skills/…/SKILL.md` by raw exploration: the 13-request
+rows (and a 0.1.27 run that never found the skill at all) measured that
+exploration cost, not the product. The runner now loads the skills
+extension (run-one.sh), which is what the scenario always specified. On
+the FIXED harness (0.1.28), the model reads the index line in its prompt
+(r1 — the description alone carries the convention) or calls `read_skill`
+(r2 — batched with its read): **5 requests, cost-weighted 2.3K mean, 13s
+mean, both runs verified.** The investigation also surfaced a latent
+product bug the harness exposed: a sync extension's tools were registered
+both eagerly AND via the 0.1.26 live source, duplicating them in the
+adapter's tool list (real API: "400 Tool names must be unique" — faux
+tests never saw it); fixed in 0.1.28 (the registry's list() dedups, the
+registered map wins — same rule as get()/has()).
 
 **T5 (long session, /compact)**: 8 progressive turns on the fixture, then
 a final verification. Each tool drove the session with its NATIVE
