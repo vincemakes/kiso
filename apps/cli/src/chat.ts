@@ -329,7 +329,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 					// 手感批 C8: the opt-in auto-compact — checked AFTER the
 					// turn ended (the run's terminal is in the log, the ratio
 					// is post-run).
-					maybeAutoCompact();
+					await maybeAutoCompact();
 					resolve();
 				} catch (err) {
 					// A run failure must not freeze the REPL (review finding
@@ -443,13 +443,16 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// 手感批 C8: the auto-compact check — the /compact FULL path via the
 	// shared dispatch (same notices, same chain ordering, same mid-run
 	// refusal — the isRunning guard here only avoids the refusal's noise).
+	// The appended segment is NOT awaited here on purpose: from inside a
+	// chain segment, awaiting the append would be circular (the segment
+	// chains after THIS segment's promise). The exit path re-awaits the
+	// chain once more after the turn — see the final awaits in chat().
 	const maybeAutoCompact = (): void => {
 		if (autoCompact === undefined) return;
 		if (currentRun !== null) return; // dispatch would refuse — skip the noise
 		const ratio = estimateCtxRatio(session);
-		if (Number.isFinite(ratio) && ratio >= autoCompact.thresholdRatio) {
-			dispatch("/compact", dispatchCtx);
-		}
+		if (!Number.isFinite(ratio) || ratio < autoCompact.thresholdRatio) return;
+		dispatch("/compact", dispatchCtx);
 	};
 	input.onLine((line) => {
 		if (!replReady) {
@@ -472,7 +475,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		const last = await consumeRun(session, recoveryRun, input, turnNo, faux, liveInput, statusCb);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, input);
-		maybeAutoCompact(); // 手感批 C8: the recovery run ended too — same check
+		maybeAutoCompact(); // 手感批 C8: the recovery run ended too — same check (awaited by the exit re-await)
 	}
 	if (cancelled) {
 		input.close();
@@ -493,4 +496,10 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	input.prompt();
 	await input.closed;
 	await chainRef.current; // never exit while a turn is in flight
+	// 手感批 C8: the auto-compact may have appended ITS segment inside the
+	// turn (the check runs at the turn's end, after the exit-await above
+	// already captured the chain) — re-await once so the summarize either
+	// runs before the exit or the chain is already settled. One level is
+	// enough: the /compact segment appends nothing of its own.
+	await chainRef.current;
 }

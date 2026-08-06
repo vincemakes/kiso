@@ -206,4 +206,31 @@ describe("C8: /compact auto-trigger (opt-in via KISO_AUTO_COMPACT)", () => {
 		const durable = readFileSync(join(dirs.home, "sessions", "c8.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"'); // the durable /compact fact
 	});
+
+	it("PIPE mode: the auto-trigger still completes — the exit must await the appended /compact segment", () => {
+		// The published-artifact probe found the race: in pipe mode EOF
+		// closes the input early, so the exit-time `await chain` captured
+		// the chain BEFORE the turn's auto-compact append — the summarize
+		// never ran. The exit re-await covers it. This pins the pipe shape.
+		const dir = mkdtempSync(join(tmpdir(), "kiso-feel-c8pipe-"));
+		const { env: isoEnv, dirs } = isolatedEnv();
+		seedSession(dirs.home, "c8pipe", { rounds: 5, resultChars: 130_000 });
+		const script = [
+			...Array.from({ length: 5 }, () => ({ events: [{ type: "stop", reason: "end_turn" }] })),
+			{ events: [{ type: "stop", reason: "end_turn" }] },
+			{ events: [{ type: "text_delta", text: "a".repeat(50_000) }, { type: "stop", reason: "end_turn" }] },
+			{ events: [{ type: "text_delta", text: "The covered rounds, summarized." }, { type: "stop", reason: "end_turn" }] },
+		];
+		const scriptPath = join(dir, "faux.json");
+		writeFileSync(scriptPath, JSON.stringify(script), "utf8");
+
+		const out = execFileSync(
+			"node",
+			[CLI, "chat", "c8pipe"],
+			{ encoding: "utf8", timeout: 90_000, input: "go\n", env: { ...isoEnv, KISO_AUTO_COMPACT: "0.7", KISO_FAUX_SCRIPT: scriptPath } },
+		);
+		expect(stripANSI(out)).toContain("[/compact] saved ~");
+		const durable = readFileSync(join(dirs.home, "sessions", "c8pipe.jsonl"), "utf8");
+		expect(durable).toContain('"type":"summarized"');
+	});
 });
