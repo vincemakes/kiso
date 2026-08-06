@@ -47,7 +47,7 @@ would replace the exclusive lock; nothing in the current product needs it.
 
 ## Evidence
 
-- Commit `a9423a2` (fix(runtime): kernel-flock single-writer lock;
+- Commit `1263689` (fix(runtime): kernel-flock single-writer lock;
   session identity safety — 第四轮).
 - Tests: `packages/runtime/tests/storage.test.ts` and
   `packages/runtime/tests/storage-identity.test.ts` — the lock-ownership

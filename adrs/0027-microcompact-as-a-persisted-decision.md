@@ -27,9 +27,9 @@ clearing:
 - The boundary is a persisted fact (ADR-0026's sole sanctioned exception):
   replaying the same events derives the same cleared view, byte for byte.
 
-**Generation 1 (commit `020bc88`) drew the boundary by user turns**: the
+**Generation 1 (commit `8e4ee1b`) drew the boundary by user turns**: the
 newest KEEP_RECENT_TURNS user turns stayed intact; everything older was
-cleared. **Generation 2 (commit `2648f5f`) superseded it**: 自举 #3 bug#5 —
+cleared. **Generation 2 (commit `e9e06bb`) superseded it**: 自举 #3 bug#5 —
 the coding agent's main overflow shape is ONE user turn that reads many big
 files; a single giant turn never crossed the old boundary, so the agent hit
 the window with zero relief. The boundary is now drawn by COMPACTABLE-RESULT
@@ -61,7 +61,7 @@ estimated (chars/4); the persisted-boundary mechanism itself is stable.
 
 ## Evidence
 
-- Commit `020bc88` (generation 1: user-turn boundary) and `2648f5f`
+- Commit `8e4ee1b` (generation 1: user-turn boundary) and `e9e06bb`
   (generation 2: compactable-result recentness, 自举 #3 bug#5).
 - Tests: `packages/core/tests/microcompact.test.ts` — the single-giant-turn
   trigger (`自举 #3: a SINGLE user turn with 6 big reads triggers`), the

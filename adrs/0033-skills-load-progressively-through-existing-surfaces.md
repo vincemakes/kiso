@@ -62,7 +62,7 @@ extension.
 
 ## Evidence
 
-- Commit `945b6c5` (feat(skills): ⑤).
+- Commit `29a01af` (feat(skills): ⑤).
 - Tests: `extensions/skills/tests/skills.test.ts` (index sorted,
   roundtrip, unknown-name error with the list, soft-failed broken skill,
   truncation, empty/missing dir); `extensions/skills/tests/skills-

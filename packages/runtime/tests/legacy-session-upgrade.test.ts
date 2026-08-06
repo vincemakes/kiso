@@ -4,7 +4,7 @@
  *
  * Round three changed `compacted.cleared` from the callId-keyed shape
  * `{callId, content}` (v1) to the eventSeq-keyed shape
- * `{eventSeq, callId, content}` (v2). A session written at 573e9d2 with a
+ * `{eventSeq, callId, content}` (v2). A session written at df1dff0 with a
  * v1 compacted record must NOT be rejected as corruption: the store
  * loads it, the projection applies its replacements (v1 semantics: by
  * callId, exactly as the old framework did), and resume() continues the
@@ -21,7 +21,7 @@ import { isKisoEvent, projectMessages } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
 
 /**
- * The v1 compacted shape exactly as 573e9d2 wrote it: cleared entries are
+ * The v1 compacted shape exactly as df1dff0 wrote it: cleared entries are
  * {callId, content} — no eventSeq.
  */
 const V1_CLEARED = [{ callId: "c1", content: "[content cleared — reference by revision] old marker" }];

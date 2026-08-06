@@ -63,7 +63,7 @@ final gate by design.
 
 ## Evidence
 
-- Commit `530ffc5` (fix(core): 裁决 A — E1 ask 语义修正); the full conflict
+- Commit `7d82ab9` (fix(core): 裁决 A — E1 ask 语义修正); the full conflict
   and three-option analysis is recorded in `docs/plans/2026-08-04-
   extensions-e1.md` §7.
 - Tests: `packages/core/tests/extensions.test.ts` — `裁决 A: ask with a

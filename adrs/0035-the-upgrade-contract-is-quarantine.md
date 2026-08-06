@@ -45,7 +45,7 @@ nothing to negotiate.
 
 ## Evidence
 
-- Commit `7242918` (docs(runtime): the upgrade contract is quarantine,
+- Commit `f795ad4` (docs(runtime): the upgrade contract is quarantine,
   not seamless rolling) — the contract lives in `README.md` and
   `packages/runtime/src/store.ts`'s contract comment; the 第五轮 P1-4
   record is in `docs/plans/2026-08-03-reliable-session-alpha.md`.

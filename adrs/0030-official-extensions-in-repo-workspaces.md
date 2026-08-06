@@ -63,8 +63,8 @@ kernel diff, if any, is decided on its own merits, never smuggled in.
 
 ## Evidence
 
-- Commits: `5166bee` (MCP bridge), `6f71c1a` (subagents), `6cf9381`
-  (发现#8 dispose lifecycle + the unref'd-timer fix), `945b6c5` (skills).
+- Commits: `67ceefe` (MCP bridge), `d64c6a6` (subagents), `39600cf`
+  (发现#8 dispose lifecycle + the unref'd-timer fix), `29a01af` (skills).
 - Tests: `extensions/mcp/tests/dispose-e2e.test.ts` (prompt exit + zero
   orphans, id-keyed), `extensions/mcp/tests/mcp.test.ts` (soft failure,
   connect timeout), `extensions/subagent/tests`, `extensions/skills/tests`.

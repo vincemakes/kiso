@@ -130,7 +130,7 @@ the registry; hooks compose after the harness's own.
 ## 6. E2 (2026-08-04, 收尾) — the remaining extension surfaces
 
 - **compaction parameter surface** — landed by 自举 #4 (dogfood), commit
-  `679bfa2`: `KisoExtension.compaction?: { thresholdTokens?, keepResults? }`
+  `2d8e5eb`: `KisoExtension.compaction?: { thresholdTokens?, keepResults? }`
   supplies the loop's microcompact params when the session sets none
   (`packages/runtime/src/session.ts` `microcompactFor`).
 - **systemPrompt append surface** — this round: `KisoExtension.

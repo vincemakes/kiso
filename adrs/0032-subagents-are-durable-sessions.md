@@ -63,7 +63,7 @@ under role policies that never ask.
 
 ## Evidence
 
-- Commit `6f71c1a` (feat(subagent): ④).
+- Commit `d64c6a6` (feat(subagent): ④).
 - Tests: `extensions/subagent/tests/subagent.test.ts` (role policies,
   JSONL extraction, timeout + dead group, concurrency probe, worktree
   kept/deleted, non-git honest failure, P3 child ids);

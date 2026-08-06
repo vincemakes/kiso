@@ -50,8 +50,8 @@ with deprecation notices — a mechanical operation, not a design change.
 
 ## Evidence
 
-- Commits: `e590208` (build: publish under the @vincemakes scope),
-  `b65eb3f` (build: publish metadata for the kiso repo).
+- Commits: `226e578` (build: publish under the @vincemakes scope),
+  `e19fe24` (build: publish metadata for the kiso repo).
 - The publish pipeline and its per-release template are documented in the
   release records of `docs/plans/2026-08-04-*-md`; the live artifacts:
   `npm view @vincemakes/kiso-cli`.

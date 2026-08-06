@@ -72,7 +72,7 @@ retry guidance be more precise than "unknown = the note applies".
 
 ## Evidence
 
-- Commit `4323b7a` (fix(core,runtime,cli): 裁决 #12 — the failed-receipt
+- Commit `52a3672` (fix(core,runtime,cli): 裁决 #12 — the failed-receipt
   uncertain pause is removed; the note rides non-idempotent failures) —
   see the round's plan (`docs/plans/2026-08-05-round-a.md`).
 - Tests: `packages/core/tests/execution.test.ts` (the rewritten C 组

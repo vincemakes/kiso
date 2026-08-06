@@ -53,7 +53,7 @@ whether provider-specific canonicalization belongs in the adapter layer.
 
 ## Evidence
 
-- Commit `020bc88` (feat(core): MicroCompact — zero-API context relief) —
+- Commit `8e4ee1b` (feat(core): MicroCompact — zero-API context relief) —
   the kiso code stage pinned the contract alongside microcompact.
 - Tests: `packages/core/tests/prompt-cache.test.ts` (three regression
   tests above); the D 区 byte-discipline sections of the kiso code plan
