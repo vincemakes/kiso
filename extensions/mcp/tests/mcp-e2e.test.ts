@@ -175,3 +175,118 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		expect(decided[0]!.decision).toBe("approved");
 	}, 180_000);
 });
+
+const NOISE = "fake-server: running on stdio (ready)";
+
+// The A3 driver: one turn ("go") whose trajectory calls mcp__status — the
+// tool's own result carries the captured stderr tail.
+const PTY_DRIVER_STATUS = `
+import pty, os, sys, time, select
+
+def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.environ["KISO_HOME"] = home
+        os.environ["KISO_EXTENSIONS_DIR"] = ext_dir
+        os.environ["KISO_MCP_CONFIG"] = mcp_config
+        os.environ["KISO_FAUX_SCRIPT"] = script_path
+        os.chdir(workdir)
+        os.execvp("node", ["node", cli, session_id])
+    out = b""
+    full = b""
+    def read_until(needle, timeout):
+        nonlocal out, full
+        end = time.time() + timeout
+        while time.time() < end:
+            idx = out.find(needle)
+            if idx >= 0:
+                out = out[idx + len(needle):]
+                return True
+            r, _, _ = select.select([fd], [], [], 0.2)
+            if r:
+                try:
+                    data = os.read(fd, 4096)
+                    out += data
+                    full += data
+                except OSError:
+                    return False
+        return False
+    def wait_exit(timeout):
+        nonlocal out, full
+        end = time.time() + timeout
+        while time.time() < end:
+            r, _, _ = select.select([fd], [], [], 0.2)
+            if r:
+                try:
+                    data = os.read(fd, 4096)
+                    if not data:
+                        return
+                    out += data
+                    full += data
+                except OSError:
+                    return
+    read_until(b"you> ", 20)
+    os.write(fd, b"go\\n")
+    # A bare install asks even the extension's OWN status tool (③b) — the
+    # ask must be answered or the tool is denied and never executes.
+    read_until(b"approve mcp__status", 30)
+    os.write(fd, b"y\\n")
+    read_until(b"stderr tail:", 30)
+    read_until(b"status retrieved", 30)
+    os.write(fd, b"exit\\n")
+    wait_exit(10)
+    sys.stdout.write(full.decode(errors="replace"))
+    sys.exit(0)
+`;
+
+const FAUX_STATUS_TRAJECTORY = [
+	{
+		events: [
+			{ type: "tool_call_end", callId: "s1", name: "mcp__status", input: {} },
+			{ type: "stop", reason: "tool_use" },
+		],
+	},
+	{ events: [{ type: "text_delta", text: "status retrieved" }, { type: "stop", reason: "end_turn" }] },
+];
+
+describe("手感批 A3: the stdio child's stderr is CAPTURED, never leaked", () => {
+	it("no \"running on stdio\"-style noise around the startup banner; mcp__status shows the recent tail", () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-a3-"));
+		const home = join(dir, "home");
+		const workdir = join(dir, "work");
+		const extdir = join(dir, "ext");
+		mkdirSync(home, { recursive: true });
+		mkdirSync(workdir, { recursive: true });
+		mkdirSync(extdir, { recursive: true });
+		copyFileSync(BUNDLE, join(extdir, "kiso-mcp.mjs"));
+		const mcpConfig = join(dir, "mcp.json");
+		writeFileSync(
+			mcpConfig,
+			JSON.stringify({ mcpServers: { fake: { command: "node", args: [FAKE_SERVER] } } }),
+			"utf8",
+		);
+		const scriptPath = join(dir, "faux.json");
+		writeFileSync(scriptPath, JSON.stringify(FAUX_STATUS_TRAJECTORY), "utf8");
+		writeFileSync(join(dir, "driver.py"), PTY_DRIVER_STATUS, "utf8");
+
+		const phase = `
+import sys
+sys.argv = [""]
+exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir)}, ${JSON.stringify(extdir)}, ${JSON.stringify(mcpConfig)}, ${JSON.stringify(scriptPath)}, "mcp-a3")
+`;
+		const { env } = isolatedEnv();
+		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
+		const noiseAt = out.indexOf(NOISE);
+		const bannerAt = out.indexOf("[1 extension: mcp]");
+		expect(bannerAt).toBeGreaterThan(-1); // the startup banner rendered
+		// RED on the pre-A3 bundle: the child's stderr inherited the PTY and
+		// the noise landed BEFORE the banner (spawn precedes the banner).
+		// GREEN: the ring held it — its only appearance is inside the
+		// mcp__status result, which renders AFTER the banner.
+		expect(noiseAt).toBeGreaterThan(-1);
+		expect(noiseAt).toBeGreaterThan(bannerAt);
+		expect(out).toContain("stderr tail:"); // the status annotation attached the tail
+		expect(out).toContain("status retrieved");
+	}, 180_000);
+});

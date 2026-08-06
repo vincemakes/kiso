@@ -17,6 +17,12 @@ import { z } from "zod";
 // eslint-disable-next-line no-unused-vars
 const RUN_ID = process.argv[2] ?? null; // carried for the orphan check only
 
+// 手感批 A3: the noise probe — a real-world MCP server announces itself on
+// stderr at startup. Printed BEFORE the handshake so the ordering is
+// deterministic: the e2e asserts it never reaches the host terminal around
+// the banner (it lands in the mcp__status stderr tail instead).
+console.error("fake-server: running on stdio (ready)");
+
 const server = new McpServer({ name: "fake", version: "0.1.0" }, { capabilities: { tools: {} } });
 
 server.registerTool(

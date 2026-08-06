@@ -33,6 +33,42 @@ const CALL_TIMEOUT_MS = 60_000;
  *  answer the handshake is a SOFT failure (mcp__status), never a hung
  *  startup. */
 const CONNECT_TIMEOUT_MS = 15_000;
+/** 手感批 A3: the stderr ring cap — the last 4096 BYTES, byte-precise. */
+const RING_MAX_BYTES = 4096;
+
+/** 手感批 A3: a byte-capped memory ring for a stdio child's stderr. The
+ *  host terminal never sees the chatter ("running on stdio" & co), and
+ *  mcp__status shows the recent tail instead. Trimming is byte-safe: the
+ *  kept tail always starts on a UTF-8 boundary, so it renders cleanly. */
+export class StderrRing {
+	private buf = Buffer.alloc(0);
+	append(chunk: string): void {
+		const next = Buffer.concat([this.buf, Buffer.from(chunk, "utf8")]);
+		if (next.length <= RING_MAX_BYTES) {
+			this.buf = next;
+			return;
+		}
+		// Drop the head back to the cap, then snap forward past UTF-8
+		// continuation bytes — a cut inside a multi-byte char would render
+		// as garbage, so the kept tail starts at the next char boundary.
+		let start = next.length - RING_MAX_BYTES;
+		while (start < next.length && (next[start]! & 0xc0) === 0x80) start += 1;
+		this.buf = next.subarray(start);
+	}
+	tail(): string {
+		return this.buf.toString("utf8");
+	}
+}
+
+/** A connect failure carries the ring — the broken server's dying words on
+ *  stderr are often the diagnosis, and mcp__status shows them. */
+class ConnectError extends Error {
+	readonly stderr: StderrRing | undefined;
+	constructor(message: string, stderr?: StderrRing) {
+		super(message);
+		this.stderr = stderr;
+	}
+}
 
 interface McpServerConfig {
 	readonly command?: string;
@@ -52,6 +88,9 @@ interface ServerStatus {
 	readonly server: string;
 	readonly state: "connected" | "error" | "idle";
 	readonly detail: string;
+	/** 手感批 A3: present for stdio servers — the recent stderr tail
+	 *  (empty when the child never wrote). */
+	readonly stderr?: StderrRing;
 }
 
 /** 发现#11: KISO_HOME is the ONE root — the default config path derives
@@ -68,11 +107,22 @@ export default async function createMcpExtension(): Promise<KisoExtension> {
 	for (const [name, server] of Object.entries(config.mcpServers ?? {})) {
 		if (server.disabled === true) continue;
 		try {
-			const mapped = await connectServer(name, server, clients);
-			status.push({ server: name, state: "connected", detail: `${mapped.length} tools` });
+			const { tools: mapped, stderr } = await connectServer(name, server, clients);
+			status.push({
+				server: name,
+				state: "connected",
+				detail: `${mapped.length} tools`,
+				...(stderr !== undefined ? { stderr } : {}),
+			});
 			tools.push(...mapped);
 		} catch (err) {
-			status.push({ server: name, state: "error", detail: err instanceof Error ? err.message : String(err) });
+			const e = err as ConnectError;
+			status.push({
+				server: name,
+				state: "error",
+				detail: e instanceof Error ? e.message : String(e),
+				...(e.stderr !== undefined ? { stderr: e.stderr } : {}),
+			});
 		}
 	}
 	if (status.length === 0) status.push({ server: "(none)", state: "idle", detail: "no MCP servers configured" });
@@ -127,15 +177,26 @@ function statusTool(status: readonly ServerStatus[]): Tool {
 		description: "list MCP server connection status",
 		parameters: { type: "object", properties: {} },
 		execute: async () => ({
-			content: status.map((s) => `${s.server}: ${s.state} — ${s.detail}`).join("\n"),
+			content: status
+				.map((s) => {
+					const tail = s.stderr?.tail();
+					if (tail === undefined || tail === "") return `${s.server}: ${s.state} — ${s.detail}`;
+					return `${s.server}: ${s.state} — ${s.detail}\n  stderr tail:\n${tail
+						.trimEnd()
+						.split("\n")
+						.map((line) => `    ${line}`)
+						.join("\n")}`;
+				})
+				.join("\n"),
 			isError: false,
 		}),
 	};
 }
 
-async function connectServer(name: string, cfg: McpServerConfig, clients: Client[]): Promise<Tool[]> {
+async function connectServer(name: string, cfg: McpServerConfig, clients: Client[]): Promise<{ tools: Tool[]; stderr?: StderrRing }> {
 	const client = new Client({ name: "kiso-mcp", version: "0.1.7" });
 	clients.push(client);
+	let ring: StderrRing | undefined;
 	if (cfg.url !== undefined) {
 		const transport = new StreamableHTTPClientTransport(new URL(cfg.url), {
 			...(cfg.headers !== undefined ? { requestInit: { headers: { ...cfg.headers } } } : {}),
@@ -148,16 +209,31 @@ async function connectServer(name: string, cfg: McpServerConfig, clients: Client
 		// Provider credentials are stripped (the tools-node #7 list — keep in
 		// sync), then the config's explicit env overlays it (explicit wins).
 		const env = { ...strippedEnv(), ...(cfg.env ?? {}) };
+		// 手感批 A3: the child's stderr is piped (the SDK's own PassThrough —
+		// cross-spawn rejects a raw Writable in the stdio array) into the
+		// ring (tail 4KB), NOT the host terminal — the SDK's "inherit"
+		// default leaked "running on stdio"-style chatter right into the
+		// banner.
+		const r = new StderrRing();
+		ring = r;
 		const transport = new StdioClientTransport({
 			command: cfg.command!,
 			...(cfg.args !== undefined ? { args: [...cfg.args] } : {}),
 			env,
 			...(cfg.cwd !== undefined ? { cwd: cfg.cwd } : {}),
+			stderr: "pipe",
 		});
-		await connectWithTimeout(client, transport);
+		transport.stderr?.on("data", (chunk: Buffer | string) => r.append(String(chunk)));
+		try {
+			await connectWithTimeout(client, transport);
+		} catch (err) {
+			// A3: a failed handshake still carries what the server SAID —
+			// its dying stderr is often the diagnosis.
+			throw new ConnectError(err instanceof Error ? err.message : String(err), r);
+		}
 	}
 	const { tools } = await client.listTools();
-	return tools.map((t) => mapTool(name, client, t));
+	return { tools: tools.map((t) => mapTool(name, client, t)), ...(ring !== undefined ? { stderr: ring } : {}) };
 }
 
 /** 发现#8b: the handshake is bounded — a server that never answers the
