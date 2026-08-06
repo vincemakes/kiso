@@ -15,10 +15,15 @@
  *
  * Per iteration:
  *   assemble (onUserMessage / onPreLlm)
- *     → adapter.stream(): events yielded straight through, tool calls collected
- *     → execute: validation → permission (onPreTool) → handler → rewrite
- *       (onPostTool), concurrency-safe calls batched parallel, the rest serial
- *     → tool_result events appended
+ *     → adapter.stream(): events yielded straight through; every validated
+ *       and policy-allowed tool call LAUNCHES its execution immediately
+ *       (流中执行) — the executions run concurrently under a window of 4
+ *       (0.1.26, ADR-0024 Amd), their events queued and drained between
+ *       stream events (completion order; the projection re-orders the
+ *       results by call order — 字节纪律)
+ *     → the turn settles: the launched executions finish (receipts land
+ *       before any terminal), the ask-gated successors follow the human's
+ *       verdict (保守序)
  *   no tool calls / maxTurns / abort / max_tokens → terminal event, return
  *
  * Retry lives HERE and only here (ADR-0005): a retryable StructuredError
@@ -211,6 +216,184 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		return;
 	}
 
+	// 0.1.26 (ADR-0024 Amd — the trigger condition is met: a real workload
+	// showed the sequential ledger is the bottleneck): the windowed parallel
+	// batching returns, this time with the ledger events emitted per call in
+	// deterministic order. The model stream and the tool executions run
+	// CONCURRENTLY (流中执行): a tool_call_end validated and allowed by the
+	// policy chain launches its execution immediately; the events land
+	// through a queue the stream loop drains on every stream event — their
+	// seq order is the COMPLETION order (started/receipt/result land when
+	// each execution finishes; seq stays monotonic by construction). The
+	// byte discipline is preserved by the projection, which re-orders the
+	// turn's results by CALL order (project.ts flushResults) — the
+	// completion order only affects the landing moment, never the derived
+	// messages. The window caps concurrent executions; the ask gate holds
+	// an ask AND the calls after it until the human decides (保守序 — the
+	// context may have changed when the human approves); the STARTED event
+	// is acked by the drain so the handler never runs before its receipt is
+	// persisted (write-ahead preserved). A voided turn (forged event,
+	// post-stop violation, a non-compatible stop reason) fires the violated
+	// signal: started executions finish and their receipts land (已开跑照落
+	// receipt), not-started ones bail without a started event (abort 语义 —
+	// clean, never uncertain).
+	const WINDOW_SIZE = 4;
+	// The execution event queue. The drain (below) appends + yields each
+	// queued event; the ack of the STARTED event gates the handler (the
+	// write-ahead: the receipt is persisted before the side effect).
+	const execQueue: { ev: EventInput; ack: (executionId?: string) => void }[] = [];
+	const pushExec = (ev: EventInput, ack?: (executionId?: string) => void): void => {
+		execQueue.push({ ev, ack: ack ?? (() => {}) });
+	};
+	const drainExec = async function* (): AsyncGenerator<Event> {
+		while (execQueue.length > 0) {
+			const { ev, ack } = execQueue.shift()!;
+			// The STARTED event's executionId is allocated HERE, atomically
+			// with the append: `ex-<seq>` — the id equals the event's seq, so
+			// the SAME logical execution derives the SAME id on a replay or a
+			// resume (the execution-identity contract). Under the parallel
+			// execution a pre-append prediction raced; the drain is the only
+			// place the next seq is known without a gap. The ack carries the
+			// id back to the launch (the receipts reference it).
+			const full =
+				ev.type === "tool_execution_started"
+					? log.append({ ...ev, executionId: `ex-${log.lastSeq + 1}` })
+					: log.append(ev);
+			if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
+			yield full;
+			ack(full.type === "tool_execution_started" ? full.executionId : undefined);
+		}
+	};
+	// The window: at most WINDOW_SIZE executions run concurrently.
+	let freeSlots = WINDOW_SIZE;
+	const windowWaiters: (() => void)[] = [];
+	const acquireWindow = (): Promise<void> => {
+		if (freeSlots > 0) {
+			freeSlots -= 1;
+			return Promise.resolve();
+		}
+		return new Promise<void>((res) => {
+			windowWaiters.push(res);
+		});
+	};
+	const releaseWindow = (): void => {
+		const w = windowWaiters.shift();
+		if (w !== undefined) w();
+		else freeSlots += 1;
+	};
+	// The turn's launches: one async task per tool_call_end, in call order.
+	const launches: Promise<void>[] = [];
+	let execActive = 0;
+	// A launch failure (a throwing onPostTool, a real error) fails the RUN —
+	// the launch records it and the loop re-throws it after the settle
+	// (same propagation the sequential execute had).
+	let launchError: unknown = null;
+	let violated = false;
+	// The violated signal: rejects when the turn is voided — the paused
+	// ask-branches bail (abort 语义 for not-started executions). Typed
+	// `never` so the ask race resolves to the human decision alone.
+	let violatedReject: () => void = () => {};
+	const violatedP = new Promise<never>((_, reject) => {
+		violatedReject = () => reject();
+	});
+	// The turn's ask-branches race it; a turn with NO ask leaves the
+	// rejection un-consumed — the no-op keeps it from surfacing as an
+	// unhandled rejection while the race consumers still receive it.
+	void violatedP.catch(() => {});
+	// The ask gate: an ask's human resolution blocks the calls after it.
+	// The DECIDE chain serializes the decisions in CALL order, so the gate
+	// an ask installs is structurally in place before the successors decide.
+	let askGate: Promise<void> = Promise.resolve();
+	let askRelease: (() => void) | null = null;
+	// The decision chain: each launch's decide is chained onto the previous
+	// one's — the decides run in CALL order and the chain resolves to the
+	// call's verdict.
+	let decideChain: Promise<ExecVerdict> = Promise.resolve({ action: "allow" });
+	// The decisionId allocator: monotonic per log (seeded past the existing
+	// log), unique under the parallel decides — the ids are correlation
+	// keys (the executionId comes from the drain, seq-stable).
+	let idSeq = log.all.length + 1;
+	const nextDecisionId = (): string => `d-${idSeq++}`;
+	const launch = (call: ToolCallEnd): void => {
+		execActive += 1;
+		launches.push(
+			(async () => {
+				try {
+					await acquireWindow();
+					decideChain = decideChain.then(async () => {
+						const v = await decideCall(
+							call,
+							registry,
+							hooks,
+							{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) },
+							log,
+							config.resolveApproval,
+							config.approvalVerdict,
+							signal,
+							config.approvalPolicies,
+							nextDecisionId,
+							pushExec,
+						);
+						if (v.action === "ask") {
+							askGate = new Promise<void>((res) => {
+								askRelease = res;
+							});
+						}
+						return v;
+					});
+					const verdict = await decideChain;
+					if (violated) return; // the turn was voided before this call started
+					if (verdict.action === "deny") {
+						pushExec(verdict.result);
+						return;
+					}
+					if (verdict.action === "ask") {
+						// The human pause — abortable by a user abort OR a turn
+						// void (the violated promise). The gate opens when the
+						// human decides, whatever the outcome (conservative
+						// ordering: the successors then proceed with their own
+						// verdicts).
+						const decision = await Promise.race([
+							humanPause(call, verdict.decisionId, hooks, log, config.resolveApproval, config.approvalVerdict, signal, pushExec),
+							violatedP,
+						]);
+						askRelease?.();
+						askRelease = null;
+						if (violated) return;
+						if (decision.action !== "allow") {
+							// the reason rides the denial — the human's words,
+							// or the honest "no approval flow configured".
+							pushExec(resultEvent(call, denialResult(decision.reason ?? "denied")));
+							return;
+						}
+					}
+					// 保守序: the calls AFTER an ask wait for its human
+					// resolution (the askGate is the ask's pause promise —
+					// resolved by default, released by the ask branch above).
+					// The context may have changed when the human approves.
+					await askGate;
+					await runLedgered(
+						call,
+						registry,
+						hooks,
+						{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) },
+						signal,
+						pushExec,
+					);
+				} catch (err) {
+					// The abort sentinel (a user cancel during the decide or
+					// the pause) is swallowed — the loop's aborted() check
+					// ends the run honestly; anything else is recorded and
+					// re-thrown after the settle (the consumer sees it).
+					if (err !== ABORTED) launchError ??= err;
+				} finally {
+					releaseWindow();
+					execActive -= 1;
+				}
+			})(),
+		);
+	};
+
 	let turns = 0;
 	while (true) {
 		if (aborted()) {
@@ -275,12 +458,18 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				});
 				for await (const ev of stream) {
 					streamed = true;
+					// 0.1.26: the launched executions' events land first —
+					// the completion order; the projection re-orders the
+					// results by call order (字节纪律).
+					for await (const q of drainExec()) yield q;
 					// 五: the trust gate — a kernel-owned event from the
 					// adapter is a forgery: it is never appended (never
 					// persisted), and the turn ends with a unique
 					// invalid_request terminal below.
 					if (!isAdapterEvent(ev)) {
 						forgedEvent = true;
+						violated = true;
+						violatedReject();
 						break;
 					}
 					// 五: a delta/tool call/usage arriving AFTER the provider's
@@ -289,6 +478,8 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					// pending tools must NOT execute).
 					if (sawStop && ev.type !== "stop") {
 						postStopViolation = true;
+						violated = true;
+						violatedReject();
 						break;
 					}
 					if (ev.type === "stop") {
@@ -296,7 +487,13 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 						lastStop = ev.reason;
 						stopCount += 1;
 					}
-					if (ev.type === "tool_call_end") pending.push(ev);
+					if (ev.type === "tool_call_end") {
+						pending.push(ev);
+						// 流中执行: the call launches immediately — the decide
+						// and the ledgered run proceed in parallel with the
+						// model stream.
+						launch(ev);
+					}
 					const full = log.append(ev);
 					if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
 					yield full;
@@ -323,155 +520,117 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			}
 		}
 
-		// ── 五: a forged kernel-owned event is a protocol error ──────────────
+		// ── The voided-terminal computation (五 / C 组) ────────────────────
+		// A forged kernel-owned event, a post-stop event, or a
+		// non-compatible stop reason voids the turn: the launched
+		// executions still finish and their receipts land (已开跑照落
+		// receipt — the side effects happened), the not-started bail
+		// (abort 语义), then the terminal.
+		let voided: Terminal | null = null;
 		if (forgedEvent) {
-			yield await terminal({
+			voided = {
 				kind: "error",
 				error: { code: "invalid_request", retryable: false, message: "provider emitted a kernel-owned event" },
-			});
-			return;
-		}
-
-		// ── 五: events after the stop are a protocol error ───────────────────
-		if (postStopViolation) {
-			yield await terminal({
+			};
+		} else if (postStopViolation) {
+			voided = {
 				kind: "error",
 				error: { code: "invalid_request", retryable: false, message: "provider emitted events after its stop event" },
-			});
-			return;
-		}
-
-		// ── Terminal check: no tool call this turn → done, honestly ────────
-		if (pending.length === 0) {
+			};
+		} else if (pending.length === 0) {
 			// Area 6: protocol anomalies are STRUCTURED ERRORS, never a
 			// default `completed` — a stream with no stop, a duplicate stop,
 			// or a tool_use that never produced a complete call.
 			if (stopCount === 0) {
-				yield await terminal({
+				voided = {
 					kind: "error",
 					error: { code: "invalid_request", retryable: false, message: "provider stream ended without a stop event" },
-				});
-				return;
-			}
-			if (stopCount > 1) {
-				yield await terminal({
+				};
+			} else if (stopCount > 1) {
+				voided = {
 					kind: "error",
 					error: { code: "invalid_request", retryable: false, message: `provider emitted ${stopCount} stop events in one turn` },
-				});
+				};
+			} else {
+				yield await terminal(terminalForStop(lastStop));
 				return;
 			}
-			yield await terminal(terminalForStop(lastStop));
-			return;
 		}
 
-		// ── Abort check before side effects: a stop landing during the
-		//    model turn must never let the pending tools run ────────────────
-		if (aborted()) {
+		// ── Abort check: an abort now abandons the launched executions
+		//    (started without receipt → uncertain), exactly as before ──────
+		if (voided === null && aborted()) {
 			yield await terminal({ kind: "aborted", by: "user" });
 			return;
 		}
 
-		// ── C 组: the turn is verified BEFORE any tool runs ────────────────
-		// A tool may only execute when the provider turn is well-formed:
-		// exactly one stop, whose reason is compatible with complete calls.
-		// Missing/duplicate stops, max_tokens, refusal, content_filter,
-		// pause_turn, context_window, abort, and the contradictory
-		// end_turn-with-pending-calls all terminate WITHOUT executing.
-		if (pending.length > 0) {
+		// ── C 组: the turn is verified. 0.1.26 (流中执行): the calls were
+		// ALREADY launched at tool_call_end, so a non-compatible stop reason
+		// VOIDS the turn instead of preventing the execution.
+		if (voided === null && pending.length > 0) {
 			if (stopCount === 0) {
-				yield await terminal({
+				voided = {
 					kind: "error",
 					error: { code: "invalid_request", retryable: false, message: "provider stream ended without a stop event" },
-				});
-				return;
-			}
-			if (stopCount > 1) {
-				yield await terminal({
+				};
+			} else if (stopCount > 1) {
+				voided = {
 					kind: "error",
 					error: { code: "invalid_request", retryable: false, message: `provider emitted ${stopCount} stop events in one turn` },
-				});
-				return;
-			}
-			switch (lastStop) {
-				case "tool_use":
-				case "function_call":
-					break; // compatible with complete calls — execute
-				case "max_tokens":
-					yield await terminal({ kind: "max_tokens" });
-					return;
-				case "abort":
-					yield await terminal({ kind: "aborted", by: "user" });
-					return;
-				case "error":
-					yield await terminal({
-						kind: "error",
-						error: { code: "unknown", retryable: false, message: "provider stopped with an error" },
-					});
-					return;
-				case "refusal":
-				case "pause_turn":
-				case "content_filter":
-				case "context_window":
-				case "end_turn":
-				case "stop_sequence":
-				default:
-					yield await terminal({
-						kind: "error",
-						error: {
-							code: "invalid_request",
-							retryable: false,
-							message: `provider stopped with '${String(lastStop)}' but left ${pending.length} tool call(s) unexecuted`,
-						},
-					});
-					return;
+				};
+			} else {
+				switch (lastStop) {
+					case "tool_use":
+					case "function_call":
+						break; // compatible with complete calls — the executions proceed
+					case "max_tokens":
+						voided = { kind: "max_tokens" };
+						break;
+					case "abort":
+						voided = { kind: "aborted", by: "user" };
+						break;
+					case "error":
+						voided = {
+							kind: "error",
+							error: { code: "unknown", retryable: false, message: "provider stopped with an error" },
+						};
+						break;
+					default:
+						voided = {
+							kind: "error",
+							error: {
+								code: "invalid_request",
+								retryable: false,
+								message: `provider stopped with '${String(lastStop)}' with ${pending.length} tool call(s) launched`,
+							},
+						};
+						break;
+				}
 			}
 		}
 
-		// ── Execute: sequential, ledgered, pause-capable (Phase D) ──────────
-		// Sequential on purpose: the ledger (started → succeeded/failed) and
-		// the approval pause need deterministic, write-ahead ordering; the
-		// windowed parallel batching (ADR-0015) returns as an optimization
-		// once the ledger contract is stable.
-		for (const call of pending) {
-			// Area 4: an abort after the first tool must never start a
-			// sibling tool — each pending call checks the signal first.
-			if (aborted()) {
-				yield await terminal({ kind: "aborted", by: "user" });
-				return;
-			}
-			try {
-				for await (const ev of executeOne(
-					call,
-					registry,
-					hooks,
-					{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) },
-					log,
-					config.resolveApproval,
-					config.approvalVerdict,
-					signal,
-					config.approvalPolicies,
-				)) {
-					if (hooks.onEvent) await hooks.onEvent(ev, {}).catch(() => {});
-					yield ev;
-				}
-			} catch (err) {
-				// An abort during the approval pause propagates here as the
-				// sentinel — end the run honestly; the request stays durable.
-				if (err === ABORTED || aborted()) {
-					yield await terminal({ kind: "aborted", by: "user" });
-					return;
-				}
-				throw err;
-			}
-
-			// 裁决 #12 (ADR-0038): the failed-receipt uncertain PAUSE is
-			// REMOVED — with a complete receipt (succeeded or failed) the
-			// outcome is KNOWN, and uncertainty belongs to the crash window
-			// alone (started, no receipt; surfaced through the ledger's
-			// uncertainExecutions and resolved offline). A retry is a NEW
-			// call — it passes the approval chain again, which is the correct
-			// guard for partial side effects; the honest note on
-			// non-idempotent failures rides the result (修正一).
+		// ── The turn settles: a void fires the violated signal — the
+		//    not-started executions bail (abort 语义 — no started, no
+		//    receipt, never uncertain); the started ones finish and their
+		//    receipts land BEFORE the terminal or the next turn (已开跑照落
+		//    receipt). The drain yields every queued event; the STARTED
+		//    ack resolves as the consumer persists (write-ahead), so the
+		//    launches advance DURING the drain — a 10ms settle poll covers
+		//    the in-between gaps (mid-handler launches, the ask pause:
+		//    never a busy spin, never a deadlock on a pending ack).
+		if (voided !== null) {
+			violated = true;
+			violatedReject();
+		}
+		while (execActive > 0) {
+			for await (const q of drainExec()) yield q;
+			await sleep(10);
+		}
+		for await (const q of drainExec()) yield q;
+		if (launchError !== null) throw launchError;
+		if (voided !== null) {
+			yield await terminal(voided);
+			return;
 		}
 
 		// ── Advance history: the log grew; re-derive for the next turn ─────
@@ -529,21 +688,42 @@ function terminalForStop(reason: StopReason | undefined): Terminal {
 
 // ── Execution ──────────────────────────────────────────────────────────
 
+/** The verdict of ONE call's front — validation + the policy chain. An
+ *  ask carries the decisionId the human pause will bind to. */
+type ExecVerdict =
+	| { action: "deny"; result: EventInput }
+	| { action: "ask"; decisionId: string }
+	| { action: "allow" };
+
+/** The tool_result event for a call — the shared shape (executionId rides
+ *  it as the durable correlation, 五). */
+function resultEvent(call: ToolCallEnd, result: ToolResult, executionId?: string): EventInput {
+	return {
+		type: "tool_result",
+		callId: call.callId,
+		content: result.content,
+		isError: result.isError,
+		// P1-9: errorKind only exists on errors (the type now enforces it;
+		// the runtime guard keeps a JS tool's illegal combination out of
+		// the persisted event too).
+		...(result.isError && result.errorKind ? { errorKind: result.errorKind } : {}),
+		// 五: a live tool's tags are preserved losslessly (do-not-compact,
+		// billing receipts, trace anchors) — never dropped at the loop.
+		...(result.tags !== undefined ? { tags: result.tags } : {}),
+		...(executionId !== undefined ? { executionId } : {}),
+	};
+}
+
 /**
- * Execute one tool call as a ledgered sequence of events:
- *
- *   [guards] → permission (allow / deny / DEFER→pause+resume)
- *   → tool_execution_started (durable BEFORE the side effect)
- *   → handler → tool_execution_succeeded|failed
- *   → tool_result (the model's view)
- *
- * Exactly-once (Phase D): before anything runs, the guard asks the ledger
- * whether this tool+input reached a terminal state before. A confirmed
- * success is replayed, an interrupted (uncertain) or abandoned attempt
- * blocks with a precondition result — the handler never auto-runs a
- * possibly-executed side effect.
+ * 0.1.26: the front of ONE call's execution — unknown tool / unparseable
+ * args / schema validation, the durable-policy check, the E1 extension
+ * policy chain, and onPreTool → a verdict. The policy allow/deny facts are
+ * pushed (durable, decidedBy = the speaking extension — never a human
+ * pause). An ask verdict carries the decisionId for the human pause; the
+ * caller runs it (conservative ordering: the calls after an ask wait for
+ * its resolution).
  */
-async function* executeOne(
+async function decideCall(
 	call: ToolCallEnd,
 	registry: ToolRegistry,
 	hooks: HookHost,
@@ -553,57 +733,28 @@ async function* executeOne(
 	resolveApprovalVerdict: ((decisionId: string) => boolean | undefined) | undefined,
 	signal: AbortSignalLike | undefined,
 	approvalPolicies: readonly { readonly extension: string; readonly policy: ApprovalPolicy }[] | undefined,
-): AsyncGenerator<Event> {
+	nextDecisionId: () => string,
+	push: (ev: EventInput) => void,
+): Promise<ExecVerdict> {
 	const payload: ToolCallPayload = {
 		callId: call.callId,
 		name: call.name,
 		input: call.input ?? {},
 	};
 
-	const emitResult = (result: ToolResult, executionId?: string): Event =>
-		log.append({
-			type: "tool_result",
-			callId: call.callId,
-			content: result.content,
-			isError: result.isError,
-			// P1-9: errorKind only exists on errors (the type now enforces it;
-			// the runtime guard keeps a JS tool's illegal combination out of
-			// the persisted event too).
-			...(result.isError && result.errorKind ? { errorKind: result.errorKind } : {}),
-			// 五: a live tool's tags are preserved losslessly (do-not-compact,
-			// billing receipts, trace anchors) — never dropped at the loop.
-			...(result.tags !== undefined ? { tags: result.tags } : {}),
-			...(executionId !== undefined ? { executionId } : {}),
-		});
-
 	// Unknown tool or unparseable args — refuse before anything runs.
 	const tool: Tool | undefined = registry.get(call.name);
 	if (!tool) {
-		yield emitResult({
-			content: `Unknown tool: ${call.name}`,
-			isError: true,
-			errorKind: "invalid_input",
-		});
-		return;
+		return { action: "deny", result: resultEvent(call, { content: `Unknown tool: ${call.name}`, isError: true, errorKind: "invalid_input" }) };
 	}
 	if (call.input === null) {
-		yield emitResult({
-			content: "Arguments failed to parse as JSON",
-			isError: true,
-			errorKind: "invalid_input",
-		});
-		return;
+		return { action: "deny", result: resultEvent(call, { content: "Arguments failed to parse as JSON", isError: true, errorKind: "invalid_input" }) };
 	}
 
 	// Phase B: real JSON Schema validation — the handler never sees garbage.
 	const schemaError = validateArgs(tool.parameters, call.input);
 	if (schemaError !== null) {
-		yield emitResult({
-			content: `Arguments failed schema validation:${schemaError}`,
-			isError: true,
-			errorKind: "invalid_input",
-		});
-		return;
+		return { action: "deny", result: resultEvent(call, { content: `Arguments failed schema validation:${schemaError}`, isError: true, errorKind: "invalid_input" }) };
 	}
 
 	// Area 3: NO (name, input) dedup — a new logical call with identical
@@ -615,71 +766,6 @@ async function* executeOne(
 	// slow permission hook was answering must not let the tool run after
 	// all. Checked again here, after any permission path.
 	if (signal?.aborted) throw ABORTED;
-
-	/**
-	 * The human approval pause (Phase D / 裁决 A): register the resolver
-	 * BEFORE announcing the request (a consumer that answers the moment it
-	 * sees the event must find the resolver already waiting — no deadlock
-	 * between yield and await), persist the request, yield it, await the
-	 * human's decision — abortable (an abort during the wait ends the run;
-	 * a verdict given in the same instant is still recorded exactly once) —
-	 * then persist and yield the decision. Returns the human's verdict.
-	 */
-	async function* awaitHumanApproval(decisionId: string): AsyncGenerator<Event, PermissionDecision> {
-		const pendingDecision =
-			resolveApproval !== undefined
-				? resolveApproval(decisionId)
-				: Promise.resolve({ action: "deny", reason: "no approval channel configured" } as const);
-		const requested = log.append({
-			type: "permission_requested",
-			decisionId,
-			callId: call.callId,
-			name: call.name,
-			input: payload.input,
-		});
-		if (hooks.onPause) await hooks.onPause("awaiting approval", {}).catch(() => {});
-		yield requested;
-		// Area 4: the pause is abortable — a cancel during the human's wait
-		// ends the run now; the request stays durable and pending.
-		let finalDecision: PermissionDecision;
-		try {
-			finalDecision = await raceAbort(pendingDecision, signal);
-		} catch (err) {
-			if (err === ABORTED) {
-				// 第四轮(对抗): the human may have answered in the same instant
-				// the abort landed — a CONSUMED verdict must be recorded
-				// (exactly once), never lost; the abort then ends the run with
-				// its honest aborted terminal.
-				const verdict = resolveApprovalVerdict?.(decisionId);
-				if (verdict !== undefined) {
-					yield log.append({
-						type: "permission_decided",
-						decisionId,
-						callId: call.callId,
-						decision: verdict ? "approved" : "denied",
-						...(verdict ? {} : { reason: "denied by user" }),
-					});
-				}
-			}
-			throw err;
-		}
-		// The approval channel (session.approve) persists the decision
-		// write-ahead BEFORE waking the resolver (Area 2): if it already
-		// landed in the log, this is the same decision, not a duplicate.
-		const decided =
-			log.all.find((e) => e.type === "permission_decided" && e.decisionId === decisionId) ??
-			log.append({
-				type: "permission_decided",
-				decisionId,
-				callId: call.callId, // binds the decision to the invocation (B 组)
-				decision: finalDecision.action === "allow" ? "approved" : "denied",
-				...(finalDecision.action === "deny" && finalDecision.reason !== undefined
-					? { reason: finalDecision.reason }
-					: {}),
-			});
-		yield decided;
-		return finalDecision;
-	}
 
 	// ── E1: the extension policy chain, decided BEFORE the human flow ─────
 	// A durable POLICY decision for THIS call takes effect on resume — the
@@ -733,16 +819,16 @@ async function* executeOne(
 		} else if (chainVerdict === undefined) {
 			// 全员 abstain (ADR-0042): NO policy speaks — the call falls to
 			// the ask flow below, never to a silent auto-approve. The human
-			// decides; absent a channel, awaitHumanApproval's honest denial.
+			// decides; absent a channel, humanPause's honest denial.
 			chainVerdict = { action: "ask" };
 		}
 		if (chainVerdict.action !== "ask") {
 			// allow/deny are PERSISTED FACTS (decidedBy = a SPEAKING
 			// extension — never the chain head on behalf of a non-speaker)
 			// — never a human pause.
-			yield log.append({
+			push({
 				type: "permission_decided",
-				decisionId: `d-${log.lastSeq + 1}`,
+				decisionId: nextDecisionId(),
 				callId: call.callId,
 				decision: chainVerdict.action === "allow" ? "approved" : "denied",
 				...(chainVerdict.action === "deny" ? { reason: chainVerdict.reason } : {}),
@@ -751,12 +837,10 @@ async function* executeOne(
 		}
 	}
 	if (chainVerdict?.action === "deny") {
-		yield emitResult(denialResult(chainVerdict.reason));
-		return;
+		return { action: "deny", result: resultEvent(call, denialResult(chainVerdict.reason)) };
 	}
 	if (durable !== undefined && durable.decision === "denied") {
-		yield emitResult(denialResult(durable.reason ?? "denied"));
-		return;
+		return { action: "deny", result: resultEvent(call, denialResult(durable.reason ?? "denied")) };
 	}
 	if (chainVerdict?.action === "ask") {
 		// 裁决 A (E1 ask 语义修正): an ask means "a HUMAN must decide" — it
@@ -766,15 +850,9 @@ async function* executeOne(
 		// channel configured → an honest denial (judged by resolveApproval,
 		// not by the hook's presence).
 		if (resolveApproval === undefined) {
-			yield emitResult(denialResult("a policy asked for a human decision, but no approval flow is configured"));
-			return;
+			return { action: "deny", result: resultEvent(call, denialResult("a policy asked for a human decision, but no approval flow is configured")) };
 		}
-		const decisionId = `d-${log.lastSeq + 1}`;
-		const finalDecision = yield* awaitHumanApproval(decisionId);
-		if (finalDecision.action !== "allow") {
-			yield emitResult(denialResult(finalDecision.reason ?? "denied"));
-			return;
-		}
+		return { action: "ask", decisionId: nextDecisionId() };
 	}
 
 	// Permission negotiation — defer is a REAL pause (Phase D). C 组: the
@@ -787,36 +865,124 @@ async function* executeOne(
 		const decision = await raceAbort(hooks.onPreTool(payload, ctx), signal);
 		if (signal?.aborted) throw ABORTED;
 		if (decision.action === "defer") {
-			const decisionId = `d-${log.lastSeq + 1}`;
-			const finalDecision = yield* awaitHumanApproval(decisionId);
-			if (finalDecision.action !== "allow") {
-				yield emitResult(denialResult(finalDecision.reason ?? "denied"));
-				return;
-			}
-		} else if (decision.action !== "allow") {
-			yield emitResult(denialResult(decision.reason ?? "denied"));
-			return;
+			return { action: "ask", decisionId: nextDecisionId() };
+		}
+		if (decision.action !== "allow") {
+			return { action: "deny", result: resultEvent(call, denialResult(decision.reason ?? "denied")) };
 		}
 	}
+	return { action: "allow" };
+}
 
-	// The ledgered execution. The started event is durable BEFORE the side
-	// effect; a crash between it and the result leaves "uncertain". The
-	// executionId is the persistent identity of THIS logical execution
-	// (Area 3): generated from the log's next seq, so it is unique per log
-	// and survives restarts.
-	const executionId = `ex-${log.lastSeq + 1}`;
+/**
+ * The human approval pause (Phase D / 裁决 A): register the resolver
+ * BEFORE announcing the request (a consumer that answers the moment it
+ * sees the event must find the resolver already waiting — no deadlock
+ * between push and await), persist the request (via push), await the
+ * human's decision — abortable (an abort during the wait ends the run; a
+ * verdict given in the same instant is still recorded exactly once) —
+ * then persist the decision. Returns "approved" | "denied".
+ */
+async function humanPause(
+	call: ToolCallEnd,
+	decisionId: string,
+	hooks: HookHost,
+	log: EventLog,
+	resolveApproval: ((decisionId: string) => Promise<PermissionDecision>) | undefined,
+	resolveApprovalVerdict: ((decisionId: string) => boolean | undefined) | undefined,
+	signal: AbortSignalLike | undefined,
+	push: (ev: EventInput) => void,
+): Promise<PermissionDecision> {
+	const pendingDecision =
+		resolveApproval !== undefined
+			? resolveApproval(decisionId)
+			: Promise.resolve({ action: "deny", reason: "no approval channel configured" } as const);
+	push({
+		type: "permission_requested",
+		decisionId,
+		callId: call.callId,
+		name: call.name,
+		input: call.input ?? {},
+	});
+	if (hooks.onPause) await hooks.onPause("awaiting approval", {}).catch(() => {});
+	// Area 4: the pause is abortable — a cancel during the human's wait
+	// ends the run now; the request stays durable and pending.
+	let finalDecision: PermissionDecision;
+	try {
+		finalDecision = await raceAbort(pendingDecision, signal);
+	} catch (err) {
+		if (err === ABORTED) {
+			// 第四轮(对抗): the human may have answered in the same instant
+			// the abort landed — a CONSUMED verdict must be recorded
+			// (exactly once), never lost; the abort then ends the run with
+			// its honest aborted terminal.
+			const verdict = resolveApprovalVerdict?.(decisionId);
+			if (verdict !== undefined) {
+				push({
+					type: "permission_decided",
+					decisionId,
+					callId: call.callId,
+					decision: verdict ? "approved" : "denied",
+					...(verdict ? {} : { reason: "denied by user" }),
+				});
+			}
+		}
+		throw err;
+	}
+	// The approval channel (session.approve) persists the decision
+	// write-ahead BEFORE waking the resolver (Area 2): if it already
+	// landed in the log, this is the same decision, not a duplicate.
+	if (log.all.find((e) => e.type === "permission_decided" && e.decisionId === decisionId) === undefined) {
+		push({
+			type: "permission_decided",
+			decisionId,
+			callId: call.callId, // binds the decision to the invocation (B 组)
+			decision: finalDecision.action === "allow" ? "approved" : "denied",
+			...(finalDecision.action === "deny" && finalDecision.reason !== undefined
+				? { reason: finalDecision.reason }
+				: {}),
+		});
+	}
+	return finalDecision;
+}
+
+/**
+ * 0.1.26: the ledgered execution of an ALLOWED call — started (durable
+ * BEFORE the side effect, write-ahead acked by the drain), handler,
+ * receipt, result. The executionId comes from the loop's monotonic
+ * allocator (under concurrency the old `lastSeq + 1` prediction raced).
+ */
+async function runLedgered(
+	call: ToolCallEnd,
+	registry: ToolRegistry,
+	hooks: HookHost,
+	ctx: ToolContext,
+	signal: AbortSignalLike | undefined,
+	push: (ev: EventInput, ack?: (executionId?: string) => void) => void,
+): Promise<void> {
+	const tool = registry.get(call.name)!; // validated + decided by decideCall
 	// C 组: the signal is re-checked immediately before the started event —
 	// an abort that landed in any permission path must not let the side
 	// effect begin.
 	if (signal?.aborted) throw ABORTED;
-	const started = log.append({
-		type: "tool_execution_started",
-		executionId,
-		callId: call.callId,
-		name: call.name,
-		input: call.input,
+	// The started event is durable BEFORE the side effect; a crash between
+	// it and the result leaves "uncertain". The ack resolves when the
+	// drain yields the event and the consumer persisted it — the handler
+	// never runs before its receipt is on disk (write-ahead preserved
+	// under the parallel execution). The executionId is allocated BY THE
+	// DRAIN (ex-<seq> — atomic with the append, stable across replays) and
+	// carried back through the ack.
+	const executionId = await new Promise<string>((res) => {
+		push(
+			{
+				type: "tool_execution_started",
+				callId: call.callId,
+				name: call.name,
+				input: call.input!, // non-null: decideCall denied a null input before this ran
+			} as EventInput,
+			(id) => res(id ?? ""), // the drain always passes the allocated id for a started event
+		);
 	});
-	yield started;
 
 	let result: ToolResult;
 	try {
@@ -825,7 +991,7 @@ async function* executeOne(
 		// a cancel.
 		result = signal?.aborted
 			? { content: "aborted before execution", isError: true, errorKind: "fatal" }
-			: await tool.execute(call.input, ctx);
+			: await tool.execute(call.input!, ctx);
 	} catch (err) {
 		result = {
 			content: err instanceof Error ? err.message : String(err),
@@ -835,7 +1001,7 @@ async function* executeOne(
 	}
 
 	if (hooks.onPostTool) {
-		result = await hooks.onPostTool(payload, result, ctx);
+		result = await hooks.onPostTool({ callId: call.callId, name: call.name, input: call.input ?? {} }, result, ctx);
 	}
 
 	// 裁决 #12 修正一: a non-idempotent failure's side effects may have
@@ -857,7 +1023,7 @@ async function* executeOne(
 		// effect and is uncertain until a human decides.
 		// 八: the tags ride on the RECEIPT too — a crash-window repair of the
 		// tool_result reproduces the normal path losslessly.
-		yield log.append({
+		push({
 			type: "tool_execution_failed",
 			executionId,
 			callId: call.callId,
@@ -870,7 +1036,7 @@ async function* executeOne(
 			...(result.tags !== undefined ? { tags: result.tags } : {}),
 		});
 	} else {
-		yield log.append({
+		push({
 			type: "tool_execution_succeeded",
 			executionId,
 			callId: call.callId,
@@ -879,7 +1045,7 @@ async function* executeOne(
 		});
 	}
 
-	yield emitResult(result, executionId);
+	push(resultEvent(call, result, executionId));
 }
 
 /** Thrown when an abort lands while the loop awaits a human decision. */

@@ -259,14 +259,18 @@ describe("execution identity end to end (四)", () => {
 			if (ev.type === "permission_requested") await after.approve(ev.decisionId, true);
 		}
 
-		// The same logical execution gets the SAME executionId on both paths
-		// (derived from the log position, which is identical), and the same
-		// outcome.
+		// The executionId is POSITION-derived (`ex-<seq>` of the started
+		// event — deterministic per log, on the live and the recovery paths
+		// alike; 0.1.26 the streaming execution lands the approval pause
+		// BEFORE the stop, so the two paths' base logs differ by one event
+		// and the positions differ — the contract is the derivation, never
+		// a guessed value). Each path's receipts pair by its own id.
 		const liveStarted = liveEvents.find((e) => e.type === "tool_execution_started");
 		const resumeStarted = resumeEvents.find((e) => e.type === "tool_execution_started");
 		expect(liveStarted).toBeDefined();
 		expect(resumeStarted).toBeDefined();
-		expect(liveStarted!.executionId).toBe(resumeStarted!.executionId);
+		expect(liveStarted!.executionId).toBe(`ex-${liveStarted!.seq}`);
+		expect(resumeStarted!.executionId).toBe(`ex-${resumeStarted!.seq}`);
 		for (const ev of [liveEvents, resumeEvents]) {
 			const started = ev.find((e) => e.type === "tool_execution_started");
 			expect(ev.some((e) => e.type === "tool_execution_succeeded" && e.executionId === started!.executionId)).toBe(true);

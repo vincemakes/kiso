@@ -25,16 +25,47 @@ function fakeConfig(): Record<string, unknown> {
 }
 
 /** Write a config file, point KISO_MCP_CONFIG at it, load the factory.
- *  `config === null` = the file is ABSENT (the no-servers case). */
+ *  `config === null` = the file is ABSENT (the no-servers case).
+ *  0.1.26 (懒连接): the factory returns IMMEDIATELY — the server tools land
+ *  after the background connect. extWith awaits the settle, so the tests
+ *  exercise the post-connect state; the pre-connect wait is the e2e's
+ *  "首调等待就绪" scenario. */
+async function settled(ext: KisoExtension, server: string): Promise<void> {
+	const statusTool = ext.tools?.find((t) => t.name === "mcp__status");
+	const end = Date.now() + 8000;
+	while (Date.now() < end) {
+		if (ext.tools?.some((t) => t.name.startsWith(`mcp__${server}__`))) return;
+		// A failed connect settles too (断连诚实): the status flips to error.
+		if (statusTool !== undefined) {
+			const r = await statusTool.execute({}, ctx);
+			const text = String(r.content);
+			if (text.includes(`${server}: connected`) || text.includes(`${server}: error`)) return;
+		}
+		await new Promise((r) => setTimeout(r, 25));
+	}
+	throw new Error(`mcp server ${server} never settled; tools: ${ext.tools?.map((t) => t.name).join(", ")}`);
+}
+
 async function extWith(config: Record<string, unknown> | null): Promise<KisoExtension> {
 	const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-"));
 	const path = join(dir, "mcp.json");
 	if (config !== null) writeFileSync(path, JSON.stringify(config), "utf8");
 	process.env.KISO_MCP_CONFIG = path;
+	// KISO_HOME isolated — the tool cache must never touch the real home.
+	const prevHome = process.env.KISO_HOME;
+	process.env.KISO_HOME = join(dir, "home");
 	try {
-		return await createMcpExtension();
+		const ext = await createMcpExtension();
+		if (config !== null && (config.mcpServers as Record<string, unknown> | undefined) !== undefined) {
+			for (const name of Object.keys((config as { mcpServers: Record<string, unknown> }).mcpServers)) {
+				await settled(ext, name);
+			}
+		}
+		return ext;
 	} finally {
 		delete process.env.KISO_MCP_CONFIG;
+		if (prevHome === undefined) delete process.env.KISO_HOME;
+		else process.env.KISO_HOME = prevHome;
 	}
 }
 
@@ -54,6 +85,9 @@ describe("③ MCP bridge: tools", () => {
 		delete process.env.KISO_MCP_CONFIG;
 		try {
 			const ext = await createMcpExtension();
+			// 0.1.26 (懒连接): the factory returns immediately — the tools
+			// land after the background connect; the wait IS the test.
+			await settled(ext, "fake");
 			expect(ext.tools?.some((t) => t.name === "mcp__fake__echo")).toBe(true);
 		} finally {
 			delete process.env.KISO_HOME;
@@ -115,7 +149,8 @@ describe("③ MCP bridge: config and failure modes", () => {
 		writeFileSync(path, "{not json", "utf8");
 		process.env.KISO_MCP_CONFIG = path;
 		try {
-			await expect(createMcpExtension()).rejects.toThrow(/cannot parse/);
+			// 0.1.26: the factory is SYNC — the broken config throws LOUDLY at the call, not a rejection.
+			expect(() => createMcpExtension()).toThrow(/cannot parse/);
 		} finally {
 			delete process.env.KISO_MCP_CONFIG;
 		}
@@ -159,4 +194,56 @@ describe("③ MCP bridge: config and failure modes", () => {
 		expect(r.isError).toBe(true);
 		expect(Date.now() - started).toBeLessThan(4000); // abort cut it short
 	}, 30_000);
+
+describe("0.1.26 (懒连接): the tool cache — pre-ready calls wait, 断连诚实", () => {
+	it("a CACHED tool's call waits for the background connect; a broken server's cached call fails with the connect error", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-cache-"));
+		const home = join(dir, "home");
+		mkdirSync(home, { recursive: true });
+		// Prime the cache with the RAW server tool names (as a previous
+		// successful connect wrote them).
+		writeFileSync(
+			join(home, "mcp-tools.json"),
+			JSON.stringify({
+				fake: [{ name: "echo", description: "Echo", inputSchema: { type: "object", properties: { text: { type: "string" } } } }],
+				broken: [{ name: "x", description: "X", inputSchema: { type: "object", properties: {} } }],
+			}),
+			"utf8",
+		);
+		const mcpConfig = join(dir, "mcp.json");
+		writeFileSync(
+			mcpConfig,
+			JSON.stringify({
+				mcpServers: {
+					fake: fakeConfig(),
+					broken: { command: "node", args: ["/nonexistent-kiso-mcp-server.mjs"] },
+				},
+			}),
+			"utf8",
+		);
+		process.env.KISO_HOME = home;
+		process.env.KISO_MCP_CONFIG = mcpConfig;
+		try {
+			const ext = await createMcpExtension();
+			// The factory returned INSTANTLY — the cached tools are already
+			// registered while the connections are still in flight.
+			const echo = ext.tools?.find((t) => t.name === "mcp__fake__echo");
+			const broken = ext.tools?.find((t) => t.name === "mcp__broken__x");
+			expect(echo).toBeDefined();
+			expect(broken).toBeDefined();
+			// The FIRST call before readiness WAITS for the connect and
+			// succeeds (首调等待就绪).
+			const r = await echo!.execute({ text: "pre-ready" }, ctx);
+			expect(r).toEqual({ content: "pre-ready", isError: false });
+			// The broken server's cached call FAILS with the connect error —
+			// 断连诚实: never a hang, never a fake success.
+			const rb = await broken!.execute({}, ctx);
+			expect(rb.isError).toBe(true);
+			expect(String(rb.content)).toMatch(/ENOENT|spawn|error/i);
+		} finally {
+			delete process.env.KISO_HOME;
+			delete process.env.KISO_MCP_CONFIG;
+		}
+	}, 30_000);
+});
 });

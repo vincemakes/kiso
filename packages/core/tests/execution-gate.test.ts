@@ -59,33 +59,57 @@ describe("C1: the turn is verified BEFORE any tool runs", () => {
 		expect(terminalOf(events).outcome).toMatchObject({ kind: "error", error: { code: "invalid_request" } });
 	});
 
-	it("stop max_tokens with a pending call never executes the tool", async () => {
-		const registry = registryWith({ executed: () => void 0 });
+	it("stop max_tokens with a pending call: the launched execution ran (流中执行) — receipts land, the turn is still voided", async () => {
+		let executed = 0;
+		const registry = registryWith({
+			executed: () => {
+				executed += 1;
+			},
+		});
 		const events = await runTurn(
 			[{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} }, { type: "stop", reason: "max_tokens" }] }],
 			registry,
 		);
-		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+		// 0.1.26 (ADR-0024 Amd, 流中执行): the call LAUNCHED at tool_call_end
+		// — the side effect happened before the stop reason was known; the
+		// incompatible stop reason still VOIDS the turn (max_tokens terminal).
+		expect(executed).toBe(1);
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(true);
+		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
 		expect(terminalOf(events).outcome).toEqual({ kind: "max_tokens" });
 	});
 
-	it("stop refusal with a pending call never executes the tool", async () => {
-		const registry = registryWith({ executed: () => void 0 });
+	it("stop refusal with a pending call: the launched execution ran — receipts land, the turn is voided", async () => {
+		let executed = 0;
+		const registry = registryWith({
+			executed: () => {
+				executed += 1;
+			},
+		});
 		const events = await runTurn(
 			[{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} }, { type: "stop", reason: "refusal" }] }],
 			registry,
 		);
-		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+		expect(executed).toBe(1);
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(true);
+		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
 		expect(terminalOf(events).outcome.kind).toBe("error");
 	});
 
-	it("stop end_turn with a pending call is contradictory — error, no execution", async () => {
-		const registry = registryWith({ executed: () => void 0 });
+	it("stop end_turn with a pending call is contradictory — error, the launched execution's receipts land", async () => {
+		let executed = 0;
+		const registry = registryWith({
+			executed: () => {
+				executed += 1;
+			},
+		});
 		const events = await runTurn(
 			[{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} }, { type: "stop", reason: "end_turn" }] }],
 			registry,
 		);
-		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+		expect(executed).toBe(1);
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(true);
+		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
 		expect(terminalOf(events).outcome.kind).toBe("error");
 	});
 

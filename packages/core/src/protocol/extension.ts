@@ -63,6 +63,12 @@ export interface KisoExtension {
 	 */
 	readonly systemPrompt?: { readonly append: string };
 	/**
+	 * 0.1.26 (MCP 懒连接): an optional LIVE flag — the CLI's banner renders
+	 * "name (connecting…)" while it is true. Soft surface: absent = no
+	 * marker (the default).
+	 */
+	readonly connecting?: boolean;
+	/**
 	 * 发现#8 (P1): the extension's shutdown action — the closing of external
 	 * resources it holds (child processes, connections). The LOADER is
 	 * responsible for calling it.

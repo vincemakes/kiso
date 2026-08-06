@@ -12,6 +12,7 @@ import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type Tool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { projectMessages } from "../src/kernel/project.js";
 import { terminalLies } from "@vincemakes/kiso-evals";
 import { silentToolFailure } from "@vincemakes/kiso-evals";
 
@@ -160,11 +161,11 @@ describe("loop", () => {
 		expect(denied).toMatchObject({ isError: true, errorKind: "precondition" });
 	});
 
-	it("executes calls strictly in order, each fully ledgered (Phase D sequencing)", async () => {
-		// Phase D made execution sequential: the exactly-once ledger and the
-		// approval pause require deterministic, write-ahead ordering (see
-		// kernel/loop.ts). Windowed parallel batching returns as an
-		// optimization once the ledger contract is stable.
+	it("executes the turn's calls CONCURRENTLY under the window, each fully ledgered (0.1.26)", async () => {
+		// 0.1.26 (ADR-0024 Amd): the windowed parallel batching returned —
+		// the calls launch at tool_call_end and run concurrently (window 4);
+		// the ledger events land per call in deterministic order; the
+		// projection re-orders the results by CALL order (字节纪律).
 		const order: string[] = [];
 		const mk = (name: string): Tool =>
 			defineTool({
@@ -197,25 +198,29 @@ describe("loop", () => {
 			],
 			registry,
 		);
-		// Strict order: each call finishes before the next starts.
-		expect(order).toEqual(["fast:start", "fast:end", "fast2:start", "fast2:end", "slow:start", "slow:end"]);
-		// The ledger wraps each call: started before its result, and each
-		// call's result before the next call's started event.
+		// Concurrency: all three STARTED before the first one ENDED — the
+		// slow's start precedes the fast's end (the parallel overlap; a
+		// serial executor could never interleave them this way).
+		expect(order.indexOf("slow:start")).toBeLessThan(order.indexOf("fast:end"));
+		expect(order.slice(0, 3).sort()).toEqual(["fast2:start", "fast:start", "slow:start"]);
+		// Each call is still fully ledgered: started before its own result.
 		const flow = events.filter((e) =>
 			["tool_execution_started", "tool_execution_succeeded", "tool_result"].includes(e.type),
 		);
-		const kinds = flow.map((e) => e.type);
-		expect(kinds).toEqual([
-			"tool_execution_started",
-			"tool_execution_succeeded",
-			"tool_result",
-			"tool_execution_started",
-			"tool_execution_succeeded",
-			"tool_result",
-			"tool_execution_started",
-			"tool_execution_succeeded",
-			"tool_result",
-		]);
+		const perCall = new Map<string, string[]>();
+		for (const e of flow) {
+			const id = e.type === "tool_result" ? e.callId : (e as { callId: string }).callId;
+			(perCall.get(id) ?? perCall.set(id, []).get(id)!).push(e.type);
+		}
+		for (const kinds of perCall.values()) {
+			expect(kinds).toEqual(["tool_execution_started", "tool_execution_succeeded", "tool_result"]);
+		}
+		// The projection orders the results by CALL order, whatever the
+		// completion interleaving (字节纪律): a, b, c — the tool messages
+		// follow the assistant's tool_use blocks.
+		const messages = projectMessages(events);
+		const toolMsgs = messages.filter((m) => m.role === "tool");
+		expect(toolMsgs.map((m) => m.callId)).toEqual(["a", "b", "c"]);
 	});
 
 	it("stops at maxTurns with an honest terminal", async () => {

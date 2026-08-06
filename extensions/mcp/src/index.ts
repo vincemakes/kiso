@@ -13,11 +13,21 @@
  * specific ones). ctx.signal cancels in-flight calls; one call times out
  * after CALL_TIMEOUT_MS.
  *
+ * 0.1.26 (懒连接): the factory returns IMMEDIATELY — the connections start
+ * in the background, startup never blocks. The tool list comes from the
+ * TOOL CACHE ($KISO_HOME/mcp-tools.json, rewritten after every successful
+ * connect): the cached tools register pre-connect, and calling one before
+ * its server is ready WAITS for the connect (bounded by CONNECT_TIMEOUT_MS)
+ * — the model can call a tool while the server is still connecting; a
+ * failed connect makes the call fail with the connect error (断连诚实).
+ * The extension carries a live `connecting` flag the CLI's banner shows as
+ * "mcp (connecting…)".
+ *
  * Built with esbuild into a self-contained dist/kiso-mcp.mjs (the SDK is
  * inlined) — drop the file into ~/.kiso/extensions/ and restart.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -86,7 +96,7 @@ interface McpConfig {
 
 interface ServerStatus {
 	readonly server: string;
-	readonly state: "connected" | "error" | "idle";
+	readonly state: "connected" | "error" | "connecting" | "idle";
 	readonly detail: string;
 	/** 手感批 A3: present for stdio servers — the recent stderr tail
 	 *  (empty when the child never wrote). */
@@ -99,43 +109,164 @@ function kisoHome(): string {
 	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
 }
 
-export default async function createMcpExtension(): Promise<KisoExtension> {
+export default function createMcpExtension(): KisoExtension {
 	const config = readConfig(process.env.KISO_MCP_CONFIG ?? join(kisoHome(), "mcp.json"));
 	const status: ServerStatus[] = [];
+	// 0.1.26: the LIVE tools array — the cached tools register immediately;
+	// the background connects replace them with the fresh lists on settle.
 	const tools: Tool[] = [statusTool(status)];
 	const clients: Client[] = [];
+	// The `connecting` flag the CLI banner reads ("mcp (connecting…)").
+	let connecting = false;
+	// The tool cache: written after every successful connect, read at
+	// startup — the cached tools are callable while the connection is in
+	// flight (their execute waits for the connect).
+	const cache = readToolCache(kisoHome());
+
+	const connects: Promise<void>[] = [];
 	for (const [name, server] of Object.entries(config.mcpServers ?? {})) {
 		if (server.disabled === true) continue;
-		try {
-			const { tools: mapped, stderr } = await connectServer(name, server, clients);
-			status.push({
-				server: name,
-				state: "connected",
-				detail: `${mapped.length} tools`,
-				...(stderr !== undefined ? { stderr } : {}),
-			});
-			tools.push(...mapped);
-		} catch (err) {
-			const e = err as ConnectError;
-			status.push({
-				server: name,
-				state: "error",
-				detail: e instanceof Error ? e.message : String(e),
-				...(e.stderr !== undefined ? { stderr: e.stderr } : {}),
-			});
+		// The cached tools register IMMEDIATELY — names + schemas known, the
+		// execute waits for the background connect below.
+		const connectPromise = connectServer(name, server, clients);
+		for (const cached of cache[name] ?? []) {
+			tools.push(mapCachedTool(name, cached, () => connectPromise.then(({ client }) => client)));
 		}
+		connecting = true;
+		// The in-flight state is visible from the start — mcp__status shows
+		// "connecting" until the settle replaces it.
+		status.push({ server: name, state: "connecting", detail: "connecting…" });
+		// The background connect — fire-and-forget: the banner is already
+		// rendered, startup never blocks. On settle: the status updates, the
+		// cached tools are replaced by the FRESH list, the cache is
+		// rewritten. A failure is a SOFT failure (the status + the cached
+		// tools' calls fail with the connect error).
+		connects.push(
+			connectPromise.then(
+				({ tools: mapped, stderr }) => {
+					const idx = status.findIndex((s) => s.server === name);
+					const entry: ServerStatus = {
+						server: name,
+						state: "connected",
+						detail: `${mapped.length} tools`,
+						...(stderr !== undefined ? { stderr } : {}),
+					};
+					if (idx >= 0) status[idx] = entry;
+					else status.push(entry);
+					// Replace this server's cached tools with the fresh list
+					// (same names — the registry's live view just swaps them).
+					for (let i = tools.length - 1; i >= 0; i -= 1) {
+						if (tools[i]!.name.startsWith(`mcp__${name}__`)) tools.splice(i, 1);
+					}
+					tools.push(...mapped);
+					// The cache stores the RAW server tool names — the
+					// mcp__<server>__ prefix is re-applied at the read.
+					writeToolCache(
+						kisoHome(),
+						name,
+						mapped.map((t) => ({
+							name: t.name.slice(`mcp__${name}__`.length),
+							description: t.description,
+							inputSchema: t.parameters,
+						})),
+					);
+				},
+				(err: unknown) => {
+					const e = err as ConnectError;
+					const idx = status.findIndex((s) => s.server === name);
+					const entry: ServerStatus = {
+						server: name,
+						state: "error",
+						detail: e instanceof Error ? e.message : String(e),
+						...(e.stderr !== undefined ? { stderr: e.stderr } : {}),
+					};
+					if (idx >= 0) status[idx] = entry;
+					else status.push(entry);
+				},
+			),
+		);
 	}
+	// The connecting flag flips when every connect settles — the banner
+	// (rendered at startup) shows the in-flight state.
+	void Promise.allSettled(connects).then(() => {
+		connecting = false;
+	});
 	if (status.length === 0) status.push({ server: "(none)", state: "idle", detail: "no MCP servers configured" });
+	// The cast bridges the INSTALLED core's interface (the `connecting`
+	// field landed in the core protocol this round; the extension devDep
+	// catches up at the release bump).
 	return {
 		name: "mcp",
 		tools,
+		connecting,
 		// 发现#8 (P1): the LOADER calls this on exit — closing every client
 		// terminates its transport (the stdio children end; a hung process
 		// would otherwise keep the host alive forever).
 		dispose: async () => {
 			await Promise.allSettled(clients.map((client) => client.close()));
 		},
+	} as KisoExtension;
+}
+
+/** A cached tool — callable before the server is ready: the execute waits
+ *  for the background connect (bounded by CONNECT_TIMEOUT_MS inside
+ *  connectServer's race), then calls through the connected client. A
+ *  failed connect makes the call fail with the connect error — 断连诚实,
+ *  never a silent hang nor a fake success. */
+function mapCachedTool(
+	server: string,
+	cached: { name: string; description?: string; inputSchema?: unknown },
+	waitReady: () => Promise<Client>,
+): Tool {
+	return {
+		name: `mcp__${server}__${cached.name}`,
+		description: cached.description ?? `${server}: ${cached.name}`,
+		parameters: (cached.inputSchema ?? { type: "object", properties: {} }) as Readonly<Record<string, unknown>>,
+		execute: async (input: unknown, ctx: ToolContext): Promise<ToolResult> => {
+			try {
+				const client = await waitReady();
+				const result = await client.callTool(
+					{ name: cached.name, arguments: (input ?? {}) as Record<string, unknown> },
+					undefined,
+					{ signal: ctx.signal as AbortSignal, timeout: CALL_TIMEOUT_MS },
+				);
+				return { content: renderResult(result.content as readonly unknown[]), isError: result.isError === true };
+			} catch (err) {
+				return { content: err instanceof Error ? err.message : String(err), isError: true, errorKind: "fatal" };
+			}
+		},
 	};
+}
+
+/** The tool cache — $KISO_HOME/mcp-tools.json, keyed by server name. A
+ *  missing/broken cache is an empty map (the first connect writes it). */
+function readToolCache(home: string): Record<string, { name: string; description?: string; inputSchema?: unknown }[]> {
+	try {
+		const parsed = JSON.parse(readFileSync(join(home, "mcp-tools.json"), "utf8")) as Record<
+			string,
+			{ name: string; description?: string; inputSchema?: unknown }[]
+		>;
+		return typeof parsed === "object" && parsed !== null ? parsed : {};
+	} catch {
+		return {};
+	}
+}
+
+/** Rewrite the cache with the server's FRESH tool list (a server whose
+ *  tools changed is picked up on the next startup; a stale cache entry is
+ *  never trusted over a live connect). */
+function writeToolCache(
+	home: string,
+	server: string,
+	toolsList: { name: string; description?: string; inputSchema?: unknown }[],
+): void {
+	try {
+		const cache = readToolCache(home);
+		cache[server] = toolsList;
+		writeFileSync(join(home, "mcp-tools.json"), JSON.stringify(cache, null, 2), "utf8");
+	} catch {
+		// a cache write failure is never fatal — the live tools still work.
+	}
 }
 
 /** Absent config file = no servers = no tools, never an error; a present
@@ -193,7 +324,7 @@ function statusTool(status: readonly ServerStatus[]): Tool {
 	};
 }
 
-async function connectServer(name: string, cfg: McpServerConfig, clients: Client[]): Promise<{ tools: Tool[]; stderr?: StderrRing }> {
+async function connectServer(name: string, cfg: McpServerConfig, clients: Client[]): Promise<{ tools: Tool[]; stderr?: StderrRing; client: Client }> {
 	const client = new Client({ name: "kiso-mcp", version: "0.1.7" });
 	clients.push(client);
 	let ring: StderrRing | undefined;
@@ -233,7 +364,7 @@ async function connectServer(name: string, cfg: McpServerConfig, clients: Client
 		}
 	}
 	const { tools } = await client.listTools();
-	return { tools: tools.map((t) => mapTool(name, client, t)), ...(ring !== undefined ? { stderr: ring } : {}) };
+	return { tools: tools.map((t) => mapTool(name, client, t)), ...(ring !== undefined ? { stderr: ring } : {}), client };
 }
 
 /** 发现#8b: the handshake is bounded — a server that never answers the

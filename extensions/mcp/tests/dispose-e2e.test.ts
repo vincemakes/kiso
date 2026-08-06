@@ -198,9 +198,13 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path):
                 except OSError:
                     return
     t0 = time.time()
-    ok = read_until("▌ ".encode(), 30)   # the startup completed — bounded by the 15s connect timeout
+    ok = read_until("▌ ".encode(), 30)   # the startup completed — INSTANT under 0.1.26 (懒连接)
     elapsed = time.time() - t0
     if ok:
+        # 0.1.26 (懒连接): the sleepy server's 15s connect timeout must
+        # ELAPSE before the status call — the bounded SOFT failure is then
+        # visible in the status ("sleepy: error") and the fake works.
+        time.sleep(16)
         os.write(fd, b"go\\n")
         read_until(b"approve mcp__status", 15)
         os.write(fd, b"y\\n")

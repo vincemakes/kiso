@@ -166,6 +166,120 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
     sys.exit(0)
 `;
 
+/** The 0.1.26 parallel variant driver: ONE turn with THREE concurrent
+ *  shell calls — three approvals, the kill when THREE started events are
+ *  on disk, and on resume EACH uncertain verdict is answered. */
+const PTY_DRIVER_PARALLEL = `
+import pty, os, sys, time, select, signal
+
+def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.environ["KISO_HOME"] = home
+        os.environ["KISO_FAUX_SCRIPT"] = script_path
+        ext_dir = os.path.join(home, "ext")
+        os.makedirs(ext_dir, exist_ok=True)
+        os.environ["KISO_EXTENSIONS_DIR"] = ext_dir
+        os.environ["KISO_MCP_CONFIG"] = os.path.join(home, "mcp.json")
+        os.chdir(workdir)
+        if resume_keys is None:
+            os.execvp("node", ["node", cli, session_id])
+        else:
+            os.execvp("node", ["node", cli, "resume", session_id])
+    out = b""
+    full = b""
+    def read_until(needle, timeout):
+        nonlocal out, full
+        end = time.time() + timeout
+        while time.time() < end:
+            idx = out.find(needle)
+            if idx >= 0:
+                out = out[idx + len(needle):]
+                return True
+            r, _, _ = select.select([fd], [], [], 0.2)
+            if r:
+                try:
+                    data = os.read(fd, 4096)
+                    out += data
+                    full += data
+                except OSError:
+                    return False
+        return False
+    def wait_exit(timeout):
+        nonlocal out, full
+        end = time.time() + timeout
+        while time.time() < end:
+            r, _, _ = select.select([fd], [], [], 0.2)
+            if r:
+                try:
+                    data = os.read(fd, 4096)
+                    if not data:
+                        return
+                    out += data
+                    full += data
+                except OSError:
+                    return
+    if resume_keys is None:
+        read_until("▌ ".encode(), 20)
+        os.write(fd, b"go\\n")
+        for _ in range(3):
+            read_until(b"approve shell", 30)
+            os.write(fd, b"y\\n")
+        # The kill predicate: THREE started events on disk (the parallel
+        # turn launched all three concurrently).
+        deadline = time.time() + 20
+        while time.time() < deadline:
+            try:
+                recs = open(os.path.join(home, "sessions", session_id + ".jsonl")).read()
+                starts = [l for l in recs.split("\\n") if "tool_execution_started" in l]
+                if len(starts) >= 3:
+                    break
+            except FileNotFoundError:
+                pass
+            time.sleep(0.05)
+        os.kill(-pid, signal.SIGKILL)
+        import subprocess
+        try:
+            ps = subprocess.check_output(["ps", "-eo", "pid=,pgid=,command="]).decode(errors="replace")
+        except Exception:
+            ps = ""
+        for line in ps.splitlines():
+            parts = line.split(None, 2)
+            if len(parts) < 3 or "marker-p" not in parts[2]:
+                continue
+            try:
+                os.kill(-int(parts[1]), signal.SIGKILL)
+            except (ProcessLookupError, ValueError):
+                pass
+        time.sleep(0.5)
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        _, status = os.waitpid(pid, 0)
+    else:
+        # Resume: EACH uncertain execution gets its verdict.
+        for key in resume_keys:
+            read_until(b"(a)bandon", 30)
+            os.write(fd, key.encode() + b"\\n")
+        for _ in range(4):
+            if read_until(b"approve ", 15):
+                os.write(fd, b"y\\n")
+            else:
+                break
+        wait_exit(60)
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            _, status = os.waitpid(pid, 0)
+        except ChildProcessError:
+            status = 0
+    sys.stdout.write(full.decode(errors="replace"))
+    sys.exit(0)
+`;
+
 const FAUX_TRAJECTORY = [
 	{
 		events: [
@@ -250,6 +364,70 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptP
 		// The resolution is durable, exactly one.
 		expect(records2.filter((r) => r.event.type === "tool_execution_resolved")).toHaveLength(1);
 	}, 180_000);
+
+	it("0.1.26 (ADR-0024 Amd) — a kill mid-PARALLEL execution leaves MULTIPLE uncertain executions; each verdict resolves, the resume completes", async () => {
+		// The parallel variant: ONE turn with THREE concurrent shell calls
+		// (8s each, the window is 4 — all three run at once). The kill
+		// lands when all THREE started events are on disk → three
+		// uncertain executions. The resume answers EACH verdict (rerun);
+		// the durable approvals apply; the re-executions run; the
+		// trajectory completes.
+		const dir = mkdtempSync(join(tmpdir(), "kiso-k9p-"));
+		const home = join(dir, "home");
+		const workdir = join(dir, "work");
+		mkdirSync(workdir, { recursive: true });
+		const parallelScript = [
+			{
+				events: [
+					{ type: "tool_call_end", callId: "p1", name: "shell", input: { command: "sleep 8 && touch marker-p1.txt" } },
+					{ type: "tool_call_end", callId: "p2", name: "shell", input: { command: "sleep 8 && touch marker-p2.txt" } },
+					{ type: "tool_call_end", callId: "p3", name: "shell", input: { command: "sleep 8 && touch marker-p3.txt" } },
+					{ type: "stop", reason: "tool_use" },
+				],
+			},
+			{ events: [{ type: "stop", reason: "end_turn" }] },
+		];
+		writeFileSync(join(dir, "faux.json"), JSON.stringify(parallelScript), "utf8");
+		writeFileSync(join(dir, "driver.py"), PTY_DRIVER_PARALLEL, "utf8");
+
+		// ── Phase 1: live chat, killed at the THIRD execution ──
+		const phase1 = `
+import sys
+sys.argv = [""]
+exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(dir, "faux.json"))}, "k9p", ${JSON.stringify(workdir)}, None, None)
+`;
+		execFileSync("python3", ["-c", phase1], { encoding: "utf8", timeout: 90_000 });
+
+		const store = new SessionStore(join(home, "sessions"));
+		const records = store.load("k9p");
+		const ledger = executionLedger(records.map((r) => r.event));
+		const uncertain = [...ledger.values()].filter((r) => r.status === "uncertain");
+		// ALL THREE parallel executions were interrupted — the parallel
+		// variant's signature.
+		expect(uncertain).toHaveLength(3);
+		expect(uncertain.map((u) => u.name)).toEqual(["shell", "shell", "shell"]);
+		expect(records.some((r) => r.event.type === "terminal")).toBe(false);
+
+		// ── Phase 2: a FRESH process resumes; EACH verdict answered; the
+		//    trajectory completes. ──
+		const phase2 = `
+import sys
+sys.argv = [""]
+exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(dir, "faux.json"))}, "k9p", ${JSON.stringify(workdir)}, None, ["r", "r", "r"])
+`;
+		const out = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000 });
+		expect((out.match(/\(r\)erun \/ \(a\)bandon/g) ?? []).length).toBe(3); // EACH uncertain was presented
+		const records2 = new SessionStore(join(home, "sessions")).load("k9p");
+		expect(records2.some((r) => r.event.type === "terminal")).toBe(true);
+		// The re-executions landed their receipts (the resume completed).
+		expect(records2.filter((r) => r.event.type === "tool_execution_resolved")).toHaveLength(3);
+		// None of the markers appeared — the killed commands never finished.
+		expect(existsSync(join(workdir, "marker-p1.txt"))).toBe(false);
+		expect(existsSync(join(workdir, "marker-p2.txt"))).toBe(false);
+		expect(existsSync(join(workdir, "marker-p3.txt"))).toBe(false);
+	}, 240_000);
 
 	it("compact crash semantics (ADR-0044): the post-persist state resumes COMPRESSED, the pre-persist state resumes untouched", () => {
 		// The two sides of the /compact persist window, as crash states a

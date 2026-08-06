@@ -280,7 +280,7 @@ describe("abort boundaries (Area 4)", () => {
 		expect(log.all.some((e) => e.type === "permission_decided")).toBe(false);
 	});
 
-	it("an abort after the first tool never starts a sibling tool", async () => {
+	it("an abort mid-run never lets a not-yet-started sibling begin (0.1.26: the signal gates the decide)", async () => {
 		const registry = new ToolRegistry();
 		const order: string[] = [];
 		registry.register(
@@ -307,6 +307,22 @@ describe("abort boundaries (Area 4)", () => {
 				},
 			}),
 		);
+		// 0.1.26 (流中执行): BOTH calls launch at tool_call_end — the abort
+		// cannot un-launch the sibling. The guarantee moved to the SIGNAL:
+		// a sibling whose DECIDE is still in flight when the abort lands
+		// (a slow policy here) bails before its started event — never a
+		// side effect after the cancel.
+		const policies = [
+			{
+				extension: "slow-decide",
+				policy: {
+					decide: async (payload: { name: string }) => {
+						if (payload.name === "second") await new Promise((r) => setTimeout(r, 50));
+						return { action: "allow" as const };
+					},
+				},
+			},
+		];
 		const ac = new AbortController();
 		const events: Event[] = [];
 		const gen = loop({
@@ -324,17 +340,18 @@ describe("abort boundaries (Area 4)", () => {
 			registry,
 			messages: [USER],
 			signal: ac.signal,
+			approvalPolicies: policies,
 		});
-		// Abort WHILE the first handler is running (after it started) — a
-		// cancel before the handler begins is caught by the C 组 gate and
-		// correctly prevents the side effect entirely.
+		// Abort WHILE the first handler is running (after it started) — the
+		// sibling's decide (the slow policy) is still in flight: the abort
+		// races it (raceAbort), the sibling bails before its started event.
 		setTimeout(() => ac.abort(), 10);
 		for await (const ev of gen) {
 			events.push(ev);
 		}
 		expect(order).toContain("first:start");
 		expect(order).toContain("first:end aborted=true"); // the handler SAW the signal
-		expect(order).not.toContain("second:start");
+		expect(order).not.toContain("second:start"); // the sibling never began
 		expect(terminalOf(events).outcome.kind).toBe("aborted");
 	});
 

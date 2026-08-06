@@ -77,6 +77,10 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
                 except OSError:
                     return
     read_until(b"you> ", 20)
+    # 0.1.26 (懒连接): the extension returns immediately — the fake server
+    # connects in the background. Give the connect a moment to settle before
+    # the model's first call (the "首调等待就绪" wait is the unit tests').
+    time.sleep(1.5)
     os.write(fd, b"go\\n")
     read_until(b"approve mcp__fake__echo", 30)
     os.write(fd, b"y\\n")
@@ -126,7 +130,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 `;
 		const { env } = isolatedEnv();
 		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
-		expect(out).toContain("[2 extensions: mcp, safe-defaults]"); // the banner names the bundle
+		expect(out).toContain("[2 extensions: mcp (connecting…), safe-defaults]"); // 0.1.26: the lazy connect is in flight at the banner
 		expect(out).toContain("approve mcp__fake__echo"); // 审批提问出现 — the ask tier reached the human
 		expect(out).toContain("hello from mcp"); // the echo result returned to the model
 		expect(out).toContain("the echo worked");
@@ -165,7 +169,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 `;
 		const { env } = isolatedEnv();
 		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
-		expect(out).toContain("[1 extension: mcp]"); // only the bundle, no safe-defaults
+		expect(out).toContain("[1 extension: mcp (connecting…)]"); // 0.1.26: the banner shows the in-flight connect
 		expect(out).toContain("approve mcp__fake__echo"); // 审批提问出现 — the human gate held
 		expect(out).toContain("hello from mcp"); // the echo result returned after the approval
 		expect(out).toContain("the echo worked");
@@ -233,6 +237,10 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
                 except OSError:
                     return
     read_until(b"you> ", 20)
+    # 0.1.26 (懒连接): the extension returns immediately — the fake server
+    # connects in the background. Give the connect a moment to settle before
+    # the model's first call (the "首调等待就绪" wait is the unit tests').
+    time.sleep(1.5)
     os.write(fd, b"go\\n")
     # A bare install asks even the extension's OWN status tool (③b) — the
     # ask must be answered or the tool is denied and never executes.
@@ -285,7 +293,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		const { env } = isolatedEnv();
 		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
 		const noiseAt = out.indexOf(NOISE);
-		const bannerAt = out.indexOf("[1 extension: mcp]");
+		const bannerAt = out.indexOf("[1 extension: mcp (connecting…)]");
 		expect(bannerAt).toBeGreaterThan(-1); // the startup banner rendered
 		// RED on the pre-A3 bundle: the child's stderr inherited the PTY and
 		// the noise landed BEFORE the banner (spawn precedes the banner).

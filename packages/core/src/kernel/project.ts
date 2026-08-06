@@ -159,6 +159,26 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	// Summaries render in range order as the pass crosses their boundaries.
 	let renderedSummaries = 0;
 
+	// 0.1.26 (ADR-0024 Amd, parallel execution): the tool results of ONE turn
+	// are buffered and emitted in CALL order at the turn boundary. The
+	// physical seq order is the COMPLETION order (started/receipt/result land
+	// when each execution finishes — parallel), which must never enter the
+	// projection: the same logical turn projects byte-identically whatever
+	// the completion interleaving (字节纪律 — 以 call 序为准,完成序只影响
+	// 落盘时刻). `callOrder` is rebuilt per turn from the tool_call_end
+	// events (their seq order IS the call order — the stream order).
+	let resultBuf: { callId: string; message: ToolResultMessage }[] = [];
+	const callOrder = new Map<string, number>();
+	let callOrderNext = 0;
+	const flushResults = (): void => {
+		if (resultBuf.length === 0) return;
+		resultBuf.sort((a, b) => (callOrder.get(a.callId) ?? 0) - (callOrder.get(b.callId) ?? 0));
+		for (const r of resultBuf) out.push(r.message);
+		resultBuf = [];
+		callOrder.clear();
+		callOrderNext = 0;
+	};
+
 	let explicitAssistant = false;
 
 	for (const ev of events) {
@@ -176,6 +196,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			(ev as { seq?: number }).seq! > summaryRanges[renderedSummaries]!.to
 		) {
 			flushAssistant();
+			flushResults(); // the results follow the assistant in reading order
 			out.push({
 				role: "assistant",
 				blocks: [{ type: "text", text: summaryRanges[renderedSummaries]!.summary }],
@@ -184,6 +205,10 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		}
 		switch (ev.type) {
 			case "user_input": {
+				// 0.1.26: the previous turn closes here — the assistant
+				// first, then its results in call order (the turn boundary).
+				flushAssistant();
+				flushResults();
 				// 六: the final replacement renders HERE, at the input's own
 				// position — the original is skipped, the replacement event
 				// itself produces nothing (a later replacement for the same
@@ -216,6 +241,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				// D 组: an explicit message boundary — close any open message
 				// and begin a new one (adjacent assistants stay separate).
 				flushAssistant();
+				flushResults();
 				explicitAssistant = true;
 				if (ev.source !== undefined) assistantSource = ev.source;
 				break;
@@ -234,6 +260,8 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				explicitAssistant = false;
 				break;
 			case "text_start":
+				// An INTERNAL block boundary (a multi-block assistant
+				// message) — never a turn boundary; no flush.
 				pushText(); // an explicit boundary: a new block begins
 				if (ev.source !== undefined) assistantSource = ev.source;
 				break;
@@ -241,6 +269,19 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				pushText(); // an explicit boundary: the block closes
 				break;
 			case "text_delta":
+				// 0.1.26: a text delta with BUFFERED RESULTS opens the NEXT
+				// turn's stream — the previous turn closes HERE: its
+				// assistant first (already closed at the stop, usually),
+				// then its buffered results in call order (the turn
+				// boundary; the API requires each tool_calls message to be
+				// followed by its tool messages — a real DeepSeek 400
+				// without the boundary). The guard keys on the RESULT
+				// buffer: a mid-message delta (the current turn's text, the
+				// multi-block assistant) has nothing buffered and must not
+				// flush — the empty flush would clear the source and split
+				// the message.
+				if (resultBuf.length > 0) flushAssistant();
+				flushResults();
 				text = (text ?? "") + ev.text;
 				break;
 			case "tool_call_start":
@@ -249,7 +290,14 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			case "tool_call_input_delta":
 				break; // the parsed input arrives at tool_call_end
 			case "tool_call_end":
+				// 0.1.26: a tool_call_end with BUFFERED RESULTS opens the
+				// NEXT turn's stream (the model called again) — the
+				// previous turn closes first; a same-turn call has nothing
+				// buffered.
+				if (resultBuf.length > 0) flushAssistant();
+				flushResults();
 				pushText();
+				callOrder.set(ev.callId, callOrderNext++);
 				blocks.push({
 					type: "tool_use",
 					callId: ev.callId,
@@ -258,7 +306,11 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				});
 				break;
 			case "tool_result": {
-				flushAssistant();
+				// 0.1.26: NO flushAssistant — the streaming execution lands
+				// results BETWEEN the turn's tool_call_ends; closing the
+				// assistant here splits the turn's tool_calls message (the
+				// API 400). The assistant stays open and closes at the turn
+				// boundary with ALL its tool_use blocks.
 				const message: ToolResultMessage = {
 					role: "tool",
 					callId: ev.callId,
@@ -276,10 +328,14 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				if ("seq" in ev && typeof ev.seq === "number") {
 					Object.defineProperty(message, "eventSeq", { value: ev.seq, enumerable: false, configurable: true });
 				}
-				out.push(message);
+				// 0.1.26: BUFFERED — the results flush in call order at the
+				// turn boundary (flushResults), not in completion order.
+				resultBuf.push({ callId: ev.callId, message });
 				break;
 			}
 			case "microcompacted": {
+				flushAssistant();
+				flushResults(); // the results must be in `out` before the replacement pass
 				flushAssistant();
 				// C 区: replace every eligible OLD tool result with the fixed
 				// placeholder. Eligibility: the result's own event seq <= the
@@ -297,6 +353,8 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				break;
 			}
 			case "compacted": {
+				flushAssistant();
+				flushResults(); // the results must be in `out` before the replacement pass
 				flushAssistant();
 				// Apply the EXACT persisted replacements — never re-run the
 				// compaction algorithm (a future version could differ). 五:
@@ -326,8 +384,11 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			case "thinking":
 				// 自举 P1: accumulate the turn's reasoning — the flush (an
 				// empty one at the turn's start) keeps the pending text, and
-				// the assistant message that follows carries it.
-				flushAssistant();
+				// the assistant message that follows carries it. 0.1.26: the
+				// assistant flush is guarded on the buffered results (a
+				// mid-turn reasoning must not split the current message).
+				if (resultBuf.length > 0) flushAssistant();
+				flushResults();
 				pendingReasoning = (pendingReasoning ?? "") + ev.text;
 				break;
 			case "summarized":
@@ -336,9 +397,23 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				// covered range's position.
 				break;
 			case "usage":
+				// 0.1.26: NO flush — the non-rendered events interleave with
+				// the streaming execution (a tool's started/receipt, an
+				// ask's request land BETWEEN the turn's tool_call_ends).
+				// Flushing here SPLIT the turn's assistant message — the
+				// API requires each tool_calls message to be followed by
+				// ITS tool messages, and a second assistant message (with
+				// the later calls) between the first's calls and results
+				// is a real 400. The assistant closes at the stop and the
+				// turn boundaries.
+				break;
 			case "stop":
+				// The turn boundary: the assistant closes at the provider's
+				// stop; the results are buffered and flush at the next
+				// turn's first event.
+				flushAssistant();
+				break;
 			case "terminal":
-			case "microcompacted":
 			case "tool_execution_started":
 			case "tool_execution_succeeded":
 			case "tool_execution_failed":
@@ -347,11 +422,14 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			case "permission_decided":
 			case "permission_expired":
 			case "uncertain_pending":
-				flushAssistant();
+				break;
+			case "microcompacted":
+				// handled above (the replacement pass) — no open message.
 				break;
 		}
 	}
 	flushAssistant();
+	flushResults();
 	return out;
 }
 

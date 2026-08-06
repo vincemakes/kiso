@@ -76,6 +76,11 @@ export class AgentRuntime {
 		// name throws here, at agent creation: a loud startup failure.
 		for (const ext of definition.extensions ?? []) {
 			for (const tool of ext.tools ?? []) this.#registry.register(tool);
+			// 0.1.26 (MCP 懒连接): an extension's tools array is LIVE — the
+			// registry consults it on every lookup, so tools registered by a
+			// background connect (the MCP bridge's servers) are callable the
+			// moment they land, without a session rebuild.
+			this.#registry.registerLive(() => ext.tools ?? []);
 		}
 		this.#adapterPromise = resolveAdapter(definition);
 	}

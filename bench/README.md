@@ -35,27 +35,27 @@ future edit cannot regress the labeling.
 | | claude | 1 | 25,911 | 25,856 | 51,767 | 28,497 | 225 | 2 | 6s |
 | | | 2 | 25,941 | 25,728 | 51,669 | 28,514 | 227 | 2 | 6s |
 | | mean | | 25,926 | 25,792 | 51,718 | 28,505 | 226 | 2.0 | 6.0s |
-| T2 fix+verify | **kiso** | 1 | 256 | 5,120 | **5,376** | 768 | 276 | 4 | 6s |
-| | | 2 | 256 | 5,120 | **5,376** | 768 | 282 | 4 | 7s |
-| | **mean** | | 256 | 5,120 | **5,376** | **768** | 279 | 4.0 | 6.5s |
+| T2 fix+verify | **kiso** | 1 | 336 | 4,992 | **5,328** | 835 | 260 | 4 | 8s |
+| | | 2 | 223 | 5,120 | **5,343** | 735 | 249 | 4 | 7s |
+| | **mean** | | 280 | 5,056 | **5,336** | **785** | 255 | 4.0 | 7.5s |
 | | pi | 1 | 1,531 | 17,152 | 18,683 | 3,246 | 446 | 4 | 11s |
 | | | 2 | 1,455 | 17,152 | 18,607 | 3,170 | 345 | 4 | 10s |
 | | mean | | 1,493 | 17,152 | 18,645 | 3,208 | 396 | 4.0 | 10.5s |
 | | claude | 1 | 26,607 | 78,464 | 105,071 | 34,453 | 652 | 5 | 13s |
 | | | 2 | 26,432 | 77,952 | 104,384 | 34,227 | 641 | 4 | 14s |
 | | mean | | 26,520 | 78,208 | 104,728 | 34,340 | 646 | 4.5 | 13.5s |
-| T3 cross-file rename | **kiso** | 1 | 871 | 7,552 | **8,423** | 1,626 | 717 | 5 | 11s |
-| | | 2 | 1,036 | 12,416 | **13,452** | 2,278 | 822 | 7 | 15s |
-| | **mean** | | 953 | 9,984 | **10,938** | **1,952** | 770 | 6.0 | 13.0s |
+| T3 cross-file rename | **kiso** | 1 | 1,380 | 7,296 | **8,676** | 2,110 | 712 | 5 | 11s |
+| | | 2 | 1,450 | 7,552 | **9,002** | 2,205 | 756 | 5 | 11s |
+| | **mean** | | 1,415 | 7,424 | **8,839** | **2,158** | 734 | 5.0 | 11.0s |
 | | pi | 1 | 1,709 | 23,552 | 25,261 | 4,064 | 806 | 5 | 14s |
 | | | 2 | 1,547 | 22,016 | 23,563 | 3,749 | 697 | 5 | 12s |
 | | mean | | 1,628 | 22,784 | 24,412 | 3,906 | 752 | 5.0 | 13.0s |
 | | claude | 1 | 28,290 | 218,368 | 246,658 | 50,127 | 2,185 | 15 | 30s |
 | | | 2 | 28,101 | 188,928 | 217,029 | 46,994 | 2,004 | 14 | 30s |
 | | mean | | 28,196 | 203,648 | 231,844 | 48,561 | 2,094 | 14.5 | 30.0s |
-| T4 skills (repo convention) | **kiso** | 1 | 4,522 | 46,080 | **50,602** | 9,130 | 2,360 | 12 | 36s |
-| | | 2 | 3,451 | 34,432 | **37,883** | 6,894 | 1,451 | 11 | 25s |
-| | **mean** | | 3,987 | 40,256 | **44,242** | **8,012** | 1,906 | 11.5 | 30.5s |
+| T4 skills (repo convention) | **kiso** | 1 | 3,787 | 47,360 | **51,147** | 8,523 | 2,946 | 13 | 43s |
+| | | 2 | 1,833 | 28,160 | **29,993** | 4,649 | 1,727 | 13 | 30s |
+| | **mean** | | 2,810 | 37,760 | **40,570** | **6,586** | 2,337 | 13.0 | 36.5s |
 | | pi | 1 | 2,362 | 49,280 | 51,642 | 7,290 | 2,542 | 9 | 38s |
 | | | 2 | 2,061 | 51,456 | 53,517 | 7,207 | 2,530 | 8 | 30s |
 | | mean | | 2,212 | 50,368 | 52,580 | 7,249 | 2,536 | 8.5 | 34.0s |
@@ -79,13 +79,13 @@ future edit cannot regress the labeling.
 
 ## Headline
 
-**Raw total input tokens:** kiso is 2.2× fewer than pi on T3 (10.9K vs
-24.4K) and 21.2× fewer than Claude Code — with identical task outcomes.
-Across the scenarios: 3.7× (T1), 3.5× (T2), 1.2× (T4); the T5 long session
+**Raw total input tokens:** kiso is 2.8× fewer than pi on T3 (8.8K vs
+24.4K) and 26.2× fewer than Claude Code — with identical task outcomes.
+Across the scenarios: 3.7× (T1), 3.4× (T2), 1.3× (T4); the T5 long session
 1.9× fewer than pi, 6.7× fewer than CC.
 
 **Cost-weighted (fresh + 0.1×cached, DeepSeek's cache-hit price ratio):**
-kiso is cheaper than pi on T3 (2.0×, 2.0K vs 3.9K), T2 (4.2×), T1 (4.6×)
+kiso is cheaper than pi on T3 (1.8×, 2.2K vs 3.9K), T2 (4.1×), T1 (4.6×)
 and T5 (1.35×, 22.5K vs 30.4K); pi edges ahead on T4 cost-weighted (7.2K
 vs 8.0K — the 0.1.23 T4 runs explored more: 12/11 requests vs 9/8, n=2
 variance) and stays 5.5-24.9× cheaper than CC. The 0.1.22-era version of
@@ -93,6 +93,17 @@ this document reported "pi overtakes ~2.7× on cost" — that headline was
 built on the double-counted kiso rows (see the correction below). Honesty
 rule unchanged: the numbers are each provider's own, n=2, one fixture
 each, and a one-cell pi win on T4-cost-weighted is written plainly.
+
+**0.1.26 (the parallel-execution round):** the kiso T2-T4 rows above are
+RE-RUN on 0.1.26 (the windowed parallel execution, ADR-0024 Amendment 1),
+fresh runs, n=2. The honest comparison: the wall times are UNCHANGED
+within the LLM variance (T2 6.5→7.5s, T3 13.0→11.0s, T4 30.5→36.5s — one
+T4 run hit a transient connection error and was retried). The reason is
+structural: these tasks' tools are milliseconds-fast, so the wall IS the
+model round-trips and the tool-execution overlap buys nothing measurable.
+The parallel's measured win is where the tool LATENCY dominates: three
+300ms tools complete in ~300ms instead of ~900ms (the synthetic gate in
+packages/core/tests/parallel.test.ts, ①).
 
 ## The fresh-mystery — verdict of the 0.1.23 investigation
 

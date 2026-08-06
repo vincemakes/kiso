@@ -188,8 +188,12 @@ function bannerExtensionText(): string {
 	const total = userExtensions.length + projectExtensions.length;
 	if (total === 0) return "";
 	const parts: string[] = [];
-	if (userExtensions.length > 0) parts.push(userExtensions.map((e) => e.name).join(", "));
-	if (projectExtensions.length > 0) parts.push(`project: ${projectExtensions.map((e) => e.name).join(", ")}`);
+	// 0.1.26 (MCP 懒连接): an extension with a live `connecting` flag shows
+	// its in-flight state in the banner — "mcp (connecting…)".
+	const label = (e: { name: string; connecting?: boolean }): string =>
+		e.connecting === true ? `${e.name} (connecting…)` : e.name;
+	if (userExtensions.length > 0) parts.push(userExtensions.map(label).join(", "));
+	if (projectExtensions.length > 0) parts.push(`project: ${projectExtensions.map(label).join(", ")}`);
 	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
 }
 
