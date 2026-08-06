@@ -239,4 +239,77 @@ describe("C: the loop appends the boundary when over the threshold", () => {
 		expect(content("r4")).toBe("line\n".repeat(200));
 		expect(content("r5")).toBe("line\n".repeat(200));
 	});
+
+	it("C6 (P4): tagged results never count toward the boundary — 计数与清除口径一致", async () => {
+		// keepResults 1: the ONLY clearable result (r0) sits within the keep
+		// window; r1/r2 carry do-not-compact and are un-clearable forever.
+		// The OLD count included the tagged ones, so it saw 3 "visible"
+		// results and placed the boundary AT r1 — clearing r0 even though
+		// nothing beyond the keep window could ever clear. The corrected
+		// count excludes the tag — nothing to compact, no boundary.
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		for (let i = 0; i < 3; i++) {
+			log.append({ type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: `f${i}.ts` } });
+			log.append({
+				type: "tool_result",
+				callId: `r${i}`,
+				content: "line\n".repeat(200),
+				isError: false,
+				...(i === 1 || i === 2 ? { tags: [DO_NOT_COMPACT] } : {}),
+			});
+		}
+		for await (const _ev of loop({
+			adapter: createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]),
+			model: "faux",
+			registry: new ToolRegistry(),
+			log,
+			microcompact: { thresholdTokens: 100, keepResults: 1 },
+		})) {
+			// drain
+		}
+		expect(log.all.filter((e) => e.type === "microcompacted")).toHaveLength(0);
+		const projected = projectMessages(log.all);
+		const tools = projected.filter((m) => m.role === "tool");
+		expect(tools.find((m) => m.callId === "r0")?.content).toBe("line\n".repeat(200)); // nothing was cleared
+	});
+
+	it("C6 (P4): the boundary anchors on the newest CLEARABLE result, never a tagged one", async () => {
+		// keepResults 2: r0 untagged, r1 TAGGED, r2/r3 untagged. The OLD
+		// count anchored at r1 (the tagged result — which the projection
+		// then keeps, silently shrinking the clearable window). The
+		// corrected count anchors at r0, the 2nd-newest CLEARABLE result.
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		for (let i = 0; i < 4; i++) {
+			log.append({ type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: `f${i}.ts` } });
+			log.append({
+				type: "tool_result",
+				callId: `r${i}`,
+				content: "line\n".repeat(200),
+				isError: false,
+				...(i === 1 ? { tags: [DO_NOT_COMPACT] } : {}),
+			});
+		}
+		for await (const _ev of loop({
+			adapter: createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]),
+			model: "faux",
+			registry: new ToolRegistry(),
+			log,
+			microcompact: { thresholdTokens: 100, keepResults: 2 },
+		})) {
+			// drain
+		}
+		const boundary = log.all.find((e) => e.type === "microcompacted");
+		expect(boundary).toBeDefined();
+		expect((boundary as { beforeSeq: number }).beforeSeq).toBe(
+			log.all.find((e) => e.type === "tool_result" && e.callId === "r0")!.seq,
+		);
+		const projected = projectMessages(log.all);
+		const tools = projected.filter((m) => m.role === "tool");
+		// r0 cleared; the tagged r1 and the kept window stay intact.
+		expect(tools.find((m) => m.callId === "r0")?.content).toBe("[old tool output cleared: read_file f0.ts]");
+		expect(tools.find((m) => m.callId === "r1")?.content).toBe("line\n".repeat(200));
+		expect(tools.find((m) => m.callId === "r2")?.content).toBe("line\n".repeat(200));
+	});
 });

@@ -48,7 +48,7 @@ import { NoOpHooks } from "./hooks.js";
 import type { ModeProfile } from "./mode.js";
 import { resolveModeProfile } from "./mode.js";
 import { denialResult, type PermissionDecision } from "./permission.js";
-import { messagesToEvents, MICROCOMPACTABLE, projectMessages } from "./project.js";
+import { messagesToEvents, MICROCOMPACTABLE, DO_NOT_COMPACT, projectMessages } from "./project.js";
 
 /** Zero-dependency sleep: the kernel must not import host globals (ADR-0001). */
 declare function setTimeout(cb: () => void, ms: number): unknown;
@@ -991,7 +991,12 @@ function microcompactBoundarySeq(events: readonly Event[], keepResults: number):
 	for (const ev of events) {
 		if (ev.type !== "tool_result" || ev.seq <= lastCleared) continue;
 		const name = callName.get(ev.callId);
-		if (name !== undefined && MICROCOMPACTABLE.has(name)) visible.push(ev.seq);
+		// 手感批 C6 (P4): the do-not-compact tag makes a result UN-CLEARABLE
+		// (the projection keeps it) — the count must EXCLUDE it, exactly like
+		// the clearing side. A tagged result counted here would steal a keep
+		// window slot forever and could anchor the boundary at a result the
+		// projection refuses to clear (计数与清除口径一致).
+		if (name !== undefined && MICROCOMPACTABLE.has(name) && !(ev.tags ?? []).includes(DO_NOT_COMPACT)) visible.push(ev.seq);
 	}
 	if (visible.length <= keepResults) return undefined;
 	return visible[visible.length - keepResults - 1]!;
