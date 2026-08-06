@@ -48,7 +48,10 @@ that has not finished speaking.
 - 0040 — The v2d body renderer cell model — Accepted
 - 0041 — The CLI gate — terminal cap 2400 — Accepted
 - 0042 — Abstain is a verdict — Accepted
-- 0043 — TUI extraction, per-package gates — Accepted
+- 0043 — TUI extraction, per-package gates — Accepted (Amendment 1:
+the cli gate 1320 → 1856, one argued recalibration for the Config
+round's spec-forced growth; next approach without argument = extraction,
+not another recalibration)
 - 0044 — The compact summary layer — Accepted
 - 0045 — The config surface: credentials never on disk, project config
   in the trust package, no "always" — Accepted

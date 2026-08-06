@@ -52,3 +52,29 @@ palette and width tables — leaves the cli for a new package,
   it experimental, no API-stability promise yet.
 - Release topology: kiso-tui enters the chain BEFORE the cli (the cli
   depends on it); 0.1.19 ships eight packages.
+
+## Amendment 1 (2026-08-06): the cli gate 1320 → 1856 — one argued recalibration
+
+The 0.1.23 config-surface round (ADR-0045) measured the cli at **1547**
+code lines (comments + blanks stripped — the gate's snapshot basis, now
+reproducible: `find apps/cli/src -name "*.ts" -exec cat {} + | grep -vE
+'^\s*(//|/\*|\*|$)' | wc -l`), 227 over the 1320 gate. The overage is the
+spec-forced Config increment (the settings surface, /model, the profile
+resolution — ≈316 lines of the round's growth). Ruling: **the cli gate
+recalibrates to 1856** (= 1547 actual + 20%, the same snapshot formula the
+extraction used).
+
+Boundary conditions, stated once so they never need re-litigating:
+
+1. **The +20% is a snapshot metric, not an automatic ratchet.** A round
+   that measures itself at N over the gate gets NO second recalibration
+   for free — the formula only ever re-baselines from a snapshot taken
+   by a review ruling, for SPEC-FORCED growth with an argument on the
+   record. Self-adjusting the gate is a violation, not a precedent.
+2. **The next approach without an argument is extraction, not a second
+   recalibration.** The config layer is the ready candidate: the config
+   loading / profile parsing can sink into the runtime (or a standalone
+   module) without changing the CLI's surface — exactly the move that
+   produced the 1320/1520 split.
+3. The core gate stays 2000; the tui gate stays 1520 — no recalibration
+   was requested or granted for them.

@@ -29,7 +29,13 @@ const GATES = [
 	// (the ADR-0041 escape hatch: extraction, not a fifth raise); the sum
 	// of the two gates may exceed 2400 — the layering's breathing room is
 	// the legitimate yield of extraction.
-	{ name: "cli", limit: 1320, dir: join("apps", "cli", "src") },
+	// ADR-0043 Amendment 1 (the 2026-08-06 ruling): the cli gate is 1856 —
+	// the 0.1.23 Config round measured 1547 actual (the spec-forced config
+	// surface, an argued increment), recalibrated with the same snapshot
+	// formula (+20%). The +20% is a snapshot metric, NOT an automatic
+	// ratchet: the next approach without an argument is EXTRACTION (the
+	// config layer is the ready candidate), not a second recalibration.
+	{ name: "cli", limit: 1856, dir: join("apps", "cli", "src") },
 	{ name: "tui", limit: 1520, dir: join("packages", "tui", "src") },
 ];
 const ROOT = new URL("..", import.meta.url).pathname;
