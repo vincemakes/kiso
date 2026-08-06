@@ -114,7 +114,32 @@ round's plan"). 逐条标注 做/不做/待办:
 
 - clean-tree at delivery: `git status --short` empty, `git log
   origin/main..HEAD --oneline` empty.
-- Full suite: 558 → the round's additions (see the release record).
-- Gates: core 1914/2000 · cli 1173/1320 · tui 1309/1520 — all inside.
+- Full suite: **563 green** (was 548 — +15: A1/A2 feel e2e, the A2 unit
+  tests, A3 ring units + e2e, C6, C7, C8 PTY e2e + the C8 pipe pin).
+- Gates: core 1914/2000 · cli 1231/1320 · tui 1334/1520 — all inside.
 - Release 0.1.21: eight packages, the standard template (post-publish
-  notes appended below by the release record).
+  notes below).
+
+## Post-publish notes (0.1.21 + the 0.1.22 CLI patch)
+
+- Registry: all eight @vincemakes/kiso-* at 0.1.21 (direct curl, all
+  present immediately). Fresh-install smoke PASS across all five consumer
+  tiers on packed artifacts. Three bare runs of the installed CLI
+  (exit 0: `~`, `/`, an empty non-git dir) + the real-extension run
+  (`[4 extensions: mcp, skills, subagent, safe-defaults]` — and the A3
+  capture held: no stdio chatter). Published-artifact idle probe: 8s
+  idle → 293B, clean close, no dangling CSI.
+- **The published-artifact verification caught a real race (C8)**: in
+  PIPE mode the auto-compact silently never ran — EOF closes the input
+  early, so the exit-time `await chain` captured the chain BEFORE the
+  turn's auto-compact append. Fixed: the exit re-awaits the chain once
+  after the turn (a turn-internal await would be circular — the appended
+  segment chains after the turn's own promise); pinned by a pipe-shape
+  regression test (red on the pre-fix code). The CLI shipped the patch
+  as **0.1.22** (cli-only; the other seven packages stay at 0.1.21, deps
+  unchanged). Published-artifact pipe smoke on the installed 0.1.22:
+  `[/compact] saved ~97,598 tokens` + a durable summarized event.
+- The mcp bundle (A3) is a drop-in extension artifact: the running
+  `~/.kiso/extensions/kiso-mcp.mjs` is refreshed by the E1 convention
+  (copy the rebuilt bundle in) — noted, not part of the npm release.
+- Gates after the fix: core 1914/2000 · cli 1231/1320 · tui 1334/1520.
