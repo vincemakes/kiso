@@ -88,4 +88,21 @@
 
 ## 发布实录 (post-publish)
 
-- (待发布后补录:发布、post-publish 验证、门禁实录、clean-tree 证据。)
+- **0.1.29 八包发布**(tag 先于发布;拓扑序 core→evals→providers→tools-node
+  →runtime→tui→cli;`npm publish <path>` 形式被 npm 的 git-remote 解析坑
+  (ls-remote ssh://git@github.com/packages/core.git 乱码),改用
+  `npm publish -w <pkg>` 形式逐包成功;post-publish 验证:registry 八包
+  0.1.29,npm i -g --prefer-online 后全局 CLI 就位 0.1.29)。
+- 门禁:core **1995/2000(零 diff,硬边界守住)** · cli 1573/1856(+21:
+  清单翻译+钩子) · tui 1403/1520(+42:checklist cell+RenderInput);
+  **638 测试**(615 → +23:todo 单测 14 + summarize 收口 5 + checklist
+  渲染 3 + 长程叙事 e2e 1);smoke 5 层 PASS;demo PASS。
+- 长程叙事 e2e 实录:7 个用户轮(每轮自带 end_turn——/compact 按轮计数,
+  单轮长脚本无可覆盖物,第一版 e2e 就是栽在这);kill 落在 round 7 shell
+  执行中(谓词必须匹配 s1 的 started 行,不能全文件子串——call_end 行也
+  带 name:"shell",会早杀);resume 的 rerun 裁决**不重执行**(B 组填充
+  denial),轨迹继续到 terminal;/compact 在独立 chat 进程跑(resume 是
+  一次性命令,跑完即退出);**契约洞检查点通过**:summarized coversToSeq=9
+  (round 2 输入在 seq 10——收口把边界拉在清单轮之前),投影含最新清单
+  逐字节 + 摘要文本,round 1 旧回显被覆盖。
+- 范围外不变:/todos 人类命令/置顶渲染/子任务嵌套/优先级/activeForm。
