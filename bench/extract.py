@@ -46,7 +46,10 @@ def pi(work):
     return dict(input=inp, cache_read=cache, output=out, requests=reqs, first_prompt=first)
 
 def claude(work):
-    d = json.load(open(f"{work}/stdout.log"))
+    text = open(f"{work}/stdout.log").read()
+    # CC may print warnings (e.g. the stdin notice) before the JSON — parse
+    # from the first "{".
+    d = json.loads(text[text.index("{"):])
     u = d.get("usage", {})
     return dict(
         input=u.get("input_tokens", 0),

@@ -10,6 +10,14 @@ rm -rf "$WORK"; mkdir -p "$WORK"
 cp -R "$B/fixture-v1/" "$WORK/repo/"
 rm -rf "$WORK/repo/.git"
 PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks.json','utf8'))['$TASK'])")
+if [ "$TASK" = "T4" ]; then
+  cp -R "$B/fixture-v2/" "$WORK/repo/"
+  rm -rf "$WORK/repo/.git"
+  # the same SKILL.md, each tool via its NATIVE channel: kiso's skills dir,
+  # pi's --skill flag, Claude Code's project skills dir.
+  mkdir -p "$WORK/repo/.claude/skills/repo-conventions"
+  cp "$B/t4-skill/repo-conventions/SKILL.md" "$WORK/repo/.claude/skills/repo-conventions/SKILL.md"
+fi
 . "${XDG_CONFIG_HOME:-$HOME/.config}/claude-deepseek/credentials.env"
 
 START=$(date +%s)
@@ -17,18 +25,23 @@ cd "$WORK/repo"
 case "$TOOL" in
   kiso)
     EXTDIR="$WORK/ext"; mkdir -p "$EXTDIR"; cp "$B/bench-allow.mjs" "$EXTDIR/"
+    SKILLS_ENV=""
+    [ "$TASK" = "T4" ] && SKILLS_ENV="KISO_SKILLS_DIR=$B/t4-skill"
     printf '%s\nexit\n' "$PROMPT" | env \
       OPENAI_BASE_URL="https://api.deepseek.com" \
       OPENAI_API_KEY="$DEEPSEEK_API_KEY" \
       OPENAI_MODEL="deepseek-v4-flash" \
       KISO_EXTENSIONS_DIR="$EXTDIR" \
       KISO_HOME="$WORK/kiso-home" \
-      kiso "bench-$TOOL-$TASK-$RUN" > "$WORK/stdout.log" 2>&1 || true
+      $SKILLS_ENV \
+      kiso --mode bypass "bench-$TOOL-$TASK-$RUN" > "$WORK/stdout.log" 2>&1 || true
     ;;
   pi)
+    SKILL_FLAG=""
+    [ "$TASK" = "T4" ] && SKILL_FLAG="--skill $B/t4-skill/repo-conventions"
     env DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
       pi --provider deepseek --model deepseek-v4-flash -p --mode json \
-      "$PROMPT" > "$WORK/stdout.log" 2>&1 || true
+      $SKILL_FLAG "$PROMPT" > "$WORK/stdout.log" 2>&1 || true
     ;;
   claude)
     env ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic" \
@@ -36,7 +49,7 @@ case "$TOOL" in
       ANTHROPIC_MODEL="deepseek-v4-flash" \
       ANTHROPIC_DEFAULT_SONNET_MODEL="deepseek-v4-flash" \
       ANTHROPIC_DEFAULT_HAIKU_MODEL="deepseek-v4-flash" \
-      claude -p "$PROMPT" --output-format json --dangerously-skip-permissions \
+      claude -p "$PROMPT" --output-format json --dangerously-skip-permissions < /dev/null \
       > "$WORK/stdout.log" 2>&1 || true
     ;;
 esac
@@ -46,8 +59,9 @@ echo "$((END-START))" > "$WORK/wall_seconds"
 # verification per task
 VERIFY="n/a"
 case "$TASK" in
-  T2) (node tests/clamp.test.js >/dev/null 2>&1 && VERIFY=pass) || VERIFY=fail ;;
-  T3) (node tests/user.test.js >/dev/null 2>&1 && node src/cli.js >/dev/null 2>&1 && VERIFY=pass) || VERIFY=fail ;;
+  T2) { node tests/clamp.test.js >/dev/null 2>&1 && VERIFY=pass; } || VERIFY=fail ;;
+  T3) { node tests/user.test.js >/dev/null 2>&1 && node src/cli.js >/dev/null 2>&1 && VERIFY=pass; } || VERIFY=fail ;;
+  T4) VERIFY=$("$B/t4-verify.sh" "$WORK/repo") ;;
 esac
 echo "$VERIFY" > "$WORK/verify"
 echo "DONE $TOOL $TASK run=$RUN wall=$(cat "$WORK/wall_seconds")s verify=$VERIFY"

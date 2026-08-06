@@ -563,20 +563,20 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | context economy ● | microcompact + /compact (model summary) + prompt-cache discipline | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
 
-The bench, one fixture, one model, mean of two runs (kiso 0.1.7 · pi ·
-Claude Code via a DeepSeek endpoint):
+The bench, one fixture, one model, mean of two runs (kiso 0.1.22 · pi
+0.73.1 · Claude Code 2.1.223 via a DeepSeek endpoint):
 
 | task | tool | fresh in | cached in | total in | out | reqs | wall |
 |------|--------|-------:|-------:|-------:|-----:|----:|-----:|
-| T1 read+answer | **kiso** | **839** | 1,536 | **2,375** | 126 | 2 | **4.0s** |
-| | pi | 2,885 | 6,016 | 8,901 | 156 | 2 | 4.0s |
-| | claude | 28,407 | 22,464 | 50,871 | 227 | 2 | 9.5s |
-| T2 fix+verify | **kiso** | **672** | 4,864 | **5,536** | 275 | 4 | **6.5s** |
-| | pi | 3,876 | 14,784 | 18,660 | 325 | 4 | 7.5s |
-| | claude | 29,435 | 73,856 | 103,291 | 708 | 4.5 | 13.5s |
-| T3 cross-file rename | **kiso** | **1,854** | 7,680 | **9,534** | 788 | 5 | **9.5s** |
-| | pi | 3,673 | 20,992 | 24,665 | 836 | 5 | 11.0s |
-| | claude | 32,109 | 170,880 | 202,989 | 2,278 | 15.5 | 30.5s |
+| T1 read+answer | **kiso** | 2,372 | 2,176 | **4,548** | 134 | 2.0 | **4.5s** |
+| | pi | 1,146 | 7,680 | 8,826 | 158 | 2.0 | 5.5s |
+| | claude | 25,926 | 25,792 | 51,718 | 226 | 2.0 | 6.0s |
+| T2 fix+verify | **kiso** | 5,490 | 5,184 | **10,674** | 327 | 4.0 | **7.5s** |
+| | pi | 1,493 | 17,152 | 18,645 | 396 | 4.0 | 10.5s |
+| | claude | 26,520 | 78,208 | 104,728 | 646 | 4.5 | 13.5s |
+| T3 cross-file rename | **kiso** | 9,534 | 8,640 | **18,174** | 719 | 5.5 | **11.5s** |
+| | pi | 1,628 | 22,784 | 24,412 | 752 | 5.0 | 13.0s |
+| | claude | 28,196 | 203,648 | 231,844 | 2,094 | 14.5 | 30.0s |
 
 Honest footnotes (from `bench/README.md`): these tasks are SMALL — Claude
 Code's large system prompt buys real product capability (task tracking,

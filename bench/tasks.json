@@ -1,5 +1,6 @@
 {
   "T1": "Read src/range.js and answer: what does parseRange('5-3') return, and why? Answer in one or two sentences.",
   "T2": "There is an off-by-one bug in clamp() in src/range.js: an inclusive clamp must return max, but clamp(5,1,4) returns 3. Fix it, then verify by running: node tests/clamp.test.js",
-  "T3": "Rename the exported function formatUser to renderUser across this repo - the definition and every import and call site - then verify by running: node tests/user.test.js and node src/cli.js"
+  "T3": "Rename the exported function formatUser to renderUser across this repo - the definition and every import and call site - then verify by running: node tests/user.test.js and node src/cli.js",
+  "T4": "Add a function daysBetween(a, b) to src/dates.js: the whole days between two dates, both given in the repo's date format (see formatDate in the same file), exported. Follow the repo's release convention. Then verify with: node tests/days-between.test.js"
 }

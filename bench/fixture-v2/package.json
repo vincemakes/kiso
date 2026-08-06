@@ -1,0 +1,6 @@
+{
+  "name": "bench-fixture",
+  "private": true,
+  "type": "module",
+  "version": "0.3.1"
+}

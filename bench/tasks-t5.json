@@ -1,0 +1,10 @@
+[
+  "Fix the off-by-one in clamp() in src/range.js: an inclusive clamp must return max, so clamp(5,1,4) must return 4.",
+  "Add isBetween(n, lo, hi) to src/range.js and export it: true when lo <= n <= hi.",
+  "Add maxOf(values) to src/range.js and export it: the maximum of an array of numbers, or null when the array is empty.",
+  "Add formatRange(a, b) to src/range.js and export it: returns the string 'a-b' with a <= b.",
+  "Add parseRangeList(text) to src/range.js and export it: split text on commas, parse each part with parseRange, and SKIP parts that do not parse (no range, no exception).",
+  "Add summarize(text) to src/report.js and export it: the number of ranges parseRangeList(text) returns.",
+  "Wire a --count flag into src/cli.js: when the first argument is --count, print the number of ranges in the second argument (parse the text with parseRangeList and summarize it).",
+  "Verify everything is correct: node tests/range.test.js and node tests/report.test.js must pass, and node src/cli.js --count '1-2,3-4' must print 2."
+]
