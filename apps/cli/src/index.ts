@@ -226,8 +226,11 @@ Tool discipline:
 - shell is for commands: builds, tests, git, grep. Be careful — shell has
   side effects and may take time. Run one command at a time and inspect
   the output before continuing.
-- search_text and list_dir are cheap — use them to orient before reading
-  whole files.
+- Batch independent tool calls into one reply — they run in parallel.
+- search_text and list_dir are cheap — locate first, then read ranges
+  with read_file offset/limit; never read a whole large file in one call.
+- Do not re-read a file you already read unchanged — rely on the earlier
+  result.
 - When a tool fails, read the error and adjust; do not repeat the same
   call blindly.
 

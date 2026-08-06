@@ -10,6 +10,11 @@
  * only medium). No shell flags the kernel doesn't need: `shell` carries an
  * explicit timeout and an output cap so a runaway command cannot flood the
  * context.
+ *
+ * Token 轮: reads are RANGEABLE (read_file offset/limit, default head 200
+ * lines) and search/list are capped (50 / 200) — every truncation carries
+ * an actionable continuation note (deterministic per file state), so the
+ * model always has a path to the full content.
  */
 
 import { execFileSync, spawn } from "node:child_process";
@@ -29,6 +34,14 @@ import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 
 const OUTPUT_CAP = 100_000; // chars of output a tool result may carry
 const DEFAULT_SHELL_TIMEOUT_MS = 30_000;
+// Token 轮: the scoped-read defaults — read_file shows the head 200 lines
+// of a large file (with an actionable continuation note, never a silent
+// drop), search_text caps at 50 excerpts, list_dir at 200 entries. The
+// red line: every truncation names its continuation — the model always
+// has a path to the full content.
+const DEFAULT_READ_LINES = 200;
+const MAX_SEARCH_MATCHES = 50;
+const MAX_DIR_ENTRIES = 200;
 
 function cap(text: string): string {
 	return text.length > OUTPUT_CAP ? `${text.slice(0, OUTPUT_CAP)}\n…[truncated]` : text;
@@ -185,23 +198,88 @@ function inodeReadPolicy(root: string, full: string): string | null {
 	return null;
 }
 
-export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string }> {
-	return defineTool<{ path: string }>({
+/** The "… N more lines" note — the actionable continuation: the exact
+ *  line the next read must start at, so the model can always reach the
+ *  full content in ranges (the red line). */
+function moreLinesNote(nextOffset: number, remaining: number): string {
+	return `\n… ${remaining} more ${remaining === 1 ? "line" : "lines"} (call again with offset=${nextOffset})`;
+}
+
+export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; offset?: number; limit?: number }> {
+	return defineTool<{ path: string; offset?: number; limit?: number }>({
 		name: "read_file",
-		description: "Read a file's content from disk. Relative to the workspace root.",
+		description:
+			"Read a file's content from disk. Relative to the workspace root. Returns the first 200 lines by default; a file with more lines appends a note with the exact count and the offset to continue from. Pass offset (1-based first line) and/or limit (line count) to read a range.",
 		parameters: {
 			type: "object",
-			properties: { path: { type: "string", description: "Workspace-relative path of the file to read" } },
+			properties: {
+				path: { type: "string", description: "Workspace-relative path of the file to read" },
+				offset: { type: "number", description: "1-based first line to read (default: 1)" },
+				limit: { type: "number", description: "Maximum number of lines to read (default: to the end of the file)" },
+			},
 			required: ["path"],
 		},
 		idempotent: true,
-		execute: async ({ path }) => {
+		execute: async ({ path, offset, limit }) => {
 			try {
 				const full = resolveWithinRoot(opts.workspaceRoot, path);
 				const denied = inodeReadPolicy(opts.workspaceRoot, full);
 				if (denied !== null) return escapeResult(denied);
 				const content = readFileSync(full, "utf8");
-				return { content: cap(content), isError: false };
+				// The lines the file DISPLAYS: a trailing newline's empty split
+				// element is not a line. Line k = split[k-1], 1-based.
+				const parts = content.split("\n");
+				const total = content.endsWith("\n") ? parts.length - 1 : parts.length;
+				const badCount = (v: unknown, name: string): string | undefined =>
+					typeof v !== "number" || !Number.isInteger(v) || v < 1
+						? `read_file: ${name} must be a positive integer (got ${JSON.stringify(v)})`
+						: undefined;
+				if (offset !== undefined) {
+					const bad = badCount(offset, "offset");
+					if (bad !== undefined) return { content: bad, isError: true, errorKind: "invalid_input" };
+				}
+				if (limit !== undefined) {
+					const bad = badCount(limit, "limit");
+					if (bad !== undefined) return { content: bad, isError: true, errorKind: "invalid_input" };
+				}
+				const start = offset ?? 1;
+				if (start > total) {
+					return {
+						content: `read_file: offset=${start} is past the end of ${path} (${total} lines)`,
+						isError: true,
+						errorKind: "invalid_input",
+					};
+				}
+				const end = limit === undefined ? total : Math.min(start + limit - 1, total);
+				// DEFAULT: the head 200 lines; a larger file ends with the
+				// honest continuation note (small files ≤ 200 lines are
+				// byte-identical to the pre-token-round behavior).
+				let text: string;
+				let note = "";
+				if (offset === undefined && limit === undefined) {
+					text = total <= DEFAULT_READ_LINES ? content : parts.slice(0, DEFAULT_READ_LINES).join("\n");
+					if (total > DEFAULT_READ_LINES) note = moreLinesNote(DEFAULT_READ_LINES + 1, total - DEFAULT_READ_LINES);
+				} else {
+					text = parts.slice(start - 1, end).join("\n");
+					if (end < total) note = moreLinesNote(end + 1, total - end);
+				}
+				// The output cap's cut must STAY actionable: cut at a line
+				// boundary and name the exact next offset (the generic cap()
+				// would leave the model blind mid-file).
+				if (text.length > OUTPUT_CAP) {
+					const cut = text.lastIndexOf("\n", OUTPUT_CAP);
+					if (cut > 0) {
+						text = text.slice(0, cut);
+						note = `\n… [output capped at ${OUTPUT_CAP} chars — continue with offset=${start + text.split("\n").length}]` + note;
+					} else {
+						// The first 100000 chars are one line (or a blank line
+						// then one): offset ranges cannot split it — shell is
+						// the only honest path.
+						text = text.slice(0, OUTPUT_CAP);
+						note = `\n… [a line near ${path}:${start} exceeds the ${OUTPUT_CAP}-char cap — slice it with shell]` + note;
+					}
+				}
+				return { content: `${text}${note}`, isError: false };
 			} catch (err) {
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				return { content: `read_file failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
@@ -213,7 +291,8 @@ export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string }
 export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string }> {
 	return defineTool<{ path?: string }>({
 		name: "list_dir",
-		description: "List the entries of a directory. Omit path to list the workspace root.",
+		description:
+			"List the entries of a directory. Omit path to list the workspace root. Capped at 200 entries with an overflow note (narrow to a subdirectory for more).",
 		parameters: {
 			type: "object",
 			properties: { path: { type: "string", description: "Workspace-relative directory to list" } },
@@ -226,7 +305,11 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string }
 					const isDir = e.isDirectory();
 					return `${isDir ? "dir " : "file"} ${e.name}${isDir ? "/" : ""}`;
 				});
-				return { content: entries.length ? cap(entries.join("\n")) : "(empty directory)", isError: false };
+				let content = entries.length ? cap(entries.slice(0, MAX_DIR_ENTRIES).join("\n")) : "(empty directory)";
+				if (entries.length > MAX_DIR_ENTRIES) {
+					content += `\n… +${entries.length - MAX_DIR_ENTRIES} more entries (narrow to a subdirectory)`;
+				}
+				return { content, isError: false };
 			} catch (err) {
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				return { content: `list_dir failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
@@ -239,7 +322,7 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 	return defineTool<{ pattern: string; path?: string }>({
 		name: "search_text",
 		description:
-			"Search files under a workspace directory (recursive) for a regular expression. Returns matching file:line excerpts, capped.",
+			"Search files under a workspace directory (recursive) for a regular expression. Returns matching file:line excerpts, capped at 50 — an overflow note states the count of further matches (narrow the pattern to see them).",
 		parameters: {
 			type: "object",
 			properties: {
@@ -258,9 +341,13 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 				throw err;
 			}
 			const regex = new RegExp(pattern, "i");
+			// The walk NEVER early-aborts on the cap: the overflow note's count
+			// must be the file-true total, not a bound (the red line). The
+			// depth cap and the node_modules/dotfile skip stay.
 			const matches: string[] = [];
+			let totalMatches = 0;
 			const walk = (dir: string, depth: number): void => {
-				if (depth > 8 || matches.length > 200) return;
+				if (depth > 8) return;
 				for (const entry of readdirSync(dir, { withFileTypes: true })) {
 					if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
 					const full = join(dir, entry.name);
@@ -278,8 +365,10 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 							const text = readFileSync(full, "utf8");
 							for (const [i, line] of text.split("\n").entries()) {
 								if (regex.test(line)) {
-									matches.push(`${full}:${i + 1}: ${line.trim().slice(0, 160)}`);
-									if (matches.length >= 200) return;
+									totalMatches += 1;
+									if (matches.length < MAX_SEARCH_MATCHES) {
+										matches.push(`${full}:${i + 1}: ${line.trim().slice(0, 160)}`);
+									}
 								}
 							}
 						} catch {
@@ -293,7 +382,9 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			} catch (err) {
 				return { content: `search_text failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
 			}
-			return { content: matches.length ? cap(matches.join("\n")) : "(no matches)", isError: false };
+			let content = matches.length ? cap(matches.join("\n")) : "(no matches)";
+			if (totalMatches > matches.length) content += `\n… +${totalMatches - matches.length} more matches (narrow the pattern)`;
+			return { content, isError: false };
 		},
 	});
 }
