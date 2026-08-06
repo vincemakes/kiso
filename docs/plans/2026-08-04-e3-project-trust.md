@@ -1,3 +1,5 @@
+Translated from the original Chinese round record (2026-08-06)
+
 # E3 — project-level extensions + the trust gate
 
 > Date: 2026-08-04
@@ -74,7 +76,7 @@ TTY only.
 - `apps/cli/src/index.ts` — the banner distinguishes project extensions:
   `[3 extensions: safe-defaults · project: lint-rules, mcp]` (TTY and
   off-TTY alike); byte-identical to the historical text when no project
-  extensions are loaded (existing e2e assertions 天然不破).
+  extensions are loaded (existing e2e assertions naturally hold unbroken).
 
 ### c. Tests (red→green; the seven acceptance flows + extras)
 

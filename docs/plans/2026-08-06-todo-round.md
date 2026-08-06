@@ -1,108 +1,165 @@
-# Todo 扩展轮 — 第 4 官方扩展:长程工作记忆,发 0.1.29
+Translated from the original Chinese round record (2026-08-06)
 
-2026-08-06. Spec:"todo 扩展轮(第 4 官方扩展,长程工作记忆),发 0.1.29。
-内核+E1 loader 零改动(core 余 5 行,本轮不进 core 是硬边界)。" 汇报纪律照旧。
+# The todo extension round — the 4th official extension: long-horizon working memory, release 0.1.29
 
-## 取证(先取证后改码)
+2026-08-06. Spec: "the todo extension round (the 4th official
+extension, long-horizon working memory), release 0.1.29. Kernel + E1
+loader: zero changes (core has 5 lines of headroom left — staying out
+of core this round is a hard boundary)." Reporting discipline as usual.
 
-- **扩展模板**(extensions/skills/src/kiso-skills.mjs):一个 .mjs 文件,default
-  export = 扩展或工厂;`{name, tools, systemPrompt:{append}, approvals}`;
-  加载器(E1)逐文件 import,零构建的纯 .mjs 直接可用(safe-defaults 即先例)。
-- **do-not-compact 机制已存在于 core**(kernel/project.ts:46):`DO_NOT_COMPACT`
-  常量 + 两处消费——microcompact 的清除排除(loop.ts:1165 计数口径 + project.ts
-  :349 替换 pass)与结果消息 tags 透传(loop.ts:712 落盘)。**todo_set 不在
-  MICROCOMPACTABLE 白名单**,microcompact 永不清理它——tag 在此侧是防御纵深。
-- **/compact 摘要层 = 契约洞检查点**:`summarizeConversation`(runtime)用
-  SUMMARY_PROMPT 对 covered 区间生成摘要,投影以 coversToSeq 为界 REPLACE
-  covered 内容(ADR-0044)——covered 区间若含最新 todo_set 轮,清单丢失。core
-  的投影语义只认 coversToSeq;**边界计算在 runtime**(summaryBoundarySeq,
-  session.summarize 调用),可在不改 core 的前提下收口:让边界在 covered 区间内
-  最近的 do-not-compact 结果所在轮之前截止(轮边界,投影不拆消息的不变式保持)。
-- **tui 解耦链**:CLI 的 consumeRun 逐事件喂 body.*(tool_result → body.toolResult);
-  tool_result 事件原生携带 tags(无 name)。渲染数据形状是 tui 自有 RenderInput
-  (render.ts,零 kiso-core import)。清单 cell = 新 BodyCell kind + RenderInput
-  变体,CLI 负责把 tagged 结果翻译成 items(键=tag,非名字——扩展声明什么 CLI
-  渲染什么;解析失败优雅回退普通 cell,绝不丢信息)。
-- **safe-defaults** = examples/extensions/safe-defaults.mjs(教程扩展):在它的
-  allow 列表加 todo_set 即满足"入 allow(纯会话状态)"。
-- **状态在哪里**:扩展零内部状态(纯校验+回显)——清单的持久性来自**事件日志**
-  (工具结果消息),kill -9 后 resume 从投影重建,与 CC 的进程内 runtime state
-  对照(README 卖点句)。
+## Evidence gathering (evidence before code)
 
-## 改动
+- **The extension template** (extensions/skills/src/kiso-skills.mjs): a
+  single .mjs file whose default export is the extension or a factory;
+  `{name, tools, systemPrompt:{append}, approvals}`; the loader (E1)
+  imports file by file — a plain .mjs with zero build works directly
+  (safe-defaults is the precedent).
+- **The do-not-compact mechanism already exists in core**
+  (kernel/project.ts:46): the `DO_NOT_COMPACT` constant + two
+  consumption sites — microcompact's clearance exclusion
+  (loop.ts:1165's count accounting + project.ts:349's replacement
+  pass) and the result-message tags passthrough (loop.ts:712's
+  persistence). **todo_set is not in the MICROCOMPACTABLE whitelist**,
+  microcompact never clears it — on this side the tag is defense in
+  depth.
+- **The /compact summary layer = the contract-hole checkpoint**:
+  `summarizeConversation` (runtime) generates a summary of the covered
+  range with SUMMARY_PROMPT, and the projection REPLACEs the covered
+  content up to coversToSeq (ADR-0044) — if the covered range contains
+  the latest todo_set round, the list is lost. The core projection
+  semantics only know coversToSeq; **the boundary computation lives in
+  runtime** (summaryBoundarySeq, called by session.summarize), so it
+  can be closed without touching core: the boundary stops BEFORE the
+  round of the newest do-not-compact result inside the covered range
+  (a round boundary — the projection's never-split-a-message invariant
+  holds).
+- **The tui decoupling chain**: the CLI's consumeRun feeds body.*
+  event by event (tool_result → body.toolResult); the tool_result
+  event natively carries tags (no name). The render data shape is the
+  tui's own RenderInput (render.ts, zero kiso-core imports). The
+  checklist cell = a new BodyCell kind + a RenderInput variant; the
+  CLI translates the tagged result into items (the key = the tag, not
+  a name — whatever the extension declares is what the CLI renders; a
+  parse failure falls back gracefully to a plain cell, never dropping
+  information).
+- **safe-defaults** = examples/extensions/safe-defaults.mjs (the
+  tutorial extension): adding todo_set to its allow list satisfies
+  "into allow (pure session state)".
+- **Where the state lives**: the extension has zero internal state
+  (pure validation + echo) — the list's persistence comes from the
+  **event log** (the tool-result messages); after a kill -9, resume
+  rebuilds it from the projection — contrasted with CC's in-process
+  runtime state (the README selling-point sentence).
 
-1. **extensions/todo**(零运行依赖,源即产物——src/kiso-todo.mjs 直接可加载,
-   无 build):
-   - `todo_set{items:[{text,status:"pending"|"active"|"done"}]}`——整表替换
-     (CC TodoWrite 同构,幂等);校验:至多一个 active(超=invalid_input 报明)、
-     状态枚举、text 非空(trim 后)、≤50 项、text ≤500 字符——全部 invalid_input,
-     诚实报因。
-   - 结果 = 规范化回显:
-     `[todo] N items — P pending, A active, D done` + 每项
-     `[pending|active|done] <text>` 行;确定性(纯函数)。
-   - 结果 tags:["do-not-compact"]。
-   - systemPrompt.append(≤15 行英文,克制):≥3 步先建清单(含一个验证步)/
-     动手前标 active(至多一个)/完成即标 done/单步不用/每步完成即更新。
-2. **safe-defaults 示例扩展**:todo_set 入 allow(纯会话状态,注释说明)。
-3. **/compact 摘要层收口**(runtime/src/summarize.ts,非 core):summaryBoundarySeq
-   的边界再收——covered 区间(prevPoint, base] 内最近的 do-not-compact 工具结果,
-   其轮(该轮 opening user_input)之前截止;轮内无 tagged 结果或结果在保留轮 →
-   行为不变;被保护轮即首轮(边界 == prevPoint)→ undefined(无可摘要)。
-4. **tui 清单 cell**(tui 包走 RenderInput 自有形状,解耦纪律):
-   - RenderInput 变体 `{type:"checklist", header, items[{text,status}]}` +
-     renderEvent case(□ pending / ▖ active / ▣ done,砖块家族,NO_COLOR 安全)。
-   - BodyCell kind "checklist" + body.checklist(header, items)——冻结语义照旧
-     (done:true,一次成型);passthrough 路径同字节。
-   - 不做常驻置顶(v1)。
-5. **CLI 翻译**(chat.ts consumeRun 的 tool_result 分支):结果带 do-not-compact
-   tag 且内容解析为清单(逐行 `[pending|active|done] <text>`)→ body.checklist
-   (header+items);解析失败 → 普通 cell 照旧。
+## Changes
 
-## 验收
-
-- ①扩展单测(todo.test.ts):整表替换幂等/单 active 校验(超=invalid_input)/
-  状态枚举/规范化回显字节/空表回显/边界(50 项、500 字符)/do-not-compact tag/
-  MICROCOMPACTABLE 不含 todo_set(core 常量钉)。
-- ②summarize 单测:covered 区间的 tagged 结果 → 边界收至其轮前;无 tagged →
-  不变;tagged 在保留轮 → 不变;tagged 轮为首轮 → undefined。
-- ③PTY e2e 长程叙事(todo-e2e.test.ts,真 PTY + 真 SIGKILL):建 3 项清单→完成
-  1 项(ask 流 y 注入)→ kill -9(round 7 慢 shell 执行中)→ resume(rerun 裁决)
-  → 投影含最新清单(do-not-compact 生效)→ 继续(轨迹到 terminal)→ /compact
-  → 投影仍含最新清单 + 摘要文本、round-1 旧清单被覆盖(摘要层尊重 tag,契约洞
-  已收口;若此检查点失败,按停止条款停下裁决)。
-- ④管道回归 + 门禁零回归:core 不进(硬边界,零 diff)、cli/tui 有增量但限内。
-
-## Gates
-
-- core 2000(本轮零改动,硬边界)/ cli 1856 / tui 1520 — check 实录见下。
-
-## 发布
-
-0.1.29,流程同模板(tag 先于发布;拓扑序;post-publish 验证)。
+1. **extensions/todo** (zero runtime dependencies, source-is-artifact —
+   src/kiso-todo.mjs loads directly, no build):
+   - `todo_set{items:[{text,status:"pending"|"active"|"done"}]}` — a
+     whole-table replace (isomorphic to CC's TodoWrite, idempotent);
+     validation: at most one active (more = invalid_input with the
+     reason), the status enum, non-empty text (after trim), ≤50 items,
+     text ≤500 characters — all invalid_input with an honest reason.
+   - The result = a normalized echo:
+     `[todo] N items — P pending, A active, D done` + one
+     `[pending|active|done] <text>` line per item; deterministic (a
+     pure function).
+   - Result tags: ["do-not-compact"].
+   - systemPrompt.append (≤15 lines of restrained English): ≥3 steps →
+     build the list first (including one verify step) / mark active
+     before acting (at most one) / mark done when complete / single
+     steps don't need it / update after every step.
+2. **The safe-defaults example extension**: todo_set into allow (pure
+   session state, explained in a comment).
+3. **The /compact summary layer closed** (runtime/src/summarize.ts,
+   not core): summaryBoundarySeq's boundary is pulled in again — the
+   newest do-not-compact tool result inside the covered range
+   (prevPoint, base], the boundary stops before ITS round (that
+   round's opening user_input); no tagged result in the round, or the
+   result sits in the kept round → behavior unchanged; the protected
+   round is the first round (boundary == prevPoint) → undefined
+   (nothing to summarize).
+4. **The tui checklist cell** (the tui package uses RenderInput's own
+   shape — the decoupling discipline):
+   - A RenderInput variant `{type:"checklist", header, items[{text,
+     status}]}` + a renderEvent case (□ pending / ▖ active / ▣ done,
+     the brick family, NO_COLOR-safe).
+   - A BodyCell kind "checklist" + body.checklist(header, items) — the
+     freeze semantics as usual (done:true, formed once); the
+     passthrough path is byte-identical.
+   - No resident pinning (v1).
+5. **The CLI translation** (chat.ts consumeRun's tool_result branch): a
+   result carrying the do-not-compact tag whose content parses as a
+   checklist (one `[pending|active|done] <text>` per line) →
+   body.checklist (header+items); a parse failure → the plain cell as
+   before.
 
 ## Acceptance
 
-- clean-tree:`git status --short` 空 + `git log origin/main..HEAD --oneline`
-  空(已推送)。
-- 范围外:/todos 人类命令/置顶渲染/子任务嵌套/优先级/activeForm。
+- ① extension unit tests (todo.test.ts): whole-table replace
+  idempotence / the single-active validation (more = invalid_input) /
+  the status enum / the normalized-echo bytes / the empty-table echo /
+  the bounds (50 items, 500 characters) / the do-not-compact tag /
+  MICROCOMPACTABLE excludes todo_set (the core constant pinned).
+- ② summarize unit tests: a tagged result inside the covered range →
+  the boundary pulls back to before its round; no tagged → unchanged;
+  tagged in the kept round → unchanged; the tagged round is the first
+  round → undefined.
+- ③ the long-horizon narrative PTY e2e (todo-e2e.test.ts, real PTY +
+  real SIGKILL): build a 3-item list → complete 1 (the ask flow's y
+  injection) → kill -9 (during round 7's slow shell execution) →
+  resume (the rerun ruling) → the projection contains the newest list
+  (do-not-compact working) → continue (the trajectory reaches
+  terminal) → /compact → the projection still contains the newest list
+  + the summary text, and round-1's old list is covered (the summary
+  layer respects the tag — the contract hole is closed; if this
+  checkpoint fails, stop and get a ruling per the stop clause).
+- ④ pipe regression + gates zero regression: core not entered (hard
+  boundary, zero diff); cli/tui have increments, inside the limits.
 
-## 发布实录 (post-publish)
+## Gates
 
-- **0.1.29 八包发布**(tag 先于发布;拓扑序 core→evals→providers→tools-node
-  →runtime→tui→cli;`npm publish <path>` 形式被 npm 的 git-remote 解析坑
-  (ls-remote ssh://git@github.com/packages/core.git 乱码),改用
-  `npm publish -w <pkg>` 形式逐包成功;post-publish 验证:registry 八包
-  0.1.29,npm i -g --prefer-online 后全局 CLI 就位 0.1.29)。
-- 门禁:core **1995/2000(零 diff,硬边界守住)** · cli 1573/1856(+21:
-  清单翻译+钩子) · tui 1403/1520(+42:checklist cell+RenderInput);
-  **638 测试**(615 → +23:todo 单测 14 + summarize 收口 5 + checklist
-  渲染 3 + 长程叙事 e2e 1);smoke 5 层 PASS;demo PASS。
-- 长程叙事 e2e 实录:7 个用户轮(每轮自带 end_turn——/compact 按轮计数,
-  单轮长脚本无可覆盖物,第一版 e2e 就是栽在这);kill 落在 round 7 shell
-  执行中(谓词必须匹配 s1 的 started 行,不能全文件子串——call_end 行也
-  带 name:"shell",会早杀);resume 的 rerun 裁决**不重执行**(B 组填充
-  denial),轨迹继续到 terminal;/compact 在独立 chat 进程跑(resume 是
-  一次性命令,跑完即退出);**契约洞检查点通过**:summarized coversToSeq=9
-  (round 2 输入在 seq 10——收口把边界拉在清单轮之前),投影含最新清单
-  逐字节 + 摘要文本,round 1 旧回显被覆盖。
-- 范围外不变:/todos 人类命令/置顶渲染/子任务嵌套/优先级/activeForm。
+- core 2000 (zero changes this round — the hard boundary) / cli 1856 /
+  tui 1520 — the check record below.
+
+## Release
+
+0.1.29, the standard template flow (tag before publish; topology order;
+post-publish verification).
+
+## Acceptance
+
+- clean-tree: `git status --short` empty + `git log origin/main..HEAD
+  --oneline` empty (pushed).
+- Out of scope: the /todos human command / pinned rendering / subtask
+  nesting / priorities / activeForm.
+
+## Release record (post-publish)
+
+- **0.1.29 published, eight packages** (tag before publish; topology
+  order core→evals→providers→tools-node→runtime→tui→cli; the
+  `npm publish <path>` form hit npm's git-remote resolution pitfall
+  (ls-remote ssh://git@github.com/packages/core.git garbled), switched
+  to the `npm publish -w <pkg>` form, package by package success;
+  post-publish verification: the registry's eight packages at 0.1.29,
+  the global CLI at 0.1.29 after npm i -g --prefer-online).
+- Gates: core **1995/2000 (zero diff — the hard boundary held)** · cli
+  1573/1856 (+21: the checklist translation + hooks) · tui 1403/1520
+  (+42: the checklist cell + RenderInput); **638 tests** (615 → +23:
+  14 todo unit tests + 5 summarize-closing + 3 checklist rendering + 1
+  long-horizon e2e); smoke 5 tiers PASS; demo PASS.
+- The long-horizon e2e record: 7 user rounds (each round carries its
+  own end_turn — /compact counts per round, a single-round long script
+  has nothing to cover, and the FIRST e2e version died exactly there);
+  the kill lands during round 7's shell execution (the predicate must
+  match s1's started line, not a whole-file substring — the call_end
+  line also carries name:"shell" and would kill early); resume's rerun
+  ruling does **not re-execute** (the B group fills a denial), the
+  trajectory continues to terminal; /compact runs in a separate chat
+  process (resume is a one-shot command that exits when done); **the
+  contract-hole checkpoint passed**: the summarized coversToSeq=9
+  (round 2's input is at seq 10 — the closing pulled the boundary
+  before the checklist round), the projection contains the newest list
+  byte-for-byte + the summary text, round 1's old echo is covered.
+- Out of scope unchanged: the /todos human command / pinned rendering /
+  subtask nesting / priorities / activeForm.

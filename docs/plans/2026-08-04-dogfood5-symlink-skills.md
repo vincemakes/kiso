@@ -1,4 +1,4 @@
-# dogfood #5 发现#9 — symlinked skill dirs are followed (P2)
+# dogfood #5 finding #9 — symlinked skill dirs are followed (P2)
 
 > Date: 2026-08-04
 > Status: complete — fix + ①-④ acceptance green, `npm run check` EXIT 0
@@ -44,16 +44,16 @@ at the index tail, never an error.
 - ④ existing skills tests: zero regression (11/11 in the suite).
 - `npm run check` EXIT 0 — 448/448 (445 + 3).
 
-## 4. Observed, deliberately NOT fixed (记录不修)
+## 4. Observed, deliberately NOT fixed (recorded, not fixed)
 
 - ~~`mcp__status` is a zero-arg read-only tool but lands in the ask tier~~ —
-  **已修 (0.1.11 round)**: joined the safe-defaults allow list (trust level
+  **fixed (0.1.11 round)**: joined the safe-defaults allow list (trust level
   same as read_file), one line + the safe-defaults test assertion.
 - Each `mcp__fs__*` call asks individually — by design (external tools
   must pass human review). If dogfood friction recurs, a custom policy
   can allow specific servers; the default stays.
 
-## 5. 发现#10 (P1) — the trust gate read the user-level .kiso as a project
+## 5. finding #10 (P1) — the trust gate read the user-level .kiso as a project
 
 Real-machine record: running kiso with cwd = the home directory made
 projectArtifacts discover `<cwd>/.kiso` — which IS the user-level config
@@ -69,8 +69,8 @@ overrides respected the same way. A stale trust.jsonl grant for the home
 becomes inert (discovery never queries it) — no cleanup needed, README
 troubleshooting states it in one line.
 
-Acceptance (red → green): unit `⑩ the KISO_HOME dir itself is never a
-project` (red: artifacts returned); CLI e2e `⑩ (发现#10) cwd = the
+Acceptance (red → green): unit `(round 10) the KISO_HOME dir itself is never a
+project` (red: artifacts returned); CLI e2e `(round 10) (finding #10) cwd = the
 KISO_HOME parent` (red: the trust prompt appeared on the home dir —
 the user's exact transcript shape); project-trust.test.ts full suite
 zero regression.

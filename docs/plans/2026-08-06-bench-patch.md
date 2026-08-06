@@ -1,10 +1,14 @@
-# Bench 补丁 — cost-weighted 列 + r1/r2 拆行 + kiso fresh 待办 (no re-runs)
+Translated from the original Chinese round record (2026-08-06)
 
-2026-08-06. Spec: "bench 补丁(docs+提取器,不重跑):1. 三张表各加
-cost-weighted 列...;2. 从 bench/runs 原始数据拆 r1(冷)/r2(热)两行,解释
-fresh 不对称;3. kiso fresh 偏高本身开一条待办调查。"
+# Bench patch — the cost-weighted column + the r1/r2 row split + the kiso fresh backlog item (no re-runs)
 
-## 1. cost-weighted 列 + 双口径 headline
+2026-08-06. Spec: "the bench patch (docs + extractors, no re-runs):
+1. each of the three tables gains a cost-weighted column...; 2. split
+r1 (cold)/r2 (hot) rows from the bench/runs raw data, explaining the
+fresh asymmetry; 3. open a backlog investigation for kiso's high fresh
+itself."
+
+## 1. The cost-weighted column + the dual-metric headline
 
 - Every table (T1-T3+T4, T5) gains `cost-wtd` = fresh + 0.1 × cached —
   the 0.1 ratio is DeepSeek's cache-hit price ratio
@@ -20,7 +24,7 @@ fresh 不对称;3. kiso fresh 偏高本身开一条待办调查。"
   point of this document" — the two metrics disagree because of the
   cache-hit structure, spelled out in the caveats.
 
-## 2. r1 (cold) / r2 (hot) 拆行 + fresh 不对称解释
+## 2. The r1 (cold) / r2 (hot) row split + the fresh-asymmetry explanation
 
 - The tables now show per-run rows (r1/r2) with a mean row per tool.
 - Finding: the fresh asymmetry (kiso ~6× pi's fresh on T3) is present in
@@ -36,16 +40,16 @@ fresh 不对称;3. kiso fresh 偏高本身开一条待办调查。"
   T3); kiso's per-request fresh ≈ its system prompt size (≈1.7K/req) —
   its prefix is not being cache-hit across requests.
 
-## 3. kiso fresh 待办 (its own round)
+## 3. The kiso fresh backlog item (its own round)
 
-> **待办**: kiso's system-prompt prefix is not cache-hit across requests.
-> Symptom: per-request fresh ≈ the system prompt size in every scenario.
-> Hypothesis: a byte-instability in the composed system prompt — the
-> D 区 contract (byte-stable for the session's lifetime) would be
-> violated if any source varies per request (the mode append, the skills
-> index, an injected path/version). If confirmed: a real D 区 contract
-> bug; fix in a dedicated round; the bench's cost-weighted column needs a
-> re-run to re-baseline afterwards.
+> **Backlog**: kiso's system-prompt prefix is not cache-hit across
+> requests. Symptom: per-request fresh ≈ the system prompt size in every
+> scenario. Hypothesis: a byte-instability in the composed system
+> prompt — the D-area contract (byte-stable for the session's lifetime)
+> would be violated if any source varies per request (the mode append,
+> the skills index, an injected path/version). If confirmed: a real
+> D-area contract bug; fix in a dedicated round; the bench's
+> cost-weighted column needs a re-run to re-baseline afterwards.
 
 ## Acceptance
 

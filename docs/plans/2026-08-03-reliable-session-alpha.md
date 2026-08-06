@@ -1,3 +1,5 @@
+Translated from the original Chinese round record (2026-08-06)
+
 # Reliable Session Alpha — design & implementation plan
 
 > Date: 2026-08-03
@@ -186,48 +188,48 @@ the decision record:
   context; CI is clean-checkout `npm ci` + full check; three isolated
   consumer smoke tiers; the CLI is publishable.
 
-## 6c. Third hardening round (2026-08-03, 一-九 — all delivered)
+## 6c. Third hardening round (2026-08-03, i-ix — all delivered)
 
-- **Event/persistence ownership** (一): a rejected disk write (stale
+- **Event/persistence ownership** (i): a rejected disk write (stale
   handle / corruption) POISONS the session permanently — the in-memory log
   can never keep accumulating seqs and "catch up" to the disk; every
   persist site routes through the session, every appended event is
   yielded exactly once (no hidden appends).
-- **Framing & lock races** (二): a line WITHOUT a trailing newline is never
+- **Framing & lock races** (ii): a line WITHOUT a trailing newline is never
   committed — load and append's torn-tail repair agree; stale-lock
   takeover is IDENTITY-CONFIRMED (rename away, verify token+pid, restore
   and retry on mismatch) — a live lock is never deleted; two-contender
   tests run as REAL concurrent processes behind a barrier.
-- **User rewrite/veto** (三): `user_input_replaced` is a normal gapless
+- **User rewrite/veto** (iii): `user_input_replaced` is a normal gapless
   stream event; rewritten content is the only content every later turn
   sees; the hook's `source` survives; a true veto ends the run without
   ever calling the provider — verified through the raw loop, a real
   AgentSession, and a disk reload.
-- **Execution identity** (四): executionId is the ONLY recovery key —
+- **Execution identity** (iv): executionId is the ONLY recovery key —
   receipt/resolution/failure pairing never uses the repeatable provider
   callId; a fresh success is never polluted by a historical same-callId
   failure; resolutions belong to the ORIGINAL runId (the fake
   "resolution" runId is gone); a failed non-idempotent execution after a
   cross-process approval enters a durable uncertain pause; new runs are
   REFUSED while an open run lingers (resume is the only way past it).
-- **Schema, turn gate, compaction** (五): every persisted variant is
+- **Schema, turn gate, compaction** (v): every persisted variant is
   deep-validated (enums, Terminal members, Usage known/token combos,
   ContentBlocks, plain-object inputs, optional fields); `user_input_replaced`
   carries ContentBlock[]; ANY event after the provider's stop is a
   protocol error and tools never execute; compaction is keyed by the
   replaced tool-result EVENT SEQ and records only the delta; live tool
   results keep tags on both paths.
-- **Provider content/usage** (六): OpenAI base64 images become real data
+- **Provider content/usage** (vi): OpenAI base64 images become real data
   URLs; tool-result images convert to an explicit text note; a tool call
   keeps ONE identity from start to end even when its id arrives late;
   cached tokens are read for real (absent = null, never 0); every
   Anthropic stop path emits an honest usage first.
-- **Consumer installs** (七): the provider packages OWN their SDKs and
+- **Consumer installs** (vii): the provider packages OWN their SDKs and
   export config-driven factories; the runtime imports only the provider
   packages; smoke tier D installs all seven tarballs with
   `--install-strategy=nested` and starts the CLI with real
   Anthropic/OpenAI env — no ERR_MODULE_NOT_FOUND on either path.
-- **Tools/CLI failure paths** (八): shell kills the whole tree including
+- **Tools/CLI failure paths** (viii): shell kills the whole tree including
   setsid()-escaped descendants and confirms their exit; write/edit
   preserve modes and never leak `.kiso-tmp-*`; read_file enforces the
   inode-boundary policy (external hard links and non-regular files
@@ -236,27 +238,27 @@ the decision record:
   the run AND a pending question; the startup resume is SIGINT-bound;
   "you> " re-arms after every turn; an exhausted faux script exits
   non-zero.
-- **Release truth** (九): trailing whitespace and EOF-newline checks are a
+- **Release truth** (ix): trailing whitespace and EOF-newline checks are a
   gate (`scripts/whitespace-check.mjs` + `git diff --check` in `check`);
   README numbers match the real size gate (1,636/2,000) and test count
   (250); the smoke header matches the five tiers.
 
 
-## 6d. Fourth hardening round (2026-08-03, 一-十二 — all delivered)
+## 6d. Fourth hardening round (2026-08-03, i-xii — all delivered)
 
-- **Workspace hardlink boundary** (一): the inode-boundary verification is
+- **Workspace hardlink boundary** (i): the inode-boundary verification is
   STRUCTURAL — `find -print0` with NUL-separated output, every match
   re-statted and checked for the exact dev+ino pair, -xdev bounded, and
   fail-closed on any unverifiable link: a hard link named "inside\nspoof"
   can no longer fool the count, and read_file and search_text share the
   policy.
-- **Permanent poison** (二): ANY rejected disk write poisons the session —
+- **Permanent poison** (ii): ANY rejected disk write poisons the session —
   not only the typed stale/corruption errors (a live external writer's
   lock error is the realistic case); the run iterator re-checks health
   when it STARTS, and approve/resolveUncertain refuse a poisoned session;
   runs pre-constructed before the poison all fail on consumption and
   nothing of their context ever lands.
-- **Kernel single-writer lock** (三): the O_EXCL pidfile + rename-away
+- **Kernel single-writer lock** (iii): the O_EXCL pidfile + rename-away
   scheme is GONE. The lock is an EXCLUSIVE kernel flock held by a
   dedicated helper process (fcntl.flock via python3, macOS + Linux): the
   kernel arbitrates every race, there is nothing to delete or overwrite,
@@ -264,52 +266,52 @@ the decision record:
   never an object without one), empty/half-written locks are harmless,
   close/closeAll release only this instance's helper, and a
   three-process barrier race has exactly one writer.
-- **Old-session upgrade** (四): v1 compacted records ({callId, content})
+- **Old-session upgrade** (iv): v1 compacted records ({callId, content})
   remain legal — the projection replays them with v1 semantics and v2
   eventSeq records with exact replacement; a schema audit found no other
   record the old framework could legally have written.
-- **Adapter trust boundary** (五): a narrowed AdapterEvent type plus a
+- **Adapter trust boundary** (v): a narrowed AdapterEvent type plus a
   runtime whitelist — a kernel-owned event from the stream (terminal,
   tool_execution_*, permission_*, user_input, ...) is a forgery: never
   persisted, exactly one invalid_request terminal, tools never execute.
-- **Rewrite/veto exactly-once** (六): the hook runs AT MOST ONCE per
+- **Rewrite/veto exactly-once** (vi): the hook runs AT MOST ONCE per
   input (a durable replacement blocks re-invocation on resume); the
   projection renders the FINAL replacement at the input's own position;
   a persisted veto never re-runs the hook or the provider.
-- **Uncertainty flow** (七): with a live resolver, resolveUncertain only
+- **Uncertainty flow** (vii): with a live resolver, resolveUncertain only
   passes the verdict — the loop/recovery generator appends, yields, and
   persists tool_execution_resolved, so the yielded stream and the
   durable seqs are IDENTICAL (no hidden 6 → 8 gap); offline verdicts
   persist directly; an abort records no resolution and the execution
   stays uncertain.
-- **Receipt tags** (八): tool_execution_succeeded/failed carry the result
+- **Receipt tags** (viii): tool_execution_succeeded/failed carry the result
   tags on the durable receipt; crash-window repair reproduces the
   normal-path tool_result losslessly.
-- **Provider boundaries** (九): Anthropic distinguishes usage-SEEN from
+- **Provider boundaries** (ix): Anthropic distinguishes usage-SEEN from
   usage-YIELDED (a message_start with usage then a bare stop yields an
   honest KNOWN usage); OpenAI adopts the first non-empty tool-call id
   forever and a different later id is a structured error; schema counts
   are safe integers, known usage reports at least one token, image
   payloads are strictly exclusive, errorKind is forbidden on non-errors.
-- **CLI cancellation** (十): a CANCELLED sentinel (never the empty
+- **CLI cancellation** (x): a CANCELLED sentinel (never the empty
   string) — a cancelled question does not swallow the next input (it is
   re-emitted as a fresh turn); Ctrl+C on an uncertain question records
   no verdict; approval cancellation is a printed conservative denial;
   faux exhaustion is a controlled exception (agent.close() always runs,
   exitCode instead of process.exit); top-level errors are escaped; the
   approval UI and the tools share one canonicalTargetPath resolution.
-- **Shell termination** (十一): the root is SIGSTOPped first, descendants
+- **Shell termination** (xi): the root is SIGSTOPped first, descendants
   are discovered and frozen until the set is STABLE, then killed and
   polled to death; if any tracked pid survives the deadline the verdict
   is an explicit UNCERTAIN error naming the survivors — never a claimed
   "aborted" while a tracked pid lives.
-- **Release truth** (十二): the CLI bin path is published as-is (no
+- **Release truth** (xii): the CLI bin path is published as-is (no
   auto-clean warning), the smoke header names all FIVE tiers, nested
   provider smoke claims only install/resolution/construction, and README
   numbers match the real size gate (1,714/2,000) and test count (294).
 
 
-## 6e. Fifth hardening round (2026-08-03, 一-十二 — all delivered)
+## 6e. Fifth hardening round (2026-08-03, i-xii — all delivered)
 
 - **Store lifecycle** (P1-1/2/3): the WHOLE append critical section is
   serialized per session and a rejected write propagates to every append

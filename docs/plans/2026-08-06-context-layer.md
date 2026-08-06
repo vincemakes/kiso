@@ -1,8 +1,8 @@
-# Context 三层轮 — the mechanical merge + the /compact model-summary layer (0.1.20)
+# The context three-layer round — the mechanical merge + the /compact model-summary layer (0.1.20)
 
-2026-08-06. Spec: "Context 三层轮:机械层合并 + /compact 模型摘要层,发 0.1.20。汇报纪律照旧。"
+2026-08-06. Spec: "the context three-layer round: the mechanical merge + the /compact model-summary layer, release 0.1.20. The reporting discipline as usual."
 
-## 1. 机械层合并 (ADR-0044, executed)
+## 1. the mechanical merge (ADR-0044, executed)
 
 The classic auto-compaction (`config.compaction` / `compacted` events /
 `microcompact()` in compaction.ts) was dead code — the CLI never

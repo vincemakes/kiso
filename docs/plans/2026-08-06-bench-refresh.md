@@ -1,10 +1,14 @@
-# Bench 刷新轮 — 数字保鲜 + T4 skills + T5 长会话 /compact (no release)
+Translated from the original Chinese round record (2026-08-06)
 
-2026-08-06. Spec: "bench 刷新轮(数字保鲜+两个新场景),不发版(bench 不进
-npm)。诚实条款照旧(任务小/off-label/n=2);运行脚本与提取器扩展进 bench/;
-汇报附原始数据路径。"
+# Bench refresh round — fresh numbers + T4 skills + the T5 long-session /compact (no release)
 
-## 1. T1-T3 重跑 (kiso 0.1.22 · pi 0.73.1 · Claude Code 2.1.223, n=2)
+2026-08-06. Spec: "the bench refresh round (numbers freshened + two new
+scenarios), no release (bench does not go to npm). The honesty clauses
+as usual (small tasks / off-label / n=2); the runner scripts and
+extractor extensions go into bench/; the report attaches the raw data
+paths."
+
+## 1. T1-T3 re-run (kiso 0.1.22 · pi 0.73.1 · Claude Code 2.1.223, n=2)
 
 Same fixture (fixture-v1), same tasks, mean of 2 runs per cell, all 18
 cells verified. Numbers in `bench/README.md` + the main README's
@@ -26,7 +30,7 @@ Runner changes found along the way (all in bench/):
 - claude's `-p` may print a stdin warning line before the JSON — the
   extractor parses from the first "{" now; the runner passes `< /dev/null`.
 
-## 2. T4 — skills 场景 (progressive loading)
+## 2. T4 — the skills scenario (progressive loading)
 
 - fixture-v2 adds `src/dates.js` + `tests/days-between.test.js`; the
   convention (a src/ feature bumps the PATCH digit of package.json,
@@ -48,7 +52,7 @@ Runner changes found along the way (all in bench/):
   first batch (49-57s) had the model explore the environment instead of
   read_skill; with the clean fixture it used the skill path (21-23s).
 
-## 3. T5 — 长会话 /compact 场景
+## 3. T5 — the long-session /compact scenario
 
 - fixture-t5: 8 progressive turns (clamp fix + isBetween + maxOf +
   formatRange + parseRangeList + summarize + cli --count + final verify),
@@ -66,7 +70,7 @@ Runner changes found along the way (all in bench/):
   count may be the last line, not the whole output — relaxed to tail -1
   and pi-T5-2's repo verified pass from disk).
 
-## 4. 诚实条款 & raw data
+## 4. The honesty clauses & raw data
 
 - Same clauses as before: small tasks, CC off-label (DeepSeek endpoint),
   n=2, one fixture per scenario, one model; token accounting per provider
