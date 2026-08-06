@@ -53,6 +53,24 @@ function terminal(events: readonly Event[]): TerminalEvent {
 	return t[0]!;
 }
 
+describe("registry: the eager map wins against a live source", () => {
+	it("0.1.27 失格调查: a tool registered eagerly AND live appears ONCE in list()/toSpecs()", async () => {
+		const registry = new ToolRegistry();
+		registry.register(searchTool);
+		// The agent's wiring (0.1.26): a sync extension's tools are registered
+		// eagerly AND its live source re-returns the same array — the spec
+		// list previously duplicated the name (the real API's
+		// "400 Tool names must be unique").
+		registry.registerLive(() => [searchTool]);
+		const specs = registry.toSpecs();
+		expect(specs.filter((s) => s.name === "web_search")).toHaveLength(1);
+		expect(registry.list().filter((t) => t.name === "web_search")).toHaveLength(1);
+		// The live source's NEW tools (MCP's post-connect growth) still land.
+		registry.registerLive(() => [artifactTool]);
+		expect(registry.list().map((t) => t.name)).toEqual(["web_search", "create_artifact"]);
+	});
+});
+
 describe("mode: visibleToolNames is a structural filter", () => {
 	it("physically removes a tool from the registry the model can reach", async () => {
 		const registry = new ToolRegistry();

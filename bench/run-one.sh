@@ -26,7 +26,13 @@ case "$TOOL" in
   kiso)
     EXTDIR="$WORK/ext"; mkdir -p "$EXTDIR"; cp "$B/bench-allow.mjs" "$EXTDIR/"
     SKILLS_ENV=""
-    [ "$TASK" = "T4" ] && SKILLS_ENV="KISO_SKILLS_DIR=$B/t4-skill"
+    # T4 (the 0.1.27 失格调查): the scenario spec says the skill surfaces
+    # through kiso's NATIVE mechanism (the skills extension's index +
+    # read_skill) — the ext dir previously carried only bench-allow, so the
+    # model had to discover .claude/skills by raw exploration (the 13-request
+    # vs pi 8.5 gap, and a run that never found the skill at all). The
+    # official skills extension rides KISO_SKILLS_DIR; load it for T4.
+    [ "$TASK" = "T4" ] && { SKILLS_ENV="KISO_SKILLS_DIR=$B/t4-skill"; cp "$B/../extensions/skills/src/kiso-skills.mjs" "$EXTDIR/"; }
     printf '%s\nexit\n' "$PROMPT" | env \
       OPENAI_BASE_URL="https://api.deepseek.com" \
       OPENAI_API_KEY="$DEEPSEEK_API_KEY" \

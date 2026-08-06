@@ -53,7 +53,28 @@ export class ToolRegistry {
 	}
 
 	list(): readonly Tool[] {
-		return [...this.#tools.values(), ...this.#live.flatMap((src) => src())];
+		// The registered map WINS a name collision against a live source —
+		// the same rule get()/has() already follow, applied here too
+		// (0.1.27 失格调查: the agent eagerly registers a sync extension's
+		// tools AND registers its live source — a skills/subagent/MCP status
+		// tool appeared twice in toSpecs() and the real API answered
+		// "400 Tool names must be unique"; the identity is the same object,
+		// so the dedup changes nothing behaviorally).
+		const seen = new Set<string>();
+		const out: Tool[] = [];
+		for (const t of this.#tools.values()) {
+			seen.add(t.name);
+			out.push(t);
+		}
+		for (const src of this.#live) {
+			for (const t of src()) {
+				if (!seen.has(t.name)) {
+					seen.add(t.name);
+					out.push(t);
+				}
+			}
+		}
+		return out;
 	}
 
 	has(name: string): boolean {
