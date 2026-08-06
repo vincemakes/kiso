@@ -151,8 +151,24 @@ events emitted per call in deterministic order.
 - The MCP bridge registers its servers' tools through a LIVE registry
   source (tools land post-connect, callable the moment they do).
 - The kernel grew: core measured 2,034/2,000 at delivery — the growth is
-  this amendment's spec-mandated increment (per ADR-0043 Amendment 1, the
-  recalibration is by adjudicated ruling, requested in the round record).
+  this amendment's spec-mandated increment.
+
+### 归位式抽取 (the gate ruling, same record)
+
+The gate ruling (2026-08-06): **no recalibration — the escape hatch is
+relocation.** The `summarize` orchestration (kernel/summarize.ts, ~120
+lines) is off-loop: it calls the ADAPTER to generate a summary, which is
+the RUNTIME's arrangement — the kernel's duty is the `summarized` event
+type and the projection semantics. It had been parked in the kernel by a
+context-round expedience; this amendment's growth pushed it out:
+
+- `summarizeConversation` + the boundary math moved to
+  `packages/runtime/src/summarize.ts` (the session's own adapter, zero
+  behavior change: /compact and autoCompact byte-identical, the context
+  suite's assertions untouched — the relocation's zero-behavior
+  acceptance);
+- the kernel keeps the `summarized` event + its projection semantics;
+- core measured 1,981/2,000 after the relocation (19 lines of headroom).
 
 ## When to revisit
 

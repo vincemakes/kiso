@@ -1,9 +1,11 @@
 /**
- * L2 — the /compact summary layer (ADR-0044): the MODEL-GENERATED half of
- * context economy. The mechanical half (microcompact, compaction.ts)
- * clears TOOL RESULTS only; this layer compresses the CONVERSATION itself
- * into one durable `summarized` event per call, replacing the covered
- * range with a single assistant summary message in the projection.
+ * The /compact summary layer (ADR-0044) — the MODEL-GENERATED half of
+ * context economy. 归位式抽取 (0.1.26 gate 裁决): this OFF-LOOP
+ * ORCHESTRATION lived in the kernel by a context-round expedience; it
+ * calls the ADAPTER to generate the summary, which is the RUNTIME's
+ * business — the kernel's duty is the `summarized` EVENT TYPE and the
+ * projection semantics (kernel/project.ts), not who calls the model.
+ * The mechanical half (microcompact) stays in the kernel (compaction.ts).
  *
  * The summary call is OFF-LOOP: it goes through the session's OWN adapter
  * (no new dependency), writes no events, and never touches the log — a
@@ -12,10 +14,10 @@
  * lands on disk; the original events stay there forever.
  */
 
-import type { AbortSignalLike, Adapter } from "../protocol/adapter.js";
-import type { Event } from "../protocol/events.js";
-import type { Message } from "../protocol/messages.js";
-import { estimateTokens } from "./compaction.js";
+import { estimateTokens } from "@vincemakes/kiso-core";
+import type { AbortSignalLike, Adapter } from "@vincemakes/kiso-core";
+import type { Event } from "@vincemakes/kiso-core";
+import type { Message } from "@vincemakes/kiso-core";
 
 /** K (ADR-0044): the recent ROUNDS kept intact by /compact — a constant,
  *  not a knob. The covered range ends just before the K-th most recent

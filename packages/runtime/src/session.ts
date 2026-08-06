@@ -47,7 +47,7 @@ import {
 	lastSummaryPoint,
 	summarizeConversation,
 	summaryBoundarySeq,
-} from "@vincemakes/kiso-core";
+} from "./summarize.js";
 import { StaleWriterError, type SessionStore } from "./store.js";
 import { composeHooks } from "./compose.js";
 import { Run } from "./run.js";
