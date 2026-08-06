@@ -24,6 +24,20 @@ resolved items move to the round record that delivered them.
   extension-writeability) is a 1.0 round item. Adopted from the external
   review's risk #5.
 
+## P2 (found in 0.1.25 release verification)
+
+- **cache % can render >100% on the anthropic-compat path** — DeepSeek's
+  anthropic-compat endpoint reports `input_tokens` EXCLUDING the cached
+  prefix (fresh-only: observed inputTokens 59/111 vs cacheRead 1024),
+  while its openai-compat endpoint reports input INCLUDING cache (the
+  0.1.23-established convention). The recap/status formula
+  `cache/in` (correct for the openai convention; real Anthropic's
+  input_tokens also includes the cached portion) then renders nonsense
+  like `cache 923%`. Fix direction: a per-provider input convention
+  signal (or the extractor's fresh/total split) feeding the recap's
+  ratio; register the reproduction: anthropic-compat short session +
+  `grep cacheRead`.
+
 ## Standing (per-round)
 
 - todo 扩展 (the interactive todo surface) — deferred each round per the
