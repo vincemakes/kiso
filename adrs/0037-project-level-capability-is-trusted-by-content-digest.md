@@ -80,8 +80,8 @@ rejected (it would turn the gate into a toggle) and should stay rejected.
 
 ## Evidence
 
-- Commits: `3d26112` (feat(runtime): E3 trust — projectArtifacts digest
-  discovery, trust.jsonl store, loadProjectExtensions), `065c65f`
+- Commits: `b431ea7` (feat(runtime): E3 trust — projectArtifacts digest
+  discovery, trust.jsonl store, loadProjectExtensions), `4703f6b`
   (feat(cli): E3 — the project trust gate).
 - Tests: `packages/runtime/tests/trust.test.ts` (digest changes on any
   file change; last-wins; corrupt lines skipped) and

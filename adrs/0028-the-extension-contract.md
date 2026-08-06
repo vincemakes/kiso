@@ -67,7 +67,7 @@ this ADR records the current refusal.
 ## Evidence
 
 - Commits: `3149137` (E1 policy chain), `f4ebb3f` (E1-P2 pipe + veto),
-  `f23e415` (E2 systemPrompt append), `39600cf` (finding #8 dispose).
+  `f23e415` (E2 systemPrompt append), `dd0e92d` (finding #8 dispose).
 - Tests: `packages/core/tests/extensions.test.ts` (composition, durability,
   ask semantics), `packages/runtime/tests/extensions.test.ts` (loader,
   hooks order, P2 pipe), `packages/runtime/tests/extensions.test.ts`
