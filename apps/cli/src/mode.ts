@@ -31,12 +31,12 @@ export function setMode(m: Mode): void {
 	current = m;
 }
 
-/** The startup mode: KISO_MODE env (or the --mode flag — the CLI applies
- *  it before the first makeAgent). */
-export function modeFromEnv(): Mode {
+/** The startup mode from env: KISO_MODE, or undefined when unset (the
+ *  config layer's mode then applies — 合并轮 B; the --mode flag is
+ *  applied by main before the first makeAgent and wins over everything). */
+export function modeFromEnv(): Mode | undefined {
 	const raw = process.env.KISO_MODE;
-	const m = MODES.find((x) => x === raw);
-	return m ?? "default";
+	return MODES.find((x) => x === raw);
 }
 
 /** The per-tier verdict for a tool call — only when this tier is current. */

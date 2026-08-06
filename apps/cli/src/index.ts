@@ -39,10 +39,11 @@ import {
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
-import { body, bodyLog, dock, extensionsDir, loadedExtensions, mergedTempPaths, projectExtensions, sessionsDir, setAgentModel, setBody, setExtensionLists, userExtensions, VERSION, type LineInput } from "./state.js";
+import { body, bodyLog, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, userExtensions, VERSION, type LineInput } from "./state.js";
 import { interactivePrompt, resolveProjectTrust } from "./trust-ui.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { autoCompactFromEnv, chat, contextWindowTokens } from "./chat.js";
+import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { resume } from "./resume.js";
 
 // The moved exports stay reachable from this entry — the test imports
@@ -262,7 +263,7 @@ export function composeSystemPrompt(cwd: string): string {
 	return injected === "" ? SYSTEM_PROMPT : `${SYSTEM_PROMPT}\n${injected}`;
 }
 
-async function makeAgent(fauxSkipTurns = 0, input?: LineInput) {
+async function makeAgent(fauxSkipTurns = 0, input?: LineInput, modelFlag?: string) {
 	const store = new SessionStore(sessionsDir());
 
 	// E3: the project-level trust gate runs BEFORE any extension load (the
@@ -279,23 +280,29 @@ async function makeAgent(fauxSkipTurns = 0, input?: LineInput) {
 		setExtensionLists(user, [], user);
 	}
 
-	// Provider wiring (F 组): the CLI never imports provider SDKs directly —
-	// the runtime's lazy provider resolution owns them. Real key → real
-	// provider; none → faux.
-	const anthropicKey = process.env.ANTHROPIC_API_KEY;
-	const openaiKey = process.env.OPENAI_API_KEY;
+	// 合并轮 B — the config surface: user config + (trusted) project config,
+	// resolved with flags > env > project > user > default. The CLI never
+	// imports provider SDKs directly — the runtime's lazy provider
+	// resolution owns them (a config profile only ever NAMES an env var for
+	// its key; the key itself never sits in a config file).
+	const userCfg = loadUserConfig();
+	const projectCfg = loadProjectConfig(process.cwd(), project !== null);
+	const merged = mergeConfigs(userCfg, projectCfg);
+	setMergedConfig(merged);
+	setConfigModels(merged.models ?? {});
+	setConfiguredWindow(resolveContextWindow(merged));
 
-	let provider: "anthropic" | "openai-compat" | undefined;
-	let model: string;
-	if (anthropicKey) {
-		provider = "anthropic";
-		model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
-	} else if (openaiKey) {
-		provider = "openai-compat";
-		model = process.env.OPENAI_MODEL ?? "gpt-4o";
+	const resolved = resolveModel(modelFlag, merged);
+	const model = resolved === null ? "faux" : resolved.profile.model;
+	if (resolved === null) {
+		console.log(
+			"[faux mode — set ANTHROPIC_API_KEY or OPENAI_API_KEY, or configure models in ~/.kiso/config.json]\n",
+		);
+		setCurrentFaux(true);
+		setCurrentModelName("faux");
 	} else {
-		console.log("[faux mode — set ANTHROPIC_API_KEY or OPENAI_API_KEY for a real model]\n");
-		model = "faux";
+		setCurrentFaux(false);
+		setCurrentModelName(resolved.name);
 	}
 	setAgentModel(model); // v2b: the status bar shows it
 
@@ -325,11 +332,11 @@ async function makeAgent(fauxSkipTurns = 0, input?: LineInput) {
 		// project extensions (the deny>ask>allow composition keeps a user
 		// deny winning over any mode tier — bypass included).
 		extensions: [...modeExtensions(), ...loadedExtensions],
-		...(provider !== undefined
+		...(resolved !== null
 			? {
-					provider,
-					apiKey: (anthropicKey ?? openaiKey) as string,
-					...(process.env.OPENAI_BASE_URL !== undefined ? { baseUrl: process.env.OPENAI_BASE_URL } : {}),
+					provider: resolved.profile.kind,
+					apiKey: resolved.apiKey,
+					...(resolved.profile.baseUrl !== undefined ? { baseUrl: resolved.profile.baseUrl } : {}),
 				}
 			: { adapter: createFauxProvider(readFauxScript().slice(fauxSkipTurns)) }),
 	};
@@ -341,6 +348,21 @@ async function main(): Promise<void> {
 	// first makeAgent (the tier extensions read `current` live). The flag
 	// is stripped from the positional args, so it works in any position.
 	const args = process.argv.slice(2);
+	// 合并轮 B: --model <profile|provider/model> — the top of the model
+	// precedence chain; the value flows into makeAgent's config resolution.
+	let modelFlag: string | undefined;
+	const modelArgIdx = args.indexOf("--model");
+	if (modelArgIdx !== -1) {
+		modelFlag = args[modelArgIdx + 1];
+		if (modelFlag === undefined) {
+			console.error("usage: --model <profile-name|provider/model>");
+			process.exit(2);
+		}
+		args.splice(modelArgIdx, 2);
+	}
+	// Modes: --mode wins over KISO_MODE, which wins over the USER config's
+	// mode (the project config's mode applies later — after the trust gate,
+	// inside makeAgent — unless a higher layer already decided).
 	const modeFlag = args.indexOf("--mode");
 	if (modeFlag !== -1) {
 		const m = MODES.find((x) => x === args[modeFlag + 1]);
@@ -351,12 +373,14 @@ async function main(): Promise<void> {
 		setMode(m);
 		args.splice(modeFlag, 2);
 	} else {
-		setMode(modeFromEnv());
+		setMode(modeFromEnv() ?? loadUserConfig()?.mode ?? "default");
 	}
 	const [command, arg] = args;
 	// 八: faux mode is the keyless demo script — an exhausted script must
-	// exit non-zero, never masquerade as a successful provider run.
-	const faux = process.env.ANTHROPIC_API_KEY === undefined && process.env.OPENAI_API_KEY === undefined;
+	// exit non-zero, never masquerade as a successful provider run. The
+	// verdict comes from makeAgent's config resolution now (a config
+	// profile can provide a real model with no OPENAI_* env).
+	let faux = true;
 	let agent: Awaited<ReturnType<typeof makeAgent>> | undefined;
 
 	// v2c: ONE input source per process — the raw-mode editor on a TTY
@@ -376,6 +400,14 @@ async function main(): Promise<void> {
 		}),
 	);
 	try {
+		// 合并轮 B: the project config's mode applies AFTER the trust gate
+		// (its verdict decides whether the project config exists at all) —
+		// unless a higher layer (--mode flag / KISO_MODE) already decided.
+		const applyConfigMode = (): void => {
+			if (modeFlag !== -1 || process.env.KISO_MODE !== undefined) return;
+			const m = mergedConfig.mode;
+			if (m !== undefined) setMode(m);
+		};
 		switch (command) {
 			case "chat": {
 				const id = arg ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
@@ -384,11 +416,13 @@ async function main(): Promise<void> {
 				dock.enter();
 				// E 区: a resumed session continues the script at its durable
 				// position — never restarts it (fauxSkip).
-				const agent = await makeAgent(fauxSkip(id), input);
+				const agent = await makeAgent(fauxSkip(id), input, modelFlag);
+				applyConfigMode();
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
 				extensionsBanner();
-				await chat(session, faux, input, autoCompactFromEnv());
+				faux = currentFaux;
+				await chat(session, faux, input, resolveAutoCompact(mergedConfig));
 				break;
 			}
 			case "resume": {
@@ -400,13 +434,15 @@ async function main(): Promise<void> {
 				// (argv = [node, script, resume, id, prompt?]).
 				const prompt = process.argv[4];
 				dock.enter();
-				const agent = await makeAgent(fauxSkip(arg), input);
+				const agent = await makeAgent(fauxSkip(arg), input, modelFlag);
+				applyConfigMode();
 				const session = await agent.session({ id: arg });
+				faux = currentFaux;
 				await resume(session, prompt, faux, input);
 				break;
 			}
 			case "sessions": {
-				const agent = await makeAgent();
+				const agent = await makeAgent(0, undefined, modelFlag);
 				for (const meta of agent.sessions()) {
 					console.log(renderSessionLine(meta));
 				}

@@ -11,7 +11,7 @@ import { editFileDiff, writeFileDiff, type DiffResult } from "@vincemakes/kiso-t
 import { canonicalTargetPath } from "@vincemakes/kiso-tools-node";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { dispatch, type DispatchCtx } from "./dispatch.js";
-import { CANCELLED, agentModel, body, bodyLog, dock, type LineInput } from "./state.js";
+import { CANCELLED, agentModel, body, bodyLog, configuredWindow, dock, type LineInput } from "./state.js";
 import { ask, pendingAsk, resolveUncertains } from "./trust-ui.js";
 import { FauxExhaustionError, failOnFauxExhaustion } from "./faux-glue.js";
 import { MODES, getMode, setMode } from "./mode.js";
@@ -41,12 +41,14 @@ export function autoCompactFromEnv(): AutoCompact | undefined {
 }
 
 /**
- * C 区: the model window in tokens — KISO_CONTEXT_WINDOW overrides the
- * 200k default. The microcompact threshold is derived from it (50%), and
- * the status line's ~ctx estimate is measured against it — one source of
- * truth for the window.
+ * C 区: the model window in tokens — env (KISO_CONTEXT_WINDOW) beats the
+ * config window (合并轮 B), both beat the 200k default. The microcompact
+ * threshold is derived from it (50%), and the status line's ~ctx estimate
+ * is measured against it — one source of truth for the window.
  */
 export function contextWindowTokens(): number {
+	const windowOverride = configuredWindow;
+	if (windowOverride !== undefined) return windowOverride;
 	const window = Number.parseInt(process.env.KISO_CONTEXT_WINDOW ?? "", 10);
 	return Number.isFinite(window) && window > 0 ? window : DEFAULT_CONTEXT_WINDOW;
 }

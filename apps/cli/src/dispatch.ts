@@ -5,9 +5,10 @@
  */
 
 import { escapeTerminal, palette } from "@vincemakes/kiso-tui";
-import type { AgentSession } from "@vincemakes/kiso-runtime";
+import { buildAdapter, type AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, getMode, setMode } from "./mode.js";
-import { body, bodyLog, type LineInput } from "./state.js";
+import { agentModel, body, bodyLog, configModels, setAgentModel, setCurrentModelName, type LineInput } from "./state.js";
+import { directWriteProfile, profileAvailable } from "./config.js";
 
 /** Everything dispatch touches that chat() owns. */
 export interface DispatchCtx {
@@ -43,6 +44,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			bodyLog(cmd("/last", "show the most recent tool call's input and output"));
 			bodyLog(cmd("/status", "show session id, event count, and context estimate"));
 			bodyLog(cmd("/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"));
+			bodyLog(cmd("/model", "list model profiles; /model <name|provider/model> switches"));
 			bodyLog(cmd("/compact", "summarize the older conversation to free context"));
 			bodyLog(cmd("exit", "leave the session"));
 			ctx.input.prompt();
@@ -111,6 +113,56 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				setMode(m);
 				body.notice(`mode → ${m}`);
 				ctx.paintIdle();
+			}
+			ctx.input.prompt();
+		});
+		return;
+	}
+	if (trimmed === "/model" || trimmed.startsWith("/model ")) {
+		// 合并轮 B: /model lists the profiles (with availability — the
+		// config never stores keys, only apiKeyEnv NAMES; an unset env
+		// marks the profile unavailable, never a crash) and switches the
+		// session's adapter — the NEXT turn uses it (session.setAdapter),
+		// the notice cell leaves the audit line in the body.
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			const arg = trimmed.slice(6).trim();
+			if (arg === "") {
+				bodyLog(`model: ${agentModel}`);
+				const names = Object.keys(configModels);
+				if (names.length === 0) {
+					bodyLog("profiles: (none — define models in ~/.kiso/config.json)");
+				} else {
+					for (const name of names) {
+						const p = configModels[name]!;
+						bodyLog(
+							`  ${name} → ${p.kind}/${p.model} · ${p.apiKeyEnv} ${profileAvailable(p) ? "(available)" : "(unavailable)"}`,
+						);
+					}
+				}
+				bodyLog("switch with /model <profile-name|provider/model>");
+			} else {
+				try {
+					const direct = directWriteProfile(arg);
+					const profile = direct ?? configModels[arg];
+					if (profile === undefined) {
+						bodyLog(`no such model profile: ${arg}`);
+					} else if (!profileAvailable(profile)) {
+						bodyLog(
+							`model ${arg}: unavailable — the env var ${profile.apiKeyEnv} is not set (configs never store keys, only the env-var name)`,
+						);
+					} else {
+						const adapter = await buildAdapter(profile.kind, {
+							apiKey: process.env[profile.apiKeyEnv] as string,
+							...(profile.baseUrl !== undefined ? { baseUrl: profile.baseUrl } : {}),
+						});
+						ctx.session.setAdapter(adapter);
+						setAgentModel(profile.model);
+						setCurrentModelName(arg);
+						body.notice(`model → ${arg} (${profile.model}) — takes effect on the next turn`);
+					}
+				} catch (err) {
+					body.notice(`[/model] failed: ${err instanceof Error ? err.message : String(err)}`);
+				}
 			}
 			ctx.input.prompt();
 		});

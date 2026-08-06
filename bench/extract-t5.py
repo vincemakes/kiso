@@ -2,8 +2,13 @@
 """Extract T5 metrics: the long-session runs aggregate MULTIPLE processes
 per tool (kiso: 3 stdout logs + one durable session; pi: 8 -p logs; claude:
 8 -p logs). Wall is the runner's summed seconds; usage is the SUM across
-each tool's own records."""
+each tool's own records.
 
+ACCOUNTING (0.1.23): same per-tool input conventions as extract.py —
+kiso's inputTokens INCLUDES the cache-hit prefix (fresh = input − cache);
+pi/claude report fresh-only input (fresh = input; total = input + cache).
+Rows carry the uniform fresh/total/cost_weighted derived fields.
+"""
 import json, os, sys, glob
 
 def kiso(work):
@@ -17,7 +22,8 @@ def kiso(work):
                 inp += e.get("inputTokens") or 0
                 cache += e.get("cacheRead") or 0
                 out += e.get("outputTokens") or 0
-    return dict(input=inp, cache_read=cache, output=out, requests=reqs)
+    return dict(input=inp, cache_read=cache, output=out, requests=reqs,
+                fresh=inp - cache, total=inp, cost_weighted=(inp - cache) + 0.1 * cache)
 
 def pi(work):
     inp = out = cache = reqs = 0
@@ -41,7 +47,8 @@ def pi(work):
                 inp += u.get("input") or 0
                 cache += u.get("cacheRead") or 0
                 out += u.get("output") or 0
-    return dict(input=inp, cache_read=cache, output=out, requests=reqs)
+    return dict(input=inp, cache_read=cache, output=out, requests=reqs,
+                fresh=inp, total=inp + cache, cost_weighted=inp + 0.1 * cache)
 
 def claude(work):
     inp = out = cache = reqs = 0
@@ -54,27 +61,33 @@ def claude(work):
         except Exception:
             continue
         u = d.get("usage", {})
-        inp += u.get("input_tokens", 0)
-        cache += u.get("cache_read_input_tokens", 0)
+        i_ = u.get("input_tokens", 0)
+        c_ = u.get("cache_read_input_tokens", 0)
+        inp += i_; cache += c_
         out += u.get("output_tokens", 0)
         reqs += d.get("num_turns", 0)
-    return dict(input=inp, cache_read=cache, output=out, requests=reqs)
+    return dict(input=inp, cache_read=cache, output=out, requests=reqs,
+                fresh=inp, total=inp + cache, cost_weighted=inp + 0.1 * cache)
 
-rows = []
-for work in sorted(glob.glob(sys.argv[1] + "/runs/*T5*")):
-    name = os.path.basename(work)
-    tool, task, run = name.split("-", 2)
-    if not os.path.exists(f"{work}/wall_seconds"):
-        continue
-    try:
-        m = {"kiso": kiso, "pi": pi, "claude": claude}[tool](work)
-    except Exception as ex:
-        m = dict(error=str(ex)[:80])
-    m.update(tool=tool, task=task, run=run,
-             wall=int(open(f"{work}/wall_seconds").read().strip()),
-             verify=open(f"{work}/verify").read().strip())
-    if "input" in m:
-        m["cost_weighted"] = m["input"] + 0.1 * m["cache_read"]
-    rows.append(m)
+def main(workdir):
+    rows = []
+    for work in sorted(glob.glob(workdir + "/runs/*T5*")):
+        name = os.path.basename(work)
+        tool, task, run = name.split("-", 2)
+        if not os.path.exists(f"{work}/wall_seconds"):
+            continue
+        try:
+            m = {"kiso": kiso, "pi": pi, "claude": claude}[tool](work)
+        except Exception as ex:
+            m = dict(error=str(ex)[:80])
+        m.update(tool=tool, task=task, run=run,
+                 wall=int(open(f"{work}/wall_seconds").read().strip()),
+                 verify=open(f"{work}/verify").read().strip())
+        if "input" in m:
+            m["cost_weighted"] = m["fresh"] + 0.1 * m["cache_read"]
+        rows.append(m)
+    print(json.dumps(rows, indent=1))
+    return rows
 
-print(json.dumps(rows, indent=1))
+if __name__ == "__main__":
+    main(sys.argv[1] if len(sys.argv) > 1 else ".")

@@ -78,6 +78,40 @@ export function setAgentModel(value: string): void {
 	agentModel = value;
 }
 
+/** 合并轮 B: whether the agent runs on the faux provider (no real key) —
+ *  set inside makeAgent, read by main for chat/resume's exhaustion check. */
+export let currentFaux = true;
+export function setCurrentFaux(value: boolean): void {
+	currentFaux = value;
+}
+
+/** 合并轮 B: the merged config (user + trusted project) as resolved by the
+ *  LAST makeAgent — /model and autoCompact resolve against it. */
+export let mergedConfig: import("./config.js").KisoConfig = {};
+export function setMergedConfig(value: import("./config.js").KisoConfig): void {
+	mergedConfig = value;
+}
+
+/** 合并轮 B: the resolved context window (env > config.contextWindow) —
+ *  chat.ts's contextWindowTokens() consults it before the env. */
+export let configuredWindow: number | undefined;
+export function setConfiguredWindow(value: number | undefined): void {
+	configuredWindow = value;
+}
+
+/** 合并轮 B: the merged config (user + trusted project) + the current
+ *  model's NAME — /model lists and switches against them. */
+export let configModels: Readonly<Record<string, import("./config.js").ModelProfile>> = {};
+export function setConfigModels(models: Readonly<Record<string, import("./config.js").ModelProfile>>): void {
+	configModels = models;
+}
+/** The name of the model currently driving the session ("faux" or the
+ *  profile name / provider/model write / env model). */
+export let currentModelName = "faux";
+export function setCurrentModelName(value: string): void {
+	currentModelName = value;
+}
+
 /** E1: the extensions loaded by makeAgent — their names feed the banner. */
 export let loadedExtensions: readonly KisoExtension[] = [];
 /** E1: the USER-level extensions alone — the banner's unmarked part (E3:

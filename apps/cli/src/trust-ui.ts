@@ -12,6 +12,7 @@ import { escapeTerminal, palette } from "@vincemakes/kiso-tui";
 import { projectArtifacts, recordTrust, trustFor, type ProjectArtifacts } from "@vincemakes/kiso-runtime";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { CANCELLED, bodyLog, dock, kisoHome, mergedTempPaths, type LineInput } from "./state.js";
+import { loadUserConfig, resolveProjectTrustPolicy } from "./config.js";
 
 /** v2a: the interactive prompt — blue, the identity accent. readline owns
  *  the echo of what the user types; we own the prompt's color. (v2c: the
@@ -91,6 +92,12 @@ export function ask(input: LineInput, question: string): Promise<string | typeof
 export async function resolveProjectTrust(input: LineInput): Promise<ProjectArtifacts | null> {
 	const artifacts = await projectArtifacts(process.cwd());
 	if (artifacts === null) return null; // no .kiso artifacts — nothing to gate
+	// 合并轮 B: projectTrust "never" (user config) — the gate auto-refuses:
+	// no ask, no record, nothing loads. There is deliberately no "always".
+	if (resolveProjectTrustPolicy(loadUserConfig() ?? {}) === "never") {
+		bodyLog(`[project .kiso] projectTrust: never — ${artifacts.root} not loaded`);
+		return null;
+	}
 	const record = trustFor(artifacts.root, artifacts.digest);
 	if (record?.decision === "granted") {
 		applyProjectMerges(artifacts);

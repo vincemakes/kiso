@@ -49,21 +49,23 @@ describe("E3: projectArtifacts", () => {
 		expect(await projectArtifacts(cwd)).toBeNull();
 	});
 
-	it("discovers all three artifact kinds with per-file digests and a bundle digest", async () => {
+	it("discovers all four artifact kinds with per-file digests and a bundle digest", async () => {
 		const cwd = makeProject({
 			"extensions/lint-rules.mjs": "export default { name: \"lint-rules\", tools: [] };\n",
 			"mcp.json": "{\"mcpServers\": {}}\n",
 			"skills/review/SKILL.md": "---\nname: review\ndescription: review the diff\n---\nbody\n",
+			"config.json": "{\"model\": \"deepseek\"}\n",
 		});
 		const artifacts = await projectArtifacts(cwd);
 		expect(artifacts).not.toBeNull();
 		const paths = artifacts!.files.map((f) => f.path).sort();
-		expect(paths).toEqual(["extensions/lint-rules.mjs", "mcp.json", "skills/review/SKILL.md"]);
+		expect(paths).toEqual(["config.json", "extensions/lint-rules.mjs", "mcp.json", "skills/review/SKILL.md"]);
 		expect(artifacts!.files.every((f) => /^[0-9a-f]{64}$/.test(f.digest))).toBe(true);
 		expect(/^[0-9a-f]{64}$/.test(artifacts!.digest)).toBe(true);
 		expect(artifacts!.files.find((f) => f.kind === "extension")?.path).toBe("extensions/lint-rules.mjs");
 		expect(artifacts!.files.find((f) => f.kind === "mcp")?.path).toBe("mcp.json");
 		expect(artifacts!.files.find((f) => f.kind === "skill")?.path).toBe("skills/review/SKILL.md");
+		expect(artifacts!.files.find((f) => f.kind === "config")?.path).toBe("config.json");
 	});
 
 	it("any file change changes the bundle digest — the trust decision dies", async () => {

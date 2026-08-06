@@ -94,7 +94,9 @@ export class AgentSession {
 	readonly id: string;
 	readonly log: EventLog;
 	readonly #store: SessionStore;
-	readonly #adapter: Adapter;
+	// NOT readonly since 0.1.23: /model replaces it between runs (the
+	// constructor and setAdapter are the only writers).
+	#adapter: Adapter;
 	readonly #config: SessionConfig;
 	readonly #pendingResolvers = new Map<string, (decision: PermissionDecision) => void>();
 	readonly #uncertaintyResolvers = new Map<string, (resolution: "rerun" | "abandoned") => void>();
@@ -182,6 +184,17 @@ export class AgentSession {
 	/** The conversation so far, as the model sees it. */
 	projected(): readonly Message[] {
 		return projectMessages(this.log.all);
+	}
+
+	/**
+	 * 合并轮 B (/model): replace the adapter for SUBSEQUENT runs. The
+	 * kernel reads the adapter through the loop-config closure at each
+	 * turn, so the swap takes effect at the next turn — a run already in
+	 * flight keeps the adapter it started with. The CLI calls this between
+	 * turns (dispatch's /model), never mid-run.
+	 */
+	setAdapter(adapter: Adapter): void {
+		this.#adapter = adapter;
 	}
 
 	/** Run one user turn. Iterate to consume; `run.abort()` cancels. */

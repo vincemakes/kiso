@@ -102,15 +102,15 @@ describe("Modes: the chain shape", () => {
 });
 
 describe("Modes: startup and prompt", () => {
-	it("modeFromEnv resolves KISO_MODE, defaulting to default", () => {
+	it("modeFromEnv resolves KISO_MODE, undefined when unset or invalid (合并轮 B: the config layer's mode applies below the env)", () => {
 		const saved = process.env.KISO_MODE;
 		try {
 			process.env.KISO_MODE = "plan";
 			expect(modeFromEnv()).toBe("plan");
 			process.env.KISO_MODE = "bogus";
-			expect(modeFromEnv()).toBe("default");
+			expect(modeFromEnv()).toBeUndefined();
 			delete process.env.KISO_MODE;
-			expect(modeFromEnv()).toBe("default");
+			expect(modeFromEnv()).toBeUndefined();
 		} finally {
 			if (saved === undefined) delete process.env.KISO_MODE;
 			else process.env.KISO_MODE = saved;

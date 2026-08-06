@@ -14,6 +14,8 @@
  * from finish_reason.
  */
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import OpenAI from "openai";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions";
 import type { Adapter, StreamOptions } from "@vincemakes/kiso-core";
@@ -63,24 +65,29 @@ export function createOpenAICompatProvider(config: OpenAICompatProviderConfig = 
 export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 	return {
 		async *stream(options: StreamOptions): AsyncIterable<AdapterEvent> {
+			// The explicit streaming params type keeps the `stream: true`
+			// literal overload — a widened `stream: boolean` would type the
+			// create() call as the NON-streaming variant (TS2504).
+			const body: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
+				model: options.model,
+				messages: toOpenAIMessages(options.messages, options.systemPrompt),
+				stream: true,
+				// D5: request real streaming usage — without this the
+				// provider never sends a usage chunk and we would
+				// report known:false forever.
+				stream_options: { include_usage: true },
+				...(options.tools?.length ? { tools: options.tools.map(toOpenAITool) } : {}),
+				...(options.maxTokens !== undefined ? { max_tokens: options.maxTokens } : {}),
+				...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+			};
+			maybeDumpRequest(body);
 			// Area 6: the stream CREATION is inside the error normalization —
 			// a 429/5xx/connection failure before the first byte is a mapped,
 			// retryable StructuredError, so the loop's pre-stream retry works.
 			let stream;
 			try {
 				stream = await client.chat.completions.create(
-					{
-						model: options.model,
-						messages: toOpenAIMessages(options.messages, options.systemPrompt),
-						stream: true,
-						// D5: request real streaming usage — without this the
-						// provider never sends a usage chunk and we would
-						// report known:false forever.
-						stream_options: { include_usage: true },
-						...(options.tools?.length ? { tools: options.tools.map(toOpenAITool) } : {}),
-						...(options.maxTokens !== undefined ? { max_tokens: options.maxTokens } : {}),
-						...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-					},
+					body,
 					// Phase B: cancellation reaches the SDK; the system prompt is a
 					// first-class message, not a dropped option.
 					options.signal !== undefined ? { signal: options.signal as AbortSignal } : undefined,
@@ -267,6 +274,31 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 	};
 }
 
+// ── Request dump (debug tool) ───────────────────────────────────────────
+
+let dumpSeq = 0;
+
+/**
+ * KISO_DUMP_REQUESTS=<dir> — DEBUG TOOL: writes the FULL request body (the
+ * exact JSON the SDK will send) to `<dir>/req-<pid>-<n>.json` before it is
+ * sent, numbered per request in process order. Built for the fresh-mystery
+ * diagnosis (byte-diff consecutive requests' common prefix); kept as a
+ * permanent debug sink. ⚠ The bodies are REAL conversation data (the model
+ * may have seen repo contents) — never share a dump dir. A dump failure
+ * never breaks the request.
+ */
+function maybeDumpRequest(body: unknown): void {
+	const dir = process.env.KISO_DUMP_REQUESTS;
+	if (dir === undefined || dir === "") return;
+	dumpSeq += 1;
+	try {
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, `req-${process.pid}-${dumpSeq}.json`), JSON.stringify(body));
+	} catch {
+		// debug tool: silent on failure
+	}
+}
+
 // ── Mapping helpers ────────────────────────────────────────────────────
 
 /**
@@ -348,27 +380,22 @@ function toOpenAIMessages(
 	if (systemPrompt !== undefined) {
 		out.push({ role: "system", content: systemPrompt });
 	}
-	let lastUser = -1;
-	for (const [i, m] of messages.entries()) {
-		if (m.role === "user") lastUser = i;
-	}
-	// 自举 P1/P2 + 手感批 C7: thinking mode is detected by the presence of
-	// reasoning in the CURRENT turn only (messages after the last user
-	// message). Real OpenAI never emits thinking events, so its requests
-	// never see the field. The current-turn messages carry no source
-	// marker, so the simple judgment is "the current session adapter is
-	// their source" — their reasoning is THIS family's own and may be
-	// echoed. Reasoning in OLDER turns belongs to whatever adapter
-	// produced them (an anthropic-thinking history continued by an openai
-	// adapter is the case this guards): it must NEVER flip the mode —
-	// otherwise this adapter would send `reasoning_content: ""` on a
-	// request it has no business tagging as thinking. In thinking mode,
-	// ONLY the CURRENT turn's assistant messages carry reasoning_content —
-	// their own, or "" when the step produced no thinking (the field must
-	// still be present, or DeepSeek 400s); old turns' CoT is never echoed
-	// (DeepSeek does not need it, and echoing it is token waste).
-	const thinkingMode = messages.slice(lastUser + 1).some((m) => m.role === "assistant" && m.reasoning !== undefined);
-	for (const [i, msg] of messages.entries()) {
+	// 合并轮 (0.1.23) C7 修订: `reasoning_content` 的存在性由整个投影的
+	// 单调状态决定 — 投影里存在任一 reasoning → 每条 assistant 消息都
+	// 携带(自身 reasoning,或 "")；否则一条都不带。理由: D 区请求级
+	// 字节稳定。旧实现按"当前轮"判定(手感批 C7),轮边界一过,旧轮
+	// assistant 消息的字段被剥掉,序列化被改写 — 请求 N 与 N+1 的公共
+	// 前缀断在旧消息处,provider 前缀缓存每轮边界断一次(fresh 之谜
+	// 实证: 14 请求的会话里两次缓存断点都在轮边界;修复后同会话 0 断
+	// 点、逐请求 cached 82-98%)。单调性保证存在性在会话内只翻转一次
+	// (首个 thinking 出现时,通常在首轮 — 此前几乎没有旧 assistant
+	// 消息),之后从生到死不翻转;真 OpenAI 永不产生 reasoning → 字段
+	// 永不出现,其请求路径与旧行为逐字节相同。带 reasoning 的旧轮消息
+	// 回传其推理是 DeepSeek 官方推荐的缓存稳定形态;旧内容命中前缀
+	// 缓存只按 0.1× 计费,"回传是 token 浪费"的前提在缓存经济下不成立。
+	// "" 字段在旧轮同样被接受(真 API 验证: 200 + 2560 cached tokens)。
+	const hasReasoning = messages.some((m) => m.role === "assistant" && m.reasoning !== undefined);
+	for (const msg of messages) {
 		if (msg.role === "user") {
 			out.push({ role: "user", content: toOpenAIContent(msg.content) });
 		} else if (msg.role === "assistant") {
@@ -389,7 +416,11 @@ function toOpenAIMessages(
 				role: "assistant",
 				content: msg.blocks.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(""),
 				...(toolCalls.length ? { tool_calls: toolCalls } : {}),
-				...(thinkingMode && i > lastUser ? { reasoning_content: msg.reasoning ?? "" } : {}),
+				// DeepSeek extension field — absent from the SDK's param type,
+				// added via spread so the literal stays assignable (the union
+				// type carries the extra key). Presence follows hasReasoning
+				// (the monotone rule above — the field never flips mid-history).
+				...(hasReasoning ? { reasoning_content: msg.reasoning ?? "" } : {}),
 			});
 		} else {
 			// tool messages accept text only — images are converted to an

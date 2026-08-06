@@ -6,8 +6,10 @@
  * dies the moment the files change.
  *
  * projectArtifacts(cwd) discovers <cwd>/.kiso/{extensions/*.mjs, mcp.json,
- * skills/<name>/SKILL.md} — the exact three artifact kinds — and returns a
- * manifest (one sha256 per file) plus a BUNDLE digest: sha256 over the
+ * skills/<name>/SKILL.md, config.json} — the four artifact kinds (config
+ * since 0.1.23, ADR-0045: the project config rides the trust package) —
+ * and returns a manifest (one sha256 per file) plus a BUNDLE digest:
+ * sha256 over the
  * sorted relative paths and their contents. Any file change changes the
  * bundle digest, which invalidates every prior trust record.
  *
@@ -41,7 +43,7 @@ export interface TrustRecord {
 export interface ProjectArtifact {
 	/** path relative to the .kiso dir, e.g. "extensions/lint-rules.mjs". */
 	readonly path: string;
-	readonly kind: "extension" | "mcp" | "skill";
+	readonly kind: "extension" | "mcp" | "skill" | "config";
 	/** sha256 (hex) of this file's content — the listing shows a short prefix. */
 	readonly digest: string;
 }
@@ -103,6 +105,14 @@ export async function projectArtifacts(cwd: string): Promise<ProjectArtifacts | 
 			if (!isMissing(err)) throw err; // a file named like a dir → ENOTDIR: inert, skip
 		}
 	}
+	// 合并轮 B: the project's config.json is an artifact of the trust
+	// package — trusting the package trusts its config, and a CHANGED
+	// config is a changed digest (the trust decision re-evaluates).
+	try {
+		entries.push({ path: "config.json", buf: await readFile(join(root, "config.json")) });
+	} catch (err) {
+		if (!isMissing(err)) throw err;
+	}
 	if (entries.length === 0) return null;
 
 	entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
@@ -128,6 +138,7 @@ function sha256(buf: Buffer): string {
 function kindOf(path: string): ProjectArtifact["kind"] {
 	if (path.startsWith("extensions/")) return "extension";
 	if (path === "mcp.json") return "mcp";
+	if (path === "config.json") return "config";
 	return "skill";
 }
 

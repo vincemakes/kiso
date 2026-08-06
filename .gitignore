@@ -6,3 +6,4 @@ dist/
 .env
 *.kiso-tmp*
 bench/runs/
+__pycache__/

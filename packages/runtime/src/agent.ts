@@ -154,6 +154,22 @@ function policyHooks(policy: PermissionPolicy): HookHost {
 	};
 }
 
+/**
+ * 合并轮 B: the adapter factory the CLI uses for /model switches — the
+ * same lazy provider resolution as createAgent's (the CLI never imports
+ * provider SDKs directly; the runtime owns them here). Returns a NEW
+ * adapter each call; the caller (session.setAdapter) decides when it
+ * takes effect.
+ */
+export async function buildAdapter(
+	provider: "anthropic" | "openai-compat",
+	opts: { readonly apiKey?: string; readonly baseUrl?: string } = {},
+): Promise<Adapter> {
+	// resolveAdapter consumes only provider/apiKey/baseUrl from the
+	// definition — the rest is irrelevant for a bare adapter build.
+	return resolveAdapter({ provider, ...opts } as AgentDefinition);
+}
+
 async function resolveAdapter(definition: AgentDefinition): Promise<Adapter> {
 	if (definition.adapter) return definition.adapter;
 	switch (definition.provider) {

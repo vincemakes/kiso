@@ -58,3 +58,41 @@ whether provider-specific canonicalization belongs in the adapter layer.
 - Tests: `packages/core/tests/prompt-cache.test.ts` (three regression
   tests above); the D 区 byte-discipline sections of the kiso code plan
   (`docs/plans/2026-08-04-kiso-code.md`).
+
+## Amendment 1 (2026-08-06): the request-level invariant — where the byte prefix ends
+
+The projection contract covers the MESSAGE ARRAY. The adapter serializes it
+inside a request body whose tail (`stream`, `stream_options`, `tools`,
+`max_tokens`, …) FOLLOWS the messages array — so the full request bodies
+can never be prefix-related: a new message inserts inside `messages`, the
+closing `]` shifts right, and the tail re-aligns byte-identically after it.
+
+**The request-level invariant (0.1.23, the fresh-mystery round):** request
+N+1 shares request N's bytes through the close of request N's LAST message —
+the maximal achievable prefix — and the tails are byte-identical. The
+provider's prefix cache is worth exactly that prefix; a byte that changes
+ANYWHERE in it (an old message's re-render) silently kills the cache for
+the rest of the request, then recovers on the next request.
+
+**The one real violation found and fixed (0.1.23):** the OpenAI-compat
+adapter gated `reasoning_content` on the CURRENT turn (C7, the hand-feel
+round). At every turn boundary the just-finished turn's assistant messages
+LOST the field, re-rendering old history and breaking the prefix at each
+boundary (empirically: two breaks in a 14-request real session, both at
+turn boundaries; the request after each break showed fresh tokens ≈ the
+whole message history). Fix: the field's presence is MONOTONE — once any
+message in the projection carries reasoning, every assistant message
+carries the field (its own reasoning, or ""); otherwise none does. Flips at
+most once per session (at the first thinking, usually turn 1), never again;
+real OpenAI never produces reasoning, so its requests are byte-identical to
+the pre-0.1.23 behavior. Verified on the real DeepSeek API: the fixed
+session's 13 consecutive-request pairs all share the maximal prefix (0
+breaks) and every request cache-hits 82-99%, including the turn boundaries
+that used to break.
+
+**Debug tooling (kept):** `KISO_DUMP_REQUESTS=<dir>` writes each outgoing
+request body to `<dir>/req-<pid>-<n>.json` (real conversation data — never
+shared); `bench/dumpdiff.py` byte-diffs consecutive requests and localizes
+the first divergence to a JSON path. The diagnosis method of record: dump →
+diff → classify (divergence at the last-message end = healthy; inside an
+old message = contract violation).

@@ -173,6 +173,50 @@ kiso help                      this help
 - Interrupted side effects are surfaced on resume (`⚠ interrupted execution`)
   and block until a human resolves them — a confirmed success never re-runs.
 
+### Model configuration (`~/.kiso/config.json`, 0.1.23)
+
+The config surface (ADR-0045) holds named model profiles — schema v1,
+credentials never inside (a profile only NAMES the env var holding its
+key). Precedence: **flags > env > project config > user config > default**;
+a broken config file fails loudly with the file named.
+
+```jsonc
+// ~/.kiso/config.json
+{
+  "model": "deepseek",                       // the startup profile
+  "models": {
+    "deepseek": {
+      "kind": "openai-compat",               // or "anthropic"
+      "model": "deepseek-v4-flash",
+      "apiKeyEnv": "DEEPSEEK_API_KEY",       // the key's env var — never the key
+      "baseUrl": "https://api.deepseek.com"  // optional
+    },
+    "claude": { "kind": "anthropic", "model": "claude-sonnet-5", "apiKeyEnv": "ANTHROPIC_API_KEY" }
+  },
+  "mode": "default",                         // manual/default/accept-edits/plan/bypass
+  "contextWindow": 160000,                   // tokens
+  "autoCompact": { "thresholdRatio": 0.8 },  // opt-in, env KISO_AUTO_COMPACT wins
+  "projectTrust": "ask"                      // "ask" | "never" — no "always"
+}
+```
+
+- `kiso --model deepseek chat` — the flag beats everything; `provider/model`
+  direct writes work too (`--model openai-compat/gpt-4o`).
+- `/model` in a session lists the profiles (each annotated available /
+  unavailable — an unset apiKeyEnv is never a crash) and switches the
+  session's adapter for subsequent turns (a NoticeCell records it).
+- A profile whose env var is unset is refused loudly on switch — configs
+  never store keys, so a missing env is an honest "not configured".
+- The project's own `.kiso/config.json` rides the E3 trust gate: a
+  granted project's config applies, an untrusted one is never even read
+  (its digest covers the config file).
+- **Migration from the kiso-ds wrapper pattern** (a shell wrapper
+  exporting `OPENAI_API_KEY`/`OPENAI_BASE_URL`/`OPENAI_MODEL`): the
+  wrapper still works — the env layer is second in the chain — but the
+  config profile above is the replacement form (typed, switchable at
+  runtime, and the key stays in your environment either way). The wrapper
+  pattern is 遗留可用 (legacy, supported).
+
 ### The `kill -9` test
 
 This is the product's scripted proof, automated end to end in
@@ -563,30 +607,35 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | context economy ● | microcompact + /compact (model summary) + prompt-cache discipline | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
 
-The bench, one fixture, one model, mean of two runs (kiso 0.1.22 · pi
+The bench, one fixture, one model, mean of two runs (kiso 0.1.23 · pi
 0.73.1 · Claude Code 2.1.223 via a DeepSeek endpoint):
 
-| task | tool | fresh in | cached in | total in | out | reqs | wall |
-|------|--------|-------:|-------:|-------:|-----:|----:|-----:|
-| T1 read+answer | **kiso** | 2,372 | 2,176 | **4,548** | 134 | 2.0 | **4.5s** |
-| | pi | 1,146 | 7,680 | 8,826 | 158 | 2.0 | 5.5s |
-| | claude | 25,926 | 25,792 | 51,718 | 226 | 2.0 | 6.0s |
-| T2 fix+verify | **kiso** | 5,490 | 5,184 | **10,674** | 327 | 4.0 | **7.5s** |
-| | pi | 1,493 | 17,152 | 18,645 | 396 | 4.0 | 10.5s |
-| | claude | 26,520 | 78,208 | 104,728 | 646 | 4.5 | 13.5s |
-| T3 cross-file rename | **kiso** | 9,534 | 8,640 | **18,174** | 719 | 5.5 | **11.5s** |
-| | pi | 1,628 | 22,784 | 24,412 | 752 | 5.0 | 13.0s |
-| | claude | 28,196 | 203,648 | 231,844 | 2,094 | 14.5 | 30.0s |
+| task | tool | fresh in | cached in | total in | cost-wtd | out | reqs | wall |
+|------|--------|-------:|-------:|-------:|---------:|-----:|----:|-----:|
+| T1 read+answer | **kiso** | 196 | 2,176 | **2,372** | **414** | 162 | 2.0 | **5.0s** |
+| | pi | 1,146 | 7,680 | 8,826 | 1,914 | 158 | 2.0 | 5.5s |
+| | claude | 25,926 | 25,792 | 51,718 | 28,505 | 226 | 2.0 | 6.0s |
+| T2 fix+verify | **kiso** | 256 | 5,120 | **5,376** | **768** | 279 | 4.0 | **6.5s** |
+| | pi | 1,493 | 17,152 | 18,645 | 3,208 | 396 | 4.0 | 10.5s |
+| | claude | 26,520 | 78,208 | 104,728 | 34,340 | 646 | 4.5 | 13.5s |
+| T3 cross-file rename | **kiso** | 953 | 9,984 | **10,938** | **1,952** | 770 | 6.0 | **13.0s** |
+| | pi | 1,628 | 22,784 | 24,412 | 3,906 | 752 | 5.0 | 13.0s |
+| | claude | 28,196 | 203,648 | 231,844 | 48,561 | 2,094 | 14.5 | 30.0s |
 
-Headline (T3, the hardest task) — TWO metrics, honestly: on **raw total
-input tokens** kiso is **1.3× fewer** than pi and **12.8× fewer** than
-Claude Code, with identical task outcomes (on the T5 8-turn session,
-1.2× fewer than pi, 4.5× fewer than CC). On **cost-weighted input**
-(fresh + 0.1×cached, DeepSeek's cache-hit price ratio — see
-`bench/README.md`), pi overtakes kiso ~2.7× on T3: the difference is the
-cache-hit structure, not the task outcome — the caveats explain it, and
-kiso's high per-request fresh is a tracked investigation (a suspected
-D 区 system-prompt byte-instability).
+Headline (T3, the hardest task): on **raw total input tokens** kiso is
+**2.2× fewer** than pi (10.9K vs 24.4K) and **21.2× fewer** than Claude
+Code, with identical task outcomes (T5 8-turn session: 1.9× fewer than pi,
+6.7× fewer than CC). On **cost-weighted input** (fresh + 0.1×cached,
+DeepSeek's cache-hit price ratio — see `bench/README.md`) kiso is cheaper
+on T3 (2.0×, 2.0K vs 3.9K), T2 (4.2×), T1 (4.6×) and T5 (1.35×); pi edges
+ahead on T4 cost-weighted (7.2K vs 8.0K — n=2 session variance, written
+plainly), and CC stays 5.5-24.9× heavier. The 0.1.22-era version of this
+table reported a phantom "kiso fresh ≈ system-prompt size" anomaly and a
+pi cost-overtake — both were extraction artifacts (kiso's total input was
+mislabeled as fresh and double-counted into "total"); the 0.1.23
+investigation fixed the accounting AND found one real request-prefix
+violation in the adapter (the reasoning_content turn-boundary flip, fixed
+in 0.1.23, ADR-0026 Amendment 1).
 
 Honest footnotes (from `bench/README.md`): these tasks are SMALL — Claude
 Code's large system prompt buys real product capability (task tracking,

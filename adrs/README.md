@@ -44,6 +44,14 @@ that has not finished speaking.
   directory — Accepted
 - 0038 — Uncertainty belongs to the crash window alone; the approval
   chain guards retries — Accepted (supersedes 0024 in part)
+- 0039 — The TUI bottom-anchored UI budget — Accepted
+- 0040 — The v2d body renderer cell model — Accepted
+- 0041 — The CLI gate — terminal cap 2400 — Accepted
+- 0042 — Abstain is a verdict — Accepted
+- 0043 — TUI extraction, per-package gates — Accepted
+- 0044 — The compact summary layer — Accepted
+- 0045 — The config surface: credentials never on disk, project config
+  in the trust package, no "always" — Accepted
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,

@@ -179,10 +179,14 @@ describe("v3 §04: the slash-command menu", () => {
 		expect(editor.menuState()).toBeNull(); // a bare "/" waits
 		editor.feed(enc("m"));
 		const s1 = editor.menuState();
-		expect(s1?.items.map((m) => m.name)).toEqual(["/mode"]);
+		expect(s1?.items.map((m) => m.name)).toEqual(["/mode", "/model"]);
 		editor.feed(enc("ode"));
-		expect(editor.menuState()?.items.map((m) => m.name)).toEqual(["/mode"]);
-		editor.feed(enc("x")); // "/modex" matches nothing — closed
+		// "/model" has "/mode" as a prefix — both match; the buffer narrows
+		// further only at the divergent character.
+		expect(editor.menuState()?.items.map((m) => m.name)).toEqual(["/mode", "/model"]);
+		editor.feed(enc("l"));
+		expect(editor.menuState()?.items.map((m) => m.name)).toEqual(["/model"]);
+		editor.feed(enc("x")); // "/modelx" matches nothing — closed
 		expect(editor.menuState()).toBeNull();
 	});
 

@@ -64,6 +64,7 @@ export interface MenuItem {
 }
 export const MENU_ITEMS: readonly MenuItem[] = [
 	{ name: "/mode", desc: "switch the approval tier (manual/default/accept-edits/plan/bypass)" },
+	{ name: "/model", desc: "list model profiles; switch with /model <name|provider/model>" },
 	{ name: "/compact", desc: "summarize the older conversation to free context" },
 	{ name: "/think", desc: "show the last full thinking block" },
 	{ name: "/last", desc: "show the most recent tool call's input and output" },
