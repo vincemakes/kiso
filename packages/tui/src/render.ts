@@ -15,18 +15,20 @@
  * errors; dim for metadata. NO_COLOR set, or a non-TTY output → every
  * code is empty, so pipes and CI carry ZERO ANSI (the existing byte-level
  * e2e assertions guard it). Everything not listed here is plain.
- * v3: `bg` — the user-message block background (SGR 48, dark gray 237).
+ * v3: `rev` — the user-message block highlight (SGR 7 reverse video,
+ * TUI v4 #16c: the fixed dark background is GONE — reverse follows the
+ * terminal theme).
  */
 export interface Palette {
 	readonly blue: string;
 	readonly dim: string;
 	readonly red: string;
 	readonly green: string; // v2e: the diff additions — diff-only (NO_COLOR falls back to the + prefix)
-	readonly bg: string; // v3: the user-message block background
+	readonly rev: string; // TUI v4 #16c: reverse video — the user block's theme-following highlight
 	readonly reset: string;
 }
-export const COLOR_ON: Palette = { blue: "\x1b[38;5;75m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", bg: "\x1b[48;5;237m", reset: "\x1b[0m" };
-export const COLOR_OFF: Palette = { blue: "", dim: "", red: "", green: "", bg: "", reset: "" };
+export const COLOR_ON: Palette = { blue: "\x1b[38;5;75m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", rev: "\x1b[7m", reset: "\x1b[0m" };
+export const COLOR_OFF: Palette = { blue: "", dim: "", red: "", green: "", rev: "", reset: "" };
 export function palette(): Palette {
 	return process.env.NO_COLOR === undefined && process.stdout.isTTY ? COLOR_ON : COLOR_OFF;
 }

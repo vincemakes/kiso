@@ -96,7 +96,7 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
     if resume_keys is None:
         # Live chat: send one user turn, then answer the two approvals,
         # then wait for the kill predicate.
-        read_until(b"you> ", 20)
+        read_until("▌ ".encode(), 20)
         os.write(fd, b"go\\n")
         read_until(b"approve edit_file", 30)
         os.write(fd, b"y\\n")

@@ -78,7 +78,7 @@ describe("TUI v2a (real PTY)", () => {
 	it("no double echo — the typed input appears exactly once; status is [turn N · faux]; the rhythm gap separates done from the prompt", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
-			["you> ", "probe-one\n"],
+			["▌ ", "probe-one\n"],
 			// The recap line (▞) only exists AFTER the turn completes, so
 			// "exit" cannot collide with the first prompt (a "you> " needle
 			// would close the input before the turn ever runs).
@@ -91,7 +91,7 @@ describe("TUI v2a (real PTY)", () => {
 		// control sequences sit between them in the raw transcript, so count
 		// on the control-stripped stream.
 		const clean = out.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\r/g, "");
-		expect((clean.match(/you> probe-one/g) ?? []).length).toBe(1);
+		expect((clean.match(/▌ probe-one/g) ?? []).length).toBe(1);
 		// ② the blue accent rides the prompt.
 		expect(out).toContain("\x1b[38;5;75m");
 		// ③ faux status form.

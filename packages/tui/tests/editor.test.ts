@@ -31,7 +31,7 @@ describe("eastAsianWidth (the drift root cure)", () => {
 		expect(displayWidth("hello")).toBe(5);
 		expect(displayWidth("你好a")).toBe(5); // 2+2+1
 		expect(displayWidth("中文输入")).toBe(8);
-		expect(PROMPT_WIDTH).toBe(6); // ▌you> = 1+5
+		expect(PROMPT_WIDTH).toBe(2); // ▌ + space (TUI v4 #16d)
 	});
 });
 

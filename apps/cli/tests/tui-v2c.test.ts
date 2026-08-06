@@ -79,36 +79,36 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			// Feed the two wide chars ONE AT A TIME so the dock's redraws
 			// between them pin the intermediate cursor columns; 好+Enter
 			// submits 你好 as a turn (the exit feed waits for the turn).
-			["you> ", "你"],
-			["\x1b[24;9H", "好\n"],
+			["▌ ", "你"],
+			["\x1b[24;5H", "好\n"],
 			["turn 2 · faux", "exit\n"],
 		]);
-		// ▌you> = 6 wide → after 你 the edit column is 6+2+1 = 9; after
-		// 你好 it is 6+4+1 = 11. The drift root cure: every column is a
-		// display column, so the redraws land at 9 then 11 — never 7/8.
-		expect(out).toContain("\x1b[22;9H"); // v3 §03: the input row is H-2
-		expect(out).toContain("\x1b[22;11H");
+		// ▌ + space = 2 wide (TUI v4 #16d) → after 你 the edit column is
+		// 2+2+1 = 5; after 你好 it is 2+4+1 = 7. The drift root cure: every
+		// column is a display column, so the redraws land at 5 then 7.
+		expect(out).toContain("\x1b[22;5H"); // v3 §03: the input row is H-2
+		expect(out).toContain("\x1b[22;7H");
 		// The submitted line renders into the body (blue, pty-cooked).
 		const clean = stripANSI(out);
 		expect(clean).toContain("你好"); // v3 §02: the user block has no "you> " prefix
 		// And the input row survives (the editor's own render).
-		expect(clean).toContain("▌you> ");
+		expect(clean).toContain("▌ ");
 	}, 90_000);
 
 	it("the submitted line renders in the scroll region EXACTLY once — blue you> + content + reset", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
-			["you> ", "look around\n"],
+			["▌ ", "look around\n"],
 			["▸ default · /mode to switch", "exit\n"], // v3 idle state marks the turn's end
 		]);
 		// The editor's input row renders the brick prompt + the line (the
 		// reset SPLITS the prompt from the text — that raw shape is the
 		// row, not the body echo).
-		expect(out).toContain("\x1b[38;5;75m▌you> \x1b[0mlook around");
+		expect(out).toContain("\x1b[38;5;75m▌ \x1b[0mlook around");
 		// v2d: the body echo is the frozen UserCell — blue prompt + content
 		// + reset, EXACTLY once (the row is not the scroll region, the
 		// frozen cell is the only copy there).
-		const bodyEcho = "\x1b[48;5;237mlook around\x1b[0m"; // v3 §02: the SGR background block
+		const bodyEcho = "\x1b[7mlook around\x1b[0m"; // v3 §02: the SGR background block
 		const esc = bodyEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		expect((out.match(new RegExp(esc, "g")) ?? []).length).toBe(1);
 		// ?2004l on exit + region reset — no bracketed-paste left on.
@@ -133,7 +133,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			[
 				// Both lines land at the first prompt — the second submits
 				// while the first turn is queued/running.
-				["you> ", "one\ntwo\n"],
+				["▌ ", "one\ntwo\n"],
 				["turn two done", "exit\n"],
 			],
 		);
@@ -178,7 +178,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["you> ", "go\n"],
+				["▌ ", "go\n"],
 				["approve asky_read", "\x1b"], // Esc while the run pauses
 				// After the abort, a NEW turn consumes the script's turn 2.
 				["[aborting run]", "next\n"],

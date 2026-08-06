@@ -10,7 +10,14 @@
  * model; the run completes.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+/** The async execFile — the PTY drivers run 20s+; a SYNC execFileSync would
+ *  block the vitest worker's event loop past the runner's 60s RPC timeout
+ *  ("Timeout calling onTaskUpdate") — this file's three 20s runs trip it
+ *  deterministically. */
+const execFileP = promisify(execFile);
 import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -118,7 +125,7 @@ exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir)}, ${JSON.stringify(extdir)}, ${JSON.stringify(mcpConfig)}, ${JSON.stringify(scriptPath)}, "mcp-e2e")
 `;
 		const { env } = isolatedEnv();
-		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
+		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
 		expect(out).toContain("[2 extensions: mcp, safe-defaults]"); // the banner names the bundle
 		expect(out).toContain("approve mcp__fake__echo"); // 审批提问出现 — the ask tier reached the human
 		expect(out).toContain("hello from mcp"); // the echo result returned to the model
@@ -157,7 +164,7 @@ exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir)}, ${JSON.stringify(extdir)}, ${JSON.stringify(mcpConfig)}, ${JSON.stringify(scriptPath)}, "mcp-bare")
 `;
 		const { env } = isolatedEnv();
-		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
+		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
 		expect(out).toContain("[1 extension: mcp]"); // only the bundle, no safe-defaults
 		expect(out).toContain("approve mcp__fake__echo"); // 审批提问出现 — the human gate held
 		expect(out).toContain("hello from mcp"); // the echo result returned after the approval
@@ -250,7 +257,7 @@ const FAUX_STATUS_TRAJECTORY = [
 ];
 
 describe("手感批 A3: the stdio child's stderr is CAPTURED, never leaked", () => {
-	it("no \"running on stdio\"-style noise around the startup banner; mcp__status shows the recent tail", () => {
+	it("no \"running on stdio\"-style noise around the startup banner; mcp__status shows the recent tail", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-a3-"));
 		const home = join(dir, "home");
 		const workdir = join(dir, "work");
@@ -276,7 +283,7 @@ exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir)}, ${JSON.stringify(extdir)}, ${JSON.stringify(mcpConfig)}, ${JSON.stringify(scriptPath)}, "mcp-a3")
 `;
 		const { env } = isolatedEnv();
-		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
+		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
 		const noiseAt = out.indexOf(NOISE);
 		const bannerAt = out.indexOf("[1 extension: mcp]");
 		expect(bannerAt).toBeGreaterThan(-1); // the startup banner rendered

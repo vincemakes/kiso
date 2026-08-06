@@ -77,7 +77,7 @@ def driver(cli, home, script_path, ext_dir, marker_path, session_id, workdir, re
                 except OSError:
                     return
     if not resume:
-        read_until(b"you> ", 20)
+        read_until("▌ ".encode(), 20)
         os.write(fd, b"go\\n")
         read_until(b"approve write_file", 30)
         os.write(fd, b"y\\n")

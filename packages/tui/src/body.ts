@@ -101,12 +101,22 @@ export class Body {
 	#pipeBuf = ""; // the passthrough's thinking buffer — the cell model needs no buffer
 	#toolCells = new Map<string, number>(); // callId → cell index (parallel tools)
 	#write: (s: string) => void;
+	#resizeHandler: (() => void) | null = null;
 
 	constructor(opts: BodyOptions) {
 		this.#opts = opts;
 		this.#write = opts.write ?? ((s) => process.stdout.write(s));
 		this.#active = opts.active();
 		if (this.#isActive()) {
+			// TUI v4 #16a: the resize event — the terminal reflows its
+			// scrollback, so OUR row bookkeeping is stale. The frozen
+			// content is never re-emitted (the terminal reflowed it); the
+			// counters reset so the next render lands new frozen lines via
+			// the REAL-LF scroll path (just above the tail), never at stale
+			// CUP rows — the overwrite garbage after a drag (the #16
+			// defect). The dock redraws its own chrome on the same event.
+			this.#resizeHandler = () => this.onResize();
+			process.stdout.on("resize", this.#resizeHandler);
 			this.#heartbeat = setInterval(() => {
 				// #14/#15: the idle heartbeat PAINTS NOTHING unless an
 				// ANIMATION advances — only a RUNNING tool's glyph/elapsed
@@ -141,7 +151,30 @@ export class Body {
 			clearInterval(this.#heartbeat);
 			this.#heartbeat = null;
 		}
+		if (this.#resizeHandler !== null) {
+			process.stdout.off("resize", this.#resizeHandler);
+			this.#resizeHandler = null;
+		}
 		if (this.#dirty) this.render();
+	}
+
+	/**
+	 * TUI v4 #16a: a resize reflows the terminal's scrollback — the frozen
+	 * rows' positions are no longer what we tracked (and the frozen CONTENT
+	 * is never re-emitted: the terminal reflowed it, we only redraw the
+	 * dock + active tail). The counters reset so the next render writes new
+	 * frozen lines through the REAL-LF scroll path above the tail, never at
+	 * a stale CUP row (the drag-garbage the #16 user saw).
+	 */
+	onResize(): void {
+		if (!this.#isActive()) return;
+		this.#frozenRows = Number.MAX_SAFE_INTEGER; // the frozen area is "full" — the next line scrolls
+		this.#oldTailTop = 0; // the reflowed tail's old rows are gone — clear only the new area
+		// NO #dirty: an immediate frame would re-render the ACTIVE TAIL —
+		// re-emitting its bytes (the terminal already reflowed the tail's
+		// content; a re-print duplicates the text in the byte stream — the
+		// #16 storm gate's "response text exactly once"). The geometry
+		// reset takes effect at the next NATURAL render (the next event).
 	}
 
 	/** The last COMPLETE thinking block, for /think. */
@@ -439,10 +472,13 @@ export class Body {
 		const p = palette();
 		switch (cell.kind) {
 			case "user":
-				// v3 §02: the user message is a SGR BACKGROUND block, no
-				// prefix — every line carries the block's background
-				// (multi-line whole; resize-safe). Pipes stay plain.
-				return cell.text.split("\n").map((l) => `${p.bg}${escapeTerminal(l)}${p.reset}`);
+				// v3 §02: the user message is a SGR block, no prefix — every
+				// line carries the block's highlight (multi-line whole;
+				// resize-safe). TUI v4 #16c: the fixed dark background
+				// (48;5;237) is GONE — reverse video (7m) swaps foreground/
+				// background, so the block follows the terminal theme (light
+				// theme → dark text on light). Pipes stay plain.
+				return cell.text.split("\n").map((l) => `${p.rev}${escapeTerminal(l)}${p.reset}`);
 			case "thinking": {
 				const block = cell.text;
 				const trimmed = escapeTerminal(block.trim());
@@ -492,7 +528,15 @@ export class Body {
 			case "notice":
 				return [escapeTerminal(cell.text)];
 			case "raw":
-				return cell.lines.map((l) => escapeTerminal(l));
+				// TUI v4 #16b: the raw cell carries the CLI's OWN pre-rendered
+				// lines (the banner, the recap, slash-command output) — the
+				// SGR is applied at COMPOSITION time (renderRecap/startupBanner),
+				// and model/tool content was already escapeTerminal'd there.
+				// Re-escaping at render STRIPPED the ESC from the SGR — the
+				// literal "[38;5;75m▞[0m" garbage the user saw (the #16 乱码,
+				// also the banner's dim). Verbatim: the injection guard lives
+				// at composition, not here.
+				return cell.lines;
 			case "terminal":
 				// the honest label (done / aborted / error) + the status + the
 				// rhythm gap blank

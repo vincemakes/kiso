@@ -117,7 +117,7 @@ describe("A1: the menu Enter executes the EXACT selection directly", () => {
 				// ONE feed: the full "/compact" + one Enter. The recovery's
 				// prompt is the trigger — the line is queued and dispatched
 				// after it, exactly one Enter total.
-				["you> ", "/compact\n"],
+				["▌ ", "/compact\n"],
 				["[/compact] saved ~", "exit\n"],
 			],
 			dir,
@@ -146,7 +146,7 @@ describe("A2: ↑↓ recall the session history", () => {
 				// The fresh session — the first prompt is live (no recovery).
 				// "hello" typed WITHOUT the Enter first, so the recall's
 				// SECOND "hello" in the input row is distinguishable.
-				["you> ", "hello"],
+				["▌ ", "hello"],
 				["hello", "\r"], // the first turn submits
 				["first answer", "\x1b[A"], // ↑ — the history recalls "hello"
 				["hello", "\r"], // the recalled line resubmits as a real turn
@@ -160,7 +160,7 @@ describe("A2: ↑↓ recall the session history", () => {
 		expect(plain).toContain("second answer"); // the recalled "hello" ran again
 		// The recall rendered into the input row a SECOND time (the typed
 		// echo + the recalled row).
-		expect((plain.match(/you> hello/g) ?? []).length).toBeGreaterThanOrEqual(2);
+		expect((plain.match(/▌ hello/g) ?? []).length).toBeGreaterThanOrEqual(2);
 	});
 });
 
@@ -196,7 +196,7 @@ describe("C8: /compact auto-trigger (opt-in via KISO_AUTO_COMPACT)", () => {
 			[
 				// ONE turn ("go") — the auto-trigger then fires WITHOUT any
 				// /compact keystroke; "saved ~" is the auto notice.
-				["you> ", "go\n"],
+				["▌ ", "go\n"],
 				["[/compact] saved ~", "exit\n"],
 			],
 			dir,

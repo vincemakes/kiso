@@ -54,7 +54,10 @@ export function displayWidth(text: string): number {
 
 import { palette } from "./render.js";
 
-export const PROMPT = "▌you> "; // the kiso brick motif: one blue half-block, then you>
+// TUI v4 #16d: the input row is the blue brick + the edit area — the
+// "you>" text is gone (the brick IS the prompt; the pipe path's readline
+// prompt keeps its own "you> " — v2a line mode, byte-for-byte).
+export const PROMPT = "▌ ";
 export const PROMPT_WIDTH = displayWidth(PROMPT);
 
 /** v3 §04 — the slash-command menu's command table (English one-liners). */

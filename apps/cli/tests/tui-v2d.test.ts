@@ -95,7 +95,7 @@ const CELL_LINE = [
 	/^(█|▀).*$/, /^\[?2m\]?█.*$/, // the logo rows (the dim code may ride the segment)
 	/^the coding agent that survives kill -9$/, // the tagline
 	/^v\d+\.\d+\.\d+.*$/, // the version row
-	/^▌you>.*$/, // the input row
+	/^▌\s?.*$/, // the input row (TUI v4 #16d: the brick alone — the trim eats the trailing space)
 	/^╌+$/, // the separator
 	/^ {0,2}(approved|denied.*)$/, // the permission_decided raw
 	/^approve .*\(y\/n\)$/, // the dock's takeover question
@@ -115,7 +115,7 @@ const lint = (raw: string): string[] => {
 	for (const seg of segments) {
 		// v3 §02: the user block is the SGR-background cell — its identity
 		// is the background code itself (there is no "you> " prefix left).
-		if (seg.includes("\x1b[48;5;237m")) continue;
+		if (seg.includes("\x1b[7m")) continue;
 		const t = seg
 			.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
 			.replace(/\[[0-9;]*m/g, "") // any residual SGR fragment (the split can strand a "[2m")
@@ -170,7 +170,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["you> ", "go\n"],
+				["▌ ", "go\n"],
 				// The asky extension asks for EVERY tool — answer each question
 				// in order (list_dir, shell, then asky_read).
 				["approve list_dir", "y\n"],

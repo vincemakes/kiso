@@ -99,7 +99,7 @@ describe("TUI v2e (real PTY, 24×80) — the #13 scrollback gate", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["you> ", batch],
+				["▌ ", batch],
 				["flood 25", "exit\n"],
 			],
 		);

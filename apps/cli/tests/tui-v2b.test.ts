@@ -101,7 +101,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 	it("the dock exists — separator, live status bar, input line; the body scrolls without eating it; exit resets the scroll region", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
-			["you> ", "look around\n"],
+			["▌ ", "look around\n"],
 			// "turn 2 · faux" — the status bar at the turn's terminal event —
 			// only exists AFTER the turn completes, so "exit" cannot collide
 			// with the first prompt (a "you> " needle would match there too
@@ -134,7 +134,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// — no pty-cooked newline: the renderer positions the next row).
 		// The input row's brick prompt+line is a DIFFERENT shape (the
 		// reset splits the prompt from the text).
-		const userEcho = "\x1b[48;5;237mlook around\x1b[0m"; // v3 §02: the SGR background block, no "you> " prefix
+		const userEcho = "\x1b[7mlook around\x1b[0m"; // v3 §02: the SGR background block, no "you> " prefix
 		expect(out).toContain(userEcho);
 		expect((out.match(new RegExp(userEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length).toBe(1);
 		// Exit resets the scroll region (CSI r) — no broken terminal.
@@ -178,7 +178,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["you> ", "go\n"],
+				["▌ ", "go\n"],
 				["approve asky_read", "y\n"],
 				// The run continues after the approval — "turn 2 · faux" only
 				// appears at the turn's terminal event, AFTER "the tour is
@@ -223,7 +223,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["you> ", "go\n"],
+				["▌ ", "go\n"],
 				// "tour complete" appears mid-run — the /think line queues on
 				// the chain and prints AFTER the turn completes.
 				["tour complete", "/think\n"],
@@ -243,7 +243,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(
 			env,
-			[["you> ", "look around\n"]],
+			[["▌ ", "look around\n"]],
 			// The winch fires when the turn's text reaches the driver — the
 			// CLI is back at the prompt by then, so the rebuild lands on a
 			// live dock; "exit" is typed 0.5s AFTER the winch (a feed would

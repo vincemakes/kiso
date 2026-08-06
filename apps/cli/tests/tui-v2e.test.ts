@@ -101,7 +101,7 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["you> ", "go\n"],
+				["▌ ", "go\n"],
 				["approve edit_file", "y\n"],
 				["the tour is done", "exit\n"],
 			],

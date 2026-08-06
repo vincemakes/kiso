@@ -143,7 +143,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			env,
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
-				["you> ", "/status\n"],
+				["▌ ", "/status\n"],
 				["ctx ~", "go\n"],
 				// The go turn's OWN shell cell ("sleep 4") marks the run
 				// mid-flight — the recovery's leftover "working" status must
@@ -158,7 +158,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 				// script turn). The "you> " prompt alone is ambiguous (the
 				// /status's own prompt precedes the go turn).
 				["1 tool", "/compact\n"],
-				["you> ", "/status\n"],
+				["▌ ", "/status\n"],
 				["ctx ~", "exit\n"],
 			],
 			dir,

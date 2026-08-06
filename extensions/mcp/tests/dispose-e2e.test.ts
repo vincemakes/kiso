@@ -73,7 +73,7 @@ def driver(cli, home, ext_dir, mcp_config):
                 except OSError:
                     return True
         return False
-    if not read_until(b"you> ", 15):
+    if not read_until("▌ ".encode(), 15):
         sys.exit(2)
     os.write(fd, b"exit\\n")
     # The hard clause: dispose must let the process exit within 5s of the
@@ -198,7 +198,7 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path):
                 except OSError:
                     return
     t0 = time.time()
-    ok = read_until(b"you> ", 30)   # the startup completed — bounded by the 15s connect timeout
+    ok = read_until("▌ ".encode(), 30)   # the startup completed — bounded by the 15s connect timeout
     elapsed = time.time() - t0
     if ok:
         os.write(fd, b"go\\n")

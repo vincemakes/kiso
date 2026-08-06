@@ -151,14 +151,14 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["you> ", "go\n"],
+				["▌ ", "go\n"],
 				["[Permission denied]", ""], // the write is denied, not asked
 				["plan mode: read-only", ""], // the guiding reason reaches the model
 				["plan turn done", ""],
 				["▸ plan · /mode to switch", ""], // v3 idle state — the mode shows after the run ends
-				["you> ", "/mode default\n"],
+				["▌ ", "/mode default\n"],
 				["mode → default", ""], // the notice cell — the switch is on the record
-				["you> ", "go\n"],
+				["▌ ", "go\n"],
 				// The diff row marks the decision moment — the human sees the
 				// change BEFORE answering (the v2d redraw paints the approval
 				// frame a beat after the question — never answer on the
@@ -237,7 +237,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["you> ", "go\n"],
+				["▌ ", "go\n"],
 				["▸ bypass", ""], // v3 idle state under bypass
 				["[Permission denied]", ""],
 				["refused by safe-test", ""], // the EXTENSION's deny — bypass can't override it
