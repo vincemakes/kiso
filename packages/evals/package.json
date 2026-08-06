@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-evals",
-  "version": "0.1.27",
+  "version": "0.1.28",
   "description": "kiso evals — the faux provider, the incident fixture library, and the cross-provider contract tests.",
   "type": "module",
   "license": "MIT",
@@ -21,12 +21,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@vincemakes/kiso-core": "0.1.27"
+    "@vincemakes/kiso-core": "0.1.28"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
-    "@vincemakes/kiso-provider-anthropic": "0.1.27",
-    "@vincemakes/kiso-provider-openai": "0.1.27",
+    "@vincemakes/kiso-provider-anthropic": "0.1.28",
+    "@vincemakes/kiso-provider-openai": "0.1.28",
     "@types/node": "^26.1.2",
     "openai": "^7.3.0",
     "typescript": "^5.7.2",
