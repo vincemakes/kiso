@@ -1,7 +1,7 @@
 {
   "name": "@vincemakes/kiso-provider-openai",
-  "version": "0.1.26",
-  "description": "kiso OpenAI-compatible adapter \u2014 OpenAI + the compat family (GLM, Kimi, DeepSeek, OpenRouter) via base_url swap, reasoning dialects digested.",
+  "version": "0.1.27",
+  "description": "kiso OpenAI-compatible adapter — OpenAI + the compat family (GLM, Kimi, DeepSeek, OpenRouter) via base_url swap, reasoning dialects digested.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -21,7 +21,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@vincemakes/kiso-core": "0.1.26",
+    "@vincemakes/kiso-core": "0.1.27",
     "openai": "^7.3.0"
   },
   "devDependencies": {
