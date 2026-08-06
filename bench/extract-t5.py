@@ -73,6 +73,8 @@ for work in sorted(glob.glob(sys.argv[1] + "/runs/*T5*")):
     m.update(tool=tool, task=task, run=run,
              wall=int(open(f"{work}/wall_seconds").read().strip()),
              verify=open(f"{work}/verify").read().strip())
+    if "input" in m:
+        m["cost_weighted"] = m["input"] + 0.1 * m["cache_read"]
     rows.append(m)
 
 print(json.dumps(rows, indent=1))

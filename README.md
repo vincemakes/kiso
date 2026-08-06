@@ -578,6 +578,16 @@ The bench, one fixture, one model, mean of two runs (kiso 0.1.22 · pi
 | | pi | 1,628 | 22,784 | 24,412 | 752 | 5.0 | 13.0s |
 | | claude | 28,196 | 203,648 | 231,844 | 2,094 | 14.5 | 30.0s |
 
+Headline (T3, the hardest task) — TWO metrics, honestly: on **raw total
+input tokens** kiso is **1.3× fewer** than pi and **12.8× fewer** than
+Claude Code, with identical task outcomes (on the T5 8-turn session,
+1.2× fewer than pi, 4.5× fewer than CC). On **cost-weighted input**
+(fresh + 0.1×cached, DeepSeek's cache-hit price ratio — see
+`bench/README.md`), pi overtakes kiso ~2.7× on T3: the difference is the
+cache-hit structure, not the task outcome — the caveats explain it, and
+kiso's high per-request fresh is a tracked investigation (a suspected
+D 区 system-prompt byte-instability).
+
 Honest footnotes (from `bench/README.md`): these tasks are SMALL — Claude
 Code's large system prompt buys real product capability (task tracking,
 richer exploration) that pays off on complex work these tasks do not

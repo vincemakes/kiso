@@ -72,6 +72,11 @@ for work in sorted(glob.glob(sys.argv[1] + "/runs/*")):
     m.update(tool=tool, task=task, run=run,
              wall=int(open(f"{work}/wall_seconds").read().strip()),
              verify=open(f"{work}/verify").read().strip())
+    # 补丁轮: cost-weighted input = fresh + CACHE_RATIO x cached, where
+    # CACHE_RATIO = 0.1 is DeepSeek's cache-hit price ratio
+    # (https://api-docs.deepseek.com/quick_start/pricing).
+    if "input" in m:
+        m["cost_weighted"] = m["input"] + 0.1 * m["cache_read"]
     rows.append(m)
 
 print(json.dumps(rows, indent=1))
