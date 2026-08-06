@@ -13,7 +13,7 @@ responsibilities:
    `microcompact()` in compaction.ts): clears old tool results and persists
    the EXACT replacements as `compacted` events. **Dead code in the
    product** — the CLI never configured it.
-2. **The microcompact boundary** (C 区, `config.microcompact`,
+2. **The microcompact boundary** (the C region, `config.microcompact`,
    `microcompacted` events): clears the SAME kind of content by persisting
    a boundary fact; the projection re-derives the cleared view
    deterministically — byte-stable across crash/resume.

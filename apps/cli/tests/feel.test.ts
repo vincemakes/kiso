@@ -1,5 +1,5 @@
 /**
- * 手感批 (0.1.21) — the interactive feel, through the CLI's real PTY:
+ * The ergonomics batch (0.1.21) — the interactive feel, through the CLI's real PTY:
  *
  *  1. A1: "/compact⏎" — ONE Enter executes the EXACT menu selection
  *     directly (the partial-Enter completes without executing, unit-tested

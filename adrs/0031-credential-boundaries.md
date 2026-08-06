@@ -60,7 +60,7 @@ lists are the boundary.
 ## Evidence
 
 - Commit `8b4c376` (fix(tools-node): shell children never inherit kiso
-  provider credentials — 自举 #3 发现#7); the MCP strip + config overlay
+  provider credentials — bootstrapping #3 finding #7); the MCP strip + config overlay
   in `67ceefe`; the delegate pass-down in `d64c6a6`.
 - Tests: `packages/tools-node/tests/safety.test.ts` (strip + inherit
   opt-in); `extensions/mcp/tests/mcp.test.ts` (④ credential strip +

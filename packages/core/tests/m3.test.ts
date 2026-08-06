@@ -88,7 +88,7 @@ describe("analyzeDelivery", () => {
 
 	it("fails a required delivery with a claim and zero producers (terminal-lies)", () => {
 		const events: Event[] = [
-			{ seq: 0, type: "text_delta", text: "我已经生成了文档并交付。" },
+			{ seq: 0, type: "text_delta", text: "I have generated the document and delivered it." },
 			{ seq: 1, type: "terminal", outcome: { kind: "completed" } },
 		];
 		const verdict = analyzeDelivery(events, { required: true, producers });
@@ -131,7 +131,7 @@ describe("fixture delivery asserts on the real loop", () => {
 			adapter: createFauxProvider(fixture.script),
 			model: "faux",
 			registry: new ToolRegistry(),
-			messages: [{ role: "user", content: "写一份报告" }],
+			messages: [{ role: "user", content: "write a report" }],
 		})) {
 			events.push(ev);
 		}

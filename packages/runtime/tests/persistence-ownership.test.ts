@@ -1,5 +1,5 @@
 /**
- * 一 — unified event persistence ownership.
+ * round 1 — unified event persistence ownership.
  *
  * 1. The EventLog must never advance past what the store accepted: a
  *    StaleWriterError poisons the session — the in-memory log may not
@@ -37,7 +37,7 @@ function agent(store: SessionStore, script: FauxScript = STOP) {
 	});
 }
 
-describe("persistence ownership (一)", () => {
+describe("persistence ownership (round 1)", () => {
 	it("a stale session is POISONED on the first rejected write — it can never accumulate seqs toward the disk", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-po-"));
 		const storeA = new SessionStore(dir);

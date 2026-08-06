@@ -1,5 +1,5 @@
 /**
- * Token 轮 — acceptance ②: the big-file default truncation is HONEST and
+ * Token round — acceptance (2): the big-file default truncation is HONEST and
  * the model CAN continue from its note. The faux script models a model
  * that reads the "… N more lines (call again with offset=…)" note and
  * follows it: first a default read (head 200 + note), then the range read
@@ -21,7 +21,7 @@ writeFileSync(
 	"utf8",
 );
 
-describe("Token 轮 e2e: 大文件默认截断 + 凭注续读", () => {
+describe("token round e2e: big-file default truncation + continuation reading via the note", () => {
 	it("the model reads the head 200 + note, then completes the file with offset=201", () => {
 		const { env, dirs } = isolatedEnv({ KISO_FAUX_SCRIPT: join(WORKSPACE, "faux.json") });
 		// The playbook: default read → the continuation the note names → end.

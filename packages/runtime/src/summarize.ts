@@ -1,6 +1,6 @@
 /**
  * The /compact summary layer (ADR-0044) — the MODEL-GENERATED half of
- * context economy. 归位式抽取 (0.1.26 gate 裁决): this OFF-LOOP
+ * context economy. the home-relocation extraction (0.1.26 gate ruling): this OFF-LOOP
  * ORCHESTRATION lived in the kernel by a context-round expedience; it
  * calls the ADAPTER to generate the summary, which is the RUNTIME's
  * business — the kernel's duty is the `summarized` EVENT TYPE and the

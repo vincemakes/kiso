@@ -15,7 +15,7 @@ carries `{"pid", "token"}` as a best-effort guard for legacy writers, but
 the guard is best-effort — it cannot make the two protocols interoperate.
 The question was what upgrade story to DOCUMENT and promise.
 
-## Decision (第五轮 P1-4)
+## Decision (the fifth round P1-4)
 
 **The upgrade contract is QUARANTINE, not seamless rolling**: stop every
 old-format process, THEN start the new version. This is written into the
@@ -47,5 +47,5 @@ nothing to negotiate.
 
 - Commit `f795ad4` (docs(runtime): the upgrade contract is quarantine,
   not seamless rolling) — the contract lives in `README.md` and
-  `packages/runtime/src/store.ts`'s contract comment; the 第五轮 P1-4
+  `packages/runtime/src/store.ts`'s contract comment; the fifth round P1-4
   record is in `docs/plans/2026-08-03-reliable-session-alpha.md`.

@@ -1,5 +1,5 @@
 /**
- * C 区 — MicroCompact: zero-API context relief at the projection layer.
+ * C area — MicroCompact: zero-API context relief at the projection layer.
  *
  * - a `microcompacted` boundary event is a PERSISTED FACT: it records the
  *   seq up to which compactable tool results are cleared; the projection
@@ -7,7 +7,7 @@
  *   always derive the same messages, byte for byte, across crash/resume;
  * - the whitelist is read/list/search/shell; write/edit outputs are never
  *   cleared; do-not-compact tagged results are never cleared;
- * - the boundary is drawn by COMPACTABLE-RESULT recentness (自举 #3): the
+ * - the boundary is drawn by COMPACTABLE-RESULT recentness (bootstrap #3): the
  *   newest K = 4 compactable results stay intact whatever turn they belong
  *   to — a single giant turn with many reads triggers;
  * - the loop appends at most ONE boundary per iteration when the estimated
@@ -74,7 +74,7 @@ describe("C: projection applies the microcompact boundary deterministically", ()
 		expect(fresh?.content).toBe("fresh content"); // inside the recent window
 	});
 
-	it("the boundary event itself is a persisted fact — two projections agree byte for byte (D 区)", () => {
+	it("the boundary event itself is a persisted fact — two projections agree byte for byte (D area)", () => {
 		const log = seedLog();
 		log.append({ type: "microcompacted", beforeSeq: 2 });
 		const a = projectMessages(log.all);
@@ -120,7 +120,7 @@ describe("C: the loop appends the boundary when over the threshold", () => {
 		expect(boundaries).toHaveLength(1); // at most one per loop iteration
 		expect(events.some((e) => e.type === "microcompacted")).toBe(true); // yielded
 		// The projection with the boundary equals the in-memory projection:
-		// the persisted fact derives the same view (D 区).
+		// the persisted fact derives the same view (D area).
 		const inMemory = projectMessages(log.all);
 		const reloaded = projectMessages(
 			JSON.parse(JSON.stringify(log.all)) as Parameters<typeof projectMessages>[0],
@@ -128,7 +128,7 @@ describe("C: the loop appends the boundary when over the threshold", () => {
 		expect(JSON.stringify(reloaded)).toBe(JSON.stringify(inMemory));
 	});
 
-	it("自举 #3: a SINGLE user turn with 6 big reads triggers — the oldest cleared, the newest 4 kept", async () => {
+	it("bootstrap #3: a SINGLE user turn with 6 big reads triggers — the oldest cleared, the newest 4 kept", async () => {
 		// The coding agent's main overflow shape: one turn, many reads.
 		// The old user-turn boundary never fired here; the new one draws
 		// the line by compactable-result recentness (K = 4).
@@ -161,7 +161,7 @@ describe("C: the loop appends the boundary when over the threshold", () => {
 		expect(content("r5")).toBe("line\n".repeat(200));
 	});
 
-	it("自举 #3: still over after clearing — the NEXT iteration appends a second boundary that makes progress", async () => {
+	it("bootstrap #3: still over after clearing — the NEXT iteration appends a second boundary that makes progress", async () => {
 		// 8 giant reads in one turn; the model then reads AGAIN (a new big
 		// result lands). Boundary 1 keeps the newest 4; the context is still
 		// over, so the next iteration's boundary 2 clears the oldest
@@ -240,7 +240,7 @@ describe("C: the loop appends the boundary when over the threshold", () => {
 		expect(content("r5")).toBe("line\n".repeat(200));
 	});
 
-	it("C6 (P4): tagged results never count toward the boundary — 计数与清除口径一致", async () => {
+	it("C6 (P4): tagged results never count toward the boundary — the count and the clearing share one rule", async () => {
 		// keepResults 1: the ONLY clearable result (r0) sits within the keep
 		// window; r1/r2 carry do-not-compact and are un-clearable forever.
 		// The OLD count included the tagged ones, so it saw 3 "visible"

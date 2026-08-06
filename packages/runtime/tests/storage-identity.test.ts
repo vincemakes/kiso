@@ -1,5 +1,5 @@
 /**
- * A 组 — storage identity and consistency.
+ * A group — storage identity and consistency.
  *
  * The lock carries a random owner TOKEN; only the instance that holds the
  * lock (and whose token still matches) may unlink it. Appends run an
@@ -34,7 +34,7 @@ describe("lock ownership tokens", () => {
 		const storeB = new SessionStore(dir);
 		await expect(storeB.append("s", "r2", ev(1))).rejects.toThrow(/locked|writer/);
 		// A's close releases ONLY A's helper — the lock file survives and
-		// no contender ever deletes it (第四轮).
+		// no contender ever deletes it (round 4).
 		store.close("s");
 		expect(readFileSync(join(dir, "s.lock"), "utf8")).not.toContain("99999999"); // untouched by close
 		// Now the kernel lock is free: B acquires it and writes.

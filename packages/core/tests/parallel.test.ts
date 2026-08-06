@@ -2,7 +2,7 @@
  * 0.1.26 (ADR-0024 Amd) — the parallel + streaming execution acceptance:
  * ① three allow reads run CONCURRENTLY — the wall clock < 60% of the serial
  *   (faux tools with sleeps; the window is 4);
- * ④ 流中执行: a long stream's first allow call STARTS while the stream is
+ * ④ streaming execution: a long stream's first allow call STARTS while the stream is
  *   still running (the started event lands before the stop — the seq
  *   ordering is the timestamp);
  * ⑤ the ask conservative order: an ask and the calls after it wait for the
@@ -105,7 +105,7 @@ describe("0.1.26 ① — three allow reads run CONCURRENTLY (window 4)", () => {
 	});
 });
 
-describe("0.1.26 ④ — 流中执行: the first allow call starts WHILE the stream is still running", () => {
+describe("0.1.26 ④ — streaming execution: the first allow call starts WHILE the stream is still running", () => {
 	it("a 300ms-gap stream: the started event lands BEFORE the stop (the seq order is the timestamp)", async () => {
 		const order: string[] = [];
 		const registry = new ToolRegistry();

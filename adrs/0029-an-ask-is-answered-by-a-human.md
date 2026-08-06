@@ -19,7 +19,7 @@ The MCP e2e required an approval prompt for `mcp__` tools, and the
 ruling: the conflict was between the e2e acceptance (prompt appears) and
 the zero-diff clause (the ask path lives in the kernel loop).
 
-## Decision (裁决 A)
+## Decision (ruling A)
 
 **An ask means "a human must decide" — it routes DIRECTLY to the human
 approval pause (`permission_requested` + `resolveApproval`), never through
@@ -63,10 +63,10 @@ final gate by design.
 
 ## Evidence
 
-- Commit `7d82ab9` (fix(core): 裁决 A — E1 ask 语义修正); the full conflict
+- Commit `7d82ab9` (fix(core): ruling A — the E1 ask semantics fix); the full conflict
   and three-option analysis is recorded in `docs/plans/2026-08-04-
   extensions-e1.md` §7.
-- Tests: `packages/core/tests/extensions.test.ts` — `裁决 A: ask with a
+- Tests: `packages/core/tests/extensions.test.ts` — `ruling A: ask with a
   hook but NO approval channel still degrades — the static hook never
   speaks for an ask`; the ask-routing tests (human pause, no decidedBy);
   `packages/runtime/tests/extensions.test.ts` — the static default-deny

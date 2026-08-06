@@ -1,5 +1,5 @@
 /**
- * kiso(基礎) official skills extension — ⑤: two-tier progressive skills,
+ * kiso (foundation) official skills extension — ⑤: two-tier progressive skills,
  * kernel untouched.
  *
  * Tier 1 (resident): the skills index — every ${KISO_SKILLS_DIR:-~/.kiso/
@@ -30,7 +30,7 @@ import { join } from "node:path";
 const MAX_DESCRIPTION = 200;
 const MAX_BODY = 32 * 1024;
 
-/** 发现#11: KISO_HOME is the ONE root — the default skills dir derives
+/** finding #11: KISO_HOME is the ONE root — the default skills dir derives
  *  from it (KISO_SKILLS_DIR still overrides). */
 function kisoHome() {
 	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
@@ -39,7 +39,7 @@ function kisoHome() {
 export default async function createSkillsExtension() {
 	const skillsDir = process.env.KISO_SKILLS_DIR ?? join(kisoHome(), "skills");
 	const { index, broken } = loadIndex(skillsDir);
-	// 发现#8: no persistent resources — SKILL.md files are read per call;
+	// finding #8: no persistent resources — SKILL.md files are read per call;
 	// nothing is spawned or connected — no dispose is needed, explicitly.
 	if (index.length === 0 && broken.length === 0) return { name: "skills", tools: [] };
 	const tools = index.length > 0 ? [readSkillTool(index, broken)] : [];
@@ -52,7 +52,7 @@ export default async function createSkillsExtension() {
 
 /** Scan ${dir}/<name>/SKILL.md, parse the frontmatter subset, sort by
  *  directory name. Broken entries are SOFT failures — recorded, skipped.
- *  发现#9 (P2): a symlink to a directory IS a skill dir — the
+ *  finding #9 (P2): a symlink to a directory IS a skill dir — the
  *  CC-compatible migration path (`ln -s ~/.claude/skills/x
  *  ~/.kiso/skills/x`) must work; a broken link (target missing or not a
  *  directory) is a soft failure like any other broken skill, never an
@@ -79,7 +79,7 @@ function loadIndex(skillsDir) {
 		return { index: [], broken: [] }; // no skills dir = no skills, never an error
 	}
 	const index = [];
-	const broken = brokenLinks; // 发现#9: broken links join the existing soft-failure path
+	const broken = brokenLinks; // finding #9: broken links join the existing soft-failure path
 	for (const dir of dirs) {
 		const path = join(skillsDir, dir, "SKILL.md");
 		let text;

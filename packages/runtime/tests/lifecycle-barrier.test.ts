@@ -1,5 +1,5 @@
 /**
- * 第五轮(P1) — the store's write lifecycle has no holes:
+ * round 5(P1) — the store's write lifecycle has no holes:
  *
  * P1-1: the WHOLE append critical section is serialized per session; a
  *       concurrent append can never land after a rejected (stale) write.
@@ -64,7 +64,7 @@ function killHelpers(session: string): void {
 	}
 }
 
-describe("store write lifecycle (第五轮 P1)", () => {
+describe("store write lifecycle (round 5 P1)", () => {
 	it("P1-1: a concurrent append can never land after a stale failure — the second write is rejected", async () => {
 		const root = dir();
 		// An external writer advanced the disk to seq 0.

@@ -18,7 +18,7 @@
  *   started, no terminal event yet   → "uncertain"   (interrupted: human)
  *   succeeded                        → "succeeded"   (confirmed, never re-run)
  *   failed (any)                     → "failed"      (a complete receipt IS
- *                                       the outcome — 裁决 #12 / ADR-0038;
+ *                                       the outcome — ruling #12 / ADR-0038;
  *                                       safeToRetry stays on the event for
  *                                       history, it no longer feeds status)
  *   resolved "rerun"                 → "rerun"       (human cleared it)
@@ -66,7 +66,7 @@ export function executionLedger(events: readonly Event[]): Map<string, Execution
 				if (prior) {
 					ledger.set(ev.executionId, {
 						...prior,
-						// 裁决 #12 (ADR-0038): a complete receipt IS the outcome —
+						// ruling #12 (ADR-0038): a complete receipt IS the outcome —
 						// failed is "failed", never "uncertain"; uncertainty
 						// belongs to the crash window alone (started, no receipt).
 						status: "failed",

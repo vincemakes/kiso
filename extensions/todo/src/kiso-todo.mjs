@@ -1,5 +1,5 @@
 /**
- * kiso(基礎) official todo extension — ⑥: long-horizon working memory,
+ * kiso (foundation) official todo extension — ⑥: long-horizon working memory,
  * kernel untouched.
  *
  * todo_set is a WHOLE-TABLE REPLACE (the CC TodoWrite shape): the model

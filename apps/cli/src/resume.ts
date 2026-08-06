@@ -1,5 +1,5 @@
 /**
- * 手感批 B4 (pure move) — resume: the RECOVERY flow (Area 2/7). The body
+ * The ergonomics batch B4 (pure move) — resume: the RECOVERY flow (Area 2/7). The body
  * moved verbatim from index.ts.
  */
 
@@ -15,7 +15,7 @@ import { consumeRun, estimateCtxRatio, startStatusSpinner } from "./chat.js";
  * Resume = the RECOVERY flow (Area 2/7): uncertain executions are decided,
  * the interrupted run is continued via session.resume() — never faked with
  * a new prompt. An optional prompt afterwards starts a genuinely new turn.
- * E 组: SIGINT aborts the run being resumed; every exit path closes the
+ * E group: SIGINT aborts the run being resumed; every exit path closes the
  * session store so no lock is left behind.
  */
 export async function resume(session: AgentSession, prompt: string | undefined, faux: boolean, input: LineInput): Promise<void> {
@@ -61,14 +61,14 @@ export async function resume(session: AgentSession, prompt: string | undefined, 
 	};
 	input.onSigint(() => {
 		if (currentRun) {
-			// 八: Ctrl+C cancels the pending question AND the run.
+			// round 8: Ctrl+C cancels the pending question AND the run.
 			console.log("\n[aborting run]");
 			pendingAsk?.();
 			currentRun.abort();
 		} else if (!cancelled) {
-			// 第四轮(对抗): also unblock a pending startup question — the
+			// round 4 (adversarial): also unblock a pending startup question — the
 			// readline close alone would leave ask() hanging forever.
-			// 第五轮(P2-2): the cancellation is recorded so the recovery is
+			// round 5 (P2-2): the cancellation is recorded so the recovery is
 			// NOT started afterwards — Ctrl+C exits cleanly.
 			cancelled = true;
 			console.log("\n[exit requested]");

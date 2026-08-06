@@ -1,5 +1,5 @@
 /**
- * 二 — framing consistency and lock-race safety.
+ * round 2 — framing consistency and lock-race safety.
  *
  * 1. A complete-JSON line WITHOUT a trailing newline is NOT committed: load
  *    must not return it, and append must not truncate something load
@@ -88,7 +88,7 @@ describe("stale-lock takeover is identity-confirmed, never a blind delete", () =
 	});
 });
 
-describe("kernel-flock lock semantics (第四轮)", () => {
+describe("kernel-flock lock semantics (round 4)", () => {
 	it("a legacy lock naming a LIVE pid refuses writes — even though flock is free", async () => {
 		const { dir } = tempStore();
 		// A pre-flock writer (the O_EXCL pidfile scheme) is still alive: it
@@ -204,7 +204,7 @@ try {
 	});
 });
 
-describe("two REAL concurrent processes race a stale lock behind a barrier (二)", () => {
+describe("two REAL concurrent processes race a stale lock behind a barrier (round 2)", () => {
 	it("exactly one writer wins, the loser errors, the live lock survives", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-race-"));
 		writeFileSync(join(dir, "s.lock"), JSON.stringify({ pid: 99999999, token: "dead" }));

@@ -36,7 +36,7 @@ with "no opinion".
 2. The chain composes deny > ask > allow over the SPEAKING verdicts only
    (`abstain` is skipped). An all-abstain chain is a silent chain — it
    falls to the ask flow: with an approval channel configured, the call
-   ASKS the human (裁决 A semantics — the tool still meets the human);
+   ASKS the human (ruling A semantics — the tool still meets the human);
    without one, the honest denial (the ask-without-channel degradation).
    Abstaining is never a silent allow.
 3. `decidedBy` records only a SPEAKER — the denying extension for a
@@ -58,7 +58,7 @@ with "no opinion".
 - Compatible surfaces (verified by the suite, 524 green): safe-defaults
   ("everything else → ask"), user-written allow-mcp policies
   (mode abstain + user allow → allow, decidedBy = the user extension),
-  bench-allow all-allow, subagent role policies, and the 裁决 A
+  bench-allow all-allow, subagent role policies, and the ruling A
   ask-through tests — none needed changes.
 - **Stop-clause lesson (reaffirmed into the round plan):** retiring any
   DELIBERATE default/fallback whose deliberateness is documented (in a

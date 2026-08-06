@@ -1,7 +1,7 @@
 {
   "name": "@vincemakes/kiso-todo-ext",
   "version": "0.1.29",
-  "description": "kiso(基礎) official todo extension — long-horizon working memory (todo_set), kernel untouched",
+  "description": "kiso (foundation) official todo extension — long-horizon working memory (todo_set), kernel untouched",
   "private": true,
   "type": "module",
   "license": "MIT",

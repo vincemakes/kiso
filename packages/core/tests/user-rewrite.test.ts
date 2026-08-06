@@ -1,5 +1,5 @@
 /**
- * 三 — user rewrite/veto end to end.
+ * round 3 — user rewrite/veto end to end.
  *
  * 1. user_input_replaced is a NORMAL stream event: yielded, durable, and
  *    never a seq gap.
@@ -53,7 +53,7 @@ const registryWith = () => {
 	return registry;
 };
 
-describe("raw core loop (三)", () => {
+describe("raw core loop (round 3)", () => {
 	it("user_input_replaced is a yielded, durable, gapless stream event", async () => {
 		const log = new EventLog();
 		const seen: Message[][] = [];
@@ -128,7 +128,7 @@ describe("raw core loop (三)", () => {
 	});
 });
 
-describe("AgentSession + reload (三)", () => {
+describe("AgentSession + reload (round 3)", () => {
 	async function setup() {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-rw-"));
 		const store = new SessionStore(dir);
@@ -181,7 +181,7 @@ describe("AgentSession + reload (三)", () => {
 		expect(reloaded.projected().some((m) => m.role === "user" && (m as { content: string }).content === "ask something")).toBe(false);
 	});
 
-	it("五: a rewrite with ContentBlock[] content is a legal event — persisted and reloaded", async () => {
+	it("round 5: a rewrite with ContentBlock[] content is a legal event — persisted and reloaded", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-rw-"));
 		const store = new SessionStore(dir);
 		const blocks: Message = {
@@ -220,7 +220,7 @@ describe("AgentSession + reload (三)", () => {
 	});
 });
 
-describe("rewrite exactly-once across recovery (六)", () => {
+describe("rewrite exactly-once across recovery (round 6)", () => {
 	it("a replacement yielded then interrupted: reload + resume calls the hook ONCE and keeps ONE replacement", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-rw-"));
 		let hookCalls = 0;

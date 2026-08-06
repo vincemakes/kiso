@@ -1,5 +1,5 @@
 /**
- * 合并轮 B — the config surface, unit-tested: the five-layer precedence
+ * Merge round B — the config surface, unit-tested: the five-layer precedence
  * chain (flags > env > project config > user config > default), loud
  * failure on broken JSON / invalid known values, the credential
  * discipline (configs only NAME an env var; an unset env marks a profile

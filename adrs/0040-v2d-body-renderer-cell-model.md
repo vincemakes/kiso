@@ -37,10 +37,10 @@ completion).
    completion order.
 4. **Frame scheduling**: state changes coalesce to ≥16ms frames; a 200ms
    heartbeat drives the running spinners and elapsed timers.
-5. **ToolCell lifecycle** (the leak cure): ONE line — `→ name 摘要`
+5. **ToolCell lifecycle** (the leak cure): ONE line — `→ name summary`
    (params ≤ 60 chars) → the ⏸ badge while an approval is pending (the
    question still reads at the dock's input row) → running (blue spinner
-   + `Ns`) → frozen `✓ name (摘要, 1.2s)` / `✗ name (错误首行, 1.2s)`.
+   + `Ns`) → frozen `✓ name (summary, 1.2s)` / `✗ name (first error line, 1.2s)`.
    The `[result]` full text no longer flows — `/last` (and `/think`) read
    the body's final cell states. Parallel tools each have their own cell.
 6. **Pipes / non-TTY bypass the renderer entirely** — the Body runs in

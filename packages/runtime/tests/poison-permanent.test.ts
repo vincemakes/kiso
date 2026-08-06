@@ -1,5 +1,5 @@
 /**
- * 第四轮(二) — Session poison is PERMANENT and total.
+ * round 4(round 2) — Session poison is PERMANENT and total.
  *
  * 1. ANY rejected disk write poisons the session — not only the typed
  *    stale/corruption errors (a live external writer's lock error is the
@@ -38,7 +38,7 @@ async function seedTerminated(store: SessionStore, seq0: number): Promise<void> 
 	await store.append("s", "r0", { seq: seq0 + 1, type: "terminal", outcome: { kind: "completed" } });
 }
 
-describe("permanent poison (第四轮)", () => {
+describe("permanent poison (round 4)", () => {
 	it("a session whose writes failed against a LIVE writer stays poisoned forever — even after the lock frees", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-poison-"));
 		const storeA = new SessionStore(dir);

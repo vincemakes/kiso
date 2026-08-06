@@ -1,5 +1,5 @@
 /**
- * D 组 — provider honesty round 2.
+ * D group — provider honesty round 2.
  *
  * D3: null/absent stops and unknown finish reasons map to `error`, never
  *     completed. D4: 500-599 are retryable; connection/timeout errors are

@@ -173,7 +173,7 @@ describe("a real run's trajectory is its own truth", () => {
 			// no-op
 		}
 
-		// The boundary is the durable fact (C 区); the projection derives
+		// The boundary is the durable fact (C area); the projection derives
 		// the cleared view from it — never a silent second copy.
 		expect(log.all.some((e) => e.type === "microcompacted")).toBe(true);
 		expect(log.all.some((e) => e.type === "compacted")).toBe(false); // ADR-0044: never produced

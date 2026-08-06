@@ -1,5 +1,5 @@
 /**
- * 自举 P1/P2 + 合并轮 (0.1.23) C7 修订 — DeepSeek thinking-mode
+ * bootstrap P1/P2 + the merge round (0.1.23) C7 revision — DeepSeek thinking-mode
  * reasoning_content round-trip.
  *
  * DeepSeek's thinking mode REQUIRES the CURRENT turn's assistant messages
@@ -7,13 +7,13 @@
  * thinking) — otherwise the API rejects the request with 400 ("The
  * reasoning_content in the thinking mode must be passed back to the API").
  *
- * 0.1.23 修订 (the fresh-mystery fix): the field's PRESENCE follows a
+ * 0.1.23 revision (the fresh-mystery fix): the field's PRESENCE follows a
  * MONOTONE rule — if ANY message in the projection carries reasoning,
  * EVERY assistant message carries the field (its own reasoning, or "");
  * otherwise none does. The old rule gated the field on the CURRENT turn
  * (hand-feel round C7), so at every turn boundary the just-finished turn's
  * assistant messages LOST the field — rewriting old history and breaking
- * the request byte prefix (D 区 request-level) at each boundary, which
+ * the request byte prefix (D area request-level) at each boundary, which
  * killed the provider's prefix cache there. The monotone rule flips at
  * most ONCE per session (when the first thinking appears, usually in
  * turn 1), and never again: old reasoning is echoed (DeepSeek's own
@@ -24,7 +24,7 @@
  * identical to the pre-0.1.23 behavior).
  *
  * The adapter derives everything deterministically from the projected
- * messages (D 区): the projection attaches each turn's reasoning to its
+ * messages (D area): the projection attaches each turn's reasoning to its
  * assistant message.
  */
 
@@ -51,7 +51,7 @@ function fakeOpenAI(params: { onCreate?: (p: unknown) => void }) {
 	} as unknown as OpenAI;
 }
 
-describe("自举 P1/P2: reasoning_content round-trip (DeepSeek thinking mode)", () => {
+describe("bootstrap P1/P2: reasoning_content round-trip (DeepSeek thinking mode)", () => {
 	it("the continuation request after a tool result carries the CURRENT turn's reasoning", async () => {
 		// The DeepSeek shape: thinking deltas → tool call → stop, then the
 		// tool result. The continuation request (no new user turn yet) must
@@ -84,7 +84,7 @@ describe("自举 P1/P2: reasoning_content round-trip (DeepSeek thinking mode)", 
 	});
 
 	it("OLD turns' reasoning is ECHOED — the turn boundary never drops the field (0.1.23)", async () => {
-		// The third request of a 读→答 session: the answer turn reasoned,
+		// The third request of a read→answer session: the answer turn reasoned,
 		// and it lies BEFORE the new user message. The field presence must
 		// not flip at the boundary (that flip rewrote old history and broke
 		// the byte prefix — the fresh-mystery root cause): the old
@@ -239,7 +239,7 @@ describe("自举 P1/P2: reasoning_content round-trip (DeepSeek thinking mode)", 
 		expect(assistants[1]!.reasoning_content).toBe("");
 	});
 
-	it("0.1.23: consecutive request bodies share the byte prefix through the older request's LAST message (D 区 request-level)", async () => {
+	it("0.1.23: consecutive request bodies share the byte prefix through the older request's LAST message (D area request-level)", async () => {
 		// The permanent regression for the fresh-mystery fix: two
 		// consecutive request bodies spanning a turn boundary. The older
 		// body must be a byte prefix of the newer one UP TO the close of

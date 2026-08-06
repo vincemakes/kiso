@@ -23,7 +23,7 @@
  * Restart recovery is the same code path as a second run: rebuild the log
  * from the JSONL, continue numbering where the file ended.
  *
- * 手感批 B4 (pure move): the Run class lives in run.ts, the recovery
+ * the ergonomics batch B4 (pure move): the Run class lives in run.ts, the recovery
  * support in recovery.ts, the E1/E2 composition helpers in compose.ts —
  * same package, same exports (index.ts re-exports all four).
  */
@@ -54,7 +54,7 @@ import { Run } from "./run.js";
 
 /** A session whose disk write was rejected (stale handle) is PERMANENTLY
  * poisoned: its in-memory log no longer matches the disk, so no further
- * run may proceed — reload the session (一). */
+ * run may proceed — reload the session (round 1). */
 export class PoisonedSessionError extends Error {
 	constructor(reason: string) {
 		super(`session is poisoned: ${reason} — reload it; the in-memory log no longer matches the disk`);
@@ -101,16 +101,16 @@ export class AgentSession {
 	readonly #pendingResolvers = new Map<string, (decision: PermissionDecision) => void>();
 	readonly #uncertaintyResolvers = new Map<string, (resolution: "rerun" | "abandoned") => void>();
 	readonly #answered = new Set<string>();
-	/** 七: verdicts already passed to a live resolver — the resolution event
+	/** round 7: verdicts already passed to a live resolver — the resolution event
 	 *  lands in the log asynchronously (the loop owns it), so the ledger
 	 *  alone cannot make resolveUncertain idempotent across the same tick. */
 	readonly #uncertaintyAnswered = new Set<string>();
-	/** 第四轮(对抗): verdicts the human GAVE, recorded when passed to a live
+	/** round 4 (adversarial): verdicts the human GAVE, recorded when passed to a live
 	 *  resolver. If an abort races the verdict, the loop / recovery queries
 	 *  these and records the decision (exactly once) instead of losing it. */
 	readonly #approvalVerdicts = new Map<string, boolean>();
 	readonly #uncertaintyVerdicts = new Map<string, "rerun" | "abandoned">();
-	/** 第五轮(P1-5): verdicts submitted to a LIVE resolver but not yet known
+	/** round 5(P1-5): verdicts submitted to a LIVE resolver but not yet known
 	 *  durable. An async generator only advances on next(), so approve()/
 	 *  resolveUncertain() CANNOT wait for the loop to persist — that would
 	 *  deadlock (the consumer waits while the generator needs a next()).
@@ -121,7 +121,7 @@ export class AgentSession {
 	readonly #pendingDurableUncertainties = new Map<string, { resolution: "rerun" | "abandoned"; callId: string }>();
 	#poisoned: string | null = null;
 
-	/** Permanently invalidate the session after a rejected disk write (一). */
+	/** Permanently invalidate the session after a rejected disk write (round 1). */
 	poison(reason: string): void {
 		if (this.#poisoned === null) this.#poisoned = reason;
 	}
@@ -150,7 +150,7 @@ export class AgentSession {
 	}
 
 	/** Write-ahead through the store; a rejected write POISONS the session
-	 *  (一/第四轮): the in-memory log no longer matches the disk — whatever
+	 *  (round 1/round 4): the in-memory log no longer matches the disk — whatever
 	 *  the cause (stale handle, corruption, a live external writer, an I/O
 	 *  fault) — so no further run, resume, or log mutation may proceed.
 	 *  The health check runs BEFORE every write, on every path. */
@@ -159,7 +159,7 @@ export class AgentSession {
 		try {
 			await this.#store.append(this.id, runId, event);
 		} catch (err) {
-			// 第四轮: ANY rejected write poisons — not only the typed
+			// round 4: ANY rejected write poisons — not only the typed
 			// stale/corruption errors. A live external writer's lock error
 			// is the realistic case; the in-memory log is ahead of the disk
 			// in all of them.
@@ -187,7 +187,7 @@ export class AgentSession {
 	}
 
 	/**
-	 * 合并轮 B (/model): replace the adapter for SUBSEQUENT runs. The
+	 * merge round B (/model): replace the adapter for SUBSEQUENT runs. The
 	 * kernel reads the adapter through the loop-config closure at each
 	 * turn, so the swap takes effect at the next turn — a run already in
 	 * flight keeps the adapter it started with. The CLI calls this between
@@ -256,7 +256,7 @@ export class AgentSession {
 
 	/**
 	 * Pauses that still await a human decision (durable, survives restart).
-	 * B 组: a request whose RUN has terminated is DEAD — it is neither
+	 * B group: a request whose RUN has terminated is DEAD — it is neither
 	 * re-presented here nor recoverable; expired requests are excluded too.
 	 */
 	pendingApprovals(): ApprovalRequest[] {
@@ -301,7 +301,7 @@ export class AgentSession {
 	 * lost decision only re-presents the request.
 	 */
 	async approve(decisionId: string, allow: boolean): Promise<void> {
-		// 第四轮: a poisoned session may not mutate the log — checked before
+		// round 4: a poisoned session may not mutate the log — checked before
 		// anything is recorded.
 		this.ensureHealthy();
 		// Idempotent: one decision per request (review finding 7). The
@@ -312,7 +312,7 @@ export class AgentSession {
 		if (this.#answered.has(decisionId)) return;
 		this.#answered.add(decisionId);
 		if (this.log.all.some((e) => e.type === "permission_decided" && e.decisionId === decisionId)) return;
-		// B 组: a late approve() on a TERMINATED run writes nothing and
+		// B group: a late approve() on a TERMINATED run writes nothing and
 		// executes nothing — a dead run's approval cannot resurrect it.
 		const records = this.#store.load(this.id);
 		const request = records.find(
@@ -324,10 +324,10 @@ export class AgentSession {
 		}
 		const resolver = this.#pendingResolvers.get(decisionId);
 		if (resolver !== undefined) {
-			// 第四轮(对抗): recorded so an abort racing the verdict cannot
+			// round 4 (adversarial): recorded so an abort racing the verdict cannot
 			// lose it — the loop's abort path consults approvalVerdict.
 			this.#approvalVerdicts.set(decisionId, allow);
-			// 第五轮(P1-5): the verdict is SUBMITTED — the Run's finally
+			// round 5(P1-5): the verdict is SUBMITTED — the Run's finally
 			// flushes it to disk if the generator never gets to persist it.
 			// (Waiting here for durability would deadlock: the generator
 			// only advances on the consumer's next(), which the consumer
@@ -357,7 +357,7 @@ export class AgentSession {
 
 	/**
 	 * The human's verdict on an interrupted execution, keyed by EXECUTION ID
-	 * (B 组): "rerun" (the human says the side effect did NOT happen — the
+	 * (B group): "rerun" (the human says the side effect did NOT happen — the
 	 * attempt is completed with a recorded failure so the model may re-issue
 	 * it as a new logical call) or "abandoned" (treated as failed forever).
 	 * Only uncertain → rerun/abandoned is legal; a resolved or successful
@@ -366,34 +366,34 @@ export class AgentSession {
 	 * rejected by real providers (review finding 1).
 	 */
 	async resolveUncertain(executionId: string, resolution: "rerun" | "abandoned"): Promise<void> {
-		// 第四轮: a poisoned session may not mutate the log.
+		// round 4: a poisoned session may not mutate the log.
 		this.ensureHealthy();
 		const record = executionLedger(this.log.all).get(executionId);
 		if (!record) throw new Error(`no execution record for ${executionId}`);
 		if (record.status !== "uncertain") return; // idempotent + irreversible
-		// 七: a verdict already passed to a live resolver is FINAL — the
+		// round 7: a verdict already passed to a live resolver is FINAL — the
 		// loop's resolution event lands asynchronously, so the ledger alone
 		// cannot make this idempotent across the same tick.
 		if (this.#uncertaintyAnswered.has(executionId)) return;
 		this.#uncertaintyAnswered.add(executionId);
-		// 七: with a LIVE resolver, the active loop / recovery generator
+		// round 7: with a LIVE resolver, the active loop / recovery generator
 		// OWNS the resolution event — it appends, yields, and persists it
 		// through the Run, so the consumer's stream and the durable log
 		// stay identical. We only pass the verdict; a hidden append here
-		// would leave a seq gap. 第四轮(对抗): the verdict is recorded so an
+		// would leave a seq gap. round 4 (adversarial): the verdict is recorded so an
 		// abort racing it cannot lose it.
 		const resolver = this.#uncertaintyResolvers.get(executionId);
 		if (resolver !== undefined) {
 			this.#uncertaintyVerdicts.set(executionId, resolution);
-			// 第五轮(P1-5): submitted — flushed to disk by the Run's finally
+			// round 5(P1-5): submitted — flushed to disk by the Run's finally
 			// if the generator never persists it.
 			this.#pendingDurableUncertainties.set(executionId, { resolution, callId: record.callId });
 			this.#uncertaintyResolvers.delete(executionId);
 			resolver(resolution);
 			return;
 		}
-		// 七: OFFLINE verdict — no live resolver: persist directly.
-		// 四: the verdict is attributed to the ORIGINAL run of the execution
+		// round 7: OFFLINE verdict — no live resolver: persist directly.
+		// round 4: the verdict is attributed to the ORIGINAL run of the execution
 		// — never the fake runId "resolution".
 		const runId = this.runIdFor(executionId);
 		const resolved = this.log.append({
@@ -403,10 +403,10 @@ export class AgentSession {
 			resolution,
 		});
 		await this.persist(runId, resolved);
-		// 四: the fill is keyed by THIS execution — a tool_result belonging to
+		// round 4: the fill is keyed by THIS execution — a tool_result belonging to
 		// a different (same-callId) execution must not suppress the verdict's
 		// model-facing result, and the fill itself carries the executionId.
-		// 八(对抗): the fill also carries the tags from the durable RECEIPT —
+		// round 8 (adversarial): the fill also carries the tags from the durable RECEIPT —
 		// the normal live path emits the result with tags before the pause,
 		// so a crash-window repair reproduces them.
 		if (!this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId)) {
@@ -462,18 +462,18 @@ export class AgentSession {
 		this.#pendingResolvers.set(decisionId, resolve);
 	}
 
-	/** 第四轮(对抗): a verdict the human already gave for a live decision. */
+	/** round 4 (adversarial): a verdict the human already gave for a live decision. */
 	approvalVerdict(decisionId: string): boolean | undefined {
 		return this.#approvalVerdicts.get(decisionId);
 	}
 
-	/** 第四轮(对抗): a verdict the human already gave for a live execution. */
+	/** round 4 (adversarial): a verdict the human already gave for a live execution. */
 	uncertaintyVerdict(executionId: string): "rerun" | "abandoned" | undefined {
 		return this.#uncertaintyVerdicts.get(executionId);
 	}
 
 	/**
-	 * 第五轮(P1-5): flush every verdict submitted to a live resolver that is
+	 * round 5(P1-5): flush every verdict submitted to a live resolver that is
 	 * not yet durable. Called from the Run iterator's FINALLY — whether the
 	 * run completed, aborted, or was abandoned by the consumer. An event the
 	 * loop already appended is left alone (its persist precedes its yield);
@@ -532,13 +532,13 @@ export interface SessionConfig {
 	 * which IGNORES it — kept for type compatibility, removed at 1.0.
 	 */
 	readonly compaction?: { readonly thresholdTokens: number };
-	/** C 区: microcompact threshold — passed through to the loop verbatim. */
+	/** C area: microcompact threshold — passed through to the loop verbatim. */
 	readonly microcompact?: { readonly thresholdTokens: number };
 	readonly maxRetries?: number;
 	/**
 	 * E1: loaded extensions — their tools join the registry (idempotently;
 	 * a collision with a built-in name was already rejected at agent
-	 * creation), their hooks compose AFTER the existing ones (既有先行),
+	 * creation), their hooks compose AFTER the existing ones (the existing come first),
 	 * their approval policies enter the loop's policy chain.
 	 */
 	readonly extensions?: readonly KisoExtension[];

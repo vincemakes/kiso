@@ -1,11 +1,11 @@
 /**
- * C 区 (kiso code review, fix 3): microcompact is wired THROUGH the runtime.
+ * C area (kiso code review, fix 3): microcompact is wired THROUGH the runtime.
  *
  * A REAL AgentSession — not the bare loop — runs a session whose projected
  * context crosses the threshold: the `microcompacted` boundary must be
  * appended AND persisted exactly once, and a FRESH session loaded from the
  * same store must project the placeholders (the boundary is a durable fact,
- * D 区 byte discipline). This is the end-to-end wiring test the review
+ * D area byte discipline). This is the end-to-end wiring test the review
  * demanded: a core-level test alone would pass without any runtime wiring.
  */
 
@@ -43,7 +43,7 @@ async function seedLongSession(store: SessionStore): Promise<void> {
 	}
 }
 
-describe("C 区 e2e: microcompact is wired through the runtime", () => {
+describe("C area e2e: microcompact is wired through the runtime", () => {
 	it("an over-threshold session records the boundary on disk; a reloaded session projects the placeholders", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-mc-e2e-"));
 		const store = new SessionStore(dir);

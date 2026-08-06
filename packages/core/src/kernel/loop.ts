@@ -17,13 +17,13 @@
  *   assemble (onUserMessage / onPreLlm)
  *     → adapter.stream(): events yielded straight through; every validated
  *       and policy-allowed tool call LAUNCHES its execution immediately
- *       (流中执行) — the executions run concurrently under a window of 4
+ *       (streaming execution) — the executions run concurrently under a window of 4
  *       (0.1.26, ADR-0024 Amd), their events queued and drained between
  *       stream events (completion order; the projection re-orders the
- *       results by call order — 字节纪律)
+ *       results by call order — the byte discipline)
  *     → the turn settles: the launched executions finish (receipts land
  *       before any terminal), the ask-gated successors follow the human's
- *       verdict (保守序)
+ *       verdict (the conservative order)
  *   no tool calls / maxTurns / abort / max_tokens → terminal event, return
  *
  * Retry lives HERE and only here (ADR-0005): a retryable StructuredError
@@ -85,7 +85,7 @@ export interface LoopConfig {
 	 */
 	readonly compaction?: { readonly thresholdTokens: number };
 	/**
-	 * C 区: MICROCOMPACT — when the projected context exceeds the threshold,
+	 * C area: MICROCOMPACT — when the projected context exceeds the threshold,
 	 * append ONE durable `microcompacted` boundary (clearing compactable tool
 	 * results older than the recent turns). The decision is a persisted fact:
 	 * the projection derives the same cleared view from the same events,
@@ -104,20 +104,20 @@ export interface LoopConfig {
 	 */
 	readonly resolveApproval?: (decisionId: string) => Promise<PermissionDecision>;
 	/**
-	 * 第四轮(对抗): a verdict the human ALREADY gave before an abort landed.
+	 * round 4 (adversarial): a verdict the human ALREADY gave before an abort landed.
 	 * The abort path consults this BEFORE yielding the aborted terminal: a
 	 * consumed verdict must be recorded (exactly once), never lost — the
 	 * human's decision outranks the abort.
 	 */
 	readonly approvalVerdict?: (decisionId: string) => boolean | undefined;
 	/**
-	 * C 组: the channel that resolves a failed NON-idempotent execution.
+	 * C group: the channel that resolves a failed NON-idempotent execution.
 	 * The loop persists `uncertain_pending`, yields it, and AWAITS the
 	 * human verdict — no next model turn, no sibling tool, no auto-retry.
 	 * Absent, the failure is recorded `abandoned` (never retried).
 	 */
 	readonly resolveUncertainty?: (executionId: string) => Promise<"rerun" | "abandoned">;
-	/** 第四轮(对抗): the uncertainty twin of `approvalVerdict`. */
+	/** round 4 (adversarial): the uncertainty twin of `approvalVerdict`. */
 	readonly uncertaintyVerdict?: (executionId: string) => "rerun" | "abandoned" | undefined;
 	/**
 	 * E1: extension approval policies, tagged by their owning extension —
@@ -167,7 +167,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	const aborted = (): boolean => signal?.aborted === true;
 
 	// Assemble: the incoming user message may be rewritten or vetoed.
-	// C 组: the outcome is PERSISTED as a user_input_replaced event — the
+	// C group: the outcome is PERSISTED as a user_input_replaced event — the
 	// projection renders the final replacement AT THE INPUT'S POSITION (or
 	// nothing, for a true veto), so the rewritten fact is the ONLY fact
 	// every later turn of the run sees.
@@ -177,7 +177,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		const last = messages.at(-1);
 		if (last?.role === "user") {
 			const inputEvent = [...log.all].reverse().find((e): e is Event & { type: "user_input" } => e.type === "user_input");
-			// 六: the hook runs AT MOST ONCE per input. A replacement that
+			// round 6: the hook runs AT MOST ONCE per input. A replacement that
 			// ALREADY exists (persisted before a crash, or before a resume)
 			// means the hook already spoke for this input — it must never
 			// run again, and the run continues from the durable fact.
@@ -186,7 +186,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					e.type === "user_input_replaced" && e.replaces === inputEvent?.seq,
 			);
 			if (replacement !== undefined) {
-				// 六/第五轮(P1-7): the hook ALREADY spoke for this input — a
+				// round 6/round 5 (P1-7): the hook ALREADY spoke for this input — a
 				// durable null content is a TRUE veto: restore the vetoed
 				// flag so the provider is NEVER called, even when earlier
 				// history exists (previously only an empty history happened
@@ -195,7 +195,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			}
 			if (replacement === undefined && inputEvent) {
 				const rewritten = await hooks.onUserMessage(last, {});
-				// 一: the rewrite/veto is a NORMAL stream event — persisted by
+				// round 1: the rewrite/veto is a NORMAL stream event — persisted by
 				// the harness and visible to consumers, never a hidden append.
 				const replaced = log.append({
 					type: "user_input_replaced",
@@ -205,11 +205,11 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				});
 				messages = derive();
 				yield replaced;
-				if (rewritten === null) vetoed = true; // 三: a true veto ends the run
+				if (rewritten === null) vetoed = true; // round 3: a true veto ends the run
 			}
 		}
 	}
-	// 三: a true veto ends the run — the provider is NEVER called, even
+	// round 3: a true veto ends the run — the provider is NEVER called, even
 	// when earlier history exists.
 	if (vetoed || messages.length === 0) {
 		yield await terminal({ kind: "completed" });
@@ -220,7 +220,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// showed the sequential ledger is the bottleneck): the windowed parallel
 	// batching returns, this time with the ledger events emitted per call in
 	// deterministic order. The model stream and the tool executions run
-	// CONCURRENTLY (流中执行): a tool_call_end validated and allowed by the
+	// CONCURRENTLY (streaming execution): a tool_call_end validated and allowed by the
 	// policy chain launches its execution immediately; the events land
 	// through a queue the stream loop drains on every stream event — their
 	// seq order is the COMPLETION order (started/receipt/result land when
@@ -229,13 +229,13 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// turn's results by CALL order (project.ts flushResults) — the
 	// completion order only affects the landing moment, never the derived
 	// messages. The window caps concurrent executions; the ask gate holds
-	// an ask AND the calls after it until the human decides (保守序 — the
+	// an ask AND the calls after it until the human decides (the conservative order — the
 	// context may have changed when the human approves); the STARTED event
 	// is acked by the drain so the handler never runs before its receipt is
 	// persisted (write-ahead preserved). A voided turn (forged event,
 	// post-stop violation, a non-compatible stop reason) fires the violated
-	// signal: started executions finish and their receipts land (已开跑照落
-	// receipt), not-started ones bail without a started event (abort 语义 —
+	// signal: started executions finish and their receipts land (already-started executions still land their
+	// receipt), not-started ones bail without a started event (abort semantics —
 	// clean, never uncertain).
 	const WINDOW_SIZE = 4;
 	// The execution event queue. The drain (below) appends + yields each
@@ -290,7 +290,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	let launchError: unknown = null;
 	let violated = false;
 	// The violated signal: rejects when the turn is voided — the paused
-	// ask-branches bail (abort 语义 for not-started executions). Typed
+	// ask-branches bail (abort semantics for not-started executions). Typed
 	// `never` so the ask race resolves to the human decision alone.
 	let violatedReject: () => void = () => {};
 	const violatedP = new Promise<never>((_, reject) => {
@@ -367,7 +367,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 							return;
 						}
 					}
-					// 保守序: the calls AFTER an ask wait for its human
+					// the conservative order: the calls AFTER an ask wait for its human
 					// resolution (the askGate is the ask's pause promise —
 					// resolved by default, released by the ask branch above).
 					// The context may have changed when the human approves.
@@ -406,7 +406,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		}
 		turns += 1;
 
-		// ── C 区: one-shot microcompact boundary when over the threshold ──
+		// ── C area: one-shot microcompact boundary when over the threshold ──
 		if (config.microcompact !== undefined && estimateTokens(messages) > config.microcompact.thresholdTokens) {
 			const beforeSeq = microcompactBoundarySeq(log.all, config.microcompact.keepResults ?? KEEP_COMPACTABLE_RESULTS);
 			if (beforeSeq !== undefined) {
@@ -429,11 +429,11 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		let stopCount = 0;
 		let streamed = false;
 		let attempts = 0;
-		// 五: the turn is a strict protocol — once the provider stops, ANY
+		// round 5: the turn is a strict protocol — once the provider stops, ANY
 		// further event (delta, tool call, usage, thinking) is a violation.
 		let sawStop = false;
 		let postStopViolation = false;
-		// 五: the adapter may only produce its OWN event kinds — a
+		// round 5: the adapter may only produce its OWN event kinds — a
 		// kernel-owned event (terminal, tool_execution_*, permission_*,
 		// user_input, …) from the stream is a FORGERY and must never reach
 		// the log.
@@ -460,9 +460,9 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					streamed = true;
 					// 0.1.26: the launched executions' events land first —
 					// the completion order; the projection re-orders the
-					// results by call order (字节纪律).
+					// results by call order (the byte discipline).
 					for await (const q of drainExec()) yield q;
-					// 五: the trust gate — a kernel-owned event from the
+					// round 5: the trust gate — a kernel-owned event from the
 					// adapter is a forgery: it is never appended (never
 					// persisted), and the turn ends with a unique
 					// invalid_request terminal below.
@@ -472,7 +472,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 						violatedReject();
 						break;
 					}
-					// 五: a delta/tool call/usage arriving AFTER the provider's
+					// round 5: a delta/tool call/usage arriving AFTER the provider's
 					// stop is a protocol error — the violating event is never
 					// appended, and the turn ends with an error terminal (the
 					// pending tools must NOT execute).
@@ -489,7 +489,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					}
 					if (ev.type === "tool_call_end") {
 						pending.push(ev);
-						// 流中执行: the call launches immediately — the decide
+						// streaming execution: the call launches immediately — the decide
 						// and the ledgered run proceed in parallel with the
 						// model stream.
 						launch(ev);
@@ -520,12 +520,12 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			}
 		}
 
-		// ── The voided-terminal computation (五 / C 组) ────────────────────
+		// ── The voided-terminal computation (round 5 / C group) ────────────────────
 		// A forged kernel-owned event, a post-stop event, or a
 		// non-compatible stop reason voids the turn: the launched
-		// executions still finish and their receipts land (已开跑照落
+		// executions still finish and their receipts land (already-started executions still land their
 		// receipt — the side effects happened), the not-started bail
-		// (abort 语义), then the terminal.
+		// (abort semantics), then the terminal.
 		let voided: Terminal | null = null;
 		if (forgedEvent) {
 			voided = {
@@ -564,7 +564,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			return;
 		}
 
-		// ── C 组: the turn is verified. 0.1.26 (流中执行): the calls were
+		// ── C group: the turn is verified. 0.1.26 (streaming execution): the calls were
 		// ALREADY launched at tool_call_end, so a non-compatible stop reason
 		// VOIDS the turn instead of preventing the execution.
 		if (voided === null && pending.length > 0) {
@@ -610,9 +610,9 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		}
 
 		// ── The turn settles: a void fires the violated signal — the
-		//    not-started executions bail (abort 语义 — no started, no
+		//    not-started executions bail (abort semantics — no started, no
 		//    receipt, never uncertain); the started ones finish and their
-		//    receipts land BEFORE the terminal or the next turn (已开跑照落
+		//    receipts land BEFORE the terminal or the next turn (already-started executions still land their
 		//    receipt). The drain yields every queued event; the STARTED
 		//    ack resolves as the consumer persists (write-ahead), so the
 		//    launches advance DURING the drain — a 10ms settle poll covers
@@ -696,7 +696,7 @@ type ExecVerdict =
 	| { action: "allow" };
 
 /** The tool_result event for a call — the shared shape (executionId rides
- *  it as the durable correlation, 五). */
+ *  it as the durable correlation, round 5). */
 function resultEvent(call: ToolCallEnd, result: ToolResult, executionId?: string): EventInput {
 	return {
 		type: "tool_result",
@@ -707,7 +707,7 @@ function resultEvent(call: ToolCallEnd, result: ToolResult, executionId?: string
 		// the runtime guard keeps a JS tool's illegal combination out of
 		// the persisted event too).
 		...(result.isError && result.errorKind ? { errorKind: result.errorKind } : {}),
-		// 五: a live tool's tags are preserved losslessly (do-not-compact,
+		// round 5: a live tool's tags are preserved losslessly (do-not-compact,
 		// billing receipts, trace anchors) — never dropped at the loop.
 		...(result.tags !== undefined ? { tags: result.tags } : {}),
 		...(executionId !== undefined ? { executionId } : {}),
@@ -769,7 +769,7 @@ async function decideCall(
 
 	// ── E1: the extension policy chain, decided BEFORE the human flow ─────
 	// A durable POLICY decision for THIS call takes effect on resume — the
-	// chain never re-runs when its verdict is already in the log (同构
+	// chain never re-runs when its verdict is already in the log (isomorphic
 	// alreadyReplaced: the persisted fact speaks for the call). The match is
 	// the same logical call: same callId, decidedBy set (a policy verdict,
 	// never a human's), and input identical to the original tool_call_end —
@@ -800,7 +800,7 @@ async function decideCall(
 			try {
 				v = await raceAbort(Promise.resolve(policy.decide(payload, ctx)), signal);
 			} catch {
-				v = { action: "ask" }; // 抛错 = 该扩展计为 ask —— 发声,绝不静默
+				v = { action: "ask" }; // a throwing policy counts as ask — it speaks, never silently
 			}
 			if (v.action === "abstain") continue; // no opinion — not a verdict
 			anySpoke = true;
@@ -815,9 +815,9 @@ async function decideCall(
 		if (deniedBy !== undefined) {
 			chainVerdict = { action: "deny", reason: deniedReason ?? "denied" };
 		} else if (chainVerdict === undefined && anySpoke) {
-			chainVerdict = { action: "allow" }; // 全发声者皆 allow
+			chainVerdict = { action: "allow" }; // every speaker allows
 		} else if (chainVerdict === undefined) {
-			// 全员 abstain (ADR-0042): NO policy speaks — the call falls to
+			// an all-abstain (ADR-0042): NO policy speaks — the call falls to
 			// the ask flow below, never to a silent auto-approve. The human
 			// decides; absent a channel, humanPause's honest denial.
 			chainVerdict = { action: "ask" };
@@ -843,7 +843,7 @@ async function decideCall(
 		return { action: "deny", result: resultEvent(call, denialResult(durable.reason ?? "denied")) };
 	}
 	if (chainVerdict?.action === "ask") {
-		// 裁决 A (E1 ask 语义修正): an ask means "a HUMAN must decide" — it
+		// ruling A (the E1 ask semantics fix): an ask means "a HUMAN must decide" — it
 		// routes DIRECTLY to the human approval pause, never through
 		// onPreTool: a static automated policy (e.g. the CLI's default deny
 		// for unknown tools) must not answer for the human. No approval
@@ -855,10 +855,10 @@ async function decideCall(
 		return { action: "ask", decisionId: nextDecisionId() };
 	}
 
-	// Permission negotiation — defer is a REAL pause (Phase D). C 组: the
+	// Permission negotiation — defer is a REAL pause (Phase D). C group: the
 	// hook itself is cancelable (a slow policy query must not outlive an
 	// abort), and the signal is re-checked after it returns. Runs only when
-	// the policy chain did not run at all (裁决 A: an ask was already
+	// the policy chain did not run at all (ruling A: an ask was already
 	// resolved by the human pause above — the static hook never speaks for
 	// it, and a durable decision already spoke for the call).
 	if (durable === undefined && chainVerdict === undefined && hooks.onPreTool) {
@@ -875,7 +875,7 @@ async function decideCall(
 }
 
 /**
- * The human approval pause (Phase D / 裁决 A): register the resolver
+ * The human approval pause (Phase D / ruling A): register the resolver
  * BEFORE announcing the request (a consumer that answers the moment it
  * sees the event must find the resolver already waiting — no deadlock
  * between push and await), persist the request (via push), await the
@@ -912,7 +912,7 @@ async function humanPause(
 		finalDecision = await raceAbort(pendingDecision, signal);
 	} catch (err) {
 		if (err === ABORTED) {
-			// 第四轮(对抗): the human may have answered in the same instant
+			// round 4 (adversarial): the human may have answered in the same instant
 			// the abort landed — a CONSUMED verdict must be recorded
 			// (exactly once), never lost; the abort then ends the run with
 			// its honest aborted terminal.
@@ -936,7 +936,7 @@ async function humanPause(
 		push({
 			type: "permission_decided",
 			decisionId,
-			callId: call.callId, // binds the decision to the invocation (B 组)
+			callId: call.callId, // binds the decision to the invocation (B group)
 			decision: finalDecision.action === "allow" ? "approved" : "denied",
 			...(finalDecision.action === "deny" && finalDecision.reason !== undefined
 				? { reason: finalDecision.reason }
@@ -961,7 +961,7 @@ async function runLedgered(
 	push: (ev: EventInput, ack?: (executionId?: string) => void) => void,
 ): Promise<void> {
 	const tool = registry.get(call.name)!; // validated + decided by decideCall
-	// C 组: the signal is re-checked immediately before the started event —
+	// C group: the signal is re-checked immediately before the started event —
 	// an abort that landed in any permission path must not let the side
 	// effect begin.
 	if (signal?.aborted) throw ABORTED;
@@ -986,7 +986,7 @@ async function runLedgered(
 
 	let result: ToolResult;
 	try {
-		// C 组: re-checked again right before the handler — the handler also
+		// C group: re-checked again right before the handler — the handler also
 		// observes ctx.signal, but the gate itself must not invoke it after
 		// a cancel.
 		result = signal?.aborted
@@ -1004,7 +1004,7 @@ async function runLedgered(
 		result = await hooks.onPostTool({ callId: call.callId, name: call.name, input: call.input ?? {} }, result, ctx);
 	}
 
-	// 裁决 #12 修正一: a non-idempotent failure's side effects may have
+	// ruling #12 correction one: a non-idempotent failure's side effects may have
 	// partially applied — an honest note rides the RESULT (and the failed
 	// receipt below, losslessly — a crash-window repair of the tool_result
 	// reproduces the normal path). Idempotent failures carry no note; the
@@ -1021,7 +1021,7 @@ async function runLedgered(
 		// Area 3: only a tool that PROVED safe-to-retry (idempotent) gets a
 		// clean failure; a non-idempotent failure may have produced a side
 		// effect and is uncertain until a human decides.
-		// 八: the tags ride on the RECEIPT too — a crash-window repair of the
+		// round 8: the tags ride on the RECEIPT too — a crash-window repair of the
 		// tool_result reproduces the normal path losslessly.
 		push({
 			type: "tool_execution_failed",
@@ -1053,7 +1053,7 @@ const ABORTED = Symbol("kiso-aborted-during-approval");
 
 /**
  * Wait for a human decision (approval or uncertain verdict), but WAKE on
- * abort (Area 4 / C 组): a cancel during the wait must end the run, not
+ * abort (Area 4 / C group): a cancel during the wait must end the run, not
  * leave the iterator hung. Throws ABORTED; the loop converts it to an
  * `aborted` terminal.
  */
@@ -1128,7 +1128,7 @@ function sleep(ms: number, signal?: AbortSignalLike): Promise<void> {
 }
 
 /**
- * C 区 (自举 #3): the DEFAULT for how many of the NEWEST compactable tool
+ * C area (bootstrap #3): the DEFAULT for how many of the NEWEST compactable tool
  * results survive a microcompact boundary (overridable per config via
  * microcompact.keepResults) — the model must keep reasoning over the
  * recent results, whatever turn they belong to.
@@ -1136,7 +1136,7 @@ function sleep(ms: number, signal?: AbortSignalLike): Promise<void> {
 const KEEP_COMPACTABLE_RESULTS = 4;
 
 /**
- * C 区: the boundary seq for a microcompact — drawn by COMPACTABLE-RESULT
+ * C area: the boundary seq for a microcompact — drawn by COMPACTABLE-RESULT
  * recentness, never user turns: a SINGLE user turn that reads several big
  * files (the coding agent's main overflow shape) crosses the threshold and
  * must trigger. The newest `keepResults` still-visible compactable tool
@@ -1157,11 +1157,11 @@ function microcompactBoundarySeq(events: readonly Event[], keepResults: number):
 	for (const ev of events) {
 		if (ev.type !== "tool_result" || ev.seq <= lastCleared) continue;
 		const name = callName.get(ev.callId);
-		// 手感批 C6 (P4): the do-not-compact tag makes a result UN-CLEARABLE
+		// the ergonomics batch C6 (P4): the do-not-compact tag makes a result UN-CLEARABLE
 		// (the projection keeps it) — the count must EXCLUDE it, exactly like
 		// the clearing side. A tagged result counted here would steal a keep
 		// window slot forever and could anchor the boundary at a result the
-		// projection refuses to clear (计数与清除口径一致).
+		// projection refuses to clear (the count and the clearing share one rule).
 		if (name !== undefined && MICROCOMPACTABLE.has(name) && !(ev.tags ?? []).includes(DO_NOT_COMPACT)) visible.push(ev.seq);
 	}
 	if (visible.length <= keepResults) return undefined;

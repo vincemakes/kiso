@@ -2,7 +2,7 @@
  * E1 — extension approval policies: pure types, no runtime.
  *
  * An extension is a named bundle of optional capabilities: hooks (composed
- * AFTER the harness's own — 既有先行), tools (merged into the registry), and
+ * AFTER the harness's own — the existing come first), tools (merged into the registry), and
  * approval policies (the loop's policy chain, decided BEFORE the human
  * flow). This file is types-only: loading and composition live in the
  * runtime package (loadExtensions) and the kernel loop.
@@ -63,13 +63,13 @@ export interface KisoExtension {
 	 */
 	readonly systemPrompt?: { readonly append: string };
 	/**
-	 * 0.1.26 (MCP 懒连接): an optional LIVE flag — the CLI's banner renders
+	 * 0.1.26 (MCP lazy connection): an optional LIVE flag — the CLI's banner renders
 	 * "name (connecting…)" while it is true. Soft surface: absent = no
 	 * marker (the default).
 	 */
 	readonly connecting?: boolean;
 	/**
-	 * 发现#8 (P1): the extension's shutdown action — the closing of external
+	 * finding #8 (P1): the extension's shutdown action — the closing of external
 	 * resources it holds (child processes, connections). The LOADER is
 	 * responsible for calling it.
 	 */

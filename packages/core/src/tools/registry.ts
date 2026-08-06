@@ -12,7 +12,7 @@
  * model cannot call a tool that is not in its registry — no prompt can
  * achieve that guarantee.
  *
- * 0.1.26 (MCP 懒连接): `registerLive()` adds a LIVE tool source — a
+ * 0.1.26 (MCP lazy connection): `registerLive()` adds a LIVE tool source — a
  * function returning the extension's current tools array. The array grows
  * when the extension's background connections settle (the MCP bridge
  * registers its servers' tools post-connect); the registry consults the
@@ -55,7 +55,7 @@ export class ToolRegistry {
 	list(): readonly Tool[] {
 		// The registered map WINS a name collision against a live source —
 		// the same rule get()/has() already follow, applied here too
-		// (0.1.27 失格调查: the agent eagerly registers a sync extension's
+		// (0.1.27 the disqualification investigation: the agent eagerly registers a sync extension's
 		// tools AND registers its live source — a skills/subagent/MCP status
 		// tool appeared twice in toSpecs() and the real API answered
 		// "400 Tool names must be unique"; the identity is the same object,

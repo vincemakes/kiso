@@ -40,7 +40,7 @@ resolved items move to the round record that delivered them.
 
 ## Standing (per-round)
 
-- todo 扩展 (the interactive todo surface) — deferred each round per the
+- the todo extension (the interactive todo surface) — deferred each round per the
   spec; still deferred after TUI v5.
-- 三终端真机验收 — the v4/v5 checklist tables in the round records; the
+- the three-terminal on-device acceptance — the v4/v5 checklist tables in the round records; the
   human-terminal drag/screenshot items await the user's real terminals.

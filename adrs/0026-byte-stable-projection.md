@@ -56,7 +56,7 @@ whether provider-specific canonicalization belongs in the adapter layer.
 - Commit `8e4ee1b` (feat(core): MicroCompact — zero-API context relief) —
   the kiso code stage pinned the contract alongside microcompact.
 - Tests: `packages/core/tests/prompt-cache.test.ts` (three regression
-  tests above); the D 区 byte-discipline sections of the kiso code plan
+  tests above); the D-region byte-discipline sections of the kiso code plan
   (`docs/plans/2026-08-04-kiso-code.md`).
 
 ## Amendment 1 (2026-08-06): the request-level invariant — where the byte prefix ends

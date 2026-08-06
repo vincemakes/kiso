@@ -1,5 +1,5 @@
 /**
- * C 组 — the execution gate.
+ * C group — the execution gate.
  *
  * C1: NO tool runs unless the provider turn is well-formed: exactly one
  * stop, and the stop reason is compatible with a complete tool call.
@@ -59,7 +59,7 @@ describe("C1: the turn is verified BEFORE any tool runs", () => {
 		expect(terminalOf(events).outcome).toMatchObject({ kind: "error", error: { code: "invalid_request" } });
 	});
 
-	it("stop max_tokens with a pending call: the launched execution ran (流中执行) — receipts land, the turn is still voided", async () => {
+	it("stop max_tokens with a pending call: the launched execution ran (streaming execution) — receipts land, the turn is still voided", async () => {
 		let executed = 0;
 		const registry = registryWith({
 			executed: () => {
@@ -70,7 +70,7 @@ describe("C1: the turn is verified BEFORE any tool runs", () => {
 			[{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} }, { type: "stop", reason: "max_tokens" }] }],
 			registry,
 		);
-		// 0.1.26 (ADR-0024 Amd, 流中执行): the call LAUNCHED at tool_call_end
+		// 0.1.26 (ADR-0024 Amd, streaming execution): the call LAUNCHED at tool_call_end
 		// — the side effect happened before the stop reason was known; the
 		// incompatible stop reason still VOIDS the turn (max_tokens terminal).
 		expect(executed).toBe(1);
@@ -123,7 +123,7 @@ describe("C1: the turn is verified BEFORE any tool runs", () => {
 	});
 });
 
-describe("C3: a failed execution is a clean failure — the approval chain guards retries (裁决 #12, ADR-0038)", () => {
+describe("C3: a failed execution is a clean failure — the approval chain guards retries (ruling #12, ADR-0038)", () => {
 	it("a failure does NOT pause its siblings — the pending list runs on, the model retries", async () => {
 		const registry = new ToolRegistry();
 		const order: string[] = [];

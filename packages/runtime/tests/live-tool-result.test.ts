@@ -1,5 +1,5 @@
 /**
- * 五 — a LIVE tool result keeps everything the handler returned: tags and
+ * round 5 — a LIVE tool result keeps everything the handler returned: tags and
  * the full supported content survive the loop, persistence, and the
  * projection — this runs a REAL defineTool'd handler, not a prebuilt
  * Message round-trip.
@@ -39,7 +39,7 @@ function agent(store: SessionStore) {
 	});
 }
 
-describe("live tool results (五)", () => {
+describe("live tool results (round 5)", () => {
 	it("a real Tool's tags survive the loop, the disk, and the projection", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-live-"));
 		const store = new SessionStore(dir);

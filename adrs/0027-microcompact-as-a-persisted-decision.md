@@ -1,6 +1,6 @@
 # ADR-0027: MicroCompact — context relief as a persisted decision
 
-- **Status:** Accepted (decision #1 superseded in part by 自举 #3, 2026-08-04)
+- **Status:** Accepted (decision #1 superseded in part by bootstrapping #3, 2026-08-04)
 - **Date:** 2026-08-04
 - **Layer:** L2 Kernel (compaction)
 
@@ -29,7 +29,7 @@ clearing:
 
 **Generation 1 (commit `8e4ee1b`) drew the boundary by user turns**: the
 newest KEEP_RECENT_TURNS user turns stayed intact; everything older was
-cleared. **Generation 2 (commit `e9e06bb`) superseded it**: 自举 #3 bug#5 —
+cleared. **Generation 2 (commit `e9e06bb`) superseded it**: bootstrapping #3 bug#5 —
 the coding agent's main overflow shape is ONE user turn that reads many big
 files; a single giant turn never crossed the old boundary, so the agent hit
 the window with zero relief. The boundary is now drawn by COMPACTABLE-RESULT
@@ -62,9 +62,9 @@ estimated (chars/4); the persisted-boundary mechanism itself is stable.
 ## Evidence
 
 - Commit `8e4ee1b` (generation 1: user-turn boundary) and `e9e06bb`
-  (generation 2: compactable-result recentness, 自举 #3 bug#5).
+  (generation 2: compactable-result recentness, bootstrapping #3 bug#5).
 - Tests: `packages/core/tests/microcompact.test.ts` — the single-giant-turn
-  trigger (`自举 #3: a SINGLE user turn with 6 big reads triggers`), the
+  trigger (`bootstrapping #3: a SINGLE user turn with 6 big reads triggers`), the
   second-boundary progress test, the byte-identity replay test
   (`the boundary event itself is a persisted fact`).
 - E2E: `apps/cli/tests/microcompact-cli.test.ts` (resume over the

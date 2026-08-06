@@ -15,11 +15,11 @@
  * append-only JSONL. Write/edit/shell tools sit behind the approval policy:
  * the run pauses, asks, and resumes — durably (ADR-0024).
  *
- * 手感批 B4 (pure move): the interactive pieces live beside this file —
+ * The ergonomics batch B4 (pure move): the interactive pieces live beside this file —
  * chat.ts (the REPL + consumeRun), dispatch.ts (the slash dispatcher),
  * resume.ts, trust-ui.ts (the question surface + E3 merges), faux-glue.ts
  * (the scripted-model plumbing), state.ts (the shared process state).
- * index.ts keeps the entry: banner, input sources, the A 区 prompt,
+ * index.ts keeps the entry: banner, input sources, the A area prompt,
  * makeAgent, and main.
  */
 
@@ -47,10 +47,10 @@ import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, re
 import { resume } from "./resume.js";
 
 // The moved exports stay reachable from this entry — the test imports
-// (project-trust, coding-agent) never change (B4: 断言零改动).
+// (project-trust, coding-agent) never change (B4: zero assertion changes).
 export { applyProjectMerges } from "./trust-ui.js";
 
-/** 横幅: the block-letter logo (design fixed). TTY only — pipes, e2e
+/** The banner: the block-letter logo (design fixed). TTY only — pipes, e2e
  *  drivers, and CI see byte-for-byte the old output; the extensions line
  *  merges into the third row on TTY and stays a standalone line off-TTY.
  *  v2a: the logo rows stay dim; the TAGLINE (row 2) is the blue identity
@@ -188,7 +188,7 @@ function bannerExtensionText(): string {
 	const total = userExtensions.length + projectExtensions.length;
 	if (total === 0) return "";
 	const parts: string[] = [];
-	// 0.1.26 (MCP 懒连接): an extension with a live `connecting` flag shows
+	// 0.1.26 (MCP lazy connection): an extension with a live `connecting` flag shows
 	// its in-flight state in the banner — "mcp (connecting…)".
 	const label = (e: { name: string; connecting?: boolean }): string =>
 		e.connecting === true ? `${e.name} (connecting…)` : e.name;
@@ -210,8 +210,8 @@ function extensionsBanner(): void {
 }
 
 /**
- * A 区: the coding-agent system prompt — ONE constant, byte-stable for the
- * session's lifetime (D 区). Kept under ~80 lines; no template engine.
+ * A area: the coding-agent system prompt — ONE constant, byte-stable for the
+ * session's lifetime (D area). Kept under ~80 lines; no template engine.
  */
 const SYSTEM_PROMPT = `You are kiso, a coding agent. You work in a workspace
 directory and change code with tools. Be concise: answer in a few lines
@@ -238,13 +238,13 @@ Workflow: understand the request, find the relevant code, make the
 smallest change that works, then verify with a command (tests/build).
 Report what you did in one or two lines per change.`;
 
-/** The project-instructions file names, in priority order (A 区). */
+/** The project-instructions file names, in priority order (A area). */
 const INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md"] as const;
 /** Hard cap for injected instructions — truncate and say so. */
 const INSTRUCTION_MAX = 8 * 1024;
 
 /**
- * A 区: read the FIRST present instruction file (AGENTS.md preferred) and
+ * A area: read the FIRST present instruction file (AGENTS.md preferred) and
  * return it as an injected section, or "" when none exists. Truncated at
  * 8KB with an explicit note. Pure — read once per session, so the prompt
  * is byte-stable for the session's lifetime.
@@ -263,7 +263,7 @@ export function readProjectInstructions(cwd: string): string {
 	return "";
 }
 
-/** A 区: the session's system prompt — the constant plus any project
+/** A area: the session's system prompt — the constant plus any project
  *  instructions found in the workspace. Deterministic per cwd. */
 export function composeSystemPrompt(cwd: string): string {
 	const injected = readProjectInstructions(cwd);
@@ -287,7 +287,7 @@ async function makeAgent(fauxSkipTurns = 0, input?: LineInput, modelFlag?: strin
 		setExtensionLists(user, [], user);
 	}
 
-	// 合并轮 B — the config surface: user config + (trusted) project config,
+	// merge round B — the config surface: user config + (trusted) project config,
 	// resolved with flags > env > project > user > default. The CLI never
 	// imports provider SDKs directly — the runtime's lazy provider
 	// resolution owns them (a config profile only ever NAMES an env var for
@@ -329,7 +329,7 @@ async function makeAgent(fauxSkipTurns = 0, input?: LineInput, modelFlag?: strin
 			const extra = modeSystemPrompt();
 			return extra === undefined ? sp : `${sp}\n\n${extra}`;
 		})(),
-		// C 区: microcompact is ON by default in the product — threshold =
+		// C area: microcompact is ON by default in the product — threshold =
 		// half the model window (KISO_CONTEXT_WINDOW override included;
 		// 200k window → 100k tokens). Long sessions compact old read/list/
 		// search/shell outputs instead of silently growing past the window.
@@ -355,7 +355,7 @@ async function main(): Promise<void> {
 	// first makeAgent (the tier extensions read `current` live). The flag
 	// is stripped from the positional args, so it works in any position.
 	const args = process.argv.slice(2);
-	// 合并轮 B: --model <profile|provider/model> — the top of the model
+	// merge round B: --model <profile|provider/model> — the top of the model
 	// precedence chain; the value flows into makeAgent's config resolution.
 	let modelFlag: string | undefined;
 	const modelArgIdx = args.indexOf("--model");
@@ -383,7 +383,7 @@ async function main(): Promise<void> {
 		setMode(modeFromEnv() ?? loadUserConfig()?.mode ?? "default");
 	}
 	const [command, arg] = args;
-	// 八: faux mode is the keyless demo script — an exhausted script must
+	// round 8: faux mode is the keyless demo script — an exhausted script must
 	// exit non-zero, never masquerade as a successful provider run. The
 	// verdict comes from makeAgent's config resolution now (a config
 	// profile can provide a real model with no OPENAI_* env).
@@ -407,7 +407,7 @@ async function main(): Promise<void> {
 		}),
 	);
 	try {
-		// 合并轮 B: the project config's mode applies AFTER the trust gate
+		// merge round B: the project config's mode applies AFTER the trust gate
 		// (its verdict decides whether the project config exists at all) —
 		// unless a higher layer (--mode flag / KISO_MODE) already decided.
 		const applyConfigMode = (): void => {
@@ -421,7 +421,7 @@ async function main(): Promise<void> {
 				// v2b: the dock (TTY only) wraps the whole session — the
 				// trust question, the banner, the body, and the input line.
 				dock.enter();
-				// E 区: a resumed session continues the script at its durable
+				// E area: a resumed session continues the script at its durable
 				// position — never restarts it (fauxSkip).
 				const agent = await makeAgent(fauxSkip(id), input, modelFlag);
 				applyConfigMode();
@@ -470,7 +470,7 @@ async function main(): Promise<void> {
 			}
 			case undefined:
 			default: {
-				// A 区: no subcommand (or any non-command first argument) IS
+				// A area: no subcommand (or any non-command first argument) IS
 				// chat — the first argument is the session id.
 				const id = command ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
 				dock.enter();
@@ -485,14 +485,14 @@ async function main(): Promise<void> {
 	} finally {
 		body.close(); // flush the pending frame, stop the heartbeat
 		input.close();
-		// E 组: every normal and abnormal exit releases the fds and writer
+		// E group: every normal and abnormal exit releases the fds and writer
 		// locks — no lock file is left behind.
 		agent?.close();
 		// v2b: the dock tears down on EVERY exit path — CSI r resets the
 		// scroll region, the cursor lands at the input line, no broken
 		// terminal (kill -9 excepted; `reset` saves it).
 		dock.exit();
-		// 发现#8 (P1): extension dispose runs on the same exit path — a
+		// finding #8 (P1): extension dispose runs on the same exit path — a
 		// dispose failure prints one line and NEVER changes the exit code.
 		await disposeExtensions(loadedExtensions);
 		// E3: the merged mcp/skills temp artifacts are best-effort removed on
@@ -510,7 +510,7 @@ async function main(): Promise<void> {
 main()
 	.then(() => process.exit(0))
 	.catch((err) => {
-		// 十: top-level errors are terminal-escaped. v2a: the exit is EXPLICIT
+		// round 10: top-level errors are terminal-escaped. v2a: the exit is EXPLICIT
 		// — natural drain is racy on a TTY (readline leaves the stdio handles
 		// active and the loop sometimes never drains). main's finally already
 		// ran (agent.close, dispose, temp cleanup) — nothing is skipped, no

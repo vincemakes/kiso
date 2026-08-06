@@ -26,7 +26,7 @@ case "$TOOL" in
   kiso)
     EXTDIR="$WORK/ext"; mkdir -p "$EXTDIR"; cp "$B/bench-allow.mjs" "$EXTDIR/"
     SKILLS_ENV=""
-    # T4 (the 0.1.27 失格调查): the scenario spec says the skill surfaces
+    # T4 (the 0.1.27 the disqualification investigation): the scenario spec says the skill surfaces
     # through kiso's NATIVE mechanism (the skills extension's index +
     # read_skill) — the ext dir previously carried only bench-allow, so the
     # model had to discover .claude/skills by raw exploration (the 13-request

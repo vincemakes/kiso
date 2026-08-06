@@ -1,9 +1,9 @@
 /**
- * 发现#8 (P1) — the MCP dispose lifecycle e2e: a REAL kiso process with a
+ * finding #8 (P1) — the MCP dispose lifecycle e2e: a REAL kiso process with a
  * configured MCP server must exit PROMPTLY and leave NO orphan children
  * (the stdio transport's reader would otherwise hold the host's event loop
  * alive forever), and a server that never answers the handshake must be a
- * bounded SOFT failure — the 15s connect timeout (发现#8b) — visible in
+ * bounded SOFT failure — the 15s connect timeout (finding #8b) — visible in
  * mcp__status while the other servers keep working.
  */
 
@@ -89,7 +89,7 @@ def driver(cli, home, ext_dir, mcp_config):
     sys.exit(0)
 `;
 
-describe("发现#8: MCP dispose + connect timeout", () => {
+describe("finding #8: MCP dispose + connect timeout", () => {
 	it("the CLI exits within 5s of the exit command and leaves NO orphan MCP children", () => {
 		fauxEnv();
 		const { env, dirs } = isolatedEnv();
@@ -118,7 +118,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(extdir)
 		expect(() => execFileSync("pgrep", ["-f", RUN_ID], { stdio: "ignore" })).toThrow();
 	}, 90_000);
 
-	it("发现#8b: a server that never answers the handshake is a bounded SOFT failure — mcp__status shows the timeout, the other server works", () => {
+	it("finding #8b: a server that never answers the handshake is a bounded SOFT failure — mcp__status shows the timeout, the other server works", () => {
 		fauxEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-timeout-"));
 		const home = join(dir, "home");
@@ -198,10 +198,10 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path):
                 except OSError:
                     return
     t0 = time.time()
-    ok = read_until("▌ ".encode(), 30)   # the startup completed — INSTANT under 0.1.26 (懒连接)
+    ok = read_until("▌ ".encode(), 30)   # the startup completed — INSTANT under 0.1.26 (lazy connection)
     elapsed = time.time() - t0
     if ok:
-        # 0.1.26 (懒连接): the sleepy server's 15s connect timeout must
+        # 0.1.26 (lazy connection): the sleepy server's 15s connect timeout must
         # ELAPSE before the status call — the bounded SOFT failure is then
         # visible in the status ("sleepy: error") and the fake works.
         time.sleep(16)

@@ -1,5 +1,5 @@
 /**
- * 四 — executionId is the ONLY recovery key, end to end.
+ * round 4 — executionId is the ONLY recovery key, end to end.
  *
  * 1. recover pairs receipts/resolutions/failures by executionId, never by
  *    the repeatable provider callId; a new successful execution is not
@@ -53,7 +53,7 @@ function agent(store: SessionStore, markerPath: string, script: FauxScript = STO
 
 const terminalOf = (events: readonly Event[]) => events.find((e) => e.type === "terminal");
 
-describe("execution identity end to end (四)", () => {
+describe("execution identity end to end (round 4)", () => {
 	it("a new successful execution is NOT polluted by a historical same-callId failure", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-eid-"));
 		const marker = join(dir, "m.txt");
@@ -116,7 +116,7 @@ describe("execution identity end to end (四)", () => {
 		expect(records.some((r) => r.runId === "resolution")).toBe(false);
 	});
 
-	it("a non-idempotent failure after a cross-process approval is a clean failure with the note — no pause (裁决 #12)", async () => {
+	it("a non-idempotent failure after a cross-process approval is a clean failure with the note — no pause (ruling #12)", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-eid-"));
 		const marker = join(dir, "m.txt");
 		const storeA = new SessionStore(dir);

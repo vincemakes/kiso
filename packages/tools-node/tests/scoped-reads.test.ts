@@ -1,5 +1,5 @@
 /**
- * Token 轮 — the scoped-read discipline: read_file's range parameters and
+ * the token round — the scoped-read discipline: read_file's range parameters and
  * the default head-200 with an ACTIONABLE continuation note, search_text's
  * 50-match cap with the honest total, list_dir's 200-entry cap. The red
  * line: every truncation names its continuation; determinism (same input +

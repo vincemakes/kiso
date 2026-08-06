@@ -20,14 +20,14 @@ import type { AdapterEvent, Event, StopReason } from "@vincemakes/kiso-core";
 import type { AssistantBlock, ContentBlock, Message, ToolSpec } from "@vincemakes/kiso-core";
 import { mapApiError } from "@vincemakes/kiso-core";
 
-/** Config accepted by the high-level factory (七: the provider owns its SDK). */
+/** Config accepted by the high-level factory (round 7: the provider owns its SDK). */
 export interface AnthropicProviderConfig {
 	readonly apiKey?: string;
 	readonly baseUrl?: string;
 }
 
 /**
- * High-level factory (七): builds the adapter FROM CONFIG, owning the SDK
+ * High-level factory (round 7): builds the adapter FROM CONFIG, owning the SDK
  * inside this package. Consumers (and the runtime's lazy provider path)
  * import ONLY @vincemakes/kiso-provider-anthropic — the SDK stays a private
  * dependency of this package, so nested installs resolve it next to here,
@@ -69,7 +69,7 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 			let outputTokens: number | null = null;
 			let cacheRead: number | null = null;
 			let cacheWrite: number | null = null;
-			// 九: "usage SEEN" (data arrived) is distinct from "usage YIELDED"
+			// round 9: "usage SEEN" (data arrived) is distinct from "usage YIELDED"
 			// (an event left the adapter). message_start may report usage with
 			// no message_delta ever following — the stop must then still be
 			// preceded by an honest usage event built from that data.
@@ -164,7 +164,7 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 							};
 							break;
 						case "message_stop":
-							// 六/九: EVERY stop path emits a usage first. If no
+							// round 6/round 9: EVERY stop path emits a usage first. If no
 							// message_delta yielded one, but message_start DID
 							// report usage data, an honest KNOWN usage is built
 							// from that data now — only a truly silent provider

@@ -53,12 +53,12 @@ export interface AgentDefinition {
 	 * type-check; removed at 1.0.
 	 */
 	readonly compaction?: { readonly thresholdTokens: number };
-	/** C 区: microcompact threshold — passed through to every session. */
+	/** C area: microcompact threshold — passed through to every session. */
 	readonly microcompact?: { readonly thresholdTokens: number };
 	readonly maxRetries?: number;
 	/** E1: loaded extensions — their tools merge into the registry (a name
 	 *  collision with a built-in is a loud startup error), their hooks
-	 *  compose after the agent's own (既有先行), their approvals join the
+	 *  compose after the agent's own (the existing come first), their approvals join the
 	 *  loop's policy chain. */
 	readonly extensions?: readonly KisoExtension[];
 }
@@ -76,7 +76,7 @@ export class AgentRuntime {
 		// name throws here, at agent creation: a loud startup failure.
 		for (const ext of definition.extensions ?? []) {
 			for (const tool of ext.tools ?? []) this.#registry.register(tool);
-			// 0.1.26 (MCP 懒连接): an extension's tools array is LIVE — the
+			// 0.1.26 (MCP lazy connection): an extension's tools array is LIVE — the
 			// registry consults it on every lookup, so tools registered by a
 			// background connect (the MCP bridge's servers) are callable the
 			// moment they land, without a session rebuild.
@@ -94,7 +94,7 @@ export class AgentRuntime {
 		return this.#definition.store.list();
 	}
 
-	/** Release every held fd and writer lock (E 组: the CLI closes on exit). */
+	/** Release every held fd and writer lock (E group: the CLI closes on exit). */
 	close(): void {
 		this.#definition.store.closeAll();
 	}
@@ -160,7 +160,7 @@ function policyHooks(policy: PermissionPolicy): HookHost {
 }
 
 /**
- * 合并轮 B: the adapter factory the CLI uses for /model switches — the
+ * merge round B: the adapter factory the CLI uses for /model switches — the
  * same lazy provider resolution as createAgent's (the CLI never imports
  * provider SDKs directly; the runtime owns them here). Returns a NEW
  * adapter each call; the caller (session.setAdapter) decides when it
@@ -178,7 +178,7 @@ export async function buildAdapter(
 async function resolveAdapter(definition: AgentDefinition): Promise<Adapter> {
 	if (definition.adapter) return definition.adapter;
 	switch (definition.provider) {
-		// 七: the runtime imports ONLY the provider package — its high-level
+		// round 7: the runtime imports ONLY the provider package — its high-level
 		// factory owns the SDK and builds the adapter from config. The SDKs
 		// are private dependencies of the provider packages, so a nested
 		// consumer install resolves them next to the provider, never through

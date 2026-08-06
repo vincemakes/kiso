@@ -1,5 +1,5 @@
 /**
- * B 组 — recovery is PER-RUN, keyed by StoreRecord.runId, and execution
+ * B group — recovery is PER-RUN, keyed by StoreRecord.runId, and execution
  * identity is the executionId everywhere.
  *
  * - only the LAST unterminated run is recovered; earlier runs' dangling
@@ -57,7 +57,7 @@ function agent(store: SessionStore, markerPath: string, script: FauxScript = STO
 
 const terminalOf = (events: readonly Event[]) => events.find((e) => e.type === "terminal");
 
-describe("per-run recovery (B 组)", () => {
+describe("per-run recovery (B group)", () => {
 	it("run 1 completed, run 2 paused: resume recovers RUN 2 and produces its second terminal", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-rr-"));
 		const marker = join(dir, "m.txt");
@@ -157,7 +157,7 @@ describe("per-run recovery (B 组)", () => {
 	});
 });
 
-describe("execution identity across runs (B 组)", () => {
+describe("execution identity across runs (B group)", () => {
 	it("the same provider callId in two different runs is two independent executions", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-rr-"));
 		const marker = join(dir, "m.txt");

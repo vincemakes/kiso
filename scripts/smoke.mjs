@@ -178,7 +178,7 @@ void agent; void defineTool; void loop; void ev; void FIXTURES;
 
 // ── tier A2: NESTED install strategy (pnpm-style, no npm flattening) ──
 // A nested node_modules layout must resolve the same way — missing
-// intra-kiso deps cannot hide behind a flattened root (F 组).
+// intra-kiso deps cannot hide behind a flattened root (F group).
 {
 	const proj = tempProject("nested");
 	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-"));
@@ -255,7 +255,7 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 // nested node_modules layout the SDK resolves NEXT TO the provider, and the
 // installed CLI constructs the real adapter with no ERR_MODULE_NOT_FOUND.
 // Dummy keys: construction and `kiso sessions` never touch the network;
-// a faux adapter is NOT allowed on this path (七).
+// a faux adapter is NOT allowed on this path (round 7).
 {
 	const proj = tempProject("nested-cli");
 	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-cli-"));

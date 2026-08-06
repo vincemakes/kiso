@@ -1,5 +1,5 @@
 /**
- * 八 — the approval detail shows the CANONICAL path (the tools' own
+ * round 8 — the approval detail shows the CANONICAL path (the tools' own
  * resolution) and the FULL content — extracted from the tui package's
  * render-safety suite when the terminal layer was extracted (the
  * canonical resolver is the CLI's injection into the pure renderer).
@@ -9,8 +9,8 @@ import { describe, expect, it } from "vitest";
 import { renderEvent } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath } from "@vincemakes/kiso-tools-node";
 
-describe("八: the approval detail's canonical path (CLI-injected)", () => {
-	it("八: write_file approval shows the CANONICAL path and the FULL content", async () => {
+describe("round 8: the approval detail's canonical path (CLI-injected)", () => {
+	it("round 8: write_file approval shows the CANONICAL path and the FULL content", async () => {
 		const { mkdtempSync, realpathSync, writeFileSync, symlinkSync } = await import("node:fs");
 		const { tmpdir } = await import("node:os");
 		const { join } = await import("node:path");

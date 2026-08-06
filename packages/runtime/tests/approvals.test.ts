@@ -166,7 +166,7 @@ describe("uncertain executions", () => {
 		});
 		const session = await agent.session({ id: "s" });
 		// The human closes the interrupted execution, and the OPEN run reaches
-		// its terminal first (四: a new run is refused while an open run
+		// its terminal first (round 4: a new run is refused while an open run
 		// lingers — resume is the only way past it).
 		await session.resolveUncertain("ex-2", "abandoned");
 		for await (const ev of session.resume()) {

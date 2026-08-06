@@ -1,5 +1,5 @@
 /**
- * 第四轮(四) — durable sessions written by the PREVIOUS framework round
+ * round 4(round 4) — durable sessions written by the PREVIOUS framework round
  * must load, project, and resume under the current schema.
  *
  * Round three changed `compacted.cleared` from the callId-keyed shape
@@ -42,7 +42,7 @@ function v1SessionLog(dir: string, open: boolean): void {
 	writeFileSync(join(dir, "s.jsonl"), records.join("\n") + "\n", "utf8");
 }
 
-describe("v1 compacted sessions upgrade (第四轮)", () => {
+describe("v1 compacted sessions upgrade (round 4)", () => {
 	it("a v1 {callId, content} compacted record loads — it is NOT corruption", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v1-"));
 		v1SessionLog(dir, true);

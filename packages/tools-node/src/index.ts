@@ -11,7 +11,7 @@
  * explicit timeout and an output cap so a runaway command cannot flood the
  * context.
  *
- * Token 轮: reads are RANGEABLE (read_file offset/limit, default head 200
+ * the token round: reads are RANGEABLE (read_file offset/limit, default head 200
  * lines) and search/list are capped (50 / 200) — every truncation carries
  * an actionable continuation note (deterministic per file state), so the
  * model always has a path to the full content.
@@ -34,7 +34,7 @@ import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 
 const OUTPUT_CAP = 100_000; // chars of output a tool result may carry
 const DEFAULT_SHELL_TIMEOUT_MS = 30_000;
-// Token 轮: the scoped-read defaults — read_file shows the head 200 lines
+// the token round: the scoped-read defaults — read_file shows the head 200 lines
 // of a large file (with an actionable continuation note, never a silent
 // drop), search_text caps at 50 excerpts, list_dir at 200 entries. The
 // red line: every truncation names its continuation — the model always
@@ -106,7 +106,7 @@ export function resolveWithinRoot(root: string, input: string): string {
 }
 
 /**
- * 十: the canonical path a tool will actually touch, as an ABSOLUTE path.
+ * round 10: the canonical path a tool will actually touch, as an ABSOLUTE path.
  * Symlinks in the deepest EXISTING ancestor are resolved — a file to be
  * created under a symlinked directory lands in the TARGET, not in the
  * link — and the not-yet-existing tail is re-appended. Shared by the
@@ -136,7 +136,7 @@ export interface WorkspaceToolsOptions {
 	/** The workspace the tools may touch; everything else is refused. */
 	readonly workspaceRoot: string;
 	/**
-	 * 自举 #3 (发现#7): "inherit" keeps kiso's own provider credentials in
+	 * bootstrap #3 (finding #7): "inherit" keeps kiso's own provider credentials in
 	 * the shell child's environment. DEFAULT (absent): the credentials are
 	 * STRIPPED — a shell command must not inherit the agent's API keys (a
 	 * nested kiso would hit the REAL provider and blow up faux e2e runs;
@@ -146,7 +146,7 @@ export interface WorkspaceToolsOptions {
 }
 
 /**
- * The inode-boundary policy for READS (八): a hard link inside the workspace
+ * The inode-boundary policy for READS (round 8): a hard link inside the workspace
  * may point at an inode whose OTHER links live outside (e.g. /etc/passwd) —
  * reading it would silently exfiltrate external content. Policy:
  *   - regular, single-link files: read;
@@ -160,13 +160,13 @@ function inodeReadPolicy(root: string, full: string): string | null {
 	const st = statSync(full);
 	if (!st.isFile()) return `not a regular file — refusing to read (${full})`;
 	if (st.nlink <= 1) return null;
-	// 第四轮: the link count is verified STRUCTURALLY, never by counting
+	// round 4: the link count is verified STRUCTURALLY, never by counting
 	// newline-split text. `find -print0` emits NUL-separated paths — a file
 	// named "inside\nspoof" is ONE path, not two — and every match is then
 	// re-statted and checked for the EXACT dev+ino pair (an inode number
 	// alone is not identity across devices). Any failure to verify every
 	// link is fail-closed: the file is refused.
-	// 第五轮(P2-3): the workspace root is CANONICALIZED before the scan —
+	// round 5(P2-3): the workspace root is CANONICALIZED before the scan —
 	// find on a symlinked root would not follow the symlink into the real
 	// tree, undercounting the in-workspace links and misjudging a legal
 	// hard link as an external escape.
@@ -355,8 +355,8 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 						walk(full, depth + 1);
 					} else if (entry.isFile()) {
 						try {
-							// 八: same inode boundary as read_file — a hard link
-							// to an external inode is not searched. 第四轮(对抗):
+							// round 8: same inode boundary as read_file — a hard link
+							// to an external inode is not searched. round 4 (adversarial):
 							// the link count is verified against the WORKSPACE
 							// root, not the search subroot — a link that lives
 							// inside the workspace but outside the search dir is
@@ -412,12 +412,12 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			const tmp = `${full}.kiso-tmp-${process.pid}-${crypto.randomUUID()}`;
 			let preservedMode: number | undefined;
 			try {
-				// E 组: SAFE REPLACEMENT — write a temp file next to the
+				// E group: SAFE REPLACEMENT — write a temp file next to the
 				// target and rename it over the directory entry. A hard link
 				// inside the workspace that shares an EXTERNAL inode is
 				// therefore never overwritten: rename replaces the entry,
 				// not the shared inode.
-				// 八: an existing file keeps its mode — a 0755 script stays
+				// round 8: an existing file keeps its mode — a 0755 script stays
 				// 0755 after replacement (rename drops the temp's default
 				// mode, so it is copied onto the temp first).
 				if (existsSync(full)) preservedMode = statSync(full).mode & 0o7777;
@@ -434,7 +434,7 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				}
 				return { content: `wrote ${path} (${content.length} chars)`, isError: false };
 			} catch (err) {
-				// 八: a failed write never leaves a temp file with the FULL
+				// round 8: a failed write never leaves a temp file with the FULL
 				// content behind — it is unlinked in every failure path.
 				try {
 					unlinkSync(tmp);
@@ -477,8 +477,8 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				if (index === -1) {
 					return { content: `edit_file: pattern not found in ${path}`, isError: true, errorKind: "invalid_input" };
 				}
-				// E 组: safe replacement — never rewrite a shared external inode via a hard link.
-				// 八: the edited file keeps its mode.
+				// E group: safe replacement — never rewrite a shared external inode via a hard link.
+				// round 8: the edited file keeps its mode.
 				preservedMode = statSync(full).mode & 0o7777;
 				writeFileSync(tmp, text.slice(0, index) + replace + text.slice(index + search.length), "utf8");
 				chmodSync(tmp, preservedMode);
@@ -489,7 +489,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				}
 				return { content: `edited ${path}`, isError: false };
 			} catch (err) {
-				// 八: a failed edit never leaves a temp file behind.
+				// round 8: a failed edit never leaves a temp file behind.
 				try {
 					unlinkSync(tmp);
 				} catch {
@@ -502,7 +502,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 }
 
 /**
- * 自举 #3 (发现#7): the explicit credential list stripped from shell
+ * bootstrap #3 (finding #7): the explicit credential list stripped from shell
  * children — the agent's own provider surface (both families' keys, base
  * URLs, and model choices) plus the generic API-key / auth-token patterns
  * that cover other providers. Everything else in the environment passes
@@ -542,7 +542,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 		},
 		execute: async ({ command, timeoutMs }, ctx) => {
 			const timeout = timeoutMs ?? DEFAULT_SHELL_TIMEOUT_MS;
-			// E 组: a PRE-aborted signal never spawns the command.
+			// E group: a PRE-aborted signal never spawns the command.
 			if (ctx.signal.aborted) {
 				return { content: "shell aborted before start", isError: true, errorKind: "fatal" };
 			}
@@ -550,7 +550,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				// detached: the command gets its OWN process group, so a
 				// timeout/abort can kill the WHOLE TREE (children included),
 				// not just the outer shell (Area 4). cwd is the workspace.
-				// 自举 #3 (发现#7): the shell child NEVER inherits kiso's own
+				// bootstrap #3 (finding #7): the shell child NEVER inherits kiso's own
 				// provider credentials by default — only the explicit
 				// shellEnv: "inherit" opt-in keeps them.
 				const child = spawn(command, {
@@ -570,14 +570,14 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 					if (settled) return;
 					settled = true;
 					clearTimeout(timer);
-					// E 组: the abort listener is removed once settled — it
+					// E group: the abort listener is removed once settled — it
 					// must not accumulate across runs.
 					ctx.signal.removeEventListener("abort", onAbort);
 					resolvePromise(result);
 				};
 
 				/**
-				 * Kill the whole tree and CONFIRM it exited (八/十一):
+				 * Kill the whole tree and CONFIRM it exited (rounds 8/11):
 				 *
 				 * 1. FREEZE the root (SIGSTOP) FIRST — a stopped shell cannot
 				 *    fork new descendants while we enumerate;
@@ -596,7 +596,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				const killTree = (): Promise<{ unconfirmed: number[] }> =>
 					new Promise((resolveKill) => {
 						const tracked = new Set<number>();
-						// 十一(对抗): the ROOT itself is tracked too — the
+						// round 11 (adversarial): the ROOT itself is tracked too — the
 						// verdict must not read "aborted" while the root
 						// survives. DOCUMENTED LIMITS: (1) a process that
 						// forks between SIGSTOP delivery and the next scan,
@@ -636,7 +636,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 							}
 							previous = current;
 						}
-						// The process group (E 组: never kill an undefined/0
+						// The process group (E group: never kill an undefined/0
 						// pid), which also takes the frozen root down.
 						if (child.pid !== undefined && child.pid > 0) {
 							try {
@@ -691,7 +691,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				});
 
 				// The kernel's abort reaches the command AND its whole tree.
-				// The listener is removed by settle (E 组).
+				// The listener is removed by settle (E group).
 				const uncertainVerdict = (unconfirmed: number[]): string =>
 					unconfirmed.length > 0
 						? `could not confirm ${unconfirmed.length} descendant(s) exited (pids ${unconfirmed.join(", ")}) — treat the side effect as UNCERTAIN`
@@ -725,7 +725,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 
 /**
  * All live pids whose ancestor chain includes `pid`, from the pid table
- * (八: `ps -axo pid=,ppid=` — the ONLY way to see a setsid()-escaped
+ * (round 8: `ps -axo pid=,ppid=` — the ONLY way to see a setsid()-escaped
  * process, which is in its own group and invisible to a group kill).
  */
 function descendantsOf(pid: number): number[] {
@@ -760,7 +760,7 @@ function descendantsOf(pid: number): number[] {
 /**
  * Poll the pid table until NONE of the tracked pids is alive (bounded).
  * Returns the pids still alive at the deadline — the caller MUST NOT
- * report "aborted"/"timed out" while any tracked pid survives (十一).
+ * report "aborted"/"timed out" while any tracked pid survives (round 11).
  */
 function waitAllDead(pids: readonly number[]): Promise<number[]> {
 	if (pids.length === 0) return Promise.resolve([]);

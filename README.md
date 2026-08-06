@@ -7,7 +7,7 @@
 ```
 
 (The block letter above is `assets/logo.svg` in pixel form — an 8×8 K
-whose bottom row is the 磐石 foundation the framework is named for.)
+whose bottom row is the bedrock foundation the framework is named for.)
 
 **kiso code = the coding agent that survives `kill -9`.** Interrupted
 executions get human verdicts, approvals persist across processes, and every
@@ -241,7 +241,7 @@ a broken config file fails loudly with the file named.
   wrapper still works — the env layer is second in the chain — but the
   config profile above is the replacement form (typed, switchable at
   runtime, and the key stays in your environment either way). The wrapper
-  pattern is 遗留可用 (legacy, supported).
+  pattern is legacy, supported.
 
 ### The `kill -9` test
 
@@ -369,7 +369,7 @@ approval flow and composes across all loaded policies:
 - **deny > ask > allow** — any deny wins (the FIRST denial's reason reaches
   the model); else any ask goes DIRECTLY to the human approval pause (the
   CLI prompts `approve ...? (y/n)` — never through the static policy hook,
-  which must not answer for the human; 裁决 A, E1 ask 语义修正); only an
+  which must not answer for the human; ruling A, the E1 ask semantics fix); only an
   **all-allow** chain auto-approves.
 - A policy that throws counts as **ask**; `ask` with no approval channel
   configured (no `resolveApproval`) degrades to an honest denial — judged
@@ -693,7 +693,7 @@ the accounting AND found one real request-prefix violation in the adapter
 (the reasoning_content turn-boundary flip, fixed in 0.1.23, ADR-0026
 Amendment 1). T4's 0.1.26-era baseline (13 requests, 6.6K cost-weighted)
 was itself a harness artifact — the runner never loaded the skills
-extension, so the model paid raw exploration cost; the 0.1.27 失格调查
+extension, so the model paid raw exploration cost; the 0.1.27 disqualification investigation
 found and fixed it (full detail in `bench/README.md`). The T2/T3 fresh
 means include the one-time cold start of the token round's prompt change
 (the r2 steady-state rows are within variance of 0.1.26).
@@ -709,7 +709,7 @@ yourself, everything needed is in `bench/`.
 ## Status
 
 Reliable Session Alpha, including the four hardening rounds (areas 1-7,
-A-F, 一-九, and the 第四轮 adversarial round), is complete (see
+A-F, one through nine, and the fourth adversarial round), is complete (see
 `docs/plans/2026-08-03-reliable-session-alpha.md`), the **kiso code**
 round (the coding agent: kill -9 gate, microcompact, byte discipline) is
 done (see `docs/plans/2026-08-04-kiso-code.md`), and the **extensions**
@@ -739,7 +739,7 @@ parameter and systemPrompt append surfaces — see
   JSONL store (torn-tail repair under a kernel-flock cross-process writer
   lock — upgrade requires QUARANTINE: stop every old-format process before
   starting the new version; the pidfile guard is best-effort, not a
-  seamless rolling upgrade (第五轮 P1-4), strict
+  seamless rolling upgrade (the fifth round P1-4), strict
   load, contiguous-seq validation) / `session.resume()` continues the
   INTERRUPTED run across processes: durable approvals are applied (the
   original call executes once, denials write their result), missing
@@ -747,7 +747,7 @@ parameter and systemPrompt append surfaces — see
   `loadExtensions(dir)`: every *.mjs default export (or factory), loud
   startup failure on a bad file or duplicate name; extension tools merge
   into the registry (built-in collision = startup error), hooks compose
-  AFTER the harness's own (既有先行), approvals enter the policy chain.
+  AFTER the harness's own (existing-first), approvals enter the policy chain.
 - **cli** (1,547/1,856 lines) — the coding agent: bare `kiso` enters chat;
   the startup extension scan (`~/.kiso/extensions/*.mjs`, banner
   `[2 extensions: safe-defaults, foo]`);
@@ -794,7 +794,7 @@ parameter and systemPrompt append surfaces — see
   mutate cells, so interleaving is impossible by construction); completed
   cells freeze once, unfinished cells render in an active tail at the
   region's bottom and redraw in place; a tool's life is ONE line
-  (`→ name 摘要` → ⏸ → running spinner + Ns → `✓ name (摘要, 1.2s)`),
+  (`→ name summary` → ⏸ → running spinner + Ns → `✓ name (summary, 1.2s)`),
   the [result] no longer flows into the stream (`/last` holds it); the
   pipe bytes stay byte-identical. `resume` is the recovery flow (uncertain executions are
   decided rerun/abandon — uncertainty belongs to the crash window alone,

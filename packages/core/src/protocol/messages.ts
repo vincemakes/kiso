@@ -88,7 +88,7 @@ export interface AssistantMessage {
 	readonly blocks: readonly AssistantBlock[];
 	readonly source?: MessageSource;
 	/**
-	 * 自举 P1: the turn's reasoning, derived deterministically from its
+	 * bootstrap P1: the turn's reasoning, derived deterministically from its
 	 * `thinking` events (DeepSeek's thinking mode requires it back on
 	 * follow-up requests). Present only when the turn actually reasoned.
 	 */
@@ -113,7 +113,7 @@ export interface ToolResultMessage {
 	/**
 	 * The seq of the `tool_result` EVENT this message was projected from —
 	 * the stable identity compaction uses to name WHICH result it replaced
-	 * (五: the callId may repeat across runs). DERIVED, never persisted: the
+	 * (round 5: the callId may repeat across runs). DERIVED, never persisted: the
 	 * projection attaches it as a non-enumerable field, so it is invisible
 	 * to deep equality with seed messages and never survives a re-derive
 	 * from anywhere but the log.

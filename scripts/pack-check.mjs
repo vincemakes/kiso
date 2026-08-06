@@ -27,7 +27,7 @@ for (const name of PACKAGES) {
 	const paths = files.map((f) => f.path);
 	const bad = paths.filter((p) => p.endsWith(".tsx") || (p.endsWith(".ts") && !p.endsWith(".d.ts")));
 	const missingDist = !paths.some((p) => p.startsWith("dist/"));
-	// F 组: every tarball must actually contain README and LICENSE.
+	// F group: every tarball must actually contain README and LICENSE.
 	const missingReadme = !paths.some((p) => p === "README.md" || p.endsWith("/README.md"));
 	const missingLicense = !paths.some((p) => p === "LICENSE" || p.endsWith("/LICENSE"));
 	if (bad.length > 0 || missingDist || missingReadme || missingLicense) {

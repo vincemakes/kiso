@@ -1,5 +1,5 @@
 /**
- * 合并轮 B — the config surface (schema v1).
+ * Merge round B — the config surface (schema v1).
  *
  * Two files: the user config `~/.kiso/config.json` and the project config
  * `<cwd>/.kiso/config.json` (an artifact of the E3 trust package — a

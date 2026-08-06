@@ -102,7 +102,7 @@ describe("Modes: the chain shape", () => {
 });
 
 describe("Modes: startup and prompt", () => {
-	it("modeFromEnv resolves KISO_MODE, undefined when unset or invalid (合并轮 B: the config layer's mode applies below the env)", () => {
+	it("modeFromEnv resolves KISO_MODE, undefined when unset or invalid (merge round B: the config layer's mode applies below the env)", () => {
 		const saved = process.env.KISO_MODE;
 		try {
 			process.env.KISO_MODE = "plan";

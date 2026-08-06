@@ -27,7 +27,7 @@ each narrow:
    an ask is answered by a human).
 2. **tools** — merged into the registry; a built-in name collision is a
    loud startup error.
-3. **hooks** — composed AFTER the harness's own (既有先行): observers all
+3. **hooks** — composed AFTER the harness's own (existing-first): observers all
    run in order; onUserMessage is a PIPE with veto short-circuit (a null
    anywhere ends the chain — a later rewrite can never swallow an earlier
    veto); onPreTool first-decisive-wins; onPostTool folds.
@@ -37,7 +37,7 @@ each narrow:
 5. **compaction** — supplies the loop's microcompact parameters when the
    session sets none (ADR-0027's threshold/keepResults).
 6. **dispose** — the loader calls it on exit; guarded per extension (one
-   failure never blocks the rest), capped at 5s (发现#8, ADR-0030).
+   failure never blocks the rest), capped at 5s (finding #8, ADR-0030).
 7. **The monotonicity family** — deny>ask>allow, the veto short-circuit,
    and append-only systemPrompt are ONE idea: an extension can only
    constrain, ask, or extend — never loosen, bypass, or replace.
@@ -67,7 +67,7 @@ this ADR records the current refusal.
 ## Evidence
 
 - Commits: `3149137` (E1 policy chain), `f4ebb3f` (E1-P2 pipe + veto),
-  `f23e415` (E2 systemPrompt append), `39600cf` (发现#8 dispose).
+  `f23e415` (E2 systemPrompt append), `39600cf` (finding #8 dispose).
 - Tests: `packages/core/tests/extensions.test.ts` (composition, durability,
   ask semantics), `packages/runtime/tests/extensions.test.ts` (loader,
   hooks order, P2 pipe), `packages/runtime/tests/extensions.test.ts`

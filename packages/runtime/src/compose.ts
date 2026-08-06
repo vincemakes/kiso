@@ -1,7 +1,7 @@
 /**
- * 手感批 B4 (pure move) — the E1/E2 composition helpers, moved verbatim
+ * the ergonomics batch B4 (pure move) — the E1/E2 composition helpers, moved verbatim
  * from session.ts: the extension system-prompt appends, the extension
- * hook composition (既有先行), and the loop's microcompact config lookup.
+ * hook composition (the existing come first), and the loop's microcompact config lookup.
  */
 
 import type { HookContext, HookHost, KisoExtension } from "@vincemakes/kiso-core";
@@ -19,7 +19,7 @@ export function composeSystemPrompt(base: string | undefined, extensions: readon
 }
 
 /**
- * E1: extension hooks compose AFTER the agent's own (既有先行 — the existing
+ * E1: extension hooks compose AFTER the agent's own (the existing come first — the existing
  * hook sees every event first). Observers all run, in order; onUserMessage
  * and onPreTool — the FIRST decisive answer wins (the existing hook
  * outranks extensions; defers fall through); onPostTool folds — each
@@ -49,8 +49,8 @@ export function composeHooks(existing: HookHost | undefined, extensions: readonl
 	if (messageHandlers.length === 1) {
 		out.onUserMessage = messageHandlers[0]!; // length 1 guarantees the element
 	} else if (messageHandlers.length > 1) {
-		// 复审 E1-P2: the pipe + veto short-circuit — each handler sees the
-		// message as the PREVIOUS one left it (既有先行), and a null (veto)
+		// re-review E1-P2: the pipe + veto short-circuit — each handler sees the
+		// message as the PREVIOUS one left it (the existing come first), and a null (veto)
 		// anywhere ends the chain immediately: never "no opinion" for the
 		// next handler to outvote. Adding an extension can therefore never
 		// make the chain MORE permissive (the approval chain's deny>ask>allow

@@ -68,7 +68,7 @@ export async function loadExtensions(dir: string): Promise<KisoExtension[]> {
 }
 
 /**
- * 发现#8 (P1): dispose every extension's external resources — each call
+ * finding #8 (P1): dispose every extension's external resources — each call
  * guarded (one failure never blocks the rest), each capped at 5s (a
  * timeout is abandoned and recorded — Promise.allSettled semantics).
  * Whoever LOADS extensions is responsible for disposing them.

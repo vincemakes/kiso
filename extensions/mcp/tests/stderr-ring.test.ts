@@ -1,5 +1,5 @@
 /**
- * 手感批 A3 — the stderr ring: byte-capped at 4096, trimming never splits
+ * the ergonomics batch A3 — the stderr ring: byte-capped at 4096, trimming never splits
  * a UTF-8 sequence (the tail always renders cleanly), multi-chunk appends
  * accumulate in order.
  */
@@ -25,12 +25,12 @@ describe("A3: the stderr ring (tail 4KB, byte-safe)", () => {
 
 	it("a trim never splits a multi-byte char — the tail starts on a boundary", () => {
 		const ring = new StderrRing();
-		// 你 = 3 bytes; 2047 of them (6141 bytes) + "xxx" crosses the cap
-		// mid-character (the trim point lands inside a 你).
-		ring.append("你".repeat(2047) + "xxx");
+		// the wide char = 3 bytes; 2047 of them (6141 bytes) + "xxx" crosses the cap
+		// mid-character (the trim point lands inside the wide char).
+		ring.append("\u4f60".repeat(2047) + "xxx");
 		const tail = ring.tail();
 		expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(4096);
-		expect(tail.startsWith("你")).toBe(true); // snapped to the char boundary
+		expect(tail.startsWith("\u4f60")).toBe(true); // snapped to the char boundary
 		expect(tail.endsWith("xxx")).toBe(true);
 		expect(tail).not.toContain("�"); // no replacement chars — nothing split
 	});

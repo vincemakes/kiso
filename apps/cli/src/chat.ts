@@ -1,5 +1,5 @@
 /**
- * 手感批 B4 (pure move) — the interactive REPL (chat), the run consumer
+ * The ergonomics batch B4 (pure move) — the interactive REPL (chat), the run consumer
  * (consumeRun — the single renderer of a run's event stream), the
  * approval-moment mini-diff, the status spinner, and the context
  * estimates. All bodies moved verbatim from index.ts.
@@ -16,11 +16,11 @@ import { ask, pendingAsk, resolveUncertains } from "./trust-ui.js";
 import { FauxExhaustionError, failOnFauxExhaustion } from "./faux-glue.js";
 import { MODES, getMode, setMode } from "./mode.js";
 
-/** B 区: default context window for the ~ctx estimate (config overridable). */
+/** B area: default context window for the ~ctx estimate (config overridable). */
 const DEFAULT_CONTEXT_WINDOW = 200_000;
 
 /**
- * 手感批 C8 — the /compact auto-trigger, OPT-IN (default off: only an
+ * The ergonomics batch C8 — the /compact auto-trigger, OPT-IN (default off: only an
  * explicit KISO_AUTO_COMPACT=<ratio> enables it — the CLI never defaults
  * it on). After every completed turn the ~ctx ratio is checked; at/over
  * thresholdRatio the /compact full path runs (the same dispatch — same
@@ -41,8 +41,8 @@ export function autoCompactFromEnv(): AutoCompact | undefined {
 }
 
 /**
- * C 区: the model window in tokens — env (KISO_CONTEXT_WINDOW) beats the
- * config window (合并轮 B), both beat the 200k default. The microcompact
+ * C area: the model window in tokens — env (KISO_CONTEXT_WINDOW) beats the
+ * config window (merge round B), both beat the 200k default. The microcompact
  * threshold is derived from it (50%), and the status line's ~ctx estimate
  * is measured against it — one source of truth for the window.
  */
@@ -54,7 +54,7 @@ export function contextWindowTokens(): number {
 }
 
 /**
- * B 区: approximate context ratio — chars/4 of the projected messages vs
+ * B area: approximate context ratio — chars/4 of the projected messages vs
  * the model window. Marked ~ everywhere it is shown; no counting API.
  */
 export function estimateCtxRatio(session: AgentSession): number {
@@ -106,14 +106,14 @@ function approvalDiff(name: string, input: Record<string, unknown>): DiffResult 
 }
 
 /**
- * 手感批 C5 — the translation layer: the tui renders its OWN data shape
+ * The ergonomics batch C5 — the translation layer: the tui renders its OWN data shape
  * (RenderInput, zero kiso-core imports); the CLI translates its Event
  * stream here. Events without a render (stop, expired, resolved, …) → null,
  * and the consumer skips them — the pipe bytes stay identical.
  */
 
 /**
- * ⑥ todo round: translate a do-not-compact-tagged tool result whose
+ * round 6 (the todo round): translate a do-not-compact-tagged tool result whose
  * content follows the todo echo contract (a [todo] header line + one
  * `[pending|active|done] text` line per item) into the checklist cell's
  * structured items. Null = not a checklist — the ordinary result cell
@@ -203,7 +203,7 @@ export async function consumeRun(
 	try {
 	for await (const ev of run) {
 		last = ev;
-		// v2a (双回显): the interactive echo was already rendered by the
+		// v2a (the double echo): the interactive echo was already rendered by the
 		// input source — rendering the event again is the double echo.
 		// v2b: DOCKED — the echo lives in the input row (H), NOT the body;
 		// the body render is the ONLY visible copy of the sent line.
@@ -243,7 +243,7 @@ export async function consumeRun(
 			case "tool_result": {
 				const text = typeof ev.content === "string" ? ev.content : "";
 				body.toolResult(ev.callId, { content: text, isError: ev.isError });
-				// ⑥ todo round: a result tagged do-not-compact whose content
+				// round 6 (the todo round): a result tagged do-not-compact whose content
 				// follows the checklist shape also renders as the durable
 				// checklist cell (the CLI translates Event → the tui's own
 				// shape; a non-matching parse falls back to the ordinary
@@ -263,7 +263,7 @@ export async function consumeRun(
 				statusCb?.(usage, estimateCtxRatio(session));
 				break;
 			case "uncertain_pending":
-				// 裁决 #12 (ADR-0038): the ⚠ line is pure INFORMATION now — the
+				// ruling #12 (ADR-0038): the ⚠ line is pure INFORMATION now — the
 				// approval chain guards retries, and the human question belongs
 				// only to the crash window's recovery flow (resolveUncertains).
 				body.notice(`⚠ ${escapeTerminal(ev.name)} FAILED — the side effect may have applied. ${escapeTerminal(ev.error)}`);
@@ -279,7 +279,7 @@ export async function consumeRun(
 				const decisionId = (ev as { decisionId: string }).decisionId;
 				const answer = await ask(input, `approve ${escapeTerminal(name)}? (y/n) `);
 				if (answer === CANCELLED) {
-					// 十: a cancellation is a CONSERVATIVE denial, explicitly
+					// round 10: a cancellation is a CONSERVATIVE denial, explicitly
 					// distinguished from the user typing "n".
 					body.notice("[approval cancelled — treated as a denial]");
 					await session.approve(decisionId, false);
@@ -355,17 +355,17 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 					stopSpinner();
 					paintIdle();
 					currentRun = null;
-					// 八: a faux script that ran out of declared turns exits
+					// round 8: a faux script that ran out of declared turns exits
 					// loudly with a non-zero status — never a silent status 0.
-					// 第四轮(对抗): the exhaustion is a CONTROLLED rejection of
+					// round 4 (adversarial): the exhaustion is a CONTROLLED rejection of
 					// this turn's promise — it propagates through the chain to
 					// chat to main's finally/catch, never an orphaned
 					// unhandled rejection from the IIFE.
 					failOnFauxExhaustion(last, faux, input);
-					// 八: after EVERY turn the prompt is re-armed — the human
+					// round 8: after EVERY turn the prompt is re-armed — the human
 					// never types blind after the first turn.
 					input.prompt();
-					// 手感批 C8: the opt-in auto-compact — checked AFTER the
+					// the ergonomics batch C8: the opt-in auto-compact — checked AFTER the
 					// turn ended (the run's terminal is in the log, the ratio
 					// is post-run).
 					await maybeAutoCompact();
@@ -388,7 +388,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 
 	input.onSigint(() => {
 		if (currentRun) {
-			// 八: Ctrl+C cancels BOTH the pending question (if one is
+			// round 8: Ctrl+C cancels BOTH the pending question (if one is
 			// awaiting a line) and the run — the run then writes its unique
 			// aborted terminal, which the consumer keeps consuming.
 			console.log("\n[aborting run]");
@@ -419,7 +419,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		}
 	});
 
-	// 第五轮(P1-11): the PERSISTENT line listener is installed BEFORE the
+	// round 5 (P1-11): the PERSISTENT line listener is installed BEFORE the
 	// startup recovery — a cancelled question's re-emitted "line" needs a
 	// listener from the very first instant, or the input is silently lost.
 	// Turns are SERIALIZED on a chain — piped lines arrive faster than
@@ -429,7 +429,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	const chainRef: { current: Promise<void> } = { current: Promise.resolve() };
 	let replReady = false;
 	const queuedLines: string[] = [];
-	// B 区: user-turn counter for the status line. /last and /think read
+	// B area: user-turn counter for the status line. /last and /think read
 	// the body (the ToolCell / ThinkingCell final states).
 	let turnNo = 0;
 	// v2a: the last line THIS process's readline consumed — the double-echo
@@ -479,7 +479,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		submitTurn,
 		estimateCtx: () => estimateCtxRatio(session),
 	};
-	// 手感批 C8: the auto-compact check — the /compact FULL path via the
+	// the ergonomics batch C8: the auto-compact check — the /compact FULL path via the
 	// shared dispatch (same notices, same chain ordering, same mid-run
 	// refusal — the isRunning guard here only avoids the refusal's noise).
 	// The appended segment is NOT awaited here on purpose: from inside a
@@ -504,7 +504,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// Recovery first: a session with a dangling pause or uncertain
 	// executions must resolve them BEFORE the REPL accepts new turns —
 	// otherwise the interrupted run dangles while a new one starts.
-	// 八: the startup resume is bound to currentRun — Ctrl+C during it
+	// round 8: the startup resume is bound to currentRun — Ctrl+C during it
 	// aborts the recovery, exactly like the interactive turns.
 	await resolveUncertains(session, input, () => cancelled);
 	if (!cancelled) {
@@ -514,7 +514,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		const last = await consumeRun(session, recoveryRun, input, turnNo, faux, liveInput, statusCb);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, input);
-		maybeAutoCompact(); // 手感批 C8: the recovery run ended too — same check (awaited by the exit re-await)
+		maybeAutoCompact(); // the ergonomics batch C8: the recovery run ended too — same check (awaited by the exit re-await)
 	}
 	if (cancelled) {
 		input.close();
@@ -535,7 +535,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	input.prompt();
 	await input.closed;
 	await chainRef.current; // never exit while a turn is in flight
-	// 手感批 C8: the auto-compact may have appended ITS segment inside the
+	// the ergonomics batch C8: the auto-compact may have appended ITS segment inside the
 	// turn (the check runs at the turn's end, after the exit-await above
 	// already captured the chain) — re-await once so the summarize either
 	// runs before the exit or the chain is already settled. One level is

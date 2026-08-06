@@ -77,7 +77,7 @@ export interface TextStart {
 }
 
 /**
- * The explicit boundary of an assistant message (D 组). Adapters never emit
+ * The explicit boundary of an assistant message (D group). Adapters never emit
  * these (their implicit boundaries — tool_result/user_input/terminal — are
  * enough); the seed encoder uses them so ADJACENT assistant messages and
  * EMPTY assistant messages round-trip losslessly.
@@ -156,12 +156,12 @@ export interface ToolResultEvent {
 	readonly seq: number;
 	readonly type: "tool_result";
 	readonly callId: string;
-	/** Full content — blocks preserved losslessly (D 组). */
+	/** Full content — blocks preserved losslessly (D group). */
 	readonly content: string | readonly import("./messages.js").ContentBlock[];
 	readonly isError: boolean;
 	/** Present only when `isError` is true and the handler classified it. */
 	readonly errorKind?: ToolErrorKind;
-	/** The execution that produced this result (B 组) — receipt pairing key. */
+	/** The execution that produced this result (B group) — receipt pairing key. */
 	readonly executionId?: string;
 	/** Provenance + product tags — preserved losslessly (Area 6). */
 	readonly source?: import("./messages.js").MessageSource;
@@ -185,17 +185,17 @@ export interface UserInputEvent {
 /**
  * Compaction happened at this point in the trajectory. The EXACT
  * replacements are persisted; the projection applies them verbatim — it
- * never re-runs a future version of the compaction algorithm (A 组/D 组).
+ * never re-runs a future version of the compaction algorithm (A group/D group).
  * The replay therefore equals the live run byte for byte, independent of
  * algorithm drift.
  *
- * 五: `eventSeq` is the STABLE identity — the seq of the specific
+ * round 5: `eventSeq` is the STABLE identity — the seq of the specific
  * `tool_result` event that was replaced. The provider callId may repeat
  * across runs and is correlation-only; `callId` is kept for traceability.
  * Only THIS turn's NEWLY cleared results are listed, never a cumulative
- * set of already-cleared markers (五).
+ * set of already-cleared markers (round 5).
  *
- * 第四轮: `eventSeq` is OPTIONAL because sessions written by round three
+ * round 4: `eventSeq` is OPTIONAL because sessions written by round three
  * (v1) carry `{callId, content}` entries without it. Those are legal and
  * replay with v1 semantics (replace every tool result with that callId,
  * exactly as the old framework did); records written from now on always
@@ -231,7 +231,7 @@ export interface ToolExecutionSucceeded {
 	readonly executionId: string;
 	readonly callId: string;
 	readonly result: { readonly content: string; readonly isError: false };
-	/** 八: the tags ride on the durable RECEIPT so a crash-window repair
+	/** round 8: the tags ride on the durable RECEIPT so a crash-window repair
 	 *  of the tool_result can reproduce the normal path losslessly. */
 	readonly tags?: readonly string[];
 }
@@ -250,7 +250,7 @@ export interface ToolExecutionFailed {
 	readonly error: string;
 	readonly errorKind?: ToolErrorKind;
 	readonly safeToRetry: boolean;
-	/** 八: tags on the durable receipt, preserved across crash-window repair. */
+	/** round 8: tags on the durable receipt, preserved across crash-window repair. */
 	readonly tags?: readonly string[];
 }
 
@@ -287,7 +287,7 @@ export interface PermissionDecided {
 	readonly seq: number;
 	readonly type: "permission_decided";
 	readonly decisionId: string;
-	/** The invocation this decision binds to (B 组). */
+	/** The invocation this decision binds to (B group). */
 	readonly callId?: string;
 	readonly decision: "approved" | "denied";
 	readonly reason?: string;
@@ -297,7 +297,7 @@ export interface PermissionDecided {
 }
 
 /**
- * A permission request was CLOSED because its run terminated first (B 组):
+ * A permission request was CLOSED because its run terminated first (B group):
  * an aborted/completed/error run's dangling approval is dead — it is never
  * re-presented and a late approve() cannot resurrect the run.
  */
@@ -310,7 +310,7 @@ export interface PermissionExpired {
 
 /**
  * A non-idempotent execution FAILED and the run PAUSES until a human
- * decides (C 组): no next model turn, no sibling tool, no auto-retry. The
+ * decides (C group): no next model turn, no sibling tool, no auto-retry. The
  * verdict is recorded by the session (resolveUncertain) and the ledger
  * transitions uncertain → rerun/abandoned; the event itself is the durable
  * pause marker.
@@ -325,7 +325,7 @@ export interface UncertainPending {
 }
 
 /**
- * A user input was VETOED or REWRITTEN by the harness (C 组). `replaces`
+ * A user input was VETOED or REWRITTEN by the harness (C group). `replaces`
  * is the seq of the original user_input; the projection skips the original
  * and, when `content` is non-null, produces the replacement instead — the
  * rewritten fact is the ONLY fact every later turn sees. null content = a
@@ -336,12 +336,12 @@ export interface UserInputReplaced {
 	readonly type: "user_input_replaced";
 	readonly replaces: number;
 	readonly content: string | readonly import("./messages.js").ContentBlock[] | null;
-	/** Provenance of the replacement — preserved from the hook (三). */
+	/** Provenance of the replacement — preserved from the hook (round 3). */
 	readonly source?: import("./messages.js").MessageSource;
 }
 
 /**
- * C 区: a MICROCOMPACT boundary — the durable record of a context-clearing
+ * C area: a MICROCOMPACT boundary — the durable record of a context-clearing
  * decision. `beforeSeq` is the event seq up to which eligible tool results
  * are cleared: the projection replaces every tool_result with seq <=
  * beforeSeq (whose tool is in the compactable whitelist and carries no
@@ -503,7 +503,7 @@ export type Event =
 	| SummarizedEvent
 	| TerminalEvent;
 
-// ── deep-shape helpers (五): every variant is validated field by field —
+// ── deep-shape helpers (round 5): every variant is validated field by field —
 // legal enums, Terminal union members, Usage known/token combos, content
 // blocks, plain-object inputs, optional fields when present. A record that
 // parses as JSON but violates its variant's shape is corruption, never
@@ -512,7 +512,7 @@ export type Event =
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** 九: counts (seq, tokens, turns, status) are non-negative SAFE integers —
+/** round 9: counts (seq, tokens, turns, status) are non-negative SAFE integers —
  *  negative values, NaN, Infinity, and fractional values are rejected. */
 const isNonNegativeInt = (v: unknown): v is number =>
 	typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
@@ -559,7 +559,7 @@ const MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif
 /**
  * A ContentBlock: text (text: string) or image (sourceType with the
  * documented payload — url for "url", data + mediaType for "base64").
- * 九: the two payload kinds are STRICTLY EXCLUSIVE — a url block must not
+ * round 9: the two payload kinds are STRICTLY EXCLUSIVE — a url block must not
  * carry data, a base64 block must not carry url.
  */
 function isContentBlock(v: unknown): boolean {
@@ -596,7 +596,7 @@ function isExecutionId(v: Record<string, unknown>): boolean {
 	return v.executionId === undefined || typeof v.executionId === "string";
 }
 
-/** A StructuredError — the shape the `error` terminal carries. 九: a
+/** A StructuredError — the shape the `error` terminal carries. round 9: a
  *  status, when present, is a non-negative safe integer (no negatives,
  *  NaN, Infinity, or fractions). */
 function isStructuredError(v: unknown): boolean {
@@ -617,7 +617,7 @@ function isTerminal(v: unknown): boolean {
 		case "max_tokens":
 			return true;
 		case "max_turns":
-			return isNonNegativeInt(v.turns); // 九: a turn count is a safe integer
+			return isNonNegativeInt(v.turns); // round 9: a turn count is a safe integer
 		case "error":
 			return isStructuredError(v.error);
 		case "aborted":
@@ -630,7 +630,7 @@ function isTerminal(v: unknown): boolean {
 }
 
 /**
- * Usage invariant (Area 6/九): `known: false` means the provider reported
+ * Usage invariant (Area 6/round 9): `known: false` means the provider reported
  * NO usage — every token field is null, never faked as zero. `known: true`
  * means SOME usage was reported — AT LEAST ONE field is a non-negative
  * safe integer; the others are null when the provider did not report
@@ -644,7 +644,7 @@ function isUsage(v: Record<string, unknown>): boolean {
 }
 
 /**
- * Per-variant runtime validation (五): the table is
+ * Per-variant runtime validation (round 5): the table is
  * `satisfies Record<Event["type"], ...>` — adding a variant without a
  * validator here is a compile error (ADR-0003).
  */
@@ -664,7 +664,7 @@ const EVENT_VALIDATORS = {
 		typeof v.callId === "string" &&
 		isContent(v.content) &&
 		typeof v.isError === "boolean" &&
-		// 九: an errorKind is only meaningful on an ERROR result.
+		// round 9: an errorKind is only meaningful on an ERROR result.
 		(v.isError === true || v.errorKind === undefined) &&
 		isErrorKind(v) &&
 		isExecutionId(v) &&
@@ -679,7 +679,7 @@ const EVENT_VALIDATORS = {
 		v.cleared.every(
 			(c) =>
 				isPlainObject(c) &&
-				// 第四轮: eventSeq is optional — v1 (round three) entries are
+				// round 4: eventSeq is optional — v1 (round three) entries are
 				// {callId, content} and remain legal; v2 entries must carry a
 				// valid eventSeq.
 				(c.eventSeq === undefined || isNonNegativeInt(c.eventSeq)) &&

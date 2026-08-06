@@ -27,7 +27,7 @@ import { mapApiError } from "@vincemakes/kiso-core";
 interface PendingToolCall {
 	readonly index: number;
 	/**
-	 * 六: the call's id is only adopted once the provider actually sent it.
+	 * round 6: the call's id is only adopted once the provider actually sent it.
 	 * The fallback (`call_<index>`) is reserved for calls whose id NEVER
 	 * arrives — then no start/delta was ever emitted under that name, so the
 	 * identity stays consistent from start to end.
@@ -37,18 +37,18 @@ interface PendingToolCall {
 	json: string;
 	emittedStart: boolean;
 	/** Argument deltas that arrived BEFORE the id: buffered, flushed under
-	 *  the REAL id once it arrives (identity consistency, 六). */
+	 *  the REAL id once it arrives (identity consistency, round 6). */
 	pendingDeltas: string[];
 }
 
-/** Config accepted by the high-level factory (七: the provider owns its SDK). */
+/** Config accepted by the high-level factory (round 7: the provider owns its SDK). */
 export interface OpenAICompatProviderConfig {
 	readonly apiKey?: string;
 	readonly baseUrl?: string;
 }
 
 /**
- * High-level factory (七): builds the adapter FROM CONFIG, owning the SDK
+ * High-level factory (round 7): builds the adapter FROM CONFIG, owning the SDK
  * inside this package. Consumers (and the runtime's lazy provider path)
  * import ONLY @vincemakes/kiso-provider-openai — the SDK stays a private dependency
  * of this package, so nested installs resolve it next to here, never
@@ -142,7 +142,7 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 					for (const tc of delta?.tool_calls ?? []) {
 						const buffered = pending.get(tc.index);
 						if (!buffered) {
-							// 六: no fallback id is adopted yet — the id must
+							// round 6: no fallback id is adopted yet — the id must
 							// arrive from the provider to become the identity.
 							pending.set(tc.index, {
 								index: tc.index,
@@ -159,7 +159,7 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 						// carries an empty name (review finding 10).
 						if (tc.function?.name) call.name = tc.function.name;
 						if (tc.id) {
-							// 九: the FIRST non-empty id is the call's identity,
+							// round 9: the FIRST non-empty id is the call's identity,
 							// forever. A DIFFERENT id later is a protocol
 							// violation — a structured error, never a silent
 							// switch (start/delta/end must share one identity).
@@ -173,7 +173,7 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 							call.id = tc.id;
 							// The identity is now known: emit the start, then
 							// flush the argument deltas that arrived before it
-							// under the SAME id (六: start → delta → end all
+							// under the SAME id (round 6: start → delta → end all
 							// share one identity, never the fallback).
 							if (!call.emittedStart) {
 								call.emittedStart = true;
@@ -211,7 +211,7 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 
 					if (chunk.usage) {
 						usageSent = true;
-						// 六: REAL cached-token data is read from the provider's
+						// round 6: REAL cached-token data is read from the provider's
 						// prompt_tokens_details — an absent value is null, NEVER
 						// faked as a zero-cache turn. OpenAI does not report a
 						// cache write; null is the honest answer.
@@ -249,7 +249,7 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 				} catch {
 					input = null; // never a silent repair
 				}
-				// 六: a call whose id NEVER arrived adopts the index fallback
+				// round 6: a call whose id NEVER arrived adopts the index fallback
 				// here — no start/delta was emitted under any other identity,
 				// so this end is the call's first and only identity.
 				yield {
@@ -340,7 +340,7 @@ function toOpenAIContent(
 			? ({ type: "text", text: block.text } as const)
 			: ({
 					type: "image_url",
-					// 六: a base64 block becomes a REAL data URL —
+					// round 6: a base64 block becomes a REAL data URL —
 					// `data:<media>;base64,<data>` — never an empty string URL.
 					// URL-sourced blocks pass the provider URL through.
 					image_url: {
@@ -354,7 +354,7 @@ function toOpenAIContent(
 }
 
 /**
- * 六: OpenAI tool results accept TEXT ONLY — an image block is converted to
+ * round 6: OpenAI tool results accept TEXT ONLY — an image block is converted to
  * an explicit, honest text note (what kind of image was omitted and why),
  * never silently dropped.
  */
@@ -380,20 +380,20 @@ function toOpenAIMessages(
 	if (systemPrompt !== undefined) {
 		out.push({ role: "system", content: systemPrompt });
 	}
-	// 合并轮 (0.1.23) C7 修订: `reasoning_content` 的存在性由整个投影的
-	// 单调状态决定 — 投影里存在任一 reasoning → 每条 assistant 消息都
-	// 携带(自身 reasoning,或 "")；否则一条都不带。理由: D 区请求级
-	// 字节稳定。旧实现按"当前轮"判定(手感批 C7),轮边界一过,旧轮
-	// assistant 消息的字段被剥掉,序列化被改写 — 请求 N 与 N+1 的公共
-	// 前缀断在旧消息处,provider 前缀缓存每轮边界断一次(fresh 之谜
-	// 实证: 14 请求的会话里两次缓存断点都在轮边界;修复后同会话 0 断
-	// 点、逐请求 cached 82-98%)。单调性保证存在性在会话内只翻转一次
-	// (首个 thinking 出现时,通常在首轮 — 此前几乎没有旧 assistant
-	// 消息),之后从生到死不翻转;真 OpenAI 永不产生 reasoning → 字段
-	// 永不出现,其请求路径与旧行为逐字节相同。带 reasoning 的旧轮消息
-	// 回传其推理是 DeepSeek 官方推荐的缓存稳定形态;旧内容命中前缀
-	// 缓存只按 0.1× 计费,"回传是 token 浪费"的前提在缓存经济下不成立。
-	// "" 字段在旧轮同样被接受(真 API 验证: 200 + 2560 cached tokens)。
+	// the merge round (0.1.23) C7 revision: `reasoning_content`'s PRESENCE follows the whole projection's
+	// monotone state — any reasoning in the projection → every assistant message
+	// carries it (its own reasoning, or ""); otherwise none do. Rationale: the D-area request-level
+	// byte stability. The old implementation keyed on the "current round" (the ergonomics batch C7); once a round boundary passed,
+	// the old rounds' assistant-message fields were stripped and the serialization rewritten — requests N and N+1's common
+	// prefix broke at the old message; the provider's prefix cache broke at every round boundary (the fresh-mystery
+	// empirical proof: in a 14-request session both cache breaks sat at round boundaries; after the fix the same session had 0 breaks,
+	// per-request cached 82-98%). Monotonicity guarantees the field's presence flips at most once per session
+	// (when the first thinking appears, usually in the first round — before it there are almost no old assistant
+	// messages); after it, never flips for the session's life; real OpenAI never produces reasoning → the field
+	// never appears, and its request path is byte-for-byte the old behavior. Old-round messages carrying reasoning
+	// pass their reasoning back — DeepSeek's officially recommended cache-stable shape; old content hitting the prefix
+	// cache bills at 0.1× only — the "repassing wastes tokens" premise does not hold under cache economics.
+	// the "" field is accepted on old rounds too (real API verification: 200 + 2560 cached tokens).
 	const hasReasoning = messages.some((m) => m.role === "assistant" && m.reasoning !== undefined);
 	for (const msg of messages) {
 		if (msg.role === "user") {
@@ -425,7 +425,7 @@ function toOpenAIMessages(
 		} else {
 			// tool messages accept text only — images are converted to an
 			// EXPLICIT text note (toOpenAIToolResultContent), never dropped
-			// (六).
+			// (round 6).
 			out.push({
 				role: "tool",
 				tool_call_id: msg.callId,

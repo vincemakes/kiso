@@ -1,5 +1,5 @@
 /**
- * 手感批 B4 — the CLI's shared process state. The module split (dispatch/
+ * The ergonomics batch B4 — the CLI's shared process state. The module split (dispatch/
  * chat/resume/trust-ui/faux-glue) is a PURE MOVE: every piece that more
  * than one module touches lives here as a live ESM binding. index.ts
  * creates the mutable ones (setBody / setAgentModel / setExtensionLists);
@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { Dock, type Body } from "@vincemakes/kiso-tui";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
 
-/** 发现#11: KISO_HOME is the ONE root — every default path derives from
+/** finding #11: KISO_HOME is the ONE root — every default path derives from
  *  it (sessions, trust, extensions, mcp config, skills). The dedicated
  *  env vars (KISO_EXTENSIONS_DIR / KISO_MCP_CONFIG / KISO_SKILLS_DIR)
  *  still override their own path; nothing hard-codes ~/.kiso anymore. */
@@ -78,28 +78,28 @@ export function setAgentModel(value: string): void {
 	agentModel = value;
 }
 
-/** 合并轮 B: whether the agent runs on the faux provider (no real key) —
+/** merge round B: whether the agent runs on the faux provider (no real key) —
  *  set inside makeAgent, read by main for chat/resume's exhaustion check. */
 export let currentFaux = true;
 export function setCurrentFaux(value: boolean): void {
 	currentFaux = value;
 }
 
-/** 合并轮 B: the merged config (user + trusted project) as resolved by the
+/** merge round B: the merged config (user + trusted project) as resolved by the
  *  LAST makeAgent — /model and autoCompact resolve against it. */
 export let mergedConfig: import("./config.js").KisoConfig = {};
 export function setMergedConfig(value: import("./config.js").KisoConfig): void {
 	mergedConfig = value;
 }
 
-/** 合并轮 B: the resolved context window (env > config.contextWindow) —
+/** merge round B: the resolved context window (env > config.contextWindow) —
  *  chat.ts's contextWindowTokens() consults it before the env. */
 export let configuredWindow: number | undefined;
 export function setConfiguredWindow(value: number | undefined): void {
 	configuredWindow = value;
 }
 
-/** 合并轮 B: the merged config (user + trusted project) + the current
+/** merge round B: the merged config (user + trusted project) + the current
  *  model's NAME — /model lists and switches against them. */
 export let configModels: Readonly<Record<string, import("./config.js").ModelProfile>> = {};
 export function setConfigModels(models: Readonly<Record<string, import("./config.js").ModelProfile>>): void {
@@ -146,7 +146,7 @@ export const VERSION = ((): string => {
 	}
 })();
 
-/** 十: a question cancelled by Ctrl+C — NEVER the empty string, which is a
+/** round 10: a question cancelled by Ctrl+C — NEVER the empty string, which is a
  *  real user answer (the empty line). The empty answer and the cancellation
  *  are distinct facts. */
 export const CANCELLED = Symbol("kiso-question-cancelled");

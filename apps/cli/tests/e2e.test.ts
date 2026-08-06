@@ -4,7 +4,7 @@
  * sessions listing, and the JSONL shows both runs. Requires the CLI build
  * (npm run check builds before testing).
  *
- * P2 (测试卫生): every real-process spawn runs against a FULLY isolated
+ * P2 (test hygiene): every real-process spawn runs against a FULLY isolated
  * environment (the shared helper — the host's ~/.kiso must never leak in)
  * with an explicit generous timeout: these tests measure correctness, not
  * speed.
@@ -53,7 +53,7 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		// seq is contiguous across the process boundary.
 		const seqs = records.map((r) => r.event.seq);
 		expect(seqs).toEqual([...seqs.keys()]);
-		// 第四轮: the lock FILE persists (it is never deleted), but the
+		// round 4: the lock FILE persists (it is never deleted), but the
 		// CLI released the kernel lock — a fresh writer acquires it at once.
 		const leftovers = readdirSync(join(home, "sessions")).filter((f) => f.endsWith(".lock"));
 		expect(leftovers).toEqual(["e2e.lock"]);
@@ -64,18 +64,18 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		});
 	}, 60_000);
 
-	it("faux chat supports at least two consecutive user turns in ONE process (F 组)", () => {
+	it("faux chat supports at least two consecutive user turns in ONE process (F group)", () => {
 		const { env } = isolatedEnv();
 		const result = runCli(["chat", "twoturns"], env, { input: "first question\nsecond question\nexit\n" });
 		expect(result.status, result.stderr).toBe(0);
 		// Two turns rendered, two honest terminals.
 		const terminalCount = (result.stdout.match(/▞ \d+s · \d+ tools?/g) ?? []).length;
 		expect(terminalCount).toBe(2);
-		// 八: the prompt is RE-ARMED after every turn — never type blind.
+		// round 8: the prompt is RE-ARMED after every turn — never type blind.
 		expect((result.stdout.match(/you> /g) ?? []).length).toBeGreaterThanOrEqual(2);
 	}, 60_000);
 
-	it("八: a faux script exhausted mid-session exits NON-ZERO with a clear message, never status 0", () => {
+	it("round 8: a faux script exhausted mid-session exits NON-ZERO with a clear message, never status 0", () => {
 		const { env } = isolatedEnv();
 		// The script declares 4 provider turns (the first user turn consumes
 		// two — call + summary); the FOURTH user turn hits the empty stream —
@@ -144,7 +144,7 @@ sys.exit(0 if processed else 1)
 		expect(result.stdout).toContain("faux model");
 	}, 90_000);
 
-	it("裁决 #12: an approved-then-failed tool is a clean failure — zero uncertainty questions, the honest note rides the result", () => {
+	it("ruling #12: an approved-then-failed tool is a clean failure — zero uncertainty questions, the honest note rides the result", () => {
 		const { env, dirs } = isolatedEnv();
 		// The extension mirrors the MCP bridge: a tool with NO idempotent
 		// declaration (unknown idempotency — the note applies), allowed by
@@ -182,7 +182,7 @@ sys.exit(0 if processed else 1)
 		);
 		const res = runCli(["chat", "unc12"], { ...env, KISO_FAUX_SCRIPT: script }, { input: "go\nexit\n" });
 		expect(res.status, res.stderr).toBe(0);
-		expect(res.stdout).not.toContain("did it apply"); // 零 uncertainty 提问
+		expect(res.stdout).not.toContain("did it apply"); // zero uncertainty questions
 		expect(res.stdout).toContain("non-idempotent tool failed"); // the honest note rides the result
 		expect(res.stdout).toContain("the tour is done"); // the run completes — the model may retry
 	}, 60_000);

@@ -1,5 +1,5 @@
 /**
- * E 区 — the kill -9 gate: kiso survives a hard kill.
+ * E area — the kill -9 gate: kiso survives a hard kill.
  *
  * A REAL kiso chat (faux provider, a scripted trajectory that edits three
  * files, with a SLOW shell command in the middle) is started in a REAL
@@ -54,7 +54,7 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         if resume_keys is None:
             os.execvp("node", ["node", cli, session_id])
         else:
-            # The SPEC: "kiso resume 同 session" — the dedicated command.
+            # The SPEC: "kiso resume — the same session" — the dedicated command.
             os.execvp("node", ["node", cli, "resume", session_id])
     out = b""    # working buffer: consumed past every matched needle
     full = b""   # the complete capture, printed at the end
@@ -302,7 +302,7 @@ const FAUX_TRAJECTORY = [
 	{ events: [{ type: "stop", reason: "end_turn" }] },
 ];
 
-describe("kill -9 gate (E 区)", () => {
+describe("kill -9 gate (E area)", () => {
 	it("a SIGKILL mid-execution leaves a loadable stream, one uncertain execution, and a rerun-verdict resume that completes the trajectory", async () => {
 		// Two real processes, a real PTY, a real kill — far beyond the 5s
 		// default vitest timeout, so the timeout is explicit (third arg).

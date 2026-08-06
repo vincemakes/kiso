@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T4 失格调查 — per-request reconciliation of a kiso run from a
+"""T4 the disqualification investigation — per-request reconciliation of a kiso run from a
 KISO_DUMP_REQUESTS directory (bench/README, the debug sink the 0.1.23
 fresh-mystery built): one req-<pid>-<n>.json per API request, in order.
 

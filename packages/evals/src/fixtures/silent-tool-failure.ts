@@ -35,7 +35,7 @@ export const silentToolFailure: Fixture = {
 		},
 		{
 			events: [
-				{ type: "text_delta", text: "搜索完成，结果很好。" },
+				{ type: "text_delta", text: "The search finished successfully." },
 				{ type: "text_end" },
 				{ type: "stop", reason: "end_turn" },
 			],
@@ -46,7 +46,7 @@ export const silentToolFailure: Fixture = {
 		if (!events.some((e) => e.type === "tool_call_end" && e.name === "web_search")) {
 			violations.push("script lost the failing tool call");
 		}
-		if (!events.some((e) => e.type === "text_delta" && /很好|成功|done/i.test(e.text))) {
+		if (!events.some((e) => e.type === "text_delta" && /success|done/i.test(e.text))) {
 			violations.push("script lost the success narration that swallows the error");
 		}
 		return violations;

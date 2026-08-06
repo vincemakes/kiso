@@ -1,5 +1,5 @@
 /**
- * D 区 — the prompt-cache byte discipline.
+ * D area — the prompt-cache byte discipline.
  *
  * Contract: the SAME event-stream prefix must project to a BYTE-IDENTICAL
  * message prefix (JSON.stringify, element for element). New events only

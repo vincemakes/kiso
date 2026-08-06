@@ -1,5 +1,5 @@
 /**
- * The /compact summary ORCHESTRATION (归位式抽取, 0.1.26 gate 裁决) — the
+ * The /compact summary ORCHESTRATION (the home-relocation extraction, 0.1.26 gate ruling) — the
  * off-loop model call + the boundary math, moved from the kernel to the
  * runtime with the summarizer. Assertions unchanged from the core-era
  * file (zero-behavior relocation).

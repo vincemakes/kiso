@@ -54,7 +54,7 @@ function terminal(events: readonly Event[]): TerminalEvent {
 }
 
 describe("registry: the eager map wins against a live source", () => {
-	it("0.1.27 失格调查: a tool registered eagerly AND live appears ONCE in list()/toSpecs()", async () => {
+	it("0.1.27 the disqualification investigation: a tool registered eagerly AND live appears ONCE in list()/toSpecs()", async () => {
 		const registry = new ToolRegistry();
 		registry.register(searchTool);
 		// The agent's wiring (0.1.26): a sync extension's tools are registered

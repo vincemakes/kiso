@@ -125,7 +125,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		expect(out).toContain("skill loaded");
 	}, 180_000);
 
-	it("⑨ a SYMLINKED skill works end to end (发现#9: `ln -s ~/.claude/skills/x ~/.kiso/skills/x` — the CC-compatible migration path)", () => {
+	it("⑨ a SYMLINKED skill works end to end (finding #9: `ln -s ~/.claude/skills/x ~/.kiso/skills/x` — the CC-compatible migration path)", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-skills-e2e-"));
 		const home = join(dir, "home");
 		const workdir = join(dir, "work");

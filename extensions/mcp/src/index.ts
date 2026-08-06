@@ -1,5 +1,5 @@
 /**
- * kiso(基礎) official MCP bridge — ③: an extension, kernel untouched.
+ * kiso (foundation) official MCP bridge — ③: an extension, kernel untouched.
  *
  * Reads ${KISO_MCP_CONFIG:-~/.kiso/mcp.json} and turns every configured MCP
  * server's tools into kiso tools named mcp__<server>__<tool>. Stdio servers
@@ -13,13 +13,13 @@
  * specific ones). ctx.signal cancels in-flight calls; one call times out
  * after CALL_TIMEOUT_MS.
  *
- * 0.1.26 (懒连接): the factory returns IMMEDIATELY — the connections start
+ * 0.1.26 (lazy connection): the factory returns IMMEDIATELY — the connections start
  * in the background, startup never blocks. The tool list comes from the
  * TOOL CACHE ($KISO_HOME/mcp-tools.json, rewritten after every successful
  * connect): the cached tools register pre-connect, and calling one before
  * its server is ready WAITS for the connect (bounded by CONNECT_TIMEOUT_MS)
  * — the model can call a tool while the server is still connecting; a
- * failed connect makes the call fail with the connect error (断连诚实).
+ * failed connect makes the call fail with the connect error (disconnects are honest).
  * The extension carries a live `connecting` flag the CLI's banner shows as
  * "mcp (connecting…)".
  *
@@ -39,14 +39,14 @@ import type { KisoExtension, Tool, ToolContext, ToolResult } from "@vincemakes/k
 /** Default single-call timeout (ms) — an external tool must never hang the
  *  agent forever. */
 const CALL_TIMEOUT_MS = 60_000;
-/** Per-server connect timeout (ms) — 发现#8b: a server that does not
+/** Per-server connect timeout (ms) — finding #8b: a server that does not
  *  answer the handshake is a SOFT failure (mcp__status), never a hung
  *  startup. */
 const CONNECT_TIMEOUT_MS = 15_000;
-/** 手感批 A3: the stderr ring cap — the last 4096 BYTES, byte-precise. */
+/** the ergonomics batch A3: the stderr ring cap — the last 4096 BYTES, byte-precise. */
 const RING_MAX_BYTES = 4096;
 
-/** 手感批 A3: a byte-capped memory ring for a stdio child's stderr. The
+/** the ergonomics batch A3: a byte-capped memory ring for a stdio child's stderr. The
  *  host terminal never sees the chatter ("running on stdio" & co), and
  *  mcp__status shows the recent tail instead. Trimming is byte-safe: the
  *  kept tail always starts on a UTF-8 boundary, so it renders cleanly. */
@@ -98,12 +98,12 @@ interface ServerStatus {
 	readonly server: string;
 	readonly state: "connected" | "error" | "connecting" | "idle";
 	readonly detail: string;
-	/** 手感批 A3: present for stdio servers — the recent stderr tail
+	/** the ergonomics batch A3: present for stdio servers — the recent stderr tail
 	 *  (empty when the child never wrote). */
 	readonly stderr?: StderrRing;
 }
 
-/** 发现#11: KISO_HOME is the ONE root — the default config path derives
+/** finding #11: KISO_HOME is the ONE root — the default config path derives
  *  from it (KISO_MCP_CONFIG still overrides). */
 function kisoHome(): string {
 	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
@@ -199,7 +199,7 @@ export default function createMcpExtension(): KisoExtension {
 		name: "mcp",
 		tools,
 		connecting,
-		// 发现#8 (P1): the LOADER calls this on exit — closing every client
+		// finding #8 (P1): the LOADER calls this on exit — closing every client
 		// terminates its transport (the stdio children end; a hung process
 		// would otherwise keep the host alive forever).
 		dispose: async () => {
@@ -211,7 +211,7 @@ export default function createMcpExtension(): KisoExtension {
 /** A cached tool — callable before the server is ready: the execute waits
  *  for the background connect (bounded by CONNECT_TIMEOUT_MS inside
  *  connectServer's race), then calls through the connected client. A
- *  failed connect makes the call fail with the connect error — 断连诚实,
+ *  failed connect makes the call fail with the connect error — disconnects are honest,
  *  never a silent hang nor a fake success. */
 function mapCachedTool(
 	server: string,
@@ -340,7 +340,7 @@ async function connectServer(name: string, cfg: McpServerConfig, clients: Client
 		// Provider credentials are stripped (the tools-node #7 list — keep in
 		// sync), then the config's explicit env overlays it (explicit wins).
 		const env = { ...strippedEnv(), ...(cfg.env ?? {}) };
-		// 手感批 A3: the child's stderr is piped (the SDK's own PassThrough —
+		// the ergonomics batch A3: the child's stderr is piped (the SDK's own PassThrough —
 		// cross-spawn rejects a raw Writable in the stdio array) into the
 		// ring (tail 4KB), NOT the host terminal — the SDK's "inherit"
 		// default leaked "running on stdio"-style chatter right into the
@@ -367,14 +367,14 @@ async function connectServer(name: string, cfg: McpServerConfig, clients: Client
 	return { tools: tools.map((t) => mapTool(name, client, t)), ...(ring !== undefined ? { stderr: ring } : {}), client };
 }
 
-/** 发现#8b: the handshake is bounded — a server that never answers the
+/** finding #8b: the handshake is bounded — a server that never answers the
  *  initialize exchange times out and becomes a SOFT failure, exactly like
  *  an unreachable one. */
 async function connectWithTimeout(client: Client, transport: StdioClientTransport | StreamableHTTPClientTransport): Promise<void> {
 	await Promise.race([
 		client.connect(transport as unknown as Transport),
 		// unref'd: when the handshake wins the race, the abandoned timeout
-		// must not hold the host's event loop (发现#8: prompt exits).
+		// must not hold the host's event loop (finding #8: prompt exits).
 		new Promise<never>((_, reject) =>
 			setTimeout(() => reject(new Error(`connect timed out after ${CONNECT_TIMEOUT_MS}ms`)), CONNECT_TIMEOUT_MS).unref(),
 		),

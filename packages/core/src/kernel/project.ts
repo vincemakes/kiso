@@ -16,8 +16,8 @@
  * Events with no message shape (usage, stop, thinking, terminal, the
  * compaction events' own records) are skipped by the projection;
  * `compacted` applies the EXACT persisted replacements verbatim — it never
- * re-runs the compaction algorithm (a future version could differ, A 组/D
- * 组); `microcompacted` boundaries re-derive the cleared view from the
+ * re-runs the compaction algorithm (a future version could differ, A group/D
+ * group); `microcompacted` boundaries re-derive the cleared view from the
  * stream itself (deterministic and idempotent); `summarized` (ADR-0044)
  * replaces its covered range with one assistant summary message. All
  * three are persisted facts — the replay equals the live run. See ADR-0002.
@@ -35,18 +35,18 @@ import type {
 } from "../protocol/messages.js";
 
 /**
- * C 区: tools whose output is eligible for microcompact clearing — reads,
+ * C area: tools whose output is eligible for microcompact clearing — reads,
  * listings, searches, and shell output. write/edit outputs are short and
- * never cleared. Exported so the loop's boundary computation (自举 #3)
+ * never cleared. Exported so the loop's boundary computation (bootstrap #3)
  * counts exactly the results the projection can clear.
  */
 export const MICROCOMPACTABLE = new Set(["read_file", "list_dir", "search_text", "shell"]);
 
-/** The tag that makes a tool result un-clearable (C 区). */
+/** The tag that makes a tool result un-clearable (C area). */
 export const DO_NOT_COMPACT = "do-not-compact";
 
 /**
- * C 区: the fixed placeholder for a cleared tool output, derived ONLY from
+ * C area: the fixed placeholder for a cleared tool output, derived ONLY from
  * the event stream (deterministic across replay): the tool's name and its
  * primary argument (the first string-valued field of its input).
  */
@@ -68,7 +68,7 @@ function primaryArg(input: Readonly<Record<string, unknown>> | null | undefined)
 /**
  * Rebuild the message array from events. Deterministic and order-sensitive:
  * replaying the same log always produces the same messages — BYTE FOR BYTE
- * (D 区): the same event prefix derives the same message prefix; the only
+ * (D area): the same event prefix derives the same message prefix; the only
  * events that change already-derived messages are `microcompacted`
  * boundaries and `summarized` facts, which are themselves persisted facts
  * (their replay derives the same projection every time).
@@ -90,9 +90,9 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			text = null;
 		}
 	};
-	// 自举 P1: the reasoning of the turn being built, accumulated from its
+	// bootstrap P1: the reasoning of the turn being built, accumulated from its
 	// `thinking` events and attached to the assistant message at flush —
-	// deterministic (same events → same messages → same request body, D 区).
+	// deterministic (same events → same messages → same request body, D area).
 	let pendingReasoning: string | null = null;
 	const flushAssistant = (): void => {
 		pushText();
@@ -112,7 +112,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		assistantSource = undefined;
 	};
 
-	// C 组/六: vetoed/rewritten user inputs. Collect the replacement map
+	// C group/round 6: vetoed/rewritten user inputs. Collect the replacement map
 	// first — the FINAL replacement for each input wins (later replacements
 	// never produce extra messages), and the replacement renders AT THE
 	// INPUT'S OWN POSITION: the original is skipped, the final non-null
@@ -130,7 +130,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			});
 		}
 	}
-	// C 区: callId → {name, input} for the microcompact placeholder.
+	// C area: callId → {name, input} for the microcompact placeholder.
 	const callMeta = new Map<string, { name: string; input: Readonly<Record<string, unknown>> | null }>();
 	for (const ev of events) {
 		if (ev.type === "tool_call_end") callMeta.set(ev.callId, { name: ev.name, input: ev.input });
@@ -164,8 +164,8 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	// physical seq order is the COMPLETION order (started/receipt/result land
 	// when each execution finishes — parallel), which must never enter the
 	// projection: the same logical turn projects byte-identically whatever
-	// the completion interleaving (字节纪律 — 以 call 序为准,完成序只影响
-	// 落盘时刻). `callOrder` is rebuilt per turn from the tool_call_end
+	// the completion interleaving (the byte discipline — call order is the truth; completion order only affects
+	// the moment of writing). `callOrder` is rebuilt per turn from the tool_call_end
 	// events (their seq order IS the call order — the stream order).
 	let resultBuf: { callId: string; message: ToolResultMessage }[] = [];
 	const callOrder = new Map<string, number>();
@@ -209,7 +209,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				// first, then its results in call order (the turn boundary).
 				flushAssistant();
 				flushResults();
-				// 六: the final replacement renders HERE, at the input's own
+				// round 6: the final replacement renders HERE, at the input's own
 				// position — the original is skipped, the replacement event
 				// itself produces nothing (a later replacement for the same
 				// input never becomes a second message).
@@ -235,10 +235,10 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			}
 			case "user_input_replaced":
 				// The replacement already rendered at its input's position —
-				// this event carries no message of its own (六).
+				// this event carries no message of its own (round 6).
 				break;
 			case "assistant_start":
-				// D 组: an explicit message boundary — close any open message
+				// D group: an explicit message boundary — close any open message
 				// and begin a new one (adjacent assistants stay separate).
 				flushAssistant();
 				flushResults();
@@ -319,7 +319,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 					...(ev.source !== undefined ? { source: ev.source } : {}),
 					...(ev.tags !== undefined ? { tags: ev.tags } : {}),
 				};
-				// 五: the originating event's seq rides on the message as a
+				// round 5: the originating event's seq rides on the message as a
 				// NON-ENUMERABLE correlation field — the stable identity
 				// compaction uses to name WHICH result it replaced. Deep
 				// equality with seed messages (which carry no such field)
@@ -337,7 +337,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				flushAssistant();
 				flushResults(); // the results must be in `out` before the replacement pass
 				flushAssistant();
-				// C 区: replace every eligible OLD tool result with the fixed
+				// C area: replace every eligible OLD tool result with the fixed
 				// placeholder. Eligibility: the result's own event seq <= the
 				// boundary, its tool in the whitelist, and no do-not-compact
 				// tag. Deterministic — the boundary event IS the decision.
@@ -357,10 +357,10 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				flushResults(); // the results must be in `out` before the replacement pass
 				flushAssistant();
 				// Apply the EXACT persisted replacements — never re-run the
-				// compaction algorithm (a future version could differ). 五:
+				// compaction algorithm (a future version could differ). round 5:
 				// v2 entries are keyed by the replaced tool-result EVENT's
 				// seq, so only the specific result is rewritten — never a
-				// same-callId sibling from another turn or run. 第四轮: v1
+				// same-callId sibling from another turn or run. round 4: v1
 				// entries (round-three sessions, no eventSeq) replay with v1
 				// semantics — every tool result with that callId is replaced,
 				// exactly as the old framework did.
@@ -382,7 +382,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				break;
 			}
 			case "thinking":
-				// 自举 P1: accumulate the turn's reasoning — the flush (an
+				// bootstrap P1: accumulate the turn's reasoning — the flush (an
 				// empty one at the turn's start) keeps the pending text, and
 				// the assistant message that follows carries it. 0.1.26: the
 				// assistant flush is guarded on the buffered results (a
@@ -453,9 +453,9 @@ export function messagesToEvents(messages: readonly Message[]): EventInput[] {
 				break;
 			}
 			case "assistant": {
-				// D 组: an explicit assistant_start/assistant_end pair frames
+				// D group: an explicit assistant_start/assistant_end pair frames
 				// the message — adjacent and empty assistants round-trip.
-				// 自举 P1: the reasoning re-enters the log as its ORIGINAL
+				// bootstrap P1: the reasoning re-enters the log as its ORIGINAL
 				// thinking event — the projection re-attaches it identically.
 				if (msg.reasoning !== undefined) {
 					out.push({ type: "thinking", text: msg.reasoning });

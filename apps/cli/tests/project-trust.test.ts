@@ -222,7 +222,7 @@ describe("E3: the project trust gate (project-trust)", () => {
 		expect(trustLines(dirs.home)).toHaveLength(1);
 	});
 
-	it("⑩ (发现#10) cwd = the KISO_HOME parent — the home's own .kiso is the user level: no self-trust question, no self-mirror collision, normal REPL", () => {
+	it("(round 10) (finding #10) cwd = the KISO_HOME parent — the home's own .kiso is the user level: no self-trust question, no self-mirror collision, normal REPL", () => {
 		const { env, dirs } = isolatedEnv();
 		const kiso = join(dirs.home, ".kiso");
 		env.KISO_HOME = kiso; // the user-level config dir itself

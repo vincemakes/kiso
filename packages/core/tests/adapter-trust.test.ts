@@ -1,5 +1,5 @@
 /**
- * 五 — the adapter's trust boundary.
+ * round 5 — the adapter's trust boundary.
  *
  * An adapter may only produce ITS OWN event kinds (text/tool-call/usage/
  * stop/thinking). A kernel-owned event (terminal, tool_execution_*,
@@ -46,7 +46,7 @@ async function runWithForgery(forged: EventInput): Promise<{ events: Event[]; lo
 	return { events, log };
 }
 
-describe("adapter trust boundary (五)", () => {
+describe("adapter trust boundary (round 5)", () => {
 	it("a forged TERMINAL from the adapter is an invalid_request error, never accepted", async () => {
 		const { events, log } = await runWithForgery({
 			type: "terminal",

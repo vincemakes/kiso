@@ -3,7 +3,7 @@
  * the BUILT bundle installed, plus the depth-guard e2e in a real child.
  *
  * The parent (faux) calls delegate with one explorer task; safe-defaults
- * ASKS (裁决 A: the prompt appears), y is injected, the child runs under
+ * ASKS (ruling A: the prompt appears), y is injected, the child runs under
  * its read-only role policy, and the result section — extracted from the
  * child's OWN session JSONL — returns to the model. The child session is
  * durable (the selling point): it exists on disk with a terminal.
@@ -98,7 +98,7 @@ const FAUX_TRAJECTORY = [
 ];
 
 describe("④ subagent e2e (through the CLI's topmost entry)", () => {
-	it("delegate is ASKED (裁决 A), approved, the child runs, its JSONL-sourced result returns, and the child session is durable", async () => {
+	it("delegate is ASKED (ruling A), approved, the child runs, its JSONL-sourced result returns, and the child session is durable", async () => {
 		fauxEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-subagent-e2e-"));
 		const home = join(dir, "home");
@@ -122,7 +122,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		const { env } = isolatedEnv();
 		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
 		expect(out).toContain("[2 extensions: safe-defaults, subagent]"); // sorted by file name
-		expect(out).toContain("approve delegate"); // the ask tier reached the human (裁决 A)
+		expect(out).toContain("approve delegate"); // the ask tier reached the human (ruling A)
 		expect(out).toContain("outcome: completed"); // the child's result section returned to the model
 		expect(out).toContain("done");
 		// The durable-child selling point: the child's own session exists

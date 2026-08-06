@@ -12,7 +12,7 @@ overview.
 
 `KISO_DUMP_REQUESTS=<dir>` writes every outgoing request body to
 `<dir>/req-<pid>-<n>.json` before it is sent — the diagnosis instrument
-for the request-prefix (D 区) contract, kept as a permanent debug sink.
+for the request-prefix (D area) contract, kept as a permanent debug sink.
 ⚠ The bodies are REAL conversation data (the model may have seen repo
 contents) — never share a dump dir; a dump failure never breaks the
 request. `bench/dumpdiff.py` byte-diffs consecutive dumps and localizes

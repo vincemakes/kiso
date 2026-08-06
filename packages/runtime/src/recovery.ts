@@ -1,5 +1,5 @@
 /**
- * 手感批 B4 (pure move) — the recovery support pieces, moved verbatim from
+ * the ergonomics batch B4 (pure move) — the recovery support pieces, moved verbatim from
  * session.ts: the open-run gate, the abort sentinel/race wrapper, and the
  * merged abort signal.
  */
@@ -10,7 +10,7 @@ import type { StoreRecord } from "./store.js";
 /**
  * The most recent run WITHOUT a terminal, or undefined when every recorded
  * run terminated. Recovery can only drive ONE run to its terminal, so an
- * open run must be the exclusive reason a session refuses new runs (四).
+ * open run must be the exclusive reason a session refuses new runs (round 4).
  */
 export function openRunId(records: readonly StoreRecord[]): string | undefined {
 	const terminated = new Set(records.filter((r) => r.event.type === "terminal").map((r) => r.runId));

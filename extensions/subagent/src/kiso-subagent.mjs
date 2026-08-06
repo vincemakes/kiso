@@ -1,5 +1,5 @@
 /**
- * kiso(基礎) official subagent extension — ④: child kiso processes with
+ * kiso (foundation) official subagent extension — ④: child kiso processes with
  * role policies, kernel untouched.
  *
  * `delegate` spawns child kiso processes (the SAME binary) that work in
@@ -9,11 +9,11 @@
  * (KISO_SUBAGENT_DEPTH ≥ 1 → no delegate) so children can never nest.
  *
  * Approval: no auto-allow — delegate falls in the ask tier, so a human
- * sees every delegation (裁决 A: the ask reaches the human directly).
+ * sees every delegation (ruling A: the ask reaches the human directly).
  *
  * Zero runtime dependencies: child_process/fs/os/path are builtins.
  *
- * 发现#8: this extension holds NO persistent resources — children are
+ * finding #8: this extension holds NO persistent resources — children are
  * spawned per call and exit on their own, the role-policy temp dirs are
  * cleaned in runChild's finally — so NO dispose is needed, explicitly.
  */

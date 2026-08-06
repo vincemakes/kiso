@@ -121,7 +121,7 @@ T4 note below for why the 0.1.26 T4 baseline was itself an artifact.
 ## The fresh-mystery — verdict of the 0.1.23 investigation
 
 The 0.1.22-era bench reported "kiso's per-request fresh ≈ its system-prompt
-size (~1.7K/req)" and opened a 待办: a suspected D 区 byte-instability in
+size (~1.7K/req)" and opened a todo: a suspected D-region byte-instability in
 the composed system prompt. The 0.1.23 round investigated with the
 diagnosis of record — dump each outgoing request body
 (`KISO_DUMP_REQUESTS=<dir>`, kept as a documented debug tool), byte-diff
@@ -136,7 +136,7 @@ contract violation). Findings:
    per-request usage shows 82-99% cache hits; request 1's cached=1024 even
    shows the system prompt cache-hitting ACROSS sessions (it is byte-stable).
    The system prompt itself was never unstable.
-2. **But the dump-diff DID find one real D 区 request-level violation, in
+2. **But the dump-diff DID find one real D-region request-level violation, in
    the OpenAI-compat adapter (0.1.22, the hand-feel round's C7 rule).** The
    adapter gated `reasoning_content` on the CURRENT turn: at every turn
    boundary the just-finished turn's assistant messages lost the field,
@@ -157,7 +157,7 @@ contract violation). Findings:
    Contract wording extended in ADR-0026 Amendment 1 (the request-level
    invariant: request N+1 shares request N's bytes through the close of
    request N's last message — the maximal achievable prefix).
-4. The 待办 is closed. The cost-weighted re-baseline: the tables above are
+4. The todo is closed. The cost-weighted re-baseline: the tables above are
    the 0.1.22 runs re-extracted with the corrected accounting; the 0.1.23
    release re-runs kiso's cells on the published artifact (below).
 
@@ -171,7 +171,7 @@ extension (index + read_skill), pi's `--skill` (index + read tool), Claude
 Code's project skills (`.claude/skills/`). All three completed with the
 convention applied (0.3.1 → 0.3.2 in every run).
 
-**T4 honesty — the 0.1.27 失格调查 found the baseline was a harness bug.**
+**T4 honesty — the 0.1.27 disqualification investigation found the baseline was a harness bug.**
 Through 0.1.26 the kiso runner's extension dir carried ONLY bench-allow —
 the official skills extension was never loaded, so kiso's model had to
 discover `.claude/skills/…/SKILL.md` by raw exploration: the 13-request

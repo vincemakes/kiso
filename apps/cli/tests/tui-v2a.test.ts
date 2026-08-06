@@ -1,7 +1,7 @@
 /**
  * v2a — the interactive TUI through the CLI's topmost entry, on a REAL
  * PTY: the typed input is echoed by readline itself and NEVER rendered
- * again (双回显); the status line is the faux form; the rhythm gap lands
+ * again (the double echo); the status line is the faux form; the rhythm gap lands
  * between the status and the next prompt; the prompt carries the blue
  * accent.
  */
@@ -84,7 +84,7 @@ describe("TUI v2a (real PTY)", () => {
 			// would close the input before the turn ever runs).
 			["▞", "exit\n"],
 		]);
-		// ① 双回显: readline echoed "probe-one" — the user_input event render
+		// (1) the double echo: readline echoed "probe-one" — the user_input event render
 		// must NOT print it again. The content appears exactly once.
 		expect((out.match(/probe-one/g) ?? []).length).toBe(1);
 		// The prompt + echo read "you> probe-one" once — readline's redraw

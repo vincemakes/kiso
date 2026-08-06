@@ -1,5 +1,5 @@
 /**
- * E 组 — terminal safety: ESC, C0/C1 control characters, CR, backspace,
+ * E group — terminal safety: ESC, C0/C1 control characters, CR, backspace,
  * and bidi overrides must never reach the terminal from model/tool text.
  */
 
@@ -13,7 +13,7 @@ const C1 = "\u009b";
 const ESC = "\u001b";
 const BIDI = "\u202e";
 
-describe("terminal escaping (E 组)", () => {
+describe("terminal escaping (E group)", () => {
 	it("strips ESC sequences from tool results", () => {
 		const rendered = renderEvent({
 			type: "tool_result",
@@ -58,7 +58,7 @@ describe("terminal escaping (E 组)", () => {
 		expect(rendered.text).toContain("echo safe");
 	});
 
-	it("八: an ESC-injected TOOL NAME in the approval prompt is stripped", () => {
+	it("round 8: an ESC-injected TOOL NAME in the approval prompt is stripped", () => {
 		const rendered = renderEvent({
 			type: "permission_requested",
 			name: `shell${ESC}[2Jevil`,
@@ -68,7 +68,7 @@ describe("terminal escaping (E 组)", () => {
 		expect(rendered.text).toContain("shell");
 	});
 
-	it("八: the terminal error message is escaped", () => {
+	it("round 8: the terminal error message is escaped", () => {
 		const rendered = renderEvent({
 			type: "terminal",
 			outcome: { kind: "error", error: { message: `boom ${ESC}[31mRED${ESC}[0m` } },
@@ -81,7 +81,7 @@ describe("terminal escaping (E 组)", () => {
 		expect(rendered.text).toContain("[31mRED[0m"); // the inert remnant
 	});
 
-	it("八: the session title is escaped", () => {
+	it("round 8: the session title is escaped", () => {
 		const line = renderSessionLine({
 			id: "s1",
 			title: `safe${ESC}[31mRED${ESC}[0m`,
@@ -147,7 +147,7 @@ describe("B: tool summary lines and the status line", () => {
 	});
 });
 
-describe("自举 P1 + v2b: thinking blocks fold to ONE dim line (foldThinking)", () => {
+describe("bootstrap P1 + v2b: thinking blocks fold to ONE dim line (foldThinking)", () => {
 	const strip = (s: string) => s.replace(/\u001b\[[0-9;]*m/g, "");
 
 	it("a block's deltas append to the SAME segment — the fold renders the WHOLE block on one line, no mid-block newline", () => {

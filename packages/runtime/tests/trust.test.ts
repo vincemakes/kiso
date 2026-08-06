@@ -110,7 +110,7 @@ describe("E3: projectArtifacts", () => {
 		expect(artifacts!.files.map((f) => f.path)).toEqual(["extensions/real.mjs"]);
 	});
 
-	it("⑪ kisoHome — KISO_HOME first, then HOME, never a hard-coded ~ (发现#11)", () => {
+	it("⑪ kisoHome — KISO_HOME first, then HOME, never a hard-coded ~ (finding #11)", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-trust-"));
 		const origHome = process.env.HOME;
 		const origKiso = process.env.KISO_HOME;
@@ -128,7 +128,7 @@ describe("E3: projectArtifacts", () => {
 		}
 	});
 
-	it("⑩ the KISO_HOME dir itself is never a project — cwd = the KISO_HOME parent returns null (发现#10)", async () => {
+	it("⑩ the KISO_HOME dir itself is never a project — cwd = the KISO_HOME parent returns null (finding #10)", async () => {
 		const home = isolatedHome();
 		const kiso = join(home, ".kiso");
 		process.env.KISO_HOME = kiso; // the user-level config dir IS a .kiso dir

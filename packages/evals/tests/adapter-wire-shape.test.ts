@@ -1,5 +1,5 @@
 /**
- * 六 — adapter wire-shape honesty: what actually leaves the adapter.
+ * round 6 — adapter wire-shape honesty: what actually leaves the adapter.
  *
  * 1. OpenAI base64 image blocks become REAL data URLs — never an empty
  *    string URL.
@@ -54,7 +54,7 @@ const CHUNK = (finish: string | null, delta: Record<string, unknown> = {}) => ({
 
 const OPTS: StreamOptions = { model: "m", messages: [{ role: "user", content: "hi" }] };
 
-describe("六: OpenAI images", () => {
+describe("round 6: OpenAI images", () => {
 	it("a base64 image becomes a REAL data URL — never an empty string URL", async () => {
 		let seen: unknown;
 		const adapter = createOpenAICompatAdapter(
@@ -140,7 +140,7 @@ describe("六: OpenAI images", () => {
 	});
 });
 
-describe("六: late tool-call id keeps one identity", () => {
+describe("round 6: late tool-call id keeps one identity", () => {
 	it("start/delta/end all carry the REAL id when it arrives late", async () => {
 		const adapter = createOpenAICompatAdapter(
 			fakeOpenAI({
@@ -184,7 +184,7 @@ describe("六: late tool-call id keeps one identity", () => {
 	});
 });
 
-describe("六: real OpenAI cached tokens", () => {
+describe("round 6: real OpenAI cached tokens", () => {
 	it("cacheRead reads prompt_tokens_details.cached_tokens — never faked as 0", async () => {
 		const adapter = createOpenAICompatAdapter(
 			fakeOpenAI({
@@ -232,7 +232,7 @@ describe("六: real OpenAI cached tokens", () => {
 	});
 });
 
-describe("六: every Anthropic stop path is preceded by an honest usage", () => {
+describe("round 6: every Anthropic stop path is preceded by an honest usage", () => {
 	it("a degenerate message_stop with no delta yields known:false usage BEFORE the error stop", async () => {
 		const events = await drain(
 			createAnthropicAdapter(
@@ -261,7 +261,7 @@ describe("六: every Anthropic stop path is preceded by an honest usage", () => 
 	});
 });
 
-describe("九: Anthropic usage-yielded vs usage-seen", () => {
+describe("round 9: Anthropic usage-yielded vs usage-seen", () => {
 	it("message_start with usage, then bare message_stop: an honest KNOWN usage precedes the stop", async () => {
 		const events = (await drain(
 			createAnthropicAdapter(
@@ -311,7 +311,7 @@ describe("九: Anthropic usage-yielded vs usage-seen", () => {
 	});
 });
 
-describe("九: OpenAI tool-call id conflicts are loud, never silent", () => {
+describe("round 9: OpenAI tool-call id conflicts are loud, never silent", () => {
 	it("a SECOND different id for the same call is a STRUCTURED error — no silent switch", async () => {
 		const adapter = createOpenAICompatAdapter(
 			fakeOpenAI({

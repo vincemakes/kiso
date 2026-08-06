@@ -1,5 +1,5 @@
 /**
- * 手感批 B4 (pure move) — the faux-mode glue: the durable script position
+ * The ergonomics batch B4 (pure move) — the faux-mode glue: the durable script position
  * (fauxSkip), the script sources (env override + the built-in demo), and
  * the exhaustion guard. All bodies moved verbatim from index.ts.
  */
@@ -11,7 +11,7 @@ import type { FauxScript } from "@vincemakes/kiso-evals";
 import { sessionsDir, type LineInput } from "./state.js";
 
 /**
- * E 区: how many faux-script turns a session has already consumed. The faux
+ * E area: how many faux-script turns a session has already consumed. The faux
  * provider's script counter is per-process, so a FRESH process that resumes
  * a session would restart the script at turn 0 — re-issuing the first
  * scripted call instead of continuing the trajectory. The session log is
@@ -34,7 +34,7 @@ export function fauxSkip(id: string): number {
 }
 
 /**
- * E 区: KISO_FAUX_SCRIPT=<path> overrides the demo script with a JSON
+ * E area: KISO_FAUX_SCRIPT=<path> overrides the demo script with a JSON
  * FauxScript file — the kill -9 e2e drives the CLI through an exact
  * multi-tool trajectory. Absent → the built-in demo script.
  */
@@ -55,13 +55,13 @@ export function readFauxScript(): FauxScript {
  * The keyless demo script: tours the tools so `kiso chat` exercises them.
  * FOUR turns: each user turn consumes two model rounds (call → result →
  * summary), so at least two consecutive user turns work in one process
- * (F 组).
+ * (F group).
  */
 export function fauxScript(): FauxScript {
 	return [
 		{
 			events: [
-				// 自举 P1: a multi-delta thinking block — renders as ONE
+				// bootstrap P1: a multi-delta thinking block — renders as ONE
 				// streaming segment, not one line per token.
 				{ type: "thinking", text: "Let me think about" },
 				{ type: "thinking", text: " the workspace" },
@@ -93,7 +93,7 @@ export function fauxScript(): FauxScript {
 	];
 }
 
-/** 十: a faux-mode run whose scripted turns are exhausted must NOT print a
+/** round 10: a faux-mode run whose scripted turns are exhausted must NOT print a
  * provider error and exit 0 — the honest outcome is a loud message and a
  * non-zero exit. Thrown as a CONTROLLED exception (never process.exit):
  * the REPL closes, the error propagates through main's finally (so

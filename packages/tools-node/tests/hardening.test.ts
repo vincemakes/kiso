@@ -1,5 +1,5 @@
 /**
- * 八 — failure-path hardening for the coding tools.
+ * round 8 — failure-path hardening for the coding tools.
  *
  * - shell kills a setsid()-escaped descendant (invisible to a process-group
  *   kill) and CONFIRMS every tracked descendant exited before returning;
@@ -48,7 +48,7 @@ function liveWith(marker: string): number {
 	return ps.split("\n").filter((l) => l.includes(marker) && !l.includes("grep")).length;
 }
 
-describe("shell: the whole tree dies (八)", () => {
+describe("shell: the whole tree dies (round 8)", () => {
 	it(
 		"a setsid()-escaped descendant is killed and CONFIRMED exited",
 		async () => {
@@ -81,7 +81,7 @@ describe("shell: the whole tree dies (八)", () => {
 	);
 
 	it(
-		"十一: EVERY setsid()-escaped descendant of a MULTI-fork command dies and is confirmed gone",
+		"round 11: EVERY setsid()-escaped descendant of a MULTI-fork command dies and is confirmed gone",
 		async () => {
 			const dir = root();
 			const uid = Math.floor(Math.random() * 1e6);
@@ -108,7 +108,7 @@ describe("shell: the whole tree dies (八)", () => {
 	);
 });
 
-describe("write/edit: mode and temp hygiene (八)", () => {
+describe("write/edit: mode and temp hygiene (round 8)", () => {
 	it("write_file preserves the existing mode — 0755 stays 0755", async () => {
 		const dir = root();
 		const target = join(dir, "script.sh");
@@ -165,7 +165,7 @@ describe("write/edit: mode and temp hygiene (八)", () => {
 	});
 });
 
-describe("read_file inode boundary (八)", () => {
+describe("read_file inode boundary (round 8)", () => {
 	it("refuses a hard link to an inode whose links live OUTSIDE the workspace", async () => {
 		const dir = root();
 		const outside = join(dirname(dir), "external-secret.txt");
@@ -201,7 +201,7 @@ describe("read_file inode boundary (八)", () => {
 		expect(result.content).toMatch(/not a regular file/);
 	});
 
-	it("第四轮: a hard link named with a NEWLINE cannot fool the link count — read_file refuses and leaks nothing", async () => {
+	it("round 4: a hard link named with a NEWLINE cannot fool the link count — read_file refuses and leaks nothing", async () => {
 		const dir = root();
 		const outside = join(dirname(dir), "external-newline-secret.txt");
 		writeFileSync(outside, "NEWLINE-TOP-SECRET", "utf8");
@@ -216,7 +216,7 @@ describe("read_file inode boundary (八)", () => {
 		expect(result.content).not.toContain("NEWLINE-TOP-SECRET"); // nothing leaked
 	});
 
-	it("第四轮: search_text applies the same newline-proof boundary and leaks nothing", async () => {
+	it("round 4: search_text applies the same newline-proof boundary and leaks nothing", async () => {
 		const dir = root();
 		const outside = join(dirname(dir), "external-search-secret.txt");
 		writeFileSync(outside, "SEARCH-SECRET-MARKER", "utf8");
@@ -230,7 +230,7 @@ describe("read_file inode boundary (八)", () => {
 		expect(String(result.content)).not.toContain("SEARCH-SECRET-MARKER"); // never read
 	});
 
-	it("第四轮: a multi-link file whose every link is INSIDE the workspace still reads (even with odd names)", async () => {
+	it("round 4: a multi-link file whose every link is INSIDE the workspace still reads (even with odd names)", async () => {
 		const dir = root();
 		const a = join(dir, "a.txt");
 		writeFileSync(a, "internal-shared", "utf8");
@@ -240,7 +240,7 @@ describe("read_file inode boundary (八)", () => {
 	});
 });
 
-describe("canonicalTargetPath (十)", () => {
+describe("canonicalTargetPath (round 10)", () => {
 	it("P2-3: a SYMLINKED workspaceRoot still admits its own internal hard links", async () => {
 		const dir = root();
 		const realWorkspace = join(dir, "real-ws");

@@ -5,7 +5,7 @@ for each adjacent pair:
   - common-prefix length (bytes) and what fraction of the OLDER request it is
   - the JSON path of the FIRST divergence (the byte that broke the prefix)
   - whether the divergence is INSIDE the older request (a re-render bug — the
-    D 区 violation: request N must be a byte prefix of request N+1) or only
+    D area violation: request N must be a byte prefix of request N+1) or only
     NEW tail bytes (healthy growth)
 
 Usage: python3 dumpdiff.py <dir> [--path-only]

@@ -18,7 +18,7 @@ describe("eastAsianWidth (the drift root cure)", () => {
 	});
 
 	it("CJK ideographs, kana, hangul, fullwidth forms, emoji are 2", () => {
-		expect(charWidth("你".codePointAt(0)!)).toBe(2); // CJK unified
+		expect(charWidth(0x4f60)).toBe(2); // CJK unified (U+4F60)
 		expect(charWidth("あ".codePointAt(0)!)).toBe(2); // kana
 		expect(charWidth("한".codePointAt(0)!)).toBe(2); // hangul syllable
 		expect(charWidth("Ａ".codePointAt(0)!)).toBe(2); // fullwidth form
@@ -29,8 +29,8 @@ describe("eastAsianWidth (the drift root cure)", () => {
 
 	it("displayWidth sums per code point — the cursor math base", () => {
 		expect(displayWidth("hello")).toBe(5);
-		expect(displayWidth("你好a")).toBe(5); // 2+2+1
-		expect(displayWidth("中文输入")).toBe(8);
+		expect(displayWidth("\u4f60\u597da")).toBe(5); // 2+2+1
+		expect(displayWidth("\u4e2d\u6587\u8f93\u5165")).toBe(8); // 4 wide chars
 		expect(PROMPT_WIDTH).toBe(2); // ▌ + space (TUI v4 #16d)
 	});
 });
@@ -45,18 +45,18 @@ describe("the editor's editing surface", () => {
 	it("UTF-8 printable inserts; dockState reports the visible line and the WIDTH-based cursor column", () => {
 		const { editor } = make();
 		editor.feed(enc("ab"));
-		editor.feed(enc("你")); // wide — split across the buffer boundary too
-		expect(editor.line()).toBe("ab你");
+		editor.feed(enc("\u4f60")); // wide — split across the buffer boundary too
+		expect(editor.line()).toBe("ab\u4f60");
 		const st = editor.dockState();
-		expect(st.line).toBe("ab你");
+		expect(st.line).toBe("ab\u4f60");
 		expect(st.cursor).toBe(4); // 1+1+2 — display columns, not chars
 	});
 
 	it("the cursor moves by display width — ←→, Home/End, Ctrl+A/E", () => {
 		const { editor } = make();
-		editor.feed(enc("你好"));
+		editor.feed(enc("\u4f60\u597d"));
 		expect(editor.dockState().cursor).toBe(4);
-		editor.feed(enc("\x1b[D")); // ← over 好 (2 cells)
+		editor.feed(enc("\x1b[D")); // ← over the wide char (2 cells)
 		expect(editor.dockState().cursor).toBe(2);
 		editor.feed(enc("\x1b[C")); // →
 		expect(editor.dockState().cursor).toBe(4);
@@ -72,13 +72,13 @@ describe("the editor's editing surface", () => {
 
 	it("Backspace/Delete edit at the code-point boundary, wide chars intact", () => {
 		const { editor } = make();
-		editor.feed(enc("你好ab"));
+		editor.feed(enc("\u4f60\u597dab"));
 		editor.feed(enc("\x7f")); // backspace over 'b'
-		expect(editor.line()).toBe("你好a");
+		expect(editor.line()).toBe("\u4f60\u597da");
 		editor.feed(enc("\x7f")); // backspace over 'a'
-		expect(editor.line()).toBe("你好");
-		editor.feed(enc("\x7f")); // backspace over 好 — ONE key removes the whole 2-cell char
-		expect(editor.line()).toBe("你");
+		expect(editor.line()).toBe("\u4f60\u597d");
+		editor.feed(enc("\x7f")); // backspace over the wide char — ONE key removes the whole 2-cell char
+		expect(editor.line()).toBe("\u4f60");
 		editor.feed(enc("\x01")); // home
 		editor.feed(enc("\x1b[3~")); // Delete removes the first char
 		expect(editor.line()).toBe("");
@@ -231,7 +231,7 @@ describe("v3 §04: the slash-command menu", () => {
 	});
 });
 
-describe("A2 (手感): the session-scoped input history", () => {
+describe("A2 (the feel): the session-scoped input history", () => {
 	const make = () => {
 		const events: string[] = [];
 		const editor = new Editor(() => events.push("render"));

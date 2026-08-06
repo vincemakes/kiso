@@ -1,17 +1,17 @@
 /**
  * TUI v4 #16 — the resize-storm gate (real PTY, real SIGWINCH):
  *
- * ① #16a resize 零推送: after one turn completes, 5× TIOCSWINSZ (wide/
+ * (1) #16a resize zero-push: after one turn completes, 5× TIOCSWINSZ (wide/
  *   narrow alternating) fire 0.5s apart. The SIGWINCH path must obey the
  *   #14 invariant — redraws are CUP in-place overwrites ONLY: ZERO real
  *   LF during the storm, the separator count in the ANSI-stripped text
  *   does NOT grow (a LF-pushing redraw would add newline-separated
- *   separator rows — the 虚线堆积 the user saw when dragging), and the
+ *   separator rows — the dashed-line pileup the user saw when dragging), and the
  *   model's response text appears EXACTLY once (no re-render duplicates).
  * ② #16b ESC integrity: the banner and the recap keep their SGR — the
  *   stripped text must not contain "[2m"/"[0m"/"[38;5" literals (the
  *   pre-fix code stripped the ESC at the raw cell, leaving literal SGR
- *   text on screen — the 乱码). The storm runs on a session WITH the
+ *   text on screen — the mojibake). The storm runs on a session WITH the
  *   banner, so both are covered.
  * ③ #16f theme (v5): the user block is the ▍ rail — bright-white BOLD
  *   (SGR 1), never reverse video nor the fixed 48;5;237 background.
@@ -127,7 +127,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		expect(storm.split("\n").length - 1).toBe(0);
 
 		// ① #16a: the separator LINE count does NOT grow — a LF-pushed
-		// redraw would add newline-separated separator rows (the 虚线堆积);
+		// redraw would add newline-separated separator rows (the dashed-line pileup);
 		// CUP in-place re-emissions merge into the existing lines (the dock
 		// redraw writes no newlines), so the newline-delimited line count
 		// is the faithful proxy for the visual state. Whole transcript,
@@ -142,7 +142,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 
 		// ② #16b: no ESC residue — the banner's dim and the recap's blue
 		// keep their ESCs (the pre-fix raw-cell re-escape stripped them,
-		// leaving literal "[2m"/"[38;5;75m" text — the 乱码).
+		// leaving literal "[2m"/"[38;5;75m" text — the mojibake).
 		expect(clean).not.toContain("[2m");
 		expect(clean).not.toContain("[0m");
 		expect(clean).not.toContain("[38;5");

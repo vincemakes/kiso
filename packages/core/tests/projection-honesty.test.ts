@@ -1,5 +1,5 @@
 /**
- * D 组 — projection honesty.
+ * D group — projection honesty.
  *
  * D1: tool results carry the FULL ContentBlock[] and tags losslessly.
  * D2: explicit assistant-message boundaries — adjacent assistants, EMPTY
@@ -88,7 +88,7 @@ describe("D6: compacted replay applies the PERSISTED replacements verbatim", () 
 		expect(tool?.content).toBe("[future-marker v9]");
 	});
 
-	it("五: compaction replaces ONLY the named tool-result event — a same-callId sibling stays intact", () => {
+	it("round 5: compaction replaces ONLY the named tool-result event — a same-callId sibling stays intact", () => {
 		const log = new EventLog();
 		log.append({ type: "user_input", content: "go" });
 		log.append({ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });

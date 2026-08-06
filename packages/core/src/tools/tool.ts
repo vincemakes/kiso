@@ -30,7 +30,7 @@ export interface ToolContext {
 }
 
 /**
- * 第五轮(P1-9): a DISCRIMINATED union — `errorKind` is structurally
+ * round 5(P1-9): a DISCRIMINATED union — `errorKind` is structurally
  * impossible on a non-error result, matching the persisted-event schema
  * (an isError:false result with an errorKind would be rejected by the
  * store's validator and poison the next load).

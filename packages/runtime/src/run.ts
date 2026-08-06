@@ -1,5 +1,5 @@
 /**
- * 手感批 B4 (pure move) — the Run class (a single turn: write-ahead
+ * the ergonomics batch B4 (pure move) — the Run class (a single turn: write-ahead
  * persistence, the loop drive, the durable recovery state machine), moved
  * verbatim from session.ts.
  */
@@ -60,7 +60,7 @@ export class Run implements AsyncIterable<Event> {
 		// run at ANY yield (even the user_input one) must release the
 		// session's single-run slot and its approval resolvers.
 		try {
-			// 第四轮: health is re-checked when the iterator ACTUALLY starts —
+			// round 4: health is re-checked when the iterator ACTUALLY starts —
 			// a run constructed before the session was poisoned must fail
 			// here, before any log or disk mutation.
 			this.#session.ensureHealthy();
@@ -98,7 +98,7 @@ export class Run implements AsyncIterable<Event> {
 							this.#decisionIds.push(decisionId);
 							this.#session.registerResolver(decisionId, resolve);
 						}),
-					// 第四轮(对抗): the abort paths consult these so a verdict
+					// round 4 (adversarial): the abort paths consult these so a verdict
 					// the human gave in the same instant as the abort is
 					// recorded, exactly once.
 					approvalVerdict: (decisionId: string) => this.#session.approvalVerdict(decisionId),
@@ -119,7 +119,7 @@ export class Run implements AsyncIterable<Event> {
 			};
 
 			if (this.#resume) {
-				// ── B 组: recovery is PER-RUN, keyed by StoreRecord.runId ──
+				// ── B group: recovery is PER-RUN, keyed by StoreRecord.runId ──
 				// Rebuild run boundaries; only the LAST unterminated run is
 				// recovered. Earlier runs that DID terminate have their
 				// dangling approvals closed (permission_expired) — a dead
@@ -188,14 +188,14 @@ export class Run implements AsyncIterable<Event> {
 				}
 				// 2. Continuation: drive the LAST OPEN run to its terminal.
 				//    The guard is scoped to that run — an earlier run's
-				//    terminal must not suppress it (B 组).
+				//    terminal must not suppress it (B group).
 				if (!lastOpen.events.some((e) => e.type === "terminal")) {
 					for await (const ev of runLoop()) yield ev;
 				}
 				return;
 			}
 
-			// 四: a session with an open run REFUSES new runs at the
+			// round 4: a session with an open run REFUSES new runs at the
 			// persistence layer — a second open run would be permanently
 			// orphaned (recovery only ever recovers the last one). The
 			// open run is continued via resume(), never by starting another.
@@ -219,7 +219,7 @@ export class Run implements AsyncIterable<Event> {
 			//    is the projection, not a second copy.
 			for await (const ev of runLoop()) yield ev;
 		} finally {
-			// 第五轮(P1-5): flush verdicts the consumer submitted before the
+			// round 5(P1-5): flush verdicts the consumer submitted before the
 			// generator was abandoned — an approve()/resolveUncertain() whose
 			// durable event the loop never got to persist must STILL land on
 			// disk, exactly once.
@@ -260,7 +260,7 @@ export class Run implements AsyncIterable<Event> {
 			const decided = log.all.find(
 				(e): e is Event & { type: "permission_decided" } => e.type === "permission_decided" && e.decisionId === pending.decisionId,
 			);
-			// 四: paired by events NEWER than the request — a historical
+			// round 4: paired by events NEWER than the request — a historical
 			// same-callId execution from an earlier run must not count as THIS
 			// request's execution (the provider callId may repeat across runs).
 			const hasExecution = log.all.some(
@@ -280,7 +280,7 @@ export class Run implements AsyncIterable<Event> {
 				// Area 4: an abort during the resumed approval wait ends the
 				// run; the request stays durable and pending.
 				if (signal.aborted) {
-					// 第五轮(P1-6): a verdict given in the same instant as the
+					// round 5(P1-6): a verdict given in the same instant as the
 					// abort is still recorded — the abort must not bypass the
 					// durable fallback (aligned with the loop's abort path).
 					const verdict = this.#session.approvalVerdict(pending.decisionId);
@@ -297,7 +297,7 @@ export class Run implements AsyncIterable<Event> {
 				}
 				const final = await abortable(pendingDecision, signal);
 				if (final === ABORTED) {
-					// 第四轮(对抗): a verdict given in the same instant as the
+					// round 4 (adversarial): a verdict given in the same instant as the
 					// abort is recorded (exactly once), never lost.
 					const verdict = this.#session.approvalVerdict(pending.decisionId);
 					if (verdict !== undefined) {
@@ -315,7 +315,7 @@ export class Run implements AsyncIterable<Event> {
 				yield log.append({
 					type: "permission_decided",
 					decisionId: pending.decisionId,
-					callId: pending.callId, // binds the decision to the invocation (B 组)
+					callId: pending.callId, // binds the decision to the invocation (B group)
 					decision: final.action === "allow" ? "approved" : "denied",
 					...(final.action === "deny" && final.reason !== undefined ? { reason: final.reason } : {}),
 				});
@@ -339,7 +339,7 @@ export class Run implements AsyncIterable<Event> {
 		// whose model-facing result never landed is completed FROM THE
 		// RECEIPT — never re-executed. Snapshot the scope first: this phase
 		// appends the repaired results, and iterating a growing array would
-		// re-visit them. 四: pairing is by executionId — a same-callId result
+		// re-visit them. round 4: pairing is by executionId — a same-callId result
 		// from a different execution never suppresses the repair.
 		for (const ev of [...scope]) {
 			if (ev.type !== "tool_execution_succeeded" && ev.type !== "tool_execution_failed") continue;
@@ -352,7 +352,7 @@ export class Run implements AsyncIterable<Event> {
 							callId: ev.callId,
 							content: ev.result.content,
 							isError: false,
-							// 八: the repaired result reproduces the normal path
+							// round 8: the repaired result reproduces the normal path
 							// losslessly — the tags ride on the durable receipt.
 							...(ev.tags !== undefined ? { tags: ev.tags } : {}),
 							executionId: ev.executionId,
@@ -369,9 +369,9 @@ export class Run implements AsyncIterable<Event> {
 			);
 		}
 
-		// B 组 crash window: a resolution was persisted but its tool_result
+		// B group crash window: a resolution was persisted but its tool_result
 		// fill never landed — complete it so the model is never left staring
-		// at a dangling tool_use. 四: keyed by executionId, and the fill
+		// at a dangling tool_use. round 4: keyed by executionId, and the fill
 		// carries it, so a same-callId result from another execution is never
 		// confused with this one.
 		for (const ev of [...scope]) {
@@ -437,7 +437,7 @@ export class Run implements AsyncIterable<Event> {
 			}
 		}
 
-		// 裁决 #12 修正一: the honest note rides the recovered failure too —
+		// ruling #12 correction one: the honest note rides the recovered failure too —
 		// the receipt and the repaired tool_result reproduce the live path
 		// losslessly.
 		if (result.isError && tool?.idempotent !== true) {
@@ -474,12 +474,12 @@ export class Run implements AsyncIterable<Event> {
 			isError: result.isError,
 			// P1-9: errorKind only exists on errors — runtime-guarded too.
 			...(result.isError && result.errorKind !== undefined ? { errorKind: result.errorKind } : {}),
-			// 五: live tags survive the resumed path too.
+			// round 5: live tags survive the resumed path too.
 			...(result.tags !== undefined ? { tags: result.tags } : {}),
 			executionId,
 		});
-		// 裁决 #12 (ADR-0038): the failed-receipt uncertain PAUSE is REMOVED
-		// here too (it mirrored the live loop's C 组 pause) — a complete
+		// ruling #12 (ADR-0038): the failed-receipt uncertain PAUSE is REMOVED
+		// here too (it mirrored the live loop's C group pause) — a complete
 		// receipt IS the outcome; uncertainty belongs to the crash window
 		// alone. A retry passes the approval chain again.
 	}

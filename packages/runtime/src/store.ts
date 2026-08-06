@@ -1,9 +1,9 @@
 /**
- * SessionStore — append-only JSONL durability, identity-safe (A 组).
+ * SessionStore — append-only JSONL durability, identity-safe (A group).
  *
  * One file per session: `<root>/<id>.jsonl`, lines of
  * `{"runId": string, "ts": number, "event": Event}`. The single-writer
- * lock (第四轮) is an EXCLUSIVE KERNEL flock on `<id>.lock`, held by a
+ * lock (round 4) is an EXCLUSIVE KERNEL flock on `<id>.lock`, held by a
  * dedicated helper process:
  *
  * - the kernel arbitrates every race — a contender can never remove or
@@ -11,7 +11,7 @@
  *   the lock simply exists while the helper lives and vanishes with it;
  * - the lock file ALSO carries `{"pid": number, "token": string}` written
  *   by the holder, as a best-effort guard for OLD-format writers (whose
- *   O_EXCL pidfile scheme does not honor flock). 第五轮(P1-4): this guard
+ *   O_EXCL pidfile scheme does not honor flock). round 5(P1-4): this guard
  *   is NOT a seamless rolling upgrade — an old writer that created an
  *   empty lock file before writing its pid creates a split-brain window
  *   that a pidfile read cannot close. The documented upgrade contract is
@@ -22,7 +22,7 @@
  *   held helper — a foreign close can never release another writer's
  *   kernel lock (flock is tied to the helper's open file description).
  *
- * Consistency contract (A 组):
+ * Consistency contract (A group):
  * - every id is validated BEFORE any file side effect (append, close,
  *   load, lock paths);
  * - append runs an expected-last-seq CAS against the file's REAL last
@@ -31,7 +31,7 @@
  *   so the in-memory EventLog never continues past a rejected write;
  * - the torn tail is repaired before EVERY append, and committed records
  *   (newline-terminated) are never truncated;
- * - load is strict (A 组 round 1): a partial final line is the only
+ * - load is strict (A group round 1): a partial final line is the only
  *   tolerated damage; everything else throws StoreCorruptionError.
  */
 
@@ -95,10 +95,10 @@ export class SessionStore {
 	readonly #fds = new Map<string, number>();
 	/** sessionId → the lock helper process THIS instance spawned. */
 	readonly #lockHelpers = new Map<string, ChildProcess>();
-	/** 第四轮(对抗): serialize concurrent acquireLock calls ON this instance —
+	/** round 4 (adversarial): serialize concurrent acquireLock calls ON this instance —
 	 *  two racing appends must not spawn two helpers and fight each other. */
 	readonly #lockAcquiring = new Map<string, Promise<void>>();
-	/** 第五轮(P1-1): serialize the WHOLE append critical section per session on
+	/** round 5(P1-1): serialize the WHOLE append critical section per session on
 	 *  this instance — lock check → CAS → write → fsync. A rejected write
 	 *  propagates to every append queued behind it, so a concurrent write can
 	 *  never land after a stale failure (which would fork memory and disk). */
@@ -125,19 +125,19 @@ export class SessionStore {
 	}
 
 	/**
-	 * Take the single-writer lock (第四轮): an EXCLUSIVE kernel flock held
+	 * Take the single-writer lock (round 4): an EXCLUSIVE kernel flock held
 	 * by a dedicated helper process. The KERNEL arbitrates every race —
 	 * there is no stale lock to delete and no takeover to race: a
 	 * contender either gets the flock (the previous holder is gone) or it
 	 * fails. The lock file also carries the holder's identity so an OLD-format
 	 * writer (which does not honor flock) still sees a live owner and
 	 * refuses to take over — a best-effort guard, NOT a seamless rolling
-	 * upgrade (第五轮 P1-4): the documented upgrade contract is quarantine —
+	 * upgrade (round 5 P1-4): the documented upgrade contract is quarantine —
 	 * stop every old-format process, then start the new version.
 	 * No recursion, no deletion, no window between NEW-format writers.
 	 */
 	private async acquireLock(sessionId: string): Promise<void> {
-		// 第五轮(P1-2): the lock is held only while the helper PROCESS is
+		// round 5(P1-2): the lock is held only while the helper PROCESS is
 		// alive — flock is bound to the helper's lifetime. A dead helper's
 		// entry must never be trusted as "locked".
 		if (this.lockHeld(sessionId)) return;
@@ -148,7 +148,7 @@ export class SessionStore {
 		return attempt;
 	}
 
-	/** 第五轮(P1-2): true only while the helper process is alive. */
+	/** round 5(P1-2): true only while the helper process is alive. */
 	private lockHeld(sessionId: string): boolean {
 		const child = this.#lockHelpers.get(sessionId);
 		if (child === undefined || child.pid === undefined || child.pid <= 0) return false;
@@ -168,7 +168,7 @@ export class SessionStore {
 				// be alive — its lock file names it. Refuse, and release
 				// the flock (the helper dies). A MODERN lock (with a token)
 				// naming OUR OWN process is a same-process writer's residue
-				// (第四轮: the file is advisory; the flock is the authority).
+				// (round 4: the file is advisory; the flock is the authority).
 				const legacy = readLockIdentity(lockPath);
 				if (legacy?.pid !== undefined && isAlive(legacy.pid) && (legacy.token === undefined || legacy.pid !== process.pid)) {
 					child.kill();
@@ -183,7 +183,7 @@ export class SessionStore {
 					// the file itself is advisory — the kernel lock holds
 				}
 				this.#lockHelpers.set(sessionId, child);
-				// 第五轮(P1-2): the helper's death removes the entry — the
+				// round 5(P1-2): the helper's death removes the entry — the
 				// flock dies with the process; a later append re-acquires
 				// (and fails honestly if a rival holds the flock now).
 				child.on("exit", () => {
@@ -195,7 +195,7 @@ export class SessionStore {
 			}
 			child.kill();
 			if (verdict === "SPAWN_FAILED") {
-				// 第四轮(对抗): the helper could not start (python3 missing) —
+				// round 4 (adversarial): the helper could not start (python3 missing) —
 				// an HONEST error, never a fake lock conflict.
 				throw new Error(
 					`session locking unavailable: the flock helper (python3) failed to start for ${sessionId}`,
@@ -205,7 +205,7 @@ export class SessionStore {
 			// exiting (its helper is dying). A FOREIGN live writer's identity
 			// is in the file — refuse at once. A MODERN lock (with a token)
 			// naming OUR OWN process is a same-process writer — it will
-			// release its helper; retry until it does (第四轮: never a
+			// release its helper; retry until it does (round 4: never a
 			// spurious self-conflict). A legacy bare-pid lock naming our own
 			// process is still a live foreign owner and is refused.
 			const legacy = readLockIdentity(lockPath);
@@ -215,7 +215,7 @@ export class SessionStore {
 			if (attempt >= 25) {
 				throw new Error(`session ${sessionId} is locked by another writer`);
 			}
-			// 第五轮(P1-3): a close() that landed while we waited ends the
+			// round 5(P1-3): a close() that landed while we waited ends the
 			// acquisition immediately — no 500ms wait, no lock at all.
 			if (this.#closed.has(sessionId)) {
 				throw new Error(`session store is closed for ${sessionId}`);
@@ -228,13 +228,13 @@ export class SessionStore {
 	 * Release OUR lock only: kill OUR helper. The kernel releases the
 	 * flock with the helper's death; the identity file is CLEARED so a
 	 * same-process successor is never mistaken for a live legacy owner —
-	 * the flock is the authority, the file is advisory (第四轮).
+	 * the flock is the authority, the file is advisory (round 4).
 	 */
 	private releaseLock(sessionId: string): void {
 		const child = this.#lockHelpers.get(sessionId);
 		if (child === undefined) return;
 		this.#lockHelpers.delete(sessionId);
-		// 第四轮(对抗): the identity is cleared BEFORE the helper dies — a
+		// round 4 (adversarial): the identity is cleared BEFORE the helper dies — a
 		// contender that acquires the flock in the release gap writes its
 		// own identity AFTER our clear, so it is never wiped by us (the
 		// file is advisory; the kernel flock is the authority).
@@ -254,7 +254,7 @@ export class SessionStore {
 			throw new Error(`session store is closed for ${sessionId}`);
 		}
 		this.pathFor(sessionId); // id validated before ANY file side effect
-		// 第五轮(P1-1): the WHOLE critical section is serialized per session
+		// round 5(P1-1): the WHOLE critical section is serialized per session
 		// on this instance — and a rejection PROPAGATES to every append
 		// queued behind it: a concurrent write can never land after a
 		// stale failure that poisoned the session.
@@ -271,7 +271,7 @@ export class SessionStore {
 	}
 
 	async #appendOnce(sessionId: string, runId: string, event: Event): Promise<void> {
-		// 第五轮(P1-3): close() may have returned while we waited — the
+		// round 5(P1-3): close() may have returned while we waited — the
 		// lifecycle barrier is re-checked after the lock acquisition.
 		if (this.#closed.has(sessionId)) {
 			throw new Error(`session store is closed for ${sessionId}`);
@@ -288,13 +288,13 @@ export class SessionStore {
 			fd = this.fd(sessionId);
 		} catch (err) {
 			// The lock was acquired but the JSONL could not be opened:
-			// release the lock — it must not leak (A 组).
+			// release the lock — it must not leak (A group).
 			this.releaseLock(sessionId);
 			throw err;
 		}
 		repairTornTail(fd);
 		// Expected-last-seq CAS against the file's REAL last committed seq
-		// (A 组): a stale preloaded handle cannot write a duplicate seq.
+		// (A group): a stale preloaded handle cannot write a duplicate seq.
 		const last = lastCommittedSeq(fd);
 		const expected = (last ?? -1) + 1;
 		if (event.seq !== expected) {
@@ -302,7 +302,7 @@ export class SessionStore {
 		}
 		appendFileSync(fd, `${JSON.stringify({ runId, ts: Date.now(), event })}\n`);
 		fsyncSync(fd);
-		// 第五轮(P1-3): a close() that landed during the write must not
+		// round 5(P1-3): a close() that landed during the write must not
 		// leave our helper behind.
 		if (this.#closed.has(sessionId)) {
 			this.releaseLock(sessionId);
@@ -344,7 +344,7 @@ export class SessionStore {
 		for (let i = 0; i < lines.length; i++) {
 			if (lines[i] !== "") nonEmpty.push(i);
 		}
-		// 二: a line WITHOUT a trailing newline is NOT committed — whether
+		// round 2: a line WITHOUT a trailing newline is NOT committed — whether
 		// or not it happens to parse. load and append must agree: append's
 		// torn-tail repair truncates exactly what load refuses to return.
 		const tolerantTail = !raw.endsWith("\n");
@@ -430,7 +430,7 @@ function isRecord(value: unknown): value is StoreRecord {
 }
 
 /**
- * Read a lock file's holder identity (第四轮). Formats:
+ * Read a lock file's holder identity (round 4). Formats:
  *   modern:  {"pid": 123, "token": "..."}
  *   legacy:  a bare pid — either the STRING "123" or, because
  *            JSON.parse("123") yields the NUMBER 123, the number itself.
@@ -523,7 +523,7 @@ function helperVerdict(child: ChildProcess): Promise<string> {
 		});
 		child.stdout?.on("end", () => done(buf.trim()));
 		child.stdout?.on("error", () => done("FAILED"));
-		// 第五轮(P2-1): a spawn failure (python3 missing, exec denied) is
+		// round 5(P2-1): a spawn failure (python3 missing, exec denied) is
 		// DISTINCT from a busy lock — the caller must not report "locked by
 		// another writer" for a missing helper. The verdict is SPAWN_FAILED
 		// and the acquire path checks exactly that string.

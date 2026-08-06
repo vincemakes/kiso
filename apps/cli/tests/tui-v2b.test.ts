@@ -118,7 +118,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// The input line's bold prompt exists (TUI v5 #16e: SGR 1).
 		expect(out).toContain("\x1b[1m");
 		expect(out).not.toContain("\x1b[38;5;75m");
-		// P3 (审查): the synchronized-output SET is the DEC private form —
+		// P3 (review): the synchronized-output SET is the DEC private form —
 		// \x1b[?2026h — the bare \x1b[2026h is silently ignored by
 		// terminals, so the anti-flicker never engages. Pinned here so the
 		// byte assertion catches a regression the terminal transcripts

@@ -3,7 +3,7 @@
  * centralized in render.ts: NO_COLOR or a non-TTY output resolves to the
  * EMPTY palette (pipes carry zero ANSI — the byte-level e2e assertions
  * guard it). The rhythm test pins the exact bytes of one turn's render
- * sequence (渲染序列→期望字节) exactly as the consumer composes them.
+ * sequence (the render sequence → the expected bytes) exactly as the consumer composes them.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -136,7 +136,7 @@ describe("v2a: the recolors", () => {
 	});
 });
 
-describe("v2a: the rhythm — 渲染序列→期望字节", () => {
+describe("v2a: the rhythm — the render sequence → the expected bytes", () => {
 	it("one turn's exact bytes: the summary hugs the result, the status hugs done, one blank, then the prompt", () => {
 		setNoColor(false);
 		setTTY(true);

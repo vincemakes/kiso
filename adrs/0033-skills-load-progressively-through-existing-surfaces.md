@@ -11,7 +11,7 @@ The skills stage (⑤) needed a way to hand the model reusable procedures
 no new loading semantics, nothing outside the extension contract
 (ADR-0028). The prior art — Claude Code's skills — established the
 SKILL.md + frontmatter shape, and a skill ecosystem that kiso should be
-able to ingest cold (生态冷启动). The design constraint: everything the
+able to ingest cold (an ecosystem cold start). The design constraint: everything the
 model needs must arrive through surfaces that already exist.
 
 ## Decision

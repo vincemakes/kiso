@@ -73,5 +73,5 @@ unless a higher layer already decided.
 - The runtime changes are deliberately minimal: `buildAdapter` exported
   (the CLI never imports provider SDKs directly), `AgentSession.setAdapter`,
   and the trust package's artifact set extended to config.json.
-- The D 区 request-level contract (ADR-0026 Amendment 1) is unaffected:
+- The D-region request-level contract (ADR-0026 Amendment 1) is unaffected:
   the system prompt does not read config at request time.

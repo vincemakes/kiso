@@ -1,5 +1,5 @@
 /**
- * 发现#11 — KISO_HOME is the ONE root: sessions, trust, the extension
+ * finding #11 — KISO_HOME is the ONE root: sessions, trust, the extension
  * scan, the mcp config default, and the skills default all derive from
  * it; the dedicated env vars (KISO_EXTENSIONS_DIR / KISO_MCP_CONFIG /
  * KISO_SKILLS_DIR) still override their own path. Here the CLI runs with
@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isolatedEnv, runCli } from "../../../tests/helpers/isolated-cli.mjs";
 
-describe("发现#11: KISO_HOME is the ONE root", () => {
+describe("finding #11: KISO_HOME is the ONE root", () => {
 	it("with ONLY KISO_HOME set, extensions scan from $KISO_HOME/extensions and sessions land under $KISO_HOME/sessions", () => {
 		const { env, dirs } = isolatedEnv();
 		delete env.KISO_EXTENSIONS_DIR; // strip the per-path overrides — KISO_HOME alone must work

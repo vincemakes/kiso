@@ -213,10 +213,10 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(di
 `;
 		const out2 = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000, env });
 		expect(out2).toContain("done"); // the trajectory completed
-		expect((out2.match(/approve write_file/g) ?? [])).toHaveLength(1); // ONLY the new request — 已裁决的不再问
+		expect((out2.match(/approve write_file/g) ?? [])).toHaveLength(1); // ONLY the new request — already-ruled ones are not re-asked
 		expect(out2).not.toContain("read_file needs approval");
 		expect(out2).not.toContain("(a)bandon"); // no uncertain executions
-		expect(readFileSync(marker, "utf8").trim().split("\n")).toEqual(["read_file", "write_file", "shell", "write_file"]); // policy 不重跑
+		expect(readFileSync(marker, "utf8").trim().split("\n")).toEqual(["read_file", "write_file", "shell", "write_file"]); // the policy does not re-run
 		// Both writes actually landed.
 		expect(readFileSync(join(workdir, "out.txt"), "utf8")).toBe("hello");
 		expect(readFileSync(join(workdir, "out2.txt"), "utf8")).toBe("world");

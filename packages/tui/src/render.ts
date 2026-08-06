@@ -3,7 +3,7 @@
  * input, produce the lines a human sees. Colors are raw ANSI — no
  * dependencies.
  *
- * 手感批 C5: the input is the tui's OWN data shape (RenderInput), never
+ * the ergonomics batch C5: the input is the tui's OWN data shape (RenderInput), never
  * kiso-core's Event — the CLI translates Event → RenderInput. The tui
  * package has ZERO kiso-core imports: input is data, output is bytes.
  */
@@ -35,7 +35,7 @@ export function palette(): Palette {
 }
 
 /**
- * E 组/八: strip terminal-injection vectors from MODEL/TOOL text before it
+ * E group/round 8: strip terminal-injection vectors from MODEL/TOOL text before it
  * reaches the terminal — ESC, C0 (except \t \n), C1, CR, backspace, and
  * bidi overrides. The kiso colors are applied by render, not by the data.
  * EVERY externally-sourced string must pass through this before any output.
@@ -76,7 +76,7 @@ export interface RenderResult {
 }
 
 /**
- * 手感批 C5 — the render input, the tui's OWN data shape: the subset of
+ * the ergonomics batch C5 — the render input, the tui's OWN data shape: the subset of
  * an event stream the renderer reads, keyed by type. The CLI translates
  * its Event stream into this (Event → RenderInput) before rendering —
  * the tui package never imports kiso-core. Field names mirror the
@@ -120,7 +120,7 @@ export type RenderInput =
  * Render one event. `text` may be a continuation (text_delta appends to the
  * current line); `newline` says whether the line is complete.
  *
- * 自举 P1: `prevThinking` marks a thinking delta that continues the SAME
+ * bootstrap P1: `prevThinking` marks a thinking delta that continues the SAME
  * block — it renders appended to the segment, without the … prefix. The
  * consumer closes the segment with a newline at the next non-thinking
  * event.
@@ -158,7 +158,7 @@ export function renderEvent(ev: RenderInput, prevThinking = false, resolvePath: 
 		case "text_end":
 			return { text: "\n", newline: true, prompt: false };
 		case "thinking":
-			// 自举 P1/v2b: the CONSUMER buffers each thinking block and folds
+			// bootstrap P1/v2b: the CONSUMER buffers each thinking block and folds
 			// it to ONE dim line (foldThinking); this render is the generic
 			// path for tests. The full block goes to /think.
 			return {
@@ -190,7 +190,7 @@ export function renderEvent(ev: RenderInput, prevThinking = false, resolvePath: 
 			};
 		}
 		case "permission_requested":
-			// 八: the tool NAME is model text — escaped like everything else.
+			// round 8: the tool NAME is model text — escaped like everything else.
 			return {
 				text: `⏸ ${escapeTerminal(ev.name)} needs approval ${p.dim}${approvalDetail(ev.name, ev.input, resolvePath)}${p.reset} `,
 				newline: false,
@@ -242,7 +242,7 @@ export function renderEvent(ev: RenderInput, prevThinking = false, resolvePath: 
 }
 
 /**
- * The approval prompt detail (Area 5/八): the human must be able to see
+ * The approval prompt detail (Area 5/round 8): the human must be able to see
  * EVERYTHING they are approving. The shell command is shown in full; the
  * path is the CANONICAL one the tool will touch; write/edit show the FULL
  * content (never a truncated tail that hides a dangerous payload). The
@@ -263,7 +263,7 @@ function approvalDetail(name: string, input: Record<string, unknown>, resolvePat
 }
 
 /**
- * B 区: one-line summary of a completed tool call, e.g.
+ * B area: one-line summary of a completed tool call, e.g.
  *   ✓ edit src/foo.ts (+12 -3)    ✓ read src/bar.ts (140 lines)
  *   ✗ shell npm test (exit 1)
  * edit/write show +/- line counts, read shows lines, shell shows the exit
@@ -332,7 +332,7 @@ export function kUnit(value: number | null): string {
 	return String(value);
 }
 
-/** B 区: usage data gathered from the run's usage events. */
+/** B area: usage data gathered from the run's usage events. */
 export interface RunUsage {
 	readonly in: number | null;
 	readonly out: number | null;
@@ -341,9 +341,9 @@ export interface RunUsage {
 }
 
 /**
- * B 区/v2a: the one-line status bar after a terminal, e.g.
+ * B area/v2a: the one-line status bar after a terminal, e.g.
  *   [turn 3 · in 12.4k out 1.8k · cache 9.2k · ctx ~14%]
- * 降噪: unknown fields are OMITTED ENTIRELY (有什么显什么); a fully unknown
+ * Denoising: unknown fields are OMITTED ENTIRELY (show what there is); a fully unknown
  * usage → null (the caller prints nothing); faux mode → [turn N · faux].
  * All data comes from usage events; ctx is the approximate estimate
  * passed in (chars/4 vs the window), marked with ~.
@@ -364,7 +364,7 @@ export function renderStatusLine(turn: number, usage: RunUsage, ctxRatio: number
 
 /**
  * v2a rhythm — the exact bytes after a terminal event: the status line
- * hugs the terminal (有什么显什么 — omitted when there is nothing to show),
+ * hugs the terminal (show what there is — omitted when there is nothing to show),
  * then EXACTLY one blank line before the next prompt. The consumer prints
  * this verbatim; the render tests pin the sequence.
  */
@@ -445,6 +445,6 @@ export function renderRecap(s: RecapStats): string {
 /** One-line summary of a session, for `kiso sessions`. */
 export function renderSessionLine(meta: { id: string; title: string; events: number; runs: number; updatedAt: number }): string {
 	const when = meta.updatedAt ? new Date(meta.updatedAt).toISOString().slice(0, 16) : "—";
-	// 八: the title is the user's first prompt — model/user text, escaped.
+	// round 8: the title is the user's first prompt — model/user text, escaped.
 	return `${meta.id.padEnd(24)} ${meta.runs} runs ${String(meta.events).padStart(5)} events  ${when}  ${escapeTerminal(meta.title)}`;
 }

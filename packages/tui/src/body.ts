@@ -70,7 +70,7 @@ export type BodyCell =
 	| {
 			// ⑥ todo round: the durable checklist cell — the CLI's
 			// translation of a do-not-compact-tagged todo_set result.
-			// Frozen immediately (done: true) — 冻结语义照旧.
+			// Frozen immediately (done: true) — the freeze semantics as usual.
 			kind: "checklist";
 			header: string;
 			items: { text: string; status: "pending" | "active" | "done" }[];
@@ -506,7 +506,7 @@ export class Body {
 				// rail — a bright-white BOLD ▍ per line, then the text (the
 				// reverse-video block is RETIRED: it washed out on light
 				// themes). Multi-line whole: every line carries the rail
-				// (多行连贯); resize-safe; NO_COLOR → the rail renders plain.
+				// (coherent across lines); resize-safe; NO_COLOR → the rail renders plain.
 				return cell.text.split("\n").map((l) => `${p.bold}▍${p.reset} ${escapeTerminal(l)}`);
 			case "thinking": {
 				const block = cell.text;
@@ -555,7 +555,7 @@ export class Body {
 				// TUI v5 #16e: the inline-code tint — backtick spans in
 				// assistant body text, matched PER LINE after the wrap (a
 				// span opened on one line and closed on another does NOT
-				// match — 跨行不匹配). NO_COLOR → the codes are empty →
+				// match — no cross-line matching). NO_COLOR → the codes are empty →
 				// byte-identical.
 				return wrapped.length > 0 ? wrapped.map((l) => colorInlineCode(l)) : [""];
 			}
@@ -567,7 +567,7 @@ export class Body {
 				// SGR is applied at COMPOSITION time (renderRecap/startupBanner),
 				// and model/tool content was already escapeTerminal'd there.
 				// Re-escaping at render STRIPPED the ESC from the SGR — the
-				// literal "[38;5;75m▞[0m" garbage the user saw (the #16 乱码,
+				// literal "[38;5;75m▞[0m" garbage the user saw (the #16 mojibake,
 				// also the banner's dim). Verbatim: the injection guard lives
 				// at composition, not here.
 				return cell.lines;

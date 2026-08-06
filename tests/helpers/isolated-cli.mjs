@@ -1,5 +1,5 @@
 /**
- * P2 (测试卫生) — the shared CLI-e2e isolation helper.
+ * P2 (test hygiene) — the shared CLI-e2e isolation helper.
  *
  * EVERY CLI e2e must run against a FULLY isolated environment: the host's
  * ~/.kiso state (installed extensions, mcp.json, skills) must never leak

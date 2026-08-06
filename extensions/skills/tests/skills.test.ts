@@ -99,7 +99,7 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 		expect(ext.systemPrompt?.append).toContain("file-link");
 	});
 
-	it("⑪ KISO_HOME is the ONE root — the skills dir defaults under it (发现#11)", async () => {
+	it("⑪ KISO_HOME is the ONE root — the skills dir defaults under it (finding #11)", async () => {
 		const dir = skillDir();
 		const home = join(dir, "home");
 		mkdirSync(join(home, "skills", "home-skill"), { recursive: true });
@@ -114,7 +114,7 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 		}
 	});
 
-	it("⑪ no KISO_HOME, no override — the default derives from HOME (发现#11)", async () => {
+	it("⑪ no KISO_HOME, no override — the default derives from HOME (finding #11)", async () => {
 		const dir = skillDir();
 		const fakeHome = join(dir, "fake-home");
 		mkdirSync(join(fakeHome, ".kiso", "skills", "home-skill"), { recursive: true });
@@ -167,14 +167,14 @@ describe("⑤ skills: tier 2 — read_skill", () => {
 	});
 });
 
-describe("⑤ safe-defaults (本轮唯一 extensions/ 外改动)", () => {
+describe("⑤ safe-defaults (the round's only change outside extensions/)", () => {
 	it("read_skill joins the allow list — local user-installed docs, read_file trust", async () => {
 		const mod = (await import(pathToFileURL(join(new URL("../../../examples", import.meta.url).pathname, "extensions", "safe-defaults.mjs")).href)) as {
 			default: KisoExtension;
 		};
 		const decide = mod.default.approvals![0]!.decide;
 		expect(decide({ name: "read_skill", input: {} }, ctx)).toMatchObject({ action: "allow" });
-		expect(decide({ name: "mcp__status", input: {} }, ctx)).toMatchObject({ action: "allow" }); // 发现#10 round: zero-arg read-only
+		expect(decide({ name: "mcp__status", input: {} }, ctx)).toMatchObject({ action: "allow" }); // finding #10 round: zero-arg read-only
 		expect(decide({ name: "write_file", input: {} }, ctx)).toMatchObject({ action: "ask" });
 	});
 });

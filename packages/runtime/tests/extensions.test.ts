@@ -7,7 +7,7 @@
  * names appear in the error. AgentSession config accepts extensions: their
  * tools join the registry (a collision with a built-in name is a startup
  * error at agent creation), their hooks compose AFTER the agent's own
- * (既有先行), and their approvals enter the loop's policy chain.
+ * (the existing come first), and their approvals enter the loop's policy chain.
  */
 
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -117,7 +117,7 @@ describe("E1: AgentSession integration", () => {
 		).toThrow(/already registered: read_file/i);
 	});
 
-	it("extension hooks compose AFTER the agent's own (既有先行)", async () => {
+	it("extension hooks compose AFTER the agent's own (the existing come first)", async () => {
 		const order: string[] = [];
 		const dir = extDir();
 		const agent = createAgent({
@@ -192,9 +192,9 @@ describe("E1: AgentSession integration", () => {
 	});
 });
 
-describe("裁决 A (E1 ask 语义修正): no extensions — the static policy still governs", () => {
+describe("ruling A (the E1 ask semantics fix): no extensions — the static policy still governs", () => {
 	it("the CLI's static default deny for unknown tools is untouched — denial, never a pause", async () => {
-		// 条款1 regression: with NO extension policies the static automated
+		// the clause-1 regression: with NO extension policies the static automated
 		// policy (the CLI's PermissionPolicy shape: default deny) still
 		// answers for tools without a rule — byte-for-byte the pre-ask-fix
 		// behavior. The ask re-routing must not leak into extension-less runs.
@@ -221,7 +221,7 @@ describe("裁决 A (E1 ask 语义修正): no extensions — the static policy st
 	});
 });
 
-describe("发现#8 / P3 (dogfood #5)", () => {
+describe("finding #8 / P3 (dogfood #5)", () => {
 	it("disposeExtensions runs every dispose; a failure never blocks the rest; a hung dispose is abandoned at 5s", async () => {
 		const order: string[] = [];
 		await disposeExtensions([
@@ -270,7 +270,7 @@ describe("发现#8 / P3 (dogfood #5)", () => {
 	});
 });
 
-describe("E2 (收尾): extension systemPrompt appends", () => {
+describe("E2 (wrap-up): extension systemPrompt appends", () => {
 	/** A minimal adapter that captures the REQUEST it was given — the
 	 *  systemPrompt is invisible in the CLI, so the runtime layer IS the
 	 *  topmost entry for this surface (the spec's stated deviation). */
@@ -315,7 +315,7 @@ describe("E2 (收尾): extension systemPrompt appends", () => {
 	});
 });
 
-describe("E1-P2 (复审): onUserMessage composes as a pipe with veto short-circuit", () => {
+describe("E1-P2 (re-review): onUserMessage composes as a pipe with veto short-circuit", () => {
 	/** A minimal adapter that records the messages it received (and whether it
 	 *  was called at all) — the veto paths must never reach it. */
 	const spyAdapter = (onStream: (messages: readonly Message[]) => void): Adapter => ({
@@ -404,7 +404,7 @@ describe("E1-P2 (复审): onUserMessage composes as a pipe with veto short-circu
 		const session = await agent.session({ id: "p2-3" });
 		const out: Event[] = [];
 		for await (const ev of session.run("go")) out.push(ev);
-		expect(existingSeen).toBe("go"); // 既有先行 — the existing hook saw the original
+		expect(existingSeen).toBe("go"); // the existing come first — the existing hook saw the original
 		expect(extCalled).toBe(false); // the existing veto short-circuited the extension
 		expect(providerCalled).toBe(false);
 		expect(out.at(-1)).toMatchObject({ type: "terminal", outcome: { kind: "completed" } });

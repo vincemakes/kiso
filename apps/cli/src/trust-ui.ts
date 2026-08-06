@@ -1,5 +1,5 @@
 /**
- * 手感批 B4 (pure move) — the human-facing question UI: the E3 project
+ * The ergonomics batch B4 (pure move) — the human-facing question UI: the E3 project
  * trust gate (ADR-0037), the mcp/skills env merges, the generic ask()
  * (approvals, trust, uncertain resolutions), and the uncertain-execution
  * decisions. All bodies moved verbatim from index.ts.
@@ -28,7 +28,7 @@ export function interactivePrompt(): string {
  * forever: approvals auto-deny and uncertain executions auto-abandon, both
  * printed loudly — never silently ignored, never hung (Area 7).
  *
- * 八/十: the question is ABORTABLE — a pending rl.question is registered in
+ * rounds 8/10: the question is ABORTABLE — a pending rl.question is registered in
  * `pendingAsk` and the SIGINT handler resolves it with the CANCELLED
  * sentinel. The rl.question callback is NOT left dangling: an input that
  * arrives after the cancellation is re-emitted as a fresh "line" — it
@@ -92,7 +92,7 @@ export function ask(input: LineInput, question: string): Promise<string | typeof
 export async function resolveProjectTrust(input: LineInput): Promise<ProjectArtifacts | null> {
 	const artifacts = await projectArtifacts(process.cwd());
 	if (artifacts === null) return null; // no .kiso artifacts — nothing to gate
-	// 合并轮 B: projectTrust "never" (user config) — the gate auto-refuses:
+	// merge round B: projectTrust "never" (user config) — the gate auto-refuses:
 	// no ask, no record, nothing loads. There is deliberately no "always".
 	if (resolveProjectTrustPolicy(loadUserConfig() ?? {}) === "never") {
 		bodyLog(`[project .kiso] projectTrust: never — ${artifacts.root} not loaded`);
@@ -222,7 +222,7 @@ export async function resolveUncertains(
 			`⚠ interrupted execution: ${escapeTerminal(uncertain.name)} (${uncertain.executionId}) — did it apply? (r)erun / (a)bandon: `,
 		);
 		if (isCancelled() || answer === CANCELLED) {
-			// 十: a cancellation NEVER records a verdict — the execution
+			// round 10: a cancellation NEVER records a verdict — the execution
 			// stays uncertain and durable; no rerun/abandoned is fabricated.
 			return;
 		}

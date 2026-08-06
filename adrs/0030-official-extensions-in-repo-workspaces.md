@@ -13,7 +13,7 @@ the design: **kernel zero-diff** (the four kernel packages and the E1
 loader must not change — a diff is a scope violation) and **soft failure
 of external resources** (a broken MCP server must not brick the host).
 
-发现#8 surfaced during the dispose lifecycle round: an MCP stdio server's
+finding #8 surfaced during the dispose lifecycle round: an MCP stdio server's
 transport reader held the HOST's event loop alive after the CLI exited —
 the process never terminated, and the SIGKILL of a mid-connect CLI left it
 stuck in exit. The fix required a lifecycle hook the contract did not have.
@@ -29,14 +29,14 @@ stuck in exit. The fix required a lifecycle hook the contract did not have.
    README guides both.
 2. **Kernel zero-diff is the clause** — the official extensions prove the
    contract by exercising ONLY its seven surfaces (ADR-0028). The one
-   kernel change the stage produced (裁决 A, ADR-0029) was a correction of
+   kernel change the stage produced (ruling A, ADR-0029) was a correction of
    the contract itself, decided separately.
 3. **External resources fail soft**: an MCP server that cannot connect is
    an error in `mcp__status`, not a startup failure — the other servers
    keep working. Loading a broken skill skips it with a warning line.
    Loud failure is reserved for the EXTENSION'S OWN file being broken
    (the loader's convention), never for the world it talks to.
-4. **dispose lifecycle (发现#8)**: `KisoExtension.dispose?` — the loader
+4. **dispose lifecycle (finding #8)**: `KisoExtension.dispose?` — the loader
    calls it on exit, guarded per extension (one failure never blocks the
    rest), capped at 5s, with the abandoned-cap timer unref'd so a prompt
    dispose never leaves the cap timer holding the event loop. The MCP
@@ -64,7 +64,7 @@ kernel diff, if any, is decided on its own merits, never smuggled in.
 ## Evidence
 
 - Commits: `67ceefe` (MCP bridge), `d64c6a6` (subagents), `39600cf`
-  (发现#8 dispose lifecycle + the unref'd-timer fix), `29a01af` (skills).
+  (finding #8 dispose lifecycle + the unref'd-timer fix), `29a01af` (skills).
 - Tests: `extensions/mcp/tests/dispose-e2e.test.ts` (prompt exit + zero
   orphans, id-keyed), `extensions/mcp/tests/mcp.test.ts` (soft failure,
   connect timeout), `extensions/subagent/tests`, `extensions/skills/tests`.

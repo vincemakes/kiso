@@ -1,12 +1,12 @@
 /**
- * A 组 — full per-variant runtime schema validation: valid JSON that is
+ * A group — full per-variant runtime schema validation: valid JSON that is
  * not a well-formed kiso event of its declared variant is corruption.
  */
 
 import { describe, expect, it } from "vitest";
 import { isKisoEvent } from "../src/index.js";
 
-describe("isKisoEvent per-variant schema (A 组)", () => {
+describe("isKisoEvent per-variant schema (A group)", () => {
 	it("accepts well-formed events of every persisted variant", () => {
 		expect(isKisoEvent({ seq: 0, type: "stop", reason: "end_turn" })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "text_delta", text: "hi" })).toBe(true);
@@ -55,7 +55,7 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ seq: 0, type: "permission_decided", decisionId: "d-1", decision: "approved", decidedBy: 42 })).toBe(false);
 	});
 
-	it("五: rejects illegal enum values and bad optional fields", () => {
+	it("round 5: rejects illegal enum values and bad optional fields", () => {
 		// stop reason outside the closed union
 		expect(isKisoEvent({ seq: 0, type: "stop", reason: "keep_going" })).toBe(false);
 		// tool errorKind outside the union
@@ -72,7 +72,7 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ seq: 0, type: "tool_execution_resolved", executionId: "ex-1", callId: "c1", resolution: "later" })).toBe(false);
 	});
 
-	it("五: validates every Terminal union member by its own required fields", () => {
+	it("round 5: validates every Terminal union member by its own required fields", () => {
 		expect(isKisoEvent({ seq: 0, type: "terminal", outcome: { kind: "max_tokens" } })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "terminal", outcome: { kind: "max_turns", turns: 3 } })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "terminal", outcome: { kind: "max_turns" } })).toBe(false); // turns required
@@ -86,7 +86,7 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ seq: 0, type: "terminal", outcome: { kind: "halfway" } })).toBe(false); // unknown kind
 	});
 
-	it("五: enforces the Usage known/token invariant", () => {
+	it("round 5: enforces the Usage known/token invariant", () => {
 		const base = { inputTokens: null, outputTokens: null, cacheRead: null, cacheWrite: null };
 		expect(isKisoEvent({ seq: 0, type: "usage", known: false, ...base })).toBe(true);
 		// known:false with a NUMBER is a faked token — rejected
@@ -99,7 +99,7 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ seq: 0, type: "usage", known: true, inputTokens: -1, outputTokens: null, cacheRead: null, cacheWrite: null })).toBe(false);
 	});
 
-	it("五: validates ContentBlock shapes (text/image) wherever content blocks appear", () => {
+	it("round 5: validates ContentBlock shapes (text/image) wherever content blocks appear", () => {
 		const blockContent = [
 			{ type: "text", text: "caption" },
 			{ type: "image", sourceType: "base64", data: "cG5n", mediaType: "image/png" },
@@ -107,7 +107,7 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		];
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: blockContent })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: blockContent, isError: false })).toBe(true);
-		// a rewritten user input may carry blocks too (五)
+		// a rewritten user input may carry blocks too (round 5)
 		expect(isKisoEvent({ seq: 0, type: "user_input_replaced", replaces: 0, content: blockContent })).toBe(true);
 		// bad shapes
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: [{ type: "text" }] })).toBe(false);
@@ -116,7 +116,7 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: ["a plain string in the array"] })).toBe(false);
 	});
 
-	it("五: input must be a plain object — null and arrays are rejected", () => {
+	it("round 5: input must be a plain object — null and arrays are rejected", () => {
 		expect(isKisoEvent({ seq: 0, type: "tool_call_end", callId: "c1", name: "x", input: null })).toBe(true); // parse failure is a documented fact
 		expect(isKisoEvent({ seq: 0, type: "tool_call_end", callId: "c1", name: "x", input: ["a", "b"] })).toBe(false);
 		expect(isKisoEvent({ seq: 0, type: "tool_execution_started", executionId: "ex-1", callId: "c1", name: "x", input: null })).toBe(false);
@@ -125,9 +125,9 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ seq: 0, type: "permission_requested", decisionId: "d-1", callId: "c1", name: "x", input: { a: 1 } })).toBe(true);
 	});
 
-	it("五: validates compacted.cleared elements and the seq itself", () => {
+	it("round 5: validates compacted.cleared elements and the seq itself", () => {
 		expect(isKisoEvent({ seq: 0, type: "compacted", cleared: [{ eventSeq: 3, callId: "c1", content: "m" }] })).toBe(true);
-		// 第四轮: a v1 entry WITHOUT eventSeq is legal (round-three sessions)
+		// round 4: a v1 entry WITHOUT eventSeq is legal (round-three sessions)
 		// — but it must still be a string callId/content pair.
 		expect(isKisoEvent({ seq: 0, type: "compacted", cleared: [{ callId: "c1", content: "m" }] })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "compacted", cleared: [{ eventSeq: "3", callId: "c1", content: "m" }] })).toBe(false);
@@ -158,7 +158,7 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 	});
 });
 
-	it("九: counts are non-negative SAFE integers — no negatives, NaN, Infinity, or fractions", () => {
+	it("round 9: counts are non-negative SAFE integers — no negatives, NaN, Infinity, or fractions", () => {
 		expect(isKisoEvent({ seq: 0, type: "stop", reason: "end_turn" })).toBe(true);
 		expect(isKisoEvent({ seq: 1.5, type: "stop", reason: "end_turn" })).toBe(false);
 		expect(isKisoEvent({ seq: Number.NaN, type: "stop", reason: "end_turn" })).toBe(false);
@@ -171,13 +171,13 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ seq: 0, type: "terminal", outcome: { kind: "error", error: { code: "rate_limit", status: 429, retryable: true, message: "m" } } })).toBe(true);
 	});
 
-	it("九: known:true usage must report at least one real token", () => {
+	it("round 9: known:true usage must report at least one real token", () => {
 		expect(isKisoEvent({ seq: 0, type: "usage", known: true, inputTokens: 1, outputTokens: null, cacheRead: null, cacheWrite: null })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "usage", known: true, inputTokens: null, outputTokens: null, cacheRead: null, cacheWrite: null })).toBe(false);
 		expect(isKisoEvent({ seq: 0, type: "usage", known: true, inputTokens: 1.5, outputTokens: null, cacheRead: null, cacheWrite: null })).toBe(false);
 	});
 
-	it("九: image url/base64 payloads are strictly exclusive", () => {
+	it("round 9: image url/base64 payloads are strictly exclusive", () => {
 		const url = { type: "image", sourceType: "url", url: "https://x/y.png" };
 		const base64 = { type: "image", sourceType: "base64", data: "cG5n", mediaType: "image/png" };
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: [url] })).toBe(true);
@@ -187,7 +187,7 @@ describe("isKisoEvent per-variant schema (A 组)", () => {
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: [{ type: "image", sourceType: "base64", data: "x", mediaType: "image/png", url: "y" }] })).toBe(false);
 	});
 
-	it("九: errorKind is forbidden on a non-error tool_result", () => {
+	it("round 9: errorKind is forbidden on a non-error tool_result", () => {
 		expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: "ok", isError: false })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: "ok", isError: false, errorKind: "fatal" })).toBe(false);
 		expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: "boom", isError: true, errorKind: "fatal" })).toBe(true);

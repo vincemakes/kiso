@@ -100,7 +100,7 @@ events emitted per call in deterministic order.
 
 ## Decision
 
-1. **流中执行 (streaming execution).** A `tool_call_end` that passes
+1. **Streaming execution.** A `tool_call_end` that passes
    validation and the policy chain LAUNCHES its execution immediately,
    while the model stream continues. The launched executions' events land
    through a queue the stream loop drains on every stream event — their
@@ -111,7 +111,7 @@ events emitted per call in deterministic order.
 2. **The window.** At most `WINDOW_SIZE = 4` executions run concurrently.
    The window bounds the turn's executions; the next turn has its own.
 
-3. **The ask conservative order (保守序).** The DECIDE phases run in CALL
+3. **The ask conservative order.** The DECIDE phases run in CALL
    order (a serialized chain): when a call's verdict is `ask`, its human
    resolution gates the calls AFTER it — they start only once the human
    decides, whatever the outcome (the context may have changed when the
@@ -128,12 +128,13 @@ events emitted per call in deterministic order.
 
 5. **A voided turn (forged event, post-stop violation, a non-compatible
    stop reason) fires the violated signal**: the started executions finish
-   and their receipts land BEFORE the terminal (已开跑照落 receipt); the
-   not-started bail without a started event (abort 语义 — clean, never
-   uncertain). The C 组 stop-reason verification now VOIDS the turn
+   and their receipts land BEFORE the terminal (receipts for already-launched
+   executions); the not-started bail without a started event (abort semantics
+   — clean, never uncertain). The C group stop-reason verification now VOIDS
+   the turn
    instead of preventing the execution — the calls were already launched.
 
-6. **The byte discipline (字节纪律).** The projection buffers ONE turn's
+6. **The byte discipline.** The projection buffers ONE turn's
    tool results and emits them in CALL order at the turn boundary —
    the completion order (physical seq) never enters the derived messages.
    The same logical turn projects byte-identically whatever the completion
@@ -153,7 +154,7 @@ events emitted per call in deterministic order.
 - The kernel grew: core measured 2,034/2,000 at delivery — the growth is
   this amendment's spec-mandated increment.
 
-### 归位式抽取 (the gate ruling, same record)
+### The return-in-place extraction (the gate ruling, same record)
 
 The gate ruling (2026-08-06): **no recalibration — the escape hatch is
 relocation.** The `summarize` orchestration (kernel/summarize.ts, ~120

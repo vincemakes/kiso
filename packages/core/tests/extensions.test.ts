@@ -7,7 +7,7 @@
  * durably with the deciding extension's name (decidedBy), never pausing
  * for a human. A policy that throws counts as ask. A durable decision
  * recorded before a crash takes effect on resume: the chain never re-runs
- * (同构 alreadyReplaced — the deterministic decisionId is the key).
+ * (isomorphic alreadyReplaced — the deterministic decisionId is the key).
  */
 
 import { describe, expect, it } from "vitest";
@@ -134,7 +134,7 @@ describe("E1: the policy chain composes deny > ask > allow", () => {
 			// drain
 		}
 		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false);
-		expect(hookRan).toBe(false); // 全 allow 自动放行 — the hook never ran
+		expect(hookRan).toBe(false); // an all-allow chain auto-approves — the hook never ran
 		const ds = decided(log);
 		expect(ds).toHaveLength(1);
 		expect(ds[0]).toMatchObject({ decision: "approved", decidedBy: "reader" });
@@ -187,7 +187,7 @@ describe("E1: policy failures and absent flows degrade honestly", () => {
 		expect(log.all.some((e) => e.type === "tool_execution_started")).toBe(false); // never executed
 	});
 
-	it("裁决 A: ask with a hook but NO approval channel still degrades — the static hook never speaks for an ask", async () => {
+	it("ruling A: ask with a hook but NO approval channel still degrades — the static hook never speaks for an ask", async () => {
 		// An ask means "a HUMAN must decide" — the automated policy hook must
 		// not answer for the human, not even with an allow. The no-flow
 		// judgment keys on resolveApproval, not on the hook's presence.
@@ -246,7 +246,7 @@ describe("E1: a durable decision takes effect on resume — the chain never re-r
 		})) {
 			// drain
 		}
-		expect(calls).toBe(0); // policy 不重跑
+		expect(calls).toBe(0); // the policy never re-runs
 		expect(decided(log)).toHaveLength(1); // nothing new recorded
 		expect(log.all.some((e) => e.type === "tool_result" && e.content === "ok")).toBe(true); // the durable approval executed
 	});

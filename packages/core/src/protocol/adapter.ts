@@ -58,7 +58,7 @@ export interface StreamOptions {
 }
 
 /**
- * The NARROW event set an adapter may produce (五). Everything else in the
+ * The NARROW event set an adapter may produce (round 5). Everything else in the
  * union is kernel-owned — `terminal`, `tool_execution_*`, `permission_*`,
  * `user_input`, `compacted`, `summarized`, `uncertain_pending`,
  * `user_input_replaced`, `assistant_start`/`assistant_end` — and a
@@ -96,7 +96,7 @@ export const ADAPTER_EVENT_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * 第五轮(P1-8): the trust gate validates STRUCTURE, not just the type name.
+ * round 5(P1-8): the trust gate validates STRUCTURE, not just the type name.
  * A third-party adapter can emit a legal type with illegal fields (a stop
  * without a reason, a usage with known:true and no token, an array tool
  * input) — persisted, that would poison the next load. The gate reuses the

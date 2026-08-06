@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 8 8" shape-rendering="crispEdges">
-  <!-- kiso(基礎) logo: an 8x8 pixel block-letter K — dark blocks on a
-       transparent background. The bottom row is solid: the 基礎/磐石
+  <!-- kiso (foundation) logo: an 8x8 pixel block-letter K — dark blocks on a
+       transparent background. The bottom row is solid: the foundation/bedrock
        (foundation) the framework is named for. -->
   <rect x="0" y="0" width="1" height="1" fill="#1a1a1a"/>
   <rect x="6" y="0" width="2" height="1" fill="#1a1a1a"/>

@@ -1,5 +1,5 @@
 /**
- * 第四轮(对抗审查) — race fixes the review found.
+ * round 4 (adversarial review) — race fixes the review found.
  *
  * 1. A verdict the human GAVE in the same instant an abort lands must be
  *    RECORDED, exactly once — never lost (approval and uncertainty).
@@ -38,8 +38,8 @@ function failingAgent(store: SessionStore, script: FauxScript = CALL) {
 	});
 }
 
-describe("adversarial races (第四轮)", () => {
-	it("an OFFLINE uncertain verdict is recorded exactly once and a later resume cannot double-record it (裁决 #12)", async () => {
+describe("adversarial races (round 4)", () => {
+	it("an OFFLINE uncertain verdict is recorded exactly once and a later resume cannot double-record it (ruling #12)", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-race-"));
 		const store = new SessionStore(dir);
 		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
@@ -162,7 +162,7 @@ describe("adversarial races (第四轮)", () => {
 		const decided = durable.filter((e) => e.type === "permission_decided");
 		expect(decided).toHaveLength(1);
 		expect(decided[0]).toMatchObject({ decision: "approved" });
-		// B 组: the decision is bound to the invocation — the recovery
+		// B group: the decision is bound to the invocation — the recovery
 		// fallback (not the flush) carries the callId.
 		expect((decided[0] as { callId?: string }).callId).toBe("c1");
 	});

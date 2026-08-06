@@ -1,5 +1,5 @@
 /**
- * 横幅 — the block-letter startup logo. TTY only: pipes, e2e drivers, and
+ * The banner — the block-letter startup logo. TTY only: pipes, e2e drivers, and
  * CI see byte-for-byte the historical output (the existing e2e assertions
  * are untouched — this is the proof). The piped half of this test pins the
  * absence; the PTY half pins the presence.

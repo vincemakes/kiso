@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Release truth (九): the tree must be whitespace-clean.
+ * Release truth (round 9): the tree must be whitespace-clean.
  *
  * - no trailing whitespace on any tracked file;
  * - every tracked file ends with a newline (an EOF without one is a

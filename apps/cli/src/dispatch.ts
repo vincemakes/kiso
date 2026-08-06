@@ -1,5 +1,5 @@
 /**
- * 手感批 B4 (pure move) — the ONE dispatcher: slash commands, exit, and
+ * The ergonomics batch B4 (pure move) — the ONE dispatcher: slash commands, exit, and
  * turns. The bodies moved verbatim from chat()'s closure; chat provides
  * the context (the chain, the run state, the prompt arming).
  */
@@ -66,7 +66,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		return;
 	}
 	if (trimmed === "/last") {
-		// B 区/v2d: print the FULL input/output of the most recent tool
+		// B area/v2d: print the FULL input/output of the most recent tool
 		// call — the body holds it (the ToolCell's final state). Runs on
 		// the chain: after any in-flight turn completes.
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
@@ -84,7 +84,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		return;
 	}
 	if (trimmed === "/status") {
-		// B 区: session id, durable event count, and the ~ context
+		// B area: session id, durable event count, and the ~ context
 		// estimate — all read straight from the live session, nothing
 		// stored separately. Runs on the chain after any in-flight turn.
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
@@ -119,7 +119,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		return;
 	}
 	if (trimmed === "/model" || trimmed.startsWith("/model ")) {
-		// 合并轮 B: /model lists the profiles (with availability — the
+		// merge round B: /model lists the profiles (with availability — the
 		// config never stores keys, only apiKeyEnv NAMES; an unset env
 		// marks the profile unavailable, never a crash) and switches the
 		// session's adapter — the NEXT turn uses it (session.setAdapter),

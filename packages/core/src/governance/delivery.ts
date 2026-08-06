@@ -10,7 +10,7 @@
  *
  * Producers are declared on tools (`delivers`, tools/tool.ts); the verdict
  * counts producer calls that completed (non-error results), against a
- * delivery claim in the text. The canonical lie — "已生成文档" with zero
+ * delivery claim in the text. The canonical lie — "generated-document" with zero
  * producer calls and a clean completed terminal — fails here.
  *
  * In M3.5 the emission side (artifact URLs extracted from results) joins;
@@ -36,7 +36,7 @@ export interface DeliveryVerdict {
 	readonly claimedInText: boolean;
 }
 
-const CLAIM_PATTERN = /交付|已生成|已创建|已完成|completed|delivered|done/i;
+const CLAIM_PATTERN = /created|completed|delivered|done/i;
 
 export function analyzeDelivery(events: readonly Event[], config: DeliveryConfig): DeliveryVerdict {
 	const producerCalls: string[] = [];

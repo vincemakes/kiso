@@ -72,7 +72,7 @@ export async function projectArtifacts(cwd: string): Promise<ProjectArtifacts | 
 		throw err;
 	}
 	const root = await realpath(kisoDir);
-	// 发现#10 (P1): when cwd IS the KISO_HOME parent (the user's home
+	// finding #10 (P1): when cwd IS the KISO_HOME parent (the user's home
 	// directory), <cwd>/.kiso IS the user-level config directory itself —
 	// trusting your own configuration is nonsense, and the mcp merge would
 	// mirror the same file onto itself and loudly conflict. The home is
@@ -105,7 +105,7 @@ export async function projectArtifacts(cwd: string): Promise<ProjectArtifacts | 
 			if (!isMissing(err)) throw err; // a file named like a dir → ENOTDIR: inert, skip
 		}
 	}
-	// 合并轮 B: the project's config.json is an artifact of the trust
+	// merge round B: the project's config.json is an artifact of the trust
 	// package — trusting the package trusts its config, and a CHANGED
 	// config is a changed digest (the trust decision re-evaluates).
 	try {
@@ -155,7 +155,7 @@ function isMissing(err: unknown): boolean {
 	return (err as NodeJS.ErrnoException).code === "ENOENT" || (err as NodeJS.ErrnoException).code === "ENOTDIR";
 }
 
-/** 发现#11: KISO_HOME is the ONE root — the store derives from it. */
+/** finding #11: KISO_HOME is the ONE root — the store derives from it. */
 export function kisoHome(): string {
 	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
 }

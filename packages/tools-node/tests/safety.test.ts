@@ -1,5 +1,5 @@
 /**
- * E 组 — process and filesystem safety.
+ * E group — process and filesystem safety.
  *
  * - shell handles a PRE-aborted signal (never spawns), cleans up its abort
  *   listener, and never kills an undefined/0 pid
@@ -51,7 +51,7 @@ function flipSignal(): { signal: AbortSignalLike; flip: () => void; listeners: (
 
 const CTX = (signal: AbortSignalLike): ToolContext => ({ signal });
 
-describe("shell process safety (E 组)", () => {
+describe("shell process safety (E group)", () => {
 	it("a PRE-aborted signal never spawns the command", async () => {
 		const dir = root();
 		const marker = join(dir, "ran.txt");
@@ -91,7 +91,7 @@ describe("shell process safety (E 组)", () => {
 	});
 });
 
-describe("safe replacement (E 组)", () => {
+describe("safe replacement (E group)", () => {
 	it("write_file via safe replacement: a hard link to an EXTERNAL inode is never overwritten", async () => {
 		const dir = root();
 		const outside = join(dirname(dir), "shared-target.txt");
@@ -137,7 +137,7 @@ describe("safe replacement (E 组)", () => {
 	});
 });
 
-describe("自举 #3 (发现#7): shell children never inherit kiso's credentials by default", () => {
+describe("bootstrap #3 (finding #7): shell children never inherit kiso's credentials by default", () => {
 	it("the provider credential variables are stripped; the rest of the env passes through", async () => {
 		const dir = root();
 		// Plant kiso's own credential surface in the parent env, plus a

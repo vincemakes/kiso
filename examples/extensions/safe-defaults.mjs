@@ -25,9 +25,9 @@ export default {
 					call.name === "read_file" ||
 					call.name === "list_dir" ||
 					call.name === "search_text" ||
-					call.name === "read_skill" || // ⑤: local user-installed docs — trust level same as read_file
-					call.name === "mcp__status" || // 发现#10 round: zero-arg read-only status query — trust level same as read_file
-					call.name === "todo_set" // ⑥ todo round: pure session state — the echo lives in the event log, nothing external
+					call.name === "read_skill" || // (5): local user-installed docs — trust level same as read_file
+					call.name === "mcp__status" || // finding #10 round: zero-arg read-only status query — trust level same as read_file
+					call.name === "todo_set" // round 6 (the todo round): pure session state — the echo lives in the event log, nothing external
 				) {
 					return { action: "allow" };
 				}

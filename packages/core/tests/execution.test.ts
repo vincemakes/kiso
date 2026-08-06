@@ -123,7 +123,7 @@ describe("execution identity (Area 3)", () => {
 		expect(executionForCallId(log.all, "c1")?.status).toBe("succeeded");
 	});
 
-	it("a failed NON-idempotent execution is a clean failure carrying the honest note — no uncertain pause (裁决 #12; supersedes the C 组 pause, ADR-0038)", async () => {
+	it("a failed NON-idempotent execution is a clean failure carrying the honest note — no uncertain pause (ruling #12; supersedes the C group pause, ADR-0038)", async () => {
 		const registry = new ToolRegistry();
 		registry.register(
 			defineTool({
@@ -176,7 +176,7 @@ describe("execution identity (Area 3)", () => {
 		expect(String(result!.content)).not.toContain("non-idempotent tool failed");
 	});
 
-	it("a THROW from a non-idempotent handler is a clean failure with the note — never a pause (裁决 #12)", async () => {
+	it("a THROW from a non-idempotent handler is a clean failure with the note — never a pause (ruling #12)", async () => {
 		const registry = new ToolRegistry();
 		registry.register(
 			defineTool({
@@ -204,7 +204,7 @@ describe("execution identity (Area 3)", () => {
 		const log = new EventLog();
 		log.append({ type: "tool_execution_started", executionId: "ex-0", callId: "c1", name: "web_search", input: { query: "k" } });
 		log.append({ type: "tool_execution_failed", executionId: "ex-0", callId: "c1", error: "boom", safeToRetry: false });
-		// 裁决 #12: a complete receipt is the outcome — failed is failed,
+		// ruling #12: a complete receipt is the outcome — failed is failed,
 		// never uncertain; uncertainty belongs to the crash window alone.
 		expect(executionLedger(log.all).get("ex-0")?.status).toBe("failed");
 		log.append({ type: "tool_execution_resolved", executionId: "ex-0", callId: "c1", resolution: "rerun" });
@@ -307,7 +307,7 @@ describe("abort boundaries (Area 4)", () => {
 				},
 			}),
 		);
-		// 0.1.26 (流中执行): BOTH calls launch at tool_call_end — the abort
+		// 0.1.26 (streaming execution): BOTH calls launch at tool_call_end — the abort
 		// cannot un-launch the sibling. The guarantee moved to the SIGNAL:
 		// a sibling whose DECIDE is still in flight when the abort lands
 		// (a slow policy here) bails before its started event — never a

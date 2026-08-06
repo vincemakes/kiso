@@ -5,7 +5,7 @@
  * The bundle + the safe-defaults example go into KISO_EXTENSIONS_DIR; the
  * fake MCP server is configured via KISO_MCP_CONFIG. The faux model calls
  * mcp__fake__echo: safe-defaults ASKS (external tools must pass human
- * review) and — 裁决 A — the ask goes DIRECTLY to the human pause, so the
+ * review) and — ruling A — the ask goes DIRECTLY to the human pause, so the
  * approval prompt appears; y is injected; the echo result returns to the
  * model; the run completes.
  */
@@ -77,9 +77,9 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
                 except OSError:
                     return
     read_until(b"you> ", 20)
-    # 0.1.26 (懒连接): the extension returns immediately — the fake server
+    # 0.1.26 (lazy connection): the extension returns immediately — the fake server
     # connects in the background. Give the connect a moment to settle before
-    # the model's first call (the "首调等待就绪" wait is the unit tests').
+    # the model's first call (the "first-call waits-for-readiness" wait is the unit tests').
     time.sleep(1.5)
     os.write(fd, b"go\\n")
     read_until(b"approve mcp__fake__echo", 30)
@@ -102,7 +102,7 @@ const FAUX_TRAJECTORY = [
 ];
 
 describe("③ MCP bridge e2e (through the CLI's topmost entry)", () => {
-	it("the bundle loads as an extension; the mcp__ call is ASKED (裁决 A), approved, and the result returns to the model", async () => {
+	it("the bundle loads as an extension; the mcp__ call is ASKED (ruling A), approved, and the result returns to the model", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-e2e-"));
 		const home = join(dir, "home");
 		const workdir = join(dir, "work");
@@ -131,7 +131,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		const { env } = isolatedEnv();
 		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
 		expect(out).toContain("[2 extensions: mcp (connecting…), safe-defaults]"); // 0.1.26: the lazy connect is in flight at the banner
-		expect(out).toContain("approve mcp__fake__echo"); // 审批提问出现 — the ask tier reached the human
+		expect(out).toContain("approve mcp__fake__echo"); // the approval prompt appeared — the ask tier reached the human
 		expect(out).toContain("hello from mcp"); // the echo result returned to the model
 		expect(out).toContain("the echo worked");
 	}, 180_000);
@@ -170,7 +170,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		const { env } = isolatedEnv();
 		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
 		expect(out).toContain("[1 extension: mcp (connecting…)]"); // 0.1.26: the banner shows the in-flight connect
-		expect(out).toContain("approve mcp__fake__echo"); // 审批提问出现 — the human gate held
+		expect(out).toContain("approve mcp__fake__echo"); // the approval prompt appeared — the human gate held
 		expect(out).toContain("hello from mcp"); // the echo result returned after the approval
 		expect(out).toContain("the echo worked");
 
@@ -237,9 +237,9 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
                 except OSError:
                     return
     read_until(b"you> ", 20)
-    # 0.1.26 (懒连接): the extension returns immediately — the fake server
+    # 0.1.26 (lazy connection): the extension returns immediately — the fake server
     # connects in the background. Give the connect a moment to settle before
-    # the model's first call (the "首调等待就绪" wait is the unit tests').
+    # the model's first call (the "first-call waits-for-readiness" wait is the unit tests').
     time.sleep(1.5)
     os.write(fd, b"go\\n")
     # A bare install asks even the extension's OWN status tool (③b) — the
@@ -264,7 +264,7 @@ const FAUX_STATUS_TRAJECTORY = [
 	{ events: [{ type: "text_delta", text: "status retrieved" }, { type: "stop", reason: "end_turn" }] },
 ];
 
-describe("手感批 A3: the stdio child's stderr is CAPTURED, never leaked", () => {
+describe("the ergonomics batch A3: the stdio child's stderr is CAPTURED, never leaked", () => {
 	it("no \"running on stdio\"-style noise around the startup banner; mcp__status shows the recent tail", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-a3-"));
 		const home = join(dir, "home");

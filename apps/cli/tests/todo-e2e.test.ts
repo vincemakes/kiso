@@ -252,14 +252,14 @@ const FAUX_TRAJECTORY = [
 	{ events: [{ type: "text_delta", text: "Faux summary of the old rounds." }, { type: "stop", reason: "end_turn" }] },
 ];
 
-describe("⑥ todo e2e: the long-horizon narrative (kill -9 → resume → /compact)", () => {
+describe("round 6 todo e2e: the long-horizon narrative (kill -9 → resume → /compact)", () => {
 	it("the latest todo list survives the kill, the resume, AND the /compact summary", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-todo-"));
 		const home = join(dir, "home");
 		const workdir = join(dir, "work");
 		mkdirSync(workdir, { recursive: true });
 		mkdirSync(join(home, "ext"), { recursive: true });
-		// Install the todo extension (源即产物 — the file itself).
+		// Install the todo extension (the source file is the artifact — the file itself).
 		writeFileSync(join(home, "ext", "kiso-todo.mjs"), readFileSync(TODO_EXT, "utf8"), "utf8");
 		writeFileSync(join(workdir, "f1.txt"), "noise\n", "utf8");
 		const scriptPath = join(dir, "faux.json");
@@ -298,7 +298,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptP
 		expect(String(tagged[0]!.content)).toBe(ECHO_TWO);
 		expect(events.filter((e) => e.type === "terminal")).toHaveLength(6);
 		expect(existsSync(join(workdir, "marker.txt"))).toBe(false);
-		// do-not-compact 生效 (kill -9 侧): the projection the resumed
+		// do-not-compact in effect (the kill -9 side): the projection the resumed
 		// model would see ALREADY holds the latest list.
 		expect(JSON.stringify(projectMessages(events))).toContain("1 pending, 1 active, 1 done");
 
@@ -320,7 +320,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptP
 		// The interrupted shell never completed; the recovery filled the
 		// denial and the trajectory ran on (the marker stays absent).
 		expect(existsSync(join(workdir, "marker.txt"))).toBe(false);
-		// do-not-compact 生效 (resume 侧): the continued projection still
+		// do-not-compact in effect (the resume side): the continued projection still
 		// holds the latest list.
 		expect(JSON.stringify(projectMessages(events2))).toContain("1 pending, 1 active, 1 done");
 

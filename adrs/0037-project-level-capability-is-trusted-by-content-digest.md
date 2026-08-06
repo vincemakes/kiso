@@ -24,7 +24,7 @@ Two candidate mental models failed under scrutiny:
 The only promise that survives updates is binding the decision to the
 CONTENT that will execute, and letting content change invalidate it.
 
-## Decision (E3, 四条裁定)
+## Decision (E3, the four rulings)
 
 1. **Content digest is the trust key.** A trust record is
    `{root, digest, decision, ts}` where `digest` is a sha256 over the

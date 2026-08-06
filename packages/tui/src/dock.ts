@@ -160,7 +160,7 @@ export class Dock {
 		const statusLine = this.#question ?? this.#statusRow(status, p, W);
 		const inp = this.#inputState();
 		const out: string[] = [];
-		// P3 (审查): the DEC private-mode SET/RESET needs the "?" prefix —
+		// P3 (review): the DEC private-mode SET/RESET needs the "?" prefix —
 		// \x1b[?2026h/l, the pi source's exact form. Without it terminals
 		// silently ignore the mode and the anti-flicker never engages.
 		out.push("\x1b[?2026h"); // synchronized output ON (DEC 2026)

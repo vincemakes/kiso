@@ -1,5 +1,5 @@
 /**
- * 第五轮(P1-9) — ToolResult is a discriminated union: an isError:false
+ * round 5(P1-9) — ToolResult is a discriminated union: an isError:false
  * result structurally cannot carry an errorKind, matching the persisted
  * event schema (which rejects that combination). The @ts-expect-error
  * below FAILS TO COMPILE if the union is ever widened back — the type

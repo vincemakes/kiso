@@ -13,7 +13,7 @@ by a contender (nothing stops a process from deleting another's pidfile).
 The lock had to arbitrate EVERY race without leaving a removable artifact,
 and it had to survive the writer's death (no stale-lock cleanup race).
 
-## Decision (第四轮)
+## Decision (the fourth round)
 
 **The single-writer lock is an EXCLUSIVE KERNEL flock on `<id>.lock`, held
 by a dedicated helper process**:
@@ -48,7 +48,7 @@ would replace the exclusive lock; nothing in the current product needs it.
 ## Evidence
 
 - Commit `1263689` (fix(runtime): kernel-flock single-writer lock;
-  session identity safety — 第四轮).
+  session identity safety — the fourth round).
 - Tests: `packages/runtime/tests/storage.test.ts` and
   `packages/runtime/tests/storage-identity.test.ts` — the lock-ownership
   races (`two contenders racing a stale lock: exactly one wins, the loser

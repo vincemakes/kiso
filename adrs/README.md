@@ -1,7 +1,7 @@
 # kiso ADRs — Architecture Decision Records
 
 Every decision that outlives a commit is recorded here. The discipline:
-**any conflict with a choice between options (裁决-style rulings) and any
+**any conflict with a choice between options (ruling-style rulings) and any
 supersession lands as an ADR IN THE SAME ROUND as the implementation** —
 future stage specs cite this rule; a decision without an ADR is a commit
 that has not finished speaking.
@@ -24,7 +24,7 @@ that has not finished speaking.
   cross-process resume — Accepted (supersedes 0024 in part)
 - 0026 — The byte-stable projection contract — Accepted
 - 0027 — MicroCompact — context relief as a persisted decision —
-  Accepted (decision #1 superseded in part by 自举 #3, 2026-08-04)
+  Accepted (decision #1 superseded in part by bootstrapping #3, 2026-08-04)
 - 0028 — The extension contract — narrow surfaces, monotone by
   construction — Accepted (ask routing superseded by 0029)
 - 0029 — An ask is answered by a human — no automated policy speaks for

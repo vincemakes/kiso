@@ -1,5 +1,5 @@
 /**
- * C 区 (kiso code review, fix 2): the CLI wires microcompact ON by default —
+ * C area (kiso code review, fix 2): the CLI wires microcompact ON by default —
  * threshold = half the model window (KISO_CONTEXT_WINDOW override included).
  *
  * A seeded long session (7 chunky read results, ~1,750 estimated tokens) is
@@ -41,7 +41,7 @@ function seedSession(home: string, id: string): void {
 	writeFileSync(join(dir, `${id}.jsonl`), lines.join("\n") + "\n", "utf8");
 }
 
-describe("C 区 cli: microcompact is on by default at half the model window", () => {
+describe("C area cli: microcompact is on by default at half the model window", () => {
 	it("a resume over the threshold records the boundary and completes", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-mc-cli-"));
 		const { env: isoEnv, dirs } = isolatedEnv();

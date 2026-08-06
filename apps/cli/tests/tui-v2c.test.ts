@@ -73,24 +73,24 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
 }
 
 describe("TUI v2c (real PTY, 24×80)", () => {
-	it("Chinese input lands the cursor on the DISPLAY-width column — 你好 is 4 cells, not 2", () => {
+	it("wide input (fullwidth) lands the cursor on the DISPLAY-width column — ＡＡ is 4 cells, not 2", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
 			// Feed the two wide chars ONE AT A TIME so the dock's redraws
-			// between them pin the intermediate cursor columns; 好+Enter
-			// submits 你好 as a turn (the exit feed waits for the turn).
-			["▌ ", "你"],
-			["\x1b[24;5H", "好\n"],
+			// between them pin the intermediate cursor columns; Ａ+Enter
+			// submits ＡＡ as a turn (the exit feed waits for the turn).
+			["▌ ", "Ａ"],
+			["\x1b[24;5H", "Ａ\n"],
 			["turn 2 · faux", "exit\n"],
 		]);
-		// ▌ + space = 2 wide (TUI v4 #16d) → after 你 the edit column is
-		// 2+2+1 = 5; after 你好 it is 2+4+1 = 7. The drift root cure: every
+		// ▌ + space = 2 wide (TUI v4 #16d) → after Ａ the edit column is
+		// 2+2+1 = 5; after ＡＡ it is 2+4+1 = 7. The drift root cure: every
 		// column is a display column, so the redraws land at 5 then 7.
 		expect(out).toContain("\x1b[22;5H"); // v3 §03: the input row is H-2
 		expect(out).toContain("\x1b[22;7H");
 		// The submitted line renders into the body (blue, pty-cooked).
 		const clean = stripANSI(out);
-		expect(clean).toContain("你好"); // v3 §02: the user block has no "you> " prefix
+		expect(clean).toContain("ＡＡ"); // v3 §02: the user block has no "you> " prefix
 		// And the input row survives (the editor's own render).
 		expect(clean).toContain("▌ ");
 	}, 90_000);

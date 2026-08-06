@@ -1,5 +1,5 @@
 /**
- * 八 — the durable execution RECEIPT carries everything the repair needs,
+ * round 8 — the durable execution RECEIPT carries everything the repair needs,
  * including tags. When tool_execution_succeeded / tool_execution_failed is
  * persisted but the model-facing tool_result never landed (a crash in the
  * window between them), resume() repairs the result FROM THE RECEIPT — and
@@ -42,7 +42,7 @@ function agent(store: SessionStore, tags: readonly string[]) {
 
 const TAGS = ["do-not-compact", "billing"] as const;
 
-describe("receipt crash window tags (八)", () => {
+describe("receipt crash window tags (round 8)", () => {
 	it("a SUCCESSFUL receipt with tags repairs a tool_result with the SAME tags", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-rt-"));
 		const store = new SessionStore(dir);

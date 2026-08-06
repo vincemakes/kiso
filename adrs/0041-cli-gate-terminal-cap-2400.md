@@ -22,7 +22,7 @@ terminal decision.
    extraction** (e.g., the TUI layer becomes its own package/module
    group) or **scope cuts**, decided by ruling — the gate number is no
    longer a variable.
-2. **The counting口径 is fixed**: the gate counts `apps/cli/src/`
+2. **The counting convention is fixed**: the gate counts `apps/cli/src/`
    ONLY — tests do not count, docs do not count, the budget stop-and-
    report clause triggers on src increments. (The v2e diff.ts and its
    tests are the first round where the split matters: ~150 src lines

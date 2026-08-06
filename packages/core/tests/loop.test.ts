@@ -22,7 +22,7 @@ async function run(
 	opts: Partial<Parameters<typeof loop>[0]> = {},
 ): Promise<readonly Event[]> {
 	const events: Event[] = [];
-	const user: Message = { role: "user", content: "把这件事做完" };
+	const user: Message = { role: "user", content: "do this thing" };
 	for await (const ev of loop({
 		adapter: createFauxProvider(script),
 		model: "faux-model",
@@ -119,7 +119,7 @@ describe("loop", () => {
 		expect(err).toMatchObject({ errorKind: "transient" });
 		// The error must remain distinguishable in the SAME trajectory where
 		// the model narrates success.
-		expect(events.some((e) => e.type === "text_delta" && /很好/.test(e.text))).toBe(true);
+		expect(events.some((e) => e.type === "text_delta" && /successfully/.test(e.text))).toBe(true);
 		expect(terminalOf(events).outcome).toEqual({ kind: "completed" });
 	});
 
@@ -165,7 +165,7 @@ describe("loop", () => {
 		// 0.1.26 (ADR-0024 Amd): the windowed parallel batching returned —
 		// the calls launch at tool_call_end and run concurrently (window 4);
 		// the ledger events land per call in deterministic order; the
-		// projection re-orders the results by CALL order (字节纪律).
+		// projection re-orders the results by CALL order (the byte discipline).
 		const order: string[] = [];
 		const mk = (name: string): Tool =>
 			defineTool({
@@ -216,7 +216,7 @@ describe("loop", () => {
 			expect(kinds).toEqual(["tool_execution_started", "tool_execution_succeeded", "tool_result"]);
 		}
 		// The projection orders the results by CALL order, whatever the
-		// completion interleaving (字节纪律): a, b, c — the tool messages
+		// completion interleaving (the byte discipline): a, b, c — the tool messages
 		// follow the assistant's tool_use blocks.
 		const messages = projectMessages(events);
 		const toolMsgs = messages.filter((m) => m.role === "tool");

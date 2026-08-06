@@ -1,5 +1,5 @@
 /**
- * 七 — the uncertainty resolution is part of the event stream, exactly once.
+ * round 7 — the uncertainty resolution is part of the event stream, exactly once.
  *
  * - with a LIVE resolver, resolveUncertain() only passes the verdict; the
  *   active loop / recovery generator appends and yields
@@ -42,7 +42,7 @@ function failingAgent(store: SessionStore, script: FauxScript = CALL) {
 	});
 }
 
-describe("uncertainty flow (七) — the crash window (裁决 #12, ADR-0038)", () => {
+describe("uncertainty flow (round 7) — the crash window (ruling #12, ADR-0038)", () => {
 	/** Seed a crash-window execution: started, NO receipt — the only kind
 	 *  of execution that may be uncertain anymore. */
 	async function seedUncertain(store: SessionStore, id: string): Promise<void> {
@@ -90,7 +90,7 @@ describe("uncertainty flow (七) — the crash window (裁决 #12, ADR-0038)", (
 		const durable = new SessionStore(dir).load("s").map((r) => r.event);
 		expect(durable.some((e) => e.type === "tool_execution_resolved")).toBe(false);
 		// A receipted failure is NOT uncertain — only the crash window is
-		// (the C-组 failed-receipt pause was removed by 裁决 #12).
+		// (the C-group failed-receipt pause was removed by ruling #12).
 		const store2 = new SessionStore(dir);
 		await store2.append("s2", "r1", { seq: 0, type: "user_input", content: "go" });
 		await store2.append("s2", "r1", { seq: 1, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: {} });

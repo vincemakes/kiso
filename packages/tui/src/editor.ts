@@ -96,7 +96,7 @@ export class Editor {
 	#onRender: () => void;
 	#menuOpen = false; // v3 §04: the slash-command menu
 	#menuSel = 0;
-	// A2 (手感): the session-scoped input history — every submitted TURN
+	// A2 (the feel): the session-scoped input history — every submitted TURN
 	// line (never a question answer), capped at 100, never persisted. ↑↓
 	// navigate it ONLY from an empty input or while already browsing.
 	#history: string[] = [];
@@ -324,7 +324,7 @@ export class Editor {
 			}
 		} else if (final === "A" || final === "B") {
 			// v3 §04: the menu owns ↑↓ while open (the selection, never the
-			// cursor). A2 (手感): otherwise ↑↓ navigate the session history
+			// cursor). A2 (the feel): otherwise ↑↓ navigate the session history
 			// — ONLY from an empty input or while already browsing; mid-edit
 			// the cursor semantics are unchanged (↑↓ do nothing).
 			if (this.#menuOpen) {
@@ -404,7 +404,7 @@ export class Editor {
 	#submit(): void {
 		let line = String.fromCodePoint(...this.#chars);
 		if (this.#menuOpen) {
-			// A1 (手感): Enter submits the EXACT selection directly; a
+			// A1 (the feel): Enter submits the EXACT selection directly; a
 			// PARTIAL selection COMPLETES the buffer (the Tab semantics)
 			// without submitting — the user reviews and presses Enter
 			// again. The old behavior executed the completed command on

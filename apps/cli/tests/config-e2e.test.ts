@@ -1,12 +1,12 @@
 /**
- * 合并轮 B — the config surface e2e (BUILT CLI):
- * ① /model on a real PTY with two profiles (one available via the env,
+ * Merge round B — the config surface e2e (BUILT CLI):
+ * (1) /model on a real PTY with two profiles (one available via the env,
  *   one not) — the listing annotates availability, the switch refuses the
  *   unavailable one loudly and lands the available one's NoticeCell;
- * ② the project .kiso/config.json rides the E3 trust gate — granted →
+ * (2) the project .kiso/config.json rides the E3 trust gate — granted →
  *   the project's model appears, projectTrust "never" → no ask, nothing
  *   loads;
- * ③ the pipe path: an untrusted project config is never read (回归), and
+ * (3) the pipe path: an untrusted project config is never read (regression), and
  *   a broken USER config fails the process LOUDLY (non-zero, the file
  *   named) — a silently ignored config would mislead.
  */
@@ -77,7 +77,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
 	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
 }
 
-describe("合并轮 B — /model on a real PTY (dual profiles)", () => {
+describe("merge round B — /model on a real PTY (dual profiles)", () => {
 	it("lists profiles with availability; refuses the unavailable one; the switch lands the NoticeCell", () => {
 		const { env, dirs } = isolatedEnv();
 		writeFileSync(
@@ -123,7 +123,7 @@ describe("合并轮 B — /model on a real PTY (dual profiles)", () => {
 	});
 });
 
-describe("合并轮 B — the project config rides the E3 trust gate", () => {
+describe("merge round B — the project config rides the E3 trust gate", () => {
 	it("granted → the project's model appears in the /model listing", () => {
 		const { env, dirs } = isolatedEnv();
 		env.MY_TEST_KEY = "sk-fake"; // non-top-level — the env layer stays silent, the config resolves
@@ -165,8 +165,8 @@ describe("合并轮 B — the project config rides the E3 trust gate", () => {
 	});
 });
 
-describe("合并轮 B — pipes: trust gate + loud failure", () => {
-	it("untrusted project config is never read on the pipe path (回归)", () => {
+describe("merge round B — pipes: trust gate + loud failure", () => {
+	it("untrusted project config is never read on the pipe path (regression)", () => {
 		// No top-level env keys: if the project config were (wrongly)
 		// applied, its model "proj-model" would resolve — instead the
 		// session stays faux, proving the config never entered the merge.

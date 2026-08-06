@@ -1,5 +1,5 @@
 /**
- * A 区 — kiso as a coding agent.
+ * A area — kiso as a coding agent.
  *
  * 1. `kiso` with NO subcommand enters chat directly (equivalent to
  *    `kiso chat`).
@@ -7,7 +7,7 @@
  *    CLAUDE.md (first found, that priority) is injected once at
  *    construction, truncated at 8KB with a note. No file → no injection.
  * 3. The composed prompt is a pure function of the cwd — byte-stable for
- *    the session's lifetime (D 区).
+ *    the session's lifetime (D area).
  */
 
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -57,7 +57,7 @@ describe("A: system prompt composition", () => {
 		expect(injected).toContain("truncated at 8192");
 	});
 
-	it("composeSystemPrompt is deterministic — byte-identical on repeated calls (D 区)", () => {
+	it("composeSystemPrompt is deterministic — byte-identical on repeated calls (D area)", () => {
 		const dir = workdir();
 		writeFileSync(join(dir, "AGENTS.md"), "# rules\n", "utf8");
 		const a = composeSystemPrompt(dir);
