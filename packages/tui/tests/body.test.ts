@@ -37,8 +37,8 @@ describe("v2d: cell → line forms", () => {
 		const c = make();
 		c.body.userLine("hello");
 		flush(c);
-		// The frozen print positions the row, clears, writes the blue line.
-		expect(c.out).toContain("\x1b[1;1H\x1b[0Khello"); // v3 §02: the user block has no "you> " prefix (the bg only shows on a color TTY)
+		// The frozen print positions the row, clears, writes the rail line.
+		expect(c.out).toContain("\x1b[1;1H\x1b[0K▍ hello"); // TUI v5 #16f: the ▍ rail (plain here — no TTY in the test)
 	});
 
 	it("the ToolCell runs the lifecycle: pending → running (spinner + elapsed) → done ✓ (summary, Ns)", () => {

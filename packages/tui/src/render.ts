@@ -9,26 +9,27 @@
  */
 
 /**
- * v2a — the palette, centralized (no hard-coded codes elsewhere): ONE
- * accent — blue, ANSI 256 color 75 — for the identity accents (the you>
- * prompt, the banner tagline, ✓ marks, slash-command names); red for
- * errors; dim for metadata. NO_COLOR set, or a non-TTY output → every
- * code is empty, so pipes and CI carry ZERO ANSI (the existing byte-level
- * e2e assertions guard it). Everything not listed here is plain.
- * v3: `rev` — the user-message block highlight (SGR 7 reverse video,
- * TUI v4 #16c: the fixed dark background is GONE — reverse follows the
- * terminal theme).
+ * v2a — the palette, centralized (no hard-coded codes elsewhere); v5
+ * (TUI v5 #16e, the v4.1 design): the decorative blue (38;5;75) is
+ * RETIRED — the identity accents (the you> prompt, the banner tagline,
+ * ✓ marks, slash-command names, the ▍ user rail, the input brick) are
+ * bright-white BOLD (SGR 1); `code` is the content semantic tint for
+ * inline code spans in assistant text (256-color 110 — the cube color
+ * nearest the design's #8fb4d8); red for errors, dim for metadata,
+ * green for the diff additions. NO_COLOR set, or a non-TTY output →
+ * every code is empty, so pipes and CI carry ZERO ANSI (the existing
+ * byte-level e2e assertions guard it). Everything not listed is plain.
  */
 export interface Palette {
-	readonly blue: string;
+	readonly bold: string;
 	readonly dim: string;
 	readonly red: string;
 	readonly green: string; // v2e: the diff additions — diff-only (NO_COLOR falls back to the + prefix)
-	readonly rev: string; // TUI v4 #16c: reverse video — the user block's theme-following highlight
+	readonly code: string; // TUI v5 #16e: the inline-code tint — assistant body backtick spans only
 	readonly reset: string;
 }
-export const COLOR_ON: Palette = { blue: "\x1b[38;5;75m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", rev: "\x1b[7m", reset: "\x1b[0m" };
-export const COLOR_OFF: Palette = { blue: "", dim: "", red: "", green: "", rev: "", reset: "" };
+export const COLOR_ON: Palette = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", code: "\x1b[38;5;110m", reset: "\x1b[0m" };
+export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", code: "", reset: "" };
 export function palette(): Palette {
 	return process.env.NO_COLOR === undefined && process.stdout.isTTY ? COLOR_ON : COLOR_OFF;
 }
@@ -48,6 +49,20 @@ export function escapeTerminal(text: string): string {
 		.replace(/[\u202a-\u202e\u2066-\u2069]/g, ""); // bidi
 }
 
+
+/**
+ * TUI v5 #16e: the inline-code tint — backtick spans in ONE line of
+ * assistant body text get the `code` color. Deliberately NOT a markdown
+ * engine: single level only (`[^`]*` cannot nest), a span never matches
+ * across lines (the caller passes one line; an opener without a closer
+ * on the same line stays plain). NO_COLOR / pipes → the codes are empty
+ * strings → the line passes through byte-identical.
+ */
+export function colorInlineCode(line: string): string {
+	const p = palette();
+	if (p.code === "" || p.reset === "") return line;
+	return line.replace(/`([^`]*)`/g, `${p.code}\`$1\`${p.reset}`);
+}
 
 /** The canonical-path resolver for the approval detail — injected by the
  *  caller (the CLI passes the tools' own resolution). The tui package is
@@ -127,9 +142,9 @@ export function renderEvent(ev: RenderInput, prevThinking = false, resolvePath: 
 	const p = palette();
 	switch (ev.type) {
 		case "user_input":
-			// v2a: blue (the identity accent — the interactive prompt echoes
-			// itself; this render is the REPLAY path).
-			return { text: `${p.blue}you> ${escapeTerminal(typeof ev.content === "string" ? ev.content : "(content)")}${p.reset}\n`, newline: true, prompt: false };
+			// v2a/v5: bold (the identity accent — the interactive prompt
+			// echoes itself; this render is the REPLAY path).
+			return { text: `${p.bold}you> ${escapeTerminal(typeof ev.content === "string" ? ev.content : "(content)")}${p.reset}\n`, newline: true, prompt: false };
 		case "text_delta":
 			return { text: escapeTerminal(ev.text), newline: false, prompt: false };
 		case "text_end":
@@ -240,9 +255,9 @@ export function renderToolSummary(
 	input: Record<string, unknown>,
 	result: { content: string; isError: boolean },
 ): string {
-	// v2a: ✓ is a blue identity accent; ✗ stays red.
+	// v2a/v5: ✓ is a bold identity accent; ✗ stays red.
 	const p = palette();
-	const mark = result.isError ? `${p.red}✗${p.reset}` : `${p.blue}✓${p.reset}`;
+	const mark = result.isError ? `${p.red}✗${p.reset}` : `${p.bold}✓${p.reset}`;
 	const shortName = name.replace("_file", "");
 	const detail = toolSummaryDetail(name, input, result);
 	return `${mark} ${escapeTerminal(`${shortName} ${detail}`)}`;
@@ -405,7 +420,7 @@ export function renderRecap(s: RecapStats): string {
 		}
 	}
 	if (s.ctxLeftPct !== null) parts.push(`ctx left ~${Math.round(s.ctxLeftPct)}%`);
-	return `${p.blue}▞${p.reset} ${parts.join(" · ")}\n`;
+	return `${p.bold}▞${p.reset} ${parts.join(" · ")}\n`;
 }
 
 /** One-line summary of a session, for `kiso sessions`. */

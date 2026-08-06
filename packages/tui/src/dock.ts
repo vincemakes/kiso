@@ -57,7 +57,7 @@ export class Dock {
 	 *  mode — the bottom three rows need room to exist. */
 	enter(): void {
 		const rows = process.stdout.rows ?? 0;
-		if (process.stdout.isTTY !== true || palette().blue === "" || rows < 4) return;
+		if (process.stdout.isTTY !== true || palette().bold === "" || rows < 4) return;
 		this.#active = true;
 		this.#height = rows;
 		this.#width = process.stdout.columns ?? 80;
@@ -147,8 +147,9 @@ export class Dock {
 	/** The bottom four rows, wrapped in CSI 2026 (synchronized output —
 	 *  the pi trick against flicker). The cursor ends at the input line's
 	 *  edit position. v3 §03: the upper ╌ row, the input row, the lower
-	 *  ╌ row, the status row — the status is dim (blue accents inside
-	 *  come from the CLI's composition). */
+	 *  ╌ row, the status row — the status is dim (bold accents inside
+	 *  come from the CLI's composition). TUI v5 #16g: the idle status
+	 *  row carries the right-aligned "/ commands · ↑ history" hint. */
 	redraw(): void {
 		if (!this.#active) return;
 		const p = palette();
@@ -156,7 +157,7 @@ export class Dock {
 		const W = this.#width;
 		const sep = `${p.dim}${"╌".repeat(W)}${p.reset}`;
 		const status = `${this.#status}${this.#tail === "" ? "" : ` · ${this.#tail}`}`;
-		const statusLine = this.#question ?? `${p.dim}${status}${p.reset}`;
+		const statusLine = this.#question ?? this.#statusRow(status, p, W);
 		const inp = this.#inputState();
 		const out: string[] = [];
 		// P3 (审查): the DEC private-mode SET/RESET needs the "?" prefix —
@@ -173,7 +174,7 @@ export class Dock {
 				const row = H - 4 - (menu.items.length - 1 - i);
 				const text =
 					i === menu.selected
-						? `${p.blue}▸ ${item.name}${p.reset} ${item.desc}`
+						? `${p.bold}▸ ${item.name}${p.reset} ${item.desc}`
 						: `${p.dim}  ${item.name} ${item.desc}${p.reset}`;
 				out.push(`\x1b[${row};1H\x1b[0K${text}`);
 			}
@@ -185,5 +186,20 @@ export class Dock {
 		out.push(`\x1b[${H - 2};${this.#inputCol()}H`); // back to the edit position
 		out.push("\x1b[?2026l"); // synchronized output OFF
 		process.stdout.write(out.join(""));
+	}
+
+	/** TUI v5 #16g: the status row — the base status left-aligned, the
+	 *  "/ commands · ↑ history" hint right-aligned in the idle state
+	 *  (tail empty, no takeover question). The hint is CUT FIRST when
+	 *  the width is short — the status itself is never truncated for it;
+	 *  the running state carries its own esc hint in the status text, so
+	 *  the non-empty tail suppresses this one. */
+	#statusRow(status: string, p: ReturnType<typeof palette>, W: number): string {
+		const hint = this.#tail === "" && this.#question === null ? " / commands · ↑ history" : "";
+		if (hint === "") return `${p.dim}${status}${p.reset}`;
+		const statusW = displayWidth(status.replace(/\x1b\[[0-9;]*m/g, ""));
+		const hintW = displayWidth(hint);
+		if (statusW + hintW > W) return `${p.dim}${status}${p.reset}`;
+		return `${p.dim}${status}${" ".repeat(W - statusW - hintW)}${hint}${p.reset}`;
 	}
 }

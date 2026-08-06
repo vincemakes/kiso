@@ -27,6 +27,7 @@
 import { truncateDiff } from "./diff.js";
 import { displayWidth } from "./editor.js";
 import {
+	colorInlineCode,
 	escapeTerminal,
 	foldResult,
 	foldThinking,
@@ -194,7 +195,7 @@ export class Body {
 			this.#closeOpenThinking();
 		this.#closeOpenText();
 			const p = palette();
-			this.#write(`${p.blue}you> ${escapeTerminal(text)}${p.reset}\n`);
+			this.#write(`${p.bold}you> ${escapeTerminal(text)}${p.reset}\n`);
 			return;
 		}
 		this.#closeOpenThinking();
@@ -472,13 +473,12 @@ export class Body {
 		const p = palette();
 		switch (cell.kind) {
 			case "user":
-				// v3 §02: the user message is a SGR block, no prefix — every
-				// line carries the block's highlight (multi-line whole;
-				// resize-safe). TUI v4 #16c: the fixed dark background
-				// (48;5;237) is GONE — reverse video (7m) swaps foreground/
-				// background, so the block follows the terminal theme (light
-				// theme → dark text on light). Pipes stay plain.
-				return cell.text.split("\n").map((l) => `${p.rev}${escapeTerminal(l)}${p.reset}`);
+				// v3 §02, TUI v5 #16f (v4.1 design): the user message is a left
+				// rail — a bright-white BOLD ▍ per line, then the text (the
+				// reverse-video block is RETIRED: it washed out on light
+				// themes). Multi-line whole: every line carries the rail
+				// (多行连贯); resize-safe; NO_COLOR → the rail renders plain.
+				return cell.text.split("\n").map((l) => `${p.bold}▍${p.reset} ${escapeTerminal(l)}`);
 			case "thinking": {
 				const block = cell.text;
 				const trimmed = escapeTerminal(block.trim());
@@ -495,11 +495,11 @@ export class Body {
 						return [`${p.red}✗ ${name} (${err}, ${elapsed}s)${p.reset}`];
 					}
 					const delta = cell.added + cell.removed > 0 ? `, +${cell.added} -${cell.removed}` : "";
-					return [`${p.blue}✓ ${name}${p.reset} (${summary}${delta}, ${elapsed}s)`];
+					return [`${p.bold}✓ ${name}${p.reset} (${summary}${delta}, ${elapsed}s)`];
 				}
 				if (cell.state === "approval") {
-					const lines = [`→ ${name} ${summary} ${p.blue}⏸${p.reset}`];
-					// v2e: the mini-diff — ▎ blue edge (the brick motif), - red /
+					const lines = [`→ ${name} ${summary} ${p.bold}⏸${p.reset}`];
+					// v2e: the mini-diff — ▎ bold edge (the brick motif), - red /
 					// + green / context dim; NO_COLOR keeps the ± prefixes plain.
 					if (cell.diff !== null) {
 						for (const d of cell.diff) {
@@ -509,21 +509,26 @@ export class Body {
 									: d.kind === "+"
 										? `${p.green}+ ${escapeTerminal(d.text)}${p.reset}`
 										: `${p.dim}  ${escapeTerminal(d.text)}${p.reset}`;
-							lines.push(`${p.blue}▎${p.reset}${body}`);
+							lines.push(`${p.bold}▎${p.reset}${body}`);
 						}
 					}
 					return lines;
 				}
 				if (cell.state === "running") {
 					const elapsed = cell.startedAt !== null ? Math.max(1, Math.round((Date.now() - cell.startedAt) / 1000)) : 1;
-					return [`→ ${name} ${summary} ${p.blue}${SPINNER[this.#spinnerI % SPINNER.length]}${p.reset} ${elapsed}s`];
+					return [`→ ${name} ${summary} ${p.bold}${SPINNER[this.#spinnerI % SPINNER.length]}${p.reset} ${elapsed}s`];
 				}
 				return [`→ ${name} ${summary}`];
 			}
 			case "text": {
 				const text = escapeTerminal(cell.text);
 				const wrapped = this.#wrap(text, W);
-				return wrapped.length > 0 ? wrapped : [""];
+				// TUI v5 #16e: the inline-code tint — backtick spans in
+				// assistant body text, matched PER LINE after the wrap (a
+				// span opened on one line and closed on another does NOT
+				// match — 跨行不匹配). NO_COLOR → the codes are empty →
+				// byte-identical.
+				return wrapped.length > 0 ? wrapped.map((l) => colorInlineCode(l)) : [""];
 			}
 			case "notice":
 				return [escapeTerminal(cell.text)];

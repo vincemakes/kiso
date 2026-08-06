@@ -14,11 +14,13 @@ executions get human verdicts, approvals persist across processes, and every
 event is auditable and replayable — the whole trajectory is on disk, and
 `kiso resume` continues it exactly.
 
-**kiso — a growable TS agent framework for building coding agents and
-durable multi-turn AI tools.** A 2,000-line core that owns what genuinely
-repeats, and packages that grow on top of it without limit. For TypeScript
-developers who want a real agent framework — event-sourced sessions, durable
-human approvals, exactly-once tool execution — without a 50k-line runtime.
+**kiso is a durable TypeScript agent framework for building coding agents
+that can pause, crash, resume, and remain correct.** A small kernel owns
+what genuinely repeats; packages grow on top of it without limit. For
+TypeScript developers who want a real agent framework — event-sourced
+sessions, durable human approvals, crash-consistent tool execution with
+durable receipts and explicit uncertainty resolution — without a 50k-line
+runtime.
 
 Distilled from reading Claude Code, [pi](https://github.com/badlogic/pi-mono),
 and [oh-my-pi](https://github.com/can1357/oh-my-pi) at the source level — and
@@ -34,30 +36,34 @@ Every design decision ships with an ADR explaining **why**, and **when to overtu
 > single dependency.
 >
 > If you need more, grow a package. That is the point.
+>
+> The gate is a snapshot discipline, not a self-adjusting ratchet:
+> recalibration happens only by adjudicated ruling and only for
+> spec-mandated growth — the standing escape hatch is EXTRACTION (ADR-0043).
 
 ```
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts  630
-  packages/core/src/protocol/events.ts 406
+  packages/core/src/kernel/loop.ts  660
+  packages/core/src/protocol/events.ts 420
   ...
-  total                               1804  / 2000
-  ✓ 196 lines of headroom remaining.
+  total                               1914  / 2000
+  ✓ 86 lines of headroom remaining.
 
 cli:
-  apps/cli/src/index.ts  1042
-  apps/cli/src/mode.ts     57
+  apps/cli/src/chat.ts  356
+  apps/cli/src/index.ts 348
   ...
-  total                   1099  / 1320
-  ✓ 221 lines of headroom remaining.
+  total                  1547  / 1856
+  ✓ 309 lines of headroom remaining.
 
 tui:
-  packages/tui/src/body.ts   427
-  packages/tui/src/editor.ts 335
+  packages/tui/src/body.ts   440
+  packages/tui/src/editor.ts 382
   ...
-  total                      1261  / 1520
-  ✓ 259 lines of headroom remaining.
+  total                      1361  / 1520
+  ✓ 159 lines of headroom remaining.
 ```
 
 (The cli gate's single 2400 terminal cap was replaced by per-package
@@ -94,6 +100,16 @@ Loop *business logic*. UI. Permission policy. Billing. Skills content.
 Retrieval. Those are not the core's job — they live in packages, where the
 2,000-line cap does not bind them. A core that decides them for you is a blob,
 and a blob is the thing you eventually fight.
+
+## Requirements
+
+- **Node ≥ 22** (the packages' engines).
+- **python3** — the runtime's session store keeps its cross-process
+  single-writer lock with a tiny `python3` kernel-flock helper (POSIX
+  advisory locks; macOS/Linux). Known debt, adopted from the external
+  review: a Node-side lock would remove the dependency — the store-level
+  Lock Adapter injection is a 1.0 prerequisite (see `TODO.md` and
+  `docs/reviews/2026-08-06-external.md`).
 
 ## Using it
 
@@ -599,7 +615,7 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 |---|---|---|
 | survives `kill -9` | event-sourced sessions; resume continues the interrupted run | `apps/cli/tests/kill9.test.ts` |
 | durable human approvals | pauses persist across processes; verdicts never lost | `packages/runtime/tests/approvals.test.ts` |
-| exactly-once execution | execution ledger keyed by `executionId` | `packages/core/tests/execution-gate.test.ts` |
+| crash-consistent execution | durable receipts keyed by `executionId`; a confirmed success is never re-run (exactly-once within the framework's own window — the rest is explicit human-resolved uncertainty) | `packages/core/tests/execution-gate.test.ts` |
 | extensions | policies / tools / hooks / systemPrompt / dispose | `packages/runtime/tests/extensions.test.ts` |
 | MCP bridge | official extension, kernel untouched | `extensions/mcp/tests` |
 | subagents | official extension, role-policy children | `extensions/subagent/tests` |
@@ -656,7 +672,7 @@ round (E1: the approval-policy extension system; E2: the compaction
 parameter and systemPrompt append surfaces — see
 `docs/plans/2026-08-04-extensions-e1.md`) is done:
 
-- **core** (1,905/2,000 lines) — protocol, loop (single honest terminal;
+- **core** (1,914/2,000 lines) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; retry only before anything streamed; one abort signal reaches
   backoff, approval waits, every pending tool, and the SDK), hooks,
@@ -687,7 +703,7 @@ parameter and systemPrompt append surfaces — see
   startup failure on a bad file or duplicate name; extension tools merge
   into the registry (built-in collision = startup error), hooks compose
   AFTER the harness's own (既有先行), approvals enter the policy chain.
-- **cli** (1,922/2,100 lines) — the coding agent: bare `kiso` enters chat;
+- **cli** (1,547/1,856 lines) — the coding agent: bare `kiso` enters chat;
   the startup extension scan (`~/.kiso/extensions/*.mjs`, banner
   `[2 extensions: safe-defaults, foo]`);
   a system prompt (coding-agent discipline: read before edit, careful
@@ -697,21 +713,25 @@ parameter and systemPrompt append surfaces — see
   line (`[turn 3 · in 12.4k out 1.8k · cache 9.2k · ctx ~14%]` — usage
   events only, unknown fields omitted entirely, faux mode shows
   `[turn N · faux]`), and `/last` to print the most recent tool call's
-  full input/output straight from the event stream. v2a: the color
-  identity is ONE blue accent (ANSI 256 color 75 — the you> prompt, the
-  banner tagline, ✓ marks, command names), red for errors, dim for
-  metadata — everything else plain; `NO_COLOR` or a pipe disables it all
-  (pipes carry zero ANSI); typed input is echoed by readline itself, never
-  rendered twice; a spinner glyph shows liveness between the request and
-  the first delta. v2b: thinking blocks fold to ONE dim line per block
+  full input/output straight from the event stream. v2a/v5: the color
+  identity is bright-white BOLD (SGR 1 — the you> prompt, the banner
+  tagline, ✓ marks, command names, the user block's ▍ rail, the input
+  brick), a light-blue inline-code tint (256 color 110) on backtick spans
+  in assistant text, red for errors, dim for metadata, green for the
+  approval diff — everything else plain; `NO_COLOR` or a pipe disables it
+  all (pipes carry zero ANSI); typed input is echoed by readline itself,
+  never rendered twice; a spinner glyph shows liveness between the request
+  and the first delta. v2b: thinking blocks fold to ONE dim line per block
   (first 100 chars + ` (… /think shows full)`, `/think` prints the last
   complete block), the `[result]` echo truncates at 160 chars +
   ` (/last for full)` — the content strategy is the same in pipes; on a
-  color TTY the UI docks to the bottom (ADR-0039): a DECSTBM scroll
-  region keeps the body above three pinned rows — a dim separator, a
-  LIVE status bar (session · model · turn · tokens · ctx, `running
-  <tool> Ns` while a tool executes, the spinner merged in) and the blue
-  `you>` input line; approval/uncertainty/trust questions take over the
+  color TTY the UI docks to the bottom (ADR-0039): four pinned rows — an
+  upper dim separator, the `▌` input line, a lower separator, and a LIVE
+  status bar (idle `▸ <mode> · /mode to switch · …` with the right-aligned
+  dim `/ commands · ↑ history` hint — cut first when the window is
+  narrow; running `▖ working Ns · esc to interrupt · …`); the body scrolls
+  with real LFs into the native scrollback (v2d-B, ADR-0040 — no scroll
+  region); approval/uncertainty/trust questions take over the
   status position and are answered at the input line; SIGWINCH
   re-applies the region, bottom redraws are wrapped in CSI 2026
   synchronized output, and every exit path resets the terminal in a

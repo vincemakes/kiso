@@ -92,10 +92,12 @@ describe("TUI v2a (real PTY)", () => {
 		// on the control-stripped stream.
 		const clean = out.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\r/g, "");
 		expect((clean.match(/▌ probe-one/g) ?? []).length).toBe(1);
-		// ② the blue accent rides the prompt.
-		expect(out).toContain("\x1b[38;5;75m");
+		// ② the bold accent rides the prompt (TUI v5 #16e: the decorative
+		// blue is retired — SGR 1 bright-white bold).
+		expect(out).toContain("\x1b[1m");
+		expect(out).not.toContain("\x1b[38;5;75m");
 		// ③ faux status form.
-		expect(out).toMatch(/▞\x1b\[0m \d+s · \d+ tools?/); // v3: the recap line ends the run (the ▞ carries the blue accent)
+		expect(out).toMatch(/▞\x1b\[0m \d+s · \d+ tools?/); // v3: the recap line ends the run (the ▞ carries the bold accent)
 		// ④ rhythm: the honest terminal label (done), then the status
 		// hugging it, then exactly one blank line before the next prompt
 		// (the pty cooks \n into \r\n).

@@ -95,7 +95,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		expect(clean).toContain("▌ ");
 	}, 90_000);
 
-	it("the submitted line renders in the scroll region EXACTLY once — blue you> + content + reset", () => {
+	it("the submitted line renders in the scroll region EXACTLY once — the ▍ rail + content + reset", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
 			["▌ ", "look around\n"],
@@ -103,12 +103,12 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		]);
 		// The editor's input row renders the brick prompt + the line (the
 		// reset SPLITS the prompt from the text — that raw shape is the
-		// row, not the body echo).
-		expect(out).toContain("\x1b[38;5;75m▌ \x1b[0mlook around");
-		// v2d: the body echo is the frozen UserCell — blue prompt + content
+		// row, not the body echo). TUI v5 #16e: the brick is bold (SGR 1).
+		expect(out).toContain("\x1b[1m▌ \x1b[0mlook around");
+		// v2d: the body echo is the frozen UserCell — the ▍ rail + content
 		// + reset, EXACTLY once (the row is not the scroll region, the
 		// frozen cell is the only copy there).
-		const bodyEcho = "\x1b[7mlook around\x1b[0m"; // v3 §02: the SGR background block
+		const bodyEcho = "\x1b[1m▍\x1b[0m look around"; // TUI v5 #16f: the ▍ rail
 		const esc = bodyEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		expect((out.match(new RegExp(esc, "g")) ?? []).length).toBe(1);
 		// ?2004l on exit + region reset — no bracketed-paste left on.

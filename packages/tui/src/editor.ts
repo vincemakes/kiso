@@ -216,7 +216,7 @@ export class Editor {
 		const st = this.dockState();
 		const W = (process.stdout.columns ?? 0) || 80; // a degenerate 0 size (no TIOCSWINSZ) falls back
 		const cursorCol = Math.min(1 + PROMPT_WIDTH + st.cursor, W);
-		process.stdout.write(`\r\x1b[0K${p.blue}${PROMPT}${p.reset}${st.line}\x1b[${cursorCol}G`);
+		process.stdout.write(`\r\x1b[0K${p.bold}${PROMPT}${p.reset}${st.line}\x1b[${cursorCol}G`);
 	}
 
 	// ---- input ----

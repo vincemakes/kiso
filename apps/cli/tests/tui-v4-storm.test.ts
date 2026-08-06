@@ -13,8 +13,8 @@
  *   pre-fix code stripped the ESC at the raw cell, leaving literal SGR
  *   text on screen — the 乱码). The storm runs on a session WITH the
  *   banner, so both are covered.
- * ③ #16c theme: the user block is SGR 7m reverse video (theme-following),
- *   never the fixed 48;5;237 background.
+ * ③ #16f theme (v5): the user block is the ▍ rail — bright-white BOLD
+ *   (SGR 1), never reverse video nor the fixed 48;5;237 background.
  * ④ #16d input row: the brick ▌ alone — no "you>" text.
  */
 
@@ -35,19 +35,20 @@ const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.j
 const PTY_DRIVER = `
 import pty, os, sys, time, select, signal, struct, fcntl, termios
 
-def driver(cli, env, feeds, timeout):
+def driver(cli, env, feeds, timeout, cols=80, sizes=None):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ.update(env)
         os.execvp("node", ["node", cli, "chat"])
     def winsize(rows, cols):
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-    winsize(24, 80)
+    winsize(24, cols)
     full = b""
     fed = set()
     end = time.time() + timeout
     done = False
-    sizes = [(24,120),(24,60),(24,120),(24,60),(24,100)]
+    if sizes is None:
+        sizes = [(24,120),(24,60),(24,120),(24,60),(24,100)]
     fired = 0
     storm_at = None
     exit_sent = False
@@ -72,7 +73,7 @@ def driver(cli, env, feeds, timeout):
             winsize(*sizes[fired])
             os.kill(pid, signal.SIGWINCH)
             fired += 1
-        if storm_at is not None and fired >= len(sizes) and not exit_sent and time.time() - storm_at >= 0.5 * (len(sizes) + 1):
+        if storm_at is not None and not exit_sent and time.time() - storm_at >= (0.5 * (len(sizes) + 1) if len(sizes) else 1.0):
             os.write(fd, b"exit\\n")
             exit_sent = True
     try:
@@ -86,15 +87,19 @@ def driver(cli, env, feeds, timeout):
     sys.stdout.write(full.decode(errors="replace"))
 `;
 
-function stormRun(env: NodeJS.ProcessEnv, feeds: [string, string][], timeout = 45): string {
+function stormRun(env: NodeJS.ProcessEnv, feeds: [string, string][], timeout = 45, cols = 80, sizes: [number, number][] | null = null): string {
 	const dir = mkdtempSync(join(tmpdir(), "kiso-v4-storm-"));
 	const driverPath = join(dir, "driver.py");
 	writeFileSync(driverPath, PTY_DRIVER, "utf8");
+	// `sizes` null → the python default (the 5 winches); [] → no winches.
+	// JSON.stringify(null) would emit the python-invalid literal `null`,
+	// so the arg is omitted entirely.
+	const sizesArg = sizes === null ? "" : `, ${JSON.stringify(sizes)}`;
 	const phase = `
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout})
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout}, ${cols}${sizesArg})
 `;
 	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
 }
@@ -104,7 +109,7 @@ function stripANSI(text: string): string {
 }
 
 describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
-	it("zero LF + stable separators + response exactly once + no ESC residue + rev user block + ▌ input row", () => {
+	it("zero LF + stable separators + response exactly once + no ESC residue + ▍-rail user block + ▌ input row", () => {
 		const { env } = isolatedEnv();
 		const out = stormRun(env, [
 			["▌ ", "look around\n"], // #16d: the brick alone is the prompt
@@ -142,12 +147,31 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		expect(clean).not.toContain("[0m");
 		expect(clean).not.toContain("[38;5");
 
-		// ③ #16c: the user block is reverse video — theme-following.
-		expect(out).toContain("\x1b[7mlook around\x1b[0m");
+		// ③ #16f: the user block is the ▍ rail — bright-white bold, never
+		// the retired reverse video nor the fixed dark background.
+		expect(out).toContain("\x1b[1m▍\x1b[0m look around");
+		expect(out).not.toContain("\x1b[7m");
 		expect(out).not.toContain("\x1b[48;5;237m");
 
-		// ④ #16d: the input row is the blue brick alone.
-		expect(out).toContain("\x1b[38;5;75m▌ ");
+		// ④ #16d/#16e: the input row is the bold brick alone (no blue).
+		expect(out).toContain("\x1b[1m▌ ");
+		expect(out).not.toContain("\x1b[38;5;75m");
 		expect(out).not.toContain("▌you> ");
+	}, 90_000);
+
+	it("TUI v5 #16g — the idle hint: right-aligned when it fits, CUT FIRST when the width is short", () => {
+		const { env } = isolatedEnv();
+		// 80 cols: the idle status (~50 cells) + the hint (23) fit — the
+		// hint rides the status row, dim, right-aligned (the pad fills
+		// between them; the dim span closes AFTER the hint).
+		const wide = stormRun(env, [["▌ ", "look around\n"]], 30);
+		expect(wide).toContain("/ commands · ↑ history");
+		// 50 cols: status + hint = 73 > 50 → the HINT is cut — the status
+		// itself is never truncated for it. The idle row's dim span ends
+		// IMMEDIATELY after the status (the hint, had it fit, would sit
+		// between the status and the reset).
+		const narrow = stormRun(env, [["▌ ", "look around\n"]], 30, 50, []);
+		expect(narrow).toContain("▸ default · /mode to switch · faux · ctx left ~100%\x1b[0m"); // the status, whole, no hint
+		expect(narrow).toContain("\x1b[24;1H\x1b[0K\x1b[2m▸ default"); // the status starts at column 1 — never truncated from the left
 	}, 90_000);
 });

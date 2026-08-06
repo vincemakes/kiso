@@ -115,8 +115,9 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// The status bar carries session · model · [turn N · faux].
 		const clean = stripANSI(out);
 		expect(clean).toContain("▸ default · /mode to switch · faux"); // v3 idle state
-		// The input line's blue prompt exists.
-		expect(out).toContain("\x1b[38;5;75m");
+		// The input line's bold prompt exists (TUI v5 #16e: SGR 1).
+		expect(out).toContain("\x1b[1m");
+		expect(out).not.toContain("\x1b[38;5;75m");
 		// P3 (审查): the synchronized-output SET is the DEC private form —
 		// \x1b[?2026h — the bare \x1b[2026h is silently ignored by
 		// terminals, so the anti-flicker never engages. Pinned here so the
@@ -130,11 +131,11 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		expect(clean).toContain("inspect or change?");
 		expect(clean).toContain("▸ default · /mode to switch · faux"); // v3 idle state
 		// v2d: the SENT line renders into the body EXACTLY once — a frozen
-		// UserCell (blue you> + content + reset, printed at its region row
+		// UserCell (the ▍ rail + content + reset, printed at its region row
 		// — no pty-cooked newline: the renderer positions the next row).
 		// The input row's brick prompt+line is a DIFFERENT shape (the
 		// reset splits the prompt from the text).
-		const userEcho = "\x1b[7mlook around\x1b[0m"; // v3 §02: the SGR background block, no "you> " prefix
+		const userEcho = "\x1b[1m▍\x1b[0m look around"; // TUI v5 #16f: the ▍ rail, no "you> " prefix
 		expect(out).toContain(userEcho);
 		expect((out.match(new RegExp(userEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length).toBe(1);
 		// Exit resets the scroll region (CSI r) — no broken terminal.

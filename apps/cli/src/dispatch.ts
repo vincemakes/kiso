@@ -37,7 +37,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// Prints the available commands with one-line descriptions.
 		// v2a: the command names are the blue identity accent.
 		const p = palette();
-		const cmd = (name: string, desc: string): string => `${p.blue}${name}${p.reset}    ${desc}`;
+		const cmd = (name: string, desc: string): string => `${p.bold}${name}${p.reset}    ${desc}`;
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			bodyLog(cmd("/help", "print this list of commands"));
 			bodyLog(cmd("/think", "show the last full thinking block"));

@@ -20,7 +20,7 @@ import { loadUserConfig, resolveProjectTrustPolicy } from "./config.js";
  *  pipe bytes must not change.) */
 export function interactivePrompt(): string {
 	const p = palette();
-	return `${p.blue}you> ${p.reset}`;
+	return `${p.bold}you> ${p.reset}`;
 }
 
 /**

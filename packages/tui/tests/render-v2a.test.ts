@@ -8,6 +8,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	colorInlineCode,
 	COLOR_OFF,
 	COLOR_ON,
 	palette,
@@ -32,15 +33,19 @@ afterEach(() => {
 	setTTY(ORIG_TTY ?? false);
 });
 
-describe("v2a: the palette", () => {
-	it("COLOR_ON is the ONE accent (ANSI 256 color 75), red, dim; COLOR_OFF is empty", () => {
-		expect(COLOR_ON.blue).toBe("\x1b[38;5;75m");
+describe("v2a/v5: the palette", () => {
+	it("COLOR_ON is bold (SGR 1), the inline-code tint (256 color 110), red, dim, green; COLOR_OFF is empty", () => {
+		expect(COLOR_ON.bold).toBe("\x1b[1m");
+		expect(COLOR_ON.code).toBe("\x1b[38;5;110m");
 		expect(COLOR_ON.red).toBe("\x1b[31m");
 		expect(COLOR_ON.dim).toBe("\x1b[2m");
+		expect(COLOR_ON.green).toBe("\x1b[32m");
 		expect(COLOR_ON.reset).toBe("\x1b[0m");
-		expect(COLOR_OFF.blue).toBe("");
+		expect(COLOR_OFF.bold).toBe("");
+		expect(COLOR_OFF.code).toBe("");
 		expect(COLOR_OFF.red).toBe("");
 		expect(COLOR_OFF.dim).toBe("");
+		expect(COLOR_OFF.green).toBe("");
 		expect(COLOR_OFF.reset).toBe("");
 	});
 
@@ -61,6 +66,32 @@ describe("v2a: the palette", () => {
 		setTTY(true);
 		expect(palette()).toBe(COLOR_ON);
 	});
+});
+
+describe("v5: the inline-code tint (TUI v5 #16e)", () => {
+	const code = (s: string): string => `${COLOR_ON.code}${s}${COLOR_ON.reset}`;
+
+	it("backtick spans on a line get the tint; the rest stays plain", () => {
+		setNoColor(false);
+		setTTY(true);
+		expect(colorInlineCode("use `npm test` to verify")).toBe(`use ${code("`npm test`")} to verify`);
+		expect(colorInlineCode("`a` and `b` and c")).toBe(`${code("`a`")} and ${code("`b`")} and c`);
+	});
+
+	it("single level only — an unterminated backtick stays plain; spans pair left-to-right", () => {
+		setNoColor(false);
+		setTTY(true);
+		expect(colorInlineCode("an opener ` without a closer")).toBe("an opener ` without a closer");
+		// "`a `b` c`": the regex pairs `a ` then ` c` — the inner "b" is plain
+		// (left-to-right pairing, no nesting).
+		expect(colorInlineCode("`a `b` c`")).toBe(`${code("`a `")}b${code("` c`")}`);
+	});
+
+	it("NO_COLOR → byte-identical (no codes leak into pipes)", () => {
+		setNoColor(true);
+		setTTY(true);
+		expect(colorInlineCode("use `npm test` to verify")).toBe("use `npm test` to verify");
+	});
 
 	it("renders carry ZERO ANSI when the palette is off — pipes and CI are plain", () => {
 		setNoColor(true);
@@ -76,10 +107,10 @@ describe("v2a: the recolors", () => {
 		setNoColor(false);
 		setTTY(true);
 		const ok = renderToolSummary("read_file", { path: "a.ts" }, { content: "x", isError: false });
-		expect(ok).toBe(`${COLOR_ON.blue}✓${COLOR_ON.reset} read a.ts (1 line)`);
+		expect(ok).toBe(`${COLOR_ON.bold}✓${COLOR_ON.reset} read a.ts (1 line)`);
 		const err = renderToolSummary("shell", { command: "npm test" }, { content: "exit 1", isError: true });
 		expect(err.startsWith(`${COLOR_ON.red}✗${COLOR_ON.reset}`)).toBe(true);
-		expect(renderEvent({ type: "user_input", content: "hi" }).text).toBe(`${COLOR_ON.blue}you> hi${COLOR_ON.reset}\n`);
+		expect(renderEvent({ type: "user_input", content: "hi" }).text).toBe(`${COLOR_ON.bold}you> hi${COLOR_ON.reset}\n`);
 	});
 
 	it("the decorative accents are gone — the call line, verdicts, ok, and done are plain", () => {
@@ -139,7 +170,7 @@ describe("v2a: the rhythm — 渲染序列→期望字节", () => {
 			"→ list_dir({})\n" +
 			`${COLOR_ON.dim}  running…${COLOR_ON.reset}\n` +
 			"  ok\n" +
-			`${COLOR_ON.blue}✓${COLOR_ON.reset} list_dir notes\n` + // summary hugs the result
+			`${COLOR_ON.bold}✓${COLOR_ON.reset} list_dir notes\n` + // summary hugs the result
 			`${COLOR_ON.dim}${COLOR_ON.dim}  [result] …entries…${COLOR_ON.reset}\n` +
 			"\ndone\n" + // the terminal render
 			"[turn 1 · faux]\n\n"; // the status hugs done, then EXACTLY one blank

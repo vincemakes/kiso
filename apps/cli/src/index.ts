@@ -174,7 +174,7 @@ function makeLineInput(): LineInput {
 		const editor = new Editor(() => (dock.active ? dock.redraw() : editor.selfRender()));
 		editor.enter();
 		const p = palette();
-		dock.bindInput(() => editor.dockState(), `${p.blue}${EDITOR_PROMPT}${p.reset}`);
+		dock.bindInput(() => editor.dockState(), `${p.bold}${EDITOR_PROMPT}${p.reset}`);
 		dock.bindMenu(() => editor.menuState()); // v3 §04: the slash-command menu
 		return editorInput(editor);
 	}
@@ -392,7 +392,7 @@ async function main(): Promise<void> {
 	// TTY with a real size); pipes run it in passthrough, byte-for-byte.
 	setBody(
 		new Body({
-			active: () => process.stdin.isTTY && palette().blue !== "" && (process.stdout.rows ?? 0) >= 4,
+			active: () => process.stdin.isTTY && palette().bold !== "" && (process.stdout.rows ?? 0) >= 4,
 			height: () => process.stdout.rows ?? 24,
 			width: () => process.stdout.columns ?? 80,
 			editCol: () => dock.editCol(),

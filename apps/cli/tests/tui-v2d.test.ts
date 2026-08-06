@@ -88,6 +88,7 @@ const CELL_LINE = [
 	/^aborted \(.*\)$/, // the aborted terminal label
 	/^error: .*$/, // the error terminal label
 	/^▸ .* · \/mode to switch.*$/, // v3 idle status line
+	/^\/ commands · ↑ history$/, // TUI v5 #16g: the dock's idle hint — the status row at enter (the status is still empty)
 	/^▖ working \d+s.*$/, // v3 running status line
 	/^streaming text.*$/, // the TextCell body
 	/^session \S+$/, // the session header
@@ -96,6 +97,7 @@ const CELL_LINE = [
 	/^the coding agent that survives kill -9$/, // the tagline
 	/^v\d+\.\d+\.\d+.*$/, // the version row
 	/^▌\s?.*$/, // the input row (TUI v4 #16d: the brick alone — the trim eats the trailing space)
+	/^▍\s?.*$/, // TUI v5 #16f: the user block — every line carries the ▍ rail (arbitrary user text after it)
 	/^╌+$/, // the separator
 	/^ {0,2}(approved|denied.*)$/, // the permission_decided raw
 	/^approve .*\(y\/n\)$/, // the dock's takeover question
@@ -113,9 +115,10 @@ const lint = (raw: string): string[] => {
 	const bad: string[] = [];
 	const segments = raw.split(/\x1b\[[0-9;]*H/);
 	for (const seg of segments) {
-		// v3 §02: the user block is the SGR-background cell — its identity
-		// is the background code itself (there is no "you> " prefix left).
-		if (seg.includes("\x1b[7m")) continue;
+		// TUI v5 #16f: the user block is the ▍-rail cell — its identity is
+		// the rail itself (there is no "you> " prefix, no bg/rev block).
+		// The rail pattern in CELL_LINE classifies it (the rail prefixes
+		// any user text — the pattern is total by construction).
 		const t = seg
 			.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
 			.replace(/\[[0-9;]*m/g, "") // any residual SGR fragment (the split can strand a "[2m")
