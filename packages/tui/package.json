@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-tui",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "description": "kiso tui — the pure terminal layer (cell renderer, dock, raw editor, diff, palette). Zero runtime dependencies: input is data, output is bytes.",
   "type": "module",
   "license": "MIT",

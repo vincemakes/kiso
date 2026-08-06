@@ -12,7 +12,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@vincemakes/kiso-core": "0.1.20",
+    "@vincemakes/kiso-core": "0.1.21",
     "@types/node": "^26.1.2",
     "esbuild": "^0.24.0",
     "typescript": "^5.7.2",
