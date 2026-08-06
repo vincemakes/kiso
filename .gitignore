@@ -7,3 +7,4 @@ dist/
 *.kiso-tmp*
 bench/runs/
 __pycache__/
+CLAUDE.md
