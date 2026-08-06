@@ -187,4 +187,39 @@ describe("自举 P1/P2: reasoning_content round-trip (DeepSeek thinking mode)", 
 		expect(assistant).not.toHaveProperty("tool_calls");
 		expect(assistant?.content).toBe("Hello!");
 	});
+
+	it("C7 (P4): anthropic-thinking HISTORY + an openai continuation never flips the mode — no reasoning is passed back", async () => {
+		// The cross-provider shape: an OLD turn (before the last user
+		// message) reasoned — it belongs to the anthropic family, the
+		// session's previous adapter. The CURRENT turn (the openai
+		// continuation) produced NO thinking. The old reasoning must NOT
+		// flip thinking mode: the request would otherwise carry
+		// `reasoning_content: ""` on a turn this adapter has no business
+		// tagging as thinking (the simple judgment: current-turn messages
+		// carry no source marker — the current adapter is their source).
+		const messages = projectMessages([
+			{ type: "user_input", content: "what does this file do?" },
+			{ type: "thinking", text: "Let me read it." }, // anthropic thinking — the OLD turn
+			{ type: "text_delta", text: "Let me read it." },
+			{ type: "stop", reason: "end_turn" },
+			{ type: "user_input", content: "and the tests?" },
+			{ type: "text_delta", text: "Tests live in tests/." }, // the openai continuation — no thinking
+			{ type: "stop", reason: "end_turn" },
+		]);
+
+		let captured: unknown;
+		const adapter: Adapter = createOpenAICompatAdapter(
+			fakeOpenAI({ onCreate: (p) => (captured = p) }),
+		);
+		for await (const _ev of adapter.stream({ model: "deepseek-v4-flash", messages })) {
+			// drain
+		}
+
+		const request = captured as { messages: Array<Record<string, unknown>> };
+		const assistants = request.messages.filter((m) => m.role === "assistant");
+		expect(assistants).toHaveLength(2);
+		for (const assistant of assistants) {
+			expect(assistant).not.toHaveProperty("reasoning_content");
+		}
+	});
 });

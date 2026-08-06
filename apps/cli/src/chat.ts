@@ -20,6 +20,27 @@ import { MODES, getMode, setMode } from "./mode.js";
 const DEFAULT_CONTEXT_WINDOW = 200_000;
 
 /**
+ * 手感批 C8 — the /compact auto-trigger, OPT-IN (default off: only an
+ * explicit KISO_AUTO_COMPACT=<ratio> enables it — the CLI never defaults
+ * it on). After every completed turn the ~ctx ratio is checked; at/over
+ * thresholdRatio the /compact full path runs (the same dispatch — same
+ * notices, same chain ordering, same mid-run refusal).
+ */
+export interface AutoCompact {
+	/** 0 < r < 1 — the ~ctx ratio that triggers the compaction. */
+	readonly thresholdRatio: number;
+}
+
+/** Parse KISO_AUTO_COMPACT — an invalid value is OFF, never a crash. */
+export function autoCompactFromEnv(): AutoCompact | undefined {
+	const raw = process.env.KISO_AUTO_COMPACT;
+	if (raw === undefined) return undefined;
+	const ratio = Number.parseFloat(raw);
+	if (!Number.isFinite(ratio) || ratio <= 0 || ratio >= 1) return undefined;
+	return { thresholdRatio: ratio };
+}
+
+/**
  * C 区: the model window in tokens — KISO_CONTEXT_WINDOW overrides the
  * 200k default. The microcompact threshold is derived from it (50%), and
  * the status line's ~ctx estimate is measured against it — one source of
@@ -265,7 +286,7 @@ export async function consumeRun(
 }
 
 /** Interactive REPL: stream events, pause for approvals, Ctrl+C aborts. */
-export async function chat(session: AgentSession, faux: boolean, input: LineInput): Promise<void> {
+export async function chat(session: AgentSession, faux: boolean, input: LineInput, autoCompact?: AutoCompact): Promise<void> {
 	let currentRun: { abort: () => void } | null = null;
 	let cancelled = false;
 
@@ -305,6 +326,10 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 					// 八: after EVERY turn the prompt is re-armed — the human
 					// never types blind after the first turn.
 					input.prompt();
+					// 手感批 C8: the opt-in auto-compact — checked AFTER the
+					// turn ended (the run's terminal is in the log, the ratio
+					// is post-run).
+					maybeAutoCompact();
 					resolve();
 				} catch (err) {
 					// A run failure must not freeze the REPL (review finding
@@ -415,6 +440,17 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		submitTurn,
 		estimateCtx: () => estimateCtxRatio(session),
 	};
+	// 手感批 C8: the auto-compact check — the /compact FULL path via the
+	// shared dispatch (same notices, same chain ordering, same mid-run
+	// refusal — the isRunning guard here only avoids the refusal's noise).
+	const maybeAutoCompact = (): void => {
+		if (autoCompact === undefined) return;
+		if (currentRun !== null) return; // dispatch would refuse — skip the noise
+		const ratio = estimateCtxRatio(session);
+		if (Number.isFinite(ratio) && ratio >= autoCompact.thresholdRatio) {
+			dispatch("/compact", dispatchCtx);
+		}
+	};
 	input.onLine((line) => {
 		if (!replReady) {
 			queuedLines.push(line);
@@ -436,6 +472,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		const last = await consumeRun(session, recoveryRun, input, turnNo, faux, liveInput, statusCb);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, input);
+		maybeAutoCompact(); // 手感批 C8: the recovery run ended too — same check
 	}
 	if (cancelled) {
 		input.close();

@@ -74,8 +74,12 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
 }
 
 /** Seed a LONG session (7 chunky rounds + an open final input — the crash
- *  shape, so chat's recovery resumes it first). */
-function seedSession(home: string, id: string): void {
+ *  shape, so chat's recovery resumes it first). The result size and round
+ *  count are tunable for the C8 auto-compact shape (a session that crosses
+ *  the ~ctx threshold). */
+function seedSession(home: string, id: string, opts: { rounds?: number; resultChars?: number } = {}): void {
+	const rounds = opts.rounds ?? 7;
+	const resultChars = opts.resultChars ?? 1500;
 	const dir = join(home, "sessions");
 	mkdirSync(dir, { recursive: true });
 	let seq = 0;
@@ -85,9 +89,9 @@ function seedSession(home: string, id: string): void {
 		seq += 1;
 	};
 	push({ type: "user_input", content: "start" });
-	for (let i = 0; i < 7; i++) {
+	for (let i = 0; i < rounds; i++) {
 		push({ type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: `f${i}.ts` } });
-		push({ type: "tool_result", callId: `r${i}`, content: "line\n".repeat(300), isError: false });
+		push({ type: "tool_result", callId: `r${i}`, content: "x".repeat(resultChars), isError: false });
 		push({ type: "user_input", content: `t${i}` });
 	}
 	writeFileSync(join(dir, `${id}.jsonl`), lines.join("\n") + "\n", "utf8");
@@ -157,5 +161,49 @@ describe("A2: ↑↓ recall the session history", () => {
 		// The recall rendered into the input row a SECOND time (the typed
 		// echo + the recalled row).
 		expect((plain.match(/you> hello/g) ?? []).length).toBeGreaterThanOrEqual(2);
+	});
+});
+
+describe("C8: /compact auto-trigger (opt-in via KISO_AUTO_COMPACT)", () => {
+	it("after the turn ends, a ~ctx ratio over the threshold runs the /compact FULL path — the notice + a durable summarized event", () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-feel-c8-"));
+		const { env: isoEnv, dirs } = isolatedEnv();
+		// The shape: 5 chunky reads (130K chars each). The recovery's
+		// continuation microcompacts r0 (the newest 4 stay — ~520K chars ≈
+		// 0.65 of the 200K window — under the 0.7 trigger, so the recovery
+		// does NOT trigger). The live turn then adds 50K chars of MODEL
+		// TEXT (assistant text is never compactable and displaces nothing):
+		// the post-turn ratio ≈ 0.71 crosses the threshold, and the
+		// auto-trigger fires AFTER the turn — WITHOUT the human typing
+		// /compact. (A tool RESULT would not work: tool results cap at
+		// OUTPUT_CAP = 100K chars, and the microcompact's kept window
+		// would displace a seed result with the smaller read.)
+		seedSession(dirs.home, "c8", { rounds: 5, resultChars: 130_000 });
+		// fauxSkip = 5 (the seed's results; no stops in the seed): 5 fillers
+		// + the recovery's end_turn + the live long-text answer + the auto
+		// summary.
+		const script = [
+			...Array.from({ length: 5 }, () => ({ events: [{ type: "stop", reason: "end_turn" }] })),
+			{ events: [{ type: "stop", reason: "end_turn" }] },
+			{ events: [{ type: "text_delta", text: "a".repeat(50_000) }, { type: "stop", reason: "end_turn" }] },
+			{ events: [{ type: "text_delta", text: "The covered rounds, summarized." }, { type: "stop", reason: "end_turn" }] },
+		];
+		const scriptPath = join(dir, "faux.json");
+		writeFileSync(scriptPath, JSON.stringify(script), "utf8");
+
+		const out = ptyRun(
+			{ ...isoEnv, KISO_AUTO_COMPACT: "0.7", KISO_FAUX_SCRIPT: scriptPath },
+			[
+				// ONE turn ("go") — the auto-trigger then fires WITHOUT any
+				// /compact keystroke; "saved ~" is the auto notice.
+				["you> ", "go\n"],
+				["[/compact] saved ~", "exit\n"],
+			],
+			dir,
+			"c8",
+		);
+		expect(stripANSI(out)).toContain("[/compact] saved ~"); // the auto notice
+		const durable = readFileSync(join(dirs.home, "sessions", "c8.jsonl"), "utf8");
+		expect(durable).toContain('"type":"summarized"'); // the durable /compact fact
 	});
 });

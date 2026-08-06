@@ -42,7 +42,7 @@ import { MODES, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from ".
 import { body, bodyLog, dock, extensionsDir, loadedExtensions, mergedTempPaths, projectExtensions, sessionsDir, setAgentModel, setBody, setExtensionLists, userExtensions, VERSION, type LineInput } from "./state.js";
 import { interactivePrompt, resolveProjectTrust } from "./trust-ui.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
-import { chat, contextWindowTokens } from "./chat.js";
+import { autoCompactFromEnv, chat, contextWindowTokens } from "./chat.js";
 import { resume } from "./resume.js";
 
 // The moved exports stay reachable from this entry — the test imports
@@ -388,7 +388,7 @@ async function main(): Promise<void> {
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
 				extensionsBanner();
-				await chat(session, faux, input);
+				await chat(session, faux, input, autoCompactFromEnv());
 				break;
 			}
 			case "resume": {
@@ -435,7 +435,7 @@ async function main(): Promise<void> {
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
 				extensionsBanner();
-				await chat(session, faux, input);
+				await chat(session, faux, input, autoCompactFromEnv());
 				break;
 			}
 		}

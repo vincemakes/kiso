@@ -348,19 +348,26 @@ function toOpenAIMessages(
 	if (systemPrompt !== undefined) {
 		out.push({ role: "system", content: systemPrompt });
 	}
-	// 自举 P1/P2: thinking mode is detected by the presence of ANY
-	// reasoning in the projection (real OpenAI never emits thinking events,
-	// so its requests never see the field). In thinking mode, ONLY the
-	// CURRENT turn's assistant messages (after the last user message) carry
-	// reasoning_content — their own, or "" when the step produced no
-	// thinking (the field must still be present, or DeepSeek 400s); OLD
-	// turns' CoT is never echoed (DeepSeek does not need it, and echoing
-	// it is token waste).
-	const thinkingMode = messages.some((m) => m.role === "assistant" && m.reasoning !== undefined);
 	let lastUser = -1;
 	for (const [i, m] of messages.entries()) {
 		if (m.role === "user") lastUser = i;
 	}
+	// 自举 P1/P2 + 手感批 C7: thinking mode is detected by the presence of
+	// reasoning in the CURRENT turn only (messages after the last user
+	// message). Real OpenAI never emits thinking events, so its requests
+	// never see the field. The current-turn messages carry no source
+	// marker, so the simple judgment is "the current session adapter is
+	// their source" — their reasoning is THIS family's own and may be
+	// echoed. Reasoning in OLDER turns belongs to whatever adapter
+	// produced them (an anthropic-thinking history continued by an openai
+	// adapter is the case this guards): it must NEVER flip the mode —
+	// otherwise this adapter would send `reasoning_content: ""` on a
+	// request it has no business tagging as thinking. In thinking mode,
+	// ONLY the CURRENT turn's assistant messages carry reasoning_content —
+	// their own, or "" when the step produced no thinking (the field must
+	// still be present, or DeepSeek 400s); old turns' CoT is never echoed
+	// (DeepSeek does not need it, and echoing it is token waste).
+	const thinkingMode = messages.slice(lastUser + 1).some((m) => m.role === "assistant" && m.reasoning !== undefined);
 	for (const [i, msg] of messages.entries()) {
 		if (msg.role === "user") {
 			out.push({ role: "user", content: toOpenAIContent(msg.content) });
