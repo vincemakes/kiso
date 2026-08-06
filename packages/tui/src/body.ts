@@ -66,7 +66,16 @@ export type BodyCell =
 	| { kind: "text"; text: string; done: boolean }
 	| { kind: "notice"; text: string; done: true }
 	| { kind: "raw"; lines: string[]; done: true }
-	| { kind: "terminal"; label: string; line: string; done: true };
+	| { kind: "terminal"; label: string; line: string; done: true }
+	| {
+			// ⑥ todo round: the durable checklist cell — the CLI's
+			// translation of a do-not-compact-tagged todo_set result.
+			// Frozen immediately (done: true) — 冻结语义照旧.
+			kind: "checklist";
+			header: string;
+			items: { text: string; status: "pending" | "active" | "done" }[];
+			done: true;
+	  };
 
 export interface BodyOptions {
 	/** Is the cell renderer live? A color TTY with a real size — checked
@@ -370,6 +379,26 @@ export class Body {
 		this.#mark();
 	}
 
+	/** ⑥ todo round: the durable checklist — header + one brick-glyph line
+	 *  per item, frozen immediately (it is static content). The CLI
+	 *  translates a tagged tool result into the structured items; the
+	 *  passthrough writes the same lines (byte-identical in pipes). */
+	checklist(header: string, items: { text: string; status: "pending" | "active" | "done" }[]): void {
+		const glyphOf = (status: string): string => (status === "pending" ? "□" : status === "active" ? "▖" : "▣");
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			const p = palette();
+			process.stdout.write(`${p.bold}▞${p.reset} ${escapeTerminal(header)}\n`);
+			for (const item of items) process.stdout.write(`  ${glyphOf(item.status)} ${escapeTerminal(item.text)}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		this.#cells.push({ kind: "checklist", header, items, done: true });
+		this.#mark();
+	}
+
 	/** A pre-rendered block (the banner, the session line, slash-command
 	 *  outputs) — frozen immediately. */
 	raw(lines: string[]): void {
@@ -546,6 +575,17 @@ export class Body {
 				// the honest label (done / aborted / error) + the status + the
 				// rhythm gap blank
 				return [cell.label, cell.line, ""];
+			case "checklist": {
+				// ⑥: the durable checklist — the ▞ header accent + one brick
+				// glyph per item (□ pending / ▖ active / ▣ done). Text is
+				// escaped at composition; the glyphs are renderer-owned.
+				const lines = [`${p.bold}▞${p.reset} ${escapeTerminal(cell.header)}`];
+				for (const item of cell.items) {
+					const glyph = item.status === "pending" ? "□" : item.status === "active" ? "▖" : "▣";
+					lines.push(`  ${glyph} ${escapeTerminal(item.text)}`);
+				}
+				return lines;
+			}
 		}
 	}
 

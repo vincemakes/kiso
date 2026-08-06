@@ -214,3 +214,45 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 		);
 	});
 });
+
+describe("⑥: the checklist cell (the durable todo render)", () => {
+	it("NO_COLOR: the header ▞ + the brick glyphs (□ pending / ▖ active / ▣ done), byte-exact", () => {
+		const ev: RenderInput = {
+			type: "checklist",
+			header: "3 items — 1 pending, 1 active, 1 done",
+			items: [
+				{ text: "write the plan", status: "pending" },
+				{ text: "implement", status: "active" },
+				{ text: "verify", status: "done" },
+			],
+		};
+		expect(renderEvent(ev).text).toBe(
+			"▞ 3 items — 1 pending, 1 active, 1 done\n" +
+				"  □ write the plan\n" +
+				"  ▖ implement\n" +
+				"  ▣ verify\n",
+		);
+	});
+
+	it("TTY: only the ▞ accent is bold; the items stay plain (glyphs carry the status)", () => {
+		setTTY(true);
+		setNoColor(false);
+		const ev: RenderInput = {
+			type: "checklist",
+			header: "1 item — 0 pending, 1 active, 0 done",
+			items: [{ text: "go", status: "active" }],
+		};
+		expect(renderEvent(ev).text).toBe(`${COLOR_ON.bold}▞${COLOR_ON.reset} 1 item — 0 pending, 1 active, 0 done\n  ▖ go\n`);
+	});
+
+	it("terminal-injection vectors in item text are stripped (escaped at composition)", () => {
+		// The escape strips ESC and C0 bytes; the residue is inert literal
+		// text — no control sequence can reach the terminal.
+		const ev: RenderInput = {
+			type: "checklist",
+			header: "1 item",
+			items: [{ text: "\x1b[31mred\x07", status: "pending" }],
+		};
+		expect(renderEvent(ev).text).toBe("▞ 1 item\n  □ [31mred\n");
+	});
+});

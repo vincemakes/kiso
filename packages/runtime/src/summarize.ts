@@ -14,7 +14,7 @@
  * lands on disk; the original events stay there forever.
  */
 
-import { estimateTokens } from "@vincemakes/kiso-core";
+import { estimateTokens, DO_NOT_COMPACT } from "@vincemakes/kiso-core";
 import type { AbortSignalLike, Adapter } from "@vincemakes/kiso-core";
 import type { Event } from "@vincemakes/kiso-core";
 import type { Message } from "@vincemakes/kiso-core";
@@ -99,6 +99,14 @@ export function lastSummaryPoint(events: readonly Event[]): number {
  * a turn boundary by construction, so the projection's skip never splits
  * a message. Returns undefined when fewer than keepRounds+1 uncovered
  * rounds exist (nothing worth covering yet).
+ *
+ * ⑥ (todo round): a tool result tagged do-not-compact is DURABLE work
+ * memory (the todo_set echo) — the summary must never cover its round,
+ * or the model loses the current list. When the base boundary would
+ * cover such a result, the boundary pulls back to just before the round
+ * containing the LATEST one (still a turn boundary). A protected round
+ * as the FIRST uncovered round leaves nothing before it to cover →
+ * undefined (an honest "nothing to compact").
  */
 export function summaryBoundarySeq(events: readonly Event[], keepRounds = KEEP_RECENT_ROUNDS): number | undefined {
 	const prevPoint = lastSummaryPoint(events);
@@ -107,9 +115,47 @@ export function summaryBoundarySeq(events: readonly Event[], keepRounds = KEEP_R
 		if (ev.type === "user_input" && ev.seq > prevPoint) uncoveredInputs.push(ev.seq);
 	}
 	if (uncoveredInputs.length <= keepRounds) return undefined;
+	const base = uncoveredInputs[uncoveredInputs.length - keepRounds]! - 1;
+	const protectedRound = latestProtectedBoundary(events, prevPoint, base);
+	if (protectedRound !== undefined) {
+		if (protectedRound <= prevPoint) return undefined;
+		return protectedRound;
+	}
 	// The input at m - keepRounds opens the FIRST KEPT round; everything
 	// before it (m - keepRounds ≥ 1 covered rounds) is summarizable.
-	return uncoveredInputs[uncoveredInputs.length - keepRounds]! - 1;
+	return base;
+}
+
+/**
+ * ⑥: the boundary just before the round holding the LATEST do-not-compact
+ * tool result inside (prevPoint, base] — that round's opening user_input
+ * minus one, or undefined when the range holds no such result. The
+ * projection replaces by RANGE, so only the newest echo matters: older
+ * tagged echoes are superseded and may be covered.
+ */
+function latestProtectedBoundary(events: readonly Event[], prevPoint: number, base: number): number | undefined {
+	let protectSeq = -1;
+	for (const ev of events) {
+		if (
+			ev.type === "tool_result" &&
+			ev.seq > prevPoint &&
+			ev.seq <= base &&
+			(ev.tags ?? []).includes(DO_NOT_COMPACT)
+		) {
+			protectSeq = ev.seq;
+		}
+	}
+	if (protectSeq < 0) return undefined;
+	// The round's opening input: the last user_input before the result.
+	// The result's whole round is uncovered by construction (the previous
+	// compact ended at a turn boundary before its input), so the input is
+	// > prevPoint — the guard is the belt.
+	let inputSeq = -1;
+	for (const ev of events) {
+		if (ev.type === "user_input" && ev.seq > prevPoint && ev.seq < protectSeq) inputSeq = ev.seq;
+	}
+	if (inputSeq < 0) return undefined;
+	return inputSeq - 1;
 }
 
 /**

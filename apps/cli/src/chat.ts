@@ -111,6 +111,36 @@ function approvalDiff(name: string, input: Record<string, unknown>): DiffResult 
  * stream here. Events without a render (stop, expired, resolved, …) → null,
  * and the consumer skips them — the pipe bytes stay identical.
  */
+
+/**
+ * ⑥ todo round: translate a do-not-compact-tagged tool result whose
+ * content follows the todo echo contract (a [todo] header line + one
+ * `[pending|active|done] text` line per item) into the checklist cell's
+ * structured items. Null = not a checklist — the ordinary result cell
+ * renders. Keyed on the TAG (what the extension declared), never on a
+ * tool name; the parse is graceful so a foreign tagged result still
+ * renders normally.
+ */
+function parseChecklist(
+	tags: readonly string[] | undefined,
+	content: string,
+): { header: string; items: { text: string; status: "pending" | "active" | "done" }[] } | null {
+	if (!(tags ?? []).includes("do-not-compact")) return null;
+	const items: { text: string; status: "pending" | "active" | "done" }[] = [];
+	let header = "";
+	for (const line of content.split("\n")) {
+		const head = /^\[todo\] (.*)$/.exec(line);
+		if (head !== null) {
+			header = head[1]!;
+			continue;
+		}
+		const m = /^\[(pending|active|done)\] (.*)$/.exec(line);
+		if (m !== null) items.push({ text: m[2]!, status: m[1] as "pending" | "active" | "done" });
+	}
+	if (items.length === 0) return null;
+	return { header, items };
+}
+
 function toRenderInput(ev: import("@vincemakes/kiso-core").Event): RenderInput | null {
 	switch (ev.type) {
 		case "user_input":
@@ -213,6 +243,13 @@ export async function consumeRun(
 			case "tool_result": {
 				const text = typeof ev.content === "string" ? ev.content : "";
 				body.toolResult(ev.callId, { content: text, isError: ev.isError });
+				// ⑥ todo round: a result tagged do-not-compact whose content
+				// follows the checklist shape also renders as the durable
+				// checklist cell (the CLI translates Event → the tui's own
+				// shape; a non-matching parse falls back to the ordinary
+				// result cell — never hide information).
+				const checklist = parseChecklist(ev.tags, text);
+				if (checklist !== null) body.checklist(checklist.header, checklist.items);
 				break;
 			}
 			case "text_delta":

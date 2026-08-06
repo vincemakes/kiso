@@ -580,6 +580,32 @@ description: a review checklist for pull requests
   safe-defaults example allows it (read_file trust); everything else
   about skills is plain file access governed by the existing policy.
 
+## Todo — durable long-horizon working memory
+
+`extensions/todo` is the official todo extension: a zero-dependency single
+file (`src/kiso-todo.mjs` is the artifact — source IS the product, no
+build step). Install by copying it, like the skills extension:
+
+```
+cp extensions/todo/src/kiso-todo.mjs ~/.kiso/extensions/   # the E1 loader picks it up
+```
+
+The `todo_set` tool is a whole-table replace (the CC TodoWrite shape):
+the model sends the complete current list every time, with at most one
+item `active` (a second active is refused loudly — the CC discipline).
+The result echoes the normalized list and carries the `do-not-compact`
+tag. The echo renders in the terminal as a checklist cell
+(□ pending / ▖ active / ▣ done, the brick family), and the system prompt
+gains a restrained planning discipline (3+ steps → plan first with a
+verification step; mark active before starting; mark done immediately).
+
+The selling point is the contrast with Claude Code's TodoWrite: CC's list
+is **runtime state** — it dies with the process. kiso's list is **durable
+events** — the echo is a tool-result message in the session log, so it
+survives kill -9 (a resume rebuilds the projection from the log) and
+/compact (the do-not-compact tag makes the summary layer's boundary pull
+back before its round — the latest list is never lost to a summary).
+
 ## Project-level `.kiso` — trusted by content digest, not by directory
 
 A repo's own `.kiso` directory is a capability surface: cloned code that
@@ -630,6 +656,7 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | MCP bridge | official extension, kernel untouched | `extensions/mcp/tests` |
 | subagents | official extension, role-policy children | `extensions/subagent/tests` |
 | skills | official extension, two-tier progressive | `extensions/skills/tests` |
+| todo | official extension, durable long-horizon memory (todo_set) | `extensions/todo/tests`, `apps/cli/tests/todo-e2e.test.ts` |
 | context economy ● | microcompact + /compact (model summary) + prompt-cache discipline | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
 
