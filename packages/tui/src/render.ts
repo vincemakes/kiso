@@ -1,9 +1,12 @@
 /**
- * Event rendering for the terminal. Pure (testable): given events, produce
- * the lines a human sees. Colors are raw ANSI — no dependencies.
+ * Event rendering for the terminal. Pure (testable): given the render
+ * input, produce the lines a human sees. Colors are raw ANSI — no
+ * dependencies.
+ *
+ * 手感批 C5: the input is the tui's OWN data shape (RenderInput), never
+ * kiso-core's Event — the CLI translates Event → RenderInput. The tui
+ * package has ZERO kiso-core imports: input is data, output is bytes.
  */
-
-import type { Event } from "@vincemakes/kiso-core";
 
 /**
  * v2a — the palette, centralized (no hard-coded codes elsewhere): ONE
@@ -56,6 +59,39 @@ export interface RenderResult {
 }
 
 /**
+ * 手感批 C5 — the render input, the tui's OWN data shape: the subset of
+ * an event stream the renderer reads, keyed by type. The CLI translates
+ * its Event stream into this (Event → RenderInput) before rendering —
+ * the tui package never imports kiso-core. Field names mirror the
+ * rendered Event members so the render body stays byte-identical.
+ */
+export type RenderInput =
+	| { readonly type: "user_input"; readonly content: string | readonly { readonly type?: string; readonly text?: string }[] }
+	| { readonly type: "text_delta"; readonly text: string }
+	| { readonly type: "text_end" }
+	| { readonly type: "thinking"; readonly text: string }
+	| { readonly type: "tool_call_end"; readonly name: string; readonly input: Readonly<Record<string, unknown>> | null }
+	| { readonly type: "tool_execution_started" }
+	| { readonly type: "tool_execution_succeeded" }
+	| { readonly type: "tool_execution_failed"; readonly error: string }
+	| { readonly type: "tool_result"; readonly content: string | readonly { readonly type?: string; readonly text?: string }[]; readonly isError: boolean }
+	| { readonly type: "permission_requested"; readonly name: string; readonly input: Readonly<Record<string, unknown>> }
+	| { readonly type: "permission_decided"; readonly decision: "approved" | "denied"; readonly reason?: string }
+	| {
+			readonly type: "terminal";
+			readonly outcome:
+				| { readonly kind: "completed" }
+				| { readonly kind: "max_tokens" }
+				| { readonly kind: "max_turns"; readonly turns: number }
+				| { readonly kind: "error"; readonly error: { readonly message: string } }
+				| { readonly kind: "aborted"; readonly by: string }
+				| { readonly kind: "hook_stopped"; readonly hook: string };
+		}
+	| { readonly type: "compacted"; readonly cleared: readonly { readonly eventSeq?: number; readonly callId: string }[] }
+	| { readonly type: "summarized"; readonly coversToSeq: number }
+	| { readonly type: "uncertain_pending"; readonly name: string; readonly executionId: string; readonly error: string };
+
+/**
  * Render one event. `text` may be a continuation (text_delta appends to the
  * current line); `newline` says whether the line is complete.
  *
@@ -85,7 +121,7 @@ export function foldResult(content: string): string {
 	return `${escapeTerminal(flat.slice(0, 160))}${truncated ? " (/last for full)" : ""}`;
 }
 
-export function renderEvent(ev: Event, prevThinking = false, resolvePath: PathResolver = (p) => p): RenderResult {
+export function renderEvent(ev: RenderInput, prevThinking = false, resolvePath: PathResolver = (p) => p): RenderResult {
 	const p = palette();
 	switch (ev.type) {
 		case "user_input":

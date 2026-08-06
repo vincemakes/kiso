@@ -16,6 +16,7 @@ import {
 	renderTerminalGap,
 	renderToolSummary,
 	renderRecap,
+	type RenderInput,
 } from "../src/render.js";
 
 const ORIG_TTY = process.stdout.isTTY;
@@ -64,9 +65,9 @@ describe("v2a: the palette", () => {
 	it("renders carry ZERO ANSI when the palette is off — pipes and CI are plain", () => {
 		setNoColor(true);
 		setTTY(true); // NO_COLOR wins even on a TTY
-		expect(renderEvent({ seq: 0, type: "user_input", content: "hello" }).text).toBe("you> hello\n");
+		expect(renderEvent({ type: "user_input", content: "hello" }).text).toBe("you> hello\n");
 		expect(renderToolSummary("read_file", { path: "a.ts" }, { content: "x", isError: false })).toBe("✓ read a.ts (1 line)");
-		expect(renderEvent({ seq: 0, type: "terminal", outcome: { kind: "completed" } }).text).toBe("\ndone\n");
+		expect(renderEvent({ type: "terminal", outcome: { kind: "completed" } }).text).toBe("\ndone\n");
 	});
 });
 
@@ -78,27 +79,27 @@ describe("v2a: the recolors", () => {
 		expect(ok).toBe(`${COLOR_ON.blue}✓${COLOR_ON.reset} read a.ts (1 line)`);
 		const err = renderToolSummary("shell", { command: "npm test" }, { content: "exit 1", isError: true });
 		expect(err.startsWith(`${COLOR_ON.red}✗${COLOR_ON.reset}`)).toBe(true);
-		expect(renderEvent({ seq: 0, type: "user_input", content: "hi" }).text).toBe(`${COLOR_ON.blue}you> hi${COLOR_ON.reset}\n`);
+		expect(renderEvent({ type: "user_input", content: "hi" }).text).toBe(`${COLOR_ON.blue}you> hi${COLOR_ON.reset}\n`);
 	});
 
 	it("the decorative accents are gone — the call line, verdicts, ok, and done are plain", () => {
 		setNoColor(false);
 		setTTY(true);
-		expect(renderEvent({ seq: 0, type: "tool_call_end", callId: "c1", name: "list_dir", input: {} }).text).toBe("→ list_dir({})\n");
+		expect(renderEvent({ type: "tool_call_end", name: "list_dir", input: {} }).text).toBe("→ list_dir({})\n");
 		expect(
-			renderEvent({ seq: 0, type: "tool_execution_succeeded", callId: "c1", executionId: "e1", result: { content: "ok", isError: false } }).text,
+			renderEvent({ type: "tool_execution_succeeded" }).text,
 		).toBe("  ok\n");
-		expect(renderEvent({ seq: 0, type: "permission_decided", decisionId: "d", callId: "c", decision: "approved" }).text).toBe("  approved\n");
-		expect(renderEvent({ seq: 0, type: "terminal", outcome: { kind: "completed" } }).text).toBe("\ndone\n");
+		expect(renderEvent({ type: "permission_decided", decision: "approved" }).text).toBe("  approved\n");
+		expect(renderEvent({ type: "terminal", outcome: { kind: "completed" } }).text).toBe("\ndone\n");
 	});
 
 	it("error states stay red — ✗ marks, failed executions, terminal errors", () => {
 		setNoColor(false);
 		setTTY(true);
 		expect(
-			renderEvent({ seq: 0, type: "tool_execution_failed", callId: "c1", executionId: "e1", error: "boom", safeToRetry: true }).text,
+			renderEvent({ type: "tool_execution_failed", error: "boom" }).text,
 		).toBe(`${COLOR_ON.red}  failed: boom${COLOR_ON.reset}\n`);
-		expect(renderEvent({ seq: 0, type: "terminal", outcome: { kind: "error", error: { code: "unknown", retryable: false, message: "nope" } } }).text).toBe(
+		expect(renderEvent({ type: "terminal", outcome: { kind: "error", error: { message: "nope" } } }).text).toBe(
 			`\n${COLOR_ON.red}error${COLOR_ON.reset}: nope\n`,
 		);
 	});
@@ -108,14 +109,14 @@ describe("v2a: the rhythm — 渲染序列→期望字节", () => {
 	it("one turn's exact bytes: the summary hugs the result, the status hugs done, one blank, then the prompt", () => {
 		setNoColor(false);
 		setTTY(true);
-		const events: Array<import("@vincemakes/kiso-core").Event> = [
-			{ seq: 0, type: "thinking", text: "Let me look" },
-			{ seq: 1, type: "text_delta", text: "I see the workspace." },
-			{ seq: 2, type: "tool_call_end", callId: "c1", name: "list_dir", input: {} },
-			{ seq: 3, type: "tool_execution_started", callId: "c1", executionId: "e1", name: "list_dir", input: {} },
-			{ seq: 4, type: "tool_execution_succeeded", callId: "c1", executionId: "e1", result: { content: "ok", isError: false } },
-			{ seq: 5, type: "tool_result", callId: "c1", content: "…entries…", isError: false },
-			{ seq: 6, type: "terminal", outcome: { kind: "completed" } },
+		const events: Array<RenderInput> = [
+			{ type: "thinking", text: "Let me look" },
+			{ type: "text_delta", text: "I see the workspace." },
+			{ type: "tool_call_end", name: "list_dir", input: {} },
+			{ type: "tool_execution_started" },
+			{ type: "tool_execution_succeeded" },
+			{ type: "tool_result", content: "…entries…", isError: false },
+			{ type: "terminal", outcome: { kind: "completed" } },
 		];
 		// The consumer's exact composition (v2b): the thinking block FOLDS to
 		// one dim line — the fold owns the block's newline; the summary line

@@ -37,6 +37,7 @@ export {
 	type Palette,
 	type PathResolver,
 	type RecapStats,
+	type RenderInput,
 	type RenderResult,
 	type RunUsage,
 } from "./render.js";

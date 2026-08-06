@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { escapeTerminal, kUnit, palette, renderEvent, renderRecap, type RunUsage } from "@vincemakes/kiso-tui";
+import { escapeTerminal, kUnit, palette, renderEvent, renderRecap, type RenderInput, type RunUsage } from "@vincemakes/kiso-tui";
 import { editFileDiff, writeFileDiff, type DiffResult } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath } from "@vincemakes/kiso-tools-node";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
@@ -79,6 +79,49 @@ function approvalDiff(name: string, input: Record<string, unknown>): DiffResult 
 		return writeFileDiff(oldContent, content);
 	} catch {
 		return null; // never let the diff break the approval
+	}
+}
+
+/**
+ * 手感批 C5 — the translation layer: the tui renders its OWN data shape
+ * (RenderInput, zero kiso-core imports); the CLI translates its Event
+ * stream here. Events without a render (stop, expired, resolved, …) → null,
+ * and the consumer skips them — the pipe bytes stay identical.
+ */
+function toRenderInput(ev: import("@vincemakes/kiso-core").Event): RenderInput | null {
+	switch (ev.type) {
+		case "user_input":
+			return { type: "user_input", content: ev.content };
+		case "text_delta":
+			return { type: "text_delta", text: ev.text };
+		case "text_end":
+			return { type: "text_end" };
+		case "thinking":
+			return { type: "thinking", text: ev.text };
+		case "tool_call_end":
+			return { type: "tool_call_end", name: ev.name, input: ev.input };
+		case "tool_execution_started":
+			return { type: "tool_execution_started" };
+		case "tool_execution_succeeded":
+			return { type: "tool_execution_succeeded" };
+		case "tool_execution_failed":
+			return { type: "tool_execution_failed", error: ev.error };
+		case "tool_result":
+			return { type: "tool_result", content: ev.content, isError: ev.isError };
+		case "permission_requested":
+			return { type: "permission_requested", name: ev.name, input: ev.input };
+		case "permission_decided":
+			return { type: "permission_decided", decision: ev.decision, ...(ev.reason !== undefined ? { reason: ev.reason } : {}) };
+		case "terminal":
+			return { type: "terminal", outcome: ev.outcome };
+		case "compacted":
+			return { type: "compacted", cleared: ev.cleared };
+		case "summarized":
+			return { type: "summarized", coversToSeq: ev.coversToSeq };
+		case "uncertain_pending":
+			return { type: "uncertain_pending", name: ev.name, executionId: ev.executionId, error: ev.error };
+		default:
+			return null; // events without a render (stop, expired, resolved, …)
 	}
 }
 
@@ -204,8 +247,10 @@ export async function consumeRun(
 			}
 			default: {
 				// Events without a cell (stop, …) — the generic render, byte-
-				// preserved for the pipe path.
-				const rendered = renderEvent(ev, false, canonicalTargetPath);
+				// preserved for the pipe path (C5: Event → RenderInput first).
+				const input = toRenderInput(ev);
+				if (input === null) break;
+				const rendered = renderEvent(input, false, canonicalTargetPath);
 				if (rendered.text !== "") {
 					body.raw(rendered.text.replace(/\n$/, "").split("\n"));
 				}

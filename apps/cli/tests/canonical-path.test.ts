@@ -23,10 +23,7 @@ describe("八: the approval detail's canonical path (CLI-injected)", () => {
 		const longContent = "X".repeat(500);
 		const rendered = renderEvent(
 			{
-				seq: 0,
 				type: "permission_requested",
-				decisionId: "d-1",
-				callId: "c1",
 				name: "write_file",
 				input: { path: join(dir, "link.txt"), content: longContent },
 			},

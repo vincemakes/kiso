@@ -16,9 +16,7 @@ const BIDI = "\u202e";
 describe("terminal escaping (E 组)", () => {
 	it("strips ESC sequences from tool results", () => {
 		const rendered = renderEvent({
-			seq: 0,
 			type: "tool_result",
-			callId: "c1",
 			content: `normal${ESC}[2Jevil`,
 			isError: false,
 		});
@@ -29,9 +27,7 @@ describe("terminal escaping (E 组)", () => {
 
 	it("strips C0/C1 control characters, CR, and backspace", () => {
 		const rendered = renderEvent({
-			seq: 0,
 			type: "tool_result",
-			callId: "c1",
 			content: `a${NUL}b${BS}c${CR}d${C1}e`,
 			isError: false,
 		});
@@ -44,7 +40,6 @@ describe("terminal escaping (E 组)", () => {
 
 	it("strips bidi override characters from model text", () => {
 		const rendered = renderEvent({
-			seq: 0,
 			type: "text_delta",
 			text: `safe${BIDI}evil`,
 		});
@@ -55,10 +50,7 @@ describe("terminal escaping (E 组)", () => {
 
 	it("an ESC-injected shell command in the approval prompt is stripped", () => {
 		const rendered = renderEvent({
-			seq: 0,
 			type: "permission_requested",
-			decisionId: "d-1",
-			callId: "c1",
 			name: "shell",
 			input: { command: `echo safe ${ESC}[31mRED${ESC}[0m` },
 		});
@@ -68,10 +60,7 @@ describe("terminal escaping (E 组)", () => {
 
 	it("八: an ESC-injected TOOL NAME in the approval prompt is stripped", () => {
 		const rendered = renderEvent({
-			seq: 0,
 			type: "permission_requested",
-			decisionId: "d-1",
-			callId: "c1",
 			name: `shell${ESC}[2Jevil`,
 			input: { command: "ls" },
 		});
@@ -81,9 +70,8 @@ describe("terminal escaping (E 组)", () => {
 
 	it("八: the terminal error message is escaped", () => {
 		const rendered = renderEvent({
-			seq: 0,
 			type: "terminal",
-			outcome: { kind: "error", error: { code: "unknown", retryable: false, message: `boom ${ESC}[31mRED${ESC}[0m` } },
+			outcome: { kind: "error", error: { message: `boom ${ESC}[31mRED${ESC}[0m` } },
 		});
 		// The ESC byte is stripped from the MESSAGE (the renderer's own color
 		// codes legitimately contain ESC — the injection is the message text
