@@ -198,22 +198,103 @@ describe("v3 §04: the slash-command menu", () => {
 		expect(editor.line()).toBe("/status");
 	});
 
-	it("Enter submits the SELECTED command; Esc closes the menu and clears the buffer", () => {
+	it("A1: a PARTIAL Enter completes without executing; the EXACT Enter submits directly; Esc closes the menu and clears the buffer", () => {
 		const { editor } = make();
 		const lines: string[] = [];
 		editor.onLine((l) => lines.push(l));
 		editor.feed(enc("/st"));
 		editor.feed(enc("\x1b[B")); // ↓ → /status
-		editor.feed(enc("\r")); // Enter — submits the selection, not the typed line
+		editor.feed(enc("\r")); // A1: partial — COMPLETES, nothing submits
+		expect(lines).toEqual([]);
+		expect(editor.line()).toBe("/status");
+		expect(editor.menuState()).not.toBeNull(); // still open — review and Enter again
+		editor.feed(enc("\r")); // the exact match now submits directly
 		expect(lines).toEqual(["/status"]);
 		expect(editor.line()).toBe("");
 		expect(editor.menuState()).toBeNull();
+		// A1: typing the FULL command and pressing Enter ONCE executes it.
+		editor.feed(enc("/mode"));
+		editor.feed(enc("\r"));
+		expect(lines).toEqual(["/status", "/mode"]);
+		expect(editor.line()).toBe("");
 		// Esc: open the menu, then cancel it — the buffer clears, nothing submits.
 		editor.feed(enc("/mo"));
 		expect(editor.menuState()).not.toBeNull();
 		editor.feed(enc("\x1b"));
 		expect(editor.menuState()).toBeNull();
 		expect(editor.line()).toBe("");
-		expect(lines).toEqual(["/status"]);
+		expect(lines).toEqual(["/status", "/mode"]); // nothing new submitted
+	});
+});
+
+describe("A2 (手感): the session-scoped input history", () => {
+	const make = () => {
+		const events: string[] = [];
+		const editor = new Editor(() => events.push("render"));
+		return { editor, events };
+	};
+
+	it("↑ from an EMPTY input browses the newest entry; ↑↑ older; ↓ past the newest exits; Enter submits the browsed line", () => {
+		const { editor } = make();
+		const lines: string[] = [];
+		editor.onLine((l) => lines.push(l));
+		editor.feed(enc("hello"));
+		editor.feed(enc("\r"));
+		editor.feed(enc("world"));
+		editor.feed(enc("\r"));
+		expect(editor.line()).toBe("");
+		editor.feed(enc("\x1b[A")); // ↑ — the newest
+		expect(editor.line()).toBe("world");
+		editor.feed(enc("\x1b[A")); // ↑ — older
+		expect(editor.line()).toBe("hello");
+		editor.feed(enc("\x1b[A")); // ↑ at the oldest — stays
+		expect(editor.line()).toBe("hello");
+		editor.feed(enc("\x1b[B")); // ↓ — newer
+		expect(editor.line()).toBe("world");
+		editor.feed(enc("\x1b[B")); // ↓ past the newest — exits to the empty input
+		expect(editor.line()).toBe("");
+		editor.feed(enc("\x1b[A"));
+		expect(editor.line()).toBe("world");
+		editor.feed(enc("\r")); // Enter submits the browsed line
+		expect(lines).toEqual(["hello", "world", "world"]);
+		expect(editor.line()).toBe("");
+	});
+
+	it("Esc exits the browse back to the empty input; an edit leaves the browse; ↑↓ mid-edit do nothing", () => {
+		const { editor } = make();
+		const lines: string[] = [];
+		editor.onLine((l) => lines.push(l));
+		editor.feed(enc("first"));
+		editor.feed(enc("\r"));
+		// Esc during the browse restores the empty input.
+		editor.feed(enc("\x1b[A"));
+		expect(editor.line()).toBe("first");
+		editor.feed(enc("\x1b"));
+		expect(editor.line()).toBe("");
+		expect(lines).toEqual(["first"]); // nothing submitted
+		// Typing while browsing leaves the browse — ↑↓ then do nothing
+		// (the input is non-empty and not browsing: cursor semantics).
+		editor.feed(enc("\x1b[A"));
+		editor.feed(enc("x"));
+		expect(editor.line()).toBe("firstx");
+		editor.feed(enc("\x1b[A")); // mid-edit — no navigation
+		expect(editor.line()).toBe("firstx");
+	});
+
+	it("the history is capped at 100 and collapses adjacent duplicates", () => {
+		const { editor } = make();
+		const lines: string[] = [];
+		editor.onLine((l) => lines.push(l));
+		for (let i = 0; i < 105; i++) {
+			editor.feed(enc(`line-${i}`));
+			editor.feed(enc("\r"));
+		}
+		editor.feed(enc("line-104")); // duplicate of the newest — collapsed
+		editor.feed(enc("\r"));
+		// The oldest (line-0..line-4) fell off the cap.
+		editor.feed(enc("\x1b[A"));
+		expect(editor.line()).toBe("line-104");
+		for (let up = 0; up < 100; up++) editor.feed(enc("\x1b[A"));
+		expect(editor.line()).toBe("line-5"); // 100 entries back from 104
 	});
 });

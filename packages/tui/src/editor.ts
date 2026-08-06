@@ -92,6 +92,12 @@ export class Editor {
 	#onRender: () => void;
 	#menuOpen = false; // v3 §04: the slash-command menu
 	#menuSel = 0;
+	// A2 (手感): the session-scoped input history — every submitted TURN
+	// line (never a question answer), capped at 100, never persisted. ↑↓
+	// navigate it ONLY from an empty input or while already browsing.
+	#history: string[] = [];
+	#historyIdx: number | null = null;
+	#preBrowse: number[] = [];
 	#pending = ""; // an incomplete ESC/CSI prefix across chunks
 	#decoder = new TextDecoder();
 	#entered = false;
@@ -236,6 +242,14 @@ export class Editor {
 					this.#cursor = 0;
 					this.#scroll = 0;
 					this.#refreshMenu();
+				} else if (this.#historyIdx !== null) {
+					// A2: Esc exits the history browse — the pre-browse
+					// (empty) input returns.
+					this.#historyIdx = null;
+					this.#chars = [...this.#preBrowse];
+					this.#cursor = this.#chars.length;
+					this.#reflow();
+					this.#onRender();
 				} else {
 					this.#escapeCb?.();
 					i += 1;
@@ -304,12 +318,17 @@ export class Editor {
 				this.#pasting = false;
 				this.#onRender();
 			}
-		} else if (final === "A" && this.#menuOpen) {
-			// v3 §04: ↑↓ move the menu selection, never the cursor.
-			this.#menuSel = Math.max(0, this.#menuSel - 1);
-			this.#onRender();
-		} else if (final === "B" && this.#menuOpen) {
-			this.#menuSel = Math.min(this.#menuFiltered().length - 1, this.#menuSel + 1);
+		} else if (final === "A" || final === "B") {
+			// v3 §04: the menu owns ↑↓ while open (the selection, never the
+			// cursor). A2 (手感): otherwise ↑↓ navigate the session history
+			// — ONLY from an empty input or while already browsing; mid-edit
+			// the cursor semantics are unchanged (↑↓ do nothing).
+			if (this.#menuOpen) {
+				if (final === "A") this.#menuSel = Math.max(0, this.#menuSel - 1);
+				else this.#menuSel = Math.min(this.#menuFiltered().length - 1, this.#menuSel + 1);
+			} else if (this.#historyIdx !== null || this.line() === "") {
+				this.#historyMove(final === "A" ? -1 : 1);
+			}
 			this.#onRender();
 		} else if (final === "D") {
 			this.#move(-1);
@@ -327,6 +346,7 @@ export class Editor {
 	// ---- editing ----
 
 	#insert(cp: number): void {
+		if (this.#historyIdx !== null) this.#historyIdx = null; // editing leaves the browse
 		this.#chars.splice(this.#cursor, 0, cp);
 		this.#cursor += 1;
 		this.#reflow();
@@ -335,6 +355,7 @@ export class Editor {
 
 	#backspace(): void {
 		if (this.#cursor === 0) return;
+		if (this.#historyIdx !== null) this.#historyIdx = null; // editing leaves the browse
 		this.#chars.splice(this.#cursor - 1, 1);
 		this.#cursor -= 1;
 		this.#reflow();
@@ -379,9 +400,20 @@ export class Editor {
 	#submit(): void {
 		let line = String.fromCodePoint(...this.#chars);
 		if (this.#menuOpen) {
-			// v3 §04: Enter submits the SELECTED command.
+			// A1 (手感): Enter submits the EXACT selection directly; a
+			// PARTIAL selection COMPLETES the buffer (the Tab semantics)
+			// without submitting — the user reviews and presses Enter
+			// again. The old behavior executed the completed command on
+			// the first Enter, before the user had seen the completion.
 			const m = this.#menuFiltered()[this.#menuSel];
-			if (m !== undefined) line = m.name;
+			if (m !== undefined && m.name !== line) {
+				this.#chars = [...m.name].map((ch) => ch.codePointAt(0)!);
+				this.#cursor = this.#chars.length;
+				this.#reflow();
+				this.#refreshMenu();
+				this.#onRender();
+				return; // completed, not executed
+			}
 		}
 		this.#chars = [];
 		this.#cursor = 0;
@@ -397,7 +429,37 @@ export class Editor {
 		} else {
 			this.#pendingLines.push(line); // nobody wired yet — hold it
 		}
+		// A2: the history remembers submitted TURN lines — never question
+		// answers, never empties; adjacent duplicates collapse.
+		if (cb === null && line !== "") {
+			if (this.#history[this.#history.length - 1] !== line) this.#history.push(line);
+			if (this.#history.length > 100) this.#history.shift();
+		}
 		this.#onRender();
+	}
+
+	/** A2: step the history browse; a delta past the newest exits back to
+	 *  the pre-browse input. */
+	#historyMove(delta: number): void {
+		if (this.#history.length === 0) return;
+		if (this.#historyIdx === null) {
+			this.#preBrowse = this.#chars; // entering from an empty input
+			this.#historyIdx = this.#history.length - 1;
+		} else {
+			const next = this.#historyIdx + delta;
+			if (next < 0) return; // the oldest entry — stay
+			this.#historyIdx = next;
+			if (next >= this.#history.length) {
+				this.#historyIdx = null; // past the newest — exit the browse
+				this.#chars = [...this.#preBrowse];
+				this.#cursor = this.#chars.length;
+				this.#reflow();
+				return;
+			}
+		}
+		this.#chars = [...this.#history[this.#historyIdx]!].map((ch) => ch.codePointAt(0)!);
+		this.#cursor = this.#chars.length;
+		this.#reflow();
 	}
 
 	// ---- width-based horizontal scroll ----
