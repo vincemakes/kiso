@@ -78,3 +78,26 @@ Boundary conditions, stated once so they never need re-litigating:
    produced the 1320/1520 split.
 3. The core gate stays 2000; the tui gate stays 1520 — no recalibration
    was requested or granted for them.
+
+## Amendment 2 (2026-08-07): the tui gate 1520 → 2045 — the one-compositor recalibration
+
+The TUI v6 round (ADR-0046) measured the tui package at **1704** code
+lines, 184 over the 1520 gate. The overage is SPEC-FORCED — the v6
+spec's architecture ruling: the two-writer split (body 686 + dock 211
+= 897) consolidates into the ONE compositor (compositor 844 +
+components 372 = 1216) — the single writer + the component tree +
+the slot model. The +319 net buys the round's structural points:
+
+- the frame machinery (the live region, the freeze path, the commit
+  bookkeeping) — previously split across the body's render + the
+  dock's redraw, now one place;
+- the new mechanisms: the SGR-aware hard fold (invariant ①), the
+  frame-derived cursor marker, the live-region cap with the force
+  commit, the zero-timer scheduler.
+
+Ruling: **the tui gate recalibrates to 2045** (= 1704 actual + 20%,
+the same snapshot formula). The boundary conditions of Amendment 1
+stand — this is the ONE argued tui recalibration; the next overage
+without an argument is extraction (the components are the ready
+candidate: the cell renders can sink into the runtime's presentation
+layer), not a third recalibration.
