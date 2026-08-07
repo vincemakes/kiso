@@ -8,3 +8,4 @@ dist/
 bench/runs/
 __pycache__/
 CLAUDE.md
+.claude/launch.json
