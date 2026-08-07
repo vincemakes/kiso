@@ -737,7 +737,9 @@ export class Body {
 			out.push("\x1b[1B");
 			for (let i = 0; i < committed.length; i += 1) out.push("\n");
 		} else {
-			out.push("\x1b[1B"); // to the footer row
+			// no commits — jump from the anchor (H−2) straight to the
+			// bottom row H (the commit path's LFs left the cursor there)
+			out.push("\x1b[2B");
 		}
 		// the bottom-up repaint, from the last row up — V6-3: the design
 		// §03 chrome: status (H), lower ╌ (H−1), input (H−2), upper ╌ (H−3)
