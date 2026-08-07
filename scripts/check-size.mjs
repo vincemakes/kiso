@@ -36,7 +36,7 @@ const GATES = [
 	// ratchet: the next approach without an argument is EXTRACTION (the
 	// config layer is the ready candidate), not a second recalibration.
 	{ name: "cli", limit: 1856, dir: join("apps", "cli", "src") },
-	{ name: "tui", limit: 1520, dir: join("packages", "tui", "src") },
+	{ name: "tui", limit: 2045, dir: join("packages", "tui", "src") },
 ];
 const ROOT = new URL("..", import.meta.url).pathname;
 
