@@ -100,14 +100,32 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
 describe("TUI v2b (real PTY, 24×80)", () => {
 	it("the dock exists — separator, live status bar, input line; the body scrolls without eating it; exit resets the scroll region", () => {
 		const { env } = isolatedEnv();
-		const out = ptyRun(env, [
-			["▌ ", "look around\n"],
-			// "turn 2 · faux" — the status bar at the turn's terminal event —
-			// only exists AFTER the turn completes, so "exit" cannot collide
-			// with the first prompt (a "you> " needle would match there too
-			// and close the readline mid-turn).
-			["▸ default · /mode to switch · faux", "exit\n"], // v3 idle state marks the turn's end
-		]);
+		// A TEXT-ONLY script — a tool's execution runs PARALLEL to the event
+		// stream (ADR-0024), so the default faux script's tool result (and
+		// the second turn after it) races the driver's exit: under load the
+		// process exits before the tool completes and the response is lost.
+		// This gate is about the dock/body bytes, not the tool lifecycle.
+		const dir = mkdtempSync(join(tmpdir(), "kiso-v2b-"));
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{
+					events: [
+						{ type: "text_delta", text: "I see the workspace. What would you like me to inspect or change?" },
+						{ type: "stop", reason: "end_turn" },
+					],
+				},
+			]),
+			"utf8",
+		);
+		const out = ptyRun(
+			{ ...env, KISO_FAUX_SCRIPT: script },
+			[
+				["▌ ", "look around\n"],
+				["▸ default · /mode to switch · faux", "exit\n"], // v3 idle state marks the turn's end
+			],
+		);
 		// #13 (P1), v2d-B: NO DECSTBM — the body scrolls with plain LF so
 		// frozen lines enter the native scrollback deterministically. The
 		// dock pins the bottom three rows by redrawing after every scroll.
@@ -228,13 +246,18 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 				// "tour complete" appears mid-run — the /think line queues on
 				// the chain and prints AFTER the turn completes.
 				["tour complete", "/think\n"],
-				// The full block only appears in the /think output — a safe
-				// needle that cannot collide with earlier content.
-				["SECRETTAIL", "exit\n"],
+				// The fold's own suffix — exit only AFTER the fold's freeze
+				// frame has rendered (the real-LF commit writes more bytes
+				// per line than the old CUP pre-fill, so the freeze frame
+				// can trail the /think output; exiting on SECRETTAIL would
+				// kill the process before the fold hits the screen).
+				["· /think)", "exit\n"],
 			],
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain(`…${"A".repeat(100)} (110 chars · /think)`); // the folded line (v3 wording)
+		// #17: the fold is width-capped (W - 1 - suffix) so it fits its row —
+		// the slice is 58 at 80 cols, NOT the old 100.
+		expect(clean).toContain(`…${"A".repeat(80 - 1 - " (110 chars · /think)".length)} (110 chars · /think)`); // the folded line (v3 wording)
 		expect(clean).toContain("SECRETTAIL"); // the full block came back
 		expect(clean).toContain("A".repeat(100)); // …head included
 		expect(out).toContain("\x1b[r"); // clean exit
@@ -242,8 +265,26 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 
 	it("a SIGWINCH rebuilds the dock — the region is re-applied at the new height", () => {
 		const { env } = isolatedEnv();
+		// A TEXT-ONLY script — the default faux script's tool executes
+		// PARALLEL to the event stream (ADR-0024); its response can be lost
+		// when the process exits under load, and the winch needle would
+		// never match. This gate is about the dock rebuild bytes.
+		const dir = mkdtempSync(join(tmpdir(), "kiso-v2b-"));
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{
+					events: [
+						{ type: "text_delta", text: "I see the workspace. What would you like me to inspect or change?" },
+						{ type: "stop", reason: "end_turn" },
+					],
+				},
+			]),
+			"utf8",
+		);
 		const out = ptyRun(
-			env,
+			{ ...env, KISO_FAUX_SCRIPT: script },
 			[["▌ ", "look around\n"]],
 			// The winch fires when the turn's text reaches the driver — the
 			// CLI is back at the prompt by then, so the rebuild lands on a

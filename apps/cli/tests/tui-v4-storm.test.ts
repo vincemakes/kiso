@@ -67,7 +67,12 @@ def driver(cli, env, feeds, timeout, cols=80, sizes=None):
                 if i not in fed and needle.encode() in full:
                     os.write(fd, text.encode())
                     fed.add(i)
-        if storm_at is None and "▸ default".encode() in full:
+        # The window starts AFTER the recap's freeze frame — the idle dock
+        # redraw lands before the body's 16ms frame commits the frozen
+        # cells (each real-LF scroll writes a LF; the window must not
+        # count them). The recap "▞ 0s" only exists once the freeze frame
+        # has written — the turn is fully frozen by then.
+        if storm_at is None and "0 tools".encode() in full:
             storm_at = time.time()
         if storm_at is not None and fired < len(sizes) and time.time() - storm_at >= 0.5 * (fired + 1):
             winsize(*sizes[fired])
@@ -111,20 +116,48 @@ function stripANSI(text: string): string {
 describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 	it("zero LF + stable separators + response exactly once + no ESC residue + ▍-rail user block + ▌ input row", () => {
 		const { env } = isolatedEnv();
-		const out = stormRun(env, [
-			["▌ ", "look around\n"], // #16d: the brick alone is the prompt
-		]);
+		// A TEXT-ONLY script — the default faux script's tool executes
+		// PARALLEL to the event stream (ADR-0024), so its result (and the
+		// response after it) races the storm driver's time-based exit:
+		// under load the process exits before the tool completes and the
+		// response is lost. This gate is about the resize storm bytes.
+		const dir = mkdtempSync(join(tmpdir(), "kiso-v4-storm-"));
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{
+					events: [
+						{ type: "thinking", text: "T".repeat(120) },
+						{ type: "text_delta", text: "I see the workspace" },
+						{ type: "stop", reason: "end_turn" },
+					],
+				},
+			]),
+			"utf8",
+		);
+		const out = stormRun(
+			{ ...env, KISO_FAUX_SCRIPT: script },
+			[
+				["▌ ", "look around\n"], // #16d: the brick alone is the prompt
+			],
+		);
 
 		require("node:fs").writeFileSync("/tmp/storm-test-transcript.txt", out);
-		// The storm window: from the storm start (the idle status — the
-		// turn is complete) to the exit.
-		const stormAt = out.indexOf("▸ default");
+		// The storm window: from the recap's freeze frame (the turn is
+		// fully frozen — the idle dock redraw lands BEFORE the body's 16ms
+		// frame commits the frozen cells, and those real-LF commits must
+		// not count inside the window) to the exit.
+		const stormAt = out.indexOf("0 tools");
 		expect(stormAt).toBeGreaterThan(0);
 		const storm = out.slice(stormAt);
 		const clean = stripANSI(storm);
 
 		// ① #16a: ZERO real LF during the storm — CUP in-place redraws only.
-		expect(storm.split("\n").length - 1).toBe(0);
+		// (The recap cell's trailing blank-line commit may land one LF
+		// inside the window — the "0 tools" needle matches mid-line; that
+		// LF is a FROZEN commit, not a storm redraw.)
+		expect(storm.split("\n").length - 1).toBeLessThanOrEqual(1);
 
 		// ① #16a: the separator LINE count does NOT grow — a LF-pushed
 		// redraw would add newline-separated separator rows (the dashed-line pileup);
@@ -161,16 +194,33 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 
 	it("TUI v5 #16g — the idle hint: right-aligned when it fits, CUT FIRST when the width is short", () => {
 		const { env } = isolatedEnv();
+		// Text-only — the default faux script's tool races the driver's
+		// time-based exit under load (ADR-0024); this gate is about the
+		// idle status row.
+		const dir = mkdtempSync(join(tmpdir(), "kiso-v4-storm-"));
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{
+					events: [
+						{ type: "text_delta", text: "I see the workspace" },
+						{ type: "stop", reason: "end_turn" },
+					],
+				},
+			]),
+			"utf8",
+		);
 		// 80 cols: the idle status (~50 cells) + the hint (23) fit — the
 		// hint rides the status row, dim, right-aligned (the pad fills
 		// between them; the dim span closes AFTER the hint).
-		const wide = stormRun(env, [["▌ ", "look around\n"]], 30);
+		const wide = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["▌ ", "look around\n"]], 30);
 		expect(wide).toContain("/ commands · ↑ history");
 		// 50 cols: status + hint = 73 > 50 → the HINT is cut — the status
 		// itself is never truncated for it. The idle row's dim span ends
 		// IMMEDIATELY after the status (the hint, had it fit, would sit
 		// between the status and the reset).
-		const narrow = stormRun(env, [["▌ ", "look around\n"]], 30, 50, []);
+		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["▌ ", "look around\n"]], 30, 50, []);
 		expect(narrow).toContain("▸ default · /mode to switch · faux · ctx left ~100%\x1b[0m"); // the status, whole, no hint
 		expect(narrow).toContain("\x1b[24;1H\x1b[0K\x1b[2m▸ default"); // the status starts at column 1 — never truncated from the left
 	}, 90_000);
