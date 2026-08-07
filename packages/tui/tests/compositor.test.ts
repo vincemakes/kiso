@@ -81,6 +81,40 @@ describe("TUI v6 — the one compositor", () => {
 		expect(bytes).toContain("line one");
 	});
 
+	it("the idle no-commit steady frame jumps 2B from the anchor — the chrome stays on H/H−1/H−2/H−3 (the input-shift regression)", () => {
+		const { body, writes, tick } = makeBody();
+		body.enter();
+		body.bindInput(() => ({ line: "你", cursor: 1 }), "\x1b[1m▌ \x1b[0m");
+		writes.length = 0; // the first frame is the full-redraw (CUP allowed there)
+		body.textAppend("live"); // an OPEN cell — the steady NO-COMMIT path
+		tick();
+		const frame = writes.join("");
+		// the buggy frame jumped 1B from the anchor (H−2) and repainted the
+		// chrome one row up — the status landed at H−1, the input at H−3
+		// (the real-machine report: the input box shifted). The fix jumps
+		// 2B straight to the bottom row H.
+		expect(frame.startsWith("\x1b[?2026h\x1b[2B")).toBe(true);
+		// the bottom-up repaint right after the jump — four relative rows:
+		// status (H), lower ╌ (H−1), input (H−2), upper ╌ (H−3)
+		const m = frame
+			.slice("\x1b[?2026h".length)
+			.match(
+				/^\x1b\[2B\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)(?=\x1b\[1A|\x1b\[\?2026l)/,
+			);
+		expect(m).not.toBeNull();
+		expect(m![2]).toContain("╌"); // H−1 — the lower ╌
+		expect(m![3]).toContain("▌"); // H−2 — the input row
+		expect(m![4]).toContain("╌"); // H−3 — the upper ╌
+	});
+
+	it("a CJK /think fold never trips invariant ① — the fold cuts by DISPLAY width (the 0.1.33 real-machine crash)", () => {
+		const { body, tick } = makeBody();
+		body.enter();
+		body.thinkingAppend("你".repeat(101)); // 202 cells at 2 per char — the char slice overflowed
+		body.thinkingEnd();
+		expect(() => tick()).not.toThrow(); // the widthCut line fits W; the old slice THREW
+	});
+
 	it("a done cell's lines emit EXACTLY once — the freeze frame writes them, later frames never re-emit", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();

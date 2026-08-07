@@ -217,7 +217,10 @@ class UserMessage implements Component {
 }
 
 /** The thinking fold — one dim line, width-capped so the /think suffix
- *  rides the fold's own row (the #17 fix's slice, componentized). */
+ *  rides the fold's own row (the #17 fix's slice, componentized). The
+ *  slice is DISPLAY-WIDTH-based (the char-based slice overflowed with
+ *  CJK — 2 cells per char — and tripped invariant ① on a real
+ *  Chinese session). */
 class ThinkingFold implements Component {
 	constructor(private readonly cell: { text: string; done: boolean }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
@@ -226,7 +229,7 @@ class ThinkingFold implements Component {
 		if (trimmed.length <= 100) return [`${palette().dim}…${trimmed}${palette().reset}`];
 		const suffix = ` (${block.length} chars · /think)`;
 		const slice = Math.max(1, W - 1 - suffix.length);
-		return [`${palette().dim}…${trimmed.slice(0, slice)}${suffix}${palette().reset}`];
+		return [`${palette().dim}…${widthCut(trimmed, slice)}${suffix}${palette().reset}`];
 	}
 }
 
