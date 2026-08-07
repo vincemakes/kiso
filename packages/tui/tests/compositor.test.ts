@@ -84,7 +84,7 @@ describe("TUI v6 — the one compositor", () => {
 	it("the idle no-commit steady frame jumps 2B from the anchor — the chrome stays on H/H−1/H−2/H−3 (the input-shift regression)", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
-		body.bindInput(() => ({ line: "你", cursor: 1 }), "\x1b[1m▌ \x1b[0m");
+		body.bindInput(() => ({ line: "\u4f60", cursor: 1 }), "\x1b[1m▌ \x1b[0m");
 		writes.length = 0; // the first frame is the full-redraw (CUP allowed there)
 		body.textAppend("live"); // an OPEN cell — the steady NO-COMMIT path
 		tick();
@@ -110,7 +110,7 @@ describe("TUI v6 — the one compositor", () => {
 	it("a CJK /think fold never trips invariant ① — the fold cuts by DISPLAY width (the 0.1.33 real-machine crash)", () => {
 		const { body, tick } = makeBody();
 		body.enter();
-		body.thinkingAppend("你".repeat(101)); // 202 cells at 2 per char — the char slice overflowed
+		body.thinkingAppend("\u4f60".repeat(101)); // 202 cells at 2 per char — the char slice overflowed
 		body.thinkingEnd();
 		expect(() => tick()).not.toThrow(); // the widthCut line fits W; the old slice THREW
 	});

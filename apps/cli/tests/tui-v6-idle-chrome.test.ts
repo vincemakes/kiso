@@ -63,7 +63,7 @@ def driver(cli, env, feeds, timeout):
 `;
 
 describe("TUI v6 — the idle chrome (real PTY, the VT emulator)", () => {
-	it("while typing 你你 with no commits in between, the steady chrome still sits on H−3/H−2/H−1/H — the input row never shifts up", () => {
+	it("while typing the CJK char twice with no commits in between, the steady chrome still sits on H−3/H−2/H−1/H — the input row never shifts up", () => {
 		const { env } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v6-idle-"));
 		const script = join(dir, "faux.json");
@@ -77,8 +77,8 @@ import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([
-			["▌ ", "你", 2],
-			["▌ ", "你", 3],
+			["▌ ", "\u4f60", 2],
+			["▌ ", "\u4f60", 3],
 		])}, 10)
 `;
 		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
@@ -91,7 +91,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: scri
 		// and the status at 22 (the input box shifted one row up).
 		expect(grid[20]!.includes("╌")).toBe(true);
 		expect(grid[21]!.includes("▌ ")).toBe(true);
-		expect(grid[21]).toContain("你");
+		expect(grid[21]).toContain("\u4f60");
 		expect(grid[22]!.includes("╌")).toBe(true);
 		// the status at H — the idle hint (the CLI's empty status + the
 		// right-aligned "/ commands · ↑ history" tail).
