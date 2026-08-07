@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-evals",
-  "version": "0.1.29",
+  "version": "0.1.30",
   "description": "kiso evals — the faux provider, the incident fixture library, and the cross-provider contract tests.",
   "type": "module",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-provider-openai",
-  "version": "0.1.29",
+  "version": "0.1.30",
   "description": "kiso OpenAI-compatible adapter — OpenAI + the compat family (GLM, Kimi, DeepSeek, OpenRouter) via base_url swap, reasoning dialects digested.",
   "type": "module",
   "license": "MIT",
