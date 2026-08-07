@@ -33,7 +33,7 @@
     "openai"
   ],
   "devDependencies": {
-    "@vincemakes/kiso-evals": "0.1.29",
+    "@vincemakes/kiso-evals": "0.1.31",
     "@types/node": "^26.1.2",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
