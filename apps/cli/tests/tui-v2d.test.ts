@@ -95,7 +95,7 @@ const CELL_LINE = [
 	/^\[faux mode.*$/, // the faux banner line
 	/^(█|▀).*$/, /^\[?2m\]?█.*$/, // the logo rows (the dim code may ride the segment)
 	/^the coding agent that survives kill -9$/, // the tagline
-	/^v\d+\.\d+\.\d+.*$/, // the version row
+	/^kiso v\d+\.\d+\.\d+.*$/, // the version + tagline row (V6-2)
 	/^▌\s?.*$/, // the input row (TUI v4 #16d: the brick alone — the trim eats the trailing space)
 	/^▍\s?.*$/, // TUI v5 #16f: the user block — every line carries the ▍ rail (arbitrary user text after it)
 	/^╌+$/, // the separator

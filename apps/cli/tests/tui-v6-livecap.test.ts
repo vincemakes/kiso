@@ -104,9 +104,11 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: scri
 		//    the live cap H−1 minus the 3 chrome rows).
 		const tallRows = grid.filter((l) => l.includes("tall line")).length;
 		expect(tallRows).toBeLessThanOrEqual(20);
-		// ⑤ the chrome sits intact at the bottom.
-		expect(grid[21]).toContain("▸ default");
-		expect(grid[22]).toContain("▌ ");
-		expect(grid[23]!.includes("╌")).toBe(true);
+		// ⑤ the chrome sits intact at the bottom (V6-3: the four rows —
+		// upper ╌, input, lower ╌, status — the grid is 0-based).
+		expect(grid[20]!.includes("╌")).toBe(true);
+		expect(grid[21]).toContain("▌ ");
+		expect(grid[22]!.includes("╌")).toBe(true);
+		expect(grid[23]).toContain("▸ default");
 	}, 90_000);
 });

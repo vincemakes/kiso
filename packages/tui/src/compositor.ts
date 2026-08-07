@@ -14,10 +14,10 @@
  *    re-emitted — the native scrollback gets them, reflow-safe, and
  *    the user's shell history is never touched (zero \x1b[3J, zero
  *    replay);
- *  - the live region (content + status + editor + footer + menu) is
- *    hard-capped at H−1 lines; overflow FORCE-commits the oldest live
- *    line regardless of done-ness — the one sharp edge this round
- *    introduces (asserted by the VT-emulator gate);
+ *  - the live region (content + chrome + menu) is hard-capped: the
+ *    content at H−4 (V6-3 — the four-row chrome); overflow FORCE-
+ *    commits the oldest live line regardless of done-ness — the one
+ *    sharp edge (asserted by the VT-emulator gate);
  *  - two crash invariants: ① every emitted line's visible width ≤ W
  *    (components fold; a violation THROWS with diagnostics — pi
  *    tui-main-screen.ts:447-473, no silent truncate); ② within the
@@ -32,9 +32,10 @@
  *    scheduler — a one-shot setTimeout re-armed only while a running
  *    tool exists (the #14/#15 zero-output contract is structural).
  *
- * Layout at H rows: content rows 1..H−3, status H−2, editor (the slot)
- * H−1, footer ╌ at H. Pipes / NO_COLOR: the passthrough branches below
- * keep the v2a/v2b line-mode bytes byte-for-byte (the e2e guards them).
+ * Layout at H rows (V6-3 — the design §03 chrome): content rows
+ * 1..H−4, upper ╌ H−3, editor (the slot) H−2, lower ╌ H−1, status H.
+ * Pipes / NO_COLOR: the passthrough branches below keep the v2a/v2b
+ * line-mode bytes byte-for-byte (the e2e guards them).
  */
 
 import { truncateDiff } from "./diff.js";
@@ -59,7 +60,7 @@ export const CURSOR_MARKER = "\x1b_[kiso-cur]\x1b\\";
 
 const FRAME_MS = 16; // state changes coalesce to ≥16ms frames
 const SPINNER_MS = 200; // the spinner cadence — a ONE-SHOT re-armed on demand
-const CHROME_ROWS = 3; // status + editor + footer — the cap's constant part
+const CHROME_ROWS = 4; // upper ╌ + input + lower ╌ + status — the design §03 chrome (V6-3)
 
 export interface BodyOptions {
 	/** Is the cell renderer live? A color TTY with a real size — checked
@@ -379,7 +380,7 @@ export class Body {
 		const H = this.#lastH > 0 ? this.#lastH : process.stdout.rows ?? 24;
 		const out: string[] = [];
 		out.push("\x1b[r");
-		for (let row = H - 2; row <= H; row += 1) {
+		for (let row = H - 3; row <= H; row += 1) { // V6-3: the four chrome rows
 			out.push(`\x1b[${row};1H\x1b[0K`); // clear the three chrome rows
 		}
 		out.push(`\x1b[${Math.max(1, H - 1)};1H`);
@@ -526,6 +527,21 @@ export class Body {
 		if (H < 4) return;
 		this.#lastH = H;
 		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now() };
+		// V6-1 (the screen-state == frame-state rule): the resize's first
+		// frame — the terminal's reflow re-wrapped the committed content at
+		// the NEW width, so the cached folds are stale. Re-fold the
+		// committed cells so the every-row draw below re-paints them at the
+		// current geometry — the frame's model and the screen agree.
+		if (this.#fullRedraw) {
+			this.#lineCache = this.#lineCache.map(() => null);
+			this.#committedLines = 0;
+			for (let i = 0; i < this.#committed; i += 1) {
+				const cell = this.#cells[i]!;
+				const lines = cellComponent(cell).render(W, ctx);
+				this.#lineCache[i] = lines;
+				this.#committedLines += lines.length;
+			}
+		}
 		// 1. the natural commits — the leading DONE cells freeze: their
 		//    lines leave the live region, the scrolls + the committed
 		//    writes below place them (the #17 "freeze as a real line",
@@ -546,7 +562,7 @@ export class Body {
 		// 3. the FORCE commits — the live region's hard cap H−1: overflow
 		//    commits the oldest live cell UNCONDITIONALLY (the one sharp
 		//    edge — the cap scalar is asserted by the gates).
-		while (liveLines.length + chromeRows > H - 1 && this.#committed < this.#cells.length) {
+		while (liveLines.length > H - 4 && this.#committed < this.#cells.length) { // V6-3: the content cap H−4
 			this.#commitCell(this.#committed, W, ctx);
 			liveLines = [];
 			for (const cell of this.#cells.slice(this.#committed)) {
@@ -659,28 +675,53 @@ export class Body {
 
 	/** The full-redraw path (the first frame, the resize repaint) — CUP
 	 *  allowed here; zero LF; zero \x1b[3J; zero replay. The committed
-	 *  lines (this frame's) write at [liveTop−N .. liveTop−1]. */
+	 *  lines (this frame's) write at [liveTop−N .. liveTop−1].
+	 *
+	 *  V6-1 (the screen-state == frame-state rule): every row 1..H is
+	 *  covered — the committed/live/chrome writes AND the EL-only rows
+	 *  (above the committed section, the gap). The terminal's reflow
+	 *  re-wraps the old content at the new size — its shifted copies
+	 *  survive anywhere the draw does not touch; a draw that covers
+	 *  EVERY row is idempotent: N consecutive resizes end with the same
+	 *  screen as a single jump to the same size. */
 	#drawFull(out: string[], W: number, H: number, liveTop: number, liveLines: string[], menuRows: string[], ctx: FrameCtx): void {
 		const committed = this.#committedLinesThisFrame;
-		let r = Math.max(1, liveTop - committed.length);
+		// 0. the FROZEN rows — the re-folded committed content (re-flowed
+		//    at the new width by the terminal): re-painted at [1..frozen],
+		//    so the reflow's shifted copies can never ghost.
+		const frozen = this.#lineCache.slice(0, this.#committed - committed.length).flat().filter((l): l is string => l !== null);
+		let r = 1;
+		for (const line of frozen) {
+			out.push(`\x1b[${r};1H\x1b[0K${this.#checked(line, W)}`);
+			r += 1;
+		}
+		// 1. the committed lines (this frame's).
 		for (const line of committed) {
 			out.push(`\x1b[${r};1H\x1b[0K${this.#checked(line, W)}`);
 			r += 1;
 		}
+		// 2. the live lines.
 		for (const line of liveLines) {
 			out.push(`\x1b[${r};1H\x1b[0K${this.#checked(line, W)}`);
 			r += 1;
 		}
-		const menuTop = H - 2 - menuRows.length;
+		// 3. the GAP rows (between the live content and the chrome) — EL.
+		for (let rr = r; rr <= H - 4; rr += 1) {
+			out.push(`\x1b[${rr};1H\x1b[0K`);
+		}
+		const menuTop = H - 3 - menuRows.length;
 		for (let i = 0; i < menuRows.length; i += 1) {
 			out.push(`\x1b[${menuTop + i};1H\x1b[0K${this.#checked(menuRows[i]!, W)}`);
 		}
-		out.push(`\x1b[${H - 2};1H\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W), W)}`);
+		// V6-3: the design §03 chrome — upper ╌ (H−3), input (H−2),
+		// lower ╌ (H−1), status (H).
+		out.push(`\x1b[${H - 3};1H\x1b[0K${footerLine(W)}`);
 		const editor = this.#inputRow(W, ctx);
-		out.push(`\x1b[${H - 1};1H\x1b[0K${this.#checked(editor.stripped, W)}`);
-		out.push(`\x1b[${H};1H\x1b[0K${footerLine(W)}`);
-		// the cursor: up one (the editor row) + left to the marker column
-		out.push("\x1b[1A");
+		out.push(`\x1b[${H - 2};1H\x1b[0K${this.#checked(editor.stripped, W)}`);
+		out.push(`\x1b[${H - 1};1H\x1b[0K${footerLine(W)}`);
+		out.push(`\x1b[${H};1H\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W), W)}`);
+		// the cursor: up two (the input row at H−2) + left to the marker
+		out.push("\x1b[2A");
 		if (editor.afterW > 0) out.push(`\x1b[${editor.afterW}D`);
 	}
 
@@ -698,10 +739,12 @@ export class Body {
 		} else {
 			out.push("\x1b[1B"); // to the footer row
 		}
-		// the bottom-up repaint, from the last row up
-		out.push(`\x1b[1G\x1b[0K${footerLine(W)}`); // H
-		out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(editor.stripped, W)}`); // H−1 — the editor
-		out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W), W)}`); // H−2
+		// the bottom-up repaint, from the last row up — V6-3: the design
+		// §03 chrome: status (H), lower ╌ (H−1), input (H−2), upper ╌ (H−3)
+		out.push(`\x1b[1G\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W), W)}`); // H — the status
+		out.push(`\x1b[1A\x1b[1G\x1b[0K${footerLine(W)}`); // H−1 — the lower ╌
+		out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(editor.stripped, W)}`); // H−2 — the input
+		out.push(`\x1b[1A\x1b[1G\x1b[0K${footerLine(W)}`); // H−3 — the upper ╌
 		for (let i = menuRows.length - 1; i >= 0; i -= 1) {
 			out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(menuRows[i]!, W)}`);
 		}
@@ -715,7 +758,7 @@ export class Body {
 		// CRLF) cannot misplace them the way a relative march could).
 		// 1. the GAP rows (between the live content and the chrome) — EL'd
 		//    so the old content there cannot ghost.
-		for (let r = liveTop + liveLines.length; r <= H - 3; r += 1) {
+		for (let r = liveTop + liveLines.length; r <= H - 4; r += 1) {
 			out.push(`\x1b[${r};1H\x1b[0K`);
 		}
 		// 2. the STALE rows above the committed section — the scrolled old
@@ -731,11 +774,11 @@ export class Body {
 		for (let i = 0; i < committed.length; i += 1) {
 			out.push(`\x1b[${Math.max(1, liveTop - committed.length + i)};1H\x1b[0K${this.#checked(committed[i]!, W)}`);
 		}
-		// the cursor: down to the anchor (H−1) + left to the marker column —
+		// the cursor: down to the anchor (H−2, the input row) + left to the marker —
 		// the down-distance from the LAST written row (the committed bottom,
 		// the stale bottom, or the gap bottom when nothing else wrote).
-		const lastRow = committed.length > 0 ? liveTop - 1 : staleFrom < liveTop ? liveTop - 1 : H - 3;
-		const down = H - 1 - lastRow;
+		const lastRow = committed.length > 0 ? liveTop - 1 : staleFrom < liveTop ? liveTop - 1 : H - 4;
+		const down = H - 2 - lastRow; // the anchor: the input row (H−2)
 		if (down > 0) out.push(`\x1b[${down}B`);
 		if (editor.afterW > 0) out.push(`\x1b[${editor.afterW}D`);
 	}

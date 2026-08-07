@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
+import { VtScreen } from "./helpers/vt-screen.js";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
@@ -169,9 +170,22 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		const cleanAll = stripANSI(out);
 		expect(sepLines(cleanAll)).toBe(sepLines(cleanAll.slice(0, stormAt)));
 
-		// ① #16a: the model's response text appears EXACTLY once — no
-		// tail re-render duplicates (the pre-fix onResize #dirty bug).
-		expect((out.match(/I see the workspace/g) ?? []).length).toBe(1);
+		// ① #16a: the model's response text appears EXACTLY once on the
+		// SCREEN — V6-1: the resize's first frame re-folds and re-paints
+		// the committed content (the screen-state == frame-state rule),
+		// so the STREAM carries the response at each resize; the SCREEN
+		// must never duplicate it (the reflow ghost — the V6-1 class).
+		// The emulator replay pins the screen-level invariant.
+		{
+			const emu = new VtScreen(24, 80);
+			emu.write(Buffer.from(out, "utf8"));
+			const grid = emu.visible();
+			expect(grid.filter((l) => l.includes("I see the workspace")).length).toBe(1);
+			// V6-3: the chrome — at most the two ╌ rows (the upper + the
+			// lower; the exit's chrome-clear may wipe them — the WALL, the
+			// duplicated separators the reflow left behind, would exceed 2).
+			expect(grid.filter((l) => l.includes("╌")).length).toBeLessThanOrEqual(2);
+		}
 
 		// ② #16b: no ESC residue — the banner's dim and the recap's blue
 		// keep their ESCs (the pre-fix raw-cell re-escape stripped them,
@@ -225,6 +239,6 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// 51-cell status CUTS at W−1 with a … (the old code soft-wrapped
 		// it; the crash-on-violation makes the cut structural).
 		expect(narrow).toContain("▸ default · /mode to switch · faux · ctx left ~10…\x1b[0m");
-		expect(narrow).toContain("\x1b[1A\x1b[1G\x1b[0K\x1b[2m▸ default"); // the status write in the steady frame (relative — invariant ②) — never truncated from the left
+		expect(narrow).toContain("\x1b[1G\x1b[0K\x1b[2m▸ default"); // the status write — the first bottom-up row (H, relative — invariant ②) — never truncated from the left
 	}, 90_000);
 });

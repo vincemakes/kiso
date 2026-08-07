@@ -373,14 +373,17 @@ export function renderTerminalGap(statusLine: string | null): string {
 }
 
 /**
- * v3 §01 — the banner, block-split. The logo is three INDEPENDENT rows
- * (TOP / the tagline / BOTTOM), then TWO info rows (version,
- * extensions). Every row truncates at the terminal width with a " (+N)"
- * marker (N = the hidden display width); a window narrower than 40
- * columns skips the logo entirely — only the info rows. Pure.
+ * v3 §01 (V6-2) — the banner, block-split. The logo is THREE BRICK rows
+ * (the logo.svg pixel form — K I S O), then a BLANK, then the info rows:
+ * "kiso vX — tagline" + extensions. The tagline rides the version line
+ * (the old logo MIDDLE row was the tagline — a text row masquerading as
+ * the logo's centre). Every row truncates at the terminal width with a
+ * " (+N)" marker (N = the hidden display width); a window narrower than
+ * 40 columns skips the logo + the blank entirely — only the info rows.
+ * Pure.
  */
 export const TAGLINE = "the coding agent that survives kill -9";
-const LOGO_ROWS = ["█ █ ▀█▀ █▀▀ █▀█", TAGLINE, "▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀"] as const;
+const LOGO_ROWS = ["█ █ ▀█▀ █▀▀ █▀█", "█▀▄  █  ▀▀█ █ █", "▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀"] as const;
 
 /** Display width of a row (1-cell ASCII; 2-cell CJK/wide). */
 function displayW(row: string): number {
@@ -406,12 +409,15 @@ export function truncateRow(row: string, width: number): string {
 	return `${row.slice(0, i)} (+${displayW(row) - w})`;
 }
 
-/** v3 §01: the banner lines for a width W — logo (skipped under 40
- *  columns) + version + extensions. */
+/** v3 §01 (V6-2): the banner lines for a width W — logo (skipped under
+ *  40 columns) + blank + "kiso vX — tagline" + extensions. */
 export function bannerLines(W: number, version: string, extensionsText: string): string[] {
 	const rows: string[] = [];
-	if (W >= 40) for (const r of LOGO_ROWS) rows.push(truncateRow(r, W));
-	rows.push(truncateRow(`v${version}`, W));
+	if (W >= 40) {
+		for (const r of LOGO_ROWS) rows.push(truncateRow(r, W));
+		rows.push("");
+	}
+	rows.push(truncateRow(`kiso v${version} — ${TAGLINE}`, W));
 	if (extensionsText !== "") rows.push(truncateRow(extensionsText, W));
 	return rows;
 }

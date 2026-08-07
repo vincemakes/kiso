@@ -28,6 +28,9 @@ emu.write(bytes);
 const grid = emu.visible();
 for (const row of grid) {
 	if (row === "") continue;
+	// the chrome's two ╌ rows are legitimately identical (the design §03
+	// upper + lower) — the duplicate check covers the CONTENT rows
+	if (row.includes("╌")) continue;
 	const copies = grid.filter((l) => l === row).length;
 	if (copies > 1) fail(`row painted ${copies}×: ${JSON.stringify(row.slice(0, 40))}`);
 }

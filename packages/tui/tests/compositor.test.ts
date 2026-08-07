@@ -170,14 +170,15 @@ describe("TUI v6 — the one compositor", () => {
 		expect(bytes).not.toContain("\x1b[3J");
 		expect(bytes).not.toContain("\n"); // zero LF
 		expect(bytes).toMatch(/\x1b\[\d+;\d+H/); // the CUP full redraw
-		expect(bytes).toContain("frozen"); // the committed line drawn once at the resize
-		// idempotent: a second resize has the same shape — and the
-		// committed content is NEVER replayed (zero replay: the "frozen"
-		// stays out of the second resize's bytes)
+		expect(bytes).toContain("frozen"); // the committed line drawn at the resize
+		// idempotent: a second resize has the same shape — and V6-1's
+		// every-row rule re-paints the committed content (the screen-state
+		// == frame-state), so the "frozen" IS re-emitted — the SCREEN is
+		// the invariant, never the byte count.
 		writes.length = 0;
 		body.onResize();
 		expect(writes.join("")).toContain("\x1b[0J");
-		expect(writes.join("")).not.toContain("frozen");
+		expect(writes.join("")).toContain("frozen");
 	});
 
 	it("zero timers: no mutation → no bytes, even after 10 seconds", () => {
