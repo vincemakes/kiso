@@ -1,12 +1,13 @@
 /**
  * kiso-tui — the PURE terminal layer, extracted from the CLI (the
  * ADR-0041 escape hatch). Zero runtime dependencies: input is data,
- * output is bytes. The cell renderer (body), the bottom-anchored dock,
- * the raw-mode editor, the diff renderer, and the palette.
+ * output is bytes. TUI v6 (ADR-0046): the ONE compositor (the single
+ * writer — body.ts + dock.ts retired), the component tree, the raw-mode
+ * editor, the diff renderer, and the palette.
  */
 
-export { Body, type BodyOptions } from "./body.js";
-export { Dock } from "./dock.js";
+export { Body, Dock, CURSOR_MARKER, type BodyOptions } from "./compositor.js";
+export { Container, foldLine, visibleWidth, SPINNER, type Component, type FrameCtx } from "./components.js";
 export {
 	Editor,
 	MENU_ITEMS,
