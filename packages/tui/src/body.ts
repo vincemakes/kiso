@@ -99,8 +99,9 @@ export class Body {
 	#opts: BodyOptions;
 	#cells: BodyCell[] = [];
 	#nextFrozen = 0; // index of the first not-yet-printed cell
-	#frozenRows = 0; // the frozen area's rows filled WITHOUT scrolling (then the real LFs take over)
-	#oldTailTop = 0; // the tail's previous first row — for the clear pass
+	#height = 0; // the last DRAWN height — the resize handler clears with the OLD geometry
+	#oldTailTop = 0; // the last-drawn tail top — the clear pass + the resize handler's clear
+	#oldTailHeight = 0; // the last-drawn tail's height — the clear covers EXACTLY it (never the frozen area)
 	#frameTimer: NodeJS.Timeout | null = null;
 	#heartbeat: NodeJS.Timeout | null = null;
 	#dirty = false;
@@ -117,14 +118,13 @@ export class Body {
 		this.#opts = opts;
 		this.#write = opts.write ?? ((s) => process.stdout.write(s));
 		this.#active = opts.active();
+		this.#height = opts.height();
 		if (this.#isActive()) {
-			// TUI v4 #16a: the resize event — the terminal reflows its
-			// scrollback, so OUR row bookkeeping is stale. The frozen
-			// content is never re-emitted (the terminal reflowed it); the
-			// counters reset so the next render lands new frozen lines via
-			// the REAL-LF scroll path (just above the tail), never at stale
-			// CUP rows — the overwrite garbage after a drag (the #16
-			// defect). The dock redraws its own chrome on the same event.
+			// #17 (P1): the resize handler — clear the OLD tail + dock area
+			// (old geometry, EL/ED only — no LF), then redraw at the new
+			// geometry. The #16a assumption is retired: the terminal's
+			// reflow does NOT erase the old chrome rows (the recorded
+			// separator wall + the tail ghost prove it) — the clear does.
 			this.#resizeHandler = () => this.onResize();
 			process.stdout.on("resize", this.#resizeHandler);
 			this.#heartbeat = setInterval(() => {
@@ -169,22 +169,30 @@ export class Body {
 	}
 
 	/**
-	 * TUI v4 #16a: a resize reflows the terminal's scrollback — the frozen
-	 * rows' positions are no longer what we tracked (and the frozen CONTENT
-	 * is never re-emitted: the terminal reflowed it, we only redraw the
-	 * dock + active tail). The counters reset so the next render writes new
-	 * frozen lines through the REAL-LF scroll path above the tail, never at
-	 * a stale CUP row (the drag-garbage the #16 user saw).
+	 * #17 (P1): a resize reflows the terminal's buffer — the old chrome
+	 * rows SURVIVE the reflow at their shifted positions (the recorded
+	 * separator wall + the tail ghost — the #16a assumption that the
+	 * reflow erases them was wrong). The handler: (1) clear the old tail +
+	 * dock area with the OLD geometry (one ED from the last-drawn tail
+	 * top; EL/ED only, zero LF — the #16 storm gate's invariants hold);
+	 * (2) redraw immediately at the NEW geometry (the tail, the cursor
+	 * home, the dock — via the normal render). The frozen content is
+	 * strictly ABOVE the old tail top — the clear never touches it (the
+	 * frozen bytes stay emitted exactly once). Consecutive resizes are
+	 * idempotent: the clear covers an already-clear area.
 	 */
 	onResize(): void {
 		if (!this.#isActive()) return;
-		this.#frozenRows = Number.MAX_SAFE_INTEGER; // the frozen area is "full" — the next line scrolls
-		this.#oldTailTop = 0; // the reflowed tail's old rows are gone — clear only the new area
-		// NO #dirty: an immediate frame would re-render the ACTIVE TAIL —
-		// re-emitting its bytes (the terminal already reflowed the tail's
-		// content; a re-print duplicates the text in the byte stream — the
-		// #16 storm gate's "response text exactly once"). The geometry
-		// reset takes effect at the next NATURAL render (the next event).
+		const from = this.#oldTailTop > 0 ? this.#oldTailTop : Math.max(1, this.#height - 3);
+		const H = this.#opts.height(); // the NEW height — the clamp for a shrunk screen
+		const out: string[] = [];
+		// The cursor home + the ED land with the NEW geometry — rows beyond
+		// the old screen are already gone; rows below the old tail top are
+		// exactly the tail + the dock areas (the old tail, the old chrome).
+		out.push(`\x1b[${Math.min(from, Math.max(1, H))};1H\x1b[0J`);
+		this.#write(out.join(""));
+		this.#dirty = true; // the immediate redraw at the NEW geometry
+		this.render();
 	}
 
 	/** The last COMPLETE thinking block, for /think. */
@@ -441,43 +449,62 @@ export class Body {
 		const H = this.#opts.height();
 		const W = this.#opts.width();
 		if (H < 4) return;
+		this.#height = H;
 		const out: string[] = [];
-		// #13 (P1), v2d-B: NO DECSTBM — overflow scrolls with a REAL LF at
-		// the screen's last row, so the frozen lines enter the terminal's
-		// NATIVE scrollback deterministically (region-scrolled lines are
-		// terminal-dependent; some terminals drop them — the measured v2d-A
-		// defect). The body fills from the top without scrolling; once full,
-		// every new frozen line scrolls the whole screen (\x1b[H;1H\n — the
-		// top line leaves into the scrollback) and lands at the body's
-		// bottom row, just above the active tail. The dock is redrawn after.
+		// #13 (P1), v2d-B: NO DECSTBM — a frozen line scrolls with a REAL
+		// LF at the screen's last row (\x1b[H;1H\n — the top line leaves
+		// into the NATIVE scrollback) and lands at the body's bottom row,
+		// just above the active tail. The dock is redrawn after.
+		// #17 (P1): the pre-fill phase is GONE — EVERY frozen line takes
+		// this REAL-LF path, short sessions included. The old pre-fill drew
+		// at absolute CUP rows with NO real LF: the terminal's resize
+		// reflow treated those rows as soft lines — the recorded fold/body
+		// MERGE (the /think suffix lost), the tail ghost, the separator
+		// wall. A real-LF line reflows as ONE logical line, never merged
+		// with a neighbor; the only soft lines left are the active tail +
+		// the dock (small, redrawn every frame / cleared by onResize).
 		// The tail (the remaining ACTIVE cells) and its geometry — computed
 		// FIRST from the final nextFrozen, so the frozen cells are NOT in it
 		// (a stale tail would re-draw them — the double-render).
 		let nextFrozen = this.#nextFrozen;
 		while (nextFrozen < this.#cells.length && this.#cells[nextFrozen]!.done) nextFrozen += 1;
+		// #17: the tail holds ONLY the unfinished cells — slice(nextFrozen)
+		// also captures the DONE cells that follow (an approval verdict
+		// freezing behind a live text+tool), inflating tailHeight so the
+		// tail's top rises INTO the frozen area and its clear pass wipes
+		// the freshly-frozen lines (the fold's /think suffix — recorded).
 		const tail = this.#cells.slice(nextFrozen);
-		const tailHeight = tail.reduce((n, c) => n + this.#cellHeight(c, W), 0);
+		// #17: the tail HEIGHT counts only the unfinished cells — slice()
+		// also captures the DONE cells that follow (an approval verdict
+		// freezing behind a live text+tool); counting them inflates the
+		// height so the tail's top rises INTO the frozen area and its
+		// clear pass wipes the freshly-frozen lines (the fold's /think
+		// suffix — recorded). The tail array itself keeps the old shape.
+		const tailHeight = tail.reduce((n, c) => n + (c.done ? 0 : this.#cellHeight(c, W)), 0);
 		const tailTop = Math.max(1, H - 3 - tailHeight); // v3 §03: 4 dock rows below
 		const writeRow = Math.max(1, tailTop - 1); // the frozen area's bottom row
 		let scrolled = 0;
 		for (let i = this.#nextFrozen; i < nextFrozen; i += 1) {
 			for (const line of this.#cellLines(this.#cells[i]!, W)) {
-				if (this.#frozenRows < writeRow) {
-					this.#frozenRows += 1;
-					out.push(`\x1b[${this.#frozenRows};1H\x1b[0K${line}`);
-				} else {
-					out.push(`\x1b[${H};1H\n`); // the REAL LF — the whole screen scrolls
-					out.push(`\x1b[${writeRow};1H\x1b[0K${line}`);
-					scrolled += 1;
-				}
+				out.push(`\x1b[${H};1H\n`); // the REAL LF — the whole screen scrolls
+				out.push(`\x1b[${writeRow};1H\x1b[0K${line}`);
+				scrolled += 1;
 			}
 			this.#nextFrozen += 1;
 		}
-		// 2. the active tail — clear its old area (shifted up by the freeze
-		// scrolls) and the current area, draw the cells at the body's bottom.
+		// 2. the active tail — clear EXACTLY its old area (shifted up by the
+		// freeze scrolls) and the current area, draw the cells at the body's
+		// bottom. #17: the old code cleared clearFrom..H-4 unconditionally —
+		// harmless when the frozen lines sat at the TOP (pre-fill), but with
+		// the real-LF commits the frozen lines land just ABOVE the tail, so
+		// an over-wide clear wipes the freshly-frozen cells (the recorded
+		// fold/response vanishing).
 		out.push("\x1b[?2026h");
+		const oldBottom = this.#oldTailHeight > 0 ? this.#oldTailTop + this.#oldTailHeight - 1 - scrolled : -1;
+		const newBottom = tailHeight > 0 ? tailTop + tailHeight - 1 : -1;
 		const clearFrom = Math.min(this.#oldTailTop === 0 ? tailTop : this.#oldTailTop - scrolled, tailTop);
-		for (let row = clearFrom; row <= H - 4; row += 1) {
+		const clearTo = Math.max(oldBottom, newBottom);
+		for (let row = clearFrom; row <= Math.min(clearTo, H - 4); row += 1) {
 			out.push(`\x1b[${row};1H\x1b[0K`);
 		}
 		let row = tailTop;
@@ -487,6 +514,8 @@ export class Body {
 				row += 1;
 			}
 		}
+		this.#oldTailTop = tailTop; // the last-drawn tail top — the resize clear starts here
+		this.#oldTailHeight = tailHeight;
 		// 3. the cursor home — the input line's edit column.
 		out.push(`\x1b[${H};${this.#opts.editCol()}H`);
 		out.push("\x1b[?2026l");
@@ -512,7 +541,15 @@ export class Body {
 				const block = cell.text;
 				const trimmed = escapeTerminal(block.trim());
 				if (trimmed.length <= 100) return [`${p.dim}…${trimmed}${p.reset}`];
-				return [`${p.dim}…${trimmed.slice(0, 100)} (${block.length} chars · /think)${p.reset}`];
+				const suffix = ` (${block.length} chars · /think)`;
+				// #17: the fold must FIT its row — every frozen line commits
+				// via the REAL-LF scroll path at the SAME write row; a
+				// soft-wrapped fold's continuation row would be clobbered by
+				// the next line's commit write (the /think suffix lost — the
+				// recorded symptom). The slice shrinks with the width; the
+				// suffix always rides the fold's own row.
+				const slice = Math.max(1, W - 1 - suffix.length);
+				return [`${p.dim}…${trimmed.slice(0, slice)}${suffix}${p.reset}`];
 			}
 			case "tool": {
 				const name = escapeTerminal(cell.name);

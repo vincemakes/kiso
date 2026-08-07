@@ -153,8 +153,14 @@ export class Dock {
 	redraw(): void {
 		if (!this.#active) return;
 		const p = palette();
-		const H = this.#height;
-		const W = this.#width;
+		// #17 (P1): read the LIVE size, not the cache — the body's resize
+		// render calls onDock (this redraw) BEFORE this dock's own resize
+		// handler runs, so the cached geometry would draw the chrome at
+		// stale rows (clamped into the body — the separator residue wall).
+		// The live read makes the handler order irrelevant; the cache keeps
+		// serving exit().
+		const H = process.stdout.rows ?? this.#height;
+		const W = process.stdout.columns ?? this.#width;
 		const sep = `${p.dim}${"╌".repeat(W)}${p.reset}`;
 		const status = `${this.#status}${this.#tail === "" ? "" : ` · ${this.#tail}`}`;
 		const statusLine = this.#question ?? this.#statusRow(status, p, W);
