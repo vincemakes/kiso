@@ -221,7 +221,10 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// IMMEDIATELY after the status (the hint, had it fit, would sit
 		// between the status and the reset).
 		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["▌ ", "look around\n"]], 30, 50, []);
-		expect(narrow).toContain("▸ default · /mode to switch · faux · ctx left ~100%\x1b[0m"); // the status, whole, no hint
-		expect(narrow).toContain("\x1b[24;1H\x1b[0K\x1b[2m▸ default"); // the status starts at column 1 — never truncated from the left
+		// v6 invariant ①: the status itself must fit W — at 50 cols the
+		// 51-cell status CUTS at W−1 with a … (the old code soft-wrapped
+		// it; the crash-on-violation makes the cut structural).
+		expect(narrow).toContain("▸ default · /mode to switch · faux · ctx left ~10…\x1b[0m");
+		expect(narrow).toContain("\x1b[1A\x1b[1G\x1b[0K\x1b[2m▸ default"); // the status write in the steady frame (relative — invariant ②) — never truncated from the left
 	}, 90_000);
 });

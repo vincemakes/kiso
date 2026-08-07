@@ -100,21 +100,27 @@ const CELL_LINE = [
 	/^▍\s?.*$/, // TUI v5 #16f: the user block — every line carries the ▍ rail (arbitrary user text after it)
 	/^╌+$/, // the separator
 	/^ {0,2}(approved|denied.*)$/, // the permission_decided raw
-	/^approve .*\(y\/n\)$/, // the dock's takeover question
+	/^approve .*\(y\/n\) ?.*$/, // the ApprovalPrompt slot — the question + the typed answer on the input row
 	/^.*· faux · \[turn \d+ · faux\]$/, // the live status bar (session-prefixed)
 	/^the tour is done$/, /^streaming text$/, // the TextCell bodies
 ];
 
-/** Lint the RECONSTRUCTED lines — the raw split at the cursor-positioning
- *  sequences, then ANSI-stripped per line. A naive strip of the whole
- *  transcript flattens ADJACENT rows into one string (false positives);
- *  the true cell lines are the segments between the \x1b[<row>;1H writes —
- *  and a genuine interleave (two cells' content merged in one write) still
- *  lands inside one segment and fails the format set. */
+/** Lint the RECONSTRUCTED lines — the raw split at every CSI (the v6
+ *  steady-state frames carry NO CUP — the old CUP-only split would merge
+ *  the whole steady transcript into one segment), then the pure CSI-
+ *  parameter fragments (the move/clear sequences) are filtered and the
+ *  line texts ANSI-stripped. A genuine interleave (two cells' content
+ *  merged in one write) still lands inside one segment and fails the
+ *  format set. */
 const lint = (raw: string): string[] => {
 	const bad: string[] = [];
-	const segments = raw.split(/\x1b\[[0-9;]*H/);
+	// the v6 write pattern: the MOVE/CLEAR sequences (A/B/G/D/K/J) precede
+	// each line — the split at them (NOT at every CSI — a line's own SGRs
+	// must stay with it) yields the true line segments
+	const segments = raw.split(/\x1b\[[0-9;?]*[ABDGKJ]/);
 	for (const seg of segments) {
+		// a pure CSI-parameter fragment (e.g. "1A", "1G", "0K") — not a line
+		if (/^[0-9;?]*[A-Za-z]$/.test(seg)) continue;
 		// TUI v5 #16f: the user block is the ▍-rail cell — its identity is
 		// the rail itself (there is no "you> " prefix, no bg/rev block).
 		// The rail pattern in CELL_LINE classifies it (the rail prefixes

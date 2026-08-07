@@ -259,7 +259,11 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// the slice is 58 at 80 cols, NOT the old 100.
 		expect(clean).toContain(`…${"A".repeat(80 - 1 - " (110 chars · /think)".length)} (110 chars · /think)`); // the folded line (v3 wording)
 		expect(clean).toContain("SECRETTAIL"); // the full block came back
-		expect(clean).toContain("A".repeat(100)); // …head included
+		// v6: the /think output is a raw cell — the compositor hard-folds it
+		// at W (invariant ① — no soft-wraps), so the 110-A block arrives as
+		// two rows; the CONTENT is all there (the fold only hints — the
+		// count, not the contiguous span, is the contract now).
+		expect((clean.match(/A/g) ?? []).length).toBeGreaterThanOrEqual(100);
 		expect(out).toContain("\x1b[r"); // clean exit
 	}, 90_000);
 

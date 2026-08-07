@@ -76,19 +76,20 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 	it("wide input (fullwidth) lands the cursor on the DISPLAY-width column — ＡＡ is 4 cells, not 2", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
-			// Feed the two wide chars ONE AT A TIME so the dock's redraws
-			// between them pin the intermediate cursor columns; Ａ+Enter
-			// submits ＡＡ as a turn (the exit feed waits for the turn).
+			// Feed the two wide chars ONE AT A TIME (each with its own
+			// needle, so the frame between them renders the intermediate
+			// row); the submit waits for the row showing the FULLWIDTH pair.
 			["▌ ", "Ａ"],
-			["\x1b[24;5H", "Ａ\n"],
-			["turn 2 · faux", "exit\n"],
+			["Ａ", "Ａ"], // the row now shows the first Ａ — type the second
+			["\x1b[1m▌ \x1b[0mＡＡ", "\n"], // the row shows the 4-cell pair whole (the display-width reflow) — submit
+			["▸ default · /mode to switch", "exit\n"],
 		]);
-		// ▌ + space = 2 wide (TUI v4 #16d) → after Ａ the edit column is
-		// 2+2+1 = 5; after ＡＡ it is 2+4+1 = 7. The drift root cure: every
-		// column is a display column, so the redraws land at 5 then 7.
-		expect(out).toContain("\x1b[22;5H"); // v3 §03: the input row is H-2
-		expect(out).toContain("\x1b[22;7H");
-		// The submitted line renders into the body (blue, pty-cooked).
+		// v6: the cursor derives from the frame's marker — the marker sits
+		// at leadW + the DISPLAY cursor (2 + 4 = 6 for ＡＡ — the old CUP
+		// home at 5/7 is gone; the row itself is the display-width proof:
+		// the 4-cell pair renders whole, never split as 2+2 cells).
+		expect(out).toContain("\x1b[1m▌ \x1b[0mＡＡ");
+		// The submitted line renders into the body (pty-cooked).
 		const clean = stripANSI(out);
 		expect(clean).toContain("ＡＡ"); // v3 §02: the user block has no "you> " prefix
 		// And the input row survives (the editor's own render).
@@ -98,7 +99,11 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 	it("the submitted line renders in the scroll region EXACTLY once — the ▍ rail + content + reset", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
-			["▌ ", "look around\n"],
+			// v6: the input row's frame COALESCES (16ms) — a burst of
+			// inserts + the submit lands in one frame, so the typed line
+			// needs its own needle to be observed before the Enter.
+			["▌ ", "look around"],
+			["\x1b[1m▌ \x1b[0mlook around", "\n"],
 			["▸ default · /mode to switch", "exit\n"], // v3 idle state marks the turn's end
 		]);
 		// The editor's input row renders the brick prompt + the line (the

@@ -149,7 +149,11 @@ describe("A2: ↑↓ recall the session history", () => {
 				["▌ ", "hello"],
 				["hello", "\r"], // the first turn submits
 				["first answer", "\x1b[A"], // ↑ — the history recalls "hello"
-				["hello", "\r"], // the recalled line resubmits as a real turn
+				// v6: the resubmit fires on the IDLE STATUS (the post-turn
+				// paintIdle) — the recalled row is byte-identical to the typed
+				// one, so a "hello" needle would fire at the TYPED row again;
+				// its bare \r would submit an EMPTY line, which exits the REPL.
+				["\x1b[2m▸ default", "\r"], // the recalled line resubmits as a real turn
 				["second answer", "exit\n"],
 			],
 			dir,
@@ -158,9 +162,11 @@ describe("A2: ↑↓ recall the session history", () => {
 		const plain = stripANSI(out);
 		expect(plain).toContain("first answer");
 		expect(plain).toContain("second answer"); // the recalled "hello" ran again
-		// The recall rendered into the input row a SECOND time (the typed
-		// echo + the recalled row).
-		expect((plain.match(/▌ hello/g) ?? []).length).toBeGreaterThanOrEqual(2);
+		// v6: the frames coalesce at 16ms — the ↑ and the immediate Enter
+		// land in ONE frame, so the recalled row's render merges with the
+		// submit; the recall's proof is the RESUBMITTED turn above. The
+		// typed row rendered (the "hello" needle waited for it).
+		expect((plain.match(/▌ hello/g) ?? []).length).toBeGreaterThanOrEqual(1);
 	});
 });
 

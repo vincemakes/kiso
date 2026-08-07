@@ -129,7 +129,9 @@ export class VtScreen {
 	#csi(bytes: Uint8Array, i: number): number {
 		if (bytes[i + 1] !== 0x5b) return i + 1; // a bare ESC
 		let j = i + 2;
-		while (j < bytes.length && /[0-9;?]/.test(String.fromCharCode(bytes[j]!))) j += 1;
+		// signed params — a buggy emitter can write negative CUP rows; the
+		// emulator parses them (and clamps) instead of leaking them as text
+		while (j < bytes.length && /[-0-9;?]/.test(String.fromCharCode(bytes[j]!))) j += 1;
 		if (j >= bytes.length) return bytes.length;
 		const fin = String.fromCharCode(bytes[j]!);
 		const params = Buffer.from(bytes.subarray(i + 2, j)).toString("ascii");
@@ -164,6 +166,17 @@ export class VtScreen {
 				row.text = row.text.slice(0, this.#c);
 				for (let k = this.#r + 1; k < this.#grid.length; k += 1) this.#grid[k] = { text: "", cont: false };
 			}
+		} else if (fin === "A" || fin === "B") {
+			// TUI v6: the steady-state frames move the cursor RELATIVELY —
+			// the emulator must track them or the EL/writes land on stale rows
+			const n = params === "" ? 1 : Number.parseInt(params, 10);
+			this.#r = fin === "A" ? Math.max(0, this.#r - n) : Math.min(this.#grid.length - 1, this.#r + n);
+		} else if (fin === "G") {
+			const n = params === "" ? 1 : Number.parseInt(params, 10);
+			this.#c = Math.max(0, n - 1);
+		} else if (fin === "D") {
+			const n = params === "" ? 1 : Number.parseInt(params, 10);
+			this.#c = Math.max(0, this.#c - n);
 		}
 		// SGR and everything else: ignored
 		return j + 1;
