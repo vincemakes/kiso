@@ -237,8 +237,14 @@ class ThinkingFold implements Component {
 	}
 }
 
-/** The tool execution line + the approval mini-diff — every state is
- *  its own render; the lines fold (the summary gives way first). */
+/** The tool execution line + the bounded block — every state is its
+ *  own render; the lines fold (the summary gives way first). W7 (the
+ *  flow contract): the block's BODY (the rows below the header) is
+ *  capped in SCREEN rows AFTER the fold, at the current width — the
+ *  renderer-cut row (`└ +N … · ctrl+r`) sits INSIDE the cap (a
+ *  truncated block is cap−1 output rows + the cut row); the TOOL-cut
+ *  row (`└ capped by …` — the tool's OWN truncation note, W10) is a
+ *  DIFFERENT fact, never counted in the output cap. */
 class ToolExecution implements Component {
 	constructor(private readonly cell: Extract<BodyCell, { kind: "tool" }>) {}
 	render(W: number, ctx: FrameCtx): string[] {
@@ -251,29 +257,176 @@ class ToolExecution implements Component {
 			const line = c.isError
 				? `${p.red}✗ ${name} (${escapeTerminal(c.resultText.split("\n")[0]!.slice(0, 60))}, ${elapsed}s)${p.reset}`
 				: `${p.bold}✓ ${name}${p.reset} (${summary}${c.added + c.removed > 0 ? `, +${c.added} -${c.removed}` : ""}, ${elapsed}s)`;
-			return foldLine(line, W);
+			const out = foldLine(line, W);
+			out.push(...toolBlockBody(c, W));
+			return out;
 		}
 		if (c.state === "approval") {
-			const lines = foldLine(`→ ${name} ${summary} ${p.bold}⏸${p.reset}`, W);
-			if (c.diff !== null) {
-				for (const d of c.diff) {
-					const body =
-						d.kind === "-"
-							? `${p.red}- ${escapeTerminal(d.text)}${p.reset}`
-							: d.kind === "+"
-								? `${p.green}+ ${escapeTerminal(d.text)}${p.reset}`
-								: `${p.dim}  ${escapeTerminal(d.text)}${p.reset}`;
-					lines.push(...foldLine(`${p.bold}▎${p.reset}${body}`, W));
-				}
-			}
-			return lines;
+			const out = foldLine(`→ ${name} ${summary} ${p.bold}⏸${p.reset}`, W);
+			out.push(...toolBlockBody(c, W));
+			return out;
 		}
 		if (c.state === "running") {
 			const elapsed = c.startedAt !== null ? Math.max(1, Math.round((ctx.now - c.startedAt) / 1000)) : 1;
-			return foldLine(`→ ${name} ${summary} ${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} ${elapsed}s`, W);
+			const out = foldLine(`→ ${name} ${summary} ${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} ${elapsed}s`, W);
+			out.push(...toolBlockBody(c, W));
+			return out;
 		}
 		return foldLine(`→ ${name} ${summary}`, W);
 	}
+}
+
+// ---- the bounded-block flow contract (W7, W8, W10) ----
+
+/** The caps — screen rows counted AFTER the fold, at the current width
+ *  (the W7 table). The renderer-cut row is inside the cap. */
+const CAP_SHELL_SETTLED = 5; // the shell output tail, settled
+const CAP_LIVE_WINDOW = 3; // the running tool's FIXED window (W8)
+const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
+const CAP_ERROR = 3; // the error text head
+
+/** The block body rows' prefixes (W2's gutter table): │ a bounded
+ *  block's body, └ the block's last row — what was cut, where the rest
+ *  is. Structural (constraint 1) — they survive a pipe. */
+const BODY_ROW = "  │ ";
+const CUT_ROW = "  └ ";
+
+/** W9 — the per-cell memo: the bounded block's folded body is cached
+ *  per (width, state, content reference) — a steady stream re-measures
+ *  ZERO times (constraint 5: width-dependent work rides the fullRedraw
+ *  path, never the per-frame path); a resize re-measures once (the
+ *  width key flips). Keyed on the CELL object; the content key is the
+ *  reference identity (resultText / the diff array are assigned once
+ *  and never mutated). */
+interface BlockMemo {
+	width: number;
+	state: string;
+	content: unknown;
+	rows: string[];
+}
+const blockMemo = new WeakMap<object, BlockMemo>();
+
+/** The block's body rows below the header (memoized, W9). */
+function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): string[] {
+	const memo = blockMemo.get(c);
+	const state = `${c.state}:${c.isError}:${c.name}`;
+	const content: unknown = c.state === "approval" ? (c.diff ?? null) : c.resultText;
+	if (memo !== undefined && memo.width === W && memo.state === state && memo.content === content) return memo.rows;
+	const p = palette();
+	const rows =
+		c.state === "done"
+			? c.isError
+				? errorBody(c.resultText, W)
+				: c.name.startsWith("shell")
+					? shellTail(c.resultText, W)
+					: []
+			: c.state === "running"
+				? liveWindow(c.resultText, W)
+				: c.state === "approval"
+					? diffBody(c.diff, W)
+					: [];
+	const note = toolCutNote(c.name, c.resultText);
+	if (note !== null) rows.push(...foldLine(`${p.dim}${CUT_ROW}${note}${p.reset}`, W));
+	blockMemo.set(c, { width: W, state, content, rows });
+	return rows;
+}
+
+/** Fold result text into dim body rows (the BODY_ROW prefix): escape,
+ *  split, fold each line at W−prefix; trailing empty rows (the result's
+ *  final newline) drop. */
+function blockRows(text: string, W: number): string[] {
+	const p = palette();
+	const textW = Math.max(1, W - visibleWidth(BODY_ROW));
+	const rows: string[] = [];
+	for (const raw of escapeTerminal(text).split("\n")) {
+		for (const row of foldLine(raw, textW)) rows.push(`${p.dim}${BODY_ROW}${row}${p.reset}`);
+	}
+	while (rows.length > 0 && visibleWidth(rows[rows.length - 1]!) === visibleWidth(BODY_ROW)) rows.pop();
+	return rows;
+}
+
+/** The shell output tail, settled: the LAST rows, capped at 5 — the
+ *  renderer cut at the block's bottom ("earlier rows" — the conclusion
+ *  is at the end, pi's truncateToVisualLines direction). */
+function shellTail(text: string, W: number): string[] {
+	const p = palette();
+	const rows = blockRows(text, W);
+	if (rows.length <= CAP_SHELL_SETTLED) return rows;
+	const kept = CAP_SHELL_SETTLED - 1;
+	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - kept} earlier rows · ctrl+r${p.reset}`, W);
+	return [...rows.slice(rows.length - kept), ...cut];
+}
+
+/** The error text head: the FIRST rows, capped at 3 — the answer is at
+ *  the start (opencode's collapseToolOutput direction). The header row
+ *  already summarizes the first line, so the body starts at line 2. */
+function errorBody(text: string, W: number): string[] {
+	const p = palette();
+	const rows = blockRows(text.split("\n").slice(1).join("\n"), W);
+	if (rows.length <= CAP_ERROR) return rows;
+	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - (CAP_ERROR - 1)} more · ctrl+r${p.reset}`, W);
+	return [...rows.slice(0, CAP_ERROR - 1), ...cut];
+}
+
+/** The running tool's FIXED-height window (W8): exactly 3 rows from
+ *  the FIRST frame — blank-padded before output arrives, the renderer
+ *  cut inside the window. The height changes exactly once, at settle —
+ *  a cell that grows mid-list would shift every row after it on every
+ *  delta (the parallel-tools jitter). */
+function liveWindow(text: string, W: number): string[] {
+	const p = palette();
+	if (text === "") {
+		return [`${p.dim}${BODY_ROW}${p.reset}`, `${p.dim}${BODY_ROW}${p.reset}`, `${p.dim}${CUT_ROW}waiting for output${p.reset}`];
+	}
+	const rows = blockRows(text, W);
+	if (rows.length <= CAP_LIVE_WINDOW) {
+		while (rows.length < CAP_LIVE_WINDOW) rows.push(`${p.dim}${BODY_ROW}${p.reset}`);
+		return rows;
+	}
+	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+r${p.reset}`, W);
+	return [...rows.slice(rows.length - (CAP_LIVE_WINDOW - 1)), ...cut];
+}
+
+/** The approval mini-diff (W7): capped at 12 folded rows — the head +
+ *  the named middle (the renderer cut — what was cut, how to expand) +
+ *  the tail. The rows are folded at the current width BEFORE the cap —
+ *  the R1 measured bug: truncateDiff capped at 40 ENTRIES while the
+ *  fold turned them into 73 SCREEN rows at W≤80 (a 44-row terminal's
+ *  content cap is H−4 = 40 — the approval force-committed a third of
+ *  the screen into scrollback inside one frame). */
+function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number): string[] {
+	const p = palette();
+	if (diff === null) return [];
+	const rows: string[] = [];
+	for (const d of diff) {
+		const body =
+			d.kind === "-"
+				? `${p.red}- ${escapeTerminal(d.text)}${p.reset}`
+				: d.kind === "+"
+					? `${p.green}+ ${escapeTerminal(d.text)}${p.reset}`
+					: `${p.dim}  ${escapeTerminal(d.text)}${p.reset}`;
+		rows.push(...foldLine(`${p.bold}▎${p.reset}${body}`, W));
+	}
+	if (rows.length <= CAP_DIFF) return rows;
+	const head = Math.floor((CAP_DIFF - 1) / 2);
+	const tail = CAP_DIFF - 1 - head;
+	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - head - tail} rows · ctrl+r to expand · /last for the full diff${p.reset}`, W);
+	return [...rows.slice(0, head), ...cut, ...rows.slice(rows.length - tail)];
+}
+
+/** The TOOL's OWN truncation note (W10) — a different fact from the
+ *  renderer's cut: the tools truncate and append a continuation note
+ *  (packages/tools-node/src/index.ts — read_file's "call again with
+ *  offset=N", the output cap, list_dir's entry cap). The note reaches
+ *  the MODEL and never the human — this row surfaces it. Detected in
+ *  the result's TAIL (the note is appended at the end); returns null
+ *  when the tool did not truncate. */
+function toolCutNote(name: string, resultText: string): string | null {
+	const tail = resultText.slice(-300);
+	const m = /offset=(\d+)/.exec(tail);
+	if (m !== null) return `capped by ${escapeTerminal(name)} · offset=${m[1]} for the rest`;
+	if (/…\[truncated\]/.test(tail) || /… \+?\d+ more (?:lines|entries)/.test(tail)) return `capped by ${escapeTerminal(name)} · /last for the rest`;
+	return null;
 }
 
 /** The assistant body text — wrapped at W, the inline-code tint per

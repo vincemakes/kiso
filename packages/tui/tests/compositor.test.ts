@@ -293,4 +293,111 @@ describe("TUI v6 — the one compositor", () => {
 		// the tool ended — no timer re-arms — the idle emits nothing
 		expect(writes.join("")).toBe("");
 	});
+
+	// ---- TUI v7 — the flow contract (W7, W8, W10; the work order §4) ----
+
+	it("W7: the settled shell tail caps at 5 screen rows POST-FOLD — the renderer cut inside the cap, counted in FOLDED rows (60 vs 120)", () => {
+		// 30 lines of 66 chars: at W=120 each line folds to 1 row (30 rows →
+		// the cut "+26"); at W=60 each folds to 2 (60 rows → the cut "+56") —
+		// the cap counts SCREEN rows, never source entries. The RED state was
+		// the measured bug: the 60-entry diff folded to 73 rows at W≤80.
+		const output = Array.from({ length: 30 }, (_, i) => `shell line ${String(i).padStart(2, "0")} ` + "x".repeat(52)).join("\n");
+		for (const W of [120, 60]) {
+			const { body, writes, tick } = makeBody({ W });
+			body.enter();
+			body.toolStart("shell", "c1", { command: "run" });
+			body.toolRunning("c1");
+			body.toolResult("c1", { content: output, isError: false });
+			tick();
+			const frame = writes.join("");
+			// the tail + the cut row inside the cap (the cut row counts)
+			const cut = frame.match(/  └ \+(\d+) earlier rows · ctrl\+r/);
+			expect(cut).not.toBeNull();
+			expect(Number(cut![1]!)).toBe(W === 120 ? 26 : 56);
+			expect((frame.match(/  │ /g) ?? []).length + 1).toBeLessThanOrEqual(5);
+			// the tail survives: the LAST output line is on screen
+			expect(frame).toContain("shell line 29");
+		}
+	});
+
+	it("W7: the approval diff caps at 12 folded rows — head + the named middle + tail (the R1 measured bug)", () => {
+		// the work order §6 reproduction: 60 entries of ~80 chars — the old
+		// renderer folded them to 73 SCREEN rows at W=60 (a 44-row terminal's
+		// content cap is H−4 = 40 — the approval force-committed a third of
+		// the screen into scrollback inside one frame)
+		const diff = Array.from({ length: 60 }, (_, i) => ({
+			kind: (i % 2 ? "+" : "-") as "-" | "+",
+			text: "\t\tconst someReasonablyLongIdentifier" + i + " = await doTheThing(argumentOne, argumentTwo, { option: true });",
+		}));
+		for (const W of [120, 60]) {
+			const { body, writes, tick } = makeBody({ W });
+			body.enter();
+			body.toolStart("edit_file", "c1", { path: "x" });
+			body.toolApproval("c1", { lines: diff, added: 30, removed: 30 });
+			tick();
+			const frame = writes.join("");
+			const cut = frame.match(/  └ \+(\d+) rows · ctrl\+r to expand/);
+			expect(cut).not.toBeNull();
+			// the head + the named middle + the tail = 12 rows total
+			expect((frame.match(/▎/g) ?? []).length + 1).toBeLessThanOrEqual(12);
+			// the head AND the tail survive (the truncated middle is named)
+			expect(frame).toContain("Identifier0");
+			expect(frame).toContain("Identifier59");
+		}
+	});
+
+	it("W7: the error text caps at 3 head rows (the header already shows line 1 — the body starts at line 2); a read result renders NO body", () => {
+		const { body, writes, tick } = makeBody();
+		body.enter();
+		body.toolStart("shell", "c1", { command: "lint" });
+		body.toolRunning("c1");
+		const err = Array.from({ length: 6 }, (_, i) => `lint error ${i + 1}: something went wrong here`).join("\n");
+		body.toolResult("c1", { content: err, isError: true });
+		tick();
+		const frame = writes.join("");
+		// the head (the answer is at the start): the body starts at line 2,
+		// capped at 3 rows — the tail is cut, the cut names "+3 more"
+		expect(frame).toContain("lint error 2");
+		expect(frame).toContain("└ +3 more · ctrl+r");
+		expect(frame).not.toContain("lint error 6");
+		expect((frame.match(/  │ /g) ?? []).length).toBeLessThanOrEqual(3);
+		// a read result: the settled row carries the count — zero body rows
+		const b2 = makeBody();
+		b2.body.enter();
+		b2.body.toolStart("read_file", "c1", { path: "x" });
+		b2.body.toolRunning("c1");
+		b2.body.toolResult("c1", { content: "some file content", isError: false });
+		b2.tick();
+		expect(b2.writes.join("")).not.toContain("some file content");
+	});
+
+	it("W10: the TOOL's own cut is named — a truncated read surfaces the continuation note the model sees", () => {
+		// read_file caps at DEFAULT_READ_LINES=200 and appends the offset note
+		// (tools-node) — the note reaches the model, never the human; the
+		// settled row must surface it (a DIFFERENT fact from the renderer cut)
+		const { body, writes, tick } = makeBody();
+		body.enter();
+		body.toolStart("read_file", "c1", { path: "x" });
+		body.toolRunning("c1");
+		const content = Array.from({ length: 201 }, (_, i) => `line ${i}`).join("\n") + "\n… 50 more lines (call again with offset=201)";
+		body.toolResult("c1", { content, isError: false });
+		tick();
+		expect(writes.join("")).toContain("└ capped by read_file · offset=201 for the rest");
+	});
+
+	it("W8: the running tool's window is a FIXED 3 rows from the first frame — the height never changes while running", () => {
+		const { body, writes, tick } = makeBody();
+		body.enter();
+		body.toolStart("shell", "c1", { command: "sleep" });
+		body.toolRunning("c1");
+		tick();
+		// the window: 2 blank-padded rows + the waiting row — 3 total
+		expect(writes.join("")).toContain("└ waiting for output");
+		expect((writes.join("").match(/  │ /g) ?? []).length).toBe(2);
+		// a SECOND frame (the spinner tick): the window rows byte-identical
+		writes.length = 0;
+		vi.advanceTimersByTime(200);
+		expect(writes.join("")).toContain("└ waiting for output");
+		expect((writes.join("").match(/  │ /g) ?? []).length).toBe(2);
+	});
 });

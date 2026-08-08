@@ -85,6 +85,8 @@ const CELL_LINE = [
 	/^✓ \S+ \(.*, \d+\.\ds\)$/, // the ToolCell done
 	/^✗ \S+ \(.*, \d+\.\ds\)$/, // the ToolCell failed
 	/^▞.*$/, // v3: the recap line ends the run
+	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)
+	/^└ .*$/, // v7 W7/W8/W10: the cut/waiting rows (the "  └ " family — "waiting for output", "+N earlier rows · ctrl+r", "capped by …")
 	/^aborted \(.*\)$/, // the aborted terminal label
 	/^error: .*$/, // the error terminal label
 	/^▸ .* · \/mode to switch.*$/, // v3 idle status line
