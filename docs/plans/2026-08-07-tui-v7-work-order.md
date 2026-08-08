@@ -6,8 +6,9 @@ counts as done, and which gates each item breaks.
 
 **Status: Release 1 (W7–W10, the flow contract) shipped in 0.1.36** —
 the screen-row caps after the fold, the fixed live window, the resize
-re-measure, the result body with both cuts named. The release-2/3
-items below (W1–W6, W11–W17, W18) are unimplemented.
+re-measure, the result body with both cuts named. Release 2
+(W1–W4, W16, W11, then W5, W12, plus W18, W17 → 0.1.37) and Release 3
+(W6, W15, then W13, W14, plus W19, W20 → 0.1.38) are unimplemented.
 
 **Baseline: 0.1.35** (`abb5097`). The v6 rework round-2 fixes (the
 W-blind `≤100` ThinkingFold crash, the commit-anchor 2B, the live-line
@@ -146,6 +147,7 @@ Each item: **what · files · spec · done-when · gates hit**.
   | `▞` | a header in kiso's voice | bold |
   | `│` | a bounded block's body, owned by the row above | dim |
   | `└` | that block's last row: what was cut, where the rest is | dim |
+  | `▸` | the active item in the todo block (W20's glyph) | bold |
 
   `◦` replaces `→` for **queued specifically** because `·` is the
   separator inside every metadata group; a queued marker that is also
@@ -529,28 +531,148 @@ Each item: **what · files · spec · done-when · gates hit**.
 - **Done when**: every chip row has identical visible width; nothing
   exceeds W; `--plain` shows the `▍` rail and zero escapes.
 
+### W19 — Plan mode's product surface
+
+- **Files**: `apps/cli/src/mode.ts` (the tier: `:62-64`),
+  `apps/cli/src/chat.ts` (the idle status `:463`, the recap path
+  `:291-322`, the tool_result translate `:242-253`), `packages/tui/src/
+  components.ts` (the ToolCell's settled metadata, `renderRecap`),
+  `packages/runtime/src/run.ts` (`:325/:334` — the deny already threads
+  the policy's reason).
+- **The gap**: the plan tier exists end to end — `mode.ts:64` denies
+  every non-read call with `{ action: "deny", reason: "plan mode:
+  read-only" }`, and the kernel turns the verdict into a tool_result via
+  `denialResult` (`kernel/permission.ts:19-26`: content
+  `[Permission denied] <reason>`, `isError`, tagged `denied`) — but the
+  UI gives the mode no product surface: the denial renders like any
+  generic failure, the recap shows tool counts a plan turn barely had,
+  and nothing tells the human how to leave the mode.
+- **Spec — ① the way-forward row**: a plan-mode turn that settles ends
+  with the recap idiom — the `▞` header, the `" · "` separator, zero new
+  glyphs — and the content is the way out:
+
+  ```
+  ▞ plan ready · /mode default executes · /mode accept-edits auto-approves edits · ctx left ~91%
+  ```
+
+  `renderRecap` gains a `mode` input; under `"plan"` the timing and
+  tool-count parts drop (a plan turn's currency is the plan, not the
+  tool count) and the two `/mode` hints replace them.
+- **Spec — ② the pinned deny rendering**: a write/edit/shell call denied
+  BY PLAN MODE renders its ✗ row with the reason in the W4 parentheses
+  idiom, compact — and no timing metadata (the call never ran; `(0.0s)`
+  would be noise):
+
+  ```
+  ✗ write_file packages/a/src/b.ts (plan mode: read-only)
+  ```
+
+  The CLI extracts the reason from the result's `[Permission denied] `
+  prefix (keyed on the `denied` tag, the same discipline as
+  `parseChecklist`) and passes it with `toolResult`; the ToolCell
+  renders `(reason)` in place of the timing part when present. Honest,
+  not alarming: the row is the same ✗ family as any failure, and the
+  full content still rides the folded `[result ✗]` body — never hide
+  information. The pipe path renders the same row, byte-clean.
+- **Spec — ③ the status row**: the idle row already leads with the tier
+  (`chat.ts:463`, `▸ ${getMode()} · /mode to switch · …`); under `plan`
+  it makes the posture unmistakable with the W4 parentheses idiom:
+
+  ```
+  ▸ plan (read-only) · /mode to switch · faux · ctx left ~100%
+  ```
+
+  The running and recap statuses do not change — only the idle row.
+- **Spec — ④ no new modal machinery**: no auto-question at turn end, no
+  approval dialog, no plan-approval surface — the grammar stays modes +
+  slots. `/mode` is the only exit from plan mode (already true).
+- **Done when**: a faux plan-mode session shows the plan turn (its read
+  calls run; its write/edit/shell calls render the pinned deny; no
+  approval prompt ever appears), the way-forward row ends the turn,
+  `/mode default` then executes normally — and `--plain` prints the same
+  deny row with zero escapes.
+- **Gates**: a new e2e gate — `KISO_MODE=plan` + a faux script that
+  reads, then calls `write_file`: assert `✗ write_file` +
+  `(plan mode: read-only)`, assert NO `approve …? (y/n)` needle, assert
+  the `▞ plan ready` recap, then feed `/mode default` and a second turn
+  whose `shell` call succeeds — assert `✓ shell`. The pipe path asserts
+  the deny row with zero escapes.
+
+### W20 — The todo checklist as STATE, not events
+
+- **Files**: `packages/tui/src/compositor.ts` (`checklist()` `:317-329`),
+  `packages/tui/src/components.ts` (the durable `Checklist` render
+  `:472`), `apps/cli/src/chat.ts:252` (the per-result `body.checklist`
+  call — the CLI is unchanged).
+- **The gap — verified**: `compositor.ts:329` pushes a FRESH
+  `done: true` checklist cell on EVERY `todo_set` update. The todo
+  extension is a whole-table replace (`kiso-todo.mjs`), so 12 items × 10
+  updates ≈ 130 near-identical committed rows — no cap, violating W7's
+  own rule (caps in POST-FOLD screen rows) by an order of magnitude.
+- **Spec — ONE live block that redraws in place** (W8's fixed-window
+  rule generalised to state): the compositor holds one live todo state;
+  each `checklist()` call with changed items replaces the live block's
+  content — same position, same height, zero committed rows. The block
+  commits ONCE when the list settles, as one cell, in the recap idiom:
+
+  ```
+  ▞ todo · 6 items · 1 active · 2 done · <model header>     ← live
+    ▸ implement the feature
+    □ write the plan
+    └ 2 done · ctrl+r
+  ```
+
+  Rows: the ACTIVE item first with `▸` (the menu vocabulary's "the
+  current one" — ADDED to the W2 table above, charWidth verified 1),
+  pending `□` next (already in the checklist render), done COLLAPSED
+  behind the W10 cut family `└ +N done · ctrl+r`. The item rows keep
+  the checklist's existing shape (indented two, the glyph leads — no
+  `│` gutter, which would double-mark the row). The live block's height
+  caps in POST-FOLD screen rows at every width (`CAP_TODO_LIVE` = the
+  active row + up to 2 pending + the done-collapse row); overflow
+  pending folds into `└ +N more · ctrl+r`.
+- **Spec — the settle**: at the turn's end the live state commits as ONE
+  settled block, the recap idiom, with the run's duration (the `2h 14m`
+  form): `▞ todo done · 6 items · 2h 14m`. The next turn's updates
+  start a fresh live block — a multi-turn session commits one block per
+  turn that touched the list, never one per update.
+- **Naming ruling**: the fixed prefix is **"todo"** — NOT "plan" (owned
+  by plan mode / W19) and NOT "task". Live: `todo · N items · A active ·
+  D done`; settled: `todo done · N items · <duration>`. The
+  model-authored header (`parseChecklist`'s count-line tail —
+  `chat.ts:124-148`) rides AFTER the fixed prefix — never
+  model-controlled. The `ctrl+r` expansion appends under W15's contract
+  (the `/last` idiom; history is never rewritten) — hence the W15
+  dependency.
+- **Done when**: a faux run with 10 `todo_set` updates commits exactly
+  ONE settled block; the live block's height obeys its cap at 60/80/120
+  cols; the done-collapse expands under `ctrl+r`.
+- **Gates**: a new e2e gate — a faux turn firing 10 `todo_set` calls
+  (whole-table replace, one item flipping active per call): assert the
+  live block redraws in place (stable header position, no committed
+  rows), exactly ONE settled `▞ todo done` block at the turn's end, and
+  the committed rows above it byte-identical to the pre-turn transcript.
+
 ---
 
-## 5. Ordering
+## 5. Ordering — the three releases
 
-1. **W7, W8, W9, W10** — the flow contract. Do this first. Rungs 3–4 are
-   a density feature, and density on top of unbounded blocks hides the
-   problem instead of fixing it.
-2. **W1, W2, W3, W4, W16, W11** — presentation. No event-stream changes.
-   W3 carries a deliberate behaviour change; give it its own commit.
-3. **W5, W12** — the two "data already exists, render is missing" items.
-4. **W6** — chrome, once O1 is answered. Own commit; widest gate blast
-   radius.
-5. **W15** — the expand contract. It is a PREREQUISITE, not a
-   follow-up: W7 and W10 both render a `ctrl+r` affordance, and on a
-   committed cell that key appends rather than toggles. Settle the
-   semantics before shipping the affordance, or Release 1 ships a key
-   that is dead on everything but the last few rows.
-6. **W18** — the compaction / long-work indicator. Independent of
-   W7-W10, and arguably more urgent: today `/compact` is a silent
-   multi-second freeze that auto-compact can trigger unprompted.
-7. **W17** — narrow-width cap floor.
-8. **W13, W14** — only if O2 says yes.
+1. **Release 1 (0.1.36, shipped)** — W7, W8, W9, W10: the flow
+   contract. Rungs 3–4 are a density feature, and density on top of
+   unbounded blocks hides the problem instead of fixing it.
+2. **Release 2 (0.1.37)** — W1, W2, W3, W4, W16, W11 (presentation; no
+   event-stream changes; W3 carries a deliberate behaviour change —
+   its own commit), then W5, W12 (the two "data already exists, render
+   is missing" items), then W18 (the compaction / long-work indicator —
+   same one-line shape as W12, one helper; arguably urgent: `/compact`
+   is a silent multi-second freeze that auto-compact can trigger
+   unprompted) and W17 (the narrow-width cap floor).
+3. **Release 3 (0.1.38)** — W6 (chrome, own commit; widest gate blast
+   radius), W15 (the expand contract — a PREREQUISITE, not a follow-up:
+   W7, W10, W18 and W20 all render a `ctrl+r` affordance, and on a
+   committed cell that key appends rather than toggles), then W13, W14
+   (O2 = in), then W19 (plan mode's product surface) and W20 (the todo
+   checklist as state — its done-collapse needs W15).
 
 ## 6. Gates that will need attention
 
