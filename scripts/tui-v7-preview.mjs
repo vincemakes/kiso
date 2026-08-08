@@ -519,6 +519,36 @@ frame(
 	],
 );
 
+// 13 · the checklist — the one existing cell kind the round never touched
+const todoRow = (glyph, text, paint) => `  ${paint(glyph)} ${p(cut(text, W - 4))}`;
+frame(
+	"The checklist — state, rendered as if it were an event",
+	"body.checklist() pushes a NEW cell with done:true on every todo_set, so each update commits another full copy to scrollback: 12 items over 10 updates is 130 rows of near-identical text. The component has no cap either, which breaks the very rule W7 sets. A todo list is STATE — it belongs in one live block that redraws in place and commits once, exactly W8's window generalised. Active becomes ▸, which already means 'the current one' in the slash menu.",
+	[
+		d("today · unbounded, and a fresh copy every update"),
+		`${b(G.head)} ${p("todo")}`,
+		todoRow("▣", "W7 — R1 caps in screen rows after the fold", d),
+		todoRow("▖", "W8 — live block height never changes until settle", p),
+		todoRow("□", "W9 — caps recomputed on resize, and only on resize", p),
+		todoRow("□", "W10 — render the result body, name every cut", p),
+		todoRow("□", "Release 1 → 0.1.36 (W7-W10) + gate re-baseline", p),
+		d("  … and all of that again, committed, on the next todo_set"),
+		"",
+		"",
+		d("v7 · one live block · active first · done collapsed · committed once, at the end"),
+		`${b(G.head)} ${p("todo")} ${d("· 6 items · 1 active · 2 done")}`,
+		todoRow("▸", "W8 — live block height never changes until settle", b),
+		todoRow("□", "W9 — caps recomputed on resize, and only on resize", p),
+		todoRow("□", "W10 — render the result body, name every cut", p),
+		todoRow("□", "Release 1 → 0.1.36 (W7-W10) + gate re-baseline", p),
+		bodyEnd("+2 done · ctrl+r"),
+		"",
+		"",
+		d("settled · when the list is finished it commits ONCE, in the recap idiom"),
+		recap("todo done · 6 items · 2h 14m"),
+	],
+);
+
 // ═══ the renderers ═══════════════════════════════════════════════════
 if (!HTML) {
 	for (const f of FRAMES) {
