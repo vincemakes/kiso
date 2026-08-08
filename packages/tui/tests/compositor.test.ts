@@ -331,7 +331,7 @@ describe("TUI v6 — the one compositor", () => {
 			kind: (i % 2 ? "+" : "-") as "-" | "+",
 			text: "\t\tconst someReasonablyLongIdentifier" + i + " = await doTheThing(argumentOne, argumentTwo, { option: true });",
 		}));
-		for (const W of [120, 60]) {
+		for (const W of [120, 80, 60]) {
 			const { body, writes, tick } = makeBody({ W });
 			body.enter();
 			body.toolStart("edit_file", "c1", { path: "x" });
@@ -346,6 +346,58 @@ describe("TUI v6 — the one compositor", () => {
 			expect(frame).toContain("Identifier0");
 			expect(frame).toContain("Identifier59");
 		}
+	});
+
+	it("W17: the cap is a ROW budget at every width — at W=24 the └ cut is ONE truncated line (a folded cut pushed the total past 12), never a fold", () => {
+		// The same W7 diff at W=24: each ~96-char line folds to ~5 rows;
+		// the pair still shows 3 source lines (1 head + 2 tail — AT the
+		// floor), so the pair form survives — but the OLD cut row folded
+		// too (~48 chars → 3 rows → 5+3+6 = 14 > 12). W17: the cut is
+		// oneLineRow — truncated, never folded — the budget holds.
+		const diff = Array.from({ length: 60 }, (_, i) => ({
+			kind: (i % 2 ? "+" : "-") as "-" | "+",
+			text: "\t\tconst someReasonablyLongIdentifier" + i + " = await doTheThing(argumentOne, argumentTwo, { option: true });",
+		}));
+		const { body, writes, tick } = makeBody({ W: 24 });
+		body.enter();
+		body.toolStart("edit_file", "c1", { path: "x" });
+		body.toolApproval("c1", { lines: diff, added: 30, removed: 30 });
+		tick();
+		const frame = writes.join("");
+		// the row budget holds at 12: 5 head + 1 cut + 6 tail
+		expect((frame.match(/│ /g) ?? []).length + 1).toBeLessThanOrEqual(12);
+		// the cut is ONE row: the truncated head of the text survives, the
+		// foldable tail is GONE (a folded cut would contain the full text)
+		const cut = frame.match(/└ \+(\d+) rows · ctrl\+r/);
+		expect(cut).not.toBeNull();
+		expect(frame).not.toContain("/last for the full diff");
+		// the pair survives at the floor: head AND tail both present
+		expect(frame).toContain("Identifier0");
+		expect(frame).toContain("Identifier59");
+	});
+
+	it("W17: below a floor of 3 source lines visible, the head/tail pair collapses to the head only — the └ row carries the rest", () => {
+		// 200-char lines at W=24 fold to ~10 rows each: the pair would show
+		// 1 head + 1 tail source line — two slivers of long lines, noise.
+		// W17: drop to the head only — the head takes the whole budget
+		// (11 rows), the └ row names the rest; the tail is GONE.
+		const diff = Array.from({ length: 60 }, (_, i) => ({
+			kind: (i % 2 ? "+" : "-") as "-" | "+",
+			text: `line${String(i).padStart(2, "0")} ` + "x".repeat(190),
+		}));
+		const { body, writes, tick } = makeBody({ W: 24 });
+		body.enter();
+		body.toolStart("edit_file", "c1", { path: "x" });
+		body.toolApproval("c1", { lines: diff, added: 30, removed: 30 });
+		tick();
+		const frame = writes.join("");
+		// the row budget: 11 head rows + the one-line └ cut = 12
+		expect((frame.match(/│ /g) ?? []).length + 1).toBeLessThanOrEqual(12);
+		expect(frame).toContain("line00"); // the head survives
+		expect(frame).not.toContain("line59"); // the tail is dropped — no pair
+		const cut = frame.match(/└ \+(\d+) rows · ctrl\+r/);
+		expect(cut).not.toBeNull(); // the └ row carries the rest
+		expect(frame).not.toContain("/last for the full diff"); // one row, never a fold
 	});
 
 	it("W7: the error text caps at 3 head rows (the header already shows line 1 — the body starts at line 2); a read result renders NO body", () => {

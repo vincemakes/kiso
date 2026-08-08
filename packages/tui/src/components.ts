@@ -571,11 +571,19 @@ function oneLineRow(p: Palette, text: string, W: number): string {
  *  the R1 measured bug: truncateDiff capped at 40 ENTRIES while the
  *  fold turned them into 73 SCREEN rows at W≤80 (a 44-row terminal's
  *  content cap is H−4 = 40 — the approval force-committed a third of
- *  the screen into scrollback inside one frame). */
+ *  the screen into scrollback inside one frame).
+ *  W17: the cap is a ROW budget at every width — the └ cut is ONE line
+ *  (a folded cut pushed the total past 12 at narrow widths), and below
+ *  a floor of 3 SOURCE lines visible the head/tail pair is noise (each
+ *  fragment a sliver of a long line): drop to the head only — the head
+ *  takes the whole budget — and the └ row carries the rest. */
 function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number): string[] {
 	const p = palette();
 	if (diff === null) return [];
 	const rows: string[] = [];
+	// W17: each line's fold START row (the running total) — the pair
+	// floor reads it for the head/tail SOURCE-line counts below.
+	const starts: number[] = [0];
 	for (const d of diff) {
 		const body =
 			d.kind === "-"
@@ -587,12 +595,24 @@ function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number): strin
 		// (dim), never the old bold ▎ rail (the table lists no ▎); the
 		// +/- marks and their colors ride the content
 		rows.push(...gutterFold(`${p.dim}│${p.reset} `, body, W));
+		starts.push(rows.length);
 	}
 	if (rows.length <= CAP_DIFF) return rows;
 	const head = Math.floor((CAP_DIFF - 1) / 2);
 	const tail = CAP_DIFF - 1 - head;
-	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - head - tail} rows · ctrl+r to expand · /last for the full diff${p.reset}`, W);
-	return [...rows.slice(0, head), ...cut, ...rows.slice(rows.length - tail)];
+	// W17: the └ cut is ONE row at every width — the count leads, the
+	// expand affordances are cuttable (the same one-line shape as W12's
+	// delegate row and W18's status row).
+	const cut = (n: number): string => oneLineRow(p, `+${n} rows · ctrl+r to expand · /last for the full diff`, W);
+	// W17: the floor — the head window shows the lines whose fold starts
+	// before `head` rows; the tail window the lines whose fold ENDS after
+	// `rows.length - tail` (starts[i+1] is line i's end). When the pair
+	// shows fewer than 3 SOURCE lines together, it is noise at this width
+	// (each fragment a sliver of a long line): drop to the head only —
+	// the head takes the whole budget, the └ row carries the rest.
+	if (starts.filter((s) => s < head).length + starts.slice(1).filter((s) => s > rows.length - tail).length < 3)
+		return [...rows.slice(0, CAP_DIFF - 1), cut(rows.length - (CAP_DIFF - 1))];
+	return [...rows.slice(0, head), cut(rows.length - head - tail), ...rows.slice(rows.length - tail)];
 }
 
 /** The TOOL's OWN truncation note (W10) — a different fact from the
