@@ -36,7 +36,12 @@ const GATES = [
 	// ratchet: the next approach without an argument is EXTRACTION (the
 	// config layer is the ready candidate), not a second recalibration.
 	{ name: "cli", limit: 1856, dir: join("apps", "cli", "src") },
-	{ name: "tui", limit: 2045, dir: join("packages", "tui", "src") },
+	// ADR-0043 Amendment 3 (the 2026-08-08 ruling): the tui gate is 2400,
+	// declared the TERMINAL cap (the ADR-0041 discipline per package —
+	// the cli precedent). The tui's second recalibration is its LAST:
+	// the way past 2400 is structural extraction (the components cell
+	// renderer), never a third recalibration.
+	{ name: "tui", limit: 2400, dir: join("packages", "tui", "src") },
 ];
 const ROOT = new URL("..", import.meta.url).pathname;
 

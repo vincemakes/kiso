@@ -101,3 +101,29 @@ stand — this is the ONE argued tui recalibration; the next overage
 without an argument is extraction (the components are the ready
 candidate: the cell renders can sink into the runtime's presentation
 layer), not a third recalibration.
+
+## Amendment 3 (2026-08-08): the tui gate 2045 → 2400 — the TERMINAL cap (the ADR-0041 discipline)
+
+The TUI v7 round lands six spec-mandated items in one package
+(packages/tui): W6 (the box chrome + the `›` swap), W15 (the expand
+key), W13/W14 (the collapse rungs), W19 (plan mode's product surface),
+W20 (the todo live block). The package measured **2039** code lines at
+the round's start — six under the gate — with the six items adding
+well past 2045.
+
+Ruling (review-issued, 2026-08-08): **the tui gate recalibrates to
+2400, declared the TERMINAL cap** — the cli precedent (ADR-0041): the
+gate number is no longer a variable; the way past 2400 is structural
+extraction or scope cuts, decided by ruling.
+
+Boundary conditions:
+
+1. This is the tui's SECOND recalibration (1520 → 2045 at the v6
+   extraction, → 2400 now). There is NO third: the next approach to
+   the cap has the only way out be extraction — the components cell
+   renderer is the ready candidate (the cell renders can sink into
+   the runtime's presentation layer), exactly the move that produced
+   the cli/tui split.
+2. The +20% snapshot formula no longer applies to the tui gate — the
+   cap is declared, not measured.
+3. The cli gate stays 1856; the core gate stays 2000.

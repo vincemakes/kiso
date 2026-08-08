@@ -691,6 +691,12 @@ Grep-verified against the tree at 0.1.35:
 | `apps/cli/tests/tui-v2a.test.ts` | `"▌ "`, `"▞"` | W2, W6 |
 | `apps/cli/tests/tui-v2e.test.ts` | `"✓ edit_file"` | **W3 — deliberate re-baseline** |
 
+**Gate ruling (review-issued, 2026-08-08)**: the tui size gate
+recalibrates 2045 → **2400**, declared the TERMINAL cap — ADR-0043
+Amendment 3, recorded before any Release 3 code. The round's six items
+land in one package; the next approach past 2400 is extraction (the
+components cell renderer), never a third recalibration.
+
 **Gate-gap warning, inherited from round 2**: the faux scripts behind
 storm / idempotence / livecap historically contained only `text_delta`
 events, which is why every gate stayed green while the real terminal
