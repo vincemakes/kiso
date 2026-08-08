@@ -191,8 +191,18 @@ export class Body {
 			this.#write(`→ ${escapeTerminal(name)}(${escapeTerminal(JSON.stringify(input).slice(0, 200))})\n`);
 			return;
 		}
+		// W12: the cell carries the delegate's child roles from the FULL
+		// input — the display summary is sliced at 60 chars (unparseable);
+		// the roles are the only running-state data the parent holds (there
+		// is no live channel to a running child session).
+		const childRoles: string[] = [];
+		for (const t of Array.isArray(input.tasks) ? (input.tasks as unknown[]) : []) {
+			if (typeof t === "object" && t !== null && typeof (t as { role?: unknown }).role === "string") {
+				childRoles.push((t as { role: string }).role);
+			}
+		}
 		this.#toolCells.set(callId, this.#cells.length);
-		this.#cells.push({ kind: "tool", name, input: summary, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false });
+		this.#cells.push({ kind: "tool", name, input: summary, childRoles, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false });
 		this.#mark();
 	}
 

@@ -26,6 +26,7 @@ import {
 	renderTerminalGap,
 	renderToolSummary,
 	palette,
+	type Palette,
 	type ResumeMeta,
 } from "./render.js";
 
@@ -178,6 +179,7 @@ export type BodyCell =
 			kind: "tool";
 			name: string;
 			input: string;
+			childRoles: string[];
 			state: "pending" | "approval" | "running" | "done";
 			isError: boolean;
 			resultText: string;
@@ -450,11 +452,15 @@ function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): strin
 		c.state === "done"
 			? c.isError
 				? errorBody(c, W)
-				: c.name.startsWith("shell")
-					? shellTail(c.resultText, W)
-					: []
+				: c.name === "delegate"
+					? delegateSettled(c, W)
+					: c.name.startsWith("shell")
+						? shellTail(c.resultText, W)
+						: []
 			: c.state === "running"
-				? liveWindow(c.resultText, W)
+				? c.name === "delegate"
+					? delegateRunning(c, W)
+					: liveWindow(c.resultText, W)
 				: c.state === "approval"
 					? diffBody(c.diff, W)
 					: [];
@@ -523,6 +529,40 @@ function liveWindow(text: string, W: number): string[] {
 	}
 	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+r${p.reset}`, W);
 	return [...rows.slice(rows.length - (CAP_LIVE_WINDOW - 1)), ...cut];
+}
+
+/** W12: the delegate's child sessions collapse to the tool row plus ONE
+ *  line — the height NEVER changes (running → settled replaces the row
+ *  in place). The running row derives from the INPUT: the parent has no
+ *  live channel to a running child (ToolContext carries only
+ *  signal/sessionId; execute returns ONE result), so the roles are the
+ *  honest current data — the spec's "<child's current tool>" has no
+ *  event source. The settled row parses the extension's summary marker
+ *  (the blob's first line) — its absence falls back to no body (an old
+ *  extension's output still renders). The one-line shape is shared with
+ *  W18's status row (the work order: "implement them with one helper"). */
+function delegateRunning(c: { childRoles: string[] }, W: number): string[] {
+	const p = palette();
+	const n = c.childRoles.length;
+	const text = n === 0 ? "children running…" : `${n === 1 ? "1 child" : `${n} children`} · ${c.childRoles.join(" · ")}`;
+	return [oneLineRow(p, text, W)];
+}
+
+function delegateSettled(c: { resultText: string }, W: number): string[] {
+	const p = palette();
+	const m = /^summary: (.+)$/m.exec(c.resultText);
+	if (m === null) return [];
+	return [oneLineRow(p, `${m[1]} · /last for the report`, W)];
+}
+
+/** ONE row at the left gutter, truncated to fit the width — never a
+ *  fold (a fold would wrap into TWO rows and break the one-line height
+ *  contract). */
+function oneLineRow(p: Palette, text: string, W: number): string {
+	const esc = escapeTerminal(text);
+	if (visibleWidth(`${p.dim}${CUT_ROW}${esc}${p.reset}`) <= W) return `${p.dim}${CUT_ROW}${esc}${p.reset}`;
+	const w = Math.max(1, W - visibleWidth(`${p.dim}${CUT_ROW}${p.reset}`));
+	return `${p.dim}${CUT_ROW}${esc.slice(0, w - 1)}…${p.reset}`;
 }
 
 /** The approval mini-diff (W7): capped at 12 folded rows — the head +

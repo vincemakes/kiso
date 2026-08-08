@@ -403,6 +403,47 @@ describe("TUI v6 — the one compositor", () => {
 		expect((writes.join("").match(/│ /g) ?? []).length).toBe(2);
 	});
 
+	it("W12: the delegate's child sessions collapse to ONE body row — running (the input's roles — the only live data the parent holds) and settled (the extension's summary marker) replace in place, so the height never changes", () => {
+		const { body, writes, tick } = makeBody();
+		body.enter();
+		body.toolStart("delegate", "c1", {
+			tasks: [
+				{ role: "explorer", task: "map the surface" },
+				{ role: "implementer", task: "land the change" },
+				{ role: "reviewer", task: "check the diff" },
+			],
+		});
+		body.toolRunning("c1");
+		tick();
+		// the running frame: ONE body row, derived from the input — no
+		// live channel to a running child exists, so the spec's "<child's
+		// current tool>" has no event source; the roles are the honest data
+		expect(writes.join("")).toContain("└ 3 children · explorer · implementer · reviewer");
+		expect((writes.join("").match(/│ /g) ?? []).length).toBe(0); // no live window, no fold
+		writes.length = 0;
+		// the settled frame: the SAME single row slot, now the summary
+		// marker from the delegate's blob
+		body.toolResult("c1", {
+			content:
+				"summary: 12 tool calls · 3 roles · 0 failed\n" +
+				"[subagent] explorer: map the surface\n  outcome: completed\n  tools: 5\n" +
+				"[subagent] implementer: land the change\n  outcome: completed\n  tools: 4\n" +
+				"[subagent] reviewer: check the diff\n  outcome: completed\n  tools: 3",
+			isError: false,
+		});
+		tick();
+		const settled = writes.join("");
+		expect(settled).toContain("└ 12 tool calls · 3 roles · 0 failed · /last for the report");
+		expect((settled.match(/│ /g) ?? []).length).toBe(0);
+		// an old extension's result (no marker) falls back to no body —
+		// the height contract never grows the block
+		body.toolStart("delegate", "c2", { tasks: [{ role: "explorer", task: "x" }] });
+		body.toolRunning("c2");
+		body.toolResult("c2", { content: "[subagent] explorer: x\n  outcome: completed\n  tools: 1", isError: false });
+		tick();
+		expect(writes.join("")).not.toContain("└ 1 child");
+	});
+
 	it("W11: spacing is a formula — one-row siblings pack tight, multi-row blocks breathe on both sides, the first cell never gets the blank above", () => {
 		// The final screen's rows, replayed from the writes (each row's LAST
 		// write wins — the CUP writes + the gap/stale ELs reproduce the

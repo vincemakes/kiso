@@ -210,6 +210,10 @@ describe("④ subagent: real child processes", () => {
 		const r2 = (await delegateWith([{ role: "implementer", task: "do nothing" }], home)) as { content: string; isError: boolean };
 		expect(String(r2.content)).not.toContain("worktree kept at"); // no diff → deleted
 		expect(String(r2.content)).toContain("outcome: completed");
+		// W12: the blob OPENS with the machine-readable summary line the
+		// TUI's settled row renders (the per-section text is preserved
+		// below it — the model's view is unchanged)
+		expect(String(r2.content)).toMatch(/^summary: 0 tool calls · 1 role · 0 failed\n/);
 	}, 120_000);
 
 	it("P3: the child session id uses ctx.sessionId when the loop provides it", async () => {

@@ -86,7 +86,16 @@ export default async function createSubagentExtension() {
 					);
 					// Partial success is not overall failure — only ALL failed
 					// makes the whole result an error.
-					return { content: sections.map((s) => s.text).join("\n"), isError: sections.every((s) => s.failed) };
+					// W12: the blob opens with a machine-readable summary line —
+					// the ONE-LINE shape the TUI's settled row renders (└ N
+					// tool calls · R roles · F failed · /last for the report).
+					// The per-section text below is unchanged — the model's
+					// view is preserved, the summary is additive.
+					const toolCalls = sections.reduce((n, s) => n + (s.toolCalls ?? 0), 0);
+					const roles = new Set(tasks.map((t) => t.role)).size;
+					const failed = sections.filter((s) => s.failed).length;
+					const summary = `summary: ${toolCalls} tool calls · ${roles} role${roles === 1 ? "" : "s"} · ${failed} failed`;
+					return { content: `${summary}\n${sections.map((s) => s.text).join("\n")}`, isError: sections.every((s) => s.failed) };
 				},
 			},
 		],
@@ -174,7 +183,7 @@ async function runChild({ childId, role, task, sessionsDir, bin, timeout, signal
 				text += `\n  diff:\n${diff}\n  worktree kept at: ${worktree}`;
 			}
 		}
-		return { failed, text };
+		return { failed, text, toolCalls: extraction.toolCalls };
 	} finally {
 		rmSync(policyDir, { recursive: true, force: true });
 		if (worktree !== null && !keepWorktree) rmSync(worktree, { recursive: true, force: true });
@@ -341,7 +350,7 @@ function worktreeDiff(worktree) {
 }
 
 function failSection(childId, role, task, reason) {
-	return { failed: true, text: `[subagent] ${role}: ${task}\n  FAILED: ${reason}` };
+	return { failed: true, text: `[subagent] ${role}: ${task}\n  FAILED: ${reason}`, toolCalls: 0 };
 }
 
 const msg = (err) => (err instanceof Error ? err.message : String(err));
