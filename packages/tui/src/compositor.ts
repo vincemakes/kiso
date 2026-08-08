@@ -46,6 +46,7 @@ import { displayWidth, type MenuItem } from "./editor.js";
 import {
 	Container,
 	SPINNER,
+	bodySpacing,
 	cellComponent,
 	foldLine,
 	footerLine,
@@ -531,13 +532,20 @@ export class Body {
 	// ---- the one writer ----
 
 	/** The live region's scalar — the unit tests assert the cap directly
-	 *  (the e2e gate pins the screen consequence). */
+	 *  (the e2e gate pins the screen consequence). W11: the formula's
+	 *  blanks are join artifacts — the count includes them (they are real
+	 *  screen rows), threaded against the previous sibling's OWN rows. */
 	liveCount(): number {
 		const live = this.#cells.slice(this.#committed);
 		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
 		const W = this.#opts.width();
 		let lines = 0;
-		for (const cell of live) lines += cellComponent(cell).render(W, ctx).length;
+		let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
+		for (const cell of live) {
+			const rows = cellComponent(cell).render(W, ctx);
+			lines += bodySpacing(prev, rows).length;
+			prev = rows;
+		}
 		return lines + CHROME_ROWS + this.#menuRows(W).length;
 	}
 
@@ -563,8 +571,8 @@ export class Body {
 			for (let i = 0; i < this.#committed; i += 1) {
 				const cell = this.#cells[i]!;
 				const lines = cellComponent(cell).render(W, ctx);
-				this.#lineCache[i] = lines;
-				this.#committedLines += lines.length;
+				this.#lineCache[i] = lines; // the cell's OWN rows — the cache stays raw
+				this.#committedLines += bodySpacing(i > 0 ? this.#lineCache[i - 1]! : null, lines).length;
 			}
 		}
 		// 1. the natural commits — the leading DONE cells freeze: their
@@ -578,11 +586,18 @@ export class Body {
 			this.#commitCell(this.#committed, W, ctx);
 		}
 		// 2. the live lines — the unfinished cells (the tail) + the chrome.
+		//    W11: the formula's blank above the first live cell hangs off
+		//    the last COMMITTED sibling (the join spans the boundary).
 		const menuRows = this.#menuRows(W);
 		const chromeRows = CHROME_ROWS + menuRows.length;
 		let liveLines: string[] = [];
-		for (const cell of this.#cells.slice(this.#committed)) {
-			liveLines.push(...cellComponent(cell).render(W, ctx));
+		{
+			let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
+			for (const cell of this.#cells.slice(this.#committed)) {
+				const rows = cellComponent(cell).render(W, ctx);
+				liveLines.push(...bodySpacing(prev, rows));
+				prev = rows;
+			}
 		}
 		// 3. the FORCE commits — the live region's hard cap H−1: overflow
 		//    commits the oldest live cell UNCONDITIONALLY (the one sharp
@@ -590,8 +605,13 @@ export class Body {
 		while (liveLines.length > H - 4 && this.#committed < this.#cells.length) { // V6-3: the content cap H−4
 			this.#commitCell(this.#committed, W, ctx);
 			liveLines = [];
-			for (const cell of this.#cells.slice(this.#committed)) {
-				liveLines.push(...cellComponent(cell).render(W, ctx));
+			{
+				let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
+				for (const cell of this.#cells.slice(this.#committed)) {
+					const rows = cellComponent(cell).render(W, ctx);
+					liveLines.push(...bodySpacing(prev, rows));
+					prev = rows;
+				}
 			}
 		}
 		// 4. the geometry — the live region's first row:
@@ -617,14 +637,17 @@ export class Body {
 	/** Commit the cell at index i: render + cache its lines (immutable —
 	 *  the force-committed form freezes at the current render), advance
 	 *  the bookkeeping — and collect the lines for this frame's writes.
-	 *  Pure accounting + the write list; the BYTES emit in the frame. */
+	 *  Pure accounting + the write list; the BYTES emit in the frame.
+	 *  W11: the formula's blank above the cell (when one belongs) rides
+	 *  this cell's commit — the cache stays raw, the placed rows count. */
 	#commitCell(i: number, W: number, ctx: FrameCtx): void {
 		const cell = this.#cells[i]!;
 		const lines = cellComponent(cell).render(W, ctx);
 		this.#lineCache[i] = lines;
+		const placed = bodySpacing(i > 0 ? this.#lineCache[i - 1]! : null, lines);
 		this.#committed += 1;
-		this.#committedLines += lines.length;
-		this.#committedLinesThisFrame.push(...lines);
+		this.#committedLines += placed.length;
+		this.#committedLinesThisFrame.push(...placed);
 	}
 
 	/** The slot occupant's extra rows — the slash-command menu (above the
@@ -713,8 +736,15 @@ export class Body {
 		const committed = this.#committedLinesThisFrame;
 		// 0. the FROZEN rows — the re-folded committed content (re-flowed
 		//    at the new width by the terminal): re-painted at [1..frozen],
-		//    so the reflow's shifted copies can never ghost.
-		const frozen = this.#lineCache.slice(0, this.#committed - committed.length).flat().filter((l): l is string => l !== null);
+		//    so the reflow's shifted copies can never ghost. W11: the
+		//    formula's blanks between the cells are re-inserted here — the
+		//    cache holds each cell's OWN rows; a missing blank would paint
+		//    every row below it one row too high (the V6-1 idempotence
+		//    rule: this draw must reproduce the screen, row by row).
+		const frozen: string[] = [];
+		for (let i = 0; i < this.#committed - committed.length; i += 1) {
+			frozen.push(...bodySpacing(i > 0 ? this.#lineCache[i - 1]! : null, this.#lineCache[i]!));
+		}
 		let r = 1;
 		for (const line of frozen) {
 			out.push(`\x1b[${r};1H\x1b[0K${this.#checked(line, W)}`);

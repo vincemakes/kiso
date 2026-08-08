@@ -136,11 +136,35 @@ export interface Component {
 	render(width: number, ctx: FrameCtx): string[];
 }
 
-/** The container — vertical concatenation of its children. */
+/** The W11 spacing formula — "a row gets one blank line above it when
+ *  the row is itself a block, or when the previous sibling was taller
+ *  than one row". One-row siblings pack tight; anything multi-row
+ *  breathes on both sides. The FIRST cell never gets the blank (it sits
+ *  at the body's top — the banner would otherwise start one row down).
+ *  `prev` is the previous sibling's OWN rows (raw — a cell's own blank
+ *  must never count toward its height). The blank is a JOIN artifact:
+ *  the cell's own render stays blank-free, so per-cell accounting
+ *  (heights, the fold cache) never sees a fake row. */
+export function bodySpacing(prev: readonly string[] | null, rows: readonly string[]): string[] {
+	if (rows.length === 0 || prev === null || prev.length === 0) return rows as string[];
+	if (rows.length > 1 || prev.length > 1) return ["", ...rows];
+	return rows as string[];
+}
+
+/** The container — vertical concatenation with the W11 formula. No
+ *  component decides its own spacing: every blank in the body is the
+ *  container's. */
 export class Container implements Component {
 	constructor(private readonly children: Component[]) {}
 	render(width: number, ctx: FrameCtx): string[] {
-		return this.children.flatMap((c) => c.render(width, ctx));
+		const out: string[] = [];
+		let prev: string[] | null = null;
+		for (const c of this.children) {
+			const rows = c.render(width, ctx);
+			out.push(...bodySpacing(prev, rows));
+			prev = rows;
+		}
+		return out;
 	}
 }
 
@@ -575,27 +599,27 @@ class RawBlock implements Component {
 	}
 }
 
-/** The terminal label + the status line + the rhythm gap blank. */
+/** The terminal label + the status line. W11: the rhythm gap blank is
+ *  gone — the container's formula breathes below a multi-row cell (the
+ *  terminal is always multi-row when labelled), never the component. */
 class TerminalBlock implements Component {
 	constructor(private readonly cell: { label: string; line: string }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
-		const lines = [...foldLine(this.cell.label, W), ...foldLine(this.cell.line, W)];
-		if (this.cell.label !== "") lines.push("");
-		return lines;
+		return [...foldLine(this.cell.label, W), ...foldLine(this.cell.line, W)];
 	}
 }
 
 /** The startup banner — a LIVE cell: every render re-derives the tier
  *  from the CURRENT width AND height (bannerLines), so a resize re-tiers
  *  the art instead of re-folding frozen rows (the W1 tier table: below
- *  40 cols the logo never paints). The trailing blank row preserves the
- *  historical rhythm (the old text cell carried the string's final \n). */
+ *  40 cols the logo never paints). W11: no trailing blank — the
+ *  container's formula breathes below the (always multi-row) banner. */
 class Banner implements Component {
 	constructor(private readonly cell: { version: string; extensionsText: string }) {}
 	render(W: number, ctx: FrameCtx): string[] {
 		const p = palette();
 		const rows = bannerLines(W, ctx.height, this.cell.version, this.cell.extensionsText);
-		return [...rows.map((r) => `${p.dim}${r}${p.reset}`), ""];
+		return rows.map((r) => `${p.dim}${r}${p.reset}`);
 	}
 }
 

@@ -402,4 +402,57 @@ describe("TUI v6 — the one compositor", () => {
 		expect(writes.join("")).toContain("└ waiting for output");
 		expect((writes.join("").match(/│ /g) ?? []).length).toBe(2);
 	});
+
+	it("W11: spacing is a formula — one-row siblings pack tight, multi-row blocks breathe on both sides, the first cell never gets the blank above", () => {
+		// The final screen's rows, replayed from the writes (each row's LAST
+		// write wins — the CUP writes + the gap/stale ELs reproduce the
+		// screen, the way the VT emulator sees it).
+		const { body, writes, tick } = makeBody();
+		body.enter();
+		body.banner("0.1.37", "");
+		body.userLine("go");
+		body.toolStart("read_file", "c1", { path: "x" });
+		body.toolRunning("c1");
+		body.toolResult("c1", { content: "1 line", isError: false });
+		body.toolStart("list_dir", "c2", { path: "." });
+		body.toolRunning("c2");
+		body.toolResult("c2", { content: "2 entries", isError: false });
+		tick();
+		let rows: string[] = [];
+		{
+			const screen = new Map<number, string>();
+			const stripped = writes.join("").replace(/\x1b\[[0-9;]*m/g, "");
+			for (const m of stripped.matchAll(/\x1b\[(\d+);1H\x1b\[0K([^\x1b]*)/g)) {
+				screen.set(Number(m[1]!), m[2]!);
+			}
+			rows = Array.from({ length: 21 }, (_, i) => screen.get(i + 1) ?? "");
+		}
+		// the first cell (the banner): NO blank above — the body starts at
+		// row 1 (the banner is multi-row, so the blank comes AFTER it)
+		expect(rows[0]).not.toBe("");
+		const userAt = rows.findIndex((l) => l.includes("▍"));
+		expect(rows[userAt - 1]).toBe(""); // the banner (multi-row) breathes below
+		const readAt = rows.findIndex((l) => l.includes("✓ read"));
+		const listAt = rows.findIndex((l) => l.includes("✓ list_dir"));
+		expect(readAt).toBe(userAt + 1); // one-row user → one-row read: pack tight
+		expect(listAt).toBe(readAt + 1); // two one-row tools: pack tight
+		// a multi-row block (the 2-line raw recap) breathes on BOTH sides
+		body.raw(["first", "second"]);
+		body.userLine("again");
+		tick();
+		rows = [];
+		{
+			const screen = new Map<number, string>();
+			const stripped = writes.join("").replace(/\x1b\[[0-9;]*m/g, "");
+			for (const m of stripped.matchAll(/\x1b\[(\d+);1H\x1b\[0K([^\x1b]*)/g)) {
+				screen.set(Number(m[1]!), m[2]!);
+			}
+			rows = Array.from({ length: 21 }, (_, i) => screen.get(i + 1) ?? "");
+		}
+		const rawAt = rows.findIndex((l) => l === "first");
+		const againAt = rows.findIndex((l) => l.includes("again"));
+		expect(rows[rawAt - 1]).toBe(""); // the blank ABOVE the multi-row block
+		expect(rows[rawAt + 2]).toBe(""); // the blank BELOW it (the "second" row + the blank)
+		expect(againAt).toBe(rawAt + 3); // the user packs after the blank
+	});
 });
