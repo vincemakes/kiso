@@ -110,3 +110,24 @@ mechanism that kills each)
   treated as a regression signal and investigated.
 - The `\x1b[r` exit byte survives as the "no broken terminal" contract
   (harmless — no DECSTBM was ever set).
+
+## Trade-off note (the 0.1.35 round — recorded so the next lab pass
+does not re-report it as a new finding)
+
+- **V6-1's scrollback cost under a shrink storm**: the resize's first
+  frame re-paints the committed content (the screen-state == frame-state
+  rule — the visible screen is the invariant), so a shrink storm
+  re-emits the committed lines into the NATIVE scrollback — AT MOST one
+  extra copy per resize, strictly bounded (measured: the session line
+  appears ×6 after 1 turn + 5 resizes). The scrollback is explicitly
+  NOT the invariant; this is the accepted cost of the rule.
+- **Fix C is a sanctioned reinterpretation of invariant ②, not a silent
+  retirement**: the steady frame CUPs the LIVE lines at their model rows
+  (the relative march drew them adjacent to the chrome, where the
+  unclamped geometry's gap ELs erased them — the streamed text was
+  invisible until the commit frame). The byte-truth contract (the
+  compositor header + the machine gate `cups.every(r => r ≤ content
+  area)`) is: every steady-frame CUP lands in the CONTENT area (rows ≤
+  H−4−menu — the committed band, the stale/gap ELs, the live lines at
+  their model rows); the CHROME rows (H−3..H) are relative-only; CUP
+  over the whole screen exists only in the full-redraw path.
