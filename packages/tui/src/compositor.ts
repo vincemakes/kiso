@@ -732,15 +732,15 @@ export class Body {
 	#drawSteady(out: string[], W: number, H: number, liveTop: number, liveLines: string[], menuRows: string[], ctx: FrameCtx): void {
 		const editor = this.#inputRow(W, ctx); // derived from the frame — the marker
 		const committed = this.#committedLinesThisFrame;
-		// the commits' scrolls — from the anchor (H−1) down to H, then LF
-		if (committed.length > 0) {
-			out.push("\x1b[1B");
-			for (let i = 0; i < committed.length; i += 1) out.push("\n");
-		} else {
-			// no commits — jump from the anchor (H−2) straight to the
-			// bottom row H (the commit path's LFs left the cursor there)
-			out.push("\x1b[2B");
-		}
+		// the jump from the anchor (H−2) straight to the bottom row H,
+		// then N real LFs scroll the screen exactly N rows — ONE per
+		// committed line (the bookkeeping; the stale 1B anchor jumped to
+		// H−1 and the N LFs scrolled only N−1 — the committed section sat
+		// one row short in the scrollback). The bottom-up repaint below
+		// overwrites the scrolled-in rows (the scroll count is screen-
+		// neutral — proven by the emulator probe).
+		out.push("\x1b[2B");
+		for (let i = 0; i < committed.length; i += 1) out.push("\n");
 		// the bottom-up repaint, from the last row up — V6-3: the design
 		// §03 chrome: status (H), lower ╌ (H−1), input (H−2), upper ╌ (H−3)
 		out.push(`\x1b[1G\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W), W)}`); // H — the status
@@ -750,17 +750,26 @@ export class Body {
 		for (let i = menuRows.length - 1; i >= 0; i -= 1) {
 			out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(menuRows[i]!, W)}`);
 		}
-		for (let i = liveLines.length - 1; i >= 0; i -= 1) {
-			out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(liveLines[i]!, W)}`);
+		// the LIVE lines at their MODEL rows — CUP, never the relative
+		// march: the march drew them adjacent to the chrome (rows
+		// H−3−n..H−3) while the model placed them at [liveTop..liveTop+n−1]
+		// — in the unclamped geometry the gap ELs below erased the march's
+		// copy and the streamed text was INVISIBLE until the commit frame.
+		// The CUP rows land in the content area (≤ H−4−menu ≤ 21), inside
+		// the frozen CUP budget of invariant ②.
+		for (let i = 0; i < liveLines.length; i += 1) {
+			out.push(`\x1b[${liveTop + i};1H\x1b[0K${this.#checked(liveLines[i]!, W)}`);
 		}
 		// the FROZEN area — CUP (absolute rows; this is the FREEZE path —
-		// the old code's frozen writes were CUP too. The live region above
-		// keeps the relative-only rule; the frozen rows are computed from
-		// the current geometry, so external writes (the CLI's console.error
-		// CRLF) cannot misplace them the way a relative march could).
+		// the old code's frozen writes were CUP too. The frozen rows are
+		// computed from the current geometry, so external writes (the CLI's
+		// console.error CRLF) cannot misplace them the way a relative march
+		// could).
 		// 1. the GAP rows (between the live content and the chrome) — EL'd
-		//    so the old content there cannot ghost.
-		for (let r = liveTop + liveLines.length; r <= H - 4; r += 1) {
+		//    so the old content there cannot ghost; the range stops ABOVE
+		//    the menu (the menu's rows at [H−3−menu..H−4] are marched and
+		//    must survive — the unclamped geometry erased them).
+		for (let r = liveTop + liveLines.length; r <= H - 4 - menuRows.length; r += 1) {
 			out.push(`\x1b[${r};1H\x1b[0K`);
 		}
 		// 2. the STALE rows above the committed section — the scrolled old
@@ -777,9 +786,22 @@ export class Body {
 			out.push(`\x1b[${Math.max(1, liveTop - committed.length + i)};1H\x1b[0K${this.#checked(committed[i]!, W)}`);
 		}
 		// the cursor: down to the anchor (H−2, the input row) + left to the marker —
-		// the down-distance from the LAST written row (the committed bottom,
-		// the stale bottom, or the gap bottom when nothing else wrote).
-		const lastRow = committed.length > 0 ? liveTop - 1 : staleFrom < liveTop ? liveTop - 1 : H - 4;
+		// the down-distance from the LAST written row, in byte order: the
+		// committed band's bottom, then the stale ELs' bottom, then the gap
+		// ELs' bottom, then the live lines' bottom, then the menu's top
+		// (its last marched row), else the chrome's upper ╌.
+		const lastRow =
+			committed.length > 0
+				? Math.max(1, liveTop - 1)
+				: staleFrom < liveTop
+					? liveTop - 1
+					: liveTop + liveLines.length <= H - 4 - menuRows.length
+						? H - 4 - menuRows.length
+						: liveLines.length > 0
+							? liveTop + liveLines.length - 1
+							: menuRows.length > 0
+								? H - 3 - menuRows.length
+								: H - 3;
 		const down = H - 2 - lastRow; // the anchor: the input row (H−2)
 		if (down > 0) out.push(`\x1b[${down}B`);
 		if (editor.afterW > 0) out.push(`\x1b[${editor.afterW}D`);

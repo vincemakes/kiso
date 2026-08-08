@@ -226,7 +226,11 @@ class ThinkingFold implements Component {
 	render(W: number, _ctx: FrameCtx): string[] {
 		const block = this.cell.text;
 		const trimmed = escapeTerminal(block.trim());
-		if (trimmed.length <= 100) return [`${palette().dim}…${trimmed}${palette().reset}`];
+		// the SHORT branch is width-aware TOO: the ≤100 short-circuit was
+		// W-blind — a short block at a narrow width returned the line
+		// UNFOLDED and tripped invariant ① (the crash class still live on
+		// npm for short /think blocks after a resize).
+		if (trimmed.length <= 100) return [`${palette().dim}…${widthCut(trimmed, Math.max(1, W - 1))}${palette().reset}`];
 		const suffix = ` (${block.length} chars · /think)`;
 		const slice = Math.max(1, W - 1 - suffix.length);
 		return [`${palette().dim}…${widthCut(trimmed, slice)}${suffix}${palette().reset}`];
