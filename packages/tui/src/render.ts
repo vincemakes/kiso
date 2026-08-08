@@ -8,6 +8,8 @@
  * package has ZERO kiso-core imports: input is data, output is bytes.
  */
 
+import { charWidth, displayWidth } from "./width.js";
+
 /**
  * v2a — the palette, centralized (no hard-coded codes elsewhere); v5
  * (TUI v5 #16e, the v4.1 design): the decorative blue (38;5;75) is
@@ -383,41 +385,70 @@ export function renderTerminalGap(statusLine: string | null): string {
  * Pure.
  */
 export const TAGLINE = "the coding agent that survives kill -9";
+/** v6's existing logo — W1's COMPACT tier, byte-identical, no redraw. */
 const LOGO_ROWS = ["█ █ ▀█▀ █▀▀ █▀█", "█▀▄  █  ▀▀█ █ █", "▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀"] as const;
+/** W1's BIG tier (36x6, `█` and space only — no half-blocks, so there is
+ *  no tile seam to lose in a font that renders ▀ ▄ at the wrong height).
+ *  Each pixel is two cells wide on purpose (a terminal cell is ~1:2);
+ *  the render indents two — 38 columns total, clears 40. */
+const BIG_LOGO_ROWS = [
+	"██    ██  ██████  ████████  ████████",
+	"██  ██      ██    ██        ██    ██",
+	"████        ██    ████████  ██    ██",
+	"████        ██          ██  ██    ██",
+	"██  ██      ██          ██  ██    ██",
+	"██    ██  ██████  ████████  ████████",
+] as const;
 
-/** Display width of a row (1-cell ASCII; 2-cell CJK/wide). */
-function displayW(row: string): number {
-	let w = 0;
-	for (let i = 0; i < row.length; i += 1) {
-		const cp = row.codePointAt(i)!;
-		w += cp > 0xff ? 2 : 1;
-	}
-	return w;
-}
-
-/** v3 §01: truncate a row at `width`, marking the hidden span " (+N)". */
+/** v3 §01 (W1): truncate a row at `width`, marking the hidden span
+ *  " (+N)". W1: the width math is the charWidth authority (the banner's
+ *  brick glyphs are 1 cell — the art's 38 columns clear 40), and the
+ *  marker's own cells are part of the row — the visible cut leaves room
+ *  for it, so a truncated row never exceeds W (a cut row carries the
+ *  marker INSIDE the width; a row that fits is returned untouched). */
 export function truncateRow(row: string, width: number): string {
-	if (displayW(row) <= width) return row;
-	const cut = Math.max(0, width - 4);
-	let w = 0;
-	let i = 0;
-	for (; i < row.length; i += 1) {
-		const cw = row.codePointAt(i)! > 0xff ? 2 : 1;
-		if (w + cw > cut) break;
-		w += cw;
+	const total = displayWidth(row);
+	if (total <= width) return row;
+	// iterate the marker to a fixpoint: the marker's width changes the
+	// cut, the cut changes the hidden count the marker reports
+	let marker = " (+0)";
+	for (;;) {
+		const cut = Math.max(0, width - displayWidth(marker));
+		let w = 0;
+		let i = 0;
+		while (i < row.length) {
+			const cp = row.codePointAt(i)!;
+			const cw = charWidth(cp);
+			if (w + cw > cut) break;
+			w += cw;
+			i += cp > 0xffff ? 2 : 1; // code-point stepping — never split a pair
+		}
+		const next = ` (+${total - w})`;
+		if (next === marker) return `${row.slice(0, i)}${next}`;
+		marker = next;
 	}
-	return `${row.slice(0, i)} (+${displayW(row) - w})`;
 }
 
-/** v3 §01 (V6-2): the banner lines for a width W — logo (skipped under
- *  40 columns) + blank + "kiso vX — tagline" + extensions. */
-export function bannerLines(W: number, version: string, extensionsText: string): string[] {
+/** v3 §01 (V6-2) + W1: the banner lines for a width W and height H —
+ *  the tier table (extends the existing "under 40 columns, skip the
+ *  logo" rule with a HEIGHT input):
+ *    W ≥ 40 and H ≥ 20 → BIG (the 36x6 wordmark, 2-column indent)
+ *    W ≥ 40 and 14–19 rows → COMPACT (v6's LOGO_ROWS, byte-identical)
+ *    anything smaller → text rows only
+ *  then the blank, then "vX — tagline" — the art IS the wordmark, so the
+ *  text row does not repeat the name — then extensions. Every row
+ *  truncates at the terminal width with a " (+N)" marker. Pure. */
+export function bannerLines(W: number, H: number, version: string, extensionsText: string): string[] {
 	const rows: string[] = [];
 	if (W >= 40) {
-		for (const r of LOGO_ROWS) rows.push(truncateRow(r, W));
-		rows.push("");
+		if (H >= 20) {
+			for (const r of BIG_LOGO_ROWS) rows.push(truncateRow(`  ${r}`, W));
+		} else if (H >= 14) {
+			for (const r of LOGO_ROWS) rows.push(truncateRow(r, W));
+		}
 	}
-	rows.push(truncateRow(`kiso v${version} — ${TAGLINE}`, W));
+	if (rows.length > 0) rows.push("");
+	rows.push(truncateRow(`v${version} — ${TAGLINE}`, W));
 	if (extensionsText !== "") rows.push(truncateRow(extensionsText, W));
 	return rows;
 }

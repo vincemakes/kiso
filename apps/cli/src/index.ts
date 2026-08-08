@@ -50,25 +50,6 @@ import { resume } from "./resume.js";
 // (project-trust, coding-agent) never change (B4: zero assertion changes).
 export { applyProjectMerges } from "./trust-ui.js";
 
-/** The banner: the block-letter logo (design fixed). TTY only — pipes, e2e
- *  drivers, and CI see byte-for-byte the old output; the extensions line
- *  merges into the third row on TTY and stays a standalone line off-TTY.
- *  v2a: the logo rows stay dim; the TAGLINE (row 2) is the blue identity
- *  accent. */
-function startupBanner(): string {
-	// v3 §01: the banner is block-split — three independent logo rows
-	// (TOP / tagline / BOTTOM), then TWO info rows (version,
-	// extensions), each truncated at the window width; < 40 columns
-	// skips the logo. The historical `[N extensions: names]` text rides
-	// the extensions row verbatim (the e2e assertions keep matching).
-	const p = palette();
-	// A pty without a winsize reports columns = 0 (not undefined) — treat
-	// it as the default width, never as a 0-column truncation.
-	const W = process.stdout.columns ?? 0;
-	const rows = bannerLines(W > 0 ? W : 80, VERSION, bannerExtensionText().replace(/^ · /, ""));
-	return `${rows.map((r) => `${p.dim}${r}${p.reset}`).join("\n")}\n`;
-}
-
 /** The v2b behavior, unchanged: readline owns the line, SIGINT, and the
  *  prompt. Only ever constructed when stdin is NOT a TTY. The rl starts
  *  consuming stdin at construction (main), so 'line' events are buffered
@@ -197,11 +178,12 @@ function bannerExtensionText(): string {
 	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
 }
 
-/** E1: the startup banner line(s) — TTY: logo + merged extensions; off-TTY:
- *  the historical `[N extensions: ...]` standalone line (zero change). */
+/** E1: the startup banner line(s) — TTY: logo + merged extensions as a
+ *  LIVE banner cell (W1: the tier re-derives on resize); off-TTY: the
+ *  historical `[N extensions: ...]` standalone line (zero change). */
 function extensionsBanner(): void {
 	if (process.stdout.isTTY) {
-		bodyLog(startupBanner());
+		body.banner(VERSION, bannerExtensionText().replace(/^ · /, ""));
 		return;
 	}
 	const text = bannerExtensionText();
@@ -458,7 +440,7 @@ async function main(): Promise<void> {
 			case "help": {
 				const p = palette();
 				console.log(
-					`${p.dim}${bannerLines(80, VERSION, "").join("\n")}${p.reset}\n\n` +
+					`${p.dim}${bannerLines(80, process.stdout.rows ?? 0, VERSION, "").join("\n")}${p.reset}\n\n` +
 						"kiso — the coding agent that survives kill -9\n\n" +
 						"  kiso [sessionId]         interactive session (default command)\n" +
 						"  kiso chat [sessionId]    same as above\n" +

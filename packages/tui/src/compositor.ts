@@ -54,7 +54,7 @@ import {
 	type BodyCell,
 	type FrameCtx,
 } from "./components.js";
-import { escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary } from "./render.js";
+import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary } from "./render.js";
 
 /** The cursor marker — an APC private sequence the focus component
  *  embeds at the edit position; the compositor strips it and moves
@@ -330,6 +330,28 @@ export class Body {
 		this.#mark();
 	}
 
+	/** The startup banner (W1): a LIVE cell — the tier re-derives per
+	 *  frame (bannerLines with the CURRENT W and H), so a resize re-tiers
+	 *  the art instead of re-folding frozen rows (a window below 40 cols
+	 *  never paints the logo). Byte-identical to the old frozen banner at
+	 *  the startup size (dim rows + the trailing blank). */
+	banner(version: string, extensionsText: string): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			const W = this.#opts.width() || 80; // a 0-size pty falls back
+			const H = this.#opts.height();
+			const p = palette();
+			for (const r of bannerLines(W, H, version, extensionsText)) this.#write(`${p.dim}${r}${p.reset}\n`);
+			this.#write("\n");
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		this.#cells.push({ kind: "banner", version, extensionsText, done: true });
+		this.#mark();
+	}
+
 	raw(lines: string[]): void {
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
@@ -512,7 +534,7 @@ export class Body {
 	 *  (the e2e gate pins the screen consequence). */
 	liveCount(): number {
 		const live = this.#cells.slice(this.#committed);
-		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now() };
+		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
 		const W = this.#opts.width();
 		let lines = 0;
 		for (const cell of live) lines += cellComponent(cell).render(W, ctx).length;
@@ -529,7 +551,7 @@ export class Body {
 		const W = this.#opts.width();
 		if (H < 4) return;
 		this.#lastH = H;
-		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now() };
+		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: H };
 		// V6-1 (the screen-state == frame-state rule): the resize's first
 		// frame — the terminal's reflow re-wrapped the committed content at
 		// the NEW width, so the cached folds are stale. Re-fold the

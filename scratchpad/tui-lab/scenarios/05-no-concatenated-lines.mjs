@@ -44,7 +44,7 @@ const CELL_LINE = [
 	/^\[faux mode.*$/,
 	/^(█|▀).*$/,
 	/^the coding agent that survives kill -9$/,
-	/^kiso v\d+\.\d+\.\d+.*$/,
+	/^v\d+\.\d+\.\d+.*$/,
 	/^▌\s?.*$/,
 	/^▍\s?.*$/,
 	/^╌+$/,

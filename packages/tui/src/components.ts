@@ -18,6 +18,7 @@
 
 import { displayWidth } from "./editor.js";
 import {
+	bannerLines,
 	escapeTerminal,
 	foldThinking,
 	foldResult,
@@ -36,6 +37,10 @@ export const SPINNER = ["▖", "▘", "▝", "▗"];
 export interface FrameCtx {
 	readonly spinnerI: number;
 	readonly now: number;
+	/** The terminal height (rows) — the banner cell's tier input (W1:
+	 *  the tier table reads H, so a resize RE-TIERS instead of
+	 *  re-folding frozen rows). */
+	readonly height: number;
 }
 
 /** ONE screen line a component emits (raw, SGR included). */
@@ -160,6 +165,7 @@ export type BodyCell =
 	  }
 	| { kind: "text"; text: string; done: boolean }
 	| { kind: "notice"; text: string; done: true }
+	| { kind: "banner"; version: string; extensionsText: string; done: true }
 	| { kind: "raw"; lines: string[]; done: true }
 	| { kind: "terminal"; label: string; line: string; done: true }
 	| {
@@ -185,6 +191,8 @@ export function cellComponent(cell: BodyCell): Component {
 			return new AssistantMessage(cell);
 		case "notice":
 			return new ErrorLine(cell);
+		case "banner":
+			return new Banner(cell);
 		case "raw":
 			return new RawBlock(cell);
 		case "terminal":
@@ -466,6 +474,20 @@ class TerminalBlock implements Component {
 		const lines = [...foldLine(this.cell.label, W), ...foldLine(this.cell.line, W)];
 		if (this.cell.label !== "") lines.push("");
 		return lines;
+	}
+}
+
+/** The startup banner — a LIVE cell: every render re-derives the tier
+ *  from the CURRENT width AND height (bannerLines), so a resize re-tiers
+ *  the art instead of re-folding frozen rows (the W1 tier table: below
+ *  40 cols the logo never paints). The trailing blank row preserves the
+ *  historical rhythm (the old text cell carried the string's final \n). */
+class Banner implements Component {
+	constructor(private readonly cell: { version: string; extensionsText: string }) {}
+	render(W: number, ctx: FrameCtx): string[] {
+		const p = palette();
+		const rows = bannerLines(W, ctx.height, this.cell.version, this.cell.extensionsText);
+		return [...rows.map((r) => `${p.dim}${r}${p.reset}`), ""];
 	}
 }
 

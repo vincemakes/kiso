@@ -8,6 +8,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	bannerLines,
 	colorInlineCode,
 	COLOR_OFF,
 	COLOR_ON,
@@ -17,6 +18,7 @@ import {
 	renderTerminalGap,
 	renderToolSummary,
 	renderRecap,
+	truncateRow,
 	type RenderInput,
 } from "../src/render.js";
 
@@ -254,5 +256,48 @@ describe("⑥: the checklist cell (the durable todo render)", () => {
 			items: [{ text: "\x1b[31mred\x07", status: "pending" }],
 		};
 		expect(renderEvent(ev).text).toBe("▞ 1 item\n  □ [31mred\n");
+	});
+});
+
+describe("v7 W1: the banner tiers (the height input)", () => {
+	const V = "0.1.37";
+	it("≥ 20 rows → BIG: the 36x6 █-only wordmark, indented two — 38 cols clears 40", () => {
+		const rows = bannerLines(40, 20, V, "[3 extensions: asky]");
+		expect(rows[0]).toBe("  ██    ██  ██████  ████████  ████████");
+		expect(rows.length).toBe(9); // 6 art + blank + version + extensions
+		expect(rows[8]).toBe("[3 extensions: asky]");
+		// the version row (49 cells) truncates at 40 with the marker —
+		// only the ART must clear 40, per the spec
+		expect(rows[7].startsWith(`v${V} —`)).toBe(true);
+		// the art is the wordmark — the text row does NOT repeat the name
+		expect(rows[7]).not.toMatch(/^kiso v/);
+	});
+	it("14–19 rows → COMPACT: v6's logo byte-identical, no redraw", () => {
+		const rows = bannerLines(80, 15, V, "");
+		expect(rows.slice(0, 3)).toEqual(["█ █ ▀█▀ █▀▀ █▀█", "█▀▄  █  ▀▀█ █ █", "▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀"]);
+		expect(rows[3]).toBe("");
+		expect(rows[4]).toBe(`v${V} — the coding agent that survives kill -9`);
+	});
+	it("anything smaller → text rows only (narrow, short, and unmeasured)", () => {
+		for (const [W, H] of [
+			[39, 24],
+			[80, 13],
+			[80, 0], // a raw PTY / pipe reports rows = 0
+		] as const) {
+			const rows = bannerLines(W, H, V, "");
+			// at 39 the version row itself truncates (with the marker, ≤ W) —
+			// the tier's identity is the absence of art, not a full row
+			expect(rows[0].startsWith(`v${V} —`)).toBe(true);
+			expect(rows.every((r) => !r.includes("█"))).toBe(true);
+			for (const r of rows) expect(truncateRow(r, W), `W=${W} H=${H}: ${r}`).toBe(r);
+		}
+	});
+	it("all three tiers at 40, 64, 88, 120: no row exceeds W (truncateRow is the width authority)", () => {
+		for (const W of [40, 64, 88, 120]) {
+			for (const H of [24, 15, 0]) {
+				const rows = bannerLines(W, H, V, "a ".repeat(80).trim());
+				for (const r of rows) expect(truncateRow(r, W), `W=${W} H=${H}: ${r}`).toBe(r);
+			}
+		}
 	});
 });
