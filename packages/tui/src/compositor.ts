@@ -569,6 +569,10 @@ export class Body {
 	/** The lines committed THIS frame — the writes land in the frame's
 	 *  committed section (the rows just above the live region). */
 	#committedLinesThisFrame: string[] = [];
+	// the CELL count when the frame began — the drawFull frozen bound's
+	// unit (the cells committed BEFORE this frame; a force-commit frame's
+	// placed LINES outnumber its cells)
+	#committedAtFrameStart = 0;
 
 	render(): void {
 		if (!this.#isActive()) return;
@@ -598,6 +602,7 @@ export class Body {
 		//    short sessions included — the frame coalescing keeps a
 		//    cell's first frame its freeze frame, so the frozen bytes
 		//    emit exactly once).
+		this.#committedAtFrameStart = this.#committed;
 		this.#committedLinesThisFrame = [];
 		while (this.#committed < this.#cells.length && this.#cells[this.#committed]!.done) {
 			this.#commitCell(this.#committed, W, ctx);
@@ -758,22 +763,19 @@ export class Body {
 		//    cache holds each cell's OWN rows; a missing blank would paint
 		//    every row below it one row too high (the V6-1 idempotence
 		//    rule: this draw must reproduce the screen, row by row).
+		//    The bound is the CELL count at the frame's start — the force
+		//    commit's placed LINES can exceed the cell count, and the old
+		//    lines-bound went negative, skipping every previously-committed
+		//    cell (the V6-1 frozen-loop finding — the banner vanished).
 		const frozen: string[] = [];
-		for (let i = 0; i < this.#committed - committed.length; i += 1) {
+		for (let i = 0; i < this.#committedAtFrameStart; i += 1) {
 			frozen.push(...bodySpacing(i > 0 ? this.#lineCache[i - 1]! : null, this.#lineCache[i]!));
 		}
 		let r = 1;
-		for (const line of frozen) {
-			out.push(`\x1b[${r};1H\x1b[0K${this.#checked(line, W)}`);
-			r += 1;
-		}
-		// 1. the committed lines (this frame's).
-		for (const line of committed) {
-			out.push(`\x1b[${r};1H\x1b[0K${this.#checked(line, W)}`);
-			r += 1;
-		}
-		// 2. the live lines.
-		for (const line of liveLines) {
+		// one march — the frozen, the committed (this frame's), the live —
+		// in write order, r monotone (three byte-identical loops merged for
+		// the gate; the exact write sequence preserved)
+		for (const line of [...frozen, ...committed, ...liveLines]) {
 			out.push(`\x1b[${r};1H\x1b[0K${this.#checked(line, W)}`);
 			r += 1;
 		}

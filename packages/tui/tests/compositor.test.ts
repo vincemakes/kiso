@@ -11,8 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 
 function makeBody(opts: { W?: number; H?: number } = {}) {
-	const W = opts.W ?? 80;
-	const H = opts.H ?? 24;
+	let W = opts.W ?? 80;
+	let H = opts.H ?? 24;
 	const writes: string[] = [];
 	const body = new Body({
 		active: () => true,
@@ -21,7 +21,15 @@ function makeBody(opts: { W?: number; H?: number } = {}) {
 		editCol: () => 1,
 		write: (s) => writes.push(s),
 	});
-	return { body, writes, tick: () => vi.advanceTimersByTime(16) };
+	return {
+		body,
+		writes,
+		tick: () => vi.advanceTimersByTime(16),
+		setSize: (w: number, h: number) => {
+			W = w;
+			H = h;
+		},
+	};
 }
 
 beforeEach(() => {
@@ -267,6 +275,32 @@ describe("TUI v6 — the one compositor", () => {
 		body.onResize();
 		expect(writes.join("")).toContain("\x1b[0J");
 		expect(writes.join("")).toContain("frozen");
+	});
+
+	it("the resize with a force commit: the frozen bound counts the cells committed BEFORE the frame — the committed banner re-paints on the winch (the V6-1 frozen-loop bug)", () => {
+		const { body, writes, tick, setSize } = makeBody({ W: 80, H: 24 });
+		body.enter();
+		body.raw(["frozen banner"]); // the committed content — one line
+		// a tall OPEN cell: 15 placed lines at 24 rows (the content cap
+		// binds at 20) — stays LIVE at 80×24, and the winch to 18 rows (the
+		// cap binds at 14) force-commits it AT the resize frame
+		body.textAppend(Array.from({ length: 15 }, (_, i) => `tall line ${String(i).padStart(2, "0")}`).join("\n"));
+		tick();
+		writes.length = 0;
+		setSize(40, 18);
+		body.onResize();
+		const bytes = writes.join("");
+		// the buggy bound — `#committed − committed.length` (cells minus
+		// LINES): the force commit's 15 lines made it negative, the frozen
+		// loop skipped the committed "frozen banner" — it vanished from the
+		// repaint, and a second resize would re-paint it (not idempotent)
+		expect(bytes).toContain("frozen banner"); // the committed cell re-painted
+		expect(bytes).toContain("tall line 00"); // the force-committed cell drawn
+		// idempotent: a second resize re-paints the SAME committed content
+		writes.length = 0;
+		setSize(40, 20);
+		body.onResize();
+		expect(writes.join("")).toContain("frozen banner");
 	});
 
 	it("zero timers: no mutation → no bytes, even after 10 seconds", () => {
