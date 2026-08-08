@@ -6,9 +6,13 @@ counts as done, and which gates each item breaks.
 
 **Status: Release 1 (W7–W10, the flow contract) shipped in 0.1.36** —
 the screen-row caps after the fold, the fixed live window, the resize
-re-measure, the result body with both cuts named. Release 2
-(W1–W4, W16, W11, then W5, W12, plus W18, W17 → 0.1.37) and Release 3
-(W6, W15, then W13, W14, plus W19, W20 → 0.1.38) are unimplemented.
+re-measure, the result body with both cuts named. **Release 2
+(W1–W4, W16, W11, then W5, W12, plus W18, W17) shipped in 0.1.37** —
+the banner tiers, the no-merge fold, the approval slot, the diff-cap
+floor. A V6-1 follow-up finding landed as a fix commit after the tag
+(the frozen-loop cell/line conflation — the force-commit resize frame
+skipped the committed cells; `6b271c8`). Release 3
+(W6, W15, then W13, W14, plus W19, W20 → 0.1.38) is unimplemented.
 
 **Baseline: 0.1.35** (`abb5097`). The v6 rework round-2 fixes (the
 W-blind `≤100` ThinkingFold crash, the commit-anchor 2B, the live-line
