@@ -20,10 +20,13 @@
  *    sharp edge (asserted by the VT-emulator gate);
  *  - two crash invariants: ① every emitted line's visible width ≤ W
  *    (components fold; a violation THROWS with diagnostics — pi
- *    tui-main-screen.ts:447-473, no silent truncate); ② within the
- *    live region only RELATIVE cursor moves (vertical A/B, horizontal
- *    G/D) — CUP exists only in the full-redraw path (the first frame,
- *    the resize repaint);
+ *    tui-main-screen.ts:447-473, no silent truncate); ② every steady-
+ *    frame CUP lands in the CONTENT area (rows ≤ H−4−menu — the
+ *    committed band, the stale/gap ELs, and the LIVE lines at their
+ *    model rows; fix C's sanctioned reinterpretation, ADR-0046) — the
+ *    CHROME rows (H−3..H) are RELATIVE-only (vertical A/B, horizontal
+ *    G/D); CUP over the whole screen exists only in the full-redraw
+ *    path (the first frame, the resize repaint);
  *  - the cursor DERIVES from the frame: the focus component embeds the
  *    APC marker in its rendered line; the compositor locates, strips,
  *    and relatively positions from the frame — no side-channel cursor
