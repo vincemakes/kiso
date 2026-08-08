@@ -35,8 +35,9 @@
  *    scheduler — a one-shot setTimeout re-armed only while a running
  *    tool exists (the #14/#15 zero-output contract is structural).
  *
- * Layout at H rows (V6-3 — the design §03 chrome): content rows
- * 1..H−4, upper ╌ H−3, editor (the slot) H−2, lower ╌ H−1, status H.
+ * Layout at H rows (V6-3 — the design §03 chrome; W6 — the box):
+ * content rows 1..H−4, box top H−3, editor (the slot) H−2, box
+ * bottom H−1, status H.
  * Pipes / NO_COLOR: the passthrough branches below keep the v2a/v2b
  * line-mode bytes byte-for-byte (the e2e guards them).
  */
@@ -47,9 +48,10 @@ import {
 	Container,
 	SPINNER,
 	bodySpacing,
+	boxBottom,
+	boxTop,
 	cellComponent,
 	foldLine,
-	footerLine,
 	statusLine,
 	visibleWidth,
 	type BodyCell,
@@ -64,7 +66,7 @@ export const CURSOR_MARKER = "\x1b_[kiso-cur]\x1b\\";
 
 const FRAME_MS = 16; // state changes coalesce to ≥16ms frames
 const SPINNER_MS = 200; // the spinner cadence — a ONE-SHOT re-armed on demand
-const CHROME_ROWS = 4; // upper ╌ + input + lower ╌ + status — the design §03 chrome (V6-3)
+const CHROME_ROWS = 4; // box top + input + box bottom + status — the design §03 chrome (V6-3; the box is W6)
 
 export interface BodyOptions {
 	/** Is the cell renderer live? A color TTY with a real size — checked
@@ -486,7 +488,8 @@ export class Body {
 	 *  reads it — the marker math never desyncs by construction). */
 	editCol(): number {
 		const inp = this.#inputState();
-		return displayWidth(this.#inputPrompt.replace(/\x1b\[[0-9;]*m/g, "")) + inp.cursor + 1;
+		// W6: the box's left wall (2 cols) prefixes the prompt
+		return 2 + displayWidth(this.#inputPrompt.replace(/\x1b\[[0-9;]*m/g, "")) + inp.cursor + 1;
 	}
 
 	/** The old dock's redraw — the editor's onRender target: mark + the
@@ -695,7 +698,14 @@ export class Body {
 	 *  cursor's display column WITHIN THE ROW (the brick/question lead
 	 *  included), the question/editor/menu variants. The compositor
 	 *  strips the marker and moves LEFT by the trailing width — the
-	 *  cursor derives from the frame, never from side-channel math. */
+	 *  cursor derives from the frame, never from side-channel math.
+	 *
+	 *  W6: the row lives INSIDE the box — the walls are a prefix/suffix
+	 *  width only, composed AFTER the marker embed (the marker math is
+	 *  untouched; the marker's row column = the wall + the lead + the
+	 *  cursor). The content caps at W−4 (the walls' columns) and the
+	 *  pad completes the row to EXACTLY W — invariant ① throws on
+	 *  overflow, so the box row is built full-width, never truncated. */
 	#inputRow(W: number, _ctx: FrameCtx): { stripped: string; afterW: number } {
 		const st = this.#inputState();
 		let row: string;
@@ -712,8 +722,8 @@ export class Body {
 		const leadW = visibleWidth(row.slice(0, row.length - st.line.length));
 		// embed the marker at the cursor's display column
 		let markerLine = "";
+		let w = 0;
 		{
-			let w = 0;
 			let inserted = false;
 			let i = 0;
 			while (i < row.length) {
@@ -730,6 +740,7 @@ export class Body {
 					inserted = true;
 				}
 				const cw = displayWidth(row[i]!);
+				if (w + cw > W - 4) break; // the cap — the two walls' columns
 				markerLine += row[i]!;
 				w += cw;
 				i += 1;
@@ -738,8 +749,24 @@ export class Body {
 				markerLine += CURSOR_MARKER;
 			}
 		}
-		const stripped = markerLine.replace(CURSOR_MARKER, "");
-		const afterW = visibleWidth(markerLine.slice(markerLine.indexOf(CURSOR_MARKER) + CURSOR_MARKER.length));
+		const stripped0 = markerLine.replace(CURSOR_MARKER, "");
+		const tailW = visibleWidth(markerLine.slice(markerLine.indexOf(CURSOR_MARKER) + CURSOR_MARKER.length));
+		if (W < 4) {
+			// the degenerate screen: the box cannot hold its walls — the
+			// bare row (the pre-W6 bytes; the fold probe's pass-through
+			// line still crashes invariant ① downstream, as before)
+			return { stripped: stripped0, afterW: tailW };
+		}
+		// the pad completes the row to W — the content stopped at W−4,
+		// so the pad is ≥ 1
+		const padW = W - 3 - w;
+		const stripped = `\x1b[2m│ \x1b[0m${stripped0}\x1b[2m${" ".repeat(padW)}│\x1b[0m`;
+		// the LEFT move = the width AFTER the cursor-rest cell — the
+		// full-width row parks the terminal cursor at the LAST cell (not
+		// one past the end), so the rest cell IS the first tail cell and
+		// the move = the tail + the pad (the right wall rides inside the
+		// pad's tail)
+		const afterW = tailW + padW;
 		return { stripped, afterW };
 	}
 
@@ -787,12 +814,12 @@ export class Body {
 		for (let i = 0; i < menuRows.length; i += 1) {
 			out.push(`\x1b[${menuTop + i};1H\x1b[0K${this.#checked(menuRows[i]!, W)}`);
 		}
-		// V6-3: the design §03 chrome — upper ╌ (H−3), input (H−2),
-		// lower ╌ (H−1), status (H).
-		out.push(`\x1b[${H - 3};1H\x1b[0K${footerLine(W)}`);
+		// V6-3 + W6: the design §03 chrome — box top (H−3), input
+		// (H−2), box bottom (H−1), status (H) — the box's four rows.
+		out.push(`\x1b[${H - 3};1H\x1b[0K${boxTop(W)}`);
 		const editor = this.#inputRow(W, ctx);
 		out.push(`\x1b[${H - 2};1H\x1b[0K${this.#checked(editor.stripped, W)}`);
-		out.push(`\x1b[${H - 1};1H\x1b[0K${footerLine(W)}`);
+		out.push(`\x1b[${H - 1};1H\x1b[0K${boxBottom(W)}`);
 		out.push(`\x1b[${H};1H\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W, this.#statusHint ?? undefined), W)}`);
 		// the cursor: up two (the input row at H−2) + left to the marker
 		out.push("\x1b[2A");
@@ -815,12 +842,13 @@ export class Body {
 		// neutral — proven by the emulator probe).
 		out.push("\x1b[2B");
 		for (let i = 0; i < committed.length; i += 1) out.push("\n");
-		// the bottom-up repaint, from the last row up — V6-3: the design
-		// §03 chrome: status (H), lower ╌ (H−1), input (H−2), upper ╌ (H−3)
+		// the bottom-up repaint, from the last row up — V6-3 + W6: the
+		// design §03 chrome: status (H), box bottom (H−1), input (H−2),
+		// box top (H−3)
 		out.push(`\x1b[1G\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W, this.#statusHint ?? undefined), W)}`); // H — the status
-		out.push(`\x1b[1A\x1b[1G\x1b[0K${footerLine(W)}`); // H−1 — the lower ╌
+		out.push(`\x1b[1A\x1b[1G\x1b[0K${boxBottom(W)}`); // H−1 — the box bottom
 		out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(editor.stripped, W)}`); // H−2 — the input
-		out.push(`\x1b[1A\x1b[1G\x1b[0K${footerLine(W)}`); // H−3 — the upper ╌
+		out.push(`\x1b[1A\x1b[1G\x1b[0K${boxTop(W)}`); // H−3 — the box top
 		for (let i = menuRows.length - 1; i >= 0; i -= 1) {
 			out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(menuRows[i]!, W)}`);
 		}
@@ -863,7 +891,7 @@ export class Body {
 		// the down-distance from the LAST written row, in byte order: the
 		// committed band's bottom, then the stale ELs' bottom, then the gap
 		// ELs' bottom, then the live lines' bottom, then the menu's top
-		// (its last marched row), else the chrome's upper ╌.
+		// (its last marched row), else the chrome's box top.
 		const lastRow =
 			committed.length > 0
 				? Math.max(1, liveTop - 1)

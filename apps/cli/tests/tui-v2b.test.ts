@@ -246,12 +246,17 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 				// "tour complete" appears mid-run — the /think line queues on
 				// the chain and prints AFTER the turn completes.
 				["tour complete", "/think\n"],
-				// The fold's own suffix — exit only AFTER the fold's freeze
-				// frame has rendered (the real-LF commit writes more bytes
-				// per line than the old CUP pre-fill, so the freeze frame
-				// can trail the /think output; exiting on SECRETTAIL would
-				// kill the process before the fold hits the screen).
-				["· /think)", "exit\n"],
+				// Exit only AFTER the /think output has rendered — the fold's
+				// "· /think)" suffix ALSO appears mid-run (the v6 live fold:
+				// the thinking cell renders its fold live, and the count
+				// suffix rides the live form). Riding the suffix closed the
+				// input before "tour complete" rendered, so the queued
+				// "/think" landed on the closed editor and was dropped —
+				// SECRETTAIL never printed (the 0.1.38 flake). SECRETTAIL
+				// is the safe tail: the /think segment is done when it is
+				// visible, and the LIVE fold (with the suffix) is already
+				// in the stream, so the fold assert holds.
+				["SECRETTAIL", "exit\n"],
 			],
 		);
 		const clean = stripANSI(out);

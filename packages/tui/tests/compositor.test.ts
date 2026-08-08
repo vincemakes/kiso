@@ -10,6 +10,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 
+/** The BODY region's left-wall rows ("│ ") — W6: the box's chrome wall
+ *  is dim-wrapped (`\x1b[2m│ \x1b[0m`), so the lookbehind excludes it and
+ *  the count keeps its old meaning (no left-wall rows in the body). */
+function matchBodyWalls(stream: string): string[] {
+	return stream.match(/(?<!\x1b\[2m)│ /g) ?? [];
+}
+
 function makeBody(opts: { W?: number; H?: number } = {}) {
 	let W = opts.W ?? 80;
 	let H = opts.H ?? 24;
@@ -60,7 +67,9 @@ describe("TUI v6 — the one compositor", () => {
 		expect(bytes).toContain("\x1b[22;1H\x1b[0K"); // the status
 		expect(bytes).toContain("\x1b[23;1H\x1b[0K"); // the editor
 		expect(bytes).toContain("\x1b[24;1H\x1b[0K"); // the footer
-		expect(bytes).toContain("╌");
+		// W6: the box — the rounded corners close the rail
+		expect(bytes).toContain("╭");
+		expect(bytes).toContain("╰");
 		// the synchronized-output wrap is present
 		expect(bytes).toContain("\x1b[?2026h");
 		expect(bytes).toContain("\x1b[?2026l");
@@ -92,7 +101,7 @@ describe("TUI v6 — the one compositor", () => {
 	it("the idle no-commit steady frame jumps 2B from the anchor — the chrome stays on H/H−1/H−2/H−3 (the input-shift regression)", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
-		body.bindInput(() => ({ line: "\u4f60", cursor: 1 }), "\x1b[1m▌ \x1b[0m");
+		body.bindInput(() => ({ line: "\u4f60", cursor: 1 }), "› ");
 		writes.length = 0; // the first frame is the full-redraw (CUP allowed there)
 		body.textAppend("live"); // an OPEN cell — the steady NO-COMMIT path
 		tick();
@@ -103,16 +112,16 @@ describe("TUI v6 — the one compositor", () => {
 		// 2B straight to the bottom row H.
 		expect(frame.startsWith("\x1b[?2026h\x1b[2B")).toBe(true);
 		// the bottom-up repaint right after the jump — four relative rows:
-		// status (H), lower ╌ (H−1), input (H−2), upper ╌ (H−3)
+		// status (H), box bottom (H−1), input (H−2), box top (H−3)
 		const m = frame
 			.slice("\x1b[?2026h".length)
 			.match(
 				/^\x1b\[2B\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)(?=\x1b\[1A|\x1b\[\d+;\d+H|\x1b\[\?2026l)/,
 			);
 		expect(m).not.toBeNull();
-		expect(m![2]).toContain("╌"); // H−1 — the lower ╌
-		expect(m![3]).toContain("▌"); // H−2 — the input row
-		expect(m![4]).toContain("╌"); // H−3 — the upper ╌
+		expect(m![2]).toContain("╰"); // H−1 — the box bottom
+		expect(m![3]).toContain("›"); // H−2 — the input row
+		expect(m![4]).toContain("╭"); // H−3 — the box top
 	});
 
 	it("a CJK /think fold never trips invariant ① — the fold cuts by DISPLAY width (the 0.1.33 real-machine crash)", () => {
@@ -200,31 +209,32 @@ describe("TUI v6 — the one compositor", () => {
 	it("the cursor derives from the frame: the marker positions the relative move; the marker never reaches the stream", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
-		body.bindInput(() => ({ line: "abc", cursor: 1 }), "\x1b[1m▌ \x1b[0m");
+		body.bindInput(() => ({ line: "abc", cursor: 1 }), "› ");
 		body.raw(["x"]);
 		tick();
 		const bytes = writes.join("");
 		expect(bytes).not.toContain("kiso-cur"); // the APC marker is stripped
-		expect(bytes).toContain("\x1b[1m▌ \x1b[0mabc"); // the prompt + the line, marker stripped
-		// the cursor rests after the prompt + one char ("▌ a|bc") — the
-		// LEFT move equals the trailing width (2)
-		expect(bytes).toContain("\x1b[2D");
+		expect(bytes).toContain("› abc"); // the prompt + the line, marker stripped
+		// the cursor rests after the prompt + one char ("│ › a|bc │") — the
+		// LEFT move equals the trailing width (74 = the "bc" tail + the
+		// pad + the right wall on an 80-col row)
+		expect(bytes).toContain("\x1b[74D");
 	});
 
-	it("the ApprovalPrompt slot: the question takes the input row (the brick out); the brick returns when it clears", () => {
+	it("the ApprovalPrompt slot: the question takes the input row (the prompt out); the prompt returns when it clears", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
-		body.bindInput(() => ({ line: "", cursor: 0 }), "\x1b[1m▌ \x1b[0m");
+		body.bindInput(() => ({ line: "", cursor: 0 }), "› ");
 		body.showQuestion("approve read_file? (y/n) ");
 		body.raw(["x"]);
 		tick();
 		const bytes = writes.join("");
 		expect(bytes).toContain("approve read_file? (y/n)");
-		expect(bytes).not.toContain("\x1b[1m▌ \x1b[0m"); // the slot swap — no overlay
+		expect(bytes).not.toContain("› "); // the slot swap — no overlay
 		body.clearQuestion();
 		body.raw(["y"]);
 		tick();
-		expect(writes.join("")).toContain("\x1b[1m▌ \x1b[0m");
+		expect(writes.join("")).toContain("› ");
 	});
 
 	it("the MenuSelect slot: the menu rows render above the status while open, none over the editor", () => {
@@ -350,7 +360,7 @@ describe("TUI v6 — the one compositor", () => {
 			const cut = frame.match(/└ \+(\d+) earlier rows · ctrl\+r/);
 			expect(cut).not.toBeNull();
 			expect(Number(cut![1]!)).toBe(W === 120 ? 26 : 56);
-			expect((frame.match(/│ /g) ?? []).length + 1).toBeLessThanOrEqual(5);
+			expect(matchBodyWalls(frame).length + 1).toBeLessThanOrEqual(5);
 			// the tail survives: the LAST output line is on screen
 			expect(frame).toContain("shell line 29");
 		}
@@ -375,7 +385,7 @@ describe("TUI v6 — the one compositor", () => {
 			const cut = frame.match(/└ \+(\d+) rows · ctrl\+r to expand/);
 			expect(cut).not.toBeNull();
 			// the head + the named middle + the tail = 12 rows total
-			expect((frame.match(/│ /g) ?? []).length + 1).toBeLessThanOrEqual(12);
+			expect(matchBodyWalls(frame).length + 1).toBeLessThanOrEqual(12);
 			// the head AND the tail survive (the truncated middle is named)
 			expect(frame).toContain("Identifier0");
 			expect(frame).toContain("Identifier59");
@@ -399,7 +409,7 @@ describe("TUI v6 — the one compositor", () => {
 		tick();
 		const frame = writes.join("");
 		// the row budget holds at 12: 5 head + 1 cut + 6 tail
-		expect((frame.match(/│ /g) ?? []).length + 1).toBeLessThanOrEqual(12);
+		expect(matchBodyWalls(frame).length + 1).toBeLessThanOrEqual(12);
 		// the cut is ONE row: the truncated head of the text survives, the
 		// foldable tail is GONE (a folded cut would contain the full text)
 		const cut = frame.match(/└ \+(\d+) rows · ctrl\+r/);
@@ -426,7 +436,7 @@ describe("TUI v6 — the one compositor", () => {
 		tick();
 		const frame = writes.join("");
 		// the row budget: 11 head rows + the one-line └ cut = 12
-		expect((frame.match(/│ /g) ?? []).length + 1).toBeLessThanOrEqual(12);
+		expect(matchBodyWalls(frame).length + 1).toBeLessThanOrEqual(12);
 		expect(frame).toContain("line00"); // the head survives
 		expect(frame).not.toContain("line59"); // the tail is dropped — no pair
 		const cut = frame.match(/└ \+(\d+) rows · ctrl\+r/);
@@ -448,7 +458,7 @@ describe("TUI v6 — the one compositor", () => {
 		expect(frame).toContain("lint error 2");
 		expect(frame).toContain("└ +3 more · ctrl+r");
 		expect(frame).not.toContain("lint error 6");
-		expect((frame.match(/│ /g) ?? []).length).toBeLessThanOrEqual(3);
+		expect(matchBodyWalls(frame).length).toBeLessThanOrEqual(3);
 		// a read result: the settled row carries the count — zero body rows
 		const b2 = makeBody();
 		b2.body.enter();
@@ -479,14 +489,19 @@ describe("TUI v6 — the one compositor", () => {
 		body.toolStart("shell", "c1", { command: "sleep" });
 		body.toolRunning("c1");
 		tick();
-		// the window: 2 blank-padded rows + the waiting row — 3 total
+		// the window: 2 blank-padded rows + the waiting row — 3 total.
+		// W6: the box's chrome wall is the SAME bytes as a blank window
+		// row (`\x1b[2m│ \x1b[0m`), so the 2-blank probe is the ADJACENT
+		// pair — the two blanks are the only dim walls that are neighbors
+		// at the row level (the row prefix — a CUP/relative move + a 0K —
+		// sits between them); the box's single wall never pairs.
 		expect(writes.join("")).toContain("└ waiting for output");
-		expect((writes.join("").match(/│ /g) ?? []).length).toBe(2);
+		expect((writes.join("").match(/\x1b\[2m│ \x1b\[0m(?:\x1b\[[0-9;?]*[ABDGHJK])+\x1b\[2m│ \x1b\[0m/g) ?? []).length).toBe(1);
 		// a SECOND frame (the spinner tick): the window rows byte-identical
 		writes.length = 0;
 		vi.advanceTimersByTime(200);
 		expect(writes.join("")).toContain("└ waiting for output");
-		expect((writes.join("").match(/│ /g) ?? []).length).toBe(2);
+		expect((writes.join("").match(/\x1b\[2m│ \x1b\[0m(?:\x1b\[[0-9;?]*[ABDGHJK])+\x1b\[2m│ \x1b\[0m/g) ?? []).length).toBe(1);
 	});
 
 	it("W18: the compacting status row — the indeterminate form with the right-aligned cancel hint (the #16g hint cut first at a narrow width, then the status with the … — never a fold)", () => {
@@ -530,7 +545,7 @@ describe("TUI v6 — the one compositor", () => {
 		// live channel to a running child exists, so the spec's "<child's
 		// current tool>" has no event source; the roles are the honest data
 		expect(writes.join("")).toContain("└ 3 children · explorer · implementer · reviewer");
-		expect((writes.join("").match(/│ /g) ?? []).length).toBe(0); // no live window, no fold
+		expect(matchBodyWalls(writes.join("")).length).toBe(0); // no live window, no fold
 		writes.length = 0;
 		// the settled frame: the SAME single row slot, now the summary
 		// marker from the delegate's blob
@@ -545,7 +560,7 @@ describe("TUI v6 — the one compositor", () => {
 		tick();
 		const settled = writes.join("");
 		expect(settled).toContain("└ 12 tool calls · 3 roles · 0 failed · /last for the report");
-		expect((settled.match(/│ /g) ?? []).length).toBe(0);
+		expect(matchBodyWalls(settled).length).toBe(0);
 		// an old extension's result (no marker) falls back to no body —
 		// the height contract never grows the block
 		body.toolStart("delegate", "c2", { tasks: [{ role: "explorer", task: "x" }] });

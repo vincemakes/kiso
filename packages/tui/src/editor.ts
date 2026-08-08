@@ -442,7 +442,7 @@ export class Editor {
 
 	#reflow(): void {
 		const W = (process.stdout.columns ?? 0) || 80; // degenerate 0 falls back to 80
-		const maxW = Math.max(1, W - PROMPT_WIDTH - 1); // 1 col for the "…"
+		const maxW = Math.max(1, W - PROMPT_WIDTH - 4); // W6: the box's walls (2+2) — the visible line fits the box's inner width; the "…" rides inside
 		const curCol = widthOf(this.#chars.slice(0, this.#cursor));
 		const scrolledW = widthOf(this.#chars.slice(0, this.#scroll));
 		if (curCol < scrolledW) {

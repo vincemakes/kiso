@@ -13,9 +13,9 @@
  * SCREEN, which the byte probes (LF/CSI counts) cannot see:
  *   ① the response text appears exactly once (the reflow ghost — the
  *     pre-fill CUP rows merged/repeated under reflow);
- *   ② separator (╌) rows in the BODY region ≤ 1 (the old dock rows the
- *     reflow leaves behind — the separator wall; the dock's own two ╌
- *     rows sit at H-3/H-1, outside the region);
+ *   ② separator (box rail) rows in the BODY region ≤ 1 (the old dock
+ *     rows the reflow leaves behind — the separator wall; the box's own
+ *     two rails sit at H-3/H-1, outside the region — W6);
  *   ③ the fold is its own row ENDING with the /think suffix (the
  *     fold/body merge + the suffix loss);
  *   ④ after the sequence, ① ② re-run on the final screen;
@@ -150,7 +150,10 @@ function screens(full: Buffer, markers: { done: number; resizes: [number, number
 	return { turn: turn ?? [], final: emu.visible() };
 }
 
-const bodySepRows = (screen: string[], H: number): number => screen.slice(0, H - 4).filter((l) => l.includes("╌")).length;
+// W6: the ╌ chrome rows became the box rails — the probe counts a stray
+// rail in the BODY region (the chrome's own rails sit at H−3/H−1, outside
+// the slice — a reflow leftover rail inside the body is the wall).
+const bodySepRows = (screen: string[], H: number): number => screen.slice(0, H - 4).filter((l) => l.includes("╭") || l.includes("╰")).length;
 const responseOnce = (screen: string[]): number => screen.filter((l) => l.includes(RESPONSE)).length;
 
 describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulator)", () => {
@@ -172,7 +175,7 @@ describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulato
 			"utf8",
 		);
 		const { markers, full } = reflowRun({ ...env, KISO_FAUX_SCRIPT: script }, [
-			["▌ ", "look around\n"], // the turn itself — the driver sends exit after the sequence
+			["› ", "look around\n"], // the turn itself — the driver sends exit after the sequence
 		]);
 		// The sequence really ran (5 winches) and the turn completed.
 		expect(markers.resizes).toHaveLength(5);
@@ -187,7 +190,7 @@ describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulato
 
 		// ① the response text appears EXACTLY once on the turn-after screen.
 		expect(responseOnce(turn)).toBe(1);
-		// ② no separator wall — ╌ rows in the BODY region (1..H-4) ≤ 1.
+		// ② no separator wall — box rails in the BODY region (1..H-4) ≤ 1.
 		expect(bodySepRows(turn, 24)).toBeLessThanOrEqual(1);
 		// ③ the fold is its own row ENDING with the /think suffix — the
 		// fold/body merge (the recorded symptom) would swallow the suffix.

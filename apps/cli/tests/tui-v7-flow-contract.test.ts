@@ -256,7 +256,9 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// the window EXISTS and is 3 rows: 2 blank-padded rows + the waiting row
 		const first = running[0]!.grid;
 		expect(first.some((l) => l.includes("└ waiting for output"))).toBe(true);
-		expect(first.filter((l) => l.startsWith("│ ")).length).toBe(2);
+		// W6: the box's input row also opens with "│ " — the blank rows are
+		// the ones WITHOUT the › prompt (the window's blanks carry no glyph)
+		expect(first.filter((l) => l.startsWith("│ ") && !l.includes("›")).length).toBe(2);
 		// the anti-jitter: pairwise across the consecutive running frames,
 		// every CONTENT row below the streaming cell's block is byte-identical
 		// — the running shell's OWN block (its folded header: the spinner-

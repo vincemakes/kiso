@@ -3,7 +3,9 @@
  * Scenario 5 — NO concatenated lines. The one compositor's components
  * never share a line; the probe (the same lint the v2d gate uses)
  * reconstructs the line segments from the byte stream and asserts
- * every one matches a known cell format.
+ * every one matches a known cell format. W6: the box rails
+ * and the input row join the known set (the idle screen is the
+ * box chrome at 24×80).
  */
 import { ptyRun, stripANSI } from "../lib/pty-run.mjs";
 
@@ -47,7 +49,8 @@ const CELL_LINE = [
 	/^v\d+\.\d+\.\d+.*$/,
 	/^▌\s?.*$/,
 	/^▍\s?.*$/,
-	/^╌+$/,
+	/^│ ›.*│$/, // W6: the input row inside the box (the prompt › — the trim eats the pad)
+	/^╭[─]+╮$/, /^╰[─]+╯$/, // W6: the box rails (the corners close the ─ run)
 	/^ {0,2}(approved|denied.*)$/,
 ];
 

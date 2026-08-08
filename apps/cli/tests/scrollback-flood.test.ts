@@ -99,7 +99,7 @@ describe("TUI v2e (real PTY, 24×80) — the #13 scrollback gate", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", batch],
+				["▌ ", batch], // the brick — the startup paint renders in BOTH modes (the 0×0-winsize race can strand the dock's "› ", never the brick)
 				["flood 25", "exit\n"],
 			],
 		);

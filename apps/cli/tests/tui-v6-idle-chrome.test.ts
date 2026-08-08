@@ -104,11 +104,11 @@ import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([
-			["▌ ", "\u4f60", 2],
-			["▌ ", "\u4f60", 3],
-			["▌ ", "\n", 4], // the submit — the turn runs the shell
+			["› ", "\u4f60", 2],
+			["› ", "\u4f60", 3],
+			["› ", "\n", 4], // the submit — the turn runs the shell
 			["approve shell", "y\n", 5], // the default tier ASKS the shell — answer it
-			["▌ ", "x", 8], // the post-turn char — after the 2s run ends (~t=7) — its frame is the commitless steady frame
+			["› ", "x", 8], // the post-turn char — after the 2s run ends (~t=7) — its frame is the commitless steady frame
 		])}, 12)
 `;
 		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
@@ -118,14 +118,15 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: scri
 		const emu = new VtScreen(24, 80);
 		emu.write(Buffer.from(out, "hex"));
 		const grid = emu.visible();
-		// the V6-3 chrome on the FINAL grid (0-based rows): upper ╌ at
-		// H−3 (20), the input at H−2 (21), the lower ╌ at H−1 (22), the
+		// the V6-3 chrome on the FINAL grid (0-based rows): the box top at
+		// H−3 (20), the input at H−2 (21), the box bottom at H−1 (22), the
 		// status at H (23) — the buggy no-commit frame put the input at 20
-		// and the status at 22 (the input box shifted one row up).
-		expect(grid[20]!.includes("╌")).toBe(true);
-		expect(grid[21]!.includes("▌ ")).toBe(true);
+		// and the status at 22 (the input box shifted one row up). W6: the
+		// ╌ rails became the box corners.
+		expect(grid[20]!.includes("╭")).toBe(true);
+		expect(grid[21]!.includes("› ")).toBe(true);
 		expect(grid[21]).toContain("x"); // the post-turn char, at H−2
-		expect(grid[22]!.includes("╌")).toBe(true);
+		expect(grid[22]!.includes("╰")).toBe(true);
 		// the status at H — the idle hint (the CLI's empty status + the
 		// right-aligned "/ commands · ↑ history" tail) — and the working
 		// status ZERO times on the final screen (the dead "working" at H

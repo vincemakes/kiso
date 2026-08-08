@@ -96,7 +96,7 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-config-e2e-w1-"));
 		const out = stripANSI(
 			ptyRun(env, [
-				["▌ ", "/model\n"],
+				["› ", "/model\n"],
 				["(unavailable)", "/model claude\n"],
 				["not set", "/model ds\n"],
 				["model → ds", "exit\n"],
@@ -115,7 +115,7 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-config-e2e-w2-"));
 		const out = stripANSI(
 			ptyRun(env, [
-				["▌ ", "/model openai-compat/gpt-4o\n"],
+				["› ", "/model openai-compat/gpt-4o\n"],
 				["model → openai-compat/gpt-4o", "exit\n"],
 			], workdir),
 		);
@@ -137,7 +137,7 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 		const out = stripANSI(
 			ptyRun(env, [
 				["trust this project", "y\n"],
-				["▌ ", "/model\n"],
+				["› ", "/model\n"],
 				["proj-model", "exit\n"],
 			], workdir),
 		);
@@ -155,7 +155,7 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 		writeFileSync(join(workdir, ".kiso", "config.json"), JSON.stringify({ model: "proj-model" }), "utf8");
 		const out = stripANSI(
 			ptyRun(env, [
-				["▌ ", "/model\n"],
+				["› ", "/model\n"],
 				["(none — define models", "exit\n"],
 			], workdir),
 		);

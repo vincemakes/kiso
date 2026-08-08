@@ -15,7 +15,7 @@
  *   banner, so both are covered.
  * ③ #16f theme (v5): the user block is the ▍ rail — bright-white BOLD
  *   (SGR 1), never reverse video nor the fixed 48;5;237 background.
- * ④ #16d input row: the brick ▌ alone — no "you>" text.
+ * ④ #16d input row (W6): the box with the light › prompt — no "you>" text.
  */
 
 import { execFileSync } from "node:child_process";
@@ -121,7 +121,7 @@ function stripANSI(text: string): string {
 }
 
 describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
-	it("zero LF + stable separators + response exactly once + no ESC residue + ▍-rail user block + ▌ input row", () => {
+	it("zero LF + stable separators + response exactly once + no ESC residue + ▍-rail user block + the box › input row", () => {
 		const { env } = isolatedEnv();
 		// A TEXT-ONLY script — the default faux script's tool executes
 		// PARALLEL to the event stream (ADR-0024), so its result (and the
@@ -151,7 +151,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		const out = stormRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "look around\n"], // #16d: the brick alone is the prompt
+				["› ", "look around\n"], // #16d + W6: the box's light prompt alone (no "you> ")
 			],
 		);
 		// the process SURVIVED the whole storm — the driver's leading marker
@@ -180,7 +180,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// redraw writes no newlines), so the newline-delimited line count
 		// is the faithful proxy for the visual state. Whole transcript,
 		// before vs after the storm:
-		const sepLines = (t: string): number => t.split("\n").filter((l) => l.includes("╌")).length;
+		const sepLines = (t: string): number => t.split("\n").filter((l) => l.includes("╭") || l.includes("╰")).length; // W6: the ╌ rows became the box rails
 		const cleanAll = stripANSI(out);
 		expect(sepLines(cleanAll)).toBe(sepLines(cleanAll.slice(0, stormAt)));
 
@@ -195,10 +195,10 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 			emu.write(Buffer.from(out, "utf8"));
 			const grid = emu.visible();
 			expect(grid.filter((l) => l.includes("I see the workspace")).length).toBe(1);
-			// V6-3: the chrome — at most the two ╌ rows (the upper + the
-			// lower; the exit's chrome-clear may wipe them — the WALL, the
-			// duplicated separators the reflow left behind, would exceed 2).
-			expect(grid.filter((l) => l.includes("╌")).length).toBeLessThanOrEqual(2);
+			// V6-3 + W6: the chrome — the box top at most ONCE (the exit's
+			// chrome-clear may wipe it — the WALL, the duplicated rails the
+			// reflow left behind, would exceed 1).
+			expect(grid.filter((l) => l.includes("╭")).length).toBeLessThanOrEqual(1);
 		}
 
 		// ② #16b: no ESC residue — the banner's dim and the recap's blue
@@ -213,10 +213,11 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		expect(out).toContain("\x1b[1m▍\x1b[0m   \x1b[7m look around \x1b[27m"); // W16: the rail + the inset chip
 		expect(out).not.toContain("\x1b[48;5;237m"); // the fixed dark background stays banned
 
-		// ④ #16d/#16e: the input row is the bold brick alone (no blue).
-		expect(out).toContain("\x1b[1m▌ ");
+		// ④ #16d/#16e + W6: the input row is the box with the light ›
+		// prompt alone (no blue, no "you> ").
+		expect(out).toContain("› ");
 		expect(out).not.toContain("\x1b[38;5;75m");
-		expect(out).not.toContain("▌you> ");
+		expect(out).not.toContain("›you> ");
 	}, 90_000);
 
 	it("TUI v5 #16g — the idle hint: right-aligned when it fits, CUT FIRST when the width is short", () => {
@@ -241,13 +242,13 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// 80 cols: the idle status (~50 cells) + the hint (23) fit — the
 		// hint rides the status row, dim, right-aligned (the pad fills
 		// between them; the dim span closes AFTER the hint).
-		const wide = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["▌ ", "look around\n"]], 30);
+		const wide = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["› ", "look around\n"]], 30);
 		expect(wide).toContain("/ commands · ↑ history");
 		// 50 cols: status + hint = 73 > 50 → the HINT is cut — the status
 		// itself is never truncated for it. The idle row's dim span ends
 		// IMMEDIATELY after the status (the hint, had it fit, would sit
 		// between the status and the reset).
-		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["▌ ", "look around\n"]], 30, 50, []);
+		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["› ", "look around\n"]], 30, 50, []);
 		// v6 invariant ①: the status itself must fit W — at 50 cols the
 		// 51-cell status CUTS at W−1 with a … (the old code soft-wrapped
 		// it; the crash-on-violation makes the cut structural).

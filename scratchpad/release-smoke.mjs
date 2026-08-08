@@ -196,10 +196,16 @@ if (out.includes("\x1b[2J") || out.includes("\x1b[3J")) fail("a pre-clear sequen
 // only renders when the width fits) — its presence proves the narrow
 // re-cap re-measured the diff at 40 mid-approval
 if (!plain.includes("· /last f…")) fail("the narrow re-cap missing — the W17 cut row not truncated at 40");
-// the dock survived the winch: the separator ╌, the input ▌, and the
+// the COMPACT banner re-renders after the winch (the V6-1 frozen-loop
+// fix — the banner survives the resize repaint): at 18×40 the tier
+// table picks COMPACT (W ≥ 40, 14–19 rows) — the top row proves the
+// narrow redraw re-derived the banner at the new width (DROPPED for
+// 0.1.37 — the released closure had the frozen-loop bug; RETURNS here)
+if (!plain.includes("█ █ ▀█▀ █▀▀ █▀█")) fail("no compact banner after the winch — the narrow redraw never re-rendered it");
+// the dock survived the winch: the box rails ╭╰, the input ›, and the
 // approval DIFF rows with the │ gutter — the narrow cap's budget held
-if (!plain.includes("╌")) fail("no separator row after the winch");
-if (!plain.includes("▌ ")) fail("no input row after the winch");
+if (!plain.includes("╭") && !plain.includes("╰")) fail("no box rail after the winch");
+if (!plain.includes("› ")) fail("no input row after the winch");
 if (!plain.includes("│")) fail("no diff gutter row — the narrow diff missing");
 if (!plain.includes("const identifier2 = 2;")) fail("the approval diff rows missing");
 if (!failed) console.log("[release-smoke] ✓ one turn + the 80→40 winch: response whole, dock rows intact, the diff capped, no pre-clear");

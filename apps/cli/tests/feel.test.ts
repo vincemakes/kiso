@@ -168,7 +168,7 @@ describe("A2: ↑↓ recall the session history", () => {
 		// land in ONE frame, so the recalled row's render merges with the
 		// submit; the recall's proof is the RESUBMITTED turn above. The
 		// typed row rendered (the "hello" needle waited for it).
-		expect((plain.match(/▌ hello/g) ?? []).length).toBeGreaterThanOrEqual(1);
+		expect((plain.match(/› hello/g) ?? []).length).toBeGreaterThanOrEqual(1);
 	});
 });
 

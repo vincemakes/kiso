@@ -81,19 +81,19 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			// row); the submit waits for the row showing the FULLWIDTH pair.
 			["▌ ", "Ａ"],
 			["Ａ", "Ａ"], // the row now shows the first Ａ — type the second
-			["\x1b[1m▌ \x1b[0mＡＡ", "\n"], // the row shows the 4-cell pair whole (the display-width reflow) — submit
+			["ＡＡ", "\n"], // W6: the row shows the 4-cell pair whole inside the box (the display-width reflow) — submit
 			["▸ default · /mode to switch", "exit\n"],
 		]);
 		// v6: the cursor derives from the frame's marker — the marker sits
 		// at leadW + the DISPLAY cursor (2 + 4 = 6 for ＡＡ — the old CUP
 		// home at 5/7 is gone; the row itself is the display-width proof:
 		// the 4-cell pair renders whole, never split as 2+2 cells).
-		expect(out).toContain("\x1b[1m▌ \x1b[0mＡＡ");
+		expect(out).toContain("› ＡＡ");
 		// The submitted line renders into the body (pty-cooked).
 		const clean = stripANSI(out);
 		expect(clean).toContain("ＡＡ"); // v3 §02: the user block has no "you> " prefix
 		// And the input row survives (the editor's own render).
-		expect(clean).toContain("▌ ");
+		expect(clean).toContain("› ");
 	}, 90_000);
 
 	it("the submitted line renders in the scroll region EXACTLY once — the ▍ rail + content + reset", () => {
@@ -103,13 +103,14 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			// inserts + the submit lands in one frame, so the typed line
 			// needs its own needle to be observed before the Enter.
 			["▌ ", "look around"],
-			["\x1b[1m▌ \x1b[0mlook around", "\n"],
+			["look around", "\n"],
 			["▸ default · /mode to switch", "exit\n"], // v3 idle state marks the turn's end
 		]);
-		// The editor's input row renders the brick prompt + the line (the
-		// reset SPLITS the prompt from the text — that raw shape is the
-		// row, not the body echo). TUI v5 #16e: the brick is bold (SGR 1).
-		expect(out).toContain("\x1b[1m▌ \x1b[0mlook around");
+		// The box's input row renders the light › prompt + the line (the
+		// wall's dim SPLITS the row from the text — that raw shape is the
+		// row, not the body echo). W6: the › is light (the box already
+		// says "input lives here").
+		expect(out).toContain("› look around");
 		// v2d: the body echo is the frozen UserCell — the ▍ rail + content
 		// + reset, EXACTLY once (the row is not the scroll region, the
 		// frozen cell is the only copy there).

@@ -46,7 +46,7 @@ def driver(cli, home, rows, cols):
                 full += data
             except OSError:
                 break
-        if not sent and "▌ ".encode() in out:
+        if not sent and "› ".encode() in out:
             os.write(fd, b"exit\\n")
             sent = True
     sys.stdout.write(full.decode(errors="replace"))

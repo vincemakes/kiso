@@ -147,7 +147,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			env,
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
-				["▌ ", "/status\n"],
+				["› ", "/status\n"],
 				["ctx ~", "go\n"],
 				// The go turn's OWN shell cell ("sleep 4") marks the run
 				// mid-flight — the recovery's leftover "working" status must
@@ -162,7 +162,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 				// script turn). The "you> " prompt alone is ambiguous (the
 				// /status's own prompt precedes the go turn).
 				["1 tool", "/compact\n"],
-				["▌ ", "/status\n"],
+				["› ", "/status\n"],
 				["ctx ~", "exit\n"],
 			],
 			dir,
@@ -216,7 +216,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			env,
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
-				["▌ ", "/compact\n"],
+				["› ", "/compact\n"],
 				// The FIRST paint of the indeterminate row marks the call
 				// live — esc lands mid-flight (the call outlives the feed by
 				// ~1.4s, so the cancel is never a race against the settle).

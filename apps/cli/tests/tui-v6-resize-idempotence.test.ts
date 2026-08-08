@@ -5,7 +5,7 @@
  * ① the 5-consecutive-resize screen: an idle session (one completed
  *   turn) hit with five consecutive resizes (wide/narrow/tall/short
  *   alternating) — every body line appears EXACTLY once on the final
- *   screen, the separators exactly the chrome's two ╌ rows (the wall —
+ *   screen, the separators exactly the chrome's two box rails (the wall —
  *   the duplicated separators the reflow left behind — must never
  *   return), the status once.
  * ② the resize idempotence: the screen after five consecutive resizes
@@ -149,7 +149,7 @@ const FIVE = [
 ] as [number, number][];
 
 describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
-	it("① five consecutive resizes: every body line EXACTLY once, the separators exactly the chrome's two ╌, the status once", () => {
+	it("① five consecutive resizes: every body line EXACTLY once, the separators exactly the chrome's two box rails, the status once", () => {
 		const { grid, resizes } = runAndScreen(FIVE);
 		expect(resizes).toHaveLength(5);
 		// the body lines, each exactly once
@@ -157,11 +157,12 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		expect(grid.filter((l) => l.includes("▍    go ")).length).toBe(1); // W16: the rail + the inset chip (rail space + indent 2 + side pad)
 		expect(grid.filter((l) => l.includes("0 tools")).length).toBe(1);
 		expect(grid.filter((l) => l.includes("session ")).length).toBe(1);
-		// the chrome: two ╌ rows (the upper + the lower — the design §03),
-		// the status once, the input row once — the WALL is 3+ separators
-		expect(grid.filter((l) => l.includes("╌")).length).toBe(2);
+		// the chrome: two box rails (the top ╭─╮ + the bottom ╰─╯ — the
+		// design §03, W6), the status once, the input row once — the WALL
+		// is 3+ separators
+		expect(grid.filter((l) => l.includes("╭") || l.includes("╰")).length).toBe(2);
 		expect(grid.filter((l) => l.includes("▸ default")).length).toBe(1);
-		expect(grid.filter((l) => l.includes("▌ ")).length).toBe(1);
+		expect(grid.filter((l) => l.includes("› ")).length).toBe(1);
 	});
 
 	it("② the resize idempotence: five consecutive resizes to 100×30 == a single direct 100×30, cell for cell", () => {

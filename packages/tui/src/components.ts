@@ -735,10 +735,18 @@ function widthCut(text: string, max: number): string {
 	return text.slice(0, i);
 }
 
-/** The footer — the ONE dotted row (the old two-row chrome is gone;
- *  the wall cannot return by construction). */
-export function footerLine(W: number): string {
-	return `\x1b[2m${"╌".repeat(W)}\x1b[0m`;
+/** W6 — the box: the chrome's top rail. The two ╌ dotted rows become
+ *  a rounded box (the box already says "input lives here"); the rails
+ *  stay dim, the width is still the full W (the box is a rail with
+ *  corners — the menu/gap rows above and the status below are
+ *  untouched). */
+export function boxTop(W: number): string {
+	return `\x1b[2m╭${"─".repeat(Math.max(0, W - 2))}╮\x1b[0m`;
+}
+
+/** W6 — the box: the chrome's bottom rail. */
+export function boxBottom(W: number): string {
+	return `\x1b[2m╰${"─".repeat(Math.max(0, W - 2))}╯\x1b[0m`;
 }
 
 /** The terminal label + rhythm gap (the pipe path's v2c bytes — the

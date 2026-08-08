@@ -98,11 +98,12 @@ const CELL_LINE = [
 	/^(█|▀).*$/, /^\[?2m\]?█.*$/, // the logo rows (the dim code may ride the segment)
 	/^the coding agent that survives kill -9$/, // the tagline
 	/^v\d+\.\d+\.\d+.*$/, // the version + tagline row (W1 — the art is the wordmark, the text row does not repeat the name)
-	/^▌\s?.*$/, // the input row (TUI v4 #16d: the brick alone — the trim eats the trailing space)
+	/^│ ›.*│$/, // W6: the input row inside the box (the prompt › — the trim eats the pad)
+	/^▌\s?.*$/, // the editor's SELF-RENDER row — the LINE-MODE brick (W6-kept byte-for-byte): the editor's first paint rides the CLI's pre-dock console.log message on the same row
 	/^▍\s?.*$/, // TUI v5 #16f: the user block — every line carries the ▍ rail (arbitrary user text after it)
-	/^╌+$/, // the separator
+	/^╭[─]+╮$/, /^╰[─]+╯$/, // W6: the box rails (the corners close the ─ run)
 	/^ {0,2}(approved|denied.*)$/, // the permission_decided raw
-	/^approve .*\(y\/n\) ?.*$/, // the ApprovalPrompt slot — the question + the typed answer on the input row
+	/^│ approve .*\(y\/n\).*│$/, // the ApprovalPrompt slot — the question + the typed answer on the input row (W6: inside the box)
 	/^.*· faux · \[turn \d+ · faux\]$/, // the live status bar (session-prefixed)
 	/^the tour is done$/, /^streaming text$/, // the TextCell bodies
 ];

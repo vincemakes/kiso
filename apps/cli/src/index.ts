@@ -26,7 +26,7 @@
 import { readFileSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
-import { Body, Editor, PROMPT as EDITOR_PROMPT, bannerLines, palette, renderSessionLine, type ResumeMeta } from "@vincemakes/kiso-tui";
+import { Body, Editor, bannerLines, palette, renderSessionLine, type ResumeMeta } from "@vincemakes/kiso-tui";
 import { escapeTerminal } from "@vincemakes/kiso-tui";
 import {
 	createAgent,
@@ -154,8 +154,10 @@ function makeLineInput(): LineInput {
 	if (process.stdin.isTTY) {
 		const editor = new Editor(() => (dock.active ? dock.redraw() : editor.selfRender()));
 		editor.enter();
-		const p = palette();
-		dock.bindInput(() => editor.dockState(), `${p.bold}${EDITOR_PROMPT}${p.reset}`);
+		// W6: the box's prompt goes light — "› " (the box already says
+		// "input lives here"; the line-mode path keeps the brick ▌, so
+		// pipe bytes do not change)
+		dock.bindInput(() => editor.dockState(), "› ");
 		dock.bindMenu(() => editor.menuState()); // v3 §04: the slash-command menu
 		return editorInput(editor);
 	}
