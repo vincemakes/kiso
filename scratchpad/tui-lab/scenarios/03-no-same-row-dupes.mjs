@@ -10,6 +10,21 @@
 import { ptyRun } from "../lib/pty-run.mjs";
 import { VtScreen } from "../../../apps/cli/tests/helpers/vt-screen.ts";
 
+// W1's BIG tier (render.ts BIG_LOGO_ROWS, indented two) — the banner's
+// K row and S row are byte-identical, the art's own geometry (the v6
+// three-row wordmark had a distinct bottom row); the banner is
+// single-writer by construction, so its rows are exempt from the
+// content-duplicate check — the check covers the body + chrome rows.
+const LOGO = [
+	"  ██    ██  ██████  ████████  ████████",
+	"  ██  ██      ██    ██        ██    ██",
+	"  ████        ██    ████████  ██    ██",
+	"  ████        ██          ██  ██    ██",
+	"  ██  ██      ██          ██  ██    ██",
+	"  ██    ██  ██████  ████████  ████████",
+];
+const BANNER = new Set(LOGO);
+
 const bytes = ptyRun({
 	events: [{ events: [{ type: "text_delta", text: "the rows are painted once" }, { type: "stop", reason: "end_turn" }] }],
 	feeds: [["▌ ", "go\n"]],
@@ -29,8 +44,9 @@ const grid = emu.visible();
 for (const row of grid) {
 	if (row === "") continue;
 	// the chrome's two ╌ rows are legitimately identical (the design §03
-	// upper + lower) — the duplicate check covers the CONTENT rows
-	if (row.includes("╌")) continue;
+	// upper + lower), and the banner's K/S rows are the art's own repeat —
+	// the duplicate check covers the CONTENT rows
+	if (row.includes("╌") || BANNER.has(row)) continue;
 	const copies = grid.filter((l) => l === row).length;
 	if (copies > 1) fail(`row painted ${copies}×: ${JSON.stringify(row.slice(0, 40))}`);
 }

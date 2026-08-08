@@ -59,11 +59,15 @@ function installReleasedClosure(label) {
 const PTY_DRIVER = `
 import pty, os, sys, time, select, signal, struct, fcntl, termios
 
-def driver(bin, env, feeds, timeout, winch=None, winch_at=b""):
+def driver(bin, env, feeds, timeout, winch=None, winch_at=b"", workdir=None):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ.update(env)
-        os.execvp(bin[0], bin[1:] + ["chat"])
+        if workdir:
+            os.chdir(workdir)
+        # the installed npm bin is a shebang wrapper — exec it directly,
+        # the kernel honors the shebang and the pty stays attached
+        os.execvp(bin, [bin] + ["chat"])
     def winsize(rows, cols):
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     winsize(24, 80)
@@ -108,11 +112,12 @@ function ptyRun(bin, env, feeds, opts) {
 	const driverPath = join(dir, "driver.py");
 	writeFileSync(driverPath, PTY_DRIVER, "utf8");
 	const winch = opts.winch === undefined ? "None" : JSON.stringify(opts.winch);
+	const workdir = opts.cwd === undefined ? "None" : JSON.stringify(opts.cwd);
 	const phase = `
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
-driver(${JSON.stringify(bin)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${opts.timeout ?? 40}, ${winch}, ${JSON.stringify(opts.winchAt ?? "")})
+driver(${JSON.stringify(bin)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${opts.timeout ?? 40}, ${winch}, ${JSON.stringify(opts.winchAt ?? "")}, ${workdir})
 `;
 	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 120_000, env: process.env });
 }
@@ -132,48 +137,72 @@ if (!existsSync(bin)) fail(`no installed kiso bin at ${bin}`);
 console.log(`[release-smoke] installed the released closure; kiso at ${bin}`);
 
 // ── 2. one turn, then the narrow winch ──────────────────────────────────
-// A diff-shaped tool result (long lines, many of them) — the W17 narrow
-// cap domain — plus a text response; the winch lands mid-turn.
+// An edit_file APPROVAL: the mini-diff (W17's cap domain, CAP_DIFF = 12)
+// renders while the question is pending. The winch (80 → 40) lands
+// mid-approval — the narrow redraw re-caps the diff at 40 cols (the W17
+// cut row truncates to "· /last f…"), and the dock survives. Then
+// approve, the edit settles, the response comes.
 const dir = mkdtempSync(join(tmpdir(), "kiso-release-run-"));
 const script = join(dir, "faux.json");
-const longDiff = Array.from({ length: 40 }, (_, i) => `\t\tconst identifier${i} = await doTheThing(argumentOne, argumentTwo, { option: ${i} });`);
+// the file on disk: 40 rows; the edit swaps all 40 for a new set — the
+// LCS diff is 40 −/40 + rows, way past CAP_DIFF — the head 5 fold rows
+// (2 context + identifier0..2) are what the stream shows at any width
+const oldLines = Array.from({ length: 40 }, (_, i) => `const identifier${i} = ${i};`);
+const newLines = Array.from({ length: 40 }, (_, i) => `const renamed${i} = fn(${i});`);
+writeFileSync(join(dir, "f1.ts"), oldLines.join("\n"), "utf8");
+// turn 1 = the edit_file call (the kernel asks, shows the mini-diff,
+// runs the tool on approval); turn 2 = the assistant's text response.
+// tool_result is kernel-owned — the provider never emits it.
 writeFileSync(
 	script,
 	JSON.stringify([
 		{
 			events: [
-				{ type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "f1.ts" } },
-				{ type: "tool_result", callId: "r1", content: longDiff.join("\n"), isError: false },
-				{ type: "text_delta", text: "the released binary answered the narrow turn." },
-				{ type: "stop", reason: "end_turn" },
+				{
+					type: "tool_call_end",
+					callId: "r1",
+					name: "edit_file",
+					input: { path: "f1.ts", search: oldLines.join("\n"), replace: newLines.join("\n") },
+				},
+				{ type: "stop", reason: "tool_use" },
 			],
 		},
+		{ events: [{ type: "text_delta", text: "the narrow winch is done." }, { type: "stop", reason: "end_turn" }] },
 	]),
 	"utf8",
 );
 const env = { ...process.env, KISO_FAUX_SCRIPT: script, KISO_HOME: join(dir, "home") };
+// the workspace = the child's cwd (chat.ts: workspaceRoot: process.cwd())
+// — f1.ts is workspace-relative; the driver chdirs before exec
 const out = ptyRun(
 	bin,
 	env,
 	[
 		["▌ ", "go\n"],
-		["the released binary answered the narrow turn.", "exit\n"],
+		["approve edit_file? (y/n)", "y\n"],
+		["the narrow winch is done.", "exit\n"],
 	],
-	{ winch: [24, 40], winchAt: "identifier19" },
+	{ cwd: dir, winch: [18, 40], winchAt: "identifier2" },
 );
 const plain = stripANSI(out);
 
 // the response rendered ONCE, in whole, after the winch — no pre-clear,
 // no re-issued banner
-if (!plain.includes("the released binary answered the narrow turn.")) fail("the turn's response missing");
-if ((plain.match(/the released binary answered the narrow turn\./g) ?? []).length !== 1) fail("the response rendered more than once");
+if (!plain.includes("the narrow winch is done.")) fail("the turn's response missing");
+if ((plain.match(/the narrow winch is done\./g) ?? []).length !== 1) fail("the response rendered more than once");
 if (out.includes("\x1b[2J") || out.includes("\x1b[3J")) fail("a pre-clear sequence (ED2/ED3J)");
+// the WINCH actually happened: the W17 cut row at 40 cols is the
+// TRUNCATED form "· /last f…" (the full "· /last for the full diff"
+// only renders when the width fits) — its presence proves the narrow
+// re-cap re-measured the diff at 40 mid-approval
+if (!plain.includes("· /last f…")) fail("the narrow re-cap missing — the W17 cut row not truncated at 40");
 // the dock survived the winch: the separator ╌, the input ▌, and the
-// diff rows with the │ gutter — the narrow cap's row budget held
+// approval DIFF rows with the │ gutter — the narrow cap's budget held
 if (!plain.includes("╌")) fail("no separator row after the winch");
 if (!plain.includes("▌ ")) fail("no input row after the winch");
 if (!plain.includes("│")) fail("no diff gutter row — the narrow diff missing");
-console.log("[release-smoke] ✓ one turn + the 80→40 winch: response whole, dock rows intact, no pre-clear");
+if (!plain.includes("const identifier2 = 2;")) fail("the approval diff rows missing");
+if (!failed) console.log("[release-smoke] ✓ one turn + the 80→40 winch: response whole, dock rows intact, the diff capped, no pre-clear");
 
 // ── 3. the five lab scenarios against the same released binary ──────────
 const labEnv = { ...process.env, KISO_LAB_CLI: bin };
@@ -182,7 +211,7 @@ try {
 } catch {
 	failed = true;
 }
-console.log("[release-smoke] ✓ the five tui-lab scenarios ran against the released binary");
+if (!failed) console.log("[release-smoke] ✓ the five tui-lab scenarios ran against the released binary");
 
 if (failed) {
 	console.error("\n[release-smoke] FAILED");

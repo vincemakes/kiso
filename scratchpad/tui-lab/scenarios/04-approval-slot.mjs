@@ -48,8 +48,10 @@ const fail = (msg) => {
 const clean = stripANSI(out);
 // the question lives at the input row (the ApprovalPrompt occupant)
 if (!clean.includes("approve asky_read? (y/n)")) fail("the approval question missing");
-// the approval completed — the answer took effect (the ✓ done line)
-if (!/✓ asky_read \(\{}, \d+\.\ds\)/.test(clean)) fail("the approval did not complete");
+// the approval completed — the answer took effect (the ✓ done line).
+// W4 re-baseline: the settled metadata is the RESULT's line count ("1
+// line" — settledMeta, components.ts), not the old input "{}".
+if (!/✓ asky_read \(1 line, \d+\.\ds\)/.test(clean)) fail("the approval did not complete");
 // the brick (the Editor occupant) is present — the slot swapped back
 if (!clean.includes("▌ ")) fail("the brick (the Editor occupant) did not return");
 
