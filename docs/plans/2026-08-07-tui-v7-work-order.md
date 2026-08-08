@@ -24,7 +24,7 @@ node scripts/tui-v7-preview.mjs --width 64         # the narrow check
 node scripts/tui-v7-preview.mjs --html > out.html  # the review page
 ```
 
-Ten frames, one definition, two renderers — the ANSI path and the HTML
+Eleven frames, one definition, two renderers — the ANSI path and the HTML
 path cannot drift. Frame numbers are referenced by the work items below.
 
 ---
@@ -67,6 +67,7 @@ path cannot drift. Frame numbers are referenced by the work items below.
 | - | -------- | ------ |
 | O1 | Box chrome or keep v6's rails? (preview frame 6) | W6 |
 | O2 | Do rungs 3–4 of the collapse ladder belong in v7 at all? | W13, W14 |
+| O3 | **Resolved: W15 stays in release 3** (0.1.38, with W6) per the round ruling. Release 1 ships the `ctrl+r` affordance; the append semantics land with W15 — the live-region toggle works from day one, the committed-cell append arrives with the key's full contract. | W7, W10 |
 
 Everything else can start today.
 
@@ -256,7 +257,42 @@ Each item: **what · files · spec · done-when · gates hit**.
   its budget miscounts CJK, which kiso must not copy because
   `displayWidth` is right there.
 - **Consequence**: the cap needs W, so it moves **into** the component.
+
+- **The shapes** (preview frame 11 — a row count alone is not a spec).
+  A 12-row diff is head + tail with the middle **named**, never a silent
+  gap:
+
+  ```
+  ⏸ edit  packages/tui/src/compositor.ts
+    │ 706   const menuRows = this.#menuRows(W);
+    │ 708 - let liveLines: string[] = [];
+    │ 708 + const liveLines: string[] = [];
+    │ 709   for (const cell of this.#cells.slice(...)) {
+    │ ⋯ 19 rows
+    │ 744   out.push(`\x1b[1G\x1b[0K...`);
+    │ 745 - out.push(`\x1b[1A...`);
+    │ 745 + out.push(`\x1b[2A...`);
+    └ 31 rows total · ctrl+r · /last for the full diff
+  ```
+
+  `⋯` is reused from the gutter table (it already means "folded away"),
+  so the elision needs no new glyph.
+
+  A 3-row error takes the **head**, because a stack's first frame is the
+  one that matters:
+
+  ```
+  ✗ shell npm run lint (exit 1, 0.9s)
+    │ compositor.ts
+    │   712:8  error  'menuTop' is never reassigned  prefer-const
+    │   744:1  error  unexpected console statement    no-console
+    └ +11 rows · ctrl+r
+  ```
+
 - **Done when**: at W=60 and W=120 no bounded block exceeds its row cap.
+- **See also**: W15 (what `ctrl+r` can actually do) and W17 (narrow
+  widths). Do not implement the `└ … ctrl+r` affordance before reading
+  W15 — on committed cells it appends, it does not toggle.
 
 ### W8 — R2: a live block's height never changes until it settles
 
@@ -344,11 +380,58 @@ Each item: **what · files · spec · done-when · gates hit**.
 - **Spec**: a whole quiet turn, once it is scrollback, becomes
   `▞ thought 19s · 5 reads · no edits`.
 
-### W15 — The expand key
+### W15 — The expand key — **read this before implementing W7/W10**
 
-- **Files**: `packages/tui/src/editor.ts` (keybinding), `components.ts`.
-- **Spec**: `ctrl+r` toggles verbose/expanded. Required by W7, W10, W13.
-  kiso has no expand control today — only `/last`.
+- **Files**: `packages/tui/src/editor.ts` (keybinding), `components.ts`,
+  `apps/cli/src/index.ts` (the append path).
+- **The collision.** Every earlier draft of this work order wrote
+  "`ctrl+r` expands" as if it were a toggle. On this compositor it
+  cannot be, for committed content:
+  - `#commitCell` (compositor.ts:599) emits a cell's lines and adds them
+    to `#committedLines`;
+  - `#committedLines` is the input to `liveTop`
+    (`min(#committedLines, H − liveRowsTotal) + 1`, compositor.ts:576);
+  - the emitted bytes are in the terminal's **native** scrollback and
+    never move — ADR-0046's whole point (zero `\x1b[3J`, zero replay).
+
+  So changing a committed block's height desyncs the frame's geometry
+  from what is actually on screen. pi and opencode can toggle anything
+  because they are alt-screen with a scrollable virtual buffer; kiso is
+  not, and must not become one to get this feature.
+
+- **Spec — expansion is TWO different operations:**
+
+  | target | behaviour |
+  | ------ | --------- |
+  | a cell still in the **live region** | toggle in place; the compositor still owns those rows and redraws them |
+  | a cell already **committed** | **append** a fresh expanded block as new content at the bottom, headed `▞ expanded · <tool> <target> · N turns back` |
+
+  Appending is the idiom kiso already has — `/last`
+  (`editor.ts:73`, "show the most recent tool call's input and output")
+  works exactly this way. `ctrl+r` is `/last` aimed at a chosen cell
+  rather than the newest one.
+
+- **Rule this encodes**: *history is never rewritten.* If an
+  implementation ever needs to change the height of a committed cell,
+  the design is wrong, not the compositor.
+- **Done when**: expanding a tool from three turns back prints a new
+  block at the bottom and the rows above it are byte-identical to
+  before.
+
+### W17 — Narrow-width behaviour of the caps
+
+- **Files**: `packages/tui/src/components.ts`.
+- **The gap**: W7's caps are in screen rows, so at a narrow width a
+  12-row diff cap may hold only ~4 source lines once each folds to
+  three rows. Undefined until now.
+- **Spec**: the cap is a **row budget, not a line budget** — it stays
+  12 rows at every width; what shrinks is how much diff fits. Below
+  a floor of 3 source lines visible, drop to the head only and let the
+  `└` row carry the rest, rather than showing a head and tail so short
+  they are noise.
+- **Done when**: the same diff at W=120, 80 and 60 never exceeds its row
+  budget and never renders a head/tail pair shorter than 3 source lines
+  total.
 
 ### W16 — The sent user message: reverse video
 
@@ -401,7 +484,13 @@ Each item: **what · files · spec · done-when · gates hit**.
 3. **W5, W12** — the two "data already exists, render is missing" items.
 4. **W6** — chrome, once O1 is answered. Own commit; widest gate blast
    radius.
-5. **W15**, then **W13, W14** — only if O2 says yes.
+5. **W15** — the expand contract. It is a PREREQUISITE, not a
+   follow-up: W7 and W10 both render a `ctrl+r` affordance, and on a
+   committed cell that key appends rather than toggles. Settle the
+   semantics before shipping the affordance, or Release 1 ships a key
+   that is dead on everything but the last few rows.
+6. **W17** — narrow-width cap floor.
+7. **W13, W14** — only if O2 says yes.
 
 ## 6. Gates that will need attention
 

@@ -137,6 +137,39 @@ const status = (left, right) => `${left}${d(" ".repeat(Math.max(1, W - vw(left) 
 const FRAMES = [];
 const frame = (title, note, rows) => FRAMES.push({ title, note, rows });
 
+/**
+ * The preview has to obey the invariant it is describing. This is the
+ * local stand-in for the compositor's #checked(line, W): walk the row,
+ * copy SGR verbatim at zero width, cut once the visible width would
+ * exceed W, and close any span left open.
+ *
+ * It exists because the frame CAPTIONS — long English sentences, not
+ * design rows — were never width-managed: 14 rows blew past W at W=64,
+ * 7 at W=72, 1 at W=88. The design rows themselves were always fine;
+ * the scaffolding around them was not.
+ */
+function checked(line, W) {
+	let out = "";
+	let w = 0;
+	let open = false;
+	for (let i = 0; i < line.length; ) {
+		if (line[i] === "\x1b") {
+			const m = /^\x1b\[[0-9;]*m/.exec(line.slice(i));
+			if (m !== null) {
+				open = m[0] !== "\x1b[0m";
+				out += m[0];
+				i += m[0].length;
+				continue;
+			}
+		}
+		if (w + 1 > W) return out + (open ? "\x1b[0m" : "");
+		out += line[i];
+		w += 1;
+		i += 1;
+	}
+	return out;
+}
+
 // 1 · the opening
 const RESUME = [
 	["2h ago", "fix the resize repaint storm", "41 events · 3 runs"],
@@ -414,10 +447,51 @@ frame(
 	],
 );
 
+// 11 · the shapes W7/W10 specify but no earlier frame drew, and the
+// expand contract that the scrollback fork forces.
+const elide = (t) => `  ${d(`│ ⋯ ${t}`)}`;
+frame(
+	"Expand, and the shapes the caps imply",
+	"Three gaps closed. The 12-row diff cap needs a head/tail split with the middle NAMED — a number alone is not a spec. The 3-row error cap needs a shape. And ctrl+r cannot mean 'toggle' on this compositor: a committed cell's bytes are already in the terminal's native scrollback and #committedLines is the geometry, so changing a committed block's height desyncs the frame from the screen. Expansion therefore APPENDS — the idiom /last already uses.",
+	[
+		d("the 12-row diff · head + tail, the middle named, never a silent gap"),
+		held("edit", "packages/tui/src/compositor.ts"),
+		`  ${d("│")} ${d("706   const menuRows = this.#menuRows(W);")}`,
+		`  ${d("│")} ${r("708 - let liveLines: string[] = [];")}`,
+		`  ${d("│")} ${g("708 + const liveLines: string[] = [];")}`,
+		`  ${d("│")} ${d("709   for (const cell of this.#cells.slice(...)) {")}`,
+		elide("19 rows"),
+		`  ${d("│")} ${d("744   out.push(`\\x1b[1G\\x1b[0K...`);")}`,
+		`  ${d("│")} ${r("745 - out.push(`\\x1b[1A...`);")}`,
+		`  ${d("│")} ${g("745 + out.push(`\\x1b[2A...`);")}`,
+		bodyEnd("31 rows total · ctrl+r · /last for the full diff"),
+		"",
+		d("the 3-row error · head, because a stack's first frame is the one that matters"),
+		bad("shell", "npm run lint", "exit 1, 0.9s"),
+		`  ${d("│")} ${d("compositor.ts")}`,
+		`  ${d("│")} ${d("  712:8  error  'menuTop' is never reassigned  prefer-const")}`,
+		`  ${d("│")} ${d("  744:1  error  unexpected console statement    no-console")}`,
+		bodyEnd("+11 rows · ctrl+r"),
+		"",
+		d("expand, on a LIVE cell · the compositor still owns those rows, so it toggles in place"),
+		ok("shell", "npm test -w packages/tui", "exit 0, 6.2s"),
+		bodyRow("Test Files  6 passed (6)"),
+		bodyEnd("+240 earlier rows · ctrl+r"),
+		"",
+		d("expand, on a COMMITTED cell · the rows are already scrollback — so it APPENDS a fresh block"),
+		you("ctrl+r"),
+		"",
+		`${b(G.head)} ${d("expanded · shell npm test -w packages/tui · 3 turns back")}`,
+		bodyRow("… the full 243 rows, printed as new content at the bottom …"),
+		bodyEnd("history is never rewritten — the one rule the compositor cannot bend"),
+	],
+);
+
 // ═══ the renderers ═══════════════════════════════════════════════════
 if (!HTML) {
 	for (const f of FRAMES) {
-		process.stdout.write(`\n${d("─".repeat(W))}\n ${b(f.title)}\n${d("─".repeat(W))}\n\n${f.rows.join("\n")}\n`);
+		const rows = f.rows.map((r) => checked(r, W)).join("\n");
+		process.stdout.write(`\n${d("─".repeat(W))}\n${checked(` ${b(f.title)}`, W)}\n${d("─".repeat(W))}\n\n${rows}\n`);
 	}
 	process.stdout.write(`\n${d("─".repeat(W))}\n ${d(`width ${W} · ${PLAIN ? "plain (the pipe contract)" : "colored"}`)}\n`);
 } else {
