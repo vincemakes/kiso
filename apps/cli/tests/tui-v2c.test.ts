@@ -113,7 +113,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		// v2d: the body echo is the frozen UserCell — the ▍ rail + content
 		// + reset, EXACTLY once (the row is not the scroll region, the
 		// frozen cell is the only copy there).
-		const bodyEcho = "\x1b[1m▍\x1b[0m look around"; // TUI v5 #16f: the ▍ rail
+		const bodyEcho = "\x1b[1m▍\x1b[0m   \x1b[7m look around \x1b[27m"; // W16: the ▍ rail + the inset chip
 		const esc = bodyEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		expect((out.match(new RegExp(esc, "g")) ?? []).length).toBe(1);
 		// ?2004l on exit + region reset — no bracketed-paste left on.

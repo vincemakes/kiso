@@ -154,7 +154,7 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		expect(resizes).toHaveLength(5);
 		// the body lines, each exactly once
 		expect(grid.filter((l) => l.includes("I'm the faux model")).length).toBe(1);
-		expect(grid.filter((l) => l.includes("▍ go")).length).toBe(1);
+		expect(grid.filter((l) => l.includes("▍    go ")).length).toBe(1); // W16: the rail + the inset chip (rail space + indent 2 + side pad)
 		expect(grid.filter((l) => l.includes("0 tools")).length).toBe(1);
 		expect(grid.filter((l) => l.includes("session ")).length).toBe(1);
 		// the chrome: two ╌ rows (the upper + the lower — the design §03),

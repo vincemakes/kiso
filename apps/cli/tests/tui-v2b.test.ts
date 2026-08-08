@@ -153,7 +153,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// — no pty-cooked newline: the renderer positions the next row).
 		// The input row's brick prompt+line is a DIFFERENT shape (the
 		// reset splits the prompt from the text).
-		const userEcho = "\x1b[1m▍\x1b[0m look around"; // TUI v5 #16f: the ▍ rail, no "you> " prefix
+		const userEcho = "\x1b[1m▍\x1b[0m   \x1b[7m look around \x1b[27m"; // W16: the ▍ rail + the inset chip — SGR 7 (closed 27) is the emphasis, the rail survives a pipe
 		expect(out).toContain(userEcho);
 		expect((out.match(new RegExp(userEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length).toBe(1);
 		// Exit resets the scroll region (CSI r) — no broken terminal.

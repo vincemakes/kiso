@@ -210,9 +210,8 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 
 		// ③ #16f: the user block is the ▍ rail — bright-white bold, never
 		// the retired reverse video nor the fixed dark background.
-		expect(out).toContain("\x1b[1m▍\x1b[0m look around");
-		expect(out).not.toContain("\x1b[7m");
-		expect(out).not.toContain("\x1b[48;5;237m");
+		expect(out).toContain("\x1b[1m▍\x1b[0m   \x1b[7m look around \x1b[27m"); // W16: the rail + the inset chip
+		expect(out).not.toContain("\x1b[48;5;237m"); // the fixed dark background stays banned
 
 		// ④ #16d/#16e: the input row is the bold brick alone (no blue).
 		expect(out).toContain("\x1b[1m▌ ");

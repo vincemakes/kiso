@@ -204,21 +204,33 @@ export function cellComponent(cell: BodyCell): Component {
 
 /**
  * The user message — the left rail (bright-white BOLD ▍ per row, the
- * v4.1 design). The text folds at W−2 (the rail + space) so every row
- * carries the rail and NO row exceeds the width (the v5 code split on
- * "\n" only — a long line soft-wrapped and its continuation row had no
- * rail).
+ * v4.1 design) + the W16 inset chip. The chip folds the text at W−6
+ * (the rail + the indent + the side pads), then pads EVERY row to the
+ * longest row's DISPLAY width + one space each side, indented two: the
+ * block is only as wide as what was said (never the full-width band —
+ * a short message like /think would paint a bar across the terminal).
+ * The padding is by cells (charWidth is the width authority), so a CJK
+ * row pads by width, never by chars, and the chip never overruns its
+ * fold. SGR 7 closed with SGR 27 — never SGR 0, the chip composes
+ * with a surrounding span — and NEVER dim: reverse video inverts the
+ * CURRENT colours, so dimmed text would invert into a dimmed block
+ * with no contrast. The ▍ rail stays: SGR is an emphasis on top, the
+ * rail is the structural fallback that survives a pipe.
  */
 class UserMessage implements Component {
 	constructor(private readonly cell: { text: string }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
 		const rail = `${p.bold}▍${p.reset} `;
-		const textW = Math.max(1, W - 2);
+		const chipW = Math.max(1, W - 6);
 		const rows: string[] = [];
 		for (const para of this.cell.text.split("\n")) {
-			const folded = foldLine(escapeTerminal(para), textW);
-			for (const row of folded) rows.push(`${rail}${row}`);
+			const folded = foldLine(escapeTerminal(para), chipW);
+			const inner = Math.max(...folded.map((r) => displayWidth(r)));
+			for (const row of folded) {
+				const pad = inner - displayWidth(row);
+				rows.push(`${rail}  ${p.rv} ${row}${" ".repeat(pad)} ${p.rvEnd}`);
+			}
 		}
 		return rows.length > 0 ? rows : [rail.trimEnd()];
 	}
