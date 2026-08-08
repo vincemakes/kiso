@@ -487,6 +487,38 @@ frame(
 	],
 );
 
+// 12 · long-running off-loop work. Today /compact awaits summarize()
+// with the status row unchanged — a silent multi-second freeze, and
+// autoCompact fires it unprompted.
+const bar = (done, total, width) => {
+	const filled = Math.round((done / total) * width);
+	return `${"▣".repeat(filled)}${"□".repeat(Math.max(0, width - filled))}`;
+};
+frame(
+	"Long-running work — and the percentage kiso must not invent",
+	"summarize() is ONE opaque adapter call: no chunking, no progress callback, so no honest fraction exists. An invented bar would break the same rule as a silent truncation. What IS knowable before the call — the round count, the token estimate — goes on the row, plus elapsed and the cancel key, because summarize() already takes a signal and the UI never exposed it. The determinate form is specified too, for operations that really do have an N of M.",
+	[
+		d("today · the status row does not change at all for the whole call"),
+		you("/compact"),
+		"",
+		...boxChrome("", d("ready · deepseek-v4-flash"), "/ commands · ↑ history"),
+		"",
+		"",
+		d("indeterminate · what is knowable up front, plus elapsed and the way out"),
+		"",
+		...boxChrome("", `${b("▘")}${d(" compacting · 12 rounds · ~48.2k tokens · 6s")}`, "esc to cancel"),
+		"",
+		"",
+		d("determinate · ONLY where a real N of M exists — the bar is the checklist glyphs in a row, zero new vocabulary"),
+		"",
+		...boxChrome("", `${b("▝")}${d(` indexing · 8/17 files ${bar(8, 17, 14)} 47%`)}`, "esc to cancel"),
+		"",
+		"",
+		d("settled · the recap idiom, replacing today's bare [/compact] notice"),
+		recap("compacted · 12 rounds → 1 summary · saved ~48.2k · ctx 91% → 34% · 7.4s"),
+	],
+);
+
 // ═══ the renderers ═══════════════════════════════════════════════════
 if (!HTML) {
 	for (const f of FRAMES) {

@@ -34,6 +34,8 @@ const CELL_LINE = [
 	/^✓ \S+ \(.*, \d+\.\ds\)$/,
 	/^✗ \S+ \(.*, \d+\.\ds\)$/,
 	/^▞.*$/,
+	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family)
+	/^└ .*$/, // v7 W7/W8/W10: the cut/waiting rows (the "  └ " family — "waiting for output", "+N earlier rows · ctrl+r", "capped by …")
 	/^▸ .* · \/mode to switch.*$/,
 	/^\/ commands · ↑ history$/,
 	/^streaming text.*$/,

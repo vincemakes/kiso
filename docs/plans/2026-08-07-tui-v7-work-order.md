@@ -4,9 +4,10 @@ Companion to `2026-08-07-tui-v7-design.md` (the rationale). This file is
 the executable half: what to build, in what order, which files, what
 counts as done, and which gates each item breaks.
 
-**Status: nothing implemented. `packages/tui/src` is untouched by this
-round.** The only artifacts are this file, the design doc, and
-`scripts/tui-v7-preview.mjs`.
+**Status: Release 1 (W7–W10, the flow contract) shipped in 0.1.36** —
+the screen-row caps after the fold, the fixed live window, the resize
+re-measure, the result body with both cuts named. The release-2/3
+items below (W1–W6, W11–W17, W18) are unimplemented.
 
 **Baseline: 0.1.35** (`abb5097`). The v6 rework round-2 fixes (the
 W-blind `≤100` ThinkingFold crash, the commit-anchor 2B, the live-line
@@ -24,7 +25,7 @@ node scripts/tui-v7-preview.mjs --width 64         # the narrow check
 node scripts/tui-v7-preview.mjs --html > out.html  # the review page
 ```
 
-Eleven frames, one definition, two renderers — the ANSI path and the HTML
+Twelve frames, one definition, two renderers — the ANSI path and the HTML
 path cannot drift. Frame numbers are referenced by the work items below.
 
 ---
@@ -418,6 +419,62 @@ Each item: **what · files · spec · done-when · gates hit**.
   block at the bottom and the rows above it are byte-identical to
   before.
 
+### W18 — Long-running off-loop work has no indicator at all
+
+- **Files**: `apps/cli/src/dispatch.ts`, `packages/tui/src/components.ts`
+  (`statusLine`), `packages/runtime/src/session.ts` (surface the signal).
+- **The gap**: `dispatch.ts:180` awaits `ctx.session.summarize()` and
+  **the status row does not change for the entire call**. On a large
+  context that is a silent multi-second freeze — and `autoCompact`
+  (`config.ts:45`) fires it unprompted, so a user can hit it without
+  having typed anything. There is no spinner, no elapsed, and no way to
+  know it is cancellable.
+- **kiso must NOT show a percentage here.** `summarize()`
+  (`session.ts:228`) is: compute the boundary locally, project the
+  covered messages, then **one** `summarizeConversation()` adapter call
+  (`summarize.ts:66` — no chunking, no progress callback), then append
+  and persist. No fraction exists. Inventing a bar is the same class of
+  error as a silent truncation: it states something the program does not
+  know. This is a deliberate divergence from the reference UI, which can
+  show a real percentage because its compaction has one.
+- **Spec — indeterminate form.** Everything on this row IS knowable
+  before the call (`boundary`, `covered.length`, the token estimate),
+  plus elapsed. `summarize()` already accepts a `signal`, so the cancel
+  affordance is real, not decorative — today it is simply never exposed.
+
+  ```
+  ▘ compacting · 12 rounds · ~48.2k tokens · 6s          esc to cancel
+  ```
+
+  It reuses the working-indicator shape exactly, so "something is
+  running" has one vocabulary rather than two.
+
+- **Spec — determinate form**, for operations that genuinely have an
+  N of M. The bar is the checklist glyphs (`▣` done, `□` pending) in a
+  row, so it adds **zero** new vocabulary:
+
+  ```
+  ▝ indexing · 8/17 files ▣▣▣▣▣▣▣□□□□□□□ 47%            esc to cancel
+  ```
+
+  Use this **only** where the count is real. Microcompaction clears a
+  countable list of tool results but does so locally with no model call,
+  so it is instant and needs no indicator at all.
+
+- **Spec — settled**: replace today's bare
+  `[/compact] saved ~N tokens` notice with the recap idiom, which names
+  what actually happened:
+
+  ```
+  ▞ compacted · 12 rounds → 1 summary · saved ~48.2k · ctx 91% → 34% · 7.4s
+  ```
+
+- **Done when**: `/compact` on a large session shows a live row for the
+  whole call, `esc` cancels it, and auto-compact is equally visible.
+- **Related**: this is the same shape as W12's subagent row. Both are
+  "long opaque work, bounded to one line" — implement them with one
+  helper.
+
 ### W17 — Narrow-width behaviour of the caps
 
 - **Files**: `packages/tui/src/components.ts`.
@@ -489,8 +546,11 @@ Each item: **what · files · spec · done-when · gates hit**.
    committed cell that key appends rather than toggles. Settle the
    semantics before shipping the affordance, or Release 1 ships a key
    that is dead on everything but the last few rows.
-6. **W17** — narrow-width cap floor.
-7. **W13, W14** — only if O2 says yes.
+6. **W18** — the compaction / long-work indicator. Independent of
+   W7-W10, and arguably more urgent: today `/compact` is a silent
+   multi-second freeze that auto-compact can trigger unprompted.
+7. **W17** — narrow-width cap floor.
+8. **W13, W14** — only if O2 says yes.
 
 ## 6. Gates that will need attention
 
