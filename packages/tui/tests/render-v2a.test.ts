@@ -265,12 +265,12 @@ describe("v7 W1: the banner tiers (the height input)", () => {
 		const rows = bannerLines(40, 20, V, "[3 extensions: asky]");
 		expect(rows[0]).toBe("  ██    ██  ██████  ████████  ████████");
 		expect(rows.length).toBe(9); // 6 art + blank + version + extensions
-		expect(rows[8]).toBe("[3 extensions: asky]");
+		expect(rows[8]!).toBe("[3 extensions: asky]");
 		// the version row (49 cells) truncates at 40 with the marker —
 		// only the ART must clear 40, per the spec
-		expect(rows[7].startsWith(`v${V} —`)).toBe(true);
+		expect(rows[7]!.startsWith(`v${V} —`)).toBe(true);
 		// the art is the wordmark — the text row does NOT repeat the name
-		expect(rows[7]).not.toMatch(/^kiso v/);
+		expect(rows[7]!).not.toMatch(/^kiso v/);
 	});
 	it("14–19 rows → COMPACT: v6's logo byte-identical, no redraw", () => {
 		const rows = bannerLines(80, 15, V, "");
@@ -287,7 +287,7 @@ describe("v7 W1: the banner tiers (the height input)", () => {
 			const rows = bannerLines(W, H, V, "");
 			// at 39 the version row itself truncates (with the marker, ≤ W) —
 			// the tier's identity is the absence of art, not a full row
-			expect(rows[0].startsWith(`v${V} —`)).toBe(true);
+			expect(rows[0]!.startsWith(`v${V} —`)).toBe(true);
 			expect(rows.every((r) => !r.includes("█"))).toBe(true);
 			for (const r of rows) expect(truncateRow(r, W), `W=${W} H=${H}: ${r}`).toBe(r);
 		}
