@@ -228,7 +228,8 @@ class UserMessage implements Component {
  *  rides the fold's own row (the #17 fix's slice, componentized). The
  *  slice is DISPLAY-WIDTH-based (the char-based slice overflowed with
  *  CJK — 2 cells per char — and tripped invariant ① on a real
- *  Chinese session). */
+ *  Chinese session). W2: the leading ⋯ is the thinking gutter — the
+ *  midline mark (the state), never the text ellipsis (the truncation). */
 class ThinkingFold implements Component {
 	constructor(private readonly cell: { text: string; done: boolean }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
@@ -238,11 +239,20 @@ class ThinkingFold implements Component {
 		// W-blind — a short block at a narrow width returned the line
 		// UNFOLDED and tripped invariant ① (the crash class still live on
 		// npm for short /think blocks after a resize).
-		if (trimmed.length <= 100) return [`${palette().dim}…${widthCut(trimmed, Math.max(1, W - 1))}${palette().reset}`];
+		if (trimmed.length <= 100) return [`${palette().dim}⋯${widthCut(trimmed, Math.max(1, W - 1))}${palette().reset}`];
 		const suffix = ` (${block.length} chars · /think)`;
 		const slice = Math.max(1, W - 1 - suffix.length);
-		return [`${palette().dim}…${widthCut(trimmed, slice)}${suffix}${palette().reset}`];
+		return [`${palette().dim}⋯${widthCut(trimmed, slice)}${suffix}${palette().reset}`];
 	}
+}
+
+/** Fold a line's CONTENT at W−2 and prefix EVERY row with the gutter
+ *  (W2: a wrapped tool row keeps its state mark — the left edge alone
+ *  distinguishes the states at --plain; the UserMessage rail precedent,
+ *  v5 #16f). The gutter carries its own SGR (e.g. the bold ✓). */
+function gutterFold(gutter: string, line: string, W: number): string[] {
+	const textW = Math.max(1, W - 2);
+	return foldLine(line, textW).map((r) => `${gutter}${r}`);
 }
 
 /** The tool execution line + the bounded block — every state is its
@@ -262,25 +272,30 @@ class ToolExecution implements Component {
 		const summary = escapeTerminal(c.input);
 		if (c.state === "done") {
 			const elapsed = c.startedAt !== null && c.doneAt !== null ? ((c.doneAt - c.startedAt) / 1000).toFixed(1) : "?";
-			const line = c.isError
-				? `${p.red}✗ ${name} (${escapeTerminal(c.resultText.split("\n")[0]!.slice(0, 60))}, ${elapsed}s)${p.reset}`
-				: `${p.bold}✓ ${name}${p.reset} (${summary}${c.added + c.removed > 0 ? `, +${c.added} -${c.removed}` : ""}, ${elapsed}s)`;
-			const out = foldLine(line, W);
+			const out = c.isError
+				? gutterFold(`${p.red}✗${p.reset} `, `${p.red}${name} (${escapeTerminal(c.resultText.split("\n")[0]!.slice(0, 60))}, ${elapsed}s)${p.reset}`, W)
+				: gutterFold(`${p.bold}✓${p.reset} `, `${name} (${summary}${c.added + c.removed > 0 ? `, +${c.added} -${c.removed}` : ""}, ${elapsed}s)`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
 		if (c.state === "approval") {
-			const out = foldLine(`→ ${name} ${summary} ${p.bold}⏸${p.reset}`, W);
+			// W2: the ⏸ is the GUTTER (the left edge), never the line's tail
+			const out = gutterFold(`${p.bold}⏸${p.reset} `, `${name} ${summary}`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
 		if (c.state === "running") {
+			// W2: the spinner IS the gutter (the left edge); the elapsed
+			// rides the summary's tail
 			const elapsed = c.startedAt !== null ? Math.max(1, Math.round((ctx.now - c.startedAt) / 1000)) : 1;
-			const out = foldLine(`→ ${name} ${summary} ${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} ${elapsed}s`, W);
+			const out = gutterFold(`${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} `, `${name} ${summary} ${elapsed}s`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
-		return foldLine(`→ ${name} ${summary}`, W);
+		// W2: ◦ replaces → for QUEUED — · is the separator inside every
+		// metadata group; a queued marker that is also the separator
+		// glyph reads as noise
+		return gutterFold(`${p.dim}◦${p.reset} `, `${name} ${summary}`, W);
 	}
 }
 
@@ -295,9 +310,10 @@ const CAP_ERROR = 3; // the error text head
 
 /** The block body rows' prefixes (W2's gutter table): │ a bounded
  *  block's body, └ the block's last row — what was cut, where the rest
- *  is. Structural (constraint 1) — they survive a pipe. */
-const BODY_ROW = "  │ ";
-const CUT_ROW = "  └ ";
+ *  is — at the LEFT EDGE (the gutter column: the left edge alone
+ *  distinguishes the states at --plain). Structural (constraint 1). */
+const BODY_ROW = "│ ";
+const CUT_ROW = "└ ";
 
 /** W9 — the per-cell memo: the bounded block's folded body is cached
  *  per (width, state, content reference) — a steady stream re-measures
@@ -413,7 +429,10 @@ function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number): strin
 				: d.kind === "+"
 					? `${p.green}+ ${escapeTerminal(d.text)}${p.reset}`
 					: `${p.dim}  ${escapeTerminal(d.text)}${p.reset}`;
-		rows.push(...foldLine(`${p.bold}▎${p.reset}${body}`, W));
+		// W2: the diff body is a bounded block's body — the │ gutter
+		// (dim), never the old bold ▎ rail (the table lists no ▎); the
+		// +/- marks and their colors ride the content
+		rows.push(...gutterFold(`${p.dim}│${p.reset} `, body, W));
 	}
 	if (rows.length <= CAP_DIFF) return rows;
 	const head = Math.floor((CAP_DIFF - 1) / 2);

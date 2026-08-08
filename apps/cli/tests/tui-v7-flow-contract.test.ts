@@ -202,11 +202,11 @@ function finalGrid(hex: string, cols: number): string[] {
 function shellBody(grid: string[]): string[] {
 	const h = grid.findIndex((l) => l.includes("✓ shell"));
 	expect(h).toBeGreaterThanOrEqual(0);
-	const start = grid.findIndex((l, i) => i > h && (l.startsWith("  │ ") || l.startsWith("  └ ")));
+	const start = grid.findIndex((l, i) => i > h && (l.startsWith("│ ") || l.startsWith("└ ")));
 	expect(start).toBeGreaterThanOrEqual(0);
 	const body: string[] = [];
 	for (let i = start; i < grid.length; i += 1) {
-		if (grid[i]!.startsWith("  │ ") || grid[i]!.startsWith("  └ ")) body.push(grid[i]!);
+		if (grid[i]!.startsWith("│ ") || grid[i]!.startsWith("└ ")) body.push(grid[i]!);
 		else break;
 	}
 	return body;
@@ -251,26 +251,26 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		const frames = frameGrids(hex, 80);
 		// the frames while the shell runs: the read (the streaming cell) has
 		// settled, the shell is still running — the grid carries BOTH markers
-		const running = frames.filter((f) => f.grid.some((l) => l.includes("✓ read_file")) && f.grid.some((l) => l.includes("→ shell")));
+		const running = frames.filter((f) => f.grid.some((l) => l.includes("✓ read_file")) && f.grid.some((l) => /^[▖▘▝▗] shell /.test(l)));
 		expect(running.length).toBeGreaterThanOrEqual(2); // NON-vacuous: the moment really spans frames
 		// the window EXISTS and is 3 rows: 2 blank-padded rows + the waiting row
 		const first = running[0]!.grid;
 		expect(first.some((l) => l.includes("└ waiting for output"))).toBe(true);
-		expect(first.filter((l) => l.startsWith("  │ ")).length).toBe(2);
+		expect(first.filter((l) => l.startsWith("│ ")).length).toBe(2);
 		// the anti-jitter: pairwise across the consecutive running frames,
 		// every CONTENT row below the streaming cell's block is byte-identical
-		// — the running shell's OWN block (its folded header: the "→ shell"
-		// row down to the first body row, where the spinner glyph + the
-		// elapsed live) is the ONE allowed variance, and even that variance
+		// — the running shell's OWN block (its folded header: the spinner-
+		// gutter row down to the first body row, where the spinner glyph +
+		// the elapsed live) is the ONE allowed variance, and even that variance
 		// is in-place (a growing block would shift the rows below it)
 		for (let i = 0; i < running.length - 1; i += 1) {
 			const g1 = running[i]!.grid;
 			const g2 = running[i + 1]!.grid;
 			const readIdx = g1.findIndex((l) => l.includes("✓ read_file"));
-			const readBottom = readIdx + (g1[readIdx + 1]?.startsWith("  └ ") ? 1 : 0);
-			const shellHeader = g1.findIndex((l) => l.includes("→ shell"));
+			const readBottom = readIdx + (g1[readIdx + 1]?.startsWith("└ ") ? 1 : 0);
+			const shellHeader = g1.findIndex((l) => /^[▖▘▝▗] shell /.test(l));
 			expect(shellHeader).toBeGreaterThan(readBottom); // the shell sits BELOW the streaming cell
-			const headerEnd = g1.findIndex((l, i) => i > shellHeader && (l.startsWith("  │ ") || l.startsWith("  └ ")));
+			const headerEnd = g1.findIndex((l, i) => i > shellHeader && (l.startsWith("│ ") || l.startsWith("└ ")));
 			for (let r = readBottom + 1; r <= 19; r += 1) {
 				if (r >= shellHeader && r < headerEnd) continue; // the running cell's own header span
 				expect(g2[r]).toBe(g1[r]); // byte-identical
@@ -280,8 +280,8 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// spinner glyph + the elapsed) differs across the run — ≥ 2 distinct
 		const headers = new Set(
 			running.map((f) => {
-				const h = f.grid.findIndex((l) => l.includes("→ shell"));
-				const he = f.grid.findIndex((l, i) => i > h && (l.startsWith("  │ ") || l.startsWith("  └ ")));
+				const h = f.grid.findIndex((l) => /^[▖▘▝▗] shell /.test(l));
+				const he = f.grid.findIndex((l, i) => i > h && (l.startsWith("│ ") || l.startsWith("└ ")));
 				return f.grid.slice(h, he).join("");
 			}),
 		);

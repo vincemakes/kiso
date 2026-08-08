@@ -283,11 +283,13 @@ describe("TUI v6 — the one compositor", () => {
 		body.toolStart("read_file", "c1", {});
 		body.toolRunning("c1");
 		tick();
-		expect(writes.join("")).toContain("→ read_file");
+		// W2: the frame coalesces straight to running — the spinner IS the
+		// gutter (the old assertion matched the running row's "→ " prefix)
+		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("▖ read_file");
 		expect(writes.join("")).toContain("▖"); // the spinner glyph rides the running line
 		body.toolResult("c1", { content: "ok", isError: false });
 		vi.advanceTimersByTime(16); // the toolResult's coalesced frame lands
-		expect(writes.join("")).toContain("✓ read_file");
+		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("✓ read_file");
 		writes.length = 0;
 		vi.advanceTimersByTime(2_000);
 		// the tool ended — no timer re-arms — the idle emits nothing
@@ -311,10 +313,10 @@ describe("TUI v6 — the one compositor", () => {
 			tick();
 			const frame = writes.join("");
 			// the tail + the cut row inside the cap (the cut row counts)
-			const cut = frame.match(/  └ \+(\d+) earlier rows · ctrl\+r/);
+			const cut = frame.match(/└ \+(\d+) earlier rows · ctrl\+r/);
 			expect(cut).not.toBeNull();
 			expect(Number(cut![1]!)).toBe(W === 120 ? 26 : 56);
-			expect((frame.match(/  │ /g) ?? []).length + 1).toBeLessThanOrEqual(5);
+			expect((frame.match(/│ /g) ?? []).length + 1).toBeLessThanOrEqual(5);
 			// the tail survives: the LAST output line is on screen
 			expect(frame).toContain("shell line 29");
 		}
@@ -336,10 +338,10 @@ describe("TUI v6 — the one compositor", () => {
 			body.toolApproval("c1", { lines: diff, added: 30, removed: 30 });
 			tick();
 			const frame = writes.join("");
-			const cut = frame.match(/  └ \+(\d+) rows · ctrl\+r to expand/);
+			const cut = frame.match(/└ \+(\d+) rows · ctrl\+r to expand/);
 			expect(cut).not.toBeNull();
 			// the head + the named middle + the tail = 12 rows total
-			expect((frame.match(/▎/g) ?? []).length + 1).toBeLessThanOrEqual(12);
+			expect((frame.match(/│ /g) ?? []).length + 1).toBeLessThanOrEqual(12);
 			// the head AND the tail survive (the truncated middle is named)
 			expect(frame).toContain("Identifier0");
 			expect(frame).toContain("Identifier59");
@@ -360,7 +362,7 @@ describe("TUI v6 — the one compositor", () => {
 		expect(frame).toContain("lint error 2");
 		expect(frame).toContain("└ +3 more · ctrl+r");
 		expect(frame).not.toContain("lint error 6");
-		expect((frame.match(/  │ /g) ?? []).length).toBeLessThanOrEqual(3);
+		expect((frame.match(/│ /g) ?? []).length).toBeLessThanOrEqual(3);
 		// a read result: the settled row carries the count — zero body rows
 		const b2 = makeBody();
 		b2.body.enter();
@@ -393,11 +395,11 @@ describe("TUI v6 — the one compositor", () => {
 		tick();
 		// the window: 2 blank-padded rows + the waiting row — 3 total
 		expect(writes.join("")).toContain("└ waiting for output");
-		expect((writes.join("").match(/  │ /g) ?? []).length).toBe(2);
+		expect((writes.join("").match(/│ /g) ?? []).length).toBe(2);
 		// a SECOND frame (the spinner tick): the window rows byte-identical
 		writes.length = 0;
 		vi.advanceTimersByTime(200);
 		expect(writes.join("")).toContain("└ waiting for output");
-		expect((writes.join("").match(/  │ /g) ?? []).length).toBe(2);
+		expect((writes.join("").match(/│ /g) ?? []).length).toBe(2);
 	});
 });

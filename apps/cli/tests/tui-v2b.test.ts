@@ -210,7 +210,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		expect(clean).toContain("approve asky_read? (y/n)"); // the takeover question
 		// v2d: the ToolCell carries the ⏸ badge and freezes at the done
 		// form — the [result] no longer flows into the body (/last has it).
-		expect(clean).toContain("→ asky_read {} ⏸"); // the pending badge
+		expect(clean).toContain("⏸ asky_read {}"); // W2: the approval badge is the left gutter
 		expect(clean).toContain("✓ asky_read ({}, "); // the frozen done line
 		expect(clean).not.toContain("asky ok"); // the full result stays out of the stream
 		expect(clean).toContain("the tour is done");
@@ -257,7 +257,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		const clean = stripANSI(out);
 		// #17: the fold is width-capped (W - 1 - suffix) so it fits its row —
 		// the slice is 58 at 80 cols, NOT the old 100.
-		expect(clean).toContain(`…${"A".repeat(80 - 1 - " (110 chars · /think)".length)} (110 chars · /think)`); // the folded line (v3 wording)
+		expect(clean).toContain(`⋯${"A".repeat(80 - 1 - " (110 chars · /think)".length)} (110 chars · /think)`); // the folded line — W2: the ⋯ gutter
 		expect(clean).toContain("SECRETTAIL"); // the full block came back
 		// v6: the /think output is a raw cell — the compositor hard-folds it
 		// at W (invariant ① — no soft-wraps), so the 110-A block arrives as

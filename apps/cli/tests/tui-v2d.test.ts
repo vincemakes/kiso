@@ -78,10 +78,10 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
  *  line, which the single-writer rule makes impossible. */
 const CELL_LINE = [
 	/^\[.*extensions?:.*\]$/, // the banner extensions row (v3 info row)
-	/^….*$/, // the ThinkingCell fold
-	/^→ \S+ .*[⏸▖▘▝▗]?.*\d*s?$/, // the ToolCell pending/running (v3 glyph family)
-	/^→ \S+ .*⏸$/, // the approval badge
-	/^→ \S+ .*$/, // the ToolCell pending (no badge)
+	/^⋯.*$/, // the ThinkingCell fold (W2: the ⋯ gutter — the midline mark is the state, never the text ellipsis)
+	/^[▖▘▝▗] \S+ .*\d+s?$/, // the ToolCell running (W2: the spinner IS the gutter)
+	/^⏸ \S+ .*$/, // the approval badge (W2: the ⏸ is the left gutter)
+	/^◦ \S+ .*$/, // the ToolCell queued (W2: ◦ replaces → — · is the metadata separator)
 	/^✓ \S+ \(.*, \d+\.\ds\)$/, // the ToolCell done
 	/^✗ \S+ \(.*, \d+\.\ds\)$/, // the ToolCell failed
 	/^▞.*$/, // v3: the recap line ends the run
@@ -192,9 +192,14 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		);
 		const clean = stripANSI(out);
 		// The scenario actually ran: the three tools + the approval + the text.
-		expect(clean).toContain("→ list_dir {}");
-		expect(clean).toContain("→ shell {\"command\":\"echo hi\"}");
-		expect(clean).toContain("→ list_dir {} ⏸"); // the approval badge (the first, stable)
+		// W2: the states that actually render — the queued shell (the ◦
+		// gutter), the running shell (the spinner IS the gutter), and the
+		// approval (the ⏸ is the left gutter — list_dir goes straight to
+		// approval, never running: the old "→ " prefix lived on the
+		// approval row)
+		expect(clean).toContain('◦ shell {"command":"echo hi"}');
+		expect(clean).toMatch(/▖ shell \{"command":"echo hi"\} \d+s/);
+		expect(clean).toContain("⏸ list_dir {}");
 		expect(clean).toMatch(/✓ asky_read \(\{}, \d+\.\ds\)/);
 		expect(clean).toContain("streaming text");
 		expect(clean).toContain("the tour is done");
