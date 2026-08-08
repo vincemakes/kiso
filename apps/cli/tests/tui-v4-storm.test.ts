@@ -53,6 +53,7 @@ def driver(cli, env, feeds, timeout, cols=80, sizes=None):
     fired = 0
     storm_at = None
     exit_sent = False
+    crashed = False
     while time.time() < end and not done:
         r, _, _ = select.select([fd], [], [], 0.1)
         if r:
@@ -61,6 +62,11 @@ def driver(cli, env, feeds, timeout, cols=80, sizes=None):
             except OSError:
                 break
             if not data:
+                # EOF before the exit feed = the child died on its own —
+                # the invariant-① crash class. A normal end (the exit feed
+                # written) is NOT a crash.
+                if not exit_sent:
+                    crashed = True
                 done = True
                 break
             full += data
@@ -90,7 +96,7 @@ def driver(cli, env, feeds, timeout, cols=80, sizes=None):
         os.waitpid(pid, 0)
     except ChildProcessError:
         pass
-    sys.stdout.write(full.decode(errors="replace"))
+    sys.stdout.write(("CRASHED=1\\n" if crashed else "ALIVE=1\\n") + full.decode(errors="replace"))
 `;
 
 function stormRun(env: NodeJS.ProcessEnv, feeds: [string, string][], timeout = 45, cols = 80, sizes: [number, number][] | null = null): string {
@@ -129,8 +135,13 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 			JSON.stringify([
 				{
 					events: [
-						{ type: "thinking", text: "T".repeat(120) },
-						{ type: "text_delta", text: "I see the workspace" },
+						// the ≤100 thinking — the SHORT-CIRCUIT branch was W-blind:
+						// at the 60-col winch the raw line tripped invariant ① (the
+						// crash still live on npm) — the fold must width-cut it.
+						{ type: "thinking", text: "T".repeat(60) },
+						// the CJK wide-char line — 30 × 2 cells — the display-width
+						// fold at the narrow winches (a char-based cut would split it).
+						{ type: "text_delta", text: "I see the workspace" + "\u4f60".repeat(30) },
 						{ type: "stop", reason: "end_turn" },
 					],
 				},
@@ -143,6 +154,9 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 				["▌ ", "look around\n"], // #16d: the brick alone is the prompt
 			],
 		);
+		// the process SURVIVED the whole storm — the driver's leading marker
+		// (the EOF before the exit feed = the invariant-① crash class)
+		expect(out.startsWith("ALIVE=1\n")).toBe(true);
 
 		require("node:fs").writeFileSync("/tmp/storm-test-transcript.txt", out);
 		// The storm window: from the recap's freeze frame (the turn is

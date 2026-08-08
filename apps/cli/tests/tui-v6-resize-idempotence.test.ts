@@ -45,6 +45,8 @@ def driver(cli, env, feeds, timeout, sizes):
     fired = 0
     end = time.time() + timeout
     resizes = []
+    exit_sent = False
+    crashed = False
     while time.time() < end:
         r, _, _ = select.select([fd], [], [], 0.1)
         if r:
@@ -53,6 +55,11 @@ def driver(cli, env, feeds, timeout, sizes):
             except OSError:
                 break
             if not data:
+                # EOF before the exit feed = the child died on its own —
+                # the invariant-① crash class (a ≤100 thinking block at a
+                # narrow winch).
+                if not exit_sent:
+                    crashed = True
                 break
             full += data
             for i, (needle, text) in enumerate(feeds):
@@ -68,6 +75,7 @@ def driver(cli, env, feeds, timeout, sizes):
             fired += 1
         if seq_at is not None and fired >= len(sizes) and time.time() - seq_at >= 0.3 * (len(sizes) + 1):
             os.write(fd, b"exit\\n")
+            exit_sent = True
             break
     try:
         os.kill(pid, signal.SIGTERM)
@@ -77,6 +85,7 @@ def driver(cli, env, feeds, timeout, sizes):
         os.waitpid(pid, 0)
     except ChildProcessError:
         pass
+    print("CRASHED" if crashed else "ALIVE")
     print(json.dumps(resizes))
     sys.stdout.write(full.hex())
     sys.exit(0)
@@ -92,7 +101,13 @@ function runAndScreen(sizes: [number, number][], timeout = 30): { grid: string[]
 		JSON.stringify([
 			{
 				events: [
-					{ type: "text_delta", text: "I'm the faux model. Let me look at the working directory." },
+					// the ≤100 thinking — the SHORT-CIRCUIT branch was W-blind:
+					// at the 20-col winch the raw line tripped invariant ① (the
+					// crash still live on npm) — the fold must width-cut it.
+					{ type: "thinking", text: "T".repeat(40) },
+					// the CJK wide-char line — 20 × 2 cells — the display-width
+					// fold at the narrow winches (a char-based cut would split it).
+					{ type: "text_delta", text: "I'm the faux model. Let me look at the working directory." + "\u4f60".repeat(20) },
 					{ type: "stop", reason: "end_turn" },
 				],
 			},
@@ -108,8 +123,12 @@ exec(open(${JSON.stringify(driverPath)}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([["▌ ", "go\n"]])}, ${timeout}, ${JSON.stringify(sizes)})
 `;
 	const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
-	const resizes = JSON.parse(out.split("\n")[0]!);
-	const hex = out.slice(out.indexOf("\n") + 1);
+	const lines = out.split("\n");
+	// the process SURVIVED the whole resize sequence — the driver's
+	// first line (the EOF before the exit feed = the invariant-① crash)
+	expect(lines[0]).toBe("ALIVE");
+	const resizes = JSON.parse(lines[1]!);
+	const hex = out.slice(out.indexOf("\n", out.indexOf("\n") + 1) + 1);
 	const emu = new VtScreen(24, 80);
 	let pos = 0;
 	for (const [off, rows, cols] of resizes as [number, number, number][]) {

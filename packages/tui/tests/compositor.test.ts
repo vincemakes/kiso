@@ -99,7 +99,7 @@ describe("TUI v6 — the one compositor", () => {
 		const m = frame
 			.slice("\x1b[?2026h".length)
 			.match(
-				/^\x1b\[2B\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)(?=\x1b\[1A|\x1b\[\?2026l)/,
+				/^\x1b\[2B\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)(?=\x1b\[1A|\x1b\[\d+;\d+H|\x1b\[\?2026l)/,
 			);
 		expect(m).not.toBeNull();
 		expect(m![2]).toContain("╌"); // H−1 — the lower ╌
@@ -113,6 +113,60 @@ describe("TUI v6 — the one compositor", () => {
 		body.thinkingAppend("\u4f60".repeat(101)); // 202 cells at 2 per char — the char slice overflowed
 		body.thinkingEnd();
 		expect(() => tick()).not.toThrow(); // the widthCut line fits W; the old slice THREW
+	});
+
+	it("a SHORT /think fold at a narrow width never trips invariant ① — the ≤100 short-circuit must respect W (the crash still live on npm)", () => {
+		const { body, tick } = makeBody({ W: 20 });
+		body.enter();
+		body.thinkingAppend("T".repeat(100)); // ≤100 chars — the SHORT-CIRCUIT branch, W-blind
+		body.thinkingEnd();
+		expect(() => tick()).not.toThrow(); // the fold now width-cuts; the raw 100-char line THREW at W=20
+	});
+
+	it("the commit frame scrolls from the anchor: 2B then exactly N real LFs — the scroll count matches the committed lines (the stale H−1 anchor)", () => {
+		const { body, writes, tick } = makeBody();
+		body.enter();
+		writes.length = 0;
+		body.raw(["a", "b"]); // N = 2 committed lines
+		tick();
+		const frame = writes.join("");
+		// the 1B + N LFs = N−1 scrolls (one short of the bookkeeping N);
+		// the 2B + N LFs scroll exactly N rows — one per committed line
+		expect(frame.startsWith("\x1b[?2026h\x1b[2B")).toBe(true);
+		const lfs = frame.match(/^\x1b\[\?2026h\x1b\[2B(\n+)/);
+		expect(lfs).not.toBeNull();
+		expect(lfs![1]!.length).toBe(2);
+	});
+
+	it("the steady frame draws the LIVE lines at their MODEL rows — CUP, never the relative march (the unclamped geometry: liveTop=1)", () => {
+		const { body, writes, tick } = makeBody();
+		body.enter();
+		writes.length = 0;
+		body.textAppend("streaming line");
+		tick();
+		const frame = writes.join("");
+		// the model row is 1 (liveTop=1); the march drew it at row 20 and
+		// the gap ELs erased it — the streamed text was INVISIBLE on screen
+		expect(frame).toContain("\x1b[1;1H\x1b[0Kstreaming line");
+		// the gap ELs start BELOW the live bottom — never over it
+		expect(frame).toContain("\x1b[2;1H\x1b[0K");
+	});
+
+	it("the gap ELs stop above the menu — the menu rows survive the unclamped geometry", () => {
+		const { body, writes, tick } = makeBody();
+		body.enter();
+		writes.length = 0; // the first frame is the full-redraw — its gap may EL the menu row before the menu CUP
+		body.bindMenu(() => ({
+			items: [{ name: "/mode", desc: "switch the approval tier" }],
+			selected: 0,
+		}));
+		body.raw(["x"]);
+		tick();
+		const frame = writes.join("");
+		// the menu sits at H−3−menu = 20 (1-based) with one item; the gap
+		// range must end at H−4−menu = 19 — an EL at 20 erases the menu
+		expect(frame).toContain("▸ /mode");
+		expect(frame).not.toMatch(/\x1b\[20;1H\x1b\[0K/);
 	});
 
 	it("a done cell's lines emit EXACTLY once — the freeze frame writes them, later frames never re-emit", () => {

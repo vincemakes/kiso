@@ -63,13 +63,40 @@ def driver(cli, env, feeds, timeout):
 `;
 
 describe("TUI v6 — the idle chrome (real PTY, the VT emulator)", () => {
-	it("while typing the CJK char twice with no commits in between, the steady chrome still sits on H−3/H−2/H−1/H — the input row never shifts up", () => {
+	it("a RUN whose final frame is a commitless steady frame: the chrome sits on H−3/H−2/H−1/H, the working status appears ZERO times, the post-turn char lands at H−2", () => {
 		const { env } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v6-idle-"));
 		const script = join(dir, "faux.json");
-		// an EMPTY turn — zero cells: the ONLY commits are the banner's
-		// (frame 1); every later input frame takes the no-commit path.
-		writeFileSync(script, JSON.stringify([{ events: [] }]), "utf8");
+		// the turn runs ONE tool (the working status REALLY appears
+		// mid-run) then ends — the LAST frame is the post-turn keystroke's
+		// commitless steady frame, and the idle status must have fully
+		// replaced the working one on the final screen (the R2 class: the
+		// frozen "▝ working Ns" left at H after the commit).
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{
+					events: [
+						// a 2-second shell — a 0.0s tool coalesces away before
+						// any 16ms frame can render the running state, and the
+						// gate would go vacuous (the list_dir run completed
+						// before its first frame). The stop AFTER the call is
+						// tool_use — an early end_turn fails the run ("provider
+						// stopped with end_turn with 1 tool call(s) launched")
+						// and the clean idle screen would never render.
+						{ type: "tool_call_end", callId: "c1", name: "shell", input: { command: "sleep 2" } },
+						{ type: "stop", reason: "tool_use" },
+					],
+				},
+				{
+					events: [
+						{ type: "text_delta", text: "the directory is empty" },
+						{ type: "stop", reason: "end_turn" },
+					],
+				},
+			]),
+			"utf8",
+		);
 		const driverPath = join(dir, "driver.py");
 		writeFileSync(driverPath, PTY_DRIVER, "utf8");
 		const phase = `
@@ -79,9 +106,15 @@ exec(open(${JSON.stringify(driverPath)}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([
 			["▌ ", "\u4f60", 2],
 			["▌ ", "\u4f60", 3],
-		])}, 10)
+			["▌ ", "\n", 4], // the submit — the turn runs the shell
+			["approve shell", "y\n", 5], // the default tier ASKS the shell — answer it
+			["▌ ", "x", 8], // the post-turn char — after the 2s run ends (~t=7) — its frame is the commitless steady frame
+		])}, 12)
 `;
 		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
+		const transcript = Buffer.from(out, "hex").toString("utf8");
+		// NON-vacuous: the working status really appeared while the tool ran
+		expect(transcript).toContain("working");
 		const emu = new VtScreen(24, 80);
 		emu.write(Buffer.from(out, "hex"));
 		const grid = emu.visible();
@@ -91,10 +124,13 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: scri
 		// and the status at 22 (the input box shifted one row up).
 		expect(grid[20]!.includes("╌")).toBe(true);
 		expect(grid[21]!.includes("▌ ")).toBe(true);
-		expect(grid[21]).toContain("\u4f60");
+		expect(grid[21]).toContain("x"); // the post-turn char, at H−2
 		expect(grid[22]!.includes("╌")).toBe(true);
 		// the status at H — the idle hint (the CLI's empty status + the
-		// right-aligned "/ commands · ↑ history" tail).
+		// right-aligned "/ commands · ↑ history" tail) — and the working
+		// status ZERO times on the final screen (the dead "working" at H
+		// was the R2 report's frozen residue).
 		expect(grid[23]).toContain("/ commands");
+		expect(grid.join("")).not.toContain("working");
 	}, 90_000);
 });
