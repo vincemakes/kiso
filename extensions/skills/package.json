@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-skills-ext",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "description": "kiso (foundation) official skills extension — two-tier progressive skills, kernel untouched",
   "private": true,
   "type": "module",

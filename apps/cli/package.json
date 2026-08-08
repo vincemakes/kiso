@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-code",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "description": "kiso CLI — the coding-agent reference product: kiso chat / kiso resume / kiso sessions.",
   "type": "module",
   "license": "MIT",
@@ -24,7 +24,7 @@
     "@vincemakes/kiso-provider-openai": "0.1.31",
     "@vincemakes/kiso-runtime": "0.1.31",
     "@vincemakes/kiso-tools-node": "0.1.31",
-    "@vincemakes/kiso-tui": "0.1.36"
+    "@vincemakes/kiso-tui": "0.1.37"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
