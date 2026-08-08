@@ -112,12 +112,12 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 		expect(clean).toContain("- OLD");
 		expect(clean).toContain("+ NEW");
 		// The frozen summary: ONE line with the ± stats.
-		expect(clean).toContain("✓ edit_file");
+		expect(clean).toContain("✓ edit"); // W3 (sanctioned): the verb strips the _file suffix — both paths print the same verb
 		expect(clean).toContain("+1 -1");
 		// NO diff residue after the freeze — the last diff row precedes the
 		// frozen summary, and the summary line itself is a single line.
 		const lastMinus = clean.lastIndexOf("- OLD");
-		const frozen = clean.indexOf("✓ edit_file");
+		const frozen = clean.indexOf("✓ edit"); // W3 (sanctioned): the same row — the verb strips the _file suffix
 		expect(lastMinus).toBeLessThan(frozen);
 	}, 90_000);
 });

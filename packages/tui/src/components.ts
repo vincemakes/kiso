@@ -262,25 +262,31 @@ function gutterFold(gutter: string, line: string, W: number): string[] {
  *  renderer-cut row (`└ +N … · ctrl+r`) sits INSIDE the cap (a
  *  truncated block is cap−1 output rows + the cut row); the TOOL-cut
  *  row (`└ capped by …` — the tool's OWN truncation note, W10) is a
- *  DIFFERENT fact, never counted in the output cap. */
+ *  DIFFERENT fact, never counted in the output cap. W3: the verb is
+ *  stripped of its "_file" suffix and padded to 5 columns — the target
+ *  paths line up (the pipe path strips the same suffix, render.ts —
+ *  both paths print the same verb; a verb ≥ 5 columns is not padded).
+ *  The block's cut note keeps the RAW name (it names the tool the
+ *  model should call again). */
 class ToolExecution implements Component {
 	constructor(private readonly cell: Extract<BodyCell, { kind: "tool" }>) {}
 	render(W: number, ctx: FrameCtx): string[] {
 		const p = palette();
 		const c = this.cell;
-		const name = escapeTerminal(c.name);
+		const verb = escapeTerminal(c.name.replace("_file", ""));
+		const verbCol = verb.length < 5 ? `${verb}${" ".repeat(5 - verb.length)}` : verb;
 		const summary = escapeTerminal(c.input);
 		if (c.state === "done") {
 			const elapsed = c.startedAt !== null && c.doneAt !== null ? ((c.doneAt - c.startedAt) / 1000).toFixed(1) : "?";
 			const out = c.isError
-				? gutterFold(`${p.red}✗${p.reset} `, `${p.red}${name} (${escapeTerminal(c.resultText.split("\n")[0]!.slice(0, 60))}, ${elapsed}s)${p.reset}`, W)
-				: gutterFold(`${p.bold}✓${p.reset} `, `${name} (${summary}${c.added + c.removed > 0 ? `, +${c.added} -${c.removed}` : ""}, ${elapsed}s)`, W);
+				? gutterFold(`${p.red}✗${p.reset} `, `${p.red}${verbCol} (${escapeTerminal(c.resultText.split("\n")[0]!.slice(0, 60))}, ${elapsed}s)${p.reset}`, W)
+				: gutterFold(`${p.bold}✓${p.reset} `, `${verbCol} (${summary}${c.added + c.removed > 0 ? `, +${c.added} -${c.removed}` : ""}, ${elapsed}s)`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
 		if (c.state === "approval") {
 			// W2: the ⏸ is the GUTTER (the left edge), never the line's tail
-			const out = gutterFold(`${p.bold}⏸${p.reset} `, `${name} ${summary}`, W);
+			const out = gutterFold(`${p.bold}⏸${p.reset} `, `${verbCol} ${summary}`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
@@ -288,14 +294,14 @@ class ToolExecution implements Component {
 			// W2: the spinner IS the gutter (the left edge); the elapsed
 			// rides the summary's tail
 			const elapsed = c.startedAt !== null ? Math.max(1, Math.round((ctx.now - c.startedAt) / 1000)) : 1;
-			const out = gutterFold(`${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} `, `${name} ${summary} ${elapsed}s`, W);
+			const out = gutterFold(`${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} `, `${verbCol} ${summary} ${elapsed}s`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
 		// W2: ◦ replaces → for QUEUED — · is the separator inside every
 		// metadata group; a queued marker that is also the separator
 		// glyph reads as noise
-		return gutterFold(`${p.dim}◦${p.reset} `, `${name} ${summary}`, W);
+		return gutterFold(`${p.dim}◦${p.reset} `, `${verbCol} ${summary}`, W);
 	}
 }
 

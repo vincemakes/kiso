@@ -285,11 +285,11 @@ describe("TUI v6 — the one compositor", () => {
 		tick();
 		// W2: the frame coalesces straight to running — the spinner IS the
 		// gutter (the old assertion matched the running row's "→ " prefix)
-		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("▖ read_file");
+		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("▖ read");
 		expect(writes.join("")).toContain("▖"); // the spinner glyph rides the running line
 		body.toolResult("c1", { content: "ok", isError: false });
 		vi.advanceTimersByTime(16); // the toolResult's coalesced frame lands
-		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("✓ read_file");
+		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("✓ read");
 		writes.length = 0;
 		vi.advanceTimersByTime(2_000);
 		// the tool ended — no timer re-arms — the idle emits nothing
