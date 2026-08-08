@@ -200,7 +200,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		expect(clean).toContain('◦ shell {"command":"echo hi"}');
 		expect(clean).toMatch(/▖ shell \{"command":"echo hi"\} \d+s/);
 		expect(clean).toContain("⏸ list_dir {}");
-		expect(clean).toMatch(/✓ asky_read \(\{}, \d+\.\ds\)/);
+		expect(clean).toMatch(/✓ asky_read \(1 line, \d+\.\ds\)/); // W4: the result line count, not the input JSON
 		expect(clean).toContain("streaming text");
 		expect(clean).toContain("the tour is done");
 		// THE GATE: every line fully matches a known cell format. A

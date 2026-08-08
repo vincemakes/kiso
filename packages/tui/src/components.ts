@@ -255,6 +255,69 @@ function gutterFold(gutter: string, line: string, W: number): string[] {
 	return foldLine(line, textW).map((r) => `${gutter}${r}`);
 }
 
+/** Lines without the phantom empty line after a trailing newline. */
+function countLines(text: string): number {
+	if (text === "") return 0;
+	const parts = text.split("\n");
+	return parts[parts.length - 1] === "" ? parts.length - 1 : parts.length;
+}
+
+/** W4: the settled-row metadata — the human summary in parentheses. The
+ *  separation NEVER relies on dim: a pipe drops the SGR, and the shapes
+ *  below read at full strength with the palette off. read → the line
+ *  count ("912 lines"; "200 of 3412 lines" when the tool cut it — the
+ *  note names the remainder; ≥1000 k-formats, "2.4k lines"); write/edit
+ *  → the ± diff stats (the approval diff's counts — an auto-allowed
+ *  write never computed one, so the input's own counts fall back, then
+ *  the result's line count); shell → the exit code (parsed from the
+ *  failure text — the tool names it — 0 on success); a non-shell error
+ *  → the error text's first line; anything else → the result's line
+ *  count. */
+function settledMeta(c: { name: string; input: string; resultText: string; added: number; removed: number; isError: boolean }): string {
+	if (c.isError) {
+		// a shell EXECUTION failure names its code first ("exit 1: …") —
+		// that IS the metadata, and the body shows the full text. A
+		// shell without the code (a denial, a precondition) is not an
+		// exit failure: the first line stays the metadata, exactly like
+		// any other error.
+		if (c.name === "shell" && /^exit \d+/.test(c.resultText)) return `exit ${/^exit (\d+)/.exec(c.resultText)![1]}`;
+		return c.resultText.split("\n")[0]!.slice(0, 60);
+	}
+	if (c.name === "read_file") {
+		const noteAt = c.resultText.lastIndexOf("\n… ");
+		const shown = countLines(noteAt >= 0 ? c.resultText.slice(0, noteAt) : c.resultText);
+		const more = noteAt >= 0 ? /(\d+) more lines?/.exec(c.resultText.slice(noteAt)) : null;
+		const k = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(n));
+		if (more !== null) {
+			const total = shown + Number(more[1]);
+			return `${shown} of ${total} line${total === 1 ? "" : "s"}`;
+		}
+		return `${k(shown)} line${shown === 1 ? "" : "s"}`;
+	}
+	if (c.name === "write_file" || c.name === "edit_file") {
+		if (c.added + c.removed > 0) return `+${c.added} -${c.removed}`;
+		// no approval diff (an auto-allowed write): the input summary may
+		// be sliced at TOOL_SUMMARY_MAX — best-effort, then the last resort
+		let parsed: { content?: unknown; search?: unknown; replace?: unknown } | null = null;
+		try {
+			parsed = JSON.parse(c.input);
+		} catch {
+			parsed = null;
+		}
+		if (c.name === "write_file" && parsed !== null && typeof parsed.content === "string") {
+			return `+${countLines(parsed.content)}`;
+		}
+		if (c.name === "edit_file" && parsed !== null && typeof parsed.search === "string" && typeof parsed.replace === "string") {
+			const added = countLines(parsed.replace);
+			const removed = countLines(parsed.search);
+			if (added + removed > 0) return `+${added} -${removed}`;
+		}
+	}
+	if (c.name === "shell") return "exit 0";
+	const n = countLines(c.resultText);
+	return `${n} line${n === 1 ? "" : "s"}`;
+}
+
 /** The tool execution line + the bounded block — every state is its
  *  own render; the lines fold (the summary gives way first). W7 (the
  *  flow contract): the block's BODY (the rows below the header) is
@@ -267,7 +330,9 @@ function gutterFold(gutter: string, line: string, W: number): string[] {
  *  paths line up (the pipe path strips the same suffix, render.ts —
  *  both paths print the same verb; a verb ≥ 5 columns is not padded).
  *  The block's cut note keeps the RAW name (it names the tool the
- *  model should call again). */
+ *  model should call again). W4: the settled row's parentheses hold
+ *  the human metadata (settledMeta) — the input summary lived in the
+ *  running row; the OUTCOME is what the settled row says. */
 class ToolExecution implements Component {
 	constructor(private readonly cell: Extract<BodyCell, { kind: "tool" }>) {}
 	render(W: number, ctx: FrameCtx): string[] {
@@ -278,9 +343,10 @@ class ToolExecution implements Component {
 		const summary = escapeTerminal(c.input);
 		if (c.state === "done") {
 			const elapsed = c.startedAt !== null && c.doneAt !== null ? ((c.doneAt - c.startedAt) / 1000).toFixed(1) : "?";
+			const meta = escapeTerminal(settledMeta(c));
 			const out = c.isError
-				? gutterFold(`${p.red}✗${p.reset} `, `${p.red}${verbCol} (${escapeTerminal(c.resultText.split("\n")[0]!.slice(0, 60))}, ${elapsed}s)${p.reset}`, W)
-				: gutterFold(`${p.bold}✓${p.reset} `, `${verbCol} (${summary}${c.added + c.removed > 0 ? `, +${c.added} -${c.removed}` : ""}, ${elapsed}s)`, W);
+				? gutterFold(`${p.red}✗${p.reset} `, `${p.red}${verbCol} (${meta}, ${elapsed}s)${p.reset}`, W)
+				: gutterFold(`${p.bold}✓${p.reset} `, `${verbCol} (${meta}, ${elapsed}s)`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
@@ -346,7 +412,7 @@ function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): strin
 	const rows =
 		c.state === "done"
 			? c.isError
-				? errorBody(c.resultText, W)
+				? errorBody(c, W)
 				: c.name.startsWith("shell")
 					? shellTail(c.resultText, W)
 					: []
@@ -390,9 +456,14 @@ function shellTail(text: string, W: number): string[] {
 /** The error text head: the FIRST rows, capped at 3 — the answer is at
  *  the start (opencode's collapseToolOutput direction). The header row
  *  already summarizes the first line, so the body starts at line 2. */
-function errorBody(text: string, W: number): string[] {
+function errorBody(c: { name: string; resultText: string }, W: number): string[] {
 	const p = palette();
-	const rows = blockRows(text.split("\n").slice(1).join("\n"), W);
+	// W4: a shell EXECUTION failure's line 0 ("exit 1: …") no longer
+	// rides the header — the parsed code does — so the body keeps the
+	// FULL text. Any other error keeps the pre-W4 split: line 0 is the
+	// header's metadata, the body shows the rest.
+	const skipFirst = c.name === "shell" && /^exit \d+/.test(c.resultText) ? 0 : 1;
+	const rows = blockRows(c.resultText.split("\n").slice(skipFirst).join("\n"), W);
 	if (rows.length <= CAP_ERROR) return rows;
 	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - (CAP_ERROR - 1)} more · ctrl+r${p.reset}`, W);
 	return [...rows.slice(0, CAP_ERROR - 1), ...cut];

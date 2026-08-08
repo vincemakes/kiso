@@ -211,7 +211,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// v2d: the ToolCell carries the ⏸ badge and freezes at the done
 		// form — the [result] no longer flows into the body (/last has it).
 		expect(clean).toContain("⏸ asky_read {}"); // W2: the approval badge is the left gutter
-		expect(clean).toContain("✓ asky_read ({}, "); // the frozen done line
+		expect(clean).toContain("✓ asky_read (1 line, "); // the frozen done line — W4: the default family's metadata is the result line count
 		expect(clean).not.toContain("asky ok"); // the full result stays out of the stream
 		expect(clean).toContain("the tour is done");
 		// The status bar returned after the question (the model name is back).
