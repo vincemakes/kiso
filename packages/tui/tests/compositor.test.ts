@@ -657,4 +657,102 @@ describe("TUI v6 — the one compositor", () => {
 		compact.tick();
 		expect(compact.writes.join("")).not.toContain("▞ resume");
 	});
+
+	it("W15: the expand key on a LIVE tool toggles in place — the full approval diff replaces the cut, the second press cuts it back", () => {
+		// The live region's toggle window is the non-done cell — an
+		// approval diff (its "ctrl+r to expand" affordance is exactly the
+		// invite): 15 one-row lines, short enough that the EXPANDED form
+		// fits the screen (1 + 15 + chrome ≤ H), tall enough that the
+		// 12-row cap cuts it.
+		const { body, writes, tick } = makeBody({ W: 80 });
+		body.enter();
+		body.userLine("first");
+		body.toolStart("edit_file", "c1", { path: "x.ts" });
+		const diff = Array.from({ length: 15 }, (_, i) => ({
+			kind: (i % 2 ? "+" : "-") as "-" | "+",
+			text: `\t\tconst id${String(i).padStart(2, "0")} = value;`,
+		}));
+		body.toolApproval("c1", { lines: diff, added: 8, removed: 7 });
+		tick();
+		// the cut: the head window (id00–id04) and the tail window
+		// (id09–id14) show, the middle (id05–id08) is cut behind the └
+		const pre = writes.join("");
+		expect(pre).toContain("ctrl+r to expand");
+		expect(pre).toContain("id00");
+		expect(pre).toContain("id14");
+		expect(pre).not.toContain("id07");
+		// THE TOGGLE: in place, no append, the cut note gone, the whole
+		// diff there — the middle rows the cut hid
+		expect(body.expandNext()).toEqual({ kind: "toggled" });
+		writes.length = 0;
+		tick();
+		const frame = writes.join("");
+		expect(frame).toContain("id07");
+		expect(frame).not.toContain("ctrl+r");
+		// THE SECOND PRESS: the cut returns — the toggle flips both ways
+		expect(body.expandNext()).toEqual({ kind: "toggled" });
+		writes.length = 0;
+		tick();
+		expect(writes.join("")).toContain("ctrl+r");
+	});
+
+	it("W15: the expand key on a COMMITTED tool appends the expanded block — the /last shape, the N-turns-back header, the full input", () => {
+		const { body, tick } = makeBody({ W: 60 });
+		body.enter();
+		body.userLine("turn one");
+		body.toolStart("shell", "c1", { command: "make build" });
+		body.toolRunning("c1");
+		const big = Array.from({ length: 30 }, (_, i) => `row ${String(i).padStart(2, "0")} of a long build log`).join("\n");
+		body.toolResult("c1", { content: big, isError: false });
+		// the natural freeze: the next frame commits the leading DONE
+		// cells — the tool's cut note (its last rendered row at commit)
+		// carries the affordance → #collapsed.
+		tick();
+		const r = body.expandNext();
+		expect(r.kind).toBe("appended");
+		const lines = (r as { lines: string[] }).lines;
+		// the header: the /last idiom aimed at the chosen cell
+		expect(lines[0]).toContain("expanded · shell make build · 0 turns back");
+		// the /last shape: input and output sections with the FULL input
+		expect(lines).toContain("--- shell input ---");
+		expect(lines.some((l) => l.includes('"command": "make build"'))).toBe(true); // the full input, pretty-printed
+		expect(lines).toContain("--- shell output ---");
+		expect(lines[lines.length - 1]!.split("\n").at(-1)).toBe("row 29 of a long build log");
+		// the cell is committed — the SAME key appends again (the single
+		// collapsed entry cycles), it can never rewrite the committed rows
+		const again = body.expandNext();
+		expect(again.kind).toBe("appended");
+	});
+
+	it("W15: the expand pointer cycles the collapsed history newest-first; an empty body answers none", () => {
+		const fresh = makeBody({ W: 60 });
+		fresh.body.enter();
+		expect(fresh.body.expandNext()).toEqual({ kind: "none" });
+		// two committed cut shells — turn 1 and turn 2, each pushed past the cap
+		const { body, tick } = makeBody({ W: 60 });
+		body.enter();
+		const turn = (t: string) => {
+			body.userLine(t);
+			body.toolStart("shell", `c${t}`, { command: `build ${t}` });
+			body.toolRunning(`c${t}`);
+			body.toolResult(`c${t}`, { content: Array.from({ length: 30 }, (_, i) => `row ${i}`).join("\n"), isError: false });
+			tick();
+			body.raw(Array.from({ length: 30 }, (_, i) => `filler ${t} ${i}`));
+			tick();
+		};
+		turn("one");
+		turn("two");
+		// the first press: the NEWEST collapsed cell (turn two — 0 turns back)
+		const first = body.expandNext();
+		expect(first.kind).toBe("appended");
+		expect((first as { lines: string[] }).lines[0]).toContain("0 turns back");
+		// the second press: the OLDER cell — turn one's tool, one user cell after it
+		const second = body.expandNext();
+		expect(second.kind).toBe("appended");
+		expect((second as { lines: string[] }).lines[0]).toContain("1 turn back");
+		// the third press: the cycle returns to the newest
+		const third = body.expandNext();
+		expect(third.kind).toBe("appended");
+		expect((third as { lines: string[] }).lines[0]).toContain("0 turns back");
+	});
 });

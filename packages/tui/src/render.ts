@@ -322,6 +322,25 @@ function toolSummaryDetail(name: string, input: Record<string, unknown>, result:
 	}
 }
 
+/** W15 — the expand header's target: the tool call's subject (the path
+ *  for the *_file tools, the command for shell) — the same extraction
+ *  the summary detail uses, WITHOUT the counts (the header names what
+ *  was expanded, not its size). */
+export function toolTarget(name: string, input: Record<string, unknown>): string {
+	switch (name) {
+		case "read_file":
+		case "write_file":
+		case "edit_file":
+			return String(input.path ?? "?");
+		case "shell":
+			return String(input.command ?? "?");
+		case "list_dir":
+			return String(input.path ?? "(root)");
+		default:
+			return String(input.path ?? input.command ?? "");
+	}
+}
+
 /** The exit code of a shell result: parsed from the failure text, 0 on success. */
 function exitCodeOf(result: { content: string; isError: boolean }): number {
 	if (!result.isError) return 0;

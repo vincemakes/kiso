@@ -179,6 +179,10 @@ export type BodyCell =
 			kind: "tool";
 			name: string;
 			input: string;
+			/** W15: the FULL input JSON (pretty-printed) — the display
+			 *  summary above is sliced at 60 chars; the expanded block's
+			 *  "--- input ---" section mirrors /last and needs it all. */
+			inputFull: string;
 			childRoles: string[];
 			state: "pending" | "approval" | "running" | "done";
 			isError: boolean;
@@ -189,6 +193,11 @@ export type BodyCell =
 			startedAt: number | null;
 			doneAt: number | null;
 			done: boolean;
+			/** W15: the live-region expand toggle — while the cell is live
+			 *  the FULL body renders in place (the compositor owns those
+			 *  rows and redraws them); a committed cell can never toggle
+			 *  (history is never rewritten — ADR-0046). */
+			expanded: boolean;
 	  }
 	| { kind: "text"; text: string; done: boolean }
 	| { kind: "notice"; text: string; done: true }
@@ -444,27 +453,39 @@ const blockMemo = new WeakMap<object, BlockMemo>();
 /** The block's body rows below the header (memoized, W9). */
 function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): string[] {
 	const memo = blockMemo.get(c);
-	const state = `${c.state}:${c.isError}:${c.name}`;
+	const state = `${c.state}:${c.isError}:${c.name}:${c.expanded ? "x" : ""}`;
 	const content: unknown = c.state === "approval" ? (c.diff ?? null) : c.resultText;
 	if (memo !== undefined && memo.width === W && memo.state === state && memo.content === content) return memo.rows;
 	const p = palette();
 	const rows =
-		c.state === "done"
-			? c.isError
-				? errorBody(c, W)
-				: c.name === "delegate"
-					? delegateSettled(c, W)
-					: c.name.startsWith("shell")
-						? shellTail(c.resultText, W)
-						: []
-			: c.state === "running"
-				? c.name === "delegate"
-					? delegateRunning(c, W)
-					: liveWindow(c.resultText, W)
-				: c.state === "approval"
-					? diffBody(c.diff, W)
-					: [];
-	const note = toolCutNote(c.name, c.resultText);
+		c.expanded
+			? // W15: the toggle's full form — the WHOLE body, no cap, no
+			  // cut note (nothing is cut; the width fold still holds — the
+			  // height may change while live, the user asked for it). The
+			  // delegate has no body — its rows are unchanged.
+			  c.state === "approval"
+					? diffBody(c.diff, W, true)
+					: c.name === "delegate"
+						? c.state === "running"
+							? delegateRunning(c, W)
+							: delegateSettled(c, W)
+						: blockRows(c.resultText, W)
+			: c.state === "done"
+				? c.isError
+					? errorBody(c, W)
+					: c.name === "delegate"
+						? delegateSettled(c, W)
+						: c.name.startsWith("shell")
+							? shellTail(c.resultText, W)
+							: []
+				: c.state === "running"
+					? c.name === "delegate"
+						? delegateRunning(c, W)
+						: liveWindow(c.resultText, W)
+					: c.state === "approval"
+						? diffBody(c.diff, W)
+						: [];
+	const note = c.expanded ? null : toolCutNote(c.name, c.resultText);
 	if (note !== null) rows.push(...foldLine(`${p.dim}${CUT_ROW}${note}${p.reset}`, W));
 	blockMemo.set(c, { width: W, state, content, rows });
 	return rows;
@@ -577,7 +598,7 @@ function oneLineRow(p: Palette, text: string, W: number): string {
  *  a floor of 3 SOURCE lines visible the head/tail pair is noise (each
  *  fragment a sliver of a long line): drop to the head only — the head
  *  takes the whole budget — and the └ row carries the rest. */
-function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number): string[] {
+function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number, expanded = false): string[] {
 	const p = palette();
 	if (diff === null) return [];
 	const rows: string[] = [];
@@ -597,7 +618,7 @@ function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number): strin
 		rows.push(...gutterFold(`${p.dim}│${p.reset} `, body, W));
 		starts.push(rows.length);
 	}
-	if (rows.length <= CAP_DIFF) return rows;
+	if (expanded || rows.length <= CAP_DIFF) return rows;
 	const head = Math.floor((CAP_DIFF - 1) / 2);
 	const tail = CAP_DIFF - 1 - head;
 	// W17: the └ cut is ONE row at every width — the count leads, the

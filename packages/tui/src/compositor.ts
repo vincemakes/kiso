@@ -57,7 +57,7 @@ import {
 	type BodyCell,
 	type FrameCtx,
 } from "./components.js";
-import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, type ResumeMeta } from "./render.js";
+import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, toolTarget, type ResumeMeta } from "./render.js";
 
 /** The cursor marker — an APC private sequence the focus component
  *  embeds at the edit position; the compositor strips it and moves
@@ -108,6 +108,11 @@ export class Body {
 	#pendingCalls = new Map<string, { name: string; input: Record<string, unknown>; result: { content: string; isError: boolean } }>();
 	#pipeBuf = ""; // the passthrough's thinking buffer
 	#toolCells = new Map<string, number>(); // callId → cell index (parallel tools)
+	// W15: the collapsed (cut) tool cells — committed cells whose last
+	// rendered row carried the "ctrl+r" affordance; the expand key's
+	// cycling pointer walks this list from the newest back.
+	#collapsed: number[] = [];
+	#expandPtr = 0;
 	#write: (s: string) => void;
 	#resizeHandler: (() => void) | null = null;
 	// the chrome state (the Dock façade)
@@ -205,7 +210,7 @@ export class Body {
 			}
 		}
 		this.#toolCells.set(callId, this.#cells.length);
-		this.#cells.push({ kind: "tool", name, input: summary, childRoles, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false });
+		this.#cells.push({ kind: "tool", name, input: summary, inputFull: JSON.stringify(input, null, 2), childRoles, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false, expanded: false });
 		this.#mark();
 	}
 
@@ -389,6 +394,51 @@ export class Body {
 	/** The last completed tool call, for /last. */
 	lastTool(): { name: string; input: Record<string, unknown>; result: { content: string; isError: boolean } } | null {
 		return this.#lastTool;
+	}
+
+	/** W15 — the expand key's target (ctrl+r). A cell still in the LIVE
+	 *  region (the newest live tool) TOGGLES in place — the compositor
+	 *  owns those rows and redraws them (the body flips to the full
+	 *  form, no cap). A committed cell can never toggle — history is
+	 *  never rewritten (ADR-0046) — so the key APPENDS a fresh expanded
+	 *  block at the bottom instead, the /last idiom aimed at a chosen
+	 *  cell: the pointer cycles the collapsed history, newest first, and
+	 *  the header names the target ("N turns back" — the user cells
+	 *  after it), so every press tells the user what they got. */
+	expandNext(): { kind: "toggled" } | { kind: "appended"; lines: string[] } | { kind: "none" } {
+		for (let i = this.#cells.length - 1; i >= this.#committed; i -= 1) {
+			const cell = this.#cells[i]!;
+			if (cell.kind === "tool" && cell.state !== "pending") {
+				cell.expanded = !cell.expanded;
+				this.#mark();
+				return { kind: "toggled" };
+			}
+		}
+		if (this.#collapsed.length === 0) return { kind: "none" };
+		const idx = this.#collapsed[this.#expandPtr % this.#collapsed.length]!;
+		this.#expandPtr += 1;
+		const cell = this.#cells[idx]!;
+		if (cell.kind !== "tool") return { kind: "none" };
+		let input: Record<string, unknown> = {};
+		try {
+			input = JSON.parse(cell.inputFull) as Record<string, unknown>;
+		} catch {
+			// the full JSON is always parseable (it was stringified at
+			// toolStart) — the empty fallback never fires
+		}
+		const turnsBack = this.#cells.slice(idx + 1).filter((c) => c.kind === "user").length;
+		const p = palette();
+		const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`${cell.name.replace("_file", "")} ${toolTarget(cell.name, input)}`)} · ${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
+		return {
+			kind: "appended",
+			lines: [
+				header,
+				`--- ${cell.name} input ---`,
+				cell.inputFull,
+				`--- ${cell.name} output${cell.isError ? " (error)" : ""} ---`,
+				cell.resultText,
+			],
+		};
 	}
 
 	// ---- the Dock façade (the CLI's chrome API — same shape as the old dock) ----
@@ -668,6 +718,14 @@ export class Body {
 	#commitCell(i: number, W: number, ctx: FrameCtx): void {
 		const cell = this.#cells[i]!;
 		const lines = cellComponent(cell).render(W, ctx);
+		// W15: a tool cell whose last committed row carried the "ctrl+r"
+		// affordance (the renderer cut "└ … ctrl+r") joins the expand
+		// history — the detection is the renderer's OWN output, so the
+		// read's "/last"-only cut note never lands here.
+		// unshift: the cells commit oldest-first, so the NEWEST cut lands
+		// at the front — the expand pointer's "newest back" walk starts
+		// where the user's last key press would aim.
+		if (cell.kind === "tool" && /└ .*ctrl\+r/.test(lines[lines.length - 1] ?? "")) this.#collapsed.unshift(i);
 		this.#lineCache[i] = lines;
 		const placed = bodySpacing(i > 0 ? this.#lineCache[i - 1]! : null, lines);
 		this.#committed += 1;

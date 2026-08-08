@@ -83,6 +83,33 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		});
 		return;
 	}
+	if (trimmed === "\x12expand") {
+		// W15: the expand key (ctrl+r) — /last aimed at a chosen cell.
+		// The TARGET is picked at press time: a LIVE tool cell toggles
+		// IMMEDIATELY in place (the compositor owns those rows and
+		// redraws them — the approval pause is exactly when the user
+		// reads a cut diff, and the key must answer then, never after
+		// the run). A COMMITTED cell can never toggle — history is never
+		// rewritten (ADR-0046) — so its expanded block and the empty
+		// answer queue on the chain like /last: the block lands as new
+		// content after any in-flight turn. The sentinel carries the
+		// control char so a typed "expand" turn is never intercepted.
+		const r = body.expandNext();
+		if (r.kind === "toggled") {
+			ctx.input.prompt(); // in place — the frame already repainted
+			return;
+		}
+		const land = async (): Promise<void> => {
+			if (r.kind === "appended") {
+				for (const line of r.lines) bodyLog(line);
+			} else if (r.kind === "none") {
+				bodyLog("[nothing to expand]");
+			}
+			ctx.input.prompt();
+		};
+		ctx.chainRef.current = ctx.chainRef.current.then(land);
+		return;
+	}
 	if (trimmed === "/status") {
 		// B area: session id, durable event count, and the ~ context
 		// estimate — all read straight from the live session, nothing

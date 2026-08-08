@@ -65,6 +65,11 @@ export class Editor {
 	// (dispatch) coexist; a listener removes itself via an unarmed guard
 	// (the compact's handler no-ops after its abort has fired).
 	#escapeCbs: (() => void)[] = [];
+	// W15: the expand-key list (ctrl+r) — the CLI's dispatch decides the
+	// target (a live cell toggles in place; a committed cell appends the
+	// expanded block). Mirrors the escape list: multiple listeners can
+	// coexist; the editor never interprets the key itself.
+	#expandCbs: (() => void)[] = [];
 	#onRender: () => void;
 	#menuOpen = false; // v3 §04: the slash-command menu
 	#menuSel = 0;
@@ -107,6 +112,10 @@ export class Editor {
 
 	onEscape(cb: () => void): void {
 		this.#escapeCbs.push(cb);
+	}
+
+	onExpand(cb: () => void): void {
+		this.#expandCbs.push(cb);
 	}
 
 	/** The whole buffer as text (the CLI's line()/clearLine()). */
@@ -275,6 +284,11 @@ export class Editor {
 					this.#reflow();
 					this.#refreshMenu();
 				}
+				i += 1;
+			} else if (c === "\x12") {
+				// W15: the expand key (ctrl+r) — rides the chain like a
+				// command, the editor just forwards it.
+				for (const cb of [...this.#expandCbs]) cb();
 				i += 1;
 			} else if (c !== undefined && c < " ") {
 				i += 1; // other control — ignored

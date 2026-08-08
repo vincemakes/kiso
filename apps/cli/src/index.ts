@@ -77,6 +77,10 @@ function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
 		onEscape() {
 			/* readline has no bare-Esc semantics — ignored. */
 		},
+		onExpand() {
+			/* readline has no ctrl+r binding — ignored (W15 rides the
+			 * editor path only). */
+		},
 		question(query, cb) {
 			rl.question(query, cb);
 		},
@@ -119,6 +123,9 @@ function editorInput(editor: Editor): LineInput {
 		},
 		onEscape(cb) {
 			editor.onEscape(cb);
+		},
+		onExpand(cb) {
+			editor.onExpand(cb);
 		},
 		question(query, cb) {
 			editor.question(query, cb);

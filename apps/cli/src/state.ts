@@ -42,6 +42,9 @@ export interface LineInput {
 	onSigint(cb: () => void): void;
 	onEot(cb: () => void): void;
 	onEscape(cb: () => void): void;
+	/** W15: the expand key (ctrl+r) — the chain-level action, never the
+	 *  editor's own interpretation. */
+	onExpand(cb: () => void): void;
 	question(query: string, cb: (answer: string) => void): void;
 	cancelQuestion(): void;
 	emitLine(line: string): void;

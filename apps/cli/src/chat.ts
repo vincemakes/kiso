@@ -500,6 +500,10 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		}
 		dispatch(line, dispatchCtx);
 	});
+	// W15: the expand key — the editor forwards ctrl+r; dispatch runs the
+	// chain action (the sentinel's control char marks the key, so a typed
+	// "expand" turn is never intercepted).
+	input.onExpand(() => dispatch("\x12expand", dispatchCtx));
 
 	// Recovery first: a session with a dangling pause or uncertain
 	// executions must resolve them BEFORE the REPL accepts new turns —
