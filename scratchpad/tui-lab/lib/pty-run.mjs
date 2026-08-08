@@ -10,7 +10,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CLI = join(fileURLToPath(new URL("../../..", import.meta.url)), "apps", "cli", "dist", "index.js");
+// KISO_LAB_CLI points the five scenarios at another binary — the release
+// smoke runs them against the INSTALLED released tarball's kiso bin (the
+// dist/ default proves the same tree, the override proves the artifact).
+const CLI = process.env.KISO_LAB_CLI ?? join(fileURLToPath(new URL("../../..", import.meta.url)), "apps", "cli", "dist", "index.js");
 
 const PTY_DRIVER = `
 import pty, os, sys, time, select, signal, struct, fcntl, termios
