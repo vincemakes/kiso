@@ -438,9 +438,10 @@ export function truncateRow(row: string, width: number): string {
  *    W ≥ 40 and 14–19 rows → COMPACT (v6's LOGO_ROWS, byte-identical)
  *    anything smaller → text rows only
  *  then the blank, then "vX — tagline" — the art IS the wordmark, so the
- *  text row does not repeat the name — then extensions. Every row
- *  truncates at the terminal width with a " (+N)" marker. Pure. */
-export function bannerLines(W: number, H: number, version: string, extensionsText: string): string[] {
+ *  text row does not repeat the name — then extensions — then the W5
+ *  resume list (BIG only, W5). Every row truncates at the terminal width
+ *  with a " (+N)" marker. Pure. */
+export function bannerLines(W: number, H: number, version: string, extensionsText: string, resume: readonly ResumeMeta[] = [], now = Date.now()): string[] {
 	const rows: string[] = [];
 	if (W >= 40) {
 		if (H >= 20) {
@@ -452,6 +453,9 @@ export function bannerLines(W: number, H: number, version: string, extensionsTex
 	if (rows.length > 0) rows.push("");
 	rows.push(truncateRow(`v${version} — ${TAGLINE}`, W));
 	if (extensionsText !== "") rows.push(truncateRow(extensionsText, W));
+	if (W >= 40 && H >= 20 && resume.length > 0) {
+		rows.push("", ...renderResumeList(resume, W, now));
+	}
 	return rows;
 }
 
@@ -486,4 +490,62 @@ export function renderSessionLine(meta: { id: string; title: string; events: num
 	const when = meta.updatedAt ? new Date(meta.updatedAt).toISOString().slice(0, 16) : "—";
 	// round 8: the title is the user's first prompt — model/user text, escaped.
 	return `${meta.id.padEnd(24)} ${meta.runs} runs ${String(meta.events).padStart(5)} events  ${when}  ${escapeTerminal(meta.title)}`;
+}
+
+/** W5 — the opening-screen resume list. Every field already exists
+ *  behind renderSessionLine / `kiso sessions`: the relative time, the
+ *  title, then the right-aligned "N events · M runs". The columns are
+ *  fixed per W: 4 indent + 7 when + 1 + the title (the ONLY flexible
+ *  field — cut with the ellipsis marker INSIDE the width) + 1 + the meta
+ *  (padStart to metaW). The done-when: the meta's right edge lands at
+ *  exactly W on every row. Returns PLAIN rows — the banner's uniform dim
+ *  wrap styles them (no dim+bold SGR composition). */
+export interface ResumeMeta {
+	readonly title: string;
+	readonly events: number;
+	readonly runs: number;
+	readonly updatedAt: number;
+}
+
+export function relativeTime(updatedAt: number, now: number): string {
+	const s = Math.max(0, now - updatedAt) / 1000;
+	if (s < 60) return "now";
+	const m = Math.floor(s / 60);
+	if (m < 60) return `${m}m ago`;
+	const h = Math.floor(m / 60);
+	if (h < 24) return `${h}h ago`;
+	const d = Math.floor(h / 24);
+	if (d < 7) return `${d}d ago`;
+	return `${Math.floor(d / 7)}w ago`;
+}
+
+function titleCut(text: string, max: number): string {
+	if (displayWidth(text) <= max) return text;
+	const room = max - displayWidth("…");
+	let w = 0;
+	let i = 0;
+	while (i < text.length) {
+		const cp = text.codePointAt(i)!;
+		const cw = charWidth(cp);
+		if (w + cw > room) break;
+		w += cw;
+		i += cp > 0xffff ? 2 : 1;
+	}
+	return text.slice(0, i) + "…";
+}
+
+export function renderResumeList(metas: readonly ResumeMeta[], W: number, now: number): string[] {
+	if (metas.length === 0) return [];
+	const rows = ["  ▞ resume"];
+	const whens = metas.map((m) => relativeTime(m.updatedAt, now));
+	const metaTexts = metas.map((m) => `${m.events} events · ${m.runs} runs`);
+	const metaW = Math.max(...metaTexts.map((t) => t.length));
+	const titleW = Math.max(1, W - 13 - metaW);
+	for (let i = 0; i < metas.length; i += 1) {
+		const title = escapeTerminal(metas[i]!.title);
+		const shown = titleCut(title, titleW);
+		const pad = titleW - displayWidth(shown);
+		rows.push(`    ${whens[i]!.padEnd(7)} ${shown}${" ".repeat(pad)} ${metaTexts[i]!.padStart(metaW)}`);
+	}
+	return rows;
 }

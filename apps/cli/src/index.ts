@@ -26,7 +26,7 @@
 import { readFileSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
-import { Body, Editor, PROMPT as EDITOR_PROMPT, bannerLines, palette, renderSessionLine } from "@vincemakes/kiso-tui";
+import { Body, Editor, PROMPT as EDITOR_PROMPT, bannerLines, palette, renderSessionLine, type ResumeMeta } from "@vincemakes/kiso-tui";
 import { escapeTerminal } from "@vincemakes/kiso-tui";
 import {
 	createAgent,
@@ -178,17 +178,32 @@ function bannerExtensionText(): string {
 	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
 }
 
-/** E1: the startup banner line(s) — TTY: logo + merged extensions as a
- *  LIVE banner cell (W1: the tier re-derives on resize); off-TTY: the
+/** E1: the startup banner line(s) — TTY: logo + merged extensions + the
+ *  W5 resume list as a LIVE banner cell (W1: the tier re-derives on
+ *  resize; the resume list re-gates with the tier); off-TTY: the
  *  historical `[N extensions: ...]` standalone line (zero change). */
-function extensionsBanner(): void {
+function extensionsBanner(resume: ResumeMeta[] = []): void {
 	if (process.stdout.isTTY) {
-		body.banner(VERSION, bannerExtensionText().replace(/^ · /, ""));
+		body.banner(VERSION, bannerExtensionText().replace(/^ · /, ""), resume);
 		return;
 	}
 	const text = bannerExtensionText();
 	if (text === "") return;
 	bodyLog(`${text}\n`);
+}
+
+/** W5: the opening-screen resume list — up to 3 recent sessions, newest
+ *  first, the CURRENT session excluded (it is not something to pick back
+ *  up). Every field already exists behind the store's SessionMeta (the
+ *  `kiso sessions` line shows the same data) — only the projection and
+ *  the sort live here. */
+function recentSessions(id: string, agent: { sessions(): { id: string; title: string; events: number; runs: number; updatedAt: number }[] }): ResumeMeta[] {
+	return agent
+		.sessions()
+		.filter((m) => m.id !== id)
+		.sort((a, b) => b.updatedAt - a.updatedAt)
+		.slice(0, 3)
+		.map(({ title, events, runs, updatedAt }) => ({ title, events, runs, updatedAt }));
 }
 
 /**
@@ -409,7 +424,7 @@ async function main(): Promise<void> {
 				applyConfigMode();
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
-				extensionsBanner();
+				extensionsBanner(recentSessions(id, agent));
 				faux = currentFaux;
 				await chat(session, faux, input, resolveAutoCompact(mergedConfig));
 				break;
@@ -459,7 +474,7 @@ async function main(): Promise<void> {
 				const agent = await makeAgent(fauxSkip(id));
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
-				extensionsBanner();
+				extensionsBanner(recentSessions(id, agent));
 				await chat(session, faux, input, autoCompactFromEnv());
 				break;
 			}

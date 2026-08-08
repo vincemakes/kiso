@@ -455,4 +455,39 @@ describe("TUI v6 — the one compositor", () => {
 		expect(rows[rawAt + 2]).toBe(""); // the blank BELOW it (the "second" row + the blank)
 		expect(againAt).toBe(rawAt + 3); // the user packs after the blank
 	});
+
+	it("W5: the live banner cell carries the resume — the header, the title, the aligned meta, relative now; COMPACT drops the list", () => {
+		const { body, writes, tick } = makeBody();
+		body.enter();
+		body.banner("0.1.37", "", [
+			{ title: "fix the resize repaint storm", events: 41, runs: 3, updatedAt: Date.now() },
+		]);
+		body.userLine("go");
+		tick();
+		// the screen-map replay: each row's LAST write wins, the way the VT
+		// emulator sees the screen
+		const screen = new Map<number, string>();
+		const sgrStripped = writes.join("").replace(/\x1b\[[0-9;]*m/g, "");
+		for (const m of sgrStripped.matchAll(/\x1b\[(\d+);1H\x1b\[0K([^\x1b]*)/g)) {
+			screen.set(Number(m[1]!), m[2]!);
+		}
+		// the banner cell: 6 art + blank + version + blank + "  ▞ resume" +
+		// 1 session row = 11 rows; the W11 blank + the user line follow
+		expect(screen.get(10)).toBe("  ▞ resume");
+		// metaW = 18 (the single meta); titleW = 80 - 13 - 18 = 49; pad 21
+		expect(screen.get(11)).toBe(
+			"    now     fix the resize repaint storm" + " ".repeat(21) + " " + "41 events · 3 runs",
+		);
+		// the done-when: the row is exactly W wide, the meta at its column
+		expect(screen.get(11)!.length).toBe(80);
+		expect(screen.get(11)!.indexOf("41 events")).toBe(62);
+		// the tier gate is per frame — a COMPACT screen drops the list entirely
+		const compact = makeBody({ H: 15 });
+		compact.body.enter();
+		compact.body.banner("0.1.37", "", [
+			{ title: "fix the resize repaint storm", events: 41, runs: 3, updatedAt: Date.now() },
+		]);
+		compact.tick();
+		expect(compact.writes.join("")).not.toContain("▞ resume");
+	});
 });

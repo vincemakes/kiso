@@ -55,7 +55,7 @@ import {
 	type BodyCell,
 	type FrameCtx,
 } from "./components.js";
-import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary } from "./render.js";
+import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, type ResumeMeta } from "./render.js";
 
 /** The cursor marker — an APC private sequence the focus component
  *  embeds at the edit position; the compositor strips it and moves
@@ -334,9 +334,11 @@ export class Body {
 	/** The startup banner (W1): a LIVE cell — the tier re-derives per
 	 *  frame (bannerLines with the CURRENT W and H), so a resize re-tiers
 	 *  the art instead of re-folding frozen rows (a window below 40 cols
-	 *  never paints the logo). Byte-identical to the old frozen banner at
-	 *  the startup size (dim rows + the trailing blank). */
-	banner(version: string, extensionsText: string): void {
+	 *  never paints the logo). W5: the resume metas ride the cell — the
+	 *  list re-gates with the tier (BIG only) and re-times with the
+	 *  frame. The inactive path keeps the historical bytes (no resume —
+	 *  the pipe contract). */
+	banner(version: string, extensionsText: string, resume: ResumeMeta[] = []): void {
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
 			this.#closeOpenText();
@@ -349,7 +351,7 @@ export class Body {
 		}
 		this.#closeOpenThinking();
 		this.#closeOpenText();
-		this.#cells.push({ kind: "banner", version, extensionsText, done: true });
+		this.#cells.push({ kind: "banner", version, extensionsText, resume, done: true });
 		this.#mark();
 	}
 

@@ -14,13 +14,17 @@ import {
 	COLOR_ON,
 	palette,
 	renderEvent,
+	renderResumeList,
 	renderStatusLine,
 	renderTerminalGap,
 	renderToolSummary,
 	renderRecap,
+	relativeTime,
 	truncateRow,
 	type RenderInput,
+	type ResumeMeta,
 } from "../src/render.js";
+import { displayWidth } from "../src/width.js";
 
 const ORIG_TTY = process.stdout.isTTY;
 const setTTY = (v: boolean): void => {
@@ -299,5 +303,73 @@ describe("v7 W1: the banner tiers (the height input)", () => {
 				for (const r of rows) expect(truncateRow(r, W), `W=${W} H=${H}: ${r}`).toBe(r);
 			}
 		}
+	});
+});
+
+describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
+	const METAS: readonly ResumeMeta[] = [
+		{ title: "fix the resize repaint storm", events: 41, runs: 3, updatedAt: 1_700_000_000_000 },
+		{ title: "v6 one-compositor gates", events: 183, runs: 12, updatedAt: 1_700_000_300_000 },
+	];
+	const NOW = 1_700_000_400_000;
+
+	it("the shape: header, relative time, title, right-aligned meta — every row exactly W wide, the meta column aligned (the done-when)", () => {
+		const rows = renderResumeList(METAS, 80, NOW);
+		expect(rows[0]).toBe("  ▞ resume");
+		// metaW = 20 (the longer meta); titleW = 80 - 13 - 20 = 47; pads 19 / 24
+		expect(rows[1]).toBe(
+			"    6m ago  fix the resize repaint storm" + " ".repeat(19) + " " + "  41 events · 3 runs",
+		);
+		expect(rows[2]).toBe("    1m ago  v6 one-compositor gates" + " ".repeat(24) + " " + "183 events · 12 runs");
+		// the DATA rows are exactly W wide — the meta's RIGHT edge lands at W
+		// on every row (the done-when); the header is its own short row
+		expect(displayWidth(rows[0]!)).toBe(10);
+		for (const r of rows.slice(1)) expect(displayWidth(r)).toBe(80);
+		// the meta FIELD (padStart to metaW) occupies the SAME columns on
+		// every row — the meta column is aligned across rows
+		expect(rows[1]!.slice(60, 80)).toBe("  41 events · 3 runs");
+		expect(rows[2]!.slice(60, 80)).toBe("183 events · 12 runs");
+	});
+
+	it("empty metas → no rows at all", () => {
+		expect(renderResumeList([], 80, NOW)).toEqual([]);
+	});
+
+	it("a too-long title cuts inside the width with the ellipsis marker", () => {
+		const rows = renderResumeList([{ title: "a".repeat(100), events: 1, runs: 1, updatedAt: NOW }], 60, NOW);
+		// titleW = 60 - 13 - 16 = 31; the marker "…" is 2 cells wide (the
+		// ambiguous-width authority) — the cut keeps 29 cells + the marker
+		expect(rows[1]).toBe("    now     " + "a".repeat(29) + "…" + " " + "1 events · 1 runs");
+		expect(displayWidth(rows[1]!)).toBe(60);
+		expect(truncateRow(rows[1]!, 60)).toBe(rows[1]);
+	});
+
+	it("relativeTime edges: now, m, h, d, w — no 0m window exists", () => {
+		expect(relativeTime(NOW - 59_999, NOW)).toBe("now");
+		expect(relativeTime(NOW - 60_000, NOW)).toBe("1m ago");
+		expect(relativeTime(NOW - 3_599_000, NOW)).toBe("59m ago");
+		expect(relativeTime(NOW - 3_600_000, NOW)).toBe("1h ago");
+		expect(relativeTime(NOW - 86_400_000, NOW)).toBe("1d ago");
+		expect(relativeTime(NOW - 604_800_000, NOW)).toBe("1w ago");
+	});
+
+	it("the tier gate: BIG (W≥40 && H≥20) shows the list, one blank above; COMPACT / narrow / empty drop it entirely", () => {
+		const big = bannerLines(80, 24, "0.1.37", "[3 extensions: asky]", METAS, NOW);
+		expect(big).toContain("  ▞ resume");
+		expect(big.some((r) => r.includes("fix the resize repaint storm"))).toBe(true);
+		expect(big.some((r) => r.includes("183 events · 12 runs"))).toBe(true);
+		const ext = big.indexOf("[3 extensions: asky]");
+		expect(big[ext + 1]).toBe("");
+		expect(big[ext + 2]).toBe("  ▞ resume");
+		expect(big.length).toBe(13); // 6 art + blank + version + extensions + blank + 3 resume rows
+		for (const r of big) expect(truncateRow(r, 80)).toBe(r);
+		// the narrowest BIG tier still aligns the meta at exactly W (40)
+		const narrow = bannerLines(40, 20, "0.1.37", "", METAS, NOW);
+		expect(narrow).toContain("  ▞ resume");
+		for (const r of narrow) expect(truncateRow(r, 40), r).toBe(r);
+		// the tier drops below the gate — COMPACT, narrow, and empty
+		expect(bannerLines(80, 15, "0.1.37", "", METAS, NOW).some((r) => r.includes("▞ resume"))).toBe(false);
+		expect(bannerLines(39, 24, "0.1.37", "", METAS, NOW).some((r) => r.includes("▞ resume"))).toBe(false);
+		expect(bannerLines(80, 24, "0.1.37", "", [], NOW).some((r) => r.includes("▞ resume"))).toBe(false);
 	});
 });

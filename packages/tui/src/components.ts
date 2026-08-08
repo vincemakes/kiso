@@ -26,6 +26,7 @@ import {
 	renderTerminalGap,
 	renderToolSummary,
 	palette,
+	type ResumeMeta,
 } from "./render.js";
 
 /** The spinner glyphs, cycled by the compositor's on-demand tick. */
@@ -189,7 +190,7 @@ export type BodyCell =
 	  }
 	| { kind: "text"; text: string; done: boolean }
 	| { kind: "notice"; text: string; done: true }
-	| { kind: "banner"; version: string; extensionsText: string; done: true }
+	| { kind: "banner"; version: string; extensionsText: string; resume: ResumeMeta[]; done: true }
 	| { kind: "raw"; lines: string[]; done: true }
 	| { kind: "terminal"; label: string; line: string; done: true }
 	| {
@@ -615,10 +616,10 @@ class TerminalBlock implements Component {
  *  40 cols the logo never paints). W11: no trailing blank — the
  *  container's formula breathes below the (always multi-row) banner. */
 class Banner implements Component {
-	constructor(private readonly cell: { version: string; extensionsText: string }) {}
+	constructor(private readonly cell: { version: string; extensionsText: string; resume: ResumeMeta[] }) {}
 	render(W: number, ctx: FrameCtx): string[] {
 		const p = palette();
-		const rows = bannerLines(W, ctx.height, this.cell.version, this.cell.extensionsText);
+		const rows = bannerLines(W, ctx.height, this.cell.version, this.cell.extensionsText, this.cell.resume, ctx.now);
 		return rows.map((r) => `${p.dim}${r}${p.reset}`);
 	}
 }
