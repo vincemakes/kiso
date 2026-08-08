@@ -12,8 +12,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
-import { projectMessages } from "@vincemakes/kiso-core";
-import { createAgent, SessionStore } from "../src/index.js";
+import { projectMessages, type Adapter } from "@vincemakes/kiso-core";
+import { createAgent, SessionStore, type CompactInfo } from "../src/index.js";
 
 /** 7 chunky rounds, the shape of a long session (user + read + result),
  *  COMPLETED with a terminal so later runs() pass the open-run gate. */
@@ -135,4 +135,53 @@ describe("AgentSession.summarize (ADR-0044)", () => {
 		expect(await session.summarize()).toBeNull();
 		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(false);
 	});
+
+	it("W18: the REAL slow summarize — onStart surfaces the knowable data, the call takes real seconds, and the signal cancels it mid-flight with nothing persisted", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-compact-w18-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		// A REAL slow adapter: the same interface the providers implement,
+		// with a genuine 1.1s wall-clock delay — the "large context
+		// multi-second freeze" the indicator exists for.
+		const slowAdapter: Adapter = {
+			stream(options) {
+				return {
+					async *[Symbol.asyncIterator]() {
+						await new Promise((resolve) => setTimeout(resolve, 1100));
+						if (options.signal?.aborted) throw new Error("aborted by the signal");
+						yield { type: "text_delta", text: "The slow summary.", seq: 0 };
+						yield { type: "stop", reason: "end_turn", seq: 1 };
+					},
+				};
+			},
+		};
+		const agent = createAgent({ model: "faux", store, tools: [], adapter: slowAdapter });
+
+		// The cancel case FIRST (its failure must leave nothing behind):
+		// an abort mid-call rejects and NOTHING is persisted (ADR-0044
+		// crash semantics — the session is unchanged).
+		const ac = new AbortController();
+		const sessionB = await agent.session({ id: "s" });
+		const racing = sessionB.summarize({
+			signal: ac.signal,
+			onStart: () => setTimeout(() => ac.abort(), 150),
+		});
+		await expect(racing).rejects.toThrow("aborted by the signal");
+		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(false);
+
+		// The real-slow case: onStart carries the knowable pre-call data
+		// (4 covered rounds of the seeded 8, the token estimate), and the
+		// call took REAL seconds — the whole call, not a fake.
+		const sessionC = await agent.session({ id: "s" });
+		let started: CompactInfo | null = null;
+		const t0 = Date.now();
+		const result = await sessionC.summarize({ onStart: (info) => void (started = info) });
+		const elapsed = Date.now() - t0;
+		expect(started).not.toBeNull();
+		expect(started!.rounds).toBe(4); // 8 seeded rounds, 4 kept → 4 covered
+		expect(started!.tokens).toBeGreaterThan(0);
+		expect(elapsed).toBeGreaterThanOrEqual(1000); // real seconds elapsed
+		expect(result!.summary).toBe("The slow summary.");
+		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(true);
+	}, 30_000);
 });

@@ -403,6 +403,31 @@ describe("TUI v6 — the one compositor", () => {
 		expect((writes.join("").match(/│ /g) ?? []).length).toBe(2);
 	});
 
+	it("W18: the compacting status row — the indeterminate form with the right-aligned cancel hint (the #16g hint cut first at a narrow width, then the status with the … — never a fold)", () => {
+		const { body, writes, tick } = makeBody();
+		body.enter();
+		body.setStatus("▘ compacting · 12 rounds · ~48.2k tokens · 6s", "esc to cancel");
+		tick();
+		// the LAST frame is what the terminal shows — the setStatus frame is
+		// the steady path: a [2B jump from the anchor, then the bottom-up
+		// repaint whose FIRST 1G write is the status at H (the full-redraw
+		// path writes an absolute [24;1H instead — the enter frame's IDLE
+		// status must never win the parse)
+		const sgrStripped = writes.join("").replace(/\x1b\[[0-9;]*m/g, "");
+		const frame = sgrStripped.slice(sgrStripped.lastIndexOf("\x1b[?2026h"));
+		const m = frame.match(/\x1b\[24;1H\x1b\[0K([^\x1b]*)/) ?? frame.match(/\x1b\[2B\x1b\[1G\x1b\[0K([^\x1b]*)/);
+		const row = m?.[1] ?? "";
+		// the status row at H (24): the text with the hint right-aligned
+		expect(row.startsWith("▘ compacting · 12 rounds · ~48.2k tokens · 6s")).toBe(true);
+		expect(row.endsWith("esc to cancel")).toBe(true);
+		// the idle state's hint returns when the status is set WITHOUT one
+		writes.length = 0;
+		body.setStatus("▸ default · /mode to switch · faux · ctx left ~100%");
+		tick();
+		const idleRow = writes.join("").replace(/\x1b\[[0-9;]*m/g, "");
+		expect(idleRow).toContain(" / commands · ↑ history");
+	});
+
 	it("W12: the delegate's child sessions collapse to ONE body row — running (the input's roles — the only live data the parent holds) and settled (the extension's summary marker) replace in place, so the height never changes", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();

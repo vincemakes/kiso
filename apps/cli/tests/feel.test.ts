@@ -118,12 +118,14 @@ describe("A1: the menu Enter executes the EXACT selection directly", () => {
 				// prompt is the trigger — the line is queued and dispatched
 				// after it, exactly one Enter total.
 				["▌ ", "/compact\n"],
-				["[/compact] saved ~", "exit\n"],
+				// W18 re-baseline: the settled notice is the RECAP — the ▞
+				// glyph is unique to it (the live row uses ▘).
+				["[/compact] ▞ compacted", "exit\n"],
 			],
 			dir,
 			"f1",
 		);
-		expect(stripANSI(out)).toContain("[/compact] saved ~");
+		expect(stripANSI(out)).toContain("[/compact] ▞ compacted ·"); // the recap
 		const durable = readFileSync(join(dirs.home, "sessions", "f1.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');
 	});
@@ -201,14 +203,14 @@ describe("C8: /compact auto-trigger (opt-in via KISO_AUTO_COMPACT)", () => {
 			{ ...isoEnv, KISO_AUTO_COMPACT: "0.7", KISO_FAUX_SCRIPT: scriptPath },
 			[
 				// ONE turn ("go") — the auto-trigger then fires WITHOUT any
-				// /compact keystroke; "saved ~" is the auto notice.
+				// /compact keystroke; the recap is the auto notice.
 				["▌ ", "go\n"],
-				["[/compact] saved ~", "exit\n"],
+				["[/compact] ▞ compacted", "exit\n"],
 			],
 			dir,
 			"c8",
 		);
-		expect(stripANSI(out)).toContain("[/compact] saved ~"); // the auto notice
+		expect(stripANSI(out)).toContain("[/compact] ▞ compacted ·"); // the auto notice
 		const durable = readFileSync(join(dirs.home, "sessions", "c8.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"'); // the durable /compact fact
 	});
@@ -235,7 +237,7 @@ describe("C8: /compact auto-trigger (opt-in via KISO_AUTO_COMPACT)", () => {
 			[CLI, "chat", "c8pipe"],
 			{ encoding: "utf8", timeout: 90_000, input: "go\n", env: { ...isoEnv, KISO_AUTO_COMPACT: "0.7", KISO_FAUX_SCRIPT: scriptPath } },
 		);
-		expect(stripANSI(out)).toContain("[/compact] saved ~");
+		expect(stripANSI(out)).toContain("[/compact] ▞ compacted ·"); // W18: the recap
 		const durable = readFileSync(join(dirs.home, "sessions", "c8pipe.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');
 	});

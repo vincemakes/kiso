@@ -48,6 +48,7 @@ import {
 	summarizeConversation,
 	summaryBoundarySeq,
 } from "./summarize.js";
+import { estimateTokens } from "@vincemakes/kiso-core";
 import { StaleWriterError, type SessionStore } from "./store.js";
 import { composeHooks } from "./compose.js";
 import { Run } from "./run.js";
@@ -88,6 +89,17 @@ export interface SummarizeResult {
 	readonly summary: string;
 	/** The estimated tokens the compression saved (chars/4 proxy). */
 	readonly savedTokens: number;
+}
+
+/** W18: the knowable pre-call data, surfaced through onStart — everything
+ *  the indicator's indeterminate row shows (rounds, the token estimate)
+ *  is computed locally BEFORE the one adapter call; no fraction exists. */
+export interface CompactInfo {
+	readonly coversToSeq: number;
+	/** The covered user rounds — the inputs in (previous summary point, boundary]. */
+	readonly rounds: number;
+	/** The covered content's estimated tokens (the chars/4 proxy). */
+	readonly tokens: number;
 }
 
 export class AgentSession {
@@ -225,9 +237,15 @@ export class AgentSession {
 	 * worth covering yet). Crash semantics: a crash BEFORE the persist is
 	 * "nothing happened"; after it, a resume projects the compressed view.
 	 */
-	async summarize(options: { keepRounds?: number; signal?: AbortSignalLike } = {}): Promise<SummarizeResult | null> {
+	async summarize(options: { keepRounds?: number; signal?: AbortSignalLike; onStart?: (info: CompactInfo) => void } = {}): Promise<SummarizeResult | null> {
 		this.ensureHealthy();
 		const keepRounds = options.keepRounds ?? KEEP_RECENT_ROUNDS;
+		// W18: the signal is observed at EVERY phase boundary — the cancel
+		// affordance works for the whole call (local work included), never
+		// just the adapter's wait. The abort error is the honest "nothing
+		// happened" outcome (ADR-0044 crash semantics).
+		const cancelled = (): Error => new Error("the compaction was cancelled");
+		if (options.signal !== undefined && options.signal.aborted) throw cancelled();
 		const events = this.log.all;
 		const boundary = summaryBoundarySeq(events, keepRounds);
 		if (boundary === undefined) return null;
@@ -235,12 +253,24 @@ export class AgentSession {
 		const covered = projectMessages(
 			events.filter((e) => e.seq > prevPoint && e.seq <= boundary && e.type !== "summarized"),
 		);
+		// W18: the indicator's pre-call data — rounds + the token estimate
+		// are knowable BEFORE the adapter call; the summary itself is ONE
+		// call with no fraction (kiso never invents a percentage here).
+		if (options.signal !== undefined && options.signal.aborted) throw cancelled();
+		options.onStart?.({
+			coversToSeq: boundary,
+			rounds: events.filter((e) => e.type === "user_input" && e.seq > prevPoint && e.seq <= boundary).length,
+			tokens: estimateTokens(covered),
+		});
 		const summary = await summarizeConversation({
 			adapter: this.#adapter,
 			model: this.#config.model,
 			messages: covered,
 			...(options.signal !== undefined ? { signal: options.signal } : {}),
 		});
+		// The post-call boundary check: an abort that landed while the
+		// adapter returned must NOT persist — "nothing happened".
+		if (options.signal !== undefined && options.signal.aborted) throw cancelled();
 		const full = this.log.append({ type: "summarized", coversToSeq: boundary, summary });
 		// The record rides the LAST recorded run's id — a summarized fact
 		// must never open a run of its own: the open-run gate keys on

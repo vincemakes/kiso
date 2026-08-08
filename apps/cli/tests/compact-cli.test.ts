@@ -10,6 +10,10 @@
  *  2. Pipe: /compact as the first line of a seeded long session works
  *     end to end with ZERO ANSI (the non-TTY byte discipline), and the
  *     summary event is durable.
+ *  3. W18: the indeterminate row (▘ compacting · rounds · tokens ·
+ *     elapsed · esc to cancel) is LIVE for the whole call — a REAL 1.5s
+ *     adapter delay via the faux delay pseudo-event — and esc cancels
+ *     it mid-flight with nothing persisted.
  *
  * The summary call consumes a faux script turn (the same adapter serves
  * it) — the scripts below account for it explicitly.
@@ -169,8 +173,10 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 
 		// The mid-run refusal is visible.
 		expect(plain).toContain("[/compact] a turn is running");
-		// The success NoticeCell carries the saved-token estimate.
-		expect(plain).toContain("[/compact] saved ~");
+		// W18 re-baseline: the success NoticeCell is the RECAP — the covered
+		// rounds (9 total − 4 kept = 5, pinned with the coversToSeq:14
+		// boundary below), the one summary, the savings, and the elapsed.
+		expect(plain).toContain("[/compact] ▞ compacted · 5 rounds → 1 summary · saved ~");
 		// The context DROPPED after the compression: /status printed
 		// "ctx ~N%" twice — before (seeded, ~16%) and after (~7%).
 		const ctxs = [...out.matchAll(/ctx ~(\d+)%/g)].map((m) => Number(m[1]));
@@ -185,6 +191,59 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		expect(durable).toContain('"type":"summarized"');
 		expect(durable).toContain('"coversToSeq":14');
 		expect(durable).toContain("The user worked through seven rounds of file reads.");
+	});
+
+	it("W18: the indeterminate row is LIVE for the whole call (a REAL 1.5s adapter delay), esc cancels it mid-flight, and nothing is persisted", () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-compact-w18-pty-"));
+		const { env: isoEnv, dirs } = isolatedEnv({ KISO_CONTEXT_WINDOW: "20000" });
+		const home = dirs.home;
+		seedSession(home, "kc");
+		// The summary call must take REAL seconds — the indicator's whole
+		// reason: every summarize local step is a linear scan (instant at
+		// this size), so the ONLY honest slow part is the adapter call
+		// itself. The faux script's delay pseudo-event (packages/evals,
+		// gated by its own test) provides it at the process level.
+		const script = [
+			...Array.from({ length: 7 }, () => ({ events: [{ type: "stop", reason: "end_turn" }] })),
+			{ events: [{ type: "stop", reason: "end_turn" }] }, // recovery resume
+			{ events: [{ type: "delay", ms: 1500 }, { type: "text_delta", text: "Must never land." }, { type: "stop", reason: "end_turn" }] },
+		];
+		const scriptPath = join(dir, "faux.json");
+		writeFileSync(scriptPath, JSON.stringify(script), "utf8");
+		const env = { ...isoEnv, KISO_FAUX_SCRIPT: scriptPath };
+
+		const out = ptyRun(
+			env,
+			[
+				// The recovery resume completes, the REPL arms its first prompt.
+				["▌ ", "/compact\n"],
+				// The FIRST paint of the indeterminate row marks the call
+				// live — esc lands mid-flight (the call outlives the feed by
+				// ~1.4s, so the cancel is never a race against the settle).
+				["▘ compacting", "\x1b"],
+				// The honest cancel notice — nothing was persisted (ADR-0044).
+				["cancelled — nothing was persisted", "/status\n"],
+				["ctx ~", "exit\n"],
+			],
+			dir,
+			"kc",
+			{ modeFlag: "bypass" },
+		);
+		const plain = stripANSI(out);
+
+		// The row: the knowable pre-call data (4 covered rounds of the 8
+		// seeded, the token estimate) with the cancel affordance right-aligned.
+		expect(plain).toContain("▘ compacting · 4 rounds · ~");
+		expect(plain).toContain("esc to cancel");
+		// The row went LIVE across a real elapsed second — the 1.5s call
+		// makes the 1s repaint deterministic (the interval is cleared only
+		// when summarize() settles, so it fires even under the abort).
+		expect(plain).toContain("tokens · 1s");
+		expect(plain).toContain("[/compact] cancelled — nothing was persisted");
+		// The cancel left the session untouched: no summarized event on disk.
+		const durable = readFileSync(join(home, "sessions", "kc.jsonl"), "utf8");
+		expect(durable).not.toContain('"type":"summarized"');
+		expect(durable).not.toContain("Must never land.");
 	});
 });
 
@@ -207,7 +266,8 @@ describe("ADR-0044 cli: /compact through a pipe", () => {
 
 		const run = runCli(["chat", "kp"], { ...isoEnv, KISO_FAUX_SCRIPT: scriptPath }, { input: "/compact\nexit\n", timeout: 60_000 });
 		expect(run.status).toBe(0);
-		expect(run.stdout).toContain("[/compact] saved ~");
+		// W18 re-baseline: the recap (8 seed rounds − 4 kept = 4 covered).
+		expect(run.stdout).toContain("[/compact] ▞ compacted · 4 rounds → 1 summary · saved ~");
 		expect(run.stdout).not.toContain("["); // the pipe is byte-clean
 		const durable = readFileSync(join(home, "sessions", "kp.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');

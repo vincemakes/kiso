@@ -110,6 +110,7 @@ export class Body {
 	#resizeHandler: (() => void) | null = null;
 	// the chrome state (the Dock façade)
 	#status = "";
+	#statusHint: string | null = null;
 	#tail = "";
 	#question: string | null = null;
 	#inputState: () => { line: string; cursor: number } = () => ({ line: "", cursor: 0 });
@@ -443,8 +444,12 @@ export class Body {
 		this.render(); // the immediate redraw at the NEW geometry
 	}
 
-	setStatus(text: string): void {
+	/** W18: the status row's right-aligned hint is part of the status
+	 *  state — the compacting row passes "esc to cancel" (the affordance
+	 *  must survive repaints). */
+	setStatus(text: string, hint: string | null = null): void {
 		this.#status = text;
+		this.#statusHint = hint;
 		this.redraw();
 	}
 
@@ -786,7 +791,7 @@ export class Body {
 		const editor = this.#inputRow(W, ctx);
 		out.push(`\x1b[${H - 2};1H\x1b[0K${this.#checked(editor.stripped, W)}`);
 		out.push(`\x1b[${H - 1};1H\x1b[0K${footerLine(W)}`);
-		out.push(`\x1b[${H};1H\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W), W)}`);
+		out.push(`\x1b[${H};1H\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W, this.#statusHint ?? undefined), W)}`);
 		// the cursor: up two (the input row at H−2) + left to the marker
 		out.push("\x1b[2A");
 		if (editor.afterW > 0) out.push(`\x1b[${editor.afterW}D`);
@@ -810,7 +815,7 @@ export class Body {
 		for (let i = 0; i < committed.length; i += 1) out.push("\n");
 		// the bottom-up repaint, from the last row up — V6-3: the design
 		// §03 chrome: status (H), lower ╌ (H−1), input (H−2), upper ╌ (H−3)
-		out.push(`\x1b[1G\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W), W)}`); // H — the status
+		out.push(`\x1b[1G\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W, this.#statusHint ?? undefined), W)}`); // H — the status
 		out.push(`\x1b[1A\x1b[1G\x1b[0K${footerLine(W)}`); // H−1 — the lower ╌
 		out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(editor.stripped, W)}`); // H−2 — the input
 		out.push(`\x1b[1A\x1b[1G\x1b[0K${footerLine(W)}`); // H−3 — the upper ╌
@@ -932,8 +937,8 @@ export class Dock {
 	onResize(): void {
 		compositorRef?.onResize();
 	}
-	setStatus(text: string): void {
-		compositorRef?.setStatus(text);
+	setStatus(text: string, hint?: string | null): void {
+		compositorRef?.setStatus(text, hint ?? null);
 	}
 	setTail(tail: string): void {
 		compositorRef?.setTail(tail);

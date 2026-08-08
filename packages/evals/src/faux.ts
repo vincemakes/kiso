@@ -27,7 +27,20 @@ import type { EventInput } from "@vincemakes/kiso-core";
 
 /** One model turn: the events it emits. Tool results live in fixture tools. */
 export interface FauxTurn {
-	readonly events: readonly EventInput[];
+	readonly events: readonly (EventInput | FauxDelay)[];
+}
+
+/** W18: the harness's slow-adapter capability — a `delay` pseudo-event
+ *  awaits REAL milliseconds before the following events. The CLI e2e's
+ *  slow-summarize needs a genuinely slow adapter call at the PROCESS
+ *  level (nothing else is slow there: every summarize local step is a
+ *  linear scan and the stream itself is instant); the runtime gates
+ *  prove the abort semantics with real inline adapters. The delay is
+ *  NOT signal-aware — the runtime's post-call boundary check catches
+ *  an abort that landed during it. */
+export interface FauxDelay {
+	readonly type: "delay";
+	readonly ms: number;
 }
 
 export type FauxScript = readonly FauxTurn[];
@@ -57,6 +70,10 @@ export function createFauxProvider(script: FauxScript): Adapter {
 					// fake `completed`.
 					let seq = 0;
 					for (const ev of turn?.events ?? []) {
+						if (ev.type === "delay") {
+							await new Promise((resolve) => setTimeout(resolve, ev.ms));
+							continue;
+						}
 						yield { ...ev, seq: seq++ } as AdapterEvent;
 					}
 				},

@@ -61,7 +61,10 @@ export class Editor {
 	#pendingLines: string[] = []; // submits before onLine is wired (startup) — never dropped
 	#sigintCb: (() => void) | null = null;
 	#eotCb: (() => void) | null = null;
-	#escapeCb: (() => void) | null = null;
+	// W18: the escape LIST — the run-abort (chat) and the /compact cancel
+	// (dispatch) coexist; a listener removes itself via an unarmed guard
+	// (the compact's handler no-ops after its abort has fired).
+	#escapeCbs: (() => void)[] = [];
 	#onRender: () => void;
 	#menuOpen = false; // v3 §04: the slash-command menu
 	#menuSel = 0;
@@ -103,7 +106,7 @@ export class Editor {
 	}
 
 	onEscape(cb: () => void): void {
-		this.#escapeCb = cb;
+		this.#escapeCbs.push(cb);
 	}
 
 	/** The whole buffer as text (the CLI's line()/clearLine()). */
@@ -224,7 +227,7 @@ export class Editor {
 					this.#reflow();
 					this.#onRender();
 				} else {
-					this.#escapeCb?.();
+					for (const cb of [...this.#escapeCbs]) cb();
 					i += 1;
 				}
 			} else if (c === "\x0d" || c === "\x0a") {

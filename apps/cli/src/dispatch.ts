@@ -4,10 +4,10 @@
  * the context (the chain, the run state, the prompt arming).
  */
 
-import { escapeTerminal, palette } from "@vincemakes/kiso-tui";
+import { escapeTerminal, kUnit, palette } from "@vincemakes/kiso-tui";
 import { buildAdapter, type AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, getMode, setMode } from "./mode.js";
-import { agentModel, body, bodyLog, configModels, setAgentModel, setCurrentModelName, type LineInput } from "./state.js";
+import { agentModel, body, bodyLog, configModels, dock, setAgentModel, setCurrentModelName, type LineInput } from "./state.js";
 import { directWriteProfile, profileAvailable } from "./config.js";
 
 /** Everything dispatch touches that chat() owns. */
@@ -178,17 +178,73 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			return;
 		}
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			// W18: the compaction indicator — the whole call runs under
+			// a live status row (the INDETERMINATE form: the summary is
+			// ONE adapter call, no fraction exists — kiso never invents
+			// a percentage), with a REAL cancel: esc aborts the signal,
+			// which the runtime observes at every phase boundary.
+			const abort = new AbortController();
+			let compactCancelled = false;
+			const onEscape = (): void => {
+				if (abort.signal.aborted) return;
+				compactCancelled = true;
+				abort.abort();
+			};
+			ctx.input.onEscape(onEscape);
+			let compactStart = 0;
+			let compactTimer: ReturnType<typeof setInterval> | null = null;
+			// the `as` on the initializer keeps the flow type the full union —
+			// onStart fills this during the call, but a closure assignment
+			// never re-narrows the outer scope (it would read `never`)
+			let compactInfo: { rounds: number; tokens: number } | null = null as { rounds: number; tokens: number } | null;
+			// the ctx estimate BEFORE the summarized event lands (the used
+			// fraction — the recap's "ctx 91% → 34%" drops after compacting)
+			let ctxBefore: number | null = null;
+			const compacting = (info: { rounds: number; tokens: number }): void => {
+				const text = (elapsed: number): string =>
+					`▘ compacting · ${info.rounds} rounds · ~${kUnit(info.tokens)} tokens · ${Math.max(0, elapsed)}s`;
+				compactStart = Date.now();
+				ctxBefore = Math.round(ctx.estimateCtx() * 100);
+				dock.setStatus(text(0), "esc to cancel");
+				compactTimer = setInterval(() => {
+					dock.setStatus(text(Math.round((Date.now() - compactStart) / 1000)), "esc to cancel");
+				}, 1000);
+			};
 			try {
-				const result = await ctx.session.summarize();
+				const result = await ctx.session.summarize({
+					signal: abort.signal,
+					onStart: (info) => {
+						compactInfo = info;
+						compacting(info);
+					},
+				});
 				if (result === null) {
 					body.notice("[/compact] nothing to compact — fewer than 5 rounds yet");
 				} else {
-					body.notice(`[/compact] saved ~${result.savedTokens.toLocaleString("en-US")} tokens`);
+					// W18: the settled RECAP replaces the bare saved-token
+					// notice — it names what actually happened: the covered
+					// rounds, the one summary, the savings, the ctx drop
+					// (the estimate BEFORE vs AFTER — the same chars/4
+					// proxy the status bar shows, marked ~), and the time.
+					const ctxAfter = Math.round(ctx.estimateCtx() * 100);
+					const elapsed = compactStart > 0 ? ((Date.now() - compactStart) / 1000).toFixed(1) : "?";
+					// a non-null result implies onStart ran — the "?" is
+					// reachable only at the type level
+					body.notice(
+						`[/compact] ▞ compacted · ${compactInfo?.rounds ?? "?"} rounds → 1 summary · saved ~${kUnit(result.savedTokens)} · ctx ${ctxBefore ?? "?"}% → ${ctxAfter}% · ${elapsed}s`,
+					);
 				}
 			} catch (err) {
 				// Honest failure: nothing was persisted, the session
 				// is unchanged (ADR-0044 crash semantics).
-				body.notice(`[/compact] failed: ${err instanceof Error ? err.message : String(err)}`);
+				if (compactCancelled) {
+					body.notice("[/compact] cancelled — nothing was persisted");
+				} else {
+					body.notice(`[/compact] failed: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			} finally {
+				if (compactTimer !== null) clearInterval(compactTimer);
+				ctx.paintIdle();
 			}
 			ctx.input.prompt();
 		});

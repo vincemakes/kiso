@@ -685,18 +685,22 @@ class Checklist implements Component {
  *  the hint CUT FIRST when the width is short (the #16g rule); when
  *  the STATUS ITSELF cannot fit, it cuts with a "…" — the last resort,
  *  enforced by invariant ① (the old code let the status soft-wrap). */
-export function statusLine(status: string, tail: string, question: boolean, W: number): string {
+export function statusLine(status: string, tail: string, question: boolean, W: number, hint?: string): string {
 	const p = palette();
 	const text = `${status}${tail === "" ? "" : ` · ${tail}`}`;
 	if (question) return `${p.dim}${widthCut(text, W)}${p.reset}`;
-	const hint = " / commands · ↑ history";
+	// W18: the hint is a parameter — the compacting row right-aligns its
+	// "esc to cancel" (the same one-line-bounded shape as W12's delegate
+	// row; the #16g rule still cuts the HINT first, then the status with
+	// a "…" — never a fold).
+	const hintText = hint ?? " / commands · ↑ history";
 	const statusW = visibleWidth(text);
 	if (statusW > W) {
 		return `${p.dim}${widthCut(text, W - 1)}…${p.reset}`;
 	}
-	const hintW = visibleWidth(hint);
+	const hintW = visibleWidth(hintText);
 	if (statusW + hintW > W) return `${p.dim}${text}${p.reset}`;
-	return `${p.dim}${text}${" ".repeat(Math.max(0, W - statusW - hintW))}${hint}${p.reset}`;
+	return `${p.dim}${text}${" ".repeat(Math.max(0, W - statusW - hintW))}${hintText}${p.reset}`;
 }
 
 /** The display-width prefix of a plain (SGR-free) text. */
