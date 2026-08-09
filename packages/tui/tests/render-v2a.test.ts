@@ -221,7 +221,7 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 	});
 });
 
-describe("⑥: the checklist cell (the durable todo render)", () => {
+describe("⑥: the checklist cell (the durable task render)", () => {
 	it("NO_COLOR: the header ▞ + the brick glyphs (□ pending / ▖ active / ▣ done), byte-exact", () => {
 		const ev: RenderInput = {
 			type: "checklist",

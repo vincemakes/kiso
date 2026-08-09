@@ -1,6 +1,6 @@
 /**
- * ⑥ todo round — acceptance ③: the LONG-HORIZON narrative. A REAL kiso
- * chat (faux provider, the todo extension installed, a scripted
+ * ⑥ task round — acceptance ③: the LONG-HORIZON narrative. A REAL kiso
+ * chat (faux provider, the task extension installed, a scripted
  * trajectory) in a REAL PTY:
  *
  *   build a 3-item plan → mark one done → kill -9 mid-round-7 shell →
@@ -31,10 +31,10 @@ import { projectMessages } from "@vincemakes/kiso-core";
 import { SessionStore } from "@vincemakes/kiso-runtime";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
-const TODO_EXT = join(fileURLToPath(new URL("../../..", import.meta.url)), "extensions", "todo", "src", "kiso-todo.mjs");
+const TASK_EXT = join(fileURLToPath(new URL("../../..", import.meta.url)), "extensions", "task", "src", "kiso-task.mjs");
 
 /** The python PTY driver — three modes:
- *  mode None (phase 1): live chat — answers the two todo_set approvals
+ *  mode None (phase 1): live chat — answers the two task_set approvals
  *    and the shell approval, SIGKILLs the whole agent process group while
  *    the shell runs, then prints the capture.
  *  mode "resume" (phase 2): the one-shot resume — the rerun verdict; the
@@ -97,15 +97,15 @@ def driver(cli, home, script_path, session_id, workdir, mode):
                     return
     if mode is None:
         # Live chat, SEVEN user turns (one per scripted round): plan →
-        # one done → noise reads → the slow shell. The two todo_set
+        # one done → noise reads → the slow shell. The two task_set
         # rounds ask; the reads are auto-allowed; the shell asks.
         read_until("▌ ".encode(), 20)
         os.write(fd, b"go\\n")
-        read_until(b"approve todo_set", 30)
+        read_until(b"approve task_set", 30)
         os.write(fd, b"y\\n")
         read_until("▌ ".encode(), 20)
         os.write(fd, b"c1\\n")
-        read_until(b"approve todo_set", 30)
+        read_until(b"approve task_set", 30)
         os.write(fd, b"y\\n")
         read_until("▌ ".encode(), 20)
         os.write(fd, b"c2\\n")
@@ -120,7 +120,7 @@ def driver(cli, home, script_path, session_id, workdir, mode):
         read_until(b"approve shell", 30)
         os.write(fd, b"y\\n")
         # The kill predicate: the SHELL's OWN started event on disk (the
-        # two todo_set results and the reads are durable by then). A
+        # two task_set results and the reads are durable by then). A
         # whole-file substring check is NOT enough — the shell's
         # tool_call_end line also carries "name":"shell" and lands before
         # the execution starts (an early kill breaks the scenario).
@@ -202,20 +202,20 @@ const LIST_TWO = [
 	{ text: "verify with tests", status: "pending" },
 ];
 const ECHO_TWO =
-	"[todo] 3 items — 1 pending, 1 active, 1 done\n[done] write the plan\n[active] implement\n[pending] verify with tests";
+	"[task] 3 items — 1 pending, 1 active, 1 done\n[done] write the plan\n[active] implement\n[pending] verify with tests";
 
 /** 15 turns, SEVEN user turns (a scripted round is one model response;
  *  the loop only closes a user turn at an end_turn, so each scripted
  *  round must be its own turn with an end_turn after it — /compact
  *  counts user ROUNDS, and 7 rounds give it material to cover while the
- *  todo rounds stay inside the covered range): plan → one done → 4 read
+ *  task rounds stay inside the covered range): plan → one done → 4 read
  *  noise rounds → the slow shell (killed mid-run) → end (after resume) →
  *  the summary turn for the off-loop /compact call. */
 const FAUX_TRAJECTORY = [
 	// round 1: the plan
 	{
 		events: [
-			{ type: "tool_call_end", callId: "t1", name: "todo_set", input: { items: LIST_ONE } },
+			{ type: "tool_call_end", callId: "t1", name: "task_set", input: { items: LIST_ONE } },
 			{ type: "stop", reason: "tool_use" },
 		],
 	},
@@ -223,7 +223,7 @@ const FAUX_TRAJECTORY = [
 	// round 2: one done
 	{
 		events: [
-			{ type: "tool_call_end", callId: "t2", name: "todo_set", input: { items: LIST_TWO } },
+			{ type: "tool_call_end", callId: "t2", name: "task_set", input: { items: LIST_TWO } },
 			{ type: "stop", reason: "tool_use" },
 		],
 	},
@@ -252,15 +252,15 @@ const FAUX_TRAJECTORY = [
 	{ events: [{ type: "text_delta", text: "Faux summary of the old rounds." }, { type: "stop", reason: "end_turn" }] },
 ];
 
-describe("round 6 todo e2e: the long-horizon narrative (kill -9 → resume → /compact)", () => {
-	it("the latest todo list survives the kill, the resume, AND the /compact summary", () => {
-		const dir = mkdtempSync(join(tmpdir(), "kiso-todo-"));
+describe("round 6 task e2e: the long-horizon narrative (kill -9 → resume → /compact)", () => {
+	it("the latest task list survives the kill, the resume, AND the /compact summary", () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-task-"));
 		const home = join(dir, "home");
 		const workdir = join(dir, "work");
 		mkdirSync(workdir, { recursive: true });
 		mkdirSync(join(home, "ext"), { recursive: true });
-		// Install the todo extension (the source file is the artifact — the file itself).
-		writeFileSync(join(home, "ext", "kiso-todo.mjs"), readFileSync(TODO_EXT, "utf8"), "utf8");
+		// Install the task extension (the source file is the artifact — the file itself).
+		writeFileSync(join(home, "ext", "kiso-task.mjs"), readFileSync(TASK_EXT, "utf8"), "utf8");
 		writeFileSync(join(workdir, "f1.txt"), "noise\n", "utf8");
 		const scriptPath = join(dir, "faux.json");
 		writeFileSync(scriptPath, JSON.stringify(FAUX_TRAJECTORY), "utf8");
@@ -271,7 +271,7 @@ describe("round 6 todo e2e: the long-horizon narrative (kill -9 → resume → /
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, "todo", ${JSON.stringify(workdir)}, None)
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, "task", ${JSON.stringify(workdir)}, None)
 `;
 		const phase1Out = execFileSync("python3", ["-c", phase1], { encoding: "utf8", timeout: 90_000 });
 
@@ -284,9 +284,9 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptP
 		expect(phase1Out).toContain("  □ verify with tests");
 
 		const store = new SessionStore(join(home, "sessions"));
-		const records = store.load("todo");
+		const records = store.load("task");
 		const events = records.map((r) => r.event);
-		// Both todo_set results landed with the do-not-compact tag; the
+		// Both task_set results landed with the do-not-compact tag; the
 		// six earlier runs completed (one terminal each), the SHELL run
 		// died mid-flight — its terminal never landed, the marker never
 		// appeared.
@@ -309,12 +309,12 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptP
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, "todo", ${JSON.stringify(workdir)}, "resume")
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, "task", ${JSON.stringify(workdir)}, "resume")
 `;
 		const phase2Out = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000 });
 		expect(phase2Out).toContain("(r)erun / (a)bandon");
 
-		const records2 = new SessionStore(join(home, "sessions")).load("todo");
+		const records2 = new SessionStore(join(home, "sessions")).load("task");
 		const events2 = records2.map((r) => r.event);
 		expect(events2.some((e) => e.type === "terminal")).toBe(true);
 		// The interrupted shell never completed; the recovery filled the
@@ -329,12 +329,12 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptP
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, "todo", ${JSON.stringify(workdir)}, "chat")
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, "task", ${JSON.stringify(workdir)}, "chat")
 `;
 		const phase3Out = execFileSync("python3", ["-c", phase3], { encoding: "utf8", timeout: 90_000 });
 		expect(phase3Out).toContain("[/compact]");
 
-		const records3 = new SessionStore(join(home, "sessions")).load("todo");
+		const records3 = new SessionStore(join(home, "sessions")).load("task");
 		const events3 = records3.map((r) => r.event);
 		expect(events3.some((e) => e.type === "summarized")).toBe(true);
 

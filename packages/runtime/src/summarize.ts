@@ -100,8 +100,8 @@ export function lastSummaryPoint(events: readonly Event[]): number {
  * a message. Returns undefined when fewer than keepRounds+1 uncovered
  * rounds exist (nothing worth covering yet).
  *
- * ⑥ (todo round): a tool result tagged do-not-compact is DURABLE work
- * memory (the todo_set echo) — the summary must never cover its round,
+ * ⑥ (task round): a tool result tagged do-not-compact is DURABLE work
+ * memory (the task_set echo) — the summary must never cover its round,
  * or the model loses the current list. When the base boundary would
  * cover such a result, the boundary pulls back to just before the round
  * containing the LATEST one (still a turn boundary). A protected round

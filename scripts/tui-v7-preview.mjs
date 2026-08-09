@@ -94,11 +94,12 @@ function markFor(width, rows) {
 }
 const ORBIT = ["▖", "▘", "▝", "▗"]; // the one animated glyph — a point orbiting a centre
 
-// ─── the gutter: ONE column on every transcript row, no exceptions.
-const G = { you: "▍", think: "⋯", queued: "◦", ok: "✓", fail: "✗", held: "⏸", head: "▞", child: "└" };
+// ─── the gutter: one column on every transcript row — except the user's,
+// whose chip is the identity itself (the 2026-08-09 ruling retired the ▍ rail).
+const G = { think: "⋯", queued: "◦", ok: "✓", fail: "✗", held: "⏸", head: "▞", child: "└" };
 const NAMEW = 5; // read write edit shell list — the verb column
 
-const you = (t) => `${b(G.you)} ${p(t)}`;
+const you = (t) => `${rv(` ${t} `)}`; // the user message — the SGR-7 chip alone, flush left (the 2026-08-09 ruling)
 const say = (t) => `  ${t}`;
 const think = (t) => d(`${G.think} ${cut(t, W - 2)}`);
 const row = (glyph, name, target, meta, paint) => {
@@ -185,7 +186,7 @@ frame(
 		"",
 		// the art IS the wordmark, so the text line does not repeat the name
 		`  ${d("v0.1.32  —  the coding agent that survives kill -9")}`,
-		`  ${d("deepseek-v4-flash · ~/devv/kiso · mcp skills subagent todo")}`,
+		`  ${d("deepseek-v4-flash · ~/devv/kiso · mcp skills subagent task")}`,
 		"",
 		`  ${b(G.head)} ${d("resume")}`,
 		...RESUME.map(([w, t, m]) => `    ${d(padR(w, 7))} ${padR(p(t), W - 13 - metaW)} ${d(padL(m, metaW))}`),
@@ -304,7 +305,7 @@ frame(
 		...MARK_BIG.map((m) => `  ${b(m)}`),
 		"",
 		`  ${d("v0.1.32  —  the coding agent that survives kill -9")}`,
-		`  ${d("deepseek-v4-flash · ~/devv/kiso · mcp skills subagent todo")}`,
+		`  ${d("deepseek-v4-flash · ~/devv/kiso · mcp skills subagent task")}`,
 		"",
 		"",
 		d("COMPACT · 15 x 3 — v6's rows, unchanged, for short windows"),
@@ -391,11 +392,11 @@ const bandRows = (text) => {
 	return rows;
 };
 const chipRows = (text) => {
-	// inset: padded to the longest row + one space each side, so the
-	// block is only as wide as what was said.
-	const lines = foldPlain(text, W - 6);
+	// the shipped form (2026-08-09 ruling): fold first, pad every row to
+	// the longest + one space each side, flush left, SGR 27 close.
+	const lines = foldPlain(text, W - 2);
 	const inner = Math.max(...lines.map((l) => l.length));
-	return lines.map((l) => `  ${rv(` ${padR(l, inner)} `)}`);
+	return lines.map((l) => `${rv(` ${padR(l, inner)} `)}`);
 };
 function foldPlain(text, max) {
 	const out = [];
@@ -413,31 +414,24 @@ function foldPlain(text, max) {
 }
 const SENT = "fix the resize repaint storm — the frame state and the screen state disagree after a resize";
 frame(
-	"The sent message — three ways to mark it",
-	"Reverse video (SGR 7) is the right primitive: it inverts using the terminal's OWN two colours, so a light terminal paints dark-on-light and a dark terminal paints the reverse, with no theme detection and no configured palette. Toggle this page's terminal to see both. It is an SGR, so pipes and NO_COLOR drop it — which is why the ▍ rail stays as the structural fallback that survives a pipe.",
+	"The sent message — the chip, and the band it beat",
+	"Reverse video (SGR 7) is the right primitive: it inverts using the terminal's OWN two colours, so a light terminal paints dark-on-light and a dark terminal paints the reverse, with no theme detection and no configured palette. Toggle this page's terminal to see both. It is an SGR, so pipes and NO_COLOR drop it — and the pipe path is the line-mode 'you>' form, which never renders the user message: the 2026-08-09 ruling retired the ▍ rail, leaving the chip alone, flush left.",
 	[
-		d("A · today — the ▍ rail"),
-		"",
-		you("fix the resize repaint storm"),
-		"",
-		say(p("The repaint pushes committed rows back into the live region.")),
-		"",
-		"",
-		d("B · the full-width band — every row padded to W"),
-		"",
-		...bandRows(SENT),
-		"",
-		say(p("The repaint pushes committed rows back into the live region.")),
-		"",
-		"",
-		d("C · the inset chip — only as wide as what was said"),
+		d("A · today — the SGR-7 chip, flush left (the 2026-08-09 ruling)"),
 		"",
 		...chipRows(SENT),
 		"",
 		say(p("The repaint pushes committed rows back into the live region.")),
 		"",
 		"",
-		d("the deciding case — a SHORT message, where B and C stop looking alike"),
+		d("B · the full-width band — every row padded to W (the alternative)"),
+		"",
+		...bandRows(SENT),
+		"",
+		say(p("The repaint pushes committed rows back into the live region.")),
+		"",
+		"",
+		d("the deciding case — a SHORT message, where the chip and the band stop looking alike"),
 		"",
 		...bandRows("/think"),
 		say(p("…")),
@@ -520,32 +514,32 @@ frame(
 );
 
 // 13 · the checklist — the one existing cell kind the round never touched
-const todoRow = (glyph, text, paint) => `  ${paint(glyph)} ${p(cut(text, W - 4))}`;
+const taskRow = (glyph, text, paint) => `  ${paint(glyph)} ${p(cut(text, W - 4))}`;
 frame(
 	"The checklist — state, rendered as if it were an event",
-	"body.checklist() pushes a NEW cell with done:true on every todo_set, so each update commits another full copy to scrollback: 12 items over 10 updates is 130 rows of near-identical text. The component has no cap either, which breaks the very rule W7 sets. A todo list is STATE — it belongs in one live block that redraws in place and commits once, exactly W8's window generalised. Active becomes ▸, which already means 'the current one' in the slash menu.",
+	"body.checklist() pushes a NEW cell with done:true on every task_set, so each update commits another full copy to scrollback: 12 items over 10 updates is 130 rows of near-identical text. The component has no cap either, which breaks the very rule W7 sets. A task list is STATE — it belongs in one live block that redraws in place and commits once, exactly W8's window generalised. Active becomes ▸, which already means 'the current one' in the slash menu.",
 	[
 		d("today · unbounded, and a fresh copy every update"),
-		`${b(G.head)} ${p("todo")}`,
-		todoRow("▣", "W7 — R1 caps in screen rows after the fold", d),
-		todoRow("▖", "W8 — live block height never changes until settle", p),
-		todoRow("□", "W9 — caps recomputed on resize, and only on resize", p),
-		todoRow("□", "W10 — render the result body, name every cut", p),
-		todoRow("□", "Release 1 → 0.1.36 (W7-W10) + gate re-baseline", p),
-		d("  … and all of that again, committed, on the next todo_set"),
+		`${b(G.head)} ${p("task")}`,
+		taskRow("▣", "W7 — R1 caps in screen rows after the fold", d),
+		taskRow("▖", "W8 — live block height never changes until settle", p),
+		taskRow("□", "W9 — caps recomputed on resize, and only on resize", p),
+		taskRow("□", "W10 — render the result body, name every cut", p),
+		taskRow("□", "Release 1 → 0.1.36 (W7-W10) + gate re-baseline", p),
+		d("  … and all of that again, committed, on the next task_set"),
 		"",
 		"",
 		d("v7 · one live block · active first · done collapsed · committed once, at the end"),
-		`${b(G.head)} ${p("todo")} ${d("· 6 items · 1 active · 2 done")}`,
-		todoRow("▸", "W8 — live block height never changes until settle", b),
-		todoRow("□", "W9 — caps recomputed on resize, and only on resize", p),
-		todoRow("□", "W10 — render the result body, name every cut", p),
-		todoRow("□", "Release 1 → 0.1.36 (W7-W10) + gate re-baseline", p),
+		`${b(G.head)} ${p("task")} ${d("· 6 items · 1 active · 2 done")}`,
+		taskRow("▸", "W8 — live block height never changes until settle", b),
+		taskRow("□", "W9 — caps recomputed on resize, and only on resize", p),
+		taskRow("□", "W10 — render the result body, name every cut", p),
+		taskRow("□", "Release 1 → 0.1.36 (W7-W10) + gate re-baseline", p),
 		bodyEnd("+2 done · ctrl+r"),
 		"",
 		"",
 		d("settled · when the list is finished it commits ONCE, in the recap idiom"),
-		recap("todo done · 6 items · 2h 14m"),
+		recap("task done · 6 items · 2h 14m"),
 	],
 );
 
@@ -558,7 +552,7 @@ if (!HTML) {
 	process.stdout.write(`\n${d("─".repeat(W))}\n ${d(`width ${W} · ${PLAIN ? "plain (the pipe contract)" : "colored"}`)}\n`);
 } else {
 	const GUTTER = [
-		["▍", "you spoke", "bold"],
+		[rv("you"), "you spoke — the SGR-7 chip: flush left, one space each side, no gutter (the 2026-08-09 ruling retired the ▍ rail)", "rv"],
 		["&nbsp;", "kiso spoke — content is the default", "plain"],
 		["⋯", "thinking, folded to one row", "dim"],
 		["◦", "tool queued", "dim"],
@@ -651,7 +645,7 @@ if (!HTML) {
   ${sections}
   <div class=tbl>
     <h2>The gutter</h2>
-    <p>One column on every transcript row, no exceptions — so the left edge alone reads the turn. Weight is emphasis; the glyph is the information, which is why all of it survives a pipe.</p>
+    <p>One column on every transcript row — except the user's, whose chip is the identity itself (the 2026-08-09 ruling retired the ▍ rail). Weight is emphasis; the glyph is the information, which is why all of it survives a pipe.</p>
     <table>${GUTTER.map(([gl, mean, weight]) => `<tr><td>${gl}</td><td>${esc(mean)}</td><td>${weight}</td></tr>`).join("")}</table>
   </div>
   <footer>node scripts/tui-v7-preview.mjs --plain &nbsp;·&nbsp; the same frames, zero ANSI</footer>

@@ -9,7 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
-import { CAP_TODO_LIVE, cellComponent, formatDuration, type FrameCtx, visibleWidth } from "../src/components.js";
+import { CAP_TASK_LIVE, cellComponent, formatDuration, type FrameCtx, visibleWidth } from "../src/components.js";
 
 /** The BODY region's left-wall rows ("│ ") — W6: the box's chrome wall
  *  is dim-wrapped (`\x1b[2m│ \x1b[0m`), so the lookbehind excludes it and
@@ -598,7 +598,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the first cell (the banner): NO blank above — the body starts at
 		// row 1 (the banner is multi-row, so the blank comes AFTER it)
 		expect(rows[0]).not.toBe("");
-		const userAt = rows.findIndex((l) => l.includes("▍"));
+		const userAt = rows.findIndex((l) => l.trim() === "go"); // the chip strips to " go " (the 2026-08-09 ruling retired the rail)
 		expect(rows[userAt - 1]).toBe(""); // the banner (multi-row) breathes below
 		const readAt = rows.findIndex((l) => l.includes("✓ read"));
 		const listAt = rows.findIndex((l) => l.includes("✓ list_dir"));
@@ -846,7 +846,7 @@ describe("TUI v6 — the one compositor", () => {
 	});
 });
 
-describe("W20 — the todo checklist as STATE (the live block, the settle, the cap)", () => {
+describe("W20 — the task checklist as STATE (the live block, the settle, the cap)", () => {
 	// the fixture: 1 active + 7 pending + 2 done — the live capped form
 	// is the active row, ≤2 pending, the overflow-pending fold, the done
 	// collapse; the active item is LISTED THIRD (the live form promotes
@@ -879,7 +879,7 @@ describe("W20 — the todo checklist as STATE (the live block, the settle, the c
 	it("the LIVE block: the fixed prefix + derived counts, the active item FIRST with ▸, ≤2 pending, the cut rows — the cap holds at every width", () => {
 		for (const W of [60, 80, 120]) {
 			const rows = liveCell().render(W, CTX);
-			expect(rows.length).toBeLessThanOrEqual(CAP_TODO_LIVE);
+			expect(rows.length).toBeLessThanOrEqual(CAP_TASK_LIVE);
 			// every row is exactly one screen row (no wrap) — the
 			// POST-FOLD cap equals the row count at every width
 			for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(W);
@@ -887,7 +887,7 @@ describe("W20 — the todo checklist as STATE (the live block, the settle, the c
 		// the shape at 80: the compositor-derived counts (never the
 		// model's wording), the model tail AFTER the fixed prefix
 		const rows = liveCell().render(80, CTX);
-		expect(rows[0]).toContain("todo · 10 items · 1 active · 2 done");
+		expect(rows[0]).toContain("task · 10 items · 1 active · 2 done");
 		expect(rows[0]).toContain("10 items — 7 pending, 1 active, 2 done");
 		expect(rows[1]).toContain("item 3"); // the active item promoted
 		expect(rows[1]).toContain("\x1b[1m▸\x1b[0m"); // the W20 glyph, bold (the menu vocabulary)
@@ -901,7 +901,7 @@ describe("W20 — the todo checklist as STATE (the live block, the settle, the c
 		const long = [{ text: "a very long item text ".repeat(6) + "tail", status: "active" as const }];
 		for (const W of [60, 80]) {
 			const rows = cellComponent({ kind: "checklist", header: "h", items: long, done: false, expanded: false, startedAt: 0, durationSeconds: 0, turn: 0 }).render(W, CTX);
-			expect(rows.length).toBeLessThanOrEqual(CAP_TODO_LIVE);
+			expect(rows.length).toBeLessThanOrEqual(CAP_TASK_LIVE);
 			for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(W);
 		}
 	});
@@ -921,7 +921,7 @@ describe("W20 — the todo checklist as STATE (the live block, the settle, the c
 	it("the SETTLED block: the recap idiom + the model tail + the FULL final list in the existing checklist shape", () => {
 		const rows = cellComponent({ kind: "checklist", header: "the plan", items: ITEMS, done: true, expanded: false, startedAt: 0, durationSeconds: 8040, turn: 0 }).render(80, CTX);
 		expect(rows).toHaveLength(11);
-		expect(rows[0]).toContain("todo done · 10 items · 2h 14m");
+		expect(rows[0]).toContain("task done · 10 items · 2h 14m");
 		expect(rows[0]).toContain("the plan"); // the model tail rides after
 		// the durable glyphs — the checklist's existing shape (▖ for the
 		// active — the settled record, not the live marker)
@@ -952,15 +952,15 @@ describe("W20 — the todo checklist as STATE (the live block, the settle, the c
 		tick();
 		const turn1 = writes.join("");
 		// exactly ONE settled block for the turn — never one per update
-		expect(turn1.match(/todo done · 2 items/g) ?? []).toHaveLength(1);
-		expect(turn1.match(/todo done/g) ?? []).toHaveLength(1);
+		expect(turn1.match(/task done · 2 items/g) ?? []).toHaveLength(1);
+		expect(turn1.match(/task done/g) ?? []).toHaveLength(1);
 		// the next turn starts a FRESH live block (the settled one is done)
 		body.userLine("t2");
 		body.checklist("third", [{ text: "c", status: "active" }]);
 		body.endTurn(2);
 		tick();
 		const turn2 = writes.join("");
-		expect(turn2.match(/todo done · 1 item/g) ?? []).toHaveLength(1);
-		expect(turn2.match(/todo done/g) ?? []).toHaveLength(2); // both turns' settles
+		expect(turn2.match(/task done · 1 item/g) ?? []).toHaveLength(1);
+		expect(turn2.match(/task done/g) ?? []).toHaveLength(2); // both turns' settles
 	});
 });

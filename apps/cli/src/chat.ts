@@ -113,8 +113,8 @@ function approvalDiff(name: string, input: Record<string, unknown>): DiffResult 
  */
 
 /**
- * round 6 (the todo round): translate a do-not-compact-tagged tool result whose
- * content follows the todo echo contract (a [todo] header line + one
+ * round 6 (the task round): translate a do-not-compact-tagged tool result whose
+ * content follows the task echo contract (a [task] header line + one
  * `[pending|active|done] text` line per item) into the checklist cell's
  * structured items. Null = not a checklist — the ordinary result cell
  * renders. Keyed on the TAG (what the extension declared), never on a
@@ -129,7 +129,7 @@ function parseChecklist(
 	const items: { text: string; status: "pending" | "active" | "done" }[] = [];
 	let header = "";
 	for (const line of content.split("\n")) {
-		const head = /^\[todo\] (.*)$/.exec(line);
+		const head = /^\[task\] (.*)$/.exec(line);
 		if (head !== null) {
 			header = head[1]!;
 			continue;
@@ -266,7 +266,7 @@ export async function consumeRun(
 					if (m !== null) reason = m[1]!;
 				}
 				body.toolResult(ev.callId, { content: text, isError: ev.isError, reason });
-				// round 6 (the todo round): a result tagged do-not-compact whose content
+				// round 6 (the task round): a result tagged do-not-compact whose content
 				// follows the checklist shape also renders as the durable
 				// checklist cell (the CLI translates Event → the tui's own
 				// shape; a non-matching parse falls back to the ordinary

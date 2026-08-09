@@ -13,8 +13,9 @@
  *   pre-fix code stripped the ESC at the raw cell, leaving literal SGR
  *   text on screen — the mojibake). The storm runs on a session WITH the
  *   banner, so both are covered.
- * ③ #16f theme (v5): the user block is the ▍ rail — bright-white BOLD
- *   (SGR 1), never reverse video nor the fixed 48;5;237 background.
+ * ③ #16f theme (v5): the user block is the SGR-7 chip alone (the
+ *   2026-08-09 ruling retired the ▍ rail), never the fixed 48;5;237
+ *   background.
  * ④ #16d input row (W6): the box with the light › prompt — no "you>" text.
  */
 
@@ -121,7 +122,7 @@ function stripANSI(text: string): string {
 }
 
 describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
-	it("zero LF + stable separators + response exactly once + no ESC residue + ▍-rail user block + the box › input row", () => {
+	it("zero LF + stable separators + response exactly once + no ESC residue + the SGR-7 chip user block + the box › input row", () => {
 		const { env } = isolatedEnv();
 		// A TEXT-ONLY script — the default faux script's tool executes
 		// PARALLEL to the event stream (ADR-0024), so its result (and the
@@ -208,9 +209,10 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		expect(clean).not.toContain("[0m");
 		expect(clean).not.toContain("[38;5");
 
-		// ③ #16f: the user block is the ▍ rail — bright-white bold, never
-		// the retired reverse video nor the fixed dark background.
-		expect(out).toContain("\x1b[1m▍\x1b[0m   \x1b[7m look around \x1b[27m"); // W16: the rail + the inset chip
+		// ③ #16f: the user block is the SGR-7 chip alone, flush left (the
+		// 2026-08-09 ruling retired the ▍ rail + the indent) — never the
+		// fixed dark background.
+		expect(out).toContain("\x1b[7m look around \x1b[27m");
 		expect(out).not.toContain("\x1b[48;5;237m"); // the fixed dark background stays banned
 
 		// ④ #16d/#16e + W6: the input row is the box with the light ›

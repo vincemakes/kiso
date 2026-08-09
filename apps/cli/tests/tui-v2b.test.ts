@@ -149,11 +149,11 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		expect(clean).toContain("inspect or change?");
 		expect(clean).toContain("▸ default · /mode to switch · faux"); // v3 idle state
 		// v2d: the SENT line renders into the body EXACTLY once — a frozen
-		// UserCell (the ▍ rail + content + reset, printed at its region row
-		// — no pty-cooked newline: the renderer positions the next row).
+		// UserCell (the SGR-7 chip + reset, printed at its region row — no
+		// pty-cooked newline: the renderer positions the next row).
 		// The input row's brick prompt+line is a DIFFERENT shape (the
 		// reset splits the prompt from the text).
-		const userEcho = "\x1b[1m▍\x1b[0m   \x1b[7m look around \x1b[27m"; // W16: the ▍ rail + the inset chip — SGR 7 (closed 27) is the emphasis, the rail survives a pipe
+		const userEcho = "\x1b[7m look around \x1b[27m"; // the 2026-08-09 ruling: the chip ALONE, flush left (the ▍ rail + the indent retired)
 		expect(out).toContain(userEcho);
 		expect((out.match(new RegExp(userEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length).toBe(1);
 		// Exit resets the scroll region (CSI r) — no broken terminal.

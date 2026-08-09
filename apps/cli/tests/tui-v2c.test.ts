@@ -96,7 +96,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		expect(clean).toContain("› ");
 	}, 90_000);
 
-	it("the submitted line renders in the scroll region EXACTLY once — the ▍ rail + content + reset", () => {
+	it("the submitted line renders in the scroll region EXACTLY once — the SGR-7 chip + reset", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
 			// v6: the input row's frame COALESCES (16ms) — a burst of
@@ -111,10 +111,10 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		// row, not the body echo). W6: the › is light (the box already
 		// says "input lives here").
 		expect(out).toContain("› look around");
-		// v2d: the body echo is the frozen UserCell — the ▍ rail + content
-		// + reset, EXACTLY once (the row is not the scroll region, the
+		// v2d: the body echo is the frozen UserCell — the SGR-7 chip +
+		// reset, EXACTLY once (the row is not the scroll region, the
 		// frozen cell is the only copy there).
-		const bodyEcho = "\x1b[1m▍\x1b[0m   \x1b[7m look around \x1b[27m"; // W16: the ▍ rail + the inset chip
+		const bodyEcho = "\x1b[7m look around \x1b[27m"; // the 2026-08-09 ruling: the chip ALONE, flush left
 		const esc = bodyEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		expect((out.match(new RegExp(esc, "g")) ?? []).length).toBe(1);
 		// ?2004l on exit + region reset — no bracketed-paste left on.

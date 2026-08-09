@@ -14,8 +14,9 @@ import { charWidth, displayWidth } from "./width.js";
  * v2a — the palette, centralized (no hard-coded codes elsewhere); v5
  * (TUI v5 #16e, the v4.1 design): the decorative blue (38;5;75) is
  * RETIRED — the identity accents (the you> prompt, the banner tagline,
- * ✓ marks, slash-command names, the ▍ user rail, the input brick) are
- * bright-white BOLD (SGR 1); `code` is the content semantic tint for
+ * ✓ marks, slash-command names, the input brick) are bright-white BOLD
+ * (SGR 1); the user message is the SGR-7 chip (the 2026-08-09 ruling
+ * retired the ▍ rail); `code` is the content semantic tint for
  * inline code spans in assistant text (256-color 110 — the cube color
  * nearest the design's #8fb4d8); red for errors, dim for metadata,
  * green for the diff additions. NO_COLOR set, or a non-TTY output →
@@ -112,7 +113,7 @@ export type RenderInput =
 	| { readonly type: "summarized"; readonly coversToSeq: number }
 	| { readonly type: "uncertain_pending"; readonly name: string; readonly executionId: string; readonly error: string }
 	| {
-			// ⑥ todo round: the durable checklist — the CLI translates a
+			// ⑥ task round: the durable checklist — the CLI translates a
 			// do-not-compact-tagged tool result into this shape; the tui
 			// renders the brick glyphs (□ pending / ▖ active / ▣ done).
 			readonly type: "checklist";

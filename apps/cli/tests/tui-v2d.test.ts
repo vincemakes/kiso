@@ -100,7 +100,9 @@ const CELL_LINE = [
 	/^v\d+\.\d+\.\d+.*$/, // the version + tagline row (W1 — the art is the wordmark, the text row does not repeat the name)
 	/^│ ›.*│$/, // W6: the input row inside the box (the prompt › — the trim eats the pad)
 	/^▌\s?.*$/, // the editor's SELF-RENDER row — the LINE-MODE brick (W6-kept byte-for-byte): the editor's first paint rides the CLI's pre-dock console.log message on the same row
-	/^▍\s?.*$/, // TUI v5 #16f: the user block — every line carries the ▍ rail (arbitrary user text after it)
+	// TUI v5 #16f: the user block — the SGR-7 chip alone (the 2026-08-09
+	// ruling retired the ▍ rail + the indent). Classified by its RAW byte
+	// shape in the lint (the stripped form would be plain text).
 	/^╭[─]+╮$/, /^╰[─]+╯$/, // W6: the box rails (the corners close the ─ run)
 	/^ {0,2}(approved|denied.*)$/, // the permission_decided raw
 	/^│ approve .*\(y\/n\).*│$/, // the ApprovalPrompt slot — the question + the typed answer on the input row (W6: inside the box)
@@ -124,10 +126,12 @@ const lint = (raw: string): string[] => {
 	for (const seg of segments) {
 		// a pure CSI-parameter fragment (e.g. "1A", "1G", "0K") — not a line
 		if (/^[0-9;?]*[A-Za-z]$/.test(seg)) continue;
-		// TUI v5 #16f: the user block is the ▍-rail cell — its identity is
-		// the rail itself (there is no "you> " prefix, no bg/rev block).
-		// The rail pattern in CELL_LINE classifies it (the rail prefixes
-		// any user text — the pattern is total by construction).
+		// TUI v5 #16f: the user block's identity is the SGR-7 chip's own
+		// bracket (the 2026-08-09 ruling retired the ▍ rail + the indent —
+		// the stripped form would be indistinguishable from plain text, so
+		// the RAW segment carries the classifier; the split never breaks
+		// the chip: its CSIs are m-final, outside the ABDGKJ split class).
+		if (/^\x1b\[7m .* \x1b\[27m/.test(seg)) continue;
 		const t = seg
 			.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
 			.replace(/\[[0-9;]*m/g, "") // any residual SGR fragment (the split can strand a "[2m")

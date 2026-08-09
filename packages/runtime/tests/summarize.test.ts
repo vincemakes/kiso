@@ -74,15 +74,15 @@ describe("summaryBoundarySeq / lastSummaryPoint", () => {
 	});
 
 	it("⑥ do-not-compact: a tagged result in the covered range pulls the boundary to before its round", () => {
-		// 6 rounds; the todo_set (the tagged echo) lives in round 2 (seqs
+		// 6 rounds; the task_set (the tagged echo) lives in round 2 (seqs
 		// 3..8). Base boundary 5 covers rounds 1-2 → the tagged result's
 		// round is round 2 → boundary pulls back to input2 - 1 = 2, so only
 		// round 1 is covered and the current list survives the summary.
 		const events: Event[] = [
 			...roundEvents("r1", "a", 0),
 			ev(3, { type: "user_input", content: "plan" }),
-			ev(4, { type: "tool_call_end", callId: "t1", name: "todo_set", input: {} }),
-			ev(5, { type: "tool_result", callId: "t1", content: "[todo] 2 items", isError: false, tags: ["do-not-compact"] }),
+			ev(4, { type: "tool_call_end", callId: "t1", name: "task_set", input: {} }),
+			ev(5, { type: "tool_result", callId: "t1", content: "[task] 2 items", isError: false, tags: ["do-not-compact"] }),
 			ev(6, { type: "stop", reason: "end_turn" }),
 			...roundEvents("r3", "a", 7),
 			...roundEvents("r4", "a", 10),
@@ -100,12 +100,12 @@ describe("summaryBoundarySeq / lastSummaryPoint", () => {
 		// covered.
 		const events: Event[] = [
 			ev(0, { type: "user_input", content: "a" }),
-			ev(1, { type: "tool_call_end", callId: "t1", name: "todo_set", input: {} }),
+			ev(1, { type: "tool_call_end", callId: "t1", name: "task_set", input: {} }),
 			ev(2, { type: "tool_result", callId: "t1", content: "old list", isError: false, tags: ["do-not-compact"] }),
 			ev(3, { type: "stop", reason: "end_turn" }),
 			...roundEvents("r2", "a", 4),
 			ev(7, { type: "user_input", content: "b" }),
-			ev(8, { type: "tool_call_end", callId: "t2", name: "todo_set", input: {} }),
+			ev(8, { type: "tool_call_end", callId: "t2", name: "task_set", input: {} }),
 			ev(9, { type: "tool_result", callId: "t2", content: "new list", isError: false, tags: ["do-not-compact"] }),
 			ev(10, { type: "stop", reason: "end_turn" }),
 			...roundEvents("r4", "a", 11),
@@ -141,7 +141,7 @@ describe("summaryBoundarySeq / lastSummaryPoint", () => {
 			...roundEvents("r4", "a", 9),
 			...roundEvents("r5", "a", 12),
 			ev(15, { type: "user_input", content: "c" }),
-			ev(16, { type: "tool_call_end", callId: "t1", name: "todo_set", input: {} }),
+			ev(16, { type: "tool_call_end", callId: "t1", name: "task_set", input: {} }),
 			ev(17, { type: "tool_result", callId: "t1", content: "list", isError: false, tags: ["do-not-compact"] }),
 			ev(18, { type: "stop", reason: "end_turn" }),
 		];
@@ -154,7 +154,7 @@ describe("summaryBoundarySeq / lastSummaryPoint", () => {
 		// leaves nothing summarizable — an honest undefined.
 		const events: Event[] = [
 			ev(0, { type: "user_input", content: "a" }),
-			ev(1, { type: "tool_call_end", callId: "t1", name: "todo_set", input: {} }),
+			ev(1, { type: "tool_call_end", callId: "t1", name: "task_set", input: {} }),
 			ev(2, { type: "tool_result", callId: "t1", content: "list", isError: false, tags: ["do-not-compact"] }),
 			ev(3, { type: "stop", reason: "end_turn" }),
 			...roundEvents("r2", "a", 4),

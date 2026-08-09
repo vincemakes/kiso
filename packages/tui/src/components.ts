@@ -225,7 +225,7 @@ export type BodyCell =
 	| {
 			kind: "checklist";
 			/** the model-authored header tail (parseChecklist's count line —
-			 *  chat.ts). The compositor's fixed "todo" prefix rides BEFORE it
+			 *  chat.ts). The compositor's fixed "task" prefix rides BEFORE it
 			 *  (W20 naming ruling: never model-controlled). */
 			header: string;
 			items: { text: string; status: "pending" | "active" | "done" }[];
@@ -275,36 +275,36 @@ export function cellComponent(cell: BodyCell): Component {
 }
 
 /**
- * The user message — the left rail (bright-white BOLD ▍ per row, the
- * v4.1 design) + the W16 inset chip. The chip folds the text at W−6
- * (the rail + the indent + the side pads), then pads EVERY row to the
- * longest row's DISPLAY width + one space each side, indented two: the
- * block is only as wide as what was said (never the full-width band —
- * a short message like /think would paint a bar across the terminal).
- * The padding is by cells (charWidth is the width authority), so a CJK
- * row pads by width, never by chars, and the chip never overruns its
- * fold. SGR 7 closed with SGR 27 — never SGR 0, the chip composes
- * with a surrounding span — and NEVER dim: reverse video inverts the
- * CURRENT colours, so dimmed text would invert into a dimmed block
- * with no contrast. The ▍ rail stays: SGR is an emphasis on top, the
- * rail is the structural fallback that survives a pipe.
+ * The user message — the W16 inset chip ALONE (the 2026-08-09 ruling:
+ * the ▍ rail and the indent are retired — the rail's stated pipe
+ * fallback was theoretical redundancy: the CLI's pipe path is the
+ * line-mode "you>" form and never renders UserMessage). The chip folds
+ * the text at W−2 (the side pads), then pads EVERY row to the longest
+ * row's DISPLAY width + one space each side, flush left: the block is
+ * only as wide as what was said (never the full-width band — a short
+ * message like /think would paint a bar across the terminal). The
+ * padding is by cells (charWidth is the width authority), so a CJK row
+ * pads by width, never by chars, and the chip never overruns its fold.
+ * SGR 7 closed with SGR 27 — never SGR 0, the chip composes with a
+ * surrounding span — and NEVER dim: reverse video inverts the CURRENT
+ * colours, so dimmed text would invert into a dimmed block with no
+ * contrast.
  */
 class UserMessage implements Component {
 	constructor(private readonly cell: { text: string }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
-		const rail = `${p.bold}▍${p.reset} `;
-		const chipW = Math.max(1, W - 6);
+		const chipW = Math.max(1, W - 2);
 		const rows: string[] = [];
 		for (const para of this.cell.text.split("\n")) {
 			const folded = foldLine(escapeTerminal(para), chipW);
 			const inner = Math.max(...folded.map((r) => displayWidth(r)));
 			for (const row of folded) {
 				const pad = inner - displayWidth(row);
-				rows.push(`${rail}  ${p.rv} ${row}${" ".repeat(pad)} ${p.rvEnd}`);
+				rows.push(`${p.rv} ${row}${" ".repeat(pad)} ${p.rvEnd}`);
 			}
 		}
-		return rows.length > 0 ? rows : [rail.trimEnd()];
+		return rows;
 	}
 }
 
@@ -819,12 +819,12 @@ class Banner implements Component {
 	}
 }
 
-/** W20 — the todo block's fixed-window height: the whole live block
+/** W20 — the task block's fixed-window height: the whole live block
  *  (header + rows) in POST-FOLD screen rows at EVERY width: the header,
  *  the active row, up to 2 pending, the overflow-pending fold, the
  *  done-collapse. Every live row CUTS at W (never folds) — the block's
  *  height is its row count. */
-export const CAP_TODO_LIVE = 6;
+export const CAP_TASK_LIVE = 6;
 
 /** W20 — the live block's fixed-window row cut: an SGR-aware ONE-ROW
  *  truncation (foldLine wraps; a wrapped row would break the height
@@ -853,7 +853,7 @@ function cutLine(line: string, W: number): string {
 	return `${out}\x1b[0m…`;
 }
 
-/** W20 — the settled block's duration, the `2h 14m` form (the todo
+/** W20 — the settled block's duration, the `2h 14m` form (the task
  *  narrative's long-horizon idiom): minutes+seconds under an hour,
  *  hours+minutes past it. */
 export function formatDuration(totalSeconds: number): string {
@@ -864,16 +864,16 @@ export function formatDuration(totalSeconds: number): string {
 }
 
 /**
- * W20 — the todo checklist as STATE: ONE live block that redraws in
+ * W20 — the task checklist as STATE: ONE live block that redraws in
  * place (the current turn's in-place updates), settling at the turn's
- * end as ONE recap block. LIVE (done:false): the fixed "todo" prefix +
+ * end as ONE recap block. LIVE (done:false): the fixed "task" prefix +
  * the compositor-derived counts (the model tail rides AFTER — never
  * model-controlled), the active item first with ▸ (the menu's "the
  * current one"), pending next (≤2), the done items COLLAPSED behind the
  * W10 cut family `└ +N done · ctrl+r`, overflow pending behind
  * `└ +N more · ctrl+r` — every row cut at W so the cap holds at every
  * width. ctrl+r (W15) toggles the full list in place (expanded). SETTLED
- * (done:true): the recap idiom `todo done · N items · <duration>` + the
+ * (done:true): the recap idiom `task done · N items · <duration>` + the
  * FULL final item list in the checklist's existing shape (▖/□/▣ —
  * indented two, the glyph leads, no │ gutter).
  */
@@ -896,8 +896,8 @@ class Checklist implements Component {
 		const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
 		const tail = this.cell.header === "" ? "" : ` · ${this.cell.header}`;
 		const fixed = done
-			? `todo done · ${plural(items.length, "item")} · ${formatDuration(durationSeconds)}`
-			: `todo · ${plural(items.length, "item")} · ${active.length} active · ${doneCount} done`;
+			? `task done · ${plural(items.length, "item")} · ${formatDuration(durationSeconds)}`
+			: `task · ${plural(items.length, "item")} · ${active.length} active · ${doneCount} done`;
 		const header = `${p.bold}▞${p.reset} ${escapeTerminal(fixed + tail)}`;
 		// the FULL-list forms: SETTLED — the durable record (the fold is
 		// fine — committed content wraps naturally) — and the LIVE ctrl+r
@@ -916,7 +916,7 @@ class Checklist implements Component {
 		}
 		// LIVE — the fixed window: the header + the item rows CUT at W
 		// (one screen row each — the block's height is its row count,
-		// CAP_TODO_LIVE, at every width). The cut is the momentary view;
+		// CAP_TASK_LIVE, at every width). The cut is the momentary view;
 		// the settle (and the ctrl+r toggle) show everything.
 		const itemRows: string[] = [];
 		if (active.length > 0) itemRows.push(`  ${p.bold}▸${p.reset} ${escapeTerminal(active[0]!.text)}`);

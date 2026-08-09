@@ -105,10 +105,10 @@ interface TurnRecord {
 	folded: boolean;
 }
 
-/** W20 — the whole-table-replace comparison: the live todo block only
- *  redraws when the items actually changed (the todo extension's
+/** W20 — the whole-table-replace comparison: the live task block only
+ *  redraws when the items actually changed (the task extension's
  *  idempotent shape — an unchanged replace is a no-op, no frame). */
-function sameTodo(a: { text: string; status: "pending" | "active" | "done" }[], b: { text: string; status: "pending" | "active" | "done" }[]): boolean {
+function sameTask(a: { text: string; status: "pending" | "active" | "done" }[], b: { text: string; status: "pending" | "active" | "done" }[]): boolean {
 	return a.length === b.length && a.every((x, i) => x.text === b[i]!.text && x.status === b[i]!.status);
 }
 
@@ -377,8 +377,8 @@ export class Body {
 		if (turn === undefined || turn.ended) return;
 		turn.ended = true;
 		turn.thoughtSeconds = thoughtSeconds;
-		// W20: the turn's live todo block settles HERE — the ONE recap
-		// block for the turn (`todo done · N items · <duration>`, the
+		// W20: the turn's live task block settles HERE — the ONE recap
+		// block for the turn ("`task done · N items · <duration>", the
 		// duration clocked compositor-side from the block's first call —
 		// the CLI stays unchanged). A turn that never touched the list has
 		// no live block — nothing settles. Newest-first: the live block is
@@ -433,12 +433,12 @@ export class Body {
 		this.#mark();
 	}
 
-	/** W20 — the todo checklist as STATE, not events: the FIRST call of a
+	/** W20 — the task checklist as STATE, not events: the FIRST call of a
 	 *  turn creates the ONE live block (done:false — the commit loop only
 	 *  takes done cells, so it stays in the live region); later calls of
 	 *  the SAME turn MUTATE that block in place — same position, same
 	 *  height, zero committed rows (the W8 fixed-window rule generalised
-	 *  to state). An unchanged whole-table replace (the todo extension's
+	 *  to state). An unchanged whole-table replace (the task extension's
 	 *  idempotent shape) is a no-op — no mark, no frame. The block commits
 	 *  ONCE at the turn's end (endTurn); the next turn's first call starts
 	 *  a fresh block — one settled block per turn that touched the list,
@@ -459,7 +459,7 @@ export class Body {
 		const turn = this.#turns.length - 1;
 		const last = this.#cells[this.#cells.length - 1];
 		if (last !== undefined && last.kind === "checklist" && !last.done && last.turn === turn) {
-			if (!sameTodo(last.items, items)) {
+			if (!sameTask(last.items, items)) {
 				Object.assign(last, { header, items });
 				this.#mark();
 			}
@@ -542,7 +542,7 @@ export class Body {
 				this.#mark();
 				return { kind: "toggled" };
 			}
-			// W20: the LIVE todo block toggles in place too — the capped
+			// W20: the LIVE task block toggles in place too — the capped
 			// form flips to the full list (the "done-collapse expands
 			// under ctrl+r" claim). The SETTLED block is already full —
 			// no toggle, and its rows carry no affordance, so it never

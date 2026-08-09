@@ -1,15 +1,15 @@
 /**
- * TUI v7 W20 — the todo checklist as STATE, not events, through the
+ * TUI v7 W20 — the task checklist as STATE, not events, through the
  * CLI's topmost entry on a REAL PTY (40×80):
  *
- *  a faux turn fires 10 `todo_set` calls (whole-table replace, one item
+ *  a faux turn fires 10 `task_set` calls (whole-table replace, one item
  *  flipping active per call). The work order's done-when:
  *   1. the live block redraws IN PLACE — the block's origin row never
  *      moves (every during-run paint of the live header CUP's at row 1),
  *      the done items stay COLLAPSED behind the cut family (`└ +N more`
  *      / `└ +N done · ctrl+r` — the W15 toggle's affordance), and the
  *      live repaints never touch the committed band.
- *   2. exactly ONE settled `▞ todo done · 10 items · <duration>` block
+ *   2. exactly ONE settled `▞ task done · 10 items · <duration>` block
  *      at the turn's end — the derived counts + the model tail riding
  *      the FINAL state (10 items — 0 pending, 1 active, 9 done), the
  *      full final list in the durable checklist shape (▣/▖/□), the
@@ -55,7 +55,7 @@ import { describe, expect, it } from "vitest";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
-const TODO_EXT = join(fileURLToPath(new URL("../../..", import.meta.url)), "extensions", "todo", "src", "kiso-todo.mjs");
+const TASK_EXT = join(fileURLToPath(new URL("../../..", import.meta.url)), "extensions", "task", "src", "kiso-task.mjs");
 const H = 40;
 const W = 80;
 
@@ -64,9 +64,9 @@ const W = 80;
  * stream SPLITS at the second frame's end — PART1 is the pre-turn
  * transcript (the complete idle screen: the session line + the banner),
  * PART2 the turn's paints. The feed-needle offsets are recorded for the
- * ordering assertions. KISO_MODE=bypass — every todo_set auto-allows
+ * ordering assertions. KISO_MODE=bypass — every task_set auto-allows
  * (no approval asks — the W20 claim is the checklist state machine, not
- * the permission flow); the todo extension is installed from its source
+ * the permission flow); the task extension is installed from its source
  * file.
  */
 const PTY_DRIVER = `
@@ -78,7 +78,7 @@ def driver(cli, env, feeds, workdir, timeout):
         os.environ.update(env)
         os.environ["KISO_MODE"] = "bypass"
         os.chdir(workdir)
-        os.execvp("node", ["node", cli, "chat", "todo20"])
+        os.execvp("node", ["node", cli, "chat", "task20"])
     def winsize(rows, cols):
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     winsize(${H}, ${W})
@@ -125,7 +125,7 @@ def driver(cli, env, feeds, workdir, timeout):
 /** Run the turn; returns { pre, post } — the pre-turn transcript and
  *  the turn's paints. */
 function ptyRun(env: NodeJS.ProcessEnv, feeds: [string, string][], workdir: string, timeout = 60) {
-	const dir = mkdtempSync(join(tmpdir(), "kiso-todo20-"));
+	const dir = mkdtempSync(join(tmpdir(), "kiso-task20-"));
 	const driverPath = join(dir, "driver.py");
 	writeFileSync(driverPath, PTY_DRIVER, "utf8");
 	const phase = `
@@ -251,12 +251,12 @@ function vtGrid(stream: string): string[] {
 	return frames.at(-1)!.rows;
 }
 
-describe("TUI v7 W20 — the todo checklist as STATE (real PTY, 40×80)", () => {
-	it("10 todo_set updates redraw ONE live block in place (stable origin, the collapse + the cut family), then settle as exactly ONE todo done block (the final counts + the full list); the turn's text and the recap follow; the idle chrome survives", () => {
+describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => {
+	it("10 task_set updates redraw ONE live block in place (stable origin, the collapse + the cut family), then settle as exactly ONE task done block (the final counts + the full list); the turn's text and the recap follow; the idle chrome survives", () => {
 		const { env, dirs } = isolatedEnv();
-		// the todo extension installed from its source file (the artifact)
-		writeFileSync(join(dirs.extensions, "kiso-todo.mjs"), readFileSync(TODO_EXT, "utf8"), "utf8");
-		const dir = mkdtempSync(join(tmpdir(), "kiso-todo20-"));
+		// the task extension installed from its source file (the artifact)
+		writeFileSync(join(dirs.extensions, "kiso-task.mjs"), readFileSync(TASK_EXT, "utf8"), "utf8");
+		const dir = mkdtempSync(join(tmpdir(), "kiso-task20-"));
 		const workdir = join(dir, "work");
 		mkdirSync(workdir, { recursive: true });
 		const script = join(dir, "faux.json");
@@ -275,13 +275,13 @@ describe("TUI v7 W20 — the todo checklist as STATE (real PTY, 40×80)", () => 
 						...Array.from({ length: 10 }, (_, k) => ({
 							type: "tool_call_end",
 							callId: `t${k + 1}`,
-							name: "todo_set",
+							name: "task_set",
 							input: { items: list(k + 1) },
 						})),
 						{ type: "stop", reason: "tool_use" },
 					],
 				},
-				{ events: [{ type: "text_delta", text: "the todo list is final." }, { type: "stop", reason: "end_turn" }] },
+				{ events: [{ type: "text_delta", text: "the task list is final." }, { type: "stop", reason: "end_turn" }] },
 			]),
 			"utf8",
 		);
@@ -289,7 +289,7 @@ describe("TUI v7 W20 — the todo checklist as STATE (real PTY, 40×80)", () => 
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\n"], // the brick — the startup prompt
-				["the todo list is final.", ""], // the turn's text — the settle follows
+				["the task list is final.", ""], // the turn's text — the settle follows
 				[" · 10 tools", "exit\n"], // the recap — then the prompt quits
 			],
 			workdir,
@@ -314,7 +314,7 @@ describe("TUI v7 W20 — the todo checklist as STATE (real PTY, 40×80)", () => 
 		// (more than one live paint). The settle additionally repaints
 		// the last live state once in the committed band — the live
 		// paints beyond the origin row are the settle's, not the run's.
-		const livePaints = [...turn.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[1m▞\x1b\[0m todo · /g)];
+		const livePaints = [...turn.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[1m▞\x1b\[0m task · /g)];
 		const inPlace = livePaints.filter((m) => m[1] === "1");
 		expect(inPlace.length).toBeGreaterThan(1);
 		expect(livePaints.length).toBeGreaterThan(inPlace.length);
@@ -325,10 +325,10 @@ describe("TUI v7 W20 — the todo checklist as STATE (real PTY, 40×80)", () => 
 		// driver observes LAST, up to the exit's final repaint) show
 		// the overflow fold + the done-collapse affordances, and never
 		// the ▣ the collapse hides.
-		const inputRow = turn.indexOf("\x1b[1m▍\x1b[0m"); // the input row's paint
-		expect(inputRow).toBeGreaterThan(0);
+		const chipPaint = turn.indexOf("\x1b[1;1H\x1b[0K\x1b[7m go \x1b[27m"); // the user message's chip — the during-run's first frame (the rail retired by the 2026-08-09 ruling)
+		expect(chipPaint).toBeGreaterThan(0);
 		const secondWrap = turn.indexOf("\x1b[?2026h", 1); // the exit's final full repaint
-		const during = turn.slice(inputRow, secondWrap === -1 ? undefined : secondWrap);
+		const during = turn.slice(chipPaint, secondWrap === -1 ? undefined : secondWrap);
 		expect(/└ \+[0-9]+ more · ctrl\+r/.test(during)).toBe(true); // the overflow fold
 		expect(/└ \+[0-9]+ done · ctrl\+r/.test(during)).toBe(true); // the done-collapse
 		expect(during).not.toContain("▣ item"); // the collapse — no done rows in the live paints
@@ -337,15 +337,15 @@ describe("TUI v7 W20 — the todo checklist as STATE (real PTY, 40×80)", () => 
 		// idiom with the derived counts and the model tail riding the
 		// FINAL state; the full final list in the durable checklist
 		// shape (▣/▖/□); the turn's text and the recap follow.
-		const doneRows = finalGrid.filter((r) => r.includes("todo done"));
+		const doneRows = finalGrid.filter((r) => r.includes("task done"));
 		expect(doneRows).toHaveLength(1);
-		expect(doneRows[0]!).toContain("todo done · 10 items · "); // the duration follows
+		expect(doneRows[0]!).toContain("task done · 10 items · "); // the duration follows
 		expect(doneRows[0]!).toContain("10 items — 0 pending, 1 active, 9 done"); // the model tail — the FINAL state
-		const doneRow = finalGrid.findIndex((r) => r.includes("todo done"));
+		const doneRow = finalGrid.findIndex((r) => r.includes("task done"));
 		expect(finalGrid[doneRow + 1]).toContain("▣ item 1");
 		expect(finalGrid[doneRow + 2]).toContain("▣ item 2");
 		expect(finalGrid[doneRow + 10]).toContain("▖ item 10"); // the durable active glyph
-		expect(finalGrid.join("\n")).toContain("the todo list is final."); // the turn's text
+		expect(finalGrid.join("\n")).toContain("the task list is final."); // the turn's text
 		expect(finalGrid.join("\n")).toContain(" · 10 tools"); // the recap
 
 		// ④ the idle chrome survived — the mode line (asserted on the
