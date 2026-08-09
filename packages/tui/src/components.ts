@@ -224,9 +224,27 @@ export type BodyCell =
 	| { kind: "terminal"; label: string; line: string; done: true }
 	| {
 			kind: "checklist";
+			/** the model-authored header tail (parseChecklist's count line —
+			 *  chat.ts). The compositor's fixed "todo" prefix rides BEFORE it
+			 *  (W20 naming ruling: never model-controlled). */
 			header: string;
 			items: { text: string; status: "pending" | "active" | "done" }[];
-			done: true;
+			/** W20: false while LIVE — the current turn's ONE in-place block
+			 *  (the commit loop only takes done cells, so it stays in the
+			 *  live region); true once SETTLED — endTurn committed it as the
+			 *  turn's one recap block. */
+			done: boolean;
+			/** W20: the LIVE block's ctrl+r toggle (W15) — the capped form
+			 *  flips to the full list in place. The settled render ignores
+			 *  it (already full). */
+			expanded: boolean;
+			/** W20: the wall clock of the block's FIRST call — the settled
+			 *  header's duration is clocked from here, compositor-side (the
+			 *  CLI stays unchanged). */
+			startedAt: number;
+			/** W20: the run's duration at the settle — the `2h 14m` form. */
+			durationSeconds: number;
+			turn: number;
 	  };
 
 const TOOL_SUMMARY_MAX = 60; // the tool line's parameter summary, chars
@@ -801,17 +819,112 @@ class Banner implements Component {
 	}
 }
 
-/** The durable checklist — the ▞ header + one brick-glyph row per item. */
+/** W20 — the todo block's fixed-window height: the whole live block
+ *  (header + rows) in POST-FOLD screen rows at EVERY width: the header,
+ *  the active row, up to 2 pending, the overflow-pending fold, the
+ *  done-collapse. Every live row CUTS at W (never folds) — the block's
+ *  height is its row count. */
+export const CAP_TODO_LIVE = 6;
+
+/** W20 — the live block's fixed-window row cut: an SGR-aware ONE-ROW
+ *  truncation (foldLine wraps; a wrapped row would break the height
+ *  cap — every live row is exactly one screen row at every width).
+ *  A line that fits (≤ W) passes through whole; an overflow cuts the
+ *  content at W−1 — the ellipsis's slot — and the ellipsis rides AFTER
+ *  the reset (post-reset — the PTY needles' convention). The cut row
+ *  never exceeds W (invariant ①). */
+function cutLine(line: string, W: number): string {
+	if (visibleWidth(line) <= W) return line;
+	let out = "";
+	let width = 0;
+	for (let i = 0; i < line.length; ) {
+		if (line[i] === "\x1b") {
+			const m = /^\x1b\[[0-9;]*m/.exec(line.slice(i)) ?? line[i]!;
+			out += m;
+			i += m.length;
+			continue;
+		}
+		const cw = displayWidth(line[i]!);
+		if (width + cw > W - 1) break; // reserve the ellipsis's column
+		out += line[i]!;
+		width += cw;
+		i += 1;
+	}
+	return `${out}\x1b[0m…`;
+}
+
+/** W20 — the settled block's duration, the `2h 14m` form (the todo
+ *  narrative's long-horizon idiom): minutes+seconds under an hour,
+ *  hours+minutes past it. */
+export function formatDuration(totalSeconds: number): string {
+	const s = Math.max(0, Math.round(totalSeconds));
+	if (s < 60) return `${s}s`;
+	const m = Math.floor(s / 60);
+	return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/**
+ * W20 — the todo checklist as STATE: ONE live block that redraws in
+ * place (the current turn's in-place updates), settling at the turn's
+ * end as ONE recap block. LIVE (done:false): the fixed "todo" prefix +
+ * the compositor-derived counts (the model tail rides AFTER — never
+ * model-controlled), the active item first with ▸ (the menu's "the
+ * current one"), pending next (≤2), the done items COLLAPSED behind the
+ * W10 cut family `└ +N done · ctrl+r`, overflow pending behind
+ * `└ +N more · ctrl+r` — every row cut at W so the cap holds at every
+ * width. ctrl+r (W15) toggles the full list in place (expanded). SETTLED
+ * (done:true): the recap idiom `todo done · N items · <duration>` + the
+ * FULL final item list in the checklist's existing shape (▖/□/▣ —
+ * indented two, the glyph leads, no │ gutter).
+ */
 class Checklist implements Component {
-	constructor(private readonly cell: { header: string; items: { text: string; status: "pending" | "active" | "done" }[] }) {}
+	constructor(
+		private readonly cell: {
+			header: string;
+			items: { text: string; status: "pending" | "active" | "done" }[];
+			done: boolean;
+			expanded: boolean;
+			durationSeconds: number;
+		},
+	) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
-		const glyphOf = (status: string): string => (status === "pending" ? "□" : status === "active" ? "▖" : "▣");
-		const rows = foldLine(`${p.bold}▞${p.reset} ${escapeTerminal(this.cell.header)}`, W);
-		for (const item of this.cell.items) {
-			rows.push(...foldLine(`  ${glyphOf(item.status)} ${escapeTerminal(item.text)}`, W));
+		const { items, done, expanded, durationSeconds } = this.cell;
+		const active = items.filter((i) => i.status === "active");
+		const pending = items.filter((i) => i.status === "pending");
+		const doneCount = items.length - active.length - pending.length;
+		const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
+		const tail = this.cell.header === "" ? "" : ` · ${this.cell.header}`;
+		const fixed = done
+			? `todo done · ${plural(items.length, "item")} · ${formatDuration(durationSeconds)}`
+			: `todo · ${plural(items.length, "item")} · ${active.length} active · ${doneCount} done`;
+		const header = `${p.bold}▞${p.reset} ${escapeTerminal(fixed + tail)}`;
+		// the FULL-list forms: SETTLED — the durable record (the fold is
+		// fine — committed content wraps naturally) — and the LIVE ctrl+r
+		// toggle (the header CUTS — the block stays one window high; the
+		// expanded rows show the ▣ the collapse hid). The live flag picks
+		// the glyphs: the settled list keeps the durable ▖, the expanded
+		// live list the ▸.
+		const glyph = (status: string, live: boolean): string => {
+			const g = status === "pending" ? "□" : status === "active" ? (live ? "▸" : "▖") : "▣";
+			return g === "▸" ? `${p.bold}▸${p.reset}` : g;
+		};
+		if (done || expanded) {
+			const rows = done ? foldLine(header, W) : [cutLine(header, W)];
+			for (const item of items) rows.push(...foldLine(`  ${glyph(item.status, !done)} ${escapeTerminal(item.text)}`, W));
+			return rows;
 		}
-		return rows;
+		// LIVE — the fixed window: the header + the item rows CUT at W
+		// (one screen row each — the block's height is its row count,
+		// CAP_TODO_LIVE, at every width). The cut is the momentary view;
+		// the settle (and the ctrl+r toggle) show everything.
+		const itemRows: string[] = [];
+		if (active.length > 0) itemRows.push(`  ${p.bold}▸${p.reset} ${escapeTerminal(active[0]!.text)}`);
+		for (const item of pending.slice(0, 2)) itemRows.push(`  □ ${escapeTerminal(item.text)}`);
+		const more = pending.length - 2;
+		if (more > 0) itemRows.push(`  ${p.dim}└ +${more} more · ctrl+r${p.reset}`);
+		if (doneCount > 0) itemRows.push(`  ${p.dim}└ +${doneCount} done · ctrl+r${p.reset}`);
+		return [cutLine(header, W), ...itemRows.map((r) => cutLine(r, W))];
 	}
 }
 
