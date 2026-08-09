@@ -354,7 +354,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 						// ordering: the successors then proceed with their own
 						// verdicts).
 						const decision = await Promise.race([
-							humanPause(call, verdict.decisionId, hooks, log, config.resolveApproval, config.approvalVerdict, signal, pushExec),
+							humanPause(call, verdict.decisionId, hooks, log, config.resolveApproval, config.approvalVerdict, signal, pushExec, verdict.speaker),
 							violatedP,
 						]);
 						askRelease?.();
@@ -689,10 +689,12 @@ function terminalForStop(reason: StopReason | undefined): Terminal {
 // ── Execution ──────────────────────────────────────────────────────────
 
 /** The verdict of ONE call's front — validation + the policy chain. An
- *  ask carries the decisionId the human pause will bind to. */
+ *  ask carries the decisionId the human pause will bind to, and the
+ *  speaker (W21: the first non-abstain extension's name — the panel's
+ *  why-asked line; a static-hook ask has none). */
 type ExecVerdict =
 	| { action: "deny"; result: EventInput }
-	| { action: "ask"; decisionId: string }
+	| { action: "ask"; decisionId: string; speaker?: string }
 	| { action: "allow" };
 
 /** The tool_result event for a call — the shared shape (executionId rides
@@ -774,11 +776,14 @@ async function decideCall(
 	// the same logical call: same callId, decidedBy set (a policy verdict,
 	// never a human's), and input identical to the original tool_call_end —
 	// a re-issued call with different arguments is a NEW call and re-decided.
-	// Composition: deny > ask > allow — any deny wins (the FIRST denial's
-	// reason), else any ask falls into the existing human flow below, and
-	// only an ALL-allow chain auto-approves: recorded durably with decidedBy
-	// = the extension's name, never a human-visible pause. A policy that
-	// throws counts as ask.
+	// Composition (W21, the R3 ruling): deny > allow > ask — any deny wins
+	// (the FIRST denial's reason), then ANY allow (a LATER allow beats an
+	// EARLIER ask: the allow-only dont-ask-again extension must override a
+	// mode tier's ask — the old ask-wins chain left an allow-only extension
+	// structurally dead), and an ask falls into the human flow below. Only
+	// an ask-free chain auto-approves: recorded durably with decidedBy =
+	// the deciding extension's name, never a human-visible pause. A policy
+	// that throws counts as ask.
 	const originalCall = [...log.all].reverse().find(
 		(e): e is Event & { type: "tool_call_end" } => e.type === "tool_call_end" && e.callId === call.callId,
 	);
@@ -792,6 +797,7 @@ async function decideCall(
 	let chainVerdict: PolicyVerdict | undefined;
 	let deniedReason: string | undefined;
 	let deniedBy: string | undefined;
+	let allowedBy: string | undefined; // W21 — the FIRST allowing extension (the composition's decider for an allow)
 	let firstSpeaker: string | undefined; // the first non-abstain verdict's extension
 	let anySpoke = false;
 	if (durable === undefined && approvalPolicies !== undefined && approvalPolicies.length > 0) {
@@ -808,12 +814,21 @@ async function decideCall(
 			if (v.action === "deny") {
 				deniedBy ??= extension;
 				deniedReason ??= v.reason; // the FIRST denial's reason
-			} else if (v.action === "ask") {
-				chainVerdict = { action: "ask" };
+			} else if (v.action === "allow") {
+				// W21: deny > allow > ask — the allow overrides any EARLIER
+				// ask in the chain (the allow-only dont-ask-again extension
+				// after a mode tier that asked). The first allow is the
+				// deciding one — the symmetry of deniedBy.
+				allowedBy ??= extension;
+				chainVerdict = { action: "allow" };
+			} else if (chainVerdict === undefined) {
+				chainVerdict = { action: "ask" }; // recorded — a later allow overrides it
 			}
 		}
 		if (deniedBy !== undefined) {
 			chainVerdict = { action: "deny", reason: deniedReason ?? "denied" };
+		} else if (allowedBy !== undefined) {
+			chainVerdict = { action: "allow" }; // an allow beat any earlier ask
 		} else if (chainVerdict === undefined && anySpoke) {
 			chainVerdict = { action: "allow" }; // every speaker allows
 		} else if (chainVerdict === undefined) {
@@ -832,7 +847,7 @@ async function decideCall(
 				callId: call.callId,
 				decision: chainVerdict.action === "allow" ? "approved" : "denied",
 				...(chainVerdict.action === "deny" ? { reason: chainVerdict.reason } : {}),
-				decidedBy: deniedBy ?? (firstSpeaker as string),
+				decidedBy: deniedBy ?? allowedBy ?? (firstSpeaker as string),
 			});
 		}
 	}
@@ -852,7 +867,12 @@ async function decideCall(
 		if (resolveApproval === undefined) {
 			return { action: "deny", result: resultEvent(call, denialResult("a policy asked for a human decision, but no approval flow is configured")) };
 		}
-		return { action: "ask", decisionId: nextDecisionId() };
+		// W21: the speaker rides the ask verdict — the panel's why-asked
+		// line names the extension that asked (firstSpeaker; exactOptional-
+		// PropertyTypes: omitted, never `undefined`).
+		return firstSpeaker === undefined
+			? { action: "ask", decisionId: nextDecisionId() }
+			: { action: "ask", decisionId: nextDecisionId(), speaker: firstSpeaker };
 	}
 
 	// Permission negotiation — defer is a REAL pause (Phase D). C group: the
@@ -892,6 +912,7 @@ async function humanPause(
 	resolveApprovalVerdict: ((decisionId: string) => boolean | undefined) | undefined,
 	signal: AbortSignalLike | undefined,
 	push: (ev: EventInput) => void,
+	speaker?: string,
 ): Promise<PermissionDecision> {
 	const pendingDecision =
 		resolveApproval !== undefined
@@ -903,6 +924,9 @@ async function humanPause(
 		callId: call.callId,
 		name: call.name,
 		input: call.input ?? {},
+		// W21: the ask verdict's speaker — the panel's why-asked line (a
+		// static-hook ask has none).
+		...(speaker !== undefined ? { speaker } : {}),
 	});
 	if (hooks.onPause) await hooks.onPause("awaiting approval", {}).catch(() => {});
 	// Area 4: the pause is abortable — a cancel during the human's wait

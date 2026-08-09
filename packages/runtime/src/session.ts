@@ -329,8 +329,11 @@ export class AgentSession {
 	 * next resume applies it without re-asking. The crash window between a
 	 * resolve and the run's write is benign: nothing has executed yet, so a
 	 * lost decision only re-presents the request.
+	 * W21: an optional reason rides a DENIAL (the panel's feedback — the
+	 * tool_result carries `[Permission denied] <the words>`); allow reasons
+	 * are never persisted (the words ride the next user turn instead).
 	 */
-	async approve(decisionId: string, allow: boolean): Promise<void> {
+	async approve(decisionId: string, allow: boolean, reason?: string): Promise<void> {
 		// round 4: a poisoned session may not mutate the log — checked before
 		// anything is recorded.
 		this.ensureHealthy();
@@ -364,7 +367,10 @@ export class AgentSession {
 			// cannot issue while awaiting approve().)
 			this.#pendingDurableApprovals.set(decisionId, allow);
 			this.#pendingResolvers.delete(decisionId);
-			resolver(allow ? { action: "allow" } : { action: "deny", reason: "denied by user" });
+			// W21: the panel's feedback rides the denial — the tool_result
+			// carries `[Permission denied] <the words>` (the rejection
+			// asymmetry: words keep the run alive).
+			resolver(allow ? { action: "allow" } : { action: "deny", reason: reason ?? "denied by user" });
 			return;
 		}
 		const runId = request?.runId ?? "approval";
@@ -373,7 +379,7 @@ export class AgentSession {
 			decisionId,
 			...(request !== undefined ? { callId: (request.event as { callId: string }).callId } : {}),
 			decision: allow ? "approved" : "denied",
-			...(allow ? {} : { reason: "denied by user" }),
+			...(allow ? {} : { reason: reason ?? "denied by user" }),
 		});
 		await this.persist(runId, decided);
 	}

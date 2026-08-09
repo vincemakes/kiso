@@ -1,13 +1,16 @@
 /**
- * E1 — the extension approval policy chain (deny > ask > allow).
+ * E1 — the extension approval policy chain (W21/R3: deny > allow > ask).
  *
  * The loop runs extension policies BEFORE the human flow: any deny wins
- * (the FIRST denial's reason), else any ask falls into the existing human
- * approval flow, and only an ALL-allow chain auto-approves — recorded
- * durably with the deciding extension's name (decidedBy), never pausing
- * for a human. A policy that throws counts as ask. A durable decision
- * recorded before a crash takes effect on resume: the chain never re-runs
- * (isomorphic alreadyReplaced — the deterministic decisionId is the key).
+ * (the FIRST denial's reason), then ANY allow — a LATER allow beats an
+ * EARLIER ask (the allow-only don't-ask-again extension must override a
+ * mode tier's ask; the old ask-wins chain left it structurally dead) —
+ * and only an ask-free chain auto-approves: recorded durably with the
+ * deciding extension's name (decidedBy), never pausing for a human. An
+ * ask falls into the existing human flow (decided WITHOUT decidedBy). A
+ * policy that throws counts as ask. A durable decision recorded before a
+ * crash takes effect on resume: the chain never re-runs (isomorphic
+ * alreadyReplaced — the deterministic decisionId is the key).
  */
 
 import { describe, expect, it } from "vitest";
@@ -86,7 +89,12 @@ describe("E1: the policy chain composes deny > ask > allow", () => {
 		expect(resultOf(log)?.content).toContain("[Permission denied] no destructive git");
 	});
 
-	it("ask outranks allow — the existing human flow pauses, decided WITHOUT decidedBy", async () => {
+	it("W21/R3: a LATER allow beats an EARLIER ask — auto-approved with decidedBy, no human pause", async () => {
+		// The old ask-wins composition paused here — the ask outranked the
+		// allow and the human had to decide even though a policy allowed.
+		// The R3 ruling flips it: deny > allow > ask, so the allow-only
+		// don't-ask-again extension (bound after a mode tier that asked)
+		// is NOT structurally dead.
 		const log = new EventLog();
 		log.append({ type: "user_input", content: "go" });
 		for await (const _ev of loop({
@@ -103,12 +111,12 @@ describe("E1: the policy chain composes deny > ask > allow", () => {
 		})) {
 			// drain
 		}
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(true); // the ask reached the human flow
+		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false); // never paused — the allow decided
 		const ds = decided(log);
 		expect(ds).toHaveLength(1);
 		expect(ds[0]!.decision).toBe("approved");
-		expect(ds[0]!.decidedBy).toBeUndefined(); // the HUMAN decided, not a policy
-		expect(log.all.some((e) => e.type === "tool_result" && e.content === "ok")).toBe(true); // ran after the human allowed
+		expect(ds[0]!.decidedBy).toBe("allow-all"); // the POLICY decided, not the human
+		expect(log.all.some((e) => e.type === "tool_result" && e.content === "ok")).toBe(true); // ran — auto-approved
 	});
 
 	it("all allow — auto-approved with the extension's name, never a human pause", async () => {
@@ -143,7 +151,7 @@ describe("E1: the policy chain composes deny > ask > allow", () => {
 });
 
 describe("E1: policy failures and absent flows degrade honestly", () => {
-	it("a policy that throws counts as ask — the human flow decides", async () => {
+	it("a policy that throws counts as ask — a LATER allow still overrides it (W21/R3)", async () => {
 		const log = new EventLog();
 		log.append({ type: "user_input", content: "go" });
 		for await (const _ev of loop({
@@ -167,8 +175,11 @@ describe("E1: policy failures and absent flows degrade honestly", () => {
 		})) {
 			// drain
 		}
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(true);
-		expect(resultOf(log)?.content).toContain("[Permission denied] human says no");
+		// The thrown ask is an ask — but the LATER allow beats it (R3);
+		// the run executes, never pausing for the human.
+		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false);
+		expect(decided(log)[0]).toMatchObject({ decision: "approved", decidedBy: "allow-all" });
+		expect(resultOf(log)?.content).toBe("ok");
 	});
 
 	it("ask with no approval flow configured degrades to an honest denial", async () => {

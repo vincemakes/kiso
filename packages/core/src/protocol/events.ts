@@ -280,6 +280,9 @@ export interface PermissionRequested {
 	readonly callId: string;
 	readonly name: string;
 	readonly input: Readonly<Record<string, unknown>>;
+	/** W21: the first non-abstain extension's name — the panel's why-asked
+	 *  line. Absent on static-hook asks and old logs. */
+	readonly speaker?: string;
 }
 
 /** The durable answer to a PermissionRequested. */
@@ -713,7 +716,8 @@ const EVENT_VALIDATORS = {
 		typeof v.decisionId === "string" &&
 		typeof v.callId === "string" &&
 		typeof v.name === "string" &&
-		isPlainObject(v.input),
+		isPlainObject(v.input) &&
+		(v.speaker === undefined || typeof v.speaker === "string"),
 	permission_decided: (v: Record<string, unknown>) =>
 		typeof v.decisionId === "string" &&
 		(v.decision === "approved" || v.decision === "denied") &&
