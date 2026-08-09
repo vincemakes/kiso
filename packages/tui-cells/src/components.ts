@@ -335,8 +335,9 @@ class ThinkingFold implements Component {
 /** Fold a line's CONTENT at W−2 and prefix EVERY row with the gutter
  *  (W2: a wrapped tool row keeps its state mark — the left edge alone
  *  distinguishes the states at --plain; the UserMessage rail precedent,
- *  v5 #16f). The gutter carries its own SGR (e.g. the bold ✓). */
-function gutterFold(gutter: string, line: string, W: number): string[] {
+ *  v5 #16f). The gutter carries its own SGR (e.g. the bold ✓). W21:
+ *  exported for the approval panel's text args (the same │ gutter). */
+export function gutterFold(gutter: string, line: string, W: number): string[] {
 	const textW = Math.max(1, W - 2);
 	return foldLine(line, textW).map((r) => `${gutter}${r}`);
 }
@@ -713,8 +714,10 @@ function oneLineRow(p: Palette, text: string, W: number): string {
  *  (a folded cut pushed the total past 12 at narrow widths), and below
  *  a floor of 3 SOURCE lines visible the head/tail pair is noise (each
  *  fragment a sliver of a long line): drop to the head only — the head
- *  takes the whole budget — and the └ row carries the rest. */
-function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number, expanded = false): string[] {
+ *  takes the whole budget — and the └ row carries the rest.
+ *  W21: exported for the approval panel — the expanded path renders
+ *  the approval's ALWAYS-verbose args (never the capped copy). */
+export function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number, expanded = false): string[] {
 	const p = palette();
 	if (diff === null) return [];
 	const rows: string[] = [];
@@ -834,14 +837,21 @@ export const CAP_TASK_LIVE = 6;
  *  A line that fits (≤ W) passes through whole; an overflow cuts the
  *  content at W−1 — the ellipsis's slot — and the ellipsis rides AFTER
  *  the reset (post-reset — the PTY needles' convention). The cut row
- *  never exceeds W (invariant ①). */
-function cutLine(line: string, W: number): string {
+ *  never exceeds W (invariant ①). W21: exported for the approval
+ *  panel's single-row lines (the rule line, the title, the divider,
+ *  the options/affordance rows). */
+export function cutLine(line: string, W: number): string {
 	if (visibleWidth(line) <= W) return line;
 	let out = "";
 	let width = 0;
 	for (let i = 0; i < line.length; ) {
 		if (line[i] === "\x1b") {
-			const m = /^\x1b\[[0-9;]*m/.exec(line.slice(i)) ?? line[i]!;
+			// exec returns an ARRAY — copying m coerces it (the match), but
+			// m.length is the CAPTURE count (1), not the sequence length:
+			// the old `i += m.length` re-processed the sequence's bracket
+			// text as literal rows, doubling every code in a cut line
+			// (the W21 panel-slot red test). Index 0 is the sequence.
+			const m = /^\x1b\[[0-9;]*m/.exec(line.slice(i))?.[0] ?? line[i]!;
 			out += m;
 			i += m.length;
 			continue;
@@ -936,11 +946,13 @@ class Checklist implements Component {
  *  right-aligned "/ commands · ↑ history" hint in the idle state —
  *  the hint CUT FIRST when the width is short (the #16g rule); when
  *  the STATUS ITSELF cannot fit, it cuts with a "…" — the last resort,
- *  enforced by invariant ① (the old code let the status soft-wrap). */
-export function statusLine(status: string, tail: string, question: boolean, W: number, hint?: string): string {
+ *  enforced by invariant ① (the old code let the status soft-wrap).
+ *  W21: the question param is gone — the old question slot retires; a
+ *  pending approval's status IS the panel's (the compositor derives
+ *  it from the bound panel state). */
+export function statusLine(status: string, tail: string, W: number, hint?: string): string {
 	const p = palette();
 	const text = `${status}${tail === "" ? "" : ` · ${tail}`}`;
-	if (question) return `${p.dim}${widthCut(text, W)}${p.reset}`;
 	// W18: the hint is a parameter — the compacting row right-aligns its
 	// "esc to cancel" (the same one-line-bounded shape as W12's delegate
 	// row; the #16g rule still cuts the HINT first, then the status with
@@ -955,8 +967,9 @@ export function statusLine(status: string, tail: string, question: boolean, W: n
 	return `${p.dim}${text}${" ".repeat(Math.max(0, W - statusW - hintW))}${hintText}${p.reset}`;
 }
 
-/** The display-width prefix of a plain (SGR-free) text. */
-function widthCut(text: string, max: number): string {
+/** The display-width prefix of a plain (SGR-free) text. W21: exported
+ *  for the approval panel's option-2 rule-name cut. */
+export function widthCut(text: string, max: number): string {
 	let w = 0;
 	let i = 0;
 	for (; i < text.length; i += 1) {

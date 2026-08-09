@@ -17,6 +17,10 @@
       "types": "./dist/diff.d.ts",
       "default": "./dist/diff.js"
     },
+    "./approval-panel": {
+      "types": "./dist/approval-panel.d.ts",
+      "default": "./dist/approval-panel.js"
+    },
     "./width": {
       "types": "./dist/width.d.ts",
       "default": "./dist/width.js"

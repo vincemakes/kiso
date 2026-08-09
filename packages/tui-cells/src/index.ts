@@ -29,6 +29,25 @@ export {
 } from "./components.js";
 export { editFileDiff, truncateDiff, writeFileDiff, type DiffLine, type DiffResult } from "./diff.js";
 export { charWidth, displayWidth, widthOf } from "./width.js";
+// W21 (the v8 approval round): the approval panel — the bounded block
+// that replaces the running tool's live window while a human-chain
+// approval is pending. Types + the row/lead/status renderers; the
+// verdict mapping lives in the cli, never here.
+export {
+	panelAffordance,
+	panelBlockRows,
+	panelLead,
+	panelLeadPlain,
+	panelLeadWidth,
+	panelStatus,
+	type PanelArgs,
+	type PanelFlavor,
+	type PanelPhase,
+	type PanelSel,
+	type PanelState,
+	type PanelVerdict,
+	type PanelView,
+} from "./approval-panel.js";
 export {
 	bannerLines,
 	COLOR_OFF,
