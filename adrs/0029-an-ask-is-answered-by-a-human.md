@@ -71,3 +71,34 @@ final gate by design.
   speaks for an ask`; the ask-routing tests (human pause, no decidedBy);
   `packages/runtime/tests/extensions.test.ts` — the static default-deny
   regression pin.
+
+## Amendment (2026-08-09): the chain's composition is deny > allow > ask — the R3 ruling, recorded retroactively
+
+The W21 round changed the E1 chain's composition (the R3 ruling): an ask
+is now the LOWEST verdict. Any deny wins (the FIRST denial's reason);
+then ANY allow — **a LATER allow beats an EARLIER ask** (the allow-only
+dont-ask-again extension must override a mode tier's ask — the old
+ask-wins chain left the allow-only extension structurally dead); and an
+ask reaches the human only when no deny and no allow decided. The
+owner's ruling sentence (the 2026-08-09 corrective action, quoted
+verbatim): "deny > ask > allow → deny always wins, a LATER allow beats
+an EARLIER ask ... as the necessary consequence of the owner's R3
+ruling."
+
+This amendment records that sanction RETROACTIVELY — the semantic was
+not part of this document's original decision (whose context still says
+the deny>ask>allow order was "unchanged" and "the ask outranks the
+default deny, by design"); it is recorded here as an amendment, not as
+something that was always true. The composition's other properties
+remain as decided where they live: an all-abstain chain falls to the
+human flow, never a silent auto-approve (ADR-0042); a throwing policy
+counts as ask; the attribution rides `permission_decided` durably
+(decidedBy = the first deny / the first allow / the first speaker of an
+every-speaker-allows chain — never a human pause); the ask's speaker
+(the first non-abstain) rides `permission_requested` — the panel's
+why-asked line.
+
+Since the 2026-08-09 corrective action (CA-2), the composition itself
+lives in the runtime (`composeApprovalChain`, packages/runtime) — the
+kernel's gate consumes its single verdict; the semantic this amendment
+records is unchanged by the move.
