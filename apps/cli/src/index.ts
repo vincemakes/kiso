@@ -39,7 +39,7 @@ import {
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
-import { body, bodyLog, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, userExtensions, VERSION, type LineInput } from "./state.js";
+import { body, bodyLog, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, userExtensions, VERSION, type LineInput } from "./state.js";
 import { interactivePrompt, resolveProjectTrust } from "./trust-ui.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { autoCompactFromEnv, chat, contextWindowTokens } from "./chat.js";
@@ -88,6 +88,14 @@ function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
 			/* the rl.question stays pending; the settled branch re-emits
 			 * the answer as a new line. */
 		},
+		// W21: readline is never asked — askPanel's non-TTY branch
+		// auto-denies before any panel opens (the pipe path).
+		panelAsk() {
+			/* unreachable — non-TTY asks auto-deny in askPanel */
+		},
+		panelCancel() {
+			/* unreachable */
+		},
 		emitLine(line) {
 			rl.emit("line", line);
 		},
@@ -133,6 +141,14 @@ function editorInput(editor: Editor): LineInput {
 		cancelQuestion() {
 			editor.cancelQuestion();
 		},
+		// W21: the panel — the editor's own state machine takes the
+		// keys; the compositor renders it via the bound state.
+		panelAsk(view, onCommit) {
+			editor.beginPanel(view, onCommit);
+		},
+		panelCancel() {
+			editor.cancelPanel();
+		},
 		emitLine() {
 			/* the editor's buffer survives a cancelled question — its text
 			 * becomes the next turn on Enter (the readline re-emit
@@ -166,6 +182,7 @@ function makeLineInput(): LineInput {
 		// pipe bytes do not change)
 		dock.bindInput(() => editor.dockState(), "› ");
 		dock.bindMenu(() => editor.menuState()); // v3 §04: the slash-command menu
+		dock.bindApproval(() => editor.panelState()); // W21: the panel's bound state
 		return editorInput(editor);
 	}
 	return readlineInput(createInterface({ input: process.stdin, output: process.stdout }));
@@ -319,6 +336,14 @@ async function makeAgent(fauxSkipTurns = 0, input?: LineInput, modelFlag?: strin
 	}
 	setAgentModel(model); // v2b: the status bar shows it
 
+	// W21: the extensions array is built ONCE per agent and shared with
+	// the runtime by reference — the don't-ask-again writer pushes the
+	// generated extension into it so a first-time rule joins the chain
+	// at the NEXT run (the run's policies are fixed at its start; run.ts
+	// re-reads the config's extensions array per run).
+	const extensions = [...modeExtensions(), ...loadedExtensions];
+	setCurrentAgentExtensions(extensions);
+
 	const definition: AgentDefinition = {
 		model,
 		store,
@@ -344,7 +369,7 @@ async function makeAgent(fauxSkipTurns = 0, input?: LineInput, modelFlag?: strin
 		// Modes: the five tiers join at the CHAIN HEAD, before the user/
 		// project extensions (the deny>ask>allow composition keeps a user
 		// deny winning over any mode tier — bypass included).
-		extensions: [...modeExtensions(), ...loadedExtensions],
+		extensions,
 		...(resolved !== null
 			? {
 					provider: resolved.profile.kind,

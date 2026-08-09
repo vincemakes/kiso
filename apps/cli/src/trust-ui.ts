@@ -1,18 +1,21 @@
 /**
  * The ergonomics batch B4 (pure move) — the human-facing question UI: the E3 project
- * trust gate (ADR-0037), the mcp/skills env merges, the generic ask()
- * (approvals, trust, uncertain resolutions), and the uncertain-execution
+ * trust gate (ADR-0037), the mcp/skills env merges, the W21 approval
+ * panel (askPanel — the bounded block, the verdict mapping lives in
+ * chat.ts), the don't-ask-again rule writer, and the uncertain-execution
  * decisions. All bodies moved verbatim from index.ts.
  */
 
-import { existsSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { escapeTerminal, palette } from "@vincemakes/kiso-tui";
+import { pathToFileURL } from "node:url";
+import { escapeTerminal, palette, type PanelVerdict, type PanelView } from "@vincemakes/kiso-tui";
 import { projectArtifacts, recordTrust, trustFor, type ProjectArtifacts } from "@vincemakes/kiso-runtime";
-import type { AgentSession } from "@vincemakes/kiso-runtime";
-import { CANCELLED, bodyLog, dock, kisoHome, mergedTempPaths, type LineInput } from "./state.js";
+import type { AgentSession, KisoExtension } from "@vincemakes/kiso-runtime";
+import { bodyLog, currentAgentExtensions, dock, extensionsDir, kisoHome, mergedTempPaths, type LineInput } from "./state.js";
 import { loadUserConfig, resolveProjectTrustPolicy } from "./config.js";
+import { getMode } from "./mode.js";
 
 /** v2a: the interactive prompt — blue, the identity accent. readline owns
  *  the echo of what the user types; we own the prompt's color. (v2c: the
@@ -24,30 +27,33 @@ export function interactivePrompt(): string {
 }
 
 /**
- * Ask the human a question. Non-interactive stdin (piped, CI) cannot wait
- * forever: approvals auto-deny and uncertain executions auto-abandon, both
- * printed loudly — never silently ignored, never hung (Area 7).
+ * W21 — ask the human with the approval panel: the bounded block that
+ * replaces the running tool's live window while the approval is pending.
+ * The editor owns the keys (the digits/tab/esc/enter routing, the rule
+ * input, the tab-amend); the compositor renders the block + the leads;
+ * the CLI maps the verdict (the bare-No abort, the No+words tool_result,
+ * the allow-amend words riding the next turn — all live in chat.ts,
+ * never here).
  *
- * rounds 8/10: the question is ABORTABLE — a pending rl.question is registered in
- * `pendingAsk` and the SIGINT handler resolves it with the CANCELLED
- * sentinel. The rl.question callback is NOT left dangling: an input that
- * arrives after the cancellation is re-emitted as a fresh "line" — it
- * becomes the next user turn instead of being swallowed by the dead
- * question.
+ * Non-interactive stdin (piped, CI) cannot wait forever: the approval
+ * AUTO-DENIES, printed loudly — never silently ignored, never hung
+ * (Area 7). A TTY without a dock (rows < 4) falls back to the v2a line
+ * question (y/n → allow/deny) — the panel cannot render without the
+ * dock's live region.
+ *
+ * rounds 8/10: the ask is ABORTABLE — registered in `pendingAsk`, the
+ * SIGINT handler resolves it with { action: "cancel" } (the panel closes
+ * through the editor's panelCancel, the dock-less question through
+ * cancelQuestion). The dock-less question callback is NOT left dangling:
+ * an input that arrives after the cancellation is re-emitted as a fresh
+ * "line" — it becomes the next user turn instead of being swallowed by
+ * the dead question.
  */
 export let pendingAsk: (() => void) | null = null;
-export function ask(input: LineInput, question: string): Promise<string | typeof CANCELLED> {
+export function askPanel(input: LineInput, view: PanelView): Promise<PanelVerdict> {
 	if (!process.stdin.isTTY) {
-		console.log(`[non-interactive — no human to ask: ${question}]`);
-		return Promise.resolve("");
-	}
-	// v2b: docked — the question takes over the status position, the
-	// answer lands at the input line. v2c: a TTY without a dock (rows < 4)
-	// prints the question into the body — the editor cannot show it.
-	if (dock.active) {
-		dock.showQuestion(question);
-	} else {
-		bodyLog(question);
+		console.log(`[non-interactive — no human to ask: ${view.fallbackQuestion}]`);
+		return Promise.resolve({ action: "deny", reason: "no human to ask" });
 	}
 	return new Promise((resolve) => {
 		let settled = false;
@@ -55,26 +61,101 @@ export function ask(input: LineInput, question: string): Promise<string | typeof
 			if (settled) return;
 			settled = true;
 			pendingAsk = null;
-			input.cancelQuestion();
-			resolve(CANCELLED); // the run is aborting — the question is dead
+			if (dock.active) input.panelCancel();
+			else input.cancelQuestion();
+			resolve({ action: "cancel" });
 		};
-		// v2b: docked — the question reads at the input line, whose prompt
-		// is the same blue you> (the editor's brick row; the readline path
-		// passes the plain question). An empty prompt would start readline
-		// at column 1 while the dock renders "you> " — the typed answer
-		// would land on the prompt and drift (probe-confirmed).
-		input.question(dock.active ? interactivePrompt() : question, (answer) => {
-			if (settled) {
-				// The question was cancelled; this line is a NEW user turn.
-				input.emitLine(answer);
-				return;
-			}
-			settled = true;
-			pendingAsk = null;
-			if (dock.active) dock.clearQuestion();
-			resolve(answer);
-		});
+		if (dock.active) {
+			input.panelAsk(view, (verdict) => {
+				if (settled) return; // a cancelled panel's late commit is dead
+				settled = true;
+				pendingAsk = null;
+				resolve(verdict);
+			});
+		} else {
+			// v2c: a TTY without a dock (rows < 4) — the fallback question
+			// in the body; the y/n line answer maps to the verdicts.
+			bodyLog(view.fallbackQuestion);
+			input.question(view.fallbackQuestion, (answer) => {
+				if (settled) {
+					// The question was cancelled; this line is a NEW user turn.
+					input.emitLine(answer);
+					return;
+				}
+				settled = true;
+				pendingAsk = null;
+				const yes = answer.trim().toLowerCase().startsWith("y");
+				resolve(yes ? { action: "allow", reason: "" } : { action: "deny", reason: "" });
+			});
+		}
 	});
+}
+
+/**
+ * W21/R3 — the "2 Yes, don't ask again for <tool>" rule: a GENERATED
+ * extension, ALLOW-ONLY by construction (it never emits deny or ask —
+ * the mode moat and the safe-defaults moat keep their teeth). The file
+ * is HUMAN-EDITABLE and HUMAN-DELETABLE — that IS the revocation path.
+ * The loader sorts *.mjs alphabetically, so dont-ask-again.mjs binds
+ * BEFORE safe-defaults.mjs: the allow is the chain's first word, the
+ * safe-defaults deny moat still wins (deny > allow — the R3 order).
+ */
+export async function addDontAskAgainRule(rule: string): Promise<void> {
+	const dir = extensionsDir();
+	const file = join(dir, "dont-ask-again.mjs");
+	const existed = existsSync(file);
+	const module = [
+		"// generated by kiso — the \"2 Yes, don't ask again for <tool>\" rule.",
+		"// HUMAN-EDITABLE and HUMAN-DELETABLE — this file IS the revocation path:",
+		"// delete a rule from the set (or the whole file) to be asked again.",
+		"// ALLOW-ONLY by design (R3): never emits deny or ask — the mode moat",
+		"// and the safe-defaults moat keep their teeth.",
+		`export const RULES = new Set(${JSON.stringify([rule])});`,
+		"",
+		"export default {",
+		'  name: "dont-ask-again",',
+		"  approvals: [",
+		"    {",
+		"      decide(call) {",
+		'        return RULES.has(call.name) ? { action: "allow" } : { action: "abstain" };',
+		"      },",
+		"    },",
+		"  ],",
+		"};",
+		"",
+	].join("\n");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(file, module, "utf8");
+	// The live in-session effect: a file that existed at startup was
+	// imported by the loader — ONE namespace — so mutating the exported
+	// RULES Set is live NOW (the current run's chain reads the same Set).
+	const mod = (await import(pathToFileURL(file).href)) as { RULES?: Set<string>; default?: unknown };
+	if (mod.RULES !== undefined && !mod.RULES.has(rule)) mod.RULES.add(rule);
+	// A FIRST-time rule (a file that did not exist at startup) is not yet
+	// in the current run's chain — the chain is fixed at a run's start —
+	// so the generated extension joins the NEXT run's policies (run.ts
+	// re-reads the session config's extensions array, shared by
+	// reference). The honest story: a new rule applies from the next run.
+	if (!existed && mod.default !== undefined) {
+		currentAgentExtensions.push(mod.default as KisoExtension);
+	}
+}
+
+/**
+ * W21 — the §3.5 fix-hint table: per speaker, the ONE-line path to stop
+ * being asked. The hint names the FIX, never a bypass ("switch to
+ * bypass" would be an approval-hole nudge — the R3 ruling). The
+ * extension hint collapses the home prefix to ~ (the hint must stay
+ * short enough for the one-row rule line at narrow widths).
+ */
+export function fixHintFor(speaker: string, tool: string): string | undefined {
+	if (speaker === "mode:default") {
+		if (tool === "shell") return undefined;
+		return "/mode accept-edits auto-approves edits";
+	}
+	if (speaker === "mode:manual" || speaker === "mode:plan") return "/mode default";
+	if (speaker === "mode:accept-edits" || speaker === "mode:bypass") return undefined;
+	return `edit ${join(extensionsDir(), `${speaker}.mjs`).replace(homedir(), "~")}`;
 }
 
 /**
@@ -112,14 +193,30 @@ export async function resolveProjectTrust(input: LineInput): Promise<ProjectArti
 		);
 		return null;
 	}
-	// v2c: the shared input (the editor on a TTY) reads the answer; the
-	// dock shows the question at the status position.
+	// v2c: the shared input (the editor on a TTY) reads the answer.
+	// W21: the trust gate is the panel's SIMPLE flavor — the ruleOverride
+	// carries the question, the args the artifact listing (the same rows
+	// the bodyLog below records, verbatim — the listing still lands in
+	// the scrollback; the panel is a bounded block, the record is not).
 	bodyLog(`[project .kiso] ${artifacts.root}`);
 	for (const f of artifacts.files) {
 		bodyLog(`  ${f.path}  (${f.digest.slice(0, 6)})`);
 	}
-	const answer = await ask(input, `trust this project's .kiso? (y/n) `);
-	const granted = answer !== CANCELLED && answer.trim().toLowerCase().startsWith("y");
+	const verdict = await askPanel(input, {
+		flavor: "simple",
+		name: "project trust",
+		title: artifacts.root,
+		speaker: "kiso",
+		statusText: "▸ project trust",
+		args: { kind: "text", lines: artifacts.files.map((f) => `${f.path}  (${f.digest.slice(0, 6)})`) },
+		ruleOverride: "trust this project's .kiso?",
+		fallbackQuestion: `trust this project's .kiso? (y/n) `,
+	});
+	// A cancel is a "no" HERE — refused is sticky, the project does not
+	// load (re-evaluate by deleting the trust line or changing a file).
+	// The non-TTY branch above returned WITHOUT a record so an interactive
+	// run can still decide later.
+	const granted = verdict.action === "allow";
 	recordTrust({ root: artifacts.root, digest: artifacts.digest, decision: granted ? "granted" : "refused" });
 	if (!granted) return null;
 	applyProjectMerges(artifacts);
@@ -210,24 +307,34 @@ function readdirSyncSafe(dir: string): string[] {
 	}
 }
 
-/** Decide every uncertain execution with the human (r)erun/(a)bandon. */
+/** Decide every uncertain execution with the human — the panel's simple
+ *  flavor: 1 Yes = rerun, 3 No = abandon; a cancel records NOTHING (the
+ *  execution stays uncertain and durable — no rerun/abandoned is
+ *  fabricated, round 10). The resolution feedback lands in the body —
+ *  the body is the single stdout writer, never a stray console.log. */
 export async function resolveUncertains(
 	session: AgentSession,
 	input: LineInput,
 	isCancelled: () => boolean,
 ): Promise<void> {
 	for (const uncertain of session.uncertainExecutions()) {
-		const answer = await ask(
-			input,
-			`⚠ interrupted execution: ${escapeTerminal(uncertain.name)} (${uncertain.executionId}) — did it apply? (r)erun / (a)bandon: `,
-		);
-		if (isCancelled() || answer === CANCELLED) {
+		const verdict = await askPanel(input, {
+			flavor: "simple",
+			name: "uncertain execution",
+			title: `${uncertain.name} (${uncertain.executionId})`,
+			speaker: "kiso",
+			statusText: "▸ uncertain execution",
+			args: { kind: "text", lines: [uncertain.executionId] },
+			ruleOverride: "did the interrupted execution apply? — 1 rerun · 3 abandon",
+			fallbackQuestion: `⚠ interrupted execution: ${escapeTerminal(uncertain.name)} (${uncertain.executionId}) — did it apply? (y)es / (n)o `,
+		});
+		if (isCancelled() || verdict.action === "cancel") {
 			// round 10: a cancellation NEVER records a verdict — the execution
 			// stays uncertain and durable; no rerun/abandoned is fabricated.
 			return;
 		}
-		const resolution = answer.trim().toLowerCase().startsWith("r") ? "rerun" : "abandoned";
+		const resolution = verdict.action === "allow" ? "rerun" : "abandoned";
 		await session.resolveUncertain(uncertain.executionId, resolution);
-		console.log(`  ${resolution}\n`);
+		bodyLog(`  ${resolution}`);
 	}
 }

@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Dock, type Body } from "@vincemakes/kiso-tui";
+import { Dock, type Body, type PanelVerdict, type PanelView } from "@vincemakes/kiso-tui";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
 
 /** finding #11: KISO_HOME is the ONE root — every default path derives from
@@ -47,6 +47,12 @@ export interface LineInput {
 	onExpand(cb: () => void): void;
 	question(query: string, cb: (answer: string) => void): void;
 	cancelQuestion(): void;
+	/** W21: open the approval panel — the editor's state machine takes
+	 *  the keys (the digits/y/n/tab/esc/enter routing, the rule input,
+	 *  the tab-amend), the compositor renders the block + the leads. */
+	panelAsk(view: PanelView, onCommit: (v: PanelVerdict) => void): void;
+	/** W21: cancel the panel — the SIGINT pair to panelAsk. */
+	panelCancel(): void;
 	emitLine(line: string): void;
 	line(): string;
 	clearLine(): void;
@@ -131,6 +137,16 @@ export function setExtensionLists(
 	userExtensions = user;
 	projectExtensions = project;
 	loadedExtensions = loaded;
+}
+
+/** W21: the CURRENT agent's extensions array — set by makeAgent, the
+ *  don't-ask-again writer pushes the generated extension into it so a
+ *  first-time rule joins the chain at the NEXT run (the run's policies
+ *  are fixed at its start; the array is shared by reference with the
+ *  runtime's session config — run.ts re-reads it per run). */
+export let currentAgentExtensions: KisoExtension[] = [];
+export function setCurrentAgentExtensions(value: KisoExtension[]): void {
+	currentAgentExtensions = value;
 }
 
 /** E3: temp artifacts of the mcp/skills merge — removed on exit. */

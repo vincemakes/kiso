@@ -6,13 +6,24 @@
  */
 
 import { readFileSync } from "node:fs";
-import { escapeTerminal, kUnit, palette, renderEvent, renderRecap, type RenderInput, type RunUsage } from "@vincemakes/kiso-tui";
+import {
+	escapeTerminal,
+	kUnit,
+	palette,
+	renderEvent,
+	renderRecap,
+	toolTarget,
+	type PanelArgs,
+	type PanelView,
+	type RenderInput,
+	type RunUsage,
+} from "@vincemakes/kiso-tui";
 import { editFileDiff, writeFileDiff, type DiffResult } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath } from "@vincemakes/kiso-tools-node";
-import type { AgentSession } from "@vincemakes/kiso-runtime";
+import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import { dispatch, type DispatchCtx } from "./dispatch.js";
-import { CANCELLED, agentModel, body, bodyLog, configuredWindow, dock, type LineInput } from "./state.js";
-import { ask, pendingAsk, resolveUncertains } from "./trust-ui.js";
+import { agentModel, body, bodyLog, configuredWindow, dock, type LineInput } from "./state.js";
+import { addDontAskAgainRule, askPanel, fixHintFor, pendingAsk, resolveUncertains } from "./trust-ui.js";
 import { FauxExhaustionError, failOnFauxExhaustion } from "./faux-glue.js";
 import { MODES, getMode, setMode } from "./mode.js";
 
@@ -105,6 +116,42 @@ function approvalDiff(name: string, input: Record<string, unknown>): DiffResult 
 	}
 }
 
+/** W21 — the panel view for a permission_requested: the rule line (the
+ *  why-asked speaker + the §3.5 fix hint), the toolTarget title, the
+ *  "▸ run paused" status, and the ALWAYS-verbose args. */
+function approvalView(name: string, ev: { speaker?: string; input?: Record<string, unknown> }): PanelView {
+	const speaker = ev.speaker ?? "kiso";
+	const input = ev.input ?? {};
+	// exactOptionalPropertyTypes: the hint is OMITTED when the speaker has
+	// no fix (mode:accept-edits, shell in default) — never `hint: undefined`.
+	const hint = fixHintFor(speaker, name);
+	return {
+		flavor: "approval",
+		name,
+		title: toolTarget(name, input),
+		speaker,
+		...(hint !== undefined ? { hint } : {}),
+		statusText: "▸ run paused",
+		args: approvalArgs(name, input),
+		fallbackQuestion: `approve ${escapeTerminal(name)}? (y/n) `,
+	};
+}
+
+/** The panel's ALWAYS-verbose args: edit_file/write_file → the full ±
+ *  diff (the tool cell's capped copy never reaches the panel — the
+ *  human approves the WHOLE change), shell → the full command line,
+ *  anything else → the pretty-printed JSON. Nothing that is asked for
+ *  approval is ever truncated. */
+function approvalArgs(name: string, input: Record<string, unknown>): PanelArgs {
+	if (name === "edit_file" || name === "write_file") {
+		return { kind: "diff", diff: approvalDiff(name, input)?.lines ?? null };
+	}
+	if (name === "shell") {
+		return { kind: "text", lines: [String(input.command ?? "")] };
+	}
+	return { kind: "text", lines: JSON.stringify(input, null, 2).split("\n") };
+}
+
 /**
  * The ergonomics batch C5 — the translation layer: the tui renders its OWN data shape
  * (RenderInput, zero kiso-core imports); the CLI translates its Event
@@ -186,12 +233,16 @@ function toRenderInput(ev: import("@vincemakes/kiso-core").Event): RenderInput |
  */
 export async function consumeRun(
 	session: AgentSession,
-	run: AsyncIterable<import("@vincemakes/kiso-core").Event>,
+	run: Run,
 	input: LineInput,
 	turnNo: number,
 	faux: boolean,
 	liveInput: { current: string | null } | null,
 	statusCb: ((usage: RunUsage, ctxRatio: number) => void) | null,
+	/** W21: the amend words ("Yes + feedback") ride the NEXT user turn —
+	 *  threaded from chat's submitTurn; absent in the recovery flow
+	 *  (resume) where a dropped amend is noticed instead. */
+	submitTurn?: (line: string) => void,
 ): Promise<import("@vincemakes/kiso-core").Event | undefined> {
 	let last: import("@vincemakes/kiso-core").Event | undefined;
 	let usage: RunUsage = { in: null, out: null, cache: null, known: false };
@@ -312,18 +363,60 @@ export async function consumeRun(
 				// v2e: the mini-diff for edit/write at the approval moment —
 				// the human sees the change BEFORE deciding (auto-allowed tools
 				// skip the diff: nobody is looking).
+				// W21: the PANEL replaces the line question — the bounded block
+				// with the ALWAYS-verbose args (the full diff / command / JSON,
+				// nothing the human approves is ever cut) and the numbered
+				// options. The verdict maps to the session approvals:
+				//  - bare No   → approve(false) FIRST (the denial settles the
+				//    request), THEN run.abort() — the run's aborted terminal
+				//    closes the cell;
+				//  - No+words  → approve(false, words) — the words become the
+				//    tool_result, the run continues;
+				//  - Yes+amend → approve(true), the words ride the NEXT turn;
+				//  - esc       → cancel, the conservative denial.
 				const name = (ev as { name: string }).name;
 				body.toolApproval(ev.callId, approvalDiff(name, ev.input ?? {}));
 				const decisionId = (ev as { decisionId: string }).decisionId;
-				const answer = await ask(input, `approve ${escapeTerminal(name)}? (y/n) `);
-				if (answer === CANCELLED) {
-					// round 10: a cancellation is a CONSERVATIVE denial, explicitly
-					// distinguished from the user typing "n".
-					body.notice("[approval cancelled — treated as a denial]");
-					await session.approve(decisionId, false);
-					continue;
+				const verdict = await askPanel(input, approvalView(name, ev as { speaker?: string; input?: Record<string, unknown> }));
+				switch (verdict.action) {
+					case "cancel": {
+						// round 10: a cancellation is a CONSERVATIVE denial,
+						// explicitly distinguished from the user typing "n".
+						body.notice("[approval cancelled — treated as a denial]");
+						await session.approve(decisionId, false);
+						break;
+					}
+					case "allow": {
+						await session.approve(decisionId, true);
+						if (verdict.reason.trim() !== "") {
+							if (submitTurn !== undefined) submitTurn(verdict.reason);
+							else body.notice("[amend words dropped — the recovery flow has no live prompt]");
+						}
+						break;
+					}
+					case "allow-rule": {
+						// R3: the don't-ask-again extension is ALLOW-ONLY (never
+						// emits deny or ask — the mode and safe-defaults moats
+						// keep their teeth); the generated file is human-editable
+						// and human-deletable — that IS the revocation path.
+						await session.approve(decisionId, true);
+						await addDontAskAgainRule(verdict.rule);
+						break;
+					}
+					case "deny": {
+						if (verdict.reason.trim() !== "") {
+							// No+words — the words become the tool_result; the
+							// run continues with the model seeing the denial.
+							await session.approve(decisionId, false, verdict.reason);
+						} else {
+							// bare No — the denial settles the pause FIRST, then
+							// the run aborts.
+							await session.approve(decisionId, false);
+							run.abort();
+						}
+						break;
+					}
 				}
-				await session.approve(decisionId, answer.trim().toLowerCase().startsWith("y"));
 				break;
 			}
 			case "terminal": {
@@ -399,7 +492,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			(async () => {
 				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
-					last = await consumeRun(session, run, input, myTurn, faux, liveInput, statusCb);
+					last = await consumeRun(session, run, input, myTurn, faux, liveInput, statusCb, submitTurn);
 					stopSpinner();
 					paintIdle();
 					currentRun = null;
@@ -566,7 +659,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		const recoveryRun = session.resume();
 		currentRun = recoveryRun;
 		turnNo += 1;
-		const last = await consumeRun(session, recoveryRun, input, turnNo, faux, liveInput, statusCb);
+		const last = await consumeRun(session, recoveryRun, input, turnNo, faux, liveInput, statusCb, submitTurn);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, input);
 		maybeAutoCompact(); // the ergonomics batch C8: the recovery run ended too — same check (awaited by the exit re-await)
