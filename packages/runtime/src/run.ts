@@ -8,6 +8,7 @@ import { denialResult, loop, type AbortSignalLike, type Adapter, type Event, typ
 import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
 import { composeSystemPrompt, microcompactFor } from "./compose.js";
+import { truncationGuard } from "./truncation-guard.js";
 import { ResumeBlockedError, type AgentSession, type SessionConfig } from "./session.js";
 
 /**
@@ -76,7 +77,9 @@ export class Run implements AsyncIterable<Event> {
 			const systemPrompt = composeSystemPrompt(this.#config.systemPrompt, this.#config.extensions ?? []);
 			const loopConfig = () =>
 				({
-					adapter: this.#adapter,
+					// 0.1.40 (R-C item 3): the truncation guard gates the model
+					// stream — a truncated turn's tool batch never executes.
+					adapter: truncationGuard(this.#adapter),
 					model: this.#config.model,
 					sessionId: this.#session.id, // P3: tools see their session (ToolContext.sessionId)
 					...(systemPrompt !== undefined ? { systemPrompt } : {}),
