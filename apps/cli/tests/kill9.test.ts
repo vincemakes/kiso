@@ -98,6 +98,9 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         # then wait for the kill predicate.
         read_until("▌ ".encode(), 20)
         os.write(fd, b"go\\n")
+        # The kill9 PTY carries NO window size (0 rows) — the dock never
+        # enters and the W21 panel can't render; the dock-less fallback's
+        # question IS the surface here: "approve <tool>? (y/n)".
         read_until(b"approve edit_file", 30)
         os.write(fd, b"y\\n")
         read_until(b"approve shell", 30)
@@ -143,10 +146,13 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         # Resume: answer the uncertain verdict, then every approval that
         # follows. The trajectory runs to its terminal and the process
         # exits on its own.
-        # NOTE: the question reads "(r)erun / (a)bandon" — the substring
-        # "rerun / (a)bandon" does NOT exist in it (the ")" splits it);
-        # "(a)bandon" is the shared unique tail of both verdict questions.
-        read_until(b"(a)bandon", 25)
+        # NOTE: the 0-row pty (no window size) keeps the dock out — the
+        # dock-less fallback renders the W21 fallback questions: the
+        # uncertain one "⚠ interrupted execution: <name> (<id>) — did it
+        # apply? (y)es / (n)o" (its "did it apply?" is the anchor), and
+        # every approval as "approve <tool>? (y/n)" (the "approve " is
+        # the anchor). "y" maps to allow/rerun — the old "r" key is gone.
+        read_until(b"did it apply?", 25)
         os.write(fd, resume_keys[0].encode() + b"\\n")
         for _ in range(4):
             if read_until(b"approve ", 15):
@@ -223,7 +229,7 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         read_until("▌ ".encode(), 20)
         os.write(fd, b"go\\n")
         for _ in range(3):
-            read_until(b"approve shell", 30)
+            read_until(b"approve shell", 30)   # the dock-less fallback question (the 0-row pty — no panel)
             os.write(fd, b"y\\n")
         # The kill predicate: THREE started events on disk (the parallel
         # turn launched all three concurrently).
@@ -258,9 +264,10 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
             pass
         _, status = os.waitpid(pid, 0)
     else:
-        # Resume: EACH uncertain execution gets its verdict.
+        # Resume: EACH uncertain execution gets its verdict (the fallback's
+        # "did it apply?" — the 0-row pty keeps the panel out).
         for key in resume_keys:
-            read_until(b"(a)bandon", 30)
+            read_until(b"did it apply?", 30)
             os.write(fd, key.encode() + b"\\n")
         for _ in range(4):
             if read_until(b"approve ", 15):
@@ -347,10 +354,10 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptP
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, "k9", ${JSON.stringify(workdir)}, None, ["r"])
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, "k9", ${JSON.stringify(workdir)}, None, ["y"])
 `;
 		const out = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000 });
-		expect(out).toContain("(r)erun / (a)bandon");
+		expect(out).toContain("did it apply?"); // the dock-less fallback question — the kill9 PTY carries no window size (rows < 4 — the panel can't render there)
 		// The trajectory visibly continued: the THIRD file's edit ran, not a
 		// replay of the first one.
 		expect(out).toContain("f3.txt");
@@ -415,10 +422,10 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(di
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(dir, "faux.json"))}, "k9p", ${JSON.stringify(workdir)}, None, ["r", "r", "r"])
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(dir, "faux.json"))}, "k9p", ${JSON.stringify(workdir)}, None, ["y", "y", "y"])
 `;
 		const out = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000 });
-		expect((out.match(/\(r\)erun \/ \(a\)bandon/g) ?? []).length).toBe(3); // EACH uncertain was presented
+		expect((out.match(/did it apply\?/g) ?? []).length).toBe(3); // EACH uncertain was presented (the fallback question)
 		const records2 = new SessionStore(join(home, "sessions")).load("k9p");
 		expect(records2.some((r) => r.event.type === "terminal")).toBe(true);
 		// The re-executions landed their receipts (the resume completed).

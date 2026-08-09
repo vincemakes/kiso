@@ -101,11 +101,11 @@ def driver(cli, home, script_path, session_id, workdir, mode):
         # rounds ask; the reads are auto-allowed; the shell asks.
         read_until("▌ ".encode(), 20)
         os.write(fd, b"go\\n")
-        read_until(b"approve task_set", 30)
+        read_until(b"approve task_set", 30)  # the dock-less fallback question (the 0-row pty — no panel)
         os.write(fd, b"y\\n")
         read_until("▌ ".encode(), 20)
         os.write(fd, b"c1\\n")
-        read_until(b"approve task_set", 30)
+        read_until(b"approve task_set", 30)  # the dock-less fallback question (the 0-row pty — no panel)
         os.write(fd, b"y\\n")
         read_until("▌ ".encode(), 20)
         os.write(fd, b"c2\\n")
@@ -117,7 +117,7 @@ def driver(cli, home, script_path, session_id, workdir, mode):
         os.write(fd, b"c5\\n")
         read_until("▌ ".encode(), 20)
         os.write(fd, b"c6\\n")
-        read_until(b"approve shell", 30)
+        read_until(b"approve shell", 30)  # the dock-less fallback question (the 0-row pty — no panel)
         os.write(fd, b"y\\n")
         # The kill predicate: the SHELL's OWN started event on disk (the
         # two task_set results and the reads are durable by then). A
@@ -161,8 +161,8 @@ def driver(cli, home, script_path, session_id, workdir, mode):
         # One-shot resume: the rerun verdict; the recovery fills the
         # denial, the scripted trajectory continues to its terminal, the
         # process exits.
-        read_until(b"(a)bandon", 30)
-        os.write(fd, b"r\\n")
+        read_until(b"did it apply?", 30)  # the dock-less fallback question (the 0-row pty — no panel)
+        os.write(fd, b"y\\n")
         wait_exit(60)
         try:
             os.kill(pid, signal.SIGTERM)
@@ -312,7 +312,7 @@ exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, "task", ${JSON.stringify(workdir)}, "resume")
 `;
 		const phase2Out = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000 });
-		expect(phase2Out).toContain("(r)erun / (a)bandon");
+		expect(phase2Out).toContain("did it apply?"); // the dock-less fallback question — the driver's 0-row pty keeps the panel out
 
 		const records2 = new SessionStore(join(home, "sessions")).load("task");
 		const events2 = records2.map((r) => r.event);
