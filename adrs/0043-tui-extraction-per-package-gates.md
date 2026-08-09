@@ -127,3 +127,71 @@ Boundary conditions:
 2. The +20% snapshot formula no longer applies to the tui gate — the
    cap is declared, not measured.
 3. The cli gate stays 1856; the core gate stays 2000.
+
+## Amendment 4 (2026-08-09): the tui-cells extraction — the 9th package, its own gate
+
+The TUI v8 round (the approval & input design) hit the Amendment-3
+wall: the tui measured 2394/2400 — six lines — with the round's
+additions (+200) against the in-place retirements (−56). Amendment 3
+names exactly one way past the cap: structural extraction of the
+components cell renderer, decided by ruling. Ruling (review-issued,
+2026-08-09): **the extraction executes** — the cell renderer leaves
+`packages/tui` for a new package, `packages/tui-cells`
+(`@vincemakes/kiso-tui-cells`, the 9th published package).
+
+**The boundary is the module.** The extraction moves `components.ts`
+(588 code lines), `diff.ts` (100), `width.ts` (29 — the helpers'
+width primitives must not import back into the tui, the acyclic
+rule), and the render.ts cell-rendering slice (207: the twelve
+helpers components.ts imports — escapeTerminal, palette, foldThinking,
+foldResult, colorInlineCode, renderTerminalGap, renderToolSummary,
+toolTarget, kUnit, bannerLines, Palette, ResumeMeta — with their
+private closure: COLOR_ON/COLOR_OFF, TAGLINE, the logo rows,
+truncateRow, renderResumeList, relativeTime, titleCut,
+toolSummaryDetail, exitCodeOf). Moved, never duplicated: render.ts
+imports the slice back from tui-cells and re-exports it, so the
+tui's public surface (index.ts) is byte-identical for consumers and
+compositor.ts keeps its imports verbatim. The extraction measures
+**924 code lines**; the tui lands at ≈1490/2400 — the cap untouched,
+no third recalibration.
+
+**The gates re-base** (the per-package discipline, Amendment 1:
+actual + 20%, the same snapshot formula the original split used):
+
+| package | gate | note |
+|---|---|---|
+| core | 2000 | unchanged |
+| cli | 1856 | unchanged |
+| tui | 2400 | the TERMINAL cap — untouched (Amendment 3) |
+| tui-cells | **1280 (declared)** | = 1.2 × 924 (the extraction actual) + ≈170 (the v8 panel's growth — the approval panel rides tui-cells: it IS a component) |
+
+**The zero-runtime-dependency property moves.** ADR-0043's original
+claim ("zero runtime dependencies: input is data, output is bytes")
+now belongs to tui-cells. The tui gains its ONE runtime dependency —
+the re-export shims (components/diff/width/render stay at their old
+paths, importing from `@vincemakes/kiso-tui-cells` subpaths) — the
+cli's imports are untouched. The cli depends on tui; tui depends on
+tui-cells; the chain stays acyclic.
+
+**The release topology changes.** Nine packages ship in one release;
+tui-cells publishes BEFORE tui (the packed-smoke discipline — the
+symlink-shadow trap from the release memory: the gate must not
+silently run the old code). The cli's pin on the tui moves in the
+same batch as the version bump.
+
+Boundary conditions:
+
+1. The zero-behavior acceptance of ADR-0043 decision 4 applies to
+   this extraction unchanged: all tests pass with zero assertion
+   edits (import paths may move mechanically), the pipe output is
+   byte-identical, the PTY smoke stream matches with only
+   non-semantic differences. The moved tests pass in the new package.
+2. The tui-cells gate is NOT a terminal cap — it follows the
+   Amendment-1 snapshot discipline per package (a round that measures
+   itself over the gate gets no automatic recalibration; the next
+   approach without an argument is extraction, not a raise).
+3. The panel (W21) and the v8's other components (the pending-queue
+   chips) land in tui-cells; the tui gate carries only the slot
+   wiring — the compositor's bindApproval/bindQueue leads, the
+   editor's panel leads, the cursor contract, and the render-bug
+   fixes — against the retirement ledger (−56).
