@@ -46,6 +46,7 @@ import { truncateDiff } from "./diff.js";
 import { displayWidth, type MenuItem } from "./editor.js";
 import {
 	Container,
+	ROLLUP_NOUN,
 	SPINNER,
 	bodySpacing,
 	boxBottom,
@@ -53,6 +54,7 @@ import {
 	cellComponent,
 	foldLine,
 	statusLine,
+	turnFold,
 	visibleWidth,
 	type BodyCell,
 	type FrameCtx,
@@ -85,6 +87,24 @@ export interface BodyOptions {
 	write?: (s: string) => void;
 }
 
+/** W14 — one turn's record: pushed at userLine, released at the turn's
+ *  text (hasText — the tool cells commit individually, with the W13
+ *  rollups) or at its end (ended — a QUIET turn folds into the one line).
+ *  The counts are the folded-turn line's terms, accumulated at toolStart
+ *  (reads = read_file, edits = edit_file, others = the rest in
+ *  first-call order). */
+interface TurnRecord {
+	ended: boolean;
+	hasText: boolean;
+	thoughtSeconds: number;
+	reads: number;
+	edits: number;
+	others: Map<string, number>;
+	/** the fold was emitted at the first held cell's commit — the rest of
+	 *  the turn's thinking/tool cells render [] (never a second fold). */
+	folded: boolean;
+}
+
 /** The one compositor — implements the Body façade AND the Dock chrome
  *  API (see the class comments on each method group). */
 export class Body {
@@ -113,6 +133,14 @@ export class Body {
 	// cycling pointer walks this list from the newest back.
 	#collapsed: number[] = [];
 	#expandPtr = 0;
+	// W14: the turn records — one per userLine, the fold-hold's state
+	// machine (ended / hasText / folded) plus the folded-turn line's
+	// counts (accumulated at toolStart). The cells carry the record's
+	// index as their turn boundary.
+	#turns: TurnRecord[] = [];
+	// W13: the rolled-up run heads — the commit-time scan's verdict:
+	// the head's group summary renders, the members render [].
+	#rolledHeads = new Set<number>();
 	#write: (s: string) => void;
 	#resizeHandler: (() => void) | null = null;
 	// the chrome state (the Dock façade)
@@ -162,7 +190,10 @@ export class Body {
 		}
 		this.#closeOpenThinking();
 		this.#closeOpenText();
-		this.#cells.push({ kind: "user", text, done: true });
+		// W14: the turn boundary — the record the fold-hold's release
+		// state machine reads; the cell carries the record's index.
+		this.#turns.push({ ended: false, hasText: false, thoughtSeconds: 0, reads: 0, edits: 0, others: new Map(), folded: false });
+		this.#cells.push({ kind: "user", text, done: true, turn: this.#turns.length - 1 });
 		this.#mark();
 	}
 
@@ -175,7 +206,7 @@ export class Body {
 		if (last !== undefined && last.kind === "thinking" && !last.done) {
 			last.text += text;
 		} else {
-			this.#cells.push({ kind: "thinking", text, done: false });
+			this.#cells.push({ kind: "thinking", text, done: false, turn: this.#turns.length - 1 });
 		}
 		this.#mark();
 	}
@@ -210,7 +241,16 @@ export class Body {
 			}
 		}
 		this.#toolCells.set(callId, this.#cells.length);
-		this.#cells.push({ kind: "tool", name, input: summary, inputFull: JSON.stringify(input, null, 2), childRoles, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false, expanded: false });
+		this.#cells.push({ kind: "tool", name, input: summary, inputFull: JSON.stringify(input, null, 2), childRoles, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false, expanded: false, turn: this.#turns.length - 1, rolled: null });
+		// W14: the turn record's counts — the folded-turn line's terms
+		// (reads = read_file, edits = edit_file, the rest in first-call
+		// order). The CLI's recap counts the same way (edit_file).
+		const turn = this.#turns[this.#turns.length - 1];
+		if (turn !== undefined) {
+			if (name === "read_file") turn.reads += 1;
+			else if (name === "edit_file") turn.edits += 1;
+			else turn.others.set(name, (turn.others.get(name) ?? 0) + 1);
+		}
 		this.#mark();
 	}
 
@@ -286,6 +326,11 @@ export class Body {
 			this.#write(escapeTerminal(text));
 			return;
 		}
+		// W14: the text's arrival RELEASES the fold-hold — the turn now
+		// has text, its held cells commit individually (with the W13
+		// rollups; the fold is only for the QUIET turn).
+		const turn = this.#turns[this.#turns.length - 1];
+		if (turn !== undefined) turn.hasText = true;
 		const last = this.#cells[this.#cells.length - 1];
 		if (last !== undefined && last.kind === "text" && !last.done) {
 			last.text += text;
@@ -304,6 +349,36 @@ export class Body {
 		}
 		const last = this.#cells[this.#cells.length - 1];
 		if (last !== undefined && last.kind === "text" && !last.done) last.done = true;
+		this.#mark();
+	}
+
+	/** W14 — the turn boundary's END: the CLI calls this at the run's
+	 *  terminal event, once per run, BEFORE the recap (so the fold line
+	 *  commits before the recap in the cell order). `thoughtSeconds` is
+	 *  the CLI's wall-clocked thinking window. The QUIET turn (ended, no
+	 *  text) releases its held cells as the ONE fold line; a turn with
+	 *  text releases them as individual commits (the W13 rollups). The
+	 *  release is LAZY — the held cells commit at the next frame, when
+	 *  the fold/rollup decision runs. */
+	endTurn(thoughtSeconds: number): void {
+		if (!this.#isActive()) return;
+		const turn = this.#turns[this.#turns.length - 1];
+		if (turn === undefined || turn.ended) return;
+		turn.ended = true;
+		turn.thoughtSeconds = thoughtSeconds;
+		// the QUIET turn: an open thinking cell closes at the boundary —
+		// its natural closer is the text's arrival (never comes here — the
+		// text-less turn), so without this the fold could never commit AT
+		// it (the commit loop only takes done cells — the fold would stall
+		// forever behind the live thinking).
+		for (let i = this.#cells.length - 1; i >= 0; i -= 1) {
+			const c = this.#cells[i]!;
+			if (c.kind === "thinking" && !c.done) {
+				c.done = true;
+				this.#lastThinking = c.text;
+				break;
+			}
+		}
 		this.#mark();
 	}
 
@@ -419,6 +494,20 @@ export class Body {
 		this.#expandPtr += 1;
 		const cell = this.#cells[idx]!;
 		if (cell.kind !== "tool") return { kind: "none" };
+		if (cell.rolled !== null) {
+			// W13: a rolled-up head expands to the FULL per-call children —
+			// the rollup showed the first 3 + the overflow; the expand shows
+			// every target, one └ row each (the /last idiom — the children
+			// land as NEW content, history is never rewritten, ADR-0046).
+			const turnsBack = this.#cells.slice(idx + 1).filter((c) => c.kind === "user").length;
+			const p = palette();
+			const noun = ROLLUP_NOUN[cell.name] ?? "calls";
+			const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`${cell.name.replace("_file", "")} ${cell.rolled.count} ${noun}`)} · ${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
+			return {
+				kind: "appended",
+				lines: [header, ...cell.rolled.targets.map((t) => `  ${p.dim}└ ${escapeTerminal(t)}${p.reset}`)],
+			};
+		}
 		let input: Record<string, unknown> = {};
 		try {
 			input = JSON.parse(cell.inputFull) as Record<string, unknown>;
@@ -657,7 +746,13 @@ export class Body {
 		//    emit exactly once).
 		this.#committedAtFrameStart = this.#committed;
 		this.#committedLinesThisFrame = [];
-		while (this.#committed < this.#cells.length && this.#cells[this.#committed]!.done) {
+		// W14: the natural loop HONORS the fold-hold — a thinking/tool
+		// cell of the OPEN quiet turn (no text yet) does not commit: its
+		// committed form is decided at the release (the turn's text →
+		// individual commits with the W13 rollups; the turn's end → the
+		// fold). The FORCE-commit path below bypasses the hold — the
+		// screen never sticks, the rollup degrades to individuals.
+		while (this.#committed < this.#cells.length && this.#cells[this.#committed]!.done && !this.#held(this.#committed)) {
 			this.#commitCell(this.#committed, W, ctx);
 		}
 		// 2. the live lines — the unfinished cells (the tail) + the chrome.
@@ -717,7 +812,7 @@ export class Body {
 	 *  this cell's commit — the cache stays raw, the placed rows count. */
 	#commitCell(i: number, W: number, ctx: FrameCtx): void {
 		const cell = this.#cells[i]!;
-		const lines = cellComponent(cell).render(W, ctx);
+		const lines = this.#foldOrRollup(cell, i, W, ctx);
 		// W15: a tool cell whose last committed row carried the "ctrl+r"
 		// affordance (the renderer cut "└ … ctrl+r") joins the expand
 		// history — the detection is the renderer's OWN output, so the
@@ -731,6 +826,115 @@ export class Body {
 		this.#committed += 1;
 		this.#committedLines += placed.length;
 		this.#committedLinesThisFrame.push(...placed);
+	}
+
+	/** W14 — the fold-hold: a thinking/tool cell of the OPEN quiet turn
+	 *  (no text yet) does not commit — its committed form is decided at
+	 *  the release. The cell's OWN turn must be the CURRENT one (a cell
+	 *  of a released turn commits normally). The force-commit path never
+	 *  consults this — the screen's hard cap wins over the hold. */
+	#held(i: number): boolean {
+		const cell = this.#cells[i]!;
+		if (cell.kind !== "thinking" && cell.kind !== "tool") return false;
+		const turn = cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
+		if (turn === undefined || turn !== this.#turns[this.#turns.length - 1]) return false;
+		return !turn.ended && !turn.hasText;
+	}
+
+	/** W14/W13 — the release-time decision at a commit, BEFORE the cell's
+	 *  own render: the folded-turn fold first (a QUIET turn — ended, no
+	 *  text — becomes the ONE fold line; the rest of its thinking/tool
+	 *  cells render [] after the fold), then the W13 rollup (a text
+	 *  turn's N > 2 same-tool run: the HEAD renders the group summary,
+	 *  the members render [] — the scan is the work order's "group key",
+	 *  derived at commit time, never pre-stored). */
+	#foldOrRollup(cell: BodyCell, i: number, W: number, ctx: FrameCtx): string[] {
+		if (cell.kind === "thinking" || cell.kind === "tool") {
+			const turn = cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
+			if (turn !== undefined && turn.ended && !turn.hasText) {
+				if (!turn.folded) {
+					turn.folded = true;
+					return turnFold({
+						thoughtSeconds: turn.thoughtSeconds,
+						reads: turn.reads,
+						edits: turn.edits,
+						others: [...turn.others],
+					});
+				}
+				return [];
+			}
+		}
+		if (cell.kind !== "tool" || ROLLUP_NOUN[cell.name] === undefined) return cellComponent(cell).render(W, ctx);
+		// the maximal same-name run around i — forward/backward scans over
+		// the cells. The turn-less noise cells (the permission raws, the ⚠
+		// notices) are TRANSPARENT: the streaming execution (loop.ts launch)
+		// interleaves them BETWEEN the calls of one burst, so the run must
+		// see through them. It never crosses a user/text/thinking cell —
+		// those separate turns and contexts.
+		let s = i;
+		let head = i;
+		while (s > 0) {
+			const prev = this.#cells[s - 1]!;
+			if (prev.kind === "raw" || prev.kind === "notice") {
+				s -= 1;
+				continue;
+			}
+			if (prev.kind !== "tool" || prev.name !== cell.name) break;
+			s -= 1;
+			head = s; // a same-name tool precedes — it is the group's head
+		}
+		let e = i;
+		while (e + 1 < this.#cells.length) {
+			const next = this.#cells[e + 1]!;
+			if (next.kind === "raw" || next.kind === "notice") {
+				e += 1;
+				continue;
+			}
+			if (next.kind !== "tool" || next.name !== cell.name) break;
+			e += 1;
+		}
+		// the run counts the TOOL cells only — the span's raws are noise.
+		const members = this.#cells.slice(s, e + 1).filter((c): c is Extract<BodyCell, { kind: "tool" }> => c.kind === "tool");
+		if (members.length <= 2) return cellComponent(cell).render(W, ctx);
+		if (head === i) {
+			// the HEAD — the rollup only when EVERY member is done (at the
+			// text's release they are — the natural loop commits the run in
+			// one frame; the force-commit's early commits degrade to the
+			// individual rows, the members render normally after).
+			if (!members.every((c) => c.done)) return cellComponent(cell).render(W, ctx);
+			this.#rolledHeads.add(head);
+			let total = 0;
+			const targets: string[] = [];
+			for (const m of members) {
+				// the lines count, excluding the tool's OWN truncation note
+				// (read_file's "… N more lines") — the per-cell meta's rule
+				const noteAt = m.resultText.lastIndexOf("\n… ");
+				const shown = noteAt >= 0 ? m.resultText.slice(0, noteAt) : m.resultText;
+				const parts = shown.split("\n");
+				total += parts[parts.length - 1] === "" ? parts.length - 1 : parts.length;
+				let input: Record<string, unknown> = {};
+				try {
+					input = JSON.parse(m.inputFull) as Record<string, unknown>;
+				} catch {
+					// the full JSON is always parseable (stringified at
+					// toolStart) — the empty fallback never fires
+				}
+				const target = toolTarget(m.name, input);
+				targets.push(target.split("/").pop() ?? target);
+			}
+			const first = members[0]!;
+			const last = members[members.length - 1]!;
+			const elapsed = first.startedAt !== null && last.doneAt !== null ? ((last.doneAt - first.startedAt) / 1000).toFixed(1) : "?";
+			cell.rolled = { count: members.length, lines: total, elapsed, targets };
+			return cellComponent(cell).render(W, ctx);
+		}
+		// a MEMBER of an already-rolled run → [] (its rows live in the
+		// head's summary). A member of a run whose head committed
+		// INDIVIDUALLY (the force-commit's degradation) renders normally —
+		// the head is not in #rolledHeads, the run never rolls after the
+		// head's individual commit.
+		if (this.#rolledHeads.has(head)) return [];
+		return cellComponent(cell).render(W, ctx);
 	}
 
 	/** The slot occupant's extra rows — the slash-command menu (above the

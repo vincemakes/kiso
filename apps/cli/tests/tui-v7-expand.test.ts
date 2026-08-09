@@ -33,10 +33,12 @@ const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.j
 const PTY_DRIVER = `
 import pty, os, sys, time, select, struct, fcntl, termios, signal
 
-def driver(cli, env, feeds, timeout):
+def driver(cli, env, feeds, timeout, cwd):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ.update(env)
+        if cwd:
+            os.chdir(cwd)
         os.execvp("node", ["node", cli, "chat"])
     def winsize(rows, cols):
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
@@ -72,7 +74,7 @@ def driver(cli, env, feeds, timeout):
     sys.exit(0)
 `;
 
-function ptyRun(env: NodeJS.ProcessEnv, feeds: [string, string][], timeout = 60): string {
+function ptyRun(env: NodeJS.ProcessEnv, feeds: [string, string][], timeout = 60, cwd?: string): string {
 	const dir = mkdtempSync(join(tmpdir(), "kiso-v7-expand-"));
 	const driverPath = join(dir, "driver.py");
 	writeFileSync(driverPath, PTY_DRIVER, "utf8");
@@ -80,7 +82,7 @@ function ptyRun(env: NodeJS.ProcessEnv, feeds: [string, string][], timeout = 60)
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout})
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout}, ${cwd === undefined ? "None" : JSON.stringify(cwd)})
 `;
 	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 120_000, env: process.env });
 }
@@ -214,5 +216,105 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		expect(clean).toContain("[nothing to expand]");
 		// The write really happened (the answer flow completed).
 		expect(clean).toContain("written.");
+	}, 120_000);
+
+	it("W13: the 5-read_file run rolls up — the claimed group row, the first-3 children, the overflow, and the expand (real PTY, 24×80)", () => {
+		const { env } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-v7-expand-"));
+		// the reads run in the temp dir as the workspace (the child chdirs —
+		// the tools refuse ABSOLUTE paths, and the repo tree stays clean)
+		const names = ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"];
+		for (const n of names) writeFileSync(join(dir, n), "line one\nline two\nline three\n");
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{
+					events: [
+						...names.map((p, i) => ({ type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: p } })),
+						{ type: "stop", reason: "tool_use" },
+					],
+				},
+				{ events: [{ type: "text_delta", text: "five files read." }, { type: "stop", reason: "end_turn" }] },
+			]),
+			"utf8",
+		);
+		const out = ptyRun(
+			{ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" },
+			[
+				["▌ ", "go\n"], // the brick — the startup paint is race-proof in BOTH modes
+				// the key rides the rollup's OWN committed row (its bytes land
+				// after the frame's capture completed — never the text's live
+				// bytes, which can precede the commit by a frame)
+				["read  5 files", "\x12"],
+				["expanded · read 5 files", "exit\n"],
+			],
+			60,
+			dir,
+		);
+		const clean = stripANSI(out);
+
+		// the claimed group shape: the verbCol's double space, the line
+		// count of the 5 real reads (3 lines each → 15), the elapsed
+		expect(clean).toMatch(/read {2}5 files \(\d+ lines, \d+\.\ds\)/);
+		// the children: the first 3 basename targets; the overflow names
+		// the rest and carries the ctrl+r affordance
+		expect(clean).toContain("a.ts · b.ts · c.ts");
+		expect(clean).toContain("+2 more — ctrl+r expands");
+		// the expand: the FULL per-call children, one └ row each — a.ts
+		// appears twice (the rollup's joined children row starts the └;
+		// b/c ride "· ", so only the expand's own └ matches for them);
+		// d–e once (only the expand ever named them)
+		expect(clean).toContain("expanded · read 5 files · 0 turns back");
+		expect(clean.match(/└ a\.ts/g) ?? []).toHaveLength(2);
+		expect(clean.match(/└ b\.ts/g) ?? []).toHaveLength(1);
+		expect(clean.match(/└ c\.ts/g) ?? []).toHaveLength(1);
+		expect(clean.match(/└ d\.ts/g) ?? []).toHaveLength(1);
+		expect(clean.match(/└ e\.ts/g) ?? []).toHaveLength(1);
+	}, 120_000);
+
+	it("W14: the QUIET turn — thinking + 5 reads with NO text: the fold line replaces the turn at the terminal (real PTY, 24×80)", () => {
+		const { env } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-v7-expand-"));
+		const names = ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"];
+		for (const n of names) writeFileSync(join(dir, n), "line one\nline two\n");
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{
+					events: [
+						{ type: "thinking", text: "thinking quietly" },
+						...names.map((p, i) => ({ type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: p } })),
+						{ type: "stop", reason: "tool_use" },
+					],
+				},
+				// the stop-only turn: nothing pending, end_turn → the
+				// completed terminal — the turn has NO text (the fold's
+				// precondition: a quiet turn ends in the ONE fold line)
+				{ events: [{ type: "stop", reason: "end_turn" }] },
+			]),
+			"utf8",
+		);
+		const out = ptyRun(
+			{ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" },
+			[
+				["▌ ", "go\n"],
+				// the fold line's own bytes — the turn ended, the reads
+				// folded (the needle is the contiguous term text)
+				["5 reads · no edits", "exit\n"],
+			],
+			60,
+			dir,
+		);
+		const clean = stripANSI(out);
+
+		// the claimed fold shape: the wall-clocked thought seconds, the
+		// reads term, the no-edits term — the ONE line for the whole turn
+		expect(clean).toMatch(/thought \d+s · 5 reads · no edits/);
+		expect(clean).toContain("▞");
+		// no rollup ever happened (the fold precedes it — the turn had no
+		// text to release with)
+		expect(clean).not.toContain("5 files");
 	}, 120_000);
 });

@@ -704,9 +704,10 @@ describe("TUI v6 — the one compositor", () => {
 		body.toolRunning("c1");
 		const big = Array.from({ length: 30 }, (_, i) => `row ${String(i).padStart(2, "0")} of a long build log`).join("\n");
 		body.toolResult("c1", { content: big, isError: false });
-		// the natural freeze: the next frame commits the leading DONE
-		// cells — the tool's cut note (its last rendered row at commit)
-		// carries the affordance → #collapsed.
+		// the natural turn shape: the text releases the fold-hold (W14) —
+		// the held tool commits at the next frame; its cut note (its last
+		// rendered row at commit) carries the affordance → #collapsed.
+		body.textAppend("first turn built.");
 		tick();
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
@@ -736,6 +737,7 @@ describe("TUI v6 — the one compositor", () => {
 			body.toolStart("shell", `c${t}`, { command: `build ${t}` });
 			body.toolRunning(`c${t}`);
 			body.toolResult(`c${t}`, { content: Array.from({ length: 30 }, (_, i) => `row ${i}`).join("\n"), isError: false });
+			body.textAppend("built.");
 			tick();
 			body.raw(Array.from({ length: 30 }, (_, i) => `filler ${t} ${i}`));
 			tick();
@@ -754,5 +756,91 @@ describe("TUI v6 — the one compositor", () => {
 		const third = body.expandNext();
 		expect(third.kind).toBe("appended");
 		expect((third as { lines: string[] }).lines[0]).toContain("0 turns back");
+	});
+
+	it("W13: the run of 5 read_file calls + text rolls up to ONE row — the claimed shape, the first-3 children, the overflow, and the expand", () => {
+		// The natural turn shape [user, 5× read, text]: the text releases
+		// the fold-hold, and at that frame the head's forward scan sees
+		// all 5 members done → the ONE rollup row (the claimed shape).
+		// The permission raws interleave (the streaming execution — the
+		// loop's launch runs the calls concurrently with the model stream):
+		// the run must SEE THROUGH them, never crossing a user/text cell.
+		const { body, writes, tick } = makeBody({ W: 80 });
+		body.enter();
+		body.userLine("w13");
+		for (let i = 0; i < 5; i += 1) {
+			body.toolStart("read_file", `r${i}`, { path: `${"abcde"[i]}.ts` });
+			body.toolRunning(`r${i}`);
+			if (i === 1 || i === 3) body.raw(["  approved"]);
+			body.toolResult(`r${i}`, { content: "line one\nline two", isError: false });
+		}
+		body.textAppend("five files read.");
+		tick();
+		const frame = writes.join("");
+		// the claimed shape, verbatim: the verbCol's 5-char pad reproduces
+		// the "read  5 files" double space; the 5 members' 2-line results
+		// → 10 lines; the elapsed rides the head's startedAt→doneAt.
+		expect(frame).toContain("read  5 files (10 lines, 0.0s)");
+		// the children: the first 3 basename targets joined; the overflow
+		// row names the rest and carries the ctrl+r affordance (its
+		// "└ … ctrl+r" joins the W15 expand history — the head's commit).
+		expect(frame).toContain("a.ts · b.ts · c.ts");
+		expect(frame).toContain("+2 more — ctrl+r expands");
+		// the members are GONE — one ✓ row, not five
+		expect(frame.match(/✓/g) ?? []).toHaveLength(1);
+		// the head joined the expand history: the expand shows the FULL
+		// per-call children, one └ row each, never rewriting the rollup.
+		const r = body.expandNext();
+		expect(r.kind).toBe("appended");
+		const lines = (r as { lines: string[] }).lines;
+		expect(lines[0]).toContain("expanded · read 5 files · 0 turns back");
+		for (const t of ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"]) {
+			expect(lines.some((l) => l.includes(t))).toBe(true);
+		}
+	});
+
+	it("W14: the QUIET turn folds — thinking + 5 reads with no text become the ONE fold line at the boundary; the hold keeps them live before it; the mix terms pluralize", () => {
+		const { body, writes, tick } = makeBody({ W: 80 });
+		body.enter();
+		body.userLine("quiet turn");
+		body.thinkingAppend("thinking quietly");
+		for (let i = 0; i < 5; i += 1) {
+			body.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
+			body.toolRunning(`r${i}`);
+			body.toolResult(`r${i}`, { content: "x", isError: false });
+		}
+		// the HOLD: done cells of an open text-less turn stay live — the
+		// frame commits nothing of them (no fold line, no rollup)
+		tick();
+		expect(writes.join("")).not.toContain("▞");
+		expect(writes.join("")).not.toContain("5 files");
+		writes.length = 0; // drop the hold frame — only the fold frame below
+		// the boundary: the terminal closes the turn — the fold line lands
+		// at the FIRST held cell's commit (the thinking cell — endTurn
+		// closes it), the members render [] after
+		body.endTurn(19);
+		tick();
+		const frame = writes.join("");
+		// the claimed shape: the thought-seconds, the reads term, the
+		// no-edits term (the fold glyph is bold-wrapped, so the check
+		// anchors on the contiguous term text)
+		expect(frame).toContain("▞");
+		expect(frame).toContain("thought 19s · 5 reads · no edits");
+		// the members folded away — no individual read rows
+		expect(frame.match(/✓/g) ?? []).toHaveLength(0);
+		// the extension: the mixed counts — 1 edit + 1 shell pluralize
+		// ("no reads · 1 edit · 1 shell", the others in first-call order)
+		const mix = makeBody({ W: 80 });
+		mix.body.enter();
+		mix.body.userLine("mix");
+		mix.body.toolStart("edit_file", "e1", { path: "x.ts" });
+		mix.body.toolRunning("e1");
+		mix.body.toolResult("e1", { content: "ok", isError: false });
+		mix.body.toolStart("shell", "s1", { command: "echo hi" });
+		mix.body.toolRunning("s1");
+		mix.body.toolResult("s1", { content: "hi", isError: false });
+		mix.body.endTurn(7);
+		mix.tick();
+		expect(mix.writes.join("")).toContain("thought 7s · no reads · 1 edit · 1 shell");
 	});
 });

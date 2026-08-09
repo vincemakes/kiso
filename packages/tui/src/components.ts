@@ -25,6 +25,7 @@ import {
 	colorInlineCode,
 	renderTerminalGap,
 	renderToolSummary,
+	kUnit,
 	palette,
 	type Palette,
 	type ResumeMeta,
@@ -173,8 +174,8 @@ export class Container implements Component {
 // ---- the cell model (the CLI's mutation surface — unchanged from v5) ----
 
 export type BodyCell =
-	| { kind: "user"; text: string; done: true }
-	| { kind: "thinking"; text: string; done: boolean }
+	| { kind: "user"; text: string; done: true; turn: number }
+	| { kind: "thinking"; text: string; done: boolean; turn: number }
 	| {
 			kind: "tool";
 			name: string;
@@ -198,6 +199,16 @@ export type BodyCell =
 			 *  rows and redraws them); a committed cell can never toggle
 			 *  (history is never rewritten — ADR-0046). */
 			expanded: boolean;
+			/** W14: the turn boundary — the index of the turn record that
+			 *  created this cell (the fold-hold's owner; −1 when no turn
+			 *  exists yet — the pre-turn cells never hold). */
+			turn: number;
+			/** W13: the rolled-up group summary — set at COMMIT time when
+			 *  the head of an N > 2 same-tool run renders the group (the
+			 *  work order's claimed shape: "✓ read  5 files (2.4k lines,
+			 *  1.1s)" + the target children). The members carry null — the
+			 *  compositor's rolled-heads bookkeeping renders them []. */
+			rolled: null | { count: number; lines: number; elapsed: string; targets: string[] };
 	  }
 	| { kind: "text"; text: string; done: boolean }
 	| { kind: "notice"; text: string; done: true }
@@ -389,6 +400,21 @@ class ToolExecution implements Component {
 		const verb = escapeTerminal(c.name.replace("_file", ""));
 		const verbCol = verb.length < 5 ? `${verb}${" ".repeat(5 - verb.length)}` : verb;
 		const summary = escapeTerminal(c.input);
+		if (c.rolled !== null) {
+			// W13 — the rolled-up group's ONE row + the target children:
+			// the work order's claimed shape, verbatim — the verbCol's
+			// 5-char pad reproduces the "read  5 files" double space, the
+			// children are the first 3 basename targets, the overflow row
+			// carries the ctrl+r affordance (its "└ … ctrl+r" joins the
+			// W15 expand history — the head's commit captures it).
+			const r = c.rolled;
+			const noun = ROLLUP_NOUN[c.name] ?? "calls";
+			const out = gutterFold(`${p.bold}✓${p.reset} `, `${verbCol} ${r.count} ${noun} (${kUnit(r.lines)} lines, ${r.elapsed}s)`, W);
+			const shown = r.targets.slice(0, 3);
+			if (shown.length > 0) out.push(`  ${p.dim}${CUT_ROW}${escapeTerminal(shown.join(" · "))}${p.reset}`);
+			if (r.targets.length > 3) out.push(`  ${p.dim}${CUT_ROW}+${r.targets.length - 3} more — ctrl+r expands${p.reset}`);
+			return out;
+		}
 		if (c.state === "done") {
 			const elapsed = c.startedAt !== null && c.doneAt !== null ? ((c.doneAt - c.startedAt) / 1000).toFixed(1) : "?";
 			const meta = escapeTerminal(settledMeta(c));
@@ -417,6 +443,47 @@ class ToolExecution implements Component {
 		// glyph reads as noise
 		return gutterFold(`${p.dim}◦${p.reset} `, `${verbCol} ${summary}`, W);
 	}
+}
+
+/** W13 — the rollup opt-in table: which tools collapse, and the count
+ *  NOUN (read_file calls → "5 files", list_dir → "5 dirs", search_text
+ *  → "5 matches"). Only these tools opt in — a shell burst is never
+ *  rolled up (its rows carry meaning). The folded-turn line (W14) reuses
+ *  the plurals for its other-tool terms ("2 dirs", "1 match"). */
+export const ROLLUP_NOUN: Readonly<Record<string, string>> = {
+	read_file: "files",
+	list_dir: "dirs",
+	search_text: "matches",
+};
+
+/** The count term with the singular/plural forms — "no reads", "1 read",
+ *  "5 reads". The noun's singular drops the plural suffix ("dirs" → "dir",
+ *  "matches" → "match"). */
+function countTerm(n: number, singular: string, plural: string): string {
+	if (n === 0) return `no ${plural}`;
+	if (n === 1) return `1 ${singular}`;
+	return `${n} ${plural}`;
+}
+
+/** W14 — the folded-turn line: a whole QUIET turn (no text), once it is
+ *  scrollback, becomes ONE line — the work order's claimed shape
+ *  (`▞ thought 19s · 5 reads · no edits`), the counts accumulated at
+ *  toolStart: read_file → "reads", edit_file → "edits", the other tools
+ *  as first-call-order terms (the ROLLUP_NOUN plurals when the tool opts
+ *  in, the verb + "s" otherwise). */
+export function turnFold(t: { thoughtSeconds: number; reads: number; edits: number; others: [string, number][] }): string[] {
+	const p = palette();
+	const parts = [`thought ${t.thoughtSeconds}s`, countTerm(t.reads, "read", "reads"), countTerm(t.edits, "edit", "edits")];
+	for (const [name, n] of t.others) {
+		const noun = ROLLUP_NOUN[name];
+		if (noun !== undefined) {
+			parts.push(countTerm(n, noun.endsWith("es") ? noun.slice(0, -2) : noun.slice(0, -1), noun));
+		} else {
+			const verb = name.replace("_file", "");
+			parts.push(countTerm(n, verb, `${verb}s`));
+		}
+	}
+	return [`${p.bold}▞${p.reset} ${parts.join(" · ")}`];
 }
 
 // ---- the bounded-block flow contract (W7, W8, W10) ----

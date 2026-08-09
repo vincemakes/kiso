@@ -200,9 +200,22 @@ export async function consumeRun(
 	const turnStart = Date.now();
 	let toolCount = 0;
 	let editCount = 0;
+	// W14: the thinking event carries NO timestamp — the CLI wall-clocks
+	// the thinking window: it opens at the first thinking event and closes
+	// at the first non-thinking event (the fold needs the seconds).
+	let thoughtSeconds = 0;
+	let thinkingSince: number | null = null;
 	try {
 	for await (const ev of run) {
 		last = ev;
+		if (ev.type !== "thinking") {
+			if (thinkingSince !== null) {
+				thoughtSeconds += (Date.now() - thinkingSince) / 1000;
+				thinkingSince = null;
+			}
+		} else if (thinkingSince === null) {
+			thinkingSince = Date.now();
+		}
 		// v2a (the double echo): the interactive echo was already rendered by the
 		// input source — rendering the event again is the double echo.
 		// v2b: DOCKED — the echo lives in the input row (H), NOT the body;
@@ -294,6 +307,10 @@ export async function consumeRun(
 				// events (zero tokens). The dock's status bar still paints.
 				statusCb?.(usage, estimateCtxRatio(session));
 				const ratio = estimateCtxRatio(session);
+				// W14: the turn record closes HERE — before the recap logs, so
+				// the commit loop folds the quiet turn's held cells first (the
+				// fold line lands above the recap, natural cell order).
+				body.endTurn(Math.round(thoughtSeconds));
 				bodyLog(
 					renderRecap({
 						seconds: Math.round((Date.now() - turnStart) / 1000),
