@@ -338,10 +338,13 @@ export class Editor {
 					i += 3; // SS3 (function keys) — ignored
 				} else if (this.#menuOpen) {
 					// v3 §04: Esc closes the menu and clears the buffer.
+					// CA-4: the closing esc consumes its burst (the `i += 1`
+					// convention) — a double-esc can never abort the turn.
 					this.#chars = [];
 					this.#cursor = 0;
 					this.#scroll = 0;
 					this.#refreshMenu();
+					i += 1;
 				} else if (this.#queuePopMode) {
 					// W22: esc in the pop-mode — ONE more pop, then the
 					// mode ends: the next esc at rest rides the escapeCbs
@@ -351,12 +354,14 @@ export class Editor {
 					i += 1;
 				} else if (this.#historyIdx !== null) {
 					// A2: Esc exits the history browse — the pre-browse
-					// (empty) input returns.
+					// (empty) input returns. CA-4: the exiting esc consumes
+					// its burst — a double-esc can never abort the turn.
 					this.#historyIdx = null;
 					this.#chars = [...this.#preBrowse];
 					this.#cursor = this.#chars.length;
 					this.#reflow();
 					this.#onRender();
+					i += 1;
 				} else {
 					for (const cb of [...this.#escapeCbs]) cb();
 					i += 1;
