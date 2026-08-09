@@ -44,6 +44,7 @@
 
 import { truncateDiff } from "./diff.js";
 import { displayWidth, type MenuItem } from "./editor.js";
+import { panelAffordance, panelBlockRows, panelLead, panelStatus, type PanelState } from "./approval-panel.js";
 import {
 	Container,
 	ROLLUP_NOUN,
@@ -154,7 +155,11 @@ export class Body {
 	#status = "";
 	#statusHint: string | null = null;
 	#tail = "";
-	#question: string | null = null;
+	// W21: the panel's bound state — the PanelSelect slot occupant (the
+	// old ApprovalPrompt's question slot retires with it): while a
+	// panel is up it replaces the live region, owns the input lead, and
+	// derives the status row (the CLI's painting status yields).
+	#panelState: (() => PanelState | null) | null = null;
 	#inputState: () => { line: string; cursor: number } = () => ({ line: "", cursor: 0 });
 	#inputPrompt = "";
 	#menuState: (() => { items: readonly MenuItem[]; selected: number } | null) | null = null;
@@ -169,14 +174,16 @@ export class Body {
 		compositorRef = this;
 		// the Dock façade's bindings may arrive BEFORE this construction
 		// (the CLI binds the editor state in makeLineInput, then constructs
-		// the Body) — the buffered bindings apply here, or the input row
-		// would never render the typed line.
-		if (dockBindings !== null) {
-			this.#inputState = dockBindings.state;
-			this.#inputPrompt = dockBindings.prompt;
-			this.#menuState = dockBindings.menu;
-			dockBindings = null;
-		}
+		// the Body) — the LIVE binding buffer applies here, or the input
+		// row would never render the typed line. W21: the buffer is a
+		// mutable object the bind methods update in place — order-agnostic
+		// (the old snapshot froze `menu` at bindInput time and the menu
+		// silently never bound in the real CLI; the e2e gates bind the
+		// Body directly and could not see it).
+		if (dockBindings.state !== null) this.#inputState = dockBindings.state;
+		this.#inputPrompt = dockBindings.prompt;
+		if (dockBindings.menu !== null) this.#menuState = dockBindings.menu;
+		this.#panelState = dockBindings.panel;
 	}
 
 	/** Live re-check — a TTY whose size lands after construction flips in. */
@@ -663,14 +670,22 @@ export class Body {
 		this.redraw();
 	}
 
-	showQuestion(question: string): void {
-		this.#question = question;
-		this.redraw();
+	/** The status row's source — W21: while a panel is up, the panel's
+	 *  phase status + affordance REPLACE the CLI's painting status (the
+	 *  compositor derives both from the bound panel state; the old
+	 *  question slot's dim-pending shape is the normal branch's shape
+	 *  now). */
+	#statusSource(): { status: string; hint: string | undefined } {
+		const panel = this.#panelState?.() ?? null;
+		if (panel === null) return { status: this.#status, hint: this.#statusHint ?? undefined };
+		return { status: panelStatus(panel.view, panel.phase, panel.sel), hint: panelAffordance(panel.view, panel.phase, panel.sel) };
 	}
 
-	clearQuestion(): void {
-		this.#question = null;
-		this.redraw();
+	/** Bind the editor's panel state — the PanelSelect slot occupant
+	 *  (W21: the panel replaces the live region + the input lead while
+	 *  up; the old ApprovalPrompt's question slot retires with it). */
+	bindApproval(state: () => PanelState | null): void {
+		this.#panelState = state;
 	}
 
 	/** Bind the CURRENT input line's state — the focus component reads it. */
@@ -759,6 +774,12 @@ export class Body {
 	 *  blanks are join artifacts — the count includes them (they are real
 	 *  screen rows), threaded against the previous sibling's OWN rows. */
 	liveCount(): number {
+		const panel = this.#panelState?.() ?? null;
+		if (panel !== null) {
+			// W21: the panel's own rows (the cap is exact — the scalar
+			// reflects the screen).
+			return panelBlockRows(panel.view, panel.phase, panel.sel, this.#opts.width(), Math.max(1, this.#opts.height() - 4)).length + CHROME_ROWS;
+		}
 		const live = this.#cells.slice(this.#committed);
 		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
 		const W = this.#opts.width();
@@ -825,7 +846,14 @@ export class Body {
 		const menuRows = this.#menuRows(W);
 		const chromeRows = CHROME_ROWS + menuRows.length;
 		let liveLines: string[] = [];
-		{
+		const panel = this.#panelState?.() ?? null;
+		if (panel !== null) {
+			// W21: the panel REPLACES the running tool's live window — the
+			// bounded block, capped at H−4 (the panel IS the live region;
+			// the W11 blank would separate it from the frozen content).
+			// The cap is exact, so the force-commit loop never fires.
+			liveLines = panelBlockRows(panel.view, panel.phase, panel.sel, W, Math.max(1, H - 4));
+		} else {
 			let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
 			for (const cell of this.#cells.slice(this.#committed)) {
 				const rows = cellComponent(cell).render(W, ctx);
@@ -1034,11 +1062,14 @@ export class Body {
 	 *  overflow, so the box row is built full-width, never truncated. */
 	#inputRow(W: number, _ctx: FrameCtx): { stripped: string; afterW: number } {
 		const st = this.#inputState();
+		const panel = this.#panelState?.() ?? null;
 		let row: string;
-		if (this.#question !== null) {
-			// the ApprovalPrompt occupant — the question IS the prompt (the
-			// slot swap; the brick returns when the question clears)
-			row = `${this.#question}${st.line}`;
+		if (panel !== null) {
+			// the PanelSelect occupant — the panel's phase lead owns the
+			// input row (1-3> / the rule input's "2 Yes, don't ask again
+			// for " / the amend "feedback (deny): "); the question slot
+			// is retired.
+			row = `${panelLead(panel.view, panel.phase, panel.sel)}${st.line}`;
 		} else {
 			row = `${this.#inputPrompt}${st.line}`;
 		}
@@ -1146,7 +1177,8 @@ export class Body {
 		const editor = this.#inputRow(W, ctx);
 		out.push(`\x1b[${H - 2};1H\x1b[0K${this.#checked(editor.stripped, W)}`);
 		out.push(`\x1b[${H - 1};1H\x1b[0K${boxBottom(W)}`);
-		out.push(`\x1b[${H};1H\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W, this.#statusHint ?? undefined), W)}`);
+		const statusRow = this.#statusSource();
+		out.push(`\x1b[${H};1H\x1b[0K${this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint), W)}`);
 		// the cursor: up two (the input row at H−2) + left to the marker
 		out.push("\x1b[2A");
 		if (editor.afterW > 0) out.push(`\x1b[${editor.afterW}D`);
@@ -1171,7 +1203,8 @@ export class Body {
 		// the bottom-up repaint, from the last row up — V6-3 + W6: the
 		// design §03 chrome: status (H), box bottom (H−1), input (H−2),
 		// box top (H−3)
-		out.push(`\x1b[1G\x1b[0K${this.#checked(statusLine(this.#status, this.#tail, this.#question !== null, W, this.#statusHint ?? undefined), W)}`); // H — the status
+		const statusRow = this.#statusSource();
+		out.push(`\x1b[1G\x1b[0K${this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint), W)}`); // H — the status
 		out.push(`\x1b[1A\x1b[1G\x1b[0K${boxBottom(W)}`); // H−1 — the box bottom
 		out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(editor.stripped, W)}`); // H−2 — the input
 		out.push(`\x1b[1A\x1b[1G\x1b[0K${boxTop(W)}`); // H−3 — the box top
@@ -1280,7 +1313,6 @@ export class Body {
  *  input/menu bindings, which the CLI performs BEFORE the Body exists,
  *  are buffered and applied by the Body's constructor. */
 export class Dock {
-	#menuState: (() => { items: readonly MenuItem[]; selected: number } | null) | null = null;
 	get active(): boolean {
 		return compositorRef !== null && compositorRef.active;
 	}
@@ -1299,24 +1331,29 @@ export class Dock {
 	setTail(tail: string): void {
 		compositorRef?.setTail(tail);
 	}
-	showQuestion(question: string): void {
-		compositorRef?.showQuestion(question);
-	}
-	clearQuestion(): void {
-		compositorRef?.clearQuestion();
+	/** W21: bind the editor's panel state — the PanelSelect slot
+	 *  occupant (the panel replaces the live region + the input lead
+	 *  while up; the old ApprovalPrompt's question slot retires). */
+	bindApproval(state: () => PanelState | null): void {
+		if (compositorRef === null) {
+			dockBindings.panel = state; // the live buffer — order-agnostic
+			return;
+		}
+		compositorRef.bindApproval(state);
 	}
 	bindInput(state: () => { line: string; cursor: number }, prompt: string): void {
 		if (compositorRef === null) {
-			// the Body is constructed AFTER the CLI's makeLineInput — buffer
-			// the binding; the Body's constructor applies it
-			dockBindings = { state, prompt, menu: this.#menuState };
+			dockBindings.state = state; // the live buffer — order-agnostic
+			dockBindings.prompt = prompt;
 			return;
 		}
 		compositorRef.bindInput(state, prompt);
 	}
 	bindMenu(state: () => { items: readonly MenuItem[]; selected: number } | null): void {
-		this.#menuState = state;
-		if (compositorRef === null) return;
+		if (compositorRef === null) {
+			dockBindings.menu = state;
+			return;
+		}
 		compositorRef.bindMenu(state);
 	}
 	editCol(): number {
@@ -1330,10 +1367,15 @@ export class Dock {
 /** The one-compositor registry — the Dock façade routes to it. */
 let compositorRef: Body | null = null;
 
-/** The Dock's pre-compositor bindings — the CLI binds the editor state
- *  before the Body exists; the Body's constructor consumes them. */
-let dockBindings: {
-	state: () => { line: string; cursor: number };
+/** The Dock's pre-compositor bindings — a LIVE object the bind methods
+ *  mutate (the CLI binds the editor state before the Body exists; the
+ *  Body's constructor applies it). W21: order-agnostic by construction
+ *  — the old snapshot froze `menu` at bindInput time and the slash-
+ *  command menu silently never bound in the real CLI (the e2e gates
+ *  bind the Body directly and could not see it). */
+const dockBindings: {
+	state: (() => { line: string; cursor: number }) | null;
 	prompt: string;
 	menu: (() => { items: readonly MenuItem[]; selected: number } | null) | null;
-} | null = null;
+	panel: (() => PanelState | null) | null;
+} = { state: null, prompt: "", menu: null, panel: null };

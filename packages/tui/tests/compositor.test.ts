@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 import { CAP_TASK_LIVE, cellComponent, formatDuration, type FrameCtx, visibleWidth } from "../src/components.js";
+import type { PanelView } from "../src/approval-panel.js";
 
 /** The BODY region's left-wall rows ("│ ") — W6: the box's chrome wall
  *  is dim-wrapped (`\x1b[2m│ \x1b[0m`), so the lookbehind excludes it and
@@ -222,20 +223,34 @@ describe("TUI v6 — the one compositor", () => {
 		expect(bytes).toContain("\x1b[74D");
 	});
 
-	it("the ApprovalPrompt slot: the question takes the input row (the prompt out); the prompt returns when it clears", () => {
+	it("W21: the panel slot — the block displaces the live region, the input lead swaps, the status derives from the phase; clearing restores the prompt", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		body.bindInput(() => ({ line: "", cursor: 0 }), "› ");
-		body.showQuestion("approve read_file? (y/n) ");
+		const panelView: PanelView = {
+			flavor: "approval",
+			name: "edit_file",
+			title: "edit examples/foo.ts",
+			speaker: "mode:default",
+			hint: "/mode accept-edits auto-approves edits",
+			statusText: "▸ run paused",
+			args: { kind: "text", lines: ["old", "new"] },
+			fallbackQuestion: "approve edit_file? (y/n) ",
+		};
+		body.bindApproval(() => ({ view: panelView, phase: "options", sel: 0 }));
 		body.raw(["x"]);
 		tick();
 		const bytes = writes.join("");
-		expect(bytes).toContain("approve read_file? (y/n)");
-		expect(bytes).not.toContain("› "); // the slot swap — no overlay
-		body.clearQuestion();
+		const plain = bytes.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+		expect(plain).toContain("edit_file needs approval"); // the rule line
+		expect(plain).toContain("1-3> "); // the panel input lead
+		expect(plain).toContain("▸ run paused"); // the phase status (the CLI's painting status is out)
+		expect(plain).toContain("tab amend · esc cancel"); // the phase affordance
+		expect(plain).not.toContain("› "); // the slot swap — no overlay
+		body.bindApproval(() => null);
 		body.raw(["y"]);
 		tick();
-		expect(writes.join("")).toContain("› ");
+		expect(writes.join("").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")).toContain("› ");
 	});
 
 	it("the MenuSelect slot: the menu rows render above the status while open, none over the editor", () => {

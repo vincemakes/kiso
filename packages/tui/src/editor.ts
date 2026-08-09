@@ -22,6 +22,7 @@ import { charWidth, displayWidth, widthOf } from "./width.js";
 // authority) — re-exported so the editor's public surface is unchanged.
 export { charWidth, displayWidth, widthOf };
 import { palette } from "./render.js";
+import { panelLead, panelLeadWidth, type PanelPhase, type PanelSel, type PanelState, type PanelVerdict, type PanelView } from "./approval-panel.js";
 
 // TUI v4 #16d: the input row is the blue brick + the edit area — the
 // "you>" text is gone (the brick IS the prompt; the pipe path's readline
@@ -56,6 +57,21 @@ export class Editor {
 	#cursor = 0;
 	#scroll = 0; // chars scrolled off the left (width-based reflow)
 	#questionCb: ((answer: string) => void) | null = null;
+	// W21: the panel state machine — the approval/trust panel owns the
+	// interaction while up: the digit/y/n/esc/tab routing, the rule
+	// input, the tab-amend feedback, the phase/selection the compositor
+	// renders. The menu never opens while a panel is up; the pre-panel
+	// buffer is stashed at open and restored at close (commit AND
+	// cancel) — the panel's rule/feedback text never leaks into the
+	// user's next turn.
+	#panel: {
+		view: PanelView;
+		phase: PanelPhase;
+		sel: PanelSel;
+		amend: "yes" | "no";
+		onCommit: (v: PanelVerdict) => void;
+		stash: { chars: number[]; cursor: number; scroll: number };
+	} | null = null;
 	#pasting = false;
 	#lineCb: ((line: string) => void) | null = null;
 	#pendingLines: string[] = []; // submits before onLine is wired (startup) — never dropped
@@ -154,6 +170,7 @@ export class Editor {
 	}
 
 	#refreshMenu(): void {
+		if (this.#panel !== null) return; // W21: the menu never opens while the panel owns the keys
 		const f = this.#menuFiltered();
 		this.#menuOpen = f.length > 0;
 		if (this.#menuSel >= f.length) this.#menuSel = 0;
@@ -169,6 +186,39 @@ export class Editor {
 	 *  next turn on Enter, the readline re-emit equivalent). */
 	cancelQuestion(): void {
 		this.#questionCb = null;
+	}
+
+	/** W21: open the approval panel. The current buffer is stashed
+	 *  (restored at close — commit AND cancel), the panel takes the
+	 *  keys and the input row's lead, the menu closes. */
+	beginPanel(view: PanelView, onCommit: (v: PanelVerdict) => void): void {
+		this.#panel = {
+			view,
+			phase: "options",
+			sel: 0,
+			amend: "yes",
+			onCommit,
+			stash: { chars: this.#chars, cursor: this.#cursor, scroll: this.#scroll },
+		};
+		this.#chars = [];
+		this.#cursor = 0;
+		this.#scroll = 0;
+		this.#menuOpen = false;
+		this.#menuSel = 0;
+		this.#onRender();
+	}
+
+	/** W21: cancel the panel — the SIGINT path's pair to beginPanel. */
+	cancelPanel(): void {
+		this.#panelClose({ action: "cancel" });
+	}
+
+	/** W21: the compositor's bound view — the phase/selection while the
+	 *  panel is up, null otherwise. */
+	panelState(): PanelState | null {
+		const panel = this.#panel;
+		if (panel === null) return null;
+		return { view: panel.view, phase: panel.phase, sel: panel.sel };
 	}
 
 	enter(): void {
@@ -196,8 +246,13 @@ export class Editor {
 		const p = palette();
 		const st = this.dockState();
 		const W = (process.stdout.columns ?? 0) || 80; // a degenerate 0 size (no TIOCSWINSZ) falls back
-		const cursorCol = Math.min(1 + PROMPT_WIDTH + st.cursor, W);
-		process.stdout.write(`\r\x1b[0K${p.bold}${PROMPT}${p.reset}${st.line}\x1b[${cursorCol}G`);
+		// W21: the panel's lead owns the row while up (the brick returns
+		// when the panel closes).
+		const panel = this.#panel;
+		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.sel) : `${p.bold}${PROMPT}${p.reset}`;
+		const leadW = panel !== null ? panelLeadWidth(panel.view, panel.phase, panel.sel) : PROMPT_WIDTH;
+		const cursorCol = Math.min(1 + leadW + st.cursor, W);
+		process.stdout.write(`\r\x1b[0K${lead}${st.line}\x1b[${cursorCol}G`);
 	}
 
 	// ---- input ----
@@ -209,6 +264,47 @@ export class Editor {
 		let i = 0;
 		while (i < text.length) {
 			const c = text[i];
+			if (this.#panel !== null) {
+				// W21: the panel owns the keys — the digits/y/n select in
+				// the options phase (digit 2 jumps to the rule input), tab
+				// opens the amend (approval only), esc backs out (rule/
+				// amend → options, selection → rest, rest → cancel), enter
+				// commits by phase. CSI/SS3 and the editing keys still ride
+				// the normal chain below (the rule/amend lines are free
+				// text); ctrl-c still rides the SIGINT handler (which
+				// cancels the panel).
+				const panel = this.#panel;
+				if (c === "\x1b" && !text.slice(i + 1).startsWith("[") && !text.slice(i + 1).startsWith("O")) {
+					this.#panelEsc();
+					i += 1;
+					continue;
+				}
+				if (c === "\t") {
+					if (panel.phase === "options") this.#panelTab();
+					i += 1;
+					continue;
+				}
+				if (c === "\x0d" || c === "\x0a") {
+					this.#panelEnter();
+					i += 1;
+					continue;
+				}
+				if (c === "1" || c === "y" || c === "Y") {
+					if (panel.phase === "options") this.#panelSelect(1);
+					i += 1;
+					continue;
+				}
+				if (c === "2" && panel.phase === "options" && panel.view.flavor === "approval") {
+					this.#panelRule();
+					i += 1;
+					continue;
+				}
+				if (c === "3" || c === "n" || c === "N") {
+					if (panel.phase === "options") this.#panelSelect(3);
+					i += 1;
+					continue;
+				}
+			}
 			if (c === "\x1b") {
 				const rest = text.slice(i + 1);
 				if (rest.startsWith("[")) {
@@ -312,8 +408,12 @@ export class Editor {
 			// v3 §04: the menu owns ↑↓ while open (the selection, never the
 			// cursor). A2 (the feel): otherwise ↑↓ navigate the session history
 			// — ONLY from an empty input or while already browsing; mid-edit
-			// the cursor semantics are unchanged (↑↓ do nothing).
-			if (this.#menuOpen) {
+			// the cursor semantics are unchanged (↑↓ do nothing). W21: the
+			// panel owns the keys while up (↑↓ do nothing — the panel has no
+			// ↑↓ role).
+			if (this.#panel !== null) {
+				/* the panel owns the keys */
+			} else if (this.#menuOpen) {
 				if (final === "A") this.#menuSel = Math.max(0, this.#menuSel - 1);
 				else this.#menuSel = Math.min(this.#menuFiltered().length - 1, this.#menuSel + 1);
 			} else if (this.#historyIdx !== null || this.line() === "") {
@@ -331,6 +431,97 @@ export class Editor {
 			this.#cursor = this.#chars.length;
 			this.#reflow();
 		}
+	}
+
+	// ---- W21: the panel state machine ----
+
+	#panelSelect(sel: 1 | 3): void {
+		const panel = this.#panel;
+		if (panel === null) return;
+		panel.sel = sel;
+		this.#onRender();
+	}
+
+	/** digit 2 — the rule input: the buffer prefilled with the tool name
+	 *  (the option-2 prefill; enter commits the rule). */
+	#panelRule(): void {
+		const panel = this.#panel;
+		if (panel === null) return;
+		panel.phase = "rule";
+		panel.sel = 2;
+		this.#chars = [...panel.view.name].map((ch) => ch.codePointAt(0)!);
+		this.#cursor = this.#chars.length;
+		this.#scroll = 0;
+		this.#onRender();
+	}
+
+	/** tab — the amend phase on the selected option (yes/deny); the
+	 *  simple flavor never has it (options 1/3 only, no option 2). */
+	#panelTab(): void {
+		const panel = this.#panel;
+		if (panel === null || panel.view.flavor !== "approval") return;
+		panel.amend = panel.sel === 3 ? "no" : "yes";
+		panel.phase = "amend";
+		this.#chars = [];
+		this.#cursor = 0;
+		this.#scroll = 0;
+		this.#onRender();
+	}
+
+	/** esc — back out of the rule/amend to the options (the buffer
+	 *  clears), deselect, or cancel the panel at rest. */
+	#panelEsc(): void {
+		const panel = this.#panel;
+		if (panel === null) return;
+		if (panel.phase !== "options") {
+			panel.phase = "options";
+			panel.sel = 0;
+			this.#chars = [];
+			this.#cursor = 0;
+			this.#scroll = 0;
+			this.#onRender();
+			return;
+		}
+		if (panel.sel !== 0) {
+			panel.sel = 0;
+			this.#onRender();
+			return;
+		}
+		this.#panelClose({ action: "cancel" });
+	}
+
+	/** enter — commit by phase: the rule input (the tool name when
+	 *  empty), the amend feedback (the bare verdict when empty), or the
+	 *  selected option (nothing at rest — an accidental enter never
+	 *  approves). Enter on the selected option 2 is the digit-2 key. */
+	#panelEnter(): void {
+		const panel = this.#panel;
+		if (panel === null) return;
+		const line = this.line();
+		if (panel.phase === "rule") {
+			this.#panelClose({ action: "allow-rule", rule: line === "" ? panel.view.name : line });
+			return;
+		}
+		if (panel.phase === "amend") {
+			this.#panelClose(panel.amend === "yes" ? { action: "allow", reason: line } : { action: "deny", reason: line });
+			return;
+		}
+		if (panel.sel === 1) this.#panelClose({ action: "allow", reason: "" });
+		else if (panel.sel === 2) this.#panelRule();
+		else if (panel.sel === 3) this.#panelClose({ action: "deny", reason: "" });
+	}
+
+	#panelClose(verdict: PanelVerdict): void {
+		const panel = this.#panel;
+		if (panel === null) return;
+		this.#panel = null;
+		// the pre-panel buffer returns — the panel's rule/feedback text
+		// never leaks into the user's next turn (commit AND cancel).
+		this.#chars = [...panel.stash.chars];
+		this.#cursor = panel.stash.cursor;
+		this.#scroll = panel.stash.scroll;
+		this.#onRender();
+		panel.onCommit(verdict);
 	}
 
 	// ---- editing ----
@@ -456,7 +647,11 @@ export class Editor {
 
 	#reflow(): void {
 		const W = (process.stdout.columns ?? 0) || 80; // degenerate 0 falls back to 80
-		const maxW = Math.max(1, W - PROMPT_WIDTH - 4); // W6: the box's walls (2+2) — the visible line fits the box's inner width; the "…" rides inside
+		// W21: the panel's phase lead owns the input row while up — the
+		// line's max width follows the lead (the rule/amend leads are
+		// wider than the brick).
+		const leadW = this.#panel !== null ? panelLeadWidth(this.#panel.view, this.#panel.phase, this.#panel.sel) : PROMPT_WIDTH;
+		const maxW = Math.max(1, W - leadW - 4); // W6: the box's walls (2+2) — the visible line fits the box's inner width; the "…" rides inside
 		const curCol = widthOf(this.#chars.slice(0, this.#cursor));
 		const scrolledW = widthOf(this.#chars.slice(0, this.#scroll));
 		if (curCol < scrolledW) {

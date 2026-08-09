@@ -7,6 +7,24 @@
  */
 
 export { Body, Dock, CURSOR_MARKER, type BodyOptions } from "./compositor.js";
+// W21 (the v8 approval round): the approval panel — the bounded block
+// that replaces the running tool's live window while a human-chain
+// approval is pending (the shape authority is the committed preview).
+export {
+	panelAffordance,
+	panelBlockRows,
+	panelLead,
+	panelLeadPlain,
+	panelLeadWidth,
+	panelStatus,
+	type PanelArgs,
+	type PanelFlavor,
+	type PanelPhase,
+	type PanelSel,
+	type PanelState,
+	type PanelVerdict,
+	type PanelView,
+} from "./approval-panel.js";
 export { Container, foldLine, visibleWidth, SPINNER, type Component, type FrameCtx } from "./components.js";
 export {
 	Editor,
@@ -36,6 +54,7 @@ export {
 	renderTerminalGap,
 	renderToolSummary,
 	TAGLINE,
+	toolTarget,
 	truncateRow,
 	type Palette,
 	type PathResolver,
