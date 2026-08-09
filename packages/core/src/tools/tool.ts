@@ -67,6 +67,13 @@ export interface Tool<I = unknown> {
 	 * interrupted attempt blocks. The default is the safe side.
 	 */
 	readonly idempotent?: boolean;
+	/** R-C: ONE line for the system prompt — the tool's role, never the
+	 *  schema (the full description rides the JSON schema the provider
+	 *  transmits anyway — never pay twice). */
+	readonly promptSnippet?: string;
+	/** R-C: bullets injected into the system prompt only while this tool is
+	 *  ACTIVE (the registry's active set — deduped by the registry). */
+	readonly promptGuidelines?: readonly string[];
 	readonly execute: (input: I, ctx: ToolContext) => Promise<ToolResult>;
 }
 

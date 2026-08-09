@@ -7,7 +7,7 @@
 import { denialResult, loop, type AbortSignalLike, type Adapter, type Event, type EventLog, type PermissionDecision, type ToolResult } from "@vincemakes/kiso-core";
 import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
-import { composeSystemPrompt, microcompactFor } from "./compose.js";
+import { composeSystemPrompt, composeToolTable, microcompactFor } from "./compose.js";
 import { truncationGuard } from "./truncation-guard.js";
 import { ResumeBlockedError, type AgentSession, type SessionConfig } from "./session.js";
 
@@ -71,10 +71,19 @@ export class Run implements AsyncIterable<Event> {
 			// E2: the session's own microcompact wins; otherwise the FIRST
 			// extension providing a compaction config supplies it.
 			const microcompact = microcompactFor(this.#config);
+			// 0.1.40 (R-C item 1): the tool substitution table — the ACTIVE tool
+			// set's vocabulary, snippets, and guidelines — sits BETWEEN the
+			// session's base prompt and the extension appends: generated
+			// machinery never outranks the deliberate extension text (the E2
+			// "append lands at the END" contract holds). "" when empty.
+			const toolTable = composeToolTable(this.#config.registry);
+			const basePrompt = toolTable === "" ? this.#config.systemPrompt
+				: this.#config.systemPrompt === undefined ? toolTable
+				: `${this.#config.systemPrompt}\n\n${toolTable}`;
 			// E2: the session's own systemPrompt first, then every extension
 			// append in LOAD order — deterministic (same extensions → same
 			// prompt); no appends → byte-identical to the extension-less run.
-			const systemPrompt = composeSystemPrompt(this.#config.systemPrompt, this.#config.extensions ?? []);
+			const systemPrompt = composeSystemPrompt(basePrompt, this.#config.extensions ?? []);
 			const loopConfig = () =>
 				({
 					// 0.1.40 (R-C item 3): the truncation guard gates the model

@@ -209,7 +209,7 @@ export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 	return defineTool<{ path: string; offset?: number; limit?: number }>({
 		name: "read_file",
 		description:
-			"Read a file's content from disk. Relative to the workspace root. Returns the first 200 lines by default; a file with more lines appends a note with the exact count and the offset to continue from. Pass offset (1-based first line) and/or limit (line count) to read a range.",
+			"Read a file's content from disk (the workspace reader — prefer it over shell cat/head/tail). Relative to the workspace root. Returns the first 200 lines by default; a file with more lines appends a note with the exact count and the offset to continue from. Pass offset (1-based first line) and/or limit (line count) to read a range.",
 		parameters: {
 			type: "object",
 			properties: {
@@ -220,6 +220,8 @@ export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 			required: ["path"],
 		},
 		idempotent: true,
+		promptSnippet: "read_file — whole files or offset/limit ranges, workspace-relative paths",
+		promptGuidelines: ["read only the range you need — offset/limit beat whole-file reads"],
 		execute: async ({ path, offset, limit }) => {
 			try {
 				const full = resolveWithinRoot(opts.workspaceRoot, path);
@@ -298,6 +300,8 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string }
 			properties: { path: { type: "string", description: "Workspace-relative directory to list" } },
 		},
 		idempotent: true,
+		promptSnippet: "list_dir — directory entries (the workspace ls)",
+		promptGuidelines: ["narrow to a subdirectory when the listing caps at 200 entries"],
 		execute: async ({ path }) => {
 			try {
 				const dir = resolveWithinRoot(opts.workspaceRoot, path ?? ".");
@@ -322,7 +326,7 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 	return defineTool<{ pattern: string; path?: string }>({
 		name: "search_text",
 		description:
-			"Search files under a workspace directory (recursive) for a regular expression. Returns matching file:line excerpts, capped at 50 — an overflow note states the count of further matches (narrow the pattern to see them).",
+			"Search files under a workspace directory (recursive) for a regular expression (the workspace grep — prefer it over shell grep/rg). Returns matching file:line excerpts, capped at 50 — an overflow note states the count of further matches (narrow the pattern to see them).",
 		parameters: {
 			type: "object",
 			properties: {
@@ -332,6 +336,8 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			required: ["pattern"],
 		},
 		idempotent: true,
+		promptSnippet: "search_text — regex search over workspace files",
+		promptGuidelines: ["narrow the pattern when the result caps — never re-run a broad search"],
 		execute: async ({ pattern, path }) => {
 			let root: string;
 			try {
@@ -401,6 +407,7 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			},
 			required: ["path", "content"],
 		},
+		promptSnippet: "write_file — write a whole file (creates parent directories)",
 		execute: async ({ path, content }) => {
 			let full: string;
 			try {
@@ -461,6 +468,8 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 			},
 			required: ["path", "search", "replace"],
 		},
+		promptSnippet: "edit_file — replace an exact old_string block (never rewrite whole files)",
+		promptGuidelines: ["the search text must match the file EXACTLY — read the target first"],
 		execute: async ({ path, search, replace }) => {
 			let full: string;
 			try {
@@ -540,6 +549,8 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 			},
 			required: ["command"],
 		},
+		promptSnippet: "shell — real system commands only (builds, tests, git)",
+		promptGuidelines: ["commands run in the workspace root; on failure read the error and adjust — never repeat blindly"],
 		execute: async ({ command, timeoutMs }, ctx) => {
 			const timeout = timeoutMs ?? DEFAULT_SHELL_TIMEOUT_MS;
 			// E group: a PRE-aborted signal never spawns the command.

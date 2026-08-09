@@ -288,7 +288,9 @@ describe("E2 (wrap-up): extension systemPrompt appends", () => {
 		const agent = createAgent({
 			model: "faux",
 			store: new SessionStore(extDir()),
-			tools: [readTool()],
+			// no tools: the 0.1.40 tool table (a separate, separately-pinned
+			// layer) stays out of this test — E2 pins the append ordering.
+			tools: [],
 			systemPrompt: "BASE PROMPT",
 			adapter: promptSpyAdapter((o) => {
 				seen = o.systemPrompt;

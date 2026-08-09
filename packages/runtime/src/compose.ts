@@ -4,8 +4,40 @@
  * hook composition (the existing come first), and the loop's microcompact config lookup.
  */
 
-import type { HookContext, HookHost, KisoExtension } from "@vincemakes/kiso-core";
+import type { HookContext, HookHost, KisoExtension, ToolRegistry } from "@vincemakes/kiso-core";
 import type { SessionConfig } from "./session.js";
+
+/**
+ * 0.1.40 (R-C item 1) — the tool substitution table: the fixed vocabulary
+ * (the CC content in kiso's voice, each line bound to the tool that makes
+ * it true) filtered to the ACTIVE tool set + each active tool's ONE-line
+ * snippet + its guideline bullets. The full descriptions NEVER enter the
+ * system prompt — the provider transmits them in the JSON schema anyway
+ * (never pay twice). Deterministic: same registry → same table.
+ */
+const TOOL_RULES: ReadonlyArray<{ readonly tool: string; readonly line: string }> = [
+	{ tool: "read_file", line: "read files with read_file, never shell cat/head/tail" },
+	{ tool: "search_text", line: "search with search_text, never shell grep/rg" },
+	{ tool: "list_dir", line: "list with list_dir, never ls" },
+	{ tool: "shell", line: "reserve shell for real system commands" },
+];
+
+/** The table, or "" when the registry is empty (no vocabulary, no tools). */
+export function composeToolTable(registry: ToolRegistry): string {
+	const tools = registry.list();
+	if (tools.length === 0) return "";
+	const active = new Set(tools.map((t) => t.name));
+	const lines = [
+		"Tool use:",
+		...TOOL_RULES.filter((r) => active.has(r.tool)).map((r) => `- ${r.line}`),
+		// the parallel directive: the window applies to every active turn.
+		"- batch independent tool calls into one reply — they run in parallel",
+		...tools.flatMap((t) => (t.promptSnippet === undefined ? [] : [`- ${t.promptSnippet}`])),
+	];
+	const guidelines = tools.flatMap((t) => (t.promptGuidelines ?? []).map((g) => `- ${t.name}: ${g}`));
+	if (guidelines.length > 0) lines.push("Active tool guidelines:", ...guidelines);
+	return lines.join("\n");
+}
 
 /**
  * E2: the session's systemPrompt plus every extension's append, in LOAD
