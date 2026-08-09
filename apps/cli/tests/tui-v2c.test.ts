@@ -6,6 +6,11 @@
  * with "+N queued" and executes next, Esc cancels a paused approval (the
  * conservative denial continues the run — the old abort is gone), and
  * exit turns bracketed paste off (?2004l) and resets the region (CSI r).
+ * W22 adds the visibility invariant's e2e: queued turns pre-render ABOVE
+ * the input row as the SAME UserMessage chips (the dim □ gutter marks the
+ * queued state), ↑ pops the last chip back into the editor and esc pops
+ * one more, the popped turns NEVER execute, and a piped session shows no
+ * chips (the pipe path has no raw keys).
  */
 
 import { execFileSync } from "node:child_process";
@@ -200,4 +205,77 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		// The REPL survived the cancel — the SAME run completed its turn.
 		expect(clean).toContain("the tour is done");
 	}, 90_000);
+
+	it("W22: queued turns pre-render as the □ chips above the input row — ↑ pops the last back into the editor, esc pops one more, the re-submit runs and the popped turns NEVER execute", () => {
+		const { env } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-v2c-"));
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				// The leading delay keeps turn one RUNNING long enough for the
+				// chips + the pop keys to be exercised on the live PTY.
+				{ events: [{ type: "delay", ms: 1500 }, { type: "text_delta", text: "turn one done" }, { type: "stop", reason: "end_turn" }] },
+				{ events: [{ type: "delay", ms: 1500 }, { type: "text_delta", text: "turn two done" }, { type: "stop", reason: "end_turn" }] },
+				{ events: [{ type: "delay", ms: 1500 }, { type: "text_delta", text: "turn three done" }, { type: "stop", reason: "end_turn" }] },
+			]),
+			"utf8",
+		);
+		const out = ptyRun(
+			{ ...env, KISO_FAUX_SCRIPT: script },
+			[
+				// "one" submits; "two" + "three" queue while turn one runs.
+				["▌ ", "one\ntwo\nthree\n"],
+				// The three-chip needle — ↑ pops the LAST queued line back
+				// into the editor (the chip leaves the queue).
+				["\x1b[2m□\x1b[0m \x1b[7m three", "\x1b[A"],
+				// The popped line in the input row — esc pops ONE MORE
+				// ("two") and ends the pop-mode.
+				["› three", "\x1b"],
+				// The esc-popped line — submit it: it runs as a fresh turn.
+				["› two", "\n"],
+				["▸ default · /mode to switch", "exit\n"],
+			],
+		);
+		// The chips are the SAME UserMessage chip as the body record — the
+		// dim □ gutter marks the queued state (never dimmed: the chip
+		// inverts the CURRENT colours).
+		expect(out).toContain("\x1b[2m□\x1b[0m \x1b[7m two");
+		expect(out).toContain("\x1b[2m□\x1b[0m \x1b[7m three");
+		// The status hint carries the queue depth.
+		expect(out).toContain("+2 queued");
+		expect(out).toContain("+1 queued");
+		const clean = stripANSI(out);
+		expect(clean).toContain("turn one done");
+		// The resubmitted "two" ran as a fresh turn...
+		expect(clean).toContain("turn two done");
+		// ...but the popped "three" NEVER ran — its slot was cancelled.
+		expect(clean).not.toContain("turn three done");
+	}, 90_000);
+
+	it("W22: a piped session shows NO chips — the pipe path has no raw keys, the queue is silent", () => {
+		const { env } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-v2c-"));
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{ events: [{ type: "text_delta", text: "turn one done" }, { type: "stop", reason: "end_turn" }] },
+				{ events: [{ type: "text_delta", text: "turn two done" }, { type: "stop", reason: "end_turn" }] },
+			]),
+			"utf8",
+		);
+		// "exit" closes the input; the chained turns drain, then the
+		// process exits — every user_input still records its `you> ` line
+		// (the dock-less body write).
+		const out = execFileSync("node", [CLI, "chat", "w22-pipe"], {
+			input: "one\ntwo\nexit\n",
+			encoding: "utf8",
+			env: { ...env, KISO_FAUX_SCRIPT: script },
+			timeout: 30_000,
+		});
+		expect(out).not.toContain("\x1b[2m□\x1b[0m"); // no compositor — no chips
+		expect(out).toContain("you> one");
+		expect(out).toContain("you> two");
+	}, 60_000);
 });

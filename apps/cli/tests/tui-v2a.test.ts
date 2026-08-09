@@ -1,7 +1,10 @@
 /**
  * v2a — the interactive TUI through the CLI's topmost entry, on a REAL
- * PTY: the typed input is echoed by readline itself and NEVER rendered
- * again (the double echo); the status line is the faux form; the rhythm gap lands
+ * PTY (the 0-row pty — the dock-less path): the typed line renders
+ * TWICE by design — the editor's self-render echo (the UI) AND the
+ * body's `you> ` record (W22: the v2a double-echo filter is retired —
+ * every user_input event renders its chip; the transient echo is UI,
+ * the chip is the record); the status line is the faux form; the rhythm gap lands
  * between the status and the next prompt; the prompt carries the blue
  * accent.
  */
@@ -84,9 +87,10 @@ describe("TUI v2a (real PTY)", () => {
 			// would close the input before the turn ever runs).
 			["▞", "exit\n"],
 		]);
-		// (1) the double echo: readline echoed "probe-one" — the user_input event render
-		// must NOT print it again. The content appears exactly once.
-		expect((out.match(/probe-one/g) ?? []).length).toBe(1);
+		// (1) W22: the content appears TWICE — the editor's self-render
+		// echo AND the body's `you> probe-one` record (the v2a filter
+		// retired; the chip is the record, the echo is UI).
+		expect((out.match(/probe-one/g) ?? []).length).toBe(2);
 		// The prompt + echo read "you> probe-one" once — readline's redraw
 		// control sequences sit between them in the raw transcript, so count
 		// on the control-stripped stream.
