@@ -198,7 +198,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\n"],
-				["approve asky_read", "y\n"],
+				["needs approval", "y\n"], // the rule line's dim run — one contiguous RAW span
 				// The run continues after the approval — "turn 2 · faux" only
 				// appears at the turn's terminal event, AFTER "the tour is
 				// done". "you> " would match the FIRST prompt and close the
@@ -207,10 +207,11 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 			],
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("approve asky_read? (y/n)"); // the takeover question
-		// v2d: the ToolCell carries the ⏸ badge and freezes at the done
-		// form — the [result] no longer flows into the body (/last has it).
-		expect(clean).toContain("⏸ asky_read {}"); // W2: the approval badge is the left gutter
+		expect(clean).toContain("asky_read needs approval"); // the panel's rule line
+		// W21: the panel superseded the ⏸ badge row — the approved cell
+		// settles at the done form with the trailing decision tag, and the
+		// [result] no longer flows into the body (/last has it).
+		expect(clean).toContain("approved"); // W21: the decision tag rides the settled row
 		expect(clean).toContain("✓ asky_read (1 line, "); // the frozen done line — W4: the default family's metadata is the result line count
 		expect(clean).not.toContain("asky ok"); // the full result stays out of the stream
 		expect(clean).toContain("the tour is done");

@@ -137,7 +137,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 				["the survey is done.", ""], // the model's answer after the denial
 				["plan ready", "/mode default\n"], // the way-forward row → the only exit
 				["▸ default · /mode to switch", "go\n"], // turn 2 executes normally
-				["approve shell? (y/n) ", "y\n"], // the ask RESTORED under default
+				["needs approval", "y\n"], // the ask RESTORED under default — the rule line's dim run
 				["shell (exit 0", "exit\n"], // the shell ran (the settled row's meta, no target)
 			],
 			workdir,
@@ -159,7 +159,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		expect(clean).toContain("▸ plan (read-only) · /mode to switch");
 		// ④ /mode default executes NORMALLY: the ask is back, the shell
 		// succeeds, the recap is the ordinary shape (not plan-ready again).
-		expect(clean).toContain("approve shell? (y/n)");
+		expect(clean).toContain("shell needs approval");
 		expect(clean).toMatch(/✓ shell \(exit 0, \d+\.\ds\)/); // the settled row's meta (no target — the interactive shape)
 		expect(clean).toContain("1 tool");
 		expect(clean.match(/plan ready/g) ?? []).toHaveLength(1); // never a second way-forward row

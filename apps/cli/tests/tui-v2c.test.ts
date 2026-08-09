@@ -3,8 +3,9 @@
  * PTY (24×80, TIOCSWINSZ): the Chinese-input cursor lands on the DISPLAY
  * width column (the drift root cure), the submitted line renders in the
  * scroll region EXACTLY once, a turn submitted while another runs queues
- * with "+N queued" and executes next, Esc aborts a paused run, and exit
- * turns bracketed paste off (?2004l) and resets the region (CSI r).
+ * with "+N queued" and executes next, Esc cancels a paused approval (the
+ * conservative denial continues the run — the old abort is gone), and
+ * exit turns bracketed paste off (?2004l) and resets the region (CSI r).
  */
 
 import { execFileSync } from "node:child_process";
@@ -149,7 +150,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		expect(clean).toContain("turn two done"); // the queued turn EXECUTED
 	}, 90_000);
 
-	it("Esc aborts a paused run — the approval question is cancelled, the REPL survives", () => {
+	it("Esc cancels a paused approval — the conservative denial CONTINUES the run, the REPL survives", () => {
 		const { env, dirs } = isolatedEnv();
 		writeFileSync(
 			join(dirs.extensions, "asky.mjs"),
@@ -185,16 +186,18 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\n"],
-				["approve asky_read", "\x1b"], // Esc while the run pauses
-				// After the abort, a NEW turn consumes the script's turn 2.
-				["[aborting run]", "next\n"],
+				["needs approval", "\x1b"], // the rule line's dim run — Esc at the panel = the cancel
+				// The cancel is a CONSERVATIVE DENIAL (a RESULT, not an
+				// abort): the run continues and the script's turn 2 ("the
+				// tour is done") completes the SAME run.
+				["[approval cancelled — treated as a denial]", ""],
 				["the tour is done", "exit\n"],
 			],
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("[aborting run]");
 		expect(clean).toContain("[approval cancelled — treated as a denial]");
-		// The REPL survived the abort — the next turn ran and exited.
+		expect(clean).not.toContain("[aborting run]"); // the old abort is GONE — the denial continues the run
+		// The REPL survived the cancel — the SAME run completed its turn.
 		expect(clean).toContain("the tour is done");
 	}, 90_000);
 });

@@ -102,7 +102,7 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\n"],
-				["approve edit_file", "y\n"],
+				["needs approval", "y\n"], // the rule line's dim run — one contiguous RAW span (the tool name's bold span sits BEFORE the reset code, so "<tool> needs approval" never matches the byte stream) — "y" + enter send the verdict
 				["the tour is done", "exit\n"],
 			],
 			workdir,

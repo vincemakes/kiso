@@ -169,7 +169,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		expect(gridB.slice(0, r)).toEqual(gridA.slice(0, r));
 	}, 120_000);
 
-	it("LIVE: ctrl+r at the approval pause toggles the diff in place — the cut hides the middle, the key reveals it; a second key on the settled cell appends nothing", () => {
+	it("LIVE: the approval panel shows the ALWAYS-verbose diff at the pause (the fold cap + the notice row); a second key on the settled cell appends nothing", () => {
 		const { env } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v7-expand-"));
 		const target = join(dir, "target.txt");
@@ -192,23 +192,24 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\n"],
-				// the key answers AT the pause — the diff's 12-row cut just
-				// rendered (the question's own bytes may land before the
-				// cut's 16ms frame — the KEY rides the cut, not the question)
-				["ctrl+r to expand", "\x12"],
-				// the answer comes only AFTER the toggle's frame — the middle
-				// rows the cut hid are the proof the toggle happened
-				["line07", "y\n"],
+				// The v8 panel replaces the live cut — the ALWAYS-verbose diff
+				// is up immediately (the 15-line write folds at the H−4 cap
+				// with the notice row; the ctrl+r affordance is GONE).
+				// Answer with 1 (Yes) + enter.
+				["needs approval — asked by", "y\n"],
 				["written.", "\x12"], // the second key: the cell is settled+committed
 				["nothing to expand", "exit\n"],
 			],
 		);
 		const clean = stripANSI(out);
 
-		// The affordance invited, the key answered, the cut never returned:
-		// the middle diff rows appear ONLY after the key.
-		expect(clean).toContain("ctrl+r to expand");
-		expect(clean.indexOf("line07")).toBeGreaterThan(clean.indexOf("ctrl+r to expand"));
+		// The panel showed the FULL diff without any toggle — the middle rows
+		// the old cut hid are up from the start; the affordance is the
+		// panel's, and the fold cap carried the notice row.
+		expect(clean).toContain("tab amend · esc cancel");
+		expect(clean).toContain("more rows — the full args are in the event log");
+		expect(clean).toContain("line07"); // the always-verbose middle — never hidden
+		expect(clean).not.toContain("ctrl+r to expand"); // the live cut is gone — the panel superseded it
 		// The second key appended nothing — the settled cell was never cut
 		// with the affordance (its committed form is the result text), so
 		// the answer is the empty message, not a block.

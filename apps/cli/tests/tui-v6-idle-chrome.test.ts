@@ -107,7 +107,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: scri
 			["› ", "\u4f60", 2],
 			["› ", "\u4f60", 3],
 			["› ", "\n", 4], // the submit — the turn runs the shell
-			["approve shell", "y\n", 5], // the default tier ASKS the shell — answer it
+			["needs approval", "y\n", 5], // the rule line's dim run — the default tier ASKS the shell, answer the panel
 			["› ", "x", 8], // the post-turn char — after the 2s run ends (~t=7) — its frame is the commitless steady frame
 		])}, 12)
 `;

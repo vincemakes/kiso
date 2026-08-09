@@ -141,7 +141,7 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 				["proj-model", "exit\n"],
 			], workdir),
 		);
-		expect(out).toContain("trust this project's .kiso? (y/n)");
+		expect(out).toContain("trust this project's .kiso?"); // the trust panel's rule line (the "(y/n)" suffix is gone — the panel superseded the boxed question)
 		expect(out).toContain("model: proj-model-x"); // the project's model drives the session
 		expect(out).toContain("proj-model → openai-compat/proj-model-x · MY_TEST_KEY (available)");
 	});

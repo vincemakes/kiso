@@ -86,12 +86,13 @@ const CELL_LINE = [
 	/^✗ \S+ \(.*, \d+\.\ds\)$/, // the ToolCell failed
 	/^▞.*$/, // v3: the recap line ends the run
 	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)
-	/^└ .*$/, // v7 W7/W8/W10: the cut/waiting rows (the "  └ " family — "waiting for output", "+N earlier rows · ctrl+r", "capped by …")
+	/^└(?: .*)?$/, // v7 W7/W8/W10 + W21: the cut/waiting rows (the "  └ " family — "waiting for output", "+N earlier rows · ctrl+r", "capped by …") + the approval panel's bare └ corner
 	/^aborted \(.*\)$/, // the aborted terminal label
 	/^error: .*$/, // the error terminal label
 	/^▸ .* · \/mode to switch.*$/, // v3 idle status line
+	/^▸ run paused.*$/, // W21: the panel's paused status (the lead owns the input row — the affordance rides the status)
 	/^\/ commands · ↑ history$/, // TUI v5 #16g: the dock's idle hint — the status row at enter (the status is still empty)
-	/^▖ working \d+s.*$/, // v3 running status line
+	/^[▖▘▝▗] working \d+s.*$/, // the running status line (all four spinner glyphs — the W21 hint "· esc to interrupt" rides the row)
 	/^streaming text.*$/, // the TextCell body
 	/^session \S+$/, // the session header
 	/^\[faux mode.*$/, // the faux banner line
@@ -105,7 +106,7 @@ const CELL_LINE = [
 	// shape in the lint (the stripped form would be plain text).
 	/^╭[─]+╮$/, /^╰[─]+╯$/, // W6: the box rails (the corners close the ─ run)
 	/^ {0,2}(approved|denied.*)$/, // the permission_decided raw
-	/^│ approve .*\(y\/n\).*│$/, // the ApprovalPrompt slot — the question + the typed answer on the input row (W6: inside the box)
+	/^─ .*$/, // W21: the approval panel's divider row (edge-to-edge, no gutter — the boxed ApprovalPrompt slot is gone, the panel superseded it)
 	/^.*· faux · \[turn \d+ · faux\]$/, // the live status bar (session-prefixed)
 	/^the tour is done$/, /^streaming text$/, // the TextCell bodies
 ];
@@ -174,7 +175,10 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 						{ type: "thinking", text: "T".repeat(120) },
 						{ type: "text_delta", text: "streaming text" },
 						{ type: "tool_call_end", callId: "c1", name: "list_dir", input: {} },
-						{ type: "tool_call_end", callId: "c2", name: "shell", input: { command: "echo hi" } },
+						// the shell runs LONG enough for the spinner row to paint
+						// (a 0.0s echo coalesces away before any frame — the
+						// running state never renders)
+						{ type: "tool_call_end", callId: "c2", name: "shell", input: { command: "sleep 1; echo hi" } },
 						{ type: "tool_call_end", callId: "c3", name: "asky_read", input: {} },
 						{ type: "stop", reason: "tool_use" },
 					],
@@ -187,25 +191,39 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\n"],
-				// The asky extension asks for EVERY tool — answer each question
-				// in order (list_dir, shell, then asky_read).
-				["approve list_dir", "y\n"],
-				["approve shell", "y\n"],
-				["approve asky_read", "y\n"],
+				// The asky extension asks for every tool — answer the two
+				// panels that actually mount. list_dir NEVER panels: the
+				// default tier's read-only allow beats the extension's ask
+				// (W21's deny > allow > ask — an allow anywhere in the chain
+				// outranks every ask), so it auto-approves and the run
+				// launches all three calls immediately — the queue state
+				// never paints. The needles ride the OPTIONS row's option-2
+				// span — " 2 Yes, don't ask again for <tool>" is plain (no
+				// SGR at sel 0), contiguous RAW, and unique per panel: the
+				// rule line's tool name sits inside its own bold span, and
+				// the no-queue run paints no bare-name row to race the
+				// feeds. "y" + enter send the verdict.
+				["2 Yes, don't ask again for shell", "y\n"],
+				["2 Yes, don't ask again for asky_read", "y\n"],
 				["the tour is done", "exit\n"],
 			],
 		);
 		const clean = stripANSI(out);
-		// The scenario actually ran: the three tools + the approval + the text.
-		// W2: the states that actually render — the queued shell (the ◦
-		// gutter), the running shell (the spinner IS the gutter), and the
-		// approval (the ⏸ is the left gutter — list_dir goes straight to
-		// approval, never running: the old "→ " prefix lived on the
-		// approval row)
-		expect(clean).toContain('◦ shell {"command":"echo hi"}');
-		expect(clean).toMatch(/▖ shell \{"command":"echo hi"\} \d+s/);
-		expect(clean).toContain("⏸ list_dir {}");
+		// The scenario actually ran: the three tools + the approvals + the
+		// text. W21: list_dir auto-approves under the default tier (no
+		// panel — the ⏸ badge row is gone, the panel superseded it) and
+		// the run launches every call immediately (the ◦ queue rows never
+		// paint); the shell and asky_read each mount a panel — the rule
+		// line ("asked by …"), the settled cells carry the "approved"
+		// decision tag, and the 1s shell's spinner row paints (the
+		// spinner IS the gutter).
+		expect(clean).toContain("shell needs approval"); // the shell panel's rule line
+		expect(clean).toContain("asky_read needs approval"); // the asky panel's rule line
+		expect(clean).toMatch(/[▖▘▝▗] shell \{"command":"sleep 1; echo hi"\} \d+s/); // the running shell — the spinner IS the gutter
+		expect(clean).toMatch(/✓ list_dir \(\d+ lines, \d+\.\ds\)/); // the auto-approved list_dir settled
+		expect(clean).toMatch(/✓ shell \(exit 0, \d+\.\ds\)/); // the approved shell settled
 		expect(clean).toMatch(/✓ asky_read \(1 line, \d+\.\ds\)/); // W4: the result line count, not the input JSON
+		expect(clean).toContain("approved"); // the W21 decision tags ride the settled cells
 		expect(clean).toContain("streaming text");
 		expect(clean).toContain("the tour is done");
 		// THE GATE: every line fully matches a known cell format. A
