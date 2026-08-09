@@ -277,9 +277,17 @@ export function renderToolSummary(
 	name: string,
 	input: Record<string, unknown>,
 	result: { content: string; isError: boolean },
+	reason: string | null = null,
 ): string {
 	// v2a/v5: ✓ is a bold identity accent; ✗ stays red.
 	const p = palette();
+	// W19: a DENIED call (the "denied" tag) renders the pinned row — the
+	// FULL call name, the target, the reason in the W4 parentheses idiom,
+	// and NO timing metadata (the call never ran — (0.0s) would be noise).
+	// The same row in the interactive and pipe paths, byte-clean on a pipe.
+	if (reason !== null) {
+		return `${p.red}✗${p.reset} ${escapeTerminal(`${name} ${toolTarget(name, input)} (${reason})`)}`;
+	}
 	const mark = result.isError ? `${p.red}✗${p.reset}` : `${p.bold}✓${p.reset}`;
 	const shortName = name.replace("_file", "");
 	const detail = toolSummaryDetail(name, input, result);
@@ -488,10 +496,23 @@ export interface RecapStats {
 	readonly edits: number;
 	readonly usage: RunUsage;
 	readonly ctxLeftPct: number | null; // 0..100, null when unknowable
+	/** W19 — the mode the turn ran under. Under "plan" the recap becomes
+	 *  the way-forward row (the claimed shape): a plan turn's currency is
+	 *  the plan, not the tool count — the timing and tool-count parts
+	 *  drop, and the two /mode hints replace them. */
+	readonly mode?: string;
 }
 
 export function renderRecap(s: RecapStats): string {
 	const p = palette();
+	// W19: under plan the recap is the way out of the mode — the header
+	// names the mode's posture, the hints name the exits (the ONLY
+	// controls — /mode is the only way to leave plan mode).
+	if (s.mode === "plan") {
+		const parts = ["plan ready", "/mode default executes", "/mode accept-edits auto-approves edits"];
+		if (s.ctxLeftPct !== null) parts.push(`ctx left ~${Math.round(s.ctxLeftPct)}%`);
+		return `${p.bold}▞${p.reset} ${parts.join(" · ")}\n`;
+	}
 	const parts = [`${s.seconds}s`, `${s.tools} tool${s.tools === 1 ? "" : "s"}${s.edits > 0 ? ` (${s.edits} edit${s.edits === 1 ? "" : "s"})` : ""}`];
 	if (s.usage.known) {
 		const seg = `${s.usage.in !== null ? `in ${kUnit(s.usage.in)}` : ""}${s.usage.in !== null && s.usage.out !== null ? " " : ""}${s.usage.out !== null ? `out ${kUnit(s.usage.out)}` : ""}`;

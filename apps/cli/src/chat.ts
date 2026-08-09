@@ -255,7 +255,17 @@ export async function consumeRun(
 				break;
 			case "tool_result": {
 				const text = typeof ev.content === "string" ? ev.content : "";
-				body.toolResult(ev.callId, { content: text, isError: ev.isError });
+				// W19: a DENIED call carries its reason — extracted from the
+				// result's "[Permission denied] " prefix, keyed on the
+				// "denied" tag (the parseChecklist discipline: the tag
+				// declares, the prefix confirms). The ToolCell renders the
+				// pinned row (full name, target, reason, no timing).
+				let reason: string | null = null;
+				if ((ev.tags ?? []).includes("denied")) {
+					const m = /^\[Permission denied\] (.*)$/.exec(text);
+					if (m !== null) reason = m[1]!;
+				}
+				body.toolResult(ev.callId, { content: text, isError: ev.isError, reason });
 				// round 6 (the todo round): a result tagged do-not-compact whose content
 				// follows the checklist shape also renders as the durable
 				// checklist cell (the CLI translates Event → the tui's own
@@ -318,6 +328,9 @@ export async function consumeRun(
 						edits: editCount,
 						usage,
 						ctxLeftPct: Number.isFinite(ratio) ? (1 - ratio) * 100 : null,
+						// W19: under plan the recap becomes the way-forward row
+						// (the /mode hints are the mode's exits).
+						mode: getMode(),
 					}),
 				);
 				break;
@@ -477,7 +490,10 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		if (!dock.active) return;
 		const ratio = estimateCtxRatio(session);
 		const pct = Number.isFinite(ratio) ? Math.round((1 - ratio) * 100) : null;
-		dock.setStatus(`▸ ${getMode()} · /mode to switch · ${agentModel} · ctx left ~${pct}%`);
+		// W19: under plan the idle row makes the posture unmistakable —
+		// the W4 parentheses idiom names the read-only constraint.
+		const tier = getMode() === "plan" ? "plan (read-only)" : getMode();
+		dock.setStatus(`▸ ${tier} · /mode to switch · ${agentModel} · ctx left ~${pct}%`);
 	};
 	const statusCb = (u: RunUsage, ctx: number): void => {
 		runUsage = u;

@@ -25,6 +25,7 @@ import {
 	colorInlineCode,
 	renderTerminalGap,
 	renderToolSummary,
+	toolTarget,
 	kUnit,
 	palette,
 	type Palette,
@@ -209,6 +210,12 @@ export type BodyCell =
 			 *  1.1s)" + the target children). The members carry null — the
 			 *  compositor's rolled-heads bookkeeping renders them []. */
 			rolled: null | { count: number; lines: number; elapsed: string; targets: string[] };
+			/** W19: a DENIED call's reason (the CLI extracted it from the
+			 *  result's "[Permission denied] " prefix, keyed on the "denied"
+			 *  tag). Non-null renders the pinned row — the full call name,
+			 *  the target, the reason in the W4 parentheses idiom, NO timing
+			 *  metadata (the call never ran). */
+			reason: string | null;
 	  }
 	| { kind: "text"; text: string; done: boolean }
 	| { kind: "notice"; text: string; done: true }
@@ -416,6 +423,24 @@ class ToolExecution implements Component {
 			return out;
 		}
 		if (c.state === "done") {
+			// W19: the pinned deny — the claimed shape verbatim: the FULL
+			// call name (the denial names the call), the target, the reason
+			// in the W4 parentheses idiom, no timing (the call never ran).
+			// The same ✗ family as any failure; the [result ✗] body still
+			// rides below (never hide information).
+			if (c.reason !== null) {
+				let input: Record<string, unknown> = {};
+				try {
+					input = JSON.parse(c.inputFull) as Record<string, unknown>;
+				} catch {
+					// the full JSON is always parseable (stringified at
+					// toolStart) — the empty fallback never fires
+				}
+				const target = toolTarget(c.name, input);
+				const out = gutterFold(`${p.red}✗${p.reset} `, `${p.red}${escapeTerminal(`${c.name} ${target}`)} (${escapeTerminal(c.reason)})${p.reset}`, W);
+				out.push(...toolBlockBody(c, W));
+				return out;
+			}
 			const elapsed = c.startedAt !== null && c.doneAt !== null ? ((c.doneAt - c.startedAt) / 1000).toFixed(1) : "?";
 			const meta = escapeTerminal(settledMeta(c));
 			const out = c.isError
@@ -587,13 +612,17 @@ function shellTail(text: string, W: number): string[] {
 /** The error text head: the FIRST rows, capped at 3 — the answer is at
  *  the start (opencode's collapseToolOutput direction). The header row
  *  already summarizes the first line, so the body starts at line 2. */
-function errorBody(c: { name: string; resultText: string }, W: number): string[] {
+function errorBody(c: { name: string; resultText: string; reason?: string | null }, W: number): string[] {
 	const p = palette();
 	// W4: a shell EXECUTION failure's line 0 ("exit 1: …") no longer
 	// rides the header — the parsed code does — so the body keeps the
 	// FULL text. Any other error keeps the pre-W4 split: line 0 is the
 	// header's metadata, the body shows the rest.
-	const skipFirst = c.name === "shell" && /^exit \d+/.test(c.resultText) ? 0 : 1;
+	// W19: a DENIED call's header meta is the PARSED reason (from the
+	// denied tag), decoupled from the result text — the body keeps the
+	// FULL content including the "[Permission denied] " prefix (never
+	// hide information — the folded body rides the pinned row).
+	const skipFirst = c.name === "shell" && /^exit \d+/.test(c.resultText) ? 0 : c.reason !== null && c.reason !== undefined ? 0 : 1;
 	const rows = blockRows(c.resultText.split("\n").slice(skipFirst).join("\n"), W);
 	if (rows.length <= CAP_ERROR) return rows;
 	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - (CAP_ERROR - 1)} more · ctrl+r${p.reset}`, W);

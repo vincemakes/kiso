@@ -155,7 +155,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 				["[Permission denied]", ""], // the write is denied, not asked
 				["plan mode: read-only", ""], // the guiding reason reaches the model
 				["plan turn done", ""],
-				["▸ plan · /mode to switch", ""], // v3 idle state — the mode shows after the run ends
+				["▸ plan (read-only) · /mode to switch", ""], // W19: the idle row names the read-only posture (the v3 idle state)
 				["▌ ", "/mode default\n"],
 				["mode → default", ""], // the notice cell — the switch is on the record
 				["▌ ", "go\n"],
@@ -170,7 +170,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ modeFlag: "plan", session: "modes1" },
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("▸ plan · /mode to switch");
+		expect(clean).toContain("▸ plan (read-only) · /mode to switch"); // W19 re-baseline: the idle row names the posture
 		expect(clean).toContain("[Permission denied]");
 		expect(clean).toContain("plan mode: read-only");
 		expect(clean).toContain("mode → default");

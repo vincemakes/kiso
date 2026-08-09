@@ -241,7 +241,7 @@ export class Body {
 			}
 		}
 		this.#toolCells.set(callId, this.#cells.length);
-		this.#cells.push({ kind: "tool", name, input: summary, inputFull: JSON.stringify(input, null, 2), childRoles, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false, expanded: false, turn: this.#turns.length - 1, rolled: null });
+		this.#cells.push({ kind: "tool", name, input: summary, inputFull: JSON.stringify(input, null, 2), childRoles, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false, expanded: false, turn: this.#turns.length - 1, rolled: null, reason: null });
 		// W14: the turn record's counts — the folded-turn line's terms
 		// (reads = read_file, edits = edit_file, the rest in first-call
 		// order). The CLI's recap counts the same way (edit_file).
@@ -292,7 +292,7 @@ export class Body {
 		}
 	}
 
-	toolResult(callId: string, result: { content: string; isError: boolean }): void {
+	toolResult(callId: string, result: { content: string; isError: boolean; reason?: string | null }): void {
 		const call = this.#pendingCalls.get(callId);
 		if (call !== undefined) {
 			call.result = result;
@@ -300,9 +300,12 @@ export class Body {
 			this.#pendingCalls.delete(callId);
 		}
 		if (!this.#isActive()) {
+			// W19: the pipe path renders the SAME pinned deny row (the
+			// reason in the W4 parentheses idiom), byte-clean — plus the
+			// folded [result ✗] body below (never hide information).
 			const p = palette();
 			this.#write(
-				`${renderToolSummary(call?.name ?? "?", call?.input ?? {}, result)}\n` +
+				`${renderToolSummary(call?.name ?? "?", call?.input ?? {}, result, result.reason ?? null)}\n` +
 					`${p.dim}${result.isError ? p.red : p.dim}  [result${result.isError ? " ✗" : ""}] ${foldResult(result.content)}${p.reset}\n`,
 			);
 			return;
@@ -313,6 +316,7 @@ export class Body {
 			cell.state = "done";
 			cell.isError = result.isError;
 			cell.resultText = result.content;
+			cell.reason = result.reason ?? null;
 			cell.doneAt = Date.now();
 			cell.done = true;
 		}
