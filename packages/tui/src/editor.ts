@@ -17,12 +17,12 @@
  * inserts, internal newlines become spaces.
  */
 
-import { charWidth, displayWidth, widthOf } from "./width.js";
+import { charWidth, displayWidth, leadWidth, widthOf } from "./width.js";
 // the width primitives moved to width.ts (W1, the single width
 // authority) — re-exported so the editor's public surface is unchanged.
 export { charWidth, displayWidth, widthOf };
 import { palette } from "./render.js";
-import { panelLead, panelLeadWidth, type PanelPhase, type PanelSel, type PanelState, type PanelVerdict, type PanelView } from "./approval-panel.js";
+import { panelLead, type PanelPhase, type PanelSel, type PanelState, type PanelVerdict, type PanelView } from "./approval-panel.js";
 
 // TUI v4 #16d: the input row is the blue brick + the edit area — the
 // "you>" text is gone (the brick IS the prompt; the pipe path's readline
@@ -269,7 +269,11 @@ export class Editor {
 		// when the panel closes).
 		const panel = this.#panel;
 		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.sel) : `${p.bold}${PROMPT}${p.reset}`;
-		const leadW = panel !== null ? panelLeadWidth(panel.view, panel.phase, panel.sel) : PROMPT_WIDTH;
+		// W23: the ONE width authority — leadWidth(lead), the ANSI-stripped
+		// visible width (the styled panel lead / the styled brick measure
+		// the same as their plain text — a lead can never measure
+		// differently at the editor than at the compositor)
+		const leadW = leadWidth(lead);
 		const cursorCol = Math.min(1 + leadW + st.cursor, W);
 		process.stdout.write(`\r\x1b[0K${lead}${st.line}\x1b[${cursorCol}G`);
 	}
@@ -706,7 +710,11 @@ export class Editor {
 		// W21: the panel's phase lead owns the input row while up — the
 		// line's max width follows the lead (the rule/amend leads are
 		// wider than the brick).
-		const leadW = this.#panel !== null ? panelLeadWidth(this.#panel.view, this.#panel.phase, this.#panel.sel) : PROMPT_WIDTH;
+		// W23: the ONE width authority — leadWidth(lead) — the cap follows
+		// the lead the editor itself renders (the panel lead when the panel
+		// owns the keys, the brick otherwise): maxW = W − walls − lead.
+		const lead = this.#panel !== null ? panelLead(this.#panel.view, this.#panel.phase, this.#panel.sel) : PROMPT;
+		const leadW = leadWidth(lead);
 		const maxW = Math.max(1, W - leadW - 4); // W6: the box's walls (2+2) — the visible line fits the box's inner width; the "…" rides inside
 		const curCol = widthOf(this.#chars.slice(0, this.#cursor));
 		const scrolledW = widthOf(this.#chars.slice(0, this.#scroll));

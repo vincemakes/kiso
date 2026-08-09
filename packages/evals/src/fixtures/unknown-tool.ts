@@ -1,7 +1,8 @@
 /**
  * Fixture: UNKNOWN TOOL — the model calls a tool that is not registered.
  *
- * Incident class (uooki + CC community): a tool name drifts (renamed,
+ * Incident class (uooki + the reference implementation's community): a tool
+ * name drifts (renamed,
  * ghost entry, typo'd enum) and the harness either silently drops the call
  * (agent loops forever trying to find the tool) or executes something
  * unexpected. The kernel's answer is structural: an unregistered tool is

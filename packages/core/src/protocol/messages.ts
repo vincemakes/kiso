@@ -50,8 +50,8 @@ export type ContentBlock = TextContentBlock | ImageContentBlock;
  *
  * The model treats this as evidence about intent; a "user" line that the UI
  * recycled from a suggestion chip is NOT user intent, and a model that cannot
- * tell the difference drifts on its own recycled wording (Claude Code
- * #60087). The kernel preserves the label; product code decides how to render
+ * tell the difference drifts on its own recycled wording (the reference
+ * implementation's #60087). The kernel preserves the label; product code decides how to render
  * it. Defaults (when absent): role `user` → "user", role `assistant` →
  * "model", role `tool` → "tool_result".
  */

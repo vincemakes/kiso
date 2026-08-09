@@ -3,7 +3,8 @@
  * and allowed later; the model must see both outcomes distinctly.
  *
  * Incident (mauri ADR-0002): a permission system that is a yes/no gate has
- * no memory and no upgrade path. CC's ask model allows deny-with-reason,
+ * no memory and no upgrade path. The reference implementation's ask model
+ * allows deny-with-reason,
  * and the reason feeds back to the model so it can adjust. The kernel's
  * contract: each decision is a distinct tool_result — `precondition` for a
  * refusal (the tool never ran), a normal result for the allowed retry.

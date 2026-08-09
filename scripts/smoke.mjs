@@ -235,7 +235,16 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 	const proj = tempProject("cli");
 	installTier(
 		"cli",
-		["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-code"],
+		[
+			"@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node",
+			"@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai",
+			// the tui closure must come from the PACKED tree too: kiso-code's
+			// exact tui pin would otherwise resolve the PUBLISHED tui (stale
+			// whenever the tree is ahead of the registry — the toolTarget
+			// SyntaxError), and the tui's tui-cells pin isn't published yet,
+			// so both tarballs land at the top level BEFORE kiso-code.
+			"@vincemakes/kiso-tui-cells", "@vincemakes/kiso-tui", "@vincemakes/kiso-code",
+		],
 		proj,
 	);
 	// The smoke program above created sessions in ITS project; here we create

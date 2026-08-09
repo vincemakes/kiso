@@ -42,3 +42,12 @@ export function displayWidth(text: string): number {
 	for (const ch of text) w += charWidth(ch.codePointAt(0)!);
 	return w;
 }
+
+/** A LEAD's display width — the prompt / the panel's phase lead,
+ *  ANSI-stripped. W23: the ONE width authority shared by the editor
+ *  (selfRender, #reflow), the compositor's #inputRow, and editCol — a
+ *  lead can never measure differently at two call sites (the frame-
+ *  derived column contract: wallL + leadWidth(lead) + cells + 1). */
+export function leadWidth(lead: string): number {
+	return displayWidth(lead.replace(/\x1b\[[0-9;]*m/g, ""));
+}

@@ -638,7 +638,8 @@ function blockRows(text: string, W: number): string[] {
 
 /** The shell output tail, settled: the LAST rows, capped at 5 — the
  *  renderer cut at the block's bottom ("earlier rows" — the conclusion
- *  is at the end, pi's truncateToVisualLines direction). */
+ *  is at the end, the reference implementation's truncateToVisualLines
+ *  direction). */
 function shellTail(text: string, W: number): string[] {
 	const p = palette();
 	const rows = blockRows(text, W);

@@ -1,7 +1,8 @@
 /**
  * 0.1.40 (R-C item 3) — the truncation guard: a runtime adapter wrapper.
  *
- * The pi protection: a truncated stream (stopReason max_tokens/length) can
+ * The reference implementation's protection: a truncated stream (stopReason
+ * max_tokens/length) can
  * yield tool args that parse and validate but are silently incomplete —
  * executing them is the destructive-bug class. The provider adapters already
  * see the stop reason; the RUNTIME vetoes execution of the whole batch:

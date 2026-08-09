@@ -8,7 +8,8 @@
  * The model:
  *  - cells (the CLI's mutation surface) → components → lines;
  *  - `lines[] + commitIndex` (the scrollback fork — the departure from
- *    pi): a line COMMITS (leaves the live region) via the real-LF
+ *    the reference implementation's model): a line COMMITS (leaves the
+ *    live region) via the real-LF
  *    scroll at the last row (`\x1b[1B\n` — CUP-free) when its cell is
  *    DONE and the region needs the room. Committed bytes are never
  *    re-emitted — the native scrollback gets them, reflow-safe, and
@@ -19,8 +20,8 @@
  *    commits the oldest live line regardless of done-ness — the one
  *    sharp edge (asserted by the VT-emulator gate);
  *  - two crash invariants: ① every emitted line's visible width ≤ W
- *    (components fold; a violation THROWS with diagnostics — pi
- *    tui-main-screen.ts:447-473, no silent truncate); ② every steady-
+ *    (components fold; a violation THROWS with diagnostics — the
+ *    no-silent-truncate ruling); ② every steady-
  *    frame CUP lands in the CONTENT area (rows ≤ H−4−menu — the
  *    committed band, the stale/gap ELs, and the LIVE lines at their
  *    model rows; fix C's sanctioned reinterpretation, ADR-0046) — the
@@ -44,6 +45,7 @@
 
 import { truncateDiff } from "./diff.js";
 import { displayWidth, type MenuItem } from "./editor.js";
+import { leadWidth } from "./width.js"; // W23: the ONE width authority (the editor, #inputRow, and editCol share it)
 import { panelAffordance, panelBlockRows, panelLead, panelStatus, type PanelState } from "./approval-panel.js";
 import {
 	Container,
@@ -723,9 +725,14 @@ export class Body {
 	 *  from the bound input state (the CLI's BodyOptions.editCol callback
 	 *  reads it — the marker math never desyncs by construction). */
 	editCol(): number {
-		const inp = this.#inputState();
-		// W6: the box's left wall (2 cols) prefixes the prompt
-		return 2 + displayWidth(this.#inputPrompt.replace(/\x1b\[[0-9;]*m/g, "")) + inp.cursor + 1;
+		const st = this.#inputState();
+		const panel = this.#panelState?.() ?? null;
+		// W23: the frame-derived column — wallL + leadWidth(lead) + cells
+		// + 1 — the SAME formula the marker embeds at (the panel lead when
+		// the panel owns the row; the old prompt-only math desynced the
+		// panel rows' edit column; leadWidth is the ONE authority)
+		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.sel) : this.#inputPrompt;
+		return 3 + leadWidth(lead) + st.cursor;
 	}
 
 	/** The old dock's redraw — the editor's onRender target: mark + the
@@ -1086,34 +1093,32 @@ export class Body {
 	/** The focus component's input row — the marker embedded at the
 	 *  cursor's display column WITHIN THE ROW (the brick/question lead
 	 *  included), the question/editor/menu variants. The compositor
-	 *  strips the marker and moves LEFT by the trailing width — the
-	 *  cursor derives from the frame, never from side-channel math.
+	 *  strips the marker and returns the frame-derived COLUMN — the
+	 *  cursor move lands AT the marker (a CHA — the column is absolute,
+	 *  so the move's base is irrelevant; the retired afterW CUB's base
+	 *  was the LAST write's end column, which the steady frame's
+	 *  gap/stale ELs leave at col 1 — the A3 finding).
 	 *
 	 *  W6: the row lives INSIDE the box — the walls are a prefix/suffix
 	 *  width only, composed AFTER the marker embed (the marker math is
 	 *  untouched; the marker's row column = the wall + the lead + the
 	 *  cursor). The content caps at W−4 (the walls' columns) and the
 	 *  pad completes the row to EXACTLY W — invariant ① throws on
-	 *  overflow, so the box row is built full-width, never truncated. */
-	#inputRow(W: number, _ctx: FrameCtx): { stripped: string; afterW: number } {
+	 *  overflow, so the box row is built full-width, never truncated.
+	 *  W23: the lead width is the ONE authority — leadWidth (width.ts),
+	 *  shared with the editor's selfRender/#reflow and editCol. */
+	#inputRow(W: number, _ctx: FrameCtx): { stripped: string; markerCol: number } {
 		const st = this.#inputState();
 		const panel = this.#panelState?.() ?? null;
-		let row: string;
-		if (panel !== null) {
-			// the PanelSelect occupant — the panel's phase lead owns the
-			// input row (1-3> / the rule input's "2 Yes, don't ask again
-			// for " / the amend "feedback (deny): "); the question slot
-			// is retired.
-			row = `${panelLead(panel.view, panel.phase, panel.sel)}${st.line}`;
-		} else {
-			row = `${this.#inputPrompt}${st.line}`;
-		}
-		// the lead (the prompt / the question) width — the marker's row
-		// column = leadW + the line cursor (the dockState cursor counts
-		// within the line only)
-		const leadW = visibleWidth(row.slice(0, row.length - st.line.length));
+		// the lead — the panel's phase lead when the panel owns the row
+		// (1-3> / the rule input's "2 Yes, don't ask again for " / the
+		// amend "feedback (deny): "), the bound prompt otherwise
+		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.sel) : this.#inputPrompt;
+		const leadW = leadWidth(lead);
+		const row = `${lead}${st.line}`;
 		// embed the marker at the cursor's display column
 		let markerLine = "";
+		let markerCell = 0; // the marker's 0-based cell — the walk's w at the embed
 		let w = 0;
 		{
 			let inserted = false;
@@ -1129,6 +1134,7 @@ export class Body {
 				}
 				if (!inserted && w >= leadW + st.cursor) {
 					markerLine += CURSOR_MARKER;
+					markerCell = w;
 					inserted = true;
 				}
 				const cw = displayWidth(row[i]!);
@@ -1138,28 +1144,28 @@ export class Body {
 				i += 1;
 			}
 			if (!inserted) {
+				// the walk ended before the cursor cell (the box edge) —
+				// the marker rests at the row's end; the move still lands
+				// AT it (the min() of the contract)
 				markerLine += CURSOR_MARKER;
+				markerCell = w;
 			}
 		}
 		const stripped0 = markerLine.replace(CURSOR_MARKER, "");
-		const tailW = visibleWidth(markerLine.slice(markerLine.indexOf(CURSOR_MARKER) + CURSOR_MARKER.length));
 		if (W < 4) {
 			// the degenerate screen: the box cannot hold its walls — the
 			// bare row (the pre-W6 bytes; the fold probe's pass-through
 			// line still crashes invariant ① downstream, as before)
-			return { stripped: stripped0, afterW: tailW };
+			return { stripped: stripped0, markerCol: 3 + markerCell };
 		}
 		// the pad completes the row to W — the content stopped at W−4,
 		// so the pad is ≥ 1
 		const padW = W - 3 - w;
 		const stripped = `\x1b[2m│ \x1b[0m${stripped0}\x1b[2m${" ".repeat(padW)}│\x1b[0m`;
-		// the LEFT move = the width AFTER the cursor-rest cell — the
-		// full-width row parks the terminal cursor at the LAST cell (not
-		// one past the end), so the rest cell IS the first tail cell and
-		// the move = the tail + the pad (the right wall rides inside the
-		// pad's tail)
-		const afterW = tailW + padW;
-		return { stripped, afterW };
+		// W23: the frame-derived column — wallL (2) + the marker's cell
+		// + 1 — the CHA lands the cursor AT the marker from ANY base
+		const markerCol = 3 + markerCell;
+		return { stripped, markerCol };
 	}
 
 	/** The full-redraw path (the first frame, the resize repaint) — CUP
@@ -1220,9 +1226,13 @@ export class Body {
 		out.push(`\x1b[${H - 1};1H\x1b[0K${boxBottom(W)}`);
 		const statusRow = this.#statusSource();
 		out.push(`\x1b[${H};1H\x1b[0K${this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint), W)}`);
-		// the cursor: up two (the input row at H−2) + left to the marker
+		// the cursor: up two (the input row at H−2) + the CHA to the
+		// marker's frame-derived column — W23: the afterW CUB retired
+		// (the CHA is absolute — the base is irrelevant; the CUB's base
+		// was the LAST write's end column, which the steady frame's ELs
+		// leave at col 1 — the A3 finding)
 		out.push("\x1b[2A");
-		if (editor.afterW > 0) out.push(`\x1b[${editor.afterW}D`);
+		out.push(`\x1b[${editor.markerCol}G`);
 	}
 
 	/** The steady-state frame — RELATIVE moves only (invariant ②); the
@@ -1313,7 +1323,12 @@ export class Body {
 								: H - 3;
 		const down = H - 2 - lastRow; // the anchor: the input row (H−2)
 		if (down > 0) out.push(`\x1b[${down}B`);
-		if (editor.afterW > 0) out.push(`\x1b[${editor.afterW}D`);
+		// W23: the CHA to the frame-derived column — the cursor rests AT
+		// the marker from ANY base (the retired afterW CUB clamped at col
+		// 1 — the steady frame's LAST write is the gap/stale EL: the A3
+		// finding; the A5/A8 live lines end mid-row, the ELs at col 1 —
+		// the CHA ignores the base by construction)
+		out.push(`\x1b[${editor.markerCol}G`);
 	}
 
 	/** Invariant ①: every emitted line fits the width — a violation is a

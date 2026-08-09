@@ -6,7 +6,8 @@
  * the model ignored it and continued with "results look great, done" —
  * the turn ended "completed" with zero usable work. Root cause class:
  * error results ride the same channel as successes, and nothing forced the
- * model to acknowledge the error (CC's community loudest complaint: "reports
+ * model to acknowledge the error (the reference implementation's loudest
+ * community complaint: "reports
  * of finished work that never happened").
  *
  * The kernel-side shape the fixture pins: an isError tool_result in the

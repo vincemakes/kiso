@@ -324,7 +324,7 @@ frame(
 // 8 · bounded blocks — the answer to "a big diff or a long run piling up"
 frame(
 	"Bounded blocks — the flow contract",
-	"Measured, not asserted: truncateDiff caps at 37 source lines, which is 73 screen rows at width 80. Every cap here counts SCREEN rows after the fold, at the current width — pi's truncateToVisualLines rule. And a live block is a fixed-height window from its first frame, so a streaming tail repaints inside itself instead of shoving every row below it.",
+	"Measured, not asserted: truncateDiff caps at 37 source lines, which is 73 screen rows at width 80. Every cap here counts SCREEN rows after the fold, at the current width — the reference implementation's truncateToVisualLines rule. And a live block is a fixed-height window from its first frame, so a streaming tail repaints inside itself instead of shoving every row below it.",
 	[
 		d("a long run · the tail window, capped in screen rows"),
 		ok("shell", "npm test -w packages/tui", "exit 0, 6.2s"),

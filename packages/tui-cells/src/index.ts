@@ -32,7 +32,7 @@ export { editFileDiff, truncateDiff, writeFileDiff, type DiffLine, type DiffResu
 // UserMessage chip with the □ gutter, pre-rendered above the input
 // row while turns wait in the queue.
 export { pendingQueueRows } from "./components.js";
-export { charWidth, displayWidth, widthOf } from "./width.js";
+export { charWidth, displayWidth, leadWidth, widthOf } from "./width.js";
 // W21 (the v8 approval round): the approval panel — the bounded block
 // that replaces the running tool's live window while a human-chain
 // approval is pending. Types + the row/lead/status renderers; the

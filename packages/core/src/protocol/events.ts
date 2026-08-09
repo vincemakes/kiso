@@ -16,8 +16,8 @@
  * assigned by the kernel's EventLog at append time. Consumers (surfaces,
  * persistence, eval) sync by `seq`; a trajectory is the complete replay of
  * `seq` 0..N. Without `seq`, "what happened" can only be reconstructed by
- * array-shape heuristics — the exact failure Claude Code's transcript sync
- * lives in. See ADR-0002.
+ * array-shape heuristics — the exact failure the reference implementation's
+ * transcript sync lives in. See ADR-0002.
  *
  * This module is almost types-only: the only runtime value it emits is
  * `isKisoEvent`, the type guard the session store validates records with.
@@ -446,7 +446,7 @@ export interface StructuredError {
  *
  * Every consumer switches on `kind`; with `exactOptionalPropertyTypes` and
  * `strictNullChecks` on, a terminal that nobody handles is a compile error,
- * not a production mystery. CC's query() returns 11 different reasons that
+ * not a production mystery. The reference implementation's query() returns 11 different reasons that
  * every consumer discards — here the terminal is an event like any other,
  * so it cannot be lost. See ADR-0004.
  *

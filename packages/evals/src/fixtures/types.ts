@@ -6,7 +6,8 @@
  * real incident abstracted (uooki production, 2026). A fixture the loop
  * cannot pass is a regression the loop must not ship. Other frameworks
  * advertise features; kiso advertises "verifyable against known failure
- * modes" — because CC's loudest production complaints (reports of done work
+ * modes" — because the reference implementation's loudest production
+ * complaints (reports of done work
  * that never landed, silent tool failures) are exactly these shapes.
  *
  * `assert` receives the FULL trajectory (all events, seq 0..N) once the

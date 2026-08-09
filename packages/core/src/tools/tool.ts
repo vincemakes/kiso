@@ -51,8 +51,8 @@ export interface Tool<I = unknown> {
 	/** JSON Schema (draft-07 subset). Validated before execute. */
 	readonly parameters: Readonly<Record<string, unknown>>;
 	/**
-	 * Per-call concurrency predicate — the CC-invented shape that pi's static
-	 * executionMode cannot express: the same tool may be parallel-safe for one
+	 * Per-call concurrency predicate — a shape the reference implementation's
+	 * static executionMode cannot express: the same tool may be parallel-safe for one
 	 * input and must be serial for another (generate_image with
 	 * `chain_to_previous`). Absent = safe when true-ish; see ADR-0015.
 	 */

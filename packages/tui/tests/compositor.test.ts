@@ -208,7 +208,7 @@ describe("TUI v6 — the one compositor", () => {
 		expect(body.liveCount()).toBeLessThanOrEqual(24 - 1);
 	});
 
-	it("the cursor derives from the frame: the marker positions the relative move; the marker never reaches the stream", () => {
+	it("the cursor derives from the frame: the CHA lands at the marker's frame-derived column; the marker never reaches the stream", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		body.bindInput(() => ({ line: "abc", cursor: 1 }), "› ");
@@ -217,10 +217,12 @@ describe("TUI v6 — the one compositor", () => {
 		const bytes = writes.join("");
 		expect(bytes).not.toContain("kiso-cur"); // the APC marker is stripped
 		expect(bytes).toContain("› abc"); // the prompt + the line, marker stripped
-		// the cursor rests after the prompt + one char ("│ › a|bc │") — the
-		// LEFT move equals the trailing width (74 = the "bc" tail + the
-		// pad + the right wall on an 80-col row)
-		expect(bytes).toContain("\x1b[74D");
+		// W23: the cursor move is the CHA to the frame-derived column —
+		// wallL (2) + the lead "› " (2) + the cursor (1) + 1 = 6 — the
+		// absolute column lands at the marker from ANY base (the retired
+		// afterW CUB's base — the last write's end column — clamped at
+		// col 1 in the steady frame: the A3 finding)
+		expect(bytes).toContain("\x1b[6G");
 	});
 
 	it("W21: the panel slot — the block displaces the live region, the input lead swaps, the status derives from the phase; clearing restores the prompt", () => {

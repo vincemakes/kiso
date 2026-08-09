@@ -3,9 +3,9 @@
  *
  * One registry per agent. It is the ONLY place the kernel learns which tools
  * exist: nothing is assembled from a list maintained elsewhere, because a
- * second list is a second truth (the failure class behind Claude Code's five
- * hand-maintained agent-tool sets and pi's six copies of the default tool
- * list — see ADR-0001).
+ * second list is a second truth (the failure class behind the reference
+ * implementation's hand-maintained agent-tool sets and its six copies of the
+ * default tool list — see ADR-0001).
  *
  * `subset()` is the structural tool filter: a mode or a subagent gets a
  * registry whose tool table PHYSICALLY lacks the tools it must not see. The

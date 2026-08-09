@@ -9,7 +9,8 @@ import type { SessionConfig } from "./session.js";
 
 /**
  * 0.1.40 (R-C item 1) — the tool substitution table: the fixed vocabulary
- * (the CC content in kiso's voice, each line bound to the tool that makes
+ * (the reference implementation's content in kiso's voice, each line bound
+ * to the tool that makes
  * it true) filtered to the ACTIVE tool set + each active tool's ONE-line
  * snippet + its guideline bullets. The full descriptions NEVER enter the
  * system prompt — the provider transmits them in the JSON schema anyway
