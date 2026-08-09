@@ -7,7 +7,7 @@
 import { denialResult, loop, type AbortSignalLike, type Adapter, type Event, type EventLog, type PermissionDecision, type ToolResult } from "@vincemakes/kiso-core";
 import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
-import { composeSystemPrompt, composeToolTable, microcompactFor } from "./compose.js";
+import { composeApprovalChain, composeSystemPrompt, composeToolTable, microcompactFor } from "./compose.js";
 import { truncationGuard } from "./truncation-guard.js";
 import { ResumeBlockedError, type AgentSession, type SessionConfig } from "./session.js";
 
@@ -84,6 +84,7 @@ export class Run implements AsyncIterable<Event> {
 			// append in LOAD order — deterministic (same extensions → same
 			// prompt); no appends → byte-identical to the extension-less run.
 			const systemPrompt = composeSystemPrompt(basePrompt, this.#config.extensions ?? []);
+			const approvalChain = composeApprovalChain(this.#config.extensions ?? []);
 			const loopConfig = () =>
 				({
 					// 0.1.40 (R-C item 3): the truncation guard gates the model
@@ -100,9 +101,9 @@ export class Run implements AsyncIterable<Event> {
 					...(this.#config.compaction !== undefined ? { compaction: this.#config.compaction } : {}),
 					...(microcompact !== undefined ? { microcompact } : {}),
 					...(this.#config.maxRetries !== undefined ? { maxRetries: this.#config.maxRetries } : {}),
-					approvalPolicies: (this.#config.extensions ?? []).flatMap((e) =>
-						(e.approvals ?? []).map((policy) => ({ extension: e.name, policy })),
-					),
+					// E1: the composed approval chain — the extensions'
+					// policies composed into ONE gate (deny > allow > ask).
+					...(approvalChain !== undefined ? { approvalPolicy: approvalChain } : {}),
 					log,
 					signal,
 					resolveApproval: (decisionId: string) =>

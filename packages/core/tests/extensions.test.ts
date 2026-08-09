@@ -1,23 +1,20 @@
 /**
- * E1 — the extension approval policy chain (W21/R3: deny > allow > ask).
- *
- * The loop runs extension policies BEFORE the human flow: any deny wins
- * (the FIRST denial's reason), then ANY allow — a LATER allow beats an
- * EARLIER ask (the allow-only don't-ask-again extension must override a
- * mode tier's ask; the old ask-wins chain left it structurally dead) —
- * and only an ask-free chain auto-approves: recorded durably with the
- * deciding extension's name (decidedBy), never pausing for a human. An
- * ask falls into the existing human flow (decided WITHOUT decidedBy). A
- * policy that throws counts as ask. A durable decision recorded before a
- * crash takes effect on resume: the chain never re-runs (isomorphic
- * alreadyReplaced — the deterministic decisionId is the key).
+ * E1 — the kernel's approval gate. The extensions' policies are composed
+ * by the RUNTIME (composeApprovalChain: deny > allow > ask, W21/R3 — the
+ * composition moved out of the kernel by the 2026-08-09 corrective
+ * action) into ONE decide; the kernel consumes its verdict against the
+ * durable check. These tests pin the KERNEL's side: a durable decision
+ * takes effect on resume (the chain never re-runs), an ask with no
+ * approval channel degrades to an honest denial, and a static hook never
+ * speaks for an ask. The chain composition itself lives in the runtime —
+ * see packages/runtime/tests/compose-approvals.test.ts.
  */
 
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
-import { EventLog, loop, type Event, type PolicyVerdict } from "../src/index.js";
+import { EventLog, loop, type Event } from "../src/index.js";
 
 function makeRegistry(): ToolRegistry {
 	const registry = new ToolRegistry();
@@ -40,8 +37,7 @@ function makeRegistry(): ToolRegistry {
 	return registry;
 }
 
-const allowAll = (): PolicyVerdict => ({ action: "allow" });
-const askAll = (): PolicyVerdict => ({ action: "ask" });
+const askAll = () => ({ action: "ask" as const });
 
 /** One scripted turn that calls the named tool, then stops for it. */
 function scriptedCall(name: string, callId: string, input: Record<string, unknown>): FauxScript {
@@ -53,179 +49,6 @@ const decided = (log: EventLog): (Event & { type: "permission_decided" })[] =>
 	log.all.filter((e): e is Event & { type: "permission_decided" } => e.type === "permission_decided");
 const resultOf = (log: EventLog): (Event & { type: "tool_result" }) | undefined =>
 	log.all.find((e): e is Event & { type: "tool_result" } => e.type === "tool_result");
-
-describe("E1: the policy chain composes deny > ask > allow", () => {
-	it("deny outranks ask and allow — the FIRST denial's reason, decidedBy recorded, no human pause", async () => {
-		const log = new EventLog();
-		log.append({ type: "user_input", content: "go" });
-		for await (const _ev of loop({
-			adapter: createFauxProvider(
-				scriptedCall("shell", "s1", { command: "git reset --hard" }) as FauxScript,
-			),
-			model: "faux",
-			registry: makeRegistry(),
-			log,
-			approvalPolicies: [
-				{ extension: "allow-all", policy: { decide: allowAll } },
-				{
-					extension: "danger-guard",
-					policy: {
-						decide: (call) =>
-							call.name === "shell"
-								? { action: "deny", reason: "no destructive git" }
-								: { action: "allow" },
-					},
-				},
-				{ extension: "ask-all", policy: { decide: askAll } },
-			],
-		})) {
-			// drain
-		}
-		const ds = decided(log);
-		expect(ds).toHaveLength(1);
-		expect(ds[0]).toMatchObject({ decision: "denied", reason: "no destructive git", decidedBy: "danger-guard" });
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false); // never paused for a human
-		expect(resultOf(log)).toMatchObject({ isError: true });
-		expect(resultOf(log)?.content).toContain("[Permission denied] no destructive git");
-	});
-
-	it("W21/R3: a LATER allow beats an EARLIER ask — auto-approved with decidedBy, no human pause", async () => {
-		// The old ask-wins composition paused here — the ask outranked the
-		// allow and the human had to decide even though a policy allowed.
-		// The R3 ruling flips it: deny > allow > ask, so the allow-only
-		// don't-ask-again extension (bound after a mode tier that asked)
-		// is NOT structurally dead.
-		const log = new EventLog();
-		log.append({ type: "user_input", content: "go" });
-		for await (const _ev of loop({
-			adapter: createFauxProvider(scriptedCall("read_file", "r1", { path: "a.ts" })),
-			model: "faux",
-			registry: makeRegistry(),
-			log,
-			hooks: { onPreTool: async () => ({ action: "defer" }) },
-			resolveApproval: async () => ({ action: "allow" }),
-			approvalPolicies: [
-				{ extension: "ask-all", policy: { decide: askAll } },
-				{ extension: "allow-all", policy: { decide: allowAll } },
-			],
-		})) {
-			// drain
-		}
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false); // never paused — the allow decided
-		const ds = decided(log);
-		expect(ds).toHaveLength(1);
-		expect(ds[0]!.decision).toBe("approved");
-		expect(ds[0]!.decidedBy).toBe("allow-all"); // the POLICY decided, not the human
-		expect(log.all.some((e) => e.type === "tool_result" && e.content === "ok")).toBe(true); // ran — auto-approved
-	});
-
-	it("all allow — auto-approved with the extension's name, never a human pause", async () => {
-		const log = new EventLog();
-		log.append({ type: "user_input", content: "go" });
-		let hookRan = false;
-		for await (const _ev of loop({
-			adapter: createFauxProvider(scriptedCall("read_file", "r1", { path: "a.ts" })),
-			model: "faux",
-			registry: makeRegistry(),
-			log,
-			hooks: {
-				onPreTool: async () => {
-					hookRan = true;
-					return { action: "defer" };
-				},
-			},
-			approvalPolicies: [
-				{ extension: "reader", policy: { decide: allowAll } },
-				{ extension: "writer", policy: { decide: allowAll } },
-			],
-		})) {
-			// drain
-		}
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false);
-		expect(hookRan).toBe(false); // an all-allow chain auto-approves — the hook never ran
-		const ds = decided(log);
-		expect(ds).toHaveLength(1);
-		expect(ds[0]).toMatchObject({ decision: "approved", decidedBy: "reader" });
-		expect(log.all.some((e) => e.type === "tool_result" && e.content === "ok")).toBe(true);
-	});
-});
-
-describe("E1: policy failures and absent flows degrade honestly", () => {
-	it("a policy that throws counts as ask — a LATER allow still overrides it (W21/R3)", async () => {
-		const log = new EventLog();
-		log.append({ type: "user_input", content: "go" });
-		for await (const _ev of loop({
-			adapter: createFauxProvider(scriptedCall("read_file", "r1", { path: "a.ts" })),
-			model: "faux",
-			registry: makeRegistry(),
-			log,
-			hooks: { onPreTool: async () => ({ action: "defer" }) },
-			resolveApproval: async () => ({ action: "deny", reason: "human says no" }),
-			approvalPolicies: [
-				{
-					extension: "broken",
-					policy: {
-						decide: () => {
-							throw new Error("policy bug");
-						},
-					},
-				},
-				{ extension: "allow-all", policy: { decide: allowAll } },
-			],
-		})) {
-			// drain
-		}
-		// The thrown ask is an ask — but the LATER allow beats it (R3);
-		// the run executes, never pausing for the human.
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false);
-		expect(decided(log)[0]).toMatchObject({ decision: "approved", decidedBy: "allow-all" });
-		expect(resultOf(log)?.content).toBe("ok");
-	});
-
-	it("ask with no approval flow configured degrades to an honest denial", async () => {
-		const log = new EventLog();
-		log.append({ type: "user_input", content: "go" });
-		for await (const _ev of loop({
-			adapter: createFauxProvider(scriptedCall("read_file", "r1", { path: "a.ts" })),
-			model: "faux",
-			registry: makeRegistry(),
-			log,
-			approvalPolicies: [{ extension: "ask-all", policy: { decide: askAll } }],
-		})) {
-			// drain
-		}
-		expect(resultOf(log)?.content).toContain("[Permission denied]");
-		expect(log.all.some((e) => e.type === "tool_execution_started")).toBe(false); // never executed
-	});
-
-	it("ruling A: ask with a hook but NO approval channel still degrades — the static hook never speaks for an ask", async () => {
-		// An ask means "a HUMAN must decide" — the automated policy hook must
-		// not answer for the human, not even with an allow. The no-flow
-		// judgment keys on resolveApproval, not on the hook's presence.
-		const log = new EventLog();
-		log.append({ type: "user_input", content: "go" });
-		let hookRan = false;
-		for await (const _ev of loop({
-			adapter: createFauxProvider(scriptedCall("read_file", "r1", { path: "a.ts" })),
-			model: "faux",
-			registry: makeRegistry(),
-			log,
-			hooks: {
-				onPreTool: async () => {
-					hookRan = true;
-					return { action: "allow" };
-				},
-			},
-			approvalPolicies: [{ extension: "ask-all", policy: { decide: askAll } }],
-		})) {
-			// drain
-		}
-		expect(hookRan).toBe(false); // the hook was never consulted for the ask
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false); // no channel — no pause
-		expect(resultOf(log)?.content).toContain("[Permission denied]");
-		expect(log.all.some((e) => e.type === "tool_execution_started")).toBe(false);
-	});
-});
 
 describe("E1: a durable decision takes effect on resume — the chain never re-runs", () => {
 	it("a durable APPROVAL executes the call with the policy called ZERO times", async () => {
@@ -243,17 +66,12 @@ describe("E1: a durable decision takes effect on resume — the chain never re-r
 			model: "faux",
 			registry: makeRegistry(),
 			log,
-			approvalPolicies: [
-				{
-					extension: "reader",
-					policy: {
-						decide: () => {
-							calls += 1;
-							return { action: "ask" };
-						},
-					},
+			approvalPolicy: {
+				decide: async () => {
+					calls += 1;
+					return { action: "ask" };
 				},
-			],
+			},
 		})) {
 			// drain
 		}
@@ -280,17 +98,12 @@ describe("E1: a durable decision takes effect on resume — the chain never re-r
 			model: "faux",
 			registry: makeRegistry(),
 			log,
-			approvalPolicies: [
-				{
-					extension: "guard",
-					policy: {
-						decide: () => {
-							calls += 1;
-							return { action: "allow" };
-						},
-					},
+			approvalPolicy: {
+				decide: async () => {
+					calls += 1;
+					return { action: "allow", decidedBy: "guard" };
 				},
-			],
+			},
 		})) {
 			// drain
 		}
@@ -300,60 +113,8 @@ describe("E1: a durable decision takes effect on resume — the chain never re-r
 	});
 });
 
-
-describe("E1 (ADR-0042): abstain — no opinion is never a silent allow", () => {
-	const abstainAll = (): PolicyVerdict => ({ action: "abstain" });
-
-	it("all-abstain + a configured approval channel → the call ASKS the human (never auto-approves)", async () => {
-		const log = new EventLog();
-		log.append({ type: "user_input", content: "go" });
-		for await (const _ev of loop({
-			adapter: createFauxProvider(scriptedCall("shell", "s1", { command: "curl example.com" })),
-			model: "faux",
-			registry: makeRegistry(),
-			log,
-			resolveApproval: async () => ({ action: "allow" }),
-			approvalPolicies: [
-				{ extension: "silent-1", policy: { decide: abstainAll } },
-				{ extension: "silent-2", policy: { decide: abstainAll } },
-			],
-		})) {
-			// drain
-		}
-		// The all-abstain chain fell to the human flow — the external tool
-		// meets the human, exactly the P2 finding's fix.
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(true);
-		const ds = decided(log);
-		expect(ds).toHaveLength(1);
-		expect(ds[0]!.decision).toBe("approved");
-		expect(ds[0]!.decidedBy).toBeUndefined(); // the HUMAN decided — no speaker to record
-		expect(resultOf(log)?.content).toBe("ran");
-	});
-
-	it("all-abstain with NO approval channel → the honest denial, never a silent run", async () => {
-		const log = new EventLog();
-		log.append({ type: "user_input", content: "go" });
-		for await (const _ev of loop({
-			adapter: createFauxProvider(scriptedCall("shell", "s1", { command: "curl example.com" })),
-			model: "faux",
-			registry: makeRegistry(),
-			log,
-			approvalPolicies: [
-				{ extension: "silent-1", policy: { decide: abstainAll } },
-				{ extension: "silent-2", policy: { decide: abstainAll } },
-			],
-		})) {
-			// drain
-		}
-		// No channel → the ask degrades to an honest denial WITHOUT even a
-		// request event (nothing could ever answer it) — never a silent run.
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false);
-		expect(resultOf(log)).toMatchObject({ isError: true });
-		expect(resultOf(log)?.content).toContain("no approval flow is configured");
-		expect(log.all.some((e) => e.type === "tool_execution_started")).toBe(false);
-	});
-
-	it("abstain + a user allow → auto-approved with decidedBy = the SPEAKER, never the abstainer", async () => {
+describe("E1: an absent approval flow degrades honestly", () => {
+	it("ask with no approval flow configured degrades to an honest denial", async () => {
 		const log = new EventLog();
 		log.append({ type: "user_input", content: "go" });
 		for await (const _ev of loop({
@@ -361,43 +122,39 @@ describe("E1 (ADR-0042): abstain — no opinion is never a silent allow", () => 
 			model: "faux",
 			registry: makeRegistry(),
 			log,
-			approvalPolicies: [
-				{ extension: "mode:default", policy: { decide: abstainAll } }, // the non-speaker sits FIRST
-				{ extension: "allow-mcp", policy: { decide: allowAll } },
-			],
+			approvalPolicy: { decide: askAll },
 		})) {
 			// drain
 		}
-		const ds = decided(log);
-		expect(ds).toHaveLength(1);
-		expect(ds[0]!).toMatchObject({ decision: "approved", decidedBy: "allow-mcp" }); // the FIRST SPEAKER, not the chain head
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false); // never paused
+		expect(resultOf(log)?.content).toContain("[Permission denied]");
+		expect(log.all.some((e) => e.type === "tool_execution_started")).toBe(false); // never executed
 	});
 
-	it("abstain does not weaken a deny — the deny still wins and records its own name", async () => {
+	it("ruling A: ask with a hook but NO approval channel still degrades — the static hook never speaks for an ask", async () => {
+		// An ask means "a HUMAN must decide" — the automated policy hook must
+		// not answer for the human, not even with an allow. The no-flow
+		// judgment keys on resolveApproval, not on the hook's presence.
 		const log = new EventLog();
 		log.append({ type: "user_input", content: "go" });
+		let hookRan = false;
 		for await (const _ev of loop({
-			adapter: createFauxProvider(scriptedCall("shell", "s1", { command: "git reset --hard" })),
+			adapter: createFauxProvider(scriptedCall("read_file", "r1", { path: "a.ts" })),
 			model: "faux",
 			registry: makeRegistry(),
 			log,
-			approvalPolicies: [
-				{ extension: "mode:bypass", policy: { decide: allowAll } },
-				{ extension: "safe-test", policy: { decide: abstainAll } },
-				{
-					extension: "danger-guard",
-					policy: {
-						decide: (call) =>
-							call.name === "shell" ? { action: "deny", reason: "no destructive git" } : { action: "allow" },
-					},
+			hooks: {
+				onPreTool: async () => {
+					hookRan = true;
+					return { action: "allow" };
 				},
-			],
+			},
+			approvalPolicy: { decide: askAll },
 		})) {
 			// drain
 		}
-		const ds = decided(log);
-		expect(ds).toHaveLength(1);
-		expect(ds[0]!).toMatchObject({ decision: "denied", reason: "no destructive git", decidedBy: "danger-guard" });
+		expect(hookRan).toBe(false); // the hook was never consulted for the ask
+		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false); // no channel — no pause
+		expect(resultOf(log)?.content).toContain("[Permission denied]");
+		expect(log.all.some((e) => e.type === "tool_execution_started")).toBe(false);
 	});
 });

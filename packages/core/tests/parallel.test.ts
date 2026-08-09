@@ -152,19 +152,9 @@ describe("0.1.26 ⑤ — the ask conservative order: an ask holds the calls afte
 		registry.register(slowTool("allow1", 10, order));
 		registry.register(slowTool("ask", 10, order));
 		registry.register(slowTool("allow2", 10, order));
-		// The policies: allow1 + allow2 ALLOW, ask ASKS — the human answers
-		// after a 100ms delay.
-		const policies = [
-			{
-				extension: "mix",
-				policy: {
-					decide: async (payload: { name: string }) => {
-						if (payload.name === "ask") return { action: "ask" as const };
-						return { action: "allow" as const };
-					},
-				},
-			},
-		];
+		// The policy: allow1 + allow2 ALLOW, ask ASKS — the human answers
+		// after a 100ms delay. (The composed chain is a single per-call
+		// decide here — the kernel sees the runtime's composition.)
 		const approvals: string[] = [];
 		const resolveApproval = async (decisionId: string): Promise<import("../src/kernel/permission.js").PermissionDecision> => {
 			approvals.push(decisionId);
@@ -184,7 +174,13 @@ describe("0.1.26 ⑤ — the ask conservative order: an ask holds the calls afte
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			],
 			registry,
-			{ approvalPolicies: policies, resolveApproval },
+			{
+				approvalPolicy: {
+					decide: async (payload: { name: string }) =>
+						payload.name === "ask" ? { action: "ask" as const } : { action: "allow" as const, decidedBy: "mix" },
+				},
+				resolveApproval,
+			},
 		);
 		// The ask paused for the human — the request + the decision are
 		// durable events.

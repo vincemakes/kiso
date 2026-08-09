@@ -35,7 +35,7 @@
 
 import { isAdapterEvent, type Adapter, type AbortSignalLike } from "../protocol/adapter.js";
 import type { Event, StopReason, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
-import type { ApprovalPolicy, PolicyVerdict } from "../protocol/extension.js";
+import type { ApprovalChain, ChainVerdict } from "../protocol/extension.js";
 import { estimateTokens } from "./compaction.js";
 import { EventLog } from "./event-log.js";
 import type { EventInput } from "./event-log.js";
@@ -120,15 +120,17 @@ export interface LoopConfig {
 	/** round 4 (adversarial): the uncertainty twin of `approvalVerdict`. */
 	readonly uncertaintyVerdict?: (executionId: string) => "rerun" | "abandoned" | undefined;
 	/**
-	 * E1: extension approval policies, tagged by their owning extension —
-	 * decided BEFORE the human flow. Any deny wins (the FIRST denial's
-	 * reason); else any ask falls into the existing flow; all allow
-	 * auto-approves. A policy that throws counts as ask. Allow/deny are
-	 * recorded durably with decidedBy = the extension's name, never pausing
-	 * for a human; a durable decision already recorded (resume) takes
-	 * effect and the chain never re-runs.
+	 * E1: the COMPOSED approval chain — the runtime composes the
+	 * extensions' policies (deny > allow > ask, the R3 ruling) into ONE
+	 * decide; the kernel's gate calls it BEFORE the human flow. Allow/deny
+	 * are recorded durably with decidedBy = the deciding extension, never
+	 * pausing for a human; an ask falls into the human flow (its speaker
+	 * names the first non-abstain — the panel's why-asked line). A
+	 * throwing chain counts as ask. Absent, no chain runs. A durable
+	 * decision already recorded (resume) takes effect and the chain never
+	 * re-runs.
 	 */
-	readonly approvalPolicies?: readonly { readonly extension: string; readonly policy: ApprovalPolicy }[];
+	readonly approvalPolicy?: ApprovalChain;
 	/** P3: the session's id — carried to tools via ToolContext.sessionId. */
 	readonly sessionId?: string;
 }
@@ -330,7 +332,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 							config.resolveApproval,
 							config.approvalVerdict,
 							signal,
-							config.approvalPolicies,
+							config.approvalPolicy,
 							nextDecisionId,
 							pushExec,
 						);
@@ -734,7 +736,7 @@ async function decideCall(
 	resolveApproval: ((decisionId: string) => Promise<PermissionDecision>) | undefined,
 	resolveApprovalVerdict: ((decisionId: string) => boolean | undefined) | undefined,
 	signal: AbortSignalLike | undefined,
-	approvalPolicies: readonly { readonly extension: string; readonly policy: ApprovalPolicy }[] | undefined,
+	approvalPolicy: ApprovalChain | undefined,
 	nextDecisionId: () => string,
 	push: (ev: EventInput) => void,
 ): Promise<ExecVerdict> {
@@ -769,21 +771,19 @@ async function decideCall(
 	// all. Checked again here, after any permission path.
 	if (signal?.aborted) throw ABORTED;
 
-	// ── E1: the extension policy chain, decided BEFORE the human flow ─────
+	// ── E1: the composed approval chain, decided BEFORE the human flow ────
 	// A durable POLICY decision for THIS call takes effect on resume — the
 	// chain never re-runs when its verdict is already in the log (isomorphic
 	// alreadyReplaced: the persisted fact speaks for the call). The match is
 	// the same logical call: same callId, decidedBy set (a policy verdict,
 	// never a human's), and input identical to the original tool_call_end —
 	// a re-issued call with different arguments is a NEW call and re-decided.
-	// Composition (W21, the R3 ruling): deny > allow > ask — any deny wins
-	// (the FIRST denial's reason), then ANY allow (a LATER allow beats an
-	// EARLIER ask: the allow-only dont-ask-again extension must override a
-	// mode tier's ask — the old ask-wins chain left an allow-only extension
-	// structurally dead), and an ask falls into the human flow below. Only
-	// an ask-free chain auto-approves: recorded durably with decidedBy =
-	// the deciding extension's name, never a human-visible pause. A policy
-	// that throws counts as ask.
+	// The chain itself is COMPOSED by the runtime (composeApprovalChain —
+	// the R3 ruling: deny > allow > ask, any deny wins, a LATER allow beats
+	// an EARLIER ask, an all-abstain asks per ADR-0042); the kernel consumes
+	// its verdict. A throwing chain counts as ask. Allow/deny are recorded
+	// durably with decidedBy = the deciding extension, never pausing for a
+	// human.
 	const originalCall = [...log.all].reverse().find(
 		(e): e is Event & { type: "tool_call_end" } => e.type === "tool_call_end" && e.callId === call.callId,
 	);
@@ -794,48 +794,12 @@ async function decideCall(
 						e.type === "permission_decided" && e.decidedBy !== undefined && e.callId === call.callId,
 				)
 			: undefined;
-	let chainVerdict: PolicyVerdict | undefined;
-	let deniedReason: string | undefined;
-	let deniedBy: string | undefined;
-	let allowedBy: string | undefined; // W21 — the FIRST allowing extension (the composition's decider for an allow)
-	let firstSpeaker: string | undefined; // the first non-abstain verdict's extension
-	let anySpoke = false;
-	if (durable === undefined && approvalPolicies !== undefined && approvalPolicies.length > 0) {
-		for (const { extension, policy } of approvalPolicies) {
-			let v: PolicyVerdict;
-			try {
-				v = await raceAbort(Promise.resolve(policy.decide(payload, ctx)), signal);
-			} catch {
-				v = { action: "ask" }; // a throwing policy counts as ask — it speaks, never silently
-			}
-			if (v.action === "abstain") continue; // no opinion — not a verdict
-			anySpoke = true;
-			firstSpeaker ??= extension;
-			if (v.action === "deny") {
-				deniedBy ??= extension;
-				deniedReason ??= v.reason; // the FIRST denial's reason
-			} else if (v.action === "allow") {
-				// W21: deny > allow > ask — the allow overrides any EARLIER
-				// ask in the chain (the allow-only dont-ask-again extension
-				// after a mode tier that asked). The first allow is the
-				// deciding one — the symmetry of deniedBy.
-				allowedBy ??= extension;
-				chainVerdict = { action: "allow" };
-			} else if (chainVerdict === undefined) {
-				chainVerdict = { action: "ask" }; // recorded — a later allow overrides it
-			}
-		}
-		if (deniedBy !== undefined) {
-			chainVerdict = { action: "deny", reason: deniedReason ?? "denied" };
-		} else if (allowedBy !== undefined) {
-			chainVerdict = { action: "allow" }; // an allow beat any earlier ask
-		} else if (chainVerdict === undefined && anySpoke) {
-			chainVerdict = { action: "allow" }; // every speaker allows
-		} else if (chainVerdict === undefined) {
-			// an all-abstain (ADR-0042): NO policy speaks — the call falls to
-			// the ask flow below, never to a silent auto-approve. The human
-			// decides; absent a channel, humanPause's honest denial.
-			chainVerdict = { action: "ask" };
+	let chainVerdict: ChainVerdict | undefined;
+	if (durable === undefined && approvalPolicy !== undefined) {
+		try {
+			chainVerdict = await raceAbort(Promise.resolve(approvalPolicy.decide(payload, ctx)), signal);
+		} catch {
+			chainVerdict = { action: "ask" }; // a throwing chain counts as ask — it speaks, never silently
 		}
 		if (chainVerdict.action !== "ask") {
 			// allow/deny are PERSISTED FACTS (decidedBy = a SPEAKING
@@ -846,13 +810,15 @@ async function decideCall(
 				decisionId: nextDecisionId(),
 				callId: call.callId,
 				decision: chainVerdict.action === "allow" ? "approved" : "denied",
-				...(chainVerdict.action === "deny" ? { reason: chainVerdict.reason } : {}),
-				decidedBy: deniedBy ?? allowedBy ?? (firstSpeaker as string),
+				...(chainVerdict.action === "deny" && chainVerdict.reason !== undefined
+					? { reason: chainVerdict.reason }
+					: {}),
+				decidedBy: chainVerdict.decidedBy,
 			});
 		}
 	}
 	if (chainVerdict?.action === "deny") {
-		return { action: "deny", result: resultEvent(call, denialResult(chainVerdict.reason)) };
+		return { action: "deny", result: resultEvent(call, denialResult(chainVerdict.reason ?? "denied")) };
 	}
 	if (durable !== undefined && durable.decision === "denied") {
 		return { action: "deny", result: resultEvent(call, denialResult(durable.reason ?? "denied")) };
@@ -868,11 +834,12 @@ async function decideCall(
 			return { action: "deny", result: resultEvent(call, denialResult("a policy asked for a human decision, but no approval flow is configured")) };
 		}
 		// W21: the speaker rides the ask verdict — the panel's why-asked
-		// line names the extension that asked (firstSpeaker; exactOptional-
-		// PropertyTypes: omitted, never `undefined`).
-		return firstSpeaker === undefined
+		// line names the extension that asked (the composed chain's first
+		// non-abstain; exactOptionalPropertyTypes: omitted, never
+		// `undefined`).
+		return chainVerdict.speaker === undefined
 			? { action: "ask", decisionId: nextDecisionId() }
-			: { action: "ask", decisionId: nextDecisionId(), speaker: firstSpeaker };
+			: { action: "ask", decisionId: nextDecisionId(), speaker: chainVerdict.speaker };
 	}
 
 	// Permission negotiation — defer is a REAL pause (Phase D). C group: the

@@ -312,17 +312,6 @@ describe("abort boundaries (Area 4)", () => {
 		// a sibling whose DECIDE is still in flight when the abort lands
 		// (a slow policy here) bails before its started event — never a
 		// side effect after the cancel.
-		const policies = [
-			{
-				extension: "slow-decide",
-				policy: {
-					decide: async (payload: { name: string }) => {
-						if (payload.name === "second") await new Promise((r) => setTimeout(r, 50));
-						return { action: "allow" as const };
-					},
-				},
-			},
-		];
 		const ac = new AbortController();
 		const events: Event[] = [];
 		const gen = loop({
@@ -340,7 +329,14 @@ describe("abort boundaries (Area 4)", () => {
 			registry,
 			messages: [USER],
 			signal: ac.signal,
-			approvalPolicies: policies,
+			// The kernel sees the composed chain (the runtime's composition) —
+			// here a single slow policy deciding per call.
+			approvalPolicy: {
+				decide: async (payload: { name: string }) => {
+					if (payload.name === "second") await new Promise((r) => setTimeout(r, 50));
+					return { action: "allow" as const, decidedBy: "slow-decide" };
+				},
+			},
 		});
 		// Abort WHILE the first handler is running (after it started) — the
 		// sibling's decide (the slow policy) is still in flight: the abort

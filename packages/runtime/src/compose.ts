@@ -4,7 +4,7 @@
  * hook composition (the existing come first), and the loop's microcompact config lookup.
  */
 
-import type { HookContext, HookHost, KisoExtension, ToolRegistry } from "@vincemakes/kiso-core";
+import type { ApprovalChain, HookContext, HookHost, KisoExtension, PolicyVerdict, ToolRegistry } from "@vincemakes/kiso-core";
 import type { SessionConfig } from "./session.js";
 
 /**
@@ -141,4 +141,78 @@ export function microcompactFor(config: SessionConfig): { readonly thresholdToke
 		}
 	}
 	return undefined;
+}
+
+/**
+ * E1 (W21/R3 — moved out of the kernel by the 2026-08-09 corrective
+ * action; the composition is extension wiring, the same category as
+ * composeHooks): compose the extensions' approval policies into ONE
+ * chain — the kernel's gate. deny > allow > ask: any deny wins (the
+ * FIRST denial's reason), then ANY allow (a LATER allow beats an
+ * EARLIER ask: the allow-only dont-ask-again extension must override a
+ * mode tier's ask — the old ask-wins chain left it structurally dead),
+ * and an ask falls into the kernel's human flow (its speaker = the
+ * first non-abstain — the panel's why-asked line). Only an ask-free
+ * chain auto-approves: decidedBy = the deciding extension (the FIRST
+ * allow — the symmetry of the first denial; an every-speaker-allows
+ * chain records the first speaker). An all-abstain chain (ADR-0042)
+ * ASKS — no opinion is never a silent allow; absent a channel the
+ * kernel's honest denial. A policy that throws counts as ask — it
+ * speaks, never silently. No policies → undefined (no chain: the
+ * kernel's plain flow — the all-abstain ask exists only where a chain
+ * does).
+ */
+export function composeApprovalChain(extensions: readonly KisoExtension[]): ApprovalChain | undefined {
+	const policies = extensions.flatMap((e) => (e.approvals ?? []).map((policy) => ({ extension: e.name, policy })));
+	if (policies.length === 0) return undefined;
+	return {
+		async decide(payload, ctx) {
+			let chainVerdict: PolicyVerdict | undefined;
+			let deniedReason: string | undefined;
+			let deniedBy: string | undefined;
+			let allowedBy: string | undefined; // the FIRST allowing extension (the composition's decider for an allow)
+			let firstSpeaker: string | undefined; // the first non-abstain verdict's extension
+			let anySpoke = false;
+			for (const { extension, policy } of policies) {
+				let v: PolicyVerdict;
+				try {
+					v = await Promise.resolve(policy.decide(payload, ctx));
+				} catch {
+					v = { action: "ask" }; // a throwing policy counts as ask — it speaks, never silently
+				}
+				if (v.action === "abstain") continue; // no opinion — not a verdict
+				anySpoke = true;
+				firstSpeaker ??= extension;
+				if (v.action === "deny") {
+					deniedBy ??= extension;
+					deniedReason ??= v.reason; // the FIRST denial's reason
+				} else if (v.action === "allow") {
+					// deny > allow > ask — the allow overrides any EARLIER
+					// ask in the chain (the allow-only dont-ask-again
+					// extension after a mode tier that asked). The first
+					// allow is the deciding one — the symmetry of deniedBy.
+					allowedBy ??= extension;
+					chainVerdict = { action: "allow" };
+				} else if (chainVerdict === undefined) {
+					chainVerdict = { action: "ask" }; // recorded — a later allow overrides it
+				}
+			}
+			if (deniedBy !== undefined) {
+				return { action: "deny", reason: deniedReason ?? "denied", decidedBy: deniedBy };
+			}
+			if (allowedBy !== undefined) {
+				return { action: "allow", decidedBy: allowedBy }; // an allow beat any earlier ask
+			}
+			if (chainVerdict === undefined && anySpoke) {
+				return { action: "allow", decidedBy: firstSpeaker as string }; // every speaker allows
+			}
+			if (chainVerdict === undefined) {
+				// an all-abstain (ADR-0042): NO policy speaks — the call falls
+				// to the ask flow, never to a silent auto-approve. The human
+				// decides; absent a channel, the kernel's honest denial.
+				return { action: "ask" };
+			}
+			return { action: "ask", ...(firstSpeaker !== undefined ? { speaker: firstSpeaker } : {}) };
+		},
+	};
 }

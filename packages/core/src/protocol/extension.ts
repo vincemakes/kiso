@@ -39,6 +39,24 @@ export interface ApprovalPolicy {
 }
 
 /**
+ * The COMPOSED chain's verdict — what the kernel's gate consumes. The
+ * runtime composes the extensions' policies (deny > allow > ask, the R3
+ * ruling); allow/deny always carry decidedBy — the deciding extension —
+ * and an ask may carry the speaker (the first non-abstain — the panel's
+ * why-asked line). The attribution is durable audit (rides
+ * permission_decided, never a human pause).
+ */
+export type ChainVerdict =
+	| { readonly action: "deny"; readonly reason?: string; readonly decidedBy: string }
+	| { readonly action: "ask"; readonly speaker?: string }
+	| { readonly action: "allow"; readonly decidedBy: string };
+
+/** The approval chain as the kernel sees it — ONE composed policy. */
+export interface ApprovalChain {
+	readonly decide: (call: PolicyCall, ctx: ToolContext) => ChainVerdict | Promise<ChainVerdict>;
+}
+
+/**
  * A loaded extension. `name` is unique per installation (the loader rejects
  * duplicates loudly); hooks/tools/approvals are all optional.
  */
