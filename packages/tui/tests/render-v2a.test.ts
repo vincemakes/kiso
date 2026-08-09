@@ -219,6 +219,18 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 			"▞ 1s · 1 tool · in 12.3k out 800 · cache 64%\n", // 7954/12345
 		);
 	});
+
+	it("R-C item 4: an above-floor cache miss appends the miss segment", () => {
+		expect(renderRecap({ seconds: 3, tools: 2, edits: 0, usage: usage({ in: 123456, cache: 82000 }), missed: 41000, ctxLeftPct: null })).toBe(
+			"▞ 3s · 2 tools · in 123.5k out 410 · cache 66% · miss 41k\n",
+		);
+	});
+
+	it("R-C item 4: a zero miss renders nothing — the historical bytes hold", () => {
+		expect(renderRecap({ seconds: 3, tools: 2, edits: 0, usage: usage(), missed: 0, ctxLeftPct: null })).toBe(
+			"▞ 3s · 2 tools · in 8.2k out 410 · cache 97%\n",
+		);
+	});
 });
 
 describe("⑥: the checklist cell (the durable task render)", () => {

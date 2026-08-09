@@ -496,6 +496,10 @@ export interface RecapStats {
 	readonly tools: number;
 	readonly edits: number;
 	readonly usage: RunUsage;
+	/** R-C item 4: the per-turn cache miss (min(prevIn, in) − cacheRead),
+	 *  passed only when above the noise floor — the re-sent-uncached
+	 *  prefix. Absent → the recap bytes stay the historical form. */
+	readonly missed?: number;
 	readonly ctxLeftPct: number | null; // 0..100, null when unknowable
 	/** W19 — the mode the turn ran under. Under "plan" the recap becomes
 	 *  the way-forward row (the claimed shape): a plan turn's currency is
@@ -519,7 +523,8 @@ export function renderRecap(s: RecapStats): string {
 		const seg = `${s.usage.in !== null ? `in ${kUnit(s.usage.in)}` : ""}${s.usage.in !== null && s.usage.out !== null ? " " : ""}${s.usage.out !== null ? `out ${kUnit(s.usage.out)}` : ""}`;
 		if (seg !== "") parts.push(seg);
 		if (s.usage.cache !== null && s.usage.in !== null && s.usage.in > 0) {
-			parts.push(`cache ${Math.round((s.usage.cache / s.usage.in) * 100)}%`);
+			const hit = `cache ${Math.round((s.usage.cache / s.usage.in) * 100)}%`;
+			parts.push(s.missed !== undefined && s.missed > 0 ? `${hit} · miss ${kUnit(s.missed)}` : hit);
 		}
 	}
 	if (s.ctxLeftPct !== null) parts.push(`ctx left ~${Math.round(s.ctxLeftPct)}%`);

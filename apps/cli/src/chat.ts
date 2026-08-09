@@ -195,6 +195,13 @@ export async function consumeRun(
 ): Promise<import("@vincemakes/kiso-core").Event | undefined> {
 	let last: import("@vincemakes/kiso-core").Event | undefined;
 	let usage: RunUsage = { in: null, out: null, cache: null, known: false };
+	// R-C item 4: the per-turn cache miss — the overlap with the previous
+	// prompt that SHOULD have been cached but was re-sent uncached:
+	// missed = min(prevIn, in) − cacheRead. Below the 1024-token floor
+	// (Anthropic's minimum cacheable block) it is noise — not surfaced.
+	const CACHE_MISS_FLOOR = 1024;
+	let prevIn: number | null = null;
+	let missed: number | null = null;
 	// v3 §02: the recap line derives ENTIRELY from the local event stream
 	// (zero tokens) — wall seconds, tool/edit counts, usage, ctx left.
 	const turnStart = Date.now();
@@ -281,10 +288,18 @@ export async function consumeRun(
 			case "text_end":
 				body.textEnd();
 				break;
-			case "usage":
+			case "usage": {
 				usage = { in: ev.inputTokens, out: ev.outputTokens, cache: ev.cacheRead, known: ev.known };
+				// R-C item 4: min(prevIn, in) is the part that could have been
+				// cached; what cacheRead did NOT cover is the miss.
+				if (usage.in !== null && usage.cache !== null && prevIn !== null) {
+					const m = Math.min(prevIn, usage.in) - usage.cache;
+					missed = m > CACHE_MISS_FLOOR ? m : null;
+				}
+				prevIn = usage.in;
 				statusCb?.(usage, estimateCtxRatio(session));
 				break;
+			}
 			case "uncertain_pending":
 				// ruling #12 (ADR-0038): the ⚠ line is pure INFORMATION now — the
 				// approval chain guards retries, and the human question belongs
@@ -327,6 +342,9 @@ export async function consumeRun(
 						tools: toolCount,
 						edits: editCount,
 						usage,
+						// R-C item 4: only an above-floor miss is surfaced —
+						// the recap gains "· miss N" on the cache segment.
+						...(missed !== null ? { missed } : {}),
 						ctxLeftPct: Number.isFinite(ratio) ? (1 - ratio) * 100 : null,
 						// W19: under plan the recap becomes the way-forward row
 						// (the /mode hints are the mode's exits).
