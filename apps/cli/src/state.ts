@@ -53,6 +53,10 @@ export interface LineInput {
 	panelAsk(view: PanelView, onCommit: (v: PanelVerdict) => void): void;
 	/** W21: cancel the panel — the SIGINT pair to panelAsk. */
 	panelCancel(): void;
+	/** W22: bind the pending-turn queue — the ↑ pop walks the CLI's
+	 *  live slots (each pop cancels the turn), esc ends the walk after
+	 *  one more pop. The chips are the compositor's own bindQueue. */
+	bindQueue(state: () => readonly string[], pop: () => string | null): void;
 	emitLine(line: string): void;
 	line(): string;
 	clearLine(): void;

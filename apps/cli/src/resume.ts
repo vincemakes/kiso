@@ -51,7 +51,7 @@ export async function resume(session: AgentSession, prompt: string | undefined, 
 		});
 		try {
 			turnNo += 1;
-			const last = await consumeRun(session, run, input, turnNo, faux, null, statusCb);
+			const last = await consumeRun(session, run, input, turnNo, faux, statusCb);
 			failOnFauxExhaustion(last, faux, input);
 		} finally {
 			stopSpinner();

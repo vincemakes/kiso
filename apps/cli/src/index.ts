@@ -96,6 +96,11 @@ function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
 		panelCancel() {
 			/* unreachable */
 		},
+		// W22: readline has no ↑/esc pop — the pipe path shows no chips
+		// and pops nothing (the queue drains on its own).
+		bindQueue() {
+			/* unreachable — no raw keys in the pipe path */
+		},
 		emitLine(line) {
 			rl.emit("line", line);
 		},
@@ -148,6 +153,11 @@ function editorInput(editor: Editor): LineInput {
 		},
 		panelCancel() {
 			editor.cancelPanel();
+		},
+		// W22: the pending-turn queue — the ↑ pop walk (the keys); the
+		// chips are the compositor's bindQueue (the dock side).
+		bindQueue(state, pop) {
+			editor.bindQueue(state, pop);
 		},
 		emitLine() {
 			/* the editor's buffer survives a cancelled question — its text

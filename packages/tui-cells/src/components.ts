@@ -310,6 +310,24 @@ class UserMessage implements Component {
 	}
 }
 
+/** W22: the pending-queue chips — queued user lines pre-render above
+ *  the input row as the SAME UserMessage chip (undimmed: reverse video
+ *  inverts the CURRENT colours), the dim `□` gutter marking the queued
+ *  state (the gutter rides EVERY row — the gutterFold precedent: the
+ *  left edge alone distinguishes the states). Each chip folds at W−3
+ *  (the gutter's 2 cells), so a long line hard-folds INSIDE the chip
+ *  and invariant ① holds on the band. */
+export function pendingQueueRows(lines: readonly string[], W: number): string[] {
+	const p = palette();
+	const out: string[] = [];
+	for (const line of lines) {
+		for (const row of new UserMessage({ text: line }).render(Math.max(1, W - 3), { spinnerI: 0, now: 0, height: 0 })) {
+			out.push(`${p.dim}□${p.reset} ${row}`);
+		}
+	}
+	return out;
+}
+
 /** The thinking fold — one dim line, width-capped so the /think suffix
  *  rides the fold's own row (the #17 fix's slice, componentized). The
  *  slice is DISPLAY-WIDTH-based (the char-based slice overflowed with

@@ -227,9 +227,11 @@ function toRenderInput(ev: import("@vincemakes/kiso-core").Event): RenderInput |
 
 /**
  * Consume a run, answering approval pauses as they arrive. `resumeMode`
- * marks a session.resume() continuation. v2a: `faux` picks the status
- * line's form; `liveInput` (non-null only in interactive chat) carries the
- * last line THIS process's readline consumed — the double-echo filter.
+ * marks a session.resume() continuation. `faux` picks the status line's
+ * form. W22: EVERY user_input event renders its UserMessage chip in the
+ * body — the v2a double-echo filter is retired (the transient input-row
+ * echo is UI, the chip is the record; the momentary double-render is
+ * the design's explicit point).
  */
 export async function consumeRun(
 	session: AgentSession,
@@ -237,7 +239,6 @@ export async function consumeRun(
 	input: LineInput,
 	turnNo: number,
 	faux: boolean,
-	liveInput: { current: string | null } | null,
 	statusCb: ((usage: RunUsage, ctxRatio: number) => void) | null,
 	/** W21: the amend words ("Yes + feedback") ride the NEXT user turn —
 	 *  threaded from chat's submitTurn; absent in the recovery flow
@@ -273,19 +274,6 @@ export async function consumeRun(
 			}
 		} else if (thinkingSince === null) {
 			thinkingSince = Date.now();
-		}
-		// v2a (the double echo): the interactive echo was already rendered by the
-		// input source — rendering the event again is the double echo.
-		// v2b: DOCKED — the echo lives in the input row (H), NOT the body;
-		// the body render is the ONLY visible copy of the sent line.
-		if (
-			ev.type === "user_input" &&
-			liveInput !== null &&
-			liveInput.current === (typeof ev.content === "string" ? ev.content : "") &&
-			process.stdin.isTTY &&
-			!dock.active
-		) {
-			continue;
 		}
 		// v2d: EVERY event only mutates a cell — the Body is the single
 		// writer of the scroll region, so interleaving is impossible by
@@ -473,10 +461,6 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	const turn = (text: string): Promise<void> =>
 		new Promise((resolve, reject) => {
 			queued = Math.max(0, queued - 1); // a queued turn starts
-			// v2a: the echo filter compares the user_input event against THIS
-			// turn's own input — lines that arrive ahead of their turn (piped
-			// bursts, queued replays) must not overwrite the reference.
-			liveInput.current = text;
 			const run = session.run(text);
 			currentRun = run;
 			turnNo += 1;
@@ -492,7 +476,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			(async () => {
 				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
-					last = await consumeRun(session, run, input, myTurn, faux, liveInput, statusCb, submitTurn);
+					last = await consumeRun(session, run, input, myTurn, faux, statusCb, submitTurn);
 					stopSpinner();
 					paintIdle();
 					currentRun = null;
@@ -573,12 +557,14 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// B area: user-turn counter for the status line. /last and /think read
 	// the body (the ToolCell / ThinkingCell final states).
 	let turnNo = 0;
-	// v2a: the last line THIS process's readline consumed — the double-echo
-	// filter (see consumeRun). Only interactive chat sets it.
-	const liveInput: { current: string | null } = { current: null };
-	// v2c: turns submitted while another runs are QUEUED on the chain — the
-	// live count rides the status bar (+N queued).
+	// v2c: turns submitted while another runs are QUEUED on the chain —
+	// the live count rides the status bar (+N queued).
 	let queued = 0;
+	// W22: the pending turns — the LIVE slots the chips + the ↑/esc pop
+	// read (the dock renders the lines, the editor pops the last one).
+	// A slot leaves the queue when its turn STARTS or when the user
+	// pops it (cancelled — the chain segment skips it).
+	const pendingTurns: { line: string; cancelled: boolean }[] = [];
 	// v2b: the live status bar (docked only). Modes: /mode switches repaint
 	// it immediately through paintStatus (the last turn stats are kept).
 	// v3 §03: the status bar has TWO states. Idle: the mode is ALWAYS
@@ -611,9 +597,32 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		paintRunning();
 	};
 	const submitTurn = (line: string): void => {
+		const slot = { line, cancelled: false };
+		pendingTurns.push(slot);
 		queued += 1;
-		chainRef.current = chainRef.current.then(() => turn(line));
+		chainRef.current = chainRef.current.then(() => {
+			if (slot.cancelled) return; // the pop already dropped it — no double count
+			const idx = pendingTurns.indexOf(slot);
+			if (idx >= 0) pendingTurns.splice(idx, 1); // the chip leaves when the turn STARTS
+			return turn(line);
+		});
 	};
+	// W22: the ↑/esc pop — the LAST queued slot leaves the queue
+	// (cancelled + spliced + counted down); null when the queue is
+	// empty. The chain segment skips the cancelled slot, so the popped
+	// message NEVER runs — it returns to the editor instead.
+	const popQueue = (): string | null => {
+		const slot = pendingTurns[pendingTurns.length - 1];
+		if (slot === undefined) return null;
+		slot.cancelled = true;
+		pendingTurns.pop();
+		queued = Math.max(0, queued - 1);
+		return slot.line;
+	};
+	// W22: the visibility invariant's binds — the dock renders the
+	// pending chips (+N queued), the editor routes the pop keys.
+	dock.bindQueue(() => pendingTurns.map((s) => s.line));
+	input.bindQueue(() => pendingTurns.map((s) => s.line), popQueue);
 	const dispatchCtx: DispatchCtx = {
 		session,
 		input,
@@ -659,7 +668,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		const recoveryRun = session.resume();
 		currentRun = recoveryRun;
 		turnNo += 1;
-		const last = await consumeRun(session, recoveryRun, input, turnNo, faux, liveInput, statusCb, submitTurn);
+		const last = await consumeRun(session, recoveryRun, input, turnNo, faux, statusCb, submitTurn);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, input);
 		maybeAutoCompact(); // the ergonomics batch C8: the recovery run ended too — same check (awaited by the exit re-await)

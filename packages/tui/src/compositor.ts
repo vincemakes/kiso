@@ -54,6 +54,7 @@ import {
 	boxTop,
 	cellComponent,
 	foldLine,
+	pendingQueueRows,
 	statusLine,
 	turnFold,
 	visibleWidth,
@@ -163,6 +164,11 @@ export class Body {
 	#inputState: () => { line: string; cursor: number } = () => ({ line: "", cursor: 0 });
 	#inputPrompt = "";
 	#menuState: (() => { items: readonly MenuItem[]; selected: number } | null) | null = null;
+	// W22: the pending-turn queue's bound state — the CLI's live slots
+	// (chat.ts); the chips render in the menu-rows family (above the
+	// box top), the live caps shrink by their rows, and the status
+	// row's right hint shows the count while any turn waits.
+	#queueState: () => readonly string[] = () => [];
 
 	constructor(opts: BodyOptions) {
 		this.#opts = opts;
@@ -184,6 +190,7 @@ export class Body {
 		this.#inputPrompt = dockBindings.prompt;
 		if (dockBindings.menu !== null) this.#menuState = dockBindings.menu;
 		this.#panelState = dockBindings.panel;
+		if (dockBindings.queue !== null) this.#queueState = dockBindings.queue;
 	}
 
 	/** Live re-check — a TTY whose size lands after construction flips in. */
@@ -677,8 +684,12 @@ export class Body {
 	 *  now). */
 	#statusSource(): { status: string; hint: string | undefined } {
 		const panel = this.#panelState?.() ?? null;
-		if (panel === null) return { status: this.#status, hint: this.#statusHint ?? undefined };
-		return { status: panelStatus(panel.view, panel.phase, panel.sel), hint: panelAffordance(panel.view, panel.phase, panel.sel) };
+		if (panel !== null) return { status: panelStatus(panel.view, panel.phase, panel.sel), hint: panelAffordance(panel.view, panel.phase, panel.sel) };
+		// W22: while turns wait in the queue, the right hint shows the
+		// count — the chips below carry the lines themselves.
+		const queued = this.#queueState?.().length ?? 0;
+		if (queued > 0) return { status: this.#status, hint: `+${queued} queued` };
+		return { status: this.#status, hint: this.#statusHint ?? undefined };
 	}
 
 	/** Bind the editor's panel state — the PanelSelect slot occupant
@@ -698,6 +709,13 @@ export class Body {
 	 *  occupant (the menu replaces the editor's view while open). */
 	bindMenu(state: () => { items: readonly MenuItem[]; selected: number } | null): void {
 		this.#menuState = state;
+	}
+
+	/** Bind the pending-turn queue — the CLI's live slots (chat.ts):
+	 *  the chips render in the menu-rows family, the live caps shrink
+	 *  by their rows, and the +N queued hint rides the status row. */
+	bindQueue(state: () => readonly string[]): void {
+		this.#queueState = state;
 	}
 
 	/** The input line's edit column — the old dock's API. v6: the CURSOR
@@ -775,10 +793,12 @@ export class Body {
 	 *  screen rows), threaded against the previous sibling's OWN rows. */
 	liveCount(): number {
 		const panel = this.#panelState?.() ?? null;
+		const queueRows = this.#queueRows(this.#opts.width());
 		if (panel !== null) {
 			// W21: the panel's own rows (the cap is exact — the scalar
-			// reflects the screen).
-			return panelBlockRows(panel.view, panel.phase, panel.sel, this.#opts.width(), Math.max(1, this.#opts.height() - 4)).length + CHROME_ROWS;
+			// reflects the screen). W22: the queue chips occupy their
+			// own band — the panel's cap shrinks by their rows.
+			return panelBlockRows(panel.view, panel.phase, panel.sel, this.#opts.width(), Math.max(1, this.#opts.height() - 4 - queueRows.length)).length + CHROME_ROWS + queueRows.length;
 		}
 		const live = this.#cells.slice(this.#committed);
 		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
@@ -790,7 +810,7 @@ export class Body {
 			lines += bodySpacing(prev, rows).length;
 			prev = rows;
 		}
-		return lines + CHROME_ROWS + this.#menuRows(W).length;
+		return lines + CHROME_ROWS + this.#menuRows(W).length + queueRows.length;
 	}
 
 	/** The lines committed THIS frame — the writes land in the frame's
@@ -844,15 +864,20 @@ export class Body {
 		//    W11: the formula's blank above the first live cell hangs off
 		//    the last COMMITTED sibling (the join spans the boundary).
 		const menuRows = this.#menuRows(W);
-		const chromeRows = CHROME_ROWS + menuRows.length;
+		// W22: the queue chips are the menu-rows family's other occupant
+		// (the band above the box top) — the chrome rows and the live
+		// caps account for both.
+		const queueRows = this.#queueRows(W);
+		const chromeRows = CHROME_ROWS + menuRows.length + queueRows.length;
 		let liveLines: string[] = [];
 		const panel = this.#panelState?.() ?? null;
 		if (panel !== null) {
 			// W21: the panel REPLACES the running tool's live window — the
 			// bounded block, capped at H−4 (the panel IS the live region;
 			// the W11 blank would separate it from the frozen content).
-			// The cap is exact, so the force-commit loop never fires.
-			liveLines = panelBlockRows(panel.view, panel.phase, panel.sel, W, Math.max(1, H - 4));
+			// The cap is exact, so the force-commit loop never fires. W22:
+			// the queue band sits below the panel — the cap shrinks by it.
+			liveLines = panelBlockRows(panel.view, panel.phase, panel.sel, W, Math.max(1, H - 4 - queueRows.length));
 		} else {
 			let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
 			for (const cell of this.#cells.slice(this.#committed)) {
@@ -863,8 +888,9 @@ export class Body {
 		}
 		// 3. the FORCE commits — the live region's hard cap H−1: overflow
 		//    commits the oldest live cell UNCONDITIONALLY (the one sharp
-		//    edge — the cap scalar is asserted by the gates).
-		while (liveLines.length > H - 4 && this.#committed < this.#cells.length) { // V6-3: the content cap H−4
+		//    edge — the cap scalar is asserted by the gates). W22: the
+		//    queue band shrinks the cap by its rows (empty queue → H−4).
+		while (liveLines.length > H - 4 - queueRows.length && this.#committed < this.#cells.length) { // V6-3: the content cap H−4
 			this.#commitCell(this.#committed, W, ctx);
 			liveLines = [];
 			{
@@ -885,10 +911,10 @@ export class Body {
 		const out: string[] = [];
 		out.push("\x1b[?2026h"); // synchronized output ON (DEC 2026)
 		if (this.#fullRedraw) {
-			this.#drawFull(out, W, H, liveTop, liveLines, menuRows, ctx);
+			this.#drawFull(out, W, H, liveTop, liveLines, queueRows, menuRows, ctx);
 			this.#fullRedraw = false;
 		} else {
-			this.#drawSteady(out, W, H, liveTop, liveLines, menuRows, ctx);
+			this.#drawSteady(out, W, H, liveTop, liveLines, queueRows, menuRows, ctx);
 		}
 		out.push("\x1b[?2026l");
 		this.#write(out.join(""));
@@ -1032,6 +1058,15 @@ export class Body {
 	/** The slot occupant's extra rows — the slash-command menu (above the
 	 *  status, in the rhythm gap + the content's spare rows — the old
 	 *  menu's position, slot-shaped). */
+	/** W22: the pending-queue chips — the menu-rows family's other
+	 *  occupant (the queue is dense, like the menu; each line is its
+	 *  own chip with the □ gutter). */
+	#queueRows(W: number): string[] {
+		const lines = this.#queueState?.() ?? [];
+		if (lines.length === 0) return [];
+		return pendingQueueRows(lines, W);
+	}
+
 	#menuRows(W: number): string[] {
 		const menu = this.#menuState?.();
 		if (menu === null || menu === undefined || menu.items.length === 0) return [];
@@ -1138,7 +1173,7 @@ export class Body {
 	 *  survive anywhere the draw does not touch; a draw that covers
 	 *  EVERY row is idempotent: N consecutive resizes end with the same
 	 *  screen as a single jump to the same size. */
-	#drawFull(out: string[], W: number, H: number, liveTop: number, liveLines: string[], menuRows: string[], ctx: FrameCtx): void {
+	#drawFull(out: string[], W: number, H: number, liveTop: number, liveLines: string[], queueRows: string[], menuRows: string[], ctx: FrameCtx): void {
 		const committed = this.#committedLinesThisFrame;
 		// 0. the FROZEN rows — the re-folded committed content (re-flowed
 		//    at the new width by the terminal): re-painted at [1..frozen],
@@ -1167,7 +1202,13 @@ export class Body {
 		for (let rr = r; rr <= H - 4; rr += 1) {
 			out.push(`\x1b[${rr};1H\x1b[0K`);
 		}
-		const menuTop = H - 3 - menuRows.length;
+		// W22: the queue chips sit directly above the box top (the
+		// "pre-render ABOVE the input row"), the menu above the queue.
+		const queueTop = H - 3 - queueRows.length;
+		const menuTop = H - 3 - queueRows.length - menuRows.length;
+		for (let i = 0; i < queueRows.length; i += 1) {
+			out.push(`\x1b[${queueTop + i};1H\x1b[0K${this.#checked(queueRows[i]!, W)}`);
+		}
 		for (let i = 0; i < menuRows.length; i += 1) {
 			out.push(`\x1b[${menuTop + i};1H\x1b[0K${this.#checked(menuRows[i]!, W)}`);
 		}
@@ -1188,7 +1229,7 @@ export class Body {
 	 *  commits scroll via the CUP-free real LF at the last row, and the
 	 *  committed lines write in the march's top section (rows
 	 *  [liveTop−N .. liveTop−1] — the frozen area's bottom). */
-	#drawSteady(out: string[], W: number, H: number, liveTop: number, liveLines: string[], menuRows: string[], ctx: FrameCtx): void {
+	#drawSteady(out: string[], W: number, H: number, liveTop: number, liveLines: string[], queueRows: string[], menuRows: string[], ctx: FrameCtx): void {
 		const editor = this.#inputRow(W, ctx); // derived from the frame — the marker
 		const committed = this.#committedLinesThisFrame;
 		// the jump from the anchor (H−2) straight to the bottom row H,
@@ -1208,6 +1249,12 @@ export class Body {
 		out.push(`\x1b[1A\x1b[1G\x1b[0K${boxBottom(W)}`); // H−1 — the box bottom
 		out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(editor.stripped, W)}`); // H−2 — the input
 		out.push(`\x1b[1A\x1b[1G\x1b[0K${boxTop(W)}`); // H−3 — the box top
+		// W22: the queue chips sit directly above the box top (the
+		// "pre-render ABOVE the input row"), the menu above the queue —
+		// the bottom-up order mirrors the row order.
+		for (let i = queueRows.length - 1; i >= 0; i -= 1) {
+			out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(queueRows[i]!, W)}`);
+		}
 		for (let i = menuRows.length - 1; i >= 0; i -= 1) {
 			out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(menuRows[i]!, W)}`);
 		}
@@ -1228,9 +1275,10 @@ export class Body {
 		// could).
 		// 1. the GAP rows (between the live content and the chrome) — EL'd
 		//    so the old content there cannot ghost; the range stops ABOVE
-		//    the menu (the menu's rows at [H−3−menu..H−4] are marched and
-		//    must survive — the unclamped geometry erased them).
-		for (let r = liveTop + liveLines.length; r <= H - 4 - menuRows.length; r += 1) {
+		//    the queue + menu bands (their rows at [H−3−queue−menu..H−4]
+		//    are marched and must survive — the unclamped geometry erased
+		//    them).
+		for (let r = liveTop + liveLines.length; r <= H - 4 - queueRows.length - menuRows.length; r += 1) {
 			out.push(`\x1b[${r};1H\x1b[0K`);
 		}
 		// 2. the STALE rows above the committed section — the scrolled old
@@ -1256,12 +1304,12 @@ export class Body {
 				? Math.max(1, liveTop - 1)
 				: staleFrom < liveTop
 					? liveTop - 1
-					: liveTop + liveLines.length <= H - 4 - menuRows.length
-						? H - 4 - menuRows.length
+					: liveTop + liveLines.length <= H - 4 - queueRows.length - menuRows.length
+						? H - 4 - queueRows.length - menuRows.length
 						: liveLines.length > 0
 							? liveTop + liveLines.length - 1
 							: menuRows.length > 0
-								? H - 3 - menuRows.length
+								? H - 3 - menuRows.length - queueRows.length
 								: H - 3;
 		const down = H - 2 - lastRow; // the anchor: the input row (H−2)
 		if (down > 0) out.push(`\x1b[${down}B`);
@@ -1356,6 +1404,16 @@ export class Dock {
 		}
 		compositorRef.bindMenu(state);
 	}
+	/** W22: bind the pending-turn queue — the chips + the +N queued
+	 *  hint (the CLI binds it from chat(); the editor's pop keys ride
+	 *  the LineInput's own bindQueue). */
+	bindQueue(state: () => readonly string[]): void {
+		if (compositorRef === null) {
+			dockBindings.queue = state;
+			return;
+		}
+		compositorRef.bindQueue(state);
+	}
 	editCol(): number {
 		return compositorRef?.editCol() ?? 1;
 	}
@@ -1378,4 +1436,5 @@ const dockBindings: {
 	prompt: string;
 	menu: (() => { items: readonly MenuItem[]; selected: number } | null) | null;
 	panel: (() => PanelState | null) | null;
-} = { state: null, prompt: "", menu: null, panel: null };
+	queue: (() => readonly string[]) | null;
+} = { state: null, prompt: "", menu: null, panel: null, queue: null };

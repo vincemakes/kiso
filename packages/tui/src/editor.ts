@@ -95,6 +95,16 @@ export class Editor {
 	#history: string[] = [];
 	#historyIdx: number | null = null;
 	#preBrowse: number[] = [];
+	// W22: the pending-turn queue's bound state — the CLI's live slots
+	// (chat.ts). ↑ pops the LAST queued message into the buffer and
+	// enters the pop-mode (the walk: repeated ↑ pop older ones, each
+	// replacing the line); esc in the pop-mode pops once more and ENDS
+	// the mode — the next esc at rest rides the escapeCbs (the
+	// interrupt survives). The chips themselves are the compositor's
+	// bindQueue; this is the keys only.
+	#queueState: () => readonly string[] = () => [];
+	#queuePop: (() => string | null) | null = null;
+	#queuePopMode = false;
 	#pending = ""; // an incomplete ESC/CSI prefix across chunks
 	#decoder = new TextDecoder();
 	#entered = false;
@@ -132,6 +142,14 @@ export class Editor {
 
 	onExpand(cb: () => void): void {
 		this.#expandCbs.push(cb);
+	}
+
+	/** W22: bind the pending-turn queue — the CLI's live slots. The ↑
+	 *  pop walks them (each pop leaves the queue, cancelling the turn);
+	 *  esc ends the walk after one more pop. */
+	bindQueue(state: () => readonly string[], pop: () => string | null): void {
+		this.#queueState = state;
+		this.#queuePop = pop;
 	}
 
 	/** The whole buffer as text (the CLI's line()/clearLine()). */
@@ -205,6 +223,7 @@ export class Editor {
 		this.#scroll = 0;
 		this.#menuOpen = false;
 		this.#menuSel = 0;
+		this.#queuePopMode = false; // W22: the panel owns the keys while up
 		this.#onRender();
 	}
 
@@ -323,6 +342,13 @@ export class Editor {
 					this.#cursor = 0;
 					this.#scroll = 0;
 					this.#refreshMenu();
+				} else if (this.#queuePopMode) {
+					// W22: esc in the pop-mode — ONE more pop, then the
+					// mode ends: the next esc at rest rides the escapeCbs
+					// (the interrupt chain survives the walk).
+					this.#queuePopMode = false;
+					this.#queuePopIntoBuffer();
+					i += 1;
 				} else if (this.#historyIdx !== null) {
 					// A2: Esc exits the history browse — the pre-browse
 					// (empty) input returns.
@@ -416,6 +442,14 @@ export class Editor {
 			} else if (this.#menuOpen) {
 				if (final === "A") this.#menuSel = Math.max(0, this.#menuSel - 1);
 				else this.#menuSel = Math.min(this.#menuFiltered().length - 1, this.#menuSel + 1);
+			} else if (final === "A" && this.#queuePop !== null && (this.#queuePopMode || this.line() === "") && this.#queueState().length > 0) {
+				// W22: ↑ pops the LAST queued message into the buffer — the
+				// walk: repeated presses pop older ones (each replaces the
+				// line, the cursor at the end); esc ends the mode after one
+				// more pop. Mid-edit the pop never fires (the A2
+				// non-destructive feel, mirroring the history browse).
+				this.#queuePopMode = true;
+				this.#queuePopIntoBuffer();
 			} else if (this.#historyIdx !== null || this.line() === "") {
 				this.#historyMove(final === "A" ? -1 : 1);
 			}
@@ -528,6 +562,7 @@ export class Editor {
 
 	#insert(cp: number): void {
 		if (this.#historyIdx !== null) this.#historyIdx = null; // editing leaves the browse
+		this.#queuePopMode = false; // W22: editing leaves the pop-walk too
 		this.#chars.splice(this.#cursor, 0, cp);
 		this.#cursor += 1;
 		this.#reflow();
@@ -537,6 +572,7 @@ export class Editor {
 	#backspace(): void {
 		if (this.#cursor === 0) return;
 		if (this.#historyIdx !== null) this.#historyIdx = null; // editing leaves the browse
+		this.#queuePopMode = false; // W22: editing leaves the pop-walk too
 		this.#chars.splice(this.#cursor - 1, 1);
 		this.#cursor -= 1;
 		this.#reflow();
@@ -601,6 +637,7 @@ export class Editor {
 		this.#scroll = 0;
 		this.#menuOpen = false;
 		this.#menuSel = 0;
+		this.#queuePopMode = false; // W22: a submit ends the pop-walk — the next esc at rest interrupts again
 		const cb = this.#questionCb;
 		this.#questionCb = null;
 		if (cb !== null) {
@@ -641,6 +678,20 @@ export class Editor {
 		this.#chars = [...this.#history[this.#historyIdx]!].map((ch) => ch.codePointAt(0)!);
 		this.#cursor = this.#chars.length;
 		this.#reflow();
+	}
+
+	/** W22: pop the LAST queued message into the buffer (the walk's
+	 *  step — ↑ enters/stays in the pop-mode, esc's pop ends it). The
+	 *  chip leaves the queue (cancelled in the CLI), the line becomes
+	 *  the popped text, the cursor sits at the end. */
+	#queuePopIntoBuffer(): void {
+		if (this.#queuePop === null) return;
+		const line = this.#queuePop();
+		if (line === null) return;
+		this.#chars = [...line].map((ch) => ch.codePointAt(0)!);
+		this.#cursor = this.#chars.length;
+		this.#scroll = 0;
+		this.#onRender();
 	}
 
 	// ---- width-based horizontal scroll ----

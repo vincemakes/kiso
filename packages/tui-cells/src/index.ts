@@ -28,6 +28,10 @@ export {
 	type BodyCell,
 } from "./components.js";
 export { editFileDiff, truncateDiff, writeFileDiff, type DiffLine, type DiffResult } from "./diff.js";
+// W22 (the v8 input round): the pending-queue chips — the SAME
+// UserMessage chip with the □ gutter, pre-rendered above the input
+// row while turns wait in the queue.
+export { pendingQueueRows } from "./components.js";
 export { charWidth, displayWidth, widthOf } from "./width.js";
 // W21 (the v8 approval round): the approval panel — the bounded block
 // that replaces the running tool's live window while a human-chain
