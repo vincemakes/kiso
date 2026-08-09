@@ -12,9 +12,10 @@
  * context.
  *
  * the token round: reads are RANGEABLE (read_file offset/limit, default head 200
- * lines) and search/list are capped (50 / 200) — every truncation carries
- * an actionable continuation note (deterministic per file state), so the
- * model always has a path to the full content.
+ * lines), search/list are capped (50 / 200), shell output is capped — every
+ * truncation carries an actionable continuation note in the N of M form and
+ * states what was dropped (deterministic per file state), so the model
+ * always has a path to the full content.
  */
 
 import { execFileSync, spawn } from "node:child_process";
@@ -45,6 +46,17 @@ const MAX_DIR_ENTRIES = 200;
 
 function cap(text: string): string {
 	return text.length > OUTPUT_CAP ? `${text.slice(0, OUTPUT_CAP)}\n…[truncated]` : text;
+}
+
+/**
+ * R-C item 2: chunked accumulation under the cap that COUNTS what it drops —
+ * the shell overflow note names the dropped bytes and the recovery path
+ * (the W10 continuation, made model-facing: what was dropped, how many).
+ */
+function capAccumulate(current: string, chunk: string): { text: string; dropped: number } {
+	const room = OUTPUT_CAP - current.length;
+	if (room >= chunk.length) return { text: current + chunk, dropped: 0 };
+	return { text: room <= 0 ? current : current + chunk.slice(0, room), dropped: chunk.length - Math.max(room, 0) };
 }
 
 /**
@@ -311,7 +323,9 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string }
 				});
 				let content = entries.length ? cap(entries.slice(0, MAX_DIR_ENTRIES).join("\n")) : "(empty directory)";
 				if (entries.length > MAX_DIR_ENTRIES) {
-					content += `\n… +${entries.length - MAX_DIR_ENTRIES} more entries (narrow to a subdirectory)`;
+					// R-C item 2: the N of M form — the cap names its
+					// continuation (narrow to a subdirectory for more).
+					content += `\n… ${MAX_DIR_ENTRIES} of ${entries.length} entries shown (narrow to a subdirectory for more)`;
 				}
 				return { content, isError: false };
 			} catch (err) {
@@ -389,7 +403,11 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 				return { content: `search_text failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
 			}
 			let content = matches.length ? cap(matches.join("\n")) : "(no matches)";
-			if (totalMatches > matches.length) content += `\n… +${totalMatches - matches.length} more matches (narrow the pattern)`;
+			if (totalMatches > matches.length) {
+				// R-C item 2: the N of M form — the cap names its
+				// continuation (narrow the pattern for more).
+				content += `\n… ${matches.length} of ${totalMatches} matches shown (narrow the pattern for more)`;
+			}
 			return { content, isError: false };
 		},
 	});
@@ -573,6 +591,8 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				});
 				let stdout = "";
 				let stderr = "";
+				let stdoutDropped = 0;
+				let stderrDropped = 0;
 				let exited = false;
 				let settled = false;
 				let killing = false;
@@ -682,10 +702,14 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 					});
 
 				child.stdout?.on("data", (d: Buffer) => {
-					stdout = cap(stdout + d.toString());
+					const r = capAccumulate(stdout, d.toString());
+					stdout = r.text;
+					stdoutDropped += r.dropped;
 				});
 				child.stderr?.on("data", (d: Buffer) => {
-					stderr = cap(stderr + d.toString());
+					const r = capAccumulate(stderr, d.toString());
+					stderr = r.text;
+					stderrDropped += r.dropped;
 				});
 				child.on("error", (err) => {
 					settle({ content: `shell failed: ${err.message}`, isError: true, errorKind: "fatal" });
@@ -693,7 +717,19 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				child.on("close", (code) => {
 					exited = true;
 					if (killing) return; // the timeout/abort verdict owns the result
-					const combined = (stdout + (stderr ? `\n[stderr] ${stderr}` : "")).trim();
+					// R-C item 2: the overflow note names WHAT was dropped and
+					// the recovery path — a silent tail-cut would be the exact
+					// destructive class this round kills (W10 made model-facing).
+					const overflowNote = (dropped: number, stream: string): string =>
+						dropped === 0
+							? ""
+							: `\n… [${stream} capped at ${OUTPUT_CAP} chars — ${dropped} more chars dropped; capture to a file and read it with read_file, or narrow the command]`;
+					const combined = (
+						stdout +
+						overflowNote(stdoutDropped, "stdout") +
+						(stderr ? `\n[stderr] ${stderr}` : "") +
+						overflowNote(stderrDropped, "stderr")
+					).trim();
 					settle(
 						code === 0
 							? { content: combined || "(no output)", isError: false }

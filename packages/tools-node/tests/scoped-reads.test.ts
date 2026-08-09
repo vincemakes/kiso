@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ToolContext } from "@vincemakes/kiso-core";
-import { listDirTool, readFileTool, searchTextTool } from "../src/index.js";
+import { listDirTool, readFileTool, searchTextTool, shellTool } from "../src/index.js";
 
 const CTX: ToolContext = {
 	signal: { aborted: false, addEventListener: () => {}, removeEventListener: () => {} },
@@ -168,7 +168,7 @@ describe("search_text capped results", () => {
 		expect(result).toMatchObject({ isError: false });
 		const shown = result.content.split("\n").filter((l) => /f\d\.txt:\d+: match /.test(l));
 		expect(shown).toHaveLength(50);
-		expect(result.content).toContain("… +10 more matches (narrow the pattern)");
+		expect(result.content).toContain("… 50 of 60 matches shown (narrow the pattern for more)");
 	});
 
 	it("≤ 50 matches: no note", async () => {
@@ -193,7 +193,7 @@ describe("list_dir capped entries", () => {
 		expect(result).toMatchObject({ isError: false });
 		const shown = result.content.split("\n").filter((l) => l.startsWith("file f"));
 		expect(shown).toHaveLength(200);
-		expect(result.content).toContain("… +10 more entries (narrow to a subdirectory)");
+		expect(result.content).toContain("… 200 of 210 entries shown (narrow to a subdirectory for more)");
 	});
 
 	it("≤ 200 entries: no note", async () => {
@@ -202,5 +202,27 @@ describe("list_dir capped entries", () => {
 		const result = await listDirTool({ workspaceRoot: root }).execute({ path: "." }, CTX);
 		expect(result).toMatchObject({ isError: false });
 		expect(result.content).toBe("file a.txt");
+	});
+});
+
+describe("shell output cap (R-C item 2)", () => {
+	it("overflow states WHAT was dropped (exact byte count) and the recovery path", async () => {
+		const root = tempRoot();
+		const result = await shellTool({ workspaceRoot: root }).execute(
+			{ command: `node -e "process.stdout.write('x'.repeat(120000))"` },
+			CTX,
+		);
+		expect(result).toMatchObject({ isError: false });
+		expect(result.content).toContain("stdout capped at 100000 chars");
+		expect(result.content).toContain("— 20000 more chars dropped");
+		expect(result.content).toContain("capture to a file and read it with read_file, or narrow the command");
+		// the retained prefix is intact — the note is appended, not substituted.
+		expect(result.content.startsWith("x".repeat(100_000))).toBe(true);
+	});
+
+	it("a quiet command gets no note", async () => {
+		const root = tempRoot();
+		const result = await shellTool({ workspaceRoot: root }).execute({ command: "echo done" }, CTX);
+		expect(result).toMatchObject({ isError: false, content: "done" });
 	});
 });
