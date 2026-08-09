@@ -42,6 +42,14 @@ const GATES = [
 	// the way past 2400 is structural extraction (the components cell
 	// renderer), never a third recalibration.
 	{ name: "tui", limit: 2400, dir: join("packages", "tui", "src") },
+	// ADR-0043 Amendment 4 (the 2026-08-09 ruling): the 9th package —
+	// the components cell renderer extracted from the tui (Amendment
+	// 3's named escape hatch). The gate is 1280 = 1.2 × 925 (the
+	// measured extraction: components 588 + diff 100 + width 29 + the
+	// render slice 208) + the panel's ≈170 growth (W21 rides
+	// tui-cells). The panel, the rule/feedback inputs, and the
+	// pending-queue chips are all components — all tui-cells.
+	{ name: "tui-cells", limit: 1280, dir: join("packages", "tui-cells", "src") },
 ];
 const ROOT = new URL("..", import.meta.url).pathname;
 

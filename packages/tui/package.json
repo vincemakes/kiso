@@ -33,5 +33,8 @@
   "bugs": {
     "url": "https://github.com/vincemakes/kiso/issues"
   },
-  "homepage": "https://github.com/vincemakes/kiso/tree/main/packages/tui#readme"
+  "homepage": "https://github.com/vincemakes/kiso/tree/main/packages/tui#readme",
+  "dependencies": {
+    "@vincemakes/kiso-tui-cells": "0.1.41"
+  }
 }

@@ -41,6 +41,7 @@ const ALL = {
 	"@vincemakes/kiso-tools-node": true,
 	"@vincemakes/kiso-provider-anthropic": true,
 	"@vincemakes/kiso-provider-openai": true,
+	"@vincemakes/kiso-tui-cells": true,
 	"@vincemakes/kiso-tui": true,
 	"@vincemakes/kiso-code": true,
 };
@@ -182,7 +183,7 @@ void agent; void defineTool; void loop; void ev; void FIXTURES;
 {
 	const proj = tempProject("nested");
 	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-"));
-	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-tui"].map((n) => pack(stage, n));
+	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-tui-cells", "@vincemakes/kiso-tui"].map((n) => pack(stage, n));
 	for (const tarball of tarballs) {
 		execSync(`npm install --install-strategy=nested --no-audit --no-fund --no-package-lock "${tarball}"`, {
 			cwd: proj,
@@ -259,7 +260,7 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 {
 	const proj = tempProject("nested-cli");
 	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-cli-"));
-	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-tui", "@vincemakes/kiso-code"].map((n) =>
+	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-tui-cells", "@vincemakes/kiso-tui", "@vincemakes/kiso-code"].map((n) =>
 		pack(stage, n),
 	);
 	for (const tarball of tarballs) {

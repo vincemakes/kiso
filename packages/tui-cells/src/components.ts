@@ -1,0 +1,991 @@
+/**
+ * TUI v6 (ADR-0046) — the components: EVERY screen line's renderer.
+ * Extracted to tui-cells (ADR-0043 Amendment 4): the cell renderer
+ * leaves the tui for the 9th package; the tui's shims re-export it.
+ *
+ * Each component turns one piece of state into display lines (SGR
+ * included, raw — the compositor writes them verbatim). The folding
+ * lives HERE: every line a component returns must fit the terminal
+ * width — the compositor's crash-on-violation invariant backs it up
+ * (a component that forgets to fold CRASHES with a diagnostic, never
+ * silently truncates — the crash is the contract, not a symptom).
+ *
+ * The fold is SGR-AWARE: a line whose bold/dim span would straddle a
+ * fold boundary closes the span at the break and reopens it on the
+ * next row — the #16b contract (no literal "[2m" fragments) survives
+ * folding. displayWidth/charWidth (width.ts) are the width primitives
+ * (untouched); render.ts supplies the original text (palette, escape,
+ * tint, fold wording).
+ */
+
+import { displayWidth } from "./width.js";
+import {
+	bannerLines,
+	escapeTerminal,
+	foldThinking,
+	foldResult,
+	colorInlineCode,
+	renderTerminalGap,
+	renderToolSummary,
+	toolTarget,
+	kUnit,
+	palette,
+	type Palette,
+	type ResumeMeta,
+} from "./render.js";
+
+/** The spinner glyphs, cycled by the compositor's on-demand tick. */
+export const SPINNER = ["▖", "▘", "▝", "▗"];
+
+/** The frame context the compositor passes down — the pieces of time
+ *  that make a live render non-deterministic (the running tool's glyph
+ *  and elapsed). Everything else is a pure function of the cell. */
+export interface FrameCtx {
+	readonly spinnerI: number;
+	readonly now: number;
+	/** The terminal height (rows) — the banner cell's tier input (W1:
+	 *  the tier table reads H, so a resize RE-TIERS instead of
+	 *  re-folding frozen rows). */
+	readonly height: number;
+}
+
+/** ONE screen line a component emits (raw, SGR included). */
+export type RenderLine = string;
+
+/**
+ * The fold — split a display-width line into ≤W rows, preserving SGR
+ * spans across the break: a span open at the break closes (reset) at
+ * the row's end and reopens on the next row. The rows are what the
+ * terminal's own soft-wrap would have produced — except the compositor
+ * folds FIRST, so the terminal never reflows a component's line (the
+ * #17 merge class cannot reach committed content).
+ */
+export function foldLine(line: string, W: number): string[] {
+	if (W < 1) return [line];
+	// collect the plain text + the SGR segments so the walk can track
+	// the open span state
+	const out: string[] = [];
+	let current = "";
+	let width = 0;
+	let open: string[] = []; // the SGR sequences seen since the last reset
+	for (let i = 0; i < line.length; ) {
+		if (line[i] === "\n") {
+			// a real line break — the row ends here (the same close/reopen
+			// as a fold boundary, so a span never leaks across the break)
+			const close = open.length > 0 ? "\x1b[0m" : "";
+			out.push(current + close);
+			current = open.join("");
+			width = 0;
+			i += 1;
+			continue;
+		}
+		if (line[i] === "\x1b") {
+			const m = /^\x1b\[[0-9;]*m/.exec(line.slice(i));
+			if (m !== null) {
+				if (m[0] === "\x1b[0m") open = [];
+				else open.push(m[0]);
+				current += m[0];
+				i += m[0].length;
+				continue;
+			}
+			// a non-SGR CSI (the raw cell's own content, escaped at
+			// composition) — copy verbatim, zero width
+			const csi = /^\x1b\[[0-9;?]*[A-Za-z]/.exec(line.slice(i));
+			if (csi !== null) {
+				current += csi[0];
+				i += csi[0].length;
+				continue;
+			}
+			current += line[i]!;
+			i += 1;
+			continue;
+		}
+		const cw = displayWidth(line[i]!);
+		if (width + cw > W && width > 0) {
+			// the fold — close the open spans, push, reopen on the next row
+			const close = open.length > 0 ? "\x1b[0m" : "";
+			out.push(current + close);
+			current = open.join("");
+			width = 0;
+			continue;
+		}
+		current += line[i]!;
+		width += cw;
+		i += 1;
+	}
+	if (current !== "" || out.length === 0) out.push(current);
+	return out;
+}
+
+/** The visible width of a rendered line (SGR stripped — the invariant
+ *  the compositor enforces on every emitted line). */
+export function visibleWidth(line: string): number {
+	let w = 0;
+	for (let i = 0; i < line.length; ) {
+		if (line[i] === "\x1b") {
+			const m = /^\x1b\[[0-9;?]*[A-Za-z]/.exec(line.slice(i));
+			if (m !== null) {
+				i += m[0].length;
+				continue;
+			}
+			i += 1;
+			continue;
+		}
+		w += displayWidth(line[i]!);
+		i += 1;
+	}
+	return w;
+}
+
+/** A component: render the display lines for one piece of state. */
+export interface Component {
+	render(width: number, ctx: FrameCtx): string[];
+}
+
+/** The W11 spacing formula — "a row gets one blank line above it when
+ *  the row is itself a block, or when the previous sibling was taller
+ *  than one row". One-row siblings pack tight; anything multi-row
+ *  breathes on both sides. The FIRST cell never gets the blank (it sits
+ *  at the body's top — the banner would otherwise start one row down).
+ *  `prev` is the previous sibling's OWN rows (raw — a cell's own blank
+ *  must never count toward its height). The blank is a JOIN artifact:
+ *  the cell's own render stays blank-free, so per-cell accounting
+ *  (heights, the fold cache) never sees a fake row. */
+export function bodySpacing(prev: readonly string[] | null, rows: readonly string[]): string[] {
+	if (rows.length === 0 || prev === null || prev.length === 0) return rows as string[];
+	if (rows.length > 1 || prev.length > 1) return ["", ...rows];
+	return rows as string[];
+}
+
+/** The container — vertical concatenation with the W11 formula. No
+ *  component decides its own spacing: every blank in the body is the
+ *  container's. */
+export class Container implements Component {
+	constructor(private readonly children: Component[]) {}
+	render(width: number, ctx: FrameCtx): string[] {
+		const out: string[] = [];
+		let prev: string[] | null = null;
+		for (const c of this.children) {
+			const rows = c.render(width, ctx);
+			out.push(...bodySpacing(prev, rows));
+			prev = rows;
+		}
+		return out;
+	}
+}
+
+// ---- the cell model (the CLI's mutation surface — unchanged from v5) ----
+
+export type BodyCell =
+	| { kind: "user"; text: string; done: true; turn: number }
+	| { kind: "thinking"; text: string; done: boolean; turn: number }
+	| {
+			kind: "tool";
+			name: string;
+			input: string;
+			/** W15: the FULL input JSON (pretty-printed) — the display
+			 *  summary above is sliced at 60 chars; the expanded block's
+			 *  "--- input ---" section mirrors /last and needs it all. */
+			inputFull: string;
+			childRoles: string[];
+			state: "pending" | "approval" | "running" | "done";
+			isError: boolean;
+			resultText: string;
+			diff: import("./diff.js").DiffLine[] | null;
+			added: number;
+			removed: number;
+			startedAt: number | null;
+			doneAt: number | null;
+			done: boolean;
+			/** W15: the live-region expand toggle — while the cell is live
+			 *  the FULL body renders in place (the compositor owns those
+			 *  rows and redraws them); a committed cell can never toggle
+			 *  (history is never rewritten — ADR-0046). */
+			expanded: boolean;
+			/** W14: the turn boundary — the index of the turn record that
+			 *  created this cell (the fold-hold's owner; −1 when no turn
+			 *  exists yet — the pre-turn cells never hold). */
+			turn: number;
+			/** W13: the rolled-up group summary — set at COMMIT time when
+			 *  the head of an N > 2 same-tool run renders the group (the
+			 *  work order's claimed shape: "✓ read  5 files (2.4k lines,
+			 *  1.1s)" + the target children). The members carry null — the
+			 *  compositor's rolled-heads bookkeeping renders them []. */
+			rolled: null | { count: number; lines: number; elapsed: string; targets: string[] };
+			/** W19: a DENIED call's reason (the CLI extracted it from the
+			 *  result's "[Permission denied] " prefix, keyed on the "denied"
+			 *  tag). Non-null renders the pinned row — the full call name,
+			 *  the target, the reason in the W4 parentheses idiom, NO timing
+			 *  metadata (the call never ran). */
+			reason: string | null;
+	  }
+	| { kind: "text"; text: string; done: boolean }
+	| { kind: "notice"; text: string; done: true }
+	| { kind: "banner"; version: string; extensionsText: string; resume: ResumeMeta[]; done: true }
+	| { kind: "raw"; lines: string[]; done: true }
+	| { kind: "terminal"; label: string; line: string; done: true }
+	| {
+			kind: "checklist";
+			/** the model-authored header tail (parseChecklist's count line —
+			 *  chat.ts). The compositor's fixed "task" prefix rides BEFORE it
+			 *  (W20 naming ruling: never model-controlled). */
+			header: string;
+			items: { text: string; status: "pending" | "active" | "done" }[];
+			/** W20: false while LIVE — the current turn's ONE in-place block
+			 *  (the commit loop only takes done cells, so it stays in the
+			 *  live region); true once SETTLED — endTurn committed it as the
+			 *  turn's one recap block. */
+			done: boolean;
+			/** W20: the LIVE block's ctrl+r toggle (W15) — the capped form
+			 *  flips to the full list in place. The settled render ignores
+			 *  it (already full). */
+			expanded: boolean;
+			/** W20: the wall clock of the block's FIRST call — the settled
+			 *  header's duration is clocked from here, compositor-side (the
+			 *  CLI stays unchanged). */
+			startedAt: number;
+			/** W20: the run's duration at the settle — the `2h 14m` form. */
+			durationSeconds: number;
+			turn: number;
+	  };
+
+const TOOL_SUMMARY_MAX = 60; // the tool line's parameter summary, chars
+
+/** The component for one cell — the mapping table lives here so the
+ *  compositor stays a pure writer. */
+export function cellComponent(cell: BodyCell): Component {
+	switch (cell.kind) {
+		case "user":
+			return new UserMessage(cell);
+		case "thinking":
+			return new ThinkingFold(cell);
+		case "tool":
+			return new ToolExecution(cell);
+		case "text":
+			return new AssistantMessage(cell);
+		case "notice":
+			return new ErrorLine(cell);
+		case "banner":
+			return new Banner(cell);
+		case "raw":
+			return new RawBlock(cell);
+		case "terminal":
+			return new TerminalBlock(cell);
+		case "checklist":
+			return new Checklist(cell);
+	}
+}
+
+/**
+ * The user message — the W16 inset chip ALONE (the 2026-08-09 ruling:
+ * the ▍ rail and the indent are retired — the rail's stated pipe
+ * fallback was theoretical redundancy: the CLI's pipe path is the
+ * line-mode "you>" form and never renders UserMessage). The chip folds
+ * the text at W−2 (the side pads), then pads EVERY row to the longest
+ * row's DISPLAY width + one space each side, flush left: the block is
+ * only as wide as what was said (never the full-width band — a short
+ * message like /think would paint a bar across the terminal). The
+ * padding is by cells (charWidth is the width authority), so a CJK row
+ * pads by width, never by chars, and the chip never overruns its fold.
+ * SGR 7 closed with SGR 27 — never SGR 0, the chip composes with a
+ * surrounding span — and NEVER dim: reverse video inverts the CURRENT
+ * colours, so dimmed text would invert into a dimmed block with no
+ * contrast.
+ */
+class UserMessage implements Component {
+	constructor(private readonly cell: { text: string }) {}
+	render(W: number, _ctx: FrameCtx): string[] {
+		const p = palette();
+		const chipW = Math.max(1, W - 2);
+		const rows: string[] = [];
+		for (const para of this.cell.text.split("\n")) {
+			const folded = foldLine(escapeTerminal(para), chipW);
+			const inner = Math.max(...folded.map((r) => displayWidth(r)));
+			for (const row of folded) {
+				const pad = inner - displayWidth(row);
+				rows.push(`${p.rv} ${row}${" ".repeat(pad)} ${p.rvEnd}`);
+			}
+		}
+		return rows;
+	}
+}
+
+/** The thinking fold — one dim line, width-capped so the /think suffix
+ *  rides the fold's own row (the #17 fix's slice, componentized). The
+ *  slice is DISPLAY-WIDTH-based (the char-based slice overflowed with
+ *  CJK — 2 cells per char — and tripped invariant ① on a real
+ *  Chinese session). W2: the leading ⋯ is the thinking gutter — the
+ *  midline mark (the state), never the text ellipsis (the truncation). */
+class ThinkingFold implements Component {
+	constructor(private readonly cell: { text: string; done: boolean }) {}
+	render(W: number, _ctx: FrameCtx): string[] {
+		const block = this.cell.text;
+		const trimmed = escapeTerminal(block.trim());
+		// the SHORT branch is width-aware TOO: the ≤100 short-circuit was
+		// W-blind — a short block at a narrow width returned the line
+		// UNFOLDED and tripped invariant ① (the crash class still live on
+		// npm for short /think blocks after a resize).
+		if (trimmed.length <= 100) return [`${palette().dim}⋯${widthCut(trimmed, Math.max(1, W - 1))}${palette().reset}`];
+		const suffix = ` (${block.length} chars · /think)`;
+		const slice = Math.max(1, W - 1 - suffix.length);
+		return [`${palette().dim}⋯${widthCut(trimmed, slice)}${suffix}${palette().reset}`];
+	}
+}
+
+/** Fold a line's CONTENT at W−2 and prefix EVERY row with the gutter
+ *  (W2: a wrapped tool row keeps its state mark — the left edge alone
+ *  distinguishes the states at --plain; the UserMessage rail precedent,
+ *  v5 #16f). The gutter carries its own SGR (e.g. the bold ✓). */
+function gutterFold(gutter: string, line: string, W: number): string[] {
+	const textW = Math.max(1, W - 2);
+	return foldLine(line, textW).map((r) => `${gutter}${r}`);
+}
+
+/** Lines without the phantom empty line after a trailing newline. */
+function countLines(text: string): number {
+	if (text === "") return 0;
+	const parts = text.split("\n");
+	return parts[parts.length - 1] === "" ? parts.length - 1 : parts.length;
+}
+
+/** W4: the settled-row metadata — the human summary in parentheses. The
+ *  separation NEVER relies on dim: a pipe drops the SGR, and the shapes
+ *  below read at full strength with the palette off. read → the line
+ *  count ("912 lines"; "200 of 3412 lines" when the tool cut it — the
+ *  note names the remainder; ≥1000 k-formats, "2.4k lines"); write/edit
+ *  → the ± diff stats (the approval diff's counts — an auto-allowed
+ *  write never computed one, so the input's own counts fall back, then
+ *  the result's line count); shell → the exit code (parsed from the
+ *  failure text — the tool names it — 0 on success); a non-shell error
+ *  → the error text's first line; anything else → the result's line
+ *  count. */
+function settledMeta(c: { name: string; input: string; resultText: string; added: number; removed: number; isError: boolean }): string {
+	if (c.isError) {
+		// a shell EXECUTION failure names its code first ("exit 1: …") —
+		// that IS the metadata, and the body shows the full text. A
+		// shell without the code (a denial, a precondition) is not an
+		// exit failure: the first line stays the metadata, exactly like
+		// any other error.
+		if (c.name === "shell" && /^exit \d+/.test(c.resultText)) return `exit ${/^exit (\d+)/.exec(c.resultText)![1]}`;
+		return c.resultText.split("\n")[0]!.slice(0, 60);
+	}
+	if (c.name === "read_file") {
+		const noteAt = c.resultText.lastIndexOf("\n… ");
+		const shown = countLines(noteAt >= 0 ? c.resultText.slice(0, noteAt) : c.resultText);
+		const more = noteAt >= 0 ? /(\d+) more lines?/.exec(c.resultText.slice(noteAt)) : null;
+		const k = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(n));
+		if (more !== null) {
+			const total = shown + Number(more[1]);
+			return `${shown} of ${total} line${total === 1 ? "" : "s"}`;
+		}
+		return `${k(shown)} line${shown === 1 ? "" : "s"}`;
+	}
+	if (c.name === "write_file" || c.name === "edit_file") {
+		if (c.added + c.removed > 0) return `+${c.added} -${c.removed}`;
+		// no approval diff (an auto-allowed write): the input summary may
+		// be sliced at TOOL_SUMMARY_MAX — best-effort, then the last resort
+		let parsed: { content?: unknown; search?: unknown; replace?: unknown } | null = null;
+		try {
+			parsed = JSON.parse(c.input);
+		} catch {
+			parsed = null;
+		}
+		if (c.name === "write_file" && parsed !== null && typeof parsed.content === "string") {
+			return `+${countLines(parsed.content)}`;
+		}
+		if (c.name === "edit_file" && parsed !== null && typeof parsed.search === "string" && typeof parsed.replace === "string") {
+			const added = countLines(parsed.replace);
+			const removed = countLines(parsed.search);
+			if (added + removed > 0) return `+${added} -${removed}`;
+		}
+	}
+	if (c.name === "shell") return "exit 0";
+	const n = countLines(c.resultText);
+	return `${n} line${n === 1 ? "" : "s"}`;
+}
+
+/** The tool execution line + the bounded block — every state is its
+ *  own render; the lines fold (the summary gives way first). W7 (the
+ *  flow contract): the block's BODY (the rows below the header) is
+ *  capped in SCREEN rows AFTER the fold, at the current width — the
+ *  renderer-cut row (`└ +N … · ctrl+r`) sits INSIDE the cap (a
+ *  truncated block is cap−1 output rows + the cut row); the TOOL-cut
+ *  row (`└ capped by …` — the tool's OWN truncation note, W10) is a
+ *  DIFFERENT fact, never counted in the output cap. W3: the verb is
+ *  stripped of its "_file" suffix and padded to 5 columns — the target
+ *  paths line up (the pipe path strips the same suffix, render.ts —
+ *  both paths print the same verb; a verb ≥ 5 columns is not padded).
+ *  The block's cut note keeps the RAW name (it names the tool the
+ *  model should call again). W4: the settled row's parentheses hold
+ *  the human metadata (settledMeta) — the input summary lived in the
+ *  running row; the OUTCOME is what the settled row says. */
+class ToolExecution implements Component {
+	constructor(private readonly cell: Extract<BodyCell, { kind: "tool" }>) {}
+	render(W: number, ctx: FrameCtx): string[] {
+		const p = palette();
+		const c = this.cell;
+		const verb = escapeTerminal(c.name.replace("_file", ""));
+		const verbCol = verb.length < 5 ? `${verb}${" ".repeat(5 - verb.length)}` : verb;
+		const summary = escapeTerminal(c.input);
+		if (c.rolled !== null) {
+			// W13 — the rolled-up group's ONE row + the target children:
+			// the work order's claimed shape, verbatim — the verbCol's
+			// 5-char pad reproduces the "read  5 files" double space, the
+			// children are the first 3 basename targets, the overflow row
+			// carries the ctrl+r affordance (its "└ … ctrl+r" joins the
+			// W15 expand history — the head's commit captures it).
+			const r = c.rolled;
+			const noun = ROLLUP_NOUN[c.name] ?? "calls";
+			const out = gutterFold(`${p.bold}✓${p.reset} `, `${verbCol} ${r.count} ${noun} (${kUnit(r.lines)} lines, ${r.elapsed}s)`, W);
+			const shown = r.targets.slice(0, 3);
+			if (shown.length > 0) out.push(`  ${p.dim}${CUT_ROW}${escapeTerminal(shown.join(" · "))}${p.reset}`);
+			if (r.targets.length > 3) out.push(`  ${p.dim}${CUT_ROW}+${r.targets.length - 3} more — ctrl+r expands${p.reset}`);
+			return out;
+		}
+		if (c.state === "done") {
+			// W19: the pinned deny — the claimed shape verbatim: the FULL
+			// call name (the denial names the call), the target, the reason
+			// in the W4 parentheses idiom, no timing (the call never ran).
+			// The same ✗ family as any failure; the [result ✗] body still
+			// rides below (never hide information).
+			if (c.reason !== null) {
+				let input: Record<string, unknown> = {};
+				try {
+					input = JSON.parse(c.inputFull) as Record<string, unknown>;
+				} catch {
+					// the full JSON is always parseable (stringified at
+					// toolStart) — the empty fallback never fires
+				}
+				const target = toolTarget(c.name, input);
+				const out = gutterFold(`${p.red}✗${p.reset} `, `${p.red}${escapeTerminal(`${c.name} ${target}`)} (${escapeTerminal(c.reason)})${p.reset}`, W);
+				out.push(...toolBlockBody(c, W));
+				return out;
+			}
+			const elapsed = c.startedAt !== null && c.doneAt !== null ? ((c.doneAt - c.startedAt) / 1000).toFixed(1) : "?";
+			const meta = escapeTerminal(settledMeta(c));
+			const out = c.isError
+				? gutterFold(`${p.red}✗${p.reset} `, `${p.red}${verbCol} (${meta}, ${elapsed}s)${p.reset}`, W)
+				: gutterFold(`${p.bold}✓${p.reset} `, `${verbCol} (${meta}, ${elapsed}s)`, W);
+			out.push(...toolBlockBody(c, W));
+			return out;
+		}
+		if (c.state === "approval") {
+			// W2: the ⏸ is the GUTTER (the left edge), never the line's tail
+			const out = gutterFold(`${p.bold}⏸${p.reset} `, `${verbCol} ${summary}`, W);
+			out.push(...toolBlockBody(c, W));
+			return out;
+		}
+		if (c.state === "running") {
+			// W2: the spinner IS the gutter (the left edge); the elapsed
+			// rides the summary's tail
+			const elapsed = c.startedAt !== null ? Math.max(1, Math.round((ctx.now - c.startedAt) / 1000)) : 1;
+			const out = gutterFold(`${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} `, `${verbCol} ${summary} ${elapsed}s`, W);
+			out.push(...toolBlockBody(c, W));
+			return out;
+		}
+		// W2: ◦ replaces → for QUEUED — · is the separator inside every
+		// metadata group; a queued marker that is also the separator
+		// glyph reads as noise
+		return gutterFold(`${p.dim}◦${p.reset} `, `${verbCol} ${summary}`, W);
+	}
+}
+
+/** W13 — the rollup opt-in table: which tools collapse, and the count
+ *  NOUN (read_file calls → "5 files", list_dir → "5 dirs", search_text
+ *  → "5 matches"). Only these tools opt in — a shell burst is never
+ *  rolled up (its rows carry meaning). The folded-turn line (W14) reuses
+ *  the plurals for its other-tool terms ("2 dirs", "1 match"). */
+export const ROLLUP_NOUN: Readonly<Record<string, string>> = {
+	read_file: "files",
+	list_dir: "dirs",
+	search_text: "matches",
+};
+
+/** The count term with the singular/plural forms — "no reads", "1 read",
+ *  "5 reads". The noun's singular drops the plural suffix ("dirs" → "dir",
+ *  "matches" → "match"). */
+function countTerm(n: number, singular: string, plural: string): string {
+	if (n === 0) return `no ${plural}`;
+	if (n === 1) return `1 ${singular}`;
+	return `${n} ${plural}`;
+}
+
+/** W14 — the folded-turn line: a whole QUIET turn (no text), once it is
+ *  scrollback, becomes ONE line — the work order's claimed shape
+ *  (`▞ thought 19s · 5 reads · no edits`), the counts accumulated at
+ *  toolStart: read_file → "reads", edit_file → "edits", the other tools
+ *  as first-call-order terms (the ROLLUP_NOUN plurals when the tool opts
+ *  in, the verb + "s" otherwise). */
+export function turnFold(t: { thoughtSeconds: number; reads: number; edits: number; others: [string, number][] }): string[] {
+	const p = palette();
+	const parts = [`thought ${t.thoughtSeconds}s`, countTerm(t.reads, "read", "reads"), countTerm(t.edits, "edit", "edits")];
+	for (const [name, n] of t.others) {
+		const noun = ROLLUP_NOUN[name];
+		if (noun !== undefined) {
+			parts.push(countTerm(n, noun.endsWith("es") ? noun.slice(0, -2) : noun.slice(0, -1), noun));
+		} else {
+			const verb = name.replace("_file", "");
+			parts.push(countTerm(n, verb, `${verb}s`));
+		}
+	}
+	return [`${p.bold}▞${p.reset} ${parts.join(" · ")}`];
+}
+
+// ---- the bounded-block flow contract (W7, W8, W10) ----
+
+/** The caps — screen rows counted AFTER the fold, at the current width
+ *  (the W7 table). The renderer-cut row is inside the cap. */
+const CAP_SHELL_SETTLED = 5; // the shell output tail, settled
+const CAP_LIVE_WINDOW = 3; // the running tool's FIXED window (W8)
+const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
+const CAP_ERROR = 3; // the error text head
+
+/** The block body rows' prefixes (W2's gutter table): │ a bounded
+ *  block's body, └ the block's last row — what was cut, where the rest
+ *  is — at the LEFT EDGE (the gutter column: the left edge alone
+ *  distinguishes the states at --plain). Structural (constraint 1). */
+const BODY_ROW = "│ ";
+const CUT_ROW = "└ ";
+
+/** W9 — the per-cell memo: the bounded block's folded body is cached
+ *  per (width, state, content reference) — a steady stream re-measures
+ *  ZERO times (constraint 5: width-dependent work rides the fullRedraw
+ *  path, never the per-frame path); a resize re-measures once (the
+ *  width key flips). Keyed on the CELL object; the content key is the
+ *  reference identity (resultText / the diff array are assigned once
+ *  and never mutated). */
+interface BlockMemo {
+	width: number;
+	state: string;
+	content: unknown;
+	rows: string[];
+}
+const blockMemo = new WeakMap<object, BlockMemo>();
+
+/** The block's body rows below the header (memoized, W9). */
+function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): string[] {
+	const memo = blockMemo.get(c);
+	const state = `${c.state}:${c.isError}:${c.name}:${c.expanded ? "x" : ""}`;
+	const content: unknown = c.state === "approval" ? (c.diff ?? null) : c.resultText;
+	if (memo !== undefined && memo.width === W && memo.state === state && memo.content === content) return memo.rows;
+	const p = palette();
+	const rows =
+		c.expanded
+			? // W15: the toggle's full form — the WHOLE body, no cap, no
+			  // cut note (nothing is cut; the width fold still holds — the
+			  // height may change while live, the user asked for it). The
+			  // delegate has no body — its rows are unchanged.
+			  c.state === "approval"
+					? diffBody(c.diff, W, true)
+					: c.name === "delegate"
+						? c.state === "running"
+							? delegateRunning(c, W)
+							: delegateSettled(c, W)
+						: blockRows(c.resultText, W)
+			: c.state === "done"
+				? c.isError
+					? errorBody(c, W)
+					: c.name === "delegate"
+						? delegateSettled(c, W)
+						: c.name.startsWith("shell")
+							? shellTail(c.resultText, W)
+							: []
+				: c.state === "running"
+					? c.name === "delegate"
+						? delegateRunning(c, W)
+						: liveWindow(c.resultText, W)
+					: c.state === "approval"
+						? diffBody(c.diff, W)
+						: [];
+	const note = c.expanded ? null : toolCutNote(c.name, c.resultText);
+	if (note !== null) rows.push(...foldLine(`${p.dim}${CUT_ROW}${note}${p.reset}`, W));
+	blockMemo.set(c, { width: W, state, content, rows });
+	return rows;
+}
+
+/** Fold result text into dim body rows (the BODY_ROW prefix): escape,
+ *  split, fold each line at W−prefix; trailing empty rows (the result's
+ *  final newline) drop. */
+function blockRows(text: string, W: number): string[] {
+	const p = palette();
+	const textW = Math.max(1, W - visibleWidth(BODY_ROW));
+	const rows: string[] = [];
+	for (const raw of escapeTerminal(text).split("\n")) {
+		for (const row of foldLine(raw, textW)) rows.push(`${p.dim}${BODY_ROW}${row}${p.reset}`);
+	}
+	while (rows.length > 0 && visibleWidth(rows[rows.length - 1]!) === visibleWidth(BODY_ROW)) rows.pop();
+	return rows;
+}
+
+/** The shell output tail, settled: the LAST rows, capped at 5 — the
+ *  renderer cut at the block's bottom ("earlier rows" — the conclusion
+ *  is at the end, pi's truncateToVisualLines direction). */
+function shellTail(text: string, W: number): string[] {
+	const p = palette();
+	const rows = blockRows(text, W);
+	if (rows.length <= CAP_SHELL_SETTLED) return rows;
+	const kept = CAP_SHELL_SETTLED - 1;
+	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - kept} earlier rows · ctrl+r${p.reset}`, W);
+	return [...rows.slice(rows.length - kept), ...cut];
+}
+
+/** The error text head: the FIRST rows, capped at 3 — the answer is at
+ *  the start (opencode's collapseToolOutput direction). The header row
+ *  already summarizes the first line, so the body starts at line 2. */
+function errorBody(c: { name: string; resultText: string; reason?: string | null }, W: number): string[] {
+	const p = palette();
+	// W4: a shell EXECUTION failure's line 0 ("exit 1: …") no longer
+	// rides the header — the parsed code does — so the body keeps the
+	// FULL text. Any other error keeps the pre-W4 split: line 0 is the
+	// header's metadata, the body shows the rest.
+	// W19: a DENIED call's header meta is the PARSED reason (from the
+	// denied tag), decoupled from the result text — the body keeps the
+	// FULL content including the "[Permission denied] " prefix (never
+	// hide information — the folded body rides the pinned row).
+	const skipFirst = c.name === "shell" && /^exit \d+/.test(c.resultText) ? 0 : c.reason !== null && c.reason !== undefined ? 0 : 1;
+	const rows = blockRows(c.resultText.split("\n").slice(skipFirst).join("\n"), W);
+	if (rows.length <= CAP_ERROR) return rows;
+	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - (CAP_ERROR - 1)} more · ctrl+r${p.reset}`, W);
+	return [...rows.slice(0, CAP_ERROR - 1), ...cut];
+}
+
+/** The running tool's FIXED-height window (W8): exactly 3 rows from
+ *  the FIRST frame — blank-padded before output arrives, the renderer
+ *  cut inside the window. The height changes exactly once, at settle —
+ *  a cell that grows mid-list would shift every row after it on every
+ *  delta (the parallel-tools jitter). */
+function liveWindow(text: string, W: number): string[] {
+	const p = palette();
+	if (text === "") {
+		return [`${p.dim}${BODY_ROW}${p.reset}`, `${p.dim}${BODY_ROW}${p.reset}`, `${p.dim}${CUT_ROW}waiting for output${p.reset}`];
+	}
+	const rows = blockRows(text, W);
+	if (rows.length <= CAP_LIVE_WINDOW) {
+		while (rows.length < CAP_LIVE_WINDOW) rows.push(`${p.dim}${BODY_ROW}${p.reset}`);
+		return rows;
+	}
+	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+r${p.reset}`, W);
+	return [...rows.slice(rows.length - (CAP_LIVE_WINDOW - 1)), ...cut];
+}
+
+/** W12: the delegate's child sessions collapse to the tool row plus ONE
+ *  line — the height NEVER changes (running → settled replaces the row
+ *  in place). The running row derives from the INPUT: the parent has no
+ *  live channel to a running child (ToolContext carries only
+ *  signal/sessionId; execute returns ONE result), so the roles are the
+ *  honest current data — the spec's "<child's current tool>" has no
+ *  event source. The settled row parses the extension's summary marker
+ *  (the blob's first line) — its absence falls back to no body (an old
+ *  extension's output still renders). The one-line shape is shared with
+ *  W18's status row (the work order: "implement them with one helper"). */
+function delegateRunning(c: { childRoles: string[] }, W: number): string[] {
+	const p = palette();
+	const n = c.childRoles.length;
+	const text = n === 0 ? "children running…" : `${n === 1 ? "1 child" : `${n} children`} · ${c.childRoles.join(" · ")}`;
+	return [oneLineRow(p, text, W)];
+}
+
+function delegateSettled(c: { resultText: string }, W: number): string[] {
+	const p = palette();
+	const m = /^summary: (.+)$/m.exec(c.resultText);
+	if (m === null) return [];
+	return [oneLineRow(p, `${m[1]} · /last for the report`, W)];
+}
+
+/** ONE row at the left gutter, truncated to fit the width — never a
+ *  fold (a fold would wrap into TWO rows and break the one-line height
+ *  contract). */
+function oneLineRow(p: Palette, text: string, W: number): string {
+	const esc = escapeTerminal(text);
+	if (visibleWidth(`${p.dim}${CUT_ROW}${esc}${p.reset}`) <= W) return `${p.dim}${CUT_ROW}${esc}${p.reset}`;
+	const w = Math.max(1, W - visibleWidth(`${p.dim}${CUT_ROW}${p.reset}`));
+	return `${p.dim}${CUT_ROW}${esc.slice(0, w - 1)}…${p.reset}`;
+}
+
+/** The approval mini-diff (W7): capped at 12 folded rows — the head +
+ *  the named middle (the renderer cut — what was cut, how to expand) +
+ *  the tail. The rows are folded at the current width BEFORE the cap —
+ *  the R1 measured bug: truncateDiff capped at 40 ENTRIES while the
+ *  fold turned them into 73 SCREEN rows at W≤80 (a 44-row terminal's
+ *  content cap is H−4 = 40 — the approval force-committed a third of
+ *  the screen into scrollback inside one frame).
+ *  W17: the cap is a ROW budget at every width — the └ cut is ONE line
+ *  (a folded cut pushed the total past 12 at narrow widths), and below
+ *  a floor of 3 SOURCE lines visible the head/tail pair is noise (each
+ *  fragment a sliver of a long line): drop to the head only — the head
+ *  takes the whole budget — and the └ row carries the rest. */
+function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number, expanded = false): string[] {
+	const p = palette();
+	if (diff === null) return [];
+	const rows: string[] = [];
+	// W17: each line's fold START row (the running total) — the pair
+	// floor reads it for the head/tail SOURCE-line counts below.
+	const starts: number[] = [0];
+	for (const d of diff) {
+		const body =
+			d.kind === "-"
+				? `${p.red}- ${escapeTerminal(d.text)}${p.reset}`
+				: d.kind === "+"
+					? `${p.green}+ ${escapeTerminal(d.text)}${p.reset}`
+					: `${p.dim}  ${escapeTerminal(d.text)}${p.reset}`;
+		// W2: the diff body is a bounded block's body — the │ gutter
+		// (dim), never the old bold ▎ rail (the table lists no ▎); the
+		// +/- marks and their colors ride the content
+		rows.push(...gutterFold(`${p.dim}│${p.reset} `, body, W));
+		starts.push(rows.length);
+	}
+	if (expanded || rows.length <= CAP_DIFF) return rows;
+	const head = Math.floor((CAP_DIFF - 1) / 2);
+	const tail = CAP_DIFF - 1 - head;
+	// W17: the └ cut is ONE row at every width — the count leads, the
+	// expand affordances are cuttable (the same one-line shape as W12's
+	// delegate row and W18's status row).
+	const cut = (n: number): string => oneLineRow(p, `+${n} rows · ctrl+r to expand · /last for the full diff`, W);
+	// W17: the floor — the head window shows the lines whose fold starts
+	// before `head` rows; the tail window the lines whose fold ENDS after
+	// `rows.length - tail` (starts[i+1] is line i's end). When the pair
+	// shows fewer than 3 SOURCE lines together, it is noise at this width
+	// (each fragment a sliver of a long line): drop to the head only —
+	// the head takes the whole budget, the └ row carries the rest.
+	if (starts.filter((s) => s < head).length + starts.slice(1).filter((s) => s > rows.length - tail).length < 3)
+		return [...rows.slice(0, CAP_DIFF - 1), cut(rows.length - (CAP_DIFF - 1))];
+	return [...rows.slice(0, head), cut(rows.length - head - tail), ...rows.slice(rows.length - tail)];
+}
+
+/** The TOOL's OWN truncation note (W10) — a different fact from the
+ *  renderer's cut: the tools truncate and append a continuation note
+ *  (packages/tools-node/src/index.ts — read_file's "call again with
+ *  offset=N", the output cap, list_dir's entry cap). The note reaches
+ *  the MODEL and never the human — this row surfaces it. Detected in
+ *  the result's TAIL (the note is appended at the end); returns null
+ *  when the tool did not truncate. */
+function toolCutNote(name: string, resultText: string): string | null {
+	const tail = resultText.slice(-300);
+	const m = /offset=(\d+)/.exec(tail);
+	if (m !== null) return `capped by ${escapeTerminal(name)} · offset=${m[1]} for the rest`;
+	if (/…\[truncated\]/.test(tail) || /… \+?\d+ more (?:lines|entries)/.test(tail)) return `capped by ${escapeTerminal(name)} · /last for the rest`;
+	return null;
+}
+
+/** The assistant body text — wrapped at W, the inline-code tint per
+ *  row (the #16e rule: a span never matches across rows). */
+class AssistantMessage implements Component {
+	constructor(private readonly cell: { text: string; done: boolean }) {}
+	render(W: number, _ctx: FrameCtx): string[] {
+		const text = escapeTerminal(this.cell.text);
+		const wrapped = foldLine(text, W);
+		return wrapped.length > 0 ? wrapped.map((l) => colorInlineCode(l)) : [""];
+	}
+}
+
+/** The ⚠ / notice lines — the error surface. */
+class ErrorLine implements Component {
+	constructor(private readonly cell: { text: string }) {}
+	render(W: number, _ctx: FrameCtx): string[] {
+		return foldLine(escapeTerminal(this.cell.text), W);
+	}
+}
+
+/** The CLI's pre-rendered blocks (the banner, the recap, slash-command
+ *  output) — the SGR applied at composition (render.ts), folded here
+ *  verbatim: the #16b contract (no re-escaping) holds, and the fold is
+ *  SGR-aware so the accent spans survive a break. */
+class RawBlock implements Component {
+	constructor(private readonly cell: { lines: string[] }) {}
+	render(W: number, _ctx: FrameCtx): string[] {
+		return this.cell.lines.flatMap((l) => foldLine(l, W));
+	}
+}
+
+/** The terminal label + the status line. W11: the rhythm gap blank is
+ *  gone — the container's formula breathes below a multi-row cell (the
+ *  terminal is always multi-row when labelled), never the component. */
+class TerminalBlock implements Component {
+	constructor(private readonly cell: { label: string; line: string }) {}
+	render(W: number, _ctx: FrameCtx): string[] {
+		return [...foldLine(this.cell.label, W), ...foldLine(this.cell.line, W)];
+	}
+}
+
+/** The startup banner — a LIVE cell: every render re-derives the tier
+ *  from the CURRENT width AND height (bannerLines), so a resize re-tiers
+ *  the art instead of re-folding frozen rows (the W1 tier table: below
+ *  40 cols the logo never paints). W11: no trailing blank — the
+ *  container's formula breathes below the (always multi-row) banner. */
+class Banner implements Component {
+	constructor(private readonly cell: { version: string; extensionsText: string; resume: ResumeMeta[] }) {}
+	render(W: number, ctx: FrameCtx): string[] {
+		const p = palette();
+		const rows = bannerLines(W, ctx.height, this.cell.version, this.cell.extensionsText, this.cell.resume, ctx.now);
+		return rows.map((r) => `${p.dim}${r}${p.reset}`);
+	}
+}
+
+/** W20 — the task block's fixed-window height: the whole live block
+ *  (header + rows) in POST-FOLD screen rows at EVERY width: the header,
+ *  the active row, up to 2 pending, the overflow-pending fold, the
+ *  done-collapse. Every live row CUTS at W (never folds) — the block's
+ *  height is its row count. */
+export const CAP_TASK_LIVE = 6;
+
+/** W20 — the live block's fixed-window row cut: an SGR-aware ONE-ROW
+ *  truncation (foldLine wraps; a wrapped row would break the height
+ *  cap — every live row is exactly one screen row at every width).
+ *  A line that fits (≤ W) passes through whole; an overflow cuts the
+ *  content at W−1 — the ellipsis's slot — and the ellipsis rides AFTER
+ *  the reset (post-reset — the PTY needles' convention). The cut row
+ *  never exceeds W (invariant ①). */
+function cutLine(line: string, W: number): string {
+	if (visibleWidth(line) <= W) return line;
+	let out = "";
+	let width = 0;
+	for (let i = 0; i < line.length; ) {
+		if (line[i] === "\x1b") {
+			const m = /^\x1b\[[0-9;]*m/.exec(line.slice(i)) ?? line[i]!;
+			out += m;
+			i += m.length;
+			continue;
+		}
+		const cw = displayWidth(line[i]!);
+		if (width + cw > W - 1) break; // reserve the ellipsis's column
+		out += line[i]!;
+		width += cw;
+		i += 1;
+	}
+	return `${out}\x1b[0m…`;
+}
+
+/** W20 — the settled block's duration, the `2h 14m` form (the task
+ *  narrative's long-horizon idiom): minutes+seconds under an hour,
+ *  hours+minutes past it. */
+export function formatDuration(totalSeconds: number): string {
+	const s = Math.max(0, Math.round(totalSeconds));
+	if (s < 60) return `${s}s`;
+	const m = Math.floor(s / 60);
+	return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/**
+ * W20 — the task checklist as STATE: ONE live block that redraws in
+ * place (the current turn's in-place updates), settling at the turn's
+ * end as ONE recap block. LIVE (done:false): the fixed "task" prefix +
+ * the compositor-derived counts (the model tail rides AFTER — never
+ * model-controlled), the active item first with ▸ (the menu's "the
+ * current one"), pending next (≤2), the done items COLLAPSED behind the
+ * W10 cut family `└ +N done · ctrl+r`, overflow pending behind
+ * `└ +N more · ctrl+r` — every row cut at W so the cap holds at every
+ * width. ctrl+r (W15) toggles the full list in place (expanded). SETTLED
+ * (done:true): the recap idiom `task done · N items · <duration>` + the
+ * FULL final item list in the checklist's existing shape (▖/□/▣ —
+ * indented two, the glyph leads, no │ gutter).
+ */
+class Checklist implements Component {
+	constructor(
+		private readonly cell: {
+			header: string;
+			items: { text: string; status: "pending" | "active" | "done" }[];
+			done: boolean;
+			expanded: boolean;
+			durationSeconds: number;
+		},
+	) {}
+	render(W: number, _ctx: FrameCtx): string[] {
+		const p = palette();
+		const { items, done, expanded, durationSeconds } = this.cell;
+		const active = items.filter((i) => i.status === "active");
+		const pending = items.filter((i) => i.status === "pending");
+		const doneCount = items.length - active.length - pending.length;
+		const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
+		const tail = this.cell.header === "" ? "" : ` · ${this.cell.header}`;
+		const fixed = done
+			? `task done · ${plural(items.length, "item")} · ${formatDuration(durationSeconds)}`
+			: `task · ${plural(items.length, "item")} · ${active.length} active · ${doneCount} done`;
+		const header = `${p.bold}▞${p.reset} ${escapeTerminal(fixed + tail)}`;
+		// the FULL-list forms: SETTLED — the durable record (the fold is
+		// fine — committed content wraps naturally) — and the LIVE ctrl+r
+		// toggle (the header CUTS — the block stays one window high; the
+		// expanded rows show the ▣ the collapse hid). The live flag picks
+		// the glyphs: the settled list keeps the durable ▖, the expanded
+		// live list the ▸.
+		const glyph = (status: string, live: boolean): string => {
+			const g = status === "pending" ? "□" : status === "active" ? (live ? "▸" : "▖") : "▣";
+			return g === "▸" ? `${p.bold}▸${p.reset}` : g;
+		};
+		if (done || expanded) {
+			const rows = done ? foldLine(header, W) : [cutLine(header, W)];
+			for (const item of items) rows.push(...foldLine(`  ${glyph(item.status, !done)} ${escapeTerminal(item.text)}`, W));
+			return rows;
+		}
+		// LIVE — the fixed window: the header + the item rows CUT at W
+		// (one screen row each — the block's height is its row count,
+		// CAP_TASK_LIVE, at every width). The cut is the momentary view;
+		// the settle (and the ctrl+r toggle) show everything.
+		const itemRows: string[] = [];
+		if (active.length > 0) itemRows.push(`  ${p.bold}▸${p.reset} ${escapeTerminal(active[0]!.text)}`);
+		for (const item of pending.slice(0, 2)) itemRows.push(`  □ ${escapeTerminal(item.text)}`);
+		const more = pending.length - 2;
+		if (more > 0) itemRows.push(`  ${p.dim}└ +${more} more · ctrl+r${p.reset}`);
+		if (doneCount > 0) itemRows.push(`  ${p.dim}└ +${doneCount} done · ctrl+r${p.reset}`);
+		return [cutLine(header, W), ...itemRows.map((r) => cutLine(r, W))];
+	}
+}
+
+// ---- the chrome components (the status container, the slot, the footer) ----
+
+/** The status container's row: the status text (+ the tail) with the
+ *  right-aligned "/ commands · ↑ history" hint in the idle state —
+ *  the hint CUT FIRST when the width is short (the #16g rule); when
+ *  the STATUS ITSELF cannot fit, it cuts with a "…" — the last resort,
+ *  enforced by invariant ① (the old code let the status soft-wrap). */
+export function statusLine(status: string, tail: string, question: boolean, W: number, hint?: string): string {
+	const p = palette();
+	const text = `${status}${tail === "" ? "" : ` · ${tail}`}`;
+	if (question) return `${p.dim}${widthCut(text, W)}${p.reset}`;
+	// W18: the hint is a parameter — the compacting row right-aligns its
+	// "esc to cancel" (the same one-line-bounded shape as W12's delegate
+	// row; the #16g rule still cuts the HINT first, then the status with
+	// a "…" — never a fold).
+	const hintText = hint ?? " / commands · ↑ history";
+	const statusW = visibleWidth(text);
+	if (statusW > W) {
+		return `${p.dim}${widthCut(text, W - 1)}…${p.reset}`;
+	}
+	const hintW = visibleWidth(hintText);
+	if (statusW + hintW > W) return `${p.dim}${text}${p.reset}`;
+	return `${p.dim}${text}${" ".repeat(Math.max(0, W - statusW - hintW))}${hintText}${p.reset}`;
+}
+
+/** The display-width prefix of a plain (SGR-free) text. */
+function widthCut(text: string, max: number): string {
+	let w = 0;
+	let i = 0;
+	for (; i < text.length; i += 1) {
+		const cw = displayWidth(text[i]!);
+		if (w + cw > max) break;
+		w += cw;
+	}
+	return text.slice(0, i);
+}
+
+/** W6 — the box: the chrome's top rail. The two ╌ dotted rows become
+ *  a rounded box (the box already says "input lives here"); the rails
+ *  stay dim, the width is still the full W (the box is a rail with
+ *  corners — the menu/gap rows above and the status below are
+ *  untouched). */
+export function boxTop(W: number): string {
+	return `\x1b[2m╭${"─".repeat(Math.max(0, W - 2))}╮\x1b[0m`;
+}
+
+/** W6 — the box: the chrome's bottom rail. */
+export function boxBottom(W: number): string {
+	return `\x1b[2m╰${"─".repeat(Math.max(0, W - 2))}╯\x1b[0m`;
+}
+
+/** The terminal label + rhythm gap (the pipe path's v2c bytes — the
+ *  exact render the passthrough needs). */
+export function terminalPipe(label: string, statusLineText: string): string {
+	return label + renderTerminalGap(statusLineText);
+}
+
+/** The pipe-path pieces the passthrough reuses (byte-identical). */
+export { foldThinking, foldResult, renderToolSummary, TOOL_SUMMARY_MAX };
