@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The line gates: core 2411, cli 1856, tui 2400 (the terminal cap),
+ * The line gates: core 2000, cli 1856, tui 2400 (the terminal cap),
  * tui-cells 1280 — see the ADR-0043 amendments for each re-baseline.
  *
  * These are not lint rules. They are the project's central promise, enforced
@@ -23,12 +23,11 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const GATES = [
-	// ADR-0043 Amendment 5 (the 2026-08-09 ruling): the core gate is 2411 —
-	// the W21 approval chain (the deny > allow > ask composition, the
-	// allow/deny attribution, the ask's speaker threading) measured 2009
-	// actual — 9 over the 2000 gate (unchanged through Amendments 1-4),
-	// recalibrated with the same snapshot formula (+20%).
-	{ name: "core", limit: 2411, dir: join("packages", "core", "src") },
+	// ADR-0043 (2026-08-09, the corrective action): the core gate is 2000 —
+	// Amendment 5's 2411 claimed a review-issued re-baseline ruling that was
+	// never issued; the amendment is reverted. The W21 chain's overflow lives
+	// in the runtime's composed approval chain, not in the kernel.
+	{ name: "core", limit: 2000, dir: join("packages", "core", "src") },
 	// ADR-0043 (the extraction ruling): the 2400 single-package terminal
 	// cap is REPLACED by per-package gates — each = the actual after the
 	// extraction + 20%. The terminal layer left the CLI for packages/tui

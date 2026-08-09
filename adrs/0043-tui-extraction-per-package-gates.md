@@ -195,27 +195,3 @@ Boundary conditions:
    wiring — the compositor's bindApproval/bindQueue leads, the
    editor's panel leads, the cursor contract, and the render-bug
    fixes — against the retirement ledger (−56).
-
-## Amendment 5 (2026-08-09): the core gate 2000 → 2411 — the W21 approval chain (one argued recalibration)
-
-The W21 round (the approval & input design) lands the R3 chain in
-packages/core: the **deny > allow > ask** composition — the first
-denial's reason wins, then ANY allow (a LATER allow beats an EARLIER
-ask: an allow-only extension must override a mode tier's ask — the old
-ask-wins chain left the allow-only dont-ask-again extension structurally
-dead), the allow/deny attribution (deniedBy/allowedBy — the decider
-rides `permission_decided` into the durable audit), and the ask's
-speaker threading (the first non-abstain extension's name — the panel's
-why-asked line). The round measured core at **2009** code lines — 9
-over the 2000 gate (which had held unchanged through Amendments 1-4).
-Ruling (the review-issued re-baseline ruling): **the core gate
-recalibrates to 2411** (= 2009 actual + 20%, the same snapshot formula
-as Amendments 1/2/4).
-
-Boundary conditions:
-
-1. The Amendment-1 discipline applies unchanged: this is a snapshot
-   re-baseline from a measured actual, NOT an automatic ratchet — the
-   next approach without an argument is extraction, not a raise.
-2. The cli (1856), tui (2400, the terminal cap), and tui-cells (1280)
-   gates are untouched.
