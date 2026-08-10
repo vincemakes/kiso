@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-core",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "description": "kiso (foundation) core — protocol, event log, loop, hooks, modes, permissions, compaction, delivery truth. The 2,000-line kernel at the bottom of the kiso framework.",
   "type": "module",
   "license": "MIT",

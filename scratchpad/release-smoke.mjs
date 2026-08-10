@@ -179,7 +179,11 @@ const out = ptyRun(
 	env,
 	[
 		["▌ ", "go\n"],
-		["approve edit_file? (y/n)", "y\n"],
+		// the W21 approval panel is a numbered selector (1 Yes / 2
+		// don't-ask-again / 3 No) — the y/n prompt era is gone. The
+		// needle must be PLAIN text: the rail is color-wrapped, so any
+		// needle containing "│" can never match the raw byte stream
+		["1 Yes", "1\n"],
 		["the narrow winch is done.", "exit\n"],
 	],
 	{ cwd: dir, winch: [18, 40], winchAt: "identifier2" },
@@ -191,11 +195,14 @@ const plain = stripANSI(out);
 if (!plain.includes("the narrow winch is done.")) fail("the turn's response missing");
 if ((plain.match(/the narrow winch is done\./g) ?? []).length !== 1) fail("the response rendered more than once");
 if (out.includes("\x1b[2J") || out.includes("\x1b[3J")) fail("a pre-clear sequence (ED2/ED3J)");
-// the WINCH actually happened: the W17 cut row at 40 cols is the
-// TRUNCATED form "· /last f…" (the full "· /last for the full diff"
-// only renders when the width fits) — its presence proves the narrow
-// re-cap re-measured the diff at 40 mid-approval
-if (!plain.includes("· /last f…")) fail("the narrow re-cap missing — the W17 cut row not truncated at 40");
+// the WINCH actually happened: the W21 fold notice ("└ +N more rows —
+// the full args are in the event log") is 52 cells, so at 40 cols
+// (W−2 = 38) cutLine re-cuts it right after "in" — "…in…". At 80 cols
+// it fits whole, so the ellipsis form only exists when the narrow
+// re-cap re-measured the panel mid-approval (the W17 assertion's
+// "· /last f…" footer was the pre-W21 text — gone since the panel
+// rewrite)
+if (!plain.includes("the full args are in…")) fail("the narrow re-cap missing — the fold notice not re-cut at 40");
 // the COMPACT banner re-renders after the winch (the V6-1 frozen-loop
 // fix — the banner survives the resize repaint): at 18×40 the tier
 // table picks COMPACT (W ≥ 40, 14–19 rows) — the top row proves the
