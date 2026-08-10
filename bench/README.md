@@ -79,6 +79,79 @@ future edit cannot regress the labeling.
 | | 2 | 33,484 | 1,097,856 | 1,131,340 | 143,270 | 10,754 | 33 | 164s |
 | | mean | | 32,189 | 918,656 | 950,845 | 124,055 | 10,333 | 32.0 | 141.0s |
 
+## T6 — the 24-turn long curve (the divergence curve, per 6-turn bucket)
+
+| tool | run | bucket | fresh | cached | total | cost-wtd | out | reqs | wall |
+|------|----:|------:|------:|-------:|------:|---------:|----:|----:|-----:|
+| **kiso** | 1 | 1 | 18,998 | 123,392 | **142,390** | 31,337 | 4,412 | 31 | 78s |
+| | | 2 | 9,268 | 201,856 | **211,124** | 29,454 | 2,179 | 21 | 45s |
+| | | 3 | 2,407 | 300,672 | **303,079** | 32,474 | 2,534 | 23 | 47s |
+| | | 4 | 2,334 | 369,024 | **371,358** | 39,236 | 2,912 | 22 | 47s |
+| | 2 | 1 | 1,566 | 60,928 | **62,494** | 7,659 | 2,783 | 20 | 49s |
+| | | 2 | 1,832 | 128,128 | **129,960** | 14,645 | 2,573 | 20 | 44s |
+| | | 3 | 1,627 | 190,848 | **192,475** | 20,712 | 2,431 | 20 | 44s |
+| | | 4 | 4,721 | 444,288 | **449,009** | 49,150 | 7,775 | 30 | 92s |
+| | mean | 1 | 10,282 | 92,160 | **102,442** | **19,498** | 3,598 | 26 | 64s |
+| | | 2 | 5,550 | 164,992 | **170,542** | **22,049** | 2,376 | 20 | 44s |
+| | | 3 | 2,017 | 245,760 | **247,777** | **26,593** | 2,482 | 22 | 46s |
+| | | 4 | 3,528 | 406,656 | **410,184** | **44,193** | 5,344 | 26 | 70s |
+| pi | 1 | 1 | 5,436 | 258,560 | **263,996** | 31,292 | 10,110 | 29 | 98s |
+| | | 2 | 2,667 | 432,000 | **434,667** | 45,867 | 5,234 | 21 | 57s |
+| | | 3 | 2,555 | 546,048 | **548,603** | 57,160 | 4,854 | 20 | 53s |
+| | | 4 | 2,201 | 644,864 | **647,065** | 66,687 | 5,997 | 19 | 59s |
+| | 2 | 1 | 2,783 | 121,856 | **124,639** | 14,969 | 3,137 | 21 | 41s |
+| | | 2 | 1,735 | 199,552 | **201,287** | 21,690 | 3,506 | 20 | 41s |
+| | | 3 | 1,803 | 281,088 | **282,891** | 29,912 | 4,386 | 19 | 46s |
+| | | 4 | 3,203 | 427,264 | **430,467** | 45,929 | 5,571 | 21 | 56s |
+| | mean | 1 | 4,110 | 190,208 | **194,318** | **23,130** | 6,624 | 25 | 70s |
+| | | 2 | 2,201 | 315,776 | **317,977** | **33,779** | 4,370 | 20 | 49s |
+| | | 3 | 2,179 | 413,568 | **415,747** | **43,536** | 4,620 | 20 | 50s |
+| | | 4 | 2,702 | 536,064 | **538,766** | **56,308** | 5,784 | 20 | 58s |
+
+**The divergence curve (per-bucket mean cost-weighted):**
+kiso —→ b1 19.5K · b2 22.0K · b3 26.6K · b4 44.2K  (**2.27×** growth)
+pi   —→ b1 23.1K · b2 33.8K · b3 43.5K · b4 56.3K  (**2.43×** growth)
+
+**The finding:** both curves GROW steeply — every tool re-reads its
+growing context, and the growth rate is nearly identical (2.27× vs
+2.43× over a 4× longer session). kiso is cheaper at EVERY bucket
+(1.19×–1.64×, total-session mean 112.3K vs 156.8K ≈ 1.4×), but the gap
+does NOT compound — b4's 1.27× is back near b1's 1.19×. The
+"divergence-of-divergence" hypothesis (kiso's savings grow as the
+session does) is NOT confirmed: the durable-session design buys a
+constant offset on the long curve, not compounding savings. That is a
+finding, not a failure — the instrument did its job (the no-divergence
+option was the honest null).
+
+**What this measures:** cost GROWTH over a 24-turn session, not just
+the total. Each tool drives the SAME 24 progressive turns on fixture-t6
+(range/report/cli contract) with its NATIVE session mechanism:
+kiso — 4 processes on ONE durable session, 6 piped prompts each. The
+process boundaries ARE the bucket boundaries; the resume cost of a
+process lands in its bucket's first turn (the mechanism's honest
+price). No /compact anywhere — the curve measures UNCOMPACTED growth.
+pi — 24 `-p` invocations sharing one --session file (its native
+multi-turn mode); per-invocation walls summed per bucket.
+
+**Accounting:** the uniform definitions pinned by
+bench/tests/test_extract.py — kiso's inputTokens includes the cache-hit
+prefix (fresh = input − cache_read, total = input); pi reports
+fresh-only input (fresh = input, total = input + cache_read);
+cost_weighted = fresh + 0.1 × cache_read (DeepSeek's cache-hit price
+ratio). kiso's session log is cut at user_input events (input-then-
+usage ordering, verified against the logs); walls come from the runner.
+
+**Honest caveats:** (a) the runs are SERIAL — run 2 rides the
+provider's server-side warm cache (b1 fresh: kiso 19.0K→1.6K, pi
+5.4K→2.8K); the means average one cold + one warm start and the fresh
+column is the unstable one. (b) kiso run 2 bucket 4 (92s, 30 reqs,
+49.2K) — the final "verify everything" turn ran extra rounds;
+run-level variance is real at n=2. (c) pi emits ~1.5–1.6× kiso's output
+tokens (its per-invocation responses re-emit context). (d) versions:
+kiso v0.1.41 (the global install, 2026-08-10), pi 0.84.1,
+deepseek-v4-flash via each tool's native provider path, verify=pass
+4/4.
+
 ## Headline
 
 **Raw total input tokens:** kiso is 2.5× fewer than pi on T3 (9.9K vs
@@ -258,8 +331,10 @@ runner verifies every cell. The 0.1.7 numbers have no cost-weighted column
 ```
 ./run-one.sh <kiso|pi|claude> <T1|T2|T3|T4> <run-id>
 ./run-t5.sh <kiso|pi|claude> <run-id>
+./run-t6.sh <kiso|pi> <run-id>    # the 24-turn long curve
 python3 extract.py .          # T1-T4 (fresh/total/cost_weighted)
 python3 extract-t5.py .       # T5
+python3 extract-t6.py .       # T6 (per-bucket)
 python3 -m unittest tests/test_extract.py   # the accounting contract
 python3 dumpdiff.py <dump-dir>              # the request-prefix diagnostic
 ```
