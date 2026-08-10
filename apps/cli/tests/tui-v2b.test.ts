@@ -209,10 +209,13 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		const clean = stripANSI(out);
 		expect(clean).toContain("asky_read needs approval"); // the panel's rule line
 		// W21: the panel superseded the ⏸ badge row — the approved cell
-		// settles at the done form with the trailing decision tag, and the
-		// [result] no longer flows into the body (/last has it).
-		expect(clean).toContain("approved"); // W21: the decision tag rides the settled row
-		expect(clean).toContain("✓ asky_read (1 line, "); // the frozen done line — W4: the default family's metadata is the result line count
+		// settles at the done form, and the [result] no longer flows into
+		// the body (/last has it). A5: the decider tail (`· approved by
+		// X`) rides ONLY the extension/mode-decided cells — the human's
+		// panel decision needs no marker (the panel IS the record), so
+		// "approved" never appears for the answered call.
+		expect(clean).not.toContain("approved"); // A5: no decider tail on the human-approved cell
+		expect(clean).toContain("✓ asky_read  (1 line, "); // the frozen done line — W4: the default family's metadata is the result line count (the empty target leaves the verb pad's double space)
 		expect(clean).not.toContain("asky ok"); // the full result stays out of the stream
 		expect(clean).toContain("the tour is done");
 		// The status bar returned after the question (the model name is back).

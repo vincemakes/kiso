@@ -252,10 +252,13 @@ export function renderRecap(s: RecapStats): string {
 	const p = palette();
 	// W19: under plan the recap is the way out of the mode — the header
 	// names the mode's posture, the hints name the exits (the ONLY
-	// controls — /mode is the only way to leave plan mode).
+	// controls — /mode is the only way to leave plan mode). The plan
+	// branch drops the metadata segments (ctx left) BEFORE the fold: the
+	// fixed hints are 79 cols — ONE row at W=80, never the folded line —
+	// and the ctx-left hint lives where it always lived: the status
+	// row's right side.
 	if (s.mode === "plan") {
 		const parts = ["plan ready", "/mode default executes", "/mode accept-edits auto-approves edits"];
-		if (s.ctxLeftPct !== null) parts.push(`ctx left ~${Math.round(s.ctxLeftPct)}%`);
 		return `${p.bold}▞${p.reset} ${parts.join(" · ")}\n`;
 	}
 	const parts = [`${s.seconds}s`, `${s.tools} tool${s.tools === 1 ? "" : "s"}${s.edits > 0 ? ` (${s.edits} edit${s.edits === 1 ? "" : "s"})` : ""}`];

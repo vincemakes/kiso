@@ -84,12 +84,20 @@ def driver(cli, env, feeds, timeout, cols, post):
         # captures it, then stop
         if "2 tools".encode() in full and fired >= len(post) and not broke:
             time.sleep(0.6)
-            r, _, _ = select.select([fd], [], [], 0.5)
-            if r:
+            # drain until quiet — a wide terminal's settle frame is several
+            # pipe-buffer chunks (the 120-col frame ≈ 2 KB); one read can
+            # stop mid-frame and the transcript loses the frame's wrap-close
+            while True:
+                r, _, _ = select.select([fd], [], [], 0.5)
+                if not r:
+                    break
                 try:
-                    full += os.read(fd, 65536)
+                    data = os.read(fd, 65536)
                 except OSError:
-                    pass
+                    break
+                if not data:
+                    break
+                full += data
             broke = True
             break
     try:

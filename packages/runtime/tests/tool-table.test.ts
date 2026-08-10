@@ -47,6 +47,7 @@ describe("the tool substitution table (R-C item 1)", () => {
 Tool use:
 - read files with read_file, never shell cat/head/tail
 - batch independent tool calls into one reply — they run in parallel
+- end your turn with your findings — never end on a bare tool result
 - read_file — the workspace reader
 Active tool guidelines:
 - read_file: read ranges, not whole files

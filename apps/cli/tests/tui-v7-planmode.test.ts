@@ -132,13 +132,13 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 				// the needles ride the POST-RESET text (the glyphs are SGR-
 				// wrapped in the raw stream — "▞\x1b[0m plan ready" never
 				// matches "▞ plan ready"; the post-reset run is contiguous)
-				["read  (3 lines", ""], // the read ran under plan (the settled row's meta)
-				["(plan mode: read-only)", ""], // the pinned deny row's reason (the row, not the body — parens)
+				["read  a.ts (3 lines", ""], // the read ran under plan (A4: the target rides the settled row's head)
+				["(plan mode: read-only", ""], // the pinned deny row's reason (A5: the · by <decider> tail rides INSIDE the parens — no trailing paren in the needle)
 				["the survey is done.", ""], // the model's answer after the denial
 				["plan ready", "/mode default\n"], // the way-forward row → the only exit
 				["▸ default · /mode to switch", "go\n"], // turn 2 executes normally
 				["needs approval", "y\n"], // the ask RESTORED under default — the rule line's dim run
-				["shell (exit 0", "exit\n"], // the shell ran (the settled row's meta, no target)
+				["shell echo hi (exit 0", "exit\n"], // the shell ran (A4: the target rides the settled row's head)
 			],
 			workdir,
 		);
@@ -148,21 +148,30 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// no timing metadata — and the read ran (its own W4 settled row:
 		// `✓ read (3 lines, 0.0s)` — the interactive row carries the meta,
 		// the target lives in the pipe's summary).
-		expect(clean).toMatch(/✓ read {2}\(\d+ lines, \d+\.\ds\)/); // the verbCol's 5-char pad (the "read  5 files" double space)
-		expect(clean).toContain("✗ write_file sub/out.txt (plan mode: read-only)");
+		expect(clean).toMatch(/✓ read  a\.ts \(\d+ lines · approved by mode:plan, \d+\.\ds\)/); // A4+A5: the target + the decider tail ride the settled head row (the verbCol's 5-char pad — the "read  5 files" double space)
+		expect(clean).toContain("✗ write_file sub/out.txt (plan mode: read-only · by mode:plan)"); // the A5 deny tail names the decider inside the parens
 		expect(clean).not.toContain("approve write_file"); // the denied call never asked
 		expect(clean).not.toMatch(/✗ write_file sub\/out\.txt \(plan mode: read-only, \d+\.\ds\)/); // no (0.0s) noise
 		// ② the way-forward row: the recap idiom, the /mode hints as the
-		// exits, the timing/tool parts dropped.
+		// exits, the timing/tool parts dropped. W19: the FULL hints line is
+		// CONTIGUOUS — the ctx-left segment dropped BEFORE the fold, so the
+		// 79-col row never wraps at W=80 (a folded row would split "edits"
+		// and break this very assertion); the ctx-left hint lives on the
+		// status row's right side.
 		expect(clean).toContain("▞ plan ready · /mode default executes · /mode accept-edits auto-approves edits");
 		// ③ the idle posture.
 		expect(clean).toContain("▸ plan (read-only) · /mode to switch");
 		// ④ /mode default executes NORMALLY: the ask is back, the shell
 		// succeeds, the recap is the ordinary shape (not plan-ready again).
 		expect(clean).toContain("shell needs approval");
-		expect(clean).toMatch(/✓ shell \(exit 0, \d+\.\ds\)/); // the settled row's meta (no target — the interactive shape)
+		expect(clean).toMatch(/✓ shell echo hi \(exit 0, \d+\.\ds\)/); // A4: the target rides the settled row's head
 		expect(clean).toContain("1 tool");
-		expect(clean.match(/plan ready/g) ?? []).toHaveLength(1); // never a second way-forward row
+		// never a SECOND way-forward row: the plan-ready row belongs to
+		// turn 1 — every occurrence must PRECEDE the turn-2 answer (A8's
+		// full draws repaint the settled rows, so the row's text repeats
+		// across frames in the capture; the honest gate is POSITION — a
+		// true second row would land after the answer).
+		expect(clean.lastIndexOf("plan ready")).toBeLessThan(clean.indexOf("executed."));
 	}, 120_000);
 
 	it("the pipe path prints the same deny row, byte-clean (no escapes)", () => {

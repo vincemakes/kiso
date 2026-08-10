@@ -308,30 +308,37 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		const frames = vtFrames(turn);
 		const finalGrid = frames.at(-1)!.rows;
 
-		// ① the live block redrew IN PLACE — every paint of the live
-		// header CUP'd at row 1 (the block's origin never moved: no
-		// scroll, no commit, no reflow pushed it), and the block REDREW
-		// (more than one live paint). The settle additionally repaints
-		// the last live state once in the committed band — the live
-		// paints beyond the origin row are the settle's, not the run's.
-		const livePaints = [...turn.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[1m▞\x1b\[0m task · /g)];
-		const inPlace = livePaints.filter((m) => m[1] === "1");
-		expect(inPlace.length).toBeGreaterThan(1);
-		expect(livePaints.length).toBeGreaterThan(inPlace.length);
+		// ① A8b re-baseline: the "in-place redraws at row 1" the old gate
+		// counted were the row-1 CLAMP PILE — the settle's band stamped
+		// every committed line (the chip, the tool cells, the run's
+		// intermediate task blocks) at row 1, each overwriting the
+		// previous in the same frame — the very defect the A8b band-skip
+		// fixed. The A8b stream: the run's forms (the block redrawn once
+		// per task_set update) ride the settle's pre-paint — each painted
+		// ONCE at its TRUE old row (the scrollback record, the A7
+		// single-copy discipline), and the live block itself anchors at
+		// liveTop=1 (the stable origin — the live section, untouched by
+		// A8b). The gate: the run's forms all appear, each at its own
+		// row, none clamped at 1.
+		const forms = [...turn.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[1m▞\x1b\[0m task · 10 items · 1 active · ([0-9]+) done/g)];
+		const intermediate = forms.filter((m) => Number(m[2]!) < 6); // the RUN's forms — the states before the final (the live + the exit repaint the 6/7-done forms at their own rows)
+		expect(intermediate.length).toBeGreaterThan(4); // the run's forms redrew, each painted once
+		expect(intermediate.every((m) => m[1] !== "1")).toBe(true); // no row-1 clamp pile — every form at its true row
+		expect(new Set(intermediate.map((m) => m[1])).size).toBe(intermediate.length); // one form per row — the single-copy discipline
 
-		// ② the collapse held during the run: the done items stayed
-		// hidden behind the cut family — the live block's own paints
-		// (the region after the input row — the during-run paints the
-		// driver observes LAST, up to the exit's final repaint) show
-		// the overflow fold + the done-collapse affordances, and never
-		// the ▣ the collapse hides.
-		const chipPaint = turn.indexOf("\x1b[1;1H\x1b[0K\x1b[7m go \x1b[27m"); // the user message's chip — the during-run's first frame (the rail retired by the 2026-08-09 ruling)
+		// ② the collapse held during the run: the done items stayed hidden
+		// behind the cut family — the run's forms ride the settle's
+		// pre-paint (the chip through the LF scroll — the visible repaint
+		// after it is the FINAL state, whose settled ▣ list legitimately
+		// shows), and those forms carry the overflow fold + the
+		// done-collapse affordances, never the ▣ the collapse hides.
+		const chipPaint = turn.indexOf("\x1b[7m go \x1b[27m"); // the user message's chip — carried by the settle's pre-paint at its TRUE old row (A8b: the row-1 clamp is gone — the needle is the chip's content, not its old clamped row; the rail retired by the 2026-08-09 ruling)
 		expect(chipPaint).toBeGreaterThan(0);
-		const secondWrap = turn.indexOf("\x1b[?2026h", 1); // the exit's final full repaint
-		const during = turn.slice(chipPaint, secondWrap === -1 ? undefined : secondWrap);
+		const scroll = turn.indexOf("\n", chipPaint); // the settle's LF scroll — the pre-paint's end (the repaint follows, chrome first, no LF)
+		const during = turn.slice(chipPaint, scroll === -1 ? undefined : scroll);
 		expect(/└ \+[0-9]+ more · ctrl\+r/.test(during)).toBe(true); // the overflow fold
 		expect(/└ \+[0-9]+ done · ctrl\+r/.test(during)).toBe(true); // the done-collapse
-		expect(during).not.toContain("▣ item"); // the collapse — no done rows in the live paints
+		expect(during).not.toContain("▣ item"); // the collapse — no done rows in the run's forms
 
 		// ③ exactly ONE settled block at the turn's end — the recap
 		// idiom with the derived counts and the model tail riding the

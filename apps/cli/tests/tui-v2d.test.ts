@@ -82,8 +82,9 @@ const CELL_LINE = [
 	/^[▖▘▝▗] \S+ .*\d+s?$/, // the ToolCell running (W2: the spinner IS the gutter)
 	/^⏸ \S+ .*$/, // the approval badge (W2: the ⏸ is the left gutter)
 	/^◦ \S+ .*$/, // the ToolCell queued (W2: ◦ replaces → — · is the metadata separator)
-	/^✓ \S+ \(.*, \d+\.\ds\)$/, // the ToolCell done
-	/^✗ \S+ \(.*, \d+\.\ds\)$/, // the ToolCell failed
+	/^✓ \S+ .*\(\S.*, \d+\.\ds\)$/, // the ToolCell done (A4: the target rides the head row; A5: the · approved by <decider> tail)
+	/^✗ \S+ .*\(\S.*, \d+\.\ds\)$/, // the ToolCell failed
+	/^┌ answer truncated at max_tokens.*$/, // D4: the truncation notice row — the cut is named, never silent
 	/^▞.*$/, // v3: the recap line ends the run
 	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)
 	/^└(?: .*)?$/, // v7 W7/W8/W10 + W21: the cut/waiting rows (the "  └ " family — "waiting for output", "+N earlier rows · ctrl+r", "capped by …") + the approval panel's bare └ corner
@@ -105,7 +106,6 @@ const CELL_LINE = [
 	// ruling retired the ▍ rail + the indent). Classified by its RAW byte
 	// shape in the lint (the stripped form would be plain text).
 	/^╭[─]+╮$/, /^╰[─]+╯$/, // W6: the box rails (the corners close the ─ run)
-	/^ {0,2}(approved|denied.*)$/, // the permission_decided raw
 	/^─ .*$/, // W21: the approval panel's divider row (edge-to-edge, no gutter — the boxed ApprovalPrompt slot is gone, the panel superseded it)
 	/^.*· faux · \[turn \d+ · faux\]$/, // the live status bar (session-prefixed)
 	/^the tour is done$/, /^streaming text$/, // the TextCell bodies
@@ -220,15 +220,55 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		expect(clean).toContain("shell needs approval"); // the shell panel's rule line
 		expect(clean).toContain("asky_read needs approval"); // the asky panel's rule line
 		expect(clean).toMatch(/[▖▘▝▗] shell \{"command":"sleep 1; echo hi"\} \d+s/); // the running shell — the spinner IS the gutter
-		expect(clean).toMatch(/✓ list_dir \(\d+ lines, \d+\.\ds\)/); // the auto-approved list_dir settled
-		expect(clean).toMatch(/✓ shell \(exit 0, \d+\.\ds\)/); // the approved shell settled
-		expect(clean).toMatch(/✓ asky_read \(1 line, \d+\.\ds\)/); // W4: the result line count, not the input JSON
-		expect(clean).toContain("approved"); // the W21 decision tags ride the settled cells
+		// A4: the target rides the settled head row (list_dir's input is {}
+		// → the "(root)" fallback); A5: the decider is NAMED on the rows
+		// that auto-approve (the extension's ask lost to the tier's allow).
+		expect(clean).toMatch(/✓ list_dir \(root\) \(\d+ lines · approved by mode:default, \d+\.\ds\)/); // the auto-approved list_dir settled
+		expect(clean).toMatch(/✓ shell sleep 1; echo hi \(exit 0, \d+\.\ds\)/); // the approved shell settled
+		expect(clean).toMatch(/✓ asky_read  \(1 line, \d+\.\ds\)/); // W4: the result line count, not the input JSON
+		expect(clean).toContain("approved by mode:default"); // A5: the decider tail rides the settled rows
 		expect(clean).toContain("streaming text");
 		expect(clean).toContain("the tour is done");
 		// THE GATE: every line fully matches a known cell format. A
 		// concatenated line (a tool line bleeding into the text, two tool
 		// lines merged) FAILS the lint.
+		const bad = lint(out);
+		expect(bad).toEqual([]);
+	}, 90_000);
+
+	it("D4 — a max_tokens truncation is NAMED in the scrollback (the notice row, never silent)", () => {
+		const { env } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-v2d-"));
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{
+					events: [
+						// the partial answer, then the provider's own max_tokens
+						// stop — the kernel's terminal is { kind: "max_tokens" }
+						// (loop.ts: terminalForStop), the chat's terminal case
+						// names the truncation.
+						{ type: "text_delta", text: "streaming text" },
+						{ type: "stop", reason: "max_tokens" },
+					],
+				},
+			]),
+			"utf8",
+		);
+		const out = ptyRun(
+			{ ...env, KISO_FAUX_SCRIPT: script },
+			[
+				["▌ ", "go\n"],
+				// the notice lands at the run's end — exit at idle
+				["answer truncated", "exit\n"],
+			],
+		);
+		const clean = stripANSI(out);
+		// D4: the honest notice rides after the partial answer — the cut is
+		// named in the scrollback, the model's text intact above it.
+		expect(clean).toContain("streaming text");
+		expect(clean).toContain('┌ answer truncated at max_tokens — say "continue" to finish');
 		const bad = lint(out);
 		expect(bad).toEqual([]);
 	}, 90_000);

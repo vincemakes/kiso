@@ -33,6 +33,9 @@ export function composeToolTable(registry: ToolRegistry): string {
 		...TOOL_RULES.filter((r) => active.has(r.tool)).map((r) => `- ${r.line}`),
 		// the parallel directive: the window applies to every active turn.
 		"- batch independent tool calls into one reply — they run in parallel",
+		// D1: a tool result is evidence, not an answer — the turn ends with
+		// the findings that make the evidence useful to the human.
+		"- end your turn with your findings — never end on a bare tool result",
 		...tools.flatMap((t) => (t.promptSnippet === undefined ? [] : [`- ${t.promptSnippet}`])),
 	];
 	const guidelines = tools.flatMap((t) => (t.promptGuidelines ?? []).map((g) => `- ${t.name}: ${g}`));

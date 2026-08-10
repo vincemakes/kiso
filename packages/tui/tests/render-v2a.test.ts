@@ -25,6 +25,7 @@ import {
 	type ResumeMeta,
 } from "../src/render.js";
 import { displayWidth } from "../src/width.js";
+import { visibleWidth } from "../src/components.js";
 
 const ORIG_TTY = process.stdout.isTTY;
 const setTTY = (v: boolean): void => {
@@ -197,6 +198,14 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 		expect(renderRecap({ seconds: 47, tools: 3, edits: 1, usage: usage(), ctxLeftPct: 96 })).toBe(
 			"▞ 47s · 3 tools (1 edit) · in 8.2k out 410 · cache 97% · ctx left ~96%\n",
 		);
+	});
+
+	it("W19 — the plan branch drops the metadata BEFORE the fold: 79 cols, one row at W=80, never ctx left", () => {
+		const line = renderRecap({ seconds: 47, tools: 3, edits: 1, usage: usage(), ctxLeftPct: 96, mode: "plan" });
+		expect(line).toBe("▞ plan ready · /mode default executes · /mode accept-edits auto-approves edits\n");
+		// the done-when: the line's visible width ≤ 80 even with the ctx
+		// left present (the segment is dropped — the status row carries it).
+		expect(visibleWidth(line.trim())).toBeLessThanOrEqual(80);
 	});
 
 	it("singulars and omissions: 1 tool, no edits, unknown usage → the parts drop", () => {

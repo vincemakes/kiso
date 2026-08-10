@@ -96,7 +96,8 @@ export interface BodyOptions {
  *  rollups) or at its end (ended — a QUIET turn folds into the one line).
  *  The counts are the folded-turn line's terms, accumulated at toolStart
  *  (reads = read_file, edits = edit_file, others = the rest in
- *  first-call order). */
+ *  first-call order). A9: `words` is the user's own line — the chip that
+ *  leads the fold (ruling R2, mock A). */
 interface TurnRecord {
 	ended: boolean;
 	hasText: boolean;
@@ -104,6 +105,7 @@ interface TurnRecord {
 	reads: number;
 	edits: number;
 	others: Map<string, number>;
+	words: string;
 	/** the fold was emitted at the first held cell's commit — the rest of
 	 *  the turn's thinking/tool cells render [] (never a second fold). */
 	folded: boolean;
@@ -130,6 +132,7 @@ export class Body {
 	#fullRedraw = false; // the first frame / resize — the CUP path
 	#lastLiveTop = 0; // the recorded live region top — the resize clear starts here
 	#lastLiveRows = 0; // the recorded live row count (incl. the chrome)
+	#lastSkip = 0; // the last frame's window top in model rows — the A8b scroll's leaving-count base
 	#lastH = 0;
 	#frameTimer: NodeJS.Timeout | null = null;
 	#spinnerTimer: NodeJS.Timeout | null = null;
@@ -214,8 +217,9 @@ export class Body {
 		this.#closeOpenThinking();
 		this.#closeOpenText();
 		// W14: the turn boundary — the record the fold-hold's release
-		// state machine reads; the cell carries the record's index.
-		this.#turns.push({ ended: false, hasText: false, thoughtSeconds: 0, reads: 0, edits: 0, others: new Map(), folded: false });
+		// state machine reads; the cell carries the record's index. A9:
+		// the user's own words ride the record — the fold's leading chip.
+		this.#turns.push({ ended: false, hasText: false, thoughtSeconds: 0, reads: 0, edits: 0, others: new Map(), words: text, folded: false });
 		this.#cells.push({ kind: "user", text, done: true, turn: this.#turns.length - 1 });
 		this.#mark();
 	}
@@ -264,7 +268,7 @@ export class Body {
 			}
 		}
 		this.#toolCells.set(callId, this.#cells.length);
-		this.#cells.push({ kind: "tool", name, input: summary, inputFull: JSON.stringify(input, null, 2), childRoles, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false, expanded: false, turn: this.#turns.length - 1, rolled: null, reason: null });
+		this.#cells.push({ kind: "tool", name, input: summary, inputFull: JSON.stringify(input, null, 2), childRoles, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false, expanded: false, turn: this.#turns.length - 1, rolled: null, reason: null, verdict: null });
 		// W14: the turn record's counts — the folded-turn line's terms
 		// (reads = read_file, edits = edit_file, the rest in first-call
 		// order). The CLI's recap counts the same way (edit_file).
@@ -287,6 +291,24 @@ export class Body {
 			cell.removed = diff?.removed ?? 0;
 		}
 		this.#mark();
+	}
+
+	/** A5: the approval verdict — the permission_decided event binds into
+	 *  the cell (the aggregated head row: name + status + decidedBy in
+	 *  ONE row; no free-standing `  approved` orphan). The decision lands
+	 *  after the panel closes (the streamed event) — the cell is usually
+	 *  running by then; the record rides the settled row (`· approved by
+	 *  X` on an extension's auto-approval, `· by X` on its denial). A
+	 *  verdict with no live cell is dropped — the registry holds only
+	 *  in-flight calls, and the committed cells already told their
+	 *  outcome. */
+	toolVerdict(callId: string, decision: "approved" | "denied", decidedBy?: string, reason?: string): void {
+		if (!this.#isActive()) return;
+		const cell = this.#toolCell(callId);
+		if (cell !== null && cell.kind === "tool") {
+			cell.verdict = { decision, ...(decidedBy !== undefined ? { decidedBy } : {}), ...(reason !== undefined ? { reason } : {}) };
+			this.#mark();
+		}
 	}
 
 	toolRunning(callId: string): void {
@@ -800,7 +822,7 @@ export class Body {
 	 *  screen rows), threaded against the previous sibling's OWN rows. */
 	liveCount(): number {
 		const panel = this.#panelState?.() ?? null;
-		const queueRows = this.#queueRows(this.#opts.width());
+		const queueRows = this.#queueRows(this.#opts.width(), this.#opts.height());
 		if (panel !== null) {
 			// W21: the panel's own rows (the cap is exact — the scalar
 			// reflects the screen). W22: the queue chips occupy their
@@ -874,7 +896,7 @@ export class Body {
 		// W22: the queue chips are the menu-rows family's other occupant
 		// (the band above the box top) — the chrome rows and the live
 		// caps account for both.
-		const queueRows = this.#queueRows(W);
+		const queueRows = this.#queueRows(W, H);
 		const chromeRows = CHROME_ROWS + menuRows.length + queueRows.length;
 		let liveLines: string[] = [];
 		const panel = this.#panelState?.() ?? null;
@@ -917,7 +939,20 @@ export class Body {
 		// 5. the frame bytes.
 		const out: string[] = [];
 		out.push("\x1b[?2026h"); // synchronized output ON (DEC 2026)
-		if (this.#fullRedraw) {
+		// A8: the bottom-anchored window (the model's last H rows) shifts
+		// DOWN when the live region SHRINKS — the done-fold, the fold-hold
+		// release at the terminal event. The steady path's scroll syncs
+		// exactly N committed lines, but the window moves N + liveDelta:
+		// a shrink with commits (liveTop grows by LESS than N — the scroll
+		// overshoots by liveDelta) slips past the pure-shrink trigger, the
+		// stale pass erases the old live rows, and nothing re-paints the
+		// band between the committed window and the new liveTop (finding
+		// #A8 — the W11-boundary pileup). A GROWTH is safe on the steady
+		// path (the new live's bottom-anchored extent covers the old — the
+		// erased rows are all re-painted); a shrink takes the full-redraw
+		// path: the window re-paints at the model's positions, every row
+		// covered (the V6-1 every-row rule).
+		if (this.#fullRedraw || liveTop > this.#lastLiveTop + this.#committedLinesThisFrame.length || liveRowsTotal < this.#lastLiveRows) {
 			this.#drawFull(out, W, H, liveTop, liveLines, queueRows, menuRows, ctx);
 			this.#fullRedraw = false;
 		} else {
@@ -979,12 +1014,19 @@ export class Body {
 			if (turn !== undefined && turn.ended && !turn.hasText) {
 				if (!turn.folded) {
 					turn.folded = true;
-					return turnFold({
-						thoughtSeconds: turn.thoughtSeconds,
-						reads: turn.reads,
-						edits: turn.edits,
-						others: [...turn.others],
-					});
+					// A9 (ruling R2, mock A): the user chip rides the fold —
+					// the words take the fold's width budget (turnFold is
+					// W-aware — the ONE row never trips invariant ①).
+					return turnFold(
+						{
+							words: turn.words,
+							thoughtSeconds: turn.thoughtSeconds,
+							reads: turn.reads,
+							edits: turn.edits,
+							others: [...turn.others],
+						},
+						W,
+					);
 				}
 				return [];
 			}
@@ -1068,10 +1110,23 @@ export class Body {
 	/** W22: the pending-queue chips — the menu-rows family's other
 	 *  occupant (the queue is dense, like the menu; each line is its
 	 *  own chip with the □ gutter). */
-	#queueRows(W: number): string[] {
+	#queueRows(W: number, H: number): string[] {
 		const lines = this.#queueState?.() ?? [];
 		if (lines.length === 0) return [];
-		return pendingQueueRows(lines, W);
+		// A8b: the band CAPS so the content keeps its rows — an unbounded
+		// band (the batch flood pastes the whole queue at once) overflowed
+		// the screen: the content cap H−4−queue went negative, the march
+		// painted nothing, and the leaving rows were never on the screen to
+		// scroll — the scrollback lost the turns entirely (finding #A8b —
+		// the queued-flood content loss). The band keeps the first H−9
+		// chips + one "…N more" row (≤ H−8 rows — the content keeps ≥ 4);
+		// the status hint's "+N queued" already carries the count, so the
+		// cap hides nothing the status doesn't show.
+		const keep = Math.max(1, H - 9);
+		if (lines.length <= keep) return pendingQueueRows(lines, W);
+		const p = palette();
+		const hidden = lines.length - keep;
+		return [...pendingQueueRows(lines.slice(0, keep), W), `${p.dim}□ …${hidden} more queued${p.reset}`];
 	}
 
 	#menuRows(W: number): string[] {
@@ -1196,11 +1251,53 @@ export class Body {
 		for (let i = 0; i < this.#committedAtFrameStart; i += 1) {
 			frozen.push(...bodySpacing(i > 0 ? this.#lineCache[i - 1]! : null, this.#lineCache[i]!));
 		}
+		// A8: the march is the WINDOW — the model's last H rows. When the
+		// model total (committed + live + chrome) exceeds H, the window's
+		// first row is the model's (total − H + 1)-th line: the lines
+		// above the window belong in the scrollback, and painting them at
+		// rows 1.. would shift every row below by the same (total − H) —
+		// the live region lands past its model position and the box eats
+		// its tail. The bound skips them: the march covers exactly the
+		// window (the committed share + the live + the chrome), r
+		// monotone, every row 1..H re-painted (the V6-1 every-row rule).
+		const all = [...frozen, ...committed, ...liveLines];
+		const skip = Math.max(0, all.length + CHROME_ROWS + queueRows.length + menuRows.length - H);
+		// A8b (the shrink-trigger's completion): the rows that LEAVE the
+		// window scroll into the terminal's scrollback — the LF mechanism
+		// (the steady path's own). Only the rows the paint re-covers (the
+		// overlap with the new window) are EL'd first — the A7 single-copy
+		// discipline; the purely-leaving rows scroll WITH their content
+		// (they are never re-painted — the scrollback is their record).
+		// Without the scroll the shrink frames overwrite the leaving rows
+		// in place — a batch-fed session (the queue drains every turn — a
+		// shrink EVERY frame) loses the scrolled-away turns from the
+		// terminal's scrollback entirely (finding #A8b — the queued-flood
+		// content loss).
+		if (skip > 0) {
+			const leaving = Math.max(0, skip - this.#lastSkip);
+			// A8b (the fresh leaving share): a leaving row whose old-screen
+			// copy is stale — the committed-this-frame lines (their old rows
+			// held the previous live/chrome) — is pre-painted at its OLD row
+			// so the LF scroll carries it into the scrollback; the frozen
+			// leaving rows are already on screen and scroll as-is. The first
+			// overflow frame of a batch: the window's top row is the freshly
+			// committed line, NEVER on the old screen — without the
+			// pre-paint the scroll pushes a blank and the line's only paint
+			// (the clamped march at row 1) is overwritten by its neighbor.
+			if (skip > frozen.length) {
+				const fromIdx = Math.max(0, this.#lastSkip - frozen.length);
+				const top = Math.min(skip - frozen.length, all.length - frozen.length);
+				for (let i = fromIdx; i < top; i += 1) {
+					out.push(`\x1b[${Math.max(1, frozen.length + i - this.#lastSkip + 1)};1H\x1b[0K${this.#checked(all[frozen.length + i]!, W)}`);
+				}
+			}
+			if (leaving < skip) out.push(`\x1b[${leaving + 1};1H\x1b[0J`);
+			out.push(`\x1b[${H};1H`);
+			for (let i = 0; i < skip; i += 1) out.push("\n");
+		}
+		this.#lastSkip = skip;
 		let r = 1;
-		// one march — the frozen, the committed (this frame's), the live —
-		// in write order, r monotone (three byte-identical loops merged for
-		// the gate; the exact write sequence preserved)
-		for (const line of [...frozen, ...committed, ...liveLines]) {
+		for (const line of all.slice(skip)) {
 			out.push(`\x1b[${r};1H\x1b[0K${this.#checked(line, W)}`);
 			r += 1;
 		}
@@ -1242,14 +1339,63 @@ export class Body {
 	#drawSteady(out: string[], W: number, H: number, liveTop: number, liveLines: string[], queueRows: string[], menuRows: string[], ctx: FrameCtx): void {
 		const editor = this.#inputRow(W, ctx); // derived from the frame — the marker
 		const committed = this.#committedLinesThisFrame;
-		// the jump from the anchor (H−2) straight to the bottom row H,
-		// then N real LFs scroll the screen exactly N rows — ONE per
-		// committed line (the bookkeeping; the stale 1B anchor jumped to
-		// H−1 and the N LFs scrolled only N−1 — the committed section sat
-		// one row short in the scrollback). The bottom-up repaint below
-		// overwrites the scrolled-in rows (the scroll count is screen-
-		// neutral — proven by the emulator probe).
-		out.push("\x1b[2B");
+		// A8b: the steady path's window geometry — the same skip as the full
+		// path's (#lastSkip's formula): the model rows above the window
+		// belong in the scrollback. frozenCount = the committed lines BEFORE
+		// this frame — the lines this frame commits start at model row
+		// frozenCount, so the lines at [frozenCount..skip−1] are the fresh
+		// leaving share (their old-screen copies are stale).
+		const frozenCount = this.#committedLines - committed.length;
+		const skip = Math.max(0, this.#committedLines + liveLines.length + CHROME_ROWS + queueRows.length + menuRows.length - H);
+		const leaving = Math.max(0, skip - this.#lastSkip);
+		// the jump to the bottom row H, then N real LFs scroll the screen
+		// exactly N rows — ONE per committed line (the bookkeeping; the
+		// stale 1B anchor jumped to H−1 and the N LFs scrolled only N−1 —
+		// the committed section sat one row short in the scrollback). The
+		// bottom-up repaint below overwrites the scrolled-in rows (the
+		// scroll count is screen-neutral — proven by the emulator probe).
+		// A7: the scrolled rows carry the PRE-FRAME live copies (the
+		// streamed rendering of the just-committed cells) into the
+		// scrollback — a real terminal keeps them forever, and the
+		// repaint's fresh copy below makes the two copies the reviewer
+		// saw. The old live band is EL'd BEFORE the scroll: the rows that
+		// scroll away are blank, the repaint is the only copy (the old
+		// band's rows are all re-drawn this frame — live CUP, gap ELs,
+		// chrome march — so the erase is invisible).
+		if (committed.length > 0) {
+			// A8b (the steady path's own leaving scroll): the fresh leaving
+			// lines — the committed-this-frame/live lines at model rows
+			// [frozenCount..skip−1], whose old-screen copies are stale (the
+			// previous live/chrome) — are pre-painted at their OLD rows so
+			// the LF scroll carries them into the scrollback. The queued
+			// flood's first frame: the window's top row is the user chip,
+			// never on the old screen — without the pre-paint the scroll
+			// pushes a blank and the chip's ONLY paint (the clamped band at
+			// row 1) is overwritten by its neighbor in the same frame
+			// (finding #A8b — the user chips 1..8 lost from the terminal
+			// state).
+			if (leaving > 0 && skip > frozenCount) {
+				const seq = [...committed, ...liveLines];
+				const top = Math.min(skip - frozenCount, seq.length);
+				for (let i = Math.max(0, this.#lastSkip - frozenCount); i < top; i += 1) {
+					out.push(`\x1b[${Math.max(1, frozenCount + i - this.#lastSkip + 1)};1H\x1b[0K${this.#checked(seq[i]!, W)}`);
+				}
+			}
+			const oldBottom = Math.min(H, this.#lastLiveTop + this.#lastLiveRows);
+			// A8b: the EL covers the OVERLAP only — the old live band's rows
+			// the repaint re-draws (the A7 single-copy discipline). The
+			// leaving rows below the overlap scroll WITH their content —
+			// they are never re-painted, the scrollback is their record (the
+			// old code erased them and the scrolled-away rows came up blank —
+			// the A8b content loss).
+			const overlapFrom = Math.max(1, this.#lastLiveTop, leaving + 1);
+			for (let r = overlapFrom; r <= oldBottom; r += 1) {
+				out.push(`\x1b[${r};1H\x1b[0K`);
+			}
+			out.push(`\x1b[${H};1H`); // CUP to the bottom — the absolute scroll base (the ELs moved the cursor)
+		} else {
+			out.push("\x1b[2B"); // the anchor (H−2) to the bottom — no scroll
+		}
 		for (let i = 0; i < committed.length; i += 1) out.push("\n");
 		// the bottom-up repaint, from the last row up — V6-3 + W6: the
 		// design §03 chrome: status (H), box bottom (H−1), input (H−2),
@@ -1301,7 +1447,14 @@ export class Body {
 		//    CLAMP at 1: a super-tall force-commit's early lines have no
 		//    on-screen row (they would need a negative CUP — terminal
 		//    undefined behavior); their content stays in the scrollback.
-		for (let i = 0; i < committed.length; i += 1) {
+		//    A8b: the first (skip − frozenCount) lines are ABOVE the new
+		//    window — they were pre-painted and scrolled; re-painting them
+		//    would re-clamp them into row 1 and the band's second line
+		//    overwrites the first in the same frame (the row-1 clamp pile —
+		//    the queued flood lost the user chips 1..8 that way). The
+		//    window's share starts at the line whose model row is the
+		//    window's top (skip).
+		for (let i = Math.max(0, skip - frozenCount); i < committed.length; i += 1) {
 			out.push(`\x1b[${Math.max(1, liveTop - committed.length + i)};1H\x1b[0K${this.#checked(committed[i]!, W)}`);
 		}
 		// the cursor: down to the anchor (H−2, the input row) + left to the marker —
@@ -1329,6 +1482,11 @@ export class Body {
 		// finding; the A5/A8 live lines end mid-row, the ELs at col 1 —
 		// the CHA ignores the base by construction)
 		out.push(`\x1b[${editor.markerCol}G`);
+		// A8b: the steady path moves the window too (the scroll + the
+		// repaint) — record its top so the next full-redraw's leaving count
+		// is the rows the window dropped since the last frame, whatever the
+		// path of the frames between (same formula as `skip` above).
+		this.#lastSkip = skip;
 	}
 
 	/** Invariant ①: every emitted line fits the width — a violation is a

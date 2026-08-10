@@ -407,6 +407,14 @@ export async function consumeRun(
 				}
 				break;
 			}
+			case "permission_decided": {
+				// A5: the verdict binds INTO the tool cell — the aggregated
+				// head row (name + status + decidedBy in ONE row), never a
+				// free-standing `  approved` orphan. The render.ts case stays
+				// for the PIPE path (the transcript is the raw event stream).
+				body.toolVerdict(ev.callId ?? "", ev.decision, ev.decidedBy, ev.reason);
+				break;
+			}
 			case "terminal": {
 				// v3 §02: the run's recap line REPLACES the old "done" label
 				// + status line — one local line, derived from this run's
@@ -417,6 +425,13 @@ export async function consumeRun(
 				// the commit loop folds the quiet turn's held cells first (the
 				// fold line lands above the recap, natural cell order).
 				body.endTurn(Math.round(thoughtSeconds));
+				// D4: the max_tokens truncation is named, never silent — the
+				// honest notice rides after the partial answer, before the
+				// recap (the truncation-guard philosophy: the cut is visible
+				// in the scrollback, the model's own text intact).
+				if (ev.outcome.kind === "max_tokens") {
+					body.notice('┌ answer truncated at max_tokens — say "continue" to finish');
+				}
 				bodyLog(
 					renderRecap({
 						seconds: Math.round((Date.now() - turnStart) / 1000),

@@ -92,11 +92,14 @@ describe("TUI v6 — the one compositor", () => {
 		tick();
 		const bytes = writes.join("");
 		// the frame's CUPs land exclusively in the FROZEN area (the
-		// committed section + the gap/stale ELs — the freeze path); the
-		// live region (the chrome rows) is drawn with relative moves only
+		// committed section + the gap/stale ELs — the freeze path), plus
+		// the commit scroll's CUP to the bottom row H — the A7 absolute
+		// scroll base (the pre-scroll ELs moved the cursor, so the relative
+		// 2B anchor is retired on the commit path); the live region (the
+		// chrome rows) is drawn with relative moves only
 		const cups = [...bytes.matchAll(/\x1b\[(\d+);\d+H/g)].map((m) => Number(m[1]));
 		expect(cups.length).toBeGreaterThan(0);
-		expect(cups.every((r) => r <= 21)).toBe(true);
+		expect(cups.every((r) => r <= 21 || r === 24)).toBe(true);
 		expect(bytes).toContain("line one");
 	});
 
@@ -142,17 +145,23 @@ describe("TUI v6 — the one compositor", () => {
 		expect(() => tick()).not.toThrow(); // the fold now width-cuts; the raw 100-char line THREW at W=20
 	});
 
-	it("the commit frame scrolls from the anchor: 2B then exactly N real LFs — the scroll count matches the committed lines (the stale H−1 anchor)", () => {
+	it("the commit frame scrolls from the CUP base: the A7 pre-scroll ELs then CUP-to-H then exactly N real LFs — the scroll count matches the committed lines (the stale H−1 anchor)", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		writes.length = 0;
 		body.raw(["a", "b"]); // N = 2 committed lines
 		tick();
 		const frame = writes.join("");
-		// the 1B + N LFs = N−1 scrolls (one short of the bookkeeping N);
-		// the 2B + N LFs scroll exactly N rows — one per committed line
-		expect(frame.startsWith("\x1b[?2026h\x1b[2B")).toBe(true);
-		const lfs = frame.match(/^\x1b\[\?2026h\x1b\[2B(\n+)/);
+		// the stale anchor bug: 1B/2B from the frame start jumped to H−1 and
+		// the N LFs scrolled only N−1 — the committed section sat one row
+		// short in the scrollback. The A7 base is the CUP to the bottom row
+		// H (the pre-scroll ELs of the old live band moved the cursor) — the
+		// N LFs at the last row scroll exactly N rows, one per committed
+		// line. The A7 erase comes first: the rows that scroll away are
+		// blank, so the repaint below is the ONLY copy in the scrollback.
+		expect(frame.startsWith("\x1b[?2026h\x1b[1;1H\x1b[0K")).toBe(true);
+		expect(frame).toContain("\x1b[24;1H"); // the absolute scroll base
+		const lfs = frame.match(/\x1b\[24;1H(\n+)/);
 		expect(lfs).not.toBeNull();
 		expect(lfs![1]!.length).toBe(2);
 	});
@@ -305,7 +314,7 @@ describe("TUI v6 — the one compositor", () => {
 		expect(writes.join("")).toContain("frozen");
 	});
 
-	it("the resize with a force commit: the frozen bound counts the cells committed BEFORE the frame — the committed banner re-paints on the winch (the V6-1 frozen-loop bug)", () => {
+	it("the resize with a force commit: the frozen bound counts the cells committed BEFORE the frame — the committed content re-paints on the winch (the V6-1 frozen-loop bug), and the A8 march bound WINDOWS the model", () => {
 		const { body, writes, tick, setSize } = makeBody({ W: 80, H: 24 });
 		body.enter();
 		body.raw(["frozen banner"]); // the committed content — one line
@@ -320,13 +329,32 @@ describe("TUI v6 — the one compositor", () => {
 		const bytes = writes.join("");
 		// the buggy bound — `#committed − committed.length` (cells minus
 		// LINES): the force commit's 15 lines made it negative, the frozen
-		// loop skipped the committed "frozen banner" — it vanished from the
-		// repaint, and a second resize would re-paint it (not idempotent)
-		expect(bytes).toContain("frozen banner"); // the committed cell re-painted
-		expect(bytes).toContain("tall line 00"); // the force-committed cell drawn
-		// idempotent: a second resize re-paints the SAME committed content
+		// loop skipped every previously-committed cell — the banner vanished
+		// from the repaint, and a second resize would re-paint it (not
+		// idempotent). The A8 march bound then WINDOWS the model: 17
+		// committed + 4 chrome = 21 lines at 18 rows → the window shows the
+		// last 18 (tall 01..14 + the chrome); the banner and tall 00 sit
+		// ABOVE the window. A8b: the fresh leaving share (tall 00 — its old
+		// row held the live cell) is pre-painted at its OLD row so the LF
+		// scroll carries it into the scrollback; the banner (the frozen
+		// share — already on the old screen) scrolls as the old screen's
+		// copy, never a re-paint. The march never re-paints them — the
+		// window's first line is tall 01.
+		expect(bytes).not.toContain("frozen banner"); // above the window — pushed as the old screen's copy, never a re-paint
+		expect(bytes).toContain("\x1b[3;1H\x1b[0Ktall line 00"); // A8b: the pre-paint at its OLD row — the scrollback record
+		expect(bytes).not.toContain("\x1b[1;1H\x1b[0Ktall line 00"); // never re-painted at the window's top
+		expect(bytes).toContain("\x1b[1;1H\x1b[0Ktall line 01"); // the window's first line
+		expect(bytes).toContain("tall line 14"); // the last force-committed line
+		expect(bytes).toContain("\x1b[15;1H"); // the box top at row H−3 — the chrome holds the bottom
+		expect(bytes).toContain("\x1b[18;1H"); // the status at row H
+		// idempotent: a second resize (CLAMPED — the window is the whole
+		// model, skip 0) re-paints the SAME committed content, banner
+		// included — the windowing rule is exactly skip = total − H. The
+		// model total counts the W11 spacing blank between the two cells:
+		// banner + blank + 15 tall lines + 4 chrome = 21 → the clamped
+		// bound is H = 21 (at 20 the banner is a line above the window).
 		writes.length = 0;
-		setSize(40, 20);
+		setSize(40, 21);
 		body.onResize();
 		expect(writes.join("")).toContain("frozen banner");
 	});
@@ -860,6 +888,120 @@ describe("TUI v6 — the one compositor", () => {
 		mix.body.endTurn(7);
 		mix.tick();
 		expect(mix.writes.join("")).toContain("thought 7s · no reads · 1 edit · 1 shell");
+	});
+
+	it("A9 (ruling R2, mock A): the user chip rides the fold — the words LEAD the one line in the SGR-7 bracket, the metadata survives; at a narrow width the words width-cut with the honest … while the metadata keeps every term; the ONE row never exceeds W (invariant ①)", () => {
+		// the preview's mock-A frame at W=80: `▞ <chip> · thought 19s ·
+		// 5 reads · no edits` — the chip the same SGR-7 bracket as the
+		// live user row (#16f), the words taking the fold's width budget.
+		const { body, writes, tick } = makeBody({ W: 80 });
+		body.enter();
+		body.userLine("any idea what the flaky gate is?");
+		for (let i = 0; i < 5; i += 1) {
+			body.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
+			body.toolRunning(`r${i}`);
+			body.toolResult(`r${i}`, { content: "x", isError: false });
+		}
+		body.endTurn(19);
+		tick();
+		const frame = writes.join("");
+		// the chip rides the fold — the ▞ gutter, then the SGR-7 bracket
+		// with the human's words, then the join and the full metadata
+		expect(frame).toContain("▞\x1b[0m \x1b[7m any idea what the flaky gate is? \x1b[27m · thought 19s · 5 reads · no edits");
+		// the fold row fits W=80 whole (no cut at the wide width)
+		expect(frame).not.toContain("flaky gate is? …");
+		// the words take the width budget at W=40: the metadata keeps
+		// EVERY term, the words cut with the "…" — and the row stays ≤ W
+		// (the #checked invariant ① — a folded cut, never a crash)
+		const narrow = makeBody({ W: 40 });
+		narrow.body.enter();
+		narrow.body.userLine("any idea what the flaky gate is? ".repeat(4).trim());
+		for (let i = 0; i < 5; i += 1) {
+			narrow.body.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
+			narrow.body.toolRunning(`r${i}`);
+			narrow.body.toolResult(`r${i}`, { content: "x", isError: false });
+		}
+		narrow.body.endTurn(19);
+		narrow.tick();
+		const nframe = narrow.writes.join("");
+		expect(nframe).toContain("…"); // the honest cut mark rides the chip
+		expect(nframe).toContain(" · thought 19s · 5 reads · no edits"); // the metadata survives whole
+		expect(nframe).toMatch(/\x1b\[7m [^\x1b]*… \x1b\[27m/); // the … sits INSIDE the chip's bracket
+		// the whole fold row (gutter + chip + metadata) is ≤ 40 cells —
+		// every emitted line: invariant ①. The frame's rows are CUP-separated
+		// (no LF), so the fold row is the segment that carries the metadata;
+		// visibleWidth strips the CSI sequences itself.
+		const foldLine = nframe.split(/\x1b\[[0-9;?]*[ABDGKJ]/).find((l) => l.includes("thought 19s"));
+		expect(foldLine).toBeDefined();
+		expect(visibleWidth(foldLine!)).toBeLessThanOrEqual(40);
+	});
+
+	it("A4+A5: the settled head row carries the TARGET and the VERDICT — `✓ edit  examples/foo.ts (… · approved by X)`; the denied call's pinned row names the decider; the human approval stays bare", () => {
+		// A4: the settled-success row keeps toolTarget — the work order's
+		// shape `✓ edit examples/foo.ts`, the target in the verb's summary
+		// column (W3's 5-char pad: "edit  examples/foo.ts"). A5: the
+		// verdict rides the head row — an extension's auto-approval appends
+		// `· approved by <decidedBy>` (the "why wasn't I asked" answer),
+		// its denial appends `· by <decidedBy>` on the W19 pinned row; the
+		// human decision (no decidedBy) leaves both rows unchanged.
+		const { body, writes, tick } = makeBody({ W: 80 });
+		body.enter();
+		body.userLine("approve and edit");
+		body.toolStart("edit_file", "c1", { path: "examples/foo.ts", search: "a", replace: "b" });
+		body.toolApproval("c1", { lines: [], added: 1, removed: 1 });
+		// the decision lands while the run streams (the panel closed): the
+		// event precedes the execution, the record rides the settled row
+		body.toolVerdict("c1", "approved", "dont-ask-again");
+		body.toolRunning("c1");
+		body.toolResult("c1", { content: "ok", isError: false });
+		tick();
+		let frame = writes.join("");
+		// the W4 idiom: the timing closes the parens — the decider rides
+		// the metadata group (the checkmark is bold — assert SGR-stripped)
+		const plain = frame.replace(/\x1b\[[0-9;]*m/g, "");
+		expect(plain).toContain("✓ edit  examples/foo.ts (+1 -1 · approved by dont-ask-again, 0.0s)");
+		// the DENIED call: the W19 pinned row (the full name + target) with
+		// the decider's tail — the aggregated head row, one line
+		body.userLine("deny a call");
+		body.toolStart("edit_file", "c2", { path: "bar.ts", search: "a", replace: "b" });
+		body.toolVerdict("c2", "denied", "dont-ask-again", "no touch");
+		body.toolResult("c2", { content: "[Permission denied] no touch", isError: true, reason: "no touch" });
+		tick();
+		frame = writes.join("");
+		expect(frame.replace(/\x1b\[[0-9;]*m/g, "")).toContain("✗ edit_file bar.ts (no touch · by dont-ask-again)");
+		// the HUMAN approval (no decidedBy): the settled row unchanged —
+		// no decider tail, the ⏸ → spinner → ✓ sequence told the story
+		body.userLine("human approval");
+		body.toolStart("read_file", "c3", { path: "x.ts" });
+		body.toolApproval("c3", null);
+		body.toolVerdict("c3", "approved");
+		body.toolRunning("c3");
+		body.toolResult("c3", { content: "1 line", isError: false });
+		tick();
+		frame = writes.join("");
+		const plain3 = frame.replace(/\x1b\[[0-9;]*m/g, "");
+		expect(plain3).toContain("✓ read  x.ts (1 line, 0.0s)");
+		// the c1 row legitimately still shows `· approved by` in the frame —
+		// the c3 HEAD ROW is the scope: no decider tail on the human cell
+		expect(plain3).not.toContain("read  x.ts (1 line, 0.0s · approved by");
+	});
+
+	it("A6 — a wide tool header cuts with the ellipsis — ONE row, never the fold-repeat", () => {
+		const { body, writes, tick } = makeBody({ W: 80 });
+		body.enter();
+		body.userLine("wide tool");
+		body.toolStart("edit_file", "c1", { path: "a".repeat(200), search: "a", replace: "b" });
+		body.toolResult("c1", { content: "ok", isError: false });
+		tick();
+		const frame = writes.join("");
+		const plain = frame.replace(/\x1b\[[0-9;]*m/g, "");
+		// ONE settled header row — the 200-col target cuts with the
+		// ellipsis; the pre-A6 foldLine WRAPPED the header and repeated the
+		// gutter (the wrapped rows carry no ellipsis — the regex matches
+		// exactly the cut row). The invariant ① already enforced the
+		// width cap — a violated cut row would have THROWN at tick().
+		const rows = plain.match(/✓ edit  a{20,}…/g) ?? [];
+		expect(rows.length).toBe(1);
 	});
 });
 

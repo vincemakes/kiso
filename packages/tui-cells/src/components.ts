@@ -218,6 +218,15 @@ export type BodyCell =
 			 *  the target, the reason in the W4 parentheses idiom, NO timing
 			 *  metadata (the call never ran). */
 			reason: string | null;
+			/** A5: the approval verdict — the permission_decided event bound
+			 *  into the cell (no free-standing `  approved` orphan row). The
+			 *  settled head row aggregates name + status + decidedBy in ONE
+			 *  row: a denied call's pinned row gains `· by <decidedBy>`; an
+			 *  extension-approved call's settled row gains `· approved by
+			 *  <decidedBy>` (the human approval needs no marker — the ⏸ →
+			 *  spinner → ✓ sequence told the story). Null until a decision
+			 *  lands (the auto-allowed calls never have one). */
+			verdict: { decision: "approved" | "denied"; decidedBy?: string; reason?: string } | null;
 	  }
 	| { kind: "text"; text: string; done: boolean }
 	| { kind: "notice"; text: string; done: true }
@@ -360,6 +369,20 @@ export function gutterFold(gutter: string, line: string, W: number): string[] {
 	return foldLine(line, textW).map((r) => `${gutter}${r}`);
 }
 
+/** A6: the tool-header variant — ONE cut row, never a fold. A wide
+ *  header (a long target path, a wordy denial reason) used to wrap
+ *  through foldLine — every wrapped row repeated the gutter, the
+ *  settled row grew past its previewed height. The header names the
+ *  call — the ellipsis marks the cut, the body below still carries the
+ *  full content. The budget: the gutter's own visible width + the
+ *  ellipsis ride the row (the invariant ① cap holds). */
+export function gutterCut(gutter: string, line: string, W: number): string[] {
+	const gutterW = visibleWidth(gutter);
+	const textW = Math.max(1, W - gutterW - 1);
+	const cut = widthCut(line, textW);
+	return [`${gutter}${cut}${visibleWidth(line) > textW ? "…" : ""}`];
+}
+
 /** Lines without the phantom empty line after a trailing newline. */
 function countLines(text: string): number {
 	if (text === "") return 0;
@@ -423,6 +446,22 @@ function settledMeta(c: { name: string; input: string; resultText: string; added
 	return `${n} line${n === 1 ? "" : "s"}`;
 }
 
+/** The parsed tool target — the head-row form shared by the W19 pinned
+ *  row (full call name + target) and the A4 settled row (verb + target):
+ *  read/write/edit → the path, shell → the command, list_dir → path ??
+ *  "(root)". Parsed from the FULL input — the folded summary is a
+ *  truncated slice. */
+function toolTargetOf(c: Extract<BodyCell, { kind: "tool" }>): string {
+	let input: Record<string, unknown> = {};
+	try {
+		input = JSON.parse(c.inputFull) as Record<string, unknown>;
+	} catch {
+		// the full JSON is always parseable (stringified at toolStart)
+		// — the empty fallback never fires
+	}
+	return toolTarget(c.name, input);
+}
+
 /** The tool execution line + the bounded block — every state is its
  *  own render; the lines fold (the summary gives way first). W7 (the
  *  flow contract): the block's BODY (the rows below the header) is
@@ -437,7 +476,12 @@ function settledMeta(c: { name: string; input: string; resultText: string; added
  *  The block's cut note keeps the RAW name (it names the tool the
  *  model should call again). W4: the settled row's parentheses hold
  *  the human metadata (settledMeta) — the input summary lived in the
- *  running row; the OUTCOME is what the settled row says. */
+ *  running row; the OUTCOME is what the settled row says. A4: the
+ *  settled row keeps the TARGET — verb + target + outcome, the running
+ *  row's summary column (the W19 pinned row keeps the full call name
+ *  instead). A5: the verdict rides the head row — a decidedBy present
+ *  on the cell appends `· approved by X` (extension auto-approvals) or
+ *  `· by X` on the pinned deny; the human decision needs no marker. */
 class ToolExecution implements Component {
 	constructor(private readonly cell: Extract<BodyCell, { kind: "tool" }>) {}
 	render(W: number, ctx: FrameCtx): string[] {
@@ -455,7 +499,7 @@ class ToolExecution implements Component {
 			// W15 expand history — the head's commit captures it).
 			const r = c.rolled;
 			const noun = ROLLUP_NOUN[c.name] ?? "calls";
-			const out = gutterFold(`${p.bold}✓${p.reset} `, `${verbCol} ${r.count} ${noun} (${kUnit(r.lines)} lines, ${r.elapsed}s)`, W);
+			const out = gutterCut(`${p.bold}✓${p.reset} `, `${verbCol} ${r.count} ${noun} (${kUnit(r.lines)} lines, ${r.elapsed}s)`, W);
 			const shown = r.targets.slice(0, 3);
 			if (shown.length > 0) out.push(`  ${p.dim}${CUT_ROW}${escapeTerminal(shown.join(" · "))}${p.reset}`);
 			if (r.targets.length > 3) out.push(`  ${p.dim}${CUT_ROW}+${r.targets.length - 3} more — ctrl+r expands${p.reset}`);
@@ -466,31 +510,32 @@ class ToolExecution implements Component {
 			// call name (the denial names the call), the target, the reason
 			// in the W4 parentheses idiom, no timing (the call never ran).
 			// The same ✗ family as any failure; the [result ✗] body still
-			// rides below (never hide information).
+			// rides below (never hide information). A5: an extension's
+			// denial appends `· by <decidedBy>` — the aggregated head row
+			// names the decider; a human denial (no decidedBy) has no tail.
 			if (c.reason !== null) {
-				let input: Record<string, unknown> = {};
-				try {
-					input = JSON.parse(c.inputFull) as Record<string, unknown>;
-				} catch {
-					// the full JSON is always parseable (stringified at
-					// toolStart) — the empty fallback never fires
-				}
-				const target = toolTarget(c.name, input);
-				const out = gutterFold(`${p.red}✗${p.reset} `, `${p.red}${escapeTerminal(`${c.name} ${target}`)} (${escapeTerminal(c.reason)})${p.reset}`, W);
+				const by = c.verdict !== null && c.verdict.decidedBy !== undefined ? ` · by ${escapeTerminal(c.verdict.decidedBy)}` : "";
+				const out = gutterCut(`${p.red}✗${p.reset} `, `${p.red}${escapeTerminal(`${c.name} ${toolTargetOf(c)}`)} (${escapeTerminal(c.reason)}${by})${p.reset}`, W);
 				out.push(...toolBlockBody(c, W));
 				return out;
 			}
 			const elapsed = c.startedAt !== null && c.doneAt !== null ? ((c.doneAt - c.startedAt) / 1000).toFixed(1) : "?";
 			const meta = escapeTerminal(settledMeta(c));
+			// A4: the target rides the settled head row — the verb's
+			// summary column (W3's 5-char pad keeps the paths lined up).
+			// A5: an extension's auto-approval appends `· approved by
+			// <decidedBy>` — the "why wasn't I asked" answer; the human
+			// approval (no decidedBy) leaves the row unchanged.
+			const approvedBy = c.verdict !== null && c.verdict.decidedBy !== undefined ? ` · approved by ${escapeTerminal(c.verdict.decidedBy)}` : "";
 			const out = c.isError
-				? gutterFold(`${p.red}✗${p.reset} `, `${p.red}${verbCol} (${meta}, ${elapsed}s)${p.reset}`, W)
-				: gutterFold(`${p.bold}✓${p.reset} `, `${verbCol} (${meta}, ${elapsed}s)`, W);
+				? gutterCut(`${p.red}✗${p.reset} `, `${p.red}${verbCol} ${escapeTerminal(toolTargetOf(c))} (${meta}${approvedBy}, ${elapsed}s)${p.reset}`, W)
+				: gutterCut(`${p.bold}✓${p.reset} `, `${verbCol} ${escapeTerminal(toolTargetOf(c))} (${meta}${approvedBy}, ${elapsed}s)`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
 		if (c.state === "approval") {
 			// W2: the ⏸ is the GUTTER (the left edge), never the line's tail
-			const out = gutterFold(`${p.bold}⏸${p.reset} `, `${verbCol} ${summary}`, W);
+			const out = gutterCut(`${p.bold}⏸${p.reset} `, `${verbCol} ${summary}`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
@@ -498,14 +543,14 @@ class ToolExecution implements Component {
 			// W2: the spinner IS the gutter (the left edge); the elapsed
 			// rides the summary's tail
 			const elapsed = c.startedAt !== null ? Math.max(1, Math.round((ctx.now - c.startedAt) / 1000)) : 1;
-			const out = gutterFold(`${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} `, `${verbCol} ${summary} ${elapsed}s`, W);
+			const out = gutterCut(`${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} `, `${verbCol} ${summary} ${elapsed}s`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
 		// W2: ◦ replaces → for QUEUED — · is the separator inside every
 		// metadata group; a queued marker that is also the separator
 		// glyph reads as noise
-		return gutterFold(`${p.dim}◦${p.reset} `, `${verbCol} ${summary}`, W);
+		return gutterCut(`${p.dim}◦${p.reset} `, `${verbCol} ${summary}`, W);
 	}
 }
 
@@ -534,8 +579,15 @@ function countTerm(n: number, singular: string, plural: string): string {
  *  (`▞ thought 19s · 5 reads · no edits`), the counts accumulated at
  *  toolStart: read_file → "reads", edit_file → "edits", the other tools
  *  as first-call-order terms (the ROLLUP_NOUN plurals when the tool opts
- *  in, the verb + "s" otherwise). */
-export function turnFold(t: { thoughtSeconds: number; reads: number; edits: number; others: [string, number][] }): string[] {
+ *  in, the verb + "s" otherwise).
+ *  A9 (ruling R2, mock A): the user chip rides the fold — the human's
+ *  words LEAD the one line, `▞ <chip> · thought 19s · 5 reads · no
+ *  edits` — the chip the SAME SGR-7 bracket as the live user row (#16f,
+ *  side pads included). The words take the fold's width budget: the
+ *  metadata terms survive (the W14 metadata rule — they give way LAST),
+ *  the words width-cut at the end with the honest "…" (never a silent
+ *  truncate — invariant ① holds on the ONE row by construction). */
+export function turnFold(t: { words: string; thoughtSeconds: number; reads: number; edits: number; others: [string, number][] }, W: number): string[] {
 	const p = palette();
 	const parts = [`thought ${t.thoughtSeconds}s`, countTerm(t.reads, "read", "reads"), countTerm(t.edits, "edit", "edits")];
 	for (const [name, n] of t.others) {
@@ -547,7 +599,28 @@ export function turnFold(t: { thoughtSeconds: number; reads: number; edits: numb
 			parts.push(countTerm(n, verb, `${verb}s`));
 		}
 	}
-	return [`${p.bold}▞${p.reset} ${parts.join(" · ")}`];
+	const meta = parts.join(" · ");
+	const words = escapeTerminal(t.words);
+	if (words === "") {
+		const row = `${p.bold}▞${p.reset} ${meta}`;
+		return visibleWidth(row) <= W ? [row] : [`${p.bold}▞${p.reset} ${widthCut(meta, Math.max(1, W - 3))}…`]; // a wordless turn folds to the W14 shape
+	}
+	// A9 (ruling R2, mock A): the user chip rides the fold — the human's
+	// words LEAD the one line, the same SGR-7 bracket as the live user
+	// row (#16f, side pads included). The words take the fold's width
+	// budget: W − the gutter ("▞ " = 2) − the join (" · " = 3) − the
+	// chip's side pads (2) − the cut-tail reserve (1, the "…") − the
+	// metadata's own width — the metadata survives, the words width-cut
+	// at the end with the honest "…" (the "…" alone is the honest floor:
+	// the words were there, cut).
+	const budget = Math.max(0, W - visibleWidth(`▞ ${meta}`) - 6);
+	const cut = visibleWidth(words) > budget ? `${widthCut(words, budget)}…` : words;
+	const row = `${p.bold}▞${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${meta}`;
+	if (visibleWidth(row) <= W) return [row];
+	// the last resort: the METADATA gives way — the words hold their
+	// budget, the meta cuts with the honest "…"; invariant ① never trips
+	// at ANY width (a degenerate W's fold is a cut, never a crash).
+	return [`${p.bold}▞${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(meta, Math.max(1, W - 8 - visibleWidth(cut)))}…`];
 }
 
 // ---- the bounded-block flow contract (W7, W8, W10) ----
