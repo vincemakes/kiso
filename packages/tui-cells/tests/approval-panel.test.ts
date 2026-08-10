@@ -59,7 +59,10 @@ function simpleView(): PanelView {
 	};
 }
 
-const WIDTHS = [48, 64, 80, 120];
+// 40/46: the crash widths from the 0.1.42 release-smoke — below 47 the
+// option-2 span cannot fit (45 fixed cells + the ellipsis cell) and
+// drops; the invariant must hold there too (it fired at 40 pre-fix)
+const WIDTHS = [40, 46, 48, 64, 80, 120];
 const MAX_ROWS = [8, 12, 20];
 const PHASES: readonly PanelPhase[] = ["options", "rule", "amend"];
 const SELS: readonly PanelSel[] = [0, 1, 2, 3];
@@ -80,6 +83,18 @@ describe("W21: panelBlockRows", () => {
 						expect(visibleWidth(row), `simple W=${W} maxRows=${maxRows} phase=${phase}`).toBeLessThanOrEqual(W);
 					}
 				}
+			}
+		}
+	});
+
+	it("W<47: the option-2 span drops — the 1/3 decision survives and the row fits (the 0.1.42 release-smoke finding)", () => {
+		for (const W of [40, 46]) {
+			for (const maxRows of MAX_ROWS) {
+				const rows = panelBlockRows(approvalView(), "options", 0, W, maxRows);
+				const opt = rows.find((r) => r.includes("1 Yes"));
+				expect(opt, `W=${W} maxRows=${maxRows}`).toBeDefined();
+				expect(opt, `W=${W} maxRows=${maxRows}`).not.toContain("don't ask again");
+				expect(visibleWidth(opt!), `W=${W} maxRows=${maxRows}`).toBeLessThanOrEqual(W);
 			}
 		}
 	});

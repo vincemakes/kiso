@@ -111,11 +111,17 @@ function panelOptionsRow(view: PanelView, sel: PanelSel, W: number): string {
 	const o3 = sel === 3 ? `${p.bold} 3 No${p.reset}` : ` 3 No`;
 	if (view.flavor === "simple") return `${o1}  ${o3}`;
 	// the option-2 span: " 2 Yes, don't ask again for <name>" — the
-	// fixed part is 45 (the 1/3 options + the separators + the 28-cell
-	// prefix); the name cuts to W−46 + "…".
+	// fixed part is 45 (the gutter + the 1/3 options + the separators +
+	// the 28-cell prefix); the name cuts to W−46 + "…". The "…" needs
+	// its own cell, so the span fits only when W − 46 ≥ 1; below that
+	// (W < 47 — incl. the 0.1.42 release-smoke's 40-col winch) the span
+	// DROPS: the rule name is the cuttable span, the 1/3 options are
+	// the semantics — the approval decision must survive a narrow
+	// winch, and invariant ① must never fire on the options row.
+	if (W < 47) return cutLine(`${o1}  ${o3}`, Math.max(1, W - 2));
 	const name = escapeTerminal(view.name);
-	const budget = Math.max(1, W - 46);
-	const shown = visibleWidth(name) > Math.max(0, W - 45) ? `${widthCut(name, budget)}…` : name;
+	const budget = W - 46;
+	const shown = visibleWidth(name) > W - 45 ? `${widthCut(name, budget)}…` : name;
 	const o2 = sel === 2 ? `${p.bold} 2 Yes, don't ask again for ${shown}${p.reset}` : ` 2 Yes, don't ask again for ${shown}`;
 	return `${o1}  ${o2}  ${o3}`;
 }
