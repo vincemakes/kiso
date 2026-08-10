@@ -55,6 +55,7 @@ not another recalibration)
 - 0044 — The compact summary layer — Accepted
 - 0045 — The config surface: credentials never on disk, project config
   in the trust package, no "always" — Accepted
+- 0047 — Prefix-Complete Execution: the durable recovery law — Accepted
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
