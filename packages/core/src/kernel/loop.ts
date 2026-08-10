@@ -489,14 +489,17 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 						lastStop = ev.reason;
 						stopCount += 1;
 					}
-					if (ev.type === "tool_call_end") {
-						pending.push(ev);
+					// R-E 0.1.43: the append precedes the launch — the call's
+					// framework seq is assigned here; invocationSeq must never
+					// be the adapter's stream-local hint (ADR-0002).
+					const full = log.append(ev);
+					if (full.type === "tool_call_end") {
+						pending.push(full);
 						// streaming execution: the call launches immediately — the decide
 						// and the ledgered run proceed in parallel with the
 						// model stream.
-						launch(ev);
+						launch(full);
 					}
-					const full = log.append(ev);
 					if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
 					yield full;
 				}
@@ -700,11 +703,13 @@ type ExecVerdict =
 	| { action: "allow" };
 
 /** The tool_result event for a call — the shared shape (executionId rides
- *  it as the durable correlation, round 5). */
+ *  it as the durable correlation, round 5; invocationSeq = the framework
+ *  identity, R-E 0.1.43). */
 function resultEvent(call: ToolCallEnd, result: ToolResult, executionId?: string): EventInput {
 	return {
 		type: "tool_result",
 		callId: call.callId,
+		invocationSeq: call.seq,
 		content: result.content,
 		isError: result.isError,
 		// P1-9: errorKind only exists on errors (the type now enforces it;
@@ -809,6 +814,7 @@ async function decideCall(
 				type: "permission_decided",
 				decisionId: nextDecisionId(),
 				callId: call.callId,
+				invocationSeq: call.seq,
 				decision: chainVerdict.action === "allow" ? "approved" : "denied",
 				...(chainVerdict.action === "deny" && chainVerdict.reason !== undefined
 					? { reason: chainVerdict.reason }
@@ -889,6 +895,7 @@ async function humanPause(
 		type: "permission_requested",
 		decisionId,
 		callId: call.callId,
+		invocationSeq: call.seq,
 		name: call.name,
 		input: call.input ?? {},
 		// W21: the ask verdict's speaker — the panel's why-asked line (a
@@ -913,6 +920,7 @@ async function humanPause(
 					type: "permission_decided",
 					decisionId,
 					callId: call.callId,
+					invocationSeq: call.seq,
 					decision: verdict ? "approved" : "denied",
 					...(verdict ? {} : { reason: "denied by user" }),
 				});
@@ -928,6 +936,7 @@ async function humanPause(
 			type: "permission_decided",
 			decisionId,
 			callId: call.callId, // binds the decision to the invocation (B group)
+			invocationSeq: call.seq,
 			decision: finalDecision.action === "allow" ? "approved" : "denied",
 			...(finalDecision.action === "deny" && finalDecision.reason !== undefined
 				? { reason: finalDecision.reason }
@@ -968,6 +977,7 @@ async function runLedgered(
 			{
 				type: "tool_execution_started",
 				callId: call.callId,
+				invocationSeq: call.seq,
 				name: call.name,
 				input: call.input!, // non-null: decideCall denied a null input before this ran
 			} as EventInput,
@@ -1018,6 +1028,7 @@ async function runLedgered(
 			type: "tool_execution_failed",
 			executionId,
 			callId: call.callId,
+			invocationSeq: call.seq,
 			error: result.content,
 			// P1-9: errorKind only exists on errors (the type now enforces it;
 			// the runtime guard keeps a JS tool's illegal combination out of
@@ -1031,6 +1042,7 @@ async function runLedgered(
 			type: "tool_execution_succeeded",
 			executionId,
 			callId: call.callId,
+			invocationSeq: call.seq,
 			result: { content: result.content, isError: false },
 			...(result.tags !== undefined ? { tags: result.tags } : {}),
 		});

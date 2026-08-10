@@ -163,8 +163,17 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			}
 		}
 	}
+	// R-E 0.1.43 (Gap B): a model_output_abandoned marker voids the range
+	// (voidFromSeq, its seq] — the abandoned draft's events. The ranges are
+	// disjoint and in seq order; the skip below treats them exactly like the
+	// summary ranges (the marker itself renders nothing and skips itself).
+	const voidRanges: { from: number; to: number }[] = [];
+	for (const ev of events) {
+		if (ev.type === "model_output_abandoned") voidRanges.push({ from: ev.voidFromSeq, to: (ev as { seq?: number }).seq ?? -1 });
+	}
 	const isCovered = (seq: number): boolean =>
-		summaryRanges.some((r) => seq > r.from && seq <= r.to);
+		summaryRanges.some((r) => seq > r.from && seq <= r.to) ||
+		voidRanges.some((r) => seq > r.from && seq <= r.to);
 	// Summaries render in range order as the pass crosses their boundaries.
 	let renderedSummaries = 0;
 
@@ -467,6 +476,10 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			case "permission_decided":
 			case "permission_expired":
 			case "uncertain_pending":
+			case "model_output_abandoned":
+				// R-E 0.1.43: renders nothing — the marker is always skipped by
+				// its own range; the case documents the intent (and no flush:
+				// it must never split a message).
 				break;
 			case "microcompacted":
 				// handled above (the replacement pass) — no open message.

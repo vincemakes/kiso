@@ -156,6 +156,7 @@ export interface ToolResultEvent {
 	readonly seq: number;
 	readonly type: "tool_result";
 	readonly callId: string;
+	readonly invocationSeq?: number;
 	/** Full content — blocks preserved losslessly (D group). */
 	readonly content: string | readonly import("./messages.js").ContentBlock[];
 	readonly isError: boolean;
@@ -220,6 +221,7 @@ export interface ToolExecutionStarted {
 	readonly type: "tool_execution_started";
 	readonly executionId: string;
 	readonly callId: string;
+	readonly invocationSeq?: number;
 	readonly name: string;
 	readonly input: Readonly<Record<string, unknown>>;
 }
@@ -230,6 +232,7 @@ export interface ToolExecutionSucceeded {
 	readonly type: "tool_execution_succeeded";
 	readonly executionId: string;
 	readonly callId: string;
+	readonly invocationSeq?: number;
 	readonly result: { readonly content: string; readonly isError: false };
 	/** round 8: the tags ride on the durable RECEIPT so a crash-window repair
 	 *  of the tool_result can reproduce the normal path losslessly. */
@@ -247,6 +250,7 @@ export interface ToolExecutionFailed {
 	readonly type: "tool_execution_failed";
 	readonly executionId: string;
 	readonly callId: string;
+	readonly invocationSeq?: number;
 	readonly error: string;
 	readonly errorKind?: ToolErrorKind;
 	readonly safeToRetry: boolean;
@@ -264,6 +268,7 @@ export interface ToolExecutionResolved {
 	readonly type: "tool_execution_resolved";
 	readonly executionId: string;
 	readonly callId: string;
+	readonly invocationSeq?: number;
 	readonly resolution: "rerun" | "abandoned";
 }
 
@@ -278,6 +283,7 @@ export interface PermissionRequested {
 	readonly type: "permission_requested";
 	readonly decisionId: string;
 	readonly callId: string;
+	readonly invocationSeq?: number;
 	readonly name: string;
 	readonly input: Readonly<Record<string, unknown>>;
 	/** W21: the first non-abstain extension's name — the panel's why-asked
@@ -292,6 +298,7 @@ export interface PermissionDecided {
 	readonly decisionId: string;
 	/** The invocation this decision binds to (B group). */
 	readonly callId?: string;
+	readonly invocationSeq?: number;
 	readonly decision: "approved" | "denied";
 	readonly reason?: string;
 	/** E1: the deciding extension's name — present ONLY on policy decisions;
@@ -380,6 +387,23 @@ export interface SummarizedEvent {
 	readonly coversToSeq: number;
 	/** The model's compression — replaces the covered range in the projection. */
 	readonly summary: string;
+}
+
+/**
+ * R-E 0.1.43 / ADR-0047 (Gap B) — a model output suffix WITHOUT a committed
+ * stop was abandoned on resume. `voidFromSeq` is the last committed-boundary
+ * event's seq (stop / user_input / terminal / compaction / summarized); the
+ * voided range is (voidFromSeq, this.seq]. The projection skips the range and
+ * the marker itself renders nothing — "a model output suffix without a
+ * committed stop is an incomplete draft and must never become committed
+ * provider history." Kernel-owned: the AdapterEvent whitelist excludes it, so
+ * adapter/extension forgery is invalid_request by construction.
+ */
+export interface ModelOutputAbandoned {
+	readonly seq: number;
+	readonly type: "model_output_abandoned";
+	readonly voidFromSeq: number;
+	readonly reason: string;
 }
 
 /** Extended-thinking content. Providers without it emit nothing here. */
@@ -475,6 +499,13 @@ export interface TerminalEvent {
 }
 
 /**
+ * IDENTITY (the three-identity model, R-E 0.1.43 / ADR-0047): an invocation
+ * carries THREE ids — `callId` (provider correlation only, may repeat across
+ * runs), `invocationSeq` (the framework identity = the call's tool_call_end
+ * .seq; OPTIONAL — absent on old logs, present on everything written from
+ * 0.1.43), and `executionId` (a specific execution of that invocation, one
+ * per started event). Old logs keep the callId + seq-proximity fallback.
+ *
  * The union. Consume it with a `switch (event.type)`; with
  * `strictNullChecks` on, an unhandled variant is a compile error.
  */
@@ -504,6 +535,7 @@ export type Event =
 	| UserInputReplaced
 	| MicroCompactEvent
 	| SummarizedEvent
+	| ModelOutputAbandoned
 	| TerminalEvent;
 
 // ── deep-shape helpers (round 5): every variant is validated field by field —
@@ -599,6 +631,10 @@ function isExecutionId(v: Record<string, unknown>): boolean {
 	return v.executionId === undefined || typeof v.executionId === "string";
 }
 
+/** R-E 0.1.43: the optional framework invocation identity — absent on old
+ *  logs, otherwise a non-negative safe integer (the tool_call_end.seq). */
+const isInvocationSeq = (v: Record<string, unknown>): boolean => v.invocationSeq === undefined || isNonNegativeInt(v.invocationSeq);
+
 /** A StructuredError — the shape the `error` terminal carries. round 9: a
  *  status, when present, is a non-negative safe integer (no negatives,
  *  NaN, Infinity, or fractions). */
@@ -672,7 +708,7 @@ const EVENT_VALIDATORS = {
 		isErrorKind(v) &&
 		isExecutionId(v) &&
 		isSource(v) &&
-		isTags(v),
+		isTags(v) && isInvocationSeq(v),
 	thinking: (v: Record<string, unknown>) => typeof v.text === "string",
 	usage: isUsage,
 	stop: (v: Record<string, unknown>) => STOP_REASONS.has(v.reason as StopReason),
@@ -693,37 +729,37 @@ const EVENT_VALIDATORS = {
 		typeof v.executionId === "string" &&
 		typeof v.callId === "string" &&
 		typeof v.name === "string" &&
-		isPlainObject(v.input),
+		isPlainObject(v.input) && isInvocationSeq(v),
 	tool_execution_succeeded: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" &&
 		typeof v.callId === "string" &&
 		isPlainObject(v.result) &&
 		typeof (v.result as Record<string, unknown>).content === "string" &&
 		(v.result as Record<string, unknown>).isError === false &&
-		isTags(v),
+		isTags(v) && isInvocationSeq(v),
 	tool_execution_failed: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" &&
 		typeof v.callId === "string" &&
 		typeof v.error === "string" &&
 		typeof v.safeToRetry === "boolean" &&
 		isErrorKind(v) &&
-		isTags(v),
+		isTags(v) && isInvocationSeq(v),
 	tool_execution_resolved: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" &&
 		typeof v.callId === "string" &&
-		(v.resolution === "rerun" || v.resolution === "abandoned"),
+		(v.resolution === "rerun" || v.resolution === "abandoned") && isInvocationSeq(v),
 	permission_requested: (v: Record<string, unknown>) =>
 		typeof v.decisionId === "string" &&
 		typeof v.callId === "string" &&
 		typeof v.name === "string" &&
 		isPlainObject(v.input) &&
-		(v.speaker === undefined || typeof v.speaker === "string"),
+		(v.speaker === undefined || typeof v.speaker === "string") && isInvocationSeq(v),
 	permission_decided: (v: Record<string, unknown>) =>
 		typeof v.decisionId === "string" &&
 		(v.decision === "approved" || v.decision === "denied") &&
 		(v.callId === undefined || typeof v.callId === "string") &&
 		(v.reason === undefined || typeof v.reason === "string") &&
-		(v.decidedBy === undefined || typeof v.decidedBy === "string"),
+		(v.decidedBy === undefined || typeof v.decidedBy === "string") && isInvocationSeq(v),
 	permission_expired: (v: Record<string, unknown>) => typeof v.decisionId === "string" && typeof v.reason === "string",
 	uncertain_pending: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.error === "string",
@@ -735,6 +771,9 @@ const EVENT_VALIDATORS = {
 		typeof v.summary === "string" &&
 		v.summary.length > 0 &&
 		(v.coversToSeq as number) < (v.seq as number),
+	// R-E 0.1.43: the void starts at a committed boundary BEFORE the marker —
+	// a marker that voids nothing (or itself) is corruption, not history.
+	model_output_abandoned: (v: Record<string, unknown>) => isNonNegativeInt(v.voidFromSeq) && typeof v.reason === "string" && (v.voidFromSeq as number) < (v.seq as number),
 	user_input_replaced: (v: Record<string, unknown>) =>
 		isNonNegativeInt(v.replaces) && (v.content === null || isContent(v.content)) && isSource(v),
 	terminal: (v: Record<string, unknown>) => isTerminal(v.outcome),

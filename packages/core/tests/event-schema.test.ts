@@ -192,3 +192,38 @@ describe("isKisoEvent per-variant schema (A group)", () => {
 		expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: "ok", isError: false, errorKind: "fatal" })).toBe(false);
 		expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: "boom", isError: true, errorKind: "fatal" })).toBe(true);
 	});
+
+	it("R-E 0.1.43: invocationSeq is optional on the seven identity-bearing events; present = the framework invocation identity (a non-negative safe integer)", () => {
+		// present and legal on every one of the seven
+		expect(isKisoEvent({ seq: 0, type: "permission_requested", decisionId: "d-1", callId: "c1", name: "x", input: {}, invocationSeq: 5 })).toBe(true);
+		expect(isKisoEvent({ seq: 0, type: "permission_decided", decisionId: "d-1", decision: "approved", callId: "c1", invocationSeq: 5 })).toBe(true);
+		expect(isKisoEvent({ seq: 0, type: "tool_execution_started", executionId: "ex-1", callId: "c1", name: "x", input: {}, invocationSeq: 5 })).toBe(true);
+		expect(isKisoEvent({ seq: 0, type: "tool_execution_succeeded", executionId: "ex-1", callId: "c1", result: { content: "ok", isError: false }, invocationSeq: 5 })).toBe(true);
+		expect(isKisoEvent({ seq: 0, type: "tool_execution_failed", executionId: "ex-1", callId: "c1", error: "boom", safeToRetry: false, invocationSeq: 5 })).toBe(true);
+		expect(isKisoEvent({ seq: 0, type: "tool_execution_resolved", executionId: "ex-1", callId: "c1", resolution: "rerun", invocationSeq: 5 })).toBe(true);
+		expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: "ok", isError: false, invocationSeq: 5 })).toBe(true);
+		// absent = the old-log shape — always legal (the callId + seq-proximity fallback)
+		expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: "ok", isError: false })).toBe(true);
+		expect(isKisoEvent({ seq: 0, type: "permission_decided", decisionId: "d-1", decision: "approved" })).toBe(true);
+		// present but illegal — negative, fractional, string, NaN, Infinity
+		for (const bad of [-1, 1.5, "5", Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(isKisoEvent({ seq: 0, type: "tool_result", callId: "c1", content: "ok", isError: false, invocationSeq: bad })).toBe(false);
+			expect(isKisoEvent({ seq: 0, type: "tool_execution_started", executionId: "ex-1", callId: "c1", name: "x", input: {}, invocationSeq: bad })).toBe(false);
+		}
+		// an invocationSeq on a non-identity event is NOT the field — it must
+		// still validate as an unknown property (never corruption) but the
+		// identity events above are the only carriers the kernel writes.
+		expect(isKisoEvent({ seq: 0, type: "stop", reason: "end_turn", invocationSeq: 5 })).toBe(true);
+	});
+
+	it("R-E 0.1.43: the model_output_abandoned marker — a void range over a committed boundary, kernel-owned", () => {
+		// legal: voidFromSeq is the last committed boundary BEFORE the marker
+		expect(isKisoEvent({ seq: 10, type: "model_output_abandoned", voidFromSeq: 8, reason: "the tail draft" })).toBe(true);
+		// the void must cover something and never the marker itself
+		expect(isKisoEvent({ seq: 10, type: "model_output_abandoned", voidFromSeq: 10, reason: "x" })).toBe(false);
+		expect(isKisoEvent({ seq: 5, type: "model_output_abandoned", voidFromSeq: 8, reason: "x" })).toBe(false);
+		// the boundary is a seq; the reason is text
+		expect(isKisoEvent({ seq: 10, type: "model_output_abandoned", voidFromSeq: "8", reason: "x" })).toBe(false);
+		expect(isKisoEvent({ seq: 10, type: "model_output_abandoned", voidFromSeq: -1, reason: "x" })).toBe(false);
+		expect(isKisoEvent({ seq: 10, type: "model_output_abandoned", voidFromSeq: 8 })).toBe(false);
+	});

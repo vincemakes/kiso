@@ -157,4 +157,65 @@ describe("E1: an absent approval flow degrades honestly", () => {
 		expect(resultOf(log)?.content).toContain("[Permission denied]");
 		expect(log.all.some((e) => e.type === "tool_execution_started")).toBe(false);
 	});
+
+	it("R-E 0.1.43: NEW logs write invocationSeq = the call's tool_call_end.seq on the identity-bearing events", async () => {
+		// run 1: the chain-allow path — decided (by the extension), started,
+		// succeeded, result — every writer carries the framework identity.
+		const logA = new EventLog();
+		for await (const _ev of loop({
+			adapter: createFauxProvider(scriptedCall("read_file", "r1", { path: "a.ts" })),
+			model: "faux",
+			registry: makeRegistry(),
+			log: logA,
+			messages: [{ role: "user", content: "go" }],
+			approvalPolicy: {
+				decide: async () => ({ action: "allow" as const, decidedBy: "reader" }),
+			},
+		})) {
+			// drain
+		}
+		const callSeqA = logA.all.find((e) => e.type === "tool_call_end")!.seq;
+		const identityA = (e: Event) => (e as { invocationSeq?: number }).invocationSeq === callSeqA;
+		expect(logA.all.some((e) => e.type === "permission_decided" && identityA(e))).toBe(true);
+		expect(logA.all.some((e) => e.type === "tool_execution_started" && identityA(e))).toBe(true);
+		expect(logA.all.some((e) => e.type === "tool_execution_succeeded" && identityA(e))).toBe(true);
+		expect(logA.all.some((e) => e.type === "tool_result" && identityA(e))).toBe(true);
+
+		// run 2: the human-ask path — request + decided (the approval
+		// channel's answer), then the executed call.
+		const logB = new EventLog();
+		for await (const _ev of loop({
+			adapter: createFauxProvider(scriptedCall("shell", "s1", { command: "ls" })),
+			model: "faux",
+			registry: makeRegistry(),
+			log: logB,
+			messages: [{ role: "user", content: "go" }],
+			approvalPolicy: { decide: askAll },
+			resolveApproval: async () => ({ action: "allow" as const, decidedBy: "reader" }),
+		})) {
+			// drain
+		}
+		const callSeqB = logB.all.find((e) => e.type === "tool_call_end")!.seq;
+		const identityB = (e: Event) => (e as { invocationSeq?: number }).invocationSeq === callSeqB;
+		expect(logB.all.some((e) => e.type === "permission_requested" && identityB(e))).toBe(true);
+		expect(logB.all.some((e) => e.type === "permission_decided" && identityB(e))).toBe(true);
+		expect(logB.all.some((e) => e.type === "tool_execution_started" && identityB(e))).toBe(true);
+		expect(logB.all.some((e) => e.type === "tool_result" && identityB(e))).toBe(true);
+
+		// old logs (no invocationSeq anywhere) project and run unchanged —
+		// the fallback stays legal end to end.
+		const oldLog = new EventLog();
+		oldLog.append({ type: "user_input", content: "go" });
+		oldLog.append({ type: "tool_call_end", callId: "c1", name: "read_file", input: {} });
+		oldLog.append({ type: "permission_decided", decisionId: "d-9", callId: "c1", decision: "approved", decidedBy: "reader" });
+		for await (const _ev of loop({
+			adapter: createFauxProvider(scriptedCall("read_file", "c1", {})),
+			model: "faux",
+			registry: makeRegistry(),
+			log: oldLog,
+		})) {
+			// drain
+		}
+		expect(resultOf(oldLog)?.content).toBe("ok"); // the durable approval still executes
+	});
 });
