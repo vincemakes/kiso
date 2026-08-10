@@ -115,10 +115,10 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		// buffered are pending — their results land later (post-stop late
 		// results, the straddle's shape). The mid-execution inputs hold
 		// until those results flush.
-		if (callIds.length > 0) {
-			const buffered = new Set(resultBuf.map((r) => r.callId));
-			pendingCalls = new Set(callIds.filter((c) => !buffered.has(c)));
-		}
+		// the guard keeps a still-pending pair holding when a call-less
+		// assistant closes mid-hold (the empty set would release the input)
+		const buffered = new Set(resultBuf.map((r) => r.callId));
+		if (callIds.length > 0) pendingCalls = new Set(callIds.filter((c) => !buffered.has(c)));
 	};
 
 	// C group/round 6: vetoed/rewritten user inputs. Collect the replacement map
@@ -201,7 +201,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		// or the next user_input's leading flush would dump the inputs
 		// between the call and its late result (the 400 again).
 		if (force || pendingCalls.size === 0) {
-			for (const u of heldUsers) out.push(u);
+			out.push(...heldUsers);
 			heldUsers = [];
 		}
 	};
