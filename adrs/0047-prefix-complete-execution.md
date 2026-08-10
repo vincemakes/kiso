@@ -189,3 +189,88 @@ boundary.
   and because a defer policy, being a hook rather than a chain,
   collapsed into an auto-allow on resume. Both holes are closed by
   decision 2's live-path semantics.
+
+## Amendment 1 (2026-08-10): the straddle — void scope, pair atomicity, voided-request expiry
+
+The 0.1.43 round shipped the recovery law; the same round's dogfood
+(two live sessions with real kill -9 + resume on the released 0.1.43)
+found the law's first live violation, adjudicated REVISE — the round
+stays open and R-E 0.1.44 is the rework (the v6 0.1.33 precedent). In
+live operation the stop event lands INSIDE the last call's lifecycle:
+the loop appends the tool_call_ends and launches the executions, then
+appends the stop; the async executor's succeeded/result for the last
+call land after the stop. Three sessions (the two dogfood sessions and
+the review's independent third, review-0143) all hit the same shape —
+stop@41 between started@40 and succeeded@42 (dogfood-0143), stop@45
+between started@44 and succeeded@46 (dogfood-0143b), stop@1197 between
+started@1196 and succeeded@1198 (review-0143). The abandon marker's
+void range (voidFromSeq, seq], derived from the last committed
+boundary, swallowed the straddling call's completion records, and the
+provider projection pairing broke in both directions: an unpaired
+tool_use (the straddling result died with the draft — the 0143b 400
+"insufficient tool messages") and an orphan tool_result (the voided
+turn's stored request still bound at the requests pass and re-executed
+after the marker — the 0143 400 "did not have response messages").
+The sessions died in provider 400 error terminals and stayed
+permanently poisoned: every subsequent turn re-malformed the same
+projection.
+
+Three sentences pin the fix (deviation from any → stop):
+
+1. **Pair atomicity.** "The provider projection includes a tool call
+   and its result atomically — both or neither."
+2. **Void scope.** "The abandon marker voids model output — text_delta
+   / thinking / tool_call_ — never the framework's facts
+   (permission*, tool_execution, tool_result, user_input, terminal)."
+3. **Voided-request expiry.** "A stored permission_requested whose
+   invocation is voided is expired — never re-presented, never
+   executed. A draft's call is never executed."
+
+The fix is a pure DERIVATION change — "persist facts, derive state" —
+the round's signature proof: no stored log is rewritten, and the three
+poisoned sessions heal retroactively by projection (their jsonls,
+byte-identical, are the healing fixtures in the runtime test suite;
+load → project must be pair-clean). In the projection the void skip
+becomes type-filtered to the model-output family (sentence 2 — a
+straddling tool_result inside the void range keeps its pair), the
+tool_result pass drops a receipt whose declaration never projected
+(sentence 1 — the straddling receipt, whose declaration committed
+before the stop, still projects; the voided draft's post-marker
+receipt is the orphan, dropped from the projection, kept in the
+audit), and the requests pass expires a stored request whose
+invocationSeq falls inside a void range (sentence 3 — the dead-run
+expiry precedent; an identity-less request, where neither the field
+nor the callId+proximity fallback yields a seq, is never proven
+voided and keeps the pre-0.1.44 behavior).
+
+**Boundary verification.** The draft detection stays text-only: a bare
+tool-call suffix [tool_call_end, permission_requested] with no text
+after a stop is the legal approval-panel pause — the stored request
+binds and executes with a pair-closed projection (the Area 2 contract,
+gated by the extensions-e2e test). The round's shapes all carry text,
+and the text is what justifies the marker. The gate's no-stop+request
+row therefore carries the 0143 text-bearing shape.
+
+**The α-gap open row (recorded, no silent default).** The "already-
+executed draft call" — started/receipt appearing inside a no-stop
+suffix (the kill landed after the execution began): the declaration
+(tool_call_end) is voided as model output, the started/receipt are
+framework facts and survive in the audit, and pair atomicity drops the
+unpaired receipt from the projection — the projection stays clean. The
+execution may have had real side effects, and whether such a call
+should surface as "uncertain" is an open definition question —
+explicitly an OPEN row, deferred to the R-F/1.0 contract round. No
+side is chosen here; the audit keeps the receipt either way.
+
+### Consequences of Amendment 1
+
+- The prefix table gate gains four live-order rows (the minimal
+  single-call straddle, the 0143b dual-call parallel straddle, the
+  0143 post-marker-orphan shape, the no-stop+request expiry shape) —
+  permanent in `npm run check`, same table, driven red then green.
+- The healing fixtures (the three poisoned real jsonls, verbatim in
+  packages/runtime/tests/fixtures/sessions/) gate the three sentences
+  forever: any future regression of void scope, pair atomicity, or the
+  voided-request expiry breaks load → project first.
+- The straddle is now a gated shape: a live-order row where
+  started < stop < succeeded/result must project pair-closed.
