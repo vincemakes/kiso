@@ -1,5 +1,5 @@
 /**
- * R-E 0.1.43 — Gap A RED (the dangling invocation): a legal stop with a
+ * R-E 0.1.43 — Gap A (the dangling invocation): a legal stop with a
  * tool_call_end whose permission events never landed.
  *
  * The window (the review's finding): the truncation guard holds
@@ -16,10 +16,13 @@
  *
  * RED (today): the run ends with an error terminal (invalid_request —
  * the provider's 400), the call never executes, and the provider WAS
- * asked with the dangling pair. GREEN (the fix): the UNDECIDED
- * invocation re-enters the approval pipeline on recovery — re-decided,
- * executed, and the provider is only ever called after the pair closed.
- * Only a durable permission_decided authorizes an effect.
+ * asked with the dangling pair. GREEN (the fix, 2026-08-10 ruling):
+ * the UNDECIDED invocation re-enters the approval pipeline on recovery
+ * — re-decided, executed, and the continuation re-drives the provider
+ * only after the pair closed. The CLOSED pair IS committed history
+ * (live-path semantics — the model must see its call and its result);
+ * the DANGLING shape never leaves the projection. Only a durable
+ * permission_decided authorizes an effect.
  */
 
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -31,7 +34,10 @@ import { createAgent, SessionStore } from "../src/index.js";
 
 /** A provider that refuses the dangling shape exactly like the OpenAI-family
  *  API: an assistant message with a tool_use whose tool message never
- *  follows is an invalid_request — the resume must never send it. */
+ *  follows is an invalid_request — the resume must never send it. The
+ *  CLOSED pair (the tool_use answered by a tool message with the same
+ *  callId) is valid committed history and MAY be sent — the model must
+ *  continue from its result (the 2026-08-10 ruling). */
 function danglingRejectingProvider(): { adapter: Adapter; requests: readonly Message[][] } {
 	const requests: Message[][] = [];
 	const adapter: Adapter = {
@@ -40,7 +46,11 @@ function danglingRejectingProvider(): { adapter: Adapter; requests: readonly Mes
 			return {
 				async *[Symbol.asyncIterator]() {
 					const dangling = options.messages.some(
-						(m) => m.role === "assistant" && m.blocks.some((b) => b.type === "tool_use"),
+						(m, _i, all) =>
+							m.role === "assistant" &&
+							m.blocks.some(
+								(b) => b.type === "tool_use" && !all.some((t) => t.role === "tool" && t.callId === b.callId),
+							),
 					);
 					if (dangling) {
 						const err = new Error(
@@ -94,12 +104,19 @@ describe("R-E 0.1.43 Gap A (RED): a committed turn's undecided invocation", () =
 		// re-decided, executed, and its result is durable.
 		expect(events.find((e) => e.type === "terminal")?.outcome.kind).toBe("completed");
 		expect(existsSync(marker)).toBe(true);
-		// Every provider request is pair-clean — the dangling tool_use never
+		// The continuation DID re-drive the model — only after the pair
+		// closed. Every request is pair-closed: any tool_use is answered by
+		// a tool message with the same callId — the dangling shape never
 		// leaves the projection.
+		expect(requests.length).toBeGreaterThan(0);
 		for (const request of requests) {
-			expect(
-				request.filter((m) => m.role === "assistant").some((m) => m.blocks.some((b) => b.type === "tool_use")),
-			).toBe(false);
+			for (const m of request) {
+				if (m.role !== "assistant") continue;
+				for (const b of m.blocks) {
+					if (b.type !== "tool_use") continue;
+					expect(request.some((t) => t.role === "tool" && t.callId === b.callId)).toBe(true);
+				}
+			}
 		}
 		const records = new SessionStore(dir).load("s");
 		expect(records.some((r) => r.event.type === "permission_decided")).toBe(true);

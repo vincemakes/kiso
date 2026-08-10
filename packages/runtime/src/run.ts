@@ -4,7 +4,7 @@
  * verbatim from session.ts.
  */
 
-import { denialResult, loop, type AbortSignalLike, type Adapter, type Event, type EventLog, type PermissionDecision, type ToolResult } from "@vincemakes/kiso-core";
+import { denialResult, loop, type AbortSignalLike, type Adapter, type ApprovalChain, type Event, type EventLog, type PermissionDecision, type ToolResult } from "@vincemakes/kiso-core";
 import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
 import { composeApprovalChain, composeSystemPrompt, composeToolTable, microcompactFor } from "./compose.js";
@@ -195,7 +195,7 @@ export class Run implements AsyncIterable<Event> {
 				const persist = async (ev: Event): Promise<void> => {
 					if (ev.seq > baseSeq) await this.#session.persist(this.runId, ev);
 				};
-				for await (const ev of this.#recover(log, signal, lastOpen.events)) {
+				for await (const ev of this.#recover(log, signal, lastOpen.events, approvalChain)) {
 					await persist(ev);
 					yield ev;
 				}
@@ -264,12 +264,126 @@ export class Run implements AsyncIterable<Event> {
 	 * re-approved); a denial writes its tool result; a succeeded/failed
 	 * execution whose tool_result never landed is completed from the
 	 * receipt. Undecided requests pause and await approve().
+	 *
+	 * R-E 0.1.43 (Gap A): a committed turn's tool_call_end with no durable
+	 * decision and no execution is UNDECIDED — recovery re-enters it into
+	 * the approval pipeline before anything else (only a durable
+	 * permission_decided authorizes an effect).
 	 */
-	async *#recover(log: EventLog, signal: AbortSignalLike, scope: readonly Event[]): AsyncGenerator<Event> {
-		const requests = scope.filter(
-			(e): e is Event & { type: "permission_requested" } => e.type === "permission_requested",
-		);
+	async *#recover(
+		log: EventLog,
+		signal: AbortSignalLike,
+		scope: readonly Event[],
+		approvalChain: ApprovalChain | undefined,
+	): AsyncGenerator<Event> {
+		// The invocation's framework identity (R-E 0.1.43): the
+		// tool_call_end's seq — carried by new logs, derived by
+		// callId+proximity for old ones (the last such call before the seq).
+		const callSeqOf = (callId: string, before: number): number | undefined => {
+			let seq: number | undefined;
+			for (const e of scope) {
+				if (e.type === "tool_call_end" && e.callId === callId && e.seq < before) seq = e.seq;
+			}
+			return seq;
+		};
+		// ── Gap A: a committed turn's UNDECIDED invocation ────────────────
+		// A durable stop with a bare tool_call_end (no decision, no
+		// execution) re-enters the approval pipeline: the composed chain
+		// decides — allow → durable permission_decided (decidedBy
+		// faithfully) + the persisted execution; deny → decided + the
+		// denial result; ask/all-abstain → permission_requested (the
+		// requests pass below announces it and waits for the human). No
+		// guessing, no inheriting, no retro-authorization — re-decide.
+		// A durable POLICY verdict (E1: decidedBy set) newer than the call
+		// binds it — the chain never re-runs for a decided invocation.
+		const gapAsks: (Event & { type: "permission_requested" })[] = [];
+		for (const call of scope) {
+			if (call.type !== "tool_call_end") continue;
+			// The boundary clause (the directive): a call whose turn has no
+			// legal stop is a DRAFT's call — Gap B voids it (never executed,
+			// never in the provider projection); this stage never touches it.
+			// The two Gaps divide at the stop; no mixing.
+			const turnEnd = scope.find((e) => e.type === "user_input" && e.seq > call.seq)?.seq ?? Number.POSITIVE_INFINITY;
+			const turnStop = scope.some((e) => e.type === "stop" && e.seq > call.seq && e.seq < turnEnd);
+			if (!turnStop) continue;
+			const decided = log.all.find(
+				(e): e is Event & { type: "permission_decided" } =>
+					e.type === "permission_decided" && e.callId === call.callId && e.seq > call.seq && e.decidedBy !== undefined,
+			);
+			const hasExecution = log.all.some(
+				(e) => e.type === "tool_execution_started" && e.callId === call.callId && e.seq > call.seq,
+			);
+			const hasResult = log.all.some((e) => e.type === "tool_result" && e.callId === call.callId && e.seq > call.seq);
+			if (hasResult) continue; // closed — nothing to fill
+			if (decided !== undefined) {
+				// E1: the durable verdict speaks for the call — apply it
+				// without re-running the chain.
+				if (signal.aborted) return;
+				if (decided.decision === "approved" && !hasExecution) {
+					yield* this.#executePersisted(call.callId, call.name, call.input ?? {}, call.seq, signal);
+				} else if (!hasResult) {
+					yield* this.#denialResult(call.callId, decided.reason ?? "denied by user", call.seq);
+				}
+				continue;
+			}
+			// UNDECIDED — re-enter the approval pipeline.
+			const verdict =
+				approvalChain === undefined
+					? ({ action: "allow" } as const) // no policies — the kernel's default allow
+					: await abortable(
+							Promise.resolve(
+								approvalChain.decide(
+									{ callId: call.callId, name: call.name, input: call.input ?? {} },
+									{ signal, sessionId: this.#session.id },
+								),
+							),
+							signal,
+						);
+			if (verdict === ABORTED) return;
+			const decisionId = `d-${log.all.length + 1}`;
+			if (verdict.action === "allow") {
+				yield log.append({
+					type: "permission_decided",
+					decisionId,
+					callId: call.callId,
+					invocationSeq: call.seq,
+					decision: "approved",
+					...(verdict.decidedBy !== undefined ? { decidedBy: verdict.decidedBy } : {}),
+				});
+				if (signal.aborted) return;
+				yield* this.#executePersisted(call.callId, call.name, call.input ?? {}, call.seq, signal);
+			} else if (verdict.action === "deny") {
+				yield log.append({
+					type: "permission_decided",
+					decisionId,
+					callId: call.callId,
+					invocationSeq: call.seq,
+					decision: "denied",
+					...(verdict.reason !== undefined ? { reason: verdict.reason } : {}),
+					...(verdict.decidedBy !== undefined ? { decidedBy: verdict.decidedBy } : {}),
+				});
+				yield* this.#denialResult(call.callId, verdict.reason ?? "denied", call.seq);
+			} else {
+				// ask / all-abstain — the requests pass below announces the
+				// stored request and waits for the human.
+				const appended = log.append({
+					type: "permission_requested",
+					decisionId,
+					callId: call.callId,
+					invocationSeq: call.seq,
+					name: call.name,
+					input: call.input ?? {},
+				}) as Event & { type: "permission_requested" };
+				gapAsks.push(appended);
+				yield appended;
+			}
+		}
+		const requests = [...scope.filter((e): e is Event & { type: "permission_requested" } => e.type === "permission_requested"), ...gapAsks];
 		for (const pending of requests) {
+			// R-E 0.1.43: the writes below carry the invocation's framework
+			// identity — the request's own, or the callId+proximity
+			// fallback for old logs (the compat contract).
+			const invocationSeq = pending.invocationSeq ?? callSeqOf(pending.callId, pending.seq);
 			const decided = log.all.find(
 				(e): e is Event & { type: "permission_decided" } => e.type === "permission_decided" && e.decisionId === pending.decisionId,
 			);
@@ -333,18 +447,18 @@ export class Run implements AsyncIterable<Event> {
 					...(final.action === "deny" && final.reason !== undefined ? { reason: final.reason } : {}),
 				});
 				if (final.action === "allow") {
-					if (!hasExecution) yield* this.#executePersisted(pending.callId, pending.name, pending.input, signal);
+					if (!hasExecution) yield* this.#executePersisted(pending.callId, pending.name, pending.input, invocationSeq, signal);
 				} else if (!hasResult) {
-					yield* this.#denialResult(pending.callId, final.reason ?? "denied by user");
+					yield* this.#denialResult(pending.callId, final.reason ?? "denied by user", invocationSeq);
 				}
 			} else if (decided.decision === "approved") {
 				// Decided while no process was running: apply without pausing.
 				// An abort during recovery must stop the pending executions,
 				// exactly like the live loop's sibling guard (finding 3).
 				if (signal.aborted) return;
-				if (!hasExecution) yield* this.#executePersisted(pending.callId, pending.name, pending.input, signal);
+				if (!hasExecution) yield* this.#executePersisted(pending.callId, pending.name, pending.input, invocationSeq, signal);
 			} else if (!hasResult) {
-				yield* this.#denialResult(pending.callId, decided.reason ?? "denied by user");
+				yield* this.#denialResult(pending.callId, decided.reason ?? "denied by user", invocationSeq);
 			}
 		}
 
@@ -417,6 +531,7 @@ export class Run implements AsyncIterable<Event> {
 		callId: string,
 		name: string,
 		input: Readonly<Record<string, unknown>>,
+		invocationSeq: number | undefined,
 		signal: AbortSignalLike,
 	): AsyncGenerator<Event> {
 		const log = this.#session.log;
@@ -426,7 +541,14 @@ export class Run implements AsyncIterable<Event> {
 		// An abort that landed while the decision was being applied must
 		// not start the side effect (finding 3).
 		if (signal.aborted) return;
-		yield log.append({ type: "tool_execution_started", executionId, callId, name, input });
+		yield log.append({
+			type: "tool_execution_started",
+			executionId,
+			callId,
+			...(invocationSeq !== undefined ? { invocationSeq } : {}),
+			name,
+			input,
+		});
 
 		let result: ToolResult;
 		if (tool === undefined) {
@@ -465,6 +587,7 @@ export class Run implements AsyncIterable<Event> {
 				type: "tool_execution_failed",
 				executionId,
 				callId,
+				...(invocationSeq !== undefined ? { invocationSeq } : {}),
 				error: result.content,
 				// P1-9: errorKind only exists on errors — runtime-guarded too.
 			...(result.isError && result.errorKind !== undefined ? { errorKind: result.errorKind } : {}),
@@ -476,6 +599,7 @@ export class Run implements AsyncIterable<Event> {
 				type: "tool_execution_succeeded",
 				executionId,
 				callId,
+				...(invocationSeq !== undefined ? { invocationSeq } : {}),
 				result: { content: result.content, isError: false },
 				...(result.tags !== undefined ? { tags: result.tags } : {}),
 			});
@@ -483,6 +607,7 @@ export class Run implements AsyncIterable<Event> {
 		yield log.append({
 			type: "tool_result",
 			callId,
+			...(invocationSeq !== undefined ? { invocationSeq } : {}),
 			content: result.content,
 			isError: result.isError,
 			// P1-9: errorKind only exists on errors — runtime-guarded too.
@@ -498,11 +623,12 @@ export class Run implements AsyncIterable<Event> {
 	}
 
 	/** The model-facing result of a durable denial — no execution happened. */
-	async *#denialResult(callId: string, reason: string): AsyncGenerator<Event> {
+	async *#denialResult(callId: string, reason: string, invocationSeq: number | undefined): AsyncGenerator<Event> {
 		const denial = denialResult(reason);
 		yield this.#session.log.append({
 			type: "tool_result",
 			callId,
+			...(invocationSeq !== undefined ? { invocationSeq } : {}),
 			content: denial.content,
 			isError: true,
 			errorKind: denial.errorKind,
