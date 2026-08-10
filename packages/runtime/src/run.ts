@@ -276,6 +276,40 @@ export class Run implements AsyncIterable<Event> {
 		scope: readonly Event[],
 		approvalChain: ApprovalChain | undefined,
 	): AsyncGenerator<Event> {
+		// ── Gap B: the tail draft is abandoned — never committed history ──
+		// "A model output suffix without a committed stop is an incomplete
+		// draft and must never become committed provider history." The
+		// resume appends the abandon marker FIRST: it voids the range after
+		// the last committed boundary (stop / user_input / terminal /
+		// compaction / summarized — or an earlier marker), so the projection
+		// excludes the draft and a call inside it is never executed (the
+		// boundary clause: the two Gaps divide at the stop). The audit bytes
+		// stay; a marker is kernel-exclusive (the AdapterEvent whitelist).
+		// Idempotent: an already-voided draft has a marker as its last
+		// boundary — the detection finds no output after it, and the
+		// recovered events (decided/started/result) are no draft.
+		const boundary = [...scope].reverse().find(
+			(e) =>
+				e.type === "stop" ||
+				e.type === "user_input" ||
+				e.type === "terminal" ||
+				e.type === "microcompacted" ||
+				e.type === "compacted" ||
+				e.type === "summarized" ||
+				e.type === "model_output_abandoned",
+		);
+		if (boundary !== undefined) {
+			const draft = scope.some(
+				(e) => (e.type === "text_delta" || e.type === "thinking") && e.seq > boundary.seq,
+			);
+			if (draft) {
+				yield log.append({
+					type: "model_output_abandoned",
+					voidFromSeq: boundary.seq,
+					reason: "a model output suffix without a committed stop — abandoned on resume",
+				});
+			}
+		}
 		// The invocation's framework identity (R-E 0.1.43): the
 		// tool_call_end's seq — carried by new logs, derived by
 		// callId+proximity for old ones (the last such call before the seq).
