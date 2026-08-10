@@ -18,8 +18,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
-import { executionLedger, defineTool, type Event, type Tool } from "@vincemakes/kiso-core";
+import { defineTool, type Event, type Tool } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
+import { executionLedger } from "@vincemakes/kiso-runtime";
 
 function markerTool(markerPath: string, opts: { fail?: boolean } = {}): Tool<{ query: string }> {
 	return defineTool<{ query: string }>({

@@ -30,7 +30,6 @@
 
 import {
 	EventLog,
-	executionLedger,
 	projectMessages,
 	type AbortSignalLike,
 	type Adapter,
@@ -40,6 +39,7 @@ import {
 	type PermissionDecision,
 	type Tool,
 } from "@vincemakes/kiso-core";
+import { executionLedger } from "./ledger.js";
 import { denialResult } from "@vincemakes/kiso-core";
 import {
 	estimateSummarySavings,

@@ -26,8 +26,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { executionLedger } from "@vincemakes/kiso-core";
-import { SessionStore } from "@vincemakes/kiso-runtime";
+import { SessionStore, executionLedger } from "@vincemakes/kiso-runtime";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");

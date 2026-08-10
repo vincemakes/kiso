@@ -176,7 +176,7 @@ describe("execution identity across runs (B group)", () => {
 			// drain — run 2 does NOT call the tool
 		}
 		storeB.closeAll();
-		const { executionLedger } = await import("@vincemakes/kiso-core");
+		const { executionLedger } = await import("@vincemakes/kiso-runtime");
 		const ledger = executionLedger(storeB.load("s").map((r) => r.event));
 		const executions = [...ledger.values()].filter((e) => e.callId === "c1");
 		expect(executions).toHaveLength(1); // only run 1's c1

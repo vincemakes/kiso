@@ -5,5 +5,6 @@ export * from "./recovery.js";
 export * from "./compose.js";
 export * from "./summarize.js";
 export * from "./store.js";
+export * from "./ledger.js";
 export * from "./extensions.js";
 export * from "./trust.js";

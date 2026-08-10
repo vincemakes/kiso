@@ -25,7 +25,7 @@
  *   resolved "abandoned"             → "abandoned"   (human killed it)
  */
 
-import type { Event } from "../protocol/events.js";
+import type { Event } from "@vincemakes/kiso-core";
 
 export type ExecutionStatus = "uncertain" | "succeeded" | "failed" | "rerun" | "abandoned";
 
