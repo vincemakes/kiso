@@ -92,6 +92,7 @@ describe("bootstrap P1/P2: reasoning_content round-trip (DeepSeek thinking mode)
 		const messages = projectMessages([
 			{ type: "user_input", content: "read the file" },
 			{ type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "a.txt" } },
+			{ type: "stop", reason: "tool_use" },
 			{ type: "tool_result", callId: "c1", content: "file contents", isError: false },
 			{ type: "thinking", text: "The file says" },
 			{ type: "thinking", text: " hello." },

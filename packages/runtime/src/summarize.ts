@@ -107,6 +107,16 @@ export function lastSummaryPoint(events: readonly Event[]): number {
  * containing the LATEST one (still a turn boundary). A protected round
  * as the FIRST uncovered round leaves nothing before it to cover →
  * undefined (an honest "nothing to compact").
+ *
+ * P1 (0.1.42): the SAME pullback family now enforces the pairing
+ * invariant — a boundary NEVER splits a tool_call/tool_result pair. A
+ * mid-execution input leaves a covered call with a kept result, and the
+ * projection renders an orphaned tool message (a real provider 400 — the
+ * fresh2 family). The straddle pullback ITERATES to stability — every
+ * straddled pair in the shrinking range pulls the boundary before its
+ * round — while the protected pullback applies ONCE on the base range
+ * (the operative list is the LATEST echo — the old ⑥ semantics:
+ * superseded echoes stay coverable).
  */
 export function summaryBoundarySeq(events: readonly Event[], keepRounds = KEEP_RECENT_ROUNDS): number | undefined {
 	const prevPoint = lastSummaryPoint(events);
@@ -115,15 +125,24 @@ export function summaryBoundarySeq(events: readonly Event[], keepRounds = KEEP_R
 		if (ev.type === "user_input" && ev.seq > prevPoint) uncoveredInputs.push(ev.seq);
 	}
 	if (uncoveredInputs.length <= keepRounds) return undefined;
-	const base = uncoveredInputs[uncoveredInputs.length - keepRounds]! - 1;
-	const protectedRound = latestProtectedBoundary(events, prevPoint, base);
-	if (protectedRound !== undefined) {
-		if (protectedRound <= prevPoint) return undefined;
-		return protectedRound;
+	const firstUncovered = uncoveredInputs[0]!;
+	let boundary = uncoveredInputs[uncoveredInputs.length - keepRounds]! - 1;
+	// The protected pullback applies ONCE on the base range (⑥); the
+	// straddle pullback recomputes against the SHRINKING range below it.
+	const protectedBoundary = latestProtectedBoundary(events, prevPoint, boundary);
+	for (;;) {
+		const straddleBoundary = latestStraddleBoundary(events, prevPoint, boundary);
+		let pull: number | undefined = straddleBoundary;
+		if (protectedBoundary !== undefined) {
+			pull = pull === undefined ? protectedBoundary : Math.min(pull, protectedBoundary);
+		}
+		if (pull === undefined) return boundary;
+		// Nothing before the first uncovered round (or before the previous
+		// summary point) is coverable — the honest "nothing to compact".
+		if (pull < firstUncovered || pull <= prevPoint) return undefined;
+		if (pull >= boundary) return boundary; // stable — the pull never advances
+		boundary = pull;
 	}
-	// The input at m - keepRounds opens the FIRST KEPT round; everything
-	// before it (m - keepRounds ≥ 1 covered rounds) is summarizable.
-	return base;
 }
 
 /**
@@ -156,6 +175,34 @@ function latestProtectedBoundary(events: readonly Event[], prevPoint: number, ba
 	}
 	if (inputSeq < 0) return undefined;
 	return inputSeq - 1;
+}
+
+/**
+ * P1 (0.1.42): the boundary just before the round holding the LATEST
+ * tool_call_end in (prevPoint, cut] whose tool_result landed on the KEPT
+ * side of the cut — covering the call alone would project an orphaned
+ * tool message (the pairing invariant; the fresh2 400 family). Returns
+ * the pair's round-opening input minus one — still a turn boundary —
+ * or prevPoint when the round opened at or before the previous summary
+ * point (the caller's `pull <= prevPoint` guard turns that into the
+ * honest nothing-to-compact: the range holds no whole pair to keep, so
+ * the compact is refused) — or undefined when the range holds no
+ * straddled pair.
+ */
+function latestStraddleBoundary(events: readonly Event[], prevPoint: number, cut: number): number | undefined {
+	let straddledCall = -1;
+	for (const ev of events) {
+		if (ev.type !== "tool_call_end" || ev.seq <= prevPoint || ev.seq > cut) continue;
+		const keptResult = events.some((e) => e.type === "tool_result" && e.callId === ev.callId && e.seq > cut);
+		if (keptResult) straddledCall = ev.seq;
+	}
+	if (straddledCall < 0) return undefined;
+	// The pair's round opening: the last user_input before the call.
+	let inputSeq = -1;
+	for (const ev of events) {
+		if (ev.type === "user_input" && ev.seq > prevPoint && ev.seq < straddledCall) inputSeq = ev.seq;
+	}
+	return inputSeq < 0 ? prevPoint : inputSeq - 1;
 }
 
 /**

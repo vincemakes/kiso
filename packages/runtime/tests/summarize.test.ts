@@ -7,8 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
-import type { Event, EventInput } from "@vincemakes/kiso-core";
-import type { Message } from "@vincemakes/kiso-core";
+import type { Event, EventInput, Message, ToolCallEnd } from "@vincemakes/kiso-core";
 import {
 	estimateSummarySavings,
 	KEEP_RECENT_ROUNDS,
@@ -200,3 +199,59 @@ describe("summarizeConversation — the off-loop one-shot call", () => {
 		expect(estimateSummarySavings(covered, "x".repeat(10_000))).toBe(0); // never negative
 	});
 });
+
+	it("P1 pairing invariant: a boundary NEVER splits a tool_call/tool_result pair — a result kept across the K-round cut pulls back to before the pair's round", () => {
+		// The straddle: round 4's call lands, then the 5th input arrives
+		// MID-EXECUTION (the input row is live at a pause), then the result
+		// lands after it. The K-round boundary (before the 5th input) would
+		// cover the call and keep the result — a projection with an orphaned
+		// tool message (a real provider 400). The boundary must pull back to
+		// just before the round that opened the pair (the do-not-compact
+		// pullback family): the pair is then KEPT WHOLE.
+		const events: Event[] = [
+			ev(1, { type: "user_input", content: "t1" }),
+			ev(2, { type: "user_input", content: "t2" }),
+			ev(3, { type: "user_input", content: "t3" }),
+			ev(4, { type: "user_input", content: "t4" }),
+			ev(5, { type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "a" } }),
+			ev(6, { type: "stop", reason: "tool_use" }),
+			ev(7, { type: "user_input", content: "t5" }), // the mid-execution input
+			ev(8, { type: "tool_result", callId: "c1", content: "r", isError: false }),
+			ev(9, { type: "user_input", content: "t6" }),
+			ev(10, { type: "user_input", content: "t7" }),
+			ev(11, { type: "user_input", content: "t8" }),
+		];
+		// The would-be boundary (before input 5, seq 7) lands BETWEEN the
+		// call (5) and its result (8). The chosen boundary must be 3 — just
+		// before round 4's opening input — the pair wholly KEPT.
+		const boundary = summaryBoundarySeq(events);
+		expect(boundary).toBe(3);
+		// Pair-safe: the call and its result sit on the SAME side of the cut.
+		expect(boundary!).toBeLessThan(5);
+		expect(boundary!).toBeLessThan(8);
+		// The covered range (prev, boundary] contains no covered call whose
+		// result is kept — the exact straddle the projection would orphan.
+		const coveredCalls = events.filter(
+			(e): e is ToolCallEnd => e.type === "tool_call_end" && e.seq <= boundary!,
+		);
+		for (const call of coveredCalls) {
+			const kept = events.some((e) => e.type === "tool_result" && e.callId === call.callId && e.seq > boundary!);
+			expect(kept).toBe(false);
+		}
+	});
+
+	it("P1: the pair straddling the FIRST uncovered round leaves nothing before it to cover — nothing to compact", () => {
+		const events: Event[] = [
+			ev(1, { type: "user_input", content: "t1" }),
+			ev(2, { type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "a" } }),
+			ev(3, { type: "stop", reason: "tool_use" }),
+			ev(4, { type: "user_input", content: "t2" }), // mid-execution
+			ev(5, { type: "tool_result", callId: "c1", content: "r", isError: false }),
+			ev(6, { type: "user_input", content: "t3" }),
+			ev(7, { type: "user_input", content: "t4" }),
+			ev(8, { type: "user_input", content: "t5" }),
+		];
+		// The straddle is in the FIRST uncovered round — the pullback has
+		// nothing before it to cover: the honest "nothing to compact".
+		expect(summaryBoundarySeq(events)).toBeUndefined();
+	});

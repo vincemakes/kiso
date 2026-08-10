@@ -100,6 +100,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			assistantSource = undefined;
 			return;
 		}
+		const callIds = blocks.filter((b) => b.type === "tool_use").map((b) => b.callId);
 		const reasoning = pendingReasoning;
 		pendingReasoning = null;
 		out.push({
@@ -110,6 +111,14 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		} satisfies AssistantMessage);
 		blocks = [];
 		assistantSource = undefined;
+		// P1: the closed assistant's calls whose results are NOT already
+		// buffered are pending — their results land later (post-stop late
+		// results, the straddle's shape). The mid-execution inputs hold
+		// until those results flush.
+		if (callIds.length > 0) {
+			const buffered = new Set(resultBuf.map((r) => r.callId));
+			pendingCalls = new Set(callIds.filter((c) => !buffered.has(c)));
+		}
 	};
 
 	// C group/round 6: vetoed/rewritten user inputs. Collect the replacement map
@@ -170,13 +179,31 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	let resultBuf: { callId: string; message: ToolResultMessage }[] = [];
 	const callOrder = new Map<string, number>();
 	let callOrderNext = 0;
-	const flushResults = (): void => {
-		if (resultBuf.length === 0) return;
-		resultBuf.sort((a, b) => (callOrder.get(a.callId) ?? 0) - (callOrder.get(b.callId) ?? 0));
-		for (const r of resultBuf) out.push(r.message);
-		resultBuf = [];
-		callOrder.clear();
-		callOrderNext = 0;
+	// P1 (0.1.42): the mid-execution input deferral. A user input arriving
+	// while the last closed assistant's tool_calls are UNANSWERED (the
+	// result lands later in the log — the boundary straddle's durable
+	// shape) must never separate the call from its result: the request
+	// [assistant, user, tool] is a real provider 400. Such inputs are
+	// HELD and released right after the results flush — the mid-execution
+	// input takes effect when the turn's execution completes.
+	let pendingCalls = new Set<string>();
+	let heldUsers: UserMessage[] = [];
+	const flushResults = (force = false): void => {
+		if (resultBuf.length > 0) {
+			resultBuf.sort((a, b) => (callOrder.get(a.callId) ?? 0) - (callOrder.get(b.callId) ?? 0));
+			for (const r of resultBuf) out.push(r.message);
+			resultBuf = [];
+			callOrder.clear();
+			callOrderNext = 0;
+		}
+		// The held inputs release ONLY when the pair resolved (or the
+		// projection ends — force): a still-pending pair must keep holding,
+		// or the next user_input's leading flush would dump the inputs
+		// between the call and its late result (the 400 again).
+		if (force || pendingCalls.size === 0) {
+			for (const u of heldUsers) out.push(u);
+			heldUsers = [];
+		}
 	};
 
 	let explicitAssistant = false;
@@ -207,30 +234,37 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			case "user_input": {
 				// 0.1.26: the previous turn closes here — the assistant
 				// first, then its results in call order (the turn boundary).
-				flushAssistant();
-				flushResults();
 				// round 6: the final replacement renders HERE, at the input's own
 				// position — the original is skipped, the replacement event
 				// itself produces nothing (a later replacement for the same
-				// input never becomes a second message).
+				// input never becomes a second message); a null content is a
+				// true veto (nothing renders at that position).
+				flushAssistant();
+				flushResults();
+				let content: UserMessage["content"] = ev.content;
+				let source: MessageSource | undefined = ev.source;
+				let veto = false;
 				if ("seq" in ev && typeof ev.seq === "number" && replaced.has(ev.seq)) {
 					const replacement = replaced.get(ev.seq)!;
-					flushAssistant();
-					if (replacement.content !== null) {
-						out.push({
-							role: "user",
-							content: replacement.content,
-							...(replacement.source !== undefined ? { source: replacement.source } : {}),
-						} satisfies UserMessage);
+					if (replacement.content === null) {
+						veto = true;
+					} else {
+						content = replacement.content;
+						source = replacement.source ?? ev.source;
 					}
-					break;
 				}
-				flushAssistant();
-				out.push({
+				if (veto) break;
+				const message = {
 					role: "user",
-					content: ev.content,
-					...(ev.source !== undefined ? { source: ev.source } : {}),
-				} satisfies UserMessage);
+					content,
+					...(source !== undefined ? { source } : {}),
+				} satisfies UserMessage;
+				// P1: the mid-execution deferral — an input arriving while
+				// the turn's calls are unanswered is HELD and released right
+				// after the results flush (the pairing invariant: the
+				// results must follow their calls before any user message).
+				if (pendingCalls.size > 0) heldUsers.push(message);
+				else out.push(message);
 				break;
 			}
 			case "user_input_replaced":
@@ -271,17 +305,15 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			case "text_delta":
 				// 0.1.26: a text delta with BUFFERED RESULTS opens the NEXT
 				// turn's stream — the previous turn closes HERE: its
-				// assistant first (already closed at the stop, usually),
-				// then its buffered results in call order (the turn
-				// boundary; the API requires each tool_calls message to be
-				// followed by its tool messages — a real DeepSeek 400
-				// without the boundary). The guard keys on the RESULT
-				// buffer: a mid-message delta (the current turn's text, the
-				// multi-block assistant) has nothing buffered and must not
-				// flush — the empty flush would clear the source and split
-				// the message.
-				if (resultBuf.length > 0) flushAssistant();
-				flushResults();
+				// assistant (closed at the stop), then its buffered results
+				// in call order (the API requires each tool_calls message
+				// to be followed by its tool messages — a real 400 without
+				// the boundary). P1 (0.1.42): the flush keys on OPEN
+				// assistant content — an open block or text proves the
+				// model is still streaming THIS turn, and a same-turn
+				// buffered result must stay buffered (flushing it here
+				// split the turn's message — the fresh2 400).
+				if (blocks.length === 0 && text === null && resultBuf.length > 0) flushResults();
 				text = (text ?? "") + ev.text;
 				break;
 			case "tool_call_start":
@@ -292,10 +324,13 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 			case "tool_call_end":
 				// 0.1.26: a tool_call_end with BUFFERED RESULTS opens the
 				// NEXT turn's stream (the model called again) — the
-				// previous turn closes first; a same-turn call has nothing
-				// buffered.
-				if (resultBuf.length > 0) flushAssistant();
-				flushResults();
+				// previous turn's results close first; a same-turn call
+				// keeps the assistant open. P1 (0.1.42): open assistant
+				// content proves the same-turn call — the buffered results
+				// close at the stop, NEVER here (flushing a same-turn
+				// result at a later call_end split the turn's message —
+				// the fresh2 400).
+				if (blocks.length === 0 && text === null && resultBuf.length > 0) flushResults();
 				pushText();
 				callOrder.set(ev.callId, callOrderNext++);
 				blocks.push({
@@ -330,6 +365,9 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				}
 				// 0.1.26: BUFFERED — the results flush in call order at the
 				// turn boundary (flushResults), not in completion order.
+				// P1: a pending call's result resolves the pair — the held
+				// mid-execution inputs release with the flush.
+				pendingCalls.delete(ev.callId);
 				resultBuf.push({ callId: ev.callId, message });
 				break;
 			}
@@ -387,8 +425,10 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				// the assistant message that follows carries it. 0.1.26: the
 				// assistant flush is guarded on the buffered results (a
 				// mid-turn reasoning must not split the current message).
-				if (resultBuf.length > 0) flushAssistant();
-				flushResults();
+				// P1 (0.1.42): the flush keys on OPEN assistant content —
+				// a mid-turn reasoning with a same-turn result buffered
+				// must NOT split the message (the fresh2 400 family).
+				if (blocks.length === 0 && text === null && resultBuf.length > 0) flushResults();
 				pendingReasoning = (pendingReasoning ?? "") + ev.text;
 				break;
 			case "summarized":
@@ -409,9 +449,14 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				break;
 			case "stop":
 				// The turn boundary: the assistant closes at the provider's
-				// stop; the results are buffered and flush at the next
-				// turn's first event.
+				// stop — and the turn's BUFFERED results close WITH it (P1
+				// 0.1.42). Parallel execution lands same-turn results
+				// mid-stream; flushing them here — the true boundary —
+				// projects [assistant, results…] in reading order, and the
+				// stream-open guards below only ever flush a CLOSED turn's
+				// late (post-stop) results.
 				flushAssistant();
+				flushResults();
 				break;
 			case "terminal":
 			case "tool_execution_started":
@@ -429,7 +474,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		}
 	}
 	flushAssistant();
-	flushResults();
+	flushResults(true); // the log's end is the last resort: held inputs never drop
 	return out;
 }
 
