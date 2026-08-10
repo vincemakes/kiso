@@ -102,11 +102,11 @@ def main(workdir):
         if not os.path.exists(f"{work}/wall_1"):
             continue
         try:
-            m = {"kiso": kiso, "pi": pi}[tool](work)
+            buckets = {"kiso": kiso, "pi": pi}[tool](work)
+            m = dict(tool=tool, task=task, run=run, buckets=buckets,
+                     verify=open(f"{work}/verify").read().strip())
         except Exception as ex:
-            m = dict(error=str(ex)[:80])
-        m.update(tool=tool, task=task, run=run,
-                 verify=open(f"{work}/verify").read().strip())
+            m = dict(tool=tool, task=task, run=run, error=str(ex)[:80])
         rows.append(m)
     print(json.dumps(rows, indent=1))
     return rows

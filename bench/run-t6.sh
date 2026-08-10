@@ -46,9 +46,12 @@ case "$TOOL" in
     done
     for P in 1 2 3 4; do # per-bucket wall (uniform with kiso's wall_N)
       TOT=0; i=$(( (P - 1) * 6 + 1 )); E=$(( P * 6 ))
-      while [ "$i" -le "$E" ]; do TOT=$((TOT + $(cat "$WORK/wall_turn_$i"))); i=$((i + 1)); done
+      while [ "$i" -le "$E" ]; do
+        TOT=$((TOT + $(cat "$WORK/wall_turn_$i")))
+        rm -f "$WORK/wall_turn_$i" # ONLY this turn — a glob here would
+        i=$((i + 1))               # wipe later buckets' walls (the run bug)
+      done
       echo "$TOT" > "$WORK/wall_$P"
-      rm -f "$WORK"/wall_turn_*
     done
     ;;
   *)
