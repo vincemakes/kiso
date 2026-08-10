@@ -4,7 +4,7 @@
  * verbatim from session.ts.
  */
 
-import { denialResult, loop, type AbortSignalLike, type Adapter, type ApprovalChain, type Event, type EventLog, type PermissionDecision, type ToolResult } from "@vincemakes/kiso-core";
+import { denialResult, loop, type AbortSignalLike, type Adapter, type ApprovalChain, type ChainVerdict, type Event, type EventLog, type HookHost, type PermissionDecision, type ToolCallPayload, type ToolResult } from "@vincemakes/kiso-core";
 import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
 import { composeApprovalChain, composeSystemPrompt, composeToolTable, microcompactFor } from "./compose.js";
@@ -195,7 +195,7 @@ export class Run implements AsyncIterable<Event> {
 				const persist = async (ev: Event): Promise<void> => {
 					if (ev.seq > baseSeq) await this.#session.persist(this.runId, ev);
 				};
-				for await (const ev of this.#recover(log, signal, lastOpen.events, approvalChain)) {
+				for await (const ev of this.#recover(log, signal, lastOpen.events, approvalChain, this.#config.hooks)) {
 					await persist(ev);
 					yield ev;
 				}
@@ -275,6 +275,7 @@ export class Run implements AsyncIterable<Event> {
 		signal: AbortSignalLike,
 		scope: readonly Event[],
 		approvalChain: ApprovalChain | undefined,
+		hooks: HookHost | undefined,
 	): AsyncGenerator<Event> {
 		// ── Gap B: the tail draft is abandoned — never committed history ──
 		// "A model output suffix without a committed stop is an incomplete
@@ -340,6 +341,15 @@ export class Run implements AsyncIterable<Event> {
 			const turnEnd = scope.find((e) => e.type === "user_input" && e.seq > call.seq)?.seq ?? Number.POSITIVE_INFINITY;
 			const turnStop = scope.some((e) => e.type === "stop" && e.seq > call.seq && e.seq < turnEnd);
 			if (!turnStop) continue;
+			// The requests pass below owns request-tracked invocations (it
+			// binds the stored request by decisionId, or pauses for the
+			// human) — Gap A must never re-decide over a stored
+			// permission_requested. "Only a durable permission_decided
+			// authorizes an effect": a pending request is not a decision.
+			const hasRequest = log.all.some(
+				(e) => e.type === "permission_requested" && e.callId === call.callId && e.seq > call.seq,
+			);
+			if (hasRequest) continue;
 			const decided = log.all.find(
 				(e): e is Event & { type: "permission_decided" } =>
 					e.type === "permission_decided" && e.callId === call.callId && e.seq > call.seq && e.decidedBy !== undefined,
@@ -360,20 +370,39 @@ export class Run implements AsyncIterable<Event> {
 				}
 				continue;
 			}
-			// UNDECIDED — re-enter the approval pipeline.
-			const verdict =
-				approvalChain === undefined
-					? ({ action: "allow" } as const) // no policies — the kernel's default allow
-					: await abortable(
-							Promise.resolve(
-								approvalChain.decide(
-									{ callId: call.callId, name: call.name, input: call.input ?? {} },
-									{ signal, sessionId: this.#session.id },
-								),
-							),
-							signal,
-						);
-			if (verdict === ABORTED) return;
+			// UNDECIDED — re-enter the approval pipeline with the LIVE
+			// decision order (loop.ts decideCall): the composed chain
+			// first; only when no chain exists do the hooks' onPreTool
+			// speak (defer → ask, deny → deny, allow → allow); no policies
+			// at all → the kernel's default allow. Same semantics as the
+			// live path — a defer policy must not collapse into an
+			// auto-allow on resume. A throwing chain counts as ask: it
+			// speaks, never silently (the live parity).
+			const payload: ToolCallPayload = { callId: call.callId, name: call.name, input: call.input ?? {} };
+			// The chain's PolicyCall carries name+input only — callId is the
+			// framework's, the hook's is the provider-facing ToolCallPayload.
+			const policyCall = { name: payload.name, input: payload.input };
+			let verdict: ChainVerdict | PermissionDecision | undefined;
+			try {
+				if (approvalChain !== undefined) {
+					const chainVerdict = await abortable(
+						Promise.resolve(approvalChain.decide(policyCall, { signal, sessionId: this.#session.id })),
+						signal,
+					);
+					if (chainVerdict === ABORTED) return;
+					verdict = chainVerdict;
+				}
+			} catch {
+				verdict = { action: "ask" };
+			}
+			if (verdict === undefined && hooks?.onPreTool !== undefined) {
+				const decision = await abortable(Promise.resolve(hooks.onPreTool(payload, { sessionId: this.#session.id })), signal);
+				if (decision === ABORTED) return;
+				if (decision.action === "defer") verdict = { action: "ask" };
+				else if (decision.action !== "allow") verdict = { action: "deny", reason: decision.reason ?? "denied" };
+				else verdict = { action: "allow" };
+			}
+			if (verdict === undefined) verdict = { action: "allow" }; // no policies — the kernel's default allow
 			const decisionId = `d-${log.all.length + 1}`;
 			if (verdict.action === "allow") {
 				yield log.append({
@@ -382,7 +411,7 @@ export class Run implements AsyncIterable<Event> {
 					callId: call.callId,
 					invocationSeq: call.seq,
 					decision: "approved",
-					...(verdict.decidedBy !== undefined ? { decidedBy: verdict.decidedBy } : {}),
+					...("decidedBy" in verdict ? { decidedBy: verdict.decidedBy } : {}),
 				});
 				if (signal.aborted) return;
 				yield* this.#executePersisted(call.callId, call.name, call.input ?? {}, call.seq, signal);
@@ -393,10 +422,10 @@ export class Run implements AsyncIterable<Event> {
 					callId: call.callId,
 					invocationSeq: call.seq,
 					decision: "denied",
-					...(verdict.reason !== undefined ? { reason: verdict.reason } : {}),
-					...(verdict.decidedBy !== undefined ? { decidedBy: verdict.decidedBy } : {}),
+					...("reason" in verdict && verdict.reason !== undefined ? { reason: verdict.reason } : {}),
+					...("decidedBy" in verdict ? { decidedBy: verdict.decidedBy } : {}),
 				});
-				yield* this.#denialResult(call.callId, verdict.reason ?? "denied", call.seq);
+				yield* this.#denialResult(call.callId, ("reason" in verdict && verdict.reason) || "denied", call.seq);
 			} else {
 				// ask / all-abstain — the requests pass below announces the
 				// stored request and waits for the human.
