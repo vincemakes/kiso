@@ -245,7 +245,7 @@ describe("abort boundaries (Area 4)", () => {
 		const ac = new AbortController();
 		let approveLater: (() => void) | undefined;
 		const resolveApproval = async (_decisionId: string) =>
-			new Promise<import("../src/kernel/permission.js").PermissionDecision>((resolve) => {
+			new Promise<import("@vincemakes/kiso-core").PermissionDecision>((resolve) => {
 				approveLater = () => resolve({ action: "allow" });
 			});
 		const events: Event[] = [];
@@ -379,7 +379,7 @@ describe("defer is a real pause (regression)", () => {
 		let executed = 0;
 		registry.register(searchTool({ executed: () => (executed += 1) }));
 		const log = new EventLog();
-		const decisions = new Map<string, import("../src/kernel/permission.js").PermissionDecision>();
+		const decisions = new Map<string, import("@vincemakes/kiso-core").PermissionDecision>();
 		const resolveApproval = async (decisionId: string) => {
 			while (!decisions.has(decisionId)) await new Promise((r) => setTimeout(r, 5));
 			return decisions.get(decisionId)!;
