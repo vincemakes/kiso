@@ -1,0 +1,1213 @@
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374156427,"event":{"type":"user_input","content":"Without using any tools, explain in detail - at least four paragraphs - the difference between write-ahead logging and shadow paging in databases, and when each is preferable.","seq":0}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157612,"event":{"seq":1,"type":"thinking","text":"The"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157823,"event":{"seq":2,"type":"thinking","text":" user"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157828,"event":{"seq":3,"type":"thinking","text":" asks"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157832,"event":{"seq":4,"type":"thinking","text":" me"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157836,"event":{"seq":5,"type":"thinking","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157840,"event":{"seq":6,"type":"thinking","text":" explain"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157844,"event":{"seq":7,"type":"thinking","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157848,"event":{"seq":8,"type":"thinking","text":" without"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157853,"event":{"seq":9,"type":"thinking","text":" using"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157857,"event":{"seq":10,"type":"thinking","text":" any"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157861,"event":{"seq":11,"type":"thinking","text":" tools"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157866,"event":{"seq":12,"type":"thinking","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157869,"event":{"seq":13,"type":"thinking","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157873,"event":{"seq":14,"type":"thinking","text":" difference"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157877,"event":{"seq":15,"type":"thinking","text":" between"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157881,"event":{"seq":16,"type":"thinking","text":" write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157885,"event":{"seq":17,"type":"thinking","text":"-a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157889,"event":{"seq":18,"type":"thinking","text":"head"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157892,"event":{"seq":19,"type":"thinking","text":" logging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157896,"event":{"seq":20,"type":"thinking","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157900,"event":{"seq":21,"type":"thinking","text":" shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157903,"event":{"seq":22,"type":"thinking","text":" p"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157907,"event":{"seq":23,"type":"thinking","text":"aging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157911,"event":{"seq":24,"type":"thinking","text":" in"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157916,"event":{"seq":25,"type":"thinking","text":" databases"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157919,"event":{"seq":26,"type":"thinking","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157923,"event":{"seq":27,"type":"thinking","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157928,"event":{"seq":28,"type":"thinking","text":" when"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157933,"event":{"seq":29,"type":"thinking","text":" each"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157936,"event":{"seq":30,"type":"thinking","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157940,"event":{"seq":31,"type":"thinking","text":" preferable"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157943,"event":{"seq":32,"type":"thinking","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157947,"event":{"seq":33,"type":"thinking","text":" At"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157950,"event":{"seq":34,"type":"thinking","text":" least"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157954,"event":{"seq":35,"type":"thinking","text":" four"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157959,"event":{"seq":36,"type":"thinking","text":" paragraphs"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157963,"event":{"seq":37,"type":"thinking","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157967,"event":{"seq":38,"type":"thinking","text":" I"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157970,"event":{"seq":39,"type":"thinking","text":" should"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157974,"event":{"seq":40,"type":"thinking","text":" just"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157977,"event":{"seq":41,"type":"thinking","text":" answer"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157981,"event":{"seq":42,"type":"thinking","text":" directly"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157984,"event":{"seq":43,"type":"thinking","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157988,"event":{"seq":44,"type":"thinking","text":" No"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157992,"event":{"seq":45,"type":"thinking","text":" tools"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374157996,"event":{"seq":46,"type":"thinking","text":" needed"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158000,"event":{"seq":47,"type":"thinking","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158004,"event":{"seq":48,"type":"text_delta","text":"Here"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158008,"event":{"seq":49,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158012,"event":{"seq":50,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158016,"event":{"seq":51,"type":"text_delta","text":" detailed"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158020,"event":{"seq":52,"type":"text_delta","text":" comparison"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158023,"event":{"seq":53,"type":"text_delta","text":" of"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158027,"event":{"seq":54,"type":"text_delta","text":" write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158031,"event":{"seq":55,"type":"text_delta","text":"-a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158035,"event":{"seq":56,"type":"text_delta","text":"head"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158039,"event":{"seq":57,"type":"text_delta","text":" logging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158044,"event":{"seq":58,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158047,"event":{"seq":59,"type":"text_delta","text":"W"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158050,"event":{"seq":60,"type":"text_delta","text":"AL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158055,"event":{"seq":61,"type":"text_delta","text":")"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158059,"event":{"seq":62,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158062,"event":{"seq":63,"type":"text_delta","text":" shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158066,"event":{"seq":64,"type":"text_delta","text":" p"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158070,"event":{"seq":65,"type":"text_delta","text":"aging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158074,"event":{"seq":66,"type":"text_delta","text":" as"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158078,"event":{"seq":67,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158102,"event":{"seq":68,"type":"text_delta","text":" recovery"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158106,"event":{"seq":69,"type":"text_delta","text":" mechanisms"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158110,"event":{"seq":70,"type":"text_delta","text":".\n\n"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158114,"event":{"seq":71,"type":"text_delta","text":"**"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158130,"event":{"seq":72,"type":"text_delta","text":"Write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158134,"event":{"seq":73,"type":"text_delta","text":"-a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158137,"event":{"seq":74,"type":"text_delta","text":"head"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158141,"event":{"seq":75,"type":"text_delta","text":" logging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158144,"event":{"seq":76,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158150,"event":{"seq":77,"type":"text_delta","text":"W"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158153,"event":{"seq":78,"type":"text_delta","text":"AL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158156,"event":{"seq":79,"type":"text_delta","text":")**"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158168,"event":{"seq":80,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158171,"event":{"seq":81,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158190,"event":{"seq":82,"type":"text_delta","text":" dominant"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158216,"event":{"seq":83,"type":"text_delta","text":" crash"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158247,"event":{"seq":84,"type":"text_delta","text":"-re"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158252,"event":{"seq":85,"type":"text_delta","text":"covery"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158255,"event":{"seq":86,"type":"text_delta","text":" technique"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158258,"event":{"seq":87,"type":"text_delta","text":" used"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158262,"event":{"seq":88,"type":"text_delta","text":" in"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158266,"event":{"seq":89,"type":"text_delta","text":" nearly"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158286,"event":{"seq":90,"type":"text_delta","text":" all"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158290,"event":{"seq":91,"type":"text_delta","text":" production"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158300,"event":{"seq":92,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158319,"event":{"seq":93,"type":"text_delta","text":" systems"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158323,"event":{"seq":94,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158327,"event":{"seq":95,"type":"text_delta","text":"Post"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158340,"event":{"seq":96,"type":"text_delta","text":"greSQL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158344,"event":{"seq":97,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158348,"event":{"seq":98,"type":"text_delta","text":" MySQL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158352,"event":{"seq":99,"type":"text_delta","text":"/"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158365,"event":{"seq":100,"type":"text_delta","text":"In"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158369,"event":{"seq":101,"type":"text_delta","text":"no"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158373,"event":{"seq":102,"type":"text_delta","text":"DB"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158377,"event":{"seq":103,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158381,"event":{"seq":104,"type":"text_delta","text":" SQL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158384,"event":{"seq":105,"type":"text_delta","text":"ite"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158388,"event":{"seq":106,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158392,"event":{"seq":107,"type":"text_delta","text":" most"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158410,"event":{"seq":108,"type":"text_delta","text":" L"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158430,"event":{"seq":109,"type":"text_delta","text":"SM"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158434,"event":{"seq":110,"type":"text_delta","text":"-tree"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158459,"event":{"seq":111,"type":"text_delta","text":" engines"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158463,"event":{"seq":112,"type":"text_delta","text":")."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158467,"event":{"seq":113,"type":"text_delta","text":" The"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158488,"event":{"seq":114,"type":"text_delta","text":" core"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158491,"event":{"seq":115,"type":"text_delta","text":" idea"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158494,"event":{"seq":116,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158508,"event":{"seq":117,"type":"text_delta","text":" that"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158512,"event":{"seq":118,"type":"text_delta","text":" before"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158530,"event":{"seq":119,"type":"text_delta","text":" any"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158533,"event":{"seq":120,"type":"text_delta","text":" change"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158555,"event":{"seq":121,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158560,"event":{"seq":122,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158564,"event":{"seq":123,"type":"text_delta","text":" data"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158577,"event":{"seq":124,"type":"text_delta","text":" page"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158580,"event":{"seq":125,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158583,"event":{"seq":126,"type":"text_delta","text":" written"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158587,"event":{"seq":127,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158597,"event":{"seq":128,"type":"text_delta","text":" its"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158601,"event":{"seq":129,"type":"text_delta","text":" final"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158625,"event":{"seq":130,"type":"text_delta","text":" location"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158629,"event":{"seq":131,"type":"text_delta","text":" on"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158652,"event":{"seq":132,"type":"text_delta","text":" disk"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158655,"event":{"seq":133,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158659,"event":{"seq":134,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158679,"event":{"seq":135,"type":"text_delta","text":" record"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158683,"event":{"seq":136,"type":"text_delta","text":" describing"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158708,"event":{"seq":137,"type":"text_delta","text":" that"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158712,"event":{"seq":138,"type":"text_delta","text":" change"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158716,"event":{"seq":139,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158741,"event":{"seq":140,"type":"text_delta","text":" first"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158745,"event":{"seq":141,"type":"text_delta","text":" appended"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158749,"event":{"seq":142,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158753,"event":{"seq":143,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158788,"event":{"seq":144,"type":"text_delta","text":" sequential"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158791,"event":{"seq":145,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158795,"event":{"seq":146,"type":"text_delta","text":" append"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158814,"event":{"seq":147,"type":"text_delta","text":"-only"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158817,"event":{"seq":148,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158821,"event":{"seq":149,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158829,"event":{"seq":150,"type":"text_delta","text":" The"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158833,"event":{"seq":151,"type":"text_delta","text":" \""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158856,"event":{"seq":152,"type":"text_delta","text":"write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158859,"event":{"seq":153,"type":"text_delta","text":"-a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158917,"event":{"seq":154,"type":"text_delta","text":"head"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158924,"event":{"seq":155,"type":"text_delta","text":"\""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158928,"event":{"seq":156,"type":"text_delta","text":" rule"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158931,"event":{"seq":157,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158935,"event":{"seq":158,"type":"text_delta","text":" strict"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158939,"event":{"seq":159,"type":"text_delta","text":":"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158942,"event":{"seq":160,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158946,"event":{"seq":161,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158953,"event":{"seq":162,"type":"text_delta","text":" record"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158971,"event":{"seq":163,"type":"text_delta","text":" must"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158974,"event":{"seq":164,"type":"text_delta","text":" reach"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374158995,"event":{"seq":165,"type":"text_delta","text":" stable"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159013,"event":{"seq":166,"type":"text_delta","text":" storage"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159038,"event":{"seq":167,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159042,"event":{"seq":168,"type":"text_delta","text":"be"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159063,"event":{"seq":169,"type":"text_delta","text":" durable"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159086,"event":{"seq":170,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159090,"event":{"seq":171,"type":"text_delta","text":" typically"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159107,"event":{"seq":172,"type":"text_delta","text":" via"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159111,"event":{"seq":173,"type":"text_delta","text":" an"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159145,"event":{"seq":174,"type":"text_delta","text":" `"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159148,"event":{"seq":175,"type":"text_delta","text":"fs"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159151,"event":{"seq":176,"type":"text_delta","text":"ync"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159154,"event":{"seq":177,"type":"text_delta","text":"`)"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159168,"event":{"seq":178,"type":"text_delta","text":" *"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159196,"event":{"seq":179,"type":"text_delta","text":"before"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159200,"event":{"seq":180,"type":"text_delta","text":"*"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159204,"event":{"seq":181,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159208,"event":{"seq":182,"type":"text_delta","text":" corresponding"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159219,"event":{"seq":183,"type":"text_delta","text":" dirty"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159251,"event":{"seq":184,"type":"text_delta","text":" page"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159255,"event":{"seq":185,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159259,"event":{"seq":186,"type":"text_delta","text":" flushed"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159263,"event":{"seq":187,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159266,"event":{"seq":188,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159278,"event":{"seq":189,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159302,"event":{"seq":190,"type":"text_delta","text":" files"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159323,"event":{"seq":191,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159327,"event":{"seq":192,"type":"text_delta","text":" At"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159346,"event":{"seq":193,"type":"text_delta","text":" any"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159361,"event":{"seq":194,"type":"text_delta","text":" moment"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159387,"event":{"seq":195,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159391,"event":{"seq":196,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159393,"event":{"seq":197,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159406,"event":{"seq":198,"type":"text_delta","text":" therefore"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159503,"event":{"seq":199,"type":"text_delta","text":" contains"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159506,"event":{"seq":200,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159510,"event":{"seq":201,"type":"text_delta","text":" complete"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159514,"event":{"seq":202,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159517,"event":{"seq":203,"type":"text_delta","text":" ordered"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159520,"event":{"seq":204,"type":"text_delta","text":" history"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159524,"event":{"seq":205,"type":"text_delta","text":" of"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159528,"event":{"seq":206,"type":"text_delta","text":" every"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159532,"event":{"seq":207,"type":"text_delta","text":" committed"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159536,"event":{"seq":208,"type":"text_delta","text":" transaction"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159540,"event":{"seq":209,"type":"text_delta","text":"'s"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159544,"event":{"seq":210,"type":"text_delta","text":" changes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159548,"event":{"seq":211,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159552,"event":{"seq":212,"type":"text_delta","text":" even"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159568,"event":{"seq":213,"type":"text_delta","text":" if"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159594,"event":{"seq":214,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159598,"event":{"seq":215,"type":"text_delta","text":" data"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159619,"event":{"seq":216,"type":"text_delta","text":" pages"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159623,"event":{"seq":217,"type":"text_delta","text":" themselves"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159626,"event":{"seq":218,"type":"text_delta","text":" are"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374159630,"event":{"seq":219,"type":"text_delta","text":" stale"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374181391,"event":{"type":"model_output_abandoned","voidFromSeq":0,"reason":"a model output suffix without a committed stop — abandoned on resume","seq":220}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183015,"event":{"seq":221,"type":"thinking","text":"The"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183162,"event":{"seq":222,"type":"thinking","text":" user"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183172,"event":{"seq":223,"type":"thinking","text":" asks"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183176,"event":{"seq":224,"type":"thinking","text":" me"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183180,"event":{"seq":225,"type":"thinking","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183183,"event":{"seq":226,"type":"thinking","text":" explain"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183186,"event":{"seq":227,"type":"thinking","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183198,"event":{"seq":228,"type":"thinking","text":" without"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183201,"event":{"seq":229,"type":"thinking","text":" using"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183205,"event":{"seq":230,"type":"thinking","text":" any"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183209,"event":{"seq":231,"type":"thinking","text":" tools"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183227,"event":{"seq":232,"type":"thinking","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183230,"event":{"seq":233,"type":"thinking","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183234,"event":{"seq":234,"type":"thinking","text":" difference"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183238,"event":{"seq":235,"type":"thinking","text":" between"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183242,"event":{"seq":236,"type":"thinking","text":" write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183249,"event":{"seq":237,"type":"thinking","text":"-a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183253,"event":{"seq":238,"type":"thinking","text":"head"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183256,"event":{"seq":239,"type":"thinking","text":" logging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183259,"event":{"seq":240,"type":"thinking","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183271,"event":{"seq":241,"type":"thinking","text":"W"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183274,"event":{"seq":242,"type":"thinking","text":"AL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183278,"event":{"seq":243,"type":"thinking","text":")"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183282,"event":{"seq":244,"type":"thinking","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183286,"event":{"seq":245,"type":"thinking","text":" shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183290,"event":{"seq":246,"type":"thinking","text":" p"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183299,"event":{"seq":247,"type":"thinking","text":"aging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183304,"event":{"seq":248,"type":"thinking","text":" in"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183308,"event":{"seq":249,"type":"thinking","text":" databases"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183311,"event":{"seq":250,"type":"thinking","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183315,"event":{"seq":251,"type":"thinking","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183319,"event":{"seq":252,"type":"thinking","text":" when"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183324,"event":{"seq":253,"type":"thinking","text":" each"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183327,"event":{"seq":254,"type":"thinking","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183331,"event":{"seq":255,"type":"thinking","text":" preferable"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183334,"event":{"seq":256,"type":"thinking","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183338,"event":{"seq":257,"type":"thinking","text":" They"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183342,"event":{"seq":258,"type":"thinking","text":" want"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183346,"event":{"seq":259,"type":"thinking","text":" at"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183350,"event":{"seq":260,"type":"thinking","text":" least"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183354,"event":{"seq":261,"type":"thinking","text":" four"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183357,"event":{"seq":262,"type":"thinking","text":" paragraphs"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183360,"event":{"seq":263,"type":"thinking","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183364,"event":{"seq":264,"type":"thinking","text":" No"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183386,"event":{"seq":265,"type":"thinking","text":" tools"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183389,"event":{"seq":266,"type":"thinking","text":" needed"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183392,"event":{"seq":267,"type":"thinking","text":" —"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183407,"event":{"seq":268,"type":"thinking","text":" just"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183430,"event":{"seq":269,"type":"thinking","text":" write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183435,"event":{"seq":270,"type":"thinking","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183438,"event":{"seq":271,"type":"thinking","text":" detailed"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183442,"event":{"seq":272,"type":"thinking","text":" answer"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183453,"event":{"seq":273,"type":"thinking","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183478,"event":{"seq":274,"type":"text_delta","text":"Write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183502,"event":{"seq":275,"type":"text_delta","text":"-a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183506,"event":{"seq":276,"type":"text_delta","text":"head"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183510,"event":{"seq":277,"type":"text_delta","text":" logging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183514,"event":{"seq":278,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183518,"event":{"seq":279,"type":"text_delta","text":"W"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183522,"event":{"seq":280,"type":"text_delta","text":"AL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183527,"event":{"seq":281,"type":"text_delta","text":")"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183530,"event":{"seq":282,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183548,"event":{"seq":283,"type":"text_delta","text":" shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183551,"event":{"seq":284,"type":"text_delta","text":" p"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183555,"event":{"seq":285,"type":"text_delta","text":"aging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183559,"event":{"seq":286,"type":"text_delta","text":" are"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183563,"event":{"seq":287,"type":"text_delta","text":" two"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183571,"event":{"seq":288,"type":"text_delta","text":" fundamentally"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183594,"event":{"seq":289,"type":"text_delta","text":" different"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183598,"event":{"seq":290,"type":"text_delta","text":" strategies"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183601,"event":{"seq":291,"type":"text_delta","text":" for"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183605,"event":{"seq":292,"type":"text_delta","text":" guaranteeing"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183618,"event":{"seq":293,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183663,"event":{"seq":294,"type":"text_delta","text":" durability"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183668,"event":{"seq":295,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183672,"event":{"seq":296,"type":"text_delta","text":" atomic"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183677,"event":{"seq":297,"type":"text_delta","text":"ity"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183680,"event":{"seq":298,"type":"text_delta","text":" —"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183688,"event":{"seq":299,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183691,"event":{"seq":300,"type":"text_delta","text":" \""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183714,"event":{"seq":301,"type":"text_delta","text":"A"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183734,"event":{"seq":302,"type":"text_delta","text":"\""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183738,"event":{"seq":303,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183742,"event":{"seq":304,"type":"text_delta","text":" \""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183745,"event":{"seq":305,"type":"text_delta","text":"D"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183761,"event":{"seq":306,"type":"text_delta","text":"\""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183764,"event":{"seq":307,"type":"text_delta","text":" of"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183767,"event":{"seq":308,"type":"text_delta","text":" AC"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183783,"event":{"seq":309,"type":"text_delta","text":"ID"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183786,"event":{"seq":310,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183790,"event":{"seq":311,"type":"text_delta","text":" In"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183804,"event":{"seq":312,"type":"text_delta","text":" write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183827,"event":{"seq":313,"type":"text_delta","text":"-a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183831,"event":{"seq":314,"type":"text_delta","text":"head"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183834,"event":{"seq":315,"type":"text_delta","text":" logging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183838,"event":{"seq":316,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183841,"event":{"seq":317,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183844,"event":{"seq":318,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183849,"event":{"seq":319,"type":"text_delta","text":" keeps"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183853,"event":{"seq":320,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183873,"event":{"seq":321,"type":"text_delta","text":" sequential"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183895,"event":{"seq":322,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183899,"event":{"seq":323,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183921,"event":{"seq":324,"type":"text_delta","text":"the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183943,"event":{"seq":325,"type":"text_delta","text":" \""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183947,"event":{"seq":326,"type":"text_delta","text":"redo"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183951,"event":{"seq":327,"type":"text_delta","text":"\""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183966,"event":{"seq":328,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183970,"event":{"seq":329,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374183974,"event":{"seq":330,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184010,"event":{"seq":331,"type":"text_delta","text":" often"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184013,"event":{"seq":332,"type":"text_delta","text":" an"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184017,"event":{"seq":333,"type":"text_delta","text":" \""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184021,"event":{"seq":334,"type":"text_delta","text":"undo"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184025,"event":{"seq":335,"type":"text_delta","text":"\""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184028,"event":{"seq":336,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184032,"event":{"seq":337,"type":"text_delta","text":")"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184036,"event":{"seq":338,"type":"text_delta","text":" on"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184040,"event":{"seq":339,"type":"text_delta","text":" stable"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184061,"event":{"seq":340,"type":"text_delta","text":" storage"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184085,"event":{"seq":341,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184089,"event":{"seq":342,"type":"text_delta","text":" Before"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184108,"event":{"seq":343,"type":"text_delta","text":" any"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184116,"event":{"seq":344,"type":"text_delta","text":" page"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184130,"event":{"seq":345,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184133,"event":{"seq":346,"type":"text_delta","text":" modified"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184137,"event":{"seq":347,"type":"text_delta","text":" in"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184151,"event":{"seq":348,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184178,"event":{"seq":349,"type":"text_delta","text":" main"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184182,"event":{"seq":350,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184186,"event":{"seq":351,"type":"text_delta","text":" file"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184198,"event":{"seq":352,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184202,"event":{"seq":353,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184221,"event":{"seq":354,"type":"text_delta","text":" record"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184225,"event":{"seq":355,"type":"text_delta","text":" describing"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184245,"event":{"seq":356,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184248,"event":{"seq":357,"type":"text_delta","text":" change"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184268,"event":{"seq":358,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184290,"event":{"seq":359,"type":"text_delta","text":" appended"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184294,"event":{"seq":360,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184298,"event":{"seq":361,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184301,"event":{"seq":362,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184314,"event":{"seq":363,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184318,"event":{"seq":364,"type":"text_delta","text":" forced"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184339,"event":{"seq":365,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184343,"event":{"seq":366,"type":"text_delta","text":" disk"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184362,"event":{"seq":367,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184393,"event":{"seq":368,"type":"text_delta","text":" The"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184396,"event":{"seq":369,"type":"text_delta","text":" actual"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184408,"event":{"seq":370,"type":"text_delta","text":" data"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184431,"event":{"seq":371,"type":"text_delta","text":" pages"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184434,"event":{"seq":372,"type":"text_delta","text":" may"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184453,"event":{"seq":373,"type":"text_delta","text":" be"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184477,"event":{"seq":374,"type":"text_delta","text":" written"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184481,"event":{"seq":375,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184500,"event":{"seq":376,"type":"text_delta","text":" disk"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184524,"event":{"seq":377,"type":"text_delta","text":" laz"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184547,"event":{"seq":378,"type":"text_delta","text":"ily"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184551,"event":{"seq":379,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184555,"event":{"seq":380,"type":"text_delta","text":" at"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184571,"event":{"seq":381,"type":"text_delta","text":" any"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184575,"event":{"seq":382,"type":"text_delta","text":" later"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184595,"event":{"seq":383,"type":"text_delta","text":" time"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184599,"event":{"seq":384,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184603,"event":{"seq":385,"type":"text_delta","text":" because"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184620,"event":{"seq":386,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184624,"event":{"seq":387,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184644,"event":{"seq":388,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184649,"event":{"seq":389,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184664,"event":{"seq":390,"type":"text_delta","text":" source"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184668,"event":{"seq":391,"type":"text_delta","text":" of"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184672,"event":{"seq":392,"type":"text_delta","text":" truth"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184689,"event":{"seq":393,"type":"text_delta","text":" for"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184693,"event":{"seq":394,"type":"text_delta","text":" recovery"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184714,"event":{"seq":395,"type":"text_delta","text":":"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184718,"event":{"seq":396,"type":"text_delta","text":" if"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184722,"event":{"seq":397,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184726,"event":{"seq":398,"type":"text_delta","text":" system"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184736,"event":{"seq":399,"type":"text_delta","text":" crashes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184740,"event":{"seq":400,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184744,"event":{"seq":401,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184757,"event":{"seq":402,"type":"text_delta","text":" recovery"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184761,"event":{"seq":403,"type":"text_delta","text":" process"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184784,"event":{"seq":404,"type":"text_delta","text":" repl"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184787,"event":{"seq":405,"type":"text_delta","text":"ays"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184791,"event":{"seq":406,"type":"text_delta","text":" committed"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184805,"event":{"seq":407,"type":"text_delta","text":" transactions"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184828,"event":{"seq":408,"type":"text_delta","text":" from"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184831,"event":{"seq":409,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184835,"event":{"seq":410,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184839,"event":{"seq":411,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184842,"event":{"seq":412,"type":"text_delta","text":"redo"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184875,"event":{"seq":413,"type":"text_delta","text":")"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184878,"event":{"seq":414,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184881,"event":{"seq":415,"type":"text_delta","text":" rolls"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184885,"event":{"seq":416,"type":"text_delta","text":" back"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184889,"event":{"seq":417,"type":"text_delta","text":" un"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184893,"event":{"seq":418,"type":"text_delta","text":"comm"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184898,"event":{"seq":419,"type":"text_delta","text":"itted"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184901,"event":{"seq":420,"type":"text_delta","text":" ones"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184920,"event":{"seq":421,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184924,"event":{"seq":422,"type":"text_delta","text":"undo"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184928,"event":{"seq":423,"type":"text_delta","text":"),"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184931,"event":{"seq":424,"type":"text_delta","text":" bringing"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184944,"event":{"seq":425,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184948,"event":{"seq":426,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184951,"event":{"seq":427,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184970,"event":{"seq":428,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184974,"event":{"seq":429,"type":"text_delta","text":" consistent"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184978,"event":{"seq":430,"type":"text_delta","text":" state"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184982,"event":{"seq":431,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184990,"event":{"seq":432,"type":"text_delta","text":" The"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374184994,"event":{"seq":433,"type":"text_delta","text":" key"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185014,"event":{"seq":434,"type":"text_delta","text":" invariant"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185037,"event":{"seq":435,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185042,"event":{"seq":436,"type":"text_delta","text":" that"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185045,"event":{"seq":437,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185049,"event":{"seq":438,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185060,"event":{"seq":439,"type":"text_delta","text":" record"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185064,"event":{"seq":440,"type":"text_delta","text":" for"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185084,"event":{"seq":441,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185088,"event":{"seq":442,"type":"text_delta","text":" change"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185105,"event":{"seq":443,"type":"text_delta","text":" must"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185109,"event":{"seq":444,"type":"text_delta","text":" hit"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185158,"event":{"seq":445,"type":"text_delta","text":" stable"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185161,"event":{"seq":446,"type":"text_delta","text":" storage"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185165,"event":{"seq":447,"type":"text_delta","text":" before"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185179,"event":{"seq":448,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185183,"event":{"seq":449,"type":"text_delta","text":" corresponding"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185198,"event":{"seq":450,"type":"text_delta","text":" page"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185202,"event":{"seq":451,"type":"text_delta","text":" write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185227,"event":{"seq":452,"type":"text_delta","text":" does"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185245,"event":{"seq":453,"type":"text_delta","text":" —"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185266,"event":{"seq":454,"type":"text_delta","text":" hence"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185290,"event":{"seq":455,"type":"text_delta","text":" \""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185293,"event":{"seq":456,"type":"text_delta","text":"write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185312,"event":{"seq":457,"type":"text_delta","text":"-a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185316,"event":{"seq":458,"type":"text_delta","text":"head"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185336,"event":{"seq":459,"type":"text_delta","text":".\"\n\n"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185340,"event":{"seq":460,"type":"text_delta","text":"Shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185344,"event":{"seq":461,"type":"text_delta","text":" p"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185358,"event":{"seq":462,"type":"text_delta","text":"aging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185362,"event":{"seq":463,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185366,"event":{"seq":464,"type":"text_delta","text":" by"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185381,"event":{"seq":465,"type":"text_delta","text":" contrast"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185385,"event":{"seq":466,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185389,"event":{"seq":467,"type":"text_delta","text":" avoids"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185407,"event":{"seq":468,"type":"text_delta","text":" logs"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185429,"event":{"seq":469,"type":"text_delta","text":" entirely"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185433,"event":{"seq":470,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185450,"event":{"seq":471,"type":"text_delta","text":" The"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185475,"event":{"seq":472,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185478,"event":{"seq":473,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185482,"event":{"seq":474,"type":"text_delta","text":" organized"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185504,"event":{"seq":475,"type":"text_delta","text":" as"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185521,"event":{"seq":476,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185525,"event":{"seq":477,"type":"text_delta","text":" tree"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185529,"event":{"seq":478,"type":"text_delta","text":" of"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185533,"event":{"seq":479,"type":"text_delta","text":" fixed"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185549,"event":{"seq":480,"type":"text_delta","text":"-size"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185552,"event":{"seq":481,"type":"text_delta","text":" pages"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185556,"event":{"seq":482,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185560,"event":{"seq":483,"type":"text_delta","text":"typically"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185569,"event":{"seq":484,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185591,"event":{"seq":485,"type":"text_delta","text":" B"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185594,"event":{"seq":486,"type":"text_delta","text":"-tree"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185612,"event":{"seq":487,"type":"text_delta","text":"),"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185646,"event":{"seq":488,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185649,"event":{"seq":489,"type":"text_delta","text":" there"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185670,"event":{"seq":490,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185674,"event":{"seq":491,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185678,"event":{"seq":492,"type":"text_delta","text":" \""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185690,"event":{"seq":493,"type":"text_delta","text":"shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185694,"event":{"seq":494,"type":"text_delta","text":" page"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185713,"event":{"seq":495,"type":"text_delta","text":" table"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185736,"event":{"seq":496,"type":"text_delta","text":"\""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185739,"event":{"seq":497,"type":"text_delta","text":" that"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185761,"event":{"seq":498,"type":"text_delta","text":" maps"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185768,"event":{"seq":499,"type":"text_delta","text":" logical"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185784,"event":{"seq":500,"type":"text_delta","text":" pages"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185807,"event":{"seq":501,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185810,"event":{"seq":502,"type":"text_delta","text":" physical"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185814,"event":{"seq":503,"type":"text_delta","text":" disk"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185830,"event":{"seq":504,"type":"text_delta","text":" locations"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185834,"event":{"seq":505,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185838,"event":{"seq":506,"type":"text_delta","text":" When"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185854,"event":{"seq":507,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185858,"event":{"seq":508,"type":"text_delta","text":" transaction"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185861,"event":{"seq":509,"type":"text_delta","text":" begins"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185877,"event":{"seq":510,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185881,"event":{"seq":511,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185899,"event":{"seq":512,"type":"text_delta","text":" current"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185903,"event":{"seq":513,"type":"text_delta","text":" page"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185923,"event":{"seq":514,"type":"text_delta","text":" table"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185926,"event":{"seq":515,"type":"text_delta","text":" becomes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185950,"event":{"seq":516,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185954,"event":{"seq":517,"type":"text_delta","text":" \""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185957,"event":{"seq":518,"type":"text_delta","text":"shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185960,"event":{"seq":519,"type":"text_delta","text":"\""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185974,"event":{"seq":520,"type":"text_delta","text":" copy"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185978,"event":{"seq":521,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185981,"event":{"seq":522,"type":"text_delta","text":" which"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374185992,"event":{"seq":523,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186013,"event":{"seq":524,"type":"text_delta","text":" preserved"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186038,"event":{"seq":525,"type":"text_delta","text":" untouched"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186059,"event":{"seq":526,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186063,"event":{"seq":527,"type":"text_delta","text":" All"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186088,"event":{"seq":528,"type":"text_delta","text":" modifications"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186107,"event":{"seq":529,"type":"text_delta","text":" made"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186132,"event":{"seq":530,"type":"text_delta","text":" by"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186154,"event":{"seq":531,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186158,"event":{"seq":532,"type":"text_delta","text":" transaction"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186162,"event":{"seq":533,"type":"text_delta","text":" are"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186165,"event":{"seq":534,"type":"text_delta","text":" written"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186168,"event":{"seq":535,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186177,"event":{"seq":536,"type":"text_delta","text":" *"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186180,"event":{"seq":537,"type":"text_delta","text":"new"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186183,"event":{"seq":538,"type":"text_delta","text":"*"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186225,"event":{"seq":539,"type":"text_delta","text":" physical"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186229,"event":{"seq":540,"type":"text_delta","text":" pages"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186232,"event":{"seq":541,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186235,"event":{"seq":542,"type":"text_delta","text":"copy"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186296,"event":{"seq":543,"type":"text_delta","text":"-on"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186299,"event":{"seq":544,"type":"text_delta","text":"-w"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186302,"event":{"seq":545,"type":"text_delta","text":"rite"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186305,"event":{"seq":546,"type":"text_delta","text":");"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186308,"event":{"seq":547,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186311,"event":{"seq":548,"type":"text_delta","text":" active"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186314,"event":{"seq":549,"type":"text_delta","text":" page"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186318,"event":{"seq":550,"type":"text_delta","text":" table"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186342,"event":{"seq":551,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186345,"event":{"seq":552,"type":"text_delta","text":" updated"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186349,"event":{"seq":553,"type":"text_delta","text":" in"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186352,"event":{"seq":554,"type":"text_delta","text":" memory"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186355,"event":{"seq":555,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186358,"event":{"seq":556,"type":"text_delta","text":" point"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186361,"event":{"seq":557,"type":"text_delta","text":" at"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186369,"event":{"seq":558,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186372,"event":{"seq":559,"type":"text_delta","text":" new"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186375,"event":{"seq":560,"type":"text_delta","text":" pages"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186378,"event":{"seq":561,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186381,"event":{"seq":562,"type":"text_delta","text":" while"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186391,"event":{"seq":563,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186394,"event":{"seq":564,"type":"text_delta","text":" shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186397,"event":{"seq":565,"type":"text_delta","text":" table"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186420,"event":{"seq":566,"type":"text_delta","text":" still"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186423,"event":{"seq":567,"type":"text_delta","text":" points"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186427,"event":{"seq":568,"type":"text_delta","text":" at"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186443,"event":{"seq":569,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186446,"event":{"seq":570,"type":"text_delta","text":" old"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186449,"event":{"seq":571,"type":"text_delta","text":" ones"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186452,"event":{"seq":572,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186455,"event":{"seq":573,"type":"text_delta","text":" At"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186464,"event":{"seq":574,"type":"text_delta","text":" commit"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186468,"event":{"seq":575,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186471,"event":{"seq":576,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186474,"event":{"seq":577,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186477,"event":{"seq":578,"type":"text_delta","text":" atom"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186532,"event":{"seq":579,"type":"text_delta","text":"ically"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186536,"event":{"seq":580,"type":"text_delta","text":" fl"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186540,"event":{"seq":581,"type":"text_delta","text":"ushes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186543,"event":{"seq":582,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186547,"event":{"seq":583,"type":"text_delta","text":" new"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186550,"event":{"seq":584,"type":"text_delta","text":" pages"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186554,"event":{"seq":585,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186557,"event":{"seq":586,"type":"text_delta","text":" then"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186560,"event":{"seq":587,"type":"text_delta","text":" writes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186579,"event":{"seq":588,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186582,"event":{"seq":589,"type":"text_delta","text":" single"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186585,"event":{"seq":590,"type":"text_delta","text":" \""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186603,"event":{"seq":591,"type":"text_delta","text":"root"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186606,"event":{"seq":592,"type":"text_delta","text":"\""}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186628,"event":{"seq":593,"type":"text_delta","text":" pointer"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186651,"event":{"seq":594,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186673,"event":{"seq":595,"type":"text_delta","text":"or"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186676,"event":{"seq":596,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186679,"event":{"seq":597,"type":"text_delta","text":" new"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186700,"event":{"seq":598,"type":"text_delta","text":" page"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186703,"event":{"seq":599,"type":"text_delta","text":" table"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186706,"event":{"seq":600,"type":"text_delta","text":")"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186709,"event":{"seq":601,"type":"text_delta","text":" that"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186713,"event":{"seq":602,"type":"text_delta","text":" switches"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186725,"event":{"seq":603,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186728,"event":{"seq":604,"type":"text_delta","text":" entire"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186748,"event":{"seq":605,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186752,"event":{"seq":606,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186755,"event":{"seq":607,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186758,"event":{"seq":608,"type":"text_delta","text":" new"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186816,"event":{"seq":609,"type":"text_delta","text":" version"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186819,"event":{"seq":610,"type":"text_delta","text":" in"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186822,"event":{"seq":611,"type":"text_delta","text":" one"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186826,"event":{"seq":612,"type":"text_delta","text":" atomic"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186829,"event":{"seq":613,"type":"text_delta","text":" operation"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186840,"event":{"seq":614,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186843,"event":{"seq":615,"type":"text_delta","text":" If"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186865,"event":{"seq":616,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186868,"event":{"seq":617,"type":"text_delta","text":" system"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186887,"event":{"seq":618,"type":"text_delta","text":" crashes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186890,"event":{"seq":619,"type":"text_delta","text":" before"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186893,"event":{"seq":620,"type":"text_delta","text":" commit"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186897,"event":{"seq":621,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186902,"event":{"seq":622,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186907,"event":{"seq":623,"type":"text_delta","text":" old"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186930,"event":{"seq":624,"type":"text_delta","text":" shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186954,"event":{"seq":625,"type":"text_delta","text":" page"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186957,"event":{"seq":626,"type":"text_delta","text":" table"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186978,"event":{"seq":627,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186981,"event":{"seq":628,"type":"text_delta","text":" still"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374186985,"event":{"seq":629,"type":"text_delta","text":" valid"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187006,"event":{"seq":630,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187022,"event":{"seq":631,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187027,"event":{"seq":632,"type":"text_delta","text":" un"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187046,"event":{"seq":633,"type":"text_delta","text":"comm"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187050,"event":{"seq":634,"type":"text_delta","text":"itted"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187053,"event":{"seq":635,"type":"text_delta","text":" new"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187081,"event":{"seq":636,"type":"text_delta","text":" pages"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187085,"event":{"seq":637,"type":"text_delta","text":" are"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187088,"event":{"seq":638,"type":"text_delta","text":" simply"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187091,"event":{"seq":639,"type":"text_delta","text":" discarded"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187095,"event":{"seq":640,"type":"text_delta","text":" —"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187098,"event":{"seq":641,"type":"text_delta","text":" no"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187114,"event":{"seq":642,"type":"text_delta","text":" undo"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187139,"event":{"seq":643,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187160,"event":{"seq":644,"type":"text_delta","text":" needed"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187165,"event":{"seq":645,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187184,"event":{"seq":646,"type":"text_delta","text":" If"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187187,"event":{"seq":647,"type":"text_delta","text":" it"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187215,"event":{"seq":648,"type":"text_delta","text":" crashes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187218,"event":{"seq":649,"type":"text_delta","text":" after"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187222,"event":{"seq":650,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187236,"event":{"seq":651,"type":"text_delta","text":" root"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187239,"event":{"seq":652,"type":"text_delta","text":" switch"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187263,"event":{"seq":653,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187267,"event":{"seq":654,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187272,"event":{"seq":655,"type":"text_delta","text":" new"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187289,"event":{"seq":656,"type":"text_delta","text":" version"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187318,"event":{"seq":657,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187321,"event":{"seq":658,"type":"text_delta","text":" fully"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187341,"event":{"seq":659,"type":"text_delta","text":" durable"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187362,"event":{"seq":660,"type":"text_delta","text":" —"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187386,"event":{"seq":661,"type":"text_delta","text":" no"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187389,"event":{"seq":662,"type":"text_delta","text":" re"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187407,"event":{"seq":663,"type":"text_delta","text":"do"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187410,"event":{"seq":664,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187413,"event":{"seq":665,"type":"text_delta","text":" needed"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187431,"event":{"seq":666,"type":"text_delta","text":".\n\n"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187435,"event":{"seq":667,"type":"text_delta","text":"The"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187438,"event":{"seq":668,"type":"text_delta","text":" trade"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187455,"event":{"seq":669,"type":"text_delta","text":"-offs"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187458,"event":{"seq":670,"type":"text_delta","text":" are"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187461,"event":{"seq":671,"type":"text_delta","text":" substantial"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187477,"event":{"seq":672,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187480,"event":{"seq":673,"type":"text_delta","text":" W"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187483,"event":{"seq":674,"type":"text_delta","text":"AL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187486,"event":{"seq":675,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187504,"event":{"seq":676,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187523,"event":{"seq":677,"type":"text_delta","text":" dominant"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187526,"event":{"seq":678,"type":"text_delta","text":" approach"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187546,"event":{"seq":679,"type":"text_delta","text":" in"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187549,"event":{"seq":680,"type":"text_delta","text":" practice"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187570,"event":{"seq":681,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187573,"event":{"seq":682,"type":"text_delta","text":"used"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187592,"event":{"seq":683,"type":"text_delta","text":" by"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187595,"event":{"seq":684,"type":"text_delta","text":" PostgreSQL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187599,"event":{"seq":685,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187617,"event":{"seq":686,"type":"text_delta","text":" MySQL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187620,"event":{"seq":687,"type":"text_delta","text":"/"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187640,"event":{"seq":688,"type":"text_delta","text":"In"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187643,"event":{"seq":689,"type":"text_delta","text":"no"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187647,"event":{"seq":690,"type":"text_delta","text":"DB"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187650,"event":{"seq":691,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187654,"event":{"seq":692,"type":"text_delta","text":" SQL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187657,"event":{"seq":693,"type":"text_delta","text":"ite"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187662,"event":{"seq":694,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187665,"event":{"seq":695,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187686,"event":{"seq":696,"type":"text_delta","text":" most"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187689,"event":{"seq":697,"type":"text_delta","text":" others"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187708,"event":{"seq":698,"type":"text_delta","text":")"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187732,"event":{"seq":699,"type":"text_delta","text":" because"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187735,"event":{"seq":700,"type":"text_delta","text":" it"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187739,"event":{"seq":701,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187767,"event":{"seq":702,"type":"text_delta","text":" efficient"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187770,"event":{"seq":703,"type":"text_delta","text":" for"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187779,"event":{"seq":704,"type":"text_delta","text":" high"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187802,"event":{"seq":705,"type":"text_delta","text":"-throughput"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187805,"event":{"seq":706,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187808,"event":{"seq":707,"type":"text_delta","text":" write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187826,"event":{"seq":708,"type":"text_delta","text":"-heavy"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187829,"event":{"seq":709,"type":"text_delta","text":" workloads"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187850,"event":{"seq":710,"type":"text_delta","text":":"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187853,"event":{"seq":711,"type":"text_delta","text":" pages"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187869,"event":{"seq":712,"type":"text_delta","text":" are"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187872,"event":{"seq":713,"type":"text_delta","text":" written"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187875,"event":{"seq":714,"type":"text_delta","text":" in"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187894,"event":{"seq":715,"type":"text_delta","text":" place"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187897,"event":{"seq":716,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187900,"event":{"seq":717,"type":"text_delta","text":" so"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187919,"event":{"seq":718,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187922,"event":{"seq":719,"type":"text_delta","text":" working"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187938,"event":{"seq":720,"type":"text_delta","text":" set"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187943,"event":{"seq":721,"type":"text_delta","text":" stays"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187965,"event":{"seq":722,"type":"text_delta","text":" small"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187969,"event":{"seq":723,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187985,"event":{"seq":724,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374187988,"event":{"seq":725,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188007,"event":{"seq":726,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188035,"event":{"seq":727,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188038,"event":{"seq":728,"type":"text_delta","text":" written"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188041,"event":{"seq":729,"type":"text_delta","text":" sequentially"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188056,"event":{"seq":730,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188059,"event":{"seq":731,"type":"text_delta","text":" which"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188080,"event":{"seq":732,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188083,"event":{"seq":733,"type":"text_delta","text":" fast"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188109,"event":{"seq":734,"type":"text_delta","text":" on"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188112,"event":{"seq":735,"type":"text_delta","text":" spinning"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188125,"event":{"seq":736,"type":"text_delta","text":" disks"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188128,"event":{"seq":737,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188148,"event":{"seq":738,"type":"text_delta","text":" SS"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188171,"event":{"seq":739,"type":"text_delta","text":"Ds"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188175,"event":{"seq":740,"type":"text_delta","text":" alike"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188203,"event":{"seq":741,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188206,"event":{"seq":742,"type":"text_delta","text":" Its"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188216,"event":{"seq":743,"type":"text_delta","text":" main"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188241,"event":{"seq":744,"type":"text_delta","text":" costs"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188244,"event":{"seq":745,"type":"text_delta","text":" are"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188247,"event":{"seq":746,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188264,"event":{"seq":747,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188267,"event":{"seq":748,"type":"text_delta","text":" itself"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188287,"event":{"seq":749,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188290,"event":{"seq":750,"type":"text_delta","text":"double"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188312,"event":{"seq":751,"type":"text_delta","text":"-w"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188336,"event":{"seq":752,"type":"text_delta","text":"rite"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188339,"event":{"seq":753,"type":"text_delta","text":" overhead"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188360,"event":{"seq":754,"type":"text_delta","text":":"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188363,"event":{"seq":755,"type":"text_delta","text":" every"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188384,"event":{"seq":756,"type":"text_delta","text":" change"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188387,"event":{"seq":757,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188405,"event":{"seq":758,"type":"text_delta","text":" written"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188408,"event":{"seq":759,"type":"text_delta","text":" once"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188427,"event":{"seq":760,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188430,"event":{"seq":761,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188433,"event":{"seq":762,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188436,"event":{"seq":763,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188439,"event":{"seq":764,"type":"text_delta","text":" later"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188450,"event":{"seq":765,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188453,"event":{"seq":766,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188456,"event":{"seq":767,"type":"text_delta","text":" data"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188474,"event":{"seq":768,"type":"text_delta","text":" file"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188596,"event":{"seq":769,"type":"text_delta","text":"),"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188600,"event":{"seq":770,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188606,"event":{"seq":771,"type":"text_delta","text":" complexity"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188610,"event":{"seq":772,"type":"text_delta","text":" of"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188614,"event":{"seq":773,"type":"text_delta","text":" recovery"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188617,"event":{"seq":774,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188620,"event":{"seq":775,"type":"text_delta","text":"log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188624,"event":{"seq":776,"type":"text_delta","text":" replay"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188628,"event":{"seq":777,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188631,"event":{"seq":778,"type":"text_delta","text":" checkpoint"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188634,"event":{"seq":779,"type":"text_delta","text":"ing"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188642,"event":{"seq":780,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188646,"event":{"seq":781,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188649,"event":{"seq":782,"type":"text_delta","text":" careful"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188652,"event":{"seq":783,"type":"text_delta","text":" ordering"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188849,"event":{"seq":784,"type":"text_delta","text":"),"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188853,"event":{"seq":785,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188857,"event":{"seq":786,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188861,"event":{"seq":787,"type":"text_delta","text":" fact"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188865,"event":{"seq":788,"type":"text_delta","text":" that"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188868,"event":{"seq":789,"type":"text_delta","text":" recovery"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188871,"event":{"seq":790,"type":"text_delta","text":" after"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188874,"event":{"seq":791,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188877,"event":{"seq":792,"type":"text_delta","text":" crash"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188880,"event":{"seq":793,"type":"text_delta","text":" can"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188883,"event":{"seq":794,"type":"text_delta","text":" take"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188886,"event":{"seq":795,"type":"text_delta","text":" time"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188889,"event":{"seq":796,"type":"text_delta","text":" proportional"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188892,"event":{"seq":797,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188895,"event":{"seq":798,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188898,"event":{"seq":799,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188901,"event":{"seq":800,"type":"text_delta","text":" length"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188905,"event":{"seq":801,"type":"text_delta","text":" since"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188929,"event":{"seq":802,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188933,"event":{"seq":803,"type":"text_delta","text":" last"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188936,"event":{"seq":804,"type":"text_delta","text":" checkpoint"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188939,"event":{"seq":805,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188942,"event":{"seq":806,"type":"text_delta","text":" W"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188945,"event":{"seq":807,"type":"text_delta","text":"AL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188948,"event":{"seq":808,"type":"text_delta","text":" also"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188951,"event":{"seq":809,"type":"text_delta","text":" naturally"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188955,"event":{"seq":810,"type":"text_delta","text":" supports"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188958,"event":{"seq":811,"type":"text_delta","text":" concurrent"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188962,"event":{"seq":812,"type":"text_delta","text":" transactions"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188969,"event":{"seq":813,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188973,"event":{"seq":814,"type":"text_delta","text":"log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374188987,"event":{"seq":815,"type":"text_delta","text":" records"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189008,"event":{"seq":816,"type":"text_delta","text":" can"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189032,"event":{"seq":817,"type":"text_delta","text":" be"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189035,"event":{"seq":818,"type":"text_delta","text":" inter"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189039,"event":{"seq":819,"type":"text_delta","text":"le"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189042,"event":{"seq":820,"type":"text_delta","text":"aved"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189061,"event":{"seq":821,"type":"text_delta","text":" with"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189064,"event":{"seq":822,"type":"text_delta","text":" proper"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189078,"event":{"seq":823,"type":"text_delta","text":" locking"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189082,"event":{"seq":824,"type":"text_delta","text":"/"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189102,"event":{"seq":825,"type":"text_delta","text":"sequ"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189148,"event":{"seq":826,"type":"text_delta","text":"encing"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189151,"event":{"seq":827,"type":"text_delta","text":")"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189156,"event":{"seq":828,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189160,"event":{"seq":829,"type":"text_delta","text":" point"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189172,"event":{"seq":830,"type":"text_delta","text":"-in"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189176,"event":{"seq":831,"type":"text_delta","text":"-time"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189180,"event":{"seq":832,"type":"text_delta","text":" recovery"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189194,"event":{"seq":833,"type":"text_delta","text":" via"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189198,"event":{"seq":834,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189220,"event":{"seq":835,"type":"text_delta","text":" arch"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189241,"event":{"seq":836,"type":"text_delta","text":"iving"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189245,"event":{"seq":837,"type":"text_delta","text":".\n\n"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189248,"event":{"seq":838,"type":"text_delta","text":"Shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189251,"event":{"seq":839,"type":"text_delta","text":" p"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189271,"event":{"seq":840,"type":"text_delta","text":"aging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189275,"event":{"seq":841,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189279,"event":{"seq":842,"type":"text_delta","text":" preferable"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189286,"event":{"seq":843,"type":"text_delta","text":" in"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189309,"event":{"seq":844,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189332,"event":{"seq":845,"type":"text_delta","text":" narrower"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189336,"event":{"seq":846,"type":"text_delta","text":" set"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189339,"event":{"seq":847,"type":"text_delta","text":" of"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189357,"event":{"seq":848,"type":"text_delta","text":" situations"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189360,"event":{"seq":849,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189364,"event":{"seq":850,"type":"text_delta","text":" Because"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189378,"event":{"seq":851,"type":"text_delta","text":" commit"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189402,"event":{"seq":852,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189406,"event":{"seq":853,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189425,"event":{"seq":854,"type":"text_delta","text":" single"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189429,"event":{"seq":855,"type":"text_delta","text":" atomic"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189432,"event":{"seq":856,"type":"text_delta","text":" pointer"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189446,"event":{"seq":857,"type":"text_delta","text":" flip"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189469,"event":{"seq":858,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189473,"event":{"seq":859,"type":"text_delta","text":" it"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189477,"event":{"seq":860,"type":"text_delta","text":" offers"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189499,"event":{"seq":861,"type":"text_delta","text":" essentially"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189536,"event":{"seq":862,"type":"text_delta","text":" instantaneous"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189553,"event":{"seq":863,"type":"text_delta","text":" commit"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189576,"event":{"seq":864,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189580,"event":{"seq":865,"type":"text_delta","text":" crash"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189596,"event":{"seq":866,"type":"text_delta","text":" recovery"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189600,"event":{"seq":867,"type":"text_delta","text":" that"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189625,"event":{"seq":868,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189646,"event":{"seq":869,"type":"text_delta","text":" O"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189650,"event":{"seq":870,"type":"text_delta","text":"("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189653,"event":{"seq":871,"type":"text_delta","text":"1"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189656,"event":{"seq":872,"type":"text_delta","text":")"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189674,"event":{"seq":873,"type":"text_delta","text":" —"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189677,"event":{"seq":874,"type":"text_delta","text":" no"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189680,"event":{"seq":875,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189696,"event":{"seq":876,"type":"text_delta","text":" replay"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189700,"event":{"seq":877,"type":"text_delta","text":" at"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189724,"event":{"seq":878,"type":"text_delta","text":" all"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189728,"event":{"seq":879,"type":"text_delta","text":" —"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189731,"event":{"seq":880,"type":"text_delta","text":" which"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189753,"event":{"seq":881,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189768,"event":{"seq":882,"type":"text_delta","text":" attractive"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189771,"event":{"seq":883,"type":"text_delta","text":" for"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189790,"event":{"seq":884,"type":"text_delta","text":" systems"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189794,"event":{"seq":885,"type":"text_delta","text":" where"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189812,"event":{"seq":886,"type":"text_delta","text":" availability"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189836,"event":{"seq":887,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189840,"event":{"seq":888,"type":"text_delta","text":" fast"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189858,"event":{"seq":889,"type":"text_delta","text":" restart"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189883,"event":{"seq":890,"type":"text_delta","text":" matter"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189886,"event":{"seq":891,"type":"text_delta","text":" more"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189889,"event":{"seq":892,"type":"text_delta","text":" than"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189905,"event":{"seq":893,"type":"text_delta","text":" raw"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189936,"event":{"seq":894,"type":"text_delta","text":" throughput"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189939,"event":{"seq":895,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189942,"event":{"seq":896,"type":"text_delta","text":" It"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189951,"event":{"seq":897,"type":"text_delta","text":" also"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189954,"event":{"seq":898,"type":"text_delta","text":" avoids"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189957,"event":{"seq":899,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189974,"event":{"seq":900,"type":"text_delta","text":" double"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374189998,"event":{"seq":901,"type":"text_delta","text":"-w"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190002,"event":{"seq":902,"type":"text_delta","text":"rite"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190006,"event":{"seq":903,"type":"text_delta","text":" cost"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190009,"event":{"seq":904,"type":"text_delta","text":" of"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190022,"event":{"seq":905,"type":"text_delta","text":" logging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190026,"event":{"seq":906,"type":"text_delta","text":" for"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190044,"event":{"seq":907,"type":"text_delta","text":" read"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190068,"event":{"seq":908,"type":"text_delta","text":"-most"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190091,"event":{"seq":909,"type":"text_delta","text":"ly"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190095,"event":{"seq":910,"type":"text_delta","text":" or"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190098,"event":{"seq":911,"type":"text_delta","text":" append"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190116,"event":{"seq":912,"type":"text_delta","text":"-heavy"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190120,"event":{"seq":913,"type":"text_delta","text":" workloads"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190124,"event":{"seq":914,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190127,"event":{"seq":915,"type":"text_delta","text":" However"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190136,"event":{"seq":916,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190140,"event":{"seq":917,"type":"text_delta","text":" shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190160,"event":{"seq":918,"type":"text_delta","text":" p"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190164,"event":{"seq":919,"type":"text_delta","text":"aging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190167,"event":{"seq":920,"type":"text_delta","text":" has"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190184,"event":{"seq":921,"type":"text_delta","text":" serious"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190188,"event":{"seq":922,"type":"text_delta","text":" drawbacks"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190191,"event":{"seq":923,"type":"text_delta","text":" that"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190208,"event":{"seq":924,"type":"text_delta","text":" have"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190231,"event":{"seq":925,"type":"text_delta","text":" kept"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190253,"event":{"seq":926,"type":"text_delta","text":" it"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190258,"event":{"seq":927,"type":"text_delta","text":" niche"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190280,"event":{"seq":928,"type":"text_delta","text":":"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190283,"event":{"seq":929,"type":"text_delta","text":" page"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190302,"event":{"seq":930,"type":"text_delta","text":" copying"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190327,"event":{"seq":931,"type":"text_delta","text":" causes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190349,"event":{"seq":932,"type":"text_delta","text":" heavy"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190371,"event":{"seq":933,"type":"text_delta","text":" write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190394,"event":{"seq":934,"type":"text_delta","text":" amplification"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190398,"event":{"seq":935,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190401,"event":{"seq":936,"type":"text_delta","text":" poor"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190419,"event":{"seq":937,"type":"text_delta","text":" locality"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190441,"event":{"seq":938,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190445,"event":{"seq":939,"type":"text_delta","text":"a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190464,"event":{"seq":940,"type":"text_delta","text":" single"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190487,"event":{"seq":941,"type":"text_delta","text":" logical"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190510,"event":{"seq":942,"type":"text_delta","text":" update"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190514,"event":{"seq":943,"type":"text_delta","text":" may"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190536,"event":{"seq":944,"type":"text_delta","text":" force"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190540,"event":{"seq":945,"type":"text_delta","text":" writes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190558,"event":{"seq":946,"type":"text_delta","text":" of"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190562,"event":{"seq":947,"type":"text_delta","text":" many"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190582,"event":{"seq":948,"type":"text_delta","text":" ancestor"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190585,"event":{"seq":949,"type":"text_delta","text":" pages"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190589,"event":{"seq":950,"type":"text_delta","text":" up"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190605,"event":{"seq":951,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190609,"event":{"seq":952,"type":"text_delta","text":" tree"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190612,"event":{"seq":953,"type":"text_delta","text":"),"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190615,"event":{"seq":954,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190618,"event":{"seq":955,"type":"text_delta","text":" it"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190629,"event":{"seq":956,"type":"text_delta","text":" makes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190633,"event":{"seq":957,"type":"text_delta","text":" concurrent"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190652,"event":{"seq":958,"type":"text_delta","text":" transaction"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190675,"event":{"seq":959,"type":"text_delta","text":" support"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190722,"event":{"seq":960,"type":"text_delta","text":" very"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190748,"event":{"seq":961,"type":"text_delta","text":" difficult"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190751,"event":{"seq":962,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190779,"event":{"seq":963,"type":"text_delta","text":" since"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190782,"event":{"seq":964,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190800,"event":{"seq":965,"type":"text_delta","text":" single"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190824,"event":{"seq":966,"type":"text_delta","text":" global"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190846,"event":{"seq":967,"type":"text_delta","text":" page"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190866,"event":{"seq":968,"type":"text_delta","text":" table"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190870,"event":{"seq":969,"type":"text_delta","text":" switch"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190889,"event":{"seq":970,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190893,"event":{"seq":971,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190897,"event":{"seq":972,"type":"text_delta","text":" coarse"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190914,"event":{"seq":973,"type":"text_delta","text":"-grained"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190935,"event":{"seq":974,"type":"text_delta","text":" commit"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190958,"event":{"seq":975,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190961,"event":{"seq":976,"type":"text_delta","text":" Additionally"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190964,"event":{"seq":977,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190967,"event":{"seq":978,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190982,"event":{"seq":979,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374190985,"event":{"seq":980,"type":"text_delta","text":" file"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191007,"event":{"seq":981,"type":"text_delta","text":" becomes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191011,"event":{"seq":982,"type":"text_delta","text":" fragmented"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191030,"event":{"seq":983,"type":"text_delta","text":" over"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191050,"event":{"seq":984,"type":"text_delta","text":" time"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191054,"event":{"seq":985,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191071,"event":{"seq":986,"type":"text_delta","text":" requires"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191075,"event":{"seq":987,"type":"text_delta","text":" garbage"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191095,"event":{"seq":988,"type":"text_delta","text":" collection"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191099,"event":{"seq":989,"type":"text_delta","text":" of"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191119,"event":{"seq":990,"type":"text_delta","text":" abandoned"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191123,"event":{"seq":991,"type":"text_delta","text":" shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191140,"event":{"seq":992,"type":"text_delta","text":" pages"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191144,"event":{"seq":993,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191147,"event":{"seq":994,"type":"text_delta","text":" adding"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191164,"event":{"seq":995,"type":"text_delta","text":" background"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191187,"event":{"seq":996,"type":"text_delta","text":" overhead"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191236,"event":{"seq":997,"type":"text_delta","text":".\n\n"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191240,"event":{"seq":998,"type":"text_delta","text":"In"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191243,"event":{"seq":999,"type":"text_delta","text":" summary"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191257,"event":{"seq":1000,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191260,"event":{"seq":1001,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191280,"event":{"seq":1002,"type":"text_delta","text":" practical"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191304,"event":{"seq":1003,"type":"text_delta","text":" rule"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191327,"event":{"seq":1004,"type":"text_delta","text":" of"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191331,"event":{"seq":1005,"type":"text_delta","text":" thumb"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191334,"event":{"seq":1006,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191352,"event":{"seq":1007,"type":"text_delta","text":":"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191356,"event":{"seq":1008,"type":"text_delta","text":" use"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191373,"event":{"seq":1009,"type":"text_delta","text":" write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191397,"event":{"seq":1010,"type":"text_delta","text":"-a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191401,"event":{"seq":1011,"type":"text_delta","text":"head"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191404,"event":{"seq":1012,"type":"text_delta","text":" logging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191419,"event":{"seq":1013,"type":"text_delta","text":" for"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191446,"event":{"seq":1014,"type":"text_delta","text":" general"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191489,"event":{"seq":1015,"type":"text_delta","text":"-purpose"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191493,"event":{"seq":1016,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191497,"event":{"seq":1017,"type":"text_delta","text":" transaction"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191512,"event":{"seq":1018,"type":"text_delta","text":"-heavy"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191516,"event":{"seq":1019,"type":"text_delta","text":" database"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191536,"event":{"seq":1020,"type":"text_delta","text":" systems"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191539,"event":{"seq":1021,"type":"text_delta","text":" where"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191543,"event":{"seq":1022,"type":"text_delta","text":" throughput"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191558,"event":{"seq":1023,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191562,"event":{"seq":1024,"type":"text_delta","text":" con"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191565,"event":{"seq":1025,"type":"text_delta","text":"currency"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191580,"event":{"seq":1026,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191584,"event":{"seq":1027,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191588,"event":{"seq":1028,"type":"text_delta","text":" mature"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191604,"event":{"seq":1029,"type":"text_delta","text":" tool"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191627,"event":{"seq":1030,"type":"text_delta","text":"ing"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191631,"event":{"seq":1031,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191666,"event":{"seq":1032,"type":"text_delta","text":"back"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191673,"event":{"seq":1033,"type":"text_delta","text":"up"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191677,"event":{"seq":1034,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191681,"event":{"seq":1035,"type":"text_delta","text":" replication"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191700,"event":{"seq":1036,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191704,"event":{"seq":1037,"type":"text_delta","text":" point"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191721,"event":{"seq":1038,"type":"text_delta","text":"-in"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191724,"event":{"seq":1039,"type":"text_delta","text":"-time"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191727,"event":{"seq":1040,"type":"text_delta","text":" recovery"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191730,"event":{"seq":1041,"type":"text_delta","text":")"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191733,"event":{"seq":1042,"type":"text_delta","text":" matter"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191743,"event":{"seq":1043,"type":"text_delta","text":" —"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191767,"event":{"seq":1044,"type":"text_delta","text":" which"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191791,"event":{"seq":1045,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191795,"event":{"seq":1046,"type":"text_delta","text":" why"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191813,"event":{"seq":1047,"type":"text_delta","text":" virtually"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191838,"event":{"seq":1048,"type":"text_delta","text":" every"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191841,"event":{"seq":1049,"type":"text_delta","text":" mainstream"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191859,"event":{"seq":1050,"type":"text_delta","text":" engine"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191883,"event":{"seq":1051,"type":"text_delta","text":" uses"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191887,"event":{"seq":1052,"type":"text_delta","text":" it"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191890,"event":{"seq":1053,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191906,"event":{"seq":1054,"type":"text_delta","text":" Choose"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191929,"event":{"seq":1055,"type":"text_delta","text":" shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191933,"event":{"seq":1056,"type":"text_delta","text":" p"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191936,"event":{"seq":1057,"type":"text_delta","text":"aging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191939,"event":{"seq":1058,"type":"text_delta","text":" for"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191942,"event":{"seq":1059,"type":"text_delta","text":" specialized"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191966,"event":{"seq":1060,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191975,"event":{"seq":1061,"type":"text_delta","text":" embedded"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191978,"event":{"seq":1062,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374191998,"event":{"seq":1063,"type":"text_delta","text":" or"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192002,"event":{"seq":1064,"type":"text_delta","text":" fault"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192026,"event":{"seq":1065,"type":"text_delta","text":"-tolerant"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192045,"event":{"seq":1066,"type":"text_delta","text":" designs"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192067,"event":{"seq":1067,"type":"text_delta","text":" where"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192072,"event":{"seq":1068,"type":"text_delta","text":" crash"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192091,"event":{"seq":1069,"type":"text_delta","text":" recovery"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192094,"event":{"seq":1070,"type":"text_delta","text":" must"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192119,"event":{"seq":1071,"type":"text_delta","text":" be"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192123,"event":{"seq":1072,"type":"text_delta","text":" instantaneous"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192136,"event":{"seq":1073,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192140,"event":{"seq":1074,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192161,"event":{"seq":1075,"type":"text_delta","text":" management"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192187,"event":{"seq":1076,"type":"text_delta","text":" is"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192191,"event":{"seq":1077,"type":"text_delta","text":" undesirable"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192206,"event":{"seq":1078,"type":"text_delta","text":" —"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192231,"event":{"seq":1079,"type":"text_delta","text":" historical"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192265,"event":{"seq":1080,"type":"text_delta","text":" examples"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192269,"event":{"seq":1081,"type":"text_delta","text":" include"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192277,"event":{"seq":1082,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192281,"event":{"seq":1083,"type":"text_delta","text":" early"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192298,"event":{"seq":1084,"type":"text_delta","text":" System"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192322,"event":{"seq":1085,"type":"text_delta","text":" R"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192346,"event":{"seq":1086,"type":"text_delta","text":" research"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192386,"event":{"seq":1087,"type":"text_delta","text":" prototype"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192393,"event":{"seq":1088,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192397,"event":{"seq":1089,"type":"text_delta","text":" some"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192400,"event":{"seq":1090,"type":"text_delta","text":" embedded"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192416,"event":{"seq":1091,"type":"text_delta","text":" or"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192438,"event":{"seq":1092,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192462,"event":{"seq":1093,"type":"text_delta","text":"-structured"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192488,"event":{"seq":1094,"type":"text_delta","text":" systems"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192510,"event":{"seq":1095,"type":"text_delta","text":" —"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192532,"event":{"seq":1096,"type":"text_delta","text":" but"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192556,"event":{"seq":1097,"type":"text_delta","text":" be"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192577,"event":{"seq":1098,"type":"text_delta","text":" prepared"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192603,"event":{"seq":1099,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192627,"event":{"seq":1100,"type":"text_delta","text":" accept"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192630,"event":{"seq":1101,"type":"text_delta","text":" write"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192649,"event":{"seq":1102,"type":"text_delta","text":" amplification"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192652,"event":{"seq":1103,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192677,"event":{"seq":1104,"type":"text_delta","text":" weak"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192697,"event":{"seq":1105,"type":"text_delta","text":" con"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192701,"event":{"seq":1106,"type":"text_delta","text":"currency"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192705,"event":{"seq":1107,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192719,"event":{"seq":1108,"type":"text_delta","text":" Some"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192741,"event":{"seq":1109,"type":"text_delta","text":" modern"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192766,"event":{"seq":1110,"type":"text_delta","text":" systems"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192769,"event":{"seq":1111,"type":"text_delta","text":" blur"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192790,"event":{"seq":1112,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192794,"event":{"seq":1113,"type":"text_delta","text":" line"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192826,"event":{"seq":1114,"type":"text_delta","text":" ("}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192829,"event":{"seq":1115,"type":"text_delta","text":"e"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192835,"event":{"seq":1116,"type":"text_delta","text":".g"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192839,"event":{"seq":1117,"type":"text_delta","text":".,"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192842,"event":{"seq":1118,"type":"text_delta","text":" copy"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192859,"event":{"seq":1119,"type":"text_delta","text":"-on"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192863,"event":{"seq":1120,"type":"text_delta","text":"-w"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192866,"event":{"seq":1121,"type":"text_delta","text":"rite"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192869,"event":{"seq":1122,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192881,"event":{"seq":1123,"type":"text_delta","text":" log"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192886,"event":{"seq":1124,"type":"text_delta","text":"-structured"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192906,"event":{"seq":1125,"type":"text_delta","text":" storage"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192928,"event":{"seq":1126,"type":"text_delta","text":" borrow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192952,"event":{"seq":1127,"type":"text_delta","text":" ideas"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192955,"event":{"seq":1128,"type":"text_delta","text":" from"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192975,"event":{"seq":1129,"type":"text_delta","text":" both"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192979,"event":{"seq":1130,"type":"text_delta","text":"),"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192982,"event":{"seq":1131,"type":"text_delta","text":" but"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192985,"event":{"seq":1132,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374192997,"event":{"seq":1133,"type":"text_delta","text":" fundamental"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193001,"event":{"seq":1134,"type":"text_delta","text":" distinction"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193021,"event":{"seq":1135,"type":"text_delta","text":" remains"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193045,"event":{"seq":1136,"type":"text_delta","text":":"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193048,"event":{"seq":1137,"type":"text_delta","text":" W"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193069,"event":{"seq":1138,"type":"text_delta","text":"AL"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193073,"event":{"seq":1139,"type":"text_delta","text":" *"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193076,"event":{"seq":1140,"type":"text_delta","text":"records"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193092,"event":{"seq":1141,"type":"text_delta","text":"*"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193096,"event":{"seq":1142,"type":"text_delta","text":" changes"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193115,"event":{"seq":1143,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193119,"event":{"seq":1144,"type":"text_delta","text":" repl"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193159,"event":{"seq":1145,"type":"text_delta","text":"ays"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193163,"event":{"seq":1146,"type":"text_delta","text":" them"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193166,"event":{"seq":1147,"type":"text_delta","text":" after"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193169,"event":{"seq":1148,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193172,"event":{"seq":1149,"type":"text_delta","text":" crash"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193175,"event":{"seq":1150,"type":"text_delta","text":","}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193178,"event":{"seq":1151,"type":"text_delta","text":" while"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193180,"event":{"seq":1152,"type":"text_delta","text":" shadow"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193184,"event":{"seq":1153,"type":"text_delta","text":" p"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193188,"event":{"seq":1154,"type":"text_delta","text":"aging"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193192,"event":{"seq":1155,"type":"text_delta","text":" *"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193195,"event":{"seq":1156,"type":"text_delta","text":"pres"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193206,"event":{"seq":1157,"type":"text_delta","text":"erves"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193210,"event":{"seq":1158,"type":"text_delta","text":" the"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193230,"event":{"seq":1159,"type":"text_delta","text":" old"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193234,"event":{"seq":1160,"type":"text_delta","text":" version"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193254,"event":{"seq":1161,"type":"text_delta","text":"*"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193258,"event":{"seq":1162,"type":"text_delta","text":" and"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193262,"event":{"seq":1163,"type":"text_delta","text":" atom"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193277,"event":{"seq":1164,"type":"text_delta","text":"ically"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193281,"event":{"seq":1165,"type":"text_delta","text":" *"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193302,"event":{"seq":1166,"type":"text_delta","text":"sw"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193323,"event":{"seq":1167,"type":"text_delta","text":"itches"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193326,"event":{"seq":1168,"type":"text_delta","text":"*"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193330,"event":{"seq":1169,"type":"text_delta","text":" to"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193333,"event":{"seq":1170,"type":"text_delta","text":" a"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193345,"event":{"seq":1171,"type":"text_delta","text":" new"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193349,"event":{"seq":1172,"type":"text_delta","text":" one"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193377,"event":{"seq":1173,"type":"text_delta","text":"."}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193381,"event":{"seq":1174,"type":"usage","inputTokens":3886,"outputTokens":954,"cacheRead":3840,"cacheWrite":null,"known":true}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193387,"event":{"seq":1175,"type":"stop","reason":"end_turn"}}
+{"runId":"97c78846-a1e5-476c-bdd0-25903ffb1df1","ts":1786374193391,"event":{"type":"terminal","outcome":{"kind":"completed"},"seq":1176}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374194414,"event":{"type":"user_input","content":"Read the file kiso-review-notes.md in this directory and answer: which section mentions a deadline and what exactly is it? Then explain in detail how the other two sections relate to that deadline and what the reviewer should do about it.","seq":1177}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195911,"event":{"seq":1178,"type":"tool_call_start","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","name":"read_file"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195915,"event":{"seq":1179,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"{"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195919,"event":{"seq":1180,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"\""}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195923,"event":{"seq":1181,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"path"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195927,"event":{"seq":1182,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"\""}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195931,"event":{"seq":1183,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":": "}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195934,"event":{"seq":1184,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"\""}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195938,"event":{"seq":1185,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"k"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195942,"event":{"seq":1186,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"iso"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195946,"event":{"seq":1187,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"-review"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195949,"event":{"seq":1188,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"-"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195952,"event":{"seq":1189,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"notes"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195956,"event":{"seq":1190,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":".md"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195959,"event":{"seq":1191,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"\""}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195962,"event":{"seq":1192,"type":"tool_call_input_delta","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","inputJsonDelta":"}"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195966,"event":{"seq":1193,"type":"usage","inputTokens":4892,"outputTokens":49,"cacheRead":4736,"cacheWrite":null,"known":true}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195985,"event":{"seq":1194,"type":"tool_call_end","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","name":"read_file","input":{"path":"kiso-review-notes.md"}}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195989,"event":{"type":"permission_decided","decisionId":"d-1179","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","invocationSeq":1194,"decision":"approved","decidedBy":"mode:default","seq":1195}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195992,"event":{"type":"tool_execution_started","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","invocationSeq":1194,"name":"read_file","input":{"path":"kiso-review-notes.md"},"executionId":"ex-1196","seq":1196}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195995,"event":{"seq":1197,"type":"stop","reason":"tool_use"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374195999,"event":{"type":"tool_execution_succeeded","executionId":"ex-1196","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","invocationSeq":1194,"result":{"content":"# Release review notes (fixture for the reviewer dogfood)\n\n## Section 1 — Scope\n\nThe review covers the recovery semantics of the prefix-closure round:\nthe abandon marker, the undecided-invocation re-entry, and the\ninvocation identity fields. Nothing in this section is time-bound.\n\n## Section 2 — Schedule\n\nThe acceptance report must be filed before the deadline: 2026-08-14,\nend of day. The independent reviewer session is the last gating item\non that path.\n\n## Section 3 — Risks\n\nThe known risk is the void-boundary interaction with live event\nordering. Any repro found during review moves to the next round as a\nred test; the schedule in section 2 does not slip for it.\n","isError":false},"seq":1198}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374196002,"event":{"type":"tool_result","callId":"call_00_ET_zoOXhRvoD0Sreyqc8nAF8924","invocationSeq":1194,"content":"# Release review notes (fixture for the reviewer dogfood)\n\n## Section 1 — Scope\n\nThe review covers the recovery semantics of the prefix-closure round:\nthe abandon marker, the undecided-invocation re-entry, and the\ninvocation identity fields. Nothing in this section is time-bound.\n\n## Section 2 — Schedule\n\nThe acceptance report must be filed before the deadline: 2026-08-14,\nend of day. The independent reviewer session is the last gating item\non that path.\n\n## Section 3 — Risks\n\nThe known risk is the void-boundary interaction with live event\nordering. Any repro found during review moves to the next round as a\nred test; the schedule in section 2 does not slip for it.\n","isError":false,"executionId":"ex-1196","seq":1199}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374197753,"event":{"seq":1200,"type":"thinking","text":"Let"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374197770,"event":{"seq":1201,"type":"thinking","text":" me"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374197789,"event":{"seq":1202,"type":"thinking","text":" analyze"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374197793,"event":{"seq":1203,"type":"thinking","text":" the"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374197797,"event":{"seq":1204,"type":"thinking","text":" file"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374197801,"event":{"seq":1205,"type":"thinking","text":"."}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374197814,"event":{"seq":1206,"type":"thinking","text":" It"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374197817,"event":{"seq":1207,"type":"thinking","text":"'s"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374197821,"event":{"seq":1208,"type":"thinking","text":" a"}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374238127,"event":{"type":"model_output_abandoned","voidFromSeq":1197,"reason":"a model output suffix without a committed stop — abandoned on resume","seq":1209}}
+{"runId":"8cd0b8d9-622b-4475-87bf-05fd1c04e6da","ts":1786374238992,"event":{"type":"terminal","outcome":{"kind":"error","error":{"code":"invalid_request","status":400,"retryable":false,"message":"[deepseek] request failed: 400 An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'. (insufficient tool messages following tool_calls message)"}},"seq":1210}}
+{"runId":"536aa66a-70fe-4ac3-aaa1-20a263d2cb1c","ts":1786374302318,"event":{"type":"user_input","content":"Say OK.","seq":1211}}
+{"runId":"536aa66a-70fe-4ac3-aaa1-20a263d2cb1c","ts":1786374303123,"event":{"type":"terminal","outcome":{"kind":"error","error":{"code":"invalid_request","status":400,"retryable":false,"message":"[deepseek] request failed: 400 An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'. (insufficient tool messages following tool_calls message)"}},"seq":1212}}
