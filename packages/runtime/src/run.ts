@@ -300,6 +300,14 @@ export class Run implements AsyncIterable<Event> {
 				e.type === "model_output_abandoned",
 		);
 		if (boundary !== undefined) {
+			// R-E 0.1.44 (verified against sentence 2): the draft detection
+			// stays text-only — a bare tool-call suffix [tool_call_end,
+			// permission_requested] with no text is the legal approval-panel
+			// pause (the Area 2 contract: the pending request binds and
+			// executes, pair-closed — the extensions-e2e gate). The finding's
+			// shapes all carry text, and the VOID SCOPE (what the marker
+			// covers) is the type filter at project.ts: model output dies
+			// with the draft, the framework's facts never do.
 			const draft = scope.some(
 				(e) => (e.type === "text_delta" || e.type === "thinking") && e.seq > boundary.seq,
 			);
@@ -447,6 +455,27 @@ export class Run implements AsyncIterable<Event> {
 			// identity — the request's own, or the callId+proximity
 			// fallback for old logs (the compat contract).
 			const invocationSeq = pending.invocationSeq ?? callSeqOf(pending.callId, pending.seq);
+			// R-E 0.1.44 (sentence 3): a stored request whose invocation is
+			// VOIDED is expired — never re-presented, never executed (the
+			// dead-run expiry precedent above). The void ranges come from
+			// log.all — the marker THIS recovery appended is included. The
+			// receipt stays in the audit; only the presentation is gone.
+			// An identity-less request (an old log where neither the field nor
+			// the callId+proximity fallback yields a seq) is never proven
+			// voided — it keeps the pre-0.1.44 behavior.
+			const voided =
+				invocationSeq !== undefined &&
+				log.all.some(
+					(e) => e.type === "model_output_abandoned" && invocationSeq > e.voidFromSeq && invocationSeq <= e.seq,
+				);
+			if (voided) {
+				yield log.append({
+					type: "permission_expired",
+					decisionId: pending.decisionId,
+					reason: "the invocation was abandoned with an incomplete draft — never re-presented, never executed",
+				});
+				continue;
+			}
 			const decided = log.all.find(
 				(e): e is Event & { type: "permission_decided" } => e.type === "permission_decided" && e.decisionId === pending.decisionId,
 			);

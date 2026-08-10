@@ -167,13 +167,24 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	// (voidFromSeq, its seq] — the abandoned draft's events. The ranges are
 	// disjoint and in seq order; the skip below treats them exactly like the
 	// summary ranges (the marker itself renders nothing and skips itself).
+	// R-E 0.1.44 (the void scope sentence): the void range voids MODEL
+	// OUTPUT only — text_delta / thinking / tool_call_* — never the
+	// framework's facts (permission*, tool_execution, tool_result,
+	// user_input, terminal). The summary ranges keep their blanket reach
+	// (the summary replaces everything it covers).
+	const MODEL_OUTPUT_TYPES = new Set([
+		"text_delta",
+		"thinking",
+		"tool_call_start",
+		"tool_call_input_delta",
+		"tool_call_end",
+	]);
 	const voidRanges: { from: number; to: number }[] = [];
 	for (const ev of events) {
 		if (ev.type === "model_output_abandoned") voidRanges.push({ from: ev.voidFromSeq, to: (ev as { seq?: number }).seq ?? -1 });
 	}
-	const isCovered = (seq: number): boolean =>
-		summaryRanges.some((r) => seq > r.from && seq <= r.to) ||
-		voidRanges.some((r) => seq > r.from && seq <= r.to);
+	const coveredBySummary = (seq: number): boolean => summaryRanges.some((r) => seq > r.from && seq <= r.to);
+	const coveredByVoid = (seq: number): boolean => voidRanges.some((r) => seq > r.from && seq <= r.to);
 	// Summaries render in range order as the pass crosses their boundaries.
 	let renderedSummaries = 0;
 
@@ -188,6 +199,11 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	let resultBuf: { callId: string; message: ToolResultMessage }[] = [];
 	const callOrder = new Map<string, number>();
 	let callOrderNext = 0;
+	// R-E 0.1.44 (sentence 1): the declarations that PROJECTED (their
+	// tool_use blocks were actually pushed) — the pair-atomicity signal a
+	// tool_result consults. A declaration the void skipped is not here, so
+	// its (possibly post-marker) receipt drops — both or neither.
+	const projectedDeclarations = new Set<string>();
 	// P1 (0.1.42): the mid-execution input deferral. A user input arriving
 	// while the last closed assistant's tool_calls are UNANSWERED (the
 	// result lands later in the log — the boundary straddle's durable
@@ -223,7 +239,11 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		// never covered. The summarized events themselves are exempt (their
 		// own event sits inside the NEXT range's coverage; the boundary
 		// render below is where their message lands).
-		if (ev.type !== "summarized" && isCovered((ev as { seq?: number }).seq ?? -1)) continue;
+		const evSeq = (ev as { seq?: number }).seq ?? -1;
+		// R-E 0.1.44 (sentence 2): the VOID skip is type-filtered — model
+		// output dies with the draft, the framework's facts never do (a
+		// straddling tool_result inside the void range keeps its pair).
+		if (ev.type !== "summarized" && (coveredBySummary(evSeq) || (MODEL_OUTPUT_TYPES.has(ev.type) && coveredByVoid(evSeq)))) continue;
 		// The boundary render: every range whose end this event crosses
 		// yields its assistant summary message, before this event renders.
 		while (
@@ -341,6 +361,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				// the fresh2 400).
 				if (blocks.length === 0 && text === null && resultBuf.length > 0) flushResults();
 				pushText();
+				projectedDeclarations.add(ev.callId);
 				callOrder.set(ev.callId, callOrderNext++);
 				blocks.push({
 					type: "tool_use",
@@ -350,6 +371,14 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				});
 				break;
 			case "tool_result": {
+				// R-E 0.1.44 (sentence 1): PAIR ATOMICITY — a result whose
+				// declaration never projected is dropped (both or neither).
+				// The straddling receipt (declaration committed before the
+				// stop, result landing inside the void) still projects — its
+				// declaration is in the set; the voided draft's post-marker
+				// receipt (0143) is the orphan — dropped here, kept in the
+				// audit (persist facts, derive state).
+				if (!projectedDeclarations.has(ev.callId)) break;
 				// 0.1.26: NO flushAssistant — the streaming execution lands
 				// results BETWEEN the turn's tool_call_ends; closing the
 				// assistant here splits the turn's tool_calls message (the

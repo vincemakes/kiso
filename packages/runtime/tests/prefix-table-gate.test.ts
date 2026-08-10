@@ -407,7 +407,7 @@ const TABLE: ReadonlyArray<GateRow> = [
 		},
 	},
 	{
-		name: "live-order: the no-stop + request shape (the approval-panel kill — a tool-call-only suffix)",
+		name: "live-order: the no-stop + request expiry shape (0143 — the draft's own text turn)",
 		action: "a stored request whose invocation is voided is expired — never re-presented, never executed",
 		prefix: [
 			USER,
@@ -418,11 +418,17 @@ const TABLE: ReadonlyArray<GateRow> = [
 			{ ...SUCCEEDED, seq: 5, executionId: "ex-1", callId: "c1" },
 			{ ...RESULT, seq: 6, callId: "c1", executionId: "ex-1" },
 			{ ...STOP, seq: 7 },
-			// the draft's own turn: pure tool-call output — no text, no stop;
-			// the model called again and the kill landed at the approval panel
-			{ seq: 8, type: "tool_call_input_delta", callId: "c2", inputJsonDelta: "{\"path\":" },
-			{ ...CALL, seq: 9, callId: "c2" },
-			{ ...REQ, seq: 10, decisionId: "d2", callId: "c2", invocationSeq: 9 },
+			// the draft's own turn, 0143's real shape: TEXT after the stop
+			// makes the marker land (the draft's call is never executed), and
+			// the voided turn's stored request must be EXPIRED — not bound and
+			// re-executed after the marker into an orphan tool_result. A pure
+			// text-free [stop, end, request] suffix is NOT this shape: that is
+			// the legal approval-panel pause (the Area 2 contract — the
+			// extensions-e2e gate) whose bind stays pair-closed.
+			{ seq: 8, type: "text_delta", text: "let me write that to a file" },
+			{ seq: 9, type: "tool_call_input_delta", callId: "c2", inputJsonDelta: "{\"path\":" },
+			{ ...CALL, seq: 10, callId: "c2" },
+			{ ...REQ, seq: 11, decisionId: "d2", callId: "c2", invocationSeq: 10 },
 		],
 		script: [FRESH],
 		assert: async ({ session, requests, marker, dir }) => {

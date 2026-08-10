@@ -20,7 +20,7 @@ const SESSIONS = ["dogfood-0143", "dogfood-0143b", "review-0143"] as const;
 
 /** The provider pairing invariant: an assistant tool_use per tool message
  *  and vice versa (the live 400s' shapes, both directions). */
-const pairClosed = (msgs: readonly ReturnType<typeof projectMessages>): boolean => {
+const pairClosed = (msgs: ReturnType<typeof projectMessages>): boolean => {
 	const calls = msgs
 		.filter((m) => m.role === "assistant")
 		.flatMap((m) => m.blocks.filter((b) => b.type === "tool_use"))
