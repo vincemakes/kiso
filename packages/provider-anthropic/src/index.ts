@@ -292,15 +292,18 @@ function toAnthropicTools(tools: readonly ToolSpec[]): Anthropic.Tool[] {
 }
 
 function toAnthropicError(err: unknown): unknown {
+	// P3 (0.1.42): the honest label — every real-provider error names its
+	// provider, so a terminal never reads as a scripted-model failure.
+	const label = "[anthropic] request failed: ";
 	// D4: connection-level failures are recognized, not lumped into unknown.
 	if (err instanceof Anthropic.APIConnectionTimeoutError) {
-		return { code: "timeout", retryable: true, message: err.message };
+		return { code: "timeout", retryable: true, message: label + err.message };
 	}
 	if (err instanceof Anthropic.APIConnectionError) {
-		return { code: "network", retryable: true, message: err.message };
+		return { code: "network", retryable: true, message: label + err.message };
 	}
 	if (err instanceof Anthropic.APIError) {
-		return mapApiError(err.status, err.message);
+		return mapApiError(err.status, label + err.message);
 	}
 	return err;
 }

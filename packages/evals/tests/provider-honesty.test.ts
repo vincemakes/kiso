@@ -31,7 +31,12 @@ function fakeAnthropic(events: unknown[]) {
 	} as unknown as Anthropic;
 }
 
-function fakeOpenAI(params: { chunks?: unknown[]; createError?: unknown; onCreate?: (p: unknown) => void }) {
+function fakeOpenAI(params: {
+	chunks?: unknown[];
+	createError?: unknown;
+	streamError?: unknown;
+	onCreate?: (p: unknown) => void;
+}) {
 	return {
 		chat: {
 			completions: {
@@ -41,6 +46,7 @@ function fakeOpenAI(params: { chunks?: unknown[]; createError?: unknown; onCreat
 					return {
 						async *[Symbol.asyncIterator]() {
 							for (const c of params.chunks ?? []) yield c;
+							if (params.streamError !== undefined) throw params.streamError;
 						},
 					};
 				},
@@ -197,5 +203,106 @@ describe("openai-compat stream creation errors are normalized", () => {
 		const end = events.find((e) => (e as { type?: string }).type === "tool_call_end");
 		expect((end as { name?: string }).name).toBe("web_search");
 		expect((end as { input?: unknown }).input).toEqual({ q: "k" });
+	});
+});
+
+describe("P3 (0.1.42) — the honest error label: the real provider is NAMED, the faux label never leaks", () => {
+	// The bench T5 fresh2 evidence: a real provider 400 used to surface as
+	// "[faux mode] the scripted model failed: 400 …" — a scripted-model
+	// label wrapped around a real API error. The rule now: a real adapter
+	// error names ITS provider ("[deepseek] request failed: …"), and the
+	// "[faux mode]" label is reserved for the CLI's faux path (its own
+	// gate lives in apps/cli). A real error must never read as a scripted
+	// one — this describe pins the adapter half of the rule.
+	const apiError = (status: number, message: string) =>
+		new OpenAI.APIError(status, { message }, message, new Headers());
+
+	it("a pre-stream failure names the configured vendor — from the model id, never a guess", async () => {
+		const client = fakeOpenAI({ createError: apiError(401, "Incorrect API key provided") });
+		await expect(async () => {
+			for await (const _ev of createOpenAICompatAdapter(client).stream({
+				model: "deepseek-v4-flash",
+				messages: [{ role: "user", content: "hi" }],
+			})) {
+				// drain
+			}
+		}).rejects.toMatchObject({
+			code: "invalid_request",
+			retryable: false,
+			// The SDK prefixes the status into the raw message; the honest
+			// vendor label rides in front of it.
+			message: "[deepseek] request failed: 401 Incorrect API key provided",
+		});
+	});
+
+	it("a MID-STREAM failure carries the same vendor label", async () => {
+		const client = fakeOpenAI({
+			chunks: [CHUNK(null, { content: "working…" })],
+			streamError: apiError(400, "stream broke"),
+		});
+		await expect(async () => {
+			for await (const _ev of createOpenAICompatAdapter(client).stream({
+				model: "deepseek-v4-flash",
+				messages: [{ role: "user", content: "hi" }],
+			})) {
+				// drain
+			}
+		}).rejects.toMatchObject({
+			code: "invalid_request",
+			message: "[deepseek] request failed: 400 stream broke",
+		});
+	});
+
+	it("the anthropic adapter labels its own provider", async () => {
+		const connection = new Anthropic.APIConnectionError({ message: "socket hang up" } as never);
+		const adapter = createAnthropicAdapter({
+			messages: {
+				stream: () => {
+					throw connection;
+				},
+			},
+		} as unknown as Anthropic);
+		await expect(async () => {
+			for await (const _ev of adapter.stream({ model: "claude-5", messages: [{ role: "user", content: "hi" }] })) {
+				// drain
+			}
+		}).rejects.toMatchObject({
+			code: "network",
+			retryable: true,
+			message: "[anthropic] request failed: socket hang up",
+		});
+	});
+
+	it("a provider/model form labels the model's vendor, not the route", async () => {
+		const client = fakeOpenAI({ createError: apiError(429, "slow down") });
+		await expect(async () => {
+			for await (const _ev of createOpenAICompatAdapter(client).stream({
+				model: "openrouter/deepseek-chat",
+				messages: [{ role: "user", content: "hi" }],
+			})) {
+				// drain
+			}
+		}).rejects.toMatchObject({
+			code: "rate_limit",
+			retryable: true,
+			message: "[deepseek] request failed: 429 slow down",
+		});
+	});
+
+	it("no real-provider error ever carries the faux label", async () => {
+		const client = fakeOpenAI({ createError: apiError(401, "bad key") });
+		let caught: unknown;
+		try {
+			for await (const _ev of createOpenAICompatAdapter(client).stream({
+				model: "deepseek-v4-flash",
+				messages: [{ role: "user", content: "hi" }],
+			})) {
+				// drain
+			}
+		} catch (err) {
+			caught = err;
+		}
+		const message = (caught as { message?: string }).message ?? "";
+		expect(message).not.toContain("faux");
 	});
 });

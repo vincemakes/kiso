@@ -93,7 +93,7 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 					options.signal !== undefined ? { signal: options.signal as AbortSignal } : undefined,
 				);
 			} catch (err) {
-				throw toOpenAIError(err);
+				throw toOpenAIError(err, options.model);
 			}
 
 			const pending = new Map<number, PendingToolCall>();
@@ -238,7 +238,7 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 					}
 				}
 			} catch (err) {
-				throw toOpenAIError(err);
+				throw toOpenAIError(err, options.model);
 			}
 
 			// Close out any streamed tool calls.
@@ -443,16 +443,31 @@ function toOpenAITool(tool: ToolSpec): OpenAI.Chat.ChatCompletionTool {
 	};
 }
 
-function toOpenAIError(err: unknown): unknown {
+/**
+ * P3 (0.1.42) — the honest vendor label: an openai-compat SDK error's raw
+ * message is OpenAI-branded ("Incorrect API key provided") even when the
+ * backend is a compat provider (DeepSeek, GLM, Kimi, ...). The label names
+ * the endpoint the user ACTUALLY configured — the model id's vendor
+ * prefix: the part after the last "/" (provider/model forms), then before
+ * the first "-" (deepseek-v4-flash → deepseek). A model without a hyphen
+ * prefix keeps its own name — never a fabricated vendor.
+ */
+function vendorOf(model: string): string {
+	const id = model.split("/").at(-1) ?? model;
+	return (id.split("-")[0] ?? id).toLowerCase();
+}
+
+function toOpenAIError(err: unknown, model: string): unknown {
+	const label = `[${vendorOf(model)}] request failed: `;
 	// D4: connection-level failures are recognized, not lumped into unknown.
 	if (err instanceof OpenAI.APIConnectionTimeoutError) {
-		return { code: "timeout", retryable: true, message: err.message };
+		return { code: "timeout", retryable: true, message: label + err.message };
 	}
 	if (err instanceof OpenAI.APIConnectionError) {
-		return { code: "network", retryable: true, message: err.message };
+		return { code: "network", retryable: true, message: label + err.message };
 	}
 	if (err instanceof OpenAI.APIError) {
-		return mapApiError(err.status, err.message);
+		return mapApiError(err.status, label + err.message);
 	}
 	return err;
 }
