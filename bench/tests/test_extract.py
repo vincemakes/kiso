@@ -27,6 +27,7 @@ def _load(path, name):
     return mod
 
 extract_t5 = _load("extract-t5.py", "extract_t5")
+extract_t6 = _load("extract-t6.py", "extract_t6")
 
 class KisoAccountingTest(unittest.TestCase):
     def _session_dir(self, usage_events):
@@ -68,6 +69,79 @@ class KisoAccountingTest(unittest.TestCase):
         self.assertEqual(m2["fresh"], 900)
         self.assertEqual(m2["total"], 5900)
         self.assertEqual(m2["cost_weighted"], 900 + 0.1 * 5000)
+
+    def test_t6_buckets_split_at_inputs_in_log_order(self):
+        # The durable log orders input-then-usage; the FIRST input must not
+        # produce an empty leading bucket and the LAST turn's usage must not
+        # vanish (the bug the input-first ordering would have caused).
+        d = tempfile.mkdtemp()
+        os.makedirs(f"{d}/kiso-home/sessions")
+        for p in range(4):
+            with open(f"{d}/wall_{p + 1}", "w") as f:
+                f.write(str(10 + p))
+        with open(f"{d}/kiso-home/sessions/s.jsonl", "w") as f:
+            for i in range(24):
+                f.write(json.dumps({"event": {"type": "user_input"}}) + "\n")
+                f.write(json.dumps({"event": {"type": "usage",
+                    "inputTokens": 1000 + i, "cacheRead": 0,
+                    "outputTokens": 50}}) + "\n")
+        b = extract_t6.kiso(d)
+        self.assertEqual(len(b), 4)
+        for p, bucket in enumerate(b):
+            self.assertEqual(bucket["requests"], 6)
+            self.assertEqual(bucket["cache_read"], 0)
+            self.assertEqual(bucket["total"], 6000 + 36 * p + 15)  # i = 6p..6p+5
+            self.assertEqual(bucket["fresh"], bucket["total"])
+            self.assertEqual(bucket["wall"], 10 + p)
+
+    def test_t6_bucket_boundary_carries_the_resume_cost(self):
+        # The first turn of each kiso process re-reads the whole session:
+        # turn 7 (bucket 2's first turn) is cache-heavy. The bucketing must
+        # land that cost in bucket 2, not spread it.
+        d = tempfile.mkdtemp()
+        os.makedirs(f"{d}/kiso-home/sessions")
+        for p in range(4):
+            with open(f"{d}/wall_{p + 1}", "w") as f:
+                f.write("1")
+        with open(f"{d}/kiso-home/sessions/s.jsonl", "w") as f:
+            for i in range(24):
+                f.write(json.dumps({"event": {"type": "user_input"}}) + "\n")
+                c = 4600 if i == 6 else 0          # the resume turn
+                n = 5000 if i == 6 else 1000
+                f.write(json.dumps({"event": {"type": "usage",
+                    "inputTokens": n, "cacheRead": c,
+                    "outputTokens": 80}}) + "\n")
+        b = extract_t6.kiso(d)
+        b1, b2 = b[0], b[1]
+        self.assertEqual(b1["fresh"], 6000)        # 6 × 1000, no cache
+        self.assertEqual(b2["fresh"], 5400)        # 400 + 5 × 1000
+        self.assertEqual(b2["cache_read"], 4600)   # the resume prefix
+        self.assertEqual(b2["total"], 10000)       # 5000 + 5 × 1000
+        self.assertEqual(b2["cost_weighted"], 5400 + 460)
+        self.assertEqual(b[2]["fresh"], 6000)      # buckets 3-4 untouched
+
+    def test_t6_pi_buckets_sum_invocations_and_skip_missing_logs(self):
+        # 24 -p invocations, one stdout-N.log each; per-bucket wall is the
+        # runner's sum (here: synthetic files). Absent logs (a crashed turn)
+        # are skipped, and the accounting stays fresh-only input.
+        d = tempfile.mkdtemp()
+        for i in range(1, 21):                     # turns 21-24 never ran
+            with open(f"{d}/stdout-{i}.log", "w") as f:
+                f.write(json.dumps({"type": "message_end", "message": {
+                    "usage": {"input": 800, "cacheRead": 1500, "output": 90}}}) + "\n")
+        for p in range(4):
+            with open(f"{d}/wall_{p + 1}", "w") as f:
+                f.write(str(3))
+        b = extract_t6.pi(d)
+        self.assertEqual(len(b), 4)
+        for bucket in b[:3]:
+            self.assertEqual(bucket["requests"], 6)
+            self.assertEqual(bucket["fresh"], 4800)
+            self.assertEqual(bucket["total"], 13800)
+            self.assertEqual(bucket["cost_weighted"], 4800 + 900)  # 0.1 × 9000 cache
+        self.assertEqual(b[3]["requests"], 2)      # only turns 19-20 ran
+        self.assertEqual(b[3]["fresh"], 1600)
+        self.assertEqual(b[3]["wall"], 3)
 
     def test_t5_kiso_uses_same_accounting(self):
         d = tempfile.mkdtemp()
