@@ -770,17 +770,19 @@ endpoint):
 On **T5**, the 8-turn session: kiso 24,909 vs pi 29,838 = **1.2×** and vs
 Claude Code 199,142 = **8.0×** — measured at one session length.
 
-**The kiso-side basis** (the 0.1.45 release refresh, published bin, kiso
-only, three runs each): T3 cost-weighted mean 2,098 / 12.0s wall (the
-5-request runs; one 6-request outlier at 2,541); T5 cost-weighted mean
-24,590 / 90.7s wall (19.0K–29.8K band). +14.7% (T3) / +22.2% (T5) versus
-0.1.44 (T3 1,829 / 9.5s, T5 20,130 / 66.7s) — adjudicated 2026-08-11 as
-the built-in extension layer's intrinsic price: the four official
-extensions ride every session since 0.1.45 (the task_set and delegate
-tool schemas + the task extension's plan guidance add ~823 tokens to the
-first request; the coding-agent SYSTEM_PROMPT itself is byte-identical,
-and the 0.1.44 refresh ran bench-allow only). The 0.1.45 numbers are the
-non-regression basis for the next release.
+**The kiso-side basis** (the 0.1.46 release refresh, published bin, kiso
+only, three runs each): T3 cost-weighted mean 2,118 / 17.0s wall (the
+5-request runs at 1,948/2,032, one 6-request outlier at 2,373; the 24s
+first run paid the post-publish cold cache, the two warm runs 13/14s);
+T5 cost-weighted mean 19,731 / 79.3s wall (18.4K–21.1K band). Flat on T3
+(+1.0% vs 0.1.45's 2,098 / 12.0s), improved on T5 (−19.8% vs 24,590 /
+90.7s) — the 0.1.46 T5 band sits at the low edge of the 0.1.45 basis's
+own spread (19.0K–29.8K, 1.57×; the 0.1.44 refresh's band was 15.6K–
+24.3K), and the round changed no fresh-session path (the R-E gates and
+healing fixtures run byte-identical), so the movement is read as
+run-to-run variance in the /compact summary size, adjudicated
+non-blocker in the 0.1.46 release report; verify pass ×3 each. The
+0.1.46 numbers are the non-regression basis for the next release.
 
 Honest footnotes (from `bench/README.md`): these tasks are SMALL — Claude
 Code's large system prompt buys real product capability (task tracking,
