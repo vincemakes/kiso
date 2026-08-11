@@ -58,7 +58,9 @@ not another recalibration)
 - 0046 — The one-compositor — Accepted
 - 0047 — Prefix-Complete Execution: the durable recovery law — Accepted (Amendment 2: the α ruling — the receipted execution is an outcome, the α-gap row closed)
 - 0048 — Recovery as a pure projection: the plan, the thin driver, the EffectGate — Accepted
-- 0049 — The diet-micro rider (0.1.47) — Accepted, adjudicated by the review, 2026-08-11
+- 0049 — The diet-micro rider — VOID as written (the 0.1.47 void
+  adjudication, the review, 2026-08-11); corrected record: A/B/C
+  re-land as adjudicated in 0.1.48, D reverted
 - 0050 — The identity-confirmed link lock — a pure Node single-writer
   lock — Accepted, adjudicated by the review, 2026-08-11 (supersedes
   0036)
