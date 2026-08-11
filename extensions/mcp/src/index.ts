@@ -114,7 +114,7 @@ export default function createMcpExtension(): KisoExtension {
 	const status: ServerStatus[] = [];
 	// 0.1.26: the LIVE tools array — the cached tools register immediately;
 	// the background connects replace them with the fresh lists on settle.
-	const tools: Tool[] = [statusTool(status)];
+	const tools: Tool[] = [];
 	const clients: Client[] = [];
 	// The `connecting` flag the CLI banner reads ("mcp (connecting…)").
 	let connecting = false;
@@ -123,9 +123,17 @@ export default function createMcpExtension(): KisoExtension {
 	// flight (their execute waits for the connect).
 	const cache = readToolCache(kisoHome());
 
+	// diet A (0.1.47): with NO configured (enabled) server the extension
+	// exposes NO tools — not even mcp__status. An unconfigured extension
+	// must not occupy a model tool slot with a probe of nothing; the
+	// status tool registers only when there is a server to probe.
+	const entries = Object.entries(config.mcpServers ?? {}).filter(([, server]) => server.disabled !== true);
+	if (entries.length > 0) {
+		tools.push(statusTool(status));
+	}
+
 	const connects: Promise<void>[] = [];
-	for (const [name, server] of Object.entries(config.mcpServers ?? {})) {
-		if (server.disabled === true) continue;
+	for (const [name, server] of entries) {
 		// The cached tools register IMMEDIATELY — names + schemas known, the
 		// execute waits for the background connect below.
 		const connectPromise = connectServer(name, server, clients);

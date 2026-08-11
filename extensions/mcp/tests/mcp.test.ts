@@ -163,9 +163,11 @@ describe("③ MCP bridge: config and failure modes", () => {
 	it("⑥ an absent config is no servers — only mcp__status, never an error", async () => {
 		const ext = await extWith(null);
 		expect(ext.name).toBe("mcp");
-		expect(ext.tools?.map((t) => t.name)).toEqual(["mcp__status"]);
-		const r = await ext.tools![0]!.execute({}, ctx);
-		expect(String(r.content)).toContain("no MCP servers configured");
+		// diet A (0.1.47): with NO configured server the extension exposes
+		// NO tools — not even mcp__status — an unconfigured extension
+		// never occupies a model tool slot (the 0.1.26 status-tool-only
+		// behavior is the red side of this gate)
+		expect(ext.tools?.map((t) => t.name)).toEqual([]);
 	}, 30_000);
 
 	it("⑦ an unreachable server is a SOFT failure — its error lands in mcp__status, the other server still works", async () => {
