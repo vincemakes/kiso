@@ -316,7 +316,7 @@ $ kiso chat k9                        # faux trajectory: edit f1.txt → slow
 $ kill -9 -PGID                       # the agent's whole process group —
                                       # and the shell's own detached group
 $ kiso resume k9
-⚠ interrupted execution: shell (ex-12) — did it apply? (r)erun / (a)bandon: r
+⚠ interrupted execution: shell (ex-12) — did it apply? (y)es / (n)o y
   rerun
 → edit_file({"path":"f3.txt",...})    # the ORIGINAL trajectory continues
 ```
