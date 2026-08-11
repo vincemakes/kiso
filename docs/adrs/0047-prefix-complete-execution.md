@@ -280,8 +280,9 @@ side is chosen here; the audit keeps the receipt either way.
 Amendment 1 recorded the α-gap as an OPEN row: the "already-executed
 draft call" — started/receipt inside a no-stop suffix (the kill landed
 after the execution began) — and whether it should surface as
-"uncertain". The R-F 0.1.46 round adjudicated it, and the ruling closes
-the row:
+"uncertain". Adjudicated by the review, relayed via the owner's ask
+dialog, 2026-08-11 (the R-F 0.1.46 round surfaced it); the ruling
+closes the row:
 
 **RULED — pin current: the audit keeps it.** The receipted execution is
 an OUTCOME (the mirror of ruling #12: a complete receipt IS the outcome),
@@ -306,8 +307,14 @@ user_input boundary that carries a pending permission_requested is the
 approval-panel pause (WAIT_PERMISSION re-announces it), never a draft.
 A request AFTER a stop keeps the 0143 shape — the marker voids it and
 the request expires with the draft (Amendment 1's sentence 3). The
-R-E prefix-table gate and the healing fixtures are untouched — the
-liveAsk rule only splits the previously-overlapping shapes.
+liveAsk rule is an AMENDMENT to Amendment 1's sentence 3 — an
+exemption, not a clarification: "a suffix whose pending ask the human
+answers is committed by the durable verdict and the closed pair —
+human ratification outranks the missing stop" (the full framing and
+the stop-vs-user_input boundary asymmetry as a 1.0 open line are in
+ADR-0048 §3). The R-E prefix-table gate and the healing fixtures are
+untouched — the liveAsk rule only splits the previously-overlapping
+shapes.
 
 ### Consequences of Amendment 2
 

@@ -43,15 +43,31 @@ machine.
    forever — the plan cannot tell the driver's write from a human's.
    A HUMAN verdict binds its request by decisionId, never the call.
 
-3. **The pause-vs-draft boundary.** Gap B voids a text-bearing
-   no-stop suffix — but a suffix after a `user_input` boundary that
-   carries a pending `permission_requested` is the approval-panel
-   pause, never a draft: the call was extracted and asked, the request
-   is durable, WAIT_PERMISSION re-announces it. (The loop persists the
-   stream's tail AFTER the pause resolves, so a crash mid-pause leaves
-   exactly this shape.) A request AFTER a stop keeps the 0143 shape:
-   the marker voids it and it expires with the draft (ADR-0047
-   Amendment 1 sentence 3).
+3. **The pause-vs-draft boundary — an AMENDMENT to Amendment 1's
+   sentence 3, not a classification clarification.** Gap B voids a
+   text-bearing no-stop suffix — but a suffix after a `user_input`
+   boundary that carries a pending `permission_requested` is the
+   approval-panel pause, never a draft: the call was extracted and
+   asked, the request is durable, WAIT_PERMISSION re-announces it.
+   (The loop persists the stream's tail AFTER the pause resolves, so a
+   crash mid-pause leaves exactly this shape.) The liveAsk rule is a
+   FIX to the pinned sentence — an exemption: "a suffix whose pending
+   ask the human answers is committed by the durable verdict and the
+   closed pair — human ratification outranks the missing stop." In the
+   0146-a dogfood the turn's text+call+result never earned its own
+   stop, yet after the human approved and the pair closed it projected
+   as committed history: a durable human verdict outranks a protocol
+   marker. A request AFTER a stop keeps the 0143 shape: the marker
+   voids it and it expires with the draft (ADR-0047 Amendment 1
+   sentence 3) — never re-presented, never executed.
+   **Boundary asymmetry (an OPEN 1.0 line)**: a pending ask after a
+   `stop` boundary dies (0146-b v3b: abandon + expiry + re-ask), a
+   pending ask after a `user_input` boundary lives (re-presentation) —
+   the same human-facing moment, a different outcome decided by a
+   boundary detail the human never sees. The 1.0 Durable Execution
+   Contract round unifies this (candidate: any pending ask is
+   re-presented, partially superseding sentence 3's expiry) or argues
+   the asymmetry.
 
 4. **The EffectGate and the crash matrix.** The deterministic
    complement to the OS-layer SIGKILL e2e (scripts/demo-kill9.sh): a
