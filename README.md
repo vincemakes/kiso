@@ -776,8 +776,12 @@ method (protocol v2), flagged for adjudication at this round's
 review**. The reading proposed for the reviewer: the round changed no
 token-affecting path (the lock is file ops with a ~1ms append-time
 verify; diet A removed mcp__status from the unconfigured bench
-sessions — one tool fewer in the schema, if anything cheaper); the T5
-spread is a 3-run sample with one heavy-cadence run (33.3K, 40
+sessions — a DETERMINISTIC static cost, measured by
+scripts/request-surface.mjs: −120 chars / −30 est. tokens per request,
+the schema no longer rides every payload; the remaining run-to-run
+movement is run variance — cache mode, cadence — not an attributable
+saving); the T5 spread is a 3-run sample with one heavy-cadence run
+(33.3K, 40
 requests vs 30/34 — the /compact summaries are comparable in size
 across the runs); the 0.1.47 T5 band CONTAINS the 0.1.45 (19.0K–29.8K)
 and 0.1.46 (18.4K–21.1K) bands; wall time improved on T3 (10–11s vs
