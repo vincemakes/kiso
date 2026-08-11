@@ -764,19 +764,25 @@ endpoint):
 On **T5**, the 8-turn session: kiso 24,909 vs pi 29,838 = **1.2×** and vs
 Claude Code 199,142 = **8.0×** — measured at one session length.
 
-**The kiso-side basis** (the 0.1.46 release refresh, published bin, kiso
-only, three runs each): T3 cost-weighted mean 2,118 / 17.0s wall (the
-5-request runs at 1,948/2,032, one 6-request outlier at 2,373; the 24s
-first run paid the post-publish cold cache, the two warm runs 13/14s);
-T5 cost-weighted mean 19,731 / 79.3s wall (18.4K–21.1K band). Flat on T3
-(+1.0% vs 0.1.45's 2,098 / 12.0s), improved on T5 (−19.8% vs 24,590 /
-90.7s) — the 0.1.46 T5 band sits at the low edge of the 0.1.45 basis's
-own spread (19.0K–29.8K, 1.57×; the 0.1.44 refresh's band was 15.6K–
-24.3K), and the round changed no fresh-session path (the R-E gates and
-healing fixtures run byte-identical), so the movement is read as
-run-to-run variance in the /compact summary size, adjudicated
-non-blocker in the 0.1.46 release report; verify pass ×3 each. The
-0.1.46 numbers are the non-regression basis for the next release.
+**The kiso-side basis** (the 0.1.47 release refresh, published bin, kiso
+only, three runs each): T3 cost-weighted mean 2,429 / 10.7s wall (the
+steady 5-request runs at 1,987/1,991 — flat vs the 0.1.46 steady runs,
+±2% — plus a cold first-run outlier at 3,310, the post-publish cache
+mode the 0.1.46 first run showed as its 24s wall); T5 cost-weighted
+mean 25,128 / 84.0s wall (18.8K–33.3K band vs the 0.1.46 18.4K–21.1K).
+Both cells moved OUT of the 0.1.46 band on the high side (means +14.7%
+T3, +27.4% T5) — **blocker-class per the release discipline's band
+method (protocol v2), flagged for adjudication at this round's
+review**. The reading proposed for the reviewer: the round changed no
+token-affecting path (the lock is file ops with a ~1ms append-time
+verify; diet A removed mcp__status from the unconfigured bench
+sessions — one tool fewer in the schema, if anything cheaper); the T5
+spread is a 3-run sample with one heavy-cadence run (33.3K, 40
+requests vs 30/34 — the /compact summaries are comparable in size
+across the runs); the 0.1.47 T5 band CONTAINS the 0.1.45 (19.0K–29.8K)
+and 0.1.46 (18.4K–21.1K) bands; wall time improved on T3 (10–11s vs
+13–24s). Verify pass ×3 each. The 0.1.47 numbers are the non-regression
+basis for the next release.
 
 Honest footnotes (from `bench/README.md`): these tasks are SMALL — Claude
 Code's large system prompt buys real product capability (task tracking,

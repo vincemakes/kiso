@@ -343,3 +343,17 @@ Requires: the three CLIs installed, a DeepSeek API key in
 `~/.config/claude-deepseek/credentials.env` (DEEPSEEK_API_KEY).
 Raw data: `runs/<tool>-<task>-<run>/` — each run's transcript, session
 log (kiso), per-process logs (pi/claude), wall seconds, and verify verdict.
+
+## The release-refresh protocol (v2, revised at the 0.1.46 review)
+
+Every kiso release report carries a kiso-side refresh: **T3 cross-file
++ T5 long-session, BOTH cost metrics — tokens AND wall time.** Three
+runs each, against the published bin, recorded in README's "kiso-side
+basis" section. The **previous release's run band (not its mean)** is
+the non-regression basis: a regression below the band, or movement OUT
+of the band, is **blocker-class** — a hard stop awaiting adjudication
+at review; in-band movement or improvement ships with the report
+carrying "proposed, for the reviewer" and is adjudicated at review.
+The T5 band's run-to-run spread is historically wide (1.15×–1.57×
+across the 0.1.44–0.1.46 refreshes) — the reading matters as much as
+the numbers, and the reading is the reviewer's to confirm.
