@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-skills-ext",
-  "version": "0.1.45",
+  "version": "0.1.46",
   "description": "kiso official skills extension \u2014 two-tier progressive skills, kernel untouched",
   "type": "module",
   "license": "MIT",
