@@ -7,6 +7,9 @@
  */
 
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	ConfigError,
 	directWriteProfile,
@@ -33,15 +36,26 @@ function restoreEnv(): void {
 	SAVED_ENV.clear();
 }
 
+let home: string;
+
 beforeEach(() => {
-	saveEnv("OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "KISO_MODE", "KISO_CONTEXT_WINDOW", "KISO_AUTO_COMPACT", "DEEPSEEK_API_KEY");
+	saveEnv("OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "KISO_MODE", "KISO_CONTEXT_WINDOW", "KISO_AUTO_COMPACT", "DEEPSEEK_API_KEY", "KISO_HOME");
 	// Hermetic: the HOST shell may legitimately export model vars (e.g.
 	// ANTHROPIC_MODEL) — the precedence tests must never see them.
 	delete process.env.OPENAI_MODEL;
 	delete process.env.ANTHROPIC_MODEL;
 	delete process.env.OPENAI_BASE_URL;
+	// Hermetic: the user config read must never touch the developer's real
+	// home — the first-run scaffold writes ~/.kiso/config.json the first
+	// time the CLI runs there, so the loadUserConfig null contract needs a
+	// truly empty home, not "the real home happens to have no file yet".
+	home = mkdtempSync(join(tmpdir(), "kiso-config-test-"));
+	process.env.KISO_HOME = home;
 });
-afterEach(() => restoreEnv());
+afterEach(() => {
+	restoreEnv();
+	if (home) rmSync(home, { recursive: true, force: true });
+});
 
 describe("schema v1: parse + loud failure", () => {
 	it("parses every known key; unknown keys pass (forward compat)", () => {
