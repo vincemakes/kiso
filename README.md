@@ -662,19 +662,19 @@ description: a review checklist for pull requests
   safe-defaults example allows it (read_file trust); everything else
   about skills is plain file access governed by the existing policy.
 
-## Todo — durable long-horizon working memory
+## Task — durable long-horizon working memory
 
-**Ships built-in in the CLI** — `todo_set` is loaded at startup, no install
-step. `extensions/todo` is the official extension's source
-(`src/kiso-todo.mjs` — source IS the product, no build step); self-host or
+**Ships built-in in the CLI** — `task_set` is loaded at startup, no install
+step. `extensions/task` is the official extension's source
+(`src/kiso-task.mjs` — source IS the product, no build step); self-host or
 customize by copying it into `~/.kiso/extensions/` (a user copy shadows the
 built-in, loudly):
 
 ```
-cp extensions/todo/src/kiso-todo.mjs ~/.kiso/extensions/
+cp extensions/task/src/kiso-task.mjs ~/.kiso/extensions/
 ```
 
-The `todo_set` tool is a whole-table replace (the CC TodoWrite shape):
+The `task_set` tool is a whole-table replace (the CC TodoWrite shape):
 the model sends the complete current list every time, with at most one
 item `active` (a second active is refused loudly — the CC discipline).
 The result echoes the normalized list and carries the `do-not-compact`
@@ -743,7 +743,7 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | MCP bridge | official extension — built-in since 0.1.44, kernel untouched | `extensions/mcp/tests` |
 | subagents | official extension — built-in since 0.1.44, role-policy children | `extensions/subagent/tests` |
 | skills | official extension — built-in since 0.1.44, two-tier progressive | `extensions/skills/tests` |
-| todo | official extension — built-in since 0.1.44, durable long-horizon memory (todo_set) | `extensions/todo/tests`, `apps/cli/tests/todo-e2e.test.ts` |
+| task | official extension — built-in since 0.1.44, durable long-horizon working memory (task_set) | `extensions/task/tests`, `apps/cli/tests/task-e2e.test.ts` |
 | context economy ● | microcompact + /compact (model summary) + prompt-cache discipline | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
 
@@ -905,8 +905,9 @@ parameter and systemPrompt append surfaces — see
   section above.
 - **workspace** — publishable monorepo (core, evals, runtime, tools-node,
   provider-anthropic, provider-openai, tui, tui-cells, the four official
-  extension packages, cli — 13 npm surfaces), ESM + d.ts, synchronized
-  internal versions; CI is clean-checkout `npm ci` + the full gate.
+  extension packages, cli — 13 npm surfaces), ESM + d.ts, exact-pinned
+  internal versions (per-package counters, pinned at each release); CI is
+  clean-checkout `npm ci` + the full gate.
 
 `npm run check` = build → typecheck (packages + root scripts + tests) →
 tests → size gate (core 2,000 + cli 1,920 + tui 2,400 + tui-cells 1,280) →
