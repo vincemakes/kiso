@@ -106,7 +106,9 @@ describe("lock semantics — legacy interop and the single-writer race (ADR-0050
 		// pid. (A modern lock naming OUR OWN process is a same-process
 		// writer's residue: it is tolerated and retried, not refused.)
 		const { spawn } = await import("node:child_process");
-		const sleeper = spawn("python3", ["-c", "import time; time.sleep(30)"]);
+		// a LIVE unrelated process for the foreign-pid fixture (node — the
+		// suite is python3-free after the ADR-0050 retirement)
+		const sleeper = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
 		writeFileSync(join(dir, "s.lock"), JSON.stringify({ pid: sleeper.pid, token: "foreign" }));
 		await expect(store.append("s", "r1", ev(0))).rejects.toThrow(/locked by another writer \(pid/);
 		sleeper.kill();

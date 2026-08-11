@@ -5,15 +5,10 @@ resolved items move to the round record that delivered them.
 
 ## 1.0 prerequisites
 
-- **Lock Adapter + native Node lock** — the runtime's session store spins
-  a `python3` helper to hold its cross-process kernel flock (single-writer
-  guarantee). The dependency is odd for a Node framework and breaks
-  lock-less environments (slim containers, Windows, single-file CLI
-  packaging). The store-level Lock Adapter injection (a native lock
-  implementation can then replace the helper) is a 1.0 prerequisite.
-  Adopted from the external review's risk #4
-  (`docs/reviews/2026-08-06-external.md`); the lock refactor BODY is out
-  of scope for the round that registered it (TUI v5).
+- *(resolved in the 0.1.47 round — R-G, ADR-0050: the python3 flock
+  helper is retired; the session store's single-writer lock is the
+  native identity-confirmed link lock. The external review's risk #4,
+  `docs/reviews/2026-08-06-external.md`, is closed.)*
 
 ## 1.0 round
 

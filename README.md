@@ -162,12 +162,6 @@ and a blob is the thing you eventually fight.
 ## Requirements
 
 - **Node ≥ 22** (the packages' engines).
-- **python3** — the runtime's session store keeps its cross-process
-  single-writer lock with a tiny `python3` kernel-flock helper (POSIX
-  advisory locks; macOS/Linux). Known debt, adopted from the external
-  review: a Node-side lock would remove the dependency — the store-level
-  Lock Adapter injection is a 1.0 prerequisite (see `TODO.md` and
-  `docs/reviews/2026-08-06-external.md`).
 
 ## Using it
 
