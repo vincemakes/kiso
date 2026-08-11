@@ -23,7 +23,9 @@ describe("finding #11: KISO_HOME is the ONE root", () => {
 		writeFileSync(join(dirs.home, "extensions", "x.mjs"), "export default { name: \"x\", tools: [] };\n", "utf8");
 		const res = runCli(["chat", "kh1"], env, { input: "exit\n" });
 		expect(res.status, res.stderr).toBe(0);
-		expect(res.stdout).toContain("[1 extension: x]"); // scanned from KISO_HOME, not ~
+		// R-D 0.1.45: the built-in column + x — the four official extensions
+		// are bundled in, x still scanned from KISO_HOME, not ~
+		expect(res.stdout).toContain("[5 extensions: built-in: mcp, skills, subagent, task · x]");
 		expect(existsSync(join(dirs.home, "sessions"))).toBe(true); // the store lives under KISO_HOME
 	}, 60_000);
 });

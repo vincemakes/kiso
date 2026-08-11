@@ -14,11 +14,17 @@ describe("the faux delay pseudo-event", () => {
 			{ events: [{ type: "delay", ms: 400 }, { type: "text_delta", text: "late" }, { type: "stop", reason: "end_turn" }] },
 		];
 		const adapter = createFauxProvider(script);
-		const t0 = Date.now();
+		// performance.now() — the monotonic clock; Date.now's wall-clock
+		// truncation could read below the timer's deadline under load.
+		// The 10ms slack: macOS kernel timer coalescing can deliver a
+		// 400ms timer a FRACTION of a millisecond early even on the
+		// monotonic clock (measured 399.83) — the gate's purpose is
+		// "the delay really waits", not "within 1ms of nominal".
+		const t0 = performance.now();
 		const events = [];
 		for await (const ev of adapter.stream({ model: "faux", messages: [] })) events.push(ev);
-		const elapsed = Date.now() - t0;
-		expect(elapsed).toBeGreaterThanOrEqual(400); // REAL wall-clock seconds
+		const elapsed = performance.now() - t0;
+		expect(elapsed).toBeGreaterThanOrEqual(400 - 10); // REAL elapsed milliseconds
 		expect(events.map((e) => e.type)).toEqual(["text_delta", "stop"]);
 		expect(events[0]).toMatchObject({ type: "text_delta", text: "late", seq: 0 });
 	});

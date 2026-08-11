@@ -173,17 +173,35 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// (The recap cell's trailing blank-line commit may land one LF
 		// inside the window — the "0 tools" needle matches mid-line; that
 		// LF is a FROZEN commit, not a storm redraw.)
-		expect(storm.split("\n").length - 1).toBeLessThanOrEqual(1);
+		// R-D 0.1.45 re-baseline 1 → 2: the always-present built-in
+		// extensions row makes the banner fold WIDTH-sensitive at the
+		// storm's narrow winches (the mcp row truncates with its (+N)
+		// marker at 60 cols), so the V6-1 resize re-paint — one bounded
+		// empty-row LF each — fires twice inside the window. The screen
+		// gates below (response exactly once, box top at most once,
+		// separator count stable) still pin the visual state.
+		expect(storm.split("\n").length - 1).toBeLessThanOrEqual(2);
 
-		// ① #16a: the separator LINE count does NOT grow — a LF-pushed
-		// redraw would add newline-separated separator rows (the dashed-line pileup);
-		// CUP in-place re-emissions merge into the existing lines (the dock
-		// redraw writes no newlines), so the newline-delimited line count
-		// is the faithful proxy for the visual state. Whole transcript,
-		// before vs after the storm:
+		// ① #16a: the separator LINE count does NOT GROW beyond the
+		// re-paint budget — a LF-pushed redraw would add newline-separated
+		// separator rows (the dashed-line pileup); CUP in-place re-emissions
+		// merge into the existing lines (the dock redraw writes no
+		// newlines), so the newline-delimited line count is the faithful
+		// proxy for the visual state. Whole transcript, before vs after
+		// the storm.
+		// R-D 0.1.45 re-baseline (equality → +4): the always-present
+		// built-in extensions row makes the banner fold width-sensitive at
+		// the narrow winches, so the V6-1 re-paint scrolls once per bounded
+		// repaint (the LF budget above, ≤2) — each scroll orphans one box
+		// generation in the newline-delimited stream (the in-place 0K
+		// clear keeps the old rails counted as lines, the re-drawn box
+		// adds a new generation: +2 per scroll). The screen never shows
+		// the ghost — the emulator replay below pins it. The unbounded
+		// pileup class (per-redraw scrolls — the original #16a drag) still
+		// blows the +4 budget at 5 winches.
 		const sepLines = (t: string): number => t.split("\n").filter((l) => l.includes("╭") || l.includes("╰")).length; // W6: the ╌ rows became the box rails
 		const cleanAll = stripANSI(out);
-		expect(sepLines(cleanAll)).toBe(sepLines(cleanAll.slice(0, stormAt)));
+		expect(sepLines(cleanAll)).toBeLessThanOrEqual(sepLines(cleanAll.slice(0, stormAt)) + 4);
 
 		// ① #16a: the model's response text appears EXACTLY once on the
 		// SCREEN — V6-1: the resize's first frame re-folds and re-paints

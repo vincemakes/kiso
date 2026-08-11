@@ -23,8 +23,9 @@
  * makeAgent, and main.
  */
 
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, realpathSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { Body, Editor, bannerLines, palette, renderSessionLine, type ResumeMeta } from "@vincemakes/kiso-tui";
 import { escapeTerminal } from "@vincemakes/kiso-tui";
@@ -39,8 +40,10 @@ import {
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
-import { body, bodyLog, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, userExtensions, VERSION, type LineInput } from "./state.js";
+import { builtInLayer } from "./builtin.js";
+import { body, bodyLog, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, userExtensions, VERSION, type LineInput } from "./state.js";
 import { interactivePrompt, resolveProjectTrust } from "./trust-ui.js";
+import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { autoCompactFromEnv, chat, contextWindowTokens } from "./chat.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
@@ -198,17 +201,20 @@ function makeLineInput(): LineInput {
 	return readlineInput(createInterface({ input: process.stdin, output: process.stdout }));
 }
 
-/** E3: the `[N extensions: ...]` text — user-level names, then project-level
- *  ones marked with `project:`. Byte-identical to the historical text when
- *  no project extensions are loaded. */
+/** R-D 0.1.45: the `[N extensions: ...]` text — the built-in column, then
+ *  the user-level names, then the project-level ones marked `project:`.
+ *  The built-in column is the banner's truthful face of the built-in layer:
+ *  a fresh install reads `[4 extensions: built-in: mcp, skills, subagent,
+ *  task]` with zero disk setup. */
 function bannerExtensionText(): string {
-	const total = userExtensions.length + projectExtensions.length;
+	const total = builtInExtensions.length + userExtensions.length + projectExtensions.length;
 	if (total === 0) return "";
 	const parts: string[] = [];
 	// 0.1.26 (MCP lazy connection): an extension with a live `connecting` flag shows
 	// its in-flight state in the banner — "mcp (connecting…)".
 	const label = (e: { name: string; connecting?: boolean }): string =>
 		e.connecting === true ? `${e.name} (connecting…)` : e.name;
+	if (builtInExtensions.length > 0) parts.push(`built-in: ${builtInExtensions.map(label).join(", ")}`);
 	if (userExtensions.length > 0) parts.push(userExtensions.map(label).join(", "));
 	if (projectExtensions.length > 0) parts.push(`project: ${projectExtensions.map(label).join(", ")}`);
 	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
@@ -303,22 +309,29 @@ export function composeSystemPrompt(cwd: string): string {
 	return injected === "" ? SYSTEM_PROMPT : `${SYSTEM_PROMPT}\n${injected}`;
 }
 
-async function makeAgent(fauxSkipTurns = 0, input?: LineInput, modelFlag?: string) {
-	const store = new SessionStore(sessionsDir());
-
+async function makeAgent(sessionId: string | undefined, input?: LineInput, modelFlag?: string) {
 	// E3: the project-level trust gate runs BEFORE any extension load (the
 	// mcp/skills merges must be in the env when the user-level extensions
 	// load). Untrusted project capability is never loaded — never silently.
 	const project = input !== undefined ? await resolveProjectTrust(input) : await resolveProjectTrust(undefined as unknown as LineInput);
+
+	// R-D 0.1.45 (deliverable B): the first-run scaffold lands AFTER the
+	// verdict — pre-trust zero-read/write/scan is absolute. The sessions
+	// dir (SessionStore's constructor mkdirs) moved behind the gate too:
+	// the trust record is the first home write, the scaffold the second.
+	if (isFirstRun()) scaffoldFirstRun();
+	const store = new SessionStore(sessionsDir());
+	// E area: the durable script position — computed AFTER the verdict
+	// (fauxSkip's session-log read is a home read: pre-trust zero-read).
+	const fauxSkipTurns = sessionId === undefined ? 0 : fauxSkip(sessionId);
 	// E1: the startup extension scan — a broken extension fails the process
 	// LOUDLY here (loadExtensions throws), never silently.
 	const user = await loadExtensions(extensionsDir());
-	if (project !== null) {
-		const proj = await loadProjectExtensions(process.cwd(), user);
-		setExtensionLists(user, proj, [...user, ...proj]);
-	} else {
-		setExtensionLists(user, [], user);
-	}
+	const proj = project !== null ? await loadProjectExtensions(process.cwd(), user) : [];
+	// R-D 0.1.45: the built-in layer registers by module import (builtin.ts)
+	// — a user extension may shadow a built-in, a project one may not.
+	const builtIn = await builtInLayer(user, proj);
+	setExtensionLists(builtIn, user, proj, [...builtIn, ...user, ...proj]);
 
 	// merge round B — the config surface: user config + (trusted) project config,
 	// resolved with flags > env > project > user > default. The CLI never
@@ -464,7 +477,7 @@ async function main(): Promise<void> {
 				dock.enter();
 				// E area: a resumed session continues the script at its durable
 				// position — never restarts it (fauxSkip).
-				const agent = await makeAgent(fauxSkip(id), input, modelFlag);
+				const agent = await makeAgent(id, input, modelFlag);
 				applyConfigMode();
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
@@ -482,7 +495,7 @@ async function main(): Promise<void> {
 				// (argv = [node, script, resume, id, prompt?]).
 				const prompt = process.argv[4];
 				dock.enter();
-				const agent = await makeAgent(fauxSkip(arg), input, modelFlag);
+				const agent = await makeAgent(arg, input, modelFlag);
 				applyConfigMode();
 				const session = await agent.session({ id: arg });
 				faux = currentFaux;
@@ -490,7 +503,7 @@ async function main(): Promise<void> {
 				break;
 			}
 			case "sessions": {
-				const agent = await makeAgent(0, undefined, modelFlag);
+				const agent = await makeAgent(undefined, undefined, modelFlag);
 				for (const meta of agent.sessions()) {
 					console.log(renderSessionLine(meta));
 				}
@@ -515,7 +528,7 @@ async function main(): Promise<void> {
 				// chat — the first argument is the session id.
 				const id = command ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
 				dock.enter();
-				const agent = await makeAgent(fauxSkip(id));
+				const agent = await makeAgent(id);
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
 				extensionsBanner(recentSessions(id, agent));
@@ -548,14 +561,22 @@ async function main(): Promise<void> {
 	}
 }
 
-main()
-	.then(() => process.exit(0))
-	.catch((err) => {
+// R-D 0.1.45 (deliverable B): main runs ONLY as the entry — the CLI is
+// import-clean. The unconditional module-scope run executed the full
+// startup under the importing process's argv and REAL home whenever a
+// test imported src/index.js for its functions (harmless before the
+// first-run scaffold existed; the scaffold WRITES the home). The bin is
+// a symlink, so argv[1] is realpathed before the comparison.
+if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+	main()
+		.then(() => process.exit(0))
+		.catch((err) => {
 		// round 10: top-level errors are terminal-escaped. v2a: the exit is EXPLICIT
 		// — natural drain is racy on a TTY (readline leaves the stdio handles
 		// active and the loop sometimes never drains). main's finally already
 		// ran (agent.close, dispose, temp cleanup) — nothing is skipped, no
 		// lock is left behind; the exit code is honest.
-		console.error(escapeTerminal(err instanceof Error ? err.message : String(err)));
-		process.exit(1);
-	});
+			console.error(escapeTerminal(err instanceof Error ? err.message : String(err)));
+			process.exit(1);
+		});
+}

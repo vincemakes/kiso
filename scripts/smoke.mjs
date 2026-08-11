@@ -3,8 +3,8 @@
  * Consumer smoke test — the publish pipeline's last gate (Area 7).
  *
  * FIVE ISOLATED tiers, each a clean temp project installing only the
- * closure it needs (never all seven preinstalled, which would mask missing
- * dependencies):
+ * closure it needs (never all thirteen preinstalled, which would mask
+ * missing dependencies):
  *
  *   tier A  — runtime:  core + evals + runtime + tools-node
  *                       runs a durable session, an approval pause/resume,
@@ -17,7 +17,7 @@
  *   tier C  — cli:       the CLI's full dependency closure
  *                       runs the installed `kiso` bin (sessions + a faux
  *                       chat turn)
- *   tier D  — nested CLI with REAL provider env: ALL SEVEN tarballs under
+ *   tier D  — nested CLI with REAL provider env: ALL THIRTEEN tarballs under
  *             --install-strategy=nested; the installed CLI starts with
  *             ANTHROPIC_API_KEY and with OPENAI_API_KEY (dummy values —
  *             construction and `kiso sessions` need no network), exercising
@@ -43,6 +43,12 @@ const ALL = {
 	"@vincemakes/kiso-provider-openai": true,
 	"@vincemakes/kiso-tui-cells": true,
 	"@vincemakes/kiso-tui": true,
+	// R-D 0.1.45 (decision point A): the four official extensions joined
+	// the publish surface — the CLI's built-in layer pins them exactly.
+	"@vincemakes/kiso-mcp-ext": true,
+	"@vincemakes/kiso-skills-ext": true,
+	"@vincemakes/kiso-subagent-ext": true,
+	"@vincemakes/kiso-task-ext": true,
 	"@vincemakes/kiso-code": true,
 };
 
@@ -243,7 +249,14 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 			// whenever the tree is ahead of the registry — the toolTarget
 			// SyntaxError), and the tui's tui-cells pin isn't published yet,
 			// so both tarballs land at the top level BEFORE kiso-code.
-			"@vincemakes/kiso-tui-cells", "@vincemakes/kiso-tui", "@vincemakes/kiso-code",
+			"@vincemakes/kiso-tui-cells", "@vincemakes/kiso-tui",
+			// R-D 0.1.45: the four official extensions likewise land from
+			// the PACKED tree BEFORE kiso-code (decision point A's
+			// extensions-before-cli dependency order) — the CLI's exact
+			// pins would otherwise resolve unpublished registry names
+			// (the fresh-install 404) or stale published ones.
+			"@vincemakes/kiso-mcp-ext", "@vincemakes/kiso-skills-ext", "@vincemakes/kiso-subagent-ext", "@vincemakes/kiso-task-ext",
+			"@vincemakes/kiso-code",
 		],
 		proj,
 	);
@@ -253,13 +266,17 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 	// A full faux chat turn through the installed CLI bin.
 	const chat = execSync(`printf 'hello\\nexit\\n' | KISO_HOME=${proj} npx kiso chat cli-smoke`, { cwd: proj, encoding: "utf8" });
 	if (!chat.includes("faux model")) throw new Error(`kiso chat did not run:\n${chat}`);
+	// R-D 0.1.45: the built-in layer resolved from the PACKED ext tarballs
+	// (the module-import registration — decision point A) — the banner
+	// shows the four built-ins with zero disk setup.
+	if (!chat.includes("[4 extensions: built-in: mcp, skills, subagent, task]")) throw new Error(`built-in layer missing from the packed cli:\n${chat}`);
 	const sessions = execSync(`KISO_HOME=${proj} npx kiso sessions`, { cwd: proj, encoding: "utf8" });
 	if (!sessions.includes("cli-smoke")) throw new Error(`kiso sessions did not list cli-smoke:\n${sessions}`);
 	console.log("[smoke:cli] installed kiso bin runs chat + sessions on its closure");
 	rmSync(proj, { recursive: true, force: true });
 }
 
-// ── tier D: NESTED install of ALL EIGHT tarballs, real provider env ──
+// ── tier D: NESTED install of ALL THIRTEEN tarballs, real provider env ──
 // The runtime's provider path imports ONLY the provider packages, whose
 // high-level factories own their SDKs as private dependencies — so under a
 // nested node_modules layout the SDK resolves NEXT TO the provider, and the
@@ -269,7 +286,7 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 {
 	const proj = tempProject("nested-cli");
 	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-cli-"));
-	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-tui-cells", "@vincemakes/kiso-tui", "@vincemakes/kiso-code"].map((n) =>
+	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-tui-cells", "@vincemakes/kiso-tui", "@vincemakes/kiso-mcp-ext", "@vincemakes/kiso-skills-ext", "@vincemakes/kiso-subagent-ext", "@vincemakes/kiso-task-ext", "@vincemakes/kiso-code"].map((n) =>
 		pack(stage, n),
 	);
 	for (const tarball of tarballs) {
@@ -295,7 +312,7 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 	);
 	if (/ERR_MODULE_NOT_FOUND/.test(openai)) throw new Error(`nested openai CLI failed to resolve:\n${openai}`);
 
-	console.log("[smoke:nested-cli] all 7 tarballs nested; CLI constructs BOTH real providers (Anthropic + OpenAI) and lists sessions");
+	console.log("[smoke:nested-cli] all 13 tarballs nested; CLI constructs BOTH real providers (Anthropic + OpenAI) and lists sessions");
 	rmSync(proj, { recursive: true, force: true });
 }
 

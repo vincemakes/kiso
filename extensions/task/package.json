@@ -1,14 +1,31 @@
 {
   "name": "@vincemakes/kiso-task-ext",
   "version": "0.1.44",
-  "description": "kiso (foundation) official task extension — long-horizon working memory (task_set), kernel untouched",
-  "private": true,
+  "description": "kiso official task extension — long-horizon working memory (task_set), kernel untouched",
   "type": "module",
   "license": "MIT",
+  "main": "./dist/kiso-task.mjs",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./dist/kiso-task.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "devDependencies": {
-    "@vincemakes/kiso-core": "0.1.35"
+    "@vincemakes/kiso-core": "0.1.35",
+    "@types/node": "^26.1.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
   }
 }

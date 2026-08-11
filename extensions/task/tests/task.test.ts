@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import { MICROCOMPACTABLE } from "@vincemakes/kiso-core";
-import createTaskExtension, { parseTaskSet, taskEcho } from "../src/kiso-task.mjs";
+import createTaskExtension, { parseTaskSet, taskEcho } from "../dist/kiso-task.mjs";
 import type { Tool } from "@vincemakes/kiso-core";
 
 const ctx = { signal: new AbortController().signal };
@@ -71,7 +71,10 @@ describe("⑥ task: validation (loud invalid_input, never silent normalization)"
       ctx,
     );
     expect(result.isError).toBe(true);
-    expect(result.errorKind).toBe("invalid_input");
+    // The runtime error carries errorKind (the source emits it); the
+    // kiso-core ToolResult type does not model it — cast locally, the
+    // core type is under the zero-diff stop clause.
+    expect((result as { errorKind?: string }).errorKind).toBe("invalid_input");
     expect(String(result.content)).toContain("at most one active");
   });
 
@@ -85,7 +88,10 @@ describe("⑥ task: validation (loud invalid_input, never silent normalization)"
   it("the status enum is closed — anything else is invalid_input", async () => {
     const result = await taskTool().execute({ items: [{ text: "a", status: "blocked" }] }, ctx);
     expect(result.isError).toBe(true);
-    expect(result.errorKind).toBe("invalid_input");
+    // The runtime error carries errorKind (the source emits it); the
+    // kiso-core ToolResult type does not model it — cast locally, the
+    // core type is under the zero-diff stop clause.
+    expect((result as { errorKind?: string }).errorKind).toBe("invalid_input");
     expect(String(result.content)).toContain("pending/active/done");
   });
 

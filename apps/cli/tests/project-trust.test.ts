@@ -131,7 +131,9 @@ describe("E3: the project trust gate (project-trust)", () => {
 		]);
 		expect(out).toContain("[project .kiso]");
 		expect(out).toMatch(/extensions\/lint-rules\.mjs\s+\([0-9a-f]{6}\)/); // file name + digest short prefix
-		expect(out).toContain("[1 extension: project: lint-rules]"); // loaded, counted as project
+		// R-D 0.1.45: the built-in column + the trusted project column —
+		// loaded and counted as project (76 chars — fits the 80-col pty).
+		expect(out).toContain("[5 extensions: built-in: mcp, skills, subagent, task · project: lint-rules]");
 		const lines = trustLines(dirs.home);
 		expect(lines).toHaveLength(1);
 		expect(lines[0]!.decision).toBe("granted");
@@ -148,7 +150,9 @@ describe("E3: the project trust gate (project-trust)", () => {
 			["▌ ", "\n"],
 		]);
 		expect(out).toContain("trust this project's .kiso?");
-		expect(out).not.toContain("[1 extension"); // nothing loaded
+		// R-D 0.1.45: ONLY the built-in column (the exact 4-only form proves
+		// the refused project added nothing).
+		expect(out).toContain("[4 extensions: built-in: mcp, skills, subagent, task]");
 		const lines = trustLines(dirs.home);
 		expect(lines).toHaveLength(1);
 		expect(lines[0]!.decision).toBe("refused");
@@ -163,7 +167,7 @@ describe("E3: the project trust gate (project-trust)", () => {
 		]);
 		const out = ptyRun(env, cwd, [["▌ ", "\n"]]); // no trust answer available
 		expect(out).not.toContain("trust this project's .kiso?");
-		expect(out).toContain("[1 extension: project: lint-rules]");
+		expect(out).toContain("[5 extensions: built-in: mcp, skills, subagent, task · project: lint-rules]");
 		expect(trustLines(dirs.home)).toHaveLength(1); // no new record
 	});
 
@@ -180,7 +184,7 @@ describe("E3: the project trust gate (project-trust)", () => {
 			["▌ ", "\n"],
 		]);
 		expect(out).toContain("trust this project's .kiso?"); // re-asked — the old grant died with the files
-		expect(out).toContain("[1 extension: project: lint-rules]");
+		expect(out).toContain("[5 extensions: built-in: mcp, skills, subagent, task · project: lint-rules]");
 		const lines = trustLines(dirs.home);
 		expect(lines).toHaveLength(2); // the old grant + the new one
 		expect(lines[0]!.digest).not.toBe(lines[1]!.digest);
@@ -194,7 +198,9 @@ describe("E3: the project trust gate (project-trust)", () => {
 		expect(res.stderr).toContain("[project .kiso] found 1 artifact(s)");
 		expect(res.stderr).toContain("not trusted, not loaded");
 		expect(res.stdout).not.toContain("trust this project's");
-		expect(res.stdout).not.toContain("[1 extension");
+		// R-D 0.1.45: the exact 4-only form — the untrusted project added
+		// nothing to the banner.
+		expect(res.stdout).toContain("[4 extensions: built-in: mcp, skills, subagent, task]");
 		expect(existsSync(join(dirs.home, "trust.jsonl"))).toBe(false); // no verdict recorded — nobody decided
 	});
 
@@ -206,7 +212,10 @@ describe("E3: the project trust gate (project-trust)", () => {
 		const res = runCli(["chat"], env, { cwd });
 		expect(res.status).not.toBe(0);
 		expect(res.stderr).toContain('extension name "dupe" exists in both the user-level and the project-level');
-		expect(res.stdout).not.toContain("[2 extension"); // died at startup — nothing loaded
+		// R-D 0.1.45: died at startup — the load conflict throws BEFORE the
+		// banner, so NO extensions line exists in stdout at all (the
+		// "nothing loaded" face of a dead process, not a 4-only banner).
+		expect(res.stdout).not.toContain("extensions:");
 	});
 
 	it("⑦ a refused record is sticky — no re-ask, nothing loads", async () => {

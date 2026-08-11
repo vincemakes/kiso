@@ -119,7 +119,10 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 `;
 		const { env } = isolatedEnv();
 		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
-		expect(out).toContain("[2 extensions: safe-defaults, skills]"); // sorted by file name
+		// R-D 0.1.45: the user copy SHADOWS the built-in skills (the cascade
+		// in a real CLI) — the built-in column lists the rest, the user
+		// column stays file-name-sorted.
+		expect(out).toContain("[5 extensions: built-in: mcp, subagent, task · safe-defaults, skills]");
 		expect(out).not.toContain("approve read_skill"); // auto-allowed — no prompt
 		expect(out).toContain("UNIQUE-BODY-a-skill"); // the SKILL.md body returned to the model
 		expect(out).toContain("skill loaded");

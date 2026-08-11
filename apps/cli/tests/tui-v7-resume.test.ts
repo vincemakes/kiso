@@ -150,13 +150,15 @@ describe("W5 (real PTY) — the opening-screen resume list", () => {
 			{ session: "resumeCur" },
 		);
 		const grid = finalGrid(hex, 24, 80);
-		// the run's commit scrolled the banner up: the list sits at rows 7..9
-		expect(grid[6]).toBe("  ▞ resume");
+		// the run's commit scrolled the banner up: the list sits at rows 8..10
+		// (R-D 0.1.45: the always-present built-in extensions row pushed
+		// the whole cell down one)
+		expect(grid[7]).toBe("  ▞ resume");
 		// resumeB (appended later — updatedAt desc) sorts first: 15 events · 2 runs
-		const b = grid[7] ?? "";
+		const b = grid[8] ?? "";
 		expect(b.startsWith("    now ")).toBe(true);
 		expect(b).toContain("v6 one-compositor gates");
-		const a = grid[8] ?? "";
+		const a = grid[9] ?? "";
 		expect(a.startsWith("    now ")).toBe(true);
 		expect(a).toContain("fix the resize repaint storm");
 		// the meta FIELD occupies the same columns on both rows — aligned
@@ -169,7 +171,7 @@ describe("W5 (real PTY) — the opening-screen resume list", () => {
 		// the CURRENT session is excluded: nothing below the list carries
 		// the meta — the run's own lines (user line, text, recap) land at
 		// the bottom of the content area instead
-		expect(grid.slice(9).join("")).not.toContain("events ·");
+		expect(grid.slice(10).join("")).not.toContain("events ·");
 		expect(grid.join("")).toContain("resume run done");
 	});
 

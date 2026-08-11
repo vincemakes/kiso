@@ -32,7 +32,7 @@ const SAFE_DEFAULTS = join(fileURLToPath(new URL("../../../examples", import.met
 const FAKE_SERVER = join(fileURLToPath(new URL(".", import.meta.url)), "fake-server.mjs");
 
 const PTY_DRIVER = `
-import pty, os, sys, time, select
+import pty, os, sys, time, select, fcntl, termios, struct
 
 def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
     pid, fd = pty.fork()
@@ -43,6 +43,13 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
         os.environ["KISO_FAUX_SCRIPT"] = script_path
         os.chdir(workdir)
         os.execvp("node", ["node", cli, session_id])
+    # R-D 0.1.45: rows=2 keeps the READLINE path (the dock needs >= 4 rows —
+    # its panel SGR-splits the title and folds tool results, which this
+    # test's byte-linear assertions cannot read); cols=200 fits the FULL
+    # extensions banner (83 chars in the longest case — at 80 truncateRow
+    # cuts it with a " (+N)" marker, a width behavior render-v2a's job).
+    # The child picks the size up on SIGWINCH.
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 2, 200, 0, 0))
     out = b""
     full = b""
     def read_until(needle, timeout):
@@ -130,8 +137,12 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 `;
 		const { env } = isolatedEnv();
 		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
-		expect(out).toContain("[2 extensions: mcp (connecting…), safe-defaults]"); // 0.1.26: the lazy connect is in flight at the banner
-		expect(out).toContain("approve mcp__fake__echo"); // the approval prompt appeared — the ask tier reached the human
+		// R-D 0.1.45: the four official extensions are built-in — the user
+		// copy SHADOWS the built-in mcp (the cascade in a real CLI), the
+		// built-in column lists the rest. 0.1.26: the lazy connect is in
+		// flight at the banner ("mcp (connecting…)").
+		expect(out).toContain("[5 extensions: built-in: skills, subagent, task · mcp (connecting…), safe-defaults]");
+		expect(out).toContain("approve mcp__fake__echo"); // the readline fallback question — the ask tier reached the human
 		expect(out).toContain("hello from mcp"); // the echo result returned to the model
 		expect(out).toContain("the echo worked");
 	}, 180_000);
@@ -169,8 +180,8 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 `;
 		const { env } = isolatedEnv();
 		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
-		expect(out).toContain("[1 extension: mcp (connecting…)]"); // 0.1.26: the banner shows the in-flight connect
-		expect(out).toContain("approve mcp__fake__echo"); // the approval prompt appeared — the human gate held
+		expect(out).toContain("[4 extensions: built-in: skills, subagent, task · mcp (connecting…)]"); // R-D 0.1.45: only the user mcp copy loads — the built-in column lists the rest (0.1.26: the banner shows the in-flight connect)
+		expect(out).toContain("approve mcp__fake__echo"); // the readline fallback question — the human gate held
 		expect(out).toContain("hello from mcp"); // the echo result returned after the approval
 		expect(out).toContain("the echo worked");
 
@@ -192,7 +203,7 @@ const NOISE = "fake-server: running on stdio (ready)";
 // The A3 driver: one turn ("go") whose trajectory calls mcp__status — the
 // tool's own result carries the captured stderr tail.
 const PTY_DRIVER_STATUS = `
-import pty, os, sys, time, select
+import pty, os, sys, time, select, fcntl, termios, struct
 
 def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
     pid, fd = pty.fork()
@@ -203,6 +214,9 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
         os.environ["KISO_FAUX_SCRIPT"] = script_path
         os.chdir(workdir)
         os.execvp("node", ["node", cli, session_id])
+    # Same rows=2/cols=200 readline-path setup as PTY_DRIVER — the banner
+    # content and the UNFOLDED status result must stay byte-linear.
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 2, 200, 0, 0))
     out = b""
     full = b""
     def read_until(needle, timeout):
@@ -293,7 +307,9 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		const { env } = isolatedEnv();
 		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
 		const noiseAt = out.indexOf(NOISE);
-		const bannerAt = out.indexOf("[1 extension: mcp (connecting…)]");
+		// R-D 0.1.45: the banner reads the built-in column + the user column
+		// (kiso-mcp.mjs only here) — same shape as the ③b bare install.
+		const bannerAt = out.indexOf("[4 extensions: built-in: skills, subagent, task · mcp (connecting…)]");
 		expect(bannerAt).toBeGreaterThan(-1); // the startup banner rendered
 		// RED on the pre-A3 bundle: the child's stderr inherited the PTY and
 		// the noise landed BEFORE the banner (spawn precedes the banner).
