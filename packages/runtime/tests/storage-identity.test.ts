@@ -27,17 +27,18 @@ const ev = (seq: number): Parameters<SessionStore["append"]>[2] => ({
 });
 
 describe("lock ownership tokens", () => {
-	it("close() does not release ANOTHER instance's kernel lock (foreign close)", async () => {
+	it("close() does not release ANOTHER instance's lock (foreign close)", async () => {
 		const { dir, store } = tempStore();
 		await store.append("s", "r1", ev(0));
-		// B is blocked while A's helper holds the flock.
+		// B is blocked while A's identity holds the lock.
 		const storeB = new SessionStore(dir);
 		await expect(storeB.append("s", "r2", ev(1))).rejects.toThrow(/locked|writer/);
-		// A's close releases ONLY A's helper — the lock file survives and
-		// no contender ever deletes it (round 4).
+		// A's close releases ONLY A's handle — the lock path survives as
+		// the empty released marker and no contender ever deletes it
+		// (ADR-0050).
 		store.close("s");
 		expect(readFileSync(join(dir, "s.lock"), "utf8")).not.toContain("99999999"); // untouched by close
-		// Now the kernel lock is free: B acquires it and writes.
+		// Now the lock is free: B acquires it and writes.
 		await storeB.append("s", "r2", ev(1));
 		expect(storeB.load("s")).toHaveLength(2);
 	});

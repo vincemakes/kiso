@@ -9,6 +9,11 @@
  *    restore-or-keep). A live lock is never removed by a contender.
  * 3. Two REAL concurrent processes race a stale lock behind a barrier:
  *    exactly one writer wins, the loser errors, the live lock survives.
+ *
+ * R-G 0.1.47 (ADR-0050): the lock suite now runs on the native
+ * identity-confirmed link lock; the assertions are the spec and are
+ * unchanged. The round-4 "flock" prose is gone with the python3 helper —
+ * the takeover family this file pins IS the native mechanism's core.
  */
 
 import { appendFileSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -88,11 +93,12 @@ describe("stale-lock takeover is identity-confirmed, never a blind delete", () =
 	});
 });
 
-describe("kernel-flock lock semantics (round 4)", () => {
-	it("a legacy lock naming a LIVE pid refuses writes — even though flock is free", async () => {
+describe("lock semantics — legacy interop and the single-writer race (ADR-0050)", () => {
+	it("a legacy lock naming a LIVE pid refuses writes — the identity gate refuses before any takeover", async () => {
 		const { dir } = tempStore();
-		// A pre-flock writer (the O_EXCL pidfile scheme) is still alive: it
-		// does NOT honor flock, so only its identity in the file stops us.
+		// A legacy-format writer (the round-2 O_EXCL pidfile scheme) is still
+		// alive: it does not share the current mechanism, so only its
+		// identity in the file stops us.
 		writeFileSync(join(dir, "s.lock"), String(process.pid)); // legacy bare pid
 		const store = new SessionStore(dir);
 		await expect(store.append("s", "r1", ev(0))).rejects.toThrow(/locked by another writer \(pid/);
@@ -117,15 +123,19 @@ describe("kernel-flock lock semantics (round 4)", () => {
 		expect(store.load("s")).toHaveLength(1);
 	});
 
-	it("an EMPTY lock file is harmless — the kernel flock takes over", async () => {
+	it("an EMPTY lock file is harmless — the released marker / legacy residue is taken over", async () => {
 		const { dir } = tempStore();
 		writeFileSync(join(dir, "s.lock"), "");
+		// ADR-0050: under the link lock, empty is the released marker (or a
+		// legacy-format crash residue) — quarantine-arbitrated, it is taken
+		// over because the empty state cannot name a live holder. (Under
+		// the round-4 flock the kernel arbitrated; assertions unchanged.)
 		const store = new SessionStore(dir);
 		await store.append("s", "r1", ev(0));
 		expect(store.load("s")).toHaveLength(1);
 	});
 
-	it("a HALF-WRITTEN lock file is harmless — no recursion, no wedge", async () => {
+	it("a HALF-WRITTEN lock file is harmless — unreadable content is residue, no recursion, no wedge", async () => {
 		const { dir } = tempStore();
 		writeFileSync(join(dir, "s.lock"), '{"pid": 99'); // crashed mid-write
 		const store = new SessionStore(dir);
@@ -133,13 +143,14 @@ describe("kernel-flock lock semantics (round 4)", () => {
 		expect(store.load("s")).toHaveLength(1);
 	});
 
-	it("a dead legacy pid is taken over via the kernel lock — the file is never deleted", async () => {
+	it("a dead legacy pid is taken over — the file is never deleted", async () => {
 		const { dir } = tempStore();
 		writeFileSync(join(dir, "s.lock"), JSON.stringify({ pid: 99999999, token: "dead" }));
 		const store = new SessionStore(dir);
 		await store.append("s", "r1", ev(0));
-		// The stale file SURVIVES (no contender ever deletes a lock path);
-		// the kernel lock is what arbitrates from now on.
+		// The stale file is replaced by identity confirmation (rename-away →
+		// verify → link), never blindly deleted: no contender ever deletes a
+		// lock path, and the path always carries a token afterwards.
 		expect(readFileSync(join(dir, "s.lock"), "utf8")).toContain("token");
 		expect(store.load("s")).toHaveLength(1);
 	});
