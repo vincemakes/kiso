@@ -136,6 +136,12 @@ function editorInput(editor: Editor): LineInput {
 		},
 		onEot(cb) {
 			editor.onEot(cb);
+			// E group (the graceful-exit gate ③): a closed pty master is an
+			// EOF, not a \x04 byte — the editor's raw key loop never sees it.
+			// The stream's 'end' fires the same EOT callback; the chat/resume
+			// exit condition (no run, no panel, empty line) decides, so the
+			// exit sequence — and with it the lock release — runs.
+			process.stdin.on("end", () => cb());
 		},
 		onEscape(cb) {
 			editor.onEscape(cb);
@@ -477,7 +483,7 @@ async function main(): Promise<void> {
 				dock.enter();
 				// E area: a resumed session continues the script at its durable
 				// position — never restarts it (fauxSkip).
-				const agent = await makeAgent(id, input, modelFlag);
+				agent = await makeAgent(id, input, modelFlag);
 				applyConfigMode();
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
@@ -495,7 +501,7 @@ async function main(): Promise<void> {
 				// (argv = [node, script, resume, id, prompt?]).
 				const prompt = process.argv[4];
 				dock.enter();
-				const agent = await makeAgent(arg, input, modelFlag);
+				agent = await makeAgent(arg, input, modelFlag);
 				applyConfigMode();
 				const session = await agent.session({ id: arg });
 				faux = currentFaux;
@@ -503,7 +509,7 @@ async function main(): Promise<void> {
 				break;
 			}
 			case "sessions": {
-				const agent = await makeAgent(undefined, undefined, modelFlag);
+				agent = await makeAgent(undefined, undefined, modelFlag);
 				for (const meta of agent.sessions()) {
 					console.log(renderSessionLine(meta));
 				}
@@ -528,7 +534,7 @@ async function main(): Promise<void> {
 				// chat — the first argument is the session id.
 				const id = command ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
 				dock.enter();
-				const agent = await makeAgent(id);
+				agent = await makeAgent(id);
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
 				extensionsBanner(recentSessions(id, agent));
@@ -539,8 +545,12 @@ async function main(): Promise<void> {
 	} finally {
 		body.close(); // flush the pending frame, stop the heartbeat
 		input.close();
-		// E group: every normal and abnormal exit releases the fds and writer
-		// locks — no lock file is left behind.
+		// E group: a NORMAL exit releases the fds and writer locks — the
+		// empty released marker is left at the lock path (finding #5: the
+		// agent used to be shadowed here; the four branches assign the outer
+		// variable now). A signal death skips this and leaves the dead-pid
+		// residue — the dead-holder takeover recovers it by design
+		// (ADR-0050); the lock never outlives a live writer either way.
 		agent?.close();
 		// v2b: the dock tears down on EVERY exit path — CSI r resets the
 		// scroll region, the cursor lands at the input line, no broken
