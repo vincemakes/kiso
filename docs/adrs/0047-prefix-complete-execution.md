@@ -274,3 +274,45 @@ side is chosen here; the audit keeps the receipt either way.
   voided-request expiry breaks load → project first.
 - The straddle is now a gated shape: a live-order row where
   started < stop < succeeded/result must project pair-closed.
+
+## Amendment 2 (2026-08-11): the α ruling — the receipted execution is an outcome
+
+Amendment 1 recorded the α-gap as an OPEN row: the "already-executed
+draft call" — started/receipt inside a no-stop suffix (the kill landed
+after the execution began) — and whether it should surface as
+"uncertain". The R-F 0.1.46 round adjudicated it, and the ruling closes
+the row:
+
+**RULED — pin current: the audit keeps it.** The receipted execution is
+an OUTCOME (the mirror of ruling #12: a complete receipt IS the outcome),
+NEVER uncertain — the framework facts (started, receipt, result) survive
+in the audit; pair atomicity drops the orphan result from the provider
+projection; only the started-NO-receipt window stays uncertain (the
+crash window, the human's). The first derivation is ABANDON_DRAFT (the
+draft dies), then CONTINUE_MODEL (nothing left to repair — the
+receipted pair is complete), then TERMINAL — and the resume walks the
+same ordinary program: no ResumeBlockedError, the provider stream stays
+pair-closed, the terminal completes. Gated forever by
+alpha-gap-ruling.test.ts (red → green: red = "Cannot find module
+'../src/recovery-plan.js'" on the API-less tree; green = the full
+runtime suite 229/229).
+
+The matrix round also pinned the boundary of the draft detection (the
+H rows of crash-matrix.test.ts): a crash MID-PAUSE leaves
+[user_input, text, tool_call_end, permission_requested] with NO stop —
+the loop persists the stream's tail after the pause resolves. Gap B's
+text-bearing-suffix rule must not void the LIVE ask: a suffix after a
+user_input boundary that carries a pending permission_requested is the
+approval-panel pause (WAIT_PERMISSION re-announces it), never a draft.
+A request AFTER a stop keeps the 0143 shape — the marker voids it and
+the request expires with the draft (Amendment 1's sentence 3). The
+R-E prefix-table gate and the healing fixtures are untouched — the
+liveAsk rule only splits the previously-overlapping shapes.
+
+### Consequences of Amendment 2
+
+- The α row is closed: a receipted draft call is an outcome, the audit
+  keeps the receipt, only the started-no-receipt window is uncertain.
+- The crash matrix (11 rows, the four effect boundaries before/after +
+  the repair-write crashes) is permanent in `npm run check`; the real
+  SIGKILL e2e (scripts/demo-kill9.sh) stays the OS-layer evidence.

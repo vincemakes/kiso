@@ -55,7 +55,8 @@ not another recalibration)
 - 0044 — The compact summary layer — Accepted
 - 0045 — The config surface: credentials never on disk, project config
   in the trust package, no "always" — Accepted
-- 0047 — Prefix-Complete Execution: the durable recovery law — Accepted
+- 0047 — Prefix-Complete Execution: the durable recovery law — Accepted (Amendment 2: the α ruling — the receipted execution is an outcome, the α-gap row closed)
+- 0048 — Recovery as a pure projection: the plan, the thin driver, the EffectGate — Accepted
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
