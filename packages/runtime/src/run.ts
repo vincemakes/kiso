@@ -7,6 +7,7 @@
 import { denialResult, loop, type AbortSignalLike, type Adapter, type ApprovalChain, type ChainVerdict, type Event, type EventLog, type HookHost, type PermissionDecision, type ToolCallPayload, type ToolResult } from "@vincemakes/kiso-core";
 import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
+import { deriveRecoveryPlan, invocationSeqOf } from "./recovery-plan.js";
 import { composeApprovalChain, composeSystemPrompt, composeToolTable, microcompactFor } from "./compose.js";
 import { truncationGuard } from "./truncation-guard.js";
 import { ResumeBlockedError, type AgentSession, type SessionConfig } from "./session.js";
@@ -179,11 +180,9 @@ export class Run implements AsyncIterable<Event> {
 					}
 				}
 
-				// Uncertain executions block until a human decides.
-				const uncertain = this.#session.uncertainExecutions();
-				if (uncertain.length > 0) {
-					throw new ResumeBlockedError(uncertain.map((u) => ({ executionId: u.executionId, callId: u.callId, name: u.name })));
-				}
+				// Uncertain executions block until a human decides — the
+				// recovery plan derives RESOLVE_UNCERTAIN and the driver
+				// throws below (same list, same order; R-F 0.1.46).
 
 				// 1. Recovery scoped to the LAST OPEN RUN's events. The recover
 				//    phase re-announces ALREADY-PERSISTED events (the stored
@@ -255,20 +254,23 @@ export class Run implements AsyncIterable<Event> {
 		}
 	}
 
-	// ── Area 2: the durable recovery state machine ───────────────────────
+	// ── Area 2: the recovery — a thin driver over the recovery plan ───────
+	// R-F 0.1.46: recovery is a PURE PROJECTION (recovery-plan.ts) consumed
+	// by this driver. The durable prefix derives THE one safe next step;
+	// the driver executes it and re-derives. The old state machine's phases
+	// are now action cases — the prefix-table gate and the healing fixtures
+	// run unchanged (the zero-behavior proof), and each phase's semantics
+	// live in the plan's derivation or in the step below.
 
 	/**
-	 * Apply every durable decision and fill every missing receipt, in log
-	 * order. A decision with no execution yet EXECUTES the persisted call
-	 * (its original name/input/callId — never re-asked of the model, never
-	 * re-approved); a denial writes its tool result; a succeeded/failed
-	 * execution whose tool_result never landed is completed from the
-	 * receipt. Undecided requests pause and await approve().
-	 *
-	 * R-E 0.1.43 (Gap A): a committed turn's tool_call_end with no durable
-	 * decision and no execution is UNDECIDED — recovery re-enters it into
-	 * the approval pipeline before anything else (only a durable
-	 * permission_decided authorizes an effect).
+	 * Consume the recovery plan one action at a time: execute the derived
+	 * step, re-derive, stop when nothing is left (CONTINUE_MODEL — the
+	 * resume's continuation drives the loop from there). The steps write
+	 * only what the plan derived; the NEXT derive applies it (EXECUTE /
+	 * REPAIR_RESULT), so the recovery is a loop over the projection, never
+	 * a second state machine. An abort that lands mid-step ends the
+	 * recovery: re-deriving would re-present the same action forever (the
+	 * steps' pre-execution abort guards rely on this).
 	 */
 	async *#recover(
 		log: EventLog,
@@ -277,340 +279,407 @@ export class Run implements AsyncIterable<Event> {
 		approvalChain: ApprovalChain | undefined,
 		hooks: HookHost | undefined,
 	): AsyncGenerator<Event> {
-		// ── Gap B: the tail draft is abandoned — never committed history ──
-		// "A model output suffix without a committed stop is an incomplete
-		// draft and must never become committed provider history." The
-		// resume appends the abandon marker FIRST: it voids the range after
-		// the last committed boundary (stop / user_input / terminal /
-		// compaction / summarized — or an earlier marker), so the projection
-		// excludes the draft and a call inside it is never executed (the
-		// boundary clause: the two Gaps divide at the stop). The audit bytes
-		// stay; a marker is kernel-exclusive (the AdapterEvent whitelist).
-		// Idempotent: an already-voided draft has a marker as its last
-		// boundary — the detection finds no output after it, and the
-		// recovered events (decided/started/result) are no draft.
-		const boundary = [...scope].reverse().find(
-			(e) =>
-				e.type === "stop" ||
-				e.type === "user_input" ||
-				e.type === "terminal" ||
-				e.type === "microcompacted" ||
-				e.type === "compacted" ||
-				e.type === "summarized" ||
-				e.type === "model_output_abandoned",
-		);
-		if (boundary !== undefined) {
-			// R-E 0.1.44 (verified against sentence 2): the draft detection
-			// stays text-only — a bare tool-call suffix [tool_call_end,
-			// permission_requested] with no text is the legal approval-panel
-			// pause (the Area 2 contract: the pending request binds and
-			// executes, pair-closed — the extensions-e2e gate). The finding's
-			// shapes all carry text, and the VOID SCOPE (what the marker
-			// covers) is the type filter at project.ts: model output dies
-			// with the draft, the framework's facts never do.
-			const draft = scope.some(
-				(e) => (e.type === "text_delta" || e.type === "thinking") && e.seq > boundary.seq,
-			);
-			if (draft) {
-				yield log.append({
-					type: "model_output_abandoned",
-					voidFromSeq: boundary.seq,
-					reason: "a model output suffix without a committed stop — abandoned on resume",
-				});
-			}
-		}
-		// The invocation's framework identity (R-E 0.1.43): the
-		// tool_call_end's seq — carried by new logs, derived by
-		// callId+proximity for old ones (the last such call before the seq).
-		const callSeqOf = (callId: string, before: number): number | undefined => {
-			let seq: number | undefined;
-			for (const e of scope) {
-				if (e.type === "tool_call_end" && e.callId === callId && e.seq < before) seq = e.seq;
-			}
-			return seq;
-		};
-		// ── Gap A: a committed turn's UNDECIDED invocation ────────────────
-		// A durable stop with a bare tool_call_end (no decision, no
-		// execution) re-enters the approval pipeline: the composed chain
-		// decides — allow → durable permission_decided (decidedBy
-		// faithfully) + the persisted execution; deny → decided + the
-		// denial result; ask/all-abstain → permission_requested (the
-		// requests pass below announces it and waits for the human). No
-		// guessing, no inheriting, no retro-authorization — re-decide.
-		// A durable POLICY verdict (E1: decidedBy set) newer than the call
-		// binds it — the chain never re-runs for a decided invocation.
-		const gapAsks: (Event & { type: "permission_requested" })[] = [];
-		for (const call of scope) {
-			if (call.type !== "tool_call_end") continue;
-			// The boundary clause (the directive): a call whose turn has no
-			// legal stop is a DRAFT's call — Gap B voids it (never executed,
-			// never in the provider projection); this stage never touches it.
-			// The two Gaps divide at the stop; no mixing.
-			const turnEnd = scope.find((e) => e.type === "user_input" && e.seq > call.seq)?.seq ?? Number.POSITIVE_INFINITY;
-			const turnStop = scope.some((e) => e.type === "stop" && e.seq > call.seq && e.seq < turnEnd);
-			if (!turnStop) continue;
-			// The requests pass below owns request-tracked invocations (it
-			// binds the stored request by decisionId, or pauses for the
-			// human) — Gap A must never re-decide over a stored
-			// permission_requested. "Only a durable permission_decided
-			// authorizes an effect": a pending request is not a decision.
-			const hasRequest = log.all.some(
-				(e) => e.type === "permission_requested" && e.callId === call.callId && e.seq > call.seq,
-			);
-			if (hasRequest) continue;
-			const decided = log.all.find(
-				(e): e is Event & { type: "permission_decided" } =>
-					e.type === "permission_decided" && e.callId === call.callId && e.seq > call.seq && e.decidedBy !== undefined,
-			);
-			const hasExecution = log.all.some(
-				(e) => e.type === "tool_execution_started" && e.callId === call.callId && e.seq > call.seq,
-			);
-			const hasResult = log.all.some((e) => e.type === "tool_result" && e.callId === call.callId && e.seq > call.seq);
-			if (hasResult) continue; // closed — nothing to fill
-			if (decided !== undefined) {
-				// E1: the durable verdict speaks for the call — apply it
-				// without re-running the chain.
-				if (signal.aborted) return;
-				if (decided.decision === "approved" && !hasExecution) {
-					yield* this.#executePersisted(call.callId, call.name, call.input ?? {}, call.seq, signal);
-				} else if (!hasResult) {
-					yield* this.#denialResult(call.callId, decided.reason ?? "denied by user", call.seq);
-				}
-				continue;
-			}
-			// UNDECIDED — re-enter the approval pipeline with the LIVE
-			// decision order (loop.ts decideCall): the composed chain
-			// first; only when no chain exists do the hooks' onPreTool
-			// speak (defer → ask, deny → deny, allow → allow); no policies
-			// at all → the kernel's default allow. Same semantics as the
-			// live path — a defer policy must not collapse into an
-			// auto-allow on resume. A throwing chain counts as ask: it
-			// speaks, never silently (the live parity).
-			const payload: ToolCallPayload = { callId: call.callId, name: call.name, input: call.input ?? {} };
-			// The chain's PolicyCall carries name+input only — callId is the
-			// framework's, the hook's is the provider-facing ToolCallPayload.
-			const policyCall = { name: payload.name, input: payload.input };
-			let verdict: ChainVerdict | PermissionDecision | undefined;
-			try {
-				if (approvalChain !== undefined) {
-					const chainVerdict = await abortable(
-						Promise.resolve(approvalChain.decide(policyCall, { signal, sessionId: this.#session.id })),
-						signal,
+		for (;;) {
+			const action = deriveRecoveryPlan(log.all, scope);
+			switch (action.kind) {
+				case "COMPLETED":
+				case "TERMINAL":
+					return;
+				case "CONTINUE_MODEL":
+					// Upgrade-path housekeeping (the old requests pass did it
+					// at the first resume): a request voided by an EARLIER
+					// marker whose expiry never landed — the pre-0.1.44 logs,
+					// where the marker existed but the expiry did not — is
+					// expired here. Idempotent: only the missing expiry is
+					// written; the re-derive then skips the expired request.
+					if (yield* this.#expireStaleVoidedRequests(scope, log)) break;
+					return;
+				case "RESOLVE_UNCERTAIN": {
+					// The crash window: uncertain executions block until a
+					// human decides (never auto-rerun). The full list goes to
+					// the throw, in log order — the first in the plan's
+					// derivation is the first in this list (the ledger's
+					// insertion order).
+					const uncertain = this.#session.uncertainExecutions();
+					throw new ResumeBlockedError(
+						uncertain.map((u) => ({ executionId: u.executionId, callId: u.callId, name: u.name })),
 					);
-					if (chainVerdict === ABORTED) return;
-					verdict = chainVerdict;
 				}
-			} catch {
-				verdict = { action: "ask" };
+				case "ABANDON_DRAFT":
+					yield* this.#abandonDraft(action.voidFromSeq, scope, log);
+					break;
+				case "DECIDE_PERMISSION":
+					yield* this.#decidePermission(action.invocationSeq, scope, log, signal, approvalChain, hooks);
+					break;
+				case "WAIT_PERMISSION":
+					yield* this.#waitPermission(action.invocationSeq, scope, log, signal);
+					break;
+				case "EXECUTE":
+					yield* this.#executeInvocation(action.invocationSeq, scope, log, signal);
+					break;
+				case "REPAIR_RESULT":
+					if (action.executionId !== undefined) yield* this.#repairReceipt(action.executionId, scope, log);
+					else yield* this.#repairDenial(action.invocationSeq!, scope, log);
+					break;
+				case "FILL_RESOLUTION":
+					yield* this.#fillResolution(action.executionId, scope, log);
+					break;
 			}
-			if (verdict === undefined && hooks?.onPreTool !== undefined) {
-				const decision = await abortable(Promise.resolve(hooks.onPreTool(payload, { sessionId: this.#session.id })), signal);
-				if (decision === ABORTED) return;
-				if (decision.action === "defer") verdict = { action: "ask" };
-				else if (decision.action !== "allow") verdict = { action: "deny", reason: decision.reason ?? "denied" };
-				else verdict = { action: "allow" };
-			}
-			if (verdict === undefined) verdict = { action: "allow" }; // no policies — the kernel's default allow
-			const decisionId = `d-${log.all.length + 1}`;
-			if (verdict.action === "allow") {
-				yield log.append({
-					type: "permission_decided",
-					decisionId,
-					callId: call.callId,
-					invocationSeq: call.seq,
-					decision: "approved",
-					...("decidedBy" in verdict ? { decidedBy: verdict.decidedBy } : {}),
-				});
-				if (signal.aborted) return;
-				yield* this.#executePersisted(call.callId, call.name, call.input ?? {}, call.seq, signal);
-			} else if (verdict.action === "deny") {
-				yield log.append({
-					type: "permission_decided",
-					decisionId,
-					callId: call.callId,
-					invocationSeq: call.seq,
-					decision: "denied",
-					...("reason" in verdict && verdict.reason !== undefined ? { reason: verdict.reason } : {}),
-					...("decidedBy" in verdict ? { decidedBy: verdict.decidedBy } : {}),
-				});
-				yield* this.#denialResult(call.callId, ("reason" in verdict && verdict.reason) || "denied", call.seq);
-			} else {
-				// ask / all-abstain — the requests pass below announces the
-				// stored request and waits for the human.
-				const appended = log.append({
-					type: "permission_requested",
-					decisionId,
-					callId: call.callId,
-					invocationSeq: call.seq,
-					name: call.name,
-					input: call.input ?? {},
-				}) as Event & { type: "permission_requested" };
-				gapAsks.push(appended);
-				yield appended;
-			}
+			if (signal.aborted) return;
 		}
-		const requests = [...scope.filter((e): e is Event & { type: "permission_requested" } => e.type === "permission_requested"), ...gapAsks];
-		for (const pending of requests) {
-			// R-E 0.1.43: the writes below carry the invocation's framework
-			// identity — the request's own, or the callId+proximity
-			// fallback for old logs (the compat contract).
-			const invocationSeq = pending.invocationSeq ?? callSeqOf(pending.callId, pending.seq);
-			// R-E 0.1.44 (sentence 3): a stored request whose invocation is
-			// VOIDED is expired — never re-presented, never executed (the
-			// dead-run expiry precedent above). The void ranges come from
-			// log.all — the marker THIS recovery appended is included. The
-			// receipt stays in the audit; only the presentation is gone.
-			// An identity-less request (an old log where neither the field nor
-			// the callId+proximity fallback yields a seq) is never proven
-			// voided — it keeps the pre-0.1.44 behavior.
-			const voided =
-				invocationSeq !== undefined &&
-				log.all.some(
-					(e) => e.type === "model_output_abandoned" && invocationSeq > e.voidFromSeq && invocationSeq <= e.seq,
-				);
-			if (voided) {
-				yield log.append({
-					type: "permission_expired",
-					decisionId: pending.decisionId,
-					reason: "the invocation was abandoned with an incomplete draft — never re-presented, never executed",
-				});
-				continue;
-			}
-			const decided = log.all.find(
-				(e): e is Event & { type: "permission_decided" } => e.type === "permission_decided" && e.decisionId === pending.decisionId,
-			);
-			// round 4: paired by events NEWER than the request — a historical
-			// same-callId execution from an earlier run must not count as THIS
-			// request's execution (the provider callId may repeat across runs).
-			const hasExecution = log.all.some(
-				(e) => e.type === "tool_execution_started" && e.callId === pending.callId && e.seq > pending.seq,
-			);
-			const hasResult = log.all.some(
-				(e) => e.type === "tool_result" && e.callId === pending.callId && e.seq > pending.seq,
-			);
+	}
 
-			if (decided === undefined) {
-				// Pause: announce the stored request, await the human.
-				const pendingDecision = new Promise<PermissionDecision>((resolve) => {
-					this.#decisionIds.push(pending.decisionId);
-					this.#session.registerResolver(pending.decisionId, resolve);
-				});
-				yield pending;
-				// Area 4: an abort during the resumed approval wait ends the
-				// run; the request stays durable and pending.
-				if (signal.aborted) {
-					// round 5(P1-6): a verdict given in the same instant as the
-					// abort is still recorded — the abort must not bypass the
-					// durable fallback (aligned with the loop's abort path).
-					const verdict = this.#session.approvalVerdict(pending.decisionId);
-					if (verdict !== undefined) {
-						yield log.append({
-							type: "permission_decided",
-							decisionId: pending.decisionId,
-							callId: pending.callId,
-							decision: verdict ? "approved" : "denied",
-							...(verdict ? {} : { reason: "denied by user" }),
-						});
-					}
-					return;
-				}
-				const final = await abortable(pendingDecision, signal);
-				if (final === ABORTED) {
-					// round 4 (adversarial): a verdict given in the same instant as the
-					// abort is recorded (exactly once), never lost.
-					const verdict = this.#session.approvalVerdict(pending.decisionId);
-					if (verdict !== undefined) {
-						yield log.append({
-							type: "permission_decided",
-							decisionId: pending.decisionId,
-							callId: pending.callId,
-							decision: verdict ? "approved" : "denied",
-							...(verdict ? {} : { reason: "denied by user" }),
-						});
-					}
-					return;
-				}
-				// The decision is written here — exactly one writer per event.
-				yield log.append({
-					type: "permission_decided",
-					decisionId: pending.decisionId,
-					callId: pending.callId, // binds the decision to the invocation (B group)
-					decision: final.action === "allow" ? "approved" : "denied",
-					...(final.action === "deny" && final.reason !== undefined ? { reason: final.reason } : {}),
-				});
-				if (final.action === "allow") {
-					if (!hasExecution) yield* this.#executePersisted(pending.callId, pending.name, pending.input, invocationSeq, signal);
-				} else if (!hasResult) {
-					yield* this.#denialResult(pending.callId, final.reason ?? "denied by user", invocationSeq);
-				}
-			} else if (decided.decision === "approved") {
-				// Decided while no process was running: apply without pausing.
-				// An abort during recovery must stop the pending executions,
-				// exactly like the live loop's sibling guard (finding 3).
-				if (signal.aborted) return;
-				if (!hasExecution) yield* this.#executePersisted(pending.callId, pending.name, pending.input, invocationSeq, signal);
-			} else if (!hasResult) {
-				yield* this.#denialResult(pending.callId, decided.reason ?? "denied by user", invocationSeq);
-			}
-		}
+	/** The open run's stored requests PLUS this recovery's own asks — the
+	 *  same list the plan's request pass derives over (scope order, then
+	 *  the log tail in append order). */
+	#storedRequests(scope: readonly Event[], log: EventLog): (Event & { type: "permission_requested" })[] {
+		const lastScopeSeq = scope.length > 0 ? scope[scope.length - 1]!.seq : -1;
+		return [
+			...scope.filter((e): e is Event & { type: "permission_requested" } => e.type === "permission_requested"),
+			...log.all.filter(
+				(e): e is Event & { type: "permission_requested" } =>
+					e.type === "permission_requested" && e.seq > lastScopeSeq,
+			),
+		];
+	}
 
-		// Receipt repair: an execution that reached a terminal state but
-		// whose model-facing result never landed is completed FROM THE
-		// RECEIPT — never re-executed. Snapshot the scope first: this phase
-		// appends the repaired results, and iterating a growing array would
-		// re-visit them. round 4: pairing is by executionId — a same-callId result
-		// from a different execution never suppresses the repair.
-		for (const ev of [...scope]) {
-			if (ev.type !== "tool_execution_succeeded" && ev.type !== "tool_execution_failed") continue;
-			const hasResult = log.all.some((e) => e.type === "tool_result" && e.executionId === ev.executionId);
-			if (hasResult) continue;
-			yield log.append(
-				ev.type === "tool_execution_succeeded"
-					? {
-							type: "tool_result",
-							callId: ev.callId,
-							content: ev.result.content,
-							isError: false,
-							// round 8: the repaired result reproduces the normal path
-							// losslessly — the tags ride on the durable receipt.
-							...(ev.tags !== undefined ? { tags: ev.tags } : {}),
-							executionId: ev.executionId,
-						}
-					: {
-							type: "tool_result",
-							callId: ev.callId,
-							content: ev.error,
-							isError: true,
-							...(ev.errorKind !== undefined ? { errorKind: ev.errorKind } : {}),
-							...(ev.tags !== undefined ? { tags: ev.tags } : {}),
-							executionId: ev.executionId,
-						},
-			);
-		}
+	/** The invocation the plan keyed by seq — a committed call in the scope,
+	 *  or a stored request (the old-log identity fallback included). */
+	#invocationFor(
+		invocationSeq: number,
+		scope: readonly Event[],
+		log: EventLog,
+	): (Event & { type: "tool_call_end" }) | (Event & { type: "permission_requested" }) | undefined {
+		const call = scope.find(
+			(e): e is Event & { type: "tool_call_end" } => e.type === "tool_call_end" && e.seq === invocationSeq,
+		);
+		if (call !== undefined) return call;
+		return this.#storedRequests(scope, log).find((e) => (invocationSeqOf(e, scope) ?? e.seq) === invocationSeq);
+	}
 
-		// B group crash window: a resolution was persisted but its tool_result
-		// fill never landed — complete it so the model is never left staring
-		// at a dangling tool_use. round 4: keyed by executionId, and the fill
-		// carries it, so a same-callId result from another execution is never
-		// confused with this one.
-		for (const ev of [...scope]) {
-			if (ev.type !== "tool_execution_resolved") continue;
-			const hasResult = log.all.some((e) => e.type === "tool_result" && e.executionId === ev.executionId);
-			if (hasResult) continue;
-			const denial = denialResult(
-				ev.resolution === "rerun"
-					? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
-					: "abandoned by human decision — the interrupted attempt must not be treated as applied",
-			);
+	/**
+	 * The ABANDON_DRAFT step (Gap B): the marker voids the draft's range —
+	 * model output only, the audit bytes stay, a call inside the range is
+	 * never executed (the kernel's type filter keeps the framework's
+	 * facts). The SAME step expires every stored request whose invocation
+	 * falls in the voided range (sentence 3: never re-presented, never
+	 * executed) — the old requests pass appended these later; the fold
+	 * makes the void and its expiry ONE deterministic step. Idempotent: an
+	 * already-expired request is never re-expired, and an already-voided
+	 * draft derives no ABANDON_DRAFT (the marker is the last boundary).
+	 */
+	async *#abandonDraft(voidFromSeq: number, scope: readonly Event[], log: EventLog): AsyncGenerator<Event> {
+		const marker = log.append({
+			type: "model_output_abandoned",
+			voidFromSeq,
+			reason: "a model output suffix without a committed stop — abandoned on resume",
+		});
+		yield marker;
+		for (const pending of scope) {
+			if (pending.type !== "permission_requested") continue;
+			const invocationSeq = pending.invocationSeq ?? invocationSeqOf(pending, scope);
+			if (invocationSeq === undefined) continue;
+			if (!(invocationSeq > voidFromSeq && invocationSeq <= marker.seq)) continue;
+			if (log.all.some((e) => e.type === "permission_expired" && e.decisionId === pending.decisionId)) continue;
 			yield log.append({
-				type: "tool_result",
-				callId: ev.callId,
-				content: denial.content,
-				isError: true,
-				errorKind: denial.errorKind,
-				executionId: ev.executionId,
+				type: "permission_expired",
+				decisionId: pending.decisionId,
+				reason: "the invocation was abandoned with an incomplete draft — never re-presented, never executed",
 			});
 		}
+	}
+
+	/**
+	 * The DECIDE_PERMISSION step (Gap A, undecided): the committed call
+	 * re-enters the approval pipeline with the LIVE decision order
+	 * (loop.ts decideCall) — the composed chain first; only when no chain
+	 * exists do the hooks' onPreTool speak (defer → ask, deny → deny,
+	 * allow → allow); no policies at all → the kernel's default allow. A
+	 * throwing chain counts as ask: it speaks, never silently (the live
+	 * parity). Only the DECISION is written here — the EXECUTE /
+	 * REPAIR_RESULT steps apply it on the next derive. The ask's request
+	 * is announced immediately (the consumer may answer; the
+	 * WAIT_PERMISSION step re-announces and pauses when it did not).
+	 */
+	async *#decidePermission(
+		invocationSeq: number,
+		scope: readonly Event[],
+		log: EventLog,
+		signal: AbortSignalLike,
+		approvalChain: ApprovalChain | undefined,
+		hooks: HookHost | undefined,
+	): AsyncGenerator<Event> {
+		const call = scope.find(
+			(e): e is Event & { type: "tool_call_end" } => e.type === "tool_call_end" && e.seq === invocationSeq,
+		);
+		if (call === undefined) throw new Error(`the recovery plan derived a call outside the scope (seq ${invocationSeq})`);
+		// The chain's PolicyCall carries name+input only — callId is the
+		// framework's, the hook's is the provider-facing ToolCallPayload.
+		const payload: ToolCallPayload = { callId: call.callId, name: call.name, input: call.input ?? {} };
+		const policyCall = { name: payload.name, input: payload.input };
+		let verdict: ChainVerdict | PermissionDecision | undefined;
+		try {
+			if (approvalChain !== undefined) {
+				const chainVerdict = await abortable(
+					Promise.resolve(approvalChain.decide(policyCall, { signal, sessionId: this.#session.id })),
+					signal,
+				);
+				if (chainVerdict === ABORTED) return;
+				verdict = chainVerdict;
+			}
+		} catch {
+			verdict = { action: "ask" };
+		}
+		if (verdict === undefined && hooks?.onPreTool !== undefined) {
+			const decision = await abortable(Promise.resolve(hooks.onPreTool(payload, { sessionId: this.#session.id })), signal);
+			if (decision === ABORTED) return;
+			if (decision.action === "defer") verdict = { action: "ask" };
+			else if (decision.action !== "allow") verdict = { action: "deny", reason: decision.reason ?? "denied" };
+			else verdict = { action: "allow" };
+		}
+		if (verdict === undefined) verdict = { action: "allow" }; // no policies — the kernel's default allow
+		// The recovery's own decision is a POLICY verdict (the plan's E1
+		// rule: only a decidedBy-carrying decision binds the call — a human
+		// verdict binds its request, never the call). The driver's write
+		// must satisfy its own plan: no decidedBy → the re-derive would
+		// derive DECIDE_PERMISSION again forever (the plan cannot tell the
+		// driver's write from a human's). Stamped "mode:default" when the
+		// verdict carries none — the gates' seeded convention.
+		const decisionId = `d-${log.all.length + 1}`;
+		if (verdict.action === "allow") {
+			yield log.append({
+				type: "permission_decided",
+				decisionId,
+				callId: call.callId,
+				invocationSeq: call.seq,
+				decision: "approved",
+				decidedBy: "decidedBy" in verdict ? verdict.decidedBy : "mode:default",
+			});
+		} else if (verdict.action === "deny") {
+			yield log.append({
+				type: "permission_decided",
+				decisionId,
+				callId: call.callId,
+				invocationSeq: call.seq,
+				decision: "denied",
+				...("reason" in verdict && verdict.reason !== undefined ? { reason: verdict.reason } : {}),
+				decidedBy: "decidedBy" in verdict ? verdict.decidedBy : "mode:default",
+			});
+		} else {
+			// ask / all-abstain — the WAIT_PERMISSION step announces the
+			// stored request and awaits the human.
+			yield log.append({
+				type: "permission_requested",
+				decisionId,
+				callId: call.callId,
+				invocationSeq: call.seq,
+				name: call.name,
+				input: call.input ?? {},
+			});
+		}
+	}
+
+	/**
+	 * The WAIT_PERMISSION step (a stored request, undecided): the resolver
+	 * is registered, the stored request announced, and the human's decision
+	 * awaited. An abort during the wait ends the run — the request stays
+	 * durable and pending, and a verdict given in the same instant as the
+	 * abort is recorded exactly once (the round-4 adversarial path). Only
+	 * the DECISION is written here — the EXECUTE / REPAIR_RESULT steps
+	 * apply it on the next derive.
+	 */
+	async *#waitPermission(
+		invocationSeq: number,
+		scope: readonly Event[],
+		log: EventLog,
+		signal: AbortSignalLike,
+	): AsyncGenerator<Event> {
+		const pending = this.#storedRequests(scope, log).find((e) => (invocationSeqOf(e, scope) ?? e.seq) === invocationSeq);
+		if (pending === undefined) throw new Error(`the recovery plan derived a request outside the log (seq ${invocationSeq})`);
+		const pendingDecision = new Promise<PermissionDecision>((resolve) => {
+			this.#decisionIds.push(pending.decisionId);
+			this.#session.registerResolver(pending.decisionId, resolve);
+		});
+		yield pending;
+		// Area 4: an abort during the resumed approval wait ends the run;
+		// the request stays durable and pending.
+		if (signal.aborted) {
+			// round 5(P1-6): a verdict given in the same instant as the
+			// abort is still recorded — the abort must not bypass the
+			// durable fallback (aligned with the loop's abort path).
+			const verdict = this.#session.approvalVerdict(pending.decisionId);
+			if (verdict !== undefined) {
+				yield log.append({
+					type: "permission_decided",
+					decisionId: pending.decisionId,
+					callId: pending.callId,
+					decision: verdict ? "approved" : "denied",
+					...(verdict ? {} : { reason: "denied by user" }),
+				});
+			}
+			return;
+		}
+		const final = await abortable(pendingDecision, signal);
+		if (final === ABORTED) {
+			// round 4 (adversarial): a verdict given in the same instant as
+			// the abort is recorded (exactly once), never lost.
+			const verdict = this.#session.approvalVerdict(pending.decisionId);
+			if (verdict !== undefined) {
+				yield log.append({
+					type: "permission_decided",
+					decisionId: pending.decisionId,
+					callId: pending.callId,
+					decision: verdict ? "approved" : "denied",
+					...(verdict ? {} : { reason: "denied by user" }),
+				});
+			}
+			return;
+		}
+		// The decision is written here — exactly one writer per event.
+		yield log.append({
+			type: "permission_decided",
+			decisionId: pending.decisionId,
+			callId: pending.callId, // binds the decision to the invocation (B group)
+			decision: final.action === "allow" ? "approved" : "denied",
+			...(final.action === "deny" && final.reason !== undefined ? { reason: final.reason } : {}),
+		});
+	}
+
+	/**
+	 * The EXECUTE step: a durable approval authorizes the persisted call —
+	 * the original name/input/callId (never re-asked of the model, never
+	 * re-approved), the full ledgered lifecycle, and the ruling-#12
+	 * receipt-as-outcome semantics.
+	 */
+	async *#executeInvocation(
+		invocationSeq: number,
+		scope: readonly Event[],
+		log: EventLog,
+		signal: AbortSignalLike,
+	): AsyncGenerator<Event> {
+		const invocation = this.#invocationFor(invocationSeq, scope, log);
+		if (invocation === undefined) throw new Error(`the recovery plan derived an invocation outside the log (seq ${invocationSeq})`);
+		yield* this.#executePersisted(invocation.callId, invocation.name, invocation.input ?? {}, invocationSeq, signal);
+	}
+
+	/**
+	 * The REPAIR_RESULT step for a receipt (executionId): an execution that
+	 * reached a terminal state but whose model-facing result never landed
+	 * is completed FROM THE RECEIPT — never re-executed. Pairing is by
+	 * executionId (round 4) — a same-callId result from a different
+	 * execution never suppresses the repair.
+	 */
+	async *#repairReceipt(executionId: string, scope: readonly Event[], log: EventLog): AsyncGenerator<Event> {
+		const ev = scope.find(
+			(e): e is Event & { type: "tool_execution_succeeded" | "tool_execution_failed" } =>
+				(e.type === "tool_execution_succeeded" || e.type === "tool_execution_failed") && e.executionId === executionId,
+		);
+		if (ev === undefined) throw new Error(`the recovery plan derived a receipt outside the scope (${executionId})`);
+		yield log.append(
+			ev.type === "tool_execution_succeeded"
+				? {
+						type: "tool_result",
+						callId: ev.callId,
+						content: ev.result.content,
+						isError: false,
+						// round 8: the repaired result reproduces the normal path
+						// losslessly — the tags ride on the durable receipt.
+						...(ev.tags !== undefined ? { tags: ev.tags } : {}),
+						executionId: ev.executionId,
+					}
+				: {
+						type: "tool_result",
+						callId: ev.callId,
+						content: ev.error,
+						isError: true,
+						...(ev.errorKind !== undefined ? { errorKind: ev.errorKind } : {}),
+						...(ev.tags !== undefined ? { tags: ev.tags } : {}),
+						executionId: ev.executionId,
+					},
+		);
+	}
+
+	/**
+	 * The REPAIR_RESULT step for a durable denial (invocationSeq): the
+	 * model-facing result of the denied invocation is completed from its
+	 * durable permission_decided — no execution happened. The REQUEST is
+	 * looked up first (its decision binds by decisionId — the human's
+	 * verdict carries no decidedBy); the call fallback covers the Gap-A
+	 * policy-verdict shape, which can only derive when NO request exists
+	 * (Gap A never re-decides over a stored request).
+	 */
+	async *#repairDenial(invocationSeq: number, scope: readonly Event[], log: EventLog): AsyncGenerator<Event> {
+		const request = this.#storedRequests(scope, log).find((e) => (invocationSeqOf(e, scope) ?? e.seq) === invocationSeq);
+		const call = scope.find(
+			(e): e is Event & { type: "tool_call_end" } => e.type === "tool_call_end" && e.seq === invocationSeq,
+		);
+		const decided = log.all.find(
+			(e): e is Event & { type: "permission_decided" } =>
+				e.type === "permission_decided" &&
+				(request !== undefined
+					? e.decisionId === request.decisionId
+					: call !== undefined && e.callId === call.callId && e.seq > call.seq && e.decidedBy !== undefined),
+		);
+		if (decided === undefined || (request?.callId ?? call?.callId) === undefined) {
+			throw new Error(`the recovery plan derived a denial without its decision (seq ${invocationSeq})`);
+		}
+		yield* this.#denialResult(request?.callId ?? call!.callId, decided.reason ?? "denied by user", invocationSeq);
+	}
+
+	/**
+	 * The FILL_RESOLUTION step: a resolution was persisted but its
+	 * model-facing fill never landed — complete it so the model is never
+	 * left staring at a dangling tool_use. Keyed by executionId; the fill
+	 * carries it, so a same-callId result from another execution is never
+	 * confused with this one (round 4).
+	 */
+	async *#fillResolution(executionId: string, scope: readonly Event[], log: EventLog): AsyncGenerator<Event> {
+		const ev = scope.find(
+			(e): e is Event & { type: "tool_execution_resolved" } => e.type === "tool_execution_resolved" && e.executionId === executionId,
+		);
+		if (ev === undefined) throw new Error(`the recovery plan derived a resolution outside the scope (${executionId})`);
+		const denial = denialResult(
+			ev.resolution === "rerun"
+				? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
+				: "abandoned by human decision — the interrupted attempt must not be treated as applied",
+		);
+		yield log.append({
+			type: "tool_result",
+			callId: ev.callId,
+			content: denial.content,
+			isError: true,
+			errorKind: denial.errorKind,
+			executionId: ev.executionId,
+		});
+	}
+
+	/**
+	 * The CONTINUE_MODEL housekeeping (called by the driver before the
+	 * continuation): a request voided by an EARLIER marker whose expiry
+	 * never landed — the pre-0.1.44 upgrade path, where the marker existed
+	 * but the expiry did not — is expired here, exactly as the old requests
+	 * pass did at the first resume. Returns whether anything was appended
+	 * (the driver re-derives once; the plan then skips the expired
+	 * request).
+	 */
+	async *#expireStaleVoidedRequests(scope: readonly Event[], log: EventLog): AsyncGenerator<Event, boolean> {
+		let expired = false;
+		for (const pending of this.#storedRequests(scope, log)) {
+			const invocationSeq = invocationSeqOf(pending, scope);
+			if (invocationSeq === undefined) continue;
+			const voided = log.all.some(
+				(e) => e.type === "model_output_abandoned" && invocationSeq > e.voidFromSeq && invocationSeq <= e.seq,
+			);
+			if (!voided) continue;
+			if (log.all.some((e) => e.type === "permission_expired" && e.decisionId === pending.decisionId)) continue;
+			yield log.append({
+				type: "permission_expired",
+				decisionId: pending.decisionId,
+				reason: "the invocation was abandoned with an incomplete draft — never re-presented, never executed",
+			});
+			expired = true;
+		}
+		return expired;
 	}
 
 	/**
