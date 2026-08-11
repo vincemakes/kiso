@@ -123,11 +123,11 @@ async function stepUntilHold(it: AsyncIterator<Event>, gate: EffectGate): Promis
 
 /** Step the run until an event of the given type appears (the run pauses
  *  behind it when the loop's own await holds it). */
-async function nextEventOfType(it: AsyncIterator<Event>, type: Event["type"]): Promise<Event> {
+async function nextEventOfType<T extends Event["type"]>(it: AsyncIterator<Event>, type: T): Promise<Event & { type: T }> {
 	for (;;) {
 		const r = await it.next();
 		if (r.done) throw new Error(`the run completed before a ${type}`);
-		if (r.value.type === type) return r.value;
+		if (r.value.type === type) return r.value as Event & { type: T };
 	}
 }
 
