@@ -123,7 +123,13 @@ def driver(mode, cli, home, script_path, session_id, workdir):
     # Wait for the child's exit; drain output while the fd is still open.
     # After os.close(fd) there is nothing left to read — select on the
     # closed fd would raise EBADF — so that path polls the exit only.
-    deadline = time.time() + (60 if mode == "resume" else 30)
+    # 60s for every mode: the full gate runs ~120 files on parallel
+    # workers — under that load the child can take longer than 30s to be
+    # scheduled back after the EOF; the old 30s deadline SIGTERMed a
+    # still-exiting child (the release is fast in isolation: ~400ms) and
+    # the fallback's residue failed the marker assertion. The deadline is
+    # the gate's, not the product's.
+    deadline = time.time() + 60
     while time.time() < deadline:
         try:
             wpid, _ = os.waitpid(pid, os.WNOHANG)
@@ -196,7 +202,7 @@ sys.argv = [""]
 exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(mode)}, ${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, ${JSON.stringify(sessionId)}, ${JSON.stringify(workdir)})
 `;
-	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000 });
+	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 150_000 });
 }
 
 function freshDir(tag: string): { dir: string; home: string; scriptPath: string } {
@@ -215,7 +221,7 @@ describe("graceful-exit release gate (E area, R-G 0.1.48)", () => {
 		runDriver("eot", dir, home, scriptPath, "ge1");
 		expect(lockBytes(home, "ge1")).toBe(0); // the released marker, not the 60-byte identity
 		expect(tombstones(home)).toEqual([]);
-	}, 120_000);
+	}, 180_000);
 
 	it("② the one-shot kiso resume's exit-0 — the lock is released through main's finally", () => {
 		const { dir, home, scriptPath } = freshDir("res");
@@ -223,12 +229,12 @@ describe("graceful-exit release gate (E area, R-G 0.1.48)", () => {
 		runDriver("resume", dir, home, scriptPath, "ge2");
 		expect(lockBytes(home, "ge2")).toBe(0);
 		expect(tombstones(home)).toEqual([]);
-	}, 120_000);
+	}, 180_000);
 
 	it("③ the fd-close at the prompt — the stream EOF fires the EOT callback and the release runs", () => {
 		const { dir, home, scriptPath } = freshDir("fd");
 		runDriver("fdclose", dir, home, scriptPath, "ge3");
 		expect(lockBytes(home, "ge3")).toBe(0);
 		expect(tombstones(home)).toEqual([]);
-	}, 120_000);
+	}, 180_000);
 });
