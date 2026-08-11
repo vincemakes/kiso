@@ -919,7 +919,7 @@ tree stays CJK-free — `README.zh.md` is the only exemption)
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
-→ demo start-and-exit gate. 869 tests green. 34 ADRs (index: `adrs/README.md`).
+→ demo start-and-exit gate. 869 tests green. 34 ADRs (index: `docs/adrs/README.md`).
 6 incident fixtures running on the real runtime.
 
 ## Why another one

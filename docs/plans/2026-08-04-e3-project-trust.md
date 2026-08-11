@@ -100,12 +100,12 @@ TTY only.
 
 ### d. ADR-0037 — same round (the index's process rule)
 
-- `adrs/0037-project-level-capability-is-trusted-by-content-digest.md`
+- `docs/adrs/0037-project-level-capability-is-trusted-by-content-digest.md`
   — the four rulings, the two failed mental models (trust-the-directory,
   trust-once-remember-the-path), the Consequences (headless needs a
   prior interactive grant; refused stickiness; skills merge visibly),
   and the explicit KEEP-rejected `KISO_TRUST` toggle.
-- `adrs/README.md` — index entry 0037.
+- `docs/adrs/README.md` — index entry 0037.
 
 ## 5. Acceptance
 

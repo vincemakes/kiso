@@ -54,7 +54,7 @@ kiso/
 ├── apps/
 │   └── cli/                   @vincemakes/kiso-cli — coding-agent reference product
 ├── docs/plans/                this plan
-└── adrs/                      ADR trail (0001-0005, 0020-0022)
+└── docs/adrs/                ADR trail (0001-0005, 0020-0022)
 ```
 
 Merges allowed only when a package has no independent publish value yet —
