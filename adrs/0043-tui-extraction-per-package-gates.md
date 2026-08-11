@@ -195,3 +195,70 @@ Boundary conditions:
    wiring — the compositor's bindApproval/bindQueue leads, the
    editor's panel leads, the cursor contract, and the render-bug
    fixes — against the retirement ledger (−56).
+
+## Amendment 6 (2026-08-11): the cli gate 1856 → 1920 — the R-D first-run earmark (the second and LAST cli recalibration)
+
+The R-D 0.1.45 round (the adoption round) measured the cli at **1849/1856**
+— seven lines of headroom — with the spec-forced first-run scaffold
+(deliverable B) still queued. The owner's stop-clause ruling (2026-08-11,
+the R-D stop-clause ruling exchange — the second textbook ledger stop,
+R-E's ledger stop being the first; the ledger carries no records):
+**the cli gate recalibrates to 1920 (+64), earmarked exclusively to
+deliverable B (the first-run scaffold), recorded as this Amendment.**
+
+The ruling's operative substance, carried here verbatim-in-substance from
+the ruling exchange (the exchange is the record; this Amendment is its
+governance trace):
+
+1. **Option (a) rejected** — seven lines cannot hold the first-run
+   sequence without distorted code or a neutered first-run story, and
+   the first-run experience is the adoption round's bullseye.
+2. **Option (b) rejected as the main path** — line-hunting inside the
+   cli during the round is unfocused zero-behavior risk; incidental
+   in-place trims of ≤10 lines are not forbidden, but no dedicated
+   expeditions.
+3. **The rationale chain**:
+   - The standing rule: a cli overage is a product-growth raise (the
+     legal path); a core overage is expulsion. This increment is a
+     spec-forced deliverable of the R-D round, owner-adjudicated —
+     the former.
+   - Amendment 1's attached clause ("the next approach without an
+     argument is extraction, not a second recalibration") does not bar
+     this raise — the approach HAS an argument (spec-forced). But the
+     clause's spirit demands a higher threshold: +64 is a MEASURED
+     need, not the +20% blanket formula. B's real shape: the first-run
+     detection + the trust-sequence wiring + the config scaffold
+     writes + the startup-path integration ≈ 40-60 lines. F's demo
+     lives in scripts/ and does not touch the cli; C/D/E do not touch
+     the cli — B is the only budget consumer; the earmark is honest.
+   - Snapshot discipline: one pinned number, no self-adjusting ratchet.
+     If B lands smaller, the round report shows the honest delta; the
+     number does not roll back.
+4. **Consequence clause (hardened)**: this is the cli's SECOND and LAST
+   recalibration before 1.0. The next approach — with or without an
+   argument — defaults to extract-first adjudication; a recalibration
+   requires extraordinary justification.
+5. **Numbering discipline**: Amendment 5 is permanently retired (the
+   forged number, rolled back — the scar stays visible in history).
+   This ruling is **Amendment 6**, citing the 2026-08-11 R-D
+   stop-clause ruling exchange as the actually-issued ruling.
+
+Conditions attached to the raise:
+
+- This Amendment lands BEFORE deliverable B's code (governance before
+  implementation).
+- B delivers its own line account (actual vs the ≤64 envelope) into
+  the round report.
+- The Route-1 seven-conditions evidence is accepted; the symlink-shadow
+  check, deferred to the staged-bump moment, becomes an explicit
+  checklist line in the round report's release section (evidence cited
+  at release time).
+- The faux-delay measurement fix is associated with the unidentified
+  flake from the 0.1.44 acceptance full-suite; if the round's full-suite
+  reruns stay stable, the P4 observation item closes as "located".
+- The eight storm/banner/resume re-baselines are ratified — the
+  rationale in the test comments is the correct form; the emulator-
+  replay evidence is cited on record.
+
+The cli gate is **1920**. The core gate stays 2000; the tui gate stays
+2400 (the terminal cap); the tui-cells gate stays 1280.

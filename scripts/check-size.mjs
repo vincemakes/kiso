@@ -34,13 +34,19 @@ const GATES = [
 	// (the ADR-0041 escape hatch: extraction, not a fifth raise); the sum
 	// of the two gates may exceed 2400 — the layering's breathing room is
 	// the legitimate yield of extraction.
-	// ADR-0043 Amendment 1 (the 2026-08-06 ruling): the cli gate is 1856 —
+	// ADR-0043 Amendment 1 (the 2026-08-06 ruling): the cli gate was 1856 —
 	// the 0.1.23 Config round measured 1547 actual (the spec-forced config
 	// surface, an argued increment), recalibrated with the same snapshot
 	// formula (+20%). The +20% is a snapshot metric, NOT an automatic
 	// ratchet: the next approach without an argument is EXTRACTION (the
 	// config layer is the ready candidate), not a second recalibration.
-	{ name: "cli", limit: 1856, dir: join("apps", "cli", "src") },
+	// ADR-0043 Amendment 6 (the 2026-08-11 R-D stop-clause ruling): the
+	// gate is 1920 — +64 measured, earmarked EXCLUSIVELY to the R-D
+	// first-run scaffold (deliverable B, ≈40-60 lines of spec-forced
+	// growth; F's demo lives in scripts/, C/D/E do not touch the cli).
+	// The SECOND and LAST cli recalibration before 1.0: the next
+	// approach, argued or not, defaults to extract-first adjudication.
+	{ name: "cli", limit: 1920, dir: join("apps", "cli", "src") },
 	// ADR-0043 Amendment 3 (the 2026-08-08 ruling): the tui gate is 2400,
 	// declared the TERMINAL cap (the ADR-0041 discipline per package —
 	// the cli precedent). The tui's second recalibration is its LAST:
