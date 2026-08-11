@@ -3,24 +3,32 @@
  *
  * One file per session: `<root>/<id>.jsonl`, lines of
  * `{"runId": string, "ts": number, "event": Event}`. The single-writer
- * lock (round 4) is an EXCLUSIVE KERNEL flock on `<id>.lock`, held by a
- * dedicated helper process:
+ * lock (R-G 0.1.47, ADR-0050) is the native identity-confirmed LINK LOCK
+ * on `<id>.lock` — no helper process, no python3. Possession is decided by
+ * atomic filesystem operations (see lock-adapter.ts for the full protocol
+ * and the residual family):
  *
- * - the kernel arbitrates every race — a contender can never remove or
- *   overwrite a live holder's lock, because there is nothing to remove;
- *   the lock simply exists while the helper lives and vanishes with it;
- * - the lock file ALSO carries `{"pid": number, "token": string}` written
- *   by the holder, as a best-effort guard for OLD-format writers (whose
- *   O_EXCL pidfile scheme does not honor flock). round 5(P1-4): this guard
- *   is NOT a seamless rolling upgrade — an old writer that created an
- *   empty lock file before writing its pid creates a split-brain window
- *   that a pidfile read cannot close. The documented upgrade contract is
- *   QUARANTINE: stop every old-format process, THEN start the new
- *   version. A dead/empty/unreadable legacy lock is otherwise harmless —
- *   flock ignores content, and the kernel lock is what matters;
- * - `close()` releases only THIS instance's helper; `closeAll()` every
- *   held helper — a foreign close can never release another writer's
- *   kernel lock (flock is tied to the helper's open file description).
+ * - the final path exists ONLY by linking a fully-written and fsynced
+ *   identity file (atomic create-if-absent) — a kill can never leave an
+ *   empty or half-written lock; dead holders are taken over by identity
+ *   confirmation (rename-away → verify → link), never by deletion;
+ * - the file carries `{"pid": number, "token": string}`; the holder's
+ *   possession is RE-CHECKED at every append (the file must still name its
+ *   pid AND token) and a failure is a strict refusal — no retry, no wait
+ *   heuristic: a displaced holder fails honestly and the session resumes
+ *   from a fresh store, never two writers (ADR-0050 §residual);
+ * - the identity format is the cross-version channel (round 4 formats
+ *   unchanged). A dead/empty/unreadable legacy lock is residue and is
+ *   taken over — the documented upgrade contract is QUARANTINE (round 5
+ *   P1-4): stop every old-format process, THEN start the new version
+ *   (ADR-0050 §migration);
+ * - the mechanism is an injection point: `new SessionStore(root, {
+ *   lockAdapter })` — the interface is the extension point, and the
+ *   default adapter is `nativeLockAdapter` (ADR-0050);
+ * - `close()` releases only THIS instance's handle; `closeAll()` every
+ *   held handle — a foreign close can never release another writer's
+ *   lock. Release leaves the EMPTY released marker; the path is never
+ *   deleted.
  *
  * Consistency contract (A group):
  * - every id is validated BEFORE any file side effect (append, close,
@@ -35,7 +43,6 @@
  *   tolerated damage; everything else throws StoreCorruptionError.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
 import {
 	appendFileSync,
 	closeSync,
@@ -47,13 +54,16 @@ import {
 	openSync,
 	readFileSync,
 	readdirSync,
-	renameSync,
 	readSync,
-	unlinkSync,
-	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { isKisoEvent, type Event } from "@vincemakes/kiso-core";
+import {
+	LockedError,
+	nativeLockAdapter,
+	type LockAdapter,
+	type LockHandle,
+} from "./lock-adapter.js";
 
 /** History that does not parse as a contiguous kiso trajectory. */
 export class StoreCorruptionError extends Error {
@@ -93,10 +103,11 @@ const ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 export class SessionStore {
 	readonly root: string;
 	readonly #fds = new Map<string, number>();
-	/** sessionId → the lock helper process THIS instance spawned. */
-	readonly #lockHelpers = new Map<string, ChildProcess>();
+	/** sessionId → the lock handle THIS instance holds (ADR-0050). */
+	readonly #lockHandles = new Map<string, LockHandle>();
+	readonly #lockAdapter: LockAdapter;
 	/** round 4 (adversarial): serialize concurrent acquireLock calls ON this instance —
-	 *  two racing appends must not spawn two helpers and fight each other. */
+	 *  two racing appends must not issue two acquisitions and fight each other. */
 	readonly #lockAcquiring = new Map<string, Promise<void>>();
 	/** round 5(P1-1): serialize the WHOLE append critical section per session on
 	 *  this instance — lock check → CAS → write → fsync. A rejected write
@@ -105,8 +116,9 @@ export class SessionStore {
 	readonly #appendQueues = new Map<string, Promise<void>>();
 	readonly #closed = new Set<string>();
 
-	constructor(root: string) {
+	constructor(root: string, opts?: { lockAdapter?: LockAdapter }) {
 		this.root = root;
+		this.#lockAdapter = opts?.lockAdapter ?? nativeLockAdapter;
 		mkdirSync(root, { recursive: true });
 		fsyncDir(root);
 	}
@@ -125,21 +137,18 @@ export class SessionStore {
 	}
 
 	/**
-	 * Take the single-writer lock (round 4): an EXCLUSIVE kernel flock held
-	 * by a dedicated helper process. The KERNEL arbitrates every race —
-	 * there is no stale lock to delete and no takeover to race: a
-	 * contender either gets the flock (the previous holder is gone) or it
-	 * fails. The lock file also carries the holder's identity so an OLD-format
-	 * writer (which does not honor flock) still sees a live owner and
-	 * refuses to take over — a best-effort guard, NOT a seamless rolling
-	 * upgrade (round 5 P1-4): the documented upgrade contract is quarantine —
-	 * stop every old-format process, then start the new version.
-	 * No recursion, no deletion, no window between NEW-format writers.
+	 * Take the single-writer lock (R-G 0.1.47, ADR-0050): the identity-
+	 * confirmed link lock (see lock-adapter.ts). The adapter decides
+	 * possession by atomic filesystem operations; a dead holder is taken
+	 * over by identity confirmation (rename-away → verify → link), a live
+	 * foreign writer refuses. No recursion, no deletion, no window between
+	 * writers. The adapter's `cancelled` callback throws the store's closed
+	 * message so a close() that landed mid-acquisition aborts it
+	 * immediately (round 5 P1-3).
 	 */
 	private async acquireLock(sessionId: string): Promise<void> {
-		// round 5(P1-2): the lock is held only while the helper PROCESS is
-		// alive — flock is bound to the helper's lifetime. A dead helper's
-		// entry must never be trusted as "locked".
+		// round 5(P1-2): a lock is held only while THIS instance's handle is
+		// held — a displaced/dead lock must never be trusted as "locked".
 		if (this.lockHeld(sessionId)) return;
 		const inFlight = this.#lockAcquiring.get(sessionId);
 		if (inFlight !== undefined) return inFlight;
@@ -148,102 +157,37 @@ export class SessionStore {
 		return attempt;
 	}
 
-	/** round 5(P1-2): true only while the helper process is alive. */
+	/** round 5(P1-2): true only while THIS instance holds its handle. */
 	private lockHeld(sessionId: string): boolean {
-		const child = this.#lockHelpers.get(sessionId);
-		if (child === undefined || child.pid === undefined || child.pid <= 0) return false;
-		return isAlive(child.pid);
+		return this.#lockHandles.has(sessionId);
 	}
 
 	async #acquireLockOnce(sessionId: string): Promise<void> {
 		const lockPath = this.lockPathFor(sessionId);
-		for (let attempt = 0; ; attempt++) {
-			const child = spawn("python3", ["-c", LOCK_HELPER_SCRIPT, lockPath], {
-				stdio: ["pipe", "pipe", "ignore"],
-			});
-			const verdict = await helperVerdict(child);
-			if (verdict === "LOCKED") {
-				// The kernel flock is ours. One last compatibility gate: an
-				// OLD-format writer (which does not honor flock) may still
-				// be alive — its lock file names it. Refuse, and release
-				// the flock (the helper dies). A MODERN lock (with a token)
-				// naming OUR OWN process is a same-process writer's residue
-				// (round 4: the file is advisory; the flock is the authority).
-				const legacy = readLockIdentity(lockPath);
-				if (legacy?.pid !== undefined && isAlive(legacy.pid) && (legacy.token === undefined || legacy.pid !== process.pid)) {
-					child.kill();
-					throw new Error(`session ${sessionId} is locked by another writer (pid ${legacy.pid})`);
-				}
-				// Record our identity in the file: irrelevant to flock, but
-				// an OLD-format contender reads it and refuses to take over
-				// a live writer's lock.
-				try {
-					writeFileSync(lockPath, JSON.stringify({ pid: process.pid, token: crypto.randomUUID() }));
-				} catch {
-					// the file itself is advisory — the kernel lock holds
-				}
-				this.#lockHelpers.set(sessionId, child);
-				// round 5(P1-2): the helper's death removes the entry — the
-				// flock dies with the process; a later append re-acquires
-				// (and fails honestly if a rival holds the flock now).
-				child.on("exit", () => {
-					if (this.#lockHelpers.get(sessionId) === child) {
-						this.#lockHelpers.delete(sessionId);
-					}
-				});
-				return;
-			}
-			child.kill();
-			if (verdict === "SPAWN_FAILED") {
-				// round 4 (adversarial): the helper could not start (python3 missing) —
-				// an HONEST error, never a fake lock conflict.
-				throw new Error(
-					`session locking unavailable: the flock helper (python3) failed to start for ${sessionId}`,
-				);
-			}
-			// BUSY: either a live modern writer, or a holder that is just
-			// exiting (its helper is dying). A FOREIGN live writer's identity
-			// is in the file — refuse at once. A MODERN lock (with a token)
-			// naming OUR OWN process is a same-process writer — it will
-			// release its helper; retry until it does (round 4: never a
-			// spurious self-conflict). A legacy bare-pid lock naming our own
-			// process is still a live foreign owner and is refused.
-			const legacy = readLockIdentity(lockPath);
-			if (legacy?.pid !== undefined && isAlive(legacy.pid) && (legacy.token === undefined || legacy.pid !== process.pid)) {
-				throw new Error(`session ${sessionId} is locked by another writer (pid ${legacy.pid})`);
-			}
-			if (attempt >= 25) {
-				throw new Error(`session ${sessionId} is locked by another writer`);
-			}
-			// round 5(P1-3): a close() that landed while we waited ends the
-			// acquisition immediately — no 500ms wait, no lock at all.
+		const handle = await this.#lockAdapter.acquire(lockPath, sessionId, () => {
 			if (this.#closed.has(sessionId)) {
 				throw new Error(`session store is closed for ${sessionId}`);
 			}
-			await new Promise((resolve) => setTimeout(resolve, 20));
+		});
+		// round 5(P1-3): a close() that landed while we waited ends the
+		// acquisition immediately — no lock outlives the instance.
+		if (this.#closed.has(sessionId)) {
+			handle.release();
+			throw new Error(`session store is closed for ${sessionId}`);
 		}
+		this.#lockHandles.set(sessionId, handle);
 	}
 
 	/**
-	 * Release OUR lock only: kill OUR helper. The kernel releases the
-	 * flock with the helper's death; the identity file is CLEARED so a
-	 * same-process successor is never mistaken for a live legacy owner —
-	 * the flock is the authority, the file is advisory (round 4).
+	 * Release OUR lock only: release OUR handle (the adapter leaves the
+	 * empty released marker at the path — never a deletion). A foreign
+	 * close can never release another writer's lock (ADR-0050).
 	 */
 	private releaseLock(sessionId: string): void {
-		const child = this.#lockHelpers.get(sessionId);
-		if (child === undefined) return;
-		this.#lockHelpers.delete(sessionId);
-		// round 4 (adversarial): the identity is cleared BEFORE the helper dies — a
-		// contender that acquires the flock in the release gap writes its
-		// own identity AFTER our clear, so it is never wiped by us (the
-		// file is advisory; the kernel flock is the authority).
-		try {
-			writeFileSync(this.lockPathFor(sessionId), "");
-		} catch {
-			// advisory only
-		}
-		child.kill();
+		const handle = this.#lockHandles.get(sessionId);
+		if (handle === undefined) return;
+		this.#lockHandles.delete(sessionId);
+		handle.release();
 	}
 
 	// ── append: lock, open, repair, CAS, write, fsync ────────────────────
@@ -282,6 +226,14 @@ export class SessionStore {
 			// fail; nothing of this instance may outlive close().
 			this.releaseLock(sessionId);
 			throw new Error(`session store is closed for ${sessionId}`);
+		}
+		// R-G 0.1.47 (ADR-0050): possession is RE-CHECKED at every append —
+		// the file must still name this handle's pid AND token. A displaced
+		// holder's next append SELF-REFUSES honestly (strict refusal, no
+		// retry): never a lockless write, never a second writer.
+		const handle = this.#lockHandles.get(sessionId);
+		if (handle === undefined || !handle.verify()) {
+			throw new LockedError(`session ${sessionId} is locked by another writer`);
 		}
 		let fd: number;
 		try {
@@ -417,7 +369,7 @@ export class SessionStore {
 
 	/** Release every held fd and lock, including locks whose JSONL open failed. */
 	closeAll(): void {
-		for (const id of new Set([...this.#fds.keys(), ...this.#lockHelpers.keys()])) {
+		for (const id of new Set([...this.#fds.keys(), ...this.#lockHandles.keys()])) {
 			this.close(id);
 		}
 	}
@@ -427,120 +379,6 @@ function isRecord(value: unknown): value is StoreRecord {
 	if (typeof value !== "object" || value === null) return false;
 	const v = value as Record<string, unknown>;
 	return typeof v.runId === "string" && typeof v.ts === "number" && isKisoEvent(v.event);
-}
-
-/**
- * Read a lock file's holder identity (round 4). Formats:
- *   modern:  {"pid": 123, "token": "..."}
- *   legacy:  a bare pid — either the STRING "123" or, because
- *            JSON.parse("123") yields the NUMBER 123, the number itself.
- *            Neither may be mistaken for an object without a pid.
- * Empty, unreadable, or half-written locks have no identity — the kernel
- * flock supersedes them (there is nothing to refuse, and nothing to
- * delete).
- */
-function readLockIdentity(lockPath: string): { pid?: number; token?: string } | null {
-	let raw: string;
-	try {
-		raw = readFileSync(lockPath, "utf8");
-	} catch {
-		return null;
-	}
-	const trimmed = raw.trim();
-	if (trimmed === "") return null;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(trimmed);
-	} catch {
-		parsed = trimmed; // half-written JSON — try as a bare pid
-	}
-	if (typeof parsed === "number" && Number.isInteger(parsed)) {
-		return { pid: parsed }; // JSON.parse("123") — a legacy bare pid
-	}
-	if (typeof parsed === "string") {
-		const pid = Number.parseInt(parsed, 10);
-		return Number.isFinite(pid) ? { pid } : null;
-	}
-	if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-		const v = parsed as Record<string, unknown>;
-		return {
-			...(typeof v.pid === "number" ? { pid: v.pid } : {}),
-			...(typeof v.token === "string" ? { token: v.token } : {}),
-		};
-	}
-	return null;
-}
-
-/**
- * The lock helper: a python3 process that takes an EXCLUSIVE flock on the
- * lock path and HOLDS it until it dies (its stdin is closed / it is
- * killed). The kernel releases the flock with the helper — the lock is
- * tied to the open file description, so a dead helper can never leave a
- * stale lock behind, and no contender can ever remove a live one.
- * python3's `fcntl` module provides flock on both macOS and Linux.
- */
-const LOCK_HELPER_SCRIPT = [
-	"import fcntl, os, sys",
-	"fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644)",
-	"try:",
-	"    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)",
-	"except OSError:",
-	"    print('BUSY', flush=True)",
-	"    sys.exit(0)",
-	"print('LOCKED', flush=True)",
-	"try:",
-	"    while sys.stdin.buffer.read(1):",
-	"        pass",
-	"except Exception:",
-	"    pass",
-].join("\n");
-
-/** The helper's first stdout line: "LOCKED" or anything else = busy/dead. */
-function helperVerdict(child: ChildProcess): Promise<string> {
-	return new Promise((resolve) => {
-		let buf = "";
-		let settled = false;
-		const done = (verdict: string): void => {
-			if (settled) return;
-			settled = true;
-			child.stdout?.removeAllListeners();
-			// The helper is a LOCK DAEMON: it must never keep the parent's
-			// event loop alive (a finished store exits cleanly), and when the
-			// parent DOES exit the pipes close, the helper's read hits EOF,
-			// the helper exits, and the kernel releases the flock. The child
-			// process handle, its stdin hold, and its verdict channel are all
-			// unref'd — the lock outlives nothing the parent does not.
-			const unref = (s: unknown): void => (s as { unref?: () => void })?.unref?.();
-			unref(child);
-			unref(child.stdin);
-			unref(child.stdout);
-			resolve(verdict);
-		};
-		child.stdout?.on("data", (d: Buffer) => {
-			buf += d.toString();
-			const nl = buf.indexOf("\n");
-			if (nl !== -1) done(buf.slice(0, nl).trim());
-		});
-		child.stdout?.on("end", () => done(buf.trim()));
-		child.stdout?.on("error", () => done("FAILED"));
-		// round 5(P2-1): a spawn failure (python3 missing, exec denied) is
-		// DISTINCT from a busy lock — the caller must not report "locked by
-		// another writer" for a missing helper. The verdict is SPAWN_FAILED
-		// and the acquire path checks exactly that string.
-		child.on("error", (err) => {
-			void err;
-			done("SPAWN_FAILED");
-		});
-	});
-}
-
-function isAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (err) {
-		return (err as NodeJS.ErrnoException).code === "EPERM";
-	}
 }
 
 /**
