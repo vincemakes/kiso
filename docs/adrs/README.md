@@ -39,7 +39,7 @@ that has not finished speaking.
 - 0035 — The upgrade contract is quarantine, not seamless rolling —
   Accepted
 - 0036 — The single-writer lock is a kernel flock held by a helper
-  process — Accepted
+  process — Accepted (superseded by 0050)
 - 0037 — Project-level capability is trusted by content digest, not by
   directory — Accepted
 - 0038 — Uncertainty belongs to the crash window alone; the approval
@@ -55,8 +55,12 @@ not another recalibration)
 - 0044 — The compact summary layer — Accepted
 - 0045 — The config surface: credentials never on disk, project config
   in the trust package, no "always" — Accepted
+- 0046 — The one-compositor — Accepted
 - 0047 — Prefix-Complete Execution: the durable recovery law — Accepted (Amendment 2: the α ruling — the receipted execution is an outcome, the α-gap row closed)
 - 0048 — Recovery as a pure projection: the plan, the thin driver, the EffectGate — Accepted
+- 0050 — The identity-confirmed link lock — a pure Node single-writer
+  lock — Accepted, adjudicated by the review, 2026-08-11 (supersedes
+  0036)
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
