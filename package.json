@@ -14,7 +14,7 @@
     "size": "node scripts/check-size.mjs",
     "pack:check": "node scripts/pack-check.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "check": "npm run build && npm run typecheck && npm run test && npm run size && npm run pack:check && node scripts/whitespace-check.mjs && git diff --check && git diff --cached --check && npm run smoke && node scripts/demo-check.mjs",
+    "check": "npm run build && npm run typecheck && npm run test && npm run size && npm run pack:check && node scripts/whitespace-check.mjs && node scripts/check-cjk.mjs && git diff --check && git diff --cached --check && npm run smoke && node scripts/demo-check.mjs",
     "demo": "tsx scripts/demo.ts",
     "cli": "node apps/cli/dist/index.js"
   },

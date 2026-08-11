@@ -9,6 +9,8 @@
 (The block letter above is `assets/logo.svg` in pixel form — an 8×8 K
 whose bottom row is the bedrock foundation the framework is named for.)
 
+A Chinese edition: [README.zh.md](README.zh.md).
+
 **kiso code = the coding agent that survives `kill -9`.** Interrupted
 executions get human verdicts, approvals persist across processes, and every
 event is auditable and replayable — the whole trajectory is on disk, and
@@ -912,7 +914,8 @@ parameter and systemPrompt append surfaces — see
 `npm run check` = build → typecheck (packages + root scripts + tests) →
 tests → size gate (core 2,000 + cli 1,920 + tui 2,400 + tui-cells 1,280) →
 pack gate (dist + README + LICENSE in every tarball) → whitespace gate (no
-trailing whitespace, every file ends with a newline)
+trailing whitespace, every file ends with a newline) → CJK gate (the tracked
+tree stays CJK-free — `README.zh.md` is the only exemption)
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
