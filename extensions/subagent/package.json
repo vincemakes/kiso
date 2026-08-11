@@ -1,7 +1,7 @@
 {
   "name": "@vincemakes/kiso-subagent-ext",
-  "version": "0.1.46",
-  "description": "kiso official subagent extension \u2014 child kiso processes with role policies, kernel untouched",
+  "version": "0.1.47",
+  "description": "kiso official subagent extension — child kiso processes with role policies, kernel untouched",
   "type": "module",
   "license": "MIT",
   "main": "./dist/kiso-subagent.mjs",
