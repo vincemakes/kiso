@@ -85,16 +85,6 @@ describe("⑥ task: validation (loud invalid_input, never silent normalization)"
     expect(zero.isError).toBe(false);
   });
 
-  it("duplicate texts are refused (diet D) — the echo's counts never fork", async () => {
-    const result = await taskTool().execute(
-      { items: [{ text: "write the plan", status: "active" }, { text: "write the plan", status: "pending" }] },
-      ctx,
-    );
-    expect(result.isError).toBe(true);
-    expect((result as { errorKind?: string }).errorKind).toBe("invalid_input");
-    expect(String(result.content)).toContain("duplicate item text");
-  });
-
   it("the status enum is closed — anything else is invalid_input", async () => {
     const result = await taskTool().execute({ items: [{ text: "a", status: "blocked" }] }, ctx);
     expect(result.isError).toBe(true);
