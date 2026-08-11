@@ -1,114 +1,83 @@
 #!/usr/bin/env node
 /**
- * R-G 0.1.47 (diet B): the package request-surface enumerator.
+ * R-G 0.1.48 (diet B, re-made as adjudicated): the model-side token-rent
+ * counter.
  *
- * Prints every NAME the packages' public type surface exports — the
- * resolved dist .d.ts chain — per package, sorted, with a total. The
- * round report's delta line is a plain diff between two runs:
+ * Every model request pays a static rent: the system prompt plus every
+ * tool's serialized spec ({name, description, inputSchema} — the ToolSpec
+ * projection of protocol/messages.ts, what the adapters actually send).
+ * This script counts that rent for the DEFAULT session composition — the
+ * built-in system prompt, no project instructions, no extensions, no
+ * modes (the unconfigured bench session the rounds measure) — and prints:
  *
- *   node scripts/request-surface.mjs > before.txt
- *   ... release work ...
- *   node scripts/request-surface.mjs > after.txt
- *   diff before.txt after.txt
+ *   - the system prompt: chars + estimated tokens
+ *   - each tool of the composition: its serialized spec's chars + tokens
+ *   - the static per-request total
+ *   - diet A's MEASURED saving: the mcp__status spec the unconfigured
+ *     session stopped paying in 0.1.45 (the extension now exposes no
+ *     tools at all when unconfigured — extensions/mcp/src/index.ts:127)
  *
- * The surface is read from the BUILT dist (what consumers actually
- * import), never from src — the source may be TS while the published
- * artifact is the .d.ts chain, and the chain is the contract.
+ * The estimate is chars/4 — the rounds' bench convention for "estimated
+ * tokens" (the exact ratio depends on the tokenizer; 4 chars per token
+ * is the standard rough bound). The system prompt is the REAL exported
+ * constant (apps/cli/src/index.ts, exported for this script — never a
+ * copy); the tools are the REAL built dist of kiso-tools-node, the same
+ * module the CLI instantiates. Deterministic: same tree → same numbers.
  *
- * Resolution rules (the forms esbuild emits here):
- *   export * from "./x.js"            → recurse, import the target's whole surface
- *   export { a, b as c, type d } from "./y.js"
- *                                     → recurse, expose ONLY the listed names
- *                                      (an alias exposes its alias)
- *   export declare class/const/enum/function/interface/type/var/namespace N
- *   export type N = ...               → N (direct declarations)
- *   export default                    → "default"
+ * Usage: node scripts/request-surface.mjs
  *
- * A module is resolved once (memoized); star chains are acyclic in a
- * build DAG, so recursion terminates. Unresolvable specs warn on
- * stderr — stdout stays the diff-able surface.
+ * The API-NAME surface enumerator (the pre-adjudication diet B) lives
+ * beside this as api-surface.mjs — the token rent and the name surface
+ * are different measurements, both kept.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-const root = resolve(process.argv[2] ?? fileURLToPath(new URL("..", import.meta.url)));
+const require = createRequire(fileURLToPath(new URL(".", import.meta.url)));
 
-const modules = new Map(); // resolved path -> Set of exported names
-const warned = new Set();
+// The CLI dist — importing it is safe: main() is guarded by the argv[1]
+// comparison (index.ts tail). The export exists for this script.
+const { SYSTEM_PROMPT } = require("../apps/cli/dist/index.js");
+const { createCodingTools } = require("@vincemakes/kiso-tools-node");
 
-function exportedName(spec) {
-	let s = spec.trim();
-	if (s.startsWith("type ")) s = s.slice(5).trim(); // type-only specifier
-	const as = s.indexOf(" as ");
-	if (as !== -1) s = s.slice(as + 4).trim(); // aliased: expose the alias
-	return s;
+/** The rent of one tool: the serialized ToolSpec the adapters send. */
+function rent(tool) {
+	const spec = {
+		name: tool.name,
+		description: tool.description,
+		inputSchema: tool.parameters,
+	};
+	return JSON.stringify(spec);
 }
 
-function resolveSpec(fromPath, spec) {
-	const base = join(dirname(fromPath), spec).replace(/\.(?:js|mjs|cjs|ts|d\.ts)$/, "");
-	const cands = [base + ".d.ts", base + ".ts"];
-	for (const cand of cands) {
-		if (existsSync(cand)) return cand;
-	}
-	const key = `${fromPath} -> ${spec}`;
-	if (!warned.has(key)) {
-		warned.add(key);
-		console.error(`request-surface: unresolvable export "${spec}" from ${fromPath}`);
-	}
-	return null;
+const est = (n) => Math.ceil(n / 4);
+
+const tools = createCodingTools({ workspaceRoot: process.cwd() });
+const toolRents = tools.map((t) => ({ name: t.name, rent: rent(t) }));
+
+const sysChars = SYSTEM_PROMPT.length;
+const toolChars = toolRents.reduce((s, t) => s + t.rent.length, 0);
+const totalChars = sysChars + toolChars;
+
+console.log(`system prompt (built-in, no project instructions):`);
+console.log(`  ${sysChars} chars / ${est(sysChars)} est. tokens`);
+console.log(`tools (the default session composition, createCodingTools):`);
+for (const { name, rent: r } of toolRents) {
+	console.log(`  ${name.padEnd(24)} ${String(r.length).padStart(4)} chars / ${String(est(r.length)).padStart(3)} est. tokens`);
 }
+console.log(`  ${String(toolRents.length).padEnd(10)} tools`);
+console.log(`static per-request total (default composition):`);
+console.log(`  ${totalChars} chars / ${est(totalChars)} est. tokens`);
 
-function resolveModule(path) {
-	const seen = modules.get(path);
-	if (seen !== undefined) return seen;
-
-	const names = new Set();
-	modules.set(path, names); // mark in-progress (cycle guard — unused on a DAG)
-	const text = readFileSync(path, "utf8");
-
-	for (const line of text.split("\n")) {
-		const t = line.trim();
-		if (!t.startsWith("export")) continue;
-
-		let m = t.match(/^export \* from "([^"]+)"/);
-		if (m !== null) {
-			const target = resolveSpec(path, m[1]);
-			if (target !== null) for (const n of resolveModule(target)) names.add(n);
-			continue;
-		}
-
-		m = t.match(/^export \{[^}]*\}(?: from "([^"]+)")?/);
-		if (m !== null) {
-			const specifiers = t.slice(8, t.indexOf("}", 7)).split(",").map(exportedName).filter(Boolean);
-			for (const n of specifiers) names.add(n);
-			if (m[1] !== undefined) {
-				const target = resolveSpec(path, m[1]);
-				if (target !== null) resolveModule(target); // chain exists even when only listed names surface
-			}
-			continue;
-		}
-
-		m = t.match(/^export (?:declare )?(?:abstract )?(class|function|const|var|enum|interface|type|namespace) ([A-Za-z_$][A-Za-z0-9_$]*)/);
-		if (m !== null) {
-			names.add(m[2]);
-			continue;
-		}
-
-		if (t === "export default") names.add("default");
-	}
-	return names;
-}
-
-let total = 0;
-for (const pkg of readdirSync(join(root, "packages")).sort()) {
-	const index = join(root, "packages", pkg, "dist", "index.d.ts");
-	if (!existsSync(index)) continue;
-	const names = [...resolveModule(index)].sort();
-	total += names.length;
-	console.log(`== ${pkg} (${names.length})`);
-	for (const n of names) console.log(`  ${n}`);
-	console.log();
-}
-console.log(`TOTAL ${total}`);
+// diet A (0.1.45): the unconfigured session stopped carrying mcp__status.
+// The spec is the extension's statusTool (extensions/mcp/src/index.ts:
+// 313) — the script serializes the same projection, so the saving is
+// measured, not invented.
+const STATUS_RENT = JSON.stringify({
+	name: "mcp__status",
+	description: "list MCP server connection status",
+	inputSchema: { type: "object", properties: {} },
+});
+console.log(`diet A measured saving (the mcp__status spec, absent since 0.1.45):`);
+console.log(`  -${STATUS_RENT.length} chars / -${est(STATUS_RENT.length)} est. tokens per request`);

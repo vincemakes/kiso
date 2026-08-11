@@ -258,7 +258,9 @@ function recentSessions(id: string, agent: { sessions(): { id: string; title: st
  * A area: the coding-agent system prompt — ONE constant, byte-stable for the
  * session's lifetime (D area). Kept under ~80 lines; no template engine.
  */
-const SYSTEM_PROMPT = `You are kiso, a coding agent. You work in a workspace
+/** The built-in prompt. Exported for scripts/request-surface.mjs — the
+ *  model-side token-rent counter measures the REAL bytes, never a copy. */
+export const SYSTEM_PROMPT = `You are kiso, a coding agent. You work in a workspace
 directory and change code with tools. Be concise: answer in a few lines
 unless the task genuinely needs more. Never claim a file was changed
 unless a tool confirmed it.
