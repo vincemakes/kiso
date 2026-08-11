@@ -64,6 +64,17 @@ export function parseTaskSet(input) {
   if (active.length > 1) {
     return { error: `task_set: at most one active item (${active.length} are active — mark the others done first)` };
   }
+  // diet D (0.1.47): duplicate texts are refused, never merged — a
+  // duplicated line would fork the counts in the echo and the CLI's
+  // checklist cell (the whole-table-replace discipline: resend the
+  // corrected list). Same discipline as the at-most-one-active rule.
+  const seen = new Set();
+  for (const it of items) {
+    if (seen.has(it.text)) {
+      return { error: `task_set: duplicate item text "${it.text}" — each item must be unique` };
+    }
+    seen.add(it.text);
+  }
   return { items };
 }
 
