@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-mcp-ext",
-  "version": "0.1.47",
+  "version": "0.1.48",
   "description": "kiso official MCP bridge extension — MCP servers become mcp__ tools, kernel untouched",
   "type": "module",
   "license": "MIT",

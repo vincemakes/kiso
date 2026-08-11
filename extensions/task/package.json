@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-task-ext",
-  "version": "0.1.47",
+  "version": "0.1.48",
   "description": "kiso official task extension — long-horizon working memory (task_set), kernel untouched",
   "type": "module",
   "license": "MIT",
