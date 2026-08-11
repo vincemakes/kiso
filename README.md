@@ -12,7 +12,10 @@ whose bottom row is the bedrock foundation the framework is named for.)
 **kiso code = the coding agent that survives `kill -9`.** Interrupted
 executions get human verdicts, approvals persist across processes, and every
 event is auditable and replayable — the whole trajectory is on disk, and
-`kiso resume` continues it exactly.
+`kiso resume` continues it exactly. The proof is scripted:
+`scripts/demo-kill9.sh` SIGKILLs the agent's whole process group mid-tool
+and resumes the session clean, twice in a row — the same story the kill-9
+section below automates end to end in `apps/cli/tests/kill9.test.ts`.
 
 **kiso is a durable TypeScript agent framework for building coding agents
 that can pause, crash, resume, and remain correct.** A small kernel owns
@@ -22,12 +25,54 @@ sessions, durable human approvals, crash-consistent tool execution with
 durable receipts and explicit uncertainty resolution — without a 50k-line
 runtime.
 
+**The numbers, on the same model and the same tasks** (the 2026-08-10
+three-way comparison, cost-weighted input): T3, the cross-file rename,
+needs **11× fewer input tokens than pi and 66× fewer than Claude Code**
+with identical task outcomes. The full table and its honest footnotes are
+in the [comparison section](#comparison).
+
+**The core is a 2,000-line kernel, enforced by CI** — it cannot exceed
+2,000 lines; past that you grow a package. See [the rule](#the-rule).
+
 Distilled from reading Claude Code, [pi](https://github.com/badlogic/pi-mono),
 and [oh-my-pi](https://github.com/can1357/oh-my-pi) at the source level — and
 from running three agent products in production on its validated predecessor
 (mauri, Python).
 
 Every design decision ships with an ADR explaining **why**, and **when to overturn it**.
+
+## Why durable — the durable runtime
+
+> **Agents crash. Side effects don't rewind. Kiso makes execution durable.**
+
+A coding agent is a process driving side effects — file edits, shell
+commands, remote calls — through a model that makes mistakes. Treating
+the agent as if it survives is what turns a demo into a tool; treating a
+crash as if it rewinds everything is what turns a resume into a guess.
+Kiso's whole design is the third option: the trajectory itself is the
+durable artifact, so a killed process costs you nothing but the process.
+
+- **Event-sourced sessions.** Every run is an append-only JSONL stream of
+  `seq`-numbered events under `$KISO_HOME/sessions`. The messages a model
+  sees are a pure function of the log (ADR-0002) — a session is a file you
+  can read, replay, and audit, not runtime state that dies with the
+  process. `kiso resume <id>` continues the interrupted trajectory in a
+  fresh process, contiguously.
+- **Durable human approvals.** A verdict — allow, deny, rerun, abandon —
+  is a persisted fact, recorded with what decided it (ADR-0024). Kill the
+  process and the already-decided calls are never re-asked: the resume
+  applies the durable verdicts, and a policy's `decide` is never re-run
+  for a call it already decided.
+- **Crash-consistent execution.** Tool calls carry durable receipts keyed
+  by `executionId` (ADR-0025). A confirmed success is never re-run; an
+  execution that started and never reported is `uncertain` and blocks
+  until a human decides — the only honest answer to "did the side effect
+  apply?" The original run then completes; it does not replay.
+
+The consequence: the session, the verdicts, and the side effects' truth
+are already on disk before the crash — the next `kiso resume` asks only
+what the crash window made unknowable. The kill-9 section below shows the
+scripted proof.
 
 ## The rule
 
@@ -45,30 +90,41 @@ Every design decision ships with an ADR explaining **why**, and **when to overtu
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts  660
-  packages/core/src/protocol/events.ts 420
+  packages/core/src/kernel/loop.ts    742
+  packages/core/src/protocol/events.ts 438
+  packages/core/src/kernel/project.ts 353
   ...
-  total                               1914  / 2000
-  ✓ 86 lines of headroom remaining.
+  total                               1971  / 2000
+  ✓ 29 lines of headroom remaining.
 
 cli:
-  apps/cli/src/chat.ts  356
-  apps/cli/src/index.ts 348
+  apps/cli/src/chat.ts  478
+  apps/cli/src/index.ts 382
   ...
-  total                  1547  / 1856
-  ✓ 309 lines of headroom remaining.
+  total                 1870  / 1920
+  ✓ 50 lines of headroom remaining.
 
 tui:
-  packages/tui/src/body.ts   440
-  packages/tui/src/editor.ts 382
+  packages/tui/src/compositor.ts 986
+  packages/tui/src/editor.ts     535
   ...
-  total                      1361  / 1520
-  ✓ 159 lines of headroom remaining.
+  total                          1761  / 2400
+  ✓ 639 lines of headroom remaining.
+
+tui-cells:
+  packages/tui-cells/src/components.ts 618
+  ...
+  total                                1116  / 1280
+  ✓ 164 lines of headroom remaining.
 ```
 
-(The cli gate's single 2400 terminal cap was replaced by per-package
-gates when the terminal layer was extracted into @vincemakes/kiso-tui —
-the ADR-0041 escape hatch, ADR-0043. Each gate = actual + 20%.)
+(The cli gate's single 2400 terminal cap was replaced by per-package gates
+when the terminal layer was extracted into @vincemakes/kiso-tui — the
+ADR-0041 escape hatch, ADR-0043. Each gate = actual + 20%. The gates today:
+core 2,000, cli 1,920, tui 2,400, tui-cells 1,280. Every re-baseline was an
+adjudicated ruling; the cli's 1,920 (ADR-0043 Amendment 6) is its LAST
+recalibration before 1.0 — the next approach, argued or not, defaults to
+extraction.)
 
 Comments do not count. Explain freely; implement tersely.
 
@@ -79,7 +135,7 @@ A framework, in two layers:
 | Layer | Owns |
 |---|---|
 | **core** (`@vincemakes/kiso-core`, ≤ 2,000 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · modes · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
-| **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-tui` (the pure terminal layer — cell renderer, dock, raw editor, diff; zero runtime deps, input is data / output is bytes — reusable standalone, API still 0.x semantics) · `@vincemakes/kiso-code` (the coding-agent reference product) |
+| **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-tui` (the pure terminal layer — cell renderer, dock, raw editor, diff; zero runtime deps, input is data / output is bytes — reusable standalone, API still 0.x semantics) · `@vincemakes/kiso-tui-cells` (the components cell renderer, extracted from the tui — the ADR-0041 escape hatch) · the four official extensions (`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext` — they ship INSIDE the CLI, see Extensions) · `@vincemakes/kiso-code` (the coding-agent reference product) |
 
 The core stays a kernel: it decides nothing that repeats across products. The
 framework around it is where product-shaped capability grows — and that growth
@@ -277,6 +333,10 @@ And after phase 2 (the resume, in a fresh process, zero human typing):
 - the terminal lands and is durable; `marker.txt` still does not exist;
 - exactly one `tool_execution_resolved` is on disk.
 
+The same story as a scripted demo: `scripts/demo-kill9.sh` runs it against
+the published binary — two consecutive runs, a fresh `KISO_HOME` each, all
+green.
+
 ## MicroCompact — zero-API context relief
 
 **The CLI ships it ON by default**: threshold = half the model window
@@ -332,12 +392,26 @@ identically twice, ② appending a turn leaves the old prefix byte-identical,
 
 ## Extensions — approval policies beyond the human
 
-An extension is a plain `.mjs` file — no SDK, no build step. kiso scans
-`~/.kiso/extensions/*.mjs` at startup (`KISO_EXTENSIONS_DIR` overrides) and
-names what loaded in the startup banner: `[2 extensions: safe-defaults,
-foo]`. Loading is **loud**: a broken file or a duplicate extension name
+**The four official extensions ship built-in in the CLI** (0.1.44+):
+`mcp`, `skills`, `subagent`, and `task` are registered at startup by
+module import — a fresh install has all four with zero disk setup, and
+the banner says so: `[4 extensions: built-in: mcp, skills, subagent, task]`.
+
+On top of the built-ins, the classic layers still load, in cascade order:
+**built-in → user → project**. An extension is a plain `.mjs` file — no
+SDK, no build step. kiso scans `~/.kiso/extensions/*.mjs` at startup
+(`KISO_EXTENSIONS_DIR` overrides) and names what loaded in the startup
+banner. Loading is **loud**: a broken file or a duplicate extension name
 fails the process at startup with the file name — an extension that cannot
 load must never silently change behavior.
+
+- **A user extension may SHADOW a built-in by name** — loudly: the
+  built-in leaves the loaded set and the banner drops it
+  (`[extensions] user extension "mcp" shadows the built-in — the built-in
+  is not loaded`). Your copy, your rules.
+- **A project extension may NOT shadow a built-in** — a project extension
+  whose name collides with a built-in is refused with a loud error: a
+  repo you cloned must never silently replace the CLI's own behavior.
 
 The contract is pure types (`packages/core/src/protocol/extension.ts`):
 each file's default export is the extension, or a factory returning it.
@@ -388,7 +462,7 @@ commands, ask for everything else. Install it with one line:
 
 ```
 mkdir -p ~/.kiso/extensions && cp examples/extensions/safe-defaults.mjs ~/.kiso/extensions/
-kiso chat     # → [1 extension: safe-defaults]
+kiso chat     # → [5 extensions: built-in: mcp, skills, subagent, task · safe-defaults]
 ```
 
 Now every `read_file`/`list_dir`/`search_text` auto-allows (no prompt); a
@@ -429,13 +503,17 @@ tier that decided, exactly like it names the extension.
 
 ## MCP — external tools over the MCP bridge
 
-`extensions/mcp` is the official MCP bridge: an ordinary extension — a
-self-contained single file (`dist/kiso-mcp.mjs`, the MCP SDK inlined) —
-with the four kernel packages untouched. Configure servers, build, install:
+**Ships built-in in the CLI** — every `kiso chat` has the `mcp__` bridge
+loaded already, no install step. `extensions/mcp` is the official
+extension's source: self-host or customize by building and copying
+`dist/kiso-mcp.mjs` into `~/.kiso/extensions/` (a user copy shadows the
+built-in, loudly). The bridge is an ordinary extension — a self-contained
+single file (the MCP SDK inlined) — with the four kernel packages
+untouched:
 
 ```
-cd extensions/mcp && npm install && npm run build   # step 1 — dist/kiso-mcp.mjs
-cp dist/kiso-mcp.mjs ~/.kiso/extensions/            # step 2 — the E1 loader picks it up
+cd extensions/mcp && npm install && npm run build   # only to self-host/customize
+cp dist/kiso-mcp.mjs ~/.kiso/extensions/
 ```
 
 Configuration: `$KISO_MCP_CONFIG` (default `~/.kiso/mcp.json`):
@@ -489,13 +567,16 @@ Tools only: MCP resources/prompts and OAuth are not bridged this round.
 
 ## Subagents — delegate to child kiso processes
 
-`extensions/subagent` is the official subagent extension: a zero-dependency
-single file (`src/kiso-subagent.mjs` is the artifact; `dist/` is a copy) —
-no SDK, no build step beyond the copy. Build and install:
+**Ships built-in in the CLI** — the `delegate` tool is loaded at startup,
+no install step. `extensions/subagent` is the official extension's source:
+self-host or customize by copying `dist/kiso-subagent.mjs` into
+`~/.kiso/extensions/` (a user copy shadows the built-in, loudly). The
+extension is a zero-dependency single file — no SDK, no build step beyond
+the copy:
 
 ```
-cd extensions/subagent && npm install && npm run build   # step 1 — dist/kiso-subagent.mjs
-cp dist/kiso-subagent.mjs ~/.kiso/extensions/            # step 2 — the E1 loader picks it up
+cd extensions/subagent && npm install && npm run build   # only to self-host/customize
+cp dist/kiso-subagent.mjs ~/.kiso/extensions/
 ```
 
 The extension adds ONE tool, `delegate`, which runs 1-8 subagent tasks in
@@ -537,13 +618,14 @@ child kiso processes (the same binary), at most 4 concurrently:
 
 ## Skills — two-tier progressive skill loading
 
-`extensions/skills` is the official skills extension: a zero-dependency
-single file (`src/kiso-skills.mjs` is the artifact; `dist/` is a copy).
-Build and install:
+**Ships built-in in the CLI** — skills load at startup, no install step.
+`extensions/skills` is the official extension's source: self-host or
+customize by copying `dist/kiso-skills.mjs` into `~/.kiso/extensions/`
+(a user copy shadows the built-in, loudly):
 
 ```
-cd extensions/skills && npm install && npm run build   # step 1 — dist/kiso-skills.mjs
-cp dist/kiso-skills.mjs ~/.kiso/extensions/            # step 2 — the E1 loader picks it up
+cd extensions/skills && npm install && npm run build   # only to self-host/customize
+cp dist/kiso-skills.mjs ~/.kiso/extensions/
 ```
 
 A skill is a directory with a `SKILL.md` under `$KISO_SKILLS_DIR`
@@ -582,12 +664,14 @@ description: a review checklist for pull requests
 
 ## Todo — durable long-horizon working memory
 
-`extensions/todo` is the official todo extension: a zero-dependency single
-file (`src/kiso-todo.mjs` is the artifact — source IS the product, no
-build step). Install by copying it, like the skills extension:
+**Ships built-in in the CLI** — `todo_set` is loaded at startup, no install
+step. `extensions/todo` is the official extension's source
+(`src/kiso-todo.mjs` — source IS the product, no build step); self-host or
+customize by copying it into `~/.kiso/extensions/` (a user copy shadows the
+built-in, loudly):
 
 ```
-cp extensions/todo/src/kiso-todo.mjs ~/.kiso/extensions/   # the E1 loader picks it up
+cp extensions/todo/src/kiso-todo.mjs ~/.kiso/extensions/
 ```
 
 The `todo_set` tool is a whole-table replace (the CC TodoWrite shape):
@@ -618,10 +702,12 @@ artifact kinds are recognized there — `extensions/*.mjs`, `mcp.json`, and
   verdict is recorded in `~/.kiso/trust.jsonl` (append-only,
   `KISO_HOME`-aware).
 - **Granted** — the project's extensions load (marked `project:` in the
-  banner: `[3 extensions: safe-defaults · project: lint-rules, mcp]`), its
+  banner: `[6 extensions: built-in: mcp, skills, subagent, task · safe-defaults · project: lint-rules, mcp]`), its
   `mcp.json` merges with your user config (a server name in both is a loud
   startup error), and its skills merge into the skills scan (a skill name
-  in both: project wins, one stderr note).
+  in both: project wins, one stderr note). A project extension whose name
+  collides with a built-in is refused with a loud error — a cloned repo
+  must never silently replace the CLI's own behavior.
 - **Refused** — nothing loads, and the refusal is sticky: it is never
   re-asked. Re-evaluate by deleting the `trust.jsonl` line for that
   project, or by changing an artifact file.
@@ -653,58 +739,61 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | durable human approvals | pauses persist across processes; verdicts never lost | `packages/runtime/tests/approvals.test.ts` |
 | crash-consistent execution | durable receipts keyed by `executionId`; a confirmed success is never re-run (exactly-once within the framework's own window — the rest is explicit human-resolved uncertainty) | `packages/core/tests/execution-gate.test.ts` |
 | extensions | policies / tools / hooks / systemPrompt / dispose | `packages/runtime/tests/extensions.test.ts` |
-| MCP bridge | official extension, kernel untouched | `extensions/mcp/tests` |
-| subagents | official extension, role-policy children | `extensions/subagent/tests` |
-| skills | official extension, two-tier progressive | `extensions/skills/tests` |
-| todo | official extension, durable long-horizon memory (todo_set) | `extensions/todo/tests`, `apps/cli/tests/todo-e2e.test.ts` |
+| built-in extension layer | the four official extensions load in-process at startup; a user copy shadows loudly | `apps/cli/tests/builtin-layer.test.ts` |
+| MCP bridge | official extension — built-in since 0.1.44, kernel untouched | `extensions/mcp/tests` |
+| subagents | official extension — built-in since 0.1.44, role-policy children | `extensions/subagent/tests` |
+| skills | official extension — built-in since 0.1.44, two-tier progressive | `extensions/skills/tests` |
+| todo | official extension — built-in since 0.1.44, durable long-horizon memory (todo_set) | `extensions/todo/tests`, `apps/cli/tests/todo-e2e.test.ts` |
 | context economy ● | microcompact + /compact (model summary) + prompt-cache discipline | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
 
-The bench, one fixture, one model, mean of two runs (kiso 0.1.27/0.1.28 ·
-pi 0.73.1 · Claude Code 2.1.223 via a DeepSeek endpoint):
+The bench, one fixture, one model (deepseek-v4-flash), mean of two runs —
+the 2026-08-10 three-way comparison (kiso v0.1.41, that day's global
+install · pi 0.84.1 · Claude Code via DeepSeek's Anthropic-compatible
+endpoint):
 
 | task | tool | fresh in | cached in | total in | cost-wtd | out | reqs | wall |
-|------|--------|-------:|-------:|-------:|---------:|-----:|----:|-----:|
-| T1 read+answer | **kiso** | 196 | 2,176 | **2,372** | **414** | 162 | 2.0 | **5.0s** |
-| | pi | 1,146 | 7,680 | 8,826 | 1,914 | 158 | 2.0 | 5.5s |
-| | claude | 25,926 | 25,792 | 51,718 | 28,505 | 226 | 2.0 | 6.0s |
-| T2 fix+verify | **kiso** | 990 | 5,120 | **6,110** | **1,502** | 256 | 4.0 | **6.5s** |
-| | pi | 1,493 | 17,152 | 18,645 | 3,208 | 396 | 4.0 | 10.5s |
-| | claude | 26,520 | 78,208 | 104,728 | 34,340 | 646 | 4.5 | 13.5s |
-| T3 cross-file rename | **kiso** | 1,989 | 7,936 | **9,925** | **2,782** | 777 | 5.0 | **11.5s** |
-| | pi | 1,628 | 22,784 | 24,412 | 3,906 | 752 | 5.0 | 13.0s |
-| | claude | 28,196 | 203,648 | 231,844 | 48,561 | 2,094 | 14.5 | 30.0s |
-| T4 skills (repo convention) | **kiso** | 1,431 | 8,960 | **10,391** | **2,327** | 749 | **5.0** | **13.0s** |
-| | pi | 2,212 | 50,368 | 52,580 | 7,249 | 2,536 | 8.5 | 34.0s |
-| | claude | 30,293 | 287,488 | 317,781 | 59,042 | 4,234 | 14.0 | 54.0s |
+|------|------|--------:|--------:|--------:|--------:|----:|----:|----:|
+| T3 cross-file rename | **kiso** | 426 | 3,072 | **3,498** | **733** | 247 | **2.0** | **4s** |
+| | pi | 5,258 | 28,160 | 33,418 | 8,074 | 1,476 | 6.5 | 14s |
+| | claude | 31,828 | 167,552 | 199,380 | 48,583 | 1,857 | 15.0 | 26s |
+| T5 8-turn session | **kiso** | 9,331 | 155,776 | 165,107 | **24,909** | 4,631 | 34 | 68s |
+| | pi | 5,096 | 247,424 | 252,520 | 29,838 | 6,522 | 32.5 | 78s |
+| | claude | 41,241 | 1,579,008 | 1,620,249 | 199,142 | 20,183 | 43 | 253s |
 
-Headline (T3, the hardest task): on **raw total input tokens** kiso is
-**2.5× fewer** than pi (9.9K vs 24.4K) and **23.4× fewer** than Claude
-Code, with identical task outcomes (T5 8-turn session: 1.9× fewer than pi,
-6.7× fewer than CC). On **cost-weighted input** (fresh + 0.1×cached,
-DeepSeek's cache-hit price ratio — see `bench/README.md`) kiso is cheaper
-on EVERY scenario: T4 3.1× (2.3K vs 7.2K — the token round's flip: 5
-requests vs pi's 8.5), T2 2.1×, T3 1.4×, T1 4.6× and T5 1.35×; CC stays
-5.5-24.9× heavier. The 0.1.22-era version of this table reported a
-phantom "kiso fresh ≈ system-prompt size" anomaly and a pi cost-overtake
-— both were extraction artifacts (kiso's total input was mislabeled as
-fresh and double-counted into "total"); the 0.1.23 investigation fixed
-the accounting AND found one real request-prefix violation in the adapter
-(the reasoning_content turn-boundary flip, fixed in 0.1.23, ADR-0026
-Amendment 1). T4's 0.1.26-era baseline (13 requests, 6.6K cost-weighted)
-was itself a harness artifact — the runner never loaded the skills
-extension, so the model paid raw exploration cost; the 0.1.27 disqualification investigation
-found and fixed it (full detail in `bench/README.md`). The T2/T3 fresh
-means include the one-time cold start of the token round's prompt change
-(the r2 steady-state rows are within variance of 0.1.26).
+**Headline.** On **T3**, the hardest small task, **cost-weighted input**
+(fresh + 0.1×cached — DeepSeek's cache-hit price ratio, see
+`bench/README.md`): kiso 733 vs pi 8,074 = **11×** and vs Claude Code
+48,583 = **66×**, all six runs verify-pass with identical task outcomes.
+On **T5**, the 8-turn session: kiso 24,909 vs pi 29,838 = **1.2×** and vs
+Claude Code 199,142 = **8.0×** — measured at one session length.
+
+**The kiso-side basis** (the 0.1.44 release refresh, published bin, kiso
+only, three runs each): T3 cost-weighted mean 1,829 / 9.5s wall (one
+7-request outlier at 2,562); T5 cost-weighted mean 20,130 / 66.7s wall
+(15.6K–24.3K band — the three-way's n=1 cell sits at that band's top).
+Flat versus the previous release (0.1.43: T3 1,796 / T5 19,627) — the
+release discipline's non-regression basis.
 
 Honest footnotes (from `bench/README.md`): these tasks are SMALL — Claude
 Code's large system prompt buys real product capability (task tracking,
 richer exploration) that pays off on complex work these tasks do not
 exercise; Claude Code ran off-label (DeepSeek endpoint) and its prompts
-are tuned for Claude models; n=2, one fixture, one model, token accounting
-normalized per provider convention; kiso is our own tool — reproduce it
-yourself, everything needed is in `bench/`.
+are tuned for Claude models; the runs are SERIAL — each later run rides
+the provider's server-side warm cache, so the fresh columns are the
+unstable ones; kiso's T5 three-way cell is n=1 — its second run hit a
+provider-side 400 (an assistant `tool_calls` turn the endpoint refused)
+and was excluded (the 0.1.44 refresh's n=3 is the stable kiso T5 basis);
+n=2 otherwise, one fixture per task, one model, token accounting
+normalized per provider convention (kiso's input total INCLUDES cache-hit
+input; pi and Claude Code report fresh-only); kiso is our own tool —
+reproduce it yourself, everything needed is in `bench/`.
+
+**No growth claims.** These are point measurements at one or two session
+lengths; this README deliberately claims nothing about how the ratios
+scale with session length. What kiso's own long-session data shows is
+reported honestly in `bench/README.md` (including the dedicated
+long-session divergence study) — it is not extrapolated here.
 
 ## Status
 
@@ -717,7 +806,7 @@ round (E1: the approval-policy extension system; E2: the compaction
 parameter and systemPrompt append surfaces — see
 `docs/plans/2026-08-04-extensions-e1.md`) is done:
 
-- **core** (1,914/2,000 lines) — protocol, loop (single honest terminal;
+- **core** (1,971/2,000 lines) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; retry only before anything streamed; one abort signal reaches
   backoff, approval waits, every pending tool, and the SDK), hooks,
@@ -748,9 +837,13 @@ parameter and systemPrompt append surfaces — see
   startup failure on a bad file or duplicate name; extension tools merge
   into the registry (built-in collision = startup error), hooks compose
   AFTER the harness's own (existing-first), approvals enter the policy chain.
-- **cli** (1,547/1,856 lines) — the coding agent: bare `kiso` enters chat;
-  the startup extension scan (`~/.kiso/extensions/*.mjs`, banner
-  `[2 extensions: safe-defaults, foo]`);
+- **cli** (1,870/1,920 lines) — the coding agent: bare `kiso` enters chat;
+  the startup extension scan — the built-in layer first (the four official
+  extensions load in-process by module import: mcp, skills, subagent,
+  task; a user copy shadows loudly, a project copy is refused), then
+  `~/.kiso/extensions/*.mjs` (banner `[4 extensions: built-in: mcp,
+  skills, subagent, task]`, user names appended bare, project ones marked
+  `project:`);
   a system prompt (coding-agent discipline: read before edit, careful
   shell) composed from a constant, with AGENTS.md/CLAUDE.md injected and
   truncated at 8KB; one-line tool summaries per call
@@ -758,7 +851,11 @@ parameter and systemPrompt append surfaces — see
   line (`[turn 3 · in 12.4k out 1.8k · cache 9.2k · ctx ~14%]` — usage
   events only, unknown fields omitted entirely, faux mode shows
   `[turn N · faux]`), and `/last` to print the most recent tool call's
-  full input/output straight from the event stream. v2a/v5: the color
+  full input/output straight from the event stream. The first-run scaffold
+  (0.1.45): the trust verdict is a fresh home's FIRST access of any kind —
+  only after the grant does the config surface materialize (`config.json`
+  + the sentinel), silently, and a sentinel-marked home never re-scaffolds
+  or clobbers your config. v2a/v5: the color
   identity is bright-white BOLD (SGR 1 — the you> prompt, the banner
   tagline, ✓ marks, command names, the user block's ▍ rail, the input
   brick), a light-blue inline-code tint (256 color 110) on backtick spans
@@ -807,17 +904,18 @@ parameter and systemPrompt append surfaces — see
   real chat mid-execution and resumes it in a fresh process — see the
   section above.
 - **workspace** — publishable monorepo (core, evals, runtime, tools-node,
-  provider-anthropic, provider-openai, cli), ESM + d.ts, synchronized
+  provider-anthropic, provider-openai, tui, tui-cells, the four official
+  extension packages, cli — 13 npm surfaces), ESM + d.ts, synchronized
   internal versions; CI is clean-checkout `npm ci` + the full gate.
 
 `npm run check` = build → typecheck (packages + root scripts + tests) →
-tests → size gate (core 2,000 + cli 1,600) → pack gate (dist + README +
-LICENSE in every tarball) → whitespace gate (no trailing whitespace, every
-file ends with a newline)
+tests → size gate (core 2,000 + cli 1,920 + tui 2,400 + tui-cells 1,280) →
+pack gate (dist + README + LICENSE in every tarball) → whitespace gate (no
+trailing whitespace, every file ends with a newline)
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
-→ demo start-and-exit gate. 461 tests green. 17 ADRs (index: `adrs/README.md`).
+→ demo start-and-exit gate. 869 tests green. 34 ADRs (index: `adrs/README.md`).
 6 incident fixtures running on the real runtime.
 
 ## Why another one
