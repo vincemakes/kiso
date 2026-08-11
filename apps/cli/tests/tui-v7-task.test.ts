@@ -4,11 +4,12 @@
  *
  *  a faux turn fires 10 `task_set` calls (whole-table replace, one item
  *  flipping active per call). The work order's done-when:
- *   1. the live block redraws IN PLACE — the block's origin row never
- *      moves (every during-run paint of the live header CUP's at row 1),
- *      the done items stay COLLAPSED behind the cut family (`└ +N more`
- *      / `└ +N done · ctrl+r` — the W15 toggle's affordance), and the
- *      live repaints never touch the committed band.
+ *   1. the live block redraws IN PLACE — the run's forms each painted
+ *      ONCE at its TRUE row (the A8b single-copy discipline — the old
+ *      row-1 clamp pile is gone), the done items stay COLLAPSED behind
+ *      the cut family (`└ +N more` / `└ +N done · ctrl+r` — the W15
+ *      toggle's affordance), and the live repaints never touch the
+ *      committed band.
  *   2. exactly ONE settled `▞ task done · 10 items · <duration>` block
  *      at the turn's end — the derived counts + the model tail riding
  *      the FINAL state (10 items — 0 pending, 1 active, 9 done), the
@@ -17,21 +18,24 @@
  *   3. the idle chrome (the mode line, the box) survives the turn.
  *
  * The turn's stream (verified ground truth — the seeded emulator matches
- * the real screen): the settle frame — `[?2026h`, the turn-start
- * real-LF scrolls (the idle screen scrolls OUT of the window — the
- * banner is GONE from the final grid, so the work order's "committed
- * rows above byte-identical to the pre-turn transcript" claim is
- * unreachable at the PTY and re-grounds as: the live repaints touch
- * ONLY the block's own rows), the chrome, the settle's repaint (the
+ * the real screen): the R-G 0.1.47 (ADR-0050) ~1ms link-lock append
+ * merged the idle screen and the run's settle into ONE sync frame — the
+ * chrome-only dock frame, then the merged opening+run commit: the idle
+ * screen (the session line, the banner, the chrome) paints, the
+ * turn-start real-LF scrolls follow (the idle screen scrolls OUT of the
+ * window — the banner is GONE from the final grid, so the work order's
+ * "committed rows above byte-identical to the pre-turn transcript"
+ * claim is unreachable at the PTY and re-grounds as: the live repaints
+ * touch ONLY the block's own rows), then the DURING-RUN band (the run
+ * chrome, the chip, the tool cells, the forms — each CUP'd at its TRUE
+ * old row, the in-place redraw), then the settle's repaint (the
  * committed band: the tool cells, the LAST live state, the settled
- * block, the text, the recap), the input row, then the DURING-RUN live
- * paints (the 1/3/5-done forms, all CUP'd at row 1 — the in-place
- * redraw), the cursor restore, `[?2026l`. The exit then performs ONE
- * final full repaint (a second sync-wrapped frame — the settled block
- * repainted, unchanged — the key run's toggled state persisted into
- * it), and the teardown follows — its marker varies (`[?1049l` or the
- * `[r` scroll-reset + chrome clears) — the gate slices the turn before
- * it and, for the collapse claims, before the exit's repaint.
+ * block, the recap), the cursor restore, `[?2026l`. There is NO
+ * separate exit-repaint frame in the new flow — the settle is the last
+ * sync frame, and the driver's split (the second `?2026l`) now lands
+ * at the merged commit's END: PART1 carries the whole run, PART2 is
+ * the exit teardown — its marker varies (`[?1049l` or the `[r`
+ * scroll-reset + chrome clears) — the gate slices the turn before it.
  *
  * The ctrl+r toggle itself is unreachable at the PTY: the key's needle
  * (`└ +N done · ctrl+r`) exists only in the settle's repaint, so the
@@ -61,13 +65,15 @@ const W = 80;
 
 /**
  * The ORDERED PTY driver (the tui-v7 while-loop, plus the split): the
- * stream SPLITS at the second frame's end — PART1 is the pre-turn
- * transcript (the complete idle screen: the session line + the banner),
- * PART2 the turn's paints. The feed-needle offsets are recorded for the
- * ordering assertions. KISO_MODE=bypass — every task_set auto-allows
- * (no approval asks — the W20 claim is the checklist state machine, not
- * the permission flow); the task extension is installed from its source
- * file.
+ * R-G 0.1.47 (ADR-0050) ~1ms link-lock append merged the idle screen
+ * and the run's settle into ONE sync frame, so the second `?2026l`
+ * now lands at the merged commit's END — PART1 is the whole run's
+ * transcript (the chrome-only dock frame + the merged opening+run
+ * commit), PART2 the exit teardown. The feed-needle offsets are
+ * recorded for the ordering assertions. KISO_MODE=bypass — every
+ * task_set auto-allows (no approval asks — the W20 claim is the
+ * checklist state machine, not the permission flow); the task
+ * extension is installed from its source file.
  */
 const PTY_DRIVER = `
 import pty, os, sys, time, select, signal, struct, fcntl, termios
@@ -110,9 +116,12 @@ def driver(cli, env, feeds, workdir, timeout):
         pass
     # the split lands at the SECOND frame's end (its sync-off): the
     # FIRST frame is chrome-only — the banner cell is pushed after the
-    # dock's enter, so it paints in the second frame — and that frame's
+    # dock's enter, so it paints in the merged frame — and that frame's
     # status row (the hint) paints BEFORE the banner. The second frame
-    # is the complete idle screen: session + banner + chrome.
+    # is the MERGED opening+run commit (R-G 0.1.47, ADR-0050 — the
+    # ~1ms link-lock append no longer paces the commit boundaries, so
+    # the idle screen and the run's settle share one frame): the whole
+    # run rides PART1; PART2 is the exit teardown.
     text = full.decode(errors="replace")
     sync = "\x1b[?2026l"
     first = text.find(sync)
@@ -245,12 +254,6 @@ function vtFrames(stream: string): { rows: string[]; offset: number }[] {
 	return snapshots;
 }
 
-/** The pre-turn transcript's grid — the same emulator, no snapshots. */
-function vtGrid(stream: string): string[] {
-	const frames = vtFrames(stream);
-	return frames.at(-1)!.rows;
-}
-
 describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => {
 	it("10 task_set updates redraw ONE live block in place (stable origin, the collapse + the cut family), then settle as exactly ONE task done block (the final counts + the full list); the turn's text and the recap follow; the idle chrome survives", () => {
 		const { env, dirs } = isolatedEnv();
@@ -295,18 +298,26 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 			workdir,
 		);
 
-		// the pre-turn transcript: the banner art + the idle chrome
-		const preGrid = vtGrid(pre);
-		expect(preGrid.join("\n")).toContain("█");
-		expect(preGrid.join("\n")).toContain("/ commands · ↑ history");
-
-		// the turn: the settle frame's bytes (the exit teardown follows —
-		// its marker varies between [?1049l and the [r scroll-reset +
-		// chrome clears; the assertions run on the pre-teardown stream)
+		// the pre-teardown stream — the whole run: the chrome-only dock
+		// frame + the merged opening+run commit (R-G 0.1.47, ADR-0050 —
+		// the ~1ms link-lock append merged the idle screen and the run's
+		// settle into ONE sync frame, so the driver's second `?2026l`
+		// split lands at the merged commit's END; the exit teardown
+		// follows — its marker varies between [?1049l and the [r
+		// scroll-reset + chrome clears; the assertions run on the
+		// pre-teardown stream)
 		const teardown = post.search(/\x1b\[\?1049l|\x1b\[r/);
-		const turn = teardown === -1 ? post : post.slice(0, teardown);
+		const turn = pre + (teardown === -1 ? post : post.slice(0, teardown));
 		const frames = vtFrames(turn);
 		const finalGrid = frames.at(-1)!.rows;
+
+		// the idle chrome — the banner art + the hint — rides the merged
+		// opening commit, then the settle's real-LF scrolls push the
+		// banner OFF the final grid (the OLD flow's separate idle frame
+		// scrolled it out too) — the claims assert on the FRAMES'
+		// pre-scroll snapshots
+		expect(frames.some((f) => f.rows.join("\n").includes("█"))).toBe(true);
+		expect(frames.some((f) => f.rows.join("\n").includes("/ commands · ↑ history"))).toBe(true);
 
 		// ① A8b re-baseline: the "in-place redraws at row 1" the old gate
 		// counted were the row-1 CLAMP PILE — the settle's band stamped
@@ -321,17 +332,17 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		// A8b). The gate: the run's forms all appear, each at its own
 		// row, none clamped at 1.
 		const forms = [...turn.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[1m▞\x1b\[0m task · 10 items · 1 active · ([0-9]+) done/g)];
-		const intermediate = forms.filter((m) => Number(m[2]!) < 6); // the RUN's forms — the states before the final (the live + the exit repaint the 6/7-done forms at their own rows)
+		const intermediate = forms.filter((m) => Number(m[2]!) < 6); // the RUN's forms — the states before the final (the settle's repaint restates the 6/7-done states at their own rows)
 		expect(intermediate.length).toBeGreaterThan(4); // the run's forms redrew, each painted once
 		expect(intermediate.every((m) => m[1] !== "1")).toBe(true); // no row-1 clamp pile — every form at its true row
 		expect(new Set(intermediate.map((m) => m[1])).size).toBe(intermediate.length); // one form per row — the single-copy discipline
 
 		// ② the collapse held during the run: the done items stayed hidden
-		// behind the cut family — the run's forms ride the settle's
-		// pre-paint (the chip through the LF scroll — the visible repaint
-		// after it is the FINAL state, whose settled ▣ list legitimately
-		// shows), and those forms carry the overflow fold + the
-		// done-collapse affordances, never the ▣ the collapse hides.
+		// behind the cut family — the run's forms ride the during-run band
+		// (the chip through the LF scroll — the visible repaint after it is
+		// the FINAL state, whose settled ▣ list legitimately shows), and
+		// those forms carry the overflow fold + the done-collapse
+		// affordances, never the ▣ the collapse hides.
 		const chipPaint = turn.indexOf("\x1b[7m go \x1b[27m"); // the user message's chip — carried by the settle's pre-paint at its TRUE old row (A8b: the row-1 clamp is gone — the needle is the chip's content, not its old clamped row; the rail retired by the 2026-08-09 ruling)
 		expect(chipPaint).toBeGreaterThan(0);
 		const scroll = turn.indexOf("\n", chipPaint); // the settle's LF scroll — the pre-paint's end (the repaint follows, chrome first, no LF)
@@ -352,12 +363,13 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		expect(finalGrid[doneRow + 1]).toContain("▣ item 1");
 		expect(finalGrid[doneRow + 2]).toContain("▣ item 2");
 		expect(finalGrid[doneRow + 10]).toContain("▖ item 10"); // the durable active glyph
-		expect(finalGrid.join("\n")).toContain("the task list is final."); // the turn's text
+		expect(turn).toContain("the task list is final."); // the turn's text — asserted on the BYTES: it rode the during-run band, and whether the settle's scrolls leave it in the final grid varies with the scroll count — the paint itself is deterministic
 		expect(finalGrid.join("\n")).toContain(" · 10 tools"); // the recap
 
 		// ④ the idle chrome survived — the mode line (asserted on the
-		// FRAMES: the exit's teardown can clear the chrome band after
-		// the turn's last frame)
+		// FRAMES: the settle's real-LF scrolls and the exit teardown can
+		// shift or clear the chrome band — the snapshots hold the
+		// pre-scroll state)
 		expect(frames.some((f) => f.rows.join("\n").includes("▸ bypass · /mode to switch"))).toBe(true);
 	}, 120_000);
 });
