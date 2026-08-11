@@ -388,7 +388,7 @@ identically twice, ② appending a turn leaves the old prefix byte-identical,
 
 ## Extensions — approval policies beyond the human
 
-**The four official extensions ship built-in in the CLI** (0.1.44+):
+**The four official extensions ship built-in in the CLI** (0.1.45+):
 `mcp`, `skills`, `subagent`, and `task` are registered at startup by
 module import — a fresh install has all four with zero disk setup, and
 the banner says so: `[4 extensions: built-in: mcp, skills, subagent, task]`.
@@ -736,10 +736,10 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | crash-consistent execution | durable receipts keyed by `executionId`; a confirmed success is never re-run (exactly-once within the framework's own window — the rest is explicit human-resolved uncertainty) | `packages/core/tests/execution-gate.test.ts` |
 | extensions | policies / tools / hooks / systemPrompt / dispose | `packages/runtime/tests/extensions.test.ts` |
 | built-in extension layer | the four official extensions load in-process at startup; a user copy shadows loudly | `apps/cli/tests/builtin-layer.test.ts` |
-| MCP bridge | official extension — built-in since 0.1.44, kernel untouched | `extensions/mcp/tests` |
-| subagents | official extension — built-in since 0.1.44, role-policy children | `extensions/subagent/tests` |
-| skills | official extension — built-in since 0.1.44, two-tier progressive | `extensions/skills/tests` |
-| task | official extension — built-in since 0.1.44, durable long-horizon working memory (task_set) | `extensions/task/tests`, `apps/cli/tests/task-e2e.test.ts` |
+| MCP bridge | official extension — built-in since 0.1.45, kernel untouched | `extensions/mcp/tests` |
+| subagents | official extension — built-in since 0.1.45, role-policy children | `extensions/subagent/tests` |
+| skills | official extension — built-in since 0.1.45, two-tier progressive | `extensions/skills/tests` |
+| task | official extension — built-in since 0.1.45, durable long-horizon working memory (task_set) | `extensions/task/tests`, `apps/cli/tests/task-e2e.test.ts` |
 | context economy ● | microcompact + /compact (model summary) + prompt-cache discipline | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
 
