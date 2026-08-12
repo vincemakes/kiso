@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-code",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "kiso CLI \u2014 the coding-agent reference product: kiso chat / kiso resume / kiso sessions.",
   "type": "module",
   "license": "MIT",
@@ -23,7 +23,7 @@
     "@vincemakes/kiso-mcp-ext": "1.0.0",
     "@vincemakes/kiso-provider-anthropic": "1.0.0",
     "@vincemakes/kiso-provider-openai": "1.0.0",
-    "@vincemakes/kiso-runtime": "1.0.1",
+    "@vincemakes/kiso-runtime": "1.0.2",
     "@vincemakes/kiso-skills-ext": "1.0.0",
     "@vincemakes/kiso-subagent-ext": "1.0.0",
     "@vincemakes/kiso-task-ext": "1.0.0",
