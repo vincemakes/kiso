@@ -51,7 +51,7 @@ exactly one trace" stays checkable.
 
 ## 3. The TraceRecord (the locked 1.2.0 field set)
 
-24 fields; the closed field set is pinned bidirectionally by
+25 fields; the closed field set is pinned bidirectionally by
 `TRACE_RECORD_FIELDS` (an added field without the const entry — or a
 const entry without a type field — goes red). `lineageLink` is the one
 optional field.
