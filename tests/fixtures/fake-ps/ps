@@ -1,0 +1,12 @@
+#!/bin/sh
+# R-I-p-3: the fake ps for the state-letters parsing gate. Prints the
+# FAKE_PS_STATE env var verbatim (whatever shape the case pins — "?E",
+# "Z", "S") or exits non-zero when FAKE_PS_FAIL is set. The probe
+# resolves "ps" through PATH, so this script IS the probe's ps for the
+# duration of the gate's cases — the real ps is never reached. The pid
+# argument is ignored: the matching of the state LETTERS is the unit
+# under test, not ps itself.
+if [ -n "${FAKE_PS_FAIL:-}" ]; then
+  exit 1
+fi
+printf '%s\n' "${FAKE_PS_STATE:-?E}"

@@ -116,6 +116,15 @@ export interface LockAdapter {
  * pre-amendment behavior — alive, the fail-safe refusal (prefer a false
  * refusal over a double-write). Live-process semantics and the PID-reuse
  * rules do not move: a live foreign writer is still refused.
+ *
+ * ADR-0050 Amendment 2 (Finding R-I-p-3): the state letters are matched
+ * ANYWHERE in the state string, not as the first character. The
+ * exit-path linger's ps output is "?E" — the first character is the
+ * no-controlling-terminal marker "?", with the E sitting AFTER it — so
+ * first-character matching judged the finding's own documented shape
+ * alive. The ps state alphabet (macOS + Linux) has no flag letters
+ * "E"/"Z": an occurrence anywhere is the process-state code, and the
+ * holder is dead.
  */
 function isAlive(pid: number): boolean {
 	try {
@@ -124,13 +133,17 @@ function isAlive(pid: number): boolean {
 		return (err as NodeJS.ErrnoException).code === "EPERM";
 	}
 	const state = processState(pid);
-	return state !== "E" && state !== "Z";
+	// A null state (probe failure) keeps the pre-amendment behavior —
+	// judged alive, the fail-safe refusal.
+	return state === null || (!state.includes("E") && !state.includes("Z"));
 }
 
 /**
- * The process state via `ps -o state= -p <pid>` (macOS/Linux). The
- * state is the FIRST character (a multi-char string like "Ss+" is a
- * combined flag set). An empty or unreadable state — the process
+ * The process state via `ps -o state= -p <pid>` (macOS/Linux) — the
+ * whole state string (a multi-char string like "Ss+" or "?E" is a
+ * combined flag set; the E/Z process-state codes may sit after the "?"
+ * no-tty marker or other flag letters, so the matching in isAlive scans
+ * the whole string). An empty or unreadable state — the process
  * vanished between the kill and the probe, or ps itself failed —
  * returns null; isAlive's fail-safe branch then judges the holder alive
  * (the pre-amendment behavior).
@@ -138,7 +151,7 @@ function isAlive(pid: number): boolean {
 function processState(pid: number): string | null {
 	try {
 		const state = execFileSync("ps", ["-o", "state=", "-p", String(pid)], { encoding: "utf8" }).trim();
-		return state.length > 0 ? (state[0] ?? null) : null;
+		return state.length > 0 ? state : null;
 	} catch {
 		return null;
 	}

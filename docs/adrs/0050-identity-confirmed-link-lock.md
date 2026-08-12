@@ -197,3 +197,35 @@ un-reaped dead holder; a fresh boot must take over at the first session
 write) — both red pre-patch, green post-patch. The kill9 gate's blind
 spot is closed: its direct child is reaped by waitpid and can never
 linger or zombie.
+
+## Amendment 2 (2026-08-12): the state letters matched anywhere in the string
+
+The 1.0.1 dogfood mini (the round's own live acceptance control)
+caught Amendment 1's matching rule: the exit-path linger's ps output
+is `?E` — the FIRST character is the no-controlling-terminal marker
+`?`, with the E sitting AFTER it. Amendment 1's "first character of
+the state string" rule therefore judged the finding's own documented
+shape alive: the resume was refused ("locked by another writer") at
+the first session write while the dead holder sat in STAT `?E`.
+
+**Finding R-I-p-3.** The state letters are matched ANYWHERE in the
+state string, not as the first character. The ps state alphabet
+(macOS + Linux) has no flag letters "E"/"Z" — an occurrence anywhere
+is the process-state code, and the holder is dead. The
+no-controlling-terminal `?`, session-leader `s`, foreground `+`, and
+niceness flags cannot collide with the E/Z letters.
+
+**The boundaries do not move.** Probe failure (a vanished process, a
+failed ps) still returns null → judged alive → the fail-safe refusal.
+The live pin (STAT S), the EPERM read, the PID-reuse rules, the
+identity format, the rename-away → verify → link sequence, the
+fsync-before-link order, and the released-marker convention are all
+untouched.
+
+**The gates.** The state-letters parsing gate (a PATH-injected fake ps
+pinning `?E` dead, `Z` dead, `S` alive, probe failure alive) — the
+`?E` case red against Amendment 1's first-character rule, green
+against the whole-string match. The controlled zombie repro and the
+npx-shape gate stay green unchanged; the 1.0.1 release is deprecated
+(the R-G precedent) and 1.0.2 ships the correction. Signed by the
+review, 2026-08-12.
