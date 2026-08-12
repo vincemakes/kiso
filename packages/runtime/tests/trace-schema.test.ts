@@ -165,7 +165,7 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 		expect(validateTraceRecord({ ...canonicalRecord, requestIndex: 1.5 })).toBe(false);
 		expect(validateTraceRecord({ ...canonicalRecord, retryAttempt: "2" })).toBe(false);
 		expect(validateTraceRecord({ ...canonicalRecord, contextManifest: [{ ...canonicalSegment, estTokens: 12.5 }] })).toBe(false);
-		expect(validateTraceRecord({ ...canonicalRecord, ttftMs: null })).toBe(true); // pre-first-byte? absent when unknown
+		expect(validateTraceRecord({ ...canonicalRecord, ttftMs: null })).toBe(false); // locked: number, 0 = unknown
 		expect(validateTraceRecord({ ...canonicalRecord, ts: "2026-08-12" })).toBe(false);
 	});
 

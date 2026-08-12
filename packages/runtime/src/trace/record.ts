@@ -211,7 +211,7 @@ export function validateTraceRecord(v: unknown): v is TraceRecord {
 	if (!isNumber(v.freshInput) || !isNumber(v.cacheRead)) return false;
 	if (v.cacheWrite !== null && !isNumber(v.cacheWrite)) return false;
 	if (!isNumber(v.output) || !isNumber(v.latencyMs)) return false;
-	if (v.ttftMs !== null && !isNumber(v.ttftMs)) return false;
+	if (!isNumber(v.ttftMs)) return false; // 0 = unknown, never null (locked set)
 	if (!Array.isArray(v.toolCalls) || !v.toolCalls.every((t) => typeof t === "string")) return false;
 	if (typeof v.outcome !== "string" || !VALID_OUTCOMES.has(v.outcome)) return false;
 	if (v.lineageLink !== undefined) {
@@ -243,7 +243,11 @@ export function validateTraceLine(v: unknown): v is TraceLine {
 				hasClosedKeys(v, ["schemaVersion", "kind", "runId", "ts", "lastRequestIndex"]) &&
 				typeof v.runId === "string" &&
 				isNumber(v.ts) &&
-				isNonNegInt(v.lastRequestIndex)
+				// -1 = the run made no adapter calls (an empty run still
+				// settles cleanly); anything below that is not a request index
+				typeof v.lastRequestIndex === "number" &&
+				Number.isInteger(v.lastRequestIndex) &&
+				v.lastRequestIndex >= -1
 			);
 		case "crash":
 			return (

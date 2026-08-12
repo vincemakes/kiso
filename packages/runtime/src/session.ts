@@ -557,6 +557,9 @@ export class AgentSession {
 
 export interface SessionConfig {
 	readonly model: string;
+	/** E1: the adapter identity ("anthropic" | "openai-compat") — trace
+	 *  provenance, additive (S1 surface untouched: type-only, optional). */
+	readonly provider?: "anthropic" | "openai-compat";
 	readonly systemPrompt?: string;
 	readonly tools?: readonly Tool<any>[];
 	readonly registry: import("@vincemakes/kiso-core").ToolRegistry;

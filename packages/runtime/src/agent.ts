@@ -108,6 +108,7 @@ export class AgentRuntime {
 		const adapter = await this.#adapterPromise;
 		const config: SessionConfig = {
 			model: this.#definition.model,
+			...(this.#definition.provider !== undefined ? { provider: this.#definition.provider } : {}),
 			...(this.#definition.systemPrompt !== undefined ? { systemPrompt: this.#definition.systemPrompt } : {}),
 			registry: this.#registry,
 			...(this.#definition.permissionPolicy !== undefined || this.#definition.hooks !== undefined

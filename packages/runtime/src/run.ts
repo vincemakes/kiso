@@ -10,6 +10,8 @@ import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
 import { deriveRecoveryPlan, invocationSeqOf } from "./recovery-plan.js";
 import { composeApprovalChain, composeSystemPrompt, composeToolTable, microcompactFor } from "./compose.js";
 import { truncationGuard } from "./truncation-guard.js";
+import { RequestTracer, traceGuard } from "./trace/guard.js";
+import { runtimeVersion } from "./trace/writer.js";
 import { ResumeBlockedError, type AgentSession, type SessionConfig } from "./session.js";
 
 /**
@@ -61,6 +63,7 @@ export class Run implements AsyncIterable<Event> {
 		// The WHOLE body is one try/finally: a consumer that abandons the
 		// run at ANY yield (even the user_input one) must release the
 		// session's single-run slot and its approval resolvers.
+		let tracer: RequestTracer | null = null;
 		try {
 			// round 4: health is re-checked when the iterator ACTUALLY starts —
 			// a run constructed before the session was poisoned must fail
@@ -68,6 +71,20 @@ export class Run implements AsyncIterable<Event> {
 			this.#session.ensureHealthy();
 			this.#session.beginRun(this);
 			const log = this.#session.log;
+			// E1 (1.2.0): the request tracer — the observation ledger. It
+			// sits at the adapter boundary; the model-visible byte stream is
+			// untouched (I6, trace-bytes.test.ts). Soft-fail: a degraded
+			// writer costs one stderr line and the run goes on.
+			tracer = new RequestTracer({
+				root: this.#store.root,
+				sessionId: this.#session.id,
+				runId: this.runId,
+				provider: this.#config.provider ?? "adapter",
+				model: this.#config.model,
+				adapterVersion: runtimeVersion(),
+				log: log.all,
+			});
+			tracer.init();
 			const signal = this.#externalSignal ? new MergedSignal(this.#abort.signal, this.#externalSignal) : this.#abort.signal;
 			// E2: the session's own microcompact wins; otherwise the FIRST
 			// extension providing a compaction config supplies it.
@@ -90,7 +107,7 @@ export class Run implements AsyncIterable<Event> {
 				({
 					// 0.1.40 (R-C item 3): the truncation guard gates the model
 					// stream — a truncated turn's tool batch never executes.
-					adapter: truncationGuard(this.#adapter),
+					adapter: traceGuard(tracer!, truncationGuard(this.#adapter)), // tracer assigned above, before loopConfig
 					model: this.#config.model,
 					sessionId: this.#session.id, // P3: tools see their session (ToolContext.sessionId)
 					...(systemPrompt !== undefined ? { systemPrompt } : {}),
@@ -250,6 +267,9 @@ export class Run implements AsyncIterable<Event> {
 			for (const executionId of this.#uncertaintyIds) {
 				this.#session.dropUncertaintyResolver(executionId);
 			}
+			// E1: the run's ledger story — the run_end lands synchronously
+			// (a killed run leaves no run_end, and the next init marks it).
+			tracer?.finishRun();
 			this.#session.endRun(this);
 		}
 	}
