@@ -679,3 +679,57 @@ carrying "proposed, for the reviewer" and is adjudicated at review.
 The T5 band's run-to-run spread is historically wide (1.15×–1.57×
 across the 0.1.44–0.1.46 refreshes) — the reading matters as much as
 the numbers, and the reading is the reviewer's to confirm.
+
+## The 2026-08-12 release acceptance — bench v2 A/B (v8 series, vs the published 1.1.0 bin)
+
+The E1 (1.2.0) non-regression gate: A = the PUBLISHED 1.1.0 bin
+(/tmp/kiso-bench-110), B = the 1.2.0 tree (the request-trace payload).
+Band baseline = the 1.1.0 round's run-v7 bands: T3 cost-wtd
+1,925–2,917 / wall 8–12s, T5 cost-wtd 13,178–33,614 / wall 46–93s.
+Interleaved order A B B A A B B A A B, n=5 per side per leg, both cost
+metrics, every run verify=pass. The criterion was pre-registered (the
+release order): FLAT expected; any v8 WALL median out of band = the
+hashing-hot-path stop clause (e) — hard stop with numbers. The static
+request-surface delta vs the 1.1.0 snapshot is 0 (api-surface gate,
+37 names, snapshot file untouched).
+
+| task | side | run | fresh | total | cost-wtd | wall |
+|------|------|----:|------:|------:|---------:|-----:|
+| T3 cross-file rename | **A** | 1 | 686 | 13,358 | 1,953 | 11s |
+| | | 2 | 759 | 13,175 | 2,001 | 10s |
+| | | 3 | 699 | 13,115 | 1,941 | 10s |
+| | | 4 | 863 | 16,735 | 2,450 | 11s |
+| | | 5 | 722 | 13,394 | 1,989 | 10s |
+| | **median** | | 722 | 13,394 | **1,989** | 10.0s |
+| | **B** | 1 | 924 | 13,852 | 2,217 | 12s |
+| | | 2 | 786 | 12,946 | 2,002 | 9s |
+| | | 3 | 881 | 16,753 | 2,468 | 11s |
+| | | 4 | 678 | 13,094 | 1,920 | 9s |
+| | | 5 | 849 | 13,521 | 2,116 | 9s |
+| | **median** | | 849 | 13,521 | **2,116** | 9.0s |
+| T5 8-turn session | **A** | 1 | 6,904 | 156,152 | 21,829 | 69s |
+| | | 2 | 9,574 | 169,830 | 25,600 | 68s |
+| | | 3 | 5,878 | 126,070 | 17,897 | 61s |
+| | | 4 | 9,016 | 181,176 | 26,232 | 73s |
+| | | 5 | 6,385 | 154,481 | 21,195 | 74s |
+| | **median** | | 6,904 | 156,152 | **21,829** | 69.0s |
+| | **B** | 1 | 7,723 | 150,571 | 22,008 | 64s |
+| | | 2 | 6,965 | 151,733 | 21,442 | 66s |
+| | | 3 | 5,994 | 136,810 | 19,076 | 65s |
+| | | 4 | 7,129 | 146,393 | 21,055 | 68s |
+| | | 5 | 6,225 | 134,353 | 19,038 | 68s |
+| | **median** | | 6,965 | 146,393 | **21,055** | 66.0s |
+
+**The flat verdict.** T3: A 1,989 vs B 2,116 — 6.4% apart, both medians
+inside the v7 T3 band, interleaved with no monotone bias (B is costlier
+at 4 of 5 pairings — the retry-outlier cells (A4/B3, the 6-request
+runs) land on BOTH sides). T5: A 21,829 vs B 21,055 — 3.5% apart, both
+medians inside the v7 T5 band, alternating (A > B at runs 1/2/4, B > A
+at runs 3/5). WALL — the round's pre-registered stop watch: T3 medians
+10s/9s and T5 medians 69s/66s, every v8 wall inside the v7 wall bands;
+the per-request trace hashing adds no measurable hot-path time.
+Verdict: **flat — no regression, no stop**; in-band movement "proposed,
+for the reviewer" per the band method. Raw runs:
+`bench/runs/kiso-T*-v8-*-{A,B}` (local, gitignored). The B-side runs
+additionally produced the E1 trace sidecars under their kiso-homes —
+the trace-report rendered them per-request with zero invalid lines.
