@@ -188,6 +188,56 @@ medians' 8% gap is in-band movement, "proposed, for the reviewer" per
 the band method. Raw runs: `bench/runs/kiso-T*-v4-*-{A,B}` (local,
 gitignored).
 
+## The 2026-08-12 release acceptance — bench v2 A/B (1.0.1 vs the 1.0.0 bin)
+
+The R-I-p non-regression gate: A = the 1.0.1 tree dist (the state-aware
+liveness probe — the static request-surface delta vs 1.0.0 is 0), B =
+the published 1.0.0 bin (the global install). Interleaved order
+A B B A A B B A A B, n=5 per side, T3 + T5, both cost metrics, same
+fixtures and protocol as the tables above. Every run verify=pass.
+(Run-name note: this batch owns `kiso-T*-v4-*`; the 1.0.0 batch above
+is the `*-v3-*` dirs — its raw-runs line predates the run and names the
+wrong series; left untouched as the historical record.)
+
+| task | side | run | fresh | total | cost-wtd | wall |
+|------|------|----:|------:|------:|---------:|-----:|
+| T3 cross-file rename | **A** | 1 | 705 | 12,993 | 1,934 | 9s |
+| | | 2 | 894 | 13,310 | 2,136 | 10s |
+| | | 3 | 778 | 13,834 | 2,084 | 10s |
+| | | 4 | 805 | 13,349 | 2,059 | 9s |
+| | | 5 | 858 | 13,274 | 2,100 | 9s |
+| | **median** | | 805 | 13,310 | **2,084** | 9.0s |
+| | **B** | 1 | 691 | 16,307 | 2,253 | 11s |
+| | | 2 | 840 | 13,512 | 2,107 | 9s |
+| | | 3 | 878 | 13,550 | 2,145 | 10s |
+| | | 4 | 747 | 16,363 | 2,309 | 10s |
+| | | 5 | 704 | 13,376 | 1,971 | 9s |
+| | **median** | | 747 | 13,550 | **2,145** | 10.0s |
+| T5 8-turn session | **A** | 1 | 6,007 | 135,927 | 18,999 | 67s |
+| | | 2 | 6,751 | 158,047 | 21,881 | 82s |
+| | | 3 | 6,435 | 138,787 | 19,670 | 75s |
+| | | 4 | 9,500 | 186,524 | 27,202 | 81s |
+| | | 5 | 6,088 | 135,368 | 19,016 | 83s |
+| | **median** | | 6,435 | 138,787 | **19,670** | 81.0s |
+| | **B** | 1 | 7,137 | 148,449 | 21,268 | 81s |
+| | | 2 | 7,744 | 179,904 | 24,960 | 100s |
+| | | 3 | 7,626 | 165,450 | 23,408 | 83s |
+| | | 4 | 7,889 | 177,105 | 24,811 | 90s |
+| | | 5 | 6,143 | 137,215 | 19,250 | 70s |
+| | **median** | | 7,626 | 165,450 | **23,408** | 83.0s |
+
+**The flat verdict.** T3: A 2,084 vs B 2,145 — 2.9% apart, both medians
+inside the 1.0.0 band (1,921–3,204). T5: A 19,670 vs B 23,408 — the
+per-run bands overlap (A 18,999–27,202, B 19,250–24,960), A's median
+sits inside B's band, and the interleaved sequence alternates (A > B at
+runs 4/8, B > A at runs 2/3/6/7) with no monotone side bias; the high
+cell v4-08-A (27,202) is the retry-outlier shape. Both medians inside
+the 1.0.0 T5 band (17,255–28,273). Verdict: **flat — no regression**;
+the T5 median gap is in-band movement, "proposed, for the reviewer"
+per the band method (the patch is a lock-adapter probe — zero model
+traffic). Raw runs: `bench/runs/kiso-T3-v4-*` and `kiso-T5-v4-*`
+(local, gitignored).
+
 ## T6 — the 24-turn long curve (the divergence curve, per 6-turn bucket)
 
 | tool | run | bucket | fresh | cached | total | cost-wtd | out | reqs | wall |
