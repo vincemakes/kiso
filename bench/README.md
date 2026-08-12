@@ -79,6 +79,65 @@ future edit cannot regress the labeling.
 | | 2 | 33,484 | 1,097,856 | 1,131,340 | 143,270 | 10,754 | 33 | 164s |
 | | mean | | 32,189 | 918,656 | 950,845 | 124,055 | 10,333 | 32.0 | 141.0s |
 
+## The 2026-08-12 three-way — the 1.0.0 candidate (per-run; medians are the headline basis)
+
+The R-I launch-headline run: kiso 1.0.0 (the release candidate, tree
+dist) · pi @earendil-works/pi-coding-agent **0.84.1** (npm latest —
+renamed from the old 0.73.1, which is the 2026-08-06 doc's pi) · Claude
+Code **2.1.227** (the local pin; npm latest 2.1.228). Same model
+(deepseek-v4-flash), same fixtures, interleaved same-day runs with the
+order shuffled per round. n=3 per tool on T3, n=2 per tool on T5; every
+run verify=pass. Raw runs: `bench/runs/*-3way-*` (local; the runs
+directory is gitignored — the numbers here and in the README are the
+committed record). The per-tool invocation and the accounting are the
+same files as the tables above; kiso ran `--mode bypass` with the
+bench-allow extension.
+
+| task | tool | run | fresh | cached | total | cost-wtd | out | reqs | wall |
+|------|------|----:|------:|-------:|------:|---------:|----:|----:|-----:|
+| T3 cross-file rename | **kiso** | 1 | 831 | 12,032 | **12,863** | 2,034 | 803 | 5 | 10s |
+| | | 2 | 995 | 12,160 | **13,155** | 2,211 | 720 | 5 | 12s |
+| | | 3 | 868 | 15,104 | **15,972** | 2,378 | 779 | 5 | 10s |
+| | **median** | | 868 | 12,160 | **13,155** | **2,211** | 779 | 5.0 | 10.0s |
+| | pi | 1 | 4,285 | 20,096 | 24,381 | 6,295 | 1,003 | 6 | 13s |
+| | | 2 | 2,106 | 23,424 | 25,530 | 4,448 | 1,043 | 6 | 16s |
+| | | 3 | 2,049 | 26,624 | 28,673 | 4,711 | 1,082 | 6 | 12s |
+| | median | | 2,106 | 23,424 | 25,530 | **4,711** | 1,043 | 6.0 | 13.0s |
+| | claude | 1 | 26,894 | 158,080 | 184,974 | 42,702 | 1,557 | 12 | 21s |
+| | | 2 | 27,347 | 185,728 | 213,075 | 45,920 | 1,445 | 12 | 22s |
+| | | 3 | 27,175 | 157,824 | 184,999 | 42,957 | 1,379 | 12 | 20s |
+| | median | | 27,175 | 158,080 | 184,999 | **42,957** | 1,445 | 12.0 | 21.0s |
+| T5 8-turn session | **kiso** | 1 | 6,208 | 125,312 | **131,520** | 18,739 | 4,843 | 31 | 68s |
+| | | 2 | 6,781 | 143,616 | **150,397** | 21,143 | 5,138 | 32 | 81s |
+| | **median** | | 6,494 | 134,464 | **140,958** | **19,941** | 4,990 | 31.5 | 74.5s |
+| | pi | 1 | 4,062 | 170,752 | 174,814 | 21,137 | 6,008 | 30 | 78s |
+| | | 2 | 5,101 | 210,816 | 215,917 | 26,183 | 6,976 | 31 | 80s |
+| | median | | 4,582 | 190,784 | 195,366 | **23,660** | 6,492 | 30.5 | 79.0s |
+| | claude | 1 | 29,379 | 801,408 | 830,787 | 109,520 | 10,067 | 31 | 92s |
+| | | 2 | 29,779 | 1,015,808 | 1,045,587 | 131,360 | 10,309 | 29 | 135s |
+| | median | | 29,579 | 908,608 | 938,187 | **120,440** | 10,188 | 30.0 | 113.5s |
+
+**The headline ratios (median cost-weighted = fresh + 0.1×cached):**
+T3 — kiso 2,211 vs pi 4,711 = **2.1×**, vs Claude Code 42,957 =
+**19×**. T5 — kiso 19,941 vs pi 23,660 = **1.2×**, vs Claude Code
+120,440 = **6.0×**.
+
+**The protocol-generation note (why the 2026-08-10 11×/66× narrowed).**
+The 2026-08-10 numbers (kiso 0.1.41: T3 cw 733) were measured BEFORE
+the 0.1.45+ built-in extension layer and the trust surface; the same
+protocol files now produce kiso T3 cells in the 2,000–2,400 band —
+consistent with the 0.1.48 v2 re-baseline (2,068/2,191 in the in-repo
+A/B series) and the 0.1.49 acceptance. pi also moved (8,074 → 4,711)
+on the SAME version 0.84.1, so the shift is protocol/model-side, not a
+kiso-specific change. The 2026-08-10 README table lives in git history.
+
+Honest footnotes: serial runs (each later run rides the provider's
+server-side warm cache — the fresh column is the unstable one); Claude
+Code off-label (DeepSeek's Anthropic-compatible endpoint, prompts tuned
+for Claude models); kiso is our own tool (reproduce it yourself); the
+tasks are small — the large system prompts' real capability pays off on
+complex work these tasks do not exercise.
+
 ## T6 — the 24-turn long curve (the divergence curve, per 6-turn bucket)
 
 | tool | run | bucket | fresh | cached | total | cost-wtd | out | reqs | wall |
