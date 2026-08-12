@@ -102,6 +102,7 @@ export interface CompactInfo {
 	readonly tokens: number;
 }
 
+/** @deprecated the canonical name is `Session` (root export, 1.1.0); this alias is removed in the next major. */
 export class AgentSession {
 	readonly id: string;
 	readonly log: EventLog;

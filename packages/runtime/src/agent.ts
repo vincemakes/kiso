@@ -63,6 +63,7 @@ export interface AgentDefinition {
 	readonly extensions?: readonly KisoExtension[];
 }
 
+/** @deprecated the canonical name is `Agent` (root export, 1.1.0); this alias is removed in the next major. */
 export class AgentRuntime {
 	readonly #definition: AgentDefinition;
 	readonly #registry: ToolRegistry;

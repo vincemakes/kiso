@@ -25,7 +25,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { LockedError, nativeLockAdapter } from "@vincemakes/kiso-runtime";
+import { LockedError, nativeLockAdapter } from "../src/lock-adapter.js";
 
 const FIXTURE = join(fileURLToPath(new URL("../../../tests/fixtures", import.meta.url)), "zombie-holder.mjs");
 

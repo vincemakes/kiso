@@ -5,7 +5,8 @@
  */
 
 import { escapeTerminal, kUnit, palette } from "@vincemakes/kiso-tui";
-import { buildAdapter, type AgentSession } from "@vincemakes/kiso-runtime";
+import { buildAdapter } from "@vincemakes/kiso-runtime/internal";
+import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, getMode, setMode } from "./mode.js";
 import { agentModel, body, bodyLog, configModels, dock, setAgentModel, setCurrentModelName, type LineInput } from "./state.js";
 import { directWriteProfile, profileAvailable } from "./config.js";

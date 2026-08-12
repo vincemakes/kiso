@@ -32,7 +32,8 @@ import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { LockedError, SessionStore, nativeLockAdapter } from "../src/index.js";
+import { SessionStore } from "../src/index.js";
+import { LockedError, nativeLockAdapter } from "../src/lock-adapter.js";
 
 function tempStore(): { dir: string; store: SessionStore } {
 	const dir = mkdtempSync(join(tmpdir(), "kiso-nlr-"));

@@ -18,7 +18,8 @@ import { chmodSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { LockUnavailableError, SessionStore, type LockAdapter } from "../src/index.js";
+import { SessionStore } from "../src/index.js";
+import { LockUnavailableError, type LockAdapter } from "../src/lock-adapter.js";
 
 const ev = (seq: number): Parameters<SessionStore["append"]>[2] => ({
 	seq,
