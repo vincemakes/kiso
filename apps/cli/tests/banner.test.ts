@@ -72,7 +72,7 @@ describe("the startup banner (logo)", () => {
 		expect(out).toContain("█ █ ▀█▀ █▀▀ █▀█");
 		expect(out).toContain("the coding agent that survives kill -9");
 		expect(out).toContain("▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀");
-		expect(out).toMatch(/v0\.1\.\d+/); // the version rides the info row
+		expect(out).toMatch(/v\d+\.\d+\.\d+/); // the version rides the info row
 	}, 90_000);
 
 	it("BIG (24x80): the 36x6 wordmark renders instead — every row is the █-only art", () => {
@@ -83,7 +83,7 @@ describe("the startup banner (logo)", () => {
 		expect(out).toContain("the coding agent that survives kill -9");
 		// the art is the wordmark — the text row does NOT repeat the name
 		expect(out).not.toMatch(/kiso v\d+\.\d+\.\d+/);
-		expect(out).toMatch(/v0\.1\.\d+ — the coding agent/);
+		expect(out).toMatch(/v\d+\.\d+\.\d+ — the coding agent/);
 	}, 90_000);
 
 	it("text rows only (24x39, and 10x80): no logo at any size below the tiers", () => {
@@ -92,7 +92,7 @@ describe("the startup banner (logo)", () => {
 		expect(narrow).not.toContain("█");
 		// at 39 the version row itself truncates (with the marker) — the
 		// tier's identity is the absence of art, not a full row
-		expect(narrow).toMatch(/v0\.1\.\d+ — the coding agent/);
+		expect(narrow).toMatch(/v\d+\.\d+\.\d+ — the coding agent/);
 		const short = ptyBanner(env, dirs.home, 10, 80);
 		expect(short).not.toContain("█");
 		expect(short).toContain("the coding agent that survives kill -9");
