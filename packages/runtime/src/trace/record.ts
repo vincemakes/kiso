@@ -52,6 +52,9 @@ export interface TraceRecord {
 	contextHash: string; // sha-256 of the canonical serialization of the full request projection
 	contextManifest: TraceSegment[]; // one segment per turn (see §1.3)
 	stablePrefixFingerprint: string; // sha-256 over the per-segment hashes of the cacheable prefix (see §4)
+	/** The usage quartet is PROVIDER-RAW — never a billing surface.
+	 *  Canonical/billing usage lives in E2; these fields are observation
+	 *  only (a provider may count a token a dozen ways; billing must not). */
 	freshInput: number; // provider-raw usage, never normalized — normalization is E2's
 	cacheRead: number;
 	cacheWrite: number | null; // openai-compat honestly reports null; anthropic reports real

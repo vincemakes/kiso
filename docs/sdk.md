@@ -127,3 +127,21 @@ introduced in 1.1.0 (ADR-0051 Amendment 1: release rounds move the cli
 minor). The old names carry `@deprecated` JSDoc and are removed in the next
 major. Existing code keeps compiling; new code should use the canonical
 names.
+
+## 5. Store ownership
+
+`Agent.close()` releases the injected store's handles and marks its
+sessions closed; a store reused across multiple runtimes over its
+lifetime must outlive `close()` via the caller's own re-open, or each
+runtime must own its own store.
+
+In concrete terms (GAP #20 ①, documented 2026-08-12): the store holds a
+file descriptor and a writer lock per open session; `close()`/`closeAll()`
+releases both and marks the session closed, after which THAT store
+instance refuses to reopen it (a re-open requires a fresh store on the
+same directory). A runtime always calls `close()` on exit — so an
+injected store shared between two runtimes, open while the first closes,
+is left closed. Embedders have two supported shapes: give each runtime
+its own store, or have the caller re-open the store between runtimes.
+(GAP #20's structural option — an opt-in `close({keepStore})` — is a
+future additive minor, not this round.)
