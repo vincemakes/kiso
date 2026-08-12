@@ -238,6 +238,12 @@ per the band method (the patch is a lock-adapter probe — zero model
 traffic). Raw runs: `bench/runs/kiso-T3-v4-*` and `kiso-T5-v4-*`
 (local, gitignored).
 
+The 1.0.2 correction (Finding R-I-p-3, the probe's state-letters
+match) carries this section as its bench evidence: the delta vs the
+1.0.1 payload is the SAME probe's matching (zero request-surface
+delta), so the flatness transfers — no fresh A/B was run for a
+string-match change, proposed for the reviewer.
+
 ## T6 — the 24-turn long curve (the divergence curve, per 6-turn bucket)
 
 | tool | run | bucket | fresh | cached | total | cost-wtd | out | reqs | wall |
