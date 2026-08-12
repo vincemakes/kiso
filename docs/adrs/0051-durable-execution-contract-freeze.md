@@ -329,3 +329,27 @@ parallel candidate); (c) ruling phrasing discipline; (d) R-E prefix
 table, healing fixtures, R-F crash matrix, R-G lock suite: add-only, no
 edits — deviations declare + cite + rule; (e) the gates table above is
 the contract's executable face.
+
+## Amendment 1 (2026-08-12): the post-1.0 version convention
+
+The 1.0.0 flip (the R-I round) is a whole-line event: all 13 public
+packages (core, runtime, evals, the two providers, tools-node, tui,
+tui-cells, the four extensions, cli) move to 1.0.0 together. Core and
+runtime's 1.0.0 is the semver public promise of this ADR's frozen ABI;
+the 0.1.x per-package counters are archived and never resume.
+
+The version convention after the flip:
+
+- **The release round is the cli minor** — 1.1.0, 1.2.0, …; the cli's
+  minor is the release number (the cli has been the release counter
+  since the 0.1.x era; the convention continues).
+- **Packages bump per the §5 evolution rules**: an additive-optional
+  admission (rule 1) ships as a MINOR; a fix ships as a PATCH; a
+  frozen-surface break is FORBIDDEN — it can only land through the
+  contract-amendment ritual (§5.2(iv)), i.e. a MAJOR.
+- **An envelope change is a MAJOR** (§5.4's original sentence — the one
+  change that may justify introducing a schemaVersion).
+- **Tags are ANNOTATED from this round** (v1.0.0 and onward; 0.1.49's
+  lightweight tag was the P4 note — not a precedent to follow).
+- **No deprecate of 0.1.49** — nothing is wrong with it; the line's
+  deprecation history stays as-is.

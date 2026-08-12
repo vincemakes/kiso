@@ -69,7 +69,10 @@ not another recalibration)
   three classes, the generations + read-time normalization, the
   adapter-write contract, the five evolution rules, the ledger
   boundary, the canonized invariants → gates, the ask semantics closed
-  (G3, durable ratification).
+  (G3, durable ratification). (Amendment 1: the post-1.0 version
+  convention — the release round is the cli minor; additive-optional =
+  minor, fix = patch, frozen-surface break = the amendment ritual =
+  major, envelope = MAJOR; annotated tags from v1.0.0.)
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
