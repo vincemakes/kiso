@@ -151,14 +151,22 @@ console.log("tier A OK — runtime closure: loop + durable session + approval pa
 	);
 	execSync("node smoke.mjs", { cwd: proj, stdio: "inherit" });
 
-	// The README example, verbatim, runs in the same clean project.
-	execSync(`cp ${JSON.stringify(join(ROOT, "examples", "hello-agent.mjs"))} hello-agent.mjs`, { cwd: proj });
-	const hello = execSync("node hello-agent.mjs", { cwd: proj, encoding: "utf8" });
-	if (!hello.includes("completed")) throw new Error(`README example failed:\n${hello}`);
-	console.log("[smoke:runtime] README example ran in the clean project");
-
-	// A strict TypeScript consumer compiles against the installed .d.ts.
+	// The README hero example, as a strict TypeScript consumer: install →
+	// compile → run, the FULL external-consumer chain (S1, deliverable 5).
 	execSync("npm install --no-audit --no-fund --no-package-lock typescript@^5.7.2 @types/node@^26.1.2", { cwd: proj, stdio: "inherit" });
+	execSync(`cp ${JSON.stringify(join(ROOT, "examples", "hello-agent.ts"))} hello-agent.ts`, { cwd: proj });
+	writeFileSync(
+		join(proj, "tsconfig.json"),
+		JSON.stringify(
+			{ compilerOptions: { module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: false, outDir: "out", skipLibCheck: true, target: "ES2022", types: ["node"] }, include: ["hello-agent.ts"] },
+			null,
+			2,
+		),
+	);
+	execSync("./node_modules/.bin/tsc -p tsconfig.json", { cwd: proj, stdio: "inherit" });
+	const hello = execSync("node out/hello-agent.js", { cwd: proj, encoding: "utf8" });
+	if (!hello.includes("completed")) throw new Error(`README hero example failed:\n${hello}`);
+	console.log("[smoke:runtime] README hero compiled and ran in the clean project");
 	writeFileSync(
 		join(proj, "check-types.ts"),
 		`import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";

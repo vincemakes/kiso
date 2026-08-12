@@ -206,7 +206,7 @@ const agent = createAgent({
     defineTool({
       name: "add",
       description: "Add two numbers",
-      parameters: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } } },
+      parameters: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } }, required: ["a", "b"] },
       execute: async ({ a, b }) => ({ content: String(a + b), isError: false }),
     }),
   ],
@@ -223,9 +223,10 @@ for await (const ev of session.run("What is 2+3?")) {
 }
 ```
 
-This is `examples/hello-agent.mjs` (faux adapter there — zero keys) and the
-consumer smoke test runs it verbatim in a clean project against the packed
-tarballs.
+This is `examples/hello-agent.ts` (faux adapter there — zero keys) and the
+consumer smoke test compiles and runs it in a clean project against the
+packed tarballs. `scripts/hero-check.mjs` keeps the two in sync: any drift
+in either direction turns the check red.
 
 - Packages build to plain ESM JavaScript + `.d.ts` — installed artifacts run
   on any Node project, no tsx, no source access (`scripts/smoke.mjs` proves it
