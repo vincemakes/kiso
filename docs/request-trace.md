@@ -154,7 +154,8 @@ boundary; a **rewrite** keeps the original boundary position.
 
 The file is plain JSONL: parse each line, filter by `kind`. Every line
 of a fresh ledger validates against `validateTraceLine` (the closed set
-is strict by design — a misspelled field can never silently enter). The
-bench report tool renders per-request tables from this surface; the
-trace-report command itself ships with the slice that follows the R2
-countersign.
+is strict by design — a misspelled field can never silently enter).
+`bench/trace-report.mjs` renders per-request tables from this surface
+(E1 slice 5 — a file-only reader, zero exports, per R2 Case B); its
+python gate (`bench/tests/test_trace_report.py`) pins the row shape and
+the break derivation on synthetic ledgers.
