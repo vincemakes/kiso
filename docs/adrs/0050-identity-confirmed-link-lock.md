@@ -155,3 +155,45 @@ flagged in the report with evidence): the banner now stays fully visible
 the driver's pre/post split now lands at the merged commit's end. The TUI
 itself is unchanged — this is the compositor's commit cadence becoming
 honest about its own speed.
+
+## Amendment 1 (2026-08-12): the state-aware liveness probe
+
+**The finding (R-I-1, measured).** A killed CLI can linger in the process
+table instead of vanishing: the group SIGKILL does reach the CLI (its
+pgid equals the npx wrapper's), but the exit can block on a pty syscall
+while the dead session's terminal stays open — STAT `?E` ("process is
+attempting to exit") for 60-300+ s, clearing only when the terminal
+closes. A second, separately-confirmed shape is the un-reaped zombie
+(STAT Z). POSIX reports BOTH alive to `kill(pid, 0)` (they exist until
+reaped), so the takeover judged the dead holder "live foreign" and
+refused the immediate resume with "locked by another writer" — the
+flagship flow's first-touch wart.
+
+**The mechanism.** `isAlive` probes the process STATE after
+`kill(pid, 0)` reports existence: the exiting state (E) and the zombie
+state (Z) are judged DEAD — both can never execute another session
+write, so taking over is safe. The probe is `ps -o state= -p <pid>`
+(macOS/Linux); the state is the first character of the state string
+(multi-char strings like "Ss+" are combined flag sets).
+
+**The boundaries (the adjudicator's phrasing, signed by the review,
+2026-08-12).**
+- E/Z states → dead → the takeover proceeds.
+- Probe failure (the process vanished between the kill and the probe,
+  or ps itself fails) → the pre-amendment behavior: judged alive, the
+  takeover refuses — FAIL-SAFE, a false refusal is preferred over a
+  double-write.
+- Live-process semantics zero change: a live foreign writer is still
+  refused (a fresh `kill(pid, 0)` EPERM still reads alive).
+- The PID-reuse rules zero change: a live non-kiso process naming the
+  lock is still refused.
+- The identity format, the rename-away → verify → link sequence, the
+  fsync-before-link order, and the released-marker convention are
+  untouched — the amendment is confined to the liveness predicate.
+
+**The gates.** The controlled zombie repro (a session lock naming a
+guaranteed STAT Z holder) and the npx-shape gate (a wrapper-produced
+un-reaped dead holder; a fresh boot must take over at the first session
+write) — both red pre-patch, green post-patch. The kill9 gate's blind
+spot is closed: its direct child is reaped by waitpid and can never
+linger or zombie.

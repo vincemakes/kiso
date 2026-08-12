@@ -62,6 +62,7 @@
  * ready-marker files (ADR-0050 §test affordances).
  */
 
+import { execFileSync } from "node:child_process";
 import { closeSync, fsyncSync, linkSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -103,12 +104,43 @@ export interface LockAdapter {
 	acquire(lockPath: string, sessionId: string, cancelled: () => void): Promise<LockHandle>;
 }
 
+/**
+ * ADR-0050 Amendment 1 (Finding R-I-1): the liveness probe is
+ * state-aware. A dead holder can linger in the process table after a
+ * kill — the exiting state (STAT E on macOS: the kill landing while a
+ * pty syscall is blocked, the dead session's terminal left open) or an
+ * un-reaped zombie (STAT Z). POSIX reports BOTH alive to kill(pid, 0)
+ * (they exist until reaped), so the takeover refused a holder that can
+ * never execute another session write. Both states are probed and
+ * judged DEAD. A probe failure (unreadable state) maintains the
+ * pre-amendment behavior — alive, the fail-safe refusal (prefer a false
+ * refusal over a double-write). Live-process semantics and the PID-reuse
+ * rules do not move: a live foreign writer is still refused.
+ */
 function isAlive(pid: number): boolean {
 	try {
 		process.kill(pid, 0);
-		return true;
 	} catch (err) {
 		return (err as NodeJS.ErrnoException).code === "EPERM";
+	}
+	const state = processState(pid);
+	return state !== "E" && state !== "Z";
+}
+
+/**
+ * The process state via `ps -o state= -p <pid>` (macOS/Linux). The
+ * state is the FIRST character (a multi-char string like "Ss+" is a
+ * combined flag set). An empty or unreadable state — the process
+ * vanished between the kill and the probe, or ps itself failed —
+ * returns null; isAlive's fail-safe branch then judges the holder alive
+ * (the pre-amendment behavior).
+ */
+function processState(pid: number): string | null {
+	try {
+		const state = execFileSync("ps", ["-o", "state=", "-p", String(pid)], { encoding: "utf8" }).trim();
+		return state.length > 0 ? (state[0] ?? null) : null;
+	} catch {
+		return null;
 	}
 }
 
