@@ -61,4 +61,27 @@ describe("D: byte-identical projection discipline", () => {
 		const reloaded = projectMessages(JSON.parse(JSON.stringify(log.all)) as Parameters<typeof projectMessages>[0]);
 		expect(JSON.stringify(reloaded)).toBe(JSON.stringify(inMemory));
 	});
+
+	it("④ a compacted-era log (v1 {callId, content}) projects to the same bytes every time — R1a/R8a", () => {
+		// R-H 0.1.49 (ADR-0051): the compacted upgrade mapping must not
+		// change the provider projection bytes — the replay replaces the
+		// cleared result with the compacted marker, byte for byte, on
+		// every recomputation. (The v1 READING rules are pinned by
+		// legacy-session-upgrade.test.ts; this case pins the BYTES.)
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		log.append({ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
+		log.append({ type: "tool_result", callId: "c1", content: "original long result", isError: false });
+		log.append({ type: "compacted", cleared: [{ callId: "c1", content: "[content cleared — reference by revision] old marker" }] });
+		log.append({ type: "stop", reason: "end_turn" });
+		log.append({ type: "terminal", outcome: { kind: "completed" } });
+		const a = projectMessages(log.all);
+		// The replay replacement is the stable byte shape.
+		const tool = a.find((m) => m.role === "tool");
+		expect(tool?.content).toBe("[content cleared — reference by revision] old marker");
+		// Reload round-trip + recomputation: byte-identical every time.
+		const reloaded = projectMessages(JSON.parse(JSON.stringify(log.all)) as Parameters<typeof projectMessages>[0]);
+		expect(JSON.stringify(reloaded)).toBe(JSON.stringify(a));
+		expect(JSON.stringify(projectMessages(log.all))).toBe(JSON.stringify(a));
+	});
 });
