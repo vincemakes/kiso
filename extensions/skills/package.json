@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-skills-ext",
-  "version": "0.1.49",
+  "version": "1.0.0",
   "description": "kiso official skills extension \u2014 two-tier progressive skills, kernel untouched",
   "type": "module",
   "license": "MIT",
@@ -23,7 +23,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@vincemakes/kiso-core": "0.1.35",
+    "@vincemakes/kiso-core": "1.0.0",
     "@types/node": "^26.1.2",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
