@@ -36,6 +36,10 @@ in the [comparison section](#comparison).
 **The core is a 2,000-line kernel, enforced by CI** — it cannot exceed
 2,000 lines; past that you grow a package. See [the rule](#the-rule).
 
+**A frozen durable-execution contract, enforced by gates** — the session
+format and its recovery semantics are frozen; every invariant has an
+executable gate in `npm run check`. See [the contract](#the-durable-execution-contract).
+
 Distilled from reading Claude Code, [pi](https://github.com/badlogic/pi-mono),
 and [oh-my-pi](https://github.com/can1357/oh-my-pi) at the source level — and
 from running three agent products in production on its validated predecessor
@@ -75,6 +79,31 @@ The consequence: the session, the verdicts, and the side effects' truth
 are already on disk before the crash — the next `kiso resume` asks only
 what the crash window made unknowable. The kill-9 section below shows the
 scripted proof.
+
+## The durable execution contract
+
+**The session format is a frozen contract, enforced by gates** — not a
+versioned API that can drift. The freeze (ADR-0051, adjudicated by the
+review, 2026-08-12) classifies every recorded event shape and pins the
+invariants below to executable gates that run in `npm run check`. The
+canon names live in ADR-0047 §7 / ADR-0051 §7; the public names below
+are what this README uses.
+
+| public name | what it guarantees |
+| --- | --- |
+| **Prefix-Complete Recovery** | the session can always be resumed from its durable prefix — every prefix a real published bin wrote loads, validates, projects, and derives a recovery plan (the generation gate, ≥4 real generations) |
+| **Ambiguity Never Auto-Repeats** | an execution that started and never reported stays the human's decision — never auto-rerun, never silently re-asked |
+| **Committed Intent Before Effect** | a tool call is decided and persisted before any effect; an approval is a durable fact, never a memory |
+| **Durable Start Before Side Effect** | a handler never runs before its STARTED receipt is persisted — a crash cannot leave an unreported effect |
+| **Stable Intent Identity** | the three identities (callId / invocationSeq / executionId) are never conflated; derived state is never persisted |
+| **Single Durable Truth** | the event stream is the single truth; everything else is derived from it, and every event is kernel-owned |
+| same-facts-same-projection | the same prefix projects to the same bytes, every time (the prompt-cache byte discipline) |
+| exactly-one-terminal | every run converges on exactly one terminal — its last event |
+
+The contract's ask semantics: **a pending ask lives iff its invocation
+is not voided and the derivation can still execute it** — approval
+verdicts are durable, whether decided directly by the human or by a
+policy the human installed (ADR-0051 §8).
 
 ## The rule
 
