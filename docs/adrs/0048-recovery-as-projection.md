@@ -69,6 +69,19 @@ machine.
    re-presented, partially superseding sentence 3's expiry) or argues
    the asymmetry.
 
+   **CLOSED — the 0.1.49 Durable Execution Contract round (ADR-0051 §8,
+   ruling R9, 2026-08-12).** The asymmetry closes as a semantic-axis
+   unification: the contract sentence — "a pending ask lives iff its
+   invocation is not voided and the derivation can still execute it."
+   A `user_input` boundary commits the suffix to continuation (the
+   liveAsk exemption, ADR-0047 Amendment 2); a `stop` boundary closes
+   the turn and the draft's undecided asks die with it. The candidate
+   (any pending ask re-presents) was rejected — it would repeal the
+   voided-request-expiry limb, reopen the R-E straddle adjudication,
+   and re-present asks whose invocations are voided (approving a ghost
+   call the contract forbids to execute). Zero code; the gates are
+   untouched.
+
 4. **The EffectGate and the crash matrix.** The deterministic
    complement to the OS-layer SIGKILL e2e (scripts/demo-kill9.sh): a
    TEST-ONLY gate at the four effect boundaries (persist / model /
