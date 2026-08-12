@@ -244,6 +244,62 @@ match) carries this section as its bench evidence: the delta vs the
 delta), so the flatness transfers — no fresh A/B was run for a
 string-match change, proposed for the reviewer.
 
+## The 2026-08-12 release acceptance — bench v2 A/B (S1 tree vs the 1.0.2 bin)
+
+The S1 non-regression gate: A = the published 1.0.2 bin (the global
+install at /tmp/kiso-bench-A), B = the S1 tree dist (exports/aliases/
+docs/examples — the static request-surface delta vs 1.0.2 is 0,
+measured from the cli dist and built tools-node dist). Interleaved
+order A B B A A B B A A B, n=5 per side, T3 + T5, both cost metrics,
+same fixtures and protocol as the tables above. Every run verify=pass.
+(Run-name note: this batch owns `kiso-T*-v5-*`.)
+
+| task | side | run | fresh | total | cost-wtd | wall |
+|------|------|----:|------:|------:|---------:|-----:|
+| T3 cross-file rename | **A** | 1 | 690 | 12,978 | 1,919 | 12s |
+| | | 2 | 901 | 19,845 | 2,795 | 15s |
+| | | 3 | 731 | 13,019 | 1,960 | 11s |
+| | | 4 | 794 | 13,210 | 2,036 | 10s |
+| | | 5 | 963 | 13,635 | 2,230 | 10s |
+| | **median** | | 794 | 13,210 | **2,036** | 11.0s |
+| | **B** | 1 | 810 | 16,426 | 2,372 | 14s |
+| | | 2 | 887 | 13,303 | 2,129 | 13s |
+| | | 3 | 827 | 19,387 | 2,683 | 12s |
+| | | 4 | 778 | 13,450 | 2,045 | 9s |
+| | | 5 | 1,071 | 19,759 | 2,940 | 13s |
+| | **median** | | 827 | 16,426 | **2,372** | 13.0s |
+| T5 8-turn session | **A** | 1 | 6,369 | 139,617 | 19,694 | 66s |
+| | | 2 | 6,848 | 155,328 | 21,696 | 70s |
+| | | 3 | 6,648 | 159,736 | 21,957 | 73s |
+| | | 4 | 6,798 | 143,630 | 20,481 | 65s |
+| | | 5 | 6,008 | 138,744 | 19,282 | 57s |
+| | **median** | | 6,648 | 143,630 | **20,481** | 66.0s |
+| | **B** | 1 | 10,023 | 236,199 | 32,641 | 84s |
+| | | 2 | 7,295 | 163,071 | 22,873 | 68s |
+| | | 3 | 5,351 | 117,095 | 16,525 | 51s |
+| | | 4 | 9,474 | 189,186 | 27,445 | 69s |
+| | | 5 | 6,359 | 137,175 | 19,441 | 61s |
+| | **median** | | 7,295 | 163,071 | **22,873** | 68.0s |
+
+**The verdict.** T5: A 20,481 vs B 22,873 — both medians inside the
+v4 T5 band (18,999–27,202); per-run bands overlap (A 19,282–21,957,
+B 16,525–32,641); A's median sits inside B's band; B's high cells
+(32,641, 27,445) are the retry-outlier shape. In-band movement,
+"proposed, for the reviewer". T3: A 2,036 sits inside the v4 T3 band
+(1,934–2,309), B 2,372 sits OUT of it — 2.7% (63 tokens) above the
+band top. Per the band method, movement out of the band is
+blocker-class — a hard stop before the release, awaiting adjudication.
+Context for that adjudication: (a) the static request-surface delta vs
+1.0.2 is 0, measured from both dists — the payloads are identical;
+(b) B's median still sits inside the 1.0.0 T3 band (1,921–3,204);
+(c) the high cells are the retry-outlier shape on BOTH sides (A run 2
+at 2,795 too) — the same shape v4-08-A (T5 27,202) closed as run
+variance; (d) T5, the longer and more stable metric, is fully in-band
+on both sides. Verdict: **flat — no regression** proposed, with the
+T3 B-median movement out of the band flagged blocker-class pending the
+reviewer's adjudication. Raw runs: `bench/runs/kiso-T3-v5-*` and
+`kiso-T5-v5-*` (local, gitignored).
+
 ## T6 — the 24-turn long curve (the divergence curve, per 6-turn bucket)
 
 | tool | run | bucket | fresh | cached | total | cost-wtd | out | reqs | wall |
