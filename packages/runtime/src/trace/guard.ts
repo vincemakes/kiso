@@ -73,7 +73,10 @@ export class RequestTracer {
 			record = null; // trace absent; the stream is never affected
 		}
 
-		let ttftMs = 0; // 0 = unknown (provider error before the first event)
+		// null until the first event; settled to 0 (unknown) only when no
+		// event ever came — a stream whose first event lands in the same
+		// tick records 0, the resolution limit of the "0 = unknown" marker
+		let ttftMs: number | null = null;
 		let inputTokens: number | null = null;
 		let cacheRead: number | null = null;
 		let cacheWrite: number | null = null;
@@ -84,6 +87,8 @@ export class RequestTracer {
 
 		try {
 			for await (const ev of upstream) {
+				// the null check must be the ONLY guard — a 0-initialized
+				// number never moves (the slice-3 dead-field finding)
 				if (ttftMs === null) ttftMs = performance.now() - t0;
 				if (ev.type === "tool_call_start") toolCalls.push(ev.name);
 				if (ev.type === "usage") {
@@ -165,7 +170,7 @@ export class RequestTracer {
 		p: {
 			outcome: Outcome;
 			t0: number;
-			ttftMs: number;
+			ttftMs: number | null;
 			toolCalls: string[];
 			inputTokens: number | null;
 			cacheRead: number | null;
@@ -176,7 +181,7 @@ export class RequestTracer {
 	): void {
 		record.outcome = p.outcome;
 		record.latencyMs = performance.now() - p.t0;
-		record.ttftMs = p.ttftMs;
+		record.ttftMs = p.ttftMs ?? 0; // null = no event ever — the "0 = unknown" marker
 		record.toolCalls = p.toolCalls;
 		if (p.usageKnown) {
 			record.freshInput =
