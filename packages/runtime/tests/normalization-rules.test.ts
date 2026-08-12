@@ -46,7 +46,7 @@ describe("R-H 0.1.49 — the NORMALIZE class: absence semantics pinned read-time
 		const scope: Event[] = [
 			{ seq: 0, type: "user_input", content: "go" },
 			{ seq: 3, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } },
-			{ seq: 7, type: "permission_requested", callId: "c1", name: "web_search", input: { query: "k" } },
+			{ seq: 7, type: "permission_requested", decisionId: "r1", callId: "c1", name: "web_search", input: { query: "k" } },
 		];
 		const req = scope[2] as Event & { type: "permission_requested" };
 		expect(invocationSeqOf(req, scope)).toBe(3); // the old-log identity
@@ -69,11 +69,9 @@ describe("R-H 0.1.49 — the NORMALIZE class: absence semantics pinned read-time
 			{ seq: 7, type: "stop", reason: "end_turn" },
 			{ seq: 8, type: "terminal", outcome: { kind: "completed" } },
 		];
-		const delegated: Event[] = [
-			...base.slice(0, 3),
-			{ ...base[3]!, decidedBy: "mode:bypass" },
-			...base.slice(4),
-		];
+		const delegated: Event[] = base.map((e, i) =>
+			i === 3 ? ({ ...e, decidedBy: "mode:bypass" } as Event) : e,
+		);
 		for (const e of [base, delegated]) {
 			for (const ev of e) expect(isKisoEvent(ev)).toBe(true); // both shapes legal
 			expect(deriveRecoveryPlan(e, e).kind).toBe("TERMINAL"); // recovery never consults decidedBy
@@ -95,7 +93,7 @@ describe("R-H 0.1.49 — the NORMALIZE class: absence semantics pinned read-time
 		const aTool = a.find((m) => m.role === "tool");
 		const bTool = b.find((m) => m.role === "tool");
 		expect(aTool).toBeDefined();
-		expect((aTool as Record<string, unknown>).tags).toEqual(["keep"]);
+		expect((aTool as { tags?: readonly string[] }).tags).toEqual(["keep"]);
 		expect("tags" in bTool!).toBe(false); // absence is implied — no key, no undefined
 		expect(JSON.stringify(projectMessages(without))).toBe(JSON.stringify(b)); // byte-stable
 	});

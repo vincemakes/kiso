@@ -34,7 +34,6 @@ describe("R-H 0.1.49 — the adapter whitelist drift gate (R5)", () => {
 		// tool_result is a legal kiso event, but NOT an adapter event: the
 		// loop's trust gate must refuse it (loop.ts, the invalid_request
 		// path — ADR-0051 §4).
-		const illegal = { type: "tool_result", callId: "c1", content: "x", isError: false, seq: 0 };
-		expect(isAdapterEvent(illegal)).toBe(false);
+		expect(isAdapterEvent({ type: "tool_result", callId: "c1", content: "x", isError: false, seq: 0 })).toBe(false);
 	});
 });
