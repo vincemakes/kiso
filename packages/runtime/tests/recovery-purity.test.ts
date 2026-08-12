@@ -115,6 +115,7 @@ describe("R-H 0.1.49 — the derivation purity gate (R7: derivation never reads 
 			toolSchemaHash: "b".repeat(64),
 			contextHash: "c".repeat(64),
 			contextManifest: [{ role: "system", seqRange: null, estTokens: 1, freshness: "cache_read" }],
+			segmentHashes: ["e".repeat(64)],
 			stablePrefixFingerprint: "d".repeat(64),
 			freshInput: 0,
 			cacheRead: 0,

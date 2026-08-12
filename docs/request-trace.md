@@ -71,6 +71,7 @@ optional field.
 | `toolSchemaHash` | sha-256 hex | the tool specs |
 | `contextHash` | sha-256 hex | canonical serialization of the full request projection |
 | `contextManifest` | segment[] | thin pointers into the event log — §4 |
+| `segmentHashes` | sha-256 hex[] | per-segment content hashes, indexed 1:1 with `contextManifest` (the R4b break derivation's analysis-side data — the LIST, not the aggregated fingerprint) |
 | `stablePrefixFingerprint` | sha-256 hex | over the cacheable prefix's per-segment hashes — §5 |
 | `freshInput` | number | provider-raw usage, never normalized (0 = unknown) |
 | `cacheRead` | number | provider-raw usage (0 = unknown) |
@@ -114,7 +115,10 @@ boundary; a **rewrite** keeps the original boundary position.
   serialization (pinned end-to-end by the I6 bytes gate).
 - `stablePrefixFingerprint` covers the **cacheable prefix** — every
   segment that is NOT the current turn (freshness `"fresh"` is never
-  cacheable). A current-turn change alone never moves it.
+  cacheable). A current-turn change alone never moves it. The
+  per-segment hash LIST rides the record (`segmentHashes`, 1:1 with
+  `contextManifest` — pinned by the schema validator) — the derivation
+  needs the list, not the aggregate.
 - The **break count** is an analysis-side derivation (never a recorded
   field): compare two adjacent requests' cacheable-prefix hashes — the
   first differing segment is a break at that depth; a grown prefix
@@ -127,7 +131,7 @@ boundary; a **rewrite** keeps the original boundary position.
 
 ```jsonl
 {"schemaVersion":1,"kind":"header","sessionId":"s1","kisoVersion":"1.2.0","createdAt":1753400000000}
-{"schemaVersion":1,"kind":"request","requestId":"9f3a7c11-…","runId":"run-1","requestIndex":0,"retryAttempt":0,"provider":"openai-compat","model":"m","adapterVersion":"1.2.0","systemPromptHash":"aaaa…","toolSchemaHash":"bbbb…","contextHash":"cccc…","contextManifest":[{"role":"system","seqRange":null,"estTokens":210,"freshness":"cache_read"},{"role":"tools","seqRange":null,"estTokens":88,"freshness":"cache_read"},{"role":"current_turn","seqRange":[1,12],"estTokens":140,"freshness":"fresh"}],"stablePrefixFingerprint":"dddd…","freshInput":41,"cacheRead":12410,"cacheWrite":null,"output":320,"latencyMs":2841.5,"ttftMs":402,"toolCalls":["read_file"],"outcome":"ok","ts":17534000002841}
+{"schemaVersion":1,"kind":"request","requestId":"9f3a7c11-…","runId":"run-1","requestIndex":0,"retryAttempt":0,"provider":"openai-compat","model":"m","adapterVersion":"1.2.0","systemPromptHash":"aaaa…","toolSchemaHash":"bbbb…","contextHash":"cccc…","contextManifest":[{"role":"system","seqRange":null,"estTokens":210,"freshness":"cache_read"},{"role":"tools","seqRange":null,"estTokens":88,"freshness":"cache_read"},{"role":"current_turn","seqRange":[1,12],"estTokens":140,"freshness":"fresh"}],"segmentHashes":["aaaa…","bbbb…","cccc…"],"stablePrefixFingerprint":"dddd…","freshInput":41,"cacheRead":12410,"cacheWrite":null,"output":320,"latencyMs":2841.5,"ttftMs":402,"toolCalls":["read_file"],"outcome":"ok","ts":17534000002841}
 {"schemaVersion":1,"kind":"run_end","runId":"run-1","ts":17534000002842,"lastRequestIndex":0}
 ```
 

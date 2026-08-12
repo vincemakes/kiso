@@ -51,6 +51,12 @@ export interface TraceRecord {
 	toolSchemaHash: string; // sha-256 hex of the tool specs (registry.toSpecs())
 	contextHash: string; // sha-256 of the canonical serialization of the full request projection
 	contextManifest: TraceSegment[]; // one segment per turn (see §1.3)
+	/** Per-segment content hashes, indexed 1:1 with contextManifest
+	 *  (segment i's canonical serialization — R4b's analysis-side data
+	 *  source: the cache-break derivation needs the LIST, not the
+	 *  aggregated fingerprint). Sizing note: 64 hex chars × segments
+	 *  per request. */
+	segmentHashes: string[];
 	stablePrefixFingerprint: string; // sha-256 over the per-segment hashes of the cacheable prefix (see §4)
 	/** The usage quartet is PROVIDER-RAW — never a billing surface.
 	 *  Canonical/billing usage lives in E2; these fields are observation
@@ -141,6 +147,7 @@ export const TRACE_RECORD_FIELDS = [
 	"toolSchemaHash",
 	"contextHash",
 	"contextManifest",
+	"segmentHashes",
 	"stablePrefixFingerprint",
 	"freshInput",
 	"cacheRead",
@@ -211,6 +218,14 @@ export function validateTraceRecord(v: unknown): v is TraceRecord {
 	if (!isHex64(v.systemPromptHash) || !isHex64(v.toolSchemaHash) || !isHex64(v.contextHash)) return false;
 	if (!isHex64(v.stablePrefixFingerprint)) return false;
 	if (!Array.isArray(v.contextManifest) || !v.contextManifest.every(validateTraceSegment)) return false;
+	// segmentHashes must mirror the manifest 1:1 — a misaligned list
+	// would silently corrupt the break derivation (R4b)
+	if (
+		!Array.isArray(v.segmentHashes) ||
+		v.segmentHashes.length !== v.contextManifest.length ||
+		!v.segmentHashes.every(isHex64)
+	)
+		return false;
 	if (!isNumber(v.freshInput) || !isNumber(v.cacheRead)) return false;
 	if (v.cacheWrite !== null && !isNumber(v.cacheWrite)) return false;
 	if (!isNumber(v.output) || !isNumber(v.latencyMs)) return false;

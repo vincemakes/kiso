@@ -45,6 +45,7 @@ const canonicalRecord: TraceRecord = {
 		{ role: "turn", seqRange: [1, 12], estTokens: 140, freshness: "cache_read" },
 		{ role: "current_turn", seqRange: [13, 13], estTokens: 41, freshness: "fresh" },
 	],
+	segmentHashes: ["e".repeat(64), "f".repeat(64), "1".repeat(64), "2".repeat(64)],
 	stablePrefixFingerprint: "d".repeat(64),
 	freshInput: 41,
 	cacheRead: 12410,
@@ -151,12 +152,22 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 	});
 
 	it("seqRange is a thin pointer: null, or [a, b] with 0 ≤ a ≤ b integers", () => {
-		expect(validateTraceRecord({ ...canonicalRecord, contextManifest: [{ ...canonicalSegment, seqRange: null }] })).toBe(true);
-		expect(validateTraceRecord({ ...canonicalRecord, contextManifest: [{ ...canonicalSegment, seqRange: [7, 7] }] })).toBe(true);
+		// the manifest is swapped to one segment — segmentHashes must mirror it 1:1
+		const ONE_SEG = { ...canonicalRecord, contextManifest: [canonicalSegment], segmentHashes: ["e".repeat(64)] };
+		expect(validateTraceRecord({ ...ONE_SEG, contextManifest: [{ ...canonicalSegment, seqRange: null }] })).toBe(true);
+		expect(validateTraceRecord({ ...ONE_SEG, contextManifest: [{ ...canonicalSegment, seqRange: [7, 7] }] })).toBe(true);
 		expect(validateTraceRecord({ ...canonicalRecord, contextManifest: [{ ...canonicalSegment, seqRange: [5, 3] }] })).toBe(false);
 		expect(validateTraceRecord({ ...canonicalRecord, contextManifest: [{ ...canonicalSegment, seqRange: [1.5, 3] }] })).toBe(false);
 		expect(validateTraceRecord({ ...canonicalRecord, contextManifest: [{ ...canonicalSegment, seqRange: [-1, 3] }] })).toBe(false);
 		expect(validateTraceRecord({ ...canonicalRecord, contextManifest: [{ ...canonicalSegment, seqRange: [1, 2, 3] }] })).toBe(false);
+	});
+
+	it("segmentHashes mirrors the manifest 1:1 (R4b's analysis data)", () => {
+		expect(validateTraceRecord(canonicalRecord)).toBe(true); // 4 segments, 4 hashes
+		// a misaligned list is rejected — it would corrupt the break derivation
+		expect(validateTraceRecord({ ...canonicalRecord, segmentHashes: canonicalRecord.segmentHashes.slice(0, 3) })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, segmentHashes: [...canonicalRecord.segmentHashes, "a".repeat(64)] })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, segmentHashes: ["not-hex"] })).toBe(false);
 	});
 
 	it("numeric fields are typed", () => {

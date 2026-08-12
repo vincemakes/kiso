@@ -141,8 +141,12 @@ export class RequestTracer {
 			toolSchemaHash: hashToolSpecs(tools),
 			contextHash,
 			contextManifest: manifest,
-			// R4b: the fingerprint covers the CACHEABLE prefix only — the
-			// current turn (freshness fresh) is never part of it (slice 4)
+			// R4b: the per-segment hash LIST rides the record (the break
+			// derivation is analysis-side but needs the list, not the
+			// aggregated fingerprint — slice 5's data source); the
+			// fingerprint covers the CACHEABLE prefix only — the current
+			// turn (freshness fresh) is never part of it (slice 4)
+			segmentHashes: hashes,
 			stablePrefixFingerprint: stablePrefixFingerprint(cacheableHashes(manifest, hashes)),
 			freshInput: 0, // unknown until the usage event — "0 = unknown"
 			cacheRead: 0,

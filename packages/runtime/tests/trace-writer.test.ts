@@ -39,6 +39,7 @@ function requestRecord(runId: string, requestIndex: number): TraceRecord {
 		toolSchemaHash: HEX("b"),
 		contextHash: HEX("c"),
 		contextManifest: [],
+		segmentHashes: [],
 		stablePrefixFingerprint: HEX("d"),
 		freshInput: 10,
 		cacheRead: 0,
