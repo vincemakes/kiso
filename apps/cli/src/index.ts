@@ -413,6 +413,15 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 }
 
 async function main(): Promise<void> {
+	// E group (the graceful-exit gate ③, R-G 0.1.48): a terminal closing
+	// turns the in-flight stdout/stderr writes into EIO, and node's
+	// unhandled 'error' event on the WriteStream kills the process —
+	// mid-exit the release never runs (the 60-byte residue the gate
+	// caught). The bytes are undeliverable anyway (the terminal is
+	// gone): the error must never abort the exit sequence. The listener
+	// swallows it — the standard "the stream may die under me" idiom.
+	process.stdout.on("error", () => {});
+	process.stderr.on("error", () => {});
 	// Modes: --mode <name> wins over KISO_MODE — both applied before the
 	// first makeAgent (the tier extensions read `current` live). The flag
 	// is stripped from the positional args, so it works in any position.

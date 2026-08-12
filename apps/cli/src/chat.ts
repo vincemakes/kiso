@@ -472,6 +472,22 @@ export async function consumeRun(
 export async function chat(session: AgentSession, faux: boolean, input: LineInput, autoCompact?: AutoCompact): Promise<void> {
 	let currentRun: { abort: () => void } | null = null;
 	let cancelled = false;
+	// E group (the graceful-exit gate ③, R-G 0.1.48): the terminal can
+	// close MID-run — the stream 'end' fires while currentRun is set, so
+	// the EOT callback defers. eotSeen remembers it; each run's end
+	// re-evaluates the exit condition (the safe point), so the release
+	// always runs.
+	let eotSeen = false;
+	/** The exit condition, shared by the EOT callback and the deferred
+	 *  re-check: no pending ask, an empty line. currentRun is checked by
+	 *  the callers (the callback when 'end' fires; the run-end re-checks
+	 *  run only after currentRun was nulled). */
+	const exitAtEmptyPrompt = (): void => {
+		if (pendingAsk !== null || input.line() !== "") return;
+		cancelled = true;
+		console.log("\n[exit requested]");
+		input.close();
+	};
 
 	const turn = (text: string): Promise<void> =>
 		new Promise((resolve, reject) => {
@@ -502,6 +518,10 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 					// chat to main's finally/catch, never an orphaned
 					// unhandled rejection from the IIFE.
 					failOnFauxExhaustion(last, faux, input);
+					// E group (the graceful-exit gate ③): the fd may have closed
+					// mid-run — the run's end is the safe point for the deferred
+					// exit, so the release always runs.
+					if (eotSeen) exitAtEmptyPrompt();
 					// round 8: after EVERY turn the prompt is re-armed — the human
 					// never types blind after the first turn.
 					input.prompt();
@@ -545,11 +565,10 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		}
 	});
 	input.onEot(() => {
-		if (!currentRun && pendingAsk === null && input.line() === "") {
-			cancelled = true;
-			console.log("\n[exit requested]");
-			input.close();
-		}
+		// E group (the graceful-exit gate ③): the 'end' may fire MID-run —
+		// the exit defers to the run's end (the re-checks below).
+		eotSeen = true;
+		if (!currentRun) exitAtEmptyPrompt();
 	});
 	input.onEscape(() => {
 		if (currentRun) {
@@ -686,6 +705,9 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		const last = await consumeRun(session, recoveryRun, input, turnNo, faux, statusCb, submitTurn);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, input);
+		// E group (the graceful-exit gate ③): the same deferred re-check
+		// as the turn path — the recovery run's end is also a safe point.
+		if (eotSeen) exitAtEmptyPrompt();
 		maybeAutoCompact(); // the ergonomics batch C8: the recovery run ended too — same check (awaited by the exit re-await)
 	}
 	if (cancelled) {
