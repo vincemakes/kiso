@@ -341,6 +341,66 @@ medians — A 1,908, B 2,201 — likewise in or under the band, from an
 independent hand; not part of this adjudication record.) Raw runs:
 `bench/runs/kiso-T3-v6-*-S1B` (local, gitignored).
 
+## The 2026-08-12 release acceptance — bench v2 A/B (v7 series, vs the published 1.0.3 bin)
+
+The line-closing ruling changed the baseline: A = the PUBLISHED 1.0.3
+bin (the upstream handover baseline, /tmp/kiso-bench-103), B = the S1
+rebased dist. Fresh run names: `kiso-T3-v7-*`, `kiso-T5-v7-*` (v6 is
+the 1.0.3 round's series). Band baseline = the 1.0.3 round's run-v6
+bands: T3 1,872–2,417, T5 19,839–28,846. Interleaved order
+A B B A A B B A A B, n=5 per side per leg, both cost metrics, every
+run verify=pass. The criterion was pre-registered (round report):
+any S1 median moving OUT of the v6 band → stop + finding; in-band or
+FLAT → "proposed, for the reviewer". (Driver note: the first T5 leg
+attempt used run-one.sh, which has no T5 handling — runs finished in
+1–3s with no session; those dirs were deleted and the leg re-run with
+run-t5.sh.)
+
+| task | side | run | fresh | total | cost-wtd | wall |
+|------|------|----:|------:|------:|---------:|-----:|
+| T3 cross-file rename | **A** | 1 | 756 | 14,739 | 2,359 | 11s |
+| | | 2 | 749 | 13,105 | 1,998 | 8s |
+| | | 3 | 821 | 13,376 | 2,079 | 9s |
+| | | 4 | 871 | 14,276 | 2,553 | 12s |
+| | | 5 | 870 | 14,428 | 2,470 | 10s |
+| | **median** | | 821 | 14,276 | **2,359** | 10.0s |
+| | **B** | 1 | 878 | 16,306 | 2,917 | 12s |
+| | | 2 | 742 | 12,979 | 1,928 | 9s |
+| | | 3 | 794 | 13,662 | 2,181 | 11s |
+| | | 4 | 791 | 13,825 | 2,261 | 10s |
+| | | 5 | 697 | 12,821 | 1,925 | 9s |
+| | **median** | | 794 | 13,662 | **2,181** | 10.0s |
+| T5 8-turn session | **A** | 1 | 7,602 | 159,947 | 22,835 | 82s |
+| | | 2 | 7,549 | 158,837 | 22,804 | 67s |
+| | | 3 | 4,389 | 94,043 | 13,178 | 46s |
+| | | 4 | 6,616 | 131,940 | 19,192 | 66s |
+| | | 5 | 6,686 | 142,980 | 20,500 | 61s |
+| | **median** | | 6,686 | 142,980 | **20,500** | 66.0s |
+| | **B** | 1 | 7,692 | 166,856 | 23,790 | 81s |
+| | | 2 | 5,402 | 116,888 | 16,591 | 56s |
+| | | 3 | 6,065 | 130,808 | 18,413 | 60s |
+| | | 4 | 5,668 | 122,343 | 17,603 | 60s |
+| | | 5 | 10,120 | 243,306 | 33,614 | 93s |
+| | **median** | | 6,065 | 130,808 | **18,413** | 60.0s |
+
+**The verdict — one flag, finding S1-1.** T3: A 2,359 / B 2,181 —
+both medians inside the v6 T3 band (1,872–2,417), 8.2% apart, FLAT,
+in-band movement "proposed, for the reviewer". T5: A 20,500 inside
+the v6 T5 band (19,839–28,846); B 18,413 sits OUT of it — 7.2%
+BELOW the floor, the improvement direction (cheaper), and B's wall
+median (60s) likewise below the v6 wall floor (62–92). Per the
+pre-registered criterion this is **a stop + finding S1-1**, presented
+for adjudication with context: (a) out-of-band on the GOOD side — the
+band method's blocker language covers regressions (costlier), and the
+1.0.3 round's own T3 A-side (1.3% below the v4 floor) shipped as
+"proposed" and was accepted at its review; (b) both sides scatter
+into the same cells (A also has a 13,178 low cell; B's 33,614 high
+cell is the retry-outlier shape); (c) this is the first time the S1
+side is CHEAPER than the baseline in the whole v5/v6/v7 series — no
+monotone signal (v5: +16%, v6: +2.3%, v7: −10.2%); (d) the request
+surface delta is 0, so the payloads are identical. Raw runs:
+`bench/runs/kiso-T3-v7-*` and `kiso-T5-v7-*` (local, gitignored).
+
 ## T6 — the 24-turn long curve (the divergence curve, per 6-turn bucket)
 
 | tool | run | bucket | fresh | cached | total | cost-wtd | out | reqs | wall |
