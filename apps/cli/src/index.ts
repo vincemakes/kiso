@@ -520,7 +520,15 @@ async function main(): Promise<void> {
 				break;
 			}
 			case "sessions": {
-				agent = await makeAgent(undefined, undefined, modelFlag);
+				// R-I-p2 audit (the argument-consistency mandate): the
+				// read-only listing NEVER writes through the input, but the
+				// trust gate lives inside makeAgent and ASKS through it — on
+				// a TTY with a first-discovery .kiso, the undefined input
+				// crashed identically to the bare command (finding R-I-p-2,
+				// "reading 'question'" on the dock-less branch). The input
+				// exists so the gate's ask can be answered; the listing
+				// itself never touches it.
+				agent = await makeAgent(undefined, input, modelFlag);
 				for (const meta of agent.sessions()) {
 					console.log(renderSessionLine(meta));
 				}
@@ -545,7 +553,13 @@ async function main(): Promise<void> {
 				// chat — the first argument is the session id.
 				const id = command ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
 				dock.enter();
-				agent = await makeAgent(id);
+				// R-I-p2 (finding R-I-p-2): the bare command passes the SAME
+				// input source and model flag as chat/resume — the pre-patch
+				// call dropped both, and the first-run trust gate read
+				// through the undefined input: "Cannot read properties of
+				// undefined" at the ask (panelAsk with the dock, question on
+				// the dock-less fallback).
+				agent = await makeAgent(id, input, modelFlag);
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
 				extensionsBanner(recentSessions(id, agent));
