@@ -64,6 +64,12 @@ not another recalibration)
 - 0050 — The identity-confirmed link lock — a pure Node single-writer
   lock — Accepted, adjudicated by the review, 2026-08-11 (supersedes
   0036)
+- 0051 — The Durable Execution Contract: the 1.0 freeze — Accepted,
+  adjudicated by the review, 2026-08-12 (R1–R11). The forever-ABI in
+  three classes, the generations + read-time normalization, the
+  adapter-write contract, the five evolution rules, the ledger
+  boundary, the canonized invariants → gates, the ask semantics closed
+  (G3, durable ratification).
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
