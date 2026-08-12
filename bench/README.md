@@ -300,6 +300,47 @@ T3 B-median movement out of the band flagged blocker-class pending the
 reviewer's adjudication. Raw runs: `bench/runs/kiso-T3-v5-*` and
 `kiso-T5-v5-*` (local, gitignored).
 
+## The 2026-08-12 T3 adjudication batch — bench v2 (v6 series, rebased tree)
+
+The reviewer's pre-registered criterion (registered before the runs):
+the new B median returning to the v4 T3 band (1,934–2,309) lifts the
+v5 out-of-band flag — the 1.1.0 baseline then becomes the merged
+sample; the merged B sample (v5 B + this batch) median in-band also
+lifts; "inside the 1.0.0 band" is background only, not a basis. A side
+carries the v5 A numbers (the published 1.0.2 bin) — zero bench
+surface note: the S1 branch rebased onto v1.0.3 (R-I-p-2 = call-site
+plumbing only, the SYSTEM_PROMPT and tool composition untouched,
+verified by the diff) and the request-surface enumerator measures 989
+est. tokens identically on the rebased tree and the v1.0.3 tree. B
+side = the rebased dist, fresh run names `kiso-T3-v6-*-S1B`. Every run
+verify=pass. (Run-name note: a separate T3-only batch — `v6-00-smoke`
++ plain `v6-01-A`…`v6-10-B`, 19:01–19:03, both shims — shares the v6
+prefix; no dirs overlap or overwrite, the S1B suffix keeps the two
+sets distinct.)
+
+| task | side | run | fresh | total | cost-wtd | wall |
+|------|------|----:|------:|------:|---------:|-----:|
+| T3 cross-file rename | **A** (carried, v5) | median | 794 | 13,210 | **2,036** | 11.0s |
+| | **B** | 1 | 769 | 13,185 | 2,011 | 10s |
+| | | 2 | 742 | 13,030 | 1,971 | 10s |
+| | | 3 | 911 | 16,143 | 2,434 | 13s |
+| | | 4 | 852 | 16,724 | 2,439 | 12s |
+| | | 5 | 854 | 13,142 | 2,083 | 11s |
+| | **median** | | 854 | 13,185 | **2,083** | 11.0s |
+| | merged B (v5+v6, n=10) | | | | **2,251** | |
+
+**The adjudication.** The new B median (2,083) sits INSIDE the v4 T3
+band (1,934–2,309) — the primary pre-registered criterion is met, and
+the fallback too (the merged B sample median 2,251, in-band). The v5
+outlier cells (B 2,683 / 2,940, A 2,795) did not repeat in this batch
+(max 2,439); the carried A median (2,036) and the new B median (2,083)
+are 2.3% apart. The 1.1.0 baseline is the merged B sample: n=10,
+median 2,251, band 1,971–2,940. Verdict: **flag lifted** — the v5
+movement was run variance, no regression. (The 19:01 batch's own
+medians — A 1,908, B 2,201 — likewise in or under the band, from an
+independent hand; not part of this adjudication record.) Raw runs:
+`bench/runs/kiso-T3-v6-*-S1B` (local, gitignored).
+
 ## T6 — the 24-turn long curve (the divergence curve, per 6-turn bucket)
 
 | tool | run | bucket | fresh | cached | total | cost-wtd | out | reqs | wall |
