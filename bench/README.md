@@ -138,6 +138,56 @@ for Claude models); kiso is our own tool (reproduce it yourself); the
 tasks are small — the large system prompts' real capability pays off on
 complex work these tasks do not exercise.
 
+## The 2026-08-12 release acceptance — bench v2 A/B (0.1.49 vs the 1.0.0 payload)
+
+The R-I non-regression gate: A = the 1.0.0 tree dist (version strings
+only vs 0.1.49 — the payload is identical by construction, the static
+request-surface delta is 0), B = the published 0.1.49 bin. Interleaved
+order A B B A A B B A A B, n=5 per side, T3 + T5, both cost metrics,
+same fixtures and protocol as the tables above. Every run verify=pass.
+(First T5 batch voided: the single-shot driver has no T5 case and fed a
+garbage prompt; the T5 legs re-ran via run-t5.sh, the real 8-turn
+driver, same interleaved order — the voided dirs were overwritten in
+place.)
+
+| task | side | run | fresh | total | cost-wtd | wall |
+|------|------|----:|------:|------:|---------:|-----:|
+| T3 cross-file rename | **A** | 1 | 692 | 12,289 | 1,921 | 11s |
+| | | 2 | 829 | 12,032 | 2,032 | 9s |
+| | | 3 | 877 | 12,416 | 2,119 | 9s |
+| | | 4 | 692 | 12,672 | 1,959 | 9s |
+| | | 5 | 1,002 | 22,016 | 3,204 | 17s |
+| | **median** | | 829 | 12,416 | **2,032** | 9.0s |
+| | **B** | 1 | 797 | 12,672 | 2,064 | 10s |
+| | | 2 | 841 | 12,032 | 2,044 | 9s |
+| | | 3 | 779 | 12,160 | 1,995 | 9s |
+| | | 4 | 833 | 12,032 | 2,036 | 10s |
+| | | 5 | 1,134 | 18,560 | 2,990 | 15s |
+| | **median** | | 833 | 12,160 | **2,044** | 10.0s |
+| T5 8-turn session | **A** | 1 | 5,812 | 114,432 | 17,255 | 60s |
+| | | 2 | 9,326 | 178,688 | 27,195 | 77s |
+| | | 3 | 8,668 | 195,840 | 28,252 | 93s |
+| | | 4 | 7,197 | 172,288 | 24,426 | 76s |
+| | | 5 | 6,418 | 125,824 | 19,000 | 66s |
+| | **median** | | 7,197 | 172,288 | **24,426** | 76.0s |
+| | **B** | 1 | 7,146 | 169,088 | 24,055 | 82s |
+| | | 2 | 7,090 | 155,264 | 22,616 | 75s |
+| | | 3 | 6,776 | 131,584 | 19,934 | 60s |
+| | | 4 | 6,913 | 150,144 | 21,927 | 74s |
+| | | 5 | 9,303 | 189,696 | 28,273 | 84s |
+| | **median** | | 7,090 | 155,264 | **22,616** | 75.0s |
+
+**The flat verdict.** T3: A 2,032 vs B 2,044 — 0.6% apart, both medians
+inside the same band; the two highest cells (A5 3,204 / B5 2,990, the
+17s/15s runs) are the retry outliers and land on BOTH sides — no payload
+signal. T5: A 24,426 vs B 22,616 — the per-run bands overlap (A
+17,255–28,252, B 19,934–28,273) and the interleaved sequence alternates
+(A > B at runs 2/3/4, B > A at runs 1/5) with no monotone side bias; A's
+median sits inside B's band. Verdict: **flat — no regression**; the T5
+medians' 8% gap is in-band movement, "proposed, for the reviewer" per
+the band method. Raw runs: `bench/runs/kiso-T*-v4-*-{A,B}` (local,
+gitignored).
+
 ## T6 — the 24-turn long curve (the divergence curve, per 6-turn bucket)
 
 | tool | run | bucket | fresh | cached | total | cost-wtd | out | reqs | wall |
