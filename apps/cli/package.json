@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-code",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "kiso CLI \u2014 the coding-agent reference product: kiso chat / kiso resume / kiso sessions.",
   "type": "module",
   "license": "MIT",
