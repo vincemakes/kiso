@@ -8,7 +8,7 @@
  * is skipped, not fatal.
  */
 
-import { mkdtempSync, appendFileSync } from "node:fs";
+import { mkdtempSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -51,6 +51,18 @@ describe("SessionStore", () => {
 		const metas = store.list();
 		expect(metas.map((m) => m.id).sort()).toEqual(["demo", "other"]);
 		expect(metas.find((m) => m.id === "demo")?.title).toBe("Inspect this repository");
+	});
+
+	it("R3a: the traces/ subdir is never enumerated as a session (the ledger is not a session)", async () => {
+		// The E1 ledger lives in <root>/traces/<sid>.jsonl. A regression
+		// that read the subdir as a session would surface as a phantom
+		// session here (and poison bench extraction's sessions glob).
+		const store = tempStore();
+		await store.append("demo", "r1", { seq: 0, type: "user_input", content: "hi" });
+		mkdirSync(join(store.root, "traces"), { recursive: true });
+		writeFileSync(join(store.root, "traces", "phantom.jsonl"), '{"schemaVersion":1,"kind":"header"}\n');
+		const metas = store.list();
+		expect(metas.map((m) => m.id).sort()).toEqual(["demo"]);
 	});
 });
 
