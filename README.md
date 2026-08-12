@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.1.x
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v1.0.0
 ```
 
 (The block letter above is `assets/logo.svg` in pixel form — an 8×8 K
@@ -27,9 +27,9 @@ sessions, durable human approvals, crash-consistent tool execution with
 durable receipts and explicit uncertainty resolution — without a 50k-line
 runtime.
 
-**The numbers, on the same model and the same tasks** (the 2026-08-10
+**The numbers, on the same model and the same tasks** (the 2026-08-12
 three-way comparison, cost-weighted input): T3, the cross-file rename,
-needs **11× fewer input tokens than pi and 66× fewer than Claude Code**
+needs **2.1× fewer input tokens than pi and 19× fewer than Claude Code**
 with identical task outcomes. The full table and its honest footnotes are
 in the [comparison section](#comparison).
 
@@ -772,50 +772,38 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | context economy ● | microcompact + /compact (model summary) + prompt-cache discipline | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
 
-The bench, one fixture, one model (deepseek-v4-flash), mean of two runs —
-the 2026-08-10 three-way comparison (kiso v0.1.41, that day's global
-install · pi 0.84.1 · Claude Code via DeepSeek's Anthropic-compatible
-endpoint):
+The bench, one fixture, one model (deepseek-v4-flash), interleaved
+same-day runs, order shuffled per round — the 2026-08-12 three-way
+comparison (kiso 1.0.0 · pi 0.84.1 · Claude Code 2.1.227 via DeepSeek's
+Anthropic-compatible endpoint). Medians: n=3 per tool on T3, n=2 per
+tool on T5:
 
 | task | tool | fresh in | cached in | total in | cost-wtd | out | reqs | wall |
 |------|------|--------:|--------:|--------:|--------:|----:|----:|----:|
-| T3 cross-file rename | **kiso** | 426 | 3,072 | **3,498** | **733** | 247 | **2.0** | **4s** |
-| | pi | 5,258 | 28,160 | 33,418 | 8,074 | 1,476 | 6.5 | 14s |
-| | claude | 31,828 | 167,552 | 199,380 | 48,583 | 1,857 | 15.0 | 26s |
-| T5 8-turn session | **kiso** | 9,331 | 155,776 | 165,107 | **24,909** | 4,631 | 34 | 68s |
-| | pi | 5,096 | 247,424 | 252,520 | 29,838 | 6,522 | 32.5 | 78s |
-| | claude | 41,241 | 1,579,008 | 1,620,249 | 199,142 | 20,183 | 43 | 253s |
+| T3 cross-file rename | **kiso** | 868 | 12,160 | **13,155** | **2,211** | 779 | **5.0** | **10s** |
+| | pi | 2,106 | 23,424 | 25,530 | 4,711 | 1,043 | 6.0 | 13s |
+| | claude | 27,175 | 158,080 | 184,999 | 42,957 | 1,445 | 12.0 | 21s |
+| T5 8-turn session | **kiso** | 6,494 | 134,464 | **140,958** | **19,941** | 4,990 | 31.5 | 74s |
+| | pi | 4,582 | 190,784 | 195,366 | 23,660 | 6,492 | 30.5 | 79s |
+| | claude | 29,579 | 908,608 | 938,187 | 120,440 | 10,188 | 30.0 | 114s |
 
 **Headline.** On **T3**, the hardest small task, **cost-weighted input**
 (fresh + 0.1×cached — DeepSeek's cache-hit price ratio, see
-`bench/README.md`): kiso 733 vs pi 8,074 = **11×** and vs Claude Code
-48,583 = **66×**, all six runs verify-pass with identical task outcomes.
-On **T5**, the 8-turn session: kiso 24,909 vs pi 29,838 = **1.2×** and vs
-Claude Code 199,142 = **8.0×** — measured at one session length.
+`bench/README.md`): kiso 2,211 vs pi 4,711 = **2.1×** and vs Claude Code
+42,957 = **19×**, all nine T3 runs verify-pass with identical task
+outcomes. On **T5**, the 8-turn session: kiso 19,941 vs pi 23,660 =
+**1.2×** and vs Claude Code 120,440 = **6.0×** — measured at one session
+length.
 
-**The kiso-side basis** (the 0.1.47 release refresh, published bin, kiso
-only, three runs each): T3 cost-weighted mean 2,429 / 10.7s wall (the
-steady 5-request runs at 1,987/1,991 — flat vs the 0.1.46 steady runs,
-±2% — plus a cold first-run outlier at 3,310, the post-publish cache
-mode the 0.1.46 first run showed as its 24s wall); T5 cost-weighted
-mean 25,128 / 84.0s wall (18.8K–33.3K band vs the 0.1.46 18.4K–21.1K).
-Both cells moved OUT of the 0.1.46 band on the high side (means +14.7%
-T3, +27.4% T5) — **blocker-class per the release discipline's band
-method (protocol v2), flagged for adjudication at this round's
-review**. The reading proposed for the reviewer: the round changed no
-token-affecting path (the lock is file ops with a ~1ms append-time
-verify; diet A removed mcp__status from the unconfigured bench
-sessions — a DETERMINISTIC static cost, measured by
-scripts/request-surface.mjs: −120 chars / −30 est. tokens per request,
-the schema no longer rides every payload; the remaining run-to-run
-movement is run variance — cache mode, cadence — not an attributable
-saving); the T5 spread is a 3-run sample with one heavy-cadence run
-(33.3K, 40
-requests vs 30/34 — the /compact summaries are comparable in size
-across the runs); the 0.1.47 T5 band CONTAINS the 0.1.45 (19.0K–29.8K)
-and 0.1.46 (18.4K–21.1K) bands; wall time improved on T3 (10–11s vs
-13–24s). Verify pass ×3 each. The 0.1.47 numbers are the non-regression
-basis for the next release.
+**The 2026-08-10 comparison (11× and 66×) came from an earlier protocol
+generation** — its kiso cells were measured on 0.1.41, before the
+0.1.45+ built-in extension layer and the trust surface; today's numbers
+are the current-protocol truth (the same protocol files that produced
+the in-repo v2 A/B runs, whose kiso T3 baseline is ~2,000–2,200 — the
+0.1.48 re-baseline). The 2026-08-12 runs live in `bench/runs/`
+(gitignored — the numbers in this table and in `bench/README.md` are
+the committed record); the old table lives in this README's git history,
+and the protocol change is recorded in `bench/README.md`.
 
 Honest footnotes (from `bench/README.md`): these tasks are SMALL — Claude
 Code's large system prompt buys real product capability (task tracking,
@@ -823,13 +811,11 @@ richer exploration) that pays off on complex work these tasks do not
 exercise; Claude Code ran off-label (DeepSeek endpoint) and its prompts
 are tuned for Claude models; the runs are SERIAL — each later run rides
 the provider's server-side warm cache, so the fresh columns are the
-unstable ones; kiso's T5 three-way cell is n=1 — its second run hit a
-provider-side 400 (an assistant `tool_calls` turn the endpoint refused)
-and was excluded (the 0.1.44 refresh's n=3 is the stable kiso T5 basis);
-n=2 otherwise, one fixture per task, one model, token accounting
-normalized per provider convention (kiso's input total INCLUDES cache-hit
-input; pi and Claude Code report fresh-only); kiso is our own tool —
-reproduce it yourself, everything needed is in `bench/`.
+unstable ones; n=3 per tool on T3, n=2 per tool on T5, one fixture per
+task, one model, token accounting normalized per provider convention
+(kiso's input total INCLUDES cache-hit input; pi and Claude Code report
+fresh-only); kiso is our own tool — reproduce it yourself, everything
+needed is in `bench/`.
 
 **No growth claims.** These are point measurements at one or two session
 lengths; this README deliberately claims nothing about how the ratios
@@ -839,14 +825,20 @@ long-session divergence study) — it is not extrapolated here.
 
 ## Status
 
-Reliable Session Alpha, including the four hardening rounds (areas 1-7,
-A-F, one through nine, and the fourth adversarial round), is complete (see
+**1.0.0 — the Durable Execution Contract is frozen** (ADR-0051): the
+session format and its recovery semantics are contract, every invariant
+enforced by the gates below, and the version line is the semver public
+promise of that ABI (ADR-0051 Amendment 1). The road here: the
+reliable-session alpha and its four hardening rounds (areas 1-7, A-F,
+one through nine, and the fourth adversarial round — see
 `docs/plans/2026-08-03-reliable-session-alpha.md`), the **kiso code**
-round (the coding agent: kill -9 gate, microcompact, byte discipline) is
-done (see `docs/plans/2026-08-04-kiso-code.md`), and the **extensions**
-round (E1: the approval-policy extension system; E2: the compaction
-parameter and systemPrompt append surfaces — see
-`docs/plans/2026-08-04-extensions-e1.md`) is done:
+round (the coding agent: kill -9 gate, microcompact, byte discipline —
+`docs/plans/2026-08-04-kiso-code.md`), the **extensions** round (E1:
+the approval-policy extension system; E2: the compaction parameter and
+systemPrompt append surfaces — `docs/plans/2026-08-04-extensions-e1.md`),
+and the durability line R-E→R-H (the straddle ruling, recovery as
+projection, the dead-holder takeover, the freeze itself). Everything
+below is proven by a gate in `npm run check`:
 
 - **core** (1,971/2,000 lines) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
@@ -959,7 +951,7 @@ tree stays CJK-free — `README.zh.md` is the only exemption)
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
-→ demo start-and-exit gate. 869 tests green. 34 ADRs (index: `docs/adrs/README.md`).
+→ demo start-and-exit gate. **918 tests green (128 files)**. 37 ADRs (index: `docs/adrs/README.md`).
 6 incident fixtures running on the real runtime.
 
 ## Why another one

@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.1.x
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v1.0.0
 ```
 
 (上面的块状字母是 `assets/logo.svg` 的像素形态——一个 8×8 的 K,底行是这个框架得名的基岩基础。)
@@ -14,7 +14,7 @@
 
 **kiso 是一个持久化 TypeScript Agent 框架,用于构建可以暂停、崩溃、恢复并保持正确的编码 Agent。** 一个小内核拥有真正重复的部分;包在它之上无限制生长。面向想要真正 Agent 框架的 TypeScript 开发者——事件溯源会话、持久化人工审批、带持久化回执与显式不确定性消解的崩溃一致工具执行——而不要一个 5 万行的运行时。
 
-**数字,同一个模型、同一批任务**(2026-08-10 三方对照,成本加权输入):T3 跨文件重命名所需输入 token **比 pi 少 11×、比 Claude Code 少 66×**,任务产出完全相同。完整表格与诚实脚注在[对比一节](#对比)。
+**数字,同一个模型、同一批任务**(2026-08-12 三方对照,成本加权输入):T3 跨文件重命名所需输入 token **比 pi 少 2.1×、比 Claude Code 少 19×**,任务产出完全相同。完整表格与诚实脚注在[对比一节](#对比)。
 
 **内核 2,000 行、由 CI 强制**——不能超过 2,000 行;超过就生长一个包。见[规则](#规则)。
 
@@ -465,35 +465,35 @@ bench(`bench/`,同一模型、同一任务、三个 Agent)度量小任务上的�
 | 上下文经济 ● | microcompact + /compact(模型摘要)+ 提示词缓存纪律 | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | 工程 `.kiso` 信任 | 内容摘要门禁,问一次,粘性拒绝 | `apps/cli/tests/project-trust.test.ts` |
 
-bench,一个夹具、一个模型(deepseek-v4-flash),两次运行均值——2026-08-10 三方对照(kiso v0.1.41,当日全局安装 · pi 0.84.1 · Claude Code 经 DeepSeek 的 Anthropic 兼容端点):
+bench,一个夹具、一个模型(deepseek-v4-flash),同日交错运行、每轮洗牌——2026-08-12 三方对照(kiso 1.0.0 · pi 0.84.1 · Claude Code 2.1.227 经 DeepSeek 的 Anthropic 兼容端点)。中位数:T3 每工具 n=3,T5 每工具 n=2:
 
 | task | tool | fresh in | cached in | total in | cost-wtd | out | reqs | wall |
 |------|------|--------:|--------:|--------:|--------:|----:|----:|----:|
-| T3 cross-file rename | **kiso** | 426 | 3,072 | **3,498** | **733** | 247 | **2.0** | **4s** |
-| | pi | 5,258 | 28,160 | 33,418 | 8,074 | 1,476 | 6.5 | 14s |
-| | claude | 31,828 | 167,552 | 199,380 | 48,583 | 1,857 | 15.0 | 26s |
-| T5 8-turn session | **kiso** | 9,331 | 155,776 | 165,107 | **24,909** | 4,631 | 34 | 68s |
-| | pi | 5,096 | 247,424 | 252,520 | 29,838 | 6,522 | 32.5 | 78s |
-| | claude | 41,241 | 1,579,008 | 1,620,249 | 199,142 | 20,183 | 43 | 253s |
+| T3 cross-file rename | **kiso** | 868 | 12,160 | **13,155** | **2,211** | 779 | **5.0** | **10s** |
+| | pi | 2,106 | 23,424 | 25,530 | 4,711 | 1,043 | 6.0 | 13s |
+| | claude | 27,175 | 158,080 | 184,999 | 42,957 | 1,445 | 12.0 | 21s |
+| T5 8-turn session | **kiso** | 6,494 | 134,464 | **140,958** | **19,941** | 4,990 | 31.5 | 74s |
+| | pi | 4,582 | 190,784 | 195,366 | 23,660 | 6,492 | 30.5 | 79s |
+| | claude | 29,579 | 908,608 | 938,187 | 120,440 | 10,188 | 30.0 | 114s |
 
-**头条。** 在 **T3**,最难的小任务,**成本加权输入**(fresh + 0.1×cached——DeepSeek 缓存命中价格比,见 `bench/README.md`):kiso 733 vs pi 8,074 = **11×**,vs Claude Code 48,583 = **66×**,六次运行全部 verify-pass、任务产出相同。**T5** 八回合会话:kiso 24,909 vs pi 29,838 = **1.2×**,vs Claude Code 199,142 = **8.0×**——在一个会话长度上测得。
+**头条。** 在 **T3**,最难的小任务,**成本加权输入**(fresh + 0.1×cached——DeepSeek 缓存命中价格比,见 `bench/README.md`):kiso 2,211 vs pi 4,711 = **2.1×**,vs Claude Code 42,957 = **19×**,九次 T3 运行全部 verify-pass、任务产出相同。**T5** 八回合会话:kiso 19,941 vs pi 23,660 = **1.2×**,vs Claude Code 120,440 = **6.0×**——在一个会话长度上测得。
 
-**kiso 侧基线**(0.1.47 发布刷新,发布二进制,仅 kiso,每次三跑):T3 成本加权均值 2,429 / 10.7s 墙钟(稳定 5 请求运行 1,987/1,991——与 0.1.46 稳定运行持平,±2%——加一个冷首跑离群值 3,310,即 0.1.46 首跑那个 24s 墙钟所付的发布后冷缓存模式);T5 成本加权均值 25,128 / 84.0s 墙钟(18.8K–33.3K 带,对照 0.1.46 的 18.4K–21.1K)。两个单元格都越出 0.1.46 带上缘(均值 T3 +14.7%、T5 +27.4%)——按发布纪律的带方法(protocol v2)属**阻断级,留待本轮评审裁决**。为评审提出的判读:本轮未改任何影响 token 的路径(锁是文件操作,追加时校验 ~1ms;diet A 从无配置的 bench 会话里移除了 mcp__status——确定性静态成本,由 scripts/request-surface.mjs 实测:每请求 −120 chars / −30 est. tokens(schema 不再随每个载荷发送);其余 run 间波动是运行方差(缓存模式、节奏),不归属任何可归因的节省);T5 散布是三跑样本,含一次高节奏运行(33.3K,40 请求 vs 30/34——各跑的 /compact 摘要大小相当);0.1.47 的 T5 带**包含** 0.1.45(19.0K–29.8K)与 0.1.46(18.4K–21.1K)两带;T3 墙钟改善(10–11s vs 13–24s)。每次三跑 verify 全过。0.1.47 数字即下一发布非回归基线。
+**2026-08-10 对照(11× 与 66×)出自更早的协议世代**——其 kiso 单元格在 0.1.41 上测得,早于 0.1.45+ 内置扩展层与信任面;今天的数字是现行协议的真实值(同一套协议文件也产出了仓库内 v2 A/B 运行,其 kiso T3 基线约 2,000–2,200——0.1.48 重新基线)。2026-08-12 运行在 `bench/runs/`(gitignored——本表与本 README 的数字是提交记录);旧表留在本 README 的 git 历史里,协议变更记录在 `bench/README.md`。
 
-诚实脚注(来自 `bench/README.md`):这些任务都很小——Claude Code 的大系统提示买到真实产品能力(任务跟踪、更丰富的探索),在复杂工作上才回报,而本任务不锻炼它;Claude Code 跑在非官方形态(DeepSeek 端点),其提示为 Claude 模型调优;运行是**串行**的——每个后续运行乘 provider 服务端热缓存,所以 fresh 列是不稳定的;kiso 的 T5 三方对照单元格是 n=1——第二次运行撞上 provider 侧 400(端点拒绝的助手 `tool_calls` 回合)被排除(0.1.44 刷新的 n=3 是稳定的 kiso T5 基线);其余 n=2,每任务一个夹具,一个模型,token 记账按各 provider 惯例归一(kiso 的输入总量**包含**缓存命中输入;pi 与 Claude Code 只报 fresh);kiso 是我们自己的工具——自己复现,一切所需都在 `bench/`。
+诚实脚注(来自 `bench/README.md`):这些任务都很小——Claude Code 的大系统提示买到真实产品能力(任务跟踪、更丰富的探索),在复杂工作上才回报,而本任务不锻炼它;Claude Code 跑在非官方形态(DeepSeek 端点),其提示为 Claude 模型调优;运行是**串行**的——每个后续运行乘 provider 服务端热缓存,所以 fresh 列是不稳定的;T3 每工具 n=3、T5 每工具 n=2,每任务一个夹具,一个模型,token 记账按各 provider 惯例归一(kiso 的输入总量**包含**缓存命中输入;pi 与 Claude Code 只报 fresh);kiso 是我们自己的工具——自己复现,一切所需都在 `bench/`。
 
 **不做增长断言。** 这些是一个或两个会话长度上的点测量;本 README 刻意不宣称比率随会话长度如何缩放。kiso 自身长会话数据所显示的东西,诚实记录在 `bench/README.md`(包括专门的长期会话发散研究)——不在这里外推。
 
 ## 状态
 
-Reliable Session Alpha 含四个加固轮(areas 1-7、A-F、one through nine、第四对抗轮)已完成(见 `docs/plans/2026-08-03-reliable-session-alpha.md`),**kiso code** 轮(编码 Agent:kill -9 门禁、microcompact、字节纪律)已完成(见 `docs/plans/2026-08-04-kiso-code.md`),**extensions** 轮(E1:审批策略扩展系统;E2:压缩参数与 systemPrompt append 面——见 `docs/plans/2026-08-04-extensions-e1.md`)已完成:
+**1.0.0——持久执行契约已冻结**(ADR-0051):会话格式与其恢复语义是契约,每条不变量由下面的门禁强制,版本行是这一 ABI 的 semver 公开承诺(ADR-0051 Amendment 1)。来路:reliable-session alpha 含四个加固轮(areas 1-7、A-F、one through nine、第四对抗轮——见 `docs/plans/2026-08-03-reliable-session-alpha.md`),**kiso code** 轮(编码 Agent:kill -9 门禁、microcompact、字节纪律——`docs/plans/2026-08-04-kiso-code.md`),**extensions** 轮(E1:审批策略扩展系统;E2:压缩参数与 systemPrompt append 面——`docs/plans/2026-08-04-extensions-e1.md`),以及持久化线 R-E→R-H(straddle 裁决、恢复即投影、死者接管、冻结本身)。下面每一条都由 `npm run check` 里的门禁证明:
 
 - **core**(1,971/2,000 行)——协议、循环(单一诚实终点;缺失/重复 stop 与无调用的 tool_use 是结构化错误;只在任何内容流出前重试;一个 abort 信号到达退避、审批等待、每个待决工具与 SDK)、钩子、ModeProfile、权限、microcompact(`microcompacted` 边界是持久化事实——投影确定性推导压缩视图;白名单 read/list/search/shell,`do-not-compact` 受尊重,近期回合原样)、扩展策略链(E1:deny > ask > allow 组合在人类流之前裁决——allow/deny 以 `decidedBy` 持久记录,抛异常的策略计为 ask,持久化裁决挺得过 kill -9,策略永不重跑)、交付真相、无损事件日志投影(消息是日志的纯函数,ADR-0002——以及提示词缓存字节纪律:同一事件前缀投影同一消息前缀,逐字节,三个回归测试钉死)、以框架 `executionId` 为键的执行账本(ADR-0025):失败的非幂等执行是 UNCERTAIN,直到人类裁决——已确认的成功永不重跑,新的逻辑调用总是运行。
 - **runtime**——`createAgent` / 持久多回合会话 / 崩溃安全 JSONL 存储(内核 flock 跨进程写锁下的 torn-tail 修复——升级需要 QUARANTINE:启动新版本前停掉每个旧格式进程;pidfile 守卫是尽力而为,不是无缝滚动升级(第五轮 P1-4)、严格加载、连续 seq 校验)/ `session.resume()` 跨进程续上被打断的运行:应用持久化审批(原始调用执行一次,拒绝写入其结果),补齐缺失回执,原始运行完成——无发明回合 / `loadExtensions(dir)`:每个 *.mjs 默认导出(或工厂),坏文件或重名响亮启动失败;扩展工具并入注册表(内置冲突 = 启动错误),钩子在 harness 自身之后组合(existing-first),审批进入策略链。
 - **cli**(1,870/1,920 行)——编码 Agent:裸 `kiso` 进聊天;启动扩展扫描——先内置层(四个官方扩展经模块导入进程内加载:mcp、skills、subagent、task;用户副本响亮 shadow,工程副本被拒),再 `~/.kiso/extensions/*.mjs`(横幅 `[4 extensions: built-in: mcp, skills, subagent, task]`,用户名单裸追加,工程名标 `project:`);系统提示(编码 Agent 纪律:先读后改、小心 shell)由常量组成,注入 AGENTS.md/CLAUDE.md 并截断至 8KB;每次调用一行工具摘要(`✓ edit src/foo.ts (+12 -3)` / `✗ shell npm test (exit 1)`)、状态行(`[turn 3 · in 12.4k out 1.8k · cache 9.2k · ctx ~14%]`——只用 usage 事件,未知字段整体省略,faux 模式显示 `[turn N · faux]`)、`/last` 直接从事件流打印最近一次工具调用的完整输入/输出。首跑脚手架(0.1.45):信任裁决是全新 home 的**首次**任何访问——只有授予之后配置面才物化(`config.json` + 哨兵),静默,带哨兵的 home 永不重搭脚手架、永不覆盖你的配置。v2a/v5:颜色身份是亮白 BOLD(SGR 1——you> 提示、横幅标语、✓ 标记、命令名、用户块 ▍ rail、输入 brick),助手文本中反引号片段浅蓝行内代码色(256 色 110),错误红、元数据暗、审批 diff 绿——其余全素;`NO_COLOR` 或管道全部禁用(管道零 ANSI);键入输入由 readline 自己回显,绝不渲染两次;请求与首个 delta 之间 spinner 字形显示活性。v2b:思考块折叠为每块一条暗线(前 100 字符 + ` (… /think shows full)`、`/think` 打印最后完整块),`[result]` 回显截断至 160 字符 + ` (/last for full)`——内容策略管道里相同;彩色 TTY 上 UI 坞到底部(ADR-0039):四行钉住——上暗分隔线、`▌` 输入行、下分隔线、LIVE 状态栏(idle `▸ <mode> · /mode to switch · …` 右对齐暗 `/ commands · ↑ history` 提示——窗口窄时先切;running `▖ working Ns · esc to interrupt · …`);正文以真实 LF 滚进原生 scrollback(v2d-B,ADR-0040——无滚动区);审批/不确定/信任问题占据状态位,在输入行作答;SIGWINCH 重应用区域,底部重绘包裹在 CSI 2026 同步输出里,每个退出路径在 finally 里重置终端(`\x1b[r`)——`kill -9` 可能卡住底行,终端 `reset` 命令可救。v2c:TTY 路径自绘输入行(ADR-0039 Amendment 2)——零依赖 raw 模式编辑器(显示宽光标数学——CJK 宽字符落在右列,硬验收——bracketed paste,水平滚动带暗 … 标记)配 kiso brick 母题:蓝半块 ▌you> 行与暗点线 ╌ 分隔;发送的行恰好一次渲染进正文,另一回合运行中提交的回合带 LIVE `+N queued` 状态排队,Esc 中止。已知限制:emoji ZWJ 簇宽度不完美。管道保持 readline 逐字节。v2d(ADR-0040):正文变成单元格渲染器——一个写者拥有滚动区(事件处理器只改单元格,交错按构造不可能);完成的单元格冻结一次,未完成的在区底部活动尾部渲染并原地重绘;工具的生命是一行(`→ name summary` → ⏸ → 运行 spinner + Ns → `✓ name (summary, 1.2s)`),`[result]` 不再流进流(`/last` 持有它);管道字节保持逐字节相同。`resume` 是恢复流(不确定执行裁决 rerun/abandon——不确定性只属于崩溃窗口,ADR-0038;有回执的失败是干净失败,其结果带诚实的部分副作用注,重试重过审批链);编码工具绑在工作区根(绝对路径、`..`、symlink 逃逸被拒);审批提示显示完整 shell 命令与完整路径。**kill -9 门禁**(`apps/cli/tests/kill9.test.ts`)在执行中途 SIGKILL 真实聊天并在新进程恢复——见上方一节。
 - **workspace**——可发布 monorepo(core、evals、runtime、tools-node、provider-anthropic、provider-openai、tui、tui-cells、四个官方扩展包、cli——13 个 npm 面),ESM + d.ts,精确 pin 的内部版本(各包独立计数器,每次发布时 pin);CI 是干净签出 `npm ci` + 完整门禁。
 
-`npm run check` = 构建 → 类型检查(packages + 根脚本 + 测试)→ 测试 → 大小门禁(core 2,000 + cli 1,920 + tui 2,400 + tui-cells 1,280)→ pack 门禁(每个 tarball 里有 dist + README + LICENSE)→ 空白门禁(无尾随空白,每文件以换行结束)→ CJK 门禁(被跟踪树保持 CJK-free——`README.zh.md` 是唯一豁免)→ `git diff --check`(工作树与索引)→ 消费者冒烟级(runtime、NESTED 安装、providers、CLI、带真实 Anthropic/OpenAI env 的嵌套 CLI)→ 演示起止门禁。869 个测试全绿。34 份 ADR(索引:`docs/adrs/README.md`)。6 个事故夹具跑在真实运行时上。
+`npm run check` = 构建 → 类型检查(packages + 根脚本 + 测试)→ 测试 → 大小门禁(core 2,000 + cli 1,920 + tui 2,400 + tui-cells 1,280)→ pack 门禁(每个 tarball 里有 dist + README + LICENSE)→ 空白门禁(无尾随空白,每文件以换行结束)→ CJK 门禁(被跟踪树保持 CJK-free——`README.zh.md` 是唯一豁免)→ `git diff --check`(工作树与索引)→ 消费者冒烟级(runtime、NESTED 安装、providers、CLI、带真实 Anthropic/OpenAI env 的嵌套 CLI)→ 演示起止门禁。**918 个测试全绿(128 个文件)**。37 份 ADR(索引:`docs/adrs/README.md`)。6 个事故夹具跑在真实运行时上。
 
 ## 为什么还要做一个
 
