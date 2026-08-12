@@ -29,11 +29,14 @@
  * stderr — stdout stays the diff-able surface.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = resolve(process.argv[2] ?? fileURLToPath(new URL("..", import.meta.url)));
+const args = process.argv.slice(2);
+let rootArg = null;
+if (args[0] !== "--check" && args[0] !== "--update" && args[0] !== undefined) rootArg = args[0];
+const root = resolve(rootArg ?? fileURLToPath(new URL("..", import.meta.url)));
 
 const modules = new Map(); // resolved path -> Set of exported names
 const warned = new Set();
@@ -79,12 +82,12 @@ function resolveModule(path) {
 			continue;
 		}
 
-		m = t.match(/^export \{[^}]*\}(?: from "([^"]+)")?/);
+		m = t.match(/^export (?:type )?\{([^}]*)\}(?: from "([^"]+)")?/);
 		if (m !== null) {
-			const specifiers = t.slice(8, t.indexOf("}", 7)).split(",").map(exportedName).filter(Boolean);
+			const specifiers = m[1].split(",").map(exportedName).filter(Boolean);
 			for (const n of specifiers) names.add(n);
-			if (m[1] !== undefined) {
-				const target = resolveSpec(path, m[1]);
+			if (m[2] !== undefined) {
+				const target = resolveSpec(path, m[2]);
 				if (target !== null) resolveModule(target); // chain exists even when only listed names surface
 			}
 			continue;
@@ -99,6 +102,64 @@ function resolveModule(path) {
 		if (t === "export default") names.add("default");
 	}
 	return names;
+}
+
+/**
+ * S1 (2026-08-12): the surface GATE — modes:
+ *
+ *   node scripts/api-surface.mjs                     — enumerate all packages (the report/delta tool)
+ *   node scripts/api-surface.mjs --check <pkg> <snap>— gate: the package's root exports must EXACTLY
+ *                                                      equal the snapshot (additions AND removals are
+ *                                                      RED; only the review-approved ritual may change it)
+ *   node scripts/api-surface.mjs --update <pkg> <snap>— the ritual: write the current enumeration
+ *                                                      as the snapshot
+ */
+const mode = args[0];
+if (mode === "--check" || mode === "--update") {
+	const pkg = args[1];
+	const snapFile = resolve(args[2] ?? "");
+	if (pkg === undefined || snapFile === "") {
+		console.error(`api-surface: ${mode} needs <pkg> <snapshot-file>`);
+		process.exit(2);
+	}
+	const index = join(root, "packages", pkg, "dist", "index.d.ts");
+	if (!existsSync(index)) {
+		console.error(`api-surface: no dist for package ${pkg} (build first)`);
+		process.exit(2);
+	}
+	const names = [...resolveModule(index)].sort();
+	if (mode === "--update") {
+		writeFileSync(snapFile, JSON.stringify(names, null, 2) + "\n");
+		console.log(`api-surface: ${pkg} snapshot updated (${names.length} names) → ${snapFile}`);
+		process.exit(0);
+	}
+	if (!existsSync(snapFile)) {
+		console.error(`api-surface: snapshot missing: ${snapFile}`);
+		process.exit(2);
+	}
+	let pinned;
+	try {
+		pinned = JSON.parse(readFileSync(snapFile, "utf8"));
+	} catch {
+		console.error(`api-surface: snapshot is not valid JSON: ${snapFile}`);
+		process.exit(2);
+	}
+	if (!Array.isArray(pinned)) {
+		console.error(`api-surface: snapshot must be a JSON array of names: ${snapFile}`);
+		process.exit(2);
+	}
+	pinned = [...pinned].sort();
+	const added = names.filter((n) => !pinned.includes(n));
+	const removed = pinned.filter((n) => !names.includes(n));
+	if (added.length > 0 || removed.length > 0) {
+		console.error(`api-surface: SURFACE DRIFT — ${pkg} root does not match the pinned snapshot (${snapFile})`);
+		for (const n of added) console.error(`  + ${n}   (in dist, NOT in the snapshot — unritualized addition)`);
+		for (const n of removed) console.error(`  - ${n}   (in the snapshot, NOT in dist — unritualized removal)`);
+		console.error(`snapshot ${pinned.length} names, dist ${names.length} names — mismatch, RED`);
+		process.exit(1);
+	}
+	console.log(`api-surface: ${pkg} root surface matches the pinned snapshot (${names.length} names) — GREEN`);
+	process.exit(0);
 }
 
 let total = 0;
