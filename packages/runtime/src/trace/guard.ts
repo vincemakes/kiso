@@ -25,6 +25,7 @@
 import { randomUUID } from "node:crypto";
 import type { Adapter, AdapterEvent, Event, StreamOptions } from "@vincemakes/kiso-core";
 import { buildContextManifest, segmentHashes } from "./manifest.js";
+import { cacheableHashes } from "./analyze.js";
 import { hashContext, hashSystemPrompt, hashToolSpecs, stablePrefixFingerprint } from "./hash.js";
 import { TRACE_SCHEMA_VERSION, type Outcome, type TraceRecord } from "./record.js";
 import { TraceWriter } from "./writer.js";
@@ -124,6 +125,8 @@ export class RequestTracer {
 		const contextHash = hashContext(systemPrompt, tools, messages);
 		const retryAttempt = this.#contextHashCounts.get(contextHash) ?? 0;
 		this.#contextHashCounts.set(contextHash, retryAttempt + 1);
+		const manifest = buildContextManifest({ log: this.#log, systemPrompt, tools, messages });
+		const hashes = segmentHashes(systemPrompt, tools, messages);
 		return {
 			schemaVersion: TRACE_SCHEMA_VERSION,
 			kind: "request",
@@ -137,8 +140,10 @@ export class RequestTracer {
 			systemPromptHash: hashSystemPrompt(systemPrompt),
 			toolSchemaHash: hashToolSpecs(tools),
 			contextHash,
-			contextManifest: buildContextManifest({ log: this.#log, systemPrompt, tools, messages }),
-			stablePrefixFingerprint: stablePrefixFingerprint(segmentHashes(systemPrompt, tools, messages)),
+			contextManifest: manifest,
+			// R4b: the fingerprint covers the CACHEABLE prefix only — the
+			// current turn (freshness fresh) is never part of it (slice 4)
+			stablePrefixFingerprint: stablePrefixFingerprint(cacheableHashes(manifest, hashes)),
 			freshInput: 0, // unknown until the usage event — "0 = unknown"
 			cacheRead: 0,
 			cacheWrite: null,
