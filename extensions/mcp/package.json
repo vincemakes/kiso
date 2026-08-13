@@ -1,7 +1,7 @@
 {
   "name": "@vincemakes/kiso-mcp-ext",
-  "version": "1.0.0",
-  "description": "kiso official MCP bridge extension \u2014 MCP servers become mcp__ tools, kernel untouched",
+  "version": "0.2.0",
+  "description": "kiso official MCP bridge extension — MCP servers become mcp__ tools, kernel untouched",
   "type": "module",
   "license": "MIT",
   "main": "./dist/kiso-mcp.mjs",
@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@vincemakes/kiso-core": "1.0.0",
+    "@vincemakes/kiso-core": "0.2.0",
     "@types/node": "^26.1.2",
     "esbuild": "^0.24.0",
     "typescript": "^5.7.2",
