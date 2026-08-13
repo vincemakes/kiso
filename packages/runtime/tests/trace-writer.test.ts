@@ -58,6 +58,9 @@ function requestRecord(runId: string, requestIndex: number): TraceRecord {
 			pricingTableId: "builtin",
 			pricingTableVersion: 1,
 		},
+		// E3 — the rent ledger: a bare "faux" session pays only the
+		// envelope (the real skeleton for model "faux", measured)
+		rent: [{ surface: "envelope", chars: 41, estTokens: 11 }],
 		latencyMs: 1,
 		ttftMs: 1,
 		toolCalls: [],

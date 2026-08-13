@@ -23,6 +23,7 @@ import {
 	validateTraceLine,
 	validateTraceRecord,
 } from "../src/trace/record.js";
+import { RENT_LINE_FIELDS } from "../src/trace/rent.js";
 import type { TraceRecord } from "../src/trace/record.js";
 
 /** A fully populated canonical record — every optional field present
@@ -64,6 +65,17 @@ const canonicalRecord: TraceRecord = {
 		pricingTableId: "builtin",
 		pricingTableVersion: 1,
 	},
+	// E3 — the rent ledger: one line per surface — the composed base
+	// prompt, extension appends, each tool's serialized spec, the request
+	// envelope — chars + the chars/4 estimate (R6). R9: an absent
+	// surface is an absent line.
+	rent: [
+		{ surface: "system:base", chars: 1597, estTokens: 400 },
+		{ surface: "system:ext:task", chars: 394, estTokens: 99 },
+		{ surface: "tool:read_file", chars: 712, estTokens: 178 },
+		{ surface: "tool:shell", chars: 383, estTokens: 96 },
+		{ surface: "envelope", chars: 50, estTokens: 13 },
+	],
 	latencyMs: 2841.5,
 	ttftMs: 402,
 	toolCalls: ["read_file", "write_file"],
@@ -131,7 +143,7 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 	});
 
 	it("schemaVersion is pinned to the current version", () => {
-		expect(validateTraceRecord({ ...canonicalRecord, schemaVersion: 3 })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, schemaVersion: 4 })).toBe(false);
 		const noVersion = looseCopy(canonicalRecord);
 		delete noVersion.schemaVersion;
 		expect(validateTraceRecord(noVersion)).toBe(false);
@@ -143,10 +155,13 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 		// a type field → the sample cannot carry it → red.
 		expect(Object.keys(canonicalRecord).sort()).toEqual([...TRACE_RECORD_FIELDS].sort());
 		expect(Object.keys(canonicalSegment).sort()).toEqual([...TRACE_SEGMENT_FIELDS].sort());
+		// E3 — the rent line's closed set is pinned the same way
+		expect(Object.keys(canonicalRecord.rent[0]!).sort()).toEqual([...RENT_LINE_FIELDS].sort());
 		// dedupe guard: the consts must not repeat a key (a duplicate entry
 		// would mask a removed field)
 		expect(new Set(TRACE_RECORD_FIELDS).size).toBe(TRACE_RECORD_FIELDS.length);
 		expect(new Set(TRACE_SEGMENT_FIELDS).size).toBe(TRACE_SEGMENT_FIELDS.length);
+		expect(new Set(RENT_LINE_FIELDS).size).toBe(RENT_LINE_FIELDS.length);
 	});
 
 	it("R1a: schemaVersion pins the hash and fingerprint algorithms", () => {
@@ -156,7 +171,7 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 		});
 		expect(hashSpecFor(TRACE_SCHEMA_VERSION)).toEqual({ algorithm: "sha-256", output: "full-hex" });
 		// a version with no pinned algorithm cannot be used
-		expect(() => hashSpecFor(3)).toThrow(/no hash spec pinned/i);
+		expect(() => hashSpecFor(4)).toThrow(/no hash spec pinned/i);
 		// and the record's hashes are sha-256 full-hex by construction
 		const HEX_64 = /^[0-9a-f]{64}$/;
 		for (const key of ["systemPromptHash", "toolSchemaHash", "contextHash", "stablePrefixFingerprint"] as const) {
@@ -228,10 +243,12 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 
 	it("R1d-1 generation-compat: a v1 sidecar record reads as defaults, never a crash", () => {
 		// the incumbent 1.2.0 shape — the current record minus the canonical
-		// block, schemaVersion 1 (the literal is the POINT: this is the old
-		// generation, byte-for-byte what a 1.2.0 writer emitted)
+		// AND the rent blocks, schemaVersion 1 (the literal is the POINT:
+		// this is the old generation, byte-for-byte what a 1.2.0 writer
+		// emitted)
 		const v1 = looseCopy(canonicalRecord);
 		delete v1.canonical;
+		delete v1.rent;
 		v1.schemaVersion = 1;
 		expect(validateTraceRecord(v1)).toBe(true); // accepted — readers derive defaults
 		expect(validateTraceLine(v1)).toBe(true);
@@ -241,6 +258,21 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 		expect(
 			validateTraceLine({ schemaVersion: 1, kind: "header", sessionId: "s", kisoVersion: "1.2.0", createdAt: 1_753_400_000_000 }),
 		).toBe(true);
+	});
+
+	it("R2-1: generation-compat — a v2 sidecar (the 1.3.0 shape) reads as defaults, never a crash", () => {
+		// the E2 incumbent — the current record minus the rent block,
+		// schemaVersion 2 (the literal is the POINT: this is the old
+		// generation, byte-for-byte what a 0.2.0 writer emitted)
+		const v2 = looseCopy(canonicalRecord);
+		delete v2.rent;
+		v2.schemaVersion = 2;
+		expect(validateTraceRecord(v2)).toBe(true); // accepted — readers derive defaults
+		expect(validateTraceLine(v2)).toBe(true);
+		// the v2 closed set still bites: the rent block is a v3 feature,
+		// and an extra key is rejected
+		expect(validateTraceRecord({ ...v2, rent: canonicalRecord.rent })).toBe(false);
+		expect(validateTraceRecord({ ...v2, bogus: 1 })).toBe(false);
 	});
 
 	it("E2: the canonical block is validated (shape + quartet equality + cost consistency)", () => {
@@ -264,8 +296,29 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, costUsd: exact + 1e-7 } })).toBe(true); // within epsilon
 	});
 
-	it("the closed-field-set gate spans both generations (R1d-1)", () => {
-		expect(TRACE_RECORD_FIELDS).toEqual([...TRACE_RECORD_FIELDS_V1, "canonical"]);
+	it("the closed-field-set gate spans all three generations (R1d-1, R2-1)", () => {
+		expect(TRACE_RECORD_FIELDS).toEqual([...TRACE_RECORD_FIELDS_V1, "canonical", "rent"]);
 		expect(new Set(TRACE_RECORD_FIELDS_V1).size).toBe(TRACE_RECORD_FIELDS_V1.length);
+	});
+
+	it("E3: the rent block validates (shape + the chars/4 cross-check, R6)", () => {
+		expect(validateTraceRecord(canonicalRecord)).toBe(true); // rent present on v3
+		// a v3 record without the block is rejected
+		const noRent = looseCopy(canonicalRecord);
+		delete noRent.rent;
+		expect(validateTraceRecord(noRent)).toBe(false);
+		// the line shape: closed fields, non-negative integer chars, the
+		// estTokens cross-check (R6), non-empty surface (R9: lines exist
+		// only for surfaces that exist)
+		const r = canonicalRecord.rent;
+		expect(validateTraceRecord({ ...canonicalRecord, rent: [{ ...r[0]!, extras: 1 }] })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, rent: [{ ...r[0]!, chars: -1 }] })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, rent: [{ ...r[0]!, chars: 12.5 }] })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, rent: [{ ...r[0]!, estTokens: r[0]!.estTokens + 1 }] })).toBe(false); // ≠ ceil(chars/4)
+		expect(validateTraceRecord({ ...canonicalRecord, rent: [{ ...r[0]!, surface: "" }] })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, rent: "nope" })).toBe(false);
+		// the schema pins the LINE, not the multiset — a duplicate surface
+		// is the writer's business, never a schema crash
+		expect(validateTraceRecord({ ...canonicalRecord, rent: [r[0]!, r[0]!] })).toBe(true);
 	});
 });
