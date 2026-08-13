@@ -43,3 +43,10 @@ export type { ExecutionRecord, ExecutionStatus } from "./ledger.js";
 // trust
 export { kisoHome, projectArtifacts, recordTrust, trustFor } from "./trust.js";
 export type { ProjectArtifact, ProjectArtifacts, TrustDecision, TrustRecord } from "./trust.js";
+
+// usage — the canonical accounting schema (E2/1.3.0, R4b-1 ruling:
+// additive minor, one function; the signature is frozen the moment this
+// line lands — changing it is a MAJOR ritual). Raw stays provider
+// observation; canonicalizeUsage derives at the accounting boundary
+// (R4 Case B — the frozen usage union does not move).
+export { canonicalizeUsage } from "./usage/canonical.js";
