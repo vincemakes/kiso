@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v1.0.0
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.2.0
 ```
 
 (上面的块状字母是 `assets/logo.svg` 的像素形态——一个 8×8 的 K,底行是这个框架得名的基岩基础。)
@@ -18,7 +18,7 @@
 
 **内核 2,000 行、由 CI 强制**——不能超过 2,000 行;超过就生长一个包。见[规则](#规则)。
 
-**持久执行契约已冻结、由门禁强制**——会话格式与恢复语义冻结为 1.0 契约;每条不变量都有可执行门禁,跑在 `npm run check` 里。见[持久执行契约](#持久执行契约)。
+**持久执行契约已冻结、由门禁强制**——会话格式与恢复语义冻结为契约;每条不变量都有可执行门禁,跑在 `npm run check` 里。见[持久执行契约](#持久执行契约)。
 
 从源码层面研读 Claude Code、[pi](https://github.com/badlogic/pi-mono) 与 [oh-my-pi](https://github.com/can1357/oh-my-pi) 蒸馏而来——并在其已验证的前身(mauri,Python)上把三个 Agent 产品跑进生产。
 
@@ -104,7 +104,7 @@ tui-cells:
 | 层 | 拥有 |
 |---|---|
 | **core**(`@vincemakes/kiso-core`,≤ 2,000 行) | L1 协议(带 `seq` 的事件和类型 · 消息联合 · 适配器契约)· L2 内核(循环 · 钩子 · 压缩 · 模式 · 权限)· L3 工具(契约 · 注册表 · 真实 JSON Schema 校验)· L7 评估钩子(交付真相) |
-| **packages**(无上限) | `@vincemakes/kiso-evals`(faux provider · 事故夹具 · 契约测试)· `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime`(持久会话、审批)· `@vincemakes/kiso-tools-node`(文件/搜索/编辑/shell)· `@vincemakes/kiso-tui`(纯终端层——单元格渲染器、坞、原始编辑器、diff;零运行时依赖,输入即数据 / 输出即字节——可独立复用,API 仍为 0.x 语义)· `@vincemakes/kiso-tui-cells`(从 tui 抽取出的组件单元格渲染器——ADR-0041 逃生舱)· 四个官方扩展(`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext`——它们内置于 CLI,见扩展)· `@vincemakes/kiso-code`(编码 Agent 参考产品) |
+| **packages**(无上限) | `@vincemakes/kiso-evals`(faux provider · 事故夹具 · 契约测试)· `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime`(持久会话、审批)· `@vincemakes/kiso-tools-node`(文件/搜索/编辑/shell)· `@vincemakes/kiso-tui`(纯终端层——单元格渲染器、坞、原始编辑器、diff;零运行时依赖,输入即数据 / 输出即字节——可独立复用,API 仍为 0.x 语义)· `@vincemakes/kiso-tui-cells`(从 tui 抽取出的组件单元格渲染器——ADR-0041 逃生舱)· 四个官方扩展(`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext`——它们内置于 CLI,见扩展)· `@vincemakes/kiso-code`(旗舰编码 Agent) |
 
 内核保持内核:它不为跨产品重复的东西作决定。其上的框架才是产品形态能力生长的地方——这个生长是重点,不是违规。包经由事件流与钩子对话,绝不经过中央枢纽。见 ADR-0021。
 
@@ -156,14 +156,14 @@ for await (const ev of session.run("What is 2+3?")) {
 这就是 `examples/hello-agent.mjs`(那里是 faux 适配器——零密钥),消费者冒烟测试在干净工程里对着打包 tarball 逐字运行它。
 
 - 包构建为纯 ESM JavaScript + `.d.ts`——安装后的产物跑在任意 Node 工程上,无 tsx、无源码访问(`scripts/smoke.mjs` 每次 check 在干净临时工程里证明)。
-- `npm run demo` 跑原始循环 REPL;参考产品是 CLI。
+- `npm run demo` 跑原始循环 REPL;旗舰编码 Agent 是 CLI。
 - `@vincemakes/kiso-evals` 里的每个夹具都是真实生产事故(uooki,2026);循环对它们得到证明,而不只是快乐路径——且夹具跑在真实会话运行时上,而不是测试套件。
 
 ## 支持
 
 Node **>= 22**(OpenAI 兼容 provider 与 CLI 在 `engines` 声明)。
 
-## CLI——编码 Agent 参考产品
+## CLI——旗舰编码 Agent
 
 CLI 是一个真正的 npm 包——全局安装,或直接运行:
 
@@ -465,7 +465,7 @@ bench(`bench/`,同一模型、同一任务、三个 Agent)度量小任务上的�
 | 上下文经济 ● | microcompact + /compact(模型摘要)+ 提示词缓存纪律 | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | 工程 `.kiso` 信任 | 内容摘要门禁,问一次,粘性拒绝 | `apps/cli/tests/project-trust.test.ts` |
 
-bench,一个夹具、一个模型(deepseek-v4-flash),同日交错运行、每轮洗牌——2026-08-12 三方对照(kiso 1.0.0 · pi 0.84.1 · Claude Code 2.1.227 经 DeepSeek 的 Anthropic 兼容端点)。中位数:T3 每工具 n=3,T5 每工具 n=2:
+bench,一个夹具、一个模型(deepseek-v4-flash),同日交错运行、每轮洗牌——2026-08-12 三方对照(kiso 0.2.0 · pi 0.84.1 · Claude Code 2.1.227 经 DeepSeek 的 Anthropic 兼容端点)。中位数:T3 每工具 n=3,T5 每工具 n=2:
 
 | task | tool | fresh in | cached in | total in | cost-wtd | out | reqs | wall |
 |------|------|--------:|--------:|--------:|--------:|----:|----:|----:|
@@ -486,7 +486,7 @@ bench,一个夹具、一个模型(deepseek-v4-flash),同日交错运行、每轮
 
 ## 状态
 
-**1.0.0——持久执行契约已冻结**(ADR-0051):会话格式与其恢复语义是契约,每条不变量由下面的门禁强制,版本行是这一 ABI 的 semver 公开承诺(ADR-0051 Amendment 1)。来路:reliable-session alpha 含四个加固轮(areas 1-7、A-F、one through nine、第四对抗轮——见 `docs/plans/2026-08-03-reliable-session-alpha.md`),**kiso code** 轮(编码 Agent:kill -9 门禁、microcompact、字节纪律——`docs/plans/2026-08-04-kiso-code.md`),**extensions** 轮(E1:审批策略扩展系统;E2:压缩参数与 systemPrompt append 面——`docs/plans/2026-08-04-extensions-e1.md`),以及持久化线 R-E→R-H(straddle 裁决、恢复即投影、死者接管、冻结本身)。下面每一条都由 `npm run check` 里的门禁证明:
+**持久执行契约已冻结**(ADR-0051,0.2.x 线):会话格式与其恢复语义是契约,每条不变量由下面的门禁强制。契约冻结是技术事实、与版本号无关——版本线现为 0.2.x,真 1.0 由 owner 裁定(ADR-0051 Amendment 2)。来路:reliable-session alpha 含四个加固轮(areas 1-7、A-F、one through nine、第四对抗轮——见 `docs/plans/2026-08-03-reliable-session-alpha.md`),**kiso code** 轮(编码 Agent:kill -9 门禁、microcompact、字节纪律——`docs/plans/2026-08-04-kiso-code.md`),**extensions** 轮(E1:审批策略扩展系统;E2:压缩参数与 systemPrompt append 面——`docs/plans/2026-08-04-extensions-e1.md`),以及持久化线 R-E→R-H(straddle 裁决、恢复即投影、死者接管、冻结本身)。下面每一条都由 `npm run check` 里的门禁证明:
 
 - **core**(1,971/2,000 行)——协议、循环(单一诚实终点;缺失/重复 stop 与无调用的 tool_use 是结构化错误;只在任何内容流出前重试;一个 abort 信号到达退避、审批等待、每个待决工具与 SDK)、钩子、ModeProfile、权限、microcompact(`microcompacted` 边界是持久化事实——投影确定性推导压缩视图;白名单 read/list/search/shell,`do-not-compact` 受尊重,近期回合原样)、扩展策略链(E1:deny > ask > allow 组合在人类流之前裁决——allow/deny 以 `decidedBy` 持久记录,抛异常的策略计为 ask,持久化裁决挺得过 kill -9,策略永不重跑)、交付真相、无损事件日志投影(消息是日志的纯函数,ADR-0002——以及提示词缓存字节纪律:同一事件前缀投影同一消息前缀,逐字节,三个回归测试钉死)、以框架 `executionId` 为键的执行账本(ADR-0025):失败的非幂等执行是 UNCERTAIN,直到人类裁决——已确认的成功永不重跑,新的逻辑调用总是运行。
 - **runtime**——`createAgent` / 持久多回合会话 / 崩溃安全 JSONL 存储(内核 flock 跨进程写锁下的 torn-tail 修复——升级需要 QUARANTINE:启动新版本前停掉每个旧格式进程;pidfile 守卫是尽力而为,不是无缝滚动升级(第五轮 P1-4)、严格加载、连续 seq 校验)/ `session.resume()` 跨进程续上被打断的运行:应用持久化审批(原始调用执行一次,拒绝写入其结果),补齐缺失回执,原始运行完成——无发明回合 / `loadExtensions(dir)`:每个 *.mjs 默认导出(或工厂),坏文件或重名响亮启动失败;扩展工具并入注册表(内置冲突 = 启动错误),钩子在 harness 自身之后组合(existing-first),审批进入策略链。

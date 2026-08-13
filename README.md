@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v1.0.0
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.2.0
 ```
 
 (The block letter above is `assets/logo.svg` in pixel form — an 8×8 K
@@ -166,7 +166,7 @@ A framework, in two layers:
 | Layer | Owns |
 |---|---|
 | **core** (`@vincemakes/kiso-core`, ≤ 2,000 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · modes · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
-| **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-tui` (the pure terminal layer — cell renderer, dock, raw editor, diff; zero runtime deps, input is data / output is bytes — reusable standalone, API still 0.x semantics) · `@vincemakes/kiso-tui-cells` (the components cell renderer, extracted from the tui — the ADR-0041 escape hatch) · the four official extensions (`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext` — they ship INSIDE the CLI, see Extensions) · `@vincemakes/kiso-code` (the coding-agent reference product) |
+| **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-tui` (the pure terminal layer — cell renderer, dock, raw editor, diff; zero runtime deps, input is data / output is bytes — reusable standalone, API still 0.x semantics) · `@vincemakes/kiso-tui-cells` (the components cell renderer, extracted from the tui — the ADR-0041 escape hatch) · the four official extensions (`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext` — they ship INSIDE the CLI, see Extensions) · `@vincemakes/kiso-code` (the flagship coding agent) |
 
 The core stays a kernel: it decides nothing that repeats across products. The
 framework around it is where product-shaped capability grows — and that growth
@@ -231,7 +231,7 @@ in either direction turns the check red.
 - Packages build to plain ESM JavaScript + `.d.ts` — installed artifacts run
   on any Node project, no tsx, no source access (`scripts/smoke.mjs` proves it
   in a clean temp project every check).
-- `npm run demo` runs the raw-loop REPL; the reference product is the CLI.
+- `npm run demo` runs the raw-loop REPL; the flagship coding agent is the CLI.
 - Every fixture in `@vincemakes/kiso-evals` is a real production incident (uooki, 2026);
   the loop is proven against them, not just against happy paths — and the
   fixtures run on the real session runtime, not a test harness.
@@ -240,7 +240,7 @@ in either direction turns the check red.
 
 Node **>= 22** (the OpenAI-compat provider and the CLI declare it in `engines`).
 
-## The CLI — the coding-agent reference product
+## The CLI — the flagship coding agent
 
 The CLI is a real npm package — install it globally, or run it directly:
 
@@ -775,7 +775,7 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 
 The bench, one fixture, one model (deepseek-v4-flash), interleaved
 same-day runs, order shuffled per round — the 2026-08-12 three-way
-comparison (kiso 1.0.0 · pi 0.84.1 · Claude Code 2.1.227 via DeepSeek's
+comparison (kiso 0.2.0 · pi 0.84.1 · Claude Code 2.1.227 via DeepSeek's
 Anthropic-compatible endpoint). Medians: n=3 per tool on T3, n=2 per
 tool on T5:
 
@@ -826,7 +826,7 @@ long-session divergence study) — it is not extrapolated here.
 
 ## Status
 
-**1.0.0 — the Durable Execution Contract is frozen** (ADR-0051): the
+**The Durable Execution Contract is frozen** (ADR-0051, the 0.2.x line): the
 session format and its recovery semantics are contract, every invariant
 enforced by the gates below, and the version line is the semver public
 promise of that ABI (ADR-0051 Amendment 1). The road here: the
