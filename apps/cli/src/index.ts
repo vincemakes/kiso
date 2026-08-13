@@ -563,6 +563,12 @@ async function main(): Promise<void> {
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
 				extensionsBanner(recentSessions(id, agent));
+				// finding E4-1: the same faux resolution the chat/resume cases
+				// carry (faux = currentFaux) — pre-patch the initial faux=true
+				// was passed here, so ANY provider failure in a bare-command
+				// session surfaced as "[faux mode] the scripted model failed:
+				// <real error>" (a false accusation of the keyless demo).
+				faux = currentFaux;
 				await chat(session, faux, input, autoCompactFromEnv());
 				break;
 			}
