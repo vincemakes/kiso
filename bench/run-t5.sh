@@ -15,6 +15,11 @@
 set -eu
 TOOL=$1; RUN=$2
 B="$(cd "$(dirname "$0")" && pwd)"
+# KISO_BIN overrides the kiso command (band A/B runs against a pinned
+# published bin: KISO_BIN="npx -y @vincemakes/kiso-code@0.2.1"). KISO_VERSION
+# names that bin in meta.json (default: the local checkout's version).
+KISO_BIN=${KISO_BIN:-kiso}
+KISO_VERSION=${KISO_VERSION:-$(node -p "require('$B/../apps/cli/package.json').version")}
 # E4-e: KISO_ROUND scopes the runs under runs/<round>/ (the run-hygiene
 # discipline — a round never reuses a historical run name); absent = the
 # historical flat layout.
@@ -33,16 +38,28 @@ case "$TOOL" in
     KENV="OPENAI_BASE_URL=https://api.deepseek.com OPENAI_API_KEY=$DEEPSEEK_API_KEY OPENAI_MODEL=deepseek-v4-flash KISO_EXTENSIONS_DIR=$EXTDIR KISO_HOME=$WORK/kiso-home"
     S=$(date +%s)
     printf '%s\n' "$(TURN 1)" "$(TURN 2)" "$(TURN 3)" "$(TURN 4)" "$(TURN 5)" |
-      env $KENV kiso --mode bypass "bench-t5-$TOOL-$RUN" > "$WORK/stdout-1.log" 2>&1 || true
+      env $KENV $KISO_BIN --mode bypass "bench-t5-$TOOL-$RUN" > "$WORK/stdout-1.log" 2>&1 || true
     E=$(date +%s); TOT=$((TOT + E - S))
     S=$(date +%s)
     printf '/compact\n' |
-      env $KENV kiso --mode bypass "bench-t5-$TOOL-$RUN" > "$WORK/stdout-2.log" 2>&1 || true
+      env $KENV $KISO_BIN --mode bypass "bench-t5-$TOOL-$RUN" > "$WORK/stdout-2.log" 2>&1 || true
     E=$(date +%s); TOT=$((TOT + E - S))
     S=$(date +%s)
     printf '%s\n' "$(TURN 6)" "$(TURN 7)" "$(TURN 8)" |
-      env $KENV kiso --mode bypass "bench-t5-$TOOL-$RUN" > "$WORK/stdout-3.log" 2>&1 || true
+      env $KENV $KISO_BIN --mode bypass "bench-t5-$TOOL-$RUN" > "$WORK/stdout-3.log" 2>&1 || true
     E=$(date +%s); TOT=$((TOT + E - S))
+    node -e "
+const fs = require('fs');
+const { execSync } = require('child_process');
+const meta = {
+  tool: 'kiso', task: 'T5', run: '$RUN', round: process.env.KISO_ROUND || null,
+  model: 'deepseek-v4-flash',
+  kisoVersion: '$KISO_VERSION',
+  commit: execSync('git -C $B/.. rev-parse --short HEAD').toString().trim(),
+  createdAt: Date.now(),
+};
+fs.writeFileSync('$WORK/meta.json', JSON.stringify(meta, null, 1) + '\n');
+"
     ;;
   pi)
     for i in 1 2 3 4 5 6 7 8; do

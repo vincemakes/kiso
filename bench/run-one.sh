@@ -5,6 +5,11 @@
 set -eu
 TOOL=$1; TASK=$2; RUN=$3
 B="$(cd "$(dirname "$0")" && pwd)"
+# KISO_BIN overrides the kiso command (band A/B runs against a pinned
+# published bin: KISO_BIN="npx -y @vincemakes/kiso-code@0.2.1"). KISO_VERSION
+# names that bin in meta.json (default: the local checkout's version).
+KISO_BIN=${KISO_BIN:-kiso}
+KISO_VERSION=${KISO_VERSION:-$(node -p "require('$B/../apps/cli/package.json').version")}
 # E4-e: KISO_ROUND scopes the runs under runs/<round>/ (the run-hygiene
 # discipline — a round never reuses a historical run name); absent = the
 # historical flat layout.
@@ -43,7 +48,19 @@ case "$TOOL" in
       KISO_EXTENSIONS_DIR="$EXTDIR" \
       KISO_HOME="$WORK/kiso-home" \
       $SKILLS_ENV \
-      kiso --mode bypass "bench-$TOOL-$TASK-$RUN" > "$WORK/stdout.log" 2>&1 || true
+      $KISO_BIN --mode bypass "bench-$TOOL-$TASK-$RUN" > "$WORK/stdout.log" 2>&1 || true
+    node -e "
+const fs = require('fs');
+const { execSync } = require('child_process');
+const meta = {
+  tool: 'kiso', task: '$TASK', run: '$RUN', round: process.env.KISO_ROUND || null,
+  model: 'deepseek-v4-flash',
+  kisoVersion: '$KISO_VERSION',
+  commit: execSync('git -C $B/.. rev-parse --short HEAD').toString().trim(),
+  createdAt: Date.now(),
+};
+fs.writeFileSync('$WORK/meta.json', JSON.stringify(meta, null, 1) + '\n');
+"
     ;;
   pi)
     SKILL_FLAG=""
