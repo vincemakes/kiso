@@ -265,8 +265,13 @@ export function renderRecap(s: RecapStats): string {
 	if (s.usage.known) {
 		const seg = `${s.usage.in !== null ? `in ${kUnit(s.usage.in)}` : ""}${s.usage.in !== null && s.usage.out !== null ? " " : ""}${s.usage.out !== null ? `out ${kUnit(s.usage.out)}` : ""}`;
 		if (seg !== "") parts.push(seg);
-		if (s.usage.cache !== null && s.usage.in !== null && s.usage.in > 0) {
-			const hit = `cache ${Math.round((s.usage.cache / s.usage.in) * 100)}%`;
+		if (s.usage.cache !== null && s.usage.in !== null && (s.usage.in > 0 || s.usage.cache > 0)) {
+			// E2 (1.3.0, T5): the cache % divides by the TOTAL (in + cache) —
+			// the pinned sentence: cacheRead/total can never exceed 100%. The
+			// old cache/in denominator rendered 923% for fresh 111 + cache
+			// 1024 (the >100% disease the canonical schema cures). in 0 with
+			// cache > 0 is honest: everything came from cache → 100%.
+			const hit = `cache ${Math.round((s.usage.cache / (s.usage.in + s.usage.cache)) * 100)}%`;
 			parts.push(s.missed !== undefined && s.missed > 0 ? `${hit} · miss ${kUnit(s.missed)}` : hit);
 		}
 	}

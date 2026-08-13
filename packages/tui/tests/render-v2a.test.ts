@@ -196,7 +196,7 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 
 	it("the full form: seconds · tools (edits) · in/out · cache % · ctx left %", () => {
 		expect(renderRecap({ seconds: 47, tools: 3, edits: 1, usage: usage(), ctxLeftPct: 96 })).toBe(
-			"▞ 47s · 3 tools (1 edit) · in 8.2k out 410 · cache 97% · ctx left ~96%\n",
+			"▞ 47s · 3 tools (1 edit) · in 8.2k out 410 · cache 49% · ctx left ~96%\n", // 7954/(8200+7954)
 		);
 	});
 
@@ -214,30 +214,60 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 		);
 	});
 
-	it("cache % is cache/in — in 0 or null cache drops it", () => {
+	it("E2 T5: cache % is cache/(in+cache) — the pinned sentence, never > 100%; null cache drops it", () => {
+		// the denominator is the TOTAL (fresh + cache) — a cache ratio can
+		// never exceed 100% (the old cache/in denominator rendered 923%).
+		// in 0 with cache > 0 is honest: everything came from cache → 100%.
 		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: 0 }), ctxLeftPct: null })).toBe(
-			"▞ 1s · 1 tool · in 0 out 410\n", // in 0 is honest — only the cache % drops (a 0 denominator)
+			"▞ 1s · 1 tool · in 0 out 410 · cache 100%\n",
 		);
 		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ cache: null }), ctxLeftPct: null })).toBe(
 			"▞ 1s · 1 tool · in 8.2k out 410\n",
 		);
 	});
 
+	it("E2 T5: the >100% disease regression — fresh 111 + cache 1024 rendered 923%, now 90%", () => {
+		// the fixture: an anthropic turn whose fresh delta is tiny next to
+		// the cached prefix. OLD formula: 1024/111 = 922.5% → "cache 923%".
+		// NEW: 1024/1135 = 90.2% → "cache 90%".
+		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: 111, cache: 1024 }), ctxLeftPct: null })).toBe(
+			"▞ 1s · 1 tool · in 111 out 410 · cache 90%\n",
+		);
+	});
+
+	it("E2 T5: the never->100% gate — every in/cache pair renders a cache % in [0, 100]", () => {
+		for (let in_ = 0; in_ <= 2000; in_ += 250) {
+			for (const cache of [0, 1024, 8200, 12410, 50000]) {
+				const line = renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: in_, cache }), ctxLeftPct: null });
+				const hit = /cache (\d+)%/.exec(line);
+				if (hit === null) {
+					// dropped only when both sides are 0 (the empty denominator)
+					expect(in_).toBe(0);
+					expect(cache).toBe(0);
+				} else {
+					const pct = Number.parseInt(hit[1]!, 10);
+					expect(pct, `in=${in_} cache=${cache}`).toBeGreaterThanOrEqual(0);
+					expect(pct, `in=${in_} cache=${cache}`).toBeLessThanOrEqual(100);
+				}
+			}
+		}
+	});
+
 	it("k-units: 12345 → 12.3k, 800 → 800", () => {
 		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: 12345, out: 800 }), ctxLeftPct: null })).toBe(
-			"▞ 1s · 1 tool · in 12.3k out 800 · cache 64%\n", // 7954/12345
+			"▞ 1s · 1 tool · in 12.3k out 800 · cache 39%\n", // 7954/(12345+7954)
 		);
 	});
 
 	it("R-C item 4: an above-floor cache miss appends the miss segment", () => {
 		expect(renderRecap({ seconds: 3, tools: 2, edits: 0, usage: usage({ in: 123456, cache: 82000 }), missed: 41000, ctxLeftPct: null })).toBe(
-			"▞ 3s · 2 tools · in 123.5k out 410 · cache 66% · miss 41k\n",
+			"▞ 3s · 2 tools · in 123.5k out 410 · cache 40% · miss 41k\n",
 		);
 	});
 
 	it("R-C item 4: a zero miss renders nothing — the historical bytes hold", () => {
 		expect(renderRecap({ seconds: 3, tools: 2, edits: 0, usage: usage(), missed: 0, ctxLeftPct: null })).toBe(
-			"▞ 3s · 2 tools · in 8.2k out 410 · cache 97%\n",
+			"▞ 3s · 2 tools · in 8.2k out 410 · cache 49%\n",
 		);
 	});
 });
