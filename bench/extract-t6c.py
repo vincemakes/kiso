@@ -39,8 +39,13 @@ def _events(run):
             line = line.strip()
             if not line:
                 continue
-            e = json.loads(line).get("event")
+            line_obj = json.loads(line)
+            e = line_obj.get("event")
             if isinstance(e, dict):
+                # the envelope carries ts; the event dict may not (real
+                # session logs: {runId, ts, event:{type,...}}).
+                if "ts" not in e and "ts" in line_obj:
+                    e = dict(e, ts=line_obj["ts"])
                 out.append(e)
     return out
 

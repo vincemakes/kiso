@@ -185,3 +185,21 @@ class T6cExtractTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_envelope_ts_shape(self):
+        """Real session logs carry ts on the ENVELOPE ({runId, ts, event}),
+        not inside the event dict — the turn cuts and boundary detection
+        must read it from either place (the 2026-08-13 real-run hole)."""
+        reqs = [_req(0, 100, "h1"), _req(1, 300, "h2")]
+        evlog = os.path.join(self.round, "kiso-T6C-1", "kiso-home", "sessions")
+        os.makedirs(evlog, exist_ok=True)
+        with open(os.path.join(evlog, "sess.jsonl"), "w") as f:
+            f.write(json.dumps({"runId": "r1", "ts": 50,
+                                "event": {"type": "user_input"}}) + "\n")
+            f.write(json.dumps({"runId": "r1", "ts": 250,
+                                "event": {"type": "microcompacted", "beforeSeq": 5}}) + "\n")
+        _run_dir(self.round, "kiso-T6C-1", reqs, None)
+        rows = extract_t6c.extract_run(os.path.join(self.round, "kiso-T6C-1"))
+        self.assertEqual(rows["requests"][0]["turn"], 1)
+        self.assertTrue(rows["requests"][1]["boundary"])
+        self.assertEqual(rows["mismatches"], [])
