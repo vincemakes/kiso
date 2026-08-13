@@ -20,6 +20,7 @@ import {
 } from "@vincemakes/kiso-tui";
 import { editFileDiff, writeFileDiff, type DiffResult } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath } from "@vincemakes/kiso-tools-node";
+import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import { dispatch, type DispatchCtx } from "./dispatch.js";
 import { agentModel, body, bodyLog, configuredWindow, dock, type LineInput } from "./state.js";
@@ -86,34 +87,56 @@ const CACHE_MISS_FLOOR = 1024;
  *  prompts is a total-side quantity, never a fresh delta. */
 export interface UsageDelta {
 	readonly usage: RunUsage;
-	/** null when the event carried no usage — the carrier then stays
-	 *  null (the pre-heal consumer's dead-forever miss signal, preserved
-	 *  byte-for-byte; the heal's canonical consumer recovers from it). */
+	/** The canonical total (fresh + cache) — the miss estimate's carrier.
+	 *  null when the event carried no usage (the canonical total of an
+	 *  unknown event is 0, and a 0 carrier keeps the estimate below the
+	 *  floor — the old consumer's carrier stayed null forever; this one
+	 *  recovers on the next known event). */
 	readonly total: number | null;
 	readonly missed: number | null;
 }
 
-/** The CLI's usage consumer (E2, the R2a-1 ruling — this body is the
- *  RED carrier: the pre-heal mixed-convention consumer, moved verbatim
- *  from the event loop; the heal that follows swaps in the canonical
- *  derivation). `route` is the session's adapter identity — unused here,
- *  it becomes the canonicalization key in the heal. */
+/**
+ * The CLI's usage consumer (E2 1.3.0, the R2a-1 ruling 2026-08-13) — the
+ * HEAL: the mixed-convention consumer is now CANONICAL at the route (the
+ * accounting boundary), the same derivation the trace block carries.
+ *
+ * EXISTING-BEHAVIOR CHANGE — declared, never a silent side-fix:
+ *  - openai-compat: `in` was the provider-raw TOTAL (fresh + cache); it is
+ *    now the canonical FRESH count. The >100% cache-ratio disease: raw
+ *    {input 111, cacheRead 1024} previously rendered "in 111" and the
+ *    recap's cache % (then cache/in) read 923%; now "in 0" and the recap
+ *    divides cache by the TOTAL (in + cache — T5) — never > 100%.
+ *  - the miss estimate is numerically IDENTICAL on openai-compat: its old
+ *    `in` WAS the total, and the carrier is the canonical total
+ *    (input + cacheRead), which equals the raw total by construction.
+ *  - anthropic: `in` was already fresh — unchanged; the miss estimate was
+ *    min-of-fresh-deltas − cacheRead (always below the floor — silent);
+ *    it is now min-of-totals, the semantics the openai-compat side always
+ *    had (a fix, and it can fire).
+ *  - the unknown-usage carrier: the old consumer's null carrier killed the
+ *    miss signal forever; the canonical total of an unknown event is 0, so
+ *    the signal recovers on the next known event.
+ * The route key mirrors the trace path's fallback by construction: an
+ * absent provider resolves like the tracer's "adapter" identity — the
+ * total convention (INPUT_CONVENTIONS), never a crash.
+ */
 export function usageFromEvent(
 	route: string | undefined,
 	ev: import("@vincemakes/kiso-core").Usage,
 	prevTotal: number | null,
 ): UsageDelta {
-	const known = ev.known;
-	const inRaw = ev.inputTokens;
-	const cacheRaw = ev.cacheRead;
+	const c = canonicalizeUsage(route ?? "adapter", ev);
+	const total = c.input + c.cacheRead + (c.cacheWrite ?? 0);
 	let missed: number | null = null;
-	// R-C item 4: min(prevTotal, in) is the part that could have been
-	// cached; what cacheRead did NOT cover is the miss.
-	if (known && inRaw !== null && cacheRaw !== null && prevTotal !== null) {
-		const m = Math.min(prevTotal, inRaw) - cacheRaw;
+	// R-C item 4: min(prevTotal, total) is the part that could have been
+	// cached; what cacheRead did NOT cover is the miss. A below-floor or
+	// non-positive difference is noise — not surfaced.
+	if (prevTotal !== null) {
+		const m = Math.min(prevTotal, total) - c.cacheRead;
 		missed = m > CACHE_MISS_FLOOR ? m : null;
 	}
-	return { usage: { in: inRaw, out: ev.outputTokens, cache: cacheRaw, known }, total: inRaw, missed };
+	return { usage: { in: c.input, out: c.output, cache: c.cacheRead, known: ev.known }, total, missed };
 }
 
 /** v2b: the spinner merged into the STATUS BAR (the v2a standalone glyph

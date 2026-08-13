@@ -88,7 +88,9 @@ describe("E2 R2a-1 — the CLI usage consumer is canonical (in is FRESH-ONLY)", 
 	it("an unknown-usage event cannot corrupt the bookkeeping — the carrier recovers (OLD: null forever)", () => {
 		const unknown = event({ known: false, inputTokens: null, outputTokens: null, cacheRead: null, cacheWrite: null });
 		const d1 = usageFromEvent("openai-compat", unknown, null);
-		expect(d1.usage).toEqual({ in: null, out: null, cache: null, known: false });
+		// the canonical "0 = unknown" convention (the guard's quartet shape);
+		// known:false suppresses every render, so the zeros are invisible
+		expect(d1.usage).toEqual({ in: 0, out: 0, cache: 0, known: false });
 		expect(d1.missed).toBe(null);
 		// the NEXT known turn: the carrier is fresh again → the signal fires
 		const d2 = usageFromEvent("openai-compat", df2(), d1.total);

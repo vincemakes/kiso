@@ -210,6 +210,14 @@ export class AgentSession {
 		this.#adapter = adapter;
 	}
 
+	/** E2: the adapter identity ("anthropic" | "openai-compat") — the route
+	 *  key the canonical consumer (CLI usage, the trace block) keys on. The
+	 *  per-run tracer reads the SAME #config.provider; one source, one
+	 *  route — the CLI and the trace can never disagree. */
+	get provider(): "anthropic" | "openai-compat" | undefined {
+		return this.#config.provider;
+	}
+
 	/** Run one user turn. Iterate to consume; `run.abort()` cancels. */
 	run(input: string, options?: { signal?: AbortSignalLike }): Run {
 		this.ensureHealthy();
