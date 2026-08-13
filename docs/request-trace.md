@@ -20,8 +20,13 @@ hash/fingerprint algorithms (`HASH_SPEC_BY_VERSION` in
 `packages/runtime/src/trace/record.ts`). A version bump must pin a spec
 for the new version before any writer can use it (`hashSpecFor` throws
 otherwise) — "bump the schema" and "re-pin the algorithms" are the same
-ritual. Fields are per-round additive: 1.2.0 ships the locked field set
-below; a later round may add fields by bumping the version.
+ritual. Fields are per-round additive: 1.2.0 shipped the locked v1 set
+below; E2 (1.3.0) bumped to **schemaVersion 2**, adding the `canonical`
+block (the v2 hash spec re-pins the same sha-256 algorithms — the shape
+changed, the hashing did not). Both generations are valid reads
+(R1d-1): a v1 sidecar has no canonical block and reads as defaults at
+every consumer — never a crash. The canonical schema, the pricing
+table, and the derivation surfaces are documented in `docs/usage.md`.
 
 ## 2. Ledger layout
 
@@ -49,16 +54,17 @@ first run; a run that makes no calls writes nothing.
 explainable as a crash rather than as a writer bug — "every request has
 exactly one trace" stays checkable.
 
-## 3. The TraceRecord (the locked 1.2.0 field set)
+## 3. The TraceRecord (the field set: v1 = 25, v2 = 26)
 
-25 fields; the closed field set is pinned bidirectionally by
-`TRACE_RECORD_FIELDS` (an added field without the const entry — or a
-const entry without a type field — goes red). `lineageLink` is the one
-optional field.
+The closed field set is pinned bidirectionally by `TRACE_RECORD_FIELDS`
+(an added field without the const entry — or a const entry without a
+type field — goes red). v2 = the v1 set plus `canonical` (per-round
+additive). `lineageLink` and — in v1 — `canonical` are absent rather
+than null: a v1 sidecar reads as defaults at every consumer (R1d-1).
 
 | field | type | meaning |
 |---|---|---|
-| `schemaVersion` | `1` | pins shape AND hash algorithms (R1a) |
+| `schemaVersion` | `1` \| `2` | pins shape AND hash algorithms (R1a); v2 re-pins the same sha-256 |
 | `kind` | `"request"` | line kind |
 | `requestId` | uuid | per adapter call — the reverse-reference anchor |
 | `runId` | string | the run this call belongs to |
@@ -73,10 +79,11 @@ optional field.
 | `contextManifest` | segment[] | thin pointers into the event log — §4 |
 | `segmentHashes` | sha-256 hex[] | per-segment content hashes, indexed 1:1 with `contextManifest` (the R4b break derivation's analysis-side data — the LIST, not the aggregated fingerprint) |
 | `stablePrefixFingerprint` | sha-256 hex | over the cacheable prefix's per-segment hashes — §5 |
-| `freshInput` | number | provider-raw usage, never normalized (0 = unknown) |
+| `freshInput` | number | provider-raw usage, never a billing surface (0 = unknown) |
 | `cacheRead` | number | provider-raw usage (0 = unknown) |
 | `cacheWrite` | number \| null | provider-raw; the openai-compat adapter honestly reports null |
 | `output` | number | provider-raw output tokens (0 = unknown) |
+| `canonical` | object (v2) | the canonical record of the same quartet — `docs/usage.md` |
 | `latencyMs` | number | call → settle, wall clock |
 | `ttftMs` | number | call → first yielded adapter event (0 = unknown) |
 | `toolCalls` | string[] | tool names invoked, in order |
@@ -85,11 +92,17 @@ optional field.
 | `ts` | number | `Date.now()` at settle |
 
 The record never copies payloads: `contextManifest` pointers and hashes
-stand in for content. **Usage is provider-raw** — normalization is a
-later round's job: openai-compat's `inputTokens` is a TOTAL (fresh =
+stand in for content. **The usage quartet is provider-raw observation —
+never a billing surface** (a provider may count a token a dozen ways;
+billing must not): openai-compat's `inputTokens` is a TOTAL (fresh =
 input − cacheRead); anthropic's `input_tokens` is already fresh-only and
-is recorded as-is. A request settling with no usage data records the
-quartet as zeros with `cacheWrite` null — "0 = unknown", never faked.
+is recorded as-is. The **billing surface is the `canonical` block** (E2):
+`canonicalizeUsage` derives `input` as FRESH-ONLY on both routes — the
+pinned sentence — and prices it at the versioned table (`docs/usage.md`,
+which carries the rates, the freeze date, and the "an approximation, not
+a bill" caveat verbatim). A request settling with no usage data records
+the quartet as zeros with `cacheWrite` null — "0 = unknown", never
+faked, and the canonical block then reads as the zeros' cost.
 
 ## 4. The context manifest
 
@@ -130,10 +143,13 @@ boundary; a **rewrite** keeps the original boundary position.
 ## 6. Example ledger
 
 ```jsonl
-{"schemaVersion":1,"kind":"header","sessionId":"s1","kisoVersion":"1.2.0","createdAt":1753400000000}
-{"schemaVersion":1,"kind":"request","requestId":"9f3a7c11-…","runId":"run-1","requestIndex":0,"retryAttempt":0,"provider":"openai-compat","model":"m","adapterVersion":"1.2.0","systemPromptHash":"aaaa…","toolSchemaHash":"bbbb…","contextHash":"cccc…","contextManifest":[{"role":"system","seqRange":null,"estTokens":210,"freshness":"cache_read"},{"role":"tools","seqRange":null,"estTokens":88,"freshness":"cache_read"},{"role":"current_turn","seqRange":[1,12],"estTokens":140,"freshness":"fresh"}],"segmentHashes":["aaaa…","bbbb…","cccc…"],"stablePrefixFingerprint":"dddd…","freshInput":41,"cacheRead":12410,"cacheWrite":null,"output":320,"latencyMs":2841.5,"ttftMs":402,"toolCalls":["read_file"],"outcome":"ok","ts":17534000002841}
-{"schemaVersion":1,"kind":"run_end","runId":"run-1","ts":17534000002842,"lastRequestIndex":0}
+{"schemaVersion":2,"kind":"header","sessionId":"s1","kisoVersion":"1.3.0","createdAt":1753400000000}
+{"schemaVersion":2,"kind":"request","requestId":"9f3a7c11-…","runId":"run-1","requestIndex":0,"retryAttempt":0,"provider":"openai-compat","model":"m","adapterVersion":"1.3.0","systemPromptHash":"aaaa…","toolSchemaHash":"bbbb…","contextHash":"cccc…","contextManifest":[{"role":"system","seqRange":null,"estTokens":210,"freshness":"cache_read"},{"role":"tools","seqRange":null,"estTokens":88,"freshness":"cache_read"},{"role":"current_turn","seqRange":[1,12],"estTokens":140,"freshness":"fresh"}],"segmentHashes":["aaaa…","bbbb…","cccc…"],"stablePrefixFingerprint":"dddd…","freshInput":41,"cacheRead":12410,"cacheWrite":null,"output":320,"canonical":{"input":41,"cacheRead":12410,"cacheWrite":null,"output":320,"reasoning":null,"costUsd":0.0001908,"pricingTableVersion":1},"latencyMs":2841.5,"ttftMs":402,"toolCalls":["read_file"],"outcome":"ok","ts":17534000002841}
+{"schemaVersion":2,"kind":"run_end","runId":"run-1","ts":17534000002842,"lastRequestIndex":0}
 ```
+
+A 1.2.0 ledger is byte-identical except `schemaVersion:1` and no
+`canonical` block — and reads identically at every consumer (R1d-1).
 
 ## 7. Lifecycle semantics
 
@@ -153,8 +169,10 @@ boundary; a **rewrite** keeps the original boundary position.
 ## 8. Reading the ledger
 
 The file is plain JSONL: parse each line, filter by `kind`. Every line
-of a fresh ledger validates against `validateTraceLine` (the closed set
-is strict by design — a misspelled field can never silently enter).
+of a fresh ledger validates against `validateTraceLine` — the
+version-dispatching validator accepts both v1 (no canonical block →
+defaults) and v2, and the closed set is strict by design (a misspelled
+field can never silently enter).
 `bench/trace-report.mjs` renders per-request tables from this surface
 (E1 slice 5 — a file-only reader, zero exports, per R2 Case B); its
 python gate (`bench/tests/test_trace_report.py`) pins the row shape and
