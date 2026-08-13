@@ -74,6 +74,48 @@ export function estimateCtxRatio(session: AgentSession): number {
 	return chars / 4 / contextWindowTokens();
 }
 
+/** R-C item 4: the per-turn cache miss — the overlap with the previous
+ *  prompt that SHOULD have been cached but was re-sent uncached:
+ *  missed = min(prevIn, in) − cacheRead. Below the 1024-token floor
+ *  (Anthropic's minimum cacheable block) it is noise — not surfaced. */
+const CACHE_MISS_FLOOR = 1024;
+
+/** E2 (1.3.0) — the CLI's usage consumer: one event in, the RunUsage the
+ *  status line and recap render plus the miss estimate. `total` is the
+ *  carrier for the NEXT turn's miss estimate — the overlap of consecutive
+ *  prompts is a total-side quantity, never a fresh delta. */
+export interface UsageDelta {
+	readonly usage: RunUsage;
+	/** null when the event carried no usage — the carrier then stays
+	 *  null (the pre-heal consumer's dead-forever miss signal, preserved
+	 *  byte-for-byte; the heal's canonical consumer recovers from it). */
+	readonly total: number | null;
+	readonly missed: number | null;
+}
+
+/** The CLI's usage consumer (E2, the R2a-1 ruling — this body is the
+ *  RED carrier: the pre-heal mixed-convention consumer, moved verbatim
+ *  from the event loop; the heal that follows swaps in the canonical
+ *  derivation). `route` is the session's adapter identity — unused here,
+ *  it becomes the canonicalization key in the heal. */
+export function usageFromEvent(
+	route: string | undefined,
+	ev: import("@vincemakes/kiso-core").Usage,
+	prevTotal: number | null,
+): UsageDelta {
+	const known = ev.known;
+	const inRaw = ev.inputTokens;
+	const cacheRaw = ev.cacheRead;
+	let missed: number | null = null;
+	// R-C item 4: min(prevTotal, in) is the part that could have been
+	// cached; what cacheRead did NOT cover is the miss.
+	if (known && inRaw !== null && cacheRaw !== null && prevTotal !== null) {
+		const m = Math.min(prevTotal, inRaw) - cacheRaw;
+		missed = m > CACHE_MISS_FLOOR ? m : null;
+	}
+	return { usage: { in: inRaw, out: ev.outputTokens, cache: cacheRaw, known }, total: inRaw, missed };
+}
+
 /** v2b: the spinner merged into the STATUS BAR (the v2a standalone glyph
  *  is gone) — docked only, 200ms rotation between the request and the
  *  first event. */
@@ -247,12 +289,7 @@ export async function consumeRun(
 ): Promise<import("@vincemakes/kiso-core").Event | undefined> {
 	let last: import("@vincemakes/kiso-core").Event | undefined;
 	let usage: RunUsage = { in: null, out: null, cache: null, known: false };
-	// R-C item 4: the per-turn cache miss — the overlap with the previous
-	// prompt that SHOULD have been cached but was re-sent uncached:
-	// missed = min(prevIn, in) − cacheRead. Below the 1024-token floor
-	// (Anthropic's minimum cacheable block) it is noise — not surfaced.
-	const CACHE_MISS_FLOOR = 1024;
-	let prevIn: number | null = null;
+	let prevTotal: number | null = null;
 	let missed: number | null = null;
 	// v3 §02: the recap line derives ENTIRELY from the local event stream
 	// (zero tokens) — wall seconds, tool/edit counts, usage, ctx left.
@@ -328,14 +365,10 @@ export async function consumeRun(
 				body.textEnd();
 				break;
 			case "usage": {
-				usage = { in: ev.inputTokens, out: ev.outputTokens, cache: ev.cacheRead, known: ev.known };
-				// R-C item 4: min(prevIn, in) is the part that could have been
-				// cached; what cacheRead did NOT cover is the miss.
-				if (usage.in !== null && usage.cache !== null && prevIn !== null) {
-					const m = Math.min(prevIn, usage.in) - usage.cache;
-					missed = m > CACHE_MISS_FLOOR ? m : null;
-				}
-				prevIn = usage.in;
+				const delta = usageFromEvent(session.provider, ev, prevTotal);
+				usage = delta.usage;
+				prevTotal = delta.total;
+				missed = delta.missed;
 				statusCb?.(usage, estimateCtxRatio(session));
 				break;
 			}
