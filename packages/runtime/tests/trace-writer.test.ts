@@ -45,6 +45,18 @@ function requestRecord(runId: string, requestIndex: number): TraceRecord {
 		cacheRead: 0,
 		cacheWrite: null,
 		output: 5,
+		// E2 — the canonical block formalizes the quartet (the validator
+		// pins the equality); cost at table v1, the "faux" route falling
+		// back to the total-convention entry
+		canonical: {
+			input: 10,
+			cacheRead: 0,
+			cacheWrite: null,
+			output: 5,
+			reasoning: null,
+			costUsd: 8.2e-6,
+			pricingTableVersion: 1,
+		},
 		latencyMs: 1,
 		ttftMs: 1,
 		toolCalls: [],

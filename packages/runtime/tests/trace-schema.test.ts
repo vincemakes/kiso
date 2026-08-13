@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import {
 	HASH_SPEC_BY_VERSION,
 	TRACE_RECORD_FIELDS,
+	TRACE_RECORD_FIELDS_V1,
 	TRACE_SCHEMA_VERSION,
 	TRACE_SEGMENT_FIELDS,
 	hashSpecFor,
@@ -51,6 +52,17 @@ const canonicalRecord: TraceRecord = {
 	cacheRead: 12410,
 	cacheWrite: null,
 	output: 320,
+	// E2 — the canonical block formalizes the quartet (the validator pins
+	// the equality); the cost is table v1 at the record's own route
+	canonical: {
+		input: 41,
+		cacheRead: 12410,
+		cacheWrite: null,
+		output: 320,
+		reasoning: null,
+		costUsd: (41 * 0.27 + 320 * 1.1 + 12410 * 0.027) / 1e6,
+		pricingTableVersion: 1,
+	},
 	latencyMs: 2841.5,
 	ttftMs: 402,
 	toolCalls: ["read_file", "write_file"],
@@ -118,7 +130,7 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 	});
 
 	it("schemaVersion is pinned to the current version", () => {
-		expect(validateTraceRecord({ ...canonicalRecord, schemaVersion: 2 })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, schemaVersion: 3 })).toBe(false);
 		const noVersion = looseCopy(canonicalRecord);
 		delete noVersion.schemaVersion;
 		expect(validateTraceRecord(noVersion)).toBe(false);
@@ -143,7 +155,7 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 		});
 		expect(hashSpecFor(TRACE_SCHEMA_VERSION)).toEqual({ algorithm: "sha-256", output: "full-hex" });
 		// a version with no pinned algorithm cannot be used
-		expect(() => hashSpecFor(2)).toThrow(/no hash spec pinned/i);
+		expect(() => hashSpecFor(3)).toThrow(/no hash spec pinned/i);
 		// and the record's hashes are sha-256 full-hex by construction
 		const HEX_64 = /^[0-9a-f]{64}$/;
 		for (const key of ["systemPromptHash", "toolSchemaHash", "contextHash", "stablePrefixFingerprint"] as const) {
@@ -181,7 +193,9 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 	});
 
 	it("the usage quartet honors the provider-raw nulls", () => {
-		expect(validateTraceRecord({ ...canonicalRecord, cacheWrite: 0 })).toBe(true);
+		// the canonical block must move with the quartet it formalizes
+		const c = canonicalRecord.canonical;
+		expect(validateTraceRecord({ ...canonicalRecord, cacheWrite: 0, canonical: { ...c, cacheWrite: 0 } })).toBe(true);
 		expect(validateTraceRecord({ ...canonicalRecord, freshInput: null })).toBe(false); // locked: number, never faked but never null
 		expect(validateTraceRecord({ ...canonicalRecord, cacheRead: "12" })).toBe(false);
 		expect(validateTraceRecord({ ...canonicalRecord, output: undefined })).toBe(false);
@@ -197,9 +211,11 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 	});
 
 	it("the ledger line kinds validate (header / request / run_end / crash)", () => {
-		const header = { schemaVersion: 1, kind: "header", sessionId: "s", kisoVersion: "1.2.0", createdAt: 1_753_400_000_000 };
-		const runEnd = { schemaVersion: 1, kind: "run_end", runId: "run-0143", ts: 1_753_400_000_000, lastRequestIndex: 4 };
-		const crash = { schemaVersion: 1, kind: "crash", ts: 1_753_400_000_000, note: "no run_end" };
+		// R1d-1: schemaVersion literals are constant references — the shape
+		// the WRITER emits is the constant, never a hard-coded number
+		const header = { schemaVersion: TRACE_SCHEMA_VERSION, kind: "header", sessionId: "s", kisoVersion: "1.2.0", createdAt: 1_753_400_000_000 };
+		const runEnd = { schemaVersion: TRACE_SCHEMA_VERSION, kind: "run_end", runId: "run-0143", ts: 1_753_400_000_000, lastRequestIndex: 4 };
+		const crash = { schemaVersion: TRACE_SCHEMA_VERSION, kind: "crash", ts: 1_753_400_000_000, note: "no run_end" };
 		expect(validateTraceLine(header)).toBe(true);
 		expect(validateTraceLine(runEnd)).toBe(true);
 		expect(validateTraceLine(crash)).toBe(true);
@@ -207,5 +223,48 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 		expect(validateTraceLine({ kind: "bogus" })).toBe(false);
 		expect(validateTraceLine({ ...header, extra: 1 })).toBe(false);
 		expect(validateTraceLine({ ...runEnd, lastRequestIndex: "4" })).toBe(false);
+	});
+
+	it("R1d-1 generation-compat: a v1 sidecar record reads as defaults, never a crash", () => {
+		// the incumbent 1.2.0 shape — the current record minus the canonical
+		// block, schemaVersion 1 (the literal is the POINT: this is the old
+		// generation, byte-for-byte what a 1.2.0 writer emitted)
+		const v1 = looseCopy(canonicalRecord);
+		delete v1.canonical;
+		v1.schemaVersion = 1;
+		expect(validateTraceRecord(v1)).toBe(true); // accepted — readers derive defaults
+		expect(validateTraceLine(v1)).toBe(true);
+		// the v1 closed set still bites: an extra key is rejected
+		expect(validateTraceRecord({ ...v1, bogus: 1 })).toBe(false);
+		// v1 header lines validate too (the per-kind shapes are identical)
+		expect(
+			validateTraceLine({ schemaVersion: 1, kind: "header", sessionId: "s", kisoVersion: "1.2.0", createdAt: 1_753_400_000_000 }),
+		).toBe(true);
+	});
+
+	it("E2: the canonical block is validated (shape + quartet equality + cost consistency)", () => {
+		const c = canonicalRecord.canonical;
+		// shape — the schema's invariants machine-checked
+		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, input: -1 } })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, costUsd: -0.01 } })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, pricingTableVersion: 2 } })).toBe(false); // unpinned
+		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, reasoning: 17 } })).toBe(true); // reserved, usable
+		// quartet equality — the block formalizes the raw quartet; a
+		// divergence means the derivation drifted (a future bug)
+		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, input: 42 } })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, cacheRead: 12411 } })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, output: 321 } })).toBe(false);
+		// cost consistency — recomputed from the components × the version's
+		// pinned table, at the record's own route (validator epsilon 1e-6:
+		// drift below a micro-dollar is arithmetic, above is corruption)
+		const exact = (41 * 0.27 + 320 * 1.1 + 12410 * 0.027) / 1e6;
+		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, costUsd: 1 } })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, costUsd: exact + 1e-5 } })).toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, costUsd: exact + 1e-7 } })).toBe(true); // within epsilon
+	});
+
+	it("the closed-field-set gate spans both generations (R1d-1)", () => {
+		expect(TRACE_RECORD_FIELDS).toEqual([...TRACE_RECORD_FIELDS_V1, "canonical"]);
+		expect(new Set(TRACE_RECORD_FIELDS_V1).size).toBe(TRACE_RECORD_FIELDS_V1.length);
 	});
 });

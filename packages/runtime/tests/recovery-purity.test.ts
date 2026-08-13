@@ -121,6 +121,18 @@ describe("R-H 0.1.49 — the derivation purity gate (R7: derivation never reads 
 			cacheRead: 0,
 			cacheWrite: null,
 			output: 0,
+			// E2 — the canonical block formalizes the quartet (this fixture
+			// mirrors the writer's current output; zero-usage → the "0 =
+			// unknown" convention, consistent with the quartet)
+			canonical: {
+				input: 0,
+				cacheRead: 0,
+				cacheWrite: null,
+				output: 0,
+				reasoning: null,
+				costUsd: 0,
+				pricingTableVersion: 1,
+			},
 			latencyMs: 1,
 			ttftMs: 0,
 			toolCalls: [],

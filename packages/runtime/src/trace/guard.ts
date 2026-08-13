@@ -27,6 +27,7 @@ import type { Adapter, AdapterEvent, Event, StreamOptions } from "@vincemakes/ki
 import { buildContextManifest, segmentHashes } from "./manifest.js";
 import { cacheableHashes } from "./analyze.js";
 import { hashContext, hashSystemPrompt, hashToolSpecs, stablePrefixFingerprint } from "./hash.js";
+import { PRICING_TABLE_V1, canonicalizeUsage } from "../usage/canonical.js";
 import { TRACE_SCHEMA_VERSION, type Outcome, type TraceRecord } from "./record.js";
 import { TraceWriter } from "./writer.js";
 
@@ -157,6 +158,17 @@ export class RequestTracer {
 			cacheRead: 0,
 			cacheWrite: null,
 			output: 0,
+			// the canonical block starts at the same "0 = unknown" convention
+			// and is settled with the quartet (same raw, one derivation)
+			canonical: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: null,
+				reasoning: null,
+				costUsd: 0,
+				pricingTableVersion: PRICING_TABLE_V1.version,
+			},
 			latencyMs: 0,
 			ttftMs: 0,
 			toolCalls: [],
@@ -194,6 +206,16 @@ export class RequestTracer {
 			record.cacheWrite = p.cacheWrite ?? null;
 			record.output = p.outputTokens ?? 0;
 		}
+		// E2 — the canonical block formalizes the same raw (the route-keyed
+		// mapping; the validator pins block == quartet, so the two can never
+		// drift apart). Unknown usage canonicalizes to the "0 = unknown"
+		// convention, consistent with the quartet above.
+		record.canonical = canonicalizeUsage(this.#provider, {
+			inputTokens: p.inputTokens,
+			outputTokens: p.outputTokens,
+			cacheRead: p.cacheRead,
+			cacheWrite: p.cacheWrite,
+		});
 		this.#writer.enqueue(record);
 	}
 
