@@ -18,6 +18,10 @@ set -eu
 ROUND=$1; ARM=$2; SEQ=$3
 B="$(cd "$(dirname "$0")" && pwd)"
 WORK="$B/runs/$ROUND/kiso-PLN-$ARM-$SEQ"
+# KISO_BIN overrides the kiso command (the arm detector reads the rent
+# ledger, written by the E1+/E3 tracer — pass the LOCAL build:
+# KISO_BIN="node $B/../apps/cli/dist/index.js")
+KISO_BIN=${KISO_BIN:-kiso}
 rm -rf "$WORK"; mkdir -p "$WORK"
 . "${XDG_CONFIG_HOME:-$HOME/.config}/claude-deepseek/credentials.env"
 EXTDIR="$WORK/ext"; mkdir -p "$EXTDIR"
@@ -41,7 +45,7 @@ for TASK in T2 T3; do
       OPENAI_MODEL="deepseek-v4-flash" \
       KISO_EXTENSIONS_DIR="$EXTDIR" \
       KISO_HOME="$WORK/kiso-home" \
-      kiso --mode bypass "bench-planning-$ARM-$SEQ-$TASK" > "$WORK/stdout-$TASK.log" 2>&1 || true
+      $KISO_BIN --mode bypass "bench-planning-$ARM-$SEQ-$TASK" > "$WORK/stdout-$TASK.log" 2>&1 || true
   )
   E=$(date +%s); TOT=$((TOT + E - S))
   ( cd "$WORK/repo" && VERIFY $TASK ) > "$WORK/verify-$TASK"

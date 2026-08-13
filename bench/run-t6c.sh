@@ -16,6 +16,9 @@ set -eu
 ROUND=$1; SEQ=$2
 B="$(cd "$(dirname "$0")" && pwd)"
 WORK="$B/runs/$ROUND/kiso-T6C-$SEQ"
+# KISO_BIN overrides the kiso command (the trace sidecar the curve needs is
+# written by the E1+ tracer — pass the LOCAL build: KISO_BIN="node $B/../apps/cli/dist/index.js")
+KISO_BIN=${KISO_BIN:-kiso}
 rm -rf "$WORK"; mkdir -p "$WORK"
 cp -R "$B/fixture-t6/" "$WORK/repo/"
 rm -rf "$WORK/repo/.git"
@@ -31,7 +34,7 @@ WIN=${KISO_CONTEXT_WINDOW:-200000}
 KENV="OPENAI_BASE_URL=https://api.deepseek.com OPENAI_API_KEY=$DEEPSEEK_API_KEY OPENAI_MODEL=deepseek-v4-flash KISO_EXTENSIONS_DIR=$EXTDIR KISO_HOME=$WORK/kiso-home KISO_CONTEXT_WINDOW=$WIN"
 for P in 1 2 3 4; do
   S=$(date +%s)
-  BUCKET $P | env $KENV kiso --mode bypass "bench-t6c-$ROUND-$SEQ" > "$WORK/stdout-$P.log" 2>&1 || true
+  BUCKET $P | env $KENV $KISO_BIN --mode bypass "bench-t6c-$ROUND-$SEQ" > "$WORK/stdout-$P.log" 2>&1 || true
   E=$(date +%s); echo $((E - S)) > "$WORK/wall_$P"
 done
 VERIFY=$("$B/t6-verify.sh" "$WORK/repo")
