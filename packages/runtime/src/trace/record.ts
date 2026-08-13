@@ -19,19 +19,28 @@
  * quartet stays as provider observation above it). The validators accept
  * BOTH generations (R1d-1): a v1 sidecar has no canonical block and reads
  * as defaults at every consumer — never a crash.
+ *
+ * E3 (0.2.1) — schemaVersion 3: the record gains the `rent` block — the
+ * static rent ledger, one line per surface (trace/rent.ts). The v3
+ * writers record it; v1/v2 sidecars keep reading as defaults (R1d-1,
+ * R2-1): no rent block = no rent lines = the zero-rent reading, never a
+ * crash.
  */
 
-/** schemaVersion: 2 for 1.3.0 (the canonical block). Version 1 = the 1.2.0
- *  shape, kept for generation-compat reads (R1d-1). Algorithm and shape
- *  changes bump it (ADR-0051 §6 OUT-side versioning). */
-export const TRACE_SCHEMA_VERSION = 2;
+/** schemaVersion: 3 for 0.2.1 (the rent block). Version 1 = the 1.2.0
+ *  shape, version 2 = the 1.3.0 shape; both kept for generation-compat
+ *  reads (R1d-1, R2-1). Algorithm and shape changes bump it (ADR-0051 §6
+ *  OUT-side versioning). */
+export const TRACE_SCHEMA_VERSION = 3;
 
-/** The versions a reader may meet in a ledger. v1 records are accepted
- *  (generation-compat, R1d-1) and read as defaults — no canonical block. */
-export const TRACE_SCHEMA_VERSIONS: Readonly<Set<number>> = new Set([1, TRACE_SCHEMA_VERSION]);
+/** The versions a reader may meet in a ledger. v1 and v2 records are
+ *  accepted (generation-compat) and read as defaults — no canonical
+ *  block (v1), no rent block (v1, v2). */
+export const TRACE_SCHEMA_VERSIONS: Readonly<Set<number>> = new Set([1, 2, TRACE_SCHEMA_VERSION]);
 
 import { PRICING_TABLE_V1, priceFor, pricingTableFor, validateCanonicalUsage } from "../usage/canonical.js";
 import type { CanonicalUsage } from "../usage/canonical.js";
+import { validateRentLine, type RentLine } from "./rent.js";
 
 export type Freshness = "fresh" | "cache_read" | "cache_write";
 /** That is the complete set for 1.2.0. */
@@ -51,7 +60,7 @@ export interface TraceSegment {
 /** That is the complete set for 1.2.0. */
 
 export interface TraceRecord {
-	schemaVersion: 2;
+	schemaVersion: 3;
 	kind: "request";
 	requestId: string; // crypto.randomUUID() per adapter call — W2's reverse-reference anchor
 	runId: string;
@@ -85,6 +94,11 @@ export interface TraceRecord {
 	 *  the validator pins the equality — and carries the cost from the
 	 *  versioned pricing table (every cost records its table version). */
 	canonical: CanonicalUsage;
+	/** E3 — the static rent ledger: one line per surface (system:base,
+	 *  system:ext:<name>, tool:<name>, envelope), counts never payloads —
+	 *  see trace/rent.ts. v3 requires the block; a v1/v2 sidecar has none
+	 *  and reads as the zero-rent ledger (R2-1). */
+	rent: RentLine[];
 	latencyMs: number; // call → settle, wall clock
 	ttftMs: number; // call → first yielded adapter event
 	toolCalls: string[]; // tool names invoked in this turn, in order
@@ -106,7 +120,7 @@ export interface TraceRecord {
 // checkable.
 
 export interface HeaderLine {
-	schemaVersion: 2;
+	schemaVersion: 3;
 	kind: "header";
 	sessionId: string;
 	kisoVersion: string;
@@ -114,7 +128,7 @@ export interface HeaderLine {
 }
 
 export interface RunEndLine {
-	schemaVersion: 2;
+	schemaVersion: 3;
 	kind: "run_end";
 	runId: string;
 	ts: number;
@@ -122,7 +136,7 @@ export interface RunEndLine {
 }
 
 export interface CrashLine {
-	schemaVersion: 2;
+	schemaVersion: 3;
 	kind: "crash";
 	ts: number;
 	note: string;
@@ -142,6 +156,7 @@ export interface HashSpec {
 export const HASH_SPEC_BY_VERSION: Readonly<Record<number, HashSpec>> = {
 	1: { algorithm: "sha-256", output: "full-hex" },
 	2: { algorithm: "sha-256", output: "full-hex" }, // E2 — the algorithms do not change
+	3: { algorithm: "sha-256", output: "full-hex" }, // E3 — same algorithms, re-pinned (the E2 ritual)
 };
 
 export function hashSpecFor(version: number): HashSpec {
@@ -186,7 +201,10 @@ export const TRACE_RECORD_FIELDS_V1 = [
 ] as const;
 
 /** The 1.3.0 field set (schemaVersion 2) = the v1 set + `canonical`. */
-export const TRACE_RECORD_FIELDS = [...TRACE_RECORD_FIELDS_V1, "canonical"] as const;
+export const TRACE_RECORD_FIELDS_V2 = [...TRACE_RECORD_FIELDS_V1, "canonical"] as const;
+
+/** The 0.2.1 field set (schemaVersion 3) = the v2 set + `rent`. */
+export const TRACE_RECORD_FIELDS = [...TRACE_RECORD_FIELDS_V2, "rent"] as const;
 
 export const TRACE_SEGMENT_FIELDS = ["role", "seqRange", "estTokens", "freshness"] as const;
 
@@ -237,11 +255,12 @@ export function validateTraceSegment(v: unknown): v is TraceSegment {
 export function validateTraceRecord(v: unknown): v is TraceRecord {
 	if (!isRecord(v)) return false;
 	const version = v.schemaVersion;
-	// generation-compat (R1d-1): a v1 sidecar has no canonical block and
-	// reads as defaults — accepted, never a crash; the current version is
-	// fully checked (shape + the canonical block + its consistency).
-	if (version !== 1 && version !== TRACE_SCHEMA_VERSION) return false;
-	const fields = version === 1 ? TRACE_RECORD_FIELDS_V1 : TRACE_RECORD_FIELDS;
+	// generation-compat (R1d-1, R2-1): a v1 sidecar has no canonical
+	// block, a v2 sidecar has no rent block — both read as defaults,
+	// accepted, never a crash; the current version is fully checked
+	// (shape + the canonical block + the rent ledger).
+	if (version !== 1 && version !== 2 && version !== TRACE_SCHEMA_VERSION) return false;
+	const fields = version === 1 ? TRACE_RECORD_FIELDS_V1 : version === 2 ? TRACE_RECORD_FIELDS_V2 : TRACE_RECORD_FIELDS;
 	if (!hasClosedKeys(v, fields, ["lineageLink"])) return false;
 	if (v.kind !== "request") return false;
 	if (typeof v.requestId !== "string" || typeof v.runId !== "string") return false;
@@ -298,6 +317,12 @@ export function validateTraceRecord(v: unknown): v is TraceRecord {
 			// and an epsilon check has nothing to compare
 			if (expected !== null && Math.abs(c.costUsd - expected) > 1e-6) return false;
 		}
+	}
+	if (version === TRACE_SCHEMA_VERSION) {
+		// the rent block: every line validates (closed fields, non-empty
+		// surface, non-negative integer chars, the estTokens == ceil(chars/4)
+		// cross-check — R6). v1/v2 sidecars have no block (R2-1).
+		if (!Array.isArray(v.rent) || !v.rent.every(validateRentLine)) return false;
 	}
 	if (!isNumber(v.ts)) return false;
 	return true;

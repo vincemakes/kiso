@@ -31,7 +31,7 @@ const est = (n: number) => Math.ceil(n / 4);
 describe("E3 — the rent ledger: buildRentLedger unit semantics", () => {
 	it("R9: an absent surface is an absent line — a bare request pays only the envelope", () => {
 		const lines = buildRentLedger({ model: MODEL });
-		expect(lines).toEqual([{ surface: "envelope", chars: 39, estTokens: 10 }]);
+		expect(lines).toEqual([{ surface: "envelope", chars: 38, estTokens: 10 }]);
 	});
 
 	it("system:base and the extension appends land in order", () => {
@@ -45,7 +45,7 @@ describe("E3 — the rent ledger: buildRentLedger unit semantics", () => {
 		});
 		expect(lines.slice(0, 3)).toEqual([
 			{ surface: "system:base", chars: 5, estTokens: 2 },
-			{ surface: "system:ext:task", chars: 14, estTokens: 4 },
+			{ surface: "system:ext:task", chars: 13, estTokens: 4 },
 			{ surface: "system:ext:skills", chars: 3, estTokens: 1 },
 		]);
 	});
@@ -60,9 +60,10 @@ describe("E3 — the rent ledger: buildRentLedger unit semantics", () => {
 	it("the envelope is the R5 skeleton — a model-string function, never the payloads", () => {
 		const lines = buildRentLedger({ model: "deepseek-chat" });
 		expect(lines[0]!.chars).toBe(JSON.stringify({ model: "deepseek-chat", messages: [], tools: [] }).length);
-		expect(buildRentLedger({ model: MODEL, base: "x", appends: [{ name: "a", text: "b" }] })[3]).toEqual({
+		// base + one append = three lines; the envelope is the LAST (index 2)
+		expect(buildRentLedger({ model: MODEL, base: "x", appends: [{ name: "a", text: "b" }] })[2]).toEqual({
 			surface: "envelope",
-			chars: 39,
+			chars: 38,
 			estTokens: 10,
 		});
 	});

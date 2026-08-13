@@ -28,6 +28,7 @@ import { buildContextManifest, segmentHashes } from "./manifest.js";
 import { cacheableHashes } from "./analyze.js";
 import { hashContext, hashSystemPrompt, hashToolSpecs, stablePrefixFingerprint } from "./hash.js";
 import { PRICING_TABLE_V1, canonicalizeUsage } from "../usage/canonical.js";
+import { buildRentLedger, type RentParts } from "./rent.js";
 import { TRACE_SCHEMA_VERSION, type Outcome, type TraceRecord } from "./record.js";
 import { TraceWriter } from "./writer.js";
 
@@ -42,6 +43,11 @@ export interface RequestTracerDeps {
 	adapterVersion?: string | null;
 	/** The session log — the manifest's seqRange pointers derive from it. */
 	log: readonly Event[];
+	/** E3 — the rent ledger's inputs: the base prompt as configured and
+	 *  the per-extension appends in load order (the adapter's composed
+	 *  systemPrompt is their RESULT — the parts are what the ledger
+	 *  counts; the composed string itself is unchanged, I6). */
+	rentParts?: RentParts;
 }
 
 export class RequestTracer {
@@ -50,6 +56,7 @@ export class RequestTracer {
 	readonly #provider: string;
 	readonly #runId: string;
 	readonly #adapterVersion: string | null;
+	readonly #rentParts: RentParts | undefined;
 	#requestIndex = 0;
 	#contextHashCounts = new Map<string, number>();
 
@@ -59,6 +66,7 @@ export class RequestTracer {
 		this.#provider = deps.provider;
 		this.#runId = deps.runId;
 		this.#adapterVersion = deps.adapterVersion ?? null;
+		this.#rentParts = deps.rentParts;
 	}
 
 	init(): void {
@@ -133,6 +141,18 @@ export class RequestTracer {
 		this.#contextHashCounts.set(contextHash, retryAttempt + 1);
 		const manifest = buildContextManifest({ log: this.#log, systemPrompt, tools, messages });
 		const hashes = segmentHashes(systemPrompt, tools, messages);
+		// E3 — the static rent ledger, one line per surface; the envelope
+		// derives from the request the guard already has (R5), the base and
+		// the appends from the threaded parts (R3/R4 — observation only).
+		// exactOptionalPropertyTypes: an absent surface is an absent key —
+		// never an explicit undefined (R9).
+		const rentParts = this.#rentParts;
+		const rent = buildRentLedger({
+			model: options.model,
+			...(rentParts?.base !== undefined ? { base: rentParts.base } : {}),
+			...(rentParts?.appends !== undefined ? { appends: rentParts.appends } : {}),
+			...(tools !== undefined ? { tools } : {}),
+		});
 		return {
 			schemaVersion: TRACE_SCHEMA_VERSION,
 			kind: "request",
@@ -170,6 +190,7 @@ export class RequestTracer {
 				pricingTableId: PRICING_TABLE_V1.id,
 				pricingTableVersion: PRICING_TABLE_V1.version,
 			},
+			rent,
 			latencyMs: 0,
 			ttftMs: 0,
 			toolCalls: [],

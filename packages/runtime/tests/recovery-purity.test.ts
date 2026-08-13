@@ -136,7 +136,7 @@ describe("R-H 0.1.49 — the derivation purity gate (R7: derivation never reads 
 			},
 			// E3 — the rent ledger: the envelope line for model "m" (the
 			// real skeleton, measured)
-			rent: [{ surface: "envelope", chars: 39, estTokens: 10 }],
+			rent: [{ surface: "envelope", chars: 38, estTokens: 10 }],
 			latencyMs: 1,
 			ttftMs: 0,
 			toolCalls: [],

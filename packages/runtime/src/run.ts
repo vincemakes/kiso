@@ -11,6 +11,7 @@ import { deriveRecoveryPlan, invocationSeqOf } from "./recovery-plan.js";
 import { composeApprovalChain, composeSystemPrompt, composeToolTable, microcompactFor } from "./compose.js";
 import { truncationGuard } from "./truncation-guard.js";
 import { RequestTracer, traceGuard } from "./trace/guard.js";
+import type { RentParts } from "./trace/rent.js";
 import { runtimeVersion } from "./trace/writer.js";
 import { ResumeBlockedError, type AgentSession, type SessionConfig } from "./session.js";
 
@@ -71,6 +72,31 @@ export class Run implements AsyncIterable<Event> {
 			this.#session.ensureHealthy();
 			this.#session.beginRun(this);
 			const log = this.#session.log;
+			// The static prompt parts — computed ONCE, before the tracer, and
+			// reused for both the composed string (below) and the rent ledger
+			// (E3): a single evaluation keeps the model-visible byte stream
+			// byte-identical to the pre-E3 run (I6, trace-bytes.test.ts).
+			// 0.1.40 (R-C item 1): the tool substitution table — the ACTIVE tool
+			// set's vocabulary, snippets, and guidelines — sits BETWEEN the
+			// session's base prompt and the extension appends: generated
+			// machinery never outranks the deliberate extension text (the E2
+			// "append lands at the END" contract holds). "" when empty.
+			const toolTable = composeToolTable(this.#config.registry);
+			const basePrompt = toolTable === "" ? this.#config.systemPrompt
+				: this.#config.systemPrompt === undefined ? toolTable
+				: `${this.#config.systemPrompt}\n\n${toolTable}`;
+			// E3 — the ledger's parts: the base as CONFIGURED (what the CLI
+			// handed the runtime — the tool table is generated machinery, R3)
+			// and the extension appends in load order (R4 attribution). The
+			// composed string below is their result; the ledger counts the
+			// parts, observation-only. exactOptionalPropertyTypes: an absent
+			// surface is an absent key — never an explicit undefined (R9).
+			const rentParts: RentParts = {
+				...(this.#config.systemPrompt !== undefined ? { base: this.#config.systemPrompt } : {}),
+				appends: (this.#config.extensions ?? []).flatMap((e) =>
+					e.systemPrompt?.append === undefined ? [] : [{ name: e.name, text: e.systemPrompt.append }],
+				),
+			};
 			// E1 (1.2.0): the request tracer — the observation ledger. It
 			// sits at the adapter boundary; the model-visible byte stream is
 			// untouched (I6, trace-bytes.test.ts). Soft-fail: a degraded
@@ -83,21 +109,13 @@ export class Run implements AsyncIterable<Event> {
 				model: this.#config.model,
 				adapterVersion: runtimeVersion(),
 				log: log.all,
+				rentParts,
 			});
 			tracer.init();
 			const signal = this.#externalSignal ? new MergedSignal(this.#abort.signal, this.#externalSignal) : this.#abort.signal;
 			// E2: the session's own microcompact wins; otherwise the FIRST
 			// extension providing a compaction config supplies it.
 			const microcompact = microcompactFor(this.#config);
-			// 0.1.40 (R-C item 1): the tool substitution table — the ACTIVE tool
-			// set's vocabulary, snippets, and guidelines — sits BETWEEN the
-			// session's base prompt and the extension appends: generated
-			// machinery never outranks the deliberate extension text (the E2
-			// "append lands at the END" contract holds). "" when empty.
-			const toolTable = composeToolTable(this.#config.registry);
-			const basePrompt = toolTable === "" ? this.#config.systemPrompt
-				: this.#config.systemPrompt === undefined ? toolTable
-				: `${this.#config.systemPrompt}\n\n${toolTable}`;
 			// E2: the session's own systemPrompt first, then every extension
 			// append in LOAD order — deterministic (same extensions → same
 			// prompt); no appends → byte-identical to the extension-less run.
