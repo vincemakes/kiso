@@ -5,7 +5,10 @@
 set -eu
 TOOL=$1; TASK=$2; RUN=$3
 B="$(cd "$(dirname "$0")" && pwd)"
-WORK="$B/runs/$TOOL-$TASK-$RUN"
+# E4-e: KISO_ROUND scopes the runs under runs/<round>/ (the run-hygiene
+# discipline — a round never reuses a historical run name); absent = the
+# historical flat layout.
+WORK="$B/runs/${KISO_ROUND:+$KISO_ROUND/}$TOOL-$TASK-$RUN"
 rm -rf "$WORK"; mkdir -p "$WORK"
 cp -R "$B/fixture-v1/" "$WORK/repo/"
 rm -rf "$WORK/repo/.git"
