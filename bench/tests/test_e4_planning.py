@@ -38,7 +38,7 @@ TASK_RENT = [{"surface": "system:ext:task", "chars": 394, "estTokens": 99},
 
 
 def _req(idx, ts, tools=(), task_line=True, cache_write=0):
-    rent = TASK_RENT if task_line else []
+    rent = list(TASK_RENT) if task_line else []
     rent.append({"surface": "envelope", "chars": 38, "estTokens": 10})
     return {
         "schemaVersion": 3, "kind": "request",
@@ -77,6 +77,8 @@ def _run_dir(root, name, reqs, fails=0, verifies=None, meta=True):
     for task, v in (verifies or {"T2": "pass", "T3": "pass"}).items():
         with open(os.path.join(d, f"verify-{task}"), "w") as f:
             f.write(v + "\n")
+    with open(os.path.join(d, "wall_seconds"), "w") as f:
+        f.write("120\n")
     return d
 
 
@@ -120,7 +122,7 @@ class PlanningExtractTest(unittest.TestCase):
                      verifies={"T2": "fail", "T3": "pass"})
         m = extract_planning.extract_run(d)
         self.assertEqual(m["verifiedPass"], 1)
-        self.assertEqual(m["tasks"], 2)
+        self.assertEqual(len(m["tasks"]), 2)
 
     def test_verdict_off_fail_is_insurance(self):
         """OFF fails where ON passes → the insurance holds."""
