@@ -26,6 +26,7 @@
   "SummarizeResult",
   "TrustDecision",
   "TrustRecord",
+  "canonicalizeUsage",
   "createAgent",
   "disposeExtensions",
   "executionForCallId",

@@ -84,7 +84,7 @@ resume, an undecided request is re-presented; an expired one never is.
 
 - **Durable surface** — the frozen event ABI (ADR-0051); never changes.
 - **SDK surface** — the curated root manifest of `@vincemakes/kiso-runtime`
-  (37 names, pinned by the surface gate; `docs/sdk.md`).
+  (38 names, pinned by the surface gate; `docs/sdk.md`).
 - **Model request surface** — what the kernel sends to a model; measured
   by the bench, delta-free across releases.
 - **Product surface** — the CLI and the extensions; free to evolve.

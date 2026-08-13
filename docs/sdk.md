@@ -7,7 +7,7 @@ the manifest is review-signed and pinned by the surface gate
 (`scripts/api-surface.mjs --check`), so the table below cannot silently
 drift.
 
-## 1. The root manifest (37 names, pinned by the gate)
+## 1. The root manifest (38 names, pinned by the gate)
 
 The curated three-column manifest. `keep` = the SDK surface; `alias` =
 deprecated old names, additive until the next major; `internal` = the
@@ -29,6 +29,7 @@ machinery the SDK deliberately does not expose (see §3).
 | `executionLedger`, `executionForCallId`, `ExecutionRecord`, `ExecutionStatus` | keep | the durable execution ledger |
 | `kisoHome`, `projectArtifacts`, `recordTrust`, `trustFor`, `TrustRecord`, `TrustDecision`, `ProjectArtifact`, `ProjectArtifacts` | keep | trust decisions, durable |
 | `PermissionPolicy`, `PermissionRule` | keep | the permission gate config |
+| `canonicalizeUsage` | keep | the canonical usage derivation (E2/1.3.0): provider-raw in, canonical out — `input` is FRESH-ONLY, cost at the versioned pricing table (R4b-1: additive minor, signed 2026-08-13) |
 
 Adjudication detail (review rulings, 2026-08-12): `ledger` and `trust`
 stayed **public**; `lock-adapter`, `recovery`, `compose`, `summarize`, and
