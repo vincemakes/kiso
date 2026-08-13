@@ -356,9 +356,12 @@ The version convention after the flip:
 
 ## Amendment 2 (2026-08-13): the version reset — 0.2.x, and the real 1.0
 
-The 1.x line (npm versions 1.0.0–1.2.0) is revoked on npm; all 13
-public packages reset together to 0.2.0, mirroring the 1.0.0 flip as
-a whole-line event (the product line pinned core, provider-anthropic,
+The 1.x line (npm versions 1.0.0–1.2.0) is DEPRECATED on npm — a
+physical unpublish proved impossible (npm forbids unpublishing any
+version that has dependent packages in the registry, and the monorepo's
+own packages all depend on `kiso-core`; see (a)). All 13 public
+packages reset together to 0.2.0, mirroring the 1.0.0 flip as a
+whole-line event (the product line pinned core, provider-anthropic,
 and tools-node, so the sync is all 13, not runtime+cli alone).
 
 **This amendment changes ONLY the version statement, never the
@@ -369,24 +372,37 @@ frozen ABI" is superseded: the semver promise of the frozen contract
 is now expressed on the 0.2.x line, and the REAL 1.0 is owner-decreed,
 gated by the trigger template below.
 
-### (a) The adopter-face principle: npm revokes, history stays
+### (a) The adopter-face principle: npm deprecates, history stays
 
 - **Immutable history, both kinds**: the git commit history and the
   annotated tags v1.0.0–v1.2.0 are BOTH preserved. A tag is history,
   the same way a commit is — deleting a tag would be history erasure
   and is not done, ever.
+- **Why deprecate, not unpublish**: unpublish was attempted and
+  refused by npm with `E405 — has dependent packages in the registry`.
+  npm forbids unpublishing a version that any other published package
+  depends on; every 1.x package depends on `kiso-core@1.x`, so the
+  whole line is undeletable. npm's own error names the remedy
+  (`npm deprecate`). A second wall stood behind it: npm has retired
+  TOTP 2FA, so a write needs a security-key (WebAuthn) or a recovery
+  code, and a bypass-2FA granular token is explicitly barred from
+  unpublish. The lesson is recorded: a published multi-package
+  monorepo cannot roll its versions back by unpublishing — it
+  deprecates the old line and moves `latest`.
 - **Adopter-facing cleanup happens on the npm/registry surface only**:
-  the 1.x npm versions are revoked (unpublished) and the `latest`
-  dist-tag is re-pointed at 0.2.0. That is the entire adopter-visible
-  change.
-- **The tag↔npm mapping table** (filed from `npm view` ground truth,
-  the revocation execution): for every v1.x tag, the npm versions it
-  points to and their revoked status — an honest account of the break,
-  so the record says plainly "the tag exists, the npm version it names
-  is revoked". This is the answer to any future "why does v1.0.0 not
-  install" question.
+  the 1.x npm versions are DEPRECATED (each carries "Superseded … use
+  0.2.x", rendered with a strikethrough and an install-time warning),
+  and the `latest` dist-tag is re-pointed at 0.2.0. That is the entire
+  adopter-visible change — the 1.x versions remain resolvable but are
+  flagged dead.
+- **The tag↔npm mapping table** (filed from `npm view` ground truth at
+  execution): for every v1.x tag, the npm versions it points to and
+  their deprecated status — an honest account, so the record says
+  plainly "the tag exists; the npm version it names is deprecated, not
+  removed". This is the answer to any future "why is v1.0.0 flagged"
+  question.
 
-| tag | npm versions it names | revoked |
+| tag | npm versions it names | deprecated |
 |---|---|---|
 | v1.0.0 | all 13 packages @ 1.0.0 (core, evals, provider-anthropic, provider-openai, tools-node, runtime, tui, tui-cells, mcp-ext, skills-ext, subagent-ext, task-ext, code) | yes |
 | v1.0.1 | runtime 1.0.1, code 1.0.1 | yes |
@@ -395,8 +411,9 @@ gated by the trigger template below.
 | v1.1.0 | runtime 1.1.0, code 1.1.0 | yes |
 | v1.2.0 | runtime 1.2.0, code 1.2.0 | yes |
 
-22 1.x versions in total (11 packages × 1.0.0 + runtime × 5 + code × 6).
-The tags above stay in the repository, annotated, forever.
+22 1.x versions in total (11 packages × 1.0.0 + runtime × 5 + code × 6),
+all deprecated (verified 2026-08-13). The tags above stay in the
+repository, annotated, forever.
 
 ### (b) The real-1.0 trigger template (R6b)
 
