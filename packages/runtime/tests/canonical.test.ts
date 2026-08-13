@@ -14,10 +14,11 @@ import {
 	INPUT_CONVENTIONS,
 	PRICING_TABLE_V1,
 	canonicalizeUsage,
+	priceFor,
 	pricingTableFor,
 	validateCanonicalUsage,
 } from "../src/usage/canonical.js";
-import type { CanonicalUsage, RawUsage } from "../src/usage/canonical.js";
+import type { CanonicalUsage, PricingTable, RawUsage } from "../src/usage/canonical.js";
 
 /** Fixture 1 — the registered reproduction (fresh route): fresh input 111
  *  vs cacheRead 1024. The old recap formula (cache/in) rendered 923%; the
@@ -144,5 +145,83 @@ describe("E2 T1 — the validator (invariants machine-checked)", () => {
 		// the reproduction record passes — cacheRead 1024 with input 111 is
 		// canonical-true (the ratio is 90%, computed over the total)
 		expect(validateCanonicalUsage(canonical())).toBe(true);
+	});
+});
+
+describe("R5b-④ — the injection slot, the (id, version) stamp, and the absent cost (2026-08-13)", () => {
+	// A foreign table with distinct rates: the injection point live.
+	const INJECTED: PricingTable = {
+		id: "acme-2026",
+		version: 42,
+		entries: {
+			anthropic: { inputPerM: 9, outputPerM: 9, cacheReadPerM: 9, cacheWritePerM: 0 },
+			"openai-compat": { inputPerM: 9, outputPerM: 9, cacheReadPerM: 9, cacheWritePerM: 0 },
+		},
+	};
+
+	it("④a — canonicalizeUsage(route, raw) defaults to the builtin v1 table", () => {
+		const c = canonicalizeUsage("openai-compat", REPRO_RAW_TOTAL);
+		expect(c.pricingTableId).toBe("builtin");
+		expect(c.pricingTableVersion).toBe(1);
+		expect(c.costUsd).not.toBeNull();
+	});
+
+	it("④b — the two-tuple stamp: an injected table's id + version ride the record", () => {
+		const c = canonicalizeUsage("openai-compat", REPRO_RAW_TOTAL, INJECTED);
+		expect(c.pricingTableId).toBe("acme-2026");
+		expect(c.pricingTableVersion).toBe(42);
+		expect(c.costUsd).not.toBeNull();
+	});
+
+	it("④c — an injected table missing a route's rate → costUsd null, never backfilled", () => {
+		const HOLEY: PricingTable = {
+			id: "acme-partial",
+			version: 7,
+			entries: { "openai-compat": { inputPerM: 1, outputPerM: 2, cacheReadPerM: 0.1, cacheWritePerM: 0 } },
+		};
+		const c = canonicalizeUsage("anthropic", REPRO_RAW_FRESH, HOLEY);
+		expect(c.costUsd).toBeNull(); // explicit absent — no builtin backfill
+		expect(validateCanonicalUsage(c)).toBe(true); // the validator accepts absent
+	});
+
+	it("④c — the validator: null costUsd is valid, non-numbers and negatives are not", () => {
+		const c = canonicalizeUsage("anthropic", REPRO_RAW_FRESH);
+		expect(validateCanonicalUsage({ ...c, costUsd: null })).toBe(true);
+		expect(validateCanonicalUsage({ ...c, costUsd: "0.27" })).toBe(false);
+		expect(validateCanonicalUsage({ ...c, costUsd: -0.01 })).toBe(false);
+	});
+
+	it("④b — pricingTableId joins the closed field set (7 → 8), a non-empty string", () => {
+		const c = canonicalizeUsage("anthropic", REPRO_RAW_FRESH);
+		expect(validateCanonicalUsage({ ...c, pricingTableId: "acme-2026" })).toBe(true);
+		expect(validateCanonicalUsage({ ...c, pricingTableId: "" })).toBe(false);
+		expect(validateCanonicalUsage({ ...c, pricingTableId: 7 })).toBe(false);
+		const withoutId: Record<string, unknown> = { ...c };
+		delete withoutId.pricingTableId;
+		expect(validateCanonicalUsage(withoutId)).toBe(false); // the closed set grew by one
+	});
+
+	it("④b — the version pin is builtin-scoped: a foreign id's version is the injector's accounting", () => {
+		const c = canonicalizeUsage("anthropic", REPRO_RAW_FRESH);
+		expect(validateCanonicalUsage({ ...c, pricingTableVersion: 2 })).toBe(false); // builtin id + unpinned
+		expect(validateCanonicalUsage({ ...c, pricingTableId: "acme", pricingTableVersion: 42 })).toBe(true);
+	});
+
+	it("④c — unknown routes keep the within-table mirror fallback; no entry at all → null, never a crash", () => {
+		expect(priceFor("bogus-route", { input: 1, output: 0, cacheRead: 0, cacheWrite: null }, PRICING_TABLE_V1)).toBeCloseTo(0.27 / 1e6, 12);
+		const ANTHROPIC_ONLY: PricingTable = {
+			id: "anthropic-only",
+			version: 3,
+			entries: { anthropic: { inputPerM: 1, outputPerM: 2, cacheReadPerM: 0.1, cacheWritePerM: 0 } },
+		};
+		expect(priceFor("bogus-route", { input: 1, output: 0, cacheRead: 0, cacheWrite: null }, ANTHROPIC_ONLY)).toBeNull();
+	});
+
+	it("④a — an explicit table drives the cost; the builtin meaning is untouched", () => {
+		const raw = { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheRead: 0, cacheWrite: null };
+		const injected = canonicalizeUsage("anthropic", raw, INJECTED);
+		expect(injected.costUsd).toBeCloseTo(18, 9); // 9 + 9 per 1M at the injected rates
+		const builtin = canonicalizeUsage("anthropic", raw);
+		expect(builtin.costUsd).toBeCloseTo(1.37, 9); // 1.37 at the builtin rates — unchanged
 	});
 });
