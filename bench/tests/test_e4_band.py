@@ -100,6 +100,20 @@ class BandCompareTest(unittest.TestCase):
                            capture_output=True, text=True, cwd=BENCH)
         self.assertNotEqual(r.returncode, 0)
 
+    def test_extractor_snake_case_rows_accepted(self):
+        # the extractors' actual shape (cost_weighted, no camelCase):
+        # the report feeds extractor JSON straight in, no mapper.
+        prev = [{"tool": "kiso", "task": "T3", "run": "1",
+                 "cost_weighted": 100, "wall": 100, "verify": "pass"},
+                {"tool": "kiso", "task": "T3", "run": "2",
+                 "cost_weighted": 200, "wall": 200, "verify": "pass"}]
+        this = [{"tool": "kiso", "task": "T3", "run": "1",
+                 "cost_weighted": 150, "wall": 150, "verify": "pass"}]
+        v = self._verdict(prev, this)
+        self.assertEqual(v["class"], "in-band")
+        self.assertEqual(v["metrics"]["costWeighted"]["band"], [100, 200])
+        self.assertEqual(v["frontier"]["this"], {"verifiedPass": 1, "costWeighted": 150})
+
 
 if __name__ == "__main__":
     unittest.main()

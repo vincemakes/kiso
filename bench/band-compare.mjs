@@ -40,7 +40,21 @@ function position(v, [lo, hi]) {
   return "in-band";
 }
 
+// The extractors emit snake_case rows (cost_weighted); the verdict speaks
+// camelCase. Map the aliases when the camel field is absent — the report
+// feeds extractor JSON straight in.
+const ROW_ALIASES = { costWeighted: "cost_weighted", verifiedPass: "verified_pass" };
+function normalize(r) {
+  if (!r || typeof r !== "object") return r;
+  for (const [camel, snake] of Object.entries(ROW_ALIASES)) {
+    if (r[camel] === undefined && r[snake] !== undefined) r[camel] = r[snake];
+  }
+  return r;
+}
+
 export function verdict(prev, thisRows) {
+  prev = prev.map(normalize);
+  thisRows = thisRows.map(normalize);
   const metrics = {};
   let anyOutAbove = false;
   let anyOutBelow = false;
