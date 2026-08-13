@@ -31,9 +31,13 @@ exceeding 100%** — the >100% disease is impossible by construction.
 
 ## The canonical block
 
-`canonicalizeUsage(route, raw)` reduces the provider-raw quartet to
-the closed 7-field set (exported — the signature is frozen the moment
-it lands; changing it is a MAJOR ritual, the R4b-1 ruling):
+`canonicalizeUsage(route, raw, table?)` reduces the provider-raw
+quartet to the closed 8-field set (exported — the signature is frozen
+the moment it lands; changing it is a MAJOR ritual, the R4b-1 ruling).
+The trailing `table` parameter is the injection slot (R5b-④a): the
+R5a-1-commercial table rides it on day one, defaulting to the pinned
+builtin v1 table below — a future injection never widens the frozen
+signature.
 
 | field | meaning |
 |---|---|
@@ -42,14 +46,18 @@ it lands; changing it is a MAJOR ritual, the R4b-1 ruling):
 | `cacheWrite` | cache-creation tokens, `null` preserved (openai-compat honestly reports none) |
 | `output` | output tokens |
 | `reasoning` | reasoning tokens, `null` when the provider reports none |
-| `costUsd` | USD from the versioned pricing table — **never reported without its table version** |
-| `pricingTableVersion` | the table the cost was computed with — a rate change is a version bump, never an edit |
+| `costUsd` | USD from the versioned pricing table — **never reported without its (id, version) tuple**; `null` = the R5b-④c absent stamp (the table has no rate for this route — an injected table's hole is explicit absent, never backfilled from the builtin table). The builtin v1 table covers both real routes, so `null` is unreachable in-tree — but the type expresses it |
+| `pricingTableId` | the table's identity (R5b-④b): `"builtin"` = the pinned in-repo table; injected tables carry their own id |
+| `pricingTableVersion` | the table version the cost was computed with — a rate change is a version bump, never an edit |
 
 The validator pins the block's internal consistency: `input +
 cacheRead + cacheWrite` must equal the raw total, and the cost must
 equal `priceFor(route, table)` applied to the four quantities (cost
-epsilon 1e-6). A version without a pinned table cannot produce a
-cost (`pricingTableFor` throws).
+epsilon 1e-6; a `null` cost is accepted — nothing to recompute
+against). A version without a pinned table cannot produce a cost
+(`pricingTableFor` throws); the version pin is scoped to the builtin
+id — an injected table's version is the injector's accounting, the
+ledger cannot know tables it does not carry.
 
 ## Pricing table v1
 

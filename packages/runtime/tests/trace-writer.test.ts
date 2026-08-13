@@ -55,6 +55,7 @@ function requestRecord(runId: string, requestIndex: number): TraceRecord {
 			output: 5,
 			reasoning: null,
 			costUsd: 8.2e-6,
+			pricingTableId: "builtin",
 			pricingTableVersion: 1,
 		},
 		latencyMs: 1,

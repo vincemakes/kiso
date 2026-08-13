@@ -167,6 +167,7 @@ export class RequestTracer {
 				cacheWrite: null,
 				reasoning: null,
 				costUsd: 0,
+				pricingTableId: PRICING_TABLE_V1.id,
 				pricingTableVersion: PRICING_TABLE_V1.version,
 			},
 			latencyMs: 0,

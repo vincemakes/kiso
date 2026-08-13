@@ -49,15 +49,28 @@ export interface CanonicalUsage {
 	readonly cacheWrite: number | null;
 	/** null = no reasoning split reported (reserved — every provider today). */
 	readonly reasoning: number | null;
-	/** USD, computed from the pricing table below. Never reported without
-	 *  its table version (the billing-basis ground). */
-	readonly costUsd: number;
+	/** USD from the pricing table below — null is the R5b-④c ABSENT stamp:
+	 *  the table has no rate for this route (an injected table's hole is
+	 *  explicit absent, never backfilled from the builtin table). The
+	 *  builtin v1 table covers both real routes, so the null branch is
+	 *  unreachable today — but the type must be able to express it.
+	 *  Never reported without its (pricingTableId, pricingTableVersion)
+	 *  tuple — the billing-basis ground. */
+	readonly costUsd: number | null;
+	/** The table the cost was computed with (R5b-④b): the (id, version)
+	 *  two-tuple stamp — cross-table version reconciliation and billing
+	 *  disputes answerable. "builtin" = the pinned in-repo table below;
+	 *  injected tables carry their own id. */
+	readonly pricingTableId: string;
 	readonly pricingTableVersion: number;
 }
 
 /** The versioned pricing table — a rate change is a version bump, never an
- *  edit; every cost records the version it was computed with (R1c). */
+ *  edit; every cost records the version it was computed with (R1c). The
+ *  id is the table's identity (R5b-④b): "builtin" for the pinned in-repo
+ *  table, anything else for an injected commercial table. */
 export interface PricingTable {
+	readonly id: string;
 	readonly version: number;
 	readonly entries: Readonly<Record<string, PricingEntry>>;
 }
@@ -88,6 +101,7 @@ export const INPUT_CONVENTIONS: Readonly<Record<string, "fresh" | "total">> = {
  *  caveat sentence carries forward verbatim (bench README): "an
  *  approximation, not a bill." */
 export const PRICING_TABLE_V1: PricingTable = {
+	id: "builtin",
 	version: 1,
 	entries: {
 		anthropic: { inputPerM: 0.27, outputPerM: 1.1, cacheReadPerM: 0.027, cacheWritePerM: 0 },
@@ -107,10 +121,18 @@ export function pricingTableFor(version: number): PricingTable {
 	return table;
 }
 
-export function priceFor(route: string, u: { input: number; output: number; cacheRead: number; cacheWrite: number | null }, table: PricingTable): number {
-	// Unknown route → the total-convention entry, matching the convention
-	// fallback above (one table, one fallback — no drift).
-	const entry = table.entries[route] ?? table.entries["openai-compat"]!;
+export function priceFor(route: string, u: { input: number; output: number; cacheRead: number; cacheWrite: number | null }, table: PricingTable): number | null {
+	// The R5b-④c semantics: a REAL route (an INPUT_CONVENTIONS key — the
+	// routes the table is expected to price) missing from the table is a
+	// HOLE → null, the explicit-absent stamp. The builtin table never
+	// backfills an injected table's hole. Unknown routes keep the legacy
+	// within-table mirror fallback (the total-convention entry, matching
+	// the convention fallback above — one table, one fallback, no drift);
+	// a table without even the mirror entry yields null, never a crash.
+	const entry =
+		table.entries[route] ??
+		(route in INPUT_CONVENTIONS ? undefined : table.entries["openai-compat"]);
+	if (entry === undefined) return null;
 	return (
 		(u.input * entry.inputPerM +
 			u.output * entry.outputPerM +
@@ -122,8 +144,13 @@ export function priceFor(route: string, u: { input: number; output: number; cach
 
 /** Raw → canonical (the accounting boundary). Behavior-preserving against
  *  the guard's incumbent per-provider branch (guard.ts settle): anthropic
- *  input is fresh as-is; every other route subtracts cacheRead. */
-export function canonicalizeUsage(route: string, raw: RawUsage): CanonicalUsage {
+ *  input is fresh as-is; every other route subtracts cacheRead.
+ *
+ *  The trailing `table` parameter is the injection slot (R5b-④a): the
+ *  R5a-1-commercial table rides it on day one, defaulting to the pinned
+ *  builtin v1 table so the export's default behavior is the pinned one
+ *  and a future injection never widens this frozen signature. */
+export function canonicalizeUsage(route: string, raw: RawUsage, table: PricingTable = PRICING_TABLE_V1): CanonicalUsage {
 	const convention = INPUT_CONVENTIONS[route] ?? "total";
 	const input =
 		raw.inputTokens === null
@@ -140,8 +167,9 @@ export function canonicalizeUsage(route: string, raw: RawUsage): CanonicalUsage 
 		cacheRead,
 		cacheWrite,
 		reasoning: null, // reserved — no provider reports a split today
-		costUsd: priceFor(route, { input, output, cacheRead, cacheWrite }, PRICING_TABLE_V1),
-		pricingTableVersion: PRICING_TABLE_V1.version,
+		costUsd: priceFor(route, { input, output, cacheRead, cacheWrite }, table),
+		pricingTableId: table.id,
+		pricingTableVersion: table.version,
 	};
 }
 
@@ -155,7 +183,7 @@ export function canonicalizeUsage(route: string, raw: RawUsage): CanonicalUsage 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null && !Array.isArray(v);
 
-const CANONICAL_FIELDS = ["input", "output", "cacheRead", "cacheWrite", "reasoning", "costUsd", "pricingTableVersion"] as const;
+const CANONICAL_FIELDS = ["input", "output", "cacheRead", "cacheWrite", "reasoning", "costUsd", "pricingTableId", "pricingTableVersion"] as const;
 
 const isNonNegNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
 
@@ -163,7 +191,11 @@ const isNonNegNum = (v: unknown): v is number => typeof v === "number" && Number
  *  non-negative numbers; cacheWrite/reasoning null-or-number; the pinned
  *  sentence — cacheRead can never exceed total (= input + cacheRead +
  *  cacheWrite) — structurally true for non-negatives but pinned against
- *  future edits; pricingTableVersion is a pinned table. */
+ *  future edits; costUsd null-or-number (R5b-④c — null is the injected
+ *  table's absent stamp); the (pricingTableId, pricingTableVersion)
+ *  tuple, with the registry pin scoped to the builtin id (R5b-④b) — an
+ *  injected table's version is the injector's accounting, the ledger
+ *  cannot know tables it does not carry. */
 export function validateCanonicalUsage(v: unknown): v is CanonicalUsage {
 	if (!isRecord(v)) return false;
 	const keys = Object.keys(v);
@@ -171,9 +203,10 @@ export function validateCanonicalUsage(v: unknown): v is CanonicalUsage {
 	if (!isNonNegNum(v.input) || !isNonNegNum(v.output) || !isNonNegNum(v.cacheRead)) return false;
 	if (v.cacheWrite !== null && !isNonNegNum(v.cacheWrite)) return false;
 	if (v.reasoning !== null && !isNonNegNum(v.reasoning)) return false;
-	if (!isNonNegNum(v.costUsd)) return false;
+	if (v.costUsd !== null && !isNonNegNum(v.costUsd)) return false;
+	if (typeof v.pricingTableId !== "string" || v.pricingTableId.length === 0) return false;
 	if (typeof v.pricingTableVersion !== "number" || !Number.isInteger(v.pricingTableVersion) || v.pricingTableVersion <= 0) return false;
-	if (!(v.pricingTableVersion in PRICING_TABLES)) return false;
+	if (v.pricingTableId === PRICING_TABLE_V1.id && !(v.pricingTableVersion in PRICING_TABLES)) return false;
 	const total = v.input + v.cacheRead + (v.cacheWrite ?? 0);
 	if (v.cacheRead > total) return false; // the pinned sentence
 	return true;

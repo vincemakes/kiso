@@ -100,9 +100,14 @@ is recorded as-is. The **billing surface is the `canonical` block** (E2):
 `canonicalizeUsage` derives `input` as FRESH-ONLY on both routes — the
 pinned sentence — and prices it at the versioned table (`docs/usage.md`,
 which carries the rates, the freeze date, and the "an approximation, not
-a bill" caveat verbatim). A request settling with no usage data records
-the quartet as zeros with `cacheWrite` null — "0 = unknown", never
-faked, and the canonical block then reads as the zeros' cost.
+a bill" caveat verbatim). Every cost travels with its
+`(pricingTableId, pricingTableVersion)` two-tuple stamp (R5b-④b) —
+which table, which version — so cross-table version reconciliation and
+billing disputes are answerable; `costUsd` may be `null` (R5b-④c), the
+explicit-absent stamp when the table has no rate for the route. A
+request settling with no usage data records the quartet as zeros with
+`cacheWrite` null — "0 = unknown", never faked, and the canonical block
+then reads as the zeros' cost.
 
 ## 4. The context manifest
 
@@ -144,7 +149,7 @@ boundary; a **rewrite** keeps the original boundary position.
 
 ```jsonl
 {"schemaVersion":2,"kind":"header","sessionId":"s1","kisoVersion":"1.3.0","createdAt":1753400000000}
-{"schemaVersion":2,"kind":"request","requestId":"9f3a7c11-…","runId":"run-1","requestIndex":0,"retryAttempt":0,"provider":"openai-compat","model":"m","adapterVersion":"1.3.0","systemPromptHash":"aaaa…","toolSchemaHash":"bbbb…","contextHash":"cccc…","contextManifest":[{"role":"system","seqRange":null,"estTokens":210,"freshness":"cache_read"},{"role":"tools","seqRange":null,"estTokens":88,"freshness":"cache_read"},{"role":"current_turn","seqRange":[1,12],"estTokens":140,"freshness":"fresh"}],"segmentHashes":["aaaa…","bbbb…","cccc…"],"stablePrefixFingerprint":"dddd…","freshInput":41,"cacheRead":12410,"cacheWrite":null,"output":320,"canonical":{"input":41,"cacheRead":12410,"cacheWrite":null,"output":320,"reasoning":null,"costUsd":0.0001908,"pricingTableVersion":1},"latencyMs":2841.5,"ttftMs":402,"toolCalls":["read_file"],"outcome":"ok","ts":17534000002841}
+{"schemaVersion":2,"kind":"request","requestId":"9f3a7c11-…","runId":"run-1","requestIndex":0,"retryAttempt":0,"provider":"openai-compat","model":"m","adapterVersion":"1.3.0","systemPromptHash":"aaaa…","toolSchemaHash":"bbbb…","contextHash":"cccc…","contextManifest":[{"role":"system","seqRange":null,"estTokens":210,"freshness":"cache_read"},{"role":"tools","seqRange":null,"estTokens":88,"freshness":"cache_read"},{"role":"current_turn","seqRange":[1,12],"estTokens":140,"freshness":"fresh"}],"segmentHashes":["aaaa…","bbbb…","cccc…"],"stablePrefixFingerprint":"dddd…","freshInput":41,"cacheRead":12410,"cacheWrite":null,"output":320,"canonical":{"input":41,"cacheRead":12410,"cacheWrite":null,"output":320,"reasoning":null,"costUsd":0.0001908,"pricingTableId":"builtin","pricingTableVersion":1},"latencyMs":2841.5,"ttftMs":402,"toolCalls":["read_file"],"outcome":"ok","ts":17534000002841}
 {"schemaVersion":2,"kind":"run_end","runId":"run-1","ts":17534000002842,"lastRequestIndex":0}
 ```
 

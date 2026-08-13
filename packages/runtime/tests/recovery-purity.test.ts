@@ -131,6 +131,7 @@ describe("R-H 0.1.49 — the derivation purity gate (R7: derivation never reads 
 				output: 0,
 				reasoning: null,
 				costUsd: 0,
+				pricingTableId: "builtin",
 				pricingTableVersion: 1,
 			},
 			latencyMs: 1,

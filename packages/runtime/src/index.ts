@@ -46,7 +46,10 @@ export type { ProjectArtifact, ProjectArtifacts, TrustDecision, TrustRecord } fr
 
 // usage — the canonical accounting schema (E2/1.3.0, R4b-1 ruling:
 // additive minor, one function; the signature is frozen the moment this
-// line lands — changing it is a MAJOR ritual). Raw stays provider
-// observation; canonicalizeUsage derives at the accounting boundary
-// (R4 Case B — the frozen usage union does not move).
+// line lands — changing it is a MAJOR ritual). R5b-④a set the final
+// shape at freeze time: the trailing `table?: PricingTable` injection
+// slot defaults to the builtin v1 table, so the R5a-1-commercial table
+// rides day one without ever widening this signature. Raw stays
+// provider observation; canonicalizeUsage derives at the accounting
+// boundary (R4 Case B — the frozen usage union does not move).
 export { canonicalizeUsage } from "./usage/canonical.js";

@@ -30,7 +30,7 @@ export const TRACE_SCHEMA_VERSION = 2;
  *  (generation-compat, R1d-1) and read as defaults — no canonical block. */
 export const TRACE_SCHEMA_VERSIONS: Readonly<Set<number>> = new Set([1, TRACE_SCHEMA_VERSION]);
 
-import { priceFor, pricingTableFor, validateCanonicalUsage } from "../usage/canonical.js";
+import { PRICING_TABLE_V1, priceFor, pricingTableFor, validateCanonicalUsage } from "../usage/canonical.js";
 import type { CanonicalUsage } from "../usage/canonical.js";
 
 export type Freshness = "fresh" | "cache_read" | "cache_write";
@@ -282,13 +282,22 @@ export function validateTraceRecord(v: unknown): v is TraceRecord {
 			return false;
 		// cost consistency: recomputed from the components × the version's
 		// pinned table, at the record's own route (the route context lives
-		// in the record; the standalone schema cannot check this)
-		const expected = priceFor(
-			v.provider,
-			{ input: c.input, output: c.output, cacheRead: c.cacheRead, cacheWrite: c.cacheWrite },
-			pricingTableFor(c.pricingTableVersion),
-		);
-		if (Math.abs(c.costUsd - expected) > 1e-6) return false;
+		// in the record; the standalone schema cannot check this). A null
+		// costUsd is the R5b-④c absent stamp (the table has no rate for
+		// this route) — nothing to recompute against, accepted. The
+		// cross-check runs only for builtin-id records: a foreign table's
+		// consistency is the billing layer's accounting, not the ledger's.
+		if (c.costUsd !== null && c.pricingTableId === PRICING_TABLE_V1.id) {
+			const expected = priceFor(
+				v.provider,
+				{ input: c.input, output: c.output, cacheRead: c.cacheRead, cacheWrite: c.cacheWrite },
+				pricingTableFor(c.pricingTableVersion),
+			);
+			// non-null for the builtin table by construction (both real
+			// routes + the mirror fallback) — a null here is a code bug,
+			// and an epsilon check has nothing to compare
+			if (expected !== null && Math.abs(c.costUsd - expected) > 1e-6) return false;
+		}
 	}
 	if (!isNumber(v.ts)) return false;
 	return true;

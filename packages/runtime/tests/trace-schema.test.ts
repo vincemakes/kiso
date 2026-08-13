@@ -61,6 +61,7 @@ const canonicalRecord: TraceRecord = {
 		output: 320,
 		reasoning: null,
 		costUsd: (41 * 0.27 + 320 * 1.1 + 12410 * 0.027) / 1e6,
+		pricingTableId: "builtin",
 		pricingTableVersion: 1,
 	},
 	latencyMs: 2841.5,
