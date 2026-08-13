@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-code",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "kiso CLI \u2014 the durable coding agent that survives kill -9: kiso chat / kiso resume / kiso sessions.",
   "type": "module",
   "license": "MIT",
