@@ -353,3 +353,76 @@ The version convention after the flip:
   lightweight tag was the P4 note — not a precedent to follow).
 - **No deprecate of 0.1.49** — nothing is wrong with it; the line's
   deprecation history stays as-is.
+
+## Amendment 2 (2026-08-13): the version reset — 0.2.x, and the real 1.0
+
+The 1.x line (npm versions 1.0.0–1.2.0) is revoked on npm; all 13
+public packages reset together to 0.2.0, mirroring the 1.0.0 flip as
+a whole-line event (the product line pinned core, provider-anthropic,
+and tools-node, so the sync is all 13, not runtime+cli alone).
+
+**This amendment changes ONLY the version statement, never the
+contract.** The frozen ABI, the envelope, the generations, the gates —
+every §1–§10 fact stands exactly as frozen. Amendment 1's sentence
+"Core and runtime's 1.0.0 is the semver public promise of this ADR's
+frozen ABI" is superseded: the semver promise of the frozen contract
+is now expressed on the 0.2.x line, and the REAL 1.0 is owner-decreed,
+gated by the trigger template below.
+
+### (a) The adopter-face principle: npm revokes, history stays
+
+- **Immutable history, both kinds**: the git commit history and the
+  annotated tags v1.0.0–v1.2.0 are BOTH preserved. A tag is history,
+  the same way a commit is — deleting a tag would be history erasure
+  and is not done, ever.
+- **Adopter-facing cleanup happens on the npm/registry surface only**:
+  the 1.x npm versions are revoked (unpublished) and the `latest`
+  dist-tag is re-pointed at 0.2.0. That is the entire adopter-visible
+  change.
+- **The tag↔npm mapping table** (filed from `npm view` ground truth,
+  the revocation execution): for every v1.x tag, the npm versions it
+  points to and their revoked status — an honest account of the break,
+  so the record says plainly "the tag exists, the npm version it names
+  is revoked". This is the answer to any future "why does v1.0.0 not
+  install" question.
+
+| tag | npm versions it names | revoked |
+|---|---|---|
+| v1.0.0 | all 13 packages @ 1.0.0 (core, evals, provider-anthropic, provider-openai, tools-node, runtime, tui, tui-cells, mcp-ext, skills-ext, subagent-ext, task-ext, code) | yes |
+| v1.0.1 | runtime 1.0.1, code 1.0.1 | yes |
+| v1.0.2 | runtime 1.0.2, code 1.0.2 | yes |
+| v1.0.3 | code 1.0.3 only (the R-I-p2 bare-command patch was cli-only; runtime has no 1.0.3) | yes |
+| v1.1.0 | runtime 1.1.0, code 1.1.0 | yes |
+| v1.2.0 | runtime 1.2.0, code 1.2.0 | yes |
+
+22 1.x versions in total (11 packages × 1.0.0 + runtime × 5 + code × 6).
+The tags above stay in the repository, annotated, forever.
+
+### (b) The real-1.0 trigger template (R6b)
+
+The real 1.0 requires ALL THREE conditions satisfied AND the owner's
+ratification — written text, not vibes:
+
+1. **External real adopters ≥ N** — N to be filled by the owner;
+   recorded as TBD at this amendment.
+2. **One full quarter of the frozen contract with zero breaking
+   changes** — the §5 evolution rules' breaking paths (envelope change,
+   frozen-surface break) untouched for a continuous quarter.
+3. **The owner's explicit approval**, recorded in the review lane.
+
+Until the trigger fires, the line stays on 0.2.x.
+
+### The version convention after the reset
+
+- The release round remains the cli minor on the 0.2.x line (0.2.0 →
+  0.2.1 → …); the cli is the release counter, as since the 0.1.x era.
+- Packages bump per the §5 evolution rules within the 0.2.x line.
+- A future real 1.0 is again a whole-line flip (all 13 together),
+  mirroring Amendment 1's whole-line event — and it costs the
+  trigger-template gate above, nothing less.
+- Tags remain ANNOTATED (Amendment 1's sentence stands, on the 0.2.x
+  line).
+- Deprecation history stays as-is (Amendment 1's final sentence
+  stands; the 1.x versions are REVOKED by the reset sequence's step
+  ③, separately ordered after the product-line migration
+  confirmation — not by this amendment itself).
