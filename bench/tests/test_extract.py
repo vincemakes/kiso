@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """Regression test for the bench extraction accounting (0.1.23 fresh-mystery
-round). The README tables' fresh/total/cost-wtd columns must mean the same
-thing per tool, or the comparison silently double-counts:
-  - kiso's inputTokens INCLUDES the cache-hit prefix (DeepSeek convention):
-    fresh = input − cache_read, total = input.
+round; E2 1.3.0 — the canonical switch, T7). The README tables'
+fresh/total/cost-wtd columns must mean the same thing per tool, or the
+comparison silently double-counts:
+  - kiso (1.3.0+): the TRACE SIDECAR — the canonical block's input is
+    FRESH-ONLY on both routes (the pinned sentence); a v1 sidecar's
+    freshInput IS the guard's route-derived fresh; an untraced session
+    falls back to the session-log raw (fresh = inputTokens − cache_read,
+    the legacy openai-compat derivation).
   - pi and claude report fresh-only input: fresh = input, total = input +
     cache_read.
   - cost_weighted = fresh + 0.1 × cache_read (DeepSeek cache-hit price
     ratio).
-This test pins the semantics on synthetic records so a future edit cannot
-regress the labeling (the exact bug that produced the "fresh ≈ system
-prompt size" phantom anomaly in the 0.1.22 bench).
+All rows carry the uniform canonical shape: input = fresh, total = fresh +
+cache_read (the v8-and-older kiso tables kept the openai-compat raw shape
+— identical numbers on healthy data; the switch fixes the >100% disease
+where the old fresh went NEGATIVE). Pinned on synthetic records so a
+future edit cannot regress the labeling (the exact bug that produced the
+"fresh ≈ system prompt size" phantom anomaly in the 0.1.22 bench).
 
 Run: python3 -m unittest tests/test_extract.py   (from bench/)
 """
@@ -29,6 +36,19 @@ def _load(path, name):
 extract_t5 = _load("extract-t5.py", "extract_t5")
 extract_t6 = _load("extract-t6.py", "extract_t6")
 
+def _sidecar_ledger(d, sid, requests):
+    """Write a trace sidecar (header + requests + run_end) under the
+    run's kiso-home; the session log of the SAME sid stays absent —
+    the dedup must not double-count it when it exists either."""
+    os.makedirs(f"{d}/kiso-home/sessions/traces")
+    with open(f"{d}/kiso-home/sessions/traces/{sid}.jsonl", "w") as f:
+        f.write(json.dumps({"schemaVersion": 2, "kind": "header", "sessionId": sid,
+                            "kisoVersion": "1.3.0", "createdAt": 1}) + "\n")
+        for r in requests:
+            f.write(json.dumps(r) + "\n")
+        f.write(json.dumps({"schemaVersion": 2, "kind": "run_end", "runId": "r1",
+                            "ts": 2, "lastRequestIndex": len(requests) - 1}) + "\n")
+
 class KisoAccountingTest(unittest.TestCase):
     def _session_dir(self, usage_events):
         d = tempfile.mkdtemp()
@@ -38,18 +58,103 @@ class KisoAccountingTest(unittest.TestCase):
                 f.write(json.dumps({"event": {"type": "usage", **u}}) + "\n")
         return d
 
-    def test_kiso_fresh_is_input_minus_cache(self):
+    def test_kiso_legacy_session_log_fresh_is_input_minus_cache(self):
+        # NO sidecar: the session-log fallback — the legacy openai-compat
+        # derivation, now reduced to the uniform row shape (input = fresh).
         d = self._session_dir([
             {"inputTokens": 1000, "cacheRead": 0, "outputTokens": 50},
             {"inputTokens": 2500, "cacheRead": 2200, "outputTokens": 80},
         ])
         m = extract.kiso(d)
-        self.assertEqual(m["input"], 3500)          # total input incl. cached
+        self.assertEqual(m["input"], 1300)          # the uniform shape: input = fresh
         self.assertEqual(m["cache_read"], 2200)
         self.assertEqual(m["fresh"], 1300)          # 1000 + (2500 − 2200)
-        self.assertEqual(m["total"], 3500)
+        self.assertEqual(m["total"], 3500)          # 1300 + 2200
         self.assertEqual(m["requests"], 2)
         self.assertEqual(m["cost_weighted"], m["fresh"] + 0.1 * m["cache_read"])
+        self.assertEqual(m["first_prompt"], 1000)   # first request true total: 1000 + 0
+        # NOT 2000 — the v8-and-older first_prompt counted inputTokens +
+        # cacheRead with the cache hit twice (raw already includes it).
+
+    def test_kiso_v2_sidecar_reads_the_canonical_block(self):
+        # The df2 fixture: canonical fresh 58 + cache 1920 (raw total 1978).
+        # The session log for the same sid exists — the dedup must NOT
+        # also read it (no double counting).
+        d = tempfile.mkdtemp()
+        os.makedirs(f"{d}/kiso-home/sessions")
+        with open(f"{d}/kiso-home/sessions/s.jsonl", "w") as f:
+            f.write(json.dumps({"event": {"type": "usage", "inputTokens": 1978,
+                                          "cacheRead": 1920, "outputTokens": 111}}) + "\n")
+        _sidecar_ledger(d, "s", [{
+            "schemaVersion": 2, "kind": "request", "requestId": "r1", "runId": "r1",
+            "requestIndex": 0, "retryAttempt": 0, "provider": "openai-compat",
+            "model": "deepseek-chat", "adapterVersion": "1.3.0",
+            "systemPromptHash": "a" * 64, "toolSchemaHash": "b" * 64,
+            "contextHash": "c" * 64, "contextManifest": [], "segmentHashes": [],
+            "stablePrefixFingerprint": "d" * 64, "freshInput": 58, "cacheRead": 1920,
+            "cacheWrite": None, "output": 111,
+            "canonical": {"input": 58, "cacheRead": 1920, "cacheWrite": None,
+                          "output": 111, "reasoning": None, "costUsd": 0.00025,
+                          "pricingTableVersion": 1},
+            "latencyMs": 1, "ttftMs": 1, "toolCalls": [], "outcome": "ok", "ts": 1}])
+        m = extract.kiso(d)
+        self.assertEqual(m["fresh"], 58)            # canonical fresh, route-agnostic
+        self.assertEqual(m["cache_read"], 1920)
+        self.assertEqual(m["total"], 1978)          # 58 + 1920
+        self.assertEqual(m["requests"], 1)          # exactly one — the dedup held
+        self.assertEqual(m["cost_weighted"], 58 + 0.1 * 1920)
+        self.assertEqual(m["first_prompt"], 1978)   # first request true total
+
+    def test_kiso_v1_sidecar_falls_back_to_the_guard_fresh(self):
+        # A pre-1.3.0 sidecar: no canonical block — freshInput IS the
+        # guard's route-derived fresh. The disease fixture (fresh 41 +
+        # cache 12410): the OLD session-log derivation would have read
+        # fresh = 41 − 12410 = −12369 (negative cost) — the fallback is
+        # the fix, read as defaults, never a crash (R1d-1).
+        d = tempfile.mkdtemp()
+        os.makedirs(f"{d}/kiso-home/sessions")
+        _sidecar_ledger(d, "s", [{
+            "schemaVersion": 1, "kind": "request", "requestId": "r1", "runId": "r1",
+            "requestIndex": 0, "retryAttempt": 0, "provider": "anthropic",
+            "model": "deepseek-chat", "adapterVersion": "1.2.0",
+            "systemPromptHash": "a" * 64, "toolSchemaHash": "b" * 64,
+            "contextHash": "c" * 64, "contextManifest": [], "segmentHashes": [],
+            "stablePrefixFingerprint": "d" * 64, "freshInput": 41, "cacheRead": 12410,
+            "cacheWrite": None, "output": 320,
+            "latencyMs": 1, "ttftMs": 1, "toolCalls": [], "outcome": "ok", "ts": 1}])
+        m = extract.kiso(d)
+        self.assertEqual(m["fresh"], 41)            # the guard's fresh, never negative
+        self.assertEqual(m["cache_read"], 12410)
+        self.assertEqual(m["total"], 12451)
+        self.assertEqual(m["cost_weighted"], 41 + 0.1 * 12410)
+
+    def test_kiso_mixed_run_traced_plus_untraced_sessions(self):
+        # One traced session (sidecar canonical) + one untraced session
+        # (session-log legacy) in the SAME run: each line is reduced once,
+        # at its own convention, into the one uniform row.
+        d = tempfile.mkdtemp()
+        os.makedirs(f"{d}/kiso-home/sessions")
+        with open(f"{d}/kiso-home/sessions/legacy.jsonl", "w") as f:
+            f.write(json.dumps({"event": {"type": "usage", "inputTokens": 5000,
+                                          "cacheRead": 4600, "outputTokens": 60}}) + "\n")
+        _sidecar_ledger(d, "traced", [{
+            "schemaVersion": 2, "kind": "request", "requestId": "r1", "runId": "r1",
+            "requestIndex": 0, "retryAttempt": 0, "provider": "openai-compat",
+            "model": "deepseek-chat", "adapterVersion": "1.3.0",
+            "systemPromptHash": "a" * 64, "toolSchemaHash": "b" * 64,
+            "contextHash": "c" * 64, "contextManifest": [], "segmentHashes": [],
+            "stablePrefixFingerprint": "d" * 64, "freshInput": 100, "cacheRead": 900,
+            "cacheWrite": None, "output": 30,
+            "canonical": {"input": 100, "cacheRead": 900, "cacheWrite": None,
+                          "output": 30, "reasoning": None, "costUsd": 0.0001,
+                          "pricingTableVersion": 1},
+            "latencyMs": 1, "ttftMs": 1, "toolCalls": [], "outcome": "ok", "ts": 1}])
+        m = extract.kiso(d)
+        self.assertEqual(m["fresh"], 500)           # 400 (legacy) + 100 (canonical)
+        self.assertEqual(m["cache_read"], 5500)     # 4600 + 900
+        self.assertEqual(m["total"], 6000)
+        self.assertEqual(m["requests"], 2)
+        self.assertEqual(m["cost_weighted"], 500 + 0.1 * 5500)
 
     def test_pi_and_claude_fresh_is_input(self):
         # pi: message_end JSONL with usage.input (fresh-only).
