@@ -184,9 +184,9 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(di
 `;
 		const { env } = isolatedEnv();
 		const out1 = execFileSync("python3", ["-c", phase1], { encoding: "utf8", timeout: 90_000, env });
-		// R-D 0.1.45: the built-in column + the user's safe-test (the
-		// four official extensions are bundled in; the banner names all five).
-		expect(out1).toContain("[5 extensions: built-in: mcp, skills, subagent, task · safe-test]");
+		// R-D 0.1.45: the built-in column + the user's safe-test (E5: the
+		// three default built-ins are bundled in; the banner names all four).
+		expect(out1).toContain("[4 extensions: built-in: mcp, skills, subagent · safe-test]");
 		expect(out1).not.toContain("read_file needs approval"); // the read was AUTO-allowed — no prompt
 		expect(out1).toContain("approve write_file"); // the write WAS asked of the human
 		expect(out1).toContain("[Permission denied]"); // the destructive shell was denied to the model

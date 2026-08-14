@@ -166,7 +166,7 @@ A framework, in two layers:
 | Layer | Owns |
 |---|---|
 | **core** (`@vincemakes/kiso-core`, ≤ 2,000 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · modes · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
-| **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-tui` (the pure terminal layer — cell renderer, dock, raw editor, diff; zero runtime deps, input is data / output is bytes — reusable standalone, API still 0.x semantics) · `@vincemakes/kiso-tui-cells` (the components cell renderer, extracted from the tui — the ADR-0041 escape hatch) · the four official extensions (`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext` — they ship INSIDE the CLI, see Extensions) · `@vincemakes/kiso-code` (the flagship coding agent) |
+| **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-tui` (the pure terminal layer — cell renderer, dock, raw editor, diff; zero runtime deps, input is data / output is bytes — reusable standalone, API still 0.x semantics) · `@vincemakes/kiso-tui-cells` (the components cell renderer, extracted from the tui — the ADR-0041 escape hatch) · the four official extensions (`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext` — the first three ship INSIDE the CLI, task is opt-in, see Extensions) · `@vincemakes/kiso-code` (the flagship coding agent) |
 
 The core stays a kernel: it decides nothing that repeats across products. The
 framework around it is where product-shaped capability grows — and that growth
@@ -418,10 +418,17 @@ identically twice, ② appending a turn leaves the old prefix byte-identical,
 
 ## Extensions — approval policies beyond the human
 
-**The four official extensions ship built-in in the CLI** (0.1.45+):
-`mcp`, `skills`, `subagent`, and `task` are registered at startup by
-module import — a fresh install has all four with zero disk setup, and
-the banner says so: `[4 extensions: built-in: mcp, skills, subagent, task]`.
+**Three official extensions ship built-in in the CLI** (0.1.45+):
+`mcp`, `skills`, and `subagent` are registered at startup by module
+import — a fresh install has all three with zero disk setup, and the
+banner says so: `[3 extensions: built-in: mcp, skills, subagent]`.
+
+The fourth official extension, **task** (durable long-horizon working
+memory), is **opt-in since 0.3.0**: on 13 consecutive real-provider
+sessions it paid its rent on every request and was never called — not
+even on the planning guidance's own designed trigger (measured dead
+weight, findings E5-F1/E5-F2). Its capability is preserved: install it
+per the Task section below.
 
 On top of the built-ins, the classic layers still load, in cascade order:
 **built-in → user → project**. An extension is a plain `.mjs` file — no
@@ -488,7 +495,7 @@ commands, ask for everything else. Install it with one line:
 
 ```
 mkdir -p ~/.kiso/extensions && cp examples/extensions/safe-defaults.mjs ~/.kiso/extensions/
-kiso chat     # → [5 extensions: built-in: mcp, skills, subagent, task · safe-defaults]
+kiso chat     # → [4 extensions: built-in: mcp, skills, subagent · safe-defaults]
 ```
 
 Now every `read_file`/`list_dir`/`search_text` auto-allows (no prompt); a
@@ -690,15 +697,23 @@ description: a review checklist for pull requests
 
 ## Task — durable long-horizon working memory
 
-**Ships built-in in the CLI** — `task_set` is loaded at startup, no install
-step. `extensions/task` is the official extension's source
-(`src/kiso-task.mjs` — source IS the product, no build step); self-host or
-customize by copying it into `~/.kiso/extensions/` (a user copy shadows the
-built-in, loudly):
+**Opt-in since 0.3.0** (it shipped built-in from 0.1.45 to 0.2.2; on 13
+consecutive real-provider sessions it paid its rent on every request and
+was never called — not even on the planning guidance's own designed
+trigger, findings E5-F1/E5-F2 — so it left the default composition).
+`extensions/task` is the official extension's source
+(`src/kiso-task.mjs` — source IS the product, no build step); install or
+customize by copying it into `~/.kiso/extensions/` (a plain user
+extension — task is no longer a built-in, nothing to shadow):
 
 ```
 cp extensions/task/src/kiso-task.mjs ~/.kiso/extensions/
 ```
+
+A plan-carrying session keeps its durable plan on resume under the new
+default — the plan lives in the log, not the extension. The edge: with
+the extension absent there is no `task_set` to *update* the plan; the
+opt-in restores it.
 
 The `task_set` tool is a whole-table replace (the CC TodoWrite shape):
 the model sends the complete current list every time, with at most one
@@ -728,7 +743,7 @@ artifact kinds are recognized there — `extensions/*.mjs`, `mcp.json`, and
   verdict is recorded in `~/.kiso/trust.jsonl` (append-only,
   `KISO_HOME`-aware).
 - **Granted** — the project's extensions load (marked `project:` in the
-  banner: `[6 extensions: built-in: mcp, skills, subagent, task · safe-defaults · project: lint-rules, mcp]`), its
+  banner: `[5 extensions: built-in: mcp, skills, subagent · safe-defaults · project: lint-rules, mcp]`), its
   `mcp.json` merges with your user config (a server name in both is a loud
   startup error), and its skills merge into the skills scan (a skill name
   in both: project wins, one stderr note). A project extension whose name
@@ -765,11 +780,11 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | durable human approvals | pauses persist across processes; verdicts never lost | `packages/runtime/tests/approvals.test.ts` |
 | crash-consistent execution | durable receipts keyed by `executionId`; a confirmed success is never re-run (exactly-once within the framework's own window — the rest is explicit human-resolved uncertainty) | `packages/core/tests/execution-gate.test.ts` |
 | extensions | policies / tools / hooks / systemPrompt / dispose | `packages/runtime/tests/extensions.test.ts` |
-| built-in extension layer | the four official extensions load in-process at startup; a user copy shadows loudly | `apps/cli/tests/builtin-layer.test.ts` |
+| built-in extension layer | the three default official extensions load in-process at startup (E5: task is opt-in); a user copy shadows loudly | `apps/cli/tests/builtin-layer.test.ts` |
 | MCP bridge | official extension — built-in since 0.1.45, kernel untouched | `extensions/mcp/tests` |
 | subagents | official extension — built-in since 0.1.45, role-policy children | `extensions/subagent/tests` |
 | skills | official extension — built-in since 0.1.45, two-tier progressive | `extensions/skills/tests` |
-| task | official extension — built-in since 0.1.45, durable long-horizon working memory (task_set) | `extensions/task/tests`, `apps/cli/tests/task-e2e.test.ts` |
+| task | official extension — opt-in since 0.3.0 (built-in 0.1.45–0.2.2), durable long-horizon working memory (task_set) | `extensions/task/tests`, `apps/cli/tests/task-e2e.test.ts` |
 | context economy ● | microcompact + /compact (model summary) + prompt-cache discipline | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
 
@@ -873,11 +888,12 @@ below is proven by a gate in `npm run check`:
   into the registry (built-in collision = startup error), hooks compose
   AFTER the harness's own (existing-first), approvals enter the policy chain.
 - **cli** (1,870/1,920 lines) — the coding agent: bare `kiso` enters chat;
-  the startup extension scan — the built-in layer first (the four official
-  extensions load in-process by module import: mcp, skills, subagent,
-  task; a user copy shadows loudly, a project copy is refused), then
-  `~/.kiso/extensions/*.mjs` (banner `[4 extensions: built-in: mcp,
-  skills, subagent, task]`, user names appended bare, project ones marked
+  the startup extension scan — the built-in layer first (the three default
+  official extensions load in-process by module import: mcp, skills,
+  subagent; E5: task is opt-in — a user copy shadows loudly, a project
+  copy is refused), then
+  `~/.kiso/extensions/*.mjs` (banner `[3 extensions: built-in: mcp,
+  skills, subagent]`, user names appended bare, project ones marked
   `project:`);
   a system prompt (coding-agent discipline: read before edit, careful
   shell) composed from a constant, with AGENTS.md/CLAUDE.md injected and
@@ -940,7 +956,8 @@ below is proven by a gate in `npm run check`:
   section above.
 - **workspace** — publishable monorepo (core, evals, runtime, tools-node,
   provider-anthropic, provider-openai, tui, tui-cells, the four official
-  extension packages, cli — 13 npm surfaces), ESM + d.ts, exact-pinned
+  extension packages (three default-built-in + task opt-in), cli — 13
+  npm surfaces), ESM + d.ts, exact-pinned
   internal versions (per-package counters, pinned at each release); CI is
   clean-checkout `npm ci` + the full gate.
 

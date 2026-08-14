@@ -137,11 +137,12 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 `;
 		const { env } = isolatedEnv();
 		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
-		// R-D 0.1.45: the four official extensions are built-in — the user
-		// copy SHADOWS the built-in mcp (the cascade in a real CLI), the
-		// built-in column lists the rest. 0.1.26: the lazy connect is in
-		// flight at the banner ("mcp (connecting…)").
-		expect(out).toContain("[5 extensions: built-in: skills, subagent, task · mcp (connecting…), safe-defaults]");
+		// R-D 0.1.45: the three default built-ins — the user copy SHADOWS
+		// the built-in mcp (the cascade in a real CLI), the built-in column
+		// lists the rest (E5: task is opt-in, absent from the default).
+		// 0.1.26: the lazy connect is in flight at the banner
+		// ("mcp (connecting…)").
+		expect(out).toContain("[4 extensions: built-in: skills, subagent · mcp (connecting…), safe-defaults]");
 		expect(out).toContain("approve mcp__fake__echo"); // the readline fallback question — the ask tier reached the human
 		expect(out).toContain("hello from mcp"); // the echo result returned to the model
 		expect(out).toContain("the echo worked");
@@ -180,7 +181,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 `;
 		const { env } = isolatedEnv();
 		const out = (await execFileP("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env })).stdout;
-		expect(out).toContain("[4 extensions: built-in: skills, subagent, task · mcp (connecting…)]"); // R-D 0.1.45: only the user mcp copy loads — the built-in column lists the rest (0.1.26: the banner shows the in-flight connect)
+		expect(out).toContain("[3 extensions: built-in: skills, subagent · mcp (connecting…)]"); // R-D 0.1.45: only the user mcp copy loads — the built-in column lists the rest (0.1.26: the banner shows the in-flight connect)
 		expect(out).toContain("approve mcp__fake__echo"); // the readline fallback question — the human gate held
 		expect(out).toContain("hello from mcp"); // the echo result returned after the approval
 		expect(out).toContain("the echo worked");
@@ -309,7 +310,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		const noiseAt = out.indexOf(NOISE);
 		// R-D 0.1.45: the banner reads the built-in column + the user column
 		// (kiso-mcp.mjs only here) — same shape as the ③b bare install.
-		const bannerAt = out.indexOf("[4 extensions: built-in: skills, subagent, task · mcp (connecting…)]");
+		const bannerAt = out.indexOf("[3 extensions: built-in: skills, subagent · mcp (connecting…)]");
 		expect(bannerAt).toBeGreaterThan(-1); // the startup banner rendered
 		// RED on the pre-A3 bundle: the child's stderr inherited the PTY and
 		// the noise landed BEFORE the banner (spawn precedes the banner).

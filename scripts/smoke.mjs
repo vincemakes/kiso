@@ -44,7 +44,8 @@ const ALL = {
 	"@vincemakes/kiso-tui-cells": true,
 	"@vincemakes/kiso-tui": true,
 	// R-D 0.1.45 (decision point A): the four official extensions joined
-	// the publish surface — the CLI's built-in layer pins them exactly.
+	// the publish surface — the CLI pins them exactly (E5: task left the
+	// default composition but stays pinned as the opt-in's npm source).
 	"@vincemakes/kiso-mcp-ext": true,
 	"@vincemakes/kiso-skills-ext": true,
 	"@vincemakes/kiso-subagent-ext": true,
@@ -262,7 +263,9 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 			// the PACKED tree BEFORE kiso-code (decision point A's
 			// extensions-before-cli dependency order) — the CLI's exact
 			// pins would otherwise resolve unpublished registry names
-			// (the fresh-install 404) or stale published ones.
+			// (the fresh-install 404) or stale published ones. E5: task is
+			// no longer built-in, but the cli still pins it (the opt-in's
+			// npm source), so it stays in the packed closure.
 			"@vincemakes/kiso-mcp-ext", "@vincemakes/kiso-skills-ext", "@vincemakes/kiso-subagent-ext", "@vincemakes/kiso-task-ext",
 			"@vincemakes/kiso-code",
 		],
@@ -276,8 +279,9 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 	if (!chat.includes("faux model")) throw new Error(`kiso chat did not run:\n${chat}`);
 	// R-D 0.1.45: the built-in layer resolved from the PACKED ext tarballs
 	// (the module-import registration — decision point A) — the banner
-	// shows the four built-ins with zero disk setup.
-	if (!chat.includes("[4 extensions: built-in: mcp, skills, subagent, task]")) throw new Error(`built-in layer missing from the packed cli:\n${chat}`);
+	// shows the three default built-ins with zero disk setup (E5: task is
+	// opt-in, absent from the default composition).
+	if (!chat.includes("[3 extensions: built-in: mcp, skills, subagent]")) throw new Error(`built-in layer missing from the packed cli:\n${chat}`);
 	const sessions = execSync(`KISO_HOME=${proj} npx kiso sessions`, { cwd: proj, encoding: "utf8" });
 	if (!sessions.includes("cli-smoke")) throw new Error(`kiso sessions did not list cli-smoke:\n${sessions}`);
 	console.log("[smoke:cli] installed kiso bin runs chat + sessions on its closure");

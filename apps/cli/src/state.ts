@@ -127,9 +127,10 @@ export function setCurrentModelName(value: string): void {
 
 /** E1: the extensions loaded by makeAgent — their names feed the banner. */
 export let loadedExtensions: readonly KisoExtension[] = [];
-/** R-D 0.1.45: the BUILT-IN layer — the four official extensions, shipped
- *  with the cli (module imports, never a disk scan; builtin.ts). The
- *  banner's marked column; a user extension may shadow a built-in. */
+/** R-D 0.1.45: the BUILT-IN layer — the three default official extensions,
+ *  shipped with the cli (module imports, never a disk scan; builtin.ts).
+ *  E5: the task extension is opt-in, not built-in. The banner's marked
+ *  column; a user extension may shadow a built-in. */
 export let builtInExtensions: readonly KisoExtension[] = [];
 /** E1: the USER-level extensions alone — the banner's unmarked part (E3:
  *  loadedExtensions later includes the project-level ones too). */

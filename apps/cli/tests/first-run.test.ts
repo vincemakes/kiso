@@ -117,7 +117,7 @@ describe("R-D 0.1.45-B — the first-run scaffold (real PTY, sentinel file)", ()
 		const first = ptyRun(
 			env,
 			cwd,
-			[["trust this project's .kiso?", "y\n"], ["[5 extensions: built-in: mcp, skills, subagent, task · project: lint-rules]", "exit\n"]],
+			[["trust this project's .kiso?", "y\n"], ["[4 extensions: built-in: mcp, skills, subagent · project: lint-rules]", "exit\n"]],
 			dirs.home,
 			0,
 		);
@@ -128,7 +128,7 @@ describe("R-D 0.1.45-B — the first-run scaffold (real PTY, sentinel file)", ()
 		//   empty at the question per the snapshot, the scaffold + the trust
 		//   record asserted below)
 		const q = first.transcript.indexOf("trust this project's .kiso?");
-		const b = first.transcript.indexOf("[5 extensions: built-in: mcp, skills, subagent, task · project: lint-rules]");
+		const b = first.transcript.indexOf("[4 extensions: built-in: mcp, skills, subagent · project: lint-rules]");
 		expect(q).toBeGreaterThan(0);
 		expect(b).toBeGreaterThan(q);
 		// the scaffold landed: config + sentinel + the trust record

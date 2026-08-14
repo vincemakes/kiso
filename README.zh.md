@@ -104,7 +104,7 @@ tui-cells:
 | 层 | 拥有 |
 |---|---|
 | **core**(`@vincemakes/kiso-core`,≤ 2,000 行) | L1 协议(带 `seq` 的事件和类型 · 消息联合 · 适配器契约)· L2 内核(循环 · 钩子 · 压缩 · 模式 · 权限)· L3 工具(契约 · 注册表 · 真实 JSON Schema 校验)· L7 评估钩子(交付真相) |
-| **packages**(无上限) | `@vincemakes/kiso-evals`(faux provider · 事故夹具 · 契约测试)· `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime`(持久会话、审批)· `@vincemakes/kiso-tools-node`(文件/搜索/编辑/shell)· `@vincemakes/kiso-tui`(纯终端层——单元格渲染器、坞、原始编辑器、diff;零运行时依赖,输入即数据 / 输出即字节——可独立复用,API 仍为 0.x 语义)· `@vincemakes/kiso-tui-cells`(从 tui 抽取出的组件单元格渲染器——ADR-0041 逃生舱)· 四个官方扩展(`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext`——它们内置于 CLI,见扩展)· `@vincemakes/kiso-code`(旗舰编码 Agent) |
+| **packages**(无上限) | `@vincemakes/kiso-evals`(faux provider · 事故夹具 · 契约测试)· `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime`(持久会话、审批)· `@vincemakes/kiso-tools-node`(文件/搜索/编辑/shell)· `@vincemakes/kiso-tui`(纯终端层——单元格渲染器、坞、原始编辑器、diff;零运行时依赖,输入即数据 / 输出即字节——可独立复用,API 仍为 0.x 语义)· `@vincemakes/kiso-tui-cells`(从 tui 抽取出的组件单元格渲染器——ADR-0041 逃生舱)· 四个官方扩展(`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext`——前三者内置在 CLI,task 为 opt-in,见扩展)· `@vincemakes/kiso-code`(旗舰编码 Agent) |
 
 内核保持内核:它不为跨产品重复的东西作决定。其上的框架才是产品形态能力生长的地方——这个生长是重点,不是违规。包经由事件流与钩子对话,绝不经过中央枢纽。见 ADR-0021。
 
@@ -267,7 +267,9 @@ phase 2(恢复,新进程,零人工输入)之后:
 
 ## 扩展——超越人类的审批策略
 
-**四个官方扩展内置在 CLI**(0.1.44+):`mcp`、`skills`、`subagent`、`task` 在启动时经模块导入注册——全新安装零磁盘设置即拥有全部四个,横幅如实显示:`[4 extensions: built-in: mcp, skills, subagent, task]`。
+**三个官方扩展内置在 CLI**(0.1.45+):`mcp`、`skills`、`subagent` 在启动时经模块导入注册——全新安装零磁盘设置即拥有全部三个,横幅如实显示:`[3 extensions: built-in: mcp, skills, subagent]`。
+
+第四个官方扩展 **task**(耐久长程工作记忆)自 **0.3.0 起为 opt-in**:13 个连续真 provider 会话上它每请求付租却一次未调用——连规划指南自家设计的触发场景都没激活(实测死重,finding E5-F1/E5-F2)。能力保留:按下方 Task 一节安装即可。
 
 内置之上,经典层仍按级联顺序加载:**内置 → 用户 → 工程**。扩展是一个普通 `.mjs` 文件——无 SDK、无构建步骤。kiso 启动时扫描 `~/.kiso/extensions/*.mjs`(`KISO_EXTENSIONS_DIR` 可覆盖),并在启动横幅中点名加载了什么。加载是**响亮**的:坏文件或重名扩展在启动时点名文件失败进程——无法加载的扩展绝不能静默改变行为。
 
@@ -303,7 +305,7 @@ export default {
 
 ```
 mkdir -p ~/.kiso/extensions && cp examples/extensions/safe-defaults.mjs ~/.kiso/extensions/
-kiso chat     # → [5 extensions: built-in: mcp, skills, subagent, task · safe-defaults]
+kiso chat     # → [4 extensions: built-in: mcp, skills, subagent · safe-defaults]
 ```
 
 现在每个 `read_file`/`list_dir`/`search_text` 自动放行(无提示);匹配 `\bgit\s+(stash|reset|checkout\s+--)|rm\s+-rf` 的 `shell` 命令被拒绝,理由回喂给模型;每次写入与其余每个 shell 命令仍问人类。门禁在 `apps/cli/tests/extensions-e2e.test.ts` 自动化——真实 PTY 会话、真实 `kill -9`:读自动放行、写被问、破坏性 shell 被拒,恢复只重呈唯一未决的请求,而扩展自身的调用日志(每次 `decide` 调用写一个标记文件)证明策略跨 kill 永不重跑。
@@ -426,7 +428,9 @@ description: a review checklist for pull requests
 
 ## 任务——持久化长期工作记忆
 
-**内置在 CLI**——`task_set` 启动即加载,无安装步骤。`extensions/task` 是官方扩展的源码(`src/kiso-task.mjs`——源码即产品,无构建步骤);自托管或定制,复制进 `~/.kiso/extensions/`(用户副本响亮地 shadow 内置):
+**自 0.3.0 起为 opt-in**(0.1.45–0.2.2 内置;13 个连续真 provider 会话上每请求付租却一次未调用——连规划指南自家设计的触发场景都没激活,finding E5-F1/E5-F2——故退出默认组合)。`extensions/task` 是官方扩展的源码(`src/kiso-task.mjs`——源码即产品,无构建步骤);安装或定制,复制进 `~/.kiso/extensions/`(普通用户扩展——task 不再是内置,无 shadow 对象):
+
+带 plan 的会话在新默认组合下 resume 仍读到耐久 plan——plan 活在日志里,不在扩展里。边界:扩展缺席时没有 `task_set` 可**更新** plan;opt-in 即可恢复。
 
 ```
 cp extensions/task/src/kiso-task.mjs ~/.kiso/extensions/
@@ -441,7 +445,7 @@ cp extensions/task/src/kiso-task.mjs ~/.kiso/extensions/
 仓库自身的 `.kiso` 目录是能力面:克隆的代码在你运行 `kiso chat` 那一刻就在你机器上执行。那里识别三种工件——`extensions/*.mjs`、`mcp.json`、`skills/<name>/SKILL.md`——共享一个信任门(ADR-0037):
 
 - **首次发现。** CLI 列出每个工件(文件名 + 摘要短前缀)并问一次:`trust this project's .kiso? (y/n)`。裁决记录在 `~/.kiso/trust.jsonl`(追加式,`KISO_HOME` 感知)。
-- **授予**——工程扩展加载(横幅里标 `project:`:`[6 extensions: built-in: mcp, skills, subagent, task · safe-defaults · project: lint-rules, mcp]`),其 `mcp.json` 与你的用户配置合并(两边同名的 server 是响亮启动错误),其技能并入技能扫描(两边同名的技能:工程胜,一条 stderr 注)。与内置同名的工程扩展被响亮拒绝——克隆的仓库绝不能静默替换 CLI 自身的行为。
+- **授予**——工程扩展加载(横幅里标 `project:`:`[5 extensions: built-in: mcp, skills, subagent · safe-defaults · project: lint-rules, mcp]`),其 `mcp.json` 与你的用户配置合并(两边同名的 server 是响亮启动错误),其技能并入技能扫描(两边同名的技能:工程胜,一条 stderr 注)。与内置同名的工程扩展被响亮拒绝——克隆的仓库绝不能静默替换 CLI 自身的行为。
 - **拒绝**——什么都不加载,且拒绝是粘性的:永不重问。删除该工程的 `trust.jsonl` 行,或改动工件文件,重新评估。
 - **信任随文件而亡。** 摘要是按排序的工件路径与内容的 sha256——改变 `.kiso` 的 `git pull` 让你再决定一次。同一工程、同一文件、同一裁决:门禁永不重问。
 - **非 TTY(CI、管道)。** 永不问、永不加载——一条 stderr 说明。为 CI 预授权,在该仓库里交互跑一次 `kiso chat`,或自己写记录:`trust.jsonl` 一行 `{"root": "<realpath of <repo>/.kiso>", "digest": "<bundle sha256>", "decision": "granted", "ts": "..."}`。刻意没有 `KISO_TRUST` 式跳过问询的环境变量——门禁不是开关。
@@ -457,11 +461,11 @@ bench(`bench/`,同一模型、同一任务、三个 Agent)度量小任务上的�
 | 持久化人工审批 | 暂停跨进程持久;裁决永不丢失 | `packages/runtime/tests/approvals.test.ts` |
 | 崩溃一致执行 | 以 `executionId` 为键的持久化回执;已确认的成功永不重跑(框架自身窗口内的恰好一次——其余是显式的人类消解的不确定性) | `packages/core/tests/execution-gate.test.ts` |
 | 扩展 | 策略 / 工具 / 钩子 / systemPrompt / dispose | `packages/runtime/tests/extensions.test.ts` |
-| 内置扩展层 | 四个官方扩展启动时进程内加载;用户副本响亮 shadow | `apps/cli/tests/builtin-layer.test.ts` |
+| 内置扩展层 | 三个默认官方扩展启动时进程内加载(E5:task 为 opt-in);用户副本响亮 shadow | `apps/cli/tests/builtin-layer.test.ts` |
 | MCP 桥 | 官方扩展——0.1.44 起内置,内核不动 | `extensions/mcp/tests` |
 | 子代理 | 官方扩展——0.1.44 起内置,角色策略子进程 | `extensions/subagent/tests` |
 | 技能 | 官方扩展——0.1.44 起内置,两级渐进 | `extensions/skills/tests` |
-| 任务 | 官方扩展——0.1.44 起内置,持久化长期工作记忆(task_set) | `extensions/task/tests`, `apps/cli/tests/task-e2e.test.ts` |
+| 任务 | 官方扩展——0.3.0 起 opt-in(0.1.44–0.2.2 内置),持久化长期工作记忆(task_set) | `extensions/task/tests`, `apps/cli/tests/task-e2e.test.ts` |
 | 上下文经济 ● | microcompact + /compact(模型摘要)+ 提示词缓存纪律 | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | 工程 `.kiso` 信任 | 内容摘要门禁,问一次,粘性拒绝 | `apps/cli/tests/project-trust.test.ts` |
 
@@ -490,7 +494,7 @@ bench,一个夹具、一个模型(deepseek-v4-flash),同日交错运行、每轮
 
 - **core**(1,971/2,000 行)——协议、循环(单一诚实终点;缺失/重复 stop 与无调用的 tool_use 是结构化错误;只在任何内容流出前重试;一个 abort 信号到达退避、审批等待、每个待决工具与 SDK)、钩子、ModeProfile、权限、microcompact(`microcompacted` 边界是持久化事实——投影确定性推导压缩视图;白名单 read/list/search/shell,`do-not-compact` 受尊重,近期回合原样)、扩展策略链(E1:deny > ask > allow 组合在人类流之前裁决——allow/deny 以 `decidedBy` 持久记录,抛异常的策略计为 ask,持久化裁决挺得过 kill -9,策略永不重跑)、交付真相、无损事件日志投影(消息是日志的纯函数,ADR-0002——以及提示词缓存字节纪律:同一事件前缀投影同一消息前缀,逐字节,三个回归测试钉死)、以框架 `executionId` 为键的执行账本(ADR-0025):失败的非幂等执行是 UNCERTAIN,直到人类裁决——已确认的成功永不重跑,新的逻辑调用总是运行。
 - **runtime**——`createAgent` / 持久多回合会话 / 崩溃安全 JSONL 存储(内核 flock 跨进程写锁下的 torn-tail 修复——升级需要 QUARANTINE:启动新版本前停掉每个旧格式进程;pidfile 守卫是尽力而为,不是无缝滚动升级(第五轮 P1-4)、严格加载、连续 seq 校验)/ `session.resume()` 跨进程续上被打断的运行:应用持久化审批(原始调用执行一次,拒绝写入其结果),补齐缺失回执,原始运行完成——无发明回合 / `loadExtensions(dir)`:每个 *.mjs 默认导出(或工厂),坏文件或重名响亮启动失败;扩展工具并入注册表(内置冲突 = 启动错误),钩子在 harness 自身之后组合(existing-first),审批进入策略链。
-- **cli**(1,870/1,920 行)——编码 Agent:裸 `kiso` 进聊天;启动扩展扫描——先内置层(四个官方扩展经模块导入进程内加载:mcp、skills、subagent、task;用户副本响亮 shadow,工程副本被拒),再 `~/.kiso/extensions/*.mjs`(横幅 `[4 extensions: built-in: mcp, skills, subagent, task]`,用户名单裸追加,工程名标 `project:`);系统提示(编码 Agent 纪律:先读后改、小心 shell)由常量组成,注入 AGENTS.md/CLAUDE.md 并截断至 8KB;每次调用一行工具摘要(`✓ edit src/foo.ts (+12 -3)` / `✗ shell npm test (exit 1)`)、状态行(`[turn 3 · in 12.4k out 1.8k · cache 9.2k · ctx ~14%]`——只用 usage 事件,未知字段整体省略,faux 模式显示 `[turn N · faux]`)、`/last` 直接从事件流打印最近一次工具调用的完整输入/输出。首跑脚手架(0.1.45):信任裁决是全新 home 的**首次**任何访问——只有授予之后配置面才物化(`config.json` + 哨兵),静默,带哨兵的 home 永不重搭脚手架、永不覆盖你的配置。v2a/v5:颜色身份是亮白 BOLD(SGR 1——you> 提示、横幅标语、✓ 标记、命令名、用户块 ▍ rail、输入 brick),助手文本中反引号片段浅蓝行内代码色(256 色 110),错误红、元数据暗、审批 diff 绿——其余全素;`NO_COLOR` 或管道全部禁用(管道零 ANSI);键入输入由 readline 自己回显,绝不渲染两次;请求与首个 delta 之间 spinner 字形显示活性。v2b:思考块折叠为每块一条暗线(前 100 字符 + ` (… /think shows full)`、`/think` 打印最后完整块),`[result]` 回显截断至 160 字符 + ` (/last for full)`——内容策略管道里相同;彩色 TTY 上 UI 坞到底部(ADR-0039):四行钉住——上暗分隔线、`▌` 输入行、下分隔线、LIVE 状态栏(idle `▸ <mode> · /mode to switch · …` 右对齐暗 `/ commands · ↑ history` 提示——窗口窄时先切;running `▖ working Ns · esc to interrupt · …`);正文以真实 LF 滚进原生 scrollback(v2d-B,ADR-0040——无滚动区);审批/不确定/信任问题占据状态位,在输入行作答;SIGWINCH 重应用区域,底部重绘包裹在 CSI 2026 同步输出里,每个退出路径在 finally 里重置终端(`\x1b[r`)——`kill -9` 可能卡住底行,终端 `reset` 命令可救。v2c:TTY 路径自绘输入行(ADR-0039 Amendment 2)——零依赖 raw 模式编辑器(显示宽光标数学——CJK 宽字符落在右列,硬验收——bracketed paste,水平滚动带暗 … 标记)配 kiso brick 母题:蓝半块 ▌you> 行与暗点线 ╌ 分隔;发送的行恰好一次渲染进正文,另一回合运行中提交的回合带 LIVE `+N queued` 状态排队,Esc 中止。已知限制:emoji ZWJ 簇宽度不完美。管道保持 readline 逐字节。v2d(ADR-0040):正文变成单元格渲染器——一个写者拥有滚动区(事件处理器只改单元格,交错按构造不可能);完成的单元格冻结一次,未完成的在区底部活动尾部渲染并原地重绘;工具的生命是一行(`→ name summary` → ⏸ → 运行 spinner + Ns → `✓ name (summary, 1.2s)`),`[result]` 不再流进流(`/last` 持有它);管道字节保持逐字节相同。`resume` 是恢复流(不确定执行裁决 rerun/abandon——不确定性只属于崩溃窗口,ADR-0038;有回执的失败是干净失败,其结果带诚实的部分副作用注,重试重过审批链);编码工具绑在工作区根(绝对路径、`..`、symlink 逃逸被拒);审批提示显示完整 shell 命令与完整路径。**kill -9 门禁**(`apps/cli/tests/kill9.test.ts`)在执行中途 SIGKILL 真实聊天并在新进程恢复——见上方一节。
+- **cli**(1,870/1,920 行)——编码 Agent:裸 `kiso` 进聊天;启动扩展扫描——先内置层(三个默认官方扩展经模块导入进程内加载:mcp、skills、subagent;E5:task 为 opt-in——用户副本响亮 shadow,工程副本被拒),再 `~/.kiso/extensions/*.mjs`(横幅 `[3 extensions: built-in: mcp, skills, subagent]`,用户名单裸追加,工程名标 `project:`);系统提示(编码 Agent 纪律:先读后改、小心 shell)由常量组成,注入 AGENTS.md/CLAUDE.md 并截断至 8KB;每次调用一行工具摘要(`✓ edit src/foo.ts (+12 -3)` / `✗ shell npm test (exit 1)`)、状态行(`[turn 3 · in 12.4k out 1.8k · cache 9.2k · ctx ~14%]`——只用 usage 事件,未知字段整体省略,faux 模式显示 `[turn N · faux]`)、`/last` 直接从事件流打印最近一次工具调用的完整输入/输出。首跑脚手架(0.1.45):信任裁决是全新 home 的**首次**任何访问——只有授予之后配置面才物化(`config.json` + 哨兵),静默,带哨兵的 home 永不重搭脚手架、永不覆盖你的配置。v2a/v5:颜色身份是亮白 BOLD(SGR 1——you> 提示、横幅标语、✓ 标记、命令名、用户块 ▍ rail、输入 brick),助手文本中反引号片段浅蓝行内代码色(256 色 110),错误红、元数据暗、审批 diff 绿——其余全素;`NO_COLOR` 或管道全部禁用(管道零 ANSI);键入输入由 readline 自己回显,绝不渲染两次;请求与首个 delta 之间 spinner 字形显示活性。v2b:思考块折叠为每块一条暗线(前 100 字符 + ` (… /think shows full)`、`/think` 打印最后完整块),`[result]` 回显截断至 160 字符 + ` (/last for full)`——内容策略管道里相同;彩色 TTY 上 UI 坞到底部(ADR-0039):四行钉住——上暗分隔线、`▌` 输入行、下分隔线、LIVE 状态栏(idle `▸ <mode> · /mode to switch · …` 右对齐暗 `/ commands · ↑ history` 提示——窗口窄时先切;running `▖ working Ns · esc to interrupt · …`);正文以真实 LF 滚进原生 scrollback(v2d-B,ADR-0040——无滚动区);审批/不确定/信任问题占据状态位,在输入行作答;SIGWINCH 重应用区域,底部重绘包裹在 CSI 2026 同步输出里,每个退出路径在 finally 里重置终端(`\x1b[r`)——`kill -9` 可能卡住底行,终端 `reset` 命令可救。v2c:TTY 路径自绘输入行(ADR-0039 Amendment 2)——零依赖 raw 模式编辑器(显示宽光标数学——CJK 宽字符落在右列,硬验收——bracketed paste,水平滚动带暗 … 标记)配 kiso brick 母题:蓝半块 ▌you> 行与暗点线 ╌ 分隔;发送的行恰好一次渲染进正文,另一回合运行中提交的回合带 LIVE `+N queued` 状态排队,Esc 中止。已知限制:emoji ZWJ 簇宽度不完美。管道保持 readline 逐字节。v2d(ADR-0040):正文变成单元格渲染器——一个写者拥有滚动区(事件处理器只改单元格,交错按构造不可能);完成的单元格冻结一次,未完成的在区底部活动尾部渲染并原地重绘;工具的生命是一行(`→ name summary` → ⏸ → 运行 spinner + Ns → `✓ name (summary, 1.2s)`),`[result]` 不再流进流(`/last` 持有它);管道字节保持逐字节相同。`resume` 是恢复流(不确定执行裁决 rerun/abandon——不确定性只属于崩溃窗口,ADR-0038;有回执的失败是干净失败,其结果带诚实的部分副作用注,重试重过审批链);编码工具绑在工作区根(绝对路径、`..`、symlink 逃逸被拒);审批提示显示完整 shell 命令与完整路径。**kill -9 门禁**(`apps/cli/tests/kill9.test.ts`)在执行中途 SIGKILL 真实聊天并在新进程恢复——见上方一节。
 - **workspace**——可发布 monorepo(core、evals、runtime、tools-node、provider-anthropic、provider-openai、tui、tui-cells、四个官方扩展包、cli——13 个 npm 面),ESM + d.ts,精确 pin 的内部版本(各包独立计数器,每次发布时 pin);CI 是干净签出 `npm ci` + 完整门禁。
 
 `npm run check` = 构建 → 类型检查(packages + 根脚本 + 测试)→ 测试 → 大小门禁(core 2,000 + cli 1,920 + tui 2,400 + tui-cells 1,280)→ pack 门禁(每个 tarball 里有 dist + README + LICENSE)→ 空白门禁(无尾随空白,每文件以换行结束)→ CJK 门禁(被跟踪树保持 CJK-free——`README.zh.md` 是唯一豁免)→ `git diff --check`(工作树与索引)→ 消费者冒烟级(runtime、NESTED 安装、providers、CLI、带真实 Anthropic/OpenAI env 的嵌套 CLI)→ 演示起止门禁。**918 个测试全绿(128 个文件)**。37 份 ADR(索引:`docs/adrs/README.md`)。6 个事故夹具跑在真实运行时上。

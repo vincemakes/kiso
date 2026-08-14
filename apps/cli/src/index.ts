@@ -210,8 +210,8 @@ function makeLineInput(): LineInput {
 /** R-D 0.1.45: the `[N extensions: ...]` text — the built-in column, then
  *  the user-level names, then the project-level ones marked `project:`.
  *  The built-in column is the banner's truthful face of the built-in layer:
- *  a fresh install reads `[4 extensions: built-in: mcp, skills, subagent,
- *  task]` with zero disk setup. */
+ *  a fresh install reads `[3 extensions: built-in: mcp, skills, subagent]`
+ *  with zero disk setup (E5: the task extension is opt-in). */
 function bannerExtensionText(): string {
 	const total = builtInExtensions.length + userExtensions.length + projectExtensions.length;
 	if (total === 0) return "";

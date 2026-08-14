@@ -1,8 +1,15 @@
 /**
- * R-D 0.1.45 — the built-in layer gate: the four official extensions ship
- * with the cli and register by MODULE IMPORT — never a disk scan (the user
- * layer's loadExtensions stays word-for-word untouched). The cascade,
- * base → top: built-in → user → project.
+ * R-D 0.1.45 — the built-in layer gate: the three official extensions that
+ * ship with the cli (mcp, skills, subagent) register by MODULE IMPORT —
+ * never a disk scan (the user layer's loadExtensions stays word-for-word
+ * untouched). The cascade, base → top: built-in → user → project.
+ *
+ * E5 (the composition round): the task extension left the default
+ * composition — measured dead weight on 13 consecutive real-provider
+ * sessions (E5-F1/F2: rent paid, never called). It stays an official
+ * extension, opt-in via the user layer (copy extensions/task/src/
+ * kiso-task.mjs into ~/.kiso/extensions/) or the project layer — a user
+ * or project extension named "task" is now a PLAIN extension, no shadow.
  *
  *  - a user extension may SHADOW a built-in by name — the user's deliberate
  *    install wins, loudly, and the shadowed built-in leaves the loaded set;
@@ -10,7 +17,7 @@
  *    refusal the loader already applies to the user layer.
  *
  * The e2e pins the fresh-install banner: an EMPTY home reads
- * `[4 extensions: built-in: mcp, skills, subagent, task]` — the adopter's
+ * `[3 extensions: built-in: mcp, skills, subagent]` — the adopter's
  * first 60 seconds, zero disk setup.
  */
 
@@ -33,16 +40,16 @@ describe("builtInLayer — the built-in layer cascade", () => {
 	});
 	afterAll(() => vi.unstubAllEnvs());
 
-	it("registers the four official extensions, in order, none shadowed", async () => {
+	it("registers the three default built-ins, in order, none shadowed", async () => {
 		const loaded = await builtInLayer(FIXTURE, FIXTURE);
-		expect(loaded.map((e) => e.name)).toEqual(["mcp", "skills", "subagent", "task"]);
+		expect(loaded.map((e) => e.name)).toEqual(["mcp", "skills", "subagent"]);
 	});
 
 	it("a user extension shadows a built-in by name — loudly, the built-in not loaded", async () => {
 		const err = vi.spyOn(console, "error").mockImplementation(() => {});
 		try {
 			const loaded = await builtInLayer([{ name: "mcp", tools: [] } as KisoExtension], FIXTURE);
-			expect(loaded.map((e) => e.name)).toEqual(["skills", "subagent", "task"]);
+			expect(loaded.map((e) => e.name)).toEqual(["skills", "subagent"]);
 			expect(err).toHaveBeenCalledWith('[extensions] user extension "mcp" shadows the built-in — the built-in is not loaded');
 		} finally {
 			err.mockRestore();
@@ -50,19 +57,23 @@ describe("builtInLayer — the built-in layer cascade", () => {
 	});
 
 	it("the project layer may not shadow a built-in — refusing to shadow", async () => {
-		await expect(builtInLayer(FIXTURE, [{ name: "task", tools: [] } as KisoExtension])).rejects.toThrow(
-			'extension name "task" exists in both the built-in and the project-level extensions',
+		await expect(builtInLayer(FIXTURE, [{ name: "skills", tools: [] } as KisoExtension])).rejects.toThrow(
+			'extension name "skills" exists in both the built-in and the project-level extensions',
 		);
+	});
+
+	it("E5: a project extension named 'task' is now a PLAIN extension — the opt-in path (no built-in to collide with)", async () => {
+		await expect(builtInLayer(FIXTURE, [{ name: "task", tools: [] } as KisoExtension])).resolves.toHaveLength(3);
 	});
 });
 
 describe("the fresh-install banner (empty home, piped)", () => {
-	it("lists the four built-ins with zero disk setup", () => {
+	it("lists the three default built-ins with zero disk setup", () => {
 		const { env } = isolatedEnv();
 		// Empty input closes stdin → EOF → the clean exit path. The banner
 		// is printed before the chat loop consumes anything, so stdout
 		// carries it either way.
 		const res = runCli(["chat", "banner-probe"], env, { input: "", timeout: 20_000 });
-		expect(stripANSI(res.stdout)).toContain("[4 extensions: built-in: mcp, skills, subagent, task]");
+		expect(stripANSI(res.stdout)).toContain("[3 extensions: built-in: mcp, skills, subagent]");
 	});
 });
