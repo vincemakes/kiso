@@ -26,8 +26,9 @@
  *
  * E3 (0.2.1): the script becomes the rent ledger's PREDICTION side (R7,
  * the star). The composition the CLI actually builds — the built-in
- * prompt, the coding tools, and the four built-in extensions (mcp /
- * skills / subagent / task) — is exposed as `defaultCompositionParts`;
+ * prompt, the coding tools, and the three default built-in extensions
+ * (mcp / skills / subagent; the task extension is opt-in since E5) — is
+ * exposed as `defaultCompositionParts`;
  * `predictDefaultRentLedger` turns those parts into the exact ledger
  * array the runtime records, and `--rent-ledger` prints the table the
  * release report carries. The R7 gate (rent-ledger-gate.test.ts) asserts
@@ -66,7 +67,10 @@ const { ToolRegistry } = await import("@vincemakes/kiso-core");
 
 /** The default bench composition — exactly what the CLI builds for an
  *  unconfigured home: the built-in system prompt, the coding tools, and
- *  the four built-in extensions in load order (apps/cli/src/builtin.ts).
+ *  the three default built-in extensions in load order
+ *  (apps/cli/src/builtin.ts). E5: the task extension left the default —
+ *  measured dead weight (E5-F1/F2); the prediction mirrors the default
+ *  WITHOUT it (the rent-ledger gate proves prediction == record).
  *  {home} pins KISO_HOME around the extension factories (the mcp and
  *  skills extensions read it at instantiation), so the parts describe
  *  the UNCONFIGURED session — the shape the bench rounds measure. */
@@ -74,16 +78,15 @@ export async function defaultCompositionParts({ home } = {}) {
 	const previous = process.env.KISO_HOME;
 	if (home !== undefined) process.env.KISO_HOME = home;
 	try {
-		const [mcp, skills, subagent, task] = await Promise.all([
+		const [mcp, skills, subagent] = await Promise.all([
 			import("@vincemakes/kiso-mcp-ext").then((m) => m.default()),
 			import("@vincemakes/kiso-skills-ext").then((m) => m.default()),
 			import("@vincemakes/kiso-subagent-ext").then((m) => m.default()),
-			import("@vincemakes/kiso-task-ext").then((m) => m.default()),
 		]);
 		return {
 			base: SYSTEM_PROMPT,
 			tools: createCodingTools({ workspaceRoot: process.cwd() }),
-			extensions: [mcp, skills, subagent, task],
+			extensions: [mcp, skills, subagent],
 		};
 	} finally {
 		if (previous === undefined) delete process.env.KISO_HOME;

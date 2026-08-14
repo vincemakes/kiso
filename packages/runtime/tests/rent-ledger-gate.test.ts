@@ -10,9 +10,10 @@
  * table a release report carries is machine-proven, not transcribed.
  *
  * The gate drives the default composition exactly as the CLI builds it:
- * the built-in system prompt, the coding tools, and the four built-in
- * extensions (mcp / skills / subagent / task) against a bare home (no
- * skills, no MCP servers) — the bench session shape.
+ * the built-in system prompt, the coding tools, and the three default
+ * built-in extensions (mcp / skills / subagent; the task extension is
+ * opt-in since E5) against a bare home (no skills, no MCP servers) —
+ * the bench session shape.
  */
 
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -100,7 +101,11 @@ describe("E3 — R7 star: the script's prediction equals a real session's record
 		expect(request!.rent).toEqual(predicted);
 		// sanity: the predicted ledger is not empty and covers every class
 		expect(predicted.some((l) => l.surface === "system:base")).toBe(true);
-		expect(predicted.some((l) => l.surface.startsWith("system:ext:"))).toBe(true);
+		// E5: the task extension left the default — against a bare home the
+		// composition carries NO extension appends (its only former append
+		// was the task guidance, system:ext:task 394c). The empty class is
+		// the new composition's shape, asserted on purpose.
+		expect(predicted.some((l) => l.surface.startsWith("system:ext:"))).toBe(false);
 		expect(predicted.some((l) => l.surface.startsWith("tool:"))).toBe(true);
 		expect(predicted.at(-1)!.surface).toBe("envelope");
 	});
