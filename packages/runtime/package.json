@@ -1,7 +1,7 @@
 {
   "name": "@vincemakes/kiso-runtime",
-  "version": "0.2.1",
-  "description": "kiso runtime \u2014 durable multi-turn agent sessions: AgentDefinition, AgentRuntime, AgentSession, Run, append-only JSONL store.",
+  "version": "0.3.0",
+  "description": "kiso runtime — durable multi-turn agent sessions: AgentDefinition, AgentRuntime, AgentSession, Run, append-only JSONL store.",
   "type": "module",
   "license": "MIT",
   "exports": {
