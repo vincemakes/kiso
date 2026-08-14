@@ -1,0 +1,311 @@
+/**
+ * E6 (context policy) — the run-start policy machinery:
+ *   A — auto-summary: at run start, when the projected context crosses
+ *       the policy's triggerTokens AND enough uncovered rounds exist
+ *       (keepRounds), the runtime fires the EXISTING summarize() path —
+ *       one durable `summarized` fact, persisted BEFORE this run's
+ *       user_input, riding the LAST recorded run (a summarized fact never
+ *       opens a run of its own). The projection compresses; the loop's
+ *       first request of the run sees the compressed view.
+ *   B — session-aware microcompact: the policy's threshold override wins
+ *       over the session's own, and the minTurns no-fire guard omits the
+ *       config below the floor (a short task never pays the break).
+ *   C — the crux drop arm (experiment-only): the SAME trigger persists a
+ *       fixed placeholder with NO model call — the covered turns leave
+ *       the sent context at zero generation cost.
+ * Plus the honest-accounting fix: the summary call's usage rides the
+ * trace ledger as a `kind: "summary"` line (both the manual /compact
+ * path and the auto path) — the blind spot the E5 baseline carried.
+ *
+ * Red before green: these gates fail against the pre-E6 runtime (no
+ * contextPolicy surface, no summary-usage ledger line).
+ */
+
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
+import { defineTool, projectMessages, type Adapter, type AdapterEvent, type StreamOptions } from "@vincemakes/kiso-core";
+import { createAgent, SessionStore } from "../src/index.js";
+import { DROP_PLACEHOLDER } from "../src/summarize.js";
+
+/** 7 chunky rounds, the shape of a long session (user + read + result),
+ *  COMPLETED with a terminal so later runs() pass the open-run gate.
+ *  Round i's input sits at seq 3i; the "final" input (seq 21) counts as a
+ *  user input too. With keepRounds=2 the ADR-0044 formula keeps the last
+ *  2 uncovered inputs (turn 6 at 18, "final" at 21) and the boundary is
+ *  the first kept input minus one = 18−1 = 17 (covered turns 0-5). */
+async function seedLongSession(store: SessionStore, id = "s"): Promise<void> {
+	let seq = 0;
+	for (let i = 0; i < 7; i++) {
+		await store.append(id, "r1", { seq: seq++, type: "user_input", content: `turn ${i}` });
+		await store.append(id, "r1", { seq: seq++, type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: `f${i}.ts` } });
+		await store.append(id, "r1", { seq: seq++, type: "tool_result", callId: `r${i}`, content: "line\n".repeat(200), isError: false });
+	}
+	await store.append(id, "r1", { seq: seq++, type: "user_input", content: "final" });
+	await store.append(id, "r1", { seq: seq++, type: "terminal", outcome: { kind: "completed" } });
+}
+
+const ONE_TURN: FauxScript = [
+	{ events: [{ type: "text_delta", text: "done." }, { type: "stop", reason: "end_turn" }] },
+];
+
+/** A counting adapter: every stream call is countable, and an optional
+ *  usage event rides each stream (the summary-usage ledger line's source). */
+class CountingAdapter implements Adapter {
+	calls = 0;
+	constructor(readonly usage: { input: number; cacheRead: number; output: number } | null = null) {}
+	async *stream(_opts: StreamOptions): AsyncIterable<AdapterEvent> {
+		this.calls += 1;
+		let seq = 0;
+		yield { type: "text_delta", text: "the summary of it all", seq: seq++ };
+		if (this.usage !== null) {
+			yield {
+				type: "usage",
+				inputTokens: this.usage.input,
+				outputTokens: this.usage.output,
+				cacheRead: this.usage.cacheRead,
+				cacheWrite: null,
+				known: true,
+				seq: seq++,
+			};
+		}
+		yield { type: "stop", reason: "end_turn", seq };
+	}
+}
+
+const ledgerLines = (dir: string, sid = "s"): Record<string, unknown>[] =>
+	readFileSync(join(dir, "traces", `${sid}.jsonl`), "utf8")
+		.split("\n")
+		.filter(Boolean)
+		.map((l) => JSON.parse(l) as Record<string, unknown>);
+
+describe("E6 context policy — the auto-summary (candidate A)", () => {
+	it("fires at run start when the projected context crosses the trigger, and the summary rides the LAST recorded run", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-a1-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider(ONE_TURN),
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain — the turn lands in the log + store
+		}
+
+		const durable = store.load("s");
+		const summaries = durable.filter((r) => r.event.type === "summarized");
+		expect(summaries).toHaveLength(1);
+		const s = summaries[0]!.event as { coversToSeq: number; seq: number };
+		expect(s.coversToSeq).toBe(17); // covered turns 0-5; turns 6 + "final" kept (the last 2 inputs)
+		// The policy fired BEFORE this run's user_input — the summarized
+		// event precedes it in seq order.
+		const input = durable.find((r) => r.event.type === "user_input" && r.event.content === "more")!;
+		expect(s.seq).toBeLessThan((input.event as { seq: number }).seq);
+		// A summarized fact never opens a run of its own: it rides the
+		// LAST recorded run (the seeded "r1"), never this run's id.
+		expect(summaries[0]!.runId).toBe("r1");
+		// The projection excludes the covered rounds and shows the summary.
+		const msgs = projectMessages(durable.map((r) => r.event));
+		expect(msgs.some((m) => m.role === "user" && m.content === "turn 0")).toBe(false);
+		// The boundary's edge: turn 5 (seq 15) is covered, turn 6 (seq 18) kept.
+		expect(msgs.some((m) => m.role === "user" && m.content === "turn 5")).toBe(false);
+		expect(msgs.some((m) => m.role === "user" && m.content === "turn 6")).toBe(true);
+	});
+
+	it("restraint: a short session below the trigger never fires, and the turn still runs", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-a2-"));
+		const store = new SessionStore(dir);
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "hi" });
+		await store.append("s", "r1", { seq: 1, type: "terminal", outcome: { kind: "completed" } });
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider(ONE_TURN),
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("again")) {
+			// drain
+		}
+		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(false);
+		// The run completed normally.
+		const terminal = store.load("s").find((r) => r.event.type === "terminal" && r.runId !== "r1");
+		expect(terminal).toBeDefined();
+	});
+
+	it("the keepRounds gate: a crossed trigger with too few uncovered rounds fires nothing", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-a3-"));
+		const store = new SessionStore(dir);
+		// Two BIG rounds — the projected context crosses the trigger, but
+		// uncovered rounds (2) never exceed keepRounds (2).
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "turn 0" });
+		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "r0", name: "read_file", input: { path: "f0.ts" } });
+		await store.append("s", "r1", { seq: 2, type: "tool_result", callId: "r0", content: "line\n".repeat(200), isError: false });
+		await store.append("s", "r1", { seq: 3, type: "user_input", content: "turn 1" });
+		await store.append("s", "r1", { seq: 4, type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "f1.ts" } });
+		await store.append("s", "r1", { seq: 5, type: "tool_result", callId: "r1", content: "line\n".repeat(200), isError: false });
+		await store.append("s", "r1", { seq: 6, type: "terminal", outcome: { kind: "completed" } });
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider(ONE_TURN),
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain
+		}
+		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(false);
+	});
+
+	it("a policy summary failure never fails the user's turn (nothing happened, the run proceeds)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-a4-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		// Script turn 1 = the summary call: empty text → throws; turn 2 =
+		// the loop's turn: normal. The policy must swallow the summary
+		// failure and let the run complete.
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider([
+				{ events: [{ type: "stop", reason: "end_turn" }] },
+				{ events: [{ type: "text_delta", text: "done." }, { type: "stop", reason: "end_turn" }] },
+			]),
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain — must NOT throw
+		}
+		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(false);
+		expect(store.load("s").some((r) => r.event.type === "user_input" && r.event.content === "more")).toBe(true);
+	});
+});
+
+describe("E6 context policy — the drop arm (candidate C, crux experiment only)", () => {
+	it("persists the placeholder with ZERO model calls, and the run still completes", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-c1-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		const adapter = new CountingAdapter();
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter,
+			contextPolicy: { drop: { triggerTokens: 100, keepRounds: 2 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain
+		}
+		const summaries = store.load("s").filter((r) => r.event.type === "summarized");
+		expect(summaries).toHaveLength(1);
+		expect((summaries[0]!.event as { summary: string }).summary).toBe(DROP_PLACEHOLDER);
+		// ONLY the loop's turn called the adapter — the drop is mechanical,
+		// no summary call, no usage ledger line.
+		expect(adapter.calls).toBe(1);
+		const summaryLines = ledgerLines(dir).filter((l) => l.kind === "summary");
+		expect(summaryLines).toHaveLength(0);
+		expect(store.load("s").some((r) => r.event.type === "user_input" && r.event.content === "more")).toBe(true);
+	});
+});
+
+describe("E6 context policy — the summary usage rides the ledger (the honest accounting fix)", () => {
+	it("the MANUAL /compact path records the summary call's usage as a kind:summary line", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-usage1-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		const adapter = new CountingAdapter({ input: 1200, cacheRead: 300, output: 250 });
+		const agent = createAgent({ model: "faux", store, tools: [], adapter });
+		const session = await agent.session({ id: "s" });
+
+		await session.summarize();
+
+		const lines = ledgerLines(dir).filter((l) => l.kind === "summary");
+		expect(lines).toHaveLength(1);
+		const c = lines[0]!.canonical as { input: number; cacheRead: number; output: number };
+		// The "adapter" route rides the total convention (the pinned
+		// canonicalizeUsage formula): input = fresh = raw − cacheRead.
+		expect(c.input).toBe(900);
+		expect(c.cacheRead).toBe(300);
+		expect(c.output).toBe(250);
+	});
+
+	it("the AUTO path records it too, BEFORE the run's loop requests", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-usage2-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		const adapter = new CountingAdapter({ input: 1200, cacheRead: 300, output: 250 });
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter,
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain
+		}
+		const lines = ledgerLines(dir);
+		const summaryLines = lines.filter((l) => l.kind === "summary");
+		expect(summaryLines).toHaveLength(1); // the policy's call — never a second one
+		// The request lines (the loop's) exist alongside.
+		expect(lines.some((l) => l.kind === "request")).toBe(true);
+	});
+});
+
+describe("E6 context policy — the session-aware microcompact (candidate B)", () => {
+	it("the policy's threshold override wins over the session's own, and minTurns holds the no-fire guard", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-b1-"));
+		const store = new SessionStore(dir);
+		// Two seeded rounds with compactable results.
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "turn 0" });
+		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "r0", name: "read_file", input: { path: "f0.ts" } });
+		await store.append("s", "r1", { seq: 2, type: "tool_result", callId: "r0", content: "line\n".repeat(200), isError: false });
+		await store.append("s", "r1", { seq: 3, type: "user_input", content: "turn 1" });
+		await store.append("s", "r1", { seq: 4, type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "f1.ts" } });
+		await store.append("s", "r1", { seq: 5, type: "tool_result", callId: "r1", content: "line\n".repeat(200), isError: false });
+		await store.append("s", "r1", { seq: 6, type: "terminal", outcome: { kind: "completed" } });
+		// The session's own microcompact is huge (never fires); the policy's
+		// override is tiny (fires) — the override must WIN. minTurns=3: the
+		// guard blocks below 3 completed user inputs. keepResults=1: the
+		// kernel's frozen keep-4 default needs 5+ compactable results; with
+		// 2 seeded results the override's keepResults is the honest way to
+		// exercise the boundary (the passthrough is part of the surface).
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider([...ONE_TURN, ...ONE_TURN]),
+			microcompact: { thresholdTokens: 1e12 },
+			contextPolicy: { microcompact: { thresholdTokens: 10, keepResults: 1, minTurns: 3 } },
+		});
+		const session = await agent.session({ id: "s" });
+		const compacted = () => store.load("s").filter((r) => r.event.type === "microcompacted");
+		expect(compacted()).toHaveLength(0); // the seed's runs never compacted
+
+		// Turn 3's run: user_input count 2 < minTurns 3 → no fire.
+		for await (const _ev of session.run("more1")) {
+			// drain
+		}
+		expect(compacted()).toHaveLength(0);
+
+		// Turn 4's run: 3 >= 3 → the override fires (the tiny threshold).
+		for await (const _ev of session.run("more2")) {
+			// drain
+		}
+		expect(compacted().length).toBeGreaterThan(0);
+	});
+});

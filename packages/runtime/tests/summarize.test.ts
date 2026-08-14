@@ -179,7 +179,11 @@ describe("summarizeConversation — the off-loop one-shot call", () => {
 			model: "faux",
 			messages: [{ role: "user", content: "long history" }],
 		});
-		expect(summary).toBe("the summary");
+		// E6 (the honest accounting fix): the call now also surfaces the
+		// stream's usage event (null when the adapter reports none) so the
+		// summary call's cost can ride the trace ledger.
+		expect(summary.text).toBe("the summary");
+		expect(summary.usage).toBeNull();
 	});
 
 	it("a model that produced no text is an honest failure — throw, nothing persisted", async () => {
