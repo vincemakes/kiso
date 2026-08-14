@@ -17,7 +17,8 @@
  *   3. A PLAN-CARRYING SESSION RESUMES UNDER THE NEW DEFAULT — the plan
  *      created with the extension is still read back (the resumed run's
  *      first request carries the turn segment that contains the task_set
- *      result), the pre-resume log is byte-untouched ("日志不动"), the
+ *      result), the pre-resume log is byte-untouched (the append-only
+ *      rule: the log never rewrites), the
  *      resumed run completes, and its rent carries no task surface — the
  *      documented edge: there is no task_set to UPDATE the plan until
  *      the opt-in is restored.
@@ -193,7 +194,7 @@ describe("E5 composition — a plan-carrying session resumes under the new defau
 		const r2 = runCli(["resume", "e5-plan", "continue"], env2, { input: "" });
 		expect(r2.status, r2.stderr).toBe(0);
 
-		// ① 日志不动 — the pre-resume log is byte-untouched (append-only).
+		// ① the pre-resume log is byte-untouched (append-only).
 		const after = readFileSync(join(home, "sessions", "e5-plan.jsonl"), "utf8");
 		expect(after.startsWith(before)).toBe(true);
 
