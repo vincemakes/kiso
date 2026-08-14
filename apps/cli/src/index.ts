@@ -36,6 +36,7 @@ import {
 	loadProjectExtensions,
 	SessionStore,
 	type AgentDefinition,
+	type ContextPolicy,
 } from "@vincemakes/kiso-runtime";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
@@ -317,6 +318,37 @@ export function composeSystemPrompt(cwd: string): string {
 	return injected === "" ? SYSTEM_PROMPT : `${SYSTEM_PROMPT}\n${injected}`;
 }
 
+/**
+ * E6: the run-start context policy, OFF unless env-armed (invalid values
+ * are ABSENT, never a crash — the autoCompactFromEnv convention).
+ * KISO_POLICY_SUMMARY_TRIGGER arms the auto-summary; KISO_POLICY_DROP=1
+ * switches to the crux C arm (mechanical drop — same trigger/keep envs);
+ * KISO_POLICY_MICROCOMPACT arms the session-aware override (MIN_TURNS =
+ * the no-fire guard). KEEP defaults to 2, not the manual path's 4.
+ */
+function contextPolicyFromEnv(): ContextPolicy | undefined {
+	const summaryTrigger = positiveIntEnv("KISO_POLICY_SUMMARY_TRIGGER");
+	const microcompactTrigger = positiveIntEnv("KISO_POLICY_MICROCOMPACT");
+	if (summaryTrigger === undefined && microcompactTrigger === undefined) return undefined;
+	const mode = process.env.KISO_POLICY_DROP === "1" ? "drop" : "summary";
+	return {
+		...(summaryTrigger !== undefined ? { [mode]: { triggerTokens: summaryTrigger, keepRounds: positiveIntEnv("KISO_POLICY_SUMMARY_KEEP") ?? 2 } } : {}),
+		...(microcompactTrigger !== undefined ? { microcompact: microcompactFromEnv(microcompactTrigger) } : {}),
+	};
+}
+
+function microcompactFromEnv(thresholdTokens: number) {
+	const keepResults = positiveIntEnv("KISO_POLICY_MICROCOMPACT_KEEP");
+	const minTurns = positiveIntEnv("KISO_POLICY_MICROCOMPACT_MIN_TURNS");
+	return { thresholdTokens, ...(keepResults !== undefined ? { keepResults } : {}), ...(minTurns !== undefined ? { minTurns } : {}) };
+}
+
+/** Parse a positive-int env var — absent or invalid is undefined (no crash). */
+function positiveIntEnv(name: string): number | undefined {
+	const n = Number.parseInt(process.env[name] ?? "", 10);
+	return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 async function makeAgent(sessionId: string | undefined, input?: LineInput, modelFlag?: string) {
 	// E3: the project-level trust gate runs BEFORE any extension load (the
 	// mcp/skills merges must be in the env when the user-level extensions
@@ -375,6 +407,8 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 	const extensions = [...modeExtensions(), ...loadedExtensions];
 	setCurrentAgentExtensions(extensions);
 
+	// E6: the run-start context policy (captured once — exactOptionalPropertyTypes).
+	const contextPolicy = contextPolicyFromEnv();
 	const definition: AgentDefinition = {
 		model,
 		store,
@@ -396,6 +430,8 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 		// 200k window → 100k tokens). Long sessions compact old read/list/
 		// search/shell outputs instead of silently growing past the window.
 		microcompact: { thresholdTokens: contextWindowTokens() / 2 },
+		// E6: the run-start context policy — OFF unless env-armed (beats the microcompact default when both fire).
+		...(contextPolicy !== undefined ? { contextPolicy } : {}),
 		maxTurns: 20,
 		// Modes: the five tiers join at the CHAIN HEAD, before the user/
 		// project extensions (the deny>ask>allow composition keeps a user
