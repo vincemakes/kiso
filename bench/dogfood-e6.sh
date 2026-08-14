@@ -23,7 +23,7 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 POL="KISO_POLICY_SUMMARY_TRIGGER=${KISO_POLICY_SUMMARY_TRIGGER:-1300} KISO_POLICY_SUMMARY_KEEP=${KISO_POLICY_SUMMARY_KEEP:-2} KISO_POLICY_DROP=1"
 
 # --- long leg: the T6S rig, 4 buckets x 6 turns, policy ON ---
-SID="e6-dog-long"
+SID="${E6_DOG_SID_LONG:-e6-dog-long}"
 mkdir -p "$OUT/$SID/ext"; cp "$B/bench-allow.mjs" "$OUT/$SID/ext/"
 cp -R "$B/fixture-t6/" "$OUT/$SID/repo"; rm -rf "$OUT/$SID/repo/.git"
 TURN() { node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-t6.json','utf8'))[$1-1])"; }
@@ -42,7 +42,7 @@ E=$(date +%s); echo $((E - S)) > "$OUT/$SID/wall_seconds"
 "$B/t6-verify.sh" "$OUT/$SID/repo" > "$OUT/$SID/verify"
 
 # --- short leg: the E5 one-shot refactor, policy ON ---
-SID2="e6-dog-short"
+SID2="${E6_DOG_SID_SHORT:-e6-dog-short}"
 mkdir -p "$OUT/$SID2/ext"; cp "$B/bench-allow.mjs" "$OUT/$SID2/ext/"
 cp -R "$B/fixture-e5/" "$OUT/$SID2/repo"; rm -rf "$OUT/$SID2/repo/.git"
 PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-e5.json','utf8'))['T5S'])")
@@ -58,10 +58,10 @@ S=$(date +%s)
 ) > "$OUT/$SID2/verify"
 E=$(date +%s); echo $((E - S)) > "$OUT/$SID2/wall_seconds"
 
-python3 - "$OUT" <<'PYEOF'
+python3 - "$OUT" "${E6_DOG_SID_LONG:-e6-dog-long}" "${E6_DOG_SID_SHORT:-e6-dog-short}" <<'PYEOF'
 import json, os, sys
 out = sys.argv[1]
-for sid in ("e6-dog-long", "e6-dog-short"):
+for sid in (sys.argv[2], sys.argv[3]):
     home = f"{out}/{sid}/kiso-home"
     verify = open(f"{out}/{sid}/verify").read().strip()
     wall = open(f"{out}/{sid}/wall_seconds").read().strip()
@@ -87,7 +87,7 @@ for sid in ("e6-dog-long", "e6-dog-short"):
                     terminals.append(e.get("outcome", {}).get("kind"))
     cw = fresh + 0.1 * cached
     print(f"--- {sid}: verify={verify} wall={wall}s reqs={reqs} fresh={fresh} cached={cached} costWtd={cw:.0f} facts={len(facts)} terminal={terminals[-1] if terminals else 'none'}")
-    ok = verify == "pass" and (len(facts) >= 1 if sid == "e6-dog-long" else len(facts) == 0)
+    ok = verify == "pass" and (len(facts) >= 1 if sid == sys.argv[2] else len(facts) == 0)
     print(f"    {'OK' if ok else 'LEG FAIL'}")
 PYEOF
 echo "=== e6 dogfood complete ==="
