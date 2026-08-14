@@ -63,7 +63,10 @@ for sid in ("e5-dog-default", "e5-dog-optin"):
             if r.get("kind") == "request":
                 rents.extend(l["surface"] for l in r.get("rent", []))
                 c = r.get("canonical") or {}
-                fresh += c.get("freshInput", 0) or r.get("usage", {}).get("input_tokens", 0)
+                # the canonical block's "input" is FRESH-ONLY (the pinned
+                # sentence, extract.py T7) — never "freshInput", which is
+                # a different (top-level) field
+                fresh += c.get("input", 0)
             if r.get("type") == "tool_call_end" and r.get("name") == "task_set":
                 task_calls += 1
     has_task = any(s.startswith(("system:ext:task", "tool:task_set")) for s in rents)
