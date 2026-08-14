@@ -113,9 +113,11 @@ export class Run implements AsyncIterable<Event> {
 			});
 			tracer.init();
 			const signal = this.#externalSignal ? new MergedSignal(this.#abort.signal, this.#externalSignal) : this.#abort.signal;
-			// E2: the session's own microcompact wins; otherwise the FIRST
-			// extension providing a compaction config supplies it.
-			const microcompact = microcompactFor(this.#config);
+			// E2/E6: the session's own microcompact wins; otherwise the FIRST
+			// extension providing a compaction config supplies it. E6: the
+			// contextPolicy override beats the session's own, and its minTurns
+			// no-fire guard may omit the config below the floor.
+			const microcompact = microcompactFor(this.#config, log.all);
 			// E2: the session's own systemPrompt first, then every extension
 			// append in LOAD order — deterministic (same extensions → same
 			// prompt); no appends → byte-identical to the extension-less run.
@@ -252,6 +254,16 @@ export class Run implements AsyncIterable<Event> {
 					`session ${this.#session.id} still has an open run (${openRun}) — resume() it instead of starting a new run`,
 				);
 			}
+
+			// E6 — the run-start context policy: BEFORE this run's
+			// user_input lands, the policy may persist one `summarized`
+			// fact through the existing summarize() path (the manual
+			// /compact affordance point). The boundary then rides the LAST
+			// recorded run, and this run's first request projects the
+			// compressed view. Fresh runs only — the recovery path's
+			// projection must never shift mid-recovery. A summary failure
+			// is swallowed inside (the turn proceeds uncompressed).
+			await this.#session.maybeApplyContextPolicy(signal);
 
 			// 1. Durable first: the prompt enters the log and the store
 			//    before any model call — a crash here leaves a restorable

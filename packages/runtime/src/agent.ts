@@ -55,6 +55,8 @@ export interface AgentDefinition {
 	readonly compaction?: { readonly thresholdTokens: number };
 	/** C area: microcompact threshold — passed through to every session. */
 	readonly microcompact?: { readonly thresholdTokens: number };
+	/** E6: the session context policy (run-start actions, injection-side only). */
+	readonly contextPolicy?: import("./session.js").ContextPolicy;
 	readonly maxRetries?: number;
 	/** E1: loaded extensions — their tools merge into the registry (a name
 	 *  collision with a built-in is a loud startup error), their hooks
@@ -124,6 +126,7 @@ export class AgentRuntime {
 			...(this.#definition.temperature !== undefined ? { temperature: this.#definition.temperature } : {}),
 			...(this.#definition.compaction !== undefined ? { compaction: this.#definition.compaction } : {}),
 			...(this.#definition.microcompact !== undefined ? { microcompact: this.#definition.microcompact } : {}),
+			...(this.#definition.contextPolicy !== undefined ? { contextPolicy: this.#definition.contextPolicy } : {}),
 			...(this.#definition.maxRetries !== undefined ? { maxRetries: this.#definition.maxRetries } : {}),
 			...(this.#definition.extensions !== undefined ? { extensions: this.#definition.extensions } : {}),
 		};

@@ -18,6 +18,7 @@ import { estimateTokens, DO_NOT_COMPACT } from "@vincemakes/kiso-core";
 import type { AbortSignalLike, Adapter } from "@vincemakes/kiso-core";
 import type { Event } from "@vincemakes/kiso-core";
 import type { Message } from "@vincemakes/kiso-core";
+import type { RawUsage } from "./usage/canonical.js";
 
 /** K (ADR-0044): the recent ROUNDS kept intact by /compact — a constant,
  *  not a knob. The covered range ends just before the K-th most recent
@@ -57,14 +58,24 @@ export interface SummarizeConversationOptions {
 	readonly signal?: AbortSignalLike;
 }
 
+/** The summary call's result — the text PLUS the provider-reported usage
+ *  (E6: the honest accounting — the summary call's cost rides the trace
+ *  ledger; the E5-era extraction could not see it). Null when the
+ *  provider reported no usage (known:false). */
+export interface SummarizeConversationResult {
+	readonly text: string;
+	readonly usage: RawUsage | null;
+}
+
 /**
  * The one-shot summary call. Collects the adapter's text deltas into the
  * summary; usage/stop pass through untouched. Throws when the model
  * produced no text — the caller reports it and nothing is persisted.
  */
-export async function summarizeConversation(options: SummarizeConversationOptions): Promise<string> {
+export async function summarizeConversation(options: SummarizeConversationOptions): Promise<SummarizeConversationResult> {
 	const { adapter, model, messages } = options;
 	let text = "";
+	let usage: RawUsage | null = null;
 	for await (const ev of adapter.stream({
 		model,
 		messages,
@@ -72,13 +83,23 @@ export async function summarizeConversation(options: SummarizeConversationOption
 		...(options.signal !== undefined ? { signal: options.signal } : {}),
 	})) {
 		if (ev.type === "text_delta") text += ev.text;
+		// The LAST usage event is the call's (a turn reports usage once).
+		if (ev.type === "usage" && ev.known) {
+			usage = { inputTokens: ev.inputTokens, outputTokens: ev.outputTokens, cacheRead: ev.cacheRead, cacheWrite: ev.cacheWrite };
+		}
 	}
 	const trimmed = text.trim();
 	if (trimmed === "") {
 		throw new Error("the summary call produced no text");
 	}
-	return trimmed;
+	return { text: trimmed, usage };
 }
+
+/** E6 — the crux-experiment drop arm: the covered turns are replaced by
+ *  this fixed placeholder with NO model call. Experiment-only (the
+ *  contextPolicy drop mode); the adopted shape — if the crux evidence
+ *  earns it — is a distinct `dropped` event family, not this text. */
+export const DROP_PLACEHOLDER = "[e6-crux: the covered turns were dropped without a summary; continue from the kept turns and this placeholder]";
 
 /**
  * The last summary point: the previous `summarized` event's coversToSeq,

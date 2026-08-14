@@ -23,7 +23,7 @@ export type { AgentDefinition, PermissionPolicy, PermissionRule } from "./agent.
 // session
 export { AgentSession, AgentSession as Session } from "./session.js";
 export { PoisonedSessionError, ResumeBlockedError } from "./session.js";
-export type { ApprovalRequest, CompactInfo, SessionConfig, SummarizeResult } from "./session.js";
+export type { ApprovalRequest, CompactInfo, ContextPolicy, SessionConfig, SummarizeResult } from "./session.js";
 
 // run
 export { Run } from "./run.js";

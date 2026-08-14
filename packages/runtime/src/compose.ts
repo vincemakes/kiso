@@ -4,7 +4,7 @@
  * hook composition (the existing come first), and the loop's microcompact config lookup.
  */
 
-import type { ApprovalChain, HookContext, HookHost, KisoExtension, PolicyVerdict, ToolRegistry } from "@vincemakes/kiso-core";
+import type { ApprovalChain, Event, HookContext, HookHost, KisoExtension, PolicyVerdict, ToolRegistry } from "@vincemakes/kiso-core";
 import type { SessionConfig } from "./session.js";
 
 /**
@@ -131,13 +131,30 @@ export function composeHooks(existing: HookHost | undefined, extensions: readonl
 }
 
 /**
- * E2: the loop's microcompact config — the session's own microcompact wins;
- * otherwise the FIRST extension providing a compaction config supplies it.
- * An extension config without a threshold contributes nothing (a boundary
- * needs a threshold to ever fire).
+ * E2/E6: the loop's microcompact config — the session's own microcompact
+ * wins; otherwise the FIRST extension providing a compaction config
+ * supplies it. An extension config without a threshold contributes nothing
+ * (a boundary needs a threshold to ever fire).
+ * E6 (candidate B): the session's contextPolicy.microcompact override beats
+ * the session's own config (a tuned policy wins over the CLI default), and
+ * its minTurns no-fire guard — below that many completed user inputs the
+ * boundary config is OMITTED: a short task never pays a break it cannot
+ * amortize (the E5-F1 accounting).
  */
-export function microcompactFor(config: SessionConfig): { readonly thresholdTokens: number; readonly keepResults?: number } | undefined {
-	if (config.microcompact !== undefined) return config.microcompact;
+export function microcompactFor(
+	config: SessionConfig,
+	log?: readonly Event[],
+): { readonly thresholdTokens: number; readonly keepResults?: number } | undefined {
+	const policy = config.contextPolicy?.microcompact;
+	const effective: { readonly thresholdTokens: number; readonly keepResults?: number } | undefined =
+		policy !== undefined
+			? { thresholdTokens: policy.thresholdTokens, ...(policy.keepResults !== undefined ? { keepResults: policy.keepResults } : {}) }
+			: config.microcompact;
+	if (policy?.minTurns !== undefined && log !== undefined) {
+		const userInputs = log.filter((e) => e.type === "user_input").length;
+		if (userInputs < policy.minTurns) return undefined;
+	}
+	if (effective !== undefined) return effective;
 	for (const ext of config.extensions ?? []) {
 		const c = ext.compaction;
 		if (c !== undefined && c.thresholdTokens !== undefined) {

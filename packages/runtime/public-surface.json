@@ -5,6 +5,7 @@
   "AgentSession",
   "ApprovalRequest",
   "CompactInfo",
+  "ContextPolicy",
   "Event",
   "ExecutionRecord",
   "ExecutionStatus",

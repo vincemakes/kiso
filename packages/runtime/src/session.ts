@@ -42,12 +42,16 @@ import {
 import { executionLedger } from "./ledger.js";
 import { denialResult } from "@vincemakes/kiso-core";
 import {
+	DROP_PLACEHOLDER,
 	estimateSummarySavings,
 	KEEP_RECENT_ROUNDS,
 	lastSummaryPoint,
 	summarizeConversation,
 	summaryBoundarySeq,
 } from "./summarize.js";
+import { canonicalizeUsage } from "./usage/canonical.js";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { estimateTokens } from "@vincemakes/kiso-core";
 import { StaleWriterError, type SessionStore } from "./store.js";
 import { composeHooks } from "./compose.js";
@@ -246,7 +250,7 @@ export class AgentSession {
 	 * worth covering yet). Crash semantics: a crash BEFORE the persist is
 	 * "nothing happened"; after it, a resume projects the compressed view.
 	 */
-	async summarize(options: { keepRounds?: number; signal?: AbortSignalLike; onStart?: (info: CompactInfo) => void } = {}): Promise<SummarizeResult | null> {
+	async summarize(options: { keepRounds?: number; signal?: AbortSignalLike; onStart?: (info: CompactInfo) => void; drop?: boolean } = {}): Promise<SummarizeResult | null> {
 		this.ensureHealthy();
 		const keepRounds = options.keepRounds ?? KEEP_RECENT_ROUNDS;
 		// W18: the signal is observed at EVERY phase boundary — the cancel
@@ -271,12 +275,22 @@ export class AgentSession {
 			rounds: events.filter((e) => e.type === "user_input" && e.seq > prevPoint && e.seq <= boundary).length,
 			tokens: estimateTokens(covered),
 		});
-		const summary = await summarizeConversation({
-			adapter: this.#adapter,
-			model: this.#config.model,
-			messages: covered,
-			...(options.signal !== undefined ? { signal: options.signal } : {}),
-		});
+		let summary: string;
+		let usage: import("./usage/canonical.js").RawUsage | null = null;
+		if (options.drop === true) {
+			// E6 — the crux drop arm: mechanical, no model call, the fixed
+			// placeholder replaces the covered range (experiment-only).
+			summary = DROP_PLACEHOLDER;
+		} else {
+			const call = await summarizeConversation({
+				adapter: this.#adapter,
+				model: this.#config.model,
+				messages: covered,
+				...(options.signal !== undefined ? { signal: options.signal } : {}),
+			});
+			summary = call.text;
+			usage = call.usage;
+		}
 		// The post-call boundary check: an abort that landed while the
 		// adapter returned must NOT persist — "nothing happened".
 		if (options.signal !== undefined && options.signal.aborted) throw cancelled();
@@ -288,7 +302,57 @@ export class AgentSession {
 		const records = this.#store.load(this.id);
 		const runId = records.length > 0 ? records[records.length - 1]!.runId : "compact";
 		await this.persist(runId, full);
+		// E6 — the honest accounting: the summary call's usage rides the
+		// trace ledger as a `kind: "summary"` line (the fifth ledger kind,
+		// observation-only — the request/run_end/crash vocabulary stands).
+		// The E5-era extraction could not see the call at all; both the
+		// manual /compact path and the auto policy land here. Soft-fail:
+		// a degraded ledger costs one stderr line, never the summary.
+		if (usage !== null) {
+			try {
+				const canonical = canonicalizeUsage(this.#config.provider ?? "adapter", usage);
+				const line = JSON.stringify({ kind: "summary", canonical }) + "\n";
+				mkdirSync(join(this.#store.root, "traces"), { recursive: true });
+				appendFileSync(join(this.#store.root, "traces", `${this.id}.jsonl`), line);
+			} catch (err) {
+				console.error(
+					`[kiso] summary usage ledger degraded (${err instanceof Error ? err.message : String(err)}); the summary call's cost is not recorded`,
+				);
+			}
+		}
 		return { coversToSeq: boundary, summary, savedTokens: estimateSummarySavings(covered, summary) };
+	}
+
+	/**
+	 * E6 — the run-start context policy (candidate A + the crux drop arm).
+	 * Called at the start of every FRESH run, BEFORE its user_input lands:
+	 * when the policy is armed and the projected context crosses the
+	 * trigger (and enough uncovered rounds exist — the keepRounds gate
+	 * inside summarize), one `summarized` fact is persisted through the
+	 * existing summarize() path. The boundary then rides the LAST recorded
+	 * run and the run's first request projects the compressed view.
+	 * Restraint: a short session never crosses the trigger — firing is a
+	 * net loss by the E5-F1 accounting (a break that cannot amortize).
+	 * Failure is swallowed: the compaction is an optimization — "nothing
+	 * happened" must never break the user's turn.
+	 */
+	async maybeApplyContextPolicy(signal?: AbortSignalLike): Promise<void> {
+		const policy = this.#config.contextPolicy;
+		if (policy === undefined) return;
+		const mode = policy.drop ?? policy.summary;
+		if (mode === undefined) return;
+		if (estimateTokens(this.projected()) <= mode.triggerTokens) return;
+		try {
+			await this.summarize({
+				keepRounds: mode.keepRounds ?? KEEP_RECENT_ROUNDS,
+				...(signal !== undefined ? { signal } : {}),
+				...(policy.drop !== undefined ? { drop: true } : {}),
+			});
+		} catch {
+			// the compaction failed — the session is unchanged and the run
+			// proceeds with the full context (the ADR-0044 "nothing
+			// happened" crash semantics, policy-shaped).
+		}
 	}
 
 	// ── Phase D: approvals ───────────────────────────────────────────────
@@ -563,6 +627,45 @@ export class AgentSession {
 	}
 }
 
+/**
+ * E6 — the session context policy (all optional; absent = the pre-E6
+ * behavior, zero change). The policy is INJECTION-side only: every action
+ * persists a durable fact (`summarized`, `microcompacted`) whose projection
+ * shrinks the SENT view — the durable log's bytes never change (the E5
+ * discipline). Actions land at RUN START, never mid-run (D5); the manual
+ * /compact affordance point.
+ */
+export interface ContextPolicy {
+	/**
+	 * A — the auto-summary: at run start, when the projected context
+	 * crosses triggerTokens AND enough uncovered rounds exist, the
+	 * existing summarize() path persists ONE `summarized` fact. The
+	 * keepRounds gate is the amortization structure — a fire needs
+	 * keepRounds+1 uncovered rounds, so each boundary is preceded by
+	 * that much content and followed by the kept rounds' requests to
+	 * amortize the break (the E5-F1 accounting).
+	 */
+	readonly summary?: { readonly triggerTokens: number; readonly keepRounds?: number };
+	/**
+	 * C — the crux-experiment drop arm (EXPERIMENT-ONLY, never a default):
+	 * the same trigger persists the same-shaped fact with a fixed
+	 * placeholder and NO model call — the covered turns leave the sent
+	 * context at zero generation cost. When present, it REPLACES the
+	 * summary mode (one conversation-layer compactor at a time). The
+	 * adopted shape — if the crux evidence earns it — is a distinct
+	 * `dropped` event family, not this placeholder text.
+	 */
+	readonly drop?: { readonly triggerTokens: number; readonly keepRounds?: number };
+	/**
+	 * B — the session-aware microcompact: the threshold/keep-window
+	 * override the session's own microcompact (a tuned policy wins over
+	 * the CLI default). minTurns is the no-fire guard: below that many
+	 * completed user inputs the boundary config is OMITTED from the loop
+	 * — a short task never pays a break it cannot amortize.
+	 */
+	readonly microcompact?: { readonly thresholdTokens: number; readonly keepResults?: number; readonly minTurns?: number };
+}
+
 export interface SessionConfig {
 	readonly model: string;
 	/** E1: the adapter identity ("anthropic" | "openai-compat") — trace
@@ -582,6 +685,8 @@ export interface SessionConfig {
 	readonly compaction?: { readonly thresholdTokens: number };
 	/** C area: microcompact threshold — passed through to the loop verbatim. */
 	readonly microcompact?: { readonly thresholdTokens: number };
+	/** E6: the session context policy (run-start actions, injection-side only). */
+	readonly contextPolicy?: ContextPolicy;
 	readonly maxRetries?: number;
 	/**
 	 * E1: loaded extensions — their tools join the registry (idempotently;
