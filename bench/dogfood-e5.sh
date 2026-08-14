@@ -16,7 +16,9 @@ B="$(cd "$(dirname "$0")" && pwd)"
 BIN=${KISO_BIN:-node "$B/../apps/cli/dist/index.js"}
 . "${XDG_CONFIG_HOME:-$HOME/.config}/claude-deepseek/credentials.env"
 PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-e5.json','utf8'))['T5S'])")
-OUT="$B/runs/e5dog"
+# E5_DOG_OUT scopes the runs (the tree-dist legs land in runs/e5dog; the
+# published-bin legs in a separate dir — the tree evidence stays intact).
+OUT=${E5_DOG_OUT:-"$B/runs/e5dog"}
 rm -rf "$OUT"; mkdir -p "$OUT"
 
 run_leg() { # run_leg <sid> <extdir>
