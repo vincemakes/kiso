@@ -427,17 +427,21 @@ ratification — written text, not vibes:
    frozen-surface break) untouched for a continuous quarter.
 3. **The owner's explicit approval**, recorded in the review lane.
 
-Until the trigger fires, the line stays on 0.2.x.
+Until the trigger fires, the line stays on 0.x.
 
 ### The version convention after the reset
 
-- The release round remains the cli minor on the 0.2.x line (0.2.0 →
-  0.2.1 → …); the cli is the release counter, as since the 0.1.x era.
-- Packages bump per the §5 evolution rules within the 0.2.x line.
+- The release round remains the cli minor on the 0.x line (0.2.0 →
+  0.3.0 → …); the cli is the release counter, as since the 0.1.x era.
+- **The 0.x line's minor count has NO cap** — 0.9.0 is followed by
+  0.10.0, never 1.0. The real 1.0 happens ONLY by the owner's decree
+  (the R6b three conditions above, nothing less); version progression
+  NEVER auto-reaches 1.0.
+- Packages bump per the §5 evolution rules within the 0.x line.
 - A future real 1.0 is again a whole-line flip (all 13 together),
   mirroring Amendment 1's whole-line event — and it costs the
   trigger-template gate above, nothing less.
-- Tags remain ANNOTATED (Amendment 1's sentence stands, on the 0.2.x
+- Tags remain ANNOTATED (Amendment 1's sentence stands, on the 0.x
   line).
 - Deprecation history stays as-is (Amendment 1's final sentence
   stands; the 1.x versions are REVOKED by the reset sequence's step
