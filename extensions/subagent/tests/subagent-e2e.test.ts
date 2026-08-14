@@ -123,7 +123,8 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env });
 		// R-D 0.1.45: the user copy SHADOWS the built-in subagent (the
 		// cascade in a real CLI) — the built-in column lists the rest.
-		expect(out).toContain("[5 extensions: built-in: mcp, skills, task · safe-defaults, subagent]");
+		// E5: task left the default — the built-in column drops it.
+		expect(out).toContain("[4 extensions: built-in: mcp, skills · safe-defaults, subagent]");
 		expect(out).toContain("approve delegate"); // the ask tier reached the human (ruling A)
 		expect(out).toContain("outcome: completed"); // the child's result section returned to the model
 		expect(out).toContain("done");
