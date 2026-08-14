@@ -43,6 +43,7 @@ for arm in ("auto", "off"):
             for line in open(trace):
                 r = json.loads(line)
                 c = r.get("canonical") or {}
+                if not isinstance(c, dict): c = {}  # a half-appended line read guard
                 if r.get("kind") == "request":
                     reqs += 1
                     fresh += c.get("input", 0); cached += c.get("cacheRead", 0) or 0
@@ -52,10 +53,12 @@ for arm in ("auto", "off"):
         if os.path.exists(log):
             for line in open(log):
                 r = json.loads(line); e = r.get("event") or {}
+                if not isinstance(e, dict): continue  # ditto
                 if e.get("type") == "summarized":
                     fires.append(e.get("coversToSeq"))
                 if e.get("type") == "terminal":
-                    terminals.append(e.get("outcome", {}).get("kind"))
+                    o = e.get("outcome") or {}
+                    terminals.append(o.get("kind") if isinstance(o, dict) else str(o))
         cw = (fresh + sumFresh) + 0.1 * (cached + sumCached)
         scw = sumFresh + 0.1 * sumCached
         row = dict(arm=arm, seq=seq, verify=verify, wall=wall, reqs=reqs,
