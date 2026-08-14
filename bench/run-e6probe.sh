@@ -68,8 +68,12 @@ for arm in ("auto", "off"):
             if os.path.exists(log):
                 for line in open(log):
                     r = json.loads(line); e = r.get("event") or {}
-                    if e.get("type") == "summarized" and e.get("summary"):
-                        bodies.append(e["summary"].get("text") or "")
+                    s = e.get("summary")
+                    # the event's summary field IS the body string (the
+                    # usage-manual convention; empirically verified on
+                    # the first fire, 2026-08-15)
+                    if e.get("type") == "summarized" and isinstance(s, str):
+                        bodies.append(s)
             with open(f"{w}/summarized-bodies.txt", "w") as fh:
                 for i, b in enumerate(bodies, 1):
                     fh.write(f"=== summarized fact #{i} ===\n{b}\n\n")
