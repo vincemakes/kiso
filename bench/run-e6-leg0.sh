@@ -1,14 +1,16 @@
 #!/bin/sh
-# run-e6-leg0.sh <arm: off|on> <seq>
+# run-e6-leg0.sh <arm: off|on|auto> <seq>
 # E6 Leg 0 (the long-session leg, the order's "长会话腿:Leg-0 rig
 # (fixture-t6/T6S 那台 88 请求机器)策略 ON vs OFF,payback 形状"): the
 # T6S long session (4 buckets x 6 turns on ONE durable session) with the
-# context policy OFF (the E5 baseline arm) vs ON (the context policy
-# armed: trigger 1300, keepRounds 2, plus the ambient KISO_POLICY_DROP
-# — the A/B's B arm is the drop policy per the 2026-08-14 crux verdict;
-# calibrated over a full bucket: 1752 projected at the bucket-2 start,
-# so the first fire lands there, covering turns 1-4 and keeping 5-6;
-# fires again at each later bucket start — the payback accumulates).
+# context policy OFF (the baseline arm) vs ON (the policy armed:
+# trigger 1300, keepRounds 2) vs AUTO (the summary arm — the policy
+# armed WITHOUT the drop env; KISO_POLICY_DROP explicitly unset so the
+# summary mechanism runs — the 2026-08-15 re-adjudication experiment).
+# Arms are self-contained (no ambient policy env leakage). Calibration:
+# 1752 projected at the bucket-2 start, so the first fire lands there,
+# covering turns 1-4 and keeping 5-6; fires again at each later bucket
+# start — the payback accumulates.
 # Verify: t6-verify.
 # Runs land in runs/<round>/kiso-E6L0-<arm>-T6S-<seq>/ with meta.json.
 set -eu
@@ -25,12 +27,15 @@ S=$(date +%s)
 rm -rf "$WORK/repo"; cp -R "$B/fixture-t6/" "$WORK/repo"; rm -rf "$WORK/repo/.git"
 cd "$WORK/repo"
 TURN() { node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-t6.json','utf8'))[$1-1])"; }
-POL=""
-if [ "$ARM" = on ]; then POL="KISO_POLICY_SUMMARY_TRIGGER=1300 KISO_POLICY_SUMMARY_KEEP=2"; fi
+POL=""; UNSET=""
+case "$ARM" in
+  on)   POL="KISO_POLICY_SUMMARY_TRIGGER=1300 KISO_POLICY_SUMMARY_KEEP=2 KISO_POLICY_DROP=1" ;;
+  auto) POL="KISO_POLICY_SUMMARY_TRIGGER=1300 KISO_POLICY_SUMMARY_KEEP=2"; UNSET="-u KISO_POLICY_DROP" ;;
+esac
 for P in 1 2 3 4; do
   i=$(( (P - 1) * 6 + 1 )); E=$(( P * 6 ))
   while [ "$i" -le "$E" ]; do TURN $i; i=$((i + 1)); done \
-    | env \
+    | env $UNSET \
         OPENAI_BASE_URL="https://api.deepseek.com" \
         OPENAI_API_KEY="$DEEPSEEK_API_KEY" \
         OPENAI_MODEL="deepseek-v4-flash" \
