@@ -321,18 +321,34 @@ export function composeSystemPrompt(cwd: string): string {
 /**
  * E6: the run-start context policy, OFF unless env-armed (invalid values
  * are ABSENT, never a crash — the autoCompactFromEnv convention).
- * KISO_POLICY_SUMMARY_TRIGGER arms the auto-summary; KISO_POLICY_DROP=1
- * switches to the crux C arm (mechanical drop — same trigger/keep envs);
- * KISO_POLICY_MICROCOMPACT arms the session-aware override (MIN_TURNS =
- * the no-fire guard). KEEP defaults to 2, not the manual path's 4.
+ * The product arming is KISO_CONTEXT_WINDOW → window − POLICY_RESERVE
+ * (the window rides the config as windowTokens; the runtime owns the
+ * arithmetic — never a fixed low absolute). KISO_POLICY_SUMMARY_TRIGGER
+ * survives ONLY as the legacy absolute override when no window is set
+ * (bench back-compat); the window wins when both are set.
+ * KISO_POLICY_SUMMARY_KEEP (rounds) and KISO_POLICY_SUMMARY_KEEP_TOKENS
+ * override the runtime defaults (KEEP_RECENT_ROUNDS = 4,
+ * KEEP_TOKENS_DEFAULT = 20,000) — emitted only when set.
+ * KISO_POLICY_DROP=1 switches the armed mode to the crux C arm
+ * (mechanical drop — same trigger/keep envs); KISO_POLICY_MICROCOMPACT
+ * arms the session-aware override (MIN_TURNS = the no-fire guard).
  */
-function contextPolicyFromEnv(): ContextPolicy | undefined {
+export function contextPolicyFromEnv(): ContextPolicy | undefined {
 	const summaryTrigger = positiveIntEnv("KISO_POLICY_SUMMARY_TRIGGER");
+	const contextWindow = positiveIntEnv("KISO_CONTEXT_WINDOW");
 	const microcompactTrigger = positiveIntEnv("KISO_POLICY_MICROCOMPACT");
-	if (summaryTrigger === undefined && microcompactTrigger === undefined) return undefined;
+	if (summaryTrigger === undefined && contextWindow === undefined && microcompactTrigger === undefined) return undefined;
 	const mode = process.env.KISO_POLICY_DROP === "1" ? "drop" : "summary";
+	const keepRounds = positiveIntEnv("KISO_POLICY_SUMMARY_KEEP");
+	const keepTokens = positiveIntEnv("KISO_POLICY_SUMMARY_KEEP_TOKENS");
+	const arm = {
+		...(contextWindow !== undefined ? { windowTokens: contextWindow } : {}),
+		...(contextWindow === undefined && summaryTrigger !== undefined ? { triggerTokens: summaryTrigger } : {}),
+		...(keepRounds !== undefined ? { keepRounds } : {}),
+		...(keepTokens !== undefined ? { keepTokens } : {}),
+	};
 	return {
-		...(summaryTrigger !== undefined ? { [mode]: { triggerTokens: summaryTrigger, keepRounds: positiveIntEnv("KISO_POLICY_SUMMARY_KEEP") ?? 2 } } : {}),
+		...(contextWindow !== undefined || summaryTrigger !== undefined ? { [mode]: arm } : {}),
 		...(microcompactTrigger !== undefined ? { microcompact: microcompactFromEnv(microcompactTrigger) } : {}),
 	};
 }
