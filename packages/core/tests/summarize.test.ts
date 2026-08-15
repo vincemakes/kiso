@@ -136,3 +136,57 @@ describe("old compacted logs stay readable (ADR-0044 promise)", () => {
 		expect(tools[1]!.content).toBe("[cleared c2]");
 	});
 });
+
+describe("E6 (e) — the projection frames the summary as a user message (the boundary honesty)", () => {
+	/** The fresh2-family pairing check (project.test.ts:202): every
+	 *  assistant tool_calls message must be answered by its tool results
+	 *  before the next assistant/user — the real-provider 400 shape. */
+	function pairViolation(msgs: readonly Message[]): string | undefined {
+		for (let i = 0; i < msgs.length; i++) {
+			const m = msgs[i]!;
+			if (m.role !== "assistant") continue;
+			const calls = m.blocks.filter((b) => b.type === "tool_use");
+			if (calls.length === 0) continue;
+			const answered = new Set<string>();
+			for (let j = i + 1; j < msgs.length; j++) {
+				const n = msgs[j]!;
+				if (n.role === "assistant" || n.role === "user") break;
+				if (n.role === "tool") answered.add(n.callId);
+			}
+			for (const c of calls) {
+				if (!answered.has(c.callId)) return `missing ${c.callId}`;
+			}
+		}
+		return undefined;
+	}
+
+	it("the summary renders as a USER message with the compression framing — [user summary][user kept input]", () => {
+		// 6 rounds; the summary covers rounds 1-2 (0..5); rounds 3-6 kept.
+		const events: Event[] = [
+			...roundEvents("r1", "a1", 0),
+			...roundEvents("r2", "a2", 3),
+			...roundEvents("r3", "a3", 6),
+			...roundEvents("r4", "a4", 9),
+			...roundEvents("r5", "a5", 12),
+			...roundEvents("r6", "a6", 15),
+			ev(18, { type: "summarized", coversToSeq: 5, summary: "S: rounds 1-2" }),
+		];
+		const msgs = projectMessages(events);
+		// The first message is the summary, a USER message carrying the
+		// framing AND the text — never an assistant echo of the model's own
+		// compression (the boundary honesty: the model reads the summary as
+		// part of its context, not as a reply it produced).
+		const summaryMsg = msgs[0]!;
+		expect(summaryMsg.role).toBe("user");
+		const content = summaryMsg.role === "user" ? String(summaryMsg.content) : "";
+		expect(content).toContain("compressed into the summary below");
+		expect(content).toContain("Recent messages are kept verbatim");
+		expect(content).toContain("S: rounds 1-2");
+		// Consecutive user messages: [user summary][user r3] — the kept
+		// input follows directly, legal across both providers.
+		expect(msgs[1]!.role).toBe("user");
+		expect(msgs[1]!.role === "user" ? String(msgs[1]!.content) : "").toBe("r3");
+		// The fresh2 pairing check holds — the framing never splits a pair.
+		expect(pairViolation(msgs)).toBeUndefined();
+	});
+});
