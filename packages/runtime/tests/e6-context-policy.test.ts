@@ -51,6 +51,25 @@ const ONE_TURN: FauxScript = [
 	{ events: [{ type: "text_delta", text: "done." }, { type: "stop", reason: "end_turn" }] },
 ];
 
+/** A valid checkpoint body — the (b) validation rejects anything less, so
+ *  every fixture that goes through the summary call must emit one. */
+const VALID_SUMMARY = [
+	"## Goal",
+	"wire the flags",
+	"## Constraints",
+	"the fallback must not be used",
+	"## User requests",
+	"turn 1: make the report work",
+	"## Files and changes",
+	"src/cli.js: wired --count",
+	"## Errors and fixes",
+	"none",
+	"## Current work",
+	"flags wired",
+	"## Next steps",
+	"wire --sum",
+].join("\n");
+
 /** A counting adapter: every stream call is countable, and an optional
  *  usage event rides each stream (the summary-usage ledger line's source). */
 class CountingAdapter implements Adapter {
@@ -59,7 +78,7 @@ class CountingAdapter implements Adapter {
 	async *stream(_opts: StreamOptions): AsyncIterable<AdapterEvent> {
 		this.calls += 1;
 		let seq = 0;
-		yield { type: "text_delta", text: "the summary of it all", seq: seq++ };
+		yield { type: "text_delta", text: VALID_SUMMARY, seq: seq++ };
 		if (this.usage !== null) {
 			yield {
 				type: "usage",
@@ -90,7 +109,12 @@ describe("E6 context policy — the auto-summary (candidate A)", () => {
 			model: "faux",
 			store,
 			tools: [],
-			adapter: createFauxProvider(ONE_TURN),
+			// The summary call plays the FIRST script turn — it must emit a
+			// valid checkpoint (the (b) validation); the loop's turn is the second.
+			adapter: createFauxProvider([
+				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
+				ONE_TURN,
+			]),
 			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
 		});
 		const session = await agent.session({ id: "s" });

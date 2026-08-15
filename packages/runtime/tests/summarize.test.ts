@@ -17,7 +17,27 @@ import {
 	SUMMARY_PROMPT,
 	summarizeConversation,
 	summaryBoundarySeq,
+	validateSummary,
 } from "../src/summarize.js";
+
+/** A valid checkpoint body — every fixture that goes through the summary
+ *  call must emit one (the (b) validation rejects anything less). */
+const VALID_SUMMARY = [
+	"## Goal",
+	"wire the flags",
+	"## Constraints",
+	"the fallback must not be used",
+	"## User requests",
+	"turn 1: make the report work",
+	"## Files and changes",
+	"src/cli.js: wired --count",
+	"## Errors and fixes",
+	"none",
+	"## Current work",
+	"flags wired",
+	"## Next steps",
+	"wire --sum",
+].join("\n");
 
 function ev(seq: number, event: EventInput): Event {
 	return { ...event, seq } as Event;
@@ -175,7 +195,7 @@ describe("summaryBoundarySeq / lastSummaryPoint", () => {
 describe("summarizeConversation — the off-loop one-shot call", () => {
 	it("collects the adapter's text into the summary, trimmed", async () => {
 		const script: FauxScript = [
-			{ events: [{ type: "text_delta", text: "  the summary  " }, { type: "stop", reason: "end_turn" }] },
+			{ events: [{ type: "text_delta", text: `  ${VALID_SUMMARY}  ` }, { type: "stop", reason: "end_turn" }] },
 		];
 		const summary = await summarizeConversation({
 			adapter: createFauxProvider(script),
@@ -185,7 +205,7 @@ describe("summarizeConversation — the off-loop one-shot call", () => {
 		// E6 (the honest accounting fix): the call now also surfaces the
 		// stream's usage event (null when the adapter reports none) so the
 		// summary call's cost can ride the trace ledger.
-		expect(summary.text).toBe("the summary");
+		expect(summary.text).toBe(VALID_SUMMARY);
 		expect(summary.usage).toBeNull();
 	});
 
@@ -323,7 +343,7 @@ describe("E6 (a) — the serialized summary input (the DSML-killer)", () => {
 		class CapturingAdapter implements Adapter {
 			async *stream(opts: StreamOptions): AsyncIterable<AdapterEvent> {
 				seen = opts;
-				yield { type: "text_delta", text: "the summary of it all", seq: 0 };
+				yield { type: "text_delta", text: VALID_SUMMARY, seq: 0 };
 				yield { type: "stop", reason: "end_turn", seq: 1 };
 			}
 		}
@@ -337,7 +357,7 @@ describe("E6 (a) — the serialized summary input (the DSML-killer)", () => {
 				},
 			],
 		});
-		expect(summary.text).toBe("the summary of it all");
+		expect(summary.text).toBe(VALID_SUMMARY);
 		expect(seen).not.toBeNull();
 		expect(seen!.messages).toHaveLength(1);
 		expect(seen!.messages[0]!.role).toBe("user");
@@ -386,24 +406,6 @@ describe("E6 (c) — the structured checkpoint prompt", () => {
 });
 
 describe("E6 (b) — the output validation (the rejection path)", () => {
-	/** A valid checkpoint — the (c) shape with both required sections. */
-	const VALID = [
-		"## Goal",
-		"wire the six flags",
-		"## Constraints",
-		"the git-log fallback must not be used",
-		"## User requests",
-		"turn 1: make the report work",
-		"## Files and changes",
-		"src/cli.js: wired --count",
-		"## Errors and fixes",
-		"none",
-		"## Current work",
-		"flags --count/--span wired",
-		"## Next steps",
-		"wire --sum",
-	].join("\n");
-
 	it("rejects a summary carrying tool-call DSML markers — the auto-T5-1 signature", () => {
 		// The E6-F4/F5 signature family: the model echoed tool-call markup
 		// as text. Each marker shape is rejected, wherever it sits.
@@ -417,10 +419,10 @@ describe("E6 (b) — the output validation (the rejection path)", () => {
 	it("rejects a truncated summary — the Current work or Next steps section missing", () => {
 		// The wire-truncation signature: the tail cut. The required-section
 		// gate is the check that makes a truncated summary FAIL, not pass.
-		expect(validateSummary(VALID)).toBeNull();
-		const cutBeforeNext = VALID.replace("\n## Next steps\nwire --sum", "");
+		expect(validateSummary(VALID_SUMMARY)).toBeNull();
+		const cutBeforeNext = VALID_SUMMARY.replace("\n## Next steps\nwire --sum", "");
 		expect(validateSummary(cutBeforeNext)).toMatch(/next steps/i);
-		const cutCurrent = VALID.replace("\n## Current work\nflags --count/--span wired", "");
+		const cutCurrent = VALID_SUMMARY.replace("\n## Current work\nflags wired", "");
 		expect(validateSummary(cutCurrent)).toMatch(/current work/i);
 	});
 
@@ -430,6 +432,6 @@ describe("E6 (b) — the output validation (the rejection path)", () => {
 	});
 
 	it("accepts a complete checkpoint", () => {
-		expect(validateSummary(VALID)).toBeNull();
+		expect(validateSummary(VALID_SUMMARY)).toBeNull();
 	});
 });

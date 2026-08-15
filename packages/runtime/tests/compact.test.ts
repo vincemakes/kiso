@@ -28,8 +28,27 @@ async function seedLongSession(store: SessionStore, id = "s"): Promise<void> {
 	await store.append(id, "r1", { seq: seq++, type: "terminal", outcome: { kind: "completed" } });
 }
 
+/** A valid checkpoint body — the (b) validation rejects anything less, so
+ *  every fixture that goes through the summary call must emit one. */
+const VALID_SUMMARY = [
+	"## Goal",
+	"wire the flags",
+	"## Constraints",
+	"the fallback must not be used",
+	"## User requests",
+	"turn 1: make the report work",
+	"## Files and changes",
+	"src/cli.js: wired --count",
+	"## Errors and fixes",
+	"none",
+	"## Current work",
+	"flags wired",
+	"## Next steps",
+	"wire --sum",
+].join("\n");
+
 const SUMMARY_TURN: FauxScript = [
-	{ events: [{ type: "text_delta", text: "The user explored seven files." }, { type: "stop", reason: "end_turn" }] },
+	{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
 ];
 
 describe("AgentSession.summarize (ADR-0044)", () => {
@@ -43,7 +62,7 @@ describe("AgentSession.summarize (ADR-0044)", () => {
 		const result = await session.summarize();
 		expect(result).not.toBeNull();
 		// K=4 kept → 8 rounds total (7 seed + final) → 4 covered rounds.
-		expect(result!.summary).toBe("The user explored seven files.");
+		expect(result!.summary).toBe(VALID_SUMMARY);
 		expect(result!.savedTokens).toBeGreaterThan(0);
 
 		const durable = store.load("s");
@@ -101,7 +120,7 @@ describe("AgentSession.summarize (ADR-0044)", () => {
 		const texts = projectMessages(durable.map((r) => r.event))
 			.filter((m) => m.role === "assistant")
 			.map((m) => m.blocks.filter((b) => b.type === "text").map((b) => (b.type === "text" ? b.text : "")).join(""));
-		expect(texts.filter((t) => t === "The user explored seven files.")).toHaveLength(2);
+		expect(texts.filter((t) => t === VALID_SUMMARY)).toHaveLength(2);
 	});
 
 	it("a failed summary leaves the session byte-identical (nothing happened)", async () => {
@@ -149,7 +168,7 @@ describe("AgentSession.summarize (ADR-0044)", () => {
 					async *[Symbol.asyncIterator]() {
 						await new Promise((resolve) => setTimeout(resolve, 1100));
 						if (options.signal?.aborted) throw new Error("aborted by the signal");
-						yield { type: "text_delta", text: "The slow summary.", seq: 0 };
+						yield { type: "text_delta", text: VALID_SUMMARY, seq: 0 };
 						yield { type: "stop", reason: "end_turn", seq: 1 };
 					},
 				};
@@ -181,7 +200,7 @@ describe("AgentSession.summarize (ADR-0044)", () => {
 		expect(started!.rounds).toBe(4); // 8 seeded rounds, 4 kept → 4 covered
 		expect(started!.tokens).toBeGreaterThan(0);
 		expect(elapsed).toBeGreaterThanOrEqual(1000); // real seconds elapsed
-		expect(result!.summary).toBe("The slow summary.");
+		expect(result!.summary).toBe(VALID_SUMMARY);
 		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(true);
 	}, 30_000);
 });
@@ -301,7 +320,7 @@ describe("P1 e2e — the straddled pair survives /compact (the pairing 400 famil
 				call += 1;
 				let seq = 0;
 				if (call === 1) {
-					yield { type: "text_delta", text: "The earlier rounds in summary.", seq: seq++ };
+					yield { type: "text_delta", text: VALID_SUMMARY, seq: seq++ };
 					yield { type: "stop", reason: "end_turn", seq: seq++ };
 					return;
 				}

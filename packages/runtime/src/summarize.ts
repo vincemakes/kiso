@@ -141,12 +141,44 @@ Rules:
 - the summary may be as long as it needs to be within the output budget —
   there is no word cap; completeness wins.`;
 
+/**
+ * E6 (b) — the output-side validation (the finding E6-F4/F5 follow-up):
+ * a summary must be a complete checkpoint or NOTHING. The marker family
+ * is the auto-T5-1 signature — the model echoing tool-call markup as
+ * text; the required sections are the truncated-tail signature (a wire
+ * cut kills "## Next steps" first). The rejection throws, and the
+ * caller's safe catch (session.ts) makes it "nothing happened".
+ */
+export const DSML_MARKERS = ["<tool_call", "<tool_use", "<invoke", "tool_calls", "tool_call_end", "tool_call_start"] as const;
+
+/** The checkpoint sections a summary must carry — the ones a truncated
+ *  generation loses first (the (c) prompt demands all seven; validation
+ *  guards the trust-critical tail). */
+export const REQUIRED_SECTIONS = ["## Current work", "## Next steps"] as const;
+
+/** null = pass; an error string = reject. Empty text is the existing
+ *  no-text rule's domain, reported here too (defense in depth). */
+export function validateSummary(text: string): string | null {
+	const trimmed = text.trim();
+	if (trimmed === "") return "the summary is empty";
+	const lower = trimmed.toLowerCase();
+	for (const marker of DSML_MARKERS) {
+		if (lower.includes(marker)) return `the summary carries a tool-call marker (${marker}) — reject`;
+	}
+	for (const section of REQUIRED_SECTIONS) {
+		if (!trimmed.includes(section)) return `the summary is missing the required section ${section} — a truncated or incomplete checkpoint`;
+	}
+	return null;
+}
+
 export interface SummarizeConversationOptions {
 	readonly adapter: Adapter;
 	readonly model: string;
 	/** The covered conversation — the ONLY material the summary is about. */
 	readonly messages: readonly Message[];
 	readonly signal?: AbortSignalLike;
+	/** E6 (g): the summary call's explicit output budget (adapter maxTokens). */
+	readonly maxOutputTokens?: number;
 }
 
 /** The summary call's result — the text PLUS the provider-reported usage
@@ -172,6 +204,7 @@ export async function summarizeConversation(options: SummarizeConversationOption
 		messages,
 		systemPrompt: SUMMARY_PROMPT,
 		...(options.signal !== undefined ? { signal: options.signal } : {}),
+		...(options.maxOutputTokens !== undefined ? { maxTokens: options.maxOutputTokens } : {}),
 	})) {
 		if (ev.type === "text_delta") text += ev.text;
 		// The LAST usage event is the call's (a turn reports usage once).
@@ -182,6 +215,12 @@ export async function summarizeConversation(options: SummarizeConversationOption
 	const trimmed = text.trim();
 	if (trimmed === "") {
 		throw new Error("the summary call produced no text");
+	}
+	// E6 (b): a non-checkpoint summary is an honest failure — throw, the
+	// caller reports it, nothing is persisted (the auto-T5-1 regression).
+	const invalid = validateSummary(trimmed);
+	if (invalid !== null) {
+		throw new Error(`the summary call produced an invalid summary: ${invalid}`);
 	}
 	return { text: trimmed, usage };
 }
