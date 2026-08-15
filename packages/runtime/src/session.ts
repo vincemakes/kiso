@@ -251,7 +251,7 @@ export class AgentSession {
 	 * worth covering yet). Crash semantics: a crash BEFORE the persist is
 	 * "nothing happened"; after it, a resume projects the compressed view.
 	 */
-	async summarize(options: { keepRounds?: number; signal?: AbortSignalLike; onStart?: (info: CompactInfo) => void; drop?: boolean } = {}): Promise<SummarizeResult | null> {
+	async summarize(options: { keepRounds?: number; keepTokens?: number; signal?: AbortSignalLike; onStart?: (info: CompactInfo) => void; drop?: boolean } = {}): Promise<SummarizeResult | null> {
 		this.ensureHealthy();
 		const keepRounds = options.keepRounds ?? KEEP_RECENT_ROUNDS;
 		// W18: the signal is observed at EVERY phase boundary — the cancel
@@ -261,7 +261,7 @@ export class AgentSession {
 		const cancelled = (): Error => new Error("the compaction was cancelled");
 		if (options.signal !== undefined && options.signal.aborted) throw cancelled();
 		const events = this.log.all;
-		const boundary = summaryBoundarySeq(events, keepRounds);
+		const boundary = summaryBoundarySeq(events, keepRounds, options.keepTokens);
 		if (boundary === undefined) return null;
 		const prevPoint = lastSummaryPoint(events);
 		// E6 (a): the summarizer's input is the covered range SERIALIZED to
@@ -354,6 +354,7 @@ export class AgentSession {
 		try {
 			await this.summarize({
 				keepRounds: mode.keepRounds ?? KEEP_RECENT_ROUNDS,
+				...(mode.keepTokens !== undefined ? { keepTokens: mode.keepTokens } : {}),
 				...(signal !== undefined ? { signal } : {}),
 				...(policy.drop !== undefined ? { drop: true } : {}),
 			});
@@ -654,7 +655,7 @@ export interface ContextPolicy {
 	 * that much content and followed by the kept rounds' requests to
 	 * amortize the break (the E5-F1 accounting).
 	 */
-	readonly summary?: { readonly triggerTokens: number; readonly keepRounds?: number };
+	readonly summary?: { readonly triggerTokens: number; readonly keepRounds?: number; readonly keepTokens?: number };
 	/**
 	 * C — the crux-experiment drop arm (EXPERIMENT-ONLY, never a default):
 	 * the same trigger persists the same-shaped fact with a fixed

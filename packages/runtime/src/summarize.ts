@@ -256,6 +256,24 @@ export function lastSummaryPoint(events: readonly Event[]): number {
 	return prev;
 }
 
+/** The chars/4 token proxy for a single EVENT (the same convention as
+ *  estimateTokens, event-shaped — the (f) keep-floor walk needs the kept
+ *  suffix's tokens without projecting it). */
+function estimateEventTokens(ev: Event): number {
+	switch (ev.type) {
+		case "user_input":
+			return Math.ceil(ev.content.length / 4);
+		case "text_delta":
+			return Math.ceil(ev.text.length / 4);
+		case "tool_call_end":
+			return Math.ceil(JSON.stringify(ev.input ?? null).length / 4) + 20;
+		case "tool_result":
+			return Math.ceil(String(ev.content ?? "").length / 4);
+		default:
+			return 0;
+	}
+}
+
 /**
  * The covered range's end: the seq of the event just before the
  * keepRounds-th most recent user_input AFTER the last summary point —
@@ -281,7 +299,7 @@ export function lastSummaryPoint(events: readonly Event[]): number {
  * (the operative list is the LATEST echo — the old ⑥ semantics:
  * superseded echoes stay coverable).
  */
-export function summaryBoundarySeq(events: readonly Event[], keepRounds = KEEP_RECENT_ROUNDS): number | undefined {
+export function summaryBoundarySeq(events: readonly Event[], keepRounds = KEEP_RECENT_ROUNDS, keepTokens?: number): number | undefined {
 	const prevPoint = lastSummaryPoint(events);
 	const uncoveredInputs: number[] = [];
 	for (const ev of events) {
@@ -290,6 +308,34 @@ export function summaryBoundarySeq(events: readonly Event[], keepRounds = KEEP_R
 	if (uncoveredInputs.length <= keepRounds) return undefined;
 	const firstUncovered = uncoveredInputs[0]!;
 	let boundary = uncoveredInputs[uncoveredInputs.length - keepRounds]! - 1;
+	// E6 (f): the keep budget is rounds AND tokens. A kept suffix smaller
+	// than keepTokens is a break the session cannot amortize (the E5-F1
+	// accounting) — walk the boundary back (keep more) until the kept
+	// events clear the floor. The walk picks the smallest kept suffix
+	// meeting it: per-event cumulative tokens, one pass. A floor the whole
+	// uncovered range cannot meet → nothing to compact (the policy is
+	// inert on small sessions — the token-shaped restraint).
+	if (keepTokens !== undefined && keepTokens > 0) {
+		const prefixTokens: number[] = [0];
+		let total = 0;
+		for (const ev of events) {
+			total += estimateEventTokens(ev);
+			prefixTokens.push(total);
+		}
+		const keptTokens = (b: number): number => total - prefixTokens[b + 1];
+		let floorBoundary: number | undefined;
+		for (let i = uncoveredInputs.length - 1; i >= 0; i--) {
+			const b = uncoveredInputs[i]! - 1;
+			if (keptTokens(b) >= keepTokens) {
+				floorBoundary = b;
+				break;
+			}
+		}
+		// b < firstUncovered covers no whole round (or the empty residue) —
+		// the honest nothing-to-compact.
+		if (floorBoundary === undefined || floorBoundary < firstUncovered) return undefined;
+		if (floorBoundary < boundary) boundary = floorBoundary;
+	}
 	// The protected pullback applies ONCE on the base range (⑥); the
 	// straddle pullback recomputes against the SHRINKING range below it.
 	const protectedBoundary = latestProtectedBoundary(events, prevPoint, boundary);
