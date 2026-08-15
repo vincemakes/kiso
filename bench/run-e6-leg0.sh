@@ -1,5 +1,5 @@
 #!/bin/sh
-# run-e6-leg0.sh <arm: off|on|auto> <seq>
+# run-e6-leg0.sh <arm: off|on|auto|ahard> <seq>
 # E6 Leg 0 (the long-session leg, the order's "长会话腿:Leg-0 rig
 # (fixture-t6/T6S 那台 88 请求机器)策略 ON vs OFF,payback 形状"): the
 # T6S long session (4 buckets x 6 turns on ONE durable session) with the
@@ -17,6 +17,7 @@ set -eu
 ARM=$1; SEQ=$2
 B="$(cd "$(dirname "$0")" && pwd)"
 ROUND=${KISO_ROUND:-e6ab}
+SID=${KISO_SID:-bench-e6-leg0-$ARM-$SEQ}
 WORK="$B/runs/$ROUND/kiso-E6L0-$ARM-T6S-$SEQ"
 KISO_BIN=${KISO_BIN:-node "$B/../apps/cli/dist/index.js"}
 rm -rf "$WORK"; mkdir -p "$WORK"
@@ -31,6 +32,11 @@ POL=""; UNSET=""
 case "$ARM" in
   on)   POL="KISO_POLICY_SUMMARY_TRIGGER=1300 KISO_POLICY_SUMMARY_KEEP=2 KISO_POLICY_DROP=1" ;;
   auto) POL="KISO_POLICY_SUMMARY_TRIGGER=1300 KISO_POLICY_SUMMARY_KEEP=2"; UNSET="-u KISO_POLICY_DROP" ;;
+  # ahard — the E6 decisive-experiment arm (pre-registered): the product
+  # arming shape, KISO_CONTEXT_WINDOW=34000 -> trigger = 34000 - 32000 =
+  # 2000 (window - POLICY_RESERVE), keepRounds 4 (default), the 20k floor
+  # lowered to 2000 for the ~5k rig, the drop env explicitly absent.
+  ahard) POL="KISO_CONTEXT_WINDOW=34000 KISO_POLICY_SUMMARY_KEEP=4 KISO_POLICY_SUMMARY_KEEP_TOKENS=2000"; UNSET="-u KISO_POLICY_DROP" ;;
 esac
 for P in 1 2 3 4; do
   i=$(( (P - 1) * 6 + 1 )); E=$(( P * 6 ))
@@ -42,7 +48,7 @@ for P in 1 2 3 4; do
         KISO_EXTENSIONS_DIR="$EXTDIR" \
         KISO_HOME="$WORK/kiso-home" \
         $POL \
-        $KISO_BIN --mode bypass "bench-e6-leg0-$ARM-$SEQ" > "$WORK/stdout-$P.log" 2>&1 || true
+        $KISO_BIN --mode bypass "$SID" > "$WORK/stdout-$P.log" 2>&1 || true
 done
 "$B/t6-verify.sh" "$WORK/repo" > "$WORK/verify"
 E=$(date +%s); echo $((E - S)) > "$WORK/wall_seconds"
@@ -50,7 +56,7 @@ node -e "
 const fs = require('fs');
 const { execSync } = require('child_process');
 const meta = {
-  tool: 'kiso', task: 'T6S', leg: 'e6', arm: '$ARM', seq: '$SEQ', round: '$ROUND',
+  tool: 'kiso', task: 'T6S', leg: 'e6', arm: '$ARM', seq: '$SEQ', round: '$ROUND', sid: '$SID',
   model: 'deepseek-v4-flash',
   kisoVersion: require('$B/../apps/cli/package.json').version,
   commit: execSync('git -C $B/.. rev-parse --short HEAD').toString().trim(),
