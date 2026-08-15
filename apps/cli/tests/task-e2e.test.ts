@@ -249,7 +249,7 @@ const FAUX_TRAJECTORY = [
 	// terminal
 	{ events: [{ type: "stop", reason: "end_turn" }] },
 	// The /compact summary turn (off-loop, consumed by the summarizer).
-	{ events: [{ type: "text_delta", text: "Faux summary of the old rounds." }, { type: "stop", reason: "end_turn" }] },
+	{ events: [{ type: "text_delta", text: "## Goal\nserve the file reads\n## Constraints\nnothing may be dropped\n## User requests\nseven rounds of reads\n## Files and changes\nf0-f6.ts read\n## Errors and fixes\nnone\n## Current work\nseven rounds summarized\n## Next steps\nkeep going" }, { type: "stop", reason: "end_turn" }] },
 ];
 
 describe("round 6 task e2e: the long-horizon narrative (kill -9 → resume → /compact)", () => {
@@ -348,7 +348,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptP
 		// The full echo rides the projection VERBATIM (JSON-escaped \n —
 		// compare against the escaped form).
 		expect(projText).toContain(JSON.stringify(ECHO_TWO).slice(1, -1));
-		expect(projText).toContain("Faux summary of the old rounds.");
+		expect(projText).toContain("## Goal\\nserve the file reads\\n## Constraints\\nnothing may be dropped\\n## User requests\\nseven rounds of reads\\n## Files and changes\\nf0-f6.ts read\\n## Errors and fixes\\nnone\\n## Current work\\nseven rounds summarized\\n## Next steps\\nkeep going");
 		expect(projText).not.toContain("3 pending, 0 active, 0 done");
 	}, 240_000);
 });

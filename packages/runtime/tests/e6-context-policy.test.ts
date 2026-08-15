@@ -118,7 +118,7 @@ describe("E6 context policy — the auto-summary (candidate A)", () => {
 			// valid checkpoint (the (b) validation); the loop's turn is the second.
 			adapter: createFauxProvider([
 				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
-				ONE_TURN,
+				...ONE_TURN,
 			]),
 			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
 		});
@@ -416,7 +416,7 @@ describe("E6 hardening (f) — the policy's keep-token floor", () => {
 			tools: [],
 			adapter: createFauxProvider([
 				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
-				ONE_TURN,
+				...ONE_TURN,
 			]),
 			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 10_000 } },
 		});
@@ -438,7 +438,7 @@ describe("E6 hardening (f) — the policy's keep-token floor", () => {
 			tools: [],
 			adapter: createFauxProvider([
 				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
-				ONE_TURN,
+				...ONE_TURN,
 			]),
 			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 50 } },
 		});
@@ -461,7 +461,7 @@ describe("E6 (g) — the trigger is window minus the reserve, and the summarize 
 			tools: [],
 			adapter: createFauxProvider([
 				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
-				ONE_TURN,
+				...ONE_TURN,
 			]),
 			// 34000 − 32000 = 2000 — the pre-registered decisive-experiment
 			// arming point. The seeded session (~2.3k tokens) crosses it.
@@ -499,7 +499,7 @@ describe("E6 (g) — the trigger is window minus the reserve, and the summarize 
 			tools: [],
 			adapter: createFauxProvider([
 				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
-				ONE_TURN,
+				...ONE_TURN,
 			]),
 			contextPolicy: { summary: { windowTokens: 34000, keepTokens: 50 } },
 		});
@@ -551,7 +551,7 @@ describe("E6 (h) — the circuit breaker: ≤3 summary failures stand the auto p
 		const store = new SessionStore(dir);
 		await seedLongSession(store);
 		const adapter = new CountingFaux(
-			createFauxProvider([FAIL_TURN, ONE_TURN, FAIL_TURN, ONE_TURN, FAIL_TURN, ONE_TURN, ONE_TURN]),
+			createFauxProvider([...FAIL_TURN, ...ONE_TURN, ...FAIL_TURN, ...ONE_TURN, ...FAIL_TURN, ...ONE_TURN, ...ONE_TURN]),
 		);
 		const agent = createAgent({
 			model: "faux",
@@ -582,18 +582,18 @@ describe("E6 (h) — the circuit breaker: ≤3 summary failures stand the auto p
 		await seedLongSession(store);
 		const adapter = new CountingFaux(
 			createFauxProvider([
-				FAIL_TURN,
-				ONE_TURN,
-				FAIL_TURN,
-				ONE_TURN,
+				...FAIL_TURN,
+				...ONE_TURN,
+				...FAIL_TURN,
+				...ONE_TURN,
 				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
-				ONE_TURN,
-				FAIL_TURN,
-				ONE_TURN,
-				FAIL_TURN,
-				ONE_TURN,
-				FAIL_TURN,
-				ONE_TURN,
+				...ONE_TURN,
+				...FAIL_TURN,
+				...ONE_TURN,
+				...FAIL_TURN,
+				...ONE_TURN,
+				...FAIL_TURN,
+				...ONE_TURN,
 			]),
 		);
 		const agent = createAgent({
@@ -630,7 +630,7 @@ describe("E6 (h) — the circuit breaker: ≤3 summary failures stand the auto p
 		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-h3-"));
 		const store = new SessionStore(dir);
 		await seedLongSession(store);
-		const adapter = new CountingFaux(createFauxProvider([FAIL_TURN, ONE_TURN, ONE_TURN, ONE_TURN]));
+		const adapter = new CountingFaux(createFauxProvider([...FAIL_TURN, ...ONE_TURN, ...ONE_TURN, ...ONE_TURN]));
 		const agent = createAgent({
 			model: "faux",
 			store,

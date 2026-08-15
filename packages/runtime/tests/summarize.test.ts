@@ -367,7 +367,8 @@ describe("E6 (a) — the serialized summary input (the DSML-killer)", () => {
 		expect(seen).not.toBeNull();
 		expect(seen!.messages).toHaveLength(1);
 		expect(seen!.messages[0]!.role).toBe("user");
-		expect(String(seen!.messages[0]!.content)).toContain("<conversation>");
+		const firstText = seen!.messages[0]!.role === "user" ? seen!.messages[0]!.content : undefined;
+		expect(String(firstText)).toContain("<conversation>");
 		// The system prompt carries the guard as its prefix (the sandwich's
 		// BEFORE copy) and no word cap survives.
 		expect(seen!.systemPrompt).toContain(SUMMARY_GUARD);

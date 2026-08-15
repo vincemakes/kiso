@@ -137,7 +137,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			{ events: [{ type: "stop", reason: "end_turn" }] }, // recovery resume
 			{ events: [{ type: "tool_call_end", callId: "s1", name: "shell", input: { command: "sleep 4" } }, { type: "stop", reason: "tool_use" }] },
 			{ events: [{ type: "stop", reason: "end_turn" }] },
-			{ events: [{ type: "text_delta", text: "The user worked through seven rounds of file reads." }, { type: "stop", reason: "end_turn" }] },
+			{ events: [{ type: "text_delta", text: "## Goal\nserve the file reads\n## Constraints\nnothing may be dropped\n## User requests\nseven rounds of reads\n## Files and changes\nf0-f6.ts read\n## Errors and fixes\nnone\n## Current work\nseven rounds summarized\n## Next steps\nkeep going" }, { type: "stop", reason: "end_turn" }] },
 		];
 		const scriptPath = join(dir, "faux.json");
 		writeFileSync(scriptPath, JSON.stringify(script), "utf8");
@@ -190,7 +190,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		const durable = readFileSync(join(home, "sessions", "kc.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');
 		expect(durable).toContain('"coversToSeq":14');
-		expect(durable).toContain("The user worked through seven rounds of file reads.");
+		expect(durable).toContain("## Goal\\nserve the file reads\\n## Constraints\\nnothing may be dropped\\n## User requests\\nseven rounds of reads\\n## Files and changes\\nf0-f6.ts read\\n## Errors and fixes\\nnone\\n## Current work\\nseven rounds summarized\\n## Next steps\\nkeep going");
 	});
 
 	it("W18: the indeterminate row is LIVE for the whole call (a REAL 1.5s adapter delay), esc cancels it mid-flight, and nothing is persisted", () => {
@@ -259,7 +259,7 @@ describe("ADR-0044 cli: /compact through a pipe", () => {
 		const script = [
 			...Array.from({ length: 7 }, () => ({ events: [{ type: "stop", reason: "end_turn" }] })),
 			{ events: [{ type: "stop", reason: "end_turn" }] }, // recovery resume
-			{ events: [{ type: "text_delta", text: "Seven rounds of file work, summarized." }, { type: "stop", reason: "end_turn" }] },
+			{ events: [{ type: "text_delta", text: "## Goal\nserve the file reads\n## Constraints\nnothing may be dropped\n## User requests\nseven rounds of reads\n## Files and changes\nf0-f6.ts read\n## Errors and fixes\nnone\n## Current work\nseven rounds summarized\n## Next steps\nkeep going" }, { type: "stop", reason: "end_turn" }] },
 		];
 		const scriptPath = join(dir, "faux.json");
 		writeFileSync(scriptPath, JSON.stringify(script), "utf8");
@@ -271,7 +271,7 @@ describe("ADR-0044 cli: /compact through a pipe", () => {
 		expect(run.stdout).not.toContain("["); // the pipe is byte-clean
 		const durable = readFileSync(join(home, "sessions", "kp.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');
-		expect(durable).toContain("Seven rounds of file work, summarized.");
+		expect(durable).toContain("## Goal\\nserve the file reads\\n## Constraints\\nnothing may be dropped\\n## User requests\\nseven rounds of reads\\n## Files and changes\\nf0-f6.ts read\\n## Errors and fixes\\nnone\\n## Current work\\nseven rounds summarized\\n## Next steps\\nkeep going");
 		// The session still loads without corruption.
 		expect(new SessionStore(join(home, "sessions")).load("kp").length).toBeGreaterThan(20);
 	});

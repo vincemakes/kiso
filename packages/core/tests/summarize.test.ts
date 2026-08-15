@@ -45,8 +45,10 @@ describe("projection: a summarized event replaces its covered range", () => {
 		const summaryMessages = msgs.filter((m) => m.role === "user" && typeof m.content === "string" && m.content.includes("S: rounds 1-2"));
 		expect(summaryMessages).toHaveLength(1);
 		expect(msgs[0]).toBe(summaryMessages[0]);
-		expect(typeof msgs[0]!.content).toBe("string");
-		expect(String(msgs[0]!.content)).toContain("compressed into the summary below");
+		expect(msgs[0]!.role).toBe("user");
+		const firstText = msgs[0]!.role === "user" ? msgs[0]!.content : undefined;
+		expect(typeof firstText).toBe("string");
+		expect(String(firstText)).toContain("compressed into the summary below");
 		// The kept rounds (3-6) read normally AFTER the summary message.
 		const users = msgs
 			.filter((m) => m.role === "user")

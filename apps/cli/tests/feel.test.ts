@@ -106,7 +106,7 @@ describe("A1: the menu Enter executes the EXACT selection directly", () => {
 		const script = [
 			...Array.from({ length: 7 }, () => ({ events: [{ type: "stop", reason: "end_turn" }] })),
 			{ events: [{ type: "stop", reason: "end_turn" }] },
-			{ events: [{ type: "text_delta", text: "The covered rounds, summarized." }, { type: "stop", reason: "end_turn" }] },
+			{ events: [{ type: "text_delta", text: "## Goal\nserve the file reads\n## Constraints\nnothing may be dropped\n## User requests\nseven rounds of reads\n## Files and changes\nf0-f6.ts read\n## Errors and fixes\nnone\n## Current work\nseven rounds summarized\n## Next steps\nkeep going" }, { type: "stop", reason: "end_turn" }] },
 		];
 		const scriptPath = join(dir, "faux.json");
 		writeFileSync(scriptPath, JSON.stringify(script), "utf8");
@@ -194,7 +194,7 @@ describe("C8: /compact auto-trigger (opt-in via KISO_AUTO_COMPACT)", () => {
 			...Array.from({ length: 5 }, () => ({ events: [{ type: "stop", reason: "end_turn" }] })),
 			{ events: [{ type: "stop", reason: "end_turn" }] },
 			{ events: [{ type: "text_delta", text: "a".repeat(50_000) }, { type: "stop", reason: "end_turn" }] },
-			{ events: [{ type: "text_delta", text: "The covered rounds, summarized." }, { type: "stop", reason: "end_turn" }] },
+			{ events: [{ type: "text_delta", text: "## Goal\nserve the file reads\n## Constraints\nnothing may be dropped\n## User requests\nseven rounds of reads\n## Files and changes\nf0-f6.ts read\n## Errors and fixes\nnone\n## Current work\nseven rounds summarized\n## Next steps\nkeep going" }, { type: "stop", reason: "end_turn" }] },
 		];
 		const scriptPath = join(dir, "faux.json");
 		writeFileSync(scriptPath, JSON.stringify(script), "utf8");
@@ -227,7 +227,7 @@ describe("C8: /compact auto-trigger (opt-in via KISO_AUTO_COMPACT)", () => {
 			...Array.from({ length: 5 }, () => ({ events: [{ type: "stop", reason: "end_turn" }] })),
 			{ events: [{ type: "stop", reason: "end_turn" }] },
 			{ events: [{ type: "text_delta", text: "a".repeat(50_000) }, { type: "stop", reason: "end_turn" }] },
-			{ events: [{ type: "text_delta", text: "The covered rounds, summarized." }, { type: "stop", reason: "end_turn" }] },
+			{ events: [{ type: "text_delta", text: "## Goal\nserve the file reads\n## Constraints\nnothing may be dropped\n## User requests\nseven rounds of reads\n## Files and changes\nf0-f6.ts read\n## Errors and fixes\nnone\n## Current work\nseven rounds summarized\n## Next steps\nkeep going" }, { type: "stop", reason: "end_turn" }] },
 		];
 		const scriptPath = join(dir, "faux.json");
 		writeFileSync(scriptPath, JSON.stringify(script), "utf8");
