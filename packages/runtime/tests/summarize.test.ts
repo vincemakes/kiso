@@ -7,11 +7,13 @@
 
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
-import type { Event, EventInput, Message, ToolCallEnd } from "@vincemakes/kiso-core";
+import type { Adapter, AdapterEvent, Event, EventInput, Message, StreamOptions, ToolCallEnd } from "@vincemakes/kiso-core";
 import {
 	estimateSummarySavings,
 	KEEP_RECENT_ROUNDS,
 	lastSummaryPoint,
+	serializeCovered,
+	SUMMARY_GUARD,
 	summarizeConversation,
 	summaryBoundarySeq,
 } from "../src/summarize.js";
@@ -259,3 +261,89 @@ describe("summarizeConversation — the off-loop one-shot call", () => {
 		// nothing before it to cover: the honest "nothing to compact".
 		expect(summaryBoundarySeq(events)).toBeUndefined();
 	});
+
+describe("E6 (a) — the serialized summary input (the DSML-killer)", () => {
+	/** The T6S-style covered range: user inputs, an assistant answer, and a
+	 *  tool pair with a big result (the shape that produced the auto-T5-1
+	 *  DSML garbage — raw messages passed to the summarizer). */
+	function coveredRange(): Event[] {
+		return [
+			ev(1, { type: "user_input", content: "make the report work" }),
+			ev(2, { type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "src/cli.js" } }),
+			ev(3, { type: "tool_result", callId: "c1", content: "line\n".repeat(400), isError: false }), // 2000 chars
+			ev(4, { type: "text_delta", text: "I found the flag wiring." }),
+			ev(5, { type: "stop", reason: "end_turn" }),
+			ev(6, { type: "user_input", content: "wire the flags" }),
+			ev(7, { type: "terminal", outcome: { kind: "completed" } }),
+		];
+	}
+
+	it("serializes the covered range into ONE <conversation> block, per-role lines, never raw messages", () => {
+		const events = coveredRange();
+		const text = serializeCovered({ events, prevPoint: -1, boundary: 7 });
+		// ONE block, role-labeled lines, the inputs and the tool pair visible.
+		expect(text).toContain("<conversation>");
+		expect(text).toContain("</conversation>");
+		expect(text).toContain("[user] make the report work");
+		expect(text).toContain("[user] wire the flags");
+		expect(text).toContain("[assistant] I found the flag wiring.");
+		expect(text).toContain("[tool call read_file]");
+		expect(text).toContain("src/cli.js");
+		expect(text).toContain("[tool result]");
+		// No raw provider message shape leaks into the summary input.
+		expect(text).not.toContain('"role":');
+	});
+
+	it("truncates a tool result past 2000 chars with a truncation marker", () => {
+		const events = coveredRange();
+		// 400 lines × 5 chars = 2000 chars exactly — never truncated. Bump it.
+		events[2] = ev(3, { type: "tool_result", callId: "c1", content: "x".repeat(5_000), isError: false }) as Event;
+		const text = serializeCovered({ events, prevPoint: -1, boundary: 7 });
+		expect(text).toContain("[tool result]");
+		expect(text).toContain("… (3,000 more chars truncated)");
+		// The first 2000 chars survive; the marker is present; the junk tail is gone.
+		expect(text).toContain("x".repeat(2000));
+		expect(text).not.toContain("x".repeat(2001));
+	});
+
+	it("the guard sentence sits BEFORE the conversation (the system-prompt prefix) and AFTER the block", () => {
+		const text = serializeCovered({ events: coveredRange(), prevPoint: -1, boundary: 7 });
+		// The AFTER copy: the serialized input's own tail, past </conversation>.
+		expect(text).toContain("</conversation>");
+		expect(text.slice(text.indexOf("</conversation>"))).toContain(SUMMARY_GUARD);
+		// The BEFORE copy: SUMMARY_GUARD is the summary prompt's FIRST line.
+		expect(SUMMARY_GUARD.length).toBeGreaterThan(0);
+	});
+
+	it("summarize() hands the model ONE user message — never the raw covered array", async () => {
+		// The session path: the covered range lands as a single serialized
+		// user message (the DSML bug's raw-message array is structurally dead).
+		let seen: StreamOptions | null = null;
+		class CapturingAdapter implements Adapter {
+			async *stream(opts: StreamOptions): AsyncIterable<AdapterEvent> {
+				seen = opts;
+				yield { type: "text_delta", text: "the summary of it all", seq: 0 };
+				yield { type: "stop", reason: "end_turn", seq: 1 };
+			}
+		}
+		const summary = await summarizeConversation({
+			adapter: new CapturingAdapter(),
+			model: "faux",
+			messages: [
+				{
+					role: "user",
+					content: serializeCovered({ events: coveredRange(), prevPoint: -1, boundary: 7 }),
+				},
+			],
+		});
+		expect(summary.text).toBe("the summary of it all");
+		expect(seen).not.toBeNull();
+		expect(seen!.messages).toHaveLength(1);
+		expect(seen!.messages[0]!.role).toBe("user");
+		expect(String(seen!.messages[0]!.content)).toContain("<conversation>");
+		// The system prompt carries the guard as its prefix (the sandwich's
+		// BEFORE copy) and no word cap survives.
+		expect(seen!.systemPrompt).toContain(SUMMARY_GUARD);
+		expect(seen!.systemPrompt).not.toContain("under 200 words");
+	});
+});
