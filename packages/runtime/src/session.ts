@@ -46,6 +46,7 @@ import {
 	estimateSummarySavings,
 	KEEP_RECENT_ROUNDS,
 	lastSummaryPoint,
+	serializeCovered,
 	summarizeConversation,
 	summaryBoundarySeq,
 } from "./summarize.js";
@@ -263,9 +264,15 @@ export class AgentSession {
 		const boundary = summaryBoundarySeq(events, keepRounds);
 		if (boundary === undefined) return null;
 		const prevPoint = lastSummaryPoint(events);
+		// E6 (a): the summarizer's input is the covered range SERIALIZED to
+		// flat text — one guarded <conversation> user message — never the raw
+		// provider message array (the auto-T5-1 DSML garbage). The projected
+		// messages still feed the pre-call token estimate and the savings
+		// figure (estimate-only, never the model input).
 		const covered = projectMessages(
 			events.filter((e) => e.seq > prevPoint && e.seq <= boundary && e.type !== "summarized"),
 		);
+		const serializedInput = serializeCovered({ events, prevPoint, boundary });
 		// W18: the indicator's pre-call data — rounds + the token estimate
 		// are knowable BEFORE the adapter call; the summary itself is ONE
 		// call with no fraction (kiso never invents a percentage here).
@@ -285,7 +292,9 @@ export class AgentSession {
 			const call = await summarizeConversation({
 				adapter: this.#adapter,
 				model: this.#config.model,
-				messages: covered,
+				// E6 (a): ONE serialized user message — the DSML bug's
+				// raw-message array is structurally dead on this path.
+				messages: [{ role: "user", content: serializedInput }],
 				...(options.signal !== undefined ? { signal: options.signal } : {}),
 			});
 			summary = call.text;

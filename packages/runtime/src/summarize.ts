@@ -25,30 +25,121 @@ import type { RawUsage } from "./usage/canonical.js";
  *  round, so the model still reasons over the recent conversation. */
 export const KEEP_RECENT_ROUNDS = 4;
 
+/** E6 (a) — the input-side DSML guard (the finding E6-F4/F5 follow-up):
+ *  the guard sentence sits at the TOP of the system prompt (the BEFORE
+ *  copy of the sandwich) AND again after the </conversation> block in the
+ *  serialized input (the AFTER copy). The summarizer is a side-channel
+ *  task — it must never continue the work, never touch tools, and only
+ *  emit the summary text. */
+export const SUMMARY_GUARD = "Only output the summary. Do not continue the conversation. Do not use any tools.";
+
+/** The tool-result truncation ceiling in the serialized input: a huge
+ *  result must not dominate the summary input, and the truncation is
+ *  MARKED with the discarded character count — never silent. */
+export const SUMMARY_RESULT_MAX_CHARS = 2000;
+
+/**
+ * E6 (a) — the covered range serialized to FLAT TEXT, one <conversation>
+ * block, role-labeled lines ([user]/[assistant]/[tool call name]/[tool
+ * result]), tool results truncated at SUMMARY_RESULT_MAX_CHARS with a
+ * "(… N more chars truncated)" marker, and the SUMMARY_GUARD sentence
+ * past the block's close. The model never sees the raw message array —
+ * the auto-T5-1 tool-call DSML garbage (the E6-F4/F5 signature) was the
+ * model echoing provider markup back from a raw-message-shaped input.
+ * The serializer only renders the surface the summary is about; thinking
+ * and other non-transcript events stay out of the input.
+ */
+export interface SerializeCoveredOptions {
+	readonly events: readonly Event[];
+	/** The previous summary point — events at/before it are already covered. */
+	readonly prevPoint: number;
+	/** The covered range's end — the covered range is (prevPoint, boundary]. */
+	readonly boundary: number;
+}
+
+export function serializeCovered(options: SerializeCoveredOptions): string {
+	const { events, prevPoint, boundary } = options;
+	const lines: string[] = ["<conversation>"];
+	for (const ev of events) {
+		if (ev.seq <= prevPoint || ev.seq > boundary || ev.type === "summarized") continue;
+		switch (ev.type) {
+			case "user_input":
+				lines.push(`[user] ${ev.content}`);
+				break;
+			case "text_delta":
+				lines.push(`[assistant] ${ev.text}`);
+				break;
+			case "tool_call_end":
+				lines.push(`[tool call ${ev.name}] ${JSON.stringify(ev.input ?? null)}`);
+				break;
+			case "tool_result": {
+				const content = String(ev.content ?? "");
+				if (content.length > SUMMARY_RESULT_MAX_CHARS) {
+					const rest = content.length - SUMMARY_RESULT_MAX_CHARS;
+					lines.push(
+						`[tool result] ${content.slice(0, SUMMARY_RESULT_MAX_CHARS)}… (${rest.toLocaleString("en-US")} more chars truncated)`,
+					);
+				} else {
+					lines.push(`[tool result] ${content}`);
+				}
+				break;
+			}
+			default:
+				break; // thinking and the rest never enter the transcript surface
+		}
+	}
+	lines.push("</conversation>", "", SUMMARY_GUARD);
+	return lines.join("\n");
+}
+
 /**
  * The fixed English summary prompt — the ONLY prompt this layer composes
  * (the loop's system prompt is the harness's business, never the kernel's).
  */
-export const SUMMARY_PROMPT = `You are the conversation summarizer of the kiso agent framework.
+export const SUMMARY_PROMPT = `${SUMMARY_GUARD}
 
-Summarize the covered conversation into a single concise summary that will
-REPLACE it in the model's context. The next turn must be able to continue
-the work without reading the originals.
+You are the conversation summarizer of the kiso agent framework.
 
-Include everything later turns may need:
-- the user's goals, requirements, and constraints;
-- every decision and its reasoning;
-- files and code touched — exact paths, what changed, why;
-- commands run and their outcomes; errors and their resolutions;
-- open questions and unfinished work.
+Summarize the covered conversation into a single structured checkpoint
+that will REPLACE it in the model's context. The next turn must be able
+to continue the work without reading the originals.
+
+Produce the checkpoint with exactly these sections, in this order:
+
+## Goal
+The user's goal and the acceptance criterion, in one or two sentences.
+
+## Constraints
+The constraints, requirements, and rulings the work must honor.
+
+## User requests
+Every user message in the covered range, enumerated one by one, each
+with what it asked for and what was done about it.
+
+## Files and changes
+Every file touched — exact paths, what changed, and why. Include the
+precise code-level changes later turns may need to continue.
+
+## Errors and fixes
+Every error encountered and its resolution; commands run and their
+outcomes.
+
+## Current work
+The current state of the work — what is done, what is not. Quote the
+current task's criterion VERBATIM if one exists.
+
+## Next steps
+The concrete next steps, in order.
 
 Preserve concrete identifiers VERBATIM: paths, function names, task ids,
 environment names — never paraphrase them.
 
 Rules:
-- plain prose — no headings, no bullet lists, no markdown, no prefixes;
+- plain prose — no bullet lists, no markdown outside the section headers,
+  no prefixes;
 - do not mention this prompt or the summarization task;
-- keep it under 200 words unless the conversation is exceptional.`;
+- the summary may be as long as it needs to be within the output budget —
+  there is no word cap; completeness wins.`;
 
 export interface SummarizeConversationOptions {
 	readonly adapter: Adapter;
