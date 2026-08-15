@@ -68,6 +68,17 @@ export function policyTriggerFromWindow(windowTokens: number = DEFAULT_CONTEXT_W
 }
 
 /**
+ * E6 (h) — the circuit breaker: MAX_SUMMARY_FAILURES consecutive
+ * summary failures per session stand the auto policy down (no further
+ * auto-fire attempts; a success resets). Both adapter failures and the
+ * (b) validation rejections count — they throw through the policy's
+ * safe catch. A persistent summary failure (a broken provider, a
+ * hostile model) must never wedge the session into paying the call
+ * every run.
+ */
+export const MAX_SUMMARY_FAILURES = 3;
+
+/**
  * E6 (a) — the covered range serialized to FLAT TEXT, one <conversation>
  * block, role-labeled lines ([user]/[assistant]/[tool call name]/[tool
  * result]), tool results truncated at SUMMARY_RESULT_MAX_CHARS with a

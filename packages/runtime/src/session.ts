@@ -47,6 +47,7 @@ import {
 	KEEP_RECENT_ROUNDS,
 	KEEP_TOKENS_DEFAULT,
 	lastSummaryPoint,
+	MAX_SUMMARY_FAILURES,
 	policyTriggerFromWindow,
 	serializeCovered,
 	SUMMARY_MAX_OUTPUT,
@@ -141,6 +142,9 @@ export class AgentSession {
 	readonly #pendingDurableApprovals = new Map<string, boolean>();
 	readonly #pendingDurableUncertainties = new Map<string, { resolution: "rerun" | "abandoned"; callId: string }>();
 	#poisoned: string | null = null;
+	/** E6 (h): the circuit-breaker counter — consecutive auto-policy
+	 *  summary failures this session (a success resets it). */
+	#summaryFailures = 0;
 
 	/** Permanently invalidate the session after a rejected disk write (round 1). */
 	poison(reason: string): void {
@@ -366,6 +370,13 @@ export class AgentSession {
 		const triggerTokens =
 			mode.windowTokens !== undefined ? policyTriggerFromWindow(mode.windowTokens) : mode.triggerTokens;
 		if (triggerTokens === undefined) return;
+		// E6 (h): the circuit breaker — after maxFailures consecutive
+		// summary failures the auto policy stands down for the rest of
+		// the session (a persistent failure — a broken provider, a
+		// hostile model — must never wedge the session into paying the
+		// summary call every run).
+		const maxFailures = mode.maxFailures ?? MAX_SUMMARY_FAILURES;
+		if (this.#summaryFailures >= maxFailures) return;
 		if (estimateTokens(this.projected()) <= triggerTokens) return;
 		try {
 			await this.summarize({
@@ -377,10 +388,16 @@ export class AgentSession {
 				...(signal !== undefined ? { signal } : {}),
 				...(policy.drop !== undefined ? { drop: true } : {}),
 			});
+			// A persisted fire resets the breaker — the failures were a
+			// transient blip, the budget starts fresh.
+			this.#summaryFailures = 0;
 		} catch {
 			// the compaction failed — the session is unchanged and the run
 			// proceeds with the full context (the ADR-0044 "nothing
-			// happened" crash semantics, policy-shaped).
+			// happened" crash semantics, policy-shaped). The failure counts
+			// toward the breaker (both adapter failures and (b) rejections
+			// land here).
+			this.#summaryFailures += 1;
 		}
 	}
 
@@ -678,13 +695,16 @@ export interface ContextPolicy {
 	 * the legacy override) or windowTokens (the product arming — the
 	 * runtime computes window − POLICY_RESERVE; never a fixed low
 	 * absolute). keepTokens floors the kept suffix (the (f) budget;
-	 * the default KEEP_TOKENS_DEFAULT applies when absent).
+	 * the default KEEP_TOKENS_DEFAULT applies when absent). maxFailures
+	 * sets the (h) circuit breaker (the default MAX_SUMMARY_FAILURES
+	 * applies when absent).
 	 */
 	readonly summary?: {
 		readonly triggerTokens?: number;
 		readonly windowTokens?: number;
 		readonly keepRounds?: number;
 		readonly keepTokens?: number;
+		readonly maxFailures?: number;
 	};
 	/**
 	 * C — the crux-experiment drop arm (EXPERIMENT-ONLY, never a default):
@@ -694,13 +714,14 @@ export interface ContextPolicy {
 	 * summary mode (one conversation-layer compactor at a time). The
 	 * adopted shape — if the crux evidence earns it — is a distinct
 	 * `dropped` event family, not this placeholder text. Same trigger
-	 * shapes and keep budget as the summary arm.
+	 * shapes, keep budget, and breaker as the summary arm.
 	 */
 	readonly drop?: {
 		readonly triggerTokens?: number;
 		readonly windowTokens?: number;
 		readonly keepRounds?: number;
 		readonly keepTokens?: number;
+		readonly maxFailures?: number;
 	};
 	/**
 	 * B — the session-aware microcompact: the threshold/keep-window

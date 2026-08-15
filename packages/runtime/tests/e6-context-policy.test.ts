@@ -26,7 +26,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
-import { defineTool, projectMessages, type Adapter, type AdapterEvent, type StreamOptions } from "@vincemakes/kiso-core";
+import { defineTool, estimateTokens, projectMessages, type Adapter, type AdapterEvent, type StreamOptions } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
 import { DROP_PLACEHOLDER } from "../src/summarize.js";
 
@@ -534,11 +534,25 @@ describe("E6 (g) — the trigger is window minus the reserve, and the summarize 
 describe("E6 (h) — the circuit breaker: ≤3 summary failures stand the auto policy down", () => {
 	const FAIL_TURN: FauxScript = [{ events: [{ type: "stop", reason: "end_turn" }] }];
 
+	/** A call-counting pass-through — the faux provider carries the
+	 *  scripted failure/success turns, the wrapper counts every stream
+	 *  call (the breaker assertions are about HOW MANY calls happen). */
+	class CountingFaux implements Adapter {
+		calls = 0;
+		constructor(private readonly inner: Adapter) {}
+		async *stream(opts: StreamOptions): AsyncIterable<AdapterEvent> {
+			this.calls += 1;
+			yield* this.inner.stream(opts);
+		}
+	}
+
 	it("three consecutive failures stand the policy down for the rest of the session — the fourth fire is never attempted", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-h1-"));
 		const store = new SessionStore(dir);
 		await seedLongSession(store);
-		const adapter = new CountingAdapter();
+		const adapter = new CountingFaux(
+			createFauxProvider([FAIL_TURN, ONE_TURN, FAIL_TURN, ONE_TURN, FAIL_TURN, ONE_TURN, ONE_TURN]),
+		);
 		const agent = createAgent({
 			model: "faux",
 			store,
@@ -546,7 +560,7 @@ describe("E6 (h) — the circuit breaker: ≤3 summary failures stand the auto p
 			// Each run: the policy fires FIRST (a failing summary call — the
 			// empty-text rejection throws through the safe catch), then the
 			// loop's turn. Fire 4 is skipped by the breaker.
-			adapter: createFauxProvider([FAIL_TURN, ONE_TURN, FAIL_TURN, ONE_TURN, FAIL_TURN, ONE_TURN, ONE_TURN]),
+			adapter,
 			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
 		});
 		const session = await agent.session({ id: "s" });
@@ -566,16 +580,8 @@ describe("E6 (h) — the circuit breaker: ≤3 summary failures stand the auto p
 		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-h2-"));
 		const store = new SessionStore(dir);
 		await seedLongSession(store);
-		const adapter = new CountingAdapter();
-		const agent = createAgent({
-			model: "faux",
-			store,
-			tools: [],
-			// fail (1) → fail (2) → success (RESET to 0) → fail (1) → fail
-			// (2) → fail (3): the SIXTH fire stands down. WITHOUT the reset
-			// the counter would hit 3 at fire 5 — five fires attempted, not
-			// six (the discriminator: a broken reset changes the call count).
-			adapter: createFauxProvider([
+		const adapter = new CountingFaux(
+			createFauxProvider([
 				FAIL_TURN,
 				ONE_TURN,
 				FAIL_TURN,
@@ -589,7 +595,21 @@ describe("E6 (h) — the circuit breaker: ≤3 summary failures stand the auto p
 				FAIL_TURN,
 				ONE_TURN,
 			]),
-			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
+		);
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter,
+			// keepRounds 1: a successful compact leaves only the kept rounds
+			// uncovered — the round gate would silence the fail-after-success
+			// arc with any larger keep. keepTokens 0: the post-compact
+			// session (~350 tokens) cannot keep ANY floor AND cover a whole
+			// round — the floor walk's boundary lands below the first
+			// uncovered input, "nothing to compact" (the amortization guard,
+			// by design) — the reset arc needs the floor off. triggerTokens
+			// 10: the post-fire projection must still cross it.
+			contextPolicy: { summary: { triggerTokens: 10, keepRounds: 1, keepTokens: 0 } },
 		});
 		const session = await agent.session({ id: "s" });
 		for (let i = 0; i < 6; i++) {
@@ -598,24 +618,24 @@ describe("E6 (h) — the circuit breaker: ≤3 summary failures stand the auto p
 			}
 		}
 		// Fire 3 persisted; fires 1-2, 4-5 failed; fire 6 stood down —
-		// 5 summary attempts + 6 loop turns = 11 adapter calls (a broken
+		// 6 summary attempts + 6 loop turns = 12 adapter calls (a broken
 		// reset would stand down at fire 5 → 10).
 		const summaries = store.load("s").filter((r) => r.event.type === "summarized");
 		expect(summaries).toHaveLength(1);
 		expect((summaries[0]!.event as { summary: string }).summary).toBe(VALID_SUMMARY);
-		expect(adapter.calls).toBe(11);
+		expect(adapter.calls).toBe(12);
 	});
 
 	it("the configurable limit: maxFailures 1 stands the policy down after ONE failure", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-h3-"));
 		const store = new SessionStore(dir);
 		await seedLongSession(store);
-		const adapter = new CountingAdapter();
+		const adapter = new CountingFaux(createFauxProvider([FAIL_TURN, ONE_TURN, ONE_TURN, ONE_TURN]));
 		const agent = createAgent({
 			model: "faux",
 			store,
 			tools: [],
-			adapter: createFauxProvider([FAIL_TURN, ONE_TURN, ONE_TURN, ONE_TURN]),
+			adapter,
 			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250, maxFailures: 1 } },
 		});
 		const session = await agent.session({ id: "s" });
