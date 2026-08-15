@@ -362,7 +362,7 @@ export function summaryBoundarySeq(events: readonly Event[], keepRounds = KEEP_R
 			total += estimateEventTokens(ev);
 			prefixTokens.push(total);
 		}
-		const keptTokens = (b: number): number => total - prefixTokens[b + 1];
+		const keptTokens = (b: number): number => total - prefixTokens[b + 1]!;
 		let floorBoundary: number | undefined;
 		for (let i = uncoveredInputs.length - 1; i >= 0; i--) {
 			const b = uncoveredInputs[i]! - 1;
