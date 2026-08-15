@@ -309,3 +309,69 @@ describe("E6 context policy — the session-aware microcompact (candidate B)", (
 		expect(compacted().length).toBeGreaterThan(0);
 	});
 });
+
+describe("E6 hardening (b) — the auto path REJECTS the DSML body (the auto-T5-1 regression)", () => {
+	it("a summary call emitting tool-call markup persists NOTHING — the safe catch, the run proceeds", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-b2-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		// Script turn 1 = the summary call: the auto-T5-1-shaped garbage —
+		// tool-call markup as text (the finding E6-F4/F5 signature), no
+		// checkpoint sections. Turn 2 = the loop's turn: normal.
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider([
+				{
+					events: [
+						{
+							type: "text_delta",
+							text: '{"type":"tool_call_end","name":"read_file","input":{"path":"src/cli.js"}}',
+						},
+						{ type: "stop", reason: "end_turn" },
+					],
+				},
+				{ events: [{ type: "text_delta", text: "done." }, { type: "stop", reason: "end_turn" }] },
+			]),
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain — must NOT throw
+		}
+		// REJECTED: nothing persisted, nothing projected — "nothing happened".
+		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(false);
+		expect(store.load("s").some((r) => r.event.type === "user_input" && r.event.content === "more")).toBe(true);
+	});
+
+	it("a truncated summary (no Next steps) is rejected the same way", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-b3-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider([
+				{
+					events: [
+						{
+							type: "text_delta",
+							text: "## Goal\nwire the flags\n## Current work\nhalf done",
+						},
+						{ type: "stop", reason: "end_turn" },
+					],
+				},
+				{ events: [{ type: "text_delta", text: "done." }, { type: "stop", reason: "end_turn" }] },
+			]),
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain
+		}
+		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(false);
+		expect(store.load("s").some((r) => r.event.type === "user_input" && r.event.content === "more")).toBe(true);
+	});
+});

@@ -384,3 +384,52 @@ describe("E6 (c) — the structured checkpoint prompt", () => {
 		expect(SUMMARY_PROMPT).toContain("VERBATIM");
 	});
 });
+
+describe("E6 (b) — the output validation (the rejection path)", () => {
+	/** A valid checkpoint — the (c) shape with both required sections. */
+	const VALID = [
+		"## Goal",
+		"wire the six flags",
+		"## Constraints",
+		"the git-log fallback must not be used",
+		"## User requests",
+		"turn 1: make the report work",
+		"## Files and changes",
+		"src/cli.js: wired --count",
+		"## Errors and fixes",
+		"none",
+		"## Current work",
+		"flags --count/--span wired",
+		"## Next steps",
+		"wire --sum",
+	].join("\n");
+
+	it("rejects a summary carrying tool-call DSML markers — the auto-T5-1 signature", () => {
+		// The E6-F4/F5 signature family: the model echoed tool-call markup
+		// as text. Each marker shape is rejected, wherever it sits.
+		expect(validateSummary('<conversation><tool_call name="read_file">…')).not.toBeNull();
+		expect(validateSummary('{"type":"tool_call_end","callId":"c1","input":{}}')).not.toBeNull();
+		expect(validateSummary('use the <invoke> element for that')).not.toBeNull();
+		expect(validateSummary('the tool_calls were {"a":1}')).not.toBeNull();
+		expect(validateSummary('{"type":"tool_call_start"}')).not.toBeNull();
+	});
+
+	it("rejects a truncated summary — the Current work or Next steps section missing", () => {
+		// The wire-truncation signature: the tail cut. The required-section
+		// gate is the check that makes a truncated summary FAIL, not pass.
+		expect(validateSummary(VALID)).toBeNull();
+		const cutBeforeNext = VALID.replace("\n## Next steps\nwire --sum", "");
+		expect(validateSummary(cutBeforeNext)).toMatch(/next steps/i);
+		const cutCurrent = VALID.replace("\n## Current work\nflags --count/--span wired", "");
+		expect(validateSummary(cutCurrent)).toMatch(/current work/i);
+	});
+
+	it("rejects empty/whitespace text — the existing no-text rule stays a hard fail", () => {
+		expect(validateSummary("   ")).not.toBeNull();
+		expect(validateSummary("")).not.toBeNull();
+	});
+
+	it("accepts a complete checkpoint", () => {
+		expect(validateSummary(VALID)).toBeNull();
+	});
+});
