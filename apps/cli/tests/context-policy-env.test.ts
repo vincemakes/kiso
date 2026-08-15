@@ -24,6 +24,7 @@ const ENVS = [
 	"KISO_POLICY_DROP",
 	"KISO_POLICY_SUMMARY_KEEP",
 	"KISO_POLICY_SUMMARY_KEEP_TOKENS",
+	"KISO_POLICY_SUMMARY_MAX_FAILURES",
 	"KISO_POLICY_MICROCOMPACT_KEEP",
 	"KISO_POLICY_MICROCOMPACT_MIN_TURNS",
 ];
@@ -51,6 +52,12 @@ describe("E6 (g) — the CLI context-policy arming", () => {
 		process.env.KISO_POLICY_SUMMARY_KEEP = "2";
 		process.env.KISO_POLICY_SUMMARY_KEEP_TOKENS = "2000";
 		expect(contextPolicyFromEnv()).toEqual({ summary: { windowTokens: 34000, keepRounds: 2, keepTokens: 2000 } });
+	});
+
+	it("KISO_POLICY_SUMMARY_MAX_FAILURES overrides the (h) circuit-breaker default", () => {
+		process.env.KISO_CONTEXT_WINDOW = "34000";
+		process.env.KISO_POLICY_SUMMARY_MAX_FAILURES = "1";
+		expect(contextPolicyFromEnv()).toEqual({ summary: { windowTokens: 34000, maxFailures: 1 } });
 	});
 
 	it("KISO_POLICY_SUMMARY_TRIGGER survives ONLY as the legacy absolute override when no window is set", () => {
