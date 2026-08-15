@@ -435,3 +435,31 @@ describe("E6 (b) — the output validation (the rejection path)", () => {
 		expect(validateSummary(VALID_SUMMARY)).toBeNull();
 	});
 });
+
+describe("E6 (d) — the retained context re-enters the summary input", () => {
+	it("an old summary text is labeled 'retained context, do not re-summarize' — never silently dropped", () => {
+		// Round 4 ended at seq 8 and was covered by an earlier summary; the
+		// NEW covered range is (8, 17] (rounds 5-6). The old summary text is
+		// the durable record of rounds 1-3 — the summarizer must SEE it
+		// (the order's R4: session.ts's filter once dropped it entirely).
+		const events: Event[] = [
+			...roundEvents("r1", "a", 0),
+			...roundEvents("r2", "a", 3),
+			...roundEvents("r3", "a", 6),
+			...roundEvents("r4", "a", 9),
+			...roundEvents("r5", "a", 12),
+			...roundEvents("r6", "a", 15),
+			ev(18, { type: "summarized", coversToSeq: 8, summary: "S1: rounds 1-3 covered" }),
+		];
+		const text = serializeCovered({ events, prevPoint: 8, boundary: 17 });
+		// The retained block label + the do-not-re-summarize instruction.
+		expect(text).toContain("[retained context");
+		expect(text).toContain("do not re-summarize");
+		// The old summary's text rides verbatim — exactly once (the retained
+		// copy; the covered range holds rounds 5-6 only, no duplicate).
+		expect(text).toContain("S1: rounds 1-3 covered");
+		expect(text.split("S1: rounds 1-3 covered")).toHaveLength(2);
+		// The covered turns still read normally after the retained block.
+		expect(text.indexOf("[retained context")).toBeLessThan(text.indexOf("[user] r5"));
+	});
+});
