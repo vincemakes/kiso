@@ -329,6 +329,8 @@ export function composeSystemPrompt(cwd: string): string {
  * KISO_POLICY_SUMMARY_KEEP (rounds) and KISO_POLICY_SUMMARY_KEEP_TOKENS
  * override the runtime defaults (KEEP_RECENT_ROUNDS = 4,
  * KEEP_TOKENS_DEFAULT = 20,000) — emitted only when set.
+ * KISO_POLICY_SUMMARY_MAX_FAILURES overrides the (h) circuit-breaker
+ * default (MAX_SUMMARY_FAILURES = 3).
  * KISO_POLICY_DROP=1 switches the armed mode to the crux C arm
  * (mechanical drop — same trigger/keep envs); KISO_POLICY_MICROCOMPACT
  * arms the session-aware override (MIN_TURNS = the no-fire guard).
@@ -341,11 +343,13 @@ export function contextPolicyFromEnv(): ContextPolicy | undefined {
 	const mode = process.env.KISO_POLICY_DROP === "1" ? "drop" : "summary";
 	const keepRounds = positiveIntEnv("KISO_POLICY_SUMMARY_KEEP");
 	const keepTokens = positiveIntEnv("KISO_POLICY_SUMMARY_KEEP_TOKENS");
+	const maxFailures = positiveIntEnv("KISO_POLICY_SUMMARY_MAX_FAILURES");
 	const arm = {
 		...(contextWindow !== undefined ? { windowTokens: contextWindow } : {}),
 		...(contextWindow === undefined && summaryTrigger !== undefined ? { triggerTokens: summaryTrigger } : {}),
 		...(keepRounds !== undefined ? { keepRounds } : {}),
 		...(keepTokens !== undefined ? { keepTokens } : {}),
+		...(maxFailures !== undefined ? { maxFailures } : {}),
 	};
 	return {
 		...(contextWindow !== undefined || summaryTrigger !== undefined ? { [mode]: arm } : {}),
