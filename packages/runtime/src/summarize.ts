@@ -60,6 +60,18 @@ export interface SerializeCoveredOptions {
 export function serializeCovered(options: SerializeCoveredOptions): string {
 	const { events, prevPoint, boundary } = options;
 	const lines: string[] = ["<conversation>"];
+	// E6 (d) (the order's R4): the old summary texts are RETAINED CONTEXT —
+	// the durable record of the earlier ranges. They render first, labeled
+	// do-not-re-summarize: the summarizer must know what the earlier
+	// summaries covered, but never fold them into the new checkpoint.
+	const retained = events.filter(
+		(e): e is Event & { type: "summarized" } => e.type === "summarized" && e.coversToSeq <= prevPoint,
+	);
+	if (retained.length > 0) {
+		lines.push("[retained context — do not re-summarize]");
+		for (const r of retained) lines.push(`[summary covers to seq ${r.coversToSeq}] ${r.summary}`);
+		lines.push("[end retained context]");
+	}
 	for (const ev of events) {
 		if (ev.seq <= prevPoint || ev.seq > boundary || ev.type === "summarized") continue;
 		switch (ev.type) {
