@@ -1,7 +1,8 @@
 #!/bin/sh
 # run-e6-leg0.sh <arm: off|on|auto|ahard> <seq>
-# E6 Leg 0 (the long-session leg, the order's "长会话腿:Leg-0 rig
-# (fixture-t6/T6S 那台 88 请求机器)策略 ON vs OFF,payback 形状"): the
+# E6 Leg 0 (the long-session leg, the order's "long-session leg: the
+# Leg-0 rig (fixture-t6/T6S — the ~88-request machine) policy ON vs OFF,
+# payback shape"): the
 # T6S long session (4 buckets x 6 turns on ONE durable session) with the
 # context policy OFF (the baseline arm) vs ON (the policy armed:
 # trigger 1300, keepRounds 2) vs AUTO (the summary arm — the policy

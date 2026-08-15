@@ -1,17 +1,18 @@
 #!/bin/sh
 # dogfood-e6.sh — the E6 execution-side dogfood double-run (real model,
-# tree dist, real task, the 2026-08-14 order's "dogfood 双跑"):
+# tree dist, real task, the 2026-08-14 order's "dogfood double-run"):
 #   long  — the T6S long-session rig (fixture-t6, 24 progressive turns in
 #           4 processes on one durable session) with the shipping policy
 #           armed (drop: trigger 1300, keepRounds 2, KISO_POLICY_DROP=1).
 #           Must verify green AND fire (summarized facts in the ledger —
-#           the savings the order's "长会话见省" asks to SEE live) — the
-#           cost lands vs the A/B off-arm median (the payback reference).
+#           the savings the order's "long sessions must show savings"
+#           asks to SEE live) — the cost lands vs the A/B off-arm median
+#           (the payback reference).
 #   short — a ONE-shot real task (fixture-e5's single-prompt refactor —
 #           one user input, one run) with the same policy env. Must
 #           verify green AND NOT fire (zero summarized facts — the
 #           keepRounds floor blocks a single-input run; the order's
-#           "证不 fire、不回归").
+#           "prove no fire, no regression").
 # Both legs: the tree dist (KISO_BIN override honored), the same
 # credentials and ext harness as the bench. Runs land in runs/e6dog/.
 set -eu

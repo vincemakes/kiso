@@ -9,7 +9,7 @@
 # kind:summary lines' canonical blocks COUNTED on both arms, the
 # extraction-fix); fires (type:"summarized" events); per A-run the
 # summarized bodies dumped to summarized-bodies.txt AND the six-flag
-# presence table (the owner's 判据: does the summary preserve the
+# presence table (the owner's criteria: does the summary preserve the
 # --count/--span/--sum/--merged/--distinct/--pairs surface?).
 # Runs land in runs/e6probe/; the owner probes the bodies personally.
 set -eu

@@ -16,7 +16,7 @@
 # kind:summary lines' canonical blocks COUNTED on both arms), fires
 # (type:"summarized" count), per A-run the summarized bodies dumped to
 # summarized-bodies.txt AND the six-flag presence table (--count/--span/
-# --sum/--merged/--distinct/--pairs — the owner's 判据).
+# --sum/--merged/--distinct/--pairs — the owner's criteria).
 # Verdict (pre-registered): cost-wtd <= the off band with FAIL=0 on
 # every run -> A is eligible for future default-arming as ANOTHER owner
 # decision; this round ships OFF-by-default regardless. FAIL>0 anywhere
