@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
-import { defineTool, projectMessages, type Adapter, type Message } from "@vincemakes/kiso-core";
+import { defineTool, projectMessages, SUMMARY_FRAMING, type Adapter, type Message } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore, type CompactInfo } from "../src/index.js";
 
 /** 7 chunky rounds, the shape of a long session (user + read + result),
@@ -74,10 +74,16 @@ describe("AgentSession.summarize (ADR-0044)", () => {
 		expect(covers).toBe(11);
 
 		// A FRESH session from disk projects the compressed view: exactly
-		// one assistant summary message, the covered text absent.
+		// one USER summary message (the E6 (e) framing — the summary is
+		// read as part of the context, never as an assistant echo of the
+		// model's own compression), the covered text absent.
 		const reloaded = await agent.session({ id: "s" });
 		const msgs = reloaded.projected();
-		expect(msgs.filter((m) => m.role === "assistant" && m.blocks.some((b) => b.type === "text"))).toHaveLength(1);
+		expect(
+			msgs.filter(
+				(m) => m.role === "user" && typeof m.content === "string" && m.content.includes(SUMMARY_FRAMING) && m.content.includes(VALID_SUMMARY),
+			),
+		).toHaveLength(1);
 		expect(msgs.some((m) => m.role === "user" && m.content === "turn 0")).toBe(false);
 	});
 
@@ -117,10 +123,13 @@ describe("AgentSession.summarize (ADR-0044)", () => {
 		expect(summaries).toHaveLength(2);
 		const [s1, s2] = summaries.map((r) => r.event as { coversToSeq: number });
 		expect(s2!.coversToSeq).toBeGreaterThan(s1!.coversToSeq);
-		const texts = projectMessages(durable.map((r) => r.event))
-			.filter((m) => m.role === "assistant")
-			.map((m) => m.blocks.filter((b) => b.type === "text").map((b) => (b.type === "text" ? b.text : "")).join(""));
-		expect(texts.filter((t) => t === VALID_SUMMARY)).toHaveLength(2);
+		// Both summaries render as USER messages (the E6 (e) framing) —
+		// each carries the framing prefix + its body, never as assistant
+		// echoes — and both ride the projection in reading order.
+		const summaryMsgs = projectMessages(durable.map((r) => r.event))
+			.filter((m) => m.role === "user" && typeof m.content === "string" && m.content.includes(SUMMARY_FRAMING))
+			.map((m) => (m.role === "user" ? String(m.content) : ""));
+		expect(summaryMsgs.filter((t) => t.includes(VALID_SUMMARY))).toHaveLength(2);
 	});
 
 	it("a failed summary leaves the session byte-identical (nothing happened)", async () => {
