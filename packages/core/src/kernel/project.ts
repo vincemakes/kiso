@@ -45,6 +45,13 @@ export const MICROCOMPACTABLE = new Set(["read_file", "list_dir", "search_text",
 /** The tag that makes a tool result un-clearable (C area). */
 export const DO_NOT_COMPACT = "do-not-compact";
 
+/** E6 (e) — the summary renders as a USER message with this framing (the
+ *  boundary honesty): the model reads the compressed history as context,
+ *  not as a reply it produced. The text rides verbatim after the frame —
+ *  no transcript path pointer (the workspace jail would refuse a path
+ *  outside cwd; transcript recall is a separate surface). */
+export const SUMMARY_FRAMING = "The previous conversation history has been compressed into the summary below. Recent messages are kept verbatim.";
+
 /**
  * C area: the fixed placeholder for a cleared tool output, derived ONLY from
  * the event stream (deterministic across replay): the tool's name and its
@@ -253,10 +260,15 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		) {
 			flushAssistant();
 			flushResults(); // the results follow the assistant in reading order
+			// E6 (e): the summary is a USER message carrying the framing +
+			// the text (the boundary honesty — the model reads the compressed
+			// history as context, never as a reply it produced). The kept
+			// rounds follow as [user summary][user input]: consecutive user
+			// messages, legal across both providers (the fresh2 family).
 			out.push({
-				role: "assistant",
-				blocks: [{ type: "text", text: summaryRanges[renderedSummaries]!.summary }],
-			} satisfies AssistantMessage);
+				role: "user",
+				content: `${SUMMARY_FRAMING}\n\n${summaryRanges[renderedSummaries]!.summary}`,
+			} satisfies UserMessage);
 			renderedSummaries += 1;
 		}
 		switch (ev.type) {

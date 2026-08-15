@@ -39,14 +39,19 @@ describe("projection: a summarized event replaces its covered range", () => {
 		// The covered text is GONE from the projection (not "cleared" — absent).
 		expect(msgs.some((m) => m.role === "user" && (m.content === "r1" || m.content === "r2"))).toBe(false);
 		expect(msgs.some((m) => m.role === "assistant" && JSON.stringify(m).includes("a1"))).toBe(false);
-		// The summary message: ONE assistant message, at the covered range's
-		// position — BEFORE the kept rounds.
-		const summaryMessages = msgs.filter((m) => m.role === "assistant" && m.blocks.some((b) => b.type === "text" && b.text === "S: rounds 1-2"));
+		// The summary message: ONE user message carrying the E6 (e) framing
+		// plus the text, at the covered range's position — BEFORE the kept
+		// rounds (the sanctioned supersession: ADR-0044's byte golden).
+		const summaryMessages = msgs.filter((m) => m.role === "user" && typeof m.content === "string" && m.content.includes("S: rounds 1-2"));
 		expect(summaryMessages).toHaveLength(1);
 		expect(msgs[0]).toBe(summaryMessages[0]);
-		// The kept rounds (3-6) read normally AFTER the summary.
-		const users = msgs.filter((m) => m.role === "user").map((m) => m.content);
-		expect(users).toEqual(["r3", "r4", "r5", "r6"]);
+		expect(typeof msgs[0]!.content).toBe("string");
+		expect(String(msgs[0]!.content)).toContain("compressed into the summary below");
+		// The kept rounds (3-6) read normally AFTER the summary message.
+		const users = msgs
+			.filter((m) => m.role === "user")
+			.map((m) => (typeof m.content === "string" && m.content.includes("compressed into the summary") ? "§summary" : m.content));
+		expect(users).toEqual(["§summary", "r3", "r4", "r5", "r6"]);
 	});
 
 	it("byte-stable: the same log derives the same projection every time, and the round trip is lossless", () => {
@@ -91,7 +96,11 @@ describe("projection: a summarized event replaces its covered range", () => {
 			}
 			return m.role === "user" ? `u:${m.content}` : "t";
 		});
-		expect(texts).toEqual(["S1", "S2", "u:r5", "a5", "u:r6", "a6", "u:r7", "a7"]);
+		// E6 (e): each summary is a user message — the framing prefix + the
+		// text — read by the map below as "u:<framing>\n\nS1".
+		expect(texts[0]).toContain("S1");
+		expect(texts[1]).toContain("S2");
+		expect(texts.slice(2)).toEqual(["u:r5", "a5", "u:r6", "a6", "u:r7", "a7"]);
 		// The covered content is absent entirely.
 		expect(texts.some((t) => t.includes("r1") || t.includes("r3"))).toBe(false);
 	});
@@ -108,8 +117,8 @@ describe("projection: a summarized event replaces its covered range", () => {
 		];
 		const msgs = projectMessages(events);
 		expect(msgs).toHaveLength(3); // the summary + round 3's user + assistant
-		expect((msgs[0]! as { role: string }).role).toBe("assistant");
-		expect((msgs[0]! as { blocks: readonly { type: string; text?: string }[] }).blocks.some((b) => b.type === "text" && b.text === "S")).toBe(true);
+		expect((msgs[0]! as { role: string }).role).toBe("user");
+		expect(String((msgs[0]! as { content?: unknown }).content)).toContain("S");
 	});
 });
 
