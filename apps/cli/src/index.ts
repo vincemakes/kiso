@@ -27,8 +27,7 @@ import { readFileSync, realpathSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { Body, Editor, bannerLines, palette, renderSessionLine, type ResumeMeta } from "@vincemakes/kiso-tui";
-import { escapeTerminal } from "@vincemakes/kiso-tui";
+import { Body, Editor, bannerLines, escapeTerminal, palette, renderSessionLine, type ResumeMeta } from "@vincemakes/kiso-tui";
 import {
 	createAgent,
 	disposeExtensions,
@@ -232,13 +231,12 @@ function bannerExtensionText(): string {
  *  resize; the resume list re-gates with the tier); off-TTY: the
  *  historical `[N extensions: ...]` standalone line (zero change). */
 function extensionsBanner(resume: ResumeMeta[] = []): void {
-	if (process.stdout.isTTY) {
-		body.banner(VERSION, bannerExtensionText().replace(/^ · /, ""), resume);
+	const text = bannerExtensionText();
+	if (!process.stdout.isTTY) {
+		if (text !== "") bodyLog(`${text}\n`);
 		return;
 	}
-	const text = bannerExtensionText();
-	if (text === "") return;
-	bodyLog(`${text}\n`);
+	body.banner(VERSION, text.replace(/^ · /, ""), resume);
 }
 
 /** W5: the opening-screen resume list — up to 3 recent sessions, newest
@@ -289,7 +287,6 @@ Report what you did in one or two lines per change.`;
 /** The project-instructions file names, in priority order (A area). */
 const INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md"] as const;
 /** Hard cap for injected instructions — truncate and say so. */
-const INSTRUCTION_MAX = 8 * 1024;
 
 /**
  * A area: read the FIRST present instruction file (AGENTS.md preferred) and
@@ -305,8 +302,7 @@ export function readProjectInstructions(cwd: string): string {
 		} catch {
 			continue; // not present — try the next
 		}
-		const body = text.length > INSTRUCTION_MAX ? text.slice(0, INSTRUCTION_MAX) + `\n\n[truncated at ${INSTRUCTION_MAX} chars]` : text;
-		return `\n\n=== Project instructions (${name}) ===\n${body}`;
+		return `\n\n=== Project instructions (${name}) ===\n${text.length > 8 * 1024 ? text.slice(0, 8 * 1024) + `\n\n[truncated at ${8 * 1024} chars]` : text}`;
 	}
 	return "";
 }
@@ -340,27 +336,23 @@ export function contextPolicyFromEnv(): ContextPolicy | undefined {
 	const contextWindow = positiveIntEnv("KISO_CONTEXT_WINDOW");
 	const microcompactTrigger = positiveIntEnv("KISO_POLICY_MICROCOMPACT");
 	if (summaryTrigger === undefined && contextWindow === undefined && microcompactTrigger === undefined) return undefined;
-	const mode = process.env.KISO_POLICY_DROP === "1" ? "drop" : "summary";
-	const keepRounds = positiveIntEnv("KISO_POLICY_SUMMARY_KEEP");
-	const keepTokens = positiveIntEnv("KISO_POLICY_SUMMARY_KEEP_TOKENS");
-	const maxFailures = positiveIntEnv("KISO_POLICY_SUMMARY_MAX_FAILURES");
-	const arm = {
-		...(contextWindow !== undefined ? { windowTokens: contextWindow } : {}),
-		...(contextWindow === undefined && summaryTrigger !== undefined ? { triggerTokens: summaryTrigger } : {}),
-		...(keepRounds !== undefined ? { keepRounds } : {}),
-		...(keepTokens !== undefined ? { keepTokens } : {}),
-		...(maxFailures !== undefined ? { maxFailures } : {}),
-	};
 	return {
-		...(contextWindow !== undefined || summaryTrigger !== undefined ? { [mode]: arm } : {}),
-		...(microcompactTrigger !== undefined ? { microcompact: microcompactFromEnv(microcompactTrigger) } : {}),
+		...(summaryTrigger === undefined && contextWindow === undefined ? {} : {
+			[(process.env.KISO_POLICY_DROP === "1" ? "drop" : "summary")]: {
+				...(contextWindow !== undefined ? { windowTokens: contextWindow } : summaryTrigger !== undefined ? { triggerTokens: summaryTrigger } : {}),
+				...kv("keepRounds", "KISO_POLICY_SUMMARY_KEEP"),
+				...kv("keepTokens", "KISO_POLICY_SUMMARY_KEEP_TOKENS"),
+				...kv("maxFailures", "KISO_POLICY_SUMMARY_MAX_FAILURES"),
+			},
+		}),
+		...(microcompactTrigger !== undefined ? { microcompact: { thresholdTokens: microcompactTrigger, ...kv("keepResults", "KISO_POLICY_MICROCOMPACT_KEEP"), ...kv("minTurns", "KISO_POLICY_MICROCOMPACT_MIN_TURNS") } } : {}),
 	};
 }
 
-function microcompactFromEnv(thresholdTokens: number) {
-	const keepResults = positiveIntEnv("KISO_POLICY_MICROCOMPACT_KEEP");
-	const minTurns = positiveIntEnv("KISO_POLICY_MICROCOMPACT_MIN_TURNS");
-	return { thresholdTokens, ...(keepResults !== undefined ? { keepResults } : {}), ...(minTurns !== undefined ? { minTurns } : {}) };
+/** { [key]: value } when the env int is set — the spread-friendly optional field. */
+function kv(key: string, env: string): { [key: string]: number } | undefined {
+	const v = positiveIntEnv(env);
+	return v !== undefined ? { [key]: v } : {};
 }
 
 /** Parse a positive-int env var — absent or invalid is undefined (no crash). */
@@ -538,9 +530,7 @@ async function main(): Promise<void> {
 		// (its verdict decides whether the project config exists at all) —
 		// unless a higher layer (--mode flag / KISO_MODE) already decided.
 		const applyConfigMode = (): void => {
-			if (modeFlag !== -1 || process.env.KISO_MODE !== undefined) return;
-			const m = mergedConfig.mode;
-			if (m !== undefined) setMode(m);
+			if (modeFlag === -1 && process.env.KISO_MODE === undefined && mergedConfig.mode !== undefined) setMode(mergedConfig.mode);
 		};
 		switch (command) {
 			case "chat": {
