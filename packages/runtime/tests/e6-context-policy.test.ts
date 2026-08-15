@@ -530,3 +530,102 @@ describe("E6 (g) — the trigger is window minus the reserve, and the summarize 
 		expect(adapter.firstOpts?.maxTokens).toBe(4000);
 	});
 });
+
+describe("E6 (h) — the circuit breaker: ≤3 summary failures stand the auto policy down", () => {
+	const FAIL_TURN: FauxScript = [{ events: [{ type: "stop", reason: "end_turn" }] }];
+
+	it("three consecutive failures stand the policy down for the rest of the session — the fourth fire is never attempted", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-h1-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		const adapter = new CountingAdapter();
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			// Each run: the policy fires FIRST (a failing summary call — the
+			// empty-text rejection throws through the safe catch), then the
+			// loop's turn. Fire 4 is skipped by the breaker.
+			adapter: createFauxProvider([FAIL_TURN, ONE_TURN, FAIL_TURN, ONE_TURN, FAIL_TURN, ONE_TURN, ONE_TURN]),
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for (let i = 0; i < 4; i++) {
+			for await (const _ev of session.run(`more ${i}`)) {
+				// drain — must NOT throw
+			}
+		}
+		// NOTHING persisted — every fire failed ("nothing happened"), and
+		// the breaker skipped the fourth attempt.
+		expect(store.load("s").filter((r) => r.event.type === "summarized")).toHaveLength(0);
+		// 3 summary calls (the breaker held the 4th) + 4 loop turns.
+		expect(adapter.calls).toBe(7);
+	});
+
+	it("a successful fire resets the breaker — the failure budget starts fresh", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-h2-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		const adapter = new CountingAdapter();
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			// fail (1) → fail (2) → success (RESET to 0) → fail (1) → fail
+			// (2) → fail (3): the SIXTH fire stands down. WITHOUT the reset
+			// the counter would hit 3 at fire 5 — five fires attempted, not
+			// six (the discriminator: a broken reset changes the call count).
+			adapter: createFauxProvider([
+				FAIL_TURN,
+				ONE_TURN,
+				FAIL_TURN,
+				ONE_TURN,
+				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
+				ONE_TURN,
+				FAIL_TURN,
+				ONE_TURN,
+				FAIL_TURN,
+				ONE_TURN,
+				FAIL_TURN,
+				ONE_TURN,
+			]),
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for (let i = 0; i < 6; i++) {
+			for await (const _ev of session.run(`more ${i}`)) {
+				// drain
+			}
+		}
+		// Fire 3 persisted; fires 1-2, 4-5 failed; fire 6 stood down —
+		// 5 summary attempts + 6 loop turns = 11 adapter calls (a broken
+		// reset would stand down at fire 5 → 10).
+		const summaries = store.load("s").filter((r) => r.event.type === "summarized");
+		expect(summaries).toHaveLength(1);
+		expect((summaries[0]!.event as { summary: string }).summary).toBe(VALID_SUMMARY);
+		expect(adapter.calls).toBe(11);
+	});
+
+	it("the configurable limit: maxFailures 1 stands the policy down after ONE failure", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-h3-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		const adapter = new CountingAdapter();
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider([FAIL_TURN, ONE_TURN, ONE_TURN, ONE_TURN]),
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250, maxFailures: 1 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for (let i = 0; i < 2; i++) {
+			for await (const _ev of session.run(`more ${i}`)) {
+				// drain
+			}
+		}
+		// ONE summary attempt (failed) — the second fire is skipped.
+		expect(adapter.calls).toBe(3); // 1 summary + 2 loop turns
+		expect(store.load("s").filter((r) => r.event.type === "summarized")).toHaveLength(0);
+	});
+});
