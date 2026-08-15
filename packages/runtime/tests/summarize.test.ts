@@ -9,11 +9,17 @@ import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import type { Adapter, AdapterEvent, Event, EventInput, Message, StreamOptions, ToolCallEnd } from "@vincemakes/kiso-core";
 import {
+	DEFAULT_CONTEXT_WINDOW,
 	estimateSummarySavings,
+	IN_FLIGHT_HEADROOM,
 	KEEP_RECENT_ROUNDS,
+	KEEP_TOKENS_DEFAULT,
 	lastSummaryPoint,
+	POLICY_RESERVE,
+	policyTriggerFromWindow,
 	serializeCovered,
 	SUMMARY_GUARD,
+	SUMMARY_MAX_OUTPUT,
 	SUMMARY_PROMPT,
 	summarizeConversation,
 	summaryBoundarySeq,
@@ -465,44 +471,62 @@ describe("E6 (d) — the retained context re-enters the summary input", () => {
 });
 
 describe("E6 (f) — the keep budget (rounds AND tokens)", () => {
-	/** 6 rounds whose tool results are CHUNKY — a 2000-char result per round. */
+	/** 6 rounds with 400-char results — a round ≈ 125 tokens by the
+	 *  chars/4 proxy (input 1 + call 24 + result 100); the session ≈ 750. */
 	function chunkyRounds(): Event[] {
 		const events: Event[] = [];
 		let seq = 0;
 		for (let i = 1; i <= 6; i++) {
 			events.push(ev(seq++, { type: "user_input", content: `r${i}` }));
 			events.push(ev(seq++, { type: "tool_call_end", callId: `t${i}`, name: "read_file", input: { path: `f${i}.ts` } }));
-			events.push(ev(seq++, { type: "tool_result", callId: `t${i}`, content: "x".repeat(2000), isError: false }));
+			events.push(ev(seq++, { type: "tool_result", callId: `t${i}`, content: "x".repeat(400), isError: false }));
 		}
 		return events;
 	}
 
 	it("the token floor shrinks the boundary when the kept rounds are too small", () => {
 		const events = chunkyRounds();
-		// The pure round rule keeps rounds 5-6 (~1000 tokens each ≈ 2000);
-		// a 6000-token floor needs MORE kept → the boundary walks back.
-		expect(summaryBoundarySeq(events)).toBe(14); // covers rounds 1-4
-		expect(summaryBoundarySeq(events, KEEP_RECENT_ROUNDS, 6000)).toBeLessThan(14);
+		// The pure round rule keeps rounds 3-6 (4 rounds ≈ 500 tokens) and
+		// covers 1-2 (boundary 5); a 600-token floor needs MORE kept — the
+		// walk keeps rounds 2-6 (625) → boundary 2 (covers round 1 only).
+		expect(summaryBoundarySeq(events)).toBe(5);
+		expect(summaryBoundarySeq(events, KEEP_RECENT_ROUNDS, 600)).toBe(2);
 	});
 
 	it("a floor the session cannot meet → nothing to compact", () => {
-		// Six tiny rounds total ~100 tokens; the 10k floor exceeds the whole
-		// session — the honest undefined (the policy is inert on small
-		// sessions — the E5-F1 restraint, now enforced by tokens too).
-		const events: Event[] = [
-			...roundEvents("r1", "a", 0),
-			...roundEvents("r2", "a", 3),
-			...roundEvents("r3", "a", 6),
-			...roundEvents("r4", "a", 9),
-			...roundEvents("r5", "a", 12),
-			...roundEvents("r6", "a", 15),
-		];
-		expect(summaryBoundarySeq(events, KEEP_RECENT_ROUNDS, 10_000)).toBeUndefined();
+		// The whole session ≈ 750 tokens; the 1000-token floor exceeds it —
+		// the honest undefined (the policy is inert on small sessions — the
+		// E5-F1 restraint, now enforced by tokens too).
+		const events = chunkyRounds();
+		expect(summaryBoundarySeq(events, KEEP_RECENT_ROUNDS, 1000)).toBeUndefined();
 	});
 
 	it("a floor the kept rounds already clear changes nothing (the round rule stands)", () => {
 		const events = chunkyRounds();
-		// Rounds 5-6 hold ~2000 tokens — a 1000-token floor is met already.
-		expect(summaryBoundarySeq(events, KEEP_RECENT_ROUNDS, 1000)).toBe(14);
+		// The kept rounds 3-6 ≈ 500 tokens — a 500-token floor is met at the
+		// round rule's own boundary.
+		expect(summaryBoundarySeq(events, KEEP_RECENT_ROUNDS, 500)).toBe(5);
+	});
+});
+
+describe("E6 (g) — the trigger is window minus the reserve (the pre-registered numbers)", () => {
+	it("the reserve decomposes into the summary output budget, the keep-token floor, and the in-flight headroom", () => {
+		expect(SUMMARY_MAX_OUTPUT).toBe(4000);
+		expect(KEEP_TOKENS_DEFAULT).toBe(20000);
+		expect(IN_FLIGHT_HEADROOM).toBe(8000);
+		expect(POLICY_RESERVE).toBe(32000);
+		expect(POLICY_RESERVE).toBe(SUMMARY_MAX_OUTPUT + KEEP_TOKENS_DEFAULT + IN_FLIGHT_HEADROOM);
+	});
+
+	it("policyTriggerFromWindow computes window minus the reserve; the default window scale is 120k (the 88k arming point)", () => {
+		expect(DEFAULT_CONTEXT_WINDOW).toBe(120000);
+		expect(policyTriggerFromWindow(DEFAULT_CONTEXT_WINDOW)).toBe(88000);
+		expect(policyTriggerFromWindow(34000)).toBe(2000);
+	});
+
+	it("a window below the reserve arms a negative trigger — the session never fires (the honest inert refusal, not a clamp)", () => {
+		// The post-fire projection (≥24k) cannot fit in such a window — the
+		// policy stays inert rather than pretending otherwise.
+		expect(policyTriggerFromWindow(10000)).toBe(-22000);
 	});
 });

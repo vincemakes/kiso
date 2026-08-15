@@ -74,9 +74,13 @@ const VALID_SUMMARY = [
  *  usage event rides each stream (the summary-usage ledger line's source). */
 class CountingAdapter implements Adapter {
 	calls = 0;
+	/** The LAST stream call's options — E6 (g): the summarize call must
+	 *  carry the explicit maxTokens output budget. */
+	lastOpts?: StreamOptions;
 	constructor(readonly usage: { input: number; cacheRead: number; output: number } | null = null) {}
-	async *stream(_opts: StreamOptions): AsyncIterable<AdapterEvent> {
+	async *stream(opts: StreamOptions): AsyncIterable<AdapterEvent> {
 		this.calls += 1;
+		this.lastOpts = opts;
 		let seq = 0;
 		yield { type: "text_delta", text: VALID_SUMMARY, seq: seq++ };
 		if (this.usage !== null) {
@@ -442,5 +446,86 @@ describe("E6 hardening (f) — the policy's keep-token floor", () => {
 			// drain
 		}
 		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(true);
+	});
+});
+
+describe("E6 (g) — the trigger is window minus the reserve, and the summarize call carries the explicit max-output", () => {
+	it("the window-armed mode fires at window minus the reserve (the runtime owns the arithmetic)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-g1-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider([
+				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
+				ONE_TURN,
+			]),
+			// 34000 − 32000 = 2000 — the pre-registered decisive-experiment
+			// arming point. The seeded session (~2.3k tokens) crosses it.
+			contextPolicy: { summary: { windowTokens: 34000, keepTokens: 300 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain
+		}
+		expect(store.load("s").filter((r) => r.event.type === "summarized")).toHaveLength(1);
+	});
+
+	it("the window-armed mode stays INERT below window minus the reserve — the undefined-trigger fall-through never happens", async () => {
+		// Six small rounds ≈ 320 projected tokens — enough uncovered rounds
+		// to fire, but far below the window-derived trigger 2000. An
+		// unresolved windowTokens must NOT fire — the `projected <=
+		// undefined` comparison is always false, and a naive gate lets
+		// that fall THROUGH to a fire. This is the red-crucial
+		// discriminator: the positive fire alone cannot tell the
+		// arithmetic from the fall-through (the round gate below cannot
+		// either — the session must clear it).
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-g3-"));
+		const store = new SessionStore(dir);
+		let seq = 0;
+		for (let i = 0; i < 6; i++) {
+			await store.append("s", "r1", { seq: seq++, type: "user_input", content: `turn ${i}` });
+			await store.append("s", "r1", { seq: seq++, type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: `f${i}.ts` } });
+			await store.append("s", "r1", { seq: seq++, type: "tool_result", callId: `r${i}`, content: "x".repeat(100), isError: false });
+		}
+		await store.append("s", "r1", { seq: seq++, type: "user_input", content: "final" });
+		await store.append("s", "r1", { seq: seq++, type: "terminal", outcome: { kind: "completed" } });
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider([
+				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
+				ONE_TURN,
+			]),
+			contextPolicy: { summary: { windowTokens: 34000, keepTokens: 50 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain
+		}
+		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(false);
+	});
+
+	it("the auto-fire's summarize call carries the explicit output budget (the adapter maxTokens)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-g2-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		const adapter = new CountingAdapter();
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter,
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 300 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain
+		}
+		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(true);
+		expect(adapter.lastOpts?.maxTokens).toBe(4000);
 	});
 });
