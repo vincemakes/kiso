@@ -45,8 +45,11 @@ import {
 	DROP_PLACEHOLDER,
 	estimateSummarySavings,
 	KEEP_RECENT_ROUNDS,
+	KEEP_TOKENS_DEFAULT,
 	lastSummaryPoint,
+	policyTriggerFromWindow,
 	serializeCovered,
+	SUMMARY_MAX_OUTPUT,
 	summarizeConversation,
 	summaryBoundarySeq,
 } from "./summarize.js";
@@ -295,6 +298,11 @@ export class AgentSession {
 				// E6 (a): ONE serialized user message — the DSML bug's
 				// raw-message array is structurally dead on this path.
 				messages: [{ role: "user", content: serializedInput }],
+				// E6 (g): the summary call ALWAYS carries the explicit
+				// output budget — 4,000 adapter maxTokens (a wire-level
+				// truncation is caught by the (b) required-section
+				// validation, never silently passed).
+				maxOutputTokens: SUMMARY_MAX_OUTPUT,
 				...(options.signal !== undefined ? { signal: options.signal } : {}),
 			});
 			summary = call.text;
@@ -350,11 +358,22 @@ export class AgentSession {
 		if (policy === undefined) return;
 		const mode = policy.drop ?? policy.summary;
 		if (mode === undefined) return;
-		if (estimateTokens(this.projected()) <= mode.triggerTokens) return;
+		// E6 (g): the trigger is exactly one of triggerTokens (absolute)
+		// or windowTokens (window − POLICY_RESERVE, the product arming).
+		// The undefined guard is the belt: `projected <= undefined` is
+		// ALWAYS false, so a naive gate would fall THROUGH and fire
+		// unconditionally — an unresolved trigger must never fire.
+		const triggerTokens =
+			mode.windowTokens !== undefined ? policyTriggerFromWindow(mode.windowTokens) : mode.triggerTokens;
+		if (triggerTokens === undefined) return;
+		if (estimateTokens(this.projected()) <= triggerTokens) return;
 		try {
 			await this.summarize({
 				keepRounds: mode.keepRounds ?? KEEP_RECENT_ROUNDS,
-				...(mode.keepTokens !== undefined ? { keepTokens: mode.keepTokens } : {}),
+				// E6 (f): the keep budget is rounds AND tokens — the policy
+				// layer applies the 20k floor by default (small sessions are
+				// inert: the E5-F1 restraint, token-shaped).
+				keepTokens: mode.keepTokens ?? KEEP_TOKENS_DEFAULT,
 				...(signal !== undefined ? { signal } : {}),
 				...(policy.drop !== undefined ? { drop: true } : {}),
 			});
@@ -648,14 +667,25 @@ export class AgentSession {
 export interface ContextPolicy {
 	/**
 	 * A — the auto-summary: at run start, when the projected context
-	 * crosses triggerTokens AND enough uncovered rounds exist, the
+	 * crosses the trigger AND enough uncovered rounds exist, the
 	 * existing summarize() path persists ONE `summarized` fact. The
 	 * keepRounds gate is the amortization structure — a fire needs
 	 * keepRounds+1 uncovered rounds, so each boundary is preceded by
 	 * that much content and followed by the kept rounds' requests to
 	 * amortize the break (the E5-F1 accounting).
+	 *
+	 * E6 (g): the trigger is EXACTLY ONE of triggerTokens (an absolute,
+	 * the legacy override) or windowTokens (the product arming — the
+	 * runtime computes window − POLICY_RESERVE; never a fixed low
+	 * absolute). keepTokens floors the kept suffix (the (f) budget;
+	 * the default KEEP_TOKENS_DEFAULT applies when absent).
 	 */
-	readonly summary?: { readonly triggerTokens: number; readonly keepRounds?: number; readonly keepTokens?: number };
+	readonly summary?: {
+		readonly triggerTokens?: number;
+		readonly windowTokens?: number;
+		readonly keepRounds?: number;
+		readonly keepTokens?: number;
+	};
 	/**
 	 * C — the crux-experiment drop arm (EXPERIMENT-ONLY, never a default):
 	 * the same trigger persists the same-shaped fact with a fixed
@@ -663,9 +693,15 @@ export interface ContextPolicy {
 	 * context at zero generation cost. When present, it REPLACES the
 	 * summary mode (one conversation-layer compactor at a time). The
 	 * adopted shape — if the crux evidence earns it — is a distinct
-	 * `dropped` event family, not this placeholder text.
+	 * `dropped` event family, not this placeholder text. Same trigger
+	 * shapes and keep budget as the summary arm.
 	 */
-	readonly drop?: { readonly triggerTokens: number; readonly keepRounds?: number };
+	readonly drop?: {
+		readonly triggerTokens?: number;
+		readonly windowTokens?: number;
+		readonly keepRounds?: number;
+		readonly keepTokens?: number;
+	};
 	/**
 	 * B — the session-aware microcompact: the threshold/keep-window
 	 * override the session's own microcompact (a tuned policy wins over

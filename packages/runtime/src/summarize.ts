@@ -39,6 +39,35 @@ export const SUMMARY_GUARD = "Only output the summary. Do not continue the conve
 export const SUMMARY_RESULT_MAX_CHARS = 2000;
 
 /**
+ * E6 (g) — the reserve arithmetic (the pre-registered numbers): the
+ * armed trigger is WINDOW − RESERVE, never a fixed low absolute (the
+ * e6probe's fixed 1300 fired 16-19× a session — the pathology the
+ * window math kills). The reserve is what ONE fire must buy back:
+ * the summary's own output budget (4,000), the kept-suffix token
+ * floor (20,000, item (f)), and the current run's in-flight context
+ * while the post-fire projection settles (8,000).
+ */
+export const SUMMARY_MAX_OUTPUT = 4000;
+export const KEEP_TOKENS_DEFAULT = 20000;
+export const IN_FLIGHT_HEADROOM = 8000;
+export const POLICY_RESERVE = SUMMARY_MAX_OUTPUT + KEEP_TOKENS_DEFAULT + IN_FLIGHT_HEADROOM;
+
+/** The reference context-window scale (the flash-family window); the
+ *  env overrides. The default arming point is 120,000 − 32,000 =
+ *  88,000 — a post-fire projection (≥ 24k) can never re-cross it, so
+ *  the session settles after one fire. */
+export const DEFAULT_CONTEXT_WINDOW = 120000;
+
+/** The armed trigger for a context window: window − POLICY_RESERVE. A
+ *  window below the reserve arms a NEGATIVE trigger — the session
+ *  never fires (the honest inert refusal: the window cannot hold even
+ *  the post-fire projection, so the policy stays off, never clamped
+ *  into pretending). */
+export function policyTriggerFromWindow(windowTokens: number = DEFAULT_CONTEXT_WINDOW): number {
+	return windowTokens - POLICY_RESERVE;
+}
+
+/**
  * E6 (a) — the covered range serialized to FLAT TEXT, one <conversation>
  * block, role-labeled lines ([user]/[assistant]/[tool call name]/[tool
  * result]), tool results truncated at SUMMARY_RESULT_MAX_CHARS with a

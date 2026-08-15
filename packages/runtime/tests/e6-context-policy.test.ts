@@ -74,13 +74,14 @@ const VALID_SUMMARY = [
  *  usage event rides each stream (the summary-usage ledger line's source). */
 class CountingAdapter implements Adapter {
 	calls = 0;
-	/** The LAST stream call's options — E6 (g): the summarize call must
-	 *  carry the explicit maxTokens output budget. */
-	lastOpts?: StreamOptions;
+	/** The FIRST stream call's options — E6 (g): on the auto path the
+	 *  policy's summarize call is the FIRST adapter call (it fires
+	 *  BEFORE the run's loop requests); the loop's turn is the last. */
+	firstOpts?: StreamOptions;
 	constructor(readonly usage: { input: number; cacheRead: number; output: number } | null = null) {}
 	async *stream(opts: StreamOptions): AsyncIterable<AdapterEvent> {
 		this.calls += 1;
-		this.lastOpts = opts;
+		if (this.firstOpts === undefined) this.firstOpts = opts;
 		let seq = 0;
 		yield { type: "text_delta", text: VALID_SUMMARY, seq: seq++ };
 		if (this.usage !== null) {
@@ -119,7 +120,7 @@ describe("E6 context policy — the auto-summary (candidate A)", () => {
 				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
 				ONE_TURN,
 			]),
-			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
 		});
 		const session = await agent.session({ id: "s" });
 		for await (const _ev of session.run("more")) {
@@ -156,7 +157,7 @@ describe("E6 context policy — the auto-summary (candidate A)", () => {
 			store,
 			tools: [],
 			adapter: createFauxProvider(ONE_TURN),
-			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
 		});
 		const session = await agent.session({ id: "s" });
 		for await (const _ev of session.run("again")) {
@@ -185,7 +186,7 @@ describe("E6 context policy — the auto-summary (candidate A)", () => {
 			store,
 			tools: [],
 			adapter: createFauxProvider(ONE_TURN),
-			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
 		});
 		const session = await agent.session({ id: "s" });
 		for await (const _ev of session.run("more")) {
@@ -209,7 +210,7 @@ describe("E6 context policy — the auto-summary (candidate A)", () => {
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 				{ events: [{ type: "text_delta", text: "done." }, { type: "stop", reason: "end_turn" }] },
 			]),
-			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
 		});
 		const session = await agent.session({ id: "s" });
 		for await (const _ev of session.run("more")) {
@@ -231,7 +232,7 @@ describe("E6 context policy — the drop arm (candidate C, crux experiment only)
 			store,
 			tools: [],
 			adapter,
-			contextPolicy: { drop: { triggerTokens: 100, keepRounds: 2 } },
+			contextPolicy: { drop: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
 		});
 		const session = await agent.session({ id: "s" });
 		for await (const _ev of session.run("more")) {
@@ -280,7 +281,7 @@ describe("E6 context policy — the summary usage rides the ledger (the honest a
 			store,
 			tools: [],
 			adapter,
-			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
 		});
 		const session = await agent.session({ id: "s" });
 		for await (const _ev of session.run("more")) {
@@ -362,7 +363,7 @@ describe("E6 hardening (b) — the auto path REJECTS the DSML body (the auto-T5-
 				},
 				{ events: [{ type: "text_delta", text: "done." }, { type: "stop", reason: "end_turn" }] },
 			]),
-			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
 		});
 		const session = await agent.session({ id: "s" });
 		for await (const _ev of session.run("more")) {
@@ -393,7 +394,7 @@ describe("E6 hardening (b) — the auto path REJECTS the DSML body (the auto-T5-
 				},
 				{ events: [{ type: "text_delta", text: "done." }, { type: "stop", reason: "end_turn" }] },
 			]),
-			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2 } },
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
 		});
 		const session = await agent.session({ id: "s" });
 		for await (const _ev of session.run("more")) {
@@ -464,7 +465,7 @@ describe("E6 (g) — the trigger is window minus the reserve, and the summarize 
 			]),
 			// 34000 − 32000 = 2000 — the pre-registered decisive-experiment
 			// arming point. The seeded session (~2.3k tokens) crosses it.
-			contextPolicy: { summary: { windowTokens: 34000, keepTokens: 300 } },
+			contextPolicy: { summary: { windowTokens: 34000, keepTokens: 250 } },
 		});
 		const session = await agent.session({ id: "s" });
 		for await (const _ev of session.run("more")) {
@@ -519,13 +520,13 @@ describe("E6 (g) — the trigger is window minus the reserve, and the summarize 
 			store,
 			tools: [],
 			adapter,
-			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 300 } },
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 250 } },
 		});
 		const session = await agent.session({ id: "s" });
 		for await (const _ev of session.run("more")) {
 			// drain
 		}
 		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(true);
-		expect(adapter.lastOpts?.maxTokens).toBe(4000);
+		expect(adapter.firstOpts?.maxTokens).toBe(4000);
 	});
 });
