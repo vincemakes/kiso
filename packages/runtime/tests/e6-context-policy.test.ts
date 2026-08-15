@@ -399,3 +399,48 @@ describe("E6 hardening (b) — the auto path REJECTS the DSML body (the auto-T5-
 		expect(store.load("s").some((r) => r.event.type === "user_input" && r.event.content === "more")).toBe(true);
 	});
 });
+
+describe("E6 hardening (f) — the policy's keep-token floor", () => {
+	it("a floor the session cannot meet blocks the fire — the auto path never pays a break it cannot amortize", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-f1-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store); // ~7 small rounds ≈ a few hundred tokens
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider([
+				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
+				ONE_TURN,
+			]),
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 10_000 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain
+		}
+		// The 10k floor exceeds the whole session — no fire, nothing persisted.
+		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(false);
+	});
+
+	it("a small floor lets the same session fire — the env-overridable floor works", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-e6-f2-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store);
+		const agent = createAgent({
+			model: "faux",
+			store,
+			tools: [],
+			adapter: createFauxProvider([
+				{ events: [{ type: "text_delta", text: VALID_SUMMARY }, { type: "stop", reason: "end_turn" }] },
+				ONE_TURN,
+			]),
+			contextPolicy: { summary: { triggerTokens: 100, keepRounds: 2, keepTokens: 50 } },
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ev of session.run("more")) {
+			// drain
+		}
+		expect(store.load("s").some((r) => r.event.type === "summarized")).toBe(true);
+	});
+});

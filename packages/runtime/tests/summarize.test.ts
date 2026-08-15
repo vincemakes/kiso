@@ -463,3 +463,46 @@ describe("E6 (d) — the retained context re-enters the summary input", () => {
 		expect(text.indexOf("[retained context")).toBeLessThan(text.indexOf("[user] r5"));
 	});
 });
+
+describe("E6 (f) — the keep budget (rounds AND tokens)", () => {
+	/** 6 rounds whose tool results are CHUNKY — a 2000-char result per round. */
+	function chunkyRounds(): Event[] {
+		const events: Event[] = [];
+		let seq = 0;
+		for (let i = 1; i <= 6; i++) {
+			events.push(ev(seq++, { type: "user_input", content: `r${i}` }));
+			events.push(ev(seq++, { type: "tool_call_end", callId: `t${i}`, name: "read_file", input: { path: `f${i}.ts` } }));
+			events.push(ev(seq++, { type: "tool_result", callId: `t${i}`, content: "x".repeat(2000), isError: false }));
+		}
+		return events;
+	}
+
+	it("the token floor shrinks the boundary when the kept rounds are too small", () => {
+		const events = chunkyRounds();
+		// The pure round rule keeps rounds 5-6 (~1000 tokens each ≈ 2000);
+		// a 6000-token floor needs MORE kept → the boundary walks back.
+		expect(summaryBoundarySeq(events)).toBe(14); // covers rounds 1-4
+		expect(summaryBoundarySeq(events, KEEP_RECENT_ROUNDS, 6000)).toBeLessThan(14);
+	});
+
+	it("a floor the session cannot meet → nothing to compact", () => {
+		// Six tiny rounds total ~100 tokens; the 10k floor exceeds the whole
+		// session — the honest undefined (the policy is inert on small
+		// sessions — the E5-F1 restraint, now enforced by tokens too).
+		const events: Event[] = [
+			...roundEvents("r1", "a", 0),
+			...roundEvents("r2", "a", 3),
+			...roundEvents("r3", "a", 6),
+			...roundEvents("r4", "a", 9),
+			...roundEvents("r5", "a", 12),
+			...roundEvents("r6", "a", 15),
+		];
+		expect(summaryBoundarySeq(events, KEEP_RECENT_ROUNDS, 10_000)).toBeUndefined();
+	});
+
+	it("a floor the kept rounds already clear changes nothing (the round rule stands)", () => {
+		const events = chunkyRounds();
+		// Rounds 5-6 hold ~2000 tokens — a 1000-token floor is met already.
+		expect(summaryBoundarySeq(events, KEEP_RECENT_ROUNDS, 1000)).toBe(14);
+	});
+});
