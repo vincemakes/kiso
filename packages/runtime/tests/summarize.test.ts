@@ -14,6 +14,7 @@ import {
 	lastSummaryPoint,
 	serializeCovered,
 	SUMMARY_GUARD,
+	SUMMARY_PROMPT,
 	summarizeConversation,
 	summaryBoundarySeq,
 } from "../src/summarize.js";
@@ -345,5 +346,41 @@ describe("E6 (a) — the serialized summary input (the DSML-killer)", () => {
 		// BEFORE copy) and no word cap survives.
 		expect(seen!.systemPrompt).toContain(SUMMARY_GUARD);
 		expect(seen!.systemPrompt).not.toContain("under 200 words");
+	});
+});
+
+describe("E6 (c) — the structured checkpoint prompt", () => {
+	it("the summary prompt is a structured checkpoint: all seven sections, in order, no word cap", () => {
+		// The order's (c): the "under 200 words" rule dies; a token budget
+		// (~2-4k, riding the (g) maxTokens) replaces word-count framing.
+		// RED form: against the pre-(a) prompt (visible in a0b1c29's diff —
+		// the "under 200 words" text) every section header below was absent.
+		const sections = [
+			"## Goal",
+			"## Constraints",
+			"## User requests",
+			"## Files and changes",
+			"## Errors and fixes",
+			"## Current work",
+			"## Next steps",
+		];
+		for (const s of sections) expect(SUMMARY_PROMPT).toContain(s);
+		// The verbatim-identifiers rule survives the rewrite.
+		expect(SUMMARY_PROMPT).toContain("Preserve concrete identifiers VERBATIM");
+		// The word cap is dead; the budget framing is the contract.
+		expect(SUMMARY_PROMPT).not.toContain("under 200 words");
+		expect(SUMMARY_PROMPT).not.toMatch(/under \d+ words/);
+		expect(SUMMARY_PROMPT).toContain("output budget");
+	});
+
+	it("the section order is fixed: the goal and constraints lead, the criterion quote and next steps close", () => {
+		const idx = (s: string): number => SUMMARY_PROMPT.indexOf(s);
+		expect(idx("## Goal")).toBeGreaterThan(-1);
+		expect(idx("## Constraints")).toBeGreaterThan(idx("## Goal"));
+		expect(idx("## User requests")).toBeGreaterThan(idx("## Constraints"));
+		expect(idx("## Current work")).toBeGreaterThan(idx("## Errors and fixes"));
+		expect(idx("## Next steps")).toBeGreaterThan(idx("## Current work"));
+		// The verbatim criterion quote requirement lives in Current work.
+		expect(SUMMARY_PROMPT).toContain("VERBATIM");
 	});
 });
