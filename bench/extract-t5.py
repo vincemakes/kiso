@@ -71,21 +71,37 @@ def pi(work):
                 fresh=inp, total=inp + cache, cost_weighted=inp + 0.1 * cache)
 
 def claude(work):
-    inp = out = cache = reqs = 0
+    # CC ≥2.1.233 prints warning lines that carry a JSON fragment
+    # (`[claude-code:...] {...}`) — whole-file json.load fails and the old
+    # `except: continue` silently ZEROED the run. Parse per line; keep the
+    # last object with a usage block; loud failure when no turn parses.
+    inp = out = cache = reqs = seen = 0
     for i in range(1, 9):
         path = f"{work}/stdout-{i}.log"
         if not os.path.exists(path):
             continue
-        try:
-            d = json.load(open(path))
-        except Exception:
+        d = None
+        for line in open(path):
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                o = json.loads(line)
+            except Exception:
+                continue
+            if "usage" in o:
+                d = o
+        if d is None:
             continue
+        seen += 1
         u = d.get("usage", {})
         i_ = u.get("input_tokens", 0)
         c_ = u.get("cache_read_input_tokens", 0)
         inp += i_; cache += c_
         out += u.get("output_tokens", 0)
         reqs += d.get("num_turns", 0)
+    if seen == 0:
+        raise ValueError("no usage JSON line in any stdout-N.log")
     return dict(input=inp, cache_read=cache, output=out, requests=reqs,
                 fresh=inp, total=inp + cache, cost_weighted=inp + 0.1 * cache)
 
@@ -93,6 +109,8 @@ def main(workdir):
     rows = []
     for work in sorted(glob.glob(workdir + "/runs/*T5*")):
         name = os.path.basename(work)
+        if name.count("-") < 2:
+            continue  # not a <tool>-<task>-<run> dir (notes, reports)
         tool, task, run = name.split("-", 2)
         if not os.path.exists(f"{work}/wall_seconds"):
             continue

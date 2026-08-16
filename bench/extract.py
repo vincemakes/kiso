@@ -98,10 +98,23 @@ def pi(work):
                 first_prompt=first)
 
 def claude(work):
-    text = open(f"{work}/stdout.log").read()
-    # CC may print warnings (e.g. the stdin notice) before the JSON — parse
-    # from the first "{".
-    d = json.loads(text[text.index("{"):])
+    # CC may print warning lines around the result JSON — and since 2.1.233
+    # the warning itself carries a JSON fragment (`[claude-code:...] {...}`),
+    # so "parse from the first {" breaks. Parse per line; keep the LAST
+    # object that carries a usage block.
+    d = None
+    for line in open(f"{work}/stdout.log"):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            o = json.loads(line)
+        except Exception:
+            continue
+        if "usage" in o:
+            d = o
+    if d is None:
+        raise ValueError("no usage JSON line in stdout.log")
     u = d.get("usage", {})
     inp = u.get("input_tokens", 0)
     cache = u.get("cache_read_input_tokens", 0)
@@ -117,6 +130,8 @@ def main(workdir):
         name = os.path.basename(work)
         if "T5" in name:
             continue  # T5 is the long-session scenario — extract-t5.py's job
+        if name.count("-") < 2:
+            continue  # not a <tool>-<task>-<run> dir (notes, reports)
         tool, task, run = name.split("-", 2)
         if not os.path.exists(f"{work}/wall_seconds"):
             continue  # in progress
