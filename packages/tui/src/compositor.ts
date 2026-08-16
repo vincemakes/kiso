@@ -1277,11 +1277,11 @@ export class Body {
 		let rows = st.lines !== undefined && st.lines.length > 0 ? [...st.lines] : [st.line];
 		let cursorRow = Math.min(st.cursorRow ?? 0, rows.length - 1);
 		const cursorCol = st.cursorCol ?? st.cursor;
-		// KC1 slice ③ — the IDENTITY GATE: N stays pinned at ONE until the
-		// N>1 geometry carries its own proofs (T-C2..C5, slice ④). The
-		// window still keeps the cursor's row, so the composer already
-		// tracks a multi-line buffer — one row at a time.
-		const n = 1;
+		// KC1 §5's N_visible, re-applied against the frame's REAL bands:
+		// the editor could only estimate the menu/queue heights (they
+		// fold at width), so the frame is the authority. The window keeps
+		// the CURSOR'S row, so a clamp never hides it.
+		const n = Math.max(1, Math.min(rows.length, H - 3 - menuRows - queueRows));
 		if (rows.length > n) {
 			const first = Math.max(0, Math.min(cursorRow - n + 1, rows.length - n));
 			rows = rows.slice(first, first + n);

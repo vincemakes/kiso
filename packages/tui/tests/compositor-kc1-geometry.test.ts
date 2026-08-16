@@ -130,7 +130,12 @@ describe("KC1 T-C3 — a resize at N>1 is idempotent", () => {
 		expect(rowOf(first, "╭")).toBe(20 - 5); // the NEW geometry: H−2−N
 		writes.length = 0;
 		body.onResize(); // the same size again — the V6-1 idempotence rule
-		expect(writes.join("")).toBe(first);
+		// the ED0's start row follows the RECORDED extent (which shrank
+		// with the first repaint) — the existing resize gate already
+		// declares the SCREEN the invariant, never the byte count; what
+		// must be identical is the PAINT that covers every row
+		const paint = (s: string): string => s.slice(s.indexOf("\x1b[?2026h"));
+		expect(paint(writes.join(""))).toBe(paint(first));
 	});
 });
 
