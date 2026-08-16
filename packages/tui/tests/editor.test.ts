@@ -98,20 +98,26 @@ describe("the editor's editing surface", () => {
 		expect(editor.line()).toBe("hello ");
 	});
 
-	it("bracketed paste unwraps; internal newlines become spaces (single-line editor)", () => {
+	// KC1 (2026-08-16) — DECLARED SUPERSESSION #1: the paste's internal
+	// newlines no longer become spaces; they are inserted literally (the
+	// composer's whole point). The unwrap itself is unchanged.
+	it("bracketed paste unwraps; internal newlines are INSERTED (the KC1 multi-line composer)", () => {
 		const { editor } = make();
 		editor.feed(enc("\x1b[200~multi\nline\x1b[201~"));
-		expect(editor.line()).toBe("multi line");
+		expect(editor.line()).toBe("multi\nline");
 	});
 
+	// KC1 — DECLARED SUPERSESSION #2 (the "became a space" half only):
+	// the no-submit-during-paste contract below is UNCHANGED — it is the
+	// declared survivor; only the submitted text moves (space → newline).
 	it("a paste's Enter does NOT submit; a real Enter does", () => {
 		const { editor } = make();
 		const lines: string[] = [];
 		editor.onLine((l) => lines.push(l));
 		editor.feed(enc("\x1b[200~a\nb\x1b[201~"));
-		expect(lines).toEqual([]); // the paste's newline became a space
+		expect(lines).toEqual([]); // the paste's newline became a NEWLINE — and never a submit
 		editor.feed(enc("\r"));
-		expect(lines).toEqual(["a b"]);
+		expect(lines).toEqual(["a\nb"]);
 		expect(editor.line()).toBe(""); // the buffer cleared on submit
 	});
 

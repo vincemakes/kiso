@@ -13,8 +13,13 @@
  * clusters (family emoji etc.) are not guaranteed perfect — each code
  * point counts as its width.
  *
- * The editor is a SINGLE line: bracketed paste (?2004h) unwraps and
- * inserts, internal newlines become spaces.
+ * KC1 (the multi-line composer): the buffer is FLAT — 0x0A is a stored
+ * code point in #chars, and the lines, the cursor's row/column and the
+ * visible window are all DERIVED per read (never a second mutable
+ * model, so every existing op — insert, kills, history stash, queue-pop
+ * replace, panel stash/restore — works unchanged). Bracketed paste
+ * (?2004h) unwraps and inserts its newlines LITERALLY; every newline
+ * source funnels through the ONE normalizer in feed() (§3).
  */
 
 import { charWidth, displayWidth, leadWidth, widthOf } from "./width.js";
@@ -45,6 +50,10 @@ export const MENU_ITEMS: readonly MenuItem[] = [
 	{ name: "/help", desc: "print this list of commands" },
 ];
 
+/** KC1 §3 — the newline code point. Every source (paste, Ctrl+J, the
+ *  Shift+Enter encodings, a CRLF pair) normalizes to exactly ONE. */
+const NEWLINE = 0x0a;
+
 /**
  * The editor. Raw mode + bracketed paste (?2004h) on enter, restored on
  * exit. The input row is rendered by `onRender` (the CLI wires it to the
@@ -55,7 +64,13 @@ export const MENU_ITEMS: readonly MenuItem[] = [
 export class Editor {
 	#chars: number[] = [];
 	#cursor = 0;
-	#scroll = 0; // chars scrolled off the left (width-based reflow)
+	#scroll = 0; // chars scrolled off the left of the CURSOR'S LINE (width-based reflow; KC1: line-local, so a single-line buffer is unchanged)
+	// KC1 §2 — the ONE new ephemeral field: the desired column for the
+	// ↑/↓ walk (a long line's column 20 → a short line clamps to 5 → the
+	// next long line RETURNS to 20). Set on the first vertical move,
+	// kept across consecutive ones, reset by any horizontal move, insert
+	// or delete. Never stashed — it is a walk's state, not the buffer's.
+	#verticalGoalCol: number | null = null;
 	#questionCb: ((answer: string) => void) | null = null;
 	// W21: the panel state machine — the approval/trust panel owns the
 	// interaction while up: the digit/y/n/esc/tab routing, the rule
@@ -161,15 +176,55 @@ export class Editor {
 		this.#chars = [];
 		this.#cursor = 0;
 		this.#scroll = 0;
+		this.#verticalGoalCol = null;
 		this.#onRender();
 	}
 
+	// ---- KC1 §5: the DERIVED line model (the buffer stays FLAT) ----
+
+	/** The lines as [start, end) index pairs — the 0x0A itself EXCLUDED.
+	 *  A buffer without a newline is exactly ONE line spanning the whole
+	 *  buffer: today's shape, derived. */
+	#lineBounds(): { start: number; end: number }[] {
+		const out: { start: number; end: number }[] = [];
+		let start = 0;
+		for (let i = 0; i < this.#chars.length; i += 1) {
+			if (this.#chars[i] === NEWLINE) {
+				out.push({ start, end: i });
+				start = i + 1;
+			}
+		}
+		out.push({ start, end: this.#chars.length });
+		return out;
+	}
+
+	/** The cursor's line index — the first line whose end it has not
+	 *  passed (a cursor resting ON a newline belongs to the line that
+	 *  newline closes, never to the next one). */
+	#cursorLine(bounds: { start: number; end: number }[]): number {
+		for (let i = 0; i < bounds.length; i += 1) {
+			if (this.#cursor <= bounds[i]!.end) return i;
+		}
+		return bounds.length - 1;
+	}
+
+	/** The cursor's OWN line — the unit of the horizontal scroll and of
+	 *  the line-local A/E/U/K (A3). */
+	#cursorBounds(): { start: number; end: number } {
+		const bounds = this.#lineBounds();
+		return bounds[this.#cursorLine(bounds)]!;
+	}
+
 	/** The visible slice (dim "…" prefix when scrolled) + the cursor's
-	 *  display column within it — the dock's input-row state. */
+	 *  display column within it — the dock's input-row state. KC1: the
+	 *  slice is the CURSOR'S LINE (a single-line buffer yields today's
+	 *  exact values — the line starts at 0). */
 	dockState(): { line: string; cursor: number } {
-		const visible = String.fromCodePoint(...this.#chars.slice(this.#scroll));
+		const { start, end } = this.#cursorBounds();
+		const from = start + this.#scroll;
+		const visible = String.fromCodePoint(...this.#chars.slice(from, end));
 		const prefix = this.#scroll > 0 ? "\x1b[2m…\x1b[0m" : "";
-		const col = (this.#scroll > 0 ? 1 : 0) + widthOf(this.#chars.slice(this.#scroll, this.#cursor));
+		const col = (this.#scroll > 0 ? 1 : 0) + widthOf(this.#chars.slice(from, this.#cursor));
 		return { line: `${prefix}${visible}`, cursor: col };
 	}
 
@@ -221,6 +276,7 @@ export class Editor {
 		this.#chars = [];
 		this.#cursor = 0;
 		this.#scroll = 0;
+		this.#verticalGoalCol = null;
 		this.#menuOpen = false;
 		this.#menuSel = 0;
 		this.#queuePopMode = false; // W22: the panel owns the keys while up
@@ -347,6 +403,7 @@ export class Editor {
 					this.#chars = [];
 					this.#cursor = 0;
 					this.#scroll = 0;
+					this.#verticalGoalCol = null;
 					this.#refreshMenu();
 					i += 1;
 				} else if (this.#queuePopMode) {
@@ -371,12 +428,26 @@ export class Editor {
 					i += 1;
 				}
 			} else if (c === "\x0d" || c === "\x0a") {
-				if (this.#pasting) {
-					this.#insert(0x20); // single-line editor: newlines become spaces
+				// KC1 §3 — the ONE newline normalizer. Inside a paste every
+				// boundary (LF, CR, CRLF) becomes EXACTLY one 0x0A; a paste's
+				// trailing CR at a CHUNK boundary parks in #pending (the
+				// existing CSI-resume mechanism) and resolves against the next
+				// chunk's leading LF, so a CR|LF pair split by the stdin read
+				// is still ONE newline. Outside a paste: Ctrl+J (LF) inserts,
+				// Enter (CR) submits — and a typed CRLF pair submits ONCE (the
+				// LF is consumed with it, never landing in the fresh buffer).
+				// A lone interactive CR never parks: the submit is immediate.
+				if (c === "\x0d" && i + 1 === text.length && this.#pasting) {
+					this.#pending = text.slice(i);
+					break;
+				}
+				const consumed = c === "\x0d" && text[i + 1] === "\x0a" ? 2 : 1;
+				if (this.#pasting || c === "\x0a") {
+					this.#insert(NEWLINE);
 				} else {
 					this.#submit();
 				}
-				i += 1;
+				i += consumed;
 			} else if (c === "\x7f" || c === "\x08") {
 				this.#backspace();
 				i += 1;
@@ -396,12 +467,12 @@ export class Editor {
 				this.#killWord();
 				i += 1;
 			} else if (c === "\x01") {
-				this.#cursor = 0;
+				this.#cursor = this.#cursorBounds().start; // A3: line-local (a single line starts at 0 — unchanged)
 				this.#reflow();
 				this.#onRender();
 				i += 1;
 			} else if (c === "\x05") {
-				this.#cursor = this.#chars.length;
+				this.#cursor = this.#cursorBounds().end; // A3: line-local (a single line ends at the buffer's end)
 				this.#reflow();
 				this.#onRender();
 				i += 1;
@@ -431,6 +502,15 @@ export class Editor {
 	}
 
 	#csi(params: string, final: string): void {
+		// KC1 §4 — Shift+Enter WHERE THE TERMINAL ENCODES IT: kitty's
+		// CSI-u (ESC [ 13;2 u) and xterm's modifyOtherKeys (ESC [ 27;2;13 ~).
+		// Never claimed universal — Ctrl+J is the everywhere baseline; a
+		// terminal that sends neither simply never reaches this row. The
+		// chunk-split safety is the existing #pending CSI resume.
+		if ((final === "u" && params === "13;2") || (final === "~" && params === "27;2;13")) {
+			this.#insert(NEWLINE);
+			return;
+		}
 		if (final === "~") {
 			const n = Number(params);
 			if (n === 3) this.#delete();
@@ -451,6 +531,12 @@ export class Editor {
 			} else if (this.#menuOpen) {
 				if (final === "A") this.#menuSel = Math.max(0, this.#menuSel - 1);
 				else this.#menuSel = Math.min(this.#menuFiltered().length - 1, this.#menuSel + 1);
+			} else if (this.#chars.includes(NEWLINE)) {
+				// KC1 §4: a MULTI-LINE buffer's ↑↓ walk its lines. The
+				// history and the queue-pop below stay gated on an EMPTY
+				// buffer — a multi-line buffer is never empty, so the
+				// precedence can only ever add, never take.
+				this.#verticalMove(final === "A" ? -1 : 1);
 			} else if (final === "A" && this.#queuePop !== null && (this.#queuePopMode || this.line() === "") && this.#queueState().length > 0) {
 				// W22: ↑ pops the LAST queued message into the buffer — the
 				// walk: repeated presses pop older ones (each replaces the
@@ -468,12 +554,30 @@ export class Editor {
 		} else if (final === "C") {
 			this.#move(1);
 		} else if (final === "H") {
-			this.#cursor = 0;
+			this.#cursor = this.#cursorBounds().start; // A3: Home follows Ctrl+A — line-local
 			this.#reflow();
 		} else if (final === "F") {
-			this.#cursor = this.#chars.length;
+			this.#cursor = this.#cursorBounds().end; // A3: End follows Ctrl+E — line-local
 			this.#reflow();
 		}
+	}
+
+	/** KC1 §4 — the ↑/↓ walk. The cursor keeps its DESIRED column across
+	 *  a short line: the goal is captured at the FIRST vertical move and
+	 *  survives consecutive ones (#reflow clears it, so any horizontal
+	 *  move / insert / delete ends the walk); a step past either end
+	 *  stays put. */
+	#verticalMove(delta: number): void {
+		const bounds = this.#lineBounds();
+		const cur = this.#cursorLine(bounds);
+		const next = cur + delta;
+		if (next < 0 || next >= bounds.length) return;
+		const from = bounds[cur]!;
+		const goal = this.#verticalGoalCol ?? widthOf(this.#chars.slice(from.start, this.#cursor));
+		const to = bounds[next]!;
+		this.#cursor = this.#indexAtWidth(to.start, to.end, goal);
+		this.#reflow();
+		this.#verticalGoalCol = goal; // the walk re-arms it (the reflow's reset is for every OTHER key)
 	}
 
 	// ---- W21: the panel state machine ----
@@ -495,6 +599,7 @@ export class Editor {
 		this.#chars = [...panel.view.name].map((ch) => ch.codePointAt(0)!);
 		this.#cursor = this.#chars.length;
 		this.#scroll = 0;
+		this.#verticalGoalCol = null;
 		this.#onRender();
 	}
 
@@ -508,6 +613,7 @@ export class Editor {
 		this.#chars = [];
 		this.#cursor = 0;
 		this.#scroll = 0;
+		this.#verticalGoalCol = null;
 		this.#onRender();
 	}
 
@@ -522,6 +628,7 @@ export class Editor {
 			this.#chars = [];
 			this.#cursor = 0;
 			this.#scroll = 0;
+			this.#verticalGoalCol = null;
 			this.#onRender();
 			return;
 		}
@@ -602,18 +709,23 @@ export class Editor {
 	}
 
 	#killToStart(): void {
-		this.#chars.splice(0, this.#cursor);
-		this.#cursor = 0;
+		const { start } = this.#cursorBounds(); // A3: line-local (0 on a single line — unchanged)
+		this.#chars.splice(start, this.#cursor - start);
+		this.#cursor = start;
 		this.#reflow();
 		if (!this.#pasting) this.#onRender();
 	}
 
 	#killToEnd(): void {
-		this.#chars.length = this.#cursor;
+		const { end } = this.#cursorBounds(); // A3: line-local (the buffer's end on a single line — unchanged)
+		this.#chars.splice(this.#cursor, end - this.#cursor);
 		this.#reflow();
 		if (!this.#pasting) this.#onRender();
 	}
 
+	/** Ctrl+W — the word kill. The newline rides as a non-space code
+	 *  point (a kill at a line's start joins it to the one above, the
+	 *  readline behavior); A3 scopes A/E/U/K, not W. */
 	#killWord(): void {
 		let i = this.#cursor;
 		while (i > 0 && this.#chars[i - 1] === 0x20) i -= 1; // trailing spaces
@@ -644,6 +756,7 @@ export class Editor {
 		this.#chars = [];
 		this.#cursor = 0;
 		this.#scroll = 0;
+		this.#verticalGoalCol = null;
 		this.#menuOpen = false;
 		this.#menuSel = 0;
 		this.#queuePopMode = false; // W22: a submit ends the pop-walk — the next esc at rest interrupts again
@@ -700,12 +813,16 @@ export class Editor {
 		this.#chars = [...line].map((ch) => ch.codePointAt(0)!);
 		this.#cursor = this.#chars.length;
 		this.#scroll = 0;
+		this.#verticalGoalCol = null;
 		this.#onRender();
 	}
 
 	// ---- width-based horizontal scroll ----
 
 	#reflow(): void {
+		// KC1: any key that reaches the reflow ended a ↑/↓ walk (the walk
+		// itself re-arms the goal right after its own reflow call).
+		this.#verticalGoalCol = null;
 		const W = (process.stdout.columns ?? 0) || 80; // degenerate 0 falls back to 80
 		// W21: the panel's phase lead owns the input row while up — the
 		// line's max width follows the lead (the rule/amend leads are
@@ -716,21 +833,29 @@ export class Editor {
 		const lead = this.#panel !== null ? panelLead(this.#panel.view, this.#panel.phase, this.#panel.sel) : PROMPT;
 		const leadW = leadWidth(lead);
 		const maxW = Math.max(1, W - leadW - 4); // W6: the box's walls (2+2) — the visible line fits the box's inner width; the "…" rides inside
-		const curCol = widthOf(this.#chars.slice(0, this.#cursor));
-		const scrolledW = widthOf(this.#chars.slice(0, this.#scroll));
+		// KC1: the scroll is the CURSOR LINE's own offset — a single-line
+		// buffer's line starts at 0, so the math is today's exactly. The
+		// clamp catches a walk onto a line SHORTER than the old offset.
+		const { start, end } = this.#cursorBounds();
+		this.#scroll = Math.min(this.#scroll, end - start);
+		const curCol = widthOf(this.#chars.slice(start, this.#cursor));
+		const scrolledW = widthOf(this.#chars.slice(start, start + this.#scroll));
 		if (curCol < scrolledW) {
-			this.#scroll = this.#indexAtWidth(curCol);
+			this.#scroll = this.#indexAtWidth(start, end, curCol) - start;
 		} else if (curCol >= scrolledW + maxW) {
-			this.#scroll = this.#indexAtWidth(Math.max(0, curCol - maxW + 1));
+			this.#scroll = this.#indexAtWidth(start, end, Math.max(0, curCol - maxW + 1)) - start;
 		}
 	}
 
-	#indexAtWidth(target: number): number {
+	/** The first index in [start, end] whose display width from `start`
+	 *  reaches `target` — the width-based column walk (a wide char never
+	 *  splits: the index lands BEFORE it). */
+	#indexAtWidth(start: number, end: number, target: number): number {
 		let w = 0;
-		for (let i = 0; i < this.#chars.length; i += 1) {
+		for (let i = start; i < end; i += 1) {
 			if (w >= target) return i;
 			w += charWidth(this.#chars[i]!);
 		}
-		return this.#chars.length;
+		return end;
 	}
 }

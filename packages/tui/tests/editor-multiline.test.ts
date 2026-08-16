@@ -246,9 +246,10 @@ describe("KC1 T-E4 — ↑/↓ walk the lines; history and queue-pop stay EMPTY-
 			fallbackQuestion: "approve edit_file? (y/n) ",
 		};
 		editor.beginPanel(view, () => {});
-		editor.feed(enc("a\x0ab")); // a multi-line rule/feedback line
+		editor.feed(enc("ab")); // the panel's rule/feedback line (its Enter — CR or LF — commits the phase, so the panel's line stays single)
 		editor.feed(enc("\x1b[A")); // ↑ — the panel owns the keys, nothing moves
-		expect(editor.dockState().cursor).toBe(1); // still at the end of "b"
+		expect(editor.dockState().cursor).toBe(2); // still at the end of "ab"
+		expect(editor.line()).toBe("ab");
 	});
 });
 
