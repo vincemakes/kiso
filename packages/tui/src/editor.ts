@@ -54,6 +54,16 @@ export const MENU_ITEMS: readonly MenuItem[] = [
  *  Shift+Enter encodings, a CRLF pair) normalizes to exactly ONE. */
 const NEWLINE = 0x0a;
 
+/** KC1 §5 — the composer's CEILING (adjudication A1): at most 6 visible
+ *  rows. A ceiling only — N_visible clamps by the terminal's height so
+ *  the geometry stays legal down to the compositor's enter gate (H = 4
+ *  ⇒ one row, exactly today's minimum). */
+const N_MAX = 6;
+
+/** The dim "…" — the ONE truncation mark: the horizontal scroll's
+ *  prefix (unchanged) and the viewport's hidden-rows markers. */
+const ELLIPSIS = "\x1b[2m…\x1b[0m";
+
 /**
  * The editor. Raw mode + bracketed paste (?2004h) on enter, restored on
  * exit. The input row is rendered by `onRender` (the CLI wires it to the
@@ -215,17 +225,52 @@ export class Editor {
 		return bounds[this.#cursorLine(bounds)]!;
 	}
 
-	/** The visible slice (dim "…" prefix when scrolled) + the cursor's
-	 *  display column within it — the dock's input-row state. KC1: the
-	 *  slice is the CURSOR'S LINE (a single-line buffer yields today's
-	 *  exact values — the line starts at 0). */
-	dockState(): { line: string; cursor: number } {
-		const { start, end } = this.#cursorBounds();
-		const from = start + this.#scroll;
-		const visible = String.fromCodePoint(...this.#chars.slice(from, end));
-		const prefix = this.#scroll > 0 ? "\x1b[2m…\x1b[0m" : "";
-		const col = (this.#scroll > 0 ? 1 : 0) + widthOf(this.#chars.slice(from, this.#cursor));
-		return { line: `${prefix}${visible}`, cursor: col };
+	/** KC1 §5 — N_visible = min(lineCount, N_MAX, max(1, H − 3 − the
+	 *  menu/queue bands)). The height clamp guarantees legal geometry
+	 *  down to the compositor's enter gate; the compositor re-applies the
+	 *  SAME formula against the frame's real bands (it alone knows their
+	 *  folded row counts), so this is the editor's honest estimate and
+	 *  the frame's clamp is the authority. */
+	#visibleRows(lineCount: number): number {
+		const H = process.stdout.rows ?? 24;
+		const bands = (this.#menuOpen ? this.#menuFiltered().length : 0) + this.#queueState().length;
+		return Math.max(1, Math.min(lineCount, N_MAX, Math.max(1, H - 3 - bands)));
+	}
+
+	/** The dock's input-row state — ADDITIVE (§5): `line` + `cursor` keep
+	 *  their legacy meaning (the CURSOR LINE's visible slice and the
+	 *  cursor's display column in it — a single-line buffer yields
+	 *  today's exact values, and a legacy one-row consumer keeps
+	 *  working), and the composer's own view rides beside them.
+	 *
+	 *  The window is DERIVED per read — no persistent #vscroll:
+	 *  visibleStart = clamp(cursorLine − N_visible + 1, 0, lineCount −
+	 *  N_visible), so it trails the cursor, can never hide it, and no
+	 *  stash / restore / clear / submit path has new state to carry. A
+	 *  dim "…" marks whichever edge hides rows. */
+	dockState(): { line: string; cursor: number; lines: string[]; cursorRow: number; cursorCol: number } {
+		const bounds = this.#lineBounds();
+		const cursorLine = this.#cursorLine(bounds);
+		const n = this.#visibleRows(bounds.length);
+		const first = Math.max(0, Math.min(cursorLine - n + 1, bounds.length - n));
+		const lines: string[] = [];
+		for (let i = first; i < first + n; i += 1) {
+			const b = bounds[i]!;
+			// the cursor's own row carries the horizontal scroll (and its
+			// "…"); the other rows render whole and cap at the frame's wall
+			const from = i === cursorLine ? b.start + this.#scroll : b.start;
+			const scrolled = i === cursorLine && this.#scroll > 0 ? ELLIPSIS : "";
+			const above = i === first && first > 0 ? ELLIPSIS : "";
+			const below = i === first + n - 1 && first + n < bounds.length ? ELLIPSIS : "";
+			lines.push(`${above}${scrolled}${String.fromCodePoint(...this.#chars.slice(from, b.end))}${below}`);
+		}
+		const cursorRow = cursorLine - first;
+		// the window trails the cursor, so the hidden-above marker can only
+		// share the cursor's row in the degenerate one-row window (a tiny
+		// terminal) — where it shifts the column like the scroll's does
+		const marks = (cursorRow === 0 && first > 0 ? 1 : 0) + (this.#scroll > 0 ? 1 : 0);
+		const cursorCol = marks + widthOf(this.#chars.slice(bounds[cursorLine]!.start + this.#scroll, this.#cursor));
+		return { line: lines[cursorRow]!, cursor: cursorCol, lines, cursorRow, cursorCol };
 	}
 
 	/** v3 §04: the menu's visible state for the dock — null when closed. */
