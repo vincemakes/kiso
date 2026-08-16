@@ -113,7 +113,7 @@ def driver(mode, cli, home, script_path, session_id, workdir):
         # One text-only turn (the lock is acquired at the first append), then
         # the prompt returns — the exit at the empty prompt.
         read_until("\\u258c ".encode(), 20)   # the boot prompt
-        os.write(fd, b"go\\n")
+        os.write(fd, b"go\\r")
         jsonl_has("end_turn", 30)             # the turn completed ON DISK
         read_until("\\u258c ".encode(), 10)   # the post-turn prompt
         if mode == "eot":
