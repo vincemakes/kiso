@@ -74,6 +74,23 @@ const FRAME_MS = 16; // state changes coalesce to ≥16ms frames
 const SPINNER_MS = 200; // the spinner cadence — a ONE-SHOT re-armed on demand
 const CHROME_ROWS = 4; // box top + input + box bottom + status — the design §03 chrome (V6-3; the box is W6)
 
+/** KC1 §5 — the input row's bound state. The legacy pair stays
+ *  REQUIRED and keeps its exact meaning (the cursor line's visible
+ *  slice and its display column), so a one-row provider — the old
+ *  `{line, cursor}` shape — keeps working unchanged; the composer's
+ *  rows ride as OPTIONAL fields, which is what makes the CLI's binding
+ *  signature-neutral (zero cli source growth). */
+export interface InputState {
+	readonly line: string;
+	readonly cursor: number;
+	/** the visible rows (≤ N_visible), dim "…" markers included */
+	readonly lines?: readonly string[];
+	/** the cursor's row within `lines` */
+	readonly cursorRow?: number;
+	/** the cursor's display column within that row */
+	readonly cursorCol?: number;
+}
+
 export interface BodyOptions {
 	/** Is the cell renderer live? A color TTY with a real size — checked
 	 *  per mutation (the TIOCSWINSZ can land after main constructs us). */
@@ -134,6 +151,12 @@ export class Body {
 	#lastLiveRows = 0; // the recorded live row count (incl. the chrome)
 	#lastSkip = 0; // the last frame's window top in model rows — the A8b scroll's leaving-count base
 	#lastH = 0;
+	// KC1 §6: the composer's recorded extent — the row count the last
+	// frame drew (exit's clear walks it) and the row its CHA parked the
+	// cursor on (the steady frame's relative anchor). N = 1 reproduces
+	// the retired constants exactly (one input row, the anchor at H−2).
+	#lastInputRows = 1;
+	#lastAnchorRow = 0;
 	#frameTimer: NodeJS.Timeout | null = null;
 	#spinnerTimer: NodeJS.Timeout | null = null;
 	#spinnerI = 0;
@@ -166,7 +189,7 @@ export class Body {
 	// panel is up it replaces the live region, owns the input lead, and
 	// derives the status row (the CLI's painting status yields).
 	#panelState: (() => PanelState | null) | null = null;
-	#inputState: () => { line: string; cursor: number } = () => ({ line: "", cursor: 0 });
+	#inputState: () => InputState = () => ({ line: "", cursor: 0 });
 	#inputPrompt = "";
 	#menuState: (() => { items: readonly MenuItem[]; selected: number } | null) | null = null;
 	// W22: the pending-turn queue's bound state — the CLI's live slots
@@ -662,8 +685,10 @@ export class Body {
 		const H = this.#lastH > 0 ? this.#lastH : process.stdout.rows ?? 24;
 		const out: string[] = [];
 		out.push("\x1b[r");
-		for (let row = H - 3; row <= H; row += 1) { // V6-3: the four chrome rows
-			out.push(`\x1b[${row};1H\x1b[0K`); // clear the three chrome rows
+		// V6-3 + KC1: the chrome rows — the RECORDED composer extent rides
+		// the same mechanism the resize clear already uses (N = 1 ⇒ H−3..H)
+		for (let row = H - 2 - this.#lastInputRows; row <= H; row += 1) {
+			out.push(`\x1b[${row};1H\x1b[0K`); // clear the chrome rows
 		}
 		out.push(`\x1b[${Math.max(1, H - 1)};1H`);
 		this.#write(out.join(""));
@@ -724,7 +749,7 @@ export class Body {
 	}
 
 	/** Bind the CURRENT input line's state — the focus component reads it. */
-	bindInput(state: () => { line: string; cursor: number }, prompt: string): void {
+	bindInput(state: () => InputState, prompt: string): void {
 		this.#inputState = state;
 		this.#inputPrompt = prompt;
 	}
@@ -823,11 +848,19 @@ export class Body {
 	liveCount(): number {
 		const panel = this.#panelState?.() ?? null;
 		const queueRows = this.#queueRows(this.#opts.width(), this.#opts.height());
+		// KC1 §6: the composer's extra rows are chrome too — the scalar
+		// counts them exactly like the menu/queue bands (N = 1 ⇒ +0)
+		const inputExtra = this.#inputRows(this.#opts.width(), this.#opts.height(), this.#menuRows(this.#opts.width()).length, queueRows.length).rows.length - 1;
 		if (panel !== null) {
 			// W21: the panel's own rows (the cap is exact — the scalar
 			// reflects the screen). W22: the queue chips occupy their
 			// own band — the panel's cap shrinks by their rows.
-			return panelBlockRows(panel.view, panel.phase, panel.sel, this.#opts.width(), Math.max(1, this.#opts.height() - 4 - queueRows.length)).length + CHROME_ROWS + queueRows.length;
+			return (
+				panelBlockRows(panel.view, panel.phase, panel.sel, this.#opts.width(), Math.max(1, this.#opts.height() - 4 - inputExtra - queueRows.length)).length +
+				CHROME_ROWS +
+				inputExtra +
+				queueRows.length
+			);
 		}
 		const live = this.#cells.slice(this.#committed);
 		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
@@ -839,7 +872,7 @@ export class Body {
 			lines += bodySpacing(prev, rows).length;
 			prev = rows;
 		}
-		return lines + CHROME_ROWS + this.#menuRows(W).length + queueRows.length;
+		return lines + CHROME_ROWS + inputExtra + this.#menuRows(W).length + queueRows.length;
 	}
 
 	/** The lines committed THIS frame — the writes land in the frame's
@@ -897,7 +930,12 @@ export class Body {
 		// (the band above the box top) — the chrome rows and the live
 		// caps account for both.
 		const queueRows = this.#queueRows(W, H);
-		const chromeRows = CHROME_ROWS + menuRows.length + queueRows.length;
+		// KC1 §6: the input is N rows now (N = 1 ⇒ today's chrome exactly)
+		// — chromeRows = 3 + N + menu + queue, and the content cap loses
+		// the composer's EXTRA rows the same way it loses the bands.
+		const editor = this.#inputRows(W, H, menuRows.length, queueRows.length);
+		const inputExtra = editor.rows.length - 1;
+		const chromeRows = CHROME_ROWS + inputExtra + menuRows.length + queueRows.length;
 		let liveLines: string[] = [];
 		const panel = this.#panelState?.() ?? null;
 		if (panel !== null) {
@@ -906,7 +944,7 @@ export class Body {
 			// the W11 blank would separate it from the frozen content).
 			// The cap is exact, so the force-commit loop never fires. W22:
 			// the queue band sits below the panel — the cap shrinks by it.
-			liveLines = panelBlockRows(panel.view, panel.phase, panel.sel, W, Math.max(1, H - 4 - queueRows.length));
+			liveLines = panelBlockRows(panel.view, panel.phase, panel.sel, W, Math.max(1, H - 4 - inputExtra - queueRows.length));
 		} else {
 			let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
 			for (const cell of this.#cells.slice(this.#committed)) {
@@ -919,7 +957,7 @@ export class Body {
 		//    commits the oldest live cell UNCONDITIONALLY (the one sharp
 		//    edge — the cap scalar is asserted by the gates). W22: the
 		//    queue band shrinks the cap by its rows (empty queue → H−4).
-		while (liveLines.length > H - 4 - queueRows.length && this.#committed < this.#cells.length) { // V6-3: the content cap H−4
+		while (liveLines.length > H - 4 - inputExtra - queueRows.length && this.#committed < this.#cells.length) { // V6-3: the content cap H−4 (KC1: −N's extra rows)
 			this.#commitCell(this.#committed, W, ctx);
 			liveLines = [];
 			{
@@ -953,15 +991,20 @@ export class Body {
 		// path: the window re-paints at the model's positions, every row
 		// covered (the V6-1 every-row rule).
 		if (this.#fullRedraw || liveTop > this.#lastLiveTop + this.#committedLinesThisFrame.length || liveRowsTotal < this.#lastLiveRows) {
-			this.#drawFull(out, W, H, liveTop, liveLines, queueRows, menuRows, ctx);
+			this.#drawFull(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
 			this.#fullRedraw = false;
 		} else {
-			this.#drawSteady(out, W, H, liveTop, liveLines, queueRows, menuRows, ctx);
+			this.#drawSteady(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
 		}
 		out.push("\x1b[?2026l");
 		this.#write(out.join(""));
 		this.#lastLiveTop = liveTop;
 		this.#lastLiveRows = liveRowsTotal;
+		this.#lastInputRows = editor.rows.length;
+		// KC1 §6: the next steady frame's relative moves start where THIS
+		// frame's CHA parked the cursor — the marker's row inside the
+		// composer (N = 1 ⇒ H−2, the retired hard-coded anchor).
+		this.#lastAnchorRow = H - 1 - editor.rows.length + editor.markerRow;
 	}
 
 	/** Commit the cell at index i: render + cache its lines (immutable —
@@ -1145,14 +1188,14 @@ export class Body {
 		return rows;
 	}
 
-	/** The focus component's input row — the marker embedded at the
-	 *  cursor's display column WITHIN THE ROW (the brick/question lead
-	 *  included), the question/editor/menu variants. The compositor
-	 *  strips the marker and returns the frame-derived COLUMN — the
-	 *  cursor move lands AT the marker (a CHA — the column is absolute,
-	 *  so the move's base is irrelevant; the retired afterW CUB's base
-	 *  was the LAST write's end column, which the steady frame's
-	 *  gap/stale ELs leave at col 1 — the A3 finding).
+	/** ONE input row's bytes — the marker embedded at `embedAt` (the
+	 *  cursor's display column within the row) when this row owns the
+	 *  cursor, `null` on the composer's other rows. The compositor
+	 *  strips the marker and returns the frame-derived CELL — the cursor
+	 *  move lands AT the marker (a CHA — the column is absolute, so the
+	 *  move's base is irrelevant; the retired afterW CUB's base was the
+	 *  LAST write's end column, which the steady frame's gap/stale ELs
+	 *  leave at col 1 — the A3 finding).
 	 *
 	 *  W6: the row lives INSIDE the box — the walls are a prefix/suffix
 	 *  width only, composed AFTER the marker embed (the marker math is
@@ -1161,8 +1204,67 @@ export class Body {
 	 *  pad completes the row to EXACTLY W — invariant ① throws on
 	 *  overflow, so the box row is built full-width, never truncated.
 	 *  W23: the lead width is the ONE authority — leadWidth (width.ts),
-	 *  shared with the editor's selfRender/#reflow and editCol. */
-	#inputRow(W: number, _ctx: FrameCtx): { stripped: string; markerCol: number } {
+	 *  shared with the editor's selfRender/#reflow and editCol.
+	 *  KC1 §6: the walk is UNCHANGED — a one-row composer emits exactly
+	 *  today's bytes (the T-C1 identity anchor). */
+	#inputRowBytes(row: string, W: number, embedAt: number | null): { stripped: string; markerCell: number } {
+		let markerLine = "";
+		let markerCell = 0; // the marker's 0-based cell — the walk's w at the embed
+		let w = 0;
+		let inserted = embedAt === null; // a row without the cursor never embeds
+		let i = 0;
+		while (i < row.length) {
+			if (row[i] === "\x1b") {
+				const m = /^\x1b\[[0-9;]*m/.exec(row.slice(i));
+				if (m !== null) {
+					markerLine += m[0];
+					i += m[0].length;
+					continue;
+				}
+			}
+			if (!inserted && w >= embedAt!) {
+				markerLine += CURSOR_MARKER;
+				markerCell = w;
+				inserted = true;
+			}
+			const cw = displayWidth(row[i]!);
+			if (w + cw > W - 4) break; // the cap — the two walls' columns
+			markerLine += row[i]!;
+			w += cw;
+			i += 1;
+		}
+		if (!inserted) {
+			// the walk ended before the cursor cell (the box edge) — the
+			// marker rests at the row's end; the move still lands AT it
+			// (the min() of the contract)
+			markerLine += CURSOR_MARKER;
+			markerCell = w;
+		}
+		const stripped0 = markerLine.replace(CURSOR_MARKER, "");
+		if (W < 4) {
+			// the degenerate screen: the box cannot hold its walls — the
+			// bare row (the pre-W6 bytes; the fold probe's pass-through
+			// line still crashes invariant ① downstream, as before)
+			return { stripped: stripped0, markerCell };
+		}
+		// the pad completes the row to W — the content stopped at W−4,
+		// so the pad is ≥ 1
+		const padW = W - 3 - w;
+		return { stripped: `\x1b[2m│ \x1b[0m${stripped0}\x1b[2m${" ".repeat(padW)}│\x1b[0m`, markerCell };
+	}
+
+	/** KC1 §6 — the focus component's input ROWS (N = 1 today's single
+	 *  row, byte for byte). The lead rides the FIRST row and the
+	 *  continuations indent by its width, so the cursor's column formula
+	 *  is the same on every row; the CURSOR'S row carries the marker and
+	 *  the frame derives the cursor from it — row AND column — with no
+	 *  editPos side channel.
+	 *
+	 *  The rows arrive already windowed by the editor's §5 estimate; the
+	 *  frame re-applies the SAME clamp against the REAL folded menu and
+	 *  queue bands (N_visible's height term), keeping the cursor's row
+	 *  in view — so the geometry is legal at every terminal size. */
+	#inputRows(W: number, H: number, menuRows: number, queueRows: number): { rows: string[]; markerRow: number; markerCol: number } {
 		const st = this.#inputState();
 		const panel = this.#panelState?.() ?? null;
 		// the lead — the panel's phase lead when the panel owns the row
@@ -1170,57 +1272,32 @@ export class Body {
 		// amend "feedback (deny): "), the bound prompt otherwise
 		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.sel) : this.#inputPrompt;
 		const leadW = leadWidth(lead);
-		const row = `${lead}${st.line}`;
-		// embed the marker at the cursor's display column
-		let markerLine = "";
-		let markerCell = 0; // the marker's 0-based cell — the walk's w at the embed
-		let w = 0;
-		{
-			let inserted = false;
-			let i = 0;
-			while (i < row.length) {
-				if (row[i] === "\x1b") {
-					const m = /^\x1b\[[0-9;]*m/.exec(row.slice(i));
-					if (m !== null) {
-						markerLine += m[0];
-						i += m[0].length;
-						continue;
-					}
-				}
-				if (!inserted && w >= leadW + st.cursor) {
-					markerLine += CURSOR_MARKER;
-					markerCell = w;
-					inserted = true;
-				}
-				const cw = displayWidth(row[i]!);
-				if (w + cw > W - 4) break; // the cap — the two walls' columns
-				markerLine += row[i]!;
-				w += cw;
-				i += 1;
-			}
-			if (!inserted) {
-				// the walk ended before the cursor cell (the box edge) —
-				// the marker rests at the row's end; the move still lands
-				// AT it (the min() of the contract)
-				markerLine += CURSOR_MARKER;
-				markerCell = w;
-			}
+		// a LEGACY one-row provider (the old {line, cursor} shape) keeps
+		// working: its single line is the composer's single row
+		let rows = st.lines !== undefined && st.lines.length > 0 ? [...st.lines] : [st.line];
+		let cursorRow = Math.min(st.cursorRow ?? 0, rows.length - 1);
+		const cursorCol = st.cursorCol ?? st.cursor;
+		// KC1 slice ③ — the IDENTITY GATE: N stays pinned at ONE until the
+		// N>1 geometry carries its own proofs (T-C2..C5, slice ④). The
+		// window still keeps the cursor's row, so the composer already
+		// tracks a multi-line buffer — one row at a time.
+		const n = 1;
+		if (rows.length > n) {
+			const first = Math.max(0, Math.min(cursorRow - n + 1, rows.length - n));
+			rows = rows.slice(first, first + n);
+			cursorRow -= first;
 		}
-		const stripped0 = markerLine.replace(CURSOR_MARKER, "");
-		if (W < 4) {
-			// the degenerate screen: the box cannot hold its walls — the
-			// bare row (the pre-W6 bytes; the fold probe's pass-through
-			// line still crashes invariant ① downstream, as before)
-			return { stripped: stripped0, markerCol: 3 + markerCell };
+		const out: string[] = [];
+		let markerCol = 3;
+		for (let r = 0; r < rows.length; r += 1) {
+			const text = `${r === 0 ? lead : " ".repeat(leadW)}${rows[r]!}`;
+			const bytes = this.#inputRowBytes(text, W, r === cursorRow ? leadW + cursorCol : null);
+			out.push(bytes.stripped);
+			// W23: the frame-derived column — wallL (2) + the marker's
+			// cell + 1 — the CHA lands the cursor AT the marker from ANY base
+			if (r === cursorRow) markerCol = 3 + bytes.markerCell;
 		}
-		// the pad completes the row to W — the content stopped at W−4,
-		// so the pad is ≥ 1
-		const padW = W - 3 - w;
-		const stripped = `\x1b[2m│ \x1b[0m${stripped0}\x1b[2m${" ".repeat(padW)}│\x1b[0m`;
-		// W23: the frame-derived column — wallL (2) + the marker's cell
-		// + 1 — the CHA lands the cursor AT the marker from ANY base
-		const markerCol = 3 + markerCell;
-		return { stripped, markerCol };
+		return { rows: out, markerRow: cursorRow, markerCol };
 	}
 
 	/** The full-redraw path (the first frame, the resize repaint) — CUP
@@ -1234,7 +1311,8 @@ export class Body {
 	 *  survive anywhere the draw does not touch; a draw that covers
 	 *  EVERY row is idempotent: N consecutive resizes end with the same
 	 *  screen as a single jump to the same size. */
-	#drawFull(out: string[], W: number, H: number, liveTop: number, liveLines: string[], queueRows: string[], menuRows: string[], ctx: FrameCtx): void {
+	#drawFull(out: string[], W: number, H: number, liveTop: number, liveLines: string[], queueRows: string[], menuRows: string[], editor: { rows: string[]; markerRow: number; markerCol: number }): void {
+		const inputExtra = editor.rows.length - 1; // KC1: the composer's rows above the retired single input row
 		const committed = this.#committedLinesThisFrame;
 		// 0. the FROZEN rows — the re-folded committed content (re-flowed
 		//    at the new width by the terminal): re-painted at [1..frozen],
@@ -1261,7 +1339,7 @@ export class Body {
 		// window (the committed share + the live + the chrome), r
 		// monotone, every row 1..H re-painted (the V6-1 every-row rule).
 		const all = [...frozen, ...committed, ...liveLines];
-		const skip = Math.max(0, all.length + CHROME_ROWS + queueRows.length + menuRows.length - H);
+		const skip = Math.max(0, all.length + CHROME_ROWS + inputExtra + queueRows.length + menuRows.length - H);
 		// A8b (the shrink-trigger's completion): the rows that LEAVE the
 		// window scroll into the terminal's scrollback — the LF mechanism
 		// (the steady path's own). Only the rows the paint re-covers (the
@@ -1302,33 +1380,36 @@ export class Body {
 			r += 1;
 		}
 		// 3. the GAP rows (between the live content and the chrome) — EL.
-		for (let rr = r; rr <= H - 4; rr += 1) {
+		for (let rr = r; rr <= H - 4 - inputExtra; rr += 1) {
 			out.push(`\x1b[${rr};1H\x1b[0K`);
 		}
 		// W22: the queue chips sit directly above the box top (the
 		// "pre-render ABOVE the input row"), the menu above the queue.
-		const queueTop = H - 3 - queueRows.length;
-		const menuTop = H - 3 - queueRows.length - menuRows.length;
+		const queueTop = H - 3 - inputExtra - queueRows.length;
+		const menuTop = queueTop - menuRows.length;
 		for (let i = 0; i < queueRows.length; i += 1) {
 			out.push(`\x1b[${queueTop + i};1H\x1b[0K${this.#checked(queueRows[i]!, W)}`);
 		}
 		for (let i = 0; i < menuRows.length; i += 1) {
 			out.push(`\x1b[${menuTop + i};1H\x1b[0K${this.#checked(menuRows[i]!, W)}`);
 		}
-		// V6-3 + W6: the design §03 chrome — box top (H−3), input
-		// (H−2), box bottom (H−1), status (H) — the box's four rows.
-		out.push(`\x1b[${H - 3};1H\x1b[0K${boxTop(W)}`);
-		const editor = this.#inputRow(W, ctx);
-		out.push(`\x1b[${H - 2};1H\x1b[0K${this.#checked(editor.stripped, W)}`);
+		// V6-3 + W6 + KC1 §6: the design §03 chrome — box top (H−2−N),
+		// the composer's N input rows (H−1−N .. H−2), box bottom (H−1),
+		// status (H). N = 1 is the retired four-row chrome exactly.
+		out.push(`\x1b[${H - 3 - inputExtra};1H\x1b[0K${boxTop(W)}`);
+		for (let i = 0; i < editor.rows.length; i += 1) {
+			out.push(`\x1b[${H - 2 - inputExtra + i};1H\x1b[0K${this.#checked(editor.rows[i]!, W)}`);
+		}
 		out.push(`\x1b[${H - 1};1H\x1b[0K${boxBottom(W)}`);
 		const statusRow = this.#statusSource();
 		out.push(`\x1b[${H};1H\x1b[0K${this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint), W)}`);
-		// the cursor: up two (the input row at H−2) + the CHA to the
-		// marker's frame-derived column — W23: the afterW CUB retired
-		// (the CHA is absolute — the base is irrelevant; the CUB's base
-		// was the LAST write's end column, which the steady frame's ELs
-		// leave at col 1 — the A3 finding)
-		out.push("\x1b[2A");
+		// the cursor: up from the status row to the MARKER'S row inside
+		// the composer (N = 1, markerRow 0 ⇒ the retired \x1b[2A) + the
+		// CHA to the marker's frame-derived column — W23: the afterW CUB
+		// retired (the CHA is absolute — the base is irrelevant; the
+		// CUB's base was the LAST write's end column, which the steady
+		// frame's ELs leave at col 1 — the A3 finding)
+		out.push(`\x1b[${1 + editor.rows.length - editor.markerRow}A`);
 		out.push(`\x1b[${editor.markerCol}G`);
 	}
 
@@ -1336,8 +1417,8 @@ export class Body {
 	 *  commits scroll via the CUP-free real LF at the last row, and the
 	 *  committed lines write in the march's top section (rows
 	 *  [liveTop−N .. liveTop−1] — the frozen area's bottom). */
-	#drawSteady(out: string[], W: number, H: number, liveTop: number, liveLines: string[], queueRows: string[], menuRows: string[], ctx: FrameCtx): void {
-		const editor = this.#inputRow(W, ctx); // derived from the frame — the marker
+	#drawSteady(out: string[], W: number, H: number, liveTop: number, liveLines: string[], queueRows: string[], menuRows: string[], editor: { rows: string[]; markerRow: number; markerCol: number }): void {
+		const inputExtra = editor.rows.length - 1; // KC1: the composer's rows above the retired single input row
 		const committed = this.#committedLinesThisFrame;
 		// A8b: the steady path's window geometry — the same skip as the full
 		// path's (#lastSkip's formula): the model rows above the window
@@ -1346,7 +1427,7 @@ export class Body {
 		// frozenCount, so the lines at [frozenCount..skip−1] are the fresh
 		// leaving share (their old-screen copies are stale).
 		const frozenCount = this.#committedLines - committed.length;
-		const skip = Math.max(0, this.#committedLines + liveLines.length + CHROME_ROWS + queueRows.length + menuRows.length - H);
+		const skip = Math.max(0, this.#committedLines + liveLines.length + CHROME_ROWS + inputExtra + queueRows.length + menuRows.length - H);
 		const leaving = Math.max(0, skip - this.#lastSkip);
 		// the jump to the bottom row H, then N real LFs scroll the screen
 		// exactly N rows — ONE per committed line (the bookkeeping; the
@@ -1394,17 +1475,23 @@ export class Body {
 			}
 			out.push(`\x1b[${H};1H`); // CUP to the bottom — the absolute scroll base (the ELs moved the cursor)
 		} else {
-			out.push("\x1b[2B"); // the anchor (H−2) to the bottom — no scroll
+			// KC1 §6: the anchor is where the LAST frame's CHA parked the
+			// cursor — the marker's row inside the composer (N = 1 ⇒ H−2,
+			// the retired \x1b[2B)
+			const anchorRow = this.#lastAnchorRow > 0 ? this.#lastAnchorRow : H - 2;
+			if (H > anchorRow) out.push(`\x1b[${H - anchorRow}B`);
 		}
 		for (let i = 0; i < committed.length; i += 1) out.push("\n");
-		// the bottom-up repaint, from the last row up — V6-3 + W6: the
-		// design §03 chrome: status (H), box bottom (H−1), input (H−2),
-		// box top (H−3)
+		// the bottom-up repaint, from the last row up — V6-3 + W6 + KC1:
+		// the design §03 chrome: status (H), box bottom (H−1), the
+		// composer's N input rows (H−2 up to H−1−N), box top (H−2−N)
 		const statusRow = this.#statusSource();
 		out.push(`\x1b[1G\x1b[0K${this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint), W)}`); // H — the status
 		out.push(`\x1b[1A\x1b[1G\x1b[0K${boxBottom(W)}`); // H−1 — the box bottom
-		out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(editor.stripped, W)}`); // H−2 — the input
-		out.push(`\x1b[1A\x1b[1G\x1b[0K${boxTop(W)}`); // H−3 — the box top
+		for (let i = editor.rows.length - 1; i >= 0; i -= 1) {
+			out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(editor.rows[i]!, W)}`); // the input rows, bottom-up
+		}
+		out.push(`\x1b[1A\x1b[1G\x1b[0K${boxTop(W)}`); // H−2−N — the box top
 		// W22: the queue chips sit directly above the box top (the
 		// "pre-render ABOVE the input row"), the menu above the queue —
 		// the bottom-up order mirrors the row order.
@@ -1434,7 +1521,7 @@ export class Body {
 		//    the queue + menu bands (their rows at [H−3−queue−menu..H−4]
 		//    are marched and must survive — the unclamped geometry erased
 		//    them).
-		for (let r = liveTop + liveLines.length; r <= H - 4 - queueRows.length - menuRows.length; r += 1) {
+		for (let r = liveTop + liveLines.length; r <= H - 4 - inputExtra - queueRows.length - menuRows.length; r += 1) {
 			out.push(`\x1b[${r};1H\x1b[0K`);
 		}
 		// 2. the STALE rows above the committed section — the scrolled old
@@ -1467,14 +1554,16 @@ export class Body {
 				? Math.max(1, liveTop - 1)
 				: staleFrom < liveTop
 					? liveTop - 1
-					: liveTop + liveLines.length <= H - 4 - queueRows.length - menuRows.length
-						? H - 4 - queueRows.length - menuRows.length
+					: liveTop + liveLines.length <= H - 4 - inputExtra - queueRows.length - menuRows.length
+						? H - 4 - inputExtra - queueRows.length - menuRows.length
 						: liveLines.length > 0
 							? liveTop + liveLines.length - 1
 							: menuRows.length > 0
-								? H - 3 - menuRows.length - queueRows.length
-								: H - 3;
-		const down = H - 2 - lastRow; // the anchor: the input row (H−2)
+								? H - 3 - inputExtra - menuRows.length - queueRows.length
+								: H - 3 - inputExtra;
+		// the anchor: the MARKER'S row inside the composer (N = 1,
+		// markerRow 0 ⇒ the retired H−2)
+		const down = H - 2 - inputExtra + editor.markerRow - lastRow;
 		if (down > 0) out.push(`\x1b[${down}B`);
 		// W23: the CHA to the frame-derived column — the cursor rests AT
 		// the marker from ANY base (the retired afterW CUB clamped at col
@@ -1562,7 +1651,7 @@ export class Dock {
 		}
 		compositorRef.bindApproval(state);
 	}
-	bindInput(state: () => { line: string; cursor: number }, prompt: string): void {
+	bindInput(state: () => InputState, prompt: string): void {
 		if (compositorRef === null) {
 			dockBindings.state = state; // the live buffer — order-agnostic
 			dockBindings.prompt = prompt;
@@ -1605,7 +1694,7 @@ let compositorRef: Body | null = null;
  *  command menu silently never bound in the real CLI (the e2e gates
  *  bind the Body directly and could not see it). */
 const dockBindings: {
-	state: (() => { line: string; cursor: number }) | null;
+	state: (() => InputState) | null;
 	prompt: string;
 	menu: (() => { items: readonly MenuItem[]; selected: number } | null) | null;
 	panel: (() => PanelState | null) | null;
