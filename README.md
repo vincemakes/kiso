@@ -27,9 +27,9 @@ sessions, durable human approvals, crash-consistent tool execution with
 durable receipts and explicit uncertainty resolution — without a 50k-line
 runtime.
 
-**The numbers, on the same model and the same tasks** (the 2026-08-12
+**The numbers, on the same model and the same tasks** (the 2026-08-16
 three-way comparison, cost-weighted input): T3, the cross-file rename,
-needs **2.1× fewer input tokens than pi and 19× fewer than Claude Code**
+needs **2.55× fewer input tokens than pi and 32× fewer than Claude Code**
 with identical task outcomes. The full table and its honest footnotes are
 in the [comparison section](#comparison).
 
@@ -789,36 +789,43 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
 
 The bench, one fixture, one model (deepseek-v4-flash), interleaved
-same-day runs, order shuffled per round — the 2026-08-12 three-way
-comparison (kiso 0.2.0 · pi 0.84.1 · Claude Code 2.1.227 via DeepSeek's
-Anthropic-compatible endpoint). Medians: n=3 per tool on T3, n=2 per
-tool on T5:
+same-day runs, order rotated per round — the 2026-08-16 three-way
+comparison (kiso 0.4.0, the published artifact via npx · pi 0.84.2 ·
+Claude Code 2.1.233 via DeepSeek's Anthropic-compatible endpoint).
+Medians: n=3 per tool on T3, n=2 per tool on T5:
 
 | task | tool | fresh in | cached in | total in | cost-wtd | out | reqs | wall |
 |------|------|--------:|--------:|--------:|--------:|----:|----:|----:|
-| T3 cross-file rename | **kiso** | 868 | 12,160 | **13,155** | **2,211** | 779 | **5.0** | **10s** |
-| | pi | 2,106 | 23,424 | 25,530 | 4,711 | 1,043 | 6.0 | 13s |
-| | claude | 27,175 | 158,080 | 184,999 | 42,957 | 1,445 | 12.0 | 21s |
-| T5 8-turn session | **kiso** | 6,494 | 134,464 | **140,958** | **19,941** | 4,990 | 31.5 | 74s |
-| | pi | 4,582 | 190,784 | 195,366 | 23,660 | 6,492 | 30.5 | 79s |
-| | claude | 29,579 | 908,608 | 938,187 | 120,440 | 10,188 | 30.0 | 114s |
+| T3 cross-file rename | **kiso** | 711 | 11,392 | **12,138** | **1,885** | 750 | **5.0** | **10s** |
+| | pi | 3,494 | 18,176 | 20,247 | 4,800 | 1,184 | 6.0 | 12s |
+| | claude | 38,591 | 222,592 | 261,392 | 61,059 | 2,069 | 15.0 | 30s |
+| T5 8-turn session | **kiso** | 7,844 | 130,048 | **137,892** | **20,849** | 5,386 | 32.5 | **72s** |
+| | pi | 6,190 | 279,424 | 285,614 | 34,133 | 7,282 | 35.0 | 92s |
+| | claude | 303,406 | 1,464,640 | 1,768,046 | 449,870 | 16,530 | 54.0 | 259s |
 
 **Headline.** On **T3**, the hardest small task, **cost-weighted input**
 (fresh + 0.1×cached — DeepSeek's cache-hit price ratio, see
-`bench/README.md`): kiso 2,211 vs pi 4,711 = **2.1×** and vs Claude Code
-42,957 = **19×**, all nine T3 runs verify-pass with identical task
-outcomes. On **T5**, the 8-turn session: kiso 19,941 vs pi 23,660 =
-**1.2×** and vs Claude Code 120,440 = **6.0×** — measured at one session
-length.
+`bench/README.md`): kiso 1,885 vs pi 4,800 = **2.55×** and vs Claude
+Code 61,059 = **32×**, all nine T3 runs verify-pass with identical task
+outcomes. On **T5**, the 8-turn session: kiso 20,849 vs pi 34,133 =
+**1.64×** and vs Claude Code 449,870 = **21.6×** — measured at one
+session length. Honest attribution for T5: kiso's own cost is FLAT
+versus the previous record (20,849 vs 19,941 — inside the historical
+band); the widened ratios there are substantially rival-side movement
+(pi 23,660 → 34,133; Claude Code 120,440 → 449,870 at 30 → 54 turns on
+its newer version). kiso's T3 improvement is its own (2,211 → 1,885,
+the E5 default-composition cut).
 
-**The 2026-08-10 comparison (11× and 66×) came from an earlier protocol
-generation** — its kiso cells were measured on 0.1.41, before the
-0.1.45+ built-in extension layer and the trust surface; today's numbers
-are the current-protocol truth (the same protocol files that produced
-the in-repo v2 A/B runs, whose kiso T3 baseline is ~2,000–2,200 — the
-0.1.48 re-baseline). The 2026-08-12 runs live in `bench/runs/`
-(gitignored — the numbers in this table and in `bench/README.md` are
-the committed record); the old table lives in this README's git history,
+**The previous records live in git history and `bench/README.md`.** The
+2026-08-12 round (kiso 0.2.0 · pi 0.84.1 · CC 2.1.227: T3 2.1×/19×, T5
+1.2×/6.0×) is the prior same-protocol record; the 2026-08-10 comparison
+(11× and 66×) came from an earlier protocol generation — its kiso cells
+were measured on 0.1.41, before the 0.1.45+ built-in extension layer
+and the trust surface (the same protocol files produce kiso T3 cells in
+the ~1,900–2,400 band since the 0.1.48 re-baseline). The 2026-08-16
+runs live in `bench/runs/` (gitignored — the numbers in this table and
+in `bench/README.md` are the committed record); the old tables live in
+this README's git history,
 and the protocol change is recorded in `bench/README.md`.
 
 Honest footnotes (from `bench/README.md`): these tasks are SMALL — Claude
