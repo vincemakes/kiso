@@ -1154,8 +1154,19 @@ export class Body {
 	 *  occupant (the queue is dense, like the menu; each line is its
 	 *  own chip with the □ gutter). */
 	#queueRows(W: number, H: number): string[] {
-		const lines = this.#queueState?.() ?? [];
-		if (lines.length === 0) return [];
+		const queued = this.#queueState?.() ?? [];
+		if (queued.length === 0) return [];
+		// KC1 (adjudication A4): a MULTI-LINE queued message's chip shows
+		// its FIRST line + a ⏎×k suffix — k = the additional lines, counted
+		// after the SAME §3 normalization the editor applies (a CRLF pair
+		// is ONE break), so the chip stays one row per queued turn. The
+		// suffix rides INSIDE the chip as plain text: the chip renderer
+		// escapes control bytes, so an SGR span would be stripped there —
+		// and the cells package stays untouched this round.
+		const lines = queued.map((line) => {
+			const parts = line.replace(/\r\n?/g, "\n").split("\n");
+			return parts.length > 1 ? `${parts[0]} ⏎×${parts.length - 1}` : line;
+		});
 		// A8b: the band CAPS so the content keeps its rows — an unbounded
 		// band (the batch flood pastes the whole queue at once) overflowed
 		// the screen: the content cap H−4−queue went negative, the march
