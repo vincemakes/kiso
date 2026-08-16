@@ -51,11 +51,11 @@ const PANEL_VIEW: PanelView = {
 describe("KC1 — dockState is ADDITIVE (the public tui surface keeps its legacy view)", () => {
 	it("a single-line buffer yields TODAY's exact legacy values, plus the one-row new view", () => {
 		const editor = make();
-		editor.feed(enc("ab你"));
+		editor.feed(enc("ab\u4f60"));
 		const st = editor.dockState();
-		expect(st.line).toBe("ab你"); // legacy — unchanged
+		expect(st.line).toBe("ab\u4f60"); // legacy — unchanged
 		expect(st.cursor).toBe(4); // legacy — display columns, unchanged
-		expect(st.lines).toEqual(["ab你"]); // NEW — one row
+		expect(st.lines).toEqual(["ab\u4f60"]); // NEW — one row
 		expect(st.cursorRow).toBe(0);
 		expect(st.cursorCol).toBe(4);
 	});

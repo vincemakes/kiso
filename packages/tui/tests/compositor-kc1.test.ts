@@ -34,7 +34,7 @@ const PANEL_VIEW: PanelView = {
 };
 
 /** one scenario, run against one bound input provider — the frame bytes */
-function frames(provider: () => InputState, script: (body: Body) => void, opts: { W?: number; H?: number } = {}): string {
+function frames(provider: () => InputState, script: (body: Body) => void, opts: { W?: number | undefined; H?: number | undefined } = {}): string {
 	const W = opts.W ?? 80;
 	const H = opts.H ?? 24;
 	const writes: string[] = [];
@@ -90,7 +90,7 @@ describe("KC1 T-C1 — N=1 byte identity (the anchor: the legacy row and the com
 		for (const [label, line, cursor] of [
 			["ASCII, cursor mid-line", "abc", 1],
 			["ASCII, cursor at the end", "abc", 3],
-			["CJK (wide cells)", "你好", 2],
+			["CJK (wide cells)", "\u4f60\u597d", 2],
 			["an empty line", "", 0],
 		] as const) {
 			it(`${s.label} — ${label}`, () => {
@@ -103,7 +103,7 @@ describe("KC1 T-C1 — N=1 byte identity (the anchor: the legacy row and the com
 
 	it("the REAL editor's additive dockState renders the legacy bytes exactly (a single-line buffer)", () => {
 		const editor = new Editor(() => {});
-		editor.feed(enc("hello中"));
+		editor.feed(enc("hello\u4e2d"));
 		const st = editor.dockState();
 		expect(st.lines).toEqual([st.line]); // the one-row view IS the legacy line
 		const script = (b: Body): void => b.textAppend("streaming");
