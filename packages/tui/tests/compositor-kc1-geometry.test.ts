@@ -205,6 +205,21 @@ describe("KC1 T-C5 — the tiny terminal: H=7 with an 8-line buffer", () => {
 	});
 });
 
+describe("KC1 A4 — a queued MULTI-LINE message's chip", () => {
+	it("renders its FIRST line plus a ⏎×k suffix, k = the additional lines after the §3 normalization", () => {
+		const { body, writes, tick } = makeBody();
+		body.bindQueue(() => ["queued one\nqueued two\nqueued three", "single line", "crlf one\r\ncrlf two"]);
+		body.enter();
+		tick();
+		const bytes = writes.join("");
+		expect(bytes).toContain("queued one ⏎×2"); // the first line + the count of the rest
+		expect(bytes).not.toContain("queued two"); // the chip stays ONE row per queued turn
+		expect(bytes).toContain("single line"); // a single-line chip is UNCHANGED
+		expect(bytes).not.toContain("single line ⏎");
+		expect(bytes).toContain("crlf one ⏎×1"); // a CRLF pair counts ONCE (the same normalization)
+	});
+});
+
 beforeEach(() => {
 	vi.useFakeTimers();
 	Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
