@@ -95,12 +95,12 @@ describe("TUI v2e (real PTY, 24×80) — the #13 scrollback gate", () => {
 			),
 			"utf8",
 		);
-		const batch = Array.from({ length: 25 }, (_, i) => `go ${i + 1}`).join("\n") + "\n";
+		const batch = Array.from({ length: 25 }, (_, i) => `go ${i + 1}`).join("\r") + "\r";
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", batch], // the brick — the startup paint renders in BOTH modes (the 0×0-winsize race can strand the dock's "› ", never the brick)
-				["flood 25", "exit\n"],
+				["flood 25", "exit\r"],
 			],
 		);
 		// 1. THE SCROLL MECHANISM'S MACHINE EVIDENCE: every frozen line is

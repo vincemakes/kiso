@@ -147,8 +147,8 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			env,
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
-				["› ", "/status\n"],
-				["ctx ~", "go\n"],
+				["› ", "/status\r"],
+				["ctx ~", "go\r"],
 				// The go turn's OWN shell cell ("sleep 4") marks the run
 				// mid-flight — the recovery's leftover "working" status must
 				// never trigger this feed (that race submitted the /compact
@@ -156,14 +156,14 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 				// REFUSED, never raced against the running turn. (The
 				// refusal notice sits in the buffer; the next needle waits
 				// for the run to end.)
-				["sleep 4", "/compact\n"],
+				["sleep 4", "/compact\r"],
 				// The go turn's RECAP ("1 tool") marks its END — a /compact
 				// NOW runs for real (the summary call consumes its own
 				// script turn). The "you> " prompt alone is ambiguous (the
 				// /status's own prompt precedes the go turn).
-				["1 tool", "/compact\n"],
-				["› ", "/status\n"],
-				["ctx ~", "exit\n"],
+				["1 tool", "/compact\r"],
+				["› ", "/status\r"],
+				["ctx ~", "exit\r"],
 			],
 			dir,
 			"kc",
@@ -216,14 +216,14 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			env,
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
-				["› ", "/compact\n"],
+				["› ", "/compact\r"],
 				// The FIRST paint of the indeterminate row marks the call
 				// live — esc lands mid-flight (the call outlives the feed by
 				// ~1.4s, so the cancel is never a race against the settle).
 				["▘ compacting", "\x1b"],
 				// The honest cancel notice — nothing was persisted (ADR-0044).
-				["cancelled — nothing was persisted", "/status\n"],
-				["ctx ~", "exit\n"],
+				["cancelled — nothing was persisted", "/status\r"],
+				["ctx ~", "exit\r"],
 			],
 			dir,
 			"kc",

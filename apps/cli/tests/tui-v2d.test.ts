@@ -190,7 +190,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"],
+				["▌ ", "go\r"],
 				// The asky extension asks for every tool — answer the two
 				// panels that actually mount. list_dir NEVER panels: the
 				// default tier's read-only allow beats the extension's ask
@@ -203,9 +203,9 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 				// rule line's tool name sits inside its own bold span, and
 				// the no-queue run paints no bare-name row to race the
 				// feeds. "y" + enter send the verdict.
-				["2 Yes, don't ask again for shell", "y\n"],
-				["2 Yes, don't ask again for asky_read", "y\n"],
-				["the tour is done", "exit\n"],
+				["2 Yes, don't ask again for shell", "y\r"],
+				["2 Yes, don't ask again for asky_read", "y\r"],
+				["the tour is done", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
@@ -259,9 +259,9 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"],
+				["▌ ", "go\r"],
 				// the notice lands at the run's end — exit at idle
-				["answer truncated", "exit\n"],
+				["answer truncated", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);

@@ -128,17 +128,17 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"], // the brick — the startup paint is race-proof
+				["▌ ", "go\r"], // the brick — the startup paint is race-proof
 				// the needles ride the POST-RESET text (the glyphs are SGR-
 				// wrapped in the raw stream — "▞\x1b[0m plan ready" never
 				// matches "▞ plan ready"; the post-reset run is contiguous)
 				["read  a.ts (3 lines", ""], // the read ran under plan (A4: the target rides the settled row's head)
 				["(plan mode: read-only", ""], // the pinned deny row's reason (A5: the · by <decider> tail rides INSIDE the parens — no trailing paren in the needle)
 				["the survey is done.", ""], // the model's answer after the denial
-				["plan ready", "/mode default\n"], // the way-forward row → the only exit
-				["▸ default · /mode to switch", "go\n"], // turn 2 executes normally
-				["needs approval", "y\n"], // the ask RESTORED under default — the rule line's dim run
-				["shell echo hi (exit 0", "exit\n"], // the shell ran (A4: the target rides the settled row's head)
+				["plan ready", "/mode default\r"], // the way-forward row → the only exit
+				["▸ default · /mode to switch", "go\r"], // turn 2 executes normally
+				["needs approval", "y\r"], // the ask RESTORED under default — the rule line's dim run
+				["shell echo hi (exit 0", "exit\r"], // the shell ran (A4: the target rides the settled row's head)
 			],
 			workdir,
 		);

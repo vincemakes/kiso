@@ -143,8 +143,8 @@ describe("W5 (real PTY) — the opening-screen resume list", () => {
 		const hex = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"],
-				["resume run done", "exit\n"],
+				["▌ ", "go\r"],
+				["resume run done", "exit\r"],
 			],
 			workdir,
 			{ session: "resumeCur" },
@@ -197,8 +197,8 @@ describe("W5 (real PTY) — the opening-screen resume list", () => {
 		const hex = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"],
-				["narrow run done", "exit\n"],
+				["▌ ", "go\r"],
+				["narrow run done", "exit\r"],
 			],
 			workdir,
 			{ session: "resumeNarrow", rows: 13 },

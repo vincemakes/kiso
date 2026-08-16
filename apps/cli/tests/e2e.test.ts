@@ -127,9 +127,9 @@ def read_until(needle, timeout):
 read_until(b"approve web_search", 15)   # the recovery question is up
 os.write(fd, b"\\x03")                   # Ctrl+C: cancel the question, abort the run
 time.sleep(0.8)
-os.write(fd, b"hello\\n")                # the NEXT user input
+os.write(fd, b"hello\\r")                # the NEXT user input
 processed = read_until(b"faux model", 15)  # it became a turn and was answered
-os.write(fd, b"exit\\n")
+os.write(fd, b"exit\\r")
 time.sleep(1)
 try:
     os.kill(pid, 15)

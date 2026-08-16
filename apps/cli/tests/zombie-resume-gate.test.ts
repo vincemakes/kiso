@@ -90,11 +90,11 @@ def driver(cli, home, script_path, session_id, workdir):
     try:
         # the project-trust gate (if the env shape fires it) — answer y
         if read_until(b"trust this project's .kiso?", 8):
-            send(b"y\\n")
+            send(b"y\\r")
         # the line-mode brick — feed the task (the FIRST session write: the
         # lazy lock acquisition happens here)
         read_until("\\u258c ".encode(), 30)
-        send(b"go\\n")
+        send(b"go\\r")
         # the trajectory: answer the shell approval if it renders; watch for
         # the pre-patch refusal (which exits the CLI); the post-run brick
         # signals the run ended (the trajectory's terminal).
@@ -116,7 +116,7 @@ def driver(cli, home, script_path, session_id, workdir):
                 break
             if b"approve shell" in out and phase == "run":
                 out = b""
-                send(b"y\\n")
+                send(b"y\\r")
                 phase = "approved"
             if phase == "approved" and "\\u258c ".encode() in out:
                 break  # the run ended — the brick is back

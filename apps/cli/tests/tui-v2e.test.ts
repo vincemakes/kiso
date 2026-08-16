@@ -101,9 +101,9 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"],
-				["needs approval", "y\n"], // the rule line's dim run — one contiguous RAW span (the tool name's bold span sits BEFORE the reset code, so "<tool> needs approval" never matches the byte stream) — "y" + enter send the verdict
-				["the tour is done", "exit\n"],
+				["▌ ", "go\r"],
+				["needs approval", "y\r"], // the rule line's dim run — one contiguous RAW span (the tool name's bold span sits BEFORE the reset code, so "<tool> needs approval" never matches the byte stream) — "y" + enter send the verdict
+				["the tour is done", "exit\r"],
 			],
 			workdir,
 		);

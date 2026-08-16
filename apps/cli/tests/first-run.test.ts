@@ -117,7 +117,7 @@ describe("R-D 0.1.45-B — the first-run scaffold (real PTY, sentinel file)", ()
 		const first = ptyRun(
 			env,
 			cwd,
-			[["trust this project's .kiso?", "y\n"], ["[4 extensions: built-in: mcp, skills, subagent · project: lint-rules]", "exit\n"]],
+			[["trust this project's .kiso?", "y\r"], ["[4 extensions: built-in: mcp, skills, subagent · project: lint-rules]", "exit\r"]],
 			dirs.home,
 			0,
 		);
@@ -138,7 +138,7 @@ describe("R-D 0.1.45-B — the first-run scaffold (real PTY, sentinel file)", ()
 		expect(trust).toContain('"decision":"granted"');
 
 		// ── run 2: the sentinel is present — silent, no re-ask, no re-scaffold ──
-		const second = ptyRun(env, cwd, [["▌ ", "exit\n"]], dirs.home, 0);
+		const second = ptyRun(env, cwd, [["▌ ", "exit\r"]], dirs.home, 0);
 		expect(second.transcript).not.toContain("trust this project's");
 		expect(second.transcript).not.toContain("first run — scaffolded");
 		// the home listing at run 2's prompt is EXACTLY the post-run-1 state —

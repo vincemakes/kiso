@@ -160,8 +160,8 @@ import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([
-		["▌ ", "go\n"], // the submit
-		["needs approval", "y\n"], // the rule line's dim run — the default tier ASKS the shell, answer the panel
+		["▌ ", "go\r"], // the submit
+		["needs approval", "y\r"], // the rule line's dim run — the default tier ASKS the shell, answer the panel
 	])}, 30, ${cols}, ${JSON.stringify(postResizes)})
 `;
 	let out: string;

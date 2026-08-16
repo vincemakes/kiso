@@ -100,25 +100,25 @@ def driver(cli, home, script_path, session_id, workdir, mode):
         # one done → noise reads → the slow shell. The two task_set
         # rounds ask; the reads are auto-allowed; the shell asks.
         read_until("▌ ".encode(), 20)
-        os.write(fd, b"go\\n")
+        os.write(fd, b"go\\r")
         read_until(b"approve task_set", 30)  # the dock-less fallback question (the 0-row pty — no panel)
-        os.write(fd, b"y\\n")
+        os.write(fd, b"y\\r")
         read_until("▌ ".encode(), 20)
-        os.write(fd, b"c1\\n")
+        os.write(fd, b"c1\\r")
         read_until(b"approve task_set", 30)  # the dock-less fallback question (the 0-row pty — no panel)
-        os.write(fd, b"y\\n")
+        os.write(fd, b"y\\r")
         read_until("▌ ".encode(), 20)
-        os.write(fd, b"c2\\n")
+        os.write(fd, b"c2\\r")
         read_until("▌ ".encode(), 20)
-        os.write(fd, b"c3\\n")
+        os.write(fd, b"c3\\r")
         read_until("▌ ".encode(), 20)
-        os.write(fd, b"c4\\n")
+        os.write(fd, b"c4\\r")
         read_until("▌ ".encode(), 20)
-        os.write(fd, b"c5\\n")
+        os.write(fd, b"c5\\r")
         read_until("▌ ".encode(), 20)
-        os.write(fd, b"c6\\n")
+        os.write(fd, b"c6\\r")
         read_until(b"approve shell", 30)  # the dock-less fallback question (the 0-row pty — no panel)
-        os.write(fd, b"y\\n")
+        os.write(fd, b"y\\r")
         # The kill predicate: the SHELL's OWN started event on disk (the
         # two task_set results and the reads are durable by then). A
         # whole-file substring check is NOT enough — the shell's
@@ -162,7 +162,7 @@ def driver(cli, home, script_path, session_id, workdir, mode):
         # denial, the scripted trajectory continues to its terminal, the
         # process exits.
         read_until(b"did it apply?", 30)  # the dock-less fallback question (the 0-row pty — no panel)
-        os.write(fd, b"y\\n")
+        os.write(fd, b"y\\r")
         wait_exit(60)
         try:
             os.kill(pid, signal.SIGTERM)
@@ -175,9 +175,9 @@ def driver(cli, home, script_path, session_id, workdir, mode):
     else:
         # A fresh chat REPL on the completed session: /compact then exit.
         read_until("▌ ".encode(), 30)
-        os.write(fd, b"/compact\\n")
+        os.write(fd, b"/compact\\r")
         read_until(b"[/compact]", 40)
-        os.write(fd, b"exit\\n")
+        os.write(fd, b"exit\\r")
         wait_exit(30)
         try:
             os.kill(pid, signal.SIGTERM)

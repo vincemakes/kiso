@@ -86,7 +86,7 @@ def driver(cli, env, feeds, timeout, sizes):
             resizes.append([len(full), sizes[fired][0], sizes[fired][1]])
             fired += 1
         if seq_at is not None and not exit_sent and fired >= len(sizes) and time.time() - seq_at >= 0.35 * (len(sizes) + 1):
-            os.write(fd, b"exit\\n")
+            os.write(fd, b"exit\\r")
             exit_sent = True
     try:
         os.kill(pid, signal.SIGTERM)
@@ -175,7 +175,7 @@ describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulato
 			"utf8",
 		);
 		const { markers, full } = reflowRun({ ...env, KISO_FAUX_SCRIPT: script }, [
-			["› ", "look around\n"], // the turn itself — the driver sends exit after the sequence
+			["› ", "look around\r"], // the turn itself — the driver sends exit after the sequence
 		]);
 		// The sequence really ran (5 winches) and the turn completed.
 		expect(markers.resizes).toHaveLength(5);

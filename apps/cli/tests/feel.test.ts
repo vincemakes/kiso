@@ -117,10 +117,10 @@ describe("A1: the menu Enter executes the EXACT selection directly", () => {
 				// ONE feed: the full "/compact" + one Enter. The recovery's
 				// prompt is the trigger — the line is queued and dispatched
 				// after it, exactly one Enter total.
-				["▌ ", "/compact\n"],
+				["▌ ", "/compact\r"],
 				// W18 re-baseline: the settled notice is the RECAP — the ▞
 				// glyph is unique to it (the live row uses ▘).
-				["[/compact] ▞ compacted", "exit\n"],
+				["[/compact] ▞ compacted", "exit\r"],
 			],
 			dir,
 			"f1",
@@ -156,7 +156,7 @@ describe("A2: ↑↓ recall the session history", () => {
 				// one, so a "hello" needle would fire at the TYPED row again;
 				// its bare \r would submit an EMPTY line, which exits the REPL.
 				["\x1b[2m▸ default", "\r"], // the recalled line resubmits as a real turn
-				["second answer", "exit\n"],
+				["second answer", "exit\r"],
 			],
 			dir,
 			"h2",
@@ -204,8 +204,8 @@ describe("C8: /compact auto-trigger (opt-in via KISO_AUTO_COMPACT)", () => {
 			[
 				// ONE turn ("go") — the auto-trigger then fires WITHOUT any
 				// /compact keystroke; the recap is the auto notice.
-				["▌ ", "go\n"],
-				["[/compact] ▞ compacted", "exit\n"],
+				["▌ ", "go\r"],
+				["[/compact] ▞ compacted", "exit\r"],
 			],
 			dir,
 			"c8",

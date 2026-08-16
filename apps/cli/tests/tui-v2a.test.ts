@@ -81,11 +81,11 @@ describe("TUI v2a (real PTY)", () => {
 	it("no double echo — the typed input appears exactly once; status is [turn N · faux]; the rhythm gap separates done from the prompt", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
-			["▌ ", "probe-one\n"],
+			["▌ ", "probe-one\r"],
 			// The recap line (▞) only exists AFTER the turn completes, so
 			// "exit" cannot collide with the first prompt (a "you> " needle
 			// would close the input before the turn ever runs).
-			["▞", "exit\n"],
+			["▞", "exit\r"],
 		]);
 		// (1) W22: the content appears TWICE — the editor's self-render
 		// echo AND the body's `you> probe-one` record (the v2a filter

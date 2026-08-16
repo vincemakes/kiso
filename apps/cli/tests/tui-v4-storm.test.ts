@@ -87,7 +87,7 @@ def driver(cli, env, feeds, timeout, cols=80, sizes=None):
             os.kill(pid, signal.SIGWINCH)
             fired += 1
         if storm_at is not None and not exit_sent and time.time() - storm_at >= (0.5 * (len(sizes) + 1) if len(sizes) else 1.0):
-            os.write(fd, b"exit\\n")
+            os.write(fd, b"exit\\r")
             exit_sent = True
     try:
         os.kill(pid, signal.SIGTERM)
@@ -152,7 +152,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		const out = stormRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["› ", "look around\n"], // #16d + W6: the box's light prompt alone (no "you> ")
+				["› ", "look around\r"], // #16d + W6: the box's light prompt alone (no "you> ")
 			],
 		);
 		// the process SURVIVED the whole storm — the driver's leading marker
@@ -262,13 +262,13 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// 80 cols: the idle status (~50 cells) + the hint (23) fit — the
 		// hint rides the status row, dim, right-aligned (the pad fills
 		// between them; the dim span closes AFTER the hint).
-		const wide = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["› ", "look around\n"]], 30);
+		const wide = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["› ", "look around\r"]], 30);
 		expect(wide).toContain("/ commands · ↑ history");
 		// 50 cols: status + hint = 73 > 50 → the HINT is cut — the status
 		// itself is never truncated for it. The idle row's dim span ends
 		// IMMEDIATELY after the status (the hint, had it fit, would sit
 		// between the status and the reset).
-		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["› ", "look around\n"]], 30, 50, []);
+		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["› ", "look around\r"]], 30, 50, []);
 		// v6 invariant ①: the status itself must fit W — at 50 cols the
 		// 51-cell status CUTS at W−1 with a … (the old code soft-wrapped
 		// it; the crash-on-violation makes the cut structural).

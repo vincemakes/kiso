@@ -78,9 +78,9 @@ def driver(cli, home, script_path, ext_dir, marker_path, session_id, workdir, re
                     return
     if not resume:
         read_until("▌ ".encode(), 20)
-        os.write(fd, b"go\\n")
+        os.write(fd, b"go\\r")
         read_until(b"approve write_file", 30)
-        os.write(fd, b"y\\n")
+        os.write(fd, b"y\\r")
         read_until(b"[Permission denied]", 30)
         read_until(b"approve write_file", 30)
         time.sleep(0.5)
@@ -91,7 +91,7 @@ def driver(cli, home, script_path, ext_dir, marker_path, session_id, workdir, re
             status = 0
     else:
         read_until(b"approve write_file", 25)
-        os.write(fd, b"y\\n")
+        os.write(fd, b"y\\r")
         wait_exit(40)
         try:
             os.kill(pid, signal.SIGTERM)

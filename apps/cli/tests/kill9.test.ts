@@ -96,14 +96,14 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         # Live chat: send one user turn, then answer the two approvals,
         # then wait for the kill predicate.
         read_until("▌ ".encode(), 20)
-        os.write(fd, b"go\\n")
+        os.write(fd, b"go\\r")
         # The kill9 PTY carries NO window size (0 rows) — the dock never
         # enters and the W21 panel can't render; the dock-less fallback's
         # question IS the surface here: "approve <tool>? (y/n)".
         read_until(b"approve edit_file", 30)
-        os.write(fd, b"y\\n")
+        os.write(fd, b"y\\r")
         read_until(b"approve shell", 30)
-        os.write(fd, b"y\\n")
+        os.write(fd, b"y\\r")
         # The kill predicate: the JSONL holds TWO tool_execution_started.
         deadline = time.time() + 20
         while time.time() < deadline:
@@ -152,10 +152,10 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         # every approval as "approve <tool>? (y/n)" (the "approve " is
         # the anchor). "y" maps to allow/rerun — the old "r" key is gone.
         read_until(b"did it apply?", 25)
-        os.write(fd, resume_keys[0].encode() + b"\\n")
+        os.write(fd, resume_keys[0].encode() + b"\\r")
         for _ in range(4):
             if read_until(b"approve ", 15):
-                os.write(fd, b"y\\n")
+                os.write(fd, b"y\\r")
             else:
                 break
         wait_exit(40)
@@ -226,10 +226,10 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
                     return
     if resume_keys is None:
         read_until("▌ ".encode(), 20)
-        os.write(fd, b"go\\n")
+        os.write(fd, b"go\\r")
         for _ in range(3):
             read_until(b"approve shell", 30)   # the dock-less fallback question (the 0-row pty — no panel)
-            os.write(fd, b"y\\n")
+            os.write(fd, b"y\\r")
         # The kill predicate: THREE started events on disk (the parallel
         # turn launched all three concurrently).
         deadline = time.time() + 20
@@ -267,10 +267,10 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         # "did it apply?" — the 0-row pty keeps the panel out).
         for key in resume_keys:
             read_until(b"did it apply?", 30)
-            os.write(fd, key.encode() + b"\\n")
+            os.write(fd, key.encode() + b"\\r")
         for _ in range(4):
             if read_until(b"approve ", 15):
-                os.write(fd, b"y\\n")
+                os.write(fd, b"y\\r")
             else:
                 break
         wait_exit(60)

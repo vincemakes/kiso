@@ -85,7 +85,7 @@ describe("TUI v6 — the live-region cap (real PTY, the VT emulator)", () => {
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([["▌ ", "go\n"]])}, 30)
+driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([["▌ ", "go\r"]])}, 30)
 `;
 		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
 		const emu = new VtScreen(24, 80);

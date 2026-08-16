@@ -36,7 +36,7 @@ describe("CA-4: the esc-chain byte consumption", () => {
 			escaped += 1;
 		});
 		editor.feed(enc("hello"));
-		editor.feed(enc("\n")); // submit — the history records "hello"
+		editor.feed(enc("\r")); // submit (CR — a real terminal's Enter) — the history records "hello"
 		editor.feed(enc("\x1b[A")); // ↑ from the empty line — the browse on
 		expect(editor.line()).toBe("hello"); // the browse shows the history
 		editor.feed(enc("\x1b")); // one esc exits the browse

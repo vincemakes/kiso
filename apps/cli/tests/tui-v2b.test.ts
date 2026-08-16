@@ -64,7 +64,7 @@ def driver(cli, env, feeds, timeout, winch=None, winch_at=b"", exit_after_winch=
             winch_sent = True
             winch_time = time.time()
         if winch_sent and not exit_sent and exit_after_winch is not None and time.time() - winch_time >= exit_after_winch:
-            os.write(fd, b"exit\\n")
+            os.write(fd, b"exit\\r")
             exit_sent = True
     try:
         os.kill(pid, signal.SIGTERM)
@@ -122,8 +122,8 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "look around\n"],
-				["▸ default · /mode to switch · faux", "exit\n"], // v3 idle state marks the turn's end
+				["▌ ", "look around\r"],
+				["▸ default · /mode to switch · faux", "exit\r"], // v3 idle state marks the turn's end
 			],
 		);
 		// #13 (P1), v2d-B: NO DECSTBM — the body scrolls with plain LF so
@@ -197,13 +197,13 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"],
-				["needs approval", "y\n"], // the rule line's dim run — one contiguous RAW span
+				["▌ ", "go\r"],
+				["needs approval", "y\r"], // the rule line's dim run — one contiguous RAW span
 				// The run continues after the approval — "turn 2 · faux" only
 				// appears at the turn's terminal event, AFTER "the tour is
 				// done". "you> " would match the FIRST prompt and close the
 				// readline while the go-turn is still queued.
-				["▸ default · /mode to switch · faux", "exit\n"], // v3 idle state marks the turn's end
+				["▸ default · /mode to switch · faux", "exit\r"], // v3 idle state marks the turn's end
 			],
 		);
 		const clean = stripANSI(out);
@@ -246,10 +246,10 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"],
+				["▌ ", "go\r"],
 				// "tour complete" appears mid-run — the /think line queues on
 				// the chain and prints AFTER the turn completes.
-				["tour complete", "/think\n"],
+				["tour complete", "/think\r"],
 				// Exit only AFTER the /think output has rendered — the fold's
 				// "· /think)" suffix ALSO appears mid-run (the v6 live fold:
 				// the thinking cell renders its fold live, and the count
@@ -260,7 +260,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 				// is the safe tail: the /think segment is done when it is
 				// visible, and the LIVE fold (with the suffix) is already
 				// in the stream, so the fold assert holds.
-				["SECRETTAIL", "exit\n"],
+				["SECRETTAIL", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
@@ -298,7 +298,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		);
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
-			[["▌ ", "look around\n"]],
+			[["▌ ", "look around\r"]],
 			// The winch fires when the turn's text reaches the driver — the
 			// CLI is back at the prompt by then, so the rebuild lands on a
 			// live dock; "exit" is typed 0.5s AFTER the winch (a feed would

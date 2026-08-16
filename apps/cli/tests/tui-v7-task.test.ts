@@ -291,9 +291,9 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		const { pre, post } = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"], // the brick — the startup prompt
+				["▌ ", "go\r"], // the brick — the startup prompt
 				["the task list is final.", ""], // the turn's text — the settle follows
-				[" · 10 tools", "exit\n"], // the recap — then the prompt quits
+				[" · 10 tools", "exit\r"], // the recap — then the prompt quits
 			],
 			workdir,
 		);

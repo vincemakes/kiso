@@ -87,8 +87,8 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			// row); the submit waits for the row showing the FULLWIDTH pair.
 			["▌ ", "Ａ"],
 			["Ａ", "Ａ"], // the row now shows the first Ａ — type the second
-			["ＡＡ", "\n"], // W6: the row shows the 4-cell pair whole inside the box (the display-width reflow) — submit
-			["▸ default · /mode to switch", "exit\n"],
+			["ＡＡ", "\r"], // W6: the row shows the 4-cell pair whole inside the box (the display-width reflow) — submit
+			["▸ default · /mode to switch", "exit\r"],
 		]);
 		// v6: the cursor derives from the frame's marker — the marker sits
 		// at leadW + the DISPLAY cursor (2 + 4 = 6 for ＡＡ — the old CUP
@@ -109,8 +109,8 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			// inserts + the submit lands in one frame, so the typed line
 			// needs its own needle to be observed before the Enter.
 			["▌ ", "look around"],
-			["look around", "\n"],
-			["▸ default · /mode to switch", "exit\n"], // v3 idle state marks the turn's end
+			["look around", "\r"],
+			["▸ default · /mode to switch", "exit\r"], // v3 idle state marks the turn's end
 		]);
 		// The box's input row renders the light › prompt + the line (the
 		// wall's dim SPLITS the row from the text — that raw shape is the
@@ -145,8 +145,8 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			[
 				// Both lines land at the first prompt — the second submits
 				// while the first turn is queued/running.
-				["▌ ", "one\ntwo\n"],
-				["turn two done", "exit\n"],
+				["▌ ", "one\rtwo\r"],
+				["turn two done", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
@@ -190,13 +190,13 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"],
+				["▌ ", "go\r"],
 				["needs approval", "\x1b"], // the rule line's dim run — Esc at the panel = the cancel
 				// The cancel is a CONSERVATIVE DENIAL (a RESULT, not an
 				// abort): the run continues and the script's turn 2 ("the
 				// tour is done") completes the SAME run.
 				["[approval cancelled — treated as a denial]", ""],
-				["the tour is done", "exit\n"],
+				["the tour is done", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
@@ -225,7 +225,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				// "one" submits; "two" + "three" queue while turn one runs.
-				["▌ ", "one\ntwo\nthree\n"],
+				["▌ ", "one\rtwo\rthree\r"],
 				// The three-chip needle — ↑ pops the LAST queued line back
 				// into the editor (the chip leaves the queue).
 				["\x1b[2m□\x1b[0m \x1b[7m three", "\x1b[A"],
@@ -233,8 +233,8 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 				// ("two") and ends the pop-mode.
 				["› three", "\x1b"],
 				// The esc-popped line — submit it: it runs as a fresh turn.
-				["› two", "\n"],
-				["▸ default · /mode to switch", "exit\n"],
+				["› two", "\r"],
+				["▸ default · /mode to switch", "exit\r"],
 			],
 		);
 		// The chips are the SAME UserMessage chip as the body record — the

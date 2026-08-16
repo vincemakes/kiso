@@ -126,8 +126,8 @@ describe("E3: the project trust gate (project-trust)", () => {
 		const { env, dirs } = isolatedEnv();
 		const cwd = projectWorkdir({ "extensions/lint-rules.mjs": lintExt() });
 		const out = ptyRun(env, cwd, [
-			["trust this project's .kiso?", "y\n"],
-			["▌ ", "\n"],
+			["trust this project's .kiso?", "y\r"],
+			["▌ ", "\r"],
 		]);
 		expect(out).toContain("[project .kiso]");
 		expect(out).toMatch(/extensions\/lint-rules\.mjs\s+\([0-9a-f]{6}\)/); // file name + digest short prefix
@@ -146,8 +146,8 @@ describe("E3: the project trust gate (project-trust)", () => {
 		const { env, dirs } = isolatedEnv();
 		const cwd = projectWorkdir({ "extensions/lint-rules.mjs": lintExt() });
 		const out = ptyRun(env, cwd, [
-			["trust this project's .kiso?", "n\n"],
-			["▌ ", "\n"],
+			["trust this project's .kiso?", "n\r"],
+			["▌ ", "\r"],
 		]);
 		expect(out).toContain("trust this project's .kiso?");
 		// R-D 0.1.45: ONLY the built-in column (the exact 4-only form proves
@@ -162,10 +162,10 @@ describe("E3: the project trust gate (project-trust)", () => {
 		const { env, dirs } = isolatedEnv();
 		const cwd = projectWorkdir({ "extensions/lint-rules.mjs": lintExt() });
 		ptyRun(env, cwd, [
-			["trust this project's .kiso?", "y\n"],
-			["▌ ", "\n"],
+			["trust this project's .kiso?", "y\r"],
+			["▌ ", "\r"],
 		]);
-		const out = ptyRun(env, cwd, [["▌ ", "\n"]]); // no trust answer available
+		const out = ptyRun(env, cwd, [["▌ ", "\r"]]); // no trust answer available
 		expect(out).not.toContain("trust this project's .kiso?");
 		expect(out).toContain("[4 extensions: built-in: mcp, skills, subagent · project: lint-rules]");
 		expect(trustLines(dirs.home)).toHaveLength(1); // no new record
@@ -175,13 +175,13 @@ describe("E3: the project trust gate (project-trust)", () => {
 		const { env, dirs } = isolatedEnv();
 		const cwd = projectWorkdir({ "extensions/lint-rules.mjs": lintExt() });
 		ptyRun(env, cwd, [
-			["trust this project's .kiso?", "y\n"],
-			["▌ ", "\n"],
+			["trust this project's .kiso?", "y\r"],
+			["▌ ", "\r"],
 		]);
 		writeFileSync(join(cwd, ".kiso", "extensions", "lint-rules.mjs"), `// v2 — the rules changed\n${lintExt()}`, "utf8");
 		const out = ptyRun(env, cwd, [
-			["trust this project's .kiso?", "y\n"],
-			["▌ ", "\n"],
+			["trust this project's .kiso?", "y\r"],
+			["▌ ", "\r"],
 		]);
 		expect(out).toContain("trust this project's .kiso?"); // re-asked — the old grant died with the files
 		expect(out).toContain("[4 extensions: built-in: mcp, skills, subagent · project: lint-rules]");
@@ -222,10 +222,10 @@ describe("E3: the project trust gate (project-trust)", () => {
 		const { env, dirs } = isolatedEnv();
 		const cwd = projectWorkdir({ "extensions/lint-rules.mjs": lintExt() });
 		ptyRun(env, cwd, [
-			["trust this project's .kiso?", "n\n"],
-			["▌ ", "\n"],
+			["trust this project's .kiso?", "n\r"],
+			["▌ ", "\r"],
 		]);
-		const out = ptyRun(env, cwd, [["▌ ", "\n"]]);
+		const out = ptyRun(env, cwd, [["▌ ", "\r"]]);
 		expect(out).not.toContain("trust this project's .kiso?"); // refused is a record — never re-asked
 		expect(out).not.toContain("[1 extension");
 		expect(trustLines(dirs.home)).toHaveLength(1);
@@ -240,7 +240,7 @@ describe("E3: the project trust gate (project-trust)", () => {
 		writeFileSync(join(kiso, "mcp.json"), JSON.stringify({ mcpServers: { fs: { command: "/bin/echo", args: ["a"] } } }), "utf8");
 		env.KISO_MCP_CONFIG = join(kiso, "mcp.json"); // user config = the same file — the self-mirror the real user hit
 		const cwd = dirs.home; // the KISO_HOME parent — the user's home-directory scenario
-		const out = ptyRun(env, cwd, [["▌ ", "\n"]]);
+		const out = ptyRun(env, cwd, [["▌ ", "\r"]]);
 		expect(out).not.toContain("trust this project's"); // never asks to trust its own configuration
 		expect(out).not.toContain("exists in both"); // no self-mirror mcp collision
 		expect(out).toContain("▌ "); // normal REPL entry (TUI v4 #16d: the brick alone)

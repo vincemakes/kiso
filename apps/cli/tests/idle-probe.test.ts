@@ -51,7 +51,7 @@ def driver(cli, env, workdir, idle_secs, done_needle):
                     return False
         return False
     read_until("› ".encode(), 20)
-    os.write(fd, b"go\\n")
+    os.write(fd, b"go\\r")
     read_until(done_needle.encode(), 30)
     # The idle window: nothing fed, everything collected.
     end = time.time() + idle_secs
@@ -65,7 +65,7 @@ def driver(cli, env, workdir, idle_secs, done_needle):
                 full += d
             except OSError:
                 break
-    os.write(fd, b"exit\\n")
+    os.write(fd, b"exit\\r")
     time.sleep(0.5)
     try:
         os.kill(pid, signal.SIGTERM)

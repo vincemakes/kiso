@@ -114,7 +114,7 @@ def driver(cli, home, script_path, workdir, args, sessions_mode):
             # holds the TypeError; nothing to answer.
             sys.stdout.write(full.decode(errors="replace"))
             sys.exit(3)
-        send(b"y\\n")
+        send(b"y\\r")
         crashed = False
         if sessions_mode:
             # the listing is dock-less and never writes — after the gate's
@@ -139,7 +139,7 @@ def driver(cli, home, script_path, workdir, args, sessions_mode):
             if not read_until("\\u203a ".encode(), 8):
                 sys.stdout.write(full.decode(errors="replace"))
                 sys.exit(4)
-            send(b"go\\n")
+            send(b"go\\r")
             deadline = time.time() + 60
             approved = False
             eot_sent = False
@@ -157,7 +157,7 @@ def driver(cli, home, script_path, workdir, args, sessions_mode):
                     crashed = True
                     break
                 if not approved and b"needs approval" in full:
-                    send(b"1\\n")
+                    send(b"1\\r")
                     approved = True
                     continue
                 # the trajectory's marker is the durable run-end signal: the

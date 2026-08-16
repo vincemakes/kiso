@@ -151,20 +151,20 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"],
+				["▌ ", "go\r"],
 				["[Permission denied]", ""], // the write is denied, not asked
 				["plan mode: read-only", ""], // the guiding reason reaches the model
 				["plan turn done", ""],
 				["▸ plan (read-only) · /mode to switch", ""], // W19: the idle row names the read-only posture (the v3 idle state)
-				["▌ ", "/mode default\n"],
+				["▌ ", "/mode default\r"],
 				["mode → default", ""], // the notice cell — the switch is on the record
-				["▌ ", "go\n"],
+				["▌ ", "go\r"],
 				// The diff row marks the decision moment — the human sees the
 				// change BEFORE answering (the v2d redraw paints the approval
 				// frame a beat after the question — never answer on the
 				// question alone, or the frame is skipped by the race).
-				["+ hello", "y\n"],
-				["default turn done", "exit\n"],
+				["+ hello", "y\r"],
+				["default turn done", "exit\r"],
 			],
 			workdir,
 			{ modeFlag: "plan", session: "modes1" },
@@ -237,11 +237,11 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"],
+				["▌ ", "go\r"],
 				["▸ bypass", ""], // v3 idle state under bypass
 				["[Permission denied]", ""],
 				["refused by safe-test", ""], // the EXTENSION's deny — bypass can't override it
-				["shell done", "exit\n"],
+				["shell done", "exit\r"],
 			],
 			workdir,
 			{ modeFlag: "bypass", session: "modes2" },

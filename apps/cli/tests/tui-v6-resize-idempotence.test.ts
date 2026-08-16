@@ -74,7 +74,7 @@ def driver(cli, env, feeds, timeout, sizes):
             resizes.append([len(full), sizes[fired][0], sizes[fired][1]])
             fired += 1
         if seq_at is not None and fired >= len(sizes) and time.time() - seq_at >= 0.3 * (len(sizes) + 1):
-            os.write(fd, b"exit\\n")
+            os.write(fd, b"exit\\r")
             exit_sent = True
             break
     try:
@@ -120,7 +120,7 @@ function runAndScreen(sizes: [number, number][], timeout = 30): { grid: string[]
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([["▌ ", "go\n"]])}, ${timeout}, ${JSON.stringify(sizes)})
+driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([["▌ ", "go\r"]])}, ${timeout}, ${JSON.stringify(sizes)})
 `;
 	const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
 	const lines = out.split("\n");

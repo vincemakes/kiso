@@ -118,11 +118,11 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" },
 			[
-				["▌ ", "go\n"], // the brick — the startup paint is race-proof in BOTH modes
-				["built.", "go\n"], // turn 1's response → turn 2
-				["second turn.", "go\n"], // turn 2's response → turn 3
+				["▌ ", "go\r"], // the brick — the startup paint is race-proof in BOTH modes
+				["built.", "go\r"], // turn 1's response → turn 2
+				["second turn.", "go\r"], // turn 2's response → turn 3
 				["third turn.", "\x12"], // the REAL key — the turn-1 shell has long since frozen
-				["expanded · shell", "exit\n"],
+				["expanded · shell", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
@@ -191,14 +191,14 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["▌ ", "go\n"],
+				["▌ ", "go\r"],
 				// The v8 panel replaces the live cut — the ALWAYS-verbose diff
 				// is up immediately (the 15-line write folds at the H−4 cap
 				// with the notice row; the ctrl+r affordance is GONE).
 				// Answer with 1 (Yes) + enter.
-				["needs approval — asked by", "y\n"],
+				["needs approval — asked by", "y\r"],
 				["written.", "\x12"], // the second key: the cell is settled+committed
-				["nothing to expand", "exit\n"],
+				["nothing to expand", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
@@ -243,12 +243,12 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" },
 			[
-				["▌ ", "go\n"], // the brick — the startup paint is race-proof in BOTH modes
+				["▌ ", "go\r"], // the brick — the startup paint is race-proof in BOTH modes
 				// the key rides the rollup's OWN committed row (its bytes land
 				// after the frame's capture completed — never the text's live
 				// bytes, which can precede the commit by a frame)
 				["read  5 files", "\x12"],
-				["expanded · read 5 files", "exit\n"],
+				["expanded · read 5 files", "exit\r"],
 			],
 			60,
 			dir,
@@ -300,10 +300,10 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" },
 			[
-				["▌ ", "go\n"],
+				["▌ ", "go\r"],
 				// the fold line's own bytes — the turn ended, the reads
 				// folded (the needle is the contiguous term text)
-				["5 reads · no edits", "exit\n"],
+				["5 reads · no edits", "exit\r"],
 			],
 			60,
 			dir,

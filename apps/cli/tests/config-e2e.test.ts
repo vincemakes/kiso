@@ -96,10 +96,10 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-config-e2e-w1-"));
 		const out = stripANSI(
 			ptyRun(env, [
-				["› ", "/model\n"],
-				["(unavailable)", "/model claude\n"],
-				["not set", "/model ds\n"],
-				["model → ds", "exit\n"],
+				["› ", "/model\r"],
+				["(unavailable)", "/model claude\r"],
+				["not set", "/model ds\r"],
+				["model → ds", "exit\r"],
 			], workdir),
 		);
 		expect(out).toContain("model: faux");
@@ -115,8 +115,8 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-config-e2e-w2-"));
 		const out = stripANSI(
 			ptyRun(env, [
-				["› ", "/model openai-compat/gpt-4o\n"],
-				["model → openai-compat/gpt-4o", "exit\n"],
+				["› ", "/model openai-compat/gpt-4o\r"],
+				["model → openai-compat/gpt-4o", "exit\r"],
 			], workdir),
 		);
 		expect(out).toContain("model → openai-compat/gpt-4o (gpt-4o) — takes effect on the next turn");
@@ -136,9 +136,9 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 		);
 		const out = stripANSI(
 			ptyRun(env, [
-				["trust this project", "y\n"],
-				["› ", "/model\n"],
-				["proj-model", "exit\n"],
+				["trust this project", "y\r"],
+				["› ", "/model\r"],
+				["proj-model", "exit\r"],
 			], workdir),
 		);
 		expect(out).toContain("trust this project's .kiso?"); // the trust panel's rule line (the "(y/n)" suffix is gone — the panel superseded the boxed question)
@@ -155,8 +155,8 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 		writeFileSync(join(workdir, ".kiso", "config.json"), JSON.stringify({ model: "proj-model" }), "utf8");
 		const out = stripANSI(
 			ptyRun(env, [
-				["› ", "/model\n"],
-				["(none — define models", "exit\n"],
+				["› ", "/model\r"],
+				["(none — define models", "exit\r"],
 			], workdir),
 		);
 		expect(out).not.toContain("trust this project");
