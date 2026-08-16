@@ -72,11 +72,11 @@ def driver(cli, home, workdir, ext_dir, script_path, session_id):
                 except OSError:
                     return
     read_until(b"you> ", 20)
-    os.write(fd, b"go\\n")
+    os.write(fd, b"go\\r")
     read_until(b"approve delegate", 30)
-    os.write(fd, b"y\\n")
+    os.write(fd, b"y\\r")
     read_until(b"done", 40)
-    os.write(fd, b"exit\\n")
+    os.write(fd, b"exit\\r")
     wait_exit(10)
     sys.stdout.write(full.decode(errors="replace"))
     sys.exit(0)

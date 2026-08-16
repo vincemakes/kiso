@@ -88,11 +88,11 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
     # connects in the background. Give the connect a moment to settle before
     # the model's first call (the "first-call waits-for-readiness" wait is the unit tests').
     time.sleep(1.5)
-    os.write(fd, b"go\\n")
+    os.write(fd, b"go\\r")
     read_until(b"approve mcp__fake__echo", 30)
-    os.write(fd, b"y\\n")
+    os.write(fd, b"y\\r")
     read_until(b"the echo worked", 30)
-    os.write(fd, b"exit\\n")
+    os.write(fd, b"exit\\r")
     wait_exit(10)
     sys.stdout.write(full.decode(errors="replace"))
     sys.exit(0)
@@ -256,14 +256,14 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path, session_id):
     # connects in the background. Give the connect a moment to settle before
     # the model's first call (the "first-call waits-for-readiness" wait is the unit tests').
     time.sleep(1.5)
-    os.write(fd, b"go\\n")
+    os.write(fd, b"go\\r")
     # A bare install asks even the extension's OWN status tool (③b) — the
     # ask must be answered or the tool is denied and never executes.
     read_until(b"approve mcp__status", 30)
-    os.write(fd, b"y\\n")
+    os.write(fd, b"y\\r")
     read_until(b"stderr tail:", 30)
     read_until(b"status retrieved", 30)
-    os.write(fd, b"exit\\n")
+    os.write(fd, b"exit\\r")
     wait_exit(10)
     sys.stdout.write(full.decode(errors="replace"))
     sys.exit(0)

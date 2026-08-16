@@ -75,7 +75,7 @@ def driver(cli, home, ext_dir, mcp_config):
         return False
     if not read_until("▌ ".encode(), 15):
         sys.exit(2)
-    os.write(fd, b"exit\\n")
+    os.write(fd, b"exit\\r")
     # The hard clause: dispose must let the process exit within 5s of the
     # exit command (without dispose the transport reader holds it forever).
     exited = wait_exit(5)
@@ -205,11 +205,11 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path):
         # ELAPSE before the status call — the bounded SOFT failure is then
         # visible in the status ("sleepy: error") and the fake works.
         time.sleep(16)
-        os.write(fd, b"go\\n")
+        os.write(fd, b"go\\r")
         read_until(b"approve mcp__status", 15)
-        os.write(fd, b"y\\n")
+        os.write(fd, b"y\\r")
         read_until(b"done", 15)
-        os.write(fd, b"exit\\n")
+        os.write(fd, b"exit\\r")
     wait_exit(10)
     sys.stdout.write(full.decode(errors="replace"))
     print("ELAPSED=%.1f" % elapsed, file=sys.stderr)

@@ -64,10 +64,10 @@ def driver(cli, home, workdir, ext_dir, skills_dir, script_path):
                 except OSError:
                     return
     read_until(b"you> ", 20)
-    os.write(fd, b"go\\n")
+    os.write(fd, b"go\\r")
     # read_skill is AUTO-allowed by safe-defaults — no approval prompt.
     read_until(b"skill loaded", 40)
-    os.write(fd, b"exit\\n")
+    os.write(fd, b"exit\\r")
     wait_exit(10)
     sys.stdout.write(full.decode(errors="replace"))
     sys.exit(0)
