@@ -47,7 +47,9 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			bodyLog(cmd("/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"));
 			bodyLog(cmd("/model", "list model profiles; /model <name|provider/model> switches"));
 			bodyLog(cmd("/compact", "summarize the older conversation to free context"));
-			bodyLog(cmd("exit", "leave the session"));
+			// KC1: the composer's keys ride the SAME bodyLog call (it splits
+			// on \n) — the help gains a row, the cli source does not
+			bodyLog(`${cmd("exit", "leave the session")}\n${cmd("keys", "enter sends · ctrl+J inserts a newline (shift+enter where the terminal encodes it)")}`);
 			ctx.input.prompt();
 		});
 		return;

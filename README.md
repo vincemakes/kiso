@@ -943,7 +943,11 @@ below is proven by a gate in `npm run check`:
   kiso brick motif: a blue half-block ▌you> row and a dim dotted ╌
   separator; the sent line renders into the body exactly once, a turn
   submitted while another runs queues with a live `+N queued` status, and
-  Esc aborts. Known limitation: emoji ZWJ clusters are not width-perfect.
+  Esc aborts. KC1: the input is a MULTI-LINE composer — a paste keeps its
+  newlines (LF/CR/CRLF all normalize to one), Ctrl+J (or Shift+Enter where
+  the terminal encodes it) inserts a newline, Enter sends the whole block
+  as ONE turn, and the box grows to at most 6 rows before scrolling
+  internally. Known limitation: emoji ZWJ clusters are not width-perfect.
   Pipes keep readline byte-for-byte. v2d (ADR-0040): the body becomes a
   cell renderer — ONE writer owns the scroll region (event handlers only
   mutate cells, so interleaving is impossible by construction); completed
