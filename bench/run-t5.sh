@@ -66,7 +66,7 @@ fs.writeFileSync('$WORK/meta.json', JSON.stringify(meta, null, 1) + '\n');
       S=$(date +%s)
       env DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
         pi --provider deepseek --model deepseek-v4-flash -p --mode json \
-        --session "$WORK/pi-session" "$(TURN $i)" > "$WORK/stdout-$i.log" 2>&1 || true
+        --session "$WORK/pi-session" "$(TURN $i)" < /dev/null > "$WORK/stdout-$i.log" 2>&1 || true
       E=$(date +%s); TOT=$((TOT + E - S))
     done
     ;;
@@ -77,11 +77,11 @@ fs.writeFileSync('$WORK/meta.json', JSON.stringify(meta, null, 1) + '\n');
       S=$(date +%s)
       if [ -z "$SID" ]; then
         env $CENV claude -p "$(TURN $i)" --output-format json --dangerously-skip-permissions \
-          > "$WORK/stdout-$i.log" 2>&1 || true
+          < /dev/null > "$WORK/stdout-$i.log" 2>&1 || true
         SID=$(python3 -c "import json;print(json.load(open('$WORK/stdout-$i.log')).get('session_id',''))" 2>/dev/null || true)
       else
         env $CENV claude -p "$(TURN $i)" --resume "$SID" --output-format json --dangerously-skip-permissions \
-          > "$WORK/stdout-$i.log" 2>&1 || true
+          < /dev/null > "$WORK/stdout-$i.log" 2>&1 || true
       fi
       E=$(date +%s); TOT=$((TOT + E - S))
     done
