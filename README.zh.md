@@ -48,7 +48,7 @@
 | **Durable Start Before Side Effect**(持久 STARTED 先于副作用) | 处理器在其 STARTED 回执持久化之前绝不运行——崩溃不会留下未上报的副作用 |
 | **Stable Intent Identity**(意图身份稳定) | 三种身份(callId / invocationSeq / executionId)绝不混同;派生状态永不持久化 |
 | **Single Durable Truth**(唯一持久真相) | 事件流是唯一真相;其余全部由它派生,每个事件都归内核所有 |
-| same-facts-same-projection(同事实同投影) | 同一前缀每次都投影出同一字节(提示词缓存字节纪律) |
+| same-facts-same-projection(同事实同投影) | 同一前缀在任一版本内投影出同一字节(提示词缓存字节纪律);模型请求面只经声明式 supersession 演化(ADR-0051 Amendment 3) |
 | exactly-one-terminal(恰一个终态) | 每次运行收敛于恰一个终态——即它的最后一条事件 |
 
 契约的 ask 语义:**一个待决 ask 存活,当且仅当其调用未被作废、且推导仍能执行它**——审批裁决是持久的,无论由人类直接裁决,还是由人类安装的策略代为裁决(ADR-0051 §8)。

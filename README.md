@@ -97,7 +97,7 @@ are what this README uses.
 | **Durable Start Before Side Effect** | a handler never runs before its STARTED receipt is persisted — a crash cannot leave an unreported effect |
 | **Stable Intent Identity** | the three identities (callId / invocationSeq / executionId) are never conflated; derived state is never persisted |
 | **Single Durable Truth** | the event stream is the single truth; everything else is derived from it, and every event is kernel-owned |
-| same-facts-same-projection | the same prefix projects to the same bytes, every time (the prompt-cache byte discipline) |
+| same-facts-same-projection | the same prefix projects to the same bytes on any given version (the prompt-cache byte discipline); the model-request surface evolves only by declared supersession (ADR-0051 Amendment 3) |
 | exactly-one-terminal | every run converges on exactly one terminal — its last event |
 
 The contract's ask semantics: **a pending ask lives iff its invocation

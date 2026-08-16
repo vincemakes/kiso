@@ -447,3 +447,53 @@ Until the trigger fires, the line stays on 0.x.
   stands; the 1.x versions are REVOKED by the reset sequence's step
   ③, separately ordered after the product-line migration
   confirmation — not by this amendment itself).
+
+## Amendment 3 (2026-08-16): invariant ⑥'s scope, and the declared-supersession ritual for the model-request projection
+
+Two E-track rounds changed the bytes the runtime SENDS TO THE PROVIDER
+for pre-existing durable facts — E5 removed the task extension from
+the default composition (an old session driven under 0.3.0+ composes
+a different request than under 0.2.x), and E6 (e) reframed the
+`summarized` boundary from an assistant reply to a user-role context
+block (6ad1305, ordered in the E6 disposition; the ADR-0044 projection
+goldens — including this ADR's ⑥-named `summarize.test.ts` gate —
+byte-moved under a declared "sanctioned supersession"). Both were
+owner-adjudicated; neither amended this document. This amendment
+closes that gap. It changes the CONTRACT TEXT's precision, never the
+durable ABI: every §1–§10 fact about events, load, replay, and
+recovery stands exactly as frozen.
+
+**(a) Invariant ⑥'s scope, stated exactly.** "Optional growth never
+changes old-log projection bytes" binds two planes: (i) the durable
+log's own replay and content projection — persisted text (compacted
+clearings, summaries, results) replays VERBATIM, forever (the
+ADR-0044 promise, summarize.test.ts:127); (ii) schema growth — adding
+optional fields or new event kinds never changes how an old log
+loads, validates, or derives recovery. The MODEL-REQUEST projection —
+the bytes assembled for the provider from those facts — is the Model
+Request Surface (the roadmap's four-surfaces vocabulary): a VERSIONED
+surface outside the frozen plane, evolving with the efficiency track.
+
+**(b) The declared-supersession ritual (the E1/E6 mechanism, now the
+rule).** A change to the model-request projection of existing fact
+shapes is legal ONLY as a declared supersession: named in the commit
+message, carried by a red test first, the moved golden updated in the
+same change, and — this amendment's addition — the affected gate row
+in this ADR annotated in the same change. Registered instances: the
+E1 v2-rejection gate reversal (the E2 round), the E6 (e)
+summarized-boundary reframing (6ad1305). Silent byte drift of the
+request projection remains a violation.
+
+**(c) The public G1 sentence, tightened.** The README guarantee row
+read "the same prefix projects to the same bytes, every time" —
+stronger than G1's meaning (the PURITY of derivation: no I/O, no
+clocks — determinism within a version). The row now reads: the same
+prefix projects to the same bytes on any given version; the
+model-request surface evolves only by declared supersession.
+
+Gate-table annotation (per (b)): invariant ⑥'s row names
+summarize.test.ts:52 — that golden's summarized-boundary assertions
+moved to user-role + framing by the E6 (e) declared supersession
+(6ad1305); the row's durable-replay members (prompt-cache.test.ts,
+the compacted-generation byte case, summarize.test.ts:127) are
+untouched.
