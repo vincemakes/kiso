@@ -79,6 +79,63 @@ future edit cannot regress the labeling.
 | | 2 | 33,484 | 1,097,856 | 1,131,340 | 143,270 | 10,754 | 33 | 164s |
 | | mean | | 32,189 | 918,656 | 950,845 | 124,055 | 10,333 | 32.0 | 141.0s |
 
+## The 2026-08-16 three-way — the 0.4.0 refresh (per-run; medians are the headline basis)
+
+The 0.4.0 post-release refresh, run from the review side on the owner's
+order: kiso **0.4.0** (the PUBLISHED artifact via `npx -y
+@vincemakes/kiso-code@0.4.0` — not the tree dist) · pi
+@earendil-works/pi-coding-agent **0.84.2** (npm latest; the 08-12 round
+pinned 0.84.1) · Claude Code **2.1.233**. Same model (deepseek-v4-flash),
+same fixtures, serial same-day runs, order rotated per round (latin
+square). n=3 per tool on T3, n=2 per tool on T5; every counted run
+verify=pass (T3 9/9, T5 6/6). Raw runs: `bench/runs/3way-040/` (T3) and
+`bench/runs/3way-040-t5b/` (T5), with a REPORT.md beside the T3 runs.
+
+| task | tool | run | fresh | cached | total | cost-wtd | out | reqs | wall |
+|------|------|----:|------:|-------:|------:|---------:|----:|----:|-----:|
+| T3 cross-file rename | **kiso** | 1 | 746 | 11,392 | **12,138** | 1,885 | 750 | 5 | 10s |
+|  |  | 2 | 654 | 11,008 | **11,662** | 1,755 | 728 | 5 | 9s |
+|  |  | 3 | 711 | 14,080 | **14,791** | 2,119 | 798 | 6 | 11s |
+| | **median** | | 711 | 11,392 | **12,138** | **1,885** | 750 | 5.0 | 10.0s |
+|  | pi | 1 | 3,782 | 18,176 | 21,958 | 5,600 | 1,184 | 6 | 13s |
+|  |  | 2 | 3,494 | 13,056 | 16,550 | 4,800 | 846 | 5 | 9s |
+|  |  | 3 | 1,943 | 18,304 | 20,247 | 3,773 | 1,189 | 6 | 12s |
+| | median | | 3,494 | 18,176 | 20,247 | **4,800** | 1,184 | 6.0 | 12.0s |
+|  | claude | 1 | 38,591 | 224,896 | 263,487 | 61,081 | 2,449 | 16 | 30s |
+|  |  | 2 | 38,800 | 222,592 | 261,392 | 61,059 | 2,069 | 15 | 30s |
+|  |  | 3 | 38,497 | 222,080 | 260,577 | 60,705 | 1,990 | 13 | 25s |
+| | median | | 38,591 | 222,592 | 261,392 | **61,059** | 2,069 | 15.0 | 30.0s |
+| T5 8-turn session | **kiso** | 1 | 7,741 | 123,776 | **131,517** | 20,119 | 5,200 | 32 | 69s |
+|  |  | 2 | 7,947 | 136,320 | **144,267** | 21,579 | 5,571 | 33 | 76s |
+| | **median** | | 7,844 | 130,048 | **137,892** | **20,849** | 5,386 | 32.5 | 72.5s |
+|  | pi | 1 | 7,211 | 296,576 | 303,787 | 36,869 | 7,580 | 35 | 94s |
+|  |  | 2 | 5,170 | 262,272 | 267,442 | 31,397 | 6,984 | 35 | 91s |
+| | median | | 6,190 | 279,424 | 285,614 | **34,133** | 7,282 | 35.0 | 92.5s |
+|  | claude | 1 | 302,703 | 1,198,080 | 1,500,783 | 422,511 | 13,318 | 46 | 229s |
+|  |  | 2 | 304,109 | 1,731,200 | 2,035,309 | 477,229 | 19,743 | 62 | 289s |
+| | median | | 303,406 | 1,464,640 | 1,768,046 | **449,870** | 16,530 | 54.0 | 259.0s |
+
+**The headline ratios (median cost-weighted = fresh + 0.1×cached):**
+T3 — kiso 1,885 vs pi 4,800 = **2.55×**, vs Claude Code 61,059 =
+**32×**. T5 — kiso 20,849 vs pi 34,133 = **1.64×**, vs Claude Code
+449,870 = **21.6×**. Attribution: kiso's T3 gain is its own (2,211 →
+1,885, the E5 default-composition cut landing); kiso's T5 is FLAT
+in-band (19,941 → 20,849) and the widened T5 ratios are substantially
+rival-side (pi +44%; Claude Code 3.7× heavier at 30 → 54 turns on its
+newer version).
+
+**Round notes (three incidents, all recorded):** the FIRST T5 attempt
+(`runs/3way-040/*-T5-*`) is VOID — the provider balance ran out
+mid-sequence and every later run 402'd; the valid T5 set is
+`runs/3way-040-t5b/`, re-run after a top-up. run-t5.sh's pi leg hung 97
+minutes under a non-TTY stdin (a never-closing pipe keeps `pi -p`
+waiting for EOF) — fixed in this change by `< /dev/null` per pi/claude
+invocation (run-one.sh's claude branch already carried the redirect).
+Claude Code 2.1.233 emits a `[claude-code:unrecognized_model] {...}`
+warning line that broke both extractors (extract.py errored the row;
+extract-t5.py silently ZEROED it) — both now parse the last
+usage-bearing JSON line and fail loudly when none exists.
+
 ## The 2026-08-12 three-way — the 1.0.0 candidate (per-run; medians are the headline basis)
 
 The R-I launch-headline run: kiso 1.0.0 (the release candidate, tree
