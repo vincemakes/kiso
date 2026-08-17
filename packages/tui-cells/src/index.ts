@@ -52,6 +52,18 @@ export {
 	type PanelVerdict,
 	type PanelView,
 } from "./approval-panel.js";
+// KC3 slice 1 (the extraction): the human-facing strings the CLI's
+// trust-ui.ts used to build inline — the prompt, the project-trust
+// listing/view/note, the uncertain execution's view. The flow stays in
+// the cli; what the human reads is presentation.
+export {
+	interactivePrompt,
+	projectTrustRows,
+	projectTrustView,
+	projectUntrustedNote,
+	uncertainView,
+	type TrustArtifact,
+} from "./strings.js";
 export {
 	bannerLines,
 	COLOR_OFF,

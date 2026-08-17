@@ -10,21 +10,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkS
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { escapeTerminal, palette, type PanelVerdict, type PanelView } from "@vincemakes/kiso-tui";
+import { projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, type PanelVerdict, type PanelView } from "@vincemakes/kiso-tui";
 import { projectArtifacts, recordTrust, trustFor, type ProjectArtifacts } from "@vincemakes/kiso-runtime";
 import type { AgentSession, KisoExtension } from "@vincemakes/kiso-runtime";
 import { bodyLog, currentAgentExtensions, dock, extensionsDir, kisoHome, mergedTempPaths, type LineInput } from "./state.js";
 import { loadUserConfig, resolveProjectTrustPolicy } from "./config.js";
 import { getMode } from "./mode.js";
-
-/** v2a: the interactive prompt — blue, the identity accent. readline owns
- *  the echo of what the user types; we own the prompt's color. (v2c: the
- *  readline prompt keeps "you> " — the brick ▌ is the dock's row only;
- *  pipe bytes must not change.) */
-export function interactivePrompt(): string {
-	const p = palette();
-	return `${p.bold}you> ${p.reset}`;
-}
 
 /**
  * W21 — ask the human with the approval panel: the bounded block that
@@ -188,9 +179,7 @@ export async function resolveProjectTrust(input: LineInput): Promise<ProjectArti
 	// First discovery — list every artifact (file name + digest short
 	// prefix) and ask the human ONCE.
 	if (!process.stdin.isTTY) {
-		console.error(
-			`[project .kiso] found ${artifacts.files.length} artifact(s) in ${artifacts.root} — not trusted, not loaded (run kiso interactively once to decide)`,
-		);
+		console.error(projectUntrustedNote(artifacts.files.length, artifacts.root));
 		return null;
 	}
 	// v2c: the shared input (the editor on a TTY) reads the answer.
@@ -199,19 +188,8 @@ export async function resolveProjectTrust(input: LineInput): Promise<ProjectArti
 	// the bodyLog below records, verbatim — the listing still lands in
 	// the scrollback; the panel is a bounded block, the record is not).
 	bodyLog(`[project .kiso] ${artifacts.root}`);
-	for (const f of artifacts.files) {
-		bodyLog(`  ${f.path}  (${f.digest.slice(0, 6)})`);
-	}
-	const verdict = await askPanel(input, {
-		flavor: "simple",
-		name: "project trust",
-		title: artifacts.root,
-		speaker: "kiso",
-		statusText: "▸ project trust",
-		args: { kind: "text", lines: artifacts.files.map((f) => `${f.path}  (${f.digest.slice(0, 6)})`) },
-		ruleOverride: "trust this project's .kiso?",
-		fallbackQuestion: `trust this project's .kiso? (y/n) `,
-	});
+	for (const row of projectTrustRows(artifacts.files, "  ")) bodyLog(row);
+	const verdict = await askPanel(input, projectTrustView(artifacts.root, artifacts.files));
 	// A cancel is a "no" HERE — refused is sticky, the project does not
 	// load (re-evaluate by deleting the trust line or changing a file).
 	// The non-TTY branch above returned WITHOUT a record so an interactive
@@ -318,16 +296,7 @@ export async function resolveUncertains(
 	isCancelled: () => boolean,
 ): Promise<void> {
 	for (const uncertain of session.uncertainExecutions()) {
-		const verdict = await askPanel(input, {
-			flavor: "simple",
-			name: "uncertain execution",
-			title: `${uncertain.name} (${uncertain.executionId})`,
-			speaker: "kiso",
-			statusText: "▸ uncertain execution",
-			args: { kind: "text", lines: [uncertain.executionId] },
-			ruleOverride: "did the interrupted execution apply? — 1 rerun · 3 abandon",
-			fallbackQuestion: `⚠ interrupted execution: ${escapeTerminal(uncertain.name)} (${uncertain.executionId}) — did it apply? (y)es / (n)o `,
-		});
+		const verdict = await askPanel(input, uncertainView(uncertain.name, uncertain.executionId));
 		if (isCancelled() || verdict.action === "cancel") {
 			// round 10: a cancellation NEVER records a verdict — the execution
 			// stays uncertain and durable; no rerun/abandoned is fabricated.

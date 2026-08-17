@@ -28,6 +28,10 @@
     "./render": {
       "types": "./dist/render.d.ts",
       "default": "./dist/render.js"
+    },
+    "./strings": {
+      "types": "./dist/strings.d.ts",
+      "default": "./dist/strings.js"
     }
   },
   "files": [

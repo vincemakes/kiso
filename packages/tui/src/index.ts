@@ -68,3 +68,7 @@ export { editFileDiff, truncateDiff, writeFileDiff, type DiffLine, type DiffResu
 // KC2 §5: the status rows' formatters — the CLI keeps the state and the
 // repaint, the terminal layer owns what the row says.
 export { STATUS_GLYPHS, idleStatus, runningStatus } from "./status.js";
+// KC3 §1 (the extraction): the human-facing strings — the prompt, the
+// project-trust listing/view/note, the uncertain execution's view. The
+// FLOW (who is asked, what a verdict means) stays in the cli.
+export { interactivePrompt, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, type TrustArtifact } from "./strings.js";
