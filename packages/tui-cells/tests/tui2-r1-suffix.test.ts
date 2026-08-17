@@ -128,13 +128,15 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		expect(render(cell, 80)[0]).toBe("✓ shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r expands");
 		expect(render(cell, 54)[0]).toBe("✓ shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r");
 		expect(render(cell, 44)[0]).toBe("✓ shell npm test (exit 0, 2.4s) · ctrl+r");
-		// MOVED (R1.5 slice ⑤, the R1 tool-cell suffix class): there is no
-		// "absent" tier any more. The affordance is the semantics and the
-		// TARGET is the cuttable span, so the shortest tier is reserved and
-		// the head gives up its last nine cells instead — a card that hides
-		// content never goes silent about it (VD-6). The three-tier
-		// degradation above is unchanged.
-		expect(render(cell, 32)[0]).toBe("✓ shell npm test (exit… · ctrl+r");
+		// MOVED (R1.5 slice ⑤ then pin 4, the R1 tool-cell suffix class):
+		// there is no "absent" affordance tier any more — the affordance is
+		// the semantics, so the shortest tier is reserved and the head gives
+		// up its cells instead (VD-6). Pin 4 then fixed WHICH cells: the
+		// parens' result core renders WHOLE or not at all, never cut open,
+		// so at 32 the group drops entirely rather than becoming the
+		// half-sentence `(exit…`. The three-tier degradation above is
+		// unchanged.
+		expect(render(cell, 32)[0]).toBe("✓ shell npm test · ctrl+r");
 		// invariant ①: the suffix NEVER pushes a row past the width
 		for (const W of [20, 32, 40, 44, 54, 60, 80, 120]) {
 			for (const row of render(cell, W)) expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);

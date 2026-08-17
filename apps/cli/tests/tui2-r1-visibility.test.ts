@@ -243,7 +243,8 @@ describe("TUI2-R1 T-V4 — the ? keys sheet on a real PTY", () => {
 		// the sheet was on screen, in full
 		expect(out).toContain("enter send");
 		expect(out).toContain("ctrl+r expand cells");
-		expect(out).toContain("panels: digits select · space toggles · t types an answer");
+		// MOVED (R1.5 pin 6, the wrap/copy class): see the tui-cells unit.
+		expect(out).toContain("panels: digits pick · ⏎ confirms · space toggles · t types an answer");
 		// the `?` never became text, and neither did the key that closed it
 		expect(out).not.toContain("│ › ?");
 		expect(out).not.toContain("│ › x");

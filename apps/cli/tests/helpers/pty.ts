@@ -107,10 +107,38 @@ driver(${a(CLI)}, ${a(args)}, ${a(env)}, ${a(opts.feeds ?? [])}, ${opts.timeout 
 /** The SETTLED screen — the VT grid built from the bytes before the dock
  *  teardown (CSI r). */
 export function settledScreen(raw: string, rows = 24, cols = 100): string[] {
+	return settledTerm(raw, rows, cols).visible();
+}
+
+/** The whole emulator at the settle, for the gates that need the CURSOR
+ *  as well as the rows (TUI2-R1.5 ⑩). */
+export function settledTerm(raw: string, rows = 24, cols = 100): VtScreen {
 	const at = raw.indexOf("\x1b[r");
 	const screen = new VtScreen(rows, cols);
 	screen.write(Buffer.from(at > 0 ? raw.slice(0, at) : raw, "utf8"));
-	return screen.visible();
+	return screen;
+}
+
+/** The emulator as it stood when `marker` was last painted.
+ *
+ *  The cut lands on a FRAME BOUNDARY, not on the marker: the compositor
+ *  brackets every frame in DEC 2026 synchronized output, and the cursor
+ *  is placed by the LAST bytes of a frame. Slicing at the marker itself
+ *  would read the cursor mid-paint — wherever the write happened to be —
+ *  which is a measurement artefact and not a claim the product makes.
+ *  A terminal never shows a half-frame either; this is what it sees. */
+export function termAt(raw: string, marker: string, rows = 24, cols = 100): VtScreen {
+	const at = raw.lastIndexOf(marker);
+	const screen = new VtScreen(rows, cols);
+	screen.write(Buffer.from(at < 0 ? raw : raw.slice(0, frameEndAfter(raw, at + marker.length)), "utf8"));
+	return screen;
+}
+
+/** The end of the frame containing `from` — the index just past the next
+ *  synchronized-output close, or the stream's end. */
+export function frameEndAfter(raw: string, from: number): number {
+	const close = raw.indexOf("\x1b[?2026l", from);
+	return close < 0 ? raw.length : close + "\x1b[?2026l".length;
 }
 
 /** The screen as it stood when `marker` was last painted — for the gates

@@ -195,7 +195,25 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
 /** The panel keys, which belong to a panel rather than the composer —
  *  one dim line rather than four table rows, because they apply only
  *  while a panel is up. */
-export const PANEL_KEYS_ROW = "panels: digits select · space toggles · t types an answer";
+/**
+ * TUI2-R1.5 pin 6 — this row has to be true of BOTH panel flavors, and
+ * "digits select" was wrong in both directions at once.
+ *
+ * On an APPROVAL a digit only moves the selection (editor's #panelSelect
+ * sets `sel` and renders); ENTER is what resolves it. A reader who
+ * pressed 1 and walked away had approved nothing — the worst kind of
+ * false affordance, on the surface where the stakes are a side effect.
+ *
+ * On an ASK the opposite: a digit on a SINGLE-choice question answers it
+ * and advances the walk (ask-panel's askKey → advance), so "select"
+ * undersold it. A multi-select question toggles and waits for enter,
+ * like the approval.
+ *
+ * "digits pick · ⏎ confirms" is the sentence both flavors satisfy. The
+ * single-choice fast path — where the confirm is implicit — is the one
+ * thing a single row cannot also carry; it is an omission, never a lie.
+ */
+export const PANEL_KEYS_ROW = "panels: digits pick · ⏎ confirms · space toggles · t types an answer";
 
 /** The sheet's grid: the first six bindings in two 3-column rows, the
  *  last four in two 2-column rows (the wide entries get the room). The

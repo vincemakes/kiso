@@ -645,17 +645,12 @@ class ToolExecution implements Component {
 			// body was on screen, a silence now that the body is not. The
 			// command is the cuttable span (the approval panel's option-2
 			// rule name is the same idea); the affordance is the semantics.
-			// the W4 parentheses idiom: the facts, ` · `-separated, then the
-			// timing closing the group. An empty fact simply is not there.
-			const facts = [meta, approvedBy.replace(" · ", "")].filter((x) => x !== "");
-			const parens = `(${facts.length > 0 ? `${facts.join(" · ")}, ` : ""}${elapsed}s)`;
 			const hidden = hiddenLines(c, W);
 			// TUI2-R1.5 ⑤: the shortest tier is RESERVED — the affordance is
-			// the semantics, the target is the cuttable span.
-			const room = W - (hidden === null ? 0 : SUFFIX_MIN);
-			const out = c.isError
-				? gutterCut(`${p.red}✗${p.reset} `, `${p.red}${verbCol} ${escapeTerminal(toolTargetOf(c))} ${parens}${p.reset}`, room)
-				: gutterCut(`${p.bold}✓${p.reset} `, `${verbCol} ${escapeTerminal(toolTargetOf(c))} ${parens}`, room);
+			// the semantics. TUI2-R1.5 pin 4: and the parts give way in a
+			// PINNED ORDER, rather than whichever happened to be last.
+			const text = settledHeadText(verbCol, escapeTerminal(toolTargetOf(c)), meta, approvedBy, elapsed, W - 2 - (hidden === null ? 0 : SUFFIX_MIN));
+			const out = c.isError ? [`${p.red}✗${p.reset} ${p.red}${text}${p.reset}`] : [`${p.bold}✓${p.reset} ${text}`];
 			out[0] = appendSuffix(out[0]!, expandSuffix(hidden, W - visibleWidth(out[0]!)));
 			out.push(...toolBlockBody(c, W));
 			return out;
@@ -740,6 +735,55 @@ function hiddenLines(c: Extract<BodyCell, { kind: "tool" }>, W: number): number 
  *  row that fitted its head before still fits it; only a head that would
  *  have eaten the whole row gives up its last nine cells. */
 const SUFFIX_MIN = " · ctrl+r".length;
+
+/**
+ * TUI2-R1.5 pin 4 — the settled head row's text, with a PINNED cut
+ * order.
+ *
+ * The row carries four things of very different value, and until now a
+ * single trailing widthCut decided between them by position: the parens
+ * came last, so the parens were what got cut. The walkthrough caught
+ * both consequences —
+ *
+ *   ✓ shell printf '…' 1 2 … 12 (exit 0 · approv… · ctrl+r
+ *   ✓ shell for i in 1 2 3 …                          … · ctrl+r
+ *
+ * — an UNCLOSED parenthesis, and a row that lost the exit code and the
+ * duration to a command string that had no claim on them. A cut that
+ * leaves `(exit 0 · approv…` has not shortened a fact, it has broken
+ * one: the reader is left holding the beginning of a sentence.
+ *
+ * The order, tightest last:
+ *   1. the affordance is already reserved by the caller (⑤);
+ *   2. the RESULT CORE — `(exit 0, 3.0s)`, `(+1 -1, 0.2s)` — renders
+ *      whole, closing paren included, or not at all;
+ *   3. the ATTRIBUTION segment drops before the core is touched: it is
+ *      a note about who decided, and the result is what happened;
+ *   4. the COMMAND/target truncates with `…`. It is the most
+ *      compressible thing on the row — a reader recognises a command
+ *      from its head — and it is the only part with a natural ellipsis.
+ */
+function settledHeadText(verbCol: string, target: string, meta: string, attr: string, elapsed: string, room: number): string {
+	const core = `(${meta === "" ? "" : `${meta}, `}${elapsed}s)`;
+	const withAttr = `(${[meta, attr.replace(" · ", "")].filter((x) => x !== "").join(" · ")}${meta === "" && attr === "" ? "" : ", "}${elapsed}s)`;
+	const lead = `${verbCol} `;
+	const fit = (t: string, parens: string): string | null => {
+		const line = `${lead}${t}${parens === "" ? "" : ` ${parens}`}`;
+		return visibleWidth(line) <= room ? line : null;
+	};
+	// 1. everything
+	const full = fit(target, withAttr);
+	if (full !== null) return full;
+	// 2. the attribution gives way
+	const bare = fit(target, core);
+	if (bare !== null) return bare;
+	// 3. the target truncates, the core stays whole
+	const budget = room - visibleWidth(lead) - visibleWidth(core) - 2; // the space + the ellipsis
+	if (budget >= 1) return `${lead}${widthCut(target, budget)}… ${core}`;
+	// 4. below that even the core cannot ride: the row is the call's
+	//    identity and its affordance, and no half-open parenthesis.
+	return `${lead}${widthCut(target, Math.max(1, room - visibleWidth(lead)))}`;
+}
 
 /**
  * TUI2-R1.5 ⑤ (VD-11) — approval attribution, about humans.

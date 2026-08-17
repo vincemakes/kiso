@@ -60,6 +60,15 @@ export class VtScreen {
 		return this.#grid.map((r) => r.text);
 	}
 
+	/** TUI2-R1.5 ⑩ — where the cursor is resting, 0-based [row, col]. The
+	 *  emulator already tracked it (CUP, CUU/CUD, CHA, CUB and the LF/CR
+	 *  family all move it); VD-12 is the first gate that needed to READ
+	 *  it, because "where does the next keystroke appear" is a question no
+	 *  byte-count or row-text assertion can answer. */
+	get cursor(): { row: number; col: number } {
+		return { row: this.#r, col: this.#c };
+	}
+
 	/** The rows that are the continuation of the row above. */
 	continuations(): boolean[] {
 		return this.#grid.map((r) => r.cont);
