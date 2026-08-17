@@ -622,7 +622,7 @@ export class Body {
 		this.#mark();
 	}
 
-	raw(lines: string[]): void {
+	raw(lines: string[], wrap?: "words"): void {
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
 			this.#closeOpenText();
@@ -631,7 +631,7 @@ export class Body {
 		}
 		this.#closeOpenThinking();
 		this.#closeOpenText();
-		this.#cells.push({ kind: "raw", lines, done: true });
+		this.#cells.push({ kind: "raw", lines, done: true, ...(wrap === undefined ? {} : { wrap }) });
 		this.#mark();
 	}
 

@@ -10,6 +10,7 @@
 export {
 	SPINNER,
 	foldLine,
+	foldWords,
 	visibleWidth,
 	bodySpacing,
 	Container,

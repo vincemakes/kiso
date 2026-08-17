@@ -73,6 +73,16 @@ describe("TUI2-R1.5 ⑨ — the surfaces that wrap by word (VD-10)", () => {
 		expect(rows.join("\n")).not.toMatch(/interrup\ntsed|interr\nupted/);
 	});
 
+	it("a RAW block wraps by word only when the CALLER says so — verbatim is the default", () => {
+		const line = "keys  enter sends · ctrl+J newline · esc stops the run · @ files";
+		const verbatim = render({ kind: "raw", lines: [line], done: true } as BodyCell, 24);
+		const words = render({ kind: "raw", lines: [line], done: true, wrap: "words" } as BodyCell, 24);
+		expect(verbatim.join("\n")).not.toBe(words.join("\n"));
+		// the word-wrapped form never splits a word; the verbatim form does
+		expect(words.every((r) => r.length <= 24)).toBe(true);
+		expect(words.join(" ").replace(/\s+/g, " ").trim()).toBe(line.replace(/\s+/g, " ").trim());
+	});
+
 	it("TOOL OUTPUT stays verbatim — a hard fold, byte for byte", () => {
 		const cell = {
 			kind: "tool",

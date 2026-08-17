@@ -180,7 +180,17 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// empty-row LF each — fires twice inside the window. The screen
 		// gates below (response exactly once, box top at most once,
 		// separator count stable) still pin the visual state.
-		expect(storm.split("\n").length - 1).toBeLessThanOrEqual(2);
+		// MOVED (R1.5 slice ⑨, the wrap class — DECLARED THIS ROUND):
+		// re-baseline 2 → 4, the same kind of adjustment R-D 0.1.45 made
+		// for the banner. VD-10 made the assistant's body text WORD-aware,
+		// which makes its row count width-sensitive the way the banner's
+		// already was: a winch can now change the text cell's height, and
+		// the V6-1 resize re-paint fires its one bounded empty-row LF for
+		// that too. Measured at 4 on three consecutive runs, stable. The
+		// property the gate exists for — no LF-pushed redraw, no dashed-line
+		// pileup — is carried by the screen assertions below, which are
+		// untouched and still pin the visual state.
+		expect(storm.split("\n").length - 1).toBeLessThanOrEqual(4);
 
 		// ① #16a: the separator LINE count does NOT GROW beyond the
 		// re-paint budget — a LF-pushed redraw would add newline-separated

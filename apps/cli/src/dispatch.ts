@@ -46,7 +46,9 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// the last one still carries its own \n, so `exit` and `keys`
 		// land as two rows from one call (bodyLog splits on \n).
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
-			for (const row of helpRows()) bodyLog(row);
+			// TUI2-R1.5 9 (VD-10): /help is sentences for a human — the keys
+			// row in particular is one long line that hard-folded mid-word.
+			for (const row of helpRows()) bodyLog(row, "words");
 			ctx.input.prompt();
 		});
 		return;

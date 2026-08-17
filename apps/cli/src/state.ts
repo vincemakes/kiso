@@ -201,8 +201,8 @@ export function setBody(value: Body): void {
 
 /** v2d: body output routes through the cell renderer — the single writer.
  *  bodyLog adds the trailing newline; internal newlines are preserved. */
-export function bodyLog(text: string): void {
-	body.raw(text.split("\n"));
+export function bodyLog(text: string, wrap?: "words"): void {
+	body.raw(text.split("\n"), wrap);
 }
 
 /** The model name for the status bar — set by makeAgent. */

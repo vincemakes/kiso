@@ -240,7 +240,7 @@ export type BodyCell =
 	| { kind: "text"; text: string; done: boolean }
 	| { kind: "notice"; text: string; done: true }
 	| { kind: "banner"; version: string; extensionsText: string; resume: ResumeMeta[]; done: true }
-	| { kind: "raw"; lines: string[]; done: true }
+	| { kind: "raw"; lines: string[]; done: true; wrap?: "words" }
 	| { kind: "terminal"; label: string; line: string; done: true }
 	| {
 			kind: "checklist";
@@ -373,6 +373,64 @@ class ThinkingFold implements Component {
  *  distinguishes the states at --plain; the UserMessage rail precedent,
  *  v5 #16f). The gutter carries its own SGR (e.g. the bold ✓). W21:
  *  exported for the approval panel's text args (the same │ gutter). */
+/**
+ * TUI2-R1.5 ⑨ (VD-10) — the WORD-aware fold, for text a human reads.
+ *
+ * foldLine is a hard character fold at the width. That is exactly right
+ * for verbatim tool output, where a byte is a byte and a break is a
+ * display artefact the reader knows to ignore; it is exactly wrong for
+ * prose, where the reader's eye has to reassemble "ex" + "pected" into a
+ * word it already knew. The walkthrough read three of those off one
+ * screen.
+ *
+ * The implementation is a wrapper, not a second engine: the text is cut
+ * at the last space that fits and each resulting segment is handed to
+ * foldLine, which keeps the SGR close/reopen discipline, the display-
+ * width arithmetic and the newline handling in ONE place. A word longer
+ * than the width falls through to foldLine's hard break — an
+ * overflowing row would violate invariant ①, and a word that cannot fit
+ * has to be broken somewhere.
+ */
+/** The SGR spans still open at the end of `text`, given those open at
+ *  its start. A reset closes everything; anything else stacks. */
+function spansOpenAfter(text: string, before: readonly string[]): string[] {
+	let open = [...before];
+	for (const m of text.matchAll(/\x1b\[[0-9;]*m/g)) {
+		if (m[0] === "\x1b[0m") open = [];
+		else open.push(m[0]);
+	}
+	return open;
+}
+
+export function foldWords(line: string, W: number): string[] {
+	if (W < 1) return [line];
+	const out: string[] = [];
+	for (const para of line.split("\n")) {
+		if (visibleWidth(para) <= W) {
+			out.push(para);
+			continue;
+		}
+		let rest = para;
+		// the spans open at the cut point, so each emitted row closes them
+		// and the next row reopens them — foldLine's own discipline, applied
+		// across the segments this function creates.
+		let open: string[] = [];
+		while (visibleWidth(rest) > W) {
+			// the widest prefix that fits, then back up to the last space in
+			// it — the SGR-aware cut keeps the spans intact
+			const head = widthCut(rest, W);
+			const at = head.lastIndexOf(" ");
+			if (at <= 0) break; // one long word (or no space at all) — hard-break it
+			const cut = head.slice(0, at);
+			out.push(`${cut}${open.length > 0 || /\x1b\[[0-9;]*m/.test(cut) ? "\x1b[0m" : ""}`);
+			open = spansOpenAfter(cut, open);
+			rest = `${open.join("")}${rest.slice(cut.length + 1)}`;
+		}
+		out.push(...foldLine(rest, W));
+	}
+	return out.length > 0 ? out : [""];
+}
+
 export function gutterFold(gutter: string, line: string, W: number): string[] {
 	const textW = Math.max(1, W - 2);
 	return foldLine(line, textW).map((r) => `${gutter}${r}`);
@@ -1152,8 +1210,10 @@ function toolCutNote(name: string, resultText: string): string | null {
 class AssistantMessage implements Component {
 	constructor(private readonly cell: { text: string; done: boolean }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
+		// TUI2-R1.5 9 (VD-10): the model's prose is the clearest case of
+		// text a human reads — it wraps at word boundaries.
 		const text = escapeTerminal(this.cell.text);
-		const wrapped = foldLine(text, W);
+		const wrapped = foldWords(text, W);
 		return wrapped.length > 0 ? wrapped.map((l) => colorInlineCode(l)) : [""];
 	}
 }
@@ -1162,7 +1222,8 @@ class AssistantMessage implements Component {
 class ErrorLine implements Component {
 	constructor(private readonly cell: { text: string }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
-		return foldLine(escapeTerminal(this.cell.text), W);
+		// TUI2-R1.5 9 (VD-10): a notice is a sentence addressed to a human.
+		return foldWords(escapeTerminal(this.cell.text), W);
 	}
 }
 
@@ -1171,9 +1232,14 @@ class ErrorLine implements Component {
  *  verbatim: the #16b contract (no re-escaping) holds, and the fold is
  *  SGR-aware so the accent spans survive a break. */
 class RawBlock implements Component {
-	constructor(private readonly cell: { lines: string[] }) {}
+	constructor(private readonly cell: { lines: string[]; wrap?: "words" }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
-		return this.cell.lines.flatMap((l) => foldLine(l, W));
+		// TUI2-R1.5 9 (VD-10): the raw channel carries BOTH kinds of text —
+		// /help's sentences and /last's verbatim tool output — so the
+		// CALLER says which it is. Verbatim is the default: a surface that
+		// has not thought about it must not have its bytes reflowed.
+		const fold = this.cell.wrap === "words" ? foldWords : foldLine;
+		return this.cell.lines.flatMap((l) => fold(l, W));
 	}
 }
 
