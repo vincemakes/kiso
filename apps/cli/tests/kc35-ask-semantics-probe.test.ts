@@ -209,7 +209,9 @@ describe("KC3.5 ① — an IDEMPOTENT tool's started-unreported execution, on re
 		expect(asked).toEqual([]);
 		const durable = new SessionStore(dir).load("s").map((r) => r.event);
 		expect(durable.filter((e) => e.type === "tool_execution_started")).toHaveLength(1);
-		const fill = durable.find((e) => e.type === "tool_result" && e.executionId === "ex-3")!;
+		const fill = durable.find(
+			(e): e is Event & { type: "tool_result" } => e.type === "tool_result" && e.executionId === "ex-3",
+		)!;
 		expect(fill.isError).toBe(true);
 		expect(fill.content).toContain("interrupted execution — rerun approved");
 		expect(fill.content).toContain("the model may retry");
