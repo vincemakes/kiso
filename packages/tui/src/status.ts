@@ -50,8 +50,47 @@ export function runningStatus(glyph: string, since: number, outTokens: number | 
 	return `${glyph} working ${seconds}s${out} · esc stop · alt+⏎ redirect · ctx left ~${ctxLeft(ctxRatio)}%`;
 }
 
+/**
+ * TUI2-R1 (E) — the idle row's meter: what the session has SPENT, next
+ * to what it has left.
+ *
+ * Both fields are optional and both are omitted when unknown, because
+ * the row's job is to be true rather than complete:
+ *
+ *   - `cacheHitPct` is cacheRead / (fresh + cacheRead) — the E2
+ *     denominator (the pinned sentence: it cannot exceed 100%). A
+ *     session with no usage yet has no cache hit rate, and an
+ *     unmeasured cache is NOT a 0% cache, so it renders nothing.
+ *   - `costUsd` is the CANONICAL cost, which is null whenever the
+ *     pricing table has no rate for the route. Null renders nothing.
+ *     No rate table, no number — kiso does not invent a price.
+ */
+export interface StatusMeter {
+	readonly cacheHitPct: number | null;
+	readonly costUsd: number | null;
+}
+
 /** The IDLE row: the approval tier as the CALLER names it, the /mode
- *  hint, the model driving the session, and the ctx estimate. */
-export function idleStatus(tier: string, model: string, ctxRatio: number): string {
-	return `▸ ${tier} · /mode to switch · ${model} · ctx left ~${ctxLeft(ctxRatio)}%`;
+ *  hint, the model driving the session, the TUI2-R1 meter when there is
+ *  one, and the ctx estimate. Called without a meter — or with one that
+ *  knows nothing — the row is byte-identical to the pre-round row. */
+export function idleStatus(tier: string, model: string, ctxRatio: number, meter?: StatusMeter): string {
+	const parts = [`▸ ${tier}`, "/mode to switch", model];
+	if (meter?.cacheHitPct != null) parts.push(`CH ${Math.round(meter.cacheHitPct)}%`);
+	if (meter?.costUsd != null) parts.push(`$${meter.costUsd.toFixed(4)}`);
+	parts.push(`ctx left ~${ctxLeft(ctxRatio)}%`);
+	return parts.join(" · ");
+}
+
+/** TUI2-R1 (E) — the cache hit rate the status row shows, from the usage
+ *  the CLI already tracks. The denominator is the TOTAL the model was
+ *  given (fresh + cacheRead), which is the E2 ruling's own: cacheRead
+ *  over fresh alone once rendered 923%. No input at all → null, never a
+ *  zero. */
+export function cacheHitPct(usage: { in: number | null; cache: number | null }): number | null {
+	const fresh = usage.in;
+	const cached = usage.cache;
+	if (fresh === null || cached === null) return null;
+	const total = fresh + cached;
+	return total > 0 ? (cached / total) * 100 : null;
 }

@@ -51,6 +51,8 @@ export const MENU_ITEMS: readonly MenuItem[] = [
 	{ name: "/think", desc: "show the last full thinking block" },
 	{ name: "/last", desc: "show the most recent tool call's input and output" },
 	{ name: "/status", desc: "show session id, event count, and context estimate" },
+	// TUI2-R1 (E): the rent-ledger attribution — where the context went
+	{ name: "/context", desc: "show where the context went — the last request's rent ledger" },
 	{ name: "/help", desc: "print this list of commands" },
 ];
 

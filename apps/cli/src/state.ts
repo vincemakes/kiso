@@ -32,6 +32,68 @@ export function extensionsDir(): string {
 }
 
 /**
+ * TUI2-R1 (E) — the /context ledger, read from the session's TRACE
+ * SIDECAR (<sessions>/traces/<id>.jsonl).
+ *
+ * THE PURITY GATE (ADR-0051 §6, ruling R7) IS UNTOUCHED. The trace
+ * surface is an observation surface; correctness never reads it, and
+ * this reader is on the DISPLAY path only — nothing it returns reaches a
+ * recovery plan, a projection or a request. The proof of that is the
+ * shape of this function: it is best-effort end to end, and its failure
+ * mode is `null`, which renders a sentence rather than a number.
+ *
+ * The LAST request line is the one that matters: rent is per request,
+ * and what the reader wants to know is what the NEXT request will cost,
+ * which is what the previous one cost.
+ */
+export function readContextLedger(sessionId: string, window: number): import("@vincemakes/kiso-tui").ContextLedger | null {
+	let last: Record<string, unknown> | null = null;
+	try {
+		const text = readFileSync(join(sessionsDir(), "traces", `${sessionId}.jsonl`), "utf8");
+		for (const line of text.split("\n")) {
+			if (line === "") continue;
+			try {
+				const parsed = JSON.parse(line) as Record<string, unknown>;
+				if (parsed.kind === "request") last = parsed;
+			} catch {
+				// a torn last line (the writer was mid-append) — the ledger is
+				// an observation, and a partial one is simply not the answer
+			}
+		}
+	} catch {
+		return null; // no sidecar — a session that has not called the model
+	}
+	if (last === null) return null;
+	const rent = Array.isArray(last.rent) ? (last.rent as { surface: string; estTokens: number }[]) : [];
+	if (rent.length === 0) return null; // a v1/v2 sidecar carries no rent block (R2-1)
+	const sum = (pred: (surface: string) => boolean): number =>
+		rent.filter((l) => typeof l.surface === "string" && pred(l.surface)).reduce((a, l) => a + (l.estTokens ?? 0), 0);
+	const count = (pred: (surface: string) => boolean): number =>
+		rent.filter((l) => typeof l.surface === "string" && pred(l.surface)).length;
+	// the skills index is broken out: it is an INDEX of workspace content,
+	// not an instruction, and it is the one append whose size is the
+	// reader's own doing.
+	const isSkills = (s: string): boolean => s === "system:ext:skills";
+	const manifest = Array.isArray(last.contextManifest) ? (last.contextManifest as { role: string; estTokens: number }[]) : [];
+	const turnSegments = manifest.filter((s) => s.role === "turn" || s.role === "current_turn");
+	return {
+		window,
+		systemPrompt: sum((s) => s === "system:base" || (s.startsWith("system:ext:") && !isSkills(s))),
+		systemBase: sum((s) => s === "system:base"),
+		appends: count((s) => s.startsWith("system:ext:") && !isSkills(s)),
+		toolTable: sum((s) => s.startsWith("tool:")),
+		tools: count((s) => s.startsWith("tool:")),
+		skillsIndex: sum(isSkills),
+		// the ledger records the SURFACE, never its contents — the number
+		// of skills is not in it, and 0 tells the renderer to say so.
+		skills: 0,
+		envelope: sum((s) => s === "envelope"),
+		messages: turnSegments.reduce((a, s) => a + (s.estTokens ?? 0), 0),
+		turns: turnSegments.length,
+	};
+}
+
+/**
  * KC3 §5 — the @ picker's file source. Computed PER OPEN: no index, no
  * daemon, no watcher, nothing to invalidate and nothing to go stale.
  * (The editor snapshots the result for the life of one open, so this

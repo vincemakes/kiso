@@ -4,11 +4,11 @@
  * the context (the chain, the run state, the prompt arming).
  */
 
-import { escapeTerminal, helpRows, kUnit, palette } from "@vincemakes/kiso-tui";
+import { contextRows, contextUnavailableRows, escapeTerminal, helpRows, kUnit, palette } from "@vincemakes/kiso-tui";
 import { buildAdapter } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, getMode, setMode } from "./mode.js";
-import { agentModel, body, bodyLog, configModels, dock, setAgentModel, setCurrentModelName, type LineInput } from "./state.js";
+import { agentModel, body, bodyLog, configModels, dock, readContextLedger, setAgentModel, setCurrentModelName, type LineInput } from "./state.js";
 import { directWriteProfile, profileAvailable } from "./config.js";
 
 /** Everything dispatch touches that chat() owns. */
@@ -26,6 +26,9 @@ export interface DispatchCtx {
 	readonly submitTurn: (line: string) => void;
 	/** the /status context estimate. */
 	readonly estimateCtx: () => number;
+	/** TUI2-R1 (E): the model's context window, as the session is
+	 *  configured — the /context ledger's denominator. */
+	readonly contextWindow: () => number;
 }
 
 /** The ONE dispatcher — slash commands, exit, and turns. The recovery
@@ -105,6 +108,30 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			ctx.input.prompt();
 		};
 		ctx.chainRef.current = ctx.chainRef.current.then(land);
+		return;
+	}
+	if (trimmed === "/context") {
+		// TUI2-R1 (E): the rent-ledger attribution — where the context went,
+		// read from the session's TRACE SIDECAR (the observation file E1/E3
+		// already write, per request).
+		//
+		// THE PURITY GATE IS UNTOUCHED and this is why: the trace surface is
+		// an OBSERVATION surface (ADR-0051 §6, ruling R7) and correctness
+		// never reads it. /context is a DISPLAY command — nothing it reads
+		// reaches a recovery plan, a projection, or a request. The read is
+		// best-effort by construction: a missing, partial or unparseable
+		// ledger renders the honest fallback, never an error and never a
+		// guess. recovery-purity.test.ts's probes are unaffected: the
+		// derivation still does zero I/O and still ignores trace-shaped data.
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			const ledger = readContextLedger(ctx.session.id, ctx.contextWindow());
+			for (const row of ledger === null
+				? contextUnavailableRows("the ledger is written per request — run a turn, then ask again")
+				: contextRows(ledger)) {
+				bodyLog(row);
+			}
+			ctx.input.prompt();
+		});
 		return;
 	}
 	if (trimmed === "/status") {

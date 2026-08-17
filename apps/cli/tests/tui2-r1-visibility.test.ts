@@ -249,3 +249,80 @@ describe("TUI2-R1 T-V4 — the ? keys sheet on a real PTY", () => {
 		expect(user).toEqual(["hi"]); // never "?" and never "x"
 	}, 180_000);
 });
+
+describe("TUI2-R1 T-V5 — /context reads the REAL trace sidecar", () => {
+	it("a session that has run a turn renders the rent attribution; the parts sum to the header", () => {
+		const ws = workspace();
+		const script = fauxScript([{ events: [{ type: "text_delta", text: "answered." }, { type: "stop", reason: "end_turn" }] }]);
+		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
+		const res = runCli(["--mode", "bypass", "r1-ctx"], env as NodeJS.ProcessEnv, { input: "hello\n/context\nexit\n", cwd: ws });
+		expect(res.status, res.stderr).toBe(0);
+		const out = stripANSI(res.stdout);
+
+		// the sidecar the rows were read FROM really exists and really has
+		// a rent block — the rows are not a fabrication of the renderer
+		const trace = join(env.KISO_HOME as string, "sessions", "traces", "r1-ctx.jsonl");
+		expect(existsSync(trace)).toBe(true);
+		const requests = readFileSync(trace, "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { kind: string; rent?: { surface: string; estTokens: number }[] })
+			.filter((r) => r.kind === "request");
+		expect(requests.length).toBeGreaterThan(0);
+		const rent = requests[requests.length - 1]!.rent ?? [];
+		expect(rent.some((l) => l.surface === "system:base")).toBe(true);
+		expect(rent.some((l) => l.surface.startsWith("tool:"))).toBe(true);
+
+		// the rendered rows
+		expect(out).toContain("context — ");
+		expect(out).toContain("system prompt");
+		expect(out).toContain("tool table");
+		expect(out).toContain("envelope");
+		expect(out).toContain("free");
+		// the tool count matches the ledger's own tool: lines, exactly
+		const tools = rent.filter((l) => l.surface.startsWith("tool:")).length;
+		expect(out).toContain(`${tools} tools`);
+	}, 120_000);
+
+	it("a session with NO sidecar renders the honest fallback — never a crash, never an empty bar", () => {
+		const ws = workspace();
+		const { env } = isolatedEnv({ KISO_MODE: "bypass" });
+		// /context BEFORE any turn: no request has happened, so no ledger
+		const res = runCli(["--mode", "bypass", "r1-noctx"], env as NodeJS.ProcessEnv, { input: "/context\nexit\n", cwd: ws });
+		expect(res.status, res.stderr).toBe(0);
+		const out = stripANSI(res.stdout);
+		expect(out).toContain("context — no ledger yet");
+		expect(out).toContain("the ledger is written per request");
+		expect(out).not.toContain("▰");
+		expect(out).not.toContain("▱");
+	}, 120_000);
+
+	it("the status row shows NO $ on a route with no rate — the omission is the feature", () => {
+		const ws = workspace();
+		const script = fauxScript([{ events: [{ type: "text_delta", text: "answered." }, { type: "stop", reason: "end_turn" }] }]);
+		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
+		const out = stripANSI(
+			ptyRun(["--mode", "bypass", "r1-meter"], env as NodeJS.ProcessEnv, [["▌ ", "hi\r"], ["answered.", "exit\r"]], 25, ws),
+		);
+		// the idle row painted, and it carries no invented price
+		expect(out).toContain("▸ bypass · /mode to switch · faux · ctx left ~");
+		expect(out).not.toMatch(/\$\d/);
+	}, 120_000);
+
+	it("THE PURITY GATE IS UNTOUCHED — /context is a display path, and the derivation still reads nothing", () => {
+		// The reader lives in the CLI's state.ts and returns rows; nothing
+		// it produces reaches a recovery plan, a projection or a request.
+		// The gate itself (packages/runtime/tests/recovery-purity.test.ts,
+		// ADR-0051 §6 ruling R7) is run unmodified by the suite; this
+		// assertion pins the boundary that keeps it green — the runtime's
+		// recovery derivation has no import path to the CLI's reader.
+		const stateSrc = readFileSync(join(fileURLToPath(new URL("../src", import.meta.url)), "state.ts"), "utf8");
+		expect(stateSrc).toContain("readContextLedger");
+		const recovery = readFileSync(
+			join(fileURLToPath(new URL("../../../packages/runtime/src", import.meta.url)), "recovery-plan.ts"),
+			"utf8",
+		);
+		expect(recovery).not.toContain("trace");
+		expect(recovery).not.toContain("readFileSync");
+	});
+});

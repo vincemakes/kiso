@@ -79,12 +79,12 @@ describe("TUI2-R1 T-V5 — /context's attribution", () => {
 		expect(contextRows(LEDGER)).toEqual([
 			"context — 31.5k / 120k tokens (26%)",
 			"▰▰▰▱▱▱▱▱▱▱▱▱",
-			"  ▰ system prompt   2.1k  (base 1.4k + 3 extension appends)",
-			"  ▰ tool table      3.2k  10 tools",
-			"  ▰ skills index    0.4k  6 skills, tier-1 lines only",
+			"  ▰ system prompt  2.1k  (base 1.4k + 3 extension appends)",
+			"  ▰ tool table     3.2k  10 tools",
+			"  ▰ skills index   0.4k  6 skills, tier-1 lines only",
 			"  ▰ envelope         60",
-			"  ▰ messages       25.7k  12 turns",
-			"  ▱ free           88.5k",
+			"  ▰ messages      25.7k  12 turns",
+			"  ▱ free          88.5k",
 		]);
 	});
 
@@ -107,6 +107,6 @@ describe("TUI2-R1 T-V5 — /context's attribution", () => {
 		const rows = contextRows({ ...LEDGER, window: 1_000 });
 		expect(rows[1]).toBe("▰▰▰▰▰▰▰▰▰▰▰▰");
 		expect(rows[rows.length - 1]).toContain("free");
-		expect(rows.join("\n")).not.toContain("-");
+		expect(rows[rows.length - 1]).toBe("  ▱ free              0"); // clamped, never negative
 	});
 });

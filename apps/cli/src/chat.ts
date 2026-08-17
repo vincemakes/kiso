@@ -8,6 +8,7 @@
 import { readFileSync, statSync } from "node:fs";
 import {
 	escapeTerminal,
+	cacheHitPct,
 	idleStatus,
 	palette,
 	renderEvent,
@@ -96,6 +97,10 @@ export interface UsageDelta {
 	 *  recovers on the next known event). */
 	readonly total: number | null;
 	readonly missed: number | null;
+	/** TUI2-R1 (E): the CANONICAL cost of this request — null when the
+	 *  pricing table has no rate for the route (the R5b-④c absent stamp).
+	 *  Null is carried, never zeroed: a missing rate is not a free call. */
+	readonly costUsd: number | null;
 }
 
 /**
@@ -138,7 +143,7 @@ export function usageFromEvent(
 		const m = Math.min(prevTotal, total) - c.cacheRead;
 		missed = m > CACHE_MISS_FLOOR ? m : null;
 	}
-	return { usage: { in: c.input, out: c.output, cache: c.cacheRead, known: ev.known }, total, missed };
+	return { usage: { in: c.input, out: c.output, cache: c.cacheRead, known: ev.known }, total, missed, costUsd: c.costUsd };
 }
 
 /** v2b: the spinner merged into the STATUS BAR (the v2a standalone glyph
@@ -345,7 +350,7 @@ export async function consumeRun(
 	input: LineInput,
 	turnNo: number,
 	faux: boolean,
-	statusCb: ((usage: RunUsage, ctxRatio: number) => void) | null,
+	statusCb: ((usage: RunUsage, ctxRatio: number, costUsd?: number | null) => void) | null,
 	/** W21: the amend words ("Yes + feedback") ride the NEXT user turn —
 	 *  threaded from chat's submitTurn; absent in the recovery flow
 	 *  (resume) where a dropped amend is noticed instead. */
@@ -452,7 +457,9 @@ export async function consumeRun(
 				usage = delta.usage;
 				prevTotal = delta.total;
 				missed = delta.missed;
-				statusCb?.(usage, estimateCtxRatio(session));
+				// TUI2-R1 (E): the request's canonical cost rides the same
+				// callback the usage does — one settled request, one addition.
+				statusCb?.(usage, estimateCtxRatio(session), delta.costUsd);
 				break;
 			}
 			case "uncertain_pending":
@@ -747,6 +754,11 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// glyph (▖▘▝▗ — the spinner drives it) + wall seconds + ↓ out tokens
 	// + the interrupt hint. ctx left is the live estimate everywhere.
 	let runUsage: RunUsage = { in: null, out: null, cache: null, known: false };
+	// TUI2-R1 (E): the session's spend so far — the CANONICAL cost of every
+	// request this process has seen, summed. Null stays null: a route with
+	// no rate in the pricing table contributes nothing and the row shows no
+	// $ at all, because a partial total presented as a total is a lie.
+	let spentUsd: number | null = null;
 	let runGlyph = "▖";
 	let runStart = Date.now();
 	// KC2 §5: the STATE (the glyph, the run's start, the usage, the dock)
@@ -758,11 +770,28 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// parentheses idiom names the read-only constraint. The tier is the
 	// CALLER's word (the recovery flow passes the bare mode).
 	const paintIdle = (): void => {
-		if (dock.active) dock.setStatus(idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), agentModel, estimateCtxRatio(session)));
+		if (!dock.active) return;
+		// TUI2-R1 (E): the meter rides the idle row — both fields omitted
+		// when unknown, so a session that has not called the model paints
+		// exactly the pre-round row.
+		dock.setStatus(
+			idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), agentModel, estimateCtxRatio(session), {
+				cacheHitPct: cacheHitPct(runUsage),
+				costUsd: spentUsd,
+			}),
+		);
 	};
-	const statusCb = (u: RunUsage, ctx: number): void => {
+	const statusCb = (u: RunUsage, ctx: number, costUsd?: number | null): void => {
 		runUsage = u;
+		addCost(costUsd ?? null);
 		paintRunning();
+	};
+	// TUI2-R1 (E): the canonical cost of one settled request, added to the
+	// session's running total. A null cost (no rate for the route) adds
+	// nothing and leaves the total as it was.
+	const addCost = (usd: number | null): void => {
+		if (usd === null) return;
+		spentUsd = (spentUsd ?? 0) + usd;
 	};
 	const submitTurn = (line: string): void => {
 		const slot = { line, cancelled: false };
@@ -818,6 +847,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		paintIdle,
 		submitTurn,
 		estimateCtx: () => estimateCtxRatio(session),
+		contextWindow: () => contextWindowTokens(),
 	};
 	// the ergonomics batch C8: the auto-compact check — the /compact FULL path via the
 	// shared dispatch (same notices, same chain ordering, same mid-run
