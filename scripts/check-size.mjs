@@ -47,12 +47,12 @@ const GATES = [
 	// The SECOND and LAST cli recalibration before 1.0: the next
 	// approach, argued or not, defaults to extract-first adjudication.
 	{ name: "cli", limit: 1920, dir: join("apps", "cli", "src") },
-	// ADR-0043 Amendment 3 (the 2026-08-08 ruling): the tui gate is 2400,
-	// declared the TERMINAL cap (the ADR-0041 discipline per package —
-	// the cli precedent). The tui's second recalibration is its LAST:
-	// the way past 2400 is structural extraction (the components cell
-	// renderer), never a third recalibration.
-	{ name: "tui", limit: 2400, dir: join("packages", "tui", "src") },
+	// ADR-0043 Amendment 7 (the 2026-08-17 ruling): the product-era tui
+	// cap — 4,000. Amendment 3's terminal-cap clause is superseded by
+	// explicit ritual: the KC line's TUI growth is spec-mandated product
+	// work. The tui-cells extraction hatch stays preferred for
+	// component-shaped growth.
+	{ name: "tui", limit: 4000, dir: join("packages", "tui", "src") },
 	// ADR-0043 Amendment 4 (the 2026-08-09 ruling): the 9th package —
 	// the components cell renderer extracted from the tui (Amendment
 	// 3's named escape hatch). The gate is 1280 = 1.2 × 925 (the

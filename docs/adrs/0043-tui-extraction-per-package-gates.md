@@ -262,3 +262,23 @@ Conditions attached to the raise:
 
 The cli gate is **1920**. The core gate stays 2000; the tui gate stays
 2400 (the terminal cap); the tui-cells gate stays 1280.
+
+## Amendment 7 (2026-08-17): the product-era tui cap — 2,400 → 4,000
+
+The owner's ruling (2026-08-17, adjudicated with the KC2 round).
+Amendment 3 declared 2,400 the tui's TERMINAL cap and named structural
+extraction the only way past it. That clause was sized for the
+framework era, when the terminal layer was a fixed surface to hold
+still. The KISO CODE SUPREMACY queue (KC2–KC5: redirect, ask-user
+option panels, session finder, expand/collapse richness) makes TUI
+growth SPEC-MANDATED product work — and per-feature extraction into
+ever more packages would fragment one coherent surface to satisfy a
+cap calibrated for a different era.
+
+Ruling: the tui gate recalibrates 2,400 → 4,000. Amendment 3's
+"never a third recalibration" clause is superseded — by explicit
+ritual, never silently. Unchanged: the cli's 1,920 stays terminal
+(extract-first, Amendment 6); tui-cells stays 1,280; the tui-cells
+extraction hatch remains available and preferred for component-shaped
+growth; the 4,000 cap is once again a snapshot discipline, not a
+self-adjusting ratchet.
