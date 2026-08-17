@@ -81,7 +81,13 @@ describe("TUI2-R1 T-V5 — /context's attribution", () => {
 			"▰▰▰▱▱▱▱▱▱▱▱▱",
 			"  ▰ system prompt  2.1k  (base 1.4k + 3 extension appends)",
 			"  ▰ tool table     3.2k  10 tools",
-			"  ▰ skills index   0.4k  6 skills, tier-1 lines only",
+			// MOVED (R1.5 slice ⑤, the number-format class — DECLARED THIS
+			// ROUND): this row changes unit. k()'s floor was 100, so this
+			// very frame stacked "0.4k" and "60" in one right-aligned column
+			// (VD-15). The floor is now 1000, matching render.ts's kUnit —
+			// the formatter the status row and every settled card already
+			// used — so the product reads plain integers below 1000, k above.
+			"  ▰ skills index    400  6 skills, tier-1 lines only",
 			"  ▰ envelope         60",
 			"  ▰ messages      25.7k  12 turns",
 			"  ▱ free          88.5k",

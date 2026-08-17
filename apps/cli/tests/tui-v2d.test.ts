@@ -87,8 +87,12 @@ const CELL_LINE = [
 	// ctrl+r expands`, its terse ` · N lines · ctrl+r`, or the bare ` ·
 	// ctrl+r` (the width tiers). A cell hiding nothing still matches the
 	// unsuffixed form, which is why the tail is optional here.
-	/^✓ \S+ .*\(\S.*, \d+\.\ds\)( · (\d+ lines? · )?ctrl\+r( expands)?)?$/, // the ToolCell done (A4: the target rides the head row; A5: the · approved by <decider> tail)
-	/^✗ \S+ .*\(\S.*, \d+\.\ds\)$/, // the ToolCell failed (an error's own cut row is its affordance — never suffixed)
+	// MOVED (R1.5 slice 5, the R1 tool-cell suffix class + the
+	// approval-attribution class): the parens hold the facts that are NOT
+	// the line count (VD-6) — often none at all, leaving just the timing —
+	// and a human verdict rather than a policy byline (VD-11).
+	/^✓ \S+ .*\((?:\S.*, )?\d+\.\ds\)( · (\d+ lines? · )?ctrl\+r( expands)?)?$/, // the ToolCell done (A4: the target rides the head row)
+	/^✗ \S+ .*\((?:\S.*, )?\d+\.\ds\)$/, // the ToolCell failed (an error's own cut row is its affordance — never suffixed)
 	/^┌ answer truncated at max_tokens.*$/, // D4: the truncation notice row — the cut is named, never silent
 	/^▞.*$/, // v3: the recap line ends the run
 	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)
@@ -233,10 +237,21 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// A4: the target rides the settled head row (list_dir's input is {}
 		// → the "(root)" fallback); A5: the decider is NAMED on the rows
 		// that auto-approve (the extension's ask lost to the tier's allow).
-		expect(clean).toMatch(/✓ list_dir \(root\) \(\d+ lines · approved by mode:default, \d+\.\ds\)/); // the auto-approved list_dir settled
-		expect(clean).toMatch(/✓ shell sleep 1; echo hi \(exit 0, \d+\.\ds\)/); // the approved shell settled
-		expect(clean).toMatch(/✓ asky_read  \(1 line, \d+\.\ds\)/); // W4: the result line count, not the input JSON
-		expect(clean).toContain("approved by mode:default"); // A5: the decider tail rides the settled rows
+		// MOVED (R1.5 slice 5, the approval-attribution class — DECLARED
+		// THIS ROUND): a POLICY verdict is ambient and silent; a HUMAN
+		// verdict is what the row records. `approved by mode:*` was the
+		// runtime's backfill for "no policy expressed an opinion", read by
+		// a human as an attribution (VD-11).
+		expect(clean).toMatch(/✓ list_dir \(root\) \(\d+\.\ds\) · \d+ lines · ctrl\+r/); // the auto-approved list_dir settled, silently
+		// MOVED (R1.5 slice 5, the approval-attribution class): the HUMAN
+		// answered this panel, and that is now what the row records.
+		expect(clean).toMatch(/✓ shell sleep 1; echo hi \(exit 0 · approved, \d+\.\ds\)/); // the approved shell settled
+		// MOVED (R1.5 slice 5, the R1 tool-cell suffix class): the line
+		// count is stated EXACTLY ONCE (VD-6) and lives in the suffix, so
+		// the parens carry the facts that are NOT the count — here the
+		// human's own verdict.
+		expect(clean).toMatch(/✓ asky_read  \(approved, \d+\.\ds\) · 1 line · ctrl\+r/); // the count in the suffix, the verdict in the parens
+		expect(clean).not.toContain("approved by"); // R1.5 5: no policy byline anywhere
 		expect(clean).toContain("streaming text");
 		expect(clean).toContain("the tour is done");
 		// THE GATE: every line fully matches a known cell format. A

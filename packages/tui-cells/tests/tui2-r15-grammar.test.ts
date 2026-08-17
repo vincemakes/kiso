@@ -85,10 +85,15 @@ describe("TUI2-R1.5 ⑤ — approval attribution is about humans (VD-11)", () =>
 		expect(row).toBe("✓ read  src/parser.ts (2.4s) · 2 lines · ctrl+r expands");
 	});
 
-	it("a HUMAN approval says ` · approved` — the thing the human actually did", () => {
-		const row = render(toolCell({ verdict: { decision: "approved" } }))[0]!;
-		expect(row).toContain(" · approved");
-		expect(row).not.toContain("approved by");
+	it("a HUMAN approval says `approved` — the thing the human actually did", () => {
+		// the verdict is a FACT in the W4 parentheses group, `·`-separated
+		// from the others; with a meta fact present the separator is there,
+		// and with none it would be dangling, so it is not emitted.
+		const withMeta = render(toolCell({ name: "edit_file", added: 1, removed: 1, resultText: "edited", verdict: { decision: "approved" } }))[0]!;
+		expect(withMeta).toContain("(+1 -1 · approved, 2.4s)");
+		const bare = render(toolCell({ verdict: { decision: "approved" } }))[0]!;
+		expect(bare).toContain("(approved, 2.4s)");
+		expect(bare).not.toContain("approved by");
 	});
 
 	it("a HUMAN denial says ` · denied`; a policy denial keeps only its reason", () => {

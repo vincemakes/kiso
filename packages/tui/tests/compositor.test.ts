@@ -966,7 +966,17 @@ describe("TUI v6 — the one compositor", () => {
 		// the W4 idiom: the timing closes the parens — the decider rides
 		// the metadata group (the checkmark is bold — assert SGR-stripped)
 		const plain = frame.replace(/\x1b\[[0-9;]*m/g, "");
-		expect(plain).toContain("✓ edit  examples/foo.ts (+1 -1 · approved by dont-ask-again, 0.0s)");
+		// MOVED (R1.5 slice ⑤, the approval-attribution class — DECLARED
+		// THIS ROUND): the signal is inverted. A5 put the DECIDER on the row
+		// to answer "why wasn't I asked"; the walkthrough found that answer
+		// given nine times in a row as `approved by mode:default`, which is
+		// the runtime's own backfill for "no policy expressed an opinion"
+		// (run.ts stamps it) — the ambient default announced as a decision.
+		// A verdict WITH decidedBy is a policy's, and policy is ambient:
+		// silent. A verdict WITHOUT one is the human's, and that is the
+		// fact worth the row: ` · approved` / ` · denied`.
+		expect(plain).toContain("✓ edit  examples/foo.ts (+1 -1, 0.0s)");
+		expect(plain).not.toContain("approved by");
 		// the DENIED call: the W19 pinned row (the full name + target) with
 		// the decider's tail — the aggregated head row, one line
 		body.userLine("deny a call");
@@ -975,7 +985,9 @@ describe("TUI v6 — the one compositor", () => {
 		body.toolResult("c2", { content: "[Permission denied] no touch", isError: true, reason: "no touch" });
 		tick();
 		frame = writes.join("");
-		expect(frame.replace(/\x1b\[[0-9;]*m/g, "")).toContain("✗ edit_file bar.ts (no touch · by dont-ask-again)");
+		// MOVED (same class): a POLICY denial keeps only its reason — the
+		// reason is why, and the decider was ambient.
+		expect(frame.replace(/\x1b\[[0-9;]*m/g, "")).toContain("✗ edit_file bar.ts (no touch)");
 		// the HUMAN approval (no decidedBy): the settled row unchanged —
 		// no decider tail, the ⏸ → spinner → ✓ sequence told the story
 		body.userLine("human approval");
@@ -987,10 +999,12 @@ describe("TUI v6 — the one compositor", () => {
 		tick();
 		frame = writes.join("");
 		const plain3 = frame.replace(/\x1b\[[0-9;]*m/g, "");
-		expect(plain3).toContain("✓ read  x.ts (1 line, 0.0s)");
-		// the c1 row legitimately still shows `· approved by` in the frame —
-		// the c3 HEAD ROW is the scope: no decider tail on the human cell
-		expect(plain3).not.toContain("read  x.ts (1 line, 0.0s · approved by");
+		// MOVED (same class): the HUMAN answer is now what the row records.
+		// The old expectation ("the settled row unchanged") was the exact
+		// inversion the walkthrough objected to — the ambient default got a
+		// byline and the human's own answer got none.
+		expect(plain3).toContain("✓ read  x.ts (approved, 0.0s)");
+		expect(plain3).not.toContain("approved by");
 	});
 
 	it("A6 — a wide tool header cuts with the ellipsis — ONE row, never the fold-repeat", () => {

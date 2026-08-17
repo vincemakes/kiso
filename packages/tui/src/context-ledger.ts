@@ -51,13 +51,18 @@ export interface ContextLedger {
 
 const BAR_CELLS = 12;
 
-/** k-units for the ledger's columns, from 100 up: 25700 → 25.7k, 400 →
- *  0.4k, 60 → 60. The floor is where the unit starts costing more
- *  precision than it buys — "0.1k" for 60 tokens is a rounding, not a
- *  reading. Distinct from render.ts's kUnit in the floor and in never
- *  having a null to report. */
+/** k-units for the ledger's columns: 25700 → 25.7k, 300 → 300, 11 → 11.
+ *
+ *  TUI2-R1.5 ⑤ (VD-15): the floor was 100, which put `11`, `0.3k` and
+ *  `25.7k` in one right-aligned column — two unit systems stacked, and
+ *  the reader has to switch between them row by row to compare. The
+ *  repo already had a k-formatter with a 1000 floor (render.ts's kUnit,
+ *  which the status row and every settled card use); this now agrees
+ *  with it, so /context speaks the same number language as the rest of
+ *  the product. It still differs from kUnit in never having a null to
+ *  report — every ledger figure is a measured count. */
 function k(n: number): string {
-	return n >= 100 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(n));
+	return n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(n));
 }
 
 /**

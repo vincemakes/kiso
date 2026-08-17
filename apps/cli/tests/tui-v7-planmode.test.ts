@@ -132,7 +132,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 				// the needles ride the POST-RESET text (the glyphs are SGR-
 				// wrapped in the raw stream — "▞\x1b[0m plan ready" never
 				// matches "▞ plan ready"; the post-reset run is contiguous)
-				["read  a.ts (3 lines", ""], // the read ran under plan (A4: the target rides the settled row's head)
+				["read  a.ts (", ""], // the read ran under plan (A4: the target rides the settled row's head; R1.5 5 moved the count into the suffix)
 				["(plan mode: read-only", ""], // the pinned deny row's reason (A5: the · by <decider> tail rides INSIDE the parens — no trailing paren in the needle)
 				["the survey is done.", ""], // the model's answer after the denial
 				["plan ready", "/mode default\r"], // the way-forward row → the only exit
@@ -148,8 +148,17 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// no timing metadata — and the read ran (its own W4 settled row:
 		// `✓ read (3 lines, 0.0s)` — the interactive row carries the meta,
 		// the target lives in the pipe's summary).
-		expect(clean).toMatch(/✓ read  a\.ts \(\d+ lines · approved by mode:plan, \d+\.\ds\)/); // A4+A5: the target + the decider tail ride the settled head row (the verbCol's 5-char pad — the "read  5 files" double space)
-		expect(clean).toContain("✗ write_file sub/out.txt (plan mode: read-only · by mode:plan)"); // the A5 deny tail names the decider inside the parens
+		// MOVED (R1.5 slice 5, the approval-attribution class — DECLARED
+		// THIS ROUND): a POLICY verdict is ambient and silent; a HUMAN
+		// verdict is what the row records. `approved by mode:*` was the
+		// runtime's backfill for "no policy expressed an opinion", read by
+		// a human as an attribution (VD-11).
+		expect(clean).toMatch(/✓ read  a\.ts \(\d+\.\ds\) · \d+ lines · ctrl\+r/); // A4: the target rides the settled head row (the verbCol's 5-char pad); the plan tier's allow is ambient, so no byline
+		// MOVED (R1.5 slice 5, the approval-attribution class): a POLICY
+		// denial keeps only its REASON — the reason is the answer to "why",
+		// and mode:plan deciding it is the ambient default of plan mode.
+		expect(clean).toContain("✗ write_file sub/out.txt (plan mode: read-only)");
+		expect(clean).not.toContain("by mode:plan");
 		expect(clean).not.toContain("approve write_file"); // the denied call never asked
 		expect(clean).not.toMatch(/✗ write_file sub\/out\.txt \(plan mode: read-only, \d+\.\ds\)/); // no (0.0s) noise
 		// ② the way-forward row: the recap idiom, the /mode hints as the
@@ -164,7 +173,9 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// ④ /mode default executes NORMALLY: the ask is back, the shell
 		// succeeds, the recap is the ordinary shape (not plan-ready again).
 		expect(clean).toContain("shell needs approval");
-		expect(clean).toMatch(/✓ shell echo hi \(exit 0, \d+\.\ds\)/); // A4: the target rides the settled row's head
+		// MOVED (R1.5 slice ⑤, the approval-attribution class): the human
+		// answered this ask, and that is what the row records.
+		expect(clean).toMatch(/✓ shell echo hi \(exit 0 · approved, \d+\.\ds\)/); // A4: the target rides the settled row's head
 		expect(clean).toContain("1 tool");
 		// never a SECOND way-forward row: the plan-ready row belongs to
 		// turn 1 — every occurrence must PRECEDE the turn-2 answer (A8's

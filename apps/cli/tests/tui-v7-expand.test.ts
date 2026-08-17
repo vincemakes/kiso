@@ -150,7 +150,12 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// tier's `· approved by mode:bypass` takes the room the full form
 		// would have needed, so the terse tier lands — the count survives,
 		// the teaching word gives way (invariant ①: the row still fits 80).
-		expect(clean).toContain("(exit 0 · approved by mode:bypass, 0.0s) · 8 lines · ctrl+r");
+		// MOVED (R1.5 slice 5, the approval-attribution class — DECLARED
+		// THIS ROUND): a POLICY verdict is ambient and silent; a HUMAN
+		// verdict is what the row records. `approved by mode:*` was the
+		// runtime's backfill for "no policy expressed an opinion", read by
+		// a human as an attribution (VD-11).
+		expect(clean).toMatch(/\(exit 0, \d+\.\ds\) · 8 lines · ctrl\+r expands/);
 
 		// THE DONE-WHEN: split the stream at the block's first byte — the
 		// pre-key part is the state before the key. The emulator replays

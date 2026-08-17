@@ -214,8 +214,22 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// X`) rides ONLY the extension/mode-decided cells — the human's
 		// panel decision needs no marker (the panel IS the record), so
 		// "approved" never appears for the answered call.
-		expect(clean).not.toContain("approved"); // A5: no decider tail on the human-approved cell
-		expect(clean).toContain("✓ asky_read  (1 line, "); // the frozen done line — W4: the default family's metadata is the result line count (the empty target leaves the verb pad's double space)
+		// MOVED (R1.5 slice ⑤, the approval-attribution class — DECLARED
+		// THIS ROUND): the old rule was the exact inversion the walkthrough
+		// objected to (VD-11) — a POLICY's ambient allow got a byline while
+		// the human's own answer got none. It is the human's answer that is
+		// worth the row: the panel is a record of the question, the row is
+		// a record of the decision, and the two do not scroll together.
+		// the verdict is a FACT in the W4 parentheses group; with no other
+		// fact beside it the `·` separator would be dangling, so the row
+		// reads "(approved, 0.0s)".
+		expect(clean).toMatch(/\((?:[^()]* · )?approved, \d+\.\ds\)/);
+		expect(clean).not.toContain("approved by");
+		// MOVED (R1.5 slice 5, the R1 tool-cell suffix class): the line
+		// count is stated EXACTLY ONCE (VD-6) and lives in the suffix, so
+		// the parens carry the facts that are NOT the count — here the
+		// human's own verdict.
+		expect(clean).toMatch(/✓ asky_read  \(approved, \d+\.\ds\) · 1 line · ctrl\+r/); // the frozen done line (the empty target leaves the verb pad's double space)
 		expect(clean).not.toContain("asky ok"); // the full result stays out of the stream
 		expect(clean).toContain("the tour is done");
 		// The status bar returned after the question (the model name is back).

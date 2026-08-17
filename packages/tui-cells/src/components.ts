@@ -554,13 +554,24 @@ class ToolExecution implements Component {
 			// denial appends `· by <decidedBy>` — the aggregated head row
 			// names the decider; a human denial (no decidedBy) has no tail.
 			if (c.reason !== null) {
-				const by = c.verdict !== null && c.verdict.decidedBy !== undefined ? ` · by ${escapeTerminal(c.verdict.decidedBy)}` : "";
+				const by = attribution(c);
 				const out = gutterCut(`${p.red}✗${p.reset} `, `${p.red}${escapeTerminal(`${c.name} ${toolTargetOf(c)}`)} (${escapeTerminal(c.reason)}${by})${p.reset}`, W);
 				out.push(...toolBlockBody(c, W));
 				return out;
 			}
 			const elapsed = c.startedAt !== null && c.doneAt !== null ? ((c.doneAt - c.startedAt) / 1000).toFixed(1) : "?";
-			const meta = escapeTerminal(settledMeta(c));
+			// TUI2-R1.5 ⑤ (VD-6): the line count is stated EXACTLY ONCE. Every
+			// read card carried it twice — `(2 lines, 0.0s) · 2 lines · ctrl+r
+			// expands` — because the parens and the suffix were written by
+			// different rounds, each unaware the other was counting. The
+			// SUFFIX keeps it (it is the one that also names the key), so a
+			// meta that says only "<n> lines" drops out when a suffix will
+			// carry it. A meta that says something else — read_file's
+			// "200 of 250 lines", a diff's "+1 -1", a shell's "exit 0" — is a
+			// different fact and stays.
+			const rawMeta = settledMeta(c);
+			const dup = hiddenLines(c, W) !== null && new RegExp(`^${hiddenLines(c, W)} lines?$`).test(rawMeta);
+			const meta = dup ? "" : escapeTerminal(rawMeta);
 			// A4: the target rides the settled head row — the verb's
 			// summary column (W3's 5-char pad keeps the paths lined up).
 			// A5: an extension's auto-approval appends `· approved by
@@ -576,10 +587,18 @@ class ToolExecution implements Component {
 			// body was on screen, a silence now that the body is not. The
 			// command is the cuttable span (the approval panel's option-2
 			// rule name is the same idea); the affordance is the semantics.
+			// the W4 parentheses idiom: the facts, ` · `-separated, then the
+			// timing closing the group. An empty fact simply is not there.
+			const facts = [meta, approvedBy.replace(" · ", "")].filter((x) => x !== "");
+			const parens = `(${facts.length > 0 ? `${facts.join(" · ")}, ` : ""}${elapsed}s)`;
+			const hidden = hiddenLines(c, W);
+			// TUI2-R1.5 ⑤: the shortest tier is RESERVED — the affordance is
+			// the semantics, the target is the cuttable span.
+			const room = W - (hidden === null ? 0 : SUFFIX_MIN);
 			const out = c.isError
-				? gutterCut(`${p.red}✗${p.reset} `, `${p.red}${verbCol} ${escapeTerminal(toolTargetOf(c))} (${meta}${approvedBy}, ${elapsed}s)${p.reset}`, W)
-				: gutterCut(`${p.bold}✓${p.reset} `, `${verbCol} ${escapeTerminal(toolTargetOf(c))} (${meta}${approvedBy}, ${elapsed}s)`, W);
-			out[0] = appendSuffix(out[0]!, expandSuffix(hiddenLines(c, W), W - visibleWidth(out[0]!)));
+				? gutterCut(`${p.red}✗${p.reset} `, `${p.red}${verbCol} ${escapeTerminal(toolTargetOf(c))} ${parens}${p.reset}`, room)
+				: gutterCut(`${p.bold}✓${p.reset} `, `${verbCol} ${escapeTerminal(toolTargetOf(c))} ${parens}`, room);
+			out[0] = appendSuffix(out[0]!, expandSuffix(hidden, W - visibleWidth(out[0]!)));
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
@@ -656,9 +675,32 @@ function hiddenLines(c: Extract<BodyCell, { kind: "tool" }>, W: number): number 
  * exists to name (invariant ① holds by construction: the tier is chosen
  * against the room the row actually has).
  */
-/** A5 — the "why wasn't I asked" answer on a settled head row. */
+/** TUI2-R1.5 ⑤ — the cells a settled head row reserves for its
+ *  affordance: exactly the shortest tier, " · ctrl+r". The suffix used
+ *  to take whatever width happened to be left, so a long target spent it
+ *  all and the card said nothing about the lines behind the key. Every
+ *  row that fitted its head before still fits it; only a head that would
+ *  have eaten the whole row gives up its last nine cells. */
+const SUFFIX_MIN = " · ctrl+r".length;
+
+/**
+ * TUI2-R1.5 ⑤ (VD-11) — approval attribution, about humans.
+ *
+ * A5 put the DECIDER on the settled head row to answer "why wasn't I
+ * asked". The walkthrough found the answer being given nine times in a
+ * row as `approved by mode:default` — and `mode:default` is not an
+ * answer. It is the runtime's own backfill (run.ts stamps it when no
+ * policy expressed an opinion at all), so the row was announcing the
+ * ambient default as though something had decided.
+ *
+ * The signal is inverted and reduced to the fact worth a human's eye:
+ * `decidedBy` PRESENT means a policy handled it — ambient, unremarkable,
+ * silent. `decidedBy` ABSENT means the human was asked and answered, and
+ * that is worth recording on the row: ` · approved`, ` · denied`.
+ */
 function attribution(c: Extract<BodyCell, { kind: "tool" }>): string {
-	return c.verdict !== null && c.verdict.decidedBy !== undefined ? ` · approved by ${escapeTerminal(c.verdict.decidedBy)}` : "";
+	if (c.verdict === null || c.verdict.decidedBy !== undefined) return "";
+	return c.verdict.decision === "denied" ? " · denied" : " · approved";
 }
 
 export function expandSuffix(lines: number | null, room: number): string {

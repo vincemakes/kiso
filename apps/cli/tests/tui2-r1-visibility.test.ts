@@ -178,7 +178,12 @@ describe("TUI2-R1 T-V3 — the live tail on a real PTY", () => {
 
 		// COMPLETION collapses: the settled row is one line with A's
 		// suffix, and the live-tail footer is not part of it.
-		expect(out).toContain("✓ shell sh steps.sh (exit 0 · approved by mode:bypass, ");
+		// MOVED (R1.5 slice 5, the approval-attribution class — DECLARED
+		// THIS ROUND): a POLICY verdict is ambient and silent; a HUMAN
+		// verdict is what the row records. `approved by mode:*` was the
+		// runtime's backfill for "no policy expressed an opinion", read by
+		// a human as an attribution (VD-11).
+		expect(out).toContain("✓ shell sh steps.sh (exit 0, ");
 		expect(out).toContain(") · 6 lines · ctrl+r expands");
 		const settledAt = out.lastIndexOf("✓ shell");
 		expect(settledAt).toBeGreaterThan(0);

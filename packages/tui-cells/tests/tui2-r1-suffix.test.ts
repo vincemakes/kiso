@@ -69,7 +69,11 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		const rows = render(toolCell({ resultText: Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join("\n") }));
 		// the settled head row, plus the suffix — the count is the result's
 		// own lines, not a row count and not a cap
-		expect(rows[0]).toBe("✓ read  src/parser.ts (12 lines, 2.4s) · 12 lines · ctrl+r expands");
+		// MOVED (R1.5 slice ⑤, the R1 tool-cell suffix class): the count is
+		// stated EXACTLY ONCE now (VD-6). This very row is the one the
+		// walkthrough quoted: the parens and the suffix were written by
+		// different rounds, each unaware the other was counting.
+		expect(rows[0]).toBe("✓ read  src/parser.ts (2.4s) · 12 lines · ctrl+r expands");
 		// nothing else changed: the collapsed body is still empty
 		expect(rows).toHaveLength(1);
 	});
@@ -124,8 +128,13 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		expect(render(cell, 80)[0]).toBe("✓ shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r expands");
 		expect(render(cell, 54)[0]).toBe("✓ shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r");
 		expect(render(cell, 44)[0]).toBe("✓ shell npm test (exit 0, 2.4s) · ctrl+r");
-		// no room at all — the row is exactly what it is today
-		expect(render(cell, 32)[0]).toBe("✓ shell npm test (exit 0, 2.4s)");
+		// MOVED (R1.5 slice ⑤, the R1 tool-cell suffix class): there is no
+		// "absent" tier any more. The affordance is the semantics and the
+		// TARGET is the cuttable span, so the shortest tier is reserved and
+		// the head gives up its last nine cells instead — a card that hides
+		// content never goes silent about it (VD-6). The three-tier
+		// degradation above is unchanged.
+		expect(render(cell, 32)[0]).toBe("✓ shell npm test (exit… · ctrl+r");
 		// invariant ①: the suffix NEVER pushes a row past the width
 		for (const W of [20, 32, 40, 44, 54, 60, 80, 120]) {
 			for (const row of render(cell, W)) expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
@@ -144,7 +153,10 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 	it("the suffix and the footer are DIM (the prototype's placement), the head row's own SGR untouched", () => {
 		setTTY(true);
 		const rows = render(toolCell({ resultText: "a\nb\nc" }));
-		expect(rows[0]).toBe("\x1b[1m✓\x1b[0m read  src/parser.ts (3 lines, 2.4s)\x1b[2m · 3 lines · ctrl+r expands\x1b[0m");
+		// MOVED (R1.5 slice ⑤, the R1 tool-cell suffix class): the parens
+		// lost their duplicate count (VD-6); the SGR placement — the whole
+		// point of this case — is byte-identical.
+		expect(rows[0]).toBe("\x1b[1m✓\x1b[0m read  src/parser.ts (2.4s)\x1b[2m · 3 lines · ctrl+r expands\x1b[0m");
 		const expanded = render(toolCell({ expanded: true, resultText: "a\nb\nc" }));
 		expect(expanded[expanded.length - 1]).toBe("\x1b[2m└ ctrl+r collapses\x1b[0m");
 	});

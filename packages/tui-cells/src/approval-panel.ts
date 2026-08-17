@@ -200,7 +200,11 @@ export function panelBlockRows(view: PanelView, phase: PanelPhase, sel: PanelSel
 	const rows: string[] = [];
 	rows.push(`${gutter}${cutLine(panelRuleText(view), Math.max(1, W - 2))}`);
 	rows.push(`${gutter}${cutLine(`${p.bold}${escapeTerminal(view.title)}${p.reset}`, Math.max(1, W - 2))}`);
-	rows.push(`${cutLine(`${p.dim}─ the full args — never truncated ─${p.reset}`, Math.max(1, W - 2))}`);
+	// TUI2-R1.5 ⑤ (VD-11): the divider is a LABEL, not a design note. "the
+	// full args — never truncated" is a sentence about the implementation,
+	// addressed to whoever was building the panel; the human reading it
+	// during an approval wants to know what the block below is.
+	rows.push(`${cutLine(`${p.dim}─ args (full) ─${p.reset}`, Math.max(1, W - 2))}`);
 	// the args — the bounded block's body: fold, then cap. The └ cut is
 	// ONE row (the W20 discipline): when the args exceed the budget, one
 	// notice row carries the count and where the rest is (the event log).

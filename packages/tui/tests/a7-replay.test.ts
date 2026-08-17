@@ -478,16 +478,19 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 					expect(line, `${W}x${H} frame ${f.n}: the free-standing verdict orphan (A5)`).not.toMatch(orphan);
 				}
 			}
-			// A6: the tool header is widthCut, never a wrapped fold — the
-			// 40-col row cannot hold the full decider tail ("approved by
-			// mode:default" alone is 36 cells), so the cut row names the
-			// decider's tail and the ellipsis marks the honest cut; the
-			// 80-col rows carry the FULL string.
-			const decider = W >= 80 ? "approved by mode:default" : "approved by ";
+			// MOVED (R1.5 slice ⑤, the approval-attribution class — DECLARED
+			// THIS ROUND): `approved by mode:default` is gone from every
+			// width. It was the runtime's backfill for "no policy expressed
+			// an opinion", read by a human as an attribution, and this very
+			// replay is where it appeared 36 cells wide on a 40-column row.
+			// A policy verdict is ambient and silent; the row that names an
+			// approval is the one a HUMAN answered. What the case still
+			// pins — the verdict binds INTO the cell and never becomes a
+			// free-standing row — is asserted above and unchanged.
 			expect(
-				frames.some((f) => f.all.some((l) => l.includes(decider) && (W >= 80 || l.includes("…")))),
-				`${W}x${H}: the extension-approved cell's head row names the decider (A5)`,
-			).toBe(true);
+				frames.some((f) => f.all.some((l) => l.includes("approved by"))),
+				`${W}x${H}: no policy byline survives anywhere (R1.5 ⑤)`,
+			).toBe(false);
 		}
 	});
 
