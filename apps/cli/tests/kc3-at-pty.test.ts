@@ -175,8 +175,13 @@ describe("KC3 T-A4 — the acceptance run", () => {
 		);
 		// the panel rendered: the counter row and the selection band
 		expect(out).toContain("(1/");
-		expect(out).toContain("[7m→ "); // the → selection band
-		expect(out).toContain("[2msrc/"); // the dim directory column
+		// MOVED (R1.5 slice 8, the picker-row class — DECLARED THIS ROUND):
+		// the selection is a full-width inverse BAR, not a two-cell marker,
+		// and the directory rides beside the name instead of at the band's
+		// far edge (VD-9). Both facts are still asserted, in their new forms.
+		expect(out).toContain("[7m "); // the full-row selection bar
+		expect(out).toContain("[2m  — src/"); // the dim directory, adjacent
+		expect(out).toContain("files"); // R1.5 7(b): the band names itself
 		// the chrome is intact afterwards: the box, the lead, the status
 		expect(out).toContain("╭"); // ╭ the box top
 		expect(out).toContain("╰"); // ╰ the box bottom

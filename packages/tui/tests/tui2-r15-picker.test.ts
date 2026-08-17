@@ -18,6 +18,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { atPanelRows, atRow } from "../src/at-picker.js";
+import { Body } from "../src/compositor.js";
 
 function setTTY(on: boolean): void {
 	Object.defineProperty(process.stdout, "isTTY", { value: on, configurable: true });
@@ -75,6 +76,20 @@ describe("TUI2-R1.5 ⑦(b) — the band names itself (VD-8)", () => {
 		expect(rows[0]).toBe("\x1b[2mfiles\x1b[0m");
 		// the counter still closes the band
 		expect(rows[rows.length - 1]).toContain("(1/2)");
+	});
+
+	it("the / menu band opens with a one-row dim `commands` header", () => {
+		setTTY(true);
+		Object.defineProperty(process.stdout, "rows", { value: 24, configurable: true });
+		Object.defineProperty(process.stdout, "columns", { value: 80, configurable: true });
+		const writes: string[] = [];
+		const body = new Body({ active: () => true, height: () => 24, width: () => 80, editCol: () => 1, write: (s) => writes.push(s) });
+		body.bindMenu(() => ({ items: [{ name: "/help", desc: "print this list" }], selected: 0 }));
+		body.enter();
+		const frame = writes.join("").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+		expect(frame).toContain("commands");
+		delete (process.stdout as { rows?: number }).rows;
+		delete (process.stdout as { columns?: number }).columns;
 	});
 
 	it("the header is dim text and nothing else — the mono discipline", () => {

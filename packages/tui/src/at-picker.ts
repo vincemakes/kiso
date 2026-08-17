@@ -204,19 +204,40 @@ function splitPath(path: string): { dir: string; name: string } {
 export function atRow(match: AtMatch, selected: boolean, W: number): string {
 	const p = palette();
 	const { dir, name } = splitPath(escapeTerminal(match.path));
-	const lead = selected ? `${p.rv}→ ${p.rvEnd}` : "  ";
 	// the name's own matched positions, mapped out of the full path
 	const marks = new Set(match.hit.filter((i) => i >= dir.length).map((i) => i - dir.length));
-	// room: W − the 2-cell lead − 1 separating space before the directory
-	const nameRoom = Math.max(1, W - 2 - (dir === "" ? 0 : visibleWidth(dir) + 1));
+	// TUI2-R1.5 ⑧ (VD-9): the directory rides NEXT TO the name it
+	// qualifies. It used to be right-aligned to the band's far edge, which
+	// on a 100-column terminal put `src/` some eighty columns from the
+	// `parser.ts` it belongs to: the eye had to cross the whole row to
+	// learn which parser.ts this was, and the column read as a second list.
+	// Adjacent and dim, it is what it always meant to be — a qualifier.
+	// the name is the flexible column and the qualifier gives way first: a
+	// narrow window keeps the thing being aimed at.
+	const room = Math.max(1, W - 2);
+	const suffix = dir === "" ? "" : widthCut(`  — ${dir}`, Math.max(0, room - 4));
+	const nameRoom = Math.max(1, room - visibleWidth(suffix));
 	const shownName = widthCut(name, nameRoom);
 	let painted = "";
 	for (let i = 0; i < shownName.length; i += 1) {
 		painted += marks.has(i) ? `${p.bold}${shownName[i]}${p.reset}` : shownName[i];
 	}
-	if (dir === "") return `${lead}${painted}`;
-	const pad = Math.max(1, W - 2 - visibleWidth(shownName) - visibleWidth(dir));
-	return `${lead}${painted}${" ".repeat(pad)}${p.dim}${dir}${p.reset}`;
+	const text = `${painted}${suffix === "" ? "" : `${p.dim}${suffix}${p.reset}`}`;
+	const width = visibleWidth(shownName) + visibleWidth(suffix);
+	if (!selected) return `  ${text}`;
+	// TUI2-R1.5 ⑧ (VD-9): the selection is a FULL-ROW bar — the W16 chip
+	// mechanism, which the user chip and the turn fold already use. A
+	// two-cell `→ ` marker on the inverse band is one character of
+	// highlight in an eighty-column row, and the walkthrough could barely
+	// find it. The bar spans the row's whole width so the selection is
+	// visible from anywhere on the line. Mono discipline: reverse video,
+	// no new colours.
+	//
+	// The inner spans close with rvEnd (SGR 27), never SGR 0 — a reset
+	// inside the bar would punch a hole in it. `painted`'s bold marks and
+	// the dim suffix both end in SGR 0, so the bar is re-opened after each.
+	const inner = `${painted.replaceAll(p.reset, `${p.reset}${p.rv}`)}${suffix === "" ? "" : `${p.dim}${suffix}${p.reset}${p.rv}`}`;
+	return `${p.rv} ${inner}${" ".repeat(Math.max(0, W - width - 2))} ${p.rvEnd}`;
 }
 
 /**
@@ -243,8 +264,21 @@ export function atCounterRow(selected: number, total: number, capped: boolean, W
  */
 export function atPanelRows(state: { matches: readonly AtMatch[]; selected: number; capped: boolean }, W: number): string[] {
 	const { first, count } = atWindow(state.matches.length, state.selected);
-	const rows: string[] = [];
+	// TUI2-R1.5 ⑦(b) (VD-8): the band NAMES itself. It renders frameless
+	// directly above the composer, so with scrollback behind it there was
+	// nothing to say where the surface began — the rows read as more
+	// history. One dim row is enough to make it UI. Mono discipline: dim
+	// text, no rule, no colour.
+	const rows: string[] = [bandHeader("files", W)];
 	for (let i = first; i < first + count; i += 1) rows.push(atRow(state.matches[i]!, i === state.selected, W));
 	rows.push(atCounterRow(state.selected, state.matches.length, state.capped, W));
 	return rows;
+}
+
+/** TUI2-R1.5 ⑦(b) — the one-row dim header that turns a band into a
+ *  surface. Shared by the @ picker and the / menu so the two read the
+ *  same way. */
+export function bandHeader(label: string, W: number): string {
+	const p = palette();
+	return `${p.dim}${widthCut(label, Math.max(1, W))}${p.reset}`;
 }

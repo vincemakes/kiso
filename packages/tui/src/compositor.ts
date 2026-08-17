@@ -50,7 +50,7 @@ import { leadWidth } from "./width.js"; // W23: the ONE width authority (the edi
 // for four reads, so an ask can never render half as an approval.
 import { panelAffordanceOf, panelLeadOf, panelRowsOf, panelStatusOf } from "./ask-panel.js";
 import type { PanelState } from "./approval-panel.js";
-import { atPanelRows, type AtMatch } from "./at-picker.js";
+import { atPanelRows, bandHeader, type AtMatch } from "./at-picker.js";
 
 /** KC3 §4 — the @ picker's bound state (the editor's atState()). */
 export interface AtPanelState {
@@ -1367,7 +1367,11 @@ export class Body {
 		const menu = this.#menuState?.();
 		if (menu === null || menu === undefined || menu.items.length === 0) return [];
 		const p = palette();
-		const rows: string[] = [];
+		// TUI2-R1.5 ⑦(b) (VD-8): the band NAMES itself, the same way the @
+		// picker's does. Both render frameless directly above the composer,
+		// so with scrollback behind them there was nothing to say where the
+		// surface began — the rows read as more history.
+		const rows: string[] = [bandHeader("commands", W)];
 		for (let i = 0; i < menu.items.length; i += 1) {
 			const item = menu.items[i]!;
 			const text =

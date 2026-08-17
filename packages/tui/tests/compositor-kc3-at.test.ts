@@ -120,10 +120,15 @@ describe("KC3 T-A3: the two columns and the selection band", () => {
 		tick();
 		const bytes = writes.join("");
 		const row = rowsOf(bytes).find((r) => r.text.includes("range.js"))!.text;
-		// the name comes first, the directory is pushed to the far edge
+		// MOVED (R1.5 slice 8, the picker-row class — DECLARED THIS ROUND):
+		// the directory is ADJACENT to the name, not pushed to the far edge
+		// (VD-9). On a 100-column terminal the old layout put `src/` some
+		// eighty columns from the `parser.ts` it qualifies, and the eye had
+		// to cross the row to read one fact. Still after the name, still
+		// dim — only the distance changed.
 		expect(row.indexOf("range.js")).toBeLessThan(row.indexOf("src/"));
-		expect(row.trimEnd().endsWith("src/")).toBe(true);
-		expect(bytes).toContain("\x1b[2msrc/\x1b[0m"); // the directory is dim
+		expect(row).toContain("range.js  \u2014 src/");
+		expect(bytes).toContain("\x1b[2m  \u2014 src/\x1b[0m"); // the qualifier is dim
 	});
 
 	it("the MATCHED characters of the name are bold, the rest are not", () => {
@@ -133,8 +138,13 @@ describe("KC3 T-A3: the two columns and the selection band", () => {
 		body.enter();
 		tick();
 		const bytes = writes.join("");
-		// "ra" of "range.js" — the two matched chars each wrapped in bold
-		expect(bytes).toContain("\x1b[1mr\x1b[0m\x1b[1ma\x1b[0mnge.js");
+		// "ra" of "range.js" — the two matched chars each wrapped in bold.
+		// MOVED (R1.5 slice 8, the picker-row class): the SELECTED row is a
+		// full-width inverse bar now, and a bold span inside it closes with
+		// SGR 0, which would punch a hole in the bar — so the bar re-opens
+		// after each inner span. The bolding itself is unchanged, and the
+		// unselected row's bytes are exactly what they were.
+		expect(bytes).toContain("\x1b[1mr\x1b[0m\x1b[7m\x1b[1ma\x1b[0m\x1b[7mnge.js");
 	});
 
 	it("a hit that lands in the DIRECTORY is not emboldened — that column is uniformly quiet", () => {
@@ -144,19 +154,28 @@ describe("KC3 T-A3: the two columns and the selection band", () => {
 		body.enter();
 		tick();
 		const bytes = writes.join("");
-		expect(bytes).toContain("\x1b[2mdocs/\x1b[0m"); // dim, whole, unbroken
+		// MOVED (same class): the qualifier now rides beside the name.
+		expect(bytes).toContain("\x1b[2m  \u2014 docs/\x1b[0m"); // dim, whole, unbroken
 	});
 
-	it("the SELECTED row carries → on the inverse band; the others carry two spaces", () => {
+	// MOVED (R1.5 slice 8, the picker-row class — DECLARED THIS ROUND): the
+	// selection is a FULL-ROW bar rather than a two-cell marker. The old
+	// marker was one character of highlight in an eighty-column row and the
+	// walkthrough could barely find it (VD-9); the bar is the W16 chip
+	// mechanism the user chip already uses. Mono discipline holds — reverse
+	// video, no new colour. "Exactly one band per frame" is unchanged and
+	// still asserted.
+	it("the SELECTED row is a full-width inverse bar; the others carry two spaces", () => {
 		const { body, writes, tick } = makeBody({ W: 40 });
 		body.bindInput(one("@ra"), "› ");
 		body.bindAt(atState(["a/range.js", "z/range.js"], "ra", 1));
 		body.enter();
 		tick();
 		const bytes = writes.join("");
-		expect(bytes).toContain("\x1b[7m→ \x1b[27m");
+		expect(bytes).toContain("\x1b[7m ");
+		expect(bytes).toContain("\x1b[27m");
 		// exactly ONE selection band in the frame
-		expect(bytes.split("\x1b[7m→ \x1b[27m").length - 1).toBe(1);
+		expect(bytes.split("\x1b[27m").length - 1).toBe(1);
 	});
 
 	it("a path with no directory renders name-only — no empty right column", () => {
