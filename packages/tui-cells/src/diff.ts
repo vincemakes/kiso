@@ -19,6 +19,10 @@ export interface DiffResult {
 	lines: DiffLine[];
 	added: number;
 	removed: number;
+	/** TUI2-R1.5 ② (VD-2): the search is not in the file — the tool will
+	 *  ERROR, so the panel shows the honest note carried in `lines` and
+	 *  never a diff. Absent on every real diff. */
+	notFound?: true;
 }
 
 /** A line-level LCS diff — the classic two-row DP, ~small inputs. */
@@ -101,23 +105,37 @@ function stats(diff: DiffLine[]): { added: number; removed: number } {
 	return { added, removed };
 }
 
-/** edit_file: the search→replace windows replace in place — the changed
- *  region is KNOWN, so the diff is the old window vs the new window,
- *  context from the surrounding file. */
-export function editFileDiff(oldContent: string, search: string, replace: string): DiffResult {
-	const oldLines = oldContent.split("\n");
-	const searchLines = search.split("\n");
-	const replaceLines = replace.split("\n");
-	// Locate the search window (the first occurrence — the edit tool's own
-	// semantics); no occurrence → the whole file is the old side.
-	let at = -1;
-	for (let i = 0; i + searchLines.length <= oldLines.length; i += 1) {
-		if (oldLines.slice(i, i + searchLines.length).join("\n") === search) {
-			at = i;
-			break;
-		}
+/** edit_file: the preview of a CHARACTER splice.
+ *
+ *  TUI2-R1.5 ② (VD-2): the locator is the tool's own, verbatim — the
+ *  workspace edit_file does `i = text.indexOf(search)` and writes
+ *  `text.slice(0, i) + replace + text.slice(i + search.length)`. This
+ *  function mirrors those two lines and diffs the result against the
+ *  original; it does not model the edit, it reproduces it.
+ *
+ *  The retired locator required the search to align to FULL LINES. A
+ *  mid-line search ("// OLD" inside "  // OLD") therefore missed, and
+ *  the miss branch rendered the WHOLE FILE as the old side: a one-line
+ *  edit was drawn as a catastrophic rewrite, on the approval panel, at
+ *  the moment a human was deciding whether to allow it. A preview that
+ *  can be that wrong is worse than no preview.
+ *
+ *  A genuine miss is now reported as a miss: the tool will return
+ *  `pattern not found in <path>` and change nothing, so the panel says
+ *  exactly that instead of inventing a diff for an edit that will not
+ *  happen. `path` names the file in that note. */
+export function editFileDiff(oldContent: string, search: string, replace: string, path?: string): DiffResult {
+	const at = oldContent.indexOf(search);
+	if (at < 0) {
+		return {
+			lines: [{ kind: " ", text: `pattern not found in ${path ?? "the file"}` }],
+			added: 0,
+			removed: 0,
+			notFound: true,
+		};
 	}
-	const lines = at < 0 ? withContext(lcsDiff(oldLines, replaceLines)) : withContext(lcsDiff(oldLines, [...oldLines.slice(0, at), ...replaceLines, ...oldLines.slice(at + searchLines.length)]));
+	const result = oldContent.slice(0, at) + replace + oldContent.slice(at + search.length);
+	const lines = withContext(lcsDiff(oldContent.split("\n"), result.split("\n")));
 	return { lines, ...stats(lines) };
 }
 

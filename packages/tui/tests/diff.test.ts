@@ -34,9 +34,15 @@ describe("v2e: diff computation", () => {
 		expect(changed.text).toBe("THREE");
 	});
 
-	it("a missing search window degrades to the whole-file diff, never a crash", () => {
-		const r = editFileDiff("one\ntwo", "absent", "x");
-		expect(r.added + r.removed).toBeGreaterThan(0);
+	// MOVED (R1.5 slice ②, the approval-diff truth class — declared this
+	// round): v2e's "degrades to the whole-file diff" IS the lie VD-2
+	// filed. The tool errors on a miss and changes nothing, so the preview
+	// says so instead of drawing a rewrite that will never happen.
+	it("a missing search window is an honest note, never a fabricated whole-file diff", () => {
+		const r = editFileDiff("one\ntwo", "absent", "x", "one.ts");
+		expect(r.added + r.removed).toBe(0);
+		expect(r.notFound).toBe(true);
+		expect(r.lines.map((l) => l.text)).toEqual(["pattern not found in one.ts"]);
 	});
 
 	it("the 40-line cap truncates to 18 head + 18 tail + the /last hint", () => {

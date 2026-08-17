@@ -218,7 +218,9 @@ function approvalDiff(name: string, input: Record<string, unknown>): DiffResult 
 			const search = typeof input.search === "string" ? input.search : "";
 			const replace = typeof input.replace === "string" ? input.replace : "";
 			if (search === "") return null;
-			return editFileDiff(oldContent ?? "", search, replace);
+			// TUI2-R1.5 ② (VD-2): the path rides along so a miss can name the
+			// file in its honest note instead of fabricating a diff.
+			return editFileDiff(oldContent ?? "", search, replace, path);
 		}
 		const content = typeof input.content === "string" ? input.content : "";
 		return writeFileDiff(oldContent, content);
