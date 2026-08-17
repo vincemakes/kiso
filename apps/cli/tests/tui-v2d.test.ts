@@ -96,6 +96,10 @@ const CELL_LINE = [
 	/^┌ answer truncated at max_tokens.*$/, // D4: the truncation notice row — the cut is named, never silent
 	/^▞.*$/, // v3: the recap line ends the run
 	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)
+	// MOVED (R1.5 slice 11, the panel-frame class — DECLARED THIS ROUND):
+	// the panel's bottom edge is a real RULE now (└ + a ─ run to the
+	// width), not the bare `└ ` stub it used to close with (VD-13).
+	/^└─+$/, // W21 + R1.5 11: the panel's bottom rule
 	/^└(?: .*)?$/, // v7 W7/W8/W10 + W21: the cut/waiting rows (the "  └ " family — "waiting for output", "+N earlier rows · ctrl+r", "capped by …") + the approval panel's bare └ corner
 	/^aborted \(.*\)$/, // the aborted terminal label
 	/^error: .*$/, // the error terminal label
@@ -212,8 +216,19 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 				// rule line's tool name sits inside its own bold span, and
 				// the no-queue run paints no bare-name row to race the
 				// feeds. "y" + enter send the verdict.
-				["2 Yes, don't ask again for shell", "y\r"],
-				["2 Yes, don't ask again for asky_read", "y\r"],
+				// MOVED (R1.5 slice 11, the panel-frame class — DECLARED THIS
+				// ROUND): option 2 no longer repeats the tool name (the
+				// panel's title says it, one row above), so the old
+				// per-panel needles are gone. The replacement is ORDERED
+				// rather than named, and is robust to either panel mounting
+				// first: the first "needs approval" answers whichever panel
+				// is up, and " · approved" appears only once a HUMAN verdict
+				// has settled a card (R1.5 5) — "approved," matches both the
+				// bare "(approved," and the "· approved," forms — by which time
+				// the second
+				// panel is mounted.
+				["needs approval", "y\r"],
+				["{}", "y\r"],
 				["the tour is done", "exit\r"],
 			],
 		);

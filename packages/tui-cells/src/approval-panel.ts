@@ -171,9 +171,13 @@ function panelRuleText(view: PanelView): string {
  *  single-row discipline — the row never folds). */
 function panelOptionsRow(view: PanelView, sel: PanelSel, W: number): string {
 	const p = palette();
+	// TUI2-R1.5 ⑪ (VD-13): ONE separator grammar. The options were
+	// two-space separated while every other metadata group in the product
+	// uses `·`, and at 80 columns that put `3 No` far enough from its
+	// neighbours to read as detached rather than as the third option.
 	const o1 = sel === 1 ? `${p.bold} 1 Yes${p.reset}` : ` 1 Yes`;
-	const o3 = sel === 3 ? `${p.bold} 3 No${p.reset}` : ` 3 No`;
-	if (view.flavor === "simple") return `${o1}  ${o3}`;
+	const o3 = sel === 3 ? `${p.bold}3 No${p.reset}` : `3 No`;
+	if (view.flavor === "simple") return `${o1} · ${o3}`;
 	// the option-2 span: " 2 Yes, don't ask again for <name>" — the
 	// fixed part is 45 (the gutter + the 1/3 options + the separators +
 	// the 28-cell prefix); the name cuts to W−46 + "…". The "…" needs
@@ -182,12 +186,17 @@ function panelOptionsRow(view: PanelView, sel: PanelSel, W: number): string {
 	// DROPS: the rule name is the cuttable span, the 1/3 options are
 	// the semantics — the approval decision must survive a narrow
 	// winch, and invariant ① must never fire on the options row.
-	if (W < 47) return cutLine(`${o1}  ${o3}`, Math.max(1, W - 2));
-	const name = escapeTerminal(view.name);
-	const budget = W - 46;
-	const shown = visibleWidth(name) > W - 45 ? `${widthCut(name, budget)}…` : name;
-	const o2 = sel === 2 ? `${p.bold} 2 Yes, don't ask again for ${shown}${p.reset}` : ` 2 Yes, don't ask again for ${shown}`;
-	return `${o1}  ${o2}  ${o3}`;
+	// TUI2-R1.5 ⑪: option 2 states what it DOES; the tool it would do it
+	// for is the panel's title, one row above, and repeating it here was
+	// what made this row the widest thing in the block. The fixed part is
+	// now 33 cells, so the whole row survives far narrower windows than the
+	// 47 the rule name used to demand.
+	const o2 = sel === 2 ? `${p.bold}2 Yes, don't ask again${p.reset}` : `2 Yes, don't ask again`;
+	const full = `${o1} · ${o2} · ${o3}`;
+	if (visibleWidth(full) <= W - 2) return full;
+	// too narrow for the middle option: the 1/3 decision is the semantics
+	// and must survive any winch (invariant ① never fires on this row).
+	return cutLine(`${o1} · ${o3}`, Math.max(1, W - 2));
 }
 
 /** The block's rows — EXACTLY the preview's frame shape, the gutter at
@@ -224,7 +233,15 @@ export function panelBlockRows(view: PanelView, phase: PanelPhase, sel: PanelSel
 	rows.push(...shown);
 	rows.push(`${gutter}${panelOptionsRow(view, sel, W)}`);
 	rows.push(`${gutter}${p.dim}${panelAffordance(view, phase, sel)}${p.reset}`);
-	rows.push(`${p.dim}└ ${p.reset}`);
+	// TUI2-R1.5 11 (VD-13): a real bottom RULE, in the block's own edge
+	// vocabulary — the same box-drawing run its divider already uses —
+	// anchored at the gutter column. It used to be `\u2514 `: a two-cell stub
+	// floating at column 1, with no rule running from it and no corner
+	// above it to answer. Worse, `\u2514 ` is the cut-notice prefix everywhere
+	// else in the product, so a CAPPED panel emitted two elbow rows in a
+	// row meaning entirely different things. The rule reads as an edge,
+	// and the cut notice above it reads as a notice.
+	rows.push(`${p.dim}\u2514${"\u2500".repeat(Math.max(0, W - 1))}${p.reset}`);
 	return rows;
 }
 

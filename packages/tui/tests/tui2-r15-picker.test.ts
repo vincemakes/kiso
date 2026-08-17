@@ -28,7 +28,7 @@ afterEach(() => {
 	delete (process.stdout as { isTTY?: boolean }).isTTY;
 });
 
-const match = (path: string, hit: number[] = []) => ({ path, hit, score: 0 }) as Parameters<typeof atRow>[0];
+const match = (path: string, hit: number[] = []): Parameters<typeof atRow>[0] => ({ path, hit, run: hit.length });
 
 describe("TUI2-R1.5 ⑧ — the picker is legible (VD-9)", () => {
 	it("the directory rides NEXT TO the name, dim — never at the far edge", () => {

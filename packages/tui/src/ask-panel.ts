@@ -227,7 +227,15 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 		rows.push(...body);
 	}
 	rows.push(`${gutter}${p.dim}${askAffordance(state)}${p.reset}`);
-	rows.push(`${p.dim}└ ${p.reset}`);
+	// TUI2-R1.5 11 (VD-13), shared with the approval panel: a real bottom RULE, in the block's own edge
+	// vocabulary — the same box-drawing run its divider already uses —
+	// anchored at the gutter column. It used to be `\u2514 `: a two-cell stub
+	// floating at column 1, with no rule running from it and no corner
+	// above it to answer. Worse, `\u2514 ` is the cut-notice prefix everywhere
+	// else in the product, so a CAPPED panel emitted two elbow rows in a
+	// row meaning entirely different things. The rule reads as an edge,
+	// and the cut notice above it reads as a notice.
+	rows.push(`${p.dim}\u2514${"\u2500".repeat(Math.max(0, W - 1))}${p.reset}`);
 	return rows;
 }
 

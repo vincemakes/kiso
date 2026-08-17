@@ -87,16 +87,27 @@ describe("W21: panelBlockRows", () => {
 		}
 	});
 
-	it("W<47: the option-2 span drops — the 1/3 decision survives and the row fits (the 0.1.42 release-smoke finding)", () => {
-		for (const W of [40, 46]) {
+	// MOVED (R1.5 slice 11, the panel-frame class — DECLARED THIS ROUND):
+	// the threshold moved DOWN, and the case is stronger for it. Option 2
+	// no longer repeats the tool name — the panel's title says it, one row
+	// above — so the row's fixed part is 33 cells instead of 45 and the
+	// full three-option grammar now survives a 40-column winch that used
+	// to drop it. The property the case exists for is unchanged and still
+	// asserted at the widths where the drop DOES happen: the 1/3 decision
+	// survives any width, and invariant 1 never fires on this row.
+	it("a narrow winch never breaks the options row — the 1/3 decision always survives", () => {
+		for (const W of [20, 28, 34, 40, 46]) {
 			for (const maxRows of MAX_ROWS) {
 				const rows = panelBlockRows(approvalView(), "options", 0, W, maxRows);
 				const opt = rows.find((r) => r.includes("1 Yes"));
 				expect(opt, `W=${W} maxRows=${maxRows}`).toBeDefined();
-				expect(opt, `W=${W} maxRows=${maxRows}`).not.toContain("don't ask again");
+				expect(opt, `W=${W} maxRows=${maxRows}`).toContain("3 No");
 				expect(visibleWidth(opt!), `W=${W} maxRows=${maxRows}`).toBeLessThanOrEqual(W);
 			}
 		}
+		// below the three-option budget the middle option is what gives way
+		const narrow = panelBlockRows(approvalView(), "options", 0, 28, 12).find((r) => r.includes("1 Yes"))!;
+		expect(narrow).not.toContain("don't ask again");
 	});
 
 	it("the block's row count is bounded by maxRows — the args fold, the single rows cut", () => {
