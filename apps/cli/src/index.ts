@@ -209,6 +209,7 @@ function makeLineInput(): LineInput {
 		editor.bindAtItems(atFiles); // KC3 §5: the file source — listed per OPEN
 		dock.bindAt(() => editor.atState()); // KC3 §4: the picker's band
 		dock.bindApproval(() => editor.panelState()); // W21: the panel's bound state
+		dock.bindSheet(() => editor.sheetOpen()); // TUI2-R1 (D): the ? keys sheet
 		return editorInput(editor);
 	}
 	return readlineInput(createInterface({ input: process.stdin, output: process.stdout }));

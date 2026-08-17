@@ -132,6 +132,12 @@ export class Editor {
 	// coexist; the editor never interprets the key itself.
 	#expandCbs: (() => void)[] = [];
 	#onRender: () => void;
+	/** TUI2-R1 (D): the keys sheet — a static one-screen overlay opened by
+	 *  `?` on an empty composer and closed by the next key, whatever it
+	 *  is. Deliberately a BOOLEAN and not a panel: the panel machinery
+	 *  exists for interactions (a lead, a status, a reducer, a stashed
+	 *  buffer), and the sheet has no interaction to speak of. */
+	#sheetOpen = false;
 	#menuOpen = false; // v3 §04: the slash-command menu
 	#menuSel = 0;
 	// KC3 §3 — the @ file picker. THREE fields and no more: the armed
@@ -224,6 +230,12 @@ export class Editor {
 	/** The whole buffer as text (the CLI's line()/clearLine()). */
 	line(): string {
 		return String.fromCodePoint(...this.#chars);
+	}
+
+	/** TUI2-R1 (D): whether the keys sheet is up — the compositor's slot
+	 *  read (bound like the menu and the picker). */
+	sheetOpen(): boolean {
+		return this.#sheetOpen;
 	}
 
 	clearLine(): void {
@@ -550,6 +562,17 @@ export class Editor {
 	feed(raw: Uint8Array): void {
 		const text = this.#pending + this.#decoder.decode(raw, { stream: true });
 		this.#pending = "";
+		// TUI2-R1 (D): the sheet is up — ANY key closes it, and the key
+		// that closed it is CONSUMED. The whole chunk goes, deliberately:
+		// an arrow key is three bytes, and closing on the first while
+		// letting `[A` fall through as literal text would be a sheet that
+		// types into your composer on the way out. A dismissal costs one
+		// keystroke; that is the entire contract.
+		if (this.#sheetOpen) {
+			this.#sheetOpen = false;
+			this.#onRender();
+			return;
+		}
 		let i = 0;
 		while (i < text.length) {
 			const c = text[i];
@@ -765,6 +788,16 @@ export class Editor {
 				// W15: the expand key (ctrl+r) — rides the chain like a
 				// command, the editor just forwards it.
 				for (const cb of [...this.#expandCbs]) cb();
+				i += 1;
+			} else if (c === "?" && this.#composerIdle() && this.#chars.length === 0) {
+				// TUI2-R1 (D): `?` opens the keys sheet — but ONLY on an
+				// empty composer with nobody else holding the keys. Mid-text
+				// it is the question mark a human is typing, and #composerIdle
+				// already encodes "no panel, no menu, no picker, no browse".
+				// The precedence can only ever ADD: every state that used to
+				// insert a `?` still inserts one.
+				this.#sheetOpen = true;
+				this.#onRender();
 				i += 1;
 			} else if (c !== undefined && c < " ") {
 				i += 1; // other control — ignored

@@ -212,3 +212,40 @@ describe("TUI2-R1 T-V3 — the live tail on a real PTY", () => {
 		expect(out).toContain("ran it."); // the run itself was untouched
 	}, 180_000);
 });
+
+describe("TUI2-R1 T-V4 — the ? keys sheet on a real PTY", () => {
+	it("? paints the sheet, the next key takes it away, and nothing of it reaches the composer", () => {
+		const ws = workspace();
+		const script = fauxScript([{ events: [{ type: "text_delta", text: "hello there." }, { type: "stop", reason: "end_turn" }] }]);
+		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
+		const out = stripANSI(
+			ptyRun(
+				["--mode", "bypass", "r1-sheet"],
+				env as NodeJS.ProcessEnv,
+				[
+					["▌ ", "hi\r"], // a normal turn first — the composer works
+					["hello there.", "?"], // the REAL key, on an empty composer
+					["expand cells", "x"], // any key closes it
+				],
+				// the driver stops the process itself: `exit` typed while the
+				// sheet is up would be EATEN by the close (any key closes,
+				// and the whole chunk goes with it), which is the contract —
+				// so the transcript, not a clean exit, is the evidence here.
+				12,
+				ws,
+			),
+		);
+		// the sheet was on screen, in full
+		expect(out).toContain("enter send");
+		expect(out).toContain("ctrl+r expand cells");
+		expect(out).toContain("panels: digits select · space toggles · t types an answer");
+		// the `?` never became text, and neither did the key that closed it
+		expect(out).not.toContain("│ › ?");
+		expect(out).not.toContain("│ › x");
+		// the session carried on normally afterwards
+		expect(out).toContain("hello there.");
+		const events = logLines(env.KISO_HOME as string, "r1-sheet").map((l) => l.event);
+		const user = events.filter((e) => e.type === "user_input").map((e) => String(e.content));
+		expect(user).toEqual(["hi"]); // never "?" and never "x"
+	}, 180_000);
+});

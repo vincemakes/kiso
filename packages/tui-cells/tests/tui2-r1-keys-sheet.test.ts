@@ -3,13 +3,19 @@
  *
  * The sheet's whole point is that it is TRUE. A keys sheet that drifts
  * from the keys is worse than none, so there is exactly ONE table —
- * KEY_BINDINGS — and both readers (the sheet, and /help's keys row)
- * derive from it. A future round that adds a gesture and forgets the
- * sheet cannot happen without deleting a test.
+ * KEY_BINDINGS — and the sheet is generated from it, never transcribed.
+ * A future round that adds a gesture and forgets the sheet cannot happen
+ * without deleting a test.
+ *
+ * /help's own keys sentence stays byte-identical this round: rewriting
+ * it would move an assertion outside the two declared supersession
+ * classes. `keysHelpRow()` is the derived form waiting for the round
+ * that is allowed to swap it in; until then a drift guard keeps the two
+ * from contradicting each other.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { KEY_BINDINGS, PANEL_KEYS_ROW, helpRows, keysSheetRows } from "../src/strings.js";
+import { KEY_BINDINGS, PANEL_KEYS_ROW, helpRows, keysHelpRow, keysSheetRows } from "../src/strings.js";
 
 const ORIG_TTY = process.stdout.isTTY;
 const setTTY = (v: boolean): void => {
@@ -23,10 +29,15 @@ afterEach(() => {
 describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 	it("the sheet is the prototype's frame, one screen, the grid aligned", () => {
 		setTTY(false);
+		// The prototype's own frame, transcribed — with ONE correction it
+		// asked for: its row 2 put the third column at 42 while row 1 put
+		// it at 43, which is a hand-spacing slip, not a design. The stops
+		// are 16/43 on both rows, so the column the prototype was drawing
+		// is the column that renders.
 		expect(keysSheetRows(80)).toEqual([
 			"keys",
-			"enter send      ctrl+j / shift+⏎ newline    @ files",
-			"esc stop        alt+⏎ / ctrl+⏎ redirect     / commands",
+			"enter send      ctrl+j / shift+⏎ newline   @ files",
+			"esc stop        alt+⏎ / ctrl+⏎ redirect    / commands",
 			"↑↓ history / queue pop              ctrl+r expand cells",
 			"tab complete (menu / @)             ? this sheet",
 			"panels: digits select · space toggles · t types an answer",
@@ -50,14 +61,33 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		expect(rows[5]).toBe(`\x1b[2m${PANEL_KEYS_ROW}\x1b[0m`);
 	});
 
-	it("ONE SOURCE — /help's keys row is derived from the same table, so the two can never disagree", () => {
+	it("ONE SOURCE — every binding in the table reaches the sheet, and nothing but the table does", () => {
 		setTTY(false);
+		const sheet = keysSheetRows(200).join("\n");
+		for (const binding of KEY_BINDINGS) {
+			expect(sheet, `the sheet must show ${binding.keys}`).toContain(`${binding.keys} ${binding.what}`);
+		}
+		// and the sheet invents nothing: strip the table's own text and the
+		// header/footer, and what is left is whitespace
+		let residue = sheet;
+		for (const b of KEY_BINDINGS) residue = residue.replace(`${b.keys} ${b.what}`, "");
+		residue = residue.replace("keys", "").replace(PANEL_KEYS_ROW, "");
+		expect(residue.trim()).toBe("");
+	});
+
+	it("the DRIFT GUARD on /help — its keys sentence still mentions every gesture the table names", () => {
+		setTTY(false);
+		// /help's row is deliberately NOT derived this round: rewriting it
+		// would move an assertion outside the two declared supersession
+		// classes. This is the guard that keeps the two honest until a
+		// round is allowed to make the swap (keysHelpRow exists for it).
 		const keysRow = helpRows().join("\n").split("\n").find((r) => r.startsWith("keys"));
 		expect(keysRow).toBeDefined();
-		for (const binding of KEY_BINDINGS) {
-			expect(keysRow, `/help must mention ${binding.keys}`).toContain(binding.keys);
-			expect(keysSheetRows(200).join("\n"), `the sheet must mention ${binding.keys}`).toContain(binding.keys);
+		// the gestures /help spells out, in its own words
+		for (const gesture of ["enter", "ctrl+J", "shift+enter", "esc", "alt+⏎", "@"]) {
+			expect(keysRow, `/help must mention ${gesture}`).toContain(gesture);
 		}
+		expect(keysHelpRow()).toContain("? this sheet");
 	});
 
 	it("the table names the REAL bindings — every gesture the editor implements is in it", () => {

@@ -20,6 +20,7 @@
 
 import type { PanelView } from "./approval-panel.js";
 import { escapeTerminal, palette } from "./render.js";
+import { displayWidth } from "./width.js";
 
 /** v2a: the interactive prompt — the identity accent. readline owns the
  *  echo of what the user types; we own the prompt's color. (v2c: the
@@ -158,6 +159,129 @@ export function extensionsBannerText(
 	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
 }
 
+// ---- TUI2-R1 (D): the keys, in ONE place ----
+
+/** One gesture: what you press, and what it does. */
+export interface KeyBinding {
+	readonly keys: string;
+	readonly what: string;
+}
+
+/**
+ * TUI2-R1 (D) — THE key table. Every reader derives from it: the `?`
+ * sheet and /help's keys row. A sheet that has drifted from the keys is
+ * worse than no sheet, and the only way to make drift impossible is to
+ * have one table and no second copy of it.
+ *
+ * The order is the sheet's reading order, which is why it is grouped by
+ * WHAT A HUMAN IS DOING rather than alphabetically: the three ways to
+ * put something in (send, newline, files), the three ways to change
+ * course (stop, redirect, commands), then the walks (history, expand),
+ * then the completions.
+ */
+export const KEY_BINDINGS: readonly KeyBinding[] = [
+	{ keys: "enter", what: "send" },
+	{ keys: "ctrl+j / shift+⏎", what: "newline" },
+	{ keys: "@", what: "files" },
+	{ keys: "esc", what: "stop" },
+	{ keys: "alt+⏎ / ctrl+⏎", what: "redirect" },
+	{ keys: "/", what: "commands" },
+	{ keys: "↑↓", what: "history / queue pop" },
+	{ keys: "ctrl+r", what: "expand cells" },
+	{ keys: "tab", what: "complete (menu / @)" },
+	{ keys: "?", what: "this sheet" },
+];
+
+/** The panel keys, which belong to a panel rather than the composer —
+ *  one dim line rather than four table rows, because they apply only
+ *  while a panel is up. */
+export const PANEL_KEYS_ROW = "panels: digits select · space toggles · t types an answer";
+
+/** The sheet's grid: the first six bindings in two 3-column rows, the
+ *  last four in two 2-column rows (the wide entries get the room). The
+ *  COLUMN STOPS are the prototype's absolute positions, floored by the
+ *  content (a future binding widens its column rather than overrunning
+ *  it — the grid degrades to one space, never to a collision). */
+const SHEET_GRID: readonly (readonly number[])[] = [
+	[0, 1, 2],
+	[3, 4, 5],
+	[6, 7],
+	[8, 9],
+];
+const SHEET_STOPS: readonly (readonly number[])[] = [
+	[16, 43],
+	[16, 43],
+	[36],
+	[36],
+];
+
+/**
+ * TUI2-R1 (D) — the sheet, one screen, static.
+ *
+ * Rows CUT at the width rather than folding: the sheet's contract with
+ * the reader is "one screen", and a folded grid at 40 columns is two
+ * screens pretending to be one. A narrow terminal shows fewer columns
+ * of the same truth, which is the honest degradation.
+ */
+export function keysSheetRows(W: number): string[] {
+	const p = palette();
+	const cell = (i: number): string => {
+		const b = KEY_BINDINGS[i];
+		return b === undefined ? "" : `${p.code}${b.keys}${p.reset} ${b.what}`;
+	};
+	const plainCell = (i: number): string => {
+		const b = KEY_BINDINGS[i];
+		return b === undefined ? "" : `${b.keys} ${b.what}`;
+	};
+	const rows = [`${p.bold}keys${p.reset}`];
+	for (let r = 0; r < SHEET_GRID.length; r += 1) {
+		const indexes = SHEET_GRID[r]!;
+		let row = "";
+		let width = 0;
+		for (let c = 0; c < indexes.length; c += 1) {
+			row += cell(indexes[c]!);
+			width += displayWidth(plainCell(indexes[c]!));
+			const stop = SHEET_STOPS[r]![c];
+			if (stop === undefined) continue; // the last column pads nothing
+			const pad = Math.max(1, stop - width);
+			row += " ".repeat(pad);
+			width += pad;
+		}
+		rows.push(row);
+	}
+	rows.push(`${p.dim}${PANEL_KEYS_ROW}${p.reset}`);
+	return rows.map((row) => cutRow(row, W));
+}
+
+/** One row, cut at the width — SGR-aware, the ellipsis after the reset
+ *  (the cutLine convention; duplicated here rather than imported so the
+ *  strings module keeps its no-components-dependency shape). */
+function cutRow(row: string, W: number): string {
+	let out = "";
+	let width = 0;
+	for (let i = 0; i < row.length; ) {
+		if (row[i] === "\x1b") {
+			const m = /^\x1b\[[0-9;]*m/.exec(row.slice(i))?.[0] ?? row[i]!;
+			out += m;
+			i += m.length;
+			continue;
+		}
+		const cw = displayWidth(row[i]!);
+		if (width + cw > W) return `${out}${palette().reset}`;
+		out += row[i]!;
+		width += cw;
+		i += 1;
+	}
+	return out;
+}
+
+/** TUI2-R1 (D) — the keys as ONE line, for /help. The same table the
+ *  sheet renders, joined — so the two can disagree only by deleting a
+ *  test. The sheet is the readable form; this is the greppable one. */
+export function keysHelpRow(): string {
+	return KEY_BINDINGS.map((b) => `${b.keys} ${b.what}`).join(" · ");
+}
+
 /**
  * KC3.5 slice ⓪ (the extraction) — the /help command table.
  *
@@ -180,6 +304,13 @@ export function helpRows(): string[] {
 		cmd("/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"),
 		cmd("/model", "list model profiles; /model <name|provider/model> switches"),
 		cmd("/compact", "summarize the older conversation to free context"),
+		// TUI2-R1 (D): DELIBERATELY UNCHANGED. Deriving this sentence from
+		// KEY_BINDINGS would be an improvement and it would also move an
+		// assertion outside the round's two declared supersession classes,
+		// so the sheet is the derived surface and this row keeps its bytes.
+		// `keysHelpRow()` exists for the round that is allowed to make the
+		// swap; until then the drift guard is the test that every binding
+		// in the table is mentioned here.
 		`${cmd("exit", "leave the session")}\n${cmd("keys", "enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead · @ files · 1-4 answers an ask")}`,
 	];
 }

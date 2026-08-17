@@ -78,6 +78,7 @@ import {
 	type FrameCtx,
 } from "./components.js";
 import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, toolTarget, type ResumeMeta } from "./render.js";
+import { keysSheetRows } from "./strings.js";
 
 /** The cursor marker — an APC private sequence the focus component
  *  embeds at the edit position; the compositor strips it and moves
@@ -203,6 +204,10 @@ export class Body {
 	// panel is up it replaces the live region, owns the input lead, and
 	// derives the status row (the CLI's painting status yields).
 	#panelState: (() => PanelState | null) | null = null;
+	/** TUI2-R1 (D): the keys sheet's slot read — the editor's boolean.
+	 *  Unbound, the sheet cannot render and every frame is byte-identical
+	 *  to before the round. */
+	#sheetState: (() => boolean) | null = null;
 	#inputState: () => InputState = () => ({ line: "", cursor: 0 });
 	#inputPrompt = "";
 	#menuState: (() => { items: readonly MenuItem[]; selected: number } | null) | null = null;
@@ -236,6 +241,7 @@ export class Body {
 		if (dockBindings.menu !== null) this.#menuState = dockBindings.menu;
 		if (dockBindings.at !== null) this.#atState = dockBindings.at;
 		this.#panelState = dockBindings.panel;
+		this.#sheetState = dockBindings.sheet;
 		if (dockBindings.queue !== null) this.#queueState = dockBindings.queue;
 	}
 
@@ -804,6 +810,12 @@ export class Body {
 
 	/** Bind the editor's slash-command menu state — the MenuSelect slot
 	 *  occupant (the menu replaces the editor's view while open). */
+	/** TUI2-R1 (D): bind the editor's keys-sheet flag. */
+	bindSheet(state: () => boolean): void {
+		this.#sheetState = state;
+		this.#mark();
+	}
+
 	bindMenu(state: () => { items: readonly MenuItem[]; selected: number } | null): void {
 		this.#menuState = state;
 	}
@@ -902,10 +914,22 @@ export class Body {
 	 *  screen rows), threaded against the previous sibling's OWN rows. */
 	liveCount(): number {
 		const panel = this.#panelState?.() ?? null;
+		const sheet = this.#sheetState?.() === true;
 		const queueRows = this.#queueRows(this.#opts.width(), this.#opts.height());
 		// KC1 §6: the composer's extra rows are chrome too — the scalar
 		// counts them exactly like the menu/queue bands (N = 1 ⇒ +0)
 		const inputExtra = this.#inputRows(this.#opts.width(), this.#opts.height(), this.#menuRows(this.#opts.width()).length, queueRows.length).rows.length - 1;
+		// TUI2-R1 (D): the sheet occupies the live region, exactly like the
+		// panel — the scalar must say so, or the cap arithmetic disagrees
+		// with the screen.
+		if (sheet) {
+			return (
+				keysSheetRows(this.#opts.width()).slice(0, Math.max(1, this.#opts.height() - 4 - inputExtra - queueRows.length)).length +
+				CHROME_ROWS +
+				inputExtra +
+				queueRows.length
+			);
+		}
 		if (panel !== null) {
 			// W21: the panel's own rows (the cap is exact — the scalar
 			// reflects the screen). W22: the queue chips occupy their
@@ -993,7 +1017,13 @@ export class Body {
 		const chromeRows = CHROME_ROWS + inputExtra + menuRows.length + queueRows.length;
 		let liveLines: string[] = [];
 		const panel = this.#panelState?.() ?? null;
-		if (panel !== null) {
+		if (this.#sheetState?.() === true) {
+			// TUI2-R1 (D): the sheet REPLACES the live region — the same
+			// slot the panel uses, for the same reason (it is what the
+			// human is reading right now). It cannot coexist with a panel:
+			// the editor only opens it from an idle composer.
+			liveLines = keysSheetRows(W).slice(0, Math.max(1, H - 4 - inputExtra - queueRows.length));
+		} else if (panel !== null) {
 			// W21: the panel REPLACES the running tool's live window — the
 			// bounded block, capped at H−4 (the panel IS the live region;
 			// the W11 blank would separate it from the frozen content).
@@ -1751,6 +1781,15 @@ export class Dock {
 		}
 		compositorRef.bindApproval(state);
 	}
+	/** TUI2-R1 (D): bind the editor's keys-sheet flag — the slot read for
+	 *  the ? overlay (the menu/picker binding pattern). */
+	bindSheet(state: () => boolean): void {
+		if (compositorRef === null) {
+			dockBindings.sheet = state;
+			return;
+		}
+		compositorRef.bindSheet(state);
+	}
 	bindInput(state: () => InputState, prompt: string): void {
 		if (compositorRef === null) {
 			dockBindings.state = state; // the live buffer — order-agnostic
@@ -1809,5 +1848,6 @@ const dockBindings: {
 	menu: (() => { items: readonly MenuItem[]; selected: number } | null) | null;
 	at: (() => AtPanelState | null) | null;
 	panel: (() => PanelState | null) | null;
+	sheet: (() => boolean) | null;
 	queue: (() => readonly string[]) | null;
-} = { state: null, prompt: "", menu: null, at: null, panel: null, queue: null };
+} = { state: null, prompt: "", menu: null, at: null, panel: null, sheet: null, queue: null };

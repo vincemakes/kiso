@@ -104,4 +104,6 @@ export {
 } from "./ask-panel.js";
 // KC3.5 §4: the interrupted-ask copy — the SAME uncertainty gate, said
 // honestly for a question nobody answered (the ① probe's surface).
-export { extensionsBannerText, helpRows, unansweredAskView, type BannerExtension } from "./strings.js";
+// TUI2-R1 (D): the keys sheet + THE key table — one source for the ?
+// overlay and /help's keys row.
+export { KEY_BINDINGS, PANEL_KEYS_ROW, extensionsBannerText, helpRows, keysHelpRow, keysSheetRows, unansweredAskView, type BannerExtension, type KeyBinding } from "./strings.js";
