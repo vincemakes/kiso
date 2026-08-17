@@ -28,6 +28,7 @@ import { charWidth, displayWidth, leadWidth, widthOf } from "./width.js";
 export { charWidth, displayWidth, widthOf };
 import { palette } from "./render.js";
 import { panelLead, type PanelPhase, type PanelSel, type PanelState, type PanelVerdict, type PanelView } from "./approval-panel.js";
+import { AT_VISIBLE, atFilter, type AtItem, type AtMatch } from "./at-picker.js";
 
 // TUI v4 #16d: the input row is the blue brick + the edit area — the
 // "you>" text is gone (the brick IS the prompt; the pipe path's readline
@@ -53,6 +54,14 @@ export const MENU_ITEMS: readonly MenuItem[] = [
 /** KC1 §3 — the newline code point. Every source (paste, Ctrl+J, the
  *  Shift+Enter encodings, a CRLF pair) normalizes to exactly ONE. */
 const NEWLINE = 0x0a;
+
+/** KC3 §3 — the picker's sigil, and the two characters that count as a
+ *  word boundary before it. A `@` anywhere else (vince@example.com) is
+ *  an ordinary character: the reference is a thing you START, not a
+ *  thing an address accidentally becomes. */
+const AT = 0x40;
+const SPACE = 0x20;
+const TAB = 0x09;
 
 /** KC1 §5 — the composer's CEILING (adjudication A1): at most 6 visible
  *  rows. A ceiling only — N_visible clamps by the terminal's height so
@@ -120,6 +129,22 @@ export class Editor {
 	#onRender: () => void;
 	#menuOpen = false; // v3 §04: the slash-command menu
 	#menuSel = 0;
+	// KC3 §3 — the @ file picker. THREE fields and no more: the armed
+	// bit, the selection, and the per-open SNAPSHOT of the file list.
+	// The query is deliberately NOT stored — it is derived from the
+	// buffer and the cursor on every read (the KC1 flat-buffer
+	// discipline: never a second mutable model). That is what makes
+	// backspacing past the `@` close the picker with no handler
+	// anywhere, and what keeps every existing op — the kills, paste,
+	// the history stash, the queue-pop replace — correct for free.
+	#atOpen = false;
+	#atSel = 0;
+	// the list is snapshotted AT OPEN and held for that open's lifetime
+	// (§4: no index, no watcher, no re-listing per keystroke). An armed
+	// bit with no token under the cursor is inert by construction — the
+	// next open re-snapshots, so a stale list can never be shown.
+	#atList: readonly AtItem[] | null = null;
+	#atItems: (() => readonly AtItem[]) | null = null;
 	// A2 (the feel): the session-scoped input history — every submitted TURN
 	// line (never a question answer), capped at 100, never persisted. ↑↓
 	// navigate it ONLY from an empty input or while already browsing.
@@ -247,7 +272,7 @@ export class Editor {
 	 *  the frame's clamp is the authority. */
 	#visibleRows(lineCount: number): number {
 		const H = process.stdout.rows ?? 24;
-		const bands = (this.#menuOpen ? this.#menuFiltered().length : 0) + this.#queueState().length;
+		const bands = (this.#menuOpen ? this.#menuFiltered().length : 0) + this.#atRows() + this.#queueState().length;
 		return Math.max(1, Math.min(lineCount, N_MAX, Math.max(1, H - 3 - bands)));
 	}
 
@@ -309,6 +334,125 @@ export class Editor {
 		this.#onRender();
 	}
 
+	/** KC3 §3 — bind the file source. The tui owns no file list and
+	 *  never touches a disk (input is data, output is bytes): the CLI
+	 *  feeds the paths, and until it does, the picker cannot open at
+	 *  all — which is exactly why every non-@ scenario and every
+	 *  consumer that does not bind (the recovery flow, the existing
+	 *  gates) is byte-identical. */
+	bindAtItems(source: () => readonly AtItem[]): void {
+		this.#atItems = source;
+	}
+
+	/**
+	 * KC3 §3 — the token under the cursor, DERIVED. Scans back from the
+	 * cursor within the CURSOR'S LINE for the `@` that opens it:
+	 *  - whitespace before finding one → there is no token (the space
+	 *    ended it);
+	 *  - an `@` that is not itself at a word boundary → inert (the
+	 *    email case: the `@` of vince@example.com opens nothing);
+	 *  - otherwise the token runs from that `@` to the CURSOR — never
+	 *    to the end of the line, so `@ra|.js` narrows on "ra".
+	 * Line-local: the start of any line of a multi-line composer is a
+	 * boundary, exactly like the start of the buffer.
+	 */
+	#atToken(): { start: number; query: string } | null {
+		const b = this.#cursorBounds();
+		for (let i = this.#cursor - 1; i >= b.start; i -= 1) {
+			const cp = this.#chars[i]!;
+			if (cp === SPACE || cp === TAB) return null;
+			if (cp !== AT) continue;
+			const before = i > b.start ? this.#chars[i - 1]! : null;
+			if (before !== null && before !== SPACE && before !== TAB) return null; // mid-word
+			return { start: i, query: String.fromCodePoint(...this.#chars.slice(i + 1, this.#cursor)) };
+		}
+		return null;
+	}
+
+	/** KC3 §3 — the picker's full state, or null when it is not up. Up
+	 *  requires ALL of: armed, nobody with higher precedence holding the
+	 *  keys, a live token under the cursor, and at least one match (the
+	 *  menu's precedent — a panel with nothing in it is noise, and the
+	 *  keys fall back to their ordinary meanings). */
+	#atView(): { matches: AtMatch[]; selected: number; capped: boolean; start: number } | null {
+		if (!this.#atOpen || this.#atList === null) return null;
+		if (this.#panel !== null || this.#menuOpen) return null;
+		const token = this.#atToken();
+		if (token === null) return null;
+		const { matches, capped } = atFilter(this.#atList, token.query);
+		if (matches.length === 0) return null;
+		// the selection CLAMPS at read time rather than being corrected
+		// on every edit — narrowing the query can only ever shrink the
+		// list, and a clamp is the whole correction that needs
+		return { matches, selected: Math.min(this.#atSel, matches.length - 1), capped, start: token.start };
+	}
+
+	#atUp(): boolean {
+		return this.#atView() !== null;
+	}
+
+	/** KC3 §4 — the picker's visible state for the dock; null when
+	 *  closed. The compositor windows it and draws the counter. */
+	atState(): { matches: readonly AtMatch[]; selected: number; capped: boolean } | null {
+		const view = this.#atView();
+		if (view === null) return null;
+		return { matches: view.matches, selected: view.selected, capped: view.capped };
+	}
+
+	/** KC3 §3 — arm the picker at a freshly typed `@`. The gate is the
+	 *  KC2 precedence pattern: the approval panel, the slash menu and a
+	 *  pending question each own the keys first. A paste is literal text
+	 *  (guarded by the caller). The history browse and the queue-pop
+	 *  walk are NOT re-tested here because typing has already ended them
+	 *  — #insert leaves both before a character ever lands. */
+	#atArm(): void {
+		if (this.#atItems === null) return;
+		if (this.#panel !== null || this.#menuOpen || this.#questionCb !== null) return;
+		if (this.#atToken() === null) return; // not at a word boundary
+		this.#atOpen = true;
+		this.#atSel = 0;
+		this.#atList = this.#atItems(); // §5: listed per OPEN, never per keystroke
+	}
+
+	#atClose(): void {
+		this.#atOpen = false;
+		this.#atSel = 0;
+		this.#atList = null;
+	}
+
+	/**
+	 * KC3 §3 — accept: the token becomes `@<path> `.
+	 *
+	 * The CANONICAL PATH and a trailing space, and nothing else — the
+	 * file's CONTENT is never inserted. That is the whole product
+	 * decision: the model is handed a reference it can choose to read,
+	 * so an @ mention costs a path's worth of tokens instead of a
+	 * file's, and the model's own read_file call is what pays for the
+	 * bytes it actually needs.
+	 *
+	 * Only [token.start, cursor) is replaced, so text after the cursor
+	 * survives and a multi-line buffer keeps every other line.
+	 */
+	#atAccept(): void {
+		const view = this.#atView();
+		if (view === null) return;
+		const insert = [...`@${view.matches[view.selected]!.path} `].map((ch) => ch.codePointAt(0)!);
+		this.#chars.splice(view.start, this.#cursor - view.start, ...insert);
+		this.#cursor = view.start + insert.length;
+		this.#atClose();
+		this.#reflow();
+		this.#onRender();
+	}
+
+	/** KC3 §4 — the picker's band height, the editor's honest estimate
+	 *  (the compositor re-applies the clamp against the frame's REAL
+	 *  folded rows, exactly as it does for the menu): the windowed rows
+	 *  plus the counter row. */
+	#atRows(): number {
+		const view = this.#atView();
+		return view === null ? 0 : Math.min(view.matches.length, AT_VISIBLE) + 1;
+	}
+
 	/** One-shot question mode: the NEXT submit answers, not a turn. */
 	question(_query: string, cb: (answer: string) => void): void {
 		this.#questionCb = cb;
@@ -339,6 +483,7 @@ export class Editor {
 		this.#menuOpen = false;
 		this.#menuSel = 0;
 		this.#queuePopMode = false; // W22: the panel owns the keys while up
+		this.#atClose(); // KC3 §3: and the picker closes with everything else
 		this.#onRender();
 	}
 
@@ -475,6 +620,16 @@ export class Editor {
 					this.#verticalGoalCol = null;
 					this.#refreshMenu();
 					i += 1;
+				} else if (this.#atUp()) {
+					// KC3 §3: esc closes the picker and leaves the BUFFER
+					// ALONE — unlike the menu's esc, which clears it. The
+					// sentence around the reference is still being written,
+					// and a dismissed picker must not take it away. CA-4:
+					// the closing esc consumes its burst, so it can never
+					// also abort the run.
+					this.#atClose();
+					this.#onRender();
+					i += 1;
 				} else if (this.#queuePopMode) {
 					// W22: esc in the pop-mode — ONE more pop, then the
 					// mode ends: the next esc at rest rides the escapeCbs
@@ -556,6 +711,11 @@ export class Editor {
 					this.#refreshMenu();
 				}
 				i += 1;
+			} else if (c === "\t" && this.#atUp()) {
+				// KC3 §3: Tab accepts the selected path — the token becomes
+				// `@<path> `. Never the file's content.
+				this.#atAccept();
+				i += 1;
 			} else if (c === "\x12") {
 				// W15: the expand key (ctrl+r) — rides the chain like a
 				// command, the editor just forwards it.
@@ -611,6 +771,13 @@ export class Editor {
 			} else if (this.#menuOpen) {
 				if (final === "A") this.#menuSel = Math.max(0, this.#menuSel - 1);
 				else this.#menuSel = Math.min(this.#menuFiltered().length - 1, this.#menuSel + 1);
+			} else if (this.#atUp()) {
+				// KC3 §3: the picker owns ↑↓ while up — the SELECTION, never
+				// the cursor and never the composer's line walk. It sits
+				// ABOVE the multi-line branch on purpose: a picker opened on
+				// line 2 of a composer must still select.
+				const view = this.#atView()!;
+				this.#atSel = final === "A" ? Math.max(0, view.selected - 1) : Math.min(view.matches.length - 1, view.selected + 1);
 			} else if (this.#chars.includes(NEWLINE)) {
 				// KC1 §4: a MULTI-LINE buffer's ↑↓ walk its lines. The
 				// history and the queue-pop below stay gated on an EMPTY
@@ -763,6 +930,10 @@ export class Editor {
 		this.#cursor += 1;
 		this.#reflow();
 		if (!this.#pasting) this.#refreshMenu();
+		// KC3 §3: a TYPED `@` arms the picker; a PASTED one never does —
+		// a paste is content, and content that happens to contain an
+		// address must not open a file browser mid-sentence.
+		if (cp === AT && !this.#pasting) this.#atArm();
 	}
 
 	#backspace(): void {
@@ -829,6 +1000,7 @@ export class Editor {
 		this.#menuOpen = false;
 		this.#menuSel = 0;
 		this.#queuePopMode = false;
+		this.#atClose(); // KC3 §3: a departing line takes its picker with it
 		return line;
 	}
 
@@ -854,6 +1026,7 @@ export class Editor {
 		return (
 			this.#panel === null &&
 			!this.#menuOpen &&
+			!this.#atUp() && // KC3 §3: the @ picker owns the keys while up, exactly like the menu
 			this.#historyIdx === null &&
 			!this.#queuePopMode &&
 			!this.#pasting &&
@@ -887,6 +1060,14 @@ export class Editor {
 	}
 
 	#submit(): void {
+		// KC3 §3: Enter ACCEPTS while the picker is up — the same rule the
+		// menu's A1 feel established (complete first, let the user read
+		// what they got, and let the NEXT Enter send it). An @ reference
+		// that submitted on the first Enter would send the fragment.
+		if (this.#atUp()) {
+			this.#atAccept();
+			return;
+		}
 		if (this.#menuOpen) {
 			// A1 (the feel): Enter submits the EXACT selection directly; a
 			// PARTIAL selection COMPLETES the buffer (the Tab semantics)
