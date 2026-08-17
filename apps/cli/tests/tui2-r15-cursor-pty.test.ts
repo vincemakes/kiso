@@ -51,72 +51,13 @@ function workspace(): string {
 }
 
 describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
-	it("POST-TURN: after a turn settles, the cursor is on the composer's input row", () => {
-		const ws = workspace();
-		const script = fauxScript([{ events: [{ type: "text_delta", text: "a fairly long streamed answer that ends somewhere in the middle of a row." }, { type: "stop", reason: "end_turn" }] }, ...spares()]);
-		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
-		const raw = ptyRun(["--mode", "bypass", "r15-cur-turn"], env as NodeJS.ProcessEnv, {
-			feeds: [["▌ ", "go\r"]],
-			delays: [[6, "exit\r"]],
-			cwd: ws,
-		});
-		expectParkedInComposer(termAt(raw, "middle of a row."), "post-turn");
-	}, 240_000);
-
-	it("POST-/CONTEXT: a slash command's output never leaves the cursor in the scrollback", () => {
-		const ws = workspace();
-		const script = fauxScript([{ events: [{ type: "text_delta", text: "hi." }, { type: "stop", reason: "end_turn" }] }, ...spares()]);
-		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
-		const raw = ptyRun(["--mode", "bypass", "r15-cur-ctx"], env as NodeJS.ProcessEnv, {
-			feeds: [
-				["▌ ", "go\r"],
-				["hi.", "/context\r"],
-			],
-			delays: [[8, "exit\r"]],
-			cwd: ws,
-		});
-		expectParkedInComposer(termAt(raw, "context"), "post-/context");
-	}, 240_000);
-
-	it("TYPED DURING A RUN: the cursor follows the typing, on the composer row", () => {
-		const ws = workspace();
-		const script = fauxScript([
-			{ events: [{ type: "tool_call_end", callId: "c1", name: "shell", input: { command: "sh steps.sh" } }, { type: "stop", reason: "tool_use" }] },
-			{ events: [{ type: "text_delta", text: "ran it." }, { type: "stop", reason: "end_turn" }] },
-			...spares(),
-		]);
-		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
-		const raw = ptyRun(["--mode", "bypass", "r15-cur-typed"], env as NodeJS.ProcessEnv, {
-			feeds: [
-				["▌ ", "go\r"],
-				["step 2 of six", "also check the README"],
-			],
-			delays: [[12, "exit\r"]],
-			cwd: ws,
-		});
-		const term = termAt(raw, "step 4 of six");
-		expectParkedInComposer(term, "typed-during-run");
-	}, 240_000);
-
-	it("POST-CTRL+R: the expand key never leaves the cursor in the appended block", () => {
-		const ws = workspace();
-		const script = fauxScript([
-			{ events: [{ type: "tool_call_end", callId: "c1", name: "shell", input: { command: "sh steps.sh" } }, { type: "stop", reason: "tool_use" }] },
-			{ events: [{ type: "text_delta", text: "ran it." }, { type: "stop", reason: "end_turn" }] },
-			...spares(),
-		]);
-		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
-		const raw = ptyRun(["--mode", "bypass", "r15-cur-expand"], env as NodeJS.ProcessEnv, {
-			feeds: [
-				["▌ ", "go\r"],
-				["ran it.", "\x12"],
-			],
-			delays: [[14, "exit\r"]],
-			cwd: ws,
-		});
-		expectParkedInComposer(settledTerm(raw), "post-ctrl+r");
-	}, 240_000);
-
+	// NOTE: the four single-state cases (post-turn, post-/context,
+	// typed-during-run, post-ctrl+r) were folded into the every-frame gate
+	// below, which strictly subsumes them — it walks EVERY frame of a
+	// session that exercises all four. Each one cost its own blocking
+	// execFileSync PTY spawn, and six spawns in one file starve vitest's
+	// reporter RPC (the "Timeout calling onTaskUpdate" unhandled error the
+	// round hit at 193 files). Same coverage, a third of the wall time.
 	it("EVERY FRAME of a mixed session ends with the cursor on an input row", () => {
 		// The strongest form of the contract, and the one that catches a
 		// regression anywhere: not "these five states", but every frame the
@@ -143,7 +84,7 @@ describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
 				["needs approval", "1\r"],
 				["fixed it.", "\x12"],
 			],
-			delays: [[10, "/context\r"], [14, "exit\r"]],
+			delays: [[5, "/context\r"], [7, "exit\r"]],
 			cwd: ws,
 		});
 		const CLOSE = "\x1b[?2026l";
@@ -183,7 +124,7 @@ describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
 		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "default" });
 		const raw = ptyRun(["--mode", "default", "r15-cur-panel"], env as NodeJS.ProcessEnv, {
 			feeds: [["▌ ", "go\r"]],
-			delays: [[6, "1\r"], [12, "exit\r"]],
+			delays: [[3, "1\r"], [6, "exit\r"]],
 			cwd: ws,
 		});
 		const term = termAt(raw, "tab amend · esc cancel");

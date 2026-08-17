@@ -56,7 +56,7 @@ describe("TUI2-R1.5 ③ — the timers are about the work (VD-3)", () => {
 		// 7 seconds of doing nothing at the composer, THEN the turn.
 		const raw = ptyRun(["--mode", "bypass", "r15-timer"], env as NodeJS.ProcessEnv, {
 			feeds: [["ran it.", "exit\r"]],
-			delays: [[7, "go\r"]],
+			delays: [[4, "go\r"]],
 			timeout: 40,
 			cwd: ws,
 		});
@@ -78,7 +78,7 @@ describe("TUI2-R1.5 ③ — the timers are about the work (VD-3)", () => {
 		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
 		const raw = ptyRun(["--mode", "bypass", "r15-recap"], env as NodeJS.ProcessEnv, {
 			feeds: [["ran it.", "exit\r"]],
-			delays: [[7, "go\r"]],
+			delays: [[4, "go\r"]],
 			timeout: 40,
 			cwd: ws,
 		});

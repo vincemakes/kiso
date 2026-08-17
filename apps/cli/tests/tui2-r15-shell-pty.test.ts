@@ -85,7 +85,7 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 				["\u258c ", "go\r"],
 				["ran it.", "\x12"],
 			],
-			delays: [[14, "exit\r"]],
+			delays: [[7, "exit\r"]],
 			cwd: ws,
 		});
 		// W15 is unchanged by this round: a COMMITTED cell never toggles in

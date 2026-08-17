@@ -47,7 +47,7 @@ describe("TUI2-R1.5 ② — the edit approval diff on a real PTY", () => {
 			// the answer waits on the WALL CLOCK: the panel's status text is
 			// written before its rows are, so an answer fed on that needle
 			// dismisses the panel before it has finished painting.
-			delays: [[3, "1\r"]],
+			delays: [[2, "1\r"]],
 			cwd: ws,
 		});
 		// the panel frame, read at its last fully-painted affordance row
@@ -79,7 +79,7 @@ describe("TUI2-R1.5 ② — the edit approval diff on a real PTY", () => {
 				["▌ ", "go\r"],
 				["that missed.", "exit\r"],
 			],
-			delays: [[3, "1\r"]],
+			delays: [[2, "1\r"]],
 			cwd: ws,
 		});
 		const joined = screenAt(raw, "tab amend · esc cancel").join("\n");

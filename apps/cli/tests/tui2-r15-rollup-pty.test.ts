@@ -70,7 +70,7 @@ describe("TUI2-R1.5 ① — the exploration rollup at real pacing (real CLI)", (
 		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
 		const raw = ptyRun(["--mode", "bypass", "r15-roll-paced"], env as NodeJS.ProcessEnv, {
 			feeds: [["▌ ", "go\r"]],
-			delays: [[8, "exit\r"]],
+			delays: [[4, "exit\r"]],
 			cwd: ws,
 		});
 		const grid = settledScreen(raw);
