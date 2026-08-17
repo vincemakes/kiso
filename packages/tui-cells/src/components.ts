@@ -210,8 +210,17 @@ export type BodyCell =
 			 *  the head of an N > 2 same-tool run renders the group (the
 			 *  work order's claimed shape: "✓ read  5 files (2.4k lines,
 			 *  1.1s)" + the target children). The members carry null — the
-			 *  compositor's rolled-heads bookkeeping renders them []. */
-			rolled: null | { count: number; lines: number; elapsed: string; targets: string[] };
+			 *  compositor's rolled-heads bookkeeping renders them [].
+			 *  TUI2-R1 (B): `parts` is set when the run spans MORE THAN ONE
+			 *  read-only tool — the same mechanism, the exploration row.
+			 *  Absent (a single-name run) keeps W13's row byte for byte. */
+			rolled: null | {
+				count: number;
+				lines: number;
+				elapsed: string;
+				targets: string[];
+				parts?: readonly { name: string; subjects: readonly string[] }[];
+			};
 			/** W19: a DENIED call's reason (the CLI extracted it from the
 			 *  result's "[Permission denied] " prefix, keyed on the "denied"
 			 *  tag). Non-null renders the pinned row — the full call name,
@@ -490,6 +499,22 @@ class ToolExecution implements Component {
 		const verb = escapeTerminal(c.name.replace("_file", ""));
 		const verbCol = verb.length < 5 ? `${verb}${" ".repeat(5 - verb.length)}` : verb;
 		const summary = escapeTerminal(c.input);
+		const parts = c.rolled?.parts;
+		if (c.rolled !== null && parts !== undefined) {
+			// TUI2-R1 (B) — the exploration row: a run that spans more than
+			// one read-only tool. The counts are BOLD (what the reader is
+			// being told), the timing and the affordance dim — the
+			// prototype's placement. The affordance names what the key
+			// SHOWS here ("lists them"), because a group row's expand is a
+			// list of calls, not a body of output.
+			const r = c.rolled;
+			const counts = exploreCounts(parts);
+			const head = `${p.bold}✓${p.reset} explored ${p.bold}${counts}${p.reset}`;
+			const tail = ` (${r.elapsed}s)`;
+			const room = W - visibleWidth(head) - tail.length;
+			const affordance = " · ctrl+r lists them";
+			return [cutLine(`${head}${p.dim}${tail}${affordance.length <= room ? affordance : ""}${p.reset}`, W)];
+		}
 		if (c.rolled !== null) {
 			// W13 — the rolled-up group's ONE row + the target children:
 			// the work order's claimed shape, verbatim — the verbCol's
@@ -631,6 +656,62 @@ export const ROLLUP_NOUN: Readonly<Record<string, string>> = {
 	list_dir: "dirs",
 	search_text: "matches",
 };
+
+// ---- TUI2-R1 (B): the exploration rollup ----
+
+/** TUI2-R1 (B) — the exploration row's nouns. Deliberately NOT
+ *  ROLLUP_NOUN: that table says what a SINGLE-tool rollup counts
+ *  ("5 matches"), and this row counts CALLS across tools, where
+ *  "14 searches" is what happened. Both tables stay — changing the
+ *  older one would move an assertion this round did not declare. */
+const EXPLORE_NOUN: Readonly<Record<string, [string, string]>> = {
+	read_file: ["file", "files"],
+	list_dir: ["dir", "dirs"],
+	search_text: ["search", "searches"],
+};
+
+/** TUI2-R1 (B) — the verb column of the expanded list. `search_text`
+ *  reads as "search" there: the column names the ACT, and the raw tool
+ *  name is what the cut notes carry (they name what the model calls). */
+const EXPLORE_VERB: Readonly<Record<string, string>> = { read_file: "read", list_dir: "list", search_text: "search" };
+
+/** Whether a tool joins an exploration run. Exactly the read-only set —
+ *  writes, edits, shells and extension tools never group (a burst of
+ *  side effects is a list of things that HAPPENED, and every row of it
+ *  carries meaning). */
+export function isExploreTool(name: string): boolean {
+	return EXPLORE_NOUN[name] !== undefined;
+}
+
+/** "8 files · 14 searches" — the per-tool counts in first-call order. */
+export function exploreCounts(parts: readonly { name: string; subjects: readonly string[] }[]): string {
+	return parts
+		.map((part) => {
+			const [singular, plural] = EXPLORE_NOUN[part.name] ?? ["call", "calls"];
+			return `${part.subjects.length} ${part.subjects.length === 1 ? singular : plural}`;
+		})
+		.join(" · ");
+}
+
+/** TUI2-R1 (B) — the expanded list: ONE row per tool, the verb column
+ *  then the distinct subjects in first-call order, a repeated subject
+ *  carrying its ×count, the first three shown and the rest counted.
+ *  A search's subject is its PATTERN (quoted — the thing that was
+ *  looked for); a read's or a list's is its path. */
+export function exploreRows(parts: readonly { name: string; subjects: readonly string[] }[], W: number): string[] {
+	const p = palette();
+	const rows: string[] = [];
+	for (const part of parts) {
+		const counts = new Map<string, number>();
+		for (const s of part.subjects) counts.set(s, (counts.get(s) ?? 0) + 1);
+		const shown = [...counts.entries()].slice(0, 3).map(([s, n]) => (n > 1 ? `${s} ×${n}` : s));
+		const more = counts.size > 3 ? ` (+${counts.size - 3})` : "";
+		const verb = EXPLORE_VERB[part.name] ?? part.name;
+		rows.push(cutLine(`${p.dim}${BODY_ROW}${escapeTerminal(`${verb.padEnd(6)} ${shown.join(" · ")}${more}`)}${p.reset}`, W));
+	}
+	rows.push(cutLine(`${p.dim}${CUT_ROW}${COLLAPSE_ROW} · /last shows the full outputs${p.reset}`, W));
+	return rows;
+}
 
 /** The count term with the singular/plural forms — "no reads", "1 read",
  *  "5 reads". The noun's singular drops the plural suffix ("dirs" → "dir",

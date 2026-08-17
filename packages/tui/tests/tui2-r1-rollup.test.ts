@@ -44,6 +44,13 @@ afterEach(() => {
 	delete (process.stdout as { isTTY?: boolean }).isTTY;
 });
 
+/** The compositor writes raw bytes with SGR spans; the assertions below
+ *  are about the WORDS, so the SGR comes off first (the byte-level SGR
+ *  placement is pinned in the tui-cells unit). */
+function plain(stream: string): string {
+	return stream.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+}
+
 /** One settled read-only call. */
 function call(body: Body, name: string, id: string, input: Record<string, unknown>, result: string): void {
 	body.toolStart(name, id, input);
@@ -67,7 +74,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		exploreBurst(body);
 		body.textAppend("explored.");
 		tick();
-		const frame = writes.join("");
+		const frame = plain(writes.join(""));
 		expect(frame).toContain("explored 8 files · 14 searches (0.0s) · ctrl+r lists them");
 		// ONE ✓ row for the whole burst, not twenty-two
 		expect(frame.match(/✓/g) ?? []).toHaveLength(1);
@@ -86,7 +93,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		call(body, "list_dir", "b3", { path: "lib" }, "x");
 		body.textAppend("done.");
 		tick();
-		const frame = writes.join("");
+		const frame = plain(writes.join(""));
 		// two exploration rows, and the write's own row between them
 		expect(frame.match(/explored/g) ?? []).toHaveLength(2);
 		expect(frame).toContain("explored 1 file · 1 search · 1 dir");
@@ -100,7 +107,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		for (let i = 0; i < 3; i += 1) call(body, "shell", `c${i}`, { command: `echo ${i}` }, "out");
 		body.textAppend("ran.");
 		tick();
-		const frame = writes.join("");
+		const frame = plain(writes.join(""));
 		expect(frame).not.toContain("explored");
 		expect(frame.match(/✓/g) ?? []).toHaveLength(3);
 	});
@@ -113,7 +120,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		call(body, "search_text", "b", { pattern: "q", path: "src" }, "x");
 		body.textAppend("done.");
 		tick();
-		expect(writes.join("")).not.toContain("explored");
+		expect(plain(writes.join(""))).not.toContain("explored");
 	});
 
 	it("a SINGLE-NAME run still renders W13's exact row — the generalization adds, it never rewrites", () => {
@@ -123,7 +130,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		for (let i = 0; i < 5; i += 1) call(body, "read_file", `r${i}`, { path: `${"abcde"[i]}.ts` }, "line one\nline two");
 		body.textAppend("five files read.");
 		tick();
-		const frame = writes.join("");
+		const frame = plain(writes.join(""));
 		expect(frame).toContain("read  5 files (10 lines, 0.0s)");
 		expect(frame).not.toContain("explored");
 	});
@@ -137,7 +144,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		tick();
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
-		const lines = (r as { lines: string[] }).lines;
+		const lines = (r as { lines: string[] }).lines.map(plain);
 		expect(lines[0]).toContain("expanded · explored 8 files · 14 searches · 0 turns back");
 		const body_ = lines.join("\n");
 		expect(body_).toContain("│ read   src/parser.ts · src/lexer.ts · src/ast.ts (+5)");
@@ -154,13 +161,13 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		call(rolled.body, "list_dir", "c", { path: "src" }, "delta");
 		rolled.body.textAppend("done.");
 		rolled.tick();
-		const frame = rolled.writes.join("");
+		const frame = plain(rolled.writes.join(""));
 		// the ROWS are gone — none of the members' result text was drawn…
 		expect(frame).toContain("explored");
 		for (const hidden of ["alpha", "beta", "gamma", "delta"]) expect(frame).not.toContain(hidden);
 		// …and every member's own input is still there to be read back:
 		// the expand walks the CELLS, so a rewrite would show up here.
-		const lines = (rolled.body.expandNext() as { lines: string[] }).lines.join("\n");
+		const lines = plain((rolled.body.expandNext() as { lines: string[] }).lines.join("\n"));
 		expect(lines).toContain("one.ts");
 		expect(lines).toContain('"q"');
 		expect(lines).toContain("src");
@@ -192,6 +199,6 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		body.toolRunning("c"); // still running when the text releases the hold
 		body.textAppend("done.");
 		tick();
-		expect(writes.join("")).not.toContain("explored");
+		expect(plain(writes.join(""))).not.toContain("explored");
 	});
 });

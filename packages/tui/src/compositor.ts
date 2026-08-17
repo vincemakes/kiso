@@ -66,7 +66,10 @@ import {
 	boxBottom,
 	boxTop,
 	cellComponent,
+	exploreCounts,
+	exploreRows,
 	foldLine,
+	isExploreTool,
 	pendingQueueRows,
 	statusLine,
 	turnFold,
@@ -641,8 +644,16 @@ export class Body {
 			// land as NEW content, history is never rewritten, ADR-0046).
 			const turnsBack = this.#cells.slice(idx + 1).filter((c) => c.kind === "user").length;
 			const p = palette();
+			const back = `${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
+			// TUI2-R1 (B): an EXPLORATION head lists per TOOL — the counts
+			// the row showed, then one row per tool with its subjects. The
+			// header keeps W15's shape; only the subject changes.
+			if (cell.rolled.parts !== undefined) {
+				const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`explored ${exploreCounts(cell.rolled.parts)}`)} · ${back}`;
+				return { kind: "appended", lines: [header, ...exploreRows(cell.rolled.parts, this.#opts.width())] };
+			}
 			const noun = ROLLUP_NOUN[cell.name] ?? "calls";
-			const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`${cell.name.replace("_file", "")} ${cell.rolled.count} ${noun}`)} · ${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
+			const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`${cell.name.replace("_file", "")} ${cell.rolled.count} ${noun}`)} · ${back}`;
 			return {
 				kind: "appended",
 				lines: [header, ...cell.rolled.targets.map((t) => `  ${p.dim}└ ${escapeTerminal(t)}${p.reset}`)],
@@ -1038,14 +1049,17 @@ export class Body {
 	#commitCell(i: number, W: number, ctx: FrameCtx): void {
 		const cell = this.#cells[i]!;
 		const lines = this.#foldOrRollup(cell, i, W, ctx);
-		// W15: a tool cell whose last committed row carried the "ctrl+r"
-		// affordance (the renderer cut "└ … ctrl+r") joins the expand
-		// history — the detection is the renderer's OWN output, so the
-		// read's "/last"-only cut note never lands here.
+		// W15: a tool cell whose committed rows carried the "ctrl+r"
+		// affordance joins the expand history — the detection is the
+		// renderer's OWN output, so the read's "/last"-only cut note never
+		// lands here. TUI2-R1 (A/B): the affordance is no longer only the
+		// renderer cut's "└ … ctrl+r" — the self-naming head suffix and
+		// the exploration row carry it on the HEAD row, and a promise the
+		// key does not answer would be the one thing worse than silence.
 		// unshift: the cells commit oldest-first, so the NEWEST cut lands
 		// at the front — the expand pointer's "newest back" walk starts
 		// where the user's last key press would aim.
-		if (cell.kind === "tool" && /└ .*ctrl\+r/.test(lines[lines.length - 1] ?? "")) this.#collapsed.unshift(i);
+		if (cell.kind === "tool" && lines.some((l) => l.includes("ctrl+r"))) this.#collapsed.unshift(i);
 		this.#lineCache[i] = lines;
 		const placed = bodySpacing(i > 0 ? this.#lineCache[i - 1]! : null, lines);
 		this.#committed += 1;
@@ -1096,8 +1110,12 @@ export class Body {
 				return [];
 			}
 		}
-		if (cell.kind !== "tool" || ROLLUP_NOUN[cell.name] === undefined) return cellComponent(cell).render(W, ctx);
-		// the maximal same-name run around i — forward/backward scans over
+		if (cell.kind !== "tool" || !isExploreTool(cell.name)) return cellComponent(cell).render(W, ctx);
+		// TUI2-R1 (B): the run is over the READ-ONLY SET, not one name —
+		// a model exploring mixes read/list/search, and the same-name scan
+		// split every real burst into fragments. Writes, edits, shells and
+		// extension tools still break the run at the first one.
+		// the maximal read-only run around i — forward/backward scans over
 		// the cells. The turn-less noise cells (the permission raws, the ⚠
 		// notices) are TRANSPARENT: the streaming execution (loop.ts launch)
 		// interleaves them BETWEEN the calls of one burst, so the run must
@@ -1111,9 +1129,9 @@ export class Body {
 				s -= 1;
 				continue;
 			}
-			if (prev.kind !== "tool" || prev.name !== cell.name) break;
+			if (prev.kind !== "tool" || !isExploreTool(prev.name)) break;
 			s -= 1;
-			head = s; // a same-name tool precedes — it is the group's head
+			head = s; // a read-only tool precedes — it is the group's head
 		}
 		let e = i;
 		while (e + 1 < this.#cells.length) {
@@ -1122,7 +1140,7 @@ export class Body {
 				e += 1;
 				continue;
 			}
-			if (next.kind !== "tool" || next.name !== cell.name) break;
+			if (next.kind !== "tool" || !isExploreTool(next.name)) break;
 			e += 1;
 		}
 		// the run counts the TOOL cells only — the span's raws are noise.
@@ -1137,13 +1155,18 @@ export class Body {
 			this.#rolledHeads.add(head);
 			let total = 0;
 			const targets: string[] = [];
+			// TUI2-R1 (B): the per-tool parts, in first-call order — the
+			// exploration row's counts and its expanded list both read them.
+			// A search's subject is the PATTERN it looked for (quoted); a
+			// read's or a list's is the path it named.
+			const parts: { name: string; subjects: string[] }[] = [];
 			for (const m of members) {
 				// the lines count, excluding the tool's OWN truncation note
 				// (read_file's "… N more lines") — the per-cell meta's rule
 				const noteAt = m.resultText.lastIndexOf("\n… ");
 				const shown = noteAt >= 0 ? m.resultText.slice(0, noteAt) : m.resultText;
-				const parts = shown.split("\n");
-				total += parts[parts.length - 1] === "" ? parts.length - 1 : parts.length;
+				const rows = shown.split("\n");
+				total += rows[rows.length - 1] === "" ? rows.length - 1 : rows.length;
 				let input: Record<string, unknown> = {};
 				try {
 					input = JSON.parse(m.inputFull) as Record<string, unknown>;
@@ -1153,11 +1176,17 @@ export class Body {
 				}
 				const target = toolTarget(m.name, input);
 				targets.push(target.split("/").pop() ?? target);
+				const subject = m.name === "search_text" ? `"${String(input.pattern ?? "")}"` : target;
+				const part = parts.find((x) => x.name === m.name);
+				if (part === undefined) parts.push({ name: m.name, subjects: [subject] });
+				else part.subjects.push(subject);
 			}
 			const first = members[0]!;
 			const last = members[members.length - 1]!;
 			const elapsed = first.startedAt !== null && last.doneAt !== null ? ((last.doneAt - first.startedAt) / 1000).toFixed(1) : "?";
-			cell.rolled = { count: members.length, lines: total, elapsed, targets };
+			// TUI2-R1 (B): `parts` rides ONLY a mixed run — a single-name
+			// run keeps W13's row, byte for byte (the generalization adds).
+			cell.rolled = { count: members.length, lines: total, elapsed, targets, ...(parts.length > 1 ? { parts } : {}) };
 			return cellComponent(cell).render(W, ctx);
 		}
 		// a MEMBER of an already-rolled run → [] (its rows live in the

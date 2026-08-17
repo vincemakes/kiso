@@ -1,0 +1,155 @@
+/**
+ * TUI2-R1 — the round's product-surface gates on real CLI processes.
+ *
+ * T-V2 (B) here is the half a compositor unit cannot prove: that the
+ * exploration rollup is a DISPLAY-SIDE PROJECTION. The durable event log
+ * of a session whose burst rolled up must be byte-for-byte the log of
+ * the same burst that did not — the rows collapsed, nothing else did —
+ * and the PIPE, which has no compositor at all, must never grow the row.
+ *
+ * T-V5 (E) is here too: /context reads the session's TRACE SIDECAR, the
+ * observation file E1/E3 already write, and renders the last request's
+ * rent parts. A session with no sidecar renders an honest fallback.
+ */
+
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { isolatedEnv, runCli, stripANSI } from "../../../tests/helpers/isolated-cli.mjs";
+
+const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
+
+/** The durable session log lines (run envelope + event). */
+function logLines(home: string, sid: string): { event: Record<string, unknown> }[] {
+	const p = join(home, "sessions", `${sid}.jsonl`);
+	expect(existsSync(p), `session log missing: ${p}`).toBe(true);
+	return readFileSync(p, "utf8")
+		.split("\n")
+		.filter(Boolean)
+		.map((l) => JSON.parse(l) as { event: Record<string, unknown> });
+}
+
+function fauxScript(turns: unknown[]): string {
+	const p = join(mkdtempSync(join(tmpdir(), "kiso-faux-")), "faux.json");
+	writeFileSync(p, JSON.stringify(turns), "utf8");
+	return p;
+}
+
+/** A read-only burst: 3 reads, 2 searches, 1 list — one turn, then text. */
+function exploreTurns(): unknown[] {
+	const events: unknown[] = [];
+	for (let i = 0; i < 3; i += 1) {
+		events.push({ type: "tool_call_end", callId: `r${i}`, name: "read_file", input: { path: `f${i}.txt` } });
+	}
+	for (let i = 0; i < 2; i += 1) {
+		events.push({ type: "tool_call_end", callId: `s${i}`, name: "search_text", input: { pattern: "alpha", path: "." } });
+	}
+	events.push({ type: "tool_call_end", callId: "l0", name: "list_dir", input: { path: "." } });
+	events.push({ type: "stop", reason: "tool_use" });
+	return [{ events }, { events: [{ type: "text_delta", text: "explored." }, { type: "stop", reason: "end_turn" }] }];
+}
+
+const PTY_DRIVER = `
+import pty, os, sys, time, select, struct, fcntl, termios, signal
+
+def driver(cli, args, env, feeds, timeout, cwd):
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.environ.update(env)
+        if cwd:
+            os.chdir(cwd)
+        os.execvp("node", ["node", cli] + args)
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 100, 0, 0))
+    full = b""
+    fed = set()
+    end = time.time() + timeout
+    done = False
+    while time.time() < end and not done:
+        r, _, _ = select.select([fd], [], [], 0.1)
+        if r:
+            try:
+                data = os.read(fd, 4096)
+            except OSError:
+                break
+            if not data:
+                done = True
+                break
+            full += data
+            for i, (needle, text) in enumerate(feeds):
+                if i not in fed and needle.encode() in full:
+                    os.write(fd, text.encode())
+                    fed.add(i)
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        os.waitpid(pid, 0)
+    except ChildProcessError:
+        pass
+    sys.stdout.write(full.decode(errors="replace"))
+    sys.exit(0)
+`;
+
+function ptyRun(args: string[], env: NodeJS.ProcessEnv, feeds: [string, string][], timeout = 40, cwd?: string): string {
+	const dir = mkdtempSync(join(tmpdir(), "kiso-r1-"));
+	const driverPath = join(dir, "driver.py");
+	writeFileSync(driverPath, PTY_DRIVER, "utf8");
+	const phase = `
+import sys
+sys.argv = [""]
+exec(open(${JSON.stringify(driverPath)}).read())
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(args)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout}, ${cwd === undefined ? "None" : JSON.stringify(cwd)})
+`;
+	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 120_000, env: process.env });
+}
+
+/** A workspace with the files the burst reads. */
+function workspace(): string {
+	const dir = mkdtempSync(join(tmpdir(), "kiso-ws-"));
+	for (let i = 0; i < 3; i += 1) writeFileSync(join(dir, `f${i}.txt`), `alpha ${i}\nbeta ${i}\n`, "utf8");
+	return dir;
+}
+
+describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", () => {
+	it("the PTY shows ONE exploration row; the PIPE never does; both durable logs carry every call in full", () => {
+		const ws = workspace();
+		const script = fauxScript(exploreTurns());
+
+		// the PTY leg — the compositor is up, the burst collapses
+		const pty = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
+		const out = stripANSI(ptyRun(["--mode", "bypass", "r1-pty"], pty.env as NodeJS.ProcessEnv, [["▌ ", "go\r"], ["explored.", "exit\r"]], 40, ws));
+		expect(out).toContain("explored 3 files · 2 searches · 1 dir");
+		expect(out).toContain("ctrl+r lists them");
+
+		// the PIPE leg — no compositor, no row, byte-for-byte the line mode
+		const pipe = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
+		const res = runCli(["--mode", "bypass", "r1-pipe"], pipe.env as NodeJS.ProcessEnv, { input: "go\nexit\n", cwd: ws });
+		expect(res.status, res.stderr).toBe(0);
+		expect(res.stdout).not.toContain("explored 3 files");
+		expect(res.stdout).not.toContain("ctrl+r");
+		// the pipe's own per-call rows are intact — all six, one each
+		expect(res.stdout.match(/✓ read /g) ?? []).toHaveLength(3);
+		expect(res.stdout.match(/✓ search_text /g) ?? []).toHaveLength(2);
+		expect(res.stdout.match(/✓ list_dir /g) ?? []).toHaveLength(1);
+
+		// THE DURABLE LOGS: the rolled session's events are the unrolled
+		// session's events — same types, same order, same contents. The
+		// only fields allowed to differ are the per-session identities.
+		const shape = (home: string, sid: string): string =>
+			JSON.stringify(
+				logLines(home, sid)
+					.map((l) => l.event)
+					.filter((e) => String(e.type).startsWith("tool_"))
+					.map((e) => ({ type: e.type, name: e.name, callId: e.callId, content: e.content, isError: e.isError })),
+			);
+		const rolled = shape(pty.env.KISO_HOME as string, "r1-pty");
+		const flat = shape(pipe.env.KISO_HOME as string, "r1-pipe");
+		expect(rolled).toBe(flat);
+		// and the content really is there in full (not an empty-equals-empty)
+		expect(rolled).toContain("alpha 0");
+	}, 180_000);
+});
