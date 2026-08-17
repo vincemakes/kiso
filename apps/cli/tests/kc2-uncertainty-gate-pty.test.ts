@@ -218,6 +218,30 @@ describe("KC2 T-R3b — the resolution repairs the projection: no dangling tool_
 	}, 180_000);
 });
 
+describe("KC2 §4 — a declined verdict HOLDS the turn, and says so", () => {
+	it("cancelling the gate's ask leaves the execution uncertain, the turn unrun, and the text visible", () => {
+		const { env, dirs } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r3d-"));
+		seedAbortedMidTool(dirs.home, "kc2r3d");
+		const script = fauxScript(dir, [quickTurn("unreachable"), quickTurn("must not run")]);
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r3d", [
+			["rerun", "\x03", 2], // the startup ask — cancelled
+			["› ", "please carry on anyway\r", 5],
+			["rerun", "\x03", 7], // the GATE's ask — cancelled too
+		], 26);
+		const log = durable(dirs.home, "kc2r3d");
+		const screen = Buffer.from(out, "hex").toString("utf8");
+
+		// round 10: a cancellation records NOTHING — no verdict is fabricated
+		expect(kinds(log)).not.toContain("tool_execution_resolved");
+		// the turn never started: no second user_input, no model answer
+		expect(log.filter((r) => r.event.type === "user_input").length).toBe(1);
+		expect(screen).not.toContain("must not run");
+		// ...and it was not swallowed in silence — the held text is on screen
+		expect(screen).toContain("turn held");
+	}, 180_000);
+});
+
 describe("KC2 §4 — the gate guards EVERY fresh queued turn, not only redirects", () => {
 	it("an ordinary Enter is gated too — the ask precedes the typed turn", () => {
 		const { env, dirs } = isolatedEnv();

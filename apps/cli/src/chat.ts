@@ -723,8 +723,13 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			// carries an unanswered call. Composed from existing APIs: zero
 			// core lines, zero runtime lines.
 			if (session.uncertainExecutions().length > 0) await resolveUncertains(session, input, () => cancelled);
-			if (session.uncertainExecutions().length > 0) return void (queued = Math.max(0, queued - 1));
-			return turn(line);
+			if (session.uncertainExecutions().length === 0) return turn(line);
+			// The human declined (round 10: a cancelled ask records NOTHING —
+			// the execution stays uncertain and durable), so the turn does not
+			// start. It is never swallowed in silence: the held text is
+			// printed back, so the human can see what is waiting on them.
+			queued = Math.max(0, queued - 1);
+			body.notice(`[turn held — the interrupted execution is still undecided] ${escapeTerminal(line)}`);
 		});
 	};
 	// W22: the ↑/esc pop — the LAST queued slot leaves the queue
