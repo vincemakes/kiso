@@ -46,13 +46,13 @@ const GATES = [
 	// growth; F's demo lives in scripts/, C/D/E do not touch the cli).
 	// The SECOND and LAST cli recalibration before 1.0: the next
 	// approach, argued or not, defaults to extract-first adjudication.
-	{ name: "cli", limit: 1920, dir: join("apps", "cli", "src") },
+	{ name: "cli", limit: 1920, enforce: false, dir: join("apps", "cli", "src") }, // Amendment 8: report-only
 	// ADR-0043 Amendment 7 (the 2026-08-17 ruling): the product-era tui
 	// cap — 4,000. Amendment 3's terminal-cap clause is superseded by
 	// explicit ritual: the KC line's TUI growth is spec-mandated product
 	// work. The tui-cells extraction hatch stays preferred for
 	// component-shaped growth.
-	{ name: "tui", limit: 4000, dir: join("packages", "tui", "src") },
+	{ name: "tui", limit: 4000, enforce: false, dir: join("packages", "tui", "src") }, // Amendment 8: report-only
 	// ADR-0043 Amendment 4 (the 2026-08-09 ruling): the 9th package —
 	// the components cell renderer extracted from the tui (Amendment
 	// 3's named escape hatch). The gate is 1280 = 1.2 × 925 (the
@@ -60,7 +60,7 @@ const GATES = [
 	// render slice 208) + the panel's ≈170 growth (W21 rides
 	// tui-cells). The panel, the rule/feedback inputs, and the
 	// pending-queue chips are all components — all tui-cells.
-	{ name: "tui-cells", limit: 1280, dir: join("packages", "tui-cells", "src") },
+	{ name: "tui-cells", limit: 1280, enforce: false, dir: join("packages", "tui-cells", "src") }, // Amendment 8: report-only
 ];
 const ROOT = new URL("..", import.meta.url).pathname;
 
@@ -102,7 +102,7 @@ function countCode(source) {
 }
 
 let failed = false;
-for (const { name, limit, dir } of GATES) {
+for (const { name, limit, dir, enforce = true } of GATES) {
 	const files = walk(join(ROOT, dir)).sort();
 	let total = 0;
 	const rows = [];
@@ -121,13 +121,15 @@ for (const { name, limit, dir } of GATES) {
 	console.log(`  ${"".padEnd(width, "-")}  -----`);
 	console.log(`  ${"total".padEnd(width)}  ${String(total).padStart(5)}  / ${limit}`);
 
-	if (total > limit) {
+	if (total > limit && enforce) {
 		failed = true;
 		console.error(
 			`\n✗ ${name} is ${total - limit} lines over budget.\n` +
 				`  The limit is not negotiable — that is what makes it a limit.\n` +
 				`  Remove something, or fork atto and grow your own.\n`,
 		);
+	} else if (total > limit) {
+		console.log(`  ▸ ${total - limit} over the reference figure — report-only (ADR-0043 Amendment 8).\n`);
 	} else {
 		console.log(`  ✓ ${limit - total} lines of headroom remaining.\n`);
 	}

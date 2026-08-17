@@ -282,3 +282,31 @@ ritual, never silently. Unchanged: the cli's 1,920 stays terminal
 extraction hatch remains available and preferred for component-shaped
 growth; the 4,000 cap is once again a snapshot discipline, not a
 self-adjusting ratchet.
+
+## Amendment 8 (2026-08-17): the product-era regime — core enforces, product surfaces report
+
+The owner's ruling (2026-08-17, after four consecutive rounds paid an
+extraction tax to a number: KC2 moved formatters to fit 1,920, KC3
+landed with 3 lines of headroom, KC3.5 budgeted its slice ⓪ before any
+feature line). The line-count caps were framework-era guards against
+architecture bloat; in the product era they tax competitiveness while
+protecting nothing the architecture gates do not already protect.
+
+Ruling:
+- **core keeps its hard 2,000** — the kernel's minimality IS the
+  design; nothing changes there.
+- **cli, tui, and tui-cells caps become REPORT-ONLY**: check-size
+  keeps printing every bucket's totals (visibility stays), but only
+  core can fail the chain. Amendment 6's extract-first clause and
+  Amendment 7's 4,000 stand as HISTORY, not as blockers.
+- The protection moves to the ARCHITECTURE budget, most of it already
+  executable: the TUI never owns durable truth and never implements
+  recovery semantics (the purity boundary); TUI state is droppable;
+  interactive behavior carries PTY proof; the public surfaces carry
+  surface gates; CJK/resize/tiny-terminal carry gates.
+- Every UX round's spec carries the FOUR-QUESTION gate in place of a
+  line budget: does it reduce human friction? does it preserve truth
+  semantics? does it add model/token rent (measure first)? can it be
+  deterministically PTY-tested?
+- Extraction remains a TOOL for cleaning responsibility — never again
+  a tax paid to a number.

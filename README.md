@@ -149,13 +149,17 @@ tui-cells:
   ✓ 164 lines of headroom remaining.
 ```
 
-(The cli gate's single 2400 terminal cap was replaced by per-package gates
-when the terminal layer was extracted into @vincemakes/kiso-tui — the
-ADR-0041 escape hatch, ADR-0043. Each gate = actual + 20%. The gates today:
-core 2,000, cli 1,920, tui 2,400, tui-cells 1,280. Every re-baseline was an
-adjudicated ruling; the cli's 1,920 (ADR-0043 Amendment 6) is its LAST
-recalibration before 1.0 — the next approach, argued or not, defaults to
-extraction.)
+(The rule above binds THE CORE — that hard 2,000 is the design and it
+does not move. The product surfaces run a different regime since
+ADR-0043 Amendment 8: the cli/tui/tui-cells figures are REFERENCE
+figures, printed on every check for visibility but never failing it —
+their protection moved to the architecture gates (the TUI never owns
+durable truth, TUI state is droppable, interactive behavior carries
+PTY proof, public surfaces carry surface gates) and to the
+four-question gate every UX round's spec answers: does it reduce human
+friction · does it preserve truth semantics · does it add measured
+rent · can it be deterministically PTY-tested. The amendment history —
+the extraction hatch, the recalibrations — lives in ADR-0043.)
 
 Comments do not count. Explain freely; implement tersely.
 
