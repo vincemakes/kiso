@@ -149,6 +149,11 @@ function editorInput(editor: Editor): LineInput {
 		onExpand(cb) {
 			editor.onExpand(cb);
 		},
+		// KC2 §2: the redirect gesture — the editor decides WHEN (the
+		// same-chunk pair, the precedence gate); chat decides what it MEANS.
+		onRedirect(cb) {
+			editor.onRedirect(cb);
+		},
 		question(query, cb) {
 			editor.question(query, cb);
 		},

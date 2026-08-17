@@ -635,6 +635,27 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			currentRun.abort();
 		}
 	});
+	// KC2 §2/§3 — the redirect: "stop, and do THIS instead". No stream
+	// injection, no new durable or op state — the run aborts (its terminal
+	// is an honest `aborted`) and the buffer's text becomes the next turn.
+	// With no run in flight the gesture is simply an Enter, which is what
+	// the human means by it: there is nothing to stop.
+	input.onRedirect?.((line) => {
+		if (currentRun === null) return dispatch(line, dispatchCtx);
+		console.log("\n[redirecting run]");
+		pendingAsk?.();
+		currentRun.abort();
+		// §3: a correction must run BEFORE the follow-ups queued earlier —
+		// it is a correction OF them. The existing slot mechanics compose
+		// it: every pending slot leaves through the SAME pop the ↑ key uses
+		// (cancelled, so its chain segment skips), then they re-enter
+		// BEHIND the correction, in their original order. Ephemeral
+		// reordering of ephemeral state; the durable log still just records
+		// what ran, in the order it ran.
+		const jumped = pendingTurns.map((s) => s.line);
+		for (let i = jumped.length; i > 0; i -= 1) popQueue();
+		for (const text of [line, ...jumped]) submitTurn(text);
+	});
 
 	// round 5 (P1-11): the PERSISTENT line listener is installed BEFORE the
 	// startup recovery — a cancelled question's re-emitted "line" needs a

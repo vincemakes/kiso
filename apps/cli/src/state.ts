@@ -45,6 +45,11 @@ export interface LineInput {
 	/** W15: the expand key (ctrl+r) — the chain-level action, never the
 	 *  editor's own interpretation. */
 	onExpand(cb: () => void): void;
+	/** KC2 §2: the redirect gesture (Alt+Enter / Ctrl+Enter) — the
+	 *  buffer's text arrives as a line at the same instant the run is told
+	 *  to stop. OPTIONAL: the pipe path has no raw keys and never wires
+	 *  it, so readline stays exactly as it was. */
+	onRedirect?(cb: (line: string) => void): void;
 	question(query: string, cb: (answer: string) => void): void;
 	cancelQuestion(): void;
 	/** W21: open the approval panel — the editor's state machine takes
