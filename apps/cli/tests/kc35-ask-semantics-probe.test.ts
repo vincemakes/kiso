@@ -13,9 +13,42 @@
  *   H2: uncertainty blocks REGARDLESS of idempotency — the resume asks
  *      "did it apply? rerun/abandon" first (one meta-hop).
  *
- * This file asserts H1 — the hypothesis under test. It reads the shipped
- * runtime through its PUBLIC surface only (spec §5: the probe may READ
- * anything, change nothing — core/runtime source delta is zero).
+ * THE VERDICT IS H2. The previous commit asserted H1 and went red:
+ *
+ *   ① "H1 predicts the resume is not blocked: expected ResumeBlockedError:
+ *      resume is blocked by 1 uncertain execution(s): ask_probe(ex-3) …
+ *      to be undefined"
+ *   ② "H1 predicts the started event records idempotency: expected false
+ *      to be true"
+ *   ③ "H1 predicts NO uncertainty interrogation for an idempotent tool:
+ *      expected '…' not to contain 'rerun'"
+ *
+ * — and the ONE H1 assertion that passed is the tell: the NON-idempotent
+ * twin blocks too. The flag buys nothing at recovery time.
+ *
+ * This file now pins what the SHIPPED runtime does, so the integrator
+ * adjudicates against an executable fact, not a reading. Four pins:
+ *
+ *   1. resume() throws ResumeBlockedError for the idempotent tool, and
+ *      the tool is NOT re-executed;
+ *   2. the non-idempotent twin behaves IDENTICALLY over the same log —
+ *      `idempotent` is never consulted by recovery;
+ *   3. the durable `tool_execution_started` event carries no idempotency
+ *      at all, so the ledger (a pure projection of the log — it never
+ *      sees the registry) CANNOT distinguish the two without a
+ *      core/runtime change, which this round forbids;
+ *   4. and the meta-hop's own semantics are weaker than H2's sketch: a
+ *      "rerun" verdict does NOT re-present the call — it fills an ERROR
+ *      tool_result ("the attempt is treated as NOT applied; the model
+ *      may retry") and the MODEL decides whether to ask again.
+ *
+ * Plus the human-visible half: the shipped cli, a real PTY, and
+ * tools-node's `read_file` — a tool that declares `idempotent: true` —
+ * meeting the interrogation panel on `kiso resume`.
+ *
+ * Read-only by construction: the probe drives the shipped runtime
+ * through its PUBLIC surface only (spec §5 — the probe may READ
+ * anything, change nothing).
  *
  * The fixture is the crash shape the kill9 gate produces and the
  * uncertainty-flow suite seeds: user_input · tool_call_end · stop ·
@@ -23,15 +56,15 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { defineTool, type Event, type Tool } from "@vincemakes/kiso-core";
-import { SessionStore, createAgent, executionLedger } from "@vincemakes/kiso-runtime";
-import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
+import { ResumeBlockedError, SessionStore, createAgent, executionLedger } from "@vincemakes/kiso-runtime";
+import { isolatedEnv, stripANSI } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
@@ -107,8 +140,8 @@ async function driveResume(session: {
 }
 
 describe("KC3.5 ① — an IDEMPOTENT tool's started-unreported execution, on resume", () => {
-	it("H1: the resume re-executes the idempotent tool — the question re-presents, no interrogation", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "kiso-kc35-h1-"));
+	it("H2: the resume is BLOCKED — the idempotent tool is not re-executed, the human is asked first", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-kc35-h2-"));
 		const store = new SessionStore(dir);
 		await seedKilledMidAsk(store, "s");
 		const asked: string[] = [];
@@ -119,13 +152,15 @@ describe("KC3.5 ① — an IDEMPOTENT tool's started-unreported execution, on re
 
 		const { error } = await driveResume(session);
 
-		// H1: nothing blocks — the resume walks straight back into the tool.
-		expect(error, "H1 predicts the resume is not blocked").toBeUndefined();
-		// H1: the panel re-presents — the tool ran again, with the SAME question.
-		expect(asked, "H1 predicts the idempotent tool is re-executed by the framework").toEqual([QUESTION]);
+		// H1 died here: the resume does not walk back into the tool.
+		expect(error).toBeInstanceOf(ResumeBlockedError);
+		expect((error as ResumeBlockedError).uncertain).toEqual([{ executionId: "ex-3", callId: "c1", name: "ask_probe" }]);
+		expect((error as Error).message).toContain("resume is blocked by 1 uncertain execution(s): ask_probe(ex-3)");
+		// the question never re-presented — the framework re-executes nothing
+		expect(asked).toEqual([]);
 	});
 
-	it("H1: idempotency is what makes the difference — the NON-idempotent twin is the one that blocks", async () => {
+	it("H2: the NON-idempotent twin is treated IDENTICALLY — `idempotent` is never consulted by recovery", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc35-twin-"));
 		const store = new SessionStore(dir);
 		await seedKilledMidAsk(store, "s");
@@ -133,29 +168,51 @@ describe("KC3.5 ① — an IDEMPOTENT tool's started-unreported execution, on re
 		const session = await probeAgent(store, asked, false).session({ id: "s" });
 		const { error } = await driveResume(session);
 
-		// H1 predicts the flag is consulted: the non-idempotent twin blocks
-		// where the idempotent one sailed through.
-		expect(error, "H1 predicts the NON-idempotent twin blocks").toBeDefined();
+		// The SAME log, the SAME block, the SAME message — the only
+		// difference between the two runs is the tool's declaration, and it
+		// changes nothing.
+		expect(error).toBeInstanceOf(ResumeBlockedError);
+		expect((error as Error).message).toContain("resume is blocked by 1 uncertain execution(s): ask_probe(ex-3)");
 		expect(asked).toEqual([]);
 	});
 
-	it("H1: the durable started event carries the tool's idempotency — the ledger can tell them apart", async () => {
+	it("H2: the durable started event carries NO idempotency — the ledger cannot tell the two apart", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc35-shape-"));
 		const store = new SessionStore(dir);
 		await seedKilledMidAsk(store, "s");
 		const durable = new SessionStore(dir).load("s").map((r) => r.event);
 		const started = durable.find((e) => e.type === "tool_execution_started")!;
 
-		// H1 needs the recovery to distinguish idempotent tools from the
-		// EVENTS alone (the ledger is a pure projection of the log — it never
-		// sees the registry). So the started event must carry the flag.
-		expect(
-			Object.keys(started).some((k) => /idempot|safeToRetry/i.test(k)),
-			"H1 predicts the started event records idempotency",
-		).toBe(true);
-		// ...and the ledger must not call an idempotent crash-window
-		// execution "uncertain".
-		expect(executionLedger(durable).get("ex-3")!.status, "H1 predicts a non-uncertain status").not.toBe("uncertain");
+		// The structural reason H1 cannot be reached from an extension: the
+		// ledger is a pure projection of the LOG and never sees the registry,
+		// and the log does not record idempotency on the started event. Only
+		// a core/runtime change could carry it — which this round forbids.
+		expect(Object.keys(started).some((k) => /idempot|safeToRetry/i.test(k))).toBe(false);
+		expect(executionLedger(durable).get("ex-3")!.status).toBe("uncertain");
+	});
+
+	it("H2, and weaker than the sketch: a `rerun` verdict does NOT re-present — it hands the MODEL an error", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-kc35-rerun-"));
+		const store = new SessionStore(dir);
+		await seedKilledMidAsk(store, "s");
+		const asked: string[] = [];
+		const session = await probeAgent(store, asked, true).session({ id: "s" });
+
+		// the human takes the meta-hop and says "it did not apply — rerun"
+		await session.resolveUncertain("ex-3", "rerun");
+		const { error } = await driveResume(session);
+		expect(error).toBeUndefined(); // the block is gone
+
+		// ...but the call is NOT re-issued by the framework: the tool never
+		// runs again, and what lands for the model is an ERROR result whose
+		// own words hand the decision to the model.
+		expect(asked).toEqual([]);
+		const durable = new SessionStore(dir).load("s").map((r) => r.event);
+		expect(durable.filter((e) => e.type === "tool_execution_started")).toHaveLength(1);
+		const fill = durable.find((e) => e.type === "tool_result" && e.executionId === "ex-3")!;
+		expect(fill.isError).toBe(true);
+		expect(fill.content).toContain("interrupted execution — rerun approved");
+		expect(fill.content).toContain("the model may retry");
 	});
 });
 
@@ -235,17 +292,26 @@ function seedKilledMidRead(home: string, id: string): void {
 }
 
 describe("KC3.5 ① — what the HUMAN meets on `kiso resume` after an idempotent tool was killed", () => {
-	it("H1: no interrogation — a strictly idempotent tool is re-run without asking the human anything", () => {
+	it("H2: the interrogation panel — for read_file, a tool tools-node declares idempotent", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc35-cli-"));
 		const script = join(dir, "faux.json");
 		writeFileSync(script, JSON.stringify([{ events: [{ type: "text_delta", text: "resume settled" }, { type: "stop", reason: "end_turn" }] }]), "utf8");
 		seedKilledMidRead(dirs.home, "kc35probe");
-		const screen = ptyResume({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc35probe", ["resume settled"]);
+		const screen = stripANSI(ptyResume({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc35probe", ["1 rerun"]));
 
-		// H1 predicts the human is never asked "did it apply?" for a tool
-		// that is safe to repeat by declaration.
-		expect(screen, "H1 predicts NO uncertainty interrogation for an idempotent tool").not.toContain("rerun");
-		expect(screen).not.toContain("interrupted execution");
+		// The meta-hop, verbatim: the human is asked whether the interrupted
+		// execution applied, BEFORE anything re-presents.
+		expect(screen).toContain("uncertain execution");
+		expect(screen).toContain("did the interrupted execution apply? — 1 rerun · 3 abandon");
+		expect(screen).toContain("read_file (ex-3)");
+
+		// ...and nothing re-executed while the question stood: the durable
+		// log still holds exactly one started event, no second attempt.
+		const log = readFileSync(join(dirs.home, "sessions", "kc35probe.jsonl"), "utf8")
+			.split("\n")
+			.filter((l) => l.trim() !== "")
+			.map((l) => JSON.parse(l) as { event: { type: string } });
+		expect(log.filter((r) => r.event.type === "tool_execution_started")).toHaveLength(1);
 	}, 60_000);
 });
