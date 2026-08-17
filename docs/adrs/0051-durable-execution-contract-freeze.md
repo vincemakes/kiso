@@ -497,3 +497,29 @@ moved to user-role + framing by the E6 (e) declared supersession
 (6ad1305); the row's durable-replay members (prompt-cache.test.ts,
 the compacted-generation byte case, summarize.test.ts:127) are
 untouched.
+
+## Amendment 4 (2026-08-16): the lockstep line — one version for all thirteen packages
+
+The owner's ruling (2026-08-16, the KC1 release): the public line moves
+to LOCKSTEP versioning. Every release round bumps ALL thirteen public
+packages to the SAME version and publishes all thirteen (the full-sync
+shape the 0.2.0 reset already exercised once); every internal
+`@vincemakes/*` dependency pin is that same exact version. Amendment 1's
+per-package counters are superseded; its cadence semantics carry over
+to the line as a whole (a release round = a minor on the line; a
+fix-only round = a patch on the line). Amendment 2's tag↔npm mapping
+table gains single-number rows from 0.5.0 on.
+
+Declared costs, accepted: per-package semver signal dissolves (an
+unchanged package republishes with an empty delta — the line is the
+unit adopters consume; standalone tui consumers pin exact and see
+noise, not breakage) and every round publishes thirteen artifacts
+(cheap, and the ceremony was already the E2 full-sync shape). The
+precedent line: the strongest open-source reference implementation
+ships its core line lockstep the same way (verified on the registry:
+its ai/tui/coding-agent packages share one version); its
+laggard-side-package variant is explicitly NOT adopted — no exceptions,
+or the mapping burden returns.
+
+Nothing in §1–§10 moves: this amendment is version-statement only, the
+same class as Amendment 2.
