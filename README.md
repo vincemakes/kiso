@@ -955,7 +955,20 @@ below is proven by a gate in `npm run check`:
   as ONE turn, and the box grows to at most 6 rows before scrolling
   internally. KC2: **Alt+Enter (or Ctrl+Enter) REDIRECTS** — one gesture
   aborts the running turn and sends what you just typed instead, ahead of
-  anything already queued; Esc alone still just stops.
+  anything already queued; Esc alone still just stops. KC3: **`@` opens a
+  fuzzy file picker** — typed at a word boundary (never mid-word, so an
+  email address stays an address), it lists the project's files above the
+  composer: a case-insensitive subsequence match over the whole relative
+  path, ranked by the longest contiguous run then the shortest path, the
+  matched characters bold, five rows at a time with a `(n/total)` counter
+  that says so when the list was capped. ↑↓ select, Tab or Enter accepts,
+  Esc closes and leaves your sentence alone. Accepting inserts the
+  **canonical path and nothing else** — never the file's contents: the
+  model gets a reference it can choose to read, so an `@` mention costs a
+  path instead of a file, and `read_file` pays only for the bytes it
+  actually needs. The list is `git ls-files` (tracked + untracked, minus
+  everything ignored) in a repo, a bounded walk outside one, and it is
+  computed per open — no index, no daemon, no watcher.
   Known limitation: emoji ZWJ clusters are not width-perfect.
   Pipes keep readline byte-for-byte. v2d (ADR-0040): the body becomes a
   cell renderer — ONE writer owns the scroll region (event handlers only

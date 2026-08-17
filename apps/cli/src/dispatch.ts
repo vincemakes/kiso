@@ -50,7 +50,9 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			// KC1: the composer's keys ride the SAME bodyLog call (it splits
 			// on \n) — the help gains a row, the cli source does not.
 			// KC2: the redirect joins the same row for the same reason.
-			bodyLog(`${cmd("exit", "leave the session")}\n${cmd("keys", "enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead")}`);
+			// KC3: and so does the @ picker — the row is where a gesture is
+			// taught, and the row costs nothing.
+			bodyLog(`${cmd("exit", "leave the session")}\n${cmd("keys", "enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead · @ files")}`);
 			ctx.input.prompt();
 		});
 		return;
