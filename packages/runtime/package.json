@@ -1,6 +1,6 @@
 {
   "name": "@vincemakes/kiso-runtime",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "kiso runtime — durable multi-turn agent sessions: AgentDefinition, AgentRuntime, AgentSession, Run, append-only JSONL store.",
   "type": "module",
   "license": "MIT",
@@ -25,11 +25,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@vincemakes/kiso-core": "0.7.0"
+    "@vincemakes/kiso-core": "0.8.0"
   },
   "peerDependencies": {
-    "@vincemakes/kiso-provider-anthropic": "0.7.0",
-    "@vincemakes/kiso-provider-openai": "0.7.0"
+    "@vincemakes/kiso-provider-anthropic": "0.8.0",
+    "@vincemakes/kiso-provider-openai": "0.8.0"
   },
   "peerDependenciesMeta": {
     "@vincemakes/kiso-provider-anthropic": {
@@ -40,7 +40,7 @@
     }
   },
   "devDependencies": {
-    "@vincemakes/kiso-evals": "0.7.0",
+    "@vincemakes/kiso-evals": "0.8.0",
     "@types/node": "^26.1.2",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
