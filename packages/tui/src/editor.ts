@@ -106,6 +106,12 @@ export class Editor {
 	// (dispatch) coexist; a listener removes itself via an unarmed guard
 	// (the compact's handler no-ops after its abort has fired).
 	#escapeCbs: (() => void)[] = [];
+	// KC2 §2: the redirect LIST — mirrors #escapeCbs. The editor FORWARDS
+	// the gesture with the buffer's text; it never interprets it. What a
+	// redirect MEANS (abort the run, then run THIS ahead of the queue) is
+	// the CLI's — here it is only "these two keys, pressed together, hand
+	// the line over by a different door than Enter's".
+	#redirectCbs: ((line: string) => void)[] = [];
 	// W15: the expand-key list (ctrl+r) — the CLI's dispatch decides the
 	// target (a live cell toggles in place; a committed cell appends the
 	// expanded block). Mirrors the escape list: multiple listeners can
@@ -167,6 +173,14 @@ export class Editor {
 
 	onExpand(cb: () => void): void {
 		this.#expandCbs.push(cb);
+	}
+
+	/** KC2 §2: the redirect chain — the gesture hands the buffer's text
+	 *  over while the run is told to stop. Mirrors onEscape (a list, so
+	 *  listeners can coexist); the line arrives already gone from the
+	 *  composer, exactly as a submit's does. */
+	onRedirect(cb: (line: string) => void): void {
+		this.#redirectCbs.push(cb);
 	}
 
 	/** W22: bind the pending-turn queue — the CLI's live slots. The ↑
@@ -441,6 +455,16 @@ export class Editor {
 					i += m[0]!.length + 1;
 				} else if (rest.startsWith("O")) {
 					i += 3; // SS3 (function keys) — ignored
+				} else if (rest.startsWith("\x0d") && this.#composerIdle()) {
+					// KC2 §2 — Alt+Enter. A terminal sends Alt+X as ESC and X in
+					// ONE write, so SAME-CHUNK is the whole test: no timer, no
+					// hold, nothing parked. The identical two bytes arriving in
+					// SEPARATE chunks are NOT combined — they fall to the branch
+					// below, where the bare Esc fires at once (its immediacy is
+					// exactly what a hold would spend) and the next chunk's CR
+					// submits: today's two gestures, untouched.
+					this.#redirect();
+					i += 2; // both bytes belong to the one gesture
 				} else if (this.#menuOpen) {
 					// v3 §04: Esc closes the menu and clears the buffer.
 					// CA-4: the closing esc consumes its burst (the `i += 1`
@@ -554,6 +578,17 @@ export class Editor {
 		// chunk-split safety is the existing #pending CSI resume.
 		if ((final === "u" && params === "13;2") || (final === "~" && params === "27;2;13")) {
 			this.#insert(NEWLINE);
+			return;
+		}
+		// KC2 §2 — Ctrl+Enter, the SAME two encodings with modifier 5
+		// (1 + ctrl): kitty's CSI-u and xterm's modifyOtherKeys. Never
+		// claimed universal — a terminal that encodes neither sends a plain
+		// CR, which is an ordinary submit/queue (the safe degrade). The
+		// chunk-split safety is the existing #pending CSI resume, shared
+		// with Shift+Enter above. Outside the normal composer state the
+		// sequence is simply unknown, exactly like any other stray CSI.
+		if ((final === "u" && params === "13;5") || (final === "~" && params === "27;5;13")) {
+			if (this.#composerIdle()) this.#redirect();
 			return;
 		}
 		if (final === "~") {
@@ -780,8 +815,78 @@ export class Editor {
 		this.#reflow();
 	}
 
+	/** KC1/KC2 — the buffer LEAVES: the flat chars, the cursor, the
+	 *  horizontal scroll, the ↑/↓ goal, the menu and the pop-walk all
+	 *  reset together (W22: a departing line ends the pop-walk, so the
+	 *  next esc at rest interrupts again). Shared by the submit and the
+	 *  redirect — the two doors a line can leave by. */
+	#takeLine(): string {
+		const line = String.fromCodePoint(...this.#chars);
+		this.#chars = [];
+		this.#cursor = 0;
+		this.#scroll = 0;
+		this.#verticalGoalCol = null;
+		this.#menuOpen = false;
+		this.#menuSel = 0;
+		this.#queuePopMode = false;
+		return line;
+	}
+
+	/** A2: the history remembers submitted TURN lines — never question
+	 *  answers, never empties; adjacent duplicates collapse, the tail
+	 *  caps at 100. A redirect is a turn, so it is remembered too. */
+	#remember(line: string): void {
+		if (this.#history[this.#history.length - 1] !== line) this.#history.push(line);
+		if (this.#history.length > 100) this.#history.shift();
+	}
+
+	/** KC2 §2 — the NORMAL composer state: the redirect gesture is live
+	 *  ONLY here. The approval panel, the slash menu, the history browse
+	 *  and the queue-pop walk each OWN their keys first (the W21 "the
+	 *  panel owns the keys" design, restated as a gate); a pending
+	 *  question is the panel's dock-less twin (askPanel routes to
+	 *  question() when the dock cannot render, so the ask owns the keys
+	 *  there too); and a bracketed paste is literal TEXT, where an ESC CR
+	 *  is the pasted content's own bytes and never a keypress. In every
+	 *  one of those states the two bytes fall through to today's
+	 *  handling — two gestures, unchanged. */
+	#composerIdle(): boolean {
+		return (
+			this.#panel === null &&
+			!this.#menuOpen &&
+			this.#historyIdx === null &&
+			!this.#queuePopMode &&
+			!this.#pasting &&
+			this.#questionCb === null
+		);
+	}
+
+	/**
+	 * KC2 §2 — the gesture's meaning, kept as small as it can honestly be.
+	 *
+	 * An EMPTY buffer carries no correction, so the gesture degenerates to
+	 * the bare Esc: the abort alone, nothing submitted. With text, the
+	 * line leaves exactly as a submit's does and the listeners decide (the
+	 * CLI aborts a live run and front-jumps the correction; idle, it is
+	 * simply an Enter). UNWIRED — the recovery flow never binds it — the
+	 * gesture IS a submit: a line is never lost to a missing binding.
+	 */
+	#redirect(): void {
+		if (this.#chars.length === 0) {
+			for (const cb of [...this.#escapeCbs]) cb();
+			return;
+		}
+		if (this.#redirectCbs.length === 0) {
+			this.#submit();
+			return;
+		}
+		const line = this.#takeLine();
+		this.#remember(line);
+		for (const cb of [...this.#redirectCbs]) cb(line);
+		this.#onRender();
+	}
+
 	#submit(): void {
-		let line = String.fromCodePoint(...this.#chars);
 		if (this.#menuOpen) {
 			// A1 (the feel): Enter submits the EXACT selection directly; a
 			// PARTIAL selection COMPLETES the buffer (the Tab semantics)
@@ -789,7 +894,7 @@ export class Editor {
 			// again. The old behavior executed the completed command on
 			// the first Enter, before the user had seen the completion.
 			const m = this.#menuFiltered()[this.#menuSel];
-			if (m !== undefined && m.name !== line) {
+			if (m !== undefined && m.name !== this.line()) {
 				this.#chars = [...m.name].map((ch) => ch.codePointAt(0)!);
 				this.#cursor = this.#chars.length;
 				this.#reflow();
@@ -798,13 +903,7 @@ export class Editor {
 				return; // completed, not executed
 			}
 		}
-		this.#chars = [];
-		this.#cursor = 0;
-		this.#scroll = 0;
-		this.#verticalGoalCol = null;
-		this.#menuOpen = false;
-		this.#menuSel = 0;
-		this.#queuePopMode = false; // W22: a submit ends the pop-walk — the next esc at rest interrupts again
+		const line = this.#takeLine();
 		const cb = this.#questionCb;
 		this.#questionCb = null;
 		if (cb !== null) {
@@ -814,12 +913,7 @@ export class Editor {
 		} else {
 			this.#pendingLines.push(line); // nobody wired yet — hold it
 		}
-		// A2: the history remembers submitted TURN lines — never question
-		// answers, never empties; adjacent duplicates collapse.
-		if (cb === null && line !== "") {
-			if (this.#history[this.#history.length - 1] !== line) this.#history.push(line);
-			if (this.#history.length > 100) this.#history.shift();
-		}
+		if (cb === null && line !== "") this.#remember(line);
 		this.#onRender();
 	}
 
