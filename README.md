@@ -929,7 +929,7 @@ below is proven by a gate in `npm run check`:
   upper dim separator, the `▌` input line, a lower separator, and a LIVE
   status bar (idle `▸ <mode> · /mode to switch · …` with the right-aligned
   dim `/ commands · ↑ history` hint — cut first when the window is
-  narrow; running `▖ working Ns · esc to interrupt · …`); the body scrolls
+  narrow; running `▖ working Ns · esc stop · alt+⏎ redirect · …`); the body scrolls
   with real LFs into the native scrollback (v2d-B, ADR-0040 — no scroll
   region); approval/uncertainty/trust questions take over the
   status position and are answered at the input line; SIGWINCH
@@ -947,7 +947,10 @@ below is proven by a gate in `npm run check`:
   newlines (LF/CR/CRLF all normalize to one), Ctrl+J (or Shift+Enter where
   the terminal encodes it) inserts a newline, Enter sends the whole block
   as ONE turn, and the box grows to at most 6 rows before scrolling
-  internally. Known limitation: emoji ZWJ clusters are not width-perfect.
+  internally. KC2: **Alt+Enter (or Ctrl+Enter) REDIRECTS** — one gesture
+  aborts the running turn and sends what you just typed instead, ahead of
+  anything already queued; Esc alone still just stops.
+  Known limitation: emoji ZWJ clusters are not width-perfect.
   Pipes keep readline byte-for-byte. v2d (ADR-0040): the body becomes a
   cell renderer — ONE writer owns the scroll region (event handlers only
   mutate cells, so interleaving is impossible by construction); completed

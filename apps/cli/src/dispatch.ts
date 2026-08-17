@@ -48,8 +48,9 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			bodyLog(cmd("/model", "list model profiles; /model <name|provider/model> switches"));
 			bodyLog(cmd("/compact", "summarize the older conversation to free context"));
 			// KC1: the composer's keys ride the SAME bodyLog call (it splits
-			// on \n) — the help gains a row, the cli source does not
-			bodyLog(`${cmd("exit", "leave the session")}\n${cmd("keys", "enter sends · ctrl+J inserts a newline (shift+enter where the terminal encodes it)")}`);
+			// on \n) — the help gains a row, the cli source does not.
+			// KC2: the redirect joins the same row for the same reason.
+			bodyLog(`${cmd("exit", "leave the session")}\n${cmd("keys", "enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead")}`);
 			ctx.input.prompt();
 		});
 		return;
