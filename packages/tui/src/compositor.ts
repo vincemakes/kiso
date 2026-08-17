@@ -304,6 +304,19 @@ export class Body {
 			this.#write(`→ ${escapeTerminal(name)}(${escapeTerminal(JSON.stringify(input).slice(0, 200))})\n`);
 			return;
 		}
+		// TUI2-R1.5 ① (VD-1): the tool's start CLOSES an open text block —
+		// the inactive path above has always done this; the active path
+		// forgot, and the consequence was structural. textAppend only ever
+		// grows the LAST cell, so a text block with a tool cell after it can
+		// never receive another byte: it is finished in fact while its
+		// `done` flag says otherwise. The commit loop takes leading DONE
+		// cells, so that one stale flag parked the whole rest of the turn
+		// behind it — every tool cell then reached the screen through the
+		// FORCE-commit path, which by design bypasses the fold-hold. That is
+		// why the walkthrough saw nine individual rows: not a fold that
+		// declined to form, a fold that was never consulted.
+		this.#closeOpenThinking();
+		this.#closeOpenText();
 		// W12: the cell carries the delegate's child roles from the FULL
 		// input — the display summary is sliced at 60 chars (unparseable);
 		// the roles are the only running-state data the parent holds (there
@@ -1129,7 +1142,47 @@ export class Body {
 		if (cell.kind !== "thinking" && cell.kind !== "tool") return false;
 		const turn = cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
 		if (turn === undefined || turn !== this.#turns[this.#turns.length - 1]) return false;
-		return !turn.ended && !turn.hasText;
+		if (!turn.ended && !turn.hasText) return true;
+		// the turn's END releases every hold — the settle is where the run
+		// is decided, and a held cell at settle would never commit at all.
+		if (turn.ended) return false;
+		return this.#growingRun(i);
+	}
+
+	/** TUI2-R1.5 ① (VD-1) — the explore-run hold. W14's hold covers the
+	 *  QUIET turn only, and the model's own narration ("let me look at the
+	 *  parser area") sets hasText before the first read even starts: from
+	 *  there each completion committed in its OWN frame, the head committed
+	 *  alone, and `members.every(done)` — the fold's gate — could never be
+	 *  true again. Every real session therefore degraded to one row per
+	 *  call while the unit suite, which feeds the burst synchronously,
+	 *  stayed green (the walkthrough's frame s1-06).
+	 *
+	 *  The hold is the smallest honest fix: a DONE explore cell whose run
+	 *  can still GROW does not commit yet — its committed form is not
+	 *  decided until the run is closed. The run closes at the first
+	 *  non-explore cell (the model's next word, an edit, a shell) or at the
+	 *  turn's end, and the whole run then commits in ONE frame, which is
+	 *  exactly the shape the fold was written for.
+	 *
+	 *  The force-commit path never consults this (see #held's callers): the
+	 *  screen's hard cap still wins, so the screen never sticks — a run
+	 *  under real screen pressure degrades mid-turn, and the rows it
+	 *  already froze stay frozen (history is never rewritten, ADR-0046). */
+	#growingRun(i: number): boolean {
+		const cell = this.#cells[i]!;
+		if (cell.kind !== "tool" || !isExploreTool(cell.name)) return false;
+		// the run is still growing while NOTHING but explore cells follow —
+		// the turn-less noise cells (permission raws, ⚠ notices) are
+		// transparent here for the same reason the run scan sees through
+		// them: the streaming execution interleaves them between the calls.
+		for (let j = i + 1; j < this.#cells.length; j += 1) {
+			const next = this.#cells[j]!;
+			if (next.kind === "raw" || next.kind === "notice") continue;
+			if (next.kind === "tool" && isExploreTool(next.name)) continue;
+			return false; // a non-explore cell closed the run — commit now
+		}
+		return true;
 	}
 
 	/** W14/W13 — the release-time decision at a commit, BEFORE the cell's
@@ -1173,9 +1226,17 @@ export class Body {
 		// interleaves them BETWEEN the calls of one burst, so the run must
 		// see through them. It never crosses a user/text/thinking cell —
 		// those separate turns and contexts.
+		// TUI2-R1.5 ① (VD-1): the backward scan stops at the cells this
+		// FRAME is committing. A cell committed in an earlier frame is
+		// frozen — its rows are on the screen and in the scrollback — so it
+		// can never become the head of a rollup now, and a run that
+		// force-committed its first rows mid-turn must not have the rest
+		// silently absorbed into a summary that was computed without them.
+		// The degraded head keeps its individual row; the rest of the run
+		// rolls on its own.
 		let s = i;
 		let head = i;
-		while (s > 0) {
+		while (s > this.#committedAtFrameStart) {
 			const prev = this.#cells[s - 1]!;
 			if (prev.kind === "raw" || prev.kind === "notice") {
 				s -= 1;

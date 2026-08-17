@@ -709,7 +709,11 @@ export function exploreRows(parts: readonly { name: string; subjects: readonly s
 		const verb = EXPLORE_VERB[part.name] ?? part.name;
 		rows.push(cutLine(`${p.dim}${BODY_ROW}${escapeTerminal(`${verb.padEnd(6)} ${shown.join(" · ")}${more}`)}${p.reset}`, W));
 	}
-	rows.push(cutLine(`${p.dim}${CUT_ROW}${COLLAPSE_ROW} · /last shows the full outputs${p.reset}`, W));
+	// TUI2-R1.5 ① (VD-15): the footer used to promise "/last shows the full
+	// outputs". /last shows the LAST call only — for a nine-call burst that
+	// is one output out of nine, and a footer that sends the human to a
+	// place the content is not is worse than a footer that says nothing.
+	rows.push(cutLine(`${p.dim}${CUT_ROW}${COLLAPSE_ROW}${p.reset}`, W));
 	return rows;
 }
 

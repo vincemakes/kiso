@@ -59,6 +59,7 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		// the model narrates first — this is the byte that releases W14's
 		// fold-hold, and the reason every real burst degraded
 		body.textAppend("Let me explore the parser area first.");
+		body.textEnd(); // the CLI's text_end event — the narration block closes before the tools
 		tick();
 		const files = ["src/parser.ts", "src/lexer.ts", "src/ast.ts", "src/token.ts", "src/index.ts", "src/util.ts"];
 		for (const [i, path] of files.entries()) {
@@ -85,6 +86,7 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		body.enter();
 		body.userLine("explore");
 		body.textAppend("Exploring.");
+		body.textEnd();
 		tick();
 		for (let i = 0; i < 6; i += 1) {
 			call(body, "read_file", `r${i}`, { path: `src/f${i}.ts` }, "a\nb");
@@ -99,8 +101,9 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		const settle = plain(writes.slice(settleFrom).join(""));
 		// the settle frame commits the run as the W13 single-name row…
 		expect(settle).toContain("read  6 files");
-		// …and never as six individual read rows
-		expect(settle.match(/✓ read /g) ?? []).toHaveLength(0);
+		// …and never as six individual read rows (the rollup head is itself
+		// a "✓ read " row, so the per-call PATH is what must be absent)
+		expect(settle.match(/✓ read {2}src\/f\d/g) ?? []).toHaveLength(0);
 	});
 
 	it("a run BROKEN by a write still rolls the two halves — pacing does not change the group key", () => {
@@ -108,6 +111,7 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		body.enter();
 		body.userLine("mix");
 		body.textAppend("Working.");
+		body.textEnd();
 		tick();
 		call(body, "read_file", "a1", { path: "one.ts" }, "x");
 		tick();
@@ -128,9 +132,15 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		body.endTurn(0);
 		tick();
 		tick();
-		const frame = plain(writes.join(""));
-		expect(frame.match(/explored 1 file · 1 search · 1 dir/g) ?? []).toHaveLength(2);
-		expect(frame).toContain("write out.ts");
+		// the LAST frame is the settled screen — the whole stream also
+		// carries the live copies each paced frame painted on the way
+		const settled = plain(writes[writes.length - 1]!);
+		expect(settled.match(/explored 1 file · 1 search · 1 dir/g) ?? []).toHaveLength(2);
+		expect(settled).toContain("write out.ts");
+		// the write sits BETWEEN them — the run's group key is unchanged
+		const first = settled.indexOf("explored 1 file");
+		expect(settled.indexOf("write out.ts")).toBeGreaterThan(first);
+		expect(settled.lastIndexOf("explored 1 file")).toBeGreaterThan(settled.indexOf("write out.ts"));
 	});
 
 	it("TWO paced calls never roll — the threshold is unchanged by the pacing", () => {
@@ -138,6 +148,7 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		body.enter();
 		body.userLine("two");
 		body.textAppend("Looking.");
+		body.textEnd();
 		tick();
 		call(body, "read_file", "a", { path: "one.ts" }, "x");
 		tick();
@@ -156,6 +167,7 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		body.enter();
 		body.userLine("flood");
 		body.textAppend("Exploring hard.");
+		body.textEnd();
 		tick();
 		for (let i = 0; i < 20; i += 1) {
 			call(body, "read_file", `r${i}`, { path: `src/f${i}.ts` }, "a\nb");

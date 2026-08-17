@@ -135,7 +135,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		expect(frame).not.toContain("explored");
 	});
 
-	it("ctrl+r LISTS THEM — one row per tool, the subjects with their ×counts, and the /last pointer", () => {
+	it("ctrl+r LISTS THEM — one row per tool, the subjects with their ×counts, and the collapse footer", () => {
 		const { body, tick } = makeBody({ W: 80 });
 		body.enter();
 		body.userLine("explore");
@@ -149,7 +149,13 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		const body_ = lines.join("\n");
 		expect(body_).toContain("│ read   src/parser.ts · src/lexer.ts · src/ast.ts (+5)");
 		expect(body_).toContain('│ search "parseExpr" ×6 · "Token" ×8');
-		expect(body_).toContain("└ ctrl+r collapses · /last shows the full outputs");
+		// MOVED (R1.5 ①, the tool-cell suffix supersession class): the
+		// footer used to promise "· /last shows the full outputs". /last
+		// shows the LAST call only, so for this 22-call burst the promise
+		// was false 21 times over (VD-15). The footer now says only what
+		// the key does.
+		expect(body_).toContain("└ ctrl+r collapses");
+		expect(body_).not.toContain("/last shows the full outputs");
 	});
 
 	it("DISPLAY-SIDE PROJECTION — the row hid the members, the cells' own data is untouched", () => {
