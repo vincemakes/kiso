@@ -530,6 +530,9 @@ class ToolExecution implements Component {
 			const out = c.isError
 				? gutterCut(`${p.red}✗${p.reset} `, `${p.red}${verbCol} ${escapeTerminal(toolTargetOf(c))} (${meta}${approvedBy}, ${elapsed}s)${p.reset}`, W)
 				: gutterCut(`${p.bold}✓${p.reset} `, `${verbCol} ${escapeTerminal(toolTargetOf(c))} (${meta}${approvedBy}, ${elapsed}s)`, W);
+			// TUI2-R1 (A): the card names its own key — the suffix rides the
+			// settled head row, in the width that is LEFT (appendSuffix).
+			out[0] = appendSuffix(out[0]!, expandSuffix(hiddenLines(c, W), W - visibleWidth(out[0]!)));
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
@@ -553,6 +556,70 @@ class ToolExecution implements Component {
 		return gutterCut(`${p.dim}◦${p.reset} `, `${verbCol} ${summary}`, W);
 	}
 }
+
+// ---- TUI2-R1 (A): the self-naming expand affordance ----
+
+/**
+ * TUI2-R1 (A) — how many lines a COLLAPSED settled cell is hiding, or
+ * null when it hides nothing.
+ *
+ * The affordance is a statement about hidden content: a cell whose body
+ * is already whole on screen must not advertise a key that would show it
+ * the same thing, and a cell that already carries its own renderer cut
+ * (`└ +N earlier rows · ctrl+r`, `└ +N more · ctrl+r`) already teaches
+ * the key at the place the content stops. What is LEFT — and it is the
+ * common case — is every settled non-shell call, whose collapsed body is
+ * empty: the whole result sits behind the key with nothing on screen
+ * saying so.
+ *
+ * The count is the RESULT's own line count (the tool's truncation note
+ * included — it is a line the expand will show), never a row count and
+ * never a cap.
+ */
+function hiddenLines(c: Extract<BodyCell, { kind: "tool" }>, W: number): number | null {
+	if (c.expanded || c.state !== "done" || c.rolled !== null || c.reason !== null) return null;
+	if (c.name === "delegate") return null; // its body is the one-line summary, always whole
+	const n = countLines(c.resultText);
+	if (n === 0) return null;
+	if (c.isError) return null; // errorBody's own cut row is the affordance there
+	if (c.name.startsWith("shell")) {
+		// the settled tail shows the LAST rows; below the cap nothing is hidden
+		return blockRows(c.resultText, W).length > CAP_SHELL_SETTLED ? n : null;
+	}
+	return n; // every other settled call renders NO body — all of it is behind the key
+}
+
+/**
+ * TUI2-R1 (A) — the suffix, in the width that is LEFT.
+ *
+ * Three tiers, degrading: the full form teaches the key AND what it
+ * does, the terse form keeps the count and the key, the bare form keeps
+ * the key alone. Below that the row is left exactly as it is today — the
+ * affordance is worth a suffix, never worth cutting the path the row
+ * exists to name (invariant ① holds by construction: the tier is chosen
+ * against the room the row actually has).
+ */
+export function expandSuffix(lines: number | null, room: number): string {
+	if (lines === null) return "";
+	const count = `${lines} line${lines === 1 ? "" : "s"}`;
+	for (const tier of [` · ${count} · ctrl+r expands`, ` · ${count} · ctrl+r`, " · ctrl+r"]) {
+		if (tier.length <= room) return tier;
+	}
+	return "";
+}
+
+/** The suffix as the row's dim tail (the empty suffix leaves the row's
+ *  bytes untouched — a caller never has to branch). */
+function appendSuffix(row: string, suffix: string): string {
+	if (suffix === "") return row;
+	const p = palette();
+	return `${row}${p.dim}${suffix}${p.reset}`;
+}
+
+/** TUI2-R1 (A) — the expanded block's last row: the way back. The
+ *  rollup's expanded list carries a second clause (its members' full
+ *  outputs live in /last, which the group row cannot show). */
+const COLLAPSE_ROW = "ctrl+r collapses";
 
 /** W13 — the rollup opt-in table: which tools collapse, and the count
  *  NOUN (read_file calls → "5 files", list_dir → "5 dirs", search_text
@@ -691,6 +758,11 @@ function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): strin
 						: [];
 	const note = c.expanded ? null : toolCutNote(c.name, c.resultText);
 	if (note !== null) rows.push(...foldLine(`${p.dim}${CUT_ROW}${note}${p.reset}`, W));
+	// TUI2-R1 (A): an EXPANDED block says how to put it back. The footer
+	// rides a block that HAS rows — an expanded delegate whose summary
+	// marker is missing renders nothing, and a lone footer under a head
+	// row would be an affordance for an empty block.
+	if (c.expanded && rows.length > 0) rows.push(...foldLine(`${p.dim}${CUT_ROW}${COLLAPSE_ROW}${p.reset}`, W));
 	blockMemo.set(c, { width: W, state, content, rows });
 	return rows;
 }

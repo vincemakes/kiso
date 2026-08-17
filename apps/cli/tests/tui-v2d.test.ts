@@ -82,8 +82,13 @@ const CELL_LINE = [
 	/^[▖▘▝▗] \S+ .*\d+s?$/, // the ToolCell running (W2: the spinner IS the gutter)
 	/^⏸ \S+ .*$/, // the approval badge (W2: the ⏸ is the left gutter)
 	/^◦ \S+ .*$/, // the ToolCell queued (W2: ◦ replaces → — · is the metadata separator)
-	/^✓ \S+ .*\(\S.*, \d+\.\ds\)$/, // the ToolCell done (A4: the target rides the head row; A5: the · approved by <decider> tail)
-	/^✗ \S+ .*\(\S.*, \d+\.\ds\)$/, // the ToolCell failed
+	// SUPERSESSION (TUI2-R1, the tool-cell suffix class): the settled head
+	// row may end with the self-naming expand affordance — ` · N lines ·
+	// ctrl+r expands`, its terse ` · N lines · ctrl+r`, or the bare ` ·
+	// ctrl+r` (the width tiers). A cell hiding nothing still matches the
+	// unsuffixed form, which is why the tail is optional here.
+	/^✓ \S+ .*\(\S.*, \d+\.\ds\)( · (\d+ lines? · )?ctrl\+r( expands)?)?$/, // the ToolCell done (A4: the target rides the head row; A5: the · approved by <decider> tail)
+	/^✗ \S+ .*\(\S.*, \d+\.\ds\)$/, // the ToolCell failed (an error's own cut row is its affordance — never suffixed)
 	/^┌ answer truncated at max_tokens.*$/, // D4: the truncation notice row — the cut is named, never silent
 	/^▞.*$/, // v3: the recap line ends the run
 	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)

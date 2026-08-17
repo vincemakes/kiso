@@ -734,7 +734,12 @@ describe("TUI v6 — the one compositor", () => {
 		tick();
 		const frame = writes.join("");
 		expect(frame).toContain("id07");
-		expect(frame).not.toContain("ctrl+r");
+		// SUPERSESSION (TUI2-R1, the tool-cell suffix class): the expanded
+		// block is no longer silent about the way back — the cut note is
+		// still gone (nothing is cut), and the block's last row is the
+		// collapse footer. "no ctrl+r at all" becomes "no ctrl+r CUT".
+		expect(frame).not.toContain("ctrl+r to expand");
+		expect(frame).toContain("└ ctrl+r collapses");
 		// THE SECOND PRESS: the cut returns — the toggle flips both ways
 		expect(body.expandNext()).toEqual({ kind: "toggled" });
 		writes.length = 0;

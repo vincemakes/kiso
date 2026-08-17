@@ -133,9 +133,18 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		expect(clean).toContain("--- shell input ---");
 		expect(clean).toContain('"command": "seq 1 8"');
 		expect(clean).toContain("--- shell output ---");
-		// The settled cut's affordance appeared exactly once in the stream
-		// (the committed rows are never re-emitted after the freeze).
-		expect(clean.match(/ctrl\+r/g) ?? []).toHaveLength(1);
+		// SUPERSESSION (TUI2-R1, the tool-cell suffix class): the settled
+		// shell now names its own key on the HEAD row as well as at the
+		// block's cut — two affordances for one cell, each a different
+		// fact (the head says how much is hidden, the cut says where the
+		// visible tail begins). Both still emit exactly once: the
+		// committed rows are never re-emitted after the freeze.
+		expect(clean.match(/ctrl\+r/g) ?? []).toHaveLength(2);
+		// the REAL count, at the tier this row's width affords: the bypass
+		// tier's `· approved by mode:bypass` takes the room the full form
+		// would have needed, so the terse tier lands — the count survives,
+		// the teaching word gives way (invariant ①: the row still fits 80).
+		expect(clean).toContain("(exit 0 · approved by mode:bypass, 0.0s) · 8 lines · ctrl+r");
 
 		// THE DONE-WHEN: split the stream at the block's first byte — the
 		// pre-key part is the state before the key. The emulator replays
