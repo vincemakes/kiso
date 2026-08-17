@@ -3,7 +3,7 @@
  * moved verbatim from index.ts.
  */
 
-import { kUnit, type RunUsage } from "@vincemakes/kiso-tui";
+import { idleStatus, runningStatus, type RunUsage } from "@vincemakes/kiso-tui";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { getMode } from "./mode.js";
 import { agentModel, dock, type LineInput } from "./state.js";
@@ -26,20 +26,16 @@ export async function resume(session: AgentSession, prompt: string | undefined, 
 	let runUsage: RunUsage = { in: null, out: null, cache: null, known: false };
 	let runGlyph = "▖";
 	let runStart = Date.now();
+	// KC2 §5: the rows the REPL and this flow used to build separately are
+	// ONE formatter now — the running row was duplicated verbatim.
 	const statusCb = (u: RunUsage, ctx: number): void => {
 		runUsage = u;
-		if (!dock.active) return;
-		const pct = Number.isFinite(ctx) ? Math.round((1 - ctx) * 100) : null;
-		const out = runUsage.out !== null ? ` ↓ ${kUnit(runUsage.out)} tokens` : "";
-		dock.setStatus(
-			`${runGlyph} working ${Math.max(1, Math.round((Date.now() - runStart) / 1000))}s${out} · esc to interrupt · ctx left ~${pct}%`,
-		);
+		if (dock.active) dock.setStatus(runningStatus(runGlyph, runStart, u.out, ctx));
 	};
+	// the recovery flow prints the BARE mode (chat spells plan's posture) —
+	// the extraction keeps that difference, it was not asked to settle it.
 	const paintIdle = (): void => {
-		if (!dock.active) return;
-		const ratio = estimateCtxRatio(session);
-		const pct = Number.isFinite(ratio) ? Math.round((1 - ratio) * 100) : null;
-		dock.setStatus(`▸ ${getMode()} · /mode to switch · ${agentModel} · ctx left ~${pct}%`);
+		if (dock.active) dock.setStatus(idleStatus(getMode(), agentModel, estimateCtxRatio(session)));
 	};
 	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
 		currentRun = run;

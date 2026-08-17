@@ -8,11 +8,13 @@
 import { readFileSync } from "node:fs";
 import {
 	escapeTerminal,
-	kUnit,
+	idleStatus,
 	palette,
 	renderEvent,
 	renderRecap,
+	runningStatus,
 	toolTarget,
+	STATUS_GLYPHS,
 	type PanelArgs,
 	type PanelView,
 	type RenderInput,
@@ -146,9 +148,9 @@ export function startStatusSpinner(onTick: (glyph: string) => void): () => void 
 	if (!dock.active) return () => {};
 	// v3 §03/§05: the working glyph family ▖▘▝▗, 200ms rotation — the
 	// callback repaints the running status line with the new glyph.
-	const GLYPHS = ["▖", "▘", "▝", "▗"];
+	// KC2 §5: the family itself moved to the tui's status formatters.
 	let i = 0;
-	const timer = setInterval(() => onTick(GLYPHS[i++ % GLYPHS.length]!), 200);
+	const timer = setInterval(() => onTick(STATUS_GLYPHS[i++ % STATUS_GLYPHS.length]!), 200);
 	timer.unref();
 	return () => clearInterval(timer);
 }
@@ -664,23 +666,16 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	let runUsage: RunUsage = { in: null, out: null, cache: null, known: false };
 	let runGlyph = "▖";
 	let runStart = Date.now();
+	// KC2 §5: the STATE (the glyph, the run's start, the usage, the dock)
+	// stays here; the ROW's text is the tui's status formatter.
 	const paintRunning = (): void => {
-		if (!dock.active) return;
-		const ratio = estimateCtxRatio(session);
-		const pct = Number.isFinite(ratio) ? Math.round((1 - ratio) * 100) : null;
-		const out = runUsage.out !== null ? ` ↓ ${kUnit(runUsage.out)} tokens` : "";
-		dock.setStatus(
-			`${runGlyph} working ${Math.max(1, Math.round((Date.now() - runStart) / 1000))}s${out} · esc to interrupt · ctx left ~${pct}%`,
-		);
+		if (dock.active) dock.setStatus(runningStatus(runGlyph, runStart, runUsage.out, estimateCtxRatio(session)));
 	};
+	// W19: under plan the idle row makes the posture unmistakable — the W4
+	// parentheses idiom names the read-only constraint. The tier is the
+	// CALLER's word (the recovery flow passes the bare mode).
 	const paintIdle = (): void => {
-		if (!dock.active) return;
-		const ratio = estimateCtxRatio(session);
-		const pct = Number.isFinite(ratio) ? Math.round((1 - ratio) * 100) : null;
-		// W19: under plan the idle row makes the posture unmistakable —
-		// the W4 parentheses idiom names the read-only constraint.
-		const tier = getMode() === "plan" ? "plan (read-only)" : getMode();
-		dock.setStatus(`▸ ${tier} · /mode to switch · ${agentModel} · ctx left ~${pct}%`);
+		if (dock.active) dock.setStatus(idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), agentModel, estimateCtxRatio(session)));
 	};
 	const statusCb = (u: RunUsage, ctx: number): void => {
 		runUsage = u;
