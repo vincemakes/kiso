@@ -833,7 +833,9 @@ function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): strin
 				: c.state === "running"
 					? c.name === "delegate"
 						? delegateRunning(c, W)
-						: liveWindow(c.resultText, W)
+						: c.name === "shell"
+							? shellLiveTail(c.resultText, W)
+							: liveWindow(c.resultText, W)
 					: c.state === "approval"
 						? diffBody(c.diff, W)
 						: [];
@@ -912,6 +914,32 @@ function liveWindow(text: string, W: number): string[] {
 	}
 	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+r${p.reset}`, W);
 	return [...rows.slice(rows.length - (CAP_LIVE_WINDOW - 1)), ...cut];
+}
+
+/**
+ * TUI2-R1 (C) — the RUNNING shell's live tail.
+ *
+ * The rows are the sidecar's last lines, NEWEST AT THE BOTTOM (a tail
+ * grows downward, and the row nearest the footer is the newest thing the
+ * command said). The window is the SAME three rows W8 fixed: two tail
+ * rows and the footer, blank-padded before the output fills them, so the
+ * block's height still changes exactly once — at settle.
+ *
+ * With nothing observed the shape is exactly today's "waiting for
+ * output": a sidecar that never appeared, a command that has not
+ * printed, and a temp dir that refused the write are indistinguishable
+ * from here, and all three mean the same thing — nothing to show.
+ *
+ * The footer names the state AND the two gestures that apply while a
+ * command runs, because this is precisely when a human wants them.
+ */
+function shellLiveTail(text: string, W: number): string[] {
+	if (text === "") return liveWindow("", W);
+	const p = palette();
+	const rows = blockRows(text, W);
+	const kept = rows.slice(Math.max(0, rows.length - (CAP_LIVE_WINDOW - 1)));
+	while (kept.length < CAP_LIVE_WINDOW - 1) kept.unshift(`${p.dim}${BODY_ROW}${p.reset}`);
+	return [...kept, cutLine(`${p.dim}${CUT_ROW}live tail · esc stop · alt+⏎ redirect${p.reset}`, W)];
 }
 
 /** W12: the delegate's child sessions collapse to the tool row plus ONE

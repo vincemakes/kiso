@@ -13,11 +13,12 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { isolatedEnv, runCli, stripANSI } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
@@ -151,5 +152,63 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		expect(rolled).toBe(flat);
 		// and the content really is there in full (not an empty-equals-empty)
 		expect(rolled).toContain("alpha 0");
+	}, 180_000);
+});
+
+describe("TUI2-R1 T-V3 — the live tail on a real PTY", () => {
+	it("a long shell shows its output WHILE it runs, the tail moves, and the completed cell is one line again", () => {
+		const ws = workspace();
+		// a SHORT command string on purpose: the settled head row must have
+		// room for A's suffix, and a 60-char command would spend it all.
+		writeFileSync(join(ws, "steps.sh"), "for i in 1 2 3 4 5 6; do echo \"step $i of six\"; sleep 0.35; done\n", "utf8");
+		const command = "sh steps.sh";
+		const script = fauxScript([
+			{ events: [{ type: "tool_call_end", callId: "c1", name: "shell", input: { command } }, { type: "stop", reason: "tool_use" }] },
+			{ events: [{ type: "text_delta", text: "ran it." }, { type: "stop", reason: "end_turn" }] },
+		]);
+		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
+		const out = stripANSI(ptyRun(["--mode", "bypass", "r1-tail"], env as NodeJS.ProcessEnv, [["▌ ", "go\r"], ["ran it.", "exit\r"]], 60, ws));
+
+		// THE TAIL WAS LIVE: the footer appeared while the command ran…
+		expect(out).toContain("live tail · esc stop · alt+⏎ redirect");
+		// …and it MOVED — early steps and late steps were both on screen
+		// inside the running block (the sidecar was re-read, not read once)
+		expect(out).toContain("│ step 1 of six");
+		expect(out).toContain("│ step 6 of six");
+
+		// COMPLETION collapses: the settled row is one line with A's
+		// suffix, and the live-tail footer is not part of it.
+		expect(out).toContain("✓ shell sh steps.sh (exit 0 · approved by mode:bypass, ");
+		expect(out).toContain(") · 6 lines · ctrl+r expands");
+		const settledAt = out.lastIndexOf("✓ shell");
+		expect(settledAt).toBeGreaterThan(0);
+		expect(out.slice(settledAt)).not.toContain("live tail");
+
+		// THE SIDECAR IS NOT DURABLE STATE: it was removed at settle, and
+		// it never lived under KISO_HOME in the first place — recovery
+		// reads the event log, and the log is complete.
+		expect(existsSync(shellProgressPath("r1-tail", command))).toBe(false);
+		const events = logLines(env.KISO_HOME as string, "r1-tail").map((l) => l.event);
+		const result = events.find((e) => e.type === "tool_result");
+		expect(String(result?.content)).toContain("step 6 of six");
+	}, 180_000);
+
+	it("a GHOST sidecar left by a killed run is never shown — the freshness guard", () => {
+		// a leftover file with an old mtime, exactly where a kill -9 would
+		// have left one, for the command the next run is about to make
+		const ws = workspace();
+		const command = "echo done";
+		const ghost = shellProgressPath("r1-ghost", command);
+		mkdirSync(dirname(ghost), { recursive: true });
+		writeFileSync(ghost, "GHOST OUTPUT FROM A KILLED RUN\n", "utf8");
+		utimesSync(ghost, new Date(Date.now() - 3_600_000), new Date(Date.now() - 3_600_000));
+		const script = fauxScript([
+			{ events: [{ type: "tool_call_end", callId: "c1", name: "shell", input: { command } }, { type: "stop", reason: "tool_use" }] },
+			{ events: [{ type: "text_delta", text: "ran it." }, { type: "stop", reason: "end_turn" }] },
+		]);
+		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
+		const out = stripANSI(ptyRun(["--mode", "bypass", "r1-ghost"], env as NodeJS.ProcessEnv, [["▌ ", "go\r"], ["ran it.", "exit\r"]], 40, ws));
+		expect(out).not.toContain("GHOST OUTPUT");
+		expect(out).toContain("ran it."); // the run itself was untouched
 	}, 180_000);
 });

@@ -5,7 +5,7 @@
  * estimates. All bodies moved verbatim from index.ts.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import {
 	escapeTerminal,
 	idleStatus,
@@ -21,7 +21,7 @@ import {
 	type RunUsage,
 } from "@vincemakes/kiso-tui";
 import { editFileDiff, writeFileDiff, type DiffResult } from "@vincemakes/kiso-tui";
-import { canonicalTargetPath } from "@vincemakes/kiso-tools-node";
+import { canonicalTargetPath, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import { dispatch, type DispatchCtx } from "./dispatch.js";
@@ -151,6 +151,45 @@ export function startStatusSpinner(onTick: (glyph: string) => void): () => void 
 	// KC2 §5: the family itself moved to the tui's status formatters.
 	let i = 0;
 	const timer = setInterval(() => onTick(STATUS_GLYPHS[i++ % STATUS_GLYPHS.length]!), 200);
+	timer.unref();
+	return () => clearInterval(timer);
+}
+
+/**
+ * TUI2-R1 (C) — the shell tailer: the READER half of the progress
+ * sidecar (the writer is the shell tool, tools-node).
+ *
+ * The CLI is the only place that holds both facts the derived key needs
+ * — the session's id and the running call's command — so the tail is
+ * read here and handed to the cell. A poll, not a watcher: fs.watch's
+ * behaviour on a file being appended to differs by platform, and the
+ * one thing this must never do is misbehave in a way that costs the run.
+ *
+ * THE FRESHNESS GUARD is the part that makes a kill -9 leftover
+ * harmless. A sidecar the writer never got to remove keeps its old
+ * mtime; a tail is read only from a file modified AT OR AFTER the call
+ * started. A ghost from a previous process cannot be shown as this
+ * call's output — and since the tail is display-only, showing nothing is
+ * always the safe answer.
+ */
+const TAIL_POLL_MS = 250;
+const TAIL_BYTES = 4096; // the last lines are all the window can hold
+
+export function startShellTail(sessionId: string, callId: string, command: string, startedAt: number): () => void {
+	const path = shellProgressPath(sessionId, command);
+	const read = (): void => {
+		try {
+			const stat = statSync(path);
+			if (stat.mtimeMs + 1000 < startedAt) return; // a ghost from a killed run — never this call's
+			const text = readFileSync(path, "utf8");
+			body.toolProgress(callId, text.slice(-TAIL_BYTES).trimEnd());
+		} catch {
+			// no sidecar yet, removed at settle, or unreadable — the tail
+			// is an observation, and its absence is never an error
+		}
+	};
+	read();
+	const timer = setInterval(read, TAIL_POLL_MS);
 	timer.unref();
 	return () => clearInterval(timer);
 }
@@ -326,6 +365,16 @@ export async function consumeRun(
 	// at the first non-thinking event (the fold needs the seconds).
 	let thoughtSeconds = 0;
 	let thinkingSince: number | null = null;
+	// TUI2-R1 (C): the shell commands seen this run, and the tailers
+	// running for them. A tailer is started when the execution starts and
+	// stopped at the call's result — and the finally below stops any that
+	// an abort left behind, so a poller can never outlive its run.
+	const shellCommands = new Map<string, string>();
+	const tailers = new Map<string, () => void>();
+	const stopTail = (callId: string): void => {
+		tailers.get(callId)?.();
+		tailers.delete(callId);
+	};
 	try {
 	for await (const ev of run) {
 		last = ev;
@@ -351,10 +400,16 @@ export async function consumeRun(
 				toolCount += 1;
 				if (ev.name === "edit_file") editCount += 1;
 				body.toolStart(ev.name, ev.callId, ev.input ?? {});
+				// TUI2-R1 (C): the command is the sidecar key's other half —
+				// remembered here, used when the execution actually starts.
+				if (ev.name === "shell" && typeof ev.input?.command === "string") shellCommands.set(ev.callId, ev.input.command);
 				break;
-			case "tool_execution_started":
+			case "tool_execution_started": {
 				body.toolRunning(ev.callId);
+				const command = shellCommands.get(ev.callId);
+				if (command !== undefined) tailers.set(ev.callId, startShellTail(session.id, ev.callId, command, Date.now()));
 				break;
+			}
 			case "tool_execution_succeeded":
 				body.toolSucceeded(ev.callId);
 				break;
@@ -362,6 +417,9 @@ export async function consumeRun(
 				body.toolFailed(ev.callId, ev.error);
 				break;
 			case "tool_result": {
+				// TUI2-R1 (C): the observation window closes the instant the
+				// real result exists — the tail must never race it.
+				stopTail(ev.callId);
 				const text = typeof ev.content === "string" ? ev.content : "";
 				// W19: a DENIED call carries its reason — extracted from the
 				// result's "[Permission denied] " prefix, keyed on the
@@ -522,6 +580,10 @@ export async function consumeRun(
 	}
 	body.thinkingEnd(); // a trailing thinking block folds at the run's end
 	} finally {
+		// TUI2-R1 (C): an abort or a throw leaves the loop without a
+		// tool_result — every tailer stops here regardless, so no poller
+		// outlives the run that started it.
+		for (const callId of [...tailers.keys()]) stopTail(callId);
 	}
 	return last;
 }

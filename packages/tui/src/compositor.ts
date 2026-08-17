@@ -367,6 +367,28 @@ export class Body {
 		this.#mark();
 	}
 
+	/**
+	 * TUI2-R1 (C) — the RUNNING call's observed output.
+	 *
+	 * The CLI tails the shell tool's progress sidecar and hands what it
+	 * read to the cell. Deliberately narrow: only a cell that is still
+	 * RUNNING accepts it, so an observation can never overwrite a real
+	 * result, and an unchanged read costs no frame at all (a poller
+	 * fires far more often than the output changes).
+	 *
+	 * This adds no event and no durable state. The text lands in the
+	 * cell's live rendering and is replaced wholesale by the tool's own
+	 * result at settle — which is the only text anything else ever reads.
+	 */
+	toolProgress(callId: string, text: string): void {
+		if (!this.#isActive()) return; // the pipe path has no live region
+		const cell = this.#toolCell(callId);
+		if (cell === null || cell.kind !== "tool" || cell.state !== "running" || cell.done) return;
+		if (cell.resultText === text) return;
+		cell.resultText = text;
+		this.#mark();
+	}
+
 	toolSucceeded(callId: string): void {
 		if (!this.#isActive()) this.#write("  ok\n");
 	}
