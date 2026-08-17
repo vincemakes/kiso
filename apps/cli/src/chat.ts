@@ -706,10 +706,24 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		const slot = { line, cancelled: false };
 		pendingTurns.push(slot);
 		queued += 1;
-		chainRef.current = chainRef.current.then(() => {
+		chainRef.current = chainRef.current.then(async () => {
 			if (slot.cancelled) return; // the pop already dropped it — no double count
 			const idx = pendingTurns.indexOf(slot);
 			if (idx >= 0) pendingTurns.splice(idx, 1); // the chip leaves when the turn STARTS
+			// KC2 §4 — the FRESH-TURN uncertainty gate. The runtime's fresh
+			// path checks only the open-run gate before persisting
+			// user_input (ResumeBlockedError guards the RESUME derivation
+			// alone), and the CLI resolved uncertains at startup recovery
+			// only — so a turn queued behind an abort-mid-tool could reach
+			// the model before the human said whether the side effect
+			// applied. It asks HERE, before the turn starts, with the same
+			// recovery UI; a human who declines leaves it uncertain and the
+			// turn does not start. The resolution's own model-facing fill
+			// also answers the dangling tool_use, so the next request never
+			// carries an unanswered call. Composed from existing APIs: zero
+			// core lines, zero runtime lines.
+			if (session.uncertainExecutions().length > 0) await resolveUncertains(session, input, () => cancelled);
+			if (session.uncertainExecutions().length > 0) return void (queued = Math.max(0, queued - 1));
 			return turn(line);
 		});
 	};
