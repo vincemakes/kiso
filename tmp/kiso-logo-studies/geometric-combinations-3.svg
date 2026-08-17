@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200"><rect width="1200" height="1200" fill="white"/><path d="M600 0V1200M0 600H1200" stroke="#e5e5e5" stroke-width="2"/>
-<g fill="#000">
-  <g transform="translate(300 300)"><path d="M-150 170V-30C-150-150-85-190 0-190S150-150 150-30V170H55V-25C55-80 35-105 0-105S-55-80-55-25V170Z"/><ellipse cx="28" cy="-5" rx="48" ry="78" fill="white"/></g>
-  <g transform="translate(900 300)"><circle r="185"/><path d="M0-130L135-55 30 0 135 55 0 130 38 0Z" fill="white"/></g>
-  <g transform="translate(300 900)"><rect x="-185" y="-185" width="370" height="370" rx="92"/><path d="M0-110L110 0 0 110-110 0Z" fill="white"/><rect x="-35" y="-210" width="70" height="45" rx="22"/><rect x="-35" y="165" width="70" height="45" rx="22"/></g>
-  <g transform="translate(900 900)"><rect x="-185" y="-145" width="110" height="290" rx="55"/><rect x="-55" y="-145" width="110" height="185" rx="55"/><rect x="75" y="-145" width="110" height="290" rx="55"/><path d="M-120 0H120" stroke="white" stroke-width="45" stroke-linecap="round"/></g>
-</g></svg>

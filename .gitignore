@@ -9,3 +9,7 @@ bench/runs/
 __pycache__/
 CLAUDE.md
 .claude/launch.json
+
+# the sanctioned scratch dirs — never tracked (the 0.5.0 add -A trap)
+tmp/
+design-previews/
