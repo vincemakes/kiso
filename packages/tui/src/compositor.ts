@@ -208,6 +208,11 @@ export class Body {
 	 *  Unbound, the sheet cannot render and every frame is byte-identical
 	 *  to before the round. */
 	#sheetState: (() => boolean) | null = null;
+	/** TUI2-R1.5 7(a): the sheet's previous up/down state — a transition
+	 *  in either direction takes the full-redraw path. */
+	#sheetWasUp = false;
+	/** This frame is an overlay open or close — it must not scroll. */
+	#overlayFrame = false;
 	#inputState: () => InputState = () => ({ line: "", cursor: 0 });
 	#inputPrompt = "";
 	#menuState: (() => { items: readonly MenuItem[]; selected: number } | null) | null = null;
@@ -1030,7 +1035,19 @@ export class Body {
 		const chromeRows = CHROME_ROWS + inputExtra + menuRows.length + queueRows.length;
 		let liveLines: string[] = [];
 		const panel = this.#panelState?.() ?? null;
-		if (this.#sheetState?.() === true) {
+		// TUI2-R1.5 ⑦(a) (VD-8): the sheet is an OVERLAY, and the frame it
+		// opens on — and the one it closes on — take the full-redraw path.
+		// The sheet REPLACES the live region, so on an idle composer (where
+		// the live region is empty) opening it GROWS the model by its own
+		// height; the frame's skip grows with it and the difference is paid
+		// in real LFs — rows scrolled permanently into the terminal's
+		// scrollback, which closing cannot undo, because the scrollback is
+		// not ours to rewrite. Measured: three rows per open on a full
+		// screen. The overlay below displaces content on screen instead.
+		const sheetUp = this.#sheetState?.() === true;
+		this.#overlayFrame = sheetUp || this.#sheetWasUp;
+		this.#sheetWasUp = sheetUp;
+		if (sheetUp) {
 			// TUI2-R1 (D): the sheet REPLACES the live region — the same
 			// slot the panel uses, for the same reason (it is what the
 			// human is reading right now). It cannot coexist with a panel:
@@ -1507,6 +1524,7 @@ export class Body {
 	 *  EVERY row is idempotent: N consecutive resizes end with the same
 	 *  screen as a single jump to the same size. */
 	#drawFull(out: string[], W: number, H: number, liveTop: number, liveLines: string[], queueRows: string[], menuRows: string[], editor: { rows: string[]; markerRow: number; markerCol: number }): void {
+		const overlay = this.#overlayFrame;
 		const inputExtra = editor.rows.length - 1; // KC1: the composer's rows above the retired single input row
 		const committed = this.#committedLinesThisFrame;
 		// 0. the FROZEN rows — the re-folded committed content (re-flowed
@@ -1534,7 +1552,15 @@ export class Body {
 		// window (the committed share + the live + the chrome), r
 		// monotone, every row 1..H re-painted (the V6-1 every-row rule).
 		const all = [...frozen, ...committed, ...liveLines];
-		const skip = Math.max(0, all.length + CHROME_ROWS + inputExtra + queueRows.length + menuRows.length - H);
+		// TUI2-R1.5 7(a) (VD-8): while the sheet is up the window does NOT
+		// move. skip is frozen at its pre-open value and #lastSkip is left
+		// alone, so no LF is emitted and nothing enters the scrollback; the
+		// march below is clamped to the window instead, which makes the
+		// sheet displace content ON SCREEN. Closing takes the full-redraw
+		// path with the same #lastSkip and every displaced row comes back.
+		const skip = overlay
+			? this.#lastSkip
+			: Math.max(0, all.length + CHROME_ROWS + inputExtra + queueRows.length + menuRows.length - H);
 		// A8b (the shrink-trigger's completion): the rows that LEAVE the
 		// window scroll into the terminal's scrollback — the LF mechanism
 		// (the steady path's own). Only the rows the paint re-covers (the
@@ -1546,7 +1572,7 @@ export class Body {
 		// shrink EVERY frame) loses the scrolled-away turns from the
 		// terminal's scrollback entirely (finding #A8b — the queued-flood
 		// content loss).
-		if (skip > 0) {
+		if (skip > 0 && !overlay) {
 			const leaving = Math.max(0, skip - this.#lastSkip);
 			// A8b (the fresh leaving share): a leaving row whose old-screen
 			// copy is stale — the committed-this-frame lines (their old rows
@@ -1568,9 +1594,15 @@ export class Body {
 			out.push(`\x1b[${H};1H`);
 			for (let i = 0; i < skip; i += 1) out.push("\n");
 		}
-		this.#lastSkip = skip;
+		if (!overlay) this.#lastSkip = skip;
 		let r = 1;
-		for (const line of all.slice(skip)) {
+		// the window's content rows: everything above the chrome. With the
+		// overlay up `all` can exceed it, and the rows that give way are the
+		// OLDEST on screen — they are still in the model and come back on
+		// the close.
+		const contentRows = Math.max(0, H - CHROME_ROWS - inputExtra - queueRows.length - menuRows.length);
+		const march = all.slice(skip);
+		for (const line of march.length > contentRows ? march.slice(march.length - contentRows) : march) {
 			out.push(`\x1b[${r};1H\x1b[0K${this.#checked(line, W)}`);
 			r += 1;
 		}
@@ -1622,8 +1654,12 @@ export class Body {
 		// frozenCount, so the lines at [frozenCount..skip−1] are the fresh
 		// leaving share (their old-screen copies are stale).
 		const frozenCount = this.#committedLines - committed.length;
-		const skip = Math.max(0, this.#committedLines + liveLines.length + CHROME_ROWS + inputExtra + queueRows.length + menuRows.length - H);
-		const leaving = Math.max(0, skip - this.#lastSkip);
+		// TUI2-R1.5 7(a): an overlay frame never moves the window (see
+		// #drawFull) — the sheet's rows displace content on screen instead
+		// of pushing it into the scrollback.
+		const overlay = this.#overlayFrame;
+		const skip = overlay ? this.#lastSkip : Math.max(0, this.#committedLines + liveLines.length + CHROME_ROWS + inputExtra + queueRows.length + menuRows.length - H);
+		const leaving = overlay ? 0 : Math.max(0, skip - this.#lastSkip);
 		// the jump to the bottom row H, then N real LFs scroll the screen
 		// exactly N rows — ONE per committed line (the bookkeeping; the
 		// stale 1B anchor jumped to H−1 and the N LFs scrolled only N−1 —
