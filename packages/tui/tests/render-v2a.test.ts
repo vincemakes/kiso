@@ -40,10 +40,14 @@ afterEach(() => {
 	setTTY(ORIG_TTY ?? false);
 });
 
-describe("v2a/v5: the palette", () => {
-	it("COLOR_ON is bold (SGR 1), the inline-code tint (256 color 110), red, dim, green; COLOR_OFF is empty", () => {
+describe("v2a/v5/KC3: the palette", () => {
+	it("COLOR_ON is bold (SGR 1), the MONO inline-code tint (256 color 252), red, dim, green; COLOR_OFF is empty", () => {
 		expect(COLOR_ON.bold).toBe("\x1b[1m");
-		expect(COLOR_ON.code).toBe("\x1b[38;5;110m");
+		// KC3 §2, the mono recolor (a DECLARED SUPERSESSION): the tint was
+		// the light BLUE 38;5;110 — the last blue byte in the product. The
+		// mono discipline carries the body in shades of black and white,
+		// so the tint is the light GRAY 38;5;252.
+		expect(COLOR_ON.code).toBe("\x1b[38;5;252m");
 		expect(COLOR_ON.red).toBe("\x1b[31m");
 		expect(COLOR_ON.dim).toBe("\x1b[2m");
 		expect(COLOR_ON.green).toBe("\x1b[32m");
@@ -72,6 +76,37 @@ describe("v2a/v5: the palette", () => {
 		setNoColor(false);
 		setTTY(true);
 		expect(palette()).toBe(COLOR_ON);
+	});
+
+	/**
+	 * KC3 §2 — the mono discipline, stated as a gate rather than a
+	 * convention. The body of the interface is carried by shades of
+	 * black and white; green, yellow and red are the ONLY functional
+	 * exceptions, and they are UNTOUCHED by the recolor. (Yellow is
+	 * RESERVED by the discipline — the palette has no yellow entry
+	 * today, so there is nothing to pin and nothing that could move.)
+	 *
+	 * The scope of the supersession is exactly this: a chromatic entry
+	 * that is not one of the three functional colors is a regression.
+	 */
+	it("KC3: no chromatic entry survives outside the three functional colors", () => {
+		const MONO = /^\x1b\[(?:0|1|2|7|27|38;5;(?:23[2-9]|24\d|25[0-5]))m$/; // SGR 0/1/2/7/27 + the 256-cube greyscale ramp
+		const FUNCTIONAL: Record<string, string> = { red: "\x1b[31m", green: "\x1b[32m" };
+		for (const [name, code] of Object.entries(COLOR_ON)) {
+			if (name in FUNCTIONAL) {
+				expect(code, `${name} is a FUNCTIONAL color — the recolor never moves it`).toBe(FUNCTIONAL[name]);
+				continue;
+			}
+			expect(code, `${name}=${JSON.stringify(code)} is chromatic — the mono discipline forbids it`).toMatch(MONO);
+		}
+	});
+
+	it("KC3: the functional colors are the plain SGR ones, not 256-color approximations", () => {
+		expect(COLOR_ON.red).toBe("\x1b[31m");
+		expect(COLOR_ON.green).toBe("\x1b[32m");
+		// and the empty palette still zeroes them — a pipe carries no ANSI
+		expect(COLOR_OFF.red).toBe("");
+		expect(COLOR_OFF.green).toBe("");
 	});
 });
 
@@ -110,7 +145,9 @@ describe("v5: the inline-code tint (TUI v5 #16e)", () => {
 });
 
 describe("v2a: the recolors", () => {
-	it("✓ is the blue accent, ✗ stays red, the replay you> line is blue", () => {
+	// KC3 §2: the NAME caught up with the assertions — these have pinned
+	// the BOLD accent since v5 #16e; only the wording still said "blue".
+	it("✓ is the bold accent, ✗ stays red, the replay you> line is bold", () => {
 		setNoColor(false);
 		setTTY(true);
 		const ok = renderToolSummary("read_file", { path: "a.ts" }, { content: "x", isError: false });

@@ -528,8 +528,9 @@ tier that decided, exactly like it names the extension.
   immediately (the change applies to the next tool call), leaving a
   notice line in the session body. Startup: `--mode <name>` or
   `KISO_MODE=<name>`; default is `default`.
-- The status bar shows the non-default tier in blue — `plan`/`bypass`
-  carry a ⚠ prefix (danger visible at a glance).
+- The status bar names the current tier in the dim status row — `plan`
+  reads `plan (read-only)`, so the constraint is visible at a glance
+  rather than encoded in a hue (KC3: the identity is monochrome).
 - This is kiso's answer to Claude Code's permission modes: a CLI-side
   policy layer over the same extension approval chain — user extensions
   keep their votes on every call, and their denies always win.
@@ -913,13 +914,18 @@ below is proven by a gate in `npm run check`:
   (0.1.45): the trust verdict is a fresh home's FIRST access of any kind —
   only after the grant does the config surface materialize (`config.json`
   + the sentinel), silently, and a sentinel-marked home never re-scaffolds
-  or clobbers your config. v2a/v5: the color
-  identity is bright-white BOLD (SGR 1 — the you> prompt, the banner
-  tagline, ✓ marks, command names, the user block's ▍ rail, the input
-  brick), a light-blue inline-code tint (256 color 110) on backtick spans
-  in assistant text, red for errors, dim for metadata, green for the
-  approval diff — everything else plain; `NO_COLOR` or a pipe disables it
-  all (pipes carry zero ANSI); typed input is echoed by readline itself,
+  or clobbers your config. v2a/v5/KC3 — **the identity is monochrome**:
+  shades of black and white carry the interface, and colour is reserved
+  for the three things that MEAN something. Bright-white BOLD (SGR 1) is
+  the accent (the you> prompt, the banner tagline, ✓ marks, command
+  names, the user block's ▍ rail, the input brick); a light-gray
+  inline-code tint (256 color 252) marks backtick spans in assistant
+  text; dim carries metadata. The functional exceptions are the only
+  colour left in the interface: green for the approval diff's additions
+  and red for errors — with yellow reserved for warnings under the same
+  rule (the palette has no yellow entry today). Everything else is
+  plain; `NO_COLOR` or a
+  pipe disables it all (pipes carry zero ANSI); typed input is echoed by readline itself,
   never rendered twice; a spinner glyph shows liveness between the request
   and the first delta. v2b: thinking blocks fold to ONE dim line per block
   (first 100 chars + ` (… /think shows full)`, `/think` prints the last
@@ -940,7 +946,7 @@ below is proven by a gate in `npm run check`:
   Amendment 2) — a zero-dependency raw-mode editor (display-width cursor
   math — CJK wide chars land on the right column, the hard acceptance —
   bracketed paste, horizontal scrolling with a dim … marker) with the
-  kiso brick motif: a blue half-block ▌you> row and a dim dotted ╌
+  kiso brick motif: a bold half-block ▌you> row and a dim dotted ╌
   separator; the sent line renders into the body exactly once, a turn
   submitted while another runs queues with a live `+N queued` status, and
   Esc aborts. KC1: the input is a MULTI-LINE composer — a paste keeps its

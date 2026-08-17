@@ -14,24 +14,35 @@ import { charWidth, displayWidth } from "./width.js";
  * RETIRED — the identity accents (the you> prompt, the banner tagline,
  * ✓ marks, slash-command names, the input brick) are bright-white BOLD
  * (SGR 1); the user message is the SGR-7 chip (the 2026-08-09 ruling
- * retired the ▍ rail); `code` is the content semantic tint for
- * inline code spans in assistant text (256-color 110 — the cube color
- * nearest the design's #8fb4d8); red for errors, dim for metadata,
- * green for the diff additions. NO_COLOR set, or a non-TTY output →
- * every code is empty, so pipes and CI carry ZERO ANSI (the existing
- * byte-level e2e assertions guard it). Everything not listed is plain.
+ * retired the ▍ rail); red for errors, dim for metadata, green for the
+ * diff additions. NO_COLOR set, or a non-TTY output → every code is
+ * empty, so pipes and CI carry ZERO ANSI (the existing byte-level e2e
+ * assertions guard it). Everything not listed is plain.
+ *
+ * KC3 §2 — THE MONO DISCIPLINE (the owner's 2026-08-17 ruling, a
+ * DECLARED SUPERSESSION under ADR-0051 Amendment 3). The interface's
+ * body is carried by shades of black and white; green ✓, yellow warn
+ * and red error are the ONLY functional exceptions. v5 had already
+ * taken the identity accents to bold; `code` was the one chromatic
+ * entry left — the light BLUE 38;5;110 — and it becomes the light GRAY
+ * 38;5;252. A tint still says "this span is code", which is the job it
+ * was hired for; saying it in a hue was never the job.
+ *
+ * The functional colors are deliberately NOT moved and not
+ * approximated: red stays SGR 31, green stays SGR 32. A reader who has
+ * learned that colour means something must keep being right.
  */
 export interface Palette {
 	readonly bold: string;
 	readonly dim: string;
 	readonly red: string;
 	readonly green: string; // v2e: the diff additions — diff-only (NO_COLOR falls back to the + prefix)
-	readonly code: string; // TUI v5 #16e: the inline-code tint — assistant body backtick spans only
+	readonly code: string; // TUI v5 #16e: the inline-code tint — assistant body backtick spans only (KC3 §2: light GRAY, the mono discipline)
 	readonly rv: string; // W16: reverse video — SGR 7, closed with rvEnd (27, never SGR 0 — the chip composes with a surrounding span)
 	readonly rvEnd: string;
 	readonly reset: string;
 }
-export const COLOR_ON: Palette = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", code: "\x1b[38;5;110m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" };
+export const COLOR_ON: Palette = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", code: "\x1b[38;5;252m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" };
 export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", code: "", rv: "", rvEnd: "", reset: "" };
 export function palette(): Palette {
 	return process.env.NO_COLOR === undefined && process.stdout.isTTY ? COLOR_ON : COLOR_OFF;
