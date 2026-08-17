@@ -40,7 +40,7 @@ const ALT_ENTER = "\x1b\r";
 const PTY_DRIVER = `
 import pty, os, sys, time, select, signal, struct, fcntl, termios
 
-def driver(cli, session, env, feeds, timeout):
+def driver(cli, session, env, feeds, timeout, settle, grace):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ.update(env)
@@ -50,6 +50,7 @@ def driver(cli, session, env, feeds, timeout):
     fed = set()
     t0 = time.time()
     end = t0 + timeout
+    settled = None
     while time.time() < end:
         r, _, _ = select.select([fd], [], [], 0.1)
         if r:
@@ -64,6 +65,16 @@ def driver(cli, session, env, feeds, timeout):
             if i not in fed and time.time() - t0 >= delay and needle.encode() in full:
                 os.write(fd, text.encode())
                 fed.add(i)
+        # SETTLED = every feed has fired AND every outcome the test asserts
+        # on screen is on screen. The driver then keeps READING for the
+        # grace seconds, so the run's terminal and the recap/idle repaint
+        # that follow it are persisted before the transcript is cut. The
+        # timeout stays as the safety net: a scenario that never settles
+        # still ends, and its assertions fail loudly instead of hanging.
+        if settled is None and len(fed) == len(feeds) and all(s.encode() in full for s in settle):
+            settled = time.time()
+        if settled is not None and time.time() - settled >= grace:
+            break
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -76,7 +87,21 @@ def driver(cli, session, env, feeds, timeout):
     sys.exit(0)
 `;
 
-function ptyRun(env: NodeJS.ProcessEnv, session: string, feeds: [string, string, number][], timeout: number): string {
+/** Run the built CLI under a 24×80 pty. `settle` names the outcomes the
+ *  test asserts on screen: once every feed has fired and all of them have
+ *  appeared, the driver reads for two more seconds (so the terminal and
+ *  the idle repaint land durably) and stops — it never burns the whole
+ *  window. `timeout` is the hang safety net. Blocking the vitest worker
+ *  for a full 30-40s window is what tripped the reporter's onTaskUpdate
+ *  RPC and flipped the process exit code on a green suite. */
+function ptyRun(
+	env: NodeJS.ProcessEnv,
+	session: string,
+	feeds: [string, string, number][],
+	timeout: number,
+	settle: string[],
+	grace = 2,
+): string {
 	const dir = mkdtempSync(join(tmpdir(), "kiso-kc2race-"));
 	const driverPath = join(dir, "driver.py");
 	writeFileSync(driverPath, PTY_DRIVER, "utf8");
@@ -84,7 +109,7 @@ function ptyRun(env: NodeJS.ProcessEnv, session: string, feeds: [string, string,
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(session)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout})
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(session)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout}, ${JSON.stringify(settle)}, ${grace})
 `;
 	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 180_000, env: process.env });
 }
@@ -152,7 +177,7 @@ describe("KC2 T-R4a — the redirect races the run's terminal", () => {
 			["› ", "the wrong thing\r", 2],
 			["working", "the right thing", 4],
 			["the right thing", ALT_ENTER, 5], // well inside the run's life
-		], 32);
+		], 32, ["correction answered"]);
 		const log = durable(dirs.home, "kc2r4a1");
 		expect(outcomes(log)[0]).toBe("aborted");
 		expect(inputs(log)).toEqual(["the wrong thing", "the right thing"]);
@@ -167,7 +192,7 @@ describe("KC2 T-R4a — the redirect races the run's terminal", () => {
 			["› ", "a fast task\r", 2],
 			["finished immediately", "a follow-up", 5], // the run is long dead
 			["a follow-up", ALT_ENTER, 6],
-		], 26);
+		], 26, ["second turn answered"]);
 		const log = durable(dirs.home, "kc2r4a2");
 		// nothing was aborted — there was nothing left to abort
 		expect(outcomes(log)).toEqual(["completed", "completed"]);
@@ -186,7 +211,7 @@ describe("KC2 T-R4b — the abort races the TOOL's settlement (a different axis 
 			["› ", "run the slow thing\r", 2],
 			["working", "actually, stop", 4],
 			["actually, stop", ALT_ENTER, 5],
-		], 32);
+		], 32, ["next turn answered"]);
 		const log = durable(dirs.home, "kc2r4b1");
 		const screen = Buffer.from(out, "hex").toString("utf8");
 
@@ -221,7 +246,7 @@ describe("KC2 T-R4b — the abort races the TOOL's settlement (a different axis 
 			["rerun", "\x03", 2], // the startup ask is cancelled — nothing recorded
 			["› ", "carry on\r", 5],
 			["rerun", "1\r", 7], // the gate asks again, before the turn starts
-		], 30);
+		], 30, ["next turn answered"]);
 		const log = durable(dirs.home, "kc2r4b2");
 
 		// the same terminal as the case above...

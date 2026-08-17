@@ -43,7 +43,7 @@ const ALT_ENTER = "\x1b\r";
 const PTY_DRIVER = `
 import pty, os, sys, time, select, signal, struct, fcntl, termios
 
-def driver(cli, session, env, feeds, timeout):
+def driver(cli, session, env, feeds, timeout, settle, grace):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ.update(env)
@@ -53,6 +53,7 @@ def driver(cli, session, env, feeds, timeout):
     fed = set()
     t0 = time.time()
     end = t0 + timeout
+    settled = None
     while time.time() < end:
         r, _, _ = select.select([fd], [], [], 0.1)
         if r:
@@ -67,6 +68,16 @@ def driver(cli, session, env, feeds, timeout):
             if i not in fed and time.time() - t0 >= delay and needle.encode() in full:
                 os.write(fd, text.encode())
                 fed.add(i)
+        # SETTLED = every feed has fired AND every outcome the test asserts
+        # on screen is on screen. The driver then keeps READING for the
+        # grace seconds, so the run's terminal and the recap/idle repaint
+        # that follow it are persisted before the transcript is cut. The
+        # timeout stays as the safety net: a scenario that never settles
+        # still ends, and its assertions fail loudly instead of hanging.
+        if settled is None and len(fed) == len(feeds) and all(s.encode() in full for s in settle):
+            settled = time.time()
+        if settled is not None and time.time() - settled >= grace:
+            break
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -79,7 +90,21 @@ def driver(cli, session, env, feeds, timeout):
     sys.exit(0)
 `;
 
-function ptyRun(env: NodeJS.ProcessEnv, session: string, feeds: [string, string, number][], timeout: number): string {
+/** Run the built CLI under a 24×80 pty. `settle` names the outcomes the
+ *  test asserts on screen: once every feed has fired and all of them have
+ *  appeared, the driver reads for two more seconds (so the terminal and
+ *  the idle repaint land durably) and stops — it never burns the whole
+ *  window. `timeout` is the hang safety net. Blocking the vitest worker
+ *  for a full 30-40s window is what tripped the reporter's onTaskUpdate
+ *  RPC and flipped the process exit code on a green suite. */
+function ptyRun(
+	env: NodeJS.ProcessEnv,
+	session: string,
+	feeds: [string, string, number][],
+	timeout: number,
+	settle: string[],
+	grace = 2,
+): string {
 	const dir = mkdtempSync(join(tmpdir(), "kiso-kc2u-"));
 	const driverPath = join(dir, "driver.py");
 	writeFileSync(driverPath, PTY_DRIVER, "utf8");
@@ -87,7 +112,7 @@ function ptyRun(env: NodeJS.ProcessEnv, session: string, feeds: [string, string,
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(session)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout})
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(session)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout}, ${JSON.stringify(settle)}, ${grace})
 `;
 	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 180_000, env: process.env });
 }
@@ -152,7 +177,7 @@ describe("KC2 T-R3 — a fresh turn behind an undecided interrupted execution as
 			["› ", "only the logs, not the build dir", 5],
 			["only the logs", ALT_ENTER, 6], // the correction, one gesture
 			["rerun", "1\r", 8], // THE GATE re-asks: 1 = it did not apply, rerun
-		], 30);
+		], 30, ["run B done"]);
 		const log = durable(dirs.home, "kc2r3");
 		const screen = Buffer.from(out, "hex").toString("utf8");
 
@@ -189,7 +214,7 @@ describe("KC2 T-R3b — the resolution repairs the projection: no dangling tool_
 			["› ", "only the logs, not the build dir", 5],
 			["only the logs", ALT_ENTER, 6],
 			["rerun", "3\r", 8], // 3 = abandon; the fill must land either way
-		], 30);
+		], 30, ["run B done"]);
 		const log = durable(dirs.home, "kc2r3b");
 
 		// the boundary: everything durable BEFORE the fresh turn's
@@ -228,7 +253,7 @@ describe("KC2 §4 — a declined verdict HOLDS the turn, and says so", () => {
 			["rerun", "\x03", 2], // the startup ask — cancelled
 			["› ", "please carry on anyway\r", 5],
 			["rerun", "\x03", 7], // the GATE's ask — cancelled too
-		], 26);
+		], 26, ["turn held"]);
 		const log = durable(dirs.home, "kc2r3d");
 		const screen = Buffer.from(out, "hex").toString("utf8");
 
@@ -252,7 +277,7 @@ describe("KC2 §4 — the gate guards EVERY fresh queued turn, not only redirect
 			["rerun", "\x03", 2], // the startup ask is cancelled
 			["› ", "typed by hand\r", 5], // a plain Enter — no redirect anywhere
 			["rerun", "1\r", 7],
-		], 30);
+		], 30, ["typed turn done"]);
 		const log = durable(dirs.home, "kc2r3c");
 		const resolvedAt = kinds(log).indexOf("tool_execution_resolved");
 		const inputs = log.map((r, i) => ({ i, r })).filter((x) => x.r.event.type === "user_input");

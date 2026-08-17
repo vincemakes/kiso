@@ -39,7 +39,7 @@ const ALT_ENTER = "\x1b\r";
 const PTY_DRIVER = `
 import pty, os, sys, time, select, signal, struct, fcntl, termios
 
-def driver(cli, session, env, feeds, timeout):
+def driver(cli, session, env, feeds, timeout, settle, grace):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ.update(env)
@@ -49,6 +49,7 @@ def driver(cli, session, env, feeds, timeout):
     fed = set()
     t0 = time.time()
     end = t0 + timeout
+    settled = None
     while time.time() < end:
         r, _, _ = select.select([fd], [], [], 0.1)
         if r:
@@ -63,6 +64,16 @@ def driver(cli, session, env, feeds, timeout):
             if i not in fed and time.time() - t0 >= delay and needle.encode() in full:
                 os.write(fd, text.encode())
                 fed.add(i)
+        # SETTLED = every feed has fired AND every outcome the test asserts
+        # on screen is on screen. The driver then keeps READING for the
+        # grace seconds, so the run's terminal and the recap/idle repaint
+        # that follow it are persisted before the transcript is cut. The
+        # timeout stays as the safety net: a scenario that never settles
+        # still ends, and its assertions fail loudly instead of hanging.
+        if settled is None and len(fed) == len(feeds) and all(s.encode() in full for s in settle):
+            settled = time.time()
+        if settled is not None and time.time() - settled >= grace:
+            break
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -75,8 +86,21 @@ def driver(cli, session, env, feeds, timeout):
     sys.exit(0)
 `;
 
-/** run the built CLI under a 24×80 pty; the transcript comes back as hex */
-function ptyRun(env: NodeJS.ProcessEnv, session: string, feeds: [string, string, number][], timeout: number): string {
+/** Run the built CLI under a 24×80 pty. `settle` names the outcomes the
+ *  test asserts on screen: once every feed has fired and all of them have
+ *  appeared, the driver reads for two more seconds (so the terminal and
+ *  the idle repaint land durably) and stops — it never burns the whole
+ *  window. `timeout` is the hang safety net. Blocking the vitest worker
+ *  for a full 30-40s window is what tripped the reporter's onTaskUpdate
+ *  RPC and flipped the process exit code on a green suite. */
+function ptyRun(
+	env: NodeJS.ProcessEnv,
+	session: string,
+	feeds: [string, string, number][],
+	timeout: number,
+	settle: string[],
+	grace = 2,
+): string {
 	const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-"));
 	const driverPath = join(dir, "driver.py");
 	writeFileSync(driverPath, PTY_DRIVER, "utf8");
@@ -84,7 +108,7 @@ function ptyRun(env: NodeJS.ProcessEnv, session: string, feeds: [string, string,
 import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
-driver(${JSON.stringify(CLI)}, ${JSON.stringify(session)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout})
+driver(${JSON.stringify(CLI)}, ${JSON.stringify(session)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout}, ${JSON.stringify(settle)}, ${grace})
 `;
 	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 180_000, env: process.env });
 }
@@ -150,7 +174,7 @@ describe("KC2 T-R2 — a redirect mid-run: Run A aborts, the correction becomes 
 			["› ", "search the whole tree\r", 2],
 			["working", "no, only src/", 5], // typed WHILE run A is still busy
 			["only src/", ALT_ENTER, 6], // ONE gesture: ESC and CR in one write
-		], 32);
+		], 32, ["run B done"]);
 
 		// ① Run A really aborted — the durable terminal, not a pretend one
 		expect(terminals(dirs.home, "kc2r2")[0]).toBe("aborted");
@@ -185,7 +209,7 @@ describe("KC2 T-R5 — the front-jump: the correction runs BEFORE the already-qu
 			["alpha", "beta\r", 5], // queues behind alpha
 			["beta", "urgent", 6],
 			["urgent", ALT_ENTER, 7], // the one gesture
-		], 40);
+		], 40, ["answered three"]);
 
 		// the durable order IS the acceptance: current (aborted) → C → A → B
 		expect(userInputs(dirs.home, "kc2r5")).toEqual(["the original task", "urgent", "alpha", "beta"]);
@@ -205,7 +229,7 @@ describe("KC2 T-R5 — the front-jump: the correction runs BEFORE the already-qu
 			["popme", "\x1b[A", 6], // ↑ pops "popme" back into the composer, cursor at the end
 			["popme", " and also this", 7], // the human keeps typing — the pop is an EDIT, not a resend
 			["and also this", ALT_ENTER, 8], // and redirects with the edited whole
-		], 40);
+		], 40, ["answered two"]);
 
 		const inputs = userInputs(dirs.home, "kc2r5b");
 		// "popme" NEVER ran as its own turn — it left the queue through the
@@ -226,7 +250,7 @@ describe("KC2 T-R6 — the manual two-gesture path is exactly what it was", () =
 			["working", "already queued\r", 4],
 			["already queued", "\x1b", 6], // the bare esc, alone in its write — the run aborts
 			["aborting", "typed after the abort\r", 8], // a separate, ordinary Enter
-		], 40);
+		], 40, ["answered two"]);
 
 		// the manual path keeps the queue's order: the abort does not reorder
 		// anything, and the new line goes to the BACK.
