@@ -18,6 +18,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@vincemakes/kiso-ask-ext": "0.7.0",
     "@vincemakes/kiso-core": "0.7.0",
     "@vincemakes/kiso-evals": "0.7.0",
     "@vincemakes/kiso-mcp-ext": "0.7.0",

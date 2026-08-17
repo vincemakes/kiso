@@ -180,6 +180,6 @@ export function helpRows(): string[] {
 		cmd("/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"),
 		cmd("/model", "list model profiles; /model <name|provider/model> switches"),
 		cmd("/compact", "summarize the older conversation to free context"),
-		`${cmd("exit", "leave the session")}\n${cmd("keys", "enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead · @ files")}`,
+		`${cmd("exit", "leave the session")}\n${cmd("keys", "enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead · @ files · 1-4 answers an ask")}`,
 	];
 }

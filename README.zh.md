@@ -267,7 +267,7 @@ phase 2(恢复,新进程,零人工输入)之后:
 
 ## 扩展——超越人类的审批策略
 
-**三个官方扩展内置在 CLI**(0.1.45+):`mcp`、`skills`、`subagent` 在启动时经模块导入注册——全新安装零磁盘设置即拥有全部三个,横幅如实显示:`[3 extensions: built-in: mcp, skills, subagent]`。
+**四个官方扩展内置在 CLI**:`mcp`、`skills`、`subagent`(0.1.45+)在启动时经模块导入注册——全新安装零磁盘设置即拥有这三个;**`ask`**(KC3.5)在交互式终端上加入它们,横幅显示 `[4 extensions: built-in: mcp, skills, subagent, ask]`。管道或无头会话没有人能回答问题,因此根本不加载 `ask`:横幅仍是 `[3 extensions: built-in: mcp, skills, subagent]`,工具表里也永远没有 `ask_user`——没人为一个无法被回答的问题付提示词租金。
 
 第四个官方扩展 **task**(耐久长程工作记忆)自 **0.3.0 起为 opt-in**:13 个连续真 provider 会话上它每请求付租却一次未调用——连规划指南自家设计的触发场景都没激活(实测死重,finding E5-F1/E5-F2)。能力保留:按下方 Task 一节安装即可。
 
@@ -425,6 +425,27 @@ description: a review checklist for pull requests
 - **第 3 级——渐进,零新机制。** `SKILL.md` 之外的文件不自动加载:技能正文用相对路径告诉模型按需 `read_file`。
 - **Claude Code 兼容。** CC 技能用相同前置元数据形态;name/description 子集原样解析——把 CC 技能目录丢进 `~/.kiso/skills/` 即可用。
 - **审批:** `read_skill` 读用户本机安装的文档——safe-defaults 例子放行它(read_file 信任);技能其余一切是既有策略管辖的普通文件访问。
+
+## 提问——模型把真正的选择交给你
+
+**内置在 CLI,仅限交互式终端。** 模型可以不再猜:`ask_user` 一次调用携带 1-4 个问题,每题 2-4 个选项(可带一行说明),单选或多选。
+
+```text
+│ which bundler? ‹ 1/2 ›
+│ bundler
+─ pick one ─
+│  1 ◉ vite — fast dev server
+│  2   esbuild — one binary
+│  t   type your own answer
+│ 1-4 pick · t type · esc decline
+└
+```
+
+- **按键。** 数字键选择(单选题选中即前进,多选题切换后等 enter),空格在光标处选中但不提交,↑↓ 移动光标,← 退回上一题,`t` 打开自由作答行,esc 谢绝。
+- **谢绝是一种结果,不是沉默。** 结果会列出每一个未作答的问题连同其选项——模型知道你选择了不选,而这与"没被问过"不同。
+- **答案是持久事实。** 它们乘着一次普通工具调用的普通 `tool_result`,所以**已回答的问题永不再问——`kill -9` 之后也一样**。在你作答前被打断的问题,会在下一次 `kiso resume` 时浮出来请你明确决定是否重问(`an unanswered question was interrupted — ask it again? — 1 re-ask · 3 drop`),因为一个没被回答的问题不是"可能已经生效"的副作用。
+- **零新持久机制。** 没有新事件种类,没有逐键持久化:崩溃后重现的是整次调用,而不是半张填了一半的表。
+- **审批:** `ask_user` 由 ask 扩展自己放行——要求先审批"能不能问你",等于为一个决定摆两块面板,而面板本身已经可以谢绝。用户扩展的 deny 与 plan 模式的只读拒绝依然胜出。
 
 ## 任务——持久化长期工作记忆
 

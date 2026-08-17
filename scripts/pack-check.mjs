@@ -26,6 +26,8 @@ const PACKAGES = [
 	"@vincemakes/kiso-skills-ext",
 	"@vincemakes/kiso-subagent-ext",
 	"@vincemakes/kiso-task-ext",
+	// KC3.5: the 14th package — the ask extension (built-in #4).
+	"@vincemakes/kiso-ask-ext",
 ];
 
 let failed = false;

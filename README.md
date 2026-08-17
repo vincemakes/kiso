@@ -418,10 +418,16 @@ identically twice, ② appending a turn leaves the old prefix byte-identical,
 
 ## Extensions — approval policies beyond the human
 
-**Three official extensions ship built-in in the CLI** (0.1.45+):
-`mcp`, `skills`, and `subagent` are registered at startup by module
-import — a fresh install has all three with zero disk setup, and the
-banner says so: `[3 extensions: built-in: mcp, skills, subagent]`.
+**Four official extensions ship built-in in the CLI**: `mcp`, `skills`,
+and `subagent` (0.1.45+) are registered at startup by module import — a
+fresh install has all three with zero disk setup — and **`ask`** joins
+them on an interactive terminal (KC3.5), where the banner reads
+`[4 extensions: built-in: mcp, skills, subagent, ask]`. A piped or
+headless session has nobody to answer a question, so it never loads
+`ask` at all: its banner still reads
+`[3 extensions: built-in: mcp, skills, subagent]` and its tool table
+never mentions `ask_user`. Nothing pays prompt rent for a question that
+could not be answered.
 
 The fourth official extension, **task** (durable long-horizon working
 memory), is **opt-in since 0.3.0**: on 13 consecutive real-provider
@@ -696,6 +702,46 @@ description: a review checklist for pull requests
   safe-defaults example allows it (read_file trust); everything else
   about skills is plain file access governed by the existing policy.
 
+## Ask — the model puts a real choice to you
+
+**Ships built-in in the CLI, on an interactive terminal only.** The
+model can stop guessing and ask: `ask_user` carries 1-4 questions in one
+call, each with 2-4 options and optional one-line descriptions, single
+or multi select.
+
+```text
+│ which bundler? ‹ 1/2 ›
+│ bundler
+─ pick one ─
+│  1 ◉ vite — fast dev server
+│  2   esbuild — one binary
+│  t   type your own answer
+│ 1-4 pick · t type · esc decline
+└
+```
+
+- **The keys.** Digits pick (a single-select question answers and moves
+  on; a multi-select one toggles and waits for enter), space selects at
+  the cursor without committing, ↑↓ move it, ← walks back a question,
+  `t` opens a free-form answer line, and esc declines.
+- **A decline is an outcome, not silence.** The result names every
+  question that went unanswered, options included — the model learns
+  that you chose not to choose, which is different from not being asked.
+- **The answers are durable facts.** They ride the ordinary
+  `tool_result` of an ordinary tool call, so **an answered question is
+  never asked again — including across `kill -9`**. A question that was
+  interrupted before you answered it is surfaced on the next `kiso
+  resume` for an explicit re-ask (`an unanswered question was
+  interrupted — ask it again? — 1 re-ask · 3 drop`), because an
+  unanswered question is not a side effect that may have applied.
+- **No new durable machinery.** No new event kinds, no per-keystroke
+  persistence: a crash re-presents the whole call rather than a
+  half-filled form.
+- **Approval:** `ask_user` is allowed by the ask extension itself —
+  requiring approval to ask a question would put two panels in front of
+  one decision, and the panel can already be declined. A user
+  extension's deny and plan mode's read-only refusal still win.
+
 ## Task — durable long-horizon working memory
 
 **Opt-in since 0.3.0** (it shipped built-in from 0.1.45 to 0.2.2; on 13
@@ -935,7 +981,9 @@ below is proven by a gate in `npm run check`:
   upper dim separator, the `▌` input line, a lower separator, and a LIVE
   status bar (idle `▸ <mode> · /mode to switch · …` with the right-aligned
   dim `/ commands · ↑ history` hint — cut first when the window is
-  narrow; running `▖ working Ns · esc stop · alt+⏎ redirect · …`); the body scrolls
+  narrow; running `▖ working Ns · esc stop · alt+⏎ redirect · …`); an ask panel takes
+the same position and answers at the input line (`1-4 pick · t type · esc
+decline`); the body scrolls
   with real LFs into the native scrollback (v2d-B, ADR-0040 — no scroll
   region); approval/uncertainty/trust questions take over the
   status position and are answered at the input line; SIGWINCH

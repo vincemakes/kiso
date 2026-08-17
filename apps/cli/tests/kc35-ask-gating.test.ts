@@ -82,7 +82,11 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 			"/mode    show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)",
 			"/model    list model profiles; /model <name|provider/model> switches",
 			"/compact    summarize the older conversation to free context",
-			"exit    leave the session\nkeys    enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead · @ files",
+			// slice ⑥ appends the ask gesture to the keys row — the KC1/KC2/KC3
+			// precedent (the row is where a gesture is taught, and the row
+			// costs nothing). Everything before " · 1-4 answers an ask" is
+			// the hand-transcribed pre-move literal.
+			"exit    leave the session\nkeys    enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead · @ files · 1-4 answers an ask",
 		]);
 	});
 
