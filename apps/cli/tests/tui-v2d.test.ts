@@ -224,7 +224,12 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// spinner IS the gutter).
 		expect(clean).toContain("shell needs approval"); // the shell panel's rule line
 		expect(clean).toContain("asky_read needs approval"); // the asky panel's rule line
-		expect(clean).toMatch(/[▖▘▝▗] shell \{"command":"sleep 1; echo hi"\} \d+s/); // the running shell — the spinner IS the gutter
+		// MOVED (R1.5 slice ④, the running-header class — DECLARED THIS
+		// ROUND): the running header used to print a 60-char slice of the
+		// call's JSON while the done card printed the plain command
+		// (VD-4). One formatter now, and the duration is its own trailing
+		// segment rather than a bare "Ns" welded to the text.
+		expect(clean).toMatch(/[▖▘▝▗] shell sleep 1; echo hi · \d+s/); // the running shell — the spinner IS the gutter
 		// A4: the target rides the settled head row (list_dir's input is {}
 		// → the "(root)" fallback); A5: the decider is NAMED on the rows
 		// that auto-approve (the extension's ask lost to the tier's allow).

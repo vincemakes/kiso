@@ -210,8 +210,10 @@ function finalGrid(hex: string, cols: number): string[] {
 function shellBody(grid: string[]): string[] {
 	const h = grid.findIndex((l) => l.includes("✓ shell"));
 	expect(h).toBeGreaterThanOrEqual(0);
+	// R1.5 ④: a settled shell has NO body rows at all, so "none" is a legal
+	// answer here now — the helper reports what it finds.
 	const start = grid.findIndex((l, i) => i > h && (l.startsWith("│ ") || l.startsWith("└ ")));
-	expect(start).toBeGreaterThanOrEqual(0);
+	if (start < 0) return [];
 	const body: string[] = [];
 	for (let i = start; i < grid.length; i += 1) {
 		if (grid[i]!.startsWith("│ ") || grid[i]!.startsWith("└ ")) body.push(grid[i]!);
@@ -221,19 +223,21 @@ function shellBody(grid: string[]): string[] {
 }
 
 describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
-	it("W7 at 60 cols: the settled shell tail caps at 5 POST-FOLD screen rows (+10 — the CJK line folds), the tool cut is named, the CJK wide-char line survives the fold", () => {
+	// MOVED (R1.5 slice 4, the settled-shell-body class — DECLARED THIS
+	// ROUND): W7's five-row cap on the settled shell tail is retired with
+	// the tail itself (VD-5). What the case pins now is the limit: the
+	// settled shell owns ZERO body rows at either width, and the CJK line
+	// it was guarding is behind ctrl+r rather than on the screen. The
+	// read_file cut note, the ALIVE check and the wide-char fold at the
+	// narrow winch are untouched — they were never about the shell.
+	it("R1.5 4 at 60 cols: the settled shell owns NO body rows; the tool's own cut note still reaches the human", () => {
 		const { hex, alive } = runFlow(60);
 		expect(alive).toBe("ALIVE"); // the R2 crash class (a ≤100 thinking at a narrow winch) survives
 		const grid = finalGrid(hex, 60);
-		const body = shellBody(grid);
-		// the cap: 4 tail rows + the renderer cut = 5, the cut row INSIDE the cap
-		expect(body.length).toBeLessThanOrEqual(5);
-		expect(body.at(-1) ?? "").toContain("└ +10 earlier rows · ctrl+r");
-		// the tail is the tail: the LAST output line is on screen
-		expect(grid.join("")).toContain("12");
-		// the CJK wide-char line (\u4f60×35 = 70 cells) folded — never split —
-		// and its continuation row is visible
-		expect(grid.join("")).toContain("\u4f60");
+		expect(grid.findIndex((l) => l.includes("\u2713 shell"))).toBeGreaterThanOrEqual(0);
+		// the shell's OUTPUT is behind the key: no tail rows, no cut row
+		expect(grid.join("")).not.toContain("earlier rows");
+		expect(grid.join("\n")).not.toMatch(/^\u2502 (seq|1[012])/m);
 		// the tool's OWN cut is named (W10) — the read's offset note reaches
 		// the human, never only the model
 		expect(grid.join("")).toContain("└ capped by read_file · offset=201 for the rest");
@@ -242,14 +246,13 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		expect(grid[readIdx + 1]).toContain("└ capped by read_file");
 	}, 60_000);
 
-	it("W7 at 120 cols: the same scenario — the caps hold at the wide width too, the cut count reflects the wider fold (+9 — no CJK fold)", () => {
+	it("R1.5 4 at 120 cols: the same, at the wide width — no body rows, no cut row", () => {
 		const { hex, alive } = runFlow(120);
 		expect(alive).toBe("ALIVE");
 		const grid = finalGrid(hex, 120);
-		const body = shellBody(grid);
-		expect(body.length).toBeLessThanOrEqual(5);
-		expect(body.at(-1) ?? "").toContain("└ +9 earlier rows · ctrl+r");
-		expect(grid.join("")).toContain("\u4f60");
+		expect(grid.findIndex((l) => l.includes("✓ shell"))).toBeGreaterThanOrEqual(0);
+		expect(grid.join("")).not.toContain("earlier rows");
+		expect(grid.join("\n")).not.toMatch(/^│ (seq|1[012])/m);
 		expect(grid.join("")).toContain("└ capped by read_file · offset=201 for the rest");
 	}, 60_000);
 

@@ -139,7 +139,13 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// fact (the head says how much is hidden, the cut says where the
 		// visible tail begins). Both still emit exactly once: the
 		// committed rows are never re-emitted after the freeze.
-		expect(clean.match(/ctrl\+r/g) ?? []).toHaveLength(2);
+		// MOVED (R1.5 slice ④, the settled-shell-body class — DECLARED THIS
+		// ROUND): there is no block cut any more, because there is no
+		// settled block (VD-5). ONE affordance for one cell, on the head
+		// row — which is what "one grammar, stated once per card" asked
+		// for. The "emits exactly once" property the case exists to pin is
+		// unchanged and is what the count still measures.
+		expect(clean.match(/ctrl\+r/g) ?? []).toHaveLength(1);
 		// the REAL count, at the tier this row's width affords: the bypass
 		// tier's `· approved by mode:bypass` takes the room the full form
 		// would have needed, so the terse tier lands — the count survives,

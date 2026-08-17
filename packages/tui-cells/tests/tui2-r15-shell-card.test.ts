@@ -101,7 +101,10 @@ describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)",
 		const rows = render(shellCell({ resultText: "step 1 · compiling module 1 of 6" }));
 		const body = rows.slice(1);
 		expect(body[0]).toContain("step 1 · compiling module 1 of 6");
-		expect(body.filter((r) => r.trim() === "│")).toHaveLength(0);
+		// the W8 fixed-window pad still holds the block's height — it just
+		// sits BELOW the output now instead of above it
+		expect(body).toHaveLength(3);
+		expect(body[1]!.trim()).toBe("│");
 	});
 
 	it("LEADING empty output lines are skipped — the sidecar's own blanks", () => {
@@ -117,21 +120,30 @@ describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)",
 });
 
 describe("TUI2-R1.5 ④(c) — the completed shell collapses to ONE line (VD-5)", () => {
+	/** A SHORT command, so the row has room for the full suffix grammar —
+	 *  the tiered degradation on a wide command is R1's own design and has
+	 *  its own case below. */
 	const done = (over: Partial<Extract<BodyCell, { kind: "tool" }>> = {}) =>
 		shellCell({
+			command: "npm test",
 			state: "done",
 			done: true,
 			doneAt: 14_000,
-			resultText: "exit 0\nstep 1\nstep 2\nstep 3\nstep 4\nstep 5\nstep 6\nbuild done",
+			resultText: "step 1\nstep 2\nstep 3\nstep 4\nstep 5\nstep 6\nbuild done",
 			...over,
-		});
+		} as Partial<Extract<BodyCell, { kind: "tool" }>>);
 
 	it("the settled card is ONE row: the head plus the suffix", () => {
 		const rows = render(done());
 		expect(rows).toHaveLength(1);
-		expect(rows[0]).toContain("✓ shell");
-		expect(rows[0]).toContain("ctrl+r expands");
+		expect(rows[0]).toBe("✓ shell npm test (exit 0, 6.0s) · 7 lines · ctrl+r expands");
 		// the tail rows and the "earlier rows" cut are gone
+		expect(rows[0]).not.toContain("earlier rows");
+	});
+
+	it("a WIDE command still collapses to one row — the suffix degrades, the tail never returns", () => {
+		const rows = render(shellCell({ state: "done", done: true, doneAt: 14_000, resultText: "a\nb\nc\nd\ne\nf\ng" }));
+		expect(rows).toHaveLength(1);
 		expect(rows[0]).not.toContain("earlier rows");
 	});
 
@@ -148,10 +160,15 @@ describe("TUI2-R1.5 ④(c) — the completed shell collapses to ONE line (VD-5)"
 		expect(rows[rows.length - 1]).toContain("ctrl+r collapses");
 	});
 
-	it("a SHORT shell whose output hides nothing carries no suffix at all", () => {
-		const rows = render(done({ resultText: "exit 0\ndone" }));
+	it("a shell that produced NO output hides nothing and carries no suffix", () => {
+		const rows = render(done({ resultText: "" }));
 		expect(rows).toHaveLength(1);
 		expect(rows[0]).not.toContain("ctrl+r");
+	});
+
+	it("a SHORT shell now says so too — four hidden lines used to claim nothing", () => {
+		const row = render(done({ resultText: "one\ntwo\nthree" }))[0]!;
+		expect(row).toContain("· 3 lines · ctrl+r expands");
 	});
 
 	it("a FAILED shell still shows its error body — the collapse never hides a failure", () => {

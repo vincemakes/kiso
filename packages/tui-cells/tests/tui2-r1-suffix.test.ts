@@ -87,20 +87,30 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		expect(rows[0]).toBe("✓ shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r expands");
 	});
 
-	it("a NON-truncated cell carries NO suffix — the shell whose whole tail is already on screen", () => {
+	// MOVED (R1.5 slice ④, the settled-shell-body class — DECLARED THIS
+	// ROUND): the premise "the shell whose whole tail is already on
+	// screen" no longer exists. VD-5 collapses a settled shell to its head
+	// row, so a one-line output is hidden exactly like every other settled
+	// call's, and the rule the case really pins — nothing hidden, no
+	// suffix — is now carried by the empty result.
+	it("a cell that hides NOTHING carries NO suffix — the empty result", () => {
 		setTTY(false);
 		const rows = render(
 			toolCell({
 				name: "shell",
 				input: "echo hi",
 				inputFull: JSON.stringify({ command: "echo hi" }),
-				resultText: "hi",
+				resultText: "",
 			}),
 		);
 		expect(rows[0]).toBe("✓ shell echo hi (exit 0, 2.4s)");
 		expect(rows.join("\n")).not.toContain("ctrl+r");
-		// an empty result hides nothing either
+		// an empty result hides nothing for any tool
 		expect(render(toolCell({ resultText: "" }))[0]).toBe("✓ read  src/parser.ts (0 lines, 2.4s)");
+		// …and a shell WITH output now says so, where it used to stay silent
+		expect(render(toolCell({ name: "shell", input: "echo hi", inputFull: JSON.stringify({ command: "echo hi" }), resultText: "hi" }))[0]).toBe(
+			"✓ shell echo hi (exit 0, 2.4s) · 1 line · ctrl+r expands",
+		);
 	});
 
 	it("the suffix takes the width that is LEFT — full, then terse, then absent (the prototype's three forms)", () => {

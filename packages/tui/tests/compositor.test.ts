@@ -388,11 +388,15 @@ describe("TUI v6 — the one compositor", () => {
 
 	// ---- TUI v7 — the flow contract (W7, W8, W10; the work order §4) ----
 
-	it("W7: the settled shell tail caps at 5 screen rows POST-FOLD — the renderer cut inside the cap, counted in FOLDED rows (60 vs 120)", () => {
-		// 30 lines of 66 chars: at W=120 each line folds to 1 row (30 rows →
-		// the cut "+26"); at W=60 each folds to 2 (60 rows → the cut "+56") —
-		// the cap counts SCREEN rows, never source entries. The RED state was
-		// the measured bug: the 60-entry diff folded to 73 rows at W≤80.
+	// MOVED (R1.5 slice ④, the settled-shell-body class — DECLARED THIS
+	// ROUND): W7's five-row cap on the SETTLED shell tail is retired
+	// because the settled tail is. VD-5: a completed shell kept its last
+	// rows plus "+N earlier rows · ctrl+r" for the rest of the session, so
+	// three shells owned a screen. The cap's real subject — a settled
+	// shell must never own more than a bounded number of rows — is now
+	// pinned at its limit: ONE row, at every width. The whole output is
+	// behind ctrl+r, and the head row says how much.
+	it("R1.5 ④: the settled shell owns exactly ONE row at every width — the tail is behind the key", () => {
 		const output = Array.from({ length: 30 }, (_, i) => `shell line ${String(i).padStart(2, "0")} ` + "x".repeat(52)).join("\n");
 		for (const W of [120, 60]) {
 			const { body, writes, tick } = makeBody({ W });
@@ -402,13 +406,11 @@ describe("TUI v6 — the one compositor", () => {
 			body.toolResult("c1", { content: output, isError: false });
 			tick();
 			const frame = writes.join("");
-			// the tail + the cut row inside the cap (the cut row counts)
-			const cut = frame.match(/└ \+(\d+) earlier rows · ctrl\+r/);
-			expect(cut).not.toBeNull();
-			expect(Number(cut![1]!)).toBe(W === 120 ? 26 : 56);
-			expect(matchBodyWalls(frame).length + 1).toBeLessThanOrEqual(5);
-			// the tail survives: the LAST output line is on screen
-			expect(frame).toContain("shell line 29");
+			expect(frame, `W=${W}`).not.toContain("earlier rows");
+			expect(matchBodyWalls(frame), `W=${W}`).toHaveLength(0);
+			// the head row names what it is holding, and the key that shows it
+			expect(frame, `W=${W}`).toContain("ctrl+r");
+			expect(frame, `W=${W}`).not.toContain("shell line 29");
 		}
 	});
 

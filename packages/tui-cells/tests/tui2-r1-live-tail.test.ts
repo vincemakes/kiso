@@ -54,17 +54,26 @@ function running(over: Partial<Extract<BodyCell, { kind: "tool" }>> = {}): BodyC
 
 const render = (cell: BodyCell, W = 80): string[] => cellComponent(cell).render(W, CTX);
 
+// MOVED (R1.5 slice 4, the running-header class — DECLARED THIS ROUND):
+// four assertions in this file move. Two causes, both VD-4:
+//  (a) the running header now uses the SAME formatter as the done card
+//      and carries its duration as its own trailing " . Ns" segment
+//      rather than a bare "Ns" welded to the header text;
+//  (b) the W8 fixed-window pad moved from the TOP of the tail to the
+//      BOTTOM, so a command's first line is never printed under an empty
+//      gutter row. The window height is unchanged — W8 still holds, and
+//      its own test in this file passes untouched.
 describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 	it("no output yet: the shape is exactly today's — nothing observed, nothing claimed", () => {
 		setTTY(false);
-		expect(render(running())).toEqual(["▖ shell npm test 12s", "│ ", "│ ", "└ waiting for output"]);
+		expect(render(running())).toEqual(["▖ shell npm test · 12s", "│ ", "│ ", "└ waiting for output"]);
 	});
 
 	it("output observed: the LAST lines ride the block, the footer names the state and the two gestures", () => {
 		setTTY(false);
 		const rows = render(running({ resultText: "packages/runtime  ✓ 184 tests\npackages/tui      ⠸ 88/120" }));
 		expect(rows).toEqual([
-			"▖ shell npm test 12s",
+			"▖ shell npm test · 12s",
 			"│ packages/runtime  ✓ 184 tests",
 			"│ packages/tui      ⠸ 88/120",
 			"└ live tail · esc stop · alt+⏎ redirect",
@@ -93,15 +102,17 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 	it("the tail is DIM — the running content is context, never the message", () => {
 		setTTY(true);
 		const rows = render(running({ resultText: "building…" }));
-		expect(rows[1]).toBe("\x1b[2m│ \x1b[0m");
-		expect(rows[2]).toBe("\x1b[2m│ building…\x1b[0m");
+		// the pad is BELOW the output now (VD-4(b)) — the first tail row
+		// carries the command's first line, never an empty gutter
+		expect(rows[1]).toBe("\x1b[2m│ building…\x1b[0m");
+		expect(rows[2]).toBe("\x1b[2m│ \x1b[0m");
 		expect(rows[3]).toBe("\x1b[2m└ live tail · esc stop · alt+⏎ redirect\x1b[0m");
 	});
 
 	it("a NON-shell running tool keeps liveWindow byte for byte — the tail is the shell's alone", () => {
 		setTTY(false);
 		const rows = render(running({ name: "read_file", input: "big.txt", inputFull: JSON.stringify({ path: "big.txt" }) }));
-		expect(rows).toEqual(["▖ read  big.txt 12s", "│ ", "│ ", "└ waiting for output"]);
+		expect(rows).toEqual(["▖ read  big.txt · 12s", "│ ", "│ ", "└ waiting for output"]);
 	});
 
 	it("COMPLETION collapses to one line — the tail is gone, A's suffix names what it hid", () => {

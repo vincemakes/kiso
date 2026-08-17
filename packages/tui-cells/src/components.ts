@@ -460,6 +460,22 @@ function settledMeta(c: { name: string; input: string; resultText: string; added
  *  read/write/edit → the path, shell → the command, list_dir → path ??
  *  "(root)". Parsed from the FULL input — the folded summary is a
  *  truncated slice. */
+/** TUI2-R1.5 ④(a) (VD-4) — the header text for a cell that has NOT
+ *  settled yet (queued, awaiting approval, running).
+ *
+ *  These three states printed `c.input`: a 60-char slice of the call's
+ *  JSON, escapes and all. The done card printed the plain command
+ *  through toolTarget, so the SAME call read as
+ *  `shell {"command":"for i in 1 2 3 4 5 6; do echo \"step $i · compil`
+ *  while it ran and as `shell for i in 1 2 3 4 5 6; …` a second later.
+ *  One formatter now, for every state. A cell whose full input somehow
+ *  will not parse keeps the old slice — the header always says
+ *  something. */
+function liveTarget(c: Extract<BodyCell, { kind: "tool" }>): string {
+	const target = toolTargetOf(c);
+	return escapeTerminal(target === "?" ? c.input : target);
+}
+
 function toolTargetOf(c: Extract<BodyCell, { kind: "tool" }>): string {
 	let input: Record<string, unknown> = {};
 	try {
@@ -498,7 +514,6 @@ class ToolExecution implements Component {
 		const c = this.cell;
 		const verb = escapeTerminal(c.name.replace("_file", ""));
 		const verbCol = verb.length < 5 ? `${verb}${" ".repeat(5 - verb.length)}` : verb;
-		const summary = escapeTerminal(c.input);
 		const parts = c.rolled?.parts;
 		if (c.rolled !== null && parts !== undefined) {
 			// TUI2-R1 (B) — the exploration row: a run that spans more than
@@ -551,34 +566,49 @@ class ToolExecution implements Component {
 			// A5: an extension's auto-approval appends `· approved by
 			// <decidedBy>` — the "why wasn't I asked" answer; the human
 			// approval (no decidedBy) leaves the row unchanged.
-			const approvedBy = c.verdict !== null && c.verdict.decidedBy !== undefined ? ` · approved by ${escapeTerminal(c.verdict.decidedBy)}` : "";
+			const approvedBy = attribution(c);
+			// TUI2-R1 (A): the card names its own key — the suffix rides the
+			// settled head row.
+			// TUI2-R1.5 ④(c): the suffix is now RESERVED rather than given
+			// the leftovers. It used to take the width that happened to be
+			// left, so a long command spent it all and the row said nothing
+			// about the seven lines behind the key — tolerable while the
+			// body was on screen, a silence now that the body is not. The
+			// command is the cuttable span (the approval panel's option-2
+			// rule name is the same idea); the affordance is the semantics.
 			const out = c.isError
 				? gutterCut(`${p.red}✗${p.reset} `, `${p.red}${verbCol} ${escapeTerminal(toolTargetOf(c))} (${meta}${approvedBy}, ${elapsed}s)${p.reset}`, W)
 				: gutterCut(`${p.bold}✓${p.reset} `, `${verbCol} ${escapeTerminal(toolTargetOf(c))} (${meta}${approvedBy}, ${elapsed}s)`, W);
-			// TUI2-R1 (A): the card names its own key — the suffix rides the
-			// settled head row, in the width that is LEFT (appendSuffix).
 			out[0] = appendSuffix(out[0]!, expandSuffix(hiddenLines(c, W), W - visibleWidth(out[0]!)));
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
 		if (c.state === "approval") {
 			// W2: the ⏸ is the GUTTER (the left edge), never the line's tail
-			const out = gutterCut(`${p.bold}⏸${p.reset} `, `${verbCol} ${summary}`, W);
+			const out = gutterCut(`${p.bold}⏸${p.reset} `, `${verbCol} ${liveTarget(c)}`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
 		if (c.state === "running") {
 			// W2: the spinner IS the gutter (the left edge); the elapsed
-			// rides the summary's tail
+			// rides the summary's tail.
+			// TUI2-R1.5 ④(a) (VD-4): the duration is its OWN trailing segment.
+			// It used to be concatenated into the text BEFORE the cut, so a
+			// header wider than the row lost it entirely or, worse, kept it
+			// welded to the last surviving characters of a cut word
+			// ("compil 1s"). The head is cut against the room the duration
+			// leaves; the duration then rides the row, always legible.
 			const elapsed = c.startedAt !== null ? Math.max(1, Math.round((ctx.now - c.startedAt) / 1000)) : 1;
-			const out = gutterCut(`${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} `, `${verbCol} ${summary} ${elapsed}s`, W);
+			const dur = ` · ${elapsed}s`;
+			const out = gutterCut(`${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} `, `${verbCol} ${liveTarget(c)}`, Math.max(4, W - dur.length));
+			out[0] = `${out[0]!}${p.dim}${dur}${p.reset}`;
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
 		// W2: ◦ replaces → for QUEUED — · is the separator inside every
 		// metadata group; a queued marker that is also the separator
 		// glyph reads as noise
-		return gutterCut(`${p.dim}◦${p.reset} `, `${verbCol} ${summary}`, W);
+		return gutterCut(`${p.dim}◦${p.reset} `, `${verbCol} ${liveTarget(c)}`, W);
 	}
 }
 
@@ -607,10 +637,12 @@ function hiddenLines(c: Extract<BodyCell, { kind: "tool" }>, W: number): number 
 	const n = countLines(c.resultText);
 	if (n === 0) return null;
 	if (c.isError) return null; // errorBody's own cut row is the affordance there
-	if (c.name.startsWith("shell")) {
-		// the settled tail shows the LAST rows; below the cap nothing is hidden
-		return blockRows(c.resultText, W).length > CAP_SHELL_SETTLED ? n : null;
-	}
+	// TUI2-R1.5 ④(c) (VD-5): a settled shell renders NO body, so its whole
+	// output is behind the key exactly like every other settled call. The
+	// retired branch only claimed a suffix once the output passed the
+	// five-row cap, because below that the tail was on screen; there is no
+	// tail now, and a card hiding four lines while saying nothing is the
+	// silence TUI2-R1 (A) set out to remove.
 	return n; // every other settled call renders NO body — all of it is behind the key
 }
 
@@ -624,6 +656,11 @@ function hiddenLines(c: Extract<BodyCell, { kind: "tool" }>, W: number): number 
  * exists to name (invariant ① holds by construction: the tier is chosen
  * against the room the row actually has).
  */
+/** A5 — the "why wasn't I asked" answer on a settled head row. */
+function attribution(c: Extract<BodyCell, { kind: "tool" }>): string {
+	return c.verdict !== null && c.verdict.decidedBy !== undefined ? ` · approved by ${escapeTerminal(c.verdict.decidedBy)}` : "";
+}
+
 export function expandSuffix(lines: number | null, room: number): string {
 	if (lines === null) return "";
 	const count = `${lines} line${lines === 1 ? "" : "s"}`;
@@ -831,9 +868,15 @@ function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): strin
 					? errorBody(c, W)
 					: c.name === "delegate"
 						? delegateSettled(c, W)
-						: c.name.startsWith("shell")
-							? shellTail(c.resultText, W)
-							: []
+						: // TUI2-R1.5 ④(c) (VD-5): a settled shell collapses like
+							// every other settled call. It used to keep its last
+							// rows plus a "+N earlier rows · ctrl+r" cut FOREVER —
+							// six rows per call, so three shells owned a screen. The
+							// approved R1 prototype's state 2 is one line; the head
+							// row's own suffix already names the count and the key,
+							// and ctrl+r shows the whole block, not a five-row window
+							// of it.
+							[]
 				: c.state === "running"
 					? c.name === "delegate"
 						? delegateRunning(c, W)
@@ -940,9 +983,24 @@ function liveWindow(text: string, W: number): string[] {
 function shellLiveTail(text: string, W: number): string[] {
 	if (text === "") return liveWindow("", W);
 	const p = palette();
-	const rows = blockRows(text, W);
+	// TUI2-R1.5 ④(b) (VD-4): the tail's first row is never a blank gutter.
+	// Two sources, both fixed here, and the W8 fixed-window height is kept
+	// by both fixes:
+	//  - leading empty lines in the sidecar (a 4096-byte tail can begin on
+	//    a line boundary, and the reader's .trimEnd only trims the other
+	//    end) are skipped;
+	//  - the short-output pad moved from the TOP to the BOTTOM. It exists
+	//    so the block's height never changes while the command runs (W8);
+	//    at the top it put an empty row above the command's very first
+	//    line, which is the frame the walkthrough filed. At the bottom the
+	//    output starts under its own header and grows downward, and the
+	//    height is just as fixed.
+	const all = blockRows(text, W);
+	const from = all.findIndex((r) => visibleWidth(r) > visibleWidth(BODY_ROW));
+	const rows = from < 0 ? [] : all.slice(from);
+	if (rows.length === 0) return liveWindow("", W);
 	const kept = rows.slice(Math.max(0, rows.length - (CAP_LIVE_WINDOW - 1)));
-	while (kept.length < CAP_LIVE_WINDOW - 1) kept.unshift(`${p.dim}${BODY_ROW}${p.reset}`);
+	while (kept.length < CAP_LIVE_WINDOW - 1) kept.push(`${p.dim}${BODY_ROW}${p.reset}`);
 	return [...kept, cutLine(`${p.dim}${CUT_ROW}live tail · esc stop · alt+⏎ redirect${p.reset}`, W)];
 }
 
