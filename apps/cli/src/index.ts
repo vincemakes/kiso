@@ -27,7 +27,7 @@ import { readFileSync, realpathSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { Body, Editor, bannerLines, escapeTerminal, interactivePrompt, palette, renderSessionLine, type ResumeMeta } from "@vincemakes/kiso-tui";
+import { Body, Editor, bannerLines, escapeTerminal, extensionsBannerText, interactivePrompt, palette, renderSessionLine, type ResumeMeta } from "@vincemakes/kiso-tui";
 import {
 	createAgent,
 	disposeExtensions,
@@ -42,7 +42,7 @@ import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
 import { builtInLayer } from "./builtin.js";
 import { atFiles, body, bodyLog, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, userExtensions, VERSION, type LineInput } from "./state.js";
-import { resolveProjectTrust } from "./trust-ui.js";
+import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { autoCompactFromEnv, chat, contextWindowTokens } from "./chat.js";
@@ -220,17 +220,11 @@ function makeLineInput(): LineInput {
  *  a fresh install reads `[3 extensions: built-in: mcp, skills, subagent]`
  *  with zero disk setup (E5: the task extension is opt-in). */
 function bannerExtensionText(): string {
-	const total = builtInExtensions.length + userExtensions.length + projectExtensions.length;
-	if (total === 0) return "";
-	const parts: string[] = [];
-	// 0.1.26 (MCP lazy connection): an extension with a live `connecting` flag shows
-	// its in-flight state in the banner — "mcp (connecting…)".
-	const label = (e: { name: string; connecting?: boolean }): string =>
-		e.connecting === true ? `${e.name} (connecting…)` : e.name;
-	if (builtInExtensions.length > 0) parts.push(`built-in: ${builtInExtensions.map(label).join(", ")}`);
-	if (userExtensions.length > 0) parts.push(userExtensions.map(label).join(", "));
-	if (projectExtensions.length > 0) parts.push(`project: ${projectExtensions.map(label).join(", ")}`);
-	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
+	// KC3.5 slice ⓪ (the extraction): the composition moved to the
+	// terminal layer (extensionsBannerText — a pure function of the three
+	// name lists, including the "(connecting…)" in-flight label). Which
+	// lists exist is the CLI's fact and stays here.
+	return extensionsBannerText(builtInExtensions, userExtensions, projectExtensions);
 }
 
 /** E1: the startup banner line(s) — TTY: logo + merged extensions + the
@@ -389,7 +383,11 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 	const proj = project !== null ? await loadProjectExtensions(process.cwd(), user) : [];
 	// R-D 0.1.45: the built-in layer registers by module import (builtin.ts)
 	// — a user extension may shadow a built-in, a project one may not.
-	const builtIn = await builtInLayer(user, proj);
+	// KC3.5: built-in #4 (ask) registers ONLY where a human can answer —
+	// the panel bridge is the argument, and a non-TTY session has none to
+	// give. A piped run's composed tool table therefore cannot contain
+	// ask_user (T-Q3: the bench's structural byte-identity proof).
+	const builtIn = await builtInLayer(user, proj, input !== undefined && process.stdin.isTTY ? askUi(input) : undefined);
 	setExtensionLists(builtIn, user, proj, [...builtIn, ...user, ...proj]);
 
 	// merge round B — the config surface: user config + (trusted) project config,

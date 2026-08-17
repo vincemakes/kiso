@@ -133,7 +133,7 @@ describe("E3: the project trust gate (project-trust)", () => {
 		expect(out).toMatch(/extensions\/lint-rules\.mjs\s+\([0-9a-f]{6}\)/); // file name + digest short prefix
 		// R-D 0.1.45: the built-in column + the trusted project column —
 		// loaded and counted as project (76 chars — fits the 80-col pty).
-		expect(out).toContain("[4 extensions: built-in: mcp, skills, subagent · project: lint-rules]");
+		expect(out).toContain("[5 extensions: built-in: mcp, skills, subagent, ask · project: lint-rules]");
 		const lines = trustLines(dirs.home);
 		expect(lines).toHaveLength(1);
 		expect(lines[0]!.decision).toBe("granted");
@@ -152,7 +152,7 @@ describe("E3: the project trust gate (project-trust)", () => {
 		expect(out).toContain("trust this project's .kiso?");
 		// R-D 0.1.45: ONLY the built-in column (the exact 4-only form proves
 		// the refused project added nothing).
-		expect(out).toContain("[3 extensions: built-in: mcp, skills, subagent]");
+		expect(out).toContain("[4 extensions: built-in: mcp, skills, subagent, ask]");
 		const lines = trustLines(dirs.home);
 		expect(lines).toHaveLength(1);
 		expect(lines[0]!.decision).toBe("refused");
@@ -167,7 +167,7 @@ describe("E3: the project trust gate (project-trust)", () => {
 		]);
 		const out = ptyRun(env, cwd, [["▌ ", "\r"]]); // no trust answer available
 		expect(out).not.toContain("trust this project's .kiso?");
-		expect(out).toContain("[4 extensions: built-in: mcp, skills, subagent · project: lint-rules]");
+		expect(out).toContain("[5 extensions: built-in: mcp, skills, subagent, ask · project: lint-rules]");
 		expect(trustLines(dirs.home)).toHaveLength(1); // no new record
 	});
 
@@ -184,7 +184,7 @@ describe("E3: the project trust gate (project-trust)", () => {
 			["▌ ", "\r"],
 		]);
 		expect(out).toContain("trust this project's .kiso?"); // re-asked — the old grant died with the files
-		expect(out).toContain("[4 extensions: built-in: mcp, skills, subagent · project: lint-rules]");
+		expect(out).toContain("[5 extensions: built-in: mcp, skills, subagent, ask · project: lint-rules]");
 		const lines = trustLines(dirs.home);
 		expect(lines).toHaveLength(2); // the old grant + the new one
 		expect(lines[0]!.digest).not.toBe(lines[1]!.digest);

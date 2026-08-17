@@ -4,7 +4,7 @@
  * the context (the chain, the run state, the prompt arming).
  */
 
-import { escapeTerminal, kUnit, palette } from "@vincemakes/kiso-tui";
+import { escapeTerminal, helpRows, kUnit, palette } from "@vincemakes/kiso-tui";
 import { buildAdapter } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, getMode, setMode } from "./mode.js";
@@ -35,24 +35,15 @@ export interface DispatchCtx {
 export function dispatch(line: string, ctx: DispatchCtx): void {
 	const trimmed = line.trim();
 	if (trimmed === "/help") {
-		// Prints the available commands with one-line descriptions.
-		// v2a: the command names are the blue identity accent.
-		const p = palette();
-		const cmd = (name: string, desc: string): string => `${p.bold}${name}${p.reset}    ${desc}`;
+		// KC3.5 slice ⓪ (the extraction): the ROWS moved to the terminal
+		// layer's strings module (helpRows — the KC3 §1 pattern: what the
+		// human reads is presentation). The FLOW is what stays here, and
+		// it is unchanged: print on the chain, then re-prompt. The rows
+		// are byte-identical to the eight bodyLog calls they replace —
+		// the last one still carries its own \n, so `exit` and `keys`
+		// land as two rows from one call (bodyLog splits on \n).
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
-			bodyLog(cmd("/help", "print this list of commands"));
-			bodyLog(cmd("/think", "show the last full thinking block"));
-			bodyLog(cmd("/last", "show the most recent tool call's input and output"));
-			bodyLog(cmd("/status", "show session id, event count, and context estimate"));
-			bodyLog(cmd("/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"));
-			bodyLog(cmd("/model", "list model profiles; /model <name|provider/model> switches"));
-			bodyLog(cmd("/compact", "summarize the older conversation to free context"));
-			// KC1: the composer's keys ride the SAME bodyLog call (it splits
-			// on \n) — the help gains a row, the cli source does not.
-			// KC2: the redirect joins the same row for the same reason.
-			// KC3: and so does the @ picker — the row is where a gesture is
-			// taught, and the row costs nothing.
-			bodyLog(`${cmd("exit", "leave the session")}\n${cmd("keys", "enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead · @ files")}`);
+			for (const row of helpRows()) bodyLog(row);
 			ctx.input.prompt();
 		});
 		return;

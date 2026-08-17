@@ -24,13 +24,19 @@
 import createMcp from "@vincemakes/kiso-mcp-ext";
 import createSkills from "@vincemakes/kiso-skills-ext";
 import createSubagent from "@vincemakes/kiso-subagent-ext";
+import createAsk, { type AskUI } from "@vincemakes/kiso-ask-ext";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
 
 export async function builtInLayer(
 	user: readonly KisoExtension[],
 	project: readonly KisoExtension[],
+	/** KC3.5: built-in #4 — the ask extension, loaded ONLY when a panel
+	 *  bridge exists (an interactive TTY). No bridge, no fourth built-in:
+	 *  a headless session never pays the rent for a question nobody could
+	 *  answer, and its tool table cannot mention ask_user. */
+	ask?: AskUI,
 ): Promise<readonly KisoExtension[]> {
-	const all = await Promise.all([createMcp(), createSkills(), createSubagent()]);
+	const all = await Promise.all([createMcp(), createSkills(), createSubagent(), ...(ask === undefined ? [] : [createAsk(ask)])]);
 	const shadowed = all.filter((b) => user.some((u) => u.name === b.name));
 	for (const s of shadowed) {
 		console.error(`[extensions] user extension "${s.name}" shadows the built-in — the built-in is not loaded`);

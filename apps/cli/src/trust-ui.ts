@@ -10,7 +10,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkS
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, type PanelVerdict, type PanelView } from "@vincemakes/kiso-tui";
+import { askDeclineAll, askView, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, unansweredAskView, type AskResult, type AskSpec, type PanelVerdict, type PanelView } from "@vincemakes/kiso-tui";
+import type { AskUI } from "@vincemakes/kiso-ask-ext";
 import { projectArtifacts, recordTrust, trustFor, type ProjectArtifacts } from "@vincemakes/kiso-runtime";
 import type { AgentSession, KisoExtension } from "@vincemakes/kiso-runtime";
 import { bodyLog, currentAgentExtensions, dock, extensionsDir, kisoHome, mergedTempPaths, type LineInput } from "./state.js";
@@ -80,6 +81,32 @@ export function askPanel(input: LineInput, view: PanelView): Promise<PanelVerdic
 			});
 		}
 	});
+}
+
+/**
+ * KC3.5 — the AskUI bridge: the panel the ask extension asks through.
+ *
+ * It is deliberately three lines of GLUE. Everything an ask needs was
+ * already built for W21 and is reused whole: askPanel owns the
+ * abortable ask (the SIGINT/esc path resolves it), the non-interactive
+ * refusal (printed loudly, never hung) and the dock-less fallback; the
+ * editor owns the keys and the buffer stash; the tui owns the rows and
+ * the walk. What is left here is the mapping — the panel's `answers`
+ * verdict IS the tool's result, and EVERY other verdict is the decline,
+ * which is an honest recorded outcome naming what went unanswered.
+ *
+ * (A cancel, a non-interactive deny and a dock-less y/n all land in the
+ * same place on purpose: none of them is an answer to a multiple-choice
+ * question, and inventing one would be the dishonesty the whole round
+ * is built to avoid.)
+ */
+export function askUi(input: LineInput): AskUI {
+	return {
+		ask: async (spec: AskSpec): Promise<AskResult> => {
+			const verdict = await askPanel(input, askView(spec));
+			return verdict.action === "answers" ? verdict.result : askDeclineAll(spec);
+		},
+	};
 }
 
 /**
@@ -296,7 +323,12 @@ export async function resolveUncertains(
 	isCancelled: () => boolean,
 ): Promise<void> {
 	for (const uncertain of session.uncertainExecutions()) {
-		const verdict = await askPanel(input, uncertainView(uncertain.name, uncertain.executionId));
+		// KC3.5 §4: an interrupted ask_user is not a side effect that may
+		// have applied — it is a question nobody answered. The COPY says
+		// so; the mechanism is untouched (allow → the runtime's own rerun
+		// resolution, whose error-fill text this round never edits).
+		const view = uncertain.name === "ask_user" ? unansweredAskView(uncertain.executionId) : uncertainView(uncertain.name, uncertain.executionId);
+		const verdict = await askPanel(input, view);
 		if (isCancelled() || verdict.action === "cancel") {
 			// round 10: a cancellation NEVER records a verdict — the execution
 			// stays uncertain and durable; no rerun/abandoned is fabricated.

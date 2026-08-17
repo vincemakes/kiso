@@ -73,7 +73,7 @@ export {
 	type TrustArtifact,
 } from "./strings.js";
 // KC3.5: the interrupted-ask copy and the extracted /help table.
-export { helpRows, unansweredAskView } from "./strings.js";
+export { extensionsBannerText, helpRows, unansweredAskView, type BannerExtension } from "./strings.js";
 export {
 	bannerLines,
 	COLOR_OFF,

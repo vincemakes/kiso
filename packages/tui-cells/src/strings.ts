@@ -123,6 +123,41 @@ export function unansweredAskView(executionId: string): PanelView {
 	};
 }
 
+/** An extension as the banner names it — the live `connecting` flag is
+ *  the MCP bridge's in-flight state ("mcp (connecting…)"). Structural on
+ *  purpose: the runtime's KisoExtension satisfies it without this
+ *  package importing the runtime. */
+export interface BannerExtension {
+	readonly name: string;
+	readonly connecting?: boolean;
+}
+
+/**
+ * KC3.5 slice ⓪ (the extraction) — the `[N extensions: …]` banner text:
+ * the built-in column, then the user-level names, then the project-level
+ * ones marked `project:`.
+ *
+ * A pure function of three name lists, so what the banner SAYS is
+ * testable without a terminal — which matters this round, because the
+ * count is where the ask's TTY gate becomes visible: an interactive
+ * session reads `built-in: mcp, skills, subagent, ask` and a piped one
+ * reads `built-in: mcp, skills, subagent`, from this one composition.
+ */
+export function extensionsBannerText(
+	builtIn: readonly BannerExtension[],
+	user: readonly BannerExtension[],
+	project: readonly BannerExtension[],
+): string {
+	const total = builtIn.length + user.length + project.length;
+	if (total === 0) return "";
+	const label = (e: BannerExtension): string => (e.connecting === true ? `${e.name} (connecting…)` : e.name);
+	const parts: string[] = [];
+	if (builtIn.length > 0) parts.push(`built-in: ${builtIn.map(label).join(", ")}`);
+	if (user.length > 0) parts.push(user.map(label).join(", "));
+	if (project.length > 0) parts.push(`project: ${project.map(label).join(", ")}`);
+	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
+}
+
 /**
  * KC3.5 slice ⓪ (the extraction) — the /help command table.
  *
