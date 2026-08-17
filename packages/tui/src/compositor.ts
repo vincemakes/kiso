@@ -47,6 +47,14 @@ import { truncateDiff } from "./diff.js";
 import { displayWidth, type MenuItem } from "./editor.js";
 import { leadWidth } from "./width.js"; // W23: the ONE width authority (the editor, #inputRow, and editCol share it)
 import { panelAffordance, panelBlockRows, panelLead, panelStatus, type PanelState } from "./approval-panel.js";
+import { atPanelRows, type AtMatch } from "./at-picker.js";
+
+/** KC3 §4 — the @ picker's bound state (the editor's atState()). */
+export interface AtPanelState {
+	readonly matches: readonly AtMatch[];
+	readonly selected: number;
+	readonly capped: boolean;
+}
 import {
 	Container,
 	ROLLUP_NOUN,
@@ -192,6 +200,9 @@ export class Body {
 	#inputState: () => InputState = () => ({ line: "", cursor: 0 });
 	#inputPrompt = "";
 	#menuState: (() => { items: readonly MenuItem[]; selected: number } | null) | null = null;
+	// KC3 §4: the @ picker's bound state — the SAME band as the menu
+	// (see #menuRows: the two are mutually exclusive by construction).
+	#atState: (() => AtPanelState | null) | null = null;
 	// W22: the pending-turn queue's bound state — the CLI's live slots
 	// (chat.ts); the chips render in the menu-rows family (above the
 	// box top), the live caps shrink by their rows, and the status
@@ -217,6 +228,7 @@ export class Body {
 		if (dockBindings.state !== null) this.#inputState = dockBindings.state;
 		this.#inputPrompt = dockBindings.prompt;
 		if (dockBindings.menu !== null) this.#menuState = dockBindings.menu;
+		if (dockBindings.at !== null) this.#atState = dockBindings.at;
 		this.#panelState = dockBindings.panel;
 		if (dockBindings.queue !== null) this.#queueState = dockBindings.queue;
 	}
@@ -760,6 +772,13 @@ export class Body {
 		this.#menuState = state;
 	}
 
+	/** KC3 §4: bind the editor's @ file picker. It shares the menu's
+	 *  band — see #menuRows for why that is a decision and not a
+	 *  shortcut. */
+	bindAt(state: () => AtPanelState | null): void {
+		this.#atState = state;
+	}
+
 	/** Bind the pending-turn queue — the CLI's live slots (chat.ts):
 	 *  the chips render in the menu-rows family, the live caps shrink
 	 *  by their rows, and the +N queued hint rides the status row. */
@@ -1183,7 +1202,23 @@ export class Body {
 		return [...pendingQueueRows(lines.slice(0, keep), W), `${p.dim}□ …${hidden} more queued${p.reset}`];
 	}
 
+	/**
+	 * The band ABOVE the box top. Two occupants share it — the slash
+	 * menu and (KC3 §4) the @ file picker.
+	 *
+	 * Sharing is the design, not an economy. This band is already
+	 * counted in chromeRows, already shrinks the live content cap,
+	 * already redraws with the frame, and already clamps the composer's
+	 * visible rows; a picker with a band of its own would have to
+	 * re-derive every one of those and could disagree with any of them.
+	 * The two occupants are mutually exclusive BY CONSTRUCTION — the
+	 * editor's precedence gate keeps the picker shut whenever the menu
+	 * is open — so one function can own the band without either
+	 * occupant knowing the other exists.
+	 */
 	#menuRows(W: number): string[] {
+		const at = this.#atState?.() ?? null;
+		if (at !== null) return atPanelRows(at, W);
 		const menu = this.#menuState?.();
 		if (menu === null || menu === undefined || menu.items.length === 0) return [];
 		const p = palette();
@@ -1677,6 +1712,16 @@ export class Dock {
 		}
 		compositorRef.bindMenu(state);
 	}
+	/** KC3 §4: bind the editor's @ picker — the SAME band as the slash
+	 *  menu (see Body#menuRows). Unbound, the picker cannot render, and
+	 *  every frame is byte-identical to before the round. */
+	bindAt(state: () => AtPanelState | null): void {
+		if (compositorRef === null) {
+			dockBindings.at = state;
+			return;
+		}
+		compositorRef.bindAt(state);
+	}
 	/** W22: bind the pending-turn queue — the chips + the +N queued
 	 *  hint (the CLI binds it from chat(); the editor's pop keys ride
 	 *  the LineInput's own bindQueue). */
@@ -1708,6 +1753,7 @@ const dockBindings: {
 	state: (() => InputState) | null;
 	prompt: string;
 	menu: (() => { items: readonly MenuItem[]; selected: number } | null) | null;
+	at: (() => AtPanelState | null) | null;
 	panel: (() => PanelState | null) | null;
 	queue: (() => readonly string[]) | null;
-} = { state: null, prompt: "", menu: null, panel: null, queue: null };
+} = { state: null, prompt: "", menu: null, at: null, panel: null, queue: null };

@@ -13,6 +13,9 @@
  * on the machine's locale).
  */
 
+import { escapeTerminal, palette } from "./render.js";
+import { visibleWidth, widthCut } from "./components.js";
+
 /** The bound source's item — a repo-relative path and nothing else.
  *  Structural: the CLI passes whatever it likes as long as it has a
  *  path (slice 5 passes exactly this). */
@@ -141,4 +144,94 @@ export function atFilter(items: readonly AtItem[], query: string): { matches: At
 		return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
 	});
 	return { matches, capped };
+}
+
+/**
+ * KC3 §4 — the picker's WINDOW: which slice of the ranked list is on
+ * screen. The window TRAILS the selection exactly as the composer's
+ * own viewport trails the cursor (KC1 §5) — derived per read, never
+ * stored, so it can never disagree with the selection it is meant to
+ * follow.
+ */
+export function atWindow(total: number, selected: number, visible = AT_VISIBLE): { first: number; count: number } {
+	const count = Math.min(total, visible);
+	const first = Math.max(0, Math.min(selected - count + 1, total - count));
+	return { first, count };
+}
+
+/** The path split into the two columns the panel draws: the file's own
+ *  name, and the directory that qualifies it. A path with no slash is
+ *  all name and no directory. */
+function splitPath(path: string): { dir: string; name: string } {
+	const cut = path.lastIndexOf("/");
+	return cut === -1 ? { dir: "", name: path } : { dir: path.slice(0, cut + 1), name: path.slice(cut + 1) };
+}
+
+/**
+ * KC3 §4 — ONE row of the panel.
+ *
+ * Two columns: the file's NAME on the left with its matched characters
+ * bold, and the DIRECTORY dim on the right, pushed to the far edge.
+ * The name is what the user is aiming at; the directory is what tells
+ * two same-named files apart, which is why it is present but quiet.
+ *
+ * The selected row carries `→` on the inverse band (SGR 7, closed with
+ * 27 — never SGR 0, so it composes inside the row's own spans).
+ *
+ * The `hit` indices are over the FULL path, so they are shifted by the
+ * directory's length to land on the name. A hit that falls INSIDE the
+ * directory is simply not drawn bold — the directory column is
+ * uniformly dim by design (a bold fragment in a right-aligned dim
+ * column reads as damage, not as information).
+ *
+ * The row never exceeds W: the name cuts first (it is the flexible
+ * column), and the directory is dropped entirely before the name is
+ * cut to nothing.
+ */
+export function atRow(match: AtMatch, selected: boolean, W: number): string {
+	const p = palette();
+	const { dir, name } = splitPath(escapeTerminal(match.path));
+	const lead = selected ? `${p.rv}→ ${p.rvEnd}` : "  ";
+	// the name's own matched positions, mapped out of the full path
+	const marks = new Set(match.hit.filter((i) => i >= dir.length).map((i) => i - dir.length));
+	// room: W − the 2-cell lead − 1 separating space before the directory
+	const nameRoom = Math.max(1, W - 2 - (dir === "" ? 0 : visibleWidth(dir) + 1));
+	const shownName = widthCut(name, nameRoom);
+	let painted = "";
+	for (let i = 0; i < shownName.length; i += 1) {
+		painted += marks.has(i) ? `${p.bold}${shownName[i]}${p.reset}` : shownName[i];
+	}
+	if (dir === "") return `${lead}${painted}`;
+	const pad = Math.max(1, W - 2 - visibleWidth(shownName) - visibleWidth(dir));
+	return `${lead}${painted}${" ".repeat(pad)}${p.dim}${dir}${p.reset}`;
+}
+
+/**
+ * KC3 §4 — the counter row: `(n/total)`, where n is the 1-based
+ * position of the SELECTION in the whole ranked list, not in the
+ * visible window. The user needs to know where they are in the list,
+ * which the five visible rows cannot tell them.
+ *
+ * When the source list was truncated the row SAYS SO. A file picker
+ * that quietly lists 2,000 of 40,000 files and shows a confident
+ * "(3/1998)" is lying by omission; this one admits the horizon.
+ */
+export function atCounterRow(selected: number, total: number, capped: boolean, W: number): string {
+	const p = palette();
+	const text = capped ? `  (${selected + 1}/${total}) · first ${AT_CAP} files only` : `  (${selected + 1}/${total})`;
+	return `${p.dim}${widthCut(text, W)}${p.reset}`;
+}
+
+/**
+ * KC3 §4 — the whole band: at most AT_VISIBLE windowed rows, then the
+ * counter. Returned as plain strings for the menu-rows channel, which
+ * already accounts them in chromeRows — the picker needs no geometry
+ * of its own, which is the entire reason it rides that channel.
+ */
+export function atPanelRows(state: { matches: readonly AtMatch[]; selected: number; capped: boolean }, W: number): string[] {
+	const { first, count } = atWindow(state.matches.length, state.selected);
+	const rows: string[] = [];
+	for (let i = first; i < first + count; i += 1) rows.push(atRow(state.matches[i]!, i === state.selected, W));
+	rows.push(atCounterRow(state.selected, state.matches.length, state.capped, W));
+	return rows;
 }

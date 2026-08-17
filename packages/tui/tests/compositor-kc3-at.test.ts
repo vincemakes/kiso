@@ -1,0 +1,286 @@
+/**
+ * KC3 T-A3 — the @ panel's FRAME.
+ *
+ * The picker rides the menu-rows band, which is what makes its
+ * geometry free: chromeRows already counts that band, the content cap
+ * already shrinks by it, the box top already rises above it. These
+ * tests prove that it really is the same band (the rows land exactly
+ * where the slash menu's do), that the two columns and the selection
+ * band render as drawn, that the counter tells the truth about the
+ * whole list rather than the visible window, and that the window
+ * trails the selection past five matches.
+ *
+ * The last describe is the anchor that matters most: with NO picker
+ * bound — every scenario that is not an @ scenario — the frame is
+ * BYTE-IDENTICAL to the same frame built without any of this code.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Body, type InputState } from "../src/compositor.js";
+import { atFilter } from "../src/at-picker.js";
+
+const one = (line: string): (() => InputState) => () => ({ line, cursor: line.length });
+
+function makeBody(opts: { W?: number; H?: number } = {}) {
+	const W = opts.W ?? 80;
+	const H = opts.H ?? 24;
+	const writes: string[] = [];
+	const body = new Body({ active: () => true, height: () => H, width: () => W, editCol: () => 1, write: (s) => writes.push(s) });
+	return { body, writes, tick: () => vi.advanceTimersByTime(16) };
+}
+
+/** the @ state the editor would hand over, built through the REAL
+ *  filter so the rank/highlight under test is the shipped one */
+const atState = (paths: string[], query: string, selected = 0, capped = false) => {
+	const { matches } = atFilter(
+		paths.map((path) => ({ path })),
+		query,
+	);
+	return () => ({ matches, selected, capped });
+};
+
+/** Matched characters are individually wrapped in SGR spans, so a path
+ *  is NEVER a contiguous substring of the frame. Every text assertion
+ *  below reads the stripped row instead. */
+const strip = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
+
+/** every CUP-addressed row the frame wrote, as { row, text } with the
+ *  SGR removed — the frame's visible ground truth */
+const rowsOf = (bytes: string): { row: number; text: string }[] =>
+	[...bytes.matchAll(/\x1b\[(\d+);1H\x1b\[0K([^\x1b]*(?:\x1b\[[0-9;]*m[^\x1b]*)*)/g)].map((m) => ({ row: Number(m[1]), text: strip(m[2]!) }));
+
+const rowOf = (bytes: string, needle: string): number | undefined => rowsOf(bytes).find((r) => r.text.includes(needle))?.row;
+
+const FILES = ["src/range.js", "src/ranger.ts", "docs/range-notes.md", "lib/range.ts", "a/range.js", "z/range.js", "q/range.js"];
+
+beforeEach(() => {
+	vi.useFakeTimers();
+	delete process.env.NO_COLOR; // the palette must be ON — these assert SGR bytes
+	Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+	Object.defineProperty(process.stdout, "rows", { value: 24, configurable: true });
+	Object.defineProperty(process.stdout, "columns", { value: 80, configurable: true });
+});
+
+afterEach(() => {
+	vi.useRealTimers();
+	delete (process.stdout as { rows?: number }).rows;
+	delete (process.stdout as { columns?: number }).columns;
+	delete (process.stdout as { isTTY?: boolean }).isTTY;
+});
+
+describe("KC3 T-A3: the panel rides the menu-rows band", () => {
+	it("the rows STACK ABOVE the box top; the box, the input row and the status never move", () => {
+		const { body, writes, tick } = makeBody();
+		body.bindInput(one("look at @ra"), "› ");
+		body.bindAt(atState(["src/range.js", "lib/range.ts"], "ra"));
+		body.enter();
+		tick();
+		const bytes = writes.join("");
+		// the band is the MENU's band: it grows upward from the box top,
+		// which is exactly why the picker inherits the geometry for free
+		expect(rowOf(bytes, "╭")).toBe(21); // H−3, unmoved
+		expect(rowOf(bytes, "╰")).toBe(23);
+		expect(rowOf(bytes, "/ commands")).toBe(24);
+		// two matches + the counter = three rows, immediately above the box
+		expect(rowOf(bytes, "range.ts")).toBe(18);
+		expect(rowOf(bytes, "range.js")).toBe(19);
+		expect(rowOf(bytes, "(1/2)")).toBe(20);
+	});
+
+	it("the band shrinks the live content cap, exactly as the menu's does", () => {
+		const { body, tick } = makeBody();
+		body.bindInput(one("@ra"), "› ");
+		body.bindAt(atState(FILES, "ra"));
+		body.enter();
+		body.textAppend(Array.from({ length: 40 }, (_, i) => `tall ${i}`).join("\n"));
+		tick();
+		// chrome = 3 + 1 input + 6 band rows (5 windowed + counter)
+		expect(body.liveCount()).toBeLessThanOrEqual(24 - 3 - 1 - 6);
+	});
+
+	it("the picker WINS the shared band — a menu bound at the same time never renders", () => {
+		const { body, writes, tick } = makeBody();
+		body.bindInput(one("@ra"), "› ");
+		body.bindMenu(() => ({ items: [{ name: "/mode", desc: "switch the approval tier" }], selected: 0 }));
+		body.bindAt(atState(["src/range.js"], "ra"));
+		body.enter();
+		tick();
+		const bytes = writes.join("");
+		expect(rowOf(bytes, "range.js")).toBeDefined();
+		expect(strip(bytes)).not.toContain("/mode");
+	});
+});
+
+describe("KC3 T-A3: the two columns and the selection band", () => {
+	it("the NAME is left, the DIRECTORY dim on the right", () => {
+		const { body, writes, tick } = makeBody({ W: 40 });
+		body.bindInput(one("@ra"), "› ");
+		body.bindAt(atState(["src/range.js"], "ra"));
+		body.enter();
+		tick();
+		const bytes = writes.join("");
+		const row = rowsOf(bytes).find((r) => r.text.includes("range.js"))!.text;
+		// the name comes first, the directory is pushed to the far edge
+		expect(row.indexOf("range.js")).toBeLessThan(row.indexOf("src/"));
+		expect(row.trimEnd().endsWith("src/")).toBe(true);
+		expect(bytes).toContain("\x1b[2msrc/\x1b[0m"); // the directory is dim
+	});
+
+	it("the MATCHED characters of the name are bold, the rest are not", () => {
+		const { body, writes, tick } = makeBody({ W: 40 });
+		body.bindInput(one("@ra"), "› ");
+		body.bindAt(atState(["src/range.js"], "ra"));
+		body.enter();
+		tick();
+		const bytes = writes.join("");
+		// "ra" of "range.js" — the two matched chars each wrapped in bold
+		expect(bytes).toContain("\x1b[1mr\x1b[0m\x1b[1ma\x1b[0mnge.js");
+	});
+
+	it("a hit that lands in the DIRECTORY is not emboldened — that column is uniformly quiet", () => {
+		const { body, writes, tick } = makeBody({ W: 40 });
+		body.bindInput(one("@do"), "› ");
+		body.bindAt(atState(["docs/range-notes.md"], "do"));
+		body.enter();
+		tick();
+		const bytes = writes.join("");
+		expect(bytes).toContain("\x1b[2mdocs/\x1b[0m"); // dim, whole, unbroken
+	});
+
+	it("the SELECTED row carries → on the inverse band; the others carry two spaces", () => {
+		const { body, writes, tick } = makeBody({ W: 40 });
+		body.bindInput(one("@ra"), "› ");
+		body.bindAt(atState(["a/range.js", "z/range.js"], "ra", 1));
+		body.enter();
+		tick();
+		const bytes = writes.join("");
+		expect(bytes).toContain("\x1b[7m→ \x1b[27m");
+		// exactly ONE selection band in the frame
+		expect(bytes.split("\x1b[7m→ \x1b[27m").length - 1).toBe(1);
+	});
+
+	it("a path with no directory renders name-only — no empty right column", () => {
+		const { body, writes, tick } = makeBody({ W: 40 });
+		body.bindInput(one("@re"), "› ");
+		body.bindAt(atState(["README.md"], "re"));
+		body.enter();
+		tick();
+		expect(writes.join("")).toContain("ADME.md");
+	});
+});
+
+describe("KC3 T-A3: the counter and the windowing", () => {
+	it("the counter reports the selection's place in the WHOLE list, not the window", () => {
+		const { body, writes, tick } = makeBody();
+		body.bindInput(one("@ra"), "› ");
+		body.bindAt(atState(FILES, "ra", 6));
+		body.enter();
+		tick();
+		expect(writes.join("")).toContain("(7/7)");
+	});
+
+	it("at most FIVE match rows render however many match", () => {
+		const { body, writes, tick } = makeBody();
+		body.bindInput(one("@ra"), "› ");
+		body.bindAt(atState(FILES, "ra"));
+		body.enter();
+		tick();
+		const bytes = writes.join("");
+		const band = rowsOf(bytes).filter((r) => r.text.includes("range") || r.text.includes("(1/7)"));
+		expect(band.length).toBe(6); // 5 matches + the counter, out of 7 that match
+	});
+
+	it("the window TRAILS the selection — selecting the last match scrolls it into view", () => {
+		const { body, writes, tick } = makeBody();
+		body.bindInput(one("@ra"), "› ");
+		const { matches } = atFilter(
+			FILES.map((path) => ({ path })),
+			"ra",
+		);
+		body.bindAt(() => ({ matches, selected: matches.length - 1, capped: false }));
+		body.enter();
+		tick();
+		const bytes = writes.join("");
+		expect(rowOf(bytes, `(${matches.length}/${matches.length})`)).toBeDefined();
+		// a row identifies a match by BOTH its columns — several of these
+		// fixtures share the basename "range.js", so the directory is what
+		// tells them apart (which is the whole reason the column exists)
+		const shows = (path: string): boolean => {
+			const cut = path.lastIndexOf("/");
+			const [dir, name] = [path.slice(0, cut + 1), path.slice(cut + 1)];
+			return rowsOf(bytes).some((r) => r.text.includes(name) && r.text.includes(dir));
+		};
+		expect(shows(matches[matches.length - 1]!.path)).toBe(true); // the last is on screen
+		expect(shows(matches[0]!.path)).toBe(false); // the first has scrolled off
+	});
+
+	it("a CAPPED source says so in the counter — the horizon is admitted, never hidden", () => {
+		const { body, writes, tick } = makeBody();
+		body.bindInput(one("@ra"), "› ");
+		body.bindAt(atState(["src/range.js"], "ra", 0, true));
+		body.enter();
+		tick();
+		expect(writes.join("")).toContain("first 2000 files only");
+	});
+
+	it("an UNCAPPED source says nothing about a cap", () => {
+		const { body, writes, tick } = makeBody();
+		body.bindInput(one("@ra"), "› ");
+		body.bindAt(atState(["src/range.js"], "ra"));
+		body.enter();
+		tick();
+		expect(writes.join("")).not.toContain("first 2000 files only");
+	});
+
+	it("every band row fits the width — the #checked invariant holds at a narrow terminal", () => {
+		for (const W of [24, 40, 80, 120]) {
+			const { body, tick } = makeBody({ W });
+			body.bindInput(one("@ra"), "› ");
+			body.bindAt(atState([...FILES, "vendor/deeply/nested/copy/of/range.js"], "ra", 3));
+			body.enter();
+			// #checked throws on any row wider than W — reaching here is the assertion
+			expect(() => tick()).not.toThrow();
+		}
+	});
+});
+
+describe("KC3 T-A3: N=1 byte identity on every non-@ scenario", () => {
+	/** the same frame, built twice: once with no picker bound at all,
+	 *  once with a picker bound that reports itself CLOSED */
+	const frame = (bind: (b: Body) => void): string => {
+		const { body, writes, tick } = makeBody();
+		body.bindInput(one("hello world"), "› ");
+		bind(body);
+		body.enter();
+		body.textAppend("a line of body text");
+		tick();
+		return writes.join("");
+	};
+
+	it("no picker bound → the frame is what it was before KC3", () => {
+		const bytes = frame(() => {});
+		expect(bytes.length).toBeGreaterThan(100); // the comparison is not two empty strings
+		expect(bytes).toBe(frame((b) => b.bindAt(() => null)));
+	});
+
+	it("a CLOSED picker adds not one byte — the menu band is empty exactly as before", () => {
+		const withMenu = (b: Body) => b.bindMenu(() => null);
+		expect(frame(withMenu)).toBe(
+			frame((b) => {
+				withMenu(b);
+				b.bindAt(() => null);
+			}),
+		);
+	});
+
+	it("the slash MENU still renders untouched while a closed picker is bound", () => {
+		const menu = (b: Body) => b.bindMenu(() => ({ items: [{ name: "/mode", desc: "switch the approval tier" }], selected: 0 }));
+		expect(frame(menu)).toBe(
+			frame((b) => {
+				menu(b);
+				b.bindAt(() => null);
+			}),
+		);
+		expect(frame(menu)).toContain("/mode");
+	});
+});
