@@ -46,7 +46,10 @@
 import { truncateDiff } from "./diff.js";
 import { displayWidth, type MenuItem } from "./editor.js";
 import { leadWidth } from "./width.js"; // W23: the ONE width authority (the editor, #inputRow, and editCol share it)
-import { panelAffordance, panelBlockRows, panelLead, panelStatus, type PanelState } from "./approval-panel.js";
+// KC3.5: the panel-slot reads come from the DISPATCHERS — one source
+// for four reads, so an ask can never render half as an approval.
+import { panelAffordanceOf, panelLeadOf, panelRowsOf, panelStatusOf } from "./ask-panel.js";
+import type { PanelState } from "./approval-panel.js";
 import { atPanelRows, type AtMatch } from "./at-picker.js";
 
 /** KC3 §4 — the @ picker's bound state (the editor's atState()). */
@@ -745,7 +748,7 @@ export class Body {
 	 *  now). */
 	#statusSource(): { status: string; hint: string | undefined } {
 		const panel = this.#panelState?.() ?? null;
-		if (panel !== null) return { status: panelStatus(panel.view, panel.phase, panel.sel), hint: panelAffordance(panel.view, panel.phase, panel.sel) };
+		if (panel !== null) return { status: panelStatusOf(panel), hint: panelAffordanceOf(panel) };
 		// W22: while turns wait in the queue, the right hint shows the
 		// count — the chips below carry the lines themselves.
 		const queued = this.#queueState?.().length ?? 0;
@@ -797,7 +800,7 @@ export class Body {
 		// + 1 — the SAME formula the marker embeds at (the panel lead when
 		// the panel owns the row; the old prompt-only math desynced the
 		// panel rows' edit column; leadWidth is the ONE authority)
-		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.sel) : this.#inputPrompt;
+		const lead = panel !== null ? panelLeadOf(panel) : this.#inputPrompt;
 		return 3 + leadWidth(lead) + st.cursor;
 	}
 
@@ -875,7 +878,7 @@ export class Body {
 			// reflects the screen). W22: the queue chips occupy their
 			// own band — the panel's cap shrinks by their rows.
 			return (
-				panelBlockRows(panel.view, panel.phase, panel.sel, this.#opts.width(), Math.max(1, this.#opts.height() - 4 - inputExtra - queueRows.length)).length +
+				panelRowsOf(panel, this.#opts.width(), Math.max(1, this.#opts.height() - 4 - inputExtra - queueRows.length)).length +
 				CHROME_ROWS +
 				inputExtra +
 				queueRows.length
@@ -963,7 +966,7 @@ export class Body {
 			// the W11 blank would separate it from the frozen content).
 			// The cap is exact, so the force-commit loop never fires. W22:
 			// the queue band sits below the panel — the cap shrinks by it.
-			liveLines = panelBlockRows(panel.view, panel.phase, panel.sel, W, Math.max(1, H - 4 - inputExtra - queueRows.length));
+			liveLines = panelRowsOf(panel, W, Math.max(1, H - 4 - inputExtra - queueRows.length));
 		} else {
 			let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
 			for (const cell of this.#cells.slice(this.#committed)) {
@@ -1316,7 +1319,7 @@ export class Body {
 		// the lead — the panel's phase lead when the panel owns the row
 		// (1-3> / the rule input's "2 Yes, don't ask again for " / the
 		// amend "feedback (deny): "), the bound prompt otherwise
-		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.sel) : this.#inputPrompt;
+		const lead = panel !== null ? panelLeadOf(panel) : this.#inputPrompt;
 		const leadW = leadWidth(lead);
 		// a LEGACY one-row provider (the old {line, cursor} shape) keeps
 		// working: its single line is the composer's single row

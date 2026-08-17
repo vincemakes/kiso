@@ -51,6 +51,14 @@ export {
 	type PanelState,
 	type PanelVerdict,
 	type PanelView,
+	// KC3.5: the ask shapes both layers agree on (the renderer and the
+	// key routing are the tui's; the flow stays in the cli).
+	type AskAnswer,
+	type AskOption,
+	type AskQuestion,
+	type AskResult,
+	type AskRuntime,
+	type AskSpec,
 } from "./approval-panel.js";
 // KC3 slice 1 (the extraction): the human-facing strings the CLI's
 // trust-ui.ts used to build inline — the prompt, the project-trust
@@ -64,6 +72,8 @@ export {
 	uncertainView,
 	type TrustArtifact,
 } from "./strings.js";
+// KC3.5: the interrupted-ask copy and the extracted /help table.
+export { helpRows, unansweredAskView } from "./strings.js";
 export {
 	bannerLines,
 	COLOR_OFF,

@@ -27,7 +27,10 @@ import { charWidth, displayWidth, leadWidth, widthOf } from "./width.js";
 // authority) — re-exported so the editor's public surface is unchanged.
 export { charWidth, displayWidth, widthOf };
 import { palette } from "./render.js";
-import { panelLead, type PanelPhase, type PanelSel, type PanelState, type PanelVerdict, type PanelView } from "./approval-panel.js";
+import type { AskRuntime, PanelPhase, PanelSel, PanelState, PanelVerdict, PanelView } from "./approval-panel.js";
+// KC3.5: the panel-slot dispatchers — the ask branch folded into the
+// W21 lead/rows, so this file keeps ONE panel and one key owner.
+import { askCommitCustom, askKey, askStart, panelLead } from "./ask-panel.js";
 import { AT_VISIBLE, atFilter, type AtItem, type AtMatch } from "./at-picker.js";
 
 // TUI v4 #16d: the input row is the blue brick + the edit area — the
@@ -102,6 +105,8 @@ export class Editor {
 		view: PanelView;
 		phase: PanelPhase;
 		sel: PanelSel;
+		/** KC3.5: the ask's walk — non-null exactly for an ask view. */
+		ask: AskRuntime | null;
 		amend: "yes" | "no";
 		onCommit: (v: PanelVerdict) => void;
 		stash: { chars: number[]; cursor: number; scroll: number };
@@ -472,6 +477,7 @@ export class Editor {
 			view,
 			phase: "options",
 			sel: 0,
+			ask: view.ask === undefined ? null : askStart(view.ask),
 			amend: "yes",
 			onCommit,
 			stash: { chars: this.#chars, cursor: this.#cursor, scroll: this.#scroll },
@@ -497,7 +503,7 @@ export class Editor {
 	panelState(): PanelState | null {
 		const panel = this.#panel;
 		if (panel === null) return null;
-		return { view: panel.view, phase: panel.phase, sel: panel.sel };
+		return { view: panel.view, phase: panel.phase, sel: panel.sel, ...(panel.ask === null ? {} : { ask: panel.ask }) };
 	}
 
 	enter(): void {
@@ -528,7 +534,7 @@ export class Editor {
 		// W21: the panel's lead owns the row while up (the brick returns
 		// when the panel closes).
 		const panel = this.#panel;
-		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.sel) : `${p.bold}${PROMPT}${p.reset}`;
+		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.sel, panel.ask ?? undefined) : `${p.bold}${PROMPT}${p.reset}`;
 		// W23: the ONE width authority — leadWidth(lead), the ANSI-stripped
 		// visible width (the styled panel lead / the styled brick measure
 		// the same as their plain text — a lead can never measure
@@ -557,6 +563,40 @@ export class Editor {
 				// text); ctrl-c still rides the SIGINT handler (which
 				// cancels the panel).
 				const panel = this.#panel;
+				// KC3.5: an ASK panel routes its own keys — the digits pick
+				// (single-select advances, multi toggles), space toggles at
+				// the cursor, `t` opens the type-your-own line (the
+				// rule-input phase's shape: the buffer is the editor's, so
+				// only esc and enter are intercepted while typing), esc
+				// declines the whole call. Everything else falls through to
+				// the ordinary editing chain below.
+				if (panel.ask !== null) {
+					const typing = panel.ask.phase === "custom";
+					if (c === "\x1b" && !text.slice(i + 1).startsWith("[") && !text.slice(i + 1).startsWith("O")) {
+						this.#askStep("esc");
+						i += 1;
+						continue;
+					}
+					if (c === "\x0d" || c === "\x0a") {
+						this.#askStep(typing ? "commit" : "enter");
+						i += 1;
+						continue;
+					}
+					if (!typing && (c === " " || (c !== undefined && c >= "1" && c <= "4") || c === "t" || c === "T")) {
+						this.#askStep(c === " " ? "space" : c === "T" ? "t" : c);
+						i += 1;
+						continue;
+					}
+					// an ask at rest swallows stray PRINTABLE keys — the panel
+					// owns them, and a typed "/" or "@" must not arm the menu
+					// or the picker underneath. The CSI/SS3 introducer is NOT
+					// swallowed: ←/↑/↓ are the ask's own keys and are routed
+					// by the parser below (this is what the T-Q1 red caught).
+					if (!typing && c !== "\x1b") {
+						i += 1;
+						continue;
+					}
+				}
 				if (c === "\x1b" && !text.slice(i + 1).startsWith("[") && !text.slice(i + 1).startsWith("O")) {
 					this.#panelEsc();
 					i += 1;
@@ -767,7 +807,9 @@ export class Editor {
 			// panel owns the keys while up (↑↓ do nothing — the panel has no
 			// ↑↓ role).
 			if (this.#panel !== null) {
-				/* the panel owns the keys */
+				// W21: the panel owns the keys. KC3.5: an ask uses ↑↓ for
+				// the option cursor (the approval panel still has no ↑↓ role).
+				if (this.#panel.ask !== null && this.#panel.ask.phase === "options") this.#askStep(final === "A" ? "up" : "down");
 			} else if (this.#menuOpen) {
 				if (final === "A") this.#menuSel = Math.max(0, this.#menuSel - 1);
 				else this.#menuSel = Math.min(this.#menuFiltered().length - 1, this.#menuSel + 1);
@@ -797,7 +839,10 @@ export class Editor {
 			}
 			this.#onRender();
 		} else if (final === "D") {
-			this.#move(-1);
+			// KC3.5: ← walks the ask BACK a question (the ‹ n/m › walk); at
+			// question one it stays put — esc is the decline, never ←.
+			if (this.#panel?.ask != null && this.#panel.ask.phase === "options") this.#askStep("left");
+			else this.#move(-1);
 		} else if (final === "C") {
 			this.#move(1);
 		} else if (final === "H") {
@@ -906,6 +951,33 @@ export class Editor {
 		if (panel.sel === 1) this.#panelClose({ action: "allow", reason: "" });
 		else if (panel.sel === 2) this.#panelRule();
 		else if (panel.sel === 3) this.#panelClose({ action: "deny", reason: "" });
+	}
+
+	/**
+	 * KC3.5 — one ask key: the pure reducer decides, this method applies.
+	 * The buffer is cleared on every phase change so the type-your-own
+	 * line starts empty and its text never leaks back into the options
+	 * (the rule-input phase's own discipline). A step that produced a
+	 * RESULT closes the panel with it — the stash/restore is the W21
+	 * path, identical for an answer and for a decline.
+	 */
+	#askStep(key: string): void {
+		const panel = this.#panel;
+		if (panel === null || panel.ask === null) return;
+		const spec = panel.view.ask!;
+		const before = panel.ask.phase;
+		const step = key === "commit" ? askCommitCustom(spec, panel.ask, this.line()) : askKey(spec, panel.ask, key);
+		panel.ask = step.state;
+		if (step.state.phase !== before) {
+			this.#chars = [];
+			this.#cursor = 0;
+			this.#scroll = 0;
+		}
+		if (step.result !== undefined) {
+			this.#panelClose({ action: "answers", result: step.result });
+			return;
+		}
+		this.#onRender();
 	}
 
 	#panelClose(verdict: PanelVerdict): void {
@@ -1150,7 +1222,7 @@ export class Editor {
 		// W23: the ONE width authority — leadWidth(lead) — the cap follows
 		// the lead the editor itself renders (the panel lead when the panel
 		// owns the keys, the brick otherwise): maxW = W − walls − lead.
-		const lead = this.#panel !== null ? panelLead(this.#panel.view, this.#panel.phase, this.#panel.sel) : PROMPT;
+		const lead = this.#panel !== null ? panelLead(this.#panel.view, this.#panel.phase, this.#panel.sel, this.#panel.ask ?? undefined) : PROMPT;
 		const leadW = leadWidth(lead);
 		const maxW = Math.max(1, W - leadW - 4); // W6: the box's walls (2+2) — the visible line fits the box's inner width; the "…" rides inside
 		// KC1: the scroll is the CURSOR LINE's own offset — a single-line

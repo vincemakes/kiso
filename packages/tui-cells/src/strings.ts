@@ -95,3 +95,56 @@ export function uncertainView(name: string, executionId: string): PanelView {
 		fallbackQuestion: `⚠ interrupted execution: ${escapeTerminal(name)} (${executionId}) — did it apply? (y)es / (n)o `,
 	};
 }
+
+/**
+ * KC3.5 — the SAME uncertainty gate, said honestly for an ask_user call.
+ *
+ * "Did the interrupted execution apply?" is the right question for a
+ * side effect and the wrong one for a question: nothing applied, the
+ * human simply never answered. The COPY special-cases ask_user; the
+ * mechanism does not — the verdict still maps to the runtime's own
+ * rerun/abandoned resolution, whose error-fill text is untouched.
+ *
+ * (The round's ① probe pinned why this surface exists at all: the
+ * shipped recovery blocks on a started-unreported execution regardless
+ * of idempotency, so an interrupted ask meets this gate on the way
+ * back. Re-asking is safe — that is what "1 re-ask" says out loud.)
+ */
+export function unansweredAskView(executionId: string): PanelView {
+	return {
+		flavor: "simple",
+		name: "unanswered question",
+		title: `ask_user (${executionId})`,
+		speaker: "kiso",
+		statusText: "▸ unanswered question",
+		args: { kind: "text", lines: [executionId] },
+		ruleOverride: "an unanswered question was interrupted — ask it again? — 1 re-ask · 3 drop",
+		fallbackQuestion: `⚠ an unanswered question was interrupted (${executionId}) — ask it again? (y)es / (n)o `,
+	};
+}
+
+/**
+ * KC3.5 slice ⓪ (the extraction) — the /help command table.
+ *
+ * The rows were eight bodyLog calls in the CLI's dispatcher; they are
+ * presentation, and presentation belongs here (the KC3 §1 pattern —
+ * the FLOW, which is "print these on the chain, then re-prompt", stays
+ * in dispatch.ts). The last row carries its own newline exactly as it
+ * did inline: bodyLog splits on \n, so `exit` and `keys` land as two
+ * rows from one call — the shape the KC1/KC2/KC3 gestures were added
+ * to, unchanged.
+ */
+export function helpRows(): string[] {
+	const p = palette();
+	const cmd = (name: string, desc: string): string => `${p.bold}${name}${p.reset}    ${desc}`;
+	return [
+		cmd("/help", "print this list of commands"),
+		cmd("/think", "show the last full thinking block"),
+		cmd("/last", "show the most recent tool call's input and output"),
+		cmd("/status", "show session id, event count, and context estimate"),
+		cmd("/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"),
+		cmd("/model", "list model profiles; /model <name|provider/model> switches"),
+		cmd("/compact", "summarize the older conversation to free context"),
+		`${cmd("exit", "leave the session")}\n${cmd("keys", "enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead · @ files")}`,
+	];
+}

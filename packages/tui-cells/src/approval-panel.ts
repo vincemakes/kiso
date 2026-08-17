@@ -33,6 +33,60 @@ export type PanelFlavor = "approval" | "simple";
 export type PanelPhase = "options" | "rule" | "amend";
 export type PanelSel = 0 | 1 | 2 | 3;
 
+// ── KC3.5 (the ask round): the ask_user panel's TYPES ────────────────
+// The ask is the panel machinery generalized, not a second slot: an
+// ask view is a PanelView carrying `ask`, and the compositor renders it
+// through the SAME panel slot (the rows/lead/status/affordance
+// dispatchers live in the tui — this package owns the shapes both
+// sides agree on). The renderer and the key routing are the tui's;
+// what the human READS is strings.ts's; the flow stays in the cli.
+
+/** One option of a question: the label the human picks, plus an
+ *  optional one-line description (the model's own words). */
+export interface AskOption {
+	readonly label: string;
+	readonly description?: string;
+}
+
+/** One question: 2-4 options, single- or multi-select, and an optional
+ *  ≤12-cell header (the panel's title when present — the schema caps
+ *  it so the title never fights the counter for the row). */
+export interface AskQuestion {
+	readonly question: string;
+	readonly header?: string;
+	readonly options: readonly AskOption[];
+	readonly multiSelect?: boolean;
+}
+
+/** The whole ask_user call: 1-4 questions, walked in order. */
+export interface AskSpec {
+	readonly questions: readonly AskQuestion[];
+}
+
+/** One answered question — the three shapes the tool_result carries:
+ *  a single choice, a multi-select list, or the typed-in answer. */
+export type AskAnswer =
+	| { readonly q: string; readonly choice: string }
+	| { readonly q: string; readonly choices: readonly string[] }
+	| { readonly q: string; readonly custom: string };
+
+/** The ask's outcome: every question answered, or the decline — an
+ *  HONEST recorded outcome that names what was skipped, never silence. */
+export type AskResult =
+	| { readonly answers: readonly AskAnswer[] }
+	| { readonly declined: readonly string[] };
+
+/** The ask panel's runtime state — the editor owns and advances it,
+ *  the compositor reads it. `picks` and `custom` are per question, so
+ *  a walk back (←) shows what was already chosen. */
+export interface AskRuntime {
+	readonly qIndex: number;
+	readonly cursor: number;
+	readonly picks: readonly (readonly number[])[];
+	readonly custom: readonly (string | null)[];
+	readonly phase: "options" | "custom";
+}
+
 /** The ALWAYS-verbose args (the panel's body): the untruncated diff
  *  (edit/write), or the full text (shell = the command line, other =
  *  the pretty-printed JSON). The CLI composes them UNTRUNCATED — the
@@ -67,13 +121,21 @@ export interface PanelView {
 	/** The fallback question — the y/n text for the dock-less path
 	 *  (a TTY without a dock, or a pipe). */
 	readonly fallbackQuestion: string;
+	/** KC3.5: the questions, when this view is an ASK. Present = the
+	 *  panel renders the ask block and the editor routes the ask keys;
+	 *  absent = the approval/simple panel, unchanged. */
+	readonly ask?: AskSpec;
 }
 
 export type PanelVerdict =
 	| { readonly action: "allow"; readonly reason: string }
 	| { readonly action: "allow-rule"; readonly rule: string }
 	| { readonly action: "deny"; readonly reason: string }
-	| { readonly action: "cancel" };
+	| { readonly action: "cancel" }
+	/** KC3.5: the ask's own verdict — the answers (or the decline) the
+	 *  cli hands back to the tool. Only ask views ever produce it, so
+	 *  the approval path's switch is untouched. */
+	| { readonly action: "answers"; readonly result: AskResult };
 
 /** The bound panel state the compositor reads — the editor owns the
  *  phase/selection state machine and the key routing; the compositor
@@ -82,6 +144,8 @@ export interface PanelState {
 	readonly view: PanelView;
 	readonly phase: PanelPhase;
 	readonly sel: PanelSel;
+	/** KC3.5: the ask's walk — present exactly when `view.ask` is. */
+	readonly ask?: AskRuntime;
 }
 
 /** The rule line's text — the why-asked line (the R3 chain): the tool
