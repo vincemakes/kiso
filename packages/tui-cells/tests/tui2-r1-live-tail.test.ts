@@ -1,0 +1,120 @@
+/**
+ * TUI2-R1 slice ④ — T-V3 (the render half): the running shell's live
+ * tail.
+ *
+ * A running shell used to say only "waiting for output" for as long as
+ * it ran. It now shows the last lines the sidecar has observed, inside
+ * the SAME fixed three-row window W8 fixed: the block's height changes
+ * exactly once, at settle, so a running cell never shifts the rows below
+ * it mid-frame.
+ *
+ * Two shapes are deliberately unchanged: a shell with no output yet
+ * still says "waiting for output" (nothing observed, nothing claimed),
+ * and every NON-shell running tool keeps liveWindow byte for byte.
+ */
+
+import { afterEach, describe, expect, it } from "vitest";
+import { cellComponent, type BodyCell, type FrameCtx } from "../src/components.js";
+
+const ORIG_TTY = process.stdout.isTTY;
+const setTTY = (v: boolean): void => {
+	Object.defineProperty(process.stdout, "isTTY", { value: v, configurable: true });
+};
+afterEach(() => {
+	delete process.env.NO_COLOR;
+	setTTY(ORIG_TTY ?? false);
+});
+
+const CTX: FrameCtx = { spinnerI: 0, now: 13_000, height: 24 };
+
+function running(over: Partial<Extract<BodyCell, { kind: "tool" }>> = {}): BodyCell {
+	return {
+		kind: "tool",
+		name: "shell",
+		input: "npm test",
+		inputFull: JSON.stringify({ command: "npm test" }),
+		childRoles: [],
+		state: "running",
+		isError: false,
+		resultText: "",
+		diff: null,
+		added: 0,
+		removed: 0,
+		startedAt: 1_000,
+		doneAt: null,
+		done: false,
+		expanded: false,
+		turn: 0,
+		rolled: null,
+		reason: null,
+		verdict: null,
+		...over,
+	} as BodyCell;
+}
+
+const render = (cell: BodyCell, W = 80): string[] => cellComponent(cell).render(W, CTX);
+
+describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
+	it("no output yet: the shape is exactly today's — nothing observed, nothing claimed", () => {
+		setTTY(false);
+		expect(render(running())).toEqual(["▖ shell npm test 12s", "│ ", "│ ", "└ waiting for output"]);
+	});
+
+	it("output observed: the LAST lines ride the block, the footer names the state and the two gestures", () => {
+		setTTY(false);
+		const rows = render(running({ resultText: "packages/runtime  ✓ 184 tests\npackages/tui      ⠸ 88/120" }));
+		expect(rows).toEqual([
+			"▖ shell npm test 12s",
+			"│ packages/runtime  ✓ 184 tests",
+			"│ packages/tui      ⠸ 88/120",
+			"└ live tail · esc stop · alt+⏎ redirect",
+		]);
+	});
+
+	it("the tail UPDATES and the height NEVER changes — the W8 fixed window survives every length", () => {
+		setTTY(false);
+		for (const text of ["one", "one\ntwo", "one\ntwo\nthree", "one\ntwo\nthree\nfour\nfive\nsix"]) {
+			expect(render(running({ resultText: text })), text).toHaveLength(4);
+		}
+		// growing output scrolls: the LAST two lines are what shows
+		const rows = render(running({ resultText: "one\ntwo\nthree\nfour\nfive\nsix" }));
+		expect(rows[1]).toBe("│ five");
+		expect(rows[2]).toBe("│ six");
+	});
+
+	it("a long line is width-truncated inside the block, never folded into a fourth row", () => {
+		setTTY(false);
+		const rows = render(running({ resultText: `short\n${"x".repeat(300)}` }), 40);
+		expect(rows).toHaveLength(4);
+		for (const row of rows) expect(row.length).toBeLessThanOrEqual(40);
+		expect(rows[3]).toContain("live tail");
+	});
+
+	it("the tail is DIM — the running content is context, never the message", () => {
+		setTTY(true);
+		const rows = render(running({ resultText: "building…" }));
+		expect(rows[1]).toBe("\x1b[2m│ \x1b[0m");
+		expect(rows[2]).toBe("\x1b[2m│ building…\x1b[0m");
+		expect(rows[3]).toBe("\x1b[2m└ live tail · esc stop · alt+⏎ redirect\x1b[0m");
+	});
+
+	it("a NON-shell running tool keeps liveWindow byte for byte — the tail is the shell's alone", () => {
+		setTTY(false);
+		const rows = render(running({ name: "read_file", input: "big.txt", inputFull: JSON.stringify({ path: "big.txt" }) }));
+		expect(rows).toEqual(["▖ read  big.txt 12s", "│ ", "│ ", "└ waiting for output"]);
+	});
+
+	it("COMPLETION collapses to one line — the tail is gone, A's suffix names what it hid", () => {
+		setTTY(false);
+		const settled = render(
+			running({
+				state: "done",
+				done: true,
+				doneAt: 19_200,
+				resultText: Array.from({ length: 22 }, (_, i) => `out ${i}`).join("\n"),
+			}),
+		);
+		expect(settled[0]).toBe("✓ shell npm test (exit 0, 18.2s) · 22 lines · ctrl+r expands");
+		expect(settled.join("\n")).not.toContain("live tail");
+	});
+});
