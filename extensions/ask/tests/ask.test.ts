@@ -159,4 +159,16 @@ describe("T-Q2 — the TTY gate is STRUCTURAL: no bridge, no tool", () => {
 		const ext = await createAskExtension(bridge({ answers: [] }));
 		expect(ext.tools?.map((t) => t.name)).toEqual(["ask_user"]);
 	});
+
+	it("the approval policy allows ask_user and ABSTAINS on everything else — one panel, not two", async () => {
+		const ext = await createAskExtension(bridge({ answers: [] }));
+		const decide = ext.approvals![0]!.decide;
+		expect(decide({ name: "ask_user" } as never, {} as never)).toEqual({
+			action: "allow",
+			reason: "asking the human is the human's own decision to make",
+		});
+		for (const name of ["shell", "write_file", "delegate"]) {
+			expect(decide({ name } as never, {} as never)).toEqual({ action: "abstain" });
+		}
+	});
 });

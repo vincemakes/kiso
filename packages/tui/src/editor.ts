@@ -589,10 +589,15 @@ export class Editor {
 					}
 					// an ask at rest swallows stray PRINTABLE keys — the panel
 					// owns them, and a typed "/" or "@" must not arm the menu
-					// or the picker underneath. The CSI/SS3 introducer is NOT
-					// swallowed: ←/↑/↓ are the ask's own keys and are routed
-					// by the parser below (this is what the T-Q1 red caught).
-					if (!typing && c !== "\x1b") {
+					// or the picker underneath. Two things are never
+					// swallowed: the CSI/SS3 introducer, because ←/↑/↓ are
+					// the ask's own keys and the parser below routes them
+					// (the T-Q1 red), and the CONTROL characters, because
+					// ctrl-c must still reach the SIGINT handler that
+					// cancels the panel — W21's own rule, and what the T-Q6
+					// race red caught: an abort with the panel up did
+					// nothing at all.
+					if (!typing && c !== undefined && c >= " " && c !== "\x7f") {
 						i += 1;
 						continue;
 					}

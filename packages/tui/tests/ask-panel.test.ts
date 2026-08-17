@@ -100,8 +100,13 @@ describe("T-Q1 — the reducer: digits, space, the walk", () => {
 		expect(state.picks[1]).toEqual([2]);
 	});
 
-	it("space toggles at the cursor (multi) and answers at it (single)", () => {
-		expect(walk(ONE, ["down", "space"]).result).toEqual({ answers: [{ q: "which bundler?", choice: "esbuild" }] });
+	it("space SELECTS at the cursor and never commits — a stray space must not answer anything", () => {
+		// single-select: the pick lands, the walk does not move; enter commits
+		const single = walk(ONE, ["down", "space"]);
+		expect(single.result).toBeUndefined();
+		expect(single.state.picks[0]).toEqual([1]);
+		expect(walk(ONE, ["enter"], single.state).result).toEqual({ answers: [{ q: "which bundler?", choice: "esbuild" }] });
+		// multi-select: the same gesture, toggling
 		const multi = walk(TWO, ["1", "down", "space"]);
 		expect(multi.result).toBeUndefined();
 		expect(multi.state.picks[1]).toEqual([1]);

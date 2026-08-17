@@ -149,10 +149,12 @@ export function askKey(spec: AskSpec, state: AskRuntime, key: string): AskStep {
 	if (key === "up") return { state: { ...state, cursor: Math.max(0, state.cursor - 1) } };
 	if (key === "down") return { state: { ...state, cursor: Math.min(q.options.length - 1, state.cursor + 1) } };
 	if (key === "enter") return answered(state, state.qIndex) ? advance(spec, state) : { state };
-	if (key === "space") {
-		const next = toggle(state, state.cursor, multi);
-		return multi ? { state: next } : advance(spec, next);
-	}
+	// SPACE selects at the cursor and NEVER commits — in either mode. It
+	// used to answer-and-advance a single-select question, which made a
+	// stray space (the most pressable key there is) an instant answer of
+	// whatever the cursor happened to be on. Enter and the digits are the
+	// only gestures that commit; space is how you point at something.
+	if (key === "space") return { state: toggle(state, state.cursor, multi) };
 	const digit = Number.parseInt(key, 10);
 	if (Number.isInteger(digit) && digit >= 1 && digit <= q.options.length) {
 		const next = toggle(state, digit - 1, multi);

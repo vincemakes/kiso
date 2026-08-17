@@ -97,6 +97,22 @@ export default async function createAskExtension(ui) {
 	if (ui === undefined || ui === null || typeof ui.ask !== "function") return { name: "ask", tools: [] };
 	return {
 		name: "ask",
+		// The approval chain: ask_user is ALLOWED by this extension, and
+		// nothing else is. Requiring approval to ask a question would put
+		// two panels in front of one decision — "approve asking you
+		// something?" then the question itself — and the second panel can
+		// already be declined, which is the same power the first one
+		// offered. (The chain is deny > ask > allow over the SPEAKING
+		// verdicts, so this allow never overrides a user extension's deny
+		// or plan mode's read-only refusal — the moats keep their teeth.)
+		approvals: [
+			{
+				decide: (call) =>
+					call.name === "ask_user"
+						? { action: "allow", reason: "asking the human is the human's own decision to make" }
+						: { action: "abstain" },
+			},
+		],
 		tools: [
 			{
 				name: "ask_user",
