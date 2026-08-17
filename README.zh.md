@@ -447,6 +447,28 @@ description: a review checklist for pull requests
 - **零新持久机制。** 没有新事件种类,没有逐键持久化:崩溃后重现的是整次调用,而不是半张填了一半的表。
 - **审批:** `ask_user` 由 ask 扩展自己放行——要求先审批"能不能问你",等于为一个决定摆两块面板,而面板本身已经可以谢绝。用户扩展的 deny 与 plan 模式的只读拒绝依然胜出。
 
+## 可见性——会话自己说出它在做什么
+
+六件会话本来就知道、却从未说出口的事。全部零租金:不多发一次请求,不多写一个事件,不把估算当成测量。
+
+- **卡片自己说出它的键。** 折叠起来、藏了东西的工具卡会说清藏了多少、怎么看——`· 22 lines · ctrl+r expands`;展开的块以 `└ ctrl+r collapses` 收尾。输出本来就整个在屏上的卡什么都不说,因为这句提示本身是"有东西被藏起来了"的陈述。后缀吃的是剩下的宽度,不够就降级(`· N lines · ctrl+r`,再降 `· ctrl+r`,再降为无),绝不去切那行本来要报出的路径。
+- **探索会并成一行。** 连续的只读调用(`read_file` / `list_dir` / `search_text`)折成一行——`✓ explored 8 files · 14 searches (3.2s) · ctrl+r lists them`——ctrl+r 按工具逐行列出,重复的对象带次数。写入、编辑、shell 与扩展工具**永不**并组:一串副作用是"发生过什么"的清单,每一行都有意义。并组纯属显示层投影——durable 日志逐字节不变,`/last` 依然拿得到完整输出。
+- **运行中的命令长出实时尾巴。** 长命令过去只会在整个运行期间说 "waiting for output";现在它把最新几行随到随显,住在同一个固定三行窗口里,底部是 `└ live tail · esc stop · alt+⏎ redirect`。它乘的是一个只作观测用的 sidecar 文件(在系统临时目录):从不是持久状态,settle 即删;万一 `kill -9` 留下一个,读取侧也会按时间戳把它当作幽灵忽略。
+- **`?` 打开键位表。** 一屏,仅在输入为空时触发(句子中间的 `?` 就是问号),任意键关闭。表格由"按键唯一登记表"生成,所以键位表不可能与真实按键脱节。
+- **`/context` 说清上下文去哪了。** 上一次请求的租金账,以"各部分加起来等于总数"的归因呈现:system prompt(基座 + 扩展追加)、tool table、skills index、envelope、messages、free。它读的是 trace sidecar——观测面,正确性永不读取它;还没调用过模型的会话会如实说明,而不是画一条看起来像"测得为零"的空进度条。
+- **状态行带上仪表。** `CH 92% · $0.0042`——缓存命中率(分母是模型实际收到的总量)与 canonical 成本。定价表里没有该路由费率的,就不记成本;没有成本就不显示数字。kiso 不编造价格。
+
+```text
+  ✓ explored 8 files · 14 searches (3.2s) · ctrl+r lists them
+  ▖ shell npm test (12s)
+  │ packages/runtime  ✓ 184 tests
+  │ packages/tui      ⠸ 88/120
+  └ live tail · esc stop · alt+⏎ redirect
+▸ default · /mode to switch · deepseek-v4-flash · CH 92% · $0.0042 · ctx left ~74%
+```
+
+**键位:** `enter` 发送 · `ctrl+j / shift+⏎` 换行 · `@` 文件 · `esc` 停止 · `alt+⏎ / ctrl+⏎` 改道 · `/` 命令 · `↑↓` 历史 / 取回排队 · `ctrl+r` 展开卡片 · `tab` 补全 · `?` 本表。面板内:数字键选择 · 空格切换 · `t` 自由作答。
+
 ## 任务——持久化长期工作记忆
 
 **自 0.3.0 起为 opt-in**(0.1.45–0.2.2 内置;13 个连续真 provider 会话上每请求付租却一次未调用——连规划指南自家设计的触发场景都没激活,finding E5-F1/E5-F2——故退出默认组合)。`extensions/task` 是官方扩展的源码(`src/kiso-task.mjs`——源码即产品,无构建步骤);安装或定制,复制进 `~/.kiso/extensions/`(普通用户扩展——task 不再是内置,无 shadow 对象):

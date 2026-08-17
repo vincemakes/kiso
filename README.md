@@ -746,6 +746,63 @@ or multi select.
   one decision, and the panel can already be declined. A user
   extension's deny and plan mode's read-only refusal still win.
 
+## Visibility — the session tells you what it is doing
+
+Six things the session already knew and never said. None of them costs a
+token: no extra request, no extra event, no estimate presented as a
+measurement.
+
+- **Cards name their own key.** A collapsed tool cell that is hiding
+  something says how much and how to see it — `· 22 lines · ctrl+r
+  expands` — and an expanded block ends with `└ ctrl+r collapses`. A
+  cell whose output is already whole on screen says nothing, because the
+  affordance is a statement about hidden content. The suffix takes the
+  width that is left and degrades (`· N lines · ctrl+r`, then `·
+  ctrl+r`, then nothing) rather than cutting the path the row exists to
+  name.
+- **Exploration rolls up.** A consecutive run of read-only calls
+  (`read_file` / `list_dir` / `search_text`) collapses to one line —
+  `✓ explored 8 files · 14 searches (3.2s) · ctrl+r lists them` — and
+  ctrl+r lists them per tool, with the repeated subjects counted.
+  Writes, edits, shells and extension tools **never** group: a burst of
+  side effects is a list of things that happened, and every row of it
+  carries meaning. The grouping is display-only — the durable log is
+  byte-identical, and `/last` still reaches the full outputs.
+- **A running command shows its tail.** Long shells used to say
+  "waiting for output" for as long as they ran. They now show the last
+  lines as they arrive, in the same fixed three-row window, with
+  `└ live tail · esc stop · alt+⏎ redirect`. It rides an
+  observation-only sidecar in the OS temp dir — never durable state,
+  removed at settle, and ignored if a `kill -9` ever leaves one behind.
+- **`?` opens the keys.** One screen, on an empty composer only (a `?`
+  mid-sentence is a question mark), closed by any key. The rows are
+  generated from the one table the bindings live in, so the sheet cannot
+  drift from the keys.
+- **`/context` says where the context went.** The last request's rent
+  ledger, as an attribution whose parts sum to the total: system prompt
+  (base + extension appends), tool table, skills index, envelope,
+  messages, free. It reads the trace sidecar — an observation surface;
+  correctness never reads it — and a session that has not called the
+  model yet says so rather than drawing an empty bar.
+- **The status line shows the meter.** `CH 92% · $0.0042` — the cache
+  hit rate over the total the model was given, and the canonical cost.
+  A route with no rate in the pricing table records no cost, and no cost
+  renders no number. kiso does not invent a price.
+
+```text
+  ✓ explored 8 files · 14 searches (3.2s) · ctrl+r lists them
+  ▖ shell npm test (12s)
+  │ packages/runtime  ✓ 184 tests
+  │ packages/tui      ⠸ 88/120
+  └ live tail · esc stop · alt+⏎ redirect
+▸ default · /mode to switch · deepseek-v4-flash · CH 92% · $0.0042 · ctx left ~74%
+```
+
+**The keys:** `enter` send · `ctrl+j / shift+⏎` newline · `@` files ·
+`esc` stop · `alt+⏎ / ctrl+⏎` redirect · `/` commands · `↑↓` history /
+queue pop · `ctrl+r` expand cells · `tab` complete · `?` this sheet.
+Panels: digits select · space toggles · `t` types an answer.
+
 ## Task — durable long-horizon working memory
 
 **Opt-in since 0.3.0** (it shipped built-in from 0.1.45 to 0.2.2; on 13
