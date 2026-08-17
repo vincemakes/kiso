@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+  <rect width="1200" height="1200" fill="#fff"/>
+  <path d="M600 0V1200M0 600H1200" stroke="#e5e5e5" stroke-width="2"/>
+  <defs>
+    <path id="slim" d="M-10 0C-14-52-10-118 15-162C34-195 70-199 90-176C108-155 95-126 66-103C31-75 8-37 10 0Z"/>
+    <path id="medium" d="M-17 0C-23-57-18-126 12-174C37-213 83-214 108-181C132-150 108-113 71-88C31-60 13-29 17 0Z"/>
+    <path id="heavy" d="M-27 0C-36-62-29-136 12-187C49-231 104-229 132-189C158-152 123-104 80-75C35-44 20-20 27 0Z"/>
+    <path id="bulb" d="M-18 0C-22-49-16-111 20-160C57-210 119-217 151-177C177-142 145-98 92-68C40-39 13-17 18 0Z"/>
+    <path id="star-small" d="M0-23L8-8L23 0L8 8L0 23L-8 8L-23 0L-8-8Z" fill="#fff"/>
+  </defs>
+  <g fill="#000">
+    <g transform="translate(300 300)"><use href="#slim"/><use href="#slim" transform="rotate(90)"/><use href="#slim" transform="rotate(180)"/><use href="#slim" transform="rotate(270)"/><use href="#star-small"/></g>
+    <g transform="translate(900 300)"><use href="#medium"/><use href="#medium" transform="rotate(90)"/><use href="#medium" transform="rotate(180)"/><use href="#medium" transform="rotate(270)"/><use href="#star-small"/></g>
+    <g transform="translate(300 900)"><use href="#heavy"/><use href="#heavy" transform="rotate(90)"/><use href="#heavy" transform="rotate(180)"/><use href="#heavy" transform="rotate(270)"/><use href="#star-small"/></g>
+    <g transform="translate(900 900)"><use href="#bulb"/><use href="#bulb" transform="rotate(90)"/><use href="#bulb" transform="rotate(180)"/><use href="#bulb" transform="rotate(270)"/><use href="#star-small"/></g>
+  </g>
+</svg>

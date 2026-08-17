@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+  <rect width="1200" height="1200" fill="#fff"/>
+  <path d="M600 0V1200M0 600H1200" stroke="#e5e5e5" stroke-width="2"/>
+  <defs>
+    <path id="compact" d="M-22 0C-29-48-19-105 11-145C42-185 91-186 113-152C132-122 103-91 66-71C29-51 14-25 22 0Z"/>
+    <path id="round" d="M-31 0C-39-60-25-128 17-173C59-218 119-211 141-169C160-133 123-94 78-71C37-50 20-23 31 0Z"/>
+    <path id="wide" d="M-38 0C-50-64-33-134 17-177C66-219 131-201 148-156C164-113 119-82 72-63C34-47 17-20 38 0Z"/>
+    <path id="bold" d="M-46 0C-58-70-37-147 20-194C77-240 150-214 165-163C178-115 127-77 78-59C36-43 16-17 46 0Z"/>
+    <path id="star" d="M0-27L9-9L27 0L9 9L0 27L-9 9L-27 0L-9-9Z" fill="#fff"/>
+  </defs>
+  <g fill="#000">
+    <g transform="translate(300 300)"><use href="#compact"/><use href="#compact" transform="rotate(90)"/><use href="#compact" transform="rotate(180)"/><use href="#compact" transform="rotate(270)"/><use href="#star"/></g>
+    <g transform="translate(900 300)"><use href="#round"/><use href="#round" transform="rotate(90)"/><use href="#round" transform="rotate(180)"/><use href="#round" transform="rotate(270)"/><use href="#star"/></g>
+    <g transform="translate(300 900)"><use href="#wide"/><use href="#wide" transform="rotate(90)"/><use href="#wide" transform="rotate(180)"/><use href="#wide" transform="rotate(270)"/><use href="#star"/></g>
+    <g transform="translate(900 900)"><use href="#bold"/><use href="#bold" transform="rotate(90)"/><use href="#bold" transform="rotate(180)"/><use href="#bold" transform="rotate(270)"/><use href="#star"/></g>
+  </g>
+</svg>
