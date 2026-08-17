@@ -6,11 +6,12 @@
  * the moved modules read and mutate at call time.
  */
 
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Dock, type Body, type PanelVerdict, type PanelView } from "@vincemakes/kiso-tui";
+import { AT_CAP, AT_SKIP, Dock, type AtItem, type Body, type PanelVerdict, type PanelView } from "@vincemakes/kiso-tui";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
 
 /** finding #11: KISO_HOME is the ONE root — every default path derives from
@@ -28,6 +29,58 @@ export function sessionsDir(): string {
 /** E1: the extension scan directory — KISO_EXTENSIONS_DIR overrides. */
 export function extensionsDir(): string {
 	return process.env.KISO_EXTENSIONS_DIR ?? join(kisoHome(), "extensions");
+}
+
+/**
+ * KC3 §5 — the @ picker's file source. Computed PER OPEN: no index, no
+ * daemon, no watcher, nothing to invalidate and nothing to go stale.
+ * (The editor snapshots the result for the life of one open, so this
+ * runs once per `@`, not once per keystroke.)
+ *
+ * In a git repo, git IS the answer. `ls-files -c -o --exclude-standard`
+ * is the tracked files AND the untracked ones that are not ignored, in
+ * ONE process: the same set the user's own tooling calls "the project",
+ * with every .gitignore in the tree already honoured — and honoured by
+ * git rather than by a reimplementation of git's rules. stderr is
+ * discarded because "not a git repository" must never land in a live
+ * TUI frame.
+ *
+ * Outside a repo — or with no git on PATH — the bounded walk stands
+ * in: it prunes AT_SKIP before descending and stops at AT_CAP + 1
+ * entries, the extra entry being what lets the panel's counter SAY it
+ * truncated instead of showing the first two thousand files as though
+ * they were all of them.
+ *
+ * Paths are forward-slashed on both branches (git's own format), so
+ * the fuzzy filter sees one alphabet whichever branch ran.
+ */
+export function atFiles(): readonly AtItem[] {
+	let paths: string[];
+	try {
+		paths = execFileSync("git", ["ls-files", "-c", "-o", "--exclude-standard"], { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 1 << 24 }).split("\n").filter((p) => p !== "");
+	} catch {
+		paths = atWalk(process.cwd(), "", []);
+	}
+	return paths.slice(0, AT_CAP + 1).map((path) => ({ path }));
+}
+
+/** The fallback walk. `prefix` carries the repo-relative directory so
+ *  the result needs no path arithmetic afterwards. An unreadable
+ *  directory contributes nothing and ends nothing — the recursion's own
+ *  try catches it at that level, so one locked subtree cannot stop a
+ *  file picker from opening. */
+function atWalk(dir: string, prefix: string, out: string[]): string[] {
+	try {
+		for (const e of readdirSync(dir, { withFileTypes: true })) {
+			if (out.length > AT_CAP) break;
+			if (AT_SKIP.has(e.name)) continue;
+			if (e.isDirectory()) atWalk(`${dir}/${e.name}`, `${prefix}${e.name}/`, out);
+			else if (e.isFile()) out.push(`${prefix}${e.name}`);
+		}
+	} catch {
+		// unreadable — skipped
+	}
+	return out;
 }
 
 /**

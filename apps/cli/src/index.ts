@@ -41,7 +41,7 @@ import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
 import { builtInLayer } from "./builtin.js";
-import { body, bodyLog, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, userExtensions, VERSION, type LineInput } from "./state.js";
+import { atFiles, body, bodyLog, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, userExtensions, VERSION, type LineInput } from "./state.js";
 import { resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
@@ -206,6 +206,8 @@ function makeLineInput(): LineInput {
 		// pipe bytes do not change)
 		dock.bindInput(() => editor.dockState(), "› ");
 		dock.bindMenu(() => editor.menuState()); // v3 §04: the slash-command menu
+		editor.bindAtItems(atFiles); // KC3 §5: the file source — listed per OPEN
+		dock.bindAt(() => editor.atState()); // KC3 §4: the picker's band
 		dock.bindApproval(() => editor.panelState()); // W21: the panel's bound state
 		return editorInput(editor);
 	}

@@ -74,4 +74,4 @@ export { STATUS_GLYPHS, idleStatus, runningStatus } from "./status.js";
 export { interactivePrompt, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, type TrustArtifact } from "./strings.js";
 // KC3 §3/§5: the @ file picker's pure half — the subsequence filter, the
 // deterministic rank, and the ONE cap the CLI's file source shares.
-export { AT_CAP, AT_VISIBLE, atEmbed, atFilter, longestRun, type AtItem, type AtMatch } from "./at-picker.js";
+export { AT_CAP, AT_SKIP, AT_VISIBLE, atEmbed, atFilter, atPanelRows, atWindow, longestRun, type AtItem, type AtMatch } from "./at-picker.js";

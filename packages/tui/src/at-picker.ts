@@ -45,6 +45,19 @@ export interface AtMatch {
  */
 export const AT_CAP = 2000;
 
+/**
+ * KC3 §5 — the directories the picker never offers, and the other half
+ * of its contract with whatever host has to walk a tree to fill it.
+ *
+ * It lives here beside the cap because the two are the same kind of
+ * promise: a host that walks must prune these BEFORE descending (a
+ * post-filter would already have walked node_modules, which is the
+ * cost the pruning exists to avoid), and must stop at the cap. Hosts
+ * that get their list from a VCS ignore this set entirely — the VCS
+ * has already applied a better one.
+ */
+export const AT_SKIP: ReadonlySet<string> = new Set([".git", "node_modules", "dist", "build", "coverage"]);
+
 /** KC3 §4 — the panel's visible height. A ceiling, not a promise: the
  *  compositor clamps further when the terminal is short. */
 export const AT_VISIBLE = 5;
