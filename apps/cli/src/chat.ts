@@ -887,6 +887,15 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		const recoveryRun = session.resume();
 		currentRun = recoveryRun;
 		turnNo += 1;
+		// TUI2-R1.5 ③ (VD-3 family): stamp the run's start AT the run's
+		// entry. Every other run path does; this one inherited the value
+		// from the process's own startup, so its "working Ns" was the
+		// session's age rather than the recovery's. The drift is small
+		// today (recovery follows startup closely) and unbounded in
+		// principle — a slow MCP connect is seconds the recovery never
+		// spent, reported as seconds it did.
+		runStart = Date.now();
+		runUsage = { in: null, out: null, cache: null, known: false };
 		const last = await consumeRun(session, recoveryRun, input, turnNo, faux, statusCb, submitTurn);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, input);
