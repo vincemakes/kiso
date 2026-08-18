@@ -783,6 +783,19 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			}),
 		);
 	};
+	// TUI2-R2 ⑥ — the BOOT status line. The row is the product's one
+	// persistent claim about itself (the tier, how to change it, the model,
+	// the context left), and it used to appear after turn ONE: the
+	// idle-fresh screen — the screen every session opens on — showed an
+	// empty row where all of that belongs.
+	//
+	// Nothing had to be computed to fix it. paintIdle already had every
+	// field at this point: the mode is set before the agent is built, the
+	// model is resolved inside it, and an unstarted session's context
+	// estimate is a perfectly good 100%. It was simply never called until
+	// a turn ended. One call, and the SAME formatter — a boot-time copy of
+	// the row would drift from the real one the moment either changed.
+	paintIdle();
 	const statusCb = (u: RunUsage, ctx: number, costUsd?: number | null): void => {
 		runUsage = u;
 		addCost(costUsd ?? null);

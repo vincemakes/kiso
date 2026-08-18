@@ -27,7 +27,7 @@ import { readFileSync, realpathSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { Body, Editor, bannerLines, escapeTerminal, extensionsBannerText, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
+import { Body, Editor, bannerLines, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
 import {
 	createAgent,
 	disposeExtensions,
@@ -39,13 +39,13 @@ import {
 } from "@vincemakes/kiso-runtime";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
-import { MODES, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
+import { MODES, getMode, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
 import { builtInLayer } from "./builtin.js";
-import { atFiles, body, bodyLog, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setSessionStore, userExtensions, VERSION, type LineInput } from "./state.js";
+import { agentModel, atFiles, body, bodyLog, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setSessionStore, userExtensions, VERSION, type LineInput } from "./state.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
-import { autoCompactFromEnv, chat, contextWindowTokens } from "./chat.js";
+import { autoCompactFromEnv, chat, contextWindowTokens, estimateCtxRatio } from "./chat.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { resume } from "./resume.js";
 import { collectSessionCards } from "./session-cards.js";
@@ -521,6 +521,32 @@ async function pickSession(agent: Awaited<ReturnType<typeof makeAgent>>, input: 
 	return picked;
 }
 
+/**
+ * TUI2-R2 ⑥ — the BOOT status row.
+ *
+ * The status line is the product's one persistent claim about itself,
+ * and it used to appear after turn ONE: the idle-fresh screen — the
+ * screen every session opens on, and the only screen a first-time user
+ * sees before deciding whether to type — showed an empty row where the
+ * tier, the /mode hint, the model and the remaining context belong.
+ *
+ * It is painted HERE, at the first moment every field is TRUE: after
+ * makeAgent, because that is where the model is resolved. Painting it at
+ * dock.enter() — the literally-first frame — would have to name a model
+ * nobody had chosen yet, and a status row that guesses is worse than a
+ * status row that waits two hundred milliseconds.
+ *
+ * The meter fields (cache rate, cost) are deliberately absent: an
+ * unstarted session has made no requests, and an unmeasured cache is not
+ * a 0% cache. chat()'s own paintIdle takes over from here with the same
+ * formatter — never a boot-time copy, which would drift from the real
+ * row the moment either changed.
+ */
+function paintBootStatus(session: { log: { all: readonly unknown[] } }): void {
+	if (!dock.active) return;
+	dock.setStatus(idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), agentModel, estimateCtxRatio(session as never)));
+}
+
 async function main(): Promise<void> {
 	// E group (the graceful-exit gate ③, R-G 0.1.48): a terminal closing
 	// turns the in-flight stdout/stderr writes into EIO, and node's
@@ -607,6 +633,7 @@ async function main(): Promise<void> {
 				bodyLog(`session ${id}\n`);
 				extensionsBanner(recentSessions(id, agent));
 				faux = currentFaux;
+				paintBootStatus(session); // TUI2-R2 ⑥: the idle-fresh screen says what it is
 				await chat(session, faux, input, resolveAutoCompact(mergedConfig));
 				break;
 			}
@@ -709,6 +736,7 @@ async function main(): Promise<void> {
 				// session surfaced as "[faux mode] the scripted model failed:
 				// <real error>" (a false accusation of the keyless demo).
 				faux = currentFaux;
+				paintBootStatus(session); // TUI2-R2 ⑥: the same row on the bare command
 				await chat(session, faux, input, autoCompactFromEnv());
 				break;
 			}

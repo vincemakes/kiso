@@ -27,14 +27,29 @@ import { VtScreen } from "./helpers/vt-screen.js";
 const ROWS = 24;
 const COLS = 100;
 
-/** The FIRST frame the product paints, as a screen. */
+/**
+ * The IDLE-FRESH screen's first paint — the first frame that shows the
+ * session, which is the first frame a human is actually looking at.
+ *
+ * Not the literally-first frame the process emits: the dock enters
+ * before the agent is built, so that frame predates the model being
+ * resolved. A status row painted there would have to name a model
+ * nobody had chosen yet, and a row that guesses is worse than a row
+ * that waits two hundred milliseconds. THIS is the opening screen the
+ * round is about.
+ */
 function bootFrame(raw: string): string[] {
 	const CLOSE = "\x1b[?2026l";
-	const end = raw.indexOf(CLOSE);
-	expect(end, "no frame in the stream").toBeGreaterThan(0);
-	const term = new VtScreen(ROWS, COLS);
-	term.write(Buffer.from(raw.slice(0, end + CLOSE.length), "utf8"));
-	return term.visible();
+	let pos = 0;
+	for (;;) {
+		const i = raw.indexOf(CLOSE, pos);
+		expect(i, "no frame showing the session in the stream").toBeGreaterThan(0);
+		const term = new VtScreen(ROWS, COLS);
+		term.write(Buffer.from(raw.slice(0, i + CLOSE.length), "utf8"));
+		const grid = term.visible();
+		if (grid.some((l) => l.startsWith("session "))) return grid;
+		pos = i + CLOSE.length;
+	}
 }
 
 describe("TUI2-R2 ⑥ — the status line is on the FIRST paint (the boot-status class)", () => {
