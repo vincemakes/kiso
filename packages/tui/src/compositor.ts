@@ -232,6 +232,12 @@ export class Body {
 		// v6: the single writer — the compositor IS the dock; the CLI's
 		// onDock callback (which used to re-pin the dock after a scroll)
 		// is retired with the split.
+		// TUI2-R2pre ③: taking the ref SUPERSEDES whatever held it, so the
+		// outgoing compositor's resize listener comes off here. It is not
+		// only listener hygiene: every Dock call now reaches THIS instance,
+		// so a resize heard by the old one would have a compositor that owns
+		// no part of the screen paint a full redraw over it.
+		compositorRef?.#detachResize();
 		compositorRef = this;
 		// the Dock façade's bindings may arrive BEFORE this construction
 		// (the CLI binds the editor state in makeLineInput, then constructs
@@ -734,12 +740,29 @@ export class Body {
 		return this.#docked && this.#isActive();
 	}
 
+	/** TUI2-R2pre ③ — the ONE place a resize listener is installed, and it
+	 *  removes the previous one first. `process.stdout` is process-wide and
+	 *  its listeners outlive the object that added them, so "add" without
+	 *  "remove first" is a leak by construction: the old closure is
+	 *  unreachable the moment #resizeHandler is overwritten, and not even
+	 *  exit() can take it off. */
+	#attachResize(): void {
+		this.#detachResize();
+		this.#resizeHandler = () => this.onResize();
+		process.stdout.on("resize", this.#resizeHandler);
+	}
+
+	#detachResize(): void {
+		if (this.#resizeHandler === null) return;
+		process.stdout.off("resize", this.#resizeHandler);
+		this.#resizeHandler = null;
+	}
+
 	enter(): void {
 		const rows = process.stdout.rows ?? 0;
 		if (process.stdout.isTTY !== true || palette().bold === "" || rows < 4) return;
 		this.#docked = true;
-		this.#resizeHandler = () => this.onResize();
-		process.stdout.on("resize", this.#resizeHandler);
+		this.#attachResize();
 		this.#fullRedraw = true;
 		this.#dirty = true;
 		this.render(); // the FIRST frame — the full-redraw path, no pre-clear
@@ -748,12 +771,16 @@ export class Body {
 	/** Teardown — CSI r (the "no broken terminal" contract byte), the
 	 *  chrome rows cleared, the cursor home at the input line. */
 	exit(): void {
-		if (!this.#docked) return;
-		this.#docked = false;
-		if (this.#resizeHandler !== null) {
-			process.stdout.off("resize", this.#resizeHandler);
-			this.#resizeHandler = null;
+		if (!this.#docked) {
+			// TUI2-R2pre ③: an un-docked compositor can still hold a listener
+			// (it was superseded, or enter() ran and the dock was torn down by
+			// another path) — the teardown is unconditional, the CHROME clear
+			// below is not.
+			this.#detachResize();
+			return;
 		}
+		this.#docked = false;
+		this.#detachResize();
 		const H = this.#lastH > 0 ? this.#lastH : process.stdout.rows ?? 24;
 		const out: string[] = [];
 		out.push("\x1b[r");
