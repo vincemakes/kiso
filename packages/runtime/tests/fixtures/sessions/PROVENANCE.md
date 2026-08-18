@@ -18,11 +18,26 @@ samples are reproducible from it.
 | `gen-f-0148-faux.jsonl` | @vincemakes/kiso-code@0.1.48 | E/F | 2026-08-12, faux-mode one-shot | same command pattern with 0.1.48, session `fxgen0.1.48` |
 | `gen-e-0146-marker.jsonl` | @vincemakes/kiso-code@0.1.46 | E + markers | 2026-08-12, faux-mode one-shot, heavy script | `KISO_CONTEXT_WINDOW=16000` + `faux-heavy.json`, session `m46` — 8 real `microcompacted` boundaries |
 | `gen-f-0148-marker.jsonl` | @vincemakes/kiso-code@0.1.48 | E/F + markers | 2026-08-12, faux-mode one-shot, heavy script | same override, session `m48` — 8 real `microcompacted` boundaries |
+| `gen-f-0120-faux.jsonl` | @vincemakes/kiso-code@0.12.0 | F, the last PRE-EC-1 producer | 2026-08-18, faux-mode one-shot | same command pattern with 0.12.0, session `fxgen0.12.0` |
+| `gen-f-0120-marker.jsonl` | @vincemakes/kiso-code@0.12.0 | F + markers, the last PRE-EC-1 producer | 2026-08-18, faux-mode one-shot, heavy script | same override, session `m0120` — 8 real `microcompacted` boundaries |
 
 Generations (ADR-0051 §3): D = summarized era, pre-`invocationSeq`
 (0.1.38–0.1.42); E = `invocationSeq` + `model_output_abandoned` (0.1.43+);
 F = the ADR-0050 native lock convention (0.1.47+; the JSONL is unchanged
 from E — the lock is a separate file).
+
+The 0.12.0 rows are NOT a new generation. No event type or field has
+changed since 0.1.48, so those logs are gen F on the wire, and the
+filename's `0120` is the version with its dots stripped — read the bin
+column, not the digits, since the 1.x line was reset to 0.2.x (ADR-0051
+Amendment 2). What they anchor is a PRODUCER ERA: EC-1 (0.13.0) moves the
+human ask behind Turn Commit, so no later bin can write a durable
+`permission_requested` that has no `stop` before it. `recovery-plan.ts`
+keeps its `liveAsk` clause for exactly the logs that do, and these
+samples are why that clause is still justified. **Owed next**: an
+EC-1-era sample produced from the published 0.13.0 bin — a post-publish
+ceremony step, since R4a forbids synthesizing one from an unreleased
+tree.
 
 Historical notes, documented honestly:
 

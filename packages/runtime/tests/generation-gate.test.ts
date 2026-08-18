@@ -30,6 +30,16 @@ const CORPUS = [
 	"gen-e-0146-marker.jsonl", // gen E — 8 real microcompacted boundaries
 	"gen-f-0148-faux.jsonl", // gen F — published bin 0.1.48, faux mode
 	"gen-f-0148-marker.jsonl", // gen F — 8 real microcompacted boundaries
+	// EC-1: the LAST PRE-EC-1 PRODUCER, frozen deliberately. Still gen F on
+	// the wire (no new event type or field since 0.1.48) — what it anchors
+	// is a PRODUCER ERA, not a format generation. From 0.13.0 no bin can
+	// ever again write a durable `permission_requested` with no stop before
+	// it (③ moved asks past Turn Commit), and recovery-plan.ts keeps its
+	// liveAsk clause alive precisely because logs of this era exist. This
+	// sample is that claim's evidence, produced while a bin that writes the
+	// shape still ships.
+	"gen-f-0120-faux.jsonl", // gen F — published bin 0.12.0, faux mode
+	"gen-f-0120-marker.jsonl", // gen F — 8 real microcompacted boundaries
 ] as const;
 
 /** The driver's scope rule (recovery-plan.ts): the open run is the tail
