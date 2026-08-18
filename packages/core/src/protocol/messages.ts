@@ -10,7 +10,12 @@
  * carries images. Forcing every caller into the array shape to serve the
  * 5% that need vision is a tax paid on every line of product code.
  *
- * See ADR-0003 (sum type) and ADR-0008 (tool contract).
+ * See ADR-0003 (sum type). The tool contract's record is mauri ADR-0008 —
+ * the PREDECESSOR series, cited the same way in kernel/hooks.ts and
+ * kernel/mode.ts: kiso's own numbers 0006-0019 were NEVER assigned
+ * (docs/adrs/README.md), so an unprefixed "ADR-0008" sends a reader to a
+ * record that does not exist in this repo. The live tool contract is
+ * tools/tool.ts itself.
  *
  * This module is types-only: it compiles to nothing.
  */
@@ -126,8 +131,12 @@ export type Message = UserMessage | AssistantMessage | ToolResultMessage;
 /**
  * What the adapter advertises to the model.
  *
- * Deliberately minimal: the full tool (handler, repair, concurrency, dedup)
- * is L3-internal and an adapter must never see it. An adapter that can reach
+ * Deliberately minimal: the full tool (the handler above all, plus the
+ * declarations the kernel keeps to itself) is L3-internal and an adapter
+ * must never see it. NB the historical list here named a `repair` member
+ * and a `dedup` member — neither exists on `Tool`: the (name, input) dedup
+ * guard was removed by ADR-0025, and repair means RECEIPT repair, which is
+ * the runtime's, not a tool's. An adapter that can reach
  * the handler will eventually call it, and then the kernel is no longer the
  * only thing that runs tools.
  */

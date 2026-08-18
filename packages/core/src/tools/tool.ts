@@ -4,9 +4,10 @@
  * A tool is a pure declaration + handler pair. The kernel never branches on
  * a tool's internals: `parameters` is a JSON Schema the kernel validates and
  * projects to the adapter as `ToolSpec` (adapter never sees the handler —
- * see ADR-0001), `concurrencySafe` decides batch scheduling, `delivers`
- * marks a tool as an artifact producer (consumed by harness-side delivery
- * tracking; the kernel only carries the flag).
+ * see ADR-0001), `delivers` marks a tool as an artifact producer (consumed
+ * by harness-side delivery tracking; the kernel only carries the flag).
+ * `concurrencySafe` is DECLARED but never consulted — see its own note
+ * below; do not read this list as a claim that it schedules anything.
  *
  * WHY JSON Schema instead of a runtime library: the kernel has zero runtime
  * dependencies (ADR-0001). Zod / TypeBox / valibot live at the harness layer;
@@ -51,20 +52,50 @@ export interface Tool<I = unknown> {
 	/** JSON Schema (draft-07 subset). Validated before execute. */
 	readonly parameters: Readonly<Record<string, unknown>>;
 	/**
-	 * Per-call concurrency predicate — a shape the reference implementation's
-	 * static executionMode cannot express: the same tool may be parallel-safe for one
-	 * input and must be serial for another (generate_image with
-	 * `chain_to_previous`). Absent = safe when true-ish; see ADR-0015.
+	 * DECLARED BUT NEVER CONSULTED — the honest state, recorded rather than
+	 * implied. Nothing in the kernel or the runtime reads this predicate.
+	 * The scheduler restored by ADR-0024 Amendment 1 runs a FIXED window of
+	 * `WINDOW_SIZE = 4` concurrent executions (kernel/loop.ts) and never
+	 * asks a tool whether it is parallel-safe: declaring it, omitting it,
+	 * or returning false from it all produce the same schedule.
+	 *
+	 * History: ADR-0024 decision #4 made execution sequential and kept this
+	 * field "on the contract" for the day parallelism returned. Amendment 1
+	 * returned parallelism with a fixed window and did not wire it, so the
+	 * field has been inert since. (The predicate's intended shape — a
+	 * PER-CALL judgment, because the same tool can be parallel-safe for one
+	 * input and must be serial for another — is what a static per-tool mode
+	 * cannot express; that intent is unimplemented, not enforced.)
+	 *
+	 * Whether to wire it or retire it is an open contract decision. Until it
+	 * is taken: do not rely on this for isolation.
 	 */
 	readonly concurrencySafe?: (input: I) => boolean;
 	/** Marks this tool as an artifact producer (harness-side delivery truth). */
 	readonly delivers?: { readonly kind: string };
 	/**
-	 * Exactly-once guard escape hatch (Phase D): a tool whose side effects
-	 * are safe to repeat (reads, searches, pure computations) declares
-	 * `idempotent: true`. Without it, the kernel refuses to run the same
-	 * tool+input twice in a session — a confirmed success is replayed, an
-	 * interrupted attempt blocks. The default is the safe side.
+	 * The tool's own declaration that REPEATING its side effect is safe
+	 * (reads, searches, pure computations).
+	 *
+	 * It is NOT a dedup guard. The kernel runs every logical call, including
+	 * one whose (name, input) is identical to an earlier one — ADR-0024
+	 * decision #2's (name, input) guard was REMOVED by ADR-0025 decision #1
+	 * ("NO (name, input) dedup", kernel/loop.ts). Exactly-once is enforced
+	 * by execution IDENTITY instead: a confirmed success is never
+	 * re-executed (a lost model-facing result is repaired FROM the durable
+	 * receipt), and an execution that STARTED without reporting — the crash
+	 * window — waits for a human verdict. A FAILED execution is failed, not
+	 * uncertain: a complete receipt IS the outcome (ADR-0038).
+	 *
+	 * What this flag actually decides, and nothing more:
+	 *   - a failure from a tool that did NOT declare it carries the honest
+	 *     "side effects may have partially applied; verify before retrying"
+	 *     note on the result (ADR-0038 Amendment 1);
+	 *   - it rides the durable receipt as `tool_execution_failed.safeToRetry`
+	 *     — history only, since ADR-0038 stopped it feeding ledger status.
+	 *
+	 * Undeclared is the safe side: unknown idempotency means the note
+	 * applies. A retry is a NEW call and re-passes the approval chain.
 	 */
 	readonly idempotent?: boolean;
 	/** R-C: ONE line for the system prompt — the tool's role, never the
