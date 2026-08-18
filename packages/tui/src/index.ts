@@ -30,6 +30,7 @@ export {
 	type PanelArgs,
 	type PanelFlavor,
 	type PanelPhase,
+	deletionRiskHint,
 	panelOptions,
 	type PanelOption,
 	type PanelOptionKind,

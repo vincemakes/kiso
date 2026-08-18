@@ -88,6 +88,75 @@ export function panelOptions(view: PanelView): readonly PanelOption[] {
 	];
 }
 
+/**
+ * TUI2-R3v2 ④ — the deletion-risk hint: four patterns, and nothing else.
+ *
+ * The owner's ruling narrowed this to commands where UNDO DOES NOT
+ * EXIST. That is the whole selection criterion, and it is what makes the
+ * line worth reading: a warning on every dangerous command teaches the
+ * eye to skip warnings, and the eye is the only thing standing between
+ * the human and the side effect.
+ *
+ * So `dd if=/dev/zero of=/dev/sda` gets nothing. It is more destructive
+ * than anything in this table and it is not in it, because the moment
+ * the rules start guessing they start being wrong in both directions —
+ * missing the real ones and crying wolf on `git checkout main`. Four
+ * shapes, matched exactly, no inference.
+ *
+ * The rm case NAMES ITS TARGETS. "This deletes files" is a sentence
+ * about the command's category; "(node_modules, dist)" is the thing the
+ * human is actually deciding about, and it is the difference between a
+ * hint and a label.
+ *
+ * Local string rules: zero requests, zero rent, and it never blocks —
+ * the hint is a sentence beside the command, never a gate in front of
+ * it. The mode moat and the safe-defaults moat are the teeth; this is
+ * the eyes.
+ */
+export function deletionRiskHint(command: string): string | null {
+	// a compound command's risk can be its SECOND half ("npm run clean &&
+	// git clean -fd"), so the segments are scanned in order and the FIRST
+	// match wins: one line, never a stack of them.
+	for (const raw of command.split(/&&|\|\||[;|]/)) {
+		const segment = raw.trim();
+		if (segment === "") continue;
+		const hint = segmentRisk(segment);
+		if (hint !== null) return hint;
+	}
+	return null;
+}
+
+function segmentRisk(segment: string): string | null {
+	const words = segment.split(/\s+/);
+	const verb = words[0];
+	if (verb === "rm") {
+		// -rf in any spelling or order (-rf, -fr, -r -f), because the shell
+		// accepts all of them and the human meant the same thing by each.
+		const flags = words.slice(1).filter((w) => /^-[a-zA-Z]+$/.test(w));
+		const letters = flags.join("");
+		if (!letters.includes("r") || !letters.includes("f")) return null;
+		const targets = words.slice(1).filter((w) => !/^-/.test(w));
+		return targets.length === 0 ? "⚠ deletes files permanently" : `⚠ deletes files permanently (${targets.join(", ")})`;
+	}
+	if (verb !== "git") return null;
+	const sub = words[1];
+	// `git checkout -- <paths>` discards; `git checkout <branch>` does not,
+	// and conflating them would put a red line on the most ordinary command
+	// in the product.
+	if (sub === "checkout" && words.includes("--")) return "⚠ discards your uncommitted changes — unrecoverable";
+	if (sub === "reset" && words.includes("--hard")) return "⚠ throws away commits and working changes";
+	// `git clean -n` is a DRY RUN and is the reason this checks for the f
+	// rather than for the command.
+	if (sub === "clean") {
+		const letters = words
+			.slice(2)
+			.filter((w) => /^-[a-zA-Z]+$/.test(w))
+			.join("");
+		if (letters.includes("f")) return "⚠ deletes untracked files permanently";
+	}
+	return null;
+}
+
 // ── KC3.5 (the ask round): the ask_user panel's TYPES ────────────────
 // The ask is the panel machinery generalized, not a second slot: an
 // ask view is a PanelView carrying `ask`, and the compositor renders it
@@ -215,6 +284,11 @@ export interface PanelView {
 	/** The fallback question — the y/n text for the dock-less path
 	 *  (a TTY without a dock, or a pipe). */
 	readonly fallbackQuestion: string;
+	/** TUI2-R3v2 ④: the deletion-risk line, when the command matches one
+	 *  of the four irreversible patterns. Composed by the CLI (which owns
+	 *  the tool input) from deletionRiskHint; absent for every other
+	 *  command, which is most of them. */
+	readonly riskHint?: string;
 	/** TUI2-R3v2 ①: the SIMPLE flavor's two labels. A trust gate answers
 	 *  "Yes / No", but an uncertain execution answers "rerun / abandon"
 	 *  and an unanswered ask "re-ask / drop" — those callers used to
@@ -362,7 +436,7 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// they can also read in the event log is worth less than the row that
 	// carries the choice. The args keep a floor of one row so the block
 	// never claims to show what it is asking about and then shows nothing.
-	const chrome = 5 + (phase === "options" && note !== undefined ? 1 : 0);
+	const chrome = 5 + (phase === "options" && note !== undefined ? 1 : 0) + (view.riskHint !== undefined && view.riskHint !== "" ? 1 : 0);
 	const optionCount = phase === "options" ? panelOptions(view).length : 0;
 	const optionsShown = Math.min(optionCount, Math.max(1, maxRows - chrome - 1));
 	const argsBudget = Math.max(1, maxRows - chrome - optionsShown);
@@ -375,6 +449,12 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 		shown = args;
 	}
 	rows.push(...shown);
+	// TUI2-R3v2 ④: the risk hint sits directly under the args, because it
+	// is a sentence ABOUT those args — the v4 frame's placement. The warn
+	// tint is the palette's existing functional yellow (no new colour),
+	// and under NO_COLOR the ⚠ still carries it.
+	const risk = view.riskHint;
+	if (risk !== undefined && risk !== "") rows.push(`${gutter}${cutLine(`${p.warn}${escapeTerminal(risk)}${p.reset}`, Math.max(1, W - 2))}`);
 	// TUI2-R3v2 ①: the option LIST. While the typed phase is open the list
 	// stands down — the human is writing prose to the model, and a bar
 	// hovering over "Yes, run it" while they do it claims a choice is still

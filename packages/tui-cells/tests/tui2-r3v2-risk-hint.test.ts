@@ -11,8 +11,10 @@
  * Local string rules, zero requests, and it never blocks: the hint is a
  * sentence next to the command, not a gate in front of it.
  */
-import { describe, expect, it } from "vitest";
-import { deletionRiskHint } from "../src/approval-panel.js";
+import { beforeAll, describe, expect, it } from "vitest";
+import { deletionRiskHint, panelBlockRows } from "../src/approval-panel.js";
+import type { PanelView } from "../src/approval-panel.js";
+import { visibleWidth } from "../src/components.js";
 
 describe("TUI2-R3v2 ④ — the four irreversible-deletion patterns", () => {
 	it("rm -rf names its TARGETS — the whole point is knowing what goes", () => {
@@ -70,5 +72,47 @@ describe("TUI2-R3v2 ④ — the four irreversible-deletion patterns", () => {
 
 	it("the FIRST matching segment wins — one line, never a stack of them", () => {
 		expect(deletionRiskHint("rm -rf a && git clean -fd")).toBe("⚠ deletes files permanently (a)");
+	});
+});
+
+describe("TUI2-R3v2 ④ — the hint in the block", () => {
+	beforeAll(() => {
+		Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+	});
+
+	const view = (riskHint?: string): PanelView => ({
+		flavor: "approval",
+		name: "shell",
+		title: "shell rm -rf build",
+		speaker: "mode:default",
+		statusText: "▸ run paused",
+		args: { kind: "text", lines: ["rm -rf build && npm run build"] },
+		fallbackQuestion: "approve shell? (y/n) ",
+		...(riskHint === undefined ? {} : { riskHint }),
+	});
+
+	it("renders directly under the args, in the palette's EXISTING warn yellow", () => {
+		const rows = panelBlockRows(view("⚠ deletes files permanently (build)"), "options", 0, 80, 20);
+		const at = rows.findIndex((r) => r.includes("deletes files permanently"));
+		expect(at, "the hint must be in the block").toBeGreaterThan(-1);
+		expect(rows[at - 1], "it sits under the args it is about").toContain("rm -rf build");
+		expect(rows[at], "the warn entry — SGR 33, no new colour").toContain("\x1b[33m");
+	});
+
+	it("a view WITHOUT a hint renders no extra row — the block is unchanged", () => {
+		const without = panelBlockRows(view(), "options", 0, 80, 20);
+		const with_ = panelBlockRows(view("⚠ deletes files permanently (build)"), "options", 0, 80, 20);
+		expect(with_.length).toBe(without.length + 1);
+		expect(without.join("")).not.toContain("⚠");
+	});
+
+	it("the hint row obeys invariant ① at every width, and its ROW is budgeted", () => {
+		for (const W of [24, 40, 80, 120]) {
+			for (const maxRows of [8, 12, 20]) {
+				const rows = panelBlockRows(view("⚠ deletes files permanently (node_modules, dist, coverage)"), "options", 0, W, maxRows);
+				expect(rows.length, `W=${W} maxRows=${maxRows}`).toBeLessThanOrEqual(maxRows);
+				for (const row of rows) expect(visibleWidth(row), `W=${W}`).toBeLessThanOrEqual(W);
+			}
+		}
 	});
 });

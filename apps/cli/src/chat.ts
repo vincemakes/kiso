@@ -21,7 +21,7 @@ import {
 	type RenderInput,
 	type RunUsage,
 } from "@vincemakes/kiso-tui";
-import { editFileDiff, writeFileDiff, type DiffResult } from "@vincemakes/kiso-tui";
+import { deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
@@ -238,12 +238,17 @@ function approvalView(name: string, ev: { speaker?: string; input?: Record<strin
 	// exactOptionalPropertyTypes: the hint is OMITTED when the speaker has
 	// no fix (mode:accept-edits, shell in default) — never `hint: undefined`.
 	const hint = fixHintFor(speaker, name);
+	// TUI2-R3v2 ④: the deletion-risk line, for shell calls whose command
+	// matches one of the four irreversible patterns. Local rules, no
+	// request, and absent for every other command — which is most of them.
+	const risk = name === "shell" ? deletionRiskHint(String(input.command ?? "")) : null;
 	return {
 		flavor: "approval",
 		name,
 		title: toolTarget(name, input),
 		speaker,
 		...(hint !== undefined ? { hint } : {}),
+		...(risk !== null ? { riskHint: risk } : {}),
 		statusText: "▸ run paused",
 		args: approvalArgs(name, input),
 		fallbackQuestion: `approve ${escapeTerminal(name)}? (y/n) `,

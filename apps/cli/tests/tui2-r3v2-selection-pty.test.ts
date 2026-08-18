@@ -70,6 +70,22 @@ describe("TUI2-R3v2 ① — the selection panel on a real PTY", () => {
 		expect(readFileSync(rule, "utf8")).toContain('["shell"]');
 	}, 240_000);
 
+	it("slice ④ — an irreversible delete carries its hint, with the targets NAMED", () => {
+		const rm = { type: "tool_call_end", callId: "s2", name: "shell", input: { command: "rm -rf build-artifacts" } };
+		const s = fauxScript([
+			{ events: [{ type: "text_delta", text: "Cleaning." }, rm, { type: "stop", reason: "tool_use" }] },
+			{ events: [{ type: "text_delta", text: "all done." }, { type: "stop", reason: "end_turn" }] },
+			...spares(),
+		]);
+		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: s, KISO_MODE: "default" });
+		const raw = ptyRun(["--mode", "default", "r3v2-risk"], env as NodeJS.ProcessEnv, {
+			feeds: [["▌ ", "go\r"]],
+			delays: [[2.5, "\x1b"], [4, "exit\r"]], // esc — the hint is READ, not acted on
+		});
+		const grid = screenAt(raw, "1-4 instant").join("\n");
+		expect(grid).toContain("⚠ deletes files permanently (build-artifacts)");
+	}, 240_000);
+
 	it("the digit is instant — 1 approves with no enter after it", () => {
 		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script(), KISO_MODE: "default" });
 		const raw = ptyRun(["--mode", "default", "r3v2-digit"], env as NodeJS.ProcessEnv, {
