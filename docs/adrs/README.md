@@ -46,7 +46,9 @@ that has not finished speaking.
   chain guards retries — Accepted (supersedes 0024 in part)
 - 0039 — The TUI bottom-anchored UI budget — Accepted
 - 0040 — The v2d body renderer cell model — Accepted
-- 0041 — The CLI gate — terminal cap 2400 — Accepted
+- 0041 — The CLI gate — terminal cap 2400 — **Superseded by 0043** (which
+  executed 0041's own escape hatch: structural extraction, then
+  per-package gates)
 - 0042 — Abstain is a verdict — Accepted
 - 0043 — TUI extraction, per-package gates — Accepted (Amendment 1:
 the cli gate 1320 → 1856, one argued recalibration for the Config
@@ -77,3 +79,11 @@ not another recalibration)
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
 never an edit.
+
+**Whose job that is (SC-1b, 2026-08-18): the SUPERSEDING round updates the
+superseded record's own Status line and appends the supersession note — in
+the same round, not later.** The marker is the dead record's job to carry
+and the live round's job to write; an index line alone does not do it,
+because a reader arrives at an ADR by its number and reads its Status, not
+the index. SC-1 found 0028, 0036, and 0041 marked in the index above and
+"Accepted" in their own headers for as long as four months.

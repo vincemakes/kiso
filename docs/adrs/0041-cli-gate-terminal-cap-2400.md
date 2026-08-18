@@ -1,6 +1,11 @@
 # ADR-0041: the cli gate's terminal cap — 2400, never raised again
 
-- **Status:** Accepted
+- **Status:** SUPERSEDED by ADR-0043 (the TUI extraction — per-package
+  gates replace the single 2400 cap), 2026-08-05. Not overturned:
+  ADR-0043 EXECUTED this record's own escape hatch — structural
+  extraction — so the single cli cap gave way to per-package gates. The
+  discipline survives the number and is cited by name in ADR-0043's
+  Amendment 3 ("the ADR-0041 discipline").
 - **Date:** 2026-08-05
 - **Layer:** apps/cli (governance)
 

@@ -1,6 +1,9 @@
 # ADR-0028: The extension contract — narrow surfaces, monotone by construction
 
-- **Status:** Accepted
+- **Status:** Accepted; the ASK ROUTING (surface 1's "ask = the existing
+  policy chain decides") is SUPERSEDED by ADR-0029 (an ask is answered by
+  a human — no automated policy speaks for the human), 2026-08-04. Every
+  other surface stands, including surface 7's deny > ask > allow order.
 - **Date:** 2026-08-04
 - **Layer:** Cross-cutting (core / runtime / cli / official extensions)
 

@@ -1,6 +1,9 @@
 # ADR-0036: The single-writer lock is a kernel flock held by a helper process
 
-- **Status:** Accepted
+- **Status:** SUPERSEDED by ADR-0050 (the identity-confirmed link lock — a
+  pure Node single-writer lock), adjudicated by the review 2026-08-11. The
+  mechanism recorded here — a kernel flock held by a python3 helper
+  process — is history; ADR-0050 is the live lock.
 - **Date:** 2026-08-03
 - **Layer:** Runtime (storage)
 
