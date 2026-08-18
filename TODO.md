@@ -33,20 +33,26 @@ resolved items move to the round record that delivered them.
 - **Diet D re-discussion** — the diet-micro riders A/B/C landed in
   0.1.48 with D reverted (the 0.1.47 void adjudication); D's re-entry
   is an open discussion, not a commitment.
+- **Plan the next core extraction (core at 1972/2000)** — registered by
+  the 0.9.0 field-report audit (TUI2-R2pre ⑥): the kernel is 28 lines
+  under its own budget, so the next feature that touches it has nowhere
+  to land. What to extract is the open question — this line exists so
+  the ceiling is a scheduled decision rather than a build failure
+  somebody meets by surprise.
 
-## P2 (found in 0.1.25 release verification)
+## P2 (found in 0.1.25 release verification) — CLOSED
 
-- **cache % can render >100% on the anthropic-compat path** — DeepSeek's
-  anthropic-compat endpoint reports `input_tokens` EXCLUDING the cached
-  prefix (fresh-only: observed inputTokens 59/111 vs cacheRead 1024),
-  while its openai-compat endpoint reports input INCLUDING cache (the
-  0.1.23-established convention). The recap/status formula
-  `cache/in` (correct for the openai convention; real Anthropic's
-  input_tokens also includes the cached portion) then renders nonsense
-  like `cache 923%`. Fix direction: a per-provider input convention
-  signal (or the extractor's fresh/total split) feeding the recap's
-  ratio; register the reproduction: anthropic-compat short session +
-  `grep cacheRead`.
+- *(resolved in the E2 round — 1.3.0, the R2a-1 ruling 2026-08-13: the
+  cache % that could render >100% on the anthropic-compat path. The
+  mixed-convention consumer is CANONICAL at the route now
+  (`canonicalizeUsage`, `apps/cli/src/chat.ts` — the declared
+  existing-behavior change above `usageFromEvent`). The entry's own
+  worked example is quoted back there: raw `{input 111, cacheRead 1024}`
+  used to render "in 111" and a cache ratio of 923%; `in` is the
+  canonical FRESH count now and the recap divides cache by the TOTAL
+  (in + cache), which cannot exceed 100% by construction. The registered
+  reproduction — anthropic-compat short session + `grep cacheRead` — is
+  the trace block's own derivation.)*
 
 ## Standing (per-round)
 

@@ -10,6 +10,17 @@ __pycache__/
 CLAUDE.md
 .claude/launch.json
 
-# the sanctioned scratch dirs — never tracked (the 0.5.0 add -A trap)
+# the IGNORED scratch dirs — never tracked (the 0.5.0 add -A trap)
 tmp/
 design-previews/
+
+# scratchpad/ is the sanctioned EXCEPTION and is deliberately TRACKED:
+# ten files that committed content depends on. tui-lab/ is named by path
+# in docs/plans/2026-08-07-tui-v6.md, where "the lab's five scenarios run
+# and pass" is a completion criterion, and release-smoke.mjs runs them;
+# release-smoke.mjs is itself cited from packages/tui-cells (its 40/46
+# crash widths are why a shipped test carries those constants); and
+# a3-repro.py is named as the origin of the cell model in
+# packages/tui/tests/a7-replay.test.ts. Untracking any of them would turn
+# a checkable claim into a dangling one, so the comment above names what
+# it actually covers instead (TUI2-R2pre ⑥, audit #6).
