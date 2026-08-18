@@ -31,9 +31,18 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { projectMessages, type Adapter, type Event, type Message } from "@vincemakes/kiso-core";
+import { defineTool, projectMessages, type Adapter, type Event, type Message } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
 import { deriveRecoveryPlan } from "../src/recovery-plan.js";
+
+/** Every tool_use block in a message array with no answering result. */
+const dangling = (msgs: readonly Message[]): string[] => {
+	const answered = new Set(msgs.filter((m) => m.role === "tool").map((m) => m.callId));
+	return msgs
+		.filter((m) => m.role === "assistant")
+		.flatMap((m) => m.blocks.filter((b) => b.type === "tool_use").map((b) => b.callId))
+		.filter((c) => !answered.has(c));
+};
 
 /** seq-numbered prefix builder. */
 function prefix(...events: Omit<Event, "seq">[]): Event[] {
@@ -118,15 +127,6 @@ describe("EC1-F1 — a bare tool-call suffix with no stop is a DRAFT, not a cont
 		const events: Event[] = [];
 		for await (const ev of session.resume()) events.push(ev);
 
-		/** Every tool_use block in a message array that has no answering result. */
-		const dangling = (msgs: readonly Message[]): string[] => {
-			const answered = new Set(msgs.filter((m) => m.role === "tool").map((m) => m.callId));
-			return msgs
-				.filter((m) => m.role === "assistant")
-				.flatMap((m) => m.blocks.filter((b) => b.type === "tool_use").map((b) => b.callId))
-				.filter((c) => !answered.has(c));
-		};
-
 		// The request the model actually saw on resume.
 		expect(requests.length).toBeGreaterThan(0);
 		for (const req of requests) expect(dangling(req)).toEqual([]);
@@ -135,5 +135,78 @@ describe("EC1-F1 — a bare tool-call suffix with no stop is a DRAFT, not a cont
 		// The draft was voided by a marker, not by deleting anything: the
 		// call's bytes are still on disk, they simply no longer project.
 		expect(events.some((e) => e.type === "model_output_abandoned")).toBe(true);
+	});
+
+	it("the LIVE arm: a turn voided in-process leaves no dangling tool_use for the NEXT turn of the same session", async () => {
+		// The same finding, reached without a crash. A provider that violates
+		// the protocol after its stop voids the turn; ① means its
+		// commit-required call never ran, so nothing answers the tool_use it
+		// already persisted. The run ends on its error terminal — and the
+		// recovery driver will not help, because its first rule is "the open
+		// run reached its terminal". So when the human types the next message
+		// in the SAME session, the request carries an assistant tool_use with
+		// no result: the provider-400 class, live.
+		//
+		// Pre-EC-1 this shape could not occur: the streaming launch had
+		// already run the call and its result answered the pair. Closing the
+		// destructive hole opened this one, so ⑤ owes the live arm too, and
+		// the round's ruling permits exactly the fix used — the loop as a
+		// SECOND PRODUCER of `model_output_abandoned`, an existing event
+		// variant. No new protocol surface.
+		const dir = mkdtempSync(join(tmpdir(), "kiso-ec1f1-live-"));
+		const requests: Message[][] = [];
+		let turn = 0;
+		const adapter: Adapter = {
+			stream(options) {
+				requests.push(options.messages as Message[]);
+				const n = turn++;
+				return {
+					async *[Symbol.asyncIterator]() {
+						if (n === 0) {
+							yield { type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" }, seq: 0 };
+							yield { type: "stop", reason: "tool_use", seq: 1 };
+							yield { type: "text_delta", text: "AFTER THE STOP", seq: 2 }; // the violation
+						} else {
+							yield { type: "text_delta", text: "ok", seq: 0 };
+							yield { type: "stop", reason: "end_turn", seq: 1 };
+						}
+					},
+				};
+			},
+		};
+		let ran = 0;
+		const tool = defineTool({
+			name: "web_search",
+			description: "Search",
+			parameters: { type: "object", properties: { query: { type: "string" } } },
+			execute: async () => {
+				ran += 1;
+				return { content: "results", isError: false };
+			},
+		});
+		const agent = createAgent({ model: "faux", store: new SessionStore(dir), tools: [tool], adapter });
+		const session = await agent.session({ id: "s" });
+		const first: Event[] = [];
+		for await (const ev of session.run("go")) first.push(ev);
+		for await (const ev of session.run("again")) void ev;
+
+		// The turn voided and the call never ran — ① holding, unchanged.
+		expect(ran).toBe(0);
+		expect(first.filter((e) => e.type === "terminal").at(-1)!.outcome).toMatchObject({
+			kind: "error",
+			error: { code: "invalid_request" },
+		});
+		// RED before the live producer: requests[1] carried dangling ["c1"].
+		expect(requests).toHaveLength(2);
+		for (const req of requests) expect(dangling(req)).toEqual([]);
+		// The marker is how — the same instrument the resume uses, appended
+		// by the loop instead. The call's bytes stay on disk; they stop
+		// projecting.
+		const durable = new SessionStore(dir).load("s").map((r) => r.event);
+		expect(durable.filter((e) => e.type === "model_output_abandoned")).toHaveLength(1);
+		expect(durable.some((e) => e.type === "tool_call_end" && e.callId === "c1")).toBe(true);
+		// And it is idempotent across the boundary: the marker is now the
+		// last boundary, so a later resume derives no second draft.
+		expect(deriveRecoveryPlan(durable, []).kind).not.toBe("ABANDON_DRAFT");
 	});
 });

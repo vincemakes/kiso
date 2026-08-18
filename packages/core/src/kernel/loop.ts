@@ -580,6 +580,11 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		// equal append order (persistence-ownership.test.ts), so the hold
 		// covers both, and the commit below performs both together.
 		let heldStop: EventInput | null = null;
+		// EC-1 ⑤ (the live void): the last durable event BEFORE this turn's
+		// model output — the previous turn's stop, the user input, or a
+		// microcompact boundary. Everything after it is this turn's draft,
+		// which is exactly the range a void must abandon.
+		const turnStart = log.lastSeq;
 		// EC-1 ①: this turn's commit gate — reset BEFORE any call can launch.
 		committed = false;
 		turnSettled = new Promise<void>((res) => {
@@ -815,6 +820,37 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		for await (const q of drainExec()) yield q;
 		if (launchError !== null) throw launchError;
 		if (voided !== null) {
+			// EC-1 ⑤ — THE LIVE VOID. ① means a voided turn's commit-required
+			// call never ran, so nothing answers the `tool_use` its
+			// tool_call_end already persisted. The run ends here on its error
+			// terminal, and the recovery driver will never see it: its first
+			// rule is "the open run reached its terminal". So the NEXT turn of
+			// the same session would send the model an assistant tool_use with
+			// no result — the provider-400 class, live rather than after a
+			// crash. Pre-EC-1 the streaming launch had already answered the
+			// pair; closing the destructive hole opened this one.
+			//
+			// The fix is the instrument the resume already uses, produced here
+			// instead: the loop is a SECOND PRODUCER of `model_output_abandoned`
+			// (an existing variant — no new protocol surface, the frozen event
+			// contract holds). It voids the whole draft range, exactly as
+			// ABANDON_DRAFT does, and only when a call is still pure intent —
+			// a call with a durable started is a FACT, and the same rule as
+			// recovery-plan.ts's `unexecuted`. Idempotent by construction: the
+			// marker becomes the last boundary, so no later resume derives a
+			// second draft over the same range.
+			if (
+				log.all.some(
+					(e) =>
+						e.type === "tool_call_end" &&
+						e.seq > turnStart &&
+						!log.all.some((x) => x.type === "tool_execution_started" && x.callId === e.callId),
+				)
+			) {
+				const marker = log.append({ type: "model_output_abandoned", voidFromSeq: turnStart, reason: "the turn was voided before it committed" });
+				if (hooks.onEvent) await hooks.onEvent(marker, {}).catch(() => {});
+				yield marker;
+			}
 			yield await terminal(voided);
 			return;
 		}
