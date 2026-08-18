@@ -213,7 +213,7 @@ describe("KC2 T-R3b — the resolution repairs the projection: no dangling tool_
 			["rerun", "\x03", 2],
 			["› ", "only the logs, not the build dir", 5],
 			["only the logs", ALT_ENTER, 6],
-			["rerun", "3\r", 8], // 3 = abandon; the fill must land either way
+			["rerun", "2\r", 8], // 2 = abandon (the simple flavor is a two-row list now); the fill must land either way
 		], 30, ["run B done"]);
 		const log = durable(dirs.home, "kc2r3b");
 

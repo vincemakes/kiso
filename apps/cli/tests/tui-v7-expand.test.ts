@@ -234,7 +234,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// The panel showed the FULL diff without any toggle — the middle rows
 		// the old cut hid are up from the start; the affordance is the
 		// panel's, and the fold cap carried the notice row.
-		expect(clean).toContain("tab amend · esc cancel");
+		expect(clean).toContain("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
 		expect(clean).toContain("more rows — the full args are in the event log");
 		expect(clean).toContain("line07"); // the always-verbose middle — never hidden
 		expect(clean).not.toContain("ctrl+r to expand"); // the live cut is gone — the panel superseded it

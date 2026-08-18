@@ -38,7 +38,7 @@ function expectParked(term: VtScreen, where: string): void {
 	const grid = term.visible();
 	const { row, col } = term.cursor;
 	const line = grid[row] ?? "";
-	expect(line, `${where}: cursor on row ${row} — ${JSON.stringify(line.slice(0, 70))}`).toMatch(/^│ (›|1-3>|1\/3>|provider\/model:| )/);
+	expect(line, `${where}: cursor on row ${row} — ${JSON.stringify(line.slice(0, 70))}`).toMatch(/^│ (›|amend›|provider\/model:| )/);
 	expect(col, `${where}: cursor at col ${col}, inside the lead`).toBeGreaterThanOrEqual(2);
 }
 
@@ -98,7 +98,7 @@ beforeAll(() => {
 
 describe("TUI2-R2 ⑤ — the cursor parks at the active input, in every named state", () => {
 	it("APPROVAL PANEL: on the panel's own prompt row, never inside its block", () => {
-		const term = termAt(raw, "tab amend · esc cancel", ROWS, COLS);
+		const term = termAt(raw, "↑↓ move · ⏎ or click confirms · 1-4 instant · esc", ROWS, COLS);
 		expect(term.visible().join("\n")).toContain("needs approval");
 		expectParked(term, "approval-panel");
 		expect(term.visible()[term.cursor.row] ?? "").not.toMatch(/needs approval|args \(full\)/);
@@ -135,7 +135,7 @@ describe("TUI2-R2 ⑤ — the cursor parks at the active input, in every named s
 			const term = new VtScreen(ROWS, COLS);
 			term.write(Buffer.from(raw.slice(0, i + CLOSE.length), "utf8"));
 			const line = term.visible()[term.cursor.row] ?? "";
-			if (!/^│ (›|1-3>|1\/3>|provider\/model:| )/.test(line)) strays.push(`frame ${frames}: ${JSON.stringify(line.slice(0, 60))}`);
+			if (!/^│ (›|amend›|provider\/model:| )/.test(line)) strays.push(`frame ${frames}: ${JSON.stringify(line.slice(0, 60))}`);
 			pos = i + CLOSE.length;
 		}
 		expect(frames, "no frames in the stream").toBeGreaterThan(5);

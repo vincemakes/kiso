@@ -11,7 +11,9 @@
  *
  * The contract asserted here: after every settle the cursor rests at the
  * ACTIVE INPUT position — the composer's, or, while a panel owns the
- * keys, the panel's own prompt row (`1-3> `), which is where the user's
+ * keys, the panel's own prompt row (the dim `› ` — MOVED, the TUI2-R3v2
+ * panel-selection supersession class: `1-3> ` was a prompt for input the
+ * list phase does not ask for), which is where the user's
  * next keystroke really goes.
  *
  * The emulator reads the cursor the same way a terminal does, from the
@@ -36,7 +38,7 @@ const COLS = 100;
 function expectParkedInComposer(term: VtScreen, where: string): void {
 	const grid = term.visible();
 	const { row, col } = term.cursor;
-	const inputRow = grid.findIndex((l) => l.startsWith("│ ›") || l.startsWith("│ 1-3>"));
+	const inputRow = grid.findIndex((l) => l.startsWith("│ ›") || l.startsWith("│ amend›"));
 	expect(inputRow, `${where}: no composer row on screen`).toBeGreaterThanOrEqual(0);
 	expect(row, `${where}: cursor on row ${row} (${JSON.stringify(grid[row] ?? "")}), expected the composer row ${inputRow}`).toBe(inputRow);
 	expect(col, `${where}: cursor at col ${col}, inside the lead`).toBeGreaterThanOrEqual(2);
@@ -101,7 +103,7 @@ describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
 			// an input row is the composer's, its multi-line continuation, or
 			// a panel's own prompt — every one of them is a place a keystroke
 			// legitimately lands
-			if (!/^│ (›|1-3>| )/.test(line)) strays.push(`frame ${frames}: ${JSON.stringify(line.slice(0, 60))}`);
+			if (!/^│ (›|amend›| )/.test(line)) strays.push(`frame ${frames}: ${JSON.stringify(line.slice(0, 60))}`);
 			pos = i + CLOSE.length;
 		}
 		expect(frames, "no frames in the stream").toBeGreaterThan(5);
@@ -127,7 +129,7 @@ describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
 			delays: [[3, "1\r"], [6, "exit\r"]],
 			cwd: ws,
 		});
-		const term = termAt(raw, "tab amend · esc cancel");
+		const term = termAt(raw, "↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
 		const grid = term.visible();
 		// the panel is really up — the assertion below is about that state
 		expect(grid.join("\n")).toContain("needs approval");

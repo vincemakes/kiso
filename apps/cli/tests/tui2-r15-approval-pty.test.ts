@@ -51,7 +51,7 @@ describe("TUI2-R1.5 ② — the edit approval diff on a real PTY", () => {
 			cwd: ws,
 		});
 		// the panel frame, read at its last fully-painted affordance row
-		const grid = screenAt(raw, "tab amend · esc cancel");
+		const grid = screenAt(raw, "↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
 		const joined = grid.join("\n");
 		// the ONE changed line, both sides
 		expect(joined).toContain("-   // OLD");
@@ -82,7 +82,7 @@ describe("TUI2-R1.5 ② — the edit approval diff on a real PTY", () => {
 			delays: [[2, "1\r"]],
 			cwd: ws,
 		});
-		const joined = screenAt(raw, "tab amend · esc cancel").join("\n");
+		const joined = screenAt(raw, "↑↓ move · ⏎ or click confirms · 1-4 instant · esc").join("\n");
 		expect(joined).toContain("pattern not found in src/parser.ts");
 		// nothing invented: the file's own lines are not drawn as removals
 		expect(joined).not.toContain("-export function parseExpr");

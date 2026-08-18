@@ -154,6 +154,38 @@ describe("TUI2-R3v2 ① — the approval panel is a selection list", () => {
 		expect(editor.line()).toBe("yes, run 13 of them now");
 	});
 
+	it("the habitual trailing enter does NOT submit the restored draft", () => {
+		// the hazard the instant confirm creates. "y⏎" and "1⏎" are what a
+		// decade of y/n prompts taught everyone's fingers; the panel needs
+		// one byte now, so the second one would land in a composer that has
+		// just had the pre-panel draft restored into it — and send it.
+		const editor = new Editor(() => {});
+		let submitted: string | null = null;
+		editor.onLine((line) => {
+			submitted = line;
+		});
+		editor.feed(enc("half a thought"));
+		editor.beginPanel(view, () => {});
+		editor.feed(enc("1")); // instant confirm
+		editor.feed(enc("\r")); // the habit
+		expect(submitted).toBeNull();
+		expect(editor.line()).toBe("half a thought");
+	});
+
+	it("…but the guard is one-shot: the NEXT enter sends normally", () => {
+		const editor = new Editor(() => {});
+		let submitted: string | null = null;
+		editor.onLine((line) => {
+			submitted = line;
+		});
+		editor.beginPanel(view, () => {});
+		editor.feed(enc("1"));
+		editor.feed(enc("\r")); // swallowed
+		editor.feed(enc("a real message"));
+		editor.feed(enc("\r")); // sent
+		expect(submitted).toBe("a real message");
+	});
+
 	it("esc cancels straight from the list — no deselect step", () => {
 		const { editor, verdict } = open();
 		editor.feed(DOWN); // the bar is off the default; esc still cancels

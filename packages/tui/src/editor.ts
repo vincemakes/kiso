@@ -125,6 +125,9 @@ export class Editor {
 		stash: { chars: number[]; cursor: number; scroll: number };
 	} | null = null;
 	#pasting = false;
+	/** TUI2-R3v2 ①: one-shot — a panel that just closed swallows the
+	 *  habitual trailing enter rather than submitting the restored draft. */
+	#swallowEnter = false;
 	#lineCb: ((line: string) => void) | null = null;
 	#pendingLines: string[] = []; // submits before onLine is wired (startup) — never dropped
 	#sigintCb: (() => void) | null = null;
@@ -687,15 +690,25 @@ export class Editor {
 		let i = 0;
 		while (i < text.length) {
 			const c = text[i];
+			// TUI2-R3v2 ①: the one-shot enter guard a just-closed panel arms
+			// (see #panelClose). It sits at the very top of the loop because
+			// the byte it must not let through is the FIRST byte after the
+			// close, and it disarms on anything else in the same breath.
+			if (this.#swallowEnter) {
+				this.#swallowEnter = false;
+				if (this.#panel === null && (c === "\x0d" || c === "\x0a")) {
+					i += 1;
+					continue;
+				}
+			}
 			if (this.#panel !== null) {
-				// W21: the panel owns the keys — the digits/y/n select in
-				// the options phase (digit 2 jumps to the rule input), tab
-				// opens the amend (approval only), esc backs out (rule/
-				// amend → options, selection → rest, rest → cancel), enter
-				// commits by phase. CSI/SS3 and the editing keys still ride
-				// the normal chain below (the rule/amend lines are free
-				// text); ctrl-c still rides the SIGINT handler (which
-				// cancels the panel).
+				// W21: the panel owns the keys — a digit CONFIRMS its row in
+				// the options phase, tab opens the amend (approval only), esc
+				// backs out (amend → options, options → cancel), enter takes
+				// the highlighted row. CSI/SS3 and the editing keys still ride
+				// the normal chain below (the amend line is free text);
+				// ctrl-c still rides the SIGINT handler (which cancels the
+				// panel).
 				const panel = this.#panel;
 				// KC3.5: an ASK panel routes its own keys — the digits pick
 				// (single-select advances, multi toggles), space toggles at
@@ -1362,8 +1375,21 @@ export class Editor {
 		const panel = this.#panel;
 		if (panel === null) return;
 		this.#panel = null;
-		// the pre-panel buffer returns — the panel's rule/feedback text
-		// never leaks into the user's next turn (commit AND cancel).
+		// TUI2-R3v2 ①: swallow ONE bare enter after the panel goes away.
+		//
+		// This is the hazard the instant confirm creates and it is not
+		// hypothetical: "y⏎" and "1⏎" are what a decade of y/n prompts
+		// taught everyone's fingers, and the panel used to need both bytes.
+		// It needs one now — so the second one lands in a composer that has
+		// just had the user's PRE-PANEL DRAFT restored into it, and submits
+		// it. Answering an approval would send a half-written message.
+		//
+		// The guard is one-shot and expires on any other key, so it can
+		// never eat an enter the user meant: by the time they have typed
+		// anything at all, it is gone.
+		this.#swallowEnter = true;
+		// the pre-panel buffer returns — the panel's amend text never leaks
+		// into the user's next turn (commit AND cancel).
 		this.#chars = [...panel.stash.chars];
 		this.#cursor = panel.stash.cursor;
 		this.#scroll = panel.stash.scroll;

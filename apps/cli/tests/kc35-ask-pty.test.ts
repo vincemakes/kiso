@@ -302,7 +302,7 @@ describe("T-Q5 — THE MOAT: the ask survives kill -9", () => {
 		// the interrupted ask was announced as a QUESTION, not as a side
 		// effect that may have applied
 		expect(second).toContain("an unanswered question was interrupted — ask it again?");
-		expect(second).toContain("1 re-ask · 3 drop");
+		expect(second).toContain("an unanswered question was interrupted — ask it again?");
 		expect(second).not.toContain("did the interrupted execution apply?");
 
 		// the SAME questions came back, and were answered

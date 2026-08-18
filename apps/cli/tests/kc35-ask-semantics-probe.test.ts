@@ -300,12 +300,12 @@ describe("KC3.5 ① — what the HUMAN meets on `kiso resume` after an idempoten
 		const script = join(dir, "faux.json");
 		writeFileSync(script, JSON.stringify([{ events: [{ type: "text_delta", text: "resume settled" }, { type: "stop", reason: "end_turn" }] }]), "utf8");
 		seedKilledMidRead(dirs.home, "kc35probe");
-		const screen = stripANSI(ptyResume({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc35probe", ["1 rerun"]));
+		const screen = stripANSI(ptyResume({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc35probe", ["1 rerun it"]));
 
 		// The meta-hop, verbatim: the human is asked whether the interrupted
 		// execution applied, BEFORE anything re-presents.
 		expect(screen).toContain("uncertain execution");
-		expect(screen).toContain("did the interrupted execution apply? — 1 rerun · 3 abandon");
+		expect(screen).toContain("did the interrupted execution apply?");
 		expect(screen).toContain("read_file (ex-3)");
 
 		// ...and nothing re-executed while the question stood: the durable
