@@ -41,6 +41,20 @@ const ALTERNATIVES = JSON.stringify({
 	],
 });
 
+/** R3v2-F1: what the live failure actually looked like — prose, a fence,
+ *  and then the token budget ended the reply mid-string. Nothing closes:
+ *  no quote, no brace, no bracket, no fence. ASCII only, so what the
+ *  screen shows is about the product and not about encoding. */
+const TRUNCATED = [
+	"Sure - here are safer options. The original command removes the whole",
+	"build directory, which is irreversible, so each alternative below",
+	"narrows the blast radius in a different way.",
+	"",
+	"```json",
+	'{"alternatives":[{"command":"npm run build","reason":"rebuilds in place and keeps build/"},',
+	'{"command":"rm -rf build/cache && npm run build","reason":"clears only the ca',
+].join("\n");
+
 /** Every request line in the session's trace sidecar. */
 function requests(home: string): Record<string, unknown>[] {
 	const dir = join(home, "sessions", "traces");
@@ -147,6 +161,34 @@ describe("TUI2-R3v2 ③ — the safer-options arc, end to end", () => {
 		const screen = screenAt(raw, "the original choices stand").join("\n");
 		expect(screen).toContain("couldn't get safer options — the original choices stand");
 		// …and the original choices really do still work
+		expect(screen).toContain("Yes, run it");
+	}, 240_000);
+
+	it("R3v2-F1: a reply CUT SHORT says so — the distinct line, on screen", () => {
+		// The finding, rendered. Before the fix this failure was
+		// indistinguishable on screen from a model that simply refused, so
+		// the one failure the product could have explained explained
+		// nothing. The provider now reports the CAUSE and the panel picks
+		// the sentence.
+		const script = fauxScript([
+			{ events: [{ type: "text_delta", text: "Cleaning and rebuilding." }, RISKY, { type: "stop", reason: "tool_use" }] },
+			{ events: [{ type: "text_delta", text: TRUNCATED }, { type: "stop", reason: "end_turn" }] },
+			{ events: [{ type: "text_delta", text: "all done." }, { type: "stop", reason: "end_turn" }] },
+			...spares(3),
+		]);
+		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "default" });
+		const raw = ptyRun(["--mode", "default", "r3v2-f1-cut"], env as NodeJS.ProcessEnv, {
+			feeds: [
+				["▌ ", "go\r"],
+				["all done.", "exit\r"],
+			],
+			delays: [[2.5, "3"], [5.0, "1"]],
+			timeout: 90,
+		});
+		const screen = screenAt(raw, "the original choices stand").join("\n");
+		expect(screen).toContain("couldn't get safer options (the reply was cut short) — the original choices stand");
+		// …and it is still a DEGRADATION, not a dead end: every original
+		// choice is back, which is the half the human acts on.
 		expect(screen).toContain("Yes, run it");
 	}, 240_000);
 });
