@@ -25,7 +25,8 @@ const artifactTool = defineTool({
 	name: "create_artifact",
 	description: "Create an artifact",
 	parameters: { type: "object", properties: {} },
-	delivers: { kind: "canvas" },
+	// SC-1b: `delivers` removed — delivery truth is the CALLER's
+	// `DeliveryConfig.producers` set, which is what these tests assert against.
 	execute: async () => ({ content: "artifact://1", isError: false }),
 });
 

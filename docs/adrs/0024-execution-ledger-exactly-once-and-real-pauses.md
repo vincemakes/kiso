@@ -3,7 +3,9 @@
 - **Status:** Accepted; decision #2 (the (name, input) dedup guard) is
   SUPERSEDED by ADR-0025 (executionId identity) — see 0025 for the current
   exactly-once mechanism; decision #4 (sequential execution) is SUPERSEDED
-  by Amendment 1 (the parallel execution returns) — see the amendment below.
+  by Amendment 1 (the parallel execution returns) — see the amendment below;
+  decision #4's `concurrencySafe` sentence is SUPERSEDED by Amendment 2 (the
+  field is retired at 0.12.0; the race moves to EC-1).
 - **Date:** 2026-08-03
 - **Layer:** L2 Kernel / L3 Tool / runtime
 
@@ -177,3 +179,29 @@ context-round expedience; this amendment's growth pushed it out:
   model latency shows the sweet spot; the constant is a single place.
 - Request-level concurrency (multiple model turns in flight) and
   speculative execution are explicitly OUT of scope.
+
+## Amendment 2 (2026-08-18): `concurrencySafe` is retired, the race is not
+
+Decision #4's closing sentence — "the `concurrencySafe` field stays on the
+contract" — expired at 0.12.0. The SC-1 semantic-contract audit found the
+field DECLARED and consulted by nothing: Amendment 1 returned parallel
+execution with a FIXED window of 4 and never wired the predicate, so
+declaring it, omitting it, or returning `false` from it produced the same
+schedule. The SC-1 memo's adjudication (owner, 2026-08-18) ruled removal
+while the 0.x window is open, and the SC-1b round removed the field from
+`Tool` (packages/core/src/tools/tool.ts) along with its unwired sibling
+`delivers`.
+
+The removal is a correction to the RECORD, not to the schedule: the pins in
+packages/core/tests/sc1-tool-contract-pins.test.ts measure the same
+window-of-4 overlap before and after, which is the evidence that nothing
+depended on the field.
+
+**The race stays open.** The reason a tool might want isolation did not go
+away with the field that failed to provide it; that question moves to EC-1,
+which owes a mechanism NOT built on a per-tool opt-in. The retired
+predicate's own shape is the argument: parallel-safety is a per-CALL
+judgment — the same tool is safe for one input and must be serial for
+another — and a static per-tool flag cannot express it. A future mechanism
+enters with a wiring and a gate, never as a field that describes an
+intention the kernel does not keep.

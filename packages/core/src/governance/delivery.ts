@@ -8,11 +8,13 @@
  * the same events the loop yielded, so the verdict is replayable and the
  * model's narration never participates in its own grading.
  *
- * Producers are named by the CALLER, in `DeliveryConfig.producers` — this
- * module never reads `Tool.delivers`, which nothing in the tree reads
- * today. (tools/tool.ts describes that flag as harness-side delivery
- * truth; wiring it here would replace the hand-maintained producer set
- * with the tools' own declaration, and is not done yet.)
+ * Producers are named by the CALLER, in `DeliveryConfig.producers` — the
+ * hand-maintained set is the ONLY source of delivery truth. SC-1b removed
+ * `Tool.delivers`, the flag this note used to describe as the eventual
+ * replacement: it was declared on the contract and read by nothing, here
+ * or anywhere. Should a tool's own declaration ever supersede the caller's
+ * set, it enters as a new field with a wiring and a gate, never as a
+ * standing promise the code has not kept.
  *
  * The verdict counts producer calls that COMPLETED (non-error results).
  * `claimedInText` is computed and REPORTED but does not enter `passed` —

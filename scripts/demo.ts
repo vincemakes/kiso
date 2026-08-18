@@ -29,7 +29,6 @@ registry.register(
 			properties: { a: { type: "number" }, b: { type: "number" } },
 			required: ["a", "b"],
 		},
-		concurrencySafe: () => true,
 		execute: async ({ a, b }: { a: number; b: number }) => ({
 			content: String(a + b),
 			isError: false,

@@ -6,24 +6,21 @@
  * - `visibleToolNames` — physical removal: the registry is subset() to these
  *   tools BEFORE the adapter is called. The model cannot call what it cannot
  *   see; no system-prompt overlay can make that guarantee.
- * - `systemOverlay` — appended to the system prompt by the harness (the
- *   kernel does not compose prompts); kept here because it is part of the
- *   mode's contract.
- * - `permissionDefault` — the decision onPreTool falls back to when no hook
- *   or store decides.
- * - `compactionKeepExtra` / `stopPredicate` — reserved (ADR-0011); read by
- *   the harness when the semantics land.
+ *
+ * That is the whole profile. SC-1b: `systemOverlay`, `permissionDefault`,
+ * `compactionKeepExtra`, and `stopPredicate` were REMOVED at 0.12.0 by the
+ * SC-1 memo's adjudication — all four were declared here and read by
+ * nothing, in the kernel or above it. Two of them ("reserved, read by the
+ * harness when the semantics land") had been waiting since mauri ADR-0011
+ * for semantics that never landed. A field that describes an intention
+ * rather than a behavior is a promise the type system makes on the
+ * kernel's behalf and the kernel does not keep; the honest profile is the
+ * one member that is actually applied.
  */
-
-import type { PermissionDecision } from "./permission.js";
 
 export interface ModeProfile {
 	readonly name: string;
-	readonly systemOverlay?: string;
 	readonly visibleToolNames?: readonly string[];
-	readonly permissionDefault?: PermissionDecision;
-	readonly compactionKeepExtra?: readonly string[];
-	readonly stopPredicate?: string;
 }
 
 export function resolveModeProfile(
