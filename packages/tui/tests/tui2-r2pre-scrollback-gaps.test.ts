@@ -41,15 +41,15 @@ afterEach(() => {
 });
 
 const PARA =
-	"这个仓库的编译器前端由词法分析器和语法分析器两部分组成，" +
-	"词法分析器负责把源码切分成记号流，语法分析器再把记号流规约成抽象语法树。" +
-	"我在阅读的过程中注意到，错误恢复的逻辑分散在若干个不同的位置。";
+	"\u8fd9\u4e2a\u4ed3\u5e93\u7684\u7f16\u8bd1\u5668\u524d\u7aef\u7531\u8bcd\u6cd5\u5206\u6790\u5668\u548c\u8bed\u6cd5\u5206\u6790\u5668\u4e24\u90e8\u5206\u7ec4\u6210\uff0c" +
+	"\u8bcd\u6cd5\u5206\u6790\u5668\u8d1f\u8d23\u628a\u6e90\u7801\u5207\u5206\u6210\u8bb0\u53f7\u6d41\uff0c\u8bed\u6cd5\u5206\u6790\u5668\u518d\u628a\u8bb0\u53f7\u6d41\u89c4\u7ea6\u6210\u62bd\u8c61\u8bed\u6cd5\u6811\u3002" +
+	"\u6211\u5728\u9605\u8bfb\u7684\u8fc7\u7a0b\u4e2d\u6ce8\u610f\u5230\uff0c\u9519\u8bef\u6062\u590d\u7684\u903b\u8f91\u5206\u6563\u5728\u82e5\u5e72\u4e2a\u4e0d\u540c\u7684\u4f4d\u7f6e\u3002";
 
 /** The owner's session shape: many turns, each with a run of capped reads
  *  and a long wrapped paragraph. */
 function session(W: number, H: number, turns: number): WideScreen {
 	const screen = new WideScreen(H, W);
-	const composer = "帮我审计一下这个仓库的编译器前端";
+	const composer = "\u5e2e\u6211\u5ba1\u8ba1\u4e00\u4e0b\u8fd9\u4e2a\u4ed3\u5e93\u7684\u7f16\u8bd1\u5668\u524d\u7aef";
 	const body = new Body({
 		active: () => true,
 		height: () => H,
@@ -60,7 +60,7 @@ function session(W: number, H: number, turns: number): WideScreen {
 	body.bindInput(() => ({ line: composer, cursor: composer.length }), "> ");
 	body.enter();
 	for (let turn = 0; turn < turns; turn += 1) {
-		body.userLine(`第 ${turn + 1} 轮：请继续审计仓库里的编译器前端实现`);
+		body.userLine(`\u7b2c ${turn + 1} \u8f6e\uff1a\u8bf7\u7ee7\u7eed\u5ba1\u8ba1\u4ed3\u5e93\u91cc\u7684\u7f16\u8bd1\u5668\u524d\u7aef\u5b9e\u73b0`);
 		body.render();
 		for (let t = 0; t < 3; t += 1) {
 			const id = `c${turn}-${t}`;
@@ -68,7 +68,7 @@ function session(W: number, H: number, turns: number): WideScreen {
 			body.render();
 			body.toolRunning(id);
 			body.render();
-			body.toolResult(id, { content: "第 1 行\n第 2 行\n…[truncated] offset=150\n", isError: false });
+			body.toolResult(id, { content: "\u7b2c 1 \u884c\n\u7b2c 2 \u884c\n…[truncated] offset=150\n", isError: false });
 			body.toolSucceeded(id);
 			body.render();
 		}
@@ -123,7 +123,7 @@ describe("TUI2-R2pre ② — the scrollback is the transcript", () => {
 			}
 			// the per-turn user chip is the one line that is unique CONTENT in
 			// the model — the read rollups repeat by nature.
-			const copies = [...seen.entries()].filter(([k]) => k.includes("轮：请继续审计")).map(([, n]) => n);
+			const copies = [...seen.entries()].filter(([k]) => k.includes("\u8f6e\uff1a\u8bf7\u7ee7\u7eed\u5ba1\u8ba1")).map(([, n]) => n);
 			const max = Math.max(0, ...copies);
 			if (max > 3) worst.push(`${W}x${H}: ${max} copies`);
 		}

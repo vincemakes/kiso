@@ -59,10 +59,10 @@ function dockIntact(screen: WideScreen, H: number): boolean {
 }
 
 const EMOJI_PARA =
-	"✅ 词法分析器负责把源码切分成记号流，这一部分的实现是清晰的。" +
-	"🚀 语法分析器再把记号流规约成抽象语法树，性能上没有明显问题。" +
-	"❌ 但是错误恢复的逻辑分散在若干个不同的位置，导致同一类语法错误" +
-	"在不同的上下文里会产生不一样的诊断信息，建议统一到一个模块里。";
+	"✅ \u8bcd\u6cd5\u5206\u6790\u5668\u8d1f\u8d23\u628a\u6e90\u7801\u5207\u5206\u6210\u8bb0\u53f7\u6d41\uff0c\u8fd9\u4e00\u90e8\u5206\u7684\u5b9e\u73b0\u662f\u6e05\u6670\u7684\u3002" +
+	"🚀 \u8bed\u6cd5\u5206\u6790\u5668\u518d\u628a\u8bb0\u53f7\u6d41\u89c4\u7ea6\u6210\u62bd\u8c61\u8bed\u6cd5\u6811\uff0c\u6027\u80fd\u4e0a\u6ca1\u6709\u660e\u663e\u95ee\u9898\u3002" +
+	"❌ \u4f46\u662f\u9519\u8bef\u6062\u590d\u7684\u903b\u8f91\u5206\u6563\u5728\u82e5\u5e72\u4e2a\u4e0d\u540c\u7684\u4f4d\u7f6e\uff0c\u5bfc\u81f4\u540c\u4e00\u7c7b\u8bed\u6cd5\u9519\u8bef" +
+	"\u5728\u4e0d\u540c\u7684\u4e0a\u4e0b\u6587\u91cc\u4f1a\u4ea7\u751f\u4e0d\u4e00\u6837\u7684\u8bca\u65ad\u4fe1\u606f\uff0c\u5efa\u8bae\u7edf\u4e00\u5230\u4e00\u4e2a\u6a21\u5757\u91cc\u3002";
 
 describe("TUI2-R2pre ① — the width table is the composer's floor", () => {
 	it("T-R2p-1: the emoji-presentation glyphs measure 2 — the table's hole is what lets a line overrun W", () => {
@@ -79,7 +79,7 @@ describe("TUI2-R2pre ① — the width table is the composer's floor", () => {
 		for (const glyph of ["✓", "✗", "⚠", "⏸", "▞", "▸", "─", "╭", "╰", "│", "└", "█", "▀", "▄"]) {
 			expect(`${glyph} measures ${displayWidth(glyph)}`).toBe(`${glyph} measures 1`);
 		}
-		expect(displayWidth("中")).toBe(2); // the CJK ranges were never the hole
+		expect(displayWidth("\u4e2d")).toBe(2); // the CJK ranges were never the hole
 	});
 
 	it("T-R2p-3: the source table and the reference agree on every glyph the renderer can emit", () => {
@@ -100,11 +100,11 @@ describe("TUI2-R2pre ① — the width table is the composer's floor", () => {
 		const failures: string[] = [];
 		for (const H of [20, 24]) {
 			for (let W = 40; W <= 64; W += 1) {
-				const { body, screen } = screenBody(W, H, "继续审计");
+				const { body, screen } = screenBody(W, H, "\u7ee7\u7eed\u5ba1\u8ba1");
 				body.enter();
 				let broke = "";
 				outer: for (let turn = 0; turn < 3; turn += 1) {
-					body.userLine(`第 ${turn + 1} 轮：请审计编译器前端`);
+					body.userLine(`\u7b2c ${turn + 1} \u8f6e\uff1a\u8bf7\u5ba1\u8ba1\u7f16\u8bd1\u5668\u524d\u7aef`);
 					body.render();
 					for (let i = 0; i < EMOJI_PARA.length; i += 11) {
 						body.textAppend(EMOJI_PARA.slice(i, i + 11));
