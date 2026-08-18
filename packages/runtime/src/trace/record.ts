@@ -25,18 +25,28 @@
  * writers record it; v1/v2 sidecars keep reading as defaults (R1d-1,
  * R2-1): no rent block = no rent lines = the zero-rent reading, never a
  * crash.
+ *
+ * TUI2-R3v2 (0.12.0) — schemaVersion 4: the record gains the OPTIONAL
+ * `purpose` marker (the safer-options seam, adjudicated 2026-08-18). A
+ * session can now make a request that belongs to no run — a side query
+ * (session.sideQuery) — and a ledger that could not tell one from a run
+ * request would make every rent audit guesswork. `purpose` is absent on
+ * run requests and present on side queries, naming what the request was
+ * FOR ("safer-options"). Optional by construction: adding a required
+ * field would have invalidated every v3 record ever written, and the
+ * whole generation-compat discipline exists to prevent exactly that.
  */
 
-/** schemaVersion: 3 for 0.2.1 (the rent block). Version 1 = the 1.2.0
- *  shape, version 2 = the 1.3.0 shape; both kept for generation-compat
- *  reads (R1d-1, R2-1). Algorithm and shape changes bump it (ADR-0051 §6
- *  OUT-side versioning). */
-export const TRACE_SCHEMA_VERSION = 3;
+/** schemaVersion: 4 for 0.12.0 (the optional `purpose` marker). Version
+ *  1 = the 1.2.0 shape, 2 = the 1.3.0 shape, 3 = the 0.2.1 shape; all
+ *  kept for generation-compat reads (R1d-1, R2-1). Algorithm and shape
+ *  changes bump it (ADR-0051 §6 OUT-side versioning). */
+export const TRACE_SCHEMA_VERSION = 4;
 
 /** The versions a reader may meet in a ledger. v1 and v2 records are
  *  accepted (generation-compat) and read as defaults — no canonical
  *  block (v1), no rent block (v1, v2). */
-export const TRACE_SCHEMA_VERSIONS: Readonly<Set<number>> = new Set([1, 2, TRACE_SCHEMA_VERSION]);
+export const TRACE_SCHEMA_VERSIONS: Readonly<Set<number>> = new Set([1, 2, 3, TRACE_SCHEMA_VERSION]);
 
 import { PRICING_TABLE_V1, priceFor, pricingTableFor, validateCanonicalUsage } from "../usage/canonical.js";
 import type { CanonicalUsage } from "../usage/canonical.js";
@@ -60,7 +70,7 @@ export interface TraceSegment {
 /** That is the complete set for 1.2.0. */
 
 export interface TraceRecord {
-	schemaVersion: 3;
+	schemaVersion: 4;
 	kind: "request";
 	requestId: string; // crypto.randomUUID() per adapter call — W2's reverse-reference anchor
 	runId: string;
@@ -109,6 +119,12 @@ export interface TraceRecord {
 		parentInvocationSeq: number;
 		role: string;
 	}; // ADR-0051 §2 B2a quartet, absent when unknown (see §5)
+	/** TUI2-R3v2 ③ (v4) — what this request was FOR, when it was not a
+	 *  run's own work. ABSENT on every run request (the overwhelming
+	 *  majority) and present on a side query (session.sideQuery), naming
+	 *  its purpose: "safer-options". A consumer separating on-demand rent
+	 *  from run rent reads this field and needs no heuristic. */
+	purpose?: string;
 	ts: number; // Date.now() at settle — added to the work-order field list (justification §1.5)
 }
 /** That is the complete set for 1.2.0. */
@@ -120,7 +136,7 @@ export interface TraceRecord {
 // checkable.
 
 export interface HeaderLine {
-	schemaVersion: 3;
+	schemaVersion: 4;
 	kind: "header";
 	sessionId: string;
 	kisoVersion: string;
@@ -128,7 +144,7 @@ export interface HeaderLine {
 }
 
 export interface RunEndLine {
-	schemaVersion: 3;
+	schemaVersion: 4;
 	kind: "run_end";
 	runId: string;
 	ts: number;
@@ -136,7 +152,7 @@ export interface RunEndLine {
 }
 
 export interface CrashLine {
-	schemaVersion: 3;
+	schemaVersion: 4;
 	kind: "crash";
 	ts: number;
 	note: string;
@@ -157,6 +173,7 @@ export const HASH_SPEC_BY_VERSION: Readonly<Record<number, HashSpec>> = {
 	1: { algorithm: "sha-256", output: "full-hex" },
 	2: { algorithm: "sha-256", output: "full-hex" }, // E2 — the algorithms do not change
 	3: { algorithm: "sha-256", output: "full-hex" }, // E3 — same algorithms, re-pinned (the E2 ritual)
+	4: { algorithm: "sha-256", output: "full-hex" }, // TUI2-R3v2 — `purpose` is a marker, not an input to any hash; re-pinned by the same ritual
 };
 
 export function hashSpecFor(version: number): HashSpec {
@@ -204,7 +221,16 @@ export const TRACE_RECORD_FIELDS_V1 = [
 export const TRACE_RECORD_FIELDS_V2 = [...TRACE_RECORD_FIELDS_V1, "canonical"] as const;
 
 /** The 0.2.1 field set (schemaVersion 3) = the v2 set + `rent`. */
-export const TRACE_RECORD_FIELDS = [...TRACE_RECORD_FIELDS_V2, "rent"] as const;
+export const TRACE_RECORD_FIELDS_V3 = [...TRACE_RECORD_FIELDS_V2, "rent"] as const;
+
+/** The 0.12.0 field set (schemaVersion 4) = the v3 set + `purpose`.
+ *  TUI2-R3v2 ③: `purpose` is OPTIONAL — a run request omits it entirely,
+ *  a side query names what it was for. It is listed in TRACE_RECORD_OPTIONAL
+ *  below so the closed-set gate accepts a record without it. */
+export const TRACE_RECORD_FIELDS = [...TRACE_RECORD_FIELDS_V3, "purpose"] as const;
+
+/** The fields the closed-set check does not require to be present. */
+export const TRACE_RECORD_OPTIONAL = ["purpose"] as const;
 
 export const TRACE_SEGMENT_FIELDS = ["role", "seqRange", "estTokens", "freshness"] as const;
 
@@ -259,9 +285,15 @@ export function validateTraceRecord(v: unknown): v is TraceRecord {
 	// block, a v2 sidecar has no rent block — both read as defaults,
 	// accepted, never a crash; the current version is fully checked
 	// (shape + the canonical block + the rent ledger).
-	if (version !== 1 && version !== 2 && version !== TRACE_SCHEMA_VERSION) return false;
-	const fields = version === 1 ? TRACE_RECORD_FIELDS_V1 : version === 2 ? TRACE_RECORD_FIELDS_V2 : TRACE_RECORD_FIELDS;
-	if (!hasClosedKeys(v, fields, ["lineageLink"])) return false;
+	// TUI2-R3v2 ③: v3 joins the generation-compat set — a v3 sidecar has
+	// no `purpose` on any record, which reads as "every request was a run
+	// request", the true statement about a ledger written before side
+	// queries existed.
+	if (version !== 1 && version !== 2 && version !== 3 && version !== TRACE_SCHEMA_VERSION) return false;
+	const fields =
+		version === 1 ? TRACE_RECORD_FIELDS_V1 : version === 2 ? TRACE_RECORD_FIELDS_V2 : version === 3 ? TRACE_RECORD_FIELDS_V3 : TRACE_RECORD_FIELDS;
+	if (!hasClosedKeys(v, fields, ["lineageLink", ...TRACE_RECORD_OPTIONAL])) return false;
+	if (v.purpose !== undefined && (typeof v.purpose !== "string" || v.purpose === "")) return false;
 	if (v.kind !== "request") return false;
 	if (typeof v.requestId !== "string" || typeof v.runId !== "string") return false;
 	if (!isNonNegInt(v.requestIndex) || !isNonNegInt(v.retryAttempt)) return false;

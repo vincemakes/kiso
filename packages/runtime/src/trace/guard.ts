@@ -43,6 +43,12 @@ export interface RequestTracerDeps {
 	adapterVersion?: string | null;
 	/** The session log — the manifest's seqRange pointers derive from it. */
 	log: readonly Event[];
+	/** TUI2-R3v2 ③ — what these requests are FOR, when they are not a
+	 *  run's own work. Omitted by every run (the tracer Run builds); set to
+	 *  "safer-options" by session.sideQuery. It lands verbatim on each
+	 *  record this tracer settles, which is what lets a rent audit tell an
+	 *  on-demand request from an ambient one without guessing. */
+	purpose?: string;
 	/** E3 — the rent ledger's inputs: the base prompt as configured and
 	 *  the per-extension appends in load order (the adapter's composed
 	 *  systemPrompt is their RESULT — the parts are what the ledger
@@ -57,6 +63,7 @@ export class RequestTracer {
 	readonly #runId: string;
 	readonly #adapterVersion: string | null;
 	readonly #rentParts: RentParts | undefined;
+	readonly #purpose: string | undefined;
 	#requestIndex = 0;
 	#contextHashCounts = new Map<string, number>();
 
@@ -67,6 +74,7 @@ export class RequestTracer {
 		this.#runId = deps.runId;
 		this.#adapterVersion = deps.adapterVersion ?? null;
 		this.#rentParts = deps.rentParts;
+		this.#purpose = deps.purpose;
 	}
 
 	init(): void {
@@ -158,6 +166,10 @@ export class RequestTracer {
 			kind: "request",
 			requestId: randomUUID(),
 			runId: this.#runId,
+			// exactOptionalPropertyTypes: the key is ABSENT on a run request,
+			// never `purpose: undefined` — a present-but-undefined key would
+			// fail the closed-set gate and would read as a claim in the JSON.
+			...(this.#purpose !== undefined ? { purpose: this.#purpose } : {}),
 			requestIndex: this.#requestIndex++,
 			retryAttempt,
 			provider: this.#provider,

@@ -25,6 +25,10 @@ export type { AgentDefinition, PermissionPolicy, PermissionRule } from "./agent.
 
 // session
 export { AgentSession, AgentSession as Session } from "./session.js";
+// TUI2-R3v2 ③ (the safer-options seam, adjudicated 2026-08-18): the one
+// off-trajectory request a session can make. The api-surface pin moves
+// 39 -> 40 for this name and this name alone.
+export type { SideQueryOptions } from "./session.js";
 export { PoisonedSessionError, ResumeBlockedError } from "./session.js";
 export type { ApprovalRequest, CompactInfo, ContextPolicy, SessionConfig, SummarizeResult } from "./session.js";
 

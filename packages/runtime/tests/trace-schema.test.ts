@@ -17,6 +17,7 @@ import {
 	HASH_SPEC_BY_VERSION,
 	TRACE_RECORD_FIELDS,
 	TRACE_RECORD_FIELDS_V1,
+	TRACE_RECORD_FIELDS_V3,
 	TRACE_SCHEMA_VERSION,
 	TRACE_SEGMENT_FIELDS,
 	hashSpecFor,
@@ -27,7 +28,9 @@ import { RENT_LINE_FIELDS } from "../src/trace/rent.js";
 import type { TraceRecord } from "../src/trace/record.js";
 
 /** A fully populated canonical record — every optional field present
- *  (lineageLink), so its key set is exactly the type's full key set. */
+ *  (lineageLink and, since TUI2-R3v2 ③, purpose), so its key set is
+ *  exactly the type's full key set. A sample that omitted an optional
+ *  field would make the bidirectional gate blind to it. */
 const canonicalRecord: TraceRecord = {
 	schemaVersion: TRACE_SCHEMA_VERSION,
 	kind: "request",
@@ -80,6 +83,7 @@ const canonicalRecord: TraceRecord = {
 	ttftMs: 402,
 	toolCalls: ["read_file", "write_file"],
 	outcome: "ok",
+	purpose: "safer-options",
 	lineageLink: {
 		parentSessionId: "session-0142",
 		parentRunId: "run-0142",
@@ -105,16 +109,27 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 	});
 
 	it("every required field missing is rejected", () => {
+		// TUI2-R3v2 ③: `purpose` joins `lineageLink` as an OPTIONAL field —
+		// absent on every run request, present on a side query.
 		for (const key of TRACE_RECORD_FIELDS) {
-			if (key === "lineageLink") continue; // the one optional field
+			if (key === "lineageLink" || key === "purpose") continue;
 			const broken = looseCopy(canonicalRecord);
 			delete broken[key];
 			expect(validateTraceRecord(broken), `missing ${key}`).toBe(false);
 		}
-		// the optional field may be absent
+		// the optional fields may be absent
 		const noLineage = looseCopy(canonicalRecord);
 		delete noLineage.lineageLink;
 		expect(validateTraceRecord(noLineage)).toBe(true);
+		const noPurpose = looseCopy(canonicalRecord);
+		delete noPurpose.purpose;
+		expect(validateTraceRecord(noPurpose), "a run request carries no purpose").toBe(true);
+	});
+
+	it("TUI2-R3v2 ③: `purpose`, when present, must be a NON-EMPTY string", () => {
+		expect(validateTraceRecord({ ...canonicalRecord, purpose: "safer-options" })).toBe(true);
+		expect(validateTraceRecord({ ...canonicalRecord, purpose: "" }), "an empty marker marks nothing").toBe(false);
+		expect(validateTraceRecord({ ...canonicalRecord, purpose: 7 })).toBe(false);
 	});
 
 	it("extra unknown fields are rejected (the closed field set)", () => {
@@ -143,7 +158,9 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 	});
 
 	it("schemaVersion is pinned to the current version", () => {
-		expect(validateTraceRecord({ ...canonicalRecord, schemaVersion: 4 })).toBe(false);
+		// the probe is always ONE PAST the current version — it moved from 4
+		// to 5 when TUI2-R3v2 ③ took 4 for the `purpose` marker.
+		expect(validateTraceRecord({ ...canonicalRecord, schemaVersion: 5 })).toBe(false);
 		const noVersion = looseCopy(canonicalRecord);
 		delete noVersion.schemaVersion;
 		expect(validateTraceRecord(noVersion)).toBe(false);
@@ -170,8 +187,10 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 			output: "full-hex",
 		});
 		expect(hashSpecFor(TRACE_SCHEMA_VERSION)).toEqual({ algorithm: "sha-256", output: "full-hex" });
-		// a version with no pinned algorithm cannot be used
-		expect(() => hashSpecFor(4)).toThrow(/no hash spec pinned/i);
+		// a version with no pinned algorithm cannot be used — the probe is
+		// ONE PAST the current version (it moved 4 -> 5 when TUI2-R3v2 ③
+		// pinned v4 for the `purpose` marker)
+		expect(() => hashSpecFor(5)).toThrow(/no hash spec pinned/i);
 		// and the record's hashes are sha-256 full-hex by construction
 		const HEX_64 = /^[0-9a-f]{64}$/;
 		for (const key of ["systemPromptHash", "toolSchemaHash", "contextHash", "stablePrefixFingerprint"] as const) {
@@ -249,6 +268,9 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 		const v1 = looseCopy(canonicalRecord);
 		delete v1.canonical;
 		delete v1.rent;
+		// TUI2-R3v2 ③: a v1 sidecar predates side queries, so it cannot
+		// carry a purpose — every request in it WAS a run request.
+		delete v1.purpose;
 		v1.schemaVersion = 1;
 		expect(validateTraceRecord(v1)).toBe(true); // accepted — readers derive defaults
 		expect(validateTraceLine(v1)).toBe(true);
@@ -266,6 +288,7 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 		// generation, byte-for-byte what a 0.2.0 writer emitted)
 		const v2 = looseCopy(canonicalRecord);
 		delete v2.rent;
+		delete v2.purpose; // TUI2-R3v2 ③: predates side queries
 		v2.schemaVersion = 2;
 		expect(validateTraceRecord(v2)).toBe(true); // accepted — readers derive defaults
 		expect(validateTraceLine(v2)).toBe(true);
@@ -296,8 +319,13 @@ describe("E1 slice 1 — the record schema gate (proposal §1.1)", () => {
 		expect(validateTraceRecord({ ...canonicalRecord, canonical: { ...c, costUsd: exact + 1e-7 } })).toBe(true); // within epsilon
 	});
 
-	it("the closed-field-set gate spans all three generations (R1d-1, R2-1)", () => {
-		expect(TRACE_RECORD_FIELDS).toEqual([...TRACE_RECORD_FIELDS_V1, "canonical", "rent"]);
+	it("the closed-field-set gate spans all FOUR generations (R1d-1, R2-1)", () => {
+		// MOVED (TUI2-R3v2 ③, the safer-options seam adjudicated 2026-08-18):
+		// the v4 generation adds `purpose`. The additive discipline is the
+		// property this case exists for and it is unchanged — each
+		// generation is the previous one plus its new field, in order.
+		expect(TRACE_RECORD_FIELDS).toEqual([...TRACE_RECORD_FIELDS_V1, "canonical", "rent", "purpose"]);
+		expect(TRACE_RECORD_FIELDS_V3).toEqual([...TRACE_RECORD_FIELDS_V1, "canonical", "rent"]);
 		expect(new Set(TRACE_RECORD_FIELDS_V1).size).toBe(TRACE_RECORD_FIELDS_V1.length);
 	});
 

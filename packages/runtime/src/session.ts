@@ -61,6 +61,26 @@ import { estimateTokens } from "@vincemakes/kiso-core";
 import { StaleWriterError, type SessionStore } from "./store.js";
 import { composeHooks } from "./compose.js";
 import { Run } from "./run.js";
+// TUI2-R3v2 ③ — the side query rides the SAME tracer the runs ride; that
+// sameness is the whole point (one ledger, one shape, no second path).
+import { RequestTracer, traceGuard } from "./trace/guard.js";
+import { runtimeVersion } from "./trace/writer.js";
+
+/** TUI2-R3v2 ③ — one off-trajectory model request (session.sideQuery).
+ *  Deliberately tiny: a purpose to mark it in the trace, its own short
+ *  system prompt, one user message, and an abort. No tools — a side
+ *  query answers, it never acts. */
+export interface SideQueryOptions {
+	/** what this request is FOR — lands in the trace as `purpose`. */
+	readonly purpose: string;
+	/** the side query's OWN system prompt; the session's is not sent. */
+	readonly systemPrompt: string;
+	/** the single user message. */
+	readonly prompt: string;
+	readonly maxTokens?: number;
+	/** cancels the request — the CLI wires esc to it. */
+	readonly signal?: AbortSignalLike;
+}
 
 /** A session whose disk write was rejected (stale handle) is PERMANENTLY
  * poisoned: its in-memory log no longer matches the disk, so no further
@@ -228,6 +248,82 @@ export class AgentSession {
 	 *  route — the CLI and the trace can never disagree. */
 	get provider(): "anthropic" | "openai-compat" | undefined {
 		return this.#config.provider;
+	}
+
+	/**
+	 * TUI2-R3v2 ③ — ONE model request that belongs to no run (the
+	 * safer-options seam, adjudicated 2026-08-18).
+	 *
+	 * A side query exists for the case where the human, staring at a
+	 * paused approval, presses a button and wants an answer NOW. It is
+	 * not a turn, not a run, and not part of the trajectory.
+	 *
+	 * IT WRITES NOTHING DURABLE. No session-log lines, no receipts, no
+	 * execution records — nothing. This is the design, not an omission,
+	 * and it is what makes the method safe to call while a run sits
+	 * paused: it cannot interleave with that run's own event sequence
+	 * because it produces no events to interleave. The ONLY durable
+	 * consequence a side query can have is what the human does with the
+	 * answer, and that lands through an existing channel — for the
+	 * safer-options flow, the amend channel, exactly as a typed denial
+	 * would. Nothing here touches the durable approval contract.
+	 *
+	 * IT IS VISIBLE. It rides the same traceGuard every run request
+	 * rides, so it lands one request line in the trace ledger, carrying
+	 * a FRESH runId (it is not the paused run's work) and the `purpose`
+	 * marker (schemaVersion 4) that lets a rent audit separate on-demand
+	 * requests from a run's own without heuristics. A request the ledger
+	 * cannot see is rent nobody can audit, and the entire argument for
+	 * an on-demand feature is that its rent is countable.
+	 *
+	 * IT PAYS ITS OWN, SMALLER RENT. It sends its own short system
+	 * prompt and ONE user message, and NO TOOLS AT ALL — it cannot call
+	 * anything, it can only answer. Its declared prediction arm is
+	 * predictSideQueryRentLedger (scripts/request-surface.mjs), gated
+	 * against a real call in rent-ledger-gate.test.ts.
+	 *
+	 * The returned string is the model's text, concatenated. The caller
+	 * parses it and must treat a failure to parse as a failure — see the
+	 * CLI's honest degradation.
+	 */
+	async sideQuery(options: SideQueryOptions): Promise<string> {
+		this.ensureHealthy();
+		// a fresh id: this request is not the paused run's work, and giving
+		// it the run's id would put on-demand rent inside a run's total.
+		const runId = crypto.randomUUID();
+		const tracer = new RequestTracer({
+			root: this.#store.root,
+			sessionId: this.id,
+			runId,
+			provider: this.#config.provider ?? "adapter",
+			model: this.#config.model,
+			adapterVersion: runtimeVersion(),
+			purpose: options.purpose,
+			// the manifest's seqRange pointers derive from the log, and a side
+			// query's messages come from NO events — an empty log is the
+			// honest input, and it keeps the manifest from pointing at events
+			// this request never sent.
+			log: [],
+			// the declared rent arm: its own prompt, no appends, no tools
+			rentParts: { base: options.systemPrompt, appends: [] },
+		});
+		tracer.init();
+		const guarded = traceGuard(tracer, this.#adapter);
+		let text = "";
+		try {
+			for await (const ev of guarded.stream({
+				model: this.#config.model,
+				messages: [{ role: "user", content: options.prompt }],
+				systemPrompt: options.systemPrompt,
+				...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+				...(options.signal !== undefined ? { signal: options.signal } : {}),
+			})) {
+				if (ev.type === "text_delta") text += ev.text;
+			}
+		} finally {
+			tracer.finishRun();
+		}
+		return text;
 	}
 
 	/** Run one user turn. Iterate to consume; `run.abort()` cancels. */

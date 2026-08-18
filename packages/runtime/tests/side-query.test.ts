@@ -140,15 +140,36 @@ describe("TUI2-R3v2 ③ — the side query is EPHEMERAL", () => {
 		agent.close();
 	});
 
-	it("aborts on its signal — esc cancels the ask, and it settles as aborted", async () => {
-		const { store, agent, session } = await fixture([{ events: [{ type: "delay", ms: 5000 }, { type: "stop", reason: "end_turn" }] }]);
+	it("passes its SIGNAL to the adapter — esc cancels the ask, and it settles as aborted", async () => {
+		// a signal-honouring adapter, which is what every real provider is
+		// (the faux double ignores signals by design — it is a script
+		// player, and asserting against it would test the double, not the
+		// contract this method actually has with a provider).
+		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-sq-abort-")));
+		const agent = createAgent({
+			model: MODEL,
+			store,
+			systemPrompt: "you are a test",
+			tools: [ADD],
+			adapter: {
+				// eslint-disable-next-line require-yield
+				async *stream(options: { signal?: { aborted: boolean; addEventListener?: unknown } }) {
+					await new Promise((_resolve, reject) => {
+						const fail = () => reject(new DOMException("aborted", "AbortError"));
+						if (options.signal?.aborted === true) fail();
+						else (options.signal as unknown as AbortSignal)?.addEventListener("abort", fail);
+					});
+				},
+			} as never,
+		});
+		const session = await agent.session({ id: "sq" });
 		const ctrl = new AbortController();
 		const pending = session.sideQuery({ purpose: "safer-options", systemPrompt: SYS, prompt: PROMPT, signal: ctrl.signal });
 		ctrl.abort();
-		await expect(pending).rejects.toThrow();
+		await expect(pending, "the caller learns the ask was cancelled").rejects.toThrow();
 		agent.close();
 		const requests = traceLines(store).filter((l) => l.kind === "request");
-		expect(requests[0]?.outcome).toBe("aborted");
+		expect(requests[0]?.outcome, "and the ledger records it honestly, never as ok").toBe("aborted");
 	});
 });
 
