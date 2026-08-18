@@ -72,7 +72,7 @@ const SCENARIOS: { label: string; script: (body: Body) => void; W?: number; H?: 
 	{
 		label: "the panel slot",
 		script: (b) => {
-			b.bindApproval(() => ({ view: PANEL_VIEW, phase: "options", sel: 0 }));
+			b.bindApproval(() => ({ view: PANEL_VIEW, phase: "options", cursor: 0 }));
 			b.raw(["x"]);
 		},
 	},

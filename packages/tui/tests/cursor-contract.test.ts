@@ -132,7 +132,7 @@ class CursorProbe {
 		}
 		const st = editor.dockState();
 		const panelState = editor.panelState();
-		const lead = panelState !== null ? panelLead(panelState.view, panelState.phase, panelState.sel) : this.lead!;
+		const lead = panelState !== null ? panelLead(panelState.view, panelState.phase, panelState.cursor) : this.lead!;
 		const leadW = leadWidth(lead);
 		// the contract: wallL + leadWidth(lead) + cells + 1 — the cursor's
 		// TRUE column in the line (the editor's own math; unclamped)
@@ -177,7 +177,7 @@ class CursorProbe {
 		// renders ITS row — the panel lead when the panel owns the keys,
 		// the brick otherwise (the dock-bound question never reaches the
 		// editor's own row) ----
-		const selfLead = panelState !== null ? panelLead(panelState.view, panelState.phase, panelState.sel) : PROMPT;
+		const selfLead = panelState !== null ? panelLead(panelState.view, panelState.phase, panelState.cursor) : PROMPT;
 		const selfWrites: string[] = [];
 		const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
 			selfWrites.push(String(chunk));

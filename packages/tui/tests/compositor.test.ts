@@ -248,7 +248,7 @@ describe("TUI v6 — the one compositor", () => {
 			args: { kind: "text", lines: ["old", "new"] },
 			fallbackQuestion: "approve edit_file? (y/n) ",
 		};
-		body.bindApproval(() => ({ view: panelView, phase: "options", sel: 0 }));
+		body.bindApproval(() => ({ view: panelView, phase: "options", cursor: 0 }));
 		body.raw(["x"]);
 		tick();
 		const bytes = writes.join("");
