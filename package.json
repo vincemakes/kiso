@@ -20,17 +20,17 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
-    "@vincemakes/kiso-core": "0.10.0",
-    "@vincemakes/kiso-evals": "0.10.0",
-    "@vincemakes/kiso-provider-anthropic": "0.10.0",
-    "@vincemakes/kiso-provider-openai": "0.10.0",
+    "@vincemakes/kiso-core": "0.11.0",
+    "@vincemakes/kiso-evals": "0.11.0",
+    "@vincemakes/kiso-provider-anthropic": "0.11.0",
+    "@vincemakes/kiso-provider-openai": "0.11.0",
     "@types/node": "^26.1.2",
     "openai": "^7.3.0",
     "tsx": "^4.23.5",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
   },
-  "version": "0.10.0",
+  "version": "0.11.0",
   "license": "MIT",
   "repository": {
     "type": "git",
