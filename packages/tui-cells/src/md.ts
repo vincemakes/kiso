@@ -31,7 +31,10 @@
  * never bloat the live region; a table re-layouts as rows stream, and
  * only inside the tail.
  *
- * The style table is the round's normative one and lives in `style()`.
+ * The style table is the round's normative one (the owner's circled
+ * group D): the BLOCK half is `blockBody` below, the INLINE half is
+ * `inlineSpans`, and every entry is pinned by a fixture rather than
+ * described twice.
  */
 
 import { palette } from "./render.js";
@@ -741,7 +744,7 @@ export function mdWrap(text: string, W: number, first: string, hang: string): st
 			for (let k = 0; k < parts.length; k += 1) {
 				if (k > 0) close();
 				line += parts[k];
-				w += k === parts.length - 1 ? charsWidth(parts[k]!) : room;
+				w += k === parts.length - 1 ? visibleWidth(parts[k]!) : room;
 				open = opensAfter(parts[k]!, open);
 			}
 			continue;
@@ -756,9 +759,6 @@ export function mdWrap(text: string, W: number, first: string, hang: string): st
 	return rows;
 }
 
-function charsWidth(text: string): number {
-	return visibleWidth(text);
-}
 
 /** The block-level entry: wrap `text` under a first/hang prefix pair. */
 function wrap(text: string, W: number, first: string, hang: string): string[] {
@@ -770,17 +770,4 @@ function wrap(text: string, W: number, first: string, hang: string): string[] {
  *  gutter, and the source line's own indent prefixes every row. */
 function foldLineWidth(line: string, W: number, indent = ""): string[] {
 	return mdWrap(line, Math.max(1, W), indent, indent);
-}
-
-/** The style table, in one place. The round's normative mapping —
- *  headings bold with the marker stripped; bold bright; italic SGR 3;
- *  inline code the existing tint; fences a dim gutter with a dim
- *  language tag and no highlighting; lists `•` with a hanging indent;
- *  tables aligned with dim rules and a bold header; quotes a dim `▏`;
- *  links bright text with a dim `(url)`; rules a dim line; `~~` kept
- *  literal (SGR 9's terminal support is too fragmented to be honest).
- *  Exported so the mapping is testable as data, not by inference. */
-export function style(): Record<string, string> {
-	const p = palette();
-	return { heading: p.bold, bold: p.bold, italic: p.italic, code: p.code, gutter: p.dim, rule: p.dim, quote: p.dim, url: p.dim, reset: p.reset };
 }
