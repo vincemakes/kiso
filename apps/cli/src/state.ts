@@ -11,8 +11,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AT_CAP, AT_SKIP, Dock, type AtItem, type Body, type PanelVerdict, type PanelView } from "@vincemakes/kiso-tui";
-import type { KisoExtension } from "@vincemakes/kiso-runtime";
+import { AT_CAP, AT_SKIP, Dock, type AtItem, type Body, type PanelVerdict, type PanelView, type SessionCardView } from "@vincemakes/kiso-tui";
+import type { KisoExtension, StoreRecord } from "@vincemakes/kiso-runtime";
 
 /** finding #11: KISO_HOME is the ONE root — every default path derives from
  *  it (sessions, trust, extensions, mcp config, skills). The dedicated
@@ -173,6 +173,12 @@ export interface LineInput {
 	panelAsk(view: PanelView, onCommit: (v: PanelVerdict) => void): void;
 	/** W21: cancel the panel — the SIGINT pair to panelAsk. */
 	panelCancel(): void;
+	/** TUI2-R2 ②: open the session picker — the editor takes the keys
+	 *  (the selection walk, the filter, enter/esc) and hands back the
+	 *  picked id, or null when the human leaves without picking.
+	 *  OPTIONAL: only the raw-mode editor has it, and the picker only
+	 *  ever opens on a TTY (a pipe has nobody to pick). */
+	pick?(cards: () => readonly SessionCardView[], onPick: (id: string | null) => void): void;
 	/** W22: bind the pending-turn queue — the ↑ pop walks the CLI's
 	 *  live slots (each pop cancels the turn), esc ends the walk after
 	 *  one more pop. The chips are the compositor's own bindQueue. */
@@ -203,6 +209,15 @@ export function setBody(value: Body): void {
  *  bodyLog adds the trailing newline; internal newlines are preserved. */
 export function bodyLog(text: string, wrap?: "words"): void {
 	body.raw(text.split("\n"), wrap);
+}
+
+/** TUI2-R2 ②/③: the session store makeAgent built — the ONE store per
+ *  process. The navigation surfaces need its read side (load) to project
+ *  the badges, and a second store on the same root would be a second
+ *  lock manager for a job that never writes. */
+export let sessionStoreRef: { load(id: string): readonly StoreRecord[] } | null = null;
+export function setSessionStore(value: { load(id: string): readonly StoreRecord[] }): void {
+	sessionStoreRef = value;
 }
 
 /** The model name for the status bar — set by makeAgent. */

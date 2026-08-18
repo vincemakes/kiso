@@ -142,25 +142,54 @@ export function sessionFilter(cards: readonly SessionCardView[], query: string):
 	return scored.map((s) => s.card);
 }
 
-/** The row's spans, unstyled-width accounted: the badge (1 cell), the
- *  id column, then the metadata. The note is the flexible span — it
- *  gives way first, because the id and the state are what the row is
- *  FOR. */
-function rowSpans(card: SessionCardView, W: number, now: number, idCol: number): { text: string; width: number } {
+/**
+ * The row's spans, built against a HARD budget — the badge, the id
+ * column, the metadata, the note.
+ *
+ * The spans are appended in order of what the row is FOR and each one
+ * is dropped whole rather than half-drawn when the budget runs out:
+ * the badge and the id are the row's identity, the age/turns say
+ * whether it is the one, and the note is the sentence that explains
+ * the badge. A narrow terminal loses them from the right.
+ *
+ * The running width is the authority — never a formula computed up
+ * front. That is what the invariant-① sweep across five widths in the
+ * gate is for: a row that overflows does not truncate quietly here, it
+ * CRASHES the compositor, so the arithmetic has to be provably right at
+ * every width rather than right at eighty.
+ */
+function rowSpans(card: SessionCardView, budget: number, now: number, idCol: number): { text: string; width: number } {
 	const p = palette();
-	const id = widthCut(escapeTerminal(card.id), idCol);
-	const pad = " ".repeat(Math.max(0, idCol - visibleWidth(id)));
-	const meta = `${sessionAge(card.updatedAt, now)} · ${card.turns} turn${card.turns === 1 ? "" : "s"}`;
-	// 4 = the leading badge cell + its space + the two spaces before the meta
-	const fixed = 2 + idCol + 2 + visibleWidth(meta);
-	const room = Math.max(0, W - fixed - 3); // " · " before the note
-	const note = room > 0 ? widthCut(sessionNote(card), room) : "";
-	// the ? note carries the warn tint — the row's own words are what the
-	// user acts on, and the one that demands an action says so
-	const noteStyled = note === "" ? "" : card.badge === "uncertain" ? `${p.warn}${note}${p.reset}` : `${p.dim}${note}${p.reset}`;
-	const text = `${sessionBadge(card.badge)} ${id}${pad}  ${p.dim}${meta}${p.reset}${note === "" ? "" : `${p.dim} · ${p.reset}${noteStyled}`}`;
-	const width = 2 + visibleWidth(id) + pad.length + 2 + visibleWidth(meta) + (note === "" ? 0 : 3 + visibleWidth(note));
-	return { text, width };
+	let text = "";
+	let w = 0;
+	/** append a styled span iff its VISIBLE cells still fit */
+	const put = (plain: string, styled: string): void => {
+		const cells = visibleWidth(plain);
+		if (w + cells > budget) return;
+		text += styled;
+		w += cells;
+	};
+	// the badge: one glyph + one space, styled as a unit (the glyph's own
+	// SGR spans make it unmeasurable by `put`'s plain/styled pair)
+	if (w + 2 <= budget) {
+		text += `${sessionBadge(card.badge)} `;
+		w += 2;
+	}
+	const id = widthCut(escapeTerminal(card.id), Math.max(1, Math.min(idCol, budget - w)));
+	put(id, id);
+	// the column pad only survives while there is room for what follows
+	const pad = Math.max(0, Math.min(idCol - visibleWidth(id), budget - w));
+	put(" ".repeat(pad), " ".repeat(pad));
+	const meta = `  ${sessionAge(card.updatedAt, now)} · ${card.turns} turn${card.turns === 1 ? "" : "s"}`;
+	put(meta, `${p.dim}${meta}${p.reset}`);
+	const note = widthCut(sessionNote(card), Math.max(0, budget - w - 3));
+	if (note !== "") {
+		// the ? note carries the warn tint — the row's own words are what
+		// the user acts on, and the one that demands an action says so
+		put(" · ", `${p.dim} · ${p.reset}`);
+		put(note, card.badge === "uncertain" ? `${p.warn}${note}${p.reset}` : `${p.dim}${note}${p.reset}`);
+	}
+	return { text, width: w };
 }
 
 /**
@@ -174,7 +203,11 @@ function rowSpans(card: SessionCardView, W: number, now: number, idCol: number):
  */
 export function sessionRow(card: SessionCardView, selected: boolean, W: number, now: number, idCol: number): string {
 	const p = palette();
-	const { text, width } = rowSpans(card, W, now, idCol);
+	// both forms spend two cells of the width on their frame — the
+	// unselected row's indent, the bar's own leading/trailing cell — so
+	// the spans are built against the same budget either way and the
+	// selection cannot change the columns
+	const { text, width } = rowSpans(card, Math.max(0, W - 2), now, idCol);
 	if (!selected) return `  ${text}`;
 	const inner = text.replaceAll(p.reset, `${p.reset}${p.rv}`);
 	return `${p.rv} ${inner}${" ".repeat(Math.max(0, W - width - 2))} ${p.rvEnd}`;

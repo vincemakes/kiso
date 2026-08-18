@@ -32,6 +32,10 @@ import type { AskRuntime, PanelPhase, PanelSel, PanelState, PanelVerdict, PanelV
 // W21 lead/rows, so this file keeps ONE panel and one key owner.
 import { askCommitCustom, askKey, askStart, panelLead } from "./ask-panel.js";
 import { AT_VISIBLE, atFilter, type AtItem, type AtMatch } from "./at-picker.js";
+// TUI2-R2 ②: the session picker — the band's THIRD occupant. Its filter
+// is the @ picker's rank aimed at the session id; the editor owns the
+// keys, the compositor draws the rows.
+import { sessionFilter, type SessionCardView, type SessionPickState } from "./session-picker.js";
 
 // TUI v4 #16d: the input row is the blue brick + the edit area — the
 // "you>" text is gone (the brick IS the prompt; the pipe path's readline
@@ -158,6 +162,20 @@ export class Editor {
 	// next open re-snapshots, so a stale list can never be shown.
 	#atList: readonly AtItem[] | null = null;
 	#atItems: (() => readonly AtItem[]) | null = null;
+	// TUI2-R2 ② — the session picker. Two fields: the bound source (its
+	// presence IS "the picker is up") and the selection. The query, like
+	// the @ picker's, is DERIVED from the buffer on every read rather
+	// than stored — so every existing buffer op (backspace, the kills,
+	// paste) filters correctly with no handler of its own.
+	//
+	// The picker is MODAL in a way the @ picker is not: it opens before
+	// a session exists, owns the whole composer, and the only ways out
+	// are a pick and an esc. That is why the commit callback lives here
+	// rather than on the line channel — the caller is waiting for an id,
+	// not for a turn.
+	#pickCards: (() => readonly SessionCardView[]) | null = null;
+	#pickCommit: ((id: string | null) => void) | null = null;
+	#pickSel = 0;
 	// A2 (the feel): the session-scoped input history — every submitted TURN
 	// line (never a question answer), capped at 100, never persisted. ↑↓
 	// navigate it ONLY from an empty input or while already browsing.
@@ -291,7 +309,7 @@ export class Editor {
 	 *  the frame's clamp is the authority. */
 	#visibleRows(lineCount: number): number {
 		const H = process.stdout.rows ?? 24;
-		const bands = (this.#menuOpen ? this.#menuFiltered().length : 0) + this.#atRows() + this.#queueState().length;
+		const bands = (this.#menuOpen ? this.#menuFiltered().length : 0) + this.#atRows() + this.#pickRows() + this.#queueState().length;
 		return Math.max(1, Math.min(lineCount, N_MAX, Math.max(1, H - 3 - bands)));
 	}
 
@@ -426,6 +444,10 @@ export class Editor {
 	 *  — #insert leaves both before a character ever lands. */
 	#atArm(): void {
 		if (this.#atItems === null) return;
+		// TUI2-R2 ②: not inside a session filter. An `@` typed into the
+		// picker's query is a character in a session id, and a file picker
+		// opening over a session picker would put two bands in one slot.
+		if (this.#pickUp()) return;
 		if (this.#panel !== null || this.#menuOpen || this.#questionCb !== null) return;
 		if (this.#atToken() === null) return; // not at a word boundary
 		this.#atOpen = true;
@@ -470,6 +492,76 @@ export class Editor {
 	#atRows(): number {
 		const view = this.#atView();
 		return view === null ? 0 : Math.min(view.matches.length, AT_VISIBLE) + 1;
+	}
+
+	// ── TUI2-R2 ② — the session picker ───────────────────────────────
+
+	/** Open the picker on a bound card source. The composer is cleared
+	 *  (the buffer becomes the filter query) and `onPick` receives the
+	 *  chosen id — or null when the human leaves without picking, which
+	 *  is a first-class outcome and not an error. */
+	beginPick(cards: () => readonly SessionCardView[], onPick: (id: string | null) => void): void {
+		this.#pickCards = cards;
+		this.#pickCommit = onPick;
+		this.#pickSel = 0;
+		this.#chars = [];
+		this.#cursor = 0;
+		this.#reflow();
+		this.#onRender();
+	}
+
+	/** The picker's state, derived: the full card list (the id column
+	 *  measures over ALL of them, so the columns never jump), the
+	 *  filtered matches, and the selection CLAMPED at read time — the
+	 *  same correction discipline the @ picker uses, for the same
+	 *  reason: narrowing can only ever shrink the list. */
+	#pickView(): SessionPickState | null {
+		if (this.#pickCards === null) return null;
+		const cards = this.#pickCards();
+		const matches = sessionFilter(cards, this.line());
+		return { cards, matches, selected: Math.max(0, Math.min(this.#pickSel, matches.length - 1)) };
+	}
+
+	pickState(): SessionPickState | null {
+		return this.#pickView();
+	}
+
+	#pickUp(): boolean {
+		return this.#pickCards !== null;
+	}
+
+	/** The band's height estimate: the header + the windowed rows (or
+	 *  the one "no match" row) + the counter. */
+	#pickRows(): number {
+		const view = this.#pickView();
+		return view === null ? 0 : Math.min(Math.max(view.matches.length, 1), AT_VISIBLE) + 2;
+	}
+
+	/** Close and hand the verdict back. The callback fires AFTER the
+	 *  state is cleared, so a caller that re-enters (a second picker, a
+	 *  session that starts) never sees the closing picker's rows. */
+	#pickClose(id: string | null): void {
+		const cb = this.#pickCommit;
+		this.#pickCards = null;
+		this.#pickCommit = null;
+		this.#pickSel = 0;
+		this.#chars = [];
+		this.#cursor = 0;
+		this.#reflow();
+		cb?.(id);
+		this.#onRender();
+	}
+
+	/** Enter takes the SELECTED session. An empty match set takes
+	 *  nothing and leaves the picker up: a picker that invented a pick
+	 *  when the query matched nothing would resume the wrong session,
+	 *  which is the one failure this surface must never have. */
+	#pickAccept(): void {
+		const view = this.#pickView();
+		if (view === null) return;
+		const card = view.matches[view.selected];
+		if (card === undefined) return;
+		this.#pickClose(card.id);
 	}
 
 	/** One-shot question mode: the NEXT submit answers, not a turn. */
@@ -690,6 +782,14 @@ export class Editor {
 					this.#verticalGoalCol = null;
 					this.#refreshMenu();
 					i += 1;
+				} else if (this.#pickUp()) {
+					// TUI2-R2 ②: esc leaves the picker with nothing picked.
+					// The caller reads null and exits 0 — declining to resume
+					// is a normal thing to do, not a failure, so it must not
+					// fall through to the escapeCbs (which mean "abort the
+					// run" and there is no run yet).
+					this.#pickClose(null);
+					i += 1;
 				} else if (this.#atUp()) {
 					// KC3 §3: esc closes the picker and leaves the BUFFER
 					// ALONE — unlike the menu's esc, which clears it. The
@@ -850,6 +950,14 @@ export class Editor {
 				// W21: the panel owns the keys. KC3.5: an ask uses ↑↓ for
 				// the option cursor (the approval panel still has no ↑↓ role).
 				if (this.#panel.ask !== null && this.#panel.ask.phase === "options") this.#askStep(final === "A" ? "up" : "down");
+			} else if (this.#pickUp()) {
+				// TUI2-R2 ②: the session picker owns ↑↓ while up — the
+				// SELECTION, never the composer's line walk and never the
+				// history browse. It sits above both because the picker is
+				// modal: there is no turn to recall and no second line to
+				// walk to while it is open.
+				const view = this.#pickView()!;
+				this.#pickSel = final === "A" ? Math.max(0, view.selected - 1) : Math.min(Math.max(0, view.matches.length - 1), view.selected + 1);
 			} else if (this.#menuOpen) {
 				if (final === "A") this.#menuSel = Math.max(0, this.#menuSel - 1);
 				else this.#menuSel = Math.min(this.#menuFiltered().length - 1, this.#menuSel + 1);
@@ -1139,6 +1247,7 @@ export class Editor {
 			this.#panel === null &&
 			!this.#menuOpen &&
 			!this.#atUp() && // KC3 §3: the @ picker owns the keys while up, exactly like the menu
+			!this.#pickUp() && // TUI2-R2 ②: and so does the session picker — `?` is a query character there
 			this.#historyIdx === null &&
 			!this.#queuePopMode &&
 			!this.#pasting &&
@@ -1172,6 +1281,12 @@ export class Editor {
 	}
 
 	#submit(): void {
+		// TUI2-R2 ②: the session picker takes Enter before anything else —
+		// while it is up there is no turn to submit and no line to send.
+		if (this.#pickUp()) {
+			this.#pickAccept();
+			return;
+		}
 		// KC3 §3: Enter ACCEPTS while the picker is up — the same rule the
 		// menu's A1 feel established (complete first, let the user read
 		// what they got, and let the NEXT Enter send it). An @ reference

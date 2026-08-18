@@ -27,7 +27,7 @@ import { readFileSync, realpathSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { Body, Editor, bannerLines, escapeTerminal, extensionsBannerText, interactivePrompt, palette, renderSessionLine, type ResumeMeta } from "@vincemakes/kiso-tui";
+import { Body, Editor, bannerLines, escapeTerminal, extensionsBannerText, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
 import {
 	createAgent,
 	disposeExtensions,
@@ -41,13 +41,14 @@ import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
 import { builtInLayer } from "./builtin.js";
-import { atFiles, body, bodyLog, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, userExtensions, VERSION, type LineInput } from "./state.js";
+import { atFiles, body, bodyLog, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setSessionStore, userExtensions, VERSION, type LineInput } from "./state.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { autoCompactFromEnv, chat, contextWindowTokens } from "./chat.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { resume } from "./resume.js";
+import { collectSessionCards } from "./session-cards.js";
 
 // The moved exports stay reachable from this entry — the test imports
 // (project-trust, coding-agent) never change (B4: zero assertion changes).
@@ -168,6 +169,12 @@ function editorInput(editor: Editor): LineInput {
 		panelCancel() {
 			editor.cancelPanel();
 		},
+		// TUI2-R2 ②: the session picker — the editor owns the keys (the
+		// selection walk, the filter, enter/esc), the compositor draws the
+		// band, and the id comes back here.
+		pick(cards, onPick) {
+			editor.beginPick(cards, onPick);
+		},
 		// W22: the pending-turn queue — the ↑ pop walk (the keys); the
 		// chips are the compositor's bindQueue (the dock side).
 		bindQueue(state, pop) {
@@ -210,6 +217,7 @@ function makeLineInput(): LineInput {
 		dock.bindAt(() => editor.atState()); // KC3 §4: the picker's band
 		dock.bindApproval(() => editor.panelState()); // W21: the panel's bound state
 		dock.bindSheet(() => editor.sheetOpen()); // TUI2-R1 (D): the ? keys sheet
+		dock.bindPick(() => editor.pickState()); // TUI2-R2 ②: the resume picker's band
 		return editorInput(editor);
 	}
 	return readlineInput(createInterface({ input: process.stdin, output: process.stdout }));
@@ -375,6 +383,9 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 	// the trust record is the first home write, the scaffold the second.
 	if (isFirstRun()) scaffoldFirstRun();
 	const store = new SessionStore(sessionsDir());
+	// TUI2-R2 ②/③: the navigation surfaces read through THIS store — one
+	// store per process, and the picker/listing never write through it.
+	setSessionStore(store);
 	// E area: the durable script position — computed AFTER the verdict
 	// (fauxSkip's session-log read is a home read: pre-trust zero-read).
 	const fauxSkipTurns = sessionId === undefined ? 0 : fauxSkip(sessionId);
@@ -464,6 +475,50 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 			: { adapter: createFauxProvider(readFauxScript().slice(fauxSkipTurns)) }),
 	};
 	return createAgent(definition);
+}
+
+/** TUI2-R2 ② — the picker's affordance row: the keys, said where the
+ *  keys are useful. */
+const PICKER_HINT = "↑↓ pick · ⏎ resumes · type filters · esc";
+
+/**
+ * TUI2-R2 ①–③ — the listing's cards. The projection consumes the
+ * runtime's own accessors (see session-cards.ts); this is only the
+ * plumbing that hands it the store's read side.
+ */
+async function sessionCards(agent: Awaited<ReturnType<typeof makeAgent>>): Promise<SessionCardView[]> {
+	const store = sessionStoreRef;
+	if (store === null) return []; // unreachable: makeAgent builds the store first
+	return collectSessionCards(agent, (id) => store.load(id));
+}
+
+/**
+ * TUI2-R2 ② — the resume picker: the band, the keys, the id.
+ *
+ * The status row carries the picker's own affordance while it is up
+ * (a surface teaches its keys where the keys are useful), and the
+ * promise settles on the editor's commit — the id the human took, or
+ * null when they left. The picker path WRITES NOTHING: the cards are a
+ * projection over what is already on disk.
+ */
+async function pickSession(agent: Awaited<ReturnType<typeof makeAgent>>, input: LineInput): Promise<string | null> {
+	const cards = await sessionCards(agent);
+	if (cards.length === 0) {
+		bodyLog("no sessions yet \u2014 `kiso` starts one");
+		return null;
+	}
+	// a dock-less TTY (rows < 4) has no band to draw the picker in, so the
+	// honest answer is the usage line this command has always printed.
+	if (input.pick === undefined || !dock.active) {
+		console.error('usage: kiso resume <sessionId> ["prompt"]');
+		process.exit(2);
+	}
+	dock.setStatus("", PICKER_HINT);
+	const picked = await new Promise<string | null>((resolve) => {
+		input.pick!(() => cards, resolve);
+	});
+	dock.setStatus("", null);
+	return picked;
 }
 
 async function main(): Promise<void> {
@@ -556,7 +611,12 @@ async function main(): Promise<void> {
 				break;
 			}
 			case "resume": {
-				if (!arg) {
+				// TUI2-R2 ② — bare `kiso resume` opens the PICKER, but only
+				// where there is a human to pick: a pipe keeps today's usage
+				// error and today's exit 2, byte for byte. Finding an id used
+				// to mean running `kiso sessions` and copying one out by eye;
+				// the picker is that step, done by the product.
+				if (!arg && !process.stdin.isTTY) {
 					console.error("usage: kiso resume <sessionId> [\"prompt\"]");
 					process.exit(2);
 				}
@@ -566,8 +626,23 @@ async function main(): Promise<void> {
 				dock.enter();
 				agent = await makeAgent(arg, input, modelFlag);
 				applyConfigMode();
-				const session = await agent.session({ id: arg });
+				let id = arg;
+				if (id === undefined) {
+					const picked = await pickSession(agent, input);
+					// esc: the human looked and chose not to resume. That is a
+					// normal outcome, so it exits 0 with nothing said — never
+					// an error, never a session started behind their back.
+					if (picked === null) break;
+					id = picked;
+				}
+				const session = await agent.session({ id });
 				faux = currentFaux;
+				// E area: the durable script position is computed from the
+				// session id, and on the picker path the id did not exist when
+				// makeAgent ran. Re-arm the scripted adapter at the PICKED
+				// session's position so a picked resume continues its script
+				// exactly where `kiso resume <id>` would have.
+				if (faux && arg === undefined) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 				await resume(session, prompt, faux, input);
 				break;
 			}
@@ -581,8 +656,21 @@ async function main(): Promise<void> {
 				// exists so the gate's ask can be answered; the listing
 				// itself never touches it.
 				agent = await makeAgent(undefined, input, modelFlag);
-				for (const meta of agent.sessions()) {
-					console.log(renderSessionLine(meta));
+				// TUI2-R2 ③ — the same projection the picker renders, printed.
+				// The PIPE keeps today's bytes exactly: `kiso sessions` is
+				// something scripts read, and a badge column is a TTY-render
+				// concern, not a change to a machine interface.
+				if (process.stdout.isTTY) {
+					const cards = await sessionCards(agent);
+					const W = process.stdout.columns ?? 80;
+					const col = idColumn(cards);
+					const now = Date.now();
+					for (const card of cards) console.log(sessionListRow(card, W, now, col));
+					console.log(sessionListFooter(cards.length, W));
+				} else {
+					for (const meta of agent.sessions()) {
+						console.log(renderSessionLine(meta));
+					}
 				}
 				break;
 			}

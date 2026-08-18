@@ -84,10 +84,16 @@ describe("TUI2-R2 ② — bare `kiso resume`: the picker is a TTY surface", () =
 		expect(raw).toContain("(1/3)");
 		// the filter narrowed it to one
 		expect(raw).toContain("(1/1)");
-		// ⏎ went into the EXISTING resume path — the session it picked
+		// ⏎ went into the EXISTING resume path, and the proof is what the
+		// resume path does FIRST: bench-refactor holds an undecided
+		// execution, so the recovery flow's uncertainty gate opens on it.
+		// Nothing about the picker resumes a session — it hands an id to
+		// the flow that always did.
 		const screen = settledScreen(raw).join("\n");
-		expect(screen).toContain("bench-refactor");
-		expect(raw).not.toContain('usage: kiso resume');
+		expect(screen + raw).toContain("interrupted execution");
+		// and the picker is GONE once it has been taken
+		expect(settledScreen(raw).join("\n")).not.toContain("(1/1)");
+		expect(raw).not.toContain("usage: kiso resume");
 	}, 240_000);
 
 	it("the A-1 circle: bare `kiso` (no args) still starts a NEW session — the picker is behind `resume` only", async () => {
@@ -105,7 +111,9 @@ describe("TUI2-R2 ③ — `kiso sessions`: the badges on a TTY, the same bytes i
 		const { env, dirs } = isolatedEnv();
 		await fixtureHome(dirs.home);
 		const out = execFileSync("node", [CLI, "sessions"], { env: env as NodeJS.ProcessEnv, encoding: "utf8" });
-		const lines = out.trimEnd().split("\n");
+		// the keyless demo's own notice is makeAgent's and predates this
+		// round; the LISTING is everything after it
+		const lines = out.trimEnd().split("\n").filter((l) => l !== "" && !l.startsWith("[faux mode"));
 		expect(lines).toHaveLength(3); // three sessions, three lines, nothing else
 		for (const line of lines) {
 			expect(line).toMatch(/^\S+\s+\d+ runs\s+\d+ events\s+\S+\s/); // the historical shape

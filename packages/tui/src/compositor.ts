@@ -51,6 +51,8 @@ import { leadWidth } from "./width.js"; // W23: the ONE width authority (the edi
 import { panelAffordanceOf, panelLeadOf, panelRowsOf, panelStatusOf } from "./ask-panel.js";
 import type { PanelState } from "./approval-panel.js";
 import { atPanelRows, bandHeader, type AtMatch } from "./at-picker.js";
+// TUI2-R2 ②: the session picker's rows — the band's third occupant.
+import { sessionPickerRows, type SessionPickState } from "./session-picker.js";
 
 /** KC3 §4 — the @ picker's bound state (the editor's atState()). */
 export interface AtPanelState {
@@ -219,6 +221,9 @@ export class Body {
 	// KC3 §4: the @ picker's bound state — the SAME band as the menu
 	// (see #menuRows: the two are mutually exclusive by construction).
 	#atState: (() => AtPanelState | null) | null = null;
+	// TUI2-R2 ②: the session picker's bound state — the same band again
+	// (see #menuRows), and modal, so it takes the band first.
+	#pickState: (() => SessionPickState | null) | null = null;
 	// W22: the pending-turn queue's bound state — the CLI's live slots
 	// (chat.ts); the chips render in the menu-rows family (above the
 	// box top), the live caps shrink by their rows, and the status
@@ -254,6 +259,7 @@ export class Body {
 		this.#inputPrompt = dockBindings.prompt;
 		if (dockBindings.menu !== null) this.#menuState = dockBindings.menu;
 		if (dockBindings.at !== null) this.#atState = dockBindings.at;
+		if (dockBindings.pick !== null) this.#pickState = dockBindings.pick;
 		this.#panelState = dockBindings.panel;
 		this.#sheetState = dockBindings.sheet;
 		if (dockBindings.queue !== null) this.#queueState = dockBindings.queue;
@@ -877,6 +883,12 @@ export class Body {
 		this.#atState = state;
 	}
 
+	/** TUI2-R2 ②: bind the editor's session picker — the band's third
+	 *  occupant (see #menuRows for why they share one). */
+	bindPick(state: () => SessionPickState | null): void {
+		this.#pickState = state;
+	}
+
 	/** Bind the pending-turn queue — the CLI's live slots (chat.ts):
 	 *  the chips render in the menu-rows family, the live caps shrink
 	 *  by their rows, and the +N queued hint rides the status row. */
@@ -1411,6 +1423,14 @@ export class Body {
 	 * occupant knowing the other exists.
 	 */
 	#menuRows(W: number): string[] {
+		// TUI2-R2 ②: the session picker is the band's THIRD occupant and
+		// takes it first. It is modal — it opens before a session exists,
+		// so neither the menu nor the @ picker can be up beside it — and
+		// riding this channel buys it the same geometry every other band
+		// occupant already has: counted in chromeRows, clamped with the
+		// composer, redrawn with the frame.
+		const pick = this.#pickState?.() ?? null;
+		if (pick !== null) return sessionPickerRows(pick, W, Date.now());
 		const at = this.#atState?.() ?? null;
 		if (at !== null) return atPanelRows(at, W);
 		const menu = this.#menuState?.();
@@ -1976,6 +1996,16 @@ export class Dock {
 		}
 		compositorRef.bindAt(state);
 	}
+	/** TUI2-R2 ②: bind the editor's session picker — the band's third
+	 *  occupant. Unbound (every path but bare `kiso resume`), the picker
+	 *  cannot render and every frame is byte-identical to before. */
+	bindPick(state: () => SessionPickState | null): void {
+		if (compositorRef === null) {
+			dockBindings.pick = state;
+			return;
+		}
+		compositorRef.bindPick(state);
+	}
 	/** W22: bind the pending-turn queue — the chips + the +N queued
 	 *  hint (the CLI binds it from chat(); the editor's pop keys ride
 	 *  the LineInput's own bindQueue). */
@@ -2008,7 +2038,8 @@ const dockBindings: {
 	prompt: string;
 	menu: (() => { items: readonly MenuItem[]; selected: number } | null) | null;
 	at: (() => AtPanelState | null) | null;
+	pick: (() => SessionPickState | null) | null;
 	panel: (() => PanelState | null) | null;
 	sheet: (() => boolean) | null;
 	queue: (() => readonly string[]) | null;
-} = { state: null, prompt: "", menu: null, at: null, panel: null, sheet: null, queue: null };
+} = { state: null, prompt: "", menu: null, at: null, pick: null, panel: null, sheet: null, queue: null };
