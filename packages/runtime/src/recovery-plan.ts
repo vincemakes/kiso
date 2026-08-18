@@ -94,6 +94,10 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 	//    order blocks; the driver throws with the full list. A receipted
 	//    execution is an outcome (ruling #12 / the α ruling: the audit keeps
 	//    it) — never uncertain.
+	//    ADR-0038: uncertainty belongs to the crash window ALONE. This filter
+	//    is the whole of it — `executionLedger` derives "uncertain" only for
+	//    started-without-receipt, so a FAILED execution never reaches this
+	//    branch and never blocks a resume, whatever its safeToRetry says.
 	const uncertain = [...executionLedger(events).values()].filter((r) => r.status === "uncertain");
 	if (uncertain.length > 0) return { kind: "RESOLVE_UNCERTAIN", executionId: uncertain[0]!.executionId };
 	// 4. Gap B: a text-bearing no-stop suffix is an abandoned draft — void it.

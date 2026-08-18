@@ -111,13 +111,23 @@ export interface LoopConfig {
 	 */
 	readonly approvalVerdict?: (decisionId: string) => boolean | undefined;
 	/**
-	 * C group: the channel that resolves a failed NON-idempotent execution.
-	 * The loop persists `uncertain_pending`, yields it, and AWAITS the
-	 * human verdict — no next model turn, no sibling tool, no auto-retry.
-	 * Absent, the failure is recorded `abandoned` (never retried).
+	 * DEAD — accepted by the type, never read by this loop.
+	 *
+	 * It was the C group channel for the failed-receipt pause: the loop
+	 * persisted `uncertain_pending` and awaited a human verdict. ADR-0038
+	 * removed that pause (a complete receipt IS the outcome), and with it
+	 * every read of this field — a failure is now simply recorded failed and
+	 * the siblings run on. The runtime still passes both callbacks
+	 * (runtime/run.ts), so supplying them is harmless and changes nothing.
+	 *
+	 * The crash window — started, no receipt — is the ONLY uncertainty left,
+	 * and the runtime's recovery driver owns it (RESOLVE_UNCERTAIN in
+	 * runtime/recovery-plan.ts), not the loop. Both fields are kept because
+	 * the surface is frozen (ADR-0051); do not read them as live wiring.
 	 */
 	readonly resolveUncertainty?: (executionId: string) => Promise<"rerun" | "abandoned">;
-	/** round 4 (adversarial): the uncertainty twin of `approvalVerdict`. */
+	/** DEAD, as above — the uncertainty twin of `approvalVerdict`
+	 *  (round 4, adversarial). Never read by the loop since ADR-0038. */
 	readonly uncertaintyVerdict?: (executionId: string) => "rerun" | "abandoned" | undefined;
 	/**
 	 * E1: the COMPOSED approval chain — the runtime composes the

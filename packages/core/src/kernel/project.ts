@@ -19,8 +19,10 @@
  * re-runs the compaction algorithm (a future version could differ, A group/D
  * group); `microcompacted` boundaries re-derive the cleared view from the
  * stream itself (deterministic and idempotent); `summarized` (ADR-0044)
- * replaces its covered range with one assistant summary message. All
- * three are persisted facts — the replay equals the live run. See ADR-0002.
+ * replaces its covered range with one USER message carrying the summary
+ * behind SUMMARY_FRAMING (E6's boundary honesty — see that constant
+ * below; it is deliberately NOT an assistant message). All three are
+ * persisted facts — the replay equals the live run. See ADR-0002.
  */
 
 import type { Event } from "../protocol/events.js";

@@ -14,8 +14,17 @@
  * provider's `callId` is correlation only and may repeat; two logical calls
  * with identical (name, input) are two executions.
  *
+ * UNCERTAINTY BELONGS TO THE CRASH WINDOW ALONE (ADR-0038): the ONLY shape
+ * that derives "uncertain" here is a `tool_execution_started` with no
+ * receipt after it — the process died between the write-ahead and the
+ * outcome, so what the side effect did is genuinely unknown and a human
+ * must rule. A receipted execution is an outcome, success or failure alike;
+ * no tool property and no error kind can make a receipted execution
+ * uncertain. ADR-0038 superseded ADR-0025 decision #3, which had routed a
+ * failed non-idempotent execution into this bucket.
+ *
  * Status derivation:
- *   started, no terminal event yet   → "uncertain"   (interrupted: human)
+ *   started, no terminal event yet   → "uncertain"   (the crash window: human)
  *   succeeded                        → "succeeded"   (confirmed, never re-run)
  *   failed (any)                     → "failed"      (a complete receipt IS
  *                                       the outcome — ruling #12 / ADR-0038;

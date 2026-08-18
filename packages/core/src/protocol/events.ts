@@ -240,10 +240,17 @@ export interface ToolExecutionSucceeded {
 }
 
 /**
- * The side effect ran and FAILED. `safeToRetry` is the tool's own proof
- * (declared idempotent): only then is a failure a clean "failed"; a
- * non-idempotent failure may have produced a side effect and is UNCERTAIN
- * until a human decides (Area 3).
+ * The side effect ran and FAILED. A complete receipt IS the outcome, so this
+ * execution is "failed" — NEVER "uncertain", whatever `safeToRetry` says
+ * (ADR-0038 superseding ADR-0025 decision #3: uncertainty belongs to the
+ * crash window alone — started, no receipt). The run does not pause here;
+ * siblings continue and the model retries with the error in hand, and that
+ * retry is a NEW call that re-passes the approval chain.
+ *
+ * `safeToRetry` is the tool's own `idempotent: true` declaration, carried
+ * for HISTORY: since ADR-0038 it no longer feeds the ledger's status
+ * derivation (runtime/ledger.ts). Its one live consequence is the honest
+ * note appended to a non-idempotent failure's result (ADR-0038 Amendment 1).
  */
 export interface ToolExecutionFailed {
 	readonly seq: number;
@@ -319,11 +326,20 @@ export interface PermissionExpired {
 }
 
 /**
- * A non-idempotent execution FAILED and the run PAUSES until a human
- * decides (C group): no next model turn, no sibling tool, no auto-retry. The
- * verdict is recorded by the session (resolveUncertain) and the ledger
- * transitions uncertain → rerun/abandoned; the event itself is the durable
- * pause marker.
+ * HISTORICAL — the current kernel NEVER emits this event.
+ *
+ * It marked the C group's failed-receipt pause: a non-idempotent execution
+ * that FAILED paused the run until a human ruled. ADR-0038 removed that
+ * pause (a complete receipt IS the outcome), so nothing appends this any
+ * more — pinned by `packages/core/tests/execution-gate.test.ts` and
+ * `packages/runtime/tests/execution.test.ts`, which assert its ABSENCE.
+ *
+ * The variant stays because the durable contract is frozen (ADR-0051) and
+ * old logs replay theirs verbatim (ADR-0038, Consequences): the projection
+ * renders nothing for it, and the ledger reports those receipted executions
+ * as "failed". The crash window — started, no receipt — is now the only
+ * source of uncertainty, and it is resolved through
+ * `uncertainExecutions()` / `resolveUncertain()`, not through this event.
  */
 export interface UncertainPending {
 	readonly seq: number;
@@ -370,9 +386,11 @@ export interface MicroCompactEvent {
  * range. `coversToSeq` is the seq of the LAST covered event; the covered
  * range runs from just past the previous `summarized` event's coversToSeq
  * (or the trajectory's start for the first) up to coversToSeq. The
- * projection replaces exactly those events with ONE assistant summary
- * message (`summary`); every `summarized` event always renders its own
- * message. Byte-stable: a summarized event is a persisted fact, so the
+ * projection replaces exactly those events with ONE USER message carrying
+ * the summary behind a fixed framing line (E6's boundary honesty: the
+ * model reads compressed history as CONTEXT, never as a reply it produced
+ * — see SUMMARY_FRAMING in kernel/project.ts). It is not an assistant
+ * message; every `summarized` event always renders its own message. Byte-stable: a summarized event is a persisted fact, so the
  * same events derive the same messages on every replay.
  *
  * The summary is generated OFF-LOOP through the session's own adapter —
