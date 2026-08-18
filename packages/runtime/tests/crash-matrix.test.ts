@@ -484,11 +484,14 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		void session.approve(pause.decisionId, true);
 		expect(await gate.waitHeld()).toBe("human");
 		gate.executeOne(); // the verdict delivered
-		// the loop's post-pause persist order: the stream's tail (stop) first,
-		// THEN the decided, THEN the execution — three crash candidates.
-		gate.park("persist");
-		expect(await stepUntilHold(it, gate)).toBe("held"); // the stop's write
-		gate.executeOne(); // the turn closes
+		// EC-1 ③ (the SCHEDULER-TIMING class): the post-pause persist order
+		// lost its first step. It used to be stop → decided → execution,
+		// because the ask fired mid-stream and the turn's stop landed after
+		// the human answered. The ask now waits for Turn Commit, so the stop
+		// is ALREADY durable when the request is put to a person — what
+		// follows the verdict is the decided's write, then the execution's:
+		// two crash candidates, not three. The crash POINT this row tests is
+		// unchanged — after the decision is durable, before the execution.
 		gate.park("persist");
 		expect(await stepUntilHold(it, gate)).toBe("held"); // the decided's write
 		gate.executeOne(); // the decision durable
@@ -539,12 +542,11 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		void session.approve(pause.decisionId, true);
 		expect(await gate.waitHeld()).toBe("human");
 		gate.executeOne(); // the verdict delivered
-		// the loop's post-pause persist order: the stop's write first, then
-		// the decided's — the crash lands BETWEEN the delivery and the
-		// decision's durability, AT the decided's write.
-		gate.park("persist");
-		expect(await stepUntilHold(it, gate)).toBe("held"); // the stop's write
-		gate.executeOne(); // the turn closes
+		// EC-1 ③ (the SCHEDULER-TIMING class): the stop's write no longer
+		// sits between the delivery and the decision — the ask happens after
+		// Turn Commit, so the turn is already closed when the human is asked.
+		// The crash still lands BETWEEN the delivery and the decision's
+		// durability; it is now the very next persist.
 		gate.park("persist");
 		expect(await stepUntilHold(it, gate)).toBe("held"); // the decided's write — THE CRASH
 

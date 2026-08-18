@@ -32,12 +32,15 @@ const USER: Message = { role: "user", content: "hi" };
 // barrier instead of the window. Declaring them shared keeps each test
 // measuring what it was written to measure. The barrier itself is pinned by
 // ec1-effects.test.ts, where the undeclared default is the whole point.
-function slowTool(name: string, ms: number, order: string[]): Tool {
+// `null` means UNDECLARED — the conservative default. (Not `undefined`: a
+// default parameter takes effect for an explicit undefined, so the one case
+// that needs the absent certificate could never ask for it.)
+function slowTool(name: string, ms: number, order: string[], effects: Tool["effects"] | null = { precommitSafe: true, concurrency: "shared" }): Tool {
 	return defineTool({
 		name,
 		description: name,
 		parameters: { type: "object", properties: {} },
-		effects: { precommitSafe: true, concurrency: "shared" },
+		...(effects !== null ? { effects } : {}),
 		execute: async () => {
 			order.push(`${name}:start`);
 			await new Promise((r) => setTimeout(r, ms));
@@ -120,14 +123,21 @@ describe("0.1.26 ① — three allow reads run CONCURRENTLY (window 4)", () => {
 // It is the single assertion EC-1 deliberately inverts. A commit-required
 // handler now waits for the durable Turn Commit, so its started event can
 // never precede the stop; the streaming launch survives only for calls that
-// declare themselves precommit-safe (slice ②), which this undeclared tool
-// is not. The tool still runs, and still runs concurrently with its
+// declare themselves precommit-safe (slice ②) AND are already authorized
+// (slice ③(b)). The tool still runs, and still runs concurrently with its
 // siblings — only its start MOMENT moved behind the commit.
+//
+// The stand-in here is registered UNDECLARED, unlike this file's others: the
+// case is about a commit-required call, and the shared default the window
+// tests need would make it precommit-eligible and prove the opposite thing.
+// Its mirror image — the same stream with a declared tool, starting BEFORE
+// the stop — is pinned in ec1-scheduler.test.ts, and the pair is the whole
+// content of the rule.
 describe("EC-1 (was 0.1.26 ④) — a commit-required call starts only AFTER the durable stop", () => {
 	it("a 300ms-gap stream: the started event lands AFTER the stop (the commit is the gate)", async () => {
 		const order: string[] = [];
 		const registry = new ToolRegistry();
-		registry.register(slowTool("fast", 50, order));
+		registry.register(slowTool("fast", 50, order, null));
 		// The stream: a text delta, the tool call, then a 300ms gap, then
 		// the stop — the launch happens at the tool_call_end, so the
 		// execution (50ms) completes DURING the stream's gap.

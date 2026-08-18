@@ -331,8 +331,14 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// The ask gate: an ask's human resolution blocks the calls after it.
 	// The DECIDE chain serializes the decisions in CALL order, so the gate
 	// an ask installs is structurally in place before the successors decide.
+	// EC-1 ③: it must be installed THERE and not at the ask itself, even
+	// though the ask now happens later (post-commit): the gate is what a
+	// precommit-eligible sibling consults to know an ask was accepted ahead
+	// of it, and that has to be knowable BEFORE the commit. Each call
+	// captures the gate ahead of it and its own release (below) — one shared
+	// `askRelease` used to mean the first ask's resolution opened the SECOND
+	// ask's gate.
 	let askGate: Promise<void> = Promise.resolve();
-	let askRelease: (() => void) | null = null;
 	// The decision chain: each launch's decide is chained onto the previous
 	// one's — the decides run in CALL order and the chain resolves to the
 	// call's verdict.
@@ -376,7 +382,14 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	};
 	const launch = (call: ToolCallEnd): void => {
 		execActive += 1;
-		const slot = reserve(registry.get(call.name));
+		const tool = registry.get(call.name);
+		const slot = reserve(tool);
+		// EC-1 ③ — this call's place in the ASK order, filled in by the
+		// decide chain (call order). `ahead` is the gate of an ask ACCEPTED
+		// BEFORE this call; `release` opens this call's own gate for its
+		// successors and stays a no-op unless this call asks. Per-call, so
+		// two asks in one turn queue honestly instead of sharing one release.
+		const askOrder: { ahead: Promise<void>; release: () => void } = { ahead: Promise.resolve(), release: () => {} };
 		launches.push(
 			(async () => {
 				try {
@@ -394,9 +407,10 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 							nextDecisionId,
 							pushExec,
 						);
+						askOrder.ahead = askGate;
 						if (v.action === "ask") {
 							askGate = new Promise<void>((res) => {
-								askRelease = res;
+								askOrder.release = res;
 							});
 						}
 						return v;
@@ -407,39 +421,72 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 						pushExec(verdict.result);
 						return;
 					}
+					// the conservative order: the calls AFTER an ask wait for its
+					// human resolution. The context may have changed when the
+					// human approves — which is why even a precommit-safe read
+					// accepted after an ask waits here rather than racing ahead.
+					await askOrder.ahead;
+					if (violated) return;
 					if (verdict.action === "ask") {
-						// The human pause — abortable by a user abort OR a turn
-						// void (the violated promise). The gate opens when the
-						// human decides, whatever the outcome (conservative
-						// ordering: the successors then proceed with their own
-						// verdicts).
-						const decision = await Promise.race([
-							humanPause(call, verdict.decisionId, hooks, log, config.resolveApproval, config.approvalVerdict, signal, pushExec, verdict.speaker),
-							violatedP,
-						]);
-						askRelease?.();
-						askRelease = null;
-						if (violated) return;
-						if (decision.action !== "allow") {
-							// the reason rides the denial — the human's words,
-							// or the honest "no approval flow configured".
-							pushExec(resultEvent(call, denialResult(decision.reason ?? "denied")));
-							return;
+						try {
+							// EC-1 ③ — THE POST-COMMIT ASK. A human must never
+							// be asked to approve a call whose turn then proves
+							// invalid, so the pause waits for this turn's OWN
+							// commit exactly like a handler does. On an
+							// uncommitted turn the call bails here having asked
+							// NOTHING and started nothing. (Before EC-1 the
+							// question was put to a person mid-stream, and a
+							// provider that violated the protocol after its stop
+							// made that person's "yes" authorize a turn the
+							// kernel then voided.)
+							await turnSettled;
+							if (!committed) return;
+							// The human pause — abortable by a user abort OR a
+							// turn void (the violated promise). Post-commit a
+							// void can no longer reach this branch; the race
+							// stays as the cheap structural guarantee that it
+							// never could.
+							const decision = await Promise.race([
+								humanPause(call, verdict.decisionId, hooks, log, config.resolveApproval, config.approvalVerdict, signal, pushExec, verdict.speaker),
+								violatedP,
+							]);
+							if (violated) return;
+							if (decision.action !== "allow") {
+								// the reason rides the denial — the human's words,
+								// or the honest "no approval flow configured".
+								pushExec(resultEvent(call, denialResult(decision.reason ?? "denied")));
+								return;
+							}
+						} finally {
+							// The gate opens the moment the human's part is over
+							// — whatever the outcome, and on every bail path:
+							// successors wait for the VERDICT, never for this
+							// call's handler, and a turn that voids before the
+							// ask must not strand them.
+							askOrder.release();
 						}
+					} else if (tool?.effects?.precommitSafe !== true) {
+						// EC-1 ① (invariant 3, COMMIT GATING): the handler waits
+						// for this turn's OWN commit. An uncommitted turn never
+						// reaches a handler — the call bails here having emitted
+						// NO started event, so it is clean, never uncertain
+						// (abort semantics). This is the whole of "an invalid
+						// turn never starts a commit-required tool handler".
+						//
+						// EC-1 ③(b) — THE PRECOMMIT LAUNCH RULE is the `else`
+						// this branch is guarded by: a call skips the commit
+						// gate iff its tool declares `precommitSafe` AND its
+						// authorization is ALREADY satisfied — an `allow`
+						// verdict, no human in the loop. Both halves are
+						// necessary: the certificate says the EXECUTION is
+						// harmless (read-only, free, local, universally), never
+						// that the authorization is unnecessary. Such a call may
+						// run on a turn that later voids; invariant 7 owns that
+						// outcome — the receipt is an honest fact and the turn
+						// stays uncommitted.
+						await turnSettled;
+						if (!committed) return;
 					}
-					// the conservative order: the calls AFTER an ask wait for its human
-					// resolution (the askGate is the ask's pause promise —
-					// resolved by default, released by the ask branch above).
-					// The context may have changed when the human approves.
-					await askGate;
-					// EC-1 ① (invariant 3, COMMIT GATING): the handler waits for
-					// this turn's OWN commit. An uncommitted turn never reaches a
-					// handler — the call bails here having emitted NO started
-					// event, so it is clean, never uncertain (abort semantics).
-					// This is the whole of "an invalid turn never starts a
-					// commit-required tool handler".
-					await turnSettled;
-					if (!committed) return;
 					// EC-1 ③ (invariants 5 + 6): wait behind the FIFO barrier,
 					// and only THEN take a window slot. Waiting — for the
 					// commit, for a human, or for the barrier — consumes no
@@ -468,9 +515,11 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					// re-thrown after the settle (the consumer sees it).
 					if (err !== ABORTED) launchError ??= err;
 				} finally {
-					// The barrier is released on EVERY exit — a denial, an
-					// uncommitted turn, an abort — or the siblings queued
-					// behind this call would wait forever.
+					// The barrier and the ask gate are released on EVERY exit —
+					// a denial, an uncommitted turn, an abort — or the siblings
+					// queued behind this call would wait forever. (Releasing an
+					// already-open gate is a no-op: a promise resolves once.)
+					askOrder.release();
 					slot.release();
 					execActive -= 1;
 				}
