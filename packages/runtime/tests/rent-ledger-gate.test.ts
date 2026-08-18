@@ -24,7 +24,7 @@ import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createAgent, SessionStore } from "../src/index.js";
 import { buildRentLedger } from "../src/trace/rent.js";
 import { TRACE_SCHEMA_VERSION, validateTraceLine, validateTraceRecord } from "../src/trace/record.js";
-import { defaultCompositionParts, predictDefaultRentLedger } from "../../../scripts/request-surface.mjs";
+import { defaultCompositionParts, predictDefaultRentLedger, predictSideQueryRentLedger } from "../../../scripts/request-surface.mjs";
 
 const MODEL = "m";
 const est = (n: number) => Math.ceil(n / 4);
@@ -108,5 +108,52 @@ describe("E3 — R7 star: the script's prediction equals a real session's record
 		expect(predicted.some((l) => l.surface.startsWith("system:ext:"))).toBe(false);
 		expect(predicted.some((l) => l.surface.startsWith("tool:"))).toBe(true);
 		expect(predicted.at(-1)!.surface).toBe("envelope");
+	});
+});
+
+/**
+ * TUI2-R3v2 ③ — the SECOND declared arm (the safer-options seam,
+ * adjudicated 2026-08-18).
+ *
+ * The gate's rule is prediction == recording per request, and a side
+ * query is a request. It gets its own arm because its composition is its
+ * own: it sends its small system prompt and nothing else — no extension
+ * appends, and no tools at all. Predicting it with the DEFAULT arm would
+ * overstate its rent by the entire tool table, which is precisely the
+ * error that would make an on-demand feature look ambient.
+ */
+describe("TUI2-R3v2 ③ — the side-query arm: prediction equals a real side query's ledger", () => {
+	it("a real session.sideQuery records exactly what predictSideQueryRentLedger predicts", async () => {
+		const SIDE_PROMPT = "propose 2-3 safer alternative commands with one-line reasons, JSON";
+		const home = mkdtempSync(join(tmpdir(), "kiso-sq-home-"));
+		const parts = await defaultCompositionParts({ home });
+
+		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-sq-rent-")));
+		const agent = createAgent({
+			model: MODEL,
+			store,
+			systemPrompt: parts.base,
+			tools: parts.tools,
+			extensions: parts.extensions,
+			adapter: createFauxProvider([{ events: [{ type: "text_delta", text: "[]" }, { type: "stop", reason: "end_turn" }] }]),
+		});
+		const session = await agent.session({ id: "sidey" });
+		await session.sideQuery({ purpose: "safer-options", systemPrompt: SIDE_PROMPT, prompt: "the pending call is: rm -rf build" });
+		agent.close();
+
+		const lines = readFileSync(join(store.root, "traces", "sidey.jsonl"), "utf8").split("\n").filter(Boolean);
+		for (const line of lines) expect(validateTraceLine(JSON.parse(line))).toBe(true);
+		const request = lines.map((l) => JSON.parse(l) as Record<string, unknown>).find((l) => l.kind === "request");
+		expect(request).toBeDefined();
+		expect(validateTraceRecord(request)).toBe(true);
+		expect(request!.purpose).toBe("safer-options");
+
+		// the headline artifact for this arm: predicted == recorded
+		expect(request!.rent).toEqual(predictSideQueryRentLedger(MODEL, SIDE_PROMPT));
+		// …and the arm's whole point — the surfaces a side query does NOT pay
+		const surfaces = (request!.rent as { surface: string }[]).map((l) => l.surface);
+		expect(surfaces).toEqual(["system:base", "envelope"]);
+		expect(surfaces.some((s) => s.startsWith("tool:"))).toBe(false);
+		expect(surfaces.some((s) => s.startsWith("system:ext:"))).toBe(false);
 	});
 });

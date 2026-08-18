@@ -117,6 +117,33 @@ export async function predictDefaultRentLedger(model, { home } = {}) {
 	});
 }
 
+/**
+ * TUI2-R3v2 ③ — the SIDE-QUERY rent arm (the safer-options seam,
+ * adjudicated 2026-08-18).
+ *
+ * A side query is not a run request and does not pay a run request's
+ * rent, so predicting it with the default arm would be wrong in the
+ * expensive direction — by the entire tool table. Its composition is
+ * declared here, in full, and it is deliberately the smallest a request
+ * can be:
+ *
+ *   system:base   the side query's OWN system prompt — a few lines
+ *                 asking for alternatives — NEVER the session's base
+ *                 prompt, which it does not send;
+ *   envelope      the R5 skeleton, a function of the model string;
+ *   (nothing else) no extension appends, because a side query composes
+ *                 no extensions; and NO tool lines, because it offers
+ *                 no tools at all — it cannot call anything, it can
+ *                 only answer.
+ *
+ * That absence IS the ledger statement (R9, the not-paid-no-rent
+ * precedent): the side query's whole claim to being affordable is that
+ * it skips the surface a run request cannot.
+ */
+export function predictSideQueryRentLedger(model, systemPrompt) {
+	return buildRentLedger({ model, base: systemPrompt });
+}
+
 /** The rent of one tool: the serialized ToolSpec the adapters send. */
 function rent(tool) {
 	const spec = {
