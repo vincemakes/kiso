@@ -45,8 +45,8 @@ const say = (text: string) => ({ events: [{ type: "text_delta", text }, { type: 
 const ADD = defineTool({
 	name: "add",
 	description: "add two numbers",
-	inputSchema: { type: "object", properties: {} },
-	run: () => ({ content: "3" }),
+	parameters: { type: "object", properties: {} },
+	execute: async () => ({ content: "3", isError: false as const }),
 });
 
 async function fixture(script: unknown[]) {

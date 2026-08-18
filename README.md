@@ -299,6 +299,18 @@ kiso help                      this help
   open and is reset on every exit — including defensively at startup,
   because a process killed with a panel open cannot clean up after
   itself.
+- **Safer ways, on demand (0.12.0).** Option 3 asks the model for two or
+  three narrower versions of the pending call and shows them as the same
+  kind of list, each with a one-line reason. Picking one refuses the
+  original *with instructions*, so the model proposes a new call and the
+  panel re-presents it marked `(amended)`. It costs **one request, only
+  when you press it** — a session that never asks makes no such request,
+  and the one it does make is visible in the trace with `purpose:
+  "safer-options"` and its own run id, so the cost is auditable rather
+  than asserted. It sends no tools and no conversation history: its rent
+  is its own short prompt and nothing else. If the answer cannot be read,
+  it says so in one line and every original choice stands — it never
+  invents alternatives.
 - **Irreversible deletes say so.** Four commands carry one yellow line
   naming what goes: `rm -rf` (with the targets listed), `git checkout
   --`, `git reset --hard`, `git clean -f`. Everything else carries

@@ -91,6 +91,21 @@ describe("TUI2-R3v2 ① — the option list and its bar", () => {
 		expect(panelAffordance(simple, "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1-2 instant · esc");
 	});
 
+	it("the un-amended rule line keeps its RAW BYTE run — four PTY gates need it", () => {
+		// the regression this gate exists for: splicing the "(amended)"
+		// marker in with its own dim span closed and reopened the run, which
+		// is invisible on screen and broke the byte sequence the PTY driver
+		// matches frames on. The approval was never answered and the panel
+		// hung. An ordinary approval's bytes are not ours to churn.
+		const rule = panelBlockRows(view, "options", 0, 120, 20)[0]!;
+		expect(rule, "the needle must survive as ONE contiguous byte run").toContain("needs approval — asked by");
+	});
+
+	it("…and the AMENDED line says so, in one contiguous run of its own", () => {
+		const rule = panelBlockRows({ ...view, amended: true }, "options", 0, 120, 20)[0]!;
+		expect(rule).toContain("needs approval · (amended) — asked by");
+	});
+
 	it("the typed phase says where the words GO, and leads with amend›", () => {
 		expect(panelLeadPlain(view, "amend", 3)).toBe("amend› ");
 		expect(panelStatus(view, "amend", 3)).toBe("▸ your note goes to the model — it will propose a new call");

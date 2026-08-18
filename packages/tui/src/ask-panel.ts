@@ -30,6 +30,7 @@
 
 import {
 	panelBlockLayout,
+	type SaferRuntime,
 	panelAffordance as basePanelAffordance,
 	panelBlockRows as basePanelBlockRows,
 	panelLead as basePanelLead,
@@ -265,10 +266,10 @@ export function askLeadPlain(state: AskRuntime): string {
 
 // ── the dispatchers: the panel slot, with the ask branch folded in ────
 
-export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, ask?: AskRuntime, pick?: PickRuntime, note?: string): string[] {
+export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, ask?: AskRuntime, pick?: PickRuntime, note?: string, safer?: SaferRuntime): string[] {
 	if (view.pick !== undefined && pick !== undefined) return pickBlockRows(view, pick, W, maxRows);
 	if (view.ask !== undefined && ask !== undefined) return askBlockRows(view, ask, W, maxRows);
-	return basePanelBlockRows(view, phase, cursor, W, maxRows, note);
+	return basePanelBlockRows(view, phase, cursor, W, maxRows, note, safer);
 }
 
 export function panelLead(view: PanelView, phase: PanelPhase, cursor: number, ask?: AskRuntime, pick?: PickRuntime): string {
@@ -290,17 +291,17 @@ export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number, 
 	return basePanelStatus(view, phase, cursor);
 }
 
-export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: number, ask?: AskRuntime, pick?: PickRuntime): string {
+export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: number, ask?: AskRuntime, pick?: PickRuntime, safer?: SaferRuntime): string {
 	if (view.pick !== undefined && pick !== undefined) return pickAffordance(pick);
 	if (view.ask !== undefined && ask !== undefined) return askAffordance(ask);
-	return basePanelAffordance(view, phase, cursor);
+	return basePanelAffordance(view, phase, cursor, safer);
 }
 
 /** The whole panel state in one call — the compositor's four reads share
  *  one source, so an ask can never render half as an approval (TUI2-R2
  *  ④: nor a pick as either). */
 export const panelRowsOf = (s: PanelState, W: number, maxRows: number): string[] =>
-	panelBlockRows(s.view, s.phase, s.cursor, W, maxRows, s.ask, s.pick, s.note);
+	panelBlockRows(s.view, s.phase, s.cursor, W, maxRows, s.ask, s.pick, s.note, s.safer);
 
 /**
  * TUI2-R3v2 ② — the rows AND where the clickable ones are, from ONE
@@ -324,7 +325,7 @@ export const panelFrameOf = (
 	maxRows: number,
 ): { rows: string[]; options: { offset: number; count: number; first: number } | null } => {
 	if (s.view.pick !== undefined || s.view.ask !== undefined) return { rows: panelRowsOf(s, W, maxRows), options: null };
-	const layout = panelBlockLayout(s.view, s.phase, s.cursor, W, maxRows, s.note);
+	const layout = panelBlockLayout(s.view, s.phase, s.cursor, W, maxRows, s.note, s.safer);
 	return {
 		rows: layout.rows as string[],
 		options: layout.count === 0 ? null : { offset: layout.offset, count: layout.count, first: layout.first },
@@ -332,7 +333,7 @@ export const panelFrameOf = (
 };
 export const panelLeadOf = (s: PanelState): string => panelLead(s.view, s.phase, s.cursor, s.ask, s.pick);
 export const panelStatusOf = (s: PanelState): string => panelStatus(s.view, s.phase, s.cursor, s.ask, s.pick);
-export const panelAffordanceOf = (s: PanelState): string => panelAffordance(s.view, s.phase, s.cursor, s.ask, s.pick);
+export const panelAffordanceOf = (s: PanelState): string => panelAffordance(s.view, s.phase, s.cursor, s.ask, s.pick, s.safer);
 
 // ── the view: what the human reads when the model asks ────────────────
 

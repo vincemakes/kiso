@@ -27,7 +27,18 @@ import { charWidth, displayWidth, leadWidth, widthOf } from "./width.js";
 // authority) — re-exported so the editor's public surface is unchanged.
 export { charWidth, displayWidth, widthOf };
 import { palette } from "./render.js";
-import { PICK_MAX, panelOptions, type AskRuntime, type PanelPhase, type PanelState, type PanelVerdict, type PanelView, type PickRuntime } from "./approval-panel.js";
+import {
+	PICK_MAX,
+	panelOptions,
+	SAFER_DEGRADED,
+	type AskRuntime,
+	type PanelPhase,
+	type PanelState,
+	type PanelVerdict,
+	type PanelView,
+	type PickRuntime,
+	type SaferOption,
+} from "./approval-panel.js";
 // KC3.5: the panel-slot dispatchers — the ask branch folded into the
 // W21 lead/rows, so this file keeps ONE panel and one key owner.
 import { askCommitCustom, askKey, askStart, panelLead } from "./ask-panel.js";
@@ -128,6 +139,11 @@ export class Editor {
 		 *  gesture that could not do what it offered. Cleared by the next
 		 *  gesture — a stale apology is its own kind of lie. */
 		note: string | null;
+		/** TUI2-R3v2 ③: the caller's safer-options provider. Absent = the
+		 *  button degrades honestly rather than pretending. */
+		safer: (() => Promise<readonly SaferOption[] | null>) | undefined;
+		/** TUI2-R3v2 ③: the safer list's walk, once the answer landed. */
+		saferRun: { options: readonly SaferOption[]; cursor: number } | null;
 		/** KC3.5: the ask's walk — non-null exactly for an ask view. */
 		ask: AskRuntime | null;
 		/** TUI2-R2 ④: the pick panel's cursor + phase; null on every other
@@ -142,6 +158,9 @@ export class Editor {
 	#swallowEnter = false;
 	/** TUI2-R3v2 ②: whether SGR 1006 reporting is currently enabled. */
 	#mouseOn = false;
+	/** TUI2-R3v2 ③: the safer ask's generation. A panel the human escaped
+	 *  must not be resurrected by a promise nobody is waiting for. */
+	#saferToken = 0;
 	/** TUI2-R3v2 ②: where the compositor put the panel's option rows this
 	 *  frame (absolute 1-based screen rows). The editor owns no geometry —
 	 *  it asks the surface that placed them. */
@@ -610,12 +629,14 @@ export class Editor {
 	/** W21: open the approval panel. The current buffer is stashed
 	 *  (restored at close — commit AND cancel), the panel takes the
 	 *  keys and the input row's lead, the menu closes. */
-	beginPanel(view: PanelView, onCommit: (v: PanelVerdict) => void): void {
+	beginPanel(view: PanelView, onCommit: (v: PanelVerdict) => void, opts?: { safer?: () => Promise<readonly SaferOption[] | null> }): void {
 		this.#panel = {
 			view,
 			phase: "options",
 			cursor: 0,
 			note: null,
+			safer: opts?.safer,
+			saferRun: null,
 			ask: view.ask === undefined ? null : askStart(view.ask),
 			// TUI2-R2 ④: the pick's walk — present exactly when the view is
 			// a pick, the same contract the ask's runtime has.
@@ -650,6 +671,7 @@ export class Editor {
 			phase: panel.phase,
 			cursor: panel.cursor,
 			...(panel.note === null ? {} : { note: panel.note }),
+			...(panel.saferRun === null ? {} : { safer: panel.saferRun }),
 			...(panel.ask === null ? {} : { ask: panel.ask }),
 			...(panel.pick === null ? {} : { pick: panel.pick }),
 		};
@@ -864,6 +886,22 @@ export class Editor {
 				}
 				if (c === "\x0d" || c === "\x0a") {
 					this.#panelEnter();
+					i += 1;
+					continue;
+				}
+				// TUI2-R3v2 ③: the safer list answers the SAME keys the approval
+				// list does — one interaction model means the new surface is not
+				// an exception to it. A digit takes its row (the way back
+				// included, as the last one).
+				if (panel.phase === "safer" && c !== undefined && c >= "1" && c <= "9") {
+					this.#saferConfirm(Number(c) - 1);
+					i += 1;
+					continue;
+				}
+				// while the ask is in flight the panel owns every printable key
+				// and answers to none of them — esc (above) is the only gesture
+				// with a meaning, and a stray letter must not reach the composer.
+				if (panel.phase === "asking" && c !== undefined && c >= " " && c !== "\x7f") {
 					i += 1;
 					continue;
 				}
@@ -1114,12 +1152,16 @@ export class Editor {
 		if (!press) return; // the press already decided; the release is noise
 		const [button, , row] = params.slice(1).split(";").map(Number);
 		if (button !== 0) return; // wheel (64/65), motion (32+), middle/right
-		if (this.#panel === null || this.#panel.phase !== "options") return;
+		// TUI2-R3v2 ③: a click works on BOTH lists — one interaction model
+		// means the safer alternatives are clickable for the same reason the
+		// original choices are.
+		if (this.#panel === null || (this.#panel.phase !== "options" && this.#panel.phase !== "safer")) return;
 		const span = this.#panelRows?.();
 		if (span == null || row === undefined || !Number.isFinite(row)) return;
 		const offset = row - span.top;
 		if (offset < 0 || offset >= span.count) return; // outside the list — inert
-		this.#panelConfirm((span.first ?? 0) + offset);
+		if (this.#panel.phase === "safer") this.#saferConfirm(offset);
+		else this.#panelConfirm((span.first ?? 0) + offset);
 	}
 
 	/** TUI2-R3v2 ②: the compositor reports where it PUT the option rows.
@@ -1191,7 +1233,8 @@ export class Editor {
 				// pick, the ask, the session picker and the @ picker already
 				// answer to. ONE interaction model is the round's acceptance
 				// criterion, and this branch is where it stops being four.
-				else this.#panelMove(final === "A" ? -1 : 1);
+				else if (this.#panel.phase === "safer") this.#saferMove(final === "A" ? -1 : 1);
+				else if (this.#panel.phase !== "asking") this.#panelMove(final === "A" ? -1 : 1);
 			} else if (this.#pickUp()) {
 				// TUI2-R2 ②: the session picker owns ↑↓ while up — the
 				// SELECTION, never the composer's line walk and never the
@@ -1318,26 +1361,89 @@ export class Editor {
 	/**
 	 * Option 3 — "show me safer ways to do this".
 	 *
-	 * The alternatives are the round's ONE new model request, and this
-	 * build does not issue it: the request has to be visible in the
-	 * request trace to be declarable, and the tracer that makes a request
-	 * visible (RequestTracer/traceGuard, packages/runtime/src/trace/
-	 * guard.ts) is not exported from the runtime's public root OR its
-	 * first-party door — so no caller in apps/cli can issue a TRACED
-	 * request without a runtime source change, which this round's fence
-	 * forbids. The seam is escalated rather than improvised around.
+	 * The round's ONE new model request, and every branch here exists to
+	 * keep it honest.
 	 *
-	 * What ships is the FAILURE path, which the round specifies anyway
-	 * and which is the honest state of this button today: it says so, in
-	 * one dim line, and puts the human back on the list with every
-	 * original choice intact. A button that lied about having asked would
-	 * be worse than one that says it could not.
+	 * It fires ONLY from this method, which only this option reaches —
+	 * that is the entire mechanism behind the zero-ambient-rent claim,
+	 * and it is why the claim is checkable rather than asserted: a
+	 * session that never presses 3 never enters this branch, and the
+	 * trace shows no side-query line.
+	 *
+	 * The in-flight phase is VISIBLE because this is a network call: a
+	 * button that goes quiet for two seconds reads as broken, and the
+	 * human is standing in front of a paused run.
+	 *
+	 * Every failure — a throw, a null, an empty list, no provider bound
+	 * at all — lands on the SAME honest line and puts back every original
+	 * choice. There is deliberately no retry and no partial state: the
+	 * alternative to "I could not get them" is either a lie or a spinner
+	 * that never ends, and both are worse than the sentence.
+	 *
+	 * The generation token is the guard against a late answer: a panel
+	 * the human escaped (or that a SIGINT cancelled) must not be
+	 * resurrected two seconds later by a promise nobody is waiting for.
 	 */
 	#panelSafer(): void {
 		const panel = this.#panel;
 		if (panel === null) return;
-		panel.note = "couldn't get safer options — the original choices stand";
-		panel.cursor = 0;
+		const ask = panel.safer;
+		panel.phase = "asking";
+		panel.note = null;
+		this.#onRender();
+		const token = ++this.#saferToken;
+		const settle = (options: readonly SaferOption[] | null): void => {
+			// the panel that asked must still be the panel on screen
+			if (this.#panel !== panel || token !== this.#saferToken) return;
+			if (options === null || options.length === 0) {
+				panel.phase = "options";
+				panel.note = SAFER_DEGRADED;
+				panel.cursor = 0;
+				this.#onRender();
+				return;
+			}
+			panel.phase = "safer";
+			panel.saferRun = { options, cursor: 0 };
+			this.#onRender();
+		};
+		if (ask === undefined) {
+			settle(null); // no provider bound — the button says so rather than lying
+			return;
+		}
+		void Promise.resolve()
+			.then(ask)
+			.then(settle)
+			.catch(() => settle(null));
+	}
+
+	/** Take a row of the SAFER list. The alternatives route through the
+	 *  EXISTING amend channel — choosing a safer command is a denial with
+	 *  instructions, which is a verdict the product already has; the last
+	 *  row is the way back and decides nothing. */
+	#saferConfirm(index: number): void {
+		const panel = this.#panel;
+		if (panel === null || panel.saferRun === null) return;
+		const { options } = panel.saferRun;
+		if (index === options.length) {
+			// "back to the original choices"
+			panel.phase = "options";
+			panel.saferRun = null;
+			panel.cursor = 0;
+			this.#onRender();
+			return;
+		}
+		const chosen = options[index];
+		if (chosen === undefined) return; // past the list — inert
+		this.#panelClose({ action: "deny", reason: `run this instead: ${chosen.command}` });
+	}
+
+	/** ↑↓ inside the safer list — the way back is its last row, so the
+	 *  bar reaches it like any other. */
+	#saferMove(delta: -1 | 1): void {
+		const panel = this.#panel;
+		if (panel === null || panel.saferRun === null) return;
+		const last = panel.saferRun.options.length; // + the way-back row
+		panel.saferRun = { options: panel.saferRun.options, cursor: Math.max(0, Math.min(last, panel.saferRun.cursor + delta)) };
 		this.#onRender();
 	}
 
@@ -1373,6 +1479,18 @@ export class Editor {
 	#panelEsc(): void {
 		const panel = this.#panel;
 		if (panel === null) return;
+		// TUI2-R3v2 ③: esc out of the safer list — or out of the ask while
+		// it is still in flight — returns to the original choices, exactly
+		// as the way-back row does. The in-flight answer is orphaned by the
+		// generation token; nothing it does can reopen this list.
+		if (panel.phase === "safer" || panel.phase === "asking") {
+			this.#saferToken += 1;
+			panel.phase = "options";
+			panel.saferRun = null;
+			panel.cursor = 0;
+			this.#onRender();
+			return;
+		}
 		if (panel.phase !== "options") {
 			panel.phase = "options";
 			this.#chars = [];
@@ -1407,6 +1525,13 @@ export class Editor {
 			this.#panelClose({ action: "deny", reason: this.line() });
 			return;
 		}
+		// TUI2-R3v2 ③: in the safer list, enter takes the highlighted
+		// alternative — the same gesture, one surface over.
+		if (panel.phase === "safer" && panel.saferRun !== null) {
+			this.#saferConfirm(panel.saferRun.cursor);
+			return;
+		}
+		if (panel.phase === "asking") return; // nothing to confirm yet
 		this.#panelConfirm(panel.cursor);
 	}
 

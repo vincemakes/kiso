@@ -44,7 +44,40 @@ export type PanelFlavor = "approval" | "simple";
  * that never fired. Option 2 now grants exactly what the machinery
  * supports, on the keypress, and the copy says exactly that.
  */
-export type PanelPhase = "options" | "amend";
+export type PanelPhase = "options" | "amend" | "asking" | "safer";
+
+/**
+ * TUI2-R3v2 ③ — one safer alternative the model proposed.
+ *
+ * Two fields and no more. The command is what would actually run, so it
+ * is the row's subject; `why` is the one-line plain-language reason,
+ * because a list of three shell commands with no explanation asks the
+ * human to diff them in their head — which is the work the feature
+ * exists to remove.
+ */
+export interface SaferOption {
+	readonly command: string;
+	readonly why: string;
+}
+
+/** TUI2-R3v2 ③: the safer list's own walk — the options the model gave
+ *  and the bar's place in them. The LAST row (the way back) is not an
+ *  option and is not in this array; it is rendered after them and its
+ *  index is `options.length`. */
+export interface SaferRuntime {
+	readonly options: readonly SaferOption[];
+	readonly cursor: number;
+}
+
+/** The copy a failed ask owes the human. One line, dim, and it says what
+ *  is still true rather than what went wrong: the original choices are
+ *  all still there, which is the only thing they need to know to keep
+ *  going. */
+export const SAFER_DEGRADED = "couldn't get safer options — the original choices stand";
+
+/** The row that returns to state 1. Rendered last, always present — an
+ *  alternatives list you cannot back out of would be a trap. */
+export const SAFER_BACK = "back to the original choices";
 
 /** What an option DOES — the verdict channel it commits to. The label is
  *  what the human reads; the kind is what the editor routes on, so the
@@ -284,6 +317,11 @@ export interface PanelView {
 	/** The fallback question — the y/n text for the dock-less path
 	 *  (a TTY without a dock, or a pipe). */
 	readonly fallbackQuestion: string;
+	/** TUI2-R3v2 ③: this call is the model's answer to a refusal — the v4
+	 *  frame's "(amended)" marker. It says WHY the call looks different
+	 *  from the one just refused; without it a second approval for the same
+	 *  tool reads as the product asking twice. */
+	readonly amended?: boolean;
 	/** TUI2-R3v2 ④: the deletion-risk line, when the command matches one
 	 *  of the four irreversible patterns. Composed by the CLI (which owns
 	 *  the tool input) from deletionRiskHint; absent for every other
@@ -332,6 +370,9 @@ export interface PanelState {
 	/** TUI2-R3v2 ①: the one dim line a failed gesture owes the human (the
 	 *  safer-options degradation). Absent when there is nothing to say. */
 	readonly note?: string;
+	/** TUI2-R3v2 ③: the safer list's walk — present exactly in the
+	 *  "safer" phase. */
+	readonly safer?: SaferRuntime;
 	/** KC3.5: the ask's walk — present exactly when `view.ask` is. */
 	readonly ask?: AskRuntime;
 	/** TUI2-R2 \u2463: the pick's walk — present exactly when `view.pick` is. */
@@ -351,7 +392,22 @@ function panelRuleText(view: PanelView): string {
 	// ("edit needs approval"). view.name keeps the RAW tool name, which is
 	// what the option-2 rule prefill and the fallbackQuestion (the
 	// dock-less/pipe path — byte-identical by ruling) still read.
-	const base = `${p.bold}${escapeTerminal(displayVerb(view.name))}${p.reset} ${p.dim}needs approval — asked by${p.reset} ${p.bold}${escapeTerminal(view.speaker)}${p.reset}`;
+	// TUI2-R3v2 ③: the marker is SPLICED, and the un-amended line's bytes
+	// are left exactly as they were.
+	//
+	// The first version composed one template for both cases, closing and
+	// reopening the dim run around the marker slot. That is invisible on
+	// screen and it broke the RAW BYTE run "needs approval — asked by",
+	// which four PTY gates use as a frame needle — the driver matches on
+	// the byte stream, so the needle stopped matching, the approval was
+	// never answered, and the panel hung. An ordinary approval must be
+	// byte-identical to what it was; only the amended one differs.
+	const head = `${p.bold}${escapeTerminal(displayVerb(view.name))}${p.reset} `;
+	const tail = ` ${p.bold}${escapeTerminal(view.speaker)}${p.reset}`;
+	const base =
+		view.amended === true
+			? `${head}${p.dim}needs approval · (amended) — asked by${p.reset}${tail}`
+			: `${head}${p.dim}needs approval — asked by${p.reset}${tail}`;
 	return hint ? `${base}${p.dim} ·${p.reset} ${p.code}${escapeTerminal(hint)}${p.reset}` : base;
 }
 
@@ -406,11 +462,11 @@ export interface PanelBlockLayout {
  *  the left edge (the preview's two-space mock indent is its own
  *  styling; the real rows sit at column 1, like every tool cell).
  *  maxRows caps the TOTAL (the args fold; the single-row lines cut). */
-export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, note?: string): string[] {
-	return panelBlockLayout(view, phase, cursor, W, maxRows, note).rows as string[];
+export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, note?: string, safer?: SaferRuntime): string[] {
+	return panelBlockLayout(view, phase, cursor, W, maxRows, note, safer).rows as string[];
 }
 
-export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, note?: string): PanelBlockLayout {
+export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, note?: string, safer?: SaferRuntime): PanelBlockLayout {
 	const p = palette();
 	const gutter = `${p.dim}│${p.reset} `;
 	const rows: string[] = [];
@@ -436,7 +492,13 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// they can also read in the event log is worth less than the row that
 	// carries the choice. The args keep a floor of one row so the block
 	// never claims to show what it is asking about and then shows nothing.
-	const chrome = 5 + (phase === "options" && note !== undefined ? 1 : 0) + (view.riskHint !== undefined && view.riskHint !== "" ? 1 : 0);
+	const chrome =
+		5 +
+		(phase === "options" && note !== undefined ? 1 : 0) +
+		(view.riskHint !== undefined && view.riskHint !== "" ? 1 : 0) +
+		(phase === "asking" ? 1 : 0) +
+		// the safer list's rows + its way-back row
+		(phase === "safer" && safer !== undefined ? safer.options.length + 1 : 0);
 	const optionCount = phase === "options" ? panelOptions(view).length : 0;
 	const optionsShown = Math.min(optionCount, Math.max(1, maxRows - chrome - 1));
 	const argsBudget = Math.max(1, maxRows - chrome - optionsShown);
@@ -461,6 +523,25 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// live that their next keystroke is not addressing.
 	let offset = 0;
 	let first = 0;
+	// TUI2-R3v2 ③: the in-flight line. A button that goes quiet for two
+	// seconds reads as broken, and this one is making a network call —
+	// so the panel says what it is doing, and says that esc still works.
+	if (phase === "asking") {
+		rows.push(`${gutter}${cutLine(`${p.dim}asking the model for safer options…${p.reset}`, Math.max(1, W - 2))}`);
+	}
+	// TUI2-R3v2 ③: the alternatives, as a list in the SAME shape as the
+	// approval's own — the round's one interaction model, applied to the
+	// one new surface rather than excepted from it. The way back is the
+	// last row and is always present: an alternatives list you cannot back
+	// out of would be a trap.
+	if (phase === "safer" && safer !== undefined) {
+		offset = rows.length;
+		for (let i = 0; i < safer.options.length; i += 1) {
+			const o = safer.options[i]!;
+			rows.push(panelOptionRow({ kind: "allow", label: `${o.command}  — ${o.why}` }, i + 1, i === safer.cursor, W));
+		}
+		rows.push(panelOptionRow({ kind: "deny", label: SAFER_BACK }, safer.options.length + 1, safer.cursor === safer.options.length, W));
+	}
 	if (phase === "options") {
 		if (note !== undefined) rows.push(`${gutter}${cutLine(`${p.dim}${escapeTerminal(note)}${p.reset}`, Math.max(1, W - 2))}`);
 		offset = rows.length;
@@ -475,8 +556,15 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 		first = Math.max(0, Math.min(cursor - optionsShown + 1, options.length - optionsShown));
 		for (let i = first; i < first + optionsShown; i += 1) rows.push(panelOptionRow(options[i]!, i + 1, i === cursor, W));
 	}
-	const layout = { offset, count: phase === "options" ? optionsShown : 0, first };
-	rows.push(`${gutter}${p.dim}${cutLine(panelAffordance(view, phase, cursor), Math.max(1, W - 2))}${p.reset}`);
+	const layout = {
+		offset,
+		// the safer list is clickable by the same rule the option list is —
+		// one interaction model means the click works on every list, and its
+		// rows include the way back (hence +1)
+		count: phase === "options" ? optionsShown : phase === "safer" && safer !== undefined ? safer.options.length + 1 : 0,
+		first,
+	};
+	rows.push(`${gutter}${p.dim}${cutLine(panelAffordance(view, phase, cursor, safer), Math.max(1, W - 2))}${p.reset}`);
 	// TUI2-R1.5 11 (VD-13): a real bottom RULE, in the block's own edge
 	// vocabulary — the same box-drawing run its divider already uses —
 	// anchored at the gutter column. It used to be `\u2514 `: a two-cell stub
@@ -524,6 +612,10 @@ export function panelLeadWidth(view: PanelView, phase: PanelPhase, cursor: numbe
  *  the CLI's painting status (the compositor derives it from the panel
  *  state; the "▸ run paused" etc. ride the options phase). */
 export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number): string {
+	// TUI2-R3v2 ③: the frames' own words — what the panel is doing, and
+	// (in the safer list) what it did.
+	if (phase === "asking") return "\u25b8 asked the model for safer options";
+	if (phase === "safer") return "\u25b8 asked the model for safer options";
 	// TUI2-R3v2 ①: the typed phase says where the words GO. "the words ride
 	// the verdict" described the plumbing to whoever wrote it; the human
 	// typing needs to know the model will read this and answer with a new
@@ -540,8 +632,16 @@ export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number):
  * on the simple flavors. The click is advertised for the same reason the
  * arrows are — an affordance nobody is told about is one nobody uses.
  */
-export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: number): string {
+export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: number, safer?: SaferRuntime): string {
 	if (phase === "amend") return "⏎ send · esc back";
+	// TUI2-R3v2 ③: the ask is in flight — the ONE key that still means
+	// something is the one that gets you out of it.
+	if (phase === "asking") return "esc cancels";
+	// the same sentence the approval list carries, counting the rows THIS
+	// list has (the alternatives plus the way back)
+	if (phase === "safer" && safer !== undefined) {
+		return `↑↓ move · ⏎ or click confirms · 1-${safer.options.length + 1} instant · esc`;
+	}
 	return `↑↓ move · ⏎ or click confirms · 1-${panelOptions(view).length} instant · esc`;
 }
 

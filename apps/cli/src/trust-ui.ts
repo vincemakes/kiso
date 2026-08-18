@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkS
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { askDeclineAll, askView, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, unansweredAskView, type AskResult, type AskSpec, type PanelVerdict, type PanelView } from "@vincemakes/kiso-tui";
+import { askDeclineAll, askView, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, unansweredAskView, type AskResult, type AskSpec, type PanelVerdict, type PanelView, type SaferOption } from "@vincemakes/kiso-tui";
 import type { AskUI } from "@vincemakes/kiso-ask-ext";
 import { projectArtifacts, recordTrust, trustFor, type ProjectArtifacts } from "@vincemakes/kiso-runtime";
 import type { AgentSession, KisoExtension } from "@vincemakes/kiso-runtime";
@@ -42,7 +42,15 @@ import { getMode } from "./mode.js";
  * the dead question.
  */
 export let pendingAsk: (() => void) | null = null;
-export function askPanel(input: LineInput, view: PanelView): Promise<PanelVerdict> {
+export function askPanel(
+	input: LineInput,
+	view: PanelView,
+	// TUI2-R3v2 ③: the safer-options provider, when the caller has one.
+	// Only the approval site passes it; every other panel (the ask, the
+	// pick, the trust gate, the uncertain resolutions) omits it, so their
+	// lists cannot grow a button they have no answer for.
+	opts?: { safer?: () => Promise<readonly SaferOption[] | null> },
+): Promise<PanelVerdict> {
 	if (!process.stdin.isTTY) {
 		console.log(`[non-interactive — no human to ask: ${view.fallbackQuestion}]`);
 		return Promise.resolve({ action: "deny", reason: "no human to ask" });
@@ -63,7 +71,7 @@ export function askPanel(input: LineInput, view: PanelView): Promise<PanelVerdic
 				settled = true;
 				pendingAsk = null;
 				resolve(verdict);
-			});
+			}, opts);
 		} else {
 			// v2c: a TTY without a dock (rows < 4) — the fallback question
 			// in the body; the y/n line answer maps to the verdicts.

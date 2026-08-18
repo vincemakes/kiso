@@ -25,3 +25,9 @@ export interface CompositionParts {
 export function defaultCompositionParts(options?: { home?: string }): Promise<CompositionParts>;
 
 export function predictDefaultRentLedger(model: string, options?: { home?: string }): Promise<RentLine[]>;
+
+/** TUI2-R3v2 ③ (the safer-options seam, adjudicated 2026-08-18) — the
+ *  SIDE-QUERY arm. A side query sends its own short system prompt and
+ *  nothing else: no extension appends, no tools. Synchronous because
+ *  there is no composition to resolve. */
+export function predictSideQueryRentLedger(model: string, systemPrompt: string): RentLine[];

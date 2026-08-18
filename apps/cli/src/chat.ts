@@ -21,7 +21,7 @@ import {
 	type RenderInput,
 	type RunUsage,
 } from "@vincemakes/kiso-tui";
-import { deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult } from "@vincemakes/kiso-tui";
+import { deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
@@ -229,10 +229,68 @@ function approvalDiff(name: string, input: Record<string, unknown>): DiffResult 
 	}
 }
 
+/**
+ * TUI2-R3v2 ③ — the safer-options request: its prompt, and its parser.
+ *
+ * The prompt is deliberately small. It carries the pending call and
+ * nothing else — no conversation, no tools, no project context — because
+ * everything it does not send is rent the human pays for pressing a
+ * button, and because "propose a safer version of THIS command" is a
+ * question that needs no history to answer.
+ */
+/** TUI2-R3v2 ③: tools whose NEXT approval is the model's answer to a
+ *  refusal — the "(amended)" marker's source. Per process, cleared as
+ *  soon as it is shown: the marker describes ONE call, not a mode. */
+const amendedCalls = new Set<string>();
+
+const SAFER_SYSTEM_PROMPT = [
+	"You propose safer alternatives to a single shell/tool call a human is being asked to approve.",
+	"Answer with JSON ONLY: an array of 2-3 objects, each {\"command\": string, \"why\": string}.",
+	'"command" is the full replacement call. "why" is ONE short plain-language line saying what it does differently.',
+	"Prefer alternatives that avoid irreversible deletion. If you cannot improve on it, answer [].",
+].join(" ");
+
+/**
+ * Parse the model's answer DEFENSIVELY — anything unexpected is a
+ * failure, and a failure degrades honestly.
+ *
+ * The temptation here is to be clever: salvage a half-parse, coerce a
+ * string into a command, accept an object where an array was asked for.
+ * All of that produces a list of alternatives the model did not propose,
+ * shown to a human deciding whether to run a destructive command. The
+ * only honest failure mode is the dim line, so anything that is not
+ * exactly the requested shape returns null.
+ *
+ * A fenced code block is the one accommodation, because models emit it
+ * constantly and it changes no content.
+ */
+export function parseSaferOptions(text: string): SaferOption[] | null {
+	const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+	const body = (fenced?.[1] ?? text).trim();
+	const start = body.indexOf("[");
+	const end = body.lastIndexOf("]");
+	if (start < 0 || end <= start) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body.slice(start, end + 1));
+	} catch {
+		return null;
+	}
+	if (!Array.isArray(parsed) || parsed.length === 0) return null;
+	const out: SaferOption[] = [];
+	for (const item of parsed.slice(0, 3)) {
+		if (typeof item !== "object" || item === null) return null;
+		const { command, why } = item as { command?: unknown; why?: unknown };
+		if (typeof command !== "string" || command.trim() === "") return null;
+		out.push({ command: command.trim(), why: typeof why === "string" ? why.trim() : "" });
+	}
+	return out.length === 0 ? null : out;
+}
+
 /** W21 — the panel view for a permission_requested: the rule line (the
  *  why-asked speaker + the §3.5 fix hint), the toolTarget title, the
  *  "▸ run paused" status, and the ALWAYS-verbose args. */
-function approvalView(name: string, ev: { speaker?: string; input?: Record<string, unknown> }): PanelView {
+function approvalView(name: string, ev: { speaker?: string; input?: Record<string, unknown> }, amended = false): PanelView {
 	const speaker = ev.speaker ?? "kiso";
 	const input = ev.input ?? {};
 	// exactOptionalPropertyTypes: the hint is OMITTED when the speaker has
@@ -252,6 +310,11 @@ function approvalView(name: string, ev: { speaker?: string; input?: Record<strin
 		statusText: "▸ run paused",
 		args: approvalArgs(name, input),
 		fallbackQuestion: `approve ${escapeTerminal(name)}? (y/n) `,
+		// TUI2-R3v2 ③: the v4 frame's "(amended)" marker. It says WHY this
+		// call looks different from the one just refused — without it, a
+		// second approval for the same tool reads as the product asking
+		// twice rather than as the model answering.
+		...(amended ? { amended: true } : {}),
 	};
 }
 
@@ -495,7 +558,25 @@ export async function consumeRun(
 				const name = (ev as { name: string }).name;
 				body.toolApproval(ev.callId, approvalDiff(name, ev.input ?? {}));
 				const decisionId = (ev as { decisionId: string }).decisionId;
-				const verdict = await askPanel(input, approvalView(name, ev as { speaker?: string; input?: Record<string, unknown> }));
+				// TUI2-R3v2 ③: the on-demand alternatives provider. It is built
+				// per approval and captured by the panel; it fires ONLY if the
+				// human presses option 3, which is the whole zero-ambient-rent
+				// mechanism — no press, no request, nothing in the trace.
+				const safer = async (): Promise<readonly SaferOption[] | null> => {
+					const answer = await session.sideQuery({
+						purpose: "safer-options",
+						systemPrompt: SAFER_SYSTEM_PROMPT,
+						prompt: `the pending call is: ${name} ${JSON.stringify(ev.input ?? {})}`,
+						maxTokens: 500,
+					});
+					return parseSaferOptions(answer);
+				};
+				const verdict = await askPanel(
+					input,
+					approvalView(name, ev as { speaker?: string; input?: Record<string, unknown> }, amendedCalls.has(name)),
+					{ safer },
+				);
+				amendedCalls.delete(name);
 				switch (verdict.action) {
 					case "cancel": {
 						// round 10: a cancellation is a CONSERVATIVE denial,
@@ -525,6 +606,9 @@ export async function consumeRun(
 						if (verdict.reason.trim() !== "") {
 							// No+words — the words become the tool_result; the
 							// run continues with the model seeing the denial.
+							// TUI2-R3v2 ③: whatever the model proposes next for
+							// this tool IS the amended call, and the panel says so.
+							amendedCalls.add(name);
 							await session.approve(decisionId, false, verdict.reason);
 						} else {
 							// bare No — the denial settles the pause FIRST, then

@@ -163,8 +163,8 @@ function editorInput(editor: Editor): LineInput {
 		},
 		// W21: the panel — the editor's own state machine takes the
 		// keys; the compositor renders it via the bound state.
-		panelAsk(view, onCommit) {
-			editor.beginPanel(view, onCommit);
+		panelAsk(view, onCommit, opts) {
+			editor.beginPanel(view, onCommit, opts);
 		},
 		panelCancel() {
 			editor.cancelPanel();

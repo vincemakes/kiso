@@ -165,6 +165,7 @@ describe("TUI2-R3v2 ③ — the safer-options round trip", () => {
 		const { editor, verdict } = open(() => new Promise((r) => (resolve = r)));
 		editor.feed(enc("3"));
 		expect(editor.panelState()?.phase).toBe("asking");
+		await tick(); // the provider is invoked a microtask later — let it start
 		editor.cancelPanel();
 		expect((verdict() as { action: string }).action).toBe("cancel");
 		resolve(ALTS); // the late answer
