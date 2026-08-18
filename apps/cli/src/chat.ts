@@ -21,7 +21,7 @@ import {
 	type RenderInput,
 	type RunUsage,
 } from "@vincemakes/kiso-tui";
-import { deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferOption } from "@vincemakes/kiso-tui";
+import { SAFER_DEGRADED, deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
@@ -243,12 +243,20 @@ function approvalDiff(name: string, input: Record<string, unknown>): DiffResult 
  *  soon as it is shown: the marker describes ONE call, not a mode. */
 const amendedCalls = new Set<string>();
 
-const SAFER_SYSTEM_PROMPT = [
+export const SAFER_SYSTEM_PROMPT = [
 	"You propose safer alternatives to a single shell/tool call a human is being asked to approve.",
 	"Answer with JSON ONLY: an array of 2-3 objects, each {\"command\": string, \"why\": string}.",
 	'"command" is the full replacement call. "why" is ONE short plain-language line saying what it does differently.',
 	"Prefer alternatives that avoid irreversible deletion. If you cannot improve on it, answer [].",
 ].join(" ");
+
+/** The side query's output ceiling. */
+export const SAFER_MAX_TOKENS = 500;
+
+/** The one dim line a failed ask owes the human. */
+export function saferFailureNote(_text: string): string {
+	return SAFER_DEGRADED;
+}
 
 /**
  * Parse the model's answer DEFENSIVELY — anything unexpected is a
