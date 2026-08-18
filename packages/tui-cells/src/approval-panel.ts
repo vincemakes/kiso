@@ -27,6 +27,9 @@
 
 import { displayWidth } from "./width.js";
 import { cutLine, diffBody, gutterFold, visibleWidth, widthCut } from "./components.js";
+// TUI2-R2pre ④: strings.js takes only a TYPE from this module, so the
+// import is erased at compile time and no runtime cycle exists.
+import { displayVerb } from "./strings.js";
 import { escapeTerminal, palette } from "./render.js";
 
 export type PanelFlavor = "approval" | "simple";
@@ -157,7 +160,11 @@ function panelRuleText(view: PanelView): string {
 	const p = palette();
 	if (view.ruleOverride !== undefined) return escapeTerminal(view.ruleOverride);
 	const hint = view.hint;
-	const base = `${p.bold}${escapeTerminal(view.name)}${p.reset} ${p.dim}needs approval — asked by${p.reset} ${p.bold}${escapeTerminal(view.speaker)}${p.reset}`;
+	// TUI2-R2pre ④: the rule line is the panel's header — it says the ACT
+	// ("edit needs approval"). view.name keeps the RAW tool name, which is
+	// what the option-2 rule prefill and the fallbackQuestion (the
+	// dock-less/pipe path — byte-identical by ruling) still read.
+	const base = `${p.bold}${escapeTerminal(displayVerb(view.name))}${p.reset} ${p.dim}needs approval — asked by${p.reset} ${p.bold}${escapeTerminal(view.speaker)}${p.reset}`;
 	return hint ? `${base}${p.dim} ·${p.reset} ${p.code}${escapeTerminal(hint)}${p.reset}` : base;
 }
 

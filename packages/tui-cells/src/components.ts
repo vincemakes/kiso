@@ -19,6 +19,10 @@
  */
 
 import { displayWidth } from "./width.js";
+// TUI2-R2pre ④: the ONE display-verb table (strings.ts, beside
+// KEY_BINDINGS). strings.js imports only render/width here, so this edge
+// adds no cycle.
+import { displayVerb } from "./strings.js";
 import {
 	bannerLines,
 	escapeTerminal,
@@ -570,7 +574,7 @@ class ToolExecution implements Component {
 	render(W: number, ctx: FrameCtx): string[] {
 		const p = palette();
 		const c = this.cell;
-		const verb = escapeTerminal(c.name.replace("_file", ""));
+		const verb = escapeTerminal(displayVerb(c.name));
 		const verbCol = verb.length < 5 ? `${verb}${" ".repeat(5 - verb.length)}` : verb;
 		const parts = c.rolled?.parts;
 		if (c.rolled !== null && parts !== undefined) {
@@ -851,10 +855,13 @@ const EXPLORE_NOUN: Readonly<Record<string, [string, string]>> = {
 	search_text: ["search", "searches"],
 };
 
-/** TUI2-R1 (B) — the verb column of the expanded list. `search_text`
- *  reads as "search" there: the column names the ACT, and the raw tool
- *  name is what the cut notes carry (they name what the model calls). */
-const EXPLORE_VERB: Readonly<Record<string, string>> = { read_file: "read", list_dir: "list", search_text: "search" };
+/** TUI2-R1 (B) — the verb column of the expanded list names the ACT.
+ *  TUI2-R2pre ④: this used to be a private three-tool table saying the
+ *  same thing as the card head's `_file` strip, in a different way and
+ *  for a different set of tools. Both are `displayVerb` now — the whole
+ *  point of the ruling is that there is ONE answer to "what does the
+ *  screen call this". The cut note, which used to be the deliberate
+ *  exception here, moved with it (see toolCutNote). */
 
 /** Whether a tool joins an exploration run. Exactly the read-only set —
  *  writes, edits, shells and extension tools never group (a burst of
@@ -887,7 +894,7 @@ export function exploreRows(parts: readonly { name: string; subjects: readonly s
 		for (const s of part.subjects) counts.set(s, (counts.get(s) ?? 0) + 1);
 		const shown = [...counts.entries()].slice(0, 3).map(([s, n]) => (n > 1 ? `${s} ×${n}` : s));
 		const more = counts.size > 3 ? ` (+${counts.size - 3})` : "";
-		const verb = EXPLORE_VERB[part.name] ?? part.name;
+		const verb = displayVerb(part.name);
 		rows.push(cutLine(`${p.dim}${BODY_ROW}${escapeTerminal(`${verb.padEnd(6)} ${shown.join(" · ")}${more}`)}${p.reset}`, W));
 	}
 	// TUI2-R1.5 ① (VD-15): the footer used to promise "/last shows the full
@@ -928,7 +935,7 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 		if (noun !== undefined) {
 			parts.push(countTerm(n, noun.endsWith("es") ? noun.slice(0, -2) : noun.slice(0, -1), noun));
 		} else {
-			const verb = name.replace("_file", "");
+			const verb = displayVerb(name);
 			parts.push(countTerm(n, verb, `${verb}s`));
 		}
 	}
@@ -1240,12 +1247,20 @@ export function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number,
  *  offset=N", the output cap, list_dir's entry cap). The note reaches
  *  the MODEL and never the human — this row surfaces it. Detected in
  *  the result's TAIL (the note is appended at the end); returns null
- *  when the tool did not truncate. */
+ *  when the tool did not truncate.
+ *
+ *  TUI2-R2pre ④: the verb here is the DISPLAY one now. This row used to
+ *  be the sanctioned raw-name exception, on the reasoning that it names
+ *  the tool the model should call again — but the row is addressed to
+ *  the HUMAN (the model already has the note in its own transcript, which
+ *  is where it read it), and the ruling names this advisory family
+ *  explicitly. The `offset=N` it carries is the actionable half and is
+ *  untouched. */
 function toolCutNote(name: string, resultText: string): string | null {
 	const tail = resultText.slice(-300);
 	const m = /offset=(\d+)/.exec(tail);
-	if (m !== null) return `capped by ${escapeTerminal(name)} · offset=${m[1]} for the rest`;
-	if (/…\[truncated\]/.test(tail) || /… \+?\d+ more (?:lines|entries)/.test(tail)) return `capped by ${escapeTerminal(name)} · /last for the rest`;
+	if (m !== null) return `capped by ${escapeTerminal(displayVerb(name))} · offset=${m[1]} for the rest`;
+	if (/…\[truncated\]/.test(tail) || /… \+?\d+ more (?:lines|entries)/.test(tail)) return `capped by ${escapeTerminal(displayVerb(name))} · /last for the rest`;
 	return null;
 }
 

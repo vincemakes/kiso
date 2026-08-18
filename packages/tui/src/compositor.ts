@@ -78,7 +78,7 @@ import {
 	type FrameCtx,
 } from "./components.js";
 import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, toolTarget, type ResumeMeta } from "./render.js";
-import { keysSheetRows } from "./strings.js";
+import { displayVerb, keysSheetRows } from "./strings.js";
 
 /** The cursor marker — an APC private sequence the focus component
  *  embeds at the edit position; the compositor strips it and moves
@@ -705,7 +705,7 @@ export class Body {
 				return { kind: "appended", lines: [header, ...exploreRows(cell.rolled.parts, this.#opts.width())] };
 			}
 			const noun = ROLLUP_NOUN[cell.name] ?? "calls";
-			const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`${cell.name.replace("_file", "")} ${cell.rolled.count} ${noun}`)} · ${back}`;
+			const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`${displayVerb(cell.name)} ${cell.rolled.count} ${noun}`)} · ${back}`;
 			return {
 				kind: "appended",
 				lines: [header, ...cell.rolled.targets.map((t) => `  ${p.dim}└ ${escapeTerminal(t)}${p.reset}`)],
@@ -720,14 +720,16 @@ export class Body {
 		}
 		const turnsBack = this.#cells.slice(idx + 1).filter((c) => c.kind === "user").length;
 		const p = palette();
-		const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`${cell.name.replace("_file", "")} ${toolTarget(cell.name, input)}`)} · ${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
+		const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`${displayVerb(cell.name)} ${toolTarget(cell.name, input)}`)} · ${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
 		return {
 			kind: "appended",
 			lines: [
 				header,
-				`--- ${cell.name} input ---`,
+				// TUI2-R2pre ④: the SECTION HEADERS say the act; the payloads
+				// below them (inputFull, resultText) are RAW and byte-identical.
+				`--- ${displayVerb(cell.name)} input ---`,
 				cell.inputFull,
-				`--- ${cell.name} output${cell.isError ? " (error)" : ""} ---`,
+				`--- ${displayVerb(cell.name)} output${cell.isError ? " (error)" : ""} ---`,
 				cell.resultText,
 			],
 		};

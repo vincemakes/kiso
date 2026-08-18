@@ -253,7 +253,10 @@ describe("TUI v6 — the one compositor", () => {
 		tick();
 		const bytes = writes.join("");
 		const plain = bytes.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
-		expect(plain).toContain("edit_file needs approval"); // the rule line
+		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
+		// the panel header names the act; view.name stays raw for the
+		// option-2 rule prefill and the dock-less fallbackQuestion.
+		expect(plain).toContain("edit needs approval"); // the rule line
 		expect(plain).toContain("1-3> "); // the panel input lead
 		expect(plain).toContain("▸ run paused"); // the phase status (the CLI's painting status is out)
 		expect(plain).toContain("tab amend · esc cancel"); // the phase affordance
@@ -528,7 +531,10 @@ describe("TUI v6 — the one compositor", () => {
 		const content = Array.from({ length: 201 }, (_, i) => `line ${i}`).join("\n") + "\n… 50 more lines (call again with offset=201)";
 		body.toolResult("c1", { content, isError: false });
 		tick();
-		expect(writes.join("")).toContain("└ capped by read_file · offset=201 for the rest");
+		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
+		// the advisory is addressed to the human, so it names the act; the
+		// actionable half (offset=201) is untouched.
+		expect(writes.join("")).toContain("└ capped by read · offset=201 for the rest");
 	});
 
 	it("W8: the running tool's window is a FIXED 3 rows from the first frame — the height never changes while running", () => {
@@ -648,7 +654,9 @@ describe("TUI v6 — the one compositor", () => {
 		const userAt = rows.findIndex((l) => l.trim() === "go"); // the chip strips to " go " (the 2026-08-09 ruling retired the rail)
 		expect(rows[userAt - 1]).toBe(""); // the banner (multi-row) breathes below
 		const readAt = rows.findIndex((l) => l.includes("✓ read"));
-		const listAt = rows.findIndex((l) => l.includes("✓ list_dir"));
+		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
+		// the card head says the ACT. The tool is still list_dir on the wire.
+		const listAt = rows.findIndex((l) => l.includes("✓ list "));
 		expect(readAt).toBe(userAt + 1); // one-row user → one-row read: pack tight
 		expect(listAt).toBe(readAt + 1); // two one-row tools: pack tight
 		// a multi-row block (the 2-line raw recap) breathes on BOTH sides

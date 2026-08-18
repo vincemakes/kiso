@@ -174,7 +174,10 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		expect(clean).toContain("[Permission denied]");
 		expect(clean).toContain("plan mode: read-only");
 		expect(clean).toContain("mode → default");
-		expect(clean).toContain("write_file needs approval"); // the switch restored the ask — the panel's rule line
+		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
+		// the panel's rule line names the ACT. The tool is still write_file
+		// on the wire, and the dock-less fallbackQuestion still says so.
+		expect(clean).toContain("write needs approval"); // the switch restored the ask — the panel's rule line
 		// v2e: the approval-time diff + the frozen one-line summary.
 		expect(clean).toContain("+ hello"); // the diff row (new file, all +)
 		expect(clean).toContain("✓ write"); // W3 (sanctioned): the verb strips the _file suffix — the settled row is "write" padded

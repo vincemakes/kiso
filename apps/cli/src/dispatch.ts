@@ -4,7 +4,7 @@
  * the context (the chain, the run state, the prompt arming).
  */
 
-import { contextRows, contextUnavailableRows, escapeTerminal, helpRows, kUnit, palette } from "@vincemakes/kiso-tui";
+import { contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, palette } from "@vincemakes/kiso-tui";
 import { buildAdapter } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, getMode, setMode } from "./mode.js";
@@ -76,9 +76,21 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			if (tool === null) {
 				bodyLog("[no tool call yet]");
 			} else {
-				bodyLog(`--- ${tool.name} input ---`);
+				// TUI2-R2pre ④: the SECTION HEADERS say the act ("--- read
+				// input ---") on the interactive SCREEN; the two payloads
+				// between them are the RAW input JSON and the RAW result
+				// content and are byte-identical either way.
+				//
+				// The dock check is the round's one conditional, and it is
+				// deliberate: /last is a single code path serving two
+				// surfaces, and the ruling covers the screen while the pipe
+				// is a machine-readable log whose bytes other things (the
+				// e2e gates, anyone's script) already depend on. Without the
+				// dock, this is that log — so it keeps the call's own name.
+				const verb = dock.active ? displayVerb(tool.name) : tool.name;
+				bodyLog(`--- ${verb} input ---`);
 				bodyLog(escapeTerminal(JSON.stringify(tool.input, null, 2)));
-				bodyLog(`--- ${tool.name} output${tool.result.isError ? " (error)" : ""} ---`);
+				bodyLog(`--- ${verb} output${tool.result.isError ? " (error)" : ""} ---`);
 				bodyLog(escapeTerminal(tool.result.content));
 			}
 			ctx.input.prompt();

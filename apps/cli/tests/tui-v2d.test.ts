@@ -257,7 +257,11 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// verdict is what the row records. `approved by mode:*` was the
 		// runtime's backfill for "no policy expressed an opinion", read by
 		// a human as an attribution (VD-11).
-		expect(clean).toMatch(/✓ list_dir \(root\) \(\d+\.\ds\) · \d+ lines · ctrl\+r/); // the auto-approved list_dir settled, silently
+		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
+		// the settled row says "list", padded into the same 5-column verb
+		// gutter the read/edit heads already used — which is the point of
+		// the ruling: one screen, one vocabulary.
+		expect(clean).toMatch(/✓ list {2}\(root\) \(\d+\.\ds\) · \d+ lines · ctrl\+r/); // the auto-approved list_dir settled, silently
 		// MOVED (R1.5 slice 5, the approval-attribution class): the HUMAN
 		// answered this panel, and that is now what the row records.
 		expect(clean).toMatch(/✓ shell sleep 1; echo hi \(exit 0 · approved, \d+\.\ds\)/); // the approved shell settled

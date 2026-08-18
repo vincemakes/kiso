@@ -109,4 +109,4 @@ export {
 // honestly for a question nobody answered (the ① probe's surface).
 // TUI2-R1 (D): the keys sheet + THE key table — one source for the ?
 // overlay and /help's keys row.
-export { KEY_BINDINGS, PANEL_KEYS_ROW, extensionsBannerText, helpRows, keysHelpRow, keysSheetRows, unansweredAskView, type BannerExtension, type KeyBinding } from "./strings.js";
+export { KEY_BINDINGS, PANEL_KEYS_ROW, displayVerb, extensionsBannerText, helpRows, keysHelpRow, keysSheetRows, unansweredAskView, type BannerExtension, type KeyBinding } from "./strings.js";

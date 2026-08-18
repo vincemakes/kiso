@@ -192,6 +192,42 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
 	{ keys: "?", what: "this sheet" },
 ];
 
+/**
+ * TUI2-R2pre ④ — THE display-verb table (the integrator's ruling).
+ *
+ * The screen names the ACT; the tool table names the CALL. Two
+ * audiences, two vocabularies, and only the human's one lives here: the
+ * API names DO NOT change, because the model-request surface is frozen
+ * rent and every byte of it is paid for on every turn. The
+ * rename-the-tools path is REJECTED by ruling.
+ *
+ * One table, for the same reason KEY_BINDINGS above is one table. The
+ * mapping used to exist three and a half times — a `.replace("_file",
+ * "")` in components.ts, another in render.ts, two more in the
+ * compositor, and a private three-tool table for the rollup's expanded
+ * list — and the drift was visible on a single screen: a card head
+ * reading `read` directly above one reading `list_dir`.
+ *
+ * An unmapped tool (an extension's, an MCP server's) renders its own
+ * name. Inventing a verb for a tool this package has never heard of
+ * would be a worse lie than printing what the model actually calls.
+ */
+const DISPLAY_VERB: Readonly<Record<string, string>> = {
+	read_file: "read",
+	list_dir: "list",
+	search_text: "search",
+	write_file: "write",
+	edit_file: "edit",
+	shell: "shell",
+};
+
+/** A tool's name as the SCREEN says it. Display-only: the raw name stays
+ *  on the cell, and dispatch, the mode gate, the policy keys, the /last
+ *  RAW block and every model-facing byte keep reading that. */
+export function displayVerb(name: string): string {
+	return DISPLAY_VERB[name] ?? name;
+}
+
 /** The panel keys, which belong to a panel rather than the composer —
  *  one dim line rather than four table rows, because they apply only
  *  while a panel is up. */

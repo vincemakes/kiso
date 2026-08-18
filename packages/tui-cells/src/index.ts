@@ -75,6 +75,9 @@ export {
 } from "./strings.js";
 // KC3.5: the interrupted-ask copy and the extracted /help table.
 export { extensionsBannerText, helpRows, unansweredAskView, type BannerExtension } from "./strings.js";
+// TUI2-R2pre ④: the ONE display-verb table — the screen names the act,
+// the tool table names the call.
+export { displayVerb } from "./strings.js";
 export {
 	bannerLines,
 	COLOR_OFF,
