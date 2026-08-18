@@ -88,16 +88,19 @@ describe("v2a/v5/KC3: the palette", () => {
 	 * KC3 §2 — the mono discipline, stated as a gate rather than a
 	 * convention. The body of the interface is carried by shades of
 	 * black and white; green, yellow and red are the ONLY functional
-	 * exceptions, and they are UNTOUCHED by the recolor. (Yellow is
-	 * RESERVED by the discipline — the palette has no yellow entry
-	 * today, so there is nothing to pin and nothing that could move.)
+	 * exceptions, and they are UNTOUCHED by the recolor.
 	 *
-	 * The scope of the supersession is exactly this: a chromatic entry
-	 * that is not one of the three functional colors is a regression.
+	 * TUI2-R2 ①: the RESERVATION IS CLAIMED. KC3 wrote "yellow is
+	 * reserved — the palette has no yellow entry today, so there is
+	 * nothing to pin"; the uncertain badge is the first thing that
+	 * needed it, and `warn` is now pinned here as the third functional
+	 * colour rather than left to be re-argued. This is the reserved slot
+	 * being filled, not a fourth colour: the gate below is unchanged in
+	 * scope — a chromatic entry outside the three is still a regression.
 	 */
 	it("KC3: no chromatic entry survives outside the three functional colors", () => {
 		const MONO = /^\x1b\[(?:0|1|2|7|27|38;5;(?:23[2-9]|24\d|25[0-5]))m$/; // SGR 0/1/2/7/27 + the 256-cube greyscale ramp
-		const FUNCTIONAL: Record<string, string> = { red: "\x1b[31m", green: "\x1b[32m" };
+		const FUNCTIONAL: Record<string, string> = { red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m" };
 		for (const [name, code] of Object.entries(COLOR_ON)) {
 			if (name in FUNCTIONAL) {
 				expect(code, `${name} is a FUNCTIONAL color — the recolor never moves it`).toBe(FUNCTIONAL[name]);
