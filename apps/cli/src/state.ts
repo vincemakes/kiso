@@ -11,7 +11,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AT_CAP, AT_SKIP, Dock, type AtItem, type Body, type PanelVerdict, type PanelView, type SaferOption, type SessionCardView } from "@vincemakes/kiso-tui";
+import { AT_CAP, AT_SKIP, Dock, type AtItem, type Body, type PanelVerdict, type PanelView, type SaferAnswer, type SessionCardView } from "@vincemakes/kiso-tui";
 import type { KisoExtension, StoreRecord } from "@vincemakes/kiso-runtime";
 
 /** finding #11: KISO_HOME is the ONE root — every default path derives from
@@ -172,8 +172,10 @@ export interface LineInput {
 	 *  the tab-amend), the compositor renders the block + the leads. */
 	/** TUI2-R3v2 ③: `opts.safer` is the on-demand alternatives provider —
 	 *  absent for every panel that has no such option (the ask, the pick,
-	 *  the trust gate), so those buttons cannot exist to be pressed. */
-	panelAsk(view: PanelView, onCommit: (v: PanelVerdict) => void, opts?: { safer?: () => Promise<readonly SaferOption[] | null> }): void;
+	 *  the trust gate), so those buttons cannot exist to be pressed.
+	 *  R3v2-F1: it resolves a SaferAnswer, so a failure that can name its
+	 *  cause does — `null` still means a failure with nothing to add. */
+	panelAsk(view: PanelView, onCommit: (v: PanelVerdict) => void, opts?: { safer?: () => Promise<SaferAnswer> }): void;
 	/** W21: cancel the panel — the SIGINT pair to panelAsk. */
 	panelCancel(): void;
 	/** TUI2-R2 ②: open the session picker — the editor takes the keys

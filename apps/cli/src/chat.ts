@@ -21,7 +21,7 @@ import {
 	type RenderInput,
 	type RunUsage,
 } from "@vincemakes/kiso-tui";
-import { SAFER_DEGRADED, deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferOption } from "@vincemakes/kiso-tui";
+import { deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
@@ -277,22 +277,20 @@ export const SAFER_SYSTEM_PROMPT = [
  */
 export const SAFER_MAX_TOKENS = 1500;
 
-/** R3v2-F1: what a reply the budget cut in half owes the human. The
- *  generic line is true but unactionable — it describes every failure
- *  the ask has. This one names the cause, in the same shape, still one
- *  dim line, still leading with what is still true. */
-export const SAFER_DEGRADED_TRUNCATED = "couldn't get safer options (the reply was cut short) — the original choices stand";
-
 /**
- * R3v2-F1: which line a failed ask owes the human.
+ * R3v2-F1: WHY the ask failed, when the reply's own text can prove it.
  *
- * "Cut short" is a DIAGNOSIS, so it is only said when the text actually
- * shows it — a reply that closed its JSON and then failed our shape gets
- * the original line, because telling that human the reply was truncated
- * would be a confident wrong answer.
+ * This side reports the cause and never the copy — the sentences live in
+ * the panel package, next to each other, so there is one place where the
+ * words are chosen and one place they can drift from.
+ *
+ * "Cut short" is a DIAGNOSIS, so it is only claimed when the text shows
+ * it: a reply that closed its JSON and then failed our SHAPE returns
+ * null and gets the unqualified line, because telling that human their
+ * reply was truncated would be a confident wrong answer.
  */
-export function saferFailureNote(text: string): string {
-	return jsonBody(text) === "truncated" ? SAFER_DEGRADED_TRUNCATED : SAFER_DEGRADED;
+export function saferFailure(text: string): SaferFailure | null {
+	return jsonBody(text) === "truncated" ? { reason: "truncated" } : null;
 }
 
 /**
@@ -662,21 +660,18 @@ export async function consumeRun(
 				// per approval and captured by the panel; it fires ONLY if the
 				// human presses option 3, which is the whole zero-ambient-rent
 				// mechanism — no press, no request, nothing in the trace.
-				const safer = async (): Promise<readonly SaferOption[] | null> => {
+				const safer = async (): Promise<SaferAnswer> => {
 					const answer = await session.sideQuery({
 						purpose: "safer-options",
 						systemPrompt: SAFER_SYSTEM_PROMPT,
 						prompt: `the pending call is: ${name} ${JSON.stringify(ev.input ?? {})}`,
 						maxTokens: SAFER_MAX_TOKENS,
 					});
-					// R3v2-F1: the failure's DIAGNOSIS is computed and tested,
-					// but it cannot reach the screen from here. The provider's
-					// only channel back to the panel is `null`, and the line the
-					// panel renders on null is a constant chosen inside the
-					// editor — so "the reply was cut short" needs that channel
-					// widened before saferFailureNote(answer) has anywhere to go.
-					// The copy and the detection wait in saferFailureNote().
-					return parseSaferOptions(answer);
+					// R3v2-F1: a failure reports its CAUSE when the reply can
+					// prove one, so the panel can say which failure this was.
+					// saferFailure() returns null for every cause we cannot
+					// demonstrate, which is the unqualified line — unchanged.
+					return parseSaferOptions(answer) ?? saferFailure(answer);
 				};
 				const verdict = await askPanel(
 					input,

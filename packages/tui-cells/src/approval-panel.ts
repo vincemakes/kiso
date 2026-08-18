@@ -75,6 +75,51 @@ export interface SaferRuntime {
  *  going. */
 export const SAFER_DEGRADED = "couldn't get safer options — the original choices stand";
 
+/**
+ * R3v2-F1 — the same sentence, for the one failure the reply's own text
+ * can PROVE.
+ *
+ * The unqualified line is true of every failure the ask has, which is
+ * exactly why it explains nothing when the cause was knowable. A reply
+ * the token budget cut in half is knowable: the JSON opens and never
+ * closes. So that case gets the cause in a parenthesis and keeps
+ * everything else — one line, dim, still leading with what is still
+ * true — because the human is mid-approval and the shape of the sentence
+ * is what they have already learned to read.
+ */
+export const SAFER_DEGRADED_TRUNCATED = "couldn't get safer options (the reply was cut short) — the original choices stand";
+
+/**
+ * R3v2-F1 — a failure that knows why it failed.
+ *
+ * `truncated` is the only cause the caller can demonstrate from the
+ * text, and it is deliberately the only member: a diagnosis the product
+ * cannot prove is worse than no diagnosis, so every other failure stays
+ * the unqualified line rather than growing a guess.
+ */
+export interface SaferFailure {
+	readonly reason: "truncated";
+}
+
+/**
+ * R3v2-F1 — what the safer-options provider hands back.
+ *
+ * A list is the answer. `null` is a failure with nothing to add, and is
+ * still the whole contract for any caller that has nothing to add — the
+ * widening is additive, so an existing provider's behaviour is
+ * byte-identical. A SaferFailure is a failure that can name its cause.
+ */
+export type SaferAnswer = readonly SaferOption[] | SaferFailure | null;
+
+/** R3v2-F1: the line a failed ask owes the human — the unqualified one,
+ *  unless the answer named a cause. The panel asks this instead of
+ *  reaching for a constant, so the choice of sentence lives with the
+ *  sentences. */
+export function saferDegradedNote(answer: SaferAnswer): string {
+	const failure = answer === null || Array.isArray(answer) ? null : (answer as SaferFailure);
+	return failure?.reason === "truncated" ? SAFER_DEGRADED_TRUNCATED : SAFER_DEGRADED;
+}
+
 /** The row that returns to state 1. Rendered last, always present — an
  *  alternatives list you cannot back out of would be a trap. */
 export const SAFER_BACK = "back to the original choices";

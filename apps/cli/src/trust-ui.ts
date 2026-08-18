@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkS
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { askDeclineAll, askView, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, unansweredAskView, type AskResult, type AskSpec, type PanelVerdict, type PanelView, type SaferOption } from "@vincemakes/kiso-tui";
+import { askDeclineAll, askView, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, unansweredAskView, type AskResult, type AskSpec, type PanelVerdict, type PanelView, type SaferAnswer } from "@vincemakes/kiso-tui";
 import type { AskUI } from "@vincemakes/kiso-ask-ext";
 import { projectArtifacts, recordTrust, trustFor, type ProjectArtifacts } from "@vincemakes/kiso-runtime";
 import type { AgentSession, KisoExtension } from "@vincemakes/kiso-runtime";
@@ -49,7 +49,7 @@ export function askPanel(
 	// Only the approval site passes it; every other panel (the ask, the
 	// pick, the trust gate, the uncertain resolutions) omits it, so their
 	// lists cannot grow a button they have no answer for.
-	opts?: { safer?: () => Promise<readonly SaferOption[] | null> },
+	opts?: { safer?: () => Promise<SaferAnswer> },
 ): Promise<PanelVerdict> {
 	if (!process.stdin.isTTY) {
 		console.log(`[non-interactive — no human to ask: ${view.fallbackQuestion}]`);

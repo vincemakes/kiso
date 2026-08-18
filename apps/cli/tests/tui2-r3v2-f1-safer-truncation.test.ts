@@ -28,7 +28,7 @@
  * content is verbatim either way.
  */
 import { describe, expect, it } from "vitest";
-import { SAFER_MAX_TOKENS, SAFER_SYSTEM_PROMPT, parseSaferOptions, saferFailureNote } from "../src/chat.js";
+import { SAFER_MAX_TOKENS, SAFER_SYSTEM_PROMPT, parseSaferOptions, saferFailure } from "../src/chat.js";
 
 /** The shape the amended prompt asks for. */
 const ENVELOPE = JSON.stringify({
@@ -51,35 +51,38 @@ const TRUNCATED = [
 	'{"command":"rm -rf build/cache && npm run build","reason":"clears only the ca',
 ].join("\n");
 
-describe("R3v2-F1 (a) — a reply cut short says SO, distinctly", () => {
-	it("the truncated live shape is detected as truncated, not as generic garbage", () => {
-		expect(saferFailureNote(TRUNCATED)).toBe(
-			"couldn't get safer options (the reply was cut short) — the original choices stand",
-		);
+/**
+ * (a) — the CAUSE, which is all this side claims.
+ *
+ * The SENTENCES moved to the panel package when the copy did
+ * (packages/tui-cells/tests/tui2-r3v2-f1-safer-copy.test.ts); what is
+ * pinned here is the diagnosis, because that is the half this side can
+ * actually demonstrate from the reply's text.
+ */
+describe("R3v2-F1 (a) — a reply cut short is DETECTED as cut short", () => {
+	it("the truncated live shape reports its cause", () => {
+		expect(saferFailure(TRUNCATED)).toEqual({ reason: "truncated" });
 	});
 
 	it("an unterminated array with no fence and no prose is truncation too", () => {
-		expect(saferFailureNote('[{"command":"npm run build","why":"keeps build/"')).toBe(
-			"couldn't get safer options (the reply was cut short) — the original choices stand",
-		);
+		expect(saferFailure('[{"command":"npm run build","why":"keeps build/"')).toEqual({ reason: "truncated" });
 	});
 
 	it("a truncated reply still PARSES to null — the fix is the words, not a salvage", () => {
 		expect(parseSaferOptions(TRUNCATED)).toBeNull();
 	});
 
-	it("every OTHER failure keeps the original line — the distinct copy is not a catch-all", () => {
+	it("every OTHER failure claims NOTHING — the diagnosis is not a catch-all", () => {
 		for (const text of ["I think you should just run it.", "", "   \n  ", "[]", '["npm test"]']) {
-			expect(saferFailureNote(text)).toBe("couldn't get safer options — the original choices stand");
+			expect(saferFailure(text), text).toBeNull();
 		}
 	});
 
 	it("a reply that closed its JSON and then failed our SHAPE is not truncation", () => {
 		// the model finished its sentence; we simply could not use it.
-		// Telling the human it was "cut short" would be a wrong diagnosis.
-		expect(saferFailureNote('[{"command":"a","why":"x"},{"nope":1}]')).toBe(
-			"couldn't get safer options — the original choices stand",
-		);
+		// Telling the human it was "cut short" would be a wrong diagnosis,
+		// and a confident wrong diagnosis is worse than none.
+		expect(saferFailure('[{"command":"a","why":"x"},{"nope":1}]')).toBeNull();
 	});
 });
 

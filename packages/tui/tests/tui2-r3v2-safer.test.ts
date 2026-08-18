@@ -19,7 +19,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { Editor } from "../src/editor.js";
-import type { PanelVerdict, PanelView, SaferOption } from "../src/approval-panel.js";
+import type { PanelVerdict, PanelView, SaferAnswer, SaferOption } from "../src/approval-panel.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const DOWN = enc("\x1b[B");
@@ -40,7 +40,7 @@ const ALTS: SaferOption[] = [
 	{ command: "rm -rf build/cache && npm run build", why: "only clear the cache" },
 ];
 
-function open(safer?: () => Promise<readonly SaferOption[] | null>) {
+function open(safer?: () => Promise<SaferAnswer>) {
 	const editor = new Editor(() => {});
 	let got: PanelVerdict | null = null;
 	editor.beginPanel(view, (v) => (got = v), safer === undefined ? undefined : { safer });
@@ -158,6 +158,21 @@ describe("TUI2-R3v2 ③ — the safer-options round trip", () => {
 		await tick();
 		expect(editor.panelState()?.phase).toBe("options");
 		expect(editor.panelState()?.note).toBe("couldn't get safer options — the original choices stand");
+	});
+
+	it("R3v2-F1: a failure that NAMES its cause gets the sentence that says it", async () => {
+		const { editor, verdict } = open(async () => ({ reason: "truncated" }) as const);
+		editor.feed(enc("3"));
+		await tick();
+		// the SAME one failure branch — the widening is the copy, not the
+		// control flow, and everything else about the branch is unchanged.
+		expect(editor.panelState()?.phase).toBe("options");
+		expect(editor.panelState()?.note).toBe(
+			"couldn't get safer options (the reply was cut short) — the original choices stand",
+		);
+		expect(editor.panelState()?.safer, "no half-list ever appears").toBeUndefined();
+		editor.feed(enc("1")); // …and every original choice still works
+		expect((verdict() as { action: string }).action).toBe("allow");
 	});
 
 	it("a panel CANCELLED mid-flight never resurrects itself when the answer lands", async () => {

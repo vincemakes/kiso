@@ -30,13 +30,14 @@ import { palette } from "./render.js";
 import {
 	PICK_MAX,
 	panelOptions,
-	SAFER_DEGRADED,
+	saferDegradedNote,
 	type AskRuntime,
 	type PanelPhase,
 	type PanelState,
 	type PanelVerdict,
 	type PanelView,
 	type PickRuntime,
+	type SaferAnswer,
 	type SaferOption,
 } from "./approval-panel.js";
 // KC3.5: the panel-slot dispatchers — the ask branch folded into the
@@ -140,8 +141,9 @@ export class Editor {
 		 *  gesture — a stale apology is its own kind of lie. */
 		note: string | null;
 		/** TUI2-R3v2 ③: the caller's safer-options provider. Absent = the
-		 *  button degrades honestly rather than pretending. */
-		safer: (() => Promise<readonly SaferOption[] | null>) | undefined;
+		 *  button degrades honestly rather than pretending. R3v2-F1: it may
+		 *  now resolve a FAILURE that names its cause, not only `null`. */
+		safer: (() => Promise<SaferAnswer>) | undefined;
 		/** TUI2-R3v2 ③: the safer list's walk, once the answer landed. */
 		saferRun: { options: readonly SaferOption[]; cursor: number } | null;
 		/** KC3.5: the ask's walk — non-null exactly for an ask view. */
@@ -629,7 +631,7 @@ export class Editor {
 	/** W21: open the approval panel. The current buffer is stashed
 	 *  (restored at close — commit AND cancel), the panel takes the
 	 *  keys and the input row's lead, the menu closes. */
-	beginPanel(view: PanelView, onCommit: (v: PanelVerdict) => void, opts?: { safer?: () => Promise<readonly SaferOption[] | null> }): void {
+	beginPanel(view: PanelView, onCommit: (v: PanelVerdict) => void, opts?: { safer?: () => Promise<SaferAnswer> }): void {
 		this.#panel = {
 			view,
 			phase: "options",
@@ -1375,10 +1377,19 @@ export class Editor {
 	 * human is standing in front of a paused run.
 	 *
 	 * Every failure — a throw, a null, an empty list, no provider bound
-	 * at all — lands on the SAME honest line and puts back every original
-	 * choice. There is deliberately no retry and no partial state: the
-	 * alternative to "I could not get them" is either a lie or a spinner
-	 * that never ends, and both are worse than the sentence.
+	 * at all — lands on the SAME honest branch and puts back every
+	 * original choice. There is deliberately no retry and no partial
+	 * state: the alternative to "I could not get them" is either a lie or
+	 * a spinner that never ends, and both are worse than the sentence.
+	 *
+	 * R3v2-F1: one of those failures can now name its cause, and the
+	 * sentence says it. That is a widening of the COPY, not of the
+	 * branch — there is still exactly one failure path, it still restores
+	 * every original choice, and a provider that has nothing to add still
+	 * resolves `null` and still gets the line it always got. A cause is
+	 * only ever spoken when the caller could prove it; a diagnosis the
+	 * product cannot prove would be worse than the unqualified line it
+	 * replaced.
 	 *
 	 * The generation token is the guard against a late answer: a panel
 	 * the human escaped (or that a SIGINT cancelled) must not be
@@ -1392,12 +1403,17 @@ export class Editor {
 		panel.note = null;
 		this.#onRender();
 		const token = ++this.#saferToken;
-		const settle = (options: readonly SaferOption[] | null): void => {
+		const settle = (answer: SaferAnswer): void => {
 			// the panel that asked must still be the panel on screen
 			if (this.#panel !== panel || token !== this.#saferToken) return;
+			// R3v2-F1: a non-list answer is a failure, and it may name its
+			// cause. Which sentence that earns is decided where the
+			// sentences live; here we only route to the same one branch
+			// every failure has always taken.
+			const options = Array.isArray(answer) ? (answer as readonly SaferOption[]) : null;
 			if (options === null || options.length === 0) {
 				panel.phase = "options";
-				panel.note = SAFER_DEGRADED;
+				panel.note = saferDegradedNote(answer);
 				panel.cursor = 0;
 				this.#onRender();
 				return;
