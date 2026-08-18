@@ -60,9 +60,14 @@ export class EventLog {
 		return this.#events;
 	}
 
-	/** Incremental view for consumers that already saw `seq` and before. */
+	/**
+	 * Incremental view for consumers that already saw `seq` and before —
+	 * STRICTLY after, so a poll loop delivers each event exactly once. A
+	 * consumer that has seen nothing passes -1. (SC-1b ④: this filtered
+	 * `>= seq` and re-served the seam event on every poll.)
+	 */
 	since(seq: number): readonly Event[] {
-		return this.#events.filter((e) => e.seq >= seq);
+		return this.#events.filter((e) => e.seq > seq);
 	}
 
 	get lastSeq(): number {
