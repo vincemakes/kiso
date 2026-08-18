@@ -26,15 +26,67 @@
  */
 
 import { displayWidth } from "./width.js";
-import { cutLine, diffBody, gutterFold, visibleWidth, widthCut } from "./components.js";
+import { cutLine, diffBody, gutterFold, selectionBar, visibleWidth, widthCut } from "./components.js";
 // TUI2-R2pre ④: strings.js takes only a TYPE from this module, so the
 // import is erased at compile time and no runtime cycle exists.
 import { displayVerb } from "./strings.js";
 import { escapeTerminal, palette } from "./render.js";
 
 export type PanelFlavor = "approval" | "simple";
-export type PanelPhase = "options" | "rule" | "amend";
-export type PanelSel = 0 | 1 | 2 | 3;
+/**
+ * TUI2-R3v2 ① — two phases, not three.
+ *
+ * The "rule" phase is gone. It existed because option 2 used to hand the
+ * human a prefilled text box to edit the rule in, which implied the rule
+ * could be anything they typed. It could not: the generated extension
+ * matches on `call.name` and nothing else, so every character typed
+ * beyond the tool name either did nothing or silently produced a rule
+ * that never fired. Option 2 now grants exactly what the machinery
+ * supports, on the keypress, and the copy says exactly that.
+ */
+export type PanelPhase = "options" | "amend";
+
+/** What an option DOES — the verdict channel it commits to. The label is
+ *  what the human reads; the kind is what the editor routes on, so the
+ *  copy can change without touching a single branch. */
+export type PanelOptionKind = "allow" | "rule" | "safer" | "deny";
+
+export interface PanelOption {
+	readonly kind: PanelOptionKind;
+	readonly label: string;
+}
+
+/**
+ * The options a view offers, IN ROW ORDER — and the order is the whole
+ * contract: the index is the digit, the digit is the row, and the row is
+ * what a mouse click lands on. One list, read by the renderer, the key
+ * router and the hit-test, so those three can never disagree about what
+ * option 3 is.
+ *
+ * The approval flavor's copy is the v4 frames', with ONE correction.
+ * The frame said "don't ask again for <tool> this session"; the rule
+ * machinery (addDontAskAgainRule) writes a generated extension file that
+ * outlives the process and matches on the TOOL NAME. "This session"
+ * would have understated a durable grant — the one direction a
+ * permission prompt must never be wrong in — so the scope claim is
+ * dropped rather than invented. The revocation path is the file itself,
+ * which the generated header documents.
+ */
+export function panelOptions(view: PanelView): readonly PanelOption[] {
+	if (view.flavor === "simple") {
+		const [yes, no] = view.simpleOptions ?? ["Yes", "No"];
+		return [
+			{ kind: "allow", label: yes },
+			{ kind: "deny", label: no },
+		];
+	}
+	return [
+		{ kind: "allow", label: "Yes, run it" },
+		{ kind: "rule", label: `Yes, and don't ask again for ${displayVerb(view.name)}` },
+		{ kind: "safer", label: "Show me safer ways to do this" },
+		{ kind: "deny", label: "No — let me tell it what to do instead" },
+	];
+}
 
 // ── KC3.5 (the ask round): the ask_user panel's TYPES ────────────────
 // The ask is the panel machinery generalized, not a second slot: an
@@ -163,6 +215,13 @@ export interface PanelView {
 	/** The fallback question — the y/n text for the dock-less path
 	 *  (a TTY without a dock, or a pipe). */
 	readonly fallbackQuestion: string;
+	/** TUI2-R3v2 ①: the SIMPLE flavor's two labels. A trust gate answers
+	 *  "Yes / No", but an uncertain execution answers "rerun / abandon"
+	 *  and an unanswered ask "re-ask / drop" — those callers used to
+	 *  smuggle their labels into the rule line as "— 1 rerun · 3 abandon",
+	 *  which stated the digits as well, and the digits have moved. The
+	 *  labels belong on the rows that carry them. */
+	readonly simpleOptions?: readonly [string, string];
 	/** KC3.5: the questions, when this view is an ASK. Present = the
 	 *  panel renders the ask block and the editor routes the ask keys;
 	 *  absent = the approval/simple panel, unchanged. */
@@ -192,7 +251,13 @@ export type PanelVerdict =
 export interface PanelState {
 	readonly view: PanelView;
 	readonly phase: PanelPhase;
-	readonly sel: PanelSel;
+	/** TUI2-R3v2 ①: the highlighted row, 0-based into panelOptions(view).
+	 *  There is no "nothing selected" value any more — the bar opens on
+	 *  the first option, which is what makes a bare ⏎ an approval. */
+	readonly cursor: number;
+	/** TUI2-R3v2 ①: the one dim line a failed gesture owes the human (the
+	 *  safer-options degradation). Absent when there is nothing to say. */
+	readonly note?: string;
 	/** KC3.5: the ask's walk — present exactly when `view.ask` is. */
 	readonly ask?: AskRuntime;
 	/** TUI2-R2 \u2463: the pick's walk — present exactly when `view.pick` is. */
@@ -216,49 +281,35 @@ function panelRuleText(view: PanelView): string {
 	return hint ? `${base}${p.dim} ·${p.reset} ${p.code}${escapeTerminal(hint)}${p.reset}` : base;
 }
 
-/** The numbered options row — "1 Yes  2 Yes, don't ask again for
- *  <rule>  3 No" (approval) or "1 Yes  3 No" (simple). The row is a
- *  pure SPAN: the block prepends the gutter (the invariant ① test
- *  caught the double-gutter — the block and the row both emitted it).
- *  The option-2 rule name is the ONLY cuttable span: the row's fixed
- *  part (the 1/3 options + the separators + the option-2 prefix) is 45
- *  cells, so the name fits W−45 and cuts with a "…" at W−46 (the
- *  single-row discipline — the row never folds). */
-function panelOptionsRow(view: PanelView, sel: PanelSel, W: number): string {
+/**
+ * TUI2-R3v2 ① — ONE ROW PER OPTION, and the cursor's row is a bar.
+ *
+ * The retired form packed every option onto one line and, below W=47,
+ * DROPPED the middle one to make the line fit — a narrow terminal
+ * silently lost the ability to grant a durable rule. A list has no such
+ * trade to make: each option owns a row, a narrow window cuts LABELS,
+ * and every choice stays reachable at every width the product survives.
+ *
+ * The unselected row carries the block's gutter and a two-space indent;
+ * the selected row is the shared selectionBar, which spends its own two
+ * cells of frame. Both build their span against W−2, so the digit column
+ * does not shift as the bar walks — a column that moves per row reads as
+ * damage, which is the R2 picker's finding, inherited.
+ */
+function panelOptionRow(option: PanelOption, n: number, selected: boolean, W: number): string {
 	const p = palette();
-	// TUI2-R1.5 ⑪ (VD-13): ONE separator grammar. The options were
-	// two-space separated while every other metadata group in the product
-	// uses `·`, and at 80 columns that put `3 No` far enough from its
-	// neighbours to read as detached rather than as the third option.
-	const o1 = sel === 1 ? `${p.bold} 1 Yes${p.reset}` : ` 1 Yes`;
-	const o3 = sel === 3 ? `${p.bold}3 No${p.reset}` : `3 No`;
-	if (view.flavor === "simple") return `${o1} · ${o3}`;
-	// the option-2 span: " 2 Yes, don't ask again for <name>" — the
-	// fixed part is 45 (the gutter + the 1/3 options + the separators +
-	// the 28-cell prefix); the name cuts to W−46 + "…". The "…" needs
-	// its own cell, so the span fits only when W − 46 ≥ 1; below that
-	// (W < 47 — incl. the 0.1.42 release-smoke's 40-col winch) the span
-	// DROPS: the rule name is the cuttable span, the 1/3 options are
-	// the semantics — the approval decision must survive a narrow
-	// winch, and invariant ① must never fire on the options row.
-	// TUI2-R1.5 ⑪: option 2 states what it DOES; the tool it would do it
-	// for is the panel's title, one row above, and repeating it here was
-	// what made this row the widest thing in the block. The fixed part is
-	// now 33 cells, so the whole row survives far narrower windows than the
-	// 47 the rule name used to demand.
-	const o2 = sel === 2 ? `${p.bold}2 Yes, don't ask again${p.reset}` : `2 Yes, don't ask again`;
-	const full = `${o1} · ${o2} · ${o3}`;
-	if (visibleWidth(full) <= W - 2) return full;
-	// too narrow for the middle option: the 1/3 decision is the semantics
-	// and must survive any winch (invariant ① never fires on this row).
-	return cutLine(`${o1} · ${o3}`, Math.max(1, W - 2));
+	const room = Math.max(1, W - 2);
+	const plain = ` ${n} ${option.label}`;
+	const text = cutLine(`${selected ? p.bold : ""}${escapeTerminal(plain)}${p.reset}`, room);
+	if (!selected) return `${p.dim}│${p.reset} ${text}`;
+	return selectionBar(text, visibleWidth(text), W);
 }
 
 /** The block's rows — EXACTLY the preview's frame shape, the gutter at
  *  the left edge (the preview's two-space mock indent is its own
  *  styling; the real rows sit at column 1, like every tool cell).
  *  maxRows caps the TOTAL (the args fold; the single-row lines cut). */
-export function panelBlockRows(view: PanelView, phase: PanelPhase, sel: PanelSel, W: number, maxRows: number): string[] {
+export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, note?: string): string[] {
 	const p = palette();
 	const gutter = `${p.dim}│${p.reset} `;
 	const rows: string[] = [];
@@ -276,7 +327,18 @@ export function panelBlockRows(view: PanelView, phase: PanelPhase, sel: PanelSel
 		view.args.kind === "diff"
 			? diffBody(view.args.diff, W, true) // the expanded path — never the tool cell's capped copy
 			: view.args.lines.flatMap((line) => gutterFold(`${p.dim}│${p.reset} `, escapeTerminal(line), W));
-	const argsBudget = Math.max(1, maxRows - 6);
+	// TUI2-R3v2 ①: the block now spends N rows on options instead of one,
+	// so the args and the list SHARE what is left after the chrome (the
+	// rule, the title, the divider, the affordance, the corner — five
+	// rows, plus the note when there is one). The list wins the tie: a
+	// human at an approval is choosing, and one more line of a command
+	// they can also read in the event log is worth less than the row that
+	// carries the choice. The args keep a floor of one row so the block
+	// never claims to show what it is asking about and then shows nothing.
+	const chrome = 5 + (phase === "options" && note !== undefined ? 1 : 0);
+	const optionCount = phase === "options" ? panelOptions(view).length : 0;
+	const optionsShown = Math.min(optionCount, Math.max(1, maxRows - chrome - 1));
+	const argsBudget = Math.max(1, maxRows - chrome - optionsShown);
 	let shown: string[];
 	if (args.length > argsBudget) {
 		const kept = Math.max(0, argsBudget - 1);
@@ -286,8 +348,24 @@ export function panelBlockRows(view: PanelView, phase: PanelPhase, sel: PanelSel
 		shown = args;
 	}
 	rows.push(...shown);
-	rows.push(`${gutter}${panelOptionsRow(view, sel, W)}`);
-	rows.push(`${gutter}${p.dim}${panelAffordance(view, phase, sel)}${p.reset}`);
+	// TUI2-R3v2 ①: the option LIST. While the typed phase is open the list
+	// stands down — the human is writing prose to the model, and a bar
+	// hovering over "Yes, run it" while they do it claims a choice is still
+	// live that their next keystroke is not addressing.
+	if (phase === "options") {
+		if (note !== undefined) rows.push(`${gutter}${cutLine(`${p.dim}${escapeTerminal(note)}${p.reset}`, Math.max(1, W - 2))}`);
+		const options = panelOptions(view);
+		// A window, never a truncation. On a screen too short for the whole
+		// list the options SCROLL under the bar — the cursor's row is always
+		// in view, ↑↓ still reach every option and the digits still address
+		// the full list (the affordance says "1-4" whether four rows fit or
+		// two do). Dropping the tail instead would make an option that the
+		// key still takes invisible, which is the one failure a permission
+		// list must not have.
+		const first = Math.max(0, Math.min(cursor - optionsShown + 1, options.length - optionsShown));
+		for (let i = first; i < first + optionsShown; i += 1) rows.push(panelOptionRow(options[i]!, i + 1, i === cursor, W));
+	}
+	rows.push(`${gutter}${p.dim}${cutLine(panelAffordance(view, phase, cursor), Math.max(1, W - 2))}${p.reset}`);
 	// TUI2-R1.5 11 (VD-13): a real bottom RULE, in the block's own edge
 	// vocabulary — the same box-drawing run its divider already uses —
 	// anchored at the gutter column. It used to be `\u2514 `: a two-cell stub
@@ -300,46 +378,60 @@ export function panelBlockRows(view: PanelView, phase: PanelPhase, sel: PanelSel
 	return rows;
 }
 
-/** The input row's lead for the panel's phase (the preview's chrome
- *  rows): the digit leads bold, the rule/feedback leads dim. The rule
- *  lead names the tool (the option-2 prefill), the amend lead the
- *  denial/allowance feedback ("the words ride the verdict"). */
-export function panelLead(view: PanelView, phase: PanelPhase, sel: PanelSel): string {
+/**
+ * The input row's lead. In the options phase there is NOTHING to type,
+ * so the lead stops pretending there is.
+ *
+ * "1-3> " was a prompt: it told the human to enter something and press
+ * return, which is exactly the interaction this round removed. The row
+ * keeps the composer's own quiet lead while the list is up (the keys are
+ * on the list and in the hint line), and the typed phase — the one place
+ * a human really is writing — leads with the word for what they are
+ * writing.
+ */
+export function panelLead(view: PanelView, phase: PanelPhase, cursor: number): string {
 	const p = palette();
-	if (phase === "rule") return `${p.dim}2 Yes, don't ask again for ${p.reset}`;
-	if (phase === "amend") return `${p.dim}${sel === 3 ? "feedback (deny): " : "feedback (amend): "}${p.reset}`;
-	return `${p.bold}${view.flavor === "approval" ? "1-3> " : "1/3> "}${p.reset}`;
+	if (phase === "amend") return `${p.dim}amend› ${p.reset}`;
+	return `${p.dim}${PANEL_IDLE_LEAD}${p.reset}`;
 }
+
+/** The composer's lead while a selection list owns the keys — the quiet
+ *  chevron, not a prompt for input that is not being asked for. */
+const PANEL_IDLE_LEAD = "› ";
 
 /** The lead's plain text — the editor's reflow width (the line must
  *  fit the lead + the box's walls). */
-export function panelLeadPlain(view: PanelView, phase: PanelPhase, sel: PanelSel): string {
-	if (phase === "rule") return "2 Yes, don't ask again for ";
-	if (phase === "amend") return sel === 3 ? "feedback (deny): " : "feedback (amend): ";
-	return view.flavor === "approval" ? "1-3> " : "1/3> ";
+export function panelLeadPlain(view: PanelView, phase: PanelPhase, cursor: number): string {
+	return phase === "amend" ? "amend› " : PANEL_IDLE_LEAD;
 }
 
-export function panelLeadWidth(view: PanelView, phase: PanelPhase, sel: PanelSel): number {
-	return displayWidth(panelLeadPlain(view, phase, sel));
+export function panelLeadWidth(view: PanelView, phase: PanelPhase, cursor: number): number {
+	return displayWidth(panelLeadPlain(view, phase, cursor));
 }
 
 /** The status row's left text while the panel is up — the phase, not
  *  the CLI's painting status (the compositor derives it from the panel
  *  state; the "▸ run paused" etc. ride the options phase). */
-export function panelStatus(view: PanelView, phase: PanelPhase, sel: PanelSel): string {
-	if (phase === "rule") return "▸ rule input";
-	if (phase === "amend") return sel === 3 ? "▸ deny · the words become the tool_result" : "▸ amend · the words ride the verdict";
+export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number): string {
+	// TUI2-R3v2 ①: the typed phase says where the words GO. "the words ride
+	// the verdict" described the plumbing to whoever wrote it; the human
+	// typing needs to know the model will read this and answer with a new
+	// call — which is what the v4 frame says, in those words.
+	if (phase === "amend") return "▸ your note goes to the model — it will propose a new call";
 	return view.statusText;
 }
 
-/** The status row's right-aligned hint while the panel is up — the
- *  phase's keys. The approval flavor gains the tab-amend path; the
- *  simple flavor (the trust/uncertain gates) never does. */
-export function panelAffordance(view: PanelView, phase: PanelPhase, sel: PanelSel): string {
-	if (phase === "rule") return "enter commits · esc backs out";
-	if (phase === "amend") return "enter sends";
-	if (view.flavor === "approval") return sel === 0 ? "tab amend · esc cancel" : "enter sends · esc backs out";
-	return sel === 0 ? "esc cancel" : "enter sends";
+/**
+ * The status row's right-aligned hint — the v4 frame's line, verbatim.
+ *
+ * It names all four gestures because all four now exist at once and the
+ * digit range is the only part that varies: "1-4" on an approval, "1-2"
+ * on the simple flavors. The click is advertised for the same reason the
+ * arrows are — an affordance nobody is told about is one nobody uses.
+ */
+export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: number): string {
+	if (phase === "amend") return "⏎ send · esc back";
+	return `↑↓ move · ⏎ or click confirms · 1-${panelOptions(view).length} instant · esc`;
 }
 
 

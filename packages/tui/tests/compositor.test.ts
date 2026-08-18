@@ -257,10 +257,15 @@ describe("TUI v6 — the one compositor", () => {
 		// the panel header names the act; view.name stays raw for the
 		// option-2 rule prefill and the dock-less fallbackQuestion.
 		expect(plain).toContain("edit needs approval"); // the rule line
-		expect(plain).toContain("1-3> "); // the panel input lead
+		// MOVED (the TUI2-R3v2 panel-selection supersession class): "1-3> "
+		// was a prompt for input the panel no longer asks for, and the
+		// affordance is the v4 hint line. The slot swap is proven by what
+		// the row SAYS rather than by the absence of a chevron: the options
+		// phase leads with the DIM chevron where the composer's is bold, so
+		// the bytes differ even though the glyph does not.
+		expect(bytes).toContain("\x1b[2m› \x1b[0m"); // the panel input lead — dim, not the bold brick
 		expect(plain).toContain("▸ run paused"); // the phase status (the CLI's painting status is out)
-		expect(plain).toContain("tab amend · esc cancel"); // the phase affordance
-		expect(plain).not.toContain("› "); // the slot swap — no overlay
+		expect(plain).toContain("↑↓ move · ⏎ or click confirms · 1-4 instant · esc"); // the phase affordance
 		body.bindApproval(() => null);
 		body.raw(["y"]);
 		tick();

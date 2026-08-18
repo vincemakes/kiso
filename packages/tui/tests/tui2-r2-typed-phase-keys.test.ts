@@ -87,33 +87,49 @@ describe("TUI2-R2 ⑧ — the typed phase receives what is typed", () => {
 		expect("answers" in result ? result.answers[0] : null).toEqual({ q: ASK_SPEC.questions[0]!.question, custom: TYPED });
 	});
 
-	it("APPROVAL, rule input: digit 2 then prose — the rule commits the text that was typed", () => {
+	// MOVED (the TUI2-R3v2 panel-selection supersession class): the RULE
+	// INPUT is retired. It was a text box for a value the machinery could
+	// not vary — the generated extension matches on the tool name — so the
+	// characters this case proved survived the trip were characters that
+	// could only ever produce a rule that never fired. Option 2 now grants
+	// the tool, on the keypress, and the copy says so. What the case was
+	// really protecting (a typed phase keeps every character) is asserted
+	// below on the one typed phase that remains, and on the ask's.
+	it("APPROVAL, the amend note: option 4 then prose — the note commits the text that was typed", () => {
 		const { editor, seen } = open(APPROVAL_VIEW);
-		editor.feed(enc("2"));
-		expect(editor.panelState()!.phase, "digit 2 did not open the rule input").toBe("rule");
-		// the phase prefills the tool name; clear it and type a real rule
-		editor.feed(enc("\x15")); // ctrl+u — kill to start
+		editor.feed(enc("4"));
+		expect(editor.panelState()!.phase, "option 4 did not open the amend note").toBe("amend");
 		editor.feed(enc(TYPED));
-		expect(editor.line(), "the rule buffer lost characters on the way in").toBe(TYPED);
+		expect(editor.line(), "the note buffer lost characters on the way in").toBe(TYPED);
 		editor.feed(enc("\r"));
-		expect(seen).toEqual([{ action: "allow-rule", rule: TYPED }]);
+		expect(seen).toEqual([{ action: "deny", reason: TYPED }]);
 	});
 
-	it("APPROVAL, amend/feedback: tab then prose — the feedback rides the verdict intact", () => {
+	it("APPROVAL, the tab alias: tab then prose — the same phase, the same characters", () => {
 		const { editor, seen } = open(APPROVAL_VIEW);
 		editor.feed(enc("\t"));
 		expect(editor.panelState()!.phase, "tab did not open the amend line").toBe("amend");
 		editor.feed(enc(TYPED));
-		expect(editor.line(), "the feedback buffer lost characters on the way in").toBe(TYPED);
+		expect(editor.line(), "the note buffer lost characters on the way in").toBe(TYPED);
 		editor.feed(enc("\r"));
-		expect(seen).toEqual([{ action: "allow", reason: TYPED }]);
+		expect(seen).toEqual([{ action: "deny", reason: TYPED }]);
 	});
 
-	it("the OPTIONS phase is UNCHANGED: y/1 still select yes, n/3 still select no", () => {
-		for (const [key, sel] of [["y", 1], ["1", 1], ["n", 3], ["3", 3]] as const) {
+	// MOVED (same class): the digits and the letters no longer SELECT — they
+	// confirm. The property the case exists for is the one that matters and
+	// it is asserted unchanged: in the options phase these keys are keys,
+	// and not one of them reaches the buffer.
+	it("the OPTIONS phase: y/1 confirm the first option, and nothing leaks into the buffer", () => {
+		for (const key of ["y", "1"] as const) {
+			const { editor, seen } = open(APPROVAL_VIEW);
+			editor.feed(enc(key));
+			expect(seen, `the shortcut ${key} no longer confirms in the options phase`).toEqual([{ action: "allow", reason: "" }]);
+			expect(editor.line(), `the shortcut ${key} leaked into the buffer`).toBe("");
+		}
+		for (const key of ["n", "4"] as const) {
 			const { editor } = open(APPROVAL_VIEW);
 			editor.feed(enc(key));
-			expect(editor.panelState()!.sel, `the shortcut ${key} no longer selects in the options phase`).toBe(sel);
+			expect(editor.panelState()!.phase, `the shortcut ${key} no longer opens the note`).toBe("amend");
 			expect(editor.line(), `the shortcut ${key} leaked into the buffer`).toBe("");
 		}
 	});

@@ -27,7 +27,7 @@ import { charWidth, displayWidth, leadWidth, widthOf } from "./width.js";
 // authority) — re-exported so the editor's public surface is unchanged.
 export { charWidth, displayWidth, widthOf };
 import { palette } from "./render.js";
-import { PICK_MAX, type AskRuntime, type PanelPhase, type PanelSel, type PanelState, type PanelVerdict, type PanelView, type PickRuntime } from "./approval-panel.js";
+import { PICK_MAX, panelOptions, type AskRuntime, type PanelPhase, type PanelState, type PanelVerdict, type PanelView, type PickRuntime } from "./approval-panel.js";
 // KC3.5: the panel-slot dispatchers — the ask branch folded into the
 // W21 lead/rows, so this file keeps ONE panel and one key owner.
 import { askCommitCustom, askKey, askStart, panelLead } from "./ask-panel.js";
@@ -110,13 +110,17 @@ export class Editor {
 	#panel: {
 		view: PanelView;
 		phase: PanelPhase;
-		sel: PanelSel;
+		/** TUI2-R3v2 ①: the highlighted row, 0-based into panelOptions. */
+		cursor: number;
+		/** TUI2-R3v2 ①: one dim line the panel owes the human after a
+		 *  gesture that could not do what it offered. Cleared by the next
+		 *  gesture — a stale apology is its own kind of lie. */
+		note: string | null;
 		/** KC3.5: the ask's walk — non-null exactly for an ask view. */
 		ask: AskRuntime | null;
 		/** TUI2-R2 ④: the pick panel's cursor + phase; null on every other
 		 *  flavour. */
 		pick: PickRuntime | null;
-		amend: "yes" | "no";
 		onCommit: (v: PanelVerdict) => void;
 		stash: { chars: number[]; cursor: number; scroll: number };
 	} | null = null;
@@ -585,12 +589,12 @@ export class Editor {
 		this.#panel = {
 			view,
 			phase: "options",
-			sel: 0,
+			cursor: 0,
+			note: null,
 			ask: view.ask === undefined ? null : askStart(view.ask),
 			// TUI2-R2 ④: the pick's walk — present exactly when the view is
 			// a pick, the same contract the ask's runtime has.
 			pick: view.pick === undefined ? null : { cursor: 0, phase: "options" as const },
-			amend: "yes",
 			onCommit,
 			stash: { chars: this.#chars, cursor: this.#cursor, scroll: this.#scroll },
 		};
@@ -618,7 +622,8 @@ export class Editor {
 		return {
 			view: panel.view,
 			phase: panel.phase,
-			sel: panel.sel,
+			cursor: panel.cursor,
+			...(panel.note === null ? {} : { note: panel.note }),
 			...(panel.ask === null ? {} : { ask: panel.ask }),
 			...(panel.pick === null ? {} : { pick: panel.pick }),
 		};
@@ -652,7 +657,7 @@ export class Editor {
 		// W21: the panel's lead owns the row while up (the brick returns
 		// when the panel closes).
 		const panel = this.#panel;
-		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.sel, panel.ask ?? undefined) : `${p.bold}${PROMPT}${p.reset}`;
+		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.cursor, panel.ask ?? undefined) : `${p.bold}${PROMPT}${p.reset}`;
 		// W23: the ONE width authority — leadWidth(lead), the ANSI-stripped
 		// visible width (the styled panel lead / the styled brick measure
 		// the same as their plain text — a lead can never measure
@@ -784,47 +789,61 @@ export class Editor {
 					i += 1;
 					continue;
 				}
-				// TUI2-R2 ⑧ — the shortcut keys belong to the OPTIONS phase and
-				// to it alone.
+				// TUI2-R3v2 ① — the digit CONFIRMS, and it confirms on the
+				// keypress.
 				//
-				// `1`/`y` select yes and `3`/`n` select no, and they used to be
-				// applied in every phase of every flavour: the `i += 1;
-				// continue;` sat OUTSIDE the phase check, so a phase where the
-				// key meant nothing swallowed it anyway. A phase where a letter
-				// means nothing is exactly a phase where a human is typing
-				// prose — so every y, n, 1 and 3 vanished from the line,
-				// silently, with no error and no visible cause. "yes, run it
-				// now 13" committed as "es, ru it ow ".
+				// The retired model made a digit a selection and Enter the
+				// commit, which meant the fastest path through an approval was
+				// two keys and the hint line had to teach both. The list makes
+				// the digit redundant as a selector — the bar is already showing
+				// what is selected — so the digit becomes what a human pressing
+				// a number on a numbered list means by it: THAT one.
 				//
-				// Three typed phases were affected: the ask's custom answer,
-				// the approval panel's rule input, and its amend/feedback line.
-				// The rule input is the one that mattered most — it writes a
-				// DURABLE don't-ask-again rule, so a dropped character persists
-				// a rule the human never typed.
+				// A digit past the list is INERT (the R2 pick panel's rule,
+				// inherited whole): an option nobody has is never taken, and a
+				// mistyped 7 must not fall through to the composer underneath.
 				//
-				// Slice ④ met the same mechanism on the new pick panel
-				// ("openai/deepseek-reasoner" -> "opeai/deepseek-reasoer") and
-				// guarded pick alone, because the rest was a behaviour change
-				// owed its own red. This is that guard, stated once for every
-				// flavour: the options phase keeps its keys, and every typed
-				// phase keeps its text.
+				// The guard is the options phase and nothing else. The typed
+				// phase is prose — that is the R2 slice-⑧ finding, and it is
+				// why this branch sits below the enter/esc/tab handlers and
+				// above nothing at all: "yes, run 13 of them" keeps its digits.
+				if (panel.phase === "options" && panel.ask === null && panel.pick === null && c !== undefined && c >= "1" && c <= "9") {
+					this.#panelConfirm(Number(c) - 1);
+					i += 1;
+					continue;
+				}
+				// TUI2-R2 ⑧, carried forward — the shortcut keys belong to the
+				// OPTIONS phase and to it alone.
+				//
+				// `y`/`n` used to be applied in every phase of every flavour:
+				// the `i += 1; continue;` sat OUTSIDE the phase check, so a
+				// phase where the key meant nothing swallowed it anyway — and a
+				// phase where a letter means nothing is exactly a phase where a
+				// human is typing prose. Every y and n vanished from the line,
+				// silently. "yes, run it now" committed as "es, ru it ow".
+				//
+				// The guard survives the migration unchanged in spirit and
+				// simpler in fact: there is now ONE typed phase instead of
+				// three, and the letters reach only the list.
+				//
+				// The letters stay because they are the two answers this panel
+				// has always taken and a decade of muscle memory types them.
+				// They are ALIASES for rows, not a second model: `y` is the
+				// first option, `n` is the last, and on an approval the last
+				// option opens the composer — so the old "n then enter" still
+				// lands the same bare denial it always did.
 				const optionsPhase =
 					panel.pick === null && // a pick has no yes and no no
-					panel.phase === "options" && // the rule / amend lines are prose
+					panel.phase === "options" && // the amend line is prose
 					(panel.ask === null || panel.ask.phase === "options"); // and so is a typed ask answer
-				if (optionsPhase) {
-					if (c === "1" || c === "y" || c === "Y") {
-						this.#panelSelect(1);
+				if (optionsPhase && panel.ask === null) {
+					if (c === "y" || c === "Y") {
+						this.#panelConfirm(0);
 						i += 1;
 						continue;
 					}
-					if (c === "2" && panel.view.flavor === "approval") {
-						this.#panelRule();
-						i += 1;
-						continue;
-					}
-					if (c === "3" || c === "n" || c === "N") {
-						this.#panelSelect(3);
+					if (c === "n" || c === "N") {
+						this.#panelConfirm(panelOptions(panel.view).length - 1);
 						i += 1;
 						continue;
 					}
@@ -1036,6 +1055,13 @@ export class Editor {
 					const cur = this.#panel.pick.cursor;
 					this.#panel.pick = { cursor: final === "A" ? Math.max(0, cur - 1) : Math.min(Math.max(0, n - 1), cur + 1), phase: "options" };
 				} else if (this.#panel.ask !== null && this.#panel.ask.phase === "options") this.#askStep(final === "A" ? "up" : "down");
+				// TUI2-R3v2 ①: the approval/simple panel joins them. It was the
+				// one panel flavour with no ↑↓ role, because it had no cursor to
+				// move; it has one now, and the gesture is the same one the
+				// pick, the ask, the session picker and the @ picker already
+				// answer to. ONE interaction model is the round's acceptance
+				// criterion, and this branch is where it stops being four.
+				else this.#panelMove(final === "A" ? -1 : 1);
 			} else if (this.#pickUp()) {
 				// TUI2-R2 ②: the session picker owns ↑↓ while up — the
 				// SELECTION, never the composer's line walk and never the
@@ -1106,35 +1132,91 @@ export class Editor {
 		this.#verticalGoalCol = goal; // the walk re-arms it (the reflow's reset is for every OTHER key)
 	}
 
-	// ---- W21: the panel state machine ----
+	// ---- W21 / TUI2-R3v2 ①: the panel state machine ----
 
-	#panelSelect(sel: 1 | 3): void {
+	/** ↑↓ — the bar walks the list and STOPS at both ends. A list that
+	 *  wraps makes the fastest gesture (hold ↓ to reach the bottom) into
+	 *  a gamble about where you landed, and the bottom option here is the
+	 *  denial. */
+	#panelMove(delta: -1 | 1): void {
 		const panel = this.#panel;
-		if (panel === null) return;
-		panel.sel = sel;
+		if (panel === null || panel.phase !== "options") return;
+		const n = panelOptions(panel.view).length;
+		panel.cursor = Math.max(0, Math.min(n - 1, panel.cursor + delta));
 		this.#onRender();
 	}
 
-	/** digit 2 — the rule input: the buffer prefilled with the tool name
-	 *  (the option-2 prefill; enter commits the rule). */
-	#panelRule(): void {
+	/**
+	 * Take the option at `index` — the ONE place a panel choice resolves,
+	 * whether the human pressed a digit, pressed ⏎ on the bar, typed the
+	 * y/n alias, or clicked the row (slice ②). Four gestures, one branch:
+	 * a click cannot mean something a digit does not.
+	 *
+	 * Every kind but `deny` on an approval resolves IMMEDIATELY. That is
+	 * the round's whole claim — the durable rule included, because the
+	 * rule the machinery supports is exactly "this tool", and asking the
+	 * human to confirm a value they cannot change was the old model's
+	 * ceremony, not a safeguard.
+	 */
+	#panelConfirm(index: number): void {
+		const panel = this.#panel;
+		if (panel === null || panel.phase !== "options") return;
+		const options = panelOptions(panel.view);
+		const option = options[index];
+		if (option === undefined) return; // a digit past the list is inert
+		panel.cursor = index;
+		switch (option.kind) {
+			case "allow":
+				this.#panelClose({ action: "allow", reason: "" });
+				return;
+			case "rule":
+				this.#panelClose({ action: "allow-rule", rule: panel.view.name });
+				return;
+			case "safer":
+				this.#panelSafer();
+				return;
+			case "deny":
+				// the approval flavor's denial is "let me tell it what to do
+				// instead", so it opens the composer; the simple flavors have
+				// nothing to tell anyone and resolve on the spot.
+				if (panel.view.flavor === "approval") this.#panelAmend();
+				else this.#panelClose({ action: "deny", reason: "" });
+				return;
+		}
+	}
+
+	/**
+	 * Option 3 — "show me safer ways to do this".
+	 *
+	 * The alternatives are the round's ONE new model request, and this
+	 * build does not issue it: the request has to be visible in the
+	 * request trace to be declarable, and the tracer that makes a request
+	 * visible (RequestTracer/traceGuard, packages/runtime/src/trace/
+	 * guard.ts) is not exported from the runtime's public root OR its
+	 * first-party door — so no caller in apps/cli can issue a TRACED
+	 * request without a runtime source change, which this round's fence
+	 * forbids. The seam is escalated rather than improvised around.
+	 *
+	 * What ships is the FAILURE path, which the round specifies anyway
+	 * and which is the honest state of this button today: it says so, in
+	 * one dim line, and puts the human back on the list with every
+	 * original choice intact. A button that lied about having asked would
+	 * be worse than one that says it could not.
+	 */
+	#panelSafer(): void {
 		const panel = this.#panel;
 		if (panel === null) return;
-		panel.phase = "rule";
-		panel.sel = 2;
-		this.#chars = [...panel.view.name].map((ch) => ch.codePointAt(0)!);
-		this.#cursor = this.#chars.length;
-		this.#scroll = 0;
-		this.#verticalGoalCol = null;
+		panel.note = "couldn't get safer options — the original choices stand";
+		panel.cursor = 0;
 		this.#onRender();
 	}
 
-	/** tab — the amend phase on the selected option (yes/deny); the
-	 *  simple flavor never has it (options 1/3 only, no option 2). */
-	#panelTab(): void {
+	/** The typed phase — the one place the panel takes prose. The buffer
+	 *  starts empty and the cursor stays where the human left it, so esc
+	 *  can put the bar back exactly where it was. */
+	#panelAmend(): void {
 		const panel = this.#panel;
-		if (panel === null || panel.view.flavor !== "approval") return;
-		panel.amend = panel.sel === 3 ? "no" : "yes";
+		if (panel === null) return;
 		panel.phase = "amend";
 		this.#chars = [];
 		this.#cursor = 0;
@@ -1143,14 +1225,26 @@ export class Editor {
 		this.#onRender();
 	}
 
-	/** esc — back out of the rule/amend to the options (the buffer
-	 *  clears), deselect, or cancel the panel at rest. */
+	/** tab — the amend alias, unchanged as a GESTURE: it opens the same
+	 *  typed phase the last option does, from anywhere in the list. The
+	 *  simple flavors never had it and still do not. */
+	#panelTab(): void {
+		const panel = this.#panel;
+		if (panel === null || panel.view.flavor !== "approval") return;
+		panel.cursor = panelOptions(panel.view).length - 1;
+		this.#panelAmend();
+	}
+
+	/** esc — back out of the typed phase to the list (the buffer clears,
+	 *  the bar stays on the option that opened it), or cancel the panel.
+	 *  The old model had a third step, the deselect, because a selection
+	 *  could be "none"; a list always has a selection, so esc from the
+	 *  list means what it means everywhere else in the product. */
 	#panelEsc(): void {
 		const panel = this.#panel;
 		if (panel === null) return;
 		if (panel.phase !== "options") {
 			panel.phase = "options";
-			panel.sel = 0;
 			this.#chars = [];
 			this.#cursor = 0;
 			this.#scroll = 0;
@@ -1158,33 +1252,32 @@ export class Editor {
 			this.#onRender();
 			return;
 		}
-		if (panel.sel !== 0) {
-			panel.sel = 0;
-			this.#onRender();
-			return;
-		}
 		this.#panelClose({ action: "cancel" });
 	}
 
-	/** enter — commit by phase: the rule input (the tool name when
-	 *  empty), the amend feedback (the bare verdict when empty), or the
-	 *  selected option (nothing at rest — an accidental enter never
-	 *  approves). Enter on the selected option 2 is the digit-2 key. */
+	/**
+	 * enter — send the typed note, or TAKE THE HIGHLIGHTED OPTION.
+	 *
+	 * The second half is the round. The retired model's enter-at-rest did
+	 * nothing at all, on the theory that an accidental return must never
+	 * approve; what it actually produced was a panel that ignored the key
+	 * every human presses first. The safeguard is real but it belongs on
+	 * WHERE THE BAR STARTS, not on whether the key works: the bar opens on
+	 * the option whose blast radius is one tool call the human is looking
+	 * at, and every irreversible-er choice is a deliberate ↑↓ away.
+	 *
+	 * An empty note in the typed phase is the bare denial — the W21
+	 * mapping, untouched: no words means the run aborts, words mean the
+	 * model gets them and proposes a new call.
+	 */
 	#panelEnter(): void {
 		const panel = this.#panel;
 		if (panel === null) return;
-		const line = this.line();
-		if (panel.phase === "rule") {
-			this.#panelClose({ action: "allow-rule", rule: line === "" ? panel.view.name : line });
-			return;
-		}
 		if (panel.phase === "amend") {
-			this.#panelClose(panel.amend === "yes" ? { action: "allow", reason: line } : { action: "deny", reason: line });
+			this.#panelClose({ action: "deny", reason: this.line() });
 			return;
 		}
-		if (panel.sel === 1) this.#panelClose({ action: "allow", reason: "" });
-		else if (panel.sel === 2) this.#panelRule();
-		else if (panel.sel === 3) this.#panelClose({ action: "deny", reason: "" });
+		this.#panelConfirm(panel.cursor);
 	}
 
 	/**
@@ -1514,7 +1607,7 @@ export class Editor {
 		// W23: the ONE width authority — leadWidth(lead) — the cap follows
 		// the lead the editor itself renders (the panel lead when the panel
 		// owns the keys, the brick otherwise): maxW = W − walls − lead.
-		const lead = this.#panel !== null ? panelLead(this.#panel.view, this.#panel.phase, this.#panel.sel, this.#panel.ask ?? undefined) : PROMPT;
+		const lead = this.#panel !== null ? panelLead(this.#panel.view, this.#panel.phase, this.#panel.cursor, this.#panel.ask ?? undefined) : PROMPT;
 		const leadW = leadWidth(lead);
 		const maxW = Math.max(1, W - leadW - 4); // W6: the box's walls (2+2) — the visible line fits the box's inner width; the "…" rides inside
 		// KC1: the scroll is the CURSOR LINE's own offset — a single-line

@@ -148,7 +148,7 @@ describe("KC3 T-A1: precedence — who owns the keys", () => {
 		expect(editor.atState()).toBeNull();
 	});
 
-	it("the approval PANEL owns them: an `@` typed into the rule input is inert", () => {
+	it("the approval PANEL owns them: an `@` typed into the amend note is inert", () => {
 		const editor = makeEditor();
 		editor.beginPanel(
 			{
@@ -162,7 +162,7 @@ describe("KC3 T-A1: precedence — who owns the keys", () => {
 			},
 			() => {},
 		);
-		editor.feed(enc("2")); // into the rule phase — free text
+		editor.feed(enc("4")); // into the amend phase — free text
 		editor.feed(enc("@"));
 		expect(editor.atState()).toBeNull();
 	});

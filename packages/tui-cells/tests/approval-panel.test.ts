@@ -18,7 +18,6 @@ import {
 	panelLeadWidth,
 	panelStatus,
 	type PanelPhase,
-	type PanelSel,
 	type PanelView,
 } from "../src/approval-panel.js";
 
@@ -64,15 +63,19 @@ function simpleView(): PanelView {
 // drops; the invariant must hold there too (it fired at 40 pre-fix)
 const WIDTHS = [40, 46, 48, 64, 80, 120];
 const MAX_ROWS = [8, 12, 20];
-const PHASES: readonly PanelPhase[] = ["options", "rule", "amend"];
-const SELS: readonly PanelSel[] = [0, 1, 2, 3];
+// MOVED (the TUI2-R3v2 panel-selection supersession class): the "rule"
+// phase is retired and the selection is a 0-based CURSOR into the option
+// list, so the grid sweeps the rows a bar can sit on rather than the
+// four values the old PanelSel union had.
+const PHASES: readonly PanelPhase[] = ["options", "amend"];
+const CURSORS: readonly number[] = [0, 1, 2, 3];
 
 describe("W21: panelBlockRows", () => {
 	it("invariant ① — every row's visible width ≤ W across the W/height/phase/sel grid", () => {
 		for (const W of WIDTHS) {
 			for (const maxRows of MAX_ROWS) {
 				for (const phase of PHASES) {
-					for (const sel of SELS) {
+					for (const sel of CURSORS) {
 						const rows = panelBlockRows(approvalView(), phase, sel, W, maxRows);
 						for (const row of rows) {
 							expect(visibleWidth(row), `W=${W} maxRows=${maxRows} phase=${phase} sel=${sel}: ${JSON.stringify(row)}`).toBeLessThanOrEqual(W);
@@ -95,19 +98,24 @@ describe("W21: panelBlockRows", () => {
 	// to drop it. The property the case exists for is unchanged and still
 	// asserted at the widths where the drop DOES happen: the 1/3 decision
 	// survives any width, and invariant 1 never fires on this row.
-	it("a narrow winch never breaks the options row — the 1/3 decision always survives", () => {
+	// MOVED (the TUI2-R3v2 panel-selection supersession class): the case
+	// asserted that a narrow winch DROPS the middle option to save the row,
+	// keeping 1/3 as the semantics worth saving. A list has no row to save —
+	// each option owns one — so the property inverts into a stronger one: at
+	// every width the winch survives, every option is still there. The
+	// invariant-① half of the case is unchanged.
+	it("a narrow winch drops no CHOICE — every option keeps its row, cut but present", () => {
 		for (const W of [20, 28, 34, 40, 46]) {
 			for (const maxRows of MAX_ROWS) {
 				const rows = panelBlockRows(approvalView(), "options", 0, W, maxRows);
-				const opt = rows.find((r) => r.includes("1 Yes"));
-				expect(opt, `W=${W} maxRows=${maxRows}`).toBeDefined();
-				expect(opt, `W=${W} maxRows=${maxRows}`).toContain("3 No");
-				expect(visibleWidth(opt!), `W=${W} maxRows=${maxRows}`).toBeLessThanOrEqual(W);
+				for (const row of rows) expect(visibleWidth(row), `W=${W} maxRows=${maxRows}`).toBeLessThanOrEqual(W);
 			}
 		}
-		// below the three-option budget the middle option is what gives way
-		const narrow = panelBlockRows(approvalView(), "options", 0, 28, 12).find((r) => r.includes("1 Yes"))!;
-		expect(narrow).not.toContain("don't ask again");
+		// at 28 columns the LABELS are cut to fit; all four rows are there,
+		// which is the choice surviving — the thing the retired case traded
+		// away to keep the block one row shorter.
+		const narrow = panelBlockRows(approvalView(), "options", 0, 28, 20).map((r) => r.replace(/\x1b\[[0-9;]*m/g, ""));
+		expect(narrow.filter((r) => /^\s*(│\s*)?[1-4] \S/.test(r))).toHaveLength(4);
 	});
 
 	it("the block's row count is bounded by maxRows — the args fold, the single rows cut", () => {
@@ -119,51 +127,59 @@ describe("W21: panelBlockRows", () => {
 		}
 	});
 
-	it("short args render exactly 6 + n rows (no cap, no notice)", () => {
+	// MOVED (the TUI2-R3v2 panel-selection supersession class): the fixed
+	// chrome is five rows (rule, title, divider, affordance, corner) plus
+	// ONE ROW PER OPTION — two on the simple flavor — where it used to be
+	// five plus one shared options row.
+	it("short args render exactly 5 + options + n rows (no cap, no notice)", () => {
 		const rows = panelBlockRows(simpleView(), "options", 0, 80, 20);
-		expect(rows).toHaveLength(6 + 2);
+		expect(rows).toHaveLength(5 + 2 + 2);
 		expect(rows.join("")).not.toContain("more rows");
 	});
 
-	it("overflowing args cap at maxRows − 1 and carry the +N notice row", () => {
-		// the 4-row diff overflows a maxRows-8 block: budget 2 → keep 1 +
-		// the notice (+3 more rows).
+	// MOVED (the TUI2-R3v2 panel-selection supersession class): the args and
+	// the option list now SHARE the budget under the chrome, so an eight-row
+	// block spends its rows differently. The property the case exists for is
+	// unchanged: the block never exceeds maxRows, and what it cut says so.
+	it("overflowing args cap under the shared budget and carry the +N notice row", () => {
 		const rows = panelBlockRows(approvalView(), "options", 0, 120, 8);
 		expect(rows).toHaveLength(8);
-		expect(rows.some((r) => r.includes("+3 more rows — the full args are in the event log"))).toBe(true);
+		expect(rows.some((r) => r.includes("more rows — the full args are in the event log"))).toBe(true);
 	});
 
 	it("the args are the ALWAYS-verbose shape — the fold shows every diff row, never the capped copy", () => {
-		// The diff has 4 rows + 6 fixed rows = 10; at maxRows 12 nothing is cut.
-		const rows = panelBlockRows(approvalView(), "options", 0, 120, 12);
-		expect(rows).toHaveLength(10);
+		// the 4-row diff + 5 chrome rows + 4 option rows = 13; at maxRows 20
+		// nothing is cut (the old 6-fixed-row arithmetic is superseded).
+		const rows = panelBlockRows(approvalView(), "options", 0, 120, 20);
+		expect(rows).toHaveLength(13);
 		expect(rows.join("")).toContain("the brand new line that was written by the tool");
 		expect(rows.join("")).toContain("the old line that gets replaced by the new one");
 	});
 });
 
 describe("W21: the panel chrome helpers", () => {
-	it("the leads name the phase — the digit leads bold, the rule/amend leads plain", () => {
-		expect(panelLeadPlain(approvalView(), "options", 0)).toBe("1-3> ");
-		expect(panelLeadPlain(simpleView(), "options", 0)).toBe("1/3> ");
-		expect(panelLeadPlain(approvalView(), "rule", 2)).toBe("2 Yes, don't ask again for ");
-		expect(panelLeadPlain(approvalView(), "amend", 3)).toBe("feedback (deny): ");
-		expect(panelLeadPlain(approvalView(), "amend", 1)).toBe("feedback (amend): ");
+	// MOVED (the TUI2-R3v2 panel-selection supersession class): "1-3> " and
+	// "1/3> " were prompts for input the panel no longer asks for, and the
+	// two "feedback (...)" leads collapsed into the single typed phase.
+	it("the leads: a quiet chevron while the list is up, the named prompt while typing", () => {
+		expect(panelLeadPlain(approvalView(), "options", 0)).toBe("\u203a ");
+		expect(panelLeadPlain(simpleView(), "options", 0)).toBe("\u203a ");
+		expect(panelLeadPlain(approvalView(), "amend", 3)).toBe("amend\u203a ");
 		// the width is the PLAIN text's display width — the colored lead
 		// renders wider in bytes but occupies the same cells.
-		expect(panelLeadWidth(approvalView(), "options", 0)).toBe(5);
-		expect(panelLeadWidth(approvalView(), "rule", 2)).toBe("2 Yes, don't ask again for ".length);
-		expect(panelLeadWidth(approvalView(), "amend", 3)).toBe("feedback (deny): ".length);
+		expect(panelLeadWidth(approvalView(), "options", 0)).toBe(2);
+		expect(panelLeadWidth(approvalView(), "amend", 3)).toBe("amend\u203a ".length);
 	});
 
-	it("the status is the phase, the affordance the phase's keys", () => {
+	// MOVED (the TUI2-R3v2 panel-selection supersession class): the
+	// affordance no longer varies with the selection (every gesture is live
+	// on every row), and the retired phases took their copy with them.
+	it("the status is the phase, the affordance the v4 hint line", () => {
 		expect(panelStatus(approvalView(), "options", 0)).toBe("▸ run paused");
-		expect(panelStatus(approvalView(), "rule", 2)).toBe("▸ rule input");
-		expect(panelStatus(approvalView(), "amend", 3)).toBe("▸ deny · the words become the tool_result");
-		expect(panelAffordance(approvalView(), "options", 0)).toBe("tab amend · esc cancel");
-		expect(panelAffordance(approvalView(), "options", 1)).toBe("enter sends · esc backs out");
-		expect(panelAffordance(simpleView(), "options", 0)).toBe("esc cancel");
-		expect(panelAffordance(simpleView(), "options", 3)).toBe("enter sends");
-		expect(panelAffordance(approvalView(), "rule", 2)).toBe("enter commits · esc backs out");
+		expect(panelStatus(approvalView(), "amend", 3)).toBe("▸ your note goes to the model — it will propose a new call");
+		expect(panelAffordance(approvalView(), "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
+		expect(panelAffordance(approvalView(), "options", 1)).toBe("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
+		expect(panelAffordance(simpleView(), "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1-2 instant · esc");
+		expect(panelAffordance(approvalView(), "amend", 3)).toBe("⏎ send · esc back");
 	});
 });

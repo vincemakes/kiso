@@ -80,10 +80,14 @@ export function projectUntrustedNote(count: number, root: string): string {
 }
 
 /** rounds 8/10 — the uncertain execution's panel: the SIMPLE flavor
- *  again, with the options re-labelled in the rule line (1 rerun · 3
- *  abandon). The tool name is escaped for the dock-less fallback
- *  question because it reaches the terminal as raw text there; the
- *  panel's own rows are escaped by the panel renderer. */
+ *  again. TUI2-R3v2 ①: the option labels used to be smuggled into the
+ *  rule line ("— 1 rerun · 3 abandon") because the panel only ever
+ *  rendered "Yes" and "No"; they ride `simpleOptions` now and land on the
+ *  rows themselves, which is both where they belong and the only way they
+ *  stay true — the digits moved, and copy naming a digit it does not own
+ *  goes stale silently. The tool name is escaped for the dock-less
+ *  fallback question because it reaches the terminal as raw text there;
+ *  the panel's own rows are escaped by the panel renderer. */
 export function uncertainView(name: string, executionId: string): PanelView {
 	return {
 		flavor: "simple",
@@ -92,7 +96,8 @@ export function uncertainView(name: string, executionId: string): PanelView {
 		speaker: "kiso",
 		statusText: "▸ uncertain execution",
 		args: { kind: "text", lines: [executionId] },
-		ruleOverride: "did the interrupted execution apply? — 1 rerun · 3 abandon",
+		ruleOverride: "did the interrupted execution apply?",
+		simpleOptions: ["rerun it", "abandon it"],
 		fallbackQuestion: `⚠ interrupted execution: ${escapeTerminal(name)} (${executionId}) — did it apply? (y)es / (n)o `,
 	};
 }
@@ -109,7 +114,7 @@ export function uncertainView(name: string, executionId: string): PanelView {
  * (The round's ① probe pinned why this surface exists at all: the
  * shipped recovery blocks on a started-unreported execution regardless
  * of idempotency, so an interrupted ask meets this gate on the way
- * back. Re-asking is safe — that is what "1 re-ask" says out loud.)
+ * back. Re-asking is safe — that is what the first option says out loud.)
  */
 export function unansweredAskView(executionId: string): PanelView {
 	return {
@@ -119,7 +124,8 @@ export function unansweredAskView(executionId: string): PanelView {
 		speaker: "kiso",
 		statusText: "▸ unanswered question",
 		args: { kind: "text", lines: [executionId] },
-		ruleOverride: "an unanswered question was interrupted — ask it again? — 1 re-ask · 3 drop",
+		ruleOverride: "an unanswered question was interrupted — ask it again?",
+		simpleOptions: ["ask it again", "drop it"],
 		fallbackQuestion: `⚠ an unanswered question was interrupted (${executionId}) — ask it again? (y)es / (n)o `,
 	};
 }
@@ -232,24 +238,20 @@ export function displayVerb(name: string): string {
  *  one dim line rather than four table rows, because they apply only
  *  while a panel is up. */
 /**
- * TUI2-R1.5 pin 6 — this row has to be true of BOTH panel flavors, and
- * "digits select" was wrong in both directions at once.
+ * TUI2-R1.5 pin 6 — this row has to be true of BOTH panel flavors.
  *
- * On an APPROVAL a digit only moves the selection (editor's #panelSelect
- * sets `sel` and renders); ENTER is what resolves it. A reader who
- * pressed 1 and walked away had approved nothing — the worst kind of
- * false affordance, on the surface where the stakes are a side effect.
+ * The R1.5 wording ("digits pick · ⏎ confirms") was the sentence that
+ * covered an approval where a digit only SELECTED and an ask where a
+ * digit ANSWERED. TUI2-R3v2 ① removed the disagreement it was papering
+ * over: every panel is a list with a bar on it, ↑↓ move the bar, ⏎ (or a
+ * click) takes the row under it, and a digit takes its row outright.
+ * One sentence, now true of every flavor for the same reason rather than
+ * by careful omission.
  *
- * On an ASK the opposite: a digit on a SINGLE-choice question answers it
- * and advances the walk (ask-panel's askKey → advance), so "select"
- * undersold it. A multi-select question toggles and waits for enter,
- * like the approval.
- *
- * "digits pick · ⏎ confirms" is the sentence both flavors satisfy. The
- * single-choice fast path — where the confirm is implicit — is the one
- * thing a single row cannot also carry; it is an omission, never a lie.
+ * The two ask-only gestures keep their clauses because the ask is the
+ * only flavor with a set to build and an answer to write.
  */
-export const PANEL_KEYS_ROW = "panels: digits pick · ⏎ confirms · space toggles · t types an answer";
+export const PANEL_KEYS_ROW = "panels: ↑↓ move · ⏎ or click confirms · 1-4 instant · space toggles · t types";
 
 /** The sheet's grid: the first six bindings in two 3-column rows, the
  *  last four in two 2-column rows (the wide entries get the room). The

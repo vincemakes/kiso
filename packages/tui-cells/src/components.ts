@@ -1538,6 +1538,39 @@ export function widthCut(text: string, max: number): string {
 	return text.slice(0, i);
 }
 
+/**
+ * TUI2-R3v2 ① — THE selection bar. One engine, every selection surface.
+ *
+ * The R1.5 ⑧ ruling settled the shape (a full-row reverse bar, not a
+ * two-cell marker you have to hunt for in eighty columns) and the @
+ * picker, the user chip and the R2 session picker each grew their own
+ * copy of the composition. The approval panel would have been the
+ * fourth, so the composition moves HERE and the surfaces call it.
+ *
+ * Two details are the whole reason this is a function and not four
+ * inlined string templates:
+ *
+ *  - the inner `reset`s are rewritten to reset-then-reverse. A plain SGR
+ *    0 inside the bar punches a hole in it: the row goes back to normal
+ *    video mid-span and the bar reads as two bars with a gap. The close
+ *    is SGR 27 (rvEnd), never SGR 0, for the same reason — the bar
+ *    composes INSIDE whatever span surrounds it.
+ *  - the pad is computed from the caller's measured VISIBLE width, never
+ *    from the styled string's length. A bar that stops short is not a
+ *    bar, and one that runs past W crashes the compositor's invariant ①
+ *    rather than truncating quietly — so the arithmetic is stated once,
+ *    here, and proven once, in the sweep gates.
+ *
+ * The bar spends one cell of frame at each end, so callers build their
+ * spans against W−2 whether the row is selected or not — which is what
+ * keeps the columns from moving as the bar walks the list.
+ */
+export function selectionBar(styled: string, visible: number, W: number): string {
+	const p = palette();
+	const inner = styled.replaceAll(p.reset, `${p.reset}${p.rv}`);
+	return `${p.rv} ${inner}${" ".repeat(Math.max(0, W - visible - 2))} ${p.rvEnd}`;
+}
+
 /** W6 — the box: the chrome's top rail. The two ╌ dotted rows become
  *  a rounded box (the box already says "input lives here"); the rails
  *  stay dim, the width is still the full W (the box is a rail with

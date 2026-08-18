@@ -40,12 +40,14 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 			"esc stop        alt+⏎ / ctrl+⏎ redirect    / commands",
 			"↑↓ history / queue pop              ctrl+r expand cells",
 			"tab complete (menu / @)             ? this sheet",
-			// MOVED (R1.5 pin 6, the wrap/copy class): "digits select" was
-			// unqualified and wrong in BOTH directions. On an APPROVAL a
-			// digit only selects — enter resolves — so a reader who pressed
-			// 1 and walked away had not approved anything. On a SINGLE-choice
-			// ask a digit answers AND advances, so "select" undersold it.
-			"panels: digits pick · ⏎ confirms · space toggles · t types an answer",
+			// MOVED (the TUI2-R3v2 panel-selection supersession class): R1.5
+			// pin 6 chose "digits pick · ⏎ confirms" as the one sentence true
+			// of an approval where a digit SELECTED and an ask where a digit
+			// ANSWERED. This round removed that disagreement — every panel is
+			// a list with a bar on it — so the row names the gestures
+			// outright, in the SAME words the live panel's own hint line
+			// uses ("↑↓ move · ⏎ or click confirms · 1-4 instant").
+			"panels: ↑↓ move · ⏎ or click confirms · 1-4 instant · space toggles · t types",
 		]);
 	});
 

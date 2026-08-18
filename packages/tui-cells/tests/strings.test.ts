@@ -107,7 +107,12 @@ describe("KC3 §1: uncertainView — the uncertain execution's panel", () => {
 		expect(view.speaker).toBe("kiso");
 		expect(view.statusText).toBe("▸ uncertain execution");
 		expect(view.args).toEqual({ kind: "text", lines: ["exec-7"] });
-		expect(view.ruleOverride).toBe("did the interrupted execution apply? — 1 rerun · 3 abandon");
+		// MOVED (the TUI2-R3v2 panel-selection supersession class): the
+		// option labels left the rule line for the option ROWS. Copy that
+		// names a digit it does not own goes stale the moment the digits
+		// move, and this round moved them.
+		expect(view.ruleOverride).toBe("did the interrupted execution apply?");
+		expect(view.simpleOptions).toEqual(["rerun it", "abandon it"]);
 		expect(view.fallbackQuestion).toBe("⚠ interrupted execution: shell (exec-7) — did it apply? (y)es / (n)o ");
 	});
 

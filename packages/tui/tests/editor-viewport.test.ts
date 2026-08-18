@@ -206,8 +206,11 @@ describe("KC1 T-E7 — a multi-line draft survives the stash paths (the flat buf
 		expect(before.cursorRow).toBe(1);
 		editor.beginPanel(PANEL_VIEW, () => {});
 		expect(editor.line()).toBe(""); // the panel owns a clean line
-		editor.feed(enc("1")); // select allow…
-		editor.feed(enc("\r")); // …and commit — the panel closes
+		// MOVED (the TUI2-R3v2 panel-selection supersession class): the digit
+		// no longer selects-then-waits, so the two-key idiom is one key. A
+		// bare enter takes the highlighted option and the panel closes; a
+		// second key here would land in the RESTORED draft and submit it.
+		editor.feed(enc("\r")); // confirm the highlighted option — the panel closes
 		expect(editor.line()).toBe("keep one\nkeep two\nkeep three");
 		expect(editor.dockState()).toEqual(before); // the draft AND the cursor
 	});

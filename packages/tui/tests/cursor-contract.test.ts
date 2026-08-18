@@ -206,10 +206,14 @@ afterEach(() => {
 	delete (process.stdout as { isTTY?: boolean }).isTTY;
 });
 
-/** The five leads (the work order's tuple set) — the real strings the
- *  CLI/panel bind: the brick "› ", the question (the trust fallback),
- *  the panel-choice "1-3> ", the panel-rule "2 Yes, don't ask again
- *  for ", the feedback "feedback (deny): ". */
+/** The leads the CLI/panel bind: the brick "› ", the question (the trust
+ *  fallback), and — MOVED, the TUI2-R3v2 panel-selection supersession
+ *  class — the panel's two. "1-3> " and "2 Yes, don't ask again for "
+ *  are retired with the input-box model that needed them: the list phase
+ *  leads with the quiet chevron because it is asking for no input, and
+ *  the ONE typed phase leads "amend› ". The contract under test (marker
+ *  == editor cursor == editCol, at the frame-derived column) is
+ *  unchanged; only which leads exist to test it against moved. */
 /** The panel leads' narrow width must hold the panel BLOCK's option row
  *  (≥ 47 cells — the A6 widthCut-family rendering, tracked separately);
  *  the frame leads (brick/question) narrow to 44. */
@@ -217,8 +221,8 @@ const LEADS: { label: string; lead: string | null; panelKeys: string | null; nar
 	{ label: "brick", lead: "› ", panelKeys: null, narrowW: 44 },
 	{ label: "question", lead: "trust this project's .kiso? (y/n) ", panelKeys: null, narrowW: 44 },
 	{ label: "panel-choice", lead: null, panelKeys: "", narrowW: 48 },
-	{ label: "panel-rule", lead: null, panelKeys: "2", narrowW: 48 },
-	{ label: "feedback", lead: null, panelKeys: "3\t", narrowW: 48 },
+	{ label: "panel-amend", lead: null, panelKeys: "4", narrowW: 48 },
+	{ label: "panel-amend-tab", lead: null, panelKeys: "\t", narrowW: 48 },
 ];
 
 const LINES: { text: string; cursors: number[] }[] = [
@@ -253,7 +257,7 @@ describe("W23 — the cursor contract: the frame-derived column (wallL + leadWid
 		new CursorProbe("question × long-CJK", 44, "trust this project's .kiso? (y/n) ", null, "\u4e2d".repeat(20), 20).run();
 	});
 
-	it("the long answer under the panel-rule lead: the cap FOLLOWS the lead in the editor too (the reflow knows the panel lead) — the slice fits W − leadW − 4, the marker at the formula", () => {
-		new CursorProbe("panel-rule × long", 48, null, "2", "x".repeat(40), 40).run();
+	it("the long answer under the panel-amend lead: the cap FOLLOWS the lead in the editor too (the reflow knows the panel lead) — the slice fits W − leadW − 4, the marker at the formula", () => {
+		new CursorProbe("panel-amend × long", 48, null, "4", "x".repeat(40), 40).run();
 	});
 });

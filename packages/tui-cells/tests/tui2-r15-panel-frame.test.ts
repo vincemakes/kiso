@@ -50,7 +50,11 @@ describe("TUI2-R1.5 ⑪ — the panel closes with a real rule (VD-13)", () => {
 		for (const W of [40, 46, 48, 64, 80, 120]) {
 			const rows = panelBlockRows(VIEW, "options", 1, W, 20);
 			expect(visibleWidth(rows[rows.length - 1]!), `W=${W}`).toBe(W);
-			expect(rows, `W=${W}`).toHaveLength(6 + 2); // the frame is still 6 fixed rows
+			// MOVED (the TUI2-R3v2 panel-selection supersession class): the
+			// frame is 5 chrome rows + ONE ROW PER OPTION, not 6 fixed rows with
+			// the options sharing one. The rule-spans-the-width property this
+			// case exists for is unchanged.
+			expect(rows, `W=${W}`).toHaveLength(5 + 4 + 2);
 		}
 	});
 
@@ -60,17 +64,26 @@ describe("TUI2-R1.5 ⑪ — the panel closes with a real rule (VD-13)", () => {
 	});
 });
 
-describe("TUI2-R1.5 ⑪ — one separator grammar on the options row (VD-13)", () => {
-	it("the three options are `·`-separated, like every other metadata group", () => {
+// MOVED (the TUI2-R3v2 panel-selection supersession class): there is no
+// options ROW to separate any more. R1.5 ⑪ settled that the options had to
+// share the product's one separator grammar; the list settles the question
+// by removing it — each option is on its own line, which is the strongest
+// form of "these are three separate things" a terminal has.
+describe("TUI2-R3v2 ① — one option per row, in the frame's order", () => {
+	it("the approval flavor lists all four options, numbered from one", () => {
 		const rows = panelBlockRows(VIEW, "options", 1, 80, 20);
-		const options = rows.find((r) => r.includes("1 Yes"))!;
-		expect(options).toContain("1 Yes · 2 Yes, don't ask again · 3 No");
-		expect(options).not.toContain("Yes  ");
+		const labels = ["Yes, run it", "don't ask again", "Show me safer ways to do this", "No — let me tell it what to do instead"];
+		for (let i = 0; i < labels.length; i += 1) {
+			const row = rows.find((r) => r.includes(labels[i]!));
+			expect(row, labels[i]).toBeDefined();
+			expect(row).toContain(`${i + 1} `);
+		}
 	});
 
-	it("a SIMPLE panel keeps two options, same separator", () => {
+	it("a SIMPLE panel lists two, and the second one is the No", () => {
 		const rows = panelBlockRows({ ...VIEW, flavor: "simple" as const }, "options", 1, 80, 20);
-		expect(rows.find((r) => r.includes("1 Yes"))!).toContain("1 Yes · 3 No");
+		expect(rows.some((r) => r.includes(" 1 Yes"))).toBe(true);
+		expect(rows.some((r) => r.includes(" 2 No"))).toBe(true);
 	});
 
 	it("invariant ① — every row fits the width across the grid", () => {

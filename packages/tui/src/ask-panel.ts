@@ -46,7 +46,6 @@ import {
 	type AskRuntime,
 	type AskSpec,
 	type PanelPhase,
-	type PanelSel,
 	type PanelState,
 	type PanelView,
 	type PickRuntime,
@@ -265,45 +264,45 @@ export function askLeadPlain(state: AskRuntime): string {
 
 // ── the dispatchers: the panel slot, with the ask branch folded in ────
 
-export function panelBlockRows(view: PanelView, phase: PanelPhase, sel: PanelSel, W: number, maxRows: number, ask?: AskRuntime, pick?: PickRuntime): string[] {
+export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, ask?: AskRuntime, pick?: PickRuntime, note?: string): string[] {
 	if (view.pick !== undefined && pick !== undefined) return pickBlockRows(view, pick, W, maxRows);
 	if (view.ask !== undefined && ask !== undefined) return askBlockRows(view, ask, W, maxRows);
-	return basePanelBlockRows(view, phase, sel, W, maxRows);
+	return basePanelBlockRows(view, phase, cursor, W, maxRows, note);
 }
 
-export function panelLead(view: PanelView, phase: PanelPhase, sel: PanelSel, ask?: AskRuntime, pick?: PickRuntime): string {
+export function panelLead(view: PanelView, phase: PanelPhase, cursor: number, ask?: AskRuntime, pick?: PickRuntime): string {
 	const p = palette();
 	if (view.pick !== undefined && pick !== undefined) return pickLead(view, pick);
 	if (view.ask !== undefined && ask !== undefined) return `${p.bold}${askLeadPlain(ask)}${p.reset}`;
-	return basePanelLead(view, phase, sel);
+	return basePanelLead(view, phase, cursor);
 }
 
-export function panelLeadPlain(view: PanelView, phase: PanelPhase, sel: PanelSel, ask?: AskRuntime, pick?: PickRuntime): string {
+export function panelLeadPlain(view: PanelView, phase: PanelPhase, cursor: number, ask?: AskRuntime, pick?: PickRuntime): string {
 	if (view.pick !== undefined && pick !== undefined) return pickLeadPlain(view, pick);
 	if (view.ask !== undefined && ask !== undefined) return askLeadPlain(ask);
-	return basePanelLeadPlain(view, phase, sel);
+	return basePanelLeadPlain(view, phase, cursor);
 }
 
-export function panelStatus(view: PanelView, phase: PanelPhase, sel: PanelSel, ask?: AskRuntime, pick?: PickRuntime): string {
+export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number, ask?: AskRuntime, pick?: PickRuntime): string {
 	if (view.pick !== undefined && pick !== undefined) return pickStatus(view);
 	if (view.ask !== undefined && ask !== undefined) return askStatus(view, ask);
-	return basePanelStatus(view, phase, sel);
+	return basePanelStatus(view, phase, cursor);
 }
 
-export function panelAffordance(view: PanelView, phase: PanelPhase, sel: PanelSel, ask?: AskRuntime, pick?: PickRuntime): string {
+export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: number, ask?: AskRuntime, pick?: PickRuntime): string {
 	if (view.pick !== undefined && pick !== undefined) return pickAffordance(pick);
 	if (view.ask !== undefined && ask !== undefined) return askAffordance(ask);
-	return basePanelAffordance(view, phase, sel);
+	return basePanelAffordance(view, phase, cursor);
 }
 
 /** The whole panel state in one call — the compositor's four reads share
  *  one source, so an ask can never render half as an approval (TUI2-R2
  *  ④: nor a pick as either). */
 export const panelRowsOf = (s: PanelState, W: number, maxRows: number): string[] =>
-	panelBlockRows(s.view, s.phase, s.sel, W, maxRows, s.ask, s.pick);
-export const panelLeadOf = (s: PanelState): string => panelLead(s.view, s.phase, s.sel, s.ask, s.pick);
-export const panelStatusOf = (s: PanelState): string => panelStatus(s.view, s.phase, s.sel, s.ask, s.pick);
-export const panelAffordanceOf = (s: PanelState): string => panelAffordance(s.view, s.phase, s.sel, s.ask, s.pick);
+	panelBlockRows(s.view, s.phase, s.cursor, W, maxRows, s.ask, s.pick, s.note);
+export const panelLeadOf = (s: PanelState): string => panelLead(s.view, s.phase, s.cursor, s.ask, s.pick);
+export const panelStatusOf = (s: PanelState): string => panelStatus(s.view, s.phase, s.cursor, s.ask, s.pick);
+export const panelAffordanceOf = (s: PanelState): string => panelAffordance(s.view, s.phase, s.cursor, s.ask, s.pick);
 
 // ── the view: what the human reads when the model asks ────────────────
 
