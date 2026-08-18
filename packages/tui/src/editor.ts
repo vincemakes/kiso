@@ -784,26 +784,47 @@ export class Editor {
 					i += 1;
 					continue;
 				}
-				// TUI2-R2 ④: the APPROVAL panel's y/n/1/3 shortcuts are the
-				// approval panel's, and a pick view has no yes and no no. The
-				// guard matters because the pick's type-it line is FREE TEXT
-				// that falls through to the editing chain: without it, `n`
-				// and `y` were eaten on the way past and
-				// "openai/deepseek-reasoner" arrived as
-				// "opeai/deepseek-reasoer" (the RED caught exactly this).
-				if (panel.pick === null) {
+				// TUI2-R2 ⑧ — the shortcut keys belong to the OPTIONS phase and
+				// to it alone.
+				//
+				// `1`/`y` select yes and `3`/`n` select no, and they used to be
+				// applied in every phase of every flavour: the `i += 1;
+				// continue;` sat OUTSIDE the phase check, so a phase where the
+				// key meant nothing swallowed it anyway. A phase where a letter
+				// means nothing is exactly a phase where a human is typing
+				// prose — so every y, n, 1 and 3 vanished from the line,
+				// silently, with no error and no visible cause. "yes, run it
+				// now 13" committed as "es, ru it ow ".
+				//
+				// Three typed phases were affected: the ask's custom answer,
+				// the approval panel's rule input, and its amend/feedback line.
+				// The rule input is the one that mattered most — it writes a
+				// DURABLE don't-ask-again rule, so a dropped character persists
+				// a rule the human never typed.
+				//
+				// Slice ④ met the same mechanism on the new pick panel
+				// ("openai/deepseek-reasoner" -> "opeai/deepseek-reasoer") and
+				// guarded pick alone, because the rest was a behaviour change
+				// owed its own red. This is that guard, stated once for every
+				// flavour: the options phase keeps its keys, and every typed
+				// phase keeps its text.
+				const optionsPhase =
+					panel.pick === null && // a pick has no yes and no no
+					panel.phase === "options" && // the rule / amend lines are prose
+					(panel.ask === null || panel.ask.phase === "options"); // and so is a typed ask answer
+				if (optionsPhase) {
 					if (c === "1" || c === "y" || c === "Y") {
-						if (panel.phase === "options") this.#panelSelect(1);
+						this.#panelSelect(1);
 						i += 1;
 						continue;
 					}
-					if (c === "2" && panel.phase === "options" && panel.view.flavor === "approval") {
+					if (c === "2" && panel.view.flavor === "approval") {
 						this.#panelRule();
 						i += 1;
 						continue;
 					}
 					if (c === "3" || c === "n" || c === "N") {
-						if (panel.phase === "options") this.#panelSelect(3);
+						this.#panelSelect(3);
 						i += 1;
 						continue;
 					}
