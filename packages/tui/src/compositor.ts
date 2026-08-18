@@ -69,6 +69,7 @@ import {
 	boxTop,
 	cellComponent,
 	exploreCounts,
+	focusToken,
 	exploreRows,
 	foldLine,
 	isExploreTool,
@@ -674,6 +675,29 @@ export class Body {
 	 *  cell: the pointer cycles the collapsed history, newest first, and
 	 *  the header names the target ("N turns back" — the user cells
 	 *  after it), so every press tells the user what they got. */
+	/**
+	 * TUI2-R2 ⑤ — the cell the next ctrl+r will act on, or -1.
+	 *
+	 * The rule is expandNext's own first loop, extracted verbatim: the
+	 * LAST live cell that can toggle. It is a separate method rather than
+	 * a shared constant because the marker and the key must not merely
+	 * agree today — the marker is a PROMISE about what the key will do,
+	 * and the only way to keep it is to derive it from the same scan.
+	 *
+	 * The committed fallback (the #collapsed ring) is deliberately NOT
+	 * marked: those rows are frozen history, never re-emitted, so a tint
+	 * on them could not be moved when the pointer advances. A live target
+	 * is the one the marker can tell the truth about.
+	 */
+	#focusIndex(): number {
+		for (let i = this.#cells.length - 1; i >= this.#committed; i -= 1) {
+			const cell = this.#cells[i]!;
+			if (cell.kind === "tool" && cell.state !== "pending") return i;
+			if (cell.kind === "checklist" && !cell.done) return i;
+		}
+		return -1;
+	}
+
 	expandNext(): { kind: "toggled" } | { kind: "appended"; lines: string[] } | { kind: "none" } {
 		for (let i = this.#cells.length - 1; i >= this.#committed; i -= 1) {
 			const cell = this.#cells[i]!;
@@ -1105,9 +1129,20 @@ export class Body {
 			// the queue band sits below the panel — the cap shrinks by it.
 			liveLines = panelRowsOf(panel, W, Math.max(1, H - 4 - inputExtra - queueRows.length));
 		} else {
+			// TUI2-R2 ⑤ (D, candidate 1): the FOCUS — the cell the next ctrl+r
+			// will act on brightens its own token. The index is derived from
+			// the SAME scan expandNext performs (#focusIndex shares its rule
+			// by construction), so the marker can never point at a cell the
+			// key would not take — which is the only way a focus marker is
+			// worth having.
+			const focus = this.#focusIndex();
 			let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
-			for (const cell of this.#cells.slice(this.#committed)) {
+			for (let i = this.#committed; i < this.#cells.length; i += 1) {
+				const cell = this.#cells[i]!;
 				const rows = cellComponent(cell).render(W, ctx);
+				// the head row carries the affordance; the tint lands on it and
+				// nowhere else, which is what makes "exactly one" structural
+				if (i === focus && rows.length > 0) rows[0] = focusToken(rows[0]!, W);
 				liveLines.push(...bodySpacing(prev, rows));
 				prev = rows;
 			}
@@ -1120,9 +1155,14 @@ export class Body {
 			this.#commitCell(this.#committed, W, ctx);
 			liveLines = [];
 			{
+				// TUI2-R2 ⑤: the focus re-derives after a commit — the cell it
+				// pointed at may have just left the live region
+				const focus = this.#focusIndex();
 				let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
-				for (const cell of this.#cells.slice(this.#committed)) {
+				for (let i = this.#committed; i < this.#cells.length; i += 1) {
+					const cell = this.#cells[i]!;
 					const rows = cellComponent(cell).render(W, ctx);
+					if (i === focus && rows.length > 0) rows[0] = focusToken(rows[0]!, W);
 					liveLines.push(...bodySpacing(prev, rows));
 					prev = rows;
 				}
@@ -1701,8 +1741,7 @@ export class Body {
 		// retired (the CHA is absolute — the base is irrelevant; the
 		// CUB's base was the LAST write's end column, which the steady
 		// frame's ELs leave at col 1 — the A3 finding)
-		out.push(`\x1b[${1 + editor.rows.length - editor.markerRow}A`);
-		out.push(`\x1b[${editor.markerCol}G`);
+		this.#parkCursor(out, H, H - 2 - inputExtra + editor.markerRow, editor.markerCol);
 	}
 
 	/** The steady-state frame — RELATIVE moves only (invariant ②); the
@@ -1874,19 +1913,45 @@ export class Body {
 								: H - 3 - inputExtra;
 		// the anchor: the MARKER'S row inside the composer (N = 1,
 		// markerRow 0 ⇒ the retired H−2)
-		const down = H - 2 - inputExtra + editor.markerRow - lastRow;
-		if (down > 0) out.push(`\x1b[${down}B`);
-		// W23: the CHA to the frame-derived column — the cursor rests AT
-		// the marker from ANY base (the retired afterW CUB clamped at col
-		// 1 — the steady frame's LAST write is the gap/stale EL: the A3
-		// finding; the A5/A8 live lines end mid-row, the ELs at col 1 —
-		// the CHA ignores the base by construction)
-		out.push(`\x1b[${editor.markerCol}G`);
+		this.#parkCursor(out, lastRow, H - 2 - inputExtra + editor.markerRow, editor.markerCol);
 		// A8b: the steady path moves the window too (the scroll + the
 		// repaint) — record its top so the next full-redraw's leaving count
 		// is the rows the window dropped since the last frame, whatever the
 		// path of the frames between (same formula as `skip` above).
 		this.#lastSkip = skip;
+	}
+
+	/**
+	 * TUI2-R2 ⑤ (the R1.5 parked ⑩) — CURSOR AUTHORITY: the ONE frame-tail
+	 * positioning sequence, and the compositor's alone.
+	 *
+	 * Both draw paths ended with their own hand-rolled park — the full
+	 * path counting rows up from the status line, the steady path counting
+	 * down from a six-branch re-derivation of which write happened to be
+	 * last. Two implementations of one contract, each re-deriving byte
+	 * order the drawing code already knew, and the walkthrough found the
+	 * consequence three times over (the cursor resting in the status
+	 * line's "de▮ault", at the end of streamed text, inside an approval
+	 * panel's rule row). A terminal cursor is the product's claim about
+	 * where the next keystroke lands; a claim made in two places is a
+	 * claim that will eventually disagree with itself.
+	 *
+	 * One owner, one sequence: a single vertical move to the marker's row
+	 * — in EITHER direction, which the steady path could not do (its move
+	 * was `if (down > 0)`, so a cursor left BELOW the composer simply
+	 * stayed there) — then the CHA to the frame-derived column.
+	 *
+	 * Relative, not a CUP, and deliberately: invariant ② reserves absolute
+	 * addressing for the content area, and the composer is chrome. The
+	 * CHA is absolute in the COLUMN only, which is what makes the park
+	 * independent of wherever the last write ended (the A3 finding: the
+	 * retired CUB's base was the gap EL's column 1, left of the lead).
+	 */
+	#parkCursor(out: string[], fromRow: number, toRow: number, col: number): void {
+		const delta = toRow - fromRow;
+		if (delta > 0) out.push(`\x1b[${delta}B`);
+		else if (delta < 0) out.push(`\x1b[${-delta}A`);
+		out.push(`\x1b[${col}G`);
 	}
 
 	/** Invariant ①: every emitted line fits the width — a violation is a

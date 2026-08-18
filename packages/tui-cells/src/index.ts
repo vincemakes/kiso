@@ -15,6 +15,7 @@ export {
 	bodySpacing,
 	Container,
 	cellComponent,
+	focusToken,
 	ROLLUP_NOUN,
 	turnFold,
 	CAP_TASK_LIVE,

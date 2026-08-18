@@ -826,6 +826,46 @@ function appendSuffix(row: string, suffix: string): string {
 	return `${row}${p.dim}${suffix}${p.reset}`;
 }
 
+/**
+ * TUI2-R2 ⑤ (D, candidate 1) — the FOCUS tint.
+ *
+ * The cell the next ctrl+r will act on brightens its own `ctrl+r` token
+ * to the code tint; the rest of the suffix — the separator, the count —
+ * stays dim, because what is being marked is the KEY's target, not the
+ * row. Zero new rows, zero new columns: the affordance the cell already
+ * prints is the marker.
+ *
+ * Applied to a row rather than composed into it on purpose. The token is
+ * emitted from several places (the settled suffix, the renderer's own
+ * `└ +N … · ctrl+r` cut rows) and threading a flag through all of them
+ * would put the invariant "exactly one bright token" in as many hands as
+ * there are emitters. Here it has exactly one.
+ *
+ * NO_COLOR: p.code is empty, so the row's bytes are untouched.
+ */
+export function focusToken(row: string, W: number): string {
+	const p = palette();
+	const at = row.lastIndexOf(CTRL_R);
+	if (at !== -1) {
+		// the row already names the key — brighten the token in place, and
+		// leave every other span exactly as it was
+		if (p.code === "") return row;
+		return `${row.slice(0, at)}${p.code}${CTRL_R}${p.reset}${p.dim}${row.slice(at + CTRL_R.length)}`;
+	}
+	// A LIVE row does not carry the affordance today, and the live cell is
+	// the one ctrl+r takes FIRST (expandNext scans the live tail before
+	// the committed ring) — so the row the key is aimed at was the one row
+	// that never said the key existed. The affordance IS the marker here:
+	// it appears on the focused row and nowhere else, which is why no
+	// unfocused row's bytes move (every existing live-row assertion
+	// renders a cell with no focus and is untouched).
+	const room = W - visibleWidth(row);
+	if (room < SUFFIX_MIN) return row; // never at the cost of invariant ①
+	return `${row}${p.dim} · ${p.reset}${p.code}${CTRL_R}${p.reset}`;
+}
+
+const CTRL_R = "ctrl+r";
+
 /** TUI2-R1 (A) — the expanded block's last row: the way back. The
  *  rollup's expanded list carries a second clause (its members' full
  *  outputs live in /last, which the group row cannot show). */

@@ -55,8 +55,10 @@ afterEach(() => {
  *  the prototype's D frame, as mutations */
 function protoFrame(body: Body): void {
 	body.toolStart("read_file", "t1", { path: "src/parser.ts" });
+	body.toolRunning("t1");
 	body.toolResult("t1", { content: "a\nb\nc\nd\ne\nf", isError: false });
 	body.toolStart("shell", "t2", { command: "npm test" });
+	body.toolRunning("t2"); // the live cell ctrl+r is aimed at
 }
 
 describe("TUI2-R2 ⑤ — the live focus marker (candidate 1)", () => {
@@ -76,7 +78,7 @@ describe("TUI2-R2 ⑤ — the live focus marker (candidate 1)", () => {
 		body.enter();
 		for (let n = 1; n <= 4; n += 1) {
 			body.toolStart("read_file", `t${n}`, { path: `src/f${n}.ts` });
-			body.toolResult(`t${n}`, { content: "a\nb\nc\nd\ne\nf\ng", isError: false });
+			body.toolRunning(`t${n}`);
 			writes.length = 0;
 			tick();
 			const bright = tokens(writes.join("")).filter((t) => t.tint === "code");
@@ -88,12 +90,12 @@ describe("TUI2-R2 ⑤ — the live focus marker (candidate 1)", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		body.toolStart("read_file", "a", { path: "src/one.ts" });
-		body.toolResult("a", { content: "1\n2\n3\n4\n5\n6", isError: false });
+		body.toolRunning("a");
 		writes.length = 0;
 		tick();
 		expect(writes.join("")).toContain(`${COLOR_ON.code}`); // the only cell has it
 		body.toolStart("read_file", "b", { path: "src/two.ts" });
-		body.toolResult("b", { content: "1\n2\n3\n4\n5\n6", isError: false });
+		body.toolRunning("b");
 		writes.length = 0;
 		tick();
 		const frame = writes.join("");
