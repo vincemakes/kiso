@@ -17,9 +17,20 @@
  * never close anything, so no arriving byte can reach backwards.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MdStream, renderBlock, renderMarkdown, type MdBlock } from "../src/md.js";
 import { MD_BENCHMARK } from "./helpers/md-benchmark.js";
+
+// the renderer is TTY-only by construction (palette() returns the empty
+// codes off a TTY, which is what keeps pipes byte-identical) — these
+// assertions are about the STYLED path, so the palette is turned on.
+beforeEach(() => {
+	Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+});
+
+afterEach(() => {
+	delete (process.stdout as { isTTY?: boolean }).isTTY;
+});
 
 /** Feed `text` through the scanner in chunks of `n` characters. */
 function fed(text: string, n: number): MdStream {
