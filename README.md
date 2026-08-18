@@ -259,11 +259,29 @@ npx @vincemakes/kiso-code chat   # or run without installing
 ```
 kiso [sessionId]               interactive session (default command)
 kiso chat [sessionId]          same as above
+kiso resume                    pick a session to continue (the picker)
 kiso resume <id> [prompt]      continue a session in a new process
-kiso sessions                  list durable sessions
+kiso sessions                  list durable sessions, with their state
 kiso help                      this help
 ```
 
+- **Navigation (0.10.0).** `kiso resume` with no id opens a PICKER: one row
+  per session, `↑↓` to walk, type to filter, `⏎` to continue, `esc` to
+  leave. Each row wears a **durability badge** — the state kiso will
+  actually resume into, read from the session's own durable log and
+  nothing else:
+
+  | badge | means | what `kiso resume` will do |
+  |---|---|---|
+  | `✓` | the run ended cleanly | continue from a settled session |
+  | `✗` | the run ended some other way (error, aborted, max turns) | continue from where it stopped |
+  | `▌` | **no terminal event — interrupted mid-run** | resume the trajectory exactly, from its durable prefix |
+  | `?` | the uncertain ledger is not empty | ask you to rule on the interrupted side effect first |
+  | `◌` | a permission request nobody answered | put the question back in front of you |
+
+  `kiso sessions` prints the same rows on a terminal (its PIPED output is
+  unchanged — that is a machine interface). `/model` with no argument
+  opens the same kind of picker over your configured profiles.
 - Tools: read file · list directory · search text · write/edit file · shell.
   Writes and shell sit behind the approval policy: the run **pauses**, asks
   `approve write_file? (y/n)`, persists the decision, and resumes the same

@@ -178,11 +178,26 @@ npx @vincemakes/kiso-code chat   # 或不安装直接跑
 ```
 kiso [sessionId]               interactive session (default command)
 kiso chat [sessionId]          same as above
+kiso resume                    pick a session to continue (the picker)
 kiso resume <id> [prompt]      continue a session in a new process
-kiso sessions                  list durable sessions
+kiso sessions                  list durable sessions, with their state
 kiso help                      this help
 ```
 
+- **导航(0.10.0)。** 不带 id 的 `kiso resume` 会打开一个选择器:每个会话一行,
+  `↑↓` 走动、输入即过滤、`⏎` 续上、`esc` 离开。每行都带一枚**持久性徽章**——
+  它是 kiso 真正会恢复进去的状态,只从该会话自己的持久日志读出:
+
+  | 徽章 | 含义 | `kiso resume` 会做什么 |
+  |---|---|---|
+  | `✓` | 运行干净结束 | 从一个已了结的会话继续 |
+  | `✗` | 运行以别的方式结束(错误、中止、超轮次) | 从它停下的地方继续 |
+  | `▌` | **没有 terminal 事件——运行中途被打断** | 从持久前缀精确续上该轨迹 |
+  | `?` | uncertain 账本非空 | 先请你对被打断的副作用作出裁决 |
+  | `◌` | 有没人回答的审批请求 | 把那个问题重新摆到你面前 |
+
+  `kiso sessions` 在终端上打印同样的行(它的**管道**输出不变——那是机器接口)。
+  不带参数的 `/model` 会在你配置的 profile 上打开同一类选择器。
 - 工具:读文件 · 列目录 · 搜索文本 · 写/编辑文件 · shell。写与 shell 在审批策略之后:运行**暂停**,问 `approve write_file? (y/n)`,持久化裁决,恢复同一运行(ADR-0024)。
 - **范围化读取(0.1.27,token 轮):** 读取可设范围——`read_file` 接受 `offset`/`limit`(1 基行),大文件默认只返回头部 200 行,`search_text` 上限 50 条摘录,`list_dir` 上限 200 条。每次截断都带可执行的续读提示(`… N more lines (call again with offset=…)`、`… +N more matches (narrow the pattern)`)——模型总有确定性路径拿到完整内容。系统提示引导在一轮内批量独立调用(并行执行让它很快)、先定位再读、永不重读未变的文件。
 - 会话是 `$KISO_HOME/sessions` 下的追加式 JSONL——退出、重启、`kiso resume <id>`,对话以连续 seq 继续。
