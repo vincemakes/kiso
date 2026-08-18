@@ -977,8 +977,9 @@ long-session divergence study) — it is not extrapolated here.
 
 **The Durable Execution Contract is frozen** (ADR-0051, the 0.2.x line): the
 session format and its recovery semantics are contract, every invariant
-enforced by the gates below, and the version line is the semver public
-promise of that ABI (ADR-0051 Amendment 1). The road here: the
+enforced by the gates below, and the 0.2.x line is where the semver public
+promise of that ABI is expressed (ADR-0051 Amendment 2, which superseded
+Amendment 1's 1.0.0 wording; the real 1.0 is owner-decreed). The road here: the
 reliable-session alpha and its four hardening rounds (areas 1-7, A-F,
 one through nine, and the fourth adversarial round — see
 `docs/plans/2026-08-03-reliable-session-alpha.md`), the **kiso code**
@@ -1005,9 +1006,11 @@ below is proven by a gate in `npm run check`:
   the log, ADR-0002 — and the prompt-cache byte discipline: the same event
   prefix projects to the same message prefix, byte for byte, pinned by
   three regression tests), and the execution ledger keyed by framework
-  `executionId` (ADR-0025): a failed non-idempotent execution is UNCERTAIN
-  until a human decides — a confirmed success is never re-run, a new
-  logical call always runs.
+  `executionId` (ADR-0025): a confirmed success is never re-run, a new
+  logical call always runs, and uncertainty is the crash window alone — an
+  execution that started and never reported (ADR-0038; a receipted failure
+  is a clean failure whose result carries the honest partial-side-effect
+  note, and the retry re-passes the approval chain).
 - **runtime** — `createAgent` / durable multi-turn sessions / crash-safe
   JSONL store (torn-tail repair under a kernel-flock cross-process writer
   lock — upgrade requires QUARANTINE: stop every old-format process before
