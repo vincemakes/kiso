@@ -89,8 +89,8 @@ export function composeHooks(existing: HookHost | undefined, extensions: readonl
 		// message as the PREVIOUS one left it (the existing come first), and a null (veto)
 		// anywhere ends the chain immediately: never "no opinion" for the
 		// next handler to outvote. Adding an extension can therefore never
-		// make the chain MORE permissive (the approval chain's deny>ask>allow
-		// monotonicity, on the message side).
+		// make the chain MORE permissive (the approval chain's
+		// deny > allow > ask monotonicity, on the message side).
 		out.onUserMessage = async (msg, ctx) => {
 			let current = msg;
 			for (const h of messageHandlers) {

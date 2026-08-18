@@ -12,8 +12,11 @@
  * (unstable, first-party only — see internal.ts).
  *
  * Canonical names: Agent = AgentRuntime, Session = AgentSession. The old
- * names are deprecated aliases, removed in the next major (additive,
- * ADR-0051 Amendment 1 — release rounds move the cli minor).
+ * names are deprecated aliases, removed in the next major (additive). The
+ * cadence is ADR-0051 Amendment 4 — the LOCKSTEP line: all thirteen public
+ * packages share one version, a release round is a minor on the line and a
+ * fix-only round a patch. (Amendment 1's per-package counters, which moved
+ * the cli minor on its own, are superseded.)
  */
 
 // agent
