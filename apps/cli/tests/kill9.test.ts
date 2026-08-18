@@ -171,9 +171,57 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
     sys.exit(0)
 `;
 
+/** EC-1 ② — the parallel cell's tool, shipped the way a third party would
+ *  ship one: a plain .mjs the loader discovers in KISO_EXTENSIONS_DIR (the
+ *  bench-allow.mjs precedent).
+ *
+ *  Why the cell needs its own tool at all. It used to drive three `shell`
+ *  calls, and `shell` declares no effects — which after EC-1 means EXCLUSIVE,
+ *  so the kernel serializes them and only one started event can be on disk at
+ *  a time. The kill predicate waits for THREE, so the cell would time out and
+ *  its multi-uncertainty coverage would quietly vanish. Lowering the
+ *  predicate to one would delete exactly what this row exists to prove.
+ *
+ *  So the concurrency is bought the only way EC-1 allows: a TRUTHFUL
+ *  declaration. `concurrency: "shared"` is honest here — every invocation
+ *  writes its OWN marker path, so no two calls can touch the same file.
+ *  `precommitSafe` is deliberately NOT declared: these calls must stay
+ *  commit-gated and must still meet the human, exactly as the shell calls
+ *  did. That the declaration survives the disk loader at all is proven
+ *  separately (ec1-extension-effects.test.ts) — this cell depends on it.
+ *
+ *  A second, welcome consequence: the sleep is a timer INSIDE the agent
+ *  process, not a detached child, so the process-group SIGKILL takes it with
+ *  it. The old cell had to hunt the shell's own process group by command line
+ *  and kill that too, or the interrupted command would wake up 8s later and
+ *  write its marker after the assertions. That whole hazard is gone. */
+const SLOW_TOOLS_EXT = `import { writeFile } from "node:fs/promises";
+
+export default {
+	name: "slow-tools",
+	tools: [
+		{
+			name: "slow_touch",
+			description: "sleep, then write a marker file",
+			parameters: {
+				type: "object",
+				properties: { path: { type: "string" }, ms: { type: "number" } },
+				required: ["path", "ms"],
+			},
+			effects: { concurrency: "shared" },
+			execute: async (input) => {
+				await new Promise((r) => setTimeout(r, input.ms));
+				await writeFile(input.path, "applied\\n", "utf8");
+				return { content: \`touched \${input.path}\`, isError: false };
+			},
+		},
+	],
+};
+`;
+
 /** The 0.1.26 parallel variant driver: ONE turn with THREE concurrent
- *  shell calls — three approvals, the kill when THREE started events are
- *  on disk, and on resume EACH uncertain verdict is answered. */
+ *  slow_touch calls — three approvals, the kill when THREE started events
+ *  are on disk, and on resume EACH uncertain verdict is answered. */
 const PTY_DRIVER_PARALLEL = `
 import pty, os, sys, time, select, signal
 
@@ -228,10 +276,12 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         read_until("▌ ".encode(), 20)
         os.write(fd, b"go\\r")
         for _ in range(3):
-            read_until(b"approve shell", 30)   # the dock-less fallback question (the 0-row pty — no panel)
+            read_until(b"approve slow_touch", 30)   # the dock-less fallback question (the 0-row pty — no panel)
             os.write(fd, b"y\\r")
-        # The kill predicate: THREE started events on disk (the parallel
-        # turn launched all three concurrently).
+        # The kill predicate: THREE started events on disk. Under EC-1 that
+        # is only reachable because slow_touch declares concurrency:
+        # "shared" — an undeclared tool would serialize and never put three
+        # on disk at once.
         deadline = time.time() + 20
         while time.time() < deadline:
             try:
@@ -242,20 +292,10 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
             except FileNotFoundError:
                 pass
             time.sleep(0.05)
+        # The whole agent process group. The sleeps are timers inside that
+        # process — no detached child to hunt down, unlike the shell calls
+        # this cell used to drive.
         os.kill(-pid, signal.SIGKILL)
-        import subprocess
-        try:
-            ps = subprocess.check_output(["ps", "-eo", "pid=,pgid=,command="]).decode(errors="replace")
-        except Exception:
-            ps = ""
-        for line in ps.splitlines():
-            parts = line.split(None, 2)
-            if len(parts) < 3 or "marker-p" not in parts[2]:
-                continue
-            try:
-                os.kill(-int(parts[1]), signal.SIGKILL)
-            except (ProcessLookupError, ValueError):
-                pass
         time.sleep(0.5)
         try:
             os.kill(pid, signal.SIGKILL)
@@ -372,22 +412,31 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptP
 	}, 180_000);
 
 	it("0.1.26 (ADR-0024 Amd) — a kill mid-PARALLEL execution leaves MULTIPLE uncertain executions; each verdict resolves, the resume completes", async () => {
-		// The parallel variant: ONE turn with THREE concurrent shell calls
-		// (8s each, the window is 4 — all three run at once). The kill
+		// The parallel variant: ONE turn with THREE concurrent slow_touch
+		// calls (8s each, the window is 4 — all three run at once). The kill
 		// lands when all THREE started events are on disk → three
-		// uncertain executions. The resume answers EACH verdict (rerun);
-		// the durable approvals apply; the re-executions run; the
+		// uncertain executions. The resume answers EACH verdict; the
 		// trajectory completes.
+		//
+		// EC-1 ② rewrote the tool this cell drives, not what it proves. The
+		// coverage is unchanged and deliberately not reduced: three
+		// simultaneous interrupted executions, three separate verdicts, one
+		// resume. What changed is that the overlap is now EARNED by a
+		// declaration instead of assumed — see SLOW_TOOLS_EXT above.
 		const dir = mkdtempSync(join(tmpdir(), "kiso-k9p-"));
 		const home = join(dir, "home");
 		const workdir = join(dir, "work");
 		mkdirSync(workdir, { recursive: true });
+		// The extension is installed into the SAME hermetic dir the driver
+		// exports as KISO_EXTENSIONS_DIR, so the real ~/.kiso is never read.
+		mkdirSync(join(home, "ext"), { recursive: true });
+		writeFileSync(join(home, "ext", "slow-tools.mjs"), SLOW_TOOLS_EXT, "utf8");
 		const parallelScript = [
 			{
 				events: [
-					{ type: "tool_call_end", callId: "p1", name: "shell", input: { command: "sleep 8 && touch marker-p1.txt" } },
-					{ type: "tool_call_end", callId: "p2", name: "shell", input: { command: "sleep 8 && touch marker-p2.txt" } },
-					{ type: "tool_call_end", callId: "p3", name: "shell", input: { command: "sleep 8 && touch marker-p3.txt" } },
+					{ type: "tool_call_end", callId: "p1", name: "slow_touch", input: { path: "marker-p1.txt", ms: 8000 } },
+					{ type: "tool_call_end", callId: "p2", name: "slow_touch", input: { path: "marker-p2.txt", ms: 8000 } },
+					{ type: "tool_call_end", callId: "p3", name: "slow_touch", input: { path: "marker-p3.txt", ms: 8000 } },
 					{ type: "stop", reason: "tool_use" },
 				],
 			},
@@ -410,9 +459,11 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(di
 		const ledger = executionLedger(records.map((r) => r.event));
 		const uncertain = [...ledger.values()].filter((r) => r.status === "uncertain");
 		// ALL THREE parallel executions were interrupted — the parallel
-		// variant's signature.
+		// variant's signature, and the direct evidence that the shared
+		// declaration was honored: three overlapping executions, not three
+		// serialized ones (an undeclared tool would have left ONE uncertain).
 		expect(uncertain).toHaveLength(3);
-		expect(uncertain.map((u) => u.name)).toEqual(["shell", "shell", "shell"]);
+		expect(uncertain.map((u) => u.name)).toEqual(["slow_touch", "slow_touch", "slow_touch"]);
 		expect(records.some((r) => r.event.type === "terminal")).toBe(false);
 
 		// ── Phase 2: a FRESH process resumes; EACH verdict answered; the

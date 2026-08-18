@@ -206,6 +206,48 @@ const CALLING_TURN: readonly AdapterEvent[] = [
 ];
 const DONE_TURN: readonly AdapterEvent[] = [{ type: "stop", reason: "end_turn", seq: 0 }];
 
+/** EC-1 ⑥ — an adapter whose stream yields its whole turn and then HANGS
+ *  before the iterator completes. That window is exactly the stop-hold: the
+ *  stop has arrived and is held in memory, the kernel is still draining, and
+ *  no durable stop exists. Crash-pair A lives here and nowhere else — the
+ *  gated adapter above holds BEFORE the stream, which is a different crash. */
+function holdAfterStreamAdapter(gate: EffectGate, turn: readonly AdapterEvent[]): Adapter {
+	return {
+		stream() {
+			return {
+				async *[Symbol.asyncIterator]() {
+					for (const ev of turn) yield ev;
+					await gate.boundary("model", async () => {}); // the stream never ends — the stop stays held
+				},
+			};
+		},
+	};
+}
+
+/** A tool whose side effect is one marker file PER CALL — two calls in one
+ *  turn have to be told apart to see which of them actually ran. `effects`
+ *  is passed through so a cell can build the exclusive/shared pair the FIFO
+ *  barrier is about. */
+function perCallMarkerTool(
+	dir: string,
+	name = "web_search",
+	effects?: Tool["effects"],
+): { tool: Tool<{ query: string }>; ran: () => string[] } {
+	const ran: string[] = [];
+	const tool = defineTool<{ query: string }>({
+		name,
+		description: "Search",
+		parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+		...(effects !== undefined ? { effects } : {}),
+		execute: async (input) => {
+			ran.push(input.query);
+			writeFileSync(join(dir, `effect-${input.query}.txt`), input.query, "utf8");
+			return { content: `results for ${input.query}`, isError: false };
+		},
+	});
+	return { tool, ran: () => ran };
+}
+
 /** The reopen: the process restarted — fresh handles adopt the prefix. */
 function reopenAgent(dir: string, adapter: Adapter, tool?: Tool<{ query: string }>, defer = false) {
 	const agent = createAgent({
@@ -637,5 +679,268 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		for await (const ev of session2.resume()) events.push(ev);
 		expect(terminalOf(events)).toMatchObject({ outcome: { kind: "completed" } });
 		expect(recordsOf(dir).filter((e) => e.type === "tool_result" && e.executionId === "ex-1")).toHaveLength(1);
+	});
+});
+
+// ── EC-1 ⑥ — the commit boundary's own crash cells ────────────────────────
+//
+// The matrix above was built around three durable boundaries: the persist,
+// the model call, the tool effect, the human verdict. EC-1 adds a fourth —
+// the DURABLE TURN COMMIT — and with it a new class of crash window that did
+// not exist before: the stop is HELD in memory while the stream drains, so a
+// process can now die with a complete tool call on disk and no stop after
+// it. Pre-EC-1 that window was microseconds wide (the stop was persisted the
+// instant it arrived); it is now the whole stream tail.
+//
+// The four cells below are the boundary's crash surface, one per waiting
+// state a call can be in: held stop, held barrier, committed-not-launched,
+// held ask. Their common claim is the one ① exists to make — WAITING IS NOT
+// STARTING. In every cell the interrupted call has emitted no started event,
+// so nothing is uncertain and nothing needs a human to adjudicate reality.
+describe("EC-1 ⑥ — the crash cells of the Turn Commit boundary", () => {
+	it("crash A/B — the pair: the two durable prefixes differ by EXACTLY ONE STOP, and that one event decides whether the call may run", async () => {
+		// The round's showcase proof, asserted literally rather than
+		// described. Both arms run the SAME trajectory through the SAME
+		// scripted turn; the only difference is where the process dies.
+		//
+		//   A: the stop arrived, the iterator is NOT done — kill -9.
+		//   B: the iterator is done, the stop is persisted — kill -9 before
+		//      anything started.
+		//
+		// A's prefix must be B's prefix minus its last event, byte for byte,
+		// and that last event must be the stop. Everything else about the two
+		// crashes is identical, so the recovery verdicts that follow are
+		// attributable to that single durable fact and to nothing else.
+
+		// ── arm A: killed during the stop-hold ──
+		const dirA = mkdtempSync(join(tmpdir(), "kiso-mx-a-"));
+		const gateA = new EffectGate();
+		const { tool: toolA, calls: callsA } = markerTool(join(dirA, "effect.txt"));
+		const liveA = new SessionStore(dirA);
+		const sessionA = await createAgent({
+			model: "faux",
+			store: liveA,
+			tools: [toolA],
+			adapter: holdAfterStreamAdapter(gateA, CALLING_TURN),
+		}).session({ id: "s" });
+		gateA.park("model");
+		const itA = sessionA.run("go")[Symbol.asyncIterator]();
+		expect(await stepUntilHold(itA, gateA)).toBe("held");
+
+		const prefixA = recordsOf(dirA);
+		// The crash state: the call is durable, the stop is NOT, and no
+		// effectful started event exists.
+		expect(prefixA.some((e) => e.type === "tool_call_end")).toBe(true);
+		expect(prefixA.some((e) => e.type === "stop")).toBe(false);
+		expect(prefixA.some((e) => e.type === "tool_execution_started")).toBe(false);
+		expect(callsA()).toBe(0);
+		// An uncommitted turn is a DRAFT — never an invocation to execute.
+		expect(planAt(dirA)).toEqual({ kind: "ABANDON_DRAFT", voidFromSeq: 0 });
+
+		await processDeath(itA);
+		liveA.closeAll();
+
+		// ── arm B: killed after the commit, before anything started ──
+		const dirB = mkdtempSync(join(tmpdir(), "kiso-mx-b-"));
+		const gateB = new EffectGate();
+		const { tool: toolB, calls: callsB } = markerTool(join(dirB, "effect.txt"));
+		const { adapter: adapterB } = scriptedAdapter([CALLING_TURN, DONE_TURN]);
+		const liveB = new SessionStore(dirB);
+		const sessionB = await createAgent({ model: "faux", store: liveB, tools: [toolB], adapter: adapterB }).session({ id: "s" });
+		gatedSession(sessionB, gateB);
+		const itB = sessionB.run("go")[Symbol.asyncIterator]();
+		await nextEventOfType(itB, "stop"); // the commit itself: the stop is now durable
+		gateB.park("persist");
+		expect(await stepUntilHold(itB, gateB)).toBe("held"); // the next write — THE CRASH
+
+		const prefixB = recordsOf(dirB);
+		expect(prefixB.some((e) => e.type === "stop")).toBe(true);
+		expect(prefixB.some((e) => e.type === "tool_execution_started")).toBe(false);
+		expect(callsB()).toBe(0);
+		// A committed call re-enters the ORDINARY approval pipeline — the
+		// same program a fresh call walks.
+		expect(planAt(dirB)).toEqual({ kind: "DECIDE_PERMISSION", invocationSeq: callSeqOf(prefixB) });
+
+		// ── the pair, asserted as bytes ──
+		expect(JSON.stringify(prefixB.slice(0, prefixA.length))).toBe(JSON.stringify(prefixA));
+		expect(prefixB).toHaveLength(prefixA.length + 1);
+		expect(prefixB.at(-1)!.type).toBe("stop");
+
+		await processDeath(itB);
+		liveB.closeAll();
+
+		// ── and the two resumes diverge exactly as the one event says ──
+		const resumeA = await drain(await reopenAgent(dirA, scriptedAdapter([DONE_TURN]).adapter, toolA), async () => {});
+		expect(terminalOf(resumeA)).toMatchObject({ outcome: { kind: "completed" } });
+		expect(callsA()).toBe(0); // A never executes: the draft is voided
+		expect(recordsOf(dirA).some((e) => e.type === "model_output_abandoned")).toBe(true);
+
+		const resumeB = await drain(await reopenAgent(dirB, adapterB, toolB), async () => {});
+		expect(terminalOf(resumeB)).toMatchObject({ outcome: { kind: "completed" } });
+		expect(callsB()).toBe(1); // B executes, exactly once
+		expect(recordsOf(dirB).filter((e) => e.type === "tool_execution_started")).toHaveLength(1);
+	});
+
+	it("C1 — crash during the BARRIER DRAIN: the sibling held behind an exclusive call has no started receipt, and runs on the resume", async () => {
+		// Two undeclared calls in one committed turn: absence is the
+		// conservative truth, so the second waits behind the first's FIFO
+		// barrier. The process dies while the first is inside its handler.
+		// The claim: waiting consumes no execution slot AND leaves no trace —
+		// the held sibling is clean, not uncertain, so the human is asked
+		// about ONE interrupted execution, never two.
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mx-c1-"));
+		const gate = new EffectGate();
+		const { tool, ran } = perCallMarkerTool(dir);
+		const TWO_CALLS: readonly AdapterEvent[] = [
+			{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "one" }, seq: 0 },
+			{ type: "tool_call_end", callId: "c2", name: "web_search", input: { query: "two" }, seq: 1 },
+			{ type: "stop", reason: "tool_use", seq: 2 },
+		];
+		const { adapter } = scriptedAdapter([TWO_CALLS, DONE_TURN]);
+		const live = new SessionStore(dir);
+		const session = await createAgent({ model: "faux", store: live, tools: [gatedTool(gate, tool)], adapter }).session({ id: "s" });
+		gatedSession(session, gate);
+
+		gate.park("tool");
+		const it = session.run("go")[Symbol.asyncIterator]();
+		expect(await stepUntilHold(it, gate)).toBe("held");
+		expect(gate.peek()).toBe("tool");
+
+		const events = recordsOf(dir);
+		const started = events.filter((e) => e.type === "tool_execution_started");
+		// EXACTLY ONE started: the first call is inside its handler, the
+		// second is held at the barrier and has emitted nothing.
+		expect(started).toHaveLength(1);
+		expect(started[0]!.callId).toBe("c1");
+		expect(ran()).toEqual([]); // the gate holds the first BEFORE its effect
+		expect(gate.heldCount()).toBe(1); // and the second never reached the boundary at all
+		expect(planAt(dir)).toEqual({ kind: "RESOLVE_UNCERTAIN", executionId: started[0]!.executionId });
+
+		await processDeath(it);
+		live.closeAll();
+
+		// The human adjudicates the ONE interrupted execution; the barrier's
+		// waiter is an ordinary committed call and simply runs.
+		const session2 = await reopenAgent(dir, adapter, tool);
+		await expect(drain(session2, async () => {})).rejects.toThrow(/uncertain/);
+		await session2.resolveUncertain(started[0]!.executionId, "abandoned");
+		const events2 = await drain(session2, async () => {});
+		expect(terminalOf(events2)).toMatchObject({ outcome: { kind: "completed" } });
+		expect(ran()).toEqual(["two"]); // only the held sibling ran; the abandoned one was never rerun
+		expect(existsSync(join(dir, "effect-one.txt"))).toBe(false);
+		expect(existsSync(join(dir, "effect-two.txt"))).toBe(true);
+	});
+
+	it("C2 — crash BETWEEN the commit and an EXCLUSIVE LAUNCH: neither the exclusive call nor the shared sibling behind its barrier left a receipt", async () => {
+		// The window ③ opens by design: the turn is committed, the handler
+		// has not been entered, and a barrier is already installed — the
+		// sibling declared `concurrency: "shared"` but was ACCEPTED after an
+		// exclusive invocation, so it is waiting too (the FIFO fence). The
+		// process dies with a fence in memory and nothing in the world.
+		//
+		// The claim, and the reason this is not crash B with an extra call:
+		// the barrier is scheduler state, and scheduler state does NOT
+		// survive a crash — nor does it need to. Both calls are ordinary
+		// committed invocations on disk, neither is uncertain, and the resume
+		// re-derives the same order from the same durable prefix.
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mx-c2-"));
+		const gate = new EffectGate();
+		const { tool: exclusive, ran: ranX } = perCallMarkerTool(dir, "web_search");
+		// Shared, but NOT precommitSafe: it is commit-required like everything
+		// else, and it queues behind the exclusive call accepted before it.
+		const { tool: shared, ran: ranS } = perCallMarkerTool(dir, "read_thing", { concurrency: "shared" });
+		const MIXED_TURN: readonly AdapterEvent[] = [
+			{ type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "x" }, seq: 0 },
+			{ type: "tool_call_end", callId: "c2", name: "read_thing", input: { query: "s" }, seq: 1 },
+			{ type: "stop", reason: "tool_use", seq: 2 },
+		];
+		const { adapter } = scriptedAdapter([MIXED_TURN, DONE_TURN]);
+		const live = new SessionStore(dir);
+		const session = await createAgent({ model: "faux", store: live, tools: [exclusive, shared], adapter }).session({ id: "s" });
+		gatedSession(session, gate);
+
+		const it = session.run("go")[Symbol.asyncIterator]();
+		await nextEventOfType(it, "stop"); // the commit
+		gate.park("persist");
+		expect(await stepUntilHold(it, gate)).toBe("held"); // the exclusive call's started write — THE CRASH
+
+		const events = recordsOf(dir);
+		expect(events.some((e) => e.type === "stop")).toBe(true);
+		expect(events.filter((e) => e.type === "tool_call_end")).toHaveLength(2);
+		// The whole cell: a committed, un-launched exclusive call leaves NO
+		// started receipt — and neither does the sibling its fence is holding.
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+		expect(ranX()).toEqual([]);
+		expect(ranS()).toEqual([]);
+		expect(planAt(dir)).toEqual({ kind: "DECIDE_PERMISSION", invocationSeq: callSeqOf(events) });
+
+		await processDeath(it);
+		live.closeAll();
+
+		const agent2 = createAgent({ model: "faux", store: new SessionStore(dir), tools: [exclusive, shared], adapter });
+		const session2 = await agent2.session({ id: "s" });
+		const events2 = await drain(session2, async () => {});
+		expect(terminalOf(events2)).toMatchObject({ outcome: { kind: "completed" } });
+		// Both ran, exactly once each, in CALL order — the fence's order is
+		// re-derived from the log, never restored from memory.
+		expect(ranX()).toEqual(["x"]);
+		expect(ranS()).toEqual(["s"]);
+		const started = recordsOf(dir).filter((e) => e.type === "tool_execution_started");
+		expect(started.map((e) => e.callId)).toEqual(["c1", "c2"]);
+	});
+
+	it("C3 — crash during a HELD POST-COMMIT ASK: the request is durable and the stop is ALREADY before it", async () => {
+		// H1 pinned the same recovery verdict before EC-1, but the durable
+		// shape it crashed into was different: the ask fired mid-stream, so a
+		// pending request could sit in a log with NO stop after the call.
+		// ③ moved the ask behind the commit, so this cell adds the ordering
+		// claim H1 could not make — a person was asked only about a turn that
+		// had already proven valid — and the pre-EC-1 shape survives only as
+		// the generation-compat clause in recovery-plan.ts.
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mx-c3-"));
+		const gate = new EffectGate();
+		const marker = join(dir, "effect.txt");
+		const { tool, calls } = markerTool(marker);
+		const { adapter } = scriptedAdapter([CALLING_TURN, DONE_TURN]);
+		const live = new SessionStore(dir);
+		const session = await createAgent({
+			model: "faux",
+			store: live,
+			tools: [tool],
+			adapter,
+			permissionPolicy: { rules: [{ tool: "web_search", action: "defer" }] },
+		}).session({ id: "s" });
+		gatedSession(session, gate);
+
+		const it = session.run("go")[Symbol.asyncIterator]();
+		const pause = await nextEventOfType(it, "permission_requested"); // the run holds for the human — THE CRASH STATE
+
+		const events = recordsOf(dir);
+		const stopSeq = events.find((e) => e.type === "stop")!.seq;
+		const requestSeq = events.find((e) => e.type === "permission_requested")!.seq;
+		// The ordering claim: the turn was committed BEFORE the question.
+		expect(requestSeq).toBeGreaterThan(stopSeq);
+		expect(events.some((e) => e.type === "permission_decided")).toBe(false);
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+		expect(calls()).toBe(0);
+		expect(planAt(dir)).toEqual({ kind: "WAIT_PERMISSION", invocationSeq: callSeqOf(events) });
+		expect(pause.callId).toBe("c1");
+
+		await processDeath(it);
+		live.closeAll();
+
+		// The resume re-presents the SAME question and the human answers for
+		// real; the effect happens once, after a verdict that was never given
+		// about an invalid turn.
+		const session2 = await reopenAgent(dir, adapter, tool, true);
+		let reasked = 0;
+		const events2 = await drain(session2, async (ev) => {
+			reasked++;
+			await session2.approve(ev.decisionId, true);
+		});
+		expect(terminalOf(events2)).toMatchObject({ outcome: { kind: "completed" } });
+		expect(reasked).toBe(1);
+		expect(calls()).toBe(1);
+		expect(recordsOf(dir).filter((e) => e.type === "permission_decided")).toHaveLength(1);
 	});
 });
