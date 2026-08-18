@@ -35,9 +35,9 @@
  */
 
 import { palette } from "./render.js";
-import { displayWidth } from "./width.js";
+import { breakable, charWidth, displayWidth } from "./width.js";
 import { escapeTerminal } from "./render.js";
-import { foldWords, visibleWidth } from "./components.js";
+import { visibleWidth } from "./components.js";
 
 /** The block kinds. `fence-open`/`fence-line` are separate kinds on
  *  purpose: a fence's rows must be able to freeze ONE AT A TIME. */
@@ -283,13 +283,13 @@ function blockBody(b: MdBlock, W: number): string[] {
 			// fence body line committable on its own.
 			return [`${p.dim}│${b.lang === "" ? "" : ` ${b.lang}`}${p.reset}`];
 		case "fence-line": {
-			const gutter = `${p.dim}│${p.reset} `;
-			return foldLineWidth(`${p.code}${b.lines[0] ?? ""}${p.reset}`, W - 2).map((r) => `${gutter}${r}`);
+			const gutter = `${p.dim}\u2502${p.reset} `;
+			return foldLineWidth(`${p.code}${b.lines[0] ?? ""}${p.reset}`, W - visibleWidth(gutter)).map((r) => `${gutter}${r}`);
 		}
 		case "quote": {
 			const text = b.lines.map((l) => QUOTE.exec(l)?.[1] ?? l).join(" ");
-			const gutter = `${p.dim}▏${p.reset} `;
-			return wrap(`${p.dim}${inlineSpans(text, p.dim)}${p.reset}`, W - 2, "", "").map((r) => `${gutter}${r}`);
+			const gutter = `${p.dim}\u258f${p.reset} `;
+			return wrap(`${p.dim}${inlineSpans(text, p.dim)}${p.reset}`, W - visibleWidth(gutter), "", "").map((r) => `${gutter}${r}`);
 		}
 		case "list":
 			return listRows(b, W);
@@ -506,18 +506,201 @@ function tableRows(b: MdBlock, W: number): string[] {
 	return b.lines.flatMap((l) => wrap(l, W, "", ""));
 }
 
-/** Slice ③ owns this: the CJK break class + the width-correct hang.
- *  Until then it is the whitespace-only wrap the tree already had, with
- *  the prefixes bolted on — which is precisely the shape the recon
- *  found overflows on a space-free CJK run. */
-function wrap(text: string, W: number, first: string, hang: string): string[] {
-	const room = Math.max(1, W - visibleWidth(first));
-	return foldWords(text, room).map((r, i) => `${i === 0 ? first : hang}${r}`);
+// ---- the wrapper ----------------------------------------------------
+
+const SGR_AT = /^\x1b\[[0-9;]*m/;
+
+/** CJK closing punctuation — may not OPEN a row (a line that begins
+ *  with a comma reads as broken). The smallest honest kinsoku set. */
+const NO_START = "、。，．：；？！）」』】〕·…”’";
+/** CJK opening punctuation — may not END one. */
+const NO_END = "（「『【〔“‘";
+
+interface Tok {
+	readonly text: string;
+	readonly w: number;
+	readonly space: boolean;
 }
 
-/** A hard fold at an exact width (fence bodies: code is not prose). */
+/** May a row break between `prev` and `ch`? Only where a script allows
+ *  it — and never so that a closing mark opens a row or an opening mark
+ *  ends one. */
+function breaks(prev: string, ch: string): boolean {
+	if (NO_START.includes(ch) || NO_END.includes(prev)) return false;
+	return breakable(ch.codePointAt(0)!) || breakable(prev.codePointAt(0)!);
+}
+
+/** Split styled text into break-eligible tokens. SGR sequences are
+ *  zero-width and ride the token they precede; spaces are their own
+ *  tokens (they vanish at a break); a CJK character is its own token,
+ *  which is the whole fix — a space-free run stops being one word. */
+function tokens(text: string): Tok[] {
+	const out: Tok[] = [];
+	let cur = "";
+	let w = 0;
+	let prev = "";
+	const flush = (): void => {
+		if (cur === "") return;
+		out.push({ text: cur, w, space: false });
+		cur = "";
+		w = 0;
+	};
+	for (let i = 0; i < text.length; ) {
+		const m = SGR_AT.exec(text.slice(i));
+		if (m !== null) {
+			cur += m[0];
+			i += m[0].length;
+			continue;
+		}
+		// code POINT stepping — a surrogate pair is one character and can
+		// never be cut in half (the halves would measure one column each
+		// while the terminal draws two replacement glyphs)
+		const cp = text.codePointAt(i)!;
+		const ch = String.fromCodePoint(cp);
+		i += ch.length;
+		if (ch === " " || ch === "\t") {
+			flush();
+			out.push({ text: " ", w: 1, space: true });
+			prev = ch;
+			continue;
+		}
+		if (cur !== "" && prev !== "" && breaks(prev, ch)) flush();
+		cur += ch;
+		w += charWidth(cp);
+		prev = ch;
+	}
+	flush();
+	return out;
+}
+
+/** The SGR spans still open after `text`, given those open before it. */
+function opensAfter(text: string, before: readonly string[]): string[] {
+	let open = [...before];
+	for (const m of text.matchAll(/\x1b\[[0-9;]*m/g)) {
+		if (m[0] === "\x1b[0m") open = [];
+		else if (m[0] === "\x1b[23m") open = open.filter((s) => s !== "\x1b[3m");
+		else open.push(m[0]);
+	}
+	return open;
+}
+
+/** Break one over-wide token by code point — a long identifier or URL
+ *  that cannot fit a whole row. Never a truncation: every piece is
+ *  emitted. */
+function pieces(text: string, room: number): string[] {
+	const out: string[] = [];
+	let cur = "";
+	let w = 0;
+	for (let i = 0; i < text.length; ) {
+		const m = SGR_AT.exec(text.slice(i));
+		if (m !== null) {
+			cur += m[0];
+			i += m[0].length;
+			continue;
+		}
+		const cp = text.codePointAt(i)!;
+		const ch = String.fromCodePoint(cp);
+		const cw = charWidth(cp);
+		if (w + cw > room && w > 0) {
+			out.push(cur);
+			cur = "";
+			w = 0;
+		}
+		cur += ch;
+		w += cw;
+		i += ch.length;
+	}
+	if (cur !== "") out.push(cur);
+	return out;
+}
+
+/**
+ * Wrap styled text into rows of at most W columns, with a HANGING
+ * INDENT: `first` prefixes the first row, `hang` every later one, and
+ * the text column is what continuations align to.
+ *
+ * The SGR spans open at a break are closed at the row's end and
+ * reopened at the next row's start, so no style leaks into the padding
+ * and none is lost across the break. Italic's own close (23) is
+ * understood, so `\x1b[3m…\x1b[23m` inside a bold heading tracks
+ * correctly.
+ *
+ * Every emitted row measures ≤ W through the SAME width authority the
+ * compositor's invariant ① measures with — which is the only way the
+ * two can agree.
+ */
+export function mdWrap(text: string, W: number, first: string, hang: string): string[] {
+	const rows: string[] = [];
+	// a degenerate geometry (a deeply nested marker in a very narrow
+	// terminal) can make the PREFIX itself wider than the row. The prefix
+	// is chrome we generate, so it yields: it is cut to leave room for one
+	// WIDE character (two columns — a row that cannot hold one CJK glyph
+	// cannot hold the content it exists for), and the invariant holds
+	// instead of throwing on our own decoration.
+	const fit = (s: string): string => (visibleWidth(s) <= W - 2 ? s : (pieces(s, Math.max(0, W - 2))[0] ?? ""));
+	let prefix = fit(first);
+	let room = Math.max(1, W - visibleWidth(prefix));
+	let line = "";
+	let w = 0;
+	let open: string[] = [];
+	let pend = "";
+	let pendW = 0;
+	const close = (): void => {
+		rows.push(`${prefix}${line}${open.length > 0 ? "\x1b[0m" : ""}`);
+		prefix = fit(hang);
+		room = Math.max(1, W - visibleWidth(prefix));
+		line = open.join("");
+		w = 0;
+		pend = "";
+		pendW = 0;
+	};
+	for (const t of tokens(text)) {
+		if (t.space) {
+			// a space at a break vanishes; inside a row it is held until the
+			// next word earns it
+			if (w > 0) {
+				pend += t.text;
+				pendW += t.w;
+			}
+			continue;
+		}
+		if (w > 0 && w + pendW + t.w > room) close();
+		if (t.w > room) {
+			// too wide for any row: break it by code point, each piece its own
+			// row except the last, which carries on
+			const parts = pieces(t.text, room);
+			for (let k = 0; k < parts.length; k += 1) {
+				if (k > 0) close();
+				line += parts[k];
+				w += k === parts.length - 1 ? charsWidth(parts[k]!) : room;
+				open = opensAfter(parts[k]!, open);
+			}
+			continue;
+		}
+		line += pend + t.text;
+		w += pendW + t.w;
+		open = opensAfter(pend + t.text, open);
+		pend = "";
+		pendW = 0;
+	}
+	rows.push(`${prefix}${line}${open.length > 0 ? "\x1b[0m" : ""}`);
+	return rows;
+}
+
+function charsWidth(text: string): number {
+	return visibleWidth(text);
+}
+
+/** The block-level entry: wrap `text` under a first/hang prefix pair. */
+function wrap(text: string, W: number, first: string, hang: string): string[] {
+	return mdWrap(text, W, first, hang);
+}
+
+/** A fence body line: code, not prose — it still wraps rather than
+ *  truncating (the no-silent-truncate ruling), and every row carries
+ *  the gutter. */
 function foldLineWidth(line: string, W: number): string[] {
-	return foldWords(line, Math.max(1, W));
+	return mdWrap(line, Math.max(1, W), "", "");
 }
 
 /** The style table, in one place. The round's normative mapping —

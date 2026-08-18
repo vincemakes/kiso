@@ -98,8 +98,21 @@ describe("v2a/v5/KC3: the palette", () => {
 	 * being filled, not a fourth colour: the gate below is unchanged in
 	 * scope — a chromatic entry outside the three is still a regression.
 	 */
+	/**
+	 * THE MARKDOWN-RENDER CLASS (TUI2-MD, the one declared class of moved
+	 * assertions this round). MOVED #1 — the mono gate's allowed set gains
+	 * SGR 3 and 23.
+	 *
+	 * The gate's SCOPE is unchanged and its question is unchanged: is any
+	 * entry CHROMATIC? Italic is not. It is an attribute, exactly like
+	 * bold (1), dim (2) and reverse (7) already in the set — no hue, no
+	 * 256-cube index, and a terminal without italics simply draws the
+	 * text. MD-1 (the owner's circle) put it in the alphabet because
+	 * `*italic*` needed a rendering the mono discipline could accept; 23
+	 * rides along as its close, the same way 27 rides along with 7.
+	 */
 	it("KC3: no chromatic entry survives outside the three functional colors", () => {
-		const MONO = /^\x1b\[(?:0|1|2|7|27|38;5;(?:23[2-9]|24\d|25[0-5]))m$/; // SGR 0/1/2/7/27 + the 256-cube greyscale ramp
+		const MONO = /^\x1b\[(?:0|1|2|3|7|23|27|38;5;(?:23[2-9]|24\d|25[0-5]))m$/; // SGR 0/1/2/3/7/23/27 + the 256-cube greyscale ramp
 		const FUNCTIONAL: Record<string, string> = { red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m" };
 		for (const [name, code] of Object.entries(COLOR_ON)) {
 			if (name in FUNCTIONAL) {
