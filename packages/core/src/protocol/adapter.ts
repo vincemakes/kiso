@@ -8,9 +8,9 @@
  * events carry `seq`). The three properties that let a ReAct loop stream
  * without buffering and without losing its place.
  *
- * WHY not a `Promise<Event[]>`: a buffered adapter is what made agno's
- * streaming a second-class feature bolted onto a batch loop. The contract
- * shape IS the architecture — see ADR-0001.
+ * WHY not a `Promise<Event[]>`: a buffered adapter is what made the
+ * reference implementation's streaming a second-class feature bolted onto
+ * a batch loop. The contract shape IS the architecture — see ADR-0001.
  *
  * Adapters translate provider wire events INTO `Event`. They never see tool
  * handlers (only `ToolSpec` projections) — the kernel is the only thing that

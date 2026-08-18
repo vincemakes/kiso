@@ -2,8 +2,8 @@
  * L2 — the ReAct loop. The kernel's only loop; everything else is harness.
  *
  * An async generator that yields every event as it happens (never buffers a
- * turn into a list — the agno failure), and converges on exactly one
- * `terminal` event per run (ADR-0004).
+ * turn into a list — the reference implementation's failure), and converges
+ * on exactly one `terminal` event per run (ADR-0004).
  *
  * SINGLE TRUTH (Phase B): the loop holds ONE EventLog. Messages are never
  * stored alongside it — every adapter call derives them via

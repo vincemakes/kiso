@@ -41,7 +41,7 @@ async function collect(
 
 const terminalOf = (events: readonly Event[]) => events.filter((e): e is TerminalEvent => e.type === "terminal").at(-1)!;
 
-describe("the truncation guard (the pi protection)", () => {
+describe("the truncation guard (the reference implementation's protection)", () => {
 	it("a truncation stop fails the WHOLE batch — null inputs, nothing executes, the turn voids as max_tokens", async () => {
 		let executed = 0;
 		const events = await collect(
