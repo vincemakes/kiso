@@ -283,8 +283,14 @@ function blockBody(b: MdBlock, W: number): string[] {
 			// fence body line committable on its own.
 			return [`${p.dim}│${b.lang === "" ? "" : ` ${b.lang}`}${p.reset}`];
 		case "fence-line": {
+			// a fence body's INDENTATION is its content. The wrapper drops
+			// leading spaces \u2014 right for prose, a lie for code \u2014 so the indent
+			// rides as the row prefix instead, and a wrapped long line hangs
+			// under it rather than returning to the gutter.
+			const src = (b.lines[0] ?? "").replace(/\t/g, "    ");
+			const indent = /^ */.exec(src)![0];
 			const gutter = `${p.dim}\u2502${p.reset} `;
-			return foldLineWidth(`${p.code}${b.lines[0] ?? ""}${p.reset}`, W - visibleWidth(gutter)).map((r) => `${gutter}${r}`);
+			return foldLineWidth(`${p.code}${src.slice(indent.length)}${p.reset}`, W - visibleWidth(gutter), indent).map((r) => `${gutter}${r}`);
 		}
 		case "quote": {
 			const text = b.lines.map((l) => QUOTE.exec(l)?.[1] ?? l).join(" ");
@@ -760,10 +766,10 @@ function wrap(text: string, W: number, first: string, hang: string): string[] {
 }
 
 /** A fence body line: code, not prose — it still wraps rather than
- *  truncating (the no-silent-truncate ruling), and every row carries
- *  the gutter. */
-function foldLineWidth(line: string, W: number): string[] {
-	return mdWrap(line, Math.max(1, W), "", "");
+ *  truncating (the no-silent-truncate ruling), every row carries the
+ *  gutter, and the source line's own indent prefixes every row. */
+function foldLineWidth(line: string, W: number, indent = ""): string[] {
+	return mdWrap(line, Math.max(1, W), indent, indent);
 }
 
 /** The style table, in one place. The round's normative mapping —

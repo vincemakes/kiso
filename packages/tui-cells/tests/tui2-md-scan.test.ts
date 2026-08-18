@@ -173,6 +173,27 @@ describe("TUI2-MD ① — the block scanner", () => {
 		expect(s.blocks().map((b) => b.gap)).toEqual([false, true, true, true, true, true, true, true, true]);
 	});
 
+	it("T-MD-47: a fence body line keeps its INDENTATION — code is not prose", () => {
+		// found by the slice-⑥ walkthrough (the s4 frames): the wrapper drops
+		// leading spaces, which is right for prose and a LIE for code. A
+		// fence body's indentation IS its content, and a rendered block that
+		// silently reindents someone's code is worse than not rendering it.
+		const src = "```ts\nfunction f() {\n  if (x) {\n    return 1;\n  }\n}\n```\n";
+		expect(renderMarkdown(src, 60).map((r) => r.replace(/\x1b\[[0-9;]*m/g, ""))).toEqual([
+			"│ ts",
+			"│ function f() {",
+			"│   if (x) {",
+			"│     return 1;",
+			"│   }",
+			"│ }",
+		]);
+		// and a wrapped long code line hangs under its own indent
+		const long = `\`\`\`\n    ${"x".repeat(40)}\n\`\`\`\n`;
+		const rows = renderMarkdown(long, 24).map((r) => r.replace(/\x1b\[[0-9;]*m/g, ""));
+		expect(rows[1]!.startsWith("│     x")).toBe(true);
+		expect(rows[2]!.startsWith("│     x")).toBe(true);
+	});
+
 	it("T-MD-8: the tail never closes a block on a partial line", () => {
 		// "#" could still become "#hashtag" (a paragraph) rather than a
 		// heading — a decision taken on an incomplete line is a decision

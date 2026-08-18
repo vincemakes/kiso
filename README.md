@@ -913,6 +913,7 @@ this repo; the numbers beside it are the bench's, honest footnotes kept.
 | task | official extension — opt-in since 0.3.0 (built-in 0.1.45–0.2.2), durable long-horizon working memory (task_set) | `extensions/task/tests`, `apps/cli/tests/task-e2e.test.ts` |
 | context economy ● | microcompact + /compact (model summary) + prompt-cache discipline | `packages/core/tests/prompt-cache.test.ts`, `summarize.test.ts` |
 | project `.kiso` trust | content-digest gate, one ask, sticky refusal | `apps/cli/tests/project-trust.test.ts` |
+| markdown under the mono discipline | a hand-rolled zero-dependency renderer streams assistant prose under BLOCK-FREEZE — a closed block commits to scrollback and is never re-rendered, only the open tail block is live; attributes over colour, zero syntax highlighting, raw markdown bytes in a pipe | `packages/tui-cells/tests/tui2-md-*.test.ts`, `packages/tui/tests/tui2-md-compositor.test.ts`, `apps/cli/tests/tui2-md-benchmark.test.ts` |
 
 The bench, one fixture, one model (deepseek-v4-flash), interleaved
 same-day runs, order rotated per round — the 2026-08-16 three-way
@@ -1045,7 +1046,24 @@ below is proven by a gate in `npm run check`:
   the accent (the you> prompt, the banner tagline, ✓ marks, command
   names, the user block's ▍ rail, the input brick); a light-gray
   inline-code tint (256 color 252) marks backtick spans in assistant
-  text; dim carries metadata. The functional exceptions are the only
+  text; dim carries metadata. TUI2-MD — **assistant prose renders
+  markdown** under that same discipline: headings are bold with the
+  marker stripped and the numbering kept, `**bold**` is bold, `*italic*`
+  is SGR 3 (an attribute, not a colour — the round's ONE addition to the
+  alphabet, harmless on a terminal without italics), backtick spans take
+  the existing tint, fenced code gets a dim `│` gutter and a dim language
+  tag with ZERO highlighting, lists normalize to `•` with a HANGING
+  indent so wrapped items align to their text column, tables draw with
+  dim rails and degrade at narrow widths to one record per row rather
+  than truncating anything, blockquotes get a dim `▏`, links render as
+  bright text plus a dim `(url)`, and `~~strike~~` keeps its literal
+  markers (SGR 9's terminal support is too fragmented to promise). CJK
+  breaks per character, so a space-free run wraps correctly instead of
+  overflowing. Streaming is BLOCK-FREEZE: a block that has closed commits
+  to the native scrollback and is never re-rendered, so the live region
+  holds one block no matter how long the message is. A pipe still gets
+  the model's own markdown bytes, unchanged, and `/think` and `/last`
+  stay raw. The functional exceptions are the only
   colour left in the interface: green for the approval diff's additions
   and red for errors — with yellow reserved for warnings under the same
   rule (the palette has no yellow entry today). Everything else is
