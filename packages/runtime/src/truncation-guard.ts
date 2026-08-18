@@ -1,27 +1,50 @@
 /**
  * 0.1.40 (R-C item 3) — the truncation guard: a runtime adapter wrapper.
  *
- * The reference implementation's protection: a truncated stream (stopReason
- * max_tokens/length) can
- * yield tool args that parse and validate but are silently incomplete —
- * executing them is the destructive-bug class. The provider adapters already
- * see the stop reason; the RUNTIME vetoes execution of the whole batch:
+ * WHY: a truncated stream (stop reason max_tokens/length) can yield tool
+ * args that PARSE and VALIDATE while being silently incomplete — a delete
+ * whose `filter` never arrived, an edit missing its second hunk. Executing
+ * those is the destructive-bug class. The adapters already know the stop
+ * reason, so the veto belongs at that boundary.
  *
- *   - tool_call_end events are held per turn (the deltas pass through live —
- *     the UI still shows the calls building, only the COMPLETION is gated);
- *   - a compatible stop flushes the held calls in order, then the stop — the
- *     kernel launches them exactly as before (the parallel window survives;
- *     only the 0.1.26 mid-stream launch timing is gone — the cost of the
- *     guarantee: the turn's truncated intent is never half-executed);
- *   - a truncation stop flushes the held calls with input: null — the
- *     kernel's EXISTING invalid-input denial fails the whole batch without
- *     executing anything (the same honest null the adapters already emit
- *     for unparseable partials — zero new protocol surface), and the turn
- *     still ends with the max_tokens terminal (the loop's voided settle).
+ * THE CONTRACT this wrapper establishes:
  *
- * The kernel machinery (the streaming launch, the window, the voided
- * settle) is untouched — the gate lives at the adapter boundary, where the
- * stop reason is already known.
+ *   1. HOLD. A `tool_call_end` is withheld until the turn's stop reason is
+ *      known. No call completes — so none launches — before the provider
+ *      has said why it stopped. The deltas still pass through live: a
+ *      surface shows the calls building; only the COMPLETION is gated.
+ *   2. RELEASE ON A VALID STOP. A compatible stop flushes the held calls
+ *      unchanged and in CALL order, then the stop itself. Downstream sees
+ *      exactly what the provider sent.
+ *   3. max_tokens VOIDS THE WHOLE BATCH. Every held call is flushed with
+ *      `input: null`, and the kernel's EXISTING invalid-input denial fails
+ *      all of them without executing anything (the same honest null the
+ *      adapters already emit for unparseable partials — zero new protocol
+ *      surface). The turn still ends on the max_tokens terminal (the
+ *      loop's voided settle). All-or-nothing per turn: a truncated intent
+ *      is never HALF executed.
+ *   4. NO STOP AT ALL drops the held calls entirely — the kernel already
+ *      voids that malformed turn (invalid_request).
+ *
+ * THE CONSERVATISM SPLIT — core and runtime differ here BY DESIGN:
+ *
+ *   - the RAW KERNEL STREAMS. `loop()` over a bare adapter launches each
+ *     validated, policy-allowed call the moment its `tool_call_end` lands
+ *     (ADR-0024 Amendment 1, streaming execution): maximum overlap with
+ *     the model stream, trusting calls as they arrive.
+ *   - the FLAGSHIP RUNTIME STOP-GATES. `run.ts` composes this wrapper into
+ *     EVERY run unconditionally, so the product pays a real latency cost —
+ *     the 0.1.26 mid-stream launch timing is gone (the parallel window is
+ *     NOT: the released batch still runs concurrently) — to buy the
+ *     guarantee.
+ *
+ * So the kernel's default is speed and the flagship's default is safety;
+ * an embedder choosing the kernel alone chooses the streaming launch, and
+ * applying this wrapper is how they opt into the guarantee. The kernel
+ * machinery (the launch, the window, the voided settle) is untouched
+ * either way — the gate lives at the adapter boundary.
+ *
+ * Pinned by `packages/runtime/tests/truncation-guard.test.ts`.
  */
 
 import type { Adapter, AdapterEvent } from "@vincemakes/kiso-core";
