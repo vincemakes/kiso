@@ -1592,7 +1592,20 @@ export class Body {
 			}
 			if (leaving < skip) out.push(`\x1b[${leaving + 1};1H\x1b[0J`);
 			out.push(`\x1b[${H};1H`);
-			for (let i = 0; i < skip; i += 1) out.push("\n");
+			// TUI2-R2pre ② — scroll the rows that LEFT THE WINDOW SINCE THE
+			// LAST FRAME (`leaving`), never `skip`, which is the window's
+			// ABSOLUTE top. Scrolling the absolute top re-pushed the whole
+			// history's worth of rows on EVERY full redraw — and a live-region
+			// shrink takes this path, so that was most frames of a real
+			// session. The ED above had just blanked everything below row
+			// `leaving`, so what those surplus LFs carried into the terminal's
+			// scrollback was blank rows: the large blank bands mid-history of
+			// the owner's field report. The SCREEN never showed it because the
+			// repaint below covers every row 1..H (the V6-1 rule), and the
+			// house emulator drops scrolled rows on the floor — so no gate
+			// could see it either. Measured on the 5-turn 80x24 repro: the
+			// scrollback went from 162 blank rows of 168 to 14 of 52.
+			for (let i = 0; i < leaving; i += 1) out.push("\n");
 		}
 		if (!overlay) this.#lastSkip = skip;
 		let r = 1;
@@ -1712,6 +1725,16 @@ export class Body {
 			const anchorRow = this.#lastAnchorRow > 0 ? this.#lastAnchorRow : H - 2;
 			if (H > anchorRow) out.push(`\x1b[${H - anchorRow}B`);
 		}
+		// TUI2-R2pre ②: this count is the COMMIT count on purpose, and it
+		// stays. It reads like the same mistake the full path made, but the
+		// two paths are doing different jobs: the full path REPAINTS every
+		// row, so anything it scrolls is a duplicate of what it is about to
+		// draw; the steady path does not repaint the frozen band, and the
+		// rows it scrolls carry the PRE-FRAME live copies of the cells that
+		// just committed — the A7 single-copy discipline (the old live band
+		// is EL'd first, so the repaint below is the only copy left). Making
+		// this `leaving` was measured: the A7 gate fails at 40x24 frame 106
+		// with the greeting duplicated in the terminal.
 		for (let i = 0; i < committed.length; i += 1) out.push("\n");
 		// the bottom-up repaint, from the last row up — V6-3 + W6 + KC1:
 		// the design §03 chrome: status (H), box bottom (H−1), the
@@ -1757,6 +1780,11 @@ export class Body {
 		}
 		// 2. the STALE rows above the committed section — the scrolled old
 		//    live copies (a live-drawn cell's pre-commit position): EL.
+		//    TUI2-R2pre ②: the old band's POST-SCROLL origin shifted up by
+		//    the rows that actually left — `leaving`. It read the commit
+		//    count only because the scroll above used to BE the commit
+		//    count; with the two decoupled, the old expression erases rows
+		//    of frozen content that never moved.
 		const staleFrom = Math.max(1, this.#lastLiveTop - committed.length);
 		for (let r = staleFrom; r < liveTop - committed.length; r += 1) {
 			out.push(`\x1b[${r};1H\x1b[0K`);
