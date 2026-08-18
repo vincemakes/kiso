@@ -139,6 +139,28 @@ export async function predictDefaultRentLedger(model, { home } = {}) {
  * That absence IS the ledger statement (R9, the not-paid-no-rent
  * precedent): the side query's whole claim to being affordable is that
  * it skips the surface a run request cannot.
+ *
+ * AMENDED by finding R3v2-F1 (2026-08-18). The declared composition is
+ * unchanged in KIND — still one system prompt, still no appends, still
+ * no tools — and this function is unchanged in behaviour, because the
+ * ledger is computed FROM the prompt it is handed and so stays exact
+ * whatever the caller sends. Two facts about that caller moved, and the
+ * declaration records them:
+ *
+ *   - the system prompt is now a FIRM format contract (JSON only, the
+ *     exact schema, no prose) rather than a request for JSON. It is a
+ *     few lines longer; its rent is still the single base line, and the
+ *     line is still measured, not assumed.
+ *   - the output ceiling rose 500 → 1500. It is NOT rent and does not
+ *     appear in this ledger: the ledger prices what a request SENDS,
+ *     and a ceiling prices nothing until tokens are generated. It is
+ *     declared here anyway because the 500 was a live defect — the cap
+ *     truncated the reply mid-JSON, so the parser could never succeed —
+ *     and a number that could break a feature belongs in the record
+ *     next to the prompt it bounds.
+ *
+ * The zero-ambient-rent claim is untouched: the query still fires only
+ * on a press, so an unpressed session's ledger for this arm is empty.
  */
 export function predictSideQueryRentLedger(model, systemPrompt) {
 	return buildRentLedger({ model, base: systemPrompt });

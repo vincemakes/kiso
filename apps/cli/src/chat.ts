@@ -243,19 +243,101 @@ function approvalDiff(name: string, input: Record<string, unknown>): DiffResult 
  *  soon as it is shown: the marker describes ONE call, not a mode. */
 const amendedCalls = new Set<string>();
 
+/**
+ * R3v2-F1: the format contract, stated FIRMLY. The first cut asked for
+ * "JSON ONLY" and left it there, which a verbose model reads as a
+ * preference — it wrote three sentences of preamble, opened a fence, and
+ * the cap ended the reply mid-string. Forbidding prose, naming the exact
+ * schema, and giving the nothing-is-safer case its own literal answer
+ * are all the same instruction: there is one thing to emit and no room
+ * to be helpful in the margins.
+ *
+ * The schema is an ENVELOPE rather than a bare array because a single
+ * top-level object leaves the model nowhere to put a preamble.
+ */
 export const SAFER_SYSTEM_PROMPT = [
 	"You propose safer alternatives to a single shell/tool call a human is being asked to approve.",
-	"Answer with JSON ONLY: an array of 2-3 objects, each {\"command\": string, \"why\": string}.",
-	'"command" is the full replacement call. "why" is ONE short plain-language line saying what it does differently.',
-	"Prefer alternatives that avoid irreversible deletion. If you cannot improve on it, answer [].",
+	"Reply with JSON ONLY — no prose, no preamble, no code fence, nothing before or after the JSON.",
+	'The exact schema is {"alternatives":[{"command":"...","reason":"..."}]}, with 2-3 entries.',
+	'"command" is the full replacement call. "reason" is ONE line of plain language saying what it does differently.',
+	'Prefer alternatives that avoid irreversible deletion. If you cannot improve on it, reply {"alternatives":[]}.',
 ].join(" ");
 
-/** The side query's output ceiling. */
-export const SAFER_MAX_TOKENS = 500;
+/**
+ * R3v2-F1: the side query's output ceiling — raised from 500, which was
+ * the cap the live failures hit EXACTLY.
+ *
+ * The JSON-only reply the prompt now asks for is about 200 tokens for
+ * three alternatives, so this ceiling is a runaway guard and not a
+ * budget the answer is expected to approach: it exists so a model that
+ * ignores the contract and writes an essay still stops, not so the
+ * answer has room. Output is billed only when generated, and the query
+ * fires only on a press, so the raise costs nothing on the path that
+ * works and removes the one that could not.
+ */
+export const SAFER_MAX_TOKENS = 1500;
 
-/** The one dim line a failed ask owes the human. */
-export function saferFailureNote(_text: string): string {
-	return SAFER_DEGRADED;
+/** R3v2-F1: what a reply the budget cut in half owes the human. The
+ *  generic line is true but unactionable — it describes every failure
+ *  the ask has. This one names the cause, in the same shape, still one
+ *  dim line, still leading with what is still true. */
+export const SAFER_DEGRADED_TRUNCATED = "couldn't get safer options (the reply was cut short) — the original choices stand";
+
+/**
+ * R3v2-F1: which line a failed ask owes the human.
+ *
+ * "Cut short" is a DIAGNOSIS, so it is only said when the text actually
+ * shows it — a reply that closed its JSON and then failed our shape gets
+ * the original line, because telling that human the reply was truncated
+ * would be a confident wrong answer.
+ */
+export function saferFailureNote(text: string): string {
+	return jsonBody(text) === "truncated" ? SAFER_DEGRADED_TRUNCATED : SAFER_DEGRADED;
+}
+
+/**
+ * R3v2-F1: find the reply's JSON body by BALANCING brackets rather than
+ * by first-and-last.
+ *
+ * `indexOf("[")` / `lastIndexOf("]")` had two failure modes a verbose
+ * model hits constantly: a bracket in the trailing prose moved the end
+ * past the array, and a reply the cap cut in half had no end at all.
+ * Both returned null, and null could not say which — which is why the
+ * degradation line could not either.
+ *
+ * Returns the balanced slice, `"truncated"` when a value opens and the
+ * text ends before it closes, or null when there is no JSON value at
+ * all.
+ */
+function jsonBody(text: string): string | "truncated" | null {
+	// a CLOSED fence is content-preserving to strip. An OPEN one means
+	// the reply ended inside the block — drop the opener and let the scan
+	// below reach the same verdict from the content.
+	const closed = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+	const body = closed?.[1] ?? text.replace(/^[\s\S]*?```(?:json)?[ \t]*\r?\n/, "");
+	const start = body.search(/[[{]/);
+	if (start < 0) return null;
+	let depth = 0;
+	let inString = false;
+	let escaped = false;
+	for (let i = start; i < body.length; i += 1) {
+		const c = body[i]!;
+		if (escaped) {
+			escaped = false;
+		} else if (inString) {
+			if (c === "\\") escaped = true;
+			else if (c === '"') inString = false;
+		} else if (c === '"') {
+			inString = true;
+		} else if (c === "[" || c === "{") {
+			depth += 1;
+		} else if (c === "]" || c === "}") {
+			depth -= 1;
+			if (depth === 0) return body.slice(start, i + 1);
+			if (depth < 0) return null;
+		}
+	}
+	return "truncated";
 }
 
 /**
@@ -271,26 +353,36 @@ export function saferFailureNote(_text: string): string {
  *
  * A fenced code block is the one accommodation, because models emit it
  * constantly and it changes no content.
+ *
+ * R3v2-F1 widens that accommodation and NOTHING else. Unwrapping the
+ * named `alternatives` envelope, and reading `reason` as the spelling of
+ * `why` the prompt now asks for, are transport details: the entries that
+ * come out are verbatim the entries the model put in. That is the line
+ * between an accommodation and the salvage this parser refuses — a
+ * salvage changes WHICH alternatives are shown, and every rule that does
+ * that is still here. One bad entry still poisons the batch.
  */
 export function parseSaferOptions(text: string): SaferOption[] | null {
-	const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-	const body = (fenced?.[1] ?? text).trim();
-	const start = body.indexOf("[");
-	const end = body.lastIndexOf("]");
-	if (start < 0 || end <= start) return null;
+	const body = jsonBody(text);
+	// truncation and absence part ways in saferFailureNote(), which reads
+	// the same scan; for the list itself both are the same nothing.
+	if (body === null || body === "truncated") return null;
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(body.slice(start, end + 1));
+		parsed = JSON.parse(body);
 	} catch {
 		return null;
 	}
-	if (!Array.isArray(parsed) || parsed.length === 0) return null;
+	const envelope = typeof parsed === "object" && parsed !== null ? (parsed as { alternatives?: unknown }).alternatives : undefined;
+	const list = Array.isArray(parsed) ? parsed : Array.isArray(envelope) ? envelope : null;
+	if (list === null || list.length === 0) return null;
 	const out: SaferOption[] = [];
-	for (const item of parsed.slice(0, 3)) {
+	for (const item of list.slice(0, 3)) {
 		if (typeof item !== "object" || item === null) return null;
-		const { command, why } = item as { command?: unknown; why?: unknown };
+		const { command, reason, why } = item as { command?: unknown; reason?: unknown; why?: unknown };
 		if (typeof command !== "string" || command.trim() === "") return null;
-		out.push({ command: command.trim(), why: typeof why === "string" ? why.trim() : "" });
+		const line = typeof reason === "string" ? reason : typeof why === "string" ? why : "";
+		out.push({ command: command.trim(), why: line.trim() });
 	}
 	return out.length === 0 ? null : out;
 }
@@ -575,8 +667,15 @@ export async function consumeRun(
 						purpose: "safer-options",
 						systemPrompt: SAFER_SYSTEM_PROMPT,
 						prompt: `the pending call is: ${name} ${JSON.stringify(ev.input ?? {})}`,
-						maxTokens: 500,
+						maxTokens: SAFER_MAX_TOKENS,
 					});
+					// R3v2-F1: the failure's DIAGNOSIS is computed and tested,
+					// but it cannot reach the screen from here. The provider's
+					// only channel back to the panel is `null`, and the line the
+					// panel renders on null is a constant chosen inside the
+					// editor — so "the reply was cut short" needs that channel
+					// widened before saferFailureNote(answer) has anywhere to go.
+					// The copy and the detection wait in saferFailureNote().
 					return parseSaferOptions(answer);
 				};
 				const verdict = await askPanel(

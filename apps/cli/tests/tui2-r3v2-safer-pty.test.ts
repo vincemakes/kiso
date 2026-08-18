@@ -29,10 +29,17 @@ import { fauxScript, ptyRun, screenAt, spares } from "./helpers/pty.js";
 const RISKY = { type: "tool_call_end", callId: "r1", name: "shell", input: { command: "rm -rf build && npm run build" } };
 const AMENDED = { type: "tool_call_end", callId: "r2", name: "shell", input: { command: "npm run build" } };
 
-const ALTERNATIVES = JSON.stringify([
-	{ command: "npm run build", why: "rebuild in place, keep build/" },
-	{ command: "rm -rf build/cache && npm run build", why: "only clear the cache" },
-]);
+/** R3v2-F1: the fixture answers in the shape the prompt now ASKS for —
+ *  the `alternatives` envelope with `reason` lines. A fixture that keeps
+ *  answering in a shape the product no longer requests is a fixture that
+ *  stops testing the live path; the bare array stays covered where it
+ *  belongs, in the parser's own suite. */
+const ALTERNATIVES = JSON.stringify({
+	alternatives: [
+		{ command: "npm run build", reason: "rebuild in place, keep build/" },
+		{ command: "rm -rf build/cache && npm run build", reason: "only clear the cache" },
+	],
+});
 
 /** Every request line in the session's trace sidecar. */
 function requests(home: string): Record<string, unknown>[] {

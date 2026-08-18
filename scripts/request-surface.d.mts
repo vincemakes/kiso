@@ -29,5 +29,11 @@ export function predictDefaultRentLedger(model: string, options?: { home?: strin
 /** TUI2-R3v2 ③ (the safer-options seam, adjudicated 2026-08-18) — the
  *  SIDE-QUERY arm. A side query sends its own short system prompt and
  *  nothing else: no extension appends, no tools. Synchronous because
- *  there is no composition to resolve. */
+ *  there is no composition to resolve.
+ *
+ *  AMENDED by finding R3v2-F1: the caller's prompt is now a firm
+ *  format contract and its output ceiling is 1500 (was 500, which
+ *  truncated the reply mid-JSON). Neither changes this signature — the
+ *  ledger is computed from the prompt passed in, and an output ceiling
+ *  is not rent. See the .mjs for the full amendment. */
 export function predictSideQueryRentLedger(model: string, systemPrompt: string): RentLine[];
