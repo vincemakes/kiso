@@ -18,7 +18,7 @@
  * tint, fold wording).
  */
 
-import { displayWidth } from "./width.js";
+import { displayWidth, visibleWidth } from "./width.js";
 // TUI2-R2pre ④: the ONE display-verb table (strings.ts, beside
 // KEY_BINDINGS). strings.js imports only render/width here, so this edge
 // adds no cycle.
@@ -37,6 +37,12 @@ import {
 	type Palette,
 	type ResumeMeta,
 } from "./render.js";
+// TUI2-MD: the markdown renderer's surface reaches the tui through this
+// module (the tui's components shim re-exports it) — one import edge,
+// and it points one way: md.ts measures with the width authority, never
+// back through here.
+import { renderBlock, type MdBlock } from "./md.js";
+export { MdStream, renderBlock, renderMarkdown, type MdBlock, type MdKind } from "./md.js";
 
 /** The spinner glyphs, cycled by the compositor's on-demand tick. */
 export const SPINNER = ["▖", "▘", "▝", "▗"];
@@ -122,24 +128,12 @@ export function foldLine(line: string, W: number): string[] {
 }
 
 /** The visible width of a rendered line (SGR stripped — the invariant
- *  the compositor enforces on every emitted line). */
-export function visibleWidth(line: string): number {
-	let w = 0;
-	for (let i = 0; i < line.length; ) {
-		if (line[i] === "\x1b") {
-			const m = /^\x1b\[[0-9;?]*[A-Za-z]/.exec(line.slice(i));
-			if (m !== null) {
-				i += m[0].length;
-				continue;
-			}
-			i += 1;
-			continue;
-		}
-		w += displayWidth(line[i]!);
-		i += 1;
-	}
-	return w;
-}
+ *  the compositor enforces on every emitted line). TUI2-MD ⑤: the body
+ *  moved to width.ts (the width authority's own home) so the markdown
+ *  renderer can measure without importing this module back — the
+ *  re-export is verbatim, so every existing importer and the barrel see
+ *  exactly what they saw. */
+export { visibleWidth } from "./width.js";
 
 /** A component: render the display lines for one piece of state. */
 export interface Component {
@@ -242,6 +236,14 @@ export type BodyCell =
 			verdict: { decision: "approved" | "denied"; decidedBy?: string; reason?: string } | null;
 	  }
 	| { kind: "text"; text: string; done: boolean }
+	/** TUI2-MD ⑤ — ONE markdown block of assistant body text. The cell is
+	 *  the commit unit the compositor already had, so block-freeze needs
+	 *  no new commit machinery: a CLOSED block is a DONE cell and the
+	 *  natural loop freezes it; the OPEN tail block is the one cell left
+	 *  live. `block` carries the block's SOURCE (never rendered rows), so
+	 *  a resize re-renders it at the new width exactly as every other
+	 *  cell does. */
+	| { kind: "md"; block: MdBlock; done: boolean }
 	| { kind: "notice"; text: string; done: true }
 	| { kind: "banner"; version: string; extensionsText: string; resume: ResumeMeta[]; done: true }
 	| { kind: "raw"; lines: string[]; done: true; wrap?: "words" }
@@ -285,6 +287,8 @@ export function cellComponent(cell: BodyCell): Component {
 			return new ToolExecution(cell);
 		case "text":
 			return new AssistantMessage(cell);
+		case "md":
+			return new MarkdownBlock(cell);
 		case "notice":
 			return new ErrorLine(cell);
 		case "banner":
@@ -1314,6 +1318,18 @@ class AssistantMessage implements Component {
 		const text = escapeTerminal(this.cell.text);
 		const wrapped = foldWords(text, W);
 		return wrapped.length > 0 ? wrapped.map((l) => colorInlineCode(l)) : [""];
+	}
+}
+
+/** TUI2-MD ⑤ — one markdown block. Pure in (block, W): the same source
+ *  and the same width give the same bytes, which is the freeze property
+ *  the commit path relies on. The block carries its own leading blank
+ *  (the style table's rhythm), so the compositor's W11 join formula
+ *  steps aside between two of these. */
+class MarkdownBlock implements Component {
+	constructor(private readonly cell: { block: MdBlock }) {}
+	render(W: number, _ctx: FrameCtx): string[] {
+		return renderBlock(this.cell.block, W);
 	}
 }
 

@@ -134,6 +134,32 @@ export function displayWidth(text: string): number {
 	return w;
 }
 
+/** The visible width of a RENDERED line — the same table, asked with
+ *  the SGR/CSI sequences skipped. The compositor's invariant ① measures
+ *  with this, so every producer of a screen row must measure with it
+ *  too. TUI2-MD ⑤: moved here verbatim from components.ts, where it had
+ *  lived since the extraction. The markdown renderer needs it and
+ *  components.ts needs the markdown renderer — and a width question
+ *  belongs to the width authority anyway. components.ts re-exports it,
+ *  so every existing importer and the barrel are untouched. */
+export function visibleWidth(line: string): number {
+	let w = 0;
+	for (let i = 0; i < line.length; ) {
+		if (line[i] === "\x1b") {
+			const m = /^\x1b\[[0-9;?]*[A-Za-z]/.exec(line.slice(i));
+			if (m !== null) {
+				i += m[0].length;
+				continue;
+			}
+			i += 1;
+			continue;
+		}
+		w += displayWidth(line[i]!);
+		i += 1;
+	}
+	return w;
+}
+
 /** A LEAD's display width — the prompt / the panel's phase lead,
  *  ANSI-stripped. W23: the ONE width authority shared by the editor
  *  (selfRender, #reflow), the compositor's #inputRow, and editCol — a
