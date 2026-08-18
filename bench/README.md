@@ -790,3 +790,30 @@ for the reviewer" per the band method. Raw runs:
 `bench/runs/kiso-T*-v8-*-{A,B}` (local, gitignored). The B-side runs
 additionally produced the E1 trace sidecars under their kiso-homes —
 the trace-report rendered them per-request with zero invalid lines.
+
+## BM-1 — the benchmark methodology amendment (2026-08-18)
+
+Grounded in findings TUI2-B1 (0.9.0) and TUI2-B2 (0.11.0): the absolute
+band conflates common-mode provider drift with product regressions; the
+interleave collects the pairing that cancels it, and the band verdict
+was discarding that structure. From 0.12.0:
+
+1. **The paired verdict is the blocker.** Ceremonies run interleaved
+   rc+control pairs; `paired-compare.mjs` judges per-pair RELATIVE
+   deltas d = (rc − ctl)/ctl mechanically: verify 100% · median(d_cost)
+   ≤ +6% · no pair > +50% · median(d_wall) ≤ +25%. Margins derive from
+   the n=8 historical pairs (provisional — re-derive at 0.13.0; never
+   tuned to the round under judgment). Criteria freeze in the ready-kit
+   BEFORE the runs.
+2. **The absolute band demotes to an anomaly detector** — computed and
+   reported ("the world is strange today"), never blocking alone.
+3. **Causal-relevance gating.** The blocker set follows the release's
+   change surface, declared in the round spec: ui/renderer → the
+   PTY/visual/pipe gates block, the live paired bench is informational;
+   request-affecting (prompt/tool-schema/compaction/context) → the
+   request gates AND the paired bench block; execution/recovery → the
+   crash matrix and kill -9 gates block; provider → contract + live
+   integration. Mixed surfaces take the strictest tier.
+4. **The principle:** when evidence is ambiguous, do not wait for a
+   better world — design the next observation that discriminates
+   between the competing explanations.
