@@ -237,7 +237,10 @@ export class Body {
 		// only listener hygiene: every Dock call now reaches THIS instance,
 		// so a resize heard by the old one would have a compositor that owns
 		// no part of the screen paint a full redraw over it.
-		compositorRef?.#detachResize();
+		// (an explicit null check, not `?.#` — TS18030: an optional chain
+		// cannot contain a private identifier, and vitest transpiles without
+		// type-checking, so only `npm run typecheck` sees the difference)
+		if (compositorRef !== null) compositorRef.#detachResize();
 		compositorRef = this;
 		// the Dock façade's bindings may arrive BEFORE this construction
 		// (the CLI binds the editor state in makeLineInput, then constructs
