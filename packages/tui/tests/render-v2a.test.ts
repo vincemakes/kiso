@@ -51,12 +51,18 @@ describe("v2a/v5/KC3: the palette", () => {
 		expect(COLOR_ON.red).toBe("\x1b[31m");
 		expect(COLOR_ON.dim).toBe("\x1b[2m");
 		expect(COLOR_ON.green).toBe("\x1b[32m");
+		// TUI2-R2 ①: warn — the mono ruling's third functional exception
+		// ("green ✓, yellow warn and red error") finally has an entry. It
+		// carries the uncertain badge: a state that is neither success nor
+		// failure but a question addressed to the human.
+		expect(COLOR_ON.warn).toBe("\x1b[33m");
 		expect(COLOR_ON.reset).toBe("\x1b[0m");
 		expect(COLOR_OFF.bold).toBe("");
 		expect(COLOR_OFF.code).toBe("");
 		expect(COLOR_OFF.red).toBe("");
 		expect(COLOR_OFF.dim).toBe("");
 		expect(COLOR_OFF.green).toBe("");
+		expect(COLOR_OFF.warn).toBe("");
 		expect(COLOR_OFF.reset).toBe("");
 	});
 

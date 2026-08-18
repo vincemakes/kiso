@@ -77,7 +77,25 @@ export { contextRows, contextUnavailableRows, type ContextLedger } from "./conte
 export { interactivePrompt, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, type TrustArtifact } from "./strings.js";
 // KC3 §3/§5: the @ file picker's pure half — the subsequence filter, the
 // deterministic rank, and the ONE cap the CLI's file source shares.
-export { AT_CAP, AT_SKIP, AT_VISIBLE, atEmbed, atFilter, atPanelRows, atWindow, longestRun, type AtItem, type AtMatch } from "./at-picker.js";
+export { AT_CAP, AT_SKIP, AT_VISIBLE, atEmbed, atFilter, atPanelRows, atWindow, bandHeader, longestRun, type AtItem, type AtMatch } from "./at-picker.js";
+// TUI2-R2 ①–③: the session picker's pure half — the durability badge,
+// the row (picked or printed), the band, and the filter. The CARDS are
+// the cli's projection (session-cards.ts); this turns them into bytes.
+export {
+	BADGE_GLYPH,
+	idColumn,
+	sessionAge,
+	sessionBadge,
+	sessionCounterRow,
+	sessionFilter,
+	sessionListFooter,
+	sessionListRow,
+	sessionNote,
+	sessionPickerRows,
+	sessionRow,
+	type SessionCardView,
+	type SessionPickState,
+} from "./session-picker.js";
 // KC3.5 (the ask round): the ask view — the panel machinery generalized.
 // The cli composes the view and hands the answers to the tool; the keys,
 // the rows and the walk are the terminal layer's.

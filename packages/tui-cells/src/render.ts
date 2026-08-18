@@ -37,13 +37,21 @@ export interface Palette {
 	readonly dim: string;
 	readonly red: string;
 	readonly green: string; // v2e: the diff additions — diff-only (NO_COLOR falls back to the + prefix)
+	/** TUI2-R2 ①: the third functional exception, finally spelled. The
+	 *  mono-discipline ruling above names "green ✓, yellow warn and red
+	 *  error" as the ONLY functional colours; warn had no entry because
+	 *  nothing had needed it yet. The uncertain badge needs exactly it —
+	 *  a state that is neither success nor failure but a question
+	 *  addressed to the human. This is the ruling's own set gaining its
+	 *  missing member, not a fourth colour. */
+	readonly warn: string;
 	readonly code: string; // TUI v5 #16e: the inline-code tint — assistant body backtick spans only (KC3 §2: light GRAY, the mono discipline)
 	readonly rv: string; // W16: reverse video — SGR 7, closed with rvEnd (27, never SGR 0 — the chip composes with a surrounding span)
 	readonly rvEnd: string;
 	readonly reset: string;
 }
-export const COLOR_ON: Palette = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", code: "\x1b[38;5;252m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" };
-export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", code: "", rv: "", rvEnd: "", reset: "" };
+export const COLOR_ON: Palette = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m", code: "\x1b[38;5;252m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" };
+export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", rv: "", rvEnd: "", reset: "" };
 export function palette(): Palette {
 	return process.env.NO_COLOR === undefined && process.stdout.isTTY ? COLOR_ON : COLOR_OFF;
 }

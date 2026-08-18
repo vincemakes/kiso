@@ -90,7 +90,7 @@ describe("TUI2-R2 ① — the badge projection over sessions the real writer wro
 	it("a terminal `error` projects ✗, and so does `aborted` — the honest note names the outcome", async () => {
 		const s = store();
 		await writeSession(s, "broke", [
-			{ runId: "r1", events: [userInput("go"), terminal({ kind: "error", error: { code: "provider_error", retryable: false, message: "boom" } })] },
+			{ runId: "r1", events: [userInput("go"), terminal({ kind: "error", error: { code: "api_5xx", retryable: false, message: "boom" } })] },
 		]);
 		await writeSession(s, "stopped", [{ runId: "r1", events: [userInput("go"), terminal({ kind: "aborted", by: "user" })] }]);
 		expect(cardOf(s, "broke").badge).toBe("failed");
