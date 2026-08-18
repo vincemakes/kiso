@@ -26,25 +26,52 @@
  *   4. NO STOP AT ALL drops the held calls entirely — the kernel already
  *      voids that malformed turn (invalid_request).
  *
- * THE CONSERVATISM SPLIT — core and runtime differ here BY DESIGN:
+ * EC-1 ④ — THE CONTRACT AMENDMENT. The kernel closed the destructive half
+ * of this by itself: `max_tokens` cannot carry a tool call, so a truncated
+ * turn never reaches Turn Commit, and a commit-required handler never starts
+ * before that commit. What max_tokens means now, in full — the four clauses
+ * that replace the old "zero tools executed on truncation" line:
  *
- *   - the RAW KERNEL STREAMS. `loop()` over a bare adapter launches each
- *     validated, policy-allowed call the moment its `tool_call_end` lands
- *     (ADR-0024 Amendment 1, streaming execution): maximum overlap with
- *     the model stream, trusting calls as they arrive.
- *   - the FLAGSHIP RUNTIME STOP-GATES. `run.ts` composes this wrapper into
- *     EVERY run unconditionally, so the product pays a real latency cost —
- *     the 0.1.26 mid-stream launch timing is gone (the parallel window is
- *     NOT: the released batch still runs concurrently) — to buy the
- *     guarantee.
+ *   1. COMMIT-REQUIRED CALLS NEVER EXECUTE. On either path, guarded or bare.
+ *      This is the kernel's guarantee, not the wrapper's, and it holds for
+ *      every tool that declares nothing — which is every write, edit and
+ *      shell tool kiso ships.
+ *   2. PRECOMMIT-SAFE CALLS MAY ALREADY HAVE EXECUTED, and that execution is
+ *      DECLARED HARMLESS. A tool carrying `effects.precommitSafe` says
+ *      running it before the turn commits is harmless for EVERY invocation —
+ *      read-only, free, local. Bare, such a call launches during the stream
+ *      and a truncated turn may find its receipt already durable. That is
+ *      the certificate being spent, not a leak.
+ *   3. THE TURN IS NOT COMMITTED. No durable stop is written. The calls are
+ *      an uncommitted draft, which is what the resume sees.
+ *   4. PRECOMMIT RESULTS NEVER LEGITIMIZE IT (invariant 7). A durable
+ *      receipt from clause 2 is an execution fact and nothing more: it does
+ *      not commit the invocation, and it does not make the model turn valid.
  *
- * So the kernel's default is speed and the flagship's default is safety;
- * an embedder choosing the kernel alone chooses the streaming launch, and
- * applying this wrapper is how they opt into the guarantee. The kernel
- * machinery (the launch, the window, the voided settle) is untouched
- * either way — the gate lives at the adapter boundary.
+ * WHAT THE WRAPPER STILL BUYS, given all that:
  *
- * Pinned by `packages/runtime/tests/truncation-guard.test.ts`.
+ *   - REPORTING. It releases the held batch with `input: null`, so every
+ *     call is ANSWERED with an honest invalid_input result. Bare, the same
+ *     turn leaves its calls with no results at all — an uncommitted draft
+ *     the resume must void.
+ *   - THE PRECOMMIT CASE. The hold sits UPSTREAM of the kernel: a held call
+ *     never reaches the loop until the stop is known, so clause 2's "may
+ *     already have executed" is exactly what the guard removes. Guarded,
+ *     nothing runs at all — not even a declared read.
+ *
+ * So the conservatism split did not disappear, it MOVED. It used to be the
+ * difference between a destructive edit running and not running; it is now
+ * the difference between a harmless read running and not running, plus the
+ * reporting. The kernel's default is speed for CERTIFIED calls and safety
+ * for everything else; the flagship runtime composes this wrapper into every
+ * run and pays the latency to have neither.
+ *
+ * Pinned by `packages/runtime/tests/truncation-guard.test.ts` (clauses 1-3
+ * of the wrapper contract, byte-unchanged across EC-1 — the amendment did
+ * not weaken the guard) and by
+ * `packages/runtime/tests/sc1-truncation-contract-pins.test.ts` (clause 4 of
+ * the wrapper contract, and the four amended max_tokens clauses above — the
+ * declared TRUNCATION CLASS).
  */
 
 import type { Adapter, AdapterEvent } from "@vincemakes/kiso-core";

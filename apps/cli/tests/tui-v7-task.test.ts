@@ -331,11 +331,46 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		// liveTop=1 (the stable origin — the live section, untouched by
 		// A8b). The gate: the run's forms all appear, each at its own
 		// row, none clamped at 1.
+		//
+		// EC-1 ③ (the SCHEDULER-TIMING class) — this gate's two COUNTING
+		// claims are restated, and the measurement is worth recording. The
+		// same run, before and after the round:
+		//
+		//   base   rows 18, 26, 35, 44, 53, 62 (0..5 done), then 4, 13 (6/7
+		//          done) twice — ten forms, each intermediate state at its
+		//          OWN increasing row;
+		//   EC-1   rows 31, 31, 31, 31 (0/2/4/6 done) and 30 (8 done) — five
+		//          forms, the run's states redrawn at a STABLE origin.
+		//
+		// Neither the TUI nor the CLI changed. What changed is the cadence
+		// the events arrive in: task_set declares no effects, so its ten
+		// calls now wait for Turn Commit and then serialize behind the FIFO
+		// barrier, landing in the settle drain instead of one-per-stream-
+		// event. Fewer commits between redraws means the block repaints in
+		// place rather than being scrolled into the record each time — which
+		// is what this test's own title asks for ("redraw ONE live block in
+		// place"), and it leaves ONE block in the scrollback where the base
+		// left six. It is a real, user-visible cadence change and it is
+		// reported as such; it is not a rendering defect, and no tui/cli
+		// source was touched to make this pass.
+		//
+		// So the claims that SURVIVE are the ones that were never about the
+		// cadence: the block redraws more than once during the run, no form
+		// is clamped at row 1 (the A8b defect stays dead), and the states go
+		// FORWARD. The exact number of forms is deliberately not pinned —
+		// it is a function of how many render ticks fall between results,
+		// which moves with machine load (3-5 forms observed across runs, ten
+		// on the base). The "one form per row" claim retires with the same
+		// reasoning: an in-place redraw legitimately repaints the same row,
+		// so that assertion can no longer tell the clamp pile apart from the
+		// intended behavior. What it was really protecting — no accumulation
+		// of blocks — is pinned harder by ③ below, on the final grid.
 		const forms = [...turn.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[1m▞\x1b\[0m task · 10 items · 1 active · ([0-9]+) done/g)];
-		const intermediate = forms.filter((m) => Number(m[2]!) < 6); // the RUN's forms — the states before the final (the settle's repaint restates the 6/7-done states at their own rows)
-		expect(intermediate.length).toBeGreaterThan(4); // the run's forms redrew, each painted once
+		const intermediate = forms.filter((m) => Number(m[2]!) < 6); // the RUN's forms — the states before the final
+		expect(intermediate.length).toBeGreaterThanOrEqual(2); // the block is LIVE: it redrew during the run, not once at the settle
 		expect(intermediate.every((m) => m[1] !== "1")).toBe(true); // no row-1 clamp pile — every form at its true row
-		expect(new Set(intermediate.map((m) => m[1])).size).toBe(intermediate.length); // one form per row — the single-copy discipline
+		const done = forms.map((m) => Number(m[2]!));
+		expect(done).toEqual([...done].sort((a, b) => a - b)); // the redraws go forward — never a stale state repainted over a newer one
 
 		// ② the collapse held during the run: the done items stayed hidden
 		// behind the cut family — the run's forms ride the during-run band

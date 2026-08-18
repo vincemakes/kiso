@@ -33,6 +33,27 @@
  * precommit-safe calls MAY already have executed and that execution is
  * declared harmless; the turn is NOT committed; precommit results never
  * legitimize it.
+ *
+ * THE DECLARED TRUNCATION CLASS — every member, enumerated:
+ *
+ *   1. this file, "the split, unguarded" (below): `executed === 1` →
+ *      `executed === 0`. The pin said a truncated turn's call had already
+ *      run by the time the kernel learned the turn was truncated. The kernel
+ *      now refuses to commit, so nothing runs.
+ *   2. this file, the two cases added for EC-1 ④ (below): clause 2 of the
+ *      amendment — a PRECOMMIT-SAFE call on a truncated turn, bare vs
+ *      guarded. Nothing moved here; the clause had no pin at all, and a
+ *      contract clause without one is how `concurrencySafe` became fiction.
+ *   3. `packages/core/tests/execution-gate.test.ts`, the max_tokens case:
+ *      same inversion as (1), at the kernel's own boundary. (Its two
+ *      siblings there — refusal and end_turn — are structural-compatibility
+ *      cases, not truncation; they belong to the scheduler-timing class the
+ *      ① commit declared, and are named here only so the boundary between
+ *      the two classes is not left to the reader.)
+ *
+ * NOT a member, deliberately: `packages/runtime/tests/truncation-guard.test.ts`.
+ * Every assertion in it is byte-unchanged, which is the evidence that the
+ * amendment relaxed the CONTRACT'S CLAIM without relaxing the GUARD.
  */
 
 import { describe, expect, it } from "vitest";
@@ -68,7 +89,11 @@ function delayedProvider(phases: Event[][], gapMs: number): Adapter {
 	} as unknown as Adapter;
 }
 
-async function drive(adapterFor: (a: Adapter) => Adapter, base: Adapter): Promise<{ events: readonly Event[]; executed: number }> {
+async function drive(
+	adapterFor: (a: Adapter) => Adapter,
+	base: Adapter,
+	effects?: { readonly precommitSafe?: true; readonly concurrency?: "shared" },
+): Promise<{ events: readonly Event[]; executed: number }> {
 	let executed = 0;
 	const registry = new ToolRegistry();
 	registry.register(
@@ -76,6 +101,7 @@ async function drive(adapterFor: (a: Adapter) => Adapter, base: Adapter): Promis
 			name: "web_search",
 			description: "Search",
 			parameters: { type: "object", properties: { query: { type: "string" } } },
+			...(effects !== undefined ? { effects } : {}),
 			execute: async () => {
 				executed += 1;
 				return { content: "ok", isError: false };
@@ -135,6 +161,39 @@ describe("SC-1 — the truncation guard's header contract", () => {
 		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
 		// An uncommitted turn leaves no durable stop — the call is a draft.
 		expect(events.some((e) => e.type === "stop")).toBe(false);
+		expect(terminalOf(events).outcome).toEqual({ kind: "max_tokens" });
+	});
+
+	it("EC-1 clause 2 (truncation class): bare, a PRECOMMIT-SAFE call on a truncated turn MAY have run — an honest fact, not a committed one", async () => {
+		const { events, executed } = await drive(bare, delayedProvider(truncatedPhases(), 120), {
+			precommitSafe: true,
+			concurrency: "shared",
+		});
+
+		// The certificate says this call is harmless before the turn commits,
+		// so the kernel spends it: the read launched during the stream and its
+		// receipt is durable. Clause 1's guarantee is about commit-required
+		// calls, and this one deliberately is not.
+		expect(executed).toBe(1);
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(true);
+		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
+		// Clauses 3 + 4: the turn is STILL not committed — no durable stop —
+		// and the receipt does not legitimize it. The terminal is unchanged.
+		expect(events.some((e) => e.type === "stop")).toBe(false);
+		expect(terminalOf(events).outcome).toEqual({ kind: "max_tokens" });
+	});
+
+	it("EC-1 clause 2 (truncation class): GUARDED, the same precommit-safe call never runs — the hold is upstream of the kernel", async () => {
+		const { events, executed } = await drive(truncationGuard, delayedProvider(truncatedPhases(), 120), {
+			precommitSafe: true,
+			concurrency: "shared",
+		});
+
+		// This is what the wrapper still buys after the amendment: the call
+		// never reaches the loop until the stop is known, so the one case the
+		// kernel deliberately allows is the case the guard removes.
+		expect(executed).toBe(0);
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
 		expect(terminalOf(events).outcome).toEqual({ kind: "max_tokens" });
 	});
 
