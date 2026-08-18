@@ -212,6 +212,10 @@ function makeLineInput(): LineInput {
 		// "input lives here"; the line-mode path keeps the brick ▌, so
 		// pipe bytes do not change)
 		dock.bindInput(() => editor.dockState(), "› ");
+		// TUI2-R3v2 ②: the click hit-test's wiring — the compositor places
+		// the panel's option rows, so the compositor is what the editor asks
+		// where they are. Neither side computes the other's geometry.
+		editor.bindPanelRows(() => dock.panelOptionRows());
 		dock.bindMenu(() => editor.menuState()); // v3 §04: the slash-command menu
 		editor.bindAtItems(atFiles); // KC3 §5: the file source — listed per OPEN
 		dock.bindAt(() => editor.atState()); // KC3 §4: the picker's band

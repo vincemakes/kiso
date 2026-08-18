@@ -48,7 +48,8 @@ import { displayWidth, type MenuItem } from "./editor.js";
 import { leadWidth } from "./width.js"; // W23: the ONE width authority (the editor, #inputRow, and editCol share it)
 // KC3.5: the panel-slot reads come from the DISPATCHERS — one source
 // for four reads, so an ask can never render half as an approval.
-import { panelAffordanceOf, panelLeadOf, panelRowsOf, panelStatusOf } from "./ask-panel.js";
+import { panelAffordanceOf, panelFrameOf, panelLeadOf, panelRowsOf, panelStatusOf } from "./ask-panel.js";
+import { MOUSE_OFF } from "./editor.js";
 import type { PanelState } from "./approval-panel.js";
 import { atPanelRows, bandHeader, type AtMatch } from "./at-picker.js";
 // TUI2-R2 ②: the session picker's rows — the band's third occupant.
@@ -204,6 +205,9 @@ export class Body {
 	#rolledHeads = new Set<number>();
 	#write: (s: string) => void;
 	#resizeHandler: (() => void) | null = null;
+	/** TUI2-R3v2 ②: the panel option rows' absolute screen span, as of the
+	 *  last frame. Null whenever no clickable list is on screen. */
+	#panelRowSpan: { top: number; count: number; first: number } | null = null;
 	// the chrome state (the Dock façade)
 	#status = "";
 	#statusHint: string | null = null;
@@ -859,6 +863,15 @@ export class Body {
 	/** Teardown — CSI r (the "no broken terminal" contract byte), the
 	 *  chrome rows cleared, the cursor home at the input line. */
 	exit(): void {
+		// TUI2-R3v2 ②: the mouse disable rides the SAME teardown as CSI r,
+		// and rides it FIRST — before the docked guard, because an
+		// un-docked compositor is exactly the state a superseded or
+		// half-torn-down one is in, and that is when a leak survives. The
+		// editor disables it too; this is the second belt on the one
+		// contract the round calls blocker-class, and six idempotent bytes
+		// are not a cost worth reasoning about against a terminal the user
+		// has to `reset`.
+		this.#write(MOUSE_OFF);
 		if (!this.#docked) {
 			// TUI2-R2pre ③: an un-docked compositor can still hold a listener
 			// (it was superseded, or enter() ran and the dock was torn down by
@@ -879,6 +892,12 @@ export class Body {
 		}
 		out.push(`\x1b[${Math.max(1, H - 1)};1H`);
 		this.#write(out.join(""));
+	}
+
+	/** TUI2-R3v2 ②: the panel's option rows as this frame placed them —
+	 *  absolute, 1-based. The click hit-test's single source. */
+	panelOptionRows(): { top: number; count: number; first: number } | null {
+		return this.#panelRowSpan;
 	}
 
 	/** SIGWINCH: clear the OLD live area (recorded geometry, ED only —
@@ -1154,6 +1173,10 @@ export class Body {
 		const inputExtra = editor.rows.length - 1;
 		const chromeRows = CHROME_ROWS + inputExtra + menuRows.length + queueRows.length;
 		let liveLines: string[] = [];
+		// TUI2-R3v2 ②: where this frame put the panel's option rows, relative
+		// to the live region's top. Resolved to ABSOLUTE screen rows once
+		// liveTop is known, below.
+		let panelSpan: { offset: number; count: number; first: number } | null = null;
 		const panel = this.#panelState?.() ?? null;
 		// TUI2-R1.5 ⑦(a) (VD-8): the sheet is an OVERLAY, and the frame it
 		// opens on — and the one it closes on — take the full-redraw path.
@@ -1179,7 +1202,12 @@ export class Body {
 			// the W11 blank would separate it from the frozen content).
 			// The cap is exact, so the force-commit loop never fires. W22:
 			// the queue band sits below the panel — the cap shrinks by it.
-			liveLines = panelRowsOf(panel, W, Math.max(1, H - 4 - inputExtra - queueRows.length));
+			// TUI2-R3v2 ②: the rows and the CLICKABLE span come from one
+			// call, so the hit-test reads the arithmetic that placed the
+			// rows rather than a second copy of it.
+			const frame = panelFrameOf(panel, W, Math.max(1, H - 4 - inputExtra - queueRows.length));
+			liveLines = frame.rows;
+			panelSpan = frame.options;
 		} else {
 			// TUI2-R2 ⑤ (D, candidate 1): the FOCUS — the cell the next ctrl+r
 			// will act on brightens its own token. The index is derived from
@@ -1225,6 +1253,11 @@ export class Body {
 		//    shows the bottom H rows; the live region anchors to the bottom.
 		const liveRowsTotal = liveLines.length + chromeRows;
 		const liveTop = Math.min(this.#committedLines, H - liveRowsTotal) + 1;
+		// TUI2-R3v2 ②: the option rows' ABSOLUTE screen rows, recorded per
+		// frame. A click is answered against the frame the human was looking
+		// at when they clicked, which is this one.
+		this.#panelRowSpan =
+			panelSpan === null ? null : { top: liveTop + panelSpan.offset, count: panelSpan.count, first: panelSpan.first };
 		// 5. the frame bytes.
 		const out: string[] = [];
 		out.push("\x1b[?2026h"); // synchronized output ON (DEC 2026)
@@ -2082,6 +2115,12 @@ export class Dock {
 	}
 	onResize(): void {
 		compositorRef?.onResize();
+	}
+	/** TUI2-R3v2 ②: where the last frame put the panel's clickable option
+	 *  rows (absolute screen rows). The editor binds this and does no row
+	 *  arithmetic of its own. */
+	panelOptionRows(): { top: number; count: number; first: number } | null {
+		return compositorRef?.panelOptionRows() ?? null;
 	}
 	setStatus(text: string, hint?: string | null): void {
 		compositorRef?.setStatus(text, hint ?? null);

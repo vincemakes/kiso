@@ -305,11 +305,38 @@ function panelOptionRow(option: PanelOption, n: number, selected: boolean, W: nu
 	return selectionBar(text, visibleWidth(text), W);
 }
 
+/**
+ * TUI2-R3v2 ② — the block's rows AND where its option rows landed.
+ *
+ * The click hit-test needs to answer "which option is at screen row N",
+ * and the only honest source for that is the arithmetic that placed the
+ * rows. Computing it a second time — in the compositor, or in a helper
+ * that mirrors the budget — is how a hit-test comes to disagree with the
+ * picture: the args cap, the note row and the option window all move the
+ * list, and a mirror that misses one sends the click to the wrong
+ * verdict. So the renderer reports it, and there is exactly one copy of
+ * the sum.
+ *
+ * `offset` is the index of the first option row INSIDE the returned
+ * rows; `first` is which option that row shows (the window's start, non-
+ * zero only on a short block).
+ */
+export interface PanelBlockLayout {
+	readonly rows: readonly string[];
+	readonly offset: number;
+	readonly count: number;
+	readonly first: number;
+}
+
 /** The block's rows — EXACTLY the preview's frame shape, the gutter at
  *  the left edge (the preview's two-space mock indent is its own
  *  styling; the real rows sit at column 1, like every tool cell).
  *  maxRows caps the TOTAL (the args fold; the single-row lines cut). */
 export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, note?: string): string[] {
+	return panelBlockLayout(view, phase, cursor, W, maxRows, note).rows as string[];
+}
+
+export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, note?: string): PanelBlockLayout {
 	const p = palette();
 	const gutter = `${p.dim}│${p.reset} `;
 	const rows: string[] = [];
@@ -352,8 +379,11 @@ export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: numbe
 	// stands down — the human is writing prose to the model, and a bar
 	// hovering over "Yes, run it" while they do it claims a choice is still
 	// live that their next keystroke is not addressing.
+	let offset = 0;
+	let first = 0;
 	if (phase === "options") {
 		if (note !== undefined) rows.push(`${gutter}${cutLine(`${p.dim}${escapeTerminal(note)}${p.reset}`, Math.max(1, W - 2))}`);
+		offset = rows.length;
 		const options = panelOptions(view);
 		// A window, never a truncation. On a screen too short for the whole
 		// list the options SCROLL under the bar — the cursor's row is always
@@ -362,9 +392,10 @@ export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: numbe
 		// two do). Dropping the tail instead would make an option that the
 		// key still takes invisible, which is the one failure a permission
 		// list must not have.
-		const first = Math.max(0, Math.min(cursor - optionsShown + 1, options.length - optionsShown));
+		first = Math.max(0, Math.min(cursor - optionsShown + 1, options.length - optionsShown));
 		for (let i = first; i < first + optionsShown; i += 1) rows.push(panelOptionRow(options[i]!, i + 1, i === cursor, W));
 	}
+	const layout = { offset, count: phase === "options" ? optionsShown : 0, first };
 	rows.push(`${gutter}${p.dim}${cutLine(panelAffordance(view, phase, cursor), Math.max(1, W - 2))}${p.reset}`);
 	// TUI2-R1.5 11 (VD-13): a real bottom RULE, in the block's own edge
 	// vocabulary — the same box-drawing run its divider already uses —
@@ -375,7 +406,7 @@ export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: numbe
 	// row meaning entirely different things. The rule reads as an edge,
 	// and the cut notice above it reads as a notice.
 	rows.push(`${p.dim}\u2514${"\u2500".repeat(Math.max(0, W - 1))}${p.reset}`);
-	return rows;
+	return { rows, ...layout };
 }
 
 /**

@@ -40,6 +40,18 @@ import { sessionFilter, type SessionCardView, type SessionPickState } from "./se
 // TUI v4 #16d: the input row is the blue brick + the edit area — the
 // "you>" text is gone (the brick IS the prompt; the pipe path's readline
 // prompt keeps its own "you> " — v2a line mode, byte-for-byte).
+/**
+ * TUI2-R3v2 ② — the mouse-mode bytes, stated once.
+ *
+ * ?1000 is the button-event report and ?1006 is the SGR encoding that
+ * makes it parseable past column 95 (the legacy X10 encoding packs the
+ * coordinate into one byte and simply breaks on a wide terminal). Both
+ * go on together and come off together; a terminal left with either one
+ * set is a terminal that prints escape bytes at the shell prompt.
+ */
+export const MOUSE_ON = "\x1b[?1000h\x1b[?1006h";
+export const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l";
+
 export const PROMPT = "▌ ";
 export const PROMPT_WIDTH = displayWidth(PROMPT);
 
@@ -128,6 +140,12 @@ export class Editor {
 	/** TUI2-R3v2 ①: one-shot — a panel that just closed swallows the
 	 *  habitual trailing enter rather than submitting the restored draft. */
 	#swallowEnter = false;
+	/** TUI2-R3v2 ②: whether SGR 1006 reporting is currently enabled. */
+	#mouseOn = false;
+	/** TUI2-R3v2 ②: where the compositor put the panel's option rows this
+	 *  frame (absolute 1-based screen rows). The editor owns no geometry —
+	 *  it asks the surface that placed them. */
+	#panelRows: (() => { top: number; count: number; first?: number } | null) | null = null;
 	#lineCb: ((line: string) => void) | null = null;
 	#pendingLines: string[] = []; // submits before onLine is wired (startup) — never dropped
 	#sigintCb: (() => void) | null = null;
@@ -463,12 +481,14 @@ export class Editor {
 		this.#atOpen = true;
 		this.#atSel = 0;
 		this.#atList = this.#atItems(); // §5: listed per OPEN, never per keystroke
+		this.#syncMouse();
 	}
 
 	#atClose(): void {
 		this.#atOpen = false;
 		this.#atSel = 0;
 		this.#atList = null;
+		this.#syncMouse();
 	}
 
 	/**
@@ -514,6 +534,7 @@ export class Editor {
 		this.#pickCards = cards;
 		this.#pickCommit = onPick;
 		this.#pickSel = 0;
+		this.#syncMouse();
 		this.#chars = [];
 		this.#cursor = 0;
 		this.#reflow();
@@ -555,6 +576,7 @@ export class Editor {
 		this.#pickCards = null;
 		this.#pickCommit = null;
 		this.#pickSel = 0;
+		this.#syncMouse();
 		this.#chars = [];
 		this.#cursor = 0;
 		this.#reflow();
@@ -609,6 +631,7 @@ export class Editor {
 		this.#menuSel = 0;
 		this.#queuePopMode = false; // W22: the panel owns the keys while up
 		this.#atClose(); // KC3 §3: and the picker closes with everything else
+		this.#syncMouse();
 		this.#onRender();
 	}
 
@@ -636,6 +659,15 @@ export class Editor {
 		if (this.#entered) return;
 		this.#entered = true;
 		process.stdin.setRawMode(true);
+		// TUI2-R3v2 ②: the DEFENSIVE reset, first byte out.
+		//
+		// Mouse reporting is process state the terminal keeps, not state we
+		// keep, so a previous kiso that died with a panel open (kill -9, a
+		// panic, a closed laptop) left the terminal reporting clicks to
+		// whatever ran next — and nothing in that dead process can ever
+		// clean up after it. A fresh process is the only thing left that
+		// can, so it does, unconditionally, before it draws anything.
+		process.stdout.write(MOUSE_OFF);
 		process.stdout.write("\x1b[?2004h"); // bracketed paste ON
 		process.stdin.on("data", this.#onData);
 		this.#onRender();
@@ -645,9 +677,42 @@ export class Editor {
 		if (!this.#entered) return;
 		this.#entered = false;
 		process.stdin.off("data", this.#onData);
+		// TUI2-R3v2 ②: unconditional, and BEFORE raw mode goes away — a
+		// terminal left reporting mouse events prints escape bytes at the
+		// shell prompt on every click and every scroll, and the user's only
+		// fix is `reset`. The flag is not consulted: exit() is the last
+		// chance this process gets, and emitting six harmless bytes twice
+		// is not a cost worth reasoning about.
+		process.stdout.write(MOUSE_OFF);
+		this.#mouseOn = false;
 		process.stdout.write("\x1b[?2004l"); // bracketed paste OFF
 		process.stdin.setRawMode(false);
 		this.#closedResolve();
+	}
+
+	/**
+	 * TUI2-R3v2 ② — mouse reporting follows the SELECTION SURFACES and
+	 * nothing else.
+	 *
+	 * While it is on, the terminal's own text selection changes behaviour
+	 * (shift+drag still selects on every terminal that matters, but plain
+	 * drag-to-copy does not), so leaving it on for the whole session would
+	 * tax every copy-paste in the product to pay for a gesture that only
+	 * means something while a list is up. It goes on when one opens and
+	 * off when it closes — and both calls are idempotent, because the
+	 * surfaces nest (a panel can open over a picker) and the bytes must
+	 * not depend on the order they unwind in.
+	 */
+	#setMouse(on: boolean): void {
+		if (this.#mouseOn === on) return;
+		this.#mouseOn = on;
+		if (this.#entered) process.stdout.write(on ? MOUSE_ON : MOUSE_OFF);
+	}
+
+	/** The surfaces that own a selection — the approval/ask/pick panel, the
+	 *  session picker and the @ picker. Any one of them up = reporting on. */
+	#syncMouse(): void {
+		this.#setMouse(this.#panel !== null || this.#pickCards !== null || this.#atUp());
 	}
 
 	/** The row's own render when the dock is inactive (a TTY without a
@@ -865,7 +930,17 @@ export class Editor {
 			if (c === "\x1b") {
 				const rest = text.slice(i + 1);
 				if (rest.startsWith("[")) {
-					const m = rest.match(/^\[([0-9;?]*)([A-Za-z~])/);
+					// TUI2-R3v2 ②: `<` joins the parameter class.
+					//
+					// An SGR 1006 mouse report is `\x1b[<0;COL;ROWM`, and the
+					// retired character class ([0-9;?]) did not contain `<`. The
+					// match failed, the branch below PARKED the whole thing as an
+					// incomplete CSI, and #pending grew forever: every keystroke
+					// after the first click was appended to a sequence that could
+					// never complete. The editor went deaf. It never happened
+					// because nothing ever enabled reporting — which is exactly
+					// the kind of latent break turning a feature on discovers.
+					const m = rest.match(/^\[([0-9;?<]*)([A-Za-z~])/);
 					if (m === null) {
 						this.#pending = text.slice(i); // incomplete CSI — wait for more
 						break;
@@ -1022,7 +1097,49 @@ export class Editor {
 		}
 	}
 
+	/**
+	 * TUI2-R3v2 ② — one gesture, and only one: a plain LEFT PRESS on an
+	 * option row is that row's digit.
+	 *
+	 * Everything else is dropped, and the list of everything else is the
+	 * point. A release (`m`) is not a second click. Button 64/65 is the
+	 * wheel — scrolling past a panel must not answer it. Bit 32 is a
+	 * motion report, so a drag over the list is a drag, not four
+	 * approvals. Buttons 1 and 2 are middle and right, which mean paste
+	 * and context-menu everywhere else and would mean "approve" here.
+	 * The stakes are a side effect the human did not ask for, and an
+	 * ambiguous mouse event is not consent.
+	 */
+	#mouseEvent(params: string, press: boolean): void {
+		if (!press) return; // the press already decided; the release is noise
+		const [button, , row] = params.slice(1).split(";").map(Number);
+		if (button !== 0) return; // wheel (64/65), motion (32+), middle/right
+		if (this.#panel === null || this.#panel.phase !== "options") return;
+		const span = this.#panelRows?.();
+		if (span == null || row === undefined || !Number.isFinite(row)) return;
+		const offset = row - span.top;
+		if (offset < 0 || offset >= span.count) return; // outside the list — inert
+		this.#panelConfirm((span.first ?? 0) + offset);
+	}
+
+	/** TUI2-R3v2 ②: the compositor reports where it PUT the option rows.
+	 *  The editor does no row arithmetic of its own — the surface that
+	 *  placed them is the only thing that can say where they are, and a
+	 *  second copy of that sum is how a hit-test comes to disagree with
+	 *  the picture. */
+	bindPanelRows(fn: (() => { top: number; count: number; first?: number } | null) | null): void {
+		this.#panelRows = fn;
+	}
+
 	#csi(params: string, final: string): void {
+		// TUI2-R3v2 ②: an SGR 1006 report — `\x1b[<b;col;rowM` (press) or
+		// `...m` (release). It is routed FIRST because a `<` parameter is
+		// never anything else, and because a mouse byte must never fall
+		// through to a key handler.
+		if (params.startsWith("<")) {
+			this.#mouseEvent(params, final === "M");
+			return;
+		}
 		// KC1 §4 — Shift+Enter WHERE THE TERMINAL ENCODES IT: kitty's
 		// CSI-u (ESC [ 13;2 u) and xterm's modifyOtherKeys (ESC [ 27;2;13 ~).
 		// Never claimed universal — Ctrl+J is the everywhere baseline; a
@@ -1375,6 +1492,7 @@ export class Editor {
 		const panel = this.#panel;
 		if (panel === null) return;
 		this.#panel = null;
+		this.#syncMouse();
 		// TUI2-R3v2 ①: swallow ONE bare enter after the panel goes away.
 		//
 		// This is the hazard the instant confirm creates and it is not

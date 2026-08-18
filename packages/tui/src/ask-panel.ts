@@ -29,6 +29,7 @@
  */
 
 import {
+	panelBlockLayout,
 	panelAffordance as basePanelAffordance,
 	panelBlockRows as basePanelBlockRows,
 	panelLead as basePanelLead,
@@ -300,6 +301,35 @@ export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: numb
  *  ④: nor a pick as either). */
 export const panelRowsOf = (s: PanelState, W: number, maxRows: number): string[] =>
 	panelBlockRows(s.view, s.phase, s.cursor, W, maxRows, s.ask, s.pick, s.note);
+
+/**
+ * TUI2-R3v2 ② — the rows AND where the clickable ones are, from ONE
+ * call.
+ *
+ * The compositor needs both and must not compute the second from the
+ * first: the args cap, the note row and the option window all move the
+ * list, so a hit-test that re-derived the offset would drift from the
+ * picture exactly when the block is under pressure — which is when a
+ * misrouted click is most expensive.
+ *
+ * `options` is null for the ask and pick flavors: their rows are placed
+ * by their own renderers, and this round does not claim a click on them
+ * (the enable/disable invariant covers those surfaces; the gesture does
+ * not). A null here means every click is inert, which is the safe way
+ * to not-implement something.
+ */
+export const panelFrameOf = (
+	s: PanelState,
+	W: number,
+	maxRows: number,
+): { rows: string[]; options: { offset: number; count: number; first: number } | null } => {
+	if (s.view.pick !== undefined || s.view.ask !== undefined) return { rows: panelRowsOf(s, W, maxRows), options: null };
+	const layout = panelBlockLayout(s.view, s.phase, s.cursor, W, maxRows, s.note);
+	return {
+		rows: layout.rows as string[],
+		options: layout.count === 0 ? null : { offset: layout.offset, count: layout.count, first: layout.first },
+	};
+};
 export const panelLeadOf = (s: PanelState): string => panelLead(s.view, s.phase, s.cursor, s.ask, s.pick);
 export const panelStatusOf = (s: PanelState): string => panelStatus(s.view, s.phase, s.cursor, s.ask, s.pick);
 export const panelAffordanceOf = (s: PanelState): string => panelAffordance(s.view, s.phase, s.cursor, s.ask, s.pick);
