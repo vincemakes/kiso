@@ -524,9 +524,13 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				// its own range; the case documents the intent (and no flush:
 				// it must never split a message).
 				break;
-			case "microcompacted":
-				// handled above (the replacement pass) — no open message.
-				break;
+			// EC-1 (ruled in at the checkpoint): a SECOND `case
+			// "microcompacted"` sat here and was unreachable — the earlier
+			// case at the top of this switch owns the label, and in a
+			// JavaScript switch the first matching case wins. It never ran,
+			// it emitted a build warning ("this case clause will never be
+			// evaluated"), and it cost two lines of the kernel's budget.
+			// Removed; the microcompact replacement pass above is unchanged.
 		}
 	}
 	flushAssistant();

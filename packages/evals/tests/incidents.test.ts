@@ -82,7 +82,34 @@ describe("incident suite on the real loop", () => {
 		const terminal = terminalOf(events);
 		expect(terminal.outcome).toMatchObject({ kind: "aborted", by: "user" });
 		// An aborted run never executes the pending tool call.
-		expect(events.filter((e) => e.type === "tool_result")).toHaveLength(0);
+		//
+		// EC-1: this property is unchanged and still holds — what changed is
+		// how it is MEASURED. The old assertion counted `tool_result` events
+		// and expected none, which was a leaky proxy: a protocol REFUSAL
+		// produces a tool_result too, without anything running. This fixture's
+		// registry is empty on purpose, so its call is refused as an unknown
+		// tool, and that refusal is computed synchronously — before any abort
+		// check, because there is no tool to check anything about.
+		//
+		// The refusal now reaches the consumer where it used to be stranded.
+		// Cause: EC-1 ③ moved `acquireWindow()` off the front of the launch
+		// (waiting must consume no execution slot, invariant 6), which removes
+		// a microtask hop before the decide, so the queued refusal is drained
+		// by the next stream event instead of dying with the returning loop.
+		// No abort re-check was weakened: the ones in decideCall and in
+		// runLedgered — before the started event and again before the handler
+		// — are byte-unchanged, and a signal that would have stopped a launch
+		// still stops it.
+		//
+		// So the assertion is tightened to the property the comment actually
+		// claims: nothing EXECUTED. That is the honest measurement, and it is
+		// strictly stronger than the event count it replaces.
+		expect(events.filter((e) => e.type === "tool_execution_started")).toHaveLength(0);
+		expect(events.filter((e) => e.type === "tool_execution_succeeded")).toHaveLength(0);
+		// The only model-facing result is the refusal — never an execution's.
+		for (const r of events.filter((e) => e.type === "tool_result")) {
+			expect(r).toMatchObject({ isError: true, errorKind: "invalid_input" });
+		}
 	});
 
 	it("unknown-tool: the ghost call is refused as invalid_input, nothing vanishes", async () => {
