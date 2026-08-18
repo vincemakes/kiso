@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
+import { isolatedEnv, runCli } from "../../../tests/helpers/isolated-cli.mjs";
 import { fauxScript, ptyRun, spares } from "./helpers/pty.js";
 
 const ON_1006 = "\x1b[?1006h";
@@ -99,6 +99,18 @@ describe("TUI2-R3v2 ② — the mouse never leaks (real PTY, byte-asserted)", ()
 		});
 		expect(raw, "a left press on an option row is that option's digit").toContain("clicked-it");
 	}, 240_000);
+
+	it("a PIPE gets no mouse bytes at all — the path is byte-identical by ruling", () => {
+		// the regression this gate exists for: the compositor's teardown
+		// emitted the disable unconditionally, and a piped session's stdout
+		// ended "you> \x1b[?1000l\x1b[?1006l". A pipe has no mouse mode to
+		// reset — the invariant is about terminals, and a pipe is not one.
+		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: fauxScript(spares(3)), KISO_MODE: "default" });
+		const run = runCli([], env, { input: "hello\n" });
+		expect(run.stdout).not.toContain("\x1b[?1000");
+		expect(run.stdout).not.toContain("\x1b[?1006");
+		expect(run.stdout).not.toContain("\x1b["); // and the whole path stays byte-clean
+	});
 
 	it("a fresh process resets what a KILLED one left behind — the defensive path", () => {
 		// nothing this process does can clean up after SIGKILL; the gate

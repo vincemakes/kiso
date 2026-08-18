@@ -864,14 +864,18 @@ export class Body {
 	 *  chrome rows cleared, the cursor home at the input line. */
 	exit(): void {
 		// TUI2-R3v2 ②: the mouse disable rides the SAME teardown as CSI r,
-		// and rides it FIRST — before the docked guard, because an
-		// un-docked compositor is exactly the state a superseded or
-		// half-torn-down one is in, and that is when a leak survives. The
-		// editor disables it too; this is the second belt on the one
-		// contract the round calls blocker-class, and six idempotent bytes
-		// are not a cost worth reasoning about against a terminal the user
-		// has to `reset`.
-		this.#write(MOUSE_OFF);
+		// and rides it BEFORE the docked guard — an un-docked compositor is
+		// exactly the state a superseded or half-torn-down one is in, and
+		// that is when a leak survives. The editor disables it too; this is
+		// the second belt on the one contract the round calls blocker-class.
+		//
+		// TTY-GATED, and the gate is not a nicety. A pipe has no mouse mode
+		// to reset, so the bytes would be pure noise there — and the pipe
+		// path is byte-identical by ruling. The unguarded version put
+		// "[?1000l[?1006l" into piped stdout and four gates caught it
+		// (compact-cli, tui-modes, tui-v7-planmode, tui2-r2-resume-picker):
+		// the invariant is about terminals, and a pipe is not one.
+		if (process.stdout.isTTY === true) this.#write(MOUSE_OFF);
 		if (!this.#docked) {
 			// TUI2-R2pre ③: an un-docked compositor can still hold a listener
 			// (it was superseded, or enter() ran and the dock was torn down by
