@@ -54,3 +54,19 @@ would replace the exclusive lock; nothing in the current product needs it.
   races (`two contenders racing a stale lock: exactly one wins, the loser
   errors`), the fast-path dead-helper detection, the poison-on-rejected-
   write permanence.
+
+## Supersession note (2026-08-18, the SC-1 semantic contract audit)
+
+Appended, never an edit. **This ADR is SUPERSEDED by ADR-0050** (the
+identity-confirmed link lock, 2026-08-11), which declares the supersession
+on its own face ("Supersedes: ADR-0036"). This record carried no marker of
+it, against the discipline stated at `docs/adrs/README.md`; this note is
+the append-only form of that marker.
+
+What changed: single-writer safety is no longer an exclusive kernel flock
+held by a dedicated helper process. It is a pure-Node identity-confirmed
+LINK lock with no helper process at all — read ADR-0050 with its
+Amendment 1 (the state-aware liveness probe, replacing bare `kill(pid,0)`)
+and Amendment 2 (the process-state letters are matched ANYWHERE in the
+`ps` string, not only at the first character). The shipped implementation
+is `packages/runtime/src/lock-adapter.ts`.

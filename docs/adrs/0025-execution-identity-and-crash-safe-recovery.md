@@ -116,3 +116,28 @@ assumptions of ADR-0024 wrong under adversarial review:
   large enough to matter.
 - Parallel tool execution: sequential by design (ADR-0024); restore
   windowed batching only with per-call ledger ordering preserved.
+
+## Supersession note (2026-08-18, the SC-1 semantic contract audit)
+
+Appended, never an edit — the body above stands as ruled. Two of its
+statements no longer describe the shipped system:
+
+- **Decision #3 (failure semantics) is SUPERSEDED by ADR-0038.** It ruled
+  that a failed execution is `uncertain` unless the tool proved
+  safe-to-retry, and that such executions block `resume()`. ADR-0038
+  (ruling #12) removed that route: a complete receipt IS the outcome, so a
+  failed execution derives `"failed"` and never `"uncertain"`. Uncertainty
+  belongs to the crash window ALONE — started, no receipt. `safeToRetry`
+  survives on the event for history and no longer feeds the ledger's
+  status derivation (`packages/runtime/src/ledger.ts`). What decision #3
+  got right and still holds: nothing that may have had a side effect is
+  ever automatically re-run, and the crash window's rerun/abandoned
+  verdicts belong to a human.
+- **The "When to revisit" line "Parallel tool execution: sequential by
+  design (ADR-0024)" is SUPERSEDED by ADR-0024 Amendment 1** — windowed
+  parallel execution returned at 0.1.26 with the ledger events emitted per
+  call, which is the exact condition that clause named.
+
+Decision #1 (executionId identity; the (name, input) guard removed) and
+decision #2 (receipt repair) are untouched, and together they remain the
+exactly-once mechanism.

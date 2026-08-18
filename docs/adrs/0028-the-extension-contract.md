@@ -72,3 +72,19 @@ this ADR records the current refusal.
   ask semantics), `packages/runtime/tests/extensions.test.ts` (loader,
   hooks order, P2 pipe), `packages/runtime/tests/extensions.test.ts`
   (E2 systemPrompt appends).
+
+## Supersession note (2026-08-18, the SC-1 semantic contract audit)
+
+Appended, never an edit. **This ADR's ask routing is SUPERSEDED by
+ADR-0029** ("an ask is answered by a human", 2026-08-04). The index
+(`docs/adrs/README.md`) recorded that supersession; this record did not —
+against the discipline the index itself states, that a superseded record
+carries the marker in its own Status line. This note is the append-only
+form of that marker (a historic body is never rewritten).
+
+Everything else here stands: the narrow extension surfaces, monotone
+composition, the loader and the lifecycle contract. For the ask semantics
+as SHIPPED, read ADR-0029 and its 2026-08-09 Amendment — the composed
+chain is deny > allow > ask, a LATER allow beats an EARLIER ask, a
+throwing policy counts as ask, and an all-abstain chain reaches the human
+(ADR-0042). The implementation is `packages/runtime/src/compose.ts`.

@@ -48,3 +48,24 @@ the extraction shape — the cap itself stands.
 
 - `scripts/check-size.mjs` (2400), the plan record
   `docs/plans/2026-08-05-tui-v2e.md` (§10), the v2e round commits.
+
+## Supersession note (2026-08-18, the SC-1 semantic contract audit)
+
+Appended, never an edit. **This ADR's terminal cap is SUPERSEDED by
+ADR-0043**, which says so directly: "the 2400 single-package terminal cap
+is superseded by this ruling." Neither this record nor the index
+(`docs/adrs/README.md`, which still lists it as plain Accepted) carried
+the marker; this note is the append-only form of it.
+
+The superseded promise is the load-bearing one: this ADR called 2400 "the
+fourth and last raise", never to be raised again. Per-package gates
+replaced the single-package cap; ADR-0043 Amendment 7 then recalibrated
+the tui to 4,000, and Amendment 8 made the product-surface figures
+report-only — core's 2,000 is the one budget that still blocks.
+
+Residual, NOT fixed in the SC-1 round (outside its fence): live source
+still cites this superseded ADR as if current — `packages/tui/src/index.ts`,
+`packages/tui/src/status.ts` (which repeats the "never a fifth raise"
+promise verbatim), `packages/tui-cells/src/strings.ts`, and the
+package-layout sections of `README.md` / `README.zh.md`. Each wants a
+forward pointer to ADR-0043.
