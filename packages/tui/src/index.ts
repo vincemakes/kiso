@@ -1,6 +1,7 @@
 /**
  * kiso-tui — the PURE terminal layer, extracted from the CLI (the
- * ADR-0041 escape hatch). Zero runtime dependencies: input is data,
+ * escape hatch of ADR-0043, which supersedes ADR-0041). Zero runtime
+ * dependencies: input is data,
  * output is bytes. TUI v6 (ADR-0046): the ONE compositor (the single
  * writer — body.ts + dock.ts retired), the component tree, the raw-mode
  * editor, the diff renderer, and the palette.

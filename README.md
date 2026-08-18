@@ -283,9 +283,27 @@ kiso help                      this help
   unchanged — that is a machine interface). `/model` with no argument
   opens the same kind of picker over your configured profiles.
 - Tools: read file · list directory · search text · write/edit file · shell.
-  Writes and shell sit behind the approval policy: the run **pauses**, asks
-  `approve write_file? (y/n)`, persists the decision, and resumes the same
-  run (ADR-0024).
+  Writes and shell sit behind the approval policy: the run **pauses**,
+  asks, persists the decision, and resumes the same run (ADR-0024).
+- **The approval is a selection, not a form (0.12.0).** The pause shows
+  the full call — the whole command, the whole diff, never truncated —
+  and a list with a highlight bar on it. The bar opens on **Yes, run
+  it**, so the shortest path is *look, press enter*: one key, nothing
+  typed. `↑↓` move it, **a click on a row takes that row**, a digit
+  takes its row outright, `esc` cancels. Typing exists behind exactly
+  one option — *No, let me tell it what to do instead* — and what you
+  write there goes to the model, which proposes a different call.
+  Option 2 grants a **durable** don't-ask-again rule for that tool: it
+  writes a human-readable, human-deletable extension file, and deleting
+  it is the revocation path. Mouse reporting is on only while a list is
+  open and is reset on every exit — including defensively at startup,
+  because a process killed with a panel open cannot clean up after
+  itself.
+- **Irreversible deletes say so.** Four commands carry one yellow line
+  naming what goes: `rm -rf` (with the targets listed), `git checkout
+  --`, `git reset --hard`, `git clean -f`. Everything else carries
+  none — a warning on every dangerous command teaches the eye to skip
+  warnings.
 - **Scoped reads (0.1.27, the token round):** reads are rangeable —
   `read_file` takes `offset`/`limit` (1-based lines) and returns only the
   head 200 lines of a large file by default, `search_text` caps at 50

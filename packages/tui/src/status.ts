@@ -1,6 +1,8 @@
 /**
  * KC2 §5 — the status line's FORMATTERS, extracted from the CLI (the
- * ADR-0041 escape hatch: extraction, never a fifth raise). The split is
+ * escape hatch of ADR-0043, which supersedes ADR-0041 — this comment
+ * cited the superseded ADR as current AND repeated its retired "never a
+ * fifth raise" promise; ADR-0043 governs the ceiling now). The split is
  * the one the ADR names: the CLI keeps the STATE (the rotating glyph,
  * the run's start instant, the live usage, whether the dock is up) and
  * the REPAINT; what a status row SAYS is presentation, and presentation

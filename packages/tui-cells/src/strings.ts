@@ -1,6 +1,6 @@
 /**
- * tui-cells — the human-facing STRINGS (KC3 slice 1, the ADR-0041
- * escape hatch: extraction, never a raise): the readline prompt, the
+ * tui-cells — the human-facing STRINGS (KC3 slice 1, the escape hatch
+ * of ADR-0043, which supersedes ADR-0041): the readline prompt, the
  * project-trust listing rows and its panel view, the uncertain
  * execution's panel view, and the non-TTY not-trusted note. All five
  * were built inline in the CLI's trust-ui.ts before the move.
