@@ -1,0 +1,74 @@
+/**
+ * TUI2-R3v2 slice ④ — the risk hint: FOUR patterns, and nothing else.
+ *
+ * The owner's ruling narrowed this deliberately. A warning on every
+ * command teaches the eye to skip warnings, and the only commands that
+ * earn a line here are the ones where "undo" does not exist: the bytes
+ * are gone, the uncommitted work is gone, the commits are gone. Every
+ * other command — including plenty of dangerous ones — renders NO hint,
+ * because a hint that appears everywhere is decoration.
+ *
+ * Local string rules, zero requests, and it never blocks: the hint is a
+ * sentence next to the command, not a gate in front of it.
+ */
+import { describe, expect, it } from "vitest";
+import { deletionRiskHint } from "../src/approval-panel.js";
+
+describe("TUI2-R3v2 ④ — the four irreversible-deletion patterns", () => {
+	it("rm -rf names its TARGETS — the whole point is knowing what goes", () => {
+		expect(deletionRiskHint("rm -rf node_modules dist")).toBe("⚠ deletes files permanently (node_modules, dist)");
+		expect(deletionRiskHint("rm -rf build && npm run build")).toBe("⚠ deletes files permanently (build)");
+		expect(deletionRiskHint("rm -fr ./tmp")).toBe("⚠ deletes files permanently (./tmp)");
+		expect(deletionRiskHint("rm -r -f a b")).toBe("⚠ deletes files permanently (a, b)");
+	});
+
+	it("rm -rf with no nameable target still warns — the shape is the risk", () => {
+		expect(deletionRiskHint("rm -rf $TARGET")).toBe("⚠ deletes files permanently ($TARGET)");
+		expect(deletionRiskHint("rm -rf")).toBe("⚠ deletes files permanently");
+	});
+
+	it("git checkout -- discards uncommitted work", () => {
+		expect(deletionRiskHint("git checkout -- .")).toBe("⚠ discards your uncommitted changes — unrecoverable");
+		expect(deletionRiskHint("git checkout -- src/parser.ts")).toBe("⚠ discards your uncommitted changes — unrecoverable");
+	});
+
+	it("git reset --hard throws away commits and working changes", () => {
+		expect(deletionRiskHint("git reset --hard HEAD~3")).toBe("⚠ throws away commits and working changes");
+		expect(deletionRiskHint("git reset --hard")).toBe("⚠ throws away commits and working changes");
+	});
+
+	it("git clean -f deletes untracked files", () => {
+		expect(deletionRiskHint("git clean -fd")).toBe("⚠ deletes untracked files permanently");
+		expect(deletionRiskHint("git clean -f")).toBe("⚠ deletes untracked files permanently");
+		expect(deletionRiskHint("git clean -xdf")).toBe("⚠ deletes untracked files permanently");
+	});
+
+	it("EVERY other command renders no hint — including the near misses", () => {
+		for (const cmd of [
+			"npm run build",
+			"rm file.txt", // no -rf: a single file, and the shell asks nothing of us
+			"rm -r build", // no -f
+			"git checkout main", // a branch switch, not a discard
+			"git checkout -b feature", // a new branch
+			"git reset HEAD~1", // a MIXED reset keeps the working tree
+			"git reset --soft HEAD~1",
+			"git clean -n", // a dry run
+			"git status",
+			"echo rm -rf nothing-happens", // the words are an argument, not the command
+			"dd if=/dev/zero of=/dev/sda", // dangerous, and NOT in the table: the
+			// round rejects guessing. Four patterns, matched exactly.
+			"",
+		]) {
+			expect(deletionRiskHint(cmd), JSON.stringify(cmd)).toBeNull();
+		}
+	});
+
+	it("a compound command is scanned per segment — the risk can be the second half", () => {
+		expect(deletionRiskHint("npm run clean && git clean -fd")).toBe("⚠ deletes untracked files permanently");
+		expect(deletionRiskHint("cd /tmp; rm -rf junk")).toBe("⚠ deletes files permanently (junk)");
+	});
+
+	it("the FIRST matching segment wins — one line, never a stack of them", () => {
+		expect(deletionRiskHint("rm -rf a && git clean -fd")).toBe("⚠ deletes files permanently (a)");
+	});
+});
