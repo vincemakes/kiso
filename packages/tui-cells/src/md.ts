@@ -267,9 +267,13 @@ function blockBody(b: MdBlock, W: number): string[] {
 	switch (b.kind) {
 		case "heading": {
 			// the marker is stripped, the numbering kept, and the levels are
-			// NOT differentiated by colour — attributes only.
+			// NOT differentiated by colour — attributes only. A `**bold**`
+			// inside a heading is therefore a no-op, which is the mono
+			// discipline paying for itself: the nested-style restore machinery
+			// both reference implementations need for this exact input has
+			// nothing to restore here.
 			const m = HEADING.exec(b.lines[0] ?? "");
-			return wrap(`${p.bold}${m?.[2] ?? b.lines[0] ?? ""}${p.reset}`, W, "", "");
+			return wrap(`${p.bold}${inlineSpans(m?.[2] ?? b.lines[0] ?? "", p.bold)}${p.reset}`, W, "", "");
 		}
 		case "rule":
 			return [`${p.dim}${"─".repeat(Math.min(W, 28))}${p.reset}`];
@@ -285,7 +289,7 @@ function blockBody(b: MdBlock, W: number): string[] {
 		case "quote": {
 			const text = b.lines.map((l) => QUOTE.exec(l)?.[1] ?? l).join(" ");
 			const gutter = `${p.dim}▏${p.reset} `;
-			return wrap(`${p.dim}${text}${p.reset}`, W - 2, "", "").map((r) => `${gutter}${r}`);
+			return wrap(`${p.dim}${inlineSpans(text, p.dim)}${p.reset}`, W - 2, "", "").map((r) => `${gutter}${r}`);
 		}
 		case "list":
 			return listRows(b, W);
@@ -294,33 +298,173 @@ function blockBody(b: MdBlock, W: number): string[] {
 		default:
 			// a paragraph's soft line breaks are spaces — the block reflows at
 			// the terminal's width, which is the whole point of rendering it.
-			return wrap(inline(b.lines.join(" "), ""), W, "", "");
+			return wrap(inlineSpans(b.lines.join(" "), ""), W, "", "");
 	}
 }
 
-/** Slice ② owns the full mono style table. Slice ① carries the ONE
- *  inline rule the streaming discipline needs: RAW UNTIL CLOSED. An
- *  opener with no closer in this block stays literal — so a half-
- *  streamed `**` shows its asterisks and flips the instant the closer
- *  lands, inside the live block and nowhere else. */
-function inline(text: string, base: string): string {
+/**
+ * The inline pass — the mono style table applied to one block's text.
+ *
+ * Scoped to `**bold**`, `*italic*`, `` `code` ``, `[text](url)` and the
+ * backslash escape, with two rules that matter more than coverage:
+ *
+ *   RAW UNTIL CLOSED — an opener with no closer in this text stays
+ *   literal. That is what lets a half-streamed `**` show its asterisks
+ *   and flip the instant the closer lands, inside the live block and
+ *   nowhere else.
+ *
+ *   CLOSE BACK TO `base` — the block's own style (a heading's bold, a
+ *   quote's dim) is passed in, and every span reopens it on the way
+ *   out, so a nested span can never strand it. Italic is the one span
+ *   that closes surgically (SGR 23), because it can.
+ *
+ * Documented deviations from CommonMark: `_` never emphasizes (it is a
+ * character in identifiers far more often than a marker in prose);
+ * emphasis does not nest across a code span; `~~` is not a construct at
+ * all — the markers are content (the strict tokenizer both reference
+ * implementations converged on, taken to its honest conclusion, since
+ * SGR 9's terminal support is too fragmented to promise).
+ */
+export function inlineSpans(text: string, base: string): string {
 	const p = palette();
-	if (p.bold === "") return text;
 	let out = "";
 	let i = 0;
 	while (i < text.length) {
+		const ch = text[i]!;
+		if (ch === "\\" && i + 1 < text.length && ESCAPABLE.test(text[i + 1]!)) {
+			out += text[i + 1];
+			i += 2;
+			continue;
+		}
+		if (ch === "`") {
+			const end = text.indexOf("`", i + 1);
+			if (end > i) {
+				// a code span's content is LITERAL — no markers inside it mean
+				// anything, which is what makes `x | y` survive a table split
+				out += `${p.code}${text.slice(i + 1, end)}${p.reset}${base}`;
+				i = end + 1;
+				continue;
+			}
+		}
 		if (text.startsWith("**", i)) {
-			const end = text.indexOf("**", i + 2);
-			if (end > i + 2) {
-				out += `${p.bold}${text.slice(i + 2, end)}${p.reset}${base}`;
+			const end = closerAt(text, i + 2, "**");
+			if (end >= 0) {
+				out += `${p.bold}${inlineSpans(text.slice(i + 2, end), `${base}${p.bold}`)}${p.reset}${base}`;
 				i = end + 2;
 				continue;
 			}
 		}
-		out += text[i];
+		if (ch === "*") {
+			const end = closerAt(text, i + 1, "*");
+			if (end >= 0) {
+				out += `${p.italic}${inlineSpans(text.slice(i + 1, end), `${base}${p.italic}`)}${p.italicEnd}`;
+				i = end + 1;
+				continue;
+			}
+		}
+		if (ch === "[") {
+			const link = LINK.exec(text.slice(i));
+			if (link !== null) {
+				// the text bright, the url dim in parentheses. NO OSC 8 this
+				// round: a hyperlink escape is bytes the human cannot see, and
+				// the byte discipline gets to decide that separately.
+				out += `${p.bold}${link[1]}${p.reset}${p.dim} (${link[2]})${p.reset}${base}`;
+				i += link[0].length;
+				continue;
+			}
+		}
+		out += ch;
 		i += 1;
 	}
 	return out;
+}
+
+const ESCAPABLE = /[\\`*_~[\]()#|+.!>-]/;
+const LINK = /^\[([^\]\n]*)\]\(([^)\s\n]*)\)/;
+
+/** The closing delimiter for an emphasis opener at `from`, or −1.
+ *  Strict on both edges: an opener followed by a space, or a closer
+ *  preceded by one, is arithmetic or prose, not emphasis (`2 * 3 * 4`
+ *  must survive). An empty span is not a span. */
+function closerAt(text: string, from: number, delim: string): number {
+	if (from >= text.length || text[from] === " ") return -1;
+	for (let i = from; i >= 0; ) {
+		const at = text.indexOf(delim, i);
+		if (at < 0) return -1;
+		if (at > from && text[at - 1] !== " " && !(delim === "*" && text[at - 1] === "*")) return at;
+		i = at + delim.length;
+	}
+	return -1;
+}
+
+// ---- the table tokenizer (the two convergent patches) ---------------
+
+/** Split a table line into cells. The `|` walls are found on the RAW
+ *  line, but a pipe INSIDE a code span is content — two independent
+ *  reference implementations both patched exactly this, because a
+ *  command in a cell (`grep a | wc`) is common and splitting it puts
+ *  the human's own text in the wrong column. A backslash-escaped pipe
+ *  is content too. */
+export function splitCells(line: string): string[] {
+	const cells: string[] = [];
+	let cur = "";
+	let code = false;
+	const body = line.trim();
+	for (let i = 0; i < body.length; i += 1) {
+		const ch = body[i]!;
+		if (ch === "\\" && i + 1 < body.length) {
+			cur += ch + body[i + 1];
+			i += 1;
+			continue;
+		}
+		if (ch === "`") code = !code;
+		if (ch === "|" && !code) {
+			cells.push(cur);
+			cur = "";
+			continue;
+		}
+		cur += ch;
+	}
+	cells.push(cur);
+	// the leading and trailing walls produce empty edge cells
+	if (cells.length > 0 && cells[0]!.trim() === "") cells.shift();
+	if (cells.length > 0 && cells[cells.length - 1]!.trim() === "") cells.pop();
+	return cells.map((c) => c.trim());
+}
+
+export type MdAlign = "left" | "center" | "right";
+
+export interface MdTable {
+	readonly header: readonly string[];
+	readonly align: readonly MdAlign[];
+	readonly rows: readonly (readonly string[])[];
+}
+
+const DELIM_CELL = /^:?-{1,}:?$/;
+
+/** The table shape, or null when these lines are NOT a table.
+ *
+ *  Two rejections, both borrowed: a second line that is not a delimiter
+ *  row means this is prose that contains pipes; and a body row carrying
+ *  MORE columns than the header is malformed — rendering it would have
+ *  to guess where the extra content belongs, and a guess printed into
+ *  scrollback is indistinguishable from a fact. Rejected tables fall
+ *  back to their own source bytes, which are still valid markdown. */
+export function tableShape(lines: readonly string[]): MdTable | null {
+	if (lines.length < 2) return null;
+	const header = splitCells(lines[0]!);
+	const delim = splitCells(lines[1]!);
+	if (header.length === 0 || delim.length !== header.length) return null;
+	if (!delim.every((c) => DELIM_CELL.test(c))) return null;
+	const align = delim.map<MdAlign>((c) => (c.startsWith(":") && c.endsWith(":") ? "center" : c.endsWith(":") ? "right" : "left"));
+	const rows: string[][] = [];
+	for (const line of lines.slice(2)) {
+		const cells = splitCells(line);
+		if (cells.length > header.length) return null;
+		while (cells.length < header.length) cells.push(""); // a short row is padded — nothing is invented
+		rows.push(cells);
+	}
+	return { header, align, rows };
 }
 
 /** The list: `•` normalization, numbers kept, 2 spaces per nesting
@@ -333,7 +477,10 @@ function listRows(b: MdBlock, W: number): string[] {
 	let text = "";
 	const flush = (): void => {
 		if (lead === "") return;
-		out.push(...wrap(text, W, lead, " ".repeat(displayWidth(lead))));
+		// the HANGING INDENT: the continuation prefix is the marker's own
+		// visible width, so a wrapped item's later rows align to the text
+		// column instead of returning to the margin.
+		out.push(...wrap(inlineSpans(text, ""), W, lead, " ".repeat(displayWidth(lead))));
 	};
 	for (const line of b.lines) {
 		const m = ITEM.exec(line);
@@ -343,6 +490,8 @@ function listRows(b: MdBlock, W: number): string[] {
 		}
 		flush();
 		const depth = Math.min(5, Math.floor(m[1]!.length / 2));
+		// `•` normalization for bullets; a numbered list KEEPS its numbers
+		// (they are the author's meaning, not decoration).
 		const marker = /^\d/.test(m[2]!) ? `${m[2]} ` : "• ";
 		lead = `${"  ".repeat(depth + 1)}${marker}`;
 		text = m[3]!;
@@ -381,5 +530,5 @@ function foldLineWidth(line: string, W: number): string[] {
  *  Exported so the mapping is testable as data, not by inference. */
 export function style(): Record<string, string> {
 	const p = palette();
-	return { heading: p.bold, bold: p.bold, code: p.code, gutter: p.dim, rule: p.dim, quote: p.dim, url: p.dim, reset: p.reset };
+	return { heading: p.bold, bold: p.bold, italic: p.italic, code: p.code, gutter: p.dim, rule: p.dim, quote: p.dim, url: p.dim, reset: p.reset };
 }

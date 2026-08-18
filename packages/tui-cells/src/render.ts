@@ -46,12 +46,22 @@ export interface Palette {
 	 *  missing member, not a fourth colour. */
 	readonly warn: string;
 	readonly code: string; // TUI v5 #16e: the inline-code tint — assistant body backtick spans only (KC3 §2: light GRAY, the mono discipline)
+	/** TUI2-MD (MD-1, the owner's circle) — the markdown round's ONE new
+	 *  member. `*italic*` needs a rendering, and under the mono discipline
+	 *  the answer cannot be a colour: SGR 3 is an ATTRIBUTE, it costs the
+	 *  alphabet nothing chromatic, and a terminal without italics simply
+	 *  draws the text — a harmless degradation rather than a lie.
+	 *  It ships with its own close (23) for the same reason `rv` does: an
+	 *  italic span inside a bold heading must be able to end WITHOUT the
+	 *  SGR-0 that would strand the heading's own style. */
+	readonly italic: string;
+	readonly italicEnd: string;
 	readonly rv: string; // W16: reverse video — SGR 7, closed with rvEnd (27, never SGR 0 — the chip composes with a surrounding span)
 	readonly rvEnd: string;
 	readonly reset: string;
 }
-export const COLOR_ON: Palette = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m", code: "\x1b[38;5;252m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" };
-export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", rv: "", rvEnd: "", reset: "" };
+export const COLOR_ON: Palette = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m", code: "\x1b[38;5;252m", italic: "\x1b[3m", italicEnd: "\x1b[23m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" };
+export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", rv: "", rvEnd: "", reset: "" };
 export function palette(): Palette {
 	return process.env.NO_COLOR === undefined && process.stdout.isTTY ? COLOR_ON : COLOR_OFF;
 }
