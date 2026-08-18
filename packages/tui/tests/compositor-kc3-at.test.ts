@@ -92,7 +92,13 @@ describe("KC3 T-A3: the panel rides the menu-rows band", () => {
 		body.bindInput(one("@ra"), "› ");
 		body.bindAt(atState(FILES, "ra"));
 		body.enter();
-		body.textAppend(Array.from({ length: 40 }, (_, i) => `tall ${i}`).join("\n"));
+		// MOVED ASSERTION, the markdown-render class (TUI2-MD ⑤): the fixture
+		// gains its list markers. Assistant body text is markdown now, and N
+		// consecutive PROSE lines are ONE paragraph that REFLOWS — so the old
+		// fixture no longer produces N rows, which is what this test needs. A
+		// list is the same shape in the new model: one open block, one row per
+		// item, no reflow. The assertions themselves are unchanged.
+		body.textAppend(Array.from({ length: 40 }, (_, i) => `- tall ${i}`).join("\n"));
 		tick();
 		// chrome = 3 + 1 input + 6 band rows (5 windowed + counter)
 		expect(body.liveCount()).toBeLessThanOrEqual(24 - 3 - 1 - 6);

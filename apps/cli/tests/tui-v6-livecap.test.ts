@@ -66,7 +66,13 @@ describe("TUI v6 — the live-region cap (real PTY, the VT emulator)", () => {
 		const { env } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v6-cap-"));
 		const script = join(dir, "faux.json");
-		const tall = Array.from({ length: 60 }, (_, i) => `tall line ${String(i + 1).padStart(2, "0")}`).join("\n");
+		// MOVED ASSERTION, the markdown-render class (TUI2-MD ⑤): the fixture
+		// gains its list markers. Assistant body text is markdown now, and N
+		// consecutive PROSE lines are ONE paragraph that REFLOWS — so the old
+		// fixture no longer produces N rows, which is what this test needs. A
+		// list is the same shape in the new model: one open block, one row per
+		// item, no reflow. The assertions themselves are unchanged.
+		const tall = Array.from({ length: 60 }, (_, i) => `- tall line ${String(i + 1).padStart(2, "0")}`).join("\n");
 		writeFileSync(
 			script,
 			JSON.stringify([

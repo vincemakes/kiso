@@ -64,6 +64,7 @@ import {
 	Container,
 	ROLLUP_NOUN,
 	SPINNER,
+	MdStream,
 	bodySpacing,
 	boxBottom,
 	boxTop,
@@ -182,6 +183,11 @@ export class Body {
 	#lastTool: { name: string; input: Record<string, unknown>; result: { content: string; isError: boolean } } | null = null;
 	#pendingCalls = new Map<string, { name: string; input: Record<string, unknown>; result: { content: string; isError: boolean } }>();
 	#pipeBuf = ""; // the passthrough's thinking buffer
+	/** TUI2-MD ⑤ — the markdown scanner of the message currently
+	 *  streaming, and the cell index its first block landed at. Null
+	 *  between messages: the scanner's life is one assistant message. */
+	#md: MdStream | null = null;
+	#mdBase = 0;
 	#toolCells = new Map<string, number>(); // callId → cell index (parallel tools)
 	// W15: the collapsed (cut) tool cells — committed cells whose last
 	// rendered row carried the "ctrl+r" affordance; the expand key's
@@ -483,15 +489,61 @@ export class Body {
 		// rollups; the fold is only for the QUIET turn).
 		const turn = this.#turns[this.#turns.length - 1];
 		if (turn !== undefined) turn.hasText = true;
-		const last = this.#cells[this.#cells.length - 1];
-		if (last !== undefined && last.kind === "text" && !last.done) {
-			last.text += text;
-		} else {
+		// TUI2-MD ⑤: assistant body text is MARKDOWN, scanned as it
+		// streams. The scanner yields CLOSED blocks (final source, final
+		// render) and one OPEN tail block; each becomes a cell, and the
+		// cell is the commit unit the compositor already had — so
+		// block-freeze needs no new commit machinery at all. A closed
+		// block is a DONE cell the natural loop freezes; the tail is the
+		// one cell left live, repainting in place.
+		if (this.#md === null) {
 			this.#closeOpenThinking();
 			this.#closeOpenText();
-			this.#cells.push({ kind: "text", text, done: false });
+			this.#md = new MdStream();
+			this.#mdBase = this.#cells.length;
 		}
+		this.#md.push(text);
+		this.#syncMd();
 		this.#mark();
+	}
+
+	/** TUI2-MD ⑤ — mirror the scanner's blocks onto cells. Append-only by
+	 *  construction: a block that has closed never changes, so a cell that
+	 *  is done is never touched again (and a committed one could not be).
+	 *  Only the trailing tail cell is rewritten per delta. */
+	#syncMd(): void {
+		if (this.#md === null) return;
+		const blocks = this.#md.blocks();
+		const closed = this.#md.closed();
+		for (let i = 0; i < blocks.length; i += 1) {
+			const at = this.#mdBase + i;
+			const cell = this.#cells[at];
+			if (cell === undefined) {
+				this.#cells.push({ kind: "md", block: blocks[i]!, done: i < closed });
+				continue;
+			}
+			if (cell.kind !== "md" || cell.done) continue;
+			cell.block = blocks[i]!;
+			cell.done = i < closed;
+		}
+		// the tail can vanish (a lone whitespace delta that turns out to be
+		// a blank line). Drop it only where dropping is safe: never below
+		// the commit frontier, where the bytes are already the terminal's.
+		const want = this.#mdBase + blocks.length;
+		while (this.#cells.length > Math.max(want, this.#committed) && this.#cells[this.#cells.length - 1]!.kind === "md") this.#cells.pop();
+	}
+
+	/** TUI2-MD ⑤ — the message ends: the tail block closes and every md
+	 *  cell of this message is final. */
+	#endMd(): void {
+		if (this.#md === null) return;
+		this.#md.end();
+		this.#syncMd();
+		for (let i = this.#mdBase; i < this.#cells.length; i += 1) {
+			const cell = this.#cells[i]!;
+			if (cell.kind === "md") cell.done = true;
+		}
+		this.#md = null;
 	}
 
 	textEnd(): void {
@@ -499,6 +551,7 @@ export class Body {
 			this.#write("\n");
 			return;
 		}
+		this.#endMd();
 		const last = this.#cells[this.#cells.length - 1];
 		if (last !== undefined && last.kind === "text" && !last.done) last.done = true;
 		this.#mark();
@@ -1027,14 +1080,13 @@ export class Body {
 				queueRows.length
 			);
 		}
-		const live = this.#cells.slice(this.#committed);
 		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
 		const W = this.#opts.width();
 		let lines = 0;
 		let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
-		for (const cell of live) {
-			const rows = cellComponent(cell).render(W, ctx);
-			lines += bodySpacing(prev, rows).length;
+		for (let i = this.#committed; i < this.#cells.length; i += 1) {
+			const rows = cellComponent(this.#cells[i]!).render(W, ctx);
+			lines += this.#space(i, prev, rows).length;
 			prev = rows;
 		}
 		return lines + CHROME_ROWS + inputExtra + this.#menuRows(W).length + queueRows.length;
@@ -1067,7 +1119,7 @@ export class Body {
 				const cell = this.#cells[i]!;
 				const lines = cellComponent(cell).render(W, ctx);
 				this.#lineCache[i] = lines; // the cell's OWN rows — the cache stays raw
-				this.#committedLines += bodySpacing(i > 0 ? this.#lineCache[i - 1]! : null, lines).length;
+				this.#committedLines += this.#space(i, i > 0 ? this.#lineCache[i - 1]! : null, lines).length;
 			}
 		}
 		// 1. the natural commits — the leading DONE cells freeze: their
@@ -1143,7 +1195,7 @@ export class Body {
 				// the head row carries the affordance; the tint lands on it and
 				// nowhere else, which is what makes "exactly one" structural
 				if (i === focus && rows.length > 0) rows[0] = focusToken(rows[0]!, W);
-				liveLines.push(...bodySpacing(prev, rows));
+				liveLines.push(...this.#space(i, prev, rows));
 				prev = rows;
 			}
 		}
@@ -1163,7 +1215,7 @@ export class Body {
 					const cell = this.#cells[i]!;
 					const rows = cellComponent(cell).render(W, ctx);
 					if (i === focus && rows.length > 0) rows[0] = focusToken(rows[0]!, W);
-					liveLines.push(...bodySpacing(prev, rows));
+					liveLines.push(...this.#space(i, prev, rows));
 					prev = rows;
 				}
 			}
@@ -1206,6 +1258,23 @@ export class Body {
 		this.#lastAnchorRow = H - 1 - editor.rows.length + editor.markerRow;
 	}
 
+	/** TUI2-MD ⑤ — the join blank between cell i−1 and cell i.
+	 *
+	 *  W11's formula ("a blank above a row that is itself a block, or
+	 *  whose previous sibling was taller than one row") reads ROW COUNTS,
+	 *  and markdown's rhythm is not a row count: a heading wants a blank
+	 *  above and below it even between two one-row paragraphs, and two
+	 *  rows of one fence want none even when a long code line folds to
+	 *  two. So between two MARKDOWN cells the formula steps aside and the
+	 *  block's own `gap` decides — the renderer owns the rhythm, which is
+	 *  the only place that knows it. Every other pair is untouched,
+	 *  including the boundary INTO a markdown message (the blank under the
+	 *  user chip is still W11's). */
+	#space(i: number, prev: readonly string[] | null, rows: string[]): string[] {
+		if (i > 0 && this.#cells[i]?.kind === "md" && this.#cells[i - 1]?.kind === "md") return rows;
+		return bodySpacing(prev, rows);
+	}
+
 	/** Commit the cell at index i: render + cache its lines (immutable —
 	 *  the force-committed form freezes at the current render), advance
 	 *  the bookkeeping — and collect the lines for this frame's writes.
@@ -1227,7 +1296,7 @@ export class Body {
 		// where the user's last key press would aim.
 		if (cell.kind === "tool" && lines.some((l) => l.includes("ctrl+r"))) this.#collapsed.unshift(i);
 		this.#lineCache[i] = lines;
-		const placed = bodySpacing(i > 0 ? this.#lineCache[i - 1]! : null, lines);
+		const placed = this.#space(i, i > 0 ? this.#lineCache[i - 1]! : null, lines);
 		this.#committed += 1;
 		this.#committedLines += placed.length;
 		this.#committedLinesThisFrame.push(...placed);
@@ -1632,7 +1701,7 @@ export class Body {
 		//    cell (the V6-1 frozen-loop finding — the banner vanished).
 		const frozen: string[] = [];
 		for (let i = 0; i < this.#committedAtFrameStart; i += 1) {
-			frozen.push(...bodySpacing(i > 0 ? this.#lineCache[i - 1]! : null, this.#lineCache[i]!));
+			frozen.push(...this.#space(i, i > 0 ? this.#lineCache[i - 1]! : null, this.#lineCache[i]!));
 		}
 		// A8: the march is the WINDOW — the model's last H rows. When the
 		// model total (committed + live + chrome) exceeds H, the window's
@@ -1972,8 +2041,11 @@ export class Body {
 	}
 
 	/** Close an open TEXT cell when a new cell starts (see v2d — the
-	 *  runtime emits no text_end; the next cell is the close signal). */
+	 *  runtime emits no text_end; the next cell is the close signal).
+	 *  TUI2-MD ⑤: that same signal ends the markdown message — the open
+	 *  tail block closes and its cell becomes commit-eligible. */
 	#closeOpenText(): void {
+		this.#endMd();
 		const last = this.#cells[this.#cells.length - 1];
 		if (last !== undefined && last.kind === "text" && !last.done) last.done = true;
 	}

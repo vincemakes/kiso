@@ -324,7 +324,13 @@ describe("TUI v6 — the one compositor", () => {
 		// a tall OPEN cell: 15 placed lines at 24 rows (the content cap
 		// binds at 20) — stays LIVE at 80×24, and the winch to 18 rows (the
 		// cap binds at 14) force-commits it AT the resize frame
-		body.textAppend(Array.from({ length: 15 }, (_, i) => `tall line ${String(i).padStart(2, "0")}`).join("\n"));
+		// MOVED ASSERTION, the markdown-render class (TUI2-MD ⑤): the fixture
+		// gains its list markers. Assistant body text is markdown now, and N
+		// consecutive PROSE lines are ONE paragraph that REFLOWS — so the old
+		// fixture no longer produces N rows, which is what this test needs. A
+		// list is the same shape in the new model: one open block, one row per
+		// item, no reflow. The assertions themselves are unchanged.
+		body.textAppend(Array.from({ length: 15 }, (_, i) => `- tall line ${String(i).padStart(2, "0")}`).join("\n"));
 		tick();
 		writes.length = 0;
 		setSize(40, 18);
@@ -344,9 +350,9 @@ describe("TUI v6 — the one compositor", () => {
 		// copy, never a re-paint. The march never re-paints them — the
 		// window's first line is tall 01.
 		expect(bytes).not.toContain("frozen banner"); // above the window — pushed as the old screen's copy, never a re-paint
-		expect(bytes).toContain("\x1b[3;1H\x1b[0Ktall line 00"); // A8b: the pre-paint at its OLD row — the scrollback record
-		expect(bytes).not.toContain("\x1b[1;1H\x1b[0Ktall line 00"); // never re-painted at the window's top
-		expect(bytes).toContain("\x1b[1;1H\x1b[0Ktall line 01"); // the window's first line
+		expect(bytes).toContain("\x1b[3;1H\x1b[0K  \u2022 tall line 00"); // A8b: the pre-paint at its OLD row — the scrollback record
+		expect(bytes).not.toContain("\x1b[1;1H\x1b[0K  \u2022 tall line 00"); // never re-painted at the window's top
+		expect(bytes).toContain("\x1b[1;1H\x1b[0K  \u2022 tall line 01"); // the window's first line
 		expect(bytes).toContain("tall line 14"); // the last force-committed line
 		expect(bytes).toContain("\x1b[15;1H"); // the box top at row H−3 — the chrome holds the bottom
 		expect(bytes).toContain("\x1b[18;1H"); // the status at row H
