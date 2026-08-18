@@ -107,6 +107,13 @@ const CELL_LINE = [
 	/^▸ run paused.*$/, // W21: the panel's paused status (the lead owns the input row — the affordance rides the status)
 	/^\/ commands · ↑ history$/, // TUI v5 #16g: the dock's idle hint — the status row at enter (the status is still empty)
 	/^[▖▘▝▗] working \d+s.*$/, // the running status line (all four spinner glyphs — the W21 hint "· esc to interrupt" rides the row)
+	// MOVED (the focus-marker class, TUI2-R2 ⑤): a running tool cell's
+	// head row carries `· ctrl+r` when it is the FOCUSED cell — the one
+	// the next press will act on. The affordance IS the marker there, so
+	// the row it appears on is exactly one per frame; the pattern above
+	// already admitted the unfocused form (`▖ name · 1s`) and this admits
+	// the focused one.
+	/^[▖▘▝▗] .* · \d+s · ctrl\+r$/,
 	/^streaming text.*$/, // the TextCell body
 	/^session \S+$/, // the session header
 	/^\[faux mode.*$/, // the faux banner line

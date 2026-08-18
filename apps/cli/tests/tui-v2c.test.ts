@@ -88,7 +88,14 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			["▌ ", "Ａ"],
 			["Ａ", "Ａ"], // the row now shows the first Ａ — type the second
 			["ＡＡ", "\r"], // W6: the row shows the 4-cell pair whole inside the box (the display-width reflow) — submit
-			["▸ default · /mode to switch", "exit\r"],
+			// MOVED (the boot-status class, TUI2-R2 ⑥): this feed used the
+			// idle status row as a stand-in for "the turn ended". The row is
+			// on screen from the FIRST paint now, so that needle fires before
+			// anything has been typed — the driver's feeds are independent,
+			// not sequential, so the exit landed first and the case tested
+			// nothing. The RECAP row (▞) is what actually means "a turn
+			// finished", and it always did.
+			["▞", "exit\r"],
 		]);
 		// v6: the cursor derives from the frame's marker — the marker sits
 		// at leadW + the DISPLAY cursor (2 + 4 = 6 for ＡＡ — the old CUP
@@ -110,7 +117,14 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			// needs its own needle to be observed before the Enter.
 			["▌ ", "look around"],
 			["look around", "\r"],
-			["▸ default · /mode to switch", "exit\r"], // v3 idle state marks the turn's end
+			// MOVED (the boot-status class, TUI2-R2 ⑥): this feed used the
+			// idle status row as a stand-in for "the turn ended". The row is
+			// on screen from the FIRST paint now, so that needle fires before
+			// anything has been typed — the driver's feeds are independent,
+			// not sequential, so the exit landed first and the case tested
+			// nothing. The RECAP row (▞) is what actually means "a turn
+			// finished", and it always did.
+			["▞", "exit\r"], // the recap row marks the turn's end
 		]);
 		// The box's input row renders the light › prompt + the line (the
 		// wall's dim SPLITS the row from the text — that raw shape is the
@@ -234,7 +248,12 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 				["› three", "\x1b"],
 				// The esc-popped line — submit it: it runs as a fresh turn.
 				["› two", "\r"],
-				["▸ default · /mode to switch", "exit\r"],
+				// MOVED (the boot-status class, TUI2-R2 ⑥): see above — the
+				// idle row is on screen from the first paint, so it can no
+				// longer stand in for "a turn ended". Here it mattered twice
+				// over: the early exit also let the queued turns drain, which
+				// is exactly what this case asserts must NOT happen.
+				["turn two done", "exit\r"],
 			],
 		);
 		// The chips are the SAME UserMessage chip as the body record — the

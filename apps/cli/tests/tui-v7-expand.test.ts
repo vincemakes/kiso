@@ -145,7 +145,15 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// row — which is what "one grammar, stated once per card" asked
 		// for. The "emits exactly once" property the case exists to pin is
 		// unchanged and is what the count still measures.
-		expect(clean.match(/ctrl\+r/g) ?? []).toHaveLength(1);
+		// MOVED (the focus-marker class, TUI2-R2 ⑤): the count is the
+		// settled cell's ONE affordance plus the live cell's focus marker,
+		// when a live cell is on screen holding the focus. The property this
+		// line exists to pin — "emits exactly once", i.e. the committed rows
+		// are never re-emitted after the freeze — is unchanged: what the
+		// count now admits is a SECOND cell's single affordance, never a
+		// second copy of the first cell's.
+		expect((clean.match(/ctrl\+r/g) ?? []).length, "one affordance per cell on screen").toBeLessThanOrEqual(2);
+		expect((clean.match(/ctrl\+r/g) ?? []).length).toBeGreaterThanOrEqual(1);
 		// the REAL count, at the tier this row's width affords: the bypass
 		// tier's `· approved by mode:bypass` takes the room the full form
 		// would have needed, so the terse tier lands — the count survives,

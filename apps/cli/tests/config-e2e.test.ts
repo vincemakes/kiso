@@ -94,17 +94,26 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		// ANTHROPIC_API_KEY deliberately unset → claude unavailable
 
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-config-e2e-w1-"));
+		// MOVED (the picker-surface class, TUI2-R2 ④): bare /model was a
+		// PRINTED list and a sentence telling you to go and edit a JSON
+		// file; it is a picker panel now. The facts it shows are the same
+		// facts, so the assertions move to the rows that carry them — and
+		// the SWITCH is unchanged, which is what the second half proves:
+		// picking option 2 resolves to exactly the argument `/model claude`
+		// would have passed, and lands in exactly the same refusal.
 		const out = stripANSI(
 			ptyRun(env, [
 				["› ", "/model\r"],
-				["(unavailable)", "/model claude\r"],
+				["digits pick", "2\r"],
 				["not set", "/model ds\r"],
 				["model → ds", "exit\r"],
 			], workdir),
 		);
-		expect(out).toContain("model: faux");
-		expect(out).toContain("ds → openai-compat/deepseek-v4-flash · MY_TEST_KEY (available)");
-		expect(out).toContain("claude → anthropic/claude-sonnet-5 · ANTHROPIC_API_KEY (unavailable)");
+		expect(out).toContain("model — current: faux"); // the panel's header, where "model: faux" used to print
+		expect(out).toContain("openai-compat/deepseek-v4-flash");
+		expect(out).toContain("profile: ds");
+		expect(out).toContain("anthropic/claude-sonnet-5");
+		expect(out).toContain("unavailable"); // the qualifier rides the row, as (unavailable) rode the line
 		expect(out).toContain("model claude: unavailable — the env var ANTHROPIC_API_KEY is not set");
 		expect(out).toContain("model → ds (deepseek-v4-flash) — takes effect on the next turn");
 	});
@@ -138,12 +147,18 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 			ptyRun(env, [
 				["trust this project", "y\r"],
 				["› ", "/model\r"],
-				["proj-model", "exit\r"],
+				// esc leaves the panel and the exit rides the SAME chunk: a
+				// panel owns every printable key while it is up, so a bare
+				// "exit" typed into one is swallowed by design
+				["digits pick", "\x1bexit\r"],
 			], workdir),
 		);
 		expect(out).toContain("trust this project's .kiso?"); // the trust panel's rule line (the "(y/n)" suffix is gone — the panel superseded the boxed question)
-		expect(out).toContain("model: proj-model-x"); // the project's model drives the session
-		expect(out).toContain("proj-model → openai-compat/proj-model-x · MY_TEST_KEY (available)");
+		// MOVED (the picker-surface class, TUI2-R2 ④): the same two facts,
+		// on the panel's header and option row instead of two printed lines
+		expect(out).toContain("model — current: proj-model-x"); // the project's model drives the session
+		expect(out).toContain("openai-compat/proj-model-x");
+		expect(out).toContain("profile: proj-model");
 	});
 
 	it("projectTrust \"never\" (user config) → no ask, nothing loads", () => {
@@ -156,12 +171,17 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 		const out = stripANSI(
 			ptyRun(env, [
 				["› ", "/model\r"],
-				["(none — define models", "exit\r"],
+				["define models", "\x1bexit\r"], // esc first — the panel owns printable keys
 			], workdir),
 		);
 		expect(out).not.toContain("trust this project");
 		expect(out).toContain("projectTrust: never");
-		expect(out).toContain("(none — define models in ~/.kiso/config.json)");
+		// MOVED (the picker-surface class, TUI2-R2 4): the zero-profile copy
+		// is reproduced VERBATIM in the panel — the user who sees this state
+		// is exactly the user who needs the config path spelled out, and a
+		// redesign that dropped it to look tidier would have removed the one
+		// useful thing the old command did.
+		expect(out).toContain("no profiles — define models in ~/.kiso/config.json");
 	});
 });
 

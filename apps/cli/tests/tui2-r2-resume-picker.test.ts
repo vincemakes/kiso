@@ -76,7 +76,13 @@ describe("TUI2-R2 ② — bare `kiso resume`: the picker is a TTY surface", () =
 			// the picker is up as soon as the band names itself; type a
 			// filter that can only mean one session, then take it
 			feeds: [["sessions", "ben"]],
-			delays: [[4, "\r"], [8, "exit\r"]],
+			// the pick lands in the recovery flow's uncertainty gate (that IS
+			// the proof it went into the existing resume path), so the gate
+			// gets an answer — otherwise the flow waits for a human and the
+			// driver burns its whole timeout, which starves vitest's
+			// reporter RPC at suite scale (the R1.5 spawn-cost lesson).
+			delays: [[4, "\r"], [7, "3\r"]],
+			timeout: 25,
 		});
 		// the picker's own frame: the band, all three sessions, the counter
 		expect(raw).toContain("bench-refactor");
