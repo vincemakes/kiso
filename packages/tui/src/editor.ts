@@ -27,7 +27,7 @@ import { charWidth, displayWidth, leadWidth, widthOf } from "./width.js";
 // authority) — re-exported so the editor's public surface is unchanged.
 export { charWidth, displayWidth, widthOf };
 import { palette } from "./render.js";
-import type { AskRuntime, PanelPhase, PanelSel, PanelState, PanelVerdict, PanelView } from "./approval-panel.js";
+import { PICK_MAX, type AskRuntime, type PanelPhase, type PanelSel, type PanelState, type PanelVerdict, type PanelView, type PickRuntime } from "./approval-panel.js";
 // KC3.5: the panel-slot dispatchers — the ask branch folded into the
 // W21 lead/rows, so this file keeps ONE panel and one key owner.
 import { askCommitCustom, askKey, askStart, panelLead } from "./ask-panel.js";
@@ -113,6 +113,9 @@ export class Editor {
 		sel: PanelSel;
 		/** KC3.5: the ask's walk — non-null exactly for an ask view. */
 		ask: AskRuntime | null;
+		/** TUI2-R2 ④: the pick panel's cursor + phase; null on every other
+		 *  flavour. */
+		pick: PickRuntime | null;
 		amend: "yes" | "no";
 		onCommit: (v: PanelVerdict) => void;
 		stash: { chars: number[]; cursor: number; scroll: number };
@@ -584,6 +587,9 @@ export class Editor {
 			phase: "options",
 			sel: 0,
 			ask: view.ask === undefined ? null : askStart(view.ask),
+			// TUI2-R2 ④: the pick's walk — present exactly when the view is
+			// a pick, the same contract the ask's runtime has.
+			pick: view.pick === undefined ? null : { cursor: 0, phase: "options" as const },
 			amend: "yes",
 			onCommit,
 			stash: { chars: this.#chars, cursor: this.#cursor, scroll: this.#scroll },
@@ -609,7 +615,13 @@ export class Editor {
 	panelState(): PanelState | null {
 		const panel = this.#panel;
 		if (panel === null) return null;
-		return { view: panel.view, phase: panel.phase, sel: panel.sel, ...(panel.ask === null ? {} : { ask: panel.ask }) };
+		return {
+			view: panel.view,
+			phase: panel.phase,
+			sel: panel.sel,
+			...(panel.ask === null ? {} : { ask: panel.ask }),
+			...(panel.pick === null ? {} : { pick: panel.pick }),
+		};
 	}
 
 	enter(): void {
@@ -687,6 +699,44 @@ export class Editor {
 				// only esc and enter are intercepted while typing), esc
 				// declines the whole call. Everything else falls through to
 				// the ordinary editing chain below.
+				// TUI2-R2 ④: a PICK panel routes its own keys — a digit moves
+				// the cursor to that option (never commits: the choice is
+				// CONFIRMED, so a mistyped digit is a mistake you can see
+				// before it takes effect), `t` opens the type-it line, enter
+				// commits, esc backs out then cancels. The swallow rule below
+				// is the ask's, for the ask's reason: a typed `/` must not arm
+				// the menu under a panel that owns the keys.
+				if (panel.pick !== null) {
+					const typing = panel.pick.phase === "custom";
+					if (c === "\x1b" && !text.slice(i + 1).startsWith("[") && !text.slice(i + 1).startsWith("O")) {
+						this.#pickPanelEsc();
+						i += 1;
+						continue;
+					}
+					if (c === "\x0d" || c === "\x0a") {
+						this.#pickPanelEnter();
+						i += 1;
+						continue;
+					}
+					if (!typing && c !== undefined && c >= "1" && c <= "9") {
+						this.#pickPanelDigit(Number(c) - 1);
+						i += 1;
+						continue;
+					}
+					if (!typing && (c === "t" || c === "T")) {
+						panel.pick = { cursor: panel.pick.cursor, phase: "custom" };
+						this.#chars = [];
+						this.#cursor = 0;
+						this.#scroll = 0;
+						this.#onRender();
+						i += 1;
+						continue;
+					}
+					if (!typing && c !== undefined && c >= " " && c !== "\x7f") {
+						i += 1;
+						continue;
+					}
+				}
 				if (panel.ask !== null) {
 					const typing = panel.ask.phase === "custom";
 					if (c === "\x1b" && !text.slice(i + 1).startsWith("[") && !text.slice(i + 1).startsWith("O")) {
@@ -734,20 +784,29 @@ export class Editor {
 					i += 1;
 					continue;
 				}
-				if (c === "1" || c === "y" || c === "Y") {
-					if (panel.phase === "options") this.#panelSelect(1);
-					i += 1;
-					continue;
-				}
-				if (c === "2" && panel.phase === "options" && panel.view.flavor === "approval") {
-					this.#panelRule();
-					i += 1;
-					continue;
-				}
-				if (c === "3" || c === "n" || c === "N") {
-					if (panel.phase === "options") this.#panelSelect(3);
-					i += 1;
-					continue;
+				// TUI2-R2 ④: the APPROVAL panel's y/n/1/3 shortcuts are the
+				// approval panel's, and a pick view has no yes and no no. The
+				// guard matters because the pick's type-it line is FREE TEXT
+				// that falls through to the editing chain: without it, `n`
+				// and `y` were eaten on the way past and
+				// "openai/deepseek-reasoner" arrived as
+				// "opeai/deepseek-reasoer" (the RED caught exactly this).
+				if (panel.pick === null) {
+					if (c === "1" || c === "y" || c === "Y") {
+						if (panel.phase === "options") this.#panelSelect(1);
+						i += 1;
+						continue;
+					}
+					if (c === "2" && panel.phase === "options" && panel.view.flavor === "approval") {
+						this.#panelRule();
+						i += 1;
+						continue;
+					}
+					if (c === "3" || c === "n" || c === "N") {
+						if (panel.phase === "options") this.#panelSelect(3);
+						i += 1;
+						continue;
+					}
 				}
 			}
 			if (c === "\x1b") {
@@ -949,7 +1008,13 @@ export class Editor {
 			if (this.#panel !== null) {
 				// W21: the panel owns the keys. KC3.5: an ask uses ↑↓ for
 				// the option cursor (the approval panel still has no ↑↓ role).
-				if (this.#panel.ask !== null && this.#panel.ask.phase === "options") this.#askStep(final === "A" ? "up" : "down");
+				if (this.#panel.pick !== null && this.#panel.pick.phase === "options") {
+					// TUI2-R2 ④: ↑↓ walk the pick's cursor — the same list the
+					// digits address, the other muscle.
+					const n = Math.min(this.#panel.view.pick!.options.length, PICK_MAX);
+					const cur = this.#panel.pick.cursor;
+					this.#panel.pick = { cursor: final === "A" ? Math.max(0, cur - 1) : Math.min(Math.max(0, n - 1), cur + 1), phase: "options" };
+				} else if (this.#panel.ask !== null && this.#panel.ask.phase === "options") this.#askStep(final === "A" ? "up" : "down");
 			} else if (this.#pickUp()) {
 				// TUI2-R2 ②: the session picker owns ↑↓ while up — the
 				// SELECTION, never the composer's line walk and never the
@@ -1126,6 +1191,57 @@ export class Editor {
 			return;
 		}
 		this.#onRender();
+	}
+
+	/**
+	 * TUI2-R2 ④ — the pick panel's three keys.
+	 *
+	 * A digit MOVES the cursor rather than committing. The list is short
+	 * and the digits are adjacent on the keyboard; a picker that acted on
+	 * the keypress would make a mistyped 3 a model switch, and the whole
+	 * point of a confirm step is that the choice is visible before it is
+	 * taken.
+	 */
+	#pickPanelDigit(index: number): void {
+		const panel = this.#panel;
+		if (panel === null || panel.pick === null) return;
+		// a digit past the list is INERT — an option nobody has is never
+		// selected, and the cursor stays where the human left it
+		if (index < 0 || index >= Math.min(panel.view.pick!.options.length, PICK_MAX)) return;
+		panel.pick = { cursor: index, phase: "options" };
+		this.#onRender();
+	}
+
+	/** enter — the typed line when there is one (an EMPTY line is not a
+	 *  choice and commits nothing), else the option under the cursor. */
+	#pickPanelEnter(): void {
+		const panel = this.#panel;
+		if (panel === null || panel.pick === null) return;
+		if (panel.pick.phase === "custom") {
+			const line = this.line().trim();
+			if (line === "") return;
+			this.#panelClose({ action: "picked", result: { custom: line } });
+			return;
+		}
+		if (panel.view.pick!.options.length === 0) return; // nothing to take
+		this.#panelClose({ action: "picked", result: { index: panel.pick.cursor } });
+	}
+
+	/** esc — back out of the type-it line first, then cancel the panel.
+	 *  Two escapes, two meanings, exactly as the approval panel's
+	 *  rule/amend phases already work. */
+	#pickPanelEsc(): void {
+		const panel = this.#panel;
+		if (panel === null || panel.pick === null) return;
+		if (panel.pick.phase === "custom") {
+			panel.pick = { cursor: panel.pick.cursor, phase: "options" };
+			this.#chars = [];
+			this.#cursor = 0;
+			this.#scroll = 0;
+			this.#onRender();
+			return;
+		}
+		this.#panelClose({ action: "cancel" });
 	}
 
 	#panelClose(verdict: PanelVerdict): void {

@@ -4,7 +4,7 @@
  * the context (the chain, the run state, the prompt arming).
  */
 
-import { contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, palette } from "@vincemakes/kiso-tui";
+import { contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modelPickView, palette, type PickResult } from "@vincemakes/kiso-tui";
 import { buildAdapter } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, getMode, setMode } from "./mode.js";
@@ -190,7 +190,45 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// session's adapter — the NEXT turn uses it (session.setAdapter),
 		// the notice cell leaves the audit line in the body.
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
-			const arg = trimmed.slice(6).trim();
+			let arg = trimmed.slice(6).trim();
+			// TUI2-R2 ④ — bare /model PICKS. It used to print a list and a
+			// sentence telling you to go and edit a JSON file: everything
+			// needed to make it a choice was already on screen, and only the
+			// choosing was missing. The panel adds the choosing and nothing
+			// else — what a switch MEANS is unchanged below, and the printed
+			// list survives verbatim wherever there is no panel to draw (a
+			// pipe, a dock-less TTY), because that is a machine-readable
+			// surface and this round moves no bytes on one.
+			if (arg === "" && dock.active && ctx.input.panelAsk !== undefined) {
+				const names = Object.keys(configModels);
+				const picked = await new Promise<PickResult | null>((resolve) => {
+					ctx.input.panelAsk(
+						modelPickView(
+							{
+								header: `model — current: ${agentModel}`,
+								options: names.map((name) => {
+									const profile = configModels[name]!;
+									const marks = [`profile: ${name}`, ...(profileAvailable(profile) ? [] : ["unavailable"]), ...(profile.model === agentModel ? ["current"] : [])];
+									return { label: `${profile.kind}/${profile.model}`, note: marks.join(" · ") };
+								}),
+								typeHint: names.length === 0 ? "type provider/model directly (e.g. openai/deepseek-reasoner)" : "type provider/model directly",
+								// the zero-profile copy is TODAY'S, verbatim: the
+								// user who sees it is exactly the user who needs
+								// the path spelled out
+								...(names.length === 0 ? { emptyNote: "no profiles — define models in ~/.kiso/config.json" } : {}),
+							},
+							ctx.isRunning() ? "▸ run paused" : `▸ ${getMode()}`,
+						),
+						(v) => resolve(v.action === "picked" ? v.result : null),
+					);
+				});
+				ctx.paintIdle();
+				if (picked === null) {
+					ctx.input.prompt();
+					return; // esc — nothing switched, nothing said
+				}
+				arg = "index" in picked ? names[picked.index]! : picked.custom;
+			}
 			if (arg === "") {
 				bodyLog(`model: ${agentModel}`);
 				const names = Object.keys(configModels);

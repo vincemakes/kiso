@@ -90,6 +90,45 @@ export interface AskRuntime {
 	readonly phase: "options" | "custom";
 }
 
+// ── TUI2-R2 ④ (the navigation round): the PICK panel's types ────────
+// A third payload in the same slot, for the same reason the ask was a
+// second one: the block, the lead, the status and the affordance are
+// already solved here, and a picker with machinery of its own would be
+// a second set of geometry bugs. `pick` present = the panel renders the
+// pick block and the editor routes the pick keys; absent = untouched.
+
+/** One thing that can be picked: what it is, and what qualifies it. */
+export interface PickOption {
+	readonly label: string;
+	/** the dim qualifier ("profile: ds \u00b7 current") \u2014 what tells two
+	 *  similar rows apart */
+	readonly note?: string;
+}
+
+/** The whole pick: the header sentence, the options, the free-text
+ *  escape hatch, and the honest empty state. */
+export interface PickSpec {
+	readonly header: string;
+	readonly options: readonly PickOption[];
+	/** the `t` row \u2014 typing it directly is always available, because a
+	 *  list of profiles is never the list of models that exist */
+	readonly typeHint: string;
+	/** shown INSTEAD of the options when there are none. The copy is the
+	 *  caller's and is reproduced verbatim. */
+	readonly emptyNote?: string;
+}
+
+/** The pick panel's runtime state \u2014 the editor owns it, the compositor
+ *  reads it (the AskRuntime precedent, two fields instead of five). */
+export interface PickRuntime {
+	readonly cursor: number;
+	readonly phase: "options" | "custom";
+}
+
+/** What was picked: a listed option by INDEX (never a label the caller
+ *  would have to re-match against its own list), or typed text. */
+export type PickResult = { readonly index: number } | { readonly custom: string };
+
 /** The ALWAYS-verbose args (the panel's body): the untruncated diff
  *  (edit/write), or the full text (shell = the command line, other =
  *  the pretty-printed JSON). The CLI composes them UNTRUNCATED — the
@@ -128,6 +167,9 @@ export interface PanelView {
 	 *  panel renders the ask block and the editor routes the ask keys;
 	 *  absent = the approval/simple panel, unchanged. */
 	readonly ask?: AskSpec;
+	/** TUI2-R2 \u2463: the options, when this view is a PICK. Same contract
+	 *  as `ask`, one payload over. */
+	readonly pick?: PickSpec;
 }
 
 export type PanelVerdict =
@@ -138,7 +180,11 @@ export type PanelVerdict =
 	/** KC3.5: the ask's own verdict — the answers (or the decline) the
 	 *  cli hands back to the tool. Only ask views ever produce it, so
 	 *  the approval path's switch is untouched. */
-	| { readonly action: "answers"; readonly result: AskResult };
+	| { readonly action: "answers"; readonly result: AskResult }
+	/** TUI2-R2 \u2463: the pick's verdict \u2014 the chosen index or the typed
+	 *  text. Only pick views ever produce it, so the approval path's
+	 *  switch is untouched. */
+	| { readonly action: "picked"; readonly result: PickResult };
 
 /** The bound panel state the compositor reads — the editor owns the
  *  phase/selection state machine and the key routing; the compositor
@@ -149,6 +195,8 @@ export interface PanelState {
 	readonly sel: PanelSel;
 	/** KC3.5: the ask's walk — present exactly when `view.ask` is. */
 	readonly ask?: AskRuntime;
+	/** TUI2-R2 \u2463: the pick's walk — present exactly when `view.pick` is. */
+	readonly pick?: PickRuntime;
 }
 
 /** The rule line's text — the why-asked line (the R3 chain): the tool
@@ -292,4 +340,96 @@ export function panelAffordance(view: PanelView, phase: PanelPhase, sel: PanelSe
 	if (phase === "amend") return "enter sends";
 	if (view.flavor === "approval") return sel === 0 ? "tab amend · esc cancel" : "enter sends · esc backs out";
 	return sel === 0 ? "esc cancel" : "enter sends";
+}
+
+
+// ── TUI2-R2 ④: the pick block, its lead, its status, its affordance ──
+
+/**
+ * The pick block's rows — the prototype's C frame.
+ *
+ * The header says what is in effect right now, because the first
+ * question anyone opening this panel has is "what am I on?". The
+ * options are numbered from 1 and the number IS the key. The `t` row is
+ * last and always present: a profile list is a convenience, never the
+ * set of models that exist, and a picker that can only offer what
+ * someone remembered to configure is a smaller product than the one it
+ * replaced.
+ *
+ * Single-row discipline: every row CUTS, never folds — the block's
+ * height is its row count (the W20 rule the #checked throw demands).
+ */
+export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, maxRows: number): string[] {
+	const p = palette();
+	const spec = view.pick!;
+	const gutter = `${p.dim}\u2502${p.reset} `;
+	const rows: string[] = [];
+	const room = Math.max(1, W - 2);
+	rows.push(`${gutter}${cutLine(`${p.bold}${escapeTerminal(spec.header.split(" \u2014 ")[0] ?? spec.header)}${p.reset}${p.dim}${escapeTerminal(spec.header.slice((spec.header.split(" \u2014 ")[0] ?? "").length))}${p.reset}`, room)}`);
+	if (spec.options.length === 0) {
+		// the honest empty state \u2014 the caller's own copy, verbatim
+		rows.push(`${gutter}${cutLine(`${p.dim} ${escapeTerminal(spec.emptyNote ?? "no options")}${p.reset}`, room)}`);
+	} else {
+		// the budget: the header, the t row, the affordance and the rule
+		const budget = Math.max(1, maxRows - 4);
+		const shown = spec.options.slice(0, Math.min(budget, PICK_MAX));
+		for (let i = 0; i < shown.length; i += 1) {
+			const o = shown[i]!;
+			const mark = i === state.cursor && state.phase === "options";
+			const head = `${mark ? p.bold : ""} ${i + 1} ${escapeTerminal(o.label)}${mark ? p.reset : ""}`;
+			const note = o.note === undefined ? "" : `${p.dim}   ${escapeTerminal(o.note)}${p.reset}`;
+			rows.push(`${gutter}${cutLine(`${head}${note}`, room)}`);
+		}
+		if (spec.options.length > shown.length) {
+			rows.push(`${gutter}${cutLine(`${p.dim} \u2514 +${spec.options.length - shown.length} more \u2014 /model <name> takes any of them${p.reset}`, room)}`);
+		}
+	}
+	rows.push(`${gutter}${cutLine(`${state.phase === "custom" ? p.bold : ""} t ${p.reset}${p.dim}${escapeTerminal(spec.typeHint)}${p.reset}`, room)}`);
+	rows.push(`${gutter}${p.dim}${cutLine(pickAffordance(state), room)}${p.reset}`);
+	rows.push(`${p.dim}\u2514${"\u2500".repeat(Math.max(0, W - 1))}${p.reset}`);
+	return rows;
+}
+
+/** The digits are the keys, so the list the panel offers is bounded by
+ *  the digits there are. Beyond it, `/model <name>` still takes any
+ *  profile — the panel says so rather than paginating. */
+export const PICK_MAX = 9;
+
+/** The input row's lead: the digit range while picking, the named
+ *  prompt while typing one out. */
+export function pickLeadPlain(view: PanelView, state: PickRuntime): string {
+	if (state.phase === "custom") return "provider/model: ";
+	const n = Math.min(view.pick!.options.length, PICK_MAX);
+	return n === 0 ? "t> " : `1-${n}> `;
+}
+
+export function pickLead(view: PanelView, state: PickRuntime): string {
+	const p = palette();
+	return `${p.bold}${pickLeadPlain(view, state)}${p.reset}`;
+}
+
+/** The status row's left text \u2014 the CALLER's, because only the caller
+ *  knows whether a run is paused behind this panel. */
+export function pickStatus(view: PanelView): string {
+	return view.statusText;
+}
+
+export function pickAffordance(state: PickRuntime): string {
+	return state.phase === "custom" ? "enter commits \u00b7 esc backs out" : "digits pick \u00b7 \u23ce confirms \u00b7 esc";
+}
+
+/** Compose a pick view. The flavor/name/title/args fields exist for the
+ *  approval path and are given inert values here \u2014 the pick block
+ *  reads none of them. */
+export function modelPickView(spec: PickSpec, statusText: string): PanelView {
+	return {
+		flavor: "simple",
+		name: "model",
+		title: "model",
+		speaker: "you",
+		statusText,
+		args: { kind: "text", lines: [] },
+		fallbackQuestion: "switch model? (name) ",
+		pick: spec,
+	};
 }
