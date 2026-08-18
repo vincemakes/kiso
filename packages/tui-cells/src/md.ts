@@ -500,10 +500,73 @@ function listRows(b: MdBlock, W: number): string[] {
 	return out.length > 0 ? out : [""];
 }
 
-/** Slice ④ owns this. Until then the source lines pass through — the
- *  honest degradation: the bytes stay valid markdown. */
+/**
+ * The table. Columns are measured at their NATURAL widths, on the
+ * inline-rendered text with the SGR stripped (a bold cell is four
+ * columns, not twelve). If the whole table fits, it is drawn aligned
+ * with the dim rails; if it does not, it does NOT shrink and it does
+ * NOT cut — every row becomes a record, and every cell survives.
+ *
+ * A rejected shape (no delimiter row, or a body row wider than the
+ * header) falls back to its own source lines, which are still valid
+ * markdown. That is the honest exit: a guess about where the extra
+ * content belongs would be indistinguishable, once committed, from a
+ * fact.
+ */
 function tableRows(b: MdBlock, W: number): string[] {
-	return b.lines.flatMap((l) => wrap(l, W, "", ""));
+	const p = palette();
+	const t = tableShape(b.lines);
+	if (t === null) return b.lines.flatMap((l) => wrap(l, W, "", ""));
+	const cols = t.header.map((h, i) => Math.max(cellWidth(h), ...t.rows.map((r) => cellWidth(r[i] ?? ""))));
+	// the drawn width: one rail, then each column as "│ cell " + its pad
+	const total = cols.reduce((n, w) => n + w + 3, 1);
+	if (total > W) return recordRows(t, W);
+	const rail = `${p.dim}│${p.reset}`;
+	const row = (cells: readonly string[], bold: boolean): string =>
+		`${rail}${cells.map((c, i) => ` ${pad(c, cols[i]!, t.align[i]!, bold)} `).join(rail)}${rail}`;
+	return [
+		row(t.header, true),
+		`${p.dim}├${cols.map((w) => "─".repeat(w + 2)).join("┼")}┤${p.reset}`,
+		...t.rows.map((r) => row(r, false)),
+	];
+}
+
+/** A cell's column count: what a human sees, styling removed. */
+function cellWidth(cell: string): number {
+	return visibleWidth(inlineSpans(cell, ""));
+}
+
+/** One padded cell — the styling goes on AFTER the measure, so it can
+ *  never move a column. */
+function pad(cell: string, w: number, align: MdAlign, bold: boolean): string {
+	const p = palette();
+	const body = bold ? `${p.bold}${inlineSpans(cell, p.bold)}${p.reset}` : inlineSpans(cell, "");
+	const slack = Math.max(0, w - cellWidth(cell));
+	const left = align === "right" ? slack : align === "center" ? Math.floor(slack / 2) : 0;
+	return `${" ".repeat(left)}${body}${" ".repeat(slack - left)}`;
+}
+
+/** The narrow degradation: one record per row. The first column names
+ *  the record (bold, with a dim colon); the rest is a dim `label:
+ *  value` run joined by `·`, wrapped rather than cut. A blank row
+ *  separates records — nothing is dropped at any width. */
+function recordRows(t: MdTable, W: number): string[] {
+	const p = palette();
+	const out: string[] = [];
+	for (const r of t.rows) {
+		if (out.length > 0) out.push("");
+		out.push(...wrap(`${p.bold}${inlineSpans(t.header[0] ?? "", p.bold)}${p.reset}${p.dim}:${p.reset} ${inlineSpans(r[0] ?? "", "")}`, W, "", ""));
+		const rest = t.header.slice(1).map((h, i) => `${h}: ${r[i + 1] ?? ""}`);
+		if (rest.length > 0) out.push(...wrap(`${p.dim}${inlineSpans(rest.join(" · "), p.dim)}${p.reset}`, W, "", ""));
+	}
+	return out.length > 0 ? out : [row0(t)];
+}
+
+/** A table with a header and no body rows yet (the streaming case):
+ *  the header alone, so the block still says what it is. */
+function row0(t: MdTable): string {
+	const p = palette();
+	return `${p.bold}${t.header.join(" · ")}${p.reset}`;
 }
 
 // ---- the wrapper ----------------------------------------------------
