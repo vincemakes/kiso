@@ -16,7 +16,10 @@ import type { Message } from "../src/protocol/messages.js";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
-import { analyzeDelivery } from "../src/governance/delivery.js";
+// EC-1: analyzeDelivery left core for kiso-evals (the line-budget
+// extraction). These pins stay HERE unchanged — they are the
+// zero-behavior proof that the move changed no verdict.
+import { analyzeDelivery } from "@vincemakes/kiso-evals";
 import { FIXTURES } from "@vincemakes/kiso-evals";
 
 function toolMsg(callId: string, content: string, isError = false): Message {

@@ -275,7 +275,7 @@ describe("abort boundaries (Area 4)", () => {
 		expect(log.all.some((e) => e.type === "permission_decided")).toBe(false);
 	});
 
-	it("an abort mid-run never lets a not-yet-started sibling begin (0.1.26: the signal gates the decide)", async () => {
+	it("an abort mid-run lets NO handler begin — EC-1: the turn never commits, so nothing is authorized", async () => {
 		const registry = new ToolRegistry();
 		const order: string[] = [];
 		registry.register(
@@ -340,9 +340,15 @@ describe("abort boundaries (Area 4)", () => {
 		for await (const ev of gen) {
 			events.push(ev);
 		}
-		expect(order).toContain("first:start");
-		expect(order).toContain("first:end aborted=true"); // the handler SAW the signal
-		expect(order).not.toContain("second:start"); // the sibling never began
+		// EC-1 (scheduler-timing class): pre-EC-1 BOTH calls launched at their
+		// tool_call_end, so `first` was already inside its handler when the
+		// abort landed — the test could only assert that the SIBLING was
+		// stopped, and had to accept the first side effect as unavoidable.
+		// Commit gating makes the guarantee total: the abort arrives before
+		// the turn commits, the turn therefore never commits at all, and
+		// NEITHER handler is ever authorized. No side effect happens.
+		expect(order).not.toContain("first:start");
+		expect(order).not.toContain("second:start");
 		expect(terminalOf(events).outcome.kind).toBe("aborted");
 	});
 

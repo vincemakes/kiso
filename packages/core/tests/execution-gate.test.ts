@@ -59,7 +59,22 @@ describe("C1: the turn is verified BEFORE any tool runs", () => {
 		expect(terminalOf(events).outcome).toMatchObject({ kind: "error", error: { code: "invalid_request" } });
 	});
 
-	it("stop max_tokens with a pending call: the launched execution ran (streaming execution) — receipts land, the turn is still voided", async () => {
+	// ── EC-1, the SCHEDULER-TIMING CLASS ───────────────────────────────────
+	// The three cases below are declared members of the timing class: each
+	// PINNED the 0.1.26 streaming launch, and each asserted that an
+	// INCOMPATIBLE turn had already produced its side effect by the time the
+	// kernel learned the turn was invalid. That was this file's standing
+	// embarrassment — the describe block promises "the turn is verified
+	// BEFORE any tool runs" and the assertions said otherwise.
+	//
+	// EC-1 makes the promise true. The stop is held until the stream is
+	// exhausted AND structurally compatible (Turn Commit); a commit-required
+	// handler waits for that commit (invariant 3). An incompatible stop
+	// therefore voids the turn while its calls are still only intent — the
+	// verdicts below flip from "it ran anyway" to "it never ran", and the
+	// terminal each turn produces is UNCHANGED.
+
+	it("stop max_tokens with a pending call: the call NEVER runs — the turn never commits", async () => {
 		let executed = 0;
 		const registry = registryWith({
 			executed: () => {
@@ -70,16 +85,17 @@ describe("C1: the turn is verified BEFORE any tool runs", () => {
 			[{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} }, { type: "stop", reason: "max_tokens" }] }],
 			registry,
 		);
-		// 0.1.26 (ADR-0024 Amd, streaming execution): the call LAUNCHED at tool_call_end
-		// — the side effect happened before the stop reason was known; the
-		// incompatible stop reason still VOIDS the turn (max_tokens terminal).
-		expect(executed).toBe(1);
-		expect(events.some((e) => e.type === "tool_execution_started")).toBe(true);
-		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
+		// EC-1: max_tokens cannot carry a tool call, so the turn never commits
+		// — and an uncommitted turn never starts a commit-required handler.
+		expect(executed).toBe(0);
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(false);
+		// The stop itself is never durable: an uncommitted turn leaves none.
+		expect(events.some((e) => e.type === "stop")).toBe(false);
 		expect(terminalOf(events).outcome).toEqual({ kind: "max_tokens" });
 	});
 
-	it("stop refusal with a pending call: the launched execution ran — receipts land, the turn is voided", async () => {
+	it("stop refusal with a pending call: the call NEVER runs — the turn never commits", async () => {
 		let executed = 0;
 		const registry = registryWith({
 			executed: () => {
@@ -90,13 +106,14 @@ describe("C1: the turn is verified BEFORE any tool runs", () => {
 			[{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} }, { type: "stop", reason: "refusal" }] }],
 			registry,
 		);
-		expect(executed).toBe(1);
-		expect(events.some((e) => e.type === "tool_execution_started")).toBe(true);
-		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
+		expect(executed).toBe(0);
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(false);
+		expect(events.some((e) => e.type === "stop")).toBe(false);
 		expect(terminalOf(events).outcome.kind).toBe("error");
 	});
 
-	it("stop end_turn with a pending call is contradictory — error, the launched execution's receipts land", async () => {
+	it("stop end_turn with a pending call is contradictory — the call NEVER runs", async () => {
 		let executed = 0;
 		const registry = registryWith({
 			executed: () => {
@@ -107,9 +124,10 @@ describe("C1: the turn is verified BEFORE any tool runs", () => {
 			[{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} }, { type: "stop", reason: "end_turn" }] }],
 			registry,
 		);
-		expect(executed).toBe(1);
-		expect(events.some((e) => e.type === "tool_execution_started")).toBe(true);
-		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
+		expect(executed).toBe(0);
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+		expect(events.some((e) => e.type === "tool_execution_succeeded")).toBe(false);
+		expect(events.some((e) => e.type === "stop")).toBe(false);
 		expect(terminalOf(events).outcome.kind).toBe("error");
 	});
 

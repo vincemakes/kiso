@@ -15,7 +15,8 @@
  */
 
 import type { Event } from "@vincemakes/kiso-core";
-import { analyzeDelivery } from "@vincemakes/kiso-core";
+// EC-1: analyzeDelivery moved out of kiso-core into this package.
+import { analyzeDelivery } from "../governance/delivery.js";
 import type { Fixture } from "./types.js";
 
 export const terminalLies: Fixture = {

@@ -2,6 +2,19 @@
  * Delivery truth — "done" means the ledger says so, not the model (uooki
  * done_guard, 30 incidents distilled).
  *
+ * EC-1 (0.13.0): this module MOVED here from packages/core/src/governance/.
+ * The extraction criterion the round adopted is not "who has zero external
+ * callers" but "if this module left core, could the kernel still define its
+ * own execution-correctness semantics?" — and for a trajectory verdict the
+ * answer is plainly yes: delivery is an L7 EVAL concern, computed after the
+ * fact from events the loop already yielded. It had no consumer inside
+ * packages/core/src at all; its only real caller has always been the
+ * terminal-lies fixture next door. The kernel's own line budget (2,000 —
+ * the README's loudest promise) paid for the EC-1 scheduler by giving this
+ * module the home it always belonged in. Behavior is UNCHANGED: same
+ * verdict, same fields, byte for byte (the zero-behavior proof is
+ * packages/core/tests/m3.test.ts, which still exercises it).
+ *
  * The kernel's terminal is honest but shallow: `completed` means "the loop
  * ended on its own terms". Whether the turn DELIVERED what was asked is a
  * harness-side verdict over the trajectory — this module computes it from
@@ -28,7 +41,7 @@
  * today a completed producer IS the emission.
  */
 
-import type { Event } from "../protocol/events.js";
+import type { Event } from "@vincemakes/kiso-core";
 
 export interface DeliveryConfig {
 	/** Whether this turn was required to deliver at all. */

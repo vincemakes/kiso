@@ -100,17 +100,41 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 	//    branch and never blocks a resume, whatever its safeToRetry says.
 	const uncertain = [...executionLedger(events).values()].filter((r) => r.status === "uncertain");
 	if (uncertain.length > 0) return { kind: "RESOLVE_UNCERTAIN", executionId: uncertain[0]!.executionId };
-	// 4. Gap B: a text-bearing no-stop suffix is an abandoned draft — void it.
-	//    Text-only detection (the 0.1.44 verification): a bare tool-call
-	//    suffix is the legal approval-panel pause, never a draft. The
-	//    boundary/draft scans run over the OPEN RUN's events INCLUDING the
-	//    driver's own appends — the driver re-derives after every append,
-	//    and the marker IT appended must already be the last boundary (the
-	//    old one-pass Gap B never needed this: it ran before any append).
+	// 4. Gap B: a no-stop suffix of MODEL OUTPUT is an abandoned draft — void
+	//    it. The boundary/draft scans run over the OPEN RUN's events
+	//    INCLUDING the driver's own appends — the driver re-derives after
+	//    every append, and the marker IT appended must already be the last
+	//    boundary (the old one-pass Gap B never needed this: it ran before
+	//    any append).
+	//
+	//    EC-1, finding EC1-F1: the scan counts `tool_call_end` too. It used
+	//    to be text-only, on the 0.1.44 reasoning that "a bare tool-call
+	//    suffix is the legal approval-panel pause, never a draft" — but that
+	//    reasoning only ever held for a suffix carrying a REQUEST (the
+	//    liveAsk clause below, which still decides that case). A bare call
+	//    with no request is not a pause; it is an uncommitted draft, and
+	//    leaving it un-voided projects an assistant `tool_use` block with no
+	//    result — a provider 400. Pre-EC-1 the window was microseconds wide
+	//    (the stop was persisted the moment it arrived); ① holds the stop
+	//    until the stream is exhausted, so crash-pair A lands in this shape
+	//    by construction.
 	const openEvents = openRunEvents(events, scope);
 	const boundary = [...openEvents].reverse().find(isBoundary);
 	if (boundary !== undefined) {
-		const afterBoundary = openEvents.some((e) => (e.type === "text_delta" || e.type === "thinking") && e.seq > boundary.seq);
+		//    A call only makes a DRAFT while it is still pure intent. Once it
+		//    has a durable `tool_execution_started` the world may have moved,
+		//    and the existing repair passes own it: voiding such a call would
+		//    strand a real receipt behind a voided declaration (pair atomicity
+		//    would then drop its result and the model would never learn the
+		//    outcome of work that actually happened). Pre-EC-1 logs contain
+		//    exactly that shape — a call that launched mid-stream and finished
+		//    before its stop was persisted — and they must keep recovering the
+		//    way they always did.
+		const unexecuted = (e: Event): boolean =>
+			e.type === "tool_call_end" && !openEvents.some((x) => x.type === "tool_execution_started" && x.callId === e.callId);
+		const afterBoundary = openEvents.some(
+			(e) => (e.type === "text_delta" || e.type === "thinking" || unexecuted(e)) && e.seq > boundary.seq,
+		);
 		// The approval-panel pause: a suffix that carries a pending ask of the
 		// LIVE turn — the last boundary is the user_input, no stop since — is
 		// the human's pause, never a draft: the call was extracted and asked,
@@ -119,6 +143,16 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 		// crash mid-pause leaves exactly this shape.) A request AFTER a STOP
 		// is different: it is the draft's own ask (0143's shape) — the marker
 		// voids it and the request expires with the draft.
+		//
+		// EC-1 ERA NOTE — this clause is now GENERATION COMPAT, and is kept
+		// for that reason alone. A kiso at 0.13.0 or later cannot produce the
+		// shape: asks moved AFTER Turn Commit (③), so a durable
+		// `permission_requested` always has a durable stop before it. Logs
+		// written by EARLIER bins do carry it, they are on disk, and they
+		// must keep re-presenting their ask instead of being voided as
+		// drafts. Deleting this clause would silently change how pre-EC-1
+		// sessions recover; it stays until the generation corpus no longer
+		// contains a pre-EC-1 era.
 		const liveAsk =
 			afterBoundary &&
 			boundary.type === "user_input" &&

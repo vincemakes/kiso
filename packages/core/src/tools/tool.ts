@@ -11,8 +11,9 @@
  * Their absence is the honest contract; the concurrency RACE they were
  * mistaken for a defense against is a real open question and moved to EC-1,
  * which owes a mechanism that does not depend on a per-tool opt-in.
- * Delivery truth is named by the CALLER (governance/delivery.ts's
- * `DeliveryConfig.producers`), which is where it always actually lived.
+ * Delivery truth is named by the CALLER (`DeliveryConfig.producers`), which
+ * is where it always actually lived — and since EC-1 that verdict lives in
+ * kiso-evals (governance/delivery.ts there), not in the kernel at all.
  *
  * WHY JSON Schema instead of a runtime library: the kernel has zero runtime
  * dependencies (ADR-0001). Zod / TypeBox / valibot live at the harness layer;
@@ -81,6 +82,38 @@ export interface Tool<I = unknown> {
 	 * applies. A retry is a NEW call and re-passes the approval chain.
 	 */
 	readonly idempotent?: boolean;
+	/**
+	 * EC-1 — an OPTIMIZATION CERTIFICATE, never a safety claim.
+	 *
+	 * Read the type carefully: there is no `"exclusive"`, and there is no
+	 * `false`. ABSENCE is the conservative truth — an undeclared tool is
+	 * commit-required and exclusive — so the type system cannot express a
+	 * claim that something unsafe is safe. Correctness comes from absence;
+	 * a declaration only buys performance back. That is the whole reason
+	 * this field is shaped so oddly, and it is the lesson SC-1b paid for:
+	 * `concurrencySafe` and `delivers` were declarations the kernel never
+	 * read, so they were fiction. The kernel ENFORCES both of these, in the
+	 * same round that introduces them.
+	 *
+	 *   precommitSafe — "running this before the turn commits is harmless:
+	 *   read-only AND free AND local, for EVERY invocation." Only such a
+	 *   call may start before Turn Commit, and only when its authorization
+	 *   is already satisfied (auto-allowed). Its execution never makes an
+	 *   uncommitted turn valid (invariant 7).
+	 *
+	 *   concurrency: "shared" — "EVERY invocation may overlap every
+	 *   sibling." Without it the kernel serializes the tool behind a FIFO
+	 *   exclusive barrier, which is what closes the same-path write race:
+	 *   two edit_file calls on one path can no longer interleave.
+	 *
+	 * Per-call conflict granularity (a resourceKey) stays future and
+	 * evidence-gated: this field is per-TOOL on purpose, because a per-call
+	 * claim is exactly the kind the type system could not police.
+	 */
+	readonly effects?: {
+		readonly precommitSafe?: true;
+		readonly concurrency?: "shared";
+	};
 	/** R-C: ONE line for the system prompt — the tool's role, never the
 	 *  schema (the full description rides the JSON schema the provider
 	 *  transmits anyway — never pay twice). */

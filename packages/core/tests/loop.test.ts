@@ -167,11 +167,17 @@ describe("loop", () => {
 		// the ledger events land per call in deterministic order; the
 		// projection re-orders the results by CALL order (the byte discipline).
 		const order: string[] = [];
+		// EC-1 (scheduler-timing class): the window is what this test
+		// measures, so its tools declare `concurrency: "shared"`. Absence
+		// now means EXCLUSIVE — an undeclared tool serializes behind the
+		// FIFO barrier, which is the correct new default and is pinned
+		// separately by ec1-effects.test.ts.
 		const mk = (name: string): Tool =>
 			defineTool({
 				name,
 				description: name,
 				parameters: { type: "object", properties: {} },
+				effects: { precommitSafe: true, concurrency: "shared" },
 				execute: async () => {
 					order.push(`${name}:start`);
 					await new Promise((r) => setTimeout(r, name === "slow" ? 20 : 5));

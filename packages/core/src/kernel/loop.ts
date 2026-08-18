@@ -312,6 +312,22 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// rejection un-consumed — the no-op keeps it from surfacing as an
 	// unhandled rejection while the race consumers still receive it.
 	void violatedP.catch(() => {});
+	// ── EC-1 ① — the DURABLE TURN COMMIT gate ──────────────────────────────
+	// Invariant 3 (COMMIT GATING): a commit-required handler never starts
+	// before this turn's stop is DURABLE. The gate RESOLVES exactly once per
+	// turn — at the commit, or at the void — and the waiter then reads
+	// `committed`. It deliberately does not reuse `violatedP`: that one
+	// REJECTS, and a rejection awaited here would be caught by the launch's
+	// catch and recorded as a launchError, failing the whole run for what is
+	// an ordinary void. A gate that resolves keeps the void path quiet.
+	// Both are reset per turn (below): turn N+1's calls wait for turn N+1's
+	// commit. Safe because the settle drains every launch before the turn
+	// advances, so no launch ever waits on a stale gate.
+	let committed = false;
+	let settleTurn: () => void = () => {};
+	let turnSettled: Promise<void> = new Promise<void>((res) => {
+		settleTurn = res;
+	});
 	// The ask gate: an ask's human resolution blocks the calls after it.
 	// The DECIDE chain serializes the decisions in CALL order, so the gate
 	// an ask installs is structurally in place before the successors decide.
@@ -326,12 +342,44 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// keys (the executionId comes from the drain, seq-stable).
 	let idSeq = log.all.length + 1;
 	const nextDecisionId = (): string => `d-${idSeq++}`;
+	// ── EC-1 ② / ③ — the FIFO EXCLUSIVE BARRIER ────────────────────────────
+	// Absence is the conservative truth: a tool that declares nothing is
+	// EXCLUSIVE, and the kernel serializes it. `concurrency: "shared"` is the
+	// only way to overlap, and it is a per-TOOL certificate the kernel
+	// enforces — never a per-call claim it could not police.
+	//
+	// The fence is installed at ACCEPTANCE (in `launch`, i.e. CALL order),
+	// not when a handler starts: that is what makes it FIFO. A later sibling
+	// — including a precommit-safe read — never overtakes an exclusive
+	// invocation accepted before it, so a read can never observe a
+	// half-written file. A read after a write therefore loses its latency
+	// win; safe overtaking and snapshot semantics stay future work.
+	let fence: Promise<void> = Promise.resolve();
+	const sharedRunning: Promise<void>[] = [];
+	/** Reserve this call's place in the FIFO: what it must await before
+	 *  running, and the release to call once its handler is done. */
+	const reserve = (tool: Tool | undefined): { wait: Promise<void>; release: () => void } => {
+		const shared = tool?.effects?.concurrency === "shared";
+		let release!: () => void;
+		const done = new Promise<void>((res) => {
+			release = res;
+		});
+		// An exclusive invocation waits for the fence AND every shared call
+		// already accepted ahead of it — while it runs, it runs alone.
+		const wait = shared ? fence : Promise.all([fence, ...sharedRunning]).then(() => undefined);
+		if (shared) sharedRunning.push(done);
+		else {
+			fence = done;
+			sharedRunning.length = 0;
+		}
+		return { wait, release };
+	};
 	const launch = (call: ToolCallEnd): void => {
 		execActive += 1;
+		const slot = reserve(registry.get(call.name));
 		launches.push(
 			(async () => {
 				try {
-					await acquireWindow();
 					decideChain = decideChain.then(async () => {
 						const v = await decideCall(
 							call,
@@ -384,14 +432,35 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					// resolved by default, released by the ask branch above).
 					// The context may have changed when the human approves.
 					await askGate;
-					await runLedgered(
-						call,
-						registry,
-						hooks,
-						{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) },
-						signal,
-						pushExec,
-					);
+					// EC-1 ① (invariant 3, COMMIT GATING): the handler waits for
+					// this turn's OWN commit. An uncommitted turn never reaches a
+					// handler — the call bails here having emitted NO started
+					// event, so it is clean, never uncertain (abort semantics).
+					// This is the whole of "an invalid turn never starts a
+					// commit-required tool handler".
+					await turnSettled;
+					if (!committed) return;
+					// EC-1 ③ (invariants 5 + 6): wait behind the FIFO barrier,
+					// and only THEN take a window slot. Waiting — for the
+					// commit, for a human, or for the barrier — consumes no
+					// slot: the window is an EXECUTION window, not a
+					// pending-invocation window, so four held writes can never
+					// starve a runnable sibling.
+					await slot.wait;
+					if (violated) return;
+					await acquireWindow();
+					try {
+						await runLedgered(
+							call,
+							registry,
+							hooks,
+							{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) },
+							signal,
+							pushExec,
+						);
+					} finally {
+						releaseWindow();
+					}
 				} catch (err) {
 					// The abort sentinel (a user cancel during the decide or
 					// the pause) is swallowed — the loop's aborted() check
@@ -399,7 +468,10 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					// re-thrown after the settle (the consumer sees it).
 					if (err !== ABORTED) launchError ??= err;
 				} finally {
-					releaseWindow();
+					// The barrier is released on EVERY exit — a denial, an
+					// uncommitted turn, an abort — or the siblings queued
+					// behind this call would wait forever.
+					slot.release();
 					execActive -= 1;
 				}
 			})(),
@@ -450,6 +522,20 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		// user_input, …) from the stream is a FORGERY and must never reach
 		// the log.
 		let forgedEvent = false;
+		// EC-1 ①: a SECOND stop voids the turn — and unlike the pre-EC-1 path
+		// (which appended both, leaving two stops in the log forever), NEITHER
+		// stop is persisted now. A deliberate improvement of that class.
+		let duplicateStop = false;
+		// EC-1 ①: the turn's stop, HELD in memory until the stream proves
+		// clean. It is neither appended NOR yielded here — yield order must
+		// equal append order (persistence-ownership.test.ts), so the hold
+		// covers both, and the commit below performs both together.
+		let heldStop: EventInput | null = null;
+		// EC-1 ①: this turn's commit gate — reset BEFORE any call can launch.
+		committed = false;
+		turnSettled = new Promise<void>((res) => {
+			settleTurn = res;
+		});
 
 		while (true) {
 			// Area 4: the backoff is abortable — a cancel landing during a
@@ -495,9 +581,24 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 						break;
 					}
 					if (ev.type === "stop") {
+						// EC-1 ① — DURABLE TURN COMMIT. The stop is HELD, not
+						// persisted: before EC-1 it was appended the instant it
+						// arrived, so a stop could be durable while the stream
+						// was still running — and the recovery keyed "this turn
+						// committed" on exactly that durable stop. The two
+						// truths are now one: a durable compatible stop means
+						// THIS producer observed clean stream exhaustion.
+						if (sawStop) {
+							duplicateStop = true;
+							violated = true;
+							violatedReject();
+							break;
+						}
 						sawStop = true;
 						lastStop = ev.reason;
 						stopCount += 1;
+						heldStop = ev;
+						continue;
 					}
 					// R-E 0.1.43: the append precedes the launch — the call's
 					// framework seq is assigned here; invocationSeq must never
@@ -552,76 +653,97 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				kind: "error",
 				error: { code: "invalid_request", retryable: false, message: "provider emitted events after its stop event" },
 			};
-		} else if (pending.length === 0) {
-			// Area 6: protocol anomalies are STRUCTURED ERRORS, never a
-			// default `completed` — a stream with no stop, a duplicate stop,
-			// or a tool_use that never produced a complete call.
-			if (stopCount === 0) {
-				voided = {
-					kind: "error",
-					error: { code: "invalid_request", retryable: false, message: "provider stream ended without a stop event" },
-				};
-			} else if (stopCount > 1) {
-				voided = {
-					kind: "error",
-					error: { code: "invalid_request", retryable: false, message: `provider emitted ${stopCount} stop events in one turn` },
-				};
-			} else {
-				yield await terminal(terminalForStop(lastStop));
-				return;
+		} else if (duplicateStop) {
+			// EC-1 ①: a second stop. The pre-EC-1 path appended BOTH and voided
+			// afterwards, so a duplicate-stop turn left two stops in the log
+			// forever; now neither is durable — the turn simply never commits.
+			voided = {
+				kind: "error",
+				error: { code: "invalid_request", retryable: false, message: `provider emitted ${stopCount + 1} stop events in one turn` },
+			};
+		} else if (stopCount === 0) {
+			// Area 6: protocol anomalies are STRUCTURED ERRORS, never a default
+			// `completed`. EC-1 ①: ONE arm now, not two — the pre-EC-1 code
+			// duplicated this verdict across the pending/no-pending split, where
+			// it never differed.
+			voided = {
+				kind: "error",
+				error: { code: "invalid_request", retryable: false, message: "provider stream ended without a stop event" },
+			};
+		} else if (pending.length > 0) {
+			// C group: STRUCTURAL COMPATIBILITY — a stop reason that cannot
+			// carry tool calls voids the turn. EC-1 ①: this is now the second
+			// half of the commit condition and runs BEFORE the commit, so an
+			// incompatible turn never persists its stop; combined with the
+			// commit gate its calls never became effects either (pre-EC-1 they
+			// had already launched, and the void could only let their receipts
+			// land after the fact).
+			switch (lastStop) {
+				case "tool_use":
+				case "function_call":
+					break; // compatible with complete calls — the executions proceed
+				case "max_tokens":
+					voided = { kind: "max_tokens" };
+					break;
+				case "abort":
+					voided = { kind: "aborted", by: "user" };
+					break;
+				case "error":
+					voided = {
+						kind: "error",
+						error: { code: "unknown", retryable: false, message: "provider stopped with an error" },
+					};
+					break;
+				default:
+					voided = {
+						kind: "error",
+						error: {
+							code: "invalid_request",
+							retryable: false,
+							message: `provider stopped with '${String(lastStop)}' with ${pending.length} tool call(s) launched`,
+						},
+					};
+					break;
 			}
 		}
 
-		// ── Abort check: an abort now abandons the launched executions
-		//    (started without receipt → uncertain), exactly as before ──────
-		if (voided === null && aborted()) {
+		// ── EC-1 ① — TURN COMMIT ──────────────────────────────────────────
+		// The held stop is persisted HERE and only here: iterator done (the
+		// stream loop broke cleanly) AND structurally compatible (above). The
+		// append and the yield happen together, in the loop's ordinary order,
+		// so the durable log gains no event and loses none — only the MOMENT
+		// moves, and the projection is byte-identical. What it buys:
+		//
+		//   a durable compatible stop ⇔ this producer observed clean stream
+		//   exhaustion.
+		//
+		// The gate is released either way: a committed turn frees its
+		// handlers, a voided turn frees them to bail with no started event.
+		// An abort with calls in flight abandons the turn BEFORE it commits:
+		// the aborted turn leaves NO durable stop, so its calls stay an
+		// UNCOMMITTED DRAFT the resume voids (⑤) rather than a committed batch
+		// no one will ever execute — which would strand the model's tool_use
+		// blocks with no results (the EC1-F1 dangling-pair class). A turn with
+		// NO calls has nothing to abandon and still ends on its own stop
+		// reason, the pre-EC-1 order.
+		if (voided === null && pending.length > 0 && aborted()) {
+			settleTurn();
 			yield await terminal({ kind: "aborted", by: "user" });
 			return;
 		}
+		if (voided === null && heldStop !== null) {
+			const full = log.append(heldStop);
+			if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
+			committed = true;
+			yield full;
+		}
+		settleTurn();
 
-		// ── C group: the turn is verified. 0.1.26 (streaming execution): the calls were
-		// ALREADY launched at tool_call_end, so a non-compatible stop reason
-		// VOIDS the turn instead of preventing the execution.
-		if (voided === null && pending.length > 0) {
-			if (stopCount === 0) {
-				voided = {
-					kind: "error",
-					error: { code: "invalid_request", retryable: false, message: "provider stream ended without a stop event" },
-				};
-			} else if (stopCount > 1) {
-				voided = {
-					kind: "error",
-					error: { code: "invalid_request", retryable: false, message: `provider emitted ${stopCount} stop events in one turn` },
-				};
-			} else {
-				switch (lastStop) {
-					case "tool_use":
-					case "function_call":
-						break; // compatible with complete calls — the executions proceed
-					case "max_tokens":
-						voided = { kind: "max_tokens" };
-						break;
-					case "abort":
-						voided = { kind: "aborted", by: "user" };
-						break;
-					case "error":
-						voided = {
-							kind: "error",
-							error: { code: "unknown", retryable: false, message: "provider stopped with an error" },
-						};
-						break;
-					default:
-						voided = {
-							kind: "error",
-							error: {
-								code: "invalid_request",
-								retryable: false,
-								message: `provider stopped with '${String(lastStop)}' with ${pending.length} tool call(s) launched`,
-							},
-						};
-						break;
-				}
-			}
+		// A turn with no tool calls ends on its OWN stop reason (Phase B,
+		// Area 6) — never a blanket `completed`. Reached only once committed.
+		if (voided === null && pending.length === 0) {
+			yield await terminal(terminalForStop(lastStop));
+			return;
 		}
 
 		// ── The turn settles: a void fires the violated signal — the

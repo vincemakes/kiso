@@ -16,6 +16,23 @@
  *   difference is a REAL side effect: a truncated turn whose stop arrives
  *   after a gap. Unguarded, the handler has already run by then — that is
  *   the destructive-bug class the guard exists to prevent.
+ *
+ * EC-1 — THE TRUNCATION CONTRACT AMENDMENT (④). The split above is now
+ * OBSOLETE as a safety claim, and the pin below is a declared member of the
+ * TRUNCATION CLASS. max_tokens cannot carry a tool call, so a truncated turn
+ * never reaches Turn Commit — and a commit-required handler never starts
+ * before that commit. The kernel therefore executes nothing on a truncated
+ * turn BY ITSELF, on either path; the guard is no longer what stands between
+ * a truncated intent and a destructive side effect.
+ *
+ * What the guard still buys is REPORTING, and it is not nothing: it releases
+ * the held batch with `input: null`, so every call is ANSWERED with an
+ * honest invalid_input result. Unguarded, the same turn leaves its calls
+ * with no results at all — an uncommitted draft the resume voids (⑤).
+ * So the amended contract reads: commit-required calls NEVER execute;
+ * precommit-safe calls MAY already have executed and that execution is
+ * declared harmless; the turn is NOT committed; precommit results never
+ * legitimize it.
  */
 
 import { describe, expect, it } from "vitest";
@@ -105,13 +122,19 @@ describe("SC-1 — the truncation guard's header contract", () => {
 		if (outcome.kind === "error") expect(outcome.error.code).toBe("invalid_request");
 	});
 
-	it("the split, unguarded: a truncated turn's call has ALREADY run by the time max_tokens lands", async () => {
+	it("EC-1 (truncation class): unguarded, a truncated turn's call NEVER runs — the kernel itself refuses to commit", async () => {
 		const { events, executed } = await drive(bare, delayedProvider(truncatedPhases(), 120));
 
-		// The raw kernel launched at the tool_call_end — the side effect of a
-		// TRUNCATED turn happened. This is the bug the guard exists for.
-		expect(executed).toBe(1);
-		expect(events.some((e) => e.type === "tool_execution_started")).toBe(true);
+		// Pre-EC-1 this asserted `executed === 1`: the raw kernel launched at
+		// the tool_call_end and the side effect of a TRUNCATED turn happened.
+		// The kernel now holds its stop until the stream is exhausted, sees
+		// max_tokens cannot carry a call, and never commits — so the handler
+		// is never authorized. The destructive-bug class is closed in the
+		// KERNEL, not only in the runtime wrapper.
+		expect(executed).toBe(0);
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+		// An uncommitted turn leaves no durable stop — the call is a draft.
+		expect(events.some((e) => e.type === "stop")).toBe(false);
 		expect(terminalOf(events).outcome).toEqual({ kind: "max_tokens" });
 	});
 

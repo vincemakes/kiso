@@ -54,11 +54,12 @@ const USER: Message = { role: "user", content: "hi" };
 
 /** A tool that sleeps `ms`. There is no longer any way for it to ask the
  *  kernel for isolation — that is the retirement, expressed in the fixture. */
-function slowTool(name: string, ms: number): Tool {
+function slowTool(name: string, ms: number, shared = false): Tool {
 	return defineTool({
 		name,
 		description: name,
 		parameters: { type: "object", properties: {} },
+		...(shared ? { effects: { precommitSafe: true, concurrency: "shared" } as const } : {}),
 		execute: async () => {
 			await new Promise((r) => setTimeout(r, ms));
 			return { content: name, isError: false };
@@ -90,7 +91,7 @@ async function runTurn(registry: ToolRegistry): Promise<Event[]> {
 	return events;
 }
 
-describe("SC-1b — the schedule is the kernel's alone; no tool has a say", () => {
+describe("SC-1b → EC-1 — the schedule is the kernel's alone; a tool's only say is an optimization certificate", () => {
 	it("three tools in one turn all execute — a normal, complete turn", async () => {
 		const registry = new ToolRegistry();
 		registry.register(slowTool("t1", 5));
@@ -102,11 +103,11 @@ describe("SC-1b — the schedule is the kernel's alone; no tool has a say", () =
 		expect(events.filter((e) => e.type === "tool_execution_succeeded")).toHaveLength(3);
 	});
 
-	it("they OVERLAP — the fixed window of 4, unchanged by the retirement", async () => {
+	it("DECLARED shared, they OVERLAP — the fixed window of 4", async () => {
 		const registry = new ToolRegistry();
-		registry.register(slowTool("t1", 300));
-		registry.register(slowTool("t2", 300));
-		registry.register(slowTool("t3", 300));
+		registry.register(slowTool("t1", 300, true));
+		registry.register(slowTool("t2", 300, true));
+		registry.register(slowTool("t3", 300, true));
 
 		const t0 = Date.now();
 		const events = await runTurn(registry);
@@ -117,6 +118,32 @@ describe("SC-1b — the schedule is the kernel's alone; no tool has a say", () =
 		// never bought the isolation it looked like it bought (the same < 60%
 		// bound the parallel acceptance uses).
 		expect(dt).toBeLessThan(540);
+		expect(events.filter((e) => e.type === "tool_execution_succeeded")).toHaveLength(3);
+	});
+
+	// ── EC-1: the answer SC-1b deferred ────────────────────────────────────
+	// SC-1b deleted `concurrencySafe` because declaring `false` bought
+	// nothing, and it handed the real race to EC-1 with one condition: the
+	// mechanism must not depend on a per-tool opt-in for CORRECTNESS. This
+	// is that mechanism, and the pin above is now only half the story.
+	//
+	// The opt-in survives, inverted. `concurrency: "shared"` is a claim
+	// about THROUGHPUT that the kernel enforces; there is no way to spell
+	// the unsafe direction, because isolation is what you get by saying
+	// nothing. A tool author's forgetfulness costs speed, never safety —
+	// which is the opposite of the contract SC-1 found and deleted.
+	it("UNDECLARED, they SERIALIZE — isolation is the default, not a declaration", async () => {
+		const registry = new ToolRegistry();
+		registry.register(slowTool("t1", 100));
+		registry.register(slowTool("t2", 100));
+		registry.register(slowTool("t3", 100));
+
+		const t0 = Date.now();
+		const events = await runTurn(registry);
+		const dt = Date.now() - t0;
+
+		// ~300ms serial, and decisively past the parallel bound (~100ms).
+		expect(dt).toBeGreaterThan(250);
 		expect(events.filter((e) => e.type === "tool_execution_succeeded")).toHaveLength(3);
 	});
 });

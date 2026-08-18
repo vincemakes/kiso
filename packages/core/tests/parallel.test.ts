@@ -2,9 +2,9 @@
  * 0.1.26 (ADR-0024 Amd) — the parallel + streaming execution acceptance:
  * ① three allow reads run CONCURRENTLY — the wall clock < 60% of the serial
  *   (faux tools with sleeps; the window is 4);
- * ④ streaming execution: a long stream's first allow call STARTS while the stream is
- *   still running (the started event lands before the stop — the seq
- *   ordering is the timestamp);
+ * ④ EC-1 (was: streaming execution): a commit-required call starts only
+ *   AFTER the durable stop — the Turn Commit is the gate. The 0.1.26
+ *   streaming launch survives only for precommit-safe declarations;
  * ⑤ the ask conservative order: an ask and the calls after it wait for the
  *   human — the third (allow) call never starts before the ask resolves.
  * The projection byte discipline (③) lives in loop.test.ts — the results
@@ -24,11 +24,20 @@ const USER: Message = { role: "user", content: "hi" };
 
 /** The tool helper: a tool whose handler sleeps `ms` and records its
  *  start/end into the shared order. */
+// EC-1 (scheduler-timing class): these stand-ins are the "allow READS" the
+// tests below describe, and reads are exactly what `concurrency: "shared"`
+// certifies. Before EC-1 every tool overlapped by default and the
+// declaration did not exist; now absence means EXCLUSIVE, so an undeclared
+// stand-in would serialize and these window tests would be measuring the
+// barrier instead of the window. Declaring them shared keeps each test
+// measuring what it was written to measure. The barrier itself is pinned by
+// ec1-effects.test.ts, where the undeclared default is the whole point.
 function slowTool(name: string, ms: number, order: string[]): Tool {
 	return defineTool({
 		name,
 		description: name,
 		parameters: { type: "object", properties: {} },
+		effects: { precommitSafe: true, concurrency: "shared" },
 		execute: async () => {
 			order.push(`${name}:start`);
 			await new Promise((r) => setTimeout(r, ms));
@@ -105,8 +114,17 @@ describe("0.1.26 ① — three allow reads run CONCURRENTLY (window 4)", () => {
 	});
 });
 
-describe("0.1.26 ④ — streaming execution: the first allow call starts WHILE the stream is still running", () => {
-	it("a 300ms-gap stream: the started event lands BEFORE the stop (the seq order is the timestamp)", async () => {
+// ── EC-1, the SCHEDULER-TIMING CLASS ───────────────────────────────────────
+// This was 0.1.26 ④ — "streaming execution: the first allow call starts
+// WHILE the stream is still running", pinned as `started.seq < stop.seq`.
+// It is the single assertion EC-1 deliberately inverts. A commit-required
+// handler now waits for the durable Turn Commit, so its started event can
+// never precede the stop; the streaming launch survives only for calls that
+// declare themselves precommit-safe (slice ②), which this undeclared tool
+// is not. The tool still runs, and still runs concurrently with its
+// siblings — only its start MOMENT moved behind the commit.
+describe("EC-1 (was 0.1.26 ④) — a commit-required call starts only AFTER the durable stop", () => {
+	it("a 300ms-gap stream: the started event lands AFTER the stop (the commit is the gate)", async () => {
 		const order: string[] = [];
 		const registry = new ToolRegistry();
 		registry.register(slowTool("fast", 50, order));
@@ -134,12 +152,13 @@ describe("0.1.26 ④ — streaming execution: the first allow call starts WHILE 
 		}
 		const started = events.find((e) => e.type === "tool_execution_started")!;
 		const stop = events.find((e) => e.type === "stop")!;
-		// The tool STARTED before the provider stopped — the streaming
-		// execution, proven by the seq ordering (the event timestamps).
-		// (The handler runs after the started's write-ahead ack, which the
-		// stream's next drain delivers — the receipt lands after the stop;
-		// the STARTED-before-stop is the streaming proof.)
-		expect(started.seq).toBeLessThan(stop.seq);
+		// EC-1: the durable stop is the commit, and the commit is what
+		// authorizes the handler — so the order is now the other way round.
+		// This is the invariant, not an accident of timing: there is no gap
+		// in which an undeclared tool can start early.
+		expect(started.seq).toBeGreaterThan(stop.seq);
+		// The tool still ran to completion — gating moved the start, it did
+		// not cancel the work.
 		expect(order).toContain("fast:start");
 		expect(order).toContain("fast:end");
 	});
