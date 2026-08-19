@@ -203,7 +203,21 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 				// appears at the turn's terminal event, AFTER "the tour is
 				// done". "you> " would match the FIRST prompt and close the
 				// readline while the go-turn is still queued.
-				["▸ default · /mode to switch · faux", "exit\r"], // v3 idle state marks the turn's end
+				//
+				// MOVED (EC-1 ⑦, the SCHEDULER-TIMING class — DECLARED THIS
+				// ROUND): the exit feed used to ride the v3 idle status. Asks
+				// now fire AFTER Turn Commit (ADR-0052 §6, ADR-0024 Amendment
+				// 3), so the stream is already EXHAUSTED when the panel
+				// mounts and the idle status paints while the question is
+				// still on screen. The driver tests each needle against the
+				// whole accumulated buffer, so that feed fired the moment the
+				// idle line appeared — sending "exit" with the panel up and
+				// killing the session before the human's verdict could
+				// settle. The second turn's own text is the honest "the
+				// approval was answered and the run moved on" marker. The
+				// idle status is still ASSERTED below; it just no longer
+				// TRIGGERS the exit.
+				["the tour is done", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);

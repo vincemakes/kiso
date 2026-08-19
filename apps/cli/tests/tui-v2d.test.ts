@@ -81,7 +81,11 @@ const CELL_LINE = [
 	/^⋯.*$/, // the ThinkingCell fold (W2: the ⋯ gutter — the midline mark is the state, never the text ellipsis)
 	/^[▖▘▝▗] \S+ .*\d+s?$/, // the ToolCell running (W2: the spinner IS the gutter)
 	/^⏸ \S+ .*$/, // the approval badge (W2: the ⏸ is the left gutter)
-	/^◦ \S+ .*$/, // the ToolCell queued (W2: ◦ replaces → — · is the metadata separator)
+	// MOVED (EC-1 ②③, the SCHEDULER-TIMING class — DECLARED THIS ROUND):
+	// the metadata segment is OPTIONAL now. A call queued behind the FIFO
+	// exclusive fence (ADR-0052 invariant 5) has not started and has
+	// nothing to report — the bare `◦ name` row is its honest state.
+	/^◦ \S+( .*)?$/, // the ToolCell queued (W2: ◦ replaces → — · is the metadata separator)
 	// SUPERSESSION (TUI2-R1, the tool-cell suffix class): the settled head
 	// row may end with the self-naming expand affordance — ` · N lines ·
 	// ctrl+r expands`, its terse ` · N lines · ctrl+r`, or the bare ` ·
@@ -177,6 +181,12 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		name: "asky_read",
 		description: "a tool that needs approval",
 		parameters: { type: "object", properties: {} },
+		// EC-1 ②: a TRUTHFUL certificate, the kill9 slow_touch precedent —
+		// every invocation returns a constant and touches nothing shared, so
+		// "shared" is honest for this test tool. Deliberately NOT
+		// precommitSafe: the call must still be commit-gated and still meet
+		// the human, which is what this frame is about.
+		effects: { concurrency: "shared" },
 		execute: async () => ({ content: "asky ok", isError: false }),
 	}],
 };
@@ -242,12 +252,14 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		const clean = stripANSI(out);
 		// The scenario actually ran: the three tools + the approvals + the
 		// text. W21: list_dir auto-approves under the default tier (no
-		// panel — the ⏸ badge row is gone, the panel superseded it) and
-		// the run launches every call immediately (the ◦ queue rows never
-		// paint); the shell and asky_read each mount a panel — the rule
-		// line ("asked by …"), the settled cells carry the "approved"
-		// decision tag, and the 1s shell's spinner row paints (the
-		// spinner IS the gutter).
+		// panel — the ⏸ badge row is gone, the panel superseded it).
+		// MOVED (EC-1 ②③, the SCHEDULER-TIMING class): calls no longer all
+		// launch immediately — the undeclared shell is exclusive, so the
+		// FIFO fence (ADR-0052 invariant 5) queues the calls behind it and
+		// the bare ◦ rows DO paint now; the shell and asky_read each mount
+		// a panel post-commit — the rule line ("asked by …"), the settled
+		// cells carry the "approved" decision tag, and the 1s shell's
+		// spinner row paints (the spinner IS the gutter).
 		expect(clean).toContain("shell needs approval"); // the shell panel's rule line
 		expect(clean).toContain("asky_read needs approval"); // the asky panel's rule line
 		// MOVED (R1.5 slice ④, the running-header class — DECLARED THIS
