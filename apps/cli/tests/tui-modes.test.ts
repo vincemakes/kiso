@@ -133,14 +133,14 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 				},
 				{
 					events: [
-						{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "out.txt", content: "hello" } },
+						{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "out.txt", content: "hello", expectedRevision: "absent" } },
 						{ type: "stop", reason: "tool_use" },
 					],
 				},
 				{ events: [{ type: "text_delta", text: "plan turn done" }, { type: "stop", reason: "end_turn" }] },
 				{
 					events: [
-						{ type: "tool_call_end", callId: "w2", name: "write_file", input: { path: "out.txt", content: "hello" } },
+						{ type: "tool_call_end", callId: "w2", name: "write_file", input: { path: "out.txt", content: "hello", expectedRevision: "absent" } },
 						{ type: "stop", reason: "tool_use" },
 					],
 				},
@@ -274,7 +274,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			JSON.stringify([
 				{
 					events: [
-						{ type: "tool_call_end", callId: "p1", name: "write_file", input: { path: "out.txt", content: "x" } },
+						{ type: "tool_call_end", callId: "p1", name: "write_file", input: { path: "out.txt", content: "x", expectedRevision: "absent" } },
 						{ type: "stop", reason: "tool_use" },
 					],
 				},

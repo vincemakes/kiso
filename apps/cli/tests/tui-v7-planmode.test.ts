@@ -110,7 +110,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 				{
 					events: [
 						{ type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "a.ts" } },
-						{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "sub/out.txt", content: "x" } },
+						{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "sub/out.txt", content: "x", expectedRevision: "absent" } },
 						{ type: "stop", reason: "tool_use" },
 					],
 				},
@@ -194,7 +194,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 			JSON.stringify([
 				{
 					events: [
-						{ type: "tool_call_end", callId: "p1", name: "write_file", input: { path: "out.txt", content: "x" } },
+						{ type: "tool_call_end", callId: "p1", name: "write_file", input: { path: "out.txt", content: "x", expectedRevision: "absent" } },
 						{ type: "stop", reason: "tool_use" },
 					],
 				},

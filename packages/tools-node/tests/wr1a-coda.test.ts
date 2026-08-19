@@ -171,36 +171,64 @@ describe("WR-1-F2 — the citation format must not teach ambiguity (found by the
 	});
 });
 
-describe("WR-1-F3 — the results teach token-chaining (the multi-hunk rent, rel-0140b)", () => {
-	it("a successful edit says the NEXT edit of this file must cite the NEW token; the trailer stays the last line", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "kiso-wr1f3-"));
+describe("WR-1E — the protocol is ENCODED, not taught (the encoding pass after rel-0140c)", () => {
+	it("expectedRevision is REQUIRED in both model-facing schemas — structure, not prose", async () => {
+		const { editFileTool, writeFileTool } = await import("../src/index.js");
+		const opts = { workspaceRoot: "/" };
+		const req = (t: { parameters: Readonly<Record<string, unknown>> }): string[] => (t.parameters as { required: string[] }).required;
+		expect(req(editFileTool(opts))).toContain("expectedRevision");
+		expect(req(writeFileTool(opts))).toContain("expectedRevision");
+	});
+
+	it("a successful result is TERSE — the token line, no teaching sentence (a result line is re-read by every later request)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wr1e-"));
 		writeFileSync(join(dir, "f.ts"), "alpha beta\n");
-		const { editFileTool } = await import("../src/index.js");
-		const r = await editFileTool({ workspaceRoot: dir }).execute(
+		const { editFileTool, writeFileTool } = await import("../src/index.js");
+		const e = await editFileTool({ workspaceRoot: dir }).execute(
 			{ path: "f.ts", search: "alpha", replace: "gamma", expectedRevision: rev("alpha beta\n") },
 			undefined as never,
 		);
-		expect(r.isError).toBe(false);
-		expect(r.content).toContain("cite the new token");
-		expect(r.content.trimEnd()).toMatch(/\[rev:[0-9a-f]{16}\]$/);
-	});
-
-	it("a successful write teaches the same chain", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "kiso-wr1f3-"));
-		const { writeFileTool } = await import("../src/index.js");
-		const r = await writeFileTool({ workspaceRoot: dir }).execute(
+		expect(e.isError).toBe(false);
+		expect(e.content).not.toContain("cite");
+		expect(e.content.trimEnd()).toMatch(/^edited f\.ts\n\[rev:[0-9a-f]{16}\]$/);
+		const w = await writeFileTool({ workspaceRoot: dir }).execute(
 			{ path: "new.ts", content: "x\n", expectedRevision: "absent" },
 			undefined as never,
 		);
-		expect(r.isError).toBe(false);
-		expect(r.content).toContain("cite the new token");
-		expect(r.content.trimEnd()).toMatch(/\[rev:[0-9a-f]{16}\]$/);
+		expect(w.isError).toBe(false);
+		expect(w.content).not.toContain("cite");
+		expect(w.content.trimEnd()).toMatch(/\[rev:[0-9a-f]{16}\]$/);
 	});
 
-	it("the guidelines teach revision-chaining in the system prompt surface", async () => {
+	it("ONE shared guideline carries the whole revision protocol (identical on write+edit — the registry dedupes)", async () => {
 		const { editFileTool, writeFileTool } = await import("../src/index.js");
 		const opts = { workspaceRoot: "/" };
-		const all = [...(editFileTool(opts).promptGuidelines ?? []), ...(writeFileTool(opts).promptGuidelines ?? [])].join(" ");
-		expect(all).toContain("changes its revision");
+		const eg = editFileTool(opts).promptGuidelines ?? [];
+		const wg = writeFileTool(opts).promptGuidelines ?? [];
+		const revLines = [...eg, ...wg].filter((l) => l.includes("revision"));
+		expect(revLines.length).toBe(2); // one per tool…
+		expect(revLines[0]).toBe(revLines[1]); // …IDENTICAL, so the table dedupes to one
+		expect(revLines[0]).toContain("absent");
+	});
+
+	it("the descriptions are terse: no approval-policy prose, no decision-lattice essay", async () => {
+		const { editFileTool, writeFileTool, readFileTool } = await import("../src/index.js");
+		const opts = { workspaceRoot: "/" };
+		for (const t of [editFileTool(opts), writeFileTool(opts), readFileTool(opts)]) {
+			expect(t.description).not.toContain("approval required");
+			expect(t.description.length).toBeLessThan(220);
+		}
+	});
+
+	it("the refusals still TEACH — the error path is where the rent belongs", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wr1e-"));
+		writeFileSync(join(dir, "f.ts"), "v1\n");
+		const { writeFileTool } = await import("../src/index.js");
+		const r = await writeFileTool({ workspaceRoot: dir }).execute(
+			{ path: "f.ts", content: "v2\n", expectedRevision: rev("OTHER") },
+			undefined as never,
+		);
+		expect(r.isError).toBe(true);
+		expect(r.content).toContain("read it again");
 	});
 });

@@ -27,7 +27,7 @@ const EDIT = {
 	type: "tool_call_end",
 	callId: "e1",
 	name: "edit_file",
-	input: { path: "src/parser.ts", search: "// OLD", replace: "if (t == null) throw new Error('null token');" },
+	input: { path: "src/parser.ts", search: "// OLD", replace: "if (t == null) throw new Error('null token');", expectedRevision: "rev:fb218fcdf7981cd6" },
 };
 
 describe("TUI2-R1.5 ② — the edit approval diff on a real PTY", () => {
@@ -67,7 +67,7 @@ describe("TUI2-R1.5 ② — the edit approval diff on a real PTY", () => {
 
 	it("a search that is NOT in the file gets the honest note, never a fabricated diff", () => {
 		const ws = parserWorkspace();
-		const miss = { ...EDIT, input: { path: "src/parser.ts", search: "// NOT THERE AT ALL", replace: "x" } };
+		const miss = { ...EDIT, input: { path: "src/parser.ts", search: "// NOT THERE AT ALL", replace: "x", expectedRevision: "rev:fb218fcdf7981cd6" } };
 		const script = fauxScript([
 			{ events: [{ type: "text_delta", text: "Trying an edit." }, miss, { type: "stop", reason: "tool_use" }] },
 			{ events: [{ type: "text_delta", text: "that missed." }, { type: "stop", reason: "end_turn" }] },

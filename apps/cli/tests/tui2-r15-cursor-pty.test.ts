@@ -72,7 +72,7 @@ describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
 			type: "tool_call_end",
 			callId: "e1",
 			name: "edit_file",
-			input: { path: "src/parser.ts", search: "// OLD", replace: "if (t == null) throw new Error('null token');" },
+			input: { path: "src/parser.ts", search: "// OLD", replace: "if (t == null) throw new Error('null token');", expectedRevision: "rev:fb218fcdf7981cd6" },
 		};
 		const script = fauxScript([
 			{ events: [{ type: "text_delta", text: "Fixing it." }, edit, { type: "stop", reason: "tool_use" }] },
@@ -116,7 +116,7 @@ describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
 			type: "tool_call_end",
 			callId: "e1",
 			name: "edit_file",
-			input: { path: "src/parser.ts", search: "// OLD", replace: "if (t == null) throw new Error('null token');" },
+			input: { path: "src/parser.ts", search: "// OLD", replace: "if (t == null) throw new Error('null token');", expectedRevision: "rev:fb218fcdf7981cd6" },
 		};
 		const script = fauxScript([
 			{ events: [{ type: "text_delta", text: "Fixing it." }, edit, { type: "stop", reason: "tool_use" }] },

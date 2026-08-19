@@ -177,7 +177,7 @@ describe("TV-1B ③ — the thin task driver (real PTY, 40×80)", () => {
 			{ events: [{ type: "text_delta", text: "done and checked." }, { type: "stop", reason: "end_turn" }] },
 			// turn 2 (user): a DURABLE mutation-class execution — the trajectory
 			// staleness TV-1A can actually see (never a bare filesystem edit)
-			{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "new.txt", content: "x" } }, { type: "stop", reason: "tool_use" }] },
+			{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "new.txt", content: "x", expectedRevision: "absent" } }, { type: "stop", reason: "tool_use" }] },
 			{ events: [{ type: "text_delta", text: "changed something." }, { type: "stop", reason: "end_turn" }] },
 			// turn 3 (the VERIFY run): emits its OWN task_set + the check —
 			// that task_set belongs to the SAME accepted offer, never a re-arm
