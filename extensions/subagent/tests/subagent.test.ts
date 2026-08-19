@@ -186,7 +186,7 @@ describe("④ subagent: real child processes", () => {
 		writeFileSync(
 			script,
 			JSON.stringify([
-				{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "new.txt", content: "x" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "new.txt", content: "x", expectedRevision: "absent" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
 			"utf8",

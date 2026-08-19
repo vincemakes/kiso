@@ -116,7 +116,7 @@ const FAUX_TRAJECTORY = [
 	},
 	{
 		events: [
-			{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "out.txt", content: "hello" } },
+			{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "out.txt", content: "hello", expectedRevision: "absent" } },
 			{ type: "stop", reason: "tool_use" },
 		],
 	},
@@ -128,7 +128,7 @@ const FAUX_TRAJECTORY = [
 	},
 	{
 		events: [
-			{ type: "tool_call_end", callId: "w2", name: "write_file", input: { path: "out2.txt", content: "world" } },
+			{ type: "tool_call_end", callId: "w2", name: "write_file", input: { path: "out2.txt", content: "world", expectedRevision: "absent" } },
 			{ type: "stop", reason: "tool_use" },
 		],
 	},
