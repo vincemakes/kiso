@@ -75,7 +75,10 @@ describe("edit / shell", () => {
 		const root = tempRoot();
 		writeFileSync(join(root, "a.txt"), "hello", "utf8");
 		const result = await editFileTool({ workspaceRoot: root }).execute({ path: "a.txt", search: "absent", replace: "x", expectedRevision: revOf(join(root, "a.txt")) }, CTX);
-		expect(result).toMatchObject({ isError: true, errorKind: "invalid_input" });
+		// WR-1A ④: the world (no such pattern), not the input — precondition,
+		// so the non-idempotent partial-effects note never rides an edit that
+		// wrote nothing (the WR-1-F1 lie family).
+		expect(result).toMatchObject({ isError: true, errorKind: "precondition" });
 	});
 
 	it("shell runs a command with the workspace as cwd", async () => {
