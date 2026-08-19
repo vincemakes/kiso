@@ -44,12 +44,14 @@ describe("TV-1B ② — a header-only verdict change repaints", () => {
 	it("same items, new header → the live frame carries the new words", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
-		body.checklist("task · 2 items — 0 pending, 0 active, 2 done", ITEMS);
+		// the header param is the cell's TAIL (rendered after the derived
+		// "task · N items · …" head) — the driver passes verdict WORDS.
+		body.checklist("", ITEMS);
 		tick();
 		const before = writes.join("");
 		writes.length = 0;
-		// the settle verdict: SAME items, header-only change
-		body.checklist("task done · 2 items · no passing check yet", ITEMS);
+		// the settle verdict: SAME items, tail-only change
+		body.checklist("no passing check yet", ITEMS);
 		tick();
 		const after = writes.join("");
 		expect(before).toContain("2 items");

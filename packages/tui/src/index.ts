@@ -96,7 +96,7 @@ export { contextRows, contextUnavailableRows, type ContextLedger } from "./conte
 // KC3 §1 (the extraction): the human-facing strings — the prompt, the
 // project-trust listing/view/note, the uncertain execution's view. The
 // FLOW (who is asked, what a verdict means) stays in the cli.
-export { interactivePrompt, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, type TrustArtifact } from "./strings.js";
+export { interactivePrompt, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, verifyOfferView, type TrustArtifact } from "./strings.js";
 // KC3 §3/§5: the @ file picker's pure half — the subsequence filter, the
 // deterministic rank, and the ONE cap the CLI's file source shares.
 export { AT_CAP, AT_SKIP, AT_VISIBLE, atEmbed, atFilter, atPanelRows, atWindow, bandHeader, longestRun, type AtItem, type AtMatch } from "./at-picker.js";

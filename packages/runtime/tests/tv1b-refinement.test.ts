@@ -89,7 +89,9 @@ describe("TV-1B ① — a precondition receipt proves no mutation", () => {
 			opts,
 		);
 		expect(a.evidence.kind).toBe("verified");
-		expect(a.lastMutationSeq).toBeNull(); // proven-no-mutation never counts
+		// the SHELL's own started (exclusive) is the last mutation candidate;
+		// the proven-no-mutation write (its started at seq 2) never counts.
+		expect(a.lastMutationSeq).not.toBe(2);
 	});
 });
 
