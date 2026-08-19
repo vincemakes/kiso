@@ -329,7 +329,7 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
 const FAUX_TRAJECTORY = [
 	{
 		events: [
-			{ type: "tool_call_end", callId: "e1", name: "edit_file", input: { path: "f1.txt", search: "OLD", replace: "NEW" } },
+			{ type: "tool_call_end", callId: "e1", name: "edit_file", input: { path: "f1.txt", search: "OLD", replace: "NEW", expectedRevision: "rev:099d90cbee62f89e" } },
 			{ type: "stop", reason: "tool_use" },
 		],
 	},
@@ -341,7 +341,7 @@ const FAUX_TRAJECTORY = [
 	},
 	{
 		events: [
-			{ type: "tool_call_end", callId: "e3", name: "edit_file", input: { path: "f3.txt", search: "OLD", replace: "NEW" } },
+			{ type: "tool_call_end", callId: "e3", name: "edit_file", input: { path: "f3.txt", search: "OLD", replace: "NEW", expectedRevision: "rev:099d90cbee62f89e" } },
 			{ type: "stop", reason: "tool_use" },
 		],
 	},
