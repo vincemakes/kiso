@@ -141,7 +141,7 @@ describe("write/edit: mode and temp hygiene (round 8)", () => {
 		expect(statSync(target).mode & 0o7777).toBe(0o711);
 	});
 
-	it("a FAILED write (rename onto a directory) leaves no .kiso-tmp-* with the content behind", async () => {
+	it("WR-1A: a write onto an existing DIRECTORY is refused EARLY — no temp is ever created (the pre-WR-1 rename-failure path is unreachable now; staged-temp hygiene is pinned in wr1a-coda)", async () => {
 		const dir = root();
 		mkdirSync(join(dir, "blocked"), { recursive: true });
 		const result = await writeFileTool({ workspaceRoot: dir }).execute(
