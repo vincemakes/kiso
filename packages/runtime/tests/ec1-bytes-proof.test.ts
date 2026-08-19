@@ -91,6 +91,20 @@ function turnsOf(events: readonly Event[]): AdapterEvent[][] {
 	return turns;
 }
 
+/** The recorded answer, as text. `tool_result.content` is
+ *  `string | readonly ContentBlock[]`, and this file's whole method is that
+ *  the replay answers EXACTLY what the published bin recorded: a registry
+ *  that silently degraded a block-shaped result to "" would have parts 1 and
+ *  2 comparing a stream the bin never wrote, and they would still pass. So
+ *  the union is narrowed honestly and a corpus that ever changes shape stops
+ *  the test loudly instead of weakening it. */
+function recordedText(result: Extract<Event, { type: "tool_result" }>): string {
+	if (typeof result.content !== "string") {
+		throw new Error(`the corpus fixture's tool_result for ${result.callId} is block-shaped; the replay needs the recorded text verbatim`);
+	}
+	return result.content;
+}
+
 /** A registry that answers every call exactly as the recorded run did —
  *  keyed on the tool's input, so the handler cannot drift from the log. */
 function replayRegistry(events: readonly Event[]): ToolRegistry {
@@ -100,7 +114,7 @@ function replayRegistry(events: readonly Event[]): ToolRegistry {
 		if (ev.type !== "tool_call_end") continue;
 		names.add(ev.name);
 		const result = events.find((e) => e.type === "tool_result" && e.callId === ev.callId);
-		if (result !== undefined && result.type === "tool_result") answer.set(JSON.stringify(ev.input), result.content);
+		if (result !== undefined && result.type === "tool_result") answer.set(JSON.stringify(ev.input), recordedText(result));
 	}
 	const registry = new ToolRegistry();
 	for (const name of names) {
@@ -188,7 +202,10 @@ function stable(value: unknown): unknown {
 function multiset(events: readonly Event[]): string[] {
 	return events
 		.map((ev) => {
-			const { seq: _s, executionId: _x, ...rest } = ev as Record<string, unknown> & { seq: number };
+			// `as unknown as` because tsc will not compare a closed event union
+			// to an index-signature type directly (TerminalEvent has no index
+			// signature) — the probe reads whatever keys the event carries.
+			const { seq: _s, executionId: _x, ...rest } = ev as unknown as Record<string, unknown> & { seq: number };
 			return JSON.stringify(stable(rest));
 		})
 		.sort();
@@ -236,7 +253,7 @@ describe("EC-1 — the bytes proof against a real 0.12.0 log", () => {
 		for (const ev of base) {
 			if (ev.type !== "tool_call_end") continue;
 			const r = base.find((e) => e.type === "tool_result" && e.callId === ev.callId);
-			if (r !== undefined && r.type === "tool_result") answer.set(JSON.stringify(ev.input), r.content);
+			if (r !== undefined && r.type === "tool_result") answer.set(JSON.stringify(ev.input), recordedText(r));
 		}
 		const undeclared = new ToolRegistry();
 		undeclared.register(
