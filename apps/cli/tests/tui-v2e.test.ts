@@ -89,7 +89,7 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 							type: "tool_call_end",
 							callId: "c1",
 							name: "edit_file",
-							input: { path: "work.txt", search: "OLD", replace: "NEW" },
+							input: { path: "work.txt", search: "OLD", replace: "NEW", expectedRevision: "rev:68d57b25056a1d5a" },
 						},
 						{ type: "stop", reason: "tool_use" },
 					],

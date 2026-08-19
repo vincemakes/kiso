@@ -785,8 +785,8 @@ export class Run implements AsyncIterable<Event> {
 
 		// ruling #12 correction one: the honest note rides the recovered failure too —
 		// the receipt and the repaired tool_result reproduce the live path
-		// losslessly.
-		if (result.isError && tool?.idempotent !== true) {
+		// losslessly. WR-1-F1: precondition refusals excluded — nothing ran.
+		if (result.isError && result.errorKind !== "precondition" && tool?.idempotent !== true) {
 			result = {
 				...result,
 				content: `${result.content}\n[non-idempotent tool failed — its side effects may have partially applied; verify before retrying]`,

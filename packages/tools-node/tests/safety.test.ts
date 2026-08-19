@@ -13,7 +13,13 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AbortSignalLike, ToolContext } from "@vincemakes/kiso-core";
+import { createHash } from "node:crypto";
 import { shellTool, writeFileTool, editFileTool } from "../src/index.js";
+// WR-1: reads now end with the revision trailer; these helpers strip it
+// for byte-identity pins and compute a citation for existing files.
+const stripRev = (s: string): string => s.replace(/\n\[rev: rev:[0-9a-f]{16}\]$/, "");
+const revOf = (p: string): string => `rev:${createHash("sha256").update(readFileSync(p)).digest("hex").slice(0, 16)}`;
+
 
 function root(): string {
 	return mkdtempSync(join(tmpdir(), "kiso-safe-"));
@@ -100,7 +106,7 @@ describe("safe replacement (E group)", () => {
 		linkSync(outside, join(dir, "linked.txt"));
 
 		const result = await writeFileTool({ workspaceRoot: dir }).execute(
-			{ path: "linked.txt", content: "NEW-CONTENT" },
+			{ path: "linked.txt", content: "NEW-CONTENT", expectedRevision: revOf(join(dir, "linked.txt")) },
 			CTX(NEVER_ABORT),
 		);
 		expect(result).toMatchObject({ isError: false });
@@ -128,7 +134,7 @@ describe("safe replacement (E group)", () => {
 		linkSync(outside2, join(dir2, "linked.txt"));
 
 		const result = await editFileTool({ workspaceRoot: dir2 }).execute(
-			{ path: "linked.txt", search: "ONE", replace: "TWO" },
+			{ path: "linked.txt", search: "ONE", replace: "TWO", expectedRevision: revOf(join(dir2, "linked.txt")) },
 			CTX(NEVER_ABORT),
 		);
 		expect(result).toMatchObject({ isError: false });

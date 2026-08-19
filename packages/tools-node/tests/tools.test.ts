@@ -3,6 +3,7 @@
  * idempotent, writes are side effects, shell runs/times out/kills trees.
  */
 
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -18,6 +19,11 @@ import {
 	shellTool,
 	writeFileTool,
 } from "../src/index.js";
+// WR-1: reads now end with the revision trailer; these helpers strip it
+// for byte-identity pins and compute a citation for existing files.
+const stripRev = (s: string): string => s.replace(/\n\[rev: rev:[0-9a-f]{16}\]$/, "");
+const revOf = (p: string): string => `rev:${createHash("sha256").update(readFileSync(p)).digest("hex").slice(0, 16)}`;
+
 
 const CTX: ToolContext = {
 	signal: { aborted: false, addEventListener: () => {}, removeEventListener: () => {} },
@@ -36,7 +42,8 @@ describe("read / list / search", () => {
 		const target = join(root, "a.txt");
 		await writeFileTool({ workspaceRoot: root }).execute({ path: "a.txt", content: "hello kiso" }, CTX);
 		const read = await readFileTool({ workspaceRoot: root }).execute({ path: "a.txt" }, CTX);
-		expect(read).toMatchObject({ content: "hello kiso", isError: false });
+		expect(read.isError).toBe(false);
+		expect(stripRev(read.content)).toBe("hello kiso");
 		expect(readFileSync(target, "utf8")).toBe("hello kiso");
 	});
 
@@ -60,14 +67,14 @@ describe("edit / shell", () => {
 	it("edit_file replaces only the first occurrence", async () => {
 		const root = tempRoot();
 		writeFileSync(join(root, "a.txt"), "one one two", "utf8");
-		await editFileTool({ workspaceRoot: root }).execute({ path: "a.txt", search: "one", replace: "ONE" }, CTX);
+		await editFileTool({ workspaceRoot: root }).execute({ path: "a.txt", search: "one", replace: "ONE", expectedRevision: revOf(join(root, "a.txt")) }, CTX);
 		expect(readFileSync(join(root, "a.txt"), "utf8")).toBe("ONE one two");
 	});
 
 	it("edit_file reports a missing pattern as invalid_input, not a crash", async () => {
 		const root = tempRoot();
 		writeFileSync(join(root, "a.txt"), "hello", "utf8");
-		const result = await editFileTool({ workspaceRoot: root }).execute({ path: "a.txt", search: "absent", replace: "x" }, CTX);
+		const result = await editFileTool({ workspaceRoot: root }).execute({ path: "a.txt", search: "absent", replace: "x", expectedRevision: revOf(join(root, "a.txt")) }, CTX);
 		expect(result).toMatchObject({ isError: true, errorKind: "invalid_input" });
 	});
 
@@ -150,7 +157,8 @@ describe("workspace boundary (Area 5)", () => {
 		mkdirSync(nested, { recursive: true });
 		writeFileSync(join(nested, "x.txt"), "nested", "utf8");
 		const result = await readFileTool({ workspaceRoot: root }).execute({ path: "deep/deeper/x.txt" }, CTX);
-		expect(result).toMatchObject({ content: "nested", isError: false });
+		expect(result.isError).toBe(false);
+		expect(stripRev(result.content)).toBe("nested");
 	});
 
 	it("the toolset registers without collisions and is bound to one root", async () => {

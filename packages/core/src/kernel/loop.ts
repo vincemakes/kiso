@@ -1227,8 +1227,10 @@ async function runLedgered(
 	// receipt below, losslessly — a crash-window repair of the tool_result
 	// reproduces the normal path). Idempotent failures carry no note; the
 	// MCP bridge maps tools without declaring idempotency, so unknown
-	// idempotency = the note applies (honest).
-	if (result.isError && tool.idempotent !== true) {
+	// idempotency = the note applies (honest). WR-1-F1: a PRECONDITION
+	// refusal is work refused BEFORE it starts — by the kind's own
+	// contract nothing ran, so the note would be a false statement there.
+	if (result.isError && result.errorKind !== "precondition" && tool.idempotent !== true) {
 		result = {
 			...result,
 			content: `${result.content}\n[non-idempotent tool failed — its side effects may have partially applied; verify before retrying]`,
