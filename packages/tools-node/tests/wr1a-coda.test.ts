@@ -121,3 +121,52 @@ describe("WR-1A ⑤ — temp hygiene under WR-1 (the restored coverage)", () => 
 		expect(readdirSync(dir).filter((f) => f.includes(".kiso-tmp-"))).toEqual([]);
 	});
 });
+
+describe("WR-1-F2 — the citation format must not teach ambiguity (found by the rel-0140 blocking bench)", () => {
+	it("the read trailer is [rev:X] — single token, no label/token double-prefix", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wr1f2-"));
+		writeFileSync(join(dir, "f.ts"), "hello\n");
+		const { readFileTool } = await import("../src/index.js");
+		const r = await readFileTool({ workspaceRoot: dir }).execute({ path: "f.ts" }, undefined as never);
+		expect(r.isError).toBe(false);
+		// the OLD format taught the flail: `[rev: rev:X]` read as either
+		// `rev:rev:X` or bare `X` — both refused. The trailer is now the
+		// token itself in brackets.
+		expect(r.content.trimEnd()).toMatch(/\[rev:[0-9a-f]{16}\]$/);
+		expect(r.content).not.toContain("[rev: rev:");
+	});
+
+	it("every plausible citation form validates: rev:X, bare X, and the flail's rev:rev:X", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wr1f2-"));
+		const { editFileTool } = await import("../src/index.js");
+		const edit = editFileTool({ workspaceRoot: dir });
+		const forms = (tok: string) => [tok, tok.replace(/^rev:/, ""), `rev:${tok}`];
+		for (const [i, mangle] of forms(rev("alpha\n")).entries()) {
+			writeFileSync(join(dir, `f${i}.ts`), "alpha\n");
+			const r = await edit.execute({ path: `f${i}.ts`, search: "alpha", replace: "beta", expectedRevision: mangle }, undefined as never);
+			expect(r.isError, `form ${JSON.stringify(mangle)} must validate`).toBe(false);
+		}
+	});
+
+	it("a WRONG revision still refuses in every form — tolerance is normalization, never a bypass", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wr1f2-"));
+		writeFileSync(join(dir, "f.ts"), "alpha\n");
+		const { editFileTool } = await import("../src/index.js");
+		const edit = editFileTool({ workspaceRoot: dir });
+		for (const wrong of ["rev:0000000000000000", "0000000000000000", "rev:rev:0000000000000000"]) {
+			const r = await edit.execute({ path: "f.ts", search: "alpha", replace: "beta", expectedRevision: wrong }, undefined as never);
+			expect(r.isError).toBe(true);
+			expect(kindOf(r)).toBe("precondition");
+		}
+	});
+
+	it("the stale refusal TEACHES the fix: it names the [rev:...] line to cite", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wr1f2-"));
+		writeFileSync(join(dir, "f.ts"), "v1\n");
+		const { writeFileTool } = await import("../src/index.js");
+		const write = writeFileTool({ workspaceRoot: dir });
+		const r = await write.execute({ path: "f.ts", content: "v2\n", expectedRevision: rev("OTHER") }, undefined as never);
+		expect(r.isError).toBe(true);
+		expect(r.content).toContain("[rev:");
+	});
+});

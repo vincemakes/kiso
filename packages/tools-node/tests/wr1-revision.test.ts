@@ -26,7 +26,7 @@ import type { ToolResult } from "@vincemakes/kiso-core";
 /** union-honest errorKind access: undefined unless the result IS an error. */
 const kindOf = (r: ToolResult): string | undefined => (r.isError ? r.errorKind : undefined);
 
-const REV_LINE = /\[rev: (rev:[0-9a-f]{16})\]$/;
+const REV_LINE = /\[(rev:[0-9a-f]{16})\]$/;
 
 function ws(): { root: string } {
 	return { root: mkdtempSync(join(tmpdir(), "kiso-wr1-")) };
@@ -39,7 +39,7 @@ async function readRev(read: ReturnType<typeof tools>["read"], path: string): Pr
 	const res = await read.execute({ path }, undefined as never);
 	expect(res.isError).toBe(false);
 	const m = REV_LINE.exec(res.content.trimEnd());
-	expect(m, `no [rev: …] trailer in: ${res.content.slice(-80)}`).not.toBeNull();
+	expect(m, `no [rev:…] trailer in: ${res.content.slice(-80)}`).not.toBeNull();
 	return { content: res.content, rev: m![1]! };
 }
 const revOf = (bytes: Buffer | string): string =>

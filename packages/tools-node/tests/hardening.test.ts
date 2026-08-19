@@ -32,7 +32,7 @@ import type { AbortSignalLike, ToolContext } from "@vincemakes/kiso-core";
 import { canonicalTargetPath, editFileTool, readFileTool, searchTextTool, shellTool, writeFileTool } from "../src/index.js";
 // WR-1: reads now end with the revision trailer; these helpers strip it
 // for byte-identity pins and compute a citation for existing files.
-const stripRev = (s: string): string => s.replace(/\n\[rev: rev:[0-9a-f]{16}\]$/, "");
+const stripRev = (s: string): string => s.replace(/\n\[rev:[0-9a-f]{16}\]$/, "");
 const revOf = (p: string): string => `rev:${createHash("sha256").update(readFileSync(p)).digest("hex").slice(0, 16)}`;
 
 

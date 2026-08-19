@@ -30,6 +30,24 @@ export function precondition(content: string): ToolResult {
 }
 
 /**
+ * WR-1-F2 — citation normalization (found by the rel-0140 blocking
+ * bench): the old trailer `[rev: rev:X]` double-labeled the token, and
+ * DeepSeek-class models flailed between citing `rev:rev:X` and bare
+ * `X` — every first edit refused, 2–7 wasted rounds per file. The
+ * trailer is now `[rev:X]`, and EVERY plausible copy of the token
+ * normalizes to the same citation: tolerance in the reader,
+ * strictness in the comparison — never a bypass (a wrong token stays
+ * wrong in every form).
+ */
+export function normalizeRevision(cited: string): string {
+	const t = cited.trim();
+	if (t === "absent") return t;
+	if (/^rev:rev:[0-9a-f]{16}$/.test(t)) return t.slice(4);
+	if (/^[0-9a-f]{16}$/.test(t)) return `rev:${t}`;
+	return t;
+}
+
+/**
  * WR-1A ①: a POST-EFFECT verification failure is FATAL — the rename
  * already happened, so `precondition` ("nothing ran") would make the
  * durable receipt lie about the world. The copy says the effect may
@@ -87,7 +105,7 @@ export function revalidateBeforeRename(full: string, expectedRevision: string, t
 		return precondition(`${tool}: ${path} no longer exists — it changed after validation; read it again`);
 	}
 	if (current !== expectedRevision) {
-		return precondition(`${tool}: ${path} changed since ${expectedRevision} — read it again, then re-apply the change`);
+		return precondition(`${tool}: ${path} changed since ${expectedRevision} — read it again and cite its [rev:…] line, then re-apply the change`);
 	}
 	return null;
 }
