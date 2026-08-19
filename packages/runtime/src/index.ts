@@ -47,6 +47,11 @@ export type { KisoExtension } from "./extensions.js";
 export { executionForCallId, executionLedger } from "./ledger.js";
 export type { ExecutionRecord, ExecutionStatus } from "./ledger.js";
 
+// task assessment (TV-1A) — the pure projection separating the model's
+// CLAIM from VERIFIED under Verified ⟹ evidenceSeq > lastMutationSeq
+export { assessTasks } from "./task-assessment.js";
+export type { EvidenceVerdict, TaskAssessment, TaskClaim } from "./task-assessment.js";
+
 // trust
 export { kisoHome, projectArtifacts, recordTrust, trustFor } from "./trust.js";
 export type { ProjectArtifact, ProjectArtifacts, TrustDecision, TrustRecord } from "./trust.js";

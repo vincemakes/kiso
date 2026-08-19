@@ -239,7 +239,7 @@ describe("TV-1A — the live leg (real agent, real task extension, real receipts
 			store,
 			tools: [shellTool, readTool],
 			adapter: createFauxProvider(SCRIPT),
-			extensions: [createTaskExtension()],
+			extensions: [await createTaskExtension()],
 		});
 		const session = await agent.session({ id: "tv1a" });
 		for await (const _ of session.run("do the work")) {
@@ -262,7 +262,7 @@ describe("TV-1A — the live leg (real agent, real task extension, real receipts
 				{ events: [{ type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "a" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
-			extensions: [createTaskExtension()],
+			extensions: [await createTaskExtension()],
 		});
 		const resumed = await agent2.session({ id: "tv1a" });
 		for await (const _ of resumed.run("look again")) {
@@ -287,7 +287,7 @@ describe("TV-1A — the live leg (real agent, real task extension, real receipts
 				{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "b" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
-			extensions: [createTaskExtension()],
+			extensions: [await createTaskExtension()],
 		});
 		const mutated = await agent3.session({ id: "tv1a" });
 		for await (const _ of mutated.run("change something")) {
