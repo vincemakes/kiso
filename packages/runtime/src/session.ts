@@ -40,6 +40,12 @@ import {
 	type Tool,
 } from "@vincemakes/kiso-core";
 import { executionLedger } from "./ledger.js";
+import { assessTasks, type TaskAssessment } from "./task-assessment.js";
+
+/** TV-1A — the session-level evidence policy: the PURE projection defaults
+ *  to ∅ (never inventing evidence); the session names the one built-in
+ *  verification surface. Override per call for custom evidence tools. */
+const DEFAULT_EVIDENCE_TOOLS: ReadonlySet<string> = new Set(["shell"]);
 import { denialResult } from "@vincemakes/kiso-core";
 import {
 	DROP_PLACEHOLDER,
@@ -604,6 +610,25 @@ export class AgentSession {
 	/** Executions that started but never reported a result (crash window). */
 	uncertainExecutions() {
 		return [...executionLedger(this.log.all).values()].filter((r) => r.status === "uncertain");
+	}
+
+	/**
+	 * TV-1A — assess the task claims and their evidence freshness over THIS
+	 * session's durable log. The shared-tool set comes from the live tools'
+	 * own `effects.concurrency: "shared"` certificates (one direction of
+	 * truth, never a second declaration); the evidence policy defaults to
+	 * {"shell"} — the convention the task extension's own "make the LAST
+	 * item a verification step" guidance produces.
+	 */
+	assessTasks(opts?: { readonly evidenceTools?: ReadonlySet<string> }): TaskAssessment {
+		const sharedTools = new Set<string>();
+		for (const tool of this.#config.registry.list()) {
+			if (tool.effects?.concurrency === "shared") sharedTools.add(tool.name);
+		}
+		return assessTasks(this.log.all, {
+			sharedTools,
+			evidenceTools: opts?.evidenceTools ?? DEFAULT_EVIDENCE_TOOLS,
+		});
 	}
 
 	/**
