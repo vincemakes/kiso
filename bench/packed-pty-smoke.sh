@@ -40,10 +40,18 @@ fi
 export KISO_HOME="$TMP/home"
 # macOS ships no `timeout` — the perl-alarm wrapper is the standard
 # substitute: a hung chat dies to SIGALRM (rc 142) and FAILs the smoke.
-printf '/help\nexit\n' | perl -e 'alarm 120; exec @ARGV' script -q "$TMP/capture" "$BIN" chat > /dev/null 2>&1
+# CR, not LF: the multiline composer submits on \r; \n only inserts a
+# line break (the KC1 driver supersession — this harness was the one
+# file the 31-file \n→\r sweep missed, caught at the 0.13.0 ceremony).
+# The sleeps pace input past TUI mount so submissions hit a wired
+# dispatcher, and settle each command before the next.
+(sleep 2; printf '/help\r'; sleep 3; printf 'exit\r'; sleep 5) \
+  | perl -e 'alarm 120; exec @ARGV' script -q "$TMP/capture" "$BIN" chat > /dev/null 2>&1
 RC=$?
 CAP="$TMP/capture"
 grep -q "$VERSION" "$CAP" && echo "PASS banner: $VERSION" || { echo "FAIL banner: expected $VERSION"; exit 1; }
-grep -qi "help" "$CAP" && echo "PASS built-ins render" || { echo "FAIL built-ins"; exit 1; }
+# /compact is asserted (not "help"): the typed "/help" echoes into the
+# capture, so only a command NEVER typed proves the help list rendered.
+grep -q "/compact" "$CAP" && echo "PASS built-ins render" || { echo "FAIL built-ins"; exit 1; }
 [ "$RC" -eq 0 ] && echo "PASS clean exit (rc=0, capture tail: $(tail -1 "$CAP" | tr -d '\r' | cut -c1-40))" \
   || { echo "FAIL clean exit: rc=$RC"; exit 1; }
