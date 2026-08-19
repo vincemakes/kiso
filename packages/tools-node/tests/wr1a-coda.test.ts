@@ -61,7 +61,8 @@ describe("WR-1A ② — the creation publish is fail-closed", () => {
 		const r = publishNewFile(join(dir, "tmp2"), join(dir, "missing-dir", "t.ts"), "missing-dir/t.ts");
 		expect(r).not.toBeNull();
 		expect(kindOf(r!)).toBe("precondition");
-		expect(r!.content).toContain("cannot publish atomically");
+		expect(r!.content).toContain("atomically on this filesystem");
+		expect(r!.content).toContain("cannot be honored");
 		expect(readdirSync(dir)).not.toContain("tmp2");
 	});
 

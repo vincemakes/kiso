@@ -1208,7 +1208,7 @@ async function runLedgered(
 		// observes ctx.signal, but the gate itself must not invoke it after
 		// a cancel.
 		result = signal?.aborted
-			? { content: "aborted before execution", isError: true, errorKind: "fatal" }
+			? { content: "aborted before execution", isError: true, errorKind: "precondition" }
 			: await tool.execute(call.input!, ctx);
 	} catch (err) {
 		result = {
