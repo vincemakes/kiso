@@ -88,6 +88,27 @@ export function projectUntrustedNote(count: number, root: string): string {
  *  goes stale silently. The tool name is escaped for the dock-less
  *  fallback question because it reaches the terminal as raw text there;
  *  the panel's own rows are escaped by the panel renderer. */
+/**
+ * TV-1B — the verification offer (the thin task driver's one question):
+ * shown at a NORMAL settle when every item is claimed done and no
+ * passing check is fresh. The panel's simple flavor; bare-Enter
+ * approves, Esc dismisses. The fallback question serves a dock-less
+ * TTY; non-interactive paths never reach askPanel at all.
+ */
+export function verifyOfferView(): PanelView {
+	return {
+		flavor: "simple",
+		name: "verification",
+		title: "finish the checklist?",
+		speaker: "kiso",
+		statusText: "\u25b8 run paused",
+		args: { kind: "text", lines: [] },
+		ruleOverride: "every item is marked done \u2014 run a check?",
+		simpleOptions: ["run a verification pass", "not now"],
+		fallbackQuestion: "run a verification pass? (y/n) ",
+	};
+}
+
 export function uncertainView(name: string, executionId: string): PanelView {
 	return {
 		flavor: "simple",

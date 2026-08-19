@@ -333,9 +333,9 @@ export class AgentSession {
 	}
 
 	/** Run one user turn. Iterate to consume; `run.abort()` cancels. */
-	run(input: string, options?: { signal?: AbortSignalLike }): Run {
+	run(input: string, options?: { signal?: AbortSignalLike; source?: import("@vincemakes/kiso-core").MessageSource }): Run {
 		this.ensureHealthy();
-		return new Run(this.#store, this.#adapter, this.#config, this, input, options?.signal, false);
+		return new Run(this.#store, this.#adapter, this.#config, this, input, options?.signal, false, options?.source);
 	}
 
 	/**

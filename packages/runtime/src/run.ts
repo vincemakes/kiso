@@ -27,6 +27,7 @@ export class Run implements AsyncIterable<Event> {
 	readonly #session: AgentSession;
 	readonly #input: string | undefined;
 	readonly #resume: boolean;
+	readonly #source: import("@vincemakes/kiso-core").MessageSource | undefined;
 	readonly #abort = new AbortController();
 	readonly #externalSignal: AbortSignalLike | undefined;
 	readonly #decisionIds: string[] = [];
@@ -41,6 +42,10 @@ export class Run implements AsyncIterable<Event> {
 		input: string | undefined,
 		externalSignal: AbortSignalLike | undefined,
 		resume: boolean,
+		// TV-1B: durable PROVENANCE for the input (e.g. the verification
+		// seed's source:"system") — who produced the line, never a
+		// provider-role escalation. Absent = plain user input.
+		source?: import("@vincemakes/kiso-core").MessageSource,
 	) {
 		this.#store = store;
 		this.#adapter = adapter;
@@ -49,6 +54,7 @@ export class Run implements AsyncIterable<Event> {
 		this.#input = input;
 		this.#externalSignal = externalSignal;
 		this.#resume = resume;
+		this.#source = source;
 		this.runId = crypto.randomUUID();
 	}
 
@@ -270,7 +276,7 @@ export class Run implements AsyncIterable<Event> {
 			//    session. The prompt is also the first event the consumer
 			//    sees, so what was asked and what happened live in the same
 			//    stream.
-			const inputEvent = log.append({ type: "user_input", content: this.#input! });
+			const inputEvent = log.append({ type: "user_input", content: this.#input!, ...(this.#source !== undefined ? { source: this.#source } : {}) });
 			await this.#session.persist(this.runId, inputEvent);
 			yield inputEvent;
 

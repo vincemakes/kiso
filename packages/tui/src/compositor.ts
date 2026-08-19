@@ -657,7 +657,10 @@ export class Body {
 		const turn = this.#turns.length - 1;
 		const last = this.#cells[this.#cells.length - 1];
 		if (last !== undefined && last.kind === "checklist" && !last.done && last.turn === turn) {
-			if (!sameTask(last.items, items)) {
+			// TV-1B: the header participates in the change detection — the
+			// settle verdict is a header-only update over the same items,
+			// and an items-only guard would swallow it silently.
+			if (last.header !== header || !sameTask(last.items, items)) {
 				Object.assign(last, { header, items });
 				this.#mark();
 			}

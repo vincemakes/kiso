@@ -16,6 +16,9 @@
  *   name NOT in `sharedTools`. Started — not the receipt — so failed and
  *   crash-window executions invalidate too, and pre-EC-1 overlap eras are
  *   covered by the same rule. Absence of a certificate is a mutation.
+ *   ONE proven exception (TV-1B, grounded in WR-1A): an execution whose
+ *   terminal receipt is failed(errorKind:"precondition") never counts —
+ *   that kind's frozen contract is "work refused BEFORE it starts".
  * - EVIDENCE: only receipts (`tool_execution_succeeded`) of names in
  *   `evidenceTools`. Default ∅ — the projection never invents evidence.
  *   What TV-1A's verdict asserts is POSITIONAL: the arc's last
@@ -98,6 +101,19 @@ export function assessTasks(
 	const shared = opts?.sharedTools ?? new Set<string>();
 	const evidenceNames = opts?.evidenceTools ?? new Set<string>();
 
+	// TV-1B: PASS 1 — executions whose terminal receipt is a
+	// PRECONDITION failure are PROVEN no-mutation (WR-1A froze that
+	// contract: work refused before it starts). Everything else stays
+	// conservative: no receipt (crash window), fatal/transient/
+	// invalid_input, success, and legacy receipts with no errorKind.
+	// Two passes, no temporal rollback state — same events, same verdict.
+	const provenNoMutation = new Set<string>();
+	for (const ev of events) {
+		if (ev.type === "tool_execution_failed" && ev.errorKind === "precondition") {
+			provenNoMutation.add(ev.executionId);
+		}
+	}
+
 	const nameByExecution = new Map<string, string>();
 	let claims: readonly TaskClaim[] = [];
 	let lastTaskSetSeq: number | null = null;
@@ -109,7 +125,7 @@ export function assessTasks(
 	for (const ev of events) {
 		if (ev.type === "tool_execution_started") {
 			nameByExecution.set(ev.executionId, ev.name);
-			if (ev.name !== TASK_TOOL && !shared.has(ev.name)) {
+			if (ev.name !== TASK_TOOL && !shared.has(ev.name) && !provenNoMutation.has(ev.executionId)) {
 				lastMutationSeq = ev.seq;
 				if (lastEvidenceSeq !== null && staleBySeq === null) staleBySeq = ev.seq;
 			}

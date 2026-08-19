@@ -15,6 +15,7 @@ import {
 	renderRecap,
 	runningStatus,
 	toolTarget,
+	verifyOfferView,
 	STATUS_GLYPHS,
 	type PanelArgs,
 	type PanelView,
@@ -385,6 +386,22 @@ export function parseSaferOptions(text: string): SaferOption[] | null {
 	return out.length === 0 ? null : out;
 }
 
+/** TV-1B — the plain-word verdict tail for the settled checklist.
+ *  "no passing check yet" covers both never-ran and ran-and-failed
+ *  without lying; "outdated" claims only what the trajectory proves. */
+function taskVerdictWords(kind: "verified" | "stale" | "none" | "unreadable"): string {
+	switch (kind) {
+		case "verified":
+			return "checked \u2713";
+		case "stale":
+			return "check outdated \u2014 work may have changed after it";
+		case "none":
+			return "no passing check yet";
+		case "unreadable":
+			return "task list unreadable";
+	}
+}
+
 /** W21 — the panel view for a permission_requested: the rule line (the
  *  why-asked speaker + the §3.5 fix hint), the toolTarget title, the
  *  "▸ run paused" status, and the ALWAYS-verbose args. */
@@ -564,6 +581,15 @@ export async function consumeRun(
 		// construction (ADR-0040).
 		switch (ev.type) {
 			case "user_input":
+				// TV-1B: a system-sourced input is PRODUCT MACHINERY — visible
+				// (every durable input renders) but never painted as the
+				// user's words. Provenance is honest on screen, not only in
+				// the log.
+				if (ev.source === "system") {
+					body.notice("\u25c6 verification pass");
+					body.notice(`  ${typeof ev.content === "string" ? ev.content : ""}`);
+					break;
+				}
 				body.userLine(typeof ev.content === "string" ? ev.content : "");
 				break;
 			case "thinking":
@@ -737,6 +763,19 @@ export async function consumeRun(
 				// events (zero tokens). The dock's status bar still paints.
 				statusCb?.(usage, estimateCtxRatio(session));
 				const ratio = estimateCtxRatio(session);
+				// TV-1B: the settle verdict — the checklist stops lying. When
+				// every item is CLAIMED done, the settled block's tail says
+				// what the projection actually proves ("no passing check yet"
+				// covers never-ran AND ran-and-failed; "may have changed"
+				// claims trajectory knowledge, never filesystem knowledge).
+				// A run that emitted no task_set still gets the block: the
+				// claims live in the durable log, and the settle SYNTHESIZES
+				// the display from session.assessTasks() — a UI projection,
+				// never a new durable fact.
+				const tv = session.assessTasks();
+				if (tv.claims.length > 0 && tv.allClaimedDone) {
+					body.checklist(taskVerdictWords(tv.evidence.kind), tv.claims.map((c) => ({ text: c.text, status: c.status })));
+				}
 				// W14: the turn record closes HERE — before the recap logs, so
 				// the commit loop folds the quiet turn's held cells first (the
 				// fold line lands above the recap, natural cell order).
@@ -809,10 +848,10 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		input.close();
 	};
 
-	const turn = (text: string): Promise<void> =>
+	const turn = (text: string, seedSource?: "system"): Promise<void> =>
 		new Promise((resolve, reject) => {
 			queued = Math.max(0, queued - 1); // a queued turn starts
-			const run = session.run(text);
+			const run = seedSource !== undefined ? session.run(text, { source: seedSource }) : session.run(text);
 			currentRun = run;
 			turnNo += 1;
 			const myTurn = turnNo;
@@ -842,6 +881,43 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 					// mid-run — the run's end is the safe point for the deferred
 					// exit, so the release always runs.
 					if (eotSeen) exitAtEmptyPrompt();
+					// TV-1B — the thin task driver. A VERIFICATION turn settling
+					// consumes the task-set identity it produced (a verifier's
+					// own task_set belongs to the SAME accepted offer) and never
+					// opens another offer. A normal COMPLETED settle may offer —
+					// gated so the suggestion always yields to human intent.
+					if (seedSource === "system") {
+						const after = session.assessTasks();
+						if (after.lastTaskSetSeq !== null) offeredTaskSeqs.add(after.lastTaskSetSeq);
+					} else if (
+						last?.type === "terminal" &&
+						last.outcome.kind === "completed" &&
+						process.stdin.isTTY &&
+						!cancelled &&
+						!eotSeen &&
+						pendingAsk === null &&
+						pendingTurns.length === 0 &&
+						input.line() === ""
+					) {
+						const tv = session.assessTasks();
+						if (
+							tv.claims.length > 0 &&
+							tv.allClaimedDone &&
+							(tv.evidence.kind === "none" || tv.evidence.kind === "stale") &&
+							tv.lastTaskSetSeq !== null &&
+							!offeredTaskSeqs.has(tv.lastTaskSetSeq)
+						) {
+							const verdict = await askPanel(input, verifyOfferView());
+							// an explicit answer — Yes, Not now, OR Esc — consumes
+							// the offer for THIS claims-set; only gate-suppression
+							// (above) leaves it live for a later settle.
+							offeredTaskSeqs.add(tv.lastTaskSetSeq);
+							if (verdict.action === "allow") {
+								queued += 1; // turn() decrements — keep the ledger honest
+								chainRef.current = chainRef.current.then(() => turn(VERIFY_SEED, "system"));
+							}
+						}
+					}
 					// round 8: after EVERY turn the prompt is re-armed — the human
 					// never types blind after the first turn.
 					input.prompt();
@@ -940,6 +1016,14 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// A slot leaves the queue when its turn STARTS or when the user
 	// pops it (cancelled — the chain segment skips it).
 	const pendingTurns: { line: string; cancelled: boolean }[] = [];
+	// TV-1B — the offer memory: session-local BY DESIGN (a dead process's
+	// "not now" should not silence a live one; resume re-offers once,
+	// honestly), keyed by the assessed claims' identity.
+	const offeredTaskSeqs = new Set<number>();
+	// The fixed verification seed — durable with source:"system": WHO asked
+	// is provenance in the log; on the provider wire it stays an ordinary
+	// user-role message (never a system-prompt escalation).
+	const VERIFY_SEED = "Verify the completed work: run the project's checks and report what passes and what fails.";
 	// v2b: the live status bar (docked only). Modes: /mode switches repaint
 	// it immediately through paintStatus (the last turn stats are kept).
 	// v3 §03: the status bar has TWO states. Idle: the mode is ALWAYS
