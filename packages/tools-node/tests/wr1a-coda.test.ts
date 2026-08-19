@@ -170,3 +170,37 @@ describe("WR-1-F2 — the citation format must not teach ambiguity (found by the
 		expect(r.content).toContain("[rev:");
 	});
 });
+
+describe("WR-1-F3 — the results teach token-chaining (the multi-hunk rent, rel-0140b)", () => {
+	it("a successful edit says the NEXT edit of this file must cite the NEW token; the trailer stays the last line", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wr1f3-"));
+		writeFileSync(join(dir, "f.ts"), "alpha beta\n");
+		const { editFileTool } = await import("../src/index.js");
+		const r = await editFileTool({ workspaceRoot: dir }).execute(
+			{ path: "f.ts", search: "alpha", replace: "gamma", expectedRevision: rev("alpha beta\n") },
+			undefined as never,
+		);
+		expect(r.isError).toBe(false);
+		expect(r.content).toContain("cite the new token");
+		expect(r.content.trimEnd()).toMatch(/\[rev:[0-9a-f]{16}\]$/);
+	});
+
+	it("a successful write teaches the same chain", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wr1f3-"));
+		const { writeFileTool } = await import("../src/index.js");
+		const r = await writeFileTool({ workspaceRoot: dir }).execute(
+			{ path: "new.ts", content: "x\n", expectedRevision: "absent" },
+			undefined as never,
+		);
+		expect(r.isError).toBe(false);
+		expect(r.content).toContain("cite the new token");
+		expect(r.content.trimEnd()).toMatch(/\[rev:[0-9a-f]{16}\]$/);
+	});
+
+	it("the guidelines teach revision-chaining in the system prompt surface", async () => {
+		const { editFileTool, writeFileTool } = await import("../src/index.js");
+		const opts = { workspaceRoot: "/" };
+		const all = [...(editFileTool(opts).promptGuidelines ?? []), ...(writeFileTool(opts).promptGuidelines ?? [])].join(" ");
+		expect(all).toContain("changes its revision");
+	});
+});
