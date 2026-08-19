@@ -11,7 +11,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ToolContext } from "@vincemakes/kiso-core";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { listDirTool, readFileTool, searchTextTool, shellTool } from "../src/index.js";
+// WR-1: reads now end with the revision trailer; these helpers strip it
+// for byte-identity pins and compute a citation for existing files.
+const stripRev = (s: string): string => s.replace(/\n\[rev: rev:[0-9a-f]{16}\]$/, "");
+const revOf = (p: string): string => `rev:${createHash("sha256").update(readFileSync(p)).digest("hex").slice(0, 16)}`;
+
 
 const CTX: ToolContext = {
 	signal: { aborted: false, addEventListener: () => {}, removeEventListener: () => {} },
@@ -34,7 +41,7 @@ describe("read_file scoped reads", () => {
 		const result = await readFileTool({ workspaceRoot: root }).execute({ path: "small.txt" }, CTX);
 		expect(result).toMatchObject({ isError: false });
 		// The verbatim file content — trailing newline included.
-		expect(result.content).toBe(`line 1\n${Array.from({ length: 199 }, (_, i) => `line ${i + 2}`).join("\n")}\n`);
+		expect(stripRev(result.content)).toBe(`line 1\n${Array.from({ length: 199 }, (_, i) => `line ${i + 2}`).join("\n")}\n`);
 		expect(result.content).not.toContain("more lines");
 	});
 
@@ -91,7 +98,7 @@ describe("read_file scoped reads", () => {
 		writeLines(root, "big.txt", 250);
 		const first = await readFileTool({ workspaceRoot: root }).execute({ path: "big.txt" }, CTX);
 		const second = await readFileTool({ workspaceRoot: root }).execute({ path: "big.txt", offset: 201 }, CTX);
-		const joined = `${first.content.split("\n… ")[0]}\n${second.content.split("\n… ")[0]}`;
+		const joined = `${stripRev(first.content).split("\n… ")[0]}\n${stripRev(second.content).split("\n… ")[0]}`;
 		expect(joined).toBe(`line 1\n${Array.from({ length: 249 }, (_, i) => `line ${i + 2}`).join("\n")}`);
 	});
 

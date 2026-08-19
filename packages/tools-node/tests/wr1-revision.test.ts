@@ -21,6 +21,10 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { editFileTool, readFileTool, writeFileTool } from "../src/index.js";
+import type { ToolResult } from "@vincemakes/kiso-core";
+
+/** union-honest errorKind access: undefined unless the result IS an error. */
+const kindOf = (r: ToolResult): string | undefined => (r.isError ? r.errorKind : undefined);
 
 const REV_LINE = /\[rev: (rev:[0-9a-f]{16})\]$/;
 
@@ -97,7 +101,7 @@ describe("WR-1 ② — the mutation lattice (write_file)", () => {
 
 		const refused = await write.execute({ path: "f.ts", content: "new\n" }, undefined as never);
 		expect(refused.isError).toBe(true);
-		expect(refused.errorKind).toBe("precondition");
+		expect(kindOf(refused)).toBe("precondition");
 		expect(refused.content).toContain("already exists");
 		expect(refused.content).toContain("expectedRevision");
 		expect(readFileSync(join(root, "f.ts"), "utf8")).toBe("old\n"); // nothing was written
@@ -117,7 +121,7 @@ describe("WR-1 ② — the mutation lattice (write_file)", () => {
 
 		const refused = await write.execute({ path: "f.ts", content: "v3\n", expectedRevision: rev }, undefined as never);
 		expect(refused.isError).toBe(true);
-		expect(refused.errorKind).toBe("precondition");
+		expect(kindOf(refused)).toBe("precondition");
 		expect(refused.content).toContain("changed since");
 		expect(refused.content).toContain(rev);
 		expect(readFileSync(join(root, "f.ts"), "utf8")).toBe("v2 — the user edited meanwhile\n");
@@ -137,7 +141,7 @@ describe("WR-1 ② — the mutation lattice (write_file)", () => {
 		writeFileSync(join(root, "f.ts"), "after — a shell command rewrote me\n");
 		const refused = await write.execute({ path: "f.ts", content: "x\n", expectedRevision: rev }, undefined as never);
 		expect(refused.isError).toBe(true);
-		expect(refused.errorKind).toBe("precondition");
+		expect(kindOf(refused)).toBe("precondition");
 	});
 
 	it("creation lattice: omitted+absent creates; \"absent\"+absent creates; \"absent\"+existing refuses", async () => {
@@ -153,7 +157,7 @@ describe("WR-1 ② — the mutation lattice (write_file)", () => {
 
 		const clash = await write.execute({ path: "new1.ts", content: "c\n", expectedRevision: "absent" }, undefined as never);
 		expect(clash.isError).toBe(true);
-		expect(clash.errorKind).toBe("precondition");
+		expect(kindOf(clash)).toBe("precondition");
 		expect(clash.content).toContain("already exists");
 		expect(readFileSync(join(root, "new1.ts"), "utf8")).toBe("a\n");
 	});
@@ -167,7 +171,7 @@ describe("WR-1 ② — the mutation lattice (write_file)", () => {
 		rmSync(join(root, "f.ts"));
 		const refused = await write.execute({ path: "f.ts", content: "v2\n", expectedRevision: rev }, undefined as never);
 		expect(refused.isError).toBe(true);
-		expect(refused.errorKind).toBe("precondition");
+		expect(kindOf(refused)).toBe("precondition");
 		expect(refused.content).toContain("no longer exists");
 		expect(refused.content).toContain("absent");
 	});
@@ -182,7 +186,7 @@ describe("WR-1 ③ — edit_file: same lattice, single snapshot, stale before pa
 		writeFileSync(join(root, "f.ts"), "beta\n"); // alpha is gone AND the file is stale
 		const refused = await edit.execute({ path: "f.ts", search: "alpha", replace: "gamma", expectedRevision: rev }, undefined as never);
 		expect(refused.isError).toBe(true);
-		expect(refused.errorKind).toBe("precondition");
+		expect(kindOf(refused)).toBe("precondition");
 		expect(refused.content).toContain("changed since");
 		expect(refused.content).not.toContain("pattern not found");
 	});
@@ -193,7 +197,7 @@ describe("WR-1 ③ — edit_file: same lattice, single snapshot, stale before pa
 		const { edit } = tools(root);
 		const refused = await edit.execute({ path: "f.ts", search: "alpha", replace: "beta" }, undefined as never);
 		expect(refused.isError).toBe(true);
-		expect(refused.errorKind).toBe("precondition");
+		expect(kindOf(refused)).toBe("precondition");
 		expect(refused.content).toContain("expectedRevision");
 		expect(readFileSync(join(root, "f.ts"), "utf8")).toBe("alpha\n");
 	});
@@ -237,6 +241,6 @@ describe("WR-1 ④ — the recovery acceptance (the review's): durable intent re
 		const fresh2 = tools(root);
 		const refused = await fresh2.write.execute({ path: "f.ts", content: "A3\n", expectedRevision: rev }, undefined as never);
 		expect(refused.isError).toBe(true);
-		expect(refused.errorKind).toBe("precondition");
+		expect(kindOf(refused)).toBe("precondition");
 	});
 });

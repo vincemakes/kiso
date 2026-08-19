@@ -147,6 +147,33 @@ describe("execution identity (Area 3)", () => {
 		expect(executionForCallId(log.all, "c1")?.status).toBe("failed");
 	});
 
+	it("WR-1-F1: a PRECONDITION refusal never carries the partial-effects note — nothing ran", async () => {
+		// The precondition kind's own contract is "work refused BEFORE it
+		// starts"; decorating it with "side effects may have partially
+		// applied" is a false statement the moment a non-idempotent tool
+		// refuses (WR-1's stale-write guard made that path reachable).
+		const registry = new ToolRegistry();
+		registry.register(
+			defineTool({
+				name: "write_file",
+				description: "Write",
+				parameters: { type: "object", properties: { path: { type: "string" } } },
+				execute: async () => ({ content: "write_file: x already exists — read it first", isError: true, errorKind: "precondition" as const }),
+			}),
+		);
+		const log = new EventLog();
+		const events = await runWithLog(
+			[{ events: [{ type: "tool_call_end", callId: "c1", name: "write_file", input: { path: "x" } }, { type: "stop", reason: "tool_use" }] }],
+			registry,
+			log,
+		);
+		const result = events.find((e): e is Event & { type: "tool_result" } => e.type === "tool_result");
+		expect(result).toBeDefined();
+		expect(String(result!.content)).toContain("already exists");
+		expect(String(result!.content)).not.toContain("partially applied");
+		expect(executionForCallId(log.all, "c1")?.status).toBe("failed");
+	});
+
 	it("a failed IDEMPOTENT execution is a clean failure — safe to retry, and NO note (nothing may have applied)", async () => {
 		const registry = new ToolRegistry();
 		registry.register(

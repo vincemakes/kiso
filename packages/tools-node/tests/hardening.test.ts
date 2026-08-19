@@ -11,6 +11,7 @@
  *   (fifo) are refused.
  */
 
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
 	chmodSync,
@@ -29,6 +30,11 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AbortSignalLike, ToolContext } from "@vincemakes/kiso-core";
 import { canonicalTargetPath, editFileTool, readFileTool, searchTextTool, shellTool, writeFileTool } from "../src/index.js";
+// WR-1: reads now end with the revision trailer; these helpers strip it
+// for byte-identity pins and compute a citation for existing files.
+const stripRev = (s: string): string => s.replace(/\n\[rev: rev:[0-9a-f]{16}\]$/, "");
+const revOf = (p: string): string => `rev:${createHash("sha256").update(readFileSync(p)).digest("hex").slice(0, 16)}`;
+
 
 function root(): string {
 	return mkdtempSync(join(tmpdir(), "kiso-hard-"));
@@ -115,7 +121,7 @@ describe("write/edit: mode and temp hygiene (round 8)", () => {
 		writeFileSync(target, "old", "utf8");
 		chmodSync(target, 0o755);
 		const result = await writeFileTool({ workspaceRoot: dir }).execute(
-			{ path: "script.sh", content: "new content" },
+			{ path: "script.sh", content: "new content", expectedRevision: revOf(target) },
 			CTX(),
 		);
 		expect(result).toMatchObject({ isError: false });
@@ -128,7 +134,7 @@ describe("write/edit: mode and temp hygiene (round 8)", () => {
 		writeFileSync(target, "ONE", "utf8");
 		chmodSync(target, 0o711);
 		const result = await editFileTool({ workspaceRoot: dir }).execute(
-			{ path: "script.sh", search: "ONE", replace: "TWO" },
+			{ path: "script.sh", search: "ONE", replace: "TWO", expectedRevision: revOf(target) },
 			CTX(),
 		);
 		expect(result).toMatchObject({ isError: false });
@@ -156,7 +162,7 @@ describe("write/edit: mode and temp hygiene (round 8)", () => {
 		writeFileSync(target, "ONE TWO", "utf8");
 		chmodSync(dir, 0o555); // temp creation now fails
 		const result = await editFileTool({ workspaceRoot: dir }).execute(
-			{ path: "e.txt", search: "ONE", replace: "TWO" },
+			{ path: "e.txt", search: "ONE", replace: "TWO", expectedRevision: revOf(target) },
 			CTX(),
 		);
 		chmodSync(dir, 0o755);
@@ -183,14 +189,16 @@ describe("read_file inode boundary (round 8)", () => {
 		writeFileSync(a, "shared-content", "utf8");
 		linkSync(a, join(dir, "b.txt"));
 		const result = await readFileTool({ workspaceRoot: dir }).execute({ path: "a.txt" }, CTX());
-		expect(result).toMatchObject({ isError: false, content: "shared-content" });
+		expect(result.isError).toBe(false);
+		expect(stripRev(result.content)).toBe("shared-content");
 	});
 
 	it("reads an ordinary single-link file", async () => {
 		const dir = root();
 		writeFileSync(join(dir, "plain.txt"), "hello", "utf8");
 		const result = await readFileTool({ workspaceRoot: dir }).execute({ path: "plain.txt" }, CTX());
-		expect(result).toMatchObject({ isError: false, content: "hello" });
+		expect(result.isError).toBe(false);
+		expect(stripRev(result.content)).toBe("hello");
 	});
 
 	it("refuses non-regular file types (a fifo)", async () => {
@@ -236,7 +244,8 @@ describe("read_file inode boundary (round 8)", () => {
 		writeFileSync(a, "internal-shared", "utf8");
 		linkSync(a, join(dir, "b\nline.txt")); // a second inside link with a newline name
 		const result = await readFileTool({ workspaceRoot: dir }).execute({ path: "a.txt" }, CTX());
-		expect(result).toMatchObject({ isError: false, content: "internal-shared" });
+		expect(result.isError).toBe(false);
+		expect(stripRev(result.content)).toBe("internal-shared");
 	});
 });
 
@@ -252,7 +261,8 @@ describe("canonicalTargetPath (round 10)", () => {
 		writeFileSync(a, "internal-shared", "utf8");
 		linkSync(a, join(linkWorkspace, "b.txt"));
 		const result = await readFileTool({ workspaceRoot: linkWorkspace }).execute({ path: "a.txt" }, CTX());
-		expect(result).toMatchObject({ isError: false, content: "internal-shared" });
+		expect(result.isError).toBe(false);
+		expect(stripRev(result.content)).toBe("internal-shared");
 	});
 
 	it("a file to be created under a SYMLINKED directory resolves to the REAL target", async () => {
