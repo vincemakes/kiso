@@ -40,6 +40,12 @@ const CORPUS = [
 	// shape still ships.
 	"gen-f-0120-faux.jsonl", // gen F — published bin 0.12.0, faux mode
 	"gen-f-0120-marker.jsonl", // gen F — 8 real microcompacted boundaries
+	// The FIRST EC-1 PRODUCER — the era boundary anchored from its far
+	// side. Same gen-F wire (kind-set identical to 0120); what changed is
+	// order, not vocabulary: this producer can no longer write an ask
+	// with no stop before it.
+	"gen-f-0130-faux.jsonl", // gen F — published bin 0.13.0, faux mode
+	"gen-f-0130-marker.jsonl", // gen F — 8 real microcompacted boundaries
 ] as const;
 
 /** The driver's scope rule (recovery-plan.ts): the open run is the tail

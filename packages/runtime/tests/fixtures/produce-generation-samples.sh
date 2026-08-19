@@ -11,6 +11,14 @@
 # with KISO_CONTEXT_WINDOW=16000 and the heavy script (the product's own
 # override; the threshold becomes 8000 tokens, crossed mid-script).
 set -u
+# The [bin ...] filter the usage line promises: with args, only those
+# versions produce (re-producing an already-registered sample would
+# change a frozen fixture — the registry rows pin their produced dates).
+ONLY="$*"
+want() {
+	[ -z "$ONLY" ] && return 0
+	case " $ONLY " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../../.." && pwd)"
 FAUX="$HERE/faux.json"
@@ -41,15 +49,18 @@ produce() { # $1=bin $2=session-id $3=script $4=output-name (in ./sessions/)
 	echo "produced $OUT ($(wc -l < "$F") records)"
 }
 
-produce "0.1.42" "fxgen0.1.42" "$FAUX" "gen-d-0142-faux.jsonl"
-produce "0.1.46" "fxgen0.1.46" "$FAUX" "gen-e-0146-faux.jsonl"
-produce "0.1.48" "fxgen0.1.48" "$FAUX" "gen-f-0148-faux.jsonl"
+want "0.1.42" && produce "0.1.42" "fxgen0.1.42" "$FAUX" "gen-d-0142-faux.jsonl"
+want "0.1.46" && produce "0.1.46" "fxgen0.1.46" "$FAUX" "gen-e-0146-faux.jsonl"
+want "0.1.48" && produce "0.1.48" "fxgen0.1.48" "$FAUX" "gen-f-0148-faux.jsonl"
 # EC-1: the last PRE-EC-1 producer (0.13.0 moves asks behind Turn Commit,
 # so no later bin writes a request with no stop before it).
-produce "0.12.0" "fxgen0.12.0" "$FAUX" "gen-f-0120-faux.jsonl"
+want "0.12.0" && produce "0.12.0" "fxgen0.12.0" "$FAUX" "gen-f-0120-faux.jsonl"
+# The FIRST EC-1 producer (gen F on the wire; the era boundary's far side).
+want "0.13.0" && produce "0.13.0" "fxgen0.13.0" "$FAUX" "gen-f-0130-faux.jsonl"
 # The marker-bearing variant (KISO_CONTEXT_WINDOW override, heavy script):
-produce "0.1.46" "m46" "$HEAVY" "gen-e-0146-marker.jsonl"
-produce "0.1.48" "m48" "$HEAVY" "gen-f-0148-marker.jsonl"
-produce "0.12.0" "m0120" "$HEAVY" "gen-f-0120-marker.jsonl"
+want "0.1.46" && produce "0.1.46" "m46" "$HEAVY" "gen-e-0146-marker.jsonl"
+want "0.1.48" && produce "0.1.48" "m48" "$HEAVY" "gen-f-0148-marker.jsonl"
+want "0.12.0" && produce "0.12.0" "m0120" "$HEAVY" "gen-f-0120-marker.jsonl"
+want "0.13.0" && produce "0.13.0" "m0130" "$HEAVY" "gen-f-0130-marker.jsonl"
 rm -rf "$WORK"
 echo "done — update ./sessions/PROVENANCE.md rows with the produced dates"

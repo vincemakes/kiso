@@ -20,6 +20,8 @@ samples are reproducible from it.
 | `gen-f-0148-marker.jsonl` | @vincemakes/kiso-code@0.1.48 | E/F + markers | 2026-08-12, faux-mode one-shot, heavy script | same override, session `m48` — 8 real `microcompacted` boundaries |
 | `gen-f-0120-faux.jsonl` | @vincemakes/kiso-code@0.12.0 | F, the last PRE-EC-1 producer | 2026-08-18, faux-mode one-shot | same command pattern with 0.12.0, session `fxgen0.12.0` |
 | `gen-f-0120-marker.jsonl` | @vincemakes/kiso-code@0.12.0 | F + markers, the last PRE-EC-1 producer | 2026-08-18, faux-mode one-shot, heavy script | same override, session `m0120` — 8 real `microcompacted` boundaries |
+| `gen-f-0130-faux.jsonl` | @vincemakes/kiso-code@0.13.0 | F, the FIRST EC-1 producer | 2026-08-19, faux-mode one-shot | same command pattern with 0.13.0, session `fxgen0.13.0` — 66 rows, terminal, zero asks-before-stop |
+| `gen-f-0130-marker.jsonl` | @vincemakes/kiso-code@0.13.0 | F + markers, the FIRST EC-1 producer | 2026-08-19, faux-mode one-shot, heavy script | same override, session `m0130` — 8 real `microcompacted` boundaries |
 
 Generations (ADR-0051 §3): D = summarized era, pre-`invocationSeq`
 (0.1.38–0.1.42); E = `invocationSeq` + `model_output_abandoned` (0.1.43+);
@@ -34,10 +36,14 @@ Amendment 2). What they anchor is a PRODUCER ERA: EC-1 (0.13.0) moves the
 human ask behind Turn Commit, so no later bin can write a durable
 `permission_requested` that has no `stop` before it. `recovery-plan.ts`
 keeps its `liveAsk` clause for exactly the logs that do, and these
-samples are why that clause is still justified. **Owed next**: an
-EC-1-era sample produced from the published 0.13.0 bin — a post-publish
-ceremony step, since R4a forbids synthesizing one from an unreleased
-tree.
+samples are why that clause is still justified. The owed EC-1-era
+counterpart was produced 2026-08-19 from the published 0.13.0 bin
+(the `gen-f-0130-*` rows above) — same gen-F wire shape as 0120
+(byte-level kind-set identical; the faux flow records
+`permission_decided` only, in both eras), so what separates the two
+producers is behavioral order, not vocabulary: the era boundary the
+recovery planner reads from the bin version, anchored from both
+sides.
 
 Historical notes, documented honestly:
 
