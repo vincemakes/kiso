@@ -817,3 +817,44 @@ was discarding that structure. From 0.12.0:
 4. **The principle:** when evidence is ambiguous, do not wait for a
    better world — design the next observation that discriminates
    between the competing explanations.
+
+### BM-1 at 0.13.0 — the scheduled re-derivation, executed
+
+Margins re-derived over ALL recorded interleaved pairs
+(rel-090/0100/0110/0120, n=16, every parent release later adjudicated
+healthy): healthy median −3.8% · p90 +20.6% · max +42.1%. The standing
+margins (median ≤ +6%; single pair ≤ +50%) sit correctly outside the
+healthy record and are re-affirmed UNCHANGED at double the sample. The
+round under judgment (rel-0130) is excluded from its own threshold's
+derivation — corpus derives, freeze intervenes, then the round is
+judged. Next re-derivation: 0.15.0 or n ≥ 30 pairs, whichever first.
+
+First live BM-1 round (rel-0130): the anomaly detector fired (T3 RC
+median above the 0.12.0 band) while the unchanged 0.12.0 CONTROL also
+ran +38% above its own band ceiling and the paired median stayed
++1.8% — the common-mode signature the amendment was introduced to
+control; not attributable to the RC alone. Reported, not blocking.
+
+## The release ceremony protocol (standing from 0.13.0)
+
+- **Publish order**: strict dependency order over the workspace graph
+  — foundations → runtime/providers/tools → extensions → the cli
+  last. Lockstep exact-version pins make order violations loud.
+- **Partial-publish policy**: once ANY artifact of a version reaches
+  the registry, that version is immutable. A later publish failure is
+  repaired FORWARD; already-published packages are never overwritten
+  or silently republished. (npm's unpublish policy makes rollback
+  structurally unavailable for interdependent packages.)
+- **Post-publish obligations** (generation sample from the published
+  bin, dogfood, report): a failure there is NOT a retroactive release
+  failure — it becomes a numbered release finding, the report is
+  marked incomplete, and it BLOCKS the next release until resolved; a
+  hotfix is owed only if shipped semantics are implicated.
+- **SHA binding**: the ready-kit records merge/bench/tag/publish SHAs
+  and asserts the post-bench semantic diff is NONE (version manifests
+  and release records only) — a bench is void for a tree that drifted
+  semantically after it ran.
+- **Language discipline**: an unobserved cost is reported as
+  "below live-bench noise on this workload", never as "zero cost";
+  an absolute-band anomaly with a matching control excursion is
+  "not attributable to the RC alone", never a proven provider fault.
