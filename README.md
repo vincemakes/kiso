@@ -93,6 +93,7 @@ are what this README uses.
 | --- | --- |
 | **Prefix-Complete Recovery** | the session can always be resumed from its durable prefix — every prefix a real published bin wrote loads, validates, projects, and derives a recovery plan (the generation gate, ≥4 real generations) |
 | **Ambiguity Never Auto-Repeats** | an execution that started and never reported stays the human's decision — never auto-rerun, never silently re-asked |
+| **Turn Commit** | a model turn counts only once its stream has cleanly exhausted with exactly one compatible stop — receiving a stop is not commit, a handler that can change your world never starts before that boundary, and a harmless call that ran ahead of it never makes an invalid turn valid (ADR-0052) |
 | **Committed Intent Before Effect** | a tool call is decided and persisted before any effect; an approval is a durable fact, never a memory |
 | **Durable Start Before Side Effect** | a handler never runs before its STARTED receipt is persisted — a crash cannot leave an unreported effect |
 | **Stable Intent Identity** | the three identities (callId / invocationSeq / executionId) are never conflated; derived state is never persisted |
@@ -104,6 +105,10 @@ The contract's ask semantics: **a pending ask lives iff its invocation
 is not voided and the derivation can still execute it** — approval
 verdicts are durable, whether decided directly by the human or by a
 policy the human installed (ADR-0051 §8).
+
+Turn Commit's own proof is a byte comparison of two crash prefixes that
+differ by exactly one durable stop: the one without it never executes on
+resume, the one with it executes exactly once.
 
 ## The rule
 
@@ -1180,7 +1185,7 @@ tree stays CJK-free — `README.zh.md` is the only exemption)
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
-→ demo start-and-exit gate. **918 tests green (128 files)**. 37 ADRs (index: `docs/adrs/README.md`).
+→ demo start-and-exit gate. **918 tests green (128 files)**. 38 ADRs (index: `docs/adrs/README.md`).
 6 incident fixtures running on the real runtime.
 
 ## Why another one

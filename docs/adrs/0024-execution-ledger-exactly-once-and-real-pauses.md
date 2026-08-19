@@ -5,7 +5,10 @@
   exactly-once mechanism; decision #4 (sequential execution) is SUPERSEDED
   by Amendment 1 (the parallel execution returns) — see the amendment below;
   decision #4's `concurrencySafe` sentence is SUPERSEDED by Amendment 2 (the
-  field is retired at 0.12.0; the race moves to EC-1).
+  field is retired at 0.12.0; the race moves to EC-1); Amendment 1's
+  decisions #1, #2, #3 and #5 are SUPERSEDED by Amendment 3 (the execution
+  window, the FIFO fence, the post-commit ask — the EC-1 round, ADR-0052),
+  which also discharges Amendment 2's referral of the race.
 - **Date:** 2026-08-03
 - **Layer:** L2 Kernel / L3 Tool / runtime
 
@@ -205,3 +208,139 @@ judgment — the same tool is safe for one input and must be serial for
 another — and a static per-tool flag cannot express it. A future mechanism
 enters with a wiring and a gate, never as a field that describes an
 intention the kernel does not keep.
+
+## Amendment 3 (2026-08-19): the window is an execution window — eligibility, the FIFO fence, the post-commit ask
+
+- **Status:** Accepted (amends ADR-0024 decision #4; SUPERSEDES Amendment
+  1's decisions #1, #2, #3 and #5; discharges Amendment 2's referral of
+  the same-path race)
+- **Date:** 2026-08-19 (the EC-1 effect classification round, 0.13.0)
+- **Layer:** L2 Kernel / L3 Tool
+- **Companion:** **ADR-0052** — Durable Turn Commit is the boundary this
+  scheduler serves. The seven invariants, the Turn Commit definition, the
+  `effects` certificate's shape and the recovery classes live there and
+  are deliberately not restated here; this amendment records only what
+  changed about ADR-0024's own subject, the scheduler.
+
+## Context
+
+Amendment 1 restored parallel execution as ONE mechanism doing three
+jobs. A `tool_call_end` that passed validation and the policy chain
+launched immediately (#1); at most four ran at a time (#2); a call's
+human ask gated the calls after it (#3); and a voided turn caught its
+already-launched executions on the way out (#5). Every one of those jobs
+was measured in PENDING INVOCATIONS rather than in running work, and
+every one of them started the handler before the model's turn had proven
+valid — which is the same sentence twice, because the window was also
+the admission control.
+
+Amendment 2 then retired `concurrencySafe` and stated plainly that **the
+race stays open**, referring the mechanism to EC-1 with one binding
+instruction: it must not be built on a per-tool opt-in for correctness.
+
+EC-1 splits the jobs apart. Admission becomes ELIGIBILITY, ordering
+becomes a FIFO barrier, and the window shrinks to what its name always
+claimed — concurrency of running work.
+
+## Decision
+
+1. **Queue → eligibility → execution window.** An accepted invocation is
+   ELIGIBLE when it is committed (or precommit-eligible per #4),
+   authorized, and barrier-clear. Only a RUNNING execution consumes a
+   window slot:
+
+   > the window is an execution window, not a pending-invocation window
+
+   so four held writes can never starve a runnable sibling. In code the
+   split is the statement order in `packages/core/src/kernel/loop.ts`:
+   the commit wait, then the barrier wait, and only THEN
+   `acquireWindow()`. Waiting also leaves no durable trace — crash-matrix
+   row C1 kills the process while one call is inside its handler and a
+   sibling is held behind its fence, and finds exactly ONE
+   `tool_execution_started` on disk: the held sibling is clean, not
+   uncertain, so the human adjudicates one interrupted execution and
+   never two.
+
+2. **The FIFO fence, installed at ACCEPTANCE.** An exclusive invocation
+   installs its barrier when the scheduler accepts it, not when its
+   handler starts; later siblings — including precommit-safe reads —
+   never overtake it. Undeclared means exclusive (ADR-0052 §5: absence is
+   the conservative truth), so this closes the same-path write race
+   Amendment 2 left open WITHOUT the per-tool opt-in that amendment
+   forbade: a tool author who forgets everything gets serialization, and
+   the most a forgotten declaration can cost is throughput.
+
+   The fence is deliberately conservative in one direction: a read
+   accepted after a write loses its latency win even when the two touch
+   unrelated paths. That is the price of having no per-call conflict
+   granularity yet, paid knowingly (ADR-0052, "When to revisit").
+
+   Evidence (`packages/core/tests/ec1-effects.test.ts`): two same-path
+   `edit_file` calls SERIALIZE in call order where the base interleaved
+   them; a declared-shared pair still overlaps; an exclusive call blocks
+   a later shared sibling; and a shared call ahead of an exclusive one is
+   not delayed by it.
+
+3. **The authorization order: the ask moves AFTER Turn Commit.** A human
+   must never approve a call whose turn then proves invalid, so the pause
+   waits for this turn's own commit exactly as a handler does. An
+   uncommitted turn asks nothing and starts nothing.
+
+   Amendment 1 decision #3's CONSERVATIVE ORDER between siblings survives
+   unchanged — the decide phases still run in call order, and a call's
+   ask still gates the calls after it. What moves is WHEN the question
+   reaches the person. Two structural details are load-bearing: the ask
+   gate stays installed in the DECIDE chain rather than at the ask (a
+   precommit-eligible sibling must learn that an ask was accepted ahead
+   of it BEFORE the commit exists, and the decide chain is the only thing
+   that runs in call order), and the gate is per-call — one shared
+   release meant the first ask's resolution opened the second ask's gate.
+
+4. **The launch rule replaces "launches immediately".** A call may start
+   before its turn's commit IFF its tool declares `precommitSafe` AND its
+   authorization is already satisfied (an `allow` verdict, no human in
+   the loop). Both halves are necessary: the certificate says the
+   EXECUTION is harmless, never that the authorization is unnecessary.
+   Everything else — every undeclared tool, and every declared one that
+   still needs a person — waits for the commit.
+
+5. **A voided turn no longer catches launched commit-required work.**
+   Amendment 1 decision #5 described the void as arriving after the
+   calls were already launched: started executions finished and their
+   receipts landed before the terminal. After EC-1 a commit-required call
+   is never launched before the commit, so a voided turn has no
+   commit-required receipt to land. Only a precommit-safe execution can
+   leave one, and ADR-0052's invariant 7 governs what it means — the
+   receipt is an honest fact, and it never makes the turn valid.
+
+## Consequences
+
+- The declared SCHEDULER-TIMING class: every test that pinned launch
+  TIMING is restated, never relaxed — `parallel.test.ts`,
+  `execution-gate.test.ts` (×3), `execution.test.ts`, `loop.test.ts`,
+  `sc1-tool-contract-pins.test.ts`, `sc1-truncation-contract-pins.test.ts`,
+  and crash-matrix rows H2/H3 (the post-pause persist order is now
+  `decided → execution` because the stop is durable before the person is
+  asked; each row's crash point and recovery verdict are unchanged).
+- A user-visible CADENCE change, reported rather than hidden: tools that
+  declare nothing now arrive in the settle drain instead of one per
+  stream event, so a repeated in-turn render (the task block) repaints in
+  place where the base scrolled a new copy into the record each time.
+  No TUI or CLI source changed; `apps/cli/tests/tui-v7-task.test.ts` is
+  restated around cadence-free claims.
+- The kill -9 parallel cell needed a truthful declaration to keep its
+  three-way overlap: `shell` declares nothing, so after EC-1 the kernel
+  serializes it. The cell now drives a test-authored extension tool
+  declaring `concurrency: "shared"` (honest — each invocation writes its
+  own marker path) and deliberately NOT `precommitSafe`, so the calls
+  stay commit-gated and still meet the human.
+
+## When to revisit
+
+- **The window size** — unchanged at 4, and now measuring the right
+  thing; a workload whose running-execution latency exceeds the model
+  latency shows the sweet spot.
+- **Per-call conflict granularity (`resourceKey`), safe overtaking, and
+  snapshot semantics** — the three ways to give the fence back its lost
+  parallelism. All three are future and evidence-gated; ADR-0052's "When
+  to revisit" holds the overturn conditions.

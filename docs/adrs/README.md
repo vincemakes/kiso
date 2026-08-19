@@ -19,7 +19,11 @@ that has not finished speaking.
 - 0022 — Reliable Session Alpha — the first vertical slice — Accepted
 - 0023 — ajv is the core's single runtime dependency — Accepted
 - 0024 — The execution ledger, exactly-once recovery, and real approval
-  pauses — Accepted (superseded in part by 0025)
+  pauses — Accepted (superseded in part by 0025; Amendment 1: parallel
+  execution returns; Amendment 2: `concurrencySafe` retired, the race
+  referred to EC-1; Amendment 3: the window is an EXECUTION window — the
+  eligibility/window split, the FIFO fence, the post-commit ask, which
+  supersedes Amendment 1's decisions #1, #2, #3, #5 — see 0052)
 - 0025 — executionId identity, crash-safe storage, and real
   cross-process resume — Accepted (supersedes 0024 in part)
 - 0026 — The byte-stable projection contract — Accepted
@@ -75,6 +79,13 @@ not another recalibration)
   convention — the release round is the cli minor; additive-optional =
   minor, fix = patch, frozen-surface break = the amendment ritual =
   major, envelope = MAJOR; annotated tags from v1.0.0.)
+- 0052 — Durable Turn Commit — the boundary between model-intent validity
+  and real-world effect — Accepted, the EC-1 effect classification round,
+  2026-08-19. The seven invariants, the three-boundary chain, the
+  `effects` optimization certificate (absence is the conservative truth),
+  the FIFO fence at acceptance, post-commit asks, the new recovery prefix
+  classes, the truncation contract amendment, and the E1 extraction
+  (delivery truth → kiso-evals). Companion: ADR-0024 Amendment 3.
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
