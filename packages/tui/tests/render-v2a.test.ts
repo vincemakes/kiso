@@ -463,7 +463,7 @@ describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
 		const ext = big.indexOf("[3 extensions: asky]");
 		expect(big[ext + 1]).toBe("");
 		expect(big[ext + 2]).toBe("  ▞ resume");
-		expect(big.length).toBe(13); // 6 art + blank + version + extensions + blank + 3 resume rows
+		expect(big.length).toBe(9); // 2 wordmark rows (VD-14) + blank + version + extensions + blank + 3 resume rows
 		for (const r of big) expect(truncateRow(r, 80)).toBe(r);
 		// the narrowest BIG tier still aligns the meta at exactly W (40)
 		const narrow = bannerLines(40, 20, "0.1.37", "", METAS, NOW);

@@ -219,20 +219,13 @@ export function renderTerminalGap(statusLine: string | null): string {
  * Pure.
  */
 export const TAGLINE = "the coding agent that survives kill -9";
-/** v6's existing logo — W1's COMPACT tier, byte-identical, no redraw. */
-const LOGO_ROWS = ["█ █ ▀█▀ █▀▀ █▀█", "█▀▄  █  ▀▀█ █ █", "▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀"] as const;
-/** W1's BIG tier (36x6, `█` and space only — no half-blocks, so there is
- *  no tile seam to lose in a font that renders ▀ ▄ at the wrong height).
- *  Each pixel is two cells wide on purpose (a terminal cell is ~1:2);
- *  the render indents two — 38 columns total, clears 40. */
-const BIG_LOGO_ROWS = [
-	"██    ██  ██████  ████████  ████████",
-	"██  ██      ██    ██        ██    ██",
-	"████        ██    ████████  ██    ██",
-	"████        ██          ██  ██    ██",
-	"██  ██      ██          ██  ██    ██",
-	"██    ██  ██████  ████████  ████████",
-] as const;
+/** TT-1B (VD-14) — the ONE wordmark, 2 rows. The 36x6 pixel art and the
+ *  3-row compact logo both retire: a tall pixel banner's mid-scroll cut
+ *  state renders as glyph garbage (VD-14 — frames 03/04/s2-05 of the
+ *  2026-08-17 walkthrough), inherent to the height. This is the compact
+ *  font with its base row folded into lower half-blocks — same alphabet,
+ *  15 columns, and the cut window shrinks to nothing a reader catches. */
+const WORDMARK_ROWS = ["█ █ ▀█▀ █▀▀ █▀█", "█▀▄ ▄█▄ ▄▄█ █▄█"] as const;
 
 /** v3 §01 (W1): truncate a row at `width`, marking the hidden span
  *  " (+N)". W1: the width math is the charWidth authority (the banner's
@@ -265,9 +258,8 @@ export function truncateRow(row: string, width: number): string {
 
 /** v3 §01 (V6-2) + W1: the banner lines for a width W and height H —
  *  the tier table (extends the existing "under 40 columns, skip the
- *  logo" rule with a HEIGHT input):
- *    W ≥ 40 and H ≥ 20 → BIG (the 36x6 wordmark, 2-column indent)
- *    W ≥ 40 and 14–19 rows → COMPACT (v6's LOGO_ROWS, byte-identical)
+ *  logo" rule with a HEIGHT input; VD-14 merged the two art tiers):
+ *    W ≥ 40 and H ≥ 14 → the 2-row wordmark, 2-column indent
  *    anything smaller → text rows only
  *  then the blank, then "vX — tagline" — the art IS the wordmark, so the
  *  text row does not repeat the name — then extensions — then the W5
@@ -275,12 +267,8 @@ export function truncateRow(row: string, width: number): string {
  *  with a " (+N)" marker. Pure. */
 export function bannerLines(W: number, H: number, version: string, extensionsText: string, resume: readonly ResumeMeta[] = [], now = Date.now()): string[] {
 	const rows: string[] = [];
-	if (W >= 40) {
-		if (H >= 20) {
-			for (const r of BIG_LOGO_ROWS) rows.push(truncateRow(`  ${r}`, W));
-		} else if (H >= 14) {
-			for (const r of LOGO_ROWS) rows.push(truncateRow(r, W));
-		}
+	if (W >= 40 && H >= 14) {
+		for (const r of WORDMARK_ROWS) rows.push(truncateRow(`  ${r}`, W));
 	}
 	if (rows.length > 0) rows.push("");
 	rows.push(truncateRow(`v${version} — ${TAGLINE}`, W));
