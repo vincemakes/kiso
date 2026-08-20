@@ -1,0 +1,7 @@
+Build three pieces, in whatever order actually works — they depend on each other:
+
+1. src/config.mjs — exports getConfig() which reads config.json at the project root and returns the parsed object.
+2. src/logger.mjs — exports log(level, message): it must take its threshold from getConfig().logLevel (levels: debug < info < warn; a message below the threshold prints nothing). It prints `[<level>] <message>` to stdout.
+3. bin/app.mjs — replace the stub: greet by calling log("info", "hello from app") through the logger — the CLI must not read config.json itself.
+
+npm test must pass at the end.

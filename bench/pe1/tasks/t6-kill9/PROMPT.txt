@@ -1,0 +1,1 @@
+Rename the Ledger concept to Journal across src/: the class, the file (ledger.mjs becomes journal.mjs), every import, and every identifier or message that says ledger. The public factory openBook and the tests must keep working unchanged — do not touch anything under tests/. Make npm test pass when you are done.

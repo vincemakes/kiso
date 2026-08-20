@@ -1,0 +1,1 @@
+Implement the --verbose flag for bin/tool.mjs exactly as described in README.md's Flags section. npm test must keep passing.

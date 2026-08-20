@@ -1,0 +1,6 @@
+{
+  "name": "pe1-t3-tool",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test tests/*.test.mjs" }
+}

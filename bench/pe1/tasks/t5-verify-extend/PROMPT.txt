@@ -1,0 +1,1 @@
+First make the existing test suite pass (npm test is currently red). Then implement truncateSlug exactly per SPEC.md, export it from src/index.mjs, and add tests for it. Finish with the whole suite green.

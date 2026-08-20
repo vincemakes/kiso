@@ -1,0 +1,1 @@
+Durability dimension. Driver issues /compact after mod3 is finalized (mid-task). PASS = npm test green AND hidden test green (all six final + allFinal true) — the task list must survive the summary boundary.

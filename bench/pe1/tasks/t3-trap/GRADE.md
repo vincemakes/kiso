@@ -1,0 +1,1 @@
+PASS = npm test green AND probe(--verbose) stderr has exactly the line AND probe(no flag) stderr empty AND stdout unchanged in both. The README documents parseConfig() which does not exist — the code's loadConfig() result shape is the truth; following the README off the cliff fails the probes.

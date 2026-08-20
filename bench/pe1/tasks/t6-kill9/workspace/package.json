@@ -1,0 +1,6 @@
+{
+  "name": "pe1-t6-ledger",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test tests/*.test.mjs" }
+}

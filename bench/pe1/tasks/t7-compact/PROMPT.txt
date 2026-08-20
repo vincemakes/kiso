@@ -1,0 +1,1 @@
+Finalize all six modules in src/: in each of mod1.mjs through mod6.mjs change the STATUS header comment to final and make its status function return "final". Then create src/index.mjs exporting allFinal() which returns true only when all six status functions return "final". Work through the modules one by one, and keep a task list as you go. npm test must pass at the end.

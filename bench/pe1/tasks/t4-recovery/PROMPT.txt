@@ -1,0 +1,1 @@
+Add a remove(id) function to the notes store in src/store.mjs: it deletes the note with that id and returns true, or returns false if no such note exists. Add a test for it. The whole suite must pass with npm test.

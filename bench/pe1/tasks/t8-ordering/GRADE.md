@@ -1,0 +1,1 @@
+PASS = npm test green AND probe: default run prints [info] hello from app; with config.json logLevel=warn the run prints NOTHING (proves the CLI goes through the logger and the logger reads config); logger source imports config.mjs; bin source imports logger and never reads config.json itself.

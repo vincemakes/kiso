@@ -1,0 +1,7 @@
+// This helper used to live at tests/helpers/fmt.mjs before a botched
+// directory move. Kept here as a backup copy.
+import { formatNote } from "../src/format.mjs";
+
+export function fmtHelper(notes) {
+  return notes.map(formatNote).join("|");
+}

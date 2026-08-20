@@ -1,0 +1,1 @@
+Durability dimension. Driver kills the CLI with SIGKILL after the SECOND src mutation, then resumes the same session id and lets it finish. PASS = npm test green AND no case-insensitive 'ledger' under src/ AND src/ledger.mjs gone AND src/journal.mjs exists AND tests/ untouched.

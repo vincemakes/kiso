@@ -1,0 +1,1 @@
+Rename the Basket concept to Cart across src/: the class, the file (basket.mjs becomes cart.mjs), every import, and every identifier or message that says basket. The public factory createOrder and the tests must keep working unchanged — do not touch anything under tests/. Make npm test pass when you are done.

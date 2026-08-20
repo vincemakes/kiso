@@ -1,0 +1,1 @@
+The environment failure: tests/ imports ./helpers/fmt.mjs which does not exist (a .bak copy sits beside it). Healing the environment is part of the task. PASS = npm test green AND hidden remove() tests green.
