@@ -152,23 +152,23 @@ describe("W5 (real PTY) — the opening-screen resume list", () => {
 		const grid = finalGrid(hex, 24, 80);
 		// R-G 0.1.47 (ADR-0050): the ~1ms link-lock append merged the
 		// opening and the run into ONE sync frame, whose paint sequence
-		// never exceeds the 24-row viewport — the OLD flow's separate
-		// run-content commit transiently overflowed and scrolled the
-		// banner up 4 rows (its bottom 3 rows off-screen); the new flow
-		// keeps the FULL banner at rows 1..6 and the list at its natural
-		// rows 11..13 (R-D 0.1.45: the always-present built-in extensions
-		// row pushes the whole cell down one)
-		expect(grid[11]).toBe("  ▞ resume");
+		// never exceeds the 24-row viewport. TT-1B moved the cell's rows:
+		// VD-14's 2-row wordmark (6 art rows became 2) lifts the list to
+		// rows 7..9, and the W5 unification puts the picker's badge glyph
+		// on every data row — both pre-written sessions are mid-run logs,
+		// so both wear the interrupted ▌ (derived through the SAME
+		// projection the picker uses, never a second derivation)
+		expect(grid[9]).toBe("  ▞ resume");
 		// resumeB (appended later — updatedAt desc) sorts first: 15 events · 2 runs
-		const b = grid[12] ?? "";
-		expect(b.startsWith("    now ")).toBe(true);
+		const b = grid[10] ?? "";
+		expect(b.startsWith("    ▌ now ")).toBe(true);
 		expect(b).toContain("v6 one-compositor gates");
-		const a = grid[13] ?? "";
-		expect(a.startsWith("    now ")).toBe(true);
+		const a = grid[11] ?? "";
+		expect(a.startsWith("    ▌ now ")).toBe(true);
 		expect(a).toContain("fix the resize repaint storm");
 		// the meta FIELD occupies the same columns on both rows — aligned
 		// (the done-when), and the right edge lands at exactly W (80) — the
-		// rows are pure ASCII + the width-1 "·", so char length == width
+		// badge column narrows the TITLE field only, never the meta edge
 		expect(b.slice(62)).toBe("15 events · 2 runs");
 		expect(a.slice(62)).toBe(" 3 events · 1 runs");
 		expect(b).toHaveLength(80);
@@ -176,7 +176,7 @@ describe("W5 (real PTY) — the opening-screen resume list", () => {
 		// the CURRENT session is excluded: nothing below the list carries
 		// the meta — the run's own lines (user line, text, recap) land at
 		// the bottom of the content area instead
-		expect(grid.slice(14).join("")).not.toContain("events ·");
+		expect(grid.slice(12).join("")).not.toContain("events ·");
 		expect(grid.join("")).toContain("resume run done");
 	});
 
