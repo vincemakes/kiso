@@ -340,22 +340,27 @@ describe("⑥: the checklist cell (the durable task render)", () => {
 
 describe("v7 W1: the banner tiers (the height input)", () => {
 	const V = "0.1.37";
-	it("≥ 20 rows → BIG: the 36x6 █-only wordmark, indented two — 38 cols clears 40", () => {
+	// TT-1B (VD-14): the pixel banner retires — its mid-scroll cut state
+	// rendered the art as glyph garbage, inherent to any tall pixel logo
+	// on a scrolling screen. ONE 2-row wordmark (the compact font with
+	// the base row folded into lower half-blocks) replaces both art
+	// tiers: the garbage window shrinks to nothing a reader can catch,
+	// and the tier table loses a state.
+	it("≥ 14 rows → the 2-row wordmark, indented two", () => {
 		const rows = bannerLines(40, 20, V, "[3 extensions: asky]");
-		expect(rows[0]).toBe("  ██    ██  ██████  ████████  ████████");
-		expect(rows.length).toBe(9); // 6 art + blank + version + extensions
-		expect(rows[8]!).toBe("[3 extensions: asky]");
-		// the version row (49 cells) truncates at 40 with the marker —
-		// only the ART must clear 40, per the spec
-		expect(rows[7]!.startsWith(`v${V} —`)).toBe(true);
+		expect(rows[0]).toBe("  █ █ ▀█▀ █▀▀ █▀█");
+		expect(rows[1]).toBe("  █▀▄ ▄█▄ ▄▄█ █▄█");
+		expect(rows.length).toBe(5); // 2 art + blank + version + extensions
+		expect(rows[4]!).toBe("[3 extensions: asky]");
+		expect(rows[3]!.startsWith(`v${V} —`)).toBe(true);
 		// the art is the wordmark — the text row does NOT repeat the name
-		expect(rows[7]!).not.toMatch(/^kiso v/);
+		expect(rows[3]!).not.toMatch(/^kiso v/);
 	});
-	it("14–19 rows → COMPACT: v6's logo byte-identical, no redraw", () => {
+	it("14-19 rows get the SAME wordmark — the mid tier merged (VD-14)", () => {
 		const rows = bannerLines(80, 15, V, "");
-		expect(rows.slice(0, 3)).toEqual(["█ █ ▀█▀ █▀▀ █▀█", "█▀▄  █  ▀▀█ █ █", "▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀"]);
-		expect(rows[3]).toBe("");
-		expect(rows[4]).toBe(`v${V} — the coding agent that survives kill -9`);
+		expect(rows.slice(0, 2)).toEqual(["  █ █ ▀█▀ █▀▀ █▀█", "  █▀▄ ▄█▄ ▄▄█ █▄█"]);
+		expect(rows[2]).toBe("");
+		expect(rows[3]).toBe(`v${V} — the coding agent that survives kill -9`);
 	});
 	it("anything smaller → text rows only (narrow, short, and unmeasured)", () => {
 		for (const [W, H] of [
