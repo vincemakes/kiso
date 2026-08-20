@@ -86,6 +86,12 @@ not another recalibration)
   the FIFO fence at acceptance, post-commit asks, the new recovery prefix
   classes, the truncation contract amendment, and the E1 extraction
   (delivery truth → kiso-evals). Companion: ADR-0024 Amendment 3.
+- 0053 — The Projection Admissibility Law — every durable projection
+  consumes the voided-range semantics before interpreting events —
+  Accepted, recorded at the TV-1C/TT-1 review, 2026-08-20. Semantics
+  mandated, representation not (no framework until a fourth
+  implementation or a real divergence); new projections ship with a
+  voided-range admissibility test.
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
