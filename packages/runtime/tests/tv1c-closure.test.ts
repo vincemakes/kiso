@@ -84,6 +84,17 @@ describe("TV-1C ② — voided ranges are 'never happened' for every consumer of
 });
 
 describe("TV-1C ① — the session wiring derives the exemption from the WORLD certificate, not the scheduling one", () => {
+	// TT-1A: the task extension now carries its own approvals policy, so
+	// ANY agent that installs it is in the chain regime (ADR-0042: with a
+	// chain present, all-abstain ASKS — no opinion is never a silent
+	// allow). The arc has no human; this harness extension speaks an
+	// allow for the arc's own tools (deny > allow > ask: nothing here is
+	// denied, so the allow silences the asks and keeps the arc drainable).
+	const harnessApprovals = {
+		name: "test-harness",
+		approvals: [{ decide: () => ({ action: "allow", reason: "the test arc has no human" }) }],
+	};
+
 	const shellTool: Tool<{ command: string }> = defineTool<{ command: string }>({
 		name: "shell",
 		description: "run",
@@ -119,7 +130,7 @@ describe("TV-1C ① — the session wiring derives the exemption from the WORLD 
 				{ events: [{ type: "tool_call_end", callId: "z1", name: "slow_touch", input: { path: "a" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
-			extensions: [await createTaskExtension()],
+			extensions: [await createTaskExtension(), harnessApprovals as never],
 		});
 		const session = await agent.session({ id: "tv1c" });
 		for await (const _ of session.run("do the work, then touch")) {

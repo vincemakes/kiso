@@ -200,6 +200,17 @@ describe("TV-1A — the invariant matrix (pure projection over synthesized logs)
 });
 
 describe("TV-1A — the live leg (real agent, real task extension, real receipts)", () => {
+	// TT-1A: the task extension now carries its own approvals policy, so
+	// ANY agent that installs it is in the chain regime (ADR-0042: with a
+	// chain present, all-abstain ASKS — no opinion is never a silent
+	// allow). The arc has no human; this harness extension speaks an
+	// allow for the arc's own tools (deny > allow > ask: nothing here is
+	// denied, so the allow silences the asks and keeps the arc drainable).
+	const harnessApprovals = {
+		name: "test-harness",
+		approvals: [{ decide: () => ({ action: "allow", reason: "the test arc has no human" }) }],
+	};
+
 	// The evidence tool is NAMED shell here because the session wrapper's
 	// documented default policy is {"shell"}; its handler is a harmless echo.
 	const shellTool: Tool<{ command: string }> = defineTool<{ command: string }>({
@@ -239,7 +250,7 @@ describe("TV-1A — the live leg (real agent, real task extension, real receipts
 			store,
 			tools: [shellTool, readTool],
 			adapter: createFauxProvider(SCRIPT),
-			extensions: [await createTaskExtension()],
+			extensions: [await createTaskExtension(), harnessApprovals as never],
 		});
 		const session = await agent.session({ id: "tv1a" });
 		for await (const _ of session.run("do the work")) {
@@ -263,7 +274,7 @@ describe("TV-1A — the live leg (real agent, real task extension, real receipts
 				{ events: [{ type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "a" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
-			extensions: [await createTaskExtension()],
+			extensions: [await createTaskExtension(), harnessApprovals as never],
 		});
 		const resumed = await agent2.session({ id: "tv1a" });
 		for await (const _ of resumed.run("look again")) {
@@ -288,7 +299,7 @@ describe("TV-1A — the live leg (real agent, real task extension, real receipts
 				{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "b" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			]),
-			extensions: [await createTaskExtension()],
+			extensions: [await createTaskExtension(), harnessApprovals as never],
 		});
 		const mutated = await agent3.session({ id: "tv1a" });
 		for await (const _ of mutated.run("change something")) {

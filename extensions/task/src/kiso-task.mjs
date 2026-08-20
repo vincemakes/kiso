@@ -81,11 +81,42 @@ export function taskEcho(items) {
 export default function createTaskExtension() {
   return {
     name: "task",
+    // TT-1A ③ — the extension speaks for its OWN tool, and only its own:
+    // allow task_set, abstain on everything else. Proof A (authorization):
+    // task_set cannot change the external world — it parses and echoes a
+    // canonical list into the session's own log; auto-allowing it is
+    // sound, and the 0.14.0 dogfood showed the alternative (an
+    // all-abstain chain asks on EVERY update — the abstain verdict doing
+    // its job on a tool nobody had spoken for). The chain is
+    // deny > allow > ask (W21/R3), so this allow can never un-deny
+    // another speaker's deny.
+    approvals: [
+      {
+        decide: (call) =>
+          call.name === "task_set"
+            ? { action: "allow", reason: "recording the plan in the session's own log changes nothing outside it" }
+            : { action: "abstain" },
+      },
+    ],
     tools: [
       {
         name: "task_set",
         description:
           "set the work plan as a whole-table replace: pass the COMPLETE current list (each item {text, status}) — at most one active. The result echoes the normalized list; it survives /compact and kill -9 (durable working memory).",
+        // TT-1A ① — a pure parse→echo may honestly declare idempotency:
+        // the same items in, the same echo out, byte for byte; without
+        // this the kernel's "side effects may have partially applied"
+        // note rides every invalid_input refusal — a false statement
+        // about a tool with no effects (the ask_user precedent).
+        idempotent: true,
+        // TT-1A ② — Proof B (scheduling): read-only of the world + free +
+        // local + no shared mutable state in the handler ⇒ every
+        // invocation may overlap every sibling; a TODO update stops
+        // blocking the FIFO queue. precommitSafe is deliberately ABSENT
+        // (the adjudicated rejection): the CLAIM must wait for Turn
+        // Commit — admissibility is a turn-validity property, not a tool
+        // property; speculative stays parked until a measured bottleneck.
+        effects: { concurrency: "shared" },
         parameters: {
           type: "object",
           properties: {

@@ -355,20 +355,33 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		// source was touched to make this pass.
 		//
 		// So the claims that SURVIVE are the ones that were never about the
-		// cadence: the block redraws more than once during the run, no form
-		// is clamped at row 1 (the A8b defect stays dead), and the states go
-		// FORWARD. The exact number of forms is deliberately not pinned —
-		// it is a function of how many render ticks fall between results,
-		// which moves with machine load (3-5 forms observed across runs, ten
-		// on the base). The "one form per row" claim retires with the same
-		// reasoning: an in-place redraw legitimately repaints the same row,
-		// so that assertion can no longer tell the clamp pile apart from the
+		// cadence: no form is clamped at row 1 (the A8b defect stays dead),
+		// and the states go FORWARD. The exact number of forms is
+		// deliberately not pinned — it is a function of how many render
+		// ticks fall between results, which moves with machine load. The
+		// "one form per row" claim retires with the same reasoning: an
+		// in-place redraw legitimately repaints the same row, so that
+		// assertion can no longer tell the clamp pile apart from the
 		// intended behavior. What it was really protecting — no accumulation
 		// of blocks — is pinned harder by ③ below, on the final grid.
+		//
+		// TT-1A (the same SCHEDULER-TIMING class, restated once more):
+		// task_set now declares `concurrency: "shared"` — the ten same-turn
+		// calls still wait for Turn Commit, but no longer serialize behind
+		// the FIFO barrier: they complete in one drain, so the INTERMEDIATE
+		// states (the "< 6 done" forms this gate once counted) may never
+		// paint at all — the block can legitimately first appear at its
+		// final state. The "redrew during the run" count retires with the
+		// cadence that produced it. What the user actually sees is
+		// unchanged where it matters: a REAL arc updates the list once per
+		// turn (call → commit → drain → paint), so per-update liveness is
+		// per-turn cadence, untouched by the certificate. The synthetic
+		// ten-in-one-turn burst batching IS a user-visible change and is
+		// declared in the TT-1 report; it is not a rendering defect, and no
+		// tui/cli source was touched to make this pass.
 		const forms = [...turn.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[1m▞\x1b\[0m task · 10 items · 1 active · ([0-9]+) done/g)];
-		const intermediate = forms.filter((m) => Number(m[2]!) < 6); // the RUN's forms — the states before the final
-		expect(intermediate.length).toBeGreaterThanOrEqual(2); // the block is LIVE: it redrew during the run, not once at the settle
-		expect(intermediate.every((m) => m[1] !== "1")).toBe(true); // no row-1 clamp pile — every form at its true row
+		expect(forms.length).toBeGreaterThanOrEqual(1); // the live block painted — at least the final state rides the live band
+		expect(forms.every((m) => m[1] !== "1")).toBe(true); // no row-1 clamp pile — every form at its true row
 		const done = forms.map((m) => Number(m[2]!));
 		expect(done).toEqual([...done].sort((a, b) => a - b)); // the redraws go forward — never a stale state repainted over a newer one
 
@@ -382,9 +395,19 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		expect(chipPaint).toBeGreaterThan(0);
 		const scroll = turn.indexOf("\n", chipPaint); // the settle's LF scroll — the pre-paint's end (the repaint follows, chrome first, no LF)
 		const during = turn.slice(chipPaint, scroll === -1 ? undefined : scroll);
-		expect(/└ \+[0-9]+ more · ctrl\+r/.test(during)).toBe(true); // the overflow fold
-		expect(/└ \+[0-9]+ done · ctrl\+r/.test(during)).toBe(true); // the done-collapse
+		// TT-1A cadence restatement, ② half: the overflow fold (`+N more`)
+		// is an EARLY-state artifact (pending items past the live window);
+		// under the shared batching an early form may never paint, so that
+		// claim retires with ①'s count. What ② was protecting survives
+		// state-independently: the live band never shows a settled ▣ row
+		// (the collapse holds), and the form that DID paint carries the
+		// cut-family fold its own state implies — the final live form
+		// (1 active · 9 done) must fold its done rows.
 		expect(during).not.toContain("▣ item"); // the collapse — no done rows in the run's forms
+		const lastForm = forms.at(-1)!;
+		const lastSlice = turn.slice(lastForm.index!, turn.indexOf("\n", lastForm.index!) === -1 ? undefined : turn.indexOf("\n", lastForm.index!));
+		expect(/└ \+[0-9]+ done · ctrl\+r/.test(lastSlice)).toBe(true); // the done-collapse rides the live form
+		expect(lastSlice).not.toContain("▣ item"); // and hides, never lists, the done rows
 
 		// ③ exactly ONE settled block at the turn's end — the recap
 		// idiom with the derived counts and the model tail riding the
