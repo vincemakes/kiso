@@ -1773,6 +1773,29 @@ export class Body {
 		// content loss).
 		if (skip > 0 && !overlay) {
 			const leaving = Math.max(0, skip - this.#lastSkip);
+			// TT-1B (finding TUI2-MD-1): a burst taller than the screen can
+			// NOT be staged in one pass — rows placed past H are clamped by
+			// the terminal itself (CUP pins to the last row), the pile keeps
+			// only its last member, and the scroll pushes the wreckage: the
+			// short-terminal row loss the finding measured. The transit is
+			// chunked instead: each pass paints <= H leaving rows at rows
+			// 1..chunk and scrolls exactly that many LFs, so every row is ON
+			// the screen when its scroll slot comes up. The <= H path below
+			// keeps its exact pre-round bytes (its staging never exceeds H —
+			// position <= skip - lastSkip = leaving).
+			if (leaving > H) {
+				let p = this.#lastSkip;
+				while (p < skip) {
+					const chunk = Math.min(skip - p, H);
+					for (let k = 0; k < chunk; k += 1) {
+						out.push(`\x1b[${k + 1};1H\x1b[0K${this.#checked(all[p + k]!, W)}`);
+					}
+					if (chunk < H) out.push(`\x1b[${chunk + 1};1H\x1b[0J`);
+					out.push(`\x1b[${H};1H`);
+					for (let k = 0; k < chunk; k += 1) out.push("\n");
+					p += chunk;
+				}
+			} else {
 			// A8b (the fresh leaving share): a leaving row whose old-screen
 			// copy is stale — the committed-this-frame lines (their old rows
 			// held the previous live/chrome) — is pre-painted at its OLD row
@@ -1805,6 +1828,7 @@ export class Body {
 			// could see it either. Measured on the 5-turn 80x24 repro: the
 			// scrollback went from 162 blank rows of 168 to 14 of 52.
 			for (let i = 0; i < leaving; i += 1) out.push("\n");
+			}
 		}
 		if (!overlay) this.#lastSkip = skip;
 		let r = 1;
@@ -1871,6 +1895,15 @@ export class Body {
 		const overlay = this.#overlayFrame;
 		const skip = overlay ? this.#lastSkip : Math.max(0, this.#committedLines + liveLines.length + CHROME_ROWS + inputExtra + queueRows.length + menuRows.length - H);
 		const leaving = overlay ? 0 : Math.max(0, skip - this.#lastSkip);
+		// TT-1B (finding TUI2-MD-1): the steady staging has the same
+		// past-H clamp as the full path had — a window that moved more than
+		// a screenful in one frame cannot transit on this path at all.
+		// Delegate the oversized frame to #drawFull's chunked emission (the
+		// full path repaints every row, so the hand-off is self-contained).
+		if (leaving > H) {
+			this.#drawFull(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
+			return;
+		}
 		// the jump to the bottom row H, then N real LFs scroll the screen
 		// exactly N rows — ONE per committed line (the bookkeeping; the
 		// stale 1B anchor jumped to H−1 and the N LFs scrolled only N−1 —

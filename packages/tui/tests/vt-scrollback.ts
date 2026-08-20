@@ -34,8 +34,16 @@ export class VtScrollback {
 
 	resize(w: number, h: number): void {
 		this.#w = w;
-		if (h < this.#h) this.#rows = this.#rows.slice(0, h);
-		else while (this.#rows.length < h) this.#rows.push([]);
+		if (h < this.#h) {
+			// a real terminal keeps the BOTTOM of the viewport on a shrink
+			// and pushes the top rows into the scrollback (the prompt stays)
+			const pushed = this.#h - h;
+			for (let k = 0; k < pushed; k += 1) this.scrollback.push(this.line(k + 1));
+			this.#rows = this.#rows.slice(pushed);
+			this.#r = Math.max(1, this.#r - pushed);
+		} else {
+			while (this.#rows.length < h) this.#rows.push([]);
+		}
 		this.#h = h;
 		this.#r = Math.min(this.#r, h);
 		this.#c = Math.min(this.#c, w);

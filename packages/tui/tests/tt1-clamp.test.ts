@@ -83,4 +83,31 @@ describe("TT-1B — TUI2-MD-1: the over-tall commit burst keeps every row (the s
 		}
 		expect(doubled).toEqual([]);
 	});
+
+	it("a 40-line block CLOSING on a 12-row screen (no resize): the window moves > H in one frame — the chunked transit keeps every row, once", () => {
+		const { body, writes, tick } = makeBody({ W: 40, H: 12 });
+		body.enter();
+		body.textAppend(Array.from({ length: 40 }, (_, i) => `- close line ${String(i).padStart(2, "0")}`).join("\n"));
+		tick();
+		const vt = new VtScrollback(40, 12);
+		vt.feed(writes.join(""));
+		writes.length = 0;
+		// the message end CLOSES the open list block — its 40 lines commit
+		// in ONE frame; on a 12-row screen the window top moves ~40 rows:
+		// leaving > H, the exact TUI2-MD-1 shape with no resize involved
+		body.textEnd();
+		tick();
+		vt.feed(writes.join(""));
+
+		const reachable = vt.allLines();
+		const missing: string[] = [];
+		const doubled: string[] = [];
+		for (let i = 0; i < 40; i += 1) {
+			const needle = `• close line ${String(i).padStart(2, "0")}`;
+			if (!reachable.some((l) => l.includes(needle))) missing.push(needle);
+			if (vt.scrollback.filter((l) => l.includes(needle)).length > 1) doubled.push(needle);
+		}
+		expect(missing).toEqual([]);
+		expect(doubled).toEqual([]);
+	});
 });
