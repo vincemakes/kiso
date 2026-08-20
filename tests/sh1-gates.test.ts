@@ -25,7 +25,7 @@ describe("SH-1 ① — check-bytes: raw-buffer control-byte scanning", () => {
 	});
 
 	it("tab and LF are the two blessed control bytes; plain UTF-8 text is green", () => {
-		expect(scanBytes(Buffer.from("a\tb\nc — ✓ 中文\n"))).toHaveLength(0);
+		expect(scanBytes(Buffer.from("a\tb\ncafé — ✓ ⊔ ∅\n"))).toHaveLength(0);
 	});
 
 	it("every C0 byte outside tab/LF is caught (the sweep, not a sample)", () => {
