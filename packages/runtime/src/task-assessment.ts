@@ -9,13 +9,18 @@
  *
  * No new event kind, no core diff — the projection reads the existing
  * durable vocabulary (`deriveRecoveryPlan` is the shape precedent). The
- * classifiers are maximally conservative and reuse EC-1's certificate
- * direction verbatim:
+ * classifiers are maximally conservative; the exemptions are exactly
+ * three (TV-1C — no wider taxonomy exists or is wanted):
  *
  * - MUTATION marker: `tool_execution_started` (intent-to-effect) of any
- *   name NOT in `sharedTools`. Started — not the receipt — so failed and
- *   crash-window executions invalidate too, and pre-EC-1 overlap eras are
- *   covered by the same rule. Absence of a certificate is a mutation.
+ *   name NOT in `nonMutatingTools`. Started — not the receipt — so failed
+ *   and crash-window executions invalidate too, and pre-EC-1 overlap eras
+ *   are covered by the same rule. Absence of a certificate is a mutation.
+ *   The exemption set is fed by `effects.precommitSafe` — the frozen
+ *   read-only+free+local contract, the only certificate that PROVES the
+ *   world untouched. `concurrency: "shared"` proves overlap-safety and
+ *   nothing else (the TV-1C finding: slow_touch is shared AND writes) —
+ *   it never feeds this set.
  *   ONE proven exception (TV-1B, grounded in WR-1A): an execution whose
  *   terminal receipt is failed(errorKind:"precondition") never counts —
  *   that kind's frozen contract is "work refused BEFORE it starts".
@@ -27,6 +32,19 @@
  * - task_set itself never invalidates: recording the claim after the check
  *   is the natural arc (tests → mark done), and the claim-recording act
  *   mutates nothing the evidence observed.
+ * - VOIDED RANGES (TV-1C): a `model_output_abandoned` marker voids
+ *   (voidFromSeq, seq] — the durable vocabulary's own "never happened",
+ *   the same ranges the kernel projection skips. Every consumer here
+ *   skips them uniformly: a voided echo is not a claim, a voided receipt
+ *   is not evidence, a voided start is not a mutation. task_set waits
+ *   for turn commit today (TT-1), so the scheduler already keeps claims
+ *   out of voided turns — the projection encodes the admissibility rule
+ *   itself instead of relying on that forever.
+ *
+ * `verified` means FRESH EVIDENCE UNDER THE CONFIGURED POLICY — never
+ * "objectively proven correct". Goal Truth is external (PE-1's
+ * evaluator); this projection only ever ranks the model's own claim
+ * against the trajectory's own receipts.
  */
 
 import type { Event } from "@vincemakes/kiso-core";
@@ -90,16 +108,28 @@ function parseEcho(content: string): { claims: TaskClaim[] } | { reason: string 
 export function assessTasks(
 	events: readonly Event[],
 	opts?: {
-		/** Names whose executions never mutate (from `effects.concurrency:
-		 *  "shared"` certificates). Default ∅ — everything mutates. */
-		readonly sharedTools?: ReadonlySet<string>;
+		/** Names whose executions PROVABLY never mutate the observable
+		 *  world (from `effects.precommitSafe` certificates — read-only +
+		 *  free + local). `concurrency: "shared"` is NOT such a proof
+		 *  (TV-1C). Default ∅ — everything mutates. */
+		readonly nonMutatingTools?: ReadonlySet<string>;
 		/** Names whose successful receipts count as evidence. Default ∅ —
 		 *  nothing does. */
 		readonly evidenceTools?: ReadonlySet<string>;
 	},
 ): TaskAssessment {
-	const shared = opts?.sharedTools ?? new Set<string>();
+	const nonMutating = opts?.nonMutatingTools ?? new Set<string>();
 	const evidenceNames = opts?.evidenceTools ?? new Set<string>();
+
+	// TV-1C: PASS 0 — the voided ranges. (voidFromSeq, seq] of every
+	// `model_output_abandoned` marker is "never happened" for this whole
+	// projection, exactly as the kernel's own context projection treats
+	// it. Markers are rare; a linear range check is honest and enough.
+	const voidRanges: { from: number; to: number }[] = [];
+	for (const ev of events) {
+		if (ev.type === "model_output_abandoned") voidRanges.push({ from: ev.voidFromSeq, to: ev.seq });
+	}
+	const voided = (seq: number): boolean => voidRanges.some((r) => seq > r.from && seq <= r.to);
 
 	// TV-1B: PASS 1 — executions whose terminal receipt is a
 	// PRECONDITION failure are PROVEN no-mutation (WR-1A froze that
@@ -109,6 +139,7 @@ export function assessTasks(
 	// Two passes, no temporal rollback state — same events, same verdict.
 	const provenNoMutation = new Set<string>();
 	for (const ev of events) {
+		if (voided(ev.seq)) continue;
 		if (ev.type === "tool_execution_failed" && ev.errorKind === "precondition") {
 			provenNoMutation.add(ev.executionId);
 		}
@@ -123,9 +154,10 @@ export function assessTasks(
 	let staleBySeq: number | null = null;
 
 	for (const ev of events) {
+		if (voided(ev.seq)) continue;
 		if (ev.type === "tool_execution_started") {
 			nameByExecution.set(ev.executionId, ev.name);
-			if (ev.name !== TASK_TOOL && !shared.has(ev.name) && !provenNoMutation.has(ev.executionId)) {
+			if (ev.name !== TASK_TOOL && !nonMutating.has(ev.name) && !provenNoMutation.has(ev.executionId)) {
 				lastMutationSeq = ev.seq;
 				if (lastEvidenceSeq !== null && staleBySeq === null) staleBySeq = ev.seq;
 			}

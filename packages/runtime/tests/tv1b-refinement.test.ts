@@ -51,7 +51,7 @@ function startedOnly(name: string): Ev[] {
 }
 
 const ECHO_DONE = "[task] 1 item — 0 pending, 0 active, 1 done\n[done] ship it";
-const opts = { sharedTools: new Set(["read_file"]), evidenceTools: new Set(["shell"]) };
+const opts = { nonMutatingTools: new Set(["read_file"]), evidenceTools: new Set(["shell"]) };
 
 describe("TV-1B ① — a precondition receipt proves no mutation", () => {
 	it("the natural arc: tests pass → stale-refused write → STILL verified", () => {

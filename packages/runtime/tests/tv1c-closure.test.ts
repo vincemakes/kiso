@@ -77,7 +77,9 @@ describe("TV-1C ② — voided ranges are 'never happened' for every consumer of
 		const a = assessTasks(events, opts);
 		expect(a.evidence.kind).toBe("verified");
 		if (a.evidence.kind === "verified") expect(a.evidence.evidenceSeq).toBe(3);
-		expect(a.lastMutationSeq).toBeNull();
+		// the last mutation-class start is the shell's OWN start (seq 2 —
+		// exclusive evidence is legal, TV-1A), never the voided write at 4
+		expect(a.lastMutationSeq).toBe(2);
 	});
 });
 
