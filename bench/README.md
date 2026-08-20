@@ -858,3 +858,24 @@ control; not attributable to the RC alone. Reported, not blocking.
   "below live-bench noise on this workload", never as "zero cost";
   an absolute-band anomaly with a matching control excursion is
   "not attributable to the RC alone", never a proven provider fault.
+
+
+### SH-1 — the gate run IS the verdict (and the PublishedSHA law)
+
+From SH-1 the test suite runs as two hard-ordered invocations (the
+parallel unit pool fully exits, then the pty pool runs one file at a
+time — tests/pty-suite.json is the partition, kept true by
+check-pty-manifest). The adjudication dance for the retired
+self-contention family (isolated rerun → serial confirm) is
+RETIRED with it: a red in the gate is directly actionable. The
+partition claim is structural — resource-dependency closure plus the
+ALL = UNIT ⊔ PTY invariant; repeated green runs are empirical
+corroboration, never the proof. Transition discipline: the FIRST
+release ceremony after SH-1 keeps one serial full-suite confirmation,
+then it leaves the protocol.
+
+**The PublishedSHA law** (promoted from the SHA-binding practice):
+any npm publish or tag must bind to the EXACT sha that passed the
+required gate — and the benched sha, when the causal tier ran a
+bench. This binds the owner, not only contributors; branch protection
+remains evidence-gated on external collaborators.

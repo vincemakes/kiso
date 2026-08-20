@@ -3,7 +3,7 @@
  * The line gates: core 2000, cli 1856, tui 2400 (the terminal cap),
  * tui-cells 1280 — see the ADR-0043 amendments for each re-baseline.
  *
- * These are not lint rules. They are the project's central promise, enforced
+ * These are architectural pressure thresholds — the project's public size promise, enforced
  * in CI so that they survive contact with good ideas.
  *
  * WHAT COUNTS: source lines in `src/`, excluding blank lines and comment-only
@@ -125,13 +125,23 @@ for (const { name, limit, dir, enforce = true } of GATES) {
 		failed = true;
 		console.error(
 			`\n✗ ${name} is ${total - limit} lines over budget.\n` +
-				`  The limit is not negotiable — that is what makes it a limit.\n` +
+				`  Crossing this budget requires an explicit architecture adjudication; extraction is the default answer.\n` +
 				`  Remove something, or fork atto and grow your own.\n`,
 		);
 	} else if (total > limit) {
 		console.log(`  ▸ ${total - limit} over the reference figure — report-only (ADR-0043 Amendment 8).\n`);
 	} else {
 		console.log(`  ✓ ${limit - total} lines of headroom remaining.\n`);
+		// SH-1: the README's size snapshot must state the CURRENT total —
+		// a stale "real output" in the README is a credibility leak (the
+		// 1971-vs-1997 exhibit). The size gate owns the number it computes.
+		if (name === "core") {
+			const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+			if (!readme.includes(`${total}`)) {
+				console.error(`  ✗ README size snapshot is stale — it does not mention the current core total ${total}. Update the snapshot.`);
+				process.exitCode = 1;
+			}
+		};
 	}
 }
 

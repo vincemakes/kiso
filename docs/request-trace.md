@@ -1,6 +1,6 @@
 # The kiso request trace
 
-The observation ledger (E1, 1.2.0): one durable line per model request,
+The observation ledger (E1 round; shipped in the 1.2.0-era line — 0.2.x renumbering per ADR-0051 Amendment 2): one durable line per model request,
 recording the request's context shape (hashes and thin manifest — never
 payloads), its provider-raw usage quartet, its latency, and its outcome,
 so that token economics — where fresh tokens are spent, where the cache

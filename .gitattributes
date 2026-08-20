@@ -1,0 +1,4 @@
+# SH-1 — checkout semantics as an invariant: the repo is LF everywhere,
+# so the control-byte gate's raw-CR rejection judges CONTENT, never a
+# contributor's autocrlf setting. True binaries get explicit -text rows.
+* text=auto eol=lf

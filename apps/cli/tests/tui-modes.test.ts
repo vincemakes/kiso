@@ -290,7 +290,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		expect(run.stdout).toContain("[Permission denied]");
 		expect(run.stdout).toContain("plan mode: read-only");
 		expect(run.stdout).toContain("pipe done");
-		expect(run.stdout).not.toContain("["); // pipes are byte-plain — no ANSI
+		expect(run.stdout).not.toContain("\u001b["); // pipes are byte-plain — no ANSI
 		const decided = decidedEvents({ ...env }, "modes3");
 		expect(decided.find((e) => e.callId === "p1")).toMatchObject({
 			decision: "denied",

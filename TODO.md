@@ -1,7 +1,9 @@
-# TODO — standing deferred work
+# TODO — deferred registry ONLY
 
-Registered across rounds; linked from the README. Rounds add here, and
-resolved items move to the round record that delivered them.
+Ordering is NOT defined here. The current execution priority lives in
+the owner's roadmap (outside the repo, by policy). Rounds add deferred
+items here; resolved items move to the round record that delivered
+them; nothing below is a commitment or a sequence.
 
 ## The 1.0 line — CLOSED (released as 1.0.0 in the R-I round, 2026-08-12)
 
@@ -16,14 +18,10 @@ resolved items move to the round record that delivered them.
   external review's risk #5 closed the day the freeze landed; the 1.0.0
   flip is the semver public promise of that ABI (ADR-0051 Amendment 1).)*
 
-## The post-1.0 queue (honest, in order)
+## Deferred items (unordered)
 
-- **Efficiency Foundation — Request Trace first** (the queued first
-  round after the 1.0 flip): lineage links land in the trace ledger
-  (ADR-0051 §10) — outside the frozen correctness surface, so it builds
-  without touching the contract; the trace surface carries lineage
-  (ADR-0051 §2.4) and the efficiency counters live in the ledger's OUT
-  class.
+- *(resolved in the E1 round — the request trace shipped in 1.2.0-era
+  runtime and is the standing observation ledger.)*
 - **The planning eval** — the long-horizon planning evaluation, queued
   separately (per the 1.0 ruling); needs its own fixture + scenario set.
 - **provider_deferred (the R-C item 5 parked design)** — the
@@ -33,7 +31,7 @@ resolved items move to the round record that delivered them.
 - **Diet D re-discussion** — the diet-micro riders A/B/C landed in
   0.1.48 with D reverted (the 0.1.47 void adjudication); D's re-entry
   is an open discussion, not a commitment.
-- **Plan the next core extraction (core at 1972/2000)** — registered by
+- **Plan the next core extraction (core at 1997/2000)** — registered by
   the 0.9.0 field-report audit (TUI2-R2pre ⑥): the kernel is 28 lines
   under its own budget, so the next feature that touches it has nowhere
   to land. What to extract is the open question — this line exists so

@@ -149,7 +149,7 @@ describe("TV-1B ③ — the thin task driver (real PTY, 40×80)", () => {
 			env,
 			[
 				["▌ ", "go\r"],
-				["finish the checklist?", ""], // Esc — dismissed, consumed
+				["finish the checklist?", "\u001b"], // Esc — dismissed, consumed
 				["all done.", "again\r"], // a later ordinary turn
 				["nothing new.", "exit\r"],
 			],

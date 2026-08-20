@@ -268,7 +268,7 @@ describe("ADR-0044 cli: /compact through a pipe", () => {
 		expect(run.status).toBe(0);
 		// W18 re-baseline: the recap (8 seed rounds − 4 kept = 4 covered).
 		expect(run.stdout).toContain("[/compact] ▞ compacted · 4 rounds → 1 summary · saved ~");
-		expect(run.stdout).not.toContain("["); // the pipe is byte-clean
+		expect(run.stdout).not.toContain("\u001b["); // the pipe is byte-clean
 		const durable = readFileSync(join(home, "sessions", "kp.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');
 		expect(durable).toContain("## Goal\\nserve the file reads\\n## Constraints\\nnothing may be dropped\\n## User requests\\nseven rounds of reads\\n## Files and changes\\nf0-f6.ts read\\n## Errors and fixes\\nnone\\n## Current work\\nseven rounds summarized\\n## Next steps\\nkeep going");
