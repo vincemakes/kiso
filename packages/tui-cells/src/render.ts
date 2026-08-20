@@ -304,6 +304,13 @@ export interface ResumeMeta {
 	readonly events: number;
 	readonly runs: number;
 	readonly updatedAt: number;
+	/** TT-1B (W5 unification) — the ONE-CELL badge glyph from the
+	 *  picker's BADGE_GLYPH vocabulary, derived by the caller from the
+	 *  SAME projection the picker uses (session-cards — one source of
+	 *  truth about durability). Plain: the banner's uniform dim wrap
+	 *  styles the row; the picker keeps color on its own surface.
+	 *  Absent on every meta → the pre-TT-1B bytes, verbatim. */
+	readonly badge?: string;
 }
 
 export function relativeTime(updatedAt: number, now: number): string {
@@ -339,12 +346,17 @@ export function renderResumeList(metas: readonly ResumeMeta[], W: number, now: n
 	const whens = metas.map((m) => relativeTime(m.updatedAt, now));
 	const metaTexts = metas.map((m) => `${m.events} events · ${m.runs} runs`);
 	const metaW = Math.max(...metaTexts.map((t) => t.length));
-	const titleW = Math.max(1, W - 13 - metaW);
+	// TT-1B (W5): the glyph column exists only when a badge is present —
+	// a badge-less list keeps its exact pre-TT-1B bytes; in a mixed list
+	// every row reserves the column so the when/title columns never shift.
+	const badged = metas.some((m) => m.badge !== undefined);
+	const titleW = Math.max(1, W - (badged ? 15 : 13) - metaW);
 	for (let i = 0; i < metas.length; i += 1) {
 		const title = escapeTerminal(metas[i]!.title);
 		const shown = titleCut(title, titleW);
 		const pad = titleW - displayWidth(shown);
-		rows.push(`    ${whens[i]!.padEnd(7)} ${shown}${" ".repeat(pad)} ${metaTexts[i]!.padStart(metaW)}`);
+		const glyph = badged ? `${metas[i]!.badge ?? " "} ` : "";
+		rows.push(`    ${glyph}${whens[i]!.padEnd(7)} ${shown}${" ".repeat(pad)} ${metaTexts[i]!.padStart(metaW)}`);
 	}
 	return rows;
 }

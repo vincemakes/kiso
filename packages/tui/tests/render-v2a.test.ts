@@ -410,6 +410,28 @@ describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
 		expect(renderResumeList([], 80, NOW)).toEqual([]);
 	});
 
+	it("TT-1B (W5 unification): a badged meta renders the picker's one-cell glyph column, plain (the banner's uniform dim wrap styles it)", () => {
+		const rows = renderResumeList([{ title: "t", events: 1, runs: 1, updatedAt: NOW, badge: "▌" }], 60, NOW);
+		// indent 4 + glyph 1 + 1 + when 7 + 1 + title(titleW=60-15-17=28) + 1 + meta 17
+		expect(rows[1]).toBe("    ▌ now     t" + " ".repeat(27) + " " + "1 events · 1 runs");
+		expect(displayWidth(rows[1]!)).toBe(60);
+	});
+
+	it("TT-1B (W5 unification): a mixed list keeps the columns aligned — the badge-less row carries a space in the glyph column", () => {
+		const rows = renderResumeList(
+			[
+				{ title: "t", events: 1, runs: 1, updatedAt: NOW, badge: "✓" },
+				{ title: "u", events: 2, runs: 1, updatedAt: NOW },
+			],
+			60,
+			NOW,
+		);
+		expect(rows[1]!.startsWith("    ✓ now")).toBe(true);
+		expect(rows[2]!.startsWith("      now")).toBe(true);
+		expect(displayWidth(rows[1]!)).toBe(60);
+		expect(displayWidth(rows[2]!)).toBe(60);
+	});
+
 	it("a too-long title cuts inside the width with the ellipsis marker", () => {
 		const rows = renderResumeList([{ title: "a".repeat(100), events: 1, runs: 1, updatedAt: NOW }], 60, NOW);
 		// titleW = 60 - 13 - 16 = 31; the marker "…" is 2 cells wide (the
