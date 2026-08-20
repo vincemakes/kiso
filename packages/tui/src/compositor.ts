@@ -556,8 +556,6 @@ export class Body {
 			return;
 		}
 		this.#endMd();
-		const last = this.#cells[this.#cells.length - 1];
-		if (last !== undefined && last.kind === "text" && !last.done) last.done = true;
 		this.#mark();
 	}
 
@@ -2086,8 +2084,6 @@ export class Body {
 	 *  tail block closes and its cell becomes commit-eligible. */
 	#closeOpenText(): void {
 		this.#endMd();
-		const last = this.#cells[this.#cells.length - 1];
-		if (last !== undefined && last.kind === "text" && !last.done) last.done = true;
 	}
 
 	/** Close an open thinking cell when a new cell starts. */

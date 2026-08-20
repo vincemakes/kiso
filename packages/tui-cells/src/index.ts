@@ -90,7 +90,6 @@ export {
 	bannerLines,
 	COLOR_OFF,
 	COLOR_ON,
-	colorInlineCode,
 	escapeTerminal,
 	foldResult,
 	foldThinking,

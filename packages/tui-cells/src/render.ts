@@ -83,19 +83,6 @@ export function escapeTerminal(text: string): string {
 
 
 /**
- * TUI v5 #16e: the inline-code tint — backtick spans in ONE line of
- * assistant body text get the `code` color. Deliberately NOT a markdown
- * engine: single level only (`[^`]*` cannot nest), a span never matches
- * across lines (the caller passes one line; an opener without a closer
- * on the same line stays plain). NO_COLOR / pipes → the codes are empty
- * strings → the line passes through byte-identical.
- */
-export function colorInlineCode(line: string): string {
-	const p = palette();
-	if (p.code === "" || p.reset === "") return line;
-	return line.replace(/`([^`]*)`/g, `${p.code}\`$1\`${p.reset}`);
-}
-/**
  * v2b — one thinking BLOCK folds to ONE dim line: the first 100 chars, a
  * " (… /think shows full)" marker when the block is longer. The consumer
  * buffers the block's deltas, renders this at the block's end, and keeps

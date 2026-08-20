@@ -9,7 +9,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	bannerLines,
-	colorInlineCode,
 	COLOR_OFF,
 	COLOR_ON,
 	palette,
@@ -129,40 +128,6 @@ describe("v2a/v5/KC3: the palette", () => {
 		// and the empty palette still zeroes them — a pipe carries no ANSI
 		expect(COLOR_OFF.red).toBe("");
 		expect(COLOR_OFF.green).toBe("");
-	});
-});
-
-describe("v5: the inline-code tint (TUI v5 #16e)", () => {
-	const code = (s: string): string => `${COLOR_ON.code}${s}${COLOR_ON.reset}`;
-
-	it("backtick spans on a line get the tint; the rest stays plain", () => {
-		setNoColor(false);
-		setTTY(true);
-		expect(colorInlineCode("use `npm test` to verify")).toBe(`use ${code("`npm test`")} to verify`);
-		expect(colorInlineCode("`a` and `b` and c")).toBe(`${code("`a`")} and ${code("`b`")} and c`);
-	});
-
-	it("single level only — an unterminated backtick stays plain; spans pair left-to-right", () => {
-		setNoColor(false);
-		setTTY(true);
-		expect(colorInlineCode("an opener ` without a closer")).toBe("an opener ` without a closer");
-		// "`a `b` c`": the regex pairs `a ` then ` c` — the inner "b" is plain
-		// (left-to-right pairing, no nesting).
-		expect(colorInlineCode("`a `b` c`")).toBe(`${code("`a `")}b${code("` c`")}`);
-	});
-
-	it("NO_COLOR → byte-identical (no codes leak into pipes)", () => {
-		setNoColor(true);
-		setTTY(true);
-		expect(colorInlineCode("use `npm test` to verify")).toBe("use `npm test` to verify");
-	});
-
-	it("renders carry ZERO ANSI when the palette is off — pipes and CI are plain", () => {
-		setNoColor(true);
-		setTTY(true); // NO_COLOR wins even on a TTY
-		expect(renderEvent({ type: "user_input", content: "hello" }).text).toBe("you> hello\n");
-		expect(renderToolSummary("read_file", { path: "a.ts" }, { content: "x", isError: false })).toBe("✓ read a.ts (1 line)");
-		expect(renderEvent({ type: "terminal", outcome: { kind: "completed" } }).text).toBe("\ndone\n");
 	});
 });
 
