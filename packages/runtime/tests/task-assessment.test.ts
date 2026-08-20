@@ -58,9 +58,9 @@ const user = (content: string): Ev[] => [{ type: "user_input", content } as Ev];
 const ECHO_MIXED = "[task] 3 items — 1 pending, 1 active, 1 done\n[pending] write the plan\n[active] implement\n[done] read the code";
 const ECHO_ALL_DONE = "[task] 2 items — 0 pending, 0 active, 2 done\n[done] implement\n[done] verify with tests";
 
-const SHARED = new Set(["read_file"]);
+const NON_MUTATING = new Set(["read_file"]);
 const EVIDENCE = new Set(["shell"]);
-const opts = { sharedTools: SHARED, evidenceTools: EVIDENCE };
+const opts = { nonMutatingTools: NON_MUTATING, evidenceTools: EVIDENCE };
 
 describe("TV-1A — the invariant matrix (pure projection over synthesized logs)", () => {
 	it("fresh: evidence is the last intent-to-effect — verdict verified, claims separated from it", () => {
@@ -103,7 +103,7 @@ describe("TV-1A — the invariant matrix (pure projection over synthesized logs)
 		expect(a.allClaimedDone).toBe(true); // the claim stands AS a claim
 	});
 
-	it("a shared-declared success after the evidence does NOT invalidate", () => {
+	it("a nonMutating-certified success after the evidence does NOT invalidate", () => {
 		const a = assessTasks(
 			log(...executed("task_set", ECHO_ALL_DONE), ...executed("shell", "pass"), ...executed("read_file", "content")),
 			opts,
@@ -190,7 +190,7 @@ describe("TV-1A — the invariant matrix (pure projection over synthesized logs)
 		expect(a.allClaimedDone).toBe(false);
 	});
 
-	it("default classifiers are maximally conservative: no sharedTools (everything mutates), no evidenceTools (nothing proves)", () => {
+	it("default classifiers are maximally conservative: no nonMutatingTools (everything mutates), no evidenceTools (nothing proves)", () => {
 		const events = log(...executed("task_set", ECHO_ALL_DONE), ...executed("shell", "pass"));
 		const a = assessTasks(events);
 		expect(a.evidence.kind).toBe("none"); // shell is not evidence unless DECLARED
@@ -246,14 +246,15 @@ describe("TV-1A — the live leg (real agent, real task extension, real receipts
 			// drain — the faux arc needs no human
 		}
 
-		// The wrapper derives sharedTools from the REAL certificates and uses
+		// The wrapper derives nonMutatingTools from the REAL precommitSafe
+		// certificates and uses
 		// the documented default evidence policy {"shell"}.
 		const fresh = session.assessTasks();
 		expect(fresh.claims.map((c) => c.status)).toEqual(["done", "done"]);
 		expect(fresh.allClaimedDone).toBe(true);
 		expect(fresh.evidence.kind).toBe("verified");
 
-		// A second run: a shared-certified read must NOT flip the verdict.
+		// A second run: a precommitSafe-certified read must NOT flip the verdict.
 		const agent2 = createAgent({
 			model: "faux",
 			store,

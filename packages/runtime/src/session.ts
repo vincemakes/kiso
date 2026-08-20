@@ -614,19 +614,22 @@ export class AgentSession {
 
 	/**
 	 * TV-1A — assess the task claims and their evidence freshness over THIS
-	 * session's durable log. The shared-tool set comes from the live tools'
-	 * own `effects.concurrency: "shared"` certificates (one direction of
-	 * truth, never a second declaration); the evidence policy defaults to
+	 * session's durable log. The non-mutating set comes from the live tools'
+	 * own `effects.precommitSafe` certificates (one direction of truth,
+	 * never a second declaration) — the read-only+free+local contract, the
+	 * only certificate that proves the world untouched. `concurrency:
+	 * "shared"` is a SCHEDULING promise and never feeds this set (TV-1C —
+	 * slow_touch is shared and writes). The evidence policy defaults to
 	 * {"shell"} — the convention the task extension's own "make the LAST
 	 * item a verification step" guidance produces.
 	 */
 	assessTasks(opts?: { readonly evidenceTools?: ReadonlySet<string> }): TaskAssessment {
-		const sharedTools = new Set<string>();
+		const nonMutatingTools = new Set<string>();
 		for (const tool of this.#config.registry.list()) {
-			if (tool.effects?.concurrency === "shared") sharedTools.add(tool.name);
+			if (tool.effects?.precommitSafe === true) nonMutatingTools.add(tool.name);
 		}
 		return assessTasks(this.log.all, {
-			sharedTools,
+			nonMutatingTools,
 			evidenceTools: opts?.evidenceTools ?? DEFAULT_EVIDENCE_TOOLS,
 		});
 	}
