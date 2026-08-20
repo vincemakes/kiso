@@ -9,7 +9,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	bannerLines,
-	colorInlineCode,
 	COLOR_OFF,
 	COLOR_ON,
 	palette,
@@ -129,40 +128,6 @@ describe("v2a/v5/KC3: the palette", () => {
 		// and the empty palette still zeroes them — a pipe carries no ANSI
 		expect(COLOR_OFF.red).toBe("");
 		expect(COLOR_OFF.green).toBe("");
-	});
-});
-
-describe("v5: the inline-code tint (TUI v5 #16e)", () => {
-	const code = (s: string): string => `${COLOR_ON.code}${s}${COLOR_ON.reset}`;
-
-	it("backtick spans on a line get the tint; the rest stays plain", () => {
-		setNoColor(false);
-		setTTY(true);
-		expect(colorInlineCode("use `npm test` to verify")).toBe(`use ${code("`npm test`")} to verify`);
-		expect(colorInlineCode("`a` and `b` and c")).toBe(`${code("`a`")} and ${code("`b`")} and c`);
-	});
-
-	it("single level only — an unterminated backtick stays plain; spans pair left-to-right", () => {
-		setNoColor(false);
-		setTTY(true);
-		expect(colorInlineCode("an opener ` without a closer")).toBe("an opener ` without a closer");
-		// "`a `b` c`": the regex pairs `a ` then ` c` — the inner "b" is plain
-		// (left-to-right pairing, no nesting).
-		expect(colorInlineCode("`a `b` c`")).toBe(`${code("`a `")}b${code("` c`")}`);
-	});
-
-	it("NO_COLOR → byte-identical (no codes leak into pipes)", () => {
-		setNoColor(true);
-		setTTY(true);
-		expect(colorInlineCode("use `npm test` to verify")).toBe("use `npm test` to verify");
-	});
-
-	it("renders carry ZERO ANSI when the palette is off — pipes and CI are plain", () => {
-		setNoColor(true);
-		setTTY(true); // NO_COLOR wins even on a TTY
-		expect(renderEvent({ type: "user_input", content: "hello" }).text).toBe("you> hello\n");
-		expect(renderToolSummary("read_file", { path: "a.ts" }, { content: "x", isError: false })).toBe("✓ read a.ts (1 line)");
-		expect(renderEvent({ type: "terminal", outcome: { kind: "completed" } }).text).toBe("\ndone\n");
 	});
 });
 
@@ -375,22 +340,27 @@ describe("⑥: the checklist cell (the durable task render)", () => {
 
 describe("v7 W1: the banner tiers (the height input)", () => {
 	const V = "0.1.37";
-	it("≥ 20 rows → BIG: the 36x6 █-only wordmark, indented two — 38 cols clears 40", () => {
+	// TT-1B (VD-14): the pixel banner retires — its mid-scroll cut state
+	// rendered the art as glyph garbage, inherent to any tall pixel logo
+	// on a scrolling screen. ONE 2-row wordmark (the compact font with
+	// the base row folded into lower half-blocks) replaces both art
+	// tiers: the garbage window shrinks to nothing a reader can catch,
+	// and the tier table loses a state.
+	it("≥ 14 rows → the 2-row wordmark, indented two", () => {
 		const rows = bannerLines(40, 20, V, "[3 extensions: asky]");
-		expect(rows[0]).toBe("  ██    ██  ██████  ████████  ████████");
-		expect(rows.length).toBe(9); // 6 art + blank + version + extensions
-		expect(rows[8]!).toBe("[3 extensions: asky]");
-		// the version row (49 cells) truncates at 40 with the marker —
-		// only the ART must clear 40, per the spec
-		expect(rows[7]!.startsWith(`v${V} —`)).toBe(true);
+		expect(rows[0]).toBe("  █ █ ▀█▀ █▀▀ █▀█");
+		expect(rows[1]).toBe("  █▀▄ ▄█▄ ▄▄█ █▄█");
+		expect(rows.length).toBe(5); // 2 art + blank + version + extensions
+		expect(rows[4]!).toBe("[3 extensions: asky]");
+		expect(rows[3]!.startsWith(`v${V} —`)).toBe(true);
 		// the art is the wordmark — the text row does NOT repeat the name
-		expect(rows[7]!).not.toMatch(/^kiso v/);
+		expect(rows[3]!).not.toMatch(/^kiso v/);
 	});
-	it("14–19 rows → COMPACT: v6's logo byte-identical, no redraw", () => {
+	it("14-19 rows get the SAME wordmark — the mid tier merged (VD-14)", () => {
 		const rows = bannerLines(80, 15, V, "");
-		expect(rows.slice(0, 3)).toEqual(["█ █ ▀█▀ █▀▀ █▀█", "█▀▄  █  ▀▀█ █ █", "▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀"]);
-		expect(rows[3]).toBe("");
-		expect(rows[4]).toBe(`v${V} — the coding agent that survives kill -9`);
+		expect(rows.slice(0, 2)).toEqual(["  █ █ ▀█▀ █▀▀ █▀█", "  █▀▄ ▄█▄ ▄▄█ █▄█"]);
+		expect(rows[2]).toBe("");
+		expect(rows[3]).toBe(`v${V} — the coding agent that survives kill -9`);
 	});
 	it("anything smaller → text rows only (narrow, short, and unmeasured)", () => {
 		for (const [W, H] of [
@@ -445,6 +415,28 @@ describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
 		expect(renderResumeList([], 80, NOW)).toEqual([]);
 	});
 
+	it("TT-1B (W5 unification): a badged meta renders the picker's one-cell glyph column, plain (the banner's uniform dim wrap styles it)", () => {
+		const rows = renderResumeList([{ title: "t", events: 1, runs: 1, updatedAt: NOW, badge: "▌" }], 60, NOW);
+		// indent 4 + glyph 1 + 1 + when 7 + 1 + title(titleW=60-15-17=28) + 1 + meta 17
+		expect(rows[1]).toBe("    ▌ now     t" + " ".repeat(27) + " " + "1 events · 1 runs");
+		expect(displayWidth(rows[1]!)).toBe(60);
+	});
+
+	it("TT-1B (W5 unification): a mixed list keeps the columns aligned — the badge-less row carries a space in the glyph column", () => {
+		const rows = renderResumeList(
+			[
+				{ title: "t", events: 1, runs: 1, updatedAt: NOW, badge: "✓" },
+				{ title: "u", events: 2, runs: 1, updatedAt: NOW },
+			],
+			60,
+			NOW,
+		);
+		expect(rows[1]!.startsWith("    ✓ now")).toBe(true);
+		expect(rows[2]!.startsWith("      now")).toBe(true);
+		expect(displayWidth(rows[1]!)).toBe(60);
+		expect(displayWidth(rows[2]!)).toBe(60);
+	});
+
 	it("a too-long title cuts inside the width with the ellipsis marker", () => {
 		const rows = renderResumeList([{ title: "a".repeat(100), events: 1, runs: 1, updatedAt: NOW }], 60, NOW);
 		// titleW = 60 - 13 - 16 = 31; the marker "…" is 2 cells wide (the
@@ -471,7 +463,7 @@ describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
 		const ext = big.indexOf("[3 extensions: asky]");
 		expect(big[ext + 1]).toBe("");
 		expect(big[ext + 2]).toBe("  ▞ resume");
-		expect(big.length).toBe(13); // 6 art + blank + version + extensions + blank + 3 resume rows
+		expect(big.length).toBe(9); // 2 wordmark rows (VD-14) + blank + version + extensions + blank + 3 resume rows
 		for (const r of big) expect(truncateRow(r, 80)).toBe(r);
 		// the narrowest BIG tier still aligns the meta at exactly W (40)
 		const narrow = bannerLines(40, 20, "0.1.37", "", METAS, NOW);

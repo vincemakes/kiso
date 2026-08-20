@@ -66,20 +66,20 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${rows}, ${cols})
 }
 
 describe("the startup banner (logo)", () => {
-	it("COMPACT (15x80): the three logo rows appear with the version line — the W1 selection is a height input", () => {
+	it("COMPACT (15x80): the 2-row wordmark appears with the version line — the W1 selection is a height input (VD-14: one wordmark, both tiers)", () => {
 		const { env, dirs } = isolatedEnv();
 		const out = ptyBanner(env, dirs.home, 15, 80);
 		expect(out).toContain("█ █ ▀█▀ █▀▀ █▀█");
 		expect(out).toContain("the coding agent that survives kill -9");
-		expect(out).toContain("▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀");
+		expect(out).toContain("█▀▄ ▄█▄ ▄▄█ █▄█");
 		expect(out).toMatch(/v\d+\.\d+\.\d+/); // the version rides the info row
 	}, 90_000);
 
-	it("BIG (24x80): the 36x6 wordmark renders instead — every row is the █-only art", () => {
+	it("BIG (24x80): the SAME 2-row wordmark — VD-14 retired the 36x6 pixel art (its mid-scroll cut rendered glyph garbage)", () => {
 		const { env, dirs } = isolatedEnv();
 		const out = ptyBanner(env, dirs.home, 24, 80);
-		expect(out).toContain("██    ██  ██████  ████████  ████████");
-		expect(out).toContain("██    ██  ██████  ████████  ████████");
+		expect(out).toContain("█ █ ▀█▀ █▀▀ █▀█");
+		expect(out).not.toContain("██████  ████████");
 		expect(out).toContain("the coding agent that survives kill -9");
 		// the art is the wordmark — the text row does NOT repeat the name
 		expect(out).not.toMatch(/kiso v\d+\.\d+\.\d+/);

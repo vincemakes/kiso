@@ -83,19 +83,6 @@ export function escapeTerminal(text: string): string {
 
 
 /**
- * TUI v5 #16e: the inline-code tint — backtick spans in ONE line of
- * assistant body text get the `code` color. Deliberately NOT a markdown
- * engine: single level only (`[^`]*` cannot nest), a span never matches
- * across lines (the caller passes one line; an opener without a closer
- * on the same line stays plain). NO_COLOR / pipes → the codes are empty
- * strings → the line passes through byte-identical.
- */
-export function colorInlineCode(line: string): string {
-	const p = palette();
-	if (p.code === "" || p.reset === "") return line;
-	return line.replace(/`([^`]*)`/g, `${p.code}\`$1\`${p.reset}`);
-}
-/**
  * v2b — one thinking BLOCK folds to ONE dim line: the first 100 chars, a
  * " (… /think shows full)" marker when the block is longer. The consumer
  * buffers the block's deltas, renders this at the block's end, and keeps
@@ -232,20 +219,13 @@ export function renderTerminalGap(statusLine: string | null): string {
  * Pure.
  */
 export const TAGLINE = "the coding agent that survives kill -9";
-/** v6's existing logo — W1's COMPACT tier, byte-identical, no redraw. */
-const LOGO_ROWS = ["█ █ ▀█▀ █▀▀ █▀█", "█▀▄  █  ▀▀█ █ █", "▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀"] as const;
-/** W1's BIG tier (36x6, `█` and space only — no half-blocks, so there is
- *  no tile seam to lose in a font that renders ▀ ▄ at the wrong height).
- *  Each pixel is two cells wide on purpose (a terminal cell is ~1:2);
- *  the render indents two — 38 columns total, clears 40. */
-const BIG_LOGO_ROWS = [
-	"██    ██  ██████  ████████  ████████",
-	"██  ██      ██    ██        ██    ██",
-	"████        ██    ████████  ██    ██",
-	"████        ██          ██  ██    ██",
-	"██  ██      ██          ██  ██    ██",
-	"██    ██  ██████  ████████  ████████",
-] as const;
+/** TT-1B (VD-14) — the ONE wordmark, 2 rows. The 36x6 pixel art and the
+ *  3-row compact logo both retire: a tall pixel banner's mid-scroll cut
+ *  state renders as glyph garbage (VD-14 — frames 03/04/s2-05 of the
+ *  2026-08-17 walkthrough), inherent to the height. This is the compact
+ *  font with its base row folded into lower half-blocks — same alphabet,
+ *  15 columns, and the cut window shrinks to nothing a reader catches. */
+const WORDMARK_ROWS = ["█ █ ▀█▀ █▀▀ █▀█", "█▀▄ ▄█▄ ▄▄█ █▄█"] as const;
 
 /** v3 §01 (W1): truncate a row at `width`, marking the hidden span
  *  " (+N)". W1: the width math is the charWidth authority (the banner's
@@ -278,9 +258,8 @@ export function truncateRow(row: string, width: number): string {
 
 /** v3 §01 (V6-2) + W1: the banner lines for a width W and height H —
  *  the tier table (extends the existing "under 40 columns, skip the
- *  logo" rule with a HEIGHT input):
- *    W ≥ 40 and H ≥ 20 → BIG (the 36x6 wordmark, 2-column indent)
- *    W ≥ 40 and 14–19 rows → COMPACT (v6's LOGO_ROWS, byte-identical)
+ *  logo" rule with a HEIGHT input; VD-14 merged the two art tiers):
+ *    W ≥ 40 and H ≥ 14 → the 2-row wordmark, 2-column indent
  *    anything smaller → text rows only
  *  then the blank, then "vX — tagline" — the art IS the wordmark, so the
  *  text row does not repeat the name — then extensions — then the W5
@@ -288,12 +267,8 @@ export function truncateRow(row: string, width: number): string {
  *  with a " (+N)" marker. Pure. */
 export function bannerLines(W: number, H: number, version: string, extensionsText: string, resume: readonly ResumeMeta[] = [], now = Date.now()): string[] {
 	const rows: string[] = [];
-	if (W >= 40) {
-		if (H >= 20) {
-			for (const r of BIG_LOGO_ROWS) rows.push(truncateRow(`  ${r}`, W));
-		} else if (H >= 14) {
-			for (const r of LOGO_ROWS) rows.push(truncateRow(r, W));
-		}
+	if (W >= 40 && H >= 14) {
+		for (const r of WORDMARK_ROWS) rows.push(truncateRow(`  ${r}`, W));
 	}
 	if (rows.length > 0) rows.push("");
 	rows.push(truncateRow(`v${version} — ${TAGLINE}`, W));
@@ -317,6 +292,13 @@ export interface ResumeMeta {
 	readonly events: number;
 	readonly runs: number;
 	readonly updatedAt: number;
+	/** TT-1B (W5 unification) — the ONE-CELL badge glyph from the
+	 *  picker's BADGE_GLYPH vocabulary, derived by the caller from the
+	 *  SAME projection the picker uses (session-cards — one source of
+	 *  truth about durability). Plain: the banner's uniform dim wrap
+	 *  styles the row; the picker keeps color on its own surface.
+	 *  Absent on every meta → the pre-TT-1B bytes, verbatim. */
+	readonly badge?: string;
 }
 
 export function relativeTime(updatedAt: number, now: number): string {
@@ -352,12 +334,17 @@ export function renderResumeList(metas: readonly ResumeMeta[], W: number, now: n
 	const whens = metas.map((m) => relativeTime(m.updatedAt, now));
 	const metaTexts = metas.map((m) => `${m.events} events · ${m.runs} runs`);
 	const metaW = Math.max(...metaTexts.map((t) => t.length));
-	const titleW = Math.max(1, W - 13 - metaW);
+	// TT-1B (W5): the glyph column exists only when a badge is present —
+	// a badge-less list keeps its exact pre-TT-1B bytes; in a mixed list
+	// every row reserves the column so the when/title columns never shift.
+	const badged = metas.some((m) => m.badge !== undefined);
+	const titleW = Math.max(1, W - (badged ? 15 : 13) - metaW);
 	for (let i = 0; i < metas.length; i += 1) {
 		const title = escapeTerminal(metas[i]!.title);
 		const shown = titleCut(title, titleW);
 		const pad = titleW - displayWidth(shown);
-		rows.push(`    ${whens[i]!.padEnd(7)} ${shown}${" ".repeat(pad)} ${metaTexts[i]!.padStart(metaW)}`);
+		const glyph = badged ? `${metas[i]!.badge ?? " "} ` : "";
+		rows.push(`    ${glyph}${whens[i]!.padEnd(7)} ${shown}${" ".repeat(pad)} ${metaTexts[i]!.padStart(metaW)}`);
 	}
 	return rows;
 }

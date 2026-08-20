@@ -705,16 +705,17 @@ describe("TUI v6 — the one compositor", () => {
 		for (const m of sgrStripped.matchAll(/\x1b\[(\d+);1H\x1b\[0K([^\x1b]*)/g)) {
 			screen.set(Number(m[1]!), m[2]!);
 		}
-		// the banner cell: 6 art + blank + version + blank + "  ▞ resume" +
-		// 1 session row = 11 rows; the W11 blank + the user line follow
-		expect(screen.get(10)).toBe("  ▞ resume");
+		// the banner cell (VD-14): 2 wordmark rows + blank + version + blank
+		// + "  ▞ resume" + 1 session row = 7 rows; the W11 blank + the user
+		// line follow
+		expect(screen.get(6)).toBe("  ▞ resume");
 		// metaW = 18 (the single meta); titleW = 80 - 13 - 18 = 49; pad 21
-		expect(screen.get(11)).toBe(
+		expect(screen.get(7)).toBe(
 			"    now     fix the resize repaint storm" + " ".repeat(21) + " " + "41 events · 3 runs",
 		);
 		// the done-when: the row is exactly W wide, the meta at its column
-		expect(screen.get(11)!.length).toBe(80);
-		expect(screen.get(11)!.indexOf("41 events")).toBe(62);
+		expect(screen.get(7)!.length).toBe(80);
+		expect(screen.get(7)!.indexOf("41 events")).toBe(62);
 		// the tier gate is per frame — a COMPACT screen drops the list entirely
 		const compact = makeBody({ H: 15 });
 		compact.body.enter();

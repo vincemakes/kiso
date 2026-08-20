@@ -61,11 +61,8 @@ describe("TUI2-R1.5 ⑨ — foldWords (VD-10)", () => {
 describe("TUI2-R1.5 ⑨ — the surfaces that wrap by word (VD-10)", () => {
 	const render = (cell: BodyCell, W: number): string[] => cellComponent(cell).render(W, CTX);
 
-	it("ASSISTANT body text wraps at words", () => {
-		const rows = render({ kind: "text", text: "this is exactly what I expected.", done: true } as BodyCell, 22);
-		expect(rows.join("\n")).not.toContain("ex\npected");
-		for (const row of rows) expect(row.length).toBeLessThanOrEqual(22);
-	});
+	// the ASSISTANT-text cell retired at TT-1B (assistant prose renders as
+	// md blocks since TUI2-MD; the tui2-md tests pin the word-wrap claim)
 
 	it("a NOTICE wraps at words too — it is a sentence for a human", () => {
 		const rows = render({ kind: "notice", text: "the run was interrupted before it finished", done: true } as BodyCell, 20);

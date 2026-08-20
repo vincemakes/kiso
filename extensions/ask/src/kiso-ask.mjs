@@ -102,9 +102,11 @@ export default async function createAskExtension(ui) {
 		// two panels in front of one decision — "approve asking you
 		// something?" then the question itself — and the second panel can
 		// already be declined, which is the same power the first one
-		// offered. (The chain is deny > ask > allow over the SPEAKING
-		// verdicts, so this allow never overrides a user extension's deny
-		// or plan mode's read-only refusal — the moats keep their teeth.)
+		// offered. (The chain is deny > allow > ask — the W21/R3 ruling;
+		// this comment once said "deny > ask > allow", corrected at TT-1A —
+		// so this allow never overrides a user extension's DENY or plan
+		// mode's read-only refusal; it does silence an earlier ask, which
+		// is exactly the dont-ask-again power the ordering exists to grant.)
 		approvals: [
 			{
 				decide: (call) =>

@@ -28,7 +28,6 @@ import {
 	escapeTerminal,
 	foldThinking,
 	foldResult,
-	colorInlineCode,
 	renderTerminalGap,
 	renderToolSummary,
 	toolTarget,
@@ -235,7 +234,6 @@ export type BodyCell =
 			 *  lands (the auto-allowed calls never have one). */
 			verdict: { decision: "approved" | "denied"; decidedBy?: string; reason?: string } | null;
 	  }
-	| { kind: "text"; text: string; done: boolean }
 	/** TUI2-MD ⑤ — ONE markdown block of assistant body text. The cell is
 	 *  the commit unit the compositor already had, so block-freeze needs
 	 *  no new commit machinery: a CLOSED block is a DONE cell and the
@@ -285,8 +283,6 @@ export function cellComponent(cell: BodyCell): Component {
 			return new ThinkingFold(cell);
 		case "tool":
 			return new ToolExecution(cell);
-		case "text":
-			return new AssistantMessage(cell);
 		case "md":
 			return new MarkdownBlock(cell);
 		case "notice":
@@ -1306,19 +1302,6 @@ function toolCutNote(name: string, resultText: string): string | null {
 	if (m !== null) return `capped by ${escapeTerminal(displayVerb(name))} · offset=${m[1]} for the rest`;
 	if (/…\[truncated\]/.test(tail) || /… \+?\d+ more (?:lines|entries)/.test(tail)) return `capped by ${escapeTerminal(displayVerb(name))} · /last for the rest`;
 	return null;
-}
-
-/** The assistant body text — wrapped at W, the inline-code tint per
- *  row (the #16e rule: a span never matches across rows). */
-class AssistantMessage implements Component {
-	constructor(private readonly cell: { text: string; done: boolean }) {}
-	render(W: number, _ctx: FrameCtx): string[] {
-		// TUI2-R1.5 9 (VD-10): the model's prose is the clearest case of
-		// text a human reads — it wraps at word boundaries.
-		const text = escapeTerminal(this.cell.text);
-		const wrapped = foldWords(text, W);
-		return wrapped.length > 0 ? wrapped.map((l) => colorInlineCode(l)) : [""];
-	}
 }
 
 /** TUI2-MD ⑤ — one markdown block. Pure in (block, W): the same source

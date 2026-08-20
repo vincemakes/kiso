@@ -97,16 +97,15 @@ def driver(cli, home, script_path, session_id, workdir, mode):
                     return
     if mode is None:
         # Live chat, SEVEN user turns (one per scripted round): plan →
-        # one done → noise reads → the slow shell. The two task_set
-        # rounds ask; the reads are auto-allowed; the shell asks.
+        # one done → noise reads → the slow shell. TT-1A: the task
+        # extension speaks for its own tool — task_set AUTO-ALLOWS, so
+        # the two approval questions this driver once answered never
+        # print (waiting for them burned 2x30s and desynced the driver);
+        # the reads are auto-allowed; the shell still asks.
         read_until("▌ ".encode(), 20)
         os.write(fd, b"go\\r")
-        read_until(b"approve task_set", 30)  # the dock-less fallback question (the 0-row pty — no panel)
-        os.write(fd, b"y\\r")
         read_until("▌ ".encode(), 20)
         os.write(fd, b"c1\\r")
-        read_until(b"approve task_set", 30)  # the dock-less fallback question (the 0-row pty — no panel)
-        os.write(fd, b"y\\r")
         read_until("▌ ".encode(), 20)
         os.write(fd, b"c2\\r")
         read_until("▌ ".encode(), 20)

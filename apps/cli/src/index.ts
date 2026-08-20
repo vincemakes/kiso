@@ -27,7 +27,7 @@ import { readFileSync, realpathSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { Body, Editor, bannerLines, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
+import { BADGE_GLYPH, Body, Editor, bannerLines, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
 import {
 	createAgent,
 	disposeExtensions,
@@ -48,7 +48,7 @@ import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { autoCompactFromEnv, chat, contextWindowTokens, estimateCtxRatio } from "./chat.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { resume } from "./resume.js";
-import { collectSessionCards } from "./session-cards.js";
+import { collectSessionCards, projectSessionCard } from "./session-cards.js";
 
 // The moved exports stay reachable from this entry — the test imports
 // (project-trust, coding-agent) never change (B4: zero assertion changes).
@@ -257,14 +257,35 @@ function extensionsBanner(resume: ResumeMeta[] = []): void {
  *  first, the CURRENT session excluded (it is not something to pick back
  *  up). Every field already exists behind the store's SessionMeta (the
  *  `kiso sessions` line shows the same data) — only the projection and
- *  the sort live here. */
-function recentSessions(id: string, agent: { sessions(): { id: string; title: string; events: number; runs: number; updatedAt: number }[] }): ResumeMeta[] {
-	return agent
+ *  the sort live here.
+ *
+ *  TT-1B (W5 unification): each row carries the picker's badge glyph,
+ *  derived through the SAME projection the picker uses (session-cards —
+ *  one source of truth about durability; a second derivation would be
+ *  none). Only the 3 chosen sessions are opened — the read-only listing
+ *  rule holds (projectSessionCard's own guarantee), and the cost is
+ *  bounded by the list, never the home. */
+async function recentSessions(
+	id: string,
+	agent: { sessions(): { id: string; title: string; events: number; runs: number; updatedAt: number }[]; session(o: { id: string }): Promise<{ pendingApprovals(): readonly unknown[] }> },
+): Promise<ResumeMeta[]> {
+	const picked = agent
 		.sessions()
 		.filter((m) => m.id !== id)
 		.sort((a, b) => b.updatedAt - a.updatedAt)
-		.slice(0, 3)
-		.map(({ title, events, runs, updatedAt }) => ({ title, events, runs, updatedAt }));
+		.slice(0, 3);
+	const store = sessionStoreRef;
+	const out: ResumeMeta[] = [];
+	for (const m of picked) {
+		let badge: string | undefined;
+		if (store !== null) {
+			const session = await agent.session({ id: m.id });
+			const card = projectSessionCard({ id: m.id, updatedAt: m.updatedAt, records: store.load(m.id), asks: session.pendingApprovals().length });
+			badge = BADGE_GLYPH[card.badge];
+		}
+		out.push({ title: m.title, events: m.events, runs: m.runs, updatedAt: m.updatedAt, ...(badge === undefined ? {} : { badge }) });
+	}
+	return out;
 }
 
 /**
@@ -635,7 +656,7 @@ async function main(): Promise<void> {
 				applyConfigMode();
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
-				extensionsBanner(recentSessions(id, agent));
+				extensionsBanner(await recentSessions(id, agent));
 				faux = currentFaux;
 				paintBootStatus(session); // TUI2-R2 ⑥: the idle-fresh screen says what it is
 				await chat(session, faux, input, resolveAutoCompact(mergedConfig));
@@ -733,7 +754,7 @@ async function main(): Promise<void> {
 				agent = await makeAgent(id, input, modelFlag);
 				const session = await agent.session({ id });
 				bodyLog(`session ${id}\n`);
-				extensionsBanner(recentSessions(id, agent));
+				extensionsBanner(await recentSessions(id, agent));
 				// finding E4-1: the same faux resolution the chat/resume cases
 				// carry (faux = currentFaux) — pre-patch the initial faux=true
 				// was passed here, so ANY provider failure in a bare-command
