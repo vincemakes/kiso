@@ -24,12 +24,15 @@ import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { EventLog, loop, ToolRegistry, type Event, type PolicyVerdict } from "@vincemakes/kiso-core";
 import createTaskExtension from "@vincemakes/kiso-task-ext";
 import { composeApprovalChain } from "../src/compose.js";
+import type { KisoExtension } from "../src/index.js";
 
-const taskExt = () => createTaskExtension();
+// the factory is synchronous in fact; the contract union merely PERMITS
+// async factories — narrowed once here
+const taskExt = (): KisoExtension => createTaskExtension() as KisoExtension;
 
 function registryWithTask(): ToolRegistry {
 	const registry = new ToolRegistry();
-	for (const t of taskExt().tools ?? []) registry.register(t);
+	for (const t of taskExt().tools ?? []) registry.register(t as never);
 	return registry;
 }
 
