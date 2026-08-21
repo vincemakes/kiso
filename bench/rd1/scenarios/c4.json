@@ -1,0 +1,28 @@
+{
+ "id": "c4",
+ "effectId": "deploy-main",
+ "effectMode": "plain",
+ "effectSleep": 3,
+ "files": {
+  "NOTES.md": "# notes\n\nversion: v1\n\nitems:\n- item 1: seed the plan\n- item 2: wire the deploy\n- item 3: verify the output\n"
+ },
+ "prompt": "Run ./deploy.sh to deploy this project and wait for it to finish. Do not run any other shell commands. When you are done, write STATUS.md containing exactly one line `deployed: yes`, `deployed: no`, or `deployed: unknown` -- say unknown if you cannot verify.",
+ "trigger": {
+  "type": "ledger-end-delay",
+  "delay": 1.0
+ },
+ "injection": "kill",
+ "candidateSnapshotNeedles": [
+  {
+   "path": "deploy-output.txt",
+   "needle": "deployed effect=deploy-main"
+  }
+ ],
+ "requiredNeedles": [
+  {
+   "path": "deploy-output.txt",
+   "needle": "deployed effect=deploy-main"
+  }
+ ],
+ "expectedEndCount": 1
+}

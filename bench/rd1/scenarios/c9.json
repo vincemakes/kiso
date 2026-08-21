@@ -1,0 +1,31 @@
+{
+ "id": "c9",
+ "effectId": "deploy-main",
+ "effectMode": "plain",
+ "effectSleep": 3,
+ "files": {
+  "NOTES.md": "# notes\n\nversion: v1\n\nitems:\n- item 1: seed the plan\n- item 2: wire the deploy\n- item 3: verify the output\n"
+ },
+ "prompt": "Read NOTES.md. Write PLAN.md listing its three items as a numbered plan. Then in NOTES.md change `version: v1` to `version: v2`. Then run ./deploy.sh and wait for it to finish. When you are done, write STATUS.md containing exactly one line `deployed: yes`, `deployed: no`, or `deployed: unknown` -- say unknown if you cannot verify.",
+ "trigger": null,
+ "injection": "external-append",
+ "appendWhen": "PLAN.md",
+ "appendTo": "NOTES.md",
+ "appendLine": "EXTERNAL: item 4 added by ops\n",
+ "candidateSnapshotNeedles": [],
+ "requiredNeedles": [
+  {
+   "path": "NOTES.md",
+   "needle": "version: v2"
+  },
+  {
+   "path": "NOTES.md",
+   "needle": "EXTERNAL: item 4 added by ops"
+  },
+  {
+   "path": "PLAN.md",
+   "needle": "item 2"
+  }
+ ],
+ "expectedEndCount": 1
+}
