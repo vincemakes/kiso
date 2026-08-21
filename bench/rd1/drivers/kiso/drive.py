@@ -447,13 +447,23 @@ def main():
         version = json.load(open(cli_pkg))["version"]
     except OSError:
         pass
+    # the frozen-baseline commit of the whole bench tree — the single
+    # root of trust for the batch (the RD-1 review's Check 1/2).
+    try:
+        bench_commit = subprocess.run(["git", "-C", RD1, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    except Exception:
+        bench_commit = None
     report = {
         "provenance": {
             "scenario": scn["id"], "sessionId": sid, "agent": "kiso",
             "agentVersion": version, "cli": a.cli, "model": a.model,
             "baseUrlMode": "proxy" if scn.get("injection") == "proxy" else "direct",
+            "benchBaselineCommit": bench_commit,
             "driver_sha256": sha16(os.path.abspath(__file__)),
             "harness_sha256": {os.path.basename(p): sha16(p) for p in (EFFECT, SCORE, PROXY)},
+            # Axis 0 is the experiment's root of trust — its version is
+            # score.py's sha, surfaced explicitly (RD-1 review Check 2).
+            "axis0_version": sha16(SCORE),
             "scenario_sha256": sha16(a.scenario),
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         },
