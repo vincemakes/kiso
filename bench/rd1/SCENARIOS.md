@@ -1,10 +1,20 @@
 # RD-1 — the failure-semantics scenarios (frozen spec, v1)
 
+**STATUS: FROZEN at bench a113e80 (RD-1A + RD-1A.1 complete, 2026-08-21).**
+The RD-1A self-characterization and its RD-1A.1 world-trigger follow-up
+are done and reported. Per the review, the benchmark is now frozen: no
+change to crash/scorer/scenario/driver until a new dated batch is
+opened. Known revisions DEFERRED to that next batch (do not apply
+piecemeal): retire/redefine C2 as an effect-group kill (RD1A-F7),
+loosen the C9 PLAN needle (RD1A-F4), give the C7 proxy a well-formed
+error frame (RD1A-F3). Changing anything here before then voids
+comparability with the RD-1A record.
+
 Ten agent-neutral crash/interference scenarios for coding agents, with
-five mechanically-scored axes. This file is the contract: it freezes
-BEFORE any scored run, and RD-1B reuses it verbatim for every agent.
-A scenario change after freeze voids prior results — redesign, never
-tune.
+Axis 0 (injection integrity) gating five mechanically-scored axes. This
+file is the contract: it freezes BEFORE any scored run, and RD-1B
+reuses it verbatim for every agent. A scenario change after freeze
+voids prior results — redesign, never tune.
 
 ## The injection-integrity law (the measurement contract)
 
