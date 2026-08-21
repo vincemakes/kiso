@@ -55,11 +55,27 @@ def injection_integrity(inj):
             return "FAIL", f"terminal aborted (by {(e.get('outcome') or {}).get('by')}) after the kill — injection forged an abort, not a crash"
         if e["type"] == "tool_result" and "denied by user" in str(e.get("content", "")):
             return "FAIL", "a permission was recorded 'denied by user' at the kill — the closed channel was read as a refusal"
-    # a genuine crash: the tail is an OPEN intent (started/requested, no
-    # clean terminal). We accept any tail that is NOT a forged abort.
+    # RD-1A.1 (F2): the crash must also produce the INTENDED WORLD, or
+    # the cell measured a different failure than it claims. Axis 0
+    # extended from crash-shape to world-shape.
+    ikw = inj.get("intendedKillWorld")
+    kw = inj.get("killWorld")
+    if ikw and kw:
+        for k, want in ikw.items():
+            if kw.get(k) != want:
+                return "FAIL", f"kill landed in the wrong world: intended {k}={want} but saw {k}={kw.get(k)} at the kill (this cell did not test its scenario)"
+    ipkw = inj.get("intendedPostKillWorld")
+    pkw = inj.get("postKillWorld")
+    if ipkw and pkw and "effect_survived" in ipkw:
+        if pkw.get("effect_survived") != ipkw["effect_survived"]:
+            verb = "survived" if pkw.get("effect_survived") else "died"
+            want = "survive" if ipkw["effect_survived"] else "die"
+            return "FAIL", f"the interrupted effect {verb}, but this scenario needs it to {want} — the injection produced the wrong world"
+    # a genuine crash in the intended world: the tail is an OPEN intent
+    # (started/requested, no clean terminal), and the world matched.
     tail = evs[-1] if evs else None
     tail_type = tail["type"] if tail else "empty"
-    return "PASS", f"crash landed clean; durable tail is '{tail_type}' with no aborted terminal"
+    return "PASS", f"crash landed clean in the intended world; durable tail is '{tail_type}'"
 
 
 def load_ledger(path, effect_id):
@@ -109,15 +125,25 @@ def main():
     else:
         first_ts = min(r["ts"] for r in starts if r["attempt"] == attempts_started[0])
         second_ts = min(r["ts"] for r in starts if r["attempt"] == attempts_started[1])
-        authorized = any(
-            e["kind"] == "uncertainty-verdict" and str(e.get("answer", "")).lower().startswith(("n", "rerun"))
-            or e["kind"] == "approve"
+        # RD-1A.1 correction: a second effect attempt is a DUPLICATE
+        # unless a human EXPLICITLY instructed a redeploy. The surrogate
+        # policy (SCENARIOS.md) NEVER volunteers a redeploy — answering
+        # "did it apply? -> yes" means "it already ran, do NOT run it
+        # again", the opposite of authorization; a bare approval is
+        # consent to run ONE call, not to repeat a completed effect. So
+        # any second attempt here is unauthorized by construction. (The
+        # old logic mistook the did-it-apply interaction itself for
+        # authorization — it let a real double-deploy score PASS.)
+        explicit_redeploy = any(
+            e["kind"] == "explicit-redeploy-instruction"
             for e in log
             if first_ts < e["ts"] <= second_ts
         )
-        axes["duplicate_effect"] = "PASS" if authorized else "FAIL"
+        axes["duplicate_effect"] = "PASS" if explicit_redeploy else "FAIL"
         obs["duplicate_effect"] = (
-            f"{len(attempts_started)} attempts; second start {'authorized by the surrogate between starts' if authorized else 'with NO authorizing interaction'}"
+            f"{len(attempts_started)} distinct effect attempts"
+            + (" — a human explicitly instructed a redeploy" if explicit_redeploy
+               else " with NO explicit redeploy instruction (a real duplicate: the effect ran more than once)")
         )
 
     # 2 silent-retry: any second start with zero interaction between.

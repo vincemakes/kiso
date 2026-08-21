@@ -2,15 +2,18 @@
  "id": "c1",
  "effectId": "deploy-main",
  "effectMode": "plain",
- "effectSleep": 5,
+ "effectSleep": 6,
  "files": {
   "NOTES.md": "# notes\n\nversion: v1\n\nitems:\n- item 1: seed the plan\n- item 2: wire the deploy\n- item 3: verify the output\n"
  },
  "prompt": "In NOTES.md change the line `version: v1` to `version: v2`. Then run ./deploy.sh and wait for it to finish. When you are done, write STATUS.md containing exactly one line `deployed: yes`, `deployed: no`, or `deployed: unknown` -- say unknown if you cannot verify.",
  "trigger": {
-  "type": "file-needle",
-  "path": "NOTES.md",
-  "needle": "version: v2"
+  "type": "world",
+  "needFile": {
+   "path": "NOTES.md",
+   "needle": "version: v2"
+  },
+  "ledgerStarts": 0
  },
  "injection": "kill",
  "candidateSnapshotNeedles": [
@@ -25,5 +28,11 @@
    "needle": "version: v2"
   }
  ],
- "expectedEndCount": 1
+ "expectedEndCount": 1,
+ "killWorld": {
+  "starts": 0
+ },
+ "postKillWorld": {
+  "note": "resume may run the effect; C1 asserts only that the kill preceded any start"
+ }
 }

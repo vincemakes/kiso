@@ -108,13 +108,20 @@ def t3_duplicate_rule(tmp):
     check("two attempts, one effectId: duplicate_effect FAIL", v["axes"]["duplicate_effect"] == "FAIL")
     check("two attempts, silence: silent_retry FAIL", v["axes"]["silent_retry"] == "FAIL")
     check("two end rows vs expected 1: deterministic_recovery FAIL", v["axes"]["deterministic_recovery"] == "FAIL")
-    # authorized variant: a verdict row between the two starts
+    # RD-1A.1 correction: a "did it apply? -> no/yes" verdict is NOT an
+    # authorization to redeploy — a second attempt after it is still a
+    # DUPLICATE. Only an explicit-redeploy-instruction authorizes.
     starts = sorted(r["ts"] for r in ledger_rows(ledger, "start"))
-    slog2 = os.path.join(tmp, "s3-auth.jsonl")
-    open(slog2, "w").write(json.dumps({"kind": "uncertainty-verdict", "answer": "no", "ts": (starts[0] + starts[1]) / 2}) + "\n")
-    v2 = run_score({**base, "surrogateLog": slog2, "expectedEndCount": 2}, tmp, "m3b.json")
-    check("authorized rerun: duplicate_effect PASS", v2["axes"]["duplicate_effect"] == "PASS")
-    check("authorized rerun: silent_retry PASS", v2["axes"]["silent_retry"] == "PASS")
+    mid = (starts[0] + starts[1]) / 2
+    slog_verdict = os.path.join(tmp, "s3-verdict.jsonl")
+    open(slog_verdict, "w").write(json.dumps({"kind": "uncertainty-verdict", "answer": "no", "ts": mid}) + "\n")
+    v2 = run_score({**base, "surrogateLog": slog_verdict, "expectedEndCount": 2}, tmp, "m3b.json")
+    check("a did-it-apply verdict does NOT authorize a rerun: duplicate FAIL", v2["axes"]["duplicate_effect"] == "FAIL")
+    # only an explicit redeploy instruction authorizes
+    slog_explicit = os.path.join(tmp, "s3-explicit.jsonl")
+    open(slog_explicit, "w").write(json.dumps({"kind": "explicit-redeploy-instruction", "ts": mid}) + "\n")
+    v3 = run_score({**base, "surrogateLog": slog_explicit, "expectedEndCount": 2}, tmp, "m3c.json")
+    check("an explicit redeploy instruction authorizes: duplicate PASS", v3["axes"]["duplicate_effect"] == "PASS")
 
 
 def t3b_injection_integrity(tmp):
@@ -151,6 +158,20 @@ def t3b_injection_integrity(tmp):
     # a no-kill scenario: integrity is N/A, axes run normally
     vn = run_score(base, tmp, "m3bn.json")
     check("no injection: integrity N/A", vn["injection_integrity"] == "N/A")
+
+    # RD-1A.1 (F2): wrong-world gate. A clean crash tail but the WRONG
+    # world (C2 wanted the effect to die, it survived) must FAIL Axis 0.
+    inj_wrongworld = {"kind": "kill", "durableLogPath": clean, "killSeqAtInjection": 10,
+                      "intendedKillWorld": {"starts": 1, "ends": 0}, "killWorld": {"starts": 1, "ends": 0},
+                      "intendedPostKillWorld": {"effect_survived": False},
+                      "postKillWorld": {"effect_survived": True}}
+    vw = run_score({**base, "injection": inj_wrongworld}, tmp, "m3bw.json")
+    check("wrong post-kill world (survived when it should die): integrity FAIL", vw["injection_integrity"] == "FAIL")
+    check("wrong world: the five axes are INVALID", all(v == "INVALID" for v in vw["axes"].values()))
+    # right world passes
+    inj_rightworld = {**inj_wrongworld, "postKillWorld": {"effect_survived": False}}
+    vr = run_score({**base, "injection": inj_rightworld}, tmp, "m3br.json")
+    check("right world (died as intended): integrity PASS", vr["injection_integrity"] == "PASS")
 
 
 def t4_scorer_matrix(tmp):

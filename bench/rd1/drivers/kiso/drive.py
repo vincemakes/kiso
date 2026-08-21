@@ -214,11 +214,27 @@ def file_has(work, rel, needle):
         return False
 
 
+def ledger_counts(ledger):
+    return {"starts": len(ledger_phase_rows(ledger, "start")), "ends": len(ledger_phase_rows(ledger, "end"))}
+
+
 def trigger_fired(scn, work, ledger, leg, state):
     t = scn.get("trigger")
     if t is None:
         return False
     kind = t["type"]
+    if kind == "world":
+        # RD-1A.1 (F2): the kill fires on a precise WORLD condition, not a
+        # time guess — the same principle as Axis 0. A file needle and/or
+        # an exact ledger shape (starts/ends) must ALL hold.
+        c = ledger_counts(ledger)
+        if "needFile" in t and not file_has(work, t["needFile"]["path"], t["needFile"]["needle"]):
+            return False
+        if "ledgerStarts" in t and c["starts"] != t["ledgerStarts"]:
+            return False
+        if "ledgerEnds" in t and c["ends"] != t["ledgerEnds"]:
+            return False
+        return True
     if kind == "file-needle":
         return file_has(work, t["path"], t["needle"])
     if kind == "ledger-start":
@@ -394,13 +410,26 @@ def main():
 
     leg, why = run_leg([node, a.cli, sid], env, work, ledger, scn, log, "pre", state)
     kill_seq = None
+    kill_world = None
+    post_kill_world = None
     if why == "trigger":
         # snapshot was taken inside run_leg at the exact trigger instant.
         kill_seq = durable_max_seq()  # the last committed seq the crash interrupts
+        kill_world = ledger_counts(ledger)   # RD-1A.1 (F2): the world AT the kill
         leg.crash()
-        log.add("injection", injection="kill", killSeq=kill_seq)
+        # observe the post-kill world: did the interrupted effect finish
+        # anyway (C3 detached) or die (C2 plain)? Watch the end count for
+        # a settle window bounded by the effect's own sleep.
+        starts_at_kill, ends_at_kill = kill_world["starts"], kill_world["ends"]
+        settle = time.time() + scn.get("effectSleep", 6) + 3
+        while time.time() < settle:
+            if ledger_counts(ledger)["ends"] > ends_at_kill:
+                break
+            time.sleep(0.3)
+        post_kill_world = {"effect_survived": ledger_counts(ledger)["ends"] > ends_at_kill,
+                           "startsAtKill": starts_at_kill, "endsAtKill": ends_at_kill}
+        log.add("injection", injection="kill", killSeq=kill_seq, killWorld=kill_world, postKillWorld=post_kill_world)
         injected = True
-        time.sleep(1.5)
         leg, why2 = run_leg([node, a.cli, "resume", sid], env, work, ledger, scn, log, "post", state)
         leg.end()
     else:
@@ -433,7 +462,9 @@ def main():
         "expectedEndCount": scn.get("expectedEndCount", 1),
     }
     if injected:
-        manifest["injection"] = {"kind": "kill", "durableLogPath": durable_log, "killSeqAtInjection": kill_seq}
+        manifest["injection"] = {"kind": "kill", "durableLogPath": durable_log, "killSeqAtInjection": kill_seq,
+                                  "killWorld": kill_world, "postKillWorld": post_kill_world,
+                                  "intendedKillWorld": scn.get("killWorld"), "intendedPostKillWorld": scn.get("postKillWorld")}
     if approval_surface is not None:
         manifest["approvalSurface"] = approval_surface
         manifest["approvalRecovery"] = approval_recovery
