@@ -1,0 +1,26 @@
+{
+"source": "rd1/c123-mini/c3-r1",
+"sourceSha": "0422020458725ad3",
+"events": [
+{
+"effectId": "deploy-main",
+"attempt": "eff18fb81801",
+"phase": "start"
+},
+{
+"effectId": "deploy-main",
+"attempt": "eff18fb81801",
+"phase": "end"
+},
+{
+"effectId": "deploy-main",
+"attempt": "ebcab2527add",
+"phase": "start"
+},
+{
+"effectId": "deploy-main",
+"attempt": "ebcab2527add",
+"phase": "end"
+}
+]
+}

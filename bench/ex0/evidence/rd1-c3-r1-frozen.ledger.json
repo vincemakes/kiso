@@ -1,0 +1,16 @@
+{
+"source": "rd1/kiso-0.14.0/c3-r1",
+"sourceSha": "b28196f9f0366489",
+"events": [
+{
+"effectId": "deploy-main",
+"attempt": "bc63e83bcbc4",
+"phase": "start"
+},
+{
+"effectId": "deploy-main",
+"attempt": "bc63e83bcbc4",
+"phase": "end"
+}
+]
+}

@@ -1,0 +1,42 @@
+{
+ "id": "BE-001",
+ "assertion": "Unprompted task_set adoption is rare: on small multi-step tasks the model usually skips the checklist and just does the work.",
+ "boundEvidence": [
+  {
+   "slice": "evidence/pe1-t1-bugfix-r1.taskset.json",
+   "source": "pe1/t1-bugfix-r1",
+   "sourceSha": "7f88ca9329c3a337",
+   "predicate": {
+    "kind": "event_count",
+    "name": "task_set",
+    "type": "tool_execution_started",
+    "op": "==",
+    "value": 0
+   }
+  }
+ ],
+ "support": {
+  "n": 13,
+  "of": 16,
+  "note": "runs with zero task_set starts, of the PE-1 batch (excl. smoke)"
+ },
+ "scope": {
+  "model": "deepseek-v4-flash",
+  "agent": "kiso 0.14.0",
+  "taskScale": "small multi-step (200-600 LoC)"
+ },
+ "antiEvidence": [
+  {
+   "slice": "evidence/pe1-t5-verify-extend-r1.taskset.json",
+   "source": "pe1/t5-verify-extend-r1",
+   "note": "t5-r1 DID adopt task_set (3 starts). The claim is 'rare', never 'never'."
+  }
+ ],
+ "validity": {
+  "status": "corroborated",
+  "activeWhile": "the task extension stays advisory (no runtime task gate)",
+  "invalidatedBy": [
+   "a future round that makes task_set load-bearing or prompts for it"
+  ]
+ }
+}

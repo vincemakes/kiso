@@ -1,0 +1,40 @@
+{
+ "id": "BE-002",
+ "assertion": "On the effect-survived/receipt-lost boundary, a LONG effect window can induce a resume double-deploy: the detached effect finishes and the model re-issues it on resume.",
+ "boundEvidence": [
+  {
+   "slice": "evidence/rd1-c3-r1-mini.ledger.json",
+   "source": "rd1/c123-mini/c3-r1",
+   "sourceSha": "0422020458725ad3",
+   "predicate": {
+    "kind": "ledger_attempts",
+    "op": "==",
+    "value": 2
+   }
+  }
+ ],
+ "support": {
+  "n": 2,
+  "of": 2,
+  "note": "both c3 mini-rerun runs (8s window) showed 2 attempts"
+ },
+ "scope": {
+  "model": "deepseek-v4-flash",
+  "agent": "kiso 0.14.0",
+  "condition": "detached effect, 8s effect window, C3 crash-at-start-then-resume"
+ },
+ "antiEvidence": [
+  {
+   "slice": "evidence/rd1-c3-r1-frozen.ledger.json",
+   "source": "rd1/kiso-0.14.0/c3-r1",
+   "note": "the 5s frozen batch showed 1 attempt \u2014 the double-deploy is CONDITIONAL on the window being long enough to re-reach the deploy step"
+  }
+ ],
+ "validity": {
+  "status": "provisional",
+  "activeWhile": "resume does not bind its redeploy decision to the uncertain-execution ledger",
+  "invalidatedBy": [
+   "EP-1 / a fix that makes resume treat a known-applied effect as done"
+  ]
+ }
+}

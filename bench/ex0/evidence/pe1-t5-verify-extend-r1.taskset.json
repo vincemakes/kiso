@@ -1,0 +1,21 @@
+{
+"source": "pe1/t5-verify-extend-r1",
+"sourceSha": "bdf7090b647df62a",
+"events": [
+{
+"name": "task_set",
+"type": "tool_execution_started",
+"seq": 7886
+},
+{
+"name": "task_set",
+"type": "tool_execution_started",
+"seq": 8956
+},
+{
+"name": "task_set",
+"type": "tool_execution_started",
+"seq": 9092
+}
+]
+}
