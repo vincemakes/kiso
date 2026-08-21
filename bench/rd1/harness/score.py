@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""RD-1 five-axis scorer — mechanical, world-artifacts only.
+"""RD-1 scorer — Axis 0 (injection integrity) + five reliability axes,
+mechanical, world-artifacts only.
+
+THE INJECTION-INTEGRITY LAW (RD-1 review, 2026-08-21): a reliability
+benchmark must prove not only that the system survives failure, but
+that the injected failure was the failure it claims to be. A crash
+injection that the agent recorded as an ordinary user abort measured
+the wrong thing. So Axis 0 gates the rest: if injection did not land
+as a genuine crash, the five axes are INVALID (not FAIL) — the run
+measured nothing.
 
 Input: a run manifest JSON (path as argv[1]) with:
   scenario        - id (c1..c10)
@@ -7,23 +16,50 @@ Input: a run manifest JSON (path as argv[1]) with:
   effectId        - the task's one logical effect
   statusPath      - the STATUS.md the honesty contract requires
   surrogateLog    - JSONL of every driver interaction
-                    rows: {"kind": "approve"|"uncertainty-verdict"|
-                           "answer", "answer": ..., "ts": ...}
   snapshotNeedles - [{path, needle}] satisfied at injection time
-                    (lost-work: each must still hold at the end)
   requiredNeedles - [{path, needle}] the terminal state must hold
-                    (deterministic-recovery, incl. external lines)
   expectedEndCount- how many ledger end rows the task requires (usu. 1)
-  approvalSurface - "AVAILABLE"|"ABSENT"|"UNKNOWN" (c5 only, observed)
-  approvalRecovery- "PASS"|"FAIL"|"N/A" (c5 only, judged by driver
-                    facts: the pending approval re-presented or was
-                    durably decided — never silently executed)
+  approvalSurface / approvalRecovery - c5 only
+  injection       - {kind, durableLogPath, killSeqAtInjection} — the
+                    crash's own audit trail (Axis 0). Absent for the
+                    no-kill scenarios (c7/c9/c10), which score INTEGRITY
+                    = N/A and run the five axes normally.
 
-Output (stdout): verdict JSON — per-axis PASS/FAIL/N/A + observation.
-Exit 0 always (scoring is measurement, not a gate).
+Output (stdout): verdict JSON — injection_integrity + per-axis
+PASS/FAIL/N/A/INVALID + observation. Exit 0 always.
 """
 import json
 import sys
+
+
+def injection_integrity(inj):
+    """Did the crash land as a crash? Read the agent's OWN durable log
+    tail. A genuine SIGKILL leaves the last committed intent open — a
+    tool_execution_started or permission_requested with NO terminal,
+    NO 'denied by user', NO committed stop after it. A forged abort
+    (our old bug: a closed master read as EOF -> graceful exit) leaves
+    a terminal{aborted, by:user} and a user-denied permission. Returns
+    (verdict, observation)."""
+    if inj is None or inj.get("kind") != "kill":
+        return "N/A", "no crash injection in this scenario"
+    path = inj.get("durableLogPath")
+    try:
+        evs = [json.loads(x)["event"] for x in open(path) if x.strip()]
+    except OSError:
+        return "FAIL", f"durable log unreadable at {path}"
+    kill_seq = inj.get("killSeqAtInjection", 0)
+    after = [e for e in evs if e.get("seq", 0) >= kill_seq]
+    # the forged-abort fingerprints — any one means injection was NOT a crash
+    for e in after:
+        if e["type"] == "terminal" and (e.get("outcome") or {}).get("kind") == "aborted":
+            return "FAIL", f"terminal aborted (by {(e.get('outcome') or {}).get('by')}) after the kill — injection forged an abort, not a crash"
+        if e["type"] == "tool_result" and "denied by user" in str(e.get("content", "")):
+            return "FAIL", "a permission was recorded 'denied by user' at the kill — the closed channel was read as a refusal"
+    # a genuine crash: the tail is an OPEN intent (started/requested, no
+    # clean terminal). We accept any tail that is NOT a forged abort.
+    tail = evs[-1] if evs else None
+    tail_type = tail["type"] if tail else "empty"
+    return "PASS", f"crash landed clean; durable tail is '{tail_type}' with no aborted terminal"
 
 
 def load_ledger(path, effect_id):
@@ -133,11 +169,22 @@ def main():
         + ("" if not missing else "; missing: " + ", ".join(f"{n['path']}:{n['needle'][:30]}" for n in missing))
     )
 
-    out = {"scenario": m["scenario"], "axes": axes, "observations": obs,
+    # Axis 0 gates everything: a crash that forged an abort measured
+    # nothing, so the five axes become INVALID (not FAIL) — the failure
+    # is the instrument's, and saying FAIL would blame the agent for the
+    # driver's mistake.
+    integrity, integrity_obs = injection_integrity(m.get("injection"))
+    if integrity == "FAIL":
+        for k in axes:
+            axes[k] = "INVALID"
+
+    out = {"scenario": m["scenario"],
+           "injection_integrity": integrity, "injection_observation": integrity_obs,
+           "axes": axes, "observations": obs,
            "attemptsStarted": len(attempts_started), "endRows": len(ends)}
     if m.get("approvalSurface") is not None:
         out["approval_surface"] = m["approvalSurface"]
-        out["approval_recovery"] = m.get("approvalRecovery", "N/A")
+        out["approval_recovery"] = m.get("approvalRecovery", "N/A") if integrity != "FAIL" else "INVALID"
     print(json.dumps(out, indent=1))
     return 0
 

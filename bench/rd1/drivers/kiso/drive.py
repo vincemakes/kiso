@@ -113,23 +113,47 @@ class Leg:
     def send(self, s):
         os.write(self.fd, s.encode() if isinstance(s, str) else s)
 
-    def kill_group(self):
+    def crash(self):
+        """Crash injection, NOT abort injection (RD-1 injection-integrity
+        principle): the failure must arrive as a real process death, never
+        through the agent's control channel. kiso treats a closed pty
+        master as EOF -> graceful exit (R-G 0.1.48, correct product
+        behavior), so closing our master would forge an 'aborted by user'
+        terminal instead of a crash. Therefore: SIGKILL the main process
+        FIRST (uncatchable, no handler runs, no EOF is read), reap it,
+        and only THEN close our fd — the process is already gone, so the
+        close can no longer be read as a hangup. The group SIGKILL that
+        follows sweeps any detached tool children."""
         try:
-            os.killpg(self.pid, signal.SIGKILL)
+            os.kill(self.pid, signal.SIGKILL)   # the CLI itself, first and hardest
         except ProcessLookupError:
             pass
-        time.sleep(0.3)
         try:
-            os.kill(self.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        try:
-            os.waitpid(self.pid, 0)
+            os.waitpid(self.pid, 0)             # reap BEFORE touching the fd
         except ChildProcessError:
+            pass
+        try:
+            os.killpg(self.pid, signal.SIGKILL)  # sweep the (now-dead leader's) group
+        except (ProcessLookupError, PermissionError):
+            pass
+        try:
+            os.close(self.fd)                    # safe now: nothing alive to read EOF
+        except OSError:
             pass
         self.alive = False
 
     def end(self):
+        # Called only AFTER run_leg returned done/died. If the agent is
+        # already gone, reap and go. If still alive (a clean 'done' with
+        # the process idling for input), \x04 is a legitimate end-of-turn
+        # here — the run already completed, so there is no pending
+        # approval for it to forge into an abort (unlike the crash path).
+        try:
+            pid, _ = os.waitpid(self.pid, os.WNOHANG)
+            if pid:
+                return
+        except ChildProcessError:
+            return
         try:
             self.send("\x04")
         except OSError:
@@ -144,7 +168,7 @@ class Leg:
                 return
             self.pump(0.2)
         try:
-            os.kill(self.pid, signal.SIGTERM)
+            os.kill(self.pid, signal.SIGKILL)
             os.waitpid(self.pid, 0)
         except (ProcessLookupError, ChildProcessError):
             pass
@@ -221,29 +245,30 @@ def run_leg(argv, env, work, ledger, scn, log, phase, state):
     (approval y/n, the uncertainty 'did it apply?'), which DO render
     there. The surrogate answers those from workspace truth alone."""
     leg = Leg(argv, env, work)
-    # readiness: wait until the banner's cursor glyph (▌, U+258C) has
-    # rendered AND a short settle passes — an actively-polled wait, not a
-    # fixed sleep (a fixed sleep raced the first API byte and spuriously
-    # read 'died'). The extension line follows the glyph, so its arrival
-    # means the input line is live.
-    ready_deadline = time.time() + 40
-    while time.time() < ready_deadline:
-        leg.pump(0.2)
-        if not leg.alive:
-            return leg, "died"
-        if b"extensions:" in leg.full:
-            break
-    time.sleep(1.0)
-    for _ in range(3):
-        leg.pump(0.1)
+    # readiness differs by phase. A FRESH run prints the banner
+    # ('extensions:'); waiting for it means the input line is live, then
+    # we send the task. A RESUME prints NO banner — it replays the
+    # durable log and continues the interrupted run via session.resume()
+    # on its own (resume.ts: "continued via session.resume(), never
+    # faked with a new prompt"). So a resume leg needs NO readiness gate
+    # and NO nudge: we go straight into the answer loop, because the very
+    # first thing it may do is re-raise the interrupted approval, which
+    # the loop must answer.
     if phase == "pre":
+        ready_deadline = time.time() + 40
+        while time.time() < ready_deadline:
+            leg.pump(0.2)
+            if not leg.alive:
+                return leg, "died"
+            if b"extensions:" in leg.full:
+                break
+        time.sleep(1.0)
+        for _ in range(3):
+            leg.pump(0.1)
         leg.send(scn["prompt"] + "\r")
         log.add("prompt-sent")
     else:
-        # resume replays the durable log then idles for input; a bare
-        # newline unblocks the read without adding a turn.
-        leg.send("\r")
-        log.add("resume-nudge")
+        log.add("resume-start")
 
     status_path = os.path.join(work, "STATUS.md")
     status_seen_at = None
@@ -358,11 +383,22 @@ def main():
     state = {}
     injected = False
 
+    durable_log = os.path.join(home, "sessions", sid + ".jsonl")
+
+    def durable_max_seq():
+        try:
+            seqs = [json.loads(x)["event"].get("seq", 0) for x in open(durable_log) if x.strip()]
+            return max(seqs) if seqs else 0
+        except OSError:
+            return 0
+
     leg, why = run_leg([node, a.cli, sid], env, work, ledger, scn, log, "pre", state)
+    kill_seq = None
     if why == "trigger":
         # snapshot was taken inside run_leg at the exact trigger instant.
-        leg.kill_group()
-        log.add("injection", injection="kill")
+        kill_seq = durable_max_seq()  # the last committed seq the crash interrupts
+        leg.crash()
+        log.add("injection", injection="kill", killSeq=kill_seq)
         injected = True
         time.sleep(1.5)
         leg, why2 = run_leg([node, a.cli, "resume", sid], env, work, ledger, scn, log, "post", state)
@@ -396,6 +432,8 @@ def main():
         "requiredNeedles": [{"path": os.path.join(work, n["path"]), "needle": n["needle"]} for n in scn.get("requiredNeedles", [])],
         "expectedEndCount": scn.get("expectedEndCount", 1),
     }
+    if injected:
+        manifest["injection"] = {"kind": "kill", "durableLogPath": durable_log, "killSeqAtInjection": kill_seq}
     if approval_surface is not None:
         manifest["approvalSurface"] = approval_surface
         manifest["approvalRecovery"] = approval_recovery
@@ -425,7 +463,8 @@ def main():
     json.dump(report, open(os.path.join(a.out, "run.json"), "w"), indent=1)
     axes = verdict["axes"]
     line = " ".join(f"{k}={v}" for k, v in axes.items())
-    print(f"[rd1:{scn['id']}] {line}" + (f" | surface={verdict.get('approval_surface')} recovery={verdict.get('approval_recovery')}" if "approval_surface" in verdict else ""))
+    integ = verdict.get("injection_integrity", "N/A")
+    print(f"[rd1:{scn['id']}] INJECTION={integ} | {line}" + (f" | surface={verdict.get('approval_surface')} recovery={verdict.get('approval_recovery')}" if "approval_surface" in verdict else ""))
     return 0
 
 

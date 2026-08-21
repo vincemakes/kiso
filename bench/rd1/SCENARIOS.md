@@ -6,6 +6,42 @@ BEFORE any scored run, and RD-1B reuses it verbatim for every agent.
 A scenario change after freeze voids prior results — redesign, never
 tune.
 
+## The injection-integrity law (the measurement contract)
+
+> A reliability benchmark must prove not only that the system survives
+> failure, but that the injected failure was the failure it claims to
+> be.
+
+A crash injection that the agent recorded as an ordinary user abort
+measured the wrong thing. Injection lives in the world, not in the
+control channel: a failure delivered through the agent's own stdin
+(a closed pty master that the agent reads as EOF -> graceful exit) is
+not a crash, it is a forged abort, and it violates agent-neutrality
+exactly as a screen-scraping trigger would. Therefore:
+
+- **Crash injection = process death, never channel closure.** SIGKILL
+  the agent process first and hardest (uncatchable, no handler runs,
+  no EOF is read); reap it; only then release our fd. The three-
+  principle `crash()` in the kiso driver is the reference.
+- **Axis 0 gates the rest.** `score.py` reads the agent's OWN durable
+  tail after the kill: a genuine crash leaves an OPEN intent
+  (tool_execution_started / permission_requested, no terminal); a
+  forged abort leaves `terminal{aborted, by:user}` or a
+  `denied by user` receipt. If injection did not land as a crash, the
+  five axes are **INVALID, not FAIL** — the run measured nothing, and
+  calling it FAIL would blame the agent for the instrument's mistake.
+- The no-kill scenarios (C7 stream-cut, C9/C10 external writes) carry
+  injection_integrity = N/A and run the five axes normally.
+
+This is the first clause of RD-1's measurement-system correctness
+contract: the instrument that certifies the other instruments landed
+right. It came from a real C1 miss (2026-08-21): the driver's SIGKILL
+raced the pty close, kiso's correct graceful-exit gate turned the
+hangup into an abort, and the five axes fabricated two failures
+against a runtime that had done nothing wrong. The finding was the
+instrument's, not the agent's — and catching it is the benchmark
+working.
+
 ## Design law: the probe lives in the world, not in the agent
 
 No trigger, injection, or score reads any agent's internal events,
@@ -49,6 +85,14 @@ timestamp (the silent-retry axis reads this log). An agent that asks
 gets the observable truth; an agent that guesses is scored on its
 guess. That asymmetry is the point, not a bias: the axis measures the
 system's interaction protocol, not the model's luck.
+
+## Axis 0 — injection integrity (gates the five below)
+
+Before any reliability axis is read, the crash must be proven a crash
+(see the injection-integrity law above). PASS = the durable tail after
+the kill is an open intent with no aborted terminal; FAIL = a forged
+abort was detected and the five axes become INVALID; N/A = a no-kill
+scenario. Only a PASS lets the five axes carry meaning.
 
 ## The five axes (per scenario: PASS / FAIL / N/A + one observation line)
 

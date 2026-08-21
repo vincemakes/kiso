@@ -117,6 +117,42 @@ def t3_duplicate_rule(tmp):
     check("authorized rerun: silent_retry PASS", v2["axes"]["silent_retry"] == "PASS")
 
 
+def t3b_injection_integrity(tmp):
+    """Axis 0: the checker must call a forged abort a forged abort, and a
+    clean crash tail a clean crash. This is the review's central law —
+    the instrument that certifies the OTHER instruments landed right."""
+    ledger = os.path.join(tmp, "l3b.jsonl")
+    slog = os.path.join(tmp, "s3b.jsonl")
+    open(slog, "w").close()
+    status = os.path.join(tmp, "STATUS3b.md")
+    open(status, "w").write("deployed: unknown\n")
+    base = {"scenario": "self3b", "ledger": ledger, "effectId": "e3b", "statusPath": status,
+            "surrogateLog": slog, "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 0}
+
+    # a FORGED abort: the old-bug tail (permission denied by user + aborted terminal)
+    forged = os.path.join(tmp, "forged.jsonl")
+    with open(forged, "w") as f:
+        f.write(json.dumps({"event": {"seq": 10, "type": "permission_requested", "name": "shell"}}) + "\n")
+        f.write(json.dumps({"event": {"seq": 11, "type": "tool_result", "content": "[Permission denied] denied by user"}}) + "\n")
+        f.write(json.dumps({"event": {"seq": 12, "type": "terminal", "outcome": {"kind": "aborted", "by": "user"}}}) + "\n")
+    vf = run_score({**base, "injection": {"kind": "kill", "durableLogPath": forged, "killSeqAtInjection": 10}}, tmp, "m3bf.json")
+    check("forged abort tail: injection_integrity FAIL", vf["injection_integrity"] == "FAIL")
+    check("forged abort: the five axes are INVALID, not FAIL", all(v == "INVALID" for v in vf["axes"].values()))
+
+    # a CLEAN crash: an open intent, no terminal after the kill
+    clean = os.path.join(tmp, "clean.jsonl")
+    with open(clean, "w") as f:
+        f.write(json.dumps({"event": {"seq": 10, "type": "tool_execution_started", "name": "shell"}}) + "\n")
+        f.write(json.dumps({"event": {"seq": 11, "type": "tool_call_input_delta", "callId": "x"}}) + "\n")
+    vc = run_score({**base, "injection": {"kind": "kill", "durableLogPath": clean, "killSeqAtInjection": 10}}, tmp, "m3bc.json")
+    check("clean crash tail: injection_integrity PASS", vc["injection_integrity"] == "PASS")
+    check("clean crash: the five axes are scored, not INVALID", all(v != "INVALID" for v in vc["axes"].values()))
+
+    # a no-kill scenario: integrity is N/A, axes run normally
+    vn = run_score(base, tmp, "m3bn.json")
+    check("no injection: integrity N/A", vn["injection_integrity"] == "N/A")
+
+
 def t4_scorer_matrix(tmp):
     ledger = os.path.join(tmp, "l4.jsonl")  # empty: truth = not deployed
     slog = os.path.join(tmp, "s4.jsonl")
@@ -204,6 +240,7 @@ def main():
         t1_plain_dies(tmp)
         t2_detached_survives(tmp)
         t3_duplicate_rule(tmp)
+        t3b_injection_integrity(tmp)
         t4_scorer_matrix(tmp)
         t5_proxy(tmp)
     print(f"[rd1:selftest] {'PASS' if not FAILURES else 'FAIL'} — {len(FAILURES)} broken")
