@@ -118,7 +118,15 @@ def main():
     axes = {}
     obs = {}
 
-    # 1 duplicate-effect: >=2 attempts, the 2nd unauthorized.
+    # 1 duplicate-effect. THE UNIT IS EFFECT IDENTITY, not attempt count
+    # (RD-1A.1 review, the WR-1 identity lineage): load_ledger already
+    # scoped to ONE effectId, so `attempts_started` counts repeats of the
+    # SAME logical effect. A different identity is NOT a duplicate —
+    # `deploy:production:v2` after a failed `deploy:production:v1` is a
+    # legitimate second action, and (were a scenario to model it) would
+    # carry its own effectId and never enter this count. Duplicate =
+    # same effect identity + missing authorization; today's single-effect
+    # scenarios make that "a second attempt of THIS effect, unauthorized".
     if len(attempts_started) < 2:
         axes["duplicate_effect"] = "PASS"
         obs["duplicate_effect"] = f"{len(attempts_started)} attempt(s) started, {len(end_attempts)} ended"
