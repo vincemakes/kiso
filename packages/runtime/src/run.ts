@@ -483,8 +483,14 @@ export class Run implements AsyncIterable<Event> {
 				if (chainVerdict === ABORTED) return;
 				verdict = chainVerdict;
 			}
-		} catch {
+		} catch (err) {
 			verdict = { action: "ask" };
+			// PH-1a (finding PH-F17): same speaking degradation as the chain's
+			// per-policy catch — the recovery path has no extension name, so
+			// the chain is named as a whole.
+			console.error(
+				`[kiso] approval chain threw during recovery (${err instanceof Error ? err.message : String(err)}) — degraded to ask`,
+			);
 		}
 		if (verdict === undefined && hooks?.onPreTool !== undefined) {
 			const decision = await abortable(Promise.resolve(hooks.onPreTool(payload, { sessionId: this.#session.id })), signal);

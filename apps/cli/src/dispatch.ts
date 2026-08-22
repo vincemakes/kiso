@@ -211,7 +211,11 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 									const marks = [`profile: ${name}`, ...(profileAvailable(profile) ? [] : ["unavailable"]), ...(profile.model === agentModel ? ["current"] : [])];
 									return { label: `${profile.kind}/${profile.model}`, note: marks.join(" · ") };
 								}),
-								typeHint: names.length === 0 ? "type provider/model directly (e.g. openai/deepseek-reasoner)" : "type provider/model directly",
+								// PH-1a (finding PH-F4): the example must be a syntax
+								// directWriteProfile actually ACCEPTS — the old
+								// "openai/…" hint failed with "no such model profile"
+								// on exactly the fresh-install path that shows it.
+								typeHint: names.length === 0 ? "type provider/model directly (e.g. openai-compat/deepseek-reasoner)" : "type provider/model directly",
 								// the zero-profile copy is TODAY'S, verbatim: the
 								// user who sees it is exactly the user who needs
 								// the path spelled out
@@ -258,7 +262,13 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 							apiKey: process.env[profile.apiKeyEnv] as string,
 							...(profile.baseUrl !== undefined ? { baseUrl: profile.baseUrl } : {}),
 						});
-						ctx.session.setAdapter(adapter);
+						// PH-1a (finding PH-F8, P0): the switch is ATOMIC —
+						// adapter, model id, and provider route move together.
+						// setAdapter alone left the session's frozen config
+						// carrying the OLD model, so the status row claimed the
+						// new model while every request still sent the old id
+						// (and usage canonicalized under the old route).
+						ctx.session.setModelBinding({ adapter, model: profile.model, provider: profile.kind });
 						setAgentModel(profile.model);
 						setCurrentModelName(arg);
 						body.notice(`model → ${arg} (${profile.model}) — takes effect on the next turn`);
@@ -354,7 +364,35 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		return;
 	}
 	if (trimmed === "exit" || trimmed === "") {
+		// PH-1a (finding PH-F11): closing the input MID-RUN killed the very
+		// surface a later approval would ask through ("readline was
+		// closed", the v2b-era edge). On the DOCKED interactive surface the
+		// close now queues on the chain — the run finishes (approvals and
+		// all), then the REPL exits. DOCK-GATED on purpose: the pipe path
+		// is byte-pinned (a notice there would corrupt machine-read
+		// streams), a pipe's "exit" always arrives mid-run, and the
+		// approval panel the fix protects only exists on the dock. An idle
+		// exit is immediate, byte-for-byte as before, on every surface.
+		if (ctx.isRunning() && dock.active) {
+			if (trimmed === "exit") body.notice("[exit queued — closing after the current run completes]");
+			ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+				ctx.input.close();
+			});
+			return;
+		}
 		ctx.input.close();
+		return;
+	}
+	// PH-1a (finding PH-F1): an unrecognized slash command is an ERROR,
+	// never a turn — the fallthrough used to hand "/clear", "/exit", or a
+	// typo to the model, burning a request on text the user meant as a
+	// command. A multi-line paste that merely begins with "/" is prose and
+	// still submits.
+	if (trimmed.startsWith("/") && !trimmed.includes("\n")) {
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			bodyLog(`unknown command: ${escapeTerminal(trimmed.split(" ")[0] ?? trimmed)} — /help lists the commands`);
+			ctx.input.prompt();
+		});
 		return;
 	}
 	// v2c: a turn submitted while another runs waits on the chain — the

@@ -125,6 +125,23 @@ function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
 	};
 }
 
+/* PH-1a (findings PH-F6/PH-F10, the exit-wedge dossier — recorded, NOT
+ * fixed here): node keeps TTY fds in blocking mode, macOS pty output
+ * buffers are ~1KB, and on an UNREAD terminal a departing process can
+ * wedge two ways: (a) process.exit's own flush of pending blocking-TTY
+ * writes, and (b) the editor teardown's uv_tty_set_mode → tcsetattr
+ * (TCSADRAIN), which waits for that same drain inside an ioctl. Both are
+ * pre-existing and both are masked by the DEFAULT SIGTERM/SIGHUP
+ * disposition (kernel-level death cuts through a parked loop). Two
+ * repairs were built and REVERTED on evidence this round: a JS signal
+ * handler (a caught signal needs the loop the wedge just parked — see
+ * the tcsetattr ruling at main's handler comment) and a
+ * setBlocking(false)-at-exit rule (a non-blocking TTY plus an immediate
+ * process.exit DROPS the queued tail — the banner's version line and the
+ * dock's CSI r vanished; node made TTYs blocking precisely to prevent
+ * that truncation, and that choice is load-bearing). A real fix needs a
+ * non-draining native restore path — the PH-F6 mini-spec. */
+
 /** The v2c TTY path: the editor's events map 1:1 onto the interface; the
  *  input row renders on every state change (the CLI's onRender wiring). */
 function editorInput(editor: Editor): LineInput {
@@ -534,9 +551,12 @@ async function pickSession(agent: Awaited<ReturnType<typeof makeAgent>>, input: 
 	}
 	// a dock-less TTY (rows < 4) has no band to draw the picker in, so the
 	// honest answer is the usage line this command has always printed.
+	// PH-1a (finding PH-F12): thrown, never process.exit'd from this depth
+	// — the old exit(2) skipped main's finally (dock.exit, agent.close,
+	// temp cleanup) and could leave the scroll region and lock residue
+	// behind. The entry catch translates the error back to exit code 2.
 	if (input.pick === undefined || !dock.active) {
-		console.error('usage: kiso resume <sessionId> ["prompt"]');
-		process.exit(2);
+		throw new CliUsageError('usage: kiso resume <sessionId> ["prompt"]');
 	}
 	dock.setStatus("", PICKER_HINT);
 	const picked = await new Promise<string | null>((resolve) => {
@@ -572,6 +592,13 @@ function paintBootStatus(session: { log: { all: readonly unknown[] } }): void {
 	dock.setStatus(idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), agentModel, estimateCtxRatio(session as never)));
 }
 
+/** PH-1a (finding PH-F12): a usage error raised from inside the TUI —
+ *  main's finally still runs (dock teardown, agent close, temp cleanup)
+ *  and the entry catch exits with the historical code 2. */
+class CliUsageError extends Error {
+	readonly exitCode = 2;
+}
+
 async function main(): Promise<void> {
 	// E group (the graceful-exit gate ③, R-G 0.1.48): a terminal closing
 	// turns the in-flight stdout/stderr writes into EIO, and node's
@@ -586,6 +613,19 @@ async function main(): Promise<void> {
 	// first makeAgent (the tier extensions read `current` live). The flag
 	// is stripped from the positional args, so it works in any position.
 	const args = process.argv.slice(2);
+	// PH-1a (finding PH-F2): --help/-h/--version/-v are FLAGS, not session
+	// ids. They used to fall through the default case and START A SESSION
+	// literally named "--help" (writing ~/.kiso/sessions/--help.jsonl) —
+	// the single highest-frequency new-user gesture, failing silently and
+	// destructively. Checked FIRST, before any other flag parsing, so
+	// `kiso --help` never trips the --model usage error either.
+	if (args.some((a) => a === "--help" || a === "-h")) {
+		args.length = 0;
+		args.push("help");
+	} else if (args.some((a) => a === "--version" || a === "-v")) {
+		console.log(VERSION);
+		return;
+	}
 	// merge round B: --model <profile|provider/model> — the top of the model
 	// precedence chain; the value flows into makeAgent's config resolution.
 	let modelFlag: string | undefined;
@@ -626,6 +666,21 @@ async function main(): Promise<void> {
 	// readline elsewhere. The trust question, chat, and resume all read
 	// through it; main's finally closes it on every exit path.
 	const input = makeLineInput();
+	// PH-1a (finding PH-F6, RESOLVED AS WON'T-FIX-IN-JS — the tcsetattr
+	// ruling): SIGTERM/SIGHUP deliberately keep their DEFAULT disposition.
+	// A JS handler that restored the terminal was built and then reverted
+	// on hard evidence: libuv's uv_tty_set_mode calls tcsetattr with
+	// TCSADRAIN, which WAITS for the pty's pending output to drain — on an
+	// unread terminal (exactly where signals tend to arrive) the editor's
+	// teardown parks the event loop in that ioctl forever, and a CAUGHT
+	// signal can only be dispatched by the loop it just parked. Catching
+	// the signal therefore converts kernel-guaranteed death into a death
+	// that may never happen — strictly worse than a dirty terminal. The
+	// default disposition keeps SIGTERM/SIGHUP lethal under every state;
+	// a signal death leaves raw mode/mouse on and `reset` is the fix (the
+	// same contract kill -9 has always had). A safe restore needs a
+	// non-draining native path (bytes-only restore, or tcflush-then-set)
+	// — its own mini-spec, not a hotfix.
 	// v2d: the body renderer — active only where the dock is (a color
 	// TTY with a real size); pipes run it in passthrough, byte-for-byte.
 	setBody(
@@ -801,9 +856,31 @@ async function main(): Promise<void> {
 // test imported src/index.js for its functions (harmless before the
 // first-run scaffold existed; the scaffold WRITES the home). The bin is
 // a symlink, so argv[1] is realpathed before the comparison.
+/** PH-1a (finding PH-F10): the explicit exit stays (v2a: natural drain is
+ *  racy on a TTY — readline leaves the stdio handles active), but on a
+ *  PIPE it now waits for both stdio streams to flush first — process.exit
+ *  does not drain a pipe's pending async writes, so `kiso sessions | head`
+ *  could lose its tail. TTY-GATED on purpose: a pipe's flush callbacks
+ *  always settle (the reader drains, or the break surfaces as EPIPE), but
+ *  an unread TTY's never do — waiting there would trade a truncation bug
+ *  for a hang (the exit-wedge dossier above editorInput). The TTY path keeps the
+ *  v2a immediate exit, byte-for-byte. */
+function exitFlushed(code: number): void {
+	if (process.stdout.isTTY === true) {
+		process.exit(code);
+	}
+	let pending = 2;
+	const done = (): void => {
+		pending -= 1;
+		if (pending === 0) process.exit(code);
+	};
+	process.stdout.write("", done);
+	process.stderr.write("", done);
+}
+
 if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
 	main()
-		.then(() => process.exit(0))
+		.then(() => exitFlushed(0))
 		.catch((err) => {
 		// round 10: top-level errors are terminal-escaped. v2a: the exit is EXPLICIT
 		// — natural drain is racy on a TTY (readline leaves the stdio handles
@@ -811,6 +888,6 @@ if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === fileURLTo
 		// ran (agent.close, dispose, temp cleanup) — nothing is skipped, no
 		// lock is left behind; the exit code is honest.
 			console.error(escapeTerminal(err instanceof Error ? err.message : String(err)));
-			process.exit(1);
+			exitFlushed(err instanceof CliUsageError ? err.exitCode : 1);
 		});
 }

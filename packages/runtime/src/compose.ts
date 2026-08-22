@@ -198,8 +198,15 @@ export function composeApprovalChain(extensions: readonly KisoExtension[]): Appr
 				let v: PolicyVerdict;
 				try {
 					v = await Promise.resolve(policy.decide(payload, ctx));
-				} catch {
+				} catch (err) {
 					v = { action: "ask" }; // a throwing policy counts as ask — it speaks, never silently
+					// PH-1a (finding PH-F17): the degradation itself must speak
+					// too — a permanently-throwing policy used to manifest only
+					// as "why is it asking me about everything?". One stderr
+					// line, naming the extension; the verdict is unchanged.
+					console.error(
+						`[kiso] approval policy from extension "${extension}" threw (${err instanceof Error ? err.message : String(err)}) — degraded to ask`,
+					);
 				}
 				if (v.action === "abstain") continue; // no opinion — not a verdict
 				anySpoke = true;

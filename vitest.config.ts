@@ -18,6 +18,12 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
 	test: {
+		// PH-1a (finding PH-F5, the isolation half): a host shell exporting
+		// NO_COLOR turned ~30 palette-asserting UI tests red — the suite's
+		// verdict depended on the invoking shell's profile. The setup file
+		// strips it once per worker; tests that TEST NO_COLOR set it
+		// themselves inside the test body and are unaffected.
+		setupFiles: ["./tests/setup-env.ts"],
 		exclude: [
 			"**/node_modules/**",
 			"**/dist/**",

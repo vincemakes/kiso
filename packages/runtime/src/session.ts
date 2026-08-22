@@ -143,9 +143,18 @@ export class AgentSession {
 	readonly log: EventLog;
 	readonly #store: SessionStore;
 	// NOT readonly since 0.1.23: /model replaces it between runs (the
-	// constructor and setAdapter are the only writers).
+	// constructor, setAdapter, and setModelBinding are the only writers).
 	#adapter: Adapter;
 	readonly #config: SessionConfig;
+	// PH-1a (finding PH-F8, P0): the LIVE model binding. #config froze the
+	// startup model/provider, so a /model switch replaced the adapter while
+	// every later run kept sending the OLD model id and canonicalizing
+	// usage under the OLD route. These two travel WITH the adapter now —
+	// setModelBinding writes all three in one call; runs read them through
+	// #effectiveConfig at run construction (next-turn semantics, same as
+	// setAdapter always had).
+	#model: string;
+	#provider: "anthropic" | "openai-compat" | undefined;
 	readonly #pendingResolvers = new Map<string, (decision: PermissionDecision) => void>();
 	readonly #uncertaintyResolvers = new Map<string, (resolution: "rerun" | "abandoned") => void>();
 	readonly #answered = new Set<string>();
@@ -198,6 +207,17 @@ export class AgentSession {
 		}
 		const composedHooks = composeHooks(config.hooks, config.extensions ?? []);
 		this.#config = composedHooks === undefined ? config : { ...config, hooks: composedHooks };
+		this.#model = config.model;
+		this.#provider = config.provider;
+	}
+
+	/** The config a NEW run/resume/summary sees: the frozen startup config
+	 *  with the LIVE binding fields (model, provider) substituted. Built
+	 *  fresh per call so an in-flight run keeps the config it started with
+	 *  — the same boundary setAdapter has always drawn. */
+	#effectiveConfig(): SessionConfig {
+		const { provider: _startup, ...rest } = this.#config;
+		return { ...rest, model: this.#model, ...(this.#provider !== undefined ? { provider: this.#provider } : {}) };
 	}
 
 	/** Write-ahead through the store; a rejected write POISONS the session
@@ -248,12 +268,29 @@ export class AgentSession {
 		this.#adapter = adapter;
 	}
 
+	/**
+	 * PH-1a (finding PH-F8, P0): the ATOMIC model switch — adapter, model
+	 * id, and provider route replace together, effective at the next run.
+	 * setAdapter alone is for a same-binding adapter swap (the faux
+	 * re-arm); a switch that changes WHAT model answers must come through
+	 * here, or the UI claims one model while requests carry another.
+	 * Omitting `provider` clears the route — an unknown binding is
+	 * canonicalized under the honest "adapter" route (null-priced), never
+	 * the stale one. (The context window joins the binding when per-model
+	 * metadata exists — the PH-1c registry.)
+	 */
+	setModelBinding(binding: { readonly adapter: Adapter; readonly model: string; readonly provider?: "anthropic" | "openai-compat" }): void {
+		this.#adapter = binding.adapter;
+		this.#model = binding.model;
+		this.#provider = binding.provider;
+	}
+
 	/** E2: the adapter identity ("anthropic" | "openai-compat") — the route
 	 *  key the canonical consumer (CLI usage, the trace block) keys on. The
-	 *  per-run tracer reads the SAME #config.provider; one source, one
+	 *  per-run tracer reads the SAME live binding; one source, one
 	 *  route — the CLI and the trace can never disagree. */
 	get provider(): "anthropic" | "openai-compat" | undefined {
-		return this.#config.provider;
+		return this.#provider;
 	}
 
 	/**
@@ -301,8 +338,8 @@ export class AgentSession {
 			root: this.#store.root,
 			sessionId: this.id,
 			runId,
-			provider: this.#config.provider ?? "adapter",
-			model: this.#config.model,
+			provider: this.#provider ?? "adapter",
+			model: this.#model,
 			adapterVersion: runtimeVersion(),
 			purpose: options.purpose,
 			// the manifest's seqRange pointers derive from the log, and a side
@@ -318,7 +355,7 @@ export class AgentSession {
 		let text = "";
 		try {
 			for await (const ev of guarded.stream({
-				model: this.#config.model,
+				model: this.#model,
 				messages: [{ role: "user", content: options.prompt }],
 				systemPrompt: options.systemPrompt,
 				...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
@@ -335,7 +372,7 @@ export class AgentSession {
 	/** Run one user turn. Iterate to consume; `run.abort()` cancels. */
 	run(input: string, options?: { signal?: AbortSignalLike; source?: import("@vincemakes/kiso-core").MessageSource }): Run {
 		this.ensureHealthy();
-		return new Run(this.#store, this.#adapter, this.#config, this, input, options?.signal, false, options?.source);
+		return new Run(this.#store, this.#adapter, this.#effectiveConfig(), this, input, options?.signal, false, options?.source);
 	}
 
 	/**
@@ -346,7 +383,7 @@ export class AgentSession {
 	 */
 	resume(): Run {
 		this.ensureHealthy();
-		return new Run(this.#store, this.#adapter, this.#config, this, undefined, undefined, true);
+		return new Run(this.#store, this.#adapter, this.#effectiveConfig(), this, undefined, undefined, true);
 	}
 
 	/**
@@ -400,7 +437,7 @@ export class AgentSession {
 		} else {
 			const call = await summarizeConversation({
 				adapter: this.#adapter,
-				model: this.#config.model,
+				model: this.#model,
 				// E6 (a): ONE serialized user message — the DSML bug's
 				// raw-message array is structurally dead on this path.
 				messages: [{ role: "user", content: serializedInput }],
@@ -433,7 +470,7 @@ export class AgentSession {
 		// a degraded ledger costs one stderr line, never the summary.
 		if (usage !== null) {
 			try {
-				const canonical = canonicalizeUsage(this.#config.provider ?? "adapter", usage);
+				const canonical = canonicalizeUsage(this.#provider ?? "adapter", usage);
 				const line = JSON.stringify({ kind: "summary", canonical }) + "\n";
 				mkdirSync(join(this.#store.root, "traces"), { recursive: true });
 				appendFileSync(join(this.#store.root, "traces", `${this.id}.jsonl`), line);

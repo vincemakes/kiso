@@ -122,16 +122,14 @@ export function pricingTableFor(version: number): PricingTable {
 }
 
 export function priceFor(route: string, u: { input: number; output: number; cacheRead: number; cacheWrite: number | null }, table: PricingTable): number | null {
-	// The R5b-④c semantics: a REAL route (an INPUT_CONVENTIONS key — the
-	// routes the table is expected to price) missing from the table is a
-	// HOLE → null, the explicit-absent stamp. The builtin table never
-	// backfills an injected table's hole. Unknown routes keep the legacy
-	// within-table mirror fallback (the total-convention entry, matching
-	// the convention fallback above — one table, one fallback, no drift);
-	// a table without even the mirror entry yields null, never a crash.
-	const entry =
-		table.entries[route] ??
-		(route in INPUT_CONVENTIONS ? undefined : table.entries["openai-compat"]);
+	// PH-1a (supersedes R5b-④c's mirror fallback): a route missing from
+	// the table is a HOLE → null, the explicit-absent stamp — REAL routes
+	// and unknown routes alike. The retired mirror fallback priced the
+	// "adapter" route (a directly-injected adapter, finding PH-F7) at the
+	// openai-compat entry: a fabricated cost on exactly the runs whose
+	// rates are unknown. null is the honest answer; the builtin table
+	// never backfills an injected table's hole either.
+	const entry = table.entries[route];
 	if (entry === undefined) return null;
 	return (
 		(u.input * entry.inputPerM +

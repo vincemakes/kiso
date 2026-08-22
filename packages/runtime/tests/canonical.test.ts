@@ -207,8 +207,15 @@ describe("R5b-④ — the injection slot, the (id, version) stamp, and the absen
 		expect(validateCanonicalUsage({ ...c, pricingTableId: "acme", pricingTableVersion: 42 })).toBe(true);
 	});
 
-	it("④c — unknown routes keep the within-table mirror fallback; no entry at all → null, never a crash", () => {
-		expect(priceFor("bogus-route", { input: 1, output: 0, cacheRead: 0, cacheWrite: null }, PRICING_TABLE_V1)).toBeCloseTo(0.27 / 1e6, 12);
+	it("④c (superseded by PH-1a) — an unknown route is NEVER priced: no entry → null, never a crash, never a mirror guess", () => {
+		// PH-1a sanctioned supersession of the R5b-④c mirror fallback: the
+		// "adapter" route (a directly-injected adapter, or a binding with no
+		// declared provider) used to be silently priced at the openai-compat
+		// mirror entry — a fabricated cost on exactly the runs whose rates
+		// are unknown. costUsd = null is the honest stamp (E2's nullable
+		// convention); the convention fallback ("total") is unchanged.
+		expect(priceFor("bogus-route", { input: 1, output: 0, cacheRead: 0, cacheWrite: null }, PRICING_TABLE_V1)).toBeNull();
+		expect(priceFor("adapter", { input: 1, output: 0, cacheRead: 0, cacheWrite: null }, PRICING_TABLE_V1)).toBeNull();
 		const ANTHROPIC_ONLY: PricingTable = {
 			id: "anthropic-only",
 			version: 3,

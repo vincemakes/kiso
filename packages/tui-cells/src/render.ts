@@ -63,7 +63,14 @@ export interface Palette {
 export const COLOR_ON: Palette = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m", code: "\x1b[38;5;252m", italic: "\x1b[3m", italicEnd: "\x1b[23m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" };
 export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", rv: "", rvEnd: "", reset: "" };
 export function palette(): Palette {
-	return process.env.NO_COLOR === undefined && process.stdout.isTTY ? COLOR_ON : COLOR_OFF;
+	// PH-1a (finding PH-F5): the no-color.org contract is "present AND
+	// non-empty" — the old `=== undefined` check let an EMPTY `NO_COLOR=`
+	// (a common shell-profile/CI shape) kill the colors, and through the
+	// dock's activation gate (`palette().bold !== ""`) the entire docked
+	// UI with them. The v4-round plan recorded this as debugging pitfall ①;
+	// it was a bug.
+	const noColor = process.env.NO_COLOR;
+	return (noColor === undefined || noColor === "") && process.stdout.isTTY ? COLOR_ON : COLOR_OFF;
 }
 
 /**

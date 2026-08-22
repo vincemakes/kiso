@@ -83,6 +83,15 @@ describe("v2a/v5/KC3: the palette", () => {
 		expect(palette()).toBe(COLOR_ON);
 	});
 
+	it("PH-F5: an EMPTY NO_COLOR does not disable color — no-color.org is 'present and non-empty'", () => {
+		// The old `=== undefined` check let `NO_COLOR=` (a common
+		// shell-profile/CI shape) kill the palette — and through the dock's
+		// activation gate (`palette().bold !== ""`), the entire docked UI.
+		setTTY(true);
+		process.env.NO_COLOR = "";
+		expect(palette()).toBe(COLOR_ON);
+	});
+
 	/**
 	 * KC3 §2 — the mono discipline, stated as a gate rather than a
 	 * convention. The body of the interface is carried by shades of

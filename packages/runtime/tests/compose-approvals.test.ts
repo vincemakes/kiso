@@ -16,7 +16,7 @@
  * later allow still reaches the human.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { defineTool, EventLog, loop, type Event, type PolicyVerdict } from "@vincemakes/kiso-core";
 import { ToolRegistry } from "@vincemakes/kiso-core";
@@ -214,27 +214,39 @@ describe("E1: the chain composes deny > allow > ask", () => {
 	});
 
 	it("a policy that throws counts as ask — a LATER allow still overrides it (W21/R3)", async () => {
-		const log = await runCall(
-			{ name: "read_file", callId: "r1", input: { path: "a.ts" } },
-			[
-				{
-					name: "broken",
-					approvals: [
-						{
-							decide: () => {
-								throw new Error("policy bug");
+		// PH-1a (finding PH-F17): the degradation must SPEAK — a
+		// permanently-throwing policy used to manifest only as "why is it
+		// asking me about everything?", with zero observability on a
+		// security-critical path. One stderr line names the extension and
+		// the error; the fail-safe direction (degrade to ask) is unchanged.
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const log = await runCall(
+				{ name: "read_file", callId: "r1", input: { path: "a.ts" } },
+				[
+					{
+						name: "broken",
+						approvals: [
+							{
+								decide: () => {
+									throw new Error("policy bug");
+								},
 							},
-						},
-					],
-				},
-				{ name: "allow-all", approvals: [{ decide: allowAll }] },
-			],
-		);
-		// The thrown ask is an ask — but the LATER allow beats it (R3);
-		// the run executes, never pausing for the human.
-		expect(log.all.some((e) => e.type === "permission_requested")).toBe(false);
-		expect(decided(log)[0]).toMatchObject({ decision: "approved", decidedBy: "allow-all" });
-		expect(resultOf(log)?.content).toBe("ok");
+						],
+					},
+					{ name: "allow-all", approvals: [{ decide: allowAll }] },
+				],
+			);
+			// The thrown ask is an ask — but the LATER allow beats it (R3);
+			// the run executes, never pausing for the human.
+			expect(log.all.some((e) => e.type === "permission_requested")).toBe(false);
+			expect(decided(log)[0]).toMatchObject({ decision: "approved", decidedBy: "allow-all" });
+			expect(resultOf(log)?.content).toBe("ok");
+			const spoke = errSpy.mock.calls.map((c) => String(c[0]));
+			expect(spoke.some((line) => line.includes("broken") && line.includes("policy bug") && line.includes("ask"))).toBe(true);
+		} finally {
+			errSpy.mockRestore();
+		}
 	});
 
 	it("abstain does not weaken a deny — the deny still wins and records its own name", async () => {

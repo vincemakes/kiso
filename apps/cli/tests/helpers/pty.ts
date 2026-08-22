@@ -33,6 +33,11 @@ import pty, os, sys, time, select, struct, fcntl, termios, signal
 def driver(cli, args, env, feeds, timeout, cwd, rows, cols, delays):
     pid, fd = pty.fork()
     if pid == 0:
+        # PH-1a (finding PH-F5, the isolation half): the host shell's
+        # NO_COLOR leaked into every PTY child and flipped the palette the
+        # byte-pinned grids assert. A test that WANTS it passes it in env.
+        if "NO_COLOR" not in env:
+            os.environ.pop("NO_COLOR", None)
         os.environ.update(env)
         if cwd:
             os.chdir(cwd)
