@@ -368,3 +368,32 @@ describe("P1 e2e — the straddled pair survives /compact (the pairing 400 famil
 		expect(compacted!.coversToSeq).toBe(11);
 	}, 30_000);
 });
+
+describe("R3a — /compact <focus> steers the summary call", () => {
+	it("the focus rides the serialized input as ONE leading instruction line; absent = byte-identical", async () => {
+		const seen: string[] = [];
+		const capture: Adapter = {
+			stream(options) {
+				seen.push(String((options.messages[0] as { content: string }).content));
+				return (async function* () {
+					yield { type: "text_delta", text: VALID_SUMMARY } as import("@vincemakes/kiso-core").AdapterEvent;
+					yield { type: "stop", reason: "end_turn" } as import("@vincemakes/kiso-core").AdapterEvent;
+				})();
+			},
+		};
+		const dir = mkdtempSync(join(tmpdir(), "kiso-compact-focus-"));
+		const store = new SessionStore(dir);
+		await seedLongSession(store, "f");
+		const agent = createAgent({ model: "faux", store, tools: [], adapter: capture });
+		const session = await agent.session({ id: "f" });
+		await session.summarize({ focus: "keep the auth details" });
+		expect(seen[0]).toMatch(/^Focus the summary on: keep the auth details\n\n/);
+		// absent focus: the serialized input starts exactly where it always did
+		const store2 = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-compact-nofocus-")));
+		await seedLongSession(store2, "g");
+		const agent2 = createAgent({ model: "faux", store: store2, tools: [], adapter: capture });
+		const session2 = await agent2.session({ id: "g" });
+		await session2.summarize();
+		expect(seen[1]).not.toContain("Focus the summary on:");
+	});
+});

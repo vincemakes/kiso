@@ -397,7 +397,12 @@ export class AgentSession {
 	 * worth covering yet). Crash semantics: a crash BEFORE the persist is
 	 * "nothing happened"; after it, a resume projects the compressed view.
 	 */
-	async summarize(options: { keepRounds?: number; keepTokens?: number; signal?: AbortSignalLike; onStart?: (info: CompactInfo) => void; drop?: boolean } = {}): Promise<SummarizeResult | null> {
+	async summarize(
+		// R3a: `focus` — an optional steer for the summary call ("keep the
+		// auth details"). Rides the serialized input as ONE instruction
+		// line; absent = byte-identical to the pre-round call.
+		options: { keepRounds?: number; keepTokens?: number; signal?: AbortSignalLike; onStart?: (info: CompactInfo) => void; drop?: boolean; focus?: string } = {},
+	): Promise<SummarizeResult | null> {
 		this.ensureHealthy();
 		const keepRounds = options.keepRounds ?? KEEP_RECENT_ROUNDS;
 		// W18: the signal is observed at EVERY phase boundary — the cancel
@@ -418,7 +423,9 @@ export class AgentSession {
 		const covered = projectMessages(
 			events.filter((e) => e.seq > prevPoint && e.seq <= boundary && e.type !== "summarized"),
 		);
-		const serializedInput = serializeCovered({ events, prevPoint, boundary });
+		const serialized0 = serializeCovered({ events, prevPoint, boundary });
+		const serializedInput =
+			options.focus === undefined ? serialized0 : `Focus the summary on: ${options.focus}\n\n${serialized0}`;
 		// W18: the indicator's pre-call data — rounds + the token estimate
 		// are knowable BEFORE the adapter call; the summary itself is ONE
 		// call with no fraction (kiso never invents a percentage here).

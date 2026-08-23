@@ -279,6 +279,14 @@ export class Editor {
 		this.#escapeCbs.push(cb);
 	}
 
+	#onModeCycle: (() => void) | null = null;
+
+	/** R3a — Shift+Tab: the approval-tier cycle. The MEANING lives in the
+	 *  CLI (which tier follows which); the editor only reports the key. */
+	onModeCycle(cb: () => void): void {
+		this.#onModeCycle = cb;
+	}
+
 	onExpand(cb: () => void): void {
 		this.#expandCbs.push(cb);
 	}
@@ -1187,6 +1195,14 @@ export class Editor {
 			this.#mouseEvent(params, final === "M");
 			return;
 		}
+		// R3a — Shift+Tab (CSI Z, the universal back-tab encoding) cycles
+		// the approval tier. Composer-idle ONLY: a panel, picker, menu,
+		// history browse or question owns its keys first (the W21 gate),
+		// and a mid-word back-tab has no meaning the composer would miss.
+		if (final === "Z" && params === "" && this.#composerIdle()) {
+			this.#onModeCycle?.();
+			return;
+		}
 		// KC1 §4 — Shift+Enter WHERE THE TERMINAL ENCODES IT: kitty's
 		// CSI-u (ESC [ 13;2 u) and xterm's modifyOtherKeys (ESC [ 27;2;13 ~).
 		// Never claimed universal — Ctrl+J is the everywhere baseline; a
@@ -1746,8 +1762,25 @@ export class Editor {
 	 *  answers, never empties; adjacent duplicates collapse, the tail
 	 *  caps at 100. A redirect is a turn, so it is remembered too. */
 	#remember(line: string): void {
-		if (this.#history[this.#history.length - 1] !== line) this.#history.push(line);
+		if (this.#history[this.#history.length - 1] !== line) {
+			this.#history.push(line);
+			// R3a: the persistence seam — the CLI owns the file (the tui
+			// stays I/O-free); adjacent-duplicate collapse already applied
+			this.#persistHistory?.(line);
+		}
 		if (this.#history.length > 100) this.#history.shift();
+	}
+
+	#persistHistory: ((line: string) => void) | null = null;
+
+	/** R3a — cross-session input history: seed the recall buffer and
+	 *  register the append sink. The cap and the adjacent-duplicate
+	 *  collapse are unchanged; the seed takes the TAIL of what the CLI
+	 *  loaded. Never persists question answers (#remember's callers
+	 *  already exclude them). */
+	bindHistory(seed: readonly string[], persist: (line: string) => void): void {
+		this.#history = seed.slice(-100).filter((l) => l !== "");
+		this.#persistHistory = persist;
 	}
 
 	/** KC2 §2 — the NORMAL composer state: the redirect gesture is live

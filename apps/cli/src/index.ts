@@ -24,7 +24,7 @@
  * makeAgent, and main.
  */
 
-import { readFileSync, realpathSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -42,7 +42,7 @@ import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, getMode, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
 import { builtInLayer } from "./builtin.js";
-import { agentModel, atFiles, body, bodyLog, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setSessionStore, userExtensions, VERSION, type LineInput } from "./state.js";
+import { agentModel, atFiles, body, bodyLog, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setSessionStore, userExtensions, VERSION, type LineInput } from "./state.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
@@ -197,6 +197,13 @@ function editorInput(editor: Editor): LineInput {
 		// chips are the compositor's bindQueue (the dock side).
 		bindQueue(state, pop) {
 			editor.bindQueue(state, pop);
+		},
+		// R3a: cross-session history — the CLI owns the file I/O.
+		bindHistory(seed, persist) {
+			editor.bindHistory(seed, persist);
+		},
+		onModeCycle(cb) {
+			editor.onModeCycle(cb);
 		},
 		emitLine() {
 			/* the editor's buffer survives a cancelled question — its text
@@ -663,6 +670,22 @@ async function main(): Promise<void> {
 		console.log(VERSION);
 		return;
 	}
+	// R3a: -p/--print — the one-shot prompt mode (the F3 adjudication's
+	// forward path: a bare quoted argument stays a session id; the
+	// PROMPT is explicit). `kiso -p "fix the bug"` runs one turn on a
+	// fresh session and exits; an optional trailing session id continues
+	// that session one-shot instead. Exit code: 0 only when the turn's
+	// terminal is `completed` — scripts can trust it.
+	let printPrompt: string | undefined;
+	const printIdx = args.findIndex((a) => a === "-p" || a === "--print");
+	if (printIdx !== -1) {
+		printPrompt = args[printIdx + 1];
+		if (printPrompt === undefined) {
+			console.error('usage: kiso -p "prompt" [sessionId]');
+			process.exit(2);
+		}
+		args.splice(printIdx, 2);
+	}
 	// merge round B: --model <profile|provider/model> — the top of the model
 	// precedence chain; the value flows into makeAgent's config resolution.
 	let modelFlag: string | undefined;
@@ -703,6 +726,31 @@ async function main(): Promise<void> {
 	// readline elsewhere. The trust question, chat, and resume all read
 	// through it; main's finally closes it on every exit path.
 	const input = makeLineInput();
+	// R3a — cross-session input history: ~/.kiso/history, one line per
+	// entry, appended on submit, tail-500 at load (truncated by REWRITE
+	// at startup so the file never grows unbounded). Unreadable file =
+	// an empty history, silently — recall is a convenience, never a
+	// startup risk. Control-character lines never enter the file (the
+	// editor's own recall excludes them by construction: a submitted
+	// line is printable input).
+	if (input.bindHistory !== undefined) {
+		const historyPath = join(kisoHome(), "history");
+		let seed: string[] = [];
+		try {
+			seed = readFileSync(historyPath, "utf8").split("\n").filter((l) => l !== "").slice(-500);
+			writeFileSync(historyPath, seed.length > 0 ? seed.join("\n") + "\n" : "");
+		} catch {
+			// no file yet, or unreadable — start empty
+		}
+		input.bindHistory(seed, (line) => {
+			try {
+				mkdirSync(kisoHome(), { recursive: true });
+				appendFileSync(historyPath, line.replaceAll("\n", " ") + "\n");
+			} catch {
+				// best-effort — a full disk never breaks a submit
+			}
+		});
+	}
 	// PH-1a (finding PH-F6, RESOLVED AS WON'T-FIX-IN-JS — the tcsetattr
 	// ruling): SIGTERM/SIGHUP deliberately keep their DEFAULT disposition.
 	// A JS handler that restored the terminal was built and then reverted
@@ -736,6 +784,19 @@ async function main(): Promise<void> {
 		const applyConfigMode = (): void => {
 			if (modeFlag === -1 && process.env.KISO_MODE === undefined && mergedConfig.mode !== undefined) setMode(mergedConfig.mode);
 		};
+		if (printPrompt !== undefined) {
+			// the -p flow: recovery-first one-shot, the resume() machinery
+			// verbatim (a fresh id makes the recovery a no-op)
+			const id = command ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+			agent = await makeAgent(id, input, modelFlag);
+			applyConfigMode();
+			const session = await agent.session({ id });
+			faux = currentFaux;
+			await resume(session, printPrompt, faux, input);
+			const last = [...session.log.all].reverse().find((e) => e.type === "terminal");
+			process.exitCode = last !== undefined && (last as { outcome: { kind: string } }).outcome.kind === "completed" ? 0 : 1;
+			return;
+		}
 		switch (command) {
 			case "chat": {
 				const id = arg ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
@@ -927,7 +988,7 @@ function exitFlushed(code: number): void {
 
 if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
 	main()
-		.then(() => exitFlushed(0))
+		.then(() => exitFlushed(typeof process.exitCode === "number" ? process.exitCode : 0))
 		.catch((err) => {
 		// round 10: top-level errors are terminal-escaped. v2a: the exit is EXPLICIT
 		// — natural drain is racy on a TTY (readline leaves the stdio handles

@@ -1209,6 +1209,15 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// chain action (the sentinel's control char marks the key, so a typed
 	// "expand" turn is never intercepted).
 	input.onExpand(() => dispatch("\x12expand", dispatchCtx));
+	// R3a — Shift+Tab: the approval-tier cycle (the /mode ring, in the
+	// MODES order). The switch is the SAME live-extension flip /mode
+	// performs; the status row repaints at once with a one-line notice.
+	input.onModeCycle?.(() => {
+		const next = MODES[(MODES.indexOf(getMode()) + 1) % MODES.length]!;
+		setMode(next);
+		paintIdle();
+		body.notice(`mode → ${next} (shift+tab cycles)`);
+	});
 
 	// Recovery first: a session with a dangling pause or uncertain
 	// executions must resolve them BEFORE the REPL accepts new turns —

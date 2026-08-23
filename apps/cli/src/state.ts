@@ -188,6 +188,11 @@ export interface LineInput {
 	 *  live slots (each pop cancels the turn), esc ends the walk after
 	 *  one more pop. The chips are the compositor's own bindQueue. */
 	bindQueue(state: () => readonly string[], pop: () => string | null): void;
+	/** R3a: cross-session history — seed the recall buffer, register the
+	 *  append sink. The pipe path has no recall keys; optional. */
+	bindHistory?(seed: readonly string[], persist: (line: string) => void): void;
+	/** R3a: Shift+Tab cycles the approval tier (TTY editor only). */
+	onModeCycle?(cb: () => void): void;
 	emitLine(line: string): void;
 	line(): string;
 	clearLine(): void;

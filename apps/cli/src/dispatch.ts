@@ -291,7 +291,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		});
 		return;
 	}
-	if (trimmed === "/compact") {
+	if (trimmed === "/compact" || trimmed.startsWith("/compact ")) {
 		// /compact (ADR-0044): the older conversation becomes one
 		// model summary — an OFF-LOOP call through the session's own
 		// adapter, so it must never race a running turn: refused
@@ -334,8 +334,13 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				}, 1000);
 			};
 			try {
+				// R3a: /compact <focus> — the words after the command steer
+				// the summary ("keep the auth details"); bare /compact is
+				// byte-identical to the pre-round call.
+				const focus = trimmed.slice(8).trim();
 				const result = await ctx.session.summarize({
 					signal: abort.signal,
+					...(focus !== "" ? { focus } : {}),
 					onStart: (info) => {
 						compactInfo = info;
 						compacting(info);
