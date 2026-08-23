@@ -7,6 +7,16 @@ usage into numbers derives from the same code path
 request trace's `canonical` block, and the bench extractor can never
 disagree on what a token cost.
 
+
+> PH-1c note: when you inject an adapter DIRECTLY (the hero example's
+> shape), declare `provider: "anthropic" | "openai-compat"` on the
+> AgentDefinition too — without it, usage canonicalizes under the
+> honest "adapter" route: the input convention falls back to `total`
+> and `costUsd` is null (never a guessed rate). Cost itself keys on the
+> MODEL via the metadata registry (`runtime/internal`,
+> `lookupModelMetadata`): an unregistered or unpriced model is null by
+> design.
+
 ## The pinned sentence
 
 > **`input` is FRESH-ONLY. `total` is the derived quantity:**

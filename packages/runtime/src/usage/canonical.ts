@@ -28,6 +28,8 @@
  * move). Raw is provider observation; canonical is the accounting truth.
  */
 
+import { lookupModelMetadata } from "../provider/metadata.js";
+
 /** The union's usage shape (provider-raw — core protocol `events.Usage`). */
 export interface RawUsage {
 	readonly inputTokens: number | null;
@@ -170,6 +172,40 @@ export function canonicalizeUsage(route: string, raw: RawUsage, table: PricingTa
 		pricingTableVersion: table.version,
 	};
 }
+
+/**
+ * PH-1c — the MODEL-KEYED cost path (findings PH-F14/PH-F16). The
+ * convention still keys on the ROUTE (a protocol property: fresh vs
+ * total input); the PRICE keys on the model+endpoint metadata entry —
+ * the route-keyed table is how an Anthropic run got priced at
+ * DeepSeek's rates. No metadata entry, or an entry with `pricing:
+ * null`, costs null — the honest stamp, never a fallback rate.
+ *
+ * A NEW function beside canonicalizeUsage, not a widened signature —
+ * the E2 ruling froze that one ("a future injection never widens this
+ * frozen signature"), and this is the future it reserved room for.
+ * Metadata-priced records stamp pricingTableId "metadata" (version 1);
+ * the (id, version) tuple ritual carries forward unchanged.
+ */
+export function canonicalizeUsageForModel(model: string, endpoint: string | undefined, route: string, raw: RawUsage): CanonicalUsage {
+	const base = canonicalizeUsage(route, raw, EMPTY_TABLE); // convention math only — EMPTY_TABLE prices nothing
+	const entry = lookupModelMetadata(model, endpoint);
+	const pricing = entry?.pricing ?? null;
+	if (pricing === null) {
+		return { ...base, costUsd: null, pricingTableId: "metadata", pricingTableVersion: 1 };
+	}
+	const costUsd =
+		(base.input * pricing.inputPerM +
+			base.output * pricing.outputPerM +
+			base.cacheRead * pricing.cacheReadPerM +
+			(base.cacheWrite ?? 0) * pricing.cacheWritePerM) /
+		1e6;
+	return { ...base, costUsd, pricingTableId: "metadata", pricingTableVersion: 1 };
+}
+
+/** No entries at all — canonicalizeUsageForModel's convention-only pass
+ *  through canonicalizeUsage; every price it could produce is null. */
+const EMPTY_TABLE: PricingTable = { id: "metadata", version: 1, entries: {} };
 
 // ── The validator ──────────────────────────────────────────────────────────
 // Strict by design: closed keys (a misspelled field can never enter a

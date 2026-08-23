@@ -38,8 +38,12 @@ export interface ModelProfile {
 	readonly kind: ProfileKind;
 	readonly baseUrl?: string;
 	readonly model: string;
-	/** The env var NAME holding the key — never the key itself. */
-	readonly apiKeyEnv: string;
+	/** The env var NAME holding the key — never the key itself.
+	 *  PH-1c (finding PH-F19): OPTIONAL — an absent apiKeyEnv means an
+	 *  unauthenticated endpoint (a local Ollama, a LAN proxy); the
+	 *  adapter receives a placeholder key, and the profile no longer
+	 *  demands a dummy env var to exist. */
+	readonly apiKeyEnv?: string;
 }
 
 export interface AutoCompactConfig {
@@ -102,12 +106,13 @@ export function parseConfig(text: string, source: string): KisoConfig {
 			const p = v as Record<string, unknown>;
 			if (typeof p.kind !== "string" || !KINDS.includes(p.kind)) fail(`models.${name}.kind`, `expected one of ${KINDS.join(", ")}`);
 			if (typeof p.model !== "string" || p.model === "") fail(`models.${name}.model`, "expected a model string");
-			if (typeof p.apiKeyEnv !== "string" || p.apiKeyEnv === "") fail(`models.${name}.apiKeyEnv`, "expected an env var name (the config never stores keys)");
+			if (p.apiKeyEnv !== undefined && (typeof p.apiKeyEnv !== "string" || p.apiKeyEnv === ""))
+				fail(`models.${name}.apiKeyEnv`, "expected an env var name (the config never stores keys); omit it entirely for an unauthenticated local endpoint");
 			if (p.baseUrl !== undefined && typeof p.baseUrl !== "string") fail(`models.${name}.baseUrl`, "expected a string");
 			models[name] = {
 				kind: p.kind as ProfileKind,
 				model: p.model as string,
-				apiKeyEnv: p.apiKeyEnv as string,
+				...(typeof p.apiKeyEnv === "string" ? { apiKeyEnv: p.apiKeyEnv } : {}),
 				...(typeof p.baseUrl === "string" ? { baseUrl: p.baseUrl } : {}),
 			};
 		}
@@ -181,7 +186,9 @@ export function mergeConfigs(user: KisoConfig | null, project: KisoConfig | null
 
 /** A profile is available when its apiKeyEnv var is set (the key exists). */
 export function profileAvailable(p: ModelProfile): boolean {
-	return process.env[p.apiKeyEnv] !== undefined;
+	// PH-1c (finding PH-F19): a keyless profile (no apiKeyEnv) is an
+	// unauthenticated endpoint — always available.
+	return p.apiKeyEnv === undefined || process.env[p.apiKeyEnv] !== undefined;
 }
 
 /** The resolved runtime model — what the adapter is built from. */
@@ -240,6 +247,9 @@ export function resolveModel(modelFlag: string | undefined, merged: KisoConfig):
 				kind: "anthropic",
 				model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5",
 				apiKeyEnv: "ANTHROPIC_API_KEY",
+				// PH-1c (finding PH-F19): symmetric with OPENAI_BASE_URL —
+				// proxies and compat gateways serve the anthropic dialect too.
+				...(process.env.ANTHROPIC_BASE_URL !== undefined ? { baseUrl: process.env.ANTHROPIC_BASE_URL } : {}),
 			},
 			apiKey: process.env.ANTHROPIC_API_KEY,
 		};
@@ -260,7 +270,9 @@ function resolveProfile(name: string, p: ModelProfile): ResolvedModel {
 	if (!profileAvailable(p)) {
 		throw new ConfigError(`model ${name}: unavailable — the env var ${p.apiKeyEnv} is not set (configs never store keys, only the env-var name)`);
 	}
-	return { name, profile: p, apiKey: process.env[p.apiKeyEnv] as string };
+	// PH-1c (finding PH-F19): a keyless profile hands the adapter a
+	// placeholder — the SDKs require SOME string; the endpoint ignores it.
+	return { name, profile: p, apiKey: p.apiKeyEnv === undefined ? "none" : (process.env[p.apiKeyEnv] as string) };
 }
 
 /** Mode: env (KISO_MODE) beats config.mode; the --mode flag is applied by

@@ -219,7 +219,7 @@ const agent = createAgent({
     defineTool({
       name: "add",
       description: "Add two numbers",
-      parameters: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } }, required: ["a", "b"] },
+      parameters: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } }, required: ["a", "b"], additionalProperties: false },
       execute: async ({ a, b }) => ({ content: String(a + b), isError: false }),
     }),
   ],

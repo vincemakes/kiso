@@ -54,6 +54,12 @@ the NAME of the env var that holds each key — never the key):
 }
 ```
 
+A LOCAL endpoint needs no key at all — omit `apiKeyEnv` entirely
+(PH-1c): `{ "kind": "openai-compat", "baseUrl":
+"http://localhost:11434/v1", "model": "llama3" }` runs against Ollama
+with zero env vars. `ANTHROPIC_BASE_URL` retargets the anthropic
+dialect the same way `OPENAI_BASE_URL` always could.
+
 Precedence: `--model` flag > env keys > project config > user config >
 faux. Switch mid-session with `/model` (a picker on a bare `/model`).
 

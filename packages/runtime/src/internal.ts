@@ -23,3 +23,10 @@ export * from "./lock-adapter.js";
 export * from "./ledger.js";
 export * from "./extensions.js";
 export * from "./trust.js";
+// PH-1c: the model metadata registry (capabilities + dated pricing) —
+// first-party consumers (the CLI window derivation) read it here; the
+// curated root surface does not move.
+export * from "./provider/metadata.js";
+// PH-1c: the model-keyed cost derivation rides the same door (the root
+// surface keeps only the frozen canonicalizeUsage).
+export { canonicalizeUsageForModel } from "./usage/canonical.js";

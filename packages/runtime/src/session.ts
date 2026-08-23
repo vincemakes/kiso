@@ -60,7 +60,7 @@ import {
 	summarizeConversation,
 	summaryBoundarySeq,
 } from "./summarize.js";
-import { canonicalizeUsage } from "./usage/canonical.js";
+import { canonicalizeUsageForModel } from "./usage/canonical.js";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { estimateTokens } from "@vincemakes/kiso-core";
@@ -470,7 +470,7 @@ export class AgentSession {
 		// a degraded ledger costs one stderr line, never the summary.
 		if (usage !== null) {
 			try {
-				const canonical = canonicalizeUsage(this.#provider ?? "adapter", usage);
+				const canonical = canonicalizeUsageForModel(this.#model, undefined, this.#provider ?? "adapter", usage);
 				const line = JSON.stringify({ kind: "summary", canonical }) + "\n";
 				mkdirSync(join(this.#store.root, "traces"), { recursive: true });
 				appendFileSync(join(this.#store.root, "traces", `${this.id}.jsonl`), line);

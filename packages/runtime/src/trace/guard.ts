@@ -27,7 +27,7 @@ import type { Adapter, AdapterEvent, Event, StreamOptions } from "@vincemakes/ki
 import { buildContextManifest, segmentHashes } from "./manifest.js";
 import { cacheableHashes } from "./analyze.js";
 import { hashContext, hashSystemPrompt, hashToolSpecs, stablePrefixFingerprint } from "./hash.js";
-import { PRICING_TABLE_V1, canonicalizeUsage } from "../usage/canonical.js";
+import { PRICING_TABLE_V1, canonicalizeUsageForModel } from "../usage/canonical.js";
 import { buildRentLedger, type RentParts } from "./rent.js";
 import { TRACE_SCHEMA_VERSION, type Outcome, type TraceRecord } from "./record.js";
 import { TraceWriter } from "./writer.js";
@@ -240,11 +240,14 @@ export class RequestTracer {
 			record.cacheWrite = p.cacheWrite ?? null;
 			record.output = p.outputTokens ?? 0;
 		}
-		// E2 — the canonical block formalizes the same raw (the route-keyed
-		// mapping; the validator pins block == quartet, so the two can never
-		// drift apart). Unknown usage canonicalizes to the "0 = unknown"
-		// convention, consistent with the quartet above.
-		record.canonical = canonicalizeUsage(this.#provider, {
+		// E2 — the canonical block formalizes the same raw (the validator
+		// pins block == quartet, so the two can never drift apart). Unknown
+		// usage canonicalizes to the "0 = unknown" convention, consistent
+		// with the quartet above. PH-1c: the PRICE keys on the record's own
+		// MODEL via the metadata registry (route-keyed pricing priced an
+		// Anthropic run at DeepSeek's rates); the convention still keys on
+		// the route. An unpriced model costs null — never a fallback rate.
+		record.canonical = canonicalizeUsageForModel(record.model, undefined, this.#provider, {
 			inputTokens: p.inputTokens,
 			outputTokens: p.outputTokens,
 			cacheRead: p.cacheRead,

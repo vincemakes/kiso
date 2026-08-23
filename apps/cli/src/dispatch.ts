@@ -259,7 +259,9 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 						);
 					} else {
 						const adapter = await buildAdapter(profile.kind, {
-							apiKey: process.env[profile.apiKeyEnv] as string,
+							// PH-1c (PH-F19): a keyless profile = an unauthenticated
+							// endpoint — the placeholder satisfies the SDK's ctor.
+							apiKey: profile.apiKeyEnv === undefined ? "none" : (process.env[profile.apiKeyEnv] as string),
 							...(profile.baseUrl !== undefined ? { baseUrl: profile.baseUrl } : {}),
 						});
 						// PH-1a (finding PH-F8, P0): the switch is ATOMIC —

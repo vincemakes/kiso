@@ -25,9 +25,11 @@ import {
 import { deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
+import { canonicalizeUsageForModel } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import { dispatch, type DispatchCtx } from "./dispatch.js";
 import { agentModel, body, bodyLog, configuredWindow, dock, type LineInput } from "./state.js";
+import { lookupModelMetadata } from "@vincemakes/kiso-runtime/internal";
 import { addDontAskAgainRule, askPanel, fixHintFor, pendingAsk, resolveUncertains } from "./trust-ui.js";
 import { FauxExhaustionError, failOnFauxExhaustion } from "./faux-glue.js";
 import { MODES, getMode, setMode } from "./mode.js";
@@ -66,7 +68,16 @@ export function contextWindowTokens(): number {
 	const windowOverride = configuredWindow;
 	if (windowOverride !== undefined) return windowOverride;
 	const window = Number.parseInt(process.env.KISO_CONTEXT_WINDOW ?? "", 10);
-	return Number.isFinite(window) && window > 0 ? window : DEFAULT_CONTEXT_WINDOW;
+	if (Number.isFinite(window) && window > 0) return window;
+	// PH-1c (finding PH-F15): the window follows the LIVE model when the
+	// metadata registry knows it — /model to a known model moves the
+	// window (and the microcompact threshold derived from it) without an
+	// env var. agentModel is the same live binding the status row shows;
+	// an unknown model keeps the 200k default — the registry never
+	// guesses, so neither do we.
+	const known = lookupModelMetadata(agentModel)?.capabilities.contextWindow;
+	if (known !== undefined && known !== null) return known;
+	return DEFAULT_CONTEXT_WINDOW;
 }
 
 /**
@@ -133,8 +144,13 @@ export function usageFromEvent(
 	route: string | undefined,
 	ev: import("@vincemakes/kiso-core").Usage,
 	prevTotal: number | null,
+	// PH-1c: the LIVE model — when given, the $cost keys on the model's
+	// metadata entry (an unpriced model shows null, never a route-table
+	// guess); omitted, the legacy route-keyed path stands (old callers,
+	// old tests, unchanged bytes).
+	model?: string,
 ): UsageDelta {
-	const c = canonicalizeUsage(route ?? "adapter", ev);
+	const c = model === undefined ? canonicalizeUsage(route ?? "adapter", ev) : canonicalizeUsageForModel(model, undefined, route ?? "adapter", ev);
 	const total = c.input + c.cacheRead + (c.cacheWrite ?? 0);
 	let missed: number | null = null;
 	// R-C item 4: min(prevTotal, total) is the part that could have been
@@ -647,7 +663,7 @@ export async function consumeRun(
 				body.textEnd();
 				break;
 			case "usage": {
-				const delta = usageFromEvent(session.provider, ev, prevTotal);
+				const delta = usageFromEvent(session.provider, ev, prevTotal, agentModel);
 				usage = delta.usage;
 				prevTotal = delta.total;
 				missed = delta.missed;

@@ -89,7 +89,12 @@ describe("schema v1: parse + loud failure", () => {
 		expect(() => parseConfig('{"contextWindow": -5}', "t")).toThrow(ConfigError);
 		expect(() => parseConfig('{"projectTrust": "always"}', "t")).toThrow(ConfigError); // no "always" — the ruling
 		expect(() => parseConfig('{"models": {"a": {"kind": "openai", "model": "x", "apiKeyEnv": "K"}}}', "t")).toThrow(ConfigError);
-		expect(() => parseConfig('{"models": {"a": {"kind": "openai-compat", "model": "x"}}}', "t")).toThrow(ConfigError); // apiKeyEnv required
+		// PH-1c (finding PH-F19, a DECLARED SUPERSESSION of the old
+		// apiKeyEnv-required rule): an ABSENT apiKeyEnv is a valid keyless
+		// profile (an unauthenticated local endpoint — Ollama needs no
+		// dummy env var); an EMPTY one is still a loud typo.
+		expect(() => parseConfig('{"models": {"a": {"kind": "openai-compat", "model": "x"}}}', "t")).not.toThrow();
+		expect(() => parseConfig('{"models": {"a": {"kind": "openai-compat", "model": "x", "apiKeyEnv": ""}}}', "t")).toThrow(ConfigError);
 	});
 });
 
