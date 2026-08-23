@@ -129,11 +129,13 @@ export default function createTaskExtension() {
                   status: { type: "string", enum: STATUSES },
                 },
                 required: ["text", "status"],
+                additionalProperties: false,
               },
               maxItems: MAX_ITEMS,
             },
           },
           required: ["items"],
+          additionalProperties: false,
         },
         execute: async (input) => {
           const parsed = parseTaskSet(input);

@@ -27,6 +27,7 @@
  * inlined) — drop the file into ~/.kiso/extensions/ and restart.
  */
 
+import { statusTool } from "./status.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -94,7 +95,7 @@ interface McpConfig {
 	readonly mcpServers?: Readonly<Record<string, McpServerConfig>>;
 }
 
-interface ServerStatus {
+export interface ServerStatus {
 	readonly server: string;
 	readonly state: "connected" | "error" | "connecting" | "idle";
 	readonly detail: string;
@@ -310,27 +311,6 @@ function readConfig(path: string): McpConfig {
 /** The zero-arg status tool: connection state is runtime info and the CLI
  *  has no new UI for it — the tool itself presents it (the cost of zero
  *  kernel changes, stated). */
-function statusTool(status: readonly ServerStatus[]): Tool {
-	return {
-		name: "mcp__status",
-		description: "list MCP server connection status",
-		parameters: { type: "object", properties: {} },
-		execute: async () => ({
-			content: status
-				.map((s) => {
-					const tail = s.stderr?.tail();
-					if (tail === undefined || tail === "") return `${s.server}: ${s.state} — ${s.detail}`;
-					return `${s.server}: ${s.state} — ${s.detail}\n  stderr tail:\n${tail
-						.trimEnd()
-						.split("\n")
-						.map((line) => `    ${line}`)
-						.join("\n")}`;
-				})
-				.join("\n"),
-			isError: false,
-		}),
-	};
-}
 
 async function connectServer(name: string, cfg: McpServerConfig, clients: Client[]): Promise<{ tools: Tool[]; stderr?: StderrRing; client: Client }> {
 	const client = new Client({ name: "kiso-mcp", version: "0.1.7" });

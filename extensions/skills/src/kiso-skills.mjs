@@ -136,7 +136,7 @@ function readSkillTool(index, broken) {
 	return {
 		name: "read_skill",
 		description: "load a skill's SKILL.md (the available-skills list is in the system prompt)",
-		parameters: { type: "object", properties: { name: { type: "string", minLength: 1 } }, required: ["name"] },
+		parameters: { type: "object", properties: { name: { type: "string", minLength: 1 } }, required: ["name"], additionalProperties: false },
 		execute: async (input) => {
 			const name = String((input ?? {}).name ?? "");
 			const skill = index.find((s) => s.name === name);

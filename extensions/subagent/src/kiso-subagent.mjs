@@ -46,10 +46,12 @@ const DELEGATE_PARAMETERS = {
 					task: { type: "string", minLength: 1 },
 				},
 				required: ["role", "task"],
+				additionalProperties: false,
 			},
 		},
 	},
 	required: ["tasks"],
+	additionalProperties: false,
 };
 
 export default async function createSubagentExtension() {

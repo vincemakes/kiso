@@ -84,7 +84,8 @@
   "packages/tools-node/tests/wr1a-coda.test.ts",
   "packages/tools-node/tests/wr1e2-batch.test.ts",
   "tests/examples-execution.test.ts",
-  "tests/sh1-gates.test.ts"
+  "tests/sh1-gates.test.ts",
+  "tests/tool-schema-closed-world.test.ts"
  ],
  "exempt": []
 }
