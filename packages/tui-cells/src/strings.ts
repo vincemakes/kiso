@@ -381,6 +381,8 @@ export function helpRows(): string[] {
 		cmd("/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"),
 		cmd("/model", "list model profiles; /model <name|provider/model> switches"),
 		cmd("/compact", "summarize the older conversation to free context"),
+		cmd("/clear", "start a fresh conversation (the old session stays resumable)"),
+		cmd("/resume", "switch to another session; /resume <id> goes directly"),
 		// TUI2-R1 (D): DELIBERATELY UNCHANGED. Deriving this sentence from
 		// KEY_BINDINGS would be an improvement and it would also move an
 		// assertion outside the round's two declared supersession classes,

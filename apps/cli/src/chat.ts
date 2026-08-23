@@ -844,7 +844,27 @@ export async function consumeRun(
 }
 
 /** Interactive REPL: stream events, pause for approvals, Ctrl+C aborts. */
-export async function chat(session: AgentSession, faux: boolean, input: LineInput, autoCompact?: AutoCompact): Promise<void> {
+/** The chat loop's ENDING: exit closes the process's REPL for good; a
+ *  switch hands main another session id to re-enter chat with — the
+ *  editor survives, the durable law is untouched (the /resume+/clear
+ *  mini-spec). */
+export type ChatEnd = { readonly next: "exit" } | { readonly next: "switch"; readonly id: string };
+
+/** The session-navigation seam main provides: the OTHER sessions'
+ *  ids, and (when a dock is up) the existing picker. */
+export interface ChatNav {
+	readonly sessions: () => readonly string[];
+	readonly pick?: () => Promise<string | null>;
+}
+
+export async function chat(session: AgentSession, faux: boolean, input: LineInput, autoCompact?: AutoCompact, nav?: ChatNav): Promise<ChatEnd> {
+	// the switch directive — set once by dispatch's /clear or /resume,
+	// resolved through the end signal so the final awaits still run
+	let switchTo: string | null = null;
+	let resolveEnd: () => void = () => {};
+	const endSignal = new Promise<void>((r) => {
+		resolveEnd = r;
+	});
 	let currentRun: { abort: () => void } | null = null;
 	let cancelled = false;
 	// E group (the graceful-exit gate ③, R-G 0.1.48): the terminal can
@@ -1154,6 +1174,15 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		submitTurn,
 		estimateCtx: () => estimateCtxRatio(session),
 		contextWindow: () => contextWindowTokens(),
+		// the /resume+/clear mini-spec: the switch directive and the
+		// session-navigation seam (absent nav = the commands degrade to
+		// an honest refusal in dispatch)
+		requestSwitch: (id: string) => {
+			switchTo = id;
+			resolveEnd();
+		},
+		sessions: () => nav?.sessions() ?? [],
+		...(nav?.pick !== undefined ? { pickSession: nav.pick } : {}),
 	};
 	// the ergonomics batch C8: the auto-compact check — the /compact FULL path via the
 	// shared dispatch (same notices, same chain ordering, same mid-run
@@ -1211,7 +1240,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	if (cancelled) {
 		input.close();
 		await input.closed;
-		return;
+		return { next: "exit" };
 	}
 	// The REPL is ready: replay anything that arrived during recovery.
 	replReady = true;
@@ -1225,7 +1254,9 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	}
 	queuedLines.length = 0;
 	input.prompt();
-	await input.closed;
+	// the REPL ends by CLOSE (exit) or by SWITCH (/clear, /resume) — the
+	// switch leaves the editor alive for the next chat() entry
+	await Promise.race([input.closed, endSignal]);
 	await chainRef.current; // never exit while a turn is in flight
 	// the ergonomics batch C8: the auto-compact may have appended ITS segment inside the
 	// turn (the check runs at the turn's end, after the exit-await above
@@ -1233,4 +1264,5 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// runs before the exit or the chain is already settled. One level is
 	// enough: the /compact segment appends nothing of its own.
 	await chainRef.current;
+	return switchTo === null ? { next: "exit" } : { next: "switch", id: switchTo };
 }

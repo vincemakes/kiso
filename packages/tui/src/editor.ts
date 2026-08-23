@@ -76,6 +76,9 @@ export const MENU_ITEMS: readonly MenuItem[] = [
 	{ name: "/mode", desc: "switch the approval tier (manual/default/accept-edits/plan/bypass)" },
 	{ name: "/model", desc: "list model profiles; switch with /model <name|provider/model>" },
 	{ name: "/compact", desc: "summarize the older conversation to free context" },
+	// the /resume+/clear mini-spec: the session-navigation pair
+	{ name: "/clear", desc: "start a fresh conversation (the old session stays resumable)" },
+	{ name: "/resume", desc: "switch to another session; /resume <id> goes directly" },
 	{ name: "/think", desc: "show the last full thinking block" },
 	{ name: "/last", desc: "show the most recent tool call's input and output" },
 	{ name: "/status", desc: "show session id, event count, and context estimate" },

@@ -72,8 +72,10 @@ describe("T-Q3 — the banner counts what loaded: 4 on a TTY, 3 on a pipe", () =
 });
 
 describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
-	it("the /help rows are exactly the eight the dispatcher printed inline", () => {
-		// hand-transcribed from the pre-move dispatch.ts (0.7.0, 6707f0a)
+	it("the /help rows are the eight extracted rows PLUS the mini-spec pair", () => {
+		// hand-transcribed from the pre-move dispatch.ts (0.7.0, 6707f0a);
+		// /clear and /resume joined at the resume+clear mini-spec round —
+		// a DECLARED ADDITION, the pre-move rows keep their exact bytes
 		expect(helpRows().map(plain)).toEqual([
 			"/help    print this list of commands",
 			"/think    show the last full thinking block",
@@ -82,6 +84,8 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 			"/mode    show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)",
 			"/model    list model profiles; /model <name|provider/model> switches",
 			"/compact    summarize the older conversation to free context",
+			"/clear    start a fresh conversation (the old session stays resumable)",
+			"/resume    switch to another session; /resume <id> goes directly",
 			// slice ⑥ appends the ask gesture to the keys row — the KC1/KC2/KC3
 			// precedent (the row is where a gesture is taught, and the row
 			// costs nothing). Everything before " · 1-4 answers an ask" is
@@ -90,8 +94,8 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 		]);
 	});
 
-	it("the eighth row still carries its own newline — two rows from one bodyLog call", () => {
-		expect(helpRows()).toHaveLength(8);
+	it("the last row still carries its own newline — two rows from one bodyLog call", () => {
+		expect(helpRows()).toHaveLength(10); // 8 extracted + the mini-spec pair
 		expect(helpRows().filter((r) => r.includes("\n"))).toHaveLength(1);
 	});
 

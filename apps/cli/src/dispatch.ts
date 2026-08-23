@@ -29,6 +29,13 @@ export interface DispatchCtx {
 	/** TUI2-R1 (E): the model's context window, as the session is
 	 *  configured — the /context ledger's denominator. */
 	readonly contextWindow: () => number;
+	/** the /resume+/clear mini-spec: end this chat() with a switch to
+	 *  another session — main re-enters chat there; the editor survives. */
+	readonly requestSwitch: (id: string) => void;
+	/** every durable session id (the /resume validation + listing). */
+	readonly sessions: () => readonly string[];
+	/** the dock's session picker, when one exists (bare /resume). */
+	readonly pickSession?: () => Promise<string | null>;
 }
 
 /** The ONE dispatcher — slash commands, exit, and turns. The recovery
@@ -384,6 +391,67 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			return;
 		}
 		ctx.input.close();
+		return;
+	}
+	if (trimmed === "/clear") {
+		// the mini-spec: /clear = a FRESH conversation. The old session
+		// stays on disk, resumable — the append-only law does not move;
+		// what clears is the CONTEXT, never the history.
+		if (ctx.isRunning()) {
+			body.notice("[/clear] a run is in flight — let it finish (esc stops it), then clear");
+			ctx.input.prompt();
+			return;
+		}
+		ctx.requestSwitch(new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16));
+		return;
+	}
+	if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
+		// the mini-spec: the in-session door to the durable sessions —
+		// /resume <id> switches directly; bare /resume opens the SAME
+		// picker `kiso resume` owns (dock), or lists ids (no dock).
+		if (ctx.isRunning()) {
+			body.notice("[/resume] a run is in flight — let it finish (esc stops it), then switch");
+			ctx.input.prompt();
+			return;
+		}
+		const arg = trimmed.slice(7).trim();
+		if (arg !== "") {
+			// a switch never silently CREATES a session — agent.session()
+			// would; the validation is the difference
+			if (!ctx.sessions().includes(arg)) {
+				ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+					bodyLog(`no such session: ${escapeTerminal(arg)} — /resume lists them`);
+					ctx.input.prompt();
+				});
+				return;
+			}
+			ctx.requestSwitch(arg);
+			return;
+		}
+		const others = ctx.sessions().filter((id) => id !== ctx.session.id);
+		if (others.length === 0) {
+			ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+				bodyLog("no other sessions — /clear starts a fresh one");
+				ctx.input.prompt();
+			});
+			return;
+		}
+		if (ctx.pickSession !== undefined && dock.active) {
+			ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+				const picked = await ctx.pickSession!();
+				if (picked === null) {
+					ctx.input.prompt(); // esc — nothing switched, nothing said
+					return;
+				}
+				ctx.requestSwitch(picked);
+			});
+			return;
+		}
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			for (const id of others) bodyLog(`  ${escapeTerminal(id)}`);
+			bodyLog("switch with /resume <id>");
+			ctx.input.prompt();
+		});
 		return;
 	}
 	// PH-1a (finding PH-F1): an unrecognized slash command is an ERROR,

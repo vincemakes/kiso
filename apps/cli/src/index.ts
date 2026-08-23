@@ -601,6 +601,41 @@ class CliUsageError extends Error {
 	readonly exitCode = 2;
 }
 
+/** The /resume+/clear mini-spec — the chat LOOP: chat() ends with a
+ *  directive; a switch re-enters it on another session with the SAME
+ *  editor. First entry paints the banner; a switch paints one notice
+ *  line (the previous conversation stays resumable — clear/switch
+ *  never erase history). Faux sessions re-arm the scripted adapter at
+ *  the NEW session's durable position, exactly like the picker path. */
+async function chatLoop(
+	agent: Awaited<ReturnType<typeof makeAgent>>,
+	firstId: string,
+	input: LineInput,
+	autoCompact: Parameters<typeof chat>[3],
+): Promise<void> {
+	let id = firstId;
+	let prev: string | null = null;
+	for (;;) {
+		const session = await agent.session({ id });
+		if (prev === null) {
+			bodyLog(`session ${id}\n`);
+			extensionsBanner(await recentSessions(id, agent));
+		} else {
+			bodyLog(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
+			if (currentFaux) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
+		}
+		paintBootStatus(session);
+		const nav = {
+			sessions: () => agent.sessions().map((m) => m.id),
+			...(process.stdin.isTTY ? { pick: () => pickSession(agent, input) } : {}),
+		};
+		const end = await chat(session, currentFaux, input, autoCompact, nav);
+		if (end.next === "exit") return;
+		prev = id;
+		id = end.id;
+	}
+}
+
 async function main(): Promise<void> {
 	// E group (the graceful-exit gate ③, R-G 0.1.48): a terminal closing
 	// turns the in-flight stdout/stderr writes into EIO, and node's
@@ -711,12 +746,8 @@ async function main(): Promise<void> {
 				// position — never restarts it (fauxSkip).
 				agent = await makeAgent(id, input, modelFlag);
 				applyConfigMode();
-				const session = await agent.session({ id });
-				bodyLog(`session ${id}\n`);
-				extensionsBanner(await recentSessions(id, agent));
 				faux = currentFaux;
-				paintBootStatus(session); // TUI2-R2 ⑥: the idle-fresh screen says what it is
-				await chat(session, faux, input, resolveAutoCompact(mergedConfig));
+				await chatLoop(agent, id, input, resolveAutoCompact(mergedConfig));
 				break;
 			}
 			case "resume": {
@@ -742,7 +773,14 @@ async function main(): Promise<void> {
 					// normal outcome, so it exits 0 with nothing said — never
 					// an error, never a session started behind their back.
 					if (picked === null) break;
-					id = picked;
+					// the mini-spec (a DECLARED SUPERSESSION of the one-shot
+					// picker flow): a PICKED session enters the full REPL —
+					// "resume and keep working" no longer requires knowing to
+					// type `kiso chat <id>`. The explicit-id one-shot form
+					// (`kiso resume <id> ["prompt"]`) keeps its exact bytes.
+					faux = currentFaux;
+					await chatLoop(agent, picked, input, resolveAutoCompact(mergedConfig));
+					break;
 				}
 				const session = await agent.session({ id });
 				faux = currentFaux;
@@ -824,17 +862,9 @@ async function main(): Promise<void> {
 				// undefined" at the ask (panelAsk with the dock, question on
 				// the dock-less fallback).
 				agent = await makeAgent(id, input, modelFlag);
-				const session = await agent.session({ id });
-				bodyLog(`session ${id}\n`);
-				extensionsBanner(await recentSessions(id, agent));
-				// finding E4-1: the same faux resolution the chat/resume cases
-				// carry (faux = currentFaux) — pre-patch the initial faux=true
-				// was passed here, so ANY provider failure in a bare-command
-				// session surfaced as "[faux mode] the scripted model failed:
-				// <real error>" (a false accusation of the keyless demo).
+				// finding E4-1's faux resolution rides chatLoop (currentFaux).
 				faux = currentFaux;
-				paintBootStatus(session); // TUI2-R2 ⑥: the same row on the bare command
-				await chat(session, faux, input, autoCompactFromEnv());
+				await chatLoop(agent, id, input, autoCompactFromEnv());
 				break;
 			}
 		}
