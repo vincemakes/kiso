@@ -69,6 +69,12 @@ export function runningStatus(glyph: string, since: number, outTokens: number | 
  */
 export interface StatusMeter {
 	readonly cacheHitPct: number | null;
+	/** RETIRED from the row (the owner's 2026-08-23 directive): live
+	 *  prices fluctuate and the canonical table is "an approximation,
+	 *  not a bill" — a four-decimal figure on the status bar claimed a
+	 *  precision the data never had. The canonical cost STAYS recorded
+	 *  (trace ledger, /context); the field is kept so callers need not
+	 *  change shape, and it renders NOTHING. */
 	readonly costUsd: number | null;
 }
 
@@ -79,7 +85,7 @@ export interface StatusMeter {
 export function idleStatus(tier: string, model: string, ctxRatio: number, meter?: StatusMeter): string {
 	const parts = [`▸ ${tier}`, "/mode to switch", model];
 	if (meter?.cacheHitPct != null) parts.push(`CH ${Math.round(meter.cacheHitPct)}%`);
-	if (meter?.costUsd != null) parts.push(`$${meter.costUsd.toFixed(4)}`);
+	// costUsd deliberately NOT rendered — see StatusMeter.costUsd.
 	parts.push(`ctx left ~${ctxLeft(ctxRatio)}%`);
 	return parts.join(" · ");
 }

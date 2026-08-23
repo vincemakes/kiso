@@ -45,7 +45,7 @@ const LEDGER: ContextLedger = {
 describe("TUI2-R1 T-V5 — the status line's $ and CH%", () => {
 	it("both present: the prototype's row, in its order", () => {
 		expect(idleStatus("default", "deepseek-v4-flash", 0.26, { cacheHitPct: 92, costUsd: 0.0042 })).toBe(
-			"▸ default · /mode to switch · deepseek-v4-flash · CH 92% · $0.0042 · ctx left ~74%",
+			"▸ default · /mode to switch · deepseek-v4-flash · CH 92% · ctx left ~74%",
 		);
 	});
 
@@ -57,7 +57,7 @@ describe("TUI2-R1 T-V5 — the status line's $ and CH%", () => {
 
 	it("no cache data omits CH — an unmeasured cache is not a 0% cache", () => {
 		expect(idleStatus("default", "some-model", 0.26, { cacheHitPct: null, costUsd: 0.5 })).toBe(
-			"▸ default · /mode to switch · some-model · $0.5000 · ctx left ~74%",
+			"▸ default · /mode to switch · some-model · ctx left ~74%",
 		);
 	});
 
@@ -67,9 +67,11 @@ describe("TUI2-R1 T-V5 — the status line's $ and CH%", () => {
 		expect(idleStatus("default", "faux", 0.26, { cacheHitPct: null, costUsd: null })).toBe(before);
 	});
 
-	it("the cost is four decimals — a fifth would be noise, a third would round a real charge away", () => {
-		expect(idleStatus("t", "m", 0, { cacheHitPct: null, costUsd: 0.00004 })).toContain("$0.0000");
-		expect(idleStatus("t", "m", 0, { cacheHitPct: null, costUsd: 12.3456789 })).toContain("$12.3457");
+	it("the $ is RETIRED from the row (the 2026-08-23 directive) — a known cost renders NOTHING", () => {
+		// The canonical cost stays recorded (trace ledger); the row no
+		// longer claims four-decimal precision over a fluctuating price.
+		expect(idleStatus("t", "m", 0, { cacheHitPct: null, costUsd: 0.000049 })).not.toContain("$");
+		expect(idleStatus("t", "m", 0, { cacheHitPct: 12, costUsd: 1.5 })).not.toContain("$");
 	});
 });
 
