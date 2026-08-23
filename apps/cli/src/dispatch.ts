@@ -263,6 +263,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 							// endpoint — the placeholder satisfies the SDK's ctor.
 							apiKey: profile.apiKeyEnv === undefined ? "none" : (process.env[profile.apiKeyEnv] as string),
 							...(profile.baseUrl !== undefined ? { baseUrl: profile.baseUrl } : {}),
+							...(profile.promptCaching !== undefined ? { promptCaching: profile.promptCaching } : {}),
 						});
 						// PH-1a (finding PH-F8, P0): the switch is ATOMIC —
 						// adapter, model id, and provider route move together.

@@ -68,6 +68,17 @@ describe("PH-F19 — endpoint freedom", () => {
 		).toThrow(/apiKeyEnv/);
 	});
 
+	it("PH-1c.1 — promptCaching is a validated profile field, carried on the resolved profile", () => {
+		const cfg = parseConfig(
+			JSON.stringify({ models: { c: { kind: "anthropic", model: "claude-sonnet-5", apiKeyEnv: "K", promptCaching: true } } }),
+			"x",
+		);
+		expect(cfg.models!.c!.promptCaching).toBe(true);
+		expect(() => parseConfig(JSON.stringify({ models: { c: { kind: "anthropic", model: "m", apiKeyEnv: "K", promptCaching: "yes" } } }), "x")).toThrow(
+			/promptCaching/,
+		);
+	});
+
 	it("ANTHROPIC_BASE_URL retargets the anthropic env path, symmetric with OPENAI_BASE_URL", () => {
 		process.env.ANTHROPIC_API_KEY = "sk-fake";
 		process.env.ANTHROPIC_BASE_URL = "https://gateway.example.com";

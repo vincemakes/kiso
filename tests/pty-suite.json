@@ -27,6 +27,7 @@
   "apps/cli/tests/kiso-home.test.ts",
   "apps/cli/tests/microcompact-cli.test.ts",
   "apps/cli/tests/ph1a-front-door.test.ts",
+  "apps/cli/tests/ph1c-metadata-cli.test.ts",
   "apps/cli/tests/project-trust.test.ts",
   "apps/cli/tests/scoped-read-e2e.test.ts",
   "apps/cli/tests/scrollback-flood.test.ts",

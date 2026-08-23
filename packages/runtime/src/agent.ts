@@ -43,6 +43,10 @@ export interface AgentDefinition {
 	readonly provider?: "anthropic" | "openai-compat";
 	readonly apiKey?: string;
 	readonly baseUrl?: string;
+	/** PH-1c.1: opt-in Anthropic prompt caching (cache_control
+	 *  breakpoints) — OFF by default; the openai-compat path ignores it
+	 *  (that dialect's caching is server-automatic). Type-only additive. */
+	readonly promptCaching?: boolean;
 	readonly maxTurns?: number;
 	readonly maxTokens?: number;
 	readonly temperature?: number;
@@ -173,7 +177,7 @@ function policyHooks(policy: PermissionPolicy): HookHost {
  */
 export async function buildAdapter(
 	provider: "anthropic" | "openai-compat",
-	opts: { readonly apiKey?: string; readonly baseUrl?: string } = {},
+	opts: { readonly apiKey?: string; readonly baseUrl?: string; readonly promptCaching?: boolean } = {},
 ): Promise<Adapter> {
 	// resolveAdapter consumes only provider/apiKey/baseUrl from the
 	// definition — the rest is irrelevant for a bare adapter build.
@@ -193,6 +197,7 @@ async function resolveAdapter(definition: AgentDefinition): Promise<Adapter> {
 			return createAnthropicProvider({
 				...(definition.apiKey !== undefined ? { apiKey: definition.apiKey } : {}),
 				...(definition.baseUrl !== undefined ? { baseUrl: definition.baseUrl } : {}),
+				...(definition.promptCaching !== undefined ? { promptCaching: definition.promptCaching } : {}),
 			});
 		}
 		case "openai-compat": {

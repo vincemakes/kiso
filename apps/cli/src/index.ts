@@ -514,6 +514,7 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 					provider: resolved.profile.kind,
 					apiKey: resolved.apiKey,
 					...(resolved.profile.baseUrl !== undefined ? { baseUrl: resolved.profile.baseUrl } : {}),
+					...(resolved.profile.promptCaching !== undefined ? { promptCaching: resolved.profile.promptCaching } : {}),
 				}
 			: { adapter: createFauxProvider(readFauxScript().slice(fauxSkipTurns)) }),
 	};

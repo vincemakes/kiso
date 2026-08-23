@@ -24,6 +24,8 @@ import { mapApiError } from "@vincemakes/kiso-core";
 export interface AnthropicProviderConfig {
 	readonly apiKey?: string;
 	readonly baseUrl?: string;
+	/** PH-1c.1: opt-in prompt caching (see AnthropicAdapterOptions). */
+	readonly promptCaching?: boolean;
 }
 
 /**
@@ -38,10 +40,22 @@ export function createAnthropicProvider(config: AnthropicProviderConfig = {}): A
 		...(config.apiKey !== undefined ? { apiKey: config.apiKey } : {}),
 		...(config.baseUrl !== undefined ? { baseURL: config.baseUrl } : {}),
 	});
-	return createAnthropicAdapter(client);
+	return createAnthropicAdapter(client, { ...(config.promptCaching !== undefined ? { promptCaching: config.promptCaching } : {}) });
 }
 
-export function createAnthropicAdapter(client: Anthropic): Adapter {
+/** PH-1c.1 (finding PH-F13): opt-in prompt caching. OFF by default —
+ *  injecting cache_control changes the request bytes, and a cost
+ *  behavior does not flip silently (the default flips only after the
+ *  paired bench proves it at a release). ON places exactly two
+ *  ephemeral breakpoints: the system block, and a ROLLING one on the
+ *  last message's last content block — the next request's stable
+ *  prefix reaches it, which is the whole trick. */
+export interface AnthropicAdapterOptions {
+	readonly promptCaching?: boolean;
+}
+
+export function createAnthropicAdapter(client: Anthropic, adapterOpts: AnthropicAdapterOptions = {}): Adapter {
+	const caching = adapterOpts.promptCaching === true;
 	return {
 		async *stream(options: StreamOptions): AsyncIterable<AdapterEvent> {
 			// D4: the stream CREATION is inside the error normalization —
@@ -52,9 +66,15 @@ export function createAnthropicAdapter(client: Anthropic): Adapter {
 				stream = client.messages.stream(
 					{
 						model: options.model,
-						...(options.systemPrompt !== undefined ? { system: options.systemPrompt } : {}),
+						...(options.systemPrompt !== undefined
+							? {
+									system: caching
+										? [{ type: "text" as const, text: options.systemPrompt, cache_control: { type: "ephemeral" as const } }]
+										: options.systemPrompt,
+								}
+							: {}),
 						max_tokens: options.maxTokens ?? 4096,
-						messages: toAnthropicMessages(options.messages),
+						messages: caching ? withCacheBreakpoint(toAnthropicMessages(options.messages)) : toAnthropicMessages(options.messages),
 						...(options.tools?.length ? { tools: toAnthropicTools(options.tools) } : {}),
 						...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
 					},
@@ -275,6 +295,22 @@ function toAnthropicMessages(messages: readonly Message[]): Anthropic.MessagePar
 		}
 	}
 	return out;
+}
+
+/** PH-1c.1 — the rolling conversation breakpoint: the LAST message's
+ *  LAST content block gains cache_control, so the next request's
+ *  stable prefix (this whole conversation) is a cache hit. String
+ *  content normalizes to one text block; an empty message is left
+ *  alone. Pure — the input array is never mutated. */
+function withCacheBreakpoint(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+	const last = messages[messages.length - 1];
+	if (last === undefined) return messages;
+	const blocks: Anthropic.ContentBlockParam[] =
+		typeof last.content === "string" ? [{ type: "text", text: last.content }] : [...(last.content as Anthropic.ContentBlockParam[])];
+	const tail = blocks[blocks.length - 1];
+	if (tail === undefined) return messages;
+	blocks[blocks.length - 1] = { ...tail, cache_control: { type: "ephemeral" } } as Anthropic.ContentBlockParam;
+	return [...messages.slice(0, -1), { ...last, content: blocks }];
 }
 
 function toAnthropicBlock(block: AssistantBlock): Anthropic.ContentBlockParam {

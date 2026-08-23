@@ -44,6 +44,9 @@ export interface ModelProfile {
 	 *  adapter receives a placeholder key, and the profile no longer
 	 *  demands a dummy env var to exist. */
 	readonly apiKeyEnv?: string;
+	/** PH-1c.1: opt-in Anthropic prompt caching for this profile —
+	 *  default off (a request-byte cost behavior never flips silently). */
+	readonly promptCaching?: boolean;
 }
 
 export interface AutoCompactConfig {
@@ -109,11 +112,13 @@ export function parseConfig(text: string, source: string): KisoConfig {
 			if (p.apiKeyEnv !== undefined && (typeof p.apiKeyEnv !== "string" || p.apiKeyEnv === ""))
 				fail(`models.${name}.apiKeyEnv`, "expected an env var name (the config never stores keys); omit it entirely for an unauthenticated local endpoint");
 			if (p.baseUrl !== undefined && typeof p.baseUrl !== "string") fail(`models.${name}.baseUrl`, "expected a string");
+			if (p.promptCaching !== undefined && typeof p.promptCaching !== "boolean") fail(`models.${name}.promptCaching`, "expected a boolean");
 			models[name] = {
 				kind: p.kind as ProfileKind,
 				model: p.model as string,
 				...(typeof p.apiKeyEnv === "string" ? { apiKeyEnv: p.apiKeyEnv } : {}),
 				...(typeof p.baseUrl === "string" ? { baseUrl: p.baseUrl } : {}),
+				...(typeof p.promptCaching === "boolean" ? { promptCaching: p.promptCaching } : {}),
 			};
 		}
 		out.models = models;
