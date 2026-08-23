@@ -200,6 +200,10 @@ and a blob is the thing you eventually fight.
 ## Requirements
 
 - **Node ≥ 22** (the packages' engines).
+- **macOS / Linux.** Windows is unsupported: the shell tool's process
+  groups, the session-lock liveness probe (`ps`), and the PTY test
+  suite are all POSIX-only, and no CI runs on Windows. WSL falls under
+  Linux but carries no dedicated testing.
 
 ## Using it
 
@@ -251,7 +255,8 @@ Node **>= 22** (the OpenAI-compat provider and the CLI declare it in `engines`).
 
 ## The CLI — the flagship coding agent
 
-The CLI is a real npm package — install it globally, or run it directly:
+The CLI is a real npm package — install it globally, or run it directly
+(new here? `docs/cli-quickstart.md` is the five-minute walkthrough):
 
 ```
 npm install -g @vincemakes/kiso-code
@@ -324,17 +329,30 @@ kiso help                      this help
 - **Scoped reads (0.1.27, the token round):** reads are rangeable —
   `read_file` takes `offset`/`limit` (1-based lines) and returns only the
   head 200 lines of a large file by default, `search_text` caps at 50
-  excerpts, `list_dir` at 200 entries. Every truncation carries an
-  actionable continuation note (`… N more lines (call again with
-  offset=…)`, `… +N more matches (narrow the pattern)`) — the model
-  always has a path to the full content, deterministically. The system
+  excerpts, `list_dir` at 200 entries. Every SCOPED-READ truncation
+  carries an actionable continuation note (`… N more lines (call again
+  with offset=…)`, `… +N more matches (narrow the pattern)`) — for
+  reads, the model always has a path to the full content,
+  deterministically. The shell tool is the honest exception: output
+  beyond its 100k-char cap is dropped and named (`… capped — N more
+  chars dropped`), and the note's advice (capture to a file, narrow the
+  command) is for the NEXT invocation — this run's overflow is gone
+  (finding PH-F24; the recoverable-artifact design is the TR-0 round). The system
   prompt guides batching independent calls in one round (the parallel
   execution makes it fast), locating before reading, and never re-reading
   unchanged files.
 - Sessions are append-only JSONL under `$KISO_HOME/sessions` — exit, restart,
   `kiso resume <id>`, and the conversation continues with a contiguous seq.
-- Keyless faux mode out of the box; `ANTHROPIC_API_KEY` (or
-  `OPENAI_API_KEY` + `OPENAI_BASE_URL`) switches to a real provider.
+- Keyless faux mode out of the box — a SCRIPTED four-round demo. When
+  the script runs out (about two user turns) the session exits non-zero
+  with a set-a-key message: that exit is the design, not a crash.
+  `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` switches to a real provider
+  (`OPENAI_BASE_URL` is OPTIONAL — set it to retarget any
+  OpenAI-compatible endpoint such as DeepSeek; unset, the key alone
+  talks to the default OpenAI endpoint); with both keys exported,
+  OPENAI wins (checked first). Env-only defaults: `ANTHROPIC_MODEL` falls back to
+  `claude-sonnet-5`, `OPENAI_MODEL` to `gpt-4o` — export the `*_MODEL`
+  variable to pick a model without touching the config file.
 - Interrupted side effects are surfaced on resume (`⚠ interrupted execution`)
   and block until a human resolves them — a confirmed success never re-runs.
 
@@ -1024,9 +1042,11 @@ the approval-policy extension system; E2: the compaction parameter and
 systemPrompt append surfaces — `docs/plans/2026-08-04-extensions-e1.md`),
 and the durability line R-E→R-H (the straddle ruling, recovery as
 projection, the dead-holder takeover, the freeze itself). Everything
-below is proven by a gate in `npm run check`:
+below is MEASURED by `npm run check` (the size gates: core is enforced,
+the cli/tui/tui-cells caps are report-only since Amendment 8 — the
+numbers are pressure readings, not passed gates):
 
-- **core** (1,971/2,000 lines) — protocol, loop (single honest terminal;
+- **core** (1,997/2,000 lines, enforced) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; retry only before anything streamed; one abort signal reaches
   backoff, approval waits, every pending tool, and the SDK), hooks,
@@ -1059,7 +1079,7 @@ below is proven by a gate in `npm run check`:
   startup failure on a bad file or duplicate name; extension tools merge
   into the registry (built-in collision = startup error), hooks compose
   AFTER the harness's own (existing-first), approvals enter the policy chain.
-- **cli** (1,870/1,920 lines) — the coding agent: bare `kiso` enters chat;
+- **cli** (2,348 lines against a 1,920 report-only cap) — the coding agent: bare `kiso` enters chat;
   the startup extension scan — the built-in layer first (the three default
   official extensions load in-process by module import: mcp, skills,
   subagent; E5: task is opt-in — a user copy shadows loudly, a project
@@ -1178,7 +1198,7 @@ decline`); the body scrolls
   clean-checkout `npm ci` + the full gate.
 
 `npm run check` = build → typecheck (packages + root scripts + tests) →
-tests → size gate (core 2,000 + cli 1,920 + tui 2,400 + tui-cells 1,280) →
+tests → size gate (core 2,000 enforced; cli 1,920 / tui 4,000 / tui-cells 1,280 report-only) →
 pack gate (dist + README + LICENSE in every tarball) → whitespace gate (no
 trailing whitespace, every file ends with a newline) → CJK gate (the tracked
 tree stays CJK-free — `README.zh.md` is the only exemption)

@@ -1,4 +1,8 @@
-# Getting started — kiso in ten minutes
+# Getting started — embedding the SDK in ten minutes
+
+> This walkthrough is for EMBEDDING kiso as a library. If you want the
+> CLI coding agent (`kiso chat`), see `docs/cli-quickstart.md` — a new
+> user who follows this page never types `kiso`, by design.
 
 kiso is a durable multi-turn agent runtime: sessions that survive process
 death, an append-only event log you can inspect, and a small, curated

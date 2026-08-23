@@ -6,9 +6,10 @@
  *   kiso resume <sessionId> continue a session in one-shot mode
  *   kiso sessions           list durable sessions
  *
- * Provider selection (first match):
+ * Provider selection (first match — PH-1b corrected this header: the
+ * code has always checked OPENAI first, config.ts resolveModel):
+ *   OPENAI_API_KEY         → OpenAI-compatible (OPENAI_MODEL default gpt-4o, OPENAI_BASE_URL)
  *   ANTHROPIC_API_KEY      → Anthropic (ANTHROPIC_MODEL, default claude-sonnet-5)
- *   OPENAI_API_KEY         → OpenAI-compatible (OPENAI_MODEL, OPENAI_BASE_URL)
  *   neither                → faux mode: scripted model, zero keys, full CLI
  *
  * Sessions live under $KISO_HOME/sessions (default ~/.kiso/sessions) as
@@ -782,15 +783,30 @@ async function main(): Promise<void> {
 				break;
 			}
 			case "help": {
+				// PH-1b (finding PH-F21): the CLI must be able to describe its
+				// own configuration — the old help listed five commands and
+				// stopped, so a new user could never learn from the tool
+				// itself how to hand it a key.
 				const p = palette();
 				console.log(
 					`${p.dim}${bannerLines(80, process.stdout.rows ?? 0, VERSION, "").join("\n")}${p.reset}\n\n` +
 						"kiso — the coding agent that survives kill -9\n\n" +
 						"  kiso [sessionId]         interactive session (default command)\n" +
 						"  kiso chat [sessionId]    same as above\n" +
+						"  kiso resume              pick a session to continue (TTY picker)\n" +
 						"  kiso resume <id> [prompt]   continue a session (one-shot)\n" +
 						"  kiso sessions           list durable sessions\n" +
-						"  kiso help               this help\n",
+						"  kiso help               this help\n\n" +
+						"flags (any position):\n" +
+						"  --model <profile|provider/model>   pick the model (also /model in-session)\n" +
+						"  --mode <tier>            approval tier: manual|default|accept-edits|plan|bypass\n" +
+						"  --version                print the version\n\n" +
+						"configuration:\n" +
+						"  no key                   keyless faux demo (a scripted four-round session)\n" +
+						"  OPENAI_API_KEY           OpenAI-compatible (OPENAI_MODEL, default gpt-4o;\n" +
+						"                           OPENAI_BASE_URL for DeepSeek/compat endpoints) — checked first\n" +
+						"  ANTHROPIC_API_KEY        Anthropic (ANTHROPIC_MODEL, default claude-sonnet-5)\n" +
+						"  ~/.kiso/config.json      named model profiles (keys stay in env vars; see the README)\n",
 				);
 				break;
 			}

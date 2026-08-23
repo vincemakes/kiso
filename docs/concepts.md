@@ -80,7 +80,7 @@ human's `approve(decisionId, allow, reason)` is the durable answer
 (`permission_decided`), recorded before the tool ever executes. On
 resume, an undecided request is re-presented; an expired one never is.
 
-## The four surfaces
+## The five surfaces
 
 - **Durable surface** — the frozen event ABI (ADR-0051); never changes.
 - **SDK surface** — the curated root manifest of `@vincemakes/kiso-runtime`

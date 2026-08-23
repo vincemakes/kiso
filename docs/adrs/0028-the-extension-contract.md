@@ -2,8 +2,14 @@
 
 - **Status:** Accepted; the ASK ROUTING (surface 1's "ask = the existing
   policy chain decides") is SUPERSEDED by ADR-0029 (an ask is answered by
-  a human — no automated policy speaks for the human), 2026-08-04. Every
-  other surface stands, including surface 7's deny > ask > allow order.
+  a human — no automated policy speaks for the human), 2026-08-04. The
+  surface-7 PRECEDENCE ORDER as written below (deny > ask > allow) is
+  ALSO SUPERSEDED: the implemented and ruled order is **deny > allow >
+  ask** (the W21/R3 ruling — a later allow silences an earlier ask,
+  which is the dont-ask-again power; a deny still beats everything).
+  See the supersession note at the end of this file and compose.ts.
+  The body below is historical and stays as written. Every other
+  surface stands.
 - **Date:** 2026-08-04
 - **Layer:** Cross-cutting (core / runtime / cli / official extensions)
 

@@ -130,6 +130,17 @@ describe("PH-F2 — --help/--version are flags, never session ids", () => {
 		expect(r.status).toBe(0);
 		expect(r.stdout).toContain("kiso [sessionId]");
 		expect(r.stdout).toContain("kiso sessions");
+		// PH-1b: the CLI describes its own configuration — the flags and
+		// the whole key path are pinned here so the help can never regress
+		// to the five-command stub that could not say how to get a key.
+		expect(r.stdout).toContain("--model <profile|provider/model>");
+		expect(r.stdout).toContain("--mode <tier>");
+		expect(r.stdout).toContain("OPENAI_API_KEY");
+		expect(r.stdout).toContain("ANTHROPIC_API_KEY");
+		expect(r.stdout).toContain("default gpt-4o");
+		expect(r.stdout).toContain("default claude-sonnet-5");
+		expect(r.stdout).toContain("checked first");
+		expect(r.stdout).toContain("~/.kiso/config.json");
 		expect(sessionFiles(dirs.home)).toEqual([]);
 	});
 

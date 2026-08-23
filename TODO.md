@@ -1,5 +1,9 @@
 # TODO — deferred registry ONLY
 
+Version names below that read 1.0.0/1.2.0/1.3.0 are HISTORICAL round
+names from before the 0.2.x renumbering (ADR-0051 Amendment 2 carries
+the npm mapping); they are records, not current version claims.
+
 Ordering is NOT defined here. The current execution priority lives in
 the owner's roadmap (outside the repo, by policy). Rounds add deferred
 items here; resolved items move to the round record that delivered
@@ -26,8 +30,12 @@ them; nothing below is a commitment or a sequence.
   separately (per the 1.0 ruling); needs its own fixture + scenario set.
 - **provider_deferred (the R-C item 5 parked design)** — the
   free-form `type: "custom"` tool payload for patch delivery (no JSON
-  escaping); provider-layer work, four open questions recorded in the
-  parked design, ~/Desktop/devv/parked-dscode-custom-tool.md.
+  escaping); provider-layer work. The parked-design file was LOST in
+  the 2026-08 local data-loss incident and RECONSTRUCTED 2026-08-23
+  (~/Desktop/devv/kiso-doc/parked-dscode-custom-tool.md): the summary is
+  recovered, the four open questions are not — whoever un-parks this
+  must re-derive them (the natural venue is the PH-1c capability
+  layer).
 - **Diet D re-discussion** — the diet-micro riders A/B/C landed in
   0.1.48 with D reverted (the 0.1.47 void adjudication); D's re-entry
   is an open discussion, not a commitment.
