@@ -12,10 +12,15 @@
 
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { declaredBinary } from "./declared-binary.mjs";
 
-const tracked = execSync("git ls-files", { encoding: "utf8" })
+const listed = execSync("git ls-files", { encoding: "utf8" })
 	.split("\n")
 	.filter((f) => f !== "" && !f.includes("node_modules") && !f.endsWith(".d.ts"));
+// A path .gitattributes marks -text is not text; gzip is full of bytes
+// that decode as trailing whitespace.
+const binary = declaredBinary(listed);
+const tracked = listed.filter((f) => !binary.has(f));
 
 const problems = [];
 for (const file of tracked) {

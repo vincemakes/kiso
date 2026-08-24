@@ -21,13 +21,18 @@
 
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { declaredBinary } from "./declared-binary.mjs";
 
 /** The single-file exemption: the Chinese README edition. */
 const EXEMPT = new Set(["README.zh.md"]);
 
-const tracked = execSync("git ls-files", { encoding: "utf8" })
+const listed = execSync("git ls-files", { encoding: "utf8" })
 	.split("\n")
 	.filter((f) => f !== "" && !EXEMPT.has(f) && !f.includes("node_modules") && !f.endsWith(".d.ts"));
+// A path .gitattributes marks -text is not text; arbitrary bytes decode
+// into the CJK block often enough that any binary would trip this.
+const binaryPaths = declaredBinary(listed);
+const tracked = listed.filter((f) => !binaryPaths.has(f));
 
 // U+4E00..U+9FFF via escapes — the gate's own source stays
 // CJK-free and never trips the check it enforces.

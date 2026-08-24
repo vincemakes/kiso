@@ -2,3 +2,10 @@
 # so the control-byte gate's raw-CR rejection judges CONTENT, never a
 # contributor's autocrlf setting. True binaries get explicit -text rows.
 * text=auto eol=lf
+
+# RD-1 batch archives: deterministic gzip tarballs of the frozen cell
+# trees (bench/rd1/harness/archive.py). They are EVIDENCE, tracked so the
+# documented reproduction commands work in a fresh clone — and they are
+# true binaries, so the text gates skip them by this declaration rather
+# than by carrying a suffix rule of their own.
+bench/rd1/artifacts/*.tar.gz -text
