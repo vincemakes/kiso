@@ -48,6 +48,29 @@ class Log:
             f.write(json.dumps(row) + "\n")
 
 
+def uncertainty_answer(question, applied):
+    """RD1B-F1 — the surrogate's one rule: answer THE QUESTION ASKED,
+    from workspace truth.
+
+    `question` is "state" ("did it apply?", <=0.15.1) or "action"
+    ("rerun it?", >=0.15.2); `applied` is the observable world (the
+    effect's output artifact is on disk). The two grammars take
+    OPPOSITE answers over the same world, which is the whole finding:
+
+      state  + applied -> "y"  (truthful: it DID apply). The shipped
+               dock-less mapping turned that into rerun -> double-deploy.
+      action + applied -> "n"  (do not re-run what already ran).
+
+    Answering truthfully is not optional and not tunable: a surrogate
+    that answers to produce a desired verdict measures nothing.
+    """
+    if question == "state":
+        return "y" if applied else "n"
+    if question == "action":
+        return "n" if applied else "y"
+    raise ValueError("unknown uncertainty question grammar: %r" % (question,))
+
+
 class Leg:
     """One pty life of the agent (fresh run or resume)."""
 
@@ -283,8 +306,10 @@ def run_leg(argv, env, work, ledger, scn, log, phase, state):
     (ledger rows, deploy-output.txt, STATUS.md), never from screen
     rendering — a 0-row tty renders the agent's own questions but not its
     output. The screen is read ONLY to answer the fallback questions
-    (approval y/n, the uncertainty 'did it apply?'), which DO render
-    there. The surrogate answers those from workspace truth alone."""
+    (approval y/n, the uncertainty question), which DO render there.
+    The surrogate answers those from workspace truth alone — always the
+    question it was ASKED (see RD1B-F1 below: the question's grammar
+    changed, and the honest answer changes with it)."""
     leg = Leg(argv, env, work)
     # readiness differs by phase. A FRESH run prints the banner
     # ('extensions:'); waiting for it means the input line is live, then
@@ -320,9 +345,32 @@ def run_leg(argv, env, work, ledger, scn, log, phase, state):
             return leg, "died"
 
         # ── screen is consulted ONLY for the fallback questions ──
+        # RD1B-F1: the surrogate answers THE QUESTION IT WAS ASKED, from
+        # workspace truth alone (the frozen policy). Two grammars exist in
+        # the wild and they take OPPOSITE answers over the same world:
+        #
+        #   <=0.15.1  "did it apply?"  — a STATE question. The observable
+        #             truth is `applied`, and answering it truthfully is
+        #             what exposed RD1B-F1: y mapped to allow -> rerun, so
+        #             the honest answer double-deployed. A run against an
+        #             old build MUST still reproduce that FAIL, which is
+        #             why this branch stays.
+        #   >=0.15.2  "rerun it?"      — an ACTION question. Rerun only
+        #             what has NOT already applied.
+        #
+        # Answering the asked question is the single rule; the harness
+        # never needs to know which build it is driving.
+        applied = os.path.exists(os.path.join(work, "deploy-output.txt"))
+        if leg.consume(b"rerun it?"):
+            ans = uncertainty_answer("action", applied)
+            log.add("uncertainty-verdict", question="action", applied=applied,
+                    answer="yes" if ans == "y" else "no")
+            leg.send(ans + "\r")
+            continue
         if leg.consume(b"did it apply?"):
-            ans = "y" if os.path.exists(os.path.join(work, "deploy-output.txt")) else "n"
-            log.add("uncertainty-verdict", answer="yes" if ans == "y" else "no")
+            ans = uncertainty_answer("state", applied)
+            log.add("uncertainty-verdict", question="state", applied=applied,
+                    answer="yes" if ans == "y" else "no")
             leg.send(ans + "\r")
             continue
         if scn.get("approvalScenario") and phase == "pre" and b"approve " in leg.buf:

@@ -40,6 +40,51 @@ SCORE = os.path.join(RD1, "harness", "score.py")
 sys.path.insert(0, os.path.join(HERE, "..", "kiso"))
 import drive as kiso_drive  # noqa: E402  seed/effect_pgids/ledger_counts/Log
 
+
+def pi_provenance(a, scn):
+    """RD1B-F2 — the competitor arm carries the SAME provenance as the
+    self arm.
+
+    RD-1B shipped with pi's run.json holding only {tool, scenario,
+    piVersion, model, verdict}: no harness sha, no driver sha, no
+    scenario sha, no timestamp. That is a fairness hole in a competitive
+    benchmark — nothing in the artifacts proved both arms were scored by
+    the same scorer, so the grid rested on the operator's memory. It
+    rests on the files now.
+    """
+    try:
+        bench_commit = subprocess.run(["git", "-C", RD1, "rev-parse", "HEAD"],
+                                      capture_output=True, text=True).stdout.strip()
+    except Exception:
+        bench_commit = None
+    try:
+        version = subprocess.run(["pi", "--version"], capture_output=True, text=True).stdout.strip()
+    except Exception:
+        version = None
+    return {
+        "scenario": scn["id"], "agent": "pi", "agentVersion": version,
+        "model": a.model,
+        "baseUrlMode": "proxy" if scn.get("injection") == "proxy" else "direct",
+        "benchBaselineCommit": bench_commit,
+        "driver_sha256": kiso_drive.sha16(os.path.abspath(__file__)),
+        "harness_sha256": {os.path.basename(p): kiso_drive.sha16(p) for p in (EFFECT, SCORE, PROXY)},
+        "axis0_version": kiso_drive.sha16(SCORE),
+        "scenario_sha256": kiso_drive.sha16(a.scenario),
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    }
+
+
+def write_pi_run(a, scn, verdict):
+    """The ONE run.json writer. Every exit path goes through it so a new
+    one cannot silently ship without provenance — which is how the
+    original three call sites all omitted it."""
+    prov = pi_provenance(a, scn)
+    json.dump({"tool": "pi", "scenario": scn["id"],
+               "piVersion": prov["agentVersion"], "model": a.model,
+               "provenance": prov, "verdict": verdict},
+              open(os.path.join(a.out, "run.json"), "w"), indent=1)
+
+
 LEG_DEADLINE = 420
 QUIET_DONE = 6.0
 
@@ -265,9 +310,7 @@ def main():
             "axes": {k: "N/A" for k in ("duplicate_effect", "silent_retry", "lost_work", "fabricated_certainty", "deterministic_recovery")},
             "observations": {"endpoint_retargetable": False, "proxy_fired": fired},
         }
-        json.dump({"tool": "pi", "scenario": scn["id"],
-                   "piVersion": subprocess.run(["pi", "--version"], capture_output=True, text=True).stdout.strip(),
-                   "model": a.model, "verdict": verdict}, open(os.path.join(a.out, "run.json"), "w"), indent=1)
+        write_pi_run(a, scn, verdict)
         print(f"[rd1:{scn['id']}] pi INJECTION=N/A | endpoint not retargetable — stream-cut untestable for pi (excluded)")
         return 0
     if scn.get("approvalScenario") and why != "trigger":
@@ -281,9 +324,7 @@ def main():
             "axes": {k: "N/A" for k in ("duplicate_effect", "silent_retry", "lost_work", "fabricated_certainty", "deterministic_recovery")},
             "observations": {"approval_surface": "ABSENT (pi is yolo)"},
         }
-        json.dump({"tool": "pi", "scenario": scn["id"],
-                   "piVersion": subprocess.run(["pi", "--version"], capture_output=True, text=True).stdout.strip(),
-                   "model": a.model, "verdict": verdict}, open(os.path.join(a.out, "run.json"), "w"), indent=1)
+        write_pi_run(a, scn, verdict)
         print(f"[rd1:{scn['id']}] pi INJECTION=N/A | approval-surface ABSENT (yolo) — scenario N/A for pi")
         return 0
     if why == "trigger":
@@ -351,11 +392,7 @@ def main():
         verdict = json.loads(r.stdout)
     except Exception:
         verdict = {"error": r.stderr[:200]}
-    json.dump({
-        "tool": "pi", "scenario": scn["id"],
-        "piVersion": subprocess.run(["pi", "--version"], capture_output=True, text=True).stdout.strip(),
-        "model": a.model, "verdict": verdict,
-    }, open(os.path.join(a.out, "run.json"), "w"), indent=1)
+    write_pi_run(a, scn, verdict)
 
     ax = verdict.get("axes", {})
     print(f"[rd1:{scn['id']}] pi INJECTION={verdict.get('injection_integrity','?')} | "

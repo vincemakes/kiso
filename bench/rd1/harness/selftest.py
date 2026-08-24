@@ -15,6 +15,7 @@ distinguish the worlds it exists to distinguish measures nothing
   5. proxy                           -> cuts first stream at N bytes,
                                         passes the second untouched
 """
+import importlib.util
 import json
 import os
 import signal
@@ -361,6 +362,35 @@ def t6_effect_pgid(tmp):
         p.kill()
 
 
+def t7_surrogate_answers_the_question_asked(tmp):
+    """RD1B-F1 — the surrogate answers THE QUESTION IT WAS ASKED.
+
+    The finding that retro-actively invalidated RD-1B's c3 attribution:
+    the same world takes OPPOSITE honest answers under the two question
+    grammars the product has shipped. A surrogate that hard-codes one
+    mapping either lies to the new build or stops reproducing the old
+    build's failure — and a benchmark that lies to make its own product
+    pass measures nothing.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "rd1_drive",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "drivers", "kiso", "drive.py"),
+    )
+    drive = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(drive)
+    ua = drive.uncertainty_answer
+    check("state question + applied -> yes (the truthful answer that exposed RD1B-F1)", ua("state", True) == "y")
+    check("state question + absent -> no", ua("state", False) == "n")
+    check("action question + applied -> no (never re-run what already ran)", ua("action", True) == "n")
+    check("action question + absent -> yes", ua("action", False) == "y")
+    check("the two grammars disagree over the SAME world", ua("state", True) != ua("action", True))
+    try:
+        ua("guess", True)
+        check("an unknown question grammar raises rather than guessing", False)
+    except ValueError:
+        check("an unknown question grammar raises rather than guessing", True)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="rd1-selftest-") as tmp:
         t1_plain_dies(tmp)
@@ -370,6 +400,7 @@ def main():
         t3b_injection_integrity(tmp)
         t4_scorer_matrix(tmp)
         t5_proxy(tmp)
+        t7_surrogate_answers_the_question_asked(tmp)
     print(f"[rd1:selftest] {'PASS' if not FAILURES else 'FAIL'} — {len(FAILURES)} broken")
     return 0 if not FAILURES else 1
 
