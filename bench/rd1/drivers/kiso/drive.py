@@ -489,6 +489,18 @@ def main():
         "snapshotNeedles": [{"path": os.path.join(work, n["path"]), "needle": n["needle"]} for n in state.get("snapshot", [])],
         "requiredNeedles": [{"path": os.path.join(work, n["path"]), "needle": n["needle"]} for n in scn.get("requiredNeedles", [])],
         "expectedEndCount": scn.get("expectedEndCount", 1),
+        # RD1B review fix 1/2 (fable adversarial audit): the recovery-bound
+        # branch and the Axis-0 world gate are keyed off SCENARIO INTENT,
+        # copied here verbatim from the frozen scenario file. EVERY driver
+        # (kiso, pi, CC) MUST emit this block — the scorer HARD-ASSERTS it
+        # (a missing block scores INVALID, never a silent FAIL that would
+        # brand a competitor's honest behavior as a failure).
+        "scenarioIntent": {
+            "injectionType": scn.get("injection"),
+            "effectMode": scn.get("effectMode", "plain"),
+            "intendedPostKillWorld": scn.get("postKillWorld"),
+            "intendedKillWorld": scn.get("killWorld"),
+        },
     }
     if injected:
         manifest["injection"] = {"kind": "kill", "durableLogPath": durable_log, "killSeqAtInjection": kill_seq,

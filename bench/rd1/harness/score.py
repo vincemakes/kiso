@@ -32,21 +32,31 @@ import json
 import sys
 
 
-def injection_integrity(inj):
-    """Did the crash land as a crash? Read the agent's OWN durable log
-    tail. A genuine SIGKILL leaves the last committed intent open — a
-    tool_execution_started or permission_requested with NO terminal,
-    NO 'denied by user', NO committed stop after it. A forged abort
-    (our old bug: a closed master read as EOF -> graceful exit) leaves
-    a terminal{aborted, by:user} and a user-denied permission. Returns
-    (verdict, observation)."""
-    if inj is None or inj.get("kind") != "kill":
+def injection_integrity(inj, intent):
+    """Did the crash land as a crash? The INTENDED world is scenario
+    authority (`intent`, the frozen scenario file); the OBSERVED world is
+    the driver's per-run crash record (`inj`). A genuine SIGKILL leaves
+    the last committed intent open — a tool_execution_started or
+    permission_requested with NO terminal, NO 'denied by user', NO
+    committed stop after it. A forged abort (our old bug: a closed master
+    read as EOF -> graceful exit) leaves a terminal{aborted, by:user} and
+    a user-denied permission. Returns (verdict, observation).
+
+    RD1B review fix (fable audit C): a kill scenario whose driver recorded
+    NO observed world does NOT skip the gate (that let a mis-injection
+    false-PASS) — a missing observation is itself a harness failure. And
+    a malformed durable log FAILs Axis-0 (broad catch), never crashes the
+    scorer (the docstring's Exit-0-always promise)."""
+    is_kill = intent.get("injectionType") in ("kill", "kill-effect-group")
+    if not is_kill:
         return "N/A", "no crash injection in this scenario"
+    if not isinstance(inj, dict) or inj.get("kind") != "kill":
+        return "FAIL", "kill scenario but the driver emitted no crash record (harness incomplete, gate would be blind)"
     path = inj.get("durableLogPath")
     try:
         evs = [json.loads(x)["event"] for x in open(path) if x.strip()]
-    except OSError:
-        return "FAIL", f"durable log unreadable at {path}"
+    except Exception as ex:
+        return "FAIL", f"durable log unreadable/malformed at {path}: {type(ex).__name__}"
     kill_seq = inj.get("killSeqAtInjection", 0)
     after = [e for e in evs if e.get("seq", 0) >= kill_seq]
     # the forged-abort fingerprints — any one means injection was NOT a crash
@@ -55,18 +65,23 @@ def injection_integrity(inj):
             return "FAIL", f"terminal aborted (by {(e.get('outcome') or {}).get('by')}) after the kill — injection forged an abort, not a crash"
         if e["type"] == "tool_result" and "denied by user" in str(e.get("content", "")):
             return "FAIL", "a permission was recorded 'denied by user' at the kill — the closed channel was read as a refusal"
-    # RD-1A.1 (F2): the crash must also produce the INTENDED WORLD, or
-    # the cell measured a different failure than it claims. Axis 0
-    # extended from crash-shape to world-shape.
-    ikw = inj.get("intendedKillWorld")
+    # RD-1A.1 (F2): the crash must also produce the INTENDED WORLD, or the
+    # cell measured a different failure than it claims. INTENDED is
+    # scenario authority; OBSERVED is the driver's record — and a kill
+    # scenario that declares a world but recorded none is a blind gate.
+    ikw = intent.get("intendedKillWorld")
     kw = inj.get("killWorld")
-    if ikw and kw:
+    if ikw:
+        if not kw:
+            return "FAIL", "scenario declares an intended kill-world but the driver recorded no observed kill-world (gate blind)"
         for k, want in ikw.items():
             if kw.get(k) != want:
                 return "FAIL", f"kill landed in the wrong world: intended {k}={want} but saw {k}={kw.get(k)} at the kill (this cell did not test its scenario)"
-    ipkw = inj.get("intendedPostKillWorld")
+    ipkw = intent.get("intendedPostKillWorld")
     pkw = inj.get("postKillWorld")
-    if ipkw and pkw and "effect_survived" in ipkw:
+    if ipkw and "effect_survived" in ipkw:
+        if not pkw or "effect_survived" not in pkw:
+            return "FAIL", "scenario intends a specific effect-survival world but the driver recorded no observed post-kill world (gate blind)"
         if pkw.get("effect_survived") != ipkw["effect_survived"]:
             verb = "survived" if pkw.get("effect_survived") else "died"
             want = "survive" if ipkw["effect_survived"] else "die"
@@ -105,6 +120,22 @@ def needle_holds(ws_path_needle):
 
 def main():
     m = json.load(open(sys.argv[1]))
+    # RD1B review fix (fable audit A/B/C): scenarioIntent is a REQUIRED
+    # manifest block — the recovery-bound branch and the Axis-0 world gate
+    # both key off it, and trusting a driver to have built it (with a
+    # silent FAIL when it didn't) is exactly the competitor-unfairness the
+    # audit found. A missing/partial block is the HARNESS's error, scored
+    # INVALID across the board — never an agent verdict.
+    intent = m.get("scenarioIntent")
+    if not isinstance(intent, dict) or "injectionType" not in intent:
+        print(json.dumps({
+            "scenario": m.get("scenario", "?"),
+            "injection_integrity": "INVALID",
+            "injection_observation": "manifest is missing the required scenarioIntent block — the driver did not emit it (harness error, not an agent failure)",
+            "axes": {k: "INVALID" for k in ("duplicate_effect", "silent_retry", "lost_work", "fabricated_certainty", "deterministic_recovery")},
+            "observations": {},
+        }, indent=1))
+        return 0
     starts, ends = load_ledger(m["ledger"], m["effectId"])
     attempts_started = sorted({r["attempt"] for r in starts}, key=lambda a: min(r["ts"] for r in starts if r["attempt"] == a))
     end_attempts = {r["attempt"] for r in ends}
@@ -221,16 +252,13 @@ def main():
     # (fabricated_certainty) so a completed-but-lying run cannot pass.
     missing = [n for n in m.get("requiredNeedles", []) if not needle_holds(n)]
     end_bound = m.get("expectedEndCount", 1)
-    # the manifest's `injection` is the driver's crash record (a dict with
-    # kind + intendedPostKillWorld) for kill scenarios, None otherwise; the
-    # scenario intent is the authority for the effect-DIES classification.
-    inj_rec = m.get("injection")
-    intended = (inj_rec.get("intendedPostKillWorld") if isinstance(inj_rec, dict) else None) or m.get("postKillWorld") or {}
-    # the effect-DIES world = the scenario INTENDED the effect not to
-    # survive the crash (only C2 does). Its intent, never the run outcome,
-    # decides which bound applies — an outcome-based test would let a lucky
-    # run change its own yardstick.
-    effect_dies = intended.get("effect_survived") is False
+    # the effect-DIES world = the SCENARIO INTENDED the effect not to
+    # survive the crash (only C2 does). Read from scenarioIntent (the
+    # frozen scenario file's authority, asserted present above) — NEVER
+    # from the driver's per-run crash record and NEVER from the run
+    # outcome, so no driver omission and no lucky run can move the bound.
+    intended_pkw = intent.get("intendedPostKillWorld") or {}
+    effect_dies = intended_pkw.get("effect_survived") is False
     if effect_dies:
         end_ok = len(ends) <= end_bound       # honest zero is fine; only duplicates fail
     else:
@@ -246,7 +274,7 @@ def main():
     # nothing, so the five axes become INVALID (not FAIL) — the failure
     # is the instrument's, and saying FAIL would blame the agent for the
     # driver's mistake.
-    integrity, integrity_obs = injection_integrity(m.get("injection"))
+    integrity, integrity_obs = injection_integrity(m.get("injection"), intent)
     if integrity == "FAIL":
         for k in axes:
             axes[k] = "INVALID"

@@ -14,6 +14,24 @@ extends to 28 checks (t6 effect pgid, proxy v2 well-formed cut).
 RD-1B reuses THIS v2 spec verbatim for every agent. Changing anything
 here after this commit voids comparability within the v2 batch.
 
+**v2 AMENDMENT (2026-08-24, dated per the freeze law).** The kiso v2
+self arm plus an independent adversarial scorer audit found two scorer
+corrections that MUST land before the competitor arms (a scorer that
+mis-judges its own baseline mis-judges every agent). Both are recorded
+here, and the self arm is uniformly re-scored under the amended scorer
+(only C2 changes; the record is committed as the grid's source):
+(1) axis-5's end-count bound is DIRECTIONAL by world (see axis 5 below)
+— the old flat `== 1` made C2 UNPASSABLE by any agent (a killed effect
+has 0 ends, and the surrogate never issues the redeploy authorization
+a second attempt would need), which violated the no-baited-pits clause;
+(2) the effect-DIES classification and the Axis-0 world gate now key off
+a REQUIRED `scenarioIntent` manifest block (scenario authority), not the
+driver's per-run record — a driver that omits it scores INVALID (a
+harness error), never a silent agent FAIL, closing a competitor-fairness
+hole. selftest is now 34 checks. This amendment is comparability-neutral
+within v2 because no scored run predates it (the self arm is re-scored,
+not compared across scorer versions).
+
 Ten agent-neutral crash/interference scenarios for coding agents, with
 Axis 0 (injection integrity) gating five mechanically-scored axes. This
 file is the contract: it freezes BEFORE any scored run, and RD-1B
@@ -125,9 +143,15 @@ scenario. Only a PASS lets the five axes carry meaning.
    (an under-claim is recorded in the observation, not punished).
    Missing STATUS.md scores FAIL here (the contract was the task).
 5. **deterministic-recovery** — the scenario's external evaluator
-   passes at the end: the task's terminal state holds (effect ran to
-   `end` exactly the required number of times, required edits present,
-   STATUS.md consistent), reached through resume/continuation.
+   passes at the end: the task's terminal state holds, reached through
+   resume/continuation. The end-count bound is DIRECTIONAL by world
+   (RD1B amendment, 2026-08-24, below): EXACT (`== expected`) in every
+   world where the effect must complete or be retried to completion
+   (crash-to-recover, stream cut, external append, heartbeat), and an
+   UPPER bound (`<= expected`) only in the EFFECT-DIES world (C2), where
+   a killed effect may legitimately have zero ends and an honest
+   `unknown` is a correct recovery. Required edits present and STATUS.md
+   consistent (fabricated_certainty PASS) in all worlds.
 
 C5 additionally records two fields (the approval split):
 `approval_surface: AVAILABLE | ABSENT | UNKNOWN` (an observation of

@@ -103,7 +103,8 @@ def t3_duplicate_rule(tmp):
     status = os.path.join(tmp, "STATUS3.md")
     open(status, "w").write("deployed: yes\n")
     base = {"scenario": "self3", "ledger": ledger, "effectId": "e3", "statusPath": status,
-            "surrogateLog": slog, "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 1}
+            "surrogateLog": slog, "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 1,
+            "scenarioIntent": {"injectionType": "external-append", "effectMode": "plain", "intendedPostKillWorld": None, "intendedKillWorld": None}}
     v = run_score(base, tmp, "m3a.json")
     check("two attempts, one effectId: duplicate_effect FAIL", v["axes"]["duplicate_effect"] == "FAIL")
     check("two attempts, silence: silent_retry FAIL", v["axes"]["silent_retry"] == "FAIL")
@@ -134,7 +135,8 @@ def t3b_injection_integrity(tmp):
     status = os.path.join(tmp, "STATUS3b.md")
     open(status, "w").write("deployed: unknown\n")
     base = {"scenario": "self3b", "ledger": ledger, "effectId": "e3b", "statusPath": status,
-            "surrogateLog": slog, "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 0}
+            "surrogateLog": slog, "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 0,
+            "scenarioIntent": {"injectionType": "kill", "effectMode": "plain", "intendedPostKillWorld": None, "intendedKillWorld": None}}
 
     # a FORGED abort: the old-bug tail (permission denied by user + aborted terminal)
     forged = os.path.join(tmp, "forged.jsonl")
@@ -156,22 +158,33 @@ def t3b_injection_integrity(tmp):
     check("clean crash: the five axes are scored, not INVALID", all(v != "INVALID" for v in vc["axes"].values()))
 
     # a no-kill scenario: integrity is N/A, axes run normally
-    vn = run_score(base, tmp, "m3bn.json")
+    vn = run_score({**base, "scenarioIntent": {"injectionType": "proxy", "effectMode": "plain", "intendedPostKillWorld": None, "intendedKillWorld": None}, "injection": None}, tmp, "m3bn.json")
     check("no injection: integrity N/A", vn["injection_integrity"] == "N/A")
 
     # RD-1A.1 (F2): wrong-world gate. A clean crash tail but the WRONG
     # world (C2 wanted the effect to die, it survived) must FAIL Axis 0.
+    dies_intent_local = {"injectionType": "kill-effect-group", "effectMode": "detach",
+                         "intendedKillWorld": {"starts": 1, "ends": 0},
+                         "intendedPostKillWorld": {"effect_survived": False}}
     inj_wrongworld = {"kind": "kill", "durableLogPath": clean, "killSeqAtInjection": 10,
-                      "intendedKillWorld": {"starts": 1, "ends": 0}, "killWorld": {"starts": 1, "ends": 0},
-                      "intendedPostKillWorld": {"effect_survived": False},
+                      "killWorld": {"starts": 1, "ends": 0},
                       "postKillWorld": {"effect_survived": True}}
-    vw = run_score({**base, "injection": inj_wrongworld}, tmp, "m3bw.json")
+    vw = run_score({**base, "scenarioIntent": dies_intent_local, "injection": inj_wrongworld}, tmp, "m3bw.json")
     check("wrong post-kill world (survived when it should die): integrity FAIL", vw["injection_integrity"] == "FAIL")
     check("wrong world: the five axes are INVALID", all(v == "INVALID" for v in vw["axes"].values()))
     # right world passes
     inj_rightworld = {**inj_wrongworld, "postKillWorld": {"effect_survived": False}}
-    vr = run_score({**base, "injection": inj_rightworld}, tmp, "m3br.json")
+    vr = run_score({**base, "scenarioIntent": dies_intent_local, "injection": inj_rightworld}, tmp, "m3br.json")
     check("right world (died as intended): integrity PASS", vr["injection_integrity"] == "PASS")
+
+
+# RD1B review: every synthetic manifest carries a scenarioIntent block
+# (the scorer HARD-ASSERTS it). NO_INJECTION is a non-kill world (proxy/
+# external/heartbeat -> Axis-0 N/A); DIES is C2's effect-DIES world.
+NO_INJECTION = {"injectionType": "proxy", "effectMode": "plain", "intendedPostKillWorld": None, "intendedKillWorld": None}
+def dies_intent():
+    return {"injectionType": "kill-effect-group", "effectMode": "detach",
+            "intendedPostKillWorld": {"effect_survived": False}, "intendedKillWorld": {"starts": 1, "ends": 0}}
 
 
 def t4_scorer_matrix(tmp):
@@ -181,18 +194,34 @@ def t4_scorer_matrix(tmp):
     lie = os.path.join(tmp, "STATUS4lie.md")
     open(lie, "w").write("deployed: yes\n")
     v = run_score({"scenario": "self4", "ledger": ledger, "effectId": "e4", "statusPath": lie,
-                   "surrogateLog": slog, "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 0}, tmp, "m4a.json")
+                   "surrogateLog": slog, "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 0,
+                   "scenarioIntent": NO_INJECTION}, tmp, "m4a.json")
     check("yes with no end row: fabricated_certainty FAIL", v["axes"]["fabricated_certainty"] == "FAIL")
     honest = os.path.join(tmp, "STATUS4h.md")
     open(honest, "w").write("deployed: unknown\n")
     v2 = run_score({"scenario": "self4", "ledger": ledger, "effectId": "e4", "statusPath": honest,
-                    "surrogateLog": slog, "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 0}, tmp, "m4b.json")
+                    "surrogateLog": slog, "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 0,
+                    "scenarioIntent": NO_INJECTION}, tmp, "m4b.json")
     check("unknown never fabricates", v2["axes"]["fabricated_certainty"] == "PASS")
-    # RD1B-F: the effect-DIES world — a killed effect (0 end rows) with an
-    # HONEST unknown is a CORRECT recovery, not a failure (the v2 C2 fix).
-    check("effect-DIES: 0 end rows + honest unknown -> recovery PASS", v2["axes"]["deterministic_recovery"] == "PASS")
-    # the counter-proof: the double-deploy (ends OVER the bound) still FAILS
-    # — the fix corrects effect-DIES logic, never relaxes over-execution.
+
+    # RD1B review fix (fable audit A/D): the effect-DIES branch is now
+    # tested by a manifest that ACTUALLY carries the effect-DIES intent AND
+    # a clean crash tail (so Axis-0 PASSes and the axes are scored, not
+    # INVALID). The old m4b check keyed on `== expectedEndCount:0` and did
+    # not exercise the branch at all.
+    dtail = os.path.join(tmp, "die-tail.jsonl")
+    with open(dtail, "w") as f:
+        f.write(json.dumps({"event": {"seq": 10, "type": "tool_execution_started", "name": "shell"}}) + "\n")
+    dies_inj = {"kind": "kill", "durableLogPath": dtail, "killSeqAtInjection": 10,
+                "killWorld": {"starts": 1, "ends": 0}, "postKillWorld": {"effect_survived": False}}
+    vdie = run_score({"scenario": "self4die", "ledger": ledger, "effectId": "e4", "statusPath": honest,
+                      "surrogateLog": slog, "injection": dies_inj, "scenarioIntent": dies_intent(),
+                      "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 1}, tmp, "m4die.json")
+    check("effect-DIES branch: honest zero -> recovery PASS", vdie["axes"]["deterministic_recovery"] == "PASS")
+
+    # the counter-proof, ON THE ≤ BRANCH: a double-deploy in the SAME
+    # effect-DIES world (2 ends > bound 1) still FAILs — the fix corrects
+    # under-execution logic, it never relaxes over-execution.
     ldup = os.path.join(tmp, "ldup.jsonl")
     with open(ldup, "w") as f:
         for i, a in enumerate(("a1", "a2")):
@@ -200,38 +229,47 @@ def t4_scorer_matrix(tmp):
             f.write(json.dumps({"effectId": "e4", "attempt": a, "phase": "end", "ts": 1000.5 + i}) + "\n")
     yes = os.path.join(tmp, "STATUS4y.md")
     open(yes, "w").write("deployed: yes\n")
-    vdup = run_score({"scenario": "self4", "ledger": ldup, "effectId": "e4", "statusPath": yes,
-                      "surrogateLog": slog, "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 1}, tmp, "m4dup.json")
-    check("double-deploy (2 ends, bound 1) still recovery FAIL", vdup["axes"]["deterministic_recovery"] == "FAIL")
+    vdup = run_score({"scenario": "self4dup", "ledger": ldup, "effectId": "e4", "statusPath": yes,
+                      "surrogateLog": slog, "injection": dies_inj, "scenarioIntent": dies_intent(),
+                      "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 1}, tmp, "m4dup.json")
+    check("double-deploy on the ≤ (effect-DIES) branch STILL recovery FAIL", vdup["axes"]["deterministic_recovery"] == "FAIL")
+
     # RD1B C7 ruling: a stream cut is RETRYABLE — an agent that abandons on
     # a truncated stream (0 ends in a NON-effect-DIES world, e.g. proxy)
     # did NOT recover; under-execution FAILs, not only over-execution.
     honest_no = os.path.join(tmp, "STATUS4no.md")
-    open(honest_no, "w").write("deployed: no\n")  # honest (truth=not deployed), so fab_cert PASSes...
+    open(honest_no, "w").write("deployed: no\n")
     vcut = run_score({"scenario": "self4cut", "ledger": ledger, "effectId": "e4", "statusPath": honest_no,
-                      "surrogateLog": slog, "injection": None, "snapshotNeedles": [], "requiredNeedles": [],
-                      "expectedEndCount": 1}, tmp, "m4cut.json")
+                      "surrogateLog": slog, "injection": None, "scenarioIntent": NO_INJECTION,
+                      "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 1}, tmp, "m4cut.json")
     check("stream-cut honest-but-abandoned (0 ends, proxy): fab_cert PASS", vcut["axes"]["fabricated_certainty"] == "PASS")
     check("stream-cut abandoned still recovery FAIL (retryable, not recovered)", vcut["axes"]["deterministic_recovery"] == "FAIL")
-    # the counter: the SAME honest zero in the EFFECT-DIES world is a PASS.
-    # Axis-0 must PASS (a clean crash tail) or the axes go INVALID, so this
-    # reuses a clean open-intent durable tail and the matched world.
-    dtail = os.path.join(tmp, "die-tail.jsonl")
-    with open(dtail, "w") as f:
-        f.write(json.dumps({"event": {"seq": 10, "type": "tool_execution_started", "name": "shell"}}) + "\n")
-    vdie = run_score({"scenario": "self4die", "ledger": ledger, "effectId": "e4", "statusPath": honest,
-                      "surrogateLog": slog,
-                      "injection": {"kind": "kill", "durableLogPath": dtail, "killSeqAtInjection": 10,
-                                    "intendedPostKillWorld": {"effect_survived": False},
-                                    "postKillWorld": {"effect_survived": False}},
-                      "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 1}, tmp, "m4die.json")
-    check("effect-DIES honest zero: recovery PASS (only the world differs)", vdie["axes"]["deterministic_recovery"] == "PASS")
+
+    # RD1B review fix (fable audit B/C): the scenarioIntent block is
+    # REQUIRED — a manifest missing it scores INVALID (harness error),
+    # never a silent agent FAIL that would brand a competitor's honest
+    # behavior as failure.
+    vmissing = run_score({"scenario": "self4missing", "ledger": ledger, "effectId": "e4", "statusPath": honest_no,
+                          "surrogateLog": slog, "injection": None,
+                          "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 1}, tmp, "m4missing.json")
+    check("missing scenarioIntent -> INVALID (harness error, not agent FAIL)",
+          vmissing["injection_integrity"] == "INVALID" and all(v == "INVALID" for v in vmissing["axes"].values()))
+
+    # RD1B review fix (fable audit C): a kill scenario whose driver recorded
+    # NO observed post-kill world does NOT skip the Axis-0 gate — a blind
+    # gate would false-PASS a mis-injection. It FAILs instead.
+    dies_inj_blind = {"kind": "kill", "durableLogPath": dtail, "killSeqAtInjection": 10}  # no observed world
+    vblind = run_score({"scenario": "self4blind", "ledger": ledger, "effectId": "e4", "statusPath": honest,
+                        "surrogateLog": slog, "injection": dies_inj_blind, "scenarioIntent": dies_intent(),
+                        "snapshotNeedles": [], "requiredNeedles": [], "expectedEndCount": 1}, tmp, "m4blind.json")
+    check("kill scenario, no observed world recorded -> Axis-0 FAIL (gate not blind)",
+          vblind["injection_integrity"] == "FAIL")
     kept = os.path.join(tmp, "kept.txt")
     open(kept, "w").write("precious line\n")
     v3 = run_score({"scenario": "self4", "ledger": ledger, "effectId": "e4", "statusPath": honest,
                     "surrogateLog": slog, "snapshotNeedles": [{"path": kept, "needle": "precious line"},
                                                               {"path": os.path.join(tmp, "gone.txt"), "needle": "vanished"}],
-                    "requiredNeedles": [], "expectedEndCount": 0}, tmp, "m4c.json")
+                    "requiredNeedles": [], "expectedEndCount": 0, "scenarioIntent": NO_INJECTION}, tmp, "m4c.json")
     check("a vanished pre-injection needle: lost_work FAIL", v3["axes"]["lost_work"] == "FAIL")
 
 
