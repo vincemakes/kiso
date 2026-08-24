@@ -57,6 +57,10 @@ try {
 		for (const axis of ["duplicate_effect", "silent_retry", "lost_work", "fabricated_certainty", "deterministic_recovery"]) {
 			if (!rescore.out.includes(axis)) errs.push(`rescore.py did not emit the ${axis} axis — the frozen deliverable is the five-axis grid`);
 		}
+		// The observation sentence IS the deliverable, so it must not
+		// carry whichever directory this machine happened to use.
+		const leak = /(?:\/Users\/|\/home\/|\/var\/folders\/|\/tmp\/)\S+/.exec(rescore.out);
+		if (leak) errs.push(`rescore.py leaked an absolute path into the deliverable: ${leak[0]}`);
 	}
 
 	const metrics = run("metrics.py", BATCHES);

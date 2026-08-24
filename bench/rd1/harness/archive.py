@@ -16,8 +16,16 @@ This writes two files per batch into bench/rd1/artifacts/:
                     verify ONE file without extracting anything, and
                     diff two batches to see exactly what moved
 
+`--verify` reads the TARBALL and re-hashes its entries against the
+manifest, so it proves the tracked evidence is intact from a fresh
+clone. It used to hash the LIVE out/ tree, which reported DRIFTED
+wherever the working directory simply was not present — a diagnosis
+about the wrong artifact. `--verify-live` keeps that check, for use
+while a batch is still being produced.
+
 Usage:  python3 bench/rd1/harness/archive.py rd1b-kiso rd1b-pi ...
         python3 bench/rd1/harness/archive.py --verify rd1b-kiso
+        python3 bench/rd1/harness/archive.py --verify-live rd1b-kiso
 """
 import gzip
 import hashlib
@@ -88,23 +96,68 @@ def archive(batch):
     return 0
 
 
-def verify(batch):
-    """Re-hash the live tree and diff it against the tracked manifest."""
+def _recorded(batch):
     mpath = os.path.join(ARTIFACTS, f"{batch}.sha256")
     if not os.path.exists(mpath):
         print(f"[rd1:archive] no manifest for {batch}", file=sys.stderr)
-        return 1
-    recorded = dict(reversed(l.split("  ", 1)) for l in open(mpath).read().splitlines() if l)
-    live = dict(reversed(l.split("  ", 1)) for l in manifest_lines(os.path.join(OUT, batch)))
-    missing = sorted(set(recorded) - set(live))
-    added = sorted(set(live) - set(recorded))
-    changed = sorted(p for p in set(recorded) & set(live) if recorded[p] != live[p])
+        return None
+    return dict(reversed(l.split("  ", 1)) for l in open(mpath).read().splitlines() if l)
+
+
+def _diff(batch, recorded, present, source):
+    missing = sorted(set(recorded) - set(present))
+    added = sorted(set(present) - set(recorded))
+    changed = sorted(p for p in set(recorded) & set(present) if recorded[p] != present[p])
     for label, rows in (("MISSING", missing), ("ADDED", added), ("CHANGED", changed)):
         for p in rows:
             print(f"[rd1:archive] {label} {p}")
     ok = not (missing or added or changed)
-    print(f"[rd1:archive] {batch}: {'INTACT' if ok else 'DRIFTED'} ({len(recorded)} files recorded)")
+    print(f"[rd1:archive] {batch}: {'INTACT' if ok else 'DRIFTED'} "
+          f"({len(recorded)} files recorded, checked against the {source})")
     return 0 if ok else 1
+
+
+def verify(batch):
+    """Re-hash the TARBALL's entries and diff against the manifest.
+
+    Streams each member rather than extracting: the check must not
+    depend on scratch space, and must work in a clone that has never
+    produced a batch.
+    """
+    recorded = _recorded(batch)
+    if recorded is None:
+        return 1
+    tpath = os.path.join(ARTIFACTS, f"{batch}.tar.gz")
+    if not os.path.exists(tpath):
+        print(f"[rd1:archive] no archive for {batch}", file=sys.stderr)
+        return 1
+    present = {}
+    with tarfile.open(tpath, "r:gz") as tar:
+        for member in tar:
+            if not member.isfile():
+                continue
+            fh = tar.extractfile(member)
+            if fh is None:
+                continue
+            h = hashlib.sha256()
+            for chunk in iter(lambda: fh.read(1 << 16), b""):
+                h.update(chunk)
+            present[member.name] = h.hexdigest()
+    return _diff(batch, recorded, present, "tarball")
+
+
+def verify_live(batch):
+    """Re-hash the live out/ tree — for use before archiving."""
+    recorded = _recorded(batch)
+    if recorded is None:
+        return 1
+    root = os.path.join(OUT, batch)
+    if not os.path.isdir(root):
+        print(f"[rd1:archive] no live tree at {root} "
+              f"(use --verify to check the tracked archive)", file=sys.stderr)
+        return 1
+    present = dict(reversed(l.split("  ", 1)) for l in manifest_lines(root))
+    return _diff(batch, recorded, present, "live out/ tree")
 
 
 def main():
@@ -114,6 +167,8 @@ def main():
         return 2
     if args[0] == "--verify":
         return max((verify(b) for b in args[1:]), default=2)
+    if args[0] == "--verify-live":
+        return max((verify_live(b) for b in args[1:]), default=2)
     return max((archive(b) for b in args), default=2)
 
 
