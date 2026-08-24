@@ -70,6 +70,11 @@ def pi_provenance(a, scn):
         "harness_sha256": {os.path.basename(p): kiso_drive.sha16(p) for p in (EFFECT, SCORE, PROXY)},
         "axis0_version": kiso_drive.sha16(SCORE),
         "scenario_sha256": kiso_drive.sha16(a.scenario),
+        # RD1B-F7: the environment is EVIDENCE. RD-1B's pi cells could
+        # not say what the process was given, so the contamination lived
+        # in the operator's memory instead of in the artifacts.
+        "isolateHome": bool(getattr(a, "isolate_home", False)),
+        "noUserResources": bool(getattr(a, "no_user_resources", False)),
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }
 
@@ -102,6 +107,10 @@ class Leg:
             except Exception:
                 pass
             os.chdir(cwd)
+            # RD1B-F7: this used to be update() with no clear(), so the
+            # child inherited the operator's ENTIRE environment while the
+            # kiso arm got an 8-key whitelist. Symmetric now.
+            os.environ.clear()
             os.environ.update(env)
             os.execvp(argv[0], argv)
         self.pid = pid
@@ -235,6 +244,10 @@ def main():
     ap.add_argument("--provider", default="deepseek")
     ap.add_argument("--base-url", default="https://api.deepseek.com")
     ap.add_argument("--api-key-env", default="DEEPSEEK_API_KEY")
+    ap.add_argument("--isolate-home", action="store_true",
+                    help="RD1B-F7: give the arm its own empty profile dir")
+    ap.add_argument("--no-user-resources", action="store_true",
+                    help="RD1B-F7: -ns -nc -ne (skills, context files, extensions off)")
     a = ap.parse_args()
 
     scn = json.load(open(a.scenario))
@@ -265,18 +278,31 @@ def main():
     # pi reads DeepSeek creds from DEEPSEEK_API_KEY (the bench precedent,
     # run-one.sh); the proxy retarget rides the OpenAI-compat base url pi
     # honors for the deepseek provider.
+    # RD1B-F7: HOME was the operator's real home, so ~/.pi/agent loaded
+    # with whatever skills happened to be installed, and pi's ancestor
+    # walk for context files reached whatever repository the fixture sat
+    # in. --isolate-home gives the arm its own empty profile.
+    pi_home = os.path.join(a.out, "agent-home") if a.isolate_home else os.environ["HOME"]
+    if a.isolate_home:
+        os.makedirs(pi_home, exist_ok=True)
     env = {
         "PATH": os.environ["PATH"],
-        "HOME": os.environ["HOME"],
+        "HOME": pi_home,
         "TERM": "dumb",
         "PI_CODING_AGENT_SESSION_DIR": pi_sess,
         "DEEPSEEK_API_KEY": os.environ[a.api_key_env],
         "OPENAI_BASE_URL": base_url,
         "DEEPSEEK_BASE_URL": base_url,
     }
+    if a.isolate_home:
+        env["PI_CODING_AGENT_DIR"] = pi_home
     prompt = scn["prompt"]
     argv = ["pi", "--provider", a.provider, "--model", a.model, "-p", "--mode", "json",
-            "--session-dir", pi_sess, "--session-id", sid, prompt]
+            "--session-dir", pi_sess, "--session-id", sid]
+    if a.no_user_resources:
+        # the product's own switches, not a directory trick
+        argv += ["-ns", "-nc", "-ne"]
+    argv.append(prompt)
 
     state = {}
     leg, why = run_leg(argv, env, work, ledger, scn, log, "pre", state)

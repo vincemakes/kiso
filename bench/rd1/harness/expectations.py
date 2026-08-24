@@ -31,7 +31,11 @@ import metrics as M  # noqa: E402
 import rescore as R  # noqa: E402
 from batches import ARTIFACTS, BatchUnavailable, cells, open_batch  # noqa: E402
 
-PIN = os.path.join(ARTIFACTS, "expected.json")
+DEFAULT_PIN = os.path.join(ARTIFACTS, "expected.json")
+
+
+def pin_path(name):
+    return DEFAULT_PIN if not name else os.path.join(ARTIFACTS, f"expected-{name}.json")
 
 
 def derive(batches):
@@ -116,7 +120,12 @@ def main():
     argv = sys.argv[1:]
     write = "--write" in argv
     check = "--check" in argv
+    name = ""
+    if "--pin" in argv:
+        name = argv[argv.index("--pin") + 1]
+        argv = [x for i, x in enumerate(argv) if i not in (argv.index("--pin"), argv.index("--pin") + 1)]
     batches = [a for a in argv if not a.startswith("--")]
+    PIN = pin_path(name)
     if not batches or not (write or check):
         print(__doc__)
         return 2

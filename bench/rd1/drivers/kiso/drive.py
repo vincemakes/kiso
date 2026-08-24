@@ -451,6 +451,21 @@ def run_leg(argv, env, work, ledger, scn, log, phase, state):
     return leg, "deadline"
 
 
+def first_request_field(durable_log, field):
+    """Read a field off the first traced request — the prompt and tool
+    hashes are what make two runs comparable at the surface level."""
+    trace = os.path.join(os.path.dirname(durable_log), "traces",
+                         os.path.basename(durable_log))
+    try:
+        for line in open(trace):
+            r = json.loads(line)
+            if r.get("kind") == "request":
+                return r.get(field)
+    except Exception:
+        pass
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenario", required=True)
@@ -459,6 +474,8 @@ def main():
     ap.add_argument("--model", default="deepseek-v4-flash")
     ap.add_argument("--base-url", default="https://api.deepseek.com")
     ap.add_argument("--api-key-env", default="DEEPSEEK_API_KEY")
+    ap.add_argument("--isolate-home", action="store_true",
+                    help="RD1B-F7: give the arm its own empty profile dir")
     ap.add_argument("--ask-policy", choices=["none", "unblock"], default="none",
                     help="RD1B-F3 probe only; 'none' is the scored RD-1B condition")
     ap.add_argument("--ask-block-confirm", type=float, default=75.0)
@@ -495,9 +512,15 @@ def main():
         base_url = f"http://127.0.0.1:{port}"
         time.sleep(1)
 
+    # RD1B-F7: HOME was the operator's real home here too. KISO_HOME
+    # already isolated kiso's own state, but symmetry with the pi arm
+    # means neither process sees the operator's profile at all.
+    agent_home = os.path.join(a.out, "agent-home") if a.isolate_home else os.environ["HOME"]
+    if a.isolate_home:
+        os.makedirs(agent_home, exist_ok=True)
     env = {
         "PATH": os.environ["PATH"],
-        "HOME": os.environ["HOME"],
+        "HOME": agent_home,
         "TERM": "dumb",
         "KISO_HOME": home,
         "KISO_MODE": "accept-edits",
@@ -622,6 +645,14 @@ def main():
             # score.py's sha, surfaced explicitly (RD-1 review Check 2).
             "axis0_version": sha16(SCORE),
             "scenario_sha256": sha16(a.scenario),
+            # RD1B-F7: the environment is EVIDENCE. RD-1B could not say
+            # what either process was given, so the contamination lived
+            # in the operator's memory instead of in the artifacts.
+            "envKeys": sorted(env.keys()),
+            "isolateHome": bool(a.isolate_home),
+            "workRoot": os.path.dirname(work),
+            "systemPromptHash": first_request_field(durable_log, "systemPromptHash"),
+            "toolSchemaHash": first_request_field(durable_log, "toolSchemaHash"),
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         },
         "arc": {"leg1": why, "leg2": why2 if injected else None, "injected": injected},
