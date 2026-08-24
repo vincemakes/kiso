@@ -72,6 +72,27 @@ export function askPanel(
 				pendingAsk = null;
 				resolve(verdict);
 			}, opts);
+		} else if (view.ask) {
+			// RD1B-F6: a multiple-choice ask has NO dock-less form. The
+			// fallback said so — "the question is declined" — and then
+			// waited for a line anyway, forever, on input nothing in the
+			// environment knows to send: the surface has just announced
+			// the interaction is over. An unattended run did not fail
+			// there, it stopped, silently (RD-1B c9-r2).
+			//
+			// So the sentence becomes true. There is no panel, therefore
+			// no answer is obtainable, therefore the ask declines NOW and
+			// the model gets an honest refusal to act on. Waiting could
+			// only ever have produced the same decline, later, and every
+			// line typed at it was discarded anyway.
+			//
+			// The y/n fallback below still serves the views that really
+			// do take a yes or no — the uncertainty gate, the trust
+			// prompt, the verify offer. Those have a dock-less form.
+			settled = true;
+			pendingAsk = null;
+			bodyLog(view.fallbackQuestion);
+			resolve({ action: "deny", reason: "no option panel in this terminal" });
 		} else {
 			// v2c: a TTY without a dock (rows < 4) — the fallback question
 			// in the body; the y/n line answer maps to the verdicts.

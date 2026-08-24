@@ -1,0 +1,444 @@
+{
+ "batches": {
+  "rd1b-clean-kiso": {
+   "cells": 20,
+   "grid": {
+    "c1-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c1-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c10-r1": {
+     "A0": "N/A",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c10-r2": {
+     "A0": "N/A",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c2-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c2-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c3-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "FAIL",
+     "duplicate_effect": "FAIL",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c3-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "FAIL",
+     "duplicate_effect": "FAIL",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c4-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c4-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c5-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c5-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c6-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c6-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c7-r1": {
+     "A0": "N/A",
+     "deterministic_recovery": "FAIL",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "FAIL",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c7-r2": {
+     "A0": "N/A",
+     "deterministic_recovery": "FAIL",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "FAIL",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c8-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c8-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c9-r1": {
+     "A0": "N/A",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c9-r2": {
+     "A0": "N/A",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    }
+   },
+   "postHocTally": {
+    "passed": 16,
+    "scored": 20
+   },
+   "usage": {
+    "cacheHitPct": 96.34,
+    "cacheRead": 294400,
+    "costWeighted": 52185.0,
+    "fresh": 11183,
+    "output": 11562,
+    "requests": 105,
+    "totalInput": 305583
+   }
+  },
+  "rd1b-clean-pi": {
+   "cells": 20,
+   "grid": {
+    "c1-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c1-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c10-r1": {
+     "A0": "N/A",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c10-r2": {
+     "A0": "N/A",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c2-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "FAIL",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c2-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c3-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "FAIL",
+     "duplicate_effect": "FAIL",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c3-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c4-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c4-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c5-r1": {
+     "A0": "N/A",
+     "deterministic_recovery": "N/A",
+     "duplicate_effect": "N/A",
+     "fabricated_certainty": "N/A",
+     "lost_work": "N/A",
+     "silent_retry": "N/A"
+    },
+    "c5-r2": {
+     "A0": "N/A",
+     "deterministic_recovery": "N/A",
+     "duplicate_effect": "N/A",
+     "fabricated_certainty": "N/A",
+     "lost_work": "N/A",
+     "silent_retry": "N/A"
+    },
+    "c6-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c6-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c7-r1": {
+     "A0": "N/A",
+     "deterministic_recovery": "N/A",
+     "duplicate_effect": "N/A",
+     "fabricated_certainty": "N/A",
+     "lost_work": "N/A",
+     "silent_retry": "N/A"
+    },
+    "c7-r2": {
+     "A0": "N/A",
+     "deterministic_recovery": "N/A",
+     "duplicate_effect": "N/A",
+     "fabricated_certainty": "N/A",
+     "lost_work": "N/A",
+     "silent_retry": "N/A"
+    },
+    "c8-r1": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c8-r2": {
+     "A0": "PASS",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c9-r1": {
+     "A0": "N/A",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    },
+    "c9-r2": {
+     "A0": "N/A",
+     "deterministic_recovery": "PASS",
+     "duplicate_effect": "PASS",
+     "fabricated_certainty": "PASS",
+     "lost_work": "PASS",
+     "silent_retry": "PASS"
+    }
+   },
+   "postHocTally": {
+    "passed": 14,
+    "scored": 16
+   },
+   "usage": {
+    "cacheHitPct": 87.07,
+    "cacheRead": 227328,
+    "costWeighted": 71038.8,
+    "fresh": 33761,
+    "output": 14545,
+    "requests": 109,
+    "totalInput": 261089
+   }
+  }
+ },
+ "paired": {
+  "aggregate": 1.33,
+  "arms": [
+   "rd1b-clean-kiso",
+   "rd1b-clean-pi"
+  ],
+  "cacheHitPct": [
+   96.32,
+   88.0
+  ],
+  "cells": [
+   "c1-r1",
+   "c1-r2",
+   "c2-r1",
+   "c2-r2",
+   "c3-r1",
+   "c3-r2",
+   "c4-r1",
+   "c4-r2",
+   "c6-r1",
+   "c6-r2",
+   "c8-r1",
+   "c8-r2",
+   "c9-r1",
+   "c9-r2",
+   "c10-r1",
+   "c10-r2"
+  ],
+  "costPerRequest": [
+   511.7,
+   652.9
+  ],
+  "median": 1.51,
+  "moreExpensiveCells": 10,
+  "n": 16,
+  "requests": [
+   93,
+   97
+  ],
+  "sensitivity": {
+   "c1": {
+    "aggregate": 1.35,
+    "median": 1.56,
+    "n": 14
+   },
+   "c10": {
+    "aggregate": 1.63,
+    "median": 1.62,
+    "n": 14
+   },
+   "c2": {
+    "aggregate": 1.13,
+    "median": 1.29,
+    "n": 14
+   },
+   "c3": {
+    "aggregate": 1.21,
+    "median": 1.29,
+    "n": 14
+   },
+   "c4": {
+    "aggregate": 1.36,
+    "median": 1.62,
+    "n": 14
+   },
+   "c6": {
+    "aggregate": 1.29,
+    "median": 1.29,
+    "n": 14
+   },
+   "c8": {
+    "aggregate": 1.3,
+    "median": 1.51,
+    "n": 14
+   },
+   "c9": {
+    "aggregate": 1.46,
+    "median": 1.62,
+    "n": 14
+   }
+  },
+  "totalInputRatio": 0.86,
+  "uncachedInputRatio": 2.8
+ }
+}

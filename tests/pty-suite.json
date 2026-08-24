@@ -31,6 +31,7 @@
   "apps/cli/tests/project-trust.test.ts",
   "apps/cli/tests/r3a-input.test.ts",
   "apps/cli/tests/rd1b-f1-dockless-uncertainty.test.ts",
+  "apps/cli/tests/rd1b-f6-dockless-ask.test.ts",
   "apps/cli/tests/resume-clear.test.ts",
   "apps/cli/tests/scoped-read-e2e.test.ts",
   "apps/cli/tests/scrollback-flood.test.ts",
