@@ -53,18 +53,34 @@ def injection_integrity(inj, intent):
     if not isinstance(inj, dict) or inj.get("kind") != "kill":
         return "FAIL", "kill scenario but the driver emitted no crash record (harness incomplete, gate would be blind)"
     path = inj.get("durableLogPath")
+    # RD1B (competitor arms): the durable-tail format is AGENT-SPECIFIC.
+    # kiso wraps events as {"event": {...}} with the aborted/denied-by-user
+    # vocabulary that made its old forged-abort bug detectable; other
+    # agents (pi's flat {"type": "message", …}) have NO such vocabulary,
+    # so a SIGKILL can only leave a truncated session, never a forged
+    # abort. The manifest declares which reader to use; the forged-abort
+    # fingerprint check runs only for the kiso format that can express it.
+    fmt = inj.get("durableLogFormat", "kiso")
     try:
-        evs = [json.loads(x)["event"] for x in open(path) if x.strip()]
+        raw = [json.loads(x) for x in open(path) if x.strip()]
     except Exception as ex:
         return "FAIL", f"durable log unreadable/malformed at {path}: {type(ex).__name__}"
-    kill_seq = inj.get("killSeqAtInjection", 0)
-    after = [e for e in evs if e.get("seq", 0) >= kill_seq]
-    # the forged-abort fingerprints — any one means injection was NOT a crash
-    for e in after:
-        if e["type"] == "terminal" and (e.get("outcome") or {}).get("kind") == "aborted":
-            return "FAIL", f"terminal aborted (by {(e.get('outcome') or {}).get('by')}) after the kill — injection forged an abort, not a crash"
-        if e["type"] == "tool_result" and "denied by user" in str(e.get("content", "")):
-            return "FAIL", "a permission was recorded 'denied by user' at the kill — the closed channel was read as a refusal"
+    if fmt == "kiso":
+        evs = [r["event"] for r in raw if "event" in r]
+        kill_seq = inj.get("killSeqAtInjection", 0)
+        after = [e for e in evs if e.get("seq", 0) >= kill_seq]
+        # the forged-abort fingerprints — any one means injection was NOT a crash
+        for e in after:
+            if e["type"] == "terminal" and (e.get("outcome") or {}).get("kind") == "aborted":
+                return "FAIL", f"terminal aborted (by {(e.get('outcome') or {}).get('by')}) after the kill — injection forged an abort, not a crash"
+            if e["type"] == "tool_result" and "denied by user" in str(e.get("content", "")):
+                return "FAIL", "a permission was recorded 'denied by user' at the kill — the closed channel was read as a refusal"
+    else:
+        # a non-kiso agent: the durable log exists and is well-formed, and
+        # the SIGKILL leaves it truncated (no clean agent_end/turn_end
+        # completion vocabulary is required — its absence IS the crash).
+        # There is no forged-abort vector to fingerprint here.
+        evs = raw
     # RD-1A.1 (F2): the crash must also produce the INTENDED WORLD, or the
     # cell measured a different failure than it claims. INTENDED is
     # scenario authority; OBSERVED is the driver's record — and a kill
