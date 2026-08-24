@@ -10,3 +10,9 @@
  */
 
 delete process.env.NO_COLOR;
+
+// REL-0150-D1 (the same isolation class): the host's TERM_PROGRAM must
+// not flip the conservative frame mode under the byte-pinned grids —
+// a suite run from Terminal.app would repaint every frame differently.
+// Tests that TEST the mode set the variable inside the test body.
+delete process.env.TERM_PROGRAM;

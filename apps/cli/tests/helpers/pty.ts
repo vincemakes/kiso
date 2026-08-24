@@ -38,6 +38,8 @@ def driver(cli, args, env, feeds, timeout, cwd, rows, cols, delays):
         # byte-pinned grids assert. A test that WANTS it passes it in env.
         if "NO_COLOR" not in env:
             os.environ.pop("NO_COLOR", None)
+        if "TERM_PROGRAM" not in env:
+            os.environ.pop("TERM_PROGRAM", None)
         os.environ.update(env)
         if cwd:
             os.chdir(cwd)

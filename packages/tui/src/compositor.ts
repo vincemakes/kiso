@@ -112,6 +112,11 @@ export interface InputState {
 }
 
 export interface BodyOptions {
+	/** REL-0150-D1 test seam: overrides the TERM_PROGRAM detection for
+	 *  the conservative frame mode — process.env is SHARED across
+	 *  concurrently-running test files in one worker, so a test that
+	 *  mutated the env would bleed 40ms frames into its neighbors. */
+	readonly termProgram?: string;
 	/** Is the cell renderer live? A color TTY with a real size — checked
 	 *  per mutation (the TIOCSWINSZ can land after main constructs us). */
 	active: () => boolean;
@@ -241,9 +246,25 @@ export class Body {
 	// row's right hint shows the count while any turn waits.
 	#queueState: () => readonly string[] = () => [];
 
+	/** REL-0150-D1 — the conservative frame mode. Terminal.app does not
+	 *  support DEC 2026 synchronized output (half-frames paint on its own
+	 *  schedule — the reviewer dogfood watched the tearing live) and its
+	 *  renderer is throughput-weak (typed input lagged seconds behind the
+	 *  stream). Where TERM_PROGRAM says Apple_Terminal: the frame wraps
+	 *  in ?25l/?25h (cursor hidden during the repaint — the classic
+	 *  anti-tearing degrade; every frame re-shows it) instead of the dead
+	 *  2026 bytes, and the coalesce window widens 16→40ms (fewer, bigger
+	 *  frames: fewer tear opportunities, less renderer pressure). Every
+	 *  other terminal keeps today's bytes exactly. Heuristic on purpose —
+	 *  a DECRQM round-trip would race the editor for stdin at boot. */
+	readonly #conservative: boolean;
+	readonly #frameMs: number;
+
 	constructor(opts: BodyOptions) {
 		this.#opts = opts;
 		this.#write = opts.write ?? ((s) => process.stdout.write(s));
+		this.#conservative = (opts.termProgram ?? process.env.TERM_PROGRAM) === "Apple_Terminal";
+		this.#frameMs = this.#conservative ? 40 : FRAME_MS;
 		this.#active = opts.active();
 		// v6: the single writer — the compositor IS the dock; the CLI's
 		// onDock callback (which used to re-pin the dock after a scroll)
@@ -1036,7 +1057,7 @@ export class Body {
 				this.#dirty = false;
 				this.render();
 			}
-		}, FRAME_MS);
+		}, this.#frameMs);
 		this.#frameTimer.unref();
 	}
 
@@ -1265,7 +1286,7 @@ export class Body {
 			panelSpan === null ? null : { top: liveTop + panelSpan.offset, count: panelSpan.count, first: panelSpan.first };
 		// 5. the frame bytes.
 		const out: string[] = [];
-		out.push("\x1b[?2026h"); // synchronized output ON (DEC 2026)
+		out.push(this.#conservative ? "\x1b[?25l" : "\x1b[?2026h"); // D1: sync ON, or cursor-hide where 2026 is dead bytes
 		// A8: the bottom-anchored window (the model's last H rows) shifts
 		// DOWN when the live region SHRINKS — the done-fold, the fold-hold
 		// release at the terminal event. The steady path's scroll syncs
@@ -1285,7 +1306,7 @@ export class Body {
 		} else {
 			this.#drawSteady(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
 		}
-		out.push("\x1b[?2026l");
+		out.push(this.#conservative ? "\x1b[?25h" : "\x1b[?2026l");
 		this.#write(out.join(""));
 		this.#lastLiveTop = liveTop;
 		this.#lastLiveRows = liveRowsTotal;
