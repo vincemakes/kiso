@@ -56,11 +56,18 @@ def score_cell(root, cell):
         raise ScoringError(f"{cell}: no recorded verdict in run.json ({exc})")
     mpath = os.path.join(d, "score-manifest.json")
     if not os.path.exists(mpath):
-        # An excluded-with-reason cell: the driver wrote an N/A verdict
-        # directly and there is nothing to re-derive. A hole in the grid
-        # and a declared exclusion are different things — but a cell with
-        # NEITHER manifest nor verdict is a hole, and raises above.
-        return recorded, recorded, "recorded (excluded-with-reason: no manifest to re-score)"
+        # A DECLARED exclusion has no manifest because the driver wrote
+        # an N/A verdict directly — there is nothing to re-derive. Any
+        # OTHER missing manifest is evidence loss, and must not wear the
+        # exclusion's clothes: without this check a cell whose manifest
+        # vanished keeps its stale recorded verdict and the grid reads as
+        # though it had been re-derived.
+        axes = recorded.get("axes", {})
+        if axes and all(v == "N/A" for v in axes.values()):
+            return recorded, recorded, "recorded (excluded-with-reason: no manifest to re-score)"
+        raise ScoringError(
+            f"{cell}: score-manifest.json is missing but the recorded verdict is not an exclusion "
+            f"({axes or 'no axes'}) — the cell cannot be re-derived and must not be reported as scored")
     manifest = relocate(json.load(open(mpath)), root)
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
         json.dump(manifest, fh)

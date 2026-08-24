@@ -151,9 +151,20 @@ def main():
     except BatchUnavailable as exc:
         print(f"[rd1:metrics] FAIL — {exc}", file=sys.stderr)
         return 1
+    # A cell with ZERO requests is evidence loss, not a cheap cell: every
+    # cell in every batch recorded at least one request, because a run
+    # that never called the model is a run that never happened. Checking
+    # only "the whole batch is empty" let a single cell's traces vanish
+    # and quietly deflate the total — 93 requests silently became 86 in
+    # the test that found this.
+    # (Zero COST with requests > 0 is different and legitimate: C7's cut
+    # stream returns no usage. That case is dropped from the paired
+    # comparison, loudly, further down.)
     for b, cells_ in data.items():
-        if not any(cells_[c]["requests"] for c in cells_):
-            print(f"[rd1:metrics] FAIL — {b}: no request usage found in any cell", file=sys.stderr)
+        empty = [c for c in cells_ if cells_[c]["requests"] == 0]
+        if empty:
+            print(f"[rd1:metrics] FAIL — {b}: {len(empty)} cell(s) recorded no requests at all "
+                  f"({', '.join(empty)}) — usage evidence is missing, not zero", file=sys.stderr)
             return 1
 
     for b in batches:

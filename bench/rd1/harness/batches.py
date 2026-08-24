@@ -72,13 +72,29 @@ def open_batch(batch, live=False):
 
 
 def _safe_extract(tar, dest):
-    """Refuse entries that escape dest (tarfile does not, by default)."""
+    """Extract under the strictest filter available.
+
+    A path check alone is not enough: a symlink member whose LINK target
+    escapes passes any name-based test, and a later member written
+    through that link lands outside the root. Python's "data" filter
+    handles the whole family (absolute paths, .., escaping links,
+    setuid bits, devices and fifos) and raises rather than skipping,
+    so it is the primary defence. The explicit checks stay as a
+    readable statement of intent and as the fallback on interpreters
+    without the filter.
+    """
     dest_abs = os.path.abspath(dest)
     for member in tar.getmembers():
+        if not (member.isfile() or member.isdir()):
+            raise BatchUnavailable(
+                f"archive holds a non-regular entry ({member.name}); batches are files and directories only")
         target = os.path.abspath(os.path.join(dest, member.name))
         if not (target == dest_abs or target.startswith(dest_abs + os.sep)):
             raise BatchUnavailable(f"archive entry escapes the extraction root: {member.name}")
-    tar.extractall(dest)
+    try:
+        tar.extractall(dest, filter="data")
+    except TypeError:  # interpreter without extraction filters
+        tar.extractall(dest)
 
 
 def relocate(value, root):

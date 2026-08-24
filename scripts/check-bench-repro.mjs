@@ -63,6 +63,12 @@ try {
 		if (leak) errs.push(`rescore.py leaked an absolute path into the deliverable: ${leak[0]}`);
 	}
 
+	// Running is one promise; still producing the published figures is a
+	// different one. expected.json pins the grid, the cost tables, the
+	// sensitivity rows and Appendix A's counts.
+	const expected = run("expectations.py", ["--check", ...BATCHES]);
+	if (expected.code !== 0) errs.push(`expectations.py --check exited ${expected.code} in a fresh clone:\n${expected.out.trim().split("\n").slice(-6).join("\n")}`);
+
 	const metrics = run("metrics.py", BATCHES);
 	if (metrics.code !== 0) errs.push(`metrics.py exited ${metrics.code} in a fresh clone:\n${metrics.out.trim().split("\n").slice(-3).join("\n")}`);
 	else if (!/cost-weighted/.test(metrics.out)) errs.push(`metrics.py printed no cost table:\n${metrics.out.trim()}`);
