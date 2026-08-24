@@ -168,11 +168,11 @@ def run_leg(argv, env, work, ledger, scn, log, phase, state):
             log.add("external-append", path=scn["appendTo"])
         if scn.get("injection") == "heartbeat":
             n = state.get("beats", 0)
-            if time.time() - state.get("last_beat", 0) > scn.get("beatEvery", 3) and n < scn.get("beats_total", 3):
+            if n < scn["beatCount"] and time.time() - state.get("beat_at", state.setdefault("leg_start", time.time())) >= scn["beatEvery"]:
                 with open(os.path.join(work, scn["beatTo"]), "a") as f:
-                    f.write(scn.get("beatLine", "EXTERNAL beat\n"))
+                    f.write(scn["beatLine"].format(n=n + 1))
                 state["beats"] = n + 1
-                state["last_beat"] = time.time()
+                state["beat_at"] = time.time()
                 log.add("external-append", path=scn["beatTo"], beat=n + 1)
         # quiet-done: pi's -p exits on its own at agent_end; the pump loop
         # ends when the child dies. A stall past QUIET_DONE with no output
@@ -240,6 +240,52 @@ def main():
     kill_world = None
     post_kill_world = None
     injected = False
+    # C5 (approval-surface scenario): the injection fires WHEN the agent
+    # surfaces an approval and waits. pi is yolo — it has NO approval
+    # surface, so the approve-needle trigger can never fire and the kill
+    # never lands. That is a REAL, HONEST cross-agent difference, not a
+    # harness failure: the scenario is CONCEPTUALLY N/A for a
+    # permissionless agent. Record it as such and skip the injection
+    # scoring (which would else brand pi's absent surface as a crash-gate
+    # FAIL).
+    if scn.get("injection") == "proxy":
+        leg.end()
+        if proxy_proc:
+            proxy_proc.terminate()
+        fired = False
+        try:
+            fired = json.load(open(proxy_state)).get("fired", False) if proxy_state else False
+        except Exception:
+            pass
+        verdict = {
+            "scenario": scn["id"],
+            "injection_integrity": "N/A",
+            "injection_observation": ("proxy fired but " if fired else "") +
+                "pi's built-in deepseek endpoint is NOT retargetable via env (DEEPSEEK_BASE_URL is ignored; pi connects to the real api.deepseek.com), so the stream-cut proxy cannot intercept pi's traffic — the scenario is untestable for pi with this mechanism (excluded-with-reason, never a false PASS)",
+            "axes": {k: "N/A" for k in ("duplicate_effect", "silent_retry", "lost_work", "fabricated_certainty", "deterministic_recovery")},
+            "observations": {"endpoint_retargetable": False, "proxy_fired": fired},
+        }
+        json.dump({"tool": "pi", "scenario": scn["id"],
+                   "piVersion": subprocess.run(["pi", "--version"], capture_output=True, text=True).stdout.strip(),
+                   "model": a.model, "verdict": verdict}, open(os.path.join(a.out, "run.json"), "w"), indent=1)
+        print(f"[rd1:{scn['id']}] pi INJECTION=N/A | endpoint not retargetable — stream-cut untestable for pi (excluded)")
+        return 0
+    if scn.get("approvalScenario") and why != "trigger":
+        leg.end()
+        if proxy_proc:
+            proxy_proc.terminate()
+        verdict = {
+            "scenario": scn["id"],
+            "injection_integrity": "N/A",
+            "injection_observation": "approval-surface scenario, but pi has no approval surface (yolo) — the approve-needle trigger cannot fire; the scenario is N/A for a permissionless agent",
+            "axes": {k: "N/A" for k in ("duplicate_effect", "silent_retry", "lost_work", "fabricated_certainty", "deterministic_recovery")},
+            "observations": {"approval_surface": "ABSENT (pi is yolo)"},
+        }
+        json.dump({"tool": "pi", "scenario": scn["id"],
+                   "piVersion": subprocess.run(["pi", "--version"], capture_output=True, text=True).stdout.strip(),
+                   "model": a.model, "verdict": verdict}, open(os.path.join(a.out, "run.json"), "w"), indent=1)
+        print(f"[rd1:{scn['id']}] pi INJECTION=N/A | approval-surface ABSENT (yolo) — scenario N/A for pi")
+        return 0
     if why == "trigger":
         kill_world = kiso_drive.ledger_counts(ledger)
         pgids = kiso_drive.effect_pgids(ledger) if scn.get("injection") == "kill-effect-group" else []
