@@ -87,7 +87,18 @@ export function projectUntrustedNote(count: number, root: string): string {
  *  stay true — the digits moved, and copy naming a digit it does not own
  *  goes stale silently. The tool name is escaped for the dock-less
  *  fallback question because it reaches the terminal as raw text there;
- *  the panel's own rows are escaped by the panel renderer. */
+ *  the panel's own rows are escaped by the panel renderer.
+ *
+ *  RD1B-F1 (the answer-inversion fix, 2026-08-24) — both questions ask
+ *  the ACTION now, not the state. They used to read "did it apply?",
+ *  which the dock-less path turns into an inversion: askPanel maps `y`
+ *  to allow and resolveUncertains maps allow to rerun, so the TRUTHFUL
+ *  answer from a human who checked the workspace ("yes, it applied")
+ *  re-ran the effect that had already applied — RD-1B's C3 double-deploy,
+ *  both runs. The rule line still carries the uncertainty ("may have
+ *  applied"); what follows it is the action the answer performs. The
+ *  invariant a test now holds for every simple view: the dock-less
+ *  question names `simpleOptions[0]`, the action `y` performs. */
 /**
  * TV-1B — the verification offer (the thin task driver's one question):
  * shown at a NORMAL settle when every item is claimed done and no
@@ -117,9 +128,9 @@ export function uncertainView(name: string, executionId: string): PanelView {
 		speaker: "kiso",
 		statusText: "▸ uncertain execution",
 		args: { kind: "text", lines: [executionId] },
-		ruleOverride: "did the interrupted execution apply?",
+		ruleOverride: "an interrupted execution may have applied — rerun it?",
 		simpleOptions: ["rerun it", "abandon it"],
-		fallbackQuestion: `⚠ interrupted execution: ${escapeTerminal(name)} (${executionId}) — did it apply? (y)es / (n)o `,
+		fallbackQuestion: `⚠ interrupted execution: ${escapeTerminal(name)} (${executionId}) — rerun it? (y)es / (n)o `,
 	};
 }
 

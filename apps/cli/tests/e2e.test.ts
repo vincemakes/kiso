@@ -182,7 +182,7 @@ sys.exit(0 if processed else 1)
 		);
 		const res = runCli(["chat", "unc12"], { ...env, KISO_FAUX_SCRIPT: script }, { input: "go\nexit\n" });
 		expect(res.status, res.stderr).toBe(0);
-		expect(res.stdout).not.toContain("did it apply"); // zero uncertainty questions
+		expect(res.stdout).not.toContain("interrupted execution:"); // zero uncertainty questions (the fallback question's stable prefix — RD1B-F1 moved the question itself)
 		expect(res.stdout).toContain("non-idempotent tool failed"); // the honest note rides the result
 		expect(res.stdout).toContain("the tour is done"); // the run completes — the model may retry
 	}, 60_000);

@@ -147,11 +147,12 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         # exits on its own.
         # NOTE: the 0-row pty (no window size) keeps the dock out — the
         # dock-less fallback renders the W21 fallback questions: the
-        # uncertain one "⚠ interrupted execution: <name> (<id>) — did it
-        # apply? (y)es / (n)o" (its "did it apply?" is the anchor), and
+        # uncertain one "⚠ interrupted execution: <name> (<id>) — rerun
+        # it? (y)es / (n)o" (its "rerun it?" is the anchor — RD1B-F1
+        # moved this question from the state to the action), and
         # every approval as "approve <tool>? (y/n)" (the "approve " is
         # the anchor). "y" maps to allow/rerun — the old "r" key is gone.
-        read_until(b"did it apply?", 25)
+        read_until(b"rerun it?", 25)
         os.write(fd, resume_keys[0].encode() + b"\\r")
         for _ in range(4):
             if read_until(b"approve ", 15):
@@ -304,9 +305,9 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         _, status = os.waitpid(pid, 0)
     else:
         # Resume: EACH uncertain execution gets its verdict (the fallback's
-        # "did it apply?" — the 0-row pty keeps the panel out).
+        # "rerun it?" — the 0-row pty keeps the panel out).
         for key in resume_keys:
-            read_until(b"did it apply?", 30)
+            read_until(b"rerun it?", 30)
             os.write(fd, key.encode() + b"\\r")
         for _ in range(4):
             if read_until(b"approve ", 15):
@@ -396,7 +397,7 @@ exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, "k9", ${JSON.stringify(workdir)}, None, ["y"])
 `;
 		const out = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000 });
-		expect(out).toContain("did it apply?"); // the dock-less fallback question — the kill9 PTY carries no window size (rows < 4 — the panel can't render there)
+		expect(out).toContain("rerun it?"); // the dock-less fallback question — the kill9 PTY carries no window size (rows < 4 — the panel can't render there)
 		// The trajectory visibly continued: the THIRD file's edit ran, not a
 		// replay of the first one.
 		expect(out).toContain("f3.txt");
@@ -475,7 +476,7 @@ exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(dir, "faux.json"))}, "k9p", ${JSON.stringify(workdir)}, None, ["y", "y", "y"])
 `;
 		const out = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000 });
-		expect((out.match(/did it apply\?/g) ?? []).length).toBe(3); // EACH uncertain was presented (the fallback question)
+		expect((out.match(/rerun it\?/g) ?? []).length).toBe(3); // EACH uncertain was presented (the fallback question)
 		const records2 = new SessionStore(join(home, "sessions")).load("k9p");
 		expect(records2.some((r) => r.event.type === "terminal")).toBe(true);
 		// The re-executions landed their receipts (the resume completed).

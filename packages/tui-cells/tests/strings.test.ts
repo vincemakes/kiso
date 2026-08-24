@@ -15,7 +15,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { COLOR_OFF, COLOR_ON } from "../src/render.js";
-import { interactivePrompt, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView } from "../src/strings.js";
+import { interactivePrompt, projectTrustRows, projectTrustView, projectUntrustedNote, unansweredAskView, uncertainView, verifyOfferView } from "../src/strings.js";
 
 const ORIG_TTY = process.stdout.isTTY;
 const setTTY = (v: boolean): void => {
@@ -111,18 +111,68 @@ describe("KC3 §1: uncertainView — the uncertain execution's panel", () => {
 		// option labels left the rule line for the option ROWS. Copy that
 		// names a digit it does not own goes stale the moment the digits
 		// move, and this round moved them.
-		expect(view.ruleOverride).toBe("did the interrupted execution apply?");
+		//
+		// DECLARED SUPERSESSION (RD1B-F1, 2026-08-24): the 867a0fa literal
+		// asked the STATE ("did it apply?") and the dock-less path answers
+		// it with an ACTION mapping — y → allow → rerun. A human who read
+		// the workspace and answered truthfully re-ran an effect that had
+		// already applied (RD-1B C3, both runs). Both questions name the
+		// action now. This is the one field whose 867a0fa byte is
+		// deliberately NOT preserved; every other byte still is.
+		expect(view.ruleOverride).toBe("an interrupted execution may have applied — rerun it?");
 		expect(view.simpleOptions).toEqual(["rerun it", "abandon it"]);
-		expect(view.fallbackQuestion).toBe("⚠ interrupted execution: shell (exec-7) — did it apply? (y)es / (n)o ");
+		expect(view.fallbackQuestion).toBe("⚠ interrupted execution: shell (exec-7) — rerun it? (y)es / (n)o ");
 	});
 
 	it("the fallback question ESCAPES the tool name — it reaches the terminal as raw text there", () => {
 		// 867a0fa: escapeTerminal(uncertain.name) — an ESC in the name can
 		// never become a control sequence in the dock-less question.
 		const view = uncertainView("sh\x1b[31mell", "exec-7");
-		expect(view.fallbackQuestion).toBe("⚠ interrupted execution: sh[31mell (exec-7) — did it apply? (y)es / (n)o ");
+		expect(view.fallbackQuestion).toBe("⚠ interrupted execution: sh[31mell (exec-7) — rerun it? (y)es / (n)o ");
 		// the TITLE is not pre-escaped — the panel renderer escapes its own
 		// rows (the 867a0fa behavior, unchanged by the move)
 		expect(view.title).toBe("sh\x1b[31mell (exec-7)");
+	});
+});
+
+/**
+ * RD1B-F1 — the dock-less answer-inversion gate.
+ *
+ * RD-1B's C3 (the classic double-deploy trap) failed both runs, and the
+ * cause was NOT the benchmark's human surrogate: it was this copy. The
+ * dock-less fallback asked a STATE question — "did it apply?" — while
+ * askPanel maps `y` to `allow` and resolveUncertains maps `allow` to
+ * `rerun`. A human who reads the workspace, sees deploy-output.txt, and
+ * answers the question TRUTHFULLY ("yes, it applied") gets the effect
+ * run a SECOND time. The other direction loses the work: "no, it did not
+ * apply" resolves to `abandoned`.
+ *
+ * The invariant that catches this class for every simple view: the
+ * dock-less question must name the action `y` PERFORMS — which is
+ * exactly `simpleOptions[0]`, the option the dock puts on the allow row.
+ * Three of the four views already satisfied it (verifyOfferView,
+ * unansweredAskView, and this one after the fix); uncertainView was the
+ * lone violator, which is what makes it an oversight rather than a
+ * design.
+ */
+describe("RD1B-F1: a dock-less y/n question names the action `y` performs", () => {
+	it("every simple view's fallback question contains its allow-row option", () => {
+		const views = [
+			{ label: "verifyOfferView", view: verifyOfferView() },
+			{ label: "uncertainView", view: uncertainView("shell", "exec-7") },
+			{ label: "unansweredAskView", view: unansweredAskView("exec-7") },
+		];
+		for (const { label, view } of views) {
+			if (!view.simpleOptions) continue;
+			const allowRow = view.simpleOptions[0];
+			expect(view.fallbackQuestion?.toLowerCase(), `${label}: the y/n question must name "${allowRow}" — the action y performs`).toContain(allowRow.toLowerCase());
+		}
+	});
+
+	it("uncertainView specifically: the question is the ACTION, never the state", () => {
+		const view = uncertainView("deploy.sh", "ex-60");
+		// The state question is the bug: answering it truthfully double-deploys.
+		expect(view.fallbackQuestion).not.toContain("did it apply?");
+		expect(view.fallbackQuestion).toContain("rerun it?");
 	});
 });

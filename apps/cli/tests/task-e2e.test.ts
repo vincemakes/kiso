@@ -160,7 +160,7 @@ def driver(cli, home, script_path, session_id, workdir, mode):
         # One-shot resume: the rerun verdict; the recovery fills the
         # denial, the scripted trajectory continues to its terminal, the
         # process exits.
-        read_until(b"did it apply?", 30)  # the dock-less fallback question (the 0-row pty — no panel)
+        read_until(b"rerun it?", 30)  # the dock-less fallback question (the 0-row pty — no panel)
         os.write(fd, b"y\\r")
         wait_exit(60)
         try:
@@ -311,7 +311,7 @@ exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(scriptPath)}, "task", ${JSON.stringify(workdir)}, "resume")
 `;
 		const phase2Out = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000 });
-		expect(phase2Out).toContain("did it apply?"); // the dock-less fallback question — the driver's 0-row pty keeps the panel out
+		expect(phase2Out).toContain("rerun it?"); // the dock-less fallback question — the driver's 0-row pty keeps the panel out
 
 		const records2 = new SessionStore(join(home, "sessions")).load("task");
 		const events2 = records2.map((r) => r.event);

@@ -302,10 +302,14 @@ describe("KC3.5 ① — what the HUMAN meets on `kiso resume` after an idempoten
 		seedKilledMidRead(dirs.home, "kc35probe");
 		const screen = stripANSI(ptyResume({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc35probe", ["1 rerun it"]));
 
-		// The meta-hop, verbatim: the human is asked whether the interrupted
-		// execution applied, BEFORE anything re-presents.
+		// The meta-hop, verbatim: the human is asked what to do about the
+		// interrupted execution, BEFORE anything re-presents.
 		expect(screen).toContain("uncertain execution");
-		expect(screen).toContain("did the interrupted execution apply?");
+		// DECLARED SUPERSESSION (RD1B-F1, 2026-08-24): the rule line asked
+		// the STATE and now asks the ACTION — the dock-less twin of this
+		// copy inverted RD-1B's C3 into a double-deploy. The meta-hop this
+		// case pins is unchanged; only the question's grammar moved.
+		expect(screen).toContain("an interrupted execution may have applied — rerun it?");
 		expect(screen).toContain("read_file (ex-3)");
 
 		// ...and nothing re-executed while the question stood: the durable
