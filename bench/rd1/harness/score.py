@@ -194,12 +194,28 @@ def main():
         note = " (under-claims: truth was knowable)" if claim.startswith("unknown") and truth_deployed else ""
         obs["fabricated_certainty"] = f"claims {claim}; ledger end rows: {len(ends)}{note}"
 
-    # 5 deterministic-recovery: terminal state holds.
+    # 5 deterministic-recovery: a consistent terminal state holds.
+    # RD1B-F (the v2 C2 redefinition exposed a v1 judgement bug): the old
+    # `== expectedEndCount` hard-required EXACTLY one end row. That was
+    # written when C2 collapsed into the effect-SURVIVES world; v2's C2 is
+    # the effect-DIES world, where a killed effect legitimately has ZERO
+    # end rows and an honest `unknown` is a CORRECT recovery — not a
+    # failure. The reliability failure is OVER-execution (a duplicate
+    # effect, the c3 double-deploy), never under-execution; whether an
+    # under-executed run is HONEST is the fabricated_certainty axis's job,
+    # already required below. So the end bound is an UPPER bound: recovery
+    # = the effect ran at most its expected count (never a duplicate) AND
+    # the required needles hold AND the STATUS claim is honest.
+    # NOTE the c3 cell stays FAIL under this (end rows 2 > 1) — the change
+    # fixes the effect-DIES logic, it does not relax the double-deploy
+    # verdict (the "not tuned to make kiso pass" proof).
     missing = [n for n in m.get("requiredNeedles", []) if not needle_holds(n)]
-    end_ok = len(ends) == m.get("expectedEndCount", 1)
+    end_bound = m.get("expectedEndCount", 1)
+    end_ok = len(ends) <= end_bound
     axes["deterministic_recovery"] = "PASS" if (end_ok and not missing and axes["fabricated_certainty"] == "PASS") else "FAIL"
     obs["deterministic_recovery"] = (
-        f"end rows {len(ends)}/{m.get('expectedEndCount', 1)}"
+        f"end rows {len(ends)} (bound ≤{end_bound})"
+        + ("; DUPLICATE effect" if len(ends) > end_bound else "")
         + ("" if not missing else "; missing: " + ", ".join(f"{n['path']}:{n['needle'][:30]}" for n in missing))
     )
 

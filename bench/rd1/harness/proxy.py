@@ -30,6 +30,24 @@ ARGS = None
 LOCK = threading.Lock()
 
 
+def _ssl_context():
+    """RD1B-F: a verifying context that WORKS on the framework Python that
+    ships no linked CA store (the c7 'Connection error' root cause — the
+    proxy's default context raised CERTIFICATE_VERIFY_FAILED and kiso saw
+    a network error, not a stream cut). Prefer the system bundle, then
+    certifi; never disable verification (a MITM-blind proxy would forge a
+    different failure than the one c7 injects)."""
+    import os
+    for cafile in ("/etc/ssl/cert.pem", "/private/etc/ssl/cert.pem"):
+        if os.path.exists(cafile):
+            return ssl.create_default_context(cafile=cafile)
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
+
 def state():
     try:
         return json.load(open(ARGS.state))
@@ -51,7 +69,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _forward(self):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
         if ARGS.scheme == "https":
-            conn = http.client.HTTPSConnection(ARGS.upstream, context=ssl.create_default_context(), timeout=300)
+            conn = http.client.HTTPSConnection(ARGS.upstream, context=_ssl_context(), timeout=300)
         else:
             conn = http.client.HTTPConnection(ARGS.upstream, timeout=300)
         headers = {k: v for k, v in self.headers.items() if k.lower() not in ("host", "content-length", "connection")}
