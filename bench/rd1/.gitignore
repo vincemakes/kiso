@@ -1,1 +1,15 @@
+# RD-1 working artifacts. A completed batch is ARCHIVED, not tracked in
+# place: every cell's work/ is itself a git repo (the scenarios seed one),
+# and a nested repo cannot be tracked inside this one without becoming a
+# gitlink that carries no content.
+#
+# So a scored batch ships as an immutable pair under artifacts/ — a
+# tarball of the whole tree plus a per-file SHA-256 manifest — built by
+# `python3 bench/rd1/harness/archive.py <batch>`. Extract it and
+# harness/rescore.py re-derives every verdict, harness/metrics.py every
+# cost number, without trusting the report.
+#
+# (RD-1B's first report claimed these were "all git tracked" while this
+# file ignored out/ wholesale and `git ls-files bench/rd1/out` returned
+# zero. The archive is what makes the claim true.)
 out/
