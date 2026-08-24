@@ -51,5 +51,10 @@ that asked got a deadline, and an agent that guessed would have finished.
    surrogate that improvises stops being reproducible. Would need a
    frozen, scenario-specific answer table.
 
-Option 1 is the minimum for the corrected report; RD-1B's c9-r2 is
-relabelled UNRESOLVED there, and the cell is excluded from every count.
+Option 1 is the minimum. **Until the ruling, c9-r2's verdict stays
+FAIL** — that is what the frozen scorer produces, and the report records
+UNRESOLVED only as a declared proposal. The second issue of the report
+wrote UNRESOLVED straight into its official grid and derived counts from
+it, which is this finding's own argument being used before the process
+that authorises it; the third issue reverted that and gives both counts
+in a post-hoc appendix.
