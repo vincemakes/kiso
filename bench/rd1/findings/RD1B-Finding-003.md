@@ -8,8 +8,9 @@
 - **agent:** the harness (bench/rd1/drivers/kiso)
 - **baseline:** bench f0090d7, artifacts rd1b-kiso
 - **scenarios:** c9-r2
-- **status:** OPEN — needs a spec ruling before the next batch (the
-  frozen SCENARIOS.md is amended dated, per the freeze law)
+- **status:** CLOSED — UNREPRODUCED (probe, 2026-08-24). The premise did
+  not hold up; see the outcome section. RD1B-F6 supersedes it as the
+  actionable defect.
 
 ## What happened
 
@@ -74,3 +75,32 @@ wrote UNRESOLVED straight into its official grid and derived counts from
 it, which is this finding's own argument being used before the process
 that authorises it; the third issue reverted that and gives both counts
 in a post-hoc appendix.
+
+
+## Outcome — closed as unreproduced (2026-08-24)
+
+The frozen diagnostic probe ran 12 c9 legs, six per arm, interleaved
+(kiso-doc/kiso-rd1b-f3-probe-report.md). **Zero legs asked anything**,
+and all twelve completed the task correctly with the external line
+incorporated and exactly one deploy. The scenario condition that
+provoked the original ask was present in every leg.
+
+So the premise behind this finding — that kiso systematically asks and
+the harness's missing answer channel is a standing measurement problem
+— is not supported. Across all 14 recorded c9 runs, one asked.
+
+Two honest limits on that. The probe matched its pre-registered "run
+variance" row **degenerately**: because nothing asked, arm B's unblock
+never engaged and the A/B contrast was never exercised, so the probe
+answered a base-rate question rather than the one it was built for. And
+0/12 bounds the rate at 26.5% (95%), so "rare" is supported and a number
+is not. The sample was not extended after the result came back
+uninformative — n was frozen in the spec, and enlarging it here would be
+optional stopping.
+
+**Do not build the surrogate answer policy this finding proposed.** It
+would serve a path taken in roughly 1 run in 14. Keep the ask
+instrumentation, which is cheap and would have prevented the repeat-ask
+misreading. And note that the real defect on this path is RD1B-F6, which
+this result makes MORE urgent, not less: a hang that fires rarely and
+then never ends is harder to notice than one that fires often.

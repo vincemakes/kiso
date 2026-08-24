@@ -7,7 +7,11 @@
 - **agent:** kiso 0.15.1 (published)
 - **baseline:** bench f0090d7, artifacts rd1b-kiso
 - **scenarios:** c9-r2 (the failure it explains)
-- **status:** OPEN — demonstrated, not yet fixed
+- **status:** OPEN — demonstrated, not yet fixed. Priority RAISED by the
+  RD1B-F3 probe: asking is rare (1 of 14 recorded c9 runs), so this
+  hangs rarely and then hangs forever — a low-frequency,
+  unbounded-consequence failure, which is harder to notice than a
+  frequent one, not easier.
 
 ## The behaviour
 

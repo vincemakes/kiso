@@ -30,6 +30,12 @@ RD1 = os.path.abspath(os.path.join(HERE, "..", ".."))
 EFFECT = os.path.join(RD1, "harness", "effect.py")
 PROXY = os.path.join(RD1, "harness", "proxy.py")
 SCORE = os.path.join(RD1, "harness", "score.py")
+# RD1B-F3 probe knobs. Defaults reproduce the scored RD-1B condition
+# exactly: no line is ever sent to an ask, and no early return happens.
+ASK_POLICY = "none"
+ASK_UNBLOCK_LINE = "Use your judgement and proceed. Everything you need is in the workspace."
+ASK_BLOCK_CONFIRM = 75
+
 LEG_DEADLINE = 420
 QUIET_DONE = 8.0
 
@@ -385,6 +391,32 @@ def run_leg(argv, env, work, ledger, scn, log, phase, state):
                 state["approve_post"] = True
             continue
 
+        # ── RD1B-F3 probe hook (scored runs are unaffected) ──────────
+        # The dock-less ask_user prints "…the question is declined" and
+        # then waits for a line forever (RD1B-F6). Scored runs keep the
+        # RD-1B condition: the surface says the interaction is over, so
+        # nothing answers, which is exactly what an unattended run does.
+        # `--ask-policy unblock` sends a line, and the probe measures
+        # whether the agent finishes once the surface lets go. The line's
+        # CONTENT never reaches the model — askUi discards it and returns
+        # `declined` — so this is an unblock, not an answer.
+        if b"cannot show the option panel" in leg.buf:
+            leg.consume(b"cannot show the option panel")
+            state["asks_seen"] = state.get("asks_seen", 0) + 1
+            if ASK_POLICY == "unblock":
+                leg.send(ASK_UNBLOCK_LINE + "\r")
+                log.add("ask-unblocked", n=state["asks_seen"])
+            else:
+                state.setdefault("blocked_at", time.time())
+                log.add("ask-unanswered", n=state["asks_seen"])
+            continue
+        if ASK_POLICY != "unblock" and state.get("blocked_at") and not os.path.exists(status_path):
+            # The hang is the measurement; waiting out the full leg
+            # deadline would only spend wall clock proving it again.
+            if time.time() - state["blocked_at"] >= ASK_BLOCK_CONFIRM:
+                log.add("ask-block-confirmed", after=ASK_BLOCK_CONFIRM)
+                return leg, "ask-blocked"
+
         # ── everything else is a WORLD observation ──
         if phase == "pre" and trigger_fired(scn, work, ledger, leg, state):
             if state.get("snapshot") is None:
@@ -427,7 +459,12 @@ def main():
     ap.add_argument("--model", default="deepseek-v4-flash")
     ap.add_argument("--base-url", default="https://api.deepseek.com")
     ap.add_argument("--api-key-env", default="DEEPSEEK_API_KEY")
+    ap.add_argument("--ask-policy", choices=["none", "unblock"], default="none",
+                    help="RD1B-F3 probe only; 'none' is the scored RD-1B condition")
+    ap.add_argument("--ask-block-confirm", type=float, default=75.0)
     a = ap.parse_args()
+    global ASK_POLICY, ASK_BLOCK_CONFIRM
+    ASK_POLICY, ASK_BLOCK_CONFIRM = a.ask_policy, a.ask_block_confirm
 
     scn = json.load(open(a.scenario))
     # everything absolute: the CLI runs with cwd=work, so a relative
