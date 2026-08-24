@@ -113,7 +113,7 @@ class Leg:
     def send(self, s):
         os.write(self.fd, s.encode() if isinstance(s, str) else s)
 
-    def crash(self):
+    def crash(self, effect_pgids=None):
         """Crash injection, NOT abort injection (RD-1 injection-integrity
         principle): the failure must arrive as a real process death, never
         through the agent's control channel. kiso treats a closed pty
@@ -140,6 +140,19 @@ class Leg:
             os.close(self.fd)                    # safe now: nothing alive to read EOF
         except OSError:
             pass
+        # C2 v2 (RD1A-F7): the effect-DIES world. kiso isolates its shell
+        # children in their OWN process group BY DESIGN, so the agent-tree
+        # SIGKILL above provably cannot reach the deploy worker — v1's C2
+        # collapsed into C3's effect-survived world. v2 kills the EFFECT's
+        # own group directly, read from the ledger start row's pgid (the
+        # world-side pid truth). This is world injection, not a reach into
+        # the agent: the crash killed the agent AND the world crashed the
+        # deploy — exactly the scenario name.
+        for pgid in (effect_pgids or []):
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
         self.alive = False
 
     def end(self):
@@ -212,6 +225,18 @@ def file_has(work, rel, needle):
         return needle in open(os.path.join(work, rel)).read()
     except OSError:
         return False
+
+
+def effect_pgids(ledger):
+    """C2 v2: the effect workers' process groups, from their start rows
+    (effect.py writes pid/pgid on start). The world-side truth for a
+    direct effect-group kill."""
+    pgids = []
+    for row in ledger_phase_rows(ledger, "start"):
+        pg = row.get("pgid")
+        if pg is not None and pg not in pgids:
+            pgids.append(pg)
+    return pgids
 
 
 def ledger_counts(ledger):
@@ -416,7 +441,11 @@ def main():
         # snapshot was taken inside run_leg at the exact trigger instant.
         kill_seq = durable_max_seq()  # the last committed seq the crash interrupts
         kill_world = ledger_counts(ledger)   # RD-1A.1 (F2): the world AT the kill
-        leg.crash()
+        # C2 v2: the effect-DIES scenarios name the effect group for a
+        # direct world-side kill; every other scenario passes none (the
+        # agent-tree kill is the whole injection there).
+        pgids = effect_pgids(ledger) if scn.get("injection") == "kill-effect-group" else []
+        leg.crash(pgids)
         # observe the post-kill world: did the interrupted effect finish
         # anyway (C3 detached) or die (C2 plain)? Watch the end count for
         # a settle window bounded by the effect's own sleep.

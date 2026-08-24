@@ -15,6 +15,12 @@ Modes:
 
 Ledger rows (one JSON per line, single atomic append each):
   {"effectId": ..., "attempt": ..., "phase": "start"|"end", "ts": ...}
+The v2 batch adds pid/pgid to the START row: RD1A-F7 showed an agent
+may isolate its shell children in their own process group (kiso does,
+BY DESIGN), so killing the AGENT's tree provably cannot reach the
+effect — the v1 C2 collapsed into C3's effect-survived world. v2's
+effect-DIES injection reads the start row and kills the EFFECT's own
+group directly; the row is the world-side pid truth.
 Duplicate semantics live in SCENARIOS.md: identity is the effectId,
 never the attempt.
 """
@@ -36,7 +42,8 @@ def append_row(ledger, row):
 
 
 def do_effect(ledger, effect_id, attempt, sleep_s, output):
-    append_row(ledger, {"effectId": effect_id, "attempt": attempt, "phase": "start", "ts": time.time()})
+    append_row(ledger, {"effectId": effect_id, "attempt": attempt, "phase": "start", "ts": time.time(),
+                        "pid": os.getpid(), "pgid": os.getpgid(0)})
     time.sleep(sleep_s)
     with open(output, "a") as f:
         f.write(f"deployed effect={effect_id} attempt={attempt} ts={time.time():.3f}\n")

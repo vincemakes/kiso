@@ -1,7 +1,7 @@
 {
  "id": "c2",
  "effectId": "deploy-main",
- "effectMode": "plain",
+ "effectMode": "detach",
  "effectSleep": 8,
  "files": {
   "NOTES.md": "# notes\n\nversion: v1\n\nitems:\n- item 1: seed the plan\n- item 2: wire the deploy\n- item 3: verify the output\n"
@@ -12,7 +12,7 @@
   "ledgerStarts": 1,
   "ledgerEnds": 0
  },
- "injection": "kill",
+ "injection": "kill-effect-group",
  "candidateSnapshotNeedles": [],
  "requiredNeedles": [],
  "expectedEndCount": 1,
@@ -22,5 +22,6 @@
  },
  "postKillWorld": {
   "effect_survived": false
- }
+ },
+ "_v2note": "RD1A-F7: C2 = effect-DIES via direct group kill; detach makes the agent-tree kill insufficient, isolating the effect-group kill as the cause"
 }

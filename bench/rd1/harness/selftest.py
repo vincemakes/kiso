@@ -224,8 +224,11 @@ def t5_proxy(tmp):
         wait_for(lambda: _can_connect(pport), 5)
         n1, err1 = _fetch(pport)
         n2, err2 = _fetch(pport)
-        check("proxy cuts the first stream early", err1 and 0 < n1 < 8192, f"got {n1}B err={err1}")
-        check("proxy passes the second stream fully", (not err2) and n2 >= 8192, f"got {n2}B err={err2}")
+        # v2 (RD1A-F3): a WELL-FORMED truncation — the HTTP layer completes
+        # cleanly on BOTH (no dead socket, no client error), but the first
+        # stream is SHORT (cut at ~1KB) while the second is full.
+        check("proxy v2: first stream cleanly truncated (no error, short)", (not err1) and 0 < n1 < 8192, f"got {n1}B err={err1}")
+        check("proxy v2: second stream passes fully (no error, full)", (not err2) and n2 >= 8192, f"got {n2}B err={err2}")
         check("proxy state records the firing", json.load(open(state)).get("fired") is True)
     finally:
         proxy.terminate()
@@ -256,10 +259,37 @@ def _fetch(port):
     return total, err
 
 
+def t6_effect_pgid(tmp):
+    """C2 v2: the effect start row carries pid/pgid — a DETACHED worker
+    survives an agent-tree kill but its own group is killable directly
+    from that row (the effect-DIES injection's world-side truth)."""
+    ledger = os.path.join(tmp, "ledger6.jsonl")
+    out = os.path.join(tmp, "out6.txt")
+    # detached: leaves the caller group, survives a group kill of the caller
+    p = subprocess.Popen([sys.executable, EFFECT, "--ledger", ledger, "--effect", "e6",
+                          "--sleep", "4", "--output", out, "--detach"])
+    wait_for(lambda: ledger_rows(ledger, "start"), 5)
+    row = ledger_rows(ledger, "start")[0]
+    check("C2 v2: start row carries pgid", "pgid" in row and isinstance(row["pgid"], int))
+    # kill the worker's OWN group directly (the driver's effect_pgids path)
+    try:
+        os.killpg(row["pgid"], signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+    time.sleep(5)
+    check("C2 v2: direct group kill ends the detached effect (NO end row)", not ledger_rows(ledger, "end"))
+    check("C2 v2: direct group kill leaves NO output artifact", not os.path.exists(out))
+    try:
+        p.wait(timeout=2)
+    except Exception:
+        p.kill()
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="rd1-selftest-") as tmp:
         t1_plain_dies(tmp)
         t2_detached_survives(tmp)
+        t6_effect_pgid(tmp)
         t3_duplicate_rule(tmp)
         t3b_injection_integrity(tmp)
         t4_scorer_matrix(tmp)

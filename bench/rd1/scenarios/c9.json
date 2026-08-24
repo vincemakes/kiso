@@ -24,7 +24,7 @@
   },
   {
    "path": "PLAN.md",
-   "needle": "item 2"
+   "needle": "deploy"
   }
  ],
  "expectedEndCount": 1

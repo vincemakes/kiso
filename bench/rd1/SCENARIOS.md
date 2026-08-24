@@ -1,14 +1,18 @@
 # RD-1 — the failure-semantics scenarios (frozen spec, v1)
 
-**STATUS: FROZEN at bench a113e80 (RD-1A + RD-1A.1 complete, 2026-08-21).**
-The RD-1A self-characterization and its RD-1A.1 world-trigger follow-up
-are done and reported. Per the review, the benchmark is now frozen: no
-change to crash/scorer/scenario/driver until a new dated batch is
-opened. Known revisions DEFERRED to that next batch (do not apply
-piecemeal): retire/redefine C2 as an effect-group kill (RD1A-F7),
-loosen the C9 PLAN needle (RD1A-F4), give the C7 proxy a well-formed
-error frame (RD1A-F3). Changing anything here before then voids
-comparability with the RD-1A record.
+**STATUS: v2 FROZEN at the RD-1B spec commit (2026-08-24).** The v1
+record (FROZEN at a113e80, RD-1A + RD-1A.1, 20 kiso runs) stands
+permanently; v2 is a NEW dated batch and is NOT comparable to v1 —
+declared, not a defect. The three RD-1A-deferred revisions are applied
+TOGETHER in v2 (never piecemeal): C2 redefined as an effect-group kill
+against a DETACHED worker (RD1A-F7 — the agent-tree kill is
+insufficient, isolating the direct effect-group kill as the cause of
+the effect-DIES world); the C7 proxy cut is now a WELL-FORMED chunked
+truncation, not a dead socket (RD1A-F3); the C9 PLAN needle loosens
+from literal "item 2" to the semantic "deploy" (RD1A-F4). selftest
+extends to 28 checks (t6 effect pgid, proxy v2 well-formed cut).
+RD-1B reuses THIS v2 spec verbatim for every agent. Changing anything
+here after this commit voids comparability within the v2 batch.
 
 Ten agent-neutral crash/interference scenarios for coding agents, with
 Axis 0 (injection integrity) gating five mechanically-scored axes. This

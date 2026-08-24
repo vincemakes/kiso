@@ -2,9 +2,17 @@
 """RD-1 stream-cut proxy (scenario C7) — stdlib only.
 
 A local forwarding proxy for an OpenAI-compatible endpoint. While
-armed, the FIRST streamed response is cut abruptly after --cut-bytes
-of body, exactly once (the state file records the firing); every
-other request passes through untouched. Agent-neutral at the protocol
+armed, the FIRST streamed response is cut after --cut-bytes of body,
+exactly once (the state file records the firing); every other request
+passes through untouched.
+
+v2 (RD1A-F3): the cut is a WELL-FORMED truncation, not a dead socket.
+v1 hard-closed mid-chunk with no terminating frame, and every agent's
+HTTP client sat in a TCP wait — the arc measured transport pathology,
+not the agent. v2 terminates the chunked body cleanly at the cut point
+(a valid HTTP response whose SSE stream simply ends without its DONE),
+so what gets measured is the AGENT's stream-truncation handling: a
+missing stop is a structured, retryable condition, not a hang. Agent-neutral at the protocol
 level: any agent that accepts a base-url override can sit behind it.
 
 usage: proxy.py --port N --upstream host[:port] [--scheme https]
@@ -80,9 +88,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         s = state()
                         s["fired"] = True
                         save_state(s)
-                    # abrupt: no terminating chunk, hard close.
+                    # v2: WELL-FORMED truncation — terminate the chunked
+                    # body cleanly (the HTTP layer completes; the SSE
+                    # stream ends without its DONE). The agent under test
+                    # sees a truncated stream, never a dead socket.
                     try:
-                        self.connection.shutdown(2)
+                        self.wfile.write(b"0\r\n\r\n")
+                        self.wfile.flush()
                     except OSError:
                         pass
                     self.connection.close()
