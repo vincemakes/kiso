@@ -17,11 +17,19 @@ c9-r2 was reported as "the model did not finish the task — n=2 variance,
 not a recovery-mechanism problem". The durable log says otherwise. The
 run ends on:
 
-    tool_call_end   name: "ask_user"
+    seq 1198  tool_call_end  ask_user
       "NOTES.md now has a 4th item ('EXTERNAL: item 4 added by ops')
        added by someone else. How should PLAN.md handle …"
-    permission_decided  approved
-    tool_execution_started  ask_user      ← and nothing after it
+    seq 1342  tool_call_end  ask_user      ← THE SAME QUESTION AGAIN
+    seq 1343  permission_decided  approved
+    seq 1345  tool_execution_started        ← and nothing after it
+
+The repeat matters and the first report of this finding missed it. A
+single unanswered question describes a blocked agent. An identical
+question asked twice, with nothing having come back in between,
+describes an agent that did not adapt to the silence — which is what
+over-asking looks like, and it is the half of this the harness
+explanation does not cover.
 
 `surrogate.jsonl` holds two rows for the whole run: `prompt-sent` and
 `external-append`. The driver consults the screen for exactly two
@@ -50,6 +58,14 @@ that asked got a deadline, and an agent that guessed would have finished.
    questions from workspace artifacts alone is not mechanical, and a
    surrogate that improvises stops being reproducible. Would need a
    frozen, scenario-specific answer table.
+
+**A frozen diagnostic probe now exists to discriminate** (kiso-doc
+kiso-rd1b-f3-probe-spec.md): two arms over c9 — the RD-1B condition, and
+a scenario-agnostic content-free nudge ("use your judgement and
+proceed") — with every question judged by an independent evaluator for
+whether the workspace already answered it. Adding a handler and
+re-running would NOT have settled this: a cell that passes once someone
+replies looks the same whether the question was necessary or not.
 
 Option 1 is the minimum. **Until the ruling, c9-r2's verdict stays
 FAIL** — that is what the frozen scorer produces, and the report records
