@@ -35,7 +35,7 @@ describe("REL-0152-D11 — the image survives the event, the projection and both
 			const messages = projectMessages(events as never);
 			const user = messages.find((m) => m.role === "user")!;
 			expect(Array.isArray(user.content), "the projection flattened the blocks to text").toBe(true);
-			const blocks = user.content as { type: string; mediaType?: string }[];
+			const blocks = user.content as unknown as { type: string; mediaType?: string }[];
 			expect(blocks.find((b) => b.type === "image")!.mediaType).toBe("image/png");
 			expect(blocks.some((b) => b.type === "text")).toBe(true);
 		} finally {

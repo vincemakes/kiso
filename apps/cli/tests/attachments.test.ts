@@ -55,7 +55,7 @@ describe("REL-0152-D11 — a referenced image becomes a content block", () => {
 	it("a path to a real image becomes an image block, with the words kept", () => {
 		const out = attachImages(`what is wrong here? ${png}`);
 		expect(Array.isArray(out)).toBe(true);
-		const blocks = out as { type: string; text?: string; mediaType?: string; data?: string }[];
+		const blocks = out as unknown as { type: string; text?: string; mediaType?: string; data?: string }[];
 		expect(blocks.some((b) => b.type === "text" && b.text!.includes("what is wrong here?"))).toBe(true);
 		const img = blocks.find((b) => b.type === "image")!;
 		expect(img.mediaType).toBe("image/png");
@@ -65,7 +65,7 @@ describe("REL-0152-D11 — a referenced image becomes a content block", () => {
 	it("the media type comes from the file's BYTES, not its name", () => {
 		const lying = join(dir, "actually-a-png.jpg");
 		writeFileSync(lying, PNG_BYTES);
-		const blocks = attachImages(lying) as { type: string; mediaType?: string }[];
+		const blocks = attachImages(lying) as unknown as { type: string; mediaType?: string }[];
 		expect(blocks.find((b) => b.type === "image")!.mediaType).toBe("image/png");
 	});
 
@@ -83,14 +83,14 @@ describe("REL-0152-D11 — a referenced image becomes a content block", () => {
 	it("two images in one turn are two blocks, in the order they were named", () => {
 		const second = join(dir, "b.png");
 		writeFileSync(second, PNG_BYTES);
-		const blocks = attachImages(`compare ${png} with ${second}`) as { type: string }[];
+		const blocks = attachImages(`compare ${png} with ${second}`) as unknown as { type: string }[];
 		expect(blocks.filter((b) => b.type === "image")).toHaveLength(2);
 	});
 
 	it("a quoted path survives — dragging a file with a space in its name quotes it", () => {
 		const spaced = join(dir, "my shot.png");
 		writeFileSync(spaced, PNG_BYTES);
-		const blocks = attachImages(`look at '${spaced}'`) as { type: string }[];
+		const blocks = attachImages(`look at '${spaced}'`) as unknown as { type: string }[];
 		expect(blocks.filter((b) => b.type === "image")).toHaveLength(1);
 	});
 
@@ -141,7 +141,7 @@ describe("REL-0152-D11 — the clipboard route decides honestly", () => {
 		const path = clipboardImage(dir, runner);
 		expect(path).not.toBeNull();
 		// the whole point of returning a PATH: the existing scan takes it
-		const blocks = attachImages(`what is this? ${path}`) as { type: string }[];
+		const blocks = attachImages(`what is this? ${path}`) as unknown as { type: string }[];
 		expect(blocks.filter((b) => b.type === "image")).toHaveLength(1);
 	});
 });
