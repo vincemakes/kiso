@@ -5,6 +5,7 @@
  */
 
 import { contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modelPickView, palette, type PickResult } from "@vincemakes/kiso-tui";
+import { newSessionId } from "./session-id.js";
 import { buildAdapter } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, getMode, setMode } from "./mode.js";
@@ -407,7 +408,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			ctx.input.prompt();
 			return;
 		}
-		ctx.requestSwitch(new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16));
+		ctx.requestSwitch(newSessionId());
 		return;
 	}
 	if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {

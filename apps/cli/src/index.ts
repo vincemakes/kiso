@@ -25,6 +25,7 @@
  */
 
 import { appendFileSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { newSessionId } from "./session-id.js";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -787,7 +788,7 @@ async function main(): Promise<void> {
 		if (printPrompt !== undefined) {
 			// the -p flow: recovery-first one-shot, the resume() machinery
 			// verbatim (a fresh id makes the recovery a no-op)
-			const id = command ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+			const id = command ?? newSessionId();
 			agent = await makeAgent(id, input, modelFlag);
 			applyConfigMode();
 			const session = await agent.session({ id });
@@ -799,7 +800,7 @@ async function main(): Promise<void> {
 		}
 		switch (command) {
 			case "chat": {
-				const id = arg ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+				const id = arg ?? newSessionId();
 				// v2b: the dock (TTY only) wraps the whole session — the
 				// trust question, the banner, the body, and the input line.
 				dock.enter();
@@ -914,7 +915,7 @@ async function main(): Promise<void> {
 			default: {
 				// A area: no subcommand (or any non-command first argument) IS
 				// chat — the first argument is the session id.
-				const id = command ?? new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+				const id = command ?? newSessionId();
 				dock.enter();
 				// R-I-p2 (finding R-I-p-2): the bare command passes the SAME
 				// input source and model flag as chat/resume — the pre-patch

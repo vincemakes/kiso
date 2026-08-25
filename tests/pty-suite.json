@@ -35,6 +35,7 @@
   "apps/cli/tests/resume-clear.test.ts",
   "apps/cli/tests/scoped-read-e2e.test.ts",
   "apps/cli/tests/scrollback-flood.test.ts",
+  "apps/cli/tests/session-id-identity.test.ts",
   "apps/cli/tests/task-e2e.test.ts",
   "apps/cli/tests/tui-modes.test.ts",
   "apps/cli/tests/tui-v2a.test.ts",
