@@ -55,3 +55,29 @@ grep -q "$VERSION" "$CAP" && echo "PASS banner: $VERSION" || { echo "FAIL banner
 grep -q "/compact" "$CAP" && echo "PASS built-ins render" || { echo "FAIL built-ins"; exit 1; }
 [ "$RC" -eq 0 ] && echo "PASS clean exit (rc=0, capture tail: $(tail -1 "$CAP" | tr -d '\r' | cut -c1-40))" \
   || { echo "FAIL clean exit: rc=$RC"; exit 1; }
+
+# ── RD1B-F9 regression: two launches are two sessions ────────────────
+# Two launches with NO explicit id, into the SAME fresh KISO_HOME, must
+# not share a durable log. Each types a prompt, because a run-less
+# session never appends (bare `exit` and `/help` create no log at all —
+# the store's lock and jsonl are acquired lazily, by design). An earlier
+# draft of this gate asserted on two `exit`-only launches and would have
+# passed on a broken build by finding zero logs on both sides.
+#
+# This gate exists because neither smoke could see F9: the run above
+# launches once, and scripts/smoke.mjs uses an explicit id (`cli-smoke`),
+# so the generator was never exercised twice. The defect shipped through
+# both.
+#
+# It runs against the PACKED artifact deliberately — an id change is
+# exactly the class of thing a local dist can get right and a published
+# tarball wrong, and this round already paid once for trusting a local
+# build (the RD-1B evidence-tier gap).
+for n in 1 2; do
+  (sleep 2; printf 'hello\r'; sleep 4; printf 'exit\r'; sleep 3) \
+    | perl -e 'alarm 120; exec @ARGV' script -q "$TMP/f9-$n" "$BIN" chat > /dev/null 2>&1
+done
+LOGS=$(find "$KISO_HOME/sessions" -maxdepth 1 -name '*.jsonl' | wc -l | tr -d ' ')
+[ "$LOGS" -ge 2 ] \
+  && echo "PASS session identity: $LOGS distinct durable logs from 2 launches" \
+  || { echo "FAIL session identity (RD1B-F9): 2 launches produced $LOGS durable log(s) — a run-less launch logs nothing, so 0 here means the gate did not observe; 1 means the second inherited the first's history"; exit 1; }

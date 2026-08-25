@@ -788,7 +788,7 @@ async function main(): Promise<void> {
 		if (printPrompt !== undefined) {
 			// the -p flow: recovery-first one-shot, the resume() machinery
 			// verbatim (a fresh id makes the recovery a no-op)
-			const id = command ?? newSessionId();
+			const id = command ?? newSessionId(sessionsDir());
 			agent = await makeAgent(id, input, modelFlag);
 			applyConfigMode();
 			const session = await agent.session({ id });
@@ -800,7 +800,7 @@ async function main(): Promise<void> {
 		}
 		switch (command) {
 			case "chat": {
-				const id = arg ?? newSessionId();
+				const id = arg ?? newSessionId(sessionsDir());
 				// v2b: the dock (TTY only) wraps the whole session — the
 				// trust question, the banner, the body, and the input line.
 				dock.enter();
@@ -915,7 +915,7 @@ async function main(): Promise<void> {
 			default: {
 				// A area: no subcommand (or any non-command first argument) IS
 				// chat — the first argument is the session id.
-				const id = command ?? newSessionId();
+				const id = command ?? newSessionId(sessionsDir());
 				dock.enter();
 				// R-I-p2 (finding R-I-p-2): the bare command passes the SAME
 				// input source and model flag as chat/resume — the pre-patch

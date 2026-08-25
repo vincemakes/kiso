@@ -9,7 +9,7 @@ import { newSessionId } from "./session-id.js";
 import { buildAdapter } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, getMode, setMode } from "./mode.js";
-import { agentModel, body, bodyLog, configModels, dock, readContextLedger, setAgentModel, setCurrentModelName, type LineInput } from "./state.js";
+import { agentModel, body, bodyLog, configModels, dock, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput } from "./state.js";
 import { directWriteProfile, profileAvailable } from "./config.js";
 
 /** Everything dispatch touches that chat() owns. */
@@ -408,7 +408,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			ctx.input.prompt();
 			return;
 		}
-		ctx.requestSwitch(newSessionId());
+		ctx.requestSwitch(newSessionId(sessionsDir()));
 		return;
 	}
 	if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {

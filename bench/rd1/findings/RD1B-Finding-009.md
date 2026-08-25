@@ -7,8 +7,8 @@
 - **agent:** kiso 0.15.1 (published) and every earlier version
 - **found by:** the fable authority review of Roadmap v6; severity and
   mechanism corrected by an independent pass and then demonstrated
-- **status:** OPEN. Red test landed
-  (`apps/cli/tests/session-id-identity.test.ts`); fix proposed, not applied.
+- **status:** FIXED (`3a9aaa9` + the F9a follow-up). Shipped in no release
+  yet — it belongs in the same patch as RD1B-F1 and RD1B-F6.
 
 ## The behaviour
 
@@ -65,14 +65,12 @@ once, and **fails loudly if it never observed the window** rather than passing
 because it missed it. A test that goes green for want of an observation is
 worse than one that goes red.
 
-It is committed as **`it.fails`**, which pins the defect without leaving the
-tree red. The body is the assertion the fixed product must satisfy; it throws
-today (*"two launches produced 1 durable log(s)"*), so `.fails` passes. **When
-F9 is fixed this case starts FAILING** — that is the alarm — and the fix flips
-`.fails` back to a plain `it` in the same commit. `it.fails` here pins the
-defect; it does not bless it.
+It shipped first as **`it.fails`**, pinning the defect without leaving the tree
+red, with the flip instruction written into it. The fix flipped it back to a
+plain `it`: red on the aliasing, then green. **The alarm worked on its own
+author** — flipping it was what produced the red.
 
-## Proposed fix (not applied — owner's call)
+## The fix
 
 Extend the stamp to seconds and add a short random suffix, from **one shared
 helper** rather than four copies:
@@ -94,6 +92,51 @@ Blast radius, measured:
 - **Explicit IDs are unaffected** — `kiso chat <name>` never enters this path.
 - Four duplicated expressions become one helper, which is also how they would
   otherwise drift apart.
+
+## F9a — the entropy claim was wrong, and the fix does not rest on entropy
+
+The first version of the helper carried a doc comment calling the id
+"collision-safe at any launch rate a human **or a script** produces". That was
+an unmeasured claim and it is false. Measured, at a fixed second:
+
+| draws in one second | collisions observed (5 runs) | P(at least one), theory |
+|---|---|---|
+| 100 | 0, 1, 0, 0, 0 | 7.27% |
+| 1,000 | 7, 10, 2, 6, 7 | — |
+
+A 16-bit suffix is thin at script rates, and scripted launches are exactly the
+unattended path this finding is about.
+
+**The correction was not "add entropy".** Widening the suffix would have pushed
+the id past 24 characters — the session picker's id column cap
+(`packages/tui/src/session-picker.ts:112`) — hiding the very bytes that
+distinguish two ids. Instead `newSessionId` takes the sessions directory and
+**will not return an id whose `.jsonl` or `.lock` already exists**; it draws
+again, up to a bound, and throws rather than returning a colliding id.
+
+So the guarantee is stated exactly:
+
+- **sequential collision — eliminated by construction.** Entropy only decides
+  how often a redraw is needed.
+- **concurrent collision — still possible, and already correct**: the store's
+  single-writer link lock fails the second writer loudly. Loud failure is the
+  right outcome; silent sharing was the defect.
+
+`apps/cli/tests/session-id-collision.test.ts` forces the redraw path with an
+injected random source — waiting for a 1-in-65,536 event to occur naturally is
+not a test — and pins the 24-character width and the sort order.
+
+## Regression gate
+
+Neither existing smoke could have caught F9: `bench/packed-pty-smoke.sh`
+launched once, and `scripts/smoke.mjs` uses an explicit id (`cli-smoke`), so
+the generator was never exercised twice. **The defect shipped through both.**
+
+The packed smoke now launches twice with no explicit id into one fresh
+`KISO_HOME` and asserts two distinct durable logs. It types a prompt in each
+launch, because a run-less session appends nothing — an earlier draft of this
+gate asserted on two `exit`-only launches and **would have passed on a broken
+build by finding zero logs on both sides**.
 
 ## Release question
 
