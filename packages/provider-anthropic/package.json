@@ -1,41 +1,41 @@
 {
-  "name": "@vincemakes/kiso-provider-anthropic",
-  "version": "0.15.1",
-  "description": "kiso Anthropic adapter — official SDK wire events mapped to the kiso event union.",
-  "type": "module",
-  "license": "MIT",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.115.0",
-    "@vincemakes/kiso-core": "0.15.1"
-  },
-  "devDependencies": {
-    "@types/node": "^26.1.2",
-    "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/vincemakes/kiso.git",
-    "directory": "packages/provider-anthropic"
-  },
-  "bugs": {
-    "url": "https://github.com/vincemakes/kiso/issues"
-  },
-  "homepage": "https://github.com/vincemakes/kiso/tree/main/packages/provider-anthropic#readme"
+	"name": "@vincemakes/kiso-provider-anthropic",
+	"version": "0.15.2",
+	"description": "kiso Anthropic adapter \u2014 official SDK wire events mapped to the kiso event union.",
+	"type": "module",
+	"license": "MIT",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@anthropic-ai/sdk": "^0.115.0",
+		"@vincemakes/kiso-core": "0.15.2"
+	},
+	"devDependencies": {
+		"@types/node": "^26.1.2",
+		"typescript": "^5.7.2",
+		"vitest": "^3.0.0"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/vincemakes/kiso.git",
+		"directory": "packages/provider-anthropic"
+	},
+	"bugs": {
+		"url": "https://github.com/vincemakes/kiso/issues"
+	},
+	"homepage": "https://github.com/vincemakes/kiso/tree/main/packages/provider-anthropic#readme"
 }

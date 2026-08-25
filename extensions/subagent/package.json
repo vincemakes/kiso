@@ -1,31 +1,31 @@
 {
-  "name": "@vincemakes/kiso-subagent-ext",
-  "version": "0.15.1",
-  "description": "kiso official subagent extension — child kiso processes with role policies, kernel untouched",
-  "type": "module",
-  "license": "MIT",
-  "main": "./dist/kiso-subagent.mjs",
-  "exports": {
-    ".": {
-      "types": "./index.d.ts",
-      "import": "./dist/kiso-subagent.mjs"
-    }
-  },
-  "files": [
-    "dist",
-    "index.d.ts",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "node build.mjs",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
-  },
-  "devDependencies": {
-    "@vincemakes/kiso-core": "0.15.1",
-    "@types/node": "^26.1.2",
-    "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
-  }
+	"name": "@vincemakes/kiso-subagent-ext",
+	"version": "0.15.2",
+	"description": "kiso official subagent extension \u2014 child kiso processes with role policies, kernel untouched",
+	"type": "module",
+	"license": "MIT",
+	"main": "./dist/kiso-subagent.mjs",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"import": "./dist/kiso-subagent.mjs"
+		}
+	},
+	"files": [
+		"dist",
+		"index.d.ts",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "node build.mjs",
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"devDependencies": {
+		"@vincemakes/kiso-core": "0.15.2",
+		"@types/node": "^26.1.2",
+		"typescript": "^5.7.2",
+		"vitest": "^3.0.0"
+	}
 }

@@ -1,57 +1,57 @@
 {
-  "name": "@vincemakes/kiso-runtime",
-  "version": "0.15.1",
-  "description": "kiso runtime — durable multi-turn agent sessions: AgentDefinition, AgentRuntime, AgentSession, Run, append-only JSONL store.",
-  "type": "module",
-  "license": "MIT",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./internal": {
-      "types": "./dist/internal.d.ts",
-      "default": "./dist/internal.js"
-    }
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@vincemakes/kiso-core": "0.15.1"
-  },
-  "peerDependencies": {
-    "@vincemakes/kiso-provider-anthropic": "0.15.1",
-    "@vincemakes/kiso-provider-openai": "0.15.1"
-  },
-  "peerDependenciesMeta": {
-    "@vincemakes/kiso-provider-anthropic": {
-      "optional": true
-    },
-    "@vincemakes/kiso-provider-openai": {
-      "optional": true
-    }
-  },
-  "devDependencies": {
-    "@vincemakes/kiso-evals": "0.15.1",
-    "@types/node": "^26.1.2",
-    "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/vincemakes/kiso.git",
-    "directory": "packages/runtime"
-  },
-  "bugs": {
-    "url": "https://github.com/vincemakes/kiso/issues"
-  },
-  "homepage": "https://github.com/vincemakes/kiso/tree/main/packages/runtime#readme"
+	"name": "@vincemakes/kiso-runtime",
+	"version": "0.15.2",
+	"description": "kiso runtime \u2014 durable multi-turn agent sessions: AgentDefinition, AgentRuntime, AgentSession, Run, append-only JSONL store.",
+	"type": "module",
+	"license": "MIT",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./internal": {
+			"types": "./dist/internal.d.ts",
+			"default": "./dist/internal.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@vincemakes/kiso-core": "0.15.2"
+	},
+	"peerDependencies": {
+		"@vincemakes/kiso-provider-anthropic": "0.15.2",
+		"@vincemakes/kiso-provider-openai": "0.15.2"
+	},
+	"peerDependenciesMeta": {
+		"@vincemakes/kiso-provider-anthropic": {
+			"optional": true
+		},
+		"@vincemakes/kiso-provider-openai": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@vincemakes/kiso-evals": "0.15.2",
+		"@types/node": "^26.1.2",
+		"typescript": "^5.7.2",
+		"vitest": "^3.0.0"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/vincemakes/kiso.git",
+		"directory": "packages/runtime"
+	},
+	"bugs": {
+		"url": "https://github.com/vincemakes/kiso/issues"
+	},
+	"homepage": "https://github.com/vincemakes/kiso/tree/main/packages/runtime#readme"
 }

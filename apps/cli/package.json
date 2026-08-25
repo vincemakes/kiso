@@ -1,56 +1,56 @@
 {
-  "name": "@vincemakes/kiso-code",
-  "version": "0.15.1",
-  "description": "kiso CLI — the durable coding agent that survives kill -9: kiso chat / kiso resume / kiso sessions.",
-  "type": "module",
-  "license": "MIT",
-  "bin": {
-    "kiso": "dist/index.js"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@vincemakes/kiso-ask-ext": "0.15.1",
-    "@vincemakes/kiso-core": "0.15.1",
-    "@vincemakes/kiso-evals": "0.15.1",
-    "@vincemakes/kiso-mcp-ext": "0.15.1",
-    "@vincemakes/kiso-provider-anthropic": "0.15.1",
-    "@vincemakes/kiso-provider-openai": "0.15.1",
-    "@vincemakes/kiso-runtime": "0.15.1",
-    "@vincemakes/kiso-skills-ext": "0.15.1",
-    "@vincemakes/kiso-subagent-ext": "0.15.1",
-    "@vincemakes/kiso-task-ext": "0.15.1",
-    "@vincemakes/kiso-tools-node": "0.15.1",
-    "@vincemakes/kiso-tui": "0.15.1",
-    "@vincemakes/kiso-tui-cells": "0.15.1"
-  },
-  "devDependencies": {
-    "@types/node": "^26.1.2",
-    "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
-  },
-  "engines": {
-    "node": ">=22"
-  },
-  "os": [
-    "darwin",
-    "linux"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/vincemakes/kiso.git",
-    "directory": "apps/cli"
-  },
-  "bugs": {
-    "url": "https://github.com/vincemakes/kiso/issues"
-  },
-  "homepage": "https://github.com/vincemakes/kiso/tree/main/apps/cli#readme"
+	"name": "@vincemakes/kiso-code",
+	"version": "0.15.2",
+	"description": "kiso CLI \u2014 the durable coding agent that survives kill -9: kiso chat / kiso resume / kiso sessions.",
+	"type": "module",
+	"license": "MIT",
+	"bin": {
+		"kiso": "dist/index.js"
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@vincemakes/kiso-ask-ext": "0.15.2",
+		"@vincemakes/kiso-core": "0.15.2",
+		"@vincemakes/kiso-evals": "0.15.2",
+		"@vincemakes/kiso-mcp-ext": "0.15.2",
+		"@vincemakes/kiso-provider-anthropic": "0.15.2",
+		"@vincemakes/kiso-provider-openai": "0.15.2",
+		"@vincemakes/kiso-runtime": "0.15.2",
+		"@vincemakes/kiso-skills-ext": "0.15.2",
+		"@vincemakes/kiso-subagent-ext": "0.15.2",
+		"@vincemakes/kiso-task-ext": "0.15.2",
+		"@vincemakes/kiso-tools-node": "0.15.2",
+		"@vincemakes/kiso-tui": "0.15.2",
+		"@vincemakes/kiso-tui-cells": "0.15.2"
+	},
+	"devDependencies": {
+		"@types/node": "^26.1.2",
+		"typescript": "^5.7.2",
+		"vitest": "^3.0.0"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"os": [
+		"darwin",
+		"linux"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/vincemakes/kiso.git",
+		"directory": "apps/cli"
+	},
+	"bugs": {
+		"url": "https://github.com/vincemakes/kiso/issues"
+	},
+	"homepage": "https://github.com/vincemakes/kiso/tree/main/apps/cli#readme"
 }

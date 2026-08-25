@@ -1,44 +1,44 @@
 {
-  "name": "@vincemakes/kiso-provider-openai",
-  "version": "0.15.1",
-  "description": "kiso OpenAI-compatible adapter — OpenAI + the compat family (GLM, Kimi, DeepSeek, OpenRouter) via base_url swap, reasoning dialects digested.",
-  "type": "module",
-  "license": "MIT",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@vincemakes/kiso-core": "0.15.1",
-    "openai": "^7.3.0"
-  },
-  "devDependencies": {
-    "@types/node": "^26.1.2",
-    "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
-  },
-  "engines": {
-    "node": ">=22"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/vincemakes/kiso.git",
-    "directory": "packages/provider-openai"
-  },
-  "bugs": {
-    "url": "https://github.com/vincemakes/kiso/issues"
-  },
-  "homepage": "https://github.com/vincemakes/kiso/tree/main/packages/provider-openai#readme"
+	"name": "@vincemakes/kiso-provider-openai",
+	"version": "0.15.2",
+	"description": "kiso OpenAI-compatible adapter \u2014 OpenAI + the compat family (GLM, Kimi, DeepSeek, OpenRouter) via base_url swap, reasoning dialects digested.",
+	"type": "module",
+	"license": "MIT",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@vincemakes/kiso-core": "0.15.2",
+		"openai": "^7.3.0"
+	},
+	"devDependencies": {
+		"@types/node": "^26.1.2",
+		"typescript": "^5.7.2",
+		"vitest": "^3.0.0"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/vincemakes/kiso.git",
+		"directory": "packages/provider-openai"
+	},
+	"bugs": {
+		"url": "https://github.com/vincemakes/kiso/issues"
+	},
+	"homepage": "https://github.com/vincemakes/kiso/tree/main/packages/provider-openai#readme"
 }

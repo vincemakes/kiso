@@ -1,31 +1,31 @@
 {
-  "name": "@vincemakes/kiso-skills-ext",
-  "version": "0.15.1",
-  "description": "kiso official skills extension — two-tier progressive skills, kernel untouched",
-  "type": "module",
-  "license": "MIT",
-  "main": "./dist/kiso-skills.mjs",
-  "exports": {
-    ".": {
-      "types": "./index.d.ts",
-      "import": "./dist/kiso-skills.mjs"
-    }
-  },
-  "files": [
-    "dist",
-    "index.d.ts",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "node build.mjs",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
-  },
-  "devDependencies": {
-    "@vincemakes/kiso-core": "0.15.1",
-    "@types/node": "^26.1.2",
-    "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
-  }
+	"name": "@vincemakes/kiso-skills-ext",
+	"version": "0.15.2",
+	"description": "kiso official skills extension \u2014 two-tier progressive skills, kernel untouched",
+	"type": "module",
+	"license": "MIT",
+	"main": "./dist/kiso-skills.mjs",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"import": "./dist/kiso-skills.mjs"
+		}
+	},
+	"files": [
+		"dist",
+		"index.d.ts",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "node build.mjs",
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"devDependencies": {
+		"@vincemakes/kiso-core": "0.15.2",
+		"@types/node": "^26.1.2",
+		"typescript": "^5.7.2",
+		"vitest": "^3.0.0"
+	}
 }

@@ -1,61 +1,61 @@
 {
-  "name": "@vincemakes/kiso-tui-cells",
-  "version": "0.15.1",
-  "description": "kiso tui-cells — the components cell renderer (components, diff, width, the render slice). Zero runtime dependencies: input is data, output is bytes.",
-  "type": "module",
-  "license": "MIT",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./components": {
-      "types": "./dist/components.d.ts",
-      "default": "./dist/components.js"
-    },
-    "./diff": {
-      "types": "./dist/diff.d.ts",
-      "default": "./dist/diff.js"
-    },
-    "./approval-panel": {
-      "types": "./dist/approval-panel.d.ts",
-      "default": "./dist/approval-panel.js"
-    },
-    "./width": {
-      "types": "./dist/width.d.ts",
-      "default": "./dist/width.js"
-    },
-    "./render": {
-      "types": "./dist/render.d.ts",
-      "default": "./dist/render.js"
-    },
-    "./strings": {
-      "types": "./dist/strings.d.ts",
-      "default": "./dist/strings.js"
-    }
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
-  },
-  "devDependencies": {
-    "@types/node": "^26.1.2",
-    "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/vincemakes/kiso.git",
-    "directory": "packages/tui-cells"
-  },
-  "bugs": {
-    "url": "https://github.com/vincemakes/kiso/issues"
-  },
-  "homepage": "https://github.com/vincemakes/kiso/tree/main/packages/tui-cells#readme"
+	"name": "@vincemakes/kiso-tui-cells",
+	"version": "0.15.2",
+	"description": "kiso tui-cells \u2014 the components cell renderer (components, diff, width, the render slice). Zero runtime dependencies: input is data, output is bytes.",
+	"type": "module",
+	"license": "MIT",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./components": {
+			"types": "./dist/components.d.ts",
+			"default": "./dist/components.js"
+		},
+		"./diff": {
+			"types": "./dist/diff.d.ts",
+			"default": "./dist/diff.js"
+		},
+		"./approval-panel": {
+			"types": "./dist/approval-panel.d.ts",
+			"default": "./dist/approval-panel.js"
+		},
+		"./width": {
+			"types": "./dist/width.d.ts",
+			"default": "./dist/width.js"
+		},
+		"./render": {
+			"types": "./dist/render.d.ts",
+			"default": "./dist/render.js"
+		},
+		"./strings": {
+			"types": "./dist/strings.d.ts",
+			"default": "./dist/strings.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"devDependencies": {
+		"@types/node": "^26.1.2",
+		"typescript": "^5.7.2",
+		"vitest": "^3.0.0"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/vincemakes/kiso.git",
+		"directory": "packages/tui-cells"
+	},
+	"bugs": {
+		"url": "https://github.com/vincemakes/kiso/issues"
+	},
+	"homepage": "https://github.com/vincemakes/kiso/tree/main/packages/tui-cells#readme"
 }

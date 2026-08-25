@@ -1,53 +1,53 @@
 {
-  "name": "@vincemakes/kiso-core",
-  "version": "0.15.1",
-  "description": "kiso (foundation) core — protocol, event log, loop, hooks, modes, permissions, compaction, delivery truth. The 2,000-line kernel at the bottom of the kiso framework.",
-  "type": "module",
-  "license": "MIT",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./protocol": {
-      "types": "./dist/protocol/index.d.ts",
-      "default": "./dist/protocol/index.js"
-    }
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
-  },
-  "keywords": [
-    "agent",
-    "llm",
-    "framework",
-    "kernel",
-    "anthropic",
-    "openai"
-  ],
-  "devDependencies": {
-    "@vincemakes/kiso-evals": "0.15.1",
-    "@types/node": "^26.1.2",
-    "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
-  },
-  "dependencies": {
-    "ajv": "^8.20.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/vincemakes/kiso.git",
-    "directory": "packages/core"
-  },
-  "bugs": {
-    "url": "https://github.com/vincemakes/kiso/issues"
-  },
-  "homepage": "https://github.com/vincemakes/kiso/tree/main/packages/core#readme"
+	"name": "@vincemakes/kiso-core",
+	"version": "0.15.2",
+	"description": "kiso (foundation) core \u2014 protocol, event log, loop, hooks, modes, permissions, compaction, delivery truth. The 2,000-line kernel at the bottom of the kiso framework.",
+	"type": "module",
+	"license": "MIT",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./protocol": {
+			"types": "./dist/protocol/index.d.ts",
+			"default": "./dist/protocol/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"keywords": [
+		"agent",
+		"llm",
+		"framework",
+		"kernel",
+		"anthropic",
+		"openai"
+	],
+	"devDependencies": {
+		"@vincemakes/kiso-evals": "0.15.2",
+		"@types/node": "^26.1.2",
+		"typescript": "^5.7.2",
+		"vitest": "^3.0.0"
+	},
+	"dependencies": {
+		"ajv": "^8.20.0"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/vincemakes/kiso.git",
+		"directory": "packages/core"
+	},
+	"bugs": {
+		"url": "https://github.com/vincemakes/kiso/issues"
+	},
+	"homepage": "https://github.com/vincemakes/kiso/tree/main/packages/core#readme"
 }
