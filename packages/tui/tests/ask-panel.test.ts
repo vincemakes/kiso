@@ -14,18 +14,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Editor } from "../src/editor.js";
-import {
-	askAnswers,
-	askBlockRows,
-	askCommitCustom,
-	askDeclineAll,
-	askKey,
-	askStart,
-	askView,
-	type AskResult,
-	type AskRuntime,
-	type AskSpec,
-} from "../src/ask-panel.js";
+import { askAnswers, askBlockRows, askCommitCustom, askDeclineAll, askKey, askLeadPlain, askStart, askView, type AskResult, type AskRuntime, type AskSpec } from "../src/ask-panel.js";
 import type { PanelVerdict } from "../src/approval-panel.js";
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
@@ -300,5 +289,86 @@ describe("T-Q1 — the editor: the raw bytes, the precedence, the stash", () => 
 		editor.feed(enc("\x1b[A")); // ↑ — the history walk
 		expect(editor.line()).toBe("");
 		expect(editor.panelState()?.ask?.qIndex).toBe(0); // still the ask's
+	});
+});
+
+/**
+ * REL-0152-D3 — the custom-answer row is rendered INSIDE the option list
+ * and was not reachable by the cursor.
+ *
+ * `askBlockRows` pushes "t type your own answer" into the same `body`
+ * array as the option rows, so it reads as the list's last item. But
+ * `down` clamped at `q.options.length - 1`, the cursor never landed on
+ * it, and the affordance line said "1-4>" — a range that excludes it.
+ * The only way in was the bare `t` key, which nothing on screen said was
+ * required.
+ *
+ * Found in owner dogfood on 0.15.2: the down key could not reach t.
+ *
+ * The row is a row now: the cursor reaches it, enter opens the typing
+ * phase there, `t` still works from anywhere, and the prompt names the
+ * real range instead of a hard-coded one.
+ */
+describe("REL-0152-D3: the type-your-own row is part of the list", () => {
+	const custom = (q: AskSpec) => q.questions[0]!.options.length; // its index
+
+	it("down reaches the custom row — one past the last option", () => {
+		let s = askStart(ONE);
+		for (let i = 0; i < 10; i += 1) s = askKey(ONE, s, "down").state;
+		expect(s.cursor).toBe(custom(ONE));
+	});
+
+	it("enter on the custom row opens the typing phase", () => {
+		let s = askStart(ONE);
+		for (let i = 0; i < 10; i += 1) s = askKey(ONE, s, "down").state;
+		expect(askKey(ONE, s, "enter").state.phase).toBe("custom");
+	});
+
+	it("up walks back off the custom row into the options", () => {
+		let s = askStart(ONE);
+		for (let i = 0; i < 10; i += 1) s = askKey(ONE, s, "down").state;
+		expect(askKey(ONE, s, "up").state.cursor).toBe(custom(ONE) - 1);
+	});
+
+	it("the bare `t` key still works from anywhere", () => {
+		expect(askKey(ONE, askStart(ONE), "t").state.phase).toBe("custom");
+	});
+
+	it("enter on a real option still answers rather than typing", () => {
+		const s = askKey(ONE, askStart(ONE), "space").state; // pick at cursor 0
+		expect(askKey(ONE, s, "enter").state.phase).not.toBe("custom");
+	});
+
+	it("the affordance names the real range, not a hard-coded 1-4", () => {
+		const line = askLeadPlain(askStart(ONE));
+		expect(line).not.toBe("1-4> ");
+		expect(line).toMatch(/pick|1-\d/);
+	});
+});
+
+describe("REL-0152-D3: the custom row shows the cursor like every other row", () => {
+	// palette() is gated on process.stdout.isTTY, so the codes are empty
+	// strings in a plain test run — the affordance under test would be
+	// invisible and the assertion would pass on an unchanged row.
+	const withColor = <T,>(fn: () => T): T => {
+		const orig = process.stdout.isTTY;
+		Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+		try {
+			return fn();
+		} finally {
+			Object.defineProperty(process.stdout, "isTTY", { value: orig ?? false, configurable: true });
+		}
+	};
+
+	it("is dim when the cursor is elsewhere and bold when it is there", () => {
+		const view = askView(ONE);
+		let cur = askStart(ONE);
+		for (let i = 0; i < 10; i += 1) cur = askKey(ONE, cur, "down").state;
+		const away = withColor(() => askBlockRows(view, askStart(ONE), 80, 20).join("\n"));
+		const on = withColor(() => askBlockRows(view, cur, 80, 20).join("\n"));
+		expect(away).not.toBe(on);
+		// the row itself moved, not some other part of the block
+		const rowOf = (blob: string) => blob.split("\n").find((l) => l.includes("type your own answer"));
+		expect(rowOf(away)).not.toBe(rowOf(on));
 	});
 });

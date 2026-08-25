@@ -141,6 +141,11 @@ function toggle(state: AskRuntime, option: number, multi: boolean): AskRuntime {
  * the buffer exactly as it does for the rule-input phase, and hands the
  * committed line to `askCommitCustom`.
  */
+/** REL-0152-D3 — the index of the type-your-own row: one past the last
+ *  option, which is where `askBlockRows` draws it. Options and this row
+ *  are one list to the eye, so they are one list to the cursor. */
+const customRow = (q: AskQuestion): number => q.options.length;
+
 export function askKey(spec: AskSpec, state: AskRuntime, key: string): AskStep {
 	const q = spec.questions[state.qIndex]!;
 	const multi = q.multiSelect === true;
@@ -154,14 +159,26 @@ export function askKey(spec: AskSpec, state: AskRuntime, key: string): AskStep {
 	if (key === "t") return { state: { ...state, phase: "custom" } };
 	if (key === "left") return { state: state.qIndex === 0 ? state : { ...state, qIndex: state.qIndex - 1, cursor: 0 } };
 	if (key === "up") return { state: { ...state, cursor: Math.max(0, state.cursor - 1) } };
-	if (key === "down") return { state: { ...state, cursor: Math.min(q.options.length - 1, state.cursor + 1) } };
-	if (key === "enter") return answered(state, state.qIndex) ? advance(spec, state) : { state };
+	// REL-0152-D3: the cursor range includes the type-your-own row, which
+	// askBlockRows renders as the list's last item. It used to stop one
+	// short, so a row the eye counts as fourth could not be reached by
+	// the key that walks the list — the affordance promised a list and
+	// delivered four of its five rows.
+	if (key === "down") return { state: { ...state, cursor: Math.min(customRow(q), state.cursor + 1) } };
+	if (key === "enter") {
+		// on the custom row, enter is the way in — the same gesture the
+		// row's neighbours answer with.
+		if (state.cursor === customRow(q)) return { state: { ...state, phase: "custom" } };
+		return answered(state, state.qIndex) ? advance(spec, state) : { state };
+	}
 	// SPACE selects at the cursor and NEVER commits — in either mode. It
 	// used to answer-and-advance a single-select question, which made a
 	// stray space (the most pressable key there is) an instant answer of
 	// whatever the cursor happened to be on. Enter and the digits are the
 	// only gestures that commit; space is how you point at something.
-	if (key === "space") return { state: toggle(state, state.cursor, multi) };
+	// space points at an option; on the custom row it opens the typing
+	// phase rather than toggling an option that is not there.
+	if (key === "space") return state.cursor === customRow(q) ? { state: { ...state, phase: "custom" } } : { state: toggle(state, state.cursor, multi) };
 	const digit = Number.parseInt(key, 10);
 	if (Number.isInteger(digit) && digit >= 1 && digit <= q.options.length) {
 		const next = toggle(state, digit - 1, multi);
@@ -214,12 +231,16 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	rows.push(cutLine(`${p.dim}─ ${multi ? "pick any — space toggles" : "pick one"} ─${p.reset}`, Math.max(1, W - 2)));
 	const picks = state.picks[state.qIndex] ?? [];
 	const body = q.options.map((o, i) => `${gutter}${optionRow(o, i + 1, picks.includes(i), state.cursor === i, multi, W)}`);
+	// REL-0152-D3: the row is part of the list, so it carries the same
+	// cursor affordance the options do. Dim-always made a reachable row
+	// look like a footnote.
 	const typed = state.custom[state.qIndex];
+	const onCustom = state.cursor === customRow(q);
 	body.push(
 		`${gutter}${cutLine(
 			typed === null || typed === undefined
-				? `${p.dim} t   type your own answer${p.reset}`
-				: ` t ◉ ${escapeTerminal(typed)}`,
+				? `${onCustom ? p.bold : p.dim} t   type your own answer${p.reset}`
+				: `${onCustom ? p.bold : ""} t ◉ ${escapeTerminal(typed)}${p.reset}`,
 			Math.max(1, W - 2),
 		)}`,
 	);
@@ -261,7 +282,10 @@ export function askStatus(view: PanelView, state: AskRuntime): string {
 /** The input row's lead: the digit lead while picking, the typing lead
  *  in the custom phase (the rule-input phase's shape, reused). */
 export function askLeadPlain(state: AskRuntime): string {
-	return state.phase === "custom" ? "your answer: " : "1-4> ";
+	// REL-0152-D3: "1-4> " was hard-coded and wrong twice over — it named
+	// a range even when there were two options, and it excluded the
+	// type-your-own row the list shows.
+	return state.phase === "custom" ? "your answer: " : "pick> ";
 }
 
 // ── the dispatchers: the panel slot, with the ask branch folded in ────
