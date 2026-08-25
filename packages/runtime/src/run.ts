@@ -4,7 +4,7 @@
  * verbatim from session.ts.
  */
 
-import { denialResult, loop, type AbortSignalLike, type Adapter, type ApprovalChain, type ChainVerdict, type Event, type EventLog, type HookHost, type PermissionDecision, type ToolCallPayload, type ToolResult } from "@vincemakes/kiso-core";
+import { denialResult, loop, type AbortSignalLike, type Adapter, type ApprovalChain, type ChainVerdict, type ContentBlock, type Event, type EventLog, type HookHost, type PermissionDecision, type ToolCallPayload, type ToolResult } from "@vincemakes/kiso-core";
 import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
 import { deriveRecoveryPlan, invocationSeqOf } from "./recovery-plan.js";
@@ -25,7 +25,11 @@ export class Run implements AsyncIterable<Event> {
 	readonly #adapter: Adapter;
 	readonly #config: SessionConfig;
 	readonly #session: AgentSession;
-	readonly #input: string | undefined;
+	/** REL-0152-D11: the turn's input — text, or the content blocks a
+	 *  turn with an attachment carries. The durable event and the
+	 *  projection have accepted both shapes since the protocol was
+	 *  written; only this signature narrowed it to text. */
+	readonly #input: string | readonly ContentBlock[] | undefined;
 	readonly #resume: boolean;
 	readonly #source: import("@vincemakes/kiso-core").MessageSource | undefined;
 	readonly #abort = new AbortController();
@@ -39,7 +43,7 @@ export class Run implements AsyncIterable<Event> {
 		adapter: Adapter,
 		config: SessionConfig,
 		session: AgentSession,
-		input: string | undefined,
+		input: string | readonly ContentBlock[] | undefined,
 		externalSignal: AbortSignalLike | undefined,
 		resume: boolean,
 		// TV-1B: durable PROVENANCE for the input (e.g. the verification

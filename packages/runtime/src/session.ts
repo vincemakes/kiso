@@ -370,7 +370,14 @@ export class AgentSession {
 	}
 
 	/** Run one user turn. Iterate to consume; `run.abort()` cancels. */
-	run(input: string, options?: { signal?: AbortSignalLike; source?: import("@vincemakes/kiso-core").MessageSource }): Run {
+	/** REL-0152-D11: `input` is text, or the content blocks a turn with an
+	 *  attachment carries. The durable event, the projection and both
+	 *  provider adapters have accepted both shapes since the protocol was
+	 *  written — an image block reaches Anthropic as `image` and the
+	 *  OpenAI-compatible family as `image_url` with a data URI. Only this
+	 *  signature narrowed it to text, which is why no caller could ever
+	 *  send one. */
+	run(input: string | readonly import("@vincemakes/kiso-core").ContentBlock[], options?: { signal?: AbortSignalLike; source?: import("@vincemakes/kiso-core").MessageSource }): Run {
 		this.ensureHealthy();
 		return new Run(this.#store, this.#adapter, this.#effectiveConfig(), this, input, options?.signal, false, options?.source);
 	}

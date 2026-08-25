@@ -29,6 +29,7 @@ import { canonicalizeUsageForModel } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import { dispatch, type DispatchCtx } from "./dispatch.js";
 import { agentModel, body, bodyLog, configuredWindow, dock, type LineInput } from "./state.js";
+import { attachImages } from "./attachments.js";
 import { lookupModelMetadata } from "@vincemakes/kiso-runtime/internal";
 import { addDontAskAgainRule, askPanel, fixHintFor, pendingAsk, resolveUncertains } from "./trust-ui.js";
 import { FauxExhaustionError, failOnFauxExhaustion } from "./faux-glue.js";
@@ -887,7 +888,13 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	const turn = (text: string, seedSource?: "system"): Promise<void> =>
 		new Promise((resolve, reject) => {
 			queued = Math.max(0, queued - 1); // a queued turn starts
-			const run = seedSource !== undefined ? session.run(text, { source: seedSource }) : session.run(text);
+			// REL-0152-D11: a turn that names an image file carries it. The
+			// scan returns the STRING unchanged when it finds nothing, so a
+			// turn without one is byte-identical to before the feature.
+			// Seeded turns are the product's own words and are never
+			// scanned — nothing it writes to itself is an attachment.
+			const content = seedSource !== undefined ? text : attachImages(text);
+			const run = seedSource !== undefined ? session.run(content, { source: seedSource }) : session.run(content);
 			currentRun = run;
 			turnNo += 1;
 			const myTurn = turnNo;
