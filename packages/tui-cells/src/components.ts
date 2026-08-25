@@ -314,20 +314,56 @@ export function cellComponent(cell: BodyCell): Component {
  * colours, so dimmed text would invert into a dimmed block with no
  * contrast.
  */
+/**
+ * REL-0152-D13 — how much of a turn the chip shows.
+ *
+ * Twelve rows is enough to recognise what you sent and short enough
+ * that sending it does not scroll away what you were looking at. The
+ * bound is on ROWS, after folding, so one enormous line is caught by
+ * the same rule as three thousand short ones.
+ */
+const USER_CHIP_ROWS = 12;
+
 class UserMessage implements Component {
 	constructor(private readonly cell: { text: string }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
 		const chipW = Math.max(1, W - 2);
 		const rows: string[] = [];
-		for (const para of this.cell.text.split("\n")) {
+		// REL-0152-D13: fold only as far as the bound needs. A pasted file
+		// has thousands of lines and folding all of them to show twelve is
+		// work with no reader — the measurement that opened this finding
+		// was a 3000-line turn writing 260,298 bytes in one frame.
+		const paras = this.cell.text.split("\n");
+		let truncated = false;
+		for (const para of paras) {
+			if (rows.length >= USER_CHIP_ROWS) {
+				truncated = true;
+				break;
+			}
 			const folded = foldLine(escapeTerminal(para), chipW);
 			const inner = Math.max(...folded.map((r) => displayWidth(r)));
 			for (const row of folded) {
+				if (rows.length >= USER_CHIP_ROWS) {
+					truncated = true;
+					break;
+				}
 				const pad = inner - displayWidth(row);
 				rows.push(`${p.rv} ${row}${" ".repeat(pad)} ${p.rvEnd}`);
 			}
 		}
+		if (!truncated) return rows;
+		// The notice is OUTSIDE the chip's reverse video, in the cut-row
+		// vocabulary the rest of the product uses, and it says the thing
+		// that matters: the model got all of it. A bounded display of a
+		// complete message is not a truncated message, and the row has to
+		// make that difference visible or it reads as data loss.
+		const shown = rows.length;
+		const total = paras.length;
+		const more = Math.max(0, total - shown);
+		rows.push(
+			`${p.dim}\u2514 ${more > 0 ? `+${more} more line${more === 1 ? "" : "s"}` : "cut here"} \u00b7 sent in full${p.reset}`,
+		);
 		return rows;
 	}
 }
