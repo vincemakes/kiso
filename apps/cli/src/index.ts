@@ -50,6 +50,7 @@ import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { autoCompactFromEnv, chat, contextWindowTokens, estimateCtxRatio } from "./chat.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { resume } from "./resume.js";
+import { resumeTail } from "./resume-tail.js";
 import { collectSessionCards, projectSessionCard } from "./session-cards.js";
 
 // The moved exports stay reachable from this entry — the test imports
@@ -627,9 +628,16 @@ async function chatLoop(
 		const session = await agent.session({ id });
 		if (prev === null) {
 			bodyLog(`session ${id}\n`);
+			// REL-0152-D5: a session with history says what that history WAS.
+			// Resuming used to print this one line and drop you at an empty
+			// prompt inside a conversation with thousands of events — the
+			// durable log was right there and none of it was shown. Empty for
+			// a fresh session, so `kiso chat` is byte-identical.
+			for (const line of resumeTail(session.log.all)) bodyLog(line);
 			extensionsBanner(await recentSessions(id, agent));
 		} else {
 			bodyLog(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
+			for (const line of resumeTail(session.log.all)) bodyLog(line);
 			if (currentFaux) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 		}
 		paintBootStatus(session);
@@ -852,6 +860,9 @@ async function main(): Promise<void> {
 				// session's position so a picked resume continues its script
 				// exactly where `kiso resume <id>` would have.
 				if (faux && arg === undefined) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
+				// REL-0152-D5 — the same tail on the explicit-id form. NOT on
+				// the -p path above: that one's stdout is a machine's input.
+				for (const line of resumeTail(session.log.all)) bodyLog(line);
 				await resume(session, prompt, faux, input);
 				break;
 			}

@@ -178,3 +178,34 @@ describe("one session, one active run", () => {
 		expect(store.load("s").length).toBeGreaterThan(0);
 	});
 });
+
+/**
+ * REL-0152-D6 — the title has to say which conversation this is.
+ *
+ * `listSessions` took `records[0]` — the FIRST event — so a session is
+ * named by whatever the user said first. Three of the owner's five
+ * sessions opened with "hello", and the picker showed three identical
+ * rows distinguished only by a timestamp they had to decode.
+ *
+ * RD1B-F9 made ids unique. Unique is not meaningful: the id can be
+ * perfectly distinct and still tell a human nothing. The cheapest fix
+ * that needs no model call is to name the session after the first turn
+ * that carries a REQUEST, skipping an opening greeting.
+ */
+describe("REL-0152-D6 — the session title names the conversation", () => {
+	it("skips an opening greeting and titles by the first real request", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-d6-"));
+		const store = new SessionStore(dir);
+		await store.append("s1", "r1", { seq: 0, type: "user_input", content: "hello" });
+		await store.append("s1", "r1", { seq: 1, type: "user_input", content: "refactor the compositor's erase ranges" });
+		const meta = store.list().find((m) => m.id === "s1");
+		expect(meta?.title).toBe("refactor the compositor's erase ranges");
+	});
+
+	it("falls back to the greeting when that is all there is", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-d6b-"));
+		const store = new SessionStore(dir);
+		await store.append("s2", "r1", { seq: 0, type: "user_input", content: "hello" });
+		expect(store.list().find((m) => m.id === "s2")?.title).toBe("hello");
+	});
+});

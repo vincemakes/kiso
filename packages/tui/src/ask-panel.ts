@@ -146,6 +146,15 @@ function toggle(state: AskRuntime, option: number, multi: boolean): AskRuntime {
  *  are one list to the eye, so they are one list to the cursor. */
 const customRow = (q: AskQuestion): number => q.options.length;
 
+/** REL-0152-D4: is the cursor on the type-your-own row? The editor asks
+ *  before it decides what a printable key means — on this row a key is
+ *  the first character of an answer, everywhere else it is a shortcut.
+ *  Exported so that rule lives on ONE definition of the row. */
+export function askOnCustomRow(spec: AskSpec, state: AskRuntime): boolean {
+	const q = spec.questions[state.qIndex];
+	return q !== undefined && state.phase === "options" && state.cursor === customRow(q);
+}
+
 export function askKey(spec: AskSpec, state: AskRuntime, key: string): AskStep {
 	const q = spec.questions[state.qIndex]!;
 	const multi = q.multiSelect === true;
@@ -156,7 +165,11 @@ export function askKey(spec: AskSpec, state: AskRuntime, key: string): AskStep {
 		return { state };
 	}
 	if (key === "esc") return { state, result: askDeclineAll(spec) };
-	if (key === "t") return { state: { ...state, phase: "custom" } };
+	// `t` is the shortcut from anywhere in the list; `type` is the
+	// REL-0152-D4 gesture — the editor sends it when the cursor is
+	// already on the custom row and a printable key arrives, so the
+	// keystroke that opened the phase is also its first character.
+	if (key === "t" || key === "type") return { state: { ...state, phase: "custom" } };
 	if (key === "left") return { state: state.qIndex === 0 ? state : { ...state, qIndex: state.qIndex - 1, cursor: 0 } };
 	if (key === "up") return { state: { ...state, cursor: Math.max(0, state.cursor - 1) } };
 	// REL-0152-D3: the cursor range includes the type-your-own row, which
@@ -236,11 +249,19 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	// look like a footnote.
 	const typed = state.custom[state.qIndex];
 	const onCustom = state.cursor === customRow(q);
+	// REL-0152-D4: while the phase is OPEN the row becomes the answer's
+	// box — a faint placeholder standing where the text will land, so an
+	// empty typing phase looks like somewhere to type instead of looking
+	// like nothing happened. The placeholder is dim and the answer is
+	// not: the two can never be mistaken for each other.
+	const typingHere = state.phase === "custom";
 	body.push(
 		`${gutter}${cutLine(
-			typed === null || typed === undefined
-				? `${onCustom ? p.bold : p.dim} t   type your own answer${p.reset}`
-				: `${onCustom ? p.bold : ""} t ◉ ${escapeTerminal(typed)}${p.reset}`,
+			typed !== null && typed !== undefined
+				? `${onCustom || typingHere ? p.bold : ""} t ◉ ${escapeTerminal(typed)}${p.reset}`
+				: typingHere
+					? `${p.bold} t ▸${p.reset} ${p.dim}type your answer — enter sends, esc backs out${p.reset}`
+					: `${onCustom ? p.bold : p.dim} t   type your own answer${p.reset}`,
 			Math.max(1, W - 2),
 		)}`,
 	);

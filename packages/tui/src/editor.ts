@@ -42,7 +42,7 @@ import {
 } from "./approval-panel.js";
 // KC3.5: the panel-slot dispatchers — the ask branch folded into the
 // W21 lead/rows, so this file keeps ONE panel and one key owner.
-import { askCommitCustom, askKey, askStart, panelLead } from "./ask-panel.js";
+import { askCommitCustom, askKey, askOnCustomRow, askStart, panelLead } from "./ask-panel.js";
 import { AT_VISIBLE, atFilter, type AtItem, type AtMatch } from "./at-picker.js";
 // TUI2-R2 ②: the session picker — the band's THIRD occupant. Its filter
 // is the @ picker's rank aimed at the session id; the editor owns the
@@ -158,6 +158,29 @@ export class Editor {
 		stash: { chars: number[]; cursor: number; scroll: number };
 	} | null = null;
 	#pasting = false;
+	/**
+	 * REL-0152-D8 — the paste capsule.
+	 *
+	 * A paste large enough to break the composer's layout is held HERE
+	 * and shown in the buffer as `[Pasted text #N +M lines]`. The buffer
+	 * is the display; this map is the content; the line that LEAVES the
+	 * editor is the content again. That ordering is the whole design —
+	 * the capsule can never truncate what gets sent, because expansion
+	 * happens on the way out and reads from a map the display cannot
+	 * edit.
+	 *
+	 * A capsule the human deletes is a paste that never happened: the
+	 * token is gone, the expansion finds nothing to replace, and the
+	 * entry is simply never read. That is how you take a paste back.
+	 *
+	 * The map is per-editor and grows by one entry per large paste in a
+	 * session — bounded by how many times a human can press cmd-V, and
+	 * every entry is text they chose to paste and may still submit.
+	 */
+	#pastes = new Map<number, string>();
+	#pasteSeq = 0;
+	/** The buffer index where the in-flight paste began; null outside one. */
+	#pasteAt: number | null = null;
 	/** TUI2-R3v2 ①: one-shot — a panel that just closed swallows the
 	 *  habitual trailing enter rather than submitting the restored draft. */
 	#swallowEnter = false;
@@ -867,6 +890,22 @@ export class Editor {
 						i += 1;
 						continue;
 					}
+					// REL-0152-D4 — on the custom row a printable key is TEXT.
+					// The row names typing as its purpose and then swallowed
+					// the first thing you typed; only enter or `t` opened the
+					// phase. Now the keystroke opens it AND lands in the
+					// buffer, so the character you meant is the character you
+					// get. This is checked BEFORE the shortcut branch below on
+					// purpose: on this row "3" and "t" are the start of an
+					// answer, not a pick and not a mode key. Everywhere else
+					// in the list they keep their fast-path meaning exactly.
+					if (askOnCustomRow(panel.view.ask!, panel.ask) && c !== undefined && c >= " " && c !== "\x7f") {
+						this.#askStep("type");
+						this.#insert(c.codePointAt(0)!);
+						this.#onRender();
+						i += 1;
+						continue;
+					}
 					if (!typing && (c === " " || (c !== undefined && c >= "1" && c <= "4") || c === "t" || c === "T")) {
 						this.#askStep(c === " " ? "space" : c === "T" ? "t" : c);
 						i += 1;
@@ -1226,9 +1265,12 @@ export class Editor {
 		if (final === "~") {
 			const n = Number(params);
 			if (n === 3) this.#delete();
-			else if (n === 200) this.#pasting = true;
-			else if (n === 201) {
+			else if (n === 200) {
+				this.#pasting = true;
+				this.#pasteAt = this.#cursor; // REL-0152-D8: where the capsule will go
+			} else if (n === 201) {
 				this.#pasting = false;
+				this.#encapsulate();
 				this.#onRender();
 			}
 		} else if (final === "A" || final === "B") {
@@ -1583,7 +1625,10 @@ export class Editor {
 		if (panel === null || panel.ask === null) return;
 		const spec = panel.view.ask!;
 		const before = panel.ask.phase;
-		const step = key === "commit" ? askCommitCustom(spec, panel.ask, this.line()) : askKey(spec, panel.ask, key);
+		// REL-0152-D8: a typed ask answer is a line leaving the editor too —
+		// pasting a stack trace into "type your own answer" must send the
+		// stack trace, not the capsule that stands for it.
+		const step = key === "commit" ? askCommitCustom(spec, panel.ask, this.#expandPastes(this.line())) : askKey(spec, panel.ask, key);
 		panel.ask = step.state;
 		if (step.state.phase !== before) {
 			this.#chars = [];
@@ -1745,6 +1790,68 @@ export class Editor {
 	 *  reset together (W22: a departing line ends the pop-walk, so the
 	 *  next esc at rest interrupts again). Shared by the submit and the
 	 *  redirect — the two doors a line can leave by. */
+	/**
+	 * REL-0152-D8 — how big a paste has to be before it is a capsule.
+	 *
+	 * LINES first, because lines are what actually break the layout: the
+	 * composer grows a row per line and walks up the terminal. The
+	 * character bound catches the pathological one-liner, which wraps to
+	 * the same screenful by another route.
+	 *
+	 * Below both, the paste is left exactly as it arrived. A four-line
+	 * snippet is something you want to SEE in the composer, and a capsule
+	 * there would be pure obstruction.
+	 */
+	static #PASTE_LINES = 8;
+	static #PASTE_CHARS = 900;
+
+	/** The token a capsule shows as. Parsed back by the same regexp on
+	 *  the way out — one definition, so the two can never drift. */
+	static #capsuleText(id: number, lines: number): string {
+		return `[Pasted text #${id} +${lines} line${lines === 1 ? "" : "s"}]`;
+	}
+	static #CAPSULE = /\[Pasted text #(\d+) \+\d+ lines?\]/g;
+
+	/**
+	 * Close an in-flight paste: if it was large, swap the pasted run out
+	 * of the buffer for its capsule and keep the text.
+	 *
+	 * The swap is a splice at the recorded start, so a paste in the
+	 * MIDDLE of a line leaves the prose on both sides of it untouched —
+	 * the capsule is a character run like any other from here on, and
+	 * every editing operation in this file works on it without knowing
+	 * it exists.
+	 */
+	#encapsulate(): void {
+		const start = this.#pasteAt;
+		this.#pasteAt = null;
+		if (start === null || this.#cursor <= start) return;
+		const pasted = String.fromCodePoint(...this.#chars.slice(start, this.#cursor));
+		const lines = pasted.split("\n").length;
+		if (lines < Editor.#PASTE_LINES && pasted.length < Editor.#PASTE_CHARS) return;
+		this.#pasteSeq += 1;
+		this.#pastes.set(this.#pasteSeq, pasted);
+		const capsule = [...Editor.#capsuleText(this.#pasteSeq, lines)].map((ch) => ch.codePointAt(0)!);
+		this.#chars.splice(start, this.#cursor - start, ...capsule);
+		this.#cursor = start + capsule.length;
+		this.#reflow();
+	}
+
+	/**
+	 * The way out: every capsule token becomes its text again.
+	 *
+	 * Applied to the line the editor HANDS OVER, never to the buffer —
+	 * so what the human sees stays short and what the model receives is
+	 * what the human pasted. A token whose entry is missing (a stale id
+	 * recalled from history after the map moved on) is left standing as
+	 * literal text rather than silently becoming an empty string: a
+	 * visible oddity beats a silent deletion of someone's paste.
+	 */
+	#expandPastes(line: string): string {
+		if (this.#pastes.size === 0) return line;
+		return line.replace(Editor.#CAPSULE, (whole, id: string) => this.#pastes.get(Number(id)) ?? whole);
+	}
+
 	#takeLine(): string {
 		const line = String.fromCodePoint(...this.#chars);
 		this.#chars = [];
@@ -1863,14 +1970,19 @@ export class Editor {
 			}
 		}
 		const line = this.#takeLine();
+		// REL-0152-D8: the capsule expands ON THE WAY OUT. The consumer
+		// gets what was pasted; the HISTORY keeps the short form, so ↑
+		// recalls a readable line that still expands when it is sent
+		// again (the map outlives the buffer, by design).
+		const sent = this.#expandPastes(line);
 		const cb = this.#questionCb;
 		this.#questionCb = null;
 		if (cb !== null) {
-			cb(line);
+			cb(sent);
 		} else if (this.#lineCb !== null) {
-			this.#lineCb(line);
+			this.#lineCb(sent);
 		} else {
-			this.#pendingLines.push(line); // nobody wired yet — hold it
+			this.#pendingLines.push(sent); // nobody wired yet — hold it
 		}
 		if (cb === null && line !== "") this.#remember(line);
 		this.#onRender();

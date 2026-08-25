@@ -100,6 +100,32 @@ export interface SessionMeta {
 /** Session ids become file names — keep them host-safe. */
 const ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 
+/** REL-0152-D6 — a session is named by its first REQUEST, not its first
+ *  word.
+ *
+ *  This used to take `records[0]` unconditionally, so a session was
+ *  titled by whatever the user opened with. Three of the owner's five
+ *  sessions opened with a greeting, and the picker showed three
+ *  identical rows separated only by a timestamp they had to decode.
+ *  RD1B-F9 made ids unique; unique is not meaningful.
+ *
+ *  A greeting is skipped only when something follows it — a session that
+ *  is genuinely nothing but "hello" is still titled "hello", because the
+ *  alternative is naming it "(no prompt)" when a prompt plainly exists.
+ *  No model call: this is a scan of the turns already on disk. */
+const GREETING = /^\s*(hi|hey|hello|yo|你好|您好|哈罗|嗨|ping|test|测试)[\s!.,?！。，？~]*$/i;
+
+function titleOf(records: readonly StoreRecord[]): string {
+	const asked = records
+		.map((r) => r.event as { type: string; content?: unknown })
+		.filter((e) => e.type === "user_input" && typeof e.content === "string")
+		.map((e) => (e.content as string).trim())
+		.filter((t) => t !== "");
+	if (asked.length === 0) return "(no prompt)";
+	const substantive = asked.find((t) => !GREETING.test(t));
+	return (substantive ?? asked[0]!).slice(0, 60);
+}
+
 export class SessionStore {
 	readonly root: string;
 	readonly #fds = new Map<string, number>();
@@ -337,13 +363,9 @@ export class SessionStore {
 			const id = entry.slice(0, -".jsonl".length);
 			const records = this.load(id);
 			if (records.length === 0) continue;
-			const first = records[0]!.event;
 			metas.push({
 				id,
-				title:
-					first.type === "user_input" && typeof first.content === "string"
-						? first.content.slice(0, 60)
-						: "(no prompt)",
+				title: titleOf(records),
 				events: records.length,
 				runs: new Set(records.map((r) => r.runId)).size,
 				createdAt: records[0]?.ts ?? 0,
