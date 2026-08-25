@@ -200,6 +200,23 @@ export class Editor {
 	 * reads, and this is a field, not a local.
 	 */
 	#pasteRun: number[] | null = null;
+	/**
+	 * REL-0152-D11 — what an EMPTY paste means.
+	 *
+	 * Pasting an image sends nothing: a terminal has no way to put binary
+	 * into a byte stream, so the bracketed paste arrives with no content.
+	 * That emptiness is the signal — the user pressed paste and the
+	 * terminal had nothing to hand over — and whatever they meant has to
+	 * be fetched from the clipboard instead.
+	 *
+	 * The editor does not know what a clipboard is and must not: this
+	 * package renders and reads keys, and reaching into the operating
+	 * system from it would put a platform dependency under every gate in
+	 * the suite. The CLI supplies the hook; the editor supplies the
+	 * moment. It returns the text to insert (a path, for the CLI's
+	 * attachment scan to pick up) or null when there was nothing.
+	 */
+	#onEmptyPaste: (() => string | null) | null = null;
 	/** TUI2-R3v2 ①: one-shot — a panel that just closed swallows the
 	 *  habitual trailing enter rather than submitting the restored draft. */
 	#swallowEnter = false;
@@ -337,6 +354,13 @@ export class Editor {
 	 *  over while the run is told to stop. Mirrors onEscape (a list, so
 	 *  listeners can coexist); the line arrives already gone from the
 	 *  composer, exactly as a submit's does. */
+	/** REL-0152-D11: what to do when a paste arrives empty. See
+	 *  #onEmptyPaste — the CLI owns the platform, the editor owns the
+	 *  moment. */
+	onEmptyPaste(cb: () => string | null): void {
+		this.#onEmptyPaste = cb;
+	}
+
 	onRedirect(cb: (line: string) => void): void {
 		this.#redirectCbs.push(cb);
 	}
@@ -1911,11 +1935,18 @@ export class Editor {
 	 * operation in this file works on it without knowing it exists.
 	 */
 	#commitPaste(): void {
-		const run = this.#pasteRun ?? [];
+		let run = this.#pasteRun ?? [];
 		const start = this.#pasteAt ?? this.#cursor;
 		this.#pasteRun = null;
 		this.#pasteAt = null;
-		if (run.length === 0) return;
+		if (run.length === 0) {
+			// REL-0152-D11: an empty paste is the image case — see
+			// #onEmptyPaste. Anything it returns is ordinary text from here
+			// on and takes the same route as if it had been typed.
+			const substitute = this.#onEmptyPaste?.() ?? null;
+			if (substitute === null || substitute === "") return;
+			run = [...substitute].map((ch) => ch.codePointAt(0)!);
+		}
 		if (this.#historyIdx !== null) this.#historyIdx = null;
 		this.#queuePopMode = false;
 		const pasted = Editor.#textOf(run);

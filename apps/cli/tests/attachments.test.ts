@@ -31,7 +31,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { attachImages } from "../src/attachments.js";
+import { attachImages, clipboardImage } from "../src/attachments.js";
 
 let dir: string;
 let png: string;
@@ -98,5 +98,50 @@ describe("REL-0152-D11 — a referenced image becomes a content block", () => {
 		const big = join(dir, "huge.png");
 		writeFileSync(big, Buffer.concat([PNG_BYTES, Buffer.alloc(9 * 1024 * 1024)]));
 		expect(typeof attachImages(`see ${big}`)).toBe("string");
+	});
+});
+
+/**
+ * The clipboard route. The runner is INJECTED so these cases test the
+ * decision logic rather than macOS: what counts as a usable image, and
+ * what happens on each way the read can fail. The one thing they cannot
+ * test is whether the coercion works inside a real terminal session —
+ * that is the finding's open question and it needs a machine, not a
+ * mock.
+ */
+describe("REL-0152-D11 — the clipboard route decides honestly", () => {
+	const ok = (): { status: number | null } => ({ status: 0 });
+	const fail = (): { status: number | null } => ({ status: 1 });
+
+	it("returns null when osascript fails — a failed read is not an image", () => {
+		expect(clipboardImage(dir, fail)).toBeNull();
+	});
+
+	it("returns null when the coercion 'succeeded' but wrote nothing", () => {
+		// the exact shape this round already produced once: exit 0 in some
+		// shells, a zero-byte file, and a caller that believed it
+		expect(clipboardImage(dir, ok)).toBeNull();
+	});
+
+	it("returns null when the file is not an image by its BYTES", () => {
+		const runner = (_c: string, args: readonly string[]): { status: number | null } => {
+			const target = JSON.parse(args.find((a) => a.includes("POSIX file "))!.split("POSIX file ")[1]!.split(" with write")[0]!) as string;
+			writeFileSync(target, "not an image at all");
+			return { status: 0 };
+		};
+		expect(clipboardImage(dir, runner)).toBeNull();
+	});
+
+	it("returns the path when a real PNG lands, and the path attaches", () => {
+		const runner = (_c: string, args: readonly string[]): { status: number | null } => {
+			const target = JSON.parse(args.find((a) => a.includes("POSIX file "))!.split("POSIX file ")[1]!.split(" with write")[0]!) as string;
+			writeFileSync(target, PNG_BYTES);
+			return { status: 0 };
+		};
+		const path = clipboardImage(dir, runner);
+		expect(path).not.toBeNull();
+		// the whole point of returning a PATH: the existing scan takes it
+		const blocks = attachImages(`what is this? ${path}`) as { type: string }[];
+		expect(blocks.filter((b) => b.type === "image")).toHaveLength(1);
 	});
 });

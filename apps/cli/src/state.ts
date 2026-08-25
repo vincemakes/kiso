@@ -165,6 +165,11 @@ export interface LineInput {
 	 *  to stop. OPTIONAL: the pipe path has no raw keys and never wires
 	 *  it, so readline stays exactly as it was. */
 	onRedirect?(cb: (line: string) => void): void;
+	/** REL-0152-D11: an empty bracketed paste is the image case — a
+	 *  terminal cannot put binary in a byte stream, so pasting one sends
+	 *  nothing. The callback returns text to insert (a path) or null.
+	 *  Optional: the pipe path has no editor and no clipboard. */
+	onEmptyPaste?(cb: () => string | null): void;
 	question(query: string, cb: (answer: string) => void): void;
 	cancelQuestion(): void;
 	/** W21: open the approval panel — the editor's state machine takes

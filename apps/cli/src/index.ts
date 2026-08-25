@@ -52,6 +52,8 @@ import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, re
 import { resume } from "./resume.js";
 import { resumeTail } from "./resume-tail.js";
 import { armByteTrace } from "./byte-trace.js";
+import { tmpdir } from "node:os";
+import { clipboardImage } from "./attachments.js";
 import { collectSessionCards, projectSessionCard } from "./session-cards.js";
 
 // The moved exports stay reachable from this entry — the test imports
@@ -175,6 +177,9 @@ function editorInput(editor: Editor): LineInput {
 		// same-chunk pair, the precedence gate); chat decides what it MEANS.
 		onRedirect(cb) {
 			editor.onRedirect(cb);
+		},
+		onEmptyPaste(cb) {
+			editor.onEmptyPaste(cb);
 		},
 		question(query, cb) {
 			editor.question(query, cb);
@@ -790,6 +795,18 @@ async function main(): Promise<void> {
 			onDock: () => dock.redraw(), // v2d-B: the freeze scrolls the dock up — re-pin it
 		}),
 	);
+	// REL-0152-D11: pasting an image sends no bytes, so an empty paste is
+	// the signal to go and look at the clipboard. What comes back is a
+	// PATH, which the turn's attachment scan then picks up exactly as it
+	// would a dragged-in file — one mechanism, two ways of naming a file.
+	input.onEmptyPaste?.(() => {
+		const shot = clipboardImage(tmpdir());
+		if (shot === null) {
+			bodyLog("[nothing on the clipboard that kiso can read as an image]");
+			return null;
+		}
+		return shot;
+	});
 	try {
 		// merge round B: the project config's mode applies AFTER the trust gate
 		// (its verdict decides whether the project config exists at all) —
