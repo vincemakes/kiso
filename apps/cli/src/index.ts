@@ -53,7 +53,7 @@ import { resume } from "./resume.js";
 import { resumeTail } from "./resume-tail.js";
 import { armByteTrace } from "./byte-trace.js";
 import { tmpdir } from "node:os";
-import { clipboardImage } from "./attachments.js";
+import { clipboardImage } from "./clipboard.js";
 import { collectSessionCards, projectSessionCard } from "./session-cards.js";
 
 // The moved exports stay reachable from this entry — the test imports
