@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-task-ext",
-	"version": "0.15.2",
+	"version": "0.15.3",
 	"description": "kiso official task extension \u2014 long-horizon working memory (task_set), kernel untouched",
 	"type": "module",
 	"license": "MIT",
@@ -23,7 +23,7 @@
 		"test": "vitest run"
 	},
 	"devDependencies": {
-		"@vincemakes/kiso-core": "0.15.2",
+		"@vincemakes/kiso-core": "0.15.3",
 		"@types/node": "^26.1.2",
 		"typescript": "^5.7.2",
 		"vitest": "^3.0.0"
