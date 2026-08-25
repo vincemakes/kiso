@@ -204,7 +204,7 @@ describe("REL-0152-D10 — the typed answer box takes a paste", () => {
 		expect(seen).toHaveLength(0);
 		editor.feed(enc("\r"));
 		const v = seen[0] as Extract<PanelVerdict, { action: "answers" }>;
-		expect("answers" in v.result ? v.result.answers[0]!.custom : null).toBe("here: a\nb");
+		expect("answers" in v.result ? v.result.answers[0] : null).toEqual({ q: "which way?", custom: "here: a\nb" });
 	});
 
 	it("a TYPED enter still commits — the guard is the paste, not the key", () => {
