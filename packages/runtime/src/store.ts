@@ -125,7 +125,17 @@ const MIN_TITLE_CHARS = 4;
 const ASCII_OPENER = /^\s*(hi|hey|hello|yo|hiya|howdy|ping|test|ok|okay|thanks|thx)[\s!.,?~]*$/i;
 const isOpener = (t: string): boolean => [...t].length < MIN_TITLE_CHARS || ASCII_OPENER.test(t);
 
-function titleOf(records: readonly StoreRecord[]): string {
+/**
+ * The session's title — its first substantive prompt.
+ *
+ * EXPORTED because it has two consumers and may only have one
+ * definition: `list()` below, which is what `kiso sessions` prints, and
+ * the CLI's session-card projection, which is what the resume PICKER
+ * shows. They were allowed to differ once — the listing got the title
+ * and the picker kept showing bare ids, so the fix reached the surface
+ * nobody uses and missed the one everybody does.
+ */
+export function sessionTitle(records: readonly StoreRecord[]): string {
 	const asked = records
 		.map((r) => r.event as { type: string; content?: unknown })
 		.filter((e) => e.type === "user_input" && typeof e.content === "string")
@@ -375,7 +385,7 @@ export class SessionStore {
 			if (records.length === 0) continue;
 			metas.push({
 				id,
-				title: titleOf(records),
+				title: sessionTitle(records),
 				events: records.length,
 				runs: new Set(records.map((r) => r.runId)).size,
 				createdAt: records[0]?.ts ?? 0,

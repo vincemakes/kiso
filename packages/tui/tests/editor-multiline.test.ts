@@ -74,7 +74,18 @@ describe("KC1 T-E1a — the CRLF matrix: every boundary yields EXACTLY one 0x0A"
 	it("a CR|LF pair SPLIT across stdin chunks is ONE newline — the trailing CR parks in #pending", () => {
 		const { editor } = make();
 		editor.feed(enc("\x1b[200~a\r")); // the chunk ends ON the CR — it parks, undecided
-		expect(editor.line()).toBe("a"); // nothing committed yet
+		// DECLARED SUPERSESSION (REL-0152-D9): mid-paste the buffer is
+		// EMPTY. The characters are collected and spliced in once when the
+		// paste closes, because inserting them one at a time reflowed the
+		// line per character and made a paste cost time in the square of
+		// its size (30k characters: 278ms, and a 100k paste heading for
+		// three seconds of frozen composer). This line used to read `"a"`.
+		// The property this case exists for is untouched and still
+		// asserted below: a CR|LF pair split across stdin chunks is ONE
+		// newline. What changed is when the composer shows the paste, and
+		// the answer is now "when it is a paste" rather than "as it
+		// arrives" — which is also what the D8 capsule already implied.
+		expect(editor.line()).toBe("");
 		editor.feed(enc("\nb\x1b[201~")); // the next chunk's leading LF resolves the pair
 		expect(editor.line()).toBe("a\nb");
 		expect(newlines(editor.line())).toBe(1);

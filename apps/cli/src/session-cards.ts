@@ -29,13 +29,18 @@
  * FACTS.
  */
 
-import { executionLedger, openRunId, type StoreRecord } from "@vincemakes/kiso-runtime/internal";
+import { executionLedger, openRunId, sessionTitle, type StoreRecord } from "@vincemakes/kiso-runtime/internal";
 
 /** The five durable states, in the order the projection resolves them. */
 export type SessionBadge = "uncertain" | "ask" | "interrupted" | "completed" | "failed";
 
 export interface SessionCard {
 	readonly id: string;
+	/** REL-0152-D6b: what the conversation was ABOUT. An id is unique and
+	 *  says nothing; a picker of five ids is five rows the human cannot
+	 *  tell apart. From the runtime's one definition — never a second
+	 *  copy of the rule (the listing and the picker disagreed once). */
+	readonly title: string;
 	readonly badge: SessionBadge;
 	/** The human's unit: one user_input is one turn. (SessionMeta.runs
 	 *  counts runIds, which a resume increments without the human having
@@ -106,7 +111,7 @@ export function projectSessionCard(input: {
 					: outcome === "completed"
 						? "completed"
 						: "failed";
-	return { id: input.id, badge, turns, updatedAt: input.updatedAt, uncertain, asks: input.asks, outcome };
+	return { id: input.id, title: sessionTitle(input.records), badge, turns, updatedAt: input.updatedAt, uncertain, asks: input.asks, outcome };
 }
 
 /** The shapes this module needs from the agent — structural, so the

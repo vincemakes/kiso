@@ -33,6 +33,10 @@ import { atEmbed, bandHeader, longestRun, AT_VISIBLE, atWindow } from "./at-pick
  *  imports nothing from the runtime, by rule). */
 export interface SessionCardView {
 	readonly id: string;
+	/** REL-0152-D6b: the session's first substantive prompt. Optional so
+	 *  a caller that has not got one still renders — the row simply
+	 *  carries no title, which is where this picker started. */
+	readonly title?: string;
 	readonly badge: "uncertain" | "ask" | "interrupted" | "completed" | "failed";
 	readonly turns: number;
 	readonly updatedAt: number;
@@ -158,6 +162,12 @@ export function sessionFilter(cards: readonly SessionCardView[], query: string):
  * CRASHES the compositor, so the arithmetic has to be provably right at
  * every width rather than right at eighty.
  */
+/** REL-0152-D6b: what the title may take, and what it must leave. The
+ *  reserve is the widest note this picker writes ("N uncertain
+ *  executions"), so an actionable row keeps saying so. */
+const TITLE_MAX = 44;
+const NOTE_RESERVE = 22;
+
 function rowSpans(card: SessionCardView, budget: number, now: number, idCol: number): { text: string; width: number } {
 	const p = palette();
 	let text = "";
@@ -182,6 +192,20 @@ function rowSpans(card: SessionCardView, budget: number, now: number, idCol: num
 	put(" ".repeat(pad), " ".repeat(pad));
 	const meta = `  ${sessionAge(card.updatedAt, now)} · ${card.turns} turn${card.turns === 1 ? "" : "s"}`;
 	put(meta, `${p.dim}${meta}${p.reset}`);
+	// REL-0152-D6b: the TITLE — the only span on this row that answers
+	// "which conversation is this?". It goes after the meta and before
+	// the note, and it is bounded so the note (which can be the one that
+	// demands an action) still has room at ordinary widths; on a narrow
+	// terminal `put` drops whichever no longer fits, in that order.
+	const title = card.title ?? "";
+	if (title !== "") {
+		const room = Math.max(0, Math.min(budget - w - 3 - NOTE_RESERVE, TITLE_MAX));
+		const cut = widthCut(escapeTerminal(title), room);
+		if (cut !== "") {
+			put("  ", "  ");
+			put(cut, `${p.bold}${cut}${p.reset}`);
+		}
+	}
 	const note = widthCut(sessionNote(card), Math.max(0, budget - w - 3));
 	if (note !== "") {
 		// the ? note carries the warn tint — the row's own words are what

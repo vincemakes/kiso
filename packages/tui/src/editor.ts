@@ -181,6 +181,25 @@ export class Editor {
 	#pasteSeq = 0;
 	/** The buffer index where the in-flight paste began; null outside one. */
 	#pasteAt: number | null = null;
+	/**
+	 * REL-0152-D9 — the in-flight paste's characters, held OUT of the
+	 * buffer until the paste ends.
+	 *
+	 * Every character used to go through #insert, which splices one code
+	 * point and then reflows — and a reflow scans the line to find the
+	 * cursor's bounds and measures its width. That is linear work per
+	 * character, so a paste cost time in the SQUARE of its size: measured
+	 * on the shipped build, 10k characters took 33ms and 30k took 278ms,
+	 * with a 100k paste heading for three seconds of a frozen composer.
+	 * The owner's report: the capsule appears, but only after a long wait.
+	 *
+	 * Held here, the whole run splices in ONCE and reflows ONCE, so the
+	 * cost is linear and the arithmetic is done on a finished string
+	 * rather than re-done at every character of it. It survives across
+	 * chunks by construction — a terminal delivers a large paste in many
+	 * reads, and this is a field, not a local.
+	 */
+	#pasteRun: number[] | null = null;
 	/** TUI2-R3v2 ①: one-shot — a panel that just closed swallows the
 	 *  habitual trailing enter rather than submitting the restored draft. */
 	#swallowEnter = false;
@@ -855,6 +874,19 @@ export class Editor {
 						continue;
 					}
 					if (c === "\x0d" || c === "\x0a") {
+					// REL-0152-D10: a newline inside a PASTE is content, never a
+					// commit. Bracketed paste marks its own boundaries, so a
+					// \n between them is a line of the pasted text and nothing
+					// else. Without this, pasting a stack trace into a typed
+					// panel phase submitted the first line and dropped the
+					// rest into the composer behind the closed panel — the
+					// owner asked whether the type-your-own box takes a paste,
+					// and the answer was no, in the worst way.
+					if (this.#pasting) {
+						this.#insert(NEWLINE);
+						i += c === "\x0d" && text[i + 1] === "\x0a" ? 2 : 1;
+						continue;
+					}
 						this.#pickPanelEnter();
 						i += 1;
 						continue;
@@ -886,6 +918,19 @@ export class Editor {
 						continue;
 					}
 					if (c === "\x0d" || c === "\x0a") {
+					// REL-0152-D10: a newline inside a PASTE is content, never a
+					// commit. Bracketed paste marks its own boundaries, so a
+					// \n between them is a line of the pasted text and nothing
+					// else. Without this, pasting a stack trace into a typed
+					// panel phase submitted the first line and dropped the
+					// rest into the composer behind the closed panel — the
+					// owner asked whether the type-your-own box takes a paste,
+					// and the answer was no, in the worst way.
+					if (this.#pasting) {
+						this.#insert(NEWLINE);
+						i += c === "\x0d" && text[i + 1] === "\x0a" ? 2 : 1;
+						continue;
+					}
 						this.#askStep(typing ? "commit" : "enter");
 						i += 1;
 						continue;
@@ -937,6 +982,19 @@ export class Editor {
 					continue;
 				}
 				if (c === "\x0d" || c === "\x0a") {
+				// REL-0152-D10: a newline inside a PASTE is content, never a
+				// commit. Bracketed paste marks its own boundaries, so a
+				// \n between them is a line of the pasted text and nothing
+				// else. Without this, pasting a stack trace into a typed
+				// panel phase submitted the first line and dropped the
+				// rest into the composer behind the closed panel — the
+				// owner asked whether the type-your-own box takes a paste,
+				// and the answer was no, in the worst way.
+				if (this.#pasting) {
+					this.#insert(NEWLINE);
+					i += c === "\x0d" && text[i + 1] === "\x0a" ? 2 : 1;
+					continue;
+				}
 					this.#panelEnter();
 					i += 1;
 					continue;
@@ -1268,9 +1326,10 @@ export class Editor {
 			else if (n === 200) {
 				this.#pasting = true;
 				this.#pasteAt = this.#cursor; // REL-0152-D8: where the capsule will go
+				this.#pasteRun = []; // REL-0152-D9: collect, do not insert
 			} else if (n === 201) {
 				this.#pasting = false;
-				this.#encapsulate();
+				this.#commitPaste();
 				this.#onRender();
 			}
 		} else if (final === "A" || final === "B") {
@@ -1723,6 +1782,13 @@ export class Editor {
 	// ---- editing ----
 
 	#insert(cp: number): void {
+		// REL-0152-D9: inside a paste the character is COLLECTED, not
+		// inserted — see #pasteRun. Every other caller (a typed key, a
+		// ctrl+J newline) is outside a paste and lands below unchanged.
+		if (this.#pasteRun !== null) {
+			this.#pasteRun.push(cp);
+			return;
+		}
 		if (this.#historyIdx !== null) this.#historyIdx = null; // editing leaves the browse
 		this.#queuePopMode = false; // W22: editing leaves the pop-walk too
 		this.#chars.splice(this.#cursor, 0, cp);
@@ -1822,19 +1888,51 @@ export class Editor {
 	 * every editing operation in this file works on it without knowing
 	 * it exists.
 	 */
-	#encapsulate(): void {
-		const start = this.#pasteAt;
+	/** REL-0152-D9: code points to a string WITHOUT spreading the whole
+	 *  array into one call. `String.fromCodePoint(...run)` throws
+	 *  RangeError on a large paste — the argument list is the stack — and
+	 *  a composer that crashes on a big paste is worse than one that is
+	 *  slow. Chunked, it is linear and bounded. */
+	static #textOf(run: readonly number[]): string {
+		const CHUNK = 4096;
+		let out = "";
+		for (let i = 0; i < run.length; i += CHUNK) out += String.fromCodePoint(...run.slice(i, i + CHUNK));
+		return out;
+	}
+
+	/**
+	 * Close an in-flight paste: the collected run goes into the buffer in
+	 * ONE splice — as itself when it is small, as its capsule when it is
+	 * not (REL-0152-D8).
+	 *
+	 * The splice is at the recorded start, so a paste in the MIDDLE of a
+	 * line leaves the prose on both sides untouched — what lands is a
+	 * character run like any other from here on, and every editing
+	 * operation in this file works on it without knowing it exists.
+	 */
+	#commitPaste(): void {
+		const run = this.#pasteRun ?? [];
+		const start = this.#pasteAt ?? this.#cursor;
+		this.#pasteRun = null;
 		this.#pasteAt = null;
-		if (start === null || this.#cursor <= start) return;
-		const pasted = String.fromCodePoint(...this.#chars.slice(start, this.#cursor));
+		if (run.length === 0) return;
+		if (this.#historyIdx !== null) this.#historyIdx = null;
+		this.#queuePopMode = false;
+		const pasted = Editor.#textOf(run);
 		const lines = pasted.split("\n").length;
-		if (lines < Editor.#PASTE_LINES && pasted.length < Editor.#PASTE_CHARS) return;
-		this.#pasteSeq += 1;
-		this.#pastes.set(this.#pasteSeq, pasted);
-		const capsule = [...Editor.#capsuleText(this.#pasteSeq, lines)].map((ch) => ch.codePointAt(0)!);
-		this.#chars.splice(start, this.#cursor - start, ...capsule);
-		this.#cursor = start + capsule.length;
+		const small = lines < Editor.#PASTE_LINES && run.length < Editor.#PASTE_CHARS;
+		let placed: number[];
+		if (small) {
+			placed = run;
+		} else {
+			this.#pasteSeq += 1;
+			this.#pastes.set(this.#pasteSeq, pasted);
+			placed = [...Editor.#capsuleText(this.#pasteSeq, lines)].map((ch) => ch.codePointAt(0)!);
+		}
+		this.#chars.splice(start, 0, ...placed);
+		this.#cursor = start + placed.length;
 		this.#reflow();
+		this.#refreshMenu();
 	}
 
 	/**
