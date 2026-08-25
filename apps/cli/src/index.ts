@@ -51,6 +51,7 @@ import { autoCompactFromEnv, chat, contextWindowTokens, estimateCtxRatio } from 
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { resume } from "./resume.js";
 import { resumeTail } from "./resume-tail.js";
+import { armByteTrace } from "./byte-trace.js";
 import { collectSessionCards, projectSessionCard } from "./session-cards.js";
 
 // The moved exports stay reachable from this entry — the test imports
@@ -662,6 +663,9 @@ async function main(): Promise<void> {
 	// swallows it — the standard "the stream may die under me" idiom.
 	process.stdout.on("error", () => {});
 	process.stderr.on("error", () => {});
+	// REL-0152-D12: armed only by KISO_TRACE_BYTES, and armed HERE so the
+	// banner and the first frame are in the record. Off by default.
+	armByteTrace();
 	// Modes: --mode <name> wins over KISO_MODE — both applied before the
 	// first makeAgent (the tier extensions read `current` live). The flag
 	// is stripped from the positional args, so it works in any position.
