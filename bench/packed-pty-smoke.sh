@@ -22,19 +22,39 @@ if [ -n "$SRC" ]; then
   npm install --no-audit --no-fund "$SRC" > /dev/null 2>&1
   BIN="$TMP/proj/node_modules/.bin/kiso"
 else
-  # pack the tree's cli AND its runtime — the cli pins the runtime at the
-  # exact new version (0.3.0), which is NOT on the registry while publish
-  # is a HOLD'd action; the runtime tarball installs first so the pin
-  # resolves locally (the smoke.mjs closure pattern, never a registry
-  # fetch of an unpublished version). The other eleven pins are the
-  # published 0.2.0 line and come from the registry.
-  TGZ_RT=$(npm pack -w @vincemakes/kiso-runtime --pack-destination "$TMP" 2>/dev/null | tail -1)
-  TGZ=$(npm pack -w @vincemakes/kiso-code --pack-destination "$TMP" 2>/dev/null | tail -1)
+  # Pack the WHOLE closure — all fourteen — in dependency order.
+  #
+  # This used to pack only the cli and the runtime, on the reasoning that
+  # "the other eleven pins are the published line and come from the
+  # registry". That stopped being true when releases went lockstep: every
+  # pin now names the NEW version, which is not on the registry while
+  # publish is still ahead of us, so the install died with
+  # `notarget @vincemakes/kiso-ask-ext@<new>` — silently, because the
+  # installs are redirected to /dev/null, leaving a missing BIN and an
+  # exit with no output. Caught at the 0.15.2 ceremony.
+  #
+  # scripts/smoke.mjs already nests the full closure for its tier D; this
+  # is the same list in the same order.
+  PACKED=""
+  PKGS="@vincemakes/kiso-core @vincemakes/kiso-evals @vincemakes/kiso-runtime \
+        @vincemakes/kiso-tools-node @vincemakes/kiso-provider-anthropic \
+        @vincemakes/kiso-provider-openai @vincemakes/kiso-tui-cells \
+        @vincemakes/kiso-tui @vincemakes/kiso-mcp-ext @vincemakes/kiso-skills-ext \
+        @vincemakes/kiso-subagent-ext @vincemakes/kiso-task-ext \
+        @vincemakes/kiso-ask-ext @vincemakes/kiso-code"
+  for pkg in $PKGS; do
+    TGZ_ONE=$(npm pack -w "$pkg" --pack-destination "$TMP" 2>/dev/null | tail -1)
+    [ -n "$TGZ_ONE" ] && [ -f "$TMP/$TGZ_ONE" ] || { echo "FAIL pack: $pkg"; exit 1; }
+    PACKED="$PACKED $TMP/$TGZ_ONE"
+  done
   mkdir -p "$TMP/proj"; cd "$TMP/proj"
   npm init -y > /dev/null 2>&1
-  npm install --no-audit --no-fund "$TMP/$TGZ_RT" > /dev/null 2>&1
-  npm install --no-audit --no-fund "$TMP/$TGZ" > /dev/null 2>&1
+  for tgz in $PACKED; do
+    npm install --install-strategy=nested --no-audit --no-fund --no-package-lock "$tgz" > "$TMP/install.log" 2>&1 \
+      || { echo "FAIL install: $tgz"; tail -5 "$TMP/install.log"; exit 1; }
+  done
   BIN="$TMP/proj/node_modules/.bin/kiso"
+  [ -x "$BIN" ] || { echo "FAIL: no kiso bin after installing the closure"; exit 1; }
 fi
 
 export KISO_HOME="$TMP/home"
