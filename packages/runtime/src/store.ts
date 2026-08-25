@@ -113,7 +113,17 @@ const ID_PATTERN = /^[A-Za-z0-9._-]+$/;
  *  is genuinely nothing but "hello" is still titled "hello", because the
  *  alternative is naming it "(no prompt)" when a prompt plainly exists.
  *  No model call: this is a scan of the turns already on disk. */
-const GREETING = /^\s*(hi|hey|hello|yo|你好|您好|哈罗|嗨|ping|test|测试)[\s!.,?！。，？~]*$/i;
+/** A greeting is recognised by SHAPE, not by a word list: it is a
+ *  handful of characters with nothing asked in them. Counting code
+ *  points (never UTF-16 units) makes the rule the same in every
+ *  language — a two-character greeting is two characters whatever
+ *  script it is written in — and it keeps a word list out of a tree
+ *  that is required to be English. The ASCII pattern catches the few
+ *  openers long enough to pass the length test but still empty of a
+ *  request. */
+const MIN_TITLE_CHARS = 4;
+const ASCII_OPENER = /^\s*(hi|hey|hello|yo|hiya|howdy|ping|test|ok|okay|thanks|thx)[\s!.,?~]*$/i;
+const isOpener = (t: string): boolean => [...t].length < MIN_TITLE_CHARS || ASCII_OPENER.test(t);
 
 function titleOf(records: readonly StoreRecord[]): string {
 	const asked = records
@@ -122,7 +132,7 @@ function titleOf(records: readonly StoreRecord[]): string {
 		.map((e) => (e.content as string).trim())
 		.filter((t) => t !== "");
 	if (asked.length === 0) return "(no prompt)";
-	const substantive = asked.find((t) => !GREETING.test(t));
+	const substantive = asked.find((t) => !isOpener(t));
 	return (substantive ?? asked[0]!).slice(0, 60);
 }
 
