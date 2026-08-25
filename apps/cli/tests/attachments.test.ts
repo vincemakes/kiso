@@ -31,7 +31,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { attachImages, clipboardImage } from "../src/attachments.js";
+import { attachImages } from "../src/attachments.js";
 
 let dir: string;
 let png: string;
