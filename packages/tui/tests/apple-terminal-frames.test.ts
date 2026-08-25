@@ -144,3 +144,44 @@ describe("REL-0152-D1 — a streaming frame rewrites only what changed", () => {
 		expect(writes.join("")).not.toContain("› ");
 	});
 });
+
+/**
+ * REL-0152-D14 — the frame turns AUTOWRAP off, and puts it back.
+ *
+ * Found in the owner's own byte capture: 97 of the rows kiso emitted at
+ * 80 columns are EXACTLY 80 cells — the box top and bottom, the composer
+ * row, every gap row the chrome pads out. A character printed into the
+ * last column does not advance the cursor past it; it sets the
+ * terminal's PENDING WRAP flag, and the next printed character goes to
+ * column 1 of the row below. What a terminal does with that flag when a
+ * cursor MOVE arrives instead of a character is not agreed on — and the
+ * same frame then makes 65 relative cursor-ups through exactly that
+ * state.
+ *
+ * So the layout depended on a behaviour terminals disagree about, on
+ * every frame, at every width where a row happens to fill the screen.
+ * That is enough on its own to explain a layout correct on one terminal
+ * and damaged on another, and damaged only while frames are painting.
+ *
+ * Turning wrapping off is safe here precisely because #checked already
+ * refuses to emit a row wider than the screen: there is nothing for the
+ * terminal to wrap, so nothing can be lost by not wrapping it.
+ */
+describe("REL-0152-D14 — autowrap is off inside a frame and on outside it", () => {
+	it("every frame disables autowrap and restores it, in that order", () => {
+		vi.useFakeTimers();
+		const out = frames((b) => b.textAppend("streaming text"), 40, "Apple_Terminal");
+		expect(out).toContain("\x1b[?7l");
+		expect(out).toContain("\x1b[?7h");
+		expect(out.indexOf("\x1b[?7l")).toBeLessThan(out.indexOf("\x1b[?7h"));
+		// balanced: a frame never leaves wrapping off
+		expect(out.split("\x1b[?7l").length).toBe(out.split("\x1b[?7h").length);
+	});
+
+	it("the guard is outside the sync/cursor pair — the whole frame is covered", () => {
+		vi.useFakeTimers();
+		const out = frames((b) => b.textAppend("text"), 16, "iTerm.app");
+		expect(out.indexOf("\x1b[?7l"), "wrapping must be off BEFORE the frame opens").toBeLessThan(out.indexOf("\x1b[?2026h"));
+		expect(out.lastIndexOf("\x1b[?7h"), "and restored AFTER it closes").toBeGreaterThan(out.lastIndexOf("\x1b[?2026l"));
+	});
+});

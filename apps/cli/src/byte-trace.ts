@@ -77,6 +77,26 @@ export function armByteTrace(): void {
 		return (write as (...a: unknown[]) => boolean)(chunk, ...rest);
 	}) as typeof process.stdout.write;
 	process.stdin.on("data", (chunk: Buffer) => line("in", chunk));
-	// the record says what it is, before any traffic
-	line("out", `[byte trace armed: ${new Date(start).toISOString()}]\n`);
+	// The environment goes in the record FIRST, because kiso emits
+	// DIFFERENT frame bytes per terminal — DEC 2026 synchronized output
+	// where it is supported, a cursor-hide degrade on Apple Terminal —
+	// so a capture that does not say which terminal made it cannot be
+	// compared against anything. Same for the size and the locale: a row
+	// is built to a width, and the ambiguous-width characters kiso uses
+	// in its own chrome (· … —) are one cell or two depending on how the
+	// terminal was told to treat them.
+	const env = {
+		TERM_PROGRAM: process.env.TERM_PROGRAM ?? null,
+		TERM_PROGRAM_VERSION: process.env.TERM_PROGRAM_VERSION ?? null,
+		TERM: process.env.TERM ?? null,
+		LANG: process.env.LANG ?? null,
+		LC_CTYPE: process.env.LC_CTYPE ?? null,
+		columns: process.stdout.columns ?? null,
+		rows: process.stdout.rows ?? null,
+	};
+	try {
+		appendFileSync(path, `${JSON.stringify({ ms: 0, dir: "env", n: 0, b: "", env })}\n`);
+	} catch {
+		path = null;
+	}
 }

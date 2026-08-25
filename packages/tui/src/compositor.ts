@@ -897,7 +897,13 @@ export class Body {
 		// "[?1000l[?1006l" into piped stdout and four gates caught it
 		// (compact-cli, tui-modes, tui-v7-planmode, tui2-r2-resume-picker):
 		// the invariant is about terminals, and a pipe is not one.
-		if (process.stdout.isTTY === true) this.#write(MOUSE_OFF);
+		// REL-0152-D14: autowrap goes back on with the mouse, and for the
+		// same reason — the terminal outlives kiso, and a mode kiso turned
+		// off inside a frame must never be what the shell inherits. The
+		// frame restores it itself; this is the second belt, on the same
+		// TTY gate, because a half-torn-down compositor is exactly where a
+		// mode leak survives.
+		if (process.stdout.isTTY === true) this.#write(`${MOUSE_OFF}\x1b[?7h`);
 		if (!this.#docked) {
 			// TUI2-R2pre ③: an un-docked compositor can still hold a listener
 			// (it was superseded, or enter() ran and the dock was torn down by
@@ -1286,6 +1292,36 @@ export class Body {
 			panelSpan === null ? null : { top: liveTop + panelSpan.offset, count: panelSpan.count, first: panelSpan.first };
 		// 5. the frame bytes.
 		const out: string[] = [];
+		// REL-0152-D14 — AUTOWRAP OFF for the frame's duration.
+		//
+		// Found in the owner's own capture: 97 of the rows kiso emitted at
+		// 80 columns are EXACTLY 80 cells wide — the box top, the box
+		// bottom, the composer row, every gap row the chrome pads out. A
+		// character printed into the last column does not move the cursor
+		// past it; it sets the terminal's PENDING WRAP flag, and the next
+		// printed character goes to column 1 of the following row. What
+		// terminals do with that flag when a cursor MOVE arrives instead
+		// of a character is not agreed on — some clear it, some keep it —
+		// and this frame then makes 65 relative cursor-ups through exactly
+		// that state.
+		//
+		// So the frame's layout depended on a behaviour terminals disagree
+		// about, on every frame, at every width where a row happens to
+		// fill the screen. That is enough to explain a layout that is
+		// correct on one terminal and damaged on another, and damaged only
+		// while frames are being painted.
+		//
+		// With autowrap off, a character in the last column simply stays
+		// there: no pending flag, no disagreement, and relative moves mean
+		// what they say. kiso can never lose content to it either, because
+		// #checked already refuses to emit a row wider than the screen —
+		// the invariant that makes turning wrapping off safe was in place
+		// long before this.
+		//
+		// Restored at the end of every frame: prose written OUTSIDE a
+		// frame (bodyLog, an error) is ordinary output and must still
+		// wrap, and the shell inherits the terminal when kiso exits.
+		out.push("\x1b[?7l");
 		out.push(this.#conservative ? "\x1b[?25l" : "\x1b[?2026h"); // D1: sync ON, or cursor-hide where 2026 is dead bytes
 		// A8: the bottom-anchored window (the model's last H rows) shifts
 		// DOWN when the live region SHRINKS — the done-fold, the fold-hold
@@ -1307,6 +1343,7 @@ export class Body {
 			this.#drawSteady(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
 		}
 		out.push(this.#conservative ? "\x1b[?25h" : "\x1b[?2026l");
+		out.push("\x1b[?7h"); // REL-0152-D14: autowrap back on for everything outside the frame
 		this.#write(out.join(""));
 		this.#lastLiveTop = liveTop;
 		this.#lastLiveRows = liveRowsTotal;

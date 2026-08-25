@@ -115,11 +115,17 @@ describe("TUI v6 — the one compositor", () => {
 		// chrome one row up — the status landed at H−1, the input at H−3
 		// (the real-machine report: the input box shifted). The fix jumps
 		// 2B straight to the bottom row H.
-		expect(frame.startsWith("\x1b[?2026h\x1b[2B")).toBe(true);
+		// DECLARED SUPERSESSION (REL-0152-D14): the frame now opens with
+		// the autowrap guard before the sync guard, so this asserts the
+		// frame's first ACTION rather than a literal byte prefix — which
+		// is the property it was always about. It used to read
+		// `startsWith("\x1b[?2026h\x1b[2B")`.
+		expect(frame.startsWith("\x1b[?7l\x1b[?2026h"), "the frame must open with the autowrap and sync guards").toBe(true);
+		expect(frame.slice("\x1b[?7l\x1b[?2026h".length).startsWith("\x1b[2B")).toBe(true);
 		// the bottom-up repaint right after the jump — four relative rows:
 		// status (H), box bottom (H−1), input (H−2), box top (H−3)
 		const m = frame
-			.slice("\x1b[?2026h".length)
+			.slice("\x1b[?7l\x1b[?2026h".length) // REL-0152-D14: past both guards
 			.match(
 				/^\x1b\[2B\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)(?=\x1b\[1A|\x1b\[\d+;\d+H|\x1b\[\?2026l)/,
 			);
@@ -159,7 +165,11 @@ describe("TUI v6 — the one compositor", () => {
 		// N LFs at the last row scroll exactly N rows, one per committed
 		// line. The A7 erase comes first: the rows that scroll away are
 		// blank, so the repaint below is the ONLY copy in the scrollback.
-		expect(frame.startsWith("\x1b[?2026h\x1b[1;1H\x1b[0K")).toBe(true);
+		// DECLARED SUPERSESSION (REL-0152-D14), as above: the guards come
+		// first, then the frame's first action. Used to read
+		// `startsWith("\x1b[?2026h\x1b[1;1H\x1b[0K")`.
+		expect(frame.startsWith("\x1b[?7l\x1b[?2026h")).toBe(true);
+		expect(frame.slice("\x1b[?7l\x1b[?2026h".length).startsWith("\x1b[1;1H\x1b[0K")).toBe(true);
 		expect(frame).toContain("\x1b[24;1H"); // the absolute scroll base
 		const lfs = frame.match(/\x1b\[24;1H(\n+)/);
 		expect(lfs).not.toBeNull();
