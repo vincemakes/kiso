@@ -36,7 +36,7 @@ export type { ApprovalRequest, CompactInfo, ContextPolicy, SessionConfig, Summar
 export { Run } from "./run.js";
 
 // store
-export { SessionStore, StaleWriterError, StoreCorruptionError, sessionTitle } from "./store.js";
+export { SessionStore, StaleWriterError, StoreCorruptionError } from "./store.js";
 export type { Event, SessionMeta, StoreRecord } from "./store.js";
 
 // extensions

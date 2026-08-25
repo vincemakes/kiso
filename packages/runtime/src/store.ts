@@ -128,7 +128,10 @@ const isOpener = (t: string): boolean => [...t].length < MIN_TITLE_CHARS || ASCI
 /**
  * The session's title — its first substantive prompt.
  *
- * EXPORTED because it has two consumers and may only have one
+ * Exported on the INTERNAL entry (never the public root: this is a
+ * projection helper, not an API the runtime wants to support forever —
+ * and adding it to the root surface is a ritual the api-surface gate
+ * rightly refused). It has two consumers and may only have one
  * definition: `list()` below, which is what `kiso sessions` prints, and
  * the CLI's session-card projection, which is what the resume PICKER
  * shows. They were allowed to differ once — the listing got the title
