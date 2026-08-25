@@ -74,3 +74,73 @@ describe("REL-0150-D1 — the conservative frame mode on Apple Terminal", () => 
 		expect(writes.length).toBeGreaterThan(before);
 	});
 });
+
+/**
+ * REL-0152-D1 — the frame's SIZE, which the gates above never measured.
+ *
+ * Everything above asserts the control sequences are present and paired.
+ * All of it passed while the owner watched brackets tear on 0.15.2,
+ * because a paired ?25l/?25h says nothing about what happens between
+ * them. Measured on the shipped build, one streaming frame erased and
+ * rewrote a median of 45 rows in a 40-row terminal — the whole screen,
+ * plus change. ?25l hides the cursor; it is not a frame transaction, so
+ * a terminal without DEC 2026 is free to paint after any one of those
+ * 45 writes.
+ *
+ * The fix is to stop rewriting rows that did not change, so the gate is
+ * on the count. A streaming delta moves the live band and nothing else:
+ * the status row, the box, the composer and the queue are identical to
+ * the frame before, and identical rows have no business being erased.
+ *
+ * BOTH CASES ARE `it.fails` — they pin an OPEN defect, they do not bless
+ * it. A row-level diff was built and reverted: it hit the gate (40 rows
+ * to 8) and then failed the A7 replay, putting status-row text where the
+ * box top belongs. Row-keyed caching is only correct if every path that
+ * changes what a row NUMBER means clears it, and this file's own history
+ * — A7, A8, A8b, TUI2-MD-1, the W11 boundary pileup — is a list of such
+ * paths that is still being discovered. Trading a tear that self-heals
+ * on the next frame for a mislaid box that does not is a bad trade.
+ *
+ * The real fix is Claude Code's shape: a full screen buffer diffed cell
+ * by cell, whose correctness comes from HOLDING a copy of the screen
+ * rather than from remembering what was written. That is an
+ * architecture round (0.15.4), not a patch.
+ *
+ * When it lands, these two cases start FAILING — that is the alarm — and
+ * the fix flips `.fails` back to plain `it` in the same commit.
+ */
+const eraseCount = (s: string): number => (s.match(/\x1b\[0K/g) ?? []).length;
+
+describe("REL-0152-D1 — a streaming frame rewrites only what changed", () => {
+	it.fails("a delta that moves nothing but the live band erases a handful of rows, not a screenful — RED until the cell diff lands", () => {
+		vi.useFakeTimers();
+		const writes: string[] = [];
+		const body = new Body({ active: () => true, height: () => 40, width: () => 120, editCol: () => 1, write: (s) => writes.push(s), termProgram: "Apple_Terminal" });
+		body.bindInput(provider, "› ");
+		body.enter();
+		body.textAppend("the quick brown fox jumps over the lazy dog. ");
+		vi.advanceTimersByTime(40);
+		writes.length = 0; // the first frame legitimately paints everything
+		body.textAppend("more text arrives on the same line. ");
+		vi.advanceTimersByTime(40);
+		const frame = writes.join("");
+		expect(frame, "the frame must not be empty — an empty frame would pass this gate for the wrong reason").not.toBe("");
+		expect(eraseCount(frame), `a steady streaming frame erased ${eraseCount(frame)} rows`).toBeLessThanOrEqual(8);
+	});
+
+	it.fails("the chrome rows are not rewritten when their content is unchanged — RED until the cell diff lands", () => {
+		vi.useFakeTimers();
+		const writes: string[] = [];
+		const body = new Body({ active: () => true, height: () => 40, width: () => 120, editCol: () => 1, write: (s) => writes.push(s), termProgram: "Apple_Terminal" });
+		body.bindInput(provider, "› ");
+		body.enter();
+		body.textAppend("first");
+		vi.advanceTimersByTime(40);
+		writes.length = 0;
+		body.textAppend(" second");
+		vi.advanceTimersByTime(40);
+		// the composer's prompt is chrome: it cannot have changed between
+		// two streaming deltas, so it must not be re-emitted.
+		expect(writes.join("")).not.toContain("› ");
+	});
+});
