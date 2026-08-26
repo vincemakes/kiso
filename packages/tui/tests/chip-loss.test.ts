@@ -102,12 +102,11 @@ function replay(): { screen: Screen; transitions: string[] } {
 }
 
 describe("REL-0152-D7 — a committed chip survives the live band", () => {
-	// `it.fails` pins the defect without leaving the tree red. The body is
-	// what a correct renderer must satisfy; it throws today. When the
-	// scroll-without-commit fix lands this case starts FAILING — that is
-	// the alarm — and the fix flips it back to a plain `it` in the same
-	// commit.
-	it.fails("the chip is still on the screen after a thinking burst and a streamed answer — RED until REL-0152-D7 is fixed", () => {
+	// GREEN since REL-0152-R1, the cell-diff renderer. It was pinned
+	// `it.fails` through six attempted fixes, each of which traded this
+	// loss for a duplicate somewhere else; holding the screen and
+	// emitting a difference is what made it go away rather than move.
+	it("the chip is still on the screen after a thinking burst and a streamed answer", () => {
 		const { screen, transitions } = replay();
 		const n = screen.allLines().join("\n").split(CHIP).length - 1;
 		expect(n, `the chip is on the screen ${n} times; transitions: ${transitions.join(" ")}`).toBe(1);

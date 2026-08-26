@@ -18,6 +18,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
+import { Screen } from "./helpers/screen.js";
 
 function makeBody(opts: { W?: number; H?: number } = {}) {
 	let W = opts.W ?? 80;
@@ -132,9 +133,16 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		body.endTurn(0);
 		tick();
 		tick();
-		// the LAST frame is the settled screen — the whole stream also
-		// carries the live copies each paced frame painted on the way
-		const settled = plain(writes[writes.length - 1]!);
+		// DECLARED SUPERSESSION (REL-0152-R1): the settled SCREEN is
+		// reconstructed from the whole stream rather than read off the last
+		// frame's bytes. A diffing renderer writes only the rows that
+		// changed, so the final frame carries whichever rollup row moved
+		// and not the one that stood still — and this case is about what is
+		// ON THE SCREEN, which is now a stronger thing to assert than what
+		// the last write happened to contain.
+		const screen = new Screen(80, 24);
+		screen.feed(writes.join(""));
+		const settled = screen.rows.map((r) => r.join("").replace(/\s+$/, "")).join("\n");
 		expect(settled.match(/explored 1 file · 1 search · 1 dir/g) ?? []).toHaveLength(2);
 		expect(settled).toContain("write out.ts");
 		// the write sits BETWEEN them — the run's group key is unchanged

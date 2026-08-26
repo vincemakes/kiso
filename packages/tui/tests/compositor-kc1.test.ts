@@ -126,9 +126,18 @@ describe("KC1 T-C1 — N=1 byte identity (the anchor: the legacy row and the com
 		expect(committing).toContain("› abc"); // the lead + the line, marker stripped
 		expect(committing).not.toContain("kiso-cur"); // the APC marker never reaches the stream
 		expect(committing).toContain("\x1b[6G"); // wallL (2) + lead (2) + cursor (1) + 1
-		// the no-commit steady frame keeps the retired hard-coded anchor
-		// jump (H−2 → H) — at N = 1 the recorded anchor row IS H−2
-		expect(frames(additive("abc", 1), (b) => b.textAppend("live"))).toContain("\x1b[?2026h\x1b[2B");
+		// DECLARED SUPERSESSION (REL-0152-R1): the anchor jump is retired
+		// with the steady path that used it. A no-commit frame no longer
+		// marches from a recorded anchor to the bottom row; it writes the
+		// rows that changed, at absolute positions.
+		//
+		// What this line was checking is that a no-commit frame still
+		// PAINTS — the anchor jump being its first act — so that is what
+		// is asserted: streamed text with nothing committed produces a
+		// frame, and the frame carries the text.
+		const noCommit = frames(additive("abc", 1), (b) => b.textAppend("live"));
+		expect(noCommit).not.toBe("");
+		expect(noCommit).toContain("live");
 	});
 });
 

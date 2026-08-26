@@ -92,6 +92,10 @@ export const CURSOR_MARKER = "\x1b_[kiso-cur]\x1b\\";
 
 const FRAME_MS = 16; // state changes coalesce to ≥16ms frames
 const SPINNER_MS = 200; // the spinner cadence — a ONE-SHOT re-armed on demand
+/** REL-0152-R1: a held row that has never been painted, so the first
+ *  frame writes every row rather than trusting an empty string. */
+const NOT_PAINTED = "\u0000never";
+
 const CHROME_ROWS = 4; // box top + input + box bottom + status — the design §03 chrome (V6-3; the box is W6)
 
 /** KC1 §5 — the input row's bound state. The legacy pair stays
@@ -175,6 +179,61 @@ export class Body {
 	#lastLiveTop = 0; // the recorded live region top — the resize clear starts here
 	#lastLiveRows = 0; // the recorded live row count (incl. the chrome)
 	#lastSkip = 0; // the last frame's window top in model rows — the A8b scroll's leaving-count base
+	/**
+	 * REL-0152-R1 — the SCREEN, held.
+	 *
+	 * H strings: what the terminal is showing right now, as this
+	 * compositor believes it. Every frame computes the screen it WANTS
+	 * and writes only the rows where the two differ.
+	 *
+	 * This is the whole round. The old renderer's correctness came from
+	 * remembering what it had written — which rows it had painted, which
+	 * it had scrolled, what the window's top had been last time — and
+	 * every defect in the D series that survived a patch came from that
+	 * memory disagreeing with the terminal. A renderer that HOLDS the
+	 * screen cannot disagree with itself: it computes a difference and
+	 * emits it, and a row that is wrong for any reason is repaired on the
+	 * next frame because the difference includes it.
+	 *
+	 * Six fixes were built and reverted before this — one for the tear,
+	 * five for the chip loss — and each traded a loss for a duplicate
+	 * somewhere else. They were all attempts to make the memory agree.
+	 *
+	 * The one thing a diff cannot repair is the SCROLLBACK, which is
+	 * irreversible: see #scrolledOff.
+	 */
+	#screen: string[] = [];
+	/**
+	 * REL-0152-R1 — the row the cursor is on, as far as this compositor
+	 * knows.
+	 *
+	 * The park at the end of a frame is a RELATIVE move, and the old
+	 * renderer could hard-code its base: the bottom-up march always ended
+	 * on the status row at H, so `from` was H by construction. A diff
+	 * ends wherever the last CHANGED row happens to be — which on a
+	 * streaming frame is the live band, not the bottom of the screen — so
+	 * the base has to be tracked rather than assumed.
+	 *
+	 * Getting this wrong does not damage the frame; it parks the cursor
+	 * in the wrong place, which is what the PTY gates that assert "every
+	 * frame ends with the cursor on an input row" are for. They caught it.
+	 */
+	#cursorRow = 0;
+	/**
+	 * REL-0152-R1 — how many model rows have gone into the terminal's
+	 * scrollback. Monotonic, because scrolling is.
+	 *
+	 * A row may only be scrolled off when it can never be shown again.
+	 * The window is bottom-anchored, so its top moves BOTH ways as the
+	 * live band grows and shrinks; scrolling on that movement pushed rows
+	 * away that the next shrink brought back, which is the A7 replay's
+	 * frame-106 duplicate. The floor below is where the window's top
+	 * would sit with the live band empty and the chrome at its minimum —
+	 * the only part of the movement that is one-way.
+	 */
+	#scrolledOff = 0;
+	/** REL-0152-R1: this frame is the repaint after a SIGWINCH. */
+	#resizeFrame = false;
 	#lastH = 0;
 	// KC1 §6: the composer's recorded extent — the row count the last
 	// frame drew (exit's clear walks it) and the row its CHA parked the
@@ -259,10 +318,33 @@ export class Body {
 	 *  a DECRQM round-trip would race the editor for stdin at boot. */
 	readonly #conservative: boolean;
 	readonly #frameMs: number;
+	/** REL-0152-R1: the frame's own writer — the ONE path that does not
+	 *  invalidate the held screen, because it is what produced it. */
+	readonly #writeFrame: (s: string) => void;
 
 	constructor(opts: BodyOptions) {
 		this.#opts = opts;
-		this.#write = opts.write ?? ((s) => process.stdout.write(s));
+		// REL-0152-R1: every write that is NOT this frame's own goes
+		// through here and INVALIDATES the held screen.
+		//
+		// A banner, a bodyLog line, the terminal gap, the pipe path's
+		// prose — all of them paint the terminal directly, and the old
+		// renderer survived that because every frame repainted every row.
+		// A diff does not: after such a write the held screen describes a
+		// terminal that no longer exists, and the next frame skips exactly
+		// the rows it should have repaired. That is a stale composer row
+		// left standing while the real one moves — which is what the PTY
+		// cursor gates saw.
+		//
+		// Forgetting is cheap and cannot be forgotten to do: one frame
+		// repaints, and correctness stops depending on a list of writers
+		// staying complete as the file grows.
+		const raw = opts.write ?? ((str: string) => process.stdout.write(str));
+		this.#writeFrame = raw;
+		this.#write = (str: string): void => {
+			this.#screen = [];
+			raw(str);
+		};
 		this.#conservative = (opts.termProgram ?? process.env.TERM_PROGRAM) === "Apple_Terminal";
 		this.#frameMs = this.#conservative ? 40 : FRAME_MS;
 		this.#active = opts.active();
@@ -946,6 +1028,7 @@ export class Body {
 		const from = Math.max(1, (this.#lastH > 0 ? this.#lastH : H) - liveRows + 1);
 		this.#write(`\x1b[${Math.min(from, Math.max(1, H))};1H\x1b[0J`);
 		this.#fullRedraw = true;
+		this.#resizeFrame = true;
 		this.#dirty = true;
 		this.render(); // the immediate redraw at the NEW geometry
 	}
@@ -1336,15 +1419,19 @@ export class Body {
 		// erased rows are all re-painted); a shrink takes the full-redraw
 		// path: the window re-paints at the model's positions, every row
 		// covered (the V6-1 every-row rule).
-		if (this.#fullRedraw || liveTop > this.#lastLiveTop + this.#committedLinesThisFrame.length || liveRowsTotal < this.#lastLiveRows) {
-			this.#drawFull(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
-			this.#fullRedraw = false;
-		} else {
-			this.#drawSteady(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
-		}
+		// REL-0152-R1: ONE renderer. The steady/full split existed because
+		// the steady path moved rows by scrolling and could not handle a
+		// window that moved the wrong way, so the frames it could not draw
+		// were handed to a full repaint. A diff has no such frames: it
+		// emits the rows that differ, and on a frame where everything
+		// differs that IS a full repaint. The dispatch, the two geometries
+		// and the invariant about which moves each path may use all go
+		// with it.
+		this.#drawFull(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
+		this.#fullRedraw = false;
 		out.push(this.#conservative ? "\x1b[?25h" : "\x1b[?2026l");
 		out.push("\x1b[?7h"); // REL-0152-D14: autowrap back on for everything outside the frame
-		this.#write(out.join(""));
+		this.#writeFrame(out.join("")); // the frame IS the new screen — it does not invalidate it
 		this.#lastLiveTop = liveTop;
 		this.#lastLiveRows = liveRowsTotal;
 		this.#lastInputRows = editor.rows.length;
@@ -1829,66 +1916,32 @@ export class Body {
 		// shrink EVERY frame) loses the scrolled-away turns from the
 		// terminal's scrollback entirely (finding #A8b — the queued-flood
 		// content loss).
-		if (skip > 0 && !overlay) {
-			const leaving = Math.max(0, skip - this.#lastSkip);
-			// TT-1B (finding TUI2-MD-1): a burst taller than the screen can
-			// NOT be staged in one pass — rows placed past H are clamped by
-			// the terminal itself (CUP pins to the last row), the pile keeps
-			// only its last member, and the scroll pushes the wreckage: the
-			// short-terminal row loss the finding measured. The transit is
-			// chunked instead: each pass paints <= H leaving rows at rows
-			// 1..chunk and scrolls exactly that many LFs, so every row is ON
-			// the screen when its scroll slot comes up. The <= H path below
-			// keeps its exact pre-round bytes (its staging never exceeds H —
-			// position <= skip - lastSkip = leaving).
-			if (leaving > H) {
-				let p = this.#lastSkip;
-				while (p < skip) {
-					const chunk = Math.min(skip - p, H);
-					for (let k = 0; k < chunk; k += 1) {
-						out.push(`\x1b[${k + 1};1H\x1b[0K${this.#checked(all[p + k]!, W)}`);
-					}
-					if (chunk < H) out.push(`\x1b[${chunk + 1};1H\x1b[0J`);
-					out.push(`\x1b[${H};1H`);
-					for (let k = 0; k < chunk; k += 1) out.push("\n");
-					p += chunk;
-				}
-			} else {
-			// A8b (the fresh leaving share): a leaving row whose old-screen
-			// copy is stale — the committed-this-frame lines (their old rows
-			// held the previous live/chrome) — is pre-painted at its OLD row
-			// so the LF scroll carries it into the scrollback; the frozen
-			// leaving rows are already on screen and scroll as-is. The first
-			// overflow frame of a batch: the window's top row is the freshly
-			// committed line, NEVER on the old screen — without the
-			// pre-paint the scroll pushes a blank and the line's only paint
-			// (the clamped march at row 1) is overwritten by its neighbor.
-			if (skip > frozen.length) {
-				const fromIdx = Math.max(0, this.#lastSkip - frozen.length);
-				const top = Math.min(skip - frozen.length, all.length - frozen.length);
-				for (let i = fromIdx; i < top; i += 1) {
-					out.push(`\x1b[${Math.max(1, frozen.length + i - this.#lastSkip + 1)};1H\x1b[0K${this.#checked(all[frozen.length + i]!, W)}`);
-				}
-			}
-			if (leaving < skip) out.push(`\x1b[${leaving + 1};1H\x1b[0J`);
-			out.push(`\x1b[${H};1H`);
-			// TUI2-R2pre ② — scroll the rows that LEFT THE WINDOW SINCE THE
-			// LAST FRAME (`leaving`), never `skip`, which is the window's
-			// ABSOLUTE top. Scrolling the absolute top re-pushed the whole
-			// history's worth of rows on EVERY full redraw — and a live-region
-			// shrink takes this path, so that was most frames of a real
-			// session. The ED above had just blanked everything below row
-			// `leaving`, so what those surplus LFs carried into the terminal's
-			// scrollback was blank rows: the large blank bands mid-history of
-			// the owner's field report. The SCREEN never showed it because the
-			// repaint below covers every row 1..H (the V6-1 rule), and the
-			// house emulator drops scrolled rows on the floor — so no gate
-			// could see it either. Measured on the 5-turn 80x24 repro: the
-			// scrollback went from 162 blank rows of 168 to 14 of 52.
-			for (let i = 0; i < leaving; i += 1) out.push("\n");
-			}
+		// REL-0152-R1: the scroll is the frame's only irreversible act and
+		// lives in one place now. The FLOOR is where the window's top would
+		// sit with the live band empty and the chrome at its minimum — the
+		// one-way part of a movement that otherwise goes both ways.
+		if (this.#resizeFrame) {
+			// REL-0152-R1: a resize scrolls NOTHING of ours. Shrinking the
+			// window is the terminal's own scroll — it reflows the old
+			// content and pushes the overflow into its scrollback before we
+			// are called — so emitting our own LFs on top put the same rows
+			// in twice (TT-1B: twelve rows of a forty-line burst). The
+			// counter adopts the terminal's work, and the held screen is
+			// discarded because a reflow invalidates every row of it: the
+			// next diff repaints the whole screen, which is exactly what a
+			// resize needs.
+			this.#scrolledOff = Math.max(this.#scrolledOff, Math.max(0, Math.min(skip, all.length)));
+			this.#screen = new Array(H).fill(NOT_PAINTED);
+			this.#resizeFrame = false;
+		} else if (!overlay) {
+			const floor = Math.max(0, this.#committedLines + CHROME_ROWS - H);
+			this.#emitScroll(out, W, H, all, floor);
 		}
 		if (!overlay) this.#lastSkip = skip;
+		// REL-0152-R1: the rows this frame WANTS on the screen — the same
+		// placement the full redraw has always computed, lifted out of the
+		// emission so it can be compared against what is there.
+		const desired: string[] = new Array(H).fill("");
 		let r = 1;
 		// the window's content rows: everything above the chrome. With the
 		// overlay up `all` can exceed it, and the rows that give way are the
@@ -1897,227 +1950,121 @@ export class Body {
 		const contentRows = Math.max(0, H - CHROME_ROWS - inputExtra - queueRows.length - menuRows.length);
 		const march = all.slice(skip);
 		for (const line of march.length > contentRows ? march.slice(march.length - contentRows) : march) {
-			out.push(`\x1b[${r};1H\x1b[0K${this.#checked(line, W)}`);
+			desired[r - 1] = this.#checked(line, W);
 			r += 1;
 		}
-		// 3. the GAP rows (between the live content and the chrome) — EL.
-		for (let rr = r; rr <= H - 4 - inputExtra; rr += 1) {
-			out.push(`\x1b[${rr};1H\x1b[0K`);
-		}
+		// 3. the GAP rows (between the live content and the chrome) — blank.
+		for (let rr = r; rr <= H - 4 - inputExtra; rr += 1) desired[rr - 1] = "";
 		// W22: the queue chips sit directly above the box top (the
 		// "pre-render ABOVE the input row"), the menu above the queue.
 		const queueTop = H - 3 - inputExtra - queueRows.length;
 		const menuTop = queueTop - menuRows.length;
-		for (let i = 0; i < queueRows.length; i += 1) {
-			out.push(`\x1b[${queueTop + i};1H\x1b[0K${this.#checked(queueRows[i]!, W)}`);
-		}
-		for (let i = 0; i < menuRows.length; i += 1) {
-			out.push(`\x1b[${menuTop + i};1H\x1b[0K${this.#checked(menuRows[i]!, W)}`);
-		}
+		for (let i = 0; i < queueRows.length; i += 1) desired[queueTop + i - 1] = this.#checked(queueRows[i]!, W);
+		for (let i = 0; i < menuRows.length; i += 1) desired[menuTop + i - 1] = this.#checked(menuRows[i]!, W);
 		// V6-3 + W6 + KC1 §6: the design §03 chrome — box top (H−2−N),
 		// the composer's N input rows (H−1−N .. H−2), box bottom (H−1),
 		// status (H). N = 1 is the retired four-row chrome exactly.
-		out.push(`\x1b[${H - 3 - inputExtra};1H\x1b[0K${boxTop(W)}`);
-		for (let i = 0; i < editor.rows.length; i += 1) {
-			out.push(`\x1b[${H - 2 - inputExtra + i};1H\x1b[0K${this.#checked(editor.rows[i]!, W)}`);
-		}
-		out.push(`\x1b[${H - 1};1H\x1b[0K${boxBottom(W)}`);
+		desired[H - 3 - inputExtra - 1] = boxTop(W);
+		for (let i = 0; i < editor.rows.length; i += 1) desired[H - 2 - inputExtra + i - 1] = this.#checked(editor.rows[i]!, W);
+		desired[H - 1 - 1] = boxBottom(W);
 		const statusRow = this.#statusSource();
-		out.push(`\x1b[${H};1H\x1b[0K${this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint), W)}`);
-		// the cursor: up from the status row to the MARKER'S row inside
-		// the composer (N = 1, markerRow 0 ⇒ the retired \x1b[2A) + the
-		// CHA to the marker's frame-derived column — W23: the afterW CUB
-		// retired (the CHA is absolute — the base is irrelevant; the
-		// CUB's base was the LAST write's end column, which the steady
-		// frame's ELs leave at col 1 — the A3 finding)
-		this.#parkCursor(out, H, H - 2 - inputExtra + editor.markerRow, editor.markerCol);
+		desired[H - 1] = this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint), W);
+		this.#emitDiff(out, W, H, desired);
+		// REL-0152-R1: park from where the cursor ACTUALLY is — see
+		// #cursorRow. It used to be parked from H, which the bottom-up
+		// march guaranteed and a diff does not.
+		this.#parkCursor(out, this.#cursorRow, H - 2 - inputExtra + editor.markerRow, editor.markerCol);
+		this.#cursorRow = H - 2 - inputExtra + editor.markerRow;
 	}
 
-	/** The steady-state frame — RELATIVE moves only (invariant ②); the
-	 *  commits scroll via the CUP-free real LF at the last row, and the
-	 *  committed lines write in the march's top section (rows
-	 *  [liveTop−N .. liveTop−1] — the frozen area's bottom). */
-	#drawSteady(out: string[], W: number, H: number, liveTop: number, liveLines: string[], queueRows: string[], menuRows: string[], editor: { rows: string[]; markerRow: number; markerCol: number }): void {
-		const inputExtra = editor.rows.length - 1; // KC1: the composer's rows above the retired single input row
-		const committed = this.#committedLinesThisFrame;
-		// A8b: the steady path's window geometry — the same skip as the full
-		// path's (#lastSkip's formula): the model rows above the window
-		// belong in the scrollback. frozenCount = the committed lines BEFORE
-		// this frame — the lines this frame commits start at model row
-		// frozenCount, so the lines at [frozenCount..skip−1] are the fresh
-		// leaving share (their old-screen copies are stale).
-		const frozenCount = this.#committedLines - committed.length;
-		// TUI2-R1.5 7(a): an overlay frame never moves the window (see
-		// #drawFull) — the sheet's rows displace content on screen instead
-		// of pushing it into the scrollback.
-		const overlay = this.#overlayFrame;
-		const skip = overlay ? this.#lastSkip : Math.max(0, this.#committedLines + liveLines.length + CHROME_ROWS + inputExtra + queueRows.length + menuRows.length - H);
-		const leaving = overlay ? 0 : Math.max(0, skip - this.#lastSkip);
-		// TT-1B (finding TUI2-MD-1): the steady staging has the same
-		// past-H clamp as the full path had — a window that moved more than
-		// a screenful in one frame cannot transit on this path at all.
-		// Delegate the oversized frame to #drawFull's chunked emission (the
-		// full path repaints every row, so the hand-off is self-contained).
-		if (leaving > H) {
-			this.#drawFull(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
-			return;
+	/**
+	 * REL-0152-R1 — emit the difference between the screen that is up and
+	 * the screen this frame wants, and adopt the new one.
+	 *
+	 * One CUP + erase + content per CHANGED row and nothing for the rest.
+	 * A streaming delta moves the live band and leaves the status row,
+	 * the box, the composer and the queue exactly as they were — 13 rows
+	 * were being erased per keystroke for a change that touches one, and
+	 * those twelve are the tear's whole surface (REL-0152-D1).
+	 *
+	 * Correctness does not depend on the diff being clever. It depends on
+	 * #screen being what the terminal shows, which is why every path that
+	 * moves rows updates it: a wrong row is repaired by the next frame,
+	 * because the difference includes it.
+	 */
+	#emitDiff(out: string[], W: number, H: number, desired: readonly string[]): void {
+		if (this.#screen.length !== H) this.#screen = new Array(H).fill(NOT_PAINTED);
+		for (let i = 0; i < H; i += 1) {
+			const want = desired[i] ?? "";
+			if (this.#screen[i] === want) continue;
+			out.push(want === "" ? `\x1b[${i + 1};1H\x1b[0K` : `\x1b[${i + 1};1H\x1b[0K${want}`);
+			this.#cursorRow = i + 1; // a CUP write leaves the cursor on that row
 		}
-		// the jump to the bottom row H, then N real LFs scroll the screen
-		// exactly N rows — ONE per committed line (the bookkeeping; the
-		// stale 1B anchor jumped to H−1 and the N LFs scrolled only N−1 —
-		// the committed section sat one row short in the scrollback). The
-		// bottom-up repaint below overwrites the scrolled-in rows (the
-		// scroll count is screen-neutral — proven by the emulator probe).
-		// A7: the scrolled rows carry the PRE-FRAME live copies (the
-		// streamed rendering of the just-committed cells) into the
-		// scrollback — a real terminal keeps them forever, and the
-		// repaint's fresh copy below makes the two copies the reviewer
-		// saw. The old live band is EL'd BEFORE the scroll: the rows that
-		// scroll away are blank, the repaint is the only copy (the old
-		// band's rows are all re-drawn this frame — live CUP, gap ELs,
-		// chrome march — so the erase is invisible).
-		if (committed.length > 0) {
-			// A8b (the steady path's own leaving scroll): the fresh leaving
-			// lines — the committed-this-frame/live lines at model rows
-			// [frozenCount..skip−1], whose old-screen copies are stale (the
-			// previous live/chrome) — are pre-painted at their OLD rows so
-			// the LF scroll carries them into the scrollback. The queued
-			// flood's first frame: the window's top row is the user chip,
-			// never on the old screen — without the pre-paint the scroll
-			// pushes a blank and the chip's ONLY paint (the clamped band at
-			// row 1) is overwritten by its neighbor in the same frame
-			// (finding #A8b — the user chips 1..8 lost from the terminal
-			// state).
-			if (leaving > 0 && skip > frozenCount) {
-				const seq = [...committed, ...liveLines];
-				const top = Math.min(skip - frozenCount, seq.length);
-				for (let i = Math.max(0, this.#lastSkip - frozenCount); i < top; i += 1) {
-					out.push(`\x1b[${Math.max(1, frozenCount + i - this.#lastSkip + 1)};1H\x1b[0K${this.#checked(seq[i]!, W)}`);
-				}
-			}
-			const oldBottom = Math.min(H, this.#lastLiveTop + this.#lastLiveRows);
-			// A8b: the EL covers the OVERLAP only — the old live band's rows
-			// the repaint re-draws (the A7 single-copy discipline). The
-			// leaving rows below the overlap scroll WITH their content —
-			// they are never re-painted, the scrollback is their record (the
-			// old code erased them and the scrolled-away rows came up blank —
-			// the A8b content loss).
-			const overlapFrom = Math.max(1, this.#lastLiveTop, leaving + 1);
-			for (let r = overlapFrom; r <= oldBottom; r += 1) {
-				out.push(`\x1b[${r};1H\x1b[0K`);
-			}
-			out.push(`\x1b[${H};1H`); // CUP to the bottom — the absolute scroll base (the ELs moved the cursor)
-		} else {
-			// KC1 §6: the anchor is where the LAST frame's CHA parked the
-			// cursor — the marker's row inside the composer (N = 1 ⇒ H−2,
-			// the retired \x1b[2B)
-			const anchorRow = this.#lastAnchorRow > 0 ? this.#lastAnchorRow : H - 2;
-			if (H > anchorRow) out.push(`\x1b[${H - anchorRow}B`);
-		}
-		// TUI2-R2pre ②: this count is the COMMIT count on purpose, and it
-		// stays. It reads like the same mistake the full path made, but the
-		// two paths are doing different jobs: the full path REPAINTS every
-		// row, so anything it scrolls is a duplicate of what it is about to
-		// draw; the steady path does not repaint the frozen band, and the
-		// rows it scrolls carry the PRE-FRAME live copies of the cells that
-		// just committed — the A7 single-copy discipline (the old live band
-		// is EL'd first, so the repaint below is the only copy left). Making
-		// this `leaving` was measured: the A7 gate fails at 40x24 frame 106
-		// with the greeting duplicated in the terminal.
-		for (let i = 0; i < committed.length; i += 1) out.push("\n");
-		// the bottom-up repaint, from the last row up — V6-3 + W6 + KC1:
-		// the design §03 chrome: status (H), box bottom (H−1), the
-		// composer's N input rows (H−2 up to H−1−N), box top (H−2−N)
-		const statusRow = this.#statusSource();
-		out.push(`\x1b[1G\x1b[0K${this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint), W)}`); // H — the status
-		out.push(`\x1b[1A\x1b[1G\x1b[0K${boxBottom(W)}`); // H−1 — the box bottom
-		for (let i = editor.rows.length - 1; i >= 0; i -= 1) {
-			out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(editor.rows[i]!, W)}`); // the input rows, bottom-up
-		}
-		out.push(`\x1b[1A\x1b[1G\x1b[0K${boxTop(W)}`); // H−2−N — the box top
-		// W22: the queue chips sit directly above the box top (the
-		// "pre-render ABOVE the input row"), the menu above the queue —
-		// the bottom-up order mirrors the row order.
-		for (let i = queueRows.length - 1; i >= 0; i -= 1) {
-			out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(queueRows[i]!, W)}`);
-		}
-		for (let i = menuRows.length - 1; i >= 0; i -= 1) {
-			out.push(`\x1b[1A\x1b[1G\x1b[0K${this.#checked(menuRows[i]!, W)}`);
-		}
-		// the LIVE lines at their MODEL rows — CUP, never the relative
-		// march: the march drew them adjacent to the chrome (rows
-		// H−3−n..H−3) while the model placed them at [liveTop..liveTop+n−1]
-		// — in the unclamped geometry the gap ELs below erased the march's
-		// copy and the streamed text was INVISIBLE until the commit frame.
-		// The CUP rows land in the content area (≤ H−4−menu ≤ 21), inside
-		// the frozen CUP budget of invariant ②.
-		for (let i = 0; i < liveLines.length; i += 1) {
-			out.push(`\x1b[${liveTop + i};1H\x1b[0K${this.#checked(liveLines[i]!, W)}`);
-		}
-		// the FROZEN area — CUP (absolute rows; this is the FREEZE path —
-		// the old code's frozen writes were CUP too. The frozen rows are
-		// computed from the current geometry, so external writes (the CLI's
-		// console.error CRLF) cannot misplace them the way a relative march
-		// could).
-		// 1. the GAP rows (between the live content and the chrome) — EL'd
-		//    so the old content there cannot ghost; the range stops ABOVE
-		//    the queue + menu bands (their rows at [H−3−queue−menu..H−4]
-		//    are marched and must survive — the unclamped geometry erased
-		//    them).
-		for (let r = liveTop + liveLines.length; r <= H - 4 - inputExtra - queueRows.length - menuRows.length; r += 1) {
-			out.push(`\x1b[${r};1H\x1b[0K`);
-		}
-		// 2. the STALE rows above the committed section — the scrolled old
-		//    live copies (a live-drawn cell's pre-commit position): EL.
-		//    TUI2-R2pre ②: the old band's POST-SCROLL origin shifted up by
-		//    the rows that actually left — `leaving`. It read the commit
-		//    count only because the scroll above used to BE the commit
-		//    count; with the two decoupled, the old expression erases rows
-		//    of frozen content that never moved.
-		const staleFrom = Math.max(1, this.#lastLiveTop - committed.length);
-		for (let r = staleFrom; r < liveTop - committed.length; r += 1) {
-			out.push(`\x1b[${r};1H\x1b[0K`);
-		}
-		// 3. the committed lines at [liveTop−N .. liveTop−1] — the rows
-		//    CLAMP at 1: a super-tall force-commit's early lines have no
-		//    on-screen row (they would need a negative CUP — terminal
-		//    undefined behavior); their content stays in the scrollback.
-		//    A8b: the first (skip − frozenCount) lines are ABOVE the new
-		//    window — they were pre-painted and scrolled; re-painting them
-		//    would re-clamp them into row 1 and the band's second line
-		//    overwrites the first in the same frame (the row-1 clamp pile —
-		//    the queued flood lost the user chips 1..8 that way). The
-		//    window's share starts at the line whose model row is the
-		//    window's top (skip).
-		for (let i = Math.max(0, skip - frozenCount); i < committed.length; i += 1) {
-			out.push(`\x1b[${Math.max(1, liveTop - committed.length + i)};1H\x1b[0K${this.#checked(committed[i]!, W)}`);
-		}
-		// the cursor: down to the anchor (H−2, the input row) + left to the marker —
-		// the down-distance from the LAST written row, in byte order: the
-		// committed band's bottom, then the stale ELs' bottom, then the gap
-		// ELs' bottom, then the live lines' bottom, then the menu's top
-		// (its last marched row), else the chrome's box top.
-		const lastRow =
-			committed.length > 0
-				? Math.max(1, liveTop - 1)
-				: staleFrom < liveTop
-					? liveTop - 1
-					: liveTop + liveLines.length <= H - 4 - inputExtra - queueRows.length - menuRows.length
-						? H - 4 - inputExtra - queueRows.length - menuRows.length
-						: liveLines.length > 0
-							? liveTop + liveLines.length - 1
-							: menuRows.length > 0
-								? H - 3 - inputExtra - menuRows.length - queueRows.length
-								: H - 3 - inputExtra;
-		// the anchor: the MARKER'S row inside the composer (N = 1,
-		// markerRow 0 ⇒ the retired H−2)
-		this.#parkCursor(out, lastRow, H - 2 - inputExtra + editor.markerRow, editor.markerCol);
-		// A8b: the steady path moves the window too (the scroll + the
-		// repaint) — record its top so the next full-redraw's leaving count
-		// is the rows the window dropped since the last frame, whatever the
-		// path of the frames between (same formula as `skip` above).
-		this.#lastSkip = skip;
+		this.#screen = [...desired];
 	}
+
+	/**
+	 * REL-0152-R1 — the scroll, and the only irreversible thing a frame
+	 * does.
+	 *
+	 * `leaving` rows go into the terminal's scrollback, which cannot be
+	 * rewritten, so two things have to be right BEFORE the LFs: the count,
+	 * and what is standing in rows 1..leaving.
+	 *
+	 * The count is bounded by the FLOOR — where the window's top would sit
+	 * with the live band empty and the chrome at its minimum. That is the
+	 * one-way part of the window's movement; the rest of it follows a band
+	 * whose height goes up and down, and scrolling on that pushed rows
+	 * away that the next shrink brought back (the A7 replay's frame 106).
+	 *
+	 * What is standing there is STAGED from the model rather than assumed.
+	 * The old renderer assumed the leaving rows were already correct on
+	 * screen and was right until a growing live band painted over one of
+	 * them; then the LFs carried the live band's leftover into the
+	 * scrollback and the committed row it had displaced was in no
+	 * scrollback and on no screen. That is the owner's swallowed message
+	 * (REL-0152-D7), and staging is what makes it structurally impossible.
+	 */
+	#emitScroll(out: string[], W: number, H: number, all: readonly string[], floor: number): number {
+		const target = Math.max(0, Math.min(floor, all.length));
+		const leaving = Math.max(0, target - this.#scrolledOff);
+		if (leaving === 0) return 0;
+		if (this.#screen.length !== H) this.#screen = new Array(H).fill(NOT_PAINTED);
+		// a transit taller than the screen cannot be staged in one pass —
+		// rows placed past H are clamped by the terminal itself and the
+		// pile keeps only its last member (finding TUI2-MD-1). Chunked, at
+		// most H rows at a time, every row on screen when its slot comes up.
+		let p = this.#scrolledOff;
+		while (p < target) {
+			const chunk = Math.min(target - p, H);
+			for (let k = 0; k < chunk; k += 1) {
+				const row = all[p + k];
+				out.push(row === undefined || row === "" ? `\x1b[${k + 1};1H\x1b[0K` : `\x1b[${k + 1};1H\x1b[0K${this.#checked(row, W)}`);
+			}
+			if (chunk < H) out.push(`\x1b[${chunk + 1};1H\x1b[0J`);
+			out.push(`\x1b[${H};1H`);
+			for (let k = 0; k < chunk; k += 1) out.push("\n");
+			this.#cursorRow = H; // the LFs at the last row leave it there
+			p += chunk;
+		}
+		this.#scrolledOff = target;
+		// The screen after a scroll is not worth modelling row by row: the
+		// staging painted rows 1..chunk, the ED blanked everything below
+		// them, and the LFs then shifted all of it up — per chunk. An
+		// earlier version modelled only the shift, forgot the ED, and the
+		// diff below then skipped rows the terminal had already blanked:
+		// a 19-row blank band on a 24-row screen, which is most of it.
+		//
+		// So a scrolled frame forgets the screen and repaints. That costs
+		// nothing worth having: a scroll happens only when the COMMITTED
+		// height crosses the floor, and a commit frame changes most rows
+		// anyway. The frames the diff exists for — a streaming delta, a
+		// keystroke — commit nothing, scroll nothing, and repaint only
+		// what moved.
+		this.#screen = new Array(H).fill(NOT_PAINTED);
+		return leaving;
+	}
+
 
 	/**
 	 * TUI2-R2 ⑤ (the R1.5 parked ⑩) — CURSOR AUTHORITY: the ONE frame-tail
@@ -2145,10 +2092,25 @@ export class Body {
 	 * independent of wherever the last write ended (the A3 finding: the
 	 * retired CUB's base was the gap EL's column 1, left of the lead).
 	 */
-	#parkCursor(out: string[], fromRow: number, toRow: number, col: number): void {
-		const delta = toRow - fromRow;
-		if (delta > 0) out.push(`\x1b[${delta}B`);
-		else if (delta < 0) out.push(`\x1b[${-delta}A`);
+	/**
+	 * REL-0152-R1 — park ABSOLUTELY.
+	 *
+	 * This was a relative move, and it could be: the old bottom-up march
+	 * always ended on the status row, so the base was H by construction.
+	 * A diff ends on whatever row changed last, and on a streaming frame
+	 * that is the live band. Tracking the base is possible but it makes
+	 * the cursor's correctness depend on every writer in this file
+	 * remembering to update a counter — and the PTY gates that assert
+	 * "every frame ends with the cursor on an input row" caught exactly
+	 * that going wrong.
+	 *
+	 * A CUP to the row needs no base at all. The CHA for the column
+	 * stays: it was already absolute (the A3 finding retired the CUB
+	 * whose base was the last write's end column), and the frame-derived
+	 * column contract is asserted on it.
+	 */
+	#parkCursor(out: string[], _fromRow: number, toRow: number, col: number): void {
+		out.push(`\x1b[${toRow};1H`);
 		out.push(`\x1b[${col}G`);
 	}
 

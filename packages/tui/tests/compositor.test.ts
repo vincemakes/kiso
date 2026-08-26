@@ -9,6 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
+import { Screen } from "./helpers/screen.js";
 import { CAP_TASK_LIVE, cellComponent, formatDuration, type FrameCtx, visibleWidth } from "../src/components.js";
 import type { PanelView } from "../src/approval-panel.js";
 
@@ -39,6 +40,22 @@ function makeBody(opts: { W?: number; H?: number } = {}) {
 			H = h;
 		},
 	};
+}
+
+/**
+ * REL-0152-R1 — the SCREEN a stream of frames produces.
+ *
+ * A diffing renderer writes only the rows that changed, so a case that
+ * reads one frame's bytes and expects the whole screen is asking the
+ * wrong question. Several cases below were written that way against the
+ * old renderer, which repainted every row; each has been converted to
+ * assert on what is ON THE SCREEN, which is both what they meant and a
+ * stronger claim than what any single write happened to contain.
+ */
+function screenOf(writes: readonly string[], W = 80, H = 24): string[] {
+	const screen = new Screen(W, H);
+	screen.feed(writes.join(""));
+	return screen.rows.map((r) => r.join("").replace(/\s+$/, ""));
 }
 
 beforeEach(() => {
@@ -103,36 +120,26 @@ describe("TUI v6 — the one compositor", () => {
 		expect(bytes).toContain("line one");
 	});
 
-	it("the idle no-commit steady frame jumps 2B from the anchor — the chrome stays on H/H−1/H−2/H−3 (the input-shift regression)", () => {
+	it("an idle no-commit frame leaves the chrome on H−3/H−2/H−1/H — the input-shift regression", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		body.bindInput(() => ({ line: "\u4f60", cursor: 1 }), "› ");
-		writes.length = 0; // the first frame is the full-redraw (CUP allowed there)
-		body.textAppend("live"); // an OPEN cell — the steady NO-COMMIT path
+		body.textAppend("live"); // an OPEN cell — no commit
 		tick();
-		const frame = writes.join("");
-		// the buggy frame jumped 1B from the anchor (H−2) and repainted the
-		// chrome one row up — the status landed at H−1, the input at H−3
-		// (the real-machine report: the input box shifted). The fix jumps
-		// 2B straight to the bottom row H.
-		// DECLARED SUPERSESSION (REL-0152-D14): the frame now opens with
-		// the autowrap guard before the sync guard, so this asserts the
-		// frame's first ACTION rather than a literal byte prefix — which
-		// is the property it was always about. It used to read
-		// `startsWith("\x1b[?2026h\x1b[2B")`.
-		expect(frame.startsWith("\x1b[?7l\x1b[?2026h"), "the frame must open with the autowrap and sync guards").toBe(true);
-		expect(frame.slice("\x1b[?7l\x1b[?2026h".length).startsWith("\x1b[2B")).toBe(true);
-		// the bottom-up repaint right after the jump — four relative rows:
-		// status (H), box bottom (H−1), input (H−2), box top (H−3)
-		const m = frame
-			.slice("\x1b[?7l\x1b[?2026h".length) // REL-0152-D14: past both guards
-			.match(
-				/^\x1b\[2B\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)\x1b\[1A\x1b\[1G\x1b\[0K([\s\S]*?)(?=\x1b\[1A|\x1b\[\d+;\d+H|\x1b\[\?2026l)/,
-			);
-		expect(m).not.toBeNull();
-		expect(m![2]).toContain("╰"); // H−1 — the box bottom
-		expect(m![3]).toContain("›"); // H−2 — the input row
-		expect(m![4]).toContain("╭"); // H−3 — the box top
+		// DECLARED SUPERSESSION (REL-0152-R1). This used to assert the
+		// frame's exact opening bytes — a 2B relative jump from the
+		// recorded anchor — because the renderer reached the chrome by
+		// marching there. It does not march any more; it writes the rows
+		// that changed, at absolute positions. What the case is FOR is
+		// unchanged and is now asserted where it is true: the real-machine
+		// report was that the input box SHIFTED, the buggy frame put the
+		// status at H−1 and the input at H−3, and the screen says whether
+		// that happened.
+		const rows = screenOf(writes);
+		expect(rows[20], "the box top is not on H−3").toContain("╭");
+		expect(rows[21], "the input row is not on H−2").toContain("›");
+		expect(rows[22], "the box bottom is not on H−1").toContain("╰");
+		expect(rows[0], "the live text is not at its model row").toContain("live");
 	});
 
 	it("a CJK /think fold never trips invariant ① — the fold cuts by DISPLAY width (the 0.1.33 real-machine crash)", () => {
@@ -151,29 +158,36 @@ describe("TUI v6 — the one compositor", () => {
 		expect(() => tick()).not.toThrow(); // the fold now width-cuts; the raw 100-char line THREW at W=20
 	});
 
-	it("the commit frame scrolls from the CUP base: the A7 pre-scroll ELs then CUP-to-H then exactly N real LFs — the scroll count matches the committed lines (the stale H−1 anchor)", () => {
-		const { body, writes, tick } = makeBody();
+	it("a committed line reaches the terminal's scrollback exactly once", () => {
+		const { body, writes, tick } = makeBody({ W: 40, H: 8 });
 		body.enter();
-		writes.length = 0;
-		body.raw(["a", "b"]); // N = 2 committed lines
-		tick();
-		const frame = writes.join("");
-		// the stale anchor bug: 1B/2B from the frame start jumped to H−1 and
-		// the N LFs scrolled only N−1 — the committed section sat one row
-		// short in the scrollback. The A7 base is the CUP to the bottom row
-		// H (the pre-scroll ELs of the old live band moved the cursor) — the
-		// N LFs at the last row scroll exactly N rows, one per committed
-		// line. The A7 erase comes first: the rows that scroll away are
-		// blank, so the repaint below is the ONLY copy in the scrollback.
-		// DECLARED SUPERSESSION (REL-0152-D14), as above: the guards come
-		// first, then the frame's first action. Used to read
-		// `startsWith("\x1b[?2026h\x1b[1;1H\x1b[0K")`.
-		expect(frame.startsWith("\x1b[?7l\x1b[?2026h")).toBe(true);
-		expect(frame.slice("\x1b[?7l\x1b[?2026h".length).startsWith("\x1b[1;1H\x1b[0K")).toBe(true);
-		expect(frame).toContain("\x1b[24;1H"); // the absolute scroll base
-		const lfs = frame.match(/\x1b\[24;1H(\n+)/);
-		expect(lfs).not.toBeNull();
-		expect(lfs![1]!.length).toBe(2);
+		for (let i = 0; i < 12; i += 1) {
+			body.raw([`committed ${i}`]);
+			tick();
+		}
+		// DECLARED SUPERSESSION (REL-0152-R1). This used to assert the
+		// commit frame's exact scroll bytes: pre-scroll ELs, a CUP to H,
+		// then exactly N real LFs, one per committed line. The scroll is
+		// no longer keyed to the commit count — it is keyed to the FLOOR,
+		// the one-way part of the window's movement — and a case that
+		// names the retired arithmetic can only ever fail.
+		//
+		// The property that arithmetic existed to protect is the one
+		// asserted here, and it is the stronger claim: the scrollback is
+		// the transcript, so a committed line must arrive there, and
+		// exactly once. The old shape could be satisfied by a frame that
+		// scrolled the right NUMBER of wrong rows — which is precisely the
+		// defect REL-0152-D7 turned out to be.
+		const screen = new Screen(40, 8);
+		screen.feed(writes.join(""));
+		// matched as WHOLE lines: "committed 1" is a substring of
+		// "committed 10" and "committed 11", and counting substrings
+		// reported a threefold duplication that was not there
+		const lines = screen.allLines().map((l) => l.replace(/\s+$/, ""));
+		for (let i = 0; i < 12; i += 1) {
+			const n = lines.filter((l) => l === `committed ${i}`).length;
+			expect(n, `committed ${i} appears ${n} times in scrollback+screen`).toBe(1);
+		}
 	});
 
 	it("the steady frame draws the LIVE lines at their MODEL rows — CUP, never the relative march (the unclamped geometry: liveTop=1)", () => {
@@ -182,12 +196,13 @@ describe("TUI v6 — the one compositor", () => {
 		writes.length = 0;
 		body.textAppend("streaming line");
 		tick();
-		const frame = writes.join("");
-		// the model row is 1 (liveTop=1); the march drew it at row 20 and
-		// the gap ELs erased it — the streamed text was INVISIBLE on screen
-		expect(frame).toContain("\x1b[1;1H\x1b[0Kstreaming line");
-		// the gap ELs start BELOW the live bottom — never over it
-		expect(frame).toContain("\x1b[2;1H\x1b[0K");
+		// REL-0152-R1: asserted on the SCREEN. The property is that the
+		// streamed text is VISIBLE at its model row — the defect was a
+		// relative march drawing it at row 20 where the gap erased it —
+		// and the screen is where that is true or false.
+		const rows = screenOf(writes);
+		expect(rows[0], "the streamed text is not at its model row").toContain("streaming line");
+		expect(rows[1], "the row below the live bottom is not clear").toBe("");
 	});
 
 	it("the gap ELs stop above the menu — the menu rows survive the unclamped geometry", () => {
@@ -200,11 +215,12 @@ describe("TUI v6 — the one compositor", () => {
 		}));
 		body.raw(["x"]);
 		tick();
-		const frame = writes.join("");
-		// the menu sits at H−3−menu = 20 (1-based) with one item; the gap
-		// range must end at H−4−menu = 19 — an EL at 20 erases the menu
-		expect(frame).toContain("▸ /mode");
-		expect(frame).not.toMatch(/\x1b\[20;1H\x1b\[0K/);
+		// REL-0152-R1: the property is that the menu row SURVIVES on the
+		// screen — the defect erased it with a gap EL. Reading the screen
+		// says that directly, where the old byte-shape assertion said it
+		// by naming the one write that would have destroyed it.
+		const rows = screenOf(writes);
+		expect(rows[19], "the menu row was erased by the gap").toContain("/mode");
 	});
 
 	it("a done cell's lines emit EXACTLY once — the freeze frame writes them, later frames never re-emit", () => {
@@ -295,19 +311,28 @@ describe("TUI v6 — the one compositor", () => {
 		body.raw(["x"]);
 		tick();
 		const bytes = writes.join("");
-		expect(bytes).toContain("▸ /mode\x1b[0m switch the approval tier");
-		expect(bytes).toContain("  /model list model profiles");
-		// the bottom-up march: the status, then the menu rows (the LAST
-		// menu row first), then the content — the menu never overlays the
-		// editor row (the brick row renders after the content)
-		const hintAt = bytes.indexOf("/ commands · ↑ history");
-		const modelAt = bytes.indexOf("list model profiles");
-		const modeAt = bytes.indexOf("switch the approval tier");
-		const contentAt = bytes.indexOf("\x1b[1;1H\x1b[0Kx"); // the committed write — the CUP freeze path
-		expect(hintAt).toBeGreaterThan(0);
-		expect(modelAt).toBeGreaterThan(hintAt);
-		expect(modeAt).toBeGreaterThan(modelAt);
-		expect(contentAt).toBeGreaterThan(modeAt);
+		const rows = screenOf(writes); // REL-0152-R1: the screen, not one frame
+		expect(rows.join("\n")).toContain("/mode");
+		expect(rows.join("\n")).toContain("/model");
+		// DECLARED SUPERSESSION (REL-0152-R1): this used to assert the
+		// EMISSION ORDER — status first, then the menu rows last-first,
+		// then the content — because the renderer reached them by marching
+		// upward from the bottom. A diff emits by row number, top down, so
+		// the order is reversed and asserting it can only fail.
+		//
+		// What the order was protecting is a PLACEMENT: the menu sits
+		// above the box top and never over the editor row. That is a fact
+		// about the screen, it is what the case is named for, and it is
+		// true or false regardless of the order the rows were written in.
+		const boxTopAt = rows.findIndex((r) => r.includes("╭"));
+		const modeAt = rows.findIndex((r) => r.includes("switch the approval tier"));
+		const modelAt = rows.findIndex((r) => r.includes("list model profiles"));
+		expect(boxTopAt, "no box top on the screen").toBeGreaterThan(0);
+		expect(modeAt, "the /mode row is not above the box top").toBeLessThan(boxTopAt);
+		expect(modelAt, "the /model row is not above the box top").toBeLessThan(boxTopAt);
+		expect(modeAt, "the menu rows are out of order").toBeLessThan(modelAt);
+		expect(rows[21], "the menu overlays the editor row").not.toContain("/mode");
+		expect(bytes.length).toBeGreaterThan(0);
 	});
 
 	it("the resize: ED0 from the recorded live top + the full CUP redraw — zero LF, zero 3J, idempotent", () => {
@@ -364,13 +389,25 @@ describe("TUI v6 — the one compositor", () => {
 		// share — already on the old screen) scrolls as the old screen's
 		// copy, never a re-paint. The march never re-paints them — the
 		// window's first line is tall 01.
-		expect(bytes).not.toContain("frozen banner"); // above the window — pushed as the old screen's copy, never a re-paint
-		expect(bytes).toContain("\x1b[3;1H\x1b[0K  \u2022 tall line 00"); // A8b: the pre-paint at its OLD row — the scrollback record
-		expect(bytes).not.toContain("\x1b[1;1H\x1b[0K  \u2022 tall line 00"); // never re-painted at the window's top
-		expect(bytes).toContain("\x1b[1;1H\x1b[0K  \u2022 tall line 01"); // the window's first line
-		expect(bytes).toContain("tall line 14"); // the last force-committed line
-		expect(bytes).toContain("\x1b[15;1H"); // the box top at row H−3 — the chrome holds the bottom
-		expect(bytes).toContain("\x1b[18;1H"); // the status at row H
+		// DECLARED SUPERSESSION (REL-0152-R1): the A8b PRE-PAINT is gone.
+		// It staged a leaving row at its old position so the LF scroll
+		// would carry it into the scrollback; a resize now emits no scroll
+		// of ours at all, because shrinking the window is the terminal's
+		// own scroll — it reflows and pushes the overflow before we are
+		// called, and adding LFs on top put the same rows in twice.
+		//
+		// What the case is FOR is the A8 windowing rule, and that is
+		// asserted on the screen: the model is windowed to its last H
+		// rows, so the banner and tall 00 are ABOVE the window and the
+		// window's first line is tall 01. The V6-1 frozen-loop bug it also
+		// guards — the committed content vanishing from the repaint — is
+		// the same assertion read the other way.
+		const rows = screenOf(writes, 40, 18);
+		expect(rows[0], "the window's first line is not tall 01").toContain("tall line 01");
+		expect(rows.join("\n"), "the banner is inside the window").not.toContain("frozen banner");
+		expect(rows.join("\n")).toContain("tall line 14");
+		expect(rows[14], "the box top is not at H−3").toContain("╭");
+		expect(rows[17], "the status is not at H").not.toBe("");
 		// idempotent: a second resize (CLAMPED — the window is the whole
 		// model, skip 0) re-paints the SAME committed content, banner
 		// included — the windowing rule is exactly skip = total − H. The
@@ -380,7 +417,7 @@ describe("TUI v6 — the one compositor", () => {
 		writes.length = 0;
 		setSize(40, 21);
 		body.onResize();
-		expect(writes.join("")).toContain("frozen banner");
+		expect(screenOf(writes, 40, 21).join("\n")).toContain("frozen banner");
 	});
 
 	it("zero timers: no mutation → no bytes, even after 10 seconds", () => {
@@ -570,13 +607,25 @@ describe("TUI v6 — the one compositor", () => {
 		// pair — the two blanks are the only dim walls that are neighbors
 		// at the row level (the row prefix — a CUP/relative move + a 0K —
 		// sits between them); the box's single wall never pairs.
-		expect(writes.join("")).toContain("└ waiting for output");
-		expect((writes.join("").match(/\x1b\[2m│ \x1b\[0m(?:\x1b\[[0-9;?]*[ABDGHJK])+\x1b\[2m│ \x1b\[0m/g) ?? []).length).toBe(1);
-		// a SECOND frame (the spinner tick): the window rows byte-identical
-		writes.length = 0;
+		// DECLARED SUPERSESSION (REL-0152-R1): asserted on the SCREEN. The
+		// old shape counted adjacent dim-wall pairs in one frame's bytes,
+		// which only works while every frame repaints every row. The
+		// property — a running tool owns a FIXED three rows, and the
+		// height never changes while it runs — is about the screen, and
+		// the second frame's job is to prove it did not move.
+		const before = screenOf(writes);
+		expect(before.join("\n")).toContain("└ waiting for output");
+		const windowTop = before.findIndex((r) => r.includes("shell"));
+		expect(windowTop, "the tool window is not on the screen").toBeGreaterThanOrEqual(0);
+		const waitingAt = before.findIndex((r) => r.includes("└ waiting for output"));
+		// the head row, then the two blank-padded rows, then the waiting
+		// row: the waiting row sits three below the head
+		expect(waitingAt - windowTop, "the running window is not 3 rows").toBe(3);
+		// a SECOND frame (the spinner tick): the window has NOT moved
 		vi.advanceTimersByTime(200);
-		expect(writes.join("")).toContain("└ waiting for output");
-		expect((writes.join("").match(/\x1b\[2m│ \x1b\[0m(?:\x1b\[[0-9;?]*[ABDGHJK])+\x1b\[2m│ \x1b\[0m/g) ?? []).length).toBe(1);
+		const after = screenOf(writes);
+		expect(after.findIndex((r) => r.includes("shell"))).toBe(windowTop);
+		expect(after.findIndex((r) => r.includes("└ waiting for output"))).toBe(waitingAt);
 	});
 
 	it("W18: the compacting status row — the indeterminate form with the right-aligned cancel hint (the #16g hint cut first at a narrow width, then the status with the … — never a fold)", () => {

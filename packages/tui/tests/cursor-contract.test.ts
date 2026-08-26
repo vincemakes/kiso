@@ -147,8 +147,15 @@ class CursorProbe {
 		body.bindInput(() => editor.dockState(), this.lead ?? "");
 		if (panelState !== null) body.bindApproval(() => editor.panelState());
 		body.enter();
-		writes.length = 0; // the first frame is the full-redraw (CUP allowed there)
-		body.raw(["x"]); // an open cell → the steady frame
+		// DECLARED SUPERSESSION (REL-0152-R1): the boot frame's bytes are
+		// KEPT. This used to discard them and read only the frame after,
+		// on the reasoning that the interesting one is the steady frame.
+		// A diffing renderer does not rewrite a row that did not change,
+		// so the composer row appears in the frame that first draws it and
+		// in no other — and the lead assertion below observes the ROW.
+		// Every assertion is unchanged; the cursor park is still read from
+		// the LAST move in the stream, which is still the second frame's.
+		body.raw(["x"]); // an open cell → the frame after boot
 		tick();
 		const bytes = writes.join("");
 		// the frame's final move is the CHA to the marker — the cursor and

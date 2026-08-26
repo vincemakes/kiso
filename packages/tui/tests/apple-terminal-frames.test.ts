@@ -92,27 +92,27 @@ describe("REL-0150-D1 — the conservative frame mode on Apple Terminal", () => 
  * the status row, the box, the composer and the queue are identical to
  * the frame before, and identical rows have no business being erased.
  *
- * BOTH CASES ARE `it.fails` — they pin an OPEN defect, they do not bless
- * it. A row-level diff was built and reverted: it hit the gate (40 rows
- * to 8) and then failed the A7 replay, putting status-row text where the
- * box top belongs. Row-keyed caching is only correct if every path that
- * changes what a row NUMBER means clears it, and this file's own history
- * — A7, A8, A8b, TUI2-MD-1, the W11 boundary pileup — is a list of such
- * paths that is still being discovered. Trading a tear that self-heals
- * on the next frame for a mislaid box that does not is a bad trade.
+ * BOTH CASES WERE `it.fails` for three releases. A row-level diff was
+ * built and reverted first: it hit the gate (40 rows to 8) and then
+ * failed the A7 replay, putting status-row text where the box top
+ * belongs. Row-keyed caching is only correct if every path that changes
+ * what a row NUMBER means clears it, and this file's own history — A7,
+ * A8, A8b, TUI2-MD-1, the W11 boundary pileup — is a list of such paths
+ * that was still being discovered.
  *
- * The real fix is Claude Code's shape: a full screen buffer diffed cell
- * by cell, whose correctness comes from HOLDING a copy of the screen
- * rather than from remembering what was written. That is an
- * architecture round (0.15.4), not a patch.
+ * REL-0152-R1 is the fix that held: a full screen buffer diffed row by
+ * row, whose correctness comes from HOLDING a copy of the screen rather
+ * than from remembering what was written. A row that is wrong for any
+ * reason is repaired by the next frame, because the difference includes
+ * it — which is what the reverted attempts could not say.
  *
- * When it lands, these two cases start FAILING — that is the alarm — and
- * the fix flips `.fails` back to plain `it` in the same commit.
+ * Measured after: 1.0 row erases per keystroke and 1.1 per streaming
+ * delta, against 13 before. One row changes, one row is written.
  */
 const eraseCount = (s: string): number => (s.match(/\x1b\[0K/g) ?? []).length;
 
 describe("REL-0152-D1 — a streaming frame rewrites only what changed", () => {
-	it.fails("a delta that moves nothing but the live band erases a handful of rows, not a screenful — RED until the cell diff lands", () => {
+	it("a delta that moves nothing but the live band erases a handful of rows, not a screenful", () => {
 		vi.useFakeTimers();
 		const writes: string[] = [];
 		const body = new Body({ active: () => true, height: () => 40, width: () => 120, editCol: () => 1, write: (s) => writes.push(s), termProgram: "Apple_Terminal" });
@@ -128,7 +128,7 @@ describe("REL-0152-D1 — a streaming frame rewrites only what changed", () => {
 		expect(eraseCount(frame), `a steady streaming frame erased ${eraseCount(frame)} rows`).toBeLessThanOrEqual(8);
 	});
 
-	it.fails("the chrome rows are not rewritten when their content is unchanged — RED until the cell diff lands", () => {
+	it("the chrome rows are not rewritten when their content is unchanged", () => {
 		vi.useFakeTimers();
 		const writes: string[] = [];
 		const body = new Body({ active: () => true, height: () => 40, width: () => 120, editCol: () => 1, write: (s) => writes.push(s), termProgram: "Apple_Terminal" });
