@@ -100,3 +100,28 @@ describe("REL-0152-D11 — a referenced image becomes a content block", () => {
 		expect(typeof attachImages(`see ${big}`)).toBe("string");
 	});
 });
+
+/**
+ * REL-0152-D16 — the capsule resolves to the image, and the LINE stays
+ * a line rather than becoming a command.
+ */
+describe("REL-0152-D16 — an [Image #N] capsule becomes the image", () => {
+	it("resolves through the editor's map", () => {
+		const blocks = attachImages("what is wrong here? [Image #1]", new Map([[1, png]])) as unknown as { type: string; mediaType?: string }[];
+		expect(Array.isArray(blocks)).toBe(true);
+		expect(blocks.find((b) => b.type === "image")!.mediaType).toBe("image/png");
+		expect(blocks.some((b) => b.type === "text")).toBe(true);
+	});
+
+	it("an unregistered number stays literal text — a typed [Image #9] is not an attachment", () => {
+		expect(attachImages("see [Image #9]", new Map([[1, png]]))).toBe("see [Image #9]");
+	});
+
+	it("a capsule whose file has gone stays literal text", () => {
+		expect(attachImages("see [Image #1]", new Map([[1, join(dir, "vanished.png")]]))).toBe("see [Image #1]");
+	});
+
+	it("with no map at all the text is untouched — the pipe path has no editor", () => {
+		expect(attachImages("plain turn")).toBe("plain turn");
+	});
+});

@@ -36,7 +36,13 @@ describe("REL-0152-D15 — ctrl+V asks for the clipboard", () => {
 		});
 		editor.feed(enc(CTRL_V));
 		expect(asked).toBe(1);
-		expect(editor.line()).toBe("/tmp/shot.png");
+		// DECLARED SUPERSESSION (REL-0152-D16): what lands is the CAPSULE,
+		// not the path. Inserting the path was this feature's last bug —
+		// it begins with `/`, so the composer sent it to the slash-command
+		// dispatcher. What this case is for is that ctrl+V ASKS and
+		// something lands, and both are unchanged.
+		expect(editor.line()).toBe("[Image #1]");
+		expect(editor.attachments().get(1)).toBe("/tmp/shot.png");
 	});
 
 	it("ctrl+V inserts AT THE CURSOR, keeping the words around it", () => {
@@ -45,7 +51,7 @@ describe("REL-0152-D15 — ctrl+V asks for the clipboard", () => {
 		editor.feed(enc("what is wrong here? "));
 		editor.feed(enc(CTRL_V));
 		editor.feed(enc(" thanks"));
-		expect(editor.line()).toBe("what is wrong here? /tmp/shot.png thanks");
+		expect(editor.line()).toBe("what is wrong here? [Image #1] thanks");
 	});
 
 	it("a hook that finds nothing leaves the line untouched — no stray byte", () => {
@@ -71,7 +77,7 @@ describe("REL-0152-D15 — ctrl+V asks for the clipboard", () => {
 		});
 		editor.feed(enc("\x1b[200~\x1b[201~"));
 		expect(asked).toBe(1);
-		expect(editor.line()).toBe("/tmp/x.png");
+		expect(editor.line()).toBe("[Image #1]");
 	});
 
 	it("a paste WITH content never asks — that is ordinary text", () => {

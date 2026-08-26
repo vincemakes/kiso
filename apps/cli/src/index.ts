@@ -181,6 +181,9 @@ function editorInput(editor: Editor): LineInput {
 		onClipboardPaste(cb) {
 			editor.onClipboardPaste(cb);
 		},
+		attachments() {
+			return editor.attachments();
+		},
 		question(query, cb) {
 			editor.question(query, cb);
 		},

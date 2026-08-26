@@ -91,9 +91,25 @@ function look(path: string): { mediaType: ReturnType<typeof sniff>; data: string
  * standing in the text. Silently dropping it would tell the model about
  * a file it cannot see, which is worse than telling it nothing.
  */
-export function attachImages(text: string): string | ContentBlock[] {
+export function attachImages(text: string, files?: ReadonlyMap<number, string>): string | ContentBlock[] {
 	const found: Found[] = [];
 	const claimed: { start: number; end: number }[] = [];
+	// REL-0152-D16: the `[Image #N]` capsules first. The buffer carries a
+	// token and the editor carries the file, so a pasted screenshot never
+	// puts a path in the line — which is what sent one to the slash-command
+	// dispatcher. A capsule whose file has gone, or whose number nobody
+	// registered, stays as literal text: the same rule the path route uses,
+	// for the same reason.
+	if (files !== undefined && files.size > 0) {
+		for (const m of text.matchAll(/\[Image #(\d+)\]/g)) {
+			const path = files.get(Number(m[1]));
+			if (path === undefined) continue;
+			const hit = look(path);
+			if (hit === null) continue;
+			claimed.push({ start: m.index!, end: m.index! + m[0].length });
+			found.push({ start: m.index!, end: m.index! + m[0].length, block: { type: "image", sourceType: "base64", mediaType: hit.mediaType!, data: hit.data } });
+		}
+	}
 	for (const re of CANDIDATES) {
 		re.lastIndex = 0;
 		for (const m of text.matchAll(re)) {

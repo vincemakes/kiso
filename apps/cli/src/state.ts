@@ -170,6 +170,9 @@ export interface LineInput {
 	 *  nothing. The callback returns text to insert (a path) or null.
 	 *  Optional: the pipe path has no editor and no clipboard. */
 	onClipboardPaste?(cb: () => string | null): void;
+	/** REL-0152-D16: which file each `[Image #N]` capsule in the line
+	 *  stands for. Optional — the pipe path has no editor. */
+	attachments?(): Map<number, string>;
 	question(query: string, cb: (answer: string) => void): void;
 	cancelQuestion(): void;
 	/** W21: open the approval panel — the editor's state machine takes

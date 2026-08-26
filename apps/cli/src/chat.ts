@@ -893,7 +893,10 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			// turn without one is byte-identical to before the feature.
 			// Seeded turns are the product's own words and are never
 			// scanned — nothing it writes to itself is an attachment.
-			const content = seedSource !== undefined ? text : attachImages(text);
+			// REL-0152-D16: the capsules' files come from the editor, which
+			// is the only thing that knows which number stands for which
+			// screenshot.
+			const content = seedSource !== undefined ? text : attachImages(text, input.attachments?.());
 			const run = seedSource !== undefined ? session.run(content, { source: seedSource }) : session.run(content);
 			currentRun = run;
 			turnNo += 1;

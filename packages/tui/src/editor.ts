@@ -178,6 +178,24 @@ export class Editor {
 	 * every entry is text they chose to paste and may still submit.
 	 */
 	#pastes = new Map<number, string>();
+	/**
+	 * REL-0152-D16 — which file each `[Image #N]` capsule stands for.
+	 *
+	 * D15 made ctrl+V fetch the clipboard and it worked; then it inserted
+	 * the PATH, the path began with `/`, and the composer handed it to
+	 * the slash-command dispatcher. A feature that reaches the last step
+	 * and gives the result to the wrong parser has not shipped.
+	 *
+	 * So the buffer carries a token and this carries the file. The token
+	 * is what the LINE is — the dispatcher sees `[Image #1]`, which is
+	 * not a command and never could be — and the CLI reads this map when
+	 * it builds the turn. Unlike the text capsule, the image is NOT
+	 * expanded into the line on the way out: a path is not something the
+	 * model should be sent, and a transcript full of temp-file names is
+	 * not something the human should have to read.
+	 */
+	#attachments = new Map<number, string>();
+	#attachSeq = 0;
 	#pasteSeq = 0;
 	/** The buffer index where the in-flight paste began; null outside one. */
 	#pasteAt: number | null = null;
@@ -365,6 +383,13 @@ export class Editor {
 	 *  platform, the editor owns the moment. */
 	onClipboardPaste(cb: () => string | null): void {
 		this.#onClipboardPaste = cb;
+	}
+
+	/** REL-0152-D16: the files this line's `[Image #N]` capsules stand
+	 *  for, by their number. The CLI resolves them when it builds the
+	 *  turn; a capsule the human deleted is simply never looked up. */
+	attachments(): Map<number, string> {
+		return new Map(this.#attachments);
 	}
 
 	onRedirect(cb: (line: string) => void): void {
@@ -1255,9 +1280,13 @@ export class Editor {
 				// REL-0152-D15: ctrl+V asks for the clipboard. Inert with no
 				// hook wired, and 0x16 must NEVER reach the buffer — an
 				// unhandled control byte in a prompt is a corrupt prompt.
-				const text = this.#onClipboardPaste?.() ?? null;
-				if (text !== null && text !== "") {
-					for (const ch of text) this.#insert(ch.codePointAt(0)!);
+				const file = this.#onClipboardPaste?.() ?? null;
+				if (file !== null && file !== "") {
+					// REL-0152-D16: the capsule goes in the buffer, the file
+					// goes beside it. See #attachments.
+					this.#attachSeq += 1;
+					this.#attachments.set(this.#attachSeq, file);
+					for (const ch of `[Image #${this.#attachSeq}]`) this.#insert(ch.codePointAt(0)!);
 					this.#onRender();
 				}
 				i += 1;
@@ -1959,9 +1988,11 @@ export class Editor {
 			// REL-0152-D11: an empty paste is the image case — see
 			// #onEmptyPaste. Anything it returns is ordinary text from here
 			// on and takes the same route as if it had been typed.
-			const substitute = this.#onClipboardPaste?.() ?? null;
-			if (substitute === null || substitute === "") return;
-			run = [...substitute].map((ch) => ch.codePointAt(0)!);
+			const file = this.#onClipboardPaste?.() ?? null;
+			if (file === null || file === "") return;
+			this.#attachSeq += 1;
+			this.#attachments.set(this.#attachSeq, file);
+			run = [...`[Image #${this.#attachSeq}]`].map((ch) => ch.codePointAt(0)!);
 		}
 		if (this.#historyIdx !== null) this.#historyIdx = null;
 		this.#queuePopMode = false;
