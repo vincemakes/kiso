@@ -120,7 +120,14 @@ export function settledScreen(raw: string, rows = 24, cols = 100): string[] {
 /** The whole emulator at the settle, for the gates that need the CURSOR
  *  as well as the rows (TUI2-R1.5 ⑩). */
 export function settledTerm(raw: string, rows = 24, cols = 100): VtScreen {
-	const at = raw.indexOf("\x1b[r");
+	// REL-0152-D19: the LAST one. `ESC[r` marks the teardown — it used to
+	// be the only one in the stream, so the first was the last. The dock
+	// now also RELEASES an inherited scroll region on entry, because a
+	// product whose claim is that it survives kill -9 will regularly be
+	// started in a terminal the previous instance never cleaned up. With
+	// two in the stream, `indexOf` cut at the boot one and replayed almost
+	// nothing.
+	const at = raw.lastIndexOf("\x1b[r");
 	const screen = new VtScreen(rows, cols);
 	screen.write(Buffer.from(at > 0 ? raw.slice(0, at) : raw, "utf8"));
 	return screen;

@@ -241,6 +241,8 @@ export class Body {
 	#resizeFrame = false;
 	/** REL-0152-D18: a drag's signals are still arriving. */
 	#resizePending = false;
+	/** REL-0152-D19: the inherited terminal has not been released yet. */
+	#needsReset = false;
 	#resizeTimer: ReturnType<typeof setTimeout> | null = null;
 	#lastH = 0;
 	// KC1 §6: the composer's recorded extent — the row count the last
@@ -970,6 +972,42 @@ export class Body {
 		if (process.stdout.isTTY !== true || palette().bold === "" || rows < 4) return;
 		this.#docked = true;
 		this.#guardOutput();
+		// REL-0152-D19: RELEASE the terminal we were handed, before the
+		// first frame.
+		//
+		// The dock resets on the way OUT and reset nothing on the way IN,
+		// so every session began in whatever state the previous occupant
+		// left. For THIS product that is not an edge case: kiso's claim is
+		// that it survives kill -9, which makes "the last instance died
+		// without running its teardown" a supported and advertised way to
+		// arrive here.
+		//
+		// Both of these confine writes to a SUB-REGION of the screen,
+		// which is the only way content can survive at a column the dock
+		// paints — every chrome row is exactly W wide and written from
+		// column 1, so an erase plus a W-wide write covers the row end to
+		// end unless the write cannot reach the ends.
+		//
+		//   ESC[r     the scroll region back to the whole screen
+		//   ESC[?69l  left/right margin mode OFF (DECLRMM) — ESC[r does
+		//             NOT release margins, which is why resetting only the
+		//             region on exit was never enough
+		//
+		// And two that a KILLED kiso leaves set, which REL-0152-D14
+		// introduced and this is the first thing to defend against it: a
+		// frame turns autowrap off and the cursor invisible and restores
+		// both at its end, so a process that dies BETWEEN those two points
+		// hands the shell — and the next kiso — a terminal with wrapping
+		// off and no cursor. `kill -9` cannot be caught, so the entry is
+		// the only place this can be repaired, and a product whose claim
+		// is that it survives kill -9 has to repair it there.
+		//
+		//   ESC[?7h   autowrap back to its default
+		//   ESC[?25h  the cursor visible again
+		//
+		// Idempotent, sixteen bytes, once per session, and correct whether
+		// or not anything was actually left set.
+		this.#needsReset = true;
 		this.#attachResize();
 		this.#fullRedraw = true;
 		this.#dirty = true;
@@ -1531,6 +1569,15 @@ export class Body {
 		// Restored at the end of every frame: prose written OUTSIDE a
 		// frame (bodyLog, an error) is ordinary output and must still
 		// wrap, and the shell inherits the terminal when kiso exits.
+		if (this.#needsReset) {
+			// REL-0152-D19: released as the FIRST bytes of the FIRST frame
+			// rather than as a write of its own. A separate write would be
+			// one more thing between the dock coming up and its first
+			// frame, and the PTY gates that wait on the boot stream feel
+			// it; inside the frame it is four sequences and no new event.
+			this.#needsReset = false;
+			out.push("\x1b[r\x1b[?69l\x1b[?7h\x1b[?25h");
+		}
 		out.push("\x1b[?7l");
 		out.push(this.#conservative ? "\x1b[?25l" : "\x1b[?2026h"); // D1: sync ON, or cursor-hide where 2026 is dead bytes
 		// A8: the bottom-anchored window (the model's last H rows) shifts
