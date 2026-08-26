@@ -33,8 +33,8 @@ needs **2.55× fewer input tokens than pi and 32× fewer than Claude Code**
 with identical task outcomes. The full table and its honest footnotes are
 in the [comparison section](#comparison).
 
-**The core is a 2,000-line kernel, enforced by CI** — it cannot exceed
-2,000 lines; past that you grow a package. See [the rule](#the-rule).
+**The core is a 2,100-line kernel, enforced by CI** — it cannot exceed
+2,100 lines; past that you grow a package. See [the rule](#the-rule).
 
 **A frozen durable-execution contract, enforced by gates** — the session
 format and its recovery semantics are frozen; every invariant has an
@@ -112,7 +112,7 @@ resume, the one with it executes exactly once.
 
 ## The rule
 
-> The core will never exceed **2,000 lines**. Any PR that pushes it over gets
+> The core cannot exceed **2,100 lines**. Any PR that pushes it over gets
 > closed, however good the feature is. CI enforces this before it installs a
 > single dependency.
 >
@@ -121,41 +121,44 @@ resume, the one with it executes exactly once.
 > The gate is a snapshot discipline, not a self-adjusting ratchet:
 > recalibration happens only by adjudicated ruling and only for
 > spec-mandated growth — the standing escape hatch is EXTRACTION (ADR-0043).
+> It has moved exactly once: 2,000 → 2,100, by ADR-0043 Amendment 9, for
+> the F4 kernel round (mid-stream abandon hygiene is loop semantics by
+> ADR-0005 and could not honestly live anywhere else).
 
 ```
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts    742
+  packages/core/src/kernel/loop.ts     847
   packages/core/src/protocol/events.ts 438
-  packages/core/src/kernel/project.ts 353
+  packages/core/src/kernel/project.ts  352
   ...
-  total                               1997  / 2000
-  ✓ 29 lines of headroom remaining.
+  total                               2042  / 2100
+  ✓ 58 lines of headroom remaining.
 
 cli:
-  apps/cli/src/chat.ts  478
-  apps/cli/src/index.ts 382
+  apps/cli/src/chat.ts  716
+  apps/cli/src/index.ts 593
   ...
-  total                 1870  / 1920
-  ✓ 50 lines of headroom remaining.
+  total                 2734  / 1920
+  ▸ 814 over the reference figure — report-only (ADR-0043 Amendment 8).
 
 tui:
-  packages/tui/src/compositor.ts 986
-  packages/tui/src/editor.ts     535
+  packages/tui/src/compositor.ts 1235
+  packages/tui/src/editor.ts     1206
   ...
-  total                          1761  / 2400
-  ✓ 639 lines of headroom remaining.
+  total                          3307  / 4000
+  ✓ 693 lines of headroom remaining.
 
 tui-cells:
-  packages/tui-cells/src/components.ts 618
+  packages/tui-cells/src/components.ts 779
   ...
-  total                                1116  / 1280
-  ✓ 164 lines of headroom remaining.
+  total                                2272  / 1280
+  ▸ 992 over the reference figure — report-only (ADR-0043 Amendment 8).
 ```
 
-(The rule above binds THE CORE — that hard 2,000 is the design and it
-does not move. The product surfaces run a different regime since
+(The rule above binds THE CORE — the hard budget is the design; it
+moves only by adjudicated amendment, and has done so once. The product surfaces run a different regime since
 ADR-0043 Amendment 8: the cli/tui/tui-cells figures are REFERENCE
 figures, printed on every check for visibility but never failing it —
 their protection moved to the architecture gates (the TUI never owns
@@ -174,7 +177,7 @@ A framework, in two layers:
 
 | Layer | Owns |
 |---|---|
-| **core** (`@vincemakes/kiso-core`, ≤ 2,000 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · modes · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
+| **core** (`@vincemakes/kiso-core`, ≤ 2,100 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · modes · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
 | **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-tui` (the pure terminal layer — cell renderer, dock, raw editor, diff; zero runtime deps, input is data / output is bytes — reusable standalone, API still 0.x semantics) · `@vincemakes/kiso-tui-cells` (the components cell renderer, extracted from the tui — the ADR-0041 escape hatch) · the four official extensions (`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext` — the first three ship INSIDE the CLI, task is opt-in, see Extensions) · `@vincemakes/kiso-code` (the flagship coding agent) |
 
 The core stays a kernel: it decides nothing that repeats across products. The
@@ -194,7 +197,7 @@ Two properties every layer gets for free:
 
 Loop *business logic*. UI. Permission policy. Billing. Skills content.
 Retrieval. Those are not the core's job — they live in packages, where the
-2,000-line cap does not bind them. A core that decides them for you is a blob,
+2,100-line cap does not bind them. A core that decides them for you is a blob,
 and a blob is the thing you eventually fight.
 
 ## Requirements
@@ -1046,7 +1049,7 @@ below is MEASURED by `npm run check` (the size gates: core is enforced,
 the cli/tui/tui-cells caps are report-only since Amendment 8 — the
 numbers are pressure readings, not passed gates):
 
-- **core** (1,997/2,000 lines, enforced) — protocol, loop (single honest terminal;
+- **core** (2,042/2,100 lines, enforced) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; retry only before anything streamed; one abort signal reaches
   backoff, approval waits, every pending tool, and the SDK), hooks,
@@ -1198,7 +1201,7 @@ decline`); the body scrolls
   clean-checkout `npm ci` + the full gate.
 
 `npm run check` = build → typecheck (packages + root scripts + tests) →
-tests → size gate (core 2,000 enforced; cli 1,920 / tui 4,000 / tui-cells 1,280 report-only) →
+tests → size gate (core 2,100 enforced; cli 1,920 / tui 4,000 / tui-cells 1,280 report-only) →
 pack gate (dist + README + LICENSE in every tarball) → whitespace gate (no
 trailing whitespace, every file ends with a newline) → CJK gate (the tracked
 tree stays CJK-free — `README.zh.md` is the only exemption)

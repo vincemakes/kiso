@@ -663,6 +663,15 @@ export async function consumeRun(
 			case "text_end":
 				body.textEnd();
 				break;
+			case "model_output_abandoned":
+				// F4: the transcript must not glue drafts — the durable void
+				// closes the abandoned draft VISIBLY, and the retried stream
+				// (or the error terminal) opens on a fresh block. Without
+				// this, the projection is clean while the screen welds two
+				// answers into one — the surface-lying class.
+				body.textEnd();
+				body.notice("stream interrupted — the draft above is abandoned");
+				break;
 			case "usage": {
 				const delta = usageFromEvent(session.provider, ev, prevTotal, agentModel);
 				usage = delta.usage;

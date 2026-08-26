@@ -310,3 +310,31 @@ Ruling:
   deterministically PTY-tested?
 - Extraction remains a TOOL for cleaning responsibility — never again
   a tax paid to a number.
+
+## Amendment 9 (2026-08-26): the core budget moves once, for F4 — 2,000 → 2,100
+
+The occasion: F4 (mid-stream truncation recovery, the ratified LR-1
+item 1 mini-spec) lands the abandon hygiene in the kernel loop — settle,
+drain, durable void, bounded re-request — at +42 counted lines after
+genuine deduplication (`drainSettled`: one settle semantics, two
+callers). Core stood at 1,997/2,000 before the round.
+
+Why the code may not live elsewhere: ADR-0005 pins retry state in the
+loop's generator frame; the abandon sequence interleaves with the
+commit gate, the void signal, and the append+yield ordering the loop
+alone owns. Extracting it would relocate correctness authority to make
+a ledger line look small — the semantic surface (the TCB) would not
+shrink by one decision. That is the exact anti-pattern this project has
+already named: minification and statistics-driven extraction of
+correctness code are both refused.
+
+Ruling:
+- **core: 2,000 → 2,100, still HARD.** The figure preserves pressure
+  (~58 lines of headroom is one small invariant, not a feature); the
+  next crossing requires the next explicit adjudication, exactly as
+  this one did.
+- The law stays semantic: the budget is a pressure sensor that forces
+  the question "does this decision belong to the kernel?" — F4's answer
+  is yes, by ADR-0005 and by the invariants it enforces.
+- This amendment ships inside the F4 round and is reverted by reverting
+  the round; the release report carries the crossing explicitly.

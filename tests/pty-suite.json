@@ -12,6 +12,7 @@
 		"apps/cli/tests/e2e.test.ts",
 		"apps/cli/tests/e5-composition.test.ts",
 		"apps/cli/tests/extensions-e2e.test.ts",
+		"apps/cli/tests/f4-stream-cut-pty.test.ts",
 		"apps/cli/tests/feel.test.ts",
 		"apps/cli/tests/first-run.test.ts",
 		"apps/cli/tests/graceful-exit-release.test.ts",

@@ -944,3 +944,88 @@ describe("EC-1 ⑥ — the crash cells of the Turn Commit boundary", () => {
 		expect(recordsOf(dir).filter((e) => e.type === "permission_decided")).toHaveLength(1);
 	});
 });
+
+// ── F4 — the mid-stream retry's crash cells ───────────────────────────────
+//
+// F4 makes the loop the THIRD producer of `model_output_abandoned`: a
+// retryable mid-stream cut settles the attempt, voids the draft, and
+// re-requests in the same process. The durable prefixes it can leave are
+// exactly the ones the resume already owns (the marker is a boundary), so
+// these cells prove NO NEW AMBIGUITY: each prefix derives the one action
+// the prefix table always derived for that shape.
+describe("F4 — the mid-stream retry's crash cells", () => {
+	it("F-T3/T4/T6b — kill during backoff, after the void, or before the exhaustion terminal: the three kill points are durably indistinguishable — CONTINUE_MODEL, exactly one marker", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mx-f4a-"));
+		const seed: readonly Event[] = [
+			{ seq: 0, type: "user_input", content: "go" },
+			{ seq: 1, type: "text_delta", text: "half a draft" },
+			{ seq: 2, type: "model_output_abandoned", voidFromSeq: 0, reason: "the provider stream failed before this turn committed" },
+		];
+		const store = new SessionStore(dir);
+		for (const ev of seed) await store.append("s", "r1", ev);
+		store.closeAll();
+		// The marker is the last boundary and nothing follows it: the one
+		// safe action is a fresh model call — the in-frame retry budget died
+		// with the process (ADR-0005 Amendment 1: per-process by design).
+		expect(planAt(dir)).toEqual({ kind: "CONTINUE_MODEL" });
+
+		const { adapter } = scriptedAdapter([DONE_TURN]);
+		const session2 = await reopenAgent(dir, adapter);
+		const events: Event[] = [];
+		for await (const ev of session2.resume()) events.push(ev);
+		expect(terminalOf(events)).toMatchObject({ outcome: { kind: "completed" } });
+		// Exactly one marker — the resume never doubles the void.
+		expect(recordsOf(dir).filter((e) => e.type === "model_output_abandoned")).toHaveLength(1);
+	});
+
+	it("F-T6a — kill between the settled receipts and the marker: the receipted read stays a fact, the draft voids, nothing re-executes", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mx-f4b-"));
+		const seed: readonly Event[] = [
+			{ seq: 0, type: "user_input", content: "go" },
+			{ seq: 1, type: "text_delta", text: "drafting" },
+			{ seq: 2, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } },
+			{ seq: 3, type: "tool_execution_started", executionId: "ex-1", callId: "c1", name: "web_search", input: { query: "k" } },
+			{ seq: 4, type: "tool_execution_succeeded", executionId: "ex-1", callId: "c1", result: { content: "read result", isError: false } },
+		];
+		const store = new SessionStore(dir);
+		for (const ev of seed) await store.append("s", "r1", ev);
+		store.closeAll();
+		// A receipted execution is an OUTCOME, never uncertain (rule 3); the
+		// delta suffix is a draft (rule 4) — void first, repairs follow.
+		expect(planAt(dir)).toEqual({ kind: "ABANDON_DRAFT", voidFromSeq: 0 });
+
+		const { adapter } = scriptedAdapter([DONE_TURN]);
+		const session2 = await reopenAgent(dir, adapter);
+		const events: Event[] = [];
+		for await (const ev of session2.resume()) events.push(ev);
+		expect(terminalOf(events)).toMatchObject({ outcome: { kind: "completed" } });
+		const records = recordsOf(dir);
+		expect(records.filter((e) => e.type === "model_output_abandoned")).toHaveLength(1);
+		// The receipt survives as audit fact; the execution NEVER re-runs.
+		expect(records.filter((e) => e.type === "tool_execution_started")).toHaveLength(1);
+		expect(records.filter((e) => e.type === "tool_execution_succeeded")).toHaveLength(1);
+	});
+
+	it("F-T6c — kill after the re-request began streaming: ordinary Gap B on the NEW draft, the marker is its boundary", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mx-f4c-"));
+		const seed: readonly Event[] = [
+			{ seq: 0, type: "user_input", content: "go" },
+			{ seq: 1, type: "text_delta", text: "first draft" },
+			{ seq: 2, type: "model_output_abandoned", voidFromSeq: 0, reason: "the provider stream failed before this turn committed" },
+			{ seq: 3, type: "text_delta", text: "second draft" },
+		];
+		const store = new SessionStore(dir);
+		for (const ev of seed) await store.append("s", "r1", ev);
+		store.closeAll();
+		// The NEW draft voids from the MARKER, not from the run's start —
+		// the retry moved the boundary, and recovery agrees.
+		expect(planAt(dir)).toEqual({ kind: "ABANDON_DRAFT", voidFromSeq: 2 });
+
+		const { adapter } = scriptedAdapter([DONE_TURN]);
+		const session2 = await reopenAgent(dir, adapter);
+		const events: Event[] = [];
+		for await (const ev of session2.resume()) events.push(ev);
+		expect(terminalOf(events)).toMatchObject({ outcome: { kind: "completed" } });
+		expect(recordsOf(dir).filter((e) => e.type === "model_output_abandoned")).toHaveLength(2);
+	});
+});

@@ -27,7 +27,7 @@ import type { EventInput } from "@vincemakes/kiso-core";
 
 /** One model turn: the events it emits. Tool results live in fixture tools. */
 export interface FauxTurn {
-	readonly events: readonly (EventInput | FauxDelay)[];
+	readonly events: readonly (EventInput | FauxDelay | FauxFail)[];
 }
 
 /** W18: the harness's slow-adapter capability — a `delay` pseudo-event
@@ -41,6 +41,19 @@ export interface FauxTurn {
 export interface FauxDelay {
 	readonly type: "delay";
 	readonly ms: number;
+}
+
+/** F4: the harness's stream-cut capability — a `fail` pseudo-event THROWS a
+ *  structured-error-shaped object after the events before it, the way a real
+ *  provider dies mid-stream. Like `delay` (W18), it is a declared harness
+ *  capability of the fake model, never a product branch: the mid-stream
+ *  retry gates need a provider that cuts on cue. */
+export interface FauxFail {
+	readonly type: "fail";
+	readonly code: string;
+	readonly status?: number;
+	readonly retryable: boolean;
+	readonly message?: string;
 }
 
 export type FauxScript = readonly FauxTurn[];
@@ -73,6 +86,14 @@ export function createFauxProvider(script: FauxScript): Adapter {
 						if (ev.type === "delay") {
 							await new Promise((resolve) => setTimeout(resolve, ev.ms));
 							continue;
+						}
+						if (ev.type === "fail") {
+							throw {
+								code: ev.code,
+								...(ev.status !== undefined ? { status: ev.status } : {}),
+								retryable: ev.retryable,
+								message: ev.message ?? ev.code,
+							};
 						}
 						yield { ...ev, seq: seq++ } as AdapterEvent;
 					}

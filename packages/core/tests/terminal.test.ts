@@ -3,8 +3,11 @@
  *
  * 1. A provider's stop reason is NEVER unconditionally converted to
  *    `completed`: max_tokens gets its own terminal kind, abort its own.
- * 2. A turn that has already streamed content is never silently re-streamed:
- *    retry is only legal BEFORE the first event of the turn left the adapter.
+ * 2. A turn that has already streamed content is never SILENTLY re-streamed.
+ *    F4 (declared supersession): a mid-stream retry is legal once the draft
+ *    is durably voided (`model_output_abandoned`) — the no-duplicates
+ *    invariant moved from "never re-request" to "the projection carries the
+ *    draft zero times"; the pre-stream retry stays the cheap path.
  * 3. Every run converges on exactly one terminal.
  */
 
@@ -12,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import type { Adapter, StreamOptions } from "../src/protocol/adapter.js";
 import type { Event, TerminalEvent } from "../src/protocol/events.js";
 import { loop } from "../src/kernel/loop.js";
+import { projectMessages } from "../src/kernel/project.js";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
@@ -177,11 +181,16 @@ describe("stop reasons map to explicit terminals (never blanket completed)", () 
 	});
 });
 
-describe("retry discipline: nothing streamed ⇒ retry is legal", () => {
-	it("a retryable error AFTER content was streamed never re-streams (no duplicates)", async () => {
+describe("retry discipline: a streamed retry is legal only over a voided draft (F4)", () => {
+	// F4 — DECLARED SUPERSESSION of "never re-streams (no duplicates)": the
+	// retry now happens, and the invariant it protected holds one level
+	// down — the abandoned draft is voided before the re-request, so the
+	// projection (what the next request derives) carries no duplicate.
+	it("a retryable error AFTER content was streamed retries over a voided draft (F4)", async () => {
 		let calls = 0;
 		const flaky: Adapter = {
 			stream: async function* (opts: StreamOptions) {
+				void opts;
 				calls += 1;
 				yield { seq: 0, type: "text_start" };
 				yield { seq: 0, type: "text_delta", text: "partial" };
@@ -198,10 +207,14 @@ describe("retry discipline: nothing streamed ⇒ retry is legal", () => {
 		})) {
 			events.push(ev);
 		}
-		expect(calls).toBe(1); // never re-streamed
-		const deltas = events.filter((e) => e.type === "text_delta").map((e) => (e as { text: string }).text);
-		expect(deltas).toEqual(["partial"]); // exactly once
+		expect(calls).toBe(4); // 1 + maxRetries re-requests, budget shared with pre-stream
+		// Every abandoned attempt is voided BEFORE its successor streams.
+		const markers = events.filter((e) => e.type === "model_output_abandoned");
+		expect(markers.length).toBe(4);
 		expect(terminalOf(events).outcome.kind).toBe("error");
+		// The no-duplicates invariant, preserved: the projection carries NO
+		// draft text at all — four aborted attempts project to nothing.
+		expect(JSON.stringify(projectMessages(events))).not.toContain("partial");
 	});
 
 	it("a retryable error BEFORE anything streamed retries inside the frame (ADR-0005)", async () => {
@@ -229,7 +242,11 @@ describe("retry discipline: nothing streamed ⇒ retry is legal", () => {
 		expect(terminalOf(events).outcome).toEqual({ kind: "completed" });
 	});
 
-	it("a partial tool call is never re-streamed either", async () => {
+	// F4 — DECLARED SUPERSESSION of "a partial tool call is never
+	// re-streamed": the partial call is part of the draft, the draft is
+	// voided, and the retry proceeds; the partial call never reaches the
+	// projection and never launches (no complete tool_call_end existed).
+	it("a partial tool call is voided with its draft and the turn retries (F4)", async () => {
 		let calls = 0;
 		const flaky: Adapter = {
 			stream: async function* () {
@@ -249,7 +266,11 @@ describe("retry discipline: nothing streamed ⇒ retry is legal", () => {
 		})) {
 			events.push(ev);
 		}
-		expect(calls).toBe(1);
+		expect(calls).toBe(3); // 1 + maxRetries, then exhaustion
+		expect(events.filter((e) => e.type === "model_output_abandoned").length).toBe(3);
 		expect(terminalOf(events).outcome.kind).toBe("error");
+		// The partial call never executed and never projected.
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+		expect(JSON.stringify(projectMessages(events))).not.toContain("c1");
 	});
 });

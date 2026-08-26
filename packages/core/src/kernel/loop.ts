@@ -300,18 +300,37 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// the launch records it and the loop re-throws it after the settle
 	// (same propagation the sequential execute had).
 	let launchError: unknown = null;
+	/** Drain until every launch settles: the receipts land (the write-ahead
+	 *  acks resolve during the pump); the 10ms poll covers mid-handler gaps
+	 *  and the ask pause — never a busy spin, never a deadlock on an ack.
+	 *  One settle semantics, two callers: the turn settle and F4's abandon. */
+	const drainSettled = async function* (): AsyncGenerator<Event> {
+		while (execActive > 0) {
+			yield* drainExec();
+			await sleep(10);
+		}
+		yield* drainExec();
+	};
 	let violated = false;
 	// The violated signal: rejects when the turn is voided — the paused
 	// ask-branches bail (abort semantics for not-started executions). Typed
 	// `never` so the ask race resolves to the human decision alone.
+	// F4: PER-ATTEMPT state now — a mid-stream retry voids one attempt and
+	// continues, so the signal re-arms after each abandon (pre-F4 a void
+	// always ended the run and one signal per run sufficed).
 	let violatedReject: () => void = () => {};
-	const violatedP = new Promise<never>((_, reject) => {
-		violatedReject = () => reject();
-	});
-	// The turn's ask-branches race it; a turn with NO ask leaves the
-	// rejection un-consumed — the no-op keeps it from surfacing as an
-	// unhandled rejection while the race consumers still receive it.
-	void violatedP.catch(() => {});
+	let violatedP!: Promise<never>;
+	const armVoidSignal = (): void => {
+		violated = false;
+		violatedP = new Promise<never>((_, reject) => {
+			violatedReject = () => reject();
+		});
+		// The turn's ask-branches race it; a turn with NO ask leaves the
+		// rejection un-consumed — the no-op keeps it from surfacing as an
+		// unhandled rejection while the race consumers still receive it.
+		void violatedP.catch(() => {});
+	};
+	armVoidSignal();
 	// ── EC-1 ① — the DURABLE TURN COMMIT gate ──────────────────────────────
 	// Invariant 3 (COMMIT GATING): a commit-required handler never starts
 	// before this turn's stop is DURABLE. The gate RESOLVES exactly once per
@@ -583,8 +602,9 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		// EC-1 ⑤ (the live void): the last durable event BEFORE this turn's
 		// model output — the previous turn's stop, the user input, or a
 		// microcompact boundary. Everything after it is this turn's draft,
-		// which is exactly the range a void must abandon.
-		const turnStart = log.lastSeq;
+		// which is exactly the range a void must abandon. F4: `let` — a
+		// mid-stream retry moves the boundary to its abandonment marker.
+		let turnStart = log.lastSeq;
 		// EC-1 ①: this turn's commit gate — reset BEFORE any call can launch.
 		committed = false;
 		turnSettled = new Promise<void>((res) => {
@@ -678,11 +698,68 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					return;
 				}
 				const structured = toStructuredError(err);
-				// Phase B: never silently re-stream a turn that already
-				// emitted content — duplicates are worse than failures.
+				// Phase B: never SILENTLY re-stream a turn that already emitted
+				// content — duplicates are worse than failures. Nothing streamed
+				// yet: the cheap in-place retry (no draft exists to void).
 				if (structured.retryable && !streamed && attempts < maxRetries) {
 					attempts += 1;
 					await sleep(attempts * 250, signal); // abortable backoff
+					continue;
+				}
+				// F4 — ABANDON HYGIENE, every streamed exit: the attempt settles
+				// (parked launches bail on the un-committed gate, started ones
+				// land their receipts), the draft is durably voided, and only
+				// THEN a retry or the terminal. Pre-F4 this path returned with
+				// the draft un-voided under the terminal — the next request
+				// projected it as committed history (ADR-0047 Gap B, live), and
+				// a dangling tool_call_end fed the provider-400 class (EC1-F1).
+				settleTurn();
+				violated = true;
+				violatedReject();
+				yield* drainSettled();
+				if (launchError !== null) throw launchError;
+				// Invariant 3 makes a started commit-required execution in the
+				// draft structurally impossible (the turn never committed) —
+				// CHECKED, not assumed: if one ever exists, fall back to the
+				// pre-F4 abandon (no marker over a started fact, no retry).
+				const unsafeStarted = log.all.some(
+					(e) => e.type === "tool_execution_started" && e.seq > turnStart && registry.get(e.name)?.effects?.precommitSafe !== true,
+				);
+				if (log.lastSeq > turnStart && !unsafeStarted) {
+					// The loop's THIRD producer of `model_output_abandoned` (an
+					// existing variant — no new protocol surface): broader than
+					// the live void's dangling-call condition, because the SAME
+					// process re-requests immediately and an un-voided text
+					// draft would glue onto the retried stream's projection.
+					const marker = log.append({
+						type: "model_output_abandoned",
+						voidFromSeq: turnStart,
+						reason: "the provider stream failed before this turn committed",
+					});
+					if (hooks.onEvent) await hooks.onEvent(marker, {}).catch(() => {});
+					yield marker;
+				}
+				// F4 — the mid-stream retry: same classification, same per-turn
+				// budget (ADR-0005 Amendment 1: frame state, per-process).
+				if (structured.retryable && attempts < maxRetries && !unsafeStarted) {
+					attempts += 1;
+					await sleep(attempts * 250, signal); // the same abortable backoff
+					// Fresh per-attempt state — the marker is the boundary now.
+					pending.length = 0;
+					lastStop = undefined;
+					stopCount = 0;
+					sawStop = false;
+					postStopViolation = false;
+					forgedEvent = false;
+					duplicateStop = false;
+					heldStop = null;
+					streamed = false;
+					committed = false;
+					turnSettled = new Promise<void>((res) => {
+						settleTurn = res;
+					});
+					armVoidSignal();
+					turnStart = log.lastSeq;
 					continue;
 				}
 				yield await terminal({ kind: "error", error: structured });
@@ -813,11 +890,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			violated = true;
 			violatedReject();
 		}
-		while (execActive > 0) {
-			for await (const q of drainExec()) yield q;
-			await sleep(10);
-		}
-		for await (const q of drainExec()) yield q;
+		yield* drainSettled();
 		if (launchError !== null) throw launchError;
 		if (voided !== null) {
 			// EC-1 ⑤ — THE LIVE VOID. ① means a voided turn's commit-required
