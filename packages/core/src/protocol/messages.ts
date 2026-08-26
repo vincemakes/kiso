@@ -98,6 +98,13 @@ export interface AssistantMessage {
 	 * follow-up requests). Present only when the turn actually reasoned.
 	 */
 	readonly reasoning?: string;
+	/**
+	 * MG-1 (ADR-0051 Amendment 5): the turn's committed continuation
+	 * envelope, derived from its stop. Opaque to everything but the
+	 * scope-matched adapter; messages are the versioned model-request
+	 * side (Amendment 3(a)), never the frozen plane.
+	 */
+	readonly continuation?: import("./events.js").Continuation;
 }
 
 /**

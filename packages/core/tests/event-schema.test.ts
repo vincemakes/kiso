@@ -9,6 +9,31 @@ import { isKisoEvent } from "../src/index.js";
 describe("isKisoEvent per-variant schema (A group)", () => {
 	it("accepts well-formed events of every persisted variant", () => {
 		expect(isKisoEvent({ seq: 0, type: "stop", reason: "end_turn" })).toBe(true);
+		// MG-1 (A5): the continuation field is TRULY optional — absent above,
+		// well-formed below, and the key set stays open.
+		expect(
+			isKisoEvent({
+				seq: 0,
+				type: "stop",
+				reason: "tool_use",
+				continuation: {
+					scope: { providerId: "anthropic", apiId: "anthropic-messages", modelId: "claude-x" },
+					entries: [{ kind: "anthropic.content_block", required: true, data: "{}" }],
+				},
+			}),
+		).toBe(true);
+		expect(
+			isKisoEvent({
+				seq: 0,
+				type: "stop",
+				reason: "end_turn",
+				continuation: {
+					scope: { providerId: "custom", apiId: "openai-chat", modelId: "m", endpoint: "https://x.example" },
+					entries: [],
+					truncated: true,
+				},
+			}),
+		).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "text_delta", text: "hi" })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "tool_call_end", callId: "c1", name: "x", input: {} })).toBe(true);
 		expect(isKisoEvent({ seq: 0, type: "tool_call_end", callId: "c1", name: "x", input: null })).toBe(true);
@@ -26,6 +51,30 @@ describe("isKisoEvent per-variant schema (A group)", () => {
 		expect(
 			isKisoEvent({ seq: 0, type: "permission_decided", decisionId: "d-1", decision: "denied", reason: "no", decidedBy: "safe-defaults" }),
 		).toBe(true);
+	});
+
+	it("A5: rejects malformed continuation when present", () => {
+		const base = { seq: 0, type: "stop", reason: "end_turn" };
+		expect(isKisoEvent({ ...base, continuation: "not-an-object" })).toBe(false);
+		expect(isKisoEvent({ ...base, continuation: { entries: [] } }), "scope required").toBe(false);
+		expect(
+			isKisoEvent({ ...base, continuation: { scope: { providerId: "a", apiId: "b" }, entries: [] } }),
+			"modelId required",
+		).toBe(false);
+		expect(
+			isKisoEvent({
+				...base,
+				continuation: { scope: { providerId: "a", apiId: "b", modelId: "m" }, entries: [{ kind: "k", data: "d" }] },
+			}),
+			"entry.required is mandatory",
+		).toBe(false);
+		expect(
+			isKisoEvent({
+				...base,
+				continuation: { scope: { providerId: "a", apiId: "b", modelId: "m" }, entries: [], truncated: false },
+			}),
+			"truncated is absent-or-true, never false",
+		).toBe(false);
 	});
 
 	it("rejects shape violations per variant — type/seq alone is not enough", () => {
@@ -160,6 +209,31 @@ describe("isKisoEvent per-variant schema (A group)", () => {
 
 	it("round 9: counts are non-negative SAFE integers — no negatives, NaN, Infinity, or fractions", () => {
 		expect(isKisoEvent({ seq: 0, type: "stop", reason: "end_turn" })).toBe(true);
+		// MG-1 (A5): the continuation field is TRULY optional — absent above,
+		// well-formed below, and the key set stays open.
+		expect(
+			isKisoEvent({
+				seq: 0,
+				type: "stop",
+				reason: "tool_use",
+				continuation: {
+					scope: { providerId: "anthropic", apiId: "anthropic-messages", modelId: "claude-x" },
+					entries: [{ kind: "anthropic.content_block", required: true, data: "{}" }],
+				},
+			}),
+		).toBe(true);
+		expect(
+			isKisoEvent({
+				seq: 0,
+				type: "stop",
+				reason: "end_turn",
+				continuation: {
+					scope: { providerId: "custom", apiId: "openai-chat", modelId: "m", endpoint: "https://x.example" },
+					entries: [],
+					truncated: true,
+				},
+			}),
+		).toBe(true);
 		expect(isKisoEvent({ seq: 1.5, type: "stop", reason: "end_turn" })).toBe(false);
 		expect(isKisoEvent({ seq: Number.NaN, type: "stop", reason: "end_turn" })).toBe(false);
 		expect(isKisoEvent({ seq: Number.POSITIVE_INFINITY, type: "stop", reason: "end_turn" })).toBe(false);

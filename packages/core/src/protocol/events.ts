@@ -449,10 +449,46 @@ export interface Usage {
 	readonly known: boolean;
 }
 
+/** MG-1 (ADR-0051 Amendment 5): the continuation envelope's scope — WHO
+ *  may replay it. Kernel-stamped at the Turn Commit append from the run's
+ *  configured binding; an adapter-supplied scope is always overwritten
+ *  (adapters are not trusted), and a run with no configured scope has
+ *  adapter-emitted continuation stripped at the same boundary. */
+export interface ContinuationScope {
+	readonly providerId: string;
+	readonly apiId: string;
+	readonly modelId: string;
+	/** Origin only; REQUIRED when providerId === "custom". */
+	readonly endpoint?: string;
+}
+
+/** One opaque provider block. `data` is bytes to the kernel — serialized
+ *  verbatim by the emitting adapter, replayed verbatim by the scope-matched
+ *  one, never reconstructed from projected text. */
+export interface ContinuationEntry {
+	readonly kind: string;
+	/** true = the next request is INVALID without it (never dropped; a
+	 *  required set over the hard cap voids the turn before commit).
+	 *  false = quality-degradable (droppable under the soft cap). */
+	readonly required: boolean;
+	readonly data: string;
+}
+
+export interface Continuation {
+	readonly scope: ContinuationScope;
+	/** EMISSION ORDER, preserved end to end. */
+	readonly entries: readonly ContinuationEntry[];
+	/** Present only when OPTIONAL entries were dropped at the soft cap. */
+	readonly truncated?: true;
+}
+
 export interface Stop {
 	readonly seq: number;
 	readonly type: "stop";
 	readonly reason: StopReason;
+	/** MG-1 (Amendment 5): absent on every pre-A5 log — rule 1's truly
+	 *  optional field; old logs project byte-identically. */
+	readonly continuation?: Continuation;
 }
 
 /**
@@ -693,6 +729,26 @@ function isTerminal(v: unknown): boolean {
  * safe integer; the others are null when the provider did not report
  * them.
  */
+/** A5: shape-checked ONLY when present — rule 1's truly-optional clause.
+ *  The key set stays open, so older bins load newer logs unchanged. */
+function isContinuation(v: unknown): boolean {
+	if (v === undefined) return true;
+	if (typeof v !== "object" || v === null) return false;
+	const c = v as Record<string, unknown>;
+	const s = c.scope;
+	if (typeof s !== "object" || s === null) return false;
+	const sc = s as Record<string, unknown>;
+	if (typeof sc.providerId !== "string" || typeof sc.apiId !== "string" || typeof sc.modelId !== "string") return false;
+	if (sc.endpoint !== undefined && typeof sc.endpoint !== "string") return false;
+	if (!Array.isArray(c.entries)) return false;
+	for (const e of c.entries) {
+		if (typeof e !== "object" || e === null) return false;
+		const r = e as Record<string, unknown>;
+		if (typeof r.kind !== "string" || typeof r.required !== "boolean" || typeof r.data !== "string") return false;
+	}
+	return c.truncated === undefined || c.truncated === true;
+}
+
 function isUsage(v: Record<string, unknown>): boolean {
 	if (typeof v.known !== "boolean") return false;
 	const tokens = [v.inputTokens, v.outputTokens, v.cacheRead, v.cacheWrite];
@@ -729,7 +785,7 @@ const EVENT_VALIDATORS = {
 		isTags(v) && isInvocationSeq(v),
 	thinking: (v: Record<string, unknown>) => typeof v.text === "string",
 	usage: isUsage,
-	stop: (v: Record<string, unknown>) => STOP_REASONS.has(v.reason as StopReason),
+	stop: (v: Record<string, unknown>) => STOP_REASONS.has(v.reason as StopReason) && isContinuation(v.continuation),
 	user_input: (v: Record<string, unknown>) => isContent(v.content) && isSource(v),
 	compacted: (v: Record<string, unknown>) =>
 		Array.isArray(v.cleared) &&

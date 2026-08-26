@@ -339,3 +339,28 @@ Ruling:
   is yes, by ADR-0005 and by the invariants it enforces.
 - This amendment ships inside the F4 round and is reverted by reverting
   the round; the release report carries the crossing explicitly.
+
+## Amendment 10 (2026-08-26): the second adjudicated move — 2,100 → 2,200, for MG-1
+
+The occasion: MG-1 (the ratified Model Gateway spec) lands ADR-0051
+Amendment 5's wire half in the kernel — the `Continuation` shapes and
+their validator on the frozen `stop` variant (events.ts, +34), the
+trust-boundary stamping, stripping and two-tier caps at the Turn Commit
+(loop.ts, +41), and the envelope's projection attachment (project.ts,
++8): **+82 counted lines**, against Amendment 9's 72 of headroom.
+
+Why the code may not live elsewhere: the frozen event plane IS core by
+definition — a durable variant's shape and validator cannot be defined
+outside the package that owns the event union; the scope stamp and the
+caps are the "adapters are not trusted" boundary, which is the kernel's
+oldest posture; and the projection attachment is invariant-⑥ territory.
+Moving any of it would relocate correctness authority to flatter a
+number — the refusal Amendments 8 and 9 already named twice.
+
+Ruling:
+- **core: 2,100 → 2,200, still HARD.** ~90 lines of headroom; XP-1's
+  durable profile is runtime-side by design (ADR-0051 §6 OUT class), so
+  the next kernel demand should be small. The next crossing requires
+  the next explicit adjudication, exactly as the last two did.
+- Both crossings ship inside their ratified rounds and are reverted by
+  reverting them; the 0.16 release report carries both explicitly.

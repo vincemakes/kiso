@@ -523,3 +523,77 @@ or the mapping burden returns.
 
 Nothing in §1–§10 moves: this amendment is version-statement only, the
 same class as Amendment 2.
+
+## Amendment 5 (2026-08-26): provider-scoped opaque continuation metadata on `stop`
+
+The MG-1 ruling (ratified spec: the Model Gateway round). Three
+providers require provider-private output back on later requests —
+signed/redacted thinking blocks, `reasoning_content`, encrypted
+reasoning items. The L1 doctrine ("provider-private fields are digested
+in the adapter and never leak into the union") is deliberately amended
+in one narrow way: a provider-scoped, OPAQUE continuation carrier now
+transits the union solely so durability can round-trip it to the one
+adapter entitled to read it. The kernel treats the payload as bytes;
+the SEMANTICS still never leak.
+
+1. **Frozen-class extension by rule 1 (optional-field admission).** The
+   FROZEN `stop` variant gains one optional field:
+
+   ```
+   stop.continuation?: {
+     scope:   { providerId, apiId, modelId, endpoint? }  // KERNEL-stamped
+     entries: [{ kind, required, data }]                 // emission order
+     truncated?: true                                    // optional loss ONLY
+   }
+   ```
+
+   Rule 1's three obligations, discharged: (i) old logs carry no such
+   field and project byte-identically (invariant ⑥ — pinned by a
+   no-continuation byte fixture); (ii) the `stop` validator shape-checks
+   the field only when present — truly optional, and the key set stays
+   open (older bins load newer logs); (iii) a fixture case joins the
+   prompt-cache byte-discipline gate.
+
+2. **The kernel stamps `scope`; adapters cannot forge it.** The adapter
+   emits `entries`; at the Turn Commit append the kernel overwrites
+   `scope` from the run's configured continuation scope (the
+   seq-assignment enrichment precedent). A run with NO configured scope
+   (SDK-injected or faux adapters) has adapter-emitted continuation
+   STRIPPED at the same boundary — the trust gate's posture.
+
+3. **The caps, enforced at the trust boundary, loss-free for required
+   entries.** Optional entries (`required: false`) over the soft cap
+   (256 KiB serialized per turn) drop WHOLE, in emission order, and the
+   envelope carries `truncated: true` — which may mark OPTIONAL loss
+   only. Required entries are NEVER dropped: a required set over the
+   hard cap (2 MiB) VOIDS the turn before commit (a structured,
+   non-retryable provider-contract error through the F4b abandon
+   sequence) — no durable turn exists that is known unable to continue
+   correctly.
+
+4. **Replay is scope-gated, model included.** An adapter must not
+   serialize any part of a continuation whose scope does not match its
+   own binding — providerId AND apiId AND modelId AND, for `custom`,
+   the endpoint origin. A model or provider switch preserves foreign
+   envelopes untouched and does not send them; switching back re-arms
+   replay. Turns predating this amendment (reasoning, no envelope)
+   replay under the pre-existing monotone rule — the grandfather is
+   produce-side policy, never a load-time rewrite.
+
+5. **Generation table row G.** Detection: presence of
+   `stop.continuation` — content-discernible (rule 5). The pool gains
+   its provenance-attested sample at the FIRST PUBLISHED producer's
+   ceremony (the 0.16 line): R4a forbids a synthesized stand-in and no
+   published bin writes the shape yet, so the row is DECLARED,
+   sample-pending — the pending state recorded here rather than papered
+   over with a fixture R4a would reject.
+
+6. **The adapter whitelist is NOT amended** — the nine
+   `ADAPTER_EVENT_TYPES` stand (§4); no new event type exists.
+
+7. **Declared supersessions (Amendment 3(b) ritual)** for the two
+   request-projection changes this enables: (a) Anthropic replay now
+   rebuilds stored thinking/redacted blocks verbatim before text and
+   tool_use; (b) compat reasoning replay is scope-gated. Both bite ONLY
+   on turns that carry an envelope; every no-envelope request path is
+   byte-identical and gated as such.

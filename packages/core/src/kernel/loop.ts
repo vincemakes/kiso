@@ -34,7 +34,7 @@
  */
 
 import { isAdapterEvent, type Adapter, type AbortSignalLike } from "../protocol/adapter.js";
-import type { Event, StopReason, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
+import type { Continuation, ContinuationEntry, ContinuationScope, Event, StopReason, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
 import type { ApprovalChain, ChainVerdict } from "../protocol/extension.js";
 import { estimateTokens } from "./compaction.js";
 import { EventLog } from "./event-log.js";
@@ -69,6 +69,13 @@ export interface LoopConfig {
 	readonly mode?: string;
 	readonly maxTurns?: number;
 	readonly maxRetries?: number;
+	/**
+	 * MG-1 (ADR-0051 Amendment 5): the run's continuation scope — the
+	 * kernel stamps it onto a committed stop's envelope (adapters cannot
+	 * forge scope). Absent = an unscoped run (SDK-injected or faux
+	 * adapters): adapter-emitted continuation is STRIPPED at the commit.
+	 */
+	readonly continuationScope?: ContinuationScope;
 	/**
 	 * Seed history. When a `log` is provided, the log IS the truth and this
 	 * is only used if the log is empty. See ADR-0002 / kernel/project.ts.
@@ -839,6 +846,22 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			}
 		}
 
+		// ── MG-1 (A5): the trust boundary's half of the envelope ─────────
+		// Stamp, strip, cap — BEFORE the commit decision, so a hard-cap
+		// violation voids the turn (no durable stop persists that is known
+		// unable to continue correctly; the F4b abandon voids its draft).
+		if (voided === null && heldStop !== null && (heldStop as { continuation?: Continuation }).continuation !== undefined) {
+			const prepared = prepareContinuation(heldStop as EventInput & { continuation?: Continuation }, config.continuationScope);
+			if (prepared === "hard-cap") {
+				voided = {
+					kind: "error",
+					error: { code: "invalid_request", retryable: false, message: "the turn's required continuation metadata exceeds the hard cap" },
+				};
+			} else {
+				heldStop = prepared;
+			}
+		}
+
 		// ── EC-1 ① — TURN COMMIT ──────────────────────────────────────────
 		// The held stop is persisted HERE and only here: iterator done (the
 		// stream loop broke cleanly) AND structurally compatible (above). The
@@ -1457,3 +1480,43 @@ const NEVER_ABORT = {
 } satisfies AbortSignalLike;
 
 export type { EventInput, AssistantBlock, AssistantMessage, Message, ToolResultMessage };
+
+// ── MG-1 (ADR-0051 Amendment 5): the envelope preparation ────────────────
+//
+// Pure: stamp the run's scope over whatever the adapter claimed (adapters
+// are not trusted), strip on an unscoped run, and enforce the two caps —
+// optional entries drop WHOLE at the soft cap (earliest first, emission
+// order) with a durable `truncated: true`; a required set over the hard
+// cap is a provider-contract violation the caller turns into a voided
+// turn. Sizes are UTF-8 bytes of the serialized entry.
+
+const CONTINUATION_SOFT_CAP = 256 * 1024;
+const CONTINUATION_HARD_CAP = 2 * 1024 * 1024;
+
+function prepareContinuation<T extends { continuation?: Continuation }>(
+	stop: T,
+	scope: ContinuationScope | undefined,
+): T | "hard-cap" {
+	const c = stop.continuation;
+	if (c === undefined) return stop;
+	if (scope === undefined) {
+		const { continuation: _stripped, ...rest } = stop;
+		return rest as unknown as T;
+	}
+	const size = (e: ContinuationEntry): number => new TextEncoder().encode(e.data).length + new TextEncoder().encode(e.kind).length + 32;
+	const requiredBytes = c.entries.filter((e) => e.required).reduce((n, e) => n + size(e), 0);
+	if (requiredBytes > CONTINUATION_HARD_CAP) return "hard-cap";
+	const kept = [...c.entries];
+	let total = kept.reduce((n, e) => n + size(e), 0);
+	let truncated = false;
+	for (let i = 0; total > CONTINUATION_SOFT_CAP && i < kept.length; ) {
+		if (kept[i]!.required) {
+			i += 1;
+			continue;
+		}
+		total -= size(kept[i]!);
+		kept.splice(i, 1);
+		truncated = true;
+	}
+	return { ...stop, continuation: { scope, entries: kept, ...(truncated ? { truncated: true as const } : {}) } };
+}

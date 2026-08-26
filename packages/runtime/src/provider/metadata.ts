@@ -29,6 +29,11 @@ export interface ModelCapabilities {
 	readonly promptCaching: "none" | "automatic" | "explicit" | null;
 	/** the model emits a reasoning stream (thinking); null = unknown. */
 	readonly reasoning: boolean | null;
+	/** MG-1: the input parts the model accepts (e.g. ["text","image"]);
+	 *  null = unknown — the CLI treats unknown as text-only with an honest
+	 *  notice, never a guess. Evidenced by 0.15.7's image attachments:
+	 *  the gateway must know before the request is built. */
+	readonly inputModalities: readonly string[] | null;
 }
 
 export interface ModelPricing {
@@ -48,7 +53,14 @@ export interface ModelMetadataEntry {
 	/** origin qualifier (e.g. "https://api.deepseek.com"): when present,
 	 *  the entry matches only requests aimed at that endpoint. */
 	readonly endpoint?: string;
+	/** MG-1: the provider identity (manifest id) — retires the string
+	 *  inference from the model id's hyphen prefix. */
+	readonly providerId?: string;
 	readonly capabilities: ModelCapabilities;
+	/** MG-1: capability values are dated claims exactly as prices are —
+	 *  null marks an undated legacy claim (the pre-MG-1 table). */
+	readonly capabilitiesAsOf?: string | null;
+	readonly capabilitiesSource?: string | null;
 	readonly pricing: ModelPricing | null;
 }
 
@@ -69,26 +81,30 @@ const DEEPSEEK_PRICING: ModelPricing = {
 const ENTRIES: readonly ModelMetadataEntry[] = [
 	{
 		model: "deepseek-chat",
+		providerId: "deepseek",
 		endpoint: "https://api.deepseek.com",
-		capabilities: { contextWindow: null, maxOutputTokens: null, promptCaching: "automatic", reasoning: false },
+		capabilities: { contextWindow: null, maxOutputTokens: null, promptCaching: "automatic", reasoning: false, inputModalities: null },
 		pricing: DEEPSEEK_PRICING,
 	},
 	{
 		model: "deepseek-reasoner",
+		providerId: "deepseek",
 		endpoint: "https://api.deepseek.com",
-		capabilities: { contextWindow: null, maxOutputTokens: null, promptCaching: "automatic", reasoning: true },
+		capabilities: { contextWindow: null, maxOutputTokens: null, promptCaching: "automatic", reasoning: true, inputModalities: null },
 		pricing: DEEPSEEK_PRICING,
 	},
 	{
 		model: "claude-sonnet-5",
-		capabilities: { contextWindow: 200_000, maxOutputTokens: null, promptCaching: "explicit", reasoning: true },
+		providerId: "anthropic",
+		capabilities: { contextWindow: 200_000, maxOutputTokens: null, promptCaching: "explicit", reasoning: true, inputModalities: null },
 		// Priced only when the rates are read from the live billing page
 		// and dated — never copied from memory (the review's boundary ②).
 		pricing: null,
 	},
 	{
 		model: "gpt-4o",
-		capabilities: { contextWindow: 128_000, maxOutputTokens: null, promptCaching: "automatic", reasoning: false },
+		providerId: "openai",
+		capabilities: { contextWindow: 128_000, maxOutputTokens: null, promptCaching: "automatic", reasoning: false, inputModalities: null },
 		pricing: null,
 	},
 ];

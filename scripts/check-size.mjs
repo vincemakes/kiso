@@ -27,7 +27,7 @@ const GATES = [
 	// Amendment 5's 2411 claimed a review-issued re-baseline ruling that was
 	// never issued; the amendment is reverted. The W21 chain's overflow lives
 	// in the runtime's composed approval chain, not in the kernel.
-	{ name: "core", limit: 2100, dir: join("packages", "core", "src") },
+	{ name: "core", limit: 2200, dir: join("packages", "core", "src") },
 	// ADR-0043 (the extraction ruling): the 2400 single-package terminal
 	// cap is REPLACED by per-package gates — each = the actual after the
 	// extraction + 20%. The terminal layer left the CLI for packages/tui

@@ -45,6 +45,19 @@ interface PendingToolCall {
 export interface OpenAICompatProviderConfig {
 	readonly apiKey?: string;
 	readonly baseUrl?: string;
+	/** MG-1 (A5): the adapter's replay identity — providerId as the runtime
+	 *  resolved it (deepseek / zai / openai / custom). Absent = "custom"
+	 *  with the baseUrl origin as the endpoint term. */
+	readonly scope?: OpenAICompatScope;
+}
+
+/** MG-1 (A5): the compat adapter's own half of the continuation scope.
+ *  apiId is constant ("openai-chat") and modelId is per-request; only the
+ *  provider identity and (for custom) the endpoint origin need injecting —
+ *  the generic compat wire cannot know WHICH provider it is. */
+export interface OpenAICompatScope {
+	readonly providerId: string;
+	readonly endpoint?: string;
 }
 
 /**
@@ -59,10 +72,25 @@ export function createOpenAICompatProvider(config: OpenAICompatProviderConfig = 
 		...(config.apiKey !== undefined ? { apiKey: config.apiKey } : {}),
 		...(config.baseUrl !== undefined ? { baseURL: config.baseUrl } : {}),
 	});
-	return createOpenAICompatAdapter(client);
+	const origin = ((): string | undefined => {
+		if (config.baseUrl === undefined) return undefined;
+		try {
+			return new URL(config.baseUrl).origin;
+		} catch {
+			return undefined;
+		}
+	})();
+	const scope: OpenAICompatScope | undefined =
+		config.scope ?? (origin !== undefined ? { providerId: "custom", endpoint: origin } : undefined);
+	return createOpenAICompatAdapter(client, { ...(scope !== undefined ? { scope } : {}) });
 }
 
-export function createOpenAICompatAdapter(client: OpenAI): Adapter {
+export interface OpenAICompatAdapterOptions {
+	readonly scope?: OpenAICompatScope;
+}
+
+export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICompatAdapterOptions = {}): Adapter {
+	const ownScope = adapterOpts.scope;
 	return {
 		async *stream(options: StreamOptions): AsyncIterable<AdapterEvent> {
 			// The explicit streaming params type keeps the `stream: true`
@@ -70,7 +98,7 @@ export function createOpenAICompatAdapter(client: OpenAI): Adapter {
 			// create() call as the NON-streaming variant (TS2504).
 			const body: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
 				model: options.model,
-				messages: toOpenAIMessages(options.messages, options.systemPrompt),
+				messages: toOpenAIMessages(options.messages, options.systemPrompt, options.model, ownScope),
 				stream: true,
 				// D5: request real streaming usage — without this the
 				// provider never sends a usage chunk and we would
@@ -369,9 +397,33 @@ function toOpenAIToolResultContent(content: string | readonly ContentBlock[]): s
 		.join("");
 }
 
+/** A5: the reasoning text replays ONLY when the turn's envelope matches
+ *  THIS binding — provider AND api AND model AND (for custom) the endpoint
+ *  origin. Foreign content is withheld as "" so the monotone PRESENCE
+ *  discipline (below) holds byte-stably. A turn with NO envelope is the
+ *  grandfather: pre-A5 logs replay under the pre-existing rule verbatim. */
+function reasoningFor(
+	msg: Message & { role: "assistant" },
+	model: string,
+	ownScope: OpenAICompatScope | undefined,
+): string {
+	const c = msg.continuation;
+	if (c === undefined) return msg.reasoning ?? "";
+	const s = c.scope;
+	const providerId = ownScope?.providerId ?? "custom";
+	const matches =
+		s.apiId === "openai-chat" &&
+		s.providerId === providerId &&
+		s.modelId === model &&
+		(s.providerId !== "custom" || s.endpoint === ownScope?.endpoint);
+	return matches ? (msg.reasoning ?? "") : "";
+}
+
 function toOpenAIMessages(
 	messages: readonly Message[],
 	systemPrompt?: string,
+	model = "",
+	ownScope?: OpenAICompatScope,
 ): OpenAI.Chat.ChatCompletionMessageParam[] {
 	const out: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 	// The OpenAI API takes the system prompt as a system-role message; compat
@@ -420,7 +472,7 @@ function toOpenAIMessages(
 				// added via spread so the literal stays assignable (the union
 				// type carries the extra key). Presence follows hasReasoning
 				// (the monotone rule above — the field never flips mid-history).
-				...(hasReasoning ? { reasoning_content: msg.reasoning ?? "" } : {}),
+				...(hasReasoning ? { reasoning_content: reasoningFor(msg, model, ownScope) } : {}),
 			});
 		} else {
 			// tool messages accept text only — images are converted to an

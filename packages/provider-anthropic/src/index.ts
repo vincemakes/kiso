@@ -74,7 +74,7 @@ export function createAnthropicAdapter(client: Anthropic, adapterOpts: Anthropic
 								}
 							: {}),
 						max_tokens: options.maxTokens ?? 4096,
-						messages: caching ? withCacheBreakpoint(toAnthropicMessages(options.messages)) : toAnthropicMessages(options.messages),
+						messages: caching ? withCacheBreakpoint(toAnthropicMessages(options.messages, options.model)) : toAnthropicMessages(options.messages, options.model),
 						...(options.tools?.length ? { tools: toAnthropicTools(options.tools) } : {}),
 						...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
 					},
@@ -98,6 +98,14 @@ export function createAnthropicAdapter(client: Anthropic, adapterOpts: Anthropic
 			let stopReasonSeen = false;
 			let stopReason: StopReason = "end_turn";
 			const toolBuffer = new Map<number, { id: string; name: string; json: string }>();
+			// MG-1 (A5): thinking-family blocks are captured WHOLE — one
+			// opaque entry per block, closed at its content_block_stop so
+			// interleaving order is preserved verbatim. The provider
+			// requires the complete blocks back on a tool-use continuation;
+			// an aggregated reasoning string cannot reconstruct them.
+			const thinkBuffer = new Map<number, { type: "thinking"; thinking: string; signature: string } | { type: "redacted_thinking"; data: string }>();
+			const contEntries: { kind: string; data: string }[] = [];
+			let sawToolUse = false;
 
 			try {
 				for await (const event of stream) {
@@ -115,6 +123,7 @@ export function createAnthropicAdapter(client: Anthropic, adapterOpts: Anthropic
 							if (block.type === "text") {
 								yield { seq: 0, type: "text_start" };
 							} else if (block.type === "tool_use") {
+								sawToolUse = true;
 								toolBuffer.set(event.index, { id: block.id, name: block.name, json: "" });
 								yield {
 									seq: 0,
@@ -122,6 +131,10 @@ export function createAnthropicAdapter(client: Anthropic, adapterOpts: Anthropic
 									callId: block.id,
 									name: block.name,
 								};
+							} else if (block.type === "thinking") {
+								thinkBuffer.set(event.index, { type: "thinking", thinking: "", signature: "" });
+							} else if (block.type === "redacted_thinking") {
+								thinkBuffer.set(event.index, { type: "redacted_thinking", data: (block as { data?: string }).data ?? "" });
 							}
 							break;
 						}
@@ -141,7 +154,14 @@ export function createAnthropicAdapter(client: Anthropic, adapterOpts: Anthropic
 									};
 								}
 							} else if (delta.type === "thinking_delta") {
+								const t = thinkBuffer.get(event.index);
+								if (t?.type === "thinking") t.thinking += delta.thinking;
 								yield { seq: 0, type: "thinking", text: delta.thinking };
+							} else if (delta.type === "signature_delta") {
+								// A5: the signature is continuation material only —
+								// never a projection event.
+								const t = thinkBuffer.get(event.index);
+								if (t?.type === "thinking") t.signature += (delta as { signature?: string }).signature ?? "";
 							}
 							break;
 						}
@@ -162,6 +182,13 @@ export function createAnthropicAdapter(client: Anthropic, adapterOpts: Anthropic
 									name: buffered.name,
 									input,
 								};
+							}
+							// A5: a thinking-family block closes HERE — pushed at
+							// its stop so interleaving order lands verbatim.
+							const think = thinkBuffer.get(event.index);
+							if (think) {
+								thinkBuffer.delete(event.index);
+								contEntries.push({ kind: "anthropic.content_block", data: JSON.stringify(think) });
 							}
 							// Text blocks end implicitly: the next TextStart (or
 							// the terminal) closes the previous block (ADR-0003).
@@ -205,7 +232,25 @@ export function createAnthropicAdapter(client: Anthropic, adapterOpts: Anthropic
 							// D3: a message_stop with NO delta means the
 							// provider never reported a stop reason — that is
 							// an error, never a default end_turn.
-							yield { seq: 0, type: "stop", reason: stopReasonSeen ? stopReason : "error" };
+							// A5: the captured blocks ride the stop as opaque
+							// entries (self-reported scope; the kernel
+							// re-stamps it — adapters are not trusted).
+							// `required` follows the turn: a tool-use
+							// continuation is INVALID without its thinking
+							// blocks; elsewhere omission degrades, not 400s.
+							yield {
+								seq: 0,
+								type: "stop",
+								reason: stopReasonSeen ? stopReason : "error",
+								...(contEntries.length > 0
+									? {
+											continuation: {
+												scope: { providerId: "anthropic", apiId: "anthropic-messages", modelId: options.model },
+												entries: contEntries.map((e) => ({ ...e, required: sawToolUse })),
+											},
+										}
+									: {}),
+							};
 							break;
 					}
 				}
@@ -269,7 +314,29 @@ function toAnthropicContent(
 	});
 }
 
-function toAnthropicMessages(messages: readonly Message[]): Anthropic.MessageParam[] {
+/** A5: the stored blocks replay ONLY to the scope that produced them —
+ *  provider AND api AND model (thinking blocks bind to the model that
+ *  produced them; the provider requires foreign ones stripped). A
+ *  mismatched or absent envelope replays nothing; an unparseable stored
+ *  entry is skipped, never a crash. */
+function continuationBlocks(msg: Message & { role: "assistant" }, model: string): Anthropic.ContentBlockParam[] {
+	const c = msg.continuation;
+	if (c === undefined) return [];
+	const s = c.scope;
+	if (s.providerId !== "anthropic" || s.apiId !== "anthropic-messages" || s.modelId !== model) return [];
+	const out: Anthropic.ContentBlockParam[] = [];
+	for (const e of c.entries) {
+		if (e.kind !== "anthropic.content_block") continue;
+		try {
+			out.push(JSON.parse(e.data) as Anthropic.ContentBlockParam);
+		} catch {
+			// skipped — opaque bytes that no longer parse must not kill the request
+		}
+	}
+	return out;
+}
+
+function toAnthropicMessages(messages: readonly Message[], model: string): Anthropic.MessageParam[] {
 	const out: Anthropic.MessageParam[] = [];
 	for (const msg of messages) {
 		if (msg.role === "user") {
@@ -277,7 +344,7 @@ function toAnthropicMessages(messages: readonly Message[]): Anthropic.MessagePar
 		} else if (msg.role === "assistant") {
 			out.push({
 				role: "assistant",
-				content: msg.blocks.map(toAnthropicBlock),
+				content: [...continuationBlocks(msg, model), ...msg.blocks.map(toAnthropicBlock)],
 			});
 		} else {
 			// tool result: Anthropic nests them as a user message.

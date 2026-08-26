@@ -24,6 +24,27 @@ describe("D: byte-identical projection discipline", () => {
 		expect(a).toHaveLength(b.length);
 	});
 
+	it("①b (A5 rule-1 obligation iii): a continuation-bearing stop keeps the discipline — deterministic, and the OLD PREFIX untouched", () => {
+		const cont = {
+			scope: { providerId: "anthropic", apiId: "anthropic-messages", modelId: "claude-x" },
+			entries: [{ kind: "anthropic.content_block", required: true, data: JSON.stringify({ type: "thinking", thinking: "t", signature: "s" }) }],
+		};
+		const log = new EventLog();
+		log.append({ type: "user_input", content: "go" });
+		log.append({ type: "text_delta", text: "first" });
+		log.append({ type: "stop", reason: "end_turn" });
+		const before = JSON.stringify(projectMessages(log.all));
+		log.append({ type: "user_input", content: "more" });
+		log.append({ type: "text_delta", text: "second" });
+		log.append({ type: "stop", reason: "end_turn", continuation: cont } as never);
+		const a1 = projectMessages(log.all);
+		const b1 = projectMessages(log.all);
+		expect(JSON.stringify(a1), "deterministic with the envelope").toBe(JSON.stringify(b1));
+		expect(JSON.stringify(a1.slice(0, 2)), "the pre-envelope PREFIX is byte-identical").toBe(before);
+		expect((a1[3] as { continuation?: unknown }).continuation, "the envelope rides ITS message only").toEqual(cont);
+		expect((a1[1] as { continuation?: unknown }).continuation).toBeUndefined();
+	});
+
 	it("② appending one more turn leaves the OLD PREFIX byte-identical", () => {
 		const log = new EventLog();
 		log.append({ type: "user_input", content: "go" });

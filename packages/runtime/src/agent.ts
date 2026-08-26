@@ -12,6 +12,7 @@
  * itself stays dependency-free; the SDKs live in the provider packages.
  */
 
+import { resolveContinuationScope } from "./provider/manifest.js";
 import { EventLog, ToolRegistry, type Adapter, type HookHost, type KisoExtension, type Tool } from "@vincemakes/kiso-core";
 import { AgentSession, type SessionConfig } from "./session.js";
 import type { SessionStore } from "./store.js";
@@ -112,9 +113,11 @@ export class AgentRuntime {
 		const records = store.load(options.id);
 		const log = new EventLog(records.map((r) => r.event));
 		const adapter = await this.#adapterPromise;
+		const startupScope = resolveContinuationScope(this.#definition.provider, this.#definition.model, this.#definition.baseUrl);
 		const config: SessionConfig = {
 			model: this.#definition.model,
 			...(this.#definition.provider !== undefined ? { provider: this.#definition.provider } : {}),
+			...(startupScope !== undefined ? { continuationScope: startupScope } : {}),
 			...(this.#definition.systemPrompt !== undefined ? { systemPrompt: this.#definition.systemPrompt } : {}),
 			registry: this.#registry,
 			...(this.#definition.permissionPolicy !== undefined || this.#definition.hooks !== undefined
@@ -202,9 +205,15 @@ async function resolveAdapter(definition: AgentDefinition): Promise<Adapter> {
 		}
 		case "openai-compat": {
 			const { createOpenAICompatProvider } = await import("@vincemakes/kiso-provider-openai");
+			// MG-1 (A5): the adapter's replay identity — the SAME resolution
+			// the run's stamping scope uses, so emit and replay agree.
+			const scope = resolveContinuationScope("openai-compat", "", definition.baseUrl);
 			return createOpenAICompatProvider({
 				...(definition.apiKey !== undefined ? { apiKey: definition.apiKey } : {}),
 				...(definition.baseUrl !== undefined ? { baseUrl: definition.baseUrl } : {}),
+				...(scope !== undefined
+					? { scope: { providerId: scope.providerId, ...(scope.endpoint !== undefined ? { endpoint: scope.endpoint } : {}) } }
+					: {}),
 			});
 		}
 		default:

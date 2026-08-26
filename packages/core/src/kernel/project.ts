@@ -103,20 +103,28 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	// `thinking` events and attached to the assistant message at flush —
 	// deterministic (same events → same messages → same request body, D area).
 	let pendingReasoning: string | null = null;
+	// MG-1 (A5): the committed stop's continuation envelope, attached to the
+	// SAME flush its stop triggers — only a durable stop carries one, so a
+	// voided draft can never leak stale continuation (invariant ③).
+	let pendingContinuation: import("../protocol/events.js").Continuation | null = null;
 	const flushAssistant = (): void => {
 		pushText();
 		if (blocks.length === 0) {
 			assistantSource = undefined;
+			pendingContinuation = null;
 			return;
 		}
 		const callIds = blocks.filter((b) => b.type === "tool_use").map((b) => b.callId);
 		const reasoning = pendingReasoning;
 		pendingReasoning = null;
+		const continuation = pendingContinuation;
+		pendingContinuation = null;
 		out.push({
 			role: "assistant",
 			blocks: [...blocks],
 			...(assistantSource !== undefined ? { source: assistantSource } : {}),
 			...(reasoning !== null ? { reasoning } : {}),
+			...(continuation !== null ? { continuation } : {}),
 		} satisfies AssistantMessage);
 		blocks = [];
 		assistantSource = undefined;
@@ -512,6 +520,9 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				// projects [assistant, results…] in reading order, and the
 				// stream-open guards below only ever flush a CLOSED turn's
 				// late (post-stop) results.
+				// MG-1 (A5): the committed stop hands its envelope to the
+				// flush it triggers; every other flush site carries none.
+				pendingContinuation = ev.continuation ?? null;
 				flushAssistant();
 				flushResults();
 				break;

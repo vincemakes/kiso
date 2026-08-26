@@ -30,3 +30,5 @@ export * from "./provider/metadata.js";
 // PH-1c: the model-keyed cost derivation rides the same door (the root
 // surface keeps only the frozen canonicalizeUsage).
 export { canonicalizeUsageForModel } from "./usage/canonical.js";
+// MG-1 (A5): the identity layer — manifests and the scope resolver.
+export { BUILTIN_MANIFESTS, resolveContinuationScope, type ModelRef, type ProviderManifest } from "./provider/manifest.js";

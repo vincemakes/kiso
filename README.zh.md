@@ -16,7 +16,7 @@
 
 **数字,同一个模型、同一批任务**(2026-08-16 三方对照,成本加权输入):T3 跨文件重命名所需输入 token **比 pi 少 2.55×、比 Claude Code 少 32×**,任务产出完全相同。完整表格与诚实脚注在[对比一节](#对比)。
 
-**内核 2,100 行、由 CI 强制**——不能超过 2,100 行;超过就生长一个包。见[规则](#规则)。
+**内核 2,200 行、由 CI 强制**——不能超过 2,200 行;超过就生长一个包。见[规则](#规则)。
 
 **持久执行契约已冻结、由门禁强制**——会话格式与恢复语义冻结为契约;每条不变量都有可执行门禁,跑在 `npm run check` 里。见[持久执行契约](#持久执行契约)。
 
@@ -58,7 +58,7 @@ Turn Commit 自身的证明是两个崩溃前缀的字节比对,二者恰好相�
 
 ## 规则
 
-> 内核不能超过 **2,100 行**。任何把它推超的 PR 都会被关掉,无论特性多好。CI 在安装任何依赖之前强制执行。预算只经裁决式修正案移动,至今动过一次:2,000 → 2,100(ADR-0043 Amendment 9,F4 内核轮——流中作废卫生按 ADR-0005 属于循环本身,别处放不下)。
+> 内核不能超过 **2,200 行**。任何把它推超的 PR 都会被关掉,无论特性多好。CI 在安装任何依赖之前强制执行。预算只经裁决式修正案移动,至今两次:2,000 → 2,100(Amendment 9,F4 内核轮)与 2,100 → 2,200(Amendment 10,MG-1 轮——冻结的 continuation 形状与其信任边界按定义属于内核)。
 >
 > 需要更多,就生长一个包。这就是重点。
 >
@@ -68,12 +68,12 @@ Turn Commit 自身的证明是两个崩溃前缀的字节比对,二者恰好相�
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts     831
-  packages/core/src/protocol/events.ts 438
-  packages/core/src/kernel/project.ts  352
+  packages/core/src/kernel/loop.ts     872
+  packages/core/src/protocol/events.ts 472
+  packages/core/src/kernel/project.ts  360
   ...
-  total                               2028  / 2100
-  ✓ 72 lines of headroom remaining.
+  total                               2110  / 2200
+  ✓ 90 lines of headroom remaining.
 
 cli:
   apps/cli/src/chat.ts  478
@@ -96,7 +96,7 @@ tui-cells:
   ✓ 164 lines of headroom remaining.
 ```
 
-(上方规则约束的是**内核**——硬预算就是设计本身,只经裁决式修正案移动,至今一次(Amendment 9)。产品面自 ADR-0043 Amendment 8 起走另一套制度:cli/tui/tui-cells 的数字是**参考数字**,每次 check 照常打印(可见性保留)但永不拦截——它们的保护移交给架构红线(TUI 永不拥有持久真相、TUI 状态可丢、交互必有 PTY 证明、公开面有 surface 门)与每个 UX 轮 spec 必答的四问门:是否减少人的摩擦 · 是否保全真相语义 · 是否新增需先测量的租金 · 能否确定性 PTY 测试。修正案史——抽取逃生舱、历次重校准——在 ADR-0043。)
+(上方规则约束的是**内核**——硬预算就是设计本身,只经裁决式修正案移动,至今两次(Amendment 9、10)。产品面自 ADR-0043 Amendment 8 起走另一套制度:cli/tui/tui-cells 的数字是**参考数字**,每次 check 照常打印(可见性保留)但永不拦截——它们的保护移交给架构红线(TUI 永不拥有持久真相、TUI 状态可丢、交互必有 PTY 证明、公开面有 surface 门)与每个 UX 轮 spec 必答的四问门:是否减少人的摩擦 · 是否保全真相语义 · 是否新增需先测量的租金 · 能否确定性 PTY 测试。修正案史——抽取逃生舱、历次重校准——在 ADR-0043。)
 
 注释不计入。自由解释;精简实现。
 
@@ -106,7 +106,7 @@ tui-cells:
 
 | 层 | 拥有 |
 |---|---|
-| **core**(`@vincemakes/kiso-core`,≤ 2,100 行) | L1 协议(带 `seq` 的事件和类型 · 消息联合 · 适配器契约)· L2 内核(循环 · 钩子 · 压缩 · 模式 · 权限)· L3 工具(契约 · 注册表 · 真实 JSON Schema 校验)· L7 评估钩子(交付真相) |
+| **core**(`@vincemakes/kiso-core`,≤ 2,200 行) | L1 协议(带 `seq` 的事件和类型 · 消息联合 · 适配器契约)· L2 内核(循环 · 钩子 · 压缩 · 模式 · 权限)· L3 工具(契约 · 注册表 · 真实 JSON Schema 校验)· L7 评估钩子(交付真相) |
 | **packages**(无上限) | `@vincemakes/kiso-evals`(faux provider · 事故夹具 · 契约测试)· `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime`(持久会话、审批)· `@vincemakes/kiso-tools-node`(文件/搜索/编辑/shell)· `@vincemakes/kiso-tui`(纯终端层——单元格渲染器、坞、原始编辑器、diff;零运行时依赖,输入即数据 / 输出即字节——可独立复用,API 仍为 0.x 语义)· `@vincemakes/kiso-tui-cells`(从 tui 抽取出的组件单元格渲染器——ADR-0041 逃生舱)· 四个官方扩展(`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext`——前三者内置在 CLI,task 为 opt-in,见扩展)· `@vincemakes/kiso-code`(旗舰编码 Agent) |
 
 内核保持内核:它不为跨产品重复的东西作决定。其上的框架才是产品形态能力生长的地方——这个生长是重点,不是违规。包经由事件流与钩子对话,绝不经过中央枢纽。见 ADR-0021。
@@ -118,7 +118,7 @@ tui-cells:
 
 ## 核心不是什么
 
-循环*业务逻辑*。UI。权限策略。计费。技能内容。检索。这些不是核心的职责——它们住在包里,2,100 行上限在那里不约束它们。替你决定这些的核心是一坨泥球,而泥球是你最终要与之搏斗的东西。
+循环*业务逻辑*。UI。权限策略。计费。技能内容。检索。这些不是核心的职责——它们住在包里,2,200 行上限在那里不约束它们。替你决定这些的核心是一坨泥球,而泥球是你最终要与之搏斗的东西。
 
 ## 环境要求
 
@@ -557,12 +557,12 @@ bench,一个夹具、一个模型(deepseek-v4-flash),同日串行运行、每轮
 
 **持久执行契约已冻结**(ADR-0051,0.2.x 线):会话格式与其恢复语义是契约,每条不变量由下面的门禁强制。契约冻结是技术事实、与版本号无关——版本线现为 0.2.x,真 1.0 由 owner 裁定(ADR-0051 Amendment 2)。来路:reliable-session alpha 含四个加固轮(areas 1-7、A-F、one through nine、第四对抗轮——见 `docs/plans/2026-08-03-reliable-session-alpha.md`),**kiso code** 轮(编码 Agent:kill -9 门禁、microcompact、字节纪律——`docs/plans/2026-08-04-kiso-code.md`),**extensions** 轮(E1:审批策略扩展系统;E2:压缩参数与 systemPrompt append 面——`docs/plans/2026-08-04-extensions-e1.md`),以及持久化线 R-E→R-H(straddle 裁决、恢复即投影、死者接管、冻结本身)。下面每一条都由 `npm run check` 里的门禁证明:
 
-- **core**(2,028/2,100 行)——协议、循环(单一诚实终点;缺失/重复 stop 与无调用的 tool_use 是结构化错误;流出前的可重试失败原地重试,流中切断先把草稿耐久作废再重试——绝不静默重流、绝不让草稿粘连投影(F4);一个 abort 信号到达退避、审批等待、每个待决工具与 SDK)、钩子、ModeProfile、权限、microcompact(`microcompacted` 边界是持久化事实——投影确定性推导压缩视图;白名单 read/list/search/shell,`do-not-compact` 受尊重,近期回合原样)、扩展策略链(E1:deny > ask > allow 组合在人类流之前裁决——allow/deny 以 `decidedBy` 持久记录,抛异常的策略计为 ask,持久化裁决挺得过 kill -9,策略永不重跑)、交付真相、无损事件日志投影(消息是日志的纯函数,ADR-0002——以及提示词缓存字节纪律:同一事件前缀投影同一消息前缀,逐字节,三个回归测试钉死)、以框架 `executionId` 为键的执行账本(ADR-0025):已确认的成功永不重跑,新的逻辑调用总是运行,而不确定性只属于崩溃窗口——启动过却从未上报的那一个(ADR-0038;有回执的失败是干净失败,其结果带诚实的部分副作用注,重试重过审批链)。
+- **core**(2,110/2,200 行)——协议、循环(单一诚实终点;缺失/重复 stop 与无调用的 tool_use 是结构化错误;流出前的可重试失败原地重试,流中切断先把草稿耐久作废再重试——绝不静默重流、绝不让草稿粘连投影(F4);一个 abort 信号到达退避、审批等待、每个待决工具与 SDK)、钩子、ModeProfile、权限、microcompact(`microcompacted` 边界是持久化事实——投影确定性推导压缩视图;白名单 read/list/search/shell,`do-not-compact` 受尊重,近期回合原样)、扩展策略链(E1:deny > ask > allow 组合在人类流之前裁决——allow/deny 以 `decidedBy` 持久记录,抛异常的策略计为 ask,持久化裁决挺得过 kill -9,策略永不重跑)、交付真相、无损事件日志投影(消息是日志的纯函数,ADR-0002——以及提示词缓存字节纪律:同一事件前缀投影同一消息前缀,逐字节,三个回归测试钉死)、以框架 `executionId` 为键的执行账本(ADR-0025):已确认的成功永不重跑,新的逻辑调用总是运行,而不确定性只属于崩溃窗口——启动过却从未上报的那一个(ADR-0038;有回执的失败是干净失败,其结果带诚实的部分副作用注,重试重过审批链)。
 - **runtime**——`createAgent` / 持久多回合会话 / 崩溃安全 JSONL 存储(内核 flock 跨进程写锁下的 torn-tail 修复——升级需要 QUARANTINE:启动新版本前停掉每个旧格式进程;pidfile 守卫是尽力而为,不是无缝滚动升级(第五轮 P1-4)、严格加载、连续 seq 校验)/ `session.resume()` 跨进程续上被打断的运行:应用持久化审批(原始调用执行一次,拒绝写入其结果),补齐缺失回执,原始运行完成——无发明回合 / `loadExtensions(dir)`:每个 *.mjs 默认导出(或工厂),坏文件或重名响亮启动失败;扩展工具并入注册表(内置冲突 = 启动错误),钩子在 harness 自身之后组合(existing-first),审批进入策略链。
 - **cli**(2,738/1,920 行,报告制)——编码 Agent:裸 `kiso` 进聊天;启动扩展扫描——先内置层(三个默认官方扩展经模块导入进程内加载:mcp、skills、subagent;E5:task 为 opt-in——用户副本响亮 shadow,工程副本被拒),再 `~/.kiso/extensions/*.mjs`(横幅 `[3 extensions: built-in: mcp, skills, subagent]`,用户名单裸追加,工程名标 `project:`);系统提示(编码 Agent 纪律:先读后改、小心 shell)由常量组成,注入 AGENTS.md/CLAUDE.md 并截断至 8KB;每次调用一行工具摘要(`✓ edit src/foo.ts (+12 -3)` / `✗ shell npm test (exit 1)`)、状态行(`[turn 3 · in 12.4k out 1.8k · cache 9.2k · ctx ~14%]`——只用 usage 事件,未知字段整体省略,faux 模式显示 `[turn N · faux]`)、`/last` 直接从事件流打印最近一次工具调用的完整输入/输出。首跑脚手架(0.1.45):信任裁决是全新 home 的**首次**任何访问——只有授予之后配置面才物化(`config.json` + 哨兵),静默,带哨兵的 home 永不重搭脚手架、永不覆盖你的配置。v2a/v5/KC3——**身份是单色的**:黑白深浅承载整个界面,颜色只留给三件真正有含义的事。亮白 BOLD(SGR 1)是重音(you> 提示、横幅标语、✓ 标记、命令名、用户块 ▍ rail、输入 brick);助手文本中反引号片段用浅灰行内代码色(256 色 252);元数据用暗色。TUI2-MD——**assistant 正文渲染 markdown**,同一纪律:标题剥掉 `#` 号后加粗、编号保留;`**bold**` 亮白加粗;`*italic*` 用 SGR 3(属性而非颜色——本轮唯一新增的字母,终端不支持时无害降级);反引号片段沿用既有代码色;围栏块给一条暗 `│` 边沟加暗语言标签,**零语法高亮**;列表归一为 `•` 并**悬挂缩进**,折行对齐到文字列;表格用暗色线,宽度不够时降级为每行一张记录卡而不是硬截断;引用块给暗 `▏`;链接是亮文本加暗 `(url)`;`~~删除线~~` 保留字面标记(SGR 9 的终端支持面太碎,不值得承诺)。CJK 逐字可断,所以无空格的长串会正确折行而不是溢出。流式走 BLOCK-FREEZE:完结的块落进原生 scrollback 后永不重渲,所以无论消息多长,live 区只住一个块。管道仍拿到模型自己的 markdown 字节,原样不动;`/think` 与 `/last` 保持生字符。功能色是界面里仅剩的颜色——审批 diff 增行绿、错误红;黄色按同一规则留给警告(当前调色板里还没有黄色项)。其余全素;`NO_COLOR` 或管道全部禁用(管道零 ANSI);键入输入由 readline 自己回显,绝不渲染两次;请求与首个 delta 之间 spinner 字形显示活性。v2b:思考块折叠为每块一条暗线(前 100 字符 + ` (… /think shows full)`、`/think` 打印最后完整块),`[result]` 回显截断至 160 字符 + ` (/last for full)`——内容策略管道里相同;彩色 TTY 上 UI 坞到底部(ADR-0039):四行钉住——上暗分隔线、`▌` 输入行、下分隔线、LIVE 状态栏(idle `▸ <mode> · /mode to switch · …` 右对齐暗 `/ commands · ↑ history` 提示——窗口窄时先切;running `▖ working Ns · esc stop · alt+⏎ redirect · …`);正文以真实 LF 滚进原生 scrollback(v2d-B,ADR-0040——无滚动区);审批/不确定/信任问题占据状态位,在输入行作答;SIGWINCH 重应用区域,底部重绘包裹在 CSI 2026 同步输出里,每个退出路径在 finally 里重置终端(`\x1b[r`)——`kill -9` 可能卡住底行,终端 `reset` 命令可救。v2c:TTY 路径自绘输入行(ADR-0039 Amendment 2)——零依赖 raw 模式编辑器(显示宽光标数学——CJK 宽字符落在右列,硬验收——bracketed paste,水平滚动带暗 … 标记)配 kiso brick 母题:粗体半块 ▌you> 行与暗点线 ╌ 分隔;发送的行恰好一次渲染进正文,另一回合运行中提交的回合带 LIVE `+N queued` 状态排队,Esc 中止。KC3:**`@` 打开模糊文件选择器**——在词边界键入才生效(词中间不触发,所以邮箱地址仍是地址),在输入框上方列出工程文件:对完整相对路径做大小写不敏感的子序列匹配,按最长连续段、再按最短路径排序,命中字符加粗,一次五行并带 `(n/total)` 计数行(列表被截断时它会说出来)。↑↓ 选择,Tab 或 Enter 接受,Esc 关闭且不动你已经写下的句子。接受后插入的是**规范路径本身,别无他物**——绝不插入文件内容:模型拿到的是一个它可以自己决定要不要读的引用,所以一次 `@` 只花一条路径的代价,真正的字节由 `read_file` 按需支付。列表在仓库里取自 `git ls-files`(已跟踪 + 未跟踪,减去所有被忽略的),仓库之外走有界遍历,并且每次打开时现算——无索引、无常驻进程、无监听。已知限制:emoji ZWJ 簇宽度不完美。管道保持 readline 逐字节。v2d(ADR-0040):正文变成单元格渲染器——一个写者拥有滚动区(事件处理器只改单元格,交错按构造不可能);完成的单元格冻结一次,未完成的在区底部活动尾部渲染并原地重绘;工具的生命是一行(`→ name summary` → ⏸ → 运行 spinner + Ns → `✓ name (summary, 1.2s)`),`[result]` 不再流进流(`/last` 持有它);管道字节保持逐字节相同。`resume` 是恢复流(不确定执行裁决 rerun/abandon——不确定性只属于崩溃窗口,ADR-0038;有回执的失败是干净失败,其结果带诚实的部分副作用注,重试重过审批链);编码工具绑在工作区根(绝对路径、`..`、symlink 逃逸被拒);审批提示显示完整 shell 命令与完整路径。**kill -9 门禁**(`apps/cli/tests/kill9.test.ts`)在执行中途 SIGKILL 真实聊天并在新进程恢复——见上方一节。
 - **workspace**——可发布 monorepo(core、evals、runtime、tools-node、provider-anthropic、provider-openai、tui、tui-cells、四个官方扩展包、cli——13 个 npm 面),ESM + d.ts,精确 pin 的内部版本(各包独立计数器,每次发布时 pin);CI 是干净签出 `npm ci` + 完整门禁。
 
-`npm run check` = 构建 → 类型检查(packages + 根脚本 + 测试)→ 测试 → 大小门禁(core 2,100 强制;cli/tui/tui-cells 报告制,ADR-0043 Amendment 8)→ pack 门禁(每个 tarball 里有 dist + README + LICENSE)→ 空白门禁(无尾随空白,每文件以换行结束)→ CJK 门禁(被跟踪树保持 CJK-free——`README.zh.md` 是唯一豁免)→ `git diff --check`(工作树与索引)→ 消费者冒烟级(runtime、NESTED 安装、providers、CLI、带真实 Anthropic/OpenAI env 的嵌套 CLI)→ 演示起止门禁。**918 个测试全绿(128 个文件)**。38 份 ADR(索引:`docs/adrs/README.md`)。6 个事故夹具跑在真实运行时上。
+`npm run check` = 构建 → 类型检查(packages + 根脚本 + 测试)→ 测试 → 大小门禁(core 2,200 强制;cli/tui/tui-cells 报告制,ADR-0043 Amendment 8)→ pack 门禁(每个 tarball 里有 dist + README + LICENSE)→ 空白门禁(无尾随空白,每文件以换行结束)→ CJK 门禁(被跟踪树保持 CJK-free——`README.zh.md` 是唯一豁免)→ `git diff --check`(工作树与索引)→ 消费者冒烟级(runtime、NESTED 安装、providers、CLI、带真实 Anthropic/OpenAI env 的嵌套 CLI)→ 演示起止门禁。**918 个测试全绿(128 个文件)**。38 份 ADR(索引:`docs/adrs/README.md`)。6 个事故夹具跑在真实运行时上。
 
 ## 为什么还要做一个
 

@@ -149,6 +149,8 @@ export class Run implements AsyncIterable<Event> {
 					...(this.#config.compaction !== undefined ? { compaction: this.#config.compaction } : {}),
 					...(microcompact !== undefined ? { microcompact } : {}),
 					...(this.#config.maxRetries !== undefined ? { maxRetries: this.#config.maxRetries } : {}),
+					// MG-1 (A5): the kernel stamps committed envelopes with this.
+					...(this.#config.continuationScope !== undefined ? { continuationScope: this.#config.continuationScope } : {}),
 					// E1: the composed approval chain — the extensions'
 					// policies composed into ONE gate (deny > allow > ask).
 					...(approvalChain !== undefined ? { approvalPolicy: approvalChain } : {}),

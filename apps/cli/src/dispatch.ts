@@ -6,7 +6,7 @@
 
 import { contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modelPickView, palette, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
-import { buildAdapter } from "@vincemakes/kiso-runtime/internal";
+import { buildAdapter, resolveContinuationScope } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, getMode, setMode } from "./mode.js";
 import { agentModel, body, bodyLog, configModels, dock, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput } from "./state.js";
@@ -279,7 +279,15 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 						// carrying the OLD model, so the status row claimed the
 						// new model while every request still sent the old id
 						// (and usage canonicalized under the old route).
-						ctx.session.setModelBinding({ adapter, model: profile.model, provider: profile.kind });
+						// MG-1 (A5): the scope moves WITH the adapter — the same
+						// atomic switch PH-F8 demanded, one more passenger.
+						const scope = resolveContinuationScope(profile.kind, profile.model, profile.baseUrl);
+						ctx.session.setModelBinding({
+							adapter,
+							model: profile.model,
+							provider: profile.kind,
+							...(scope !== undefined ? { scope } : {}),
+						});
 						setAgentModel(profile.model);
 						setCurrentModelName(arg);
 						body.notice(`model → ${arg} (${profile.model}) — takes effect on the next turn`);

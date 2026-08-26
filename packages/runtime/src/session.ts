@@ -46,7 +46,7 @@ import { assessTasks, type TaskAssessment } from "./task-assessment.js";
  *  to ∅ (never inventing evidence); the session names the one built-in
  *  verification surface. Override per call for custom evidence tools. */
 const DEFAULT_EVIDENCE_TOOLS: ReadonlySet<string> = new Set(["shell"]);
-import { denialResult } from "@vincemakes/kiso-core";
+import { denialResult, type ContinuationScope } from "@vincemakes/kiso-core";
 import {
 	DROP_PLACEHOLDER,
 	estimateSummarySavings,
@@ -155,6 +155,8 @@ export class AgentSession {
 	// setAdapter always had).
 	#model: string;
 	#provider: "anthropic" | "openai-compat" | undefined;
+	// MG-1 (A5): travels WITH the adapter, same next-turn semantics.
+	#continuationScope: ContinuationScope | undefined;
 	readonly #pendingResolvers = new Map<string, (decision: PermissionDecision) => void>();
 	readonly #uncertaintyResolvers = new Map<string, (resolution: "rerun" | "abandoned") => void>();
 	readonly #answered = new Set<string>();
@@ -209,6 +211,7 @@ export class AgentSession {
 		this.#config = composedHooks === undefined ? config : { ...config, hooks: composedHooks };
 		this.#model = config.model;
 		this.#provider = config.provider;
+		this.#continuationScope = config.continuationScope;
 	}
 
 	/** The config a NEW run/resume/summary sees: the frozen startup config
@@ -216,8 +219,13 @@ export class AgentSession {
 	 *  fresh per call so an in-flight run keeps the config it started with
 	 *  — the same boundary setAdapter has always drawn. */
 	#effectiveConfig(): SessionConfig {
-		const { provider: _startup, ...rest } = this.#config;
-		return { ...rest, model: this.#model, ...(this.#provider !== undefined ? { provider: this.#provider } : {}) };
+		const { provider: _startup, continuationScope: _startupScope, ...rest } = this.#config;
+		return {
+			...rest,
+			model: this.#model,
+			...(this.#provider !== undefined ? { provider: this.#provider } : {}),
+			...(this.#continuationScope !== undefined ? { continuationScope: this.#continuationScope } : {}),
+		};
 	}
 
 	/** Write-ahead through the store; a rejected write POISONS the session
@@ -279,10 +287,18 @@ export class AgentSession {
 	 * the stale one. (The context window joins the binding when per-model
 	 * metadata exists — the PH-1c registry.)
 	 */
-	setModelBinding(binding: { readonly adapter: Adapter; readonly model: string; readonly provider?: "anthropic" | "openai-compat" }): void {
+	setModelBinding(binding: {
+		readonly adapter: Adapter;
+		readonly model: string;
+		readonly provider?: "anthropic" | "openai-compat";
+		/** MG-1 (A5): the run's continuation scope — moves atomically with
+		 *  the adapter (absent = unscoped: the kernel strips envelopes). */
+		readonly scope?: ContinuationScope;
+	}): void {
 		this.#adapter = binding.adapter;
 		this.#model = binding.model;
 		this.#provider = binding.provider;
+		this.#continuationScope = binding.scope;
 	}
 
 	/** E2: the adapter identity ("anthropic" | "openai-compat") — the route
@@ -913,6 +929,9 @@ export interface SessionConfig {
 	/** E1: the adapter identity ("anthropic" | "openai-compat") — trace
 	 *  provenance, additive (S1 surface untouched: type-only, optional). */
 	readonly provider?: "anthropic" | "openai-compat";
+	/** MG-1 (A5): the run's continuation scope — the kernel stamps it on
+	 *  committed envelopes; absent = unscoped (envelopes stripped). */
+	readonly continuationScope?: import("@vincemakes/kiso-core").ContinuationScope;
 	readonly systemPrompt?: string;
 	readonly tools?: readonly Tool<any>[];
 	readonly registry: import("@vincemakes/kiso-core").ToolRegistry;
