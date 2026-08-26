@@ -201,13 +201,19 @@ export class Editor {
 	 */
 	#pasteRun: number[] | null = null;
 	/**
-	 * REL-0152-D11 — what an EMPTY paste means.
+	 * REL-0152-D11/D15 — the clipboard hook.
 	 *
-	 * Pasting an image sends nothing: a terminal has no way to put binary
-	 * into a byte stream, so the bracketed paste arrives with no content.
-	 * That emptiness is the signal — the user pressed paste and the
-	 * terminal had nothing to hand over — and whatever they meant has to
-	 * be fetched from the clipboard instead.
+	 * A terminal cannot put binary into a byte stream, so pasting an image
+	 * sends no image. D11 keyed on an EMPTY bracketed paste, reasoning
+	 * that the paste would still arrive with nothing in it. Half right:
+	 * with no TEXT on the clipboard many terminals send no paste at all,
+	 * so there was no empty paste to react to and the owner's cmd+V and
+	 * ctrl+V both did nothing.
+	 *
+	 * ctrl+V is the gesture that always arrives — 0x16, a byte the editor
+	 * has always received and thrown away as "other control". The empty
+	 * paste stays wired too, because terminals differ and one that does
+	 * send it should behave the same. Two doors, one room.
 	 *
 	 * The editor does not know what a clipboard is and must not: this
 	 * package renders and reads keys, and reaching into the operating
@@ -216,7 +222,7 @@ export class Editor {
 	 * moment. It returns the text to insert (a path, for the CLI's
 	 * attachment scan to pick up) or null when there was nothing.
 	 */
-	#onEmptyPaste: (() => string | null) | null = null;
+	#onClipboardPaste: (() => string | null) | null = null;
 	/** TUI2-R3v2 ①: one-shot — a panel that just closed swallows the
 	 *  habitual trailing enter rather than submitting the restored draft. */
 	#swallowEnter = false;
@@ -354,11 +360,11 @@ export class Editor {
 	 *  over while the run is told to stop. Mirrors onEscape (a list, so
 	 *  listeners can coexist); the line arrives already gone from the
 	 *  composer, exactly as a submit's does. */
-	/** REL-0152-D11: what to do when a paste arrives empty. See
-	 *  #onEmptyPaste — the CLI owns the platform, the editor owns the
-	 *  moment. */
-	onEmptyPaste(cb: () => string | null): void {
-		this.#onEmptyPaste = cb;
+	/** REL-0152-D11/D15: where to get the clipboard's contents when the
+	 *  human asks for them — ctrl+V, or an empty paste. The CLI owns the
+	 *  platform, the editor owns the moment. */
+	onClipboardPaste(cb: () => string | null): void {
+		this.#onClipboardPaste = cb;
 	}
 
 	onRedirect(cb: (line: string) => void): void {
@@ -1245,6 +1251,16 @@ export class Editor {
 				// `@<path> `. Never the file's content.
 				this.#atAccept();
 				i += 1;
+			} else if (c === "\x16") {
+				// REL-0152-D15: ctrl+V asks for the clipboard. Inert with no
+				// hook wired, and 0x16 must NEVER reach the buffer — an
+				// unhandled control byte in a prompt is a corrupt prompt.
+				const text = this.#onClipboardPaste?.() ?? null;
+				if (text !== null && text !== "") {
+					for (const ch of text) this.#insert(ch.codePointAt(0)!);
+					this.#onRender();
+				}
+				i += 1;
 			} else if (c === "\x12") {
 				// W15: the expand key (ctrl+r) — rides the chain like a
 				// command, the editor just forwards it.
@@ -1943,7 +1959,7 @@ export class Editor {
 			// REL-0152-D11: an empty paste is the image case — see
 			// #onEmptyPaste. Anything it returns is ordinary text from here
 			// on and takes the same route as if it had been typed.
-			const substitute = this.#onEmptyPaste?.() ?? null;
+			const substitute = this.#onClipboardPaste?.() ?? null;
 			if (substitute === null || substitute === "") return;
 			run = [...substitute].map((ch) => ch.codePointAt(0)!);
 		}

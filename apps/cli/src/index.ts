@@ -178,8 +178,8 @@ function editorInput(editor: Editor): LineInput {
 		onRedirect(cb) {
 			editor.onRedirect(cb);
 		},
-		onEmptyPaste(cb) {
-			editor.onEmptyPaste(cb);
+		onClipboardPaste(cb) {
+			editor.onClipboardPaste(cb);
 		},
 		question(query, cb) {
 			editor.question(query, cb);
@@ -799,10 +799,10 @@ async function main(): Promise<void> {
 	// the signal to go and look at the clipboard. What comes back is a
 	// PATH, which the turn's attachment scan then picks up exactly as it
 	// would a dragged-in file — one mechanism, two ways of naming a file.
-	input.onEmptyPaste?.(() => {
+	input.onClipboardPaste?.(() => {
 		const shot = clipboardImage(tmpdir());
 		if (shot === null) {
-			bodyLog("[nothing on the clipboard that kiso can read as an image]");
+			bodyLog("[no image on the clipboard — ctrl+V attaches one; a file dragged into the window works too]");
 			return null;
 		}
 		return shot;
