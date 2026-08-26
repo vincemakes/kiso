@@ -86,6 +86,29 @@ export function armByteTrace(): void {
 		}) as typeof stream.write;
 	}
 	process.stdin.on("data", (chunk: Buffer) => line("in", chunk));
+	// REL-0152-D1 — ASK THE TERMINAL WHAT IT THINKS.
+	//
+	// Four rounds have measured what kiso SENDS and found it clean, and
+	// the stray brackets are still there. What has never been measured is
+	// what the TERMINAL believes, and both candidate mechanisms can be
+	// asked about directly:
+	//
+	//   ESC[18t     the text area in rows/cols. If it disagrees with
+	//               process.stdout.columns, kiso is drawing rows to the
+	//               wrong width and the columns it never reaches keep
+	//               whatever was there — a `[` at one edge and a `]` at
+	//               the other is exactly that.
+	//   ESC[?69$p   DECLRMM. A set left/right margin confines every write
+	//               AND every erase to a sub-region, with the same result.
+	//   ESC[6n      the cursor, as a liveness check on the reply path: no
+	//               answer at all means this terminal ignores queries and
+	//               the two above prove nothing either way.
+	//
+	// The replies arrive on stdin and land here as `in` records, so one
+	// capture carries both sides. Sent ONLY when the trace is armed — a
+	// session that is not being diagnosed sends no queries. The listener
+	// is attached first, above, so a fast reply cannot outrun it.
+	process.stdout.write("\x1b[18t\x1b[?69$p\x1b[6n");
 	// The environment goes in the record FIRST, because kiso emits
 	// DIFFERENT frame bytes per terminal — DEC 2026 synchronized output
 	// where it is supported, a cursor-hide degrade on Apple Terminal —

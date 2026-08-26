@@ -91,6 +91,24 @@ for (const r of outs) {
 const danglingEsc = tokens.filter((t) => t.kind === "esc" && t.s === "\x1b").length;
 
 console.log(`trace: ${rows.length} records — ${outs.length} writes (${stream.length} bytes out), ${ins.length} reads`);
+// REL-0152-D1: what the TERMINAL said about itself.
+const replies = ins.map((r) => Buffer.from(r.b, "base64").toString("latin1")).join("");
+const size = /\x1b\[8;(\d+);(\d+)t/.exec(replies);
+const declrmm = /\x1b\[\?69;(\d+)\$y/.exec(replies);
+const curpos = /\x1b\[(\d+);(\d+)R/.exec(replies);
+console.log("\nTHE TERMINAL'S OWN ANSWERS");
+console.log(`  text area (ESC[18t) : ${size === null ? "no reply" : `${size[1]} rows x ${size[2]} cols`}`);
+console.log(`  kiso believed       : ${rows.find((r) => r.env)?.env?.rows ?? "?"} rows x ${rows.find((r) => r.env)?.env?.columns ?? "?"} cols`);
+if (size !== null) {
+	const believed = rows.find((r) => r.env)?.env?.columns;
+	if (believed !== undefined && Number(size[2]) !== believed) {
+		console.log(`  >>> WIDTH DISAGREEMENT: the terminal is ${size[2]} columns and kiso drew to ${believed}.`);
+		console.log("      The columns kiso never reaches keep whatever was there — which is the symptom.");
+	} else console.log("  width agrees — not the mechanism");
+}
+const st = declrmm === null ? null : declrmm[1];
+console.log(`  DECLRMM (ESC[?69$p) : ${st === null ? "no reply" : st === "1" || st === "3" ? `SET (${st}) >>> writes are confined to a sub-region` : `not set (${st})`}`);
+console.log(`  cursor (ESC[6n)     : ${curpos === null ? "NO REPLY — this terminal ignores queries, so the two above prove nothing" : `row ${curpos[1]} col ${curpos[2]} (the reply path works)`}`);
 console.log(`\nSTDERR writes on the same terminal: ${errs.length}`);
 for (const e of errs.slice(0, 20)) {
 	const t = Buffer.from(e.b, "base64").toString("latin1").replace(/\n/g, "\\n");
