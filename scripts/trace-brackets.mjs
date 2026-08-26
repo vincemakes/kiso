@@ -35,6 +35,10 @@ if (file === undefined) {
 
 const rows = readFileSync(file, "utf8").trim().split("\n").filter((l) => l !== "").map((l) => JSON.parse(l));
 const outs = rows.filter((r) => r.dir === "out");
+// REL-0152-D17: stderr is a writer on the same tty, and the notices it
+// carries begin with `[` and contain `]`. A capture that ignored it was
+// how three rounds concluded "kiso's bytes are clean".
+const errs = rows.filter((r) => r.dir === "err");
 const ins = rows.filter((r) => r.dir === "in");
 const stream = Buffer.concat(outs.map((r) => Buffer.from(r.b, "base64"))).toString("latin1");
 
@@ -87,6 +91,12 @@ for (const r of outs) {
 const danglingEsc = tokens.filter((t) => t.kind === "esc" && t.s === "\x1b").length;
 
 console.log(`trace: ${rows.length} records — ${outs.length} writes (${stream.length} bytes out), ${ins.length} reads`);
+console.log(`\nSTDERR writes on the same terminal: ${errs.length}`);
+for (const e of errs.slice(0, 20)) {
+	const t = Buffer.from(e.b, "base64").toString("latin1").replace(/\n/g, "\\n");
+	console.log(`  +${e.ms}ms ${JSON.stringify(t.slice(0, 100))}`);
+}
+if (errs.length > 0) console.log("  ^ each of these landed on the tty wherever the cursor was.");
 console.log(`\nEDGE brackets in kiso's own output: ${edges.length}`);
 for (const e of edges.slice(0, 30)) console.log(`  ${e.c} at ${e.where}: ${e.ctx}`);
 if (edges.length > 30) console.log(`  … ${edges.length - 30} more`);

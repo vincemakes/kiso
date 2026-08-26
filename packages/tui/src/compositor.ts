@@ -961,7 +961,7 @@ export class Body {
 		const rows = process.stdout.rows ?? 0;
 		if (process.stdout.isTTY !== true || palette().bold === "" || rows < 4) return;
 		this.#docked = true;
-		this.#guardStdout();
+		this.#guardOutput();
 		this.#attachResize();
 		this.#fullRedraw = true;
 		this.#dirty = true;
@@ -1031,23 +1031,52 @@ export class Body {
 	 * change, and the cursor parks on the wrong row. Three PTY gates
 	 * caught it.
 	 *
-	 * The fix is not a list of writers to remember. stdout is wrapped
-	 * while the dock is up: anything written that is not this frame's own
-	 * bytes forgets the screen, and the next frame repaints. New callers
-	 * cannot get it wrong because they are not asked to get it right.
+	 * REL-0152-D17: BOTH descriptors, and the second one is the one that
+	 * mattered. The first version of this guard wrapped stdout alone,
+	 * while kiso's degradation notices go to stderr through
+	 * `console.error` — and several of them BEGIN with `[` and contain
+	 * `]`:
+	 *
+	 *     [extensions] …        [project .kiso] …
+	 *     [KISO_FAUX_SCRIPT] …  [run failed] …
+	 *
+	 * Those land on the tty wherever the cursor is, and a renderer that
+	 * does not know they were printed skips exactly the rows that would
+	 * repair them. The residue survives on the rows whose desired content
+	 * NEVER changes — the composer box's own edges — which is a stray `[`
+	 * at the left and `]` at the right for the rest of the session,
+	 * clearing only on a resize and returning on the next launch.
+	 *
+	 * The reasoning that missed it was mine, and it is worth keeping: the
+	 * renderer emits no OSC and no bare `]`, so a `]` on screen CANNOT
+	 * have come from its stream. I had that fact and concluded "therefore
+	 * the terminal invents it" when the only sound conclusion is
+	 * "therefore something else wrote it".
+	 *
+	 * The fix is not a list of writers to remember, and not silencing the
+	 * loggers. A compositor cannot hold a belief about a terminal it does
+	 * not own: any write it did not make forgets the screen, whichever
+	 * descriptor carried it. New callers cannot get it wrong because they
+	 * are not asked to get it right.
 	 */
-	#guardStdout(): void {
+	#guardOutput(): void {
 		if (this.#unguard !== null || this.#opts.write !== undefined) return;
-		const real = process.stdout.write.bind(process.stdout);
-		const patched = ((chunk: string | Uint8Array, ...rest: unknown[]): boolean => {
-			if (!this.#inFrame) this.#screen = [];
-			return (real as (...a: unknown[]) => boolean)(chunk, ...rest);
-		}) as typeof process.stdout.write;
-		process.stdout.write = patched;
+		const restores: (() => void)[] = [];
+		for (const stream of [process.stdout, process.stderr]) {
+			const real = stream.write.bind(stream);
+			const patched = ((chunk: string | Uint8Array, ...rest: unknown[]): boolean => {
+				if (!this.#inFrame) this.#screen = [];
+				return (real as (...a: unknown[]) => boolean)(chunk, ...rest);
+			}) as typeof stream.write;
+			stream.write = patched;
+			restores.push((): void => {
+				// only restore what we installed — another wrapper may have
+				// been layered on top since (the byte trace does exactly that)
+				if (stream.write === patched) stream.write = real;
+			});
+		}
 		this.#unguard = (): void => {
-			// only restore what we installed — another wrapper may have
-			// been layered on top since (the byte trace does exactly that)
-			if (process.stdout.write === patched) process.stdout.write = real;
+			for (const r of restores) r();
 			this.#unguard = null;
 		};
 	}

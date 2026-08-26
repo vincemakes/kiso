@@ -23,7 +23,7 @@
  *   KISO_TRACE_BYTES=/tmp/kiso-bytes.jsonl kiso chat
  *
  * One JSON object per line: {ms, dir, n, b} — the stamp relative to the
- * trace's start, "out" or "in", the byte count, and the bytes as base64
+ * trace's start, "out"/"err"/"in", the byte count, and the bytes as base64
  * so no escape, control character or partial UTF-8 sequence is altered
  * on the way to disk. Nothing is interpreted here; interpretation is
  * what the trace exists to make possible.
@@ -39,7 +39,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 let path: string | null = null;
 let start = 0;
 
-function line(dir: "out" | "in", data: string | Uint8Array): void {
+function line(dir: "out" | "err" | "in", data: string | Uint8Array): void {
 	if (path === null) return;
 	const buf = typeof data === "string" ? Buffer.from(data, "utf8") : Buffer.from(data);
 	try {
@@ -71,11 +71,20 @@ export function armByteTrace(): void {
 		path = null;
 		return;
 	}
-	const write = process.stdout.write.bind(process.stdout);
-	process.stdout.write = ((chunk: string | Uint8Array, ...rest: unknown[]): boolean => {
-		line("out", chunk);
-		return (write as (...a: unknown[]) => boolean)(chunk, ...rest);
-	}) as typeof process.stdout.write;
+	// REL-0152-D17: BOTH descriptors. The first version traced stdout
+	// alone, and kiso's degradation notices go to stderr — so a capture
+	// taken to prove "the bytes leaving kiso are clean" could not see the
+	// bytes that were not clean. It supported that conclusion by being
+	// blind to the counter-evidence, which is the worst thing an
+	// instrument can do. `dir` distinguishes them so a reader can tell
+	// which descriptor carried what, and interleave them by timestamp.
+	for (const [dir, stream] of [["out", process.stdout] as const, ["err", process.stderr] as const]) {
+		const write = stream.write.bind(stream);
+		stream.write = ((chunk: string | Uint8Array, ...rest: unknown[]): boolean => {
+			line(dir, chunk);
+			return (write as (...a: unknown[]) => boolean)(chunk, ...rest);
+		}) as typeof stream.write;
+	}
 	process.stdin.on("data", (chunk: Buffer) => line("in", chunk));
 	// The environment goes in the record FIRST, because kiso emits
 	// DIFFERENT frame bytes per terminal — DEC 2026 synchronized output
