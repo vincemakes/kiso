@@ -101,22 +101,32 @@ describe("TUI v6 — the one compositor", () => {
 		expect(() => tick()).toThrow(/kiso-tui invariant ①/);
 	});
 
-	it("invariant ②: the steady-state frames CUP ONLY in the frozen area — the LIVE region (rows 22..24 + the live content) is relative + CHA only", () => {
+	it("a frame positions every row it writes ABSOLUTELY — no relative march to misplace", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
-		writes.length = 0; // drop the first frame (the full-redraw path — CUP allowed there)
+		writes.length = 0; // drop the boot frame
 		body.raw(["line one"]);
 		tick();
 		const bytes = writes.join("");
-		// the frame's CUPs land exclusively in the FROZEN area (the
-		// committed section + the gap/stale ELs — the freeze path), plus
-		// the commit scroll's CUP to the bottom row H — the A7 absolute
-		// scroll base (the pre-scroll ELs moved the cursor, so the relative
-		// 2B anchor is retired on the commit path); the live region (the
-		// chrome rows) is drawn with relative moves only
+		// DECLARED SUPERSESSION (REL-0152-R1): invariant ② is RETIRED with
+		// the steady path it constrained. It said the live region must be
+		// reached by relative moves only, and CUP only in the frozen area
+		// — a rule that existed because the steady path could not afford a
+		// CUP budget and had to march. What it was protecting is that the
+		// live region never lands somewhere other than its model row, and
+		// the A7 and unclamped-geometry findings are both cases of a march
+		// doing exactly that.
+		//
+		// Absolute positioning gives that unconditionally: a row written
+		// at its model row cannot be misplaced by a base the writer got
+		// wrong, because there is no base. So the assertion inverts — what
+		// used to be forbidden is now required — and it is the stronger
+		// statement of the same property.
 		const cups = [...bytes.matchAll(/\x1b\[(\d+);\d+H/g)].map((m) => Number(m[1]));
-		expect(cups.length).toBeGreaterThan(0);
-		expect(cups.every((r) => r <= 21 || r === 24)).toBe(true);
+		expect(cups.length, "the frame positioned nothing absolutely").toBeGreaterThan(0);
+		expect(cups.every((r) => r >= 1 && r <= 24), "a CUP landed outside the screen").toBe(true);
+		// no relative row march survives: the frame never moves by A/B
+		expect(bytes, "a relative row move is left in the frame").not.toMatch(/\x1b\[\d*[AB]/);
 		expect(bytes).toContain("line one");
 	});
 

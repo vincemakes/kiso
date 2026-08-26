@@ -88,10 +88,14 @@ describe("KC1 T-C2 — the N=3 geometry", () => {
 			tick();
 			const bytes = writes.join("");
 			expect(bytes).not.toContain("kiso-cur"); // the marker never reaches the stream
-			// the full frame ends at the status row (H) and walks UP to the
-			// cursor's row: 1 + N − markerRow
-			const up = [...bytes.matchAll(/\x1b\[(\d+)A/g)].map((m) => Number(m[1])).at(-1);
-			expect(up).toBe(1 + 3 - cursorRow);
+			// DECLARED SUPERSESSION (REL-0152-R1): the park is ABSOLUTE. It
+			// used to end at the status row and walk UP by 1 + N − markerRow,
+			// because the bottom-up march guaranteed where it started from;
+			// a diff ends on whatever row changed last, so the walk has no
+			// base to count from. The row this case is about is the same
+			// row, named directly instead of counted backwards from H.
+			const park = [...bytes.matchAll(/\x1b\[(\d+);1H/g)].map((m) => Number(m[1])).at(-1);
+			expect(park, "the frame does not park on the cursor's row").toBe(24 - (1 + 3 - cursorRow));
 			// …then the CHA to the marker's column — wallL (2) + lead (2) +
 			// the cursor's column (1) + 1
 			const cha = [...bytes.matchAll(/\x1b\[(\d+)G/g)].map((m) => Number(m[1])).at(-1);
@@ -185,9 +189,14 @@ describe("KC1 T-C5 — the tiny terminal: H=7 with an 8-line buffer", () => {
 			tick();
 			const bytes = writes.join("");
 			expect(bytes).toContain(`line-${cursorRow}`); // the cursor's line is ON the screen
-			const up = [...bytes.matchAll(/\x1b\[(\d+)A/g)].map((m) => Number(m[1])).at(-1)!;
-			expect(up).toBeGreaterThanOrEqual(1); // never past the box bottom
-			expect(up).toBeLessThanOrEqual(1 + 4); // never above the box top (1 + N)
+			// DECLARED SUPERSESSION (REL-0152-R1), as above: the park is
+			// absolute, so the bound is on the ROW rather than on a
+			// distance walked up from H. Same window, stated directly: at
+			// H=7 the composer's rows are 2..6 — never the box bottom below
+			// them, never the box top above.
+			const park = [...bytes.matchAll(/\x1b\[(\d+);1H/g)].map((m) => Number(m[1])).at(-1)!;
+			expect(park, "the park is below the composer").toBeGreaterThanOrEqual(7 - (1 + 4));
+			expect(park, "the park is above the composer").toBeLessThanOrEqual(7 - 1);
 		}
 	});
 
