@@ -351,6 +351,7 @@ describe("TUI v6 — the one compositor", () => {
 		body.raw(["frozen"]);
 		writes.length = 0;
 		body.onResize();
+		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
 		const bytes = writes.join("");
 		expect(bytes).toContain("\x1b[0J"); // the ED0 clear of the old live area
 		expect(bytes).not.toContain("\x1b[3J");
@@ -363,6 +364,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the invariant, never the byte count.
 		writes.length = 0;
 		body.onResize();
+		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
 		expect(writes.join("")).toContain("\x1b[0J");
 		expect(writes.join("")).toContain("frozen");
 	});
@@ -385,6 +387,7 @@ describe("TUI v6 — the one compositor", () => {
 		writes.length = 0;
 		setSize(40, 18);
 		body.onResize();
+		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
 		const bytes = writes.join("");
 		// the buggy bound — `#committed − committed.length` (cells minus
 		// LINES): the force commit's 15 lines made it negative, the frozen
@@ -427,6 +430,7 @@ describe("TUI v6 — the one compositor", () => {
 		writes.length = 0;
 		setSize(40, 21);
 		body.onResize();
+		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
 		expect(screenOf(writes, 40, 21).join("\n")).toContain("frozen banner");
 	});
 

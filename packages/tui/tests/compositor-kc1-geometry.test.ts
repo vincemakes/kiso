@@ -126,6 +126,7 @@ describe("KC1 T-C3 — a resize at N>1 is idempotent", () => {
 		writes.length = 0;
 		setSize(70, 20);
 		body.onResize();
+		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
 		const first = writes.join("");
 		expect(first).toContain("\x1b[0J"); // ED0 from the recorded top — never 2J/3J
 		expect(first).not.toContain("\x1b[2J");
@@ -134,6 +135,7 @@ describe("KC1 T-C3 — a resize at N>1 is idempotent", () => {
 		expect(rowOf(first, "╭")).toBe(20 - 5); // the NEW geometry: H−2−N
 		writes.length = 0;
 		body.onResize(); // the same size again — the V6-1 idempotence rule
+		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
 		// the ED0's start row follows the RECORDED extent (which shrank
 		// with the first repaint) — the existing resize gate already
 		// declares the SCREEN the invariant, never the byte count; what

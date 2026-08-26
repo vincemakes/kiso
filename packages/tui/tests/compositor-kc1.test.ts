@@ -76,7 +76,7 @@ const SCENARIOS: { label: string; script: (body: Body) => void; W?: number; H?: 
 			b.raw(["x"]);
 		},
 	},
-	{ label: "a resize repaint", script: (b) => { b.raw(["frozen"]); b.onResize(); } },
+	{ label: "a resize repaint", script: (b) => { b.raw(["frozen"]); b.onResize(); vi.advanceTimersByTime(100); } },
 	{
 		label: "the force-commit overflow (a super-tall cell)",
 		script: (b) => b.textAppend(Array.from({ length: 30 }, (_, i) => `tall ${i}`).join("\n")),

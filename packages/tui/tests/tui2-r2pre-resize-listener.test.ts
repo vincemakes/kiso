@@ -104,7 +104,12 @@ describe("TUI2-R2pre ③ — the dock's resize listener is a singleton", () => {
 		watched.enter();
 		repaints = 0;
 		process.stdout.emit("resize");
-		expect(repaints).toBeGreaterThan(0); // the handler is live, not just absent
+		// REL-0152-D18: a drag coalesces, so the repaint arrives once the
+		// signals stop. What this case is for — the handler is LIVE, not
+		// merely absent — is unchanged; it just has to wait for the drag
+		// to be over, exactly as a real one does.
+		vi.advanceTimersByTime(100);
+		expect(repaints).toBeGreaterThan(0);
 		watched.exit();
 		watched.exit();
 		expect(listeners()).toBe(base);

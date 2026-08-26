@@ -96,6 +96,11 @@ const SPINNER_MS = 200; // the spinner cadence — a ONE-SHOT re-armed on demand
  *  frame writes every row rather than trusting an empty string. */
 const NOT_PAINTED = "\u0000never";
 
+/** REL-0152-D18 — how long a drag has to be quiet before it is over.
+ *  Long enough that a continuous drag never crosses it, short enough
+ *  that a single resize still feels immediate. */
+const RESIZE_SETTLE_MS = 80;
+
 const CHROME_ROWS = 4; // box top + input + box bottom + status — the design §03 chrome (V6-3; the box is W6)
 
 /** KC1 §5 — the input row's bound state. The legacy pair stays
@@ -234,6 +239,9 @@ export class Body {
 	#scrolledOff = 0;
 	/** REL-0152-R1: this frame is the repaint after a SIGWINCH. */
 	#resizeFrame = false;
+	/** REL-0152-D18: a drag's signals are still arriving. */
+	#resizePending = false;
+	#resizeTimer: ReturnType<typeof setTimeout> | null = null;
 	#lastH = 0;
 	// KC1 §6: the composer's recorded extent — the row count the last
 	// frame drew (exit's clear walks it) and the row its CHA parked the
@@ -972,6 +980,13 @@ export class Body {
 	 *  chrome rows cleared, the cursor home at the input line. */
 	exit(): void {
 		this.#unguard?.();
+		// REL-0152-D18: a drag in flight must not repaint into a torn-down
+		// dock — the timer outlives the compositor otherwise.
+		if (this.#resizeTimer !== null) {
+			clearTimeout(this.#resizeTimer);
+			this.#resizeTimer = null;
+		}
+		this.#resizePending = false;
 		// TUI2-R3v2 ②: the mouse disable rides the SAME teardown as CSI r,
 		// and rides it BEFORE the docked guard — an un-docked compositor is
 		// exactly the state a superseded or half-torn-down one is in, and
@@ -1094,8 +1109,47 @@ export class Body {
 	 *  live region's first row) — NEVER at the formula's committed-count
 	 *  top: external writes (the CLI's console.error CRLF) can shift the
 	 *  committed content down, and a formula-top ED0 would clear it. */
+	/**
+	 * REL-0152-D18 — a window DRAG is one resize, not forty.
+	 *
+	 * SIGWINCH fires continuously while a drag is in progress — every few
+	 * pixels is another signal — and this used to answer each one at once
+	 * with an erase and a full repaint. A real terminal REFLOWS on a width
+	 * change and pushes the rows it displaces into its scrollback, so
+	 * every one of those repaints deposited another copy of the screen
+	 * into the history. The owner's two-second drag left six identical
+	 * copies of the same tool block in the transcript.
+	 *
+	 * Nothing clever can undo that afterwards: the scrollback is not ours
+	 * to rewrite. The only fix is to not paint into the middle of a drag.
+	 *
+	 * The geometry is adopted IMMEDIATELY — every cap and bound is read
+	 * from `#opts` at frame time, so the model is already at the new size
+	 * and nothing is computed against a stale width. What waits is the
+	 * PAINT. When the signals stop, one erase and one repaint.
+	 *
+	 * The competitor does not have this problem, for a structural reason
+	 * worth naming rather than envying: it runs on the alternate screen,
+	 * which has no scrollback to accumulate into. kiso is on the primary
+	 * screen deliberately — the transcript IS the terminal's own
+	 * scrollback, which is the product's whole claim — so it pays for
+	 * that choice here, and has to pay carefully.
+	 */
 	onResize(): void {
 		if (!this.#isActive()) return;
+		this.#resizePending = true;
+		if (this.#resizeTimer !== null) clearTimeout(this.#resizeTimer);
+		this.#resizeTimer = setTimeout(() => {
+			this.#resizeTimer = null;
+			this.#settleResize();
+		}, RESIZE_SETTLE_MS);
+		if (this.#resizeTimer.unref !== undefined) this.#resizeTimer.unref();
+	}
+
+	/** The one repaint a drag earns, once its signals have stopped. */
+	#settleResize(): void {
+		if (!this.#resizePending || !this.#isActive()) return;
+		this.#resizePending = false;
 		const H = this.#opts.height();
 		const liveRows = this.#lastLiveRows > 0 ? this.#lastLiveRows : 3;
 		const from = Math.max(1, (this.#lastH > 0 ? this.#lastH : H) - liveRows + 1);
@@ -1103,7 +1157,7 @@ export class Body {
 		this.#fullRedraw = true;
 		this.#resizeFrame = true;
 		this.#dirty = true;
-		this.render(); // the immediate redraw at the NEW geometry
+		this.render();
 	}
 
 	/** W18: the status row's right-aligned hint is part of the status

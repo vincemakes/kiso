@@ -64,6 +64,7 @@ describe("TT-1B — TUI2-MD-1: the over-tall commit burst keeps every row (the s
 		setSize(40, 12);
 		vt.resize(40, 12);
 		body.onResize();
+		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
 		vt.feed(writes.join(""));
 
 		const reachable = vt.allLines();
