@@ -101,6 +101,16 @@ const NOT_PAINTED = "\u0000never";
  *  that a single resize still feels immediate. */
 const RESIZE_SETTLE_MS = 80;
 
+/**
+ * SPIKE (alt-screen) — measured, not shipped.
+ *
+ * `KISO_ALT_SCREEN=1` runs the dock on the terminal's ALTERNATE screen.
+ * The question the spike answers is what that would buy and what it
+ * would cost, with numbers instead of argument. Off by default: nothing
+ * about the product changes unless the variable is set.
+ */
+const ALT_SCREEN = process.env.KISO_ALT_SCREEN === "1";
+
 const CHROME_ROWS = 4; // box top + input + box bottom + status — the design §03 chrome (V6-3; the box is W6)
 
 /** KC1 §5 — the input row's bound state. The legacy pair stays
@@ -243,6 +253,7 @@ export class Body {
 	#resizePending = false;
 	/** REL-0152-D19: the inherited terminal has not been released yet. */
 	#needsReset = false;
+	#altRestored = false;
 	#resizeTimer: ReturnType<typeof setTimeout> | null = null;
 	#lastH = 0;
 	// KC1 §6: the composer's recorded extent — the row count the last
@@ -1008,6 +1019,9 @@ export class Body {
 		// Idempotent, sixteen bytes, once per session, and correct whether
 		// or not anything was actually left set.
 		this.#needsReset = true;
+		// SPIKE: 1049 saves the primary screen, gives a blank buffer with
+		// NO scrollback, and restores the primary untouched on exit.
+		if (ALT_SCREEN) this.#write("\x1b[?1049h");
 		this.#attachResize();
 		this.#fullRedraw = true;
 		this.#dirty = true;
@@ -1017,6 +1031,19 @@ export class Body {
 	/** Teardown — CSI r (the "no broken terminal" contract byte), the
 	 *  chrome rows cleared, the cursor home at the input line. */
 	exit(): void {
+		// SPIKE: the transcript is printed to the PRIMARY screen on the way
+		// out, so the history survives the session the way it does today —
+		// the third option the round proposed, measured here rather than
+		// argued about.
+		if (ALT_SCREEN && this.#docked) {
+			const lines: string[] = [];
+			for (let i = 0; i < this.#committed; i += 1) {
+				lines.push(...this.#space(i, i > 0 ? this.#lineCache[i - 1]! : null, this.#lineCache[i]!));
+			}
+			this.#write("\x1b[?1049l");
+			if (lines.length > 0) this.#write(`${lines.join("\n")}\n`);
+			this.#altRestored = true;
+		}
 		this.#unguard?.();
 		// REL-0152-D18: a drag in flight must not repaint into a torn-down
 		// dock — the timer outlives the compositor otherwise.
@@ -1057,6 +1084,7 @@ export class Body {
 		const H = this.#lastH > 0 ? this.#lastH : process.stdout.rows ?? 24;
 		const out: string[] = [];
 		out.push("\x1b[r");
+		if (ALT_SCREEN && !this.#altRestored) out.push("\x1b[?1049l");
 		// V6-3 + KC1: the chrome rows — the RECORDED composer extent rides
 		// the same mechanism the resize clear already uses (N = 1 ⇒ H−3..H)
 		for (let row = H - 2 - this.#lastInputRows; row <= H; row += 1) {
@@ -2112,6 +2140,15 @@ export class Body {
 			this.#scrolledOff = Math.max(this.#scrolledOff, Math.max(0, Math.min(skip, all.length)));
 			this.#screen = new Array(H).fill(NOT_PAINTED);
 			this.#resizeFrame = false;
+		} else if (ALT_SCREEN) {
+			// SPIKE — THE WHOLE POINT. There is no scrollback on the
+			// alternate screen, so nothing a frame does is irreversible and
+			// no row ever has to be "sent somewhere it can never come back
+			// from". The floor, the monotonic counter, the staging, the
+			// chunked transit and the question REL-0152-D7 spent six failed
+			// fixes on all become unreachable: the window is simply the
+			// model's last rows, and the diff paints it.
+			this.#scrolledOff = 0;
 		} else if (!overlay) {
 			const floor = Math.max(0, this.#committedLines + CHROME_ROWS - H);
 			this.#emitScroll(out, W, H, all, floor);
