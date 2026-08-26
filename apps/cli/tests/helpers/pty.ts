@@ -154,8 +154,19 @@ export function frameEndAfter(raw: string, from: number): number {
  *  and its first paint is usually half-drawn. */
 export function screenAt(raw: string, marker: string, rows = 24, cols = 100): string[] {
 	const at = raw.lastIndexOf(marker);
+	// REL-0152-R1: cut at the FRAME's end, not at the marker.
+	//
+	// A frame is atomic — it is bracketed in synchronized output for
+	// exactly that reason — so "the screen when the marker was painted"
+	// is only defined once that frame has finished. Cutting at the marker
+	// itself worked while the renderer repainted every row bottom-up,
+	// because the status row went out FIRST and was already on screen by
+	// the time any content row mentioned anything. A diff writes rows in
+	// row order, so the status row goes out LAST, and a mid-frame cut
+	// truncated it away — the screen showed the panel and not the status
+	// line that belonged to it.
 	const screen = new VtScreen(rows, cols);
-	screen.write(Buffer.from(raw.slice(0, at < 0 ? raw.length : at + marker.length), "utf8"));
+	screen.write(Buffer.from(raw.slice(0, at < 0 ? raw.length : frameEndAfter(raw, at + marker.length)), "utf8"));
 	return screen.visible();
 }
 

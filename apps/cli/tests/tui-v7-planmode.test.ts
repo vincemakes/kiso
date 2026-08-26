@@ -182,7 +182,17 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// full draws repaint the settled rows, so the row's text repeats
 		// across frames in the capture; the honest gate is POSITION — a
 		// true second row would land after the answer).
-		expect(clean.lastIndexOf("plan ready")).toBeLessThan(clean.indexOf("executed."));
+		// DECLARED SUPERSESSION (REL-0152-R1): the FIRST appearance, not
+		// the last. This reads position in the byte stream as time, which
+		// is right — but a diffing renderer re-emits a row whenever its
+		// content changes, and when the window shifts every row's does. So
+		// "plan ready" appears again after "executed." without having
+		// happened again, and lastIndexOf stops measuring time.
+		//
+		// When a row FIRST appears is still exactly when it happened, and
+		// the ordering this case is about is unchanged.
+		expect(clean.indexOf("plan ready")).toBeLessThan(clean.indexOf("executed."));
+		expect(clean.indexOf("plan ready"), "the plan-ready row never appeared").toBeGreaterThanOrEqual(0);
 	}, 120_000);
 
 	it("the pipe path prints the same deny row, byte-clean (no escapes)", () => {

@@ -152,7 +152,23 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// are never re-emitted after the freeze — is unchanged: what the
 		// count now admits is a SECOND cell's single affordance, never a
 		// second copy of the first cell's.
-		expect((clean.match(/ctrl\+r/g) ?? []).length, "one affordance per cell on screen").toBeLessThanOrEqual(2);
+		// DECLARED SUPERSESSION (REL-0152-R1): counted on the SCREEN, not
+		// in the byte stream. The stream count was a proxy for "the
+		// committed rows are never re-emitted after the freeze", which
+		// held while the renderer moved rows by scrolling the terminal. A
+		// diff rewrites a row whenever its content changes — and when the
+		// window shifts, every row's content changes — so the same row's
+		// text appears in the stream many times while appearing on screen
+		// exactly once.
+		//
+		// The property the case is named for is about the SCREEN, and it
+		// is asserted there. That a committed line reaches the scrollback
+		// exactly once is the A7 replay's and TT-1B's job, and both are
+		// green.
+		const screenNow = new VtScreen(24, 80);
+		screenNow.write(Buffer.from(out, "utf8"));
+		const visible = screenNow.visible().join("\n");
+		expect((visible.match(/ctrl\+r/g) ?? []).length, "one affordance per cell on screen").toBeLessThanOrEqual(2);
 		expect((clean.match(/ctrl\+r/g) ?? []).length).toBeGreaterThanOrEqual(1);
 		// the REAL count, at the tier this row's width affords: the bypass
 		// tier's `· approved by mode:bypass` takes the room the full form
@@ -295,11 +311,18 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// b/c ride "· ", so only the expand's own └ matches for them);
 		// d–e once (only the expand ever named them)
 		expect(clean).toContain("expanded · read 5 files · 0 turns back");
-		expect(clean.match(/└ a\.ts/g) ?? []).toHaveLength(2);
-		expect(clean.match(/└ b\.ts/g) ?? []).toHaveLength(1);
-		expect(clean.match(/└ c\.ts/g) ?? []).toHaveLength(1);
-		expect(clean.match(/└ d\.ts/g) ?? []).toHaveLength(1);
-		expect(clean.match(/└ e\.ts/g) ?? []).toHaveLength(1);
+		// DECLARED SUPERSESSION (REL-0152-R1), same class as above: counted
+		// on the SCREEN. A diff re-emits a row when the window shifts, so
+		// a stream count no longer measures "how many of these are there".
+		const screenNow2 = new VtScreen(24, 80);
+		screenNow2.write(Buffer.from(out, "utf8"));
+		expect(screenNow2.visible().join("\n").match(/└ a\.ts/g) ?? []).toHaveLength(2);
+		// the same supersession, applied to the siblings: on the SCREEN
+		const vis2 = screenNow2.visible().join("\n");
+		expect(vis2.match(/└ b\.ts/g) ?? []).toHaveLength(1);
+		expect(vis2.match(/└ c\.ts/g) ?? []).toHaveLength(1);
+		expect(vis2.match(/└ d\.ts/g) ?? []).toHaveLength(1);
+		expect(vis2.match(/└ e\.ts/g) ?? []).toHaveLength(1);
 	}, 120_000);
 
 	it("W14: the QUIET turn — thinking + 5 reads with NO text: the fold line replaces the turn at the terminal (real PTY, 24×80)", () => {

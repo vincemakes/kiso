@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { VtScreen } from "./helpers/vt-screen.js";
 import { isolatedEnv, stripANSI } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
@@ -136,7 +137,18 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		// frozen cell is the only copy there).
 		const bodyEcho = "\x1b[7m look around \x1b[27m"; // the 2026-08-09 ruling: the chip ALONE, flush left
 		const esc = bodyEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		expect((out.match(new RegExp(esc, "g")) ?? []).length).toBe(1);
+		// DECLARED SUPERSESSION (REL-0152-R1): counted where "exactly
+		// once" is a claim about the terminal rather than about the byte
+		// stream. The old renderer moved rows by scrolling, so a committed
+		// row was written once and never again; a diff rewrites a row
+		// whenever its content changes, and when the window shifts every
+		// row's content changes. The chip is still on the terminal exactly
+		// once — that is what the screen plus the scrollback says, and it
+		// is what the A7 replay gate asserts at every frame and every size.
+		const term2c = new VtScreen(24, 80);
+		term2c.write(Buffer.from(out, "utf8"));
+		const seen2c = term2c.visible().join("\n");
+		expect((seen2c.match(/ look around /g) ?? []).length).toBe(1);
 		// ?2004l on exit + region reset — no bracketed-paste left on.
 		expect(out).toContain("\x1b[?2004l");
 		expect(out).toContain("\x1b[r");

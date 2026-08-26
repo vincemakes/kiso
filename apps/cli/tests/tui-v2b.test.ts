@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { VtScreen } from "./helpers/vt-screen.js";
 import { isolatedEnv, stripANSI } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
@@ -155,7 +156,16 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// reset splits the prompt from the text).
 		const userEcho = "\x1b[7m look around \x1b[27m"; // the 2026-08-09 ruling: the chip ALONE, flush left (the ▍ rail + the indent retired)
 		expect(out).toContain(userEcho);
-		expect((out.match(new RegExp(userEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length).toBe(1);
+		// DECLARED SUPERSESSION (REL-0152-R1): counted on the SCREEN. The
+		// old renderer moved rows by scrolling the terminal, so a
+		// committed row was written once and never again; a diff rewrites
+		// a row whenever its content changes, and when the window shifts
+		// every row's content does. "Exactly once" is a claim about the
+		// terminal, not about the byte stream, and the A7 replay asserts
+		// it there at every frame and every size.
+		const term2b = new VtScreen(24, 80);
+		term2b.write(Buffer.from(out, "utf8"));
+		expect((term2b.visible().join("\n").match(/ look around /g) ?? []).length).toBe(1);
 		// Exit resets the scroll region (CSI r) — no broken terminal.
 		expect(out).toContain("\x1b[r");
 	}, 90_000);

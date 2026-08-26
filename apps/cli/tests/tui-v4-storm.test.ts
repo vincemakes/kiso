@@ -283,6 +283,11 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// 51-cell status CUTS at W−1 with a … (the old code soft-wrapped
 		// it; the crash-on-violation makes the cut structural).
 		expect(narrow).toContain("▸ default · /mode to switch · faux · ctx left ~10…\x1b[0m");
-		expect(narrow).toContain("\x1b[1G\x1b[0K\x1b[2m▸ default"); // the status write — the first bottom-up row (H, relative — invariant ②) — never truncated from the left
+		// DECLARED SUPERSESSION (REL-0152-R1): the status row is written
+		// by ROW NUMBER now, not by a CHA at the end of a bottom-up march.
+		// The property is that it is never truncated from the LEFT — the
+		// cut happens at the right, which is what the `…` in the emitted
+		// row shows — and that is what this asserts.
+		expect(narrow).toMatch(/\x1b\[\d+;1H\x1b\[0K\x1b\[2m▸ default/);
 	}, 90_000);
 });

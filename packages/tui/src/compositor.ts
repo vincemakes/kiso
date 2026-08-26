@@ -321,6 +321,9 @@ export class Body {
 	/** REL-0152-R1: the frame's own writer — the ONE path that does not
 	 *  invalidate the held screen, because it is what produced it. */
 	readonly #writeFrame: (s: string) => void;
+	/** REL-0152-R1: true only while the frame's own bytes are going out. */
+	#inFrame = false;
+	#unguard: (() => void) | null = null;
 
 	constructor(opts: BodyOptions) {
 		this.#opts = opts;
@@ -958,6 +961,7 @@ export class Body {
 		const rows = process.stdout.rows ?? 0;
 		if (process.stdout.isTTY !== true || palette().bold === "" || rows < 4) return;
 		this.#docked = true;
+		this.#guardStdout();
 		this.#attachResize();
 		this.#fullRedraw = true;
 		this.#dirty = true;
@@ -967,6 +971,7 @@ export class Body {
 	/** Teardown — CSI r (the "no broken terminal" contract byte), the
 	 *  chrome rows cleared, the cursor home at the input line. */
 	exit(): void {
+		this.#unguard?.();
 		// TUI2-R3v2 ②: the mouse disable rides the SAME teardown as CSI r,
 		// and rides it BEFORE the docked guard — an un-docked compositor is
 		// exactly the state a superseded or half-torn-down one is in, and
@@ -1006,6 +1011,45 @@ export class Body {
 		}
 		out.push(`\x1b[${Math.max(1, H - 1)};1H`);
 		this.#write(out.join(""));
+	}
+
+	/**
+	 * REL-0152-R1 — the compositor is not the only writer, and a diff has
+	 * to know.
+	 *
+	 * The old renderer repainted every row of every frame, so anything
+	 * else that printed to the terminal was corrected within one frame
+	 * and nobody had to think about it. A diff writes only what changed,
+	 * so an outside write leaves the held screen describing a terminal
+	 * that no longer exists — and the next frame skips exactly the rows
+	 * it should have repaired.
+	 *
+	 * That is not hypothetical: a bare `console.log` in the CLI's boot
+	 * path prints the faux-mode notice with a trailing newline, which
+	 * SCROLLS the terminal two rows while the dock is up. The chrome then
+	 * sits two rows above where the model puts it, the diff sees no
+	 * change, and the cursor parks on the wrong row. Three PTY gates
+	 * caught it.
+	 *
+	 * The fix is not a list of writers to remember. stdout is wrapped
+	 * while the dock is up: anything written that is not this frame's own
+	 * bytes forgets the screen, and the next frame repaints. New callers
+	 * cannot get it wrong because they are not asked to get it right.
+	 */
+	#guardStdout(): void {
+		if (this.#unguard !== null || this.#opts.write !== undefined) return;
+		const real = process.stdout.write.bind(process.stdout);
+		const patched = ((chunk: string | Uint8Array, ...rest: unknown[]): boolean => {
+			if (!this.#inFrame) this.#screen = [];
+			return (real as (...a: unknown[]) => boolean)(chunk, ...rest);
+		}) as typeof process.stdout.write;
+		process.stdout.write = patched;
+		this.#unguard = (): void => {
+			// only restore what we installed — another wrapper may have
+			// been layered on top since (the byte trace does exactly that)
+			if (process.stdout.write === patched) process.stdout.write = real;
+			this.#unguard = null;
+		};
 	}
 
 	/** TUI2-R3v2 ②: the panel's option rows as this frame placed them —
@@ -1431,7 +1475,12 @@ export class Body {
 		this.#fullRedraw = false;
 		out.push(this.#conservative ? "\x1b[?25h" : "\x1b[?2026l");
 		out.push("\x1b[?7h"); // REL-0152-D14: autowrap back on for everything outside the frame
-		this.#writeFrame(out.join("")); // the frame IS the new screen — it does not invalidate it
+		this.#inFrame = true;
+		try {
+			this.#writeFrame(out.join("")); // the frame IS the new screen — it does not invalidate it
+		} finally {
+			this.#inFrame = false;
+		}
 		this.#lastLiveTop = liveTop;
 		this.#lastLiveRows = liveRowsTotal;
 		this.#lastInputRows = editor.rows.length;
