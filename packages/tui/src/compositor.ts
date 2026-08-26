@@ -1605,6 +1605,24 @@ export class Body {
 			// it; inside the frame it is four sequences and no new event.
 			this.#needsReset = false;
 			out.push("\x1b[r\x1b[?69l\x1b[?7h\x1b[?25h");
+			// REL-0152-D20 — the mechanism is understood and the obvious fix
+			// is NOT taken here. See the finding.
+			//
+			// The first frame addresses rows 1..H absolutely and draws over
+			// whatever the terminal was showing. Scrolling a screenful away
+			// first would fix that, and it was built and measured: it pushes
+			// up to H BLANK rows into the scrollback, and TUI2-R2pre's
+			// blank-share gate went from 14/43 to 29/43 — past the "a
+			// healthy session's scrollback is mostly content" invariant that
+			// gate exists to hold. Trading a symptom with a five-second
+			// user-side setting for a broken invariant is a worse deal.
+			//
+			// The correct version scrolls only as far as the terminal's
+			// content actually reaches, which needs a cursor-position query
+			// at boot — its own round, with its own risk (this file already
+			// declined a boot-time round-trip once, for racing the editor
+			// for stdin).
+
 		}
 		out.push("\x1b[?7l");
 		out.push(this.#conservative ? "\x1b[?25l" : "\x1b[?2026h"); // D1: sync ON, or cursor-hide where 2026 is dead bytes
