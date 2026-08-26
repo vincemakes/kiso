@@ -70,6 +70,7 @@
 		"apps/cli/tests/tui2-r3v2-safer-pty.test.ts",
 		"apps/cli/tests/tui2-r3v2-selection-pty.test.ts",
 		"apps/cli/tests/tv1b-driver.test.ts",
+		"apps/cli/tests/xp1-status-truth-pty.test.ts",
 		"apps/cli/tests/zombie-resume-gate.test.ts",
 		"extensions/mcp/tests/dispose-e2e.test.ts",
 		"extensions/mcp/tests/mcp-e2e.test.ts",

@@ -66,6 +66,13 @@ export function createAnthropicAdapter(client: Anthropic, adapterOpts: Anthropic
 				stream = client.messages.stream(
 					{
 						model: options.model,
+						// XP-1: the resolved effort (the effort doc, read
+						// 2026-08-26): output_config.effort. Absent adds NO
+						// key. The thinking-mode WIRE is deliberately not
+						// serialized yet — the registry carries no sourced
+						// mode list for the entered models, so no valid
+						// selection can produce one; nothing is guessed.
+						...(options.reasoning?.effort !== undefined ? ({ output_config: { effort: options.reasoning.effort } } as Record<string, unknown>) : {}),
 						...(options.systemPrompt !== undefined
 							? {
 									system: caching

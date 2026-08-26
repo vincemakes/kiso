@@ -333,3 +333,33 @@ export const VERSION = ((): string => {
  *  real user answer (the empty line). The empty answer and the cancellation
  *  are distinct facts. */
 export const CANCELLED = Symbol("kiso-question-cancelled");
+
+/** XP-1: the last EXPLICIT model binding this process applied — a
+ *  /clear-fresh session inherits it (clearing context never silently
+ *  reverts the model). Never persisted here; the runtime records the
+ *  durable revision when the binding is applied. */
+export interface LastBinding {
+	readonly adapter: import("@vincemakes/kiso-core").Adapter;
+	readonly model: string;
+	readonly provider?: "anthropic" | "openai-compat";
+	readonly scope?: import("@vincemakes/kiso-core").ContinuationScope;
+	readonly reasoning?: import("@vincemakes/kiso-runtime/internal").ReasoningSetting;
+}
+let lastBindingValue: LastBinding | null = null;
+export function setLastBinding(b: LastBinding): void {
+	lastBindingValue = b;
+}
+export function lastBinding(): LastBinding | null {
+	return lastBindingValue;
+}
+
+/** XP-1 (the adjudicated Q6): --accept-drift is a per-invocation FLAG,
+ *  never an env var — a standing env would be a silent policy, the exact
+ *  failure the drift protocol forbids. */
+let acceptDriftValue = false;
+export function setAcceptDrift(v: boolean): void {
+	acceptDriftValue = v;
+}
+export function acceptDrift(): boolean {
+	return acceptDriftValue;
+}

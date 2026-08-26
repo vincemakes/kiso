@@ -6,10 +6,10 @@
 
 import { contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modelPickView, palette, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
-import { buildAdapter, resolveContinuationScope } from "@vincemakes/kiso-runtime/internal";
+import { buildAdapter, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, getMode, setMode } from "./mode.js";
-import { agentModel, body, bodyLog, configModels, dock, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput } from "./state.js";
+import { agentModel, body, bodyLog, configModels, dock, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
 import { directWriteProfile, profileAvailable } from "./config.js";
 
 /** Everything dispatch touches that chat() owns. */
@@ -257,10 +257,15 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				bodyLog("switch with /model <profile-name|provider/model>");
 			} else {
 				try {
-					const direct = directWriteProfile(arg);
-					const profile = direct ?? configModels[arg];
+					// XP-1: /model owns the model PLUS the reasoning selector —
+					// an optional second token is the effort, validated
+					// against the NATIVE matrix (refused with the levels
+					// named; never silently downgraded).
+					const [profName = "", effortTok] = arg.split(/\s+/);
+					const direct = directWriteProfile(profName);
+					const profile = direct ?? configModels[profName];
 					if (profile === undefined) {
-						bodyLog(`no such model profile: ${arg}`);
+						bodyLog(`no such model profile: ${profName}`);
 					} else if (!profileAvailable(profile)) {
 						bodyLog(
 							`model ${arg}: unavailable — the env var ${profile.apiKeyEnv} is not set (configs never store keys, only the env-var name)`,
@@ -282,15 +287,32 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 						// MG-1 (A5): the scope moves WITH the adapter — the same
 						// atomic switch PH-F8 demanded, one more passenger.
 						const scope = resolveContinuationScope(profile.kind, profile.model, profile.baseUrl);
-						ctx.session.setModelBinding({
-							adapter,
-							model: profile.model,
-							provider: profile.kind,
-							...(scope !== undefined ? { scope } : {}),
-						});
-						setAgentModel(profile.model);
-						setCurrentModelName(arg);
-						body.notice(`model → ${arg} (${profile.model}) — takes effect on the next turn`);
+						let reasoning: import("@vincemakes/kiso-runtime/internal").ReasoningSetting | undefined;
+						let refused: string | null = null;
+						if (effortTok !== undefined) {
+							const candidate = { thinking: "default", effort: effortTok } as import("@vincemakes/kiso-runtime/internal").ReasoningSetting;
+							const resolved = resolveReasoning(profile.model, candidate);
+							if (resolved.ok) reasoning = candidate;
+							else refused = resolved.reason;
+						}
+						if (refused !== null) {
+							// native-only, never a silent downgrade: the switch
+							// does NOT happen — the refusal names the levels.
+							bodyLog(refused);
+						} else {
+							const binding = {
+								adapter,
+								model: profile.model,
+								provider: profile.kind,
+								...(scope !== undefined ? { scope } : {}),
+								...(reasoning !== undefined ? { reasoning } : {}),
+							};
+							ctx.session.setModelBinding(binding);
+							setLastBinding(binding);
+							setAgentModel(profile.model);
+							setCurrentModelName(arg);
+							body.notice(`model → ${profName} (${profile.model}${effortTok !== undefined ? ` · ${effortTok}` : ""}) — takes effect on the next turn`);
+						}
 					}
 				} catch (err) {
 					body.notice(`[/model] failed: ${err instanceof Error ? err.message : String(err)}`);

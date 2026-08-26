@@ -130,12 +130,12 @@ resume, the one with it executes exactly once.
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts     872
+  packages/core/src/kernel/loop.ts     874
   packages/core/src/protocol/events.ts 472
   packages/core/src/kernel/project.ts  360
   ...
-  total                               2110  / 2200
-  ✓ 90 lines of headroom remaining.
+  total                               2113  / 2200
+  ✓ 87 lines of headroom remaining.
 
 cli:
   apps/cli/src/chat.ts  716
@@ -1050,7 +1050,7 @@ below is MEASURED by `npm run check` (the size gates: core is enforced,
 the cli/tui/tui-cells caps are report-only since Amendment 8 — the
 numbers are pressure readings, not passed gates):
 
-- **core** (2,110/2,200 lines, enforced) — protocol, loop (single honest terminal;
+- **core** (2,113/2,200 lines, enforced) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; a retryable pre-stream failure retries in place, and a
   mid-stream cut retries over a durably voided draft — never a silent

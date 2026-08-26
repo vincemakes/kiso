@@ -76,6 +76,9 @@ export interface LoopConfig {
 	 * adapters): adapter-emitted continuation is STRIPPED at the commit.
 	 */
 	readonly continuationScope?: ContinuationScope;
+	/** XP-1: the RESOLVED reasoning wire values — passed to the adapter
+	 *  verbatim; absent = provider defaults (the byte anchor). */
+	readonly reasoning?: { readonly thinking?: "adaptive" | "enabled" | "disabled"; readonly effort?: string };
 	/**
 	 * Seed history. When a `log` is provided, the log IS the truth and this
 	 * is only used if the log is empty. See ADR-0002 / kernel/project.ts.
@@ -651,6 +654,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				const stream = config.adapter.stream({
 					model: config.model,
 					messages,
+					...(config.reasoning !== undefined ? { reasoning: config.reasoning } : {}),
 					...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
 					tools: registry.toSpecs(),
 					...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),

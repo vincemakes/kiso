@@ -13,6 +13,7 @@
  */
 
 import { resolveContinuationScope } from "./provider/manifest.js";
+import { assessProfileDrift, buildProfile, profilePath, readProfile, writeProfile } from "./profile.js";
 import { EventLog, ToolRegistry, type Adapter, type HookHost, type KisoExtension, type Tool } from "@vincemakes/kiso-core";
 import { AgentSession, type SessionConfig } from "./session.js";
 import type { SessionStore } from "./store.js";
@@ -108,16 +109,81 @@ export class AgentRuntime {
 	}
 
 	/** Load an existing session from disk, or create a fresh one. */
-	async session(options: { id: string }): Promise<AgentSession> {
+	async session(options: { id: string; acceptDrift?: boolean }): Promise<AgentSession> {
 		const store = this.#definition.store;
 		const records = store.load(options.id);
 		const log = new EventLog(records.map((r) => r.event));
 		const adapter = await this.#adapterPromise;
 		const startupScope = resolveContinuationScope(this.#definition.provider, this.#definition.model, this.#definition.baseUrl);
+		// ── XP-1: the durable execution profile, FAIL-CLOSED ─────────────
+		const meta = readProfile(store.root, options.id);
+		if (meta.kind === "corrupt") {
+			throw new Error(
+				`the session profile ${profilePath(store.root, options.id)} is unreadable (${meta.error}) — BLOCKED: restore the file, or re-create the session; a corrupt profile is never silently rebuilt under today's defaults`,
+			);
+		}
+		const hasEnvelope = log.all.some((e) => e.type === "stop" && (e as { continuation?: unknown }).continuation !== undefined);
+		if (meta.kind === "absent" && hasEnvelope) {
+			throw new Error(
+				`the session log carries scoped continuation envelopes but ${profilePath(store.root, options.id)} is missing — BLOCKED: an XP-era session without its profile is an integrity failure, never a legacy session`,
+			);
+		}
+		// The CURRENT candidate — what THIS process would run.
+		const candidate = buildProfile({
+			revision: 0,
+			modelId: this.#definition.model,
+			provider: startupScope ?? null,
+			...(this.#definition.systemPrompt !== undefined ? { systemPrompt: this.#definition.systemPrompt } : {}),
+			registry: this.#registry,
+		});
+		let restored: { model: string; reasoning: import("./provider/metadata.js").ReasoningSetting; scope: typeof startupScope } | null = null;
+		let profilePending = false;
+		if (meta.kind === "ok") {
+			const drift = assessProfileDrift(meta.profile, {
+				provider: startupScope ?? null,
+				systemPromptDigest: candidate.systemPromptDigest,
+				tools: candidate.tools,
+			});
+			if (drift.kind === "material" && options.acceptDrift !== true) {
+				const listed = drift.reasons.map((r) => `- ${r}`).join("\n");
+				throw new Error(
+					`the recorded execution profile no longer matches this process:\n${listed}\nre-open with acceptDrift (the CLI's --accept-drift flag) to proceed under the CURRENT configuration — the acknowledgement is recorded as a new revision; silently rebuilding is forbidden`,
+				);
+			}
+			if (drift.kind === "material") {
+				// acknowledged: the current configuration wins, DURABLY.
+				writeProfile(store.root, options.id, {
+					...buildProfile({
+						revision: meta.profile.revision + 1,
+						modelId: this.#definition.model,
+						provider: startupScope ?? null,
+						...(this.#definition.systemPrompt !== undefined ? { systemPrompt: this.#definition.systemPrompt } : {}),
+						registry: this.#registry,
+					}),
+				});
+			} else {
+				// RESTORE — the recorded profile wins over the process default
+				// (the truthfulness core: the row and the request agree).
+				const scope = meta.profile.provider === null ? undefined : meta.profile.provider;
+				restored = { model: meta.profile.modelId, reasoning: meta.profile.reasoning, scope };
+			}
+		} else if (log.all.length === 0) {
+			// a NEW session: revision 1 lands BEFORE any durable event.
+			writeProfile(store.root, options.id, { ...candidate, revision: 1 });
+		} else {
+			// legacy (pre-XP log, no sidecar): generation absence is not
+			// drift — restore under current configuration; revision 1 lands
+			// at the next explicit selection or first request.
+			profilePending = true;
+		}
 		const config: SessionConfig = {
-			model: this.#definition.model,
+			model: restored?.model ?? this.#definition.model,
 			...(this.#definition.provider !== undefined ? { provider: this.#definition.provider } : {}),
-			...(startupScope !== undefined ? { continuationScope: startupScope } : {}),
+			...((restored !== null ? restored.scope : startupScope) !== undefined
+				? { continuationScope: (restored !== null ? restored.scope : startupScope)! }
+				: {}),
+			...(restored !== null ? { reasoning: restored.reasoning } : {}),
+			...(profilePending ? { profilePending: true } : {}),
 			...(this.#definition.systemPrompt !== undefined ? { systemPrompt: this.#definition.systemPrompt } : {}),
 			registry: this.#registry,
 			...(this.#definition.permissionPolicy !== undefined || this.#definition.hooks !== undefined

@@ -133,8 +133,19 @@ interface CardSource {
 export async function collectSessionCards(agent: CardSource, load: (id: string) => readonly StoreRecord[]): Promise<SessionCard[]> {
 	const cards: SessionCard[] = [];
 	for (const meta of [...agent.sessions()].sort((a, b) => b.updatedAt - a.updatedAt)) {
-		const session = await agent.session({ id: meta.id });
-		cards.push(projectSessionCard({ id: meta.id, updatedAt: meta.updatedAt, records: load(meta.id), asks: session.pendingApprovals().length }));
+		// XP-1: the LISTING never enforces the profile contract — a session
+		// whose recorded profile drifted (or whose sidecar is damaged) still
+		// LISTS; the honest refusal happens at the open, where the message
+		// can be acted on. acceptDrift is never passed here: it RECORDS an
+		// acknowledgement, and a listing must write nothing.
+		let asks = 0;
+		try {
+			const session = await agent.session({ id: meta.id });
+			asks = session.pendingApprovals().length;
+		} catch {
+			// blocked by the profile contract — the card carries no ask badge
+		}
+		cards.push(projectSessionCard({ id: meta.id, updatedAt: meta.updatedAt, records: load(meta.id), asks }));
 	}
 	return cards;
 }

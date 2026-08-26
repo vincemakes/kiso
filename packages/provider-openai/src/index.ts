@@ -99,6 +99,16 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 			const body: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
 				model: options.model,
 				messages: toOpenAIMessages(options.messages, options.systemPrompt, options.model, ownScope),
+				// XP-1: the resolved setting, DeepSeek V4 shape (the
+				// thinking-mode guide, read 2026-08-26): top-level
+				// thinking:{type} + reasoning_effort. Absent adds NO key.
+				// The `thinking` extension is absent from the SDK's param
+				// type; the spread rides a cast — the reasoning_content
+				// precedent, one object over.
+				...(({
+					...(options.reasoning?.thinking !== undefined ? { thinking: { type: options.reasoning.thinking } } : {}),
+					...(options.reasoning?.effort !== undefined ? { reasoning_effort: options.reasoning.effort } : {}),
+				}) as Partial<OpenAI.Chat.ChatCompletionCreateParamsStreaming>),
 				stream: true,
 				// D5: request real streaming usage — without this the
 				// provider never sends a usage chunk and we would

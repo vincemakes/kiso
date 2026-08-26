@@ -7,6 +7,7 @@
 import { denialResult, loop, type AbortSignalLike, type Adapter, type ApprovalChain, type ChainVerdict, type ContentBlock, type Event, type EventLog, type HookHost, type PermissionDecision, type ToolCallPayload, type ToolResult } from "@vincemakes/kiso-core";
 import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
+import { resolveReasoning, type WireReasoning } from "./provider/metadata.js";
 import { deriveRecoveryPlan, invocationSeqOf } from "./recovery-plan.js";
 import { composeApprovalChain, composeSystemPrompt, composeToolTable, microcompactFor } from "./compose.js";
 import { truncationGuard } from "./truncation-guard.js";
@@ -151,6 +152,10 @@ export class Run implements AsyncIterable<Event> {
 					...(this.#config.maxRetries !== undefined ? { maxRetries: this.#config.maxRetries } : {}),
 					// MG-1 (A5): the kernel stamps committed envelopes with this.
 					...(this.#config.continuationScope !== undefined ? { continuationScope: this.#config.continuationScope } : {}),
+					// XP-1: native-only resolution — an unsupported recorded
+					// setting REFUSES the run with the reason (no silent
+					// downgrade); default/default adds nothing (byte anchor).
+					...(this.#config.reasoning !== undefined ? resolveReasoningOrThrow(this.#config.model, this.#config.reasoning) : {}),
 					// E1: the composed approval chain — the extensions'
 					// policies composed into ONE gate (deny > allow > ask).
 					...(approvalChain !== undefined ? { approvalPolicy: approvalChain } : {}),
@@ -863,4 +868,12 @@ export class Run implements AsyncIterable<Event> {
 			errorKind: denial.errorKind,
 		});
 	}
+}
+
+/** XP-1: the run-side half of "no silent downgrade" — a setting the
+ *  matrix refuses becomes an actionable failure, never a quiet default. */
+function resolveReasoningOrThrow(model: string, setting: import("./provider/metadata.js").ReasoningSetting): { reasoning?: WireReasoning } {
+	const r = resolveReasoning(model, setting);
+	if (!r.ok) throw new Error(`the session's recorded reasoning setting cannot run here: ${r.reason}`);
+	return Object.keys(r.wire).length > 0 ? { reasoning: r.wire } : {};
 }

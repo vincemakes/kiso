@@ -43,7 +43,7 @@ import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, getMode, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
 import { builtInLayer } from "./builtin.js";
-import { agentModel, atFiles, body, bodyLog, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setSessionStore, userExtensions, VERSION, type LineInput } from "./state.js";
+import { agentModel, atFiles, body, bodyLog, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setSessionStore, userExtensions, VERSION, type LineInput , lastBinding , acceptDrift, setAcceptDrift } from "./state.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
@@ -315,7 +315,7 @@ async function recentSessions(
 	for (const m of picked) {
 		let badge: string | undefined;
 		if (store !== null) {
-			const session = await agent.session({ id: m.id });
+			const session = await agent.session({ id: m.id, ...(acceptDrift() ? { acceptDrift: true } : {}) });
 			const card = projectSessionCard({ id: m.id, updatedAt: m.updatedAt, records: store.load(m.id), asks: session.pendingApprovals().length });
 			badge = BADGE_GLYPH[card.badge];
 		}
@@ -634,7 +634,7 @@ async function chatLoop(
 	let id = firstId;
 	let prev: string | null = null;
 	for (;;) {
-		const session = await agent.session({ id });
+		const session = await agent.session({ id, ...(acceptDrift() ? { acceptDrift: true } : {}) });
 		if (prev === null) {
 			bodyLog(`session ${id}\n`);
 			// REL-0152-D5: a session with history says what that history WAS.
@@ -649,6 +649,18 @@ async function chatLoop(
 			for (const line of resumeTail(session.log.all)) bodyLog(line);
 			if (currentFaux) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 		}
+		// XP-1 §3.3.6: a /clear-fresh session INHERITS the live selection,
+		// recorded as its next revision — clearing context never silently
+		// reverts the model.
+		const inherited = lastBinding();
+		if (session.log.all.length === 0 && inherited !== null && !currentFaux) {
+			session.setModelBinding(inherited);
+		}
+		// XP-1 §2.1: the switched-to session's OWN truth repaints the row —
+		// the global display state never outlives the session it described
+		// (pre-XP the row kept the previous session's /model selection).
+		setAgentModel(session.model);
+		setCurrentModelName(session.model);
 		paintBootStatus(session);
 		const nav = {
 			sessions: () => agent.sessions().map((m) => m.id),
@@ -678,6 +690,16 @@ async function main(): Promise<void> {
 	// first makeAgent (the tier extensions read `current` live). The flag
 	// is stripped from the positional args, so it works in any position.
 	const args = process.argv.slice(2);
+	// XP-1: --accept-drift (a flag, never an env var) authorizes opening a
+	// session whose recorded profile materially drifted — the
+	// acknowledgement is recorded as a new revision by the runtime.
+	{
+		const i = args.indexOf("--accept-drift");
+		if (i !== -1) {
+			args.splice(i, 1);
+			setAcceptDrift(true);
+		}
+	}
 	// PH-1a (finding PH-F2): --help/-h/--version/-v are FLAGS, not session
 	// ids. They used to fall through the default case and START A SESSION
 	// literally named "--help" (writing ~/.kiso/sessions/--help.jsonl) —
@@ -823,7 +845,7 @@ async function main(): Promise<void> {
 			const id = command ?? newSessionId(sessionsDir());
 			agent = await makeAgent(id, input, modelFlag);
 			applyConfigMode();
-			const session = await agent.session({ id });
+			const session = await agent.session({ id, ...(acceptDrift() ? { acceptDrift: true } : {}) });
 			faux = currentFaux;
 			await resume(session, printPrompt, faux, input);
 			const last = [...session.log.all].reverse().find((e) => e.type === "terminal");
@@ -876,7 +898,7 @@ async function main(): Promise<void> {
 					await chatLoop(agent, picked, input, resolveAutoCompact(mergedConfig));
 					break;
 				}
-				const session = await agent.session({ id });
+				const session = await agent.session({ id, ...(acceptDrift() ? { acceptDrift: true } : {}) });
 				faux = currentFaux;
 				// E area: the durable script position is computed from the
 				// session id, and on the picker path the id did not exist when

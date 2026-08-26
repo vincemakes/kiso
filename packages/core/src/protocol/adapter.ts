@@ -54,6 +54,10 @@ export interface StreamOptions {
 	readonly tools?: readonly ToolSpec[];
 	readonly maxTokens?: number;
 	readonly temperature?: number;
+	/** XP-1: the RESOLVED reasoning setting — native wire values only (the
+	 *  runtime's matrix resolves and refuses; adapters serialize per
+	 *  dialect). Absent = provider defaults, byte-identical to pre-XP-1. */
+	readonly reasoning?: { readonly thinking?: "adaptive" | "enabled" | "disabled"; readonly effort?: string };
 	readonly signal?: AbortSignalLike;
 }
 

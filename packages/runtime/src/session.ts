@@ -47,6 +47,8 @@ import { assessTasks, type TaskAssessment } from "./task-assessment.js";
  *  verification surface. Override per call for custom evidence tools. */
 const DEFAULT_EVIDENCE_TOOLS: ReadonlySet<string> = new Set(["shell"]);
 import { denialResult, type ContinuationScope } from "@vincemakes/kiso-core";
+import { buildProfile, readProfile, writeProfile } from "./profile.js";
+import type { ReasoningSetting } from "./provider/metadata.js";
 import {
 	DROP_PLACEHOLDER,
 	estimateSummarySavings,
@@ -157,6 +159,11 @@ export class AgentSession {
 	#provider: "anthropic" | "openai-compat" | undefined;
 	// MG-1 (A5): travels WITH the adapter, same next-turn semantics.
 	#continuationScope: ContinuationScope | undefined;
+	// XP-1: the selected axes; resolved per request (next-turn semantics).
+	#reasoning: ReasoningSetting;
+	// XP-1: a legacy session records revision 1 at the next explicit
+	// selection or first request — never eagerly at open.
+	#profilePending: boolean;
 	readonly #pendingResolvers = new Map<string, (decision: PermissionDecision) => void>();
 	readonly #uncertaintyResolvers = new Map<string, (resolution: "rerun" | "abandoned") => void>();
 	readonly #answered = new Set<string>();
@@ -212,6 +219,8 @@ export class AgentSession {
 		this.#model = config.model;
 		this.#provider = config.provider;
 		this.#continuationScope = config.continuationScope;
+		this.#reasoning = config.reasoning ?? { thinking: "default", effort: "default" };
+		this.#profilePending = config.profilePending === true;
 	}
 
 	/** The config a NEW run/resume/summary sees: the frozen startup config
@@ -225,6 +234,7 @@ export class AgentSession {
 			model: this.#model,
 			...(this.#provider !== undefined ? { provider: this.#provider } : {}),
 			...(this.#continuationScope !== undefined ? { continuationScope: this.#continuationScope } : {}),
+			reasoning: this.#reasoning,
 		};
 	}
 
@@ -294,11 +304,18 @@ export class AgentSession {
 		/** MG-1 (A5): the run's continuation scope — moves atomically with
 		 *  the adapter (absent = unscoped: the kernel strips envelopes). */
 		readonly scope?: ContinuationScope;
+		/** XP-1: the reasoning axes travel with the binding too; absent =
+		 *  fresh defaults (a new binding never inherits stale effort). */
+		readonly reasoning?: ReasoningSetting;
 	}): void {
 		this.#adapter = binding.adapter;
 		this.#model = binding.model;
 		this.#provider = binding.provider;
 		this.#continuationScope = binding.scope;
+		this.#reasoning = binding.reasoning ?? { thinking: "default", effort: "default" };
+		// XP-1: an explicit selection is DURABLE — the setting survives
+		// /resume because a revision records it now, not at some later flush.
+		this.#recordProfile();
 	}
 
 	/** E2: the adapter identity ("anthropic" | "openai-compat") — the route
@@ -307,6 +324,38 @@ export class AgentSession {
 	 *  route — the CLI and the trace can never disagree. */
 	get provider(): "anthropic" | "openai-compat" | undefined {
 		return this.#provider;
+	}
+
+	/** XP-1: the model that will answer the NEXT request — the live
+	 *  binding, restored from the durable profile on open. The status row
+	 *  reads THIS, so the row and the request can never disagree. */
+	get model(): string {
+		return this.#model;
+	}
+
+	/** XP-1: the selected reasoning axes (resolution happens per request). */
+	get reasoning(): ReasoningSetting {
+		return this.#reasoning;
+	}
+
+	/** XP-1: record the live binding as the next durable profile revision
+	 *  (read-modify-write under the session's single-writer ownership). */
+	#recordProfile(): void {
+		const prior = readProfile(this.#store.root, this.id);
+		const revision = prior.kind === "ok" ? prior.profile.revision + 1 : 1;
+		writeProfile(
+			this.#store.root,
+			this.id,
+			buildProfile({
+				revision,
+				modelId: this.#model,
+				provider: this.#continuationScope ?? null,
+				reasoning: this.#reasoning,
+				...(this.#config.systemPrompt !== undefined ? { systemPrompt: this.#config.systemPrompt } : {}),
+				registry: this.#config.registry,
+			}),
+		);
+		this.#profilePending = false;
 	}
 
 	/**
@@ -395,6 +444,7 @@ export class AgentSession {
 	 *  send one. */
 	run(input: string | readonly import("@vincemakes/kiso-core").ContentBlock[], options?: { signal?: AbortSignalLike; source?: import("@vincemakes/kiso-core").MessageSource }): Run {
 		this.ensureHealthy();
+		if (this.#profilePending) this.#recordProfile(); // XP-1: legacy revision 1, before the first request
 		return new Run(this.#store, this.#adapter, this.#effectiveConfig(), this, input, options?.signal, false, options?.source);
 	}
 
@@ -932,6 +982,10 @@ export interface SessionConfig {
 	/** MG-1 (A5): the run's continuation scope — the kernel stamps it on
 	 *  committed envelopes; absent = unscoped (envelopes stripped). */
 	readonly continuationScope?: import("@vincemakes/kiso-core").ContinuationScope;
+	/** XP-1: the selected reasoning axes (native-only resolution per request). */
+	readonly reasoning?: import("./provider/metadata.js").ReasoningSetting;
+	/** XP-1 internal: a legacy session's deferred revision-1 write. */
+	readonly profilePending?: true;
 	readonly systemPrompt?: string;
 	readonly tools?: readonly Tool<any>[];
 	readonly registry: import("@vincemakes/kiso-core").ToolRegistry;
