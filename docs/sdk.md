@@ -109,8 +109,12 @@ union by construction.
   the replaced input's position).
 - **Know what the void does**: a `model_output_abandoned` marker means the
   draft suffix `(voidFromSeq, seq]` was never committed — model output
-  only, framework facts survive. A tool call inside a voided range was
-  never executed (and never will be).
+  only (block boundaries included), framework facts survive. A
+  commit-required tool call inside a voided range never executed and
+  never will; a precommit-safe read MAY have executed before the void
+  (F4) — its receipts survive as audit facts, and pair atomicity keeps
+  the voided declaration and its orphan result out of the provider
+  projection.
 
 ## 3. `./internal` — the first-party door
 

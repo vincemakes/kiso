@@ -129,18 +129,18 @@ resume, the one with it executes exactly once.
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts     847
+  packages/core/src/kernel/loop.ts     831
   packages/core/src/protocol/events.ts 438
   packages/core/src/kernel/project.ts  352
   ...
-  total                               2042  / 2100
-  ✓ 58 lines of headroom remaining.
+  total                               2028  / 2100
+  ✓ 72 lines of headroom remaining.
 
 cli:
   apps/cli/src/chat.ts  716
   apps/cli/src/index.ts 593
   ...
-  total                 2734  / 1920
+  total                 2738  / 1920
   ▸ 814 over the reference figure — report-only (ADR-0043 Amendment 8).
 
 tui:
@@ -1049,9 +1049,11 @@ below is MEASURED by `npm run check` (the size gates: core is enforced,
 the cli/tui/tui-cells caps are report-only since Amendment 8 — the
 numbers are pressure readings, not passed gates):
 
-- **core** (2,042/2,100 lines, enforced) — protocol, loop (single honest terminal;
+- **core** (2,028/2,100 lines, enforced) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
-  errors; retry only before anything streamed; one abort signal reaches
+  errors; a retryable pre-stream failure retries in place, and a
+  mid-stream cut retries over a durably voided draft — never a silent
+  re-stream, never a glued projection (F4); one abort signal reaches
   backoff, approval waits, every pending tool, and the SDK), hooks,
   ModeProfile, permissions, microcompact (a `microcompacted` boundary is a
   persisted fact — the projection derives the compacted view

@@ -207,3 +207,100 @@ describe("F4 — exhaustion hygiene (T5: void before the error terminal)", () =>
 		expect(assistantText).not.toContain("doomed");
 	});
 });
+
+describe("F4b — EVERY uncommitted exit voids its draft (the review's P1 pair)", () => {
+	it("a user abort mid-stream voids the draft before the aborted terminal", async () => {
+		const ac = new AbortController();
+		const adapter: Adapter = {
+			stream: async function* () {
+				yield { seq: 0, type: "text_delta", text: "half an aborted answer" } as never;
+				ac.abort();
+				throw new Error("request aborted"); // the SDK surfaces the cancel as a throw
+			},
+		};
+		const events: Event[] = [];
+		for await (const ev of loop({
+			adapter,
+			model: "faux",
+			registry: new ToolRegistry(),
+			messages: [{ role: "user", content: "go" }],
+			signal: ac.signal,
+		})) {
+			events.push(ev);
+		}
+		expect(terminalOf(events).outcome).toEqual({ kind: "aborted", by: "user" });
+		expect(markersOf(events).length, "the aborted draft is voided — live, not only on resume").toBe(1);
+		expect(JSON.stringify(projectMessages(events))).not.toContain("half an aborted answer");
+	});
+
+	it("a stream that ends with NO stop voids its text-only draft under the protocol terminal", async () => {
+		const adapter: Adapter = {
+			stream: async function* () {
+				yield { seq: 0, type: "text_delta", text: "textonly nostop draft" } as never;
+			},
+		};
+		const events = await collect(adapter, new ToolRegistry(), 2);
+		expect(terminalOf(events).outcome.kind).toBe("error");
+		expect(markersOf(events).length, "the live void is no longer dangling-call-only").toBe(1);
+		expect(JSON.stringify(projectMessages(events))).not.toContain("textonly nostop draft");
+	});
+
+	it("an abort landing between clean stream exit and commit voids the pending-call draft", async () => {
+		const ac = new AbortController();
+		const writer: Tool<Record<string, never>> = defineTool({
+			name: "writer",
+			description: "a commit-required effect",
+			parameters: { type: "object", properties: {} },
+			execute: async () => ({ content: "wrote", isError: false }),
+		});
+		const registry = new ToolRegistry();
+		registry.register(writer);
+		const adapter: Adapter = {
+			stream: async function* () {
+				yield { seq: 0, type: "tool_call_end", callId: "w1", name: "writer", input: {} } as never;
+				yield { seq: 0, type: "stop", reason: "tool_use" } as never;
+				ac.abort(); // lands after the last event, before the commit
+			},
+		};
+		const events: Event[] = [];
+		for await (const ev of loop({
+			adapter,
+			model: "faux",
+			registry,
+			messages: [{ role: "user", content: "go" }],
+			signal: ac.signal,
+		})) {
+			events.push(ev);
+		}
+		expect(terminalOf(events).outcome).toEqual({ kind: "aborted", by: "user" });
+		expect(markersOf(events).length, "the abandoned tool_call draft is voided live").toBe(1);
+		const proj = JSON.stringify(projectMessages(events));
+		expect(proj, "no dangling tool_use reaches the next request").not.toContain("tool_use");
+		expect(events.some((e) => e.type === "tool_execution_started")).toBe(false);
+	});
+});
+
+describe("F4b — the void family covers block boundaries (the provenance leak)", () => {
+	it("a voided text_start's source does not leak onto the retried answer", async () => {
+		let calls = 0;
+		const flaky: Adapter = {
+			stream: async function* () {
+				calls += 1;
+				if (calls === 1) {
+					yield { seq: 0, type: "text_start", source: "subagent" } as never;
+					yield { seq: 0, type: "text_delta", text: "delegated draft" } as never;
+					throw CUT;
+				}
+				yield { seq: 0, type: "text_start" } as never;
+				yield { seq: 0, type: "text_delta", text: "plain retried answer" } as never;
+				yield { seq: 0, type: "text_end" } as never;
+				yield { seq: 0, type: "stop", reason: "end_turn" } as never;
+			},
+		};
+		const events = await collect(flaky, new ToolRegistry(), 2);
+		expect(calls).toBe(2);
+		const projected = JSON.stringify(projectMessages(events));
+		expect(projected).toContain("plain retried answer");
+		expect(projected, "the voided block boundary is model output too").not.toContain("subagent");
+	});
+});

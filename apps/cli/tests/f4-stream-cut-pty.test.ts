@@ -23,6 +23,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isolatedEnv, stripANSI } from "../../../tests/helpers/isolated-cli.mjs";
+import { VtScreen } from "./helpers/vt-screen.js";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
@@ -107,7 +108,8 @@ describe("F4 T7 — the stream-cut transcript rule", () => {
 		});
 		const screen = stripANSI(Buffer.from(hex.trim(), "hex").toString("utf8"));
 
-		// The three beats, in stream order (first occurrences).
+		// The three beats, in stream order (first occurrences over the raw
+		// byte history — the belt).
 		const draft = screen.indexOf("the first half of the answer");
 		const closed = screen.indexOf("stream interrupted — the draft above is abandoned");
 		const fresh = screen.indexOf("the recovered answer, whole");
@@ -116,6 +118,25 @@ describe("F4 T7 — the stream-cut transcript rule", () => {
 		expect(fresh, "the retried answer rendered").toBeGreaterThanOrEqual(0);
 		expect(draft).toBeLessThan(closed);
 		expect(closed).toBeLessThan(fresh);
+
+		// The FINAL SCREEN (the suspenders — the review's P2: history bytes
+		// can pass while the settled grid lies): feed the whole stream into
+		// the VT emulator and assert what the human is left LOOKING AT —
+		// three distinct rows, draft above terminator above fresh answer,
+		// and the retried answer counted exactly once (no tail ghost).
+		const emu = new VtScreen(24, 80);
+		emu.write(Buffer.from(hex.trim(), "hex"));
+		const grid = emu.visible();
+		const rowOf = (needle: string): number => grid.findIndex((r) => r.includes(needle));
+		const rDraft = rowOf("the first half of the answer");
+		const rClosed = rowOf("stream interrupted");
+		const rFresh = rowOf("the recovered answer, whole");
+		expect(rDraft, `draft row on the final screen\n${grid.join("\n")}`).toBeGreaterThanOrEqual(0);
+		expect(rClosed, "terminator row on the final screen").toBeGreaterThanOrEqual(0);
+		expect(rFresh, "fresh-answer row on the final screen").toBeGreaterThanOrEqual(0);
+		expect(rDraft).toBeLessThan(rClosed);
+		expect(rClosed).toBeLessThan(rFresh);
+		expect(grid.filter((r) => r.includes("the recovered answer, whole")).length, "counted once — no ghost").toBe(1);
 
 		// The durable half: the marker landed exactly once, and the log's
 		// projection boundary is real — not a screen effect.

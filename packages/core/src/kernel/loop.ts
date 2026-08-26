@@ -610,6 +610,28 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		turnSettled = new Promise<void>((res) => {
 			settleTurn = res;
 		});
+		// F4b: the ONE abandon sequence, for EVERY uncommitted exit — the
+		// mid-stream error (retryable or not), the user abort, and the
+		// voided turn. Settle (parked launches bail on the un-committed
+		// gate), drain (started executions land their receipts), then
+		// durably void the draft. The defensive check stands: a started
+		// commit-required execution in the draft (impossible under
+		// invariant 3) suppresses the marker — no void over a started
+		// fact, the pre-F4 abandon exactly.
+		const unsafeStartedInDraft = (): boolean =>
+			log.all.some((e) => e.type === "tool_execution_started" && e.seq > turnStart && registry.get(e.name)?.effects?.precommitSafe !== true);
+		const abandonDraft = async function* (reason: string): AsyncGenerator<Event> {
+			settleTurn();
+			violated = true;
+			violatedReject();
+			yield* drainSettled();
+			if (launchError !== null) throw launchError;
+			if (log.lastSeq > turnStart && !unsafeStartedInDraft()) {
+				const marker = log.append({ type: "model_output_abandoned", voidFromSeq: turnStart, reason });
+				if (hooks.onEvent) await hooks.onEvent(marker, {}).catch(() => {});
+				yield marker;
+			}
+		};
 
 		while (true) {
 			// Area 4: the backoff is abortable — a cancel landing during a
@@ -692,8 +714,12 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			} catch (err) {
 				// Area 4: a user cancel surfaced by the SDK (APIUserAbortError
 				// or any error while the signal is set) is an honest `aborted`
-				// terminal, never a generic error.
+				// terminal, never a generic error. F4b: the aborted draft is
+				// voided LIVE — pre-F4b only a resume voided it, so the same
+				// durable prefix projected differently depending on whether
+				// the process crashed first.
 				if (aborted()) {
+					yield* abandonDraft("the run was aborted before this turn committed");
 					yield await terminal({ kind: "aborted", by: "user" });
 					return;
 				}
@@ -706,42 +732,17 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					await sleep(attempts * 250, signal); // abortable backoff
 					continue;
 				}
-				// F4 — ABANDON HYGIENE, every streamed exit: the attempt settles
-				// (parked launches bail on the un-committed gate, started ones
-				// land their receipts), the draft is durably voided, and only
-				// THEN a retry or the terminal. Pre-F4 this path returned with
-				// the draft un-voided under the terminal — the next request
-				// projected it as committed history (ADR-0047 Gap B, live), and
-				// a dangling tool_call_end fed the provider-400 class (EC1-F1).
-				settleTurn();
-				violated = true;
-				violatedReject();
-				yield* drainSettled();
-				if (launchError !== null) throw launchError;
-				// Invariant 3 makes a started commit-required execution in the
-				// draft structurally impossible (the turn never committed) —
-				// CHECKED, not assumed: if one ever exists, fall back to the
-				// pre-F4 abandon (no marker over a started fact, no retry).
-				const unsafeStarted = log.all.some(
-					(e) => e.type === "tool_execution_started" && e.seq > turnStart && registry.get(e.name)?.effects?.precommitSafe !== true,
-				);
-				if (log.lastSeq > turnStart && !unsafeStarted) {
-					// The loop's THIRD producer of `model_output_abandoned` (an
-					// existing variant — no new protocol surface): broader than
-					// the live void's dangling-call condition, because the SAME
-					// process re-requests immediately and an un-voided text
-					// draft would glue onto the retried stream's projection.
-					const marker = log.append({
-						type: "model_output_abandoned",
-						voidFromSeq: turnStart,
-						reason: "the provider stream failed before this turn committed",
-					});
-					if (hooks.onEvent) await hooks.onEvent(marker, {}).catch(() => {});
-					yield marker;
-				}
+				// F4 — ABANDON HYGIENE, every streamed exit: settle, drain,
+				// durably void (the loop's third `model_output_abandoned`
+				// producer; text-only drafts included), and only THEN a retry
+				// or the terminal. Pre-F4 this path returned with the draft
+				// un-voided under the terminal — the next request projected it
+				// as committed history (ADR-0047 Gap B, live), and a dangling
+				// tool_call_end fed the provider-400 class (EC1-F1).
+				yield* abandonDraft("the provider stream failed before this turn committed");
 				// F4 — the mid-stream retry: same classification, same per-turn
 				// budget (ADR-0005 Amendment 1: frame state, per-process).
-				if (structured.retryable && attempts < maxRetries && !unsafeStarted) {
+				if (structured.retryable && attempts < maxRetries && !unsafeStartedInDraft()) {
 					attempts += 1;
 					await sleep(attempts * 250, signal); // the same abortable backoff
 					// Fresh per-attempt state — the marker is the boundary now.
@@ -858,7 +859,11 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		// NO calls has nothing to abandon and still ends on its own stop
 		// reason, the pre-EC-1 order.
 		if (voided === null && pending.length > 0 && aborted()) {
-			settleTurn();
+			// F4b: the abandoned calls are voided LIVE — the resume derives
+			// the same void from the same prefix, so live and post-crash
+			// projections agree, and no dangling tool_use reaches the next
+			// request in either world.
+			yield* abandonDraft("the run was aborted before this turn committed");
 			yield await terminal({ kind: "aborted", by: "user" });
 			return;
 		}
@@ -887,46 +892,27 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		//    the in-between gaps (mid-handler launches, the ask pause:
 		//    never a busy spin, never a deadlock on a pending ack).
 		if (voided !== null) {
-			violated = true;
-			violatedReject();
-		}
-		yield* drainSettled();
-		if (launchError !== null) throw launchError;
-		if (voided !== null) {
-			// EC-1 ⑤ — THE LIVE VOID. ① means a voided turn's commit-required
-			// call never ran, so nothing answers the `tool_use` its
-			// tool_call_end already persisted. The run ends here on its error
-			// terminal, and the recovery driver will never see it: its first
-			// rule is "the open run reached its terminal". So the NEXT turn of
-			// the same session would send the model an assistant tool_use with
-			// no result — the provider-400 class, live rather than after a
-			// crash. Pre-EC-1 the streaming launch had already answered the
-			// pair; closing the destructive hole opened this one.
-			//
-			// The fix is the instrument the resume already uses, produced here
-			// instead: the loop is a SECOND PRODUCER of `model_output_abandoned`
-			// (an existing variant — no new protocol surface, the frozen event
-			// contract holds). It voids the whole draft range, exactly as
-			// ABANDON_DRAFT does, and only when a call is still pure intent —
-			// a call with a durable started is a FACT, and the same rule as
-			// recovery-plan.ts's `unexecuted`. Idempotent by construction: the
-			// marker becomes the last boundary, so no later resume derives a
-			// second draft over the same range.
-			if (
-				log.all.some(
-					(e) =>
-						e.type === "tool_call_end" &&
-						e.seq > turnStart &&
-						!log.all.some((x) => x.type === "tool_execution_started" && x.callId === e.callId),
-				)
-			) {
-				const marker = log.append({ type: "model_output_abandoned", voidFromSeq: turnStart, reason: "the turn was voided before it committed" });
-				if (hooks.onEvent) await hooks.onEvent(marker, {}).catch(() => {});
-				yield marker;
-			}
+			// EC-1 ⑤ — THE LIVE VOID, F4b: the shared abandon sequence. ①
+			// means a voided turn's commit-required call never ran, so nothing
+			// answers the `tool_use` its tool_call_end already persisted; the
+			// run ends on its terminal and the recovery driver never sees it
+			// (its first rule is "the open run reached its terminal") — the
+			// provider-400 class, live rather than after a crash. The marker
+			// is the instrument the resume already uses, produced here (an
+			// existing variant — no new protocol surface). F4b broadened the
+			// condition from dangling-calls-only to ANY draft: a text-only
+			// voided draft glued onto the next request exactly the way the
+			// mid-stream cut's did. A started commit-required call (a FACT)
+			// still suppresses the marker — abandonDraft's standing check,
+			// the same rule as recovery-plan.ts's `unexecuted`. Idempotent by
+			// construction: the marker becomes the last boundary, so no later
+			// resume derives a second draft over the same range.
+			yield* abandonDraft("the turn was voided before it committed");
 			yield await terminal(voided);
 			return;
 		}
+		yield* drainSettled();
+		if (launchError !== null) throw launchError;
 
 		// ── Advance history: the log grew; re-derive for the next turn ─────
 		messages = derive();

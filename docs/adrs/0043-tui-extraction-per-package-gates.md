@@ -315,9 +315,10 @@ Ruling:
 
 The occasion: F4 (mid-stream truncation recovery, the ratified LR-1
 item 1 mini-spec) lands the abandon hygiene in the kernel loop — settle,
-drain, durable void, bounded re-request — at +42 counted lines after
-genuine deduplication (`drainSettled`: one settle semantics, two
-callers). Core stood at 1,997/2,000 before the round.
+drain, durable void, bounded re-request — at **+45 counted lines**
+(1,997 → 2,042) after genuine deduplication (`drainSettled`: one settle
+semantics, shared callers). An earlier phrasing said "+42": that was the
+over-budget excess against 2,000, not the growth — corrected 2026-08-26.
 
 Why the code may not live elsewhere: ADR-0005 pins retry state in the
 loop's generator frame; the abandon sequence interleaves with the

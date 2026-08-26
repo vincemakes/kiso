@@ -177,12 +177,17 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	// disjoint and in seq order; the skip below treats them exactly like the
 	// summary ranges (the marker itself renders nothing and skips itself).
 	// R-E 0.1.44 (the void scope sentence): the void range voids MODEL
-	// OUTPUT only — text_delta / thinking / tool_call_* — never the
-	// framework's facts (permission*, tool_execution, tool_result,
-	// user_input, terminal). The summary ranges keep their blanket reach
-	// (the summary replaces everything it covers).
+	// OUTPUT only — never the framework's facts (permission*,
+	// tool_execution, tool_result, user_input, terminal). The summary
+	// ranges keep their blanket reach (the summary replaces everything it
+	// covers). F4b: the block boundaries text_start/text_end ARE model
+	// output and join the family — a voided text_start carries the
+	// draft's provenance (`source`), and leaving it alive relabeled the
+	// RETRIED answer with the abandoned attempt's source.
 	const MODEL_OUTPUT_TYPES = new Set([
+		"text_start",
 		"text_delta",
+		"text_end",
 		"thinking",
 		"tool_call_start",
 		"tool_call_input_delta",
