@@ -30,7 +30,7 @@ function approvalView(): PanelView {
 		title: "edit /a/very/long/path/that/must/cut/at/narrow/widths/file.ts",
 		speaker: "mode:default",
 		hint: "/mode accept-edits auto-approves edits",
-		statusText: "▸ run paused",
+		statusText: "⏸ run paused",
 		args: {
 			kind: "diff",
 			diff: [
@@ -51,7 +51,7 @@ function simpleView(): PanelView {
 		name: "project trust",
 		title: "/a/very/long/project/root/that/must/cut/at/narrow/widths",
 		speaker: "kiso",
-		statusText: "▸ project trust",
+		statusText: "⏸ project trust",
 		args: { kind: "text", lines: ["config.mjs  (a1b2c3)", "mcp.json  (d4e5f6)"] },
 		ruleOverride: "trust this project's .kiso?",
 		fallbackQuestion: "trust this project's .kiso? (y/n) ",
@@ -115,7 +115,10 @@ describe("W21: panelBlockRows", () => {
 		// which is the choice surviving — the thing the retired case traded
 		// away to keep the block one row shorter.
 		const narrow = panelBlockRows(approvalView(), "options", 0, 28, 20).map((r) => r.replace(/\x1b\[[0-9;]*m/g, ""));
-		expect(narrow.filter((r) => /^\s*(│\s*)?[1-4] \S/.test(r))).toHaveLength(4);
+		// R2: the │ gutter left the option rows (a gutter scopes a verbatim
+		// block; an option list is not one) and the cursor row leads with →.
+		expect(narrow.filter((r) => /^\s*[→ ] ?[1-4] \S/.test(r))).toHaveLength(4);
+		expect(narrow.filter((r) => /^\s*→ [1-4] \S/.test(r)), "the cursor row names itself in PLAIN text").toHaveLength(1);
 	});
 
 	it("the block's row count is bounded by maxRows — the args fold, the single rows cut", () => {
@@ -131,9 +134,9 @@ describe("W21: panelBlockRows", () => {
 	// chrome is five rows (rule, title, divider, affordance, corner) plus
 	// ONE ROW PER OPTION — two on the simple flavor — where it used to be
 	// five plus one shared options row.
-	it("short args render exactly 5 + options + n rows (no cap, no notice)", () => {
+	it("short args render exactly 6 + options + n rows (R2: the block opens with a rule too)", () => {
 		const rows = panelBlockRows(simpleView(), "options", 0, 80, 20);
-		expect(rows).toHaveLength(5 + 2 + 2);
+		expect(rows).toHaveLength(6 + 2 + 2); // R2: six rows of frame
 		expect(rows.join("")).not.toContain("more rows");
 	});
 
@@ -151,7 +154,7 @@ describe("W21: panelBlockRows", () => {
 		// the 4-row diff + 5 chrome rows + 4 option rows = 13; at maxRows 20
 		// nothing is cut (the old 6-fixed-row arithmetic is superseded).
 		const rows = panelBlockRows(approvalView(), "options", 0, 120, 20);
-		expect(rows).toHaveLength(13);
+		expect(rows).toHaveLength(14); // R2: six rows of frame
 		expect(rows.join("")).toContain("the brand new line that was written by the tool");
 		expect(rows.join("")).toContain("the old line that gets replaced by the new one");
 	});
@@ -161,22 +164,34 @@ describe("W21: the panel chrome helpers", () => {
 	// MOVED (the TUI2-R3v2 panel-selection supersession class): "1-3> " and
 	// "1/3> " were prompts for input the panel no longer asks for, and the
 	// two "feedback (...)" leads collapsed into the single typed phase.
-	it("the leads: a quiet chevron while the list is up, the named prompt while typing", () => {
-		expect(panelLeadPlain(approvalView(), "options", 0)).toBe("\u203a ");
-		expect(panelLeadPlain(simpleView(), "options", 0)).toBe("\u203a ");
+	it("the leads: NO lead while the list is up, the named prompt while typing", () => {
+	// DECLARED SUPERSESSION (R2): the idle lead is EMPTY, not a chevron.
+	// The composer dropped its own chevron this round — the cursor sits at
+	// column one — so a panel that kept one would be the single surface
+	// reintroducing the glyph everything else just removed. The NAMED
+	// lead is untouched: `amend›` says where the keystrokes go, which is
+	// information rather than decoration.
+		expect(panelLeadPlain(approvalView(), "options", 0)).toBe("");
+		expect(panelLeadPlain(simpleView(), "options", 0)).toBe("");
 		expect(panelLeadPlain(approvalView(), "amend", 3)).toBe("amend\u203a ");
 		// the width is the PLAIN text's display width — the colored lead
 		// renders wider in bytes but occupies the same cells.
-		expect(panelLeadWidth(approvalView(), "options", 0)).toBe(2);
+		expect(panelLeadWidth(approvalView(), "options", 0)).toBe(0);
 		expect(panelLeadWidth(approvalView(), "amend", 3)).toBe("amend\u203a ".length);
+		// and an empty lead spends NO bytes on styling nothing
+		expect(panelLead(approvalView(), "options", 0)).toBe("");
 	});
 
 	// MOVED (the TUI2-R3v2 panel-selection supersession class): the
 	// affordance no longer varies with the selection (every gesture is live
 	// on every row), and the retired phases took their copy with them.
 	it("the status is the phase, the affordance the v4 hint line", () => {
-		expect(panelStatus(approvalView(), "options", 0)).toBe("▸ run paused");
-		expect(panelStatus(approvalView(), "amend", 3)).toBe("▸ your note goes to the model — it will propose a new call");
+		// DECLARED SUPERSESSION (R2, design §4): the pending mark was `▸`,
+		// which is also the checklist's "the current one". A panel waiting
+		// on a human says `⏸` — the one mark that means "nothing moves
+		// until you answer". The 867a0fa literals are otherwise intact.
+		expect(panelStatus(approvalView(), "options", 0)).toBe("⏸ run paused");
+		expect(panelStatus(approvalView(), "amend", 3)).toBe("⏸ your note goes to the model — it will propose a new call");
 		expect(panelAffordance(approvalView(), "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
 		expect(panelAffordance(approvalView(), "options", 1)).toBe("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
 		expect(panelAffordance(simpleView(), "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1-2 instant · esc");

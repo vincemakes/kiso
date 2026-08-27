@@ -88,7 +88,9 @@ describe("TUI2-R1.5 ⑦(a) — the sheet leaves no litter (VD-8)", () => {
 		expect(lfs, `${lfs} rows scrolled into the scrollback across the sheet's open/close`).toBe(0);
 
 		// …and the screen itself is back: the body rows are unchanged
-		const body = (g: string[]): string[] => g.slice(0, g.findIndex((l) => l.startsWith("╭"))).filter((l) => l.trim() !== "");
+		// R2 (law 1.1): the chrome opens with the dashed RULE, not a box
+		// corner — the body is everything above the first rail.
+		const body = (g: string[]): string[] => g.slice(0, g.findIndex((l) => l.startsWith("\u254c"))).filter((l) => l.trim() !== "");
 		expect(body(after)).toEqual(body(before));
 	}, 240_000);
 });

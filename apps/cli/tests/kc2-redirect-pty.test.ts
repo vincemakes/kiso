@@ -171,7 +171,7 @@ describe("KC2 T-R2 — a redirect mid-run: Run A aborts, the correction becomes 
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r2-"));
 		const script = fauxScript(dir, [busyTurn(8), quickTurn("run B done")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r2", [
-			["› ", "search the whole tree\r", 2],
+			["/ commands · \u2191 history", "search the whole tree\r", 2],
 			["working", "no, only src/", 5], // typed WHILE run A is still busy
 			["only src/", ALT_ENTER, 6], // ONE gesture: ESC and CR in one write
 		], 32, ["run B done"]);
@@ -204,7 +204,7 @@ describe("KC2 T-R5 — the front-jump: the correction runs BEFORE the already-qu
 			quickTurn("answered three"),
 		]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r5", [
-			["› ", "the original task\r", 2],
+			["/ commands · \u2191 history", "the original task\r", 2],
 			["working", "alpha\r", 4], // queues behind the running turn
 			["alpha", "beta\r", 5], // queues behind alpha
 			["beta", "urgent", 6],
@@ -223,7 +223,7 @@ describe("KC2 T-R5 — the front-jump: the correction runs BEFORE the already-qu
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r5b-"));
 		const script = fauxScript(dir, [busyTurn(10), quickTurn("answered one"), quickTurn("answered two")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r5b", [
-			["› ", "the original task\r", 2],
+			["/ commands · \u2191 history", "the original task\r", 2],
 			["working", "keeper\r", 4],
 			["keeper", "popme\r", 5],
 			["popme", "\x1b[A", 6], // ↑ pops "popme" back into the composer, cursor at the end
@@ -246,7 +246,7 @@ describe("KC2 T-R6 — the manual two-gesture path is exactly what it was", () =
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r6-"));
 		const script = fauxScript(dir, [busyTurn(10), quickTurn("answered one"), quickTurn("answered two")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r6", [
-			["› ", "the original task\r", 2],
+			["/ commands · \u2191 history", "the original task\r", 2],
 			["working", "already queued\r", 4],
 			["already queued", "\x1b", 6], // the bare esc, alone in its write — the run aborts
 			["aborting", "typed after the abort\r", 8], // a separate, ordinary Enter

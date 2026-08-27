@@ -53,7 +53,6 @@
 		"apps/cli/tests/tui-v7-expand.test.ts",
 		"apps/cli/tests/tui-v7-flow-contract.test.ts",
 		"apps/cli/tests/tui-v7-planmode.test.ts",
-		"apps/cli/tests/tui-v7-resume.test.ts",
 		"apps/cli/tests/tui-v7-task.test.ts",
 		"apps/cli/tests/tui2-md-benchmark.test.ts",
 		"apps/cli/tests/tui2-r1-visibility.test.ts",

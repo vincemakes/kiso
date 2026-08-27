@@ -6,7 +6,7 @@
  * block's tail says "no passing check yet" (never "not checked" — a
  * failed check is also not a passing one) → the offer panel renders →
  * digit 1 seeds ONE ordinary run whose durable input carries
- * source:"system" → the seed renders as machinery (◆, never a user
+ * source:"system" → the seed renders as machinery (named, never a user
  * chip) → the verify run's shell success settles → the block
  * re-renders "checked ✓" WITHOUT any new task_set (the settle
  * synthesizes the display from the durable assessment).
@@ -99,7 +99,7 @@ function setup(script: unknown): { env: NodeJS.ProcessEnv; workdir: string } {
 }
 
 describe("TV-1B ③ — the thin task driver (real PTY, 40×80)", () => {
-	it("the flagship arc: no passing check yet → offer → 1 → ◆ machinery seed → shell success → checked ✓, synthesized without a new task_set", () => {
+	it("the flagship arc: no passing check yet → offer → 1 → machinery seed → shell success → checked ✓, synthesized without a new task_set", () => {
 		const { env, workdir } = setup([
 			{ events: [{ type: "tool_call_end", callId: "t1", name: "task_set", input: { items: DONE_ITEMS } }, { type: "stop", reason: "tool_use" }] },
 			{ events: [{ type: "text_delta", text: "all done." }, { type: "stop", reason: "end_turn" }] },
@@ -122,8 +122,10 @@ describe("TV-1B ③ — the thin task driver (real PTY, 40×80)", () => {
 		// the offer rendered with its plain options
 		expect(out).toContain("finish the checklist?");
 		expect(out).toContain("run a verification pass");
-		// the seed rendered as MACHINERY, and the sentence is visible
-		expect(out).toContain("◆ verification pass");
+		// the seed rendered as MACHINERY, and the sentence is visible.
+		// R2 (law 1.3): the row NAMES itself machinery rather than wearing
+		// a `◆` that said nothing the words did not.
+		expect(out).toContain("verification pass");
 		expect(out).toContain("Verify the completed work");
 		// the verify settle synthesized the verdict — no new task_set exists
 		expect(out).toContain("checked ✓");
@@ -132,7 +134,7 @@ describe("TV-1B ③ — the thin task driver (real PTY, 40×80)", () => {
 		// (the merged sync frame) — the arc order that is stable: the offer
 		// precedes the machinery seed, which precedes the synthesized verdict.
 		const offer = out.indexOf("finish the checklist?");
-		const seed = out.indexOf("◆ verification pass");
+		const seed = out.indexOf("Verify the completed work"); // R2: the seed's sentence, not the offer's label
 		const done = out.indexOf("checked ✓");
 		expect(seed).toBeGreaterThan(offer);
 		expect(done).toBeGreaterThan(seed);
@@ -158,8 +160,13 @@ describe("TV-1B ③ — the thin task driver (real PTY, 40×80)", () => {
 
 		// the offer appeared EXACTLY once — the dismissal consumed it
 		expect(out.indexOf("finish the checklist?")).toBe(out.lastIndexOf("finish the checklist?"));
-		// no verification was seeded
-		expect(out).not.toContain("◆ verification pass");
+		// no verification was seeded. R2: the seed's `◆` is retired (law
+		// 1.3 — the mark said nothing the words did not), so the needle
+		// cannot be the mark any more. It is the seed's own SENTENCE,
+		// which the offer's option label does not contain — `verification
+		// pass` alone would match the label `run a verification pass` and
+		// this negative would be unfalsifiable.
+		expect(out).not.toContain("Verify the completed work");
 		// the verdict line still told the truth at both settles
 		expect(out).toContain("no passing check yet");
 	});
@@ -212,6 +219,6 @@ describe("TV-1B ③ — the thin task driver (real PTY, 40×80)", () => {
 		// offered, and the verifier's own task_set was consumed with it
 		expect(out.indexOf("finish the checklist?")).toBe(out.lastIndexOf("finish the checklist?"));
 		// the machinery seed rendered for the accepted offer
-		expect(out).toContain("◆ verification pass");
+		expect(out).toContain("verification pass");
 	});
 });

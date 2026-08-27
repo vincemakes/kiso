@@ -97,7 +97,7 @@ describe("XP-1 — the row and the request agree, per session", () => {
 				["chat", "conv-a"],
 				{ ...env, XP1_KEY: "fake" },
 				[
-					["› ", "hello there\r"],
+					["/ commands · \u2191 history", "hello there\r"],
 					["What would you like me to inspect", "/clear\r"],
 					// inside the FRESH session: switch the live selection
 					["previous: conv-a", "/model switched\r"],

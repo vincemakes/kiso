@@ -111,11 +111,15 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: scri
 		const tallRows = grid.filter((l) => l.includes("tall line")).length;
 		expect(tallRows).toBeLessThanOrEqual(20);
 		// ⑤ the chrome sits intact at the bottom (V6-3: the four rows —
-		// box top, input, box bottom, status — the grid is 0-based; W6: the
-		// ╌ rails became the box corners).
-		expect(grid[20]!.includes("╭")).toBe(true);
-		expect(grid[21]).toContain("› ");
-		expect(grid[22]!.includes("╰")).toBe(true);
+		// rail, input, rail, status — the grid is 0-based).
+		//
+		// DECLARED SUPERSESSION (R2, law 1.1): W6's rounded box is retired
+		// and the corners with it — both rails are the SAME dashed rule,
+		// and the input row carries no prompt glyph (the cursor sits at
+		// column one). CHROME_ROWS is still 4; only what they draw moved.
+		expect(grid[20]!.includes("\u254c")).toBe(true);
+		expect(grid[21]!.includes("\u254c")).toBe(false); // the input row is not a rail
+		expect(grid[22]!.includes("\u254c")).toBe(true);
 		expect(grid[23]).toContain("▸ default");
 	}, 90_000);
 });

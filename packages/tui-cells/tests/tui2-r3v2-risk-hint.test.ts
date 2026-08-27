@@ -108,7 +108,10 @@ describe("TUI2-R3v2 ④ — the hint in the block", () => {
 
 	it("the hint row obeys invariant ① at every width, and its ROW is budgeted", () => {
 		for (const W of [24, 40, 80, 120]) {
-			for (const maxRows of [8, 12, 20]) {
+			// R2: the block spends one more row on its own frame (it opens with
+		// a rule as well as closing with one), so the smallest budget that
+		// can still hold the hint plus the list is one larger.
+		for (const maxRows of [9, 12, 20]) {
 				const rows = panelBlockRows(view("⚠ deletes files permanently (node_modules, dist, coverage)"), "options", 0, W, maxRows);
 				expect(rows.length, `W=${W} maxRows=${maxRows}`).toBeLessThanOrEqual(maxRows);
 				for (const row of rows) expect(visibleWidth(row), `W=${W}`).toBeLessThanOrEqual(W);

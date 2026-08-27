@@ -55,7 +55,7 @@ afterEach(() => {
 describe("TUI2-R2 ② — the picker band (the picker-surface class)", () => {
 	it("the band NAMES itself `sessions`, carries a row per card and the counter — the prototype's A-1 frame", () => {
 		const rows = sessionPickerRows({ cards: CARDS, matches: CARDS, selected: 0 }, 80, NOW);
-		expect(strip(rows[0]!)).toBe("sessions"); // the R1.5 band header, one surface over
+		expect(strip(rows[0]!)).toMatch(/^\u254c{3} sessions \u254c+$/); // R2: the label rides the rule
 		expect(rows).toHaveLength(1 + 5 + 1); // header + the five rows + the counter
 		expect(strip(rows.at(-1)!)).toBe("  (1/5)");
 		const body = rows.slice(1, -1).map(strip);
@@ -128,7 +128,20 @@ describe("TUI2-R2 ② — the picker band (the picker-surface class)", () => {
 
 	it("slice ③'s printed row is the SAME projection with no bar and no indent — one definition, two surfaces", () => {
 		const col = idColumn(CARDS);
-		expect(strip(sessionListRow(CARDS[0]!, 80, NOW, col))).toBe(strip(sessionRow(CARDS[0]!, false, 80, NOW, col)).slice(2));
+		// DC-16: the listing keeps the ID and the picker row does not. The
+		// SHARED projection is still the point — the two cannot drift about
+		// what a session IS — but "share the projection" is not "be the
+		// same row": a listing is the surface you read to copy an id OUT
+		// of, which `/resume <id>` and the filter's id haystack both
+		// assume exists. So the printed row is the picker's row plus a dim
+		// id tail, and that is what is asserted.
+		// The id tail takes its width FROM the row, so the shared projection
+		// is asserted at the budget it actually gets: the printed row at W
+		// is the picker's row at W minus the tail, plus the tail.
+		const tailW = 2 + CARDS[0]!.id.length;
+		const listed = strip(sessionListRow(CARDS[0]!, 80, NOW, col));
+		const picked = strip(sessionRow(CARDS[0]!, false, 80 - tailW + 2, NOW, col)).slice(2);
+		expect(listed).toBe(`${picked}  ${CARDS[0]!.id}`);
 		expect(strip(sessionListFooter(7, 80))).toBe("7 sessions · kiso resume picks interactively");
 		expect(strip(sessionListFooter(1, 80))).toBe("1 session · kiso resume picks interactively");
 	});
@@ -211,7 +224,7 @@ describe("TUI2-R2 ② — the picker's KEYS (the editor's third band occupant)",
 		const editor = new Editor(() => {});
 		editor.beginPick(() => CARDS, () => {});
 		const body = new Body({ active: () => true, height: () => 24, width: () => 100, editCol: () => 1, write: (s) => writes.push(s) });
-		body.bindInput(() => editor.dockState(), "› ");
+		body.bindInput(() => editor.dockState(), "\u203a ");
 		body.bindPick(() => editor.pickState());
 		body.enter();
 		vi.advanceTimersByTime(16);
@@ -220,5 +233,46 @@ describe("TUI2-R2 ② — the picker's KEYS (the editor's third band occupant)",
 		expect(bytes).toContain("tui2-dogfood");
 		expect(bytes).toContain("(1/5)");
 		vi.useRealTimers();
+	});
+});
+
+/**
+ * DC-13 — the filter searches what the ROW SHOWS.
+ *
+ * The id left the row this round (the owner's ruling: title only). The
+ * filter kept searching the id alone, which is the worst kind of search:
+ * typing what you can SEE returns nothing, and typing an id you cannot
+ * see narrows the list for a reason the screen never explains.
+ */
+describe("DC-13 — the filter searches the title, and still accepts an id", () => {
+	const TITLED: SessionCardView[] = [
+		{ id: "a1b2c3", title: "refactor the bench harness", badge: "completed", turns: 3, updatedAt: NOW, uncertain: 0, asks: 0, outcome: "completed" },
+		{ id: "d4e5f6", title: "dogfood the tui", badge: "interrupted", turns: 2, updatedAt: NOW, uncertain: 0, asks: 0, outcome: null },
+	];
+
+	it("matches on the TITLE — the text the row actually carries", () => {
+		expect(sessionFilter(TITLED, "bench").map((c) => c.id)).toEqual(["a1b2c3"]);
+		expect(sessionFilter(TITLED, "dogfood").map((c) => c.id)).toEqual(["d4e5f6"]);
+	});
+
+	it("still matches on the ID — `kiso sessions` prints ids, and a pasted one must work", () => {
+		expect(sessionFilter(TITLED, "d4e5").map((c) => c.id)).toEqual(["d4e5f6"]);
+	});
+
+	it("a TITLE hit outranks an id hit at the same run length — the title is what was being read", () => {
+		const both: SessionCardView[] = [
+			{ ...TITLED[0]!, id: "zzdog", title: "unrelated words" },
+			{ ...TITLED[1]!, id: "qqqqqq", title: "dog walking notes" },
+		];
+		expect(sessionFilter(both, "dog")[0]!.id).toBe("qqqqqq");
+	});
+
+	it("a card with no title at all falls back to its id, in the filter as on the row", () => {
+		const untitled: SessionCardView[] = [{ id: "wrapper-probe", badge: "completed", turns: 1, updatedAt: NOW, uncertain: 0, asks: 0, outcome: "completed" }];
+		expect(sessionFilter(untitled, "wrap")).toHaveLength(1);
+	});
+
+	it("an empty query is not a search — it is the list, in the caller's order", () => {
+		expect(sessionFilter(TITLED, "").map((c) => c.id)).toEqual(["a1b2c3", "d4e5f6"]);
 	});
 });

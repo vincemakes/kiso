@@ -180,7 +180,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		expect(clean).toContain("write needs approval"); // the switch restored the ask — the panel's rule line
 		// v2e: the approval-time diff + the frozen one-line summary.
 		expect(clean).toContain("+ hello"); // the diff row (new file, all +)
-		expect(clean).toContain("✓ write"); // W3 (sanctioned): the verb strips the _file suffix — the settled row is "write" padded
+		expect(clean).toContain("  write"); // W3 (sanctioned): the verb strips the _file suffix — the settled row is "write" padded
 		expect(clean).toContain("+1 -0"); // the frozen ± stats
 		expect(clean).toContain("▸ default · /mode to switch"); // after /mode default the idle state shows the default tier
 

@@ -229,7 +229,10 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 								// the path spelled out
 								...(names.length === 0 ? { emptyNote: "no profiles — define models in ~/.kiso/config.json" } : {}),
 							},
-							ctx.isRunning() ? "▸ run paused" : `▸ ${getMode()}`,
+							// DC-12 (design §4): a panel WAITING ON A HUMAN says ⏸. The
+							// else-branch keeps ▸ — it names the current tier, which is
+							// what ▸ means everywhere else.
+							ctx.isRunning() ? "⏸ run paused" : `▸ ${getMode()}`,
 						),
 						(v) => resolve(v.action === "picked" ? v.result : null),
 					);
@@ -390,7 +393,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					// a non-null result implies onStart ran — the "?" is
 					// reachable only at the type level
 					body.notice(
-						`[/compact] ▞ compacted · ${compactInfo?.rounds ?? "?"} rounds → 1 summary · saved ~${kUnit(result.savedTokens)} · ctx ${ctxBefore ?? "?"}% → ${ctxAfter}% · ${elapsed}s`,
+						`[/compact] ✦ compacted · ${compactInfo?.rounds ?? "?"} rounds → 1 summary · saved ~${kUnit(result.savedTokens)} · ctx ${ctxBefore ?? "?"}% → ${ctxAfter}% · ${elapsed}s`,
 					);
 				}
 			} catch (err) {

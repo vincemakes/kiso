@@ -103,7 +103,7 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		// would have passed, and lands in exactly the same refusal.
 		const out = stripANSI(
 			ptyRun(env, [
-				["› ", "/model\r"],
+				["/ commands · \u2191 history", "/model\r"],
 				["digits pick", "2\r"],
 				["not set", "/model ds\r"],
 				["model → ds", "exit\r"],
@@ -124,7 +124,7 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-config-e2e-w2-"));
 		const out = stripANSI(
 			ptyRun(env, [
-				["› ", "/model openai-compat/gpt-4o\r"],
+				["/ commands · \u2191 history", "/model openai-compat/gpt-4o\r"],
 				["model → openai-compat/gpt-4o", "exit\r"],
 			], workdir),
 		);
@@ -146,7 +146,7 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 		const out = stripANSI(
 			ptyRun(env, [
 				["trust this project", "y\r"],
-				["› ", "/model\r"],
+				["/ commands · \u2191 history", "/model\r"],
 				// esc leaves the panel and the exit rides the SAME chunk: a
 				// panel owns every printable key while it is up, so a bare
 				// "exit" typed into one is swallowed by design
@@ -170,7 +170,7 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 		writeFileSync(join(workdir, ".kiso", "config.json"), JSON.stringify({ model: "proj-model" }), "utf8");
 		const out = stripANSI(
 			ptyRun(env, [
-				["› ", "/model\r"],
+				["/ commands · \u2191 history", "/model\r"],
 				["define models", "\x1bexit\r"], // esc first — the panel owns printable keys
 			], workdir),
 		);

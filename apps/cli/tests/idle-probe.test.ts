@@ -50,7 +50,7 @@ def driver(cli, env, workdir, idle_secs, done_needle):
                 except OSError:
                     return False
         return False
-    read_until("› ".encode(), 20)
+    read_until("/ commands · \u2191 history".encode(), 20)
     os.write(fd, b"go\\r")
     read_until(done_needle.encode(), 30)
     # The idle window: nothing fed, everything collected.

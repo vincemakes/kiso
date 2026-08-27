@@ -154,7 +154,10 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// pty-cooked newline: the renderer positions the next row).
 		// The input row's brick prompt+line is a DIFFERENT shape (the
 		// reset splits the prompt from the text).
-		const userEcho = "\x1b[7m look around \x1b[27m"; // the 2026-08-09 ruling: the chip ALONE, flush left (the ▍ rail + the indent retired)
+		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so the
+		// bar no longer closes right after the words — the open and the
+		// words are the stable part, the pad depends on the terminal.
+		const userEcho = "\x1b[7m look around"; // the chip, flush left, opening the full-width band
 		expect(out).toContain(userEcho);
 		// DECLARED SUPERSESSION (REL-0152-R1): counted on the SCREEN. The
 		// old renderer moved rows by scrolling the terminal, so a
@@ -253,7 +256,9 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// count is stated EXACTLY ONCE (VD-6) and lives in the suffix, so
 		// the parens carry the facts that are NOT the count — here the
 		// human's own verdict.
-		expect(clean).toMatch(/✓ asky_read  \(approved, \d+\.\ds\) · 1 line · ctrl\+r/); // the frozen done line (the empty target leaves the verb pad's double space)
+		// R2: no tick — the settled row's gutter is two spaces and the
+		// outcome is in the words.
+		expect(clean).toMatch(/ {2}asky_read {2}\(approved, \d+\.\ds\) · 1 line · ctrl\+r/);
 		expect(clean).not.toContain("asky ok"); // the full result stays out of the stream
 		expect(clean).toContain("the tour is done");
 		// The status bar returned after the question (the model name is back).
@@ -304,7 +309,11 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		const clean = stripANSI(out);
 		// #17: the fold is width-capped (W - 1 - suffix) so it fits its row —
 		// the slice is 58 at 80 cols, NOT the old 100.
-		expect(clean).toContain(`⋯${"A".repeat(80 - 1 - " (110 chars · /think)".length)} (110 chars · /think)`); // the folded line — W2: the ⋯ gutter
+		// R2: the fold is italic, cut on a WORD, and the affordance moved to
+		// the right edge — the char count went with the move (it told the
+		// reader nothing they could act on). A 110-A block has no word
+		// boundary, so it falls back to the cell cut with the honest "…".
+		expect(clean).toMatch(/⋯ A+…\s+\/think/); // the folded line — W2: the ⋯ gutter
 		expect(clean).toContain("SECRETTAIL"); // the full block came back
 		// v6: the /think output is a raw cell — the compositor hard-folds it
 		// at W (invariant ① — no soft-wraps), so the 110-A block arrives as

@@ -159,10 +159,10 @@ export function renderEvent(ev: RenderInput, prevThinking = false, resolvePath: 
 				prompt: false,
 			};
 		case "checklist": {
-			// ⑥: the durable checklist — the ▞ header accent (the recap's
+			// ⑥: the durable checklist — the ✦ header accent (the recap's
 			// brick) + one brick-glyph line per item. Static line content:
 			// byte-identical in pipes and NO_COLOR.
-			const lines = [`${p.bold}▞${p.reset} ${escapeTerminal(ev.header)}`];
+			const lines = [`${p.bold}✦${p.reset} ${escapeTerminal(ev.header)}`];
 			for (const item of ev.items) {
 				const glyph = item.status === "pending" ? "□" : item.status === "active" ? "▖" : "▣";
 				lines.push(`  ${glyph} ${escapeTerminal(item.text)}`);
@@ -259,7 +259,7 @@ export function renderRecap(s: RecapStats): string {
 	// row's right side.
 	if (s.mode === "plan") {
 		const parts = ["plan ready", "/mode default executes", "/mode accept-edits auto-approves edits"];
-		return `${p.bold}▞${p.reset} ${parts.join(" · ")}\n`;
+		return `${p.bold}✦${p.reset} ${parts.join(" · ")}\n`;
 	}
 	const parts = [`${s.seconds}s`, `${s.tools} tool${s.tools === 1 ? "" : "s"}${s.edits > 0 ? ` (${s.edits} edit${s.edits === 1 ? "" : "s"})` : ""}`];
 	if (s.usage.known) {
@@ -276,7 +276,7 @@ export function renderRecap(s: RecapStats): string {
 		}
 	}
 	if (s.ctxLeftPct !== null) parts.push(`ctx left ~${Math.round(s.ctxLeftPct)}%`);
-	return `${p.bold}▞${p.reset} ${parts.join(" · ")}\n`;
+	return `${p.bold}✦${p.reset} ${parts.join(" · ")}\n`;
 }
 
 /** One-line summary of a session, for `kiso sessions`. */

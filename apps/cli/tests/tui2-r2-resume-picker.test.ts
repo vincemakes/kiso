@@ -85,8 +85,12 @@ describe("TUI2-R2 ② — bare `kiso resume`: the picker is a TTY surface", () =
 			timeout: 25,
 		});
 		// the picker's own frame: the band, all three sessions, the counter
-		expect(raw).toContain("bench-refactor");
-		expect(raw).toContain("wrapper-probe");
+		// R2 (the owner's ruling): the row leads with the TITLE — the
+		// session's first prompt — and the id is gone from it. The
+		// fixtures' ids are still what the FILTER accepts (DC-13), which
+		// is what the feed above types.
+		expect(raw).toContain("refactor the bench");
+		expect(raw).toContain("probe the wrapper");
 		expect(raw).toContain("(1/3)");
 		// the filter narrowed it to one
 		expect(raw).toContain("(1/1)");
@@ -133,7 +137,7 @@ describe("TUI2-R2 ③ — `kiso sessions`: the badges on a TTY, the same bytes i
 		const { env, dirs } = isolatedEnv();
 		await fixtureHome(dirs.home);
 		const raw = ptyRun(["sessions"], env as NodeJS.ProcessEnv, { timeout: 30 });
-		expect(raw).toContain("bench-refactor");
+		expect(raw).toContain("refactor the bench"); // R2: the title leads the row
 		expect(raw).toContain("uncertain — needs your verdict");
 		expect(raw).toContain("interrupted mid-run");
 		expect(raw).toContain("completed clean");

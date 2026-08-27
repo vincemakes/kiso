@@ -38,7 +38,7 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		// the first run's history and completes another turn.
 		const second = runCli(["resume", id, "continue"], env);
 		expect(second.status, second.stderr).toBe(0);
-		expect(second.stdout).toMatch(/▞ \d+s · \d+ tools?/); // the recap line ends the run (v3 — replaces the old status line)
+		expect(second.stdout).toMatch(/✦ \d+s · \d+ tools?/); // the recap line ends the run (v3 — replaces the old status line)
 
 		// Process 3: sessions lists the durable session.
 		const sessions = runCli(["sessions"], env);
@@ -69,7 +69,7 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		const result = runCli(["chat", "twoturns"], env, { input: "first question\nsecond question\nexit\n" });
 		expect(result.status, result.stderr).toBe(0);
 		// Two turns rendered, two honest terminals.
-		const terminalCount = (result.stdout.match(/▞ \d+s · \d+ tools?/g) ?? []).length;
+		const terminalCount = (result.stdout.match(/✦ \d+s · \d+ tools?/g) ?? []).length;
 		expect(terminalCount).toBe(2);
 		// round 8: the prompt is RE-ARMED after every turn — never type blind.
 		expect((result.stdout.match(/you> /g) ?? []).length).toBeGreaterThanOrEqual(2);
@@ -193,9 +193,9 @@ sys.exit(0 if processed else 1)
 		expect(result.status, result.stderr).toBe(0);
 		// The tool summary line: a list_dir completion with the root marker.
 		expect(result.stdout).toContain("✓ list_dir (root)");
-		// The recap line after the run — v3: ▞ seconds · tools · ctx left (faux
+		// The recap line after the run — v3: ✦ seconds · tools · ctx left (faux
 		// usage is unknown and omitted entirely).
-		expect(result.stdout).toMatch(/▞ \d+s · \d+ tools?/);
+		expect(result.stdout).toMatch(/✦ \d+s · \d+ tools?/);
 		// /last printed the full input/output from the event stream.
 		expect(result.stdout).toContain("--- list_dir input ---");
 		expect(result.stdout).toContain("--- list_dir output ---");

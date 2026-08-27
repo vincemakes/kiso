@@ -118,14 +118,14 @@ describe("A1: the menu Enter executes the EXACT selection directly", () => {
 				// prompt is the trigger — the line is queued and dispatched
 				// after it, exactly one Enter total.
 				["▌ ", "/compact\r"],
-				// W18 re-baseline: the settled notice is the RECAP — the ▞
+				// W18 re-baseline: the settled notice is the RECAP — the ✦
 				// glyph is unique to it (the live row uses ▘).
-				["[/compact] ▞ compacted", "exit\r"],
+				["[/compact] ✦ compacted", "exit\r"],
 			],
 			dir,
 			"f1",
 		);
-		expect(stripANSI(out)).toContain("[/compact] ▞ compacted ·"); // the recap
+		expect(stripANSI(out)).toContain("[/compact] ✦ compacted ·"); // the recap
 		const durable = readFileSync(join(dirs.home, "sessions", "f1.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');
 	});
@@ -168,7 +168,12 @@ describe("A2: ↑↓ recall the session history", () => {
 		// land in ONE frame, so the recalled row's render merges with the
 		// submit; the recall's proof is the RESUBMITTED turn above. The
 		// typed row rendered (the "hello" needle waited for it).
-		expect((plain.match(/› hello/g) ?? []).length).toBeGreaterThanOrEqual(1);
+		// R2: no prompt glyph — the recalled text stands alone at COLUMN
+		// ONE, so what identifies the composer's row in the stream is the
+		// row's erase-to-end immediately followed by the text. (A `^hello`
+		// on the stripped text does not work: stripping the CUP sequences
+		// joins the rows, so there is no line start to anchor to.)
+		expect((out.match(/\x1b\[0Khello/g) ?? []).length).toBeGreaterThanOrEqual(1);
 	});
 });
 
@@ -205,12 +210,12 @@ describe("C8: /compact auto-trigger (opt-in via KISO_AUTO_COMPACT)", () => {
 				// ONE turn ("go") — the auto-trigger then fires WITHOUT any
 				// /compact keystroke; the recap is the auto notice.
 				["▌ ", "go\r"],
-				["[/compact] ▞ compacted", "exit\r"],
+				["[/compact] ✦ compacted", "exit\r"],
 			],
 			dir,
 			"c8",
 		);
-		expect(stripANSI(out)).toContain("[/compact] ▞ compacted ·"); // the auto notice
+		expect(stripANSI(out)).toContain("[/compact] ✦ compacted ·"); // the auto notice
 		const durable = readFileSync(join(dirs.home, "sessions", "c8.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"'); // the durable /compact fact
 	});
@@ -237,7 +242,7 @@ describe("C8: /compact auto-trigger (opt-in via KISO_AUTO_COMPACT)", () => {
 			[CLI, "chat", "c8pipe"],
 			{ encoding: "utf8", timeout: 90_000, input: "go\n", env: { ...isoEnv, KISO_AUTO_COMPACT: "0.7", KISO_FAUX_SCRIPT: scriptPath } },
 		);
-		expect(stripANSI(out)).toContain("[/compact] ▞ compacted ·"); // W18: the recap
+		expect(stripANSI(out)).toContain("[/compact] ✦ compacted ·"); // W18: the recap
 		const durable = readFileSync(join(dirs.home, "sessions", "c8pipe.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');
 	});

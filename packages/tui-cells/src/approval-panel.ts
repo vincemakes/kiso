@@ -352,7 +352,7 @@ export interface PanelView {
 	/** The fix hint per speaker (the v8 design §3.5 table). */
 	readonly hint?: string;
 	/** The options-phase status-left text — the CLI knows the context
-	 *  ("▸ run paused", the trust gate's line). */
+	 *  ("⏸ run paused", the trust gate's line). */
 	readonly statusText: string;
 	/** The ALWAYS-verbose args — the full command/content/diff. */
 	readonly args: PanelArgs;
@@ -466,19 +466,52 @@ function panelRuleText(view: PanelView): string {
  * trade to make: each option owns a row, a narrow window cuts LABELS,
  * and every choice stays reachable at every width the product survives.
  *
- * The unselected row carries the block's gutter and a two-space indent;
- * the selected row is the shared selectionBar, which spends its own two
- * cells of frame. Both build their span against W−2, so the digit column
- * does not shift as the bar walks — a column that moves per row reads as
- * damage, which is the R2 picker's finding, inherited.
+ * The unselected row is a two-space indent; the selected row is the
+ * shared selectionBar, which spends its own two cells of frame. Both
+ * build their span against W−2, so the digit column does not shift as
+ * the bar walks — a column that moves per row reads as damage, which is
+ * the R2 picker's finding, inherited.
+ *
+ * R2 — two changes. The unselected row carried the block's │ gutter: a
+ * gutter SCOPES a verbatim block (the args keep theirs), and an option
+ * list is not verbatim, so it draws a boundary the block already has a
+ * rule for. And the cursor now carries `→` as well as the bar (design
+ * §7.5) — the bar is the loud signal, the arrow is the one that
+ * survives a strip, which is law 1.3's test applied to a selection.
  */
-function panelOptionRow(option: PanelOption, n: number, selected: boolean, W: number): string {
+function panelOptionRow(option: PanelOption, n: number, selected: boolean, W: number, note?: string, stop = 0): string {
 	const p = palette();
 	const room = Math.max(1, W - 2);
-	const plain = ` ${n} ${option.label}`;
-	const text = cutLine(`${selected ? p.bold : ""}${escapeTerminal(plain)}${p.reset}`, room);
-	if (!selected) return `${p.dim}│${p.reset} ${text}`;
+	const plain = optionLead(option, n, selected);
+	const tail =
+		note === undefined || note === ""
+			? ""
+			: stop > 0
+				? `${" ".repeat(Math.max(1, stop - visibleWidth(plain)))}${p.dim}${widthCut(escapeTerminal(note), Math.max(0, room - stop))}${p.reset}`
+				: `${p.dim}  — ${escapeTerminal(note)}${p.reset}`;
+	const text = cutLine(`${selected ? p.bold : ""}${escapeTerminal(plain)}${p.reset}${tail}`, room);
+	if (!selected) return ` ${text}`;
 	return selectionBar(text, visibleWidth(text), W);
+}
+
+/** The row's left span, PLAIN — written once so the column arithmetic
+ *  and the row cannot disagree about how wide it is. */
+function optionLead(option: PanelOption, n: number, selected: boolean): string {
+	return `${selected ? "→" : " "} ${n} ${option.label}`;
+}
+
+/** R2 — the safer list's `why` column. Same rule as the ask panel's
+ *  descriptions: computed over the WHOLE list so the column belongs to
+ *  the list, and 0 (the em-dash fallback) when there is no room for it. */
+function saferStop(options: readonly { readonly command: string }[], W: number): number {
+	// an empty list has no column to compute — `Math.max()` of nothing is
+	// -Infinity, which would sail through both guards below and return a
+	// negative stop
+	if (options.length === 0) return 0;
+	const room = Math.max(1, W - 2);
+	const widest = Math.max(...options.map((o, i) => visibleWidth(optionLead({ kind: "allow", label: o.command }, i + 1, false))));
+	const stop = widest + 2;
+	return stop > Math.floor(room / 2) || room - stop < 18 ? 0 : stop;
 }
 
 /**
@@ -514,15 +547,27 @@ export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: numbe
 
 export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, note?: string, safer?: SaferRuntime): PanelBlockLayout {
 	const p = palette();
-	const gutter = `${p.dim}│${p.reset} `;
+	// R2: the block's own PROSE rows (the risk line, the safer-options
+	// note, the affordance) take the two-space indent every other row in
+	// the block takes. The │ gutter stays where it means something — on
+	// the args, which are verbatim, and which is the whole distinction:
+	// a gutter SCOPES a quotation, it is not a left edge for a panel.
+	const gutter = "  ";
 	const rows: string[] = [];
-	rows.push(`${gutter}${cutLine(panelRuleText(view), Math.max(1, W - 2))}`);
-	rows.push(`${gutter}${cutLine(`${p.bold}${escapeTerminal(view.title)}${p.reset}`, Math.max(1, W - 2))}`);
+	// R2 — the block opens and closes with the SAME dashed rule the
+	// composer uses. It used to open with the │ gutter, divide with a
+	// ─ run and close with a └ rule: three edge vocabularies inside one
+	// block, and none of them the composer's. A rule SEPARATES, a gutter
+	// SCOPES — the args keep their gutter because they are a verbatim
+	// block; everything that was drawing a boundary is one rule now.
+	rows.push(`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`);
+	rows.push(`  ${cutLine(panelRuleText(view), Math.max(1, W - 2))}`);
+	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(view.title)}${p.reset}`, Math.max(1, W - 2))}`);
 	// TUI2-R1.5 ⑤ (VD-11): the divider is a LABEL, not a design note. "the
 	// full args — never truncated" is a sentence about the implementation,
 	// addressed to whoever was building the panel; the human reading it
 	// during an approval wants to know what the block below is.
-	rows.push(`${cutLine(`${p.dim}─ args (full) ─${p.reset}`, Math.max(1, W - 2))}`);
+	rows.push("");
 	// the args — the bounded block's body: fold, then cap. The └ cut is
 	// ONE row (the W20 discipline): when the args exceed the budget, one
 	// notice row carries the count and where the rest is (the event log).
@@ -539,7 +584,11 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// carries the choice. The args keep a floor of one row so the block
 	// never claims to show what it is asking about and then shows nothing.
 	const chrome =
-		5 +
+		// R2: SIX rows of frame, not five — the block opens with a rule now
+		// as well as closing with one, and the divider row became a blank.
+		// The count is the same shape it always was: every row the block
+		// spends on itself before the args and the list share what is left.
+		6 +
 		(phase === "options" && note !== undefined ? 1 : 0) +
 		(view.riskHint !== undefined && view.riskHint !== "" ? 1 : 0) +
 		(phase === "asking" ? 1 : 0) +
@@ -582,9 +631,13 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// out of would be a trap.
 	if (phase === "safer" && safer !== undefined) {
 		offset = rows.length;
+		// R2: the `why` takes a COLUMN rather than running on after an em
+		// dash — the commands are what is being chosen between, and they
+		// only scan when they all start and end at the same columns.
+		const stop = saferStop(safer.options, W);
 		for (let i = 0; i < safer.options.length; i += 1) {
 			const o = safer.options[i]!;
-			rows.push(panelOptionRow({ kind: "allow", label: `${o.command}  — ${o.why}` }, i + 1, i === safer.cursor, W));
+			rows.push(panelOptionRow({ kind: "allow", label: o.command }, i + 1, i === safer.cursor, W, o.why, stop));
 		}
 		rows.push(panelOptionRow({ kind: "deny", label: SAFER_BACK }, safer.options.length + 1, safer.cursor === safer.options.length, W));
 	}
@@ -619,7 +672,7 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// else in the product, so a CAPPED panel emitted two elbow rows in a
 	// row meaning entirely different things. The rule reads as an edge,
 	// and the cut notice above it reads as a notice.
-	rows.push(`${p.dim}\u2514${"\u2500".repeat(Math.max(0, W - 1))}${p.reset}`);
+	rows.push(`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`);
 	return { rows, ...layout };
 }
 
@@ -637,15 +690,26 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 export function panelLead(view: PanelView, phase: PanelPhase, cursor: number): string {
 	const p = palette();
 	if (phase === "amend") return `${p.dim}amend› ${p.reset}`;
-	return `${p.dim}${PANEL_IDLE_LEAD}${p.reset}`;
+	// R2: an EMPTY lead emits no bytes at all — `dim + reset` around
+	// nothing is eight bytes on the composer row of every frame a panel
+	// is up, and the row it wraps has no content to style.
+	return PANEL_IDLE_LEAD === "" ? "" : `${p.dim}${PANEL_IDLE_LEAD}${p.reset}`;
 }
 
-/** The composer's lead while a selection list owns the keys — the quiet
- *  chevron, not a prompt for input that is not being asked for. */
-const PANEL_IDLE_LEAD = "› ";
+/** The composer's lead while a selection list owns the keys.
+ *
+ *  R2: EMPTY. It was a quiet chevron, on the argument that it is "not a
+ *  prompt for input that is not being asked for" — but the composer
+ *  dropped its own chevron this round (the cursor sits at column one),
+ *  so the panel would have been the one surface reintroducing the glyph
+ *  the rest of the product just removed. The NAMED leads stay: `amend›`
+ *  and the pick panel's `1-4>` say where the keystrokes go, which is
+ *  information rather than decoration. */
+const PANEL_IDLE_LEAD = "";
 
 /** The lead's plain text — the editor's reflow width (the line must
- *  fit the lead + the box's walls). */
+ *  fit the lead + the drawn cursor's own cell — R2 retired the box and
+ *  its walls with it). */
 export function panelLeadPlain(view: PanelView, phase: PanelPhase, cursor: number): string {
 	return phase === "amend" ? "amend› " : PANEL_IDLE_LEAD;
 }
@@ -656,17 +720,22 @@ export function panelLeadWidth(view: PanelView, phase: PanelPhase, cursor: numbe
 
 /** The status row's left text while the panel is up — the phase, not
  *  the CLI's painting status (the compositor derives it from the panel
- *  state; the "▸ run paused" etc. ride the options phase). */
+ *  state; the "⏸ run paused" etc. ride the options phase). */
+// R2 (design §4, the ⏸ ruling): a panel that is WAITING ON A HUMAN says
+// so with the one mark that means it. `▸` is the checklist's "the
+// current one" — a mark meaning two things is worse than two marks
+// (law 4.2), and the thing this row has to convey is not "here" but
+// "nothing moves until you answer".
 export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number): string {
 	// TUI2-R3v2 ③: the frames' own words — what the panel is doing, and
 	// (in the safer list) what it did.
-	if (phase === "asking") return "\u25b8 asked the model for safer options";
-	if (phase === "safer") return "\u25b8 asked the model for safer options";
+	if (phase === "asking") return "\u23f8 asked the model for safer options";
+	if (phase === "safer") return "\u23f8 asked the model for safer options";
 	// TUI2-R3v2 ①: the typed phase says where the words GO. "the words ride
 	// the verdict" described the plumbing to whoever wrote it; the human
 	// typing needs to know the model will read this and answer with a new
 	// call — which is what the v4 frame says, in those words.
-	if (phase === "amend") return "▸ your note goes to the model — it will propose a new call";
+	if (phase === "amend") return "⏸ your note goes to the model — it will propose a new call";
 	return view.statusText;
 }
 
@@ -711,31 +780,60 @@ export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: numb
 export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, maxRows: number): string[] {
 	const p = palette();
 	const spec = view.pick!;
-	const gutter = `${p.dim}\u2502${p.reset} `;
-	const rows: string[] = [];
+	const rows: string[] = [`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`]; // R2: the same rule the composer and the other panels use
 	const room = Math.max(1, W - 2);
-	rows.push(`${gutter}${cutLine(`${p.bold}${escapeTerminal(spec.header.split(" \u2014 ")[0] ?? spec.header)}${p.reset}${p.dim}${escapeTerminal(spec.header.slice((spec.header.split(" \u2014 ")[0] ?? "").length))}${p.reset}`, room)}`);
+	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(spec.header.split(" \u2014 ")[0] ?? spec.header)}${p.reset}${p.dim}${escapeTerminal(spec.header.slice((spec.header.split(" \u2014 ")[0] ?? "").length))}${p.reset}`, room)}`);
 	if (spec.options.length === 0) {
 		// the honest empty state \u2014 the caller's own copy, verbatim
-		rows.push(`${gutter}${cutLine(`${p.dim} ${escapeTerminal(spec.emptyNote ?? "no options")}${p.reset}`, room)}`);
+		rows.push(`  ${cutLine(`${p.dim} ${escapeTerminal(spec.emptyNote ?? "no options")}${p.reset}`, room)}`);
 	} else {
-		// the budget: the header, the t row, the affordance and the rule
-		const budget = Math.max(1, maxRows - 4);
+		// the budget: the OPENING rule, the header, the t row, the
+		// affordance and the CLOSING rule — five, not four. R2 added the
+		// opening rule to this block and bumped the ask panel (5→6) and the
+		// approval panel (5→6) to pay for it, and missed this one: the
+		// block ran two rows over its budget, and two rows of committed
+		// content were scrolled irreversibly into the scrollback every time
+		// `/model` opened on a tight screen. The `+N more` row is a sixth
+		// when it appears, so it is paid for too.
+		const chrome = 5 + (spec.options.length > Math.min(Math.max(1, maxRows - 5), PICK_MAX) ? 1 : 0);
+		const budget = Math.max(1, maxRows - chrome);
 		const shown = spec.options.slice(0, Math.min(budget, PICK_MAX));
+		// R2: the note takes a COLUMN, not three spaces after a label of
+		// whatever length this row happened to have, and the cursor row
+		// wears the bar and the arrow like every other list in the
+		// product. This panel was the last one still saying "selected"
+		// with bold alone.
+		const lead = (o: PickOption, i: number, cursor: boolean): string => `${cursor ? "\u2192" : " "} ${i + 1} ${escapeTerminal(o.label)}`;
+		const widest = Math.max(...shown.map((o, i) => visibleWidth(lead(o, i, false))));
+		const stop = shown.some((o) => o.note !== undefined) && widest + 2 <= Math.floor(room / 2) && room - widest - 2 >= 18 ? widest + 2 : 0;
 		for (let i = 0; i < shown.length; i += 1) {
 			const o = shown[i]!;
 			const mark = i === state.cursor && state.phase === "options";
-			const head = `${mark ? p.bold : ""} ${i + 1} ${escapeTerminal(o.label)}${mark ? p.reset : ""}`;
-			const note = o.note === undefined ? "" : `${p.dim}   ${escapeTerminal(o.note)}${p.reset}`;
-			rows.push(`${gutter}${cutLine(`${head}${note}`, room)}`);
+			const plain = lead(o, i, mark);
+			const head = `${mark ? p.bold : ""}${plain}${mark ? p.reset : ""}`;
+			const note =
+				o.note === undefined
+					? ""
+					: stop > 0
+						? `${" ".repeat(Math.max(1, stop - visibleWidth(plain)))}${p.dim}${widthCut(escapeTerminal(o.note), Math.max(0, room - stop))}${p.reset}`
+						: `${p.dim}   ${escapeTerminal(o.note)}${p.reset}`;
+			const text = cutLine(`${head}${note}`, room);
+			// ONE space, like the approval and ask panels: the bar spends a
+			// leading cell of its own, so a two-space unselected prefix
+			// moves the digit column by one as the cursor walks — the exact
+			// "a column that moves per row reads as damage" this file
+			// quotes twice as its standard.
+			rows.push(mark ? selectionBar(text, visibleWidth(text), W) : ` ${text}`);
 		}
 		if (spec.options.length > shown.length) {
-			rows.push(`${gutter}${cutLine(`${p.dim} \u2514 +${spec.options.length - shown.length} more \u2014 /model <name> takes any of them${p.reset}`, room)}`);
+			rows.push(`  ${cutLine(`${p.dim} \u2514 +${spec.options.length - shown.length} more \u2014 /model <name> takes any of them${p.reset}`, room)}`);
 		}
 	}
-	rows.push(`${gutter}${cutLine(`${state.phase === "custom" ? p.bold : ""} t ${p.reset}${p.dim}${escapeTerminal(spec.typeHint)}${p.reset}`, room)}`);
-	rows.push(`${gutter}${p.dim}${cutLine(pickAffordance(state), room)}${p.reset}`);
-	rows.push(`${p.dim}\u2514${"\u2500".repeat(Math.max(0, W - 1))}${p.reset}`);
+	const typing = state.phase === "custom";
+	const tText = cutLine(`${typing ? p.bold : ""}${typing ? "\u2192" : " "} t ${p.reset}${p.dim}${escapeTerminal(spec.typeHint)}${p.reset}`, room);
+	rows.push(typing ? selectionBar(tText, visibleWidth(tText), W) : ` ${tText}`);
+	rows.push(`  ${p.dim}${cutLine(pickAffordance(state), room)}${p.reset}`);
+	rows.push(`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`);
 	return rows;
 }
 

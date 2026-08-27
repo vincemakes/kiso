@@ -31,15 +31,58 @@ import { VtScreen } from "./helpers/vt-screen.js";
 const ROWS = 24;
 const COLS = 100;
 
-/** The cursor rests on an INPUT row: the composer's, its multi-line
- *  continuation, or a panel's own prompt — every one of them a place a
- *  keystroke legitimately lands. */
+/** A row that is nothing but the dashed rule — the composer's rails,
+ *  and every panel's. */
+const isRail = (row: string): boolean => /^\u254c+$/.test(row.trimEnd());
+
+/**
+ * The cursor rests on an INPUT row: the composer's, its multi-line
+ * continuation, or a panel's own prompt — every one of them a place a
+ * keystroke legitimately lands.
+ *
+ * DECLARED SUPERSESSION (R2): this used to identify the input row by
+ * `^│ ` plus one of four lead glyphs. Both halves are gone — law 1.1
+ * retired the box (so there is no left wall) and the owner's composer
+ * ruling retired the idle chevron (the cursor sits at column one). The
+ * identification is STRUCTURAL now, which is what it always should have
+ * been: an input row is a non-rail row BETWEEN the composer's two
+ * rails. That is the CHROME_ROWS=4 contract itself — rail, input, rail,
+ * status — so the case now pins the geometry rather than a glyph that
+ * happened to sit in it.
+ */
 function expectParked(term: VtScreen, where: string): void {
 	const grid = term.visible();
 	const { row, col } = term.cursor;
 	const line = grid[row] ?? "";
-	expect(line, `${where}: cursor on row ${row} — ${JSON.stringify(line.slice(0, 70))}`).toMatch(/^│ (›|amend›|provider\/model:| )/);
-	expect(col, `${where}: cursor at col ${col}, inside the lead`).toBeGreaterThanOrEqual(2);
+	const why = `${where}: cursor on row ${row} — ${JSON.stringify(line.slice(0, 70))}`;
+	expect(betweenRails(grid, row), why).toBe(true);
+	// R2: the column floor was 2 — one cell of wall plus one of chevron,
+	// neither of which exists. Column one (index 0) is now where an empty
+	// composer legitimately parks, so the floor is vacuous and the claim
+	// that is NOT is the ceiling: the cursor never lands past the
+	// terminal's last column (invariant ①'s companion on the cursor).
+	expect(col, `${where}: cursor at col ${col}, past the width`).toBeLessThan(COLS);
+}
+
+/** The row is not a rail, and there is a rail above it and a rail below
+ *  it — the composer's two, with only input rows in between. */
+function betweenRails(grid: readonly string[], row: number): boolean {
+	if (isRail(grid[row] ?? "")) return false;
+	let above = -1;
+	for (let r = row - 1; r >= 0; r -= 1) {
+		if (isRail(grid[r] ?? "")) {
+			above = r;
+			break;
+		}
+	}
+	let below = -1;
+	for (let r = row + 1; r < grid.length; r += 1) {
+		if (isRail(grid[r] ?? "")) {
+			below = r;
+			break;
+		}
+	}
+	return above >= 0 && below >= 0;
 }
 
 function workspace(): string {
@@ -135,7 +178,7 @@ describe("TUI2-R2 ⑤ — the cursor parks at the active input, in every named s
 			const term = new VtScreen(ROWS, COLS);
 			term.write(Buffer.from(raw.slice(0, i + CLOSE.length), "utf8"));
 			const line = term.visible()[term.cursor.row] ?? "";
-			if (!/^│ (›|amend›|provider\/model:| )/.test(line)) strays.push(`frame ${frames}: ${JSON.stringify(line.slice(0, 60))}`);
+			if (!betweenRails(term.visible(), term.cursor.row)) strays.push(`frame ${frames}: ${JSON.stringify(line.slice(0, 60))}`);
 			pos = i + CLOSE.length;
 		}
 		expect(frames, "no frames in the stream").toBeGreaterThan(5);

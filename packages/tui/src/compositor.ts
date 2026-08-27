@@ -761,7 +761,7 @@ export class Body {
 			this.#closeOpenThinking();
 			this.#closeOpenText();
 			const p = palette();
-			this.#write(`${p.bold}▞${p.reset} ${escapeTerminal(header)}\n`);
+			this.#write(`${p.bold}✦${p.reset} ${escapeTerminal(header)}\n`);
 			const glyphOf = (status: string): string => (status === "pending" ? "□" : status === "active" ? "▖" : "▣");
 			for (const item of items) this.#write(`  ${glyphOf(item.status)} ${escapeTerminal(item.text)}\n`);
 			return;
@@ -908,11 +908,11 @@ export class Body {
 			// the row showed, then one row per tool with its subjects. The
 			// header keeps W15's shape; only the subject changes.
 			if (cell.rolled.parts !== undefined) {
-				const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`explored ${exploreCounts(cell.rolled.parts)}`)} · ${back}`;
+				const header = `${p.bold}✦${p.reset} expanded · ${escapeTerminal(`explored ${exploreCounts(cell.rolled.parts)}`)} · ${back}`;
 				return { kind: "appended", lines: [header, ...exploreRows(cell.rolled.parts, this.#opts.width())] };
 			}
 			const noun = ROLLUP_NOUN[cell.name] ?? "calls";
-			const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`${displayVerb(cell.name)} ${cell.rolled.count} ${noun}`)} · ${back}`;
+			const header = `${p.bold}✦${p.reset} expanded · ${escapeTerminal(`${displayVerb(cell.name)} ${cell.rolled.count} ${noun}`)} · ${back}`;
 			return {
 				kind: "appended",
 				lines: [header, ...cell.rolled.targets.map((t) => `  ${p.dim}└ ${escapeTerminal(t)}${p.reset}`)],
@@ -927,7 +927,7 @@ export class Body {
 		}
 		const turnsBack = this.#cells.slice(idx + 1).filter((c) => c.kind === "user").length;
 		const p = palette();
-		const header = `${p.bold}▞${p.reset} expanded · ${escapeTerminal(`${displayVerb(cell.name)} ${toolTarget(cell.name, input)}`)} · ${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
+		const header = `${p.bold}✦${p.reset} expanded · ${escapeTerminal(`${displayVerb(cell.name)} ${toolTarget(cell.name, input)}`)} · ${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
 		return {
 			kind: "appended",
 			lines: [
@@ -1300,9 +1300,11 @@ export class Body {
 		// W23: the frame-derived column — wallL + leadWidth(lead) + cells
 		// + 1 — the SAME formula the marker embeds at (the panel lead when
 		// the panel owns the row; the old prompt-only math desynced the
-		// panel rows' edit column; leadWidth is the ONE authority)
+		// panel rows' edit column; leadWidth is the ONE authority).
+		// R2: wallL is 0 — the box is retired, so the row starts at column
+		// one and the frame's marker and this formula share the constant.
 		const lead = panel !== null ? panelLeadOf(panel) : this.#inputPrompt;
-		return 3 + leadWidth(lead) + st.cursor;
+		return 1 + leadWidth(lead) + st.cursor;
 	}
 
 	/** The old dock's redraw — the editor's onRender target: mark + the
@@ -2012,7 +2014,13 @@ export class Body {
 				inserted = true;
 			}
 			const cw = displayWidth(row[i]!);
-			if (w + cw > W - 4) break; // the cap — the two walls' columns
+			// R2: no walls to pay for — but ONE column stays reserved. When
+			// the cursor rests past the content the drawn cell is taken out
+			// of the pad, and a walk that filled to exactly W leaves no pad
+			// to take it from: the row becomes W+1 and invariant ① throws.
+			// The old cap paid for two walls and a space; this pays for the
+			// cursor, which is the only thing still owed a cell.
+			if (w + cw > W - 1) break;
 			markerLine += row[i]!;
 			w += cw;
 			i += 1;
@@ -2045,8 +2053,8 @@ export class Body {
 			const after = markerLine.slice(mi + CURSOR_MARKER.length);
 			if (after.length === 0) {
 				// the cursor rests past the content — an inverse space,
-				// taken OUT of the pad (the walk capped content at W−4,
-				// so the pad is ≥ 1 and the row still totals W)
+				// taken OUT of the pad (the walk capped content at W, so
+				// the pad absorbs it and the row still totals W)
 				stripped0 = `${before}\x1b[7m \x1b[27m`;
 				cursorPad = 1;
 			} else if (after[0] === "\x1b" || (after.codePointAt(0)! >= 0xd800 && after.codePointAt(0)! <= 0xdfff)) {
@@ -2059,10 +2067,12 @@ export class Body {
 				stripped0 = `${before}\x1b[7m${glyph}\x1b[27m${after.slice(glyph.length)}`;
 			}
 		}
-		// the pad completes the row to W — the content stopped at W−4,
-		// so the pad is ≥ 1 (≥ 0 after the drawn cursor consumed one)
-		const padW = W - 3 - w - cursorPad;
-		return { stripped: `\x1b[2m│ \x1b[0m${stripped0}\x1b[2m${" ".repeat(padW)}│\x1b[0m`, markerCell };
+		// R2 — the box is retired (see boxTop): the composer is two dashed
+		// rules and the row between them, so there are no walls to pay for
+		// and no pad to hold them off. The row is exactly W, as it always
+		// was; what changed is that all W columns belong to the input.
+		const padW = Math.max(0, W - w - cursorPad);
+		return { stripped: `${stripped0}${" ".repeat(padW)}`, markerCell };
 	}
 
 	/** KC1 §6 — the focus component's input ROWS (N = 1 today's single
@@ -2100,14 +2110,14 @@ export class Body {
 			cursorRow -= first;
 		}
 		const out: string[] = [];
-		let markerCol = 3;
+		let markerCol = 1; // R2: no wall to skip — the row starts at column 1
 		for (let r = 0; r < rows.length; r += 1) {
 			const text = `${r === 0 ? lead : " ".repeat(leadW)}${rows[r]!}`;
 			const bytes = this.#inputRowBytes(text, W, r === cursorRow ? leadW + cursorCol : null);
 			out.push(bytes.stripped);
 			// W23: the frame-derived column — wallL (2) + the marker's
 			// cell + 1 — the CHA lands the cursor AT the marker from ANY base
-			if (r === cursorRow) markerCol = 3 + bytes.markerCell;
+			if (r === cursorRow) markerCol = 1 + bytes.markerCell;
 		}
 		return { rows: out, markerRow: cursorRow, markerCol };
 	}

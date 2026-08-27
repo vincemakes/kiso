@@ -147,7 +147,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			env,
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
-				["› ", "/status\r"],
+				["/ commands · \u2191 history", "/status\r"],
 				["ctx ~", "go\r"],
 				// The go turn's OWN shell cell ("sleep 4") marks the run
 				// mid-flight — the recovery's leftover "working" status must
@@ -162,7 +162,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 				// script turn). The "you> " prompt alone is ambiguous (the
 				// /status's own prompt precedes the go turn).
 				["1 tool", "/compact\r"],
-				["› ", "/status\r"],
+				["/ commands · \u2191 history", "/status\r"],
 				["ctx ~", "exit\r"],
 			],
 			dir,
@@ -176,7 +176,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		// W18 re-baseline: the success NoticeCell is the RECAP — the covered
 		// rounds (9 total − 4 kept = 5, pinned with the coversToSeq:14
 		// boundary below), the one summary, the savings, and the elapsed.
-		expect(plain).toContain("[/compact] ▞ compacted · 5 rounds → 1 summary · saved ~");
+		expect(plain).toContain("[/compact] ✦ compacted · 5 rounds → 1 summary · saved ~");
 		// The context DROPPED after the compression: /status printed
 		// "ctx ~N%" twice — before (seeded, ~16%) and after (~7%).
 		const ctxs = [...out.matchAll(/ctx ~(\d+)%/g)].map((m) => Number(m[1]));
@@ -216,7 +216,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			env,
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
-				["› ", "/compact\r"],
+				["/ commands · \u2191 history", "/compact\r"],
 				// The FIRST paint of the indeterminate row marks the call
 				// live — esc lands mid-flight (the call outlives the feed by
 				// ~1.4s, so the cancel is never a race against the settle).
@@ -267,7 +267,7 @@ describe("ADR-0044 cli: /compact through a pipe", () => {
 		const run = runCli(["chat", "kp"], { ...isoEnv, KISO_FAUX_SCRIPT: scriptPath }, { input: "/compact\nexit\n", timeout: 60_000 });
 		expect(run.status).toBe(0);
 		// W18 re-baseline: the recap (8 seed rounds − 4 kept = 4 covered).
-		expect(run.stdout).toContain("[/compact] ▞ compacted · 4 rounds → 1 summary · saved ~");
+		expect(run.stdout).toContain("[/compact] ✦ compacted · 4 rounds → 1 summary · saved ~");
 		expect(run.stdout).not.toContain("\u001b["); // the pipe is byte-clean
 		const durable = readFileSync(join(home, "sessions", "kp.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');

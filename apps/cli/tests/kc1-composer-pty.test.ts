@@ -124,15 +124,25 @@ describe("KC1 T-P1 — a pasted 3-line CRLF block is ONE multi-line turn (real P
 		// the paste: CRLF line endings, the shape a real SQL copy carries
 		const paste = "\x1b[200~SELECT id\r\nFROM t\r\nWHERE x = 1\x1b[201~";
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script }, "kc1p1", [
-			["› ", paste, 2],
+			["/ commands · \u2191 history", paste, 2],
 			["WHERE x = 1", "\r", 4], // Enter — the composer's rows are on the screen by now
 		], 16);
 		const grids = frameGrids(out);
 
 		// ① the box GREW: a frame with the box top at H−5 (row index 18),
 		//    the three pasted rows inside it, and the bottom right after
+		// DECLARED SUPERSESSION (R2, law 1.1): W6's rounded box is retired.
+		// Both edges are the SAME dashed rule and the sides are gone, so
+		// the corners cannot be the needle. The GEOMETRY this case is
+		// about is untouched — the composer still grows upward from H−3
+		// and CHROME_ROWS is still 4 — so the rails are what identify it.
 		const grown = grids.find(
-			(g) => g[18]!.includes("╭") && g[19]!.includes("SELECT id") && g[20]!.includes("FROM t") && g[21]!.includes("WHERE x = 1") && g[22]!.includes("╰"),
+			(g) =>
+				g[18]!.includes("\u254c") &&
+				g[19]!.includes("SELECT id") &&
+				g[20]!.includes("FROM t") &&
+				g[21]!.includes("WHERE x = 1") &&
+				g[22]!.includes("\u254c"),
 		);
 		expect(grown, "a frame shows the composer at three rows").toBeDefined();
 
@@ -146,8 +156,9 @@ describe("KC1 T-P1 — a pasted 3-line CRLF block is ONE multi-line turn (real P
 		//    row (top at H−3 = row index 20), and the idle chrome survives
 		const grid = grids.at(-1)!;
 		expect(grid.join("\n")).toContain("the query reads three lines");
-		expect(grid[20]!.includes("╭")).toBe(true);
-		expect(grid[22]!.includes("╰")).toBe(true);
+		expect(grid[20]!.includes("\u254c")).toBe(true); // R2: the rails, not the corners
+		expect(grid[21]!.includes("\u254c")).toBe(false); // the input row between them
+		expect(grid[22]!.includes("\u254c")).toBe(true);
 		expect(grid[23]).toContain("/ commands");
 		// the user's own turn rides the scrollback as a chip, all three lines
 		const scrollback = Buffer.from(out, "hex").toString("utf8");
@@ -167,7 +178,7 @@ describe("KC1 T-P2 — Ctrl+J grows the box; the submit collapses it; a queued m
 			{ events: [{ type: "text_delta", text: "second turn done" }, { type: "stop", reason: "end_turn" }] },
 		]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc1p2", [
-			["› ", "one\x0atwo\x0athree", 2], // Ctrl+J ×2 — the composer grows LIVE
+			["/ commands · \u2191 history", "one\x0atwo\x0athree", 2], // Ctrl+J ×2 — the composer grows LIVE
 			["three", "\r", 4], // Enter — the submit collapses it and starts the run
 			["one", "queued one\x0aqueued two\x0aqueued three", 6], // typed WHILE the shell sleeps
 			["queued three", "\r", 8], // the second submit — it QUEUES behind the run
@@ -175,12 +186,18 @@ describe("KC1 T-P2 — Ctrl+J grows the box; the submit collapses it; a queued m
 		const grids = frameGrids(out);
 
 		// ① the composer grew to three rows under Ctrl+J
-		const grown = grids.find((g) => g[18]!.includes("╭") && g[19]!.includes("one") && g[20]!.includes("two") && g[21]!.includes("three") && g[22]!.includes("╰"));
+		// R2 (law 1.1): the rails, not the corners — see T-P1 above.
+		const grown = grids.find(
+			(g) => g[18]!.includes("\u254c") && g[19]!.includes("one") && g[20]!.includes("two") && g[21]!.includes("three") && g[22]!.includes("\u254c"),
+		);
 		expect(grown, "a frame shows three composer rows typed with Ctrl+J").toBeDefined();
 
 		// ② the submit COLLAPSED it — a later frame has the one-row box back
 		const grownAt = grids.indexOf(grown!);
-		const collapsed = grids.slice(grownAt + 1).find((g) => g[20]!.includes("╭") && g[22]!.includes("╰") && !g[19]!.includes("│"));
+		// R2: collapsed = the rails back at 20/22 with NO rail (and so no
+		// composer row) at 19. The old test read `!g[19].includes("│")` —
+		// the box's left wall, which no longer exists.
+		const collapsed = grids.slice(grownAt + 1).find((g) => g[20]!.includes("\u254c") && g[22]!.includes("\u254c") && !g[19]!.includes("\u254c"));
 		expect(collapsed, "a later frame shows the box back at one row").toBeDefined();
 
 		// ③ the QUEUED multi-line turn's chip: its first line + ⏎×2

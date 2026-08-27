@@ -133,9 +133,9 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		expect(res.stdout).not.toContain("explored 3 files");
 		expect(res.stdout).not.toContain("ctrl+r");
 		// the pipe's own per-call rows are intact — all six, one each
-		expect(res.stdout.match(/✓ read /g) ?? []).toHaveLength(3);
-		expect(res.stdout.match(/✓ search_text /g) ?? []).toHaveLength(2);
-		expect(res.stdout.match(/✓ list_dir /g) ?? []).toHaveLength(1);
+		expect(res.stdout.match(/\u2713 read /g) ?? []).toHaveLength(3); // R2: the pipe keeps its mark
+		expect(res.stdout.match(/\u2713 search_text /g) ?? []).toHaveLength(2);
+		expect(res.stdout.match(/\u2713 list_dir /g) ?? []).toHaveLength(1);
 
 		// THE DURABLE LOGS: the rolled session's events are the unrolled
 		// session's events — same types, same order, same contents. The
@@ -183,9 +183,9 @@ describe("TUI2-R1 T-V3 — the live tail on a real PTY", () => {
 		// verdict is what the row records. `approved by mode:*` was the
 		// runtime's backfill for "no policy expressed an opinion", read by
 		// a human as an attribution (VD-11).
-		expect(out).toContain("✓ shell sh steps.sh (exit 0, ");
+		expect(out).toContain("  shell sh steps.sh (exit 0, ");
 		expect(out).toContain(") · 6 lines · ctrl+r expands");
-		const settledAt = out.lastIndexOf("✓ shell");
+		const settledAt = out.lastIndexOf("  shell");
 		expect(settledAt).toBeGreaterThan(0);
 		expect(out.slice(settledAt)).not.toContain("live tail");
 
@@ -245,9 +245,12 @@ describe("TUI2-R1 T-V4 — the ? keys sheet on a real PTY", () => {
 		expect(out).toContain("ctrl+r expand cells");
 		// MOVED (R1.5 pin 6, the wrap/copy class): see the tui-cells unit.
 		expect(out).toContain("panels: ↑↓ move · ⏎ or click confirms · 1-4 instant · space toggles · t types");
-		// the `?` never became text, and neither did the key that closed it
-		expect(out).not.toContain("│ › ?");
-		expect(out).not.toContain("│ › x");
+		// the `?` never became text, and neither did the key that closed it.
+		// R2: the composer has no wall and no prompt glyph, so the needle
+		// is the row's erase-to-end immediately followed by the character —
+		// which is what a `?` typed into the composer would look like.
+		expect(out).not.toContain("\x1b[0K?");
+		expect(out).not.toContain("\x1b[0Kx");
 		// the session carried on normally afterwards
 		expect(out).toContain("hello there.");
 		const events = logLines(env.KISO_HOME as string, "r1-sheet").map((l) => l.event);

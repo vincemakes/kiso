@@ -74,7 +74,11 @@ describe("KC3 §1: projectTrustView — the trust gate's panel", () => {
 		expect(view.name).toBe("project trust");
 		expect(view.title).toBe("/repo/.kiso");
 		expect(view.speaker).toBe("kiso");
-		expect(view.statusText).toBe("▸ project trust");
+		// DECLARED SUPERSESSION (R2, design §4): the pending mark was `▸`,
+		// which is also the checklist's "the current one". A panel waiting
+		// on a human says `⏸` — the one mark that means "nothing moves
+		// until you answer". The 867a0fa literals are otherwise intact.
+		expect(view.statusText).toBe("⏸ project trust");
 		expect(view.ruleOverride).toBe("trust this project's .kiso?");
 		expect(view.fallbackQuestion).toBe("trust this project's .kiso? (y/n) ");
 		expect(view.args).toEqual({ kind: "text", lines: ["mcp.json  (abcdef)", "skills/review/SKILL.md  (012345)"] });
@@ -105,7 +109,7 @@ describe("KC3 §1: uncertainView — the uncertain execution's panel", () => {
 		expect(view.name).toBe("uncertain execution");
 		expect(view.title).toBe("shell (exec-7)");
 		expect(view.speaker).toBe("kiso");
-		expect(view.statusText).toBe("▸ uncertain execution");
+		expect(view.statusText).toBe("⏸ uncertain execution");
 		expect(view.args).toEqual({ kind: "text", lines: ["exec-7"] });
 		// MOVED (the TUI2-R3v2 panel-selection supersession class): the
 		// option labels left the rule line for the option ROWS. Copy that

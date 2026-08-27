@@ -4,7 +4,7 @@
  *
  * The walkthrough counted three suffix forms on one screen and read the
  * line count twice on every read card
- * (`✓ read  f0.txt (2 lines, 0.0s) · 2 lines · ctrl+r expands`). It also
+ * (`  read  f0.txt (2 lines, 0.0s) · 2 lines · ctrl+r expands`). It also
  * read `approved by mode:default` nine times — the kernel's own backfill
  * for "nobody actually decided this", presented as an attribution — and
  * a raw model-channel advisory, and a panel label written as a design
@@ -61,7 +61,7 @@ describe("TUI2-R1.5 ⑤ — the line count is stated exactly once (VD-6)", () =>
 	it("a read card names its lines in the SUFFIX, not in the parens as well", () => {
 		const row = render(toolCell())[0]!;
 		expect(row.match(/\d+ lines?/g) ?? []).toHaveLength(1);
-		expect(row).toBe("✓ read  src/parser.ts (2.4s) · 2 lines · ctrl+r expands");
+		expect(row).toBe("  read  src/parser.ts (2.4s) · 2 lines · ctrl+r expands");
 	});
 
 	it("a read whose result the TOOL truncated keeps its own of-N meta — that is a different fact", () => {
@@ -82,7 +82,7 @@ describe("TUI2-R1.5 ⑤ — approval attribution is about humans (VD-11)", () =>
 		const row = render(toolCell({ verdict: { decision: "approved", decidedBy: "mode:default" } }))[0]!;
 		expect(row).not.toContain("approved by");
 		expect(row).not.toContain("mode:default");
-		expect(row).toBe("✓ read  src/parser.ts (2.4s) · 2 lines · ctrl+r expands");
+		expect(row).toBe("  read  src/parser.ts (2.4s) · 2 lines · ctrl+r expands");
 	});
 
 	it("a HUMAN approval says `approved` — the thing the human actually did", () => {

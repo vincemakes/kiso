@@ -240,13 +240,13 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 
 	it("the full form: seconds · tools (edits) · in/out · cache % · ctx left %", () => {
 		expect(renderRecap({ seconds: 47, tools: 3, edits: 1, usage: usage(), ctxLeftPct: 96 })).toBe(
-			"▞ 47s · 3 tools (1 edit) · in 8.2k out 410 · cache 49% · ctx left ~96%\n", // 7954/(8200+7954)
+			"\u2726 47s · 3 tools (1 edit) · in 8.2k out 410 · cache 49% · ctx left ~96%\n", // 7954/(8200+7954)
 		);
 	});
 
 	it("W19 — the plan branch drops the metadata BEFORE the fold: 79 cols, one row at W=80, never ctx left", () => {
 		const line = renderRecap({ seconds: 47, tools: 3, edits: 1, usage: usage(), ctxLeftPct: 96, mode: "plan" });
-		expect(line).toBe("▞ plan ready · /mode default executes · /mode accept-edits auto-approves edits\n");
+		expect(line).toBe("\u2726 plan ready · /mode default executes · /mode accept-edits auto-approves edits\n");
 		// the done-when: the line's visible width ≤ 80 even with the ctx
 		// left present (the segment is dropped — the status row carries it).
 		expect(visibleWidth(line.trim())).toBeLessThanOrEqual(80);
@@ -254,7 +254,7 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 
 	it("singulars and omissions: 1 tool, no edits, unknown usage → the parts drop", () => {
 		expect(renderRecap({ seconds: 2, tools: 1, edits: 0, usage: usage({ known: false }), ctxLeftPct: null })).toBe(
-			"▞ 2s · 1 tool\n",
+			"\u2726 2s · 1 tool\n",
 		);
 	});
 
@@ -263,10 +263,10 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 		// never exceed 100% (the old cache/in denominator rendered 923%).
 		// in 0 with cache > 0 is honest: everything came from cache → 100%.
 		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: 0 }), ctxLeftPct: null })).toBe(
-			"▞ 1s · 1 tool · in 0 out 410 · cache 100%\n",
+			"\u2726 1s · 1 tool · in 0 out 410 · cache 100%\n",
 		);
 		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ cache: null }), ctxLeftPct: null })).toBe(
-			"▞ 1s · 1 tool · in 8.2k out 410\n",
+			"\u2726 1s · 1 tool · in 8.2k out 410\n",
 		);
 	});
 
@@ -275,7 +275,7 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 		// the cached prefix. OLD formula: 1024/111 = 922.5% → "cache 923%".
 		// NEW: 1024/1135 = 90.2% → "cache 90%".
 		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: 111, cache: 1024 }), ctxLeftPct: null })).toBe(
-			"▞ 1s · 1 tool · in 111 out 410 · cache 90%\n",
+			"\u2726 1s · 1 tool · in 111 out 410 · cache 90%\n",
 		);
 	});
 
@@ -299,25 +299,25 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 
 	it("k-units: 12345 → 12.3k, 800 → 800", () => {
 		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: 12345, out: 800 }), ctxLeftPct: null })).toBe(
-			"▞ 1s · 1 tool · in 12.3k out 800 · cache 39%\n", // 7954/(12345+7954)
+			"\u2726 1s · 1 tool · in 12.3k out 800 · cache 39%\n", // 7954/(12345+7954)
 		);
 	});
 
 	it("R-C item 4: an above-floor cache miss appends the miss segment", () => {
 		expect(renderRecap({ seconds: 3, tools: 2, edits: 0, usage: usage({ in: 123456, cache: 82000 }), missed: 41000, ctxLeftPct: null })).toBe(
-			"▞ 3s · 2 tools · in 123.5k out 410 · cache 40% · miss 41k\n",
+			"\u2726 3s · 2 tools · in 123.5k out 410 · cache 40% · miss 41k\n",
 		);
 	});
 
 	it("R-C item 4: a zero miss renders nothing — the historical bytes hold", () => {
 		expect(renderRecap({ seconds: 3, tools: 2, edits: 0, usage: usage(), missed: 0, ctxLeftPct: null })).toBe(
-			"▞ 3s · 2 tools · in 8.2k out 410 · cache 49%\n",
+			"\u2726 3s · 2 tools · in 8.2k out 410 · cache 49%\n",
 		);
 	});
 });
 
 describe("⑥: the checklist cell (the durable task render)", () => {
-	it("NO_COLOR: the header ▞ + the brick glyphs (□ pending / ▖ active / ▣ done), byte-exact", () => {
+	it("NO_COLOR: the header ✦ + the brick glyphs (□ pending / ▖ active / ▣ done), byte-exact", () => {
 		const ev: RenderInput = {
 			type: "checklist",
 			header: "3 items — 1 pending, 1 active, 1 done",
@@ -328,14 +328,14 @@ describe("⑥: the checklist cell (the durable task render)", () => {
 			],
 		};
 		expect(renderEvent(ev).text).toBe(
-			"▞ 3 items — 1 pending, 1 active, 1 done\n" +
+			"\u2726 3 items — 1 pending, 1 active, 1 done\n" +
 				"  □ write the plan\n" +
 				"  ▖ implement\n" +
 				"  ▣ verify\n",
 		);
 	});
 
-	it("TTY: only the ▞ accent is bold; the items stay plain (glyphs carry the status)", () => {
+	it("TTY: only the ✦ accent is bold; the items stay plain (glyphs carry the status)", () => {
 		setTTY(true);
 		setNoColor(false);
 		const ev: RenderInput = {
@@ -343,7 +343,7 @@ describe("⑥: the checklist cell (the durable task render)", () => {
 			header: "1 item — 0 pending, 1 active, 0 done",
 			items: [{ text: "go", status: "active" }],
 		};
-		expect(renderEvent(ev).text).toBe(`${COLOR_ON.bold}▞${COLOR_ON.reset} 1 item — 0 pending, 1 active, 0 done\n  ▖ go\n`);
+		expect(renderEvent(ev).text).toBe(`${COLOR_ON.bold}\u2726${COLOR_ON.reset} 1 item — 0 pending, 1 active, 0 done\n  ▖ go\n`);
 	});
 
 	it("terminal-injection vectors in item text are stripped (escaped at composition)", () => {
@@ -354,7 +354,7 @@ describe("⑥: the checklist cell (the durable task render)", () => {
 			header: "1 item",
 			items: [{ text: "\x1b[31mred\x07", status: "pending" }],
 		};
-		expect(renderEvent(ev).text).toBe("▞ 1 item\n  □ [31mred\n");
+		expect(renderEvent(ev).text).toBe("\u2726 1 item\n  □ [31mred\n");
 	});
 });
 
@@ -415,7 +415,7 @@ describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
 
 	it("the shape: header, relative time, title, right-aligned meta — every row exactly W wide, the meta column aligned (the done-when)", () => {
 		const rows = renderResumeList(METAS, 80, NOW);
-		expect(rows[0]).toBe("  ▞ resume");
+		expect(rows[0]).toBe("  ✦ resume");
 		// metaW = 20 (the longer meta); titleW = 80 - 13 - 20 = 47; pads 19 / 24
 		expect(rows[1]).toBe(
 			"    6m ago  fix the resize repaint storm" + " ".repeat(19) + " " + "  41 events · 3 runs",
@@ -477,7 +477,7 @@ describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
 
 	it("the tier gate: BIG (W≥40 && H≥20) shows the list, one blank above; COMPACT / narrow / empty drop it entirely", () => {
 		const big = bannerLines(80, 24, "0.1.37", "[3 extensions: asky]", METAS, NOW);
-		expect(big).toContain("  ▞ resume");
+		expect(big).toContain("  ✦ resume");
 		expect(big.some((r) => r.includes("fix the resize repaint storm"))).toBe(true);
 		expect(big.some((r) => r.includes("183 events · 12 runs"))).toBe(true);
 		// R2 supersession: the extensions text is a labelled fact now, so
@@ -487,16 +487,16 @@ describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
 		const ext = big.findIndex((r) => r.includes("[3 extensions: asky]"));
 		expect(big[ext]).toBe("  EXTENSIONS  [3 extensions: asky]");
 		expect(big[ext + 1]).toBe("");
-		expect(big[ext + 2]).toBe("  ▞ resume");
+		expect(big[ext + 2]).toBe("  ✦ resume");
 		expect(big.length).toBe(7); // name + blank + extensions + blank + 3 resume rows
 		for (const r of big) expect(truncateRow(r, 80)).toBe(r);
 		// the narrowest BIG tier still aligns the meta at exactly W (40)
 		const narrow = bannerLines(40, 20, "0.1.37", "", METAS, NOW);
-		expect(narrow).toContain("  ▞ resume");
+		expect(narrow).toContain("  ✦ resume");
 		for (const r of narrow) expect(truncateRow(r, 40), r).toBe(r);
 		// the tier drops below the gate — COMPACT, narrow, and empty
-		expect(bannerLines(80, 15, "0.1.37", "", METAS, NOW).some((r) => r.includes("▞ resume"))).toBe(false);
-		expect(bannerLines(39, 24, "0.1.37", "", METAS, NOW).some((r) => r.includes("▞ resume"))).toBe(false);
-		expect(bannerLines(80, 24, "0.1.37", "", [], NOW).some((r) => r.includes("▞ resume"))).toBe(false);
+		expect(bannerLines(80, 15, "0.1.37", "", METAS, NOW).some((r) => r.includes("✦ resume"))).toBe(false);
+		expect(bannerLines(39, 24, "0.1.37", "", METAS, NOW).some((r) => r.includes("✦ resume"))).toBe(false);
+		expect(bannerLines(80, 24, "0.1.37", "", [], NOW).some((r) => r.includes("✦ resume"))).toBe(false);
 	});
 });

@@ -41,12 +41,12 @@ describe("TUI2-R1.5 ⑪ — the panel closes with a real rule (VD-13)", () => {
 		const rows = panelBlockRows(VIEW, "options", 1, 60, 20);
 		const last = rows[rows.length - 1]!;
 		expect(last).not.toBe("└ ");
-		expect(last.startsWith("└")).toBe(true);
+		expect(last.startsWith("\u254c")).toBe(true);
 		expect(visibleWidth(last)).toBe(60);
-		expect(last).toBe(`└${"─".repeat(59)}`);
+		expect(last).toBe("\u254c".repeat(60));
 	});
 
-	it("the rule spans the width at EVERY width, and the row count is unchanged", () => {
+	it("the rule spans the width at EVERY width, and the row count gains the opening rule (R2)", () => {
 		for (const W of [40, 46, 48, 64, 80, 120]) {
 			const rows = panelBlockRows(VIEW, "options", 1, W, 20);
 			expect(visibleWidth(rows[rows.length - 1]!), `W=${W}`).toBe(W);
@@ -54,13 +54,17 @@ describe("TUI2-R1.5 ⑪ — the panel closes with a real rule (VD-13)", () => {
 			// frame is 5 chrome rows + ONE ROW PER OPTION, not 6 fixed rows with
 			// the options sharing one. The rule-spans-the-width property this
 			// case exists for is unchanged.
-			expect(rows, `W=${W}`).toHaveLength(5 + 4 + 2);
+			expect(rows, `W=${W}`).toHaveLength(6 + 4 + 2); // R2: six chrome rows — the block opens with a rule too
 		}
 	});
 
-	it("the ONE `└` in the block is the bottom rule — the cut-notice elbow no longer collides", () => {
+	it("R2: the block opens AND closes with the same dashed rule — the cut-notice elbow never collides with an edge again", () => {
 		const rows = panelBlockRows(VIEW, "options", 1, 60, 20);
-		expect(rows.filter((r) => r.startsWith("└"))).toHaveLength(1);
+		// R2: TWO rules — the block opens with one and closes with one, in
+		// the same vocabulary as the composer. TUI2-R1.5 ⑪'s finding stands
+		// and is why this is safe: the cut notice keeps its └ and can no
+		// longer be mistaken for an edge, because an edge is now ╌.
+		expect(rows.filter((r) => r.startsWith("\u254c"))).toHaveLength(2);
 	});
 });
 

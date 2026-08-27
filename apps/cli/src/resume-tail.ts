@@ -32,7 +32,7 @@ const clip = (s: string, n: number): string => (s.length <= n ? s : `${s.slice(0
  * prompt. Empty when there is nothing to show, and the caller prints
  * nothing rather than an empty frame.
  */
-export function resumeTail(events: readonly { readonly type: string }[]): string[] {
+export function resumeTail(events: readonly { readonly type: string }[], W = 80): string[] {
 	const turns: { ask: string; reply: string }[] = [];
 	let ask: string | null = null;
 	let reply = "";
@@ -52,9 +52,22 @@ export function resumeTail(events: readonly { readonly type: string }[]): string
 
 	const lines: string[] = [];
 	const skipped = turns.length - shown.length;
-	lines.push(skipped > 0 ? `─ resuming · ${turns.length} turns, showing the last ${shown.length} ─` : `─ resuming · ${turns.length} turn${turns.length === 1 ? "" : "s"} ─`);
+	// R2 (law 1.1): the head is the ONE rule, labelled the way every
+	// other band on screen labels itself. It used to be `─ … ─`, a second
+	// divider weight that existed nowhere else in the product.
+	const label = skipped > 0 ? `resuming · ${turns.length} turns, showing the last ${shown.length}` : `resuming · ${turns.length} turn${turns.length === 1 ? "" : "s"}`;
+	const head = `\u254c\u254c\u254c ${label} `;
+	// the cut floor is the WIDTH, never a constant: `Math.max(4, W)` let a
+	// four-cell rule out at W=1..3, i.e. a chrome row wider than the
+	// terminal. Every glyph here is one cell (the label is ascii plus
+	// `·`), so a code-unit slice is a cell slice.
+	lines.push(`${head}${"\u254c".repeat(Math.max(1, W - head.length))}`.slice(0, Math.max(1, W)));
 	for (const t of shown) {
-		lines.push(`  › ${clip(oneLine(t.ask), 100)}`);
+		// the human's turn keeps the quote gutter — the one glyph in the
+		// product that means "these are somebody's exact words". The `\u203a`
+		// it used to carry is the composer's prompt, and the composer no
+		// longer has one.
+		lines.push(`  \u2502 ${clip(oneLine(t.ask), 100)}`);
 		const body = oneLine(t.reply);
 		// A turn with no reply is a turn that was INTERRUPTED — the case
 		// resume exists for. Saying so beats printing a blank line.

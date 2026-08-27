@@ -73,7 +73,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// stated EXACTLY ONCE now (VD-6). This very row is the one the
 		// walkthrough quoted: the parens and the suffix were written by
 		// different rounds, each unaware the other was counting.
-		expect(rows[0]).toBe("✓ read  src/parser.ts (2.4s) · 12 lines · ctrl+r expands");
+		expect(rows[0]).toBe("  read  src/parser.ts (2.4s) · 12 lines · ctrl+r expands");
 		// nothing else changed: the collapsed body is still empty
 		expect(rows).toHaveLength(1);
 	});
@@ -88,7 +88,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 				resultText: Array.from({ length: 22 }, (_, i) => `out ${i + 1}`).join("\n"),
 			}),
 		);
-		expect(rows[0]).toBe("✓ shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r expands");
+		expect(rows[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r expands");
 	});
 
 	// MOVED (R1.5 slice ④, the settled-shell-body class — DECLARED THIS
@@ -107,13 +107,13 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 				resultText: "",
 			}),
 		);
-		expect(rows[0]).toBe("✓ shell echo hi (exit 0, 2.4s)");
+		expect(rows[0]).toBe("  shell echo hi (exit 0, 2.4s)");
 		expect(rows.join("\n")).not.toContain("ctrl+r");
 		// an empty result hides nothing for any tool
-		expect(render(toolCell({ resultText: "" }))[0]).toBe("✓ read  src/parser.ts (0 lines, 2.4s)");
+		expect(render(toolCell({ resultText: "" }))[0]).toBe("  read  src/parser.ts (0 lines, 2.4s)");
 		// …and a shell WITH output now says so, where it used to stay silent
 		expect(render(toolCell({ name: "shell", input: "echo hi", inputFull: JSON.stringify({ command: "echo hi" }), resultText: "hi" }))[0]).toBe(
-			"✓ shell echo hi (exit 0, 2.4s) · 1 line · ctrl+r expands",
+			"  shell echo hi (exit 0, 2.4s) · 1 line · ctrl+r expands",
 		);
 	});
 
@@ -125,9 +125,9 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 			inputFull: JSON.stringify({ command: "npm test" }),
 			resultText: Array.from({ length: 22 }, (_, i) => `out ${i + 1}`).join("\n"),
 		});
-		expect(render(cell, 80)[0]).toBe("✓ shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r expands");
-		expect(render(cell, 54)[0]).toBe("✓ shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r");
-		expect(render(cell, 44)[0]).toBe("✓ shell npm test (exit 0, 2.4s) · ctrl+r");
+		expect(render(cell, 80)[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r expands");
+		expect(render(cell, 54)[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r");
+		expect(render(cell, 44)[0]).toBe("  shell npm test (exit 0, 2.4s) · ctrl+r");
 		// MOVED (R1.5 slice ⑤ then pin 4, the R1 tool-cell suffix class):
 		// there is no "absent" affordance tier any more — the affordance is
 		// the semantics, so the shortest tier is reserved and the head gives
@@ -136,7 +136,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// so at 32 the group drops entirely rather than becoming the
 		// half-sentence `(exit…`. The three-tier degradation above is
 		// unchanged.
-		expect(render(cell, 32)[0]).toBe("✓ shell npm test · ctrl+r");
+		expect(render(cell, 32)[0]).toBe("  shell npm test · ctrl+r");
 		// invariant ①: the suffix NEVER pushes a row past the width
 		for (const W of [20, 32, 40, 44, 54, 60, 80, 120]) {
 			for (const row of render(cell, W)) expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
@@ -146,7 +146,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 	it("an EXPANDED block gains the collapse footer — the way back, at the block's last row", () => {
 		setTTY(false);
 		const rows = render(toolCell({ expanded: true, resultText: "alpha\nbeta\ngamma" }));
-		expect(rows).toEqual(["✓ read  src/parser.ts (3 lines, 2.4s)", "│ alpha", "│ beta", "│ gamma", "└ ctrl+r collapses"]);
+		expect(rows).toEqual(["  read  src/parser.ts (3 lines, 2.4s)", "│ alpha", "│ beta", "│ gamma", "└ ctrl+r collapses"]);
 		// the expanded head row drops the collapsed suffix — it would be
 		// telling the reader to expand what is already expanded
 		expect(rows[0]).not.toContain("expands");
@@ -158,7 +158,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// MOVED (R1.5 slice ⑤, the R1 tool-cell suffix class): the parens
 		// lost their duplicate count (VD-6); the SGR placement — the whole
 		// point of this case — is byte-identical.
-		expect(rows[0]).toBe("\x1b[1m✓\x1b[0m read  src/parser.ts (2.4s)\x1b[2m · 3 lines · ctrl+r expands\x1b[0m");
+		expect(rows[0]).toBe("  read  src/parser.ts (2.4s)\x1b[2m · 3 lines · ctrl+r expands\x1b[0m"); // R2: no tick
 		const expanded = render(toolCell({ expanded: true, resultText: "a\nb\nc" }));
 		expect(expanded[expanded.length - 1]).toBe("\x1b[2m└ ctrl+r collapses\x1b[0m");
 	});
@@ -185,19 +185,27 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 				resultText: `exit 1: boom\n${Array.from({ length: 9 }, (_, i) => `err ${i}`).join("\n")}`,
 			}),
 		);
-		expect(rows[0]).toBe("✗ shell npm test (exit 1, 2.4s)");
+		expect(rows[0]).toBe("  shell npm test (exit 1, 2.4s)");
 		expect(rows[0]).not.toContain("ctrl+r");
 		// the error body's own renderer cut is the affordance there, unchanged
 		expect(rows[rows.length - 1]).toContain("more · ctrl+r");
 	});
 
+	/**
+	 * R2: the pipe KEEPS its ✓. The owner's ruling retired the mark from
+	 * the interactive screen, where a row already says `exit 0` and the
+	 * mark repeated it. The pipe is not that screen — it is its own
+	 * design, with no gutter, no colour and no metadata column, and there
+	 * the mark is the only thing carrying the state. Removing it there
+	 * would drop information rather than noise.
+	 */
 	it("THE PIPE IS BYTE-IDENTICAL — the suffixes are a TTY-render concern and never reach a pipe", () => {
 		setTTY(false); // a pipe: palette off, the line-mode renderers
-		expect(renderToolSummary("shell", { command: "npm test" }, { content: "a\nb\nc", isError: false })).toBe("✓ shell npm test (exit 0)");
+		expect(renderToolSummary("shell", { command: "npm test" }, { content: "a\nb\nc", isError: false })).toBe("\u2713 shell npm test (exit 0)");
 		expect(renderToolSummary("read_file", { path: "src/parser.ts" }, { content: "a\nb\nc", isError: false })).toBe(
-			"✓ read src/parser.ts (3 lines)",
+			"\u2713 read src/parser.ts (3 lines)",
 		);
 		expect(foldResult("a\nb\nc")).toBe("a b c");
-		expect(terminalPipe("[label]", "▞ 1s · 1 tool")).toBe("[label]▞ 1s · 1 tool\n\n");
+		expect(terminalPipe("[label]", "✦ 1s · 1 tool")).toBe("[label]\u2726 1s · 1 tool\n\n");
 	});
 });

@@ -29,7 +29,7 @@ import { newSessionId } from "./session-id.js";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { BADGE_GLYPH, Body, Editor, bannerLines, currentGround, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
+import { Body, Editor, bannerLines, currentGround, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
 import {
 	createAgent,
 	disposeExtensions,
@@ -256,6 +256,18 @@ function makeLineInput(): LineInput {
 		// reader, nothing blocking: an answer that never arrives leaves the
 		// ground `unknown`, and `unknown` is a supported palette, not a
 		// failure — see packages/tui-cells/src/ground.ts.
+		// DC-14 (P1): the ladder is walked ONCE AT STARTUP, before the query
+		// and independently of it. It used to be walked only inside the
+		// reply callback below — so on a terminal that does not answer OSC
+		// 11 (tmux does not forward the reply by default), rung 1 never
+		// ran: `KISO_THEME=dark` is SETTLED as "an explicit answer always
+		// wins" and won nothing. Rung 3 was worse than dead — `COLORFGBG`
+		// exists FOR the terminals without OSC 11, and could only ever be
+		// consulted when an OSC reply had arrived and been malformed. With
+		// §3.2 recording that rung 2 is unmeasured, that was the mainline.
+		setGround(resolveGround({ theme: process.env.KISO_THEME, colorfgbg: process.env.COLORFGBG }));
+		// the reply, when there is one, re-walks the ladder WITH it — and
+		// `theme` goes in first again, so an explicit answer still wins.
 		editor.onOsc((reply) => {
 			const next = resolveGround({ theme: process.env.KISO_THEME, osc: reply, colorfgbg: process.env.COLORFGBG });
 			if (next === currentGround()) return;
@@ -270,7 +282,12 @@ function makeLineInput(): LineInput {
 		// W6: the box's prompt goes light — "› " (the box already says
 		// "input lives here"; the line-mode path keeps the brick ▌, so
 		// pipe bytes do not change)
-		dock.bindInput(() => editor.dockState(), "› ");
+		// R2 (owner, 2026-08-27): no prompt glyph. The cursor sits at column
+		// one, between the two rules — the rules already say "input lives
+		// here", which is the argument W6 made for the box and the only part
+		// of it that survives. A prompt character is a third thing saying
+		// the same thing, and it cost the row a column.
+		dock.bindInput(() => editor.dockState(), "");
 		// TUI2-R3v2 ②: the click hit-test's wiring — the compositor places
 		// the panel's option rows, so the compositor is what the editor asks
 		// where they are. Neither side computes the other's geometry.
@@ -322,41 +339,6 @@ function extensionsBanner(resume: ResumeMeta[] = []): void {
 		mode: getMode() === "plan" ? "plan (read-only)" : getMode(),
 		cwd: cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd,
 	});
-}
-
-/** W5: the opening-screen resume list — up to 3 recent sessions, newest
- *  first, the CURRENT session excluded (it is not something to pick back
- *  up). Every field already exists behind the store's SessionMeta (the
- *  `kiso sessions` line shows the same data) — only the projection and
- *  the sort live here.
- *
- *  TT-1B (W5 unification): each row carries the picker's badge glyph,
- *  derived through the SAME projection the picker uses (session-cards —
- *  one source of truth about durability; a second derivation would be
- *  none). Only the 3 chosen sessions are opened — the read-only listing
- *  rule holds (projectSessionCard's own guarantee), and the cost is
- *  bounded by the list, never the home. */
-async function recentSessions(
-	id: string,
-	agent: { sessions(): { id: string; title: string; events: number; runs: number; updatedAt: number }[]; session(o: { id: string }): Promise<{ pendingApprovals(): readonly unknown[] }> },
-): Promise<ResumeMeta[]> {
-	const picked = agent
-		.sessions()
-		.filter((m) => m.id !== id)
-		.sort((a, b) => b.updatedAt - a.updatedAt)
-		.slice(0, 3);
-	const store = sessionStoreRef;
-	const out: ResumeMeta[] = [];
-	for (const m of picked) {
-		let badge: string | undefined;
-		if (store !== null) {
-			const session = await agent.session({ id: m.id, ...(acceptDrift() ? { acceptDrift: true } : {}) });
-			const card = projectSessionCard({ id: m.id, updatedAt: m.updatedAt, records: store.load(m.id), asks: session.pendingApprovals().length });
-			badge = BADGE_GLYPH[card.badge];
-		}
-		out.push({ title: m.title, events: m.events, runs: m.runs, updatedAt: m.updatedAt, ...(badge === undefined ? {} : { badge }) });
-	}
-	return out;
 }
 
 /**
@@ -677,11 +659,19 @@ async function chatLoop(
 			// prompt inside a conversation with thousands of events — the
 			// durable log was right there and none of it was shown. Empty for
 			// a fresh session, so `kiso chat` is byte-identical.
-			for (const line of resumeTail(session.log.all)) bodyLog(line);
-			extensionsBanner(await recentSessions(id, agent));
+			for (const line of resumeTail(session.log.all, process.stdout.columns ?? 80)) bodyLog(line);
+			// R2 (owner, 2026-08-27): the resume list is NOT on the opening
+			// screen. `/resume` is where you go looking for a session; the
+			// opening's job is to say what THIS one is.
+			//
+			// It takes DC-8 with it: building those rows opened the three most
+			// recent sessions just to draw a badge, and `agent.session()`
+			// throws on profile drift — so one drifted session anywhere in the
+			// history stopped kiso from starting at all.
+			extensionsBanner();
 		} else {
 			bodyLog(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
-			for (const line of resumeTail(session.log.all)) bodyLog(line);
+			for (const line of resumeTail(session.log.all, process.stdout.columns ?? 80)) bodyLog(line);
 			if (currentFaux) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 		}
 		// XP-1 §3.3.6: a /clear-fresh session INHERITS the live selection,
@@ -943,7 +933,7 @@ async function main(): Promise<void> {
 				if (faux && arg === undefined) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 				// REL-0152-D5 — the same tail on the explicit-id form. NOT on
 				// the -p path above: that one's stdout is a machine's input.
-				for (const line of resumeTail(session.log.all)) bodyLog(line);
+				for (const line of resumeTail(session.log.all, process.stdout.columns ?? 80)) bodyLog(line);
 				await resume(session, prompt, faux, input);
 				break;
 			}

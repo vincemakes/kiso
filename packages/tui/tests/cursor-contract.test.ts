@@ -64,9 +64,15 @@ function makeBody(opts: { W?: number; H?: number } = {}) {
  *  G>1 move in the steady frame is the cursor's CHA). The retired
  *  afterW CUB is a D-move — a pre-fix frame yields undefined. */
 function finalCursorMove(bytes: string): number | undefined {
+	// R2: the `> 1` filter is gone. It existed to ignore the retired
+	// afterW CUB, which clamped at column 1 spuriously — and column 1 is
+	// now a LEGITIMATE park: the composer has no lead glyph, so a cursor
+	// at offset 0 belongs at column 1. Filtering it out made the panel
+	// cases read `undefined` and assert nothing. CHA is emitted by
+	// #parkCursor alone (rows are drawn with CUP), so every match here is
+	// a park.
 	const moves = [...bytes.matchAll(/\x1b\[(\d+)G/g)].map((m) => Number(m[1]));
-	const cursorMoves = moves.filter((n) => n > 1);
-	return cursorMoves[cursorMoves.length - 1];
+	return moves[moves.length - 1];
 }
 
 /** The test-side replay of the compositor's marker walk — the marker's
@@ -95,7 +101,7 @@ function markerCell(lead: string, line: string, cells: number, W: number): numbe
 			inserted = true;
 		}
 		const cw = charWidth(ch.codePointAt(0)!);
-		if (w + cw > W - 4) break;
+		if (w + cw > W - 1) break; // R2: one column reserved for the drawn cursor
 		w += cw;
 		i += 1;
 	}
@@ -134,13 +140,23 @@ class CursorProbe {
 		const panelState = editor.panelState();
 		const lead = panelState !== null ? panelLead(panelState.view, panelState.phase, panelState.cursor) : this.lead!;
 		const leadW = leadWidth(lead);
+		// R2 SUPERSESSION — the wall is gone, so wallL is 0 on BOTH paths.
+		//
+		// W6 put the composer inside a rounded box, and the left wall plus
+		// its space cost the row two columns: the frame's cursor lived at
+		// `3 + …` while the editor's own self-render lived at `1 + …`. The
+		// box is retired (one edge vocabulary — see boxTop), so the two
+		// paths now agree on the SAME constant, which is what this file
+		// exists to pin. The formula's shape is untouched; only wallL
+		// moved, from 2 to 0.
+		const WALL = 1;
 		// the contract: wallL + leadWidth(lead) + cells + 1 — the cursor's
 		// TRUE column in the line (the editor's own math; unclamped)
-		const formula = 3 + leadW + st.cursor;
+		const formula = WALL + leadW + st.cursor;
 		// the FRAME's marker: the walk's cell (the in-reach case IS the
 		// formula; when the editor's slice overflows the frame's budget the
-		// walk stops at the W−4 cap and the marker rests at the box edge)
-		const expectedMove = 3 + markerCell(lead, st.line, st.cursor, this.W);
+		// walk stops at the W cap and the marker rests at the row's end)
+		const expectedMove = WALL + markerCell(lead, st.line, st.cursor, this.W);
 
 		// ---- the COMPOSITOR path: the same dockState bound to the frame ----
 		const { body, writes, tick } = makeBody({ W: this.W });
@@ -165,11 +181,11 @@ class CursorProbe {
 			expectedMove,
 		);
 		expect(bytes).not.toContain("kiso-cur"); // the APC marker never reaches the stream
-		expect(bytes).toContain(`\x1b[2m│ \x1b[0m${lead}`); // the lead rides inside the box's left wall
+		if (lead !== "") expect(bytes).toContain(lead); // R2: no wall — the lead starts the row
 		// the A3 guards: the cursor never parks BEFORE the lead's end (the
 		// pre-fix CUB clamped at col 1 — left of the ›), and never past
 		// the cursor's TRUE column (the marker rides at or left of it)
-		expect(expectedMove).toBeGreaterThanOrEqual(3 + leadW);
+		expect(expectedMove).toBeGreaterThanOrEqual(WALL + leadW);
 		expect(expectedMove).toBeLessThanOrEqual(formula);
 		// the row is exactly W — invariant ① holds (the frame would have
 		// THROWN on an overflow; the pad completes the box row)
@@ -213,7 +229,7 @@ afterEach(() => {
 	delete (process.stdout as { isTTY?: boolean }).isTTY;
 });
 
-/** The leads the CLI/panel bind: the brick "› ", the question (the trust
+/** The leads the CLI/panel bind: the brick "/ commands · \u2191 history", the question (the trust
  *  fallback), and — MOVED, the TUI2-R3v2 panel-selection supersession
  *  class — the panel's two. "1-3> " and "2 Yes, don't ask again for "
  *  are retired with the input-box model that needed them: the list phase
@@ -225,7 +241,7 @@ afterEach(() => {
  *  (≥ 47 cells — the A6 widthCut-family rendering, tracked separately);
  *  the frame leads (brick/question) narrow to 44. */
 const LEADS: { label: string; lead: string | null; panelKeys: string | null; narrowW: number }[] = [
-	{ label: "brick", lead: "› ", panelKeys: null, narrowW: 44 },
+	{ label: "brick", lead: "/ commands · \u2191 history", panelKeys: null, narrowW: 44 },
 	{ label: "question", lead: "trust this project's .kiso? (y/n) ", panelKeys: null, narrowW: 44 },
 	{ label: "panel-choice", lead: null, panelKeys: "", narrowW: 48 },
 	{ label: "panel-amend", lead: null, panelKeys: "4", narrowW: 48 },
@@ -256,7 +272,7 @@ describe("W23 — the cursor contract: the frame-derived column (wallL + leadWid
 		}
 	}
 
-	it("the long answer under the question lead: the frame never trips invariant ① — the walk caps at W−4 and the cursor rests at the marker (the box's inner edge)", () => {
+	it("the long answer under the question lead: the frame never trips invariant ① — the walk caps at W−1 and the cursor rests at the marker (R2: the reserved cell is the cursor's, not a wall's)", () => {
 		new CursorProbe("question × long-ASCII", 44, "trust this project's .kiso? (y/n) ", null, "x".repeat(40), 40).run();
 	});
 

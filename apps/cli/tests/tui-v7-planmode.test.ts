@@ -2,19 +2,19 @@
  * TUI v7 W19 — plan mode's product surface, through the CLI's topmost
  * entry on a REAL PTY (24×80) and in a PIPE:
  *
- *  1. the pinned deny row — `✗ write_file sub/out.txt (plan mode:
+ *  1. the pinned deny row — `  write_file sub/out.txt (plan mode:
  *     read-only)`: the FULL call name, the target, the reason in the W4
  *     parentheses idiom, NO timing metadata (the call never ran — the
  *     claim the work order's gate asserts). The read runs; the denied
  *     call never asks (no "approve …? (y/n)" needle).
  *  2. the way-forward row — the plan turn ends with the recap idiom:
- *     `▞ plan ready · /mode default executes · /mode accept-edits
+ *     `✦ plan ready · /mode default executes · /mode accept-edits
  *     auto-approves edits · ctx left ~N%` — the timing and tool-count
  *     parts drop (a plan turn's currency is the plan, not the tool
  *     count); /mode is the only exit.
  *  3. the idle posture — `▸ plan (read-only) · /mode to switch · …`.
  *  4. `/mode default` then executes normally — the shell call ASKS the
- *     human again and succeeds: `✓ shell echo hi (exit 0)`.
+ *     human again and succeeds: `  shell echo hi (exit 0)`.
  *  5. the pipe path renders the same deny row, byte-clean (zero
  *     escapes).
  */
@@ -130,8 +130,8 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 			[
 				["▌ ", "go\r"], // the brick — the startup paint is race-proof
 				// the needles ride the POST-RESET text (the glyphs are SGR-
-				// wrapped in the raw stream — "▞\x1b[0m plan ready" never
-				// matches "▞ plan ready"; the post-reset run is contiguous)
+				// wrapped in the raw stream — "✦\x1b[0m plan ready" never
+				// matches "✦ plan ready"; the post-reset run is contiguous)
 				["read  a.ts (", ""], // the read ran under plan (A4: the target rides the settled row's head; R1.5 5 moved the count into the suffix)
 				["(plan mode: read-only", ""], // the pinned deny row's reason (A5: the · by <decider> tail rides INSIDE the parens — no trailing paren in the needle)
 				["the survey is done.", ""], // the model's answer after the denial
@@ -146,28 +146,28 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 
 		// ① the pinned deny: the full call name + the target + the reason,
 		// no timing metadata — and the read ran (its own W4 settled row:
-		// `✓ read (3 lines, 0.0s)` — the interactive row carries the meta,
+		// `  read (3 lines, 0.0s)` — the interactive row carries the meta,
 		// the target lives in the pipe's summary).
 		// MOVED (R1.5 slice 5, the approval-attribution class — DECLARED
 		// THIS ROUND): a POLICY verdict is ambient and silent; a HUMAN
 		// verdict is what the row records. `approved by mode:*` was the
 		// runtime's backfill for "no policy expressed an opinion", read by
 		// a human as an attribution (VD-11).
-		expect(clean).toMatch(/✓ read  a\.ts \(\d+\.\ds\) · \d+ lines · ctrl\+r/); // A4: the target rides the settled head row (the verbCol's 5-char pad); the plan tier's allow is ambient, so no byline
+		expect(clean).toMatch(/  read  a\.ts \(\d+\.\ds\) · \d+ lines · ctrl\+r/); // A4: the target rides the settled head row (the verbCol's 5-char pad); the plan tier's allow is ambient, so no byline
 		// MOVED (R1.5 slice 5, the approval-attribution class): a POLICY
 		// denial keeps only its REASON — the reason is the answer to "why",
 		// and mode:plan deciding it is the ambient default of plan mode.
-		expect(clean).toContain("✗ write_file sub/out.txt (plan mode: read-only)");
+		expect(clean).toContain("  write_file sub/out.txt (plan mode: read-only)");
 		expect(clean).not.toContain("by mode:plan");
 		expect(clean).not.toContain("approve write_file"); // the denied call never asked
-		expect(clean).not.toMatch(/✗ write_file sub\/out\.txt \(plan mode: read-only, \d+\.\ds\)/); // no (0.0s) noise
+		expect(clean).not.toMatch(/  write_file sub\/out\.txt \(plan mode: read-only, \d+\.\ds\)/); // no (0.0s) noise
 		// ② the way-forward row: the recap idiom, the /mode hints as the
 		// exits, the timing/tool parts dropped. W19: the FULL hints line is
 		// CONTIGUOUS — the ctx-left segment dropped BEFORE the fold, so the
 		// 79-col row never wraps at W=80 (a folded row would split "edits"
 		// and break this very assertion); the ctx-left hint lives on the
 		// status row's right side.
-		expect(clean).toContain("▞ plan ready · /mode default executes · /mode accept-edits auto-approves edits");
+		expect(clean).toContain("✦ plan ready · /mode default executes · /mode accept-edits auto-approves edits");
 		// ③ the idle posture.
 		expect(clean).toContain("▸ plan (read-only) · /mode to switch");
 		// ④ /mode default executes NORMALLY: the ask is back, the shell
@@ -175,7 +175,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		expect(clean).toContain("shell needs approval");
 		// MOVED (R1.5 slice ⑤, the approval-attribution class): the human
 		// answered this ask, and that is what the row records.
-		expect(clean).toMatch(/✓ shell echo hi \(exit 0 · approved, \d+\.\ds\)/); // A4: the target rides the settled row's head
+		expect(clean).toMatch(/  shell echo hi \(exit 0 · approved, \d+\.\ds\)/); // A4: the target rides the settled row's head
 		expect(clean).toContain("1 tool");
 		// never a SECOND way-forward row: the plan-ready row belongs to
 		// turn 1 — every occurrence must PRECEDE the turn-2 answer (A8's
@@ -217,8 +217,12 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 			timeout: 60_000,
 		});
 		expect(run.status).toBe(0);
-		// the claimed row, byte-plain — the SAME shape the PTY paints.
-		expect(run.stdout).toContain("✗ write_file out.txt (plan mode: read-only)");
+		// the claimed row, byte-plain. R2: the PIPE keeps its mark — the
+		// ruling retired the tick from the interactive screen, where the
+		// words already carried the outcome; on this path there is no
+		// gutter, no colour and no metadata column, so the mark is the only
+		// thing carrying the state.
+		expect(run.stdout).toContain("\u2717 write_file out.txt (plan mode: read-only)");
 		expect(run.stdout).not.toContain("\x1b["); // pipes are byte-plain — no ANSI
 		// the full result still rides the folded body (never hide information).
 		expect(run.stdout).toContain("[Permission denied] plan mode: read-only");

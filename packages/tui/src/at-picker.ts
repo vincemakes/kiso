@@ -14,7 +14,7 @@
  */
 
 import { escapeTerminal, palette } from "./render.js";
-import { visibleWidth, widthCut } from "./components.js";
+import { selectionBar, visibleWidth, widthCut } from "./components.js";
 
 /** The bound source's item — a repo-relative path and nothing else.
  *  Structural: the CLI passes whatever it likes as long as it has a
@@ -233,11 +233,11 @@ export function atRow(match: AtMatch, selected: boolean, W: number): string {
 	// visible from anywhere on the line. Mono discipline: reverse video,
 	// no new colours.
 	//
-	// The inner spans close with rvEnd (SGR 27), never SGR 0 — a reset
-	// inside the bar would punch a hole in it. `painted`'s bold marks and
-	// the dim suffix both end in SGR 0, so the bar is re-opened after each.
-	const inner = `${painted.replaceAll(p.reset, `${p.reset}${p.rv}`)}${suffix === "" ? "" : `${p.dim}${suffix}${p.reset}${p.rv}`}`;
-	return `${p.rv} ${inner}${" ".repeat(Math.max(0, W - width - 2))} ${p.rvEnd}`;
+	// R2: the composition is selectionBar's — one copy, and with it the
+	// §2.1 rule that dim never sits on the wash (the directory column was
+	// rendering grey-on-grey inside the bar, i.e. the half of the row the
+	// selection was meant to help you read).
+	return selectionBar(`${painted}${suffix === "" ? "" : `${p.dim}${suffix}${p.reset}`}`, width, W);
 }
 
 /**
@@ -275,10 +275,19 @@ export function atPanelRows(state: { matches: readonly AtMatch[]; selected: numb
 	return rows;
 }
 
-/** TUI2-R1.5 ⑦(b) — the one-row dim header that turns a band into a
- *  surface. Shared by the @ picker and the / menu so the two read the
- *  same way. */
+/**
+ * TUI2-R1.5 ⑦(b) — the one row that turns a band into a surface. Shared
+ * by the @ picker, the / menu and the session picker so the three read
+ * the same way.
+ *
+ * R2: the label rides the RULE. It was a bare dim word on its own row —
+ * which said "a surface starts here" only if you already knew that, and
+ * it spent a row saying it. The dashed rule is the edge vocabulary the
+ * composer and every panel now share, so a band opens the way everything
+ * else does and the label tells you WHICH band in the same row.
+ */
 export function bandHeader(label: string, W: number): string {
 	const p = palette();
-	return `${p.dim}${widthCut(label, Math.max(1, W))}${p.reset}`;
+	const head = `\u254c\u254c\u254c ${label} `;
+	return `${p.dim}${widthCut(`${head}${"\u254c".repeat(Math.max(1, W - head.length))}`, Math.max(1, W))}${p.reset}`;
 }

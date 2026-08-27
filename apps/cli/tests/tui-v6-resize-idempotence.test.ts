@@ -154,7 +154,10 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		expect(resizes).toHaveLength(5);
 		// the body lines, each exactly once
 		expect(grid.filter((l) => l.includes("I'm the faux model")).length).toBe(1);
-		expect(grid.filter((l) => l === " go ").length).toBe(1); // the 2026-08-09 ruling: the chip alone, flush left (one space each side — the rail + the indent retired)
+		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so the
+		// row is the words plus the band's padding — trimmed, it is what it
+		// always was, and "exactly once" is still the claim.
+		expect(grid.filter((l) => l.trimEnd() === " go").length).toBe(1); // the 2026-08-09 ruling: the chip alone, flush left (one space each side — the rail + the indent retired)
 		expect(grid.filter((l) => l.includes("0 tools")).length).toBe(1);
 		// R2: the opening grew from five rows to seven (three labelled facts
 		// and a keys row replaced two art rows and a tagline), so on a
@@ -162,12 +165,20 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		// The subject here is DUPLICATION — a resize repainting a line it
 		// already painted — and that is what is asserted: never twice.
 		expect(grid.filter((l) => l.includes("session ")).length).toBeLessThanOrEqual(1);
-		// the chrome: two box rails (the top ╭─╮ + the bottom ╰─╯ — the
-		// design §03, W6), the status once, the input row once — the WALL
-		// is 3+ separators
-		expect(grid.filter((l) => l.includes("╭") || l.includes("╰")).length).toBe(2);
+		// the chrome: two rails, the status once, the input row once — the
+		// WALL is 3+ separators. R2 (law 1.1): the two rails are the SAME
+		// dashed rule now; the COUNT is the claim and it is unchanged.
+		expect(grid.filter((l) => /^\u254c+$/.test(l.trimEnd())).length).toBe(2);
 		expect(grid.filter((l) => l.includes("▸ default")).length).toBe(1);
-		expect(grid.filter((l) => l.includes("› ")).length).toBe(1);
+		// the INPUT row, once. R2: it used to be found by its `\u203a ` lead,
+		// which is gone — and the hint cannot stand in for it, because the
+		// final size here is 30 columns and the #16g rule drops the hint
+		// before it truncates the status. The row is the one between the
+		// two rails, which is the CHROME_ROWS=4 contract and cannot be
+		// satisfied by a stray glyph anywhere else on the screen.
+		const rails = grid.map((l, i) => (/^\u254c+$/.test(l.trimEnd()) ? i : -1)).filter((i) => i >= 0);
+		expect(rails).toHaveLength(2);
+		expect(rails[1]! - rails[0]!).toBe(2); // exactly ONE row between them
 	});
 
 	it("② the resize idempotence: five consecutive resizes to 100×30 == a single direct 100×30, cell for cell", () => {

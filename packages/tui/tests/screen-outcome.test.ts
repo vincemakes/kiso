@@ -81,8 +81,8 @@ describe("REL-0152-D1 — what the screen KEEPS, not what the frame wrote", () =
 
 	it("the box chrome is intact in the final state", () => {
 		const rows = runTurn().rows.map((r) => r.join(""));
-		const top = rows.findIndex((r) => r.trimStart().startsWith("╭"));
-		const bottom = rows.findIndex((r) => r.trimStart().startsWith("╰"));
+		const top = rows.findIndex((r) => r.trimStart().startsWith("\u254c"));
+		const bottom = rows.map((r, i) => (r.trimStart().startsWith("\u254c") ? i : -1)).filter((i) => i >= 0).at(-1) ?? -1;
 		expect(top, "no box top on the final screen").toBeGreaterThanOrEqual(0);
 		expect(bottom, "the box bottom must sit below the box top").toBeGreaterThan(top);
 	});

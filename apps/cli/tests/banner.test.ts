@@ -46,7 +46,7 @@ def driver(cli, home, rows, cols):
                 full += data
             except OSError:
                 break
-        if not sent and "› ".encode() in out:
+        if not sent and "/ commands · \u2191 history".encode() in out:
             os.write(fd, b"exit\\r")
             sent = True
     sys.stdout.write(full.decode(errors="replace"))
@@ -63,6 +63,16 @@ exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${rows}, ${cols})
 `;
 	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 60_000, env });
+}
+
+/** R2: the banner styles itself per span now — the name is bold and the
+ *  version beside it is dim — so the RAW transcript carries SGR between
+ *  them and a substring match on the pair fails on bytes that are
+ *  correct. Every assertion below reads the stripped text, which is what
+ *  a human sees. */
+function plainOut(env: NodeJS.ProcessEnv, home: string, rows: number, cols: number): string {
+	// eslint-disable-next-line no-control-regex
+	return ptyBanner(env, home, rows, cols).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 }
 
 describe("the startup banner (logo)", () => {
@@ -89,7 +99,7 @@ describe("the startup banner (logo)", () => {
 			[24, 80],
 			[10, 80],
 		] as const) {
-			const out = ptyBanner(env, dirs.home, rows, cols);
+			const out = plainOut(env, dirs.home, rows, cols);
 			expect(out, `${rows}x${cols}`).not.toContain("█");
 			expect(out, `${rows}x${cols}`).not.toContain("the coding agent that survives kill -9");
 			expect(out, `${rows}x${cols}`).toMatch(/kiso \d+\.\d+\.\d+/);
@@ -98,7 +108,7 @@ describe("the startup banner (logo)", () => {
 
 	it("answers the three questions a first screen is asked", () => {
 		const { env, dirs } = isolatedEnv();
-		const out = ptyBanner(env, dirs.home, 24, 80);
+		const out = plainOut(env, dirs.home, 24, 80);
 		expect(out).toContain("MODEL");
 		expect(out).toContain("WORKSPACE");
 		expect(out).toContain("EXTENSIONS");
@@ -107,7 +117,7 @@ describe("the startup banner (logo)", () => {
 
 	it("a narrow screen keeps the name and drops nothing silently", () => {
 		const { env, dirs } = isolatedEnv();
-		const narrow = ptyBanner(env, dirs.home, 24, 39);
+		const narrow = plainOut(env, dirs.home, 24, 39);
 		expect(narrow).not.toContain("█");
 		expect(narrow).toMatch(/kiso \d+\.\d+\.\d+/);
 	}, 90_000);

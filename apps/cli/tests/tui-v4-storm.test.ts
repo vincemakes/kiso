@@ -78,7 +78,7 @@ def driver(cli, env, feeds, timeout, cols=80, sizes=None):
         # The window starts AFTER the recap's freeze frame — the idle dock
         # redraw lands before the body's 16ms frame commits the frozen
         # cells (each real-LF scroll writes a LF; the window must not
-        # count them). The recap "▞ 0s" only exists once the freeze frame
+        # count them). The recap "✦ 0s" only exists once the freeze frame
         # has written — the turn is fully frozen by then.
         if storm_at is None and "0 tools".encode() in full:
             storm_at = time.time()
@@ -152,7 +152,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		const out = stormRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["› ", "look around\r"], // #16d + W6: the box's light prompt alone (no "you> ")
+				["/ commands · \u2191 history", "look around\r"], // #16d + W6: the box's light prompt alone (no "you> ")
 			],
 		);
 		// the process SURVIVED the whole storm — the driver's leading marker
@@ -209,7 +209,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// the ghost — the emulator replay below pins it. The unbounded
 		// pileup class (per-redraw scrolls — the original #16a drag) still
 		// blows the +4 budget at 5 winches.
-		const sepLines = (t: string): number => t.split("\n").filter((l) => l.includes("╭") || l.includes("╰")).length; // W6: the ╌ rows became the box rails
+		const sepLines = (t: string): number => t.split("\n").filter((l) => /^\u254c+$/.test(l.trimEnd())).length; // R2: one rule, both rails
 		const cleanAll = stripANSI(out);
 		expect(sepLines(cleanAll)).toBeLessThanOrEqual(sepLines(cleanAll.slice(0, stormAt)) + 4);
 
@@ -224,10 +224,11 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 			emu.write(Buffer.from(out, "utf8"));
 			const grid = emu.visible();
 			expect(grid.filter((l) => l.includes("I see the workspace")).length).toBe(1);
-			// V6-3 + W6: the chrome — the box top at most ONCE (the exit's
-			// chrome-clear may wipe it — the WALL, the duplicated rails the
-			// reflow left behind, would exceed 1).
-			expect(grid.filter((l) => l.includes("╭")).length).toBeLessThanOrEqual(1);
+			// V6-3: the chrome — at most TWO rails on the screen (the exit's
+			// chrome-clear may wipe them — the WALL, the duplicated rails the
+			// reflow left behind, would exceed 2). R2: the top and bottom are
+			// the same rule now, so the bound counts both rather than one.
+			expect(grid.filter((l) => /^\u254c+$/.test(l.trimEnd())).length).toBeLessThanOrEqual(2);
 		}
 
 		// ② #16b: no ESC residue — the banner's dim and the recap's blue
@@ -240,14 +241,17 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// ③ #16f: the user block is the SGR-7 chip alone, flush left (the
 		// 2026-08-09 ruling retired the ▍ rail + the indent) — never the
 		// fixed dark background.
-		expect(out).toContain("\x1b[7m look around \x1b[27m");
+		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so
+		// the bar no longer closes right after the words.
+		expect(out).toContain("\x1b[7m look around");
 		expect(out).not.toContain("\x1b[48;5;237m"); // the fixed dark background stays banned
 
-		// ④ #16d/#16e + W6: the input row is the box with the light ›
-		// prompt alone (no blue, no "you> ").
-		expect(out).toContain("› ");
+		// ④ #16d/#16e: the input row carries NO prompt glyph at all (R2 —
+		// the cursor sits at column one). The bans this case exists for —
+		// no blue, no "you> " — are unchanged and are what it asserts.
+		expect(out).not.toContain("\u203a ");
 		expect(out).not.toContain("\x1b[38;5;75m");
-		expect(out).not.toContain("›you> ");
+		expect(out).not.toContain("you> ");
 	}, 90_000);
 
 	it("TUI v5 #16g — the idle hint: right-aligned when it fits, CUT FIRST when the width is short", () => {
@@ -272,13 +276,18 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// 80 cols: the idle status (~50 cells) + the hint (23) fit — the
 		// hint rides the status row, dim, right-aligned (the pad fills
 		// between them; the dim span closes AFTER the hint).
-		const wide = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["› ", "look around\r"]], 30);
-		expect(wide).toContain("/ commands · ↑ history");
+		const wide = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["/ commands · \u2191 history", "look around\r"]], 30);
+		// R2: this used to assert `\u203a ` — the composer's chevron, which
+		// is gone (the cursor sits at column one now). It was a proxy for
+		// "the chrome drew", and a poor one: the byte it matched was
+		// actually the resume tail's, not the composer's. The case is about
+		// the HINT riding the status row, so that is what it asserts.
+		expect(wide).toContain("/ commands · \u2191 history");
 		// 50 cols: status + hint = 73 > 50 → the HINT is cut — the status
 		// itself is never truncated for it. The idle row's dim span ends
 		// IMMEDIATELY after the status (the hint, had it fit, would sit
 		// between the status and the reset).
-		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["› ", "look around\r"]], 30, 50, []);
+		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["/ commands · \u2191 history", "look around\r"]], 30, 50, []);
 		// v6 invariant ①: the status itself must fit W — at 50 cols the
 		// 51-cell status CUTS at W−1 with a … (the old code soft-wrapped
 		// it; the crash-on-violation makes the cut structural).

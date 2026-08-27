@@ -94,20 +94,26 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			// on screen from the FIRST paint now, so that needle fires before
 			// anything has been typed — the driver's feeds are independent,
 			// not sequential, so the exit landed first and the case tested
-			// nothing. The RECAP row (▞) is what actually means "a turn
+			// nothing. The RECAP row (✦) is what actually means "a turn
 			// finished", and it always did.
-			["▞", "exit\r"],
+			["✦", "exit\r"],
 		]);
 		// v6: the cursor derives from the frame's marker — the marker sits
 		// at leadW + the DISPLAY cursor (2 + 4 = 6 for ＡＡ — the old CUP
 		// home at 5/7 is gone; the row itself is the display-width proof:
 		// the 4-cell pair renders whole, never split as 2+2 cells).
-		expect(out).toContain("› ＡＡ");
+		// DECLARED SUPERSESSION (R2, the owner's composer ruling): there is
+		// no `\u203a ` on the input row — the cursor sits at column one. The
+		// claim this case makes is about DISPLAY WIDTH (the 4-cell pair
+		// renders whole, never split), which the row proves without a
+		// prompt glyph in front of it.
+		expect(out).toContain("ＡＡ");
 		// The submitted line renders into the body (pty-cooked).
 		const clean = stripANSI(out);
 		expect(clean).toContain("ＡＡ"); // v3 §02: the user block has no "you> " prefix
-		// And the input row survives (the editor's own render).
-		expect(clean).toContain("› ");
+		// And the input row survives (the editor's own render) — proven by
+		// the composer's own rails, which is what the chrome IS now.
+		expect(clean).toContain("\u254c\u254c\u254c");
 	}, 90_000);
 
 	it("the submitted line renders in the scroll region EXACTLY once — the SGR-7 chip + reset", () => {
@@ -123,19 +129,24 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			// on screen from the FIRST paint now, so that needle fires before
 			// anything has been typed — the driver's feeds are independent,
 			// not sequential, so the exit landed first and the case tested
-			// nothing. The RECAP row (▞) is what actually means "a turn
+			// nothing. The RECAP row (✦) is what actually means "a turn
 			// finished", and it always did.
-			["▞", "exit\r"], // the recap row marks the turn's end
+			["✦", "exit\r"], // the recap row marks the turn's end
 		]);
-		// The box's input row renders the light › prompt + the line (the
-		// wall's dim SPLITS the row from the text — that raw shape is the
-		// row, not the body echo). W6: the › is light (the box already
-		// says "input lives here").
-		expect(out).toContain("› look around");
+		// R2: the input row renders the line at COLUMN ONE — no prompt
+		// glyph, no wall. The old needle was `\u203a look around`, whose
+		// point was "the row, not the body echo": the raw bytes still make
+		// that distinction, because the body echo is the reverse-video
+		// chip asserted just below and the row is not.
+		expect(out).toContain("look around");
 		// v2d: the body echo is the frozen UserCell — the SGR-7 chip +
 		// reset, EXACTLY once (the row is not the scroll region, the
 		// frozen cell is the only copy there).
-		const bodyEcho = "\x1b[7m look around \x1b[27m"; // the 2026-08-09 ruling: the chip ALONE, flush left
+		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so
+		// the echo is the words followed by the band's padding rather than
+		// a bar sized to the words. The open and the words are the stable
+		// part; the pad depends on the terminal width.
+		const bodyEcho = "\x1b[7m look around"; // the chip, flush left, opening the full-width band
 		const esc = bodyEcho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		// DECLARED SUPERSESSION (REL-0152-R1): counted where "exactly
 		// once" is a claim about the terminal rather than about the byte
@@ -257,9 +268,14 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 				["\x1b[2m□\x1b[0m \x1b[7m three", "\x1b[A"],
 				// The popped line in the input row — esc pops ONE MORE
 				// ("two") and ends the pop-mode.
-				["› three", "\x1b"],
+				// R2: the composer has no `\u203a` — the popped line stands at
+				// COLUMN ONE, so the needle is the row's erase-to-end
+				// immediately followed by the text. The queue CHIP for the
+				// same word cannot collide: it opens with its dim `□`
+				// gutter, so `\x1b[0Kthree` is the composer's row alone.
+				["\x1b[0Kthree", "\x1b"],
 				// The esc-popped line — submit it: it runs as a fresh turn.
-				["› two", "\r"],
+				["\x1b[0Ktwo", "\r"],
 				// MOVED (the boot-status class, TUI2-R2 ⑥): see above — the
 				// idle row is on screen from the first paint, so it can no
 				// longer stand in for "a turn ended". Here it mattered twice

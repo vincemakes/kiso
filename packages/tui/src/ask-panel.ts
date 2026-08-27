@@ -52,7 +52,7 @@ import {
 	type PanelView,
 	type PickRuntime,
 } from "./approval-panel.js";
-import { cutLine } from "@vincemakes/kiso-tui-cells/components";
+import { cutLine, selectionBar, visibleWidth, widthCut } from "@vincemakes/kiso-tui-cells/components";
 import { escapeTerminal, palette } from "./render.js";
 
 /** The schema's own bounds — the registry refuses anything outside them
@@ -215,35 +215,100 @@ export function askCommitCustom(spec: AskSpec, state: AskRuntime, text: string):
 
 // ── the rows ─────────────────────────────────────────────────────────
 
-/** One option row: the number, the selection mark, the label, and the
- *  description after an em dash. The row CUTS (never folds) — the
- *  block's height is its row count, the W20 discipline. */
-function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, multi: boolean, W: number): string {
+/**
+ * One option row: the cursor arrow, the number, the selection mark, the
+ * label, and the description in its own RIGHT COLUMN. The row CUTS
+ * (never folds) — the block's height is its row count, the W20
+ * discipline.
+ *
+ * R2 (design §7.5) — two changes, both about what survives:
+ *
+ *  - the cursor carries `→` as well as the bar. The bar is the loud
+ *    signal and the arrow is the durable one: strip every escape and the
+ *    row still says which option the cursor is on, which is law 1.3's
+ *    test applied to a selection rather than to an outcome.
+ *  - the description leaves the em dash and takes a column. Run-on
+ *    `label — description` makes the labels — the thing being chosen
+ *    between — unscannable, because each one starts at a column the
+ *    previous row's length decided. `stop` is computed ONCE over the
+ *    whole option list by the caller, so the column is a property of
+ *    the list and not of the row.
+ *
+ * A narrow block has no room for two columns; `stop` arrives as 0 and
+ * the em-dash form is what it degrades to.
+ */
+function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, multi: boolean, W: number, stop = 0): string {
 	const p = palette();
 	const mark = multi ? (picked ? "◉" : "◯") : picked ? "◉" : " ";
-	const head = `${cursor ? p.bold : ""} ${n} ${mark} ${escapeTerminal(o.label)}${p.reset}`;
-	const body = o.description === undefined ? "" : `${p.dim} — ${escapeTerminal(o.description)}${p.reset}`;
-	return cutLine(`${head}${body}`, Math.max(1, W - 2));
+	const lead = askOptionLead(o, n, mark, cursor);
+	const head = `${cursor ? p.bold : ""}${lead}${p.reset}`;
+	const room = Math.max(1, W - 2);
+	let body: string;
+	if (o.description === undefined) body = "";
+	else if (stop > 0) {
+		const desc = widthCut(escapeTerminal(o.description), Math.max(0, room - stop));
+		body = `${" ".repeat(Math.max(1, stop - visibleWidth(lead)))}${p.dim}${desc}${p.reset}`;
+	} else body = `${p.dim} — ${escapeTerminal(o.description)}${p.reset}`;
+	const text = cutLine(`${head}${body}`, Math.max(1, W - 2));
+	// R2: the cursor is a FULL-ROW bar, the same one the approval panel
+	// has had since R1.5 ⑧ — "a two-cell marker in an eighty-column row is
+	// a selection you have to hunt for". This panel was carrying bold and
+	// nothing else, which on a white terminal is close to invisible. One
+	// ruling, applied in the second place it was always about.
+	return cursor ? selectionBar(text, visibleWidth(text), W) : ` ${text}`; // R2: the frame is a rule, so a row is just indented
+}
+
+/** The row's left span, PLAIN — the one place its shape is written, so
+ *  the column arithmetic below and the row above cannot disagree about
+ *  how wide it is. The arrow's cell is spent on every row so the digit
+ *  column does not move as the cursor walks. */
+function askOptionLead(o: AskOption, n: number, mark: string, cursor: boolean): string {
+	return `${cursor ? "→" : " "} ${n} ${mark} ${escapeTerminal(o.label)}`;
+}
+
+/** Below this many cells a right column is not a column, it is a
+ *  three-word stub — the em-dash form carries more of the sentence. */
+const ASK_DESC_MIN = 18;
+
+/** The description column, computed over the WHOLE list: two cells past
+ *  the widest label, never past the half-width, and 0 (meaning "no
+ *  column, use the em dash") when what is left would not hold a
+ *  readable description. */
+export function askDescriptionStop(q: AskQuestion, W: number): number {
+	const multi = q.multiSelect === true;
+	if (!q.options.some((o) => o.description !== undefined)) return 0;
+	const widest = Math.max(...q.options.map((o, i) => visibleWidth(askOptionLead(o, i + 1, multi ? "◯" : " ", false))));
+	const room = Math.max(1, W - 2);
+	const stop = widest + 2;
+	if (stop > Math.floor(room / 2) || room - stop < ASK_DESC_MIN) return 0;
+	return stop;
 }
 
 /** The ask block's rows — the question as the rule line, the header (or
  *  the counter) as the title, the options as the body, and the
- *  type-your-own line last. The shape is the W21 block's: gutter, rule,
- *  title, divider, body, affordance, corner. */
+ *  type-your-own line last. R2: the shape is the RULE's — rule,
+ *  title, header, body, affordance, rule. */
 export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxRows: number): string[] {
 	const p = palette();
 	const spec = view.ask!;
 	const q = spec.questions[state.qIndex]!;
 	const multi = q.multiSelect === true;
-	const gutter = `${p.dim}│${p.reset} `;
 	const counter = spec.questions.length > 1 ? `${p.dim} ‹ ${state.qIndex + 1}/${spec.questions.length} ›${p.reset}` : "";
 	const rows: string[] = [];
-	rows.push(`${gutter}${cutLine(`${p.bold}${escapeTerminal(q.question)}${p.reset}${counter}`, Math.max(1, W - 2))}`);
+	// R2: the same dashed rule the composer and the approval panel use.
+	rows.push(`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`);
+	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(q.question)}${p.reset}${counter}`, Math.max(1, W - 2))}`);
 	const header = q.header === undefined ? "the question" : escapeTerminal(q.header.slice(0, ASK_HEADER_CAP));
-	rows.push(`${gutter}${cutLine(`${p.dim}${header}${p.reset}`, Math.max(1, W - 2))}`);
-	rows.push(cutLine(`${p.dim}─ ${multi ? "pick any — space toggles" : "pick one"} ─${p.reset}`, Math.max(1, W - 2)));
+	// R2: the divider row is gone (the opening rule says a block starts
+	// here), but the multi-select gesture it carried is INFORMATION and
+	// rides the header instead — dropping it would have been a regression
+	// wearing a restyle's clothes.
+	const gesture = multi ? `${p.dim} · pick any — space toggles${p.reset}` : "";
+	rows.push(`  ${cutLine(`${p.dim}${header}${p.reset}${gesture}`, Math.max(1, W - 2))}`);
+	rows.push("");
 	const picks = state.picks[state.qIndex] ?? [];
-	const body = q.options.map((o, i) => `${gutter}${optionRow(o, i + 1, picks.includes(i), state.cursor === i, multi, W)}`);
+	const stop = askDescriptionStop(q, W);
+	const body = q.options.map((o, i) => optionRow(o, i + 1, picks.includes(i), state.cursor === i, multi, W, stop));
 	// REL-0152-D3: the row is part of the list, so it carries the same
 	// cursor affordance the options do. Dim-always made a reachable row
 	// look like a footnote.
@@ -255,19 +320,25 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	// like nothing happened. The placeholder is dim and the answer is
 	// not: the two can never be mistaken for each other.
 	const typingHere = state.phase === "custom";
-	body.push(
-		`${gutter}${cutLine(
-			typed !== null && typed !== undefined
-				? `${onCustom || typingHere ? p.bold : ""} t ◉ ${escapeTerminal(typed)}${p.reset}`
-				: typingHere
-					? `${p.bold} t ▸${p.reset} ${p.dim}type your answer — enter sends, esc backs out${p.reset}`
-					: `${onCustom ? p.bold : p.dim} t   type your own answer${p.reset}`,
-			Math.max(1, W - 2),
-		)}`,
+	// R2: the custom row is one of the list's rows, so it wears the
+	// list's cursor — the arrow AND the bar. It was carrying bold alone,
+	// which is the exact invisibility §7.5 was written about, on the one
+	// row a keyboard user reaches last.
+	const customLead = `${onCustom ? "→" : " "} t `;
+	const customText = cutLine(
+		typed !== null && typed !== undefined
+			? `${onCustom || typingHere ? p.bold : ""}${customLead}◉ ${escapeTerminal(typed)}${p.reset}`
+			: typingHere
+				? `${p.bold}${customLead}▸${p.reset} ${p.dim}type your answer — enter sends, esc backs out${p.reset}`
+				: `${onCustom ? p.bold : p.dim}${customLead}  type your own answer${p.reset}`,
+		Math.max(1, W - 2),
 	);
+	body.push(onCustom ? selectionBar(customText, visibleWidth(customText), W) : ` ${customText}`);
 	// the bounded block: the options fold nothing and cut individually,
 	// so the cap drops whole rows with the W21 notice row.
-	const budget = Math.max(1, maxRows - 5);
+	// R2: SIX rows of frame — the block opens with a rule as well as
+	// closing with one, and the divider became a blank.
+	const budget = Math.max(1, maxRows - 6);
 	if (body.length > budget) {
 		const kept = Math.max(0, budget - 1);
 		rows.push(...body.slice(0, kept));
@@ -275,16 +346,13 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	} else {
 		rows.push(...body);
 	}
-	rows.push(`${gutter}${p.dim}${askAffordance(state)}${p.reset}`);
-	// TUI2-R1.5 11 (VD-13), shared with the approval panel: a real bottom RULE, in the block's own edge
-	// vocabulary — the same box-drawing run its divider already uses —
-	// anchored at the gutter column. It used to be `\u2514 `: a two-cell stub
-	// floating at column 1, with no rule running from it and no corner
-	// above it to answer. Worse, `\u2514 ` is the cut-notice prefix everywhere
-	// else in the product, so a CAPPED panel emitted two elbow rows in a
-	// row meaning entirely different things. The rule reads as an edge,
-	// and the cut notice above it reads as a notice.
-	rows.push(`${p.dim}\u2514${"\u2500".repeat(Math.max(0, W - 1))}${p.reset}`);
+	rows.push(`  ${p.dim}${askAffordance(state)}${p.reset}`);
+	// R2, shared with the approval panel: the block closes with the SAME
+	// dashed rule it opened with, and the same one the composer uses.
+	// TUI2-R1.5 ⑪ had already replaced a two-cell `\u2514 ` stub with a
+	// real rule for the reason that stub read as the cut-notice prefix it
+	// collides with; this keeps that finding and only changes which rule.
+	rows.push(`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`);
 	return rows;
 }
 
@@ -296,8 +364,15 @@ export function askAffordance(state: AskRuntime): string {
 
 /** The status row's left text — the ask's own line, with the walk. */
 export function askStatus(view: PanelView, state: AskRuntime): string {
+	// R2: the status says the DURABLE thing. Every other agent's option
+	// panel dies with its process; this one is a fact in the event log, so
+	// killing kiso and coming back brings the question with it and never
+	// re-asks an answered one (ADR-0051 §8). The screen had never said so.
+	// It costs a status string and it is the cheapest claim in the product
+	// that no competitor can copy without building the log first.
 	const total = view.ask!.questions.length;
-	return total > 1 ? `▸ question ${state.qIndex + 1} of ${total}` : "▸ a question for you";
+	const where = total > 1 ? `question ${state.qIndex + 1} of ${total}` : "a question for you";
+	return `⏸ ${where} · answers are durable facts`;
 }
 
 /** The input row's lead: the digit lead while picking, the typing lead
@@ -392,7 +467,7 @@ export function askView(spec: AskSpec): PanelView {
 		name: "ask_user",
 		title: first.header ?? first.question,
 		speaker: "kiso",
-		statusText: "▸ a question for you",
+		statusText: "⏸ a question for you",
 		args: { kind: "text", lines: askDeclineList(spec) },
 		fallbackQuestion: `⚠ ${escapeTerminal(first.question)} — this terminal cannot show the option panel; the question is declined `,
 		ask: spec,

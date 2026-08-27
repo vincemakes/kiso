@@ -421,7 +421,7 @@ function taskVerdictWords(kind: "verified" | "stale" | "none" | "unreadable"): s
 
 /** W21 — the panel view for a permission_requested: the rule line (the
  *  why-asked speaker + the §3.5 fix hint), the toolTarget title, the
- *  "▸ run paused" status, and the ALWAYS-verbose args. */
+ *  "⏸ run paused" status, and the ALWAYS-verbose args. */
 function approvalView(name: string, ev: { speaker?: string; input?: Record<string, unknown> }, amended = false): PanelView {
 	const speaker = ev.speaker ?? "kiso";
 	const input = ev.input ?? {};
@@ -439,7 +439,7 @@ function approvalView(name: string, ev: { speaker?: string; input?: Record<strin
 		speaker,
 		...(hint !== undefined ? { hint } : {}),
 		...(risk !== null ? { riskHint: risk } : {}),
-		statusText: "▸ run paused",
+		statusText: "⏸ run paused",
 		args: approvalArgs(name, input),
 		fallbackQuestion: `approve ${escapeTerminal(name)}? (y/n) `,
 		// TUI2-R3v2 ③: the v4 frame's "(amended)" marker. It says WHY this
@@ -603,7 +603,9 @@ export async function consumeRun(
 				// user's words. Provenance is honest on screen, not only in
 				// the log.
 				if (ev.source === "system") {
-					body.notice("\u25c6 verification pass");
+					// R2 (law 1.3): the ◆ said nothing the words did not. What
+					// makes this row honest is that it NAMES itself machinery.
+					body.notice("verification pass");
 					body.notice(`  ${typeof ev.content === "string" ? ev.content : ""}`);
 					break;
 				}
@@ -811,7 +813,9 @@ export async function consumeRun(
 				// recap (the truncation-guard philosophy: the cut is visible
 				// in the scrollback, the model's own text intact).
 				if (ev.outcome.kind === "max_tokens") {
-					body.notice('┌ answer truncated at max_tokens — say "continue" to finish');
+					// R2 (law 1.1): the notice was wearing a box corner. A notice
+					// is a sentence addressed to a human; it needs no edge.
+					body.notice('answer truncated at max_tokens — say "continue" to finish');
 				}
 				bodyLog(
 					renderRecap({

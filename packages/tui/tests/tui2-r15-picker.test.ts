@@ -70,10 +70,12 @@ describe("TUI2-R1.5 ⑧ — the picker is legible (VD-9)", () => {
 });
 
 describe("TUI2-R1.5 ⑦(b) — the band names itself (VD-8)", () => {
-	it("the @ picker band opens with a one-row dim `files` header", () => {
+	it("the @ picker band opens with the dashed rule that names it `files`", () => {
 		setTTY(true);
 		const rows = atPanelRows({ matches: [match("src/parser.ts"), match("README.md")], selected: 0, capped: false }, 60);
-		expect(rows[0]).toBe("\x1b[2mfiles\x1b[0m");
+		// R2: the band's label rides the RULE — a band opens the way the
+		// composer and every panel now open, and the label says which band.
+		expect(rows[0]!.replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/^\u254c{3} files \u254c+$/);
 		// the counter still closes the band
 		expect(rows[rows.length - 1]).toContain("(1/2)");
 	});

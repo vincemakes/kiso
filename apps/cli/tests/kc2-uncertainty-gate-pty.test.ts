@@ -174,7 +174,7 @@ describe("KC2 T-R3 — a fresh turn behind an undecided interrupted execution as
 		const script = fauxScript(dir, [quickTurn("unreachable"), quickTurn("run B done")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r3", [
 			["rerun", "\x03", 2], // Ctrl+C cancels the STARTUP ask — nothing is recorded
-			["› ", "only the logs, not the build dir", 5],
+			["/ commands · \u2191 history", "only the logs, not the build dir", 5],
 			["only the logs", ALT_ENTER, 6], // the correction, one gesture
 			["rerun", "1\r", 8], // THE GATE re-asks: 1 = it did not apply, rerun
 		], 30, ["run B done"]);
@@ -211,7 +211,7 @@ describe("KC2 T-R3b — the resolution repairs the projection: no dangling tool_
 		const script = fauxScript(dir, [quickTurn("unreachable"), quickTurn("run B done")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r3b", [
 			["rerun", "\x03", 2],
-			["› ", "only the logs, not the build dir", 5],
+			["/ commands · \u2191 history", "only the logs, not the build dir", 5],
 			["only the logs", ALT_ENTER, 6],
 			["rerun", "2\r", 8], // 2 = abandon (the simple flavor is a two-row list now); the fill must land either way
 		], 30, ["run B done"]);
@@ -251,7 +251,7 @@ describe("KC2 §4 — a declined verdict HOLDS the turn, and says so", () => {
 		const script = fauxScript(dir, [quickTurn("unreachable"), quickTurn("must not run")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r3d", [
 			["rerun", "\x03", 2], // the startup ask — cancelled
-			["› ", "please carry on anyway\r", 5],
+			["/ commands · \u2191 history", "please carry on anyway\r", 5],
 			["rerun", "\x03", 7], // the GATE's ask — cancelled too
 		], 26, ["turn held"]);
 		const log = durable(dirs.home, "kc2r3d");
@@ -275,7 +275,7 @@ describe("KC2 §4 — the gate guards EVERY fresh queued turn, not only redirect
 		const script = fauxScript(dir, [quickTurn("unreachable"), quickTurn("typed turn done")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r3c", [
 			["rerun", "\x03", 2], // the startup ask is cancelled
-			["› ", "typed by hand\r", 5], // a plain Enter — no redirect anywhere
+			["/ commands · \u2191 history", "typed by hand\r", 5], // a plain Enter — no redirect anywhere
 			["rerun", "1\r", 7],
 		], 30, ["typed turn done"]);
 		const log = durable(dirs.home, "kc2r3c");

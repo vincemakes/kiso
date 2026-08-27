@@ -62,13 +62,16 @@ describe("TUI2-R2 ④ — the /model panel's block (the picker-surface class)", 
 	it("the prototype's C-1 frame: the header names the current model, the options are numbered, `t` is the escape hatch", () => {
 		const view = modelPickView(SPEC, "▸ idle");
 		const rows = panelRowsOf({ view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options" } }, 80, 12).map(strip);
-		expect(rows[0]).toContain("model — current: deepseek-v4-flash (openai-compat)");
-		expect(rows[1]).toContain(" 1 deepseek-v4-flash");
-		expect(rows[1]).toContain("profile: ds · current");
-		expect(rows[2]).toContain(" 2 claude-sonnet-5");
-		expect(rows[3]).toContain(" 3 kimi-k3");
-		expect(rows[4]).toContain(" t type provider/model directly");
-		expect(rows.at(-1)!.startsWith("└")).toBe(true); // the block's own bottom rule
+		// R2: the block opens with the same dashed rule it closes with, so
+		// every content row moves down one.
+		expect(rows[0]!.startsWith("\u254c")).toBe(true);
+		expect(rows[1]).toContain("model — current: deepseek-v4-flash (openai-compat)");
+		expect(rows[2]).toContain(" 1 deepseek-v4-flash");
+		expect(rows[2]).toContain("profile: ds · current");
+		expect(rows[3]).toContain(" 2 claude-sonnet-5");
+		expect(rows[4]).toContain(" 3 kimi-k3");
+		expect(rows[5]).toContain(" t type provider/model directly");
+		expect(rows.at(-1)!.startsWith("\u254c")).toBe(true); // the block's own bottom rule
 	});
 
 	it("the ZERO-PROFILE state keeps today's copy verbatim — the config path is the one useful thing the old command said", () => {

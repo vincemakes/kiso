@@ -68,8 +68,12 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 			cwd: ws,
 		});
 		const grid = settledScreen(raw);
-		const head = grid.findIndex((l) => l.includes("\u2713 shell"));
-		expect(head).toBeGreaterThan(0);
+		// R2 (law 1.3 — no empty marks): the settled row carries NO tick.
+		// A row that already says `exit 0` does not also need a symbol
+		// saying it went fine, and the gutter is two spaces now.
+		const head = grid.findIndex((l) => /^ {2}shell /.test(l));
+		expect(head, "no settled shell row on the screen").toBeGreaterThan(0);
+		expect(grid[head]).not.toContain("\u2713"); // the tick is retired, not moved
 		expect(grid[head]).toContain("ctrl+r expands");
 		// nothing of the output is on the screen, and no cut row survives
 		expect(grid[head + 1] ?? "").not.toMatch(/^\u2502 step/);
@@ -94,7 +98,7 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		// toggle with its `└ ctrl+r collapses` footer is the LIVE cell's
 		// form, pinned in the tui-cells unit.
 		const after = settledScreen(raw).join("\n");
-		expect(after).toContain("▞ expanded · shell sh steps.sh");
+		expect(after).toContain("✦ expanded · shell sh steps.sh");
 		expect(after).toContain("step 6 of six");
 	}, 240_000);
 

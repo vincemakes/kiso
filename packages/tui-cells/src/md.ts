@@ -322,8 +322,10 @@ function blockBody(b: MdBlock, W: number): string[] {
 			// DC-3: a fenced BODY carries no colour token. It used to take
 			// `code` — 1.54:1 on a white terminal, applied to whole blocks,
 			// which made the code the model just wrote the least readable
-			// thing on screen. The `│` gutter already says "this block is
-			// verbatim"; saying it twice cost legibility and bought nothing.
+			// thing on screen. The block's own ``` RAILS already say "this
+			// is verbatim" (E2 replaced the `│` gutter this comment used to
+			// name with them); saying it twice cost legibility and bought
+			// nothing.
 			return foldLineWidth(src.slice(indent.length), W - visibleWidth(gutter), indent).map((r) => `${gutter}${r}`);
 		}
 		case "quote": {

@@ -49,6 +49,20 @@ const cupRows = (bytes: string): number[] => [...bytes.matchAll(/\x1b\[(\d+);1H/
 /** the row a CUP+EL wrote the given text at — matched THROUGH styling
  *  (REL-0161: the composer's drawn cursor wraps one cell in SGR 7…27,
  *  so a text needle may span it) */
+/**
+ * R2 — both composer rails are the SAME dashed rule now, so "find the
+ * top rail" cannot be a glyph search any more. `railRows` returns the
+ * rail rows in screen order: [0] is the top, [1] the bottom, which is
+ * exactly what the corner glyphs used to encode.
+ */
+const railRows = (bytes: string): number[] => {
+	const out: number[] = [];
+	for (const m of bytes.matchAll(/\x1b\[(\d+);1H\x1b\[0K([^\x1b]*(?:\x1b\[[0-9;]*m[^\x1b]*)*)/g)) {
+		if (/^\u254c+$/.test(m[2]!.replace(/\x1b\[[0-9;]*m/g, ""))) out.push(Number(m[1]));
+	}
+	return [...new Set(out)].sort((a, b) => a - b);
+};
+
 const rowOf = (bytes: string, needle: string): number | undefined => {
 	for (const m of bytes.matchAll(/\x1b\[(\d+);1H\x1b\[0K([^\x1b]*(?:\x1b\[[0-9;]*m[^\x1b]*)*)/g)) {
 		if (m[2]!.replace(/\x1b\[[0-9;]*m/g, "").includes(needle)) return Number(m[1]);
@@ -59,21 +73,21 @@ const rowOf = (bytes: string, needle: string): number | undefined => {
 describe("KC1 T-C2 — the N=3 geometry", () => {
 	it("the box top rises to H−5, the three input rows fill H−4..H−2, the bottom and status never move", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(rows3(1), "› ");
+		body.bindInput(rows3(1), "\u203a ");
 		body.enter(); // the full-redraw path — every row is CUP-addressed
 		tick();
 		const bytes = writes.join("");
-		expect(rowOf(bytes, "╭")).toBe(19); // H−5 — the box top (H−2−N)
+		expect(railRows(bytes)[0]).toBe(19); // H−5 — the box top (H−2−N)
 		expect(rowOf(bytes, "one")).toBe(20); // H−4 — the first composer row
 		expect(rowOf(bytes, "two")).toBe(21); // H−3
 		expect(rowOf(bytes, "three")).toBe(22); // H−2 — the last composer row
-		expect(rowOf(bytes, "╰")).toBe(23); // H−1 — the box bottom
+		expect(railRows(bytes).at(-1)).toBe(23); // H−1 — the box bottom
 		expect(rowOf(bytes, "/ commands")).toBe(24); // H — the status
 	});
 
 	it("the lead rides the FIRST row; the continuations indent by its width (the cursor column formula is the same on every row)", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(rows3(0), "› ");
+		body.bindInput(rows3(0), "\u203a ");
 		body.enter();
 		tick();
 		const bytes = writes.join("").replace(/\x1b\[(?:7|27)m/g, ""); // REL-0161: read through the drawn cursor
@@ -85,7 +99,7 @@ describe("KC1 T-C2 — the N=3 geometry", () => {
 	it("the cursor derives FROM THE FRAME: the marker rides the CURSOR'S row and the final move lands on it", () => {
 		for (const cursorRow of [0, 1, 2]) {
 			const { body, writes, tick } = makeBody();
-			body.bindInput(rows3(cursorRow), "› ");
+			body.bindInput(rows3(cursorRow), "\u203a ");
 			body.enter();
 			tick();
 			const bytes = writes.join("");
@@ -98,16 +112,16 @@ describe("KC1 T-C2 — the N=3 geometry", () => {
 			// row, named directly instead of counted backwards from H.
 			const park = [...bytes.matchAll(/\x1b\[(\d+);1H/g)].map((m) => Number(m[1])).at(-1);
 			expect(park, "the frame does not park on the cursor's row").toBe(24 - (1 + 3 - cursorRow));
-			// …then the CHA to the marker's column — wallL (2) + lead (2) +
-			// the cursor's column (1) + 1
+			// …then the CHA to the marker's column — wallL (0, R2: the box is
+			// retired) + lead (2) + the cursor's column (1) + 1
 			const cha = [...bytes.matchAll(/\x1b\[(\d+)G/g)].map((m) => Number(m[1])).at(-1);
-			expect(cha).toBe(6);
+			expect(cha).toBe(4);
 		}
 	});
 
 	it("the content cap loses the composer's extra rows: H−6−queue at N=3 (the live scalar reflects the screen)", () => {
 		const { body, tick } = makeBody(); // H = 24 → the cap binds at 18 content rows
-		body.bindInput(rows3(2), "› ");
+		body.bindInput(rows3(2), "\u203a ");
 		body.bindQueue(() => ["a queued turn"]);
 		body.enter();
 		body.textAppend(Array.from({ length: 40 }, (_, i) => `tall ${i}`).join("\n"));
@@ -121,7 +135,7 @@ describe("KC1 T-C2 — the N=3 geometry", () => {
 describe("KC1 T-C3 — a resize at N>1 is idempotent", () => {
 	it("the winch clears from the recorded live top and re-paints every row; a repeat lands on the same bytes", () => {
 		const { body, writes, tick, setSize } = makeBody();
-		body.bindInput(rows3(1), "› ");
+		body.bindInput(rows3(1), "\u203a ");
 		body.enter();
 		body.raw(["frozen"]);
 		tick();
@@ -134,7 +148,7 @@ describe("KC1 T-C3 — a resize at N>1 is idempotent", () => {
 		expect(first).not.toContain("\x1b[2J");
 		expect(first).not.toContain("\x1b[3J");
 		expect(first).not.toContain("\n"); // zero LF on the resize path
-		expect(rowOf(first, "╭")).toBe(20 - 5); // the NEW geometry: H−2−N
+		expect(railRows(first)[0]).toBe(20 - 5); // the NEW geometry: H−2−N
 		writes.length = 0;
 		body.onResize(); // the same size again — the V6-1 idempotence rule
 		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
@@ -150,13 +164,13 @@ describe("KC1 T-C3 — a resize at N>1 is idempotent", () => {
 describe("KC1 T-C4 — the menu, the queue chips and N=3 stack in their unchanged order", () => {
 	it("menu above queue above the box top, and the composer's rows below it", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(rows3(2), "› ");
+		body.bindInput(rows3(2), "\u203a ");
 		body.bindMenu(() => ({ items: [{ name: "/mode", desc: "switch the approval tier" }], selected: 0 }));
 		body.bindQueue(() => ["a queued turn"]);
 		body.enter();
 		tick();
 		const bytes = writes.join("");
-		const boxTop = rowOf(bytes, "╭")!;
+		const boxTop = railRows(bytes)[0]!;
 		expect(boxTop).toBe(19); // H−2−N — unchanged by the bands below it
 		expect(rowOf(bytes, "a queued turn")).toBe(boxTop - 1); // the chip band sits directly above
 		expect(rowOf(bytes, "switch the approval tier")).toBe(boxTop - 2); // the menu above the chips
@@ -173,14 +187,14 @@ describe("KC1 T-C5 — the tiny terminal: H=7 with an 8-line buffer", () => {
 
 	it("N_visible clamps by the height — the geometry stays legal, no row ≤ 0 and no negative cap", () => {
 		const { body, writes, tick } = makeBody({ H: 7 });
-		body.bindInput(eight(7), "› ");
+		body.bindInput(eight(7), "\u203a ");
 		body.enter();
 		tick();
 		const bytes = writes.join("");
 		expect(cupRows(bytes).every((r) => r >= 1 && r <= 7)).toBe(true);
 		// H − 3 = 4 rows for the composer, the box top at H−2−N = 1
-		expect(rowOf(bytes, "╭")).toBe(1);
-		expect(rowOf(bytes, "╰")).toBe(6);
+		expect(railRows(bytes)[0]).toBe(1);
+		expect(railRows(bytes).at(-1)).toBe(6);
 		expect(rowOf(bytes, "/ commands")).toBe(7);
 		expect(body.liveCount()).toBeLessThanOrEqual(7);
 	});
@@ -188,7 +202,7 @@ describe("KC1 T-C5 — the tiny terminal: H=7 with an 8-line buffer", () => {
 	it("the clamped window still holds the CURSOR'S row — the frame's move lands inside the composer", () => {
 		for (const cursorRow of [0, 4, 7]) {
 			const { body, writes, tick } = makeBody({ H: 7 });
-			body.bindInput(eight(cursorRow), "› ");
+			body.bindInput(eight(cursorRow), "\u203a ");
 			body.enter();
 			tick();
 			const bytes = writes.join("").replace(/\x1b\[(?:7|27)m/g, ""); // REL-0161: read through the drawn cursor
@@ -206,13 +220,13 @@ describe("KC1 T-C5 — the tiny terminal: H=7 with an 8-line buffer", () => {
 
 	it("with a queue band the composer yields rows to it — the chrome still fits H=7", () => {
 		const { body, writes, tick } = makeBody({ H: 7 });
-		body.bindInput(eight(7), "› ");
+		body.bindInput(eight(7), "\u203a ");
 		body.bindQueue(() => ["queued"]);
 		body.enter();
 		tick();
 		const bytes = writes.join("");
 		expect(cupRows(bytes).every((r) => r >= 1 && r <= 7)).toBe(true);
-		const boxTop = rowOf(bytes, "╭")!;
+		const boxTop = railRows(bytes)[0]!;
 		expect(rowOf(bytes, "queued")).toBe(boxTop - 1);
 		expect(boxTop).toBeGreaterThanOrEqual(2); // the chip band keeps its row
 	});

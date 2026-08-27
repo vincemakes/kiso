@@ -136,7 +136,7 @@ describe("KC3 T-A4 — the acceptance run", () => {
 			"kc3a4",
 			ws,
 			[
-				["› ", "look at @ra", 2], // typed, NOT submitted — the picker opens
+				["/ commands · \u2191 history", "look at @ra", 2], // typed, NOT submitted — the picker opens
 				["(1/", "\t", 3], // the counter proves the panel is up; Tab accepts
 				["@src/range.js", "\r", 4], // the completed line submits
 			],
@@ -166,7 +166,7 @@ describe("KC3 T-A4 — the acceptance run", () => {
 			"kc3a4b",
 			ws,
 			[
-				["› ", "look at @ra", 2],
+				["/ commands · \u2191 history", "look at @ra", 2],
 				["(1/", "\t", 3],
 				["@src/range.js", "\r", 4],
 			],
@@ -180,11 +180,21 @@ describe("KC3 T-A4 — the acceptance run", () => {
 		// and the directory rides beside the name instead of at the band's
 		// far edge (VD-9). Both facts are still asserted, in their new forms.
 		expect(out).toContain("\u001b[7m "); // the full-row selection bar
-		expect(out).toContain("\u001b[2m  — src/"); // the dim directory, adjacent
+		// DECLARED SUPERSESSION (R2, design §2.1 — nothing dim ever sits on
+		// the wash): the directory is still adjacent to the name and still
+		// dim on an unselected row, but the dim is DROPPED inside the
+		// selection bar, where grey-on-grey is 3.91:1 on the light ground.
+		// The only match here is the selected one, so what the stream must
+		// carry is the qualifier itself — and what it must never carry is
+		// dim opened on top of the bar.
+		expect(out).toContain("  — src/"); // the directory, adjacent
+		expect(out).not.toContain("\u001b[7m\u001b[2m"); // never dim ON the bar
 		expect(out).toContain("files"); // R1.5 7(b): the band names itself
 		// the chrome is intact afterwards: the box, the lead, the status
-		expect(out).toContain("╭"); // ╭ the box top
-		expect(out).toContain("╰"); // ╰ the box bottom
+		// R2 (law 1.1): the composer is two dashed rails, not a box. Both
+		// rails are the same rule, so what the stream must carry is the
+		// rule itself — the corners are retired.
+		expect(out).toContain("\u254c\u254c\u254c");
 		expect(out).toContain("/ commands");
 		expect(out).toContain("chrome check answered");
 		// and the picker is GONE once the line was sent

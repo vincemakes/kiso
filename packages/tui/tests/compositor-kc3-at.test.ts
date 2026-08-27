@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body, type InputState } from "../src/compositor.js";
-import { atFilter } from "../src/at-picker.js";
+import { atFilter, atPanelRows } from "../src/at-picker.js";
 
 const one = (line: string): (() => InputState) => () => ({ line, cursor: line.length });
 
@@ -71,15 +71,21 @@ afterEach(() => {
 describe("KC3 T-A3: the panel rides the menu-rows band", () => {
 	it("the rows STACK ABOVE the box top; the box, the input row and the status never move", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(one("look at @ra"), "› ");
+		body.bindInput(one("look at @ra"), "\u203a ");
 		body.bindAt(atState(["src/range.js", "lib/range.ts"], "ra"));
 		body.enter();
 		tick();
 		const bytes = writes.join("");
 		// the band is the MENU's band: it grows upward from the box top,
 		// which is exactly why the picker inherits the geometry for free
-		expect(rowOf(bytes, "╭")).toBe(21); // H−3, unmoved
-		expect(rowOf(bytes, "╰")).toBe(23);
+		// R2: both rails are the same rule, so they are found by ORDER —
+		// rowOf returns the first, and the bottom is the last. The BAND's
+		// header is a dashed rule too now, so the match demands an
+		// UNBROKEN run to the reset — a labelled rule is the band, not
+		// the box.
+		const rails = [...bytes.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[2m\u254c+\x1b\[0m/g)].map((m) => Number(m[1]));
+		expect(rails[0]).toBe(21); // H−3, unmoved
+		expect(rails.at(-1)).toBe(23);
 		expect(rowOf(bytes, "/ commands")).toBe(24);
 		// two matches + the counter = three rows, immediately above the box
 		expect(rowOf(bytes, "range.ts")).toBe(18);
@@ -89,7 +95,7 @@ describe("KC3 T-A3: the panel rides the menu-rows band", () => {
 
 	it("the band shrinks the live content cap, exactly as the menu's does", () => {
 		const { body, tick } = makeBody();
-		body.bindInput(one("@ra"), "› ");
+		body.bindInput(one("@ra"), "\u203a ");
 		body.bindAt(atState(FILES, "ra"));
 		body.enter();
 		// MOVED ASSERTION, the markdown-render class (TUI2-MD ⑤): the fixture
@@ -106,7 +112,7 @@ describe("KC3 T-A3: the panel rides the menu-rows band", () => {
 
 	it("the picker WINS the shared band — a menu bound at the same time never renders", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(one("@ra"), "› ");
+		body.bindInput(one("@ra"), "\u203a ");
 		body.bindMenu(() => ({ items: [{ name: "/mode", desc: "switch the approval tier" }], selected: 0 }));
 		body.bindAt(atState(["src/range.js"], "ra"));
 		body.enter();
@@ -120,7 +126,7 @@ describe("KC3 T-A3: the panel rides the menu-rows band", () => {
 describe("KC3 T-A3: the two columns and the selection band", () => {
 	it("the NAME is left, the DIRECTORY dim on the right", () => {
 		const { body, writes, tick } = makeBody({ W: 40 });
-		body.bindInput(one("@ra"), "› ");
+		body.bindInput(one("@ra"), "\u203a ");
 		body.bindAt(atState(["src/range.js"], "ra"));
 		body.enter();
 		tick();
@@ -134,12 +140,20 @@ describe("KC3 T-A3: the two columns and the selection band", () => {
 		// dim — only the distance changed.
 		expect(row.indexOf("range.js")).toBeLessThan(row.indexOf("src/"));
 		expect(row).toContain("range.js  \u2014 src/");
-		expect(bytes).toContain("\x1b[2m  \u2014 src/\x1b[0m"); // the qualifier is dim
+		// DECLARED SUPERSESSION (R2, design §2.1 — nothing dim ever sits on
+		// the wash): the qualifier is still dim on an UNSELECTED row and no
+		// longer dim inside the selection bar, where grey-on-grey is 3.91:1
+		// on the light ground. So the byte assertion moves to the row that
+		// is not the cursor's, and the selected row is asserted for what it
+		// must NOT contain.
+		expect(bytes).not.toContain("\x1b[7m\x1b[2m"); // never dim ON the bar
+		const un = atPanelRows(atState(["src/range.js", "lib/range.ts"], "ra")(), 40);
+		expect(un.find((r) => !r.startsWith("\x1b[7m") && r.includes("\u2014"))).toContain("\x1b[2m  \u2014 src/\x1b[0m"); // an unselected row keeps it
 	});
 
 	it("the MATCHED characters of the name are bold, the rest are not", () => {
 		const { body, writes, tick } = makeBody({ W: 40 });
-		body.bindInput(one("@ra"), "› ");
+		body.bindInput(one("@ra"), "\u203a ");
 		body.bindAt(atState(["src/range.js"], "ra"));
 		body.enter();
 		tick();
@@ -155,13 +169,17 @@ describe("KC3 T-A3: the two columns and the selection band", () => {
 
 	it("a hit that lands in the DIRECTORY is not emboldened — that column is uniformly quiet", () => {
 		const { body, writes, tick } = makeBody({ W: 40 });
-		body.bindInput(one("@do"), "› ");
+		body.bindInput(one("@do"), "\u203a ");
 		body.bindAt(atState(["docs/range-notes.md"], "do"));
 		body.enter();
 		tick();
 		const bytes = writes.join("");
 		// MOVED (same class): the qualifier now rides beside the name.
-		expect(bytes).toContain("\x1b[2m  \u2014 docs/\x1b[0m"); // dim, whole, unbroken
+		// R2 (§2.1): dim is dropped inside the bar, so the SPAN is asserted
+		// whole and unbroken rather than dim — bolding is what this case is
+		// about, and the row still must not embolden the directory.
+		expect(bytes).toContain("  \u2014 docs/\x1b[0m"); // whole, unbroken
+		expect(bytes).not.toContain("\x1b[1mdo\x1b[0m\x1b[7mcs/"); // never emboldened
 	});
 
 	// MOVED (R1.5 slice 8, the picker-row class — DECLARED THIS ROUND): the
@@ -173,7 +191,7 @@ describe("KC3 T-A3: the two columns and the selection band", () => {
 	// still asserted.
 	it("the SELECTED row is a full-width inverse bar; the others carry two spaces", () => {
 		const { body, writes, tick } = makeBody({ W: 40 });
-		body.bindInput(one("@ra"), "› ");
+		body.bindInput(one("@ra"), "\u203a ");
 		body.bindAt(atState(["a/range.js", "z/range.js"], "ra", 1));
 		body.enter();
 		tick();
@@ -187,7 +205,7 @@ describe("KC3 T-A3: the two columns and the selection band", () => {
 
 	it("a path with no directory renders name-only — no empty right column", () => {
 		const { body, writes, tick } = makeBody({ W: 40 });
-		body.bindInput(one("@re"), "› ");
+		body.bindInput(one("@re"), "\u203a ");
 		body.bindAt(atState(["README.md"], "re"));
 		body.enter();
 		tick();
@@ -198,7 +216,7 @@ describe("KC3 T-A3: the two columns and the selection band", () => {
 describe("KC3 T-A3: the counter and the windowing", () => {
 	it("the counter reports the selection's place in the WHOLE list, not the window", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(one("@ra"), "› ");
+		body.bindInput(one("@ra"), "\u203a ");
 		body.bindAt(atState(FILES, "ra", 6));
 		body.enter();
 		tick();
@@ -207,7 +225,7 @@ describe("KC3 T-A3: the counter and the windowing", () => {
 
 	it("at most FIVE match rows render however many match", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(one("@ra"), "› ");
+		body.bindInput(one("@ra"), "\u203a ");
 		body.bindAt(atState(FILES, "ra"));
 		body.enter();
 		tick();
@@ -218,7 +236,7 @@ describe("KC3 T-A3: the counter and the windowing", () => {
 
 	it("the window TRAILS the selection — selecting the last match scrolls it into view", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(one("@ra"), "› ");
+		body.bindInput(one("@ra"), "\u203a ");
 		const { matches } = atFilter(
 			FILES.map((path) => ({ path })),
 			"ra",
@@ -242,7 +260,7 @@ describe("KC3 T-A3: the counter and the windowing", () => {
 
 	it("a CAPPED source says so in the counter — the horizon is admitted, never hidden", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(one("@ra"), "› ");
+		body.bindInput(one("@ra"), "\u203a ");
 		body.bindAt(atState(["src/range.js"], "ra", 0, true));
 		body.enter();
 		tick();
@@ -251,7 +269,7 @@ describe("KC3 T-A3: the counter and the windowing", () => {
 
 	it("an UNCAPPED source says nothing about a cap", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(one("@ra"), "› ");
+		body.bindInput(one("@ra"), "\u203a ");
 		body.bindAt(atState(["src/range.js"], "ra"));
 		body.enter();
 		tick();
@@ -261,7 +279,7 @@ describe("KC3 T-A3: the counter and the windowing", () => {
 	it("every band row fits the width — the #checked invariant holds at a narrow terminal", () => {
 		for (const W of [24, 40, 80, 120]) {
 			const { body, tick } = makeBody({ W });
-			body.bindInput(one("@ra"), "› ");
+			body.bindInput(one("@ra"), "\u203a ");
 			body.bindAt(atState([...FILES, "vendor/deeply/nested/copy/of/range.js"], "ra", 3));
 			body.enter();
 			// #checked throws on any row wider than W — reaching here is the assertion
@@ -275,7 +293,7 @@ describe("KC3 T-A3: N=1 byte identity on every non-@ scenario", () => {
 	 *  once with a picker bound that reports itself CLOSED */
 	const frame = (bind: (b: Body) => void): string => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(one("hello world"), "› ");
+		body.bindInput(one("hello world"), "\u203a ");
 		bind(body);
 		body.enter();
 		body.textAppend("a line of body text");

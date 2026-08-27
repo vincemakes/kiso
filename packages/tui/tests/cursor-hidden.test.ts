@@ -61,7 +61,7 @@ describe("REL-0161 ① — the entry reset establishes a hidden cursor", () => {
 	for (const termProgram of ["Apple_Terminal", "iTerm.app"]) {
 		it(`${termProgram}: the first frame's reset ends in ?25l, and no frame shows the cursor`, () => {
 			const { body, writes, tick } = makeBody({ termProgram });
-			body.bindInput(() => ({ line: "", cursor: 0 }), "› ");
+			body.bindInput(() => ({ line: "", cursor: 0 }), "\u203a ");
 			body.enter();
 			tick();
 			const all = writes.join("");
@@ -75,7 +75,7 @@ describe("REL-0161 ② — steady frames never show the cursor", () => {
 	for (const termProgram of ["Apple_Terminal", "iTerm.app"]) {
 		it(`${termProgram}: streaming and committing frames carry no ?25h`, () => {
 			const { body, writes, tick } = makeBody({ termProgram });
-			body.bindInput(() => ({ line: "hi", cursor: 2 }), "› ");
+			body.bindInput(() => ({ line: "hi", cursor: 2 }), "\u203a ");
 			body.enter();
 			tick();
 			body.textAppend("streamed prose");
@@ -90,27 +90,27 @@ describe("REL-0161 ② — steady frames never show the cursor", () => {
 describe("REL-0161 ③ — the composer draws its own cursor", () => {
 	it("mid-line: the cell at the cursor renders inverse", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(() => ({ line: "ab", cursor: 1 }), "› ");
+		body.bindInput(() => ({ line: "ab", cursor: 1 }), "\u203a ");
 		body.enter();
 		tick();
 		expect(writes.join("")).toContain("› a\x1b[7mb\x1b[27m");
 	});
 
-	it("end of line: an inverse space, taken out of the pad (the wall still lands)", () => {
+	it("end of line: an inverse space, taken out of the pad (R2: no wall — the pad runs to the end)", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(() => ({ line: "ab", cursor: 2 }), "› ");
+		body.bindInput(() => ({ line: "ab", cursor: 2 }), "\u203a ");
 		body.enter();
 		tick();
 		const all = writes.join("");
 		expect(all).toContain("› ab\x1b[7m \x1b[27m");
 		// the row still carries its right wall — the inverse space came
 		// out of the pad, not on top of it
-		expect(all).toMatch(/› ab\x1b\[7m \x1b\[27m\x1b\[2m *│/);
+		expect(all).toMatch(/› ab\x1b\[7m \x1b\[27m */ );
 	});
 
 	it("a wide (CJK) glyph inverts whole", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(() => ({ line: "\u4f60\u597d", cursor: 0 }), "› ");
+		body.bindInput(() => ({ line: "\u4f60\u597d", cursor: 0 }), "\u203a ");
 		body.enter();
 		tick();
 		expect(writes.join("")).toContain("› \x1b[7m\u4f60\x1b[27m\u597d");
@@ -118,7 +118,7 @@ describe("REL-0161 ③ — the composer draws its own cursor", () => {
 
 	it("an empty composer still shows a cursor: the inverse space after the lead", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(() => ({ line: "", cursor: 0 }), "› ");
+		body.bindInput(() => ({ line: "", cursor: 0 }), "\u203a ");
 		body.enter();
 		tick();
 		expect(writes.join("")).toContain("› \x1b[7m \x1b[27m");
@@ -126,12 +126,12 @@ describe("REL-0161 ③ — the composer draws its own cursor", () => {
 
 	it("the marker CHA still parks the hardware cursor at the drawn cell (the IME anchor)", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(() => ({ line: "abc", cursor: 1 }), "› ");
+		body.bindInput(() => ({ line: "abc", cursor: 1 }), "\u203a ");
 		body.enter();
 		tick();
 		// wallL (2) + lead (2) + cursor (1) + 1 → column 6, exactly the
 		// cell the inverse glyph occupies
-		expect(writes.join("")).toContain("\x1b[6G");
+		expect(writes.join("")).toContain("\x1b[4G"); // R2: wallL is 0
 	});
 });
 

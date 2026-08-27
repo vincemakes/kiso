@@ -24,7 +24,7 @@ const ORIG = { tty: process.stdout.isTTY };
 function makeBody(rows = 24, cols = 100) {
 	const writes: string[] = [];
 	const body = new Body({ active: () => true, height: () => rows, width: () => cols, editCol: () => 1, write: (s) => writes.push(s) });
-	body.bindInput(() => ({ line: "", cursor: 0 }), "› ");
+	body.bindInput(() => ({ line: "", cursor: 0 }), "\u203a ");
 	return { body, writes, tick: () => vi.advanceTimersByTime(16) };
 }
 

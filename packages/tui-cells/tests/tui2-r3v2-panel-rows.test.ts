@@ -31,7 +31,7 @@ const view: PanelView = {
 	name: "shell",
 	title: "shell rm -rf build",
 	speaker: "mode:default",
-	statusText: "▸ run paused",
+	statusText: "⏸ run paused",
 	args: { kind: "text", lines: ["rm -rf build && npm run build"] },
 	fallbackQuestion: "approve shell? (y/n) ",
 };
@@ -97,18 +97,20 @@ describe("TUI2-R3v2 ① — the option list and its bar", () => {
 		// is invisible on screen and broke the byte sequence the PTY driver
 		// matches frames on. The approval was never answered and the panel
 		// hung. An ordinary approval's bytes are not ours to churn.
-		const rule = panelBlockRows(view, "options", 0, 120, 20)[0]!;
+		// R2: the block OPENS with a dashed rule, so the rule LINE — the
+		// sentence naming the tool and who asked — is row 1.
+		const rule = panelBlockRows(view, "options", 0, 120, 20)[1]!;
 		expect(rule, "the needle must survive as ONE contiguous byte run").toContain("needs approval — asked by");
 	});
 
 	it("…and the AMENDED line says so, in one contiguous run of its own", () => {
-		const rule = panelBlockRows({ ...view, amended: true }, "options", 0, 120, 20)[0]!;
+		const rule = panelBlockRows({ ...view, amended: true }, "options", 0, 120, 20)[1]!; // R2: row 0 is the opening rule
 		expect(rule).toContain("needs approval · (amended) — asked by");
 	});
 
 	it("the typed phase says where the words GO, and leads with amend›", () => {
 		expect(panelLeadPlain(view, "amend", 3)).toBe("amend› ");
-		expect(panelStatus(view, "amend", 3)).toBe("▸ your note goes to the model — it will propose a new call");
+		expect(panelStatus(view, "amend", 3)).toBe("⏸ your note goes to the model — it will propose a new call");
 		expect(panelAffordance(view, "amend", 3)).toBe("⏎ send · esc back");
 	});
 });

@@ -174,7 +174,7 @@ describe("KC2 T-R4a — the redirect races the run's terminal", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r4a1-"));
 		const script = fauxScript(dir, [busyTurn(8), quickTurn("correction answered")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r4a1", [
-			["› ", "the wrong thing\r", 2],
+			["/ commands · \u2191 history", "the wrong thing\r", 2],
 			["working", "the right thing", 4],
 			["the right thing", ALT_ENTER, 5], // well inside the run's life
 		], 32, ["correction answered"]);
@@ -189,7 +189,7 @@ describe("KC2 T-R4a — the redirect races the run's terminal", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r4a2-"));
 		const script = fauxScript(dir, [quickTurn("finished immediately"), quickTurn("second turn answered")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r4a2", [
-			["› ", "a fast task\r", 2],
+			["/ commands · \u2191 history", "a fast task\r", 2],
 			["finished immediately", "a follow-up", 5], // the run is long dead
 			["a follow-up", ALT_ENTER, 6],
 		], 26, ["second turn answered"]);
@@ -208,7 +208,7 @@ describe("KC2 T-R4b — the abort races the TOOL's settlement (a different axis 
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r4b1-"));
 		const script = fauxScript(dir, [busyTurn(8), quickTurn("next turn answered")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r4b1", [
-			["› ", "run the slow thing\r", 2],
+			["/ commands · \u2191 history", "run the slow thing\r", 2],
 			["working", "actually, stop", 4],
 			["actually, stop", ALT_ENTER, 5],
 		], 32, ["next turn answered"]);
@@ -244,7 +244,7 @@ describe("KC2 T-R4b — the abort races the TOOL's settlement (a different axis 
 		const script = fauxScript(dir, [quickTurn("unreachable"), quickTurn("next turn answered")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r4b2", [
 			["rerun", "\x03", 2], // the startup ask is cancelled — nothing recorded
-			["› ", "carry on\r", 5],
+			["/ commands · \u2191 history", "carry on\r", 5],
 			["rerun", "1\r", 7], // the gate asks again, before the turn starts
 		], 30, ["next turn answered"]);
 		const log = durable(dirs.home, "kc2r4b2");

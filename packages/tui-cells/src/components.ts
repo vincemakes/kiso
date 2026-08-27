@@ -304,12 +304,17 @@ export function cellComponent(cell: BodyCell): Component {
  * the ▍ rail and the indent are retired — the rail's stated pipe
  * fallback was theoretical redundancy: the CLI's pipe path is the
  * line-mode "you>" form and never renders UserMessage). The chip folds
- * the text at W−2 (the side pads), then pads EVERY row to the longest
- * row's DISPLAY width + one space each side, flush left: the block is
- * only as wide as what was said (never the full-width band — a short
- * message like /think would paint a bar across the terminal). The
- * padding is by cells (charWidth is the width authority), so a CJK row
- * pads by width, never by chars, and the chip never overruns its fold.
+ * the text at W−2 (the side pads) and pads every row to the FULL width.
+ *
+ * R2 — law 1.6's recorded reversal. This used to size the block to its
+ * longest row, on the argument that "a short message like /think would
+ * paint a bar across the terminal". That optimises the degenerate case
+ * at the cost of every real message, which is a paragraph and reads as
+ * a block only when the block has an edge. The `/think` case is the
+ * accepted price, and it is recorded as such in design.md §1.6.
+ *
+ * The padding is by cells (charWidth is the width authority), so a CJK
+ * row pads by width, never by chars, and the chip never overruns.
  * SGR 7 closed with SGR 27 — never SGR 0, the chip composes with a
  * surrounding span — and NEVER dim: reverse video inverts the CURRENT
  * colours, so dimmed text would invert into a dimmed block with no
@@ -357,11 +362,18 @@ class UserMessage implements Component {
 				content.push(row);
 			}
 		}
+		// R2 (law 1.6's recorded reversal): the band is FULL WIDTH. It was
+		// sized to its longest row, on the argument that a one-word turn
+		// like `/think` would otherwise paint a bar across the terminal —
+		// which optimises the degenerate case at the cost of every real
+		// message. The human's words are the one surface that gets the
+		// whole row.
+		//
 		// displayWidth stays the padding authority (never `length`): a CJK
 		// row is two cells per character and pads by cells.
-		const inner = content.length === 0 ? 0 : Math.max(...content.map((r) => displayWidth(r)));
+		const inner = chipW;
 		for (const row of content) {
-			rows.push(`${p.rv} ${row}${" ".repeat(inner - displayWidth(row))} ${p.rvEnd}`);
+			rows.push(`${p.rv} ${row}${" ".repeat(Math.max(0, inner - displayWidth(row)))} ${p.rvEnd}`);
 		}
 		if (!truncated) return rows;
 		// The notice is OUTSIDE the chip's reverse video, in the cut-row
@@ -406,17 +418,55 @@ export function pendingQueueRows(lines: readonly string[], W: number): string[] 
 class ThinkingFold implements Component {
 	constructor(private readonly cell: { text: string; done: boolean }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
+		const p = palette();
 		const block = this.cell.text;
 		const trimmed = escapeTerminal(block.trim());
-		// the SHORT branch is width-aware TOO: the ≤100 short-circuit was
-		// W-blind — a short block at a narrow width returned the line
-		// UNFOLDED and tripped invariant ① (the crash class still live on
-		// npm for short /think blocks after a resize).
-		if (trimmed.length <= 100) return [`${palette().dim}⋯${widthCut(trimmed, Math.max(1, W - 1))}${palette().reset}`];
-		const suffix = ` (${block.length} chars · /think)`;
-		const slice = Math.max(1, W - 1 - suffix.length);
-		return [`${palette().dim}⋯${widthCut(trimmed, slice)}${suffix}${palette().reset}`];
+		// R2 (owner, 2026-08-27) — three changes, each independent.
+		//
+		// ITALIC marks the row as not-the-answer without spending a colour,
+		// on the same argument that admitted italic to the alphabet.
+		//
+		// The cut lands on a WORD. It used to cut on a byte, so the fold
+		// read as `…the user's h` and the reader's eye had to reassemble a
+		// word it already knew.
+		//
+		// The affordance moves to the RIGHT EDGE, so the left edge of every
+		// row on screen is content. The char count goes with the move: it
+		// told the reader nothing they could act on, and the row it was
+		// crowding is the one thing this cell says.
+		//
+		// The ≤100 short-circuit stays width-aware: a short block at a
+		// narrow width returned the line UNFOLDED and tripped invariant ①.
+		// DC-15: the affordance is DROPPED, not squeezed. `room` floored at
+		// 1 while `pad` floored at 1 independently, so a narrow terminal
+		// produced 2 + cut + pad + 6 = 11 cells no matter what W was — and
+		// invariant ① does not truncate, it THROWS. Measured 11 cells at
+		// every W ≤ 10. Below the width where the tail and one word of
+		// content can both stand, the row is the CONTENT: a cell that
+		// cannot hold the key's name has nothing to say about the key.
+		const tail = "/think";
+		const room = W - 2 - tail.length - 1;
+		// the belt: cutLine is SGR-aware and single-row, so the invariant
+		// holds by CONSTRUCTION at every width rather than by arithmetic
+		// that has to be re-proved every time a span moves.
+		if (room < 2) return [cutLine(`${p.dim}⋯ ${p.italic}${wordCut(trimmed, Math.max(1, W - 2))}${p.italicEnd}${p.reset}`, W)];
+		const cut = wordCut(trimmed, room);
+		const body = `⋯ ${p.italic}${cut}${p.italicEnd}`;
+		const pad = Math.max(1, W - 2 - visibleWidth(cut) - tail.length);
+		return [cutLine(`${p.dim}${body}${" ".repeat(pad)}${tail}${p.reset}`, W)];
 	}
+}
+
+/** R2 — cut at a word boundary, with the honest ellipsis. widthCut cuts
+ *  at a cell, which is right for verbatim output and wrong for prose:
+ *  the reader has to reassemble "h" into "home". Falls back to the cell
+ *  cut when the first word alone overruns, because a row that cannot
+ *  hold one word has no boundary to find. */
+function wordCut(text: string, room: number): string {
+	if (visibleWidth(text) <= room) return text;
+	const hard = widthCut(text, Math.max(1, room - 1));
+	const at = hard.lastIndexOf(" ");
+	return `${at > room / 3 ? hard.slice(0, at) : hard}\u2026`;
 }
 
 /** Fold a line's CONTENT at W−2 and prefix EVERY row with the gutter
@@ -633,7 +683,7 @@ class ToolExecution implements Component {
 			// list of calls, not a body of output.
 			const r = c.rolled;
 			const counts = exploreCounts(parts);
-			const head = `${p.bold}✓${p.reset} explored ${p.bold}${counts}${p.reset}`;
+			const head = `  explored ${p.bold}${counts}${p.reset}`; // R2: no tick
 			const tail = ` (${r.elapsed}s)`;
 			const room = W - visibleWidth(head) - tail.length;
 			const affordance = " · ctrl+r lists them";
@@ -648,7 +698,7 @@ class ToolExecution implements Component {
 			// W15 expand history — the head's commit captures it).
 			const r = c.rolled;
 			const noun = ROLLUP_NOUN[c.name] ?? "calls";
-			const out = gutterCut(`${p.bold}✓${p.reset} `, `${verbCol} ${r.count} ${noun} (${kUnit(r.lines)} lines, ${r.elapsed}s)`, W);
+			const out = gutterCut("  ", `${verbCol} ${r.count} ${noun} (${kUnit(r.lines)} lines, ${r.elapsed}s)`, W); // R2: no tick
 			const shown = r.targets.slice(0, 3);
 			if (shown.length > 0) out.push(`  ${p.dim}${CUT_ROW}${escapeTerminal(shown.join(" · "))}${p.reset}`);
 			if (r.targets.length > 3) out.push(`  ${p.dim}${CUT_ROW}+${r.targets.length - 3} more — ctrl+r expands${p.reset}`);
@@ -664,7 +714,7 @@ class ToolExecution implements Component {
 			// names the decider; a human denial (no decidedBy) has no tail.
 			if (c.reason !== null) {
 				const by = attribution(c);
-				const out = gutterCut(`${p.red}✗${p.reset} `, `${p.red}${escapeTerminal(`${c.name} ${toolTargetOf(c)}`)} (${escapeTerminal(c.reason)}${by})${p.reset}`, W);
+				const out = gutterCut("  ", `${p.red}${escapeTerminal(`${c.name} ${toolTargetOf(c)}`)} (${escapeTerminal(c.reason)}${by})${p.reset}`, W);
 				out.push(...toolBlockBody(c, W));
 				return out;
 			}
@@ -701,7 +751,14 @@ class ToolExecution implements Component {
 			// the semantics. TUI2-R1.5 pin 4: and the parts give way in a
 			// PINNED ORDER, rather than whichever happened to be last.
 			const text = settledHeadText(verbCol, escapeTerminal(toolTargetOf(c)), meta, approvedBy, elapsed, W - 2 - (hidden === null ? 0 : SUFFIX_MIN));
-			const out = c.isError ? [`${p.red}✗${p.reset} ${p.red}${text}${p.reset}`] : [`${p.bold}✓${p.reset} ${text}`];
+			// R2 (owner, 2026-08-27): no tick, no cross. A symbol earns its
+			// cell by carrying a fact the words do not, and a row that
+			// already says `exit 0` does not need one more thing saying it
+			// went fine. The gutter is two spaces; the OUTCOME lives in the
+			// metadata, in words, which is also the only form that survives
+			// a pipe with the colour stripped. A failure keeps its colour
+			// AND its words — see settledMeta.
+			const out = c.isError ? [`  ${p.red}${text}${p.reset}`] : [`  ${text}`];
 			out[0] = appendSuffix(out[0]!, expandSuffix(hidden, W - visibleWidth(out[0]!)));
 			out.push(...toolBlockBody(c, W));
 			return out;
@@ -1037,25 +1094,25 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 	const meta = parts.join(" · ");
 	const words = escapeTerminal(t.words);
 	if (words === "") {
-		const row = `${p.bold}▞${p.reset} ${meta}`;
-		return visibleWidth(row) <= W ? [row] : [`${p.bold}▞${p.reset} ${widthCut(meta, Math.max(1, W - 3))}…`]; // a wordless turn folds to the W14 shape
+		const row = `${p.bold}✦${p.reset} ${meta}`;
+		return visibleWidth(row) <= W ? [row] : [`${p.bold}✦${p.reset} ${widthCut(meta, Math.max(1, W - 3))}…`]; // a wordless turn folds to the W14 shape
 	}
 	// A9 (ruling R2, mock A): the user chip rides the fold — the human's
 	// words LEAD the one line, the same SGR-7 bracket as the live user
 	// row (#16f, side pads included). The words take the fold's width
-	// budget: W − the gutter ("▞ " = 2) − the join (" · " = 3) − the
+	// budget: W − the gutter ("✦ " = 2) − the join (" · " = 3) − the
 	// chip's side pads (2) − the cut-tail reserve (1, the "…") − the
 	// metadata's own width — the metadata survives, the words width-cut
 	// at the end with the honest "…" (the "…" alone is the honest floor:
 	// the words were there, cut).
-	const budget = Math.max(0, W - visibleWidth(`▞ ${meta}`) - 6);
+	const budget = Math.max(0, W - visibleWidth(`✦ ${meta}`) - 6);
 	const cut = visibleWidth(words) > budget ? `${widthCut(words, budget)}…` : words;
-	const row = `${p.bold}▞${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${meta}`;
+	const row = `${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${meta}`;
 	if (visibleWidth(row) <= W) return [row];
 	// the last resort: the METADATA gives way — the words hold their
 	// budget, the meta cuts with the honest "…"; invariant ① never trips
 	// at ANY width (a degenerate W's fold is a cut, never a crash).
-	return [`${p.bold}▞${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(meta, Math.max(1, W - 8 - visibleWidth(cut)))}…`];
+	return [`${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(meta, Math.max(1, W - 8 - visibleWidth(cut)))}…`];
 }
 
 // ---- the bounded-block flow contract (W7, W8, W10) ----
@@ -1415,8 +1472,11 @@ class Banner implements Component {
 	constructor(private readonly cell: { version: string; extensionsText: string; resume: ResumeMeta[]; meta?: BannerMeta | undefined }) {}
 	render(W: number, ctx: FrameCtx): string[] {
 		const p = palette();
-		const rows = bannerLines(W, ctx.height, this.cell.version, this.cell.extensionsText, this.cell.resume, ctx.now, this.cell.meta);
-		return rows.map((r) => `${p.dim}${r}${p.reset}`);
+		// R2: NO blanket dim. bannerLines styles itself — the labels are
+		// dim, the values are ink — and wrapping the whole thing in dim
+		// made the answers as faint as the questions.
+		void p;
+		return bannerLines(W, ctx.height, this.cell.version, this.cell.extensionsText, this.cell.resume, ctx.now, this.cell.meta);
 	}
 }
 
@@ -1506,7 +1566,7 @@ class Checklist implements Component {
 		const fixed = done
 			? `task done · ${plural(items.length, "item")} · ${formatDuration(durationSeconds)}`
 			: `task · ${plural(items.length, "item")} · ${active.length} active · ${doneCount} done`;
-		const header = `${p.bold}▞${p.reset} ${escapeTerminal(fixed + tail)}`;
+		const header = `${p.bold}✦${p.reset} ${escapeTerminal(fixed + tail)}`;
 		// the FULL-list forms: SETTLED — the durable record (the fold is
 		// fine — committed content wraps naturally) — and the LIVE ctrl+r
 		// toggle (the header CUTS — the block stays one window high; the
@@ -1605,32 +1665,40 @@ export function widthCut(text: string, max: number): string {
  */
 export function selectionBar(styled: string, visible: number, W: number): string {
 	const p = palette();
-	const inner = styled.replaceAll(p.reset, `${p.reset}${p.rv}`);
+	// R2 (design §2.1 — nothing dim ever sits on the wash): the bar IS a
+	// wash. A dim span inside it renders grey-on-grey — 3.91:1 on the
+	// light ground, under the 4.5 floor — and the dim spans are exactly
+	// the descriptions and the metadata, i.e. the half of the row the
+	// selection was supposed to help you read. Dim is dropped INSIDE the
+	// bar and nowhere else; the same row unselected keeps it.
+	const inner = (p.dim === "" ? styled : styled.replaceAll(p.dim, "")).replaceAll(p.reset, `${p.reset}${p.rv}`);
 	return `${p.rv} ${inner}${" ".repeat(Math.max(0, W - visible - 2))} ${p.rvEnd}`;
 }
 
 /**
  * R2 — the composer's rails, and the ONE edge vocabulary.
  *
- * W6 turned two ╌ dotted rows into a rounded box, reasoning that "the
- * box already says input lives here". That is reversed here, and the
- * reason is not taste: a rule is a DELIMITER and a box is a CONTAINER,
- * and the screen was carrying six edge vocabularies at once (this box,
- * the panel's │ gutter and └── tail, the diff gutter, the quote's ▏, the
- * table's ├─┼─┤ rails, the markdown rule's ─). One dashed rule replaces
- * the ones that separate; the │ gutter survives where it SCOPES.
+ * W6 turned two \u254c dotted rows into a rounded box, reasoning that
+ * "the box already says input lives here". That is reversed here, and
+ * the reason is not taste: a rule is a DELIMITER and a box is a
+ * CONTAINER, and the screen was carrying six edge vocabularies at once
+ * (this box, the panel's \u2502 gutter and \u2514\u2500\u2500 tail, the
+ * diff gutter, the quote's \u258f, the table's rails, the markdown
+ * rule). One dashed rule replaces the ones that SEPARATE; the \u2502
+ * gutter survives where it SCOPES.
  *
  * Row-neutral by construction: CHROME_ROWS is still 4, so every gate
- * keyed on H − 4 is untouched, and the input row gains the two columns
- * the walls were taking.
+ * keyed on H \u2212 4 is untouched, and the input row gains the two
+ * columns the walls were taking.
  */
 export function boxTop(W: number): string {
-	return `\x1b[2m\u256d${"\u2500".repeat(Math.max(0, W - 2))}\u256e\x1b[0m`;
+	return `\x1b[2m${"\u254c".repeat(Math.max(0, W))}\x1b[0m`;
 }
 
-/** W6 — the box: the chrome's bottom rail. */
+/** R2 — the same rule below. Named for its POSITION, not its shape, so
+ *  the compositor's two call sites did not have to move. */
 export function boxBottom(W: number): string {
-	return `\x1b[2m\u2570${"\u2500".repeat(Math.max(0, W - 2))}\u256f\x1b[0m`;
+	return `\x1b[2m${"\u254c".repeat(Math.max(0, W))}\x1b[0m`;
 }
 
 /** The terminal label + rhythm gap (the pipe path's v2c bytes — the

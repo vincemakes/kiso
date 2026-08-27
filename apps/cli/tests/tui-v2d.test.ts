@@ -95,20 +95,26 @@ const CELL_LINE = [
 	// approval-attribution class): the parens hold the facts that are NOT
 	// the line count (VD-6) — often none at all, leaving just the timing —
 	// and a human verdict rather than a policy byline (VD-11).
-	/^✓ \S+ .*\((?:\S.*, )?\d+\.\ds\)( · (\d+ lines? · )?ctrl\+r( expands)?)?$/, // the ToolCell done (A4: the target rides the head row)
-	/^✗ \S+ .*\((?:\S.*, )?\d+\.\ds\)$/, // the ToolCell failed (an error's own cut row is its affordance — never suffixed)
-	/^┌ answer truncated at max_tokens.*$/, // D4: the truncation notice row — the cut is named, never silent
-	/^▞.*$/, // v3: the recap line ends the run
+	// R2: the settled row's gutter is two spaces, and the lint TRIMS its
+	// segments — so the shape to recognise is the verb column itself, no
+	// longer a mark that is gone.
+	/^\S+ +.*\((?:\S.*, )?\d+\.\ds\)( · (\d+ lines? · )?ctrl\+r( expands)?)?$/, // the ToolCell done (A4: the target rides the head row)
+	/^\S+ +.*\((?:\S.*, )?\d+\.\ds\)$/, // the ToolCell failed (an error's own cut row is its affordance — never suffixed)
+	/^answer truncated at max_tokens.*$/, // D4: the truncation notice row — R2 (law 1.1): a notice is a sentence, it wears no box corner
+	/^✦.*$/, // v3: the recap line ends the run
 	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)
 	// MOVED (R1.5 slice 11, the panel-frame class — DECLARED THIS ROUND):
 	// the panel's bottom edge is a real RULE now (└ + a ─ run to the
 	// width), not the bare `└ ` stub it used to close with (VD-13).
-	/^└─+$/, // W21 + R1.5 11: the panel's bottom rule
+	// R2: the panel's `└─────` bottom rule is retired — every panel closes
+	// with the ONE dashed rule above. Its pattern is removed rather than
+	// left in place: an allowed shape that can no longer occur is a hole
+	// in the lint, not a harmless leftover.
 	/^└(?: .*)?$/, // v7 W7/W8/W10 + W21: the cut/waiting rows (the "  └ " family — "waiting for output", "+N earlier rows · ctrl+r", "capped by …") + the approval panel's bare └ corner
 	/^aborted \(.*\)$/, // the aborted terminal label
 	/^error: .*$/, // the error terminal label
 	/^▸ .* · \/mode to switch.*$/, // v3 idle status line
-	/^▸ run paused.*$/, // W21: the panel's paused status (the lead owns the input row — the affordance rides the status)
+	/^⏸ run paused.*$/, // W21: the panel's paused status (the lead owns the input row — the affordance rides the status)
 	/^\/ commands · ↑ history$/, // TUI v5 #16g: the dock's idle hint — the status row at enter (the status is still empty)
 	/^[▖▘▝▗] working \d+s.*$/, // the running status line (all four spinner glyphs — the W21 hint "· esc to interrupt" rides the row)
 	// MOVED (the focus-marker class, TUI2-R2 ⑤): a running tool cell's
@@ -128,13 +134,32 @@ const CELL_LINE = [
 	/^(MODEL|WORKSPACE|EXTENSIONS) {2,}.*$/, // a labelled fact (the lint trims the indent)
 	/^esc interrupt · .*$/, // the keys row
 	/^\[.*extensions?:.*$/, // an EXTENSIONS value continuing on its own row
-	/^│ ›.*│$/, // W6: the input row inside the box (the prompt › — the trim eats the pad)
 	/^▌\s?.*$/, // the editor's SELF-RENDER row — the LINE-MODE brick (W6-kept byte-for-byte): the editor's first paint rides the CLI's pre-dock console.log message on the same row
 	// TUI v5 #16f: the user block — the SGR-7 chip alone (the 2026-08-09
 	// ruling retired the ▍ rail + the indent). Classified by its RAW byte
 	// shape in the lint (the stripped form would be plain text).
-	/^╭[─]+╮$/, /^╰[─]+╯$/, // W6: the box rails (the corners close the ─ run)
-	/^─ .*$/, // W21: the approval panel's divider row (edge-to-edge, no gutter — the boxed ApprovalPrompt slot is gone, the panel superseded it)
+	// R2 (law 1.1): ONE dashed rule is every edge on screen — the
+	// composer's two rails, and every panel's open and close. The box
+	// (`╭─╮` / `╰─╯`) and the panel's own `─` divider are both retired,
+	// and the divider became a blank row, which the lint already skips.
+	/^\u254c+$/,
+	// R2: the input row is the typed text at COLUMN ONE — no wall, no
+	// prompt glyph — so it is classified by its CONTENT like any other
+	// plain row, and an EMPTY composer is the blank the lint skips.
+	//
+	// R2, the PANEL's own rows. They used to be classified by the `│`
+	// gutter they all carried; a gutter SCOPES a verbatim block and an
+	// approval list is not one, so they carry the block's two-space
+	// indent now and are classified by SHAPE, one shape per row kind.
+	// This is stricter than the gutter was — `│ anything` admitted every
+	// panel row at once, where these name four distinct forms.
+	/^\S+ needs approval — asked by .*$/, // the rule line (+ its · fix hint)
+	/^[1-9] \S.*$/, // an option row — the digit IS the key (the cursor's row rides the reverse bar and is classified by it)
+	/^↑↓ move · .*$/, // the panel's affordance row
+	// the panel's TITLE is the call's own subject — arbitrary text, like
+	// the TextCell bodies below, so it is listed rather than shaped.
+	/^sleep 1; echo hi$/,
+	/^\/(?:private\/)?(?:var|tmp)\/\S*$/, // the asky extension's path target
 	/^.*· faux · \[turn \d+ · faux\]$/, // the live status bar (session-prefixed)
 	/^the tour is done$/, /^streaming text$/, // the TextCell bodies
 ];
@@ -291,15 +316,15 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// the settled row says "list", padded into the same 5-column verb
 		// gutter the read/edit heads already used — which is the point of
 		// the ruling: one screen, one vocabulary.
-		expect(clean).toMatch(/✓ list {2}\(root\) \(\d+\.\ds\) · \d+ lines · ctrl\+r/); // the auto-approved list_dir settled, silently
+		expect(clean).toMatch(/  list {2}\(root\) \(\d+\.\ds\) · \d+ lines · ctrl\+r/); // the auto-approved list_dir settled, silently
 		// MOVED (R1.5 slice 5, the approval-attribution class): the HUMAN
 		// answered this panel, and that is now what the row records.
-		expect(clean).toMatch(/✓ shell sleep 1; echo hi \(exit 0 · approved, \d+\.\ds\)/); // the approved shell settled
+		expect(clean).toMatch(/  shell sleep 1; echo hi \(exit 0 · approved, \d+\.\ds\)/); // the approved shell settled
 		// MOVED (R1.5 slice 5, the R1 tool-cell suffix class): the line
 		// count is stated EXACTLY ONCE (VD-6) and lives in the suffix, so
 		// the parens carry the facts that are NOT the count — here the
 		// human's own verdict.
-		expect(clean).toMatch(/✓ asky_read  \(approved, \d+\.\ds\) · 1 line · ctrl\+r/); // the count in the suffix, the verdict in the parens
+		expect(clean).toMatch(/  asky_read  \(approved, \d+\.\ds\) · 1 line · ctrl\+r/); // the count in the suffix, the verdict in the parens
 		expect(clean).not.toContain("approved by"); // R1.5 5: no policy byline anywhere
 		expect(clean).toContain("streaming text");
 		expect(clean).toContain("the tour is done");
@@ -342,7 +367,8 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// D4: the honest notice rides after the partial answer — the cut is
 		// named in the scrollback, the model's text intact above it.
 		expect(clean).toContain("streaming text");
-		expect(clean).toContain('┌ answer truncated at max_tokens — say "continue" to finish');
+		expect(clean).toContain('answer truncated at max_tokens — say "continue" to finish');
+		expect(clean).not.toContain("┌"); // R2: no box corner on a notice
 		const bad = lint(out);
 		expect(bad).toEqual([]);
 	}, 90_000);

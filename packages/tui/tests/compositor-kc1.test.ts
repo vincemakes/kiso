@@ -39,7 +39,7 @@ function frames(provider: () => InputState, script: (body: Body) => void, opts: 
 	const H = opts.H ?? 24;
 	const writes: string[] = [];
 	const body = new Body({ active: () => true, height: () => H, width: () => W, editCol: () => 1, write: (s) => writes.push(s) });
-	body.bindInput(provider, "› ");
+	body.bindInput(provider, "\u203a ");
 	body.enter();
 	script(body);
 	vi.advanceTimersByTime(16);
@@ -126,7 +126,9 @@ describe("KC1 T-C1 — N=1 byte identity (the anchor: the legacy row and the com
 		// REL-0161: the drawn cursor wraps the cell at the marker — read through it
 		expect(committing.replace(/\x1b\[(?:7|27)m/g, "")).toContain("› abc"); // the lead + the line, marker stripped
 		expect(committing).not.toContain("kiso-cur"); // the APC marker never reaches the stream
-		expect(committing).toContain("\x1b[6G"); // wallL (2) + lead (2) + cursor (1) + 1
+		// R2: wallL is 0 — the box is retired, so the row starts at column 1
+		// and the cursor column loses the two the walls were taking.
+		expect(committing).toContain("\x1b[4G"); // wallL (0) + lead (2) + cursor (1) + 1
 		// DECLARED SUPERSESSION (REL-0152-R1): the anchor jump is retired
 		// with the steady path that used it. A no-commit frame no longer
 		// marches from a recorded anchor to the bottom row; it writes the

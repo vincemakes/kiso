@@ -17,7 +17,7 @@
  * A held-screen renderer that does not know such a line was printed
  * skips exactly the rows it should repair. The residue therefore
  * survives on the rows whose desired content NEVER changes — the
- * composer box's `╭──╮` and `╰──╯` — which is where the owner sees a
+ * composer box's `\u254c──╮` and `\u254c──╯` — which is where the owner sees a
  * stray `[` at the left edge and `]` at the right, for the whole
  * session, clearing only on a resize (the one full repaint) and coming
  * back on the next launch.
@@ -80,8 +80,8 @@ describe("REL-0152-D17 — a write on EITHER descriptor forgets the screen", () 
 			vi.advanceTimersByTime(50);
 			const after = writes.join("");
 
-			expect(quiet, "a quiet frame should not repaint the box").not.toContain("╭");
-			expect(after, "the frame after a stderr write must repaint the box").toContain("╭");
+			expect(quiet, "a quiet frame should not repaint the box").not.toContain("\u254c");
+			expect(after, "the frame after a stderr write must repaint the box").toContain("\u254c");
 			expect(after, "…and the status row with it").toContain("/ commands");
 		} finally {
 			(body as unknown as { __restore: () => void }).__restore();
@@ -99,7 +99,7 @@ describe("REL-0152-D17 — a write on EITHER descriptor forgets the screen", () 
 			writes.length = 0;
 			body.redraw();
 			vi.advanceTimersByTime(50);
-			expect(writes.join("")).toContain("╭");
+			expect(writes.join("")).toContain("\u254c");
 		} finally {
 			(body as unknown as { __restore: () => void }).__restore();
 			body.exit();

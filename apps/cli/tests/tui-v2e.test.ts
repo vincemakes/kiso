@@ -112,12 +112,19 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 		expect(clean).toContain("- OLD");
 		expect(clean).toContain("+ NEW");
 		// The frozen summary: ONE line with the ± stats.
-		expect(clean).toContain("✓ edit"); // W3 (sanctioned): the verb strips the _file suffix — both paths print the same verb
+		expect(clean).toContain("edit"); // W3 (sanctioned): the verb strips the _file suffix — both paths print the same verb
 		expect(clean).toContain("+1 -1");
 		// NO diff residue after the freeze — the last diff row precedes the
 		// frozen summary, and the summary line itself is a single line.
+		//
+		// R2 (law 1.3): the settled row's gutter is two spaces now (the ✓
+		// is retired), so `  edit` no longer names the frozen row alone —
+		// it also matches the approval panel's own title row, which comes
+		// BEFORE the diff and made this comparison read backwards. The
+		// anchor is the ± stat, which only the frozen summary carries.
 		const lastMinus = clean.lastIndexOf("- OLD");
-		const frozen = clean.indexOf("✓ edit"); // W3 (sanctioned): the same row — the verb strips the _file suffix
+		const frozen = clean.indexOf("+1 -1");
+		expect(frozen, "no frozen summary row").toBeGreaterThan(0);
 		expect(lastMinus).toBeLessThan(frozen);
 	}, 90_000);
 });

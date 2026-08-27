@@ -76,8 +76,10 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		tick();
 		const frame = plain(writes.join(""));
 		expect(frame).toContain("explored 8 files · 14 searches (0.0s) · ctrl+r lists them");
-		// ONE ✓ row for the whole burst, not twenty-two
-		expect(frame.match(/✓/g) ?? []).toHaveLength(1);
+		// ONE   row for the whole burst, not twenty-two
+		// R2: the settled tick is retired, so "exactly one row" is counted by
+		// the row's own word rather than by a mark that no longer exists.
+		expect(frame.match(/explored /g) ?? []).toHaveLength(1);
 	});
 
 	it("a WRITE breaks the group — the two read-only runs on either side roll up separately, the write never joins", () => {
@@ -109,7 +111,9 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		tick();
 		const frame = plain(writes.join(""));
 		expect(frame).not.toContain("explored");
-		expect(frame.match(/✓/g) ?? []).toHaveLength(3);
+		// R2: three shells, three rows — counted by the verb column now that
+		// the tick is retired.
+		expect(frame.match(/ {2}shell /g) ?? []).toHaveLength(3);
 	});
 
 	it("TWO calls never roll up — the threshold is the same three W13 used", () => {

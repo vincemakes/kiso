@@ -153,7 +153,9 @@ function screens(full: Buffer, markers: { done: number; resizes: [number, number
 // W6: the ╌ chrome rows became the box rails — the probe counts a stray
 // rail in the BODY region (the chrome's own rails sit at H−3/H−1, outside
 // the slice — a reflow leftover rail inside the body is the wall).
-const bodySepRows = (screen: string[], H: number): number => screen.slice(0, H - 4).filter((l) => l.includes("╭") || l.includes("╰")).length;
+// R2 (law 1.1): both composer rails are the SAME dashed rule; a rail in
+// the BODY region is the defect this counts, and there must be none.
+const bodySepRows = (screen: string[], H: number): number => screen.slice(0, H - 4).filter((l) => /^\u254c+$/.test(l.trimEnd())).length;
 const responseOnce = (screen: string[]): number => screen.filter((l) => l.includes(RESPONSE)).length;
 
 describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulator)", () => {
@@ -175,7 +177,7 @@ describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulato
 			"utf8",
 		);
 		const { markers, full } = reflowRun({ ...env, KISO_FAUX_SCRIPT: script }, [
-			["› ", "look around\r"], // the turn itself — the driver sends exit after the sequence
+			["/ commands · \u2191 history", "look around\r"], // the turn itself — the driver sends exit after the sequence
 		]);
 		// The sequence really ran (5 winches) and the turn completed.
 		expect(markers.resizes).toHaveLength(5);
@@ -196,7 +198,10 @@ describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulato
 		// fold/body merge (the recorded symptom) would swallow the suffix.
 		const foldRow = turn.find((l) => l.includes("/think"));
 		expect(foldRow).toBeDefined();
-		expect(foldRow!.trimEnd().match(/\/think\)$/)).not.toBeNull();
+		// R2: the fold's affordance moved to the RIGHT EDGE and the char
+		// count went with the move, so the row ends with the bare `/think`
+		// rather than `… chars · /think)`.
+		expect(foldRow!.trimEnd().match(/\/think$/)).not.toBeNull();
 		expect(foldRow!.includes(RESPONSE)).toBe(false);
 
 		// ④ after the 5-resize sequence, ① ② hold on the FINAL screen —

@@ -71,10 +71,10 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 
 	it("output observed: the LAST lines ride the block, the footer names the state and the two gestures", () => {
 		setTTY(false);
-		const rows = render(running({ resultText: "packages/runtime  ✓ 184 tests\npackages/tui      ⠸ 88/120" }));
+		const rows = render(running({ resultText: "packages/runtime    184 tests\npackages/tui      ⠸ 88/120" }));
 		expect(rows).toEqual([
 			"▖ shell npm test · 12s",
-			"│ packages/runtime  ✓ 184 tests",
+			"│ packages/runtime    184 tests",
 			"│ packages/tui      ⠸ 88/120",
 			"└ live tail · esc stop · alt+⏎ redirect",
 		]);
@@ -125,7 +125,7 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 				resultText: Array.from({ length: 22 }, (_, i) => `out ${i}`).join("\n"),
 			}),
 		);
-		expect(settled[0]).toBe("✓ shell npm test (exit 0, 18.2s) · 22 lines · ctrl+r expands");
+		expect(settled[0]).toBe("  shell npm test (exit 0, 18.2s) · 22 lines · ctrl+r expands");
 		expect(settled.join("\n")).not.toContain("live tail");
 	});
 });

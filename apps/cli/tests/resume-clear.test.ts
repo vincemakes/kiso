@@ -85,7 +85,7 @@ describe("/clear — a fresh conversation, history untouched", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-rc-w1-"));
 		const out = strip(
 			ptyRun(["chat", "first-conv"], env, [
-				["› ", "hello there\r"],
+				["/ commands · \u2191 history", "hello there\r"],
 				["What would you like me to inspect", "/clear\r"], // the faux script's turn-1 reply — a SETTLED anchor (the spinner shares the recap glyph)
 				// a turn IN the new session — a run-less session writes no
 				// file by design (the E1 lazy-marker semantics), so the new
@@ -116,7 +116,7 @@ describe("/resume — the in-session door", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-rc-w2-"));
 		const out = strip(
 			ptyRun(["chat", "conv-a"], env, [
-				["› ", "alpha turn\r"],
+				["/ commands · \u2191 history", "alpha turn\r"],
 				["What would you like me to inspect", "/clear\r"],
 				["previous: conv-a", "/resume conv-a\r"],
 				["session conv-a (switched", "exit\r"],
@@ -133,7 +133,7 @@ describe("/resume — the in-session door", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-rc-w3-"));
 		const out = strip(
 			ptyRun(["chat", "conv-b"], env, [
-				["› ", "/resume no-such-session\r"],
+				["/ commands · \u2191 history", "/resume no-such-session\r"],
 				["no such session", "exit\r"],
 			], workdir),
 		);
@@ -146,7 +146,7 @@ describe("/resume — the in-session door", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-rc-w4-"));
 		const out = strip(
 			ptyRun(["chat", "lonely"], env, [
-				["› ", "/resume\r"],
+				["/ commands · \u2191 history", "/resume\r"],
 				["no other sessions", "exit\r"],
 			], workdir),
 		);
@@ -160,7 +160,7 @@ describe("the guard no longer fires for the two new commands", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-rc-w5-"));
 		const out = strip(
 			ptyRun(["chat", "guard-check"], env, [
-				["› ", "/clear\r"],
+				["/ commands · \u2191 history", "/clear\r"],
 				["previous: guard-check", "exit\r"],
 			], workdir),
 		);

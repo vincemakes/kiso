@@ -10,7 +10,7 @@
  *      the cut family (`└ +N more` / `└ +N done · ctrl+r` — the W15
  *      toggle's affordance), and the live repaints never touch the
  *      committed band.
- *   2. exactly ONE settled `▞ task done · 10 items · <duration>` block
+ *   2. exactly ONE settled `✦ task done · 10 items · <duration>` block
  *      at the turn's end — the derived counts + the model tail riding
  *      the FINAL state (10 items — 0 pending, 1 active, 9 done), the
  *      full final list in the durable checklist shape (▣/▖/□), the
@@ -380,7 +380,7 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		// ten-in-one-turn burst batching IS a user-visible change and is
 		// declared in the TT-1 report; it is not a rendering defect, and no
 		// tui/cli source was touched to make this pass.
-		const forms = [...turn.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[1m▞\x1b\[0m task · 10 items · 1 active · ([0-9]+) done/g)];
+		const forms = [...turn.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[1m✦\x1b\[0m task · 10 items · 1 active · ([0-9]+) done/g)];
 		expect(forms.length).toBeGreaterThanOrEqual(1); // the live block painted — at least the final state rides the live band
 		expect(forms.every((m) => m[1] !== "1")).toBe(true); // no row-1 clamp pile — every form at its true row
 		const done = forms.map((m) => Number(m[2]!));
@@ -392,7 +392,9 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		// the FINAL state, whose settled ▣ list legitimately shows), and
 		// those forms carry the overflow fold + the done-collapse
 		// affordances, never the ▣ the collapse hides.
-		const chipPaint = turn.indexOf("\x1b[7m go \x1b[27m"); // the user message's chip — carried by the settle's pre-paint at its TRUE old row (A8b: the row-1 clamp is gone — the needle is the chip's content, not its old clamped row; the rail retired by the 2026-08-09 ruling)
+		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so it
+		// no longer closes right after the word.
+		const chipPaint = turn.indexOf("\x1b[7m go "); // the user message's chip — carried by the settle's pre-paint at its TRUE old row (A8b: the row-1 clamp is gone — the needle is the chip's content, not its old clamped row; the rail retired by the 2026-08-09 ruling)
 		expect(chipPaint).toBeGreaterThan(0);
 		const scroll = turn.indexOf("\n", chipPaint); // the settle's LF scroll — the pre-paint's end (the repaint follows, chrome first, no LF)
 		const during = turn.slice(chipPaint, scroll === -1 ? undefined : scroll);

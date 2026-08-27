@@ -25,7 +25,7 @@
  */
 
 import { escapeTerminal, palette } from "./render.js";
-import { visibleWidth, widthCut } from "./components.js";
+import { selectionBar, visibleWidth, widthCut } from "./components.js";
 import { atEmbed, bandHeader, longestRun, AT_VISIBLE, atWindow } from "./at-picker.js";
 
 /** The projected card — structurally what apps/cli/src/session-cards.ts
@@ -120,10 +120,23 @@ export function idColumn(cards: readonly SessionCardView[]): number {
 }
 
 /**
- * The filter — the @ picker's muscle, aimed at the session id: a
+ * The filter — the @ picker's muscle, aimed at what the ROW SHOWS: a
  * case-insensitive SUBSEQUENCE, ranked by the longest contiguous run,
- * then by id length, then lexically. Identical determinism, identical
- * feel; a row under the cursor never moves because two ids tied.
+ * then by the haystack's length, then lexically. Identical determinism,
+ * identical feel; a row under the cursor never moves because two
+ * candidates tied.
+ *
+ * DC-13 (R2) — it used to search the ID and nothing else. That was
+ * coherent while the id was the row's leading column; the owner's
+ * ruling moved the TITLE there and retired the id from the row, and the
+ * filter did not follow. The result is the worst kind of search: typing
+ * what you can SEE returns nothing, and typing an id you cannot see
+ * narrows the list for a reason the screen never explains.
+ *
+ * Both are searched, title FIRST. The id stays a haystack because
+ * `kiso sessions` prints ids and a human who copied one must be able to
+ * paste it here; a title hit outranks an id hit at equal run length,
+ * because the title is what the person was reading.
  *
  * An empty query matches everything and keeps the caller's order (the
  * listing's newest-first), because "no query" is not a search — it is
@@ -132,16 +145,20 @@ export function idColumn(cards: readonly SessionCardView[]): number {
 export function sessionFilter(cards: readonly SessionCardView[], query: string): SessionCardView[] {
 	if (query === "") return [...cards];
 	const lower = query.toLowerCase();
-	const scored: { card: SessionCardView; run: number }[] = [];
+	const scored: { card: SessionCardView; run: number; onTitle: boolean; key: string }[] = [];
 	for (const card of cards) {
-		const hit = atEmbed(card.id.toLowerCase(), lower);
+		const shown = (card.title ?? card.id).toLowerCase();
+		const onTitle = atEmbed(shown, lower);
+		const hit = onTitle ?? atEmbed(card.id.toLowerCase(), lower);
 		if (hit === null) continue;
-		scored.push({ card, run: longestRun(hit) });
+		const key = onTitle !== null ? shown : card.id;
+		scored.push({ card, run: longestRun(hit), onTitle: onTitle !== null, key });
 	}
 	scored.sort((a, b) => {
 		if (a.run !== b.run) return b.run - a.run;
-		if (a.card.id.length !== b.card.id.length) return a.card.id.length - b.card.id.length;
-		return a.card.id < b.card.id ? -1 : a.card.id > b.card.id ? 1 : 0;
+		if (a.onTitle !== b.onTitle) return a.onTitle ? -1 : 1;
+		if (a.key.length !== b.key.length) return a.key.length - b.key.length;
+		return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
 	});
 	return scored.map((s) => s.card);
 }
@@ -185,27 +202,28 @@ function rowSpans(card: SessionCardView, budget: number, now: number, idCol: num
 		text += `${sessionBadge(card.badge)} `;
 		w += 2;
 	}
-	const id = widthCut(escapeTerminal(card.id), Math.max(1, Math.min(idCol, budget - w)));
-	put(id, id);
-	// the column pad only survives while there is room for what follows
-	const pad = Math.max(0, Math.min(idCol - visibleWidth(id), budget - w));
-	put(" ".repeat(pad), " ".repeat(pad));
-	const meta = `  ${sessionAge(card.updatedAt, now)} · ${card.turns} turn${card.turns === 1 ? "" : "s"}`;
-	put(meta, `${p.dim}${meta}${p.reset}`);
-	// REL-0152-D6b: the TITLE — the only span on this row that answers
-	// "which conversation is this?". It goes after the meta and before
-	// the note, and it is bounded so the note (which can be the one that
-	// demands an action) still has room at ordinary widths; on a narrow
-	// terminal `put` drops whichever no longer fits, in that order.
-	const title = card.title ?? "";
+	// R2 (owner, 2026-08-27) — the TITLE LEADS and the id is gone.
+	//
+	// The id was four characters of machine identity sitting in the column
+	// the eye lands on first, and the title — the only span that answers
+	// "which conversation is this?" — came after the meta. The order is
+	// reversed: the title takes the left edge, the age and turn count go
+	// right and dim, and the note keeps its reserve. The id is still
+	// reachable where it is USED (`kiso sessions`, `/status`) — it left
+	// the row it was never the subject of.
+	// a row with no title at all falls back to the id: the id left the
+	// row it was never the subject of, but a row must still IDENTIFY
+	// something — an anonymous row is not a picker row. (In practice
+	// `sessionTitle` returns "(no prompt)" rather than "", so this is
+	// the seam for callers that build a card without records.)
+	const title = card.title ?? card.id;
 	if (title !== "") {
 		const room = Math.max(0, Math.min(budget - w - 3 - NOTE_RESERVE, TITLE_MAX));
 		const cut = widthCut(escapeTerminal(title), room);
-		if (cut !== "") {
-			put("  ", "  ");
-			put(cut, `${p.bold}${cut}${p.reset}`);
-		}
+		if (cut !== "") put(cut, `${p.bold}${cut}${p.reset}`);
 	}
+	const meta = `  ${sessionAge(card.updatedAt, now)} · ${card.turns} turn${card.turns === 1 ? "" : "s"}`;
+	put(meta, `${p.dim}${meta}${p.reset}`);
 	const note = widthCut(sessionNote(card), Math.max(0, budget - w - 3));
 	if (note !== "") {
 		// the ? note carries the warn tint — the row's own words are what
@@ -233,8 +251,10 @@ export function sessionRow(card: SessionCardView, selected: boolean, W: number, 
 	// selection cannot change the columns
 	const { text, width } = rowSpans(card, Math.max(0, W - 2), now, idCol);
 	if (!selected) return `  ${text}`;
-	const inner = text.replaceAll(p.reset, `${p.reset}${p.rv}`);
-	return `${p.rv} ${inner}${" ".repeat(Math.max(0, W - width - 2))} ${p.rvEnd}`;
+	// R2: one bar, in one place — and with it §2.1's rule that dim never
+	// sits on the wash. The age/turns/note spans were dim INSIDE the bar,
+	// grey on grey, on the row the cursor was pointing at.
+	return selectionBar(text, width, W);
 }
 
 /** The counter row — the SELECTION's 1-based place in the whole
@@ -275,12 +295,29 @@ export function sessionPickerRows(state: SessionPickState, W: number, now: numbe
 	return rows;
 }
 
-/** Slice ③ — the `kiso sessions` TTY row: the SAME projection, printed
- *  rather than picked. No selection bar (nothing is selected on a
- *  listing) and no leading indent: this row starts at column 1 like
- *  every other line a shell command prints. */
+/**
+ * Slice ③ — the `kiso sessions` TTY row: the same projection, printed
+ * rather than picked. No selection bar (nothing is selected on a
+ * listing) and no leading indent: this row starts at column 1 like
+ * every other line a shell command prints.
+ *
+ * DC-16: it keeps the ID, and the picker row does not. Sharing one
+ * projection is what stops the two surfaces drifting — that is this
+ * module's whole design and it stays — but "share the projection" is
+ * not "be the same row". The owner's ruling was about the PICKER, where
+ * the id was four characters of machine identity in the column the eye
+ * lands on first. A LISTING is the surface you read to copy an id OUT
+ * of: it is what `/resume <id>` and the filter's id haystack both
+ * assume exists, and deleting the id here quietly falsified both. The
+ * id goes LAST and dim — present for the hand that needs it, out of the
+ * way of the eye that does not.
+ */
 export function sessionListRow(card: SessionCardView, W: number, now: number, idCol: number): string {
-	return rowSpans(card, W, now, idCol).text;
+	const p = palette();
+	const tail = `  ${card.id}`;
+	const { text, width } = rowSpans(card, Math.max(1, W - visibleWidth(tail)), now, idCol);
+	if (width + visibleWidth(tail) > W) return text; // a terminal too narrow for both keeps the words
+	return `${text}${p.dim}${tail}${p.reset}`;
 }
 
 /** Slice ③ — the listing's last line: the count, and the one thing the

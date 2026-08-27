@@ -28,26 +28,32 @@ describe("DC-6 — one chip, one width", () => {
 		expect(new Set(widths).size).toBe(1);
 	});
 
-	it("the single width is the longest row's, plus the two side pads", () => {
+	// DECLARED SUPERSESSION (R2, law 1.6's recorded reversal): the single
+	// width USED to be the longest row's. It is now the TERMINAL's. The
+	// argument for sizing to content was that a one-word turn would paint
+	// a bar across the screen; the argument against is every real
+	// message, which is a paragraph and reads as a block only when the
+	// block has an edge. DC-6's actual invariant — ONE width, whatever it
+	// is — is unchanged and still asserted above.
+	it("the single width is the TERMINAL's", () => {
 		const rows = chip("hello\nthis is a much longer second line here\nok");
-		// the longest CONTENT is 38 columns; the chip adds one pad each side
-		expect(displayWidth(plain(rows[1]!))).toBe(40);
-		expect(displayWidth(plain(rows[0]!))).toBe(40);
+		expect(displayWidth(plain(rows[1]!))).toBe(56);
+		expect(displayWidth(plain(rows[0]!))).toBe(56);
 	});
 
-	it("a one-paragraph message is unchanged", () => {
+	it("a one-paragraph message spans the width too — the `/think` case, accepted", () => {
 		const rows = chip("fix the resize repaint");
 		expect(rows).toHaveLength(1);
-		expect(displayWidth(plain(rows[0]!))).toBe(24);
+		expect(displayWidth(plain(rows[0]!))).toBe(56);
 	});
 
 	it("pads a CJK row by display width, not by character count", () => {
 		const rows = chip("short\n\u4fee\u590d\u91cd\u7ed8\u95ee\u9898");
 		const widths = rows.map((r) => displayWidth(plain(r)));
 		expect(new Set(widths).size).toBe(1);
-		// six CJK characters (\u4fee\u590d\u91cd\u7ed8\u95ee\u9898) are twelve
-		// columns, plus the two side pads
-		expect(widths[0]).toBe(14);
+		// the CJK row pads to the SAME full width as the ascii one, which
+		// is only true if the pad counts cells rather than characters
+		expect(widths[0]).toBe(56);
 	});
 
 	it("a chip wide enough to fold keeps one width across the folded rows", () => {

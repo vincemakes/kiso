@@ -203,12 +203,12 @@ function finalGrid(hex: string, cols: number): string[] {
 	return frames[frames.length - 1]!.grid;
 }
 
-/** The settled shell block's body rows (below the ✓ shell header). The
+/** The settled shell block's body rows (below the   shell header). The
  *  header FOLDS at narrow widths (the command + the CJK run past W) — the
  *  fold rows are skipped, then the contiguous body-prefixed rows (the
  *  tail rows + the renderer cut) are collected. */
 function shellBody(grid: string[]): string[] {
-	const h = grid.findIndex((l) => l.includes("✓ shell"));
+	const h = grid.findIndex((l) => l.includes("  shell"));
 	expect(h).toBeGreaterThanOrEqual(0);
 	// R1.5 ④: a settled shell has NO body rows at all, so "none" is a legal
 	// answer here now — the helper reports what it finds.
@@ -234,7 +234,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		const { hex, alive } = runFlow(60);
 		expect(alive).toBe("ALIVE"); // the R2 crash class (a ≤100 thinking at a narrow winch) survives
 		const grid = finalGrid(hex, 60);
-		expect(grid.findIndex((l) => l.includes("\u2713 shell"))).toBeGreaterThanOrEqual(0);
+		expect(grid.findIndex((l) => l.includes("  shell"))).toBeGreaterThanOrEqual(0);
 		// the shell's OUTPUT is behind the key: no tail rows, no cut row
 		expect(grid.join("")).not.toContain("earlier rows");
 		expect(grid.join("\n")).not.toMatch(/^\u2502 (seq|1[012])/m);
@@ -245,7 +245,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// actionable half (offset=201) is untouched.
 		expect(grid.join("")).toContain("└ capped by read · offset=201 for the rest");
 		// the read block renders NO output body — the settled row carries the count
-		const readIdx = grid.findIndex((l) => l.includes("✓ read"));
+		const readIdx = grid.findIndex((l) => l.includes("  read"));
 		expect(grid[readIdx + 1]).toContain("└ capped by read");
 	}, 60_000);
 
@@ -253,7 +253,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		const { hex, alive } = runFlow(120);
 		expect(alive).toBe("ALIVE");
 		const grid = finalGrid(hex, 120);
-		expect(grid.findIndex((l) => l.includes("✓ shell"))).toBeGreaterThanOrEqual(0);
+		expect(grid.findIndex((l) => l.includes("  shell"))).toBeGreaterThanOrEqual(0);
 		expect(grid.join("")).not.toContain("earlier rows");
 		expect(grid.join("\n")).not.toMatch(/^│ (seq|1[012])/m);
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND).
@@ -266,7 +266,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		const frames = frameGrids(hex, 80);
 		// the frames while the shell runs: the read (the streaming cell) has
 		// settled, the shell is still running — the grid carries BOTH markers
-		const running = frames.filter((f) => f.grid.some((l) => l.includes("✓ read")) && f.grid.some((l) => /^[▖▘▝▗] shell /.test(l)));
+		const running = frames.filter((f) => f.grid.some((l) => l.includes("  read")) && f.grid.some((l) => /^[▖▘▝▗] shell /.test(l)));
 		expect(running.length).toBeGreaterThanOrEqual(2); // NON-vacuous: the moment really spans frames
 		// the window EXISTS and is 3 rows: 2 blank-padded rows + the waiting row
 		const first = running[0]!.grid;
@@ -283,7 +283,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		for (let i = 0; i < running.length - 1; i += 1) {
 			const g1 = running[i]!.grid;
 			const g2 = running[i + 1]!.grid;
-			const readIdx = g1.findIndex((l) => l.includes("✓ read"));
+			const readIdx = g1.findIndex((l) => l.includes("  read"));
 			const readBottom = readIdx + (g1[readIdx + 1]?.startsWith("└ ") ? 1 : 0);
 			const shellHeader = g1.findIndex((l) => /^[▖▘▝▗] shell /.test(l));
 			expect(shellHeader).toBeGreaterThan(readBottom); // the shell sits BELOW the streaming cell

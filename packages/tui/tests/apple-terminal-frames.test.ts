@@ -29,7 +29,7 @@ const provider = (): InputState => ({ line: "", cursor: 0 });
 function frames(script: (body: Body) => void, advanceMs: number, termProgram?: string): string {
 	const writes: string[] = [];
 	const body = new Body({ active: () => true, height: () => 24, width: () => 80, editCol: () => 1, write: (s) => writes.push(s), ...(termProgram !== undefined ? { termProgram } : {}) });
-	body.bindInput(provider, "› ");
+	body.bindInput(provider, "\u203a ");
 	body.enter();
 	script(body);
 	vi.advanceTimersByTime(advanceMs);
@@ -67,7 +67,7 @@ describe("REL-0150-D1 — the conservative frame mode on Apple Terminal", () => 
 		vi.useFakeTimers();
 		const writes: string[] = [];
 		const body = new Body({ active: () => true, height: () => 24, width: () => 80, editCol: () => 1, write: (s) => writes.push(s), termProgram: "Apple_Terminal" });
-		body.bindInput(provider, "› ");
+		body.bindInput(provider, "\u203a ");
 		body.enter();
 		vi.advanceTimersByTime(41); // the boot frame flushes
 		const before = writes.length;
@@ -120,7 +120,7 @@ describe("REL-0152-D1 — a streaming frame rewrites only what changed", () => {
 		vi.useFakeTimers();
 		const writes: string[] = [];
 		const body = new Body({ active: () => true, height: () => 40, width: () => 120, editCol: () => 1, write: (s) => writes.push(s), termProgram: "Apple_Terminal" });
-		body.bindInput(provider, "› ");
+		body.bindInput(provider, "\u203a ");
 		body.enter();
 		body.textAppend("the quick brown fox jumps over the lazy dog. ");
 		vi.advanceTimersByTime(40);
@@ -136,7 +136,7 @@ describe("REL-0152-D1 — a streaming frame rewrites only what changed", () => {
 		vi.useFakeTimers();
 		const writes: string[] = [];
 		const body = new Body({ active: () => true, height: () => 40, width: () => 120, editCol: () => 1, write: (s) => writes.push(s), termProgram: "Apple_Terminal" });
-		body.bindInput(provider, "› ");
+		body.bindInput(provider, "\u203a ");
 		body.enter();
 		body.textAppend("first");
 		vi.advanceTimersByTime(40);
@@ -145,7 +145,7 @@ describe("REL-0152-D1 — a streaming frame rewrites only what changed", () => {
 		vi.advanceTimersByTime(40);
 		// the composer's prompt is chrome: it cannot have changed between
 		// two streaming deltas, so it must not be re-emitted.
-		expect(writes.join("")).not.toContain("› ");
+		expect(writes.join("")).not.toContain("\u203a ");
 	});
 });
 

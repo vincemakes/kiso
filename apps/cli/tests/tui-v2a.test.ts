@@ -82,10 +82,10 @@ describe("TUI v2a (real PTY)", () => {
 		const { env } = isolatedEnv();
 		const out = ptyRun(env, [
 			["▌ ", "probe-one\r"],
-			// The recap line (▞) only exists AFTER the turn completes, so
+			// The recap line (✦) only exists AFTER the turn completes, so
 			// "exit" cannot collide with the first prompt (a "you> " needle
 			// would close the input before the turn ever runs).
-			["▞", "exit\r"],
+			["✦", "exit\r"],
 		]);
 		// (1) W22: the content appears TWICE — the editor's self-render
 		// echo AND the body's `you> probe-one` record (the v2a filter
@@ -101,10 +101,10 @@ describe("TUI v2a (real PTY)", () => {
 		expect(out).toContain("\x1b[1m");
 		expect(out).not.toContain("\x1b[38;5;75m");
 		// ③ faux status form.
-		expect(out).toMatch(/▞\x1b\[0m \d+s · \d+ tools?/); // v3: the recap line ends the run (the ▞ carries the bold accent)
+		expect(out).toMatch(/✦\x1b\[0m \d+s · \d+ tools?/); // v3: the recap line ends the run (the ✦ carries the bold accent)
 		// ④ rhythm: the honest terminal label (done), then the status
 		// hugging it, then exactly one blank line before the next prompt
 		// (the pty cooks \n into \r\n).
-		expect(out).toContain("▞"); // v3: the recap replaces the done label + status line
+		expect(out).toContain("✦"); // v3: the recap replaces the done label + status line
 	}, 90_000);
 });

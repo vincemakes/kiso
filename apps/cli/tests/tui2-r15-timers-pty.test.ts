@@ -34,10 +34,10 @@ function workingSeconds(raw: string): number[] {
 	return [...raw.matchAll(/working (\d+)s/g)].map((m) => Number(m[1]));
 }
 
-/** The turn recap's wall seconds — the `▞ Ns · …` row. */
+/** The turn recap's wall seconds — the `✦ Ns · …` row. */
 function recapSeconds(grid: string[]): number | null {
 	for (const line of grid) {
-		const m = /▞ (\d+)s · /.exec(line);
+		const m = /✦ (\d+)s · /.exec(line);
 		if (m !== null) return Number(m[1]);
 	}
 	return null;

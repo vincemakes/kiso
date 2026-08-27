@@ -83,7 +83,28 @@ export interface Palette {
 	readonly reset: string;
 }
 const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m", italic: "\x1b[3m", italicEnd: "\x1b[23m", underline: "\x1b[4m", underlineEnd: "\x1b[24m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" } as const;
-const withWash = (wash: string, washEnd: string): Palette => ({ ...BASE, wash, washEnd, code: wash });
+/**
+ * DC-9 (design §2.3) — the failure colour is theme-resolved.
+ *
+ * ANSI 31 is 5.89:1 on a white ground and 2.83:1 on a dark one: the one
+ * token in the alphabet whose whole job is "this went wrong" was the
+ * least readable thing on the screen exactly where a dark-terminal user
+ * reads it. A failure is CONTENT (law 1.2 admits colour there), so it
+ * cannot degrade to an attribute the way `dim` does — it needs a value
+ * per ground, and the ground is what §3's ladder is for.
+ *
+ * 256-cube indices, never truecolor (§2). Measured against the grounds
+ * §2 measures against — white, and #1E1E1E:
+ *
+ *   light  124 `#af0000`  7.44:1
+ *   dark   173 `#d7875f`  5.97:1
+ *
+ * With NO ground established the token stays ANSI 31 — the TERMINAL's
+ * own red, which its theme picked for its own background. That is rung
+ * 4's principle exactly: when the ground is unknown, use the thing that
+ * is correct on any ground rather than guessing one.
+ */
+const withWash = (wash: string, washEnd: string, red: string = BASE.red): Palette => ({ ...BASE, red, wash, washEnd, code: wash });
 /**
  * DC-3 — one table per ground.
  *
@@ -94,8 +115,8 @@ const withWash = (wash: string, washEnd: string): Palette => ({ ...BASE, wash, w
  * varies.
  */
 export const COLOR_NEUTRAL: Palette = withWash("\x1b[7m", "\x1b[27m");
-export const COLOR_LIGHT: Palette = withWash("\x1b[48;5;255m", "\x1b[49m");
-export const COLOR_DARK: Palette = withWash("\x1b[48;5;236m", "\x1b[49m");
+export const COLOR_LIGHT: Palette = withWash("\x1b[48;5;255m", "\x1b[49m", "\x1b[38;5;124m");
+export const COLOR_DARK: Palette = withWash("\x1b[48;5;236m", "\x1b[49m", "\x1b[38;5;173m");
 /** The historical name — the palette for a colour TTY whose ground has
  *  not been established. Unchanged in every byte except `code`, which
  *  was the defect. */
@@ -276,6 +297,20 @@ export function renderTerminalGap(statusLine: string | null): string {
  * 40 columns skips the logo + the blank entirely — only the info rows.
  * Pure.
  */
+/** DC-18: the display-width prefix of PLAIN text. `widthCut` lives in
+ *  components.ts, which imports this module — the dependency runs one
+ *  way, so the four lines live here rather than inverting it. */
+function plainCut(text: string, max: number): string {
+	let w = 0;
+	let i = 0;
+	for (; i < text.length; i += 1) {
+		const cw = charWidth(text.codePointAt(i)!);
+		if (w + cw > max) break;
+		w += cw;
+	}
+	return text.slice(0, i);
+}
+
 export const TAGLINE = "the coding agent that survives kill -9";
 /**
  * R2 — the wordmark is retired (2026-08-27, the nineteen-screen review).
@@ -296,7 +331,11 @@ export const TAGLINE = "the coding agent that survives kill -9";
 /** R2 — the keys a first screen teaches. One dim row, and deliberately
  *  NOT derived from KEY_BINDINGS: the sheet is the complete list and
  *  this is the opening's five, chosen rather than generated. */
-const BANNER_KEYS = "esc interrupt · ctrl+c exit · / commands · ! bash · ctrl+r expand";
+// R2: the keys row names bindings the product ACTUALLY has. The first
+// draft advertised `! bash` — there is no bang passthrough in kiso and
+// KEY_BINDINGS never had one, so the opening screen was teaching a key
+// that does nothing. A first screen that lies is worse than a short one.
+const BANNER_KEYS = "esc interrupt · ctrl+c exit · / commands · @ files · ? keys";
 /** R2 — the labels. Uppercase mono, dim, letter-spaced by the column
  *  rather than by SGR: they mark sections and are never content. */
 const BANNER_LABELS = ["MODEL", "WORKSPACE", "EXTENSIONS"] as const;
@@ -319,6 +358,12 @@ export interface BannerMeta {
 export function truncateRow(row: string, width: number): string {
 	const total = displayWidth(row);
 	if (total <= width) return row;
+	// DC-18: a width too narrow to HOLD the marker gets a hard cut. The
+	// fixpoint below floors `cut` at 0 and then appends a 6-cell marker
+	// regardless, so every width ≤ 6 returned a row WIDER than the
+	// terminal — and invariant ① throws rather than truncating. A marker
+	// wider than the row it marks is not a marker.
+	if (width < 7) return plainCut(row, Math.max(0, width));
 	// iterate the marker to a fixpoint: the marker's width changes the
 	// cut, the cut changes the hidden count the marker reports
 	let marker = " (+0)";
@@ -349,7 +394,24 @@ export function truncateRow(row: string, width: number): string {
  *  resume list (BIG only, W5). Every row truncates at the terminal width
  *  with a " (+N)" marker. Pure. */
 export function bannerLines(W: number, H: number, version: string, extensionsText: string, resume: readonly ResumeMeta[] = [], now = Date.now(), meta?: BannerMeta | undefined): string[] {
-	const rows: string[] = [truncateRow(`kiso ${version}`, W)];
+	const p = palette();
+	// R2: the banner styles itself per span. It used to be wrapped in one
+	// blanket dim by its component, which made the answers as faint as the
+	// labels asking the questions — the labels are the quiet half, the
+	// values are what a human came to read.
+	//
+	// Every width decision below is taken on PLAIN text and the styling is
+	// applied after, because truncateRow measures with displayWidth, which
+	// counts SGR bytes as columns. Style then measure is a bug waiting.
+	// DC-18: the name row is CUT like every other row here. It was the one
+	// row in this function pushed unguarded, so at W ≤ 10 `kiso 0.16.4`
+	// measured 11 cells and invariant ① threw AT STARTUP — the function
+	// whose own comment preaches "invariant ① holds at every width".
+	// The cut is taken on the plain text, per the note above.
+	const namePlain = plainCut(`kiso ${version}`, Math.max(1, W));
+	const nameCut = namePlain.slice(0, 4); // "kiso", or its surviving prefix
+	const verCut = namePlain.slice(5); // the version, if the width left room for it
+	const rows: string[] = [`${p.bold}${nameCut}${p.reset}${verCut === "" ? "" : `${p.dim} ${verCut}${p.reset}`}`];
 	const facts: [string, string][] = [];
 	if (meta !== undefined) {
 		facts.push([BANNER_LABELS[0], `${meta.model}${meta.mode === "" ? "" : ` · ${meta.mode}`}`], [BANNER_LABELS[1], meta.cwd]);
@@ -360,27 +422,47 @@ export function bannerLines(W: number, H: number, version: string, extensionsTex
 		// The value column HANGS rather than truncating. The label costs
 		// columns the value used to have, and an extension list cut at the
 		// width would hide which extensions loaded — on the one screen whose
-		// job is to say what is loaded. Words wrap; a word longer than the
-		// column still truncates, with truncateRow's honest marker.
-		const room = Math.max(8, W - 2 - LABEL_STOP);
+		// job is to say what is loaded.
+		const indent = 2 + LABEL_STOP;
+		// a terminal too narrow to hold the label column at all: the room is
+		// what is left, floored at one column, and the assembled row is
+		// truncated as a unit so invariant ① holds at every width.
+		const room = Math.max(1, W - indent);
 		for (const [label, value] of facts) {
-			const lead = `  ${label}${" ".repeat(LABEL_STOP - label.length)}`;
-			const hang = " ".repeat(displayWidth(lead));
+			const lead = `  ${p.dim}${label}${p.reset}${" ".repeat(LABEL_STOP - label.length)}`;
+			const hang = " ".repeat(indent);
+			const lines: string[] = [];
 			let line = "";
-			const out: string[] = [];
 			for (const word of value.split(" ")) {
 				if (line === "") line = word;
 				else if (displayWidth(`${line} ${word}`) <= room) line += ` ${word}`;
 				else {
-					out.push(line);
+					lines.push(line);
 					line = word;
 				}
 			}
-			if (line !== "") out.push(line);
-			for (const [i, l] of out.entries()) rows.push(truncateRow(`${i === 0 ? lead : hang}${l}`, W));
+			if (line !== "") lines.push(line);
+			for (const [i, l] of lines.entries()) {
+				const styled = `${i === 0 ? lead : hang}${truncateRow(l, room)}`;
+				rows.push(displayWidth(styled) - (i === 0 ? p.dim.length + p.reset.length : 0) <= W ? styled : truncateRow(`${hang}${l}`, W));
+			}
 		}
 	}
-	if (meta !== undefined && W >= 40) rows.push("", truncateRow(`  ${BANNER_KEYS}`, W));
+	if (meta !== undefined && W >= 40) {
+		// R2/DC-2's device: the keys row is a list of independent clauses,
+		// so a narrow terminal drops whole clauses from the end rather than
+		// cutting one in half. `ctrl+r ex (+8)` teaches nothing.
+		const clauses = BANNER_KEYS.split(" \u00b7 ");
+		let keys = clauses[0]!;
+		for (let n = clauses.length; n > 1; n -= 1) {
+			const row = clauses.slice(0, n).join(" \u00b7 ");
+			if (displayWidth(row) <= W - 2) {
+				keys = row;
+				break;
+			}
+		}
+		rows.push("", `  ${p.dim}${truncateRow(keys, W - 2)}${p.reset}`);
+	}
 	if (W >= 40 && H >= 20 && resume.length > 0) {
 		rows.push("", ...renderResumeList(resume, W, now));
 	}
@@ -438,7 +520,7 @@ function titleCut(text: string, max: number): string {
 
 export function renderResumeList(metas: readonly ResumeMeta[], W: number, now: number): string[] {
 	if (metas.length === 0) return [];
-	const rows = ["  ▞ resume"];
+	const rows = ["  ✦ resume"]; // R2: the ONE fold/segment mark (§4.2)
 	const whens = metas.map((m) => relativeTime(m.updatedAt, now));
 	const metaTexts = metas.map((m) => `${m.events} events · ${m.runs} runs`);
 	const metaW = Math.max(...metaTexts.map((t) => t.length));

@@ -87,8 +87,9 @@ describe("TUI v6 — the one compositor", () => {
 		expect(bytes).toContain("\x1b[23;1H\x1b[0K"); // the editor
 		expect(bytes).toContain("\x1b[24;1H\x1b[0K"); // the footer
 		// W6: the box — the rounded corners close the rail
-		expect(bytes).toContain("╭");
-		expect(bytes).toContain("╰");
+		// R2: both rails are the same dashed rule — two of them, not a
+		// top and a bottom that differ.
+		expect(bytes.match(/\u254c{4,}/g) ?? []).toHaveLength(2);
 		// the synchronized-output wrap is present
 		expect(bytes).toContain("\x1b[?2026h");
 		expect(bytes).toContain("\x1b[?2026l");
@@ -133,7 +134,7 @@ describe("TUI v6 — the one compositor", () => {
 	it("an idle no-commit frame leaves the chrome on H−3/H−2/H−1/H — the input-shift regression", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
-		body.bindInput(() => ({ line: "\u4f60", cursor: 1 }), "› ");
+		body.bindInput(() => ({ line: "\u4f60", cursor: 1 }), "\u203a ");
 		body.textAppend("live"); // an OPEN cell — no commit
 		tick();
 		// DECLARED SUPERSESSION (REL-0152-R1). This used to assert the
@@ -146,9 +147,9 @@ describe("TUI v6 — the one compositor", () => {
 		// status at H−1 and the input at H−3, and the screen says whether
 		// that happened.
 		const rows = screenOf(writes);
-		expect(rows[20], "the box top is not on H−3").toContain("╭");
+		expect(rows[20], "the top rail is not on H−3").toMatch(/\u254c/);
 		expect(rows[21], "the input row is not on H−2").toContain("›");
-		expect(rows[22], "the box bottom is not on H−1").toContain("╰");
+		expect(rows[22], "the bottom rail is not on H−1").toMatch(/\u254c/);
 		expect(rows[0], "the live text is not at its model row").toContain("live");
 	});
 
@@ -256,7 +257,7 @@ describe("TUI v6 — the one compositor", () => {
 	it("the cursor derives from the frame: the CHA lands at the marker's frame-derived column; the marker never reaches the stream", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
-		body.bindInput(() => ({ line: "abc", cursor: 1 }), "› ");
+		body.bindInput(() => ({ line: "abc", cursor: 1 }), "\u203a ");
 		body.raw(["x"]);
 		tick();
 		const bytes = writes.join("");
@@ -264,24 +265,24 @@ describe("TUI v6 — the one compositor", () => {
 		// REL-0161: the drawn cursor wraps the cell at the marker — read through it
 		expect(bytes.replace(/\x1b\[(?:7|27)m/g, "")).toContain("› abc"); // the prompt + the line, marker stripped
 		// W23: the cursor move is the CHA to the frame-derived column —
-		// wallL (2) + the lead "› " (2) + the cursor (1) + 1 = 6 — the
+		// wallL (2) + the lead "/ commands · \u2191 history" (2) + the cursor (1) + 1 = 6 — the
 		// absolute column lands at the marker from ANY base (the retired
 		// afterW CUB's base — the last write's end column — clamped at
 		// col 1 in the steady frame: the A3 finding)
-		expect(bytes).toContain("\x1b[6G");
+		expect(bytes).toContain("\x1b[4G"); // R2: wallL is 0
 	});
 
 	it("W21: the panel slot — the block displaces the live region, the input lead swaps, the status derives from the phase; clearing restores the prompt", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
-		body.bindInput(() => ({ line: "", cursor: 0 }), "› ");
+		body.bindInput(() => ({ line: "", cursor: 0 }), "\u203a ");
 		const panelView: PanelView = {
 			flavor: "approval",
 			name: "edit_file",
 			title: "edit examples/foo.ts",
 			speaker: "mode:default",
 			hint: "/mode accept-edits auto-approves edits",
-			statusText: "▸ run paused",
+			statusText: "⏸ run paused", // R2 (design §4): the pending mark
 			args: { kind: "text", lines: ["old", "new"] },
 			fallbackQuestion: "approve edit_file? (y/n) ",
 		};
@@ -300,13 +301,21 @@ describe("TUI v6 — the one compositor", () => {
 		// the row SAYS rather than by the absence of a chevron: the options
 		// phase leads with the DIM chevron where the composer's is bold, so
 		// the bytes differ even though the glyph does not.
-		expect(bytes).toContain("\x1b[2m› \x1b[0m"); // the panel input lead — dim, not the bold brick
-		expect(plain).toContain("▸ run paused"); // the phase status (the CLI's painting status is out)
+		// DECLARED SUPERSESSION (R2): the panel's idle lead is EMPTY. The
+		// composer dropped its chevron this round, so a panel that kept one
+		// would be the one surface reintroducing it. The slot swap is
+		// proven by what the row SAYS, which is what the note above already
+		// argued it should be — the chevron was never the evidence.
+		expect(bytes).not.toContain("\x1b[2m› \x1b[0m");
+		expect(plain).toContain("⏸ run paused"); // the phase status (the CLI's painting status is out)
 		expect(plain).toContain("↑↓ move · ⏎ or click confirms · 1-4 instant · esc"); // the phase affordance
 		body.bindApproval(() => null);
 		body.raw(["y"]);
 		tick();
-		expect(writes.join("").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")).toContain("› ");
+		// R2: clearing the panel restores the COMPOSER's row, which has no
+		// lead glyph at all — so what proves the restore is the composer's
+		// own rails and the idle hint, not a chevron.
+		expect(writes.join("").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")).toContain("/ commands · ↑ history");
 	});
 
 	it("the MenuSelect slot: the menu rows render above the status while open, none over the editor", () => {
@@ -335,7 +344,9 @@ describe("TUI v6 — the one compositor", () => {
 		// above the box top and never over the editor row. That is a fact
 		// about the screen, it is what the case is named for, and it is
 		// true or false regardless of the order the rows were written in.
-		const boxTopAt = rows.findIndex((r) => r.includes("╭"));
+		// R2: the BAND names itself with a dashed rule too, so the box top
+		// is the UNBROKEN rule — a rule with a word in it is a band header.
+		const boxTopAt = rows.findIndex((r) => /^\u254c+\s*$/.test(r.replace(/\x1b\[[0-9;]*m/g, "")));
 		const modeAt = rows.findIndex((r) => r.includes("switch the approval tier"));
 		const modelAt = rows.findIndex((r) => r.includes("list model profiles"));
 		expect(boxTopAt, "no box top on the screen").toBeGreaterThan(0);
@@ -420,7 +431,7 @@ describe("TUI v6 — the one compositor", () => {
 		expect(rows[0], "the window's first line is not tall 01").toContain("tall line 01");
 		expect(rows.join("\n"), "the banner is inside the window").not.toContain("frozen banner");
 		expect(rows.join("\n")).toContain("tall line 14");
-		expect(rows[14], "the box top is not at H−3").toContain("╭");
+		expect(rows[14], "the top rail is not at H−3").toMatch(/\u254c/);
 		expect(rows[17], "the status is not at H").not.toBe("");
 		// idempotent: a second resize (CLAMPED — the window is the whole
 		// model, skip 0) re-paints the SAME committed content, banner
@@ -455,7 +466,7 @@ describe("TUI v6 — the one compositor", () => {
 		expect(writes.join("")).toContain("▖"); // the spinner glyph rides the running line
 		body.toolResult("c1", { content: "ok", isError: false });
 		vi.advanceTimersByTime(16); // the toolResult's coalesced frame lands
-		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("✓ read");
+		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("  read");
 		writes.length = 0;
 		vi.advanceTimersByTime(2_000);
 		// the tool ended — no timer re-arms — the idle emits nothing
@@ -744,10 +755,10 @@ describe("TUI v6 — the one compositor", () => {
 		expect(rows[0]).not.toBe("");
 		const userAt = rows.findIndex((l) => l.trim() === "go"); // the chip strips to " go " (the 2026-08-09 ruling retired the rail)
 		expect(rows[userAt - 1]).toBe(""); // the banner (multi-row) breathes below
-		const readAt = rows.findIndex((l) => l.includes("✓ read"));
+		const readAt = rows.findIndex((l) => l.includes("  read"));
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
 		// the card head says the ACT. The tool is still list_dir on the wire.
-		const listAt = rows.findIndex((l) => l.includes("✓ list "));
+		const listAt = rows.findIndex((l) => l.includes("  list "));
 		expect(readAt).toBe(userAt + 1); // one-row user → one-row read: pack tight
 		expect(listAt).toBe(readAt + 1); // two one-row tools: pack tight
 		// a multi-row block (the 2-line raw recap) breathes on BOTH sides
@@ -791,8 +802,8 @@ describe("TUI v6 — the one compositor", () => {
 		// SUBJECT — that the resume list sits one blank under the banner and
 		// its columns land at exactly W — is untouched and is asserted
 		// below exactly as it was.
-		// name + blank + "  ▞ resume" + 1 session row = 4 rows
-		expect(screen.get(3)).toBe("  ▞ resume");
+		// name + blank + "  ✦ resume" + 1 session row = 4 rows
+		expect(screen.get(3)).toBe("  ✦ resume");
 		// metaW = 18 (the single meta); titleW = 80 - 13 - 18 = 49; pad 21
 		expect(screen.get(4)).toBe(
 			"    now     fix the resize repaint storm" + " ".repeat(21) + " " + "41 events · 3 runs",
@@ -808,7 +819,7 @@ describe("TUI v6 — the one compositor", () => {
 			{ title: "fix the resize repaint storm", events: 41, runs: 3, updatedAt: Date.now() },
 		]);
 		compact.tick();
-		expect(compact.writes.join("")).not.toContain("▞ resume");
+		expect(compact.writes.join("")).not.toContain("✦ resume");
 	});
 
 	it("W15: the expand key on a LIVE tool toggles in place — the full approval diff replaces the cut, the second press cuts it back", () => {
@@ -944,8 +955,11 @@ describe("TUI v6 — the one compositor", () => {
 		// "└ … ctrl+r" joins the W15 expand history — the head's commit).
 		expect(frame).toContain("a.ts · b.ts · c.ts");
 		expect(frame).toContain("+2 more — ctrl+r expands");
-		// the members are GONE — one ✓ row, not five
-		expect(frame.match(/✓/g) ?? []).toHaveLength(1);
+		// the members are GONE — one   row, not five
+		// R2: the settled tick is retired, so "exactly one row for the run"
+		// is counted by the row's own verb column rather than by a mark that
+		// no longer exists.
+		expect(frame.match(/ {2}read {2}5 files/g) ?? []).toHaveLength(1);
 		// the head joined the expand history: the expand shows the FULL
 		// per-call children, one └ row each, never rewriting the rollup.
 		const r = body.expandNext();
@@ -970,7 +984,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the HOLD: done cells of an open text-less turn stay live — the
 		// frame commits nothing of them (no fold line, no rollup)
 		tick();
-		expect(writes.join("")).not.toContain("▞");
+		expect(writes.join("")).not.toContain("\u2726");
 		expect(writes.join("")).not.toContain("5 files");
 		writes.length = 0; // drop the hold frame — only the fold frame below
 		// the boundary: the terminal closes the turn — the fold line lands
@@ -982,7 +996,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the claimed shape: the thought-seconds, the reads term, the
 		// no-edits term (the fold glyph is bold-wrapped, so the check
 		// anchors on the contiguous term text)
-		expect(frame).toContain("▞");
+		expect(frame).toContain("\u2726");
 		expect(frame).toContain("thought 19s · 5 reads · no edits");
 		// the members folded away — no individual read rows
 		expect(frame.match(/✓/g) ?? []).toHaveLength(0);
@@ -1003,7 +1017,7 @@ describe("TUI v6 — the one compositor", () => {
 	});
 
 	it("A9 (ruling R2, mock A): the user chip rides the fold — the words LEAD the one line in the SGR-7 bracket, the metadata survives; at a narrow width the words width-cut with the honest … while the metadata keeps every term; the ONE row never exceeds W (invariant ①)", () => {
-		// the preview's mock-A frame at W=80: `▞ <chip> · thought 19s ·
+		// the preview's mock-A frame at W=80: `✦ <chip> · thought 19s ·
 		// 5 reads · no edits` — the chip the same SGR-7 bracket as the
 		// live user row (#16f), the words taking the fold's width budget.
 		const { body, writes, tick } = makeBody({ W: 80 });
@@ -1017,9 +1031,9 @@ describe("TUI v6 — the one compositor", () => {
 		body.endTurn(19);
 		tick();
 		const frame = writes.join("");
-		// the chip rides the fold — the ▞ gutter, then the SGR-7 bracket
+		// the chip rides the fold — the ✦ gutter, then the SGR-7 bracket
 		// with the human's words, then the join and the full metadata
-		expect(frame).toContain("▞\x1b[0m \x1b[7m any idea what the flaky gate is? \x1b[27m · thought 19s · 5 reads · no edits");
+		expect(frame).toContain("\u2726\x1b[0m \x1b[7m any idea what the flaky gate is? \x1b[27m · thought 19s · 5 reads · no edits");
 		// the fold row fits W=80 whole (no cut at the wide width)
 		expect(frame).not.toContain("flaky gate is? …");
 		// the words take the width budget at W=40: the metadata keeps
@@ -1048,9 +1062,9 @@ describe("TUI v6 — the one compositor", () => {
 		expect(visibleWidth(foldLine!)).toBeLessThanOrEqual(40);
 	});
 
-	it("A4+A5: the settled head row carries the TARGET and the VERDICT — `✓ edit  examples/foo.ts (… · approved by X)`; the denied call's pinned row names the decider; the human approval stays bare", () => {
+	it("A4+A5: the settled head row carries the TARGET and the VERDICT — `  edit  examples/foo.ts (… · approved by X)`; the denied call's pinned row names the decider; the human approval stays bare", () => {
 		// A4: the settled-success row keeps toolTarget — the work order's
-		// shape `✓ edit examples/foo.ts`, the target in the verb's summary
+		// shape `  edit examples/foo.ts`, the target in the verb's summary
 		// column (W3's 5-char pad: "edit  examples/foo.ts"). A5: the
 		// verdict rides the head row — an extension's auto-approval appends
 		// `· approved by <decidedBy>` (the "why wasn't I asked" answer),
@@ -1080,7 +1094,7 @@ describe("TUI v6 — the one compositor", () => {
 		// A verdict WITH decidedBy is a policy's, and policy is ambient:
 		// silent. A verdict WITHOUT one is the human's, and that is the
 		// fact worth the row: ` · approved` / ` · denied`.
-		expect(plain).toContain("✓ edit  examples/foo.ts (+1 -1, 0.0s)");
+		expect(plain).toContain("  edit  examples/foo.ts (+1 -1, 0.0s)");
 		expect(plain).not.toContain("approved by");
 		// the DENIED call: the W19 pinned row (the full name + target) with
 		// the decider's tail — the aggregated head row, one line
@@ -1092,9 +1106,9 @@ describe("TUI v6 — the one compositor", () => {
 		frame = writes.join("");
 		// MOVED (same class): a POLICY denial keeps only its reason — the
 		// reason is why, and the decider was ambient.
-		expect(frame.replace(/\x1b\[[0-9;]*m/g, "")).toContain("✗ edit_file bar.ts (no touch)");
+		expect(frame.replace(/\x1b\[[0-9;]*m/g, "")).toContain("  edit_file bar.ts (no touch)");
 		// the HUMAN approval (no decidedBy): the settled row unchanged —
-		// no decider tail, the ⏸ → spinner → ✓ sequence told the story
+		// no decider tail, the ⏸ → spinner →   sequence told the story
 		body.userLine("human approval");
 		body.toolStart("read_file", "c3", { path: "x.ts" });
 		body.toolApproval("c3", null);
@@ -1108,7 +1122,7 @@ describe("TUI v6 — the one compositor", () => {
 		// The old expectation ("the settled row unchanged") was the exact
 		// inversion the walkthrough objected to — the ambient default got a
 		// byline and the human's own answer got none.
-		expect(plain3).toContain("✓ read  x.ts (approved, 0.0s)");
+		expect(plain3).toContain("  read  x.ts (approved, 0.0s)");
 		expect(plain3).not.toContain("approved by");
 	});
 
@@ -1126,7 +1140,7 @@ describe("TUI v6 — the one compositor", () => {
 		// gutter (the wrapped rows carry no ellipsis — the regex matches
 		// exactly the cut row). The invariant ① already enforced the
 		// width cap — a violated cut row would have THROWN at tick().
-		const rows = plain.match(/✓ edit  a{20,}…/g) ?? [];
+		const rows = plain.match(/  edit  a{20,}…/g) ?? [];
 		expect(rows.length).toBe(1);
 	});
 });

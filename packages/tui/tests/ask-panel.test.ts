@@ -157,7 +157,12 @@ describe("T-Q1 — the rows: the frames the human reads", () => {
 		expect(rows).toContain("bundler");
 		expect(rows).toContain(" 1 ");
 		expect(rows).toContain("vite");
-		expect(rows).toContain("— fast dev server");
+		// DECLARED SUPERSESSION (R2, design §7.5): the description used to
+		// run on after an em dash. It sits in a right column now, so the
+		// labels — the thing being chosen between — all start and END at a
+		// column the LIST decided rather than the previous row's length.
+		expect(rows).toMatch(/ 1   vite {2,}fast dev server/);
+		expect(rows).toMatch(/ 2   esbuild {2,}one binary/);
 		expect(rows).toContain("t   type your own answer");
 		expect(rows).toContain("1-4 pick · t type · esc decline");
 	});

@@ -96,15 +96,31 @@ describe("R3a — cross-session history", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-r3a-h-"));
 		// process 1: submit a distinctive line, exit
 		strip(ptyRun(["chat", "hist-one"], env, [
-			["› ", "remember this exact line\r"],
+			["/ commands · \u2191 history", "remember this exact line\r"],
 			["What would you like me to inspect", "exit\r"],
 		], workdir));
 		const file = readFileSync(join(dirs.home, "history"), "utf8");
 		expect(file).toContain("remember this exact line");
 		// process 2: ↑ on the empty composer recalls it
+		// R2 — this case was passing for the WRONG REASON and the round
+		// exposed it.
+		//
+		// Process 1 submits two lines: the distinctive one, then `exit`. So
+		// the history is [remember…, exit] and ONE ↑ recalls `exit`, not the
+		// line this asserts on. It passed anyway because the string was on
+		// screen for another reason entirely: the opening's resume list
+		// showed the previous session, and a session's title is derived from
+		// its first user text — "remember this exact line". The assertion
+		// was reading a DIFFERENT surface than the one under test.
+		//
+		// The resume list left the opening this round, so the crutch went
+		// with it. Two ↑ walk past `exit` to the line the recall is actually
+		// being tested on, and the needle is `session ` rather than `› `
+		// because the prompt is on screen from the dock's first frame,
+		// before the history file has been read and bound.
 		const out2 = strip(ptyRun(["chat", "hist-two"], env, [
-			["› ", "\x1b[A"],
-			["remember this exact line", "\x1b[B\rexit\r"], // walk back down, submit nothing meaningful, exit
+			["session ", "\x1b[A\x1b[A"],
+			["remember this exact line", "\rexit\r"],
 		], workdir));
 		expect(out2).toContain("remember this exact line");
 	});
@@ -118,7 +134,7 @@ describe("R3a — Shift+Tab cycles the tier", () => {
 		// BOOT frame's prompt would race it; the settled first turn is the
 		// REPL-ready anchor
 		const out = strip(ptyRun(["chat", "st-one"], env, [
-			["› ", "hi\r"],
+			["/ commands · \u2191 history", "hi\r"],
 			["What would you like me to inspect", "\x1b[Z"],
 			["mode → accept-edits", "exit\r"],
 		], workdir));

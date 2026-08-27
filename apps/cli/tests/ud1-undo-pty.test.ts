@@ -85,7 +85,7 @@ describe("UD-1 — the D13-class paste survives its kill, byte-exact", () => {
 			["chat", "ud1"],
 			env as NodeJS.ProcessEnv,
 			[
-				["› ", `\x1b[200~${body}\x1b[201~\x15\x1a\r`],
+				["/ commands · \u2191 history", `\x1b[200~${body}\x1b[201~\x15\x1a\r`],
 				["UD1-FAUX-REPLY-DONE", "exit\r"],
 			],
 			workdir,

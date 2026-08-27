@@ -5,7 +5,7 @@
  *
  * TWO operations, one key:
  *  (1) COMMITTED cells APPEND — the /last idiom aimed at a chosen cell:
- *      `▞ expanded · <tool> <target> · N turns back` + the full input
+ *      `✦ expanded · <tool> <target> · N turns back` + the full input
  *      and output sections. History is never rewritten (ADR-0046) —
  *      the block is new content at the bottom; the rows above are the
  *      pre-key screen's rows, byte-identical (the emulator's grid
@@ -129,7 +129,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 
 		// The appended block: the /last shape aimed at the chosen cell —
 		// the header names the target and how far back it sits.
-		expect(clean).toContain("▞ expanded · shell seq 1 8 · 2 turns back");
+		expect(clean).toContain("✦ expanded · shell seq 1 8 · 2 turns back");
 		expect(clean).toContain("--- shell input ---");
 		expect(clean).toContain('"command": "seq 1 8"');
 		expect(clean).toContain("--- shell output ---");
@@ -186,7 +186,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// both sides; the block lands as NEW content, and the rows above
 		// it are the pre-key screen's rows at the same positions,
 		// byte-identical (the append never touched them).
-		// The header splits as `▞` + reset + ` expanded` in the raw bytes,
+		// The header splits as `✦` + reset + ` expanded` in the raw bytes,
 		// so the search anchors on the post-reset text.
 		const at = out.indexOf("expanded · shell seq 1 8");
 		expect(at).toBeGreaterThan(0);
@@ -196,7 +196,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		const full = new VtScreen(24, 80);
 		full.write(Buffer.from(out, "utf8"));
 		const gridB = full.visible();
-		const r = gridB.findIndex((l) => l.includes("▞ expanded"));
+		const r = gridB.findIndex((l) => l.includes("✦ expanded"));
 		expect(r).toBeGreaterThan(0);
 		// the block's own rows: header, the sections, the full result. The
 		// blank rows between the sections are the container's W11 spacing
@@ -257,7 +257,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// The second key appended nothing — the settled cell was never cut
 		// with the affordance (its committed form is the result text), so
 		// the answer is the empty message, not a block.
-		expect(clean).not.toContain("▞ expanded");
+		expect(clean).not.toContain("✦ expanded");
 		expect(clean).toContain("[nothing to expand]");
 		// The write really happened (the answer flow completed).
 		expect(clean).toContain("written.");
@@ -364,7 +364,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// the claimed fold shape: the wall-clocked thought seconds, the
 		// reads term, the no-edits term — the ONE line for the whole turn
 		expect(clean).toMatch(/thought \d+s · 5 reads · no edits/);
-		expect(clean).toContain("▞");
+		expect(clean).toContain("✦");
 		// no rollup ever happened (the fold precedes it — the turn had no
 		// text to release with)
 		expect(clean).not.toContain("5 files");

@@ -32,16 +32,49 @@ import { VtScreen } from "./helpers/vt-screen.js";
 const ROWS = 24;
 const COLS = 100;
 
-/** The composer's input row is H−2 (0-based H−3 in the grid: box top,
- *  input, box bottom, status). The cursor must be ON it, and at or after
- *  the lead's own width — never at column 0, never on another row. */
+/** A row that is nothing but the dashed rule — the composer's rails. */
+const isRail = (row: string): boolean => /^\u254c+$/.test(row.trimEnd());
+
+/** An input row: a non-rail row with a rail above it and a rail below
+ *  it. That is the CHROME_ROWS=4 contract itself — rail, input, rail,
+ *  status — so it holds for the composer, for its multi-line
+ *  continuation rows, and for a panel's own prompt row. */
+function betweenRails(grid: readonly string[], row: number): boolean {
+	if (isRail(grid[row] ?? "")) return false;
+	let above = false;
+	for (let r = row - 1; r >= 0; r -= 1) {
+		if (isRail(grid[r] ?? "")) {
+			above = true;
+			break;
+		}
+	}
+	let below = false;
+	for (let r = row + 1; r < grid.length; r += 1) {
+		if (isRail(grid[r] ?? "")) {
+			below = true;
+			break;
+		}
+	}
+	return above && below;
+}
+
+/**
+ * The composer's input row is H−2 (0-based H−3 in the grid: rail, input,
+ * rail, status). The cursor must be ON it, never on another row.
+ *
+ * DECLARED SUPERSESSION (R2): the row used to be found by `│ ›` — one
+ * cell of box wall plus the chevron. Law 1.1 retired the box and the
+ * owner's ruling retired the chevron, so the row is identified
+ * STRUCTURALLY: the non-rail row between the composer's two rails. The
+ * column floor went with the lead — column one is where an empty
+ * composer legitimately parks — and what replaces it is the ceiling,
+ * which is the claim that can still be false.
+ */
 function expectParkedInComposer(term: VtScreen, where: string): void {
 	const grid = term.visible();
 	const { row, col } = term.cursor;
-	const inputRow = grid.findIndex((l) => l.startsWith("│ ›") || l.startsWith("│ amend›"));
-	expect(inputRow, `${where}: no composer row on screen`).toBeGreaterThanOrEqual(0);
-	expect(row, `${where}: cursor on row ${row} (${JSON.stringify(grid[row] ?? "")}), expected the composer row ${inputRow}`).toBe(inputRow);
-	expect(col, `${where}: cursor at col ${col}, inside the lead`).toBeGreaterThanOrEqual(2);
+	expect(betweenRails(grid, row), `${where}: cursor on row ${row} (${JSON.stringify(grid[row] ?? "")}), not an input row`).toBe(true);
+	expect(col, `${where}: cursor at col ${col}, past the width`).toBeLessThan(COLS);
 }
 
 function workspace(): string {
@@ -102,8 +135,9 @@ describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
 			const line = term.visible()[term.cursor.row] ?? "";
 			// an input row is the composer's, its multi-line continuation, or
 			// a panel's own prompt — every one of them is a place a keystroke
-			// legitimately lands
-			if (!/^│ (›|amend›| )/.test(line)) strays.push(`frame ${frames}: ${JSON.stringify(line.slice(0, 60))}`);
+			// legitimately lands, and every one of them sits between the
+			// composer's two rails (R2: see betweenRails)
+			if (!betweenRails(term.visible(), term.cursor.row)) strays.push(`frame ${frames}: ${JSON.stringify(line.slice(0, 60))}`);
 			pos = i + CLOSE.length;
 		}
 		expect(frames, "no frames in the stream").toBeGreaterThan(5);

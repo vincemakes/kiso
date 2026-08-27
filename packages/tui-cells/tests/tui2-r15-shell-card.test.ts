@@ -136,7 +136,7 @@ describe("TUI2-R1.5 ④(c) — the completed shell collapses to ONE line (VD-5)"
 	it("the settled card is ONE row: the head plus the suffix", () => {
 		const rows = render(done());
 		expect(rows).toHaveLength(1);
-		expect(rows[0]).toBe("✓ shell npm test (exit 0, 6.0s) · 7 lines · ctrl+r expands");
+		expect(rows[0]).toBe("  shell npm test (exit 0, 6.0s) · 7 lines · ctrl+r expands");
 		// the tail rows and the "earlier rows" cut are gone
 		expect(rows[0]).not.toContain("earlier rows");
 	});

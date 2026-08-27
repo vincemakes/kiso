@@ -23,9 +23,31 @@ import { relativeLuminance } from "../src/ground.js";
 afterEach(() => setGround("unknown"));
 
 const GROUND = { light: { r: 255, g: 255, b: 255 }, dark: { r: 30, g: 30, b: 30 } };
-const grey = (n: number): { r: number; g: number; b: number } => {
-	const v = n >= 232 ? 8 + (n - 232) * 10 : 0;
-	return { r: v, g: v, b: v };
+/**
+ * DC-9: the xterm-256 index → sRGB, for BOTH halves of the space.
+ *
+ * This used to cover only the 232–255 grey ramp and return black for
+ * everything else — safe while the greys were the only absolute
+ * foregrounds, and silently wrong the moment §2.3's theme-resolved
+ * failure colour (a 6×6×6 cube index) arrived: it measured 173 as
+ * black-on-#1e1e1e, 1.26:1, and would have failed a colour that is
+ * actually 5.97:1. A gate that computes the wrong number is worse than
+ * no gate, because it is believed.
+ */
+const rgbOf = (n: number): { r: number; g: number; b: number } => {
+	if (n >= 232) {
+		const v = 8 + (n - 232) * 10;
+		return { r: v, g: v, b: v };
+	}
+	if (n >= 16) {
+		const LEVELS = [0, 95, 135, 175, 215, 255];
+		const i = n - 16;
+		return { r: LEVELS[Math.floor(i / 36)]!, g: LEVELS[Math.floor(i / 6) % 6]!, b: LEVELS[i % 6]! };
+	}
+	// 0–15 are the terminal's OWN palette slots: no fixed sRGB exists for
+	// them, which is exactly why the product does not spend them as
+	// absolute colours. Reaching here is the bug, so it is stated.
+	throw new Error(`index ${n} is a terminal palette slot, not an absolute colour`);
 };
 const contrast = (a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): number => {
 	const [x, y] = [relativeLuminance(a), relativeLuminance(b)];
@@ -40,13 +62,13 @@ const fgIndexes = (p: Palette): number[] =>
 describe("DC-3 — absolute foregrounds clear the floor against their own ground", () => {
 	it("light", () => {
 		for (const n of fgIndexes(COLOR_LIGHT)) {
-			expect(contrast(grey(n), GROUND.light), `index ${n} on white`).toBeGreaterThanOrEqual(4.5);
+			expect(contrast(rgbOf(n), GROUND.light), `index ${n} on white`).toBeGreaterThanOrEqual(4.5);
 		}
 	});
 
 	it("dark", () => {
 		for (const n of fgIndexes(COLOR_DARK)) {
-			expect(contrast(grey(n), GROUND.dark), `index ${n} on #1e1e1e`).toBeGreaterThanOrEqual(4.5);
+			expect(contrast(rgbOf(n), GROUND.dark), `index ${n} on #1e1e1e`).toBeGreaterThanOrEqual(4.5);
 		}
 	});
 
@@ -97,6 +119,45 @@ describe("setGround selects the palette", () => {
 			expect(palette()).toBe(COLOR_DARK);
 			setGround("unknown");
 			expect(palette()).toBe(COLOR_NEUTRAL);
+		} finally {
+			Object.defineProperty(process.stdout, "isTTY", { value: tty, configurable: true });
+		}
+	});
+});
+
+/**
+ * DC-9 (design §2.3) — the failure colour is theme-resolved.
+ *
+ * ANSI 31 is not theme-safe: 5.89:1 on white, 2.83:1 on #1e1e1e. The one
+ * token whose job is "this went wrong" was least readable exactly where
+ * a dark-terminal user reads it. The floor gate above already covers the
+ * ratios; what this pins is that the token VARIES by ground at all, and
+ * that the unknown ground keeps the terminal's own red rather than
+ * guessing an absolute one (rung 4's principle, applied to a foreground).
+ */
+describe("DC-9 — the failure colour knows its ground", () => {
+	it("is an absolute index once the ground is known, and a different one per ground", () => {
+		expect(COLOR_LIGHT.red).toBe("\x1b[38;5;124m");
+		expect(COLOR_DARK.red).toBe("\x1b[38;5;173m");
+		expect(COLOR_LIGHT.red).not.toBe(COLOR_DARK.red);
+	});
+
+	it("stays the TERMINAL's own red when the ground is unknown", () => {
+		expect(COLOR_NEUTRAL.red).toBe("\x1b[31m");
+	});
+
+	it("is nothing at all under NO_COLOR", () => {
+		expect(COLOR_OFF.red).toBe("");
+	});
+
+	it("routes through palette() like every other token", () => {
+		const tty = process.stdout.isTTY;
+		Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+		try {
+			setGround("light");
+			expect(palette().red).toBe("\x1b[38;5;124m");
+			setGround("dark");
+			expect(palette().red).toBe("\x1b[38;5;173m");
 		} finally {
 			Object.defineProperty(process.stdout, "isTTY", { value: tty, configurable: true });
 		}

@@ -76,12 +76,12 @@ describe("TUI2-R2pre ④ — one display-verb table", () => {
 	});
 
 	it("T-R2p-13: the card heads speak one language — list_dir and search_text stop showing raw", () => {
-		expect(render(toolCell({ name: "list_dir", inputFull: JSON.stringify({ path: "src" }) }))[0]).toContain("✓ list ");
+		expect(render(toolCell({ name: "list_dir", inputFull: JSON.stringify({ path: "src" }) }))[0]).toContain("  list ");
 		expect(render(toolCell({ name: "list_dir", inputFull: JSON.stringify({ path: "src" }) }))[0]).not.toContain("list_dir");
-		expect(render(toolCell({ name: "search_text", inputFull: JSON.stringify({ pattern: "parseExpr" }) }))[0]).toContain("✓ search ");
+		expect(render(toolCell({ name: "search_text", inputFull: JSON.stringify({ pattern: "parseExpr" }) }))[0]).toContain("  search ");
 		expect(render(toolCell({ name: "search_text", inputFull: JSON.stringify({ pattern: "parseExpr" }) }))[0]).not.toContain("search_text");
 		// the heads that were already short stay byte-identical
-		expect(render(toolCell())[0]).toBe("✓ read  src/parser.ts (2.4s) · 2 lines · ctrl+r expands");
+		expect(render(toolCell())[0]).toBe("  read  src/parser.ts (2.4s) · 2 lines · ctrl+r expands");
 	});
 
 	it("T-R2p-14: the advisory family says what the human should read, not what the model calls", () => {
@@ -130,7 +130,7 @@ describe("TUI2-R2pre ④ — one display-verb table", () => {
 		// renderToolSummary is the non-TTY rendering. The round's proof
 		// obligation is that its bytes do not move, so a redirected run and
 		// every e2e that reads stdout are untouched.
-		expect(renderToolSummary("read_file", { path: "a.ts" }, { content: "x", isError: false })).toBe("✓ read a.ts (1 line)");
+		expect(renderToolSummary("read_file", { path: "a.ts" }, { content: "x", isError: false })).toBe("\u2713 read a.ts (1 line)"); // R2: the pipe keeps its mark
 		expect(renderToolSummary("list_dir", { path: "root" }, { content: "x", isError: false })).toContain("list_dir");
 		expect(renderToolSummary("search_text", { pattern: "p" }, { content: "x", isError: false })).toContain("search_text");
 	});

@@ -2356,7 +2356,14 @@ export class Editor {
 		// owns the keys, the brick otherwise): maxW = W − walls − lead.
 		const lead = this.#panel !== null ? panelLead(this.#panel.view, this.#panel.phase, this.#panel.cursor, this.#panel.ask ?? undefined) : PROMPT;
 		const leadW = leadWidth(lead);
-		const maxW = Math.max(1, W - leadW - 4); // W6: the box's walls (2+2) — the visible line fits the box's inner width; the "…" rides inside
+		// DC-17: ONE column, not four. W6's box took 2+2 and this kept
+		// reserving them after law 1.1 retired it — so the horizontal
+		// scroll fired three columns early, the cursor could never reach
+		// the row's last three cells, and the two width authorities the
+		// W23 contract says must never disagree disagreed by 3. The
+		// compositor's walk caps at W−1 (the drawn cursor's own cell);
+		// this is the same one column, on the same row.
+		const maxW = Math.max(1, W - leadW - 1);
 		// KC1: the scroll is the CURSOR LINE's own offset — a single-line
 		// buffer's line starts at 0, so the math is today's exactly. The
 		// clamp catches a walk onto a line SHORTER than the old offset.
