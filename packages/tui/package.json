@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-tui",
-	"version": "0.16.1",
+	"version": "0.16.2",
 	"description": "kiso tui \u2014 the pure terminal layer (cell renderer, dock, raw editor, diff, palette). Zero runtime dependencies: input is data, output is bytes.",
 	"type": "module",
 	"license": "MIT",
@@ -35,6 +35,6 @@
 	},
 	"homepage": "https://github.com/vincemakes/kiso/tree/main/packages/tui#readme",
 	"dependencies": {
-		"@vincemakes/kiso-tui-cells": "0.16.1"
+		"@vincemakes/kiso-tui-cells": "0.16.2"
 	}
 }

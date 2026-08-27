@@ -40,6 +40,8 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 			"esc stop        alt+⏎ / ctrl+⏎ redirect    / commands",
 			"↑↓ history / queue pop              ctrl+r expand cells",
 			"tab complete (menu / @)             ? this sheet",
+			// UD-1: the undo row — its own single-column grid row
+			"ctrl+z / ctrl+y undo / redo",
 			// MOVED (the TUI2-R3v2 panel-selection supersession class): R1.5
 			// pin 6 chose "digits pick · ⏎ confirms" as the one sentence true
 			// of an approval where a digit SELECTED and an ask where a digit
@@ -55,7 +57,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		setTTY(false);
 		for (const W of [20, 34, 50, 60, 80, 120]) {
 			const rows = keysSheetRows(W);
-			expect(rows).toHaveLength(6);
+			expect(rows).toHaveLength(7); // UD-1: + the undo row
 			for (const row of rows) expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
 		}
 	});
@@ -65,7 +67,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		const rows = keysSheetRows(80);
 		expect(rows[0]).toBe("\x1b[1mkeys\x1b[0m");
 		expect(rows[1]).toContain("\x1b[38;5;252menter\x1b[0m send");
-		expect(rows[5]).toBe(`\x1b[2m${PANEL_KEYS_ROW}\x1b[0m`);
+		expect(rows[6]).toBe(`\x1b[2m${PANEL_KEYS_ROW}\x1b[0m`); // UD-1: the panel row moved down one
 	});
 
 	it("ONE SOURCE — every binding in the table reaches the sheet, and nothing but the table does", () => {
@@ -102,7 +104,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		// enter submits, ctrl+j/shift+⏎ insert a newline, esc stops,
 		// alt+⏎/ctrl+⏎ redirect, @ picks files, / opens the menu, ↑↓ walk
 		// the history and pop the queue, ctrl+r expands, tab completes,
-		// ? opens this sheet.
+		// ? opens this sheet, ctrl+z/ctrl+y undo and redo (UD-1).
 		expect(KEY_BINDINGS.map((b) => b.keys)).toEqual([
 			"enter",
 			"ctrl+j / shift+⏎",
@@ -114,6 +116,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 			"ctrl+r",
 			"tab",
 			"?",
+			"ctrl+z / ctrl+y",
 		]);
 	});
 });

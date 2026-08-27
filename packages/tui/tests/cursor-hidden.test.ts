@@ -110,10 +110,10 @@ describe("REL-0161 ③ — the composer draws its own cursor", () => {
 
 	it("a wide (CJK) glyph inverts whole", () => {
 		const { body, writes, tick } = makeBody();
-		body.bindInput(() => ({ line: "你好", cursor: 0 }), "› ");
+		body.bindInput(() => ({ line: "\u4f60\u597d", cursor: 0 }), "› ");
 		body.enter();
 		tick();
-		expect(writes.join("")).toContain("› \x1b[7m你\x1b[27m好");
+		expect(writes.join("")).toContain("› \x1b[7m\u4f60\x1b[27m\u597d");
 	});
 
 	it("an empty composer still shows a cursor: the inverse space after the lead", () => {

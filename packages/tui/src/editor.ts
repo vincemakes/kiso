@@ -317,6 +317,19 @@ export class Editor {
 	#history: string[] = [];
 	#historyIdx: number | null = null;
 	#preBrowse: number[] = [];
+	// UD-1: minimal draft undo. Two stacks of FROZEN snapshots beside
+	// the one mutable buffer (the KC1 flat-buffer discipline holds —
+	// the stacks are history, never a second projection). A checkpoint
+	// is pushed only by a gesture about to discard ≥1 code point (the
+	// kills, the menu-esc clear, each queue-pop replacement, the
+	// @-apply splice); typing and single backspace push nothing — v1
+	// is loss-recovery, not char-granular edit history. ctrl+z
+	// restores text+cursor exactly; ctrl+y mirrors; undo never
+	// discards (what it replaces always lands on the redo stack).
+	// Both stacks clear on submit/clearLine — a sent turn is in the
+	// durable log and the ↑ history, not a loss.
+	#undoStack: { chars: readonly number[]; cursor: number }[] = [];
+	#redoStack: { chars: readonly number[]; cursor: number }[] = [];
 	// W22: the pending-turn queue's bound state — the CLI's live slots
 	// (chat.ts). ↑ pops the LAST queued message into the buffer and
 	// enters the pop-mode (the walk: repeated ↑ pop older ones, each
@@ -416,6 +429,8 @@ export class Editor {
 	}
 
 	clearLine(): void {
+		this.#undoStack.length = 0; // UD-1
+		this.#redoStack.length = 0;
 		this.#chars = [];
 		this.#cursor = 0;
 		this.#scroll = 0;
@@ -637,6 +652,7 @@ export class Editor {
 		const view = this.#atView();
 		if (view === null) return;
 		const insert = [...`@${view.matches[view.selected]!.path} `].map((ch) => ch.codePointAt(0)!);
+		if (this.#cursor - view.start >= 1) this.#checkpoint(); // UD-1
 		this.#chars.splice(view.start, this.#cursor - view.start, ...insert);
 		this.#cursor = view.start + insert.length;
 		this.#atClose();
@@ -1172,6 +1188,7 @@ export class Editor {
 					// v3 §04: Esc closes the menu and clears the buffer.
 					// CA-4: the closing esc consumes its burst (the `i += 1`
 					// convention) — a double-esc can never abort the turn.
+					if (this.#chars.length > 0) this.#checkpoint(); // UD-1
 					this.#chars = [];
 					this.#cursor = 0;
 					this.#scroll = 0;
@@ -1255,6 +1272,12 @@ export class Editor {
 				i += 1;
 			} else if (c === "\x17") {
 				this.#killWord();
+				i += 1;
+			} else if (c === "\x1a" || c === "\x1f") {
+				this.#undoOp(); // UD-1: ctrl+z (and the readline ctrl+_)
+				i += 1;
+			} else if (c === "\x19") {
+				this.#redoOp(); // UD-1: ctrl+y
 				i += 1;
 			} else if (c === "\x01") {
 				this.#cursor = this.#cursorBounds().start; // A3: line-local (a single line starts at 0 — unchanged)
@@ -1899,8 +1922,68 @@ export class Editor {
 		if (!this.#pasting) this.#onRender();
 	}
 
+	// ---- UD-1: the undo machinery ----
+
+	/** The caps: entries and total code points (a D13-class 260KB paste
+	 *  fits with room). Evict oldest; both stacks share the shape. */
+	static readonly #UNDO_CAP = 64;
+	static readonly #UNDO_CP_CAP = 2 * 1024 * 1024;
+
+	#snap(): { chars: readonly number[]; cursor: number } {
+		return { chars: [...this.#chars], cursor: this.#cursor };
+	}
+
+	#sameSnap(a: { chars: readonly number[]; cursor: number }, b: { chars: readonly number[]; cursor: number }): boolean {
+		return a.cursor === b.cursor && a.chars.length === b.chars.length && a.chars.every((c, i) => c === b.chars[i]);
+	}
+
+	#capStack(stack: { chars: readonly number[]; cursor: number }[]): void {
+		while (stack.length > Editor.#UNDO_CAP) stack.shift();
+		let total = stack.reduce((n, s) => n + s.chars.length, 0);
+		while (stack.length > 1 && total > Editor.#UNDO_CP_CAP) total -= stack.shift()!.chars.length;
+	}
+
+	/** Push the CURRENT state before a destructive gesture. Always
+	 *  clears the redo stack (a new destruction forks history); the
+	 *  push itself is deduped against the top. */
+	#checkpoint(): void {
+		this.#redoStack.length = 0;
+		const cur = this.#snap();
+		const top = this.#undoStack.at(-1);
+		if (top !== undefined && this.#sameSnap(top, cur)) return;
+		this.#undoStack.push(cur);
+		this.#capStack(this.#undoStack);
+	}
+
+	#restoreSnap(s: { chars: readonly number[]; cursor: number }): void {
+		this.#chars = [...s.chars];
+		this.#cursor = s.cursor;
+		this.#scroll = 0;
+		this.#verticalGoalCol = null;
+		this.#reflow();
+		this.#refreshMenu();
+		if (!this.#pasting) this.#onRender();
+	}
+
+	#undoOp(): void {
+		const prev = this.#undoStack.pop();
+		if (prev === undefined) return;
+		this.#redoStack.push(this.#snap());
+		this.#capStack(this.#redoStack);
+		this.#restoreSnap(prev);
+	}
+
+	#redoOp(): void {
+		const next = this.#redoStack.pop();
+		if (next === undefined) return;
+		this.#undoStack.push(this.#snap());
+		this.#capStack(this.#undoStack);
+		this.#restoreSnap(next);
+	}
+
 	#killToStart(): void {
 		const { start } = this.#cursorBounds(); // A3: line-local (0 on a single line — unchanged)
+		if (this.#cursor > start) this.#checkpoint(); // UD-1
 		this.#chars.splice(start, this.#cursor - start);
 		this.#cursor = start;
 		this.#reflow();
@@ -1909,6 +1992,7 @@ export class Editor {
 
 	#killToEnd(): void {
 		const { end } = this.#cursorBounds(); // A3: line-local (the buffer's end on a single line — unchanged)
+		if (end > this.#cursor) this.#checkpoint(); // UD-1
 		this.#chars.splice(this.#cursor, end - this.#cursor);
 		this.#reflow();
 		if (!this.#pasting) this.#onRender();
@@ -1921,6 +2005,7 @@ export class Editor {
 		let i = this.#cursor;
 		while (i > 0 && this.#chars[i - 1] === 0x20) i -= 1; // trailing spaces
 		while (i > 0 && this.#chars[i - 1] !== 0x20) i -= 1; // the word
+		if (i < this.#cursor) this.#checkpoint(); // UD-1
 		this.#chars.splice(i, this.#cursor - i);
 		this.#cursor = i;
 		this.#reflow();
@@ -2036,6 +2121,8 @@ export class Editor {
 
 	#takeLine(): string {
 		const line = String.fromCodePoint(...this.#chars);
+		this.#undoStack.length = 0; // UD-1: a sent turn is not a loss
+		this.#redoStack.length = 0;
 		this.#chars = [];
 		this.#cursor = 0;
 		this.#scroll = 0;
@@ -2202,6 +2289,7 @@ export class Editor {
 		if (this.#queuePop === null) return;
 		const line = this.#queuePop();
 		if (line === null) return;
+		if (this.#chars.length > 0) this.#checkpoint(); // UD-1: a mid-walk edit is recoverable
 		this.#chars = [...line].map((ch) => ch.codePointAt(0)!);
 		this.#cursor = this.#chars.length;
 		this.#scroll = 0;

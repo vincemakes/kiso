@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-provider-anthropic",
-	"version": "0.16.1",
+	"version": "0.16.2",
 	"description": "kiso Anthropic adapter \u2014 official SDK wire events mapped to the kiso event union.",
 	"type": "module",
 	"license": "MIT",
@@ -22,7 +22,7 @@
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.115.0",
-		"@vincemakes/kiso-core": "0.16.1"
+		"@vincemakes/kiso-core": "0.16.2"
 	},
 	"devDependencies": {
 		"@types/node": "^26.1.2",

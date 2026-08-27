@@ -228,6 +228,7 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
 	{ keys: "ctrl+r", what: "expand cells" },
 	{ keys: "tab", what: "complete (menu / @)" },
 	{ keys: "?", what: "this sheet" },
+	{ keys: "ctrl+z / ctrl+y", what: "undo / redo" },
 ];
 
 /**
@@ -295,12 +296,14 @@ const SHEET_GRID: readonly (readonly number[])[] = [
 	[3, 4, 5],
 	[6, 7],
 	[8, 9],
+	[10], // UD-1: its own single-column row — no hand-tuned stop touched
 ];
 const SHEET_STOPS: readonly (readonly number[])[] = [
 	[16, 43],
 	[16, 43],
 	[36],
 	[36],
+	[],
 ];
 
 /**
