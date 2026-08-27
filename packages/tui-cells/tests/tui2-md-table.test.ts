@@ -39,24 +39,34 @@ function plain(s: string): string {
 const TABLE = ["| area | lines | budget |", "|---|---|---|", "| core | 1972 | 2000 |", "| cli | 2012 | 1920 |"].join("\n");
 
 describe("TUI2-MD ④ — tables", () => {
-	it("T-MD-28: the aligned table — dim rules, a bold header, padded columns", () => {
+	/**
+	 * R2 supersession (2026-08-27, the nineteen-screen review): the rails
+	 * are gone. A table is bounded by the blank lines above and below it,
+	 * exactly as every other block on the screen is, and it was the last
+	 * box left on a screen that has decided not to have boxes. Alignment
+	 * does the work the rails were doing, the header is still bold, and a
+	 * copied table is closer to markdown without them.
+	 */
+	it("T-MD-28: the aligned table — a bold header, padded columns, no rails", () => {
 		const p = palette();
 		const rows = renderMarkdown(TABLE, 60);
 		expect(rows).toEqual([
-			`${p.dim}│${p.reset} ${p.bold}area${p.reset} ${p.dim}│${p.reset} ${p.bold}lines${p.reset} ${p.dim}│${p.reset} ${p.bold}budget${p.reset} ${p.dim}│${p.reset}`,
-			`${p.dim}├──────┼───────┼────────┤${p.reset}`,
-			`${p.dim}│${p.reset} core ${p.dim}│${p.reset} 1972  ${p.dim}│${p.reset} 2000   ${p.dim}│${p.reset}`,
-			`${p.dim}│${p.reset} cli  ${p.dim}│${p.reset} 2012  ${p.dim}│${p.reset} 1920   ${p.dim}│${p.reset}`,
+			`  ${p.bold}area${p.reset}  ${p.bold}lines${p.reset}  ${p.bold}budget${p.reset}`,
+			"  core  1972   2000",
+			"  cli   2012   1920",
 		]);
-		// the rule's segments are the column widths plus their two pad columns
-		expect(visibleWidth(plain(rows[1]!))).toBe(visibleWidth(plain(rows[0]!)));
+		expect(rows.every((r) => !plain(r).includes("│"))).toBe(true);
 	});
 
 	it("T-MD-29: CJK cells measure with the width authority, so the columns line up", () => {
 		// two-column CJK headers and cells, mixed with narrow ASCII
 		const src = ["| \u5ef6\u8fdf | ms |", "|---|---|", "| \u4fee\u590d\u524d | 120 |", "| a | 45 |"].join("\n");
-		const widths = renderMarkdown(src, 60).map((r) => visibleWidth(r));
-		expect(new Set(widths).size).toBe(1); // every row exactly as wide as the rest
+		// R2: without rails the rows no longer pad to a common width, so the
+		// subject is stated directly — every COLUMN starts at the same
+		// place, which is what "the columns line up" always meant.
+		const rows = renderMarkdown(src, 60).map(plain);
+		const second = rows.map((r) => visibleWidth(r.slice(0, r.lastIndexOf("  ") + 2)));
+		expect(new Set(second).size).toBe(1);
 	});
 
 	it("T-MD-30: styled cell content is measured STRIPPED — SGR has no width", () => {
@@ -67,14 +77,17 @@ describe("TUI2-MD ④ — tables", () => {
 
 	it("T-MD-31: the alignment column comes from the delimiter row", () => {
 		const src = ["| head | head | head |", "|:--|:-:|--:|", "| a | b | c |"].join("\n");
-		expect(plain(renderMarkdown(src, 60)[2]!)).toBe("│ a    │  b   │    c │");
+		expect(plain(renderMarkdown(src, 60)[1]!)).toBe("  a      b       c"); // left, centre, right — R2: no rails
 	});
 
 	it("T-MD-32: too narrow -> the VERTICAL record, every cell kept", () => {
 		const p = palette();
 		const wide = ["| area | n |", "|---|---|", "| a-very-long-area-name | 1 |", "| b | 2 |"].join("\n");
-		// the natural table is 29 columns; at 28 it becomes records
-		expect(renderMarkdown(wide, 28)).toEqual([
+		// R2: the rails cost four columns, so the natural table is 28 now
+		// and the record threshold moved with it. The SUBJECT — that a
+		// table which cannot be drawn becomes records rather than being
+		// cut — is untouched, and it is exercised at the new threshold.
+		expect(renderMarkdown(wide, 27)).toEqual([
 			`${p.bold}area${p.reset}${p.dim}:${p.reset} a-very-long-area-name`,
 			`${p.dim}n: 1${p.reset}`,
 			"",
@@ -82,7 +95,7 @@ describe("TUI2-MD ④ — tables", () => {
 			`${p.dim}n: 2${p.reset}`,
 		]);
 		// one column more and the aligned table is back
-		expect(plain(renderMarkdown(wide, 29)[0]!)).toBe("│ area                  │ n │");
+		expect(plain(renderMarkdown(wide, 28)[0]!)).toBe("  area                   n");
 	});
 
 	it("T-MD-33: NOTHING is ever truncated — every cell appears at every width", () => {
@@ -104,10 +117,13 @@ describe("TUI2-MD ④ — tables", () => {
 	});
 
 	it("T-MD-35: the acceptance content's table renders wide and degrades narrow", () => {
+		// R2: the wide form is an ALIGNED table (no rails to look for), the
+		// narrow form is records. The discriminator is the record form's
+		// own `label: value` shape, which no aligned row has.
 		const wide = renderMarkdown(MD_BENCHMARK, 100).map(plain);
-		expect(wide.some((r) => r.startsWith("├") && r.includes("┼"))).toBe(true);
 		const narrow = renderMarkdown(MD_BENCHMARK, 34).map(plain);
-		expect(narrow.some((r) => r.startsWith("├"))).toBe(false);
+		expect(wide.some((r) => /^ {2}\S+ +\S/.test(r) && !r.includes(": "))).toBe(true);
+		expect(narrow.some((r) => r.includes(": "))).toBe(true);
 		// the numbers from the table body are present at BOTH widths
 		for (const cell of ["1972", "2000", "2012", "1920", "1468", "1280"]) {
 			expect(`${cell} wide=${wide.join(" ").includes(cell)} narrow=${narrow.join(" ").includes(cell)}`).toBe(`${cell} wide=true narrow=true`);

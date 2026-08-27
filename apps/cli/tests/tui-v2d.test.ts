@@ -121,9 +121,13 @@ const CELL_LINE = [
 	/^streaming text.*$/, // the TextCell body
 	/^session \S+$/, // the session header
 	/^\[faux mode.*$/, // the faux banner line
-	/^(█|▀).*$/, /^\[?2m\]?█.*$/, // the logo rows (the dim code may ride the segment)
-	/^the coding agent that survives kill -9$/, // the tagline
-	/^v\d+\.\d+\.\d+.*$/, // the version + tagline row (W1 — the art is the wordmark, the text row does not repeat the name)
+	// R2 supersession: the wordmark, the tagline and the version row are
+	// retired. The opening is the name, three labelled facts (whose values
+	// hang under their label when they are long), and one keys row.
+	/^kiso \d+\.\d+\.\d+.*$/, // the name row
+	/^(MODEL|WORKSPACE|EXTENSIONS) {2,}.*$/, // a labelled fact (the lint trims the indent)
+	/^esc interrupt · .*$/, // the keys row
+	/^\[.*extensions?:.*$/, // an EXTENSIONS value continuing on its own row
 	/^│ ›.*│$/, // W6: the input row inside the box (the prompt › — the trim eats the pad)
 	/^▌\s?.*$/, // the editor's SELF-RENDER row — the LINE-MODE brick (W6-kept byte-for-byte): the editor's first paint rides the CLI's pre-dock console.log message on the same row
 	// TUI v5 #16f: the user block — the SGR-7 chip alone (the 2026-08-09
@@ -163,6 +167,13 @@ const lint = (raw: string): string[] => {
 			.replace(/\r/g, "")
 			.trim();
 		if (t === "") continue;
+		// DC-3 supersession: a QUESTION kiso asks the terminal is not a line
+		// of the transcript. `ESC ] 11 ; ? BEL` is the background query sent
+		// once at startup; it carries no cell and paints no row. Admitting
+		// it here keeps the lint's real subject — two cells' content merged
+		// into one write — the only thing it can fail on. The strip has
+		// strip only touches CSI, so the query arrives here whole.
+		if (/^\x1b\]1[01];\?\x07$/.test(t)) continue;
 		if (CELL_LINE.some((re) => re.test(t))) continue;
 		bad.push(t);
 	}

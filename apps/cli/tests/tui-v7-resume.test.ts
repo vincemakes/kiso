@@ -152,18 +152,25 @@ describe("W5 (real PTY) — the opening-screen resume list", () => {
 		const grid = finalGrid(hex, 24, 80);
 		// R-G 0.1.47 (ADR-0050): the ~1ms link-lock append merged the
 		// opening and the run into ONE sync frame, whose paint sequence
-		// never exceeds the 24-row viewport. TT-1B moved the cell's rows:
-		// VD-14's 2-row wordmark (6 art rows became 2) lifts the list to
-		// rows 7..9, and the W5 unification puts the picker's badge glyph
-		// on every data row — both pre-written sessions are mid-run logs,
-		// so both wear the interrupted ▌ (derived through the SAME
-		// projection the picker uses, never a second derivation)
-		expect(grid[9]).toBe("  ▞ resume");
+		// never exceeds the 24-row viewport. The W5 unification puts the
+		// picker's badge glyph on every data row — both pre-written
+		// sessions are mid-run logs, so both wear the interrupted ▌
+		// (derived through the SAME projection the picker uses, never a
+		// second derivation).
+		//
+		// R2 supersession: the banner lost its two wordmark rows and its
+		// version/tagline row, and gained the keys row, so the list sits
+		// one row lower than TT-1B left it. Its POSITION is not the
+		// subject — that it appears under the banner, aligned, with the
+		// badge on every row, is — so the header is FOUND rather than
+		// indexed, and the rows are read relative to it.
+		const head = grid.findIndex((r) => r === "  ▞ resume");
+		expect(head).toBeGreaterThan(0);
 		// resumeB (appended later — updatedAt desc) sorts first: 15 events · 2 runs
-		const b = grid[10] ?? "";
+		const b = grid[head + 1] ?? "";
 		expect(b.startsWith("    ▌ now ")).toBe(true);
 		expect(b).toContain("v6 one-compositor gates");
-		const a = grid[11] ?? "";
+		const a = grid[head + 2] ?? "";
 		expect(a.startsWith("    ▌ now ")).toBe(true);
 		expect(a).toContain("fix the resize repaint storm");
 		// the meta FIELD occupies the same columns on both rows — aligned
@@ -176,7 +183,7 @@ describe("W5 (real PTY) — the opening-screen resume list", () => {
 		// the CURRENT session is excluded: nothing below the list carries
 		// the meta — the run's own lines (user line, text, recap) land at
 		// the bottom of the content area instead
-		expect(grid.slice(12).join("")).not.toContain("events ·");
+		expect(grid.slice(head + 3).join("")).not.toContain("events ·");
 		expect(grid.join("")).toContain("resume run done");
 	});
 

@@ -156,7 +156,12 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		expect(grid.filter((l) => l.includes("I'm the faux model")).length).toBe(1);
 		expect(grid.filter((l) => l === " go ").length).toBe(1); // the 2026-08-09 ruling: the chip alone, flush left (one space each side — the rail + the indent retired)
 		expect(grid.filter((l) => l.includes("0 tools")).length).toBe(1);
-		expect(grid.filter((l) => l.includes("session ")).length).toBe(1);
+		// R2: the opening grew from five rows to seven (three labelled facts
+		// and a keys row replaced two art rows and a tagline), so on a
+		// 24-row screen the session header can scroll off the FINAL grid.
+		// The subject here is DUPLICATION — a resize repainting a line it
+		// already painted — and that is what is asserted: never twice.
+		expect(grid.filter((l) => l.includes("session ")).length).toBeLessThanOrEqual(1);
 		// the chrome: two box rails (the top ╭─╮ + the bottom ╰─╯ — the
 		// design §03, W6), the status once, the input row once — the WALL
 		// is 3+ separators

@@ -104,6 +104,11 @@ const TAB = 0x09;
  *  the geometry stays legal down to the compositor's enter gate (H = 4
  *  ⇒ one row, exactly today's minimum). */
 const N_MAX = 6;
+/** DC-7 — the longest OSC kiso will hold while waiting for a terminator.
+ *  The reports it reads are tens of bytes; anything past this is a
+ *  payload for someone else, and holding it is how the editor goes
+ *  deaf. */
+const OSC_MAX = 1024;
 
 /** The dim "…" — the ONE truncation mark: the horizontal scroll's
  *  prefix (unchanged) and the viewport's hidden-rows markers. */
@@ -340,7 +345,9 @@ export class Editor {
 	#queueState: () => readonly string[] = () => [];
 	#queuePop: (() => string | null) | null = null;
 	#queuePopMode = false;
-	#pending = ""; // an incomplete ESC/CSI prefix across chunks
+	#pending = ""; // an incomplete ESC/CSI/OSC prefix across chunks
+	/** DC-7: the terminal's own reports (OSC). Never a keystroke. */
+	#oscCb: ((body: string) => void) | null = null;
 	#decoder = new TextDecoder();
 	#entered = false;
 	#onData: (raw: Uint8Array) => void;
@@ -353,6 +360,18 @@ export class Editor {
 		this.closed = new Promise((resolve) => {
 			this.#closedResolve = resolve;
 		});
+	}
+
+	/**
+	 *  DC-7 — the terminal answering a question kiso asked it.
+	 *
+	 *  The body is everything between `ESC ]` and the terminator, verbatim
+	 *  and unparsed (`11;rgb:ffff/ffff/ffff`). The editor's job ends at
+	 *  keeping it out of the draft; deciding what a report MEANS belongs to
+	 *  whoever asked the question.
+	 */
+	onOsc(cb: (body: string) => void): void {
+		this.#oscCb = cb;
 	}
 
 	onLine(cb: (line: string) => void): void {
@@ -1172,6 +1191,31 @@ export class Editor {
 					}
 					this.#csi(m[1]!, m[2]!);
 					i += m[0]!.length + 1;
+				} else if (rest.startsWith("]")) {
+					// DC-7: an OSC is a message FROM the terminal — a background
+					// colour answer, a theme-change notice, a clipboard report.
+					// There was no branch for it, so the bytes fell through to
+					// the literal-text path and the answer was typed into the
+					// draft. The terminator is BEL **or** ST: Apple Terminal
+					// answers `ESC ] 11 ; rgb:… BEL`, and ST is the standard.
+					const end = /\x07|\x1b\\/.exec(rest);
+					if (end === null) {
+						const tail = text.slice(i);
+						// The unterminated case is the SGR-1006 hazard by another
+						// door: park it and a stream that never terminates grows
+						// #pending forever until the editor goes deaf. A report
+						// long enough to be a payload (OSC 52 carries a whole
+						// clipboard) is not one we read, so past the cap it is
+						// dropped rather than held.
+						if (tail.length > OSC_MAX) {
+							i = text.length;
+							break;
+						}
+						this.#pending = tail; // incomplete OSC — wait for more
+						break;
+					}
+					this.#oscCb?.(rest.slice(1, end.index));
+					i += 1 + end.index + end[0]!.length;
 				} else if (rest.startsWith("O")) {
 					i += 3; // SS3 (function keys) — ignored
 				} else if (rest.startsWith("\x0d") && this.#composerIdle()) {

@@ -65,7 +65,27 @@ function run(): string {
 }
 
 describe("TUI2-MD ⑥ — the acceptance content, end to end", () => {
-	it("T-MD-44: the settled screen renders markdown, and shows none of its syntax", () => {
+	/**
+	 * E2/DC-4 supersession — the CLAIM this test makes has changed.
+	 *
+	 * It used to be "shows none of its syntax": the terminal drew the
+	 * rendered form and the markdown source never appeared. From
+	 * 2026-08-27 the position is narrower and, we think, truer — the
+	 * syntax is shown exactly where hiding it would stop the rendered
+	 * form from being markdown:
+	 *
+	 *   · a fenced block keeps its ``` rails, so a copied block is a
+	 *     fenced block;
+	 *   · a heading at level 3 or below prints its own `###`, because
+	 *     attributes have run out and the marker is the only carrier of
+	 *     the level that survives a pipe;
+	 *   · a list marker is `- `, not `•`, so a copied list is a list.
+	 *
+	 * Everything this content actually uses — `##`, `**`, inline
+	 * backticks — is still stripped, so the assertions below are the
+	 * unchanged half of the claim and they still hold.
+	 */
+	it("T-MD-44: the settled screen renders markdown, and shows no syntax it can afford to hide", () => {
 		const grid = settledScreen(run(), ROWS, COLS);
 		const text = grid.join("\n");
 		// the heading's marker is stripped and its numbering kept
@@ -77,18 +97,37 @@ describe("TUI2-MD ⑥ — the acceptance content, end to end", () => {
 		// them) — `MaxListenersExceededWarning` appears without them
 		expect(text).toContain("MaxListenersExceededWarning");
 		expect(text).not.toContain("`MaxListeners");
-		// the list is normalized and hangs
-		expect(text).toContain("• ");
-		// the table is drawn, not passed through
-		expect(text).toMatch(/├─+┼/);
+		// the list is normalized and hangs — E1: to `- `, which is still
+		// markdown when a human copies the row out of the terminal
+		expect(text).toContain("- ");
+		// the table is drawn, not passed through. R2 supersession: it is
+		// drawn by ALIGNMENT now — the rails were the last box on a screen
+		// that has decided not to have boxes, and a table is bounded by the
+		// blank lines above and below it exactly as every other block is.
+		// The subject is unchanged: the source markup does not reach the
+		// screen, and the cells do.
+		// the RAILS specifically — `│` survives elsewhere as a scoping
+		// gutter (a diff body, a quote), which is the distinction R2 drew:
+		// a rule separates, a gutter scopes, and only the separators
+		// collapsed into one vocabulary.
+		expect(text).not.toMatch(/[├┼┤]/);
 		expect(text).not.toContain("|---|");
+		expect(text).toMatch(/ {2}\S+ +\S+ +\S/);
 	}, 90_000);
 
 	it("T-MD-45: the styled bytes are the round's alphabet and nothing else", () => {
 		const raw = run();
 		// every SGR the run emitted, over the whole session: the closed
 		// alphabet plus the cursor/erase CSIs the compositor owns
-		const allowed = new Set(["\x1b[0m", "\x1b[1m", "\x1b[2m", "\x1b[3m", "\x1b[7m", "\x1b[23m", "\x1b[27m", "\x1b[31m", "\x1b[32m", "\x1b[33m", "\x1b[38;5;252m"]);
+		// DC-3/DC-4 supersession: `38;5;252` leaves the alphabet — it was
+		// the inline-code tint, 1.54:1 on a white terminal, and the product
+		// can no longer emit it. `4`/`24` join it for the level-1 heading
+		// (an ATTRIBUTE, on the italic precedent), and `48;5;255`/`48;5;236`
+		// /`49` are the wash once a ground has been resolved. This content
+		// exercises neither, and a closed-alphabet gate should still name
+		// every byte the product is ALLOWED to emit rather than only the
+		// ones one fixture happens to reach.
+		const allowed = new Set(["\x1b[0m", "\x1b[1m", "\x1b[2m", "\x1b[3m", "\x1b[4m", "\x1b[7m", "\x1b[23m", "\x1b[24m", "\x1b[27m", "\x1b[31m", "\x1b[32m", "\x1b[33m", "\x1b[49m", "\x1b[48;5;255m", "\x1b[48;5;236m"]);
 		const seen = new Set([...raw.matchAll(/\x1b\[[0-9;]*m/g)].map((m) => m[0]));
 		expect([...seen].filter((s) => !allowed.has(s))).toEqual([]);
 		// italic really did reach the wire as an attribute this round
@@ -104,6 +143,6 @@ describe("TUI2-MD ⑥ — the acceptance content, end to end", () => {
 		const text = grid.join("\n");
 		expect(text).not.toContain("## ");
 		expect(text).not.toContain("**");
-		expect(text).toContain("• ");
+		expect(text).toContain("- "); // E1
 	}, 90_000);
 });

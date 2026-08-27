@@ -52,9 +52,13 @@ describe("TUI2-MD ② — the inline pass", () => {
 		expect(inlineSpans("say **loud** now", "")).toBe(`say ${p.bold}loud${p.reset} now`);
 		// *italic* -> SGR 3, closing with 23 (the attribute's own close)
 		expect(inlineSpans("say *soft* now", "")).toBe(`say ${p.italic}soft${p.italicEnd} now`);
-		// `code` -> the existing tint, the backticks gone (the markdown pass
-		// SUBSUMES colorInlineCode for assistant body text)
-		expect(inlineSpans("run `npm test` now", "")).toBe(`run ${p.code}npm test${p.reset} now`);
+		// `code` -> the verbatim SURFACE, the backticks gone (the markdown
+		// pass SUBSUMES colorInlineCode for assistant body text).
+		// DC-3 supersession: the span used to carry an absolute foreground
+		// tint (#d0d0d0, 1.54:1 on a white terminal) closed by SGR 0. It is
+		// a wash now, closed by washEnd for the reason `rv` closes with 27:
+		// a span inside a heading must end without stranding the heading.
+		expect(inlineSpans("run `npm test` now", "")).toBe(`run ${p.wash}npm test${p.washEnd} now`);
 		// [t](url) -> t bright, the url dim in parentheses; no OSC 8
 		expect(inlineSpans("see [the docs](https://example.com) now", "")).toBe(
 			`see ${p.bold}the docs${p.reset}${p.dim} (https://example.com)${p.reset} now`,
@@ -119,7 +123,13 @@ describe("TUI2-MD ② — the inline pass", () => {
 	it("T-MD-16: the SGR alphabet stays CLOSED — italic is the only new member", () => {
 		// the whole acceptance content, every construct, at four widths:
 		// nothing outside the palette may appear.
-		const allowed = new Set([COLOR_ON.bold, COLOR_ON.dim, COLOR_ON.code, COLOR_ON.reset, COLOR_ON.italic, COLOR_ON.italicEnd]);
+		// DC-3 supersession, declared: the alphabet gains `washEnd` (27).
+		// It is not a new COLOUR — `wash`/`washEnd` are the reverse-video
+		// pair the chip has always used, reaching inline code now that the
+		// absolute grey is retired. On a resolved ground the pair becomes a
+		// background (48;5;N / 49), which is why the palette is read from
+		// the table rather than spelled out here.
+		const allowed = new Set([COLOR_ON.bold, COLOR_ON.dim, COLOR_ON.wash, COLOR_ON.washEnd, COLOR_ON.reset, COLOR_ON.italic, COLOR_ON.italicEnd]);
 		const seen = new Set<string>();
 		for (const W of [40, 60, 80, 120]) for (const row of renderMarkdown(MD_BENCHMARK, W)) for (const s of sgr(row)) seen.add(s);
 		expect([...seen].filter((s) => !allowed.has(s))).toEqual([]);

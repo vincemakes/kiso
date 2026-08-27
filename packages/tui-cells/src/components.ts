@@ -35,6 +35,7 @@ import {
 	palette,
 	type Palette,
 	type ResumeMeta,
+	type BannerMeta,
 } from "./render.js";
 // TUI2-MD: the markdown renderer's surface reaches the tui through this
 // module (the tui's components shim re-exports it) — one import edge,
@@ -243,7 +244,7 @@ export type BodyCell =
 	 *  cell does. */
 	| { kind: "md"; block: MdBlock; done: boolean }
 	| { kind: "notice"; text: string; done: true }
-	| { kind: "banner"; version: string; extensionsText: string; resume: ResumeMeta[]; done: true }
+	| { kind: "banner"; version: string; extensionsText: string; resume: ResumeMeta[]; meta?: BannerMeta | undefined; done: true }
 	| { kind: "raw"; lines: string[]; done: true; wrap?: "words" }
 	| { kind: "terminal"; label: string; line: string; done: true }
 	| {
@@ -336,21 +337,31 @@ class UserMessage implements Component {
 		// was a 3000-line turn writing 260,298 bytes in one frame.
 		const paras = this.cell.text.split("\n");
 		let truncated = false;
+		// DC-6: the folded CONTENT first, then ONE width over all of it.
+		// The pad used to be computed per source paragraph, so a message
+		// with two lines drew as two bars of two different lengths — a
+		// ragged right edge on a block that is one block. A single
+		// paragraph was always correct, which is why it survived: the
+		// shape only appears once a message has a second line.
+		const content: string[] = [];
 		for (const para of paras) {
-			if (rows.length >= USER_CHIP_ROWS) {
+			if (content.length >= USER_CHIP_ROWS) {
 				truncated = true;
 				break;
 			}
-			const folded = foldLine(escapeTerminal(para), chipW);
-			const inner = Math.max(...folded.map((r) => displayWidth(r)));
-			for (const row of folded) {
-				if (rows.length >= USER_CHIP_ROWS) {
+			for (const row of foldLine(escapeTerminal(para), chipW)) {
+				if (content.length >= USER_CHIP_ROWS) {
 					truncated = true;
 					break;
 				}
-				const pad = inner - displayWidth(row);
-				rows.push(`${p.rv} ${row}${" ".repeat(pad)} ${p.rvEnd}`);
+				content.push(row);
 			}
+		}
+		// displayWidth stays the padding authority (never `length`): a CJK
+		// row is two cells per character and pads by cells.
+		const inner = content.length === 0 ? 0 : Math.max(...content.map((r) => displayWidth(r)));
+		for (const row of content) {
+			rows.push(`${p.rv} ${row}${" ".repeat(inner - displayWidth(row))} ${p.rvEnd}`);
 		}
 		if (!truncated) return rows;
 		// The notice is OUTSIDE the chip's reverse video, in the cut-row
@@ -877,7 +888,7 @@ function appendSuffix(row: string, suffix: string): string {
  * would put the invariant "exactly one bright token" in as many hands as
  * there are emitters. Here it has exactly one.
  *
- * NO_COLOR: p.code is empty, so the row's bytes are untouched.
+ * NO_COLOR: p.dim is empty, so the row's bytes are untouched.
  */
 export function focusToken(row: string, W: number): string {
 	const p = palette();
@@ -885,8 +896,16 @@ export function focusToken(row: string, W: number): string {
 	if (at !== -1) {
 		// the row already names the key — brighten the token in place, and
 		// leave every other span exactly as it was
-		if (p.code === "") return row;
-		return `${row.slice(0, at)}${p.code}${CTRL_R}${p.reset}${p.dim}${row.slice(at + CTRL_R.length)}`;
+		if (p.dim === "") return row;
+		// DC-3: the marker takes the WASH. It used to take the inline-code
+		// tint and inherited its 1.54:1 — the cue naming the key that
+		// reveals a cell was itself the least readable thing on a white
+		// terminal. The wash is right for a second reason: this token has
+		// to be UNIQUE on the frame ("exactly one bright token"), and an
+		// attribute like bold is spent everywhere. It closes with washEnd
+		// rather than a reset, so the surrounding dim survives instead of
+		// having to be re-applied.
+		return `${row.slice(0, at)}${p.wash}${CTRL_R}${p.washEnd}${row.slice(at + CTRL_R.length)}`;
 	}
 	// A LIVE row does not carry the affordance today, and the live cell is
 	// the one ctrl+r takes FIRST (expandNext scans the live tail before
@@ -897,7 +916,7 @@ export function focusToken(row: string, W: number): string {
 	// renders a cell with no focus and is untouched).
 	const room = W - visibleWidth(row);
 	if (room < SUFFIX_MIN) return row; // never at the cost of invariant ①
-	return `${row}${p.dim} · ${p.reset}${p.code}${CTRL_R}${p.reset}`;
+	return `${row}${p.dim} · ${p.reset}${p.wash}${CTRL_R}${p.washEnd}`;
 }
 
 const CTRL_R = "ctrl+r";
@@ -1393,10 +1412,10 @@ class TerminalBlock implements Component {
  *  40 cols the logo never paints). W11: no trailing blank — the
  *  container's formula breathes below the (always multi-row) banner. */
 class Banner implements Component {
-	constructor(private readonly cell: { version: string; extensionsText: string; resume: ResumeMeta[] }) {}
+	constructor(private readonly cell: { version: string; extensionsText: string; resume: ResumeMeta[]; meta?: BannerMeta | undefined }) {}
 	render(W: number, ctx: FrameCtx): string[] {
 		const p = palette();
-		const rows = bannerLines(W, ctx.height, this.cell.version, this.cell.extensionsText, this.cell.resume, ctx.now);
+		const rows = bannerLines(W, ctx.height, this.cell.version, this.cell.extensionsText, this.cell.resume, ctx.now, this.cell.meta);
 		return rows.map((r) => `${p.dim}${r}${p.reset}`);
 	}
 }
@@ -1590,18 +1609,28 @@ export function selectionBar(styled: string, visible: number, W: number): string
 	return `${p.rv} ${inner}${" ".repeat(Math.max(0, W - visible - 2))} ${p.rvEnd}`;
 }
 
-/** W6 — the box: the chrome's top rail. The two ╌ dotted rows become
- *  a rounded box (the box already says "input lives here"); the rails
- *  stay dim, the width is still the full W (the box is a rail with
- *  corners — the menu/gap rows above and the status below are
- *  untouched). */
+/**
+ * R2 — the composer's rails, and the ONE edge vocabulary.
+ *
+ * W6 turned two ╌ dotted rows into a rounded box, reasoning that "the
+ * box already says input lives here". That is reversed here, and the
+ * reason is not taste: a rule is a DELIMITER and a box is a CONTAINER,
+ * and the screen was carrying six edge vocabularies at once (this box,
+ * the panel's │ gutter and └── tail, the diff gutter, the quote's ▏, the
+ * table's ├─┼─┤ rails, the markdown rule's ─). One dashed rule replaces
+ * the ones that separate; the │ gutter survives where it SCOPES.
+ *
+ * Row-neutral by construction: CHROME_ROWS is still 4, so every gate
+ * keyed on H − 4 is untouched, and the input row gains the two columns
+ * the walls were taking.
+ */
 export function boxTop(W: number): string {
-	return `\x1b[2m╭${"─".repeat(Math.max(0, W - 2))}╮\x1b[0m`;
+	return `\x1b[2m\u256d${"\u2500".repeat(Math.max(0, W - 2))}\u256e\x1b[0m`;
 }
 
 /** W6 — the box: the chrome's bottom rail. */
 export function boxBottom(W: number): string {
-	return `\x1b[2m╰${"─".repeat(Math.max(0, W - 2))}╯\x1b[0m`;
+	return `\x1b[2m\u2570${"\u2500".repeat(Math.max(0, W - 2))}\u256f\x1b[0m`;
 }
 
 /** The terminal label + rhythm gap (the pipe path's v2c bytes — the

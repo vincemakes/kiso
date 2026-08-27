@@ -29,7 +29,7 @@ import { newSessionId } from "./session-id.js";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { BADGE_GLYPH, Body, Editor, bannerLines, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
+import { BADGE_GLYPH, Body, Editor, bannerLines, currentGround, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
 import {
 	createAgent,
 	disposeExtensions,
@@ -52,7 +52,7 @@ import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, re
 import { resume } from "./resume.js";
 import { resumeTail } from "./resume-tail.js";
 import { armByteTrace } from "./byte-trace.js";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { clipboardImage } from "./clipboard.js";
 import { collectSessionCards, projectSessionCard } from "./session-cards.js";
 
@@ -244,6 +244,29 @@ function makeLineInput(): LineInput {
 	if (process.stdin.isTTY) {
 		const editor = new Editor(() => (dock.active ? dock.redraw() : editor.selfRender()));
 		editor.enter();
+		// DC-3: ask the terminal what its background is, and paint the
+		// first frame without waiting for the answer.
+		//
+		// Every grey in the palette is a claim about the background, and
+		// kiso had never established one — inline code was chosen on a dark
+		// terminal and measured 1.54:1 on a white one. The question is one
+		// write; the answer comes back through the editor, which is already
+		// the process's single reader of stdin (DC-7 taught it to swallow
+		// OSC rather than type it into the draft). No timer, no second
+		// reader, nothing blocking: an answer that never arrives leaves the
+		// ground `unknown`, and `unknown` is a supported palette, not a
+		// failure — see packages/tui-cells/src/ground.ts.
+		editor.onOsc((reply) => {
+			const next = resolveGround({ theme: process.env.KISO_THEME, osc: reply, colorfgbg: process.env.COLORFGBG });
+			if (next === currentGround()) return;
+			setGround(next);
+			body.onGroundChange();
+		});
+		// The query is COLOUR machinery, so it obeys the colour gate: a piped
+		// stdout and NO_COLOR both carry zero ANSI, and an OSC written into a
+		// pipe would be the first byte to break that. `palette().bold` is the
+		// same test the dock activates on — one gate, not a second opinion.
+		if (palette().bold !== "" && process.stdout.isTTY) process.stdout.write("\x1b]11;?\x07");
 		// W6: the box's prompt goes light — "› " (the box already says
 		// "input lives here"; the line-mode path keeps the brick ▌, so
 		// pipe bytes do not change)
@@ -286,7 +309,19 @@ function extensionsBanner(resume: ResumeMeta[] = []): void {
 		if (text !== "") bodyLog(`${text}\n`);
 		return;
 	}
-	body.banner(VERSION, text.replace(/^ · /, ""), resume);
+	// R2: the opening answers the three questions a first screen is asked.
+	// The model and the tier come from the same state the status line reads
+	// (one source, so the two can never disagree); the workspace is the
+	// home-relative cwd, because `~/Desktop/devv/kiso` is what a human
+	// calls the place and `/Users/vinve/Desktop/devv/kiso` is what a
+	// filesystem calls it.
+	const home = homedir();
+	const cwd = process.cwd();
+	body.banner(VERSION, text.replace(/^ · /, ""), resume, {
+		model: agentModel,
+		mode: getMode() === "plan" ? "plan (read-only)" : getMode(),
+		cwd: cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd,
+	});
 }
 
 /** W5: the opening-screen resume list — up to 3 recent sessions, newest

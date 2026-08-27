@@ -453,7 +453,8 @@ function panelRuleText(view: PanelView): string {
 		view.amended === true
 			? `${head}${p.dim}needs approval · (amended) — asked by${p.reset}${tail}`
 			: `${head}${p.dim}needs approval — asked by${p.reset}${tail}`;
-	return hint ? `${base}${p.dim} ·${p.reset} ${p.code}${escapeTerminal(hint)}${p.reset}` : base;
+	// DC-3: the fix hint is metadata — it borrowed the inline-code tint.
+	return hint ? `${base}${p.dim} · ${escapeTerminal(hint)}${p.reset}` : base;
 }
 
 /**

@@ -82,7 +82,7 @@ import {
 	type BodyCell,
 	type FrameCtx,
 } from "./components.js";
-import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, toolTarget, type ResumeMeta } from "./render.js";
+import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, toolTarget, type BannerMeta, type ResumeMeta } from "./render.js";
 import { displayVerb, keysSheetRows } from "./strings.js";
 
 /** The cursor marker — an APC private sequence the focus component
@@ -800,20 +800,20 @@ export class Body {
 	 *  list re-gates with the tier (BIG only) and re-times with the
 	 *  frame. The inactive path keeps the historical bytes (no resume —
 	 *  the pipe contract). */
-	banner(version: string, extensionsText: string, resume: ResumeMeta[] = []): void {
+	banner(version: string, extensionsText: string, resume: ResumeMeta[] = [], meta?: BannerMeta | undefined): void {
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
 			this.#closeOpenText();
 			const W = this.#opts.width() || 80; // a 0-size pty falls back
 			const H = this.#opts.height();
 			const p = palette();
-			for (const r of bannerLines(W, H, version, extensionsText)) this.#write(`${p.dim}${r}${p.reset}\n`);
+			for (const r of bannerLines(W, H, version, extensionsText, [], Date.now(), meta)) this.#write(`${p.dim}${r}${p.reset}\n`);
 			this.#write("\n");
 			return;
 		}
 		this.#closeOpenThinking();
 		this.#closeOpenText();
-		this.#cells.push({ kind: "banner", version, extensionsText, resume, done: true });
+		this.#cells.push({ kind: "banner", version, extensionsText, resume, meta, done: true });
 		this.#mark();
 	}
 
@@ -1182,6 +1182,24 @@ export class Body {
 			this.#settleResize();
 		}, RESIZE_SETTLE_MS);
 		if (this.#resizeTimer.unref !== undefined) this.#resizeTimer.unref();
+	}
+
+	/**
+	 * DC-3 — the ground arrived, so every colour on the held screen is
+	 * stale.
+	 *
+	 * The terminal answers `OSC 11` a few milliseconds after startup, by
+	 * which time the first frame is already painted with the no-ground
+	 * palette. Rather than delay the opening to wait for an answer that
+	 * may never come, the frame is painted at once and repainted when the
+	 * answer lands. Invalidating the held screen is exactly what a resize
+	 * does, for exactly the same reason — every row's bytes are wrong —
+	 * so it rides the settle the resize already owns and costs one
+	 * repaint, once per session.
+	 */
+	onGroundChange(): void {
+		this.#screen = [];
+		this.onResize();
 	}
 
 	/** The one repaint a drag earns, once its signals have stopped. */
@@ -2409,6 +2427,10 @@ export class Dock {
 	}
 	onResize(): void {
 		compositorRef?.onResize();
+	}
+	/** DC-3 — the terminal answered what its background is; repaint. */
+	onGroundChange(): void {
+		compositorRef?.onGroundChange();
 	}
 	/** TUI2-R3v2 ②: where the last frame put the panel's clickable option
 	 *  rows (absolute screen rows). The editor binds this and does no row

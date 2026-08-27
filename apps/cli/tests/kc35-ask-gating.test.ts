@@ -73,24 +73,30 @@ describe("T-Q3 — the banner counts what loaded: 4 on a TTY, 3 on a pipe", () =
 
 describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 	it("the /help rows are the eight extracted rows PLUS the mini-spec pair", () => {
+		// DC-1 supersession: the gap was four spaces after the name whatever
+		// the name's length, so `/help`'s description began three columns
+		// left of `/compact`'s and the second column wandered down the list.
+		// It is one computed stop now — max(name) + 4 — so the WORDS are
+		// still the hand-transcribed pre-move literals and only the padding
+		// moved. TUI2-R1 (D) froze the keys SENTENCE, not the alignment.
 		// hand-transcribed from the pre-move dispatch.ts (0.7.0, 6707f0a);
 		// /clear and /resume joined at the resume+clear mini-spec round —
 		// a DECLARED ADDITION, the pre-move rows keep their exact bytes
 		expect(helpRows().map(plain)).toEqual([
-			"/help    print this list of commands",
-			"/think    show the last full thinking block",
-			"/last    show the most recent tool call's input and output",
-			"/status    show session id, event count, and context estimate",
-			"/mode    show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)",
-			"/model    list model profiles; /model <name|provider/model> switches",
+			"/help       print this list of commands",
+			"/think      show the last full thinking block",
+			"/last       show the most recent tool call's input and output",
+			"/status     show session id, event count, and context estimate",
+			"/mode       show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)",
+			"/model      list model profiles; /model <name|provider/model> switches",
 			"/compact    summarize the older conversation to free context",
-			"/clear    start a fresh conversation (the old session stays resumable)",
-			"/resume    switch to another session; /resume <id> goes directly",
+			"/clear      start a fresh conversation (the old session stays resumable)",
+			"/resume     switch to another session; /resume <id> goes directly",
 			// slice ⑥ appends the ask gesture to the keys row — the KC1/KC2/KC3
 			// precedent (the row is where a gesture is taught, and the row
 			// costs nothing). Everything before " · 1-4 answers an ask" is
 			// the hand-transcribed pre-move literal.
-			"exit    leave the session\nkeys    enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead · @ files · 1-4 answers an ask",
+			"exit        leave the session\nkeys        enter sends \u00b7 ctrl+J newline (shift+enter where encoded) \u00b7 esc stops the run \u00b7 alt+\u23ce stops it and sends this instead \u00b7 @ files \u00b7 1-4 answers an ask",
 		]);
 	});
 

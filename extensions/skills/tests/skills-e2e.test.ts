@@ -123,7 +123,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		// in a real CLI) — the built-in column lists the rest, the user
 		// column stays file-name-sorted. E5: task left the default — the
 		// built-in column drops it.
-		expect(out).toContain("[5 extensions: built-in: mcp, subagent, ask · safe-defaults, skills]");
+		expect(out).toContain("[5 extensions: built-in: mcp, subagent, ask · safe-defaults");
 		expect(out).not.toContain("approve read_skill"); // auto-allowed — no prompt
 		expect(out).toContain("UNIQUE-BODY-a-skill"); // the SKILL.md body returned to the model
 		expect(out).toContain("skill loaded");

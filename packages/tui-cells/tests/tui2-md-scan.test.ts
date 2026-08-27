@@ -132,10 +132,23 @@ describe("TUI2-MD ① — the block scanner", () => {
 		expect(s.closed()).toBe(2);
 		const tail = s.blocks()[2]!;
 		expect(tail.kind).toBe("fence-line");
-		expect(renderBlock(tail, 80).join("")).toContain("const b = ");
+		// DC-3 supersession: the body used to be wrapped in the inline-code
+		// tint, and the closing SGR flushed the wrapper's pending space, so
+		// the trailing blank survived by accident of the colour. With the
+		// tint retired the shared wrapper drops whitespace at a row's end,
+		// as it does everywhere else. Nothing a human can see changes — a
+		// trailing space at the end of a rendered row draws as nothing —
+		// and the assertion's real subject, that the PARTIAL line renders,
+		// is unaffected.
+		expect(renderBlock(tail, 80).join("")).toContain("const b =");
 		s.push("2;\n```\n");
-		expect(s.closed()).toBe(3); // the closing fence itself emits no block
-		expect(s.blocks()).toHaveLength(3);
+		// E2 supersession: the closing fence emits its OWN block now — the
+		// rail is content the model actually sent, not a border kiso draws.
+		// The rule it used to obey is unchanged and is why this is safe: the
+		// rail appears on an ACTUAL close and never before, so an
+		// unterminated fence still draws no bottom.
+		expect(s.closed()).toBe(4);
+		expect(s.blocks()).toHaveLength(4);
 	});
 
 	it("T-MD-6: a streaming table re-layouts ONLY inside the tail", () => {
@@ -179,19 +192,26 @@ describe("TUI2-MD ① — the block scanner", () => {
 		// fence body's indentation IS its content, and a rendered block that
 		// silently reindents someone's code is worse than not rendering it.
 		const src = "```ts\nfunction f() {\n  if (x) {\n    return 1;\n  }\n}\n```\n";
+		// E2 supersession: the block is bounded by its own ``` rails now, so
+		// what a human copies out is a fenced block. The SUBJECT of this
+		// test is untouched and is what matters: the body's own indentation
+		// is reproduced exactly, two columns in from the rail.
 		expect(renderMarkdown(src, 60).map((r) => r.replace(/\x1b\[[0-9;]*m/g, ""))).toEqual([
-			"│ ts",
-			"│ function f() {",
-			"│   if (x) {",
-			"│     return 1;",
-			"│   }",
-			"│ }",
+			"```ts",
+			"  function f() {",
+			"    if (x) {",
+			"      return 1;",
+			"    }",
+			"  }",
+			"```",
 		]);
 		// and a wrapped long code line hangs under its own indent
 		const long = `\`\`\`\n    ${"x".repeat(40)}\n\`\`\`\n`;
 		const rows = renderMarkdown(long, 24).map((r) => r.replace(/\x1b\[[0-9;]*m/g, ""));
-		expect(rows[1]!.startsWith("│     x")).toBe(true);
-		expect(rows[2]!.startsWith("│     x")).toBe(true);
+		// the inset is two columns, then the line's OWN four — and the wrap
+		// hangs under that same six, which is the subject here
+		expect(rows[1]!.startsWith("      x")).toBe(true);
+		expect(rows[2]!.startsWith("      x")).toBe(true);
 	});
 
 	it("T-MD-8: the tail never closes a block on a partial line", () => {

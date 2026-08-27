@@ -42,11 +42,16 @@ afterEach(() => {
 describe("v2a/v5/KC3: the palette", () => {
 	it("COLOR_ON is bold (SGR 1), the MONO inline-code tint (256 color 252), red, dim, green; COLOR_OFF is empty", () => {
 		expect(COLOR_ON.bold).toBe("\x1b[1m");
-		// KC3 §2, the mono recolor (a DECLARED SUPERSESSION): the tint was
-		// the light BLUE 38;5;110 — the last blue byte in the product. The
-		// mono discipline carries the body in shades of black and white,
-		// so the tint is the light GRAY 38;5;252.
-		expect(COLOR_ON.code).toBe("\x1b[38;5;252m");
+		// KC3 §2 recoloured this from the light BLUE 38;5;110 to the light
+		// GRAY 38;5;252. DC-3 retires it as a colour altogether: 252 is
+		// #d0d0d0, which is 1.54:1 on a white terminal against a 4.5:1
+		// floor, and five call sites shared it. Inline code is a SURFACE
+		// now. With no ground established the surface is reverse video —
+		// correct on any ground — and it becomes a background once the
+		// terminal has answered what its background is.
+		expect(COLOR_ON.code).toBe(COLOR_ON.wash);
+		expect(COLOR_ON.wash).toBe("\x1b[7m");
+		expect(COLOR_ON.washEnd).toBe("\x1b[27m");
 		expect(COLOR_ON.red).toBe("\x1b[31m");
 		expect(COLOR_ON.dim).toBe("\x1b[2m");
 		expect(COLOR_ON.green).toBe("\x1b[32m");
@@ -120,7 +125,13 @@ describe("v2a/v5/KC3: the palette", () => {
 	 * rides along as its close, the same way 27 rides along with 7.
 	 */
 	it("KC3: no chromatic entry survives outside the three functional colors", () => {
-		const MONO = /^\x1b\[(?:0|1|2|3|7|23|27|38;5;(?:23[2-9]|24\d|25[0-5]))m$/; // SGR 0/1/2/3/7/23/27 + the 256-cube greyscale ramp
+		// DC-4/DC-3 supersession: SGR 4/24 (underline, the level-1 heading)
+		// and 48;5;N/49 (the wash, once a ground is resolved) join the set.
+		// Neither is chromatic: 4 is an ATTRIBUTE on the italic precedent,
+		// and the wash is a greyscale BACKGROUND from the same 256-cube ramp
+		// this regex already admits as a foreground. What the gate forbids
+		// is unchanged — a hue outside red/green/warn.
+		const MONO = /^\x1b\[(?:0|1|2|3|4|7|23|24|27|49|38;5;(?:23[2-9]|24\d|25[0-5])|48;5;(?:23[2-9]|24\d|25[0-5]))m$/;
 		const FUNCTIONAL: Record<string, string> = { red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m" };
 		for (const [name, code] of Object.entries(COLOR_ON)) {
 			if (name in FUNCTIONAL) {
@@ -355,35 +366,35 @@ describe("v7 W1: the banner tiers (the height input)", () => {
 	// the base row folded into lower half-blocks) replaces both art
 	// tiers: the garbage window shrinks to nothing a reader can catch,
 	// and the tier table loses a state.
-	it("≥ 14 rows → the 2-row wordmark, indented two", () => {
-		const rows = bannerLines(40, 20, V, "[3 extensions: asky]");
-		expect(rows[0]).toBe("  █ █ ▀█▀ █▀▀ █▀█");
-		expect(rows[1]).toBe("  █▀▄ ▄█▄ ▄▄█ █▄█");
-		expect(rows.length).toBe(5); // 2 art + blank + version + extensions
-		expect(rows[4]!).toBe("[3 extensions: asky]");
-		expect(rows[3]!.startsWith(`v${V} —`)).toBe(true);
-		// the art is the wordmark — the text row does NOT repeat the name
-		expect(rows[3]!).not.toMatch(/^kiso v/);
-	});
-	it("14-19 rows get the SAME wordmark — the mid tier merged (VD-14)", () => {
-		const rows = bannerLines(80, 15, V, "");
-		expect(rows.slice(0, 2)).toEqual(["  █ █ ▀█▀ █▀▀ █▀█", "  █▀▄ ▄█▄ ▄▄█ █▄█"]);
-		expect(rows[2]).toBe("");
-		expect(rows[3]).toBe(`v${V} — the coding agent that survives kill -9`);
-	});
-	it("anything smaller → text rows only (narrow, short, and unmeasured)", () => {
+	/**
+	 * R2 supersession (2026-08-27): the wordmark is retired and the HEIGHT
+	 * TIER with it. TT-1B had already cut the art to two rows because a
+	 * tall banner's mid-scroll cut renders as glyph garbage; the last two
+	 * rows go because they say `kiso` in fifteen columns of block glyphs
+	 * and the word says it in four. There is no art left to gate on, so
+	 * the same rows render at every height — which is one fewer state in
+	 * a table whose states existed only to protect the art.
+	 */
+	it("no art at any height — the tier the art needed is gone with it", () => {
 		for (const [W, H] of [
+			[40, 20],
+			[80, 15],
 			[39, 24],
 			[80, 13],
 			[80, 0], // a raw PTY / pipe reports rows = 0
 		] as const) {
 			const rows = bannerLines(W, H, V, "");
-			// at 39 the version row itself truncates (with the marker, ≤ W) —
-			// the tier's identity is the absence of art, not a full row
-			expect(rows[0]!.startsWith(`v${V} —`)).toBe(true);
+			expect(rows[0]!, `W=${W} H=${H}`).toBe(`kiso ${V}`);
 			expect(rows.every((r) => !r.includes("█"))).toBe(true);
 			for (const r of rows) expect(truncateRow(r, W), `W=${W} H=${H}: ${r}`).toBe(r);
 		}
+	});
+	it("the name is a word now, and the extensions are a labelled fact", () => {
+		const rows = bannerLines(40, 20, V, "[3 extensions: asky]");
+		expect(rows[0]).toBe(`kiso ${V}`);
+		expect(rows[1]).toBe("");
+		expect(rows[2]).toBe("  EXTENSIONS  [3 extensions: asky]");
+		expect(rows).toHaveLength(3); // no meta bound: no MODEL, no WORKSPACE, no keys
 	});
 	it("all three tiers at 40, 64, 88, 120: no row exceeds W (truncateRow is the width authority)", () => {
 		for (const W of [40, 64, 88, 120]) {
@@ -469,10 +480,15 @@ describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
 		expect(big).toContain("  ▞ resume");
 		expect(big.some((r) => r.includes("fix the resize repaint storm"))).toBe(true);
 		expect(big.some((r) => r.includes("183 events · 12 runs"))).toBe(true);
-		const ext = big.indexOf("[3 extensions: asky]");
+		// R2 supersession: the extensions text is a labelled fact now, so
+		// the row it sits on carries its label. Its RELATION to the resume
+		// list — one blank, then the list — is the subject here and is
+		// untouched.
+		const ext = big.findIndex((r) => r.includes("[3 extensions: asky]"));
+		expect(big[ext]).toBe("  EXTENSIONS  [3 extensions: asky]");
 		expect(big[ext + 1]).toBe("");
 		expect(big[ext + 2]).toBe("  ▞ resume");
-		expect(big.length).toBe(9); // 2 wordmark rows (VD-14) + blank + version + extensions + blank + 3 resume rows
+		expect(big.length).toBe(7); // name + blank + extensions + blank + 3 resume rows
 		for (const r of big) expect(truncateRow(r, 80)).toBe(r);
 		// the narrowest BIG tier still aligns the meta at exactly W (40)
 		const narrow = bannerLines(40, 20, "0.1.37", "", METAS, NOW);

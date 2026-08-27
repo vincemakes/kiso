@@ -89,7 +89,12 @@ export { displayVerb } from "./strings.js";
 export {
 	bannerLines,
 	COLOR_OFF,
+	COLOR_DARK,
+	COLOR_LIGHT,
+	COLOR_NEUTRAL,
 	COLOR_ON,
+	currentGround,
+	setGround,
 	escapeTerminal,
 	foldResult,
 	foldThinking,
@@ -105,3 +110,6 @@ export {
 	type Palette,
 	type ResumeMeta,
 } from "./render.js";
+/** DC-3 — the ground: is the terminal light or dark. Pure; see the
+ *  module comment for why `unknown` is a result and not a failure. */
+export { groundFrom, parseOscColor, relativeLuminance, resolveGround, type Ground, type GroundInputs, type Rgb } from "./ground.js";

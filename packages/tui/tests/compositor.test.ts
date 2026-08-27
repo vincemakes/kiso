@@ -715,7 +715,13 @@ describe("TUI v6 — the one compositor", () => {
 		// screen, the way the VT emulator sees it).
 		const { body, writes, tick } = makeBody();
 		body.enter();
-		body.banner("0.1.37", "");
+		// R2: a banner with no extensions and no bound model is now ONE row
+		// (`kiso 0.1.37`), and a one-row cell packs tight by W11's own
+		// formula — which would make this test assert the opposite of its
+		// subject. It is given the shape the CLI actually builds, so the
+		// cell is multi-row and "breathes on both sides" is still what is
+		// under test.
+		body.banner("0.1.37", "[1 extension: asky]");
 		body.userLine("go");
 		body.toolStart("read_file", "c1", { path: "x" });
 		body.toolRunning("c1");
@@ -779,17 +785,22 @@ describe("TUI v6 — the one compositor", () => {
 		for (const m of sgrStripped.matchAll(/\x1b\[(\d+);1H\x1b\[0K([^\x1b]*)/g)) {
 			screen.set(Number(m[1]!), m[2]!);
 		}
-		// the banner cell (VD-14): 2 wordmark rows + blank + version + blank
-		// + "  ▞ resume" + 1 session row = 7 rows; the W11 blank + the user
-		// line follow
-		expect(screen.get(6)).toBe("  ▞ resume");
+		// R2 supersession: the banner lost its two wordmark rows and its
+		// version row folded into the name row, so the whole cell is three
+		// rows shorter and everything below it moves up by three. The
+		// SUBJECT — that the resume list sits one blank under the banner and
+		// its columns land at exactly W — is untouched and is asserted
+		// below exactly as it was.
+		// name + blank + "  ▞ resume" + 1 session row = 4 rows
+		expect(screen.get(3)).toBe("  ▞ resume");
 		// metaW = 18 (the single meta); titleW = 80 - 13 - 18 = 49; pad 21
-		expect(screen.get(7)).toBe(
+		expect(screen.get(4)).toBe(
 			"    now     fix the resize repaint storm" + " ".repeat(21) + " " + "41 events · 3 runs",
 		);
 		// the done-when: the row is exactly W wide, the meta at its column
-		expect(screen.get(7)!.length).toBe(80);
-		expect(screen.get(7)!.indexOf("41 events")).toBe(62);
+		// (R2: the session row moved from 7 to 4 with the banner's height)
+		expect(screen.get(4)!.length).toBe(80);
+		expect(screen.get(4)!.indexOf("41 events")).toBe(62);
 		// the tier gate is per frame — a COMPACT screen drops the list entirely
 		const compact = makeBody({ H: 15 });
 		compact.body.enter();

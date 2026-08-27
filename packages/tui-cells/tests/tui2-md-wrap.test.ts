@@ -132,11 +132,11 @@ describe("TUI2-MD ③ — wrap with hang, and the CJK break class", () => {
 
 	it("T-MD-24: the HANGING INDENT — a wrapped item aligns to its text column", () => {
 		const rows = renderMarkdown(`- ${cjk(30)}`, 20).map(plain);
-		expect(rows[0]!.startsWith("  • ")).toBe(true);
+		expect(rows[0]!.startsWith("  - ")).toBe(true); // E1: the marker is markdown now; two columns either way
 		for (const row of rows.slice(1)) expect(row.startsWith("    ")).toBe(true);
 		// a nested item indents two more, and its hang follows it
 		const nested = renderMarkdown(`  - ${cjk(30)}`, 20).map(plain);
-		expect(nested[0]!.startsWith("    • ")).toBe(true);
+		expect(nested[0]!.startsWith("    - ")).toBe(true);
 		for (const row of nested.slice(1)) expect(row.startsWith("      ")).toBe(true);
 	});
 

@@ -318,7 +318,10 @@ export function keysSheetRows(W: number): string[] {
 	const p = palette();
 	const cell = (i: number): string => {
 		const b = KEY_BINDINGS[i];
-		return b === undefined ? "" : `${p.code}${b.keys}${p.reset} ${b.what}`;
+		// DC-3: the key NAMES are the sheet's content, not a code span —
+		// they borrowed the inline-code tint and became the least readable
+		// thing on the one screen whose whole job is being read.
+		return b === undefined ? "" : `${p.bold}${b.keys}${p.reset} ${b.what}`;
 	};
 	const plainCell = (i: number): string => {
 		const b = KEY_BINDINGS[i];
@@ -340,14 +343,40 @@ export function keysSheetRows(W: number): string[] {
 		}
 		rows.push(row);
 	}
-	rows.push(`${p.dim}${PANEL_KEYS_ROW}${p.reset}`);
+	rows.push(`${p.dim}${panelKeysRow(W)}${p.reset}`);
 	return rows.map((row) => cutRow(row, W));
+}
+
+/**
+ * DC-2 — the panel row degrades by CLAUSE.
+ *
+ * The row is 76 columns of independent clauses joined by ` · `. At 72 it
+ * used to lose the tail of the last one, so `t types` became `t`: the
+ * reader was told a key existed and not told what it did, on a row that
+ * still looked complete. Dropping a whole clause says less; it never
+ * says something false. `cutRow`'s ellipsis is the floor below this, for
+ * a width that cannot hold even the first clause.
+ */
+function panelKeysRow(W: number): string {
+	const clauses = PANEL_KEYS_ROW.split(" \u00b7 ");
+	for (let n = clauses.length; n > 1; n -= 1) {
+		const row = clauses.slice(0, n).join(" \u00b7 ");
+		if (displayWidth(row) <= W) return row;
+	}
+	return clauses[0]!;
 }
 
 /** One row, cut at the width — SGR-aware, the ellipsis after the reset
  *  (the cutLine convention; duplicated here rather than imported so the
  *  strings module keeps its no-components-dependency shape). */
 function cutRow(row: string, W: number): string {
+	// DC-2: a cut is MARKED. This returned the surviving prefix with
+	// nothing to say it was a prefix, so a row that had lost its tail read
+	// as a whole row — the one thing the tree's own fold rule forbids
+	// ("the honest …, never a silent truncate"). The mark costs a column,
+	// so the cut lands one column earlier to pay for it.
+	if (displayWidth(row.replace(/\x1b\[[0-9;]*m/g, "")) <= W) return row;
+	const limit = Math.max(0, W - 1);
 	let out = "";
 	let width = 0;
 	for (let i = 0; i < row.length; ) {
@@ -358,12 +387,12 @@ function cutRow(row: string, W: number): string {
 			continue;
 		}
 		const cw = displayWidth(row[i]!);
-		if (width + cw > W) return `${out}${palette().reset}`;
+		if (width + cw > limit) break;
 		out += row[i]!;
 		width += cw;
 		i += 1;
 	}
-	return out;
+	return `${out}${palette().reset}\u2026`;
 }
 
 /** TUI2-R1 (D) — the keys as ONE line, for /help. The same table the
@@ -386,24 +415,38 @@ export function keysHelpRow(): string {
  */
 export function helpRows(): string[] {
 	const p = palette();
-	const cmd = (name: string, desc: string): string => `${p.bold}${name}${p.reset}    ${desc}`;
-	return [
-		cmd("/help", "print this list of commands"),
-		cmd("/think", "show the last full thinking block"),
-		cmd("/last", "show the most recent tool call's input and output"),
-		cmd("/status", "show session id, event count, and context estimate"),
-		cmd("/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"),
-		cmd("/model", "list model profiles; /model <name|provider/model> switches"),
-		cmd("/compact", "summarize the older conversation to free context"),
-		cmd("/clear", "start a fresh conversation (the old session stays resumable)"),
-		cmd("/resume", "switch to another session; /resume <id> goes directly"),
-		// TUI2-R1 (D): DELIBERATELY UNCHANGED. Deriving this sentence from
-		// KEY_BINDINGS would be an improvement and it would also move an
-		// assertion outside the round's two declared supersession classes,
-		// so the sheet is the derived surface and this row keeps its bytes.
-		// `keysHelpRow()` exists for the round that is allowed to make the
-		// swap; until then the drift guard is the test that every binding
-		// in the table is mentioned here.
-		`${cmd("exit", "leave the session")}\n${cmd("keys", "enter sends · ctrl+J newline (shift+enter where encoded) · esc stops the run · alt+⏎ stops it and sends this instead · @ files · 1-4 answers an ask")}`,
+	// DC-1: ONE description column. The gap used to be four spaces after
+	// the name whatever the name's length, so `/help`'s description began
+	// three columns left of `/compact`'s and the second column wandered
+	// down the list. displayWidth is the authority, as everywhere else.
+	const table: readonly (readonly [string, string])[] = [
+		["/help", "print this list of commands"],
+		["/think", "show the last full thinking block"],
+		["/last", "show the most recent tool call's input and output"],
+		["/status", "show session id, event count, and context estimate"],
+		["/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"],
+		["/model", "list model profiles; /model <name|provider/model> switches"],
+		["/compact", "summarize the older conversation to free context"],
+		["/clear", "start a fresh conversation (the old session stays resumable)"],
+		["/resume", "switch to another session; /resume <id> goes directly"],
+		["exit", "leave the session"],
+		// TUI2-R1 (D): the SENTENCE is deliberately unchanged. Deriving it
+		// from KEY_BINDINGS would be an improvement and it would also move
+		// an assertion outside the round's declared supersession classes,
+		// so the sheet stays the derived surface and this row keeps its
+		// words. `keysHelpRow()` exists for the round allowed to swap it;
+		// until then the drift guard is the test that every binding in the
+		// table is mentioned here. DC-1 changes the PADDING, not the words.
+		["keys", "enter sends \u00b7 ctrl+J newline (shift+enter where encoded) \u00b7 esc stops the run \u00b7 alt+\u23ce stops it and sends this instead \u00b7 @ files \u00b7 1-4 answers an ask"],
 	];
+	const stop = Math.max(...table.map(([name]) => displayWidth(name))) + 4;
+	const cmd = (name: string, desc: string): string => `${p.bold}${name}${p.reset}${" ".repeat(stop - displayWidth(name))}${desc}`;
+	const rows = table.slice(0, -2).map(([name, desc]) => cmd(name, desc));
+	// the last call carries its own newline exactly as it did inline:
+	// bodyLog splits on \n, so `exit` and `keys` land as two rows from one
+	// call — the shape the KC1/KC2/KC3 gestures were added to, unchanged.
+	const [exitName, exitDesc] = table[table.length - 2]!;
+	const [keysName, keysDesc] = table[table.length - 1]!;
+	rows.push(`${cmd(exitName, exitDesc)}\n${cmd(keysName, keysDesc)}`);
+	return rows;
 }

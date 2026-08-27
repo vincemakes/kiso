@@ -7,7 +7,7 @@
 - **agent:** kiso 0.15.12 (working tree)
 - **found by:** dumping `renderMarkdown` while writing
   `packages/tui/design.md`
-- **status:** OPEN
+- **status:** FIXED (0.16.2 working tree)
 
 ## The measurement
 
@@ -35,16 +35,32 @@ finding disputes. What it disputes is discarding the level: hierarchy is
 structure, and structure is exactly what the discipline says must carry
 meaning when colour is stripped.
 
-## The shape of the fix
+## The fix, as ruled and landed
 
-Give the level a structural expression that survives colour loss.
-Indentation is the cheapest one that cannot be confused with content;
-a level-1 heading may additionally take the existing `rule` block's
-dim `─` beneath it. Whatever is chosen goes into
-`packages/tui/design.md` §7 before it is written, because it is a design
-decision and not a repair.
+The owner ruled for the reference implementation's scheme on
+2026-08-27. The principle is better than the indentation I proposed:
+**attributes carry the level while they can, and when they run out the
+marker itself is shown.**
+
+| level | rendering |
+|---|---|
+| 1 | bold + underline, marker stripped |
+| 2 | bold, marker stripped |
+| 3 and below | bold, and the `###` printed |
+
+`underline` joins the palette as its second attribute member, on the
+`italic` precedent: SGR 4 costs the alphabet nothing chromatic, and a
+terminal without underlines simply draws the text.
+
+**The residual, stated rather than buried.** Levels 1 and 2 are told
+apart by an attribute alone, so through a pipe they are still identical
+— this scheme meets the constraint from level 3 down, not from level 1.
+Closing that would cost a dim rule under level 1, which is one line of
+code and a visible design change; it was not ruled, so it was not done.
 
 ## Red before green
 
-Assert that `renderMarkdown("# A\n\n## B\n\n### C", W)` produces three
-rows that are distinguishable from one another with every SGR stripped.
+`packages/tui-cells/tests/dc4-md-shape.test.ts` — three levels render
+three distinct rows; level 3 and below carry their own marker with the
+SGR stripped; levels 1 and 2 are separated by the underline. Red on all
+three before the change, because every level rendered identically.

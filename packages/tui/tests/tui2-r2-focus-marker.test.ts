@@ -5,7 +5,7 @@
  * The key was learnable and its target was not: you pressed it and found
  * out. Candidate 1 answers it with zero new rows and zero new columns —
  * the cell the next press will act on renders its own `ctrl+r` token in
- * the code tint, and every other suffix stays dim.
+ * the wash, and every other suffix stays dim.
  *
  * Candidate 2 (a `▸` marker in a new leading column) was rejected by the
  * owner: it costs a column, and the A-group badges want that column.
@@ -28,11 +28,24 @@ function makeBody(rows = 24, cols = 100) {
 	return { body, writes, tick: () => vi.advanceTimersByTime(16) };
 }
 
-/** every `ctrl+r` token in the frame, with the SGR that opened it */
-function tokens(bytes: string): { tint: "code" | "dim" | "other" }[] {
-	const out: { tint: "code" | "dim" | "other" }[] = [];
-	for (const m of bytes.matchAll(/\x1b\[(?:38;5;252|2)m[^\x1b]*ctrl\+r/g)) {
-		out.push({ tint: m[0].startsWith(COLOR_ON.code) ? "code" : m[0].startsWith(COLOR_ON.dim) ? "dim" : "other" });
+/**
+ * Every `ctrl+r` token in the frame, with the SGR that opened it.
+ *
+ * DC-3 supersession: the opener used to be matched by its LITERAL bytes
+ * (`38;5;252`), which pinned this test to one palette rather than to the
+ * property it exists for. It is derived now, so the next palette change
+ * moves the marker without moving the invariant.
+ *
+ * The marker is the WASH. That is not only a contrast fix: the invariant
+ * here is "exactly one BRIGHT token per frame", and an attribute like
+ * bold is spent all over a frame, so it could not carry uniqueness.
+ */
+const esc = (v: string): string => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const OPENER = new RegExp(`(?:${esc(COLOR_ON.wash)}|${esc(COLOR_ON.dim)})[^\\x1b]*ctrl\\+r`, "g");
+function tokens(bytes: string): { tint: "bright" | "dim" | "other" }[] {
+	const out: { tint: "bright" | "dim" | "other" }[] = [];
+	for (const m of bytes.matchAll(OPENER)) {
+		out.push({ tint: m[0].startsWith(COLOR_ON.wash) ? "bright" : m[0].startsWith(COLOR_ON.dim) ? "dim" : "other" });
 	}
 	return out;
 }
@@ -70,7 +83,7 @@ describe("TUI2-R2 ⑤ — the live focus marker (candidate 1)", () => {
 		tick();
 		const found = tokens(writes.join(""));
 		expect(found.length, "no ctrl+r token in the frame at all").toBeGreaterThan(0);
-		expect(found.filter((t) => t.tint === "code"), "the focused cell's token is not code-tinted").toHaveLength(1);
+		expect(found.filter((t) => t.tint === "bright"), "the focused cell's token is not the bright one").toHaveLength(1);
 	});
 
 	it("EXACTLY ONE bright token per frame — the invariant, swept across the frames of a growing turn", () => {
@@ -81,7 +94,7 @@ describe("TUI2-R2 ⑤ — the live focus marker (candidate 1)", () => {
 			body.toolRunning(`t${n}`);
 			writes.length = 0;
 			tick();
-			const bright = tokens(writes.join("")).filter((t) => t.tint === "code");
+			const bright = tokens(writes.join("")).filter((t) => t.tint === "bright");
 			expect(bright, `frame after ${n} cells: ${bright.length} bright tokens`).toHaveLength(1);
 		}
 	});
@@ -93,16 +106,16 @@ describe("TUI2-R2 ⑤ — the live focus marker (candidate 1)", () => {
 		body.toolRunning("a");
 		writes.length = 0;
 		tick();
-		expect(writes.join("")).toContain(`${COLOR_ON.code}`); // the only cell has it
+		expect(writes.join("")).toContain(`${COLOR_ON.wash}`); // the only cell has it
 		body.toolStart("read_file", "b", { path: "src/two.ts" });
 		body.toolRunning("b");
 		writes.length = 0;
 		tick();
 		const frame = writes.join("");
 		// the bright token is on the row that names the NEW cell
-		const row = frame.split(/\x1b\[\d+;1H\x1b\[0K/).find((r) => r.includes(COLOR_ON.code + "ctrl+r") || r.includes(COLOR_ON.code));
+		const row = frame.split(/\x1b\[\d+;1H\x1b\[0K/).find((r) => r.includes(COLOR_ON.wash + "ctrl+r") || r.includes(COLOR_ON.wash));
 		expect(row ?? "", "the focus did not move to the newest cell").toContain("two.ts");
-		expect(tokens(frame).filter((t) => t.tint === "code")).toHaveLength(1);
+		expect(tokens(frame).filter((t) => t.tint === "bright")).toHaveLength(1);
 	});
 
 	it("NO_COLOR: the tint is empty and the frame is byte-identical to a frame with no focus at all", () => {

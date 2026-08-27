@@ -311,12 +311,13 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		const frames = vtFrames(turn);
 		const finalGrid = frames.at(-1)!.rows;
 
-		// the idle chrome — the banner art + the hint — rides the merged
+		// the idle chrome — the banner + the hint — rides the merged
 		// opening commit, then the settle's real-LF scrolls push the
 		// banner OFF the final grid (the OLD flow's separate idle frame
 		// scrolled it out too) — the claims assert on the FRAMES'
-		// pre-scroll snapshots
-		expect(frames.some((f) => f.rows.join("\n").includes("█"))).toBe(true);
+		// pre-scroll snapshots. R2 supersession: there is no art to look
+		// for, so the banner is found by the name it now leads with.
+		expect(frames.some((f) => /kiso \d+\.\d+\.\d+/.test(f.rows.join("\n")))).toBe(true);
 		expect(frames.some((f) => f.rows.join("\n").includes("/ commands · ↑ history"))).toBe(true);
 
 		// ① A8b re-baseline: the "in-place redraws at row 1" the old gate

@@ -1,7 +1,7 @@
 {
 	"name": "@vincemakes/kiso-tui-cells",
-	"version": "0.16.2",
-	"description": "kiso tui-cells \u2014 the components cell renderer (components, diff, width, the render slice). Zero runtime dependencies: input is data, output is bytes.",
+	"version": "0.16.3",
+	"description": "kiso tui-cells — the components cell renderer (components, diff, width, the render slice). Zero runtime dependencies: input is data, output is bytes.",
 	"type": "module",
 	"license": "MIT",
 	"exports": {

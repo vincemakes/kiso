@@ -44,7 +44,7 @@ import { visibleWidth } from "./components.js";
 
 /** The block kinds. `fence-open`/`fence-line` are separate kinds on
  *  purpose: a fence's rows must be able to freeze ONE AT A TIME. */
-export type MdKind = "para" | "heading" | "list" | "table" | "quote" | "rule" | "fence-open" | "fence-line";
+export type MdKind = "para" | "heading" | "list" | "table" | "quote" | "rule" | "fence-open" | "fence-line" | "fence-close";
 
 /** One block: its SOURCE lines, never a rendered form. The render is a
  *  pure function of (block, width), which is what makes the freeze
@@ -62,6 +62,11 @@ export interface MdBlock {
 }
 
 // ---- line classification -------------------------------------------
+
+/** E2 — the rail a fenced block is drawn with. Three backticks: what
+ *  the model wrote, and what a human gets back when they copy the block
+ *  out of the terminal. */
+const RAIL = "\u0060\u0060\u0060";
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 /** ATX only, and the space is REQUIRED: `#hashtag` is prose. */
@@ -197,11 +202,16 @@ export class MdStream {
 
 	#line(line: string): void {
 		if (this.#fence !== null) {
-			// the closer emits no block: a bottom border is drawn only by an
-			// actual close, and under committed lines a phantom one would be
-			// a lie the force-commit path could freeze.
+			// E2: the closer emits its OWN block now. The rule it used to
+			// obey — "a bottom border is drawn only by an actual close, and
+			// under committed lines a phantom one would be a lie the
+			// force-commit path could freeze" — is UNCHANGED and is why this
+			// is safe: the rail appears here, on an actual close, and never
+			// before. An unterminated fence still draws no bottom, which is
+			// the truth about an unterminated fence.
 			if (closesFence(line, this.#fence)) {
 				this.#fence = null;
+				this.#push({ kind: "fence-close", lines: [line], gap: false, lang: "" });
 				return;
 			}
 			this.#push({ kind: "fence-line", lines: [line], gap: false, lang: "" });
@@ -269,22 +279,38 @@ function blockBody(b: MdBlock, W: number): string[] {
 	const p = palette();
 	switch (b.kind) {
 		case "heading": {
-			// the marker is stripped, the numbering kept, and the levels are
-			// NOT differentiated by colour — attributes only. A `**bold**`
-			// inside a heading is therefore a no-op, which is the mono
-			// discipline paying for itself: the nested-style restore machinery
-			// both reference implementations need for this exact input has
-			// nothing to restore here.
+			// DC-4: the LEVEL is information and it used to be discarded —
+			// `#`, `##` and `###` all rendered as the same bold line, so a
+			// structured answer arrived flat. Levels are NOT differentiated
+			// by colour: 1 adds an underline, 2 is bold alone, and 3 and
+			// below print their own `###`, because attributes have run out
+			// and a marker is the only carrier that survives a pipe. A
+			// `**bold**` inside a heading is still a no-op, which is the mono
+			// discipline paying for itself.
 			const m = HEADING.exec(b.lines[0] ?? "");
-			return wrap(`${p.bold}${inlineSpans(m?.[2] ?? b.lines[0] ?? "", p.bold)}${p.reset}`, W, "", "");
+			const level = (m?.[1] ?? "#").length;
+			const text = m?.[2] ?? b.lines[0] ?? "";
+			const style = level === 1 ? `${p.bold}${p.underline}` : p.bold;
+			const marker = level >= 3 ? `${"#".repeat(level)} ` : "";
+			return wrap(`${style}${marker}${inlineSpans(text, style)}${p.reset}`, W, "", "");
 		}
 		case "rule":
-			return [`${p.dim}${"─".repeat(Math.min(W, 28))}${p.reset}`];
+			// R2: the dashed rule, at the block's own width. The 28 was a
+			// guess that read as a short line rather than a divider, and ─
+			// belonged to the box vocabulary this round is collapsing.
+			return [`${p.dim}${"\u254c".repeat(Math.max(1, W))}${p.reset}`];
 		case "fence-open":
-			// the dim gutter names the block; the language tag rides the
-			// opening row. Zero highlighting — which is exactly what makes a
-			// fence body line committable on its own.
-			return [`${p.dim}│${b.lang === "" ? "" : ` ${b.lang}`}${p.reset}`];
+			// E2: the RAIL, not a gutter. A block drawn with ``` is still a
+			// fenced block when a human selects it and pastes it somewhere
+			// else; a block drawn with a gutter is not. Zero highlighting —
+			// which is exactly what makes a fence body line committable on
+			// its own.
+			return [`${p.dim}${RAIL}${b.lang}${p.reset}`];
+		case "fence-close":
+			// only ever reached by an ACTUAL close (see MdStream#line): an
+			// unterminated fence draws no bottom, which is the truth about
+			// an unterminated fence.
+			return [`${p.dim}${RAIL}${p.reset}`];
 		case "fence-line": {
 			// a fence body's INDENTATION is its content. The wrapper drops
 			// leading spaces \u2014 right for prose, a lie for code \u2014 so the indent
@@ -292,12 +318,21 @@ function blockBody(b: MdBlock, W: number): string[] {
 			// under it rather than returning to the gutter.
 			const src = (b.lines[0] ?? "").replace(/\t/g, "    ");
 			const indent = /^ */.exec(src)![0];
-			const gutter = `${p.dim}\u2502${p.reset} `;
-			return foldLineWidth(`${p.code}${src.slice(indent.length)}${p.reset}`, W - visibleWidth(gutter), indent).map((r) => `${gutter}${r}`);
+			const gutter = "  "; // E2: the rails bound the block; the body just insets
+			// DC-3: a fenced BODY carries no colour token. It used to take
+			// `code` — 1.54:1 on a white terminal, applied to whole blocks,
+			// which made the code the model just wrote the least readable
+			// thing on screen. The `│` gutter already says "this block is
+			// verbatim"; saying it twice cost legibility and bought nothing.
+			return foldLineWidth(src.slice(indent.length), W - visibleWidth(gutter), indent).map((r) => `${gutter}${r}`);
 		}
 		case "quote": {
 			const text = b.lines.map((l) => QUOTE.exec(l)?.[1] ?? l).join(" ");
-			const gutter = `${p.dim}\u258f${p.reset} `;
+			// R2: one gutter glyph. A quote and a fenced block both say "this
+			// text is not mine", and the screen was saying it two ways — ▏
+			// here and │ for code. The fences took their own ``` rails, so │
+			// is free and the quote takes it.
+			const gutter = `${p.dim}\u2502${p.reset} `;
 			return wrap(`${p.dim}${inlineSpans(text, p.dim)}${p.reset}`, W - visibleWidth(gutter), "", "").map((r) => `${gutter}${r}`);
 		}
 		case "list":
@@ -350,7 +385,10 @@ export function inlineSpans(text: string, base: string): string {
 			if (end > i) {
 				// a code span's content is LITERAL — no markers inside it mean
 				// anything, which is what makes `x | y` survive a table split
-				out += `${p.code}${text.slice(i + 1, end)}${p.reset}${base}`;
+				// DC-3: inline code is a SURFACE (`wash`), closed with washEnd
+				// rather than a reset so the span composes inside a heading's
+				// or a quote's own style.
+				out += `${p.wash}${text.slice(i + 1, end)}${p.washEnd}${base}`;
 				i = end + 1;
 				continue;
 			}
@@ -499,9 +537,12 @@ function listRows(b: MdBlock, W: number): string[] {
 		}
 		flush();
 		const depth = Math.min(5, Math.floor(m[1]!.length / 2));
-		// `•` normalization for bullets; a numbered list KEEPS its numbers
-		// (they are the author's meaning, not decoration).
-		const marker = /^\d/.test(m[2]!) ? `${m[2]} ` : "• ";
+		// E1: normalization stays — `-`, `*` and `+` all render as ONE
+		// marker, so the model's arbitrary choice never leaks onto the
+		// screen — but the marker is `- ` rather than `•`, so a copied list
+		// is still a list. A numbered list KEEPS its numbers (they are the
+		// author's meaning, not decoration).
+		const marker = /^\d/.test(m[2]!) ? `${m[2]} ` : "- ";
 		lead = `${"  ".repeat(depth + 1)}${marker}`;
 		text = m[3]!;
 	}
@@ -527,17 +568,17 @@ function tableRows(b: MdBlock, W: number): string[] {
 	const t = tableShape(b.lines);
 	if (t === null) return b.lines.flatMap((l) => wrap(l, W, "", ""));
 	const cols = t.header.map((h, i) => Math.max(cellWidth(h), ...t.rows.map((r) => cellWidth(r[i] ?? ""))));
-	// the drawn width: one rail, then each column as "│ cell " + its pad
-	const total = cols.reduce((n, w) => n + w + 3, 1);
+	// R2: no rails. The drawn width is two columns of inset plus the
+	// columns and their two-space gutters — a table is bounded by the
+	// blank lines above and below it, exactly as every other block on the
+	// screen is, and it was the last box left on a screen that has decided
+	// not to have boxes. Alignment does the work the rails were doing, and
+	// a copied table is closer to markdown without them.
+	const total = cols.reduce((n, w) => n + w + 2, 2);
 	if (total > W) return recordRows(t, W);
-	const rail = `${p.dim}│${p.reset}`;
 	const row = (cells: readonly string[], bold: boolean): string =>
-		`${rail}${cells.map((c, i) => ` ${pad(c, cols[i]!, t.align[i]!, bold)} `).join(rail)}${rail}`;
-	return [
-		row(t.header, true),
-		`${p.dim}├${cols.map((w) => "─".repeat(w + 2)).join("┼")}┤${p.reset}`,
-		...t.rows.map((r) => row(r, false)),
-	];
+		`  ${cells.map((c, i) => pad(c, cols[i]!, t.align[i]!, bold)).join("  ")}`.replace(/\s+$/, "");
+	return [row(t.header, true), ...t.rows.map((r) => row(r, false))];
 }
 
 /** A cell's column count: what a human sees, styling removed. */

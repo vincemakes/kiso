@@ -70,7 +70,7 @@ describe("TT-1B — TUI2-MD-1: the over-tall commit burst keeps every row (the s
 		const reachable = vt.allLines();
 		const missing: string[] = [];
 		for (let i = 0; i < 40; i += 1) {
-			const needle = `• burst line ${String(i).padStart(2, "0")}`;
+			const needle = `- burst line ${String(i).padStart(2, "0")}`;
 			if (!reachable.some((l) => l.includes(needle))) missing.push(needle);
 		}
 		expect(missing).toEqual([]); // TUI2-MD-1: today the clamp pile drops the early rows
@@ -79,7 +79,7 @@ describe("TT-1B — TUI2-MD-1: the over-tall commit burst keeps every row (the s
 		// scrollback twice (the duplicate class — bounded today, gated here)
 		const doubled: string[] = [];
 		for (let i = 0; i < 40; i += 1) {
-			const needle = `• burst line ${String(i).padStart(2, "0")}`;
+			const needle = `- burst line ${String(i).padStart(2, "0")}`;
 			if (vt.scrollback.filter((l) => l.includes(needle)).length > 1) doubled.push(needle);
 		}
 		expect(doubled).toEqual([]);
@@ -104,7 +104,7 @@ describe("TT-1B — TUI2-MD-1: the over-tall commit burst keeps every row (the s
 		const missing: string[] = [];
 		const doubled: string[] = [];
 		for (let i = 0; i < 40; i += 1) {
-			const needle = `• close line ${String(i).padStart(2, "0")}`;
+			const needle = `- close line ${String(i).padStart(2, "0")}`;
 			if (!reachable.some((l) => l.includes(needle))) missing.push(needle);
 			if (vt.scrollback.filter((l) => l.includes(needle)).length > 1) doubled.push(needle);
 		}

@@ -66,7 +66,11 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		setTTY(true);
 		const rows = keysSheetRows(80);
 		expect(rows[0]).toBe("\x1b[1mkeys\x1b[0m");
-		expect(rows[1]).toContain("\x1b[38;5;252menter\x1b[0m send");
+		// DC-3 supersession: the key NAMES borrowed the inline-code tint
+		// (#d0d0d0, 1.54:1 on a white terminal), which made the least
+		// readable thing on screen the one screen whose whole job is being
+		// read. They are the sheet's CONTENT, so they are bold.
+		expect(rows[1]).toContain("\x1b[1menter\x1b[0m send");
 		expect(rows[6]).toBe(`\x1b[2m${PANEL_KEYS_ROW}\x1b[0m`); // UD-1: the panel row moved down one
 	});
 

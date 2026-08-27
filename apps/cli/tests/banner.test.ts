@@ -66,36 +66,50 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${rows}, ${cols})
 }
 
 describe("the startup banner (logo)", () => {
-	it("COMPACT (15x80): the 2-row wordmark appears with the version line — the W1 selection is a height input (VD-14: one wordmark, both tiers)", () => {
+	/**
+	 * R2 supersession (2026-08-27, the nineteen-screen review): the
+	 * wordmark is retired, and the HEIGHT TIER retires with it.
+	 *
+	 * TT-1B had already cut the 36x6 pixel art to two rows because a tall
+	 * banner's mid-scroll cut renders as glyph garbage. The last two rows
+	 * go because they spell `kiso` in fifteen columns of block glyphs and
+	 * the word spells it in four. A rendered clover mark was tried first,
+	 * at four sizes, and rejected on measurement.
+	 *
+	 * The tagline goes with it. It was a claim the banner made about the
+	 * product; the three labelled facts are answers to what a human at a
+	 * fresh prompt actually needs — what model, where am I, what is
+	 * loaded — and they are the same three at every height, which is one
+	 * fewer state in a table whose states existed only to protect art.
+	 */
+	it("no art and no tier: the same rows at every height", () => {
 		const { env, dirs } = isolatedEnv();
-		const out = ptyBanner(env, dirs.home, 15, 80);
-		expect(out).toContain("█ █ ▀█▀ █▀▀ █▀█");
-		expect(out).toContain("the coding agent that survives kill -9");
-		expect(out).toContain("█▀▄ ▄█▄ ▄▄█ █▄█");
-		expect(out).toMatch(/v\d+\.\d+\.\d+/); // the version rides the info row
+		for (const [rows, cols] of [
+			[15, 80],
+			[24, 80],
+			[10, 80],
+		] as const) {
+			const out = ptyBanner(env, dirs.home, rows, cols);
+			expect(out, `${rows}x${cols}`).not.toContain("█");
+			expect(out, `${rows}x${cols}`).not.toContain("the coding agent that survives kill -9");
+			expect(out, `${rows}x${cols}`).toMatch(/kiso \d+\.\d+\.\d+/);
+		}
 	}, 90_000);
 
-	it("BIG (24x80): the SAME 2-row wordmark — VD-14 retired the 36x6 pixel art (its mid-scroll cut rendered glyph garbage)", () => {
+	it("answers the three questions a first screen is asked", () => {
 		const { env, dirs } = isolatedEnv();
 		const out = ptyBanner(env, dirs.home, 24, 80);
-		expect(out).toContain("█ █ ▀█▀ █▀▀ █▀█");
-		expect(out).not.toContain("██████  ████████");
-		expect(out).toContain("the coding agent that survives kill -9");
-		// the art is the wordmark — the text row does NOT repeat the name
-		expect(out).not.toMatch(/kiso v\d+\.\d+\.\d+/);
-		expect(out).toMatch(/v\d+\.\d+\.\d+ — the coding agent/);
+		expect(out).toContain("MODEL");
+		expect(out).toContain("WORKSPACE");
+		expect(out).toContain("EXTENSIONS");
+		expect(out).toContain("/ commands"); // the keys row
 	}, 90_000);
 
-	it("text rows only (24x39, and 10x80): no logo at any size below the tiers", () => {
+	it("a narrow screen keeps the name and drops nothing silently", () => {
 		const { env, dirs } = isolatedEnv();
 		const narrow = ptyBanner(env, dirs.home, 24, 39);
 		expect(narrow).not.toContain("█");
-		// at 39 the version row itself truncates (with the marker) — the
-		// tier's identity is the absence of art, not a full row
-		expect(narrow).toMatch(/v\d+\.\d+\.\d+ — the coding agent/);
-		const short = ptyBanner(env, dirs.home, 10, 80);
-		expect(short).not.toContain("█");
-		expect(short).toContain("the coding agent that survives kill -9");
+		expect(narrow).toMatch(/kiso \d+\.\d+\.\d+/);
 	}, 90_000);
 
 	it("piped: the logo is byte-for-byte ABSENT — the historical output shape is intact", () => {

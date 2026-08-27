@@ -7,6 +7,7 @@
  */
 
 import { charWidth, displayWidth } from "./width.js";
+import type { Ground } from "./ground.js";
 
 /**
  * v2a — the palette, centralized (no hard-coded codes elsewhere); v5
@@ -45,7 +46,13 @@ export interface Palette {
 	 *  addressed to the human. This is the ruling's own set gaining its
 	 *  missing member, not a fourth colour. */
 	readonly warn: string;
-	readonly code: string; // TUI v5 #16e: the inline-code tint — assistant body backtick spans only (KC3 §2: light GRAY, the mono discipline)
+	/** DC-3 — RETIRED as a tint; kept as an alias of `wash` so nothing
+	 *  reading it gets the old absolute grey. It was 256-colour index 252
+	 *  (#d0d0d0): 1.54:1 on a white terminal, against a 4.5:1 floor, and
+	 *  five call sites shared it. Inline code is a SURFACE now — never a
+	 *  foreground tint, and never applied to a whole fenced block, whose
+	 *  `│` gutter already says the same thing more cheaply. */
+	readonly code: string;
 	/** TUI2-MD (MD-1, the owner's circle) — the markdown round's ONE new
 	 *  member. `*italic*` needs a rendering, and under the mono discipline
 	 *  the answer cannot be a colour: SGR 3 is an ATTRIBUTE, it costs the
@@ -56,12 +63,55 @@ export interface Palette {
 	 *  SGR-0 that would strand the heading's own style. */
 	readonly italic: string;
 	readonly italicEnd: string;
+	/** DC-4 — the heading round's ONE new member, on the italic precedent:
+	 *  SGR 4 is an ATTRIBUTE, so it costs the alphabet nothing chromatic
+	 *  and a terminal without underlines simply draws the text. It carries
+	 *  the level-1 heading; levels 3 and below carry their own `###`,
+	 *  because attributes run out and a marker survives a pipe. */
+	readonly underline: string;
+	readonly underlineEnd: string;
 	readonly rv: string; // W16: reverse video — SGR 7, closed with rvEnd (27, never SGR 0 — the chip composes with a surrounding span)
 	readonly rvEnd: string;
+	/** DC-3 — the VERBATIM surface: the human's own words, and inline
+	 *  code. A background, so it needs the ground; with no ground it is
+	 *  reverse video, which is correct on any ground and is rung 4 of the
+	 *  ladder in `ground.ts`. Closed with 49 rather than SGR 0, for the
+	 *  reason `rv` is closed with 27: a washed span sits inside other
+	 *  spans and must end without stranding them. */
+	readonly wash: string;
+	readonly washEnd: string;
 	readonly reset: string;
 }
-export const COLOR_ON: Palette = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m", code: "\x1b[38;5;252m", italic: "\x1b[3m", italicEnd: "\x1b[23m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" };
-export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", rv: "", rvEnd: "", reset: "" };
+const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m", italic: "\x1b[3m", italicEnd: "\x1b[23m", underline: "\x1b[4m", underlineEnd: "\x1b[24m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" } as const;
+const withWash = (wash: string, washEnd: string): Palette => ({ ...BASE, wash, washEnd, code: wash });
+/**
+ * DC-3 — one table per ground.
+ *
+ * `dim` is the same in all three ON tables and that is the point: SGR 2
+ * is an ATTRIBUTE, it dims whatever the terminal's own foreground is, so
+ * it adapts to the ground instead of asserting one. Only the background
+ * genuinely needs to know, which is why `wash` is the only member that
+ * varies.
+ */
+export const COLOR_NEUTRAL: Palette = withWash("\x1b[7m", "\x1b[27m");
+export const COLOR_LIGHT: Palette = withWash("\x1b[48;5;255m", "\x1b[49m");
+export const COLOR_DARK: Palette = withWash("\x1b[48;5;236m", "\x1b[49m");
+/** The historical name — the palette for a colour TTY whose ground has
+ *  not been established. Unchanged in every byte except `code`, which
+ *  was the defect. */
+export const COLOR_ON: Palette = COLOR_NEUTRAL;
+export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", underline: "", underlineEnd: "", rv: "", rvEnd: "", wash: "", washEnd: "", reset: "" };
+
+/** DC-3 — the resolved ground, set once at startup when the terminal
+ *  answers (see `ground.ts`). It starts UNKNOWN and may stay that way
+ *  forever; that is a supported state, not a failure. */
+let ground: Ground = "unknown";
+export function setGround(g: Ground): void {
+	ground = g;
+}
+export function currentGround(): Ground {
+	return ground;
+}
 export function palette(): Palette {
 	// PH-1a (finding PH-F5): the no-color.org contract is "present AND
 	// non-empty" — the old `=== undefined` check let an EMPTY `NO_COLOR=`
@@ -70,7 +120,8 @@ export function palette(): Palette {
 	// UI with them. The v4-round plan recorded this as debugging pitfall ①;
 	// it was a bug.
 	const noColor = process.env.NO_COLOR;
-	return (noColor === undefined || noColor === "") && process.stdout.isTTY ? COLOR_ON : COLOR_OFF;
+	if (!((noColor === undefined || noColor === "") && process.stdout.isTTY)) return COLOR_OFF;
+	return ground === "light" ? COLOR_LIGHT : ground === "dark" ? COLOR_DARK : COLOR_NEUTRAL;
 }
 
 /**
@@ -226,13 +277,38 @@ export function renderTerminalGap(statusLine: string | null): string {
  * Pure.
  */
 export const TAGLINE = "the coding agent that survives kill -9";
-/** TT-1B (VD-14) — the ONE wordmark, 2 rows. The 36x6 pixel art and the
- *  3-row compact logo both retire: a tall pixel banner's mid-scroll cut
- *  state renders as glyph garbage (VD-14 — frames 03/04/s2-05 of the
- *  2026-08-17 walkthrough), inherent to the height. This is the compact
- *  font with its base row folded into lower half-blocks — same alphabet,
- *  15 columns, and the cut window shrinks to nothing a reader catches. */
-const WORDMARK_ROWS = ["█ █ ▀█▀ █▀▀ █▀█", "█▀▄ ▄█▄ ▄▄█ █▄█"] as const;
+/**
+ * R2 — the wordmark is retired (2026-08-27, the nineteen-screen review).
+ *
+ * TT-1B had already cut the 36x6 pixel art down to two rows because a
+ * tall banner's mid-scroll cut state renders as glyph garbage. The
+ * remaining two rows go now for a different reason: they say the word
+ * `kiso` in fifteen columns of block glyphs, and the word `kiso` says it
+ * in four. A rendered clover mark was tried first, at 4x2, 10x5, 14x7
+ * and 16x8, and rejected on measurement — below fourteen columns the
+ * centre star closes and the mark reads as a domino, and at fourteen it
+ * costs seven rows.
+ *
+ * What takes the room is not decoration. A first screen is asked three
+ * questions — what model, where am I, what is loaded — and it now
+ * answers them in one aligned column.
+ */
+/** R2 — the keys a first screen teaches. One dim row, and deliberately
+ *  NOT derived from KEY_BINDINGS: the sheet is the complete list and
+ *  this is the opening's five, chosen rather than generated. */
+const BANNER_KEYS = "esc interrupt · ctrl+c exit · / commands · ! bash · ctrl+r expand";
+/** R2 — the labels. Uppercase mono, dim, letter-spaced by the column
+ *  rather than by SGR: they mark sections and are never content. */
+const BANNER_LABELS = ["MODEL", "WORKSPACE", "EXTENSIONS"] as const;
+const LABEL_STOP = Math.max(...BANNER_LABELS.map((l) => l.length)) + 2;
+
+/** R2 — what the opening knows about the session. Optional because the
+ *  off-TTY caller prints a banner before a model is bound. */
+export interface BannerMeta {
+	readonly model: string;
+	readonly mode: string;
+	readonly cwd: string;
+}
 
 /** v3 §01 (W1): truncate a row at `width`, marking the hidden span
  *  " (+N)". W1: the width math is the charWidth authority (the banner's
@@ -272,14 +348,39 @@ export function truncateRow(row: string, width: number): string {
  *  text row does not repeat the name — then extensions — then the W5
  *  resume list (BIG only, W5). Every row truncates at the terminal width
  *  with a " (+N)" marker. Pure. */
-export function bannerLines(W: number, H: number, version: string, extensionsText: string, resume: readonly ResumeMeta[] = [], now = Date.now()): string[] {
-	const rows: string[] = [];
-	if (W >= 40 && H >= 14) {
-		for (const r of WORDMARK_ROWS) rows.push(truncateRow(`  ${r}`, W));
+export function bannerLines(W: number, H: number, version: string, extensionsText: string, resume: readonly ResumeMeta[] = [], now = Date.now(), meta?: BannerMeta | undefined): string[] {
+	const rows: string[] = [truncateRow(`kiso ${version}`, W)];
+	const facts: [string, string][] = [];
+	if (meta !== undefined) {
+		facts.push([BANNER_LABELS[0], `${meta.model}${meta.mode === "" ? "" : ` · ${meta.mode}`}`], [BANNER_LABELS[1], meta.cwd]);
 	}
-	if (rows.length > 0) rows.push("");
-	rows.push(truncateRow(`v${version} — ${TAGLINE}`, W));
-	if (extensionsText !== "") rows.push(truncateRow(extensionsText, W));
+	if (extensionsText !== "") facts.push([BANNER_LABELS[2], extensionsText]);
+	if (facts.length > 0) {
+		rows.push("");
+		// The value column HANGS rather than truncating. The label costs
+		// columns the value used to have, and an extension list cut at the
+		// width would hide which extensions loaded — on the one screen whose
+		// job is to say what is loaded. Words wrap; a word longer than the
+		// column still truncates, with truncateRow's honest marker.
+		const room = Math.max(8, W - 2 - LABEL_STOP);
+		for (const [label, value] of facts) {
+			const lead = `  ${label}${" ".repeat(LABEL_STOP - label.length)}`;
+			const hang = " ".repeat(displayWidth(lead));
+			let line = "";
+			const out: string[] = [];
+			for (const word of value.split(" ")) {
+				if (line === "") line = word;
+				else if (displayWidth(`${line} ${word}`) <= room) line += ` ${word}`;
+				else {
+					out.push(line);
+					line = word;
+				}
+			}
+			if (line !== "") out.push(line);
+			for (const [i, l] of out.entries()) rows.push(truncateRow(`${i === 0 ? lead : hang}${l}`, W));
+		}
+	}
+	if (meta !== undefined && W >= 40) rows.push("", truncateRow(`  ${BANNER_KEYS}`, W));
 	if (W >= 40 && H >= 20 && resume.length > 0) {
 		rows.push("", ...renderResumeList(resume, W, now));
 	}

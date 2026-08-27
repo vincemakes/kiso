@@ -62,6 +62,8 @@ export {
 	bannerLines,
 	COLOR_OFF,
 	COLOR_ON,
+	currentGround,
+	setGround,
 	escapeTerminal,
 	foldResult,
 	foldThinking,
@@ -149,4 +151,5 @@ export {
 // honestly for a question nobody answered (the ① probe's surface).
 // TUI2-R1 (D): the keys sheet + THE key table — one source for the ?
 // overlay and /help's keys row.
+export { resolveGround, type Ground } from "@vincemakes/kiso-tui-cells";
 export { KEY_BINDINGS, PANEL_KEYS_ROW, displayVerb, extensionsBannerText, helpRows, keysHelpRow, keysSheetRows, unansweredAskView, type BannerExtension, type KeyBinding } from "./strings.js";
