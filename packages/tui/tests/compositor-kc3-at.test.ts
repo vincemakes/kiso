@@ -180,8 +180,9 @@ describe("KC3 T-A3: the two columns and the selection band", () => {
 		const bytes = writes.join("");
 		expect(bytes).toContain("\x1b[7m ");
 		expect(bytes).toContain("\x1b[27m");
-		// exactly ONE selection band in the frame
-		expect(bytes.split("\x1b[27m").length - 1).toBe(1);
+		// exactly ONE selection band — plus the composer's drawn cursor
+		// (REL-0161), which also closes with a 27m
+		expect(bytes.split("\x1b[27m").length - 1).toBe(2);
 	});
 
 	it("a path with no directory renders name-only — no empty right column", () => {

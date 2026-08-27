@@ -818,6 +818,12 @@ export class Editor {
 		process.stdout.write(MOUSE_OFF);
 		this.#mouseOn = false;
 		process.stdout.write("\x1b[?2004l"); // bracketed paste OFF
+		// REL-0161: the hardware cursor was hidden for the session's whole
+		// life (the compositor's entry reset); this is the one place kiso
+		// hands the terminal back. kill -9 skips it — the same exposure
+		// the reference implementation accepts; the entry repair covers
+		// the next kiso, and `reset` covers the shell.
+		process.stdout.write("\x1b[?25h");
 		process.stdin.setRawMode(false);
 		this.#closedResolve();
 	}

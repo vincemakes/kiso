@@ -66,15 +66,21 @@ describe("REL-0152-D19 — the dock resets the terminal on entry", () => {
 		expect(reset, "the reset must precede the first frame").toBeLessThan(firstFrame);
 	});
 
-	it("restores autowrap and the cursor — what a KILLED kiso leaves off", () => {
-		// REL-0152-D14 turns both off for a frame and restores them at its
-		// end. A process that dies between those points leaves the shell,
-		// and the next kiso, without wrapping and without a cursor.
-		// `kill -9` cannot be caught, so entry is the only repair point —
-		// and this product's claim is that it survives kill -9.
+	it("restores autowrap, and establishes the hidden cursor — what a KILLED kiso leaves behind", () => {
+		// REL-0152-D14 turns autowrap off for a frame and restores it at
+		// its end; a process that dies between those points leaves the
+		// shell, and the next kiso, without wrapping. `kill -9` cannot be
+		// caught, so entry is the only repair point.
+		//
+		// DECLARED SUPERSESSION (REL-0161): the cursor half inverts. The
+		// entry no longer shows the cursor — hidden IS the session's
+		// steady state (the Mark-inference fix), so the reset repairs a
+		// killed predecessor straight INTO ?25l. The visible cursor comes
+		// back exactly once, in editor.exit().
 		const bytes = entered();
 		expect(bytes).toContain("\x1b[?7h");
-		expect(bytes).toContain("\x1b[?25h");
+		expect(bytes).toContain("\x1b[r\x1b[?69l\x1b[?7h\x1b[?25l");
+		expect(bytes).not.toContain("\x1b[?25h");
 		expect(bytes.indexOf("\x1b[?7h"), "the repair must precede the first frame").toBeLessThan(bytes.indexOf("\x1b[?7l"));
 	});
 

@@ -123,7 +123,8 @@ describe("KC1 T-C1 — N=1 byte identity (the anchor: the legacy row and the com
 
 	it("the chrome still sits on H−3/H−2/H−1/H and the cursor CHA still lands on the marker", () => {
 		const committing = frames(additive("abc", 1), (b) => b.raw(["x"]));
-		expect(committing).toContain("› abc"); // the lead + the line, marker stripped
+		// REL-0161: the drawn cursor wraps the cell at the marker — read through it
+		expect(committing.replace(/\x1b\[(?:7|27)m/g, "")).toContain("› abc"); // the lead + the line, marker stripped
 		expect(committing).not.toContain("kiso-cur"); // the APC marker never reaches the stream
 		expect(committing).toContain("\x1b[6G"); // wallL (2) + lead (2) + cursor (1) + 1
 		// DECLARED SUPERSESSION (REL-0152-R1): the anchor jump is retired

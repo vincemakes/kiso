@@ -261,7 +261,8 @@ describe("TUI v6 — the one compositor", () => {
 		tick();
 		const bytes = writes.join("");
 		expect(bytes).not.toContain("kiso-cur"); // the APC marker is stripped
-		expect(bytes).toContain("› abc"); // the prompt + the line, marker stripped
+		// REL-0161: the drawn cursor wraps the cell at the marker — read through it
+		expect(bytes.replace(/\x1b\[(?:7|27)m/g, "")).toContain("› abc"); // the prompt + the line, marker stripped
 		// W23: the cursor move is the CHA to the frame-derived column —
 		// wallL (2) + the lead "› " (2) + the cursor (1) + 1 = 6 — the
 		// absolute column lands at the marker from ANY base (the retired

@@ -1576,7 +1576,11 @@ export class Body {
 			// frame, and the PTY gates that wait on the boot stream feel
 			// it; inside the frame it is four sequences and no new event.
 			this.#needsReset = false;
-			out.push("\x1b[r\x1b[?69l\x1b[?7h\x1b[?25h");
+			// REL-0161: the reset ESTABLISHES the hidden cursor (?25l) —
+			// the steady state for the session's whole life. It repairs a
+			// killed predecessor straight into the same state. The visible
+			// cursor comes back exactly once, in editor.exit().
+			out.push("\x1b[r\x1b[?69l\x1b[?7h\x1b[?25l");
 			// REL-0152-D20 — the mechanism is understood and the obvious fix
 			// is NOT taken here. See the finding.
 			//
@@ -1597,7 +1601,12 @@ export class Body {
 
 		}
 		out.push("\x1b[?7l");
-		out.push(this.#conservative ? "\x1b[?25l" : "\x1b[?2026h"); // D1: sync ON, or cursor-hide where 2026 is dead bytes
+		// REL-0161: ?25l is the STEADY state now, not a frame bracket —
+		// re-asserted at every frame open as self-healing (a subprocess
+		// or stray output that showed the cursor is corrected here), and
+		// never paired with a ?25h. Sync (2026) still brackets the frame
+		// where the terminal understands it.
+		out.push(this.#conservative ? "\x1b[?25l" : "\x1b[?2026h\x1b[?25l");
 		// A8: the bottom-anchored window (the model's last H rows) shifts
 		// DOWN when the live region SHRINKS — the done-fold, the fold-hold
 		// release at the terminal event. The steady path's scroll syncs
@@ -1621,7 +1630,11 @@ export class Body {
 		// with it.
 		this.#drawFull(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
 		this.#fullRedraw = false;
-		out.push(this.#conservative ? "\x1b[?25h" : "\x1b[?2026l");
+		// REL-0161: the frame close no longer shows the cursor — hidden IS
+		// the steady state (Terminal.app infers "a prompt line" from
+		// bracketed-paste + a visible cursor and decorates it with a Mark;
+		// the composer draws its own cursor cell instead — #inputRowBytes).
+		if (!this.#conservative) out.push("\x1b[?2026l");
 		out.push("\x1b[?7h"); // REL-0152-D14: autowrap back on for everything outside the frame
 		this.#inFrame = true;
 		try {
@@ -1993,16 +2006,44 @@ export class Body {
 			markerLine += CURSOR_MARKER;
 			markerCell = w;
 		}
-		const stripped0 = markerLine.replace(CURSOR_MARKER, "");
 		if (W < 4) {
 			// the degenerate screen: the box cannot hold its walls — the
 			// bare row (the pre-W6 bytes; the fold probe's pass-through
 			// line still crashes invariant ① downstream, as before)
-			return { stripped: stripped0, markerCell };
+			return { stripped: markerLine.replace(CURSOR_MARKER, ""), markerCell };
+		}
+		// REL-0161 — the DRAWN cursor. The hardware cursor is hidden for
+		// the session's life (Terminal.app infers "a prompt line" from
+		// bracketed-paste + a visible cursor and Marks it), so the cell
+		// at the marker renders inverse instead. The hardware cursor
+		// still PARKS at the marker — the IME anchor is its position.
+		const mi = markerLine.indexOf(CURSOR_MARKER);
+		let stripped0: string;
+		let cursorPad = 0; // 1 when the drawn cursor consumed a pad cell
+		if (mi < 0) {
+			stripped0 = markerLine; // a row that does not own the cursor
+		} else {
+			const before = markerLine.slice(0, mi);
+			const after = markerLine.slice(mi + CURSOR_MARKER.length);
+			if (after.length === 0) {
+				// the cursor rests past the content — an inverse space,
+				// taken OUT of the pad (the walk capped content at W−4,
+				// so the pad is ≥ 1 and the row still totals W)
+				stripped0 = `${before}\x1b[7m \x1b[27m`;
+				cursorPad = 1;
+			} else if (after[0] === "\x1b" || (after.codePointAt(0)! >= 0xd800 && after.codePointAt(0)! <= 0xdfff)) {
+				// never wrap a sequence, never split a surrogate pair —
+				// the cell keeps its bytes, the parked cursor still marks
+				// the position for the terminal's own affordances
+				stripped0 = before + after;
+			} else {
+				const glyph = String.fromCodePoint(after.codePointAt(0)!);
+				stripped0 = `${before}\x1b[7m${glyph}\x1b[27m${after.slice(glyph.length)}`;
+			}
 		}
 		// the pad completes the row to W — the content stopped at W−4,
-		// so the pad is ≥ 1
-		const padW = W - 3 - w;
+		// so the pad is ≥ 1 (≥ 0 after the drawn cursor consumed one)
+		const padW = W - 3 - w - cursorPad;
 		return { stripped: `\x1b[2m│ \x1b[0m${stripped0}\x1b[2m${" ".repeat(padW)}│\x1b[0m`, markerCell };
 	}
 

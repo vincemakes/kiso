@@ -46,10 +46,12 @@ function makeBody(opts: { W?: number; H?: number } = {}) {
 
 /** every CUP row the frame writes — the geometry's ground truth */
 const cupRows = (bytes: string): number[] => [...bytes.matchAll(/\x1b\[(\d+);1H/g)].map((m) => Number(m[1]));
-/** the row a CUP+EL wrote the given text at */
+/** the row a CUP+EL wrote the given text at — matched THROUGH styling
+ *  (REL-0161: the composer's drawn cursor wraps one cell in SGR 7…27,
+ *  so a text needle may span it) */
 const rowOf = (bytes: string, needle: string): number | undefined => {
 	for (const m of bytes.matchAll(/\x1b\[(\d+);1H\x1b\[0K([^\x1b]*(?:\x1b\[[0-9;]*m[^\x1b]*)*)/g)) {
-		if (m[2]!.includes(needle)) return Number(m[1]);
+		if (m[2]!.replace(/\x1b\[[0-9;]*m/g, "").includes(needle)) return Number(m[1]);
 	}
 	return undefined;
 };
@@ -74,7 +76,7 @@ describe("KC1 T-C2 — the N=3 geometry", () => {
 		body.bindInput(rows3(0), "› ");
 		body.enter();
 		tick();
-		const bytes = writes.join("");
+		const bytes = writes.join("").replace(/\x1b\[(?:7|27)m/g, ""); // REL-0161: read through the drawn cursor
 		expect(bytes).toContain("› one");
 		expect(bytes).toContain("  two"); // the two-cell indent — the lead's width
 		expect(bytes).toContain("  three");
@@ -189,7 +191,7 @@ describe("KC1 T-C5 — the tiny terminal: H=7 with an 8-line buffer", () => {
 			body.bindInput(eight(cursorRow), "› ");
 			body.enter();
 			tick();
-			const bytes = writes.join("");
+			const bytes = writes.join("").replace(/\x1b\[(?:7|27)m/g, ""); // REL-0161: read through the drawn cursor
 			expect(bytes).toContain(`line-${cursorRow}`); // the cursor's line is ON the screen
 			// DECLARED SUPERSESSION (REL-0152-R1), as above: the park is
 			// absolute, so the bound is on the ROW rather than on a

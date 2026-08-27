@@ -41,22 +41,26 @@ afterEach(() => {
 });
 
 describe("REL-0150-D1 — the conservative frame mode on Apple Terminal", () => {
-	it("TERM_PROGRAM=Apple_Terminal: frames wrap in ?25l/?25h and carry NO dead 2026 bytes", () => {
+	// DECLARED SUPERSESSION (REL-0161): the ?25l/?25h FRAME BRACKET is
+	// retired. Hidden is the cursor's STEADY state now — Terminal.app
+	// infers "a prompt line" from bracketed-paste + a visible cursor and
+	// decorates it with a Mark, and the composer met both conditions.
+	// The visible cursor returns exactly once, in editor.exit().
+	it("TERM_PROGRAM=Apple_Terminal: frames re-assert ?25l, NEVER ?25h, and carry NO dead 2026 bytes", () => {
 		vi.useFakeTimers();
 		const out = frames((b) => b.textAppend("streaming text"), 40, "Apple_Terminal");
 		expect(out).toContain("\x1b[?25l");
-		expect(out).toContain("\x1b[?25h");
+		expect(out).not.toContain("\x1b[?25h");
 		expect(out).not.toContain("\x1b[?2026");
-		// the cursor is never left hidden: every ?25l is closed by a ?25h
-		expect(out.split("\x1b[?25l").length).toBe(out.split("\x1b[?25h").length);
 	});
 
-	it("any other terminal keeps today's bytes exactly — the 2026 pair, no cursor games", () => {
+	it("any other terminal: the 2026 pair, and the same steady hidden cursor", () => {
 		vi.useFakeTimers();
 		const out = frames((b) => b.textAppend("streaming text"), 16, "iTerm.app");
 		expect(out).toContain("\x1b[?2026h");
 		expect(out).toContain("\x1b[?2026l");
-		expect(out).not.toContain("\x1b[?25l");
+		expect(out).toContain("\x1b[?25l"); // REL-0161: self-healing re-assert at every open
+		expect(out).not.toContain("\x1b[?25h");
 	});
 
 	it("Apple Terminal frames coalesce at 40ms — a 16ms tick paints nothing yet", () => {
