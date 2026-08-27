@@ -281,14 +281,14 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 				const top = f.lines[H - 4]!;
 				const input = f.lines[H - 3]!;
 				const bottom = f.lines[H - 2]!;
-				expect(top, `${W}x${H} frame ${f.n}: the box top corner`).toMatch(/^\u254c/);
-				expect(top, `${W}x${H} frame ${f.n}: the top rail runs the full width`).toMatch(/^\u254c+$/); // R2: a rule, not a corner
+				expect(top, `${W}x${H} frame ${f.n}: the box top corner`).toMatch(/^\u2500/);
+				expect(top, `${W}x${H} frame ${f.n}: the top rail runs the full width`).toMatch(/^\u2500+$/); // R2: a rule, not a corner
 				// R2: no walls. What the frame owes the input row is that it is
 				// EXACTLY W wide and that no cell overwrote it — the walls were
 				// only ever a proxy for that.
 				expect(input.length, `${W}x${H} frame ${f.n}: the input row is exactly W`).toBe(W);
-				expect(bottom, `${W}x${H} frame ${f.n}: the box bottom corner`).toMatch(/^\u254c/);
-				expect(bottom, `${W}x${H} frame ${f.n}: the bottom rail runs the full width`).toMatch(/^\u254c+$/);
+				expect(bottom, `${W}x${H} frame ${f.n}: the box bottom corner`).toMatch(/^\u2500/);
+				expect(bottom, `${W}x${H} frame ${f.n}: the bottom rail runs the full width`).toMatch(/^\u2500+$/);
 			}
 		}
 	});

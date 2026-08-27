@@ -23,10 +23,23 @@
  */
 
 import { kUnit } from "./render.js";
+import { TWINKLE } from "@vincemakes/kiso-tui-cells/render";
 
-/** v3 §03/§05 — the working glyph family; the CLI's 200ms spinner walks
- *  it and hands each glyph back to `runningStatus`. */
-export const STATUS_GLYPHS = ["▖", "▘", "▝", "▗"] as const;
+/**
+ * R3 (design §5.2) — the working glyph family is the TWINKLE, and the
+ * CLI's 200ms spinner walks it exactly as it walked the four quadrant
+ * blocks it replaces.
+ *
+ * Two reasons the quadrants had to go. §5.3: they ROTATED, and a mark
+ * that turns implies progress a call of unpredictable duration does not
+ * have. §4.1: the twinkle settles onto `✦`, which is the mark the
+ * folded segment keeps — so the glyph a human watches while the model
+ * thinks is the glyph left behind when the thought collapses into a
+ * record, and nothing new appears at the transition.
+ *
+ * Glyphs only, no colour: intact under NO_COLOR and on any ground.
+ */
+export const STATUS_GLYPHS = TWINKLE;
 
 /** The ~ctx estimate as the whole-percent LEFT. A non-finite ratio (no
  *  window, no estimate) yields null and the row prints "~null%" — the

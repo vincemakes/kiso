@@ -41,9 +41,9 @@ describe("TUI2-R1.5 ⑪ — the panel closes with a real rule (VD-13)", () => {
 		const rows = panelBlockRows(VIEW, "options", 1, 60, 20);
 		const last = rows[rows.length - 1]!;
 		expect(last).not.toBe("└ ");
-		expect(last.startsWith("\u254c")).toBe(true);
+		expect(last.startsWith("\u2500")).toBe(true);
 		expect(visibleWidth(last)).toBe(60);
-		expect(last).toBe("\u254c".repeat(60));
+		expect(last).toBe("\u2500".repeat(60));
 	});
 
 	it("the rule spans the width at EVERY width, and the row count gains the opening rule (R2)", () => {
@@ -63,8 +63,8 @@ describe("TUI2-R1.5 ⑪ — the panel closes with a real rule (VD-13)", () => {
 		// R2: TWO rules — the block opens with one and closes with one, in
 		// the same vocabulary as the composer. TUI2-R1.5 ⑪'s finding stands
 		// and is why this is safe: the cut notice keeps its └ and can no
-		// longer be mistaken for an edge, because an edge is now ╌.
-		expect(rows.filter((r) => r.startsWith("\u254c"))).toHaveLength(2);
+		// longer be mistaken for an edge, because an edge is now ─.
+		expect(rows.filter((r) => r.startsWith("\u2500"))).toHaveLength(2);
 	});
 });
 

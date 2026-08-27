@@ -113,7 +113,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		expect(clean).toContain("ＡＡ"); // v3 §02: the user block has no "you> " prefix
 		// And the input row survives (the editor's own render) — proven by
 		// the composer's own rails, which is what the chrome IS now.
-		expect(clean).toContain("\u254c\u254c\u254c");
+		expect(clean).toContain("\u2500\u2500\u2500");
 	}, 90_000);
 
 	it("the submitted line renders in the scroll region EXACTLY once — the SGR-7 chip + reset", () => {

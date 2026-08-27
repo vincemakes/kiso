@@ -79,7 +79,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
 const CELL_LINE = [
 	/^\[.*extensions?:.*\]$/, // the banner extensions row (v3 info row)
 	/^⋯.*$/, // the ThinkingCell fold (W2: the ⋯ gutter — the midline mark is the state, never the text ellipsis)
-	/^[▖▘▝▗] \S+ .*\d+s?$/, // the ToolCell running (W2: the spinner IS the gutter)
+	/^● \S+ .*\d+s?$/, // the ToolCell running (W2: the mark IS the gutter). R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
 	/^⏸ \S+ .*$/, // the approval badge (W2: the ⏸ is the left gutter)
 	// MOVED (EC-1 ②③, the SCHEDULER-TIMING class — DECLARED THIS ROUND):
 	// the metadata segment is OPTIONAL now. A call queued behind the FIFO
@@ -116,14 +116,14 @@ const CELL_LINE = [
 	/^▸ .* · \/mode to switch.*$/, // v3 idle status line
 	/^⏸ run paused.*$/, // W21: the panel's paused status (the lead owns the input row — the affordance rides the status)
 	/^\/ commands · ↑ history$/, // TUI v5 #16g: the dock's idle hint — the status row at enter (the status is still empty)
-	/^[▖▘▝▗] working \d+s.*$/, // the running status line (all four spinner glyphs — the W21 hint "· esc to interrupt" rides the row)
+	/^[✧✦✶✸✺] working \d+s.*$/, // the running status line — R3 (§5.2): the twinkle, not the retired quadrant rotation
 	// MOVED (the focus-marker class, TUI2-R2 ⑤): a running tool cell's
 	// head row carries `· ctrl+r` when it is the FOCUSED cell — the one
 	// the next press will act on. The affordance IS the marker there, so
 	// the row it appears on is exactly one per frame; the pattern above
 	// already admitted the unfocused form (`▖ name · 1s`) and this admits
 	// the focused one.
-	/^[▖▘▝▗] .* · \d+s · ctrl\+r$/,
+	/^● .* · \d+s · ctrl\+r$/,
 	/^streaming text.*$/, // the TextCell body
 	/^session \S+$/, // the session header
 	/^\[faux mode.*$/, // the faux banner line
@@ -142,7 +142,7 @@ const CELL_LINE = [
 	// composer's two rails, and every panel's open and close. The box
 	// (`╭─╮` / `╰─╯`) and the panel's own `─` divider are both retired,
 	// and the divider became a blank row, which the lint already skips.
-	/^\u254c+$/,
+	/^\u2500+$/,
 	// R2: the input row is the typed text at COLUMN ONE — no wall, no
 	// prompt glyph — so it is classified by its CONTENT like any other
 	// plain row, and an EMPTY composer is the blank the lint skips.
@@ -303,7 +303,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// call's JSON while the done card printed the plain command
 		// (VD-4). One formatter now, and the duration is its own trailing
 		// segment rather than a bare "Ns" welded to the text.
-		expect(clean).toMatch(/[▖▘▝▗] shell sleep 1; echo hi · \d+s/); // the running shell — the spinner IS the gutter
+		expect(clean).toMatch(/● shell sleep 1; echo hi · \d+s/); // the running shell — R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
 		// A4: the target rides the settled head row (list_dir's input is {}
 		// → the "(root)" fallback); A5: the decider is NAMED on the rows
 		// that auto-approve (the extension's ask lost to the tier's allow).

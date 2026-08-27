@@ -102,9 +102,34 @@ describe("DC-3 — the wash is the ground-shaped token", () => {
 	});
 });
 
-describe("DC-3 — dim stays an attribute", () => {
-	it("every ground dims by SGR 2, which adapts instead of asserting", () => {
-		for (const p of [COLOR_NEUTRAL, COLOR_LIGHT, COLOR_DARK]) expect(p.dim).toBe("\x1b[2m");
+/**
+ * DECLARED SUPERSESSION (R3, owner-reported): `dim` is ABSOLUTE once the
+ * ground is known.
+ *
+ * DC-3 pinned SGR 2 on every ground, arguing that an attribute adapts
+ * while an absolute grey asserts. That is true of what SGR 2 IS and
+ * false of what it MEASURES: a terminal renders it as some fraction of
+ * its own foreground, and on Apple Terminal's light profile the labels,
+ * the keys row and the status row all landed under the 4.5:1 floor —
+ * reported from real use, not from a sweep. design.md §2's table always
+ * gave the measured values; the code had simply not followed it.
+ *
+ * The UNKNOWN ground keeps the attribute, because §3.1 forbids an
+ * absolute foreground in a palette with no established background — and
+ * the floor gate above proves the two known grounds clear 4.5:1.
+ */
+describe("R3 — dim is the ground's measured grey, and an attribute only when the ground is unknown", () => {
+	it("an established ground carries design §2's absolute value", () => {
+		expect(COLOR_LIGHT.dim).toBe("\x1b[38;5;243m"); // #767676, 4.54:1 on white
+		expect(COLOR_DARK.dim).toBe("\x1b[38;5;246m"); // #949494, 5.50:1 on #1e1e1e
+	});
+
+	it("an UNKNOWN ground keeps SGR 2 — the only form correct on a background nobody has established", () => {
+		expect(COLOR_NEUTRAL.dim).toBe("\x1b[2m");
+	});
+
+	it("NO_COLOR still spends nothing", () => {
+		expect(COLOR_OFF.dim).toBe("");
 	});
 });
 

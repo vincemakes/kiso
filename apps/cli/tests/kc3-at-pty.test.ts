@@ -194,7 +194,7 @@ describe("KC3 T-A4 — the acceptance run", () => {
 		// R2 (law 1.1): the composer is two dashed rails, not a box. Both
 		// rails are the same rule, so what the stream must carry is the
 		// rule itself — the corners are retired.
-		expect(out).toContain("\u254c\u254c\u254c");
+		expect(out).toContain("\u2500\u2500\u2500");
 		expect(out).toContain("/ commands");
 		expect(out).toContain("chrome check answered");
 		// and the picker is GONE once the line was sent

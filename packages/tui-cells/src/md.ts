@@ -298,7 +298,7 @@ function blockBody(b: MdBlock, W: number): string[] {
 			// R2: the dashed rule, at the block's own width. The 28 was a
 			// guess that read as a short line rather than a divider, and ─
 			// belonged to the box vocabulary this round is collapsing.
-			return [`${p.dim}${"\u254c".repeat(Math.max(1, W))}${p.reset}`];
+			return [`${p.dim}${"\u2500".repeat(Math.max(1, W))}${p.reset}`];
 		case "fence-open":
 			// E2: the RAIL, not a gutter. A block drawn with ``` is still a
 			// fenced block when a human selects it and pastes it somewhere

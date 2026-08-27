@@ -138,11 +138,11 @@ describe("KC1 T-P1 — a pasted 3-line CRLF block is ONE multi-line turn (real P
 		// and CHROME_ROWS is still 4 — so the rails are what identify it.
 		const grown = grids.find(
 			(g) =>
-				g[18]!.includes("\u254c") &&
+				g[18]!.includes("\u2500") &&
 				g[19]!.includes("SELECT id") &&
 				g[20]!.includes("FROM t") &&
 				g[21]!.includes("WHERE x = 1") &&
-				g[22]!.includes("\u254c"),
+				g[22]!.includes("\u2500"),
 		);
 		expect(grown, "a frame shows the composer at three rows").toBeDefined();
 
@@ -156,9 +156,9 @@ describe("KC1 T-P1 — a pasted 3-line CRLF block is ONE multi-line turn (real P
 		//    row (top at H−3 = row index 20), and the idle chrome survives
 		const grid = grids.at(-1)!;
 		expect(grid.join("\n")).toContain("the query reads three lines");
-		expect(grid[20]!.includes("\u254c")).toBe(true); // R2: the rails, not the corners
-		expect(grid[21]!.includes("\u254c")).toBe(false); // the input row between them
-		expect(grid[22]!.includes("\u254c")).toBe(true);
+		expect(grid[20]!.includes("\u2500")).toBe(true); // R2: the rails, not the corners
+		expect(grid[21]!.includes("\u2500")).toBe(false); // the input row between them
+		expect(grid[22]!.includes("\u2500")).toBe(true);
 		expect(grid[23]).toContain("/ commands");
 		// the user's own turn rides the scrollback as a chip, all three lines
 		const scrollback = Buffer.from(out, "hex").toString("utf8");
@@ -188,7 +188,7 @@ describe("KC1 T-P2 — Ctrl+J grows the box; the submit collapses it; a queued m
 		// ① the composer grew to three rows under Ctrl+J
 		// R2 (law 1.1): the rails, not the corners — see T-P1 above.
 		const grown = grids.find(
-			(g) => g[18]!.includes("\u254c") && g[19]!.includes("one") && g[20]!.includes("two") && g[21]!.includes("three") && g[22]!.includes("\u254c"),
+			(g) => g[18]!.includes("\u2500") && g[19]!.includes("one") && g[20]!.includes("two") && g[21]!.includes("three") && g[22]!.includes("\u2500"),
 		);
 		expect(grown, "a frame shows three composer rows typed with Ctrl+J").toBeDefined();
 
@@ -197,7 +197,7 @@ describe("KC1 T-P2 — Ctrl+J grows the box; the submit collapses it; a queued m
 		// R2: collapsed = the rails back at 20/22 with NO rail (and so no
 		// composer row) at 19. The old test read `!g[19].includes("│")` —
 		// the box's left wall, which no longer exists.
-		const collapsed = grids.slice(grownAt + 1).find((g) => g[20]!.includes("\u254c") && g[22]!.includes("\u254c") && !g[19]!.includes("\u254c"));
+		const collapsed = grids.slice(grownAt + 1).find((g) => g[20]!.includes("\u2500") && g[22]!.includes("\u2500") && !g[19]!.includes("\u2500"));
 		expect(collapsed, "a later frame shows the box back at one row").toBeDefined();
 
 		// ③ the QUEUED multi-line turn's chip: its first line + ⏎×2

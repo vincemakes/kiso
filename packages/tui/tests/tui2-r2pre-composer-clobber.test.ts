@@ -58,7 +58,7 @@ function screenBody(W: number, H: number, composer: string) {
  *  property the corner glyphs used to stand in for. */
 function dockIntact(screen: WideScreen, H: number): boolean {
 	const rows = screen.visible();
-	const rail = (r: string | undefined): boolean => r !== undefined && /^\u254c+$/.test(r);
+	const rail = (r: string | undefined): boolean => r !== undefined && /^\u2500+$/.test(r);
 	return rail(rows[H - 4]) && rail(rows[H - 2]);
 }
 
@@ -84,7 +84,7 @@ describe("TUI2-R2pre ① — the width table is the composer's floor", () => {
 		// ramp joined (the fold mark and the thinking twinkle), ● joined
 		// (the command breath), ✦ left. §6.1 forbids any glyph the emoji
 		// font could draw double-width, so the ramp is measured here.
-		for (const glyph of ["✓", "✗", "⚠", "⏸", "✦", "✧", "✶", "✸", "✺", "●", "▸", "▖", "▣", "□", "→", "─", "\u254c", "│", "└", "█", "▀", "▄"]) {
+		for (const glyph of ["✓", "✗", "⚠", "⏸", "✦", "✧", "✶", "✸", "✺", "●", "▸", "▖", "▣", "□", "→", "─", "\u2500", "│", "└", "█", "▀", "▄"]) {
 			expect(`${glyph} measures ${displayWidth(glyph)}`).toBe(`${glyph} measures 1`);
 		}
 		expect(displayWidth("\u4e2d")).toBe(2); // the CJK ranges were never the hole

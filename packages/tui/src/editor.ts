@@ -112,7 +112,13 @@ const OSC_MAX = 1024;
 
 /** The dim "…" — the ONE truncation mark: the horizontal scroll's
  *  prefix (unchanged) and the viewport's hidden-rows markers. */
-const ELLIPSIS = "\x1b[2m…\x1b[0m";
+/** R3: built per call from the palette — `dim` is an absolute grey once
+ *  the ground is known, so a frozen SGR 2 here would be the one span
+ *  that ignores it. */
+const ellipsis = (): string => {
+	const p = palette();
+	return `${p.dim}\u2026${p.reset}`;
+};
 
 /**
  * The editor. Raw mode + bracketed paste (?2004h) on enter, restored on
@@ -526,9 +532,9 @@ export class Editor {
 			// the cursor's own row carries the horizontal scroll (and its
 			// "…"); the other rows render whole and cap at the frame's wall
 			const from = i === cursorLine ? b.start + this.#scroll : b.start;
-			const scrolled = i === cursorLine && this.#scroll > 0 ? ELLIPSIS : "";
-			const above = i === first && first > 0 ? ELLIPSIS : "";
-			const below = i === first + n - 1 && first + n < bounds.length ? ELLIPSIS : "";
+			const scrolled = i === cursorLine && this.#scroll > 0 ? ellipsis() : "";
+			const above = i === first && first > 0 ? ellipsis() : "";
+			const below = i === first + n - 1 && first + n < bounds.length ? ellipsis() : "";
 			lines.push(`${above}${scrolled}${String.fromCodePoint(...this.#chars.slice(from, b.end))}${below}`);
 		}
 		const cursorRow = cursorLine - first;

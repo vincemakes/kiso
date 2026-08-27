@@ -75,7 +75,7 @@ describe("TUI2-R1.5 ⑦(b) — the band names itself (VD-8)", () => {
 		const rows = atPanelRows({ matches: [match("src/parser.ts"), match("README.md")], selected: 0, capped: false }, 60);
 		// R2: the band's label rides the RULE — a band opens the way the
 		// composer and every panel now open, and the label says which band.
-		expect(rows[0]!.replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/^\u254c{3} files \u254c+$/);
+		expect(rows[0]!.replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/^\u2500{3} files \u2500+$/);
 		// the counter still closes the band
 		expect(rows[rows.length - 1]).toContain("(1/2)");
 	});

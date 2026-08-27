@@ -104,19 +104,30 @@ const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32
  * 4's principle exactly: when the ground is unknown, use the thing that
  * is correct on any ground rather than guessing one.
  */
-const withWash = (wash: string, washEnd: string, red: string = BASE.red): Palette => ({ ...BASE, red, wash, washEnd, code: wash });
+const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: string = BASE.dim): Palette => ({ ...BASE, red, dim, wash, washEnd, code: wash });
 /**
  * DC-3 — one table per ground.
  *
- * `dim` is the same in all three ON tables and that is the point: SGR 2
- * is an ATTRIBUTE, it dims whatever the terminal's own foreground is, so
- * it adapts to the ground instead of asserting one. Only the background
- * genuinely needs to know, which is why `wash` is the only member that
- * varies.
+ * R3 (owner, 2026-08-27) — `dim` is ABSOLUTE once the ground is known,
+ * and design.md §2's table always said so: light `243` `#767676` at
+ * 4.54:1, dark `246` `#949494` at 5.50:1 (both re-measured here).
+ *
+ * DC-3 shipped SGR 2 instead, on the argument that an attribute adapts
+ * to the ground while an absolute grey asserts one. That argument is
+ * right about what SGR 2 IS and wrong about what it MEASURES: a
+ * terminal renders it as a fraction of its own foreground, and on Apple
+ * Terminal's light profile that lands well under the 4.5:1 floor — the
+ * labels, the keys row and the status row were all reported unreadable
+ * in real use. An attribute that adapts to an unknown ratio is not a
+ * contrast guarantee; the table's measured value is.
+ *
+ * The UNKNOWN ground keeps SGR 2, because §3.1 forbids an absolute
+ * foreground in a palette that has not established a background — the
+ * attribute is exactly the "correct on any ground" degradation there.
  */
 export const COLOR_NEUTRAL: Palette = withWash("\x1b[7m", "\x1b[27m");
-export const COLOR_LIGHT: Palette = withWash("\x1b[48;5;255m", "\x1b[49m", "\x1b[38;5;124m");
-export const COLOR_DARK: Palette = withWash("\x1b[48;5;236m", "\x1b[49m", "\x1b[38;5;173m");
+export const COLOR_LIGHT: Palette = withWash("\x1b[48;5;255m", "\x1b[49m", "\x1b[38;5;124m", "\x1b[38;5;243m");
+export const COLOR_DARK: Palette = withWash("\x1b[48;5;236m", "\x1b[49m", "\x1b[38;5;173m", "\x1b[38;5;246m");
 /** The historical name — the palette for a colour TTY whose ground has
  *  not been established. Unchanged in every byte except `code`, which
  *  was the defect. */
@@ -297,6 +308,51 @@ export function renderTerminalGap(statusLine: string | null): string {
  * 40 columns skips the logo + the blank entirely — only the info rows.
  * Pure.
  */
+/**
+ * design.md §5.2 — THE TWO CYCLES, built. Seven frames each, walked at
+ * the existing 200ms spinner cadence, so a waiting screen's byte volume
+ * and frame rate are exactly what they were.
+ *
+ * §5.3 is why neither rotates: "a breath says alive; a turn says
+ * counting". A call whose duration cannot be predicted must not wear a
+ * mark that implies progress it does not have.
+ */
+
+/** The THINKING twinkle — glyphs only, no colour at all, so it survives
+ *  NO_COLOR and any ground intact. §4.1: it settles onto `✦`, which is
+ *  the same mark the collapsed segment keeps, so nothing new appears at
+ *  the transition. Every glyph is in Menlo and absent from Apple Color
+ *  Emoji (§6.1's test, run). */
+export const TWINKLE = ["\u2727", "\u2726", "\u2736", "\u2738", "\u273a", "\u2738", "\u2726"] as const;
+
+/** The COMMAND breath — brightness only, one glyph. The ramps bottom out
+ *  EXACTLY on the ground's dim token (§2.2: "the floor is a floor,
+ *  including mid-animation"): light ends at 243 (4.54:1 on white), dark
+ *  at 246 (5.50:1 on #1e1e1e). Measured, not assumed. */
+const BREATH_LIGHT = [232, 236, 240, 243, 240, 236, 232] as const;
+const BREATH_DARK = [255, 251, 248, 246, 248, 251, 255] as const;
+
+/** The breath's frame: `●` at the step's grey, for the CURRENT ground.
+ *  With no ground — or under NO_COLOR — it freezes to a static `●`,
+ *  because a brightness ramp needs a background to be a ramp against and
+ *  §3.1 forbids guessing one. The glyph never changes, so the freeze
+ *  degrades the motion and never the meaning. */
+export function breathFrame(step: number): string {
+	const p = palette();
+	const ramp = currentGround() === "light" ? BREATH_LIGHT : currentGround() === "dark" ? BREATH_DARK : null;
+	if (ramp === null || p.bold === "") return "\u25cf";
+	return `\x1b[38;5;${ramp[step % ramp.length]}m\u25cf${p.reset}`;
+}
+
+/** The twinkle's frame — pure glyph, no palette involved. */
+export function twinkleFrame(step: number): string {
+	return TWINKLE[step % TWINKLE.length]!;
+}
+
+/** Both cycles are seven frames, so ONE counter walks them and the two
+ *  marks stay in step on a screen showing both. */
+export const MOTION_FRAMES = 7;
+
 /** DC-18: the display-width prefix of PLAIN text. `widthCut` lives in
  *  components.ts, which imports this module — the dependency runs one
  *  way, so the four lines live here rather than inverting it. */

@@ -66,14 +66,14 @@ const render = (cell: BodyCell, W = 80): string[] => cellComponent(cell).render(
 describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 	it("no output yet: the shape is exactly today's — nothing observed, nothing claimed", () => {
 		setTTY(false);
-		expect(render(running())).toEqual(["▖ shell npm test · 12s", "│ ", "│ ", "└ waiting for output"]);
+		expect(render(running())).toEqual(["● shell npm test · 12s", "│ ", "│ ", "└ waiting for output"]);
 	});
 
 	it("output observed: the LAST lines ride the block, the footer names the state and the two gestures", () => {
 		setTTY(false);
 		const rows = render(running({ resultText: "packages/runtime    184 tests\npackages/tui      ⠸ 88/120" }));
 		expect(rows).toEqual([
-			"▖ shell npm test · 12s",
+			"● shell npm test · 12s",
 			"│ packages/runtime    184 tests",
 			"│ packages/tui      ⠸ 88/120",
 			"└ live tail · esc stop · alt+⏎ redirect",
@@ -112,7 +112,7 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 	it("a NON-shell running tool keeps liveWindow byte for byte — the tail is the shell's alone", () => {
 		setTTY(false);
 		const rows = render(running({ name: "read_file", input: "big.txt", inputFull: JSON.stringify({ path: "big.txt" }) }));
-		expect(rows).toEqual(["▖ read  big.txt · 12s", "│ ", "│ ", "└ waiting for output"]);
+		expect(rows).toEqual(["● read  big.txt · 12s", "│ ", "│ ", "└ waiting for output"]);
 	});
 
 	it("COMPLETION collapses to one line — the tail is gone, A's suffix names what it hid", () => {

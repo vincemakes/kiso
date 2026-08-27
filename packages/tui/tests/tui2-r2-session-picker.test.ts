@@ -55,7 +55,7 @@ afterEach(() => {
 describe("TUI2-R2 ② — the picker band (the picker-surface class)", () => {
 	it("the band NAMES itself `sessions`, carries a row per card and the counter — the prototype's A-1 frame", () => {
 		const rows = sessionPickerRows({ cards: CARDS, matches: CARDS, selected: 0 }, 80, NOW);
-		expect(strip(rows[0]!)).toMatch(/^\u254c{3} sessions \u254c+$/); // R2: the label rides the rule
+		expect(strip(rows[0]!)).toMatch(/^\u2500{3} sessions \u2500+$/); // R2: the label rides the rule
 		expect(rows).toHaveLength(1 + 5 + 1); // header + the five rows + the counter
 		expect(strip(rows.at(-1)!)).toBe("  (1/5)");
 		const body = rows.slice(1, -1).map(strip);

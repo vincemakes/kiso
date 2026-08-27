@@ -209,7 +209,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// the ghost — the emulator replay below pins it. The unbounded
 		// pileup class (per-redraw scrolls — the original #16a drag) still
 		// blows the +4 budget at 5 winches.
-		const sepLines = (t: string): number => t.split("\n").filter((l) => /^\u254c+$/.test(l.trimEnd())).length; // R2: one rule, both rails
+		const sepLines = (t: string): number => t.split("\n").filter((l) => /^\u2500+$/.test(l.trimEnd())).length; // R2: one rule, both rails
 		const cleanAll = stripANSI(out);
 		expect(sepLines(cleanAll)).toBeLessThanOrEqual(sepLines(cleanAll.slice(0, stormAt)) + 4);
 
@@ -228,7 +228,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 			// chrome-clear may wipe them — the WALL, the duplicated rails the
 			// reflow left behind, would exceed 2). R2: the top and bottom are
 			// the same rule now, so the bound counts both rather than one.
-			expect(grid.filter((l) => /^\u254c+$/.test(l.trimEnd())).length).toBeLessThanOrEqual(2);
+			expect(grid.filter((l) => /^\u2500+$/.test(l.trimEnd())).length).toBeLessThanOrEqual(2);
 		}
 
 		// ② #16b: no ESC residue — the banner's dim and the recap's blue

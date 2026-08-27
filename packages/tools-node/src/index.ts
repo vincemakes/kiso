@@ -34,6 +34,7 @@ import {
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -90,6 +91,11 @@ const DEFAULT_SHELL_TIMEOUT_MS = 30_000;
 // red line: every truncation names its continuation — the model always
 // has a path to the full content.
 const DEFAULT_READ_LINES = 200;
+/** R3: how many files a search may read before it hands the event loop
+ *  back. Small enough that the 200ms motion cadence never misses a beat,
+ *  large enough that the yield costs nothing on a small tree. */
+const YIELD_EVERY = 64;
+
 const MAX_SEARCH_MATCHES = 50;
 const MAX_DIR_ENTRIES = 200;
 
@@ -440,14 +446,34 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			// depth cap and the node_modules/dotfile skip stay.
 			const matches: string[] = [];
 			let totalMatches = 0;
-			const walk = (dir: string, depth: number): void => {
+			// R3 — the walk YIELDS. It was `readdirSync` + `readFileSync` all
+			// the way down inside an `async` body, which is the shape that
+			// blocks Node's event loop for the whole traversal: measured at
+			// 18.4 seconds over a home directory, during which no timer
+			// fires, no frame paints and the `working` mark freezes solid.
+			// A user reasonably reads a frozen liveness mark as a crash.
+			//
+			// The fix is not "make it faster" — a big tree is legitimately
+			// slow. It is to stop OWNING the loop: `fs.promises.readdir`,
+			// and a yield every YIELD_EVERY files so a long read stretch
+			// cannot monopolise it either. Same traversal, same order, same
+			// caps, same results; only the loop is shared now.
+			let sinceYield = 0;
+			const breathe = async (): Promise<void> => {
+				sinceYield += 1;
+				if (sinceYield < YIELD_EVERY) return;
+				sinceYield = 0;
+				await new Promise<void>((r) => setImmediate(r));
+			};
+			const walk = async (dir: string, depth: number): Promise<void> => {
 				if (depth > 8) return;
-				for (const entry of readdirSync(dir, { withFileTypes: true })) {
+				for (const entry of await readdir(dir, { withFileTypes: true })) {
 					if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
 					const full = join(dir, entry.name);
 					if (entry.isDirectory()) {
-						walk(full, depth + 1);
+						await walk(full, depth + 1);
 					} else if (entry.isFile()) {
+						await breathe();
 						try {
 							// round 8: same inode boundary as read_file — a hard link
 							// to an external inode is not searched. round 4 (adversarial):
@@ -472,7 +498,7 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 				}
 			};
 			try {
-				walk(root, 0);
+				await walk(root, 0);
 			} catch (err) {
 				return { content: `search_text failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
 			}

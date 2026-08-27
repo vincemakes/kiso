@@ -33,7 +33,7 @@ const COLS = 100;
 
 /** A row that is nothing but the dashed rule — the composer's rails,
  *  and every panel's. */
-const isRail = (row: string): boolean => /^\u254c+$/.test(row.trimEnd());
+const isRail = (row: string): boolean => /^\u2500+$/.test(row.trimEnd());
 
 /**
  * The cursor rests on an INPUT row: the composer's, its multi-line

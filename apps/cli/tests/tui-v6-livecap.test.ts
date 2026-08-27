@@ -117,9 +117,9 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: scri
 		// and the corners with it — both rails are the SAME dashed rule,
 		// and the input row carries no prompt glyph (the cursor sits at
 		// column one). CHROME_ROWS is still 4; only what they draw moved.
-		expect(grid[20]!.includes("\u254c")).toBe(true);
-		expect(grid[21]!.includes("\u254c")).toBe(false); // the input row is not a rail
-		expect(grid[22]!.includes("\u254c")).toBe(true);
+		expect(grid[20]!.includes("\u2500")).toBe(true);
+		expect(grid[21]!.includes("\u2500")).toBe(false); // the input row is not a rail
+		expect(grid[22]!.includes("\u2500")).toBe(true);
 		expect(grid[23]).toContain("▸ default");
 	}, 90_000);
 });

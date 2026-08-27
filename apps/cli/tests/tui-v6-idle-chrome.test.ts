@@ -1,7 +1,7 @@
 /**
  * TUI v6 (ADR-0046) — the idle-chrome gate: the input row's SCREEN
- * position while typing. The V6-3 four-row chrome (upper ╌ at H−3,
- * the input at H−2, the lower ╌ at H−1, the status at H) must survive
+ * position while typing. The V6-3 four-row chrome (upper ─ at H−3,
+ * the input at H−2, the lower ─ at H−1, the status at H) must survive
  * the STEADY frames. The no-commit path (a frame with zero NEW commits
  * — every keystroke after the first, once the banner committed) jumped
  * ONE row from the anchor and repainted the chrome one row up: the
@@ -122,16 +122,16 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: scri
 		// H−3 (20), the input at H−2 (21), the box bottom at H−1 (22), the
 		// status at H (23) — the buggy no-commit frame put the input at 20
 		// and the status at 22 (the input box shifted one row up). W6: the
-		// ╌ rails became the box corners.
+		// ─ rails became the box corners.
 		// R2 (law 1.1): the rounded box is retired — both edges are the SAME
 		// dashed rule, so the corners cannot tell them apart, and the input
 		// row between them carries no prompt glyph. What the case is about
 		// — the chrome's row GEOMETRY — is untouched, and the row is
 		// identified by being the non-rail row between the two rails.
-		expect(grid[20]!.includes("\u254c")).toBe(true);
-		expect(grid[21]!.includes("\u254c")).toBe(false);
+		expect(grid[20]!.includes("\u2500")).toBe(true);
+		expect(grid[21]!.includes("\u2500")).toBe(false);
 		expect(grid[21]).toContain("x"); // the post-turn char, at H−2
-		expect(grid[22]!.includes("\u254c")).toBe(true);
+		expect(grid[22]!.includes("\u2500")).toBe(true);
 		// the status at H — the idle hint (the CLI's empty status + the
 		// right-aligned "/ commands · ↑ history" tail) — and the working
 		// status ZERO times on the final screen (the dead "working" at H

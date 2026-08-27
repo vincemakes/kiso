@@ -25,6 +25,7 @@ import { displayWidth, visibleWidth } from "./width.js";
 import { displayVerb } from "./strings.js";
 import {
 	bannerLines,
+	breathFrame,
 	escapeTerminal,
 	foldThinking,
 	foldResult,
@@ -780,7 +781,14 @@ class ToolExecution implements Component {
 			// leaves; the duration then rides the row, always legible.
 			const elapsed = c.startedAt !== null ? Math.max(1, Math.round((ctx.now - c.startedAt) / 1000)) : 1;
 			const dur = ` · ${elapsed}s`;
-			const out = gutterCut(`${p.bold}${SPINNER[ctx.spinnerI % SPINNER.length]}${p.reset} `, `${verbCol} ${liveTarget(c)}`, Math.max(4, W - dur.length));
+			// R3 (design §5.2): a running command BREATHES — one glyph, seven
+			// greys, bottoming out on the ground's dim token (§2.2 applies
+			// mid-animation, not just at rest). The quadrant spinner it
+			// replaces ROTATED, which §5.3 forbids for a call whose duration
+			// cannot be predicted: a turning mark implies progress the
+			// product does not have. With no ground the breath freezes to a
+			// static `●` and says the same thing more quietly.
+			const out = gutterCut(`${breathFrame(ctx.spinnerI)} `, `${verbCol} ${liveTarget(c)}`, Math.max(4, W - dur.length));
 			out[0] = `${out[0]!}${p.dim}${dur}${p.reset}`;
 			out.push(...toolBlockBody(c, W));
 			return out;
@@ -1678,27 +1686,37 @@ export function selectionBar(styled: string, visible: number, W: number): string
 /**
  * R2 — the composer's rails, and the ONE edge vocabulary.
  *
+ * R3 (owner, 2026-08-27): the rule is a SOLID hairline (`\u2500`), not
+ * the dashed `\u254c` R2 shipped, and it is solid EVERYWHERE — the
+ * composer, every panel's open and close, the band headers and the
+ * markdown rule. One line, one weight, no exceptions to remember.
+ *
  * W6 turned two \u254c dotted rows into a rounded box, reasoning that
  * "the box already says input lives here". That is reversed here, and
  * the reason is not taste: a rule is a DELIMITER and a box is a
  * CONTAINER, and the screen was carrying six edge vocabularies at once
  * (this box, the panel's \u2502 gutter and \u2514\u2500\u2500 tail, the
  * diff gutter, the quote's \u258f, the table's rails, the markdown
- * rule). One dashed rule replaces the ones that SEPARATE; the \u2502
- * gutter survives where it SCOPES.
+ * rule). ONE rule replaces the ones that SEPARATE; the \u2502 gutter
+ * survives where it SCOPES.
  *
  * Row-neutral by construction: CHROME_ROWS is still 4, so every gate
  * keyed on H \u2212 4 is untouched, and the input row gains the two
  * columns the walls were taking.
  */
 export function boxTop(W: number): string {
-	return `\x1b[2m${"\u254c".repeat(Math.max(0, W))}\x1b[0m`;
+	// R3: the palette's dim, not a hardcoded SGR 2 — `dim` is an absolute
+	// grey once the ground is known, and a rail that hardcodes the
+	// attribute would be the one chrome row not obeying the table.
+	const p = palette();
+	return `${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`;
 }
 
 /** R2 — the same rule below. Named for its POSITION, not its shape, so
  *  the compositor's two call sites did not have to move. */
 export function boxBottom(W: number): string {
-	return `\x1b[2m${"\u254c".repeat(Math.max(0, W))}\x1b[0m`;
+	const p = palette();
+	return `${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`;
 }
 
 /** The terminal label + rhythm gap (the pipe path's v2c bytes — the

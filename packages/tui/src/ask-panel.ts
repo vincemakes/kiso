@@ -296,7 +296,7 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	const counter = spec.questions.length > 1 ? `${p.dim} ‹ ${state.qIndex + 1}/${spec.questions.length} ›${p.reset}` : "";
 	const rows: string[] = [];
 	// R2: the same dashed rule the composer and the approval panel use.
-	rows.push(`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`);
+	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
 	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(q.question)}${p.reset}${counter}`, Math.max(1, W - 2))}`);
 	const header = q.header === undefined ? "the question" : escapeTerminal(q.header.slice(0, ASK_HEADER_CAP));
 	// R2: the divider row is gone (the opening rule says a block starts
@@ -352,7 +352,7 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	// TUI2-R1.5 ⑪ had already replaced a two-cell `\u2514 ` stub with a
 	// real rule for the reason that stub read as the cut-notice prefix it
 	// collides with; this keeps that finding and only changes which rule.
-	rows.push(`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`);
+	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
 	return rows;
 }
 

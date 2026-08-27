@@ -83,7 +83,7 @@ describe("KC3 T-A3: the panel rides the menu-rows band", () => {
 		// header is a dashed rule too now, so the match demands an
 		// UNBROKEN run to the reset — a labelled rule is the band, not
 		// the box.
-		const rails = [...bytes.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[2m\u254c+\x1b\[0m/g)].map((m) => Number(m[1]));
+		const rails = [...bytes.matchAll(/\x1b\[(\d+);1H\x1b\[0K\x1b\[2m\u2500+\x1b\[0m/g)].map((m) => Number(m[1]));
 		expect(rails[0]).toBe(21); // H−3, unmoved
 		expect(rails.at(-1)).toBe(23);
 		expect(rowOf(bytes, "/ commands")).toBe(24);

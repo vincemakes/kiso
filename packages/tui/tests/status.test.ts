@@ -46,14 +46,22 @@ describe("KC2 §5/§2: the running status row", () => {
 	});
 
 	it("the row still satisfies the v2d transcript gate's shape", () => {
-		// apps/cli/tests/tui-v2d.test.ts matches /^[▖▘▝▗] working \d+s.*$/ —
+		// apps/cli/tests/tui-v2d.test.ts matches /^[✧✦✶✸✺] working \d+s.*$/ —
 		// every glyph in the family must produce it.
-		for (const g of STATUS_GLYPHS) expect(runningStatus(g, Date.now(), null, 0)).toMatch(/^[▖▘▝▗] working \d+s.*$/);
+		for (const g of STATUS_GLYPHS) expect(runningStatus(g, Date.now(), null, 0)).toMatch(/^[✧✦✶✸✺] working \d+s.*$/);
 	});
 });
 
 describe("KC2 §5: the working glyph family", () => {
-	it("is the v3 §03/§05 four-glyph rotation the CLI's spinner walks", () => {
-		expect([...STATUS_GLYPHS]).toEqual(["▖", "▘", "▝", "▗"]);
+	// DECLARED SUPERSESSION (R3, design §5.2): the four quadrant blocks
+	// are retired for the TWINKLE. Two reasons, both in the contract:
+	// §5.3 forbids a mark that ROTATES on a call whose duration cannot be
+	// predicted (it implies progress the product does not have), and §4.1
+	// wants the running mark to be the mark that STAYS — the twinkle
+	// settles onto `✦`, which is what a folded segment keeps.
+	it("is design §5.2's seven-frame twinkle, settling on the fold's own mark", () => {
+		expect([...STATUS_GLYPHS]).toEqual(["✧", "✦", "✶", "✸", "✺", "✸", "✦"]);
+		expect(STATUS_GLYPHS[STATUS_GLYPHS.length - 1]).toBe("✦"); // §4.1: it settles where the fold lives
+		expect(STATUS_GLYPHS).toHaveLength(7); // §5.1: seven steps of the 200ms tick = 1.4s
 	});
 });

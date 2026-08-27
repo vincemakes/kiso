@@ -89,7 +89,7 @@ describe("TUI v6 — the one compositor", () => {
 		// W6: the box — the rounded corners close the rail
 		// R2: both rails are the same dashed rule — two of them, not a
 		// top and a bottom that differ.
-		expect(bytes.match(/\u254c{4,}/g) ?? []).toHaveLength(2);
+		expect(bytes.match(/\u2500{4,}/g) ?? []).toHaveLength(2);
 		// the synchronized-output wrap is present
 		expect(bytes).toContain("\x1b[?2026h");
 		expect(bytes).toContain("\x1b[?2026l");
@@ -147,9 +147,9 @@ describe("TUI v6 — the one compositor", () => {
 		// status at H−1 and the input at H−3, and the screen says whether
 		// that happened.
 		const rows = screenOf(writes);
-		expect(rows[20], "the top rail is not on H−3").toMatch(/\u254c/);
+		expect(rows[20], "the top rail is not on H−3").toMatch(/\u2500/);
 		expect(rows[21], "the input row is not on H−2").toContain("›");
-		expect(rows[22], "the bottom rail is not on H−1").toMatch(/\u254c/);
+		expect(rows[22], "the bottom rail is not on H−1").toMatch(/\u2500/);
 		expect(rows[0], "the live text is not at its model row").toContain("live");
 	});
 
@@ -346,7 +346,7 @@ describe("TUI v6 — the one compositor", () => {
 		// true or false regardless of the order the rows were written in.
 		// R2: the BAND names itself with a dashed rule too, so the box top
 		// is the UNBROKEN rule — a rule with a word in it is a band header.
-		const boxTopAt = rows.findIndex((r) => /^\u254c+\s*$/.test(r.replace(/\x1b\[[0-9;]*m/g, "")));
+		const boxTopAt = rows.findIndex((r) => /^\u2500+\s*$/.test(r.replace(/\x1b\[[0-9;]*m/g, "")));
 		const modeAt = rows.findIndex((r) => r.includes("switch the approval tier"));
 		const modelAt = rows.findIndex((r) => r.includes("list model profiles"));
 		expect(boxTopAt, "no box top on the screen").toBeGreaterThan(0);
@@ -431,7 +431,7 @@ describe("TUI v6 — the one compositor", () => {
 		expect(rows[0], "the window's first line is not tall 01").toContain("tall line 01");
 		expect(rows.join("\n"), "the banner is inside the window").not.toContain("frozen banner");
 		expect(rows.join("\n")).toContain("tall line 14");
-		expect(rows[14], "the top rail is not at H−3").toMatch(/\u254c/);
+		expect(rows[14], "the top rail is not at H−3").toMatch(/\u2500/);
 		expect(rows[17], "the status is not at H").not.toBe("");
 		// idempotent: a second resize (CLAMPED — the window is the whole
 		// model, skip 0) re-paints the SAME committed content, banner
@@ -460,10 +460,11 @@ describe("TUI v6 — the one compositor", () => {
 		body.toolStart("read_file", "c1", {});
 		body.toolRunning("c1");
 		tick();
-		// W2: the frame coalesces straight to running — the spinner IS the
-		// gutter (the old assertion matched the running row's "→ " prefix)
-		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("▖ read");
-		expect(writes.join("")).toContain("▖"); // the spinner glyph rides the running line
+		// W2: the frame coalesces straight to running — the mark IS the
+		// gutter (the old assertion matched the running row's "→ " prefix).
+		// R3 (§5.2): that mark is now the breathing `●`.
+		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("● read");
+		expect(writes.join("")).toContain("●"); // R3 (§5.2): the breath's glyph rides the running line
 		body.toolResult("c1", { content: "ok", isError: false });
 		vi.advanceTimersByTime(16); // the toolResult's coalesced frame lands
 		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("  read");

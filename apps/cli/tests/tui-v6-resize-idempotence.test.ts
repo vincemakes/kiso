@@ -168,7 +168,7 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		// the chrome: two rails, the status once, the input row once — the
 		// WALL is 3+ separators. R2 (law 1.1): the two rails are the SAME
 		// dashed rule now; the COUNT is the claim and it is unchanged.
-		expect(grid.filter((l) => /^\u254c+$/.test(l.trimEnd())).length).toBe(2);
+		expect(grid.filter((l) => /^\u2500+$/.test(l.trimEnd())).length).toBe(2);
 		expect(grid.filter((l) => l.includes("▸ default")).length).toBe(1);
 		// the INPUT row, once. R2: it used to be found by its `\u203a ` lead,
 		// which is gone — and the hint cannot stand in for it, because the
@@ -176,7 +176,7 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		// before it truncates the status. The row is the one between the
 		// two rails, which is the CHROME_ROWS=4 contract and cannot be
 		// satisfied by a stray glyph anywhere else on the screen.
-		const rails = grid.map((l, i) => (/^\u254c+$/.test(l.trimEnd()) ? i : -1)).filter((i) => i >= 0);
+		const rails = grid.map((l, i) => (/^\u2500+$/.test(l.trimEnd()) ? i : -1)).filter((i) => i >= 0);
 		expect(rails).toHaveLength(2);
 		expect(rails[1]! - rails[0]!).toBe(2); // exactly ONE row between them
 	});

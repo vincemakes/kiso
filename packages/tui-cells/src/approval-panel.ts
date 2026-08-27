@@ -560,7 +560,7 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// block, and none of them the composer's. A rule SEPARATES, a gutter
 	// SCOPES — the args keep their gutter because they are a verbatim
 	// block; everything that was drawing a boundary is one rule now.
-	rows.push(`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`);
+	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
 	rows.push(`  ${cutLine(panelRuleText(view), Math.max(1, W - 2))}`);
 	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(view.title)}${p.reset}`, Math.max(1, W - 2))}`);
 	// TUI2-R1.5 ⑤ (VD-11): the divider is a LABEL, not a design note. "the
@@ -672,7 +672,7 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// else in the product, so a CAPPED panel emitted two elbow rows in a
 	// row meaning entirely different things. The rule reads as an edge,
 	// and the cut notice above it reads as a notice.
-	rows.push(`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`);
+	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
 	return { rows, ...layout };
 }
 
@@ -780,7 +780,7 @@ export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: numb
 export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, maxRows: number): string[] {
 	const p = palette();
 	const spec = view.pick!;
-	const rows: string[] = [`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`]; // R2: the same rule the composer and the other panels use
+	const rows: string[] = [`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`]; // R2: the same rule the composer and the other panels use
 	const room = Math.max(1, W - 2);
 	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(spec.header.split(" \u2014 ")[0] ?? spec.header)}${p.reset}${p.dim}${escapeTerminal(spec.header.slice((spec.header.split(" \u2014 ")[0] ?? "").length))}${p.reset}`, room)}`);
 	if (spec.options.length === 0) {
@@ -833,7 +833,7 @@ export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, ma
 	const tText = cutLine(`${typing ? p.bold : ""}${typing ? "\u2192" : " "} t ${p.reset}${p.dim}${escapeTerminal(spec.typeHint)}${p.reset}`, room);
 	rows.push(typing ? selectionBar(tText, visibleWidth(tText), W) : ` ${tText}`);
 	rows.push(`  ${p.dim}${cutLine(pickAffordance(state), room)}${p.reset}`);
-	rows.push(`${p.dim}${"\u254c".repeat(Math.max(0, W))}${p.reset}`);
+	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
 	return rows;
 }
 

@@ -33,7 +33,7 @@ const ROWS = 24;
 const COLS = 100;
 
 /** A row that is nothing but the dashed rule — the composer's rails. */
-const isRail = (row: string): boolean => /^\u254c+$/.test(row.trimEnd());
+const isRail = (row: string): boolean => /^\u2500+$/.test(row.trimEnd());
 
 /** An input row: a non-rail row with a rail above it and a rail below
  *  it. That is the CHROME_ROWS=4 contract itself — rail, input, rail,

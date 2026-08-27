@@ -64,7 +64,7 @@ export interface AtPanelState {
 import {
 	Container,
 	ROLLUP_NOUN,
-	SPINNER,
+	MOTION_FRAMES,
 	MdStream,
 	bodySpacing,
 	boxBottom,
@@ -1335,14 +1335,34 @@ export class Body {
 		this.#frameTimer.unref();
 	}
 
-	/** The spinner: a ONE-SHOT re-armed ONLY while a running tool exists —
-	 *  no tool → no timer → zero bytes (the #14/#15 contract, structural). */
+	/**
+	 * The spinner: a ONE-SHOT re-armed ONLY while something is MOVING —
+	 * nothing moving → no timer → zero bytes (the #14/#15 contract,
+	 * structural).
+	 *
+	 * R3: "moving" used to mean a running TOOL and nothing else. But the
+	 * same counter drives the status row's `working` twinkle, and the
+	 * model spends whole stretches thinking with no tool open at all —
+	 * so the one indicator whose entire job is "I am still alive" froze
+	 * solid exactly when the user most needed it to move. It was
+	 * reported as "I thought it had failed", which is precisely the
+	 * message a frozen liveness mark sends.
+	 *
+	 * An OPEN THINKING cell counts as movement now, and so does a tool
+	 * parked at an approval — that one is waiting on a human rather than
+	 * working, but the mark is still the proof the process is alive.
+	 */
 	#armSpinner(): void {
 		if (this.#spinnerTimer !== null) return;
 		this.#spinnerTimer = setTimeout(() => {
 			this.#spinnerTimer = null;
-			if (this.#cells.some((c) => c.kind === "tool" && c.state === "running" && !c.done)) {
-				this.#spinnerI = (this.#spinnerI + 1) % SPINNER.length;
+			const moving = this.#cells.some(
+				(c) =>
+					(c.kind === "tool" && (c.state === "running" || c.state === "approval") && !c.done) ||
+					(c.kind === "thinking" && !c.done),
+			);
+			if (moving) {
+				this.#spinnerI = (this.#spinnerI + 1) % MOTION_FRAMES;
 				this.#dirty = true;
 				this.#scheduleFrame();
 				this.#armSpinner();

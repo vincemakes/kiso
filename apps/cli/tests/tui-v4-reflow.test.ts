@@ -150,12 +150,12 @@ function screens(full: Buffer, markers: { done: number; resizes: [number, number
 	return { turn: turn ?? [], final: emu.visible() };
 }
 
-// W6: the ╌ chrome rows became the box rails — the probe counts a stray
+// W6: the ─ chrome rows became the box rails — the probe counts a stray
 // rail in the BODY region (the chrome's own rails sit at H−3/H−1, outside
 // the slice — a reflow leftover rail inside the body is the wall).
 // R2 (law 1.1): both composer rails are the SAME dashed rule; a rail in
 // the BODY region is the defect this counts, and there must be none.
-const bodySepRows = (screen: string[], H: number): number => screen.slice(0, H - 4).filter((l) => /^\u254c+$/.test(l.trimEnd())).length;
+const bodySepRows = (screen: string[], H: number): number => screen.slice(0, H - 4).filter((l) => /^\u2500+$/.test(l.trimEnd())).length;
 const responseOnce = (screen: string[]): number => screen.filter((l) => l.includes(RESPONSE)).length;
 
 describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulator)", () => {

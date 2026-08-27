@@ -56,12 +56,12 @@ export function resumeTail(events: readonly { readonly type: string }[], W = 80)
 	// other band on screen labels itself. It used to be `─ … ─`, a second
 	// divider weight that existed nowhere else in the product.
 	const label = skipped > 0 ? `resuming · ${turns.length} turns, showing the last ${shown.length}` : `resuming · ${turns.length} turn${turns.length === 1 ? "" : "s"}`;
-	const head = `\u254c\u254c\u254c ${label} `;
+	const head = `\u2500\u2500\u2500 ${label} `;
 	// the cut floor is the WIDTH, never a constant: `Math.max(4, W)` let a
 	// four-cell rule out at W=1..3, i.e. a chrome row wider than the
 	// terminal. Every glyph here is one cell (the label is ascii plus
 	// `·`), so a code-unit slice is a cell slice.
-	lines.push(`${head}${"\u254c".repeat(Math.max(1, W - head.length))}`.slice(0, Math.max(1, W)));
+	lines.push(`${head}${"\u2500".repeat(Math.max(1, W - head.length))}`.slice(0, Math.max(1, W)));
 	for (const t of shown) {
 		// the human's turn keeps the quote gutter — the one glyph in the
 		// product that means "these are somebody's exact words". The `\u203a`

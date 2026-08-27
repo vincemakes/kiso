@@ -58,7 +58,7 @@ const cupRows = (bytes: string): number[] => [...bytes.matchAll(/\x1b\[(\d+);1H/
 const railRows = (bytes: string): number[] => {
 	const out: number[] = [];
 	for (const m of bytes.matchAll(/\x1b\[(\d+);1H\x1b\[0K([^\x1b]*(?:\x1b\[[0-9;]*m[^\x1b]*)*)/g)) {
-		if (/^\u254c+$/.test(m[2]!.replace(/\x1b\[[0-9;]*m/g, ""))) out.push(Number(m[1]));
+		if (/^\u2500+$/.test(m[2]!.replace(/\x1b\[[0-9;]*m/g, ""))) out.push(Number(m[1]));
 	}
 	return [...new Set(out)].sort((a, b) => a - b);
 };

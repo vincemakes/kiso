@@ -288,6 +288,6 @@ export function atPanelRows(state: { matches: readonly AtMatch[]; selected: numb
  */
 export function bandHeader(label: string, W: number): string {
 	const p = palette();
-	const head = `\u254c\u254c\u254c ${label} `;
-	return `${p.dim}${widthCut(`${head}${"\u254c".repeat(Math.max(1, W - head.length))}`, Math.max(1, W))}${p.reset}`;
+	const head = `\u2500\u2500\u2500 ${label} `;
+	return `${p.dim}${widthCut(`${head}${"\u2500".repeat(Math.max(1, W - head.length))}`, Math.max(1, W))}${p.reset}`;
 }
