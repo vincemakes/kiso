@@ -18,7 +18,7 @@
  * A TEST HELPER — not counted in the gate line budgets.
  */
 
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -82,6 +82,18 @@ def driver(cli, args, env, feeds, timeout, cwd, rows, cols, delays):
         os.waitpid(pid, 0)
     except ChildProcessError:
         pass
+    # R3c — the driver REPORTS how it ended, on its own channel.
+    #
+    # It used to exit 0 either way: the CLI closed (done), or the wall ran
+    # out. Those are opposite outcomes and the caller could not tell them
+    # apart — so a scenario whose needle never fired burned its whole
+    # budget, got SIGTERM'd, and handed back a transcript the assertions
+    # were usually still happy with. Green, and sixty seconds slower.
+    #
+    # stderr, because stdout is the transcript the tests parse byte for
+    # byte and must not gain a single character.
+    unfed = [i for i in range(len(feeds)) if i not in fed]
+    sys.stderr.write("KISO_PTY_END %s %.2f %s" % ("eof" if done else "wall", time.time() - start, ",".join(str(i) for i in unfed)) + chr(10))
     sys.stdout.write(full.decode(errors="replace"))
     sys.exit(0)
 `;
@@ -108,7 +120,46 @@ sys.argv = [""]
 exec(open(${a(driverPath)}).read())
 driver(${a(CLI)}, ${a(args)}, ${a(env)}, ${a(opts.feeds ?? [])}, ${opts.timeout ?? 60}, ${opts.cwd === undefined ? "None" : a(opts.cwd)}, ${opts.rows ?? 24}, ${opts.cols ?? 100}, ${a(opts.delays ?? [])})
 `;
-	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 240_000, env: process.env });
+	const wall = opts.timeout ?? 60;
+	const res = spawnSync("python3", ["-c", phase], { encoding: "utf8", timeout: 240_000, env: process.env });
+	if (res.status !== 0) throw new Error(`pty driver failed (${res.status}): ${res.stderr}`);
+	assertScenarioEnded(res.stderr, wall, opts.feeds ?? []);
+	return res.stdout;
+}
+
+/**
+ * R3c — a scenario that spends its WHOLE WALL is a FAILURE, by name.
+ *
+ * The class this closes: a feed needle that never appears does not make
+ * a test red. The driver simply waits out its budget, the CLI is
+ * SIGTERM'd, and the assertions — which read the accumulated transcript
+ * — usually still pass. The test is green and sixty seconds slower, and
+ * nothing in the suite says so. One of these (tui-v7-expand's W14, whose
+ * needle R3a killed) sat green for a whole release while starving
+ * vitest's worker RPC and turning `npm run check` red with every test
+ * passing. It was found by reading DURATIONS, because there was nothing
+ * to read in the failures.
+ *
+ * So the driver reports how it ended and this turns "wall" into a red
+ * that names the needle nobody reached. A scenario whose CLI exits on
+ * its own (`eof`) is silent, as it always was.
+ *
+ * The gate is deliberately about the ENDING, not about a duration
+ * threshold: a slow-but-correct scenario is not a defect, and a
+ * threshold would need tuning per case. "The CLI never exited" is the
+ * defect, at any speed.
+ */
+function assertScenarioEnded(stderr: string, wall: number, feeds: [string, string][]): void {
+	const m = /KISO_PTY_END (eof|wall) ([0-9.]+) ([^\n]*)/.exec(stderr);
+	if (m === null) return; // a driver too old to report — never a false red
+	if (m[1] === "eof") return;
+	const unfed = (m[3] ?? "").split(",").filter((x) => x !== "");
+	const missed = unfed.map((i) => JSON.stringify(feeds[Number(i)]?.[0] ?? "?")).join(", ");
+	throw new Error(
+		`the PTY scenario spent its whole ${wall}s wall (${m[2]}s) — the CLI never exited.` +
+			(missed === "" ? " Every feed fired, so the exit itself did not take." : ` These needles never appeared: ${missed}.`) +
+			" A scenario that waits out its budget passes its assertions on a SIGTERM'd transcript and hides the stall (R3c).",
+	);
 }
 
 /** The SETTLED screen — the VT grid built from the bytes before the dock

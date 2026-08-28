@@ -81,7 +81,11 @@ describe("TUI2-R2 ② — bare `kiso resume`: the picker is a TTY surface", () =
 			// gets an answer — otherwise the flow waits for a human and the
 			// driver burns its whole timeout, which starves vitest's
 			// reporter RPC at suite scale (the R1.5 spawn-cost lesson).
-			delays: [[4, "\r"], [7, "3\r"]],
+			// R3c: and an EXIT. This scenario had none, so it spent its whole
+			// 25s wall on every run — the exact stall its own comment above
+			// warns about, in the test that warns about it. The R3c gate in
+			// helpers/pty.ts is what turned that silence into a red.
+			delays: [[4, "\r"], [7, "3\r"], [10, "exit\r"]],
 			timeout: 25,
 		});
 		// the picker's own frame: the band, all three sessions, the counter
