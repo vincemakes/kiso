@@ -1,6 +1,14 @@
 /**
  * TUI2-R1.5 slice ① — VD-1: the exploration rollup forms BY DEFAULT.
  *
+ * DECLARED SUPERSESSION (R3b, owner ruling 2026-08-27): the rollup's
+ * ADDRESS moved. A closed segment's committed form is the fold line, and
+ * the rollup — with its per-tool counts and subjects — is what `ctrl+r`
+ * opens. The subject of these cases is PACING, not address: the run must
+ * still form as ONE thing when the burst arrives one frame at a time,
+ * which is exactly what a fold that says "6 reads" and opens onto
+ * "explored 6 files · 1 dir · 1 search" proves.
+ *
  * R1's rollup suite feeds the whole burst SYNCHRONOUSLY and then ticks
  * once: every cell is done inside the head's own commit frame, so the
  * fold's "every member done" test passes and the row forms. No real
@@ -78,8 +86,12 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		tick();
 		tick();
 		const settle = plain(writes.slice(settleFrom).join(""));
-		expect(settle).toContain("explored 6 files · 1 dir · 1 search");
-		expect(settle).toContain("ctrl+r lists them");
+		// the paced burst settled as ONE thing — the fold — and the run is
+		// intact behind the key.
+		expect(settle).toContain("✦ thought");
+		expect(settle).toContain("6 reads · 1 dir · 1 match");
+		const opened = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
+		expect(opened).toContain("explored 6 files · 1 dir · 1 search");
 	});
 
 	it("the settled screen carries the ONE row and NOT the eight individual ones", () => {
@@ -100,11 +112,14 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		tick();
 		tick();
 		const settle = plain(writes.slice(settleFrom).join(""));
-		// the settle frame commits the run as the W13 single-name row…
-		expect(settle).toContain("read  6 files");
-		// …and never as six individual read rows (the rollup head is itself
-		// a "✓ read " row, so the per-call PATH is what must be absent)
-		expect(settle.match(/✓ read {2}src\/f\d/g) ?? []).toHaveLength(0);
+		// the settle frame commits the run as the fold, and never as six
+		// individual read rows — which is this case's actual claim.
+		expect(settle).toContain("✦ thought");
+		expect(settle.match(/ {2}read {2}src\/f\d/g) ?? []).toHaveLength(0);
+		// W13's single-name projection is what the key opens. One space,
+		// not two: the double space was the COMMITTED row's verb-column
+		// pad (W3), and the expansion is a list rather than a column.
+		expect(plain((body.expandNext() as { lines: string[] }).lines.join("\n"))).toContain("read 6 files");
 	});
 
 	it("a run BROKEN by a write still rolls the two halves — pacing does not change the group key", () => {
@@ -143,12 +158,16 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		const screen = new Screen(80, 24);
 		screen.feed(writes.join(""));
 		const settled = screen.rows.map((r) => r.join("").replace(/\s+$/, "")).join("\n");
-		expect(settled.match(/explored 1 file · 1 search · 1 dir/g) ?? []).toHaveLength(2);
-		expect(settled).toContain("write out.ts");
-		// the write sits BETWEEN them — the run's group key is unchanged
-		const first = settled.indexOf("explored 1 file");
-		expect(settled.indexOf("write out.ts")).toBeGreaterThan(first);
-		expect(settled.lastIndexOf("explored 1 file")).toBeGreaterThan(settled.indexOf("write out.ts"));
+		// R3b: the two runs and the write between them live in the fold's
+		// expansion; the ORDER — which is the group key's proof — is what
+		// this case is about and it is asserted there.
+		expect(settled).toContain("✦ thought");
+		const opened = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
+		expect(opened.match(/explored 1 file · 1 search · 1 dir/g) ?? []).toHaveLength(2);
+		expect(opened).toContain("write out.ts");
+		const first = opened.indexOf("explored 1 file");
+		expect(opened.indexOf("write out.ts")).toBeGreaterThan(first);
+		expect(opened.lastIndexOf("explored 1 file")).toBeGreaterThan(opened.indexOf("write out.ts"));
 	});
 
 	it("TWO paced calls never roll — the threshold is unchanged by the pacing", () => {

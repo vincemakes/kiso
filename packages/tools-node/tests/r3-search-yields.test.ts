@@ -37,7 +37,12 @@ const CTX: ToolContext = {
  * YIELD_EVERY is 64: 200 clears it three times over and costs a
  * fraction of the I/O.
  */
-const FILES = 200;
+// 80, not 200: the property needs the walk to cross YIELD_EVERY (64)
+// at least once, and nothing more. 200 was chosen for realism and cost a
+// synchronous 200-file write in beforeAll — which blocks the worker and
+// starves vitest's reporter RPC ("Timeout calling onTaskUpdate"), the
+// failure this repo already hit at 193 files.
+const FILES = 80;
 let ROOT = "";
 
 beforeAll(() => {
@@ -46,7 +51,7 @@ beforeAll(() => {
 		const dir = join(ROOT, `d${d}`);
 		mkdirSync(dir);
 		for (let f = 0; f < Math.ceil(FILES / 8); f += 1) {
-			writeFileSync(join(dir, `f${f}.txt`), `line one\nthe needle is here\nline three\n`);
+			writeFileSync(join(dir, `f${f}.txt`), "the needle is here\n");
 		}
 	}
 });
@@ -87,7 +92,7 @@ describe("R3 — a long search keeps the event loop alive", () => {
 	it("still finds every match, in the same shape — the yield changes the loop, never the result", async () => {
 		const found = await searchTextTool({ workspaceRoot: ROOT }).execute({ pattern: "needle", path: "." }, CTX);
 		expect(found.isError).toBe(false);
-		expect(found.content).toMatch(/f\d+\.txt:2: the needle is here/);
+		expect(found.content).toMatch(/f\d+\.txt:1: the needle is here/);
 	}, 60_000);
 
 	it("an unreadable subtree still fails the whole call the way it always did", async () => {

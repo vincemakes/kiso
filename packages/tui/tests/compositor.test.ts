@@ -947,26 +947,25 @@ describe("TUI v6 — the one compositor", () => {
 		body.textAppend("five files read.");
 		tick();
 		const frame = writes.join("");
-		// the claimed shape, verbatim: the verbCol's 5-char pad reproduces
-		// the "read  5 files" double space; the 5 members' 2-line results
-		// → 10 lines; the elapsed rides the head's startedAt→doneAt.
-		expect(frame).toContain("read  5 files (10 lines, 0.0s)");
-		// the children: the first 3 basename targets joined; the overflow
-		// row names the rest and carries the ctrl+r affordance (its
-		// "└ … ctrl+r" joins the W15 expand history — the head's commit).
-		expect(frame).toContain("a.ts · b.ts · c.ts");
-		expect(frame).toContain("+2 more — ctrl+r expands");
-		// the members are GONE — one   row, not five
-		// R2: the settled tick is retired, so "exactly one row for the run"
-		// is counted by the row's own verb column rather than by a mark that
-		// no longer exists.
-		expect(frame.match(/ {2}read {2}5 files/g) ?? []).toHaveLength(1);
-		// the head joined the expand history: the expand shows the FULL
-		// per-call children, one └ row each, never rewriting the rollup.
+		// DECLARED SUPERSESSION (R3b, owner ruling): the run's COMMITTED
+		// form is the segment fold — the rollup row, its children and the
+		// overflow all moved behind `ctrl+r`. The members being GONE from
+		// the screen is what this case was always about, and it is a
+		// stronger claim now: one row for the run, and that row is the
+		// fold.
+		// the fold's glyph is bold-wrapped, so the needle is taken on the
+		// stripped text — `✦` and `thought` are not contiguous in bytes.
+		const bare = frame.replace(/\x1b\[[0-9;]*m/g, "");
+		expect(bare).toContain("✦ thought 0s · 5 reads");
+		expect(bare.match(/ {2}read {2}\S/g) ?? []).toHaveLength(0);
+		// the fold joined the expand history: the expand shows the run's
+		// own projection — W13's title and the FULL per-call children, one
+		// └ row each, never rewriting anything.
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
 		const lines = (r as { lines: string[] }).lines;
-		expect(lines[0]).toContain("expanded · read 5 files · 0 turns back");
+		expect(lines[0]).toContain("expanded · 5 reads · 0 turns back");
+		expect(lines.join("\n")).toContain("read 5 files");
 		for (const t of ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"]) {
 			expect(lines.some((l) => l.includes(t))).toBe(true);
 		}
@@ -994,15 +993,23 @@ describe("TUI v6 — the one compositor", () => {
 		body.endTurn(19);
 		tick();
 		const frame = writes.join("");
-		// the claimed shape: the thought-seconds, the reads term, the
-		// no-edits term (the fold glyph is bold-wrapped, so the check
-		// anchors on the contiguous term text)
+		// the claimed shape: the thought-seconds and the reads term (the
+		// fold glyph is bold-wrapped, so the check anchors on the
+		// contiguous term text)
+		// DECLARED SUPERSESSION (R3b, owner ruling): ZERO TERMS ARE
+		// DROPPED. W14 always wrote `no reads · no edits`, which is a
+		// sentence about things that did not happen; on a segment fold —
+		// where a run is usually all reads or all edits — half the row was
+		// the half saying nothing. A term earns its place by having a
+		// count. Every other claim in this case is unchanged.
 		expect(frame).toContain("\u2726");
-		expect(frame).toContain("thought 19s · 5 reads · no edits");
+		expect(frame).toContain("thought 19s · 5 reads");
+		expect(frame).not.toContain("no edits");
 		// the members folded away — no individual read rows
 		expect(frame.match(/✓/g) ?? []).toHaveLength(0);
 		// the extension: the mixed counts — 1 edit + 1 shell pluralize
-		// ("no reads · 1 edit · 1 shell", the others in first-call order)
+		// ("1 edit · 1 shell", the others in first-call order; R3b: the
+		// absent `reads` term is simply not written)
 		const mix = makeBody({ W: 80 });
 		mix.body.enter();
 		mix.body.userLine("mix");
@@ -1014,7 +1021,7 @@ describe("TUI v6 — the one compositor", () => {
 		mix.body.toolResult("s1", { content: "hi", isError: false });
 		mix.body.endTurn(7);
 		mix.tick();
-		expect(mix.writes.join("")).toContain("thought 7s · no reads · 1 edit · 1 shell");
+		expect(mix.writes.join("")).toContain("thought 7s · 1 edit · 1 shell");
 	});
 
 	it("A9 (ruling R2, mock A): the user chip rides the fold — the words LEAD the one line in the SGR-7 bracket, the metadata survives; at a narrow width the words width-cut with the honest … while the metadata keeps every term; the ONE row never exceeds W (invariant ①)", () => {
@@ -1034,7 +1041,13 @@ describe("TUI v6 — the one compositor", () => {
 		const frame = writes.join("");
 		// the chip rides the fold — the ✦ gutter, then the SGR-7 bracket
 		// with the human's words, then the join and the full metadata
-		expect(frame).toContain("\u2726\x1b[0m \x1b[7m any idea what the flaky gate is? \x1b[27m · thought 19s · 5 reads · no edits");
+		// DECLARED SUPERSESSION (R3b, owner ruling): ZERO TERMS ARE
+		// DROPPED. W14 always wrote `no reads · no edits`, which is a
+		// sentence about things that did not happen; on a segment fold —
+		// where a run is usually all reads or all edits — half the row was
+		// the half saying nothing. A term earns its place by having a
+		// count. Every other claim in this case is unchanged.
+		expect(frame).toContain("\u2726\x1b[0m \x1b[7m any idea what the flaky gate is? \x1b[27m · thought 19s · 5 reads");
 		// the fold row fits W=80 whole (no cut at the wide width)
 		expect(frame).not.toContain("flaky gate is? …");
 		// the words take the width budget at W=40: the metadata keeps
@@ -1052,7 +1065,7 @@ describe("TUI v6 — the one compositor", () => {
 		narrow.tick();
 		const nframe = narrow.writes.join("");
 		expect(nframe).toContain("…"); // the honest cut mark rides the chip
-		expect(nframe).toContain(" · thought 19s · 5 reads · no edits"); // the metadata survives whole
+		expect(nframe).toContain(" · thought 19s · 5 reads"); // the metadata survives whole
 		expect(nframe).toMatch(/\x1b\[7m [^\x1b]*… \x1b\[27m/); // the … sits INSIDE the chip's bracket
 		// the whole fold row (gutter + chip + metadata) is ≤ 40 cells —
 		// every emitted line: invariant ①. The frame's rows are CUP-separated

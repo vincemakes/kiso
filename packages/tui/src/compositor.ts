@@ -71,6 +71,7 @@ import {
 	boxTop,
 	cellComponent,
 	exploreCounts,
+	foldTerms,
 	focusToken,
 	exploreRows,
 	foldLine,
@@ -160,6 +161,169 @@ interface TurnRecord {
 	/** the fold was emitted at the first held cell's commit — the rest of
 	 *  the turn's thinking/tool cells render [] (never a second fold). */
 	folded: boolean;
+	/**
+	 * R3b — the turn's SEGMENTS, in order.
+	 *
+	 * A segment is a maximal run of thinking/tool cells with no text
+	 * between them. The turn's own counters above are the WHOLE turn's
+	 * (the quiet-turn fold's terms, unchanged); these are each segment's
+	 * own, because a fold line that says `thought 19s · 5 reads` for the
+	 * third segment of a turn has to mean that segment and not the sum
+	 * of everything before it.
+	 *
+	 * `openedAt` is wall time, so a segment can report its own elapsed
+	 * without waiting for `endTurn` — which is the only place
+	 * `thoughtSeconds` is written today, and therefore useless to a fold
+	 * that has to happen mid-turn.
+	 */
+	segments: SegmentRecord[];
+}
+
+/** R3b — one segment: the run of work between two text blocks. */
+interface SegmentRecord {
+	/** wall ms at the segment's first cell — its own clock */
+	openedAt: number;
+	/** wall ms at the text (or turn end) that closed it; null while open */
+	closedAt: number | null;
+	reads: number;
+	edits: number;
+	others: Map<string, number>;
+	/** the fold line was emitted for this segment — the rest of its cells
+	 *  render [] (never a second fold, and never a lost one). */
+	folded: boolean;
+	/** the cell index that emitted this segment's fold line — the expand
+	 *  key's anchor, and null until the fold is emitted. */
+	headCell: number | null;
+	/**
+	 * R3b — the segment's own cell indices, appended as they are stamped.
+	 *
+	 * The fold's tests (how many cells? any trouble? which tools?) used to
+	 * SCAN every cell in the body, and they run per cell inside the commit
+	 * loop — O(n²) over a session's history. It was not visible in a unit
+	 * test and was very visible in the PTY suite, where it burned enough
+	 * worker CPU to starve vitest's reporter RPC. Membership is recorded
+	 * where it is known, once.
+	 */
+	cells: number[];
+	/** the segment was force-committed past the hold, so its cells are
+	 *  already in the scrollback and CANNOT be replaced by a fold line.
+	 *  The honest degradation: it stays expanded, and says nothing false. */
+	spilled: boolean;
+}
+
+/** W13 / TUI2-R1 (B) — a rolled run's TITLE: the exploration sentence on
+ *  a mixed run, W13's verb+count on a single-name one. */
+function rolledTitle(cell: Extract<BodyCell, { kind: "tool" }>): string {
+	const r = cell.rolled!;
+	if (r.parts !== undefined) return `explored ${exploreCounts(r.parts)}`;
+	return `${displayVerb(cell.name)} ${r.count} ${ROLLUP_NOUN[cell.name] ?? "calls"}`;
+}
+
+/** W13 / TUI2-R1 (B) — a rolled run's DETAIL rows: one row per tool with
+ *  its subjects on a mixed run, one `└ target` per call on a single-name
+ *  one.
+ *
+ *  Extracted at R3b so the segment fold's expansion opens a run to the
+ *  SAME rows `ctrl+r` on the run itself would have opened. Two copies of
+ *  this would be two answers to "show me that run". */
+function rolledDetail(cell: Extract<BodyCell, { kind: "tool" }>, W: number): string[] {
+	const p = palette();
+	const r = cell.rolled!;
+	if (r.parts !== undefined) return exploreRows(r.parts, W);
+	return r.targets.map((t) => `  ${p.dim}└ ${escapeTerminal(t)}${p.reset}`);
+}
+
+/**
+ * W13 / TUI2-R1 (B) — the rollup's own projection of a run: the count,
+ * the lines, the elapsed, the targets, and — on a MIXED run only — the
+ * per-tool parts. A single-name run keeps W13's row byte for byte,
+ * which is the "the generalization adds, it never rewrites" rule.
+ *
+ * Extracted at R3b because the segment fold's EXPANSION renders the run
+ * through this same projection rather than reimplementing it — so the
+ * expanded rows cannot drift from the ones the commit path would have
+ * drawn.
+ */
+function rolledOf(members: readonly Extract<BodyCell, { kind: "tool" }>[]): NonNullable<Extract<BodyCell, { kind: "tool" }>["rolled"]> {
+	let total = 0;
+	const targets: string[] = [];
+	for (const m of members) {
+		// the lines count, excluding the tool's OWN truncation note
+		// (read_file's "… N more lines") — the per-cell meta's rule
+		const noteAt = m.resultText.lastIndexOf("\n… ");
+		const shown = noteAt >= 0 ? m.resultText.slice(0, noteAt) : m.resultText;
+		const rows = shown.split("\n");
+		total += rows[rows.length - 1] === "" ? rows.length - 1 : rows.length;
+		let input: Record<string, unknown> = {};
+		try {
+			input = JSON.parse(m.inputFull) as Record<string, unknown>;
+		} catch {
+			// the full JSON is always parseable (stringified at toolStart)
+		}
+		const target = toolTarget(m.name, input);
+		targets.push(target.split("/").pop() ?? target);
+	}
+	const parts = exploreParts(members);
+	const first = members[0]!;
+	const last = members[members.length - 1]!;
+	const elapsed = first.startedAt !== null && last.doneAt !== null ? ((last.doneAt - first.startedAt) / 1000).toFixed(1) : "?";
+	return { count: members.length, lines: total, elapsed, targets, ...(parts.length > 1 ? { parts } : {}) };
+}
+
+/**
+ * TUI2-R1 (B) / R3b — the per-tool parts of an explore run, in
+ * first-call order. A search's subject is the PATTERN it looked for
+ * (quoted); a read's or a list's is the path it named.
+ *
+ * Extracted at R3b because TWO paths need it now: the commit-time
+ * rollup, which has always built it, and the segment fold's EXPANSION,
+ * which shows the rollup's rows rather than one row per call. Two
+ * copies of this would be two answers to "what did that run do".
+ */
+function exploreParts(members: readonly Extract<BodyCell, { kind: "tool" }>[]): { name: string; subjects: string[] }[] {
+	const parts: { name: string; subjects: string[] }[] = [];
+	for (const m of members) {
+		let input: Record<string, unknown> = {};
+		try {
+			input = JSON.parse(m.inputFull) as Record<string, unknown>;
+		} catch {
+			// the full JSON is always parseable (stringified at toolStart)
+		}
+		const target = toolTarget(m.name, input);
+		const subject = m.name === "search_text" ? `"${String(input.pattern ?? "")}"` : target;
+		const part = parts.find((x) => x.name === m.name);
+		if (part === undefined) parts.push({ name: m.name, subjects: [subject] });
+		else part.subjects.push(subject);
+	}
+	return parts;
+}
+
+/** R3b — a segment's terms, for the expand header. The fold line's own
+ *  wording comes from `turnFold`; this is the same facts in the header
+ *  idiom the other expands use. */
+function foldMeta(seg: SegmentRecord): string {
+	const parts = foldTerms(seg.reads, seg.edits, [...seg.others]);
+	return parts.length === 0 ? "thinking" : parts.join(" · ");
+}
+
+/** R3b — the turn's open segment, opened on demand at the first cell of
+ *  work that follows a text block (or the turn's start). Returns null
+ *  only when there is no turn at all, which is the pipe path's shape. */
+function openSegment(turn: TurnRecord | undefined, now: number): SegmentRecord | null {
+	if (turn === undefined) return null;
+	const last = turn.segments[turn.segments.length - 1];
+	if (last !== undefined && last.closedAt === null) return last;
+	const fresh: SegmentRecord = { openedAt: now, closedAt: null, reads: 0, edits: 0, others: new Map(), folded: false, spilled: false, headCell: null, cells: [] };
+	turn.segments.push(fresh);
+	return fresh;
+}
+
+/** R3b — close the turn's open segment, if it has one. Idempotent: text
+ *  arriving twice in a row closes nothing the second time, which is what
+ *  keeps a zero-cell segment from ever existing. */
+function closeSegment(turn: TurnRecord | undefined, now: number): void {
+	const last = turn?.segments[turn.segments.length - 1];
+	if (last !== undefined && last.closedAt === null) last.closedAt = now;
 }
 
 /** W20 — the whole-table-replace comparison: the live task block only
@@ -257,6 +421,11 @@ export class Body {
 	#lastThinking: string | null = null;
 	#lastTool: { name: string; input: Record<string, unknown>; result: { content: string; isError: boolean } } | null = null;
 	#pendingCalls = new Map<string, { name: string; input: Record<string, unknown>; result: { content: string; isError: boolean } }>();
+	/** R3b — cell index → the index of the segment it belongs to, for
+	 *  thinking/tool cells; -1 for every other kind. Parallel to #cells,
+	 *  because a segment is the COMPOSITOR's bookkeeping and does not
+	 *  belong on the cell type the renderer sees. */
+	readonly #cellSegment: number[] = [];
 	#pipeBuf = ""; // the passthrough's thinking buffer
 	/** TUI2-MD ⑤ — the markdown scanner of the message currently
 	 *  streaming, and the cell index its first block landed at. Null
@@ -413,7 +582,7 @@ export class Body {
 		// W14: the turn boundary — the record the fold-hold's release
 		// state machine reads; the cell carries the record's index. A9:
 		// the user's own words ride the record — the fold's leading chip.
-		this.#turns.push({ ended: false, hasText: false, thoughtSeconds: 0, reads: 0, edits: 0, others: new Map(), words: text, folded: false });
+		this.#turns.push({ ended: false, hasText: false, thoughtSeconds: 0, reads: 0, edits: 0, others: new Map(), words: text, folded: false, segments: [] });
 		this.#cells.push({ kind: "user", text, done: true, turn: this.#turns.length - 1 });
 		this.#mark();
 	}
@@ -428,6 +597,17 @@ export class Body {
 			last.text += text;
 		} else {
 			this.#cells.push({ kind: "thinking", text, done: false, turn: this.#turns.length - 1 });
+			// R3b: thinking is WORK, so it opens a segment too — a turn that
+			// thinks, speaks, then thinks again has two segments, and the
+			// second one's clock starts here rather than at a tool call it
+			// may never make.
+			//
+			// OPEN then STAMP, in that order: the stamp records the segment
+			// the cell belongs to, and a stamp taken first records the
+			// PREVIOUS segment (or none at all) — which left the thinking
+			// row standing outside the fold it should have led.
+			openSegment(this.#turns[this.#turns.length - 1], Date.now());
+			this.#stampSegment();
 		}
 		this.#mark();
 	}
@@ -484,7 +664,16 @@ export class Body {
 			if (name === "read_file") turn.reads += 1;
 			else if (name === "edit_file") turn.edits += 1;
 			else turn.others.set(name, (turn.others.get(name) ?? 0) + 1);
+			// R3b: and into the SEGMENT, which opens here when this is the
+			// first work since the last text block.
+			const seg = openSegment(turn, Date.now());
+			if (seg !== null) {
+				if (name === "read_file") seg.reads += 1;
+				else if (name === "edit_file") seg.edits += 1;
+				else seg.others.set(name, (seg.others.get(name) ?? 0) + 1);
+			}
 		}
+		this.#stampSegment();
 		this.#mark();
 	}
 
@@ -609,6 +798,11 @@ export class Body {
 		// rollups; the fold is only for the QUIET turn).
 		const turn = this.#turns[this.#turns.length - 1];
 		if (turn !== undefined) turn.hasText = true;
+		// R3b: text CLOSES the open segment. This is the boundary design.md
+		// §8 names — "folding at every text boundary changes what commits
+		// and when" — and it is the whole mechanism: a segment is what sits
+		// between two of these.
+		closeSegment(turn, Date.now());
 		// TUI2-MD ⑤: assistant body text is MARKDOWN, scanned as it
 		// streams. The scanner yields CLOSED blocks (final source, final
 		// render) and one OPEN tail block; each becomes a cell, and the
@@ -689,6 +883,9 @@ export class Body {
 		if (turn === undefined || turn.ended) return;
 		turn.ended = true;
 		turn.thoughtSeconds = thoughtSeconds;
+		// R3b: the settle closes the last open segment — the turn's end is
+		// a boundary exactly as a text block is.
+		closeSegment(turn, Date.now());
 		// W20: the turn's live task block settles HERE — the ONE recap
 		// block for the turn ("`task done · N items · <duration>", the
 		// duration clocked compositor-side from the block's first call —
@@ -895,6 +1092,86 @@ export class Body {
 		const idx = this.#collapsed[this.#expandPtr % this.#collapsed.length]!;
 		this.#expandPtr += 1;
 		const cell = this.#cells[idx]!;
+		// R3b — a folded SEGMENT expands to the work it stands for.
+		//
+		// The fold line collapses a run of thinking and tool cells into
+		// one row; without this the run would be unreachable, which is
+		// hiding a durable record behind a summary. The rows are APPENDED
+		// (ADR-0046 — history is never rewritten), exactly as every other
+		// expand in this method does, and they are the cells' OWN renders,
+		// so the expansion cannot drift from what was folded.
+		const seg = this.#segmentOf(idx);
+		if (seg !== null && seg.headCell === idx) {
+			const p = palette();
+			const turnsBack = this.#cells.slice(idx + 1).filter((c) => c.kind === "user").length;
+			const back = `${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
+			const W = this.#opts.width();
+			const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
+			// R3b (owner ruling): the ROLLUP is the expansion. TUI2-R1 built
+			// a richer projection of an explore run than a fold line can
+			// carry — the per-tool counts, and one row per tool with its
+			// subjects — and the segment fold would have retired it by
+			// simply arriving first. So the run's own rows are what the key
+			// opens: explore tools group the way the rollup groups them,
+			// everything else renders as itself.
+			// The segment's cells IN ORDER, with consecutive explore tools
+			// grouped exactly as the rollup groups them — a write, a shell
+			// or anything else BREAKS the run, which is TUI2-R1's own rule
+			// and the reason two explore runs on either side of a write
+			// stay two runs. Merging every explore tool of the segment
+			// would have been simpler and would have quietly deleted that
+			// rule.
+
+			const rows: string[] = [];
+			let run: Extract<BodyCell, { kind: "tool" }>[] = [];
+			const flush = (): void => {
+				if (run.length === 0) return;
+				// the same threshold the commit-time rollup uses: below it a
+				// "run" is just some rows
+				if (run.length > 2) {
+					// the run renders through the ROLLUP's own projection —
+					// literally the same function the commit path uses — so
+					// a single-name run keeps W13's row and a mixed one gets
+					// the exploration line, exactly as they would have if the
+					// segment had never folded.
+					const head = run[0]!;
+					const saved = head.rolled;
+					head.rolled = rolledOf(run);
+					// the run OPENS. The fold's key already asked to see the
+					// work, so what lands is the same rows `ctrl+r` on the
+					// run itself would have opened — its title, then its
+					// detail — never its collapsed row, which would make the
+					// reader press a second time for what the first press
+					// was for.
+					rows.push(`  ${p.dim}${escapeTerminal(rolledTitle(head))}${p.reset}`);
+					rows.push(...rolledDetail(head, W));
+					head.rolled = saved;
+				} else {
+					for (const c of run) rows.push(...cellComponent(c).render(W, ctx));
+				}
+				run = [];
+			};
+			for (const j of seg.cells) {
+				if (j < idx) continue;
+				const c = this.#cells[j]!;
+				if (c.kind === "tool" && isExploreTool(c.name)) {
+					run.push(c);
+					continue;
+				}
+				flush();
+				rows.push(...cellComponent(c).render(W, ctx));
+			}
+			flush();
+			// the header NAMES the segment. When the segment is exactly one
+			// explore run, "explored 8 files · 14 searches" is what that run
+			// is called everywhere else in the product, and the header says
+			// the same thing rather than a second wording of it.
+			// the header states what the SEGMENT did, in the fold line's own
+			// terms; each run below states what IT did, in the rollup's. Two
+			// scales, one wording each — the header used to borrow the run's
+			// sentence, which read as the same run twice.
+			return { kind: "appended", lines: [`${p.bold}✦${p.reset} expanded · ${escapeTerminal(foldMeta(seg))} · ${back}`, ...rows] };
+		}
 		if (cell.kind !== "tool") return { kind: "none" };
 		if (cell.rolled !== null) {
 			// W13: a rolled-up head expands to the FULL per-call children —
@@ -907,15 +1184,10 @@ export class Body {
 			// TUI2-R1 (B): an EXPLORATION head lists per TOOL — the counts
 			// the row showed, then one row per tool with its subjects. The
 			// header keeps W15's shape; only the subject changes.
-			if (cell.rolled.parts !== undefined) {
-				const header = `${p.bold}✦${p.reset} expanded · ${escapeTerminal(`explored ${exploreCounts(cell.rolled.parts)}`)} · ${back}`;
-				return { kind: "appended", lines: [header, ...exploreRows(cell.rolled.parts, this.#opts.width())] };
-			}
-			const noun = ROLLUP_NOUN[cell.name] ?? "calls";
-			const header = `${p.bold}✦${p.reset} expanded · ${escapeTerminal(`${displayVerb(cell.name)} ${cell.rolled.count} ${noun}`)} · ${back}`;
+			const rolledHead = rolledTitle(cell);
 			return {
 				kind: "appended",
-				lines: [header, ...cell.rolled.targets.map((t) => `  ${p.dim}└ ${escapeTerminal(t)}${p.reset}`)],
+				lines: [`${p.bold}✦${p.reset} expanded · ${escapeTerminal(rolledHead)} · ${back}`, ...rolledDetail(cell, this.#opts.width())],
 			};
 		}
 		let input: Record<string, unknown> = {};
@@ -1727,12 +1999,71 @@ export class Body {
 		// unshift: the cells commit oldest-first, so the NEWEST cut lands
 		// at the front — the expand pointer's "newest back" walk starts
 		// where the user's last key press would aim.
-		if (cell.kind === "tool" && lines.some((l) => l.includes("ctrl+r"))) this.#collapsed.unshift(i);
+		// R3b: a fold HEAD joins the ring too. The test used to demand a
+		// tool cell, and a segment's fold can be emitted at a thinking
+		// cell — which would have left the whole segment unreachable by
+		// the very key its own row advertises.
+		if ((cell.kind === "tool" || this.#segmentOf(i)?.headCell === i) && lines.some((l) => l.includes("ctrl+r"))) this.#collapsed.unshift(i);
 		this.#lineCache[i] = lines;
 		const placed = this.#space(i, i > 0 ? this.#lineCache[i - 1]! : null, lines);
 		this.#committed += 1;
 		this.#committedLines += placed.length;
 		this.#committedLinesThisFrame.push(...placed);
+	}
+
+	/** R3b — record which segment the cell just pushed belongs to. Called
+	 *  right after the push, so #cells.length-1 is that cell. */
+	#stampSegment(): void {
+		const turn = this.#turns[this.#turns.length - 1];
+		const idx = turn === undefined ? -1 : turn.segments.length - 1;
+		const at = this.#cells.length - 1;
+		this.#cellSegment[at] = idx;
+		if (turn !== undefined && idx >= 0) turn.segments[idx]!.cells.push(at);
+	}
+
+	/**
+	 * R3b — does the segment hold a call that FAILED or was DENIED?
+	 *
+	 * Such a segment does not fold. Routine work is what the fold is for;
+	 * a refusal and an error are the opposite of routine, and putting
+	 * either behind a key hides the one thing on the screen that most
+	 * needs a human's eye. Law 1.3 makes the same call about marks — a
+	 * failure keeps its colour AND its words — and this is that rule at
+	 * the scale of a run.
+	 *
+	 * The cost, accepted: a turn that reads twenty files and hits one
+	 * denial keeps all twenty rows. The alternative is a screen that says
+	 * `✦ thought 3s · 20 reads` while a write was refused inside it.
+	 */
+	#segmentHasTrouble(seg: SegmentRecord): boolean {
+		return this.#segmentTools(seg).some((c) => c.isError || c.reason !== null);
+	}
+
+	/** R3b — the segment's TOOL cells, in order. */
+	#segmentTools(seg: SegmentRecord): Extract<BodyCell, { kind: "tool" }>[] {
+		const out: Extract<BodyCell, { kind: "tool" }>[] = [];
+		for (const j of seg.cells) {
+			const c = this.#cells[j]!;
+			if (c.kind === "tool") out.push(c);
+		}
+		return out;
+	}
+
+	/** R3b — how many cells the segment holds. The fold's threshold reads
+	 *  it; nothing else needs it, so it is counted rather than tracked. */
+	#segmentCells(seg: SegmentRecord): number {
+		return seg.cells.length;
+	}
+
+	/** R3b — the segment a committed cell belongs to, or null when it has
+	 *  none (a cell of the pipe path, or a kind that is not work). */
+	#segmentOf(i: number): SegmentRecord | null {
+		const cell = this.#cells[i]!;
+		if (cell.kind !== "thinking" && cell.kind !== "tool") return null;
+		const turn = cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
+		const si = this.#cellSegment[i];
+		if (turn === undefined || si === undefined || si < 0) return null;
+		return turn.segments[si] ?? null;
 	}
 
 	/** W14 — the fold-hold: a thinking/tool cell of the OPEN quiet turn
@@ -1745,9 +2076,30 @@ export class Body {
 		if (cell.kind !== "thinking" && cell.kind !== "tool") return false;
 		const turn = cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
 		if (turn === undefined || turn !== this.#turns[this.#turns.length - 1]) return false;
+		// R3b (owner, 2026-08-27) — the hold is the SEGMENT's, not the
+		// quiet turn's.
+		//
+		// W14 held a turn's work only while the turn had produced no text
+		// at all, because the fold existed only for a turn that never
+		// spoke. The owner ruled that a segment folds the moment text
+		// arrives, so the unit whose committed form is undecided is the
+		// SEGMENT: while it is open, its cells must not reach the
+		// scrollback, because a committed row cannot be replaced by the
+		// fold line that is going to stand for it.
+		//
+		// This is exactly the change design.md §8 warned about — "folding
+		// at every text boundary changes what commits and when" — and the
+		// warning is why the hold is stated here, once, rather than
+		// spread across the callers.
+		//
+		// The quiet turn is the same rule seen from one side: its single
+		// segment never closes until the settle, so it holds exactly as
+		// it always did.
+		const seg = this.#segmentOf(i);
+		if (seg !== null) return seg.closedAt === null;
+		// no segment (the pipe path's shape) — W14's original test, kept
+		// so a cell that never got a segment behaves as it used to.
 		if (!turn.ended && !turn.hasText) return true;
-		// the turn's END releases every hold — the settle is where the run
-		// is decided, and a held cell at settle would never commit at all.
 		if (turn.ended) return false;
 		return this.#growingRun(i);
 	}
@@ -1798,19 +2150,54 @@ export class Body {
 	#foldOrRollup(cell: BodyCell, i: number, W: number, ctx: FrameCtx): string[] {
 		if (cell.kind === "thinking" || cell.kind === "tool") {
 			const turn = cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
-			if (turn !== undefined && turn.ended && !turn.hasText) {
-				if (!turn.folded) {
+			const seg = this.#segmentOf(i);
+			// R3b — the SEGMENT folds, and it folds once.
+			//
+			// A cell only reaches here once its segment is closed (the hold
+			// above keeps an open segment out of the commit loop entirely),
+			// so the first cell of a closed segment emits the fold and every
+			// cell after it renders nothing. `folded` is the latch: without
+			// it the second cell would emit a second fold line for the same
+			// work.
+			//
+			// A SPILLED segment is the honest degradation. The force-commit
+			// path does not consult the hold — the screen's hard cap wins —
+			// so a segment too big for the screen already has rows in the
+			// scrollback that cannot be taken back. It renders normally and
+			// says nothing false; it simply does not collapse.
+			// R3b — a ONE-CELL segment does not fold. Collapsing one row into
+			// one row gains no space and costs the row's subject: `✦ thought
+			// 0s · 1 shell` says strictly less than `shell make build ·
+			// exit 0`. The fold exists to stop a screen filling with work
+			// rows, and one row is not that.
+			if (turn !== undefined && seg !== null && seg.closedAt !== null && !seg.spilled && this.#segmentCells(seg) >= 2 && !this.#segmentHasTrouble(seg)) {
+				if (!seg.folded) {
+					seg.folded = true;
+					seg.headCell = i;
 					turn.folded = true;
 					// A9 (ruling R2, mock A): the user chip rides the fold —
-					// the words take the fold's width budget (turnFold is
-					// W-aware — the ONE row never trips invariant ①).
+					// but ONLY on a quiet turn, where the fold stands for the
+					// whole turn and the chip has nowhere else to be. In a
+					// turn WITH text the chip cell commits on its own, so a
+					// fold that repeated the words would put the user's line
+					// on screen twice. The words take the fold's width budget
+					// (turnFold is W-aware — the ONE row never trips
+					// invariant ①).
+					const quiet = turn.ended && !turn.hasText;
+					// A QUIET turn (no text at all) keeps `thoughtSeconds` —
+					// the CLI's own measure, taken at the settle, and the
+					// number every W14 gate pins. A mid-turn segment cannot
+					// have it (endTurn has not run), so it reports its own
+					// wall clock, which is the only honest number available
+					// at the moment it folds.
+					const seconds = quiet ? turn.thoughtSeconds : Math.max(0, Math.round(((seg.closedAt ?? 0) - seg.openedAt) / 1000));
 					return turnFold(
 						{
-							words: turn.words,
-							thoughtSeconds: turn.thoughtSeconds,
-							reads: turn.reads,
-							edits: turn.edits,
-							others: [...turn.others],
+							words: quiet ? turn.words : "",
+							thoughtSeconds: seconds,
+							reads: seg.reads,
+							edits: seg.edits,
+							others: [...seg.others],
 						},
 						W,
 					);
@@ -1875,34 +2262,7 @@ export class Body {
 			// exploration row's counts and its expanded list both read them.
 			// A search's subject is the PATTERN it looked for (quoted); a
 			// read's or a list's is the path it named.
-			const parts: { name: string; subjects: string[] }[] = [];
-			for (const m of members) {
-				// the lines count, excluding the tool's OWN truncation note
-				// (read_file's "… N more lines") — the per-cell meta's rule
-				const noteAt = m.resultText.lastIndexOf("\n… ");
-				const shown = noteAt >= 0 ? m.resultText.slice(0, noteAt) : m.resultText;
-				const rows = shown.split("\n");
-				total += rows[rows.length - 1] === "" ? rows.length - 1 : rows.length;
-				let input: Record<string, unknown> = {};
-				try {
-					input = JSON.parse(m.inputFull) as Record<string, unknown>;
-				} catch {
-					// the full JSON is always parseable (stringified at
-					// toolStart) — the empty fallback never fires
-				}
-				const target = toolTarget(m.name, input);
-				targets.push(target.split("/").pop() ?? target);
-				const subject = m.name === "search_text" ? `"${String(input.pattern ?? "")}"` : target;
-				const part = parts.find((x) => x.name === m.name);
-				if (part === undefined) parts.push({ name: m.name, subjects: [subject] });
-				else part.subjects.push(subject);
-			}
-			const first = members[0]!;
-			const last = members[members.length - 1]!;
-			const elapsed = first.startedAt !== null && last.doneAt !== null ? ((last.doneAt - first.startedAt) / 1000).toFixed(1) : "?";
-			// TUI2-R1 (B): `parts` rides ONLY a mixed run — a single-name
-			// run keeps W13's row, byte for byte (the generalization adds).
-			cell.rolled = { count: members.length, lines: total, elapsed, targets, ...(parts.length > 1 ? { parts } : {}) };
+			cell.rolled = rolledOf(members);
 			return cellComponent(cell).render(W, ctx);
 		}
 		// a MEMBER of an already-rolled run → [] (its rows live in the

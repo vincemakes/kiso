@@ -209,7 +209,17 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 		// (40x12); post-fix (the shrink-only trigger, compositor.ts) the
 		// fills land at 110 / 147 / 98 with NO post-fill band at any
 		// size (measured −1 — the bound pins the fix).
-		const sizes = [[40, 24, 600], [80, 24, 600], [40, 12, 700]] as const;
+		// R3b: the 80x24 bound moves 600 → 700. The segment fold puts LESS
+		// on screen — a run of five reads is one row now — so the content
+		// takes more of the session to fill the window, which is the fold
+		// working rather than the pileup returning. The measured fill moved
+		//
+		// The guard's SUBJECT is unchanged and is what the loop below
+		// asserts: once filled, the blank run never exceeds 2. The bound is
+		// only the "and it fills reasonably early" half, and 700 still sits
+		// clear of the defect band this case was written against
+		// (731/725/723).
+		const sizes = [[40, 24, 600], [80, 24, 700], [40, 12, 700]] as const;
 		for (const [W, H, bound] of sizes) {
 			const { frames } = replay(W, H);
 			let nFill = -1;

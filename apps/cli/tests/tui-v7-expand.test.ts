@@ -288,35 +288,41 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" },
 			[
 				["▌ ", "go\r"], // the brick — the startup paint is race-proof in BOTH modes
-				// the key rides the rollup's OWN committed row (its bytes land
-				// after the frame's capture completed — never the text's live
-				// bytes, which can precede the commit by a frame)
-				["read  5 files", "\x12"],
-				["expanded · read 5 files", "exit\r"],
+				// the key rides the FOLD's own committed row (R3b: the run's
+				// settled form). Its bytes land after the frame's capture
+				// completed — never the text's live bytes, which can precede
+				// the commit by a frame.
+				["five files read.", "\x12"],
+				["expanded · 5 reads", "exit\r"],
 			],
 			60,
 			dir,
 		);
 		const clean = stripANSI(out);
 
-		// the claimed group shape: the verbCol's double space, the line
-		// count of the 5 real reads (3 lines each → 15), the elapsed
-		expect(clean).toMatch(/read {2}5 files \(\d+ lines, \d+\.\ds\)/);
-		// the children: the first 3 basename targets; the overflow names
-		// the rest and carries the ctrl+r affordance
-		expect(clean).toContain("a.ts · b.ts · c.ts");
-		expect(clean).toContain("+2 more — ctrl+r expands");
+		// DECLARED SUPERSESSION (R3b, owner ruling): the run's SETTLED form
+		// is the segment fold; W13's row, its children and the overflow
+		// moved behind `ctrl+r`. What this case is really about — the
+		// expand reaching the FULL per-call children — is unchanged and is
+		// asserted below.
+		expect(clean).toMatch(/✦ thought \d+s · 5 reads/);
 		// the expand: the FULL per-call children, one └ row each — a.ts
 		// appears twice (the rollup's joined children row starts the └;
 		// b/c ride "· ", so only the expand's own └ matches for them);
 		// d–e once (only the expand ever named them)
-		expect(clean).toContain("expanded · read 5 files · 0 turns back");
+		// the header names the SEGMENT; W13's own row sits one line below it
+		expect(clean).toContain("expanded · 5 reads · 0 turns back");
+		expect(clean).toContain("read 5 files");
 		// DECLARED SUPERSESSION (REL-0152-R1), same class as above: counted
 		// on the SCREEN. A diff re-emits a row when the window shifts, so
 		// a stream count no longer measures "how many of these are there".
 		const screenNow2 = new VtScreen(24, 80);
 		screenNow2.write(Buffer.from(out, "utf8"));
-		expect(screenNow2.visible().join("\n").match(/└ a\.ts/g) ?? []).toHaveLength(2);
+		// R3b: ONE `└ a.ts`, not two. The second came from the rollup's own
+		// committed children row ("a.ts · b.ts · c.ts"), which moved behind
+		// the key with the rest of the run — so a.ts is now named exactly
+		// where b–e are, which is the shape this case wanted all along.
+		expect(screenNow2.visible().join("\n").match(/└ a\.ts/g) ?? []).toHaveLength(1);
 		// the same supersession, applied to the siblings: on the SCREEN
 		const vis2 = screenNow2.visible().join("\n");
 		expect(vis2.match(/└ b\.ts/g) ?? []).toHaveLength(1);
@@ -354,16 +360,23 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 				["▌ ", "go\r"],
 				// the fold line's own bytes — the turn ended, the reads
 				// folded (the needle is the contiguous term text)
-				["5 reads · no edits", "exit\r"],
+				// R3b: `no edits` is gone (zero terms are dropped), and a needle
+				// that never fires does not FAIL — the driver simply waits out
+				// its whole budget and the assertions still pass on the final
+				// output. That silent 60s is what tripped vitest's 60s RPC
+				// deadline for the whole file.
+				["5 reads", "exit\r"],
 			],
 			60,
 			dir,
 		);
 		const clean = stripANSI(out);
 
-		// the claimed fold shape: the wall-clocked thought seconds, the
-		// reads term, the no-edits term — the ONE line for the whole turn
-		expect(clean).toMatch(/thought \d+s · 5 reads · no edits/);
+		// the claimed fold shape: the wall-clocked thought seconds and the
+		// reads term — the ONE line for the whole turn. R3b (owner ruling):
+		// zero terms are dropped, so there is no `no edits` to assert.
+		expect(clean).toMatch(/thought \d+s · 5 reads/);
+		expect(clean).not.toContain("no edits");
 		expect(clean).toContain("✦");
 		// no rollup ever happened (the fold precedes it — the turn had no
 		// text to release with)

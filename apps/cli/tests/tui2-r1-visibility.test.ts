@@ -123,14 +123,19 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		// the PTY leg — the compositor is up, the burst collapses
 		const pty = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
 		const out = stripANSI(ptyRun(["--mode", "bypass", "r1-pty"], pty.env as NodeJS.ProcessEnv, [["▌ ", "go\r"], ["explored.", "exit\r"]], 40, ws));
-		expect(out).toContain("explored 3 files · 2 searches · 1 dir");
-		expect(out).toContain("ctrl+r lists them");
+		// R3b (owner ruling): the burst's SETTLED form is the segment fold;
+		// the exploration row is what `ctrl+r` opens. This case's subject —
+		// the PTY collapses and the PIPE never does — is unchanged, and the
+		// pipe leg below still proves the durable record is identical.
+		expect(out).toMatch(/✦ thought \d+s · 3 reads · 2 matches · 1 dir/);
+		expect(out).toContain("ctrl+r");
 
 		// the PIPE leg — no compositor, no row, byte-for-byte the line mode
 		const pipe = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
 		const res = runCli(["--mode", "bypass", "r1-pipe"], pipe.env as NodeJS.ProcessEnv, { input: "go\nexit\n", cwd: ws });
 		expect(res.status, res.stderr).toBe(0);
 		expect(res.stdout).not.toContain("explored 3 files");
+		expect(res.stdout).not.toContain("✦ thought"); // and no fold either — the pipe has no compositor
 		expect(res.stdout).not.toContain("ctrl+r");
 		// the pipe's own per-call rows are intact — all six, one each
 		expect(res.stdout.match(/\u2713 read /g) ?? []).toHaveLength(3); // R2: the pipe keeps its mark

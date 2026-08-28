@@ -1,6 +1,21 @@
 /**
  * TUI2-R1 slice ③ — T-V2: B, the exploration rollup.
  *
+ * DECLARED SUPERSESSION (R3b, owner ruling 2026-08-27) — WHERE the
+ * rollup appears has moved; WHAT it says has not.
+ *
+ * The segment fold now collapses a whole run of work into one line the
+ * moment the model speaks, so a closed run's COMMITTED form is
+ * `✦ thought Ns · 5 reads · ctrl+r`, not the exploration row. The
+ * exploration row is what `ctrl+r` opens — the owner chose to keep it
+ * precisely because it says more than a fold line can: the per-tool
+ * counts, and one row per tool with its subjects.
+ *
+ * So the cases below assert the same projection at its new address. The
+ * three things that must NOT move are unchanged and still asserted:
+ * writes/shells never group, the grouping stays display-side, and the
+ * durable cells are untouched.
+ *
  * W13 already rolls a run of the SAME read-only tool into one row. What
  * a model actually does when it explores is MIX them — read, read,
  * search, read, list, search — and a mixed burst fell straight through
@@ -75,11 +90,19 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		body.textAppend("explored.");
 		tick();
 		const frame = plain(writes.join(""));
-		expect(frame).toContain("explored 8 files · 14 searches (0.0s) · ctrl+r lists them");
-		// ONE   row for the whole burst, not twenty-two
-		// R2: the settled tick is retired, so "exactly one row" is counted by
-		// the row's own word rather than by a mark that no longer exists.
-		expect(frame.match(/explored /g) ?? []).toHaveLength(1);
+		// R3b: the burst's COMMITTED form is the segment fold — ONE row for
+		// twenty-two calls, which is the same claim this case always made,
+		// one row tighter.
+		expect(frame).toContain("✦ thought");
+		expect(frame).toContain("8 reads · 14 matches"); // the fold's own terms
+		expect(frame.match(/✦ thought/g) ?? []).toHaveLength(1);
+		// and the exploration row is what the key opens — the per-tool
+		// counts and the subjects, unchanged.
+		const opened = body.expandNext();
+		expect(opened.kind).toBe("appended");
+		const lines = opened.kind === "appended" ? plain(opened.lines.join("\n")) : "";
+		expect(lines).toContain("explored 8 files · 14 searches");
+		expect(lines.match(/explored /g) ?? []).toHaveLength(1);
 	});
 
 	it("a WRITE breaks the group — the two read-only runs on either side roll up separately, the write never joins", () => {
@@ -95,11 +118,16 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		call(body, "list_dir", "b3", { path: "lib" }, "x");
 		body.textAppend("done.");
 		tick();
-		const frame = plain(writes.join(""));
-		// two exploration rows, and the write's own row between them
-		expect(frame.match(/explored/g) ?? []).toHaveLength(2);
-		expect(frame).toContain("explored 1 file · 1 search · 1 dir");
-		expect(frame).toContain("write out.ts");
+		// R3b: the run's committed form is the fold; the GROUPING — which
+		// is what this case is about — is asserted where it now lives.
+		const opened = body.expandNext();
+		expect(opened.kind).toBe("appended");
+		const lines = opened.kind === "appended" ? plain(opened.lines.join("\n")) : "";
+		// two exploration rows, and the write's own row between them: the
+		// write still BREAKS the run, which is the whole claim.
+		expect(lines.match(/explored/g) ?? []).toHaveLength(2);
+		expect(lines).toContain("explored 1 file · 1 search · 1 dir");
+		expect(lines).toContain("write out.ts");
 	});
 
 	it("a SHELL never groups — three shells in a row stay three rows", () => {
@@ -109,11 +137,13 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		for (let i = 0; i < 3; i += 1) call(body, "shell", `c${i}`, { command: `echo ${i}` }, "out");
 		body.textAppend("ran.");
 		tick();
-		const frame = plain(writes.join(""));
-		expect(frame).not.toContain("explored");
+		const opened = body.expandNext();
+		const lines = opened.kind === "appended" ? plain(opened.lines.join("\n")) : plain(writes.join(""));
+		expect(lines).not.toContain("explored");
 		// R2: three shells, three rows — counted by the verb column now that
-		// the tick is retired.
-		expect(frame.match(/ {2}shell /g) ?? []).toHaveLength(3);
+		// the tick is retired. R3b: inside the fold's expansion, where a
+		// shell still refuses to group.
+		expect(lines.match(/ {2}shell /g) ?? []).toHaveLength(3);
 	});
 
 	it("TWO calls never roll up — the threshold is the same three W13 used", () => {
@@ -134,9 +164,16 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		for (let i = 0; i < 5; i += 1) call(body, "read_file", `r${i}`, { path: `${"abcde"[i]}.ts` }, "line one\nline two");
 		body.textAppend("five files read.");
 		tick();
-		const frame = plain(writes.join(""));
-		expect(frame).toContain("read  5 files (10 lines, 0.0s)");
-		expect(frame).not.toContain("explored");
+		// R3b: the committed form is the fold; W13's exact row is what the
+		// key opens. "The generalization adds, it never rewrites" is still
+		// the claim — the single-name run keeps W13's row rather than
+		// growing an exploration one.
+		expect(plain(writes.join(""))).toContain("✦ thought");
+		const opened = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
+		// one space, not two: the double space was the COMMITTED row's
+		// verb-column pad (W3); the expansion is a list, not a column.
+		expect(opened).toContain("read 5 files");
+		expect(opened).not.toContain("explored");
 	});
 
 	it("ctrl+r LISTS THEM — one row per tool, the subjects with their ×counts, and the collapse footer", () => {
@@ -149,8 +186,13 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
 		const lines = (r as { lines: string[] }).lines.map(plain);
-		expect(lines[0]).toContain("expanded · explored 8 files · 14 searches · 0 turns back");
+		// R3b: the header names what the SEGMENT did, in the fold line's
+		// own terms; the run's "explored …" title sits one row below it.
+		// Two scales, one wording each — the header used to borrow the
+		// run's sentence, which read as the same run twice.
+		expect(lines[0]).toContain("expanded · 8 reads · 14 matches · 0 turns back");
 		const body_ = lines.join("\n");
+		expect(body_).toContain("explored 8 files · 14 searches");
 		expect(body_).toContain("│ read   src/parser.ts · src/lexer.ts · src/ast.ts (+5)");
 		expect(body_).toContain('│ search "parseExpr" ×6 · "Token" ×8');
 		// MOVED (R1.5 ①, the tool-cell suffix supersession class): the
@@ -173,7 +215,10 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		rolled.tick();
 		const frame = plain(rolled.writes.join(""));
 		// the ROWS are gone — none of the members' result text was drawn…
-		expect(frame).toContain("explored");
+		// R3b: the committed row is the segment fold rather than the
+		// exploration row, and the claim this case makes — that the
+		// members' CONTENT never reached the screen — is unchanged.
+		expect(frame).toContain("✦ thought");
 		for (const hidden of ["alpha", "beta", "gamma", "delta"]) expect(frame).not.toContain(hidden);
 		// …and every member's own input is still there to be read back:
 		// the expand walks the CELLS, so a rewrite would show up here.

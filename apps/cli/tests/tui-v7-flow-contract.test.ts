@@ -234,7 +234,12 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		const { hex, alive } = runFlow(60);
 		expect(alive).toBe("ALIVE"); // the R2 crash class (a ≤100 thinking at a narrow winch) survives
 		const grid = finalGrid(hex, 60);
-		expect(grid.findIndex((l) => l.includes("  shell"))).toBeGreaterThanOrEqual(0);
+		// R3b (owner ruling): the settled shell is inside the segment fold —
+		// the run's rows moved behind `ctrl+r`. "The settled shell owns ZERO
+		// body rows" is this case's claim and it is now true by
+		// construction; what the grid must show is the FOLD, and what it
+		// must still not show is the tail.
+		expect(grid.findIndex((l) => l.includes("✦ thought"))).toBeGreaterThanOrEqual(0);
 		// the shell's OUTPUT is behind the key: no tail rows, no cut row
 		expect(grid.join("")).not.toContain("earlier rows");
 		expect(grid.join("\n")).not.toMatch(/^\u2502 (seq|1[012])/m);
@@ -243,21 +248,30 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
 		// the advisory is addressed to the HUMAN, so it names the act; the
 		// actionable half (offset=201) is untouched.
-		expect(grid.join("")).toContain("└ capped by read · offset=201 for the rest");
-		// the read block renders NO output body — the settled row carries the count
-		const readIdx = grid.findIndex((l) => l.includes("  read"));
-		expect(grid[readIdx + 1]).toContain("└ capped by read");
+		// R3b: the read's advisory is inside the segment fold, like every
+		// other row of the run — reachable by the key the fold names, never
+		// dropped. The claim "the human is told, not only the model" holds
+		// through the key; what would break it is silence, and the fold is
+		// not silent.
+		expect(grid.join("\n")).toMatch(/✦ thought \d+s · .* · ctrl\+r/);
 	}, 60_000);
 
 	it("R1.5 4 at 120 cols: the same, at the wide width — no body rows, no cut row", () => {
 		const { hex, alive } = runFlow(120);
 		expect(alive).toBe("ALIVE");
 		const grid = finalGrid(hex, 120);
-		expect(grid.findIndex((l) => l.includes("  shell"))).toBeGreaterThanOrEqual(0);
+		// R3b (owner ruling): the settled shell is inside the segment fold —
+		// the run's rows moved behind `ctrl+r`. "The settled shell owns ZERO
+		// body rows" is this case's claim and it is now true by
+		// construction; what the grid must show is the FOLD, and what it
+		// must still not show is the tail.
+		expect(grid.findIndex((l) => l.includes("✦ thought"))).toBeGreaterThanOrEqual(0);
 		expect(grid.join("")).not.toContain("earlier rows");
 		expect(grid.join("\n")).not.toMatch(/^│ (seq|1[012])/m);
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND).
-		expect(grid.join("")).toContain("└ capped by read · offset=201 for the rest");
+		// R3b: the advisory rode the read's own row, which is inside the
+		// segment fold now — reachable by the key the fold names.
+		expect(grid.join("\n")).toMatch(/✦ thought \d+s · .* · ctrl\+r/);
 	}, 60_000);
 
 	it("W8: two parallel tools, one streaming — the window is a FIXED 3 rows and every row BELOW the streaming cell is byte-identical across the run's frames until settle", () => {

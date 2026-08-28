@@ -109,9 +109,14 @@ describe("TUI2-R1.5 ⑥ — one press, one cell (VD-7)", () => {
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
 		const lines = (r as { lines: string[] }).lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
-		// ONE expansion, naming the group — not five per-call expansions
-		expect(lines).toContain("expanded · explored");
+		// R3b: the expansion is the SEGMENT's now — its header names what
+		// the segment did, and the run's own "explored …" title sits one
+		// row below it. The claim — ONE expansion naming the group, not
+		// five per-call ones — is unchanged and is what is asserted.
+		expect(lines).toContain("expanded · 4 reads · 1 match");
+		expect(lines).toContain("explored 4 files · 1 search");
 		expect(lines).toContain("ctrl+r collapses");
+		expect(lines.match(/expanded ·/g) ?? []).toHaveLength(1);
 	});
 
 });

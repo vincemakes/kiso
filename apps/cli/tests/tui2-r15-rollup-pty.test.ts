@@ -47,12 +47,16 @@ describe("TUI2-R1.5 ① — the exploration rollup at real pacing (real CLI)", (
 		});
 		const grid = settledScreen(raw);
 		const joined = grid.join("\n");
-		// THE settled row — the rollup, formed with no keypress at all
-		expect(joined).toMatch(/explored 6 files · 1 search · 1 dir/);
+		// DECLARED SUPERSESSION (R3b, owner ruling): the burst's SETTLED
+		// form is the segment fold; the exploration row is what `ctrl+r`
+		// opens. The claim these cases make — the burst settles as ONE
+		// thing, with no keypress, and never as N individual rows — is
+		// unchanged and is stronger now: one row for the whole segment.
+		expect(joined).toMatch(/✦ thought \d+s · 6 reads · 1 match · 1 dir/);
 		// …and NOT the eight individual rows the walkthrough saw
 		expect(grid.filter((l) => /✓ read {2}f\d\.txt/.test(l))).toHaveLength(0);
 		// the affordance is on the row (ctrl+r must have something to do)
-		expect(joined).toContain("ctrl+r lists them");
+		expect(joined).toContain("ctrl+r"); // the fold names its own key
 	}, 240_000);
 
 	it("REAL PACING — a burst whose calls land seconds apart still rolls up at settle", () => {
@@ -74,7 +78,12 @@ describe("TUI2-R1.5 ① — the exploration rollup at real pacing (real CLI)", (
 			cwd: ws,
 		});
 		const grid = settledScreen(raw);
-		expect(grid.join("\n")).toMatch(/explored 4 files · 1 search/);
+		// DECLARED SUPERSESSION (R3b, owner ruling): the burst's SETTLED
+		// form is the segment fold; the exploration row is what `ctrl+r`
+		// opens. The claim these cases make — the burst settles as ONE
+		// thing, with no keypress, and never as N individual rows — is
+		// unchanged and is stronger now: one row for the whole segment.
+		expect(grid.join("\n")).toMatch(/✦ thought \d+s · 4 reads · 1 match/);
 		expect(grid.filter((l) => /✓ read {2}f\d\.txt/.test(l))).toHaveLength(0);
 	}, 240_000);
 });

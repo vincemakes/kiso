@@ -1087,22 +1087,52 @@ function countTerm(n: number, singular: string, plural: string): string {
  *  metadata terms survive (the W14 metadata rule — they give way LAST),
  *  the words width-cut at the end with the honest "…" (never a silent
  *  truncate — invariant ① holds on the ONE row by construction). */
-export function turnFold(t: { words: string; thoughtSeconds: number; reads: number; edits: number; others: [string, number][] }, W: number): string[] {
-	const p = palette();
-	const parts = [`thought ${t.thoughtSeconds}s`, countTerm(t.reads, "read", "reads"), countTerm(t.edits, "edit", "edits")];
-	for (const [name, n] of t.others) {
+/**
+ * R3b — what a run of work DID, in words. One definition, because two
+ * surfaces say it: the fold line (`turnFold`, above) and the expand
+ * header the compositor writes when that fold is opened. A second copy
+ * would be a second answer to the same question, and the first thing to
+ * drift would be the plurals — `search_text` is "matches", not
+ * "searchs", and only the ROLLUP_NOUN table knows that.
+ *
+ * Zero terms are dropped (owner ruling, R3b): a term earns its place by
+ * having a count.
+ */
+export function foldTerms(reads: number, edits: number, others: readonly [string, number][]): string[] {
+	const parts: string[] = [];
+	if (reads > 0) parts.push(countTerm(reads, "read", "reads"));
+	if (edits > 0) parts.push(countTerm(edits, "edit", "edits"));
+	for (const [name, n] of others) {
+		if (n === 0) continue;
 		const noun = ROLLUP_NOUN[name];
-		if (noun !== undefined) {
-			parts.push(countTerm(n, noun.endsWith("es") ? noun.slice(0, -2) : noun.slice(0, -1), noun));
-		} else {
+		if (noun !== undefined) parts.push(countTerm(n, noun.endsWith("es") ? noun.slice(0, -2) : noun.slice(0, -1), noun));
+		else {
 			const verb = displayVerb(name);
 			parts.push(countTerm(n, verb, `${verb}s`));
 		}
 	}
-	const meta = parts.join(" · ");
+	return parts;
+}
+
+export function turnFold(t: { words: string; thoughtSeconds: number; reads: number; edits: number; others: [string, number][] }, W: number): string[] {
+	const p = palette();
+	// R3b (owner, 2026-08-27): ZERO TERMS ARE DROPPED. W14 always wrote
+	// `no reads · no edits`, which is a sentence about things that did not
+	// happen — on a segment fold, where a run is usually all reads or all
+	// edits, half the row was the half that said nothing. A term earns its
+	// place by having a count.
+	const meta = [`thought ${t.thoughtSeconds}s`, ...foldTerms(t.reads, t.edits, t.others)].join(" · ");
 	const words = escapeTerminal(t.words);
 	if (words === "") {
 		const row = `${p.bold}✦${p.reset} ${meta}`;
+		// R3b: the fold NAMES ITS OWN KEY. Without it the segment's work is
+		// unreachable — no rollup row, no expand, nothing — and hiding a
+		// tool call behind a line with no way back is the one thing this
+		// product must not do. The suffix gives way first at a narrow
+		// width, on the same principle the settled card's does: an
+		// affordance that does not fit is dropped, never half-drawn.
+		const keyed = `${row}${p.dim} · ctrl+r${p.reset}`;
+		if (visibleWidth(keyed) <= W) return [keyed];
 		return visibleWidth(row) <= W ? [row] : [`${p.bold}✦${p.reset} ${widthCut(meta, Math.max(1, W - 3))}…`]; // a wordless turn folds to the W14 shape
 	}
 	// A9 (ruling R2, mock A): the user chip rides the fold — the human's

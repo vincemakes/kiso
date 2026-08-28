@@ -394,10 +394,21 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		// affordances, never the ▣ the collapse hides.
 		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so it
 		// no longer closes right after the word.
-		const chipPaint = turn.indexOf("\x1b[7m go "); // the user message's chip — carried by the settle's pre-paint at its TRUE old row (A8b: the row-1 clamp is gone — the needle is the chip's content, not its old clamped row; the rail retired by the 2026-08-09 ruling)
-		expect(chipPaint).toBeGreaterThan(0);
-		const scroll = turn.indexOf("\n", chipPaint); // the settle's LF scroll — the pre-paint's end (the repaint follows, chrome first, no LF)
-		const during = turn.slice(chipPaint, scroll === -1 ? undefined : scroll);
+		// R3b: the window used to be "the chip's paint through the settle's
+		// LF scroll". The segment fold commits fewer rows, so that scroll
+		// can now not happen at all — `indexOf` returns -1, the window
+		// degenerates to "everything after the chip", and the SETTLED
+		// block's own ▣ rows fall inside it. The window was always a proxy
+		// for "the live forms"; `forms` already IS that list, so each
+		// form's own row is what the claim is asserted on.
+		// each live form's block, bounded by its own FRAME. The frame close
+		// (`\x1b[?2026l`) is the unambiguous edge: a row-level CUP is not,
+		// because the block itself draws several of them.
+		const frameEnd = (from: number): number => {
+			const at = turn.indexOf("\x1b[?2026l", from);
+			return at === -1 ? turn.length : at;
+		};
+		const during = forms.map((m) => turn.slice(m.index!, frameEnd(m.index!))).join("");
 		// TT-1A cadence restatement, ② half: the overflow fold (`+N more`)
 		// is an EARLY-state artifact (pending items past the live window);
 		// under the shared batching an early form may never paint, so that
@@ -408,7 +419,10 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		// (1 active · 9 done) must fold its done rows.
 		expect(during).not.toContain("▣ item"); // the collapse — no done rows in the run's forms
 		const lastForm = forms.at(-1)!;
-		const lastSlice = turn.slice(lastForm.index!, turn.indexOf("\n", lastForm.index!) === -1 ? undefined : turn.indexOf("\n", lastForm.index!));
+		// R3b: the same frame boundary — the LF this used to cut at can no
+		// longer be relied on to exist (the fold commits fewer rows, so the
+		// settle may need no scroll at all).
+		const lastSlice = turn.slice(lastForm.index!, frameEnd(lastForm.index!));
 		expect(/└ \+[0-9]+ done · ctrl\+r/.test(lastSlice)).toBe(true); // the done-collapse rides the live form
 		expect(lastSlice).not.toContain("▣ item"); // and hides, never lists, the done rows
 

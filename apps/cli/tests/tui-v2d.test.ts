@@ -316,15 +316,13 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// the settled row says "list", padded into the same 5-column verb
 		// gutter the read/edit heads already used — which is the point of
 		// the ruling: one screen, one vocabulary.
-		expect(clean).toMatch(/  list {2}\(root\) \(\d+\.\ds\) · \d+ lines · ctrl\+r/); // the auto-approved list_dir settled, silently
-		// MOVED (R1.5 slice 5, the approval-attribution class): the HUMAN
-		// answered this panel, and that is now what the row records.
-		expect(clean).toMatch(/  shell sleep 1; echo hi \(exit 0 · approved, \d+\.\ds\)/); // the approved shell settled
-		// MOVED (R1.5 slice 5, the R1 tool-cell suffix class): the line
-		// count is stated EXACTLY ONCE (VD-6) and lives in the suffix, so
-		// the parens carry the facts that are NOT the count — here the
-		// human's own verdict.
-		expect(clean).toMatch(/  asky_read  \(approved, \d+\.\ds\) · 1 line · ctrl\+r/); // the count in the suffix, the verdict in the parens
+		// R3b (owner ruling): the turn's three settled calls are inside the
+		// segment fold, which names them by COUNT. The verb vocabulary this
+		// case pins (one screen, one wording — `list`, not `list_dir`) is
+		// asserted where it now lives: the fold's terms, and the expansion.
+		expect(clean).toMatch(/✦ thought \d+s · 1 dir · 1 shell · 1 asky_read/);
+
+
 		expect(clean).not.toContain("approved by"); // R1.5 5: no policy byline anywhere
 		expect(clean).toContain("streaming text");
 		expect(clean).toContain("the tour is done");
