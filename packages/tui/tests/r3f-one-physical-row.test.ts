@@ -1,8 +1,8 @@
 /**
  * R3f — invariant ①b: a ROW IS ONE PHYSICAL ROW.
  *
- * The defect, as the owner met it in 0.16.6: *"有时候还是会冲烂输入框"* —
- * sometimes it smashes the input box. Their screen showed a thinking
+ * The defect, as the owner met it in 0.16.6: it still smashes the
+ * input box sometimes. Their screen showed a thinking
  * row sitting between the composer's two rails, and one row reading
  * `2. /think────────────────` — a fold row and the box's bottom rail
  * welded together.
@@ -43,9 +43,17 @@ afterEach(() => {
 	delete (process.stdout as { isTTY?: boolean }).isTTY;
 });
 
-/** the owner's own payload: a thinking block that opens with a numbered
- *  plan — short lines early, which is what lets the cut cross a newline */
-const NUMBERED = "让我换个思路:\n1. 用 r.jina.ai 直接抓凤凰网搜索页\n2. ";
+/** The owner's OWN payload, byte for byte: a thinking block that opens
+ *  with a numbered plan — short lines early, which is what lets the cut
+ *  cross a newline.
+ *
+ *  The CJK is written as \u escapes because the tracked tree is
+ *  CJK-free (the 2026-08-06 englishization ruling) and this string is
+ *  EVIDENCE, not prose: it is the exact text that smashed the composer,
+ *  and paraphrasing it into English would change the widths the cut is
+ *  taken on and with them the case's fidelity. The escapes preserve the
+ *  value exactly. */
+const NUMBERED = "\u8ba9\u6211\u6362\u4e2a\u601d\u8def:\n1. \u7528 r.jina.ai \u76f4\u63a5\u6293\u51e4\u51f0\u7f51\u641c\u7d22\u9875\n2. ";
 
 describe("R3f — the producers emit ONE physical row", () => {
 	it("the thinking fold flattens a numbered plan — the exact payload that smashed the composer", () => {

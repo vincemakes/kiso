@@ -24,6 +24,7 @@ prints nothing and exits 0 is indistinguishable from a tool that worked.
 """
 import contextlib
 import os
+import re
 import tarfile
 import tempfile
 
@@ -97,23 +98,43 @@ def _safe_extract(tar, dest):
         tar.extractall(dest)
 
 
+CELL_SEGMENT = re.compile(r"^c\d+-r\d+$")
+
+
 def relocate(value, root):
     """Rewrite recorded absolute paths onto `root`, in memory.
 
-    Any string carrying an `/out/<batch>/...` segment is re-rooted; a
-    string without one is returned untouched (and whatever reads it will
-    fail loudly, which is the intent). Recurses through dicts and lists.
+    Two recording layouts exist, and both must land on the same place.
+
+    1. The producing run wrote under `.../bench/rd1/out/<batch>/<cell>/`,
+       so everything after the `/out/<batch>/` segment is re-rooted.
+    2. DC-22 (2026-08-29): the CLEAN replay (F8 — a fresh directory per
+       cell) wrote under `<tmp>/replay/work/<agent>/<cell>/` instead.
+       Those strings carry no `/out/` segment at all, so rule 1 returned
+       them untouched and the scorer read a temp directory the OS had
+       long since swept: 137 published figures moved PASS -> INVALID,
+       and the archive had held every one of those files the whole time.
+
+    So a string that rule 1 does not match is re-rooted from its CELL
+    segment (`c<N>-r<M>`) instead — the one component both layouts share
+    and the one the archive is keyed by. A string with neither is still
+    returned untouched, and whatever reads it still fails loudly, which
+    is the intent. Recurses through dicts and lists.
     """
     if isinstance(value, str):
         marker = f"{os.sep}out{os.sep}"
         idx = value.rfind(marker)
-        if idx < 0:
-            return value
-        tail = value[idx + len(marker):]
-        # tail is "<batch>/<cell>/..."; root is ".../<batch>", so the
-        # batch segment is dropped rather than doubled.
-        parts = tail.split(os.sep, 1)
-        return os.path.join(root, parts[1]) if len(parts) == 2 else root
+        if idx >= 0:
+            tail = value[idx + len(marker):]
+            # tail is "<batch>/<cell>/..."; root is ".../<batch>", so the
+            # batch segment is dropped rather than doubled.
+            parts = tail.split(os.sep, 1)
+            return os.path.join(root, parts[1]) if len(parts) == 2 else root
+        parts = value.split(os.sep)
+        for i in range(len(parts) - 1, -1, -1):
+            if CELL_SEGMENT.match(parts[i]):
+                return os.path.join(root, *parts[i:])
+        return value
     if isinstance(value, dict):
         return {k: relocate(v, root) for k, v in value.items()}
     if isinstance(value, list):

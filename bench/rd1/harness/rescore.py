@@ -47,6 +47,26 @@ class ScoringError(Exception):
     """A cell could not be scored — never silently skipped."""
 
 
+def _paths(value):
+    """Every filesystem path a relocated manifest names, recursively.
+
+    The manifest's path fields are the ones ending in `path`/`Path` plus
+    the needle records' own `path`; a value that is not an absolute path
+    is not one of ours and is skipped.
+    """
+    out = []
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if isinstance(v, str) and (k.lower().endswith("path") or k in ("ledger", "surrogateLog")) and v.startswith(os.sep):
+                out.append(v)
+            else:
+                out += _paths(v)
+    elif isinstance(value, list):
+        for v in value:
+            out += _paths(v)
+    return out
+
+
 def score_cell(root, cell):
     """Re-score one cell. Returns (verdict, recorded_verdict, source)."""
     d = os.path.join(root, cell)
@@ -69,6 +89,24 @@ def score_cell(root, cell):
             f"{cell}: score-manifest.json is missing but the recorded verdict is not an exclusion "
             f"({axes or 'no axes'}) — the cell cannot be re-derived and must not be reported as scored")
     manifest = relocate(json.load(open(mpath)), root)
+    # DC-22 (2026-08-29): a path that did not land INSIDE the batch is
+    # evidence the archive cannot supply, and it must stop the scorer
+    # rather than flow into a verdict. The clean replay's manifests
+    # carried a layout `relocate` did not know, so every one of their
+    # paths stayed pointed at a temp directory the OS had swept — and
+    # the scorer read the empty filesystem and scored 137 axes INVALID.
+    # An INVALID axis reads as "the run behaved badly"; the truth was
+    # "the scorer looked in the wrong place". Those cannot share a
+    # verdict.
+    #
+    # A missing FILE under the root stays a verdict, because that is a
+    # real observation and the whole point of the lost_work axis. What
+    # is barred is a path outside the root.
+    stray = [pp for pp in _paths(manifest) if not os.path.abspath(pp).startswith(os.path.abspath(root) + os.sep)]
+    if stray:
+        raise ScoringError(
+            f"{cell}: {len(stray)} manifest path(s) do not resolve inside the batch — the archive cannot "
+            f"supply this evidence and the cell must not be reported as scored (first: {stray[0]})")
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
         json.dump(manifest, fh)
         tmp = fh.name
