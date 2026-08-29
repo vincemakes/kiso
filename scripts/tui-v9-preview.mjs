@@ -208,6 +208,38 @@ const frame = (title, note, rows) => FRAMES.push({ title, note, rows });
  *  are the segment's, in the fold's canonical order; the trouble clause
  *  rides the tail in the failure colour, on WORDS (law 1.3: strip the
  *  escapes and the fact survives); the key gives way never (R3g). */
+/**
+ * ONE TERM TABLE, TWO TENSES — [past, progressive, singular, plural].
+ *
+ * The bug this closes, found in review: the live rows were written by
+ * hand and drifted from the settled vocabulary — `searching 1 pattern`
+ * live against `ran 1 search` settled (the NOUN swapped at the settle),
+ * and `running 4 shells`, which is verbatim the R3g defect the last
+ * round removed. That falsifies this page's own central sentence, that
+ * the settle changes the tense and the key and nothing else. One table
+ * is the only way that sentence can stay true.
+ */
+const TERM = {
+	read_file: ["read", "reading", "file", "files"],
+	edit_file: ["edited", "editing", "file", "files"],
+	write_file: ["wrote", "writing", "file", "files"],
+	list_dir: ["listed", "listing", "directory", "directories"],
+	search_text: ["ran", "running", "search", "searches"],
+	shell: ["ran", "running", "shell command", "shell commands"],
+};
+const term = (name, n, live) => {
+	const t = TERM[name];
+	if (t === undefined) return `${n} \u00d7 ${name}`;
+	return `${live ? t[1] : t[0]} ${n} ${n === 1 ? t[2] : t[3]}`;
+};
+/** R3i (review §2.1): a stretch with exactly ONE call names its TARGET
+ *  instead of its count. `✦ thought 2s · read 1 file` replaces two rows
+ *  — the thinking and the call — with a row that says less than either,
+ *  and "thinking + one call" is the commonest shape a narrating model
+ *  makes. This is the answer to the defect R3d killed R3b's per-segment
+ *  folds over; the ≥2-cells rule alone does NOT answer it. */
+const termOne = (name, target, live) => `${TERM[name] ? TERM[name][live ? 1 : 0] : name} ${target}`;
+
 const COMPACT = [
 	["directories", "dirs"],
 	["directory", "dir"],
@@ -231,39 +263,51 @@ const COMPACT = [
  * the close, and nothing else. What it must never do is claim, while
  * the work is in flight, to be the record of work that finished.
  */
-const stretchLine = (phase, terms, trouble, keyed) => {
+const stretchLine = (phase, terms, trouble, keyed, chip) => {
 	const mark = phase === "settled" ? b(G.fold) : d(phase === "thinking" ? G.think : G.act);
-	const key = keyed ? " · ctrl+r" : "";
-	// NO trailing "…" for in-flight, though the reference uses one: in
-	// kiso "…" already means CUT HERE — every widthCut ends in it — and a
-	// glyph with two meanings is the thing §6 and law 1.3 exist to stop.
-	// It is not needed either: the mark is moving and the tense is
-	// present, which is two independent ways of saying the same thing.
-	const flight = "";
-	const bad = trouble ? ` · ${trouble}` : "";
-	// THE LADDER, in the order the design pins it. The key gives way
-	// never (a fold with no key is work with no way back); the trouble
-	// clause gives way never (it is the fact you must not have to press
-	// for); the nouns compact cheapest-word-first and STOP as soon as
-	// the row fits; only then do the counts cut, with the honest "…".
-	let meta = terms.join(" · ") + flight;
-	const fits = (m) => 2 + vw(m) + vw(bad) + vw(key) <= W;
-	if (!fits(meta)) {
+	const key = keyed ? " \u00b7 ctrl+r" : "";
+	const bad = trouble === null || trouble === undefined ? "" : ` \u00b7 ${trouble}`;
+	// THE LADDER, in the one order the design pins, and the order the
+	// product must implement: the human's WORDS give way first (they are
+	// on screen above, in the chip band), then the nouns compact
+	// cheapest-first, then the counts cut, then the trouble clause cuts,
+	// and the KEY gives way never — a fold with no key is work with no
+	// way back to it.
+	//
+	// Review found the previous version unimplementable as written ("the
+	// clause never gives way"): at W=64 a long clause overflowed after
+	// the counts had already cut to a bare "…", so invariant ① would
+	// throw in the product. Everything gives way except the key.
+	let meta = terms.join(" \u00b7 ");
+	let clause = bad;
+	let words = chip === undefined ? "" : ` ${chip} `;
+	const width = () => 2 + (words === "" ? 0 : vw(words) + 3) + vw(meta) + vw(clause) + vw(key);
+	if (words !== "" && width() > W) {
+		const room = W - (width() - vw(words)) - 1;
+		words = room >= 4 ? `${cut(words, room + 1).replace(/…$/, "")}…` : "";
+	}
+	if (width() > W) {
 		for (const [long, short] of COMPACT) {
 			meta = meta.replaceAll(long, short);
-			if (fits(meta)) break;
+			if (width() <= W) break;
 		}
 	}
-	if (!fits(meta)) {
-		const room = W - 2 - vw(bad) - vw(key) - 1;
-		meta = room >= 2 ? `${cut(meta, room + 1).replace(/…$/, "")}…` : "…";
+	if (width() > W) {
+		const room = W - (width() - vw(meta)) - 1;
+		meta = room >= 2 ? `${cut(meta, room + 1).replace(/…$/, "")}…` : "\u2026";
+	}
+	if (width() > W && clause !== "") {
+		const room = W - (width() - vw(clause)) - 1;
+		clause = room >= 4 ? `${cut(clause, room + 1).replace(/…$/, "")}…` : "";
 	}
 	const painted = meta
-		.split(" · ")
+		.split(" \u00b7 ")
 		.map((t) => p(t))
-		.join(d(" · "));
-	return `${mark} ${painted}${trouble ? `${d(" · ")}${r(trouble)}` : ""}${keyed ? d(key) : ""}`;
+		.join(d(" \u00b7 "));
+	const lead = words === "" ? "" : `${rv(words)}${d(" \u00b7 ")}`;
+	return `${mark} ${lead}${painted}${clause !== "" ? r(clause) : ""}${keyed ? d(key) : ""}`;
 };
+
 /** The act window's head — the call running right now. */
 const actHead = (verb, target, secs) => `${b(G.run)} ${p(padR(verb, 5))} ${p(target)}${d(` · ${secs}`)}`;
 /** The act window's body rows and its last row. */
@@ -291,7 +335,7 @@ frame(
 
 frame(
 	"02 · the message lands",
-	"The chip band commits on the frame it is pushed — it is never held and never folded. The live region is empty; the status flips to working. Nothing about this changes.",
+	"The chip band commits on the frame it is pushed and is never held. Whether it is never FOLDED is not settled here: A9 (an owner ruling) puts the words on the fold line when the turn ends with no prose — see frame 12c, which is where that shape is decided.",
 	[you("fix the flaky test in editor.test.ts — it only fails on the pty runner"), ...chrome("", "", d(`${G.think} working 1s`), d("esc stop · alt+⏎ redirect"), false)],
 );
 
@@ -314,7 +358,7 @@ frame(
 	"Thinking stopped and the work started, so the line switches to what it is DOING: present tense, the mark still moving. Completed calls append their counts IN PLACE; the window below is the act itself, with its live output. This is the answer to “how does streaming work” — one line that grows. What it must not do is wear the settled form early: `✦ thought 4s · read 2 files` over live rows would be a finished record sitting on unfinished work.",
 	[
 		you("fix the flaky test in editor.test.ts — it only fails on the pty runner"),
-		stretchLine("acting", ["reading 2 files", "running 1 shell"], null, false),
+		stretchLine("acting", [term("read_file",2,true), term("shell",1,true)], null, false),
 		actHead("shell", "npm run check", "12s"),
 		winRow("vitest run --project unit --reporter dot"),
 		winRow("····················· 114 passed"),
@@ -328,7 +372,7 @@ frame(
 	"The same block with a call that will be over before you read it. kiso does NOT adopt the reference's 700ms eased hold on the hint: a minimum display time is animation smoothing, and this product shows facts on the event clock. The count bump on the line is the feedback that the call happened.",
 	[
 		you("fix the flaky test in editor.test.ts — it only fails on the pty runner"),
-		stretchLine("acting", ["reading 3 files", "searching 1 pattern"], null, false),
+		stretchLine("acting", [term("read_file",3,true), term("search_text",1,true)], null, false),
 		actHead("read", "packages/tui/src/editor.ts", "0s"),
 		winRow("waiting for output"),
 		winRow(""),
@@ -342,7 +386,7 @@ frame(
 	"Parallel work replaces the head+window with one head per running call, capped, the overflow counted; the block's height stays fixed. THE CORRECTION: this frame used to read `✦ thought 2s · read 6 files` above these three live rows — the settled glyph and the past tense, over work still in flight. A summary is a record; a record of something that has not happened is a lie the eye reads before the words do. Present tense, moving mark, until the stretch closes.",
 	[
 		you("check the three packages"),
-		stretchLine("acting", ["reading 6 files", "running 4 shells"], null, false),
+		stretchLine("acting", [term("read_file",6,true), term("shell",4,true)], null, false),
 		actHead("shell", "npm run check -w core", "8s"),
 		actHead("shell", "npm run check -w runtime", "8s"),
 		actHead("shell", "npm run check -w tui", "7s"),
@@ -356,7 +400,7 @@ frame(
 	"A failure lands ON THE LINE as a clause, in the failure colour, the instant the call settles — and it never leaves. This is strictly better than today, where the failed row scrolls up under the calls that follow it. The colour is emphasis; the words carry the fact (law 1.3), so a pipe keeps `1 failed: npm test · exit 1` in full.",
 	[
 		you("fix the flaky test in editor.test.ts — it only fails on the pty runner"),
-		stretchLine("acting", ["reading 3 files"], "1 failed: npm test · exit 1", false),
+		stretchLine("acting", [term("read_file",3,true)], "1 failed: npm test · exit 1", false),
 		actHead("read", "packages/tui/tests/editor.test.ts", "1s"),
 		winRow("waiting for output"),
 		winRow(""),
@@ -370,7 +414,7 @@ frame(
 	"On the OPEN block the key toggles in place, and a second press restores frame 04. This is where the reasoning is read in full — the thing today's one-line thinking fold cannot show. Explore runs group exactly as the rollup groups them, so the expansion and the commit path can never disagree.",
 	[
 		you("fix the flaky test in editor.test.ts — it only fails on the pty runner"),
-		stretchLine("acting", ["reading 3 files", "running 1 shell"], null, false),
+		stretchLine("acting", [term("read_file",3,true), term("shell",1,true)], null, false),
 		thinkRow("editor.test.ts polls a timer that races the frame scheduler; the pty"),
 		thinkRow("suite stubs time, so the flake is the 16ms coalesce window — reproduce"),
 		thinkRow("it first, then pin the scheduler seam"),
@@ -425,12 +469,37 @@ frame(
 
 frame(
 	"12 · one call is not a stretch",
-	"A stretch of exactly one call and no thinking commits the call's OWN row instead of a fold. `shell npm run check (exit 0, 12.4s) · 82 lines · ctrl+r expands` says strictly more than `✦ ran 1 shell command` in the same one row — folding one row into one row is pure loss. This rule is what stops a chatty model from turning every call into its own summary line.",
+	"A stretch of exactly one call and no thinking commits the call's OWN row instead of a fold. `shell npm run check (exit 0, 12.4s) · 82 lines · ctrl+r expands` says strictly more than `✦ ran 1 shell command` in the same one row — folding one row into one row is pure loss. The ≥2 rule is not on its own the cure for R3d's defect — frame 12b is where that is settled.",
 	[
 		you("run the check suite"),
 		callRow("shell", "npm run check", "exit 0, 12.4s", "82 lines · ctrl+r expands"),
 		prose("Green — 2258 tests, no failures."),
 		recap("took 13s · in 1.1k out 90 · ctx left ~97%"),
+		...chrome("", "", d("ready"), d("/ commands · ↑ history")),
+	],
+);
+
+frame(
+	"12b · thinking + ONE call — the shape R3d killed R3b over",
+	"THE FRAME THIS PAGE WAS MISSING, and the state that decides whether R3d's defect comes back. A narrating model's commonest stretch is one thought and one call — two cells, so the ≥2 rule folds it, and folding it by COUNT gives `✦ thought 2s · read 1 file`: two rows replaced by a row that says less than either of them did. That is verbatim what the owner killed per-segment folds over. The ≥2 rule alone does NOT answer it. THE FIX: a stretch with exactly one call names its TARGET instead of its count — the line then says everything both rows said, and the per-break row becomes fully informative instead of a summary of nothing. Top: by count (what this page did before the review). Bottom: by target.",
+	[
+		you("what does the editor do with a paste?"),
+		`  ${d(cut("BEFORE — by count, two rows for one, saying less:", W - 2))}`,
+		stretchLine("settled", ["thought 2s", "read 1 file"], null, true),
+		`  ${d(cut("AFTER — by target, everything both rows said:", W - 2))}`,
+		stretchLine("settled", ["thought 2s", termOne("read_file", "editor.ts", false)], null, true),
+		prose("It buffers the burst and submits it as ONE turn — the CRLF split is"),
+		prose("the paste, not three messages."),
+		...chrome("", "", d("ready"), d("/ commands · ↑ history")),
+	],
+);
+
+frame(
+	"12c · the quiet turn — where A9 already ruled",
+	"A turn that ends with no prose at all is the ONE shape `turnFold` serves today, and this page had no frame for it. A9 (an owner ruling) puts the human's words ON the fold line as the chip, so the turn is one row. Frame 02 says the chip band “is never folded — nothing about this changes”, which contradicts A9: the ruling must either be kept here (the chip rides, as drawn) or superseded (band + fold = two rows where one stands today), and it cannot be decided by a page that does not draw it.",
+	[
+		stretchLine("settled", ["thought 3s", term("shell", 1, false)], null, true, "is the pty runner green?"),
+		recap("took 14s · in 900 out 40 · ctx left ~98%"),
 		...chrome("", "", d("ready"), d("/ commands · ↑ history")),
 	],
 );
@@ -527,14 +596,13 @@ frame(
 
 frame(
 	"19 · the spill split — the honest degradation",
-	"A screen too short to hold an open stretch force-commits part of it. Committed rows are ink, so the stretch SPLITS: the line so far commits with its counts as of the split, and a fresh line continues with fresh counts. The two sum truthfully and neither claims work that stands visible above it (R3f's rule, kept). Today this case is the one that never folds at all.",
+	"A screen too short to hold an open stretch force-commits part of it. Committed rows are ink, so the stretch SPLITS: the first line commits with its counts AS OF the split, and a fresh line continues with fresh counts. 9 + 2 is the stretch; neither line counts a row the other shows. CORRECTED AFTER REVIEW: this frame used to draw two individual read rows directly under the first fold line, which taught the opposite of the invariant it exists to defend — a reader could not tell whether `9 files` included the rows beneath it, and if it did, the fold was claiming work standing visible below it (the R3f disease). No orphan rows: the first line's work is behind its key, the second line's is in flight.",
 	[
 		stretchLine("settled", ["thought 4s", "read 9 files"], null, true),
-		callRow("read", "packages/tui/src/compositor.ts", "0.1s", "2938 lines"),
-		callRow("read", "packages/tui/src/render.ts", "0.0s", "412 lines"),
-		stretchLine("acting", ["reading 2 files"], null, false),
+		stretchLine("acting", [term("read_file", 2, true)], null, false),
 		actHead("read", "packages/tui/src/editor.ts", "0s"),
-		winEnd("waiting for output"),
+		winRow("waiting for output"),
+		winEnd("+9 earlier rows · ctrl+r"),
 		...chrome("", "", d(`${G.think} working 9s`), d("esc stop"), false),
 	],
 );
