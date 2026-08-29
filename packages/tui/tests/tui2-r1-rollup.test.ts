@@ -35,6 +35,17 @@
  *   - /last still reaches the full outputs.
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — the fold's terms are
+ * VERB + COUNT + NOUN now ("read 5 files"), where they used to be a
+ * bare count and a noun borrowed from the rollup table ("5 reads",
+ * "1 match"). Two reasons, one of them a truthfulness bug: that table
+ * names what a single-tool rollup COUNTS — "14 matches" means fourteen
+ * matched lines — while this line counts CALLS, so one search rendered
+ * "1 match" whenever the search had matched any other number. The
+ * phrasing is the owner's, from the shape they asked for: "thought 17s
+ * · read 4 files · listed 1 directory · ran 4 shell commands".
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 
@@ -88,13 +99,14 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		body.userLine("explore");
 		exploreBurst(body);
 		body.textAppend("explored.");
+		body.endTurn(0); // R3d: the fold is the TURN's
 		tick();
 		const frame = plain(writes.join(""));
 		// R3b: the burst's COMMITTED form is the segment fold — ONE row for
 		// twenty-two calls, which is the same claim this case always made,
 		// one row tighter.
 		expect(frame).toContain("✦ thought");
-		expect(frame).toContain("8 reads · 14 matches"); // the fold's own terms
+		expect(frame).toContain("read 8 files · ran 14 searches"); // the fold's own terms
 		expect(frame.match(/✦ thought/g) ?? []).toHaveLength(1);
 		// and the exploration row is what the key opens — the per-tool
 		// counts and the subjects, unchanged.
@@ -117,6 +129,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		call(body, "search_text", "b2", { pattern: "z", path: "src" }, "x");
 		call(body, "list_dir", "b3", { path: "lib" }, "x");
 		body.textAppend("done.");
+		body.endTurn(0); // R3d: the fold is the TURN's
 		tick();
 		// R3b: the run's committed form is the fold; the GROUPING — which
 		// is what this case is about — is asserted where it now lives.
@@ -136,6 +149,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		body.userLine("shells");
 		for (let i = 0; i < 3; i += 1) call(body, "shell", `c${i}`, { command: `echo ${i}` }, "out");
 		body.textAppend("ran.");
+		body.endTurn(0); // R3d: the fold is the TURN's
 		tick();
 		const opened = body.expandNext();
 		const lines = opened.kind === "appended" ? plain(opened.lines.join("\n")) : plain(writes.join(""));
@@ -153,6 +167,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		call(body, "read_file", "a", { path: "one.ts" }, "x");
 		call(body, "search_text", "b", { pattern: "q", path: "src" }, "x");
 		body.textAppend("done.");
+		body.endTurn(0); // R3d: the fold is the TURN's
 		tick();
 		expect(plain(writes.join(""))).not.toContain("explored");
 	});
@@ -163,6 +178,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		body.userLine("w13");
 		for (let i = 0; i < 5; i += 1) call(body, "read_file", `r${i}`, { path: `${"abcde"[i]}.ts` }, "line one\nline two");
 		body.textAppend("five files read.");
+		body.endTurn(0); // R3d: the fold is the TURN's
 		tick();
 		// R3b: the committed form is the fold; W13's exact row is what the
 		// key opens. "The generalization adds, it never rewrites" is still
@@ -182,6 +198,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		body.userLine("explore");
 		exploreBurst(body);
 		body.textAppend("explored.");
+		body.endTurn(0); // R3d: the fold is the TURN's
 		tick();
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
@@ -190,7 +207,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// own terms; the run's "explored …" title sits one row below it.
 		// Two scales, one wording each — the header used to borrow the
 		// run's sentence, which read as the same run twice.
-		expect(lines[0]).toContain("expanded · 8 reads · 14 matches · 0 turns back");
+		expect(lines[0]).toContain("expanded · read 8 files · ran 14 searches · 0 turns back");
 		const body_ = lines.join("\n");
 		expect(body_).toContain("explored 8 files · 14 searches");
 		expect(body_).toContain("│ read   src/parser.ts · src/lexer.ts · src/ast.ts (+5)");
@@ -212,6 +229,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		call(rolled.body, "search_text", "b", { pattern: "q", path: "src" }, "gamma");
 		call(rolled.body, "list_dir", "c", { path: "src" }, "delta");
 		rolled.body.textAppend("done.");
+		rolled.body.endTurn(0); // R3d: the fold is the TURN's
 		rolled.tick();
 		const frame = plain(rolled.writes.join(""));
 		// the ROWS are gone — none of the members' result text was drawn…
@@ -236,6 +254,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		call(body, "search_text", "b", { pattern: "q", path: "src" }, "gamma");
 		call(body, "list_dir", "c", { path: "src" }, "the whole listing\nsecond row");
 		body.textAppend("done.");
+		body.endTurn(0); // R3d: the fold is the TURN's
 		tick();
 		const last = body.lastTool();
 		expect(last).not.toBeNull();
@@ -253,6 +272,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		body.toolStart("list_dir", "c", { path: "src" });
 		body.toolRunning("c"); // still running when the text releases the hold
 		body.textAppend("done.");
+		body.endTurn(0); // R3d: the fold is the TURN's
 		tick();
 		expect(plain(writes.join(""))).not.toContain("explored");
 	});

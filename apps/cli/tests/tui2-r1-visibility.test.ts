@@ -12,6 +12,15 @@
  * rent parts. A session with no sidecar renders an honest fallback.
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — the fold's terms are
+ * VERB + COUNT + NOUN now ("read 5 files"), where they used to be a
+ * bare count and a noun borrowed from the rollup table ("5 reads",
+ * "1 match"). That table names what a single-tool rollup COUNTS —
+ * "14 matches" means fourteen matched lines — while this line counts
+ * CALLS, so one search rendered "1 match" whenever the search matched
+ * any other number. The phrasing is the owner's.
+ */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -127,7 +136,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		// the exploration row is what `ctrl+r` opens. This case's subject —
 		// the PTY collapses and the PIPE never does — is unchanged, and the
 		// pipe leg below still proves the durable record is identical.
-		expect(out).toMatch(/✦ thought \d+s · 3 reads · 2 matches · 1 dir/);
+		expect(out).toMatch(/✦ thought \d+s · read 3 files · ran 2 searches · listed 1 directory/);
 		expect(out).toContain("ctrl+r");
 
 		// the PIPE leg — no compositor, no row, byte-for-byte the line mode
@@ -135,7 +144,12 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		const res = runCli(["--mode", "bypass", "r1-pipe"], pipe.env as NodeJS.ProcessEnv, { input: "go\nexit\n", cwd: ws });
 		expect(res.status, res.stderr).toBe(0);
 		expect(res.stdout).not.toContain("explored 3 files");
-		expect(res.stdout).not.toContain("✦ thought"); // and no fold either — the pipe has no compositor
+		// R3d: the pipe HAS a recap (it is a local line, zero tokens) and the
+		// recap now opens `✦ thought` too — so the needle that proved "no
+		// fold here" would now fire on the recap. What the pipe must not
+		// have is the fold's own affordance: nothing is collapsed, so
+		// nothing offers to expand.
+		expect(res.stdout).not.toContain("ctrl+r");
 		expect(res.stdout).not.toContain("ctrl+r");
 		// the pipe's own per-call rows are intact — all six, one each
 		expect(res.stdout.match(/\u2713 read /g) ?? []).toHaveLength(3); // R2: the pipe keeps its mark

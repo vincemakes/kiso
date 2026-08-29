@@ -6,6 +6,19 @@
  * sequence (the render sequence → the expected bytes) exactly as the consumer composes them.
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — the recap's seconds are
+ * labelled `took`, not `thought`. The number never changed: it has
+ * always been the TURN's wall clock. It was called "thought" while the
+ * fold line one row above printed the kernel's MEASURED thinking
+ * seconds under that same word, so a turn that thought for 1s and then
+ * ran a 40s shell showed two different numbers, both called "thought".
+ *
+ * The work terms below are still rendered because these cases still
+ * PASS them: kiso's own CLI stopped passing them (the fold says the
+ * work now, once), and the fields stayed so an embedder of this package
+ * keeps the byte-for-byte historical row. That is what these cases pin.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	bannerLines,
@@ -229,6 +242,16 @@ describe("v2a: the rhythm — the render sequence → the expected bytes", () =>
 	});
 });
 
+/**
+ * DECLARED SUPERSESSION (R3d, owner, 2026-08-28): the recap opens with
+ * `thought Ns`, not a bare `Ns`.
+ *
+ * The line is the turn's ONE summary now — it says what the turn DID
+ * ("thought 17s · 4 reads · 1 dir · 4 shells") where it used to say how
+ * many times it did something ("47s · 3 tools"). Every other field, the
+ * order, and the fold behaviour are untouched; the cases below still pin
+ * the usage segments, the cache arithmetic and the omissions.
+ */
 describe("v3 §02: the recap line (all fields derived locally — zero tokens)", () => {
 	const usage = (u: Partial<import("../src/render.js").RunUsage> = {}): import("../src/render.js").RunUsage => ({
 		in: 8200,
@@ -240,7 +263,7 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 
 	it("the full form: seconds · tools (edits) · in/out · cache % · ctx left %", () => {
 		expect(renderRecap({ seconds: 47, tools: 3, edits: 1, usage: usage(), ctxLeftPct: 96 })).toBe(
-			"\u2726 47s · 3 tools (1 edit) · in 8.2k out 410 · cache 49% · ctx left ~96%\n", // 7954/(8200+7954)
+			"\u2726 took 47s · 3 tools (1 edit) · in 8.2k out 410 · cache 49% · ctx left ~96%\n", // 7954/(8200+7954)
 		);
 	});
 
@@ -254,7 +277,7 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 
 	it("singulars and omissions: 1 tool, no edits, unknown usage → the parts drop", () => {
 		expect(renderRecap({ seconds: 2, tools: 1, edits: 0, usage: usage({ known: false }), ctxLeftPct: null })).toBe(
-			"\u2726 2s · 1 tool\n",
+			"\u2726 took 2s · 1 tool\n",
 		);
 	});
 
@@ -263,10 +286,10 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 		// never exceed 100% (the old cache/in denominator rendered 923%).
 		// in 0 with cache > 0 is honest: everything came from cache → 100%.
 		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: 0 }), ctxLeftPct: null })).toBe(
-			"\u2726 1s · 1 tool · in 0 out 410 · cache 100%\n",
+			"\u2726 took 1s · 1 tool · in 0 out 410 · cache 100%\n",
 		);
 		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ cache: null }), ctxLeftPct: null })).toBe(
-			"\u2726 1s · 1 tool · in 8.2k out 410\n",
+			"\u2726 took 1s · 1 tool · in 8.2k out 410\n",
 		);
 	});
 
@@ -275,7 +298,7 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 		// the cached prefix. OLD formula: 1024/111 = 922.5% → "cache 923%".
 		// NEW: 1024/1135 = 90.2% → "cache 90%".
 		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: 111, cache: 1024 }), ctxLeftPct: null })).toBe(
-			"\u2726 1s · 1 tool · in 111 out 410 · cache 90%\n",
+			"\u2726 took 1s · 1 tool · in 111 out 410 · cache 90%\n",
 		);
 	});
 
@@ -299,19 +322,19 @@ describe("v3 §02: the recap line (all fields derived locally — zero tokens)",
 
 	it("k-units: 12345 → 12.3k, 800 → 800", () => {
 		expect(renderRecap({ seconds: 1, tools: 1, edits: 0, usage: usage({ in: 12345, out: 800 }), ctxLeftPct: null })).toBe(
-			"\u2726 1s · 1 tool · in 12.3k out 800 · cache 39%\n", // 7954/(12345+7954)
+			"\u2726 took 1s · 1 tool · in 12.3k out 800 · cache 39%\n", // 7954/(12345+7954)
 		);
 	});
 
 	it("R-C item 4: an above-floor cache miss appends the miss segment", () => {
 		expect(renderRecap({ seconds: 3, tools: 2, edits: 0, usage: usage({ in: 123456, cache: 82000 }), missed: 41000, ctxLeftPct: null })).toBe(
-			"\u2726 3s · 2 tools · in 123.5k out 410 · cache 40% · miss 41k\n",
+			"\u2726 took 3s · 2 tools · in 123.5k out 410 · cache 40% · miss 41k\n",
 		);
 	});
 
 	it("R-C item 4: a zero miss renders nothing — the historical bytes hold", () => {
 		expect(renderRecap({ seconds: 3, tools: 2, edits: 0, usage: usage(), missed: 0, ctxLeftPct: null })).toBe(
-			"\u2726 3s · 2 tools · in 8.2k out 410 · cache 49%\n",
+			"\u2726 took 3s · 2 tools · in 8.2k out 410 · cache 49%\n",
 		);
 	});
 });

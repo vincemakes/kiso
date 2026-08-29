@@ -18,6 +18,17 @@
  * gates when it carries the literal `ctrl+r`.
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — the fold's terms are
+ * VERB + COUNT + NOUN now ("read 5 files"), where they used to be a
+ * bare count and a noun borrowed from the rollup table ("5 reads",
+ * "1 match"). Two reasons, one of them a truthfulness bug: that table
+ * names what a single-tool rollup COUNTS — "14 matches" means fourteen
+ * matched lines — while this line counts CALLS, so one search rendered
+ * "1 match" whenever the search had matched any other number. The
+ * phrasing is the owner's, from the shape they asked for: "thought 17s
+ * · read 4 files · listed 1 directory · ran 4 shell commands".
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 
@@ -113,7 +124,7 @@ describe("TUI2-R1.5 ⑥ — one press, one cell (VD-7)", () => {
 		// the segment did, and the run's own "explored …" title sits one
 		// row below it. The claim — ONE expansion naming the group, not
 		// five per-call ones — is unchanged and is what is asserted.
-		expect(lines).toContain("expanded · 4 reads · 1 match");
+		expect(lines).toContain("expanded · read 4 files · ran 1 search");
 		expect(lines).toContain("explored 4 files · 1 search");
 		expect(lines).toContain("ctrl+r collapses");
 		expect(lines.match(/expanded ·/g) ?? []).toHaveLength(1);

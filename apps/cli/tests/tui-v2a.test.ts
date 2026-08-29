@@ -9,6 +9,12 @@
  * accent.
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — the recap's seconds are
+ * labelled `took`: they are the TURN's wall clock, and were called
+ * "thought" while the fold line printed the kernel's MEASURED thinking
+ * seconds under the same word.
+ */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -101,7 +107,9 @@ describe("TUI v2a (real PTY)", () => {
 		expect(out).toContain("\x1b[1m");
 		expect(out).not.toContain("\x1b[38;5;75m");
 		// ③ faux status form.
-		expect(out).toMatch(/✦\x1b\[0m \d+s · \d+ tools?/); // v3: the recap line ends the run (the ✦ carries the bold accent)
+		// R3d: the recap opens `thought Ns` and then names the WORK — the
+		// claim here is that the recap LINE ends the run.
+		expect(out).toMatch(/✦\x1b\[0m took \d+s · /); // v3: the recap line ends the run (the ✦ carries the bold accent)
 		// ④ rhythm: the honest terminal label (done), then the status
 		// hugging it, then exactly one blank line before the next prompt
 		// (the pty cooks \n into \r\n).

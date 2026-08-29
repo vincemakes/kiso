@@ -900,6 +900,25 @@ export class Body {
 				break;
 			}
 		}
+		// R3g (fable D3, 2026-08-28): an INTERRUPTED tool never receives a
+		// result, so its cell stays `done: false` — and the commit loop
+		// stops at the first cell that is not done. One esc mid-tool
+		// therefore parked the commit pointer for the REST of the
+		// session: every later turn's rows piled up in the live region
+		// and only ever left it through the force-commit cap. The turn's
+		// end is the boundary that closes them, exactly as it closes an
+		// open thinking cell. `reason` is set so the row keeps its words
+		// AND so #segmentHasTrouble holds the turn unfolded — an
+		// interruption is trouble, and law 1.3 says trouble is never
+		// summarised away.
+		for (const c of this.#cells) {
+			if (c.kind === "tool" && !c.done) {
+				c.state = "done";
+				c.reason = "interrupted";
+				c.doneAt = Date.now();
+				c.done = true;
+			}
+		}
 		// the QUIET turn: an open thinking cell closes at the boundary —
 		// its natural closer is the text's arrival (never comes here — the
 		// text-less turn), so without this the fold could never commit AT
@@ -1101,7 +1120,8 @@ export class Body {
 		// expand in this method does, and they are the cells' OWN renders,
 		// so the expansion cannot drift from what was folded.
 		const seg = this.#segmentOf(idx);
-		if (seg !== null && seg.headCell === idx) {
+		const foldTurn = (cell.kind === "thinking" || cell.kind === "tool") && cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
+		if (seg !== null && foldTurn !== undefined && seg.headCell === idx) {
 			const p = palette();
 			const turnsBack = this.#cells.slice(idx + 1).filter((c) => c.kind === "user").length;
 			const back = `${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
@@ -1151,7 +1171,22 @@ export class Body {
 				}
 				run = [];
 			};
-			for (const j of seg.cells) {
+			// R3f — the expansion covers the WHOLE TURN, every segment.
+			//
+			// R3d moved the fold to the turn while the expansion kept
+			// walking one segment, so a turn that spoke between calls
+			// folded to a line claiming `3 reads · 1 edit · 1 shell` whose
+			// key opened only the reads: the edit and the shell were on no
+			// surface and reachable by no key. That is the one thing this
+			// round's own first gate forbids — the work is never
+			// unreachable — and it is worse than never folding, because the
+			// line names work it then withholds.
+			//
+			// A run still BREAKS at a non-explore cell, so the segment
+			// boundaries survive where they carry meaning (the write that
+			// splits two explore runs); they simply no longer bound what
+			// the key can reach.
+			for (const j of foldTurn.segments.flatMap((sg: SegmentRecord) => sg.cells).sort((a: number, b: number) => a - b)) {
 				if (j < idx) continue;
 				const c = this.#cells[j]!;
 				if (c.kind === "tool" && isExploreTool(c.name)) {
@@ -1170,7 +1205,11 @@ export class Body {
 			// terms; each run below states what IT did, in the rollup's. Two
 			// scales, one wording each — the header used to borrow the run's
 			// sentence, which read as the same run twice.
-			return { kind: "appended", lines: [`${p.bold}✦${p.reset} expanded · ${escapeTerminal(foldMeta(seg))} · ${back}`, ...rows] };
+			// the header names what the FOLD said — the turn's terms — so the
+			// line you pressed and the block it opens agree. It used to name
+			// segment 1's, which contradicted the fold above it.
+			const head = foldTerms(foldTurn.reads, foldTurn.edits, [...foldTurn.others]);
+			return { kind: "appended", lines: [`${p.bold}✦${p.reset} expanded · ${escapeTerminal(head.length === 0 ? "thinking" : head.join(" · "))} · ${back}`, ...rows] };
 		}
 		if (cell.kind !== "tool") return { kind: "none" };
 		if (cell.rolled !== null) {
@@ -1824,6 +1863,17 @@ export class Body {
 		//    edge — the cap scalar is asserted by the gates). W22: the
 		//    queue band shrinks the cap by its rows (empty queue → H−4).
 		while (liveLines.length > H - 4 - inputExtra - queueRows.length && this.#committed < this.#cells.length) { // V6-3: the content cap H−4 (KC1: −N's extra rows)
+			// R3f: the cell about to be force-committed marks its segment
+			// SPILLED. The rule was written at R3b — "a segment too big for
+			// the screen already has rows in the scrollback that cannot be
+			// taken back, so it renders normally and does not collapse" —
+			// and then never wired: `spilled` had a declaration, an
+			// initializer and a read, and nothing ever set it. The read was
+			// therefore vacuously true, so a 43-call turn force-committed
+			// thirty expanded rows and STILL printed `✦ thought 103s · 43
+			// reads` underneath them, claiming as folded the work standing
+			// visible above it.
+			this.#markSpilled(this.#committed);
 			this.#commitCell(this.#committed, W, ctx);
 			liveLines = [];
 			{
@@ -2036,7 +2086,12 @@ export class Body {
 	 * `✦ thought 3s · 20 reads` while a write was refused inside it.
 	 */
 	#segmentHasTrouble(seg: SegmentRecord): boolean {
-		return this.#segmentTools(seg).some((c) => c.isError || c.reason !== null);
+		// R3g (fable, 2026-08-28): a DENIED call is the case this rule
+		// exists for, and it was the one case the predicate could not
+		// see — a denial carrying no `reason` string leaves isError
+		// false and reason null, so `✦ thought 3s · 20 reads` could
+		// stand over a refused write. The verdict is the record of it.
+		return this.#segmentTools(seg).some((c) => c.isError || c.reason !== null || c.verdict?.decision === "denied");
 	}
 
 	/** R3b — the segment's TOOL cells, in order. */
@@ -2047,6 +2102,32 @@ export class Body {
 			if (c.kind === "tool") out.push(c);
 		}
 		return out;
+	}
+
+	/** R3f — the cell is leaving the live region under the screen's hard
+	 *  cap, so its segment can no longer be represented by a fold. */
+	#markSpilled(i: number): void {
+		const seg = this.#segmentOf(i);
+		if (seg !== null) seg.spilled = true;
+	}
+
+	/** R3f — did ANY of the turn's segments spill? The fold is the
+	 *  TURN's, so one spilled segment makes the whole turn unfoldable:
+	 *  a line claiming the turn's counts cannot stand under rows that
+	 *  already show part of that same work. */
+	#turnSpilled(turn: TurnRecord): boolean {
+		return turn.segments.some((seg) => seg.spilled);
+	}
+
+	/** R3d — the turn's cells and its trouble, across every segment. */
+	#turnCells(turn: TurnRecord): number {
+		let n = 0;
+		for (const seg of turn.segments) n += seg.cells.length;
+		return n;
+	}
+
+	#turnHasTrouble(turn: TurnRecord): boolean {
+		return turn.segments.some((seg) => this.#segmentHasTrouble(seg));
 	}
 
 	/** R3b — how many cells the segment holds. The fold's threshold reads
@@ -2095,8 +2176,14 @@ export class Body {
 		// The quiet turn is the same rule seen from one side: its single
 		// segment never closes until the settle, so it holds exactly as
 		// it always did.
+		// R3d: the hold is the TURN's. A turn's work has no committed form
+		// until the turn ends, because one line stands for all of it — and
+		// a row already in the scrollback cannot be replaced by that line.
+		// The force-commit path still overrides this (a turn too big for
+		// the screen spills and renders normally); that is the honest
+		// degradation, marked `spilled`.
 		const seg = this.#segmentOf(i);
-		if (seg !== null) return seg.closedAt === null;
+		if (seg !== null) return !turn.ended;
 		// no segment (the pipe path's shape) — W14's original test, kept
 		// so a cell that never got a segment behaves as it used to.
 		if (!turn.ended && !turn.hasText) return true;
@@ -2170,8 +2257,25 @@ export class Body {
 			// 0s · 1 shell` says strictly less than `shell make build ·
 			// exit 0`. The fold exists to stop a screen filling with work
 			// rows, and one row is not that.
-			if (turn !== undefined && seg !== null && seg.closedAt !== null && !seg.spilled && this.#segmentCells(seg) >= 2 && !this.#segmentHasTrouble(seg)) {
-				if (!seg.folded) {
+			// R3d (owner, 2026-08-28) — a segment folds only on a QUIET turn.
+			//
+			// R3b folded every closed segment, and in use that was wrong for
+			// a reason the design questions never surfaced: a model narrates
+			// between calls, so a turn is not two or three segments, it is
+			// one per tool. Every call became its own `✦ thought 2s · 1 read`
+			// row — the same row count the fold exists to remove, now saying
+			// less. The screen is not improved by summarising one thing.
+			//
+			// The turn's ONE line (renderRecap, R3d) carries the work now,
+			// which is where it always belonged: it is already emitted once
+			// per turn, in the right place, and it only needed to say what
+			// the turn DID rather than "43 tools".
+			//
+			// The quiet turn keeps its fold because there IS no recap line
+			// to carry it: a turn with no text is the fold, and W14's gates
+			// pin that shape.
+			if (turn !== undefined && seg !== null && seg.closedAt !== null && !this.#turnSpilled(turn) && turn.ended && this.#turnCells(turn) >= 2 && !this.#turnHasTrouble(turn)) {
+				if (!turn.folded) {
 					seg.folded = true;
 					seg.headCell = i;
 					turn.folded = true;
@@ -2184,20 +2288,31 @@ export class Body {
 					// (turnFold is W-aware — the ONE row never trips
 					// invariant ①).
 					const quiet = turn.ended && !turn.hasText;
-					// A QUIET turn (no text at all) keeps `thoughtSeconds` —
-					// the CLI's own measure, taken at the settle, and the
-					// number every W14 gate pins. A mid-turn segment cannot
-					// have it (endTurn has not run), so it reports its own
-					// wall clock, which is the only honest number available
-					// at the moment it folds.
-					const seconds = quiet ? turn.thoughtSeconds : Math.max(0, Math.round(((seg.closedAt ?? 0) - seg.openedAt) / 1000));
+					// R3g (fable, 2026-08-28) — DECLARED SUPERSESSION: both
+					// branches read the SAME number now, `thoughtSeconds`,
+					// the measure the kernel took and handed to endTurn.
+					// The non-quiet branch used to re-derive a wall clock
+					// from the segment's opening and print it under the word
+					// "thought" — a different quantity wearing the same
+					// label: a turn that thought 1s and then ran a 40s shell
+					// said "thought 41s". The fold only ever renders after
+					// endTurn (the gate below requires `turn.ended`), so the
+					// honest number is always available by the time it runs.
+					//
+					// The terms are the TURN's, not the segment's: R3d folds
+					// a turn's work into ONE line wherever the first work
+					// lands. A per-segment line put a row on screen for every
+					// break in the model's narration, which on a chatty model
+					// is one row per tool — the row count the fold exists to
+					// remove.
+					const seconds = turn.thoughtSeconds;
 					return turnFold(
 						{
 							words: quiet ? turn.words : "",
 							thoughtSeconds: seconds,
-							reads: seg.reads,
-							edits: seg.edits,
-							others: [...seg.others],
+							reads: turn.reads,
+							edits: turn.edits,
+							others: [...turn.others],
 						},
 						W,
 					);
@@ -2254,7 +2369,14 @@ export class Body {
 			// text's release they are — the natural loop commits the run in
 			// one frame; the force-commit's early commits degrade to the
 			// individual rows, the members render normally after).
-			if (!members.every((c) => c.done)) return cellComponent(cell).render(W, ctx);
+			// R3g (2026-08-28): ...and no member is in TROUBLE. A rollup
+			// says "explored 3 paths" — a sentence a failed or interrupted
+			// call makes false, and the row it replaces was the only place
+			// that failure had words. Law 1.3 at the scale of a run: the
+			// same rule #segmentHasTrouble applies to the fold. Found when
+			// R3g's interrupt-closing made an aborted call `done`, which
+			// let a run it never finished roll up as if it had.
+			if (!members.every((c) => c.done && !c.isError && c.reason === null)) return cellComponent(cell).render(W, ctx);
 			this.#rolledHeads.add(head);
 			let total = 0;
 			const targets: string[] = [];
@@ -2763,6 +2885,34 @@ export class Body {
 	/** Invariant ①: every emitted line fits the width — a violation is a
 	 *  CRASH with the diagnostic, never a silent truncate. */
 	#checked(line: string, W: number): string {
+		// Invariant ①b (R3f): a ROW IS ONE PHYSICAL ROW.
+		//
+		// The defect this catches shipped in 0.16.6 and smashed the
+		// composer. `escapeTerminal` keeps `\n` (it strips C0 except tab
+		// and newline), and `charWidth(0x0A)` is 1 — so a newline counts as
+		// ONE CELL in `visibleWidth`, and every width check in the product,
+		// invariant ① included, waves a multi-line string through as a
+		// single row of legal width. `#emitDiff` then paints it as
+		// `CUP(row,1) + EL + content`, the terminal's ONLCR moves the
+		// cursor down at the newline, and the tail lands on whatever
+		// physical row is there — the box rail, the input row. The diff
+		// then adopts `desired` as the screen's truth, so the corruption
+		// SURVIVES: the self-healing property this renderer is built on
+		// ("a wrong row is repaired by the next frame, because the
+		// difference includes it") is exactly what a lying `#screen`
+		// breaks.
+		//
+		// Width was never the whole invariant — it was the half we
+		// noticed. A row that occupies two physical rows violates the
+		// geometry as surely as one that overruns the width, and it does
+		// so INVISIBLY to a width check. `\r` is here for the same reason
+		// (it moves the cursor to column 1).
+		const bad = /[\n\r]/.exec(line);
+		if (bad !== null) {
+			throw new Error(
+				`kiso-tui invariant ①b violated: a row containing ${JSON.stringify(bad[0])} was about to be emitted — a row must be ONE physical row, and the width check cannot see this (charWidth counts a newline as one cell) — ${JSON.stringify(line.slice(0, 80))}`,
+			);
+		}
 		const w = visibleWidth(line);
 		if (w > W) {
 			throw new Error(

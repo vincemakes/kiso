@@ -17,6 +17,29 @@
  * pin the SCREEN — the two invariants asserted separately.
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — THE RECAP IS THE TURN'S
+ * COST, NOT ITS WORK.
+ *
+ * The turn's work is said ONCE now, by the compositor's fold line, in
+ * the place the work happened and carrying the key that reopens it.
+ * This row used to repeat the same terms a few rows below under a
+ * different clock — the fold printed the kernel's MEASURED thinking
+ * seconds, the recap the whole turn's wall, both labelled "thought" —
+ * which is the doubling the owner called out ("two lines saying the
+ * same thing, the UI gets strange"). The row reads `✦ took 23s · in
+ * 12k out 900 · cache 88% · ctx left 41%`, and `took` is the honest
+ * name for the number it always carried.
+ *
+ * A turn whose work did NOT fold (it spilled past the live region, or
+ * it hit trouble) keeps every one of its rows on screen — the work is
+ * not lost by its absence from this row, it is standing right there.
+ *
+ * Needles that waited on a recap TERM ("0 tools", "1 shell") wait on
+ * `took ` now: it is what the recap always writes, it marks the same
+ * moment (the turn has settled), and it sits after the ✦'s SGR reset
+ * so it survives contiguously in the raw stream a PTY driver scans.
+ */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -66,7 +89,7 @@ def driver(cli, env, feeds, timeout, sizes):
                 if i not in fed and needle.encode() in full:
                     os.write(fd, text.encode())
                     fed.add(i)
-        if seq_at is None and "0 tools".encode() in full:
+        if seq_at is None and "took ".encode() in full:
             seq_at = time.time()
         if seq_at is not None and fired < len(sizes) and time.time() - seq_at >= 0.3 * (fired + 1):
             winsize(*sizes[fired])
@@ -158,7 +181,7 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		// row is the words plus the band's padding — trimmed, it is what it
 		// always was, and "exactly once" is still the claim.
 		expect(grid.filter((l) => l.trimEnd() === " go").length).toBe(1); // the 2026-08-09 ruling: the chip alone, flush left (one space each side — the rail + the indent retired)
-		expect(grid.filter((l) => l.includes("0 tools")).length).toBe(1);
+		expect(grid.filter((l) => l.includes("✦ took ")).length).toBe(1);
 		// R2: the opening grew from five rows to seven (three labelled facts
 		// and a keys row replaced two art rows and a tagline), so on a
 		// 24-row screen the session header can scroll off the FINAL grid.

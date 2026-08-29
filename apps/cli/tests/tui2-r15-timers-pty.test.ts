@@ -22,6 +22,29 @@
  * else in the suite pins it.
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — THE RECAP IS THE TURN'S
+ * COST, NOT ITS WORK.
+ *
+ * The turn's work is said ONCE now, by the compositor's fold line, in
+ * the place the work happened and carrying the key that reopens it.
+ * This row used to repeat the same terms a few rows below under a
+ * different clock — the fold printed the kernel's MEASURED thinking
+ * seconds, the recap the whole turn's wall, both labelled "thought" —
+ * which is the doubling the owner called out ("two lines saying the
+ * same thing, the UI gets strange"). The row reads `✦ took 23s · in
+ * 12k out 900 · cache 88% · ctx left 41%`, and `took` is the honest
+ * name for the number it always carried.
+ *
+ * A turn whose work did NOT fold (it spilled past the live region, or
+ * it hit trouble) keeps every one of its rows on screen — the work is
+ * not lost by its absence from this row, it is standing right there.
+ *
+ * Needles that waited on a recap TERM ("0 tools", "1 shell") wait on
+ * `took ` now: it is what the recap always writes, it marks the same
+ * moment (the turn has settled), and it sits after the ✦'s SGR reset
+ * so it survives contiguously in the raw stream a PTY driver scans.
+ */
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,7 +60,9 @@ function workingSeconds(raw: string): number[] {
 /** The turn recap's wall seconds — the `✦ Ns · …` row. */
 function recapSeconds(grid: string[]): number | null {
 	for (const line of grid) {
-		const m = /✦ (\d+)s · /.exec(line);
+		// R3d: the recap opens `✦ thought Ns` — it says what the turn DID,
+		// and the seconds are the same seconds this case is about.
+		const m = /✦ took (\d+)s · /.exec(line);
 		if (m !== null) return Number(m[1]);
 	}
 	return null;

@@ -421,7 +421,18 @@ class ThinkingFold implements Component {
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
 		const block = this.cell.text;
-		const trimmed = escapeTerminal(block.trim());
+		// R3f — the fold is ONE ROW, so its text is one line.
+		//
+		// `escapeTerminal` strips C0 but KEEPS \n and \t, and
+		// `charWidth(0x0A)` is 1 — so a multi-line thinking block sailed
+		// through every width check as a legal single row, and the
+		// terminal then wrapped it across the chrome. That shipped in
+		// 0.16.6 and is what smashed the composer: a model whose thinking
+		// opens with a numbered plan ("1. …\n2. …") produces exactly it.
+		// Invariant ①b now catches the class at the emit; this stops
+		// producing it. Whitespace collapses because the row is a
+		// SUMMARY — the full text is one ctrl+r away, unchanged.
+		const trimmed = escapeTerminal(block.trim()).replace(/\s+/g, " ");
 		// R2 (owner, 2026-08-27) — three changes, each independent.
 		//
 		// ITALIC marks the row as not-the-answer without spending a colour,
@@ -1098,18 +1109,44 @@ function countTerm(n: number, singular: string, plural: string): string {
  * Zero terms are dropped (owner ruling, R3b): a term earns its place by
  * having a count.
  */
+/**
+ * R3g (2026-08-28) — the fold's own terms, VERB + COUNT + NOUN.
+ *
+ * DECLARED SUPERSESSION. R3b built these terms out of ROLLUP_NOUN,
+ * whose own comment says not to: that table names what a single-tool
+ * rollup COUNTS ("5 matches" — five matched lines), and this line
+ * counts CALLS. So one search_text call rendered `1 match`, a sentence
+ * that is false whenever the search matched any other number — which is
+ * almost always. `shell` fell through to the verb branch and read
+ * `4 shells`.
+ *
+ * The phrasing is the owner's, from the shape they asked for:
+ * "thought 17s · read 4 files · listed 1 directory · ran 4 shell
+ * commands". A tool with no entry says `3 × <verb>`, which counts calls
+ * without inventing a noun for them.
+ */
+const FOLD_TERM: Readonly<Record<string, readonly [string, string, string]>> = {
+	read_file: ["read", "file", "files"],
+	edit_file: ["edited", "file", "files"],
+	write_file: ["wrote", "file", "files"],
+	list_dir: ["listed", "directory", "directories"],
+	search_text: ["ran", "search", "searches"],
+	shell: ["ran", "shell command", "shell commands"],
+};
+
+function foldTerm(name: string, n: number): string {
+	const t = FOLD_TERM[name];
+	if (t === undefined) return `${n} × ${displayVerb(name)}`;
+	return `${t[0]} ${n} ${n === 1 ? t[1] : t[2]}`;
+}
+
 export function foldTerms(reads: number, edits: number, others: readonly [string, number][]): string[] {
 	const parts: string[] = [];
-	if (reads > 0) parts.push(countTerm(reads, "read", "reads"));
-	if (edits > 0) parts.push(countTerm(edits, "edit", "edits"));
+	if (reads > 0) parts.push(foldTerm("read_file", reads));
+	if (edits > 0) parts.push(foldTerm("edit_file", edits));
 	for (const [name, n] of others) {
 		if (n === 0) continue;
-		const noun = ROLLUP_NOUN[name];
-		if (noun !== undefined) parts.push(countTerm(n, noun.endsWith("es") ? noun.slice(0, -2) : noun.slice(0, -1), noun));
-		else {
-			const verb = displayVerb(name);
-			parts.push(countTerm(n, verb, `${verb}s`));
-		}
+		parts.push(foldTerm(name, n));
 	}
 	return parts;
 }
@@ -1122,18 +1159,40 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 	// edits, half the row was the half that said nothing. A term earns its
 	// place by having a count.
 	const meta = [`thought ${t.thoughtSeconds}s`, ...foldTerms(t.reads, t.edits, t.others)].join(" · ");
-	const words = escapeTerminal(t.words);
+	// R3f: the same one-row rule. This one is worse than the thinking
+	// fold's — the fold is a COMMITTED row, so a multi-line user message
+	// would desync the committed-line accounting permanently rather than
+	// for one frame. (The live UserMessage chip keeps its multi-row form:
+	// it folds per paragraph and each row is already one row.)
+	const words = escapeTerminal(t.words).replace(/\s+/g, " ");
+	// R3g (2026-08-28) — THE KEY IS LOAD-BEARING, SO IT GIVES WAY LAST.
+	//
+	// R3b wrote "the suffix gives way first at a narrow width", by
+	// analogy with the settled card's affordance. The analogy does not
+	// hold: the card's rows are still on the screen when its hint is
+	// dropped, and a fold's are not. A fold with no key is the turn's
+	// work behind a line with no way back — the one thing the fold's own
+	// header says it must never be. So the META gives way first (a cut
+	// count is still a true count), and the key survives.
+	//
+	// Two live cases, both reachable at W=80: the wordless fold went
+	// keyless as soon as the terms grew (R3g's verb+noun phrasing pushed
+	// it over), and the CHIP fold never had a key at all — it was
+	// written without one, so every folded turn that carried the user's
+	// words was unreachable by the key its siblings advertise. Found by
+	// an independent review (fable) and then by the paced-rollup gate,
+	// which got `kind: "none"` back from expandNext.
+	const KEY = " · ctrl+r";
+	const keyW = KEY.length;
+	const key = `${p.dim}${KEY}${p.reset}`;
 	if (words === "") {
-		const row = `${p.bold}✦${p.reset} ${meta}`;
-		// R3b: the fold NAMES ITS OWN KEY. Without it the segment's work is
-		// unreachable — no rollup row, no expand, nothing — and hiding a
-		// tool call behind a line with no way back is the one thing this
-		// product must not do. The suffix gives way first at a narrow
-		// width, on the same principle the settled card's does: an
-		// affordance that does not fit is dropped, never half-drawn.
-		const keyed = `${row}${p.dim} · ctrl+r${p.reset}`;
+		const keyed = `${p.bold}✦${p.reset} ${meta}${key}`;
 		if (visibleWidth(keyed) <= W) return [keyed];
-		return visibleWidth(row) <= W ? [row] : [`${p.bold}✦${p.reset} ${widthCut(meta, Math.max(1, W - 3))}…`]; // a wordless turn folds to the W14 shape
+		// the meta cuts with the honest "…"; below the width where even
+		// the key fits there is nothing to preserve and the row is a cut.
+		const room = W - 2 - keyW - 1;
+		if (room < 2) return [`${p.bold}✦${p.reset} ${widthCut(meta, Math.max(1, W - 3))}…`];
+		return [`${p.bold}✦${p.reset} ${widthCut(meta, room)}…${key}`];
 	}
 	// A9 (ruling R2, mock A): the user chip rides the fold — the human's
 	// words LEAD the one line, the same SGR-7 bracket as the live user
@@ -1143,14 +1202,17 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 	// metadata's own width — the metadata survives, the words width-cut
 	// at the end with the honest "…" (the "…" alone is the honest floor:
 	// the words were there, cut).
-	const budget = Math.max(0, W - visibleWidth(`✦ ${meta}`) - 6);
+	const budget = Math.max(0, W - visibleWidth(`✦ ${meta}`) - 6 - keyW);
 	const cut = visibleWidth(words) > budget ? `${widthCut(words, budget)}…` : words;
-	const row = `${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${meta}`;
+	const row = `${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${meta}${key}`;
 	if (visibleWidth(row) <= W) return [row];
 	// the last resort: the METADATA gives way — the words hold their
-	// budget, the meta cuts with the honest "…"; invariant ① never trips
-	// at ANY width (a degenerate W's fold is a cut, never a crash).
-	return [`${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(meta, Math.max(1, W - 8 - visibleWidth(cut)))}…`];
+	// budget, the key holds its nine cells, the meta cuts with the honest
+	// "…"; invariant ① never trips at ANY width (a degenerate W's fold is
+	// a cut, never a crash).
+	const room = W - 8 - keyW - visibleWidth(cut);
+	if (room < 2) return [`${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(meta, Math.max(1, W - 8 - visibleWidth(cut)))}…`];
+	return [`${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(meta, room)}…${key}`];
 }
 
 // ---- the bounded-block flow contract (W7, W8, W10) ----

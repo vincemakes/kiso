@@ -11,7 +11,7 @@ import type { Event, TerminalEvent } from "../src/protocol/events.js";
 import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type Tool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
-import { loop } from "../src/kernel/loop.js";
+import { loop, DEFAULT_MAX_TURNS } from "../src/kernel/loop.js";
 import { projectMessages } from "../src/kernel/project.js";
 import { terminalLies } from "@vincemakes/kiso-evals";
 import { silentToolFailure } from "@vincemakes/kiso-evals";
@@ -319,5 +319,52 @@ describe("loop", () => {
 			kind: "error",
 			error: { code: "overloaded", retryable: true },
 		});
+	});
+});
+
+/**
+ * R3e — there is NO DEFAULT turn limit.
+ *
+ * The incident: a real session read a doc, listed a directory, read four
+ * files and ran four commands — 43 calls — and stopped at 20 turns,
+ * mid-task, in silence. The 20 was hardcoded at the CLI's front door on
+ * 2026-08-03 with no stated reason and no way to change it, and the
+ * kernel's own default underneath it was 10. A guardrail written for
+ * "you set it running and walked away" was firing on someone sitting at
+ * the keyboard, where esc, the context window and the balance already
+ * bound the run.
+ *
+ * What is retired is the DEFAULT. The mechanism stays and these gates
+ * hold both halves: an unbounded run is unbounded, and a caller that
+ * asks for a bound still gets one, with the same honest terminal.
+ */
+describe("R3e — the turn limit is opt-in", () => {
+	/** a script that would blow any small default: 12 tool turns, then text */
+	const longScript = [
+		...Array.from({ length: 12 }, (_, i) => ({
+			events: [{ type: "tool_call_end", callId: `c${i}`, name: "web_search", input: {} }, { type: "stop", reason: "tool_use" }],
+		})),
+		{ events: [{ type: "text_delta", text: "done" }, { type: "stop", reason: "end_turn" }] },
+	] as never;
+
+	it("no maxTurns → the run finishes on its own terms, however many turns it takes", async () => {
+		const registry = new ToolRegistry();
+		registry.register(searchTool);
+		const events = await run(longScript, registry, {});
+		const terminal = events.find((e) => e.type === "terminal") as { outcome: { kind: string } } | undefined;
+		expect(terminal?.outcome.kind, "the run was cut short by a default nobody asked for").toBe("completed");
+	});
+
+	it("an EXPLICIT maxTurns still bounds the run, with the same honest terminal", async () => {
+		const registry = new ToolRegistry();
+		registry.register(searchTool);
+		const events = await run(longScript, registry, { maxTurns: 3 });
+		const terminal = events.find((e) => e.type === "terminal") as { outcome: { kind: string; turns?: number } } | undefined;
+		expect(terminal?.outcome.kind).toBe("max_turns");
+		expect(terminal?.outcome.turns).toBe(3);
+	});
+
+	it("DEFAULT_MAX_TURNS is unbounded — the constant says so, so nobody re-derives a number", async () => {
+		expect(DEFAULT_MAX_TURNS).toBe(Number.POSITIVE_INFINITY);
 	});
 });

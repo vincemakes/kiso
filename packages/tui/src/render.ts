@@ -15,6 +15,8 @@
  */
 
 import { escapeTerminal, foldResult, foldThinking, kUnit, palette } from "@vincemakes/kiso-tui-cells/render";
+import { foldTerms, widthCut } from "@vincemakes/kiso-tui-cells/components";
+import { visibleWidth } from "@vincemakes/kiso-tui-cells/width";
 export * from "@vincemakes/kiso-tui-cells/render";
 
 /** The canonical-path resolver for the approval detail — injected by the
@@ -232,20 +234,65 @@ export function renderStatusLine(turn: number, usage: RunUsage, ctxRatio: number
  *  (zero tokens): wall seconds, tool counts, usage, cache hit %, ctx left.
  */
 export interface RecapStats {
+	/** The TURN's wall seconds — what it took, start to settle. Named
+	 *  `took` on the row since R3g: it was labelled "thought" while the
+	 *  fold line one row above printed the kernel's MEASURED thinking
+	 *  seconds under that same word, so a turn that thought for 1s and
+	 *  then ran a 40s shell had two different numbers both called
+	 *  "thought". */
 	readonly seconds: number;
-	readonly tools: number;
-	readonly edits: number;
+	/**
+	 * R3g — THE WORK TERMS ARE OPTIONAL, AND kiso NO LONGER PASSES THEM.
+	 *
+	 * The turn's work is said ONCE, by the compositor's fold line, in
+	 * the place the work happened and with the key that reopens it. This
+	 * row used to repeat it a few rows below — the same terms, a
+	 * different clock — which is the doubling the owner called out.
+	 *
+	 * The fields stay, and still render when a caller supplies them, so
+	 * an embedder of this package sees the byte-for-byte historical row.
+	 * A turn whose work did NOT fold (it spilled past the live region,
+	 * or it hit trouble) keeps every one of its rows on screen, so the
+	 * work is not lost by their absence — it is standing right there.
+	 */
+	readonly tools?: number;
+	readonly edits?: number;
+	/** The turn's work BY TOOL, in first-call order (R3d). */
+	readonly byTool?: readonly [string, number][];
 	readonly usage: RunUsage;
 	/** R-C item 4: the per-turn cache miss (min(prevIn, in) − cacheRead),
 	 *  passed only when above the noise floor — the re-sent-uncached
 	 *  prefix. Absent → the recap bytes stay the historical form. */
 	readonly missed?: number;
 	readonly ctxLeftPct: number | null; // 0..100, null when unknowable
+	/** R3g — the terminal's width. The recap is the ONE row on the screen
+	 *  that was never measured: it is written raw, so a line longer than
+	 *  the terminal wrapped, and the second physical row is a fragment
+	 *  matching no cell format (the v2v lint reads it as interleaving).
+	 *  R3g's verb+noun terms made an 80-column wrap ordinary rather than
+	 *  rare, which is how it surfaced. Absent → uncut, the historical
+	 *  bytes, for the callers that render into no terminal. */
+	readonly width?: number;
 	/** W19 — the mode the turn ran under. Under "plan" the recap becomes
 	 *  the way-forward row (the claimed shape): a plan turn's currency is
 	 *  the plan, not the tool count — the timing and tool-count parts
 	 *  drop, and the two /mode hints replace them. */
 	readonly mode?: string;
+}
+
+/** R3d — the per-tool terms of a settled turn, in the fold line's own
+ *  vocabulary (ROLLUP_NOUN plurals, zero terms dropped). One wording for
+ *  "what a run did", wherever it is said. */
+function recapWork(byTool: readonly [string, number][]): string[] {
+	let reads = 0;
+	let edits = 0;
+	const others: [string, number][] = [];
+	for (const [name, n] of byTool) {
+		if (name === "read_file") reads += n;
+		else if (name === "edit_file") edits += n;
+		else others.push([name, n]);
+	}
+	return foldTerms(reads, edits, others);
 }
 
 export function renderRecap(s: RecapStats): string {
@@ -261,7 +308,22 @@ export function renderRecap(s: RecapStats): string {
 		const parts = ["plan ready", "/mode default executes", "/mode accept-edits auto-approves edits"];
 		return `${p.bold}✦${p.reset} ${parts.join(" · ")}\n`;
 	}
-	const parts = [`${s.seconds}s`, `${s.tools} tool${s.tools === 1 ? "" : "s"}${s.edits > 0 ? ` (${s.edits} edit${s.edits === 1 ? "" : "s"})` : ""}`];
+	// R3d (owner, 2026-08-28): the turn's ONE line says what the turn DID.
+	//
+	// The per-segment folds this replaces put a row on screen for every
+	// break in the model's narration — and a model that narrates between
+	// every call turned that into one row per tool, which is the row
+	// count the fold was built to remove, wearing a summary's clothes.
+	// The turn already had exactly one line in exactly the right place;
+	// it was just too coarse to be worth reading.
+	const edits = s.edits ?? 0;
+	const work =
+		s.byTool !== undefined && s.byTool.length > 0
+			? recapWork(s.byTool)
+			: s.tools !== undefined && s.tools > 0
+				? [`${s.tools} tool${s.tools === 1 ? "" : "s"}${edits > 0 ? ` (${edits} edit${edits === 1 ? "" : "s"})` : ""}`]
+				: [];
+	const parts = [`took ${s.seconds}s`, ...work];
 	if (s.usage.known) {
 		const seg = `${s.usage.in !== null ? `in ${kUnit(s.usage.in)}` : ""}${s.usage.in !== null && s.usage.out !== null ? " " : ""}${s.usage.out !== null ? `out ${kUnit(s.usage.out)}` : ""}`;
 		if (seg !== "") parts.push(seg);
@@ -276,7 +338,17 @@ export function renderRecap(s: RecapStats): string {
 		}
 	}
 	if (s.ctxLeftPct !== null) parts.push(`ctx left ~${Math.round(s.ctxLeftPct)}%`);
-	return `${p.bold}✦${p.reset} ${parts.join(" · ")}\n`;
+	// R3g: ONE physical row, at any width — the same rule every other row
+	// in the product obeys. The cut is the honest "…": the recap said
+	// more than fits, and says so.
+	const line = parts.join(" · ");
+	// R3g: the floor is the renderer's own guard against a caller that
+	// hands it a degenerate width (a PTY with no winsize reports 0). A
+	// recap cut to one character is worse than one that wraps.
+	if (s.width !== undefined && s.width >= 20 && visibleWidth(`✦ ${line}`) > s.width) {
+		return `${p.bold}✦${p.reset} ${widthCut(line, Math.max(1, s.width - 3))}…\n`;
+	}
+	return `${p.bold}✦${p.reset} ${line}\n`;
 }
 
 /** One-line summary of a session, for `kiso sessions`. */

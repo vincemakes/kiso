@@ -539,7 +539,12 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 		microcompact: { thresholdTokens: contextWindowTokens() / 2 },
 		// E6: the run-start context policy — OFF unless env-armed (beats the microcompact default when both fire).
 		...(contextPolicy !== undefined ? { contextPolicy } : {}),
-		maxTurns: 20,
+		// R3e (owner ruling, 2026-08-28): NO turn limit on an interactive
+		// session. This was `maxTurns: 20`, hardcoded on 2026-08-03 with no
+		// stated reason and no way to change it — and it was the thing that
+		// stopped a real 43-call session dead, mid-task, in silence. The
+		// field survives for the callers that want a bound (subagents, the
+		// SDK, `kiso run`); the interactive front door does not set one.
 		// Modes: the five tiers join at the CHAIN HEAD, before the user/
 		// project extensions (the deny>ask>allow composition keeps a user
 		// deny winning over any mode tier — bypass included).

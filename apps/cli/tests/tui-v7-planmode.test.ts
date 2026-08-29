@@ -19,6 +19,11 @@
  *     escapes).
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — the recap is the turn's
+ * COST (`✦ took 23s · in 12k · ctx left 41%`), not its work: the work
+ * is said once, by the fold line, where it happened.
+ */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -176,7 +181,11 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// MOVED (R1.5 slice ⑤, the approval-attribution class): the human
 		// answered this ask, and that is what the row records.
 		expect(clean).toMatch(/  shell echo hi \(exit 0 · approved, \d+\.\ds\)/); // A4: the target rides the settled row's head
-		expect(clean).toContain("1 tool");
+		// R3g: the recap is the turn's COST now — its ordinary shape is
+		// `✦ took Ns · …`, and what this case actually claims is that
+		// turn 2 ended in that ordinary row rather than a second
+		// plan-ready one (asserted below).
+		expect(clean).toMatch(/✦ took \d+s · /);
 		// never a SECOND way-forward row: the plan-ready row belongs to
 		// turn 1 — every occurrence must PRECEDE the turn-2 answer (A8's
 		// full draws repaint the settled rows, so the row's text repeats

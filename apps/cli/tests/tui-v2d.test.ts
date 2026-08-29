@@ -8,6 +8,17 @@
  * (ADR-0040); this test pins it.
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — the fold's terms are
+ * VERB + COUNT + NOUN now ("read 5 files"), where they used to be a
+ * bare count and a noun borrowed from the rollup table ("5 reads",
+ * "1 match"). Two reasons, one of them a truthfulness bug: that table
+ * names what a single-tool rollup COUNTS — "14 matches" means fourteen
+ * matched lines — while this line counts CALLS, so one search rendered
+ * "1 match" whenever the search had matched any other number. The
+ * phrasing is the owner's, from the shape they asked for: "thought 17s
+ * · read 4 files · listed 1 directory · ran 4 shell commands".
+ */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -320,7 +331,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// segment fold, which names them by COUNT. The verb vocabulary this
 		// case pins (one screen, one wording — `list`, not `list_dir`) is
 		// asserted where it now lives: the fold's terms, and the expansion.
-		expect(clean).toMatch(/✦ thought \d+s · 1 dir · 1 shell · 1 asky_read/);
+		expect(clean).toMatch(/✦ thought \d+s · listed 1 directory · ran 1 shell command · 1 × asky_read/);
 
 
 		expect(clean).not.toContain("approved by"); // R1.5 5: no policy byline anywhere

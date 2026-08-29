@@ -155,7 +155,27 @@ export interface LoopConfig {
 	readonly sessionId?: string;
 }
 
-export const DEFAULT_MAX_TURNS = 10;
+/**
+ * R3e (owner ruling, 2026-08-28) — there is NO default turn limit.
+ *
+ * `maxTurns` stays: a caller that wants a bound sets one, and the
+ * `max_turns` terminal is unchanged. What is retired is the DEFAULT.
+ *
+ * The reasoning, from the incident that found it: a real session read a
+ * doc, listed a directory, read four files and ran four commands — 43
+ * calls — and stopped at 20 turns, mid-task, saying nothing. A guardrail
+ * for "you set it running and walked away" was firing on someone sitting
+ * at the keyboard, where esc, the context window and the balance are
+ * already the bounds. Both reference implementations agree: neither puts
+ * a turn limit on an interactive session, and the one that has the
+ * mechanism spends it on forked subagents and non-interactive SDK calls,
+ * where nobody is watching.
+ *
+ * `Number.POSITIVE_INFINITY` rather than deleting the check: the
+ * comparison, the terminal and every test that sets a limit stay exactly
+ * as they were, and one line says what changed.
+ */
+export const DEFAULT_MAX_TURNS = Number.POSITIVE_INFINITY;
 export const DEFAULT_MAX_RETRIES = 2;
 
 export async function* loop(config: LoopConfig): AsyncGenerator<Event> {

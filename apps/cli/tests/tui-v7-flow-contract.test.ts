@@ -26,6 +26,29 @@
  * storm) and a post-run resize repaints exactly once.
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — THE RECAP IS THE TURN'S
+ * COST, NOT ITS WORK.
+ *
+ * The turn's work is said ONCE now, by the compositor's fold line, in
+ * the place the work happened and carrying the key that reopens it.
+ * This row used to repeat the same terms a few rows below under a
+ * different clock — the fold printed the kernel's MEASURED thinking
+ * seconds, the recap the whole turn's wall, both labelled "thought" —
+ * which is the doubling the owner called out ("two lines saying the
+ * same thing, the UI gets strange"). The row reads `✦ took 23s · in
+ * 12k out 900 · cache 88% · ctx left 41%`, and `took` is the honest
+ * name for the number it always carried.
+ *
+ * A turn whose work did NOT fold (it spilled past the live region, or
+ * it hit trouble) keeps every one of its rows on screen — the work is
+ * not lost by its absence from this row, it is standing right there.
+ *
+ * Needles that waited on a recap TERM ("0 tools", "1 shell") wait on
+ * `took ` now: it is what the recap always writes, it marks the same
+ * moment (the turn has settled), and it sits after the ✦'s SGR reset
+ * so it survives contiguously in the raw stream a PTY driver scans.
+ */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -72,17 +95,19 @@ def driver(cli, env, feeds, timeout, cols, post):
                 if i not in fed and needle.encode() in full:
                     os.write(fd, text.encode())
                     fed.add(i)
-        if post and "2 tools".encode() in full and fired < len(post):
+        if post and "took ".encode() in full and fired < len(post):
             rows, cols_n = post[fired]
             fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols_n, 0, 0))
             os.kill(pid, signal.SIGWINCH)
             resizes.append([len(full), rows, cols_n])
             fired += 1
-        # the run is over when the recap ("2 tools" — the running status
-        # never mentions tools) has rendered; the W9 resize (if any) has
+        # the run is over when the recap has rendered. R3d: the recap
+        # names the WORK ("1 read · 1 shell"), so "2 tools" is gone — the
+        # stable marker is a term only the recap writes: the running
+        # status row carries "ctx left" too, so that would fire early; the W9 resize (if any) has
         # fired by then — drain the buffered repaint so the transcript
         # captures it, then stop
-        if "2 tools".encode() in full and fired >= len(post) and not broke:
+        if "took ".encode() in full and fired >= len(post) and not broke:
             time.sleep(0.6)
             # drain until quiet — a wide terminal's settle frame is several
             # pipe-buffer chunks (the 120-col frame ≈ 2 KB); one read can
@@ -115,7 +140,7 @@ def driver(cli, env, feeds, timeout, cols, post):
 `;
 
 /** Run the flow scenario at `cols`; `postResizes` fire after the turn
- *  (the recap "2 tools" marks the end — the running status never
+ *  (the recap's "1 shell" marks the end — the running status never
  *  mentions tools — and the W9 re-measure fires from it). */
 function runFlow(cols: number, postResizes: [number, number][] = []): { hex: string; alive: string; resizes: [number, number, number][] } {
 	const { env } = isolatedEnv();
@@ -239,7 +264,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// body rows" is this case's claim and it is now true by
 		// construction; what the grid must show is the FOLD, and what it
 		// must still not show is the tail.
-		expect(grid.findIndex((l) => l.includes("✦ thought"))).toBeGreaterThanOrEqual(0);
+		expect(grid.findIndex((l) => l.startsWith("✦ "))).toBeGreaterThanOrEqual(0); // R3g: the fold OR the recap — the claim is that the turn settled
 		// the shell's OUTPUT is behind the key: no tail rows, no cut row
 		expect(grid.join("")).not.toContain("earlier rows");
 		expect(grid.join("\n")).not.toMatch(/^\u2502 (seq|1[012])/m);
@@ -265,7 +290,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// body rows" is this case's claim and it is now true by
 		// construction; what the grid must show is the FOLD, and what it
 		// must still not show is the tail.
-		expect(grid.findIndex((l) => l.includes("✦ thought"))).toBeGreaterThanOrEqual(0);
+		expect(grid.findIndex((l) => l.startsWith("✦ "))).toBeGreaterThanOrEqual(0); // R3g: the fold OR the recap — the claim is that the turn settled
 		expect(grid.join("")).not.toContain("earlier rows");
 		expect(grid.join("\n")).not.toMatch(/^│ (seq|1[012])/m);
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND).

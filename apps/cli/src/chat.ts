@@ -563,10 +563,10 @@ export async function consumeRun(
 	let prevTotal: number | null = null;
 	let missed: number | null = null;
 	// v3 §02: the recap line derives ENTIRELY from the local event stream
-	// (zero tokens) — wall seconds, tool/edit counts, usage, ctx left.
+	// (zero tokens). R3g: what it derives is the turn's COST — wall
+	// seconds, usage, ctx left. The turn's WORK is the fold line's, said
+	// once, where the work happened.
 	const turnStart = Date.now();
-	let toolCount = 0;
-	let editCount = 0;
 	// W14: the thinking event carries NO timestamp — the CLI wall-clocks
 	// the thinking window: it opens at the first thinking event and closes
 	// at the first non-thinking event (the fold needs the seconds).
@@ -615,8 +615,6 @@ export async function consumeRun(
 				body.thinkingAppend(ev.text);
 				break;
 			case "tool_call_end":
-				toolCount += 1;
-				if (ev.name === "edit_file") editCount += 1;
 				body.toolStart(ev.name, ev.callId, ev.input ?? {});
 				// TUI2-R1 (C): the command is the sidecar key's other half —
 				// remembered here, used when the execution actually starts.
@@ -812,6 +810,14 @@ export async function consumeRun(
 				// honest notice rides after the partial answer, before the
 				// recap (the truncation-guard philosophy: the cut is visible
 				// in the scrollback, the model's own text intact).
+				// R3d: the TURN LIMIT is named. `max_turns` was the one
+				// terminal outcome that ended a run without saying so — the
+				// session simply stopped, mid-task, and read as a hang. A
+				// guardrail that fires silently is indistinguishable from a
+				// crash, which is the one thing this product must never be.
+				if (ev.outcome.kind === "max_turns") {
+					body.notice(`stopped at the ${ev.outcome.turns}-turn limit — the work is durable; say "continue" to carry on`);
+				}
 				if (ev.outcome.kind === "max_tokens") {
 					// R2 (law 1.1): the notice was wearing a box corner. A notice
 					// is a sentence addressed to a human; it needs no edge.
@@ -820,8 +826,15 @@ export async function consumeRun(
 				bodyLog(
 					renderRecap({
 						seconds: Math.round((Date.now() - turnStart) / 1000),
-						tools: toolCount,
-						edits: editCount,
+						// R3g: the work terms are NOT passed — the fold line
+						// says what the turn did, once, where it happened and
+						// with the key that reopens it. This row is the turn's
+						// cost: how long it took and what it spent.
+						// R3g: `?? 80` is NOT enough — a PTY opened without a
+						// winsize reports 0 columns, and 0 is not nullish, so
+						// the recap cut itself down to one character. A width
+						// that is not a positive number is not a width.
+						width: process.stdout.columns > 0 ? process.stdout.columns : 80,
 						usage,
 						// R-C item 4: only an above-floor miss is surfaced —
 						// the recap gains "· miss N" on the cache segment.

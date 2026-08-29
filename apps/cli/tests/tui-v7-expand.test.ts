@@ -19,7 +19,18 @@
  * the PTY, the editor's feed dispatches it.
  */
 
-import { execFileSync } from "node:child_process";
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — the fold's terms are
+ * VERB + COUNT + NOUN now ("read 5 files"), where they used to be a
+ * bare count and a noun borrowed from the rollup table ("5 reads",
+ * "1 match"). Two reasons, one of them a truthfulness bug: that table
+ * names what a single-tool rollup COUNTS — "14 matches" means fourteen
+ * matched lines — while this line counts CALLS, so one search rendered
+ * "1 match" whenever the search had matched any other number. The
+ * phrasing is the owner's, from the shape they asked for: "thought 17s
+ * · read 4 files · listed 1 directory · ran 4 shell commands".
+ */
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -62,6 +73,16 @@ def driver(cli, env, feeds, timeout, cwd):
                 if i not in fed and needle.encode() in full:
                     os.write(fd, text.encode())
                     fed.add(i)
+    # R3g: report HOW the scenario ended, and which feeds never fired.
+    # This file's own driver had no such report, and twice a needle this
+    # round's wording changed out from under went unnoticed: the driver
+    # waited out its whole 60s budget, the CLI was SIGTERM'd, and the
+    # assertions passed on the truncated transcript. Two cases at 60.1s
+    # each also blocked the worker's event loop long enough to starve
+    # vitest's own RPC, which fails the RUN with every test green — the
+    # most expensive way possible to learn that a needle is dead.
+    unfed = ",".join(str(i) for i in range(len(feeds)) if i not in fed)
+    sys.stderr.write("KISO_PTY_END " + ("eof" if done else "wall") + " " + ("%.2f" % (time.time() - (end - timeout))) + " " + unfed + chr(10))
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -84,7 +105,21 @@ sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)}, ${timeout}, ${cwd === undefined ? "None" : JSON.stringify(cwd)})
 `;
-	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 120_000, env: process.env });
+	const res = spawnSync("python3", ["-c", phase], { encoding: "utf8", timeout: 120_000, env: process.env });
+	if (res.error !== undefined && res.error !== null) throw res.error;
+	const end = /KISO_PTY_END (eof|wall) ([\d.]+) ?(.*)/.exec(res.stderr ?? "");
+	if (end !== null && end[1] === "wall") {
+		const dead = (end[3] ?? "")
+			.split(",")
+			.filter((x) => x !== "")
+			.map((i) => JSON.stringify(feeds[Number(i)]?.[0] ?? "?"));
+		throw new Error(
+			`the PTY scenario spent its whole ${timeout}s wall (${end[2]}s) — the CLI never exited. ` +
+				(dead.length > 0 ? `These needles never appeared: ${dead.join(", ")}. ` : "") +
+				"A scenario that waits out its budget passes its assertions on a SIGTERM'd transcript and hides the stall (R3c).",
+		);
+	}
+	return res.stdout;
 }
 
 function stripANSI(text: string): string {
@@ -293,7 +328,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 				// completed — never the text's live bytes, which can precede
 				// the commit by a frame.
 				["five files read.", "\x12"],
-				["expanded · 5 reads", "exit\r"],
+				["expanded · read 5 files", "exit\r"],
 			],
 			60,
 			dir,
@@ -305,13 +340,13 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// moved behind `ctrl+r`. What this case is really about — the
 		// expand reaching the FULL per-call children — is unchanged and is
 		// asserted below.
-		expect(clean).toMatch(/✦ thought \d+s · 5 reads/);
+		expect(clean).toMatch(/✦ thought \d+s · read 5 files/);
 		// the expand: the FULL per-call children, one └ row each — a.ts
 		// appears twice (the rollup's joined children row starts the └;
 		// b/c ride "· ", so only the expand's own └ matches for them);
 		// d–e once (only the expand ever named them)
 		// the header names the SEGMENT; W13's own row sits one line below it
-		expect(clean).toContain("expanded · 5 reads · 0 turns back");
+		expect(clean).toContain("expanded · read 5 files · 0 turns back");
 		expect(clean).toContain("read 5 files");
 		// DECLARED SUPERSESSION (REL-0152-R1), same class as above: counted
 		// on the SCREEN. A diff re-emits a row when the window shifts, so
@@ -365,7 +400,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 				// its whole budget and the assertions still pass on the final
 				// output. That silent 60s is what tripped vitest's 60s RPC
 				// deadline for the whole file.
-				["5 reads", "exit\r"],
+				["read 5 files", "exit\r"],
 			],
 			60,
 			dir,
@@ -375,11 +410,18 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// the claimed fold shape: the wall-clocked thought seconds and the
 		// reads term — the ONE line for the whole turn. R3b (owner ruling):
 		// zero terms are dropped, so there is no `no edits` to assert.
-		expect(clean).toMatch(/thought \d+s · 5 reads/);
+		expect(clean).toMatch(/thought \d+s · read 5 files/);
 		expect(clean).not.toContain("no edits");
 		expect(clean).toContain("✦");
 		// no rollup ever happened (the fold precedes it — the turn had no
-		// text to release with)
-		expect(clean).not.toContain("5 files");
+		// text to release with).
+		//
+		// R3g: the needle used to be the bare "5 files", which the FOLD
+		// now says too — verb+count+noun made the two wordings collide,
+		// and the case contradicted itself (the line above requires the
+		// same substring this one forbade). The rollup's own shape is
+		// what distinguishes it: a two-space gutter, the verb, and the
+		// parenthetical it carries and the fold never does.
+		expect(clean).not.toMatch(/ {2}read {2}5 files \(/);
 	}, 120_000);
 });

@@ -7,6 +7,17 @@
  * VT emulator); these pin the BYTES and the scalar directly.
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — the fold's terms are
+ * VERB + COUNT + NOUN now ("read 5 files"), where they used to be a
+ * bare count and a noun borrowed from the rollup table ("5 reads",
+ * "1 match"). Two reasons, one of them a truthfulness bug: that table
+ * names what a single-tool rollup COUNTS — "14 matches" means fourteen
+ * matched lines — while this line counts CALLS, so one search rendered
+ * "1 match" whenever the search had matched any other number. The
+ * phrasing is the owner's, from the shape they asked for: "thought 17s
+ * · read 4 files · listed 1 directory · ran 4 shell commands".
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 import { Screen } from "./helpers/screen.js";
@@ -878,6 +889,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the held tool commits at the next frame; its cut note (its last
 		// rendered row at commit) carries the affordance → #collapsed.
 		body.textAppend("first turn built.");
+		body.endTurn(0); // R3d: the fold is the TURN's — nothing commits before the settle
 		tick();
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
@@ -945,6 +957,7 @@ describe("TUI v6 — the one compositor", () => {
 			body.toolResult(`r${i}`, { content: "line one\nline two", isError: false });
 		}
 		body.textAppend("five files read.");
+		body.endTurn(0); // R3d: the fold is the TURN's
 		tick();
 		const frame = writes.join("");
 		// DECLARED SUPERSESSION (R3b, owner ruling): the run's COMMITTED
@@ -956,7 +969,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the fold's glyph is bold-wrapped, so the needle is taken on the
 		// stripped text — `✦` and `thought` are not contiguous in bytes.
 		const bare = frame.replace(/\x1b\[[0-9;]*m/g, "");
-		expect(bare).toContain("✦ thought 0s · 5 reads");
+		expect(bare).toContain("✦ thought 0s · read 5 files");
 		expect(bare.match(/ {2}read {2}\S/g) ?? []).toHaveLength(0);
 		// the fold joined the expand history: the expand shows the run's
 		// own projection — W13's title and the FULL per-call children, one
@@ -964,7 +977,7 @@ describe("TUI v6 — the one compositor", () => {
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
 		const lines = (r as { lines: string[] }).lines;
-		expect(lines[0]).toContain("expanded · 5 reads · 0 turns back");
+		expect(lines[0]).toContain("expanded · read 5 files · 0 turns back");
 		expect(lines.join("\n")).toContain("read 5 files");
 		for (const t of ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"]) {
 			expect(lines.some((l) => l.includes(t))).toBe(true);
@@ -1003,7 +1016,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the half saying nothing. A term earns its place by having a
 		// count. Every other claim in this case is unchanged.
 		expect(frame).toContain("\u2726");
-		expect(frame).toContain("thought 19s · 5 reads");
+		expect(frame).toContain("thought 19s · read 5 files");
 		expect(frame).not.toContain("no edits");
 		// the members folded away — no individual read rows
 		expect(frame.match(/✓/g) ?? []).toHaveLength(0);
@@ -1021,7 +1034,7 @@ describe("TUI v6 — the one compositor", () => {
 		mix.body.toolResult("s1", { content: "hi", isError: false });
 		mix.body.endTurn(7);
 		mix.tick();
-		expect(mix.writes.join("")).toContain("thought 7s · 1 edit · 1 shell");
+		expect(mix.writes.join("")).toContain("thought 7s · edited 1 file · ran 1 shell command");
 	});
 
 	it("A9 (ruling R2, mock A): the user chip rides the fold — the words LEAD the one line in the SGR-7 bracket, the metadata survives; at a narrow width the words width-cut with the honest … while the metadata keeps every term; the ONE row never exceeds W (invariant ①)", () => {
@@ -1047,7 +1060,7 @@ describe("TUI v6 — the one compositor", () => {
 		// where a run is usually all reads or all edits — half the row was
 		// the half saying nothing. A term earns its place by having a
 		// count. Every other claim in this case is unchanged.
-		expect(frame).toContain("\u2726\x1b[0m \x1b[7m any idea what the flaky gate is? \x1b[27m · thought 19s · 5 reads");
+		expect(frame).toContain("\u2726\x1b[0m \x1b[7m any idea what the flaky gate is? \x1b[27m · thought 19s · read 5 files");
 		// the fold row fits W=80 whole (no cut at the wide width)
 		expect(frame).not.toContain("flaky gate is? …");
 		// the words take the width budget at W=40: the metadata keeps
@@ -1065,7 +1078,24 @@ describe("TUI v6 — the one compositor", () => {
 		narrow.tick();
 		const nframe = narrow.writes.join("");
 		expect(nframe).toContain("…"); // the honest cut mark rides the chip
-		expect(nframe).toContain(" · thought 19s · 5 reads"); // the metadata survives whole
+		// DECLARED SUPERSESSION (R3g, 2026-08-28) — A9 ruled "the metadata
+		// keeps EVERY term" at a narrow width, and that ruling was taken
+		// when this line had no key on it. At W=40 the three claims
+		// collide: the chip, the full metadata and " · ctrl+r" (9 cells)
+		// do not coexist. The KEY wins, because it is the only way back
+		// to the turn's work — a fold with no key hides the work behind a
+		// line with no way to it, which the fold's own header calls the
+		// one thing this product must not do. So the metadata cuts here
+		// with the honest "…", and every OTHER A9 claim is unchanged:
+		// the words still lead, still cut inside the bracket, and the row
+		// still holds invariant ①.
+		//
+		// THIS IS A TRADE THE OWNER SHOULD SEE, not one this round is
+		// entitled to make silently: at 40 columns a folded turn now
+		// shows part of its counts and keeps its key, where it used to
+		// show all of its counts and lose it.
+		expect(nframe).toContain(" · thought 19s · read 5 f"); // ...and it cuts
+		expect(nframe).toContain("ctrl+r"); // the way back survives the width
 		expect(nframe).toMatch(/\x1b\[7m [^\x1b]*… \x1b\[27m/); // the … sits INSIDE the chip's bracket
 		// the whole fold row (gutter + chip + metadata) is ≤ 40 cells —
 		// every emitted line: invariant ①. The frame's rows are CUP-separated

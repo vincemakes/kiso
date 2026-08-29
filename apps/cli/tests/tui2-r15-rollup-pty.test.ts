@@ -14,6 +14,17 @@
  * byte-level suite could stay green through a dead feature.
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — the fold's terms are
+ * VERB + COUNT + NOUN now ("read 5 files"), where they used to be a
+ * bare count and a noun borrowed from the rollup table ("5 reads",
+ * "1 match"). Two reasons, one of them a truthfulness bug: that table
+ * names what a single-tool rollup COUNTS — "14 matches" means fourteen
+ * matched lines — while this line counts CALLS, so one search rendered
+ * "1 match" whenever the search had matched any other number. The
+ * phrasing is the owner's, from the shape they asked for: "thought 17s
+ * · read 4 files · listed 1 directory · ran 4 shell commands".
+ */
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -52,7 +63,7 @@ describe("TUI2-R1.5 ① — the exploration rollup at real pacing (real CLI)", (
 		// opens. The claim these cases make — the burst settles as ONE
 		// thing, with no keypress, and never as N individual rows — is
 		// unchanged and is stronger now: one row for the whole segment.
-		expect(joined).toMatch(/✦ thought \d+s · 6 reads · 1 match · 1 dir/);
+		expect(joined).toMatch(/✦ thought \d+s · read 6 files · ran 1 search · listed 1 directory/);
 		// …and NOT the eight individual rows the walkthrough saw
 		expect(grid.filter((l) => /✓ read {2}f\d\.txt/.test(l))).toHaveLength(0);
 		// the affordance is on the row (ctrl+r must have something to do)
@@ -83,7 +94,7 @@ describe("TUI2-R1.5 ① — the exploration rollup at real pacing (real CLI)", (
 		// opens. The claim these cases make — the burst settles as ONE
 		// thing, with no keypress, and never as N individual rows — is
 		// unchanged and is stronger now: one row for the whole segment.
-		expect(grid.join("\n")).toMatch(/✦ thought \d+s · 4 reads · 1 match/);
+		expect(grid.join("\n")).toMatch(/✦ thought \d+s · read 4 files · ran 1 search/);
 		expect(grid.filter((l) => /✓ read {2}f\d\.txt/.test(l))).toHaveLength(0);
 	}, 240_000);
 });

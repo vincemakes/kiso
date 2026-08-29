@@ -50,6 +50,15 @@
  * repaint never erases down).
  */
 
+/**
+ * DECLARED SUPERSESSION (R3g, 2026-08-28) — the fold's terms are
+ * VERB + COUNT + NOUN now ("read 5 files"), where they used to be a
+ * bare count and a noun borrowed from the rollup table ("5 reads",
+ * "1 match"). That table names what a single-tool rollup COUNTS —
+ * "14 matches" means fourteen matched lines — while this line counts
+ * CALLS, so one search rendered "1 match" whenever the search matched
+ * any other number. The phrasing is the owner's.
+ */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -293,7 +302,7 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 			[
 				["▌ ", "go\r"], // the brick — the startup prompt
 				["the task list is final.", ""], // the turn's text — the settle follows
-				[" · 10 tools", "exit\r"], // the recap — then the prompt quits
+				[" · 10 × task_set", "exit\r"], // the recap — then the prompt quits (R3d: the recap says what the turn DID, not "N tools")
 			],
 			workdir,
 		);
@@ -439,7 +448,7 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		expect(finalGrid[doneRow + 2]).toContain("▣ item 2");
 		expect(finalGrid[doneRow + 10]).toContain("▖ item 10"); // the durable active glyph
 		expect(turn).toContain("the task list is final."); // the turn's text — asserted on the BYTES: it rode the during-run band, and whether the settle's scrolls leave it in the final grid varies with the scroll count — the paint itself is deterministic
-		expect(finalGrid.join("\n")).toContain(" · 10 tools"); // the recap
+		expect(finalGrid.join("\n")).toContain(" · 10 × task_set"); // the recap (R3d: a tool with no term table counts its CALLS — "10 × task_set" — rather than inventing a plural noun for them)
 
 		// ④ the idle chrome survived — the mode line (asserted on the
 		// FRAMES: the settle's real-LF scrolls and the exit teardown can
