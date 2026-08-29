@@ -410,16 +410,17 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string }
 	});
 }
 
-export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: string; path?: string }> {
-	return defineTool<{ pattern: string; path?: string }>({
+export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: string; path?: string; caseSensitive?: boolean }> {
+	return defineTool<{ pattern: string; path?: string; caseSensitive?: boolean }>({
 		name: "search_text",
 		description:
-			"Search files under a workspace directory (recursive) for a regular expression (the workspace grep — prefer it over shell grep/rg). Returns matching file:line excerpts, capped at 50 — an overflow note states the count of further matches (narrow the pattern to see them).",
+			"Search files under a workspace directory (recursive), or a single file, for a regular expression (the workspace grep — prefer it over shell grep/rg). Returns matching file:line excerpts, capped at 50 — an overflow note states the count of further matches (narrow the pattern to see them). Case-insensitive unless caseSensitive is true.",
 		parameters: {
 			type: "object",
 			properties: {
 				pattern: { type: "string", description: "Regular expression to search for" },
-				path: { type: "string", description: "Workspace-relative root directory (default: workspace root)" },
+				path: { type: "string", description: "Workspace-relative directory OR file (default: workspace root)" },
+				caseSensitive: { type: "boolean", description: "Match case exactly (default: false)" },
 			},
 			required: ["pattern"],
 			additionalProperties: false,
@@ -432,7 +433,7 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 		effects: { precommitSafe: true, concurrency: "shared" },
 		promptSnippet: "search_text — regex search over workspace files",
 		promptGuidelines: ["narrow the pattern when the result caps — never re-run a broad search"],
-		execute: async ({ pattern, path }) => {
+		execute: async ({ pattern, path, caseSensitive }) => {
 			let root: string;
 			try {
 				root = resolveWithinRoot(opts.workspaceRoot, path ?? ".");
@@ -440,7 +441,29 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				throw err;
 			}
-			const regex = new RegExp(pattern, "i");
+			// DC-23 (the 0.16.7 dogfood): an INVALID pattern threw raw out
+			// of execute — `new RegExp` sat outside every try in this
+			// function, so a bad regex was a crash rather than a result the
+			// model could act on. And the "i" flag was hardcoded, so a
+			// case-sensitive search was not expressible at all.
+			let regex: RegExp;
+			try {
+				regex = new RegExp(pattern, caseSensitive === true ? "" : "i");
+			} catch (err) {
+				return { content: `search_text failed: invalid pattern — ${(err as Error).message}`, isError: true, errorKind: "invalid_input" };
+			}
+			// DC-23: a FILE is a place text lives. The tool took only a
+			// directory and answered a file path with libuv's own words
+			// ("ENOTDIR: not a directory, scandir <path>"), which is the
+			// obvious thing to ask for — the file is already known and the
+			// question is where in it something is. The real dogfood model
+			// asked twice and learned nothing either time. One stat.
+			let single: string | null = null;
+			try {
+				if (statSync(root).isFile()) single = root;
+			} catch (err) {
+				return { content: `search_text failed: ${path ?? "."} — ${(err as Error).message}`, isError: true, errorKind: "invalid_input" };
+			}
 			// The walk NEVER early-aborts on the cap: the overflow note's count
 			// must be the file-true total, not a bound (the red line). The
 			// depth cap and the node_modules/dotfile skip stay.
@@ -465,40 +488,46 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 				sinceYield = 0;
 				await new Promise<void>((r) => setImmediate(r));
 			};
+			// DC-23: the per-file scan is its own function now, because the
+			// single-file path and the walk must scan a file the SAME way —
+			// same inode boundary, same cap accounting, same excerpt shape.
+			// Two copies would be two answers to "what does searching this
+			// file mean".
+			const scanFile = async (full: string): Promise<void> => {
+				await breathe();
+				try {
+					// round 8: same inode boundary as read_file — a hard link
+					// to an external inode is not searched. round 4 (adversarial):
+					// the link count is verified against the WORKSPACE
+					// root, not the search subroot — a link that lives
+					// inside the workspace but outside the search dir is
+					// legal and must not be silently skipped.
+					if (inodeReadPolicy(opts.workspaceRoot, full) !== null) return;
+					const text = readFileSync(full, "utf8");
+					for (const [i, line] of text.split("\n").entries()) {
+						if (regex.test(line)) {
+							totalMatches += 1;
+							if (matches.length < MAX_SEARCH_MATCHES) {
+								matches.push(`${full}:${i + 1}: ${line.trim().slice(0, 160)}`);
+							}
+						}
+					}
+				} catch {
+					// unreadable file — skip
+				}
+			};
 			const walk = async (dir: string, depth: number): Promise<void> => {
 				if (depth > 8) return;
 				for (const entry of await readdir(dir, { withFileTypes: true })) {
 					if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
 					const full = join(dir, entry.name);
-					if (entry.isDirectory()) {
-						await walk(full, depth + 1);
-					} else if (entry.isFile()) {
-						await breathe();
-						try {
-							// round 8: same inode boundary as read_file — a hard link
-							// to an external inode is not searched. round 4 (adversarial):
-							// the link count is verified against the WORKSPACE
-							// root, not the search subroot — a link that lives
-							// inside the workspace but outside the search dir is
-							// legal and must not be silently skipped.
-							if (inodeReadPolicy(opts.workspaceRoot, full) !== null) continue;
-							const text = readFileSync(full, "utf8");
-							for (const [i, line] of text.split("\n").entries()) {
-								if (regex.test(line)) {
-									totalMatches += 1;
-									if (matches.length < MAX_SEARCH_MATCHES) {
-										matches.push(`${full}:${i + 1}: ${line.trim().slice(0, 160)}`);
-									}
-								}
-							}
-						} catch {
-							// unreadable file — skip
-						}
-					}
+					if (entry.isDirectory()) await walk(full, depth + 1);
+					else if (entry.isFile()) await scanFile(full);
 				}
 			};
 			try {
-				await walk(root, 0);
+				if (single !== null) await scanFile(single);
+				else await walk(root, 0);
 			} catch (err) {
 				return { content: `search_text failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
 			}

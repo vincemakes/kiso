@@ -30,6 +30,14 @@
  * phrasing is the owner's, from the shape they asked for: "thought 17s
  * · read 4 files · listed 1 directory · ran 4 shell commands".
  */
+/**
+ * DECLARED SUPERSESSION (R3h, 2026-08-29) — `thought 0s` IS DROPPED, so
+ * the fold's lead term is OPTIONAL in these patterns. R3b ruled that a
+ * zero term is a sentence about something that did not happen; the
+ * thought term was exempt by accident (written before the rule). The
+ * faux model emits no thinking, so every fold here led with `thought
+ * 0s` — which is exactly the sentence the rule forbids.
+ */
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -340,7 +348,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// moved behind `ctrl+r`. What this case is really about — the
 		// expand reaching the FULL per-call children — is unchanged and is
 		// asserted below.
-		expect(clean).toMatch(/✦ thought \d+s · read 5 files/);
+		expect(clean).toMatch(/✦ (thought \d+s · )?read 5 files/);
 		// the expand: the FULL per-call children, one └ row each — a.ts
 		// appears twice (the rollup's joined children row starts the └;
 		// b/c ride "· ", so only the expand's own └ matches for them);
@@ -410,7 +418,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// the claimed fold shape: the wall-clocked thought seconds and the
 		// reads term — the ONE line for the whole turn. R3b (owner ruling):
 		// zero terms are dropped, so there is no `no edits` to assert.
-		expect(clean).toMatch(/thought \d+s · read 5 files/);
+		expect(clean).toMatch(/(thought \d+s · )?read 5 files/);
 		expect(clean).not.toContain("no edits");
 		expect(clean).toContain("✦");
 		// no rollup ever happened (the fold precedes it — the turn had no

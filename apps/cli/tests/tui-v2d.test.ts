@@ -19,6 +19,14 @@
  * phrasing is the owner's, from the shape they asked for: "thought 17s
  * · read 4 files · listed 1 directory · ran 4 shell commands".
  */
+/**
+ * DECLARED SUPERSESSION (R3h, 2026-08-29) — `thought 0s` IS DROPPED, so
+ * the fold's lead term is OPTIONAL in these patterns. R3b ruled that a
+ * zero term is a sentence about something that did not happen; the
+ * thought term was exempt by accident (written before the rule). The
+ * faux model emits no thinking, so every fold here led with `thought
+ * 0s` — which is exactly the sentence the rule forbids.
+ */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -331,7 +339,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// segment fold, which names them by COUNT. The verb vocabulary this
 		// case pins (one screen, one wording — `list`, not `list_dir`) is
 		// asserted where it now lives: the fold's terms, and the expansion.
-		expect(clean).toMatch(/✦ thought \d+s · listed 1 directory · ran 1 shell command · 1 × asky_read/);
+		expect(clean).toMatch(/✦ (thought \d+s · )?listed 1 directory · ran 1 shell command · 1 × asky_read/);
 
 
 		expect(clean).not.toContain("approved by"); // R1.5 5: no policy byline anywhere

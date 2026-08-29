@@ -46,6 +46,20 @@
  * phrasing is the owner's, from the shape they asked for: "thought 17s
  * · read 4 files · listed 1 directory · ran 4 shell commands".
  */
+/**
+ * DECLARED SUPERSESSION (R3h, 2026-08-29) — `thought 0s` IS DROPPED.
+ *
+ * R3b ruled that zero terms are dropped ("a sentence about things that
+ * did not happen"), and the THOUGHT term was exempt by accident: it was
+ * written before the rule and never revisited. So a model that emits no
+ * thinking — and these cases pass `endTurn(0)` — folded under `thought
+ * 0s` in the LEAD position, every turn of its life.
+ *
+ * The cases below claimed "the turn folded" by looking for `✦ thought`.
+ * That literal is no longer the fold's signature when the turn did no
+ * thinking, so each one now names the fold by what the turn actually
+ * DID — which is the claim they were making all along.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 
@@ -105,9 +119,9 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// R3b: the burst's COMMITTED form is the segment fold — ONE row for
 		// twenty-two calls, which is the same claim this case always made,
 		// one row tighter.
-		expect(frame).toContain("✦ thought");
+		expect(frame).toContain("✦ read 8 files");
 		expect(frame).toContain("read 8 files · ran 14 searches"); // the fold's own terms
-		expect(frame.match(/✦ thought/g) ?? []).toHaveLength(1);
+		expect(frame.match(/✦ read 8 files/g) ?? []).toHaveLength(1);
 		// and the exploration row is what the key opens — the per-tool
 		// counts and the subjects, unchanged.
 		const opened = body.expandNext();
@@ -184,7 +198,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// key opens. "The generalization adds, it never rewrites" is still
 		// the claim — the single-name run keeps W13's row rather than
 		// growing an exploration one.
-		expect(plain(writes.join(""))).toContain("✦ thought");
+		expect(plain(writes.join(""))).toContain("✦ read");
 		const opened = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
 		// one space, not two: the double space was the COMMITTED row's
 		// verb-column pad (W3); the expansion is a list, not a column.
@@ -236,7 +250,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// R3b: the committed row is the segment fold rather than the
 		// exploration row, and the claim this case makes — that the
 		// members' CONTENT never reached the screen — is unchanged.
-		expect(frame).toContain("✦ thought");
+		expect(frame).toContain("✦ read 1 file · ran 1 search · listed 1 directory");
 		for (const hidden of ["alpha", "beta", "gamma", "delta"]) expect(frame).not.toContain(hidden);
 		// …and every member's own input is still there to be read back:
 		// the expand walks the CELLS, so a rewrite would show up here.

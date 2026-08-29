@@ -49,6 +49,14 @@
  * moment (the turn has settled), and it sits after the ✦'s SGR reset
  * so it survives contiguously in the raw stream a PTY driver scans.
  */
+/**
+ * DECLARED SUPERSESSION (R3h, 2026-08-29) — `thought 0s` IS DROPPED, so
+ * the fold's lead term is OPTIONAL in these patterns. R3b ruled that a
+ * zero term is a sentence about something that did not happen; the
+ * thought term was exempt by accident (written before the rule). The
+ * faux model emits no thinking, so every fold here led with `thought
+ * 0s` — which is exactly the sentence the rule forbids.
+ */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -278,7 +286,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// dropped. The claim "the human is told, not only the model" holds
 		// through the key; what would break it is silence, and the fold is
 		// not silent.
-		expect(grid.join("\n")).toMatch(/✦ thought \d+s · .* · ctrl\+r/);
+		expect(grid.join("\n")).toMatch(/✦ (thought \d+s · )?.* · ctrl\+r/);
 	}, 60_000);
 
 	it("R1.5 4 at 120 cols: the same, at the wide width — no body rows, no cut row", () => {
@@ -296,7 +304,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND).
 		// R3b: the advisory rode the read's own row, which is inside the
 		// segment fold now — reachable by the key the fold names.
-		expect(grid.join("\n")).toMatch(/✦ thought \d+s · .* · ctrl\+r/);
+		expect(grid.join("\n")).toMatch(/✦ (thought \d+s · )?.* · ctrl\+r/);
 	}, 60_000);
 
 	it("W8: two parallel tools, one streaming — the window is a FIXED 3 rows and every row BELOW the streaming cell is byte-identical across the run's frames until settle", () => {

@@ -71,6 +71,7 @@ import {
 	boxTop,
 	cellComponent,
 	exploreCounts,
+	foldCountsObjects,
 	foldTerms,
 	focusToken,
 	exploreRows,
@@ -157,6 +158,10 @@ interface TurnRecord {
 	reads: number;
 	edits: number;
 	others: Map<string, number>;
+	/** R3h — the distinct targets already counted, per OBJECT-counting
+	 *  tool (see foldCountsObjects). A second read of the same file is a
+	 *  second act but not a second file, and the fold's noun is the file. */
+	seen: Map<string, Set<string>>;
 	words: string;
 	/** the fold was emitted at the first held cell's commit — the rest of
 	 *  the turn's thinking/tool cells render [] (never a second fold). */
@@ -188,6 +193,8 @@ interface SegmentRecord {
 	reads: number;
 	edits: number;
 	others: Map<string, number>;
+	/** R3h — this segment's own distinct targets (see TurnRecord.seen). */
+	seen: Map<string, Set<string>>;
 	/** the fold line was emitted for this segment — the rest of its cells
 	 *  render [] (never a second fold, and never a lost one). */
 	folded: boolean;
@@ -313,7 +320,7 @@ function openSegment(turn: TurnRecord | undefined, now: number): SegmentRecord |
 	if (turn === undefined) return null;
 	const last = turn.segments[turn.segments.length - 1];
 	if (last !== undefined && last.closedAt === null) return last;
-	const fresh: SegmentRecord = { openedAt: now, closedAt: null, reads: 0, edits: 0, others: new Map(), folded: false, spilled: false, headCell: null, cells: [] };
+	const fresh: SegmentRecord = { openedAt: now, closedAt: null, reads: 0, edits: 0, others: new Map(), seen: new Map(), folded: false, spilled: false, headCell: null, cells: [] };
 	turn.segments.push(fresh);
 	return fresh;
 }
@@ -582,7 +589,7 @@ export class Body {
 		// W14: the turn boundary — the record the fold-hold's release
 		// state machine reads; the cell carries the record's index. A9:
 		// the user's own words ride the record — the fold's leading chip.
-		this.#turns.push({ ended: false, hasText: false, thoughtSeconds: 0, reads: 0, edits: 0, others: new Map(), words: text, folded: false, segments: [] });
+		this.#turns.push({ ended: false, hasText: false, thoughtSeconds: 0, reads: 0, edits: 0, others: new Map(), seen: new Map(), words: text, folded: false, segments: [] });
 		this.#cells.push({ kind: "user", text, done: true, turn: this.#turns.length - 1 });
 		this.#mark();
 	}
@@ -661,13 +668,36 @@ export class Body {
 		// order). The CLI's recap counts the same way (edit_file).
 		const turn = this.#turns[this.#turns.length - 1];
 		if (turn !== undefined) {
-			if (name === "read_file") turn.reads += 1;
-			else if (name === "edit_file") turn.edits += 1;
-			else turn.others.set(name, (turn.others.get(name) ?? 0) + 1);
+			// R3h (fable, 2026-08-29): an OBJECT-counting tool counts the
+			// distinct thing, not the act. Reading one file twice used to
+			// fold as `read 2 files` — a sentence law 1.3 forbids, and one
+			// this product shipped. `bump` is false on the second sighting
+			// of a target the term has already counted; an ACT-counting
+			// tool (a search, a shell command) always bumps, because two
+			// searches for the same pattern really are two searches.
+			const target = foldCountsObjects(name) ? toolTarget(name, input) : null;
+			const bump = (rec: { seen: Map<string, Set<string>> }): boolean => {
+				if (target === null) return true;
+				let set = rec.seen.get(name);
+				if (set === undefined) {
+					set = new Set();
+					rec.seen.set(name, set);
+				}
+				if (set.has(target)) return false;
+				set.add(target);
+				return true;
+			};
+			if (bump(turn)) {
+				if (name === "read_file") turn.reads += 1;
+				else if (name === "edit_file") turn.edits += 1;
+				else turn.others.set(name, (turn.others.get(name) ?? 0) + 1);
+			}
 			// R3b: and into the SEGMENT, which opens here when this is the
-			// first work since the last text block.
+			// first work since the last text block. Its set is its OWN — a
+			// file read once per segment is one file in each segment's
+			// terms and one file in the turn's.
 			const seg = openSegment(turn, Date.now());
-			if (seg !== null) {
+			if (seg !== null && bump(seg)) {
 				if (name === "read_file") seg.reads += 1;
 				else if (name === "edit_file") seg.edits += 1;
 				else seg.others.set(name, (seg.others.get(name) ?? 0) + 1);

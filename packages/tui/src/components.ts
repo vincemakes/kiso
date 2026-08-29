@@ -5,5 +5,5 @@ export * from "@vincemakes/kiso-tui-cells/components";
 
 // R3 (design §5.2): the two motion cycles reach the compositor through
 // the same shim every other cell primitive does.
-export { foldTerms } from "@vincemakes/kiso-tui-cells/components";
+export { foldCountsObjects, foldTerms } from "@vincemakes/kiso-tui-cells/components";
 export { MOTION_FRAMES, TWINKLE, breathFrame, twinkleFrame } from "@vincemakes/kiso-tui-cells/render";

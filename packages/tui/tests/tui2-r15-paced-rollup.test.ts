@@ -35,6 +35,20 @@
  * phrasing is the owner's, from the shape they asked for: "thought 17s
  * · read 4 files · listed 1 directory · ran 4 shell commands".
  */
+/**
+ * DECLARED SUPERSESSION (R3h, 2026-08-29) — `thought 0s` IS DROPPED.
+ *
+ * R3b ruled that zero terms are dropped ("a sentence about things that
+ * did not happen"), and the THOUGHT term was exempt by accident: it was
+ * written before the rule and never revisited. So a model that emits no
+ * thinking — and these cases pass `endTurn(0)` — folded under `thought
+ * 0s` in the LEAD position, every turn of its life.
+ *
+ * The cases below claimed "the turn folded" by looking for `✦ thought`.
+ * That literal is no longer the fold's signature when the turn did no
+ * thinking, so each one now names the fold by what the turn actually
+ * DID — which is the claim they were making all along.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 import { Screen } from "./helpers/screen.js";
@@ -99,7 +113,7 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		const settle = plain(writes.slice(settleFrom).join(""));
 		// the paced burst settled as ONE thing — the fold — and the run is
 		// intact behind the key.
-		expect(settle).toContain("✦ thought");
+		expect(settle).toContain("✦ read 6 files");
 		expect(settle).toContain("read 6 files · listed 1 directory · ran 1 search");
 		const opened = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
 		expect(opened).toContain("explored 6 files · 1 dir · 1 search");
@@ -125,7 +139,7 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		const settle = plain(writes.slice(settleFrom).join(""));
 		// the settle frame commits the run as the fold, and never as six
 		// individual read rows — which is this case's actual claim.
-		expect(settle).toContain("✦ thought");
+		expect(settle).toContain("✦ read 6 files");
 		expect(settle.match(/ {2}read {2}src\/f\d/g) ?? []).toHaveLength(0);
 		// W13's single-name projection is what the key opens. One space,
 		// not two: the double space was the COMMITTED row's verb-column
@@ -172,7 +186,7 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		// R3b: the two runs and the write between them live in the fold's
 		// expansion; the ORDER — which is the group key's proof — is what
 		// this case is about and it is asserted there.
-		expect(settled).toContain("✦ thought");
+		expect(settled).toContain("✦ read 2 files");
 		const opened = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
 		expect(opened.match(/explored 1 file · 1 search · 1 dir/g) ?? []).toHaveLength(2);
 		expect(opened).toContain("write out.ts");

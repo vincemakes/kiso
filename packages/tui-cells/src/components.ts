@@ -1047,7 +1047,14 @@ export function exploreCounts(parts: readonly { name: string; subjects: readonly
 	return parts
 		.map((part) => {
 			const [singular, plural] = EXPLORE_NOUN[part.name] ?? ["call", "calls"];
-			return `${part.subjects.length} ${part.subjects.length === 1 ? singular : plural}`;
+			// R3h (fable, 2026-08-29): DISTINCT subjects. This counted calls
+			// while exploreRows — the very next function, the expansion of
+			// THIS row — deduped them with `×N`. So the head said "6 files"
+			// over a list showing four, one of them `a.ts ×3`. The head and
+			// the body are two views of one run and must count alike; the
+			// body was right (a file read twice is one file).
+			const n = foldCountsObjects(part.name) ? new Set(part.subjects).size : part.subjects.length;
+			return `${n} ${n === 1 ? singular : plural}`;
 		})
 		.join(" · ");
 }
@@ -1092,12 +1099,20 @@ function countTerm(n: number, singular: string, plural: string): string {
  *  as first-call-order terms (the ROLLUP_NOUN plurals when the tool opts
  *  in, the verb + "s" otherwise).
  *  A9 (ruling R2, mock A): the user chip rides the fold — the human's
- *  words LEAD the one line, `▞ <chip> · thought 19s · 5 reads · no
- *  edits` — the chip the SAME SGR-7 bracket as the live user row (#16f,
- *  side pads included). The words take the fold's width budget: the
- *  metadata terms survive (the W14 metadata rule — they give way LAST),
- *  the words width-cut at the end with the honest "…" (never a silent
- *  truncate — invariant ① holds on the ONE row by construction). */
+ *  words LEAD the one line, `✦ <chip> · thought 19s · read 5 files` —
+ *  the chip the SAME SGR-7 bracket as the live user row (#16f, side
+ *  pads included). The words take the fold's width budget and width-cut
+ *  at the end with the honest "…" (never a silent truncate — invariant
+ *  ① holds on the ONE row by construction).
+ *
+ *  DECLARED SUPERSESSION (R3g, 2026-08-28) — A9 also ruled that "the
+ *  metadata terms give way LAST". They do not any more: the KEY does.
+ *  A9 was taken when this line carried no key, and at a width where the
+ *  chip, the full metadata and " · ctrl+r" cannot coexist, a fold with
+ *  no key is the turn's work behind a line with no way back to it. So
+ *  the order is now words, then metadata, then — never — the key. The
+ *  glyph is ✦ and the zero terms are dropped (R3b), so the example above
+ *  is written as the code renders it rather than as A9 first wrote it. */
 /**
  * R3b — what a run of work DID, in words. One definition, because two
  * surfaces say it: the fold line (`turnFold`, above) and the expand
@@ -1134,6 +1149,26 @@ const FOLD_TERM: Readonly<Record<string, readonly [string, string, string]>> = {
 	shell: ["ran", "shell command", "shell commands"],
 };
 
+/**
+ * R3h (fable, 2026-08-29) — WHICH TERMS COUNT OBJECTS.
+ *
+ * The rule, one sentence: a term that counts OBJECTS counts distinct
+ * objects; a term that counts ACTS counts calls. `read 2 files` after
+ * reading ONE file twice is a false sentence, and law 1.3 does not
+ * become optional because the falsehood is small. `ran 2 searches`
+ * after searching the same pattern twice is TRUE — the acts happened.
+ *
+ * The table sits beside FOLD_TERM so the two cannot drift: a tool whose
+ * noun is a thing ("files", "directories") belongs here; a tool whose
+ * noun is an act ("searches", "shell commands") does not.
+ */
+const FOLD_COUNTS_OBJECTS: ReadonlySet<string> = new Set(["read_file", "edit_file", "write_file", "list_dir"]);
+
+/** Does this tool's fold term count distinct targets rather than calls? */
+export function foldCountsObjects(name: string): boolean {
+	return FOLD_COUNTS_OBJECTS.has(name);
+}
+
 function foldTerm(name: string, n: number): string {
 	const t = FOLD_TERM[name];
 	if (t === undefined) return `${n} × ${displayVerb(name)}`;
@@ -1158,7 +1193,12 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 	// happen — on a segment fold, where a run is usually all reads or all
 	// edits, half the row was the half that said nothing. A term earns its
 	// place by having a count.
-	const meta = [`thought ${t.thoughtSeconds}s`, ...foldTerms(t.reads, t.edits, t.others)].join(" · ");
+	// R3h (fable, 2026-08-29): the THOUGHT term obeys the same zero-drop
+	// rule every other term got at R3b. It was exempt by accident — it
+	// was written before the rule — so a model that emits no thinking
+	// folded every turn of its life under `thought 0s`, a sentence about
+	// something that did not happen, in the lead position.
+	const meta = [...(t.thoughtSeconds > 0 ? [`thought ${t.thoughtSeconds}s`] : []), ...foldTerms(t.reads, t.edits, t.others)].join(" · ");
 	// R3f: the same one-row rule. This one is worse than the thinking
 	// fold's — the fold is a COMMITTED row, so a multi-line user message
 	// would desync the committed-line accounting permanently rather than
@@ -1182,17 +1222,56 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 	// words was unreachable by the key its siblings advertise. Found by
 	// an independent review (fable) and then by the paced-rollup gate,
 	// which got `kind: "none"` back from expandNext.
+	// R3h: the COMPACT tier. The owner's own sentence — "thought 17s ·
+	// read 4 files · listed 1 directory · ran 4 shell commands" — is 81
+	// cells with the key at W=80: one over, so the tail was cut off the
+	// exact shape this round exists to produce. The nouns shorten before
+	// anything is lost, which is the same "degrade, never truncate"
+	// ladder every other row here walks.
+	// A LADDER, cheapest first, and it stops as soon as the row fits: the
+	// owner's canonical sentence is ONE cell over at W=80, and spending
+	// every substitution to buy one cell would shorten words that had
+	// room. "directory" is the cheapest to lose (nobody misreads "dir");
+	// "commands" is next and still says what happened.
+	const COMPACT: readonly (readonly [string, string])[] = [
+		["directories", "dirs"],
+		["directory", "dir"],
+		["shell commands", "commands"],
+		["shell command", "command"],
+	];
+	const compactAll = (text: string): string => {
+		let out = text;
+		for (const [long, short] of COMPACT) out = out.replaceAll(long, short);
+		return out;
+	};
 	const KEY = " · ctrl+r";
 	const keyW = KEY.length;
 	const key = `${p.dim}${KEY}${p.reset}`;
 	if (words === "") {
 		const keyed = `${p.bold}✦${p.reset} ${meta}${key}`;
 		if (visibleWidth(keyed) <= W) return [keyed];
-		// the meta cuts with the honest "…"; below the width where even
-		// the key fits there is nothing to preserve and the row is a cut.
+		let tightMeta = meta;
+		for (const [long, short] of COMPACT) {
+			tightMeta = tightMeta.replaceAll(long, short);
+			const tight = `${p.bold}✦${p.reset} ${tightMeta}${key}`;
+			if (visibleWidth(tight) <= W) return [tight];
+		}
+		// the meta cuts with the honest "…" — the COMPACT form of it, so a
+		// cut row still carries as many whole terms as the width allows;
+		// below the width where even the key fits there is nothing to
+		// preserve and the row is a cut.
 		const room = W - 2 - keyW - 1;
-		if (room < 2) return [`${p.bold}✦${p.reset} ${widthCut(meta, Math.max(1, W - 3))}…`];
-		return [`${p.bold}✦${p.reset} ${widthCut(meta, room)}…${key}`];
+		if (room < 2) {
+			// R3h: and below FOUR columns even that row is 4 cells wide (the
+			// gutter, one character, the "…"), so invariant ① threw AT the
+			// widths this branch exists to serve — the same class DC-15
+			// closed in the thinking fold, still open here. A width with no
+			// room for the mark is a width with nothing to say: the row is
+			// a hard cut of what it would have said.
+			const cut = `${p.bold}✦${p.reset} ${widthCut(tightMeta, Math.max(1, W - 3))}…`;
+			return [visibleWidth(cut) <= W ? cut : cutLine(`${p.bold}✦${p.reset} ${tightMeta}`, W)];
+		}
+		return [`${p.bold}✦${p.reset} ${widthCut(tightMeta, room)}…${key}`];
 	}
 	// A9 (ruling R2, mock A): the user chip rides the fold — the human's
 	// words LEAD the one line, the same SGR-7 bracket as the live user
@@ -1206,13 +1285,28 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 	const cut = visibleWidth(words) > budget ? `${widthCut(words, budget)}…` : words;
 	const row = `${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${meta}${key}`;
 	if (visibleWidth(row) <= W) return [row];
+	// R3h: the same COMPACT ladder the wordless branch walks — the nouns
+	// shorten before the words or the metadata lose anything.
+	let chipMeta = meta;
+	for (const [long, short] of COMPACT) {
+		chipMeta = chipMeta.replaceAll(long, short);
+		const tighter = `${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${chipMeta}${key}`;
+		if (visibleWidth(tighter) <= W) return [tighter];
+	}
 	// the last resort: the METADATA gives way — the words hold their
 	// budget, the key holds its nine cells, the meta cuts with the honest
 	// "…"; invariant ① never trips at ANY width (a degenerate W's fold is
 	// a cut, never a crash).
 	const room = W - 8 - keyW - visibleWidth(cut);
-	if (room < 2) return [`${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(meta, Math.max(1, W - 8 - visibleWidth(cut)))}…`];
-	return [`${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(meta, room)}…${key}`];
+	if (room < 2) {
+		// R3h: the chip branch's own degenerate floor. The gutter, the
+		// bracket's pads, the join and the "…" are ten cells before a
+		// single character of content, so every width below ten threw
+		// invariant ① — see the wordless branch above for the same class.
+		const tail = `${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(compactAll(meta), Math.max(1, W - 8 - visibleWidth(cut)))}…`;
+		return [visibleWidth(tail) <= W ? tail : cutLine(`${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd}`, W)];
+	}
+	return [`${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(compactAll(meta), room)}…${key}`];
 }
 
 // ---- the bounded-block flow contract (W7, W8, W10) ----

@@ -18,6 +18,20 @@
  * phrasing is the owner's, from the shape they asked for: "thought 17s
  * · read 4 files · listed 1 directory · ran 4 shell commands".
  */
+/**
+ * DECLARED SUPERSESSION (R3h, 2026-08-29) — `thought 0s` IS DROPPED.
+ *
+ * R3b ruled that zero terms are dropped ("a sentence about things that
+ * did not happen"), and the THOUGHT term was exempt by accident: it was
+ * written before the rule and never revisited. So a model that emits no
+ * thinking — and these cases pass `endTurn(0)` — folded under `thought
+ * 0s` in the LEAD position, every turn of its life.
+ *
+ * The cases below claimed "the turn folded" by looking for `✦ thought`.
+ * That literal is no longer the fold's signature when the turn did no
+ * thinking, so each one now names the fold by what the turn actually
+ * DID — which is the claim they were making all along.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 import { Screen } from "./helpers/screen.js";
@@ -969,7 +983,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the fold's glyph is bold-wrapped, so the needle is taken on the
 		// stripped text — `✦` and `thought` are not contiguous in bytes.
 		const bare = frame.replace(/\x1b\[[0-9;]*m/g, "");
-		expect(bare).toContain("✦ thought 0s · read 5 files");
+		expect(bare).toContain("✦ read 5 files");
 		expect(bare.match(/ {2}read {2}\S/g) ?? []).toHaveLength(0);
 		// the fold joined the expand history: the expand shows the run's
 		// own projection — W13's title and the FULL per-call children, one

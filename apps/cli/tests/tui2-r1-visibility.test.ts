@@ -21,6 +21,14 @@
  * CALLS, so one search rendered "1 match" whenever the search matched
  * any other number. The phrasing is the owner's.
  */
+/**
+ * DECLARED SUPERSESSION (R3h, 2026-08-29) — `thought 0s` IS DROPPED, so
+ * the fold's lead term is OPTIONAL in these patterns. R3b ruled that a
+ * zero term is a sentence about something that did not happen; the
+ * thought term was exempt by accident (written before the rule). The
+ * faux model emits no thinking, so every fold here led with `thought
+ * 0s` — which is exactly the sentence the rule forbids.
+ */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -136,7 +144,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		// the exploration row is what `ctrl+r` opens. This case's subject —
 		// the PTY collapses and the PIPE never does — is unchanged, and the
 		// pipe leg below still proves the durable record is identical.
-		expect(out).toMatch(/✦ thought \d+s · read 3 files · ran 2 searches · listed 1 directory/);
+		expect(out).toMatch(/✦ (thought \d+s · )?read 3 files · ran 2 searches · listed 1 directory/);
 		expect(out).toContain("ctrl+r");
 
 		// the PIPE leg — no compositor, no row, byte-for-byte the line mode
