@@ -81,11 +81,15 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 		// moved. TUI2-R1 (D) froze the keys SENTENCE, not the alignment.
 		// hand-transcribed from the pre-move dispatch.ts (0.7.0, 6707f0a);
 		// /clear and /resume joined at the resume+clear mini-spec round —
-		// a DECLARED ADDITION, the pre-move rows keep their exact bytes
+		// a DECLARED ADDITION, the pre-move rows keep their exact bytes.
+		// /rewrap joined at R4 (C4d) — the same kind of declared addition.
+		// The computed stop is max(name) + 4 and `/compact` is still the
+		// longest name, so every pre-move row keeps its exact padding too.
 		expect(helpRows().map(plain)).toEqual([
 			"/help       print this list of commands",
 			"/think      show the last full thinking block",
 			"/last       show the most recent tool call's input and output",
+			"/rewrap     re-print the recent prose at the current width",
 			"/status     show session id, event count, and context estimate",
 			"/mode       show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)",
 			"/model      list model profiles; /model <name|provider/model> switches",
@@ -101,7 +105,7 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 	});
 
 	it("the last row still carries its own newline — two rows from one bodyLog call", () => {
-		expect(helpRows()).toHaveLength(10); // 8 extracted + the mini-spec pair
+		expect(helpRows()).toHaveLength(11); // 8 extracted + the mini-spec pair + /rewrap (R4)
 		expect(helpRows().filter((r) => r.includes("\n"))).toHaveLength(1);
 	});
 
