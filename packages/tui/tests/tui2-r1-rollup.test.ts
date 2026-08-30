@@ -231,7 +231,13 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// shows the LAST call only, so for this 22-call burst the promise
 		// was false 21 times over (VD-15). The footer now says only what
 		// the key does.
-		expect(body_).toContain("└ ctrl+r collapses");
+		// DECLARED SUPERSESSION (R3i phase 4): in the APPENDED path the
+		// footer said `ctrl+r collapses`, which is false there — a
+		// committed row is ink (ADR-0046 forbids rewriting history), so
+		// nothing about this block can be taken back and the next press
+		// opens the NEXT fold. The footer says what the key does. The
+		// LIVE toggle keeps the old wording, where it is true.
+		expect(body_).toContain("└ end of expansion · ctrl+r opens the next fold");
 		expect(body_).not.toContain("/last shows the full outputs");
 	});
 

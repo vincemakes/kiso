@@ -126,7 +126,13 @@ describe("TUI2-R1.5 ⑥ — one press, one cell (VD-7)", () => {
 		// five per-call ones — is unchanged and is what is asserted.
 		expect(lines).toContain("expanded · read 4 files · ran 1 search");
 		expect(lines).toContain("explored 4 files · 1 search");
-		expect(lines).toContain("ctrl+r collapses");
+		// DECLARED SUPERSESSION (R3i phase 4): in the APPENDED path the
+		// footer said `ctrl+r collapses`, which is false there — a
+		// committed row is ink (ADR-0046 forbids rewriting history), so
+		// nothing about this block can be taken back and the next press
+		// opens the NEXT fold. The footer says what the key does. The
+		// LIVE toggle keeps the old wording, where it is true.
+		expect(lines).toContain("end of expansion · ctrl+r opens the next fold");
 		expect(lines.match(/expanded ·/g) ?? []).toHaveLength(1);
 	});
 

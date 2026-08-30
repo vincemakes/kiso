@@ -717,6 +717,17 @@ class ToolExecution implements Component {
 			return out;
 		}
 		if (c.state === "done") {
+			// R3i phase 5: an answered (or declined) ask_user renders its
+			// OWN block — the questions and what the human said. The row
+			// it replaces was `  ask_user  (3 lines, 41.2s)`: an empty
+			// target and the answers thrown away, though the result
+			// already carried them. `askedBlock` returns [] for anything
+			// that is not the ask's own JSON, so a payload this renderer
+			// did not write can never be guessed at.
+			if (c.name === "ask_user" && c.reason === null && !c.isError) {
+				const asked = askedBlock(c.resultText, c.startedAt !== null && c.doneAt !== null ? (c.doneAt - c.startedAt) / 1000 : 0, W);
+				if (asked.length > 0) return asked;
+			}
 			// W19: the pinned deny — the claimed shape verbatim: the FULL
 			// call name (the denial names the call), the target, the reason
 			// in the W4 parentheses idiom, no timing (the call never ran).
@@ -1239,6 +1250,61 @@ export function foldTerms(reads: number, edits: number, others: readonly [string
  * reference implementation uses one. The moving mark and the present
  * tense already say it twice.
  */
+/**
+ * R3i phase 5 — THE ANSWERED QUESTION'S BLOCK.
+ *
+ * A settled `ask_user` used to render `  ask_user  (3 lines, 41.2s)` —
+ * an empty target and the answers discarded, though the tool_result
+ * already carried them. The owner asked for this block by pointing at
+ * one: after they answer, there is a display for that too.
+ *
+ *   asked 2 questions (answered, 41.2s)
+ *   │ deploy target → staging
+ *   │ retry policy → give up after 3 attempts (typed)
+ *
+ * The question is dim, the join is dim, the ANSWER is at body strength
+ * — strip every escape and every fact is still there (law 1.2: colour
+ * is emphasis, never information). A typed answer says `(typed)`,
+ * because where an answer came from is a fact about it.
+ *
+ * It is WORDS, not work (law 1.7): it never folds into a stretch line,
+ * because the one thing a summary must not do is speak for the human.
+ *
+ * A result that is not the ask's own JSON yields NOTHING. This renderer
+ * reads a payload it did not write, and a guess about what it means
+ * would be a row the product cannot stand behind.
+ */
+export function askedBlock(resultText: string, seconds: number, W: number): string[] {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(resultText);
+	} catch {
+		return [];
+	}
+	if (parsed === null || typeof parsed !== "object") return [];
+	const asked = parsed as { answers?: { q?: string; choice?: string; choices?: string[]; custom?: string }[]; declined?: string[] };
+	const p = palette();
+	const head = (n: number, outcome: string): string =>
+		cutLine(`  ${p.bold}asked${p.reset} ${n} ${n === 1 ? "question" : "questions"} ${p.dim}(${outcome}, ${seconds.toFixed(1)}s)${p.reset}`, W);
+	const row = (body: string): string => cutLine(`  ${p.dim}│${p.reset} ${body}`, W);
+
+	if (Array.isArray(asked.declined) && asked.declined.length > 0) {
+		// the honest decline record: WHAT went unanswered, and what the
+		// choices had been — the panel already computes both.
+		return [head(asked.declined.length, "declined"), ...asked.declined.map((q) => row(`${p.dim}${escapeTerminal(q)}${p.reset}`))];
+	}
+	if (!Array.isArray(asked.answers) || asked.answers.length === 0) return [];
+	return [
+		head(asked.answers.length, "answered"),
+		...asked.answers.map((a) => {
+			const q = escapeTerminal(String(a.q ?? ""));
+			const typed = typeof a.custom === "string" && a.custom !== "";
+			const value = typed ? a.custom! : Array.isArray(a.choices) ? a.choices.join(", ") : String(a.choice ?? "");
+			return row(`${p.dim}${q} →${p.reset} ${escapeTerminal(value)}${typed ? `${p.dim} (typed)${p.reset}` : ""}`);
+		}),
+	];
+}
+
 export interface StretchTerms {
 	/** the segment's OWN measured thinking seconds; 0 drops the term */
 	readonly thoughtSeconds: number;

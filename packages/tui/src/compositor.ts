@@ -720,6 +720,18 @@ export class Body {
 			// of a target the term has already counted; an ACT-counting
 			// tool (a search, a shell command) always bumps, because two
 			// searches for the same pattern really are two searches.
+			// R3i phase 5 — an ANSWER is words, and words do not fold (law
+			// 1.7). `ask_user` closes the open stretch exactly as prose
+			// does, and never joins one: absorbed into `1 × ask_user`,
+			// what the human said would be gone from the screen — and the
+			// one thing a summary must not do is speak for the human.
+			if (name === "ask_user") {
+				// no stamp: it belongs to NO stretch, so no fold can speak
+				// for it — the same standing a block of prose has.
+				closeSegment(turn, Date.now());
+				this.#mark();
+				return;
+			}
 			const target = foldCountsObjects(name) ? toolTarget(name, input) : null;
 			const bump = (rec: { seen: Map<string, Set<string>> }): boolean => {
 				if (target === null) return true;
@@ -1305,7 +1317,24 @@ export class Body {
 				t.calls.find(([n]) => n === "edit_file")?.[1] ?? 0,
 				t.calls.filter(([n]) => n !== "read_file" && n !== "edit_file"),
 			);
-			return { kind: "appended", lines: [`${p.bold}✦${p.reset} expanded · ${escapeTerminal(head.length === 0 ? "thinking" : head.join(" · "))} · ${back}`, ...rows] };
+			// R3i phase 4 — THE FOOTER TELLS THE TRUTH ABOUT THIS PATH.
+			//
+			// The rows come from the rollup's own projection, whose last
+			// row reads `└ ctrl+r collapses` — true where it was written
+			// (the LIVE toggle, which really does close again) and false
+			// here. A committed row is ink: ADR-0046 forbids rewriting
+			// history, so nothing about this block can be taken back. The
+			// next press opens the NEXT fold, and the row now says so.
+			const closing = rows.length > 0 && /ctrl\+r collapses/.test(rows[rows.length - 1] ?? "");
+			const body = closing ? rows.slice(0, -1) : rows;
+			return {
+				kind: "appended",
+				lines: [
+					`${p.bold}✦${p.reset} expanded · ${escapeTerminal(head.length === 0 ? "thinking" : head.join(" · "))} · ${back}`,
+					...body,
+					`  ${p.dim}└ end of expansion · ctrl+r opens the next fold${p.reset}`,
+				],
+			};
 		}
 		if (cell.kind !== "tool") return { kind: "none" };
 		if (cell.rolled !== null) {
@@ -2417,6 +2446,10 @@ export class Body {
 	#held(i: number): boolean {
 		const cell = this.#cells[i]!;
 		if (cell.kind !== "thinking" && cell.kind !== "tool") return false;
+		// R3i phase 5: an answered question is WORDS (law 1.7). It commits
+		// when it is done, like prose, and is never held for a fold that
+		// is not going to speak for it.
+		if (cell.kind === "tool" && cell.name === "ask_user") return false;
 		const turn = cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
 		if (turn === undefined || turn !== this.#turns[this.#turns.length - 1]) return false;
 		// R3b (owner, 2026-08-27) — the hold is the SEGMENT's, not the

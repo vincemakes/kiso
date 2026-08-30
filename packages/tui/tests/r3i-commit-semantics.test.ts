@@ -257,3 +257,61 @@ describe("R3i ③ — the hold, and what the key answers", () => {
 		expect(second).not.toContain("npm run check");
 	});
 });
+
+describe("R3i ④ — an answer is WORDS, and words do not fold", () => {
+	const ANSWERS = JSON.stringify({
+		answers: [
+			{ q: "deploy target", choice: "staging" },
+			{ q: "retry policy", custom: "give up after 3" },
+		],
+	});
+
+	it("the asked block survives the fold, and the human's answers with it", () => {
+		const { body, rows, tick } = makeBody();
+		body.enter();
+		body.userLine("set up the release");
+		call(body, "read_file", "a", { path: "a.ts" });
+		call(body, "read_file", "b", { path: "b.ts" });
+		body.toolStart("ask_user", "q", { questions: [] });
+		body.toolRunning("q");
+		body.toolResult("q", { content: ANSWERS, isError: false });
+		body.textAppend("Staging it is.\n");
+		body.textEnd();
+		body.endTurn(0);
+		tick();
+		const r = rows().join("\n");
+		// law 1.7: work folds, WORDS do not — and an answer is the one
+		// kind of words the human wrote. Absorbed into `1 × ask_user`,
+		// what they said would be gone from the screen entirely.
+		expect(r).toContain("asked 2 questions (answered");
+		expect(r).toContain("deploy target → staging");
+		expect(r).toContain("retry policy → give up after 3 (typed)");
+		expect(r).not.toContain("× ask_user");
+	});
+
+	it("it CLOSES the stretch, exactly as prose does — the work before it still folds", () => {
+		const { body, rows, tick } = makeBody();
+		body.enter();
+		body.userLine("x");
+		call(body, "read_file", "a", { path: "a.ts" });
+		call(body, "read_file", "b", { path: "b.ts" });
+		body.toolStart("ask_user", "q", { questions: [] });
+		body.toolRunning("q");
+		body.toolResult("q", { content: ANSWERS, isError: false });
+		call(body, "shell", "s", { command: "npm run check" });
+		call(body, "list_dir", "l", { path: "src" });
+		body.textAppend("done.\n");
+		body.textEnd();
+		body.endTurn(0);
+		tick();
+		const r = rows();
+		const folds = r.filter(isFold);
+		expect(folds).toHaveLength(2); // the reads before it, the work after it
+		expect(folds[0]).toContain("read 2 files");
+		expect(folds[1]).toContain("ran 1 shell command");
+		// ...and the block stands between them
+		const askAt = r.findIndex((l) => l.includes("asked 2 questions"));
+		expect(askAt).toBeGreaterThan(r.findIndex(isFold));
+		expect(askAt).toBeLessThan(r.findIndex((l, i) => i > askAt - 1 && isFold(l)) + 1 || r.length);
+	});
+});
