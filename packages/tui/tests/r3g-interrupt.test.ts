@@ -37,6 +37,24 @@
  * phrasing is the owner's, from the shape they asked for: "thought 17s
  * · read 4 files · listed 1 directory · ran 4 shell commands".
  */
+/**
+ * DECLARED SUPERSESSION (R3i phase 3, owner-ruled) — TROUBLE FOLDS,
+ * NAMED.
+ *
+ * Everything below about an interrupt or a denial STOPPING a fold is
+ * superseded. Law 1.3 governs marks versus words and never granted a
+ * failure a permanent row; law 1.7 says "Work folds, words do not". So
+ * the work folds and the outcome WORDS ride the fold line — which call,
+ * and what happened — and the stderr is behind the key, because it is
+ * detail, not outcome. Measured cost of the old rule: the 0.16.7
+ * dogfood hit 2 failures in 28 calls and produced ZERO fold lines.
+ *
+ * What these cases still hold, and what they were written for, is
+ * unchanged: an interrupt must not park the commit pointer, a denial
+ * must not be invisible, and a rollup must not speak for a run it did
+ * not finish. Only the shape of "must not be invisible" moved — from a
+ * row that stands to a clause that is named.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 
@@ -95,7 +113,7 @@ describe("R3g ① — an interrupt does not park the commit pointer", () => {
 		// (the fold rides the turn's user chip — A9 — so the line reads
 		// `✦  second  · thought 4s · 2 reads`; the claim is the summary,
 		// not the chip.)
-		expect(plain(writes.join(""))).toContain("· thought 4s · read 2 files");
+		expect(plain(writes.join(""))).toContain("read 2 files");
 	});
 
 	it("the abandoned row keeps its words — the interruption is NAMED, never silently done", () => {
@@ -109,7 +127,7 @@ describe("R3g ① — an interrupt does not park the commit pointer", () => {
 		expect(plain(writes.join(""))).toContain("interrupted");
 	});
 
-	it("and that turn does NOT fold — an interruption is trouble, and trouble keeps every row", () => {
+	it("and that turn DOES fold — the interruption is named on the line, not left as a row", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		body.userLine("first");
@@ -119,8 +137,8 @@ describe("R3g ① — an interrupt does not park the commit pointer", () => {
 		body.endTurn(1);
 		tick();
 		const frame = plain(writes.join(""));
-		expect(frame).not.toMatch(NO_FOLD);
-		expect(frame).toContain("x.ts");
+		expect(frame).toContain("1 interrupted"); // the fold ADMITS it
+		expect(frame).toContain("read 1 file"); // and still says what it did
 	});
 });
 
@@ -135,7 +153,7 @@ describe("R3g ② — a denial is trouble even when it carries no reason string"
 		body.toolResult("b", { content: "not permitted", isError: false });
 		body.endTurn(3);
 		tick();
-		expect(plain(writes.join(""))).not.toMatch(NO_FOLD);
+		expect(plain(writes.join(""))).toContain("1 denied");
 	});
 
 	it("the same turn with the call APPROVED folds — the verdict is what makes the difference", () => {
@@ -148,7 +166,7 @@ describe("R3g ② — a denial is trouble even when it carries no reason string"
 		body.toolResult("b", { content: "ok", isError: false });
 		body.endTurn(3);
 		tick();
-		expect(plain(writes.join(""))).toContain("· thought 3s · read 1 file · edited 1 file");
+		expect(plain(writes.join(""))).toContain("read 1 file · edited 1 file");
 	});
 });
 
@@ -174,8 +192,17 @@ describe("R3g ③ — the rollup never speaks for a run it did not finish", () =
 		body.endTurn(0);
 		tick();
 		const frame = plain(writes.join(""));
-		expect(frame).not.toContain("explored"); // no sentence over a failure
-		expect(frame).toContain("one.ts"); // every member keeps its own row
+		// R3i phase 3: the stretch FOLDS and names the failure, so the
+		// clean members are absorbed by design — what must survive
+		// without a keypress is that trouble happened and WHICH call.
+		expect(frame).not.toContain("explored"); // no rollup sentence over a failure
+		expect(frame).toContain("read 1 file"); // the work it did
+		expect(frame).toContain("listed 1 directory"); // ...all of it
+		// the search FAILED, so it is not counted as work done — it is
+		// counted in the clause, which is where a call that did nothing
+		// belongs.
+		expect(frame).not.toContain("ran 1 search");
+		expect(frame).toContain("1 failed");
 	});
 
 	/**

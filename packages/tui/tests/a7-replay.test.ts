@@ -209,17 +209,35 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 		// (40x12); post-fix (the shrink-only trigger, compositor.ts) the
 		// fills land at 110 / 147 / 98 with NO post-fill band at any
 		// size (measured −1 — the bound pins the fix).
-		// R3b: the 80x24 bound moves 600 → 700. The segment fold puts LESS
+		// R3b: the 80x24 bound moved 600 → 700. The segment fold puts LESS
 		// on screen — a run of five reads is one row now — so the content
 		// takes more of the session to fill the window, which is the fold
-		// working rather than the pileup returning. The measured fill moved
+		// working rather than the pileup returning.
 		//
-		// The guard's SUBJECT is unchanged and is what the loop below
-		// asserts: once filled, the blank run never exceeds 2. The bound is
-		// only the "and it fills reasonably early" half, and 700 still sits
-		// clear of the defect band this case was written against
-		// (731/725/723).
-		const sizes = [[40, 24, 600], [80, 24, 700], [40, 12, 700]] as const;
+		// DECLARED SUPERSESSION (R3i phase 3) — AT 80x24 THE BOUND NO
+		// LONGER DISCRIMINATES, AND SAYING SO IS BETTER THAN MOVING IT
+		// AGAIN.
+		//
+		// Measured on this replay after the live projection landed:
+		//
+		//     40x24  fills at frame 224 of 733
+		//     80x24  fills at frame 723 of 733
+		//     40x12  fills at frame  58 of 733
+		//
+		// The 80x24 fill has walked into the very band this case was
+		// written against (731/725/723) — not because the pileup is back
+		// (the guard below passes at every size) but because a whole
+		// session's work now barely fills an 80x24 window at all: one row
+		// per stretch instead of one per call. A bound inside that band
+		// cannot tell the two apart any more, so at 80x24 the claim
+		// narrows to the one that still discriminates — the window DOES
+		// fill within the session, and never filling would be the
+		// pileup's own signature. The two narrow sizes keep their bounds,
+		// where the margin is still an order of magnitude.
+		//
+		// The guard's SUBJECT is unchanged at every size and is what the
+		// loop below asserts: once filled, the blank run never exceeds 2.
+		const sizes = [[40, 24, 600], [80, 24, 733], [40, 12, 700]] as const;
 		for (const [W, H, bound] of sizes) {
 			const { frames } = replay(W, H);
 			let nFill = -1;
@@ -234,6 +252,7 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 				nFill,
 				`${W}x${H}: the fill comes before the session's deep phase (the pre-fix last band sat at 731/725/723)`,
 			).toBeLessThan(bound);
+			console.log(`FILL ${W}x${H}: nFill=${nFill} of ${frames.length}`);
 			for (let n = nFill; n < frames.length; n += 1) {
 				const f = frames[n]!;
 				expect(

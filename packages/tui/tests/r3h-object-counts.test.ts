@@ -20,6 +20,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
+import { Screen } from "./helpers/screen.js";
 
 const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, "\n");
 function makeBody(W = 100) {
@@ -32,10 +33,21 @@ const call = (body: Body, name: string, id: string, input: Record<string, unknow
 	body.toolRunning(id);
 	body.toolResult(id, { content: "x", isError: false });
 };
-const foldLine = (writes: string[]): string =>
-	plain(writes.join(""))
-		.split("\n")
-		.find((l) => l.includes("thought")) ?? "(no fold line)";
+/**
+ * The fold line, read off the SCREEN rather than out of the write
+ * stream. Two reasons, both found the hard way: a stretch with no
+ * thinking prints no thought term at all (R3b's zero-drop rule), so
+ * keying on the word "thought" missed the very folds these cases are
+ * about; and R3i phase 3 changed WHEN rows commit, and with it which
+ * writes carry a real newline — a helper that split the byte stream on
+ * "\n" was reading rows that only sometimes exist. The VT emulator is
+ * what the human sees, so it is what the gate reads.
+ */
+const foldLine = (writes: string[]): string => {
+	const s = new Screen(100, 40);
+	s.feed(writes.join(""));
+	return s.rows.map((r) => r.join("").replace(/\s+$/, "")).find((l) => l.trimStart().startsWith("✦ ")) ?? "(no fold line)";
+};
 
 beforeEach(() => {
 	vi.useFakeTimers();

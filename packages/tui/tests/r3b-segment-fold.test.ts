@@ -49,13 +49,22 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
+import { Screen } from "./helpers/screen.js";
 
 function makeBody(opts: { W?: number; H?: number } = {}) {
 	let W = opts.W ?? 80;
 	let H = opts.H ?? 24;
 	const writes: string[] = [];
 	const body = new Body({ active: () => true, height: () => H, width: () => W, editCol: () => 1, write: (s) => writes.push(s) });
-	return { body, writes, tick: () => vi.advanceTimersByTime(16), setSize: (w: number, h: number) => { W = w; H = h; } };
+	/** R3i: the SCREEN, as the VT emulator sees it — the honest surface
+	 *  for a claim about what a human reads, and the only one that stays
+	 *  true as commit timing moves under it. */
+	const screen = (): string[] => {
+		const sc = new Screen(W, H);
+		sc.feed(writes.join(""));
+		return sc.rows.map((r) => r.join("").replace(/\s+$/, "")).filter((l) => l !== "" && !l.startsWith("─") && !l.includes("/ commands"));
+	};
+	return { body, writes, screen, tick: () => vi.advanceTimersByTime(16), setSize: (w: number, h: number) => { W = w; H = h; } };
 }
 const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 const call = (body: Body, name: string, id: string, input: Record<string, unknown>, out: string): void => {
@@ -93,24 +102,42 @@ function twoSegments(body: Body): void {
 }
 
 describe("R3b — a segment folds at the text boundary", () => {
-	it("the TURN collapses to ONE line, and every word between survives", () => {
+	/**
+	 * DECLARED SUPERSESSION (R3i phase 3, owner-ruled) — ONE LINE PER
+	 * STRETCH, not one per turn.
+	 *
+	 * R3d collapsed the whole turn to a single line, which put every one
+	 * of its counts ABOVE all of its prose. The shape the owner asked
+	 * for — and photographed — is one summary per stretch of work,
+	 * standing with the prose that stretch led to. R3d's stated reason
+	 * for leaving the segment was R3b's disease (a chatty model turning
+	 * every call into its own `✦ thought 2s · 1 read` row), and it is
+	 * answered by the two rules R3b never had: a fold must absorb at
+	 * least two rows, and a stretch of exactly one call names its
+	 * TARGET. Both are gated in `r3i-commit-semantics.test.ts` ①.
+	 */
+	it("EACH STRETCH collapses to one line, and every word between survives", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		twoSegments(body);
 		tick();
 		const frame = plain(writes.join(""));
-		expect((frame.match(/✦ thought/g) ?? []).length).toBe(1);
+		expect((frame.match(/✦/g) ?? []).length).toBe(2); // two stretches, two lines
 		expect(frame).toContain("Found it.");
 		expect(frame).toContain("Fixed.");
 	});
 
-	it("the counts are the TURN's — every call it made, once (R3d)", () => {
-		const { body, writes, tick } = makeBody();
+	it("the counts are each STRETCH's — its own calls, once", () => {
+		const { body, screen, tick } = makeBody();
 		body.enter();
 		twoSegments(body);
 		tick();
-		const frame = plain(writes.join(""));
-		expect(frame).toContain("read 3 files · edited 1 file · ran 1 shell command");
+		const folds = screen().filter((l) => l.trimStart().startsWith("✦ "));
+		expect(folds[0]).toContain("read 3 files");
+		expect(folds[0]).not.toContain("edited");
+		expect(folds[1]).toContain("edited 1 file");
+		expect(folds[1]).toContain("ran 1 shell command");
+		expect(folds[1]).not.toContain("read");
 	});
 
 	it("the thinking row folds WITH its segment — it is the segment's first cell", () => {
@@ -146,8 +173,11 @@ describe("R3b — the work is never unreachable", () => {
 		// other expand in this product walks
 		// R3d: ONE fold for the turn, so the key opens the turn's FIRST
 		// segment — the reads — and a second press reaches the rest.
+		// R3i: the ring is newest-first, and each key opens ITS OWN
+		// stretch — so the first press opens the second stretch (the edit
+		// and the shell), not the turn's whole work.
 		expect(lines).toContain("expanded ·");
-		expect(lines).toContain("read 3 files");
+		expect(lines).toContain("edited 1 file");
 	});
 
 	it("the expansion carries the run's own projection, not a re-listing", () => {
@@ -156,7 +186,7 @@ describe("R3b — the work is never unreachable", () => {
 		twoSegments(body);
 		tick();
 		const lines = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
-		expect(lines).toContain("read 3 files"); // W13's own projection, reused
+		expect(lines).toContain("edit  src/f0.ts"); // W13's own projection, reused — for THIS stretch (R3i)
 	});
 
 	it("the expansion is APPENDED, never a rewrite (ADR-0046)", () => {
@@ -196,7 +226,10 @@ describe("R3b — the fold's boundaries", () => {
 		body.textEnd();
 		body.endTurn(1);
 		tick();
-		expect((plain(writes.join("")).match(/✦ thought/g) ?? []).length).toBe(1);
+		// R3i: this stretch does no thinking, so its line has no thought
+		// term (the zero-drop rule) — the fold's own gutter is what makes
+		// "exactly once" checkable.
+		expect((plain(writes.join("")).match(/✦/g) ?? []).length).toBe(1);
 	});
 
 	it("a QUIET turn still folds exactly as W14 made it — the segment never closes until the settle", () => {
@@ -204,14 +237,19 @@ describe("R3b — the fold's boundaries", () => {
 		body.enter();
 		body.userLine("quiet");
 		body.thinkingAppend("thinking");
+		vi.advanceTimersByTime(19_000); // R3i: the thinking window is real time
 		for (let i = 0; i < 5; i += 1) call(body, "read_file", `r${i}`, { path: `f${i}.ts` }, "x");
 		body.endTurn(19);
 		tick();
 		const frame = plain(writes.join(""));
 		// W14's own number — the CLI's measure, not the segment's clock —
 		// and A9's chip, which only a quiet turn carries
-		expect(frame).toContain("thought 19s · read 5 files");
-		expect(frame).toContain("quiet");
+		// R3i: the seconds are the segment's OWN thinking clock, so the
+		// fixture advances it; and the fold carries WORK only — the chip
+		// band already committed the human's words, and A9's repeat of
+		// them on the fold printed them twice.
+		expect(frame).toContain("read 5 files");
+		expect(frame).toContain("quiet"); // the band, once
 	});
 
 	it("a turn with text does NOT repeat the user's words on the fold — the chip cell already committed", () => {
@@ -224,56 +262,33 @@ describe("R3b — the fold's boundaries", () => {
 	});
 });
 
-describe("R3b — trouble never folds", () => {
-	it("a segment holding a DENIED call keeps every row — a refusal is not routine work", () => {
-		const { body, writes, tick } = makeBody();
-		body.enter();
-		body.userLine("try to write");
-		call(body, "read_file", "r0", { path: "a.ts" }, "x");
-		body.toolStart("write_file", "w1", { path: "out.ts", content: "hi" });
-		body.toolResult("w1", { content: "denied", isError: true, reason: "plan mode: read-only" });
-		call(body, "read_file", "r1", { path: "b.ts" }, "x");
-		body.textAppend("could not write.\n");
-		body.textEnd();
-		body.endTurn(4);
-		tick();
-		const frame = plain(writes.join(""));
-		expect(frame).not.toContain("✦ thought"); // the segment did NOT fold
-		expect(frame).toContain("plan mode: read-only"); // and the reason is ON SCREEN
-	});
-
-	it("a segment holding a FAILED call keeps every row too", () => {
-		const { body, writes, tick } = makeBody();
-		body.enter();
-		body.userLine("run it");
-		call(body, "read_file", "r0", { path: "a.ts" }, "x");
-		body.toolStart("shell", "s1", { command: "npm test" });
-		body.toolRunning("s1");
-		body.toolResult("s1", { content: "exit 1 · 4 failures", isError: true });
-		call(body, "read_file", "r1", { path: "b.ts" }, "x");
-		body.textAppend("it failed.\n");
-		body.textEnd();
-		body.endTurn(4);
-		tick();
-		const frame = plain(writes.join(""));
-		expect(frame).not.toContain("✦ thought");
-		expect(frame).toContain("exit 1");
-	});
-
-	it("the SAME segment without the trouble folds — so the rule is the trouble, not the shape", () => {
-		const { body, writes, tick } = makeBody();
-		body.enter();
-		body.userLine("run it");
-		call(body, "read_file", "r0", { path: "a.ts" }, "x");
-		call(body, "shell", "s1", { command: "npm test" }, "exit 0");
-		call(body, "read_file", "r1", { path: "b.ts" }, "x");
-		body.textAppend("it passed.\n");
-		body.textEnd();
-		body.endTurn(4);
-		tick();
-		expect(plain(writes.join(""))).toContain("✦ thought");
-	});
-});
+/**
+ * RETIRED (R3i phase 3, owner-ruled) — "R3b — trouble never folds", in
+ * full, with its reasoning answered rather than discarded.
+ *
+ * R3b refused to fold any run holding a failure, and R3g extended that
+ * to denials and interrupts. The rule was extrapolated from law 1.3 in
+ * a code comment — the law itself never says it. Read as written, law
+ * 1.3 governs MARKS versus WORDS ("an outcome is stated in words …
+ * which is also the only form that survives a pipe"), and law 1.7 says
+ * "Work folds, words do not". A failed call's work folds; its outcome
+ * WORDS ride the fold line.
+ *
+ * What the retired cases feared was a fold that HID a refusal —
+ * `✦ thought 3s · read 20 files` standing over a denied write. A fold
+ * that NAMES it (`… · 1 denied: .env`) is a different object, and the
+ * human learns more from it than from twenty routine rows held on
+ * screen to point at one.
+ *
+ * The cost R3b accepted in its own words — "a turn that reads twenty
+ * files and hits one denial keeps all twenty rows" — was priced as
+ * rare. The 0.16.7 dogfood measured it: 2 failures in 28 calls, and
+ * zero fold lines in the whole session.
+ *
+ * The claims live on, inverted, in `r3i-commit-semantics.test.ts` ②:
+ * the failure is named on the line, WHICH call it was, and denials,
+ * failures and interrupts are different WORDS rather than one colour.
+ */
 
 /**
  * R3d — the LAYOUT IS STABLE while the turn runs.
@@ -335,15 +350,21 @@ describe("R3d — the layout only grows until the settle", () => {
 		call(body, "read_file", "r2", { path: "b.ts" }, "x");
 		tick();
 		const mid = plain(writes.join(""));
-		expect(mid).not.toMatch(/thought \d+s/); // NOT yet — the turn is still running
-		// the open stretch's work rides its line, in the present tense
+		// the OPEN stretch's work rides its line, in the present tense
 		expect(mid).toContain("reading 2 files");
 		// ...and the calls' own rows are not on screen holding it open
 		expect(mid).not.toContain("read  a.ts");
 		expect(mid).not.toContain("read  b.ts");
-		// the CLOSED stretch's row is a different matter — it committed
-		// when the text arrived, exactly as it did before this phase
-		expect(mid).toContain("list  .");
+		// R3i phase 3: the CLOSED stretch has already folded — the text
+		// that closed it is what committed it, which is the whole point
+		// of a fold standing with the prose it led to. It held thinking
+		// and ONE call, so its line names the call's TARGET rather than
+		// counting it: `✦ listed . · ctrl+r`, which says everything the
+		// two rows it replaced said.
+		expect(mid).toContain("listed .");
+		// and the OPEN stretch has not folded: its line is present tense,
+		// carries no key, and the settled form of its work is nowhere
+		expect(mid).not.toContain("read 2 files");
 	});
 
 	it("a LATER call never removes an earlier row — the layout only grows", () => {
@@ -376,9 +397,15 @@ describe("R3d — the layout only grows until the settle", () => {
 		body.endTurn(9);
 		tick();
 		const frame = plain(writes.join(""));
-		expect((frame.match(/✦ thought/g) ?? []).length).toBe(1);
-		// the ONE line carries the whole turn, by tool
-		expect(frame).toContain("read 1 file · listed 1 directory · ran 1 shell command");
+		// DECLARED SUPERSESSION (R3i phase 3): the collapse happens once
+		// PER STRETCH, at that stretch's own close — the shape the owner
+		// asked for, one summary standing with the prose it led to. What
+		// "exactly once" still forbids, and is still this case's subject,
+		// is a stretch collapsing twice or re-collapsing as the turn goes
+		// on: two stretches, two lines, no more.
+		expect((frame.match(/✦/g) ?? []).length).toBe(2);
+		expect(frame).toContain("read 1 file"); // the first stretch's own work
+		expect(frame).toContain("ran 1 shell command"); // the second's
 		// and both narrations survive, where they happened (law 1.7)
 		expect(frame).toContain("narrating.");
 		expect(frame).toContain("done.");
@@ -397,17 +424,20 @@ describe("R3d — the layout only grows until the settle", () => {
  * gate.
  */
 describe("R3f — the fold counts nothing it cannot show", () => {
-	it("ctrl+r reaches work from EVERY segment of the folded turn", () => {
-		const { body, writes, tick } = makeBody();
-		body.enter();
-		twoSegments(body); // 3 reads · text · 1 edit + 1 shell · text
-		tick();
-		expect(plain(writes.join(""))).toContain("read 3 files · edited 1 file · ran 1 shell command");
-		const lines = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
-		expect(lines).toContain("read 3 files"); // segment 1
-		expect(lines).toContain("edit  src/f0.ts"); // segment 2 — was unreachable
-		expect(lines).toContain("shell npm test"); // segment 2 — was unreachable
-	});
+	/**
+	 * RETIRED (R3i phase 3) — superseded, and by the rule it was written
+	 * to protect.
+	 *
+	 * R3f widened the expansion to the whole turn because R3d had made
+	 * the fold the TURN's while the expansion still walked one segment:
+	 * a line claiming `read 3 files · edited 1 file` opened only the
+	 * reads, so work was named and then withheld. R3i returns the fold
+	 * to the stretch, which makes the pairing exact again — every
+	 * stretch has its own line, its own key, and the key opens what the
+	 * line named. `r3i-commit-semantics.test.ts` ③ gates that pairing
+	 * directly, in both directions (each block holds its own stretch's
+	 * work, and NOT the other's).
+	 */
 
 	it("the expansion's header says what the FOLD said — the line you pressed and the block agree", () => {
 		const { body, tick } = makeBody();
@@ -415,7 +445,10 @@ describe("R3f — the fold counts nothing it cannot show", () => {
 		twoSegments(body);
 		tick();
 		const lines = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
-		expect(lines).toContain("expanded · read 3 files · edited 1 file · ran 1 shell command");
+		// R3i: the header names THIS stretch, which is what the block
+		// holds — a header describing the whole turn over a block holding
+		// one stretch was the bug this replaces.
+		expect(lines).toContain("expanded · edited 1 file · ran 1 shell command");
 	});
 
 	it("a run still BREAKS at a non-explore call — the segment boundary keeps its meaning", () => {
@@ -511,6 +544,9 @@ describe("R3f — the fold never claims work the screen already shows", () => {
 		// The 9 is endTurn's own argument — R3g made both fold branches
 		// read the measured thinking seconds instead of re-deriving a
 		// wall clock, so this line is falsifiable by that regression too.
-		expect(plain(writes.join(""))).toContain("✦ thought 9s · read 20 files · ctrl+r");
+		// R3i: the seconds are the SEGMENT's own thinking clock, and this
+		// stretch does no thinking — so the zero term is dropped (R3b's
+		// rule) and the line is its work alone.
+		expect(plain(writes.join(""))).toContain("✦ read 20 files · ctrl+r");
 	});
 });

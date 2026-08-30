@@ -1012,6 +1012,7 @@ describe("TUI v6 — the one compositor", () => {
 		body.enter();
 		body.userLine("quiet turn");
 		body.thinkingAppend("thinking quietly");
+		vi.advanceTimersByTime(19_000); // R3i: the seconds are the segment's own thinking clock
 		for (let i = 0; i < 5; i += 1) {
 			body.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
 			body.toolRunning(`r${i}`);
@@ -1020,7 +1021,15 @@ describe("TUI v6 — the one compositor", () => {
 		// the HOLD: done cells of an open text-less turn stay live — the
 		// frame commits nothing of them (no fold line, no rollup)
 		tick();
-		expect(writes.join("")).not.toContain("\u2726");
+		// R3i phase 3: the glyph alone cannot answer "has this committed".
+		// The live mark walks the twinkle's own cycle (§5.2's set), and
+		// ✦ is one of its frames — so a running stretch reads `✦ reading
+		// 5 files` for one 200ms frame, settled GLYPH with present tense.
+		// §4.1 blesses the shared glyph ("the mark that runs is the mark
+		// that stays"); what distinguishes the settled line is the TENSE
+		// and the KEY, and the key is the honest observable here because
+		// only a committed fold carries one.
+		expect(writes.join("")).not.toContain("ctrl+r");
 		// DECLARED SUPERSESSION (R3i phase 2): "no summary before the
 		// settle" is no longer the claim — there IS a live summary, and
 		// it is the whole point of the projection: the stretch's one
@@ -1048,6 +1057,9 @@ describe("TUI v6 — the one compositor", () => {
 		// the half saying nothing. A term earns its place by having a
 		// count. Every other claim in this case is unchanged.
 		expect(frame).toContain("\u2726");
+		// R3i phase 3: the seconds are the SEGMENT's own thinking clock,
+		// so the fixture advances it rather than handing a number to
+		// endTurn.
 		expect(frame).toContain("thought 19s · read 5 files");
 		expect(frame).not.toContain("no edits");
 		// the members folded away — no individual read rows
@@ -1066,77 +1078,36 @@ describe("TUI v6 — the one compositor", () => {
 		mix.body.toolResult("s1", { content: "hi", isError: false });
 		mix.body.endTurn(7);
 		mix.tick();
-		expect(mix.writes.join("")).toContain("thought 7s · edited 1 file · ran 1 shell command");
+		// R3i phase 3: this stretch does no thinking, so its line has no
+		// thought term (R3b's zero-drop rule, which the thought term was
+		// exempt from by accident until R3h). The mixed counts — the
+		// subject of this leg — are unchanged.
+		expect(mix.writes.join("")).toContain("edited 1 file · ran 1 shell command");
 	});
 
-	it("A9 (ruling R2, mock A): the user chip rides the fold — the words LEAD the one line in the SGR-7 bracket, the metadata survives; at a narrow width the words width-cut with the honest … while the metadata keeps every term; the ONE row never exceeds W (invariant ①)", () => {
-		// the preview's mock-A frame at W=80: `✦ <chip> · thought 19s ·
-		// 5 reads · no edits` — the chip the same SGR-7 bracket as the
-		// live user row (#16f), the words taking the fold's width budget.
-		const { body, writes, tick } = makeBody({ W: 80 });
-		body.enter();
-		body.userLine("any idea what the flaky gate is?");
-		for (let i = 0; i < 5; i += 1) {
-			body.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
-			body.toolRunning(`r${i}`);
-			body.toolResult(`r${i}`, { content: "x", isError: false });
-		}
-		body.endTurn(19);
-		tick();
-		const frame = writes.join("");
-		// the chip rides the fold — the ✦ gutter, then the SGR-7 bracket
-		// with the human's words, then the join and the full metadata
-		// DECLARED SUPERSESSION (R3b, owner ruling): ZERO TERMS ARE
-		// DROPPED. W14 always wrote `no reads · no edits`, which is a
-		// sentence about things that did not happen; on a segment fold —
-		// where a run is usually all reads or all edits — half the row was
-		// the half saying nothing. A term earns its place by having a
-		// count. Every other claim in this case is unchanged.
-		expect(frame).toContain("\u2726\x1b[0m \x1b[7m any idea what the flaky gate is? \x1b[27m · thought 19s · read 5 files");
-		// the fold row fits W=80 whole (no cut at the wide width)
-		expect(frame).not.toContain("flaky gate is? …");
-		// the words take the width budget at W=40: the metadata keeps
-		// EVERY term, the words cut with the "…" — and the row stays ≤ W
-		// (the #checked invariant ① — a folded cut, never a crash)
-		const narrow = makeBody({ W: 40 });
-		narrow.body.enter();
-		narrow.body.userLine("any idea what the flaky gate is? ".repeat(4).trim());
-		for (let i = 0; i < 5; i += 1) {
-			narrow.body.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
-			narrow.body.toolRunning(`r${i}`);
-			narrow.body.toolResult(`r${i}`, { content: "x", isError: false });
-		}
-		narrow.body.endTurn(19);
-		narrow.tick();
-		const nframe = narrow.writes.join("");
-		expect(nframe).toContain("…"); // the honest cut mark rides the chip
-		// DECLARED SUPERSESSION (R3g, 2026-08-28) — A9 ruled "the metadata
-		// keeps EVERY term" at a narrow width, and that ruling was taken
-		// when this line had no key on it. At W=40 the three claims
-		// collide: the chip, the full metadata and " · ctrl+r" (9 cells)
-		// do not coexist. The KEY wins, because it is the only way back
-		// to the turn's work — a fold with no key hides the work behind a
-		// line with no way to it, which the fold's own header calls the
-		// one thing this product must not do. So the metadata cuts here
-		// with the honest "…", and every OTHER A9 claim is unchanged:
-		// the words still lead, still cut inside the bracket, and the row
-		// still holds invariant ①.
-		//
-		// THIS IS A TRADE THE OWNER SHOULD SEE, not one this round is
-		// entitled to make silently: at 40 columns a folded turn now
-		// shows part of its counts and keeps its key, where it used to
-		// show all of its counts and lose it.
-		expect(nframe).toContain(" · thought 19s · read 5 f"); // ...and it cuts
-		expect(nframe).toContain("ctrl+r"); // the way back survives the width
-		expect(nframe).toMatch(/\x1b\[7m [^\x1b]*… \x1b\[27m/); // the … sits INSIDE the chip's bracket
-		// the whole fold row (gutter + chip + metadata) is ≤ 40 cells —
-		// every emitted line: invariant ①. The frame's rows are CUP-separated
-		// (no LF), so the fold row is the segment that carries the metadata;
-		// visibleWidth strips the CSI sequences itself.
-		const foldLine = nframe.split(/\x1b\[[0-9;?]*[ABDGKJ]/).find((l) => l.includes("thought 19s"));
-		expect(foldLine).toBeDefined();
-		expect(visibleWidth(foldLine!)).toBeLessThanOrEqual(40);
-	});
+	/**
+	 * RETIRED (R3i phase 3, owner-ruled) — A9 NARROWS: the fold carries
+	 * WORK; the human's words stay on the chip band alone.
+	 *
+	 * A9 put the user's words on the fold line as the SGR-7 chip, so a
+	 * quiet turn read as one row. Measured under R3i, it prints them
+	 * TWICE: the chip band commits on the frame it is pushed (it always
+	 * has — the hold exempts non-thinking/tool cells), so the screen
+	 * showed ` fix the flaky test ` on its own row and the same words
+	 * again inside the fold directly beneath it. The band is the record
+	 * of what was ASKED; the fold is the record of what was DONE. One
+	 * fact, one row, each.
+	 *
+	 * The claims A9 made that outlive it are gated elsewhere and were
+	 * not weakened: the ONE row never exceeds W and never contains a
+	 * newline (`r3i-stretch-line.test.ts` G2, swept W=4..160 in both
+	 * chip and chipless forms), the metadata degrades by a stated
+	 * ladder rather than a truncation (G2's order gate), and the key
+	 * gives way never (G2 again). The chip's own width behaviour is
+	 * still exercised there through `stretchLine`'s `words` field, which
+	 * the compositor no longer passes but the renderer still honours for
+	 * any caller that does.
+	 */
 
 	it("A4+A5: the settled head row carries the TARGET and the VERDICT — `  edit  examples/foo.ts (… · approved by X)`; the denied call's pinned row names the decider; the human approval stays bare", () => {
 		// A4: the settled-success row keeps toolTarget — the work order's

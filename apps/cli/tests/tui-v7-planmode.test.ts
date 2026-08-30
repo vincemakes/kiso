@@ -137,7 +137,9 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 				// the needles ride the POST-RESET text (the glyphs are SGR-
 				// wrapped in the raw stream — "✦\x1b[0m plan ready" never
 				// matches "✦ plan ready"; the post-reset run is contiguous)
-				["read  a.ts (", ""], // the read ran under plan (A4: the target rides the settled row's head; R1.5 5 moved the count into the suffix)
+				// R3i phase 3: the read's own row is absorbed by the stretch
+				// fold — the count on the line is what says it ran.
+				["read 1 file", ""], // the read ran under plan
 				["(plan mode: read-only", ""], // the pinned deny row's reason (A5: the · by <decider> tail rides INSIDE the parens — no trailing paren in the needle)
 				["the survey is done.", ""], // the model's answer after the denial
 				["plan ready", "/mode default\r"], // the way-forward row → the only exit
@@ -158,14 +160,22 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// verdict is what the row records. `approved by mode:*` was the
 		// runtime's backfill for "no policy expressed an opinion", read by
 		// a human as an attribution (VD-11).
-		expect(clean).toMatch(/  read  a\.ts \(\d+\.\ds\) · \d+ lines · ctrl\+r/); // A4: the target rides the settled head row (the verbCol's 5-char pad); the plan tier's allow is ambient, so no byline
+		// DECLARED SUPERSESSION (R3i phase 3): the plan turn's read and its
+		// denied write are ONE stretch, so they fold — and the fold names
+		// the denial rather than leaving a row to be found. What a human
+		// must see without pressing anything is unchanged and is asserted
+		// below: WHICH call was refused and WHY. The settled row's own
+		// shape (`  read  a.ts (0.0s) · N lines · ctrl+r`) is A4's claim
+		// and is gated where it belongs, in compositor.test.ts.
+		expect(clean).toContain("read 1 file"); // the work it DID, on the fold
+		expect(clean).not.toContain("wrote 1 file"); // ...and not the write it did not
 		// MOVED (R1.5 slice 5, the approval-attribution class): a POLICY
 		// denial keeps only its REASON — the reason is the answer to "why",
 		// and mode:plan deciding it is the ambient default of plan mode.
-		expect(clean).toContain("  write_file sub/out.txt (plan mode: read-only)");
+		expect(clean).toContain("1 denied: sub/out.txt (plan mode: read-only)"); // which call, and why
 		expect(clean).not.toContain("by mode:plan");
 		expect(clean).not.toContain("approve write_file"); // the denied call never asked
-		expect(clean).not.toMatch(/  write_file sub\/out\.txt \(plan mode: read-only, \d+\.\ds\)/); // no (0.0s) noise
+		expect(clean).not.toMatch(/plan mode: read-only, \d+\.\ds/); // no (0.0s) noise
 		// ② the way-forward row: the recap idiom, the /mode hints as the
 		// exits, the timing/tool parts dropped. W19: the FULL hints line is
 		// CONTIGUOUS — the ctx-left segment dropped BEFORE the fold, so the

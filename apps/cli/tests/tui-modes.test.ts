@@ -152,7 +152,10 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\r"],
-				["[Permission denied]", ""], // the write is denied, not asked
+				// R3i phase 3: the denied write's own row is absorbed by the
+				// stretch fold, which NAMES the denial instead — so the
+				// needle is the clause, which is what a human now reads.
+				["1 denied:", ""], // the write is denied, not asked
 				["plan mode: read-only", ""], // the guiding reason reaches the model
 				["plan turn done", ""],
 				["▸ plan (read-only) · /mode to switch", ""], // W19: the idle row names the read-only posture (the v3 idle state)
@@ -171,8 +174,13 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		);
 		const clean = stripANSI(out);
 		expect(clean).toContain("▸ plan (read-only) · /mode to switch"); // W19 re-baseline: the idle row names the posture
-		expect(clean).toContain("[Permission denied]");
-		expect(clean).toContain("plan mode: read-only");
+		// R3i phase 3: the denied write's own row is absorbed by the
+		// stretch fold, and the fold NAMES the denial — which call, and
+		// why — so the screen carries strictly more than the bare
+		// `[Permission denied]` row it replaces. The durable log and the
+		// pipe path still carry the raw text verbatim; that is asserted
+		// against `run.stdout` in tui-v7-planmode, and unaffected here.
+		expect(clean).toContain("1 denied: out.txt (plan mode: read-only)");
 		expect(clean).toContain("mode → default");
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
 		// the panel's rule line names the ACT. The tool is still write_file
@@ -242,7 +250,8 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			[
 				["▌ ", "go\r"],
 				["▸ bypass", ""], // v3 idle state under bypass
-				["[Permission denied]", ""],
+				// R3i phase 3: the denial is named on the stretch fold now.
+				["1 denied:", ""],
 				["refused by safe-test", ""], // the EXTENSION's deny — bypass can't override it
 				["shell done", "exit\r"],
 			],

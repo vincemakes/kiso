@@ -1264,7 +1264,20 @@ export class Body {
 			// boundaries survive where they carry meaning (the write that
 			// splits two explore runs); they simply no longer bound what
 			// the key can reach.
-			for (const j of foldTurn.segments.flatMap((sg: SegmentRecord) => sg.cells).sort((a: number, b: number) => a - b)) {
+			// DECLARED SUPERSESSION (R3i phase 3) — the expansion covers THIS
+			// STRETCH, and only this stretch.
+			//
+			// R3f widened it to the whole turn, and had to: R3d had made
+			// the fold the TURN's while the expansion still walked one
+			// segment, so a line claiming `read 3 files · edited 1 file`
+			// opened only the reads — work named and then withheld, the one
+			// thing this file's first gate forbids. R3i moves the fold back
+			// to the stretch, so the pairing is exact again: every stretch
+			// has its OWN line and its own key, and each key opens the work
+			// its line named. Keeping the turn walk would break the same
+			// rule from the other side — two lines, each opening
+			// everything, each header describing rows the other also shows.
+			for (const j of seg.cells) {
 				if (j < idx) continue;
 				const c = this.#cells[j]!;
 				if (c.kind === "tool" && isExploreTool(c.name)) {
@@ -1286,7 +1299,12 @@ export class Body {
 			// the header names what the FOLD said — the turn's terms — so the
 			// line you pressed and the block it opens agree. It used to name
 			// segment 1's, which contradicted the fold above it.
-			const head = foldTerms(foldTurn.reads, foldTurn.edits, [...foldTurn.others]);
+			const t = this.#stretchTerms(seg);
+			const head = foldTerms(
+				t.calls.find(([n]) => n === "read_file")?.[1] ?? 0,
+				t.calls.find(([n]) => n === "edit_file")?.[1] ?? 0,
+				t.calls.filter(([n]) => n !== "read_file" && n !== "edit_file"),
+			);
 			return { kind: "appended", lines: [`${p.bold}✦${p.reset} expanded · ${escapeTerminal(head.length === 0 ? "thinking" : head.join(" · "))} · ${back}`, ...rows] };
 		}
 		if (cell.kind !== "tool") return { kind: "none" };
@@ -1862,10 +1880,23 @@ export class Body {
 		trouble: ["failed" | "denied" | "interrupted", number, string][];
 	} {
 		const ms = seg.thinkingMs + (seg.thinkingSince === null ? 0 : Math.max(0, Date.now() - seg.thinkingSince));
+		// R3i: a call in TROUBLE does not contribute to the work terms.
+		// The counts are taken at toolStart, before the outcome is known,
+		// so a denied write would otherwise fold as `wrote 1 file` beside
+		// the clause admitting it was refused — the line saying, in one
+		// breath, that the file was written and that it was not. The
+		// trouble clause is where those calls are counted.
+		const bad = new Map<string, number>();
+		for (const j of seg.cells) {
+			const c = this.#cells[j];
+			if (c === undefined || c.kind !== "tool" || !this.#cellInTrouble(j)) continue;
+			bad.set(c.name, (bad.get(c.name) ?? 0) + 1);
+		}
+		const net = (name: string, n: number): number => Math.max(0, n - (bad.get(name) ?? 0));
 		const calls: [string, number][] = [];
-		if (seg.reads > 0) calls.push(["read_file", seg.reads]);
-		if (seg.edits > 0) calls.push(["edit_file", seg.edits]);
-		for (const [name, n] of seg.others) if (n > 0) calls.push([name, n]);
+		if (net("read_file", seg.reads) > 0) calls.push(["read_file", net("read_file", seg.reads)]);
+		if (net("edit_file", seg.edits) > 0) calls.push(["edit_file", net("edit_file", seg.edits)]);
+		for (const [name, n] of seg.others) if (net(name, n) > 0) calls.push([name, net(name, n)]);
 		const targets: string[] = [];
 		for (const j of seg.cells) {
 			const c = this.#cells[j];
@@ -2272,6 +2303,13 @@ export class Body {
 	 * only DRAWN (the live line names trouble the moment it happens);
 	 * whether trouble still blocks the fold is the next phase's ruling.
 	 */
+	/** R3i — is this cell one the fold must not count as work done? */
+	#cellInTrouble(i: number): boolean {
+		const c = this.#cells[i];
+		if (c === undefined || c.kind !== "tool") return false;
+		return c.isError || c.reason !== null || c.verdict?.decision === "denied";
+	}
+
 	#segmentTroubleTerms(seg: SegmentRecord): ["failed" | "denied" | "interrupted", number, string][] {
 		let failed = 0;
 		let denied = 0;
@@ -2280,15 +2318,26 @@ export class Body {
 		for (const j of seg.cells) {
 			const c = this.#cells[j];
 			if (c === undefined || c.kind !== "tool") continue;
-			const target = (): string => toolTarget(c.name, JSON.parse(c.inputFull) as Record<string, unknown>);
-			if (c.verdict?.decision === "denied") {
+			// WHICH call, and WHY. The target alone answers the first and
+			// not the second, and for a policy denial the second is the
+			// whole point: `sub/out.txt` does not tell a human that plan
+			// mode is read-only, and that sentence is the one they act
+			// on. Law 1.3's own words — an outcome is stated in words —
+			// and the ladder cuts this clause last, so it degrades to the
+			// target before it disappears.
+			const named = (): string => {
+				const t = toolTarget(c.name, JSON.parse(c.inputFull) as Record<string, unknown>);
+				const why = c.verdict?.reason ?? c.reason;
+				return why === null || why === undefined || why === "" || why === "interrupted" ? t : `${t} (${why})`;
+			};
+			if (c.verdict?.decision === "denied" || (c.reason !== null && c.reason !== "interrupted" && /denied/i.test(c.reason))) {
 				denied += 1;
-				if (what === "") what = target();
+				if (what === "") what = named();
 			} else if (c.reason === "interrupted") {
 				interrupted += 1;
 			} else if (c.isError || c.reason !== null) {
 				failed += 1;
-				if (what === "") what = target();
+				if (what === "") what = named();
 			}
 		}
 		const out: ["failed" | "denied" | "interrupted", number, string][] = [];
@@ -2389,14 +2438,26 @@ export class Body {
 		// The quiet turn is the same rule seen from one side: its single
 		// segment never closes until the settle, so it holds exactly as
 		// it always did.
-		// R3d: the hold is the TURN's. A turn's work has no committed form
-		// until the turn ends, because one line stands for all of it — and
-		// a row already in the scrollback cannot be replaced by that line.
-		// The force-commit path still overrides this (a turn too big for
+		// DECLARED SUPERSESSION (R3i phase 3, owner-ruled) — THE HOLD IS
+		// THE SEGMENT'S AGAIN.
+		//
+		// R3d had made it the TURN's, so a turn's whole work waited on the
+		// settle and every one of its counts then landed on ONE line above
+		// all of its prose. The shape the owner asked for is one summary
+		// per stretch, standing with the prose that stretch led to — which
+		// requires a stretch to commit when its own text arrives.
+		//
+		// R3d's stated reason for leaving the segment was R3b's disease (a
+		// chatty model turning every call into its own `✦ thought 2s ·
+		// 1 read` row); the cures are the two rules R3b never had — a fold
+		// must absorb at least two rows, and a stretch of exactly one call
+		// names its TARGET rather than its count.
+		//
+		// The force-commit path still overrides this (a stretch too big for
 		// the screen spills and renders normally); that is the honest
 		// degradation, marked `spilled`.
 		const seg = this.#segmentOf(i);
-		if (seg !== null) return !turn.ended;
+		if (seg !== null) return seg.closedAt === null;
 		// no segment (the pipe path's shape) — W14's original test, kept
 		// so a cell that never got a segment behaves as it used to.
 		if (!turn.ended && !turn.hasText) return true;
@@ -2487,48 +2548,44 @@ export class Body {
 			// The quiet turn keeps its fold because there IS no recap line
 			// to carry it: a turn with no text is the fold, and W14's gates
 			// pin that shape.
-			if (turn !== undefined && seg !== null && seg.closedAt !== null && !this.#turnSpilled(turn) && turn.ended && this.#turnCells(turn) >= 2 && !this.#turnHasTrouble(turn)) {
-				if (!turn.folded) {
+			// DECLARED SUPERSESSION (R3i phase 3, owner-ruled) — THE FOLD IS
+			// THE SEGMENT'S, AND TROUBLE DOES NOT STOP IT.
+			//
+			// ① the SEGMENT. R3d folded the turn; the owner's shape is one
+			//    summary per stretch of work, standing with the prose that
+			//    stretch led to. R3b's disease is answered by the two rules
+			//    below rather than by leaving the segment: a fold must
+			//    absorb at least TWO rows, and a stretch of exactly one
+			//    call names its target (see stretchTerms).
+			//
+			// ② TROUBLE. R3b refused to fold any run holding a failure,
+			//    and R3g extended that to interrupts. Law 1.3 governs
+			//    marks versus WORDS and never granted a failure a
+			//    permanent row; law 1.7 says "Work folds, words do not".
+			//    So the work folds and the outcome words ride the line —
+			//    `1 denied: .env` — and the human sees, without pressing
+			//    anything, that trouble happened, on which call, and what
+			//    happened. The stderr is behind the key, because it is
+			//    detail, not outcome. The cost R3b priced as rare measured
+			//    at 2 failures in 28 calls in the 0.16.7 dogfood, with
+			//    zero folds as the result.
+			if (turn !== undefined && seg !== null && seg.closedAt !== null && !seg.spilled && seg.cells.length >= 2) {
+				if (!seg.folded) {
 					seg.folded = true;
 					seg.headCell = i;
 					turn.folded = true;
-					// A9 (ruling R2, mock A): the user chip rides the fold —
-					// but ONLY on a quiet turn, where the fold stands for the
-					// whole turn and the chip has nowhere else to be. In a
-					// turn WITH text the chip cell commits on its own, so a
-					// fold that repeated the words would put the user's line
-					// on screen twice. The words take the fold's width budget
-					// (turnFold is W-aware — the ONE row never trips
-					// invariant ①).
-					const quiet = turn.ended && !turn.hasText;
-					// R3g (fable, 2026-08-28) — DECLARED SUPERSESSION: both
-					// branches read the SAME number now, `thoughtSeconds`,
-					// the measure the kernel took and handed to endTurn.
-					// The non-quiet branch used to re-derive a wall clock
-					// from the segment's opening and print it under the word
-					// "thought" — a different quantity wearing the same
-					// label: a turn that thought 1s and then ran a 40s shell
-					// said "thought 41s". The fold only ever renders after
-					// endTurn (the gate below requires `turn.ended`), so the
-					// honest number is always available by the time it runs.
+					// DECLARED SUPERSESSION (R3i phase 3) — A9 NARROWS: the
+					// fold carries WORK, never the human's words.
 					//
-					// The terms are the TURN's, not the segment's: R3d folds
-					// a turn's work into ONE line wherever the first work
-					// lands. A per-segment line put a row on screen for every
-					// break in the model's narration, which on a chatty model
-					// is one row per tool — the row count the fold exists to
-					// remove.
-					const seconds = turn.thoughtSeconds;
-					return turnFold(
-						{
-							words: quiet ? turn.words : "",
-							thoughtSeconds: seconds,
-							reads: turn.reads,
-							edits: turn.edits,
-							others: [...turn.others],
-						},
-						W,
-					);
+					// A9 put the user's words on the fold as the SGR-7 chip.
+					// Measured under R3i, that prints them twice: the chip
+					// BAND commits on the frame it is pushed (it always has —
+					// `#held` exempts non-thinking/tool cells), so a quiet
+					// turn showed ` x ` on its own row and ` x ` again inside
+					// the fold directly beneath it. The band is the record of
+					// what was asked; this line is the record of what was
+					// done. One fact, one row, each.
+					return stretchLine({ ...this.#stretchTerms(seg), phase: "settled" }, W);
 				}
 				return [];
 			}
