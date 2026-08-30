@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-ask-ext",
-	"version": "0.16.8",
+	"version": "0.17.0",
 	"description": "kiso official ask extension — ask_user option panels: the model asks the human, the answers are durable facts",
 	"type": "module",
 	"license": "MIT",
@@ -23,7 +23,7 @@
 		"test": "vitest run"
 	},
 	"devDependencies": {
-		"@vincemakes/kiso-core": "0.16.8",
+		"@vincemakes/kiso-core": "0.17.0",
 		"@types/node": "^26.1.2",
 		"typescript": "^5.7.2",
 		"vitest": "^3.0.0"
