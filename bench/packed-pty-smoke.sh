@@ -10,7 +10,14 @@
 # installed bin from the packed tarball.
 set -eu
 B="$(cd "$(dirname "$0")" && pwd)"
-VERSION=${EXPECTED_BANNER:-v0.4.0}
+# R4 (the 0.18.0 ceremony): the default was the literal "v0.4.0", stale
+# since the round that wrote it AND wrong in a second way — the banner
+# renders `kiso <version>` with no "v", and with an SGR reset between the
+# name and the number, so neither "v0.18.0" nor "kiso 0.18.0" is a
+# contiguous needle in the raw capture. It read as a release-blocking
+# FAIL twice before the cause was the script. The default is now the
+# workspace's own version, and the grep runs on the SGR-stripped capture.
+VERSION=${EXPECTED_BANNER:-$(node -p "require('$(cd "$(dirname "$0")/.." && pwd)/package.json').version")}
 SRC=${1:-}
 TMP=$(mktemp -d /tmp/e6-pty.XXXXXX)
 trap 'rm -rf "$TMP"' EXIT
@@ -69,7 +76,9 @@ export KISO_HOME="$TMP/home"
   | perl -e 'alarm 120; exec @ARGV' script -q "$TMP/capture" "$BIN" chat > /dev/null 2>&1
 RC=$?
 CAP="$TMP/capture"
-grep -q "$VERSION" "$CAP" && echo "PASS banner: $VERSION" || { echo "FAIL banner: expected $VERSION"; exit 1; }
+CAP_PLAIN="$TMP/capture.plain"
+perl -pe 's/\e\[[0-9;?]*[A-Za-z]//g' "$CAP" > "$CAP_PLAIN"
+grep -q "$VERSION" "$CAP_PLAIN" && echo "PASS banner: $VERSION" || { echo "FAIL banner: expected $VERSION"; exit 1; }
 # /compact is asserted (not "help"): the typed "/help" echoes into the
 # capture, so only a command NEVER typed proves the help list rendered.
 grep -q "/compact" "$CAP" && echo "PASS built-ins render" || { echo "FAIL built-ins"; exit 1; }
