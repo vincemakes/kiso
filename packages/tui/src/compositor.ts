@@ -79,10 +79,12 @@ import {
 	isExploreTool,
 	pendingQueueRows,
 	statusLine,
+	stretchLine,
 	turnFold,
 	visibleWidth,
 	type BodyCell,
 	type FrameCtx,
+	twinkleFrame,
 } from "./components.js";
 import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, toolTarget, type BannerMeta, type ResumeMeta } from "./render.js";
 import { displayVerb, keysSheetRows } from "./strings.js";
@@ -104,6 +106,12 @@ const NOT_PAINTED = "\u0000never";
 const RESIZE_SETTLE_MS = 80;
 
 const CHROME_ROWS = 4; // box top + input + box bottom + status — the design §03 chrome (V6-3; the box is W6)
+
+/** R3i — how many calls in flight the act window shows at once. Beyond
+ *  it the block would grow with the model's parallelism, which is the
+ *  same unbounded height the projection exists to remove; the rest are
+ *  COUNTED, never dropped silently. */
+const LIVE_ACT_HEADS = 3;
 
 /** KC1 §5 — the input row's bound state. The legacy pair stays
  *  REQUIRED and keeps its exact meaning (the cursor line's visible
@@ -195,6 +203,14 @@ interface SegmentRecord {
 	others: Map<string, number>;
 	/** R3h — this segment's own distinct targets (see TurnRecord.seen). */
 	seen: Map<string, Set<string>>;
+	/** R3i — the segment's OWN thinking milliseconds, and its open clock.
+	 *  The live line reports the thinking of the stretch a human is
+	 *  watching, not the turn's total, and it runs by the same rule the
+	 *  CLI applies to the turn: from the first thinking delta until the
+	 *  first non-thinking event. Never a wall clock wearing the word
+	 *  "thought" — that was the R3g defect. */
+	thinkingMs: number;
+	thinkingSince: number | null;
 	/** the fold line was emitted for this segment — the rest of its cells
 	 *  render [] (never a second fold, and never a lost one). */
 	folded: boolean;
@@ -320,7 +336,7 @@ function openSegment(turn: TurnRecord | undefined, now: number): SegmentRecord |
 	if (turn === undefined) return null;
 	const last = turn.segments[turn.segments.length - 1];
 	if (last !== undefined && last.closedAt === null) return last;
-	const fresh: SegmentRecord = { openedAt: now, closedAt: null, reads: 0, edits: 0, others: new Map(), seen: new Map(), folded: false, spilled: false, headCell: null, cells: [] };
+	const fresh: SegmentRecord = { openedAt: now, closedAt: null, reads: 0, edits: 0, others: new Map(), seen: new Map(), thinkingMs: 0, thinkingSince: null, folded: false, spilled: false, headCell: null, cells: [] };
 	turn.segments.push(fresh);
 	return fresh;
 }
@@ -330,7 +346,20 @@ function openSegment(turn: TurnRecord | undefined, now: number): SegmentRecord |
  *  keeps a zero-cell segment from ever existing. */
 function closeSegment(turn: TurnRecord | undefined, now: number): void {
 	const last = turn?.segments[turn.segments.length - 1];
-	if (last !== undefined && last.closedAt === null) last.closedAt = now;
+	if (last === undefined || last.closedAt !== null) return;
+	stopThinking(last, now);
+	last.closedAt = now;
+}
+
+/** R3i — the segment's thinking clock stops. It runs from the first
+ *  thinking delta of a stretch and stops at the first NON-thinking
+ *  event, the same rule the CLI applies to the turn — so `thought Ns`
+ *  is thinking time at every scale and never a wall clock wearing the
+ *  word (the R3g defect, kept closed at the new scale). */
+function stopThinking(seg: SegmentRecord | undefined, now: number): void {
+	if (seg === undefined || seg.thinkingSince === null) return;
+	seg.thinkingMs += Math.max(0, now - seg.thinkingSince);
+	seg.thinkingSince = null;
 }
 
 /** W20 — the whole-table-replace comparison: the live task block only
@@ -613,7 +642,19 @@ export class Body {
 			// the cell belongs to, and a stamp taken first records the
 			// PREVIOUS segment (or none at all) — which left the thinking
 			// row standing outside the fold it should have led.
-			openSegment(this.#turns[this.#turns.length - 1], Date.now());
+			const seg = openSegment(this.#turns[this.#turns.length - 1], Date.now());
+			// R3i: the stretch's thinking clock starts HERE — at the first
+			// delta of this stretch, the same moment the CLI starts the
+			// turn's — and stops at the next non-thinking event below.
+			if (seg !== null && seg.thinkingSince === null) seg.thinkingSince = Date.now();
+			// R3i: and the beat starts HERE. Law 1.4 says "a running thought
+			// twinkles", and `#armSpinner`'s own predicate has always
+			// included an open thinking cell — but the only caller was
+			// `toolRunning`, so a stretch that thought and did nothing else
+			// never moved at all. The line's seconds are a frame-time
+			// derivation, so without the beat they also never ticked: the
+			// row read `thinking 0s` for as long as the model thought.
+			this.#armSpinner();
 			this.#stampSegment();
 		}
 		this.#mark();
@@ -622,6 +663,10 @@ export class Body {
 	thinkingEnd(): void {
 		const last = this.#cells[this.#cells.length - 1];
 		if (last !== undefined && last.kind === "thinking" && !last.done) {
+			// R3i: every closer — text, a notice, a terminal label, the next
+			// turn — routes through here, so the clock cannot keep running
+			// past the thing that ended it.
+			stopThinking(this.#turns[this.#turns.length - 1]?.segments.at(-1), Date.now());
 			last.done = true;
 			this.#lastThinking = last.text;
 			if (!this.#isActive()) this.#write(foldThinking(last.text));
@@ -697,6 +742,9 @@ export class Body {
 			// file read once per segment is one file in each segment's
 			// terms and one file in the turn's.
 			const seg = openSegment(turn, Date.now());
+			// R3i: a tool call is a NON-thinking event — the clock stops,
+			// exactly as the CLI's does at the same boundary.
+			stopThinking(seg ?? undefined, Date.now());
 			if (seg !== null && bump(seg)) {
 				if (name === "read_file") seg.reads += 1;
 				else if (name === "edit_file") seg.edits += 1;
@@ -1727,6 +1775,105 @@ export class Body {
 
 	// ---- the one writer ----
 
+	/**
+	 * R3i phase 2 — THE LIVE PROJECTION.
+	 *
+	 * One definition, called from the natural path and from inside the
+	 * force-commit loop, because two copies of "what the live region
+	 * looks like" is two answers to one question.
+	 *
+	 * The change this phase makes, and the ONLY one: the cells of the
+	 * OPEN stretch no longer each hold a row. The stretch is one line —
+	 * the same line the settle will keep, in the present tense — plus
+	 * the calls actually in flight. A completed call renders nothing;
+	 * its count rides the line.
+	 *
+	 * What it fixes: a 28-call turn used to spend 28 rows of a 30-row
+	 * live region, so overflow was the NORM on real turns rather than
+	 * the edge — and a turn that overflows may not fold (R3f: a line
+	 * cannot claim rows already in the scrollback), which is why the
+	 * fold missed exactly the turns it exists for. The block's height
+	 * no longer depends on the call count at all.
+	 *
+	 * What it does NOT change: nothing about what commits or when. The
+	 * hold is untouched, the force-commit cap is untouched, and the
+	 * settle still produces the same fold it did before. That is the
+	 * charter's line between this phase and the next.
+	 */
+	#liveProjection(W: number, ctx: FrameCtx): string[] {
+		const out: string[] = [];
+		const focus = this.#focusIndex();
+		const turn = this.#turns[this.#turns.length - 1];
+		const open = turn !== undefined && !turn.ended ? (turn.segments[turn.segments.length - 1] ?? null) : null;
+		const openSeg = open !== null && open.closedAt === null ? open : null;
+		let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
+		let stretchDrawn = false;
+		let runningShown = 0;
+		let runningHidden = 0;
+		for (let i = this.#committed; i < this.#cells.length; i += 1) {
+			const cell = this.#cells[i]!;
+			const inOpen = openSeg !== null && openSeg.cells.includes(i);
+			if (inOpen) {
+				// the stretch's ONE line, drawn once, at its first cell
+				if (!stretchDrawn) {
+					stretchDrawn = true;
+					const rows = stretchLine({ ...this.#stretchTerms(openSeg), phase: this.#stretchPhase(openSeg), mark: twinkleFrame(this.#spinnerI) }, W);
+					out.push(...this.#space(i, prev, rows));
+					prev = rows;
+				}
+				// a DONE cell's row is gone; its count is on the line above.
+				// A cell still in flight keeps its row and its output —
+				// hiding the work in flight would be the opposite defect.
+				const flight = cell.kind === "tool" && !cell.done;
+				if (!flight) continue;
+				if (runningShown >= LIVE_ACT_HEADS) {
+					runningHidden += 1;
+					continue;
+				}
+				runningShown += 1;
+			}
+			const rows = cellComponent(cell).render(W, ctx);
+			// the head row carries the affordance; the tint lands on it and
+			// nowhere else, which is what makes "exactly one" structural
+			if (i === focus && rows.length > 0) rows[0] = focusToken(rows[0]!, W);
+			out.push(...this.#space(i, prev, rows));
+			prev = rows;
+		}
+		if (runningHidden > 0) {
+			const p = palette();
+			out.push(`  ${p.dim}└ +${runningHidden} more running${p.reset}`);
+		}
+		return out;
+	}
+
+	/** R3i — the open stretch's phase. It is THINKING while a thinking
+	 *  cell of it is still open and no call has started; otherwise it is
+	 *  ACTING. The tense follows the phase, and the phase is what the
+	 *  human is watching happen. */
+	#stretchPhase(seg: SegmentRecord): "thinking" | "acting" {
+		return seg.thinkingSince !== null && seg.reads === 0 && seg.edits === 0 && seg.others.size === 0 ? "thinking" : "acting";
+	}
+
+	/** R3i — the open stretch's terms, in the shape the line renders. */
+	#stretchTerms(seg: SegmentRecord): {
+		thoughtSeconds: number;
+		calls: [string, number][];
+		targets: string[];
+		trouble: ["failed" | "denied" | "interrupted", number, string][];
+	} {
+		const ms = seg.thinkingMs + (seg.thinkingSince === null ? 0 : Math.max(0, Date.now() - seg.thinkingSince));
+		const calls: [string, number][] = [];
+		if (seg.reads > 0) calls.push(["read_file", seg.reads]);
+		if (seg.edits > 0) calls.push(["edit_file", seg.edits]);
+		for (const [name, n] of seg.others) if (n > 0) calls.push([name, n]);
+		const targets: string[] = [];
+		for (const j of seg.cells) {
+			const c = this.#cells[j];
+			if (c !== undefined && c.kind === "tool") targets.push(toolTarget(c.name, JSON.parse(c.inputFull) as Record<string, unknown>));
+		}
+		return { thoughtSeconds: Math.round(ms / 1000), calls, targets, trouble: this.#segmentTroubleTerms(seg) };
+	}
+
 	/** The live region's scalar — the unit tests assert the cap directly
 	 *  (the e2e gate pins the screen consequence). W11: the formula's
 	 *  blanks are join artifacts — the count includes them (they are real
@@ -1876,17 +2023,7 @@ export class Body {
 			// by construction), so the marker can never point at a cell the
 			// key would not take — which is the only way a focus marker is
 			// worth having.
-			const focus = this.#focusIndex();
-			let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
-			for (let i = this.#committed; i < this.#cells.length; i += 1) {
-				const cell = this.#cells[i]!;
-				const rows = cellComponent(cell).render(W, ctx);
-				// the head row carries the affordance; the tint lands on it and
-				// nowhere else, which is what makes "exactly one" structural
-				if (i === focus && rows.length > 0) rows[0] = focusToken(rows[0]!, W);
-				liveLines.push(...this.#space(i, prev, rows));
-				prev = rows;
-			}
+			liveLines = this.#liveProjection(W, ctx);
 		}
 		// 3. the FORCE commits — the live region's hard cap H−1: overflow
 		//    commits the oldest live cell UNCONDITIONALLY (the one sharp
@@ -1905,20 +2042,9 @@ export class Body {
 			// visible above it.
 			this.#markSpilled(this.#committed);
 			this.#commitCell(this.#committed, W, ctx);
-			liveLines = [];
-			{
-				// TUI2-R2 ⑤: the focus re-derives after a commit — the cell it
-				// pointed at may have just left the live region
-				const focus = this.#focusIndex();
-				let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
-				for (let i = this.#committed; i < this.#cells.length; i += 1) {
-					const cell = this.#cells[i]!;
-					const rows = cellComponent(cell).render(W, ctx);
-					if (i === focus && rows.length > 0) rows[0] = focusToken(rows[0]!, W);
-					liveLines.push(...this.#space(i, prev, rows));
-					prev = rows;
-				}
-			}
+			// TUI2-R2 ⑤: the focus re-derives after a commit — the cell it
+			// pointed at may have just left the live region.
+			liveLines = this.#liveProjection(W, ctx);
 		}
 		// 4. the geometry — the live region's first row:
 		//    liveTop = min(totalCommitted, H - liveRows) + 1 — the screen
@@ -2057,7 +2183,28 @@ export class Body {
 	 *  user chip is still W11's). */
 	#space(i: number, prev: readonly string[] | null, rows: string[]): string[] {
 		if (i > 0 && this.#cells[i]?.kind === "md" && this.#cells[i - 1]?.kind === "md") return rows;
-		return bodySpacing(prev, rows);
+		return bodySpacing(this.#lastDrawn(i, prev), rows);
+	}
+
+	/**
+	 * R3i — the previous DRAWN sibling, not the previous cell.
+	 *
+	 * The spacing formula reads what stood above; a cell that rendered
+	 * nothing did not stand above anything. Since R3d whole families of
+	 * cells render `[]` — the members a fold speaks for — and the
+	 * formula was reading that empty array as "a zero-row sibling", so a
+	 * multi-row block following a fold lost the blank that belongs above
+	 * it. The defect predates this round (any folded turn followed by a
+	 * raw block has it); R3i's projection is what finally put a test on
+	 * the path.
+	 */
+	#lastDrawn(i: number, prev: readonly string[] | null): readonly string[] | null {
+		if (prev !== null && prev.length > 0) return prev;
+		for (let j = i - 1; j >= 0; j -= 1) {
+			const cached = this.#lineCache[j];
+			if (cached !== null && cached !== undefined && cached.length > 0) return cached;
+		}
+		return prev;
 	}
 
 	/** Commit the cell at index i: render + cache its lines (immutable —
@@ -2115,6 +2262,42 @@ export class Body {
 	 * denial keeps all twenty rows. The alternative is a screen that says
 	 * `✦ thought 3s · 20 reads` while a write was refused inside it.
 	 */
+	/**
+	 * R3i — the trouble the stretch met, as the line's own terms.
+	 *
+	 * Law 1.3: an outcome is stated in WORDS, "the only form that
+	 * survives a pipe". So the kind is a different word, never a
+	 * different colour — `2 failed`, `1 denied`, `1 interrupted` — and
+	 * the failure's identity rides with it. In this phase the terms are
+	 * only DRAWN (the live line names trouble the moment it happens);
+	 * whether trouble still blocks the fold is the next phase's ruling.
+	 */
+	#segmentTroubleTerms(seg: SegmentRecord): ["failed" | "denied" | "interrupted", number, string][] {
+		let failed = 0;
+		let denied = 0;
+		let interrupted = 0;
+		let what = "";
+		for (const j of seg.cells) {
+			const c = this.#cells[j];
+			if (c === undefined || c.kind !== "tool") continue;
+			const target = (): string => toolTarget(c.name, JSON.parse(c.inputFull) as Record<string, unknown>);
+			if (c.verdict?.decision === "denied") {
+				denied += 1;
+				if (what === "") what = target();
+			} else if (c.reason === "interrupted") {
+				interrupted += 1;
+			} else if (c.isError || c.reason !== null) {
+				failed += 1;
+				if (what === "") what = target();
+			}
+		}
+		const out: ["failed" | "denied" | "interrupted", number, string][] = [];
+		if (failed > 0) out.push(["failed", failed, what]);
+		if (denied > 0) out.push(["denied", denied, what]);
+		if (interrupted > 0) out.push(["interrupted", interrupted, ""]);
+		return out;
+	}
+
 	#segmentHasTrouble(seg: SegmentRecord): boolean {
 		// R3g (fable, 2026-08-28): a DENIED call is the case this rule
 		// exists for, and it was the one case the predicate could not

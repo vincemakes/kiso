@@ -311,9 +311,17 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		const { hex, alive } = runFlow(80);
 		expect(alive).toBe("ALIVE");
 		const frames = frameGrids(hex, 80);
-		// the frames while the shell runs: the read (the streaming cell) has
-		// settled, the shell is still running — the grid carries BOTH markers
-		const running = frames.filter((f) => f.grid.some((l) => l.includes("  read")) && f.grid.some((l) => /^● shell /.test(l)));
+		// DECLARED SUPERSESSION (R3i phase 2) — the SELECTOR moved, the
+		// property did not. This picked the frames where a SETTLED read
+		// row and a running shell were both on screen; a completed call
+		// of an open stretch no longer holds a row, so that pair never
+		// occurs. The same moment is now the stretch LINE (which counts
+		// the finished read) above a running shell — and the anti-jitter
+		// property this case is named for is unchanged and still the
+		// subject: everything below the streaming cell is byte-identical
+		// across frames, with the running header the one allowed, and
+		// in-place, variance.
+		const running = frames.filter((f) => f.grid.some((l) => /^[✧✦✶✸✺] .*\bfile\b/.test(l)) && f.grid.some((l) => /^● shell /.test(l)));
 		expect(running.length).toBeGreaterThanOrEqual(2); // NON-vacuous: the moment really spans frames
 		// the window EXISTS and is 3 rows: 2 blank-padded rows + the waiting row
 		const first = running[0]!.grid;
@@ -330,8 +338,8 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		for (let i = 0; i < running.length - 1; i += 1) {
 			const g1 = running[i]!.grid;
 			const g2 = running[i + 1]!.grid;
-			const readIdx = g1.findIndex((l) => l.includes("  read"));
-			const readBottom = readIdx + (g1[readIdx + 1]?.startsWith("└ ") ? 1 : 0);
+			const readIdx = g1.findIndex((l) => /^[✧✦✶✸✺] /.test(l));
+			const readBottom = readIdx; // the stretch line is ONE row, always
 			const shellHeader = g1.findIndex((l) => /^● shell /.test(l));
 			expect(shellHeader).toBeGreaterThan(readBottom); // the shell sits BELOW the streaming cell
 			const headerEnd = g1.findIndex((l, i) => i > shellHeader && (l.startsWith("│ ") || l.startsWith("└ ")));

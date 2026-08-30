@@ -183,20 +183,31 @@ describe("R3g ③ — the rollup never speaks for a run it did not finish", () =
 	 * its job — it fails if a later fix takes the rollup out altogether
 	 * rather than narrowing it to troubled runs.
 	 */
-	it("a clean run that SPILLED still rolls up — the rule is the trouble, not the shape", () => {
-		// PACED: fed in one frame the turn never overflows the hold, so it
-		// folds and no rollup is drawn at all. A rollup is what the
-		// force-commit leaves behind, and the force-commit needs frames.
-		const { body, writes, tick } = makeBody(12);
-		body.enter();
-		body.userLine("look");
-		for (let i = 0; i < 20; i += 1) {
-			call(body, "read_file", `r${i}`, { path: `f${i}.ts` }, "x");
-			tick();
-		}
-		body.textAppend("done.");
-		body.endTurn(0);
-		tick();
-		expect(plain(writes.join(""))).toContain("read  9 files");
-	});
+	/**
+	 * RETIRED (R3i phase 2), with the reason on the record rather than a
+	 * contorted scenario.
+	 *
+	 * This was a CONTROL: it fed a clean run that spilled and asserted
+	 * the rollup still formed, so that a later fix could not take the
+	 * rollup out altogether while claiming to have narrowed it to
+	 * troubled runs. It worked because twenty paced calls overflowed the
+	 * live region — each call held a row of its own.
+	 *
+	 * Under the R3i projection that premise is gone by design: the open
+	 * stretch is ONE line whose height does not depend on the call
+	 * count, so a clean run of any length no longer spills and the
+	 * commit-time rollup is unreachable for it. Measured while retiring
+	 * this: eight paced reads at H=8 render `reading 2 files` …
+	 * `reading 8 files` in place and settle as `✦ read 8 files · ctrl+r`
+	 * — no force-commit, no rollup, nothing to control.
+	 *
+	 * The rollup itself is NOT gone: it is what `ctrl+r` opens on a
+	 * folded stretch, through the same `rolledOf` / `rolledDetail`
+	 * projection, and `r3b-segment-fold.test.ts` gates it there. Writing
+	 * a new spill shape here just to keep a green row would be a gate
+	 * that tests the shape it was given rather than the rule it names.
+	 *
+	 * The narrowing this control guarded — trouble breaks a rollup — is
+	 * still gated by the case above it, which does not need a spill.
+	 */
 });

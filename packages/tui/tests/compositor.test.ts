@@ -766,6 +766,12 @@ describe("TUI v6 — the one compositor", () => {
 		body.toolStart("list_dir", "c2", { path: "." });
 		body.toolRunning("c2");
 		body.toolResult("c2", { content: "2 entries", isError: false });
+		// R3i phase 2: the formula governs COMMITTED siblings, and a
+		// completed call of an open stretch is no longer one of them —
+		// its count rides the stretch line until the settle. Settling is
+		// what puts the rows side by side, which is what this case is
+		// about.
+		body.endTurn(0);
 		tick();
 		let rows: string[] = [];
 		{
@@ -781,12 +787,15 @@ describe("TUI v6 — the one compositor", () => {
 		expect(rows[0]).not.toBe("");
 		const userAt = rows.findIndex((l) => l.trim() === "go"); // the chip strips to " go " (the 2026-08-09 ruling retired the rail)
 		expect(rows[userAt - 1]).toBe(""); // the banner (multi-row) breathes below
-		const readAt = rows.findIndex((l) => l.includes("  read"));
-		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
-		// the card head says the ACT. The tool is still list_dir on the wire.
-		const listAt = rows.findIndex((l) => l.includes("  list "));
-		expect(readAt).toBe(userAt + 1); // one-row user → one-row read: pack tight
-		expect(listAt).toBe(readAt + 1); // two one-row tools: pack tight
+		// DECLARED SUPERSESSION (R3i phase 2): the two tool rows are no
+		// longer siblings — a stretch's completed calls fold into its one
+		// line, so what stands next to the user's row is the FOLD. The
+		// subject is unchanged and so is the formula being tested: a
+		// one-row cell followed by a one-row cell packs tight, with no
+		// blank between them. Only the identity of the second cell moved.
+		const foldAt = rows.findIndex((l) => l.trimStart().startsWith("✦ "));
+		expect(foldAt).toBeGreaterThan(0);
+		expect(foldAt).toBe(userAt + 1); // one-row user → one-row fold: pack tight
 		// a multi-row block (the 2-line raw recap) breathes on BOTH sides
 		body.raw(["first", "second"]);
 		body.userLine("again");
@@ -1012,7 +1021,16 @@ describe("TUI v6 — the one compositor", () => {
 		// frame commits nothing of them (no fold line, no rollup)
 		tick();
 		expect(writes.join("")).not.toContain("\u2726");
-		expect(writes.join("")).not.toContain("5 files");
+		// DECLARED SUPERSESSION (R3i phase 2): "no summary before the
+		// settle" is no longer the claim — there IS a live summary, and
+		// it is the whole point of the projection: the stretch's one
+		// line, in the PRESENT tense, saying what it is doing. What the
+		// hold still forbids is the SETTLED form, and the ✦ assertion
+		// above is exactly that. So the pair of claims is now: the live
+		// line says `reading 5 files`, and `read 5 files` — the past
+		// tense the settle brings — is nowhere yet.
+		expect(writes.join("")).toContain("reading 5 files");
+		expect(writes.join("")).not.toContain("read 5 files");
 		writes.length = 0; // drop the hold frame — only the fold frame below
 		// the boundary: the terminal closes the turn — the fold line lands
 		// at the FIRST held cell's commit (the thinking cell — endTurn
@@ -1138,6 +1156,13 @@ describe("TUI v6 — the one compositor", () => {
 		body.toolVerdict("c1", "approved", "dont-ask-again");
 		body.toolRunning("c1");
 		body.toolResult("c1", { content: "ok", isError: false });
+		// R3i phase 2: a completed call of an OPEN stretch no longer holds
+		// a live row — its count rides the stretch line, and its own row
+		// is what the settle commits. This case is about the SETTLED
+		// ROW's shape, so it settles the turn to read it; before R3i it
+		// could read the same row off a mid-turn screen because mid-turn
+		// showed settled rows. The subject is unchanged.
+		body.endTurn(0);
 		tick();
 		let frame = writes.join("");
 		// the W4 idiom: the timing closes the parens — the decider rides
@@ -1160,6 +1185,9 @@ describe("TUI v6 — the one compositor", () => {
 		body.toolStart("edit_file", "c2", { path: "bar.ts", search: "a", replace: "b" });
 		body.toolVerdict("c2", "denied", "dont-ask-again", "no touch");
 		body.toolResult("c2", { content: "[Permission denied] no touch", isError: true, reason: "no touch" });
+		// R3i phase 2 (see the note above): settled rows are read after
+		// the turn settles.
+		body.endTurn(0);
 		tick();
 		frame = writes.join("");
 		// MOVED (same class): a POLICY denial keeps only its reason — the
@@ -1173,6 +1201,9 @@ describe("TUI v6 — the one compositor", () => {
 		body.toolVerdict("c3", "approved");
 		body.toolRunning("c3");
 		body.toolResult("c3", { content: "1 line", isError: false });
+		// R3i phase 2 (see the note above): the settled rows are read
+		// after the turn settles, not off a mid-turn screen.
+		body.endTurn(0);
 		tick();
 		frame = writes.join("");
 		const plain3 = frame.replace(/\x1b\[[0-9;]*m/g, "");
@@ -1190,6 +1221,13 @@ describe("TUI v6 — the one compositor", () => {
 		body.userLine("wide tool");
 		body.toolStart("edit_file", "c1", { path: "a".repeat(200), search: "a", replace: "b" });
 		body.toolResult("c1", { content: "ok", isError: false });
+		// R3i phase 2: a completed call of an OPEN stretch no longer holds
+		// a live row — its count rides the stretch line, and its own row
+		// is what the settle commits. This case is about the SETTLED
+		// ROW's shape, so it settles the turn to read it; before R3i it
+		// could read the same row off a mid-turn screen because mid-turn
+		// showed settled rows. The subject is unchanged.
+		body.endTurn(0);
 		tick();
 		const frame = writes.join("");
 		const plain = frame.replace(/\x1b\[[0-9;]*m/g, "");

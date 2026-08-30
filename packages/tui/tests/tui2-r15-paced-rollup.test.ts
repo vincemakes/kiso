@@ -231,10 +231,15 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		tick();
 		tick();
 		const frame = plain(writes.join(""));
-		// the run still reached the screen (nothing stuck, nothing lost) and
-		// the settled shape is a rollup, not twenty rows
-		expect(frame).toContain("done.");
-		expect(frame).toContain("read  ");
-		expect(frame).toContain("files");
+		// DECLARED SUPERSESSION (R3i phase 2): the SETTLED SHAPE moved,
+		// the liveness property did not. Twenty paced reads no longer
+		// force-commit — the open stretch is one line whose height does
+		// not depend on the call count — so the settled shape is the
+		// fold, not a rollup of twenty rows. What this case is named for
+		// is that the screen keeps painting through the burst and the
+		// turn lands: that is still exactly what is asserted.
+		expect(frame).toContain("done."); // the screen never stuck
+		expect(frame).toContain("read 20 files"); // and the run is all there, in one line
+		expect(frame).toContain("ctrl+r"); // with the way back to it
 	});
 });

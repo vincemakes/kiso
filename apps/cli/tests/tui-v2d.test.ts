@@ -98,6 +98,14 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
 const CELL_LINE = [
 	/^\[.*extensions?:.*\]$/, // the banner extensions row (v3 info row)
 	/^⋯.*$/, // the ThinkingCell fold (W2: the ⋯ gutter — the midline mark is the state, never the text ellipsis)
+	// R3i phase 2 — THE STRETCH LINE, the open run's one row. Its gutter
+	// is whichever glyph of the twinkle's cycle the frame is on
+	// (✧✦✶✸✺ — §5.2's own set, so the mark that runs is the mark that
+	// stays), and its body is the present-tense terms. The lint's
+	// subject is interleaving — two cells' content welded into one write
+	// — and this is a well-formed single row; it just did not exist when
+	// the table was written.
+	/^[✧✦✶✸✺] \S.*$/,
 	/^● \S+ .*\d+s?$/, // the ToolCell running (W2: the mark IS the gutter). R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
 	/^⏸ \S+ .*$/, // the approval badge (W2: the ⏸ is the left gutter)
 	// MOVED (EC-1 ②③, the SCHEDULER-TIMING class — DECLARED THIS ROUND):

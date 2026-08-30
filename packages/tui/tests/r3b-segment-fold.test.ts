@@ -310,7 +310,21 @@ describe("R3d — the layout only grows until the settle", () => {
 		return shots;
 	};
 
-	it("mid-turn every call is its OWN row — nothing has folded yet", () => {
+	/**
+	 * DECLARED SUPERSESSION (R3i phase 2) — MID-TURN THE STRETCH IS ONE
+	 * LINE, not one row per call.
+	 *
+	 * This case used to read "mid-turn every call is its OWN row", which
+	 * was true and was the defect: a 28-call turn spent 28 rows of a
+	 * 30-row live region, so overflow was the NORM on real turns — and a
+	 * turn that overflows may not fold (R3f), which is why the fold
+	 * missed exactly the turns it exists for. Measured in the 0.16.7
+	 * dogfood: 23 tool rows, 17 thinking rows, zero folds.
+	 *
+	 * What the case still holds, and what it was always for: nothing has
+	 * FOLDED yet. The settled form does not appear before the settle.
+	 */
+	it("mid-turn the stretch is ONE line — and nothing has folded yet", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		body.userLine("look");
@@ -321,10 +335,15 @@ describe("R3d — the layout only grows until the settle", () => {
 		call(body, "read_file", "r2", { path: "b.ts" }, "x");
 		tick();
 		const mid = plain(writes.join(""));
-		expect(mid).not.toContain("✦ thought"); // NOT yet — the turn is still running
+		expect(mid).not.toMatch(/thought \d+s/); // NOT yet — the turn is still running
+		// the open stretch's work rides its line, in the present tense
+		expect(mid).toContain("reading 2 files");
+		// ...and the calls' own rows are not on screen holding it open
+		expect(mid).not.toContain("read  a.ts");
+		expect(mid).not.toContain("read  b.ts");
+		// the CLOSED stretch's row is a different matter — it committed
+		// when the text arrived, exactly as it did before this phase
 		expect(mid).toContain("list  .");
-		expect(mid).toContain("read  a.ts");
-		expect(mid).toContain("read  b.ts");
 	});
 
 	it("a LATER call never removes an earlier row — the layout only grows", () => {
@@ -450,14 +469,39 @@ describe("R3f — the fold never claims work the screen already shows", () => {
 		tick();
 	};
 
-	it("a turn that overflows the live region commits expanded and does NOT fold", () => {
-		// H=12 → the live cap is 8 rows; 20 paced calls cannot fit
-		const { body, writes, tick } = makeBody({ H: 12 });
+	/**
+	 * DECLARED SUPERSESSION (R3i phase 2) — the SCENARIO moved; the rule
+	 * did not.
+	 *
+	 * The rule is R3f's and it stands: a stretch whose rows are already
+	 * in the terminal's scrollback may not be replaced by a line
+	 * claiming them, because ink cannot be taken back. What changed is
+	 * what it takes to spill. Twenty paced calls used to overflow the
+	 * live region because each held a row of its own; under the R3i
+	 * projection the block's height does not depend on the call count at
+	 * all, which is the point — so the spill now needs a block that is
+	 * itself taller than the screen's live cap, and this case builds one
+	 * (H=8 leaves four content rows; the stretch line plus a running
+	 * call's window is more than that).
+	 */
+	it("a stretch that overflows the live region commits expanded and does NOT fold", () => {
+		const { body, writes, tick } = makeBody({ H: 8 });
 		body.enter();
-		paced(body, tick, 20);
+		body.userLine("big");
+		body.thinkingAppend("planning");
+		tick();
+		body.toolStart("shell", "s", { command: "npm run check" });
+		body.toolRunning("s");
+		body.toolProgress("s", "vitest run --project unit\n114 passed\n214 passed\n");
+		tick();
+		body.toolResult("s", { content: "ok", isError: false });
+		body.textAppend("done.\n");
+		body.textEnd();
+		body.endTurn(9);
+		tick();
 		const frame = plain(writes.join(""));
-		expect(frame).not.toContain("✦ thought"); // no line claiming a turn it cannot re-show
-		expect(frame).toContain("f0.ts"); // and the spilled work still reached the human by name
+		expect(frame).not.toMatch(/✦[^\n]*thought \d+s/); // no line claiming a stretch it cannot re-show
+		expect(frame).toContain("npm run check"); // and the spilled work still reached the human by name
 	});
 
 	it("the SAME paced turn on a screen that fits it DOES fold — the rule is the spill, not the size", () => {
