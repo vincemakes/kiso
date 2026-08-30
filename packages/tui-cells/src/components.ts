@@ -1140,14 +1140,32 @@ function countTerm(n: number, singular: string, plural: string): string {
  * commands". A tool with no entry says `3 × <verb>`, which counts calls
  * without inventing a noun for them.
  */
-const FOLD_TERM: Readonly<Record<string, readonly [string, string, string]>> = {
-	read_file: ["read", "file", "files"],
-	edit_file: ["edited", "file", "files"],
-	write_file: ["wrote", "file", "files"],
-	list_dir: ["listed", "directory", "directories"],
-	search_text: ["ran", "search", "searches"],
-	shell: ["ran", "shell command", "shell commands"],
+/**
+ * R3i — ONE TERM TABLE, TWO TENSES: [past, progressive, singular, plural].
+ *
+ * The stretch line is the same row at every instant of a turn: while
+ * the work runs it says what it is DOING, and at the settle it says
+ * what it DID. That sentence is only true if both tenses come from one
+ * table. The v9 review found the alternative already happening on a
+ * hand-written prototype — `searching 1 pattern` live against `ran 1
+ * search` settled, the NOUN swapping at the settle, and `running 4
+ * shells`, which is verbatim the R3g defect the previous round removed.
+ *
+ * FOLD_TERM below is derived from this, so the settled vocabulary
+ * cannot drift from the live one by construction.
+ */
+const TERM: Readonly<Record<string, readonly [string, string, string, string]>> = {
+	read_file: ["read", "reading", "file", "files"],
+	edit_file: ["edited", "editing", "file", "files"],
+	write_file: ["wrote", "writing", "file", "files"],
+	list_dir: ["listed", "listing", "directory", "directories"],
+	search_text: ["ran", "running", "search", "searches"],
+	shell: ["ran", "running", "shell command", "shell commands"],
 };
+
+const FOLD_TERM: Readonly<Record<string, readonly [string, string, string]>> = Object.fromEntries(
+	Object.entries(TERM).map(([name, [past, , singular, plural]]) => [name, [past, singular, plural] as const]),
+);
 
 /**
  * R3h (fable, 2026-08-29) — WHICH TERMS COUNT OBJECTS.
@@ -1184,6 +1202,132 @@ export function foldTerms(reads: number, edits: number, others: readonly [string
 		parts.push(foldTerm(name, n));
 	}
 	return parts;
+}
+
+/**
+ * R3i — THE STRETCH LINE: the turn's one working row, in three phases.
+ *
+ * A STRETCH is the run of thinking and tool calls between two blocks of
+ * the model's prose. While it runs it is this line plus a bounded act
+ * window; when it closes it commits as this same line, frozen, with its
+ * key. The contract in one sentence: **the line you watch is the line
+ * you keep** — the settle changes the mark, the tense and the key, and
+ * nothing else.
+ *
+ *   thinking   ✧ thinking 4s
+ *   acting     ✶ reading 6 files · running 4 shell commands
+ *   settled    ✦ thought 9s · read 6 files · ran 4 shell commands · ctrl+r
+ *
+ * THE GIVE-WAY LADDER, in order, because at some width everything
+ * cannot fit:
+ *
+ *   1. the human's WORDS (the A9 chip on a quiet turn) — they are on
+ *      screen above, in the chip band;
+ *   2. the NOUNS compact, cheapest word first, and stop as soon as the
+ *      row fits — buying one cell must not spend every substitution;
+ *   3. the COUNTS cut, with the honest "…";
+ *   4. the TROUBLE CLAUSE cuts. The design first said it never gives
+ *      way, and that was unimplementable: a long clause overflows after
+ *      the counts have already cut to a bare "…", and invariant ①
+ *      throws on that row;
+ *   5. the KEY gives way NEVER. A fold with no key is the turn's work
+ *      behind a line with no way back to it, which is the one thing
+ *      this row must not be.
+ *
+ * `…` in this file means CUT HERE and nothing else — which is why the
+ * live phases carry no trailing ellipsis for in-flight, though the
+ * reference implementation uses one. The moving mark and the present
+ * tense already say it twice.
+ */
+export interface StretchTerms {
+	/** the segment's OWN measured thinking seconds; 0 drops the term */
+	readonly thoughtSeconds: number;
+	/** the segment's calls as [tool name, count], in first-call order.
+	 *  Object-counting tools are deduped by target upstream (R3h). */
+	readonly calls: readonly (readonly [string, number])[];
+	/** the targets acted on — read only when the stretch made exactly
+	 *  ONE call, where naming the target says everything the two rows it
+	 *  replaces said (see the one-call rule below). */
+	readonly targets: readonly string[];
+	/** the trouble the stretch met: [kind, count, what it was]. */
+	readonly trouble: readonly (readonly ["failed" | "denied" | "interrupted", number, string])[];
+	/** A9 — the human's words, on a QUIET turn's fold only. */
+	readonly words?: string;
+	/** the live mark; the caller passes the spinner's current frame. */
+	readonly mark?: string;
+}
+
+const STRETCH_COMPACT: readonly (readonly [string, string])[] = [
+	["directories", "dirs"],
+	["directory", "dir"],
+	["shell commands", "commands"],
+	["shell command", "command"],
+];
+
+/** R3i — a stretch of exactly ONE call names its TARGET instead of its
+ *  count. `thought 2s · read 1 file` replaces two rows — the thinking
+ *  and the call — with a row that says less than either of them did,
+ *  and "thinking plus one call" is the commonest shape a narrating
+ *  model makes. This is the answer to the defect R3d killed R3b's
+ *  per-segment folds over; the "absorbs at least two rows" rule alone
+ *  does not answer it. */
+function stretchTerms(t: StretchTerms, live: boolean): string[] {
+	const total = t.calls.reduce((n, [, c]) => n + c, 0);
+	if (total === 1 && t.targets.length === 1) {
+		const [name] = t.calls[0]!;
+		const e = TERM[name];
+		return [`${e === undefined ? name : e[live ? 1 : 0]} ${t.targets[0]!}`];
+	}
+	return t.calls
+		.filter(([, n]) => n > 0)
+		.map(([name, n]) => {
+			const e = TERM[name];
+			if (e === undefined) return `${n} × ${displayVerb(name)}`;
+			return `${e[live ? 1 : 0]} ${n} ${n === 1 ? e[2] : e[3]}`;
+		});
+}
+
+/** R3i — the trouble clause: which call, and what happened, in WORDS.
+ *  Law 1.3 says an outcome is stated in words, "the only form that
+ *  survives a pipe"; the colour on this clause is emphasis over those
+ *  words, never the fact itself. */
+function troubleClause(t: StretchTerms): string {
+	return t.trouble
+		.filter(([, n]) => n > 0)
+		.map(([kind, n, what]) => (what === "" || kind === "interrupted" ? `${n} ${kind}` : `${n} ${kind}: ${what}`))
+		.join(" · ");
+}
+
+export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "acting" | "settled" }, W: number): string[] {
+	const p = palette();
+	const live = t.phase !== "settled";
+	const mark = t.phase === "settled" ? `${p.bold}✦${p.reset}` : `${p.dim}${t.mark ?? "✧"}${p.reset}`;
+	const key = t.phase === "settled" ? " · ctrl+r" : "";
+	const lead = t.phase === "thinking" ? [`thinking ${t.thoughtSeconds}s`] : t.phase === "settled" && t.thoughtSeconds > 0 ? [`thought ${t.thoughtSeconds}s`] : [];
+	const clauseText = troubleClause(t);
+
+	let meta = [...lead, ...(t.phase === "thinking" ? [] : stretchTerms(t, live))].join(" · ");
+	let clause = clauseText === "" ? "" : ` · ${clauseText}`;
+	let words = t.words === undefined || t.words === "" ? "" : ` ${escapeTerminal(t.words).replace(/\s+/g, " ")} `;
+	const width = (): number => 2 + (words === "" ? 0 : visibleWidth(words) + 3) + visibleWidth(meta) + visibleWidth(clause) + visibleWidth(key);
+	const trim = (text: string, room: number, floor: number): string => (room >= floor ? `${widthCut(text, room)}…` : "");
+
+	if (words !== "" && width() > W) words = trim(words, W - (width() - visibleWidth(words)) - 1, 4);
+	if (width() > W) {
+		for (const [long, short] of STRETCH_COMPACT) {
+			meta = meta.replaceAll(long, short);
+			if (width() <= W) break;
+		}
+	}
+	if (width() > W) {
+		const room = W - (width() - visibleWidth(meta)) - 1;
+		meta = room >= 2 ? `${widthCut(meta, room)}…` : "…";
+	}
+	if (width() > W && clause !== "") clause = trim(clause, W - (width() - visibleWidth(clause)) - 1, 5);
+	// the degenerate floor: below the width where even the mark and one
+	// character fit, the row is a hard cut of what it would have said.
+	const row = `${mark}${words === "" ? "" : ` ${p.rv}${words}${p.rvEnd}${p.dim} ·${p.reset}`} ${meta}${clause === "" ? "" : `${p.red}${clause}${p.reset}`}${key === "" ? "" : `${p.dim}${key}${p.reset}`}`;
+	return [visibleWidth(row) <= W ? row : cutLine(row, W)];
 }
 
 export function turnFold(t: { words: string; thoughtSeconds: number; reads: number; edits: number; others: [string, number][] }, W: number): string[] {
