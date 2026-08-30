@@ -62,6 +62,7 @@ export interface AtPanelState {
 	readonly capped: boolean;
 }
 import {
+	ACT_SLOT_ROWS,
 	Container,
 	ROLLUP_NOUN,
 	MOTION_FRAMES,
@@ -77,7 +78,10 @@ import {
 	exploreRows,
 	foldLine,
 	isExploreTool,
+	moreRunningRow,
 	pendingQueueRows,
+	slotPad,
+	slotTail,
 	statusLine,
 	stretchLine,
 	turnFold,
@@ -228,6 +232,12 @@ interface SegmentRecord {
 	 * where it is known, once.
 	 */
 	cells: number[];
+	/** R4 (C1) — the ordinal PRINTED on this segment's fold row, and the
+	 *  handle the expand key names when it opens it. Assigned once, at
+	 *  the fold's emission, from a monotonic session counter — so it is
+	 *  stable for the session's life no matter what commits after it.
+	 *  null until the fold is emitted. */
+	foldKey: number | null;
 	/** the segment was force-committed past the hold, so its cells are
 	 *  already in the scrollback and CANNOT be replaced by a fold line.
 	 *  The honest degradation: it stays expanded, and says nothing false. */
@@ -336,7 +346,7 @@ function openSegment(turn: TurnRecord | undefined, now: number): SegmentRecord |
 	if (turn === undefined) return null;
 	const last = turn.segments[turn.segments.length - 1];
 	if (last !== undefined && last.closedAt === null) return last;
-	const fresh: SegmentRecord = { openedAt: now, closedAt: null, reads: 0, edits: 0, others: new Map(), seen: new Map(), thinkingMs: 0, thinkingSince: null, folded: false, spilled: false, headCell: null, cells: [] };
+	const fresh: SegmentRecord = { openedAt: now, closedAt: null, reads: 0, edits: 0, others: new Map(), seen: new Map(), thinkingMs: 0, thinkingSince: null, folded: false, spilled: false, headCell: null, foldKey: null, cells: [] };
 	turn.segments.push(fresh);
 	return fresh;
 }
@@ -473,7 +483,17 @@ export class Body {
 	// rendered row carried the "ctrl+r" affordance; the expand key's
 	// cycling pointer walks this list from the newest back.
 	#collapsed: number[] = [];
-	#expandPtr = 0;
+	/** R4 (C1) — the ring walk is by IDENTITY, not by a modular pointer.
+	 *  `#collapsed` is unshifted on every commit that carries the key, so
+	 *  a numeric pointer's target silently CHANGED whenever a new fold
+	 *  landed mid-cycle: the ring was not stable under itself, and the
+	 *  next press opened something other than what the last press
+	 *  implied. This set records what the current cycle has already
+	 *  opened; the walk takes the newest entry not in it, and empties it
+	 *  when every entry has been seen. */
+	#opened = new Set<number>();
+	/** R4 (C1) — the session's fold counter. Monotonic, never reused. */
+	#foldSeq = 0;
 	// W14: the turn records — one per userLine, the fold-hold's state
 	// machine (ended / hasText / folded) plus the folded-turn line's
 	// counts (accumulated at toolStart). The cells carry the record's
@@ -1178,6 +1198,74 @@ export class Body {
 		return -1;
 	}
 
+	/**
+	 * R4 (C4d) — THE APPEND-ONLY RE-WRAP.
+	 *
+	 * The owner's report: resize the window and the reference
+	 * implementation's text re-wraps to the new width while kiso's does
+	 * not. It is true, and it is not a bug to be fixed — it is the price
+	 * of ADR-0046, and the price is worth naming precisely.
+	 *
+	 * A terminal can only reflow a SOFT-wrapped line: one long logical
+	 * line the terminal itself wrapped as the cursor flowed past the last
+	 * column. Every row kiso commits is either painted by cursor
+	 * addressing (#emitDiff) or scrolled out by a bare LF (#emitScroll),
+	 * and frames run with autowrap OFF — so no byte kiso commits can ever
+	 * carry a continuation flag, and nothing downstream can rejoin rows an
+	 * application hard-split. That same LF is what makes the transcript
+	 * the TERMINAL's: it survives kiso's death, a pipe, and tmux. A
+	 * product whose transcript reflows is a product that repaints its
+	 * transcript from its own memory, and that transcript dies with it.
+	 *
+	 * What kiso can do — and this is all it can do — is APPEND. The
+	 * committed cells are still in memory; re-render them at the current
+	 * width and put them at the BOTTOM, where writing is allowed. Nothing
+	 * above is rewritten, so ADR-0046 holds exactly.
+	 *
+	 * Scoped to PROSE. Text is what reads badly at the wrong width — a
+	 * paragraph folded for 120 columns and read at 60 is the complaint.
+	 * Tool rows, folds and chips are short, already carry their own
+	 * width ladders, and re-printing them would duplicate work the folds
+	 * exist to state once.
+	 */
+	rewrap(): { lines: string[]; blocks: number; skipped: number } {
+		const W = this.#opts.width();
+		const H = this.#opts.height();
+		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: H };
+		// two screens is the bound: enough to re-read what a resize just
+		// made awkward, short enough that the append is not its own wall
+		// of text. A silent cap would read as "this is all of it".
+		const budget = Math.max(H, 2 * H);
+		const chunks: string[][] = [];
+		let rows = 0;
+		let blocks = 0;
+		let skipped = 0;
+		for (let i = this.#committed - 1; i >= 0; i -= 1) {
+			const cell = this.#cells[i]!;
+			if (cell.kind !== "md") continue;
+			blocks += 1;
+			if (rows >= budget) {
+				skipped += 1;
+				continue;
+			}
+			const lines = cellComponent(cell).render(W, ctx);
+			chunks.unshift(lines);
+			rows += lines.length;
+		}
+		return { lines: chunks.flat(), blocks: blocks - skipped, skipped };
+	}
+
+	/** R4 (C1) — what the NEXT press will open, by name. The walk is
+	 *  deterministic (newest unopened first), so this is a promise the
+	 *  key keeps rather than a guess. */
+	#nextFoldHint(): string {
+		const pending = this.#collapsed.filter((i) => !this.#opened.has(i));
+		const ring = pending.length > 0 ? pending : this.#collapsed;
+		const idx = ring[0];
+		const key = idx === undefined ? null : (this.#segmentOf(idx)?.foldKey ?? null);
+		return key === null ? "ctrl+r opens the next fold" : `ctrl+r opens fold ${key}`;
+	}
+
 	expandNext(): { kind: "toggled" } | { kind: "appended"; lines: string[] } | { kind: "none" } {
 		for (let i = this.#cells.length - 1; i >= this.#committed; i -= 1) {
 			const cell = this.#cells[i]!;
@@ -1198,8 +1286,13 @@ export class Body {
 			}
 		}
 		if (this.#collapsed.length === 0) return { kind: "none" };
-		const idx = this.#collapsed[this.#expandPtr % this.#collapsed.length]!;
-		this.#expandPtr += 1;
+		// R4 (C1) — the newest entry this cycle has not opened yet. When
+		// every entry has been seen the cycle restarts, so the walk is
+		// still "newest back" — it is simply immune to the ring growing
+		// underneath it.
+		if (this.#collapsed.every((i) => this.#opened.has(i))) this.#opened.clear();
+		const idx = this.#collapsed.find((i) => !this.#opened.has(i)) ?? this.#collapsed[0]!;
+		this.#opened.add(idx);
 		const cell = this.#cells[idx]!;
 		// R3b — a folded SEGMENT expands to the work it stands for.
 		//
@@ -1330,9 +1423,12 @@ export class Body {
 			return {
 				kind: "appended",
 				lines: [
-					`${p.bold}✦${p.reset} expanded · ${escapeTerminal(head.length === 0 ? "thinking" : head.join(" · "))} · ${back}`,
+					// R4 (C1): the expansion names the fold it opened, in the
+					// same ordinal the fold row printed — the answer to "which
+					// one did that open", stated rather than inferred.
+					`${p.bold}✦${p.reset} expanded${seg.foldKey === null ? "" : ` ${seg.foldKey}`} · ${escapeTerminal(head.length === 0 ? "thinking" : head.join(" · "))} · ${back}`,
 					...body,
-					`  ${p.dim}└ end of expansion · ctrl+r opens the next fold${p.reset}`,
+					`  ${p.dim}└ end of expansion · ${this.#nextFoldHint()}${p.reset}`,
 				],
 			};
 		}
@@ -1847,7 +1943,21 @@ export class Body {
 	 * settle still produces the same fold it did before. That is the
 	 * charter's line between this phase and the next.
 	 */
-	#liveProjection(W: number, ctx: FrameCtx): string[] {
+	#liveProjection(W: number, ctx: FrameCtx, cap?: number): string[] {
+		const rows = this.#project(W, ctx, ACT_SLOT_ROWS);
+		if (cap === undefined || rows.length <= cap) return rows;
+		// R4 — the slot gives way BEFORE any cell is force-committed.
+		// A standing slot that could overflow the content cap would make
+		// the force-commit loop push REAL cells into the scrollback to
+		// relieve rows that are, at the bottom of the slot, blank padding.
+		// So the slot shrinks first, in the pinned order slotPad already
+		// implements (the pad rows are last, so they go first, then the
+		// tail, then the heads beyond the first) and the floor is one row.
+		return this.#project(W, ctx, Math.max(1, ACT_SLOT_ROWS - (rows.length - cap)));
+	}
+
+	/** R4 — one pass of the live projection at a given slot budget. */
+	#project(W: number, ctx: FrameCtx, budget: number): string[] {
 		const out: string[] = [];
 		const focus = this.#focusIndex();
 		const turn = this.#turns[this.#turns.length - 1];
@@ -1855,29 +1965,28 @@ export class Body {
 		const openSeg = open !== null && open.closedAt === null ? open : null;
 		let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
 		let stretchDrawn = false;
-		let runningShown = 0;
-		let runningHidden = 0;
 		for (let i = this.#committed; i < this.#cells.length; i += 1) {
 			const cell = this.#cells[i]!;
 			const inOpen = openSeg !== null && openSeg.cells.includes(i);
 			if (inOpen) {
-				// the stretch's ONE line, drawn once, at its first cell
-				if (!stretchDrawn) {
-					stretchDrawn = true;
-					const rows = stretchLine({ ...this.#stretchTerms(openSeg), phase: this.#stretchPhase(openSeg), mark: twinkleFrame(this.#spinnerI) }, W);
-					out.push(...this.#space(i, prev, rows));
-					prev = rows;
-				}
-				// a DONE cell's row is gone; its count is on the line above.
-				// A cell still in flight keeps its row and its output —
-				// hiding the work in flight would be the opposite defect.
-				const flight = cell.kind === "tool" && !cell.done;
-				if (!flight) continue;
-				if (runningShown >= LIVE_ACT_HEADS) {
-					runningHidden += 1;
-					continue;
-				}
-				runningShown += 1;
+				// R4 — the open stretch is ONE contiguous block: its line
+				// plus the standing act slot, spaced once, at the segment's
+				// first live cell. Every other cell of the segment draws
+				// nothing; its work is counted on the line and its output,
+				// if it is the current thing, is in the slot.
+				//
+				// R3i drew the line here and then let each cell decide for
+				// itself whether it still had rows — which is why the
+				// region's height moved between every pair of calls.
+				if (stretchDrawn) continue;
+				stretchDrawn = true;
+				const rows = [
+					...stretchLine({ ...this.#stretchTerms(openSeg), liveNames: this.#liveNames(openSeg), phase: this.#stretchPhase(openSeg), mark: twinkleFrame(this.#spinnerI) }, W),
+					...this.#actSlot(openSeg, W, ctx, budget, focus),
+				];
+				out.push(...this.#space(i, prev, rows));
+				prev = rows;
+				continue;
 			}
 			const rows = cellComponent(cell).render(W, ctx);
 			// the head row carries the affordance; the tint lands on it and
@@ -1886,11 +1995,115 @@ export class Body {
 			out.push(...this.#space(i, prev, rows));
 			prev = rows;
 		}
-		if (runningHidden > 0) {
-			const p = palette();
-			out.push(`  ${p.dim}└ +${runningHidden} more running${p.reset}`);
-		}
 		return out;
+	}
+
+	/**
+	 * R4 — the standing act slot's rows. EXACTLY `budget` rows in every
+	 * phase, so the live region's height changes twice per stretch (once
+	 * when it opens, once when it folds) instead of twice per call.
+	 *
+	 * The phases, in the order they are tested:
+	 *  - an EXPANDED live cell outranks the slot (W15 — "the user asked
+	 *    for it"): it renders in full, variable height. This is also
+	 *    DC-28's cure: mid-stretch `ctrl+r` had a target it toggled and
+	 *    never drew, so the press did nothing visible now and changed a
+	 *    later expansion's shape;
+	 *  - CALLS IN FLIGHT: one head row each within the budget, the tail
+	 *    of the LAST head shown filling what is left, and the overflow
+	 *    row inside the slot. The tail belongs to the last head by
+	 *    construction — never call N's output under call N+1's header;
+	 *  - the GAP between two calls: the call that just finished keeps its
+	 *    settled head and its tail. This is the frame R3i collapsed, and
+	 *    collapsing it is most of the jump;
+	 *  - THINKING, before any call: the thinking's own tail (R3i ruling
+	 *    5, wired at last).
+	 */
+	#actSlot(seg: SegmentRecord, W: number, ctx: FrameCtx, budget: number, focus: number): string[] {
+		const tint = (i: number, rows: string[]): string[] => {
+			if (i === focus && rows.length > 0) rows[0] = focusToken(rows[0]!, W);
+			return rows;
+		};
+		const live = seg.cells.filter((i) => i >= this.#committed);
+		const tools: number[] = [];
+		for (const i of live) if (this.#cells[i]?.kind === "tool") tools.push(i);
+		const toolAt = (i: number): Extract<BodyCell, { kind: "tool" }> => this.#cells[i] as Extract<BodyCell, { kind: "tool" }>;
+
+		// An APPROVAL and an EXPANSION both outrank the slot, for the same
+		// reason: their height is the human's business, not the renderer's.
+		// W21 gives a pending approval the live region wholesale — its
+		// diff is the thing being decided about, and a diff clamped to
+		// four rows is a decision made on partial evidence. W15 gives an
+		// expanded cell its full body — "the user asked for it". The slot
+		// exists to stop the height moving ON ITS OWN; a height a human
+		// asked for is not the oscillation it was built against.
+		//
+		// (The approval half is a regression this round caused and its
+		// gate caught: the first draft treated a pending approval as a
+		// call in flight, so `⏸ edit x.ts` lost its diff tail and the
+		// `ctrl+r to expand` note with it.)
+		const owned = tools.filter((i) => toolAt(i).expanded || toolAt(i).state === "approval");
+		if (owned.length > 0) {
+			// In CELL ORDER, so the frame reads the way the work happened:
+			// an owned cell in full, every OTHER call still in flight
+			// keeping its head row. An approval pausing one call must never
+			// hide the others — the v2d parallel-frame gate caught exactly
+			// that: with the shell running and asky_read at its panel, the
+			// first draft returned the panel alone and the running shell's
+			// `● shell sleep 1; echo hi · 1s` row vanished from the screen.
+			const shown = tools.filter((i) => owned.includes(i) || !toolAt(i).done);
+			const out: string[] = [];
+			let heads = 0;
+			for (const i of shown) {
+				const rows = tint(i, cellComponent(this.#cells[i]!).render(W, ctx));
+				if (owned.includes(i)) {
+					out.push(...rows);
+					continue;
+				}
+				if (heads >= LIVE_ACT_HEADS) continue;
+				heads += 1;
+				out.push(rows[0] ?? "");
+			}
+			const hidden = shown.length - owned.length - heads;
+			if (hidden > 0) out.push(moreRunningRow(hidden, W));
+			return out;
+		}
+
+		const flight = tools.filter((i) => !toolAt(i).done);
+		if (flight.length > 0) {
+			// the commonest frame — exactly one call, the full budget — is
+			// the W8 block verbatim, which is what 0.17.0 already drew.
+			if (flight.length === 1 && budget >= ACT_SLOT_ROWS) return slotPad(tint(flight[0]!, cellComponent(this.#cells[flight[0]!]!).render(W, ctx)), budget);
+			const heads = flight.slice(0, Math.max(1, Math.min(flight.length, budget - 1, LIVE_ACT_HEADS)));
+			const hidden = flight.length - heads.length;
+			const rows: string[] = [];
+			for (const i of heads) rows.push(tint(i, cellComponent(this.#cells[i]!).render(W, ctx))[0] ?? "");
+			const rest = budget - rows.length - (hidden > 0 ? 1 : 0);
+			if (rest > 0) rows.push(...slotTail(toolAt(heads[heads.length - 1]!).resultText, W, rest));
+			if (hidden > 0) rows.push(moreRunningRow(hidden, W));
+			return slotPad(rows, budget);
+		}
+
+		const settled = tools.length > 0 ? tools[tools.length - 1]! : null;
+		if (settled !== null) {
+			const head = tint(settled, cellComponent(this.#cells[settled]!).render(W, ctx))[0] ?? "";
+			return slotPad([head, ...slotTail(toolAt(settled).resultText, W, budget - 1)], budget);
+		}
+
+		const think = [...live].reverse().find((i) => this.#cells[i]?.kind === "thinking");
+		return slotPad(think === undefined ? [] : slotTail((this.#cells[think] as Extract<BodyCell, { kind: "thinking" }>).text, W, budget), budget);
+	}
+
+	/** R4 — the tool names with a call still IN FLIGHT in this segment.
+	 *  The stretch line's tense is per term, so a finished shell reads
+	 *  `ran 1 shell command` while a read is still running. */
+	#liveNames(seg: SegmentRecord): string[] {
+		const names = new Set<string>();
+		for (const i of seg.cells) {
+			const c = this.#cells[i];
+			if (c !== undefined && c.kind === "tool" && !c.done) names.add(c.name);
+		}
+		return [...names];
 	}
 
 	/** R3i — the open stretch's phase. It is THINKING while a thinking
@@ -1967,16 +2180,25 @@ export class Body {
 				queueRows.length
 			);
 		}
+		// DC-27 — the scalar measures the PROJECTION, not a second render
+		// of its own. This loop used to walk every live cell and render it
+		// in full: no open-segment collapse, no flight rule, no act-slot
+		// budget. After R3i that described a screen the compositor had
+		// stopped drawing — for an open stretch with five finished calls
+		// it counted five four-row blocks that were not there. Nothing
+		// broke, because the force-commit loop measures liveLines.length
+		// and the over-count is conservative; but the cap and geometry
+		// gates were asserting a property of a function nothing paints
+		// from, so a real regression in the region's height could not
+		// have moved them. The rule this file already states for the
+		// sheet ("the scalar must say so, or the cap arithmetic disagrees
+		// with the screen") is the same rule here.
 		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
 		const W = this.#opts.width();
-		let lines = 0;
-		let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
-		for (let i = this.#committed; i < this.#cells.length; i += 1) {
-			const rows = cellComponent(this.#cells[i]!).render(W, ctx);
-			lines += this.#space(i, prev, rows).length;
-			prev = rows;
-		}
-		return lines + CHROME_ROWS + inputExtra + this.#menuRows(W).length + queueRows.length;
+		// the SAME content cap the force-commit loop applies, so the
+		// scalar sees the same slot budget the screen gets.
+		const rows = this.#liveProjection(W, ctx, this.#opts.height() - 4 - inputExtra - queueRows.length);
+		return rows.length + CHROME_ROWS + inputExtra + this.#menuRows(W).length + queueRows.length;
 	}
 
 	/** The lines committed THIS frame — the writes land in the frame's
@@ -2083,7 +2305,7 @@ export class Body {
 			// by construction), so the marker can never point at a cell the
 			// key would not take — which is the only way a focus marker is
 			// worth having.
-			liveLines = this.#liveProjection(W, ctx);
+			liveLines = this.#liveProjection(W, ctx, H - 4 - inputExtra - queueRows.length);
 		}
 		// 3. the FORCE commits — the live region's hard cap H−1: overflow
 		//    commits the oldest live cell UNCONDITIONALLY (the one sharp
@@ -2104,7 +2326,7 @@ export class Body {
 			this.#commitCell(this.#committed, W, ctx);
 			// TUI2-R2 ⑤: the focus re-derives after a commit — the cell it
 			// pointed at may have just left the live region.
-			liveLines = this.#liveProjection(W, ctx);
+			liveLines = this.#liveProjection(W, ctx, H - 4 - inputExtra - queueRows.length);
 		}
 		// 4. the geometry — the live region's first row:
 		//    liveTop = min(totalCommitted, H - liveRows) + 1 — the screen
@@ -2607,6 +2829,12 @@ export class Body {
 					seg.folded = true;
 					seg.headCell = i;
 					turn.folded = true;
+					// R4 (C1): the ordinal is assigned HERE, before the row
+					// is rendered, because the settled line always carries
+					// the key — so the number is known without guessing
+					// whether the row will earn an affordance.
+					this.#foldSeq += 1;
+					seg.foldKey = this.#foldSeq;
 					// DECLARED SUPERSESSION (R3i phase 3) — A9 NARROWS: the
 					// fold carries WORK, never the human's words.
 					//
@@ -2618,7 +2846,7 @@ export class Body {
 					// the fold directly beneath it. The band is the record of
 					// what was asked; this line is the record of what was
 					// done. One fact, one row, each.
-					return stretchLine({ ...this.#stretchTerms(seg), phase: "settled" }, W);
+					return stretchLine({ ...this.#stretchTerms(seg), phase: "settled", foldKey: seg.foldKey }, W);
 				}
 				return [];
 			}

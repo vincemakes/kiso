@@ -81,6 +81,9 @@ export const MENU_ITEMS: readonly MenuItem[] = [
 	{ name: "/resume", desc: "switch to another session; /resume <id> goes directly" },
 	{ name: "/think", desc: "show the last full thinking block" },
 	{ name: "/last", desc: "show the most recent tool call's input and output" },
+	// R4 (C4d): the committed transcript belongs to the terminal and can
+	// never be re-wrapped in place (ADR-0046); this appends it re-folded.
+	{ name: "/rewrap", desc: "re-print the recent prose at the current width" },
 	{ name: "/status", desc: "show session id, event count, and context estimate" },
 	// TUI2-R1 (E): the rent-ledger attribution — where the context went
 	{ name: "/context", desc: "show where the context went — the last request's rent ledger" },

@@ -1317,6 +1317,15 @@ export interface StretchTerms {
 	readonly targets: readonly string[];
 	/** the trouble the stretch met: [kind, count, what it was]. */
 	readonly trouble: readonly (readonly ["failed" | "denied" | "interrupted", number, string])[];
+	/** R4 — the tool names that still have a call IN FLIGHT. The tense is
+	 *  PER TERM, not per line: a stretch whose shell has finished while a
+	 *  read runs says `ran 1 shell command · reading 1 file`. The whole
+	 *  line used to go progressive, which the standing act slot made a
+	 *  visible contradiction — the gap frame put `running npm run check`
+	 *  directly above a row reading `(exit 0, 12.4s)`. Absent ⇒ every
+	 *  term takes the line's own tense, which is what the settled line
+	 *  wants. */
+	readonly liveNames?: readonly string[];
 	/** A9 — the human's words, on a QUIET turn's fold only. */
 	readonly words?: string;
 	/** the live mark; the caller passes the spinner's current frame. */
@@ -1338,18 +1347,28 @@ const STRETCH_COMPACT: readonly (readonly [string, string])[] = [
  *  per-segment folds over; the "absorbs at least two rows" rule alone
  *  does not answer it. */
 function stretchTerms(t: StretchTerms, live: boolean): string[] {
+	// R4 — the tense is per TERM. A name with nothing in flight is in the
+	// past whatever the line's own phase is; with liveNames absent (the
+	// settled line) every term follows the line.
+	const tense = (name: string): 0 | 1 => (live && (t.liveNames === undefined || t.liveNames.includes(name)) ? 1 : 0);
 	const total = t.calls.reduce((n, [, c]) => n + c, 0);
-	if (total === 1 && t.targets.length === 1) {
+	// R4 — the one-call TARGET form is the SETTLED line's. Live, the act
+	// slot directly below already names the target on its head row, so
+	// the line was printing the same words twice, one above the other
+	// (`running npm run check` over `shell npm run check`). Settled there
+	// is no slot, and naming the target is strictly more than counting to
+	// one — which is the R3i rule this keeps, where it applies.
+	if (total === 1 && t.targets.length === 1 && !live) {
 		const [name] = t.calls[0]!;
 		const e = TERM[name];
-		return [`${e === undefined ? name : e[live ? 1 : 0]} ${t.targets[0]!}`];
+		return [`${e === undefined ? name : e[0]} ${t.targets[0]!}`];
 	}
 	return t.calls
 		.filter(([, n]) => n > 0)
 		.map(([name, n]) => {
 			const e = TERM[name];
 			if (e === undefined) return `${n} × ${displayVerb(name)}`;
-			return `${e[live ? 1 : 0]} ${n} ${n === 1 ? e[2] : e[3]}`;
+			return `${e[tense(name)]} ${n} ${n === 1 ? e[2] : e[3]}`;
 		});
 }
 
@@ -1364,11 +1383,32 @@ function troubleClause(t: StretchTerms): string {
 		.join(" · ");
 }
 
-export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "acting" | "settled" }, W: number): string[] {
+/**
+ * R4 (C1) — the fold NAMES ITS OWN TARGET.
+ *
+ * `ctrl+r` used to be printed identically on every fold on the screen,
+ * and the key walked a ring whose order nothing on screen expressed —
+ * so the owner's report was exact: "there is no way to know which
+ * stretch it opens". The tint that marks the next target can only be
+ * drawn on a LIVE row, and every fold worth reopening is, by
+ * construction, in the scrollback where nothing can be tinted.
+ *
+ * A pointer cannot fix this either, and the bound is worth stating
+ * once: SGR mouse reports address the VIEWPORT, so a fold that has
+ * scrolled into the terminal's own scrollback is unreachable by any
+ * pointer, permanently, on the primary screen. The ordinal is not a
+ * cheaper substitute for clicking — it is the form of the affordance
+ * that reaches every fold, and it survives a pipe as characters.
+ *
+ * The number rides the KEY, inside the width ladder, so it is paid for
+ * by the same give-way order as every other span (law: the key never
+ * gives way — it just got two characters longer).
+ */
+export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "acting" | "settled"; readonly foldKey?: number }, W: number): string[] {
 	const p = palette();
 	const live = t.phase !== "settled";
 	const mark = t.phase === "settled" ? `${p.bold}✦${p.reset}` : `${p.dim}${t.mark ?? "✧"}${p.reset}`;
-	const key = t.phase === "settled" ? " · ctrl+r" : "";
+	const key = t.phase === "settled" ? (t.foldKey === undefined ? " · ctrl+r" : ` · ctrl+r ${t.foldKey}`) : "";
 	const lead = t.phase === "thinking" ? [`thinking ${t.thoughtSeconds}s`] : t.phase === "settled" && t.thoughtSeconds > 0 ? [`thought ${t.thoughtSeconds}s`] : [];
 	const clauseText = troubleClause(t);
 
@@ -1709,6 +1749,77 @@ function shellLiveTail(text: string, W: number): string[] {
 	const kept = rows.slice(Math.max(0, rows.length - (CAP_LIVE_WINDOW - 1)));
 	while (kept.length < CAP_LIVE_WINDOW - 1) kept.push(`${p.dim}${BODY_ROW}${p.reset}`);
 	return [...kept, cutLine(`${p.dim}${CUT_ROW}live tail · esc stop · alt+⏎ redirect${p.reset}`, W)];
+}
+
+/**
+ * R4 — the standing act slot.
+ *
+ * The stretch's ONE line sits above it; this is the region under it,
+ * and it STANDS: allocated when the stretch opens, released at the
+ * fold.
+ *
+ * R3i built the same window INTERMITTENTLY — a running call got its
+ * fixed 1+3 block (W8), a finished one got nothing — so the live
+ * region's height was a function of how many calls happened to be in
+ * flight this frame. Over one real stretch that is 2 rows, then 7,
+ * then 2, then 17 for a three-call batch, then 2 again, and every
+ * transition scrolls everything above it. The owner's report was that
+ * the screen "keeps jumping", and it was an accurate description of
+ * the design, not a defect in its execution.
+ *
+ * The cure is not a smaller window, it is a STANDING one: between two
+ * calls the slot keeps the call that just finished rather than
+ * collapsing, and before any call it keeps the thinking that is
+ * producing them — which is R3i ruling 5 ("thinking belongs on the
+ * stretch line, IN THE ACT WINDOW, and in full in expansions") finally
+ * wired, since R3i stated it while building no window for the thinking
+ * phase to live in.
+ *
+ * Four rows, deliberately the same 1+3 shape W8 gave a running call, so
+ * the commonest frame — exactly one call in flight — renders byte-for-
+ * byte what 0.17.0 shipped.
+ */
+export const ACT_SLOT_ROWS = 4;
+
+/**
+ * R4 — the slot's body rows: the tail of `text`, newest at the BOTTOM,
+ * bottom-padded to exactly `rows`.
+ *
+ * The same dim │ gutter a running call's window uses (W2's table), and
+ * the same two VD-4 rules: leading blank gutters are skipped, and the
+ * short-output pad goes at the BOTTOM so output starts under its own
+ * header and grows downward. The slot's CONTENTS change; its shape
+ * does not.
+ */
+export function slotTail(text: string, W: number, rows: number): string[] {
+	if (rows <= 0) return [];
+	const p = palette();
+	const all = blockRows(text, W);
+	const from = all.findIndex((r) => visibleWidth(r) > visibleWidth(BODY_ROW));
+	const body = from < 0 ? [] : all.slice(from);
+	const kept = body.slice(Math.max(0, body.length - rows));
+	while (kept.length < rows) kept.push(`${p.dim}${BODY_ROW}${p.reset}`);
+	return kept;
+}
+
+/** R4 — clamp or pad assembled slot rows to EXACTLY `rows`. The padding
+ *  is what makes the slot stand; the clamp is what keeps the slot from
+ *  ever being the thing that trips the force-commit cap (a slot that
+ *  could overflow would commit real cells to relieve blank rows). */
+export function slotPad(content: readonly string[], rows: number): string[] {
+	if (rows <= 0) return [];
+	const p = palette();
+	const out = content.slice(0, rows);
+	while (out.length < rows) out.push(`${p.dim}${BODY_ROW}${p.reset}`);
+	return out;
+}
+
+/** R4 — the slot's overflow row: the calls in flight beyond the head
+ *  budget. It lives INSIDE the slot (it is one of the four rows), which
+ *  is what keeps a parallel burst from growing the region. */
+export function moreRunningRow(n: number, W: number): string {
+	const p = palette();
+	return cutLine(`  ${p.dim}${CUT_ROW}+${n} more running${p.reset}`, W);
 }
 
 /** W12: the delegate's child sessions collapse to the tool row plus ONE

@@ -423,6 +423,9 @@ export function helpRows(): string[] {
 		["/help", "print this list of commands"],
 		["/think", "show the last full thinking block"],
 		["/last", "show the most recent tool call's input and output"],
+		// R4 (C4d): a committed row is the terminal's, and cannot be
+		// re-wrapped in place (ADR-0046) — this appends it re-folded.
+		["/rewrap", "re-print the recent prose at the current width"],
 		["/status", "show session id, event count, and context estimate"],
 		["/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"],
 		["/model", "list model profiles; /model <name|provider/model> switches"],

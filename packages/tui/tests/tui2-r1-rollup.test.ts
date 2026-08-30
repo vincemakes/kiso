@@ -221,7 +221,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// own terms; the run's "explored …" title sits one row below it.
 		// Two scales, one wording each — the header used to borrow the
 		// run's sentence, which read as the same run twice.
-		expect(lines[0]).toContain("expanded · read 8 files · ran 14 searches · 0 turns back");
+		expect(lines[0]).toMatch(/expanded \d+ · read 8 files · ran 14 searches · 0 turns back/); // R4 (C1): + the ordinal
 		const body_ = lines.join("\n");
 		expect(body_).toContain("explored 8 files · 14 searches");
 		expect(body_).toContain("│ read   src/parser.ts · src/lexer.ts · src/ast.ts (+5)");
@@ -237,7 +237,9 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// nothing about this block can be taken back and the next press
 		// opens the NEXT fold. The footer says what the key does. The
 		// LIVE toggle keeps the old wording, where it is true.
-		expect(body_).toContain("└ end of expansion · ctrl+r opens the next fold");
+		// R4 (C1): the footer names the next fold by ordinal when the ring
+		// has one; the old wording survives as the no-fold fallback.
+		expect(body_).toMatch(/└ end of expansion · ctrl\+r opens (fold \d+|the next fold)/);
 		expect(body_).not.toContain("/last shows the full outputs");
 	});
 

@@ -94,7 +94,11 @@ describe("R3i P1 — the block's height stops depending on the call count", () =
 		running(body, "shell", "s", { command: "npm run check" });
 		tick();
 		const rows = body_().join("\n");
-		expect(rows).toContain("reading 6 files");
+		// DECLARED SUPERSESSION (R4 — the tense is PER TERM): the six reads
+		// are DONE and the shell is running, so the line says exactly
+		// that, term by term, instead of putting the whole line in the
+		// present and claiming six reads were still in flight.
+		expect(rows).toContain("read 6 files · running 1 shell command");
 		// ...and their own rows are gone
 		expect(rows).not.toContain("f0.ts");
 		expect(rows).not.toContain("f5.ts");

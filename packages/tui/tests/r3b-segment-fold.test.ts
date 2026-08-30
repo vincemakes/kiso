@@ -176,7 +176,9 @@ describe("R3b — the work is never unreachable", () => {
 		// R3i: the ring is newest-first, and each key opens ITS OWN
 		// stretch — so the first press opens the second stretch (the edit
 		// and the shell), not the turn's whole work.
-		expect(lines).toContain("expanded ·");
+		// R4 (C1): the header names the ORDINAL of the fold it opened —
+		// the answer to "which one did that open", stated not inferred.
+		expect(lines).toMatch(/expanded \d+ ·/);
 		expect(lines).toContain("edited 1 file");
 	});
 
@@ -350,11 +352,26 @@ describe("R3d — the layout only grows until the settle", () => {
 		call(body, "read_file", "r2", { path: "b.ts" }, "x");
 		tick();
 		const mid = plain(writes.join(""));
-		// the OPEN stretch's work rides its line, in the present tense
-		expect(mid).toContain("reading 2 files");
-		// ...and the calls' own rows are not on screen holding it open
+		// DECLARED SUPERSESSION (R4 — the tense is PER TERM): both reads
+		// have FINISHED here, and nothing is running, so the honest tense
+		// is the past. What still separates this line from a settled fold
+		// is the key: a live line carries no `· ctrl+r <n>`.
+		expect(mid).toContain("read 2 files");
+		expect(mid).not.toMatch(/read 2 files · ctrl\+r \d/);
+		// DECLARED SUPERSESSION (R4 — the standing act slot): "the calls'
+		// own rows are not on screen" is no longer the claim, and it was
+		// never quite the right one. R3i drew a row for a call in flight
+		// and nothing for a call that had finished, so the region's
+		// height moved between every pair of calls — the jump the owner
+		// reported. R4 keeps ONE call in a standing four-row slot, whose
+		// CONTENTS swap while its rows do not.
+		//
+		// So the surviving claim is the stronger one: the slot holds one
+		// call, not a stack. `b.ts` is the current occupant; `a.ts` was
+		// REPLACED by it rather than pushed up, which is precisely why
+		// the height cannot grow with the call count.
 		expect(mid).not.toContain("read  a.ts");
-		expect(mid).not.toContain("read  b.ts");
+		expect(mid).toContain("read  b.ts");
 		// R3i phase 3: the CLOSED stretch has already folded — the text
 		// that closed it is what committed it, which is the whole point
 		// of a fold standing with the prose it led to. It held thinking
@@ -362,9 +379,12 @@ describe("R3d — the layout only grows until the settle", () => {
 		// counting it: `✦ listed . · ctrl+r`, which says everything the
 		// two rows it replaced said.
 		expect(mid).toContain("listed .");
-		// and the OPEN stretch has not folded: its line is present tense,
-		// carries no key, and the settled form of its work is nowhere
-		expect(mid).not.toContain("read 2 files");
+		// and the OPEN stretch has not folded. DECLARED SUPERSESSION (R4):
+		// "its line is present tense" is no longer how you can tell — the
+		// tense is per term now, and both reads are done. What it still
+		// carries no trace of is the KEY, which only a committed fold has,
+		// and which now names an ordinal no live row can print.
+		expect(mid).not.toMatch(/read 2 files · ctrl\+r/);
 	});
 
 	it("a LATER call never removes an earlier row — the layout only grows", () => {
@@ -448,7 +468,7 @@ describe("R3f — the fold counts nothing it cannot show", () => {
 		// R3i: the header names THIS stretch, which is what the block
 		// holds — a header describing the whole turn over a block holding
 		// one stretch was the bug this replaces.
-		expect(lines).toContain("expanded · edited 1 file · ran 1 shell command");
+		expect(lines).toMatch(/expanded \d+ · edited 1 file · ran 1 shell command/); // R4 (C1): + the ordinal
 	});
 
 	it("a run still BREAKS at a non-explore call — the segment boundary keeps its meaning", () => {

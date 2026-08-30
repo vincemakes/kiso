@@ -124,7 +124,7 @@ describe("TUI2-R1.5 ⑥ — one press, one cell (VD-7)", () => {
 		// the segment did, and the run's own "explored …" title sits one
 		// row below it. The claim — ONE expansion naming the group, not
 		// five per-call ones — is unchanged and is what is asserted.
-		expect(lines).toContain("expanded · read 4 files · ran 1 search");
+		expect(lines).toMatch(/expanded \d+ · read 4 files · ran 1 search/); // R4 (C1): + the ordinal
 		expect(lines).toContain("explored 4 files · 1 search");
 		// DECLARED SUPERSESSION (R3i phase 4): in the APPENDED path the
 		// footer said `ctrl+r collapses`, which is false there — a
@@ -132,8 +132,12 @@ describe("TUI2-R1.5 ⑥ — one press, one cell (VD-7)", () => {
 		// nothing about this block can be taken back and the next press
 		// opens the NEXT fold. The footer says what the key does. The
 		// LIVE toggle keeps the old wording, where it is true.
-		expect(lines).toContain("end of expansion · ctrl+r opens the next fold");
-		expect(lines.match(/expanded ·/g) ?? []).toHaveLength(1);
+		// R4 (C1): the footer NAMES the next fold when there is one to
+		// name — "opens the next fold" survives only where the ring holds
+		// nothing numbered. A promise the key keeps by ordinal beats one it
+		// keeps by position in a ring the screen never showed.
+		expect(lines).toMatch(/end of expansion · ctrl\+r opens (fold \d+|the next fold)/);
+		expect(lines.match(/expanded \d+ ·/g) ?? []).toHaveLength(1);
 	});
 
 });

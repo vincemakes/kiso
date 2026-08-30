@@ -132,6 +132,27 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(land);
 		return;
 	}
+	if (trimmed === "/rewrap") {
+		// R4 (C4d): re-print the recent PROSE at the CURRENT width, at the
+		// bottom. kiso hard-folds every row before committing it (invariant
+		// ①), which is what makes the transcript the terminal's own — and
+		// is also why the terminal cannot re-wrap it on a resize: there is
+		// no soft-wrap flag to reflow. Appending is the one move ADR-0046
+		// allows, so this is the whole of what can be offered, and it says
+		// so rather than pretending the history changed.
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			const r = body.rewrap();
+			if (r.lines.length === 0) {
+				bodyLog("[/rewrap] no prose to re-wrap yet");
+			} else {
+				bodyLog(`--- re-wrapped ${r.blocks} block${r.blocks === 1 ? "" : "s"} at the current width (appended — the history above is unchanged) ---`);
+				for (const line of r.lines) bodyLog(line);
+				if (r.skipped > 0) bodyLog(`--- ${r.skipped} earlier block${r.skipped === 1 ? "" : "s"} not re-wrapped (bounded at two screens) ---`);
+			}
+			ctx.input.prompt();
+		});
+		return;
+	}
 	if (trimmed === "/context") {
 		// TUI2-R1 (E): the rent-ledger attribution — where the context went,
 		// read from the session's TRACE SIDECAR (the observation file E1/E3

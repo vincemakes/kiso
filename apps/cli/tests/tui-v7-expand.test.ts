@@ -336,7 +336,10 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 				// completed — never the text's live bytes, which can precede
 				// the commit by a frame.
 				["five files read.", "\x12"],
-				["expanded · read 5 files", "exit\r"],
+				// R4 (C1): the segment-fold expansion header carries its ordinal
+				// now (`expanded 1 · read 5 files`), so the needle drops the span
+				// the number sits in rather than waiting forever for the old one.
+				["read 5 files · 0 turns back", "exit\r"],
 			],
 			60,
 			dir,
@@ -354,7 +357,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// b/c ride "· ", so only the expand's own └ matches for them);
 		// d–e once (only the expand ever named them)
 		// the header names the SEGMENT; W13's own row sits one line below it
-		expect(clean).toContain("expanded · read 5 files · 0 turns back");
+		expect(clean).toMatch(/expanded \d+ · read 5 files · 0 turns back/); // R4 (C1): + the ordinal
 		expect(clean).toContain("read 5 files");
 		// DECLARED SUPERSESSION (REL-0152-R1), same class as above: counted
 		// on the SCREEN. A diff re-emits a row when the window shifts, so

@@ -1000,7 +1000,7 @@ describe("TUI v6 — the one compositor", () => {
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
 		const lines = (r as { lines: string[] }).lines;
-		expect(lines[0]).toContain("expanded · read 5 files · 0 turns back");
+		expect(lines[0]).toMatch(/expanded \d+ · read 5 files · 0 turns back/); // R4 (C1): + the ordinal
 		expect(lines.join("\n")).toContain("read 5 files");
 		for (const t of ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"]) {
 			expect(lines.some((l) => l.includes(t))).toBe(true);
@@ -1027,19 +1027,44 @@ describe("TUI v6 — the one compositor", () => {
 		// 5 files` for one 200ms frame, settled GLYPH with present tense.
 		// §4.1 blesses the shared glyph ("the mark that runs is the mark
 		// that stays"); what distinguishes the settled line is the TENSE
-		// and the KEY, and the key is the honest observable here because
-		// only a committed fold carries one.
-		expect(writes.join("")).not.toContain("ctrl+r");
-		// DECLARED SUPERSESSION (R3i phase 2): "no summary before the
-		// settle" is no longer the claim — there IS a live summary, and
-		// it is the whole point of the projection: the stretch's one
-		// line, in the PRESENT tense, saying what it is doing. What the
-		// hold still forbids is the SETTLED form, and the ✦ assertion
-		// above is exactly that. So the pair of claims is now: the live
-		// line says `reading 5 files`, and `read 5 files` — the past
-		// tense the settle brings — is nowhere yet.
-		expect(writes.join("")).toContain("reading 5 files");
-		expect(writes.join("")).not.toContain("read 5 files");
+		// and the KEY.
+		//
+		// DECLARED SUPERSESSION (R4 — the standing act slot): the KEY is
+		// no longer an observable that discriminates. It was, while the
+		// only row carrying `ctrl+r` was a committed fold; R4's slot
+		// keeps the call that just finished, and a settled head row
+		// carries its own `ctrl+r expands`. That affordance is now TRUE
+		// where it used to be a lie — DC-28 found that mid-stretch the
+		// key toggled a flag and drew nothing — so the right assertion
+		// is that it IS there, on the call.
+		//
+		// (An earlier draft of this comment said the TENSE carries the
+		// discrimination alone. It does not — see the second supersession
+		// below. What discriminates is the fold's KEY WITH ITS ORDINAL:
+		// `· ctrl+r 3` is emitted by exactly one code path, the settled
+		// stretch line, and a live row can never carry it.)
+		// (on the STRIPPED bytes: `ctrl+r` is reverse-video, so the raw
+		// stream carries an SGR reset between the key and the verb — the
+		// non-contiguous-needle trap DC-25 recorded, and it caught this
+		// assertion on its first draft too.)
+		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("ctrl+r expands");
+		// DECLARED SUPERSESSION (R4 — the tense is PER TERM). R3i put the
+		// whole live line in the present, so five FINISHED reads read
+		// `reading 5 files` while nothing was being read. The standing
+		// act slot made that a visible contradiction: the gap frame put
+		// `running npm run check` directly above a head row saying
+		// `(exit 0, 12.4s)`. A term whose calls are all done is in the
+		// past, whatever the line's own phase is — so this stretch, with
+		// five reads done and nothing running, says `read 5 files`, and
+		// says it truthfully.
+		//
+		// The cost is that the tense no longer separates live from
+		// settled. The KEY does, and only the key: `· ctrl+r <n>` comes
+		// from one code path — the settled stretch line — and carries an
+		// ordinal no live row has.
+		const held = writes.join("").replace(/\x1b\[[0-9;]*m/g, "");
+		expect(held).toContain("read 5 files");
+		expect(held).not.toMatch(/read 5 files · ctrl\+r \d/); // ...but NOT settled
 		writes.length = 0; // drop the hold frame — only the fold frame below
 		// the boundary: the terminal closes the turn — the fold line lands
 		// at the FIRST held cell's commit (the thinking cell — endTurn
