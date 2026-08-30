@@ -232,12 +232,6 @@ interface SegmentRecord {
 	 * where it is known, once.
 	 */
 	cells: number[];
-	/** R4 (C1) — the ordinal PRINTED on this segment's fold row, and the
-	 *  handle the expand key names when it opens it. Assigned once, at
-	 *  the fold's emission, from a monotonic session counter — so it is
-	 *  stable for the session's life no matter what commits after it.
-	 *  null until the fold is emitted. */
-	foldKey: number | null;
 	/** the segment was force-committed past the hold, so its cells are
 	 *  already in the scrollback and CANNOT be replaced by a fold line.
 	 *  The honest degradation: it stays expanded, and says nothing false. */
@@ -346,7 +340,7 @@ function openSegment(turn: TurnRecord | undefined, now: number): SegmentRecord |
 	if (turn === undefined) return null;
 	const last = turn.segments[turn.segments.length - 1];
 	if (last !== undefined && last.closedAt === null) return last;
-	const fresh: SegmentRecord = { openedAt: now, closedAt: null, reads: 0, edits: 0, others: new Map(), seen: new Map(), thinkingMs: 0, thinkingSince: null, folded: false, spilled: false, headCell: null, foldKey: null, cells: [] };
+	const fresh: SegmentRecord = { openedAt: now, closedAt: null, reads: 0, edits: 0, others: new Map(), seen: new Map(), thinkingMs: 0, thinkingSince: null, folded: false, spilled: false, headCell: null, cells: [] };
 	turn.segments.push(fresh);
 	return fresh;
 }
@@ -492,8 +486,6 @@ export class Body {
 	 *  opened; the walk takes the newest entry not in it, and empties it
 	 *  when every entry has been seen. */
 	#opened = new Set<number>();
-	/** R4 (C1) — the session's fold counter. Monotonic, never reused. */
-	#foldSeq = 0;
 	// W14: the turn records — one per userLine, the fold-hold's state
 	// machine (ended / hasText / folded) plus the folded-turn line's
 	// counts (accumulated at toolStart). The cells carry the record's
@@ -1255,17 +1247,6 @@ export class Body {
 		return { lines: chunks.flat(), blocks: blocks - skipped, skipped };
 	}
 
-	/** R4 (C1) — what the NEXT press will open, by name. The walk is
-	 *  deterministic (newest unopened first), so this is a promise the
-	 *  key keeps rather than a guess. */
-	#nextFoldHint(): string {
-		const pending = this.#collapsed.filter((i) => !this.#opened.has(i));
-		const ring = pending.length > 0 ? pending : this.#collapsed;
-		const idx = ring[0];
-		const key = idx === undefined ? null : (this.#segmentOf(idx)?.foldKey ?? null);
-		return key === null ? "ctrl+r opens the next fold" : `ctrl+r opens fold ${key}`;
-	}
-
 	expandNext(): { kind: "toggled" } | { kind: "appended"; lines: string[] } | { kind: "none" } {
 		for (let i = this.#cells.length - 1; i >= this.#committed; i -= 1) {
 			const cell = this.#cells[i]!;
@@ -1423,12 +1404,13 @@ export class Body {
 			return {
 				kind: "appended",
 				lines: [
-					// R4 (C1): the expansion names the fold it opened, in the
-					// same ordinal the fold row printed — the answer to "which
-					// one did that open", stated rather than inferred.
-					`${p.bold}✦${p.reset} expanded${seg.foldKey === null ? "" : ` ${seg.foldKey}`} · ${escapeTerminal(head.length === 0 ? "thinking" : head.join(" · "))} · ${back}`,
+					// R4a — the header names the fold in WORDS (its own terms
+					// and how far back it is), not by an ordinal. The ordinal
+					// existed to be typed and never was; the words were
+					// always the part a reader could use.
+					`${p.bold}✦${p.reset} expanded · ${escapeTerminal(head.length === 0 ? "thinking" : head.join(" · "))} · ${back}`,
 					...body,
-					`  ${p.dim}└ end of expansion · ${this.#nextFoldHint()}${p.reset}`,
+					`  ${p.dim}└ end of expansion · ctrl+r opens the one before it${p.reset}`,
 				],
 			};
 		}
@@ -2512,7 +2494,25 @@ export class Body {
 		// tool cell, and a segment's fold can be emitted at a thinking
 		// cell — which would have left the whole segment unreachable by
 		// the very key its own row advertises.
-		if ((cell.kind === "tool" || this.#segmentOf(i)?.headCell === i) && lines.some((l) => l.includes("ctrl+r"))) this.#collapsed.unshift(i);
+		// R4a — the ring captures by IDENTITY, not by searching our own
+		// printed bytes.
+		//
+		// This used to require the rendered rows to contain the literal
+		// "ctrl+r", which made the affordance LOAD-BEARING: retiring the
+		// printed key (the owner's ruling) would have silently emptied the
+		// ring and taken the expand key with it — not a missing hint, a
+		// missing feature. A fold head is a fold head because the segment
+		// says so; a tool cell is expandable when it is hiding rows.
+		const isFoldHead = this.#segmentOf(i)?.headCell === i;
+		const hidesRows = cell.kind === "tool" && lines.some((l) => l.includes("ctrl+r"));
+		if (isFoldHead || hidesRows) {
+			this.#collapsed.unshift(i);
+			// R4a — a new fold resets the walk, so the FIRST press after any
+			// new work always opens the most recent one. That is the whole
+			// of the owner's "which one does it open": the answer is always
+			// "the last one", and repeats walk back from there.
+			this.#opened.clear();
+		}
 		this.#lineCache[i] = lines;
 		const placed = this.#space(i, i > 0 ? this.#lineCache[i - 1]! : null, lines);
 		this.#committed += 1;
@@ -2829,12 +2829,6 @@ export class Body {
 					seg.folded = true;
 					seg.headCell = i;
 					turn.folded = true;
-					// R4 (C1): the ordinal is assigned HERE, before the row
-					// is rendered, because the settled line always carries
-					// the key — so the number is known without guessing
-					// whether the row will earn an affordance.
-					this.#foldSeq += 1;
-					seg.foldKey = this.#foldSeq;
 					// DECLARED SUPERSESSION (R3i phase 3) — A9 NARROWS: the
 					// fold carries WORK, never the human's words.
 					//
@@ -2846,7 +2840,7 @@ export class Body {
 					// the fold directly beneath it. The band is the record of
 					// what was asked; this line is the record of what was
 					// done. One fact, one row, each.
-					return stretchLine({ ...this.#stretchTerms(seg), phase: "settled", foldKey: seg.foldKey }, W);
+					return stretchLine({ ...this.#stretchTerms(seg), phase: "settled" }, W);
 				}
 				return [];
 			}

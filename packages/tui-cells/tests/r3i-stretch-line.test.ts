@@ -92,10 +92,27 @@ describe("R3i G1 — the line you watch is the line you keep", () => {
 		}
 	});
 
-	it("only the SETTLED line carries the key and the past tense", () => {
-		expect(plain(stretchLine({ ...TERMS, phase: "settled" }, 120)[0]!)).toContain("ctrl+r");
-		expect(plain(stretchLine({ ...TERMS, phase: "acting" }, 120)[0]!)).not.toContain("ctrl+r");
-		expect(plain(stretchLine({ ...TERMS, phase: "thinking" }, 120)[0]!)).not.toContain("ctrl+r");
+	// DECLARED SUPERSESSION (R4a, owner ruling 2026-08-30) — THE FOLD ROW
+	// PRINTS NO KEY.
+	//
+	// R3i made the key the thing that never gives way, and the settled
+	// line's one distinguishing mark. R4 then printed an ordinal beside
+	// it (`ctrl+r 3`) so a row could name its own target, and the owner's
+	// objection landed: a number you cannot type is not a selector. The
+	// reference implementation, checked rather than assumed, prints
+	// nothing on the row either — its expansion lives in a MODE you
+	// enter, where a pointer reaches every fold including the ones that
+	// have scrolled away.
+	//
+	// So no phase carries a key now. What still separates the settled
+	// line is what it always said: the past TENSE, and the bold mark.
+	// `ctrl+r` still works and is taught in the keys sheet (`?`), which
+	// is where the reference teaches its own binding too.
+	it("no phase prints a key — the settled line is distinguished by its TENSE", () => {
+		for (const phase of ["settled", "acting", "thinking"] as const) {
+			expect(plain(stretchLine({ ...TERMS, phase }, 120)[0]!)).not.toContain("ctrl+r");
+		}
+		expect(plain(stretchLine({ ...TERMS, phase: "settled" }, 120)[0]!)).toContain("read");
 	});
 
 	it("`thought Ns` is the SETTLED lead; a live stretch says what it is doing", () => {
@@ -153,9 +170,15 @@ describe("R3i G2 — the ladder: everything gives way except the key", () => {
 		}
 	});
 
-	it("the KEY survives every width a key can fit in", () => {
+	// R4a: the key is retired (see the supersession above), so what this
+	// sweep now holds is the invariant the key used to ride inside —
+	// every width produces exactly ONE row that fits.
+	it("every width from 20 to 160 produces one row that fits", () => {
 		for (let W = 20; W <= 160; W += 1) {
-			expect(plain(stretchLine({ ...LONG, phase: "settled" }, W)[0]!), `W=${W}`).toContain("ctrl+r");
+			const rows = stretchLine({ ...LONG, phase: "settled" }, W);
+			expect(rows, `W=${W}`).toHaveLength(1);
+			expect(visibleWidth(rows[0]!), `W=${W}`).toBeLessThanOrEqual(W);
+			expect(rows[0]!, `W=${W}`).not.toMatch(/[\n\r]/);
 		}
 	});
 
@@ -179,7 +202,8 @@ describe("R3i G2 — the ladder: everything gives way except the key", () => {
 			const clauseCut = /1 failed[^·]*…/.test(row);
 			if (countsCut && firstCountCut === 0) firstCountCut = W;
 			if (clauseCut && firstClauseCut === 0) firstClauseCut = W;
-			expect(row, `the key at W=${W}`).toContain("ctrl+r");
+			// R4a: the key is gone; the ORDER is the property that survives,
+			// and it is what the three assertions below prove.
 		}
 		// the words are gone by the time a count is cut...
 		expect(firstCountCut).toBeLessThan(lastWords);
@@ -203,10 +227,10 @@ describe("R3i G2 — the ladder: everything gives way except the key", () => {
 		expect(plain(stretchLine(t, 60)[0]!)).toContain("listed 3 directories");
 	});
 
-	it("the clause is the LAST thing to give way before the key", () => {
+	it("the clause is the LAST thing to give way", () => {
 		const narrow = plain(stretchLine({ ...LONG, phase: "settled" }, 48)[0]!);
 		expect(narrow).toContain("1 failed"); // the clause is still there...
-		expect(narrow).toContain("ctrl+r"); // ...and so is the key
+		// R4a: "...and so is the key" retired with the key itself.
 		expect(narrow).toContain("…"); // ...because the counts gave way
 	});
 });

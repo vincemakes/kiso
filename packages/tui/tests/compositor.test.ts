@@ -1000,7 +1000,7 @@ describe("TUI v6 — the one compositor", () => {
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
 		const lines = (r as { lines: string[] }).lines;
-		expect(lines[0]).toMatch(/expanded \d+ · read 5 files · 0 turns back/); // R4 (C1): + the ordinal
+		expect(lines[0]).toContain("expanded · read 5 files · 0 turns back");
 		expect(lines.join("\n")).toContain("read 5 files");
 		for (const t of ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"]) {
 			expect(lines.some((l) => l.includes(t))).toBe(true);

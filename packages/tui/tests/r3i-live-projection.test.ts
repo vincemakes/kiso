@@ -185,7 +185,9 @@ describe("R3i P4 — this phase does not move a single commit", () => {
 		for (let i = 0; i < 6; i += 1) done(body, "read_file", `r${i}`, { path: `f${i}.ts` });
 		body.endTurn(9);
 		tick();
-		expect(screen().join("\n")).toContain("ctrl+r");
+		// R4a: the settled fold no longer prints a key — its WORDS are the
+		// evidence it committed.
+		expect(screen().join("\n")).toContain("thought 9s · read 6 files");
 	});
 });
 

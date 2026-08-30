@@ -227,11 +227,18 @@ describe("R3i ③ — the hold, and what the key answers", () => {
 		call(body, "read_file", "a", { path: "a.ts" });
 		call(body, "read_file", "b", { path: "b.ts" });
 		tick();
-		expect(plain(writes.join(""))).not.toMatch(/✦[^\n]*ctrl\+r/); // still open: nothing folded
+		// DECLARED SUPERSESSION (R4a): the fold row prints no key, so the
+		// key is no longer the observable for "this committed". Nor is the
+		// glyph (✦ is a twinkle frame) nor the tense (per term since R4).
+		// What still discriminates is BEHAVIOUR: an open stretch's cells
+		// are live, so the expand key toggles one in place; once the text
+		// closes the stretch and its fold commits, the same key appends
+		// the run's rows from the ring.
+		expect(body.expandNext().kind).not.toBe("appended"); // still open
 		body.textAppend("mid.\n");
 		body.textEnd();
 		tick();
-		expect(plain(writes.join(""))).toMatch(/✦[^\n]*ctrl\+r/); // the text closed it, and it committed
+		expect(body.expandNext().kind).toBe("appended"); // the text closed it, and it committed
 	});
 
 	it("each fold's key opens exactly ITS stretch, and the header says so", () => {

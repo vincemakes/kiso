@@ -282,11 +282,17 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// the advisory is addressed to the HUMAN, so it names the act; the
 		// actionable half (offset=201) is untouched.
 		// R3b: the read's advisory is inside the segment fold, like every
-		// other row of the run — reachable by the key the fold names, never
-		// dropped. The claim "the human is told, not only the model" holds
-		// through the key; what would break it is silence, and the fold is
-		// not silent.
-		expect(grid.join("\n")).toMatch(/✦ (thought \d+s · )?.* · ctrl\+r/);
+		// other row of the run — never dropped. The claim "the human is
+		// told, not only the model" holds through the fold; what would
+		// break it is silence, and the fold is not silent.
+		// DECLARED SUPERSESSION (R4a, owner ruling 2026-08-30): the fold row
+		// prints no key. The claim here — the advisory is not dropped, it
+		// is folded and reachable — is unchanged; what carried it was the
+		// printed key, and what carries it now is the fold's own WORDS
+		// plus the behaviour the unit suite pins (ctrl+r appends the run's
+		// rows). A row cannot promise which fold a key opens, so it stopped
+		// promising; the reference implementation's row is clean too.
+		expect(grid.join("\n")).toMatch(/✦ (thought \d+s · )?read /);
 	}, 60_000);
 
 	it("R1.5 4 at 120 cols: the same, at the wide width — no body rows, no cut row", () => {
@@ -303,8 +309,9 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		expect(grid.join("\n")).not.toMatch(/^│ (seq|1[012])/m);
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND).
 		// R3b: the advisory rode the read's own row, which is inside the
-		// segment fold now — reachable by the key the fold names.
-		expect(grid.join("\n")).toMatch(/✦ (thought \d+s · )?.* · ctrl\+r/);
+		// segment fold now. R4a: the fold row prints no key (see the 60-col
+		// case above) — its words are the evidence it stands for the run.
+		expect(grid.join("\n")).toMatch(/✦ (thought \d+s · )?read /);
 	}, 60_000);
 
 	it("W8: two parallel tools, one streaming — the window is a FIXED 3 rows and every row BELOW the streaming cell is byte-identical across the run's frames until settle", () => {

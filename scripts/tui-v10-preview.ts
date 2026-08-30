@@ -19,7 +19,7 @@
  *   ① every emitted row is ONE physical row, no wider than W;
  *   ② the live region's height is IDENTICAL in every frame of a
  *     stretch — which is the round's whole claim, mechanically;
- *   ③ the settled fold names its own ordinal.
+ *   ③ no settled fold row advertises a key (R4a).
  */
 
 import { Body } from "../packages/tui/src/compositor.js";
@@ -80,7 +80,7 @@ async function run(): Promise<Shot[]> {
 	body.toolResult("r3", { content: "ok", isError: false });
 	body.textAppend("The rollup binary is an optional platform package the lockfile never installs on a clean runner.\n");
 	body.textEnd();
-	await snap("5 · the settle", "The prose closes the stretch. The six live rows become ONE committed row, carrying its own ordinal — the answer to “which one does ctrl+r open”, printed rather than inferred. The eye lands on the new prose, which is where the next thing to read is.");
+	await snap("5 · the settle", "The prose closes the stretch. The six live rows become ONE committed row, with no key printed on it — the reference implementation's row is clean too, and its expansion lives in a mode you enter. The eye lands on the new prose, which is where the next thing to read is.");
 	return shots;
 }
 
@@ -97,14 +97,16 @@ if (CHECK) {
 	// ② the arc's live height NEVER moves (frames 1..4 — the open stretch)
 	const open = shots.slice(0, 4).map((s) => s.live);
 	if (new Set(open).size !== 1) fails.push(`the live height MOVED across the open stretch: ${open.join(" → ")}`);
-	// ③ the settled fold names its ordinal
+	// ③ R4a — the settled fold prints NO key. Its words are the row.
 	const settled = shots[shots.length - 1]!.rows.join("\n");
-	if (!/ctrl\+r \d+/.test(strip(settled))) fails.push("the settled fold does not print its ordinal");
+	for (const row of strip(settled).split("\n").map((r) => r.trim())) {
+		if (row.startsWith("✦ ") && !row.startsWith("✦ took") && row.includes("ctrl+r")) fails.push(`a fold row still advertises a key: ${row}`);
+	}
 	if (fails.length > 0) {
 		for (const f of fails) console.error(`FAIL  ${f}`);
 		process.exit(1);
 	}
-	console.log(`[tui-v10] OK at W=${W} — ${shots.length} frames, every row one row, the open stretch held ${open[0]} live rows throughout, the fold names its ordinal.`);
+	console.log(`[tui-v10] OK at W=${W} — ${shots.length} frames, every row one row, the open stretch held ${open[0]} live rows throughout, no fold row advertises a key.`);
 	process.exit(0);
 }
 

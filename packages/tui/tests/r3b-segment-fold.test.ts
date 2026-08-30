@@ -165,7 +165,10 @@ describe("R3b — the work is never unreachable", () => {
 		body.enter();
 		twoSegments(body);
 		tick();
-		expect(plain(writes.join(""))).toContain("· ctrl+r");
+		// DECLARED SUPERSESSION (R4a) — the fold row prints no key, so
+		// `ctrl+r` is no longer an observable for "this folded". The claim
+		// the case was always making is REACHABILITY, and that is behaviour:
+		// the key answers with the run's own rows.
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
 		const lines = plain((r as { lines: string[] }).lines.join("\n"));
@@ -178,7 +181,7 @@ describe("R3b — the work is never unreachable", () => {
 		// and the shell), not the turn's whole work.
 		// R4 (C1): the header names the ORDINAL of the fold it opened —
 		// the answer to "which one did that open", stated not inferred.
-		expect(lines).toMatch(/expanded \d+ ·/);
+		expect(lines).toContain("expanded ·"); // R4a: the ordinal is retired with the key
 		expect(lines).toContain("edited 1 file");
 	});
 
@@ -354,10 +357,16 @@ describe("R3d — the layout only grows until the settle", () => {
 		const mid = plain(writes.join(""));
 		// DECLARED SUPERSESSION (R4 — the tense is PER TERM): both reads
 		// have FINISHED here, and nothing is running, so the honest tense
-		// is the past. What still separates this line from a settled fold
-		// is the key: a live line carries no `· ctrl+r <n>`.
+		// is the past. R4a: neither a live line NOR a settled fold prints a
+		// key any more, so the two are told apart behaviourally (the
+		// commit-semantics suite) rather than by a needle. What this case
+		// still holds is that the OPEN stretch's work rides its own line.
 		expect(mid).toContain("read 2 files");
-		expect(mid).not.toMatch(/read 2 files · ctrl\+r \d/);
+		// no FOLD row here names a key — the slot's tool card is a
+		// different row, and its own `ctrl+r expands` is still true.
+		for (const row of mid.split(/\x1b\[\d+;1H|\n/).filter((l) => l.trim().startsWith("✦ "))) {
+			expect(row).not.toContain("ctrl+r");
+		}
 		// DECLARED SUPERSESSION (R4 — the standing act slot): "the calls'
 		// own rows are not on screen" is no longer the claim, and it was
 		// never quite the right one. R3i drew a row for a call in flight
@@ -468,7 +477,7 @@ describe("R3f — the fold counts nothing it cannot show", () => {
 		// R3i: the header names THIS stretch, which is what the block
 		// holds — a header describing the whole turn over a block holding
 		// one stretch was the bug this replaces.
-		expect(lines).toMatch(/expanded \d+ · edited 1 file · ran 1 shell command/); // R4 (C1): + the ordinal
+		expect(lines).toContain("expanded · edited 1 file · ran 1 shell command");
 	});
 
 	it("a run still BREAKS at a non-explore call — the segment boundary keeps its meaning", () => {
@@ -567,6 +576,8 @@ describe("R3f — the fold never claims work the screen already shows", () => {
 		// R3i: the seconds are the SEGMENT's own thinking clock, and this
 		// stretch does no thinking — so the zero term is dropped (R3b's
 		// rule) and the line is its work alone.
-		expect(plain(writes.join(""))).toContain("✦ read 20 files · ctrl+r");
+		// R4a: the key is retired from the row; the WORK the row states is
+		// what this case was pinning.
+		expect(plain(writes.join(""))).toContain("✦ read 20 files");
 	});
 });

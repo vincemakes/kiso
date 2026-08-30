@@ -1404,11 +1404,24 @@ function troubleClause(t: StretchTerms): string {
  * by the same give-way order as every other span (law: the key never
  * gives way — it just got two characters longer).
  */
-export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "acting" | "settled"; readonly foldKey?: number }, W: number): string[] {
+export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "acting" | "settled" }, W: number): string[] {
 	const p = palette();
 	const live = t.phase !== "settled";
 	const mark = t.phase === "settled" ? `${p.bold}✦${p.reset}` : `${p.dim}${t.mark ?? "✧"}${p.reset}`;
-	const key = t.phase === "settled" ? (t.foldKey === undefined ? " · ctrl+r" : ` · ctrl+r ${t.foldKey}`) : "";
+	// R4a (owner ruling, 2026-08-30) — the fold row prints NO key.
+	//
+	// R4 printed `· ctrl+r 3` so the row could name its own target. The
+	// owner's objection is the right one: a number you cannot type is not
+	// a selector, it is decoration that costs a column — and the
+	// reference implementation, checked rather than assumed, prints
+	// nothing on the row either. Its expansion lives in a MODE you enter,
+	// where the pointer can reach every fold including the ones that have
+	// scrolled away; the row itself stays clean.
+	//
+	// So the affordance is retired here and owed to that mode. Until it
+	// exists, `ctrl+r` still opens the most recent fold — it is simply no
+	// longer advertised on a row that cannot say which one it means.
+	const key = "";
 	const lead = t.phase === "thinking" ? [`thinking ${t.thoughtSeconds}s`] : t.phase === "settled" && t.thoughtSeconds > 0 ? [`thought ${t.thoughtSeconds}s`] : [];
 	const clauseText = troubleClause(t);
 

@@ -145,7 +145,8 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		// the PTY collapses and the PIPE never does — is unchanged, and the
 		// pipe leg below still proves the durable record is identical.
 		expect(out).toMatch(/✦ (thought \d+s · )?read 3 files · ran 2 searches · listed 1 directory/);
-		expect(out).toContain("ctrl+r");
+		// R4a: the fold row prints no key — the row above IS the settled
+		// form, and what `ctrl+r` opens is pinned in the unit suite.
 
 		// the PIPE leg — no compositor, no row, byte-for-byte the line mode
 		const pipe = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });

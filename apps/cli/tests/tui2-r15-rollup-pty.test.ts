@@ -74,8 +74,10 @@ describe("TUI2-R1.5 ① — the exploration rollup at real pacing (real CLI)", (
 		expect(joined).toMatch(/✦ (thought \d+s · )?read 6 files · ran 1 search · listed 1 directory/);
 		// …and NOT the eight individual rows the walkthrough saw
 		expect(grid.filter((l) => /✓ read {2}f\d\.txt/.test(l))).toHaveLength(0);
-		// the affordance is on the row (ctrl+r must have something to do)
-		expect(joined).toContain("ctrl+r"); // the fold names its own key
+		// R4a: the affordance is no longer ON the row — a row cannot say
+		// which fold a key would open, so it stopped claiming to. That
+		// ctrl+r still has something to do is pinned behaviourally in
+		// packages/tui/tests/r4-act-slot.test.ts ("R4a").
 	}, 240_000);
 
 	it("REAL PACING — a burst whose calls land seconds apart still rolls up at settle", () => {

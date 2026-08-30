@@ -234,89 +234,90 @@ describe("R4 E — DC-27: the scalar measures the screen", () => {
 	});
 });
 
-describe("R4 F — C1: the fold names its own target", () => {
-	const foldOf = (b: Body, writes: string[]): string[] =>
-		plain(writes.join("")).split(/[\r\n]|\x1b\[\d+;1H/).filter((l) => l.includes("ctrl+r"));
+describe("R4a — the fold row prints no key, and ctrl+r opens the MOST RECENT", () => {
+	const stretch = (b: Body, i: number): void => {
+		b.thinkingAppend(`thinking ${i}`);
+		b.thinkingEnd();
+		b.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
+		b.toolRunning(`r${i}`);
+		b.toolResult(`r${i}`, { content: "one\ntwo\nthree", isError: false });
+		b.textAppend(`narrating ${i}.\n`);
+		b.textEnd();
+	};
+	/** the committed FOLD rows only — a tool card's own `ctrl+r expands`
+	 *  is a different row with a different (still true) promise. */
+	const foldRows = (writes: string[]): string[] =>
+		plain(writes.join(""))
+			.split(/\x1b\[\d+;1H|\n/)
+			.map((l) => l.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim())
+			.filter((l) => l.startsWith("✦ ") && !l.startsWith("✦ took") && !l.startsWith("✦ expanded"));
 
-	it("each committed fold prints its OWN ordinal, and the ordinals are distinct", () => {
+	it("no committed fold advertises a key — the row is its words alone", () => {
 		const { body, writes, tick } = makeBody({ H: 40 });
 		body.enter();
 		body.userLine("x");
-		for (let i = 0; i < 3; i += 1) {
-			body.thinkingAppend(`thinking ${i}`);
-			body.thinkingEnd();
-			body.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
-			body.toolRunning(`r${i}`);
-			body.toolResult(`r${i}`, { content: "x", isError: false });
-			body.textAppend(`narrating ${i}.\n`);
-			body.textEnd();
-		}
+		for (let i = 0; i < 3; i += 1) stretch(body, i);
+		body.endTurn(1);
 		tick();
-		const keys = [...plain(writes.join("")).matchAll(/ctrl\+r (\d+)/g)].map((m) => m[1]);
-		expect(keys.length).toBeGreaterThanOrEqual(3);
-		expect(new Set(keys).size).toBe(keys.length); // every fold has its OWN number
+		const rows = foldRows(writes);
+		expect(rows.length).toBeGreaterThanOrEqual(2); // the folds are there...
+		for (const r of rows) expect(r).not.toContain("ctrl+r"); // ...and none names a key
 	});
 
-	it("the expansion names the fold it opened, and says which one comes next", () => {
+	it("...and the work is still reachable: the key answers with the run's own rows", () => {
 		const { body, tick } = makeBody({ H: 40 });
 		body.enter();
 		body.userLine("x");
-		for (let i = 0; i < 2; i += 1) {
-			body.thinkingAppend(`thinking ${i}`);
-			body.thinkingEnd();
-			body.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
-			body.toolRunning(`r${i}`);
-			body.toolResult(`r${i}`, { content: "many\nlines\nof\noutput\nhere", isError: false });
-			body.textAppend(`narrating ${i}.\n`);
-			body.textEnd();
-		}
+		stretch(body, 0);
 		body.endTurn(1);
 		tick();
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
 		if (r.kind !== "appended") return;
-		const text = plain(r.lines.join("\n"));
-		expect(text).toMatch(/✦ expanded \d+ ·/); // it names what it opened
-		expect(text).toMatch(/ctrl\+r opens fold \d+/); // ...and what is next
+		expect(plain(r.lines.join("\n"))).toContain("f0.ts");
 	});
 
-	it("a fold committed mid-cycle does not steal the press the ring already promised", () => {
-		// The ring is unshifted on every commit that carries the key, so a
-		// modular pointer's target silently changed whenever a new fold
-		// landed between two presses. The walk is by identity now.
+	it("the FIRST press after new work opens the MOST RECENT fold, always", () => {
+		// The owner's question was "with that many folds, do you know which
+		// one opens?" — the answer has to be the same sentence every time.
+		// A new fold resets the walk, so it is: the last one.
 		const { body, tick } = makeBody({ H: 40 });
 		body.enter();
 		body.userLine("x");
-		const stretch = (i: number, out: string): void => {
-			body.thinkingAppend(`thinking ${i}`);
-			body.thinkingEnd();
-			body.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
-			body.toolRunning(`r${i}`);
-			body.toolResult(`r${i}`, { content: out, isError: false });
-			body.textAppend(`narrating ${i}.\n`);
-			body.textEnd();
-		};
-		stretch(0, "alpha\nbeta\ngamma\ndelta\nepsilon");
-		stretch(1, "one\ntwo\nthree\nfour\nfive");
+		stretch(body, 0);
+		stretch(body, 1);
 		body.endTurn(1);
 		tick();
-
 		const first = body.expandNext();
 		expect(first.kind).toBe("appended");
-		const opened: string[] = [];
-		if (first.kind === "appended") opened.push(plain(first.lines[0] ?? ""));
+		if (first.kind === "appended") expect(plain(first.lines.join("\n"))).toContain("f1.ts");
 
-		// a THIRD fold commits between the two presses
+		// a walk already in progress, and then NEW work lands
+		body.expandNext(); // walks back to the older one
 		body.userLine("y");
-		stretch(2, "nine\nten\neleven\ntwelve\nthirteen");
+		stretch(body, 2);
 		body.endTurn(1);
 		tick();
+		const after = body.expandNext();
+		expect(after.kind).toBe("appended");
+		if (after.kind === "appended") expect(plain(after.lines.join("\n"))).toContain("f2.ts");
+	});
 
-		const second = body.expandNext();
-		expect(second.kind).toBe("appended");
-		if (second.kind === "appended") opened.push(plain(second.lines[0] ?? ""));
-		// two presses, two DIFFERENT folds — never the same one twice
-		expect(opened[0]).not.toBe(opened[1]);
+	it("repeats walk BACK — the older folds stay reachable from the keyboard", () => {
+		const { body, tick } = makeBody({ H: 40 });
+		body.enter();
+		body.userLine("x");
+		stretch(body, 0);
+		stretch(body, 1);
+		body.endTurn(1);
+		tick();
+		const seen: string[] = [];
+		for (let i = 0; i < 2; i += 1) {
+			const r = body.expandNext();
+			if (r.kind === "appended") seen.push(plain(r.lines.join("\n")));
+		}
+		expect(seen[0]).toContain("f1.ts"); // newest first...
+		expect(seen[1]).toContain("f0.ts"); // ...then back
 	});
 });
 
