@@ -61,6 +61,48 @@ import { sessionFilter, type SessionCardView, type SessionPickState } from "./se
  * go on together and come off together; a terminal left with either one
  * set is a terminal that prints escape bytes at the shell prompt.
  */
+/**
+ * R5 — the viewer's key table, as a pure function of the input chunk.
+ *
+ * Pure so it can be gated without a terminal. Anything not in the table
+ * returns null and is SWALLOWED by the caller: a surface that owns the
+ * screen must not let stray bytes fall through into the composer behind
+ * it, which is the defect the sheet's whole-chunk dismissal avoids by a
+ * different route.
+ */
+export function viewerCommand(text: string): "up" | "down" | "toggle" | "all" | "pageUp" | "pageDown" | "home" | "end" | "close" | null {
+	switch (text) {
+		case "\x1b[A":
+		case "k":
+			return "up";
+		case "\x1b[B":
+		case "j":
+			return "down";
+		case "\r":
+		case "\n":
+		case " ":
+			return "toggle";
+		case "a":
+			return "all";
+		case "\x1b[5~":
+			return "pageUp";
+		case "\x1b[6~":
+			return "pageDown";
+		case "\x1b[H":
+		case "g":
+			return "home";
+		case "\x1b[F":
+		case "G":
+			return "end";
+		case "\x1b":
+		case "q":
+		case "\x0f": // ctrl+o — the key that opens it also puts it away
+			return "close";
+		default:
+			return null;
+	}
+}
+
 export const MOUSE_ON = "\x1b[?1000h\x1b[?1006h";
 export const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l";
 
@@ -448,6 +490,20 @@ export class Editor {
 	/** The whole buffer as text (the CLI's line()/clearLine()). */
 	line(): string {
 		return String.fromCodePoint(...this.#chars);
+	}
+
+	/** R5 — the transcript viewer's key routing. The editor owns no
+	 *  viewer STATE (the compositor does, because the entries are its
+	 *  cells); it only reports whether the viewer is up and forwards the
+	 *  commands, the same shape the expand key already uses. */
+	#viewerUp: (() => boolean) | null = null;
+	#viewerCbs = new Set<(cmd: "open" | "up" | "down" | "toggle" | "all" | "pageUp" | "pageDown" | "home" | "end" | "close") => void>();
+	bindViewer(isUp: () => boolean, cb: (cmd: "open" | "up" | "down" | "toggle" | "all" | "pageUp" | "pageDown" | "home" | "end" | "close") => void): void {
+		this.#viewerUp = isUp;
+		this.#viewerCbs.add(cb);
+	}
+	#viewerSend(cmd: "open" | "up" | "down" | "toggle" | "all" | "pageUp" | "pageDown" | "home" | "end" | "close"): void {
+		for (const cb of [...this.#viewerCbs]) cb(cmd);
 	}
 
 	/** TUI2-R1 (D): whether the keys sheet is up — the compositor's slot
@@ -934,6 +990,17 @@ export class Editor {
 			this.#onRender();
 			return;
 		}
+		// R5 — while the viewer is up it OWNS the keyboard. Unlike the
+		// sheet (which any key dismisses) this surface is INTERACTIVE, so
+		// the chunk is matched against its own bindings and anything
+		// unrecognised is swallowed rather than typed into the composer
+		// behind it. esc closes; ctrl+o closes too, so the key that opens
+		// it also puts it away.
+		if (this.#viewerUp?.() === true) {
+			const cmd = viewerCommand(text);
+			if (cmd !== null) this.#viewerSend(cmd);
+			return;
+		}
 		let i = 0;
 		while (i < text.length) {
 			const c = text[i];
@@ -1376,6 +1443,14 @@ export class Editor {
 				// W15: the expand key (ctrl+r) — rides the chain like a
 				// command, the editor just forwards it.
 				for (const cb of [...this.#expandCbs]) cb();
+				i += 1;
+			} else if (c === "\x0f" && this.#composerIdle() && this.#chars.length === 0) {
+				// R5 — ctrl+o opens the transcript viewer. Free in kiso, and
+				// the same key the reference implementation uses, so the
+				// muscle memory transfers even though what it opens is not
+				// the same surface. Idle composer only, exactly like `?`:
+				// mid-text it would be a keystroke stolen from the human.
+				this.#viewerSend("open");
 				i += 1;
 			} else if (c === "?" && this.#composerIdle() && this.#chars.length === 0) {
 				// TUI2-R1 (D): `?` opens the keys sheet — but ONLY on an

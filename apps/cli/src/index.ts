@@ -298,6 +298,16 @@ function makeLineInput(): LineInput {
 		dock.bindApproval(() => editor.panelState()); // W21: the panel's bound state
 		dock.bindSheet(() => editor.sheetOpen()); // TUI2-R1 (D): the ? keys sheet
 		dock.bindPick(() => editor.pickState()); // TUI2-R2 ②: the resume picker's band
+		// R5: the transcript viewer. The editor reports whether it is up and
+		// forwards the commands; the STATE lives in the compositor, because
+		// the entries the viewer lists are the compositor's own cells.
+		editor.bindViewer(
+			() => dock.viewerOpen(),
+			(cmd) => {
+				if (cmd === "open" || cmd === "close") dock.viewerToggleMode();
+				else dock.viewerKey(cmd);
+			},
+		);
 		return editorInput(editor);
 	}
 	return readlineInput(createInterface({ input: process.stdin, output: process.stdout }));

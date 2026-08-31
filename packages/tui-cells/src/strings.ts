@@ -226,6 +226,11 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
 	{ keys: "/", what: "commands" },
 	{ keys: "↑↓", what: "history / queue pop" },
 	{ keys: "ctrl+r", what: "expand cells" },
+	// R5 — the transcript viewer. It has to be HERE or it does not exist:
+	// R4a retired the printed key from the fold row on the ground that a
+	// row cannot say which fold a key opens, and the sheet is where the
+	// discoverability moved. A surface nobody can find is not a feature.
+	{ keys: "ctrl+o", what: "transcript" },
 	{ keys: "tab", what: "complete (menu / @)" },
 	{ keys: "?", what: "this sheet" },
 	{ keys: "ctrl+z / ctrl+y", what: "undo / redo" },
@@ -295,15 +300,22 @@ const SHEET_GRID: readonly (readonly number[])[] = [
 	[0, 1, 2],
 	[3, 4, 5],
 	[6, 7],
+	// R5: ctrl+o joins at index 8, so the tail shifts by one. The grid is
+	// a SECOND table that must agree with KEY_BINDINGS and nothing makes
+	// it — adding a binding without touching this silently drops the LAST
+	// one off the sheet, which is exactly what happened on the first
+	// attempt and exactly what the "ONE SOURCE" gate exists to catch.
 	[8, 9],
-	[10], // UD-1: its own single-column row — no hand-tuned stop touched
+	// UD-1's undo row shares this one now — the table has an even count
+	// again, so no binding needs a row to itself.
+	[10, 11],
 ];
 const SHEET_STOPS: readonly (readonly number[])[] = [
 	[16, 43],
 	[16, 43],
 	[36],
 	[36],
-	[],
+	[36],
 ];
 
 /**

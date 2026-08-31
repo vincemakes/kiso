@@ -34,14 +34,16 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		// it at 43, which is a hand-spacing slip, not a design. The stops
 		// are 16/43 on both rows, so the column the prototype was drawing
 		// is the column that renders.
+		// DECLARED ADDITION (R5): ctrl+o joins at index 8 and the tail
+		// shifts by one, so the last two bindings now share a row and the
+		// undo row is no longer alone. The stops are untouched.
 		expect(keysSheetRows(80)).toEqual([
 			"keys",
 			"enter send      ctrl+j / shift+⏎ newline   @ files",
 			"esc stop        alt+⏎ / ctrl+⏎ redirect    / commands",
 			"↑↓ history / queue pop              ctrl+r expand cells",
-			"tab complete (menu / @)             ? this sheet",
-			// UD-1: the undo row — its own single-column grid row
-			"ctrl+z / ctrl+y undo / redo",
+			"ctrl+o transcript                   tab complete (menu / @)",
+			"? this sheet                        ctrl+z / ctrl+y undo / redo",
 			// MOVED (the TUI2-R3v2 panel-selection supersession class): R1.5
 			// pin 6 chose "digits pick · ⏎ confirms" as the one sentence true
 			// of an approval where a digit SELECTED and an ask where a digit
@@ -71,7 +73,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		// readable thing on screen the one screen whose whole job is being
 		// read. They are the sheet's CONTENT, so they are bold.
 		expect(rows[1]).toContain("\x1b[1menter\x1b[0m send");
-		expect(rows[6]).toBe(`\x1b[2m${PANEL_KEYS_ROW}\x1b[0m`); // UD-1: the panel row moved down one
+		expect(rows[6]).toBe(`\x1b[2m${PANEL_KEYS_ROW}\x1b[0m`); // R5: the grid packed to 5 rows again, so the panel row is back at 6
 	});
 
 	it("ONE SOURCE — every binding in the table reaches the sheet, and nothing but the table does", () => {
@@ -118,6 +120,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 			"/",
 			"↑↓",
 			"ctrl+r",
+			"ctrl+o", // R5: the transcript viewer
 			"tab",
 			"?",
 			"ctrl+z / ctrl+y",

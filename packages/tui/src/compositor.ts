@@ -77,6 +77,7 @@ import {
 	focusToken,
 	exploreRows,
 	foldLine,
+	cutLine,
 	isExploreTool,
 	moreRunningRow,
 	pendingQueueRows,
@@ -92,6 +93,22 @@ import {
 } from "./components.js";
 import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, toolTarget, type BannerMeta, type ResumeMeta } from "./render.js";
 import { displayVerb, keysSheetRows } from "./strings.js";
+// R5 — the transcript viewer's PURE projection. The compositor supplies
+// the entries (it holds the cells); the arrangement lives there.
+import {
+	VIEWER_GUTTER,
+	viewerFlat,
+	viewerHint,
+	viewerInit,
+	viewerMove,
+	viewerRows,
+	viewerScroll,
+	viewerTitle,
+	viewerToggle,
+	viewerToggleAll,
+	type ViewerEntry,
+	type ViewerState,
+} from "./transcript.js";
 
 /** The cursor marker — an APC private sequence the focus component
  *  embeds at the edit position; the compositor strips it and moves
@@ -512,6 +529,11 @@ export class Body {
 	 *  Unbound, the sheet cannot render and every frame is byte-identical
 	 *  to before the round. */
 	#sheetState: (() => boolean) | null = null;
+	/** R5 — the transcript viewer's state, or null when it is closed. It
+	 *  lives HERE rather than in the editor because its entries are the
+	 *  compositor's cells; the editor only sends it commands. */
+	#viewer: ViewerState | null = null;
+	#viewerWasUp = false;
 	/** TUI2-R1.5 7(a): the sheet's previous up/down state — a transition
 	 *  in either direction takes the full-redraw path. */
 	#sheetWasUp = false;
@@ -1247,66 +1269,19 @@ export class Body {
 		return { lines: chunks.flat(), blocks: blocks - skipped, skipped };
 	}
 
-	expandNext(): { kind: "toggled" } | { kind: "appended"; lines: string[] } | { kind: "none" } {
-		for (let i = this.#cells.length - 1; i >= this.#committed; i -= 1) {
-			const cell = this.#cells[i]!;
-			if (cell.kind === "tool" && cell.state !== "pending") {
-				cell.expanded = !cell.expanded;
-				this.#mark();
-				return { kind: "toggled" };
-			}
-			// W20: the LIVE task block toggles in place too — the capped
-			// form flips to the full list (the "done-collapse expands
-			// under ctrl+r" claim). The SETTLED block is already full —
-			// no toggle, and its rows carry no affordance, so it never
-			// joins #collapsed (the committed /last append is moot).
-			if (cell.kind === "checklist" && !cell.done) {
-				cell.expanded = !cell.expanded;
-				this.#mark();
-				return { kind: "toggled" };
-			}
-		}
-		if (this.#collapsed.length === 0) return { kind: "none" };
-		// R4 (C1) — the newest entry this cycle has not opened yet. When
-		// every entry has been seen the cycle restarts, so the walk is
-		// still "newest back" — it is simply immune to the ring growing
-		// underneath it.
-		if (this.#collapsed.every((i) => this.#opened.has(i))) this.#opened.clear();
-		const idx = this.#collapsed.find((i) => !this.#opened.has(i)) ?? this.#collapsed[0]!;
-		this.#opened.add(idx);
-		const cell = this.#cells[idx]!;
-		// R3b — a folded SEGMENT expands to the work it stands for.
-		//
-		// The fold line collapses a run of thinking and tool cells into
-		// one row; without this the run would be unreachable, which is
-		// hiding a durable record behind a summary. The rows are APPENDED
-		// (ADR-0046 — history is never rewritten), exactly as every other
-		// expand in this method does, and they are the cells' OWN renders,
-		// so the expansion cannot drift from what was folded.
-		const seg = this.#segmentOf(idx);
-		const foldTurn = (cell.kind === "thinking" || cell.kind === "tool") && cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
-		if (seg !== null && foldTurn !== undefined && seg.headCell === idx) {
-			const p = palette();
-			const turnsBack = this.#cells.slice(idx + 1).filter((c) => c.kind === "user").length;
-			const back = `${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
-			const W = this.#opts.width();
-			const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
-			// R3b (owner ruling): the ROLLUP is the expansion. TUI2-R1 built
-			// a richer projection of an explore run than a fold line can
-			// carry — the per-tool counts, and one row per tool with its
-			// subjects — and the segment fold would have retired it by
-			// simply arriving first. So the run's own rows are what the key
-			// opens: explore tools group the way the rollup groups them,
-			// everything else renders as itself.
-			// The segment's cells IN ORDER, with consecutive explore tools
-			// grouped exactly as the rollup groups them — a write, a shell
-			// or anything else BREAKS the run, which is TUI2-R1's own rule
-			// and the reason two explore runs on either side of a write
-			// stay two runs. Merging every explore tool of the segment
-			// would have been simpler and would have quietly deleted that
-			// rule.
 
-			const rows: string[] = [];
+	/**
+	 * R5 — the rows a fold stands for, as a PURE projection.
+	 *
+	 * Extracted from expandNext so the transcript viewer and the
+	 * expand key open the same work by construction rather than by
+	 * two copies agreeing. It renders cells; it mutates none of
+	 * them beyond the head.rolled save/restore the rollup path has
+	 * always used, which does not outlive this synchronous call.
+	 */
+	#foldBody(seg: SegmentRecord, idx: number, W: number, ctx: FrameCtx): string[] {
+		const p = palette();
+		const rows: string[] = [];
 			let run: Extract<BodyCell, { kind: "tool" }>[] = [];
 			const flush = (): void => {
 				if (run.length === 0) return;
@@ -1374,6 +1349,207 @@ export class Body {
 				rows.push(...cellComponent(c).render(W, ctx));
 			}
 			flush();
+		return rows;
+	}
+
+
+	// ─── R5: the transcript viewer ──────────────────────────────────
+	//
+	// The viewer occupies the LIVE REGION, exactly as the keys sheet
+	// does. It is not the alternate buffer and never will be: while an
+	// overlay is up the window is frozen, no LF is emitted, nothing
+	// enters the scrollback, and the close takes the full-redraw path
+	// and restores every displaced row (TUI2-R1.5 7(a), and its gate).
+
+	/** Whether the viewer owns the live region right now. */
+	viewerOpen(): boolean {
+		return this.#viewer !== null;
+	}
+
+	/** ctrl+o — open on the newest fold, or close. */
+	viewerToggleMode(): void {
+		if (this.#viewer !== null) {
+			this.#viewer = null;
+		} else {
+			const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
+			this.#viewer = viewerInit(this.#viewerEntries(this.#opts.width(), ctx));
+		}
+		this.#mark();
+	}
+
+	/** The viewer's keys. Everything the surface can do, a key does —
+	 *  there is no pointer, so there is nothing a pointer could reach
+	 *  that a keyboard cannot. */
+	viewerKey(cmd: "up" | "down" | "toggle" | "all" | "pageUp" | "pageDown" | "home" | "end"): void {
+		if (this.#viewer === null) return;
+		const W = this.#opts.width();
+		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
+		const entries = this.#viewerEntries(W, ctx);
+		const rows = this.#viewerBandRows();
+		const s = this.#viewer;
+		switch (cmd) {
+			case "up":
+				this.#viewer = viewerMove(entries, s, -1, rows);
+				break;
+			case "down":
+				this.#viewer = viewerMove(entries, s, +1, rows);
+				break;
+			case "home":
+				this.#viewer = viewerMove(entries, s, -entries.length, rows);
+				break;
+			case "end":
+				this.#viewer = viewerMove(entries, s, entries.length, rows);
+				break;
+			case "pageUp":
+				this.#viewer = viewerScroll(entries, s, -rows, rows);
+				break;
+			case "pageDown":
+				this.#viewer = viewerScroll(entries, s, rows, rows);
+				break;
+			case "toggle":
+				this.#viewer = viewerToggle(entries, s, rows);
+				break;
+			case "all":
+				this.#viewer = viewerToggleAll(entries, s, rows);
+				break;
+		}
+		this.#mark();
+	}
+
+	/** How many rows the viewer's LIST gets: the content cap, less its
+	 *  own title and hint rows. */
+	#viewerBandRows(): number {
+		const H = this.#opts.height();
+		const W = this.#opts.width();
+		const queueRows = this.#queueRows(W, H);
+		const inputExtra = this.#inputRows(W, H, this.#menuRows(W).length, queueRows.length).rows.length - 1;
+		return Math.max(1, H - 4 - inputExtra - queueRows.length - 2);
+	}
+
+	/**
+	 * The expandable things in the transcript, oldest first.
+	 *
+	 * The set is `#collapsed` — the SAME ring `ctrl+r` walks — so the two
+	 * mechanisms can never disagree about what is reachable. The ring is
+	 * newest-first (it is unshifted on commit); reading order is the
+	 * other way, so it is reversed here.
+	 *
+	 * Every entry is rendered at the CURRENT width, which is what makes
+	 * this surface the answer to "I resized and want to re-read the
+	 * history": the scrollback copy stays the immutable original at its
+	 * original widths, and this is where you go to read it at today's.
+	 */
+	#viewerEntries(W: number, ctx: FrameCtx): ViewerEntry[] {
+		const inner = Math.max(1, W - VIEWER_GUTTER);
+		const out: ViewerEntry[] = [];
+		for (const idx of [...this.#collapsed].reverse()) {
+			const cell = this.#cells[idx];
+			if (cell === undefined) continue;
+			const seg = this.#segmentOf(idx);
+			if (seg !== null && seg.headCell === idx) {
+				out.push({
+					head: stretchLine({ ...this.#stretchTerms(seg), phase: "settled" }, inner)[0] ?? "",
+					body: this.#foldBody(seg, idx, inner, ctx),
+				});
+				continue;
+			}
+			if (cell.kind !== "tool") continue;
+			// the tool card's FULL body — the same rows its own ctrl+r
+			// opens. The expanded flag is saved and restored inside this
+			// synchronous call, the pattern the rollup path has always
+			// used for head.rolled; it never outlives the render, so the
+			// committed geometry #committedLines derives can never see it.
+			const saved = cell.expanded;
+			cell.expanded = true;
+			const rows = cellComponent(cell).render(inner, ctx);
+			cell.expanded = saved;
+			out.push({ head: rows[0] ?? "", body: rows.slice(1) });
+		}
+		return out;
+	}
+
+	/** The viewer's band: its title, its list, its keys. */
+	#viewerBand(W: number): string[] {
+		if (this.#viewer === null) return [];
+		const p = palette();
+		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
+		const entries = this.#viewerEntries(W, ctx);
+		const rows = this.#viewerBandRows();
+		const title = viewerTitle(entries);
+		const shown = viewerRows(entries, this.#viewer, W, rows);
+		const flat = viewerFlat(entries, this.#viewer).length;
+		const more = flat > rows ? ` · ${this.#viewer.top + 1}-${Math.min(flat, this.#viewer.top + rows)} of ${flat}` : "";
+		// the rule is MEASURED, not over-generated and cut — a title row
+		// ending in `…` says the title was truncated, which it was not.
+		const label = `── ${escapeTerminal(title)}${more} `;
+		const fill = "─".repeat(Math.max(0, W - visibleWidth(label)));
+		return [
+			cutLine(`${p.dim}${label}${fill}${p.reset}`, W),
+			...shown,
+			cutLine(`${p.dim} ${viewerHint(this.#viewer, entries)}${p.reset}`, W),
+		];
+	}
+
+	expandNext(): { kind: "toggled" } | { kind: "appended"; lines: string[] } | { kind: "none" } {
+		for (let i = this.#cells.length - 1; i >= this.#committed; i -= 1) {
+			const cell = this.#cells[i]!;
+			if (cell.kind === "tool" && cell.state !== "pending") {
+				cell.expanded = !cell.expanded;
+				this.#mark();
+				return { kind: "toggled" };
+			}
+			// W20: the LIVE task block toggles in place too — the capped
+			// form flips to the full list (the "done-collapse expands
+			// under ctrl+r" claim). The SETTLED block is already full —
+			// no toggle, and its rows carry no affordance, so it never
+			// joins #collapsed (the committed /last append is moot).
+			if (cell.kind === "checklist" && !cell.done) {
+				cell.expanded = !cell.expanded;
+				this.#mark();
+				return { kind: "toggled" };
+			}
+		}
+		if (this.#collapsed.length === 0) return { kind: "none" };
+		// R4 (C1) — the newest entry this cycle has not opened yet. When
+		// every entry has been seen the cycle restarts, so the walk is
+		// still "newest back" — it is simply immune to the ring growing
+		// underneath it.
+		if (this.#collapsed.every((i) => this.#opened.has(i))) this.#opened.clear();
+		const idx = this.#collapsed.find((i) => !this.#opened.has(i)) ?? this.#collapsed[0]!;
+		this.#opened.add(idx);
+		const cell = this.#cells[idx]!;
+		// R3b — a folded SEGMENT expands to the work it stands for.
+		//
+		// The fold line collapses a run of thinking and tool cells into
+		// one row; without this the run would be unreachable, which is
+		// hiding a durable record behind a summary. The rows are APPENDED
+		// (ADR-0046 — history is never rewritten), exactly as every other
+		// expand in this method does, and they are the cells' OWN renders,
+		// so the expansion cannot drift from what was folded.
+		const seg = this.#segmentOf(idx);
+		const foldTurn = (cell.kind === "thinking" || cell.kind === "tool") && cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
+		if (seg !== null && foldTurn !== undefined && seg.headCell === idx) {
+			const p = palette();
+			const turnsBack = this.#cells.slice(idx + 1).filter((c) => c.kind === "user").length;
+			const back = `${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
+			const W = this.#opts.width();
+			const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
+			// R3b (owner ruling): the ROLLUP is the expansion. TUI2-R1 built
+			// a richer projection of an explore run than a fold line can
+			// carry — the per-tool counts, and one row per tool with its
+			// subjects — and the segment fold would have retired it by
+			// simply arriving first. So the run's own rows are what the key
+			// opens: explore tools group the way the rollup groups them,
+			// everything else renders as itself.
+			// The segment's cells IN ORDER, with consecutive explore tools
+			// grouped exactly as the rollup groups them — a write, a shell
+			// or anything else BREAKS the run, which is TUI2-R1's own rule
+			// and the reason two explore runs on either side of a write
+			// stay two runs. Merging every explore tool of the segment
+			// would have been simpler and would have quietly deleted that
+			// rule.
+
+			const rows = this.#foldBody(seg, idx, W, ctx);
 			// the header NAMES the segment. When the segment is exactly one
 			// explore run, "explored 8 files · 14 searches" is what that run
 			// is called everywhere else in the product, and the header says
@@ -2143,6 +2319,13 @@ export class Body {
 		// TUI2-R1 (D): the sheet occupies the live region, exactly like the
 		// panel — the scalar must say so, or the cap arithmetic disagrees
 		// with the screen.
+		// R5 — the viewer occupies the live region exactly like the sheet,
+		// so the scalar must say so, or the cap arithmetic disagrees with
+		// the screen (the same rule DC-27 was about).
+		if (this.#viewer !== null) {
+			const capV = Math.max(1, this.#opts.height() - 4 - inputExtra - queueRows.length);
+			return this.#viewerBand(this.#opts.width()).slice(0, capV).length + CHROME_ROWS + inputExtra + queueRows.length;
+		}
 		if (sheet) {
 			return (
 				keysSheetRows(this.#opts.width()).slice(0, Math.max(1, this.#opts.height() - 4 - inputExtra - queueRows.length)).length +
@@ -2260,9 +2443,21 @@ export class Body {
 		// not ours to rewrite. Measured: three rows per open on a full
 		// screen. The overlay below displaces content on screen instead.
 		const sheetUp = this.#sheetState?.() === true;
-		this.#overlayFrame = sheetUp || this.#sheetWasUp;
+		// R5 — the viewer is an overlay of exactly the same kind, so it
+		// joins the same flag. That one word is what buys it the whole
+		// zero-litter discipline below: the window freezes, #emitScroll
+		// is skipped, and the close repaints from #lastSkip.
+		const viewerUp = this.#viewer !== null;
+		this.#overlayFrame = sheetUp || this.#sheetWasUp || viewerUp || this.#viewerWasUp;
 		this.#sheetWasUp = sheetUp;
-		if (sheetUp) {
+		this.#viewerWasUp = viewerUp;
+		if (viewerUp) {
+			// R5: the viewer REPLACES the live region — the same slot the
+			// sheet and the panel use, for the same reason (it is what the
+			// human is reading right now). It is opened only from an idle
+			// composer, so it cannot coexist with a panel.
+			liveLines = this.#viewerBand(W).slice(0, Math.max(1, H - 4 - inputExtra - queueRows.length));
+		} else if (sheetUp) {
 			// TUI2-R1 (D): the sheet REPLACES the live region — the same
 			// slot the panel uses, for the same reason (it is what the
 			// human is reading right now). It cannot coexist with a panel:
@@ -3527,6 +3722,19 @@ export class Dock {
 			return;
 		}
 		compositorRef.bindSheet(state);
+	}
+	/** R5 — the transcript viewer's three doors, forwarded to the live
+	 *  compositor. Unlike the other bindings there is no buffer: the
+	 *  viewer cannot be open before a compositor exists, so a call with
+	 *  no compositor is a no-op rather than a queued intent. */
+	viewerOpen(): boolean {
+		return compositorRef !== null && compositorRef.viewerOpen();
+	}
+	viewerToggleMode(): void {
+		compositorRef?.viewerToggleMode();
+	}
+	viewerKey(cmd: "up" | "down" | "toggle" | "all" | "pageUp" | "pageDown" | "home" | "end"): void {
+		compositorRef?.viewerKey(cmd);
 	}
 	bindInput(state: () => InputState, prompt: string): void {
 		if (compositorRef === null) {
