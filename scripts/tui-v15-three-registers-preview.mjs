@@ -41,19 +41,19 @@ const FRAMES = [];
 const frame = (t, n, rows) => FRAMES.push({ t, n, rows: rows.map(fit) });
 const fIdx = argv.indexOf("--frame");
 const ONLY = fIdx >= 0 ? Number(argv[fIdx + 1]) : null;
-const chip = rv(` 帮我查看下当前的项目吧 `.padEnd(W - 8));
+const chip = rv(` \u5e2e\u6211\u67e5\u770b\u4e0b\u5f53\u524d\u7684\u9879\u76ee\u5427 `.padEnd(W - 8));
 
 frame("1 · the three registers, as they stream",
  "Thinking is italic and dim and stands on its own — you never have to ask for it. Prose is the ground's own colour. The command is a slab, and it is the only thing a key will fold.",
  [chip, "",
   it("  The user wants me to look at the current project. Let me"),
   it("  check the current working directory to see what's there."), "",
-  "好的,让我先看看当前目录的内容。", "",
+  "\u597d\u7684,\u8ba9\u6211\u5148\u770b\u770b\u5f53\u524d\u76ee\u5f55\u7684\u5185\u5bb9\u3002", "",
   slab("  $ pwd && ls -la"),
   slab(""),
   slab(d("  … 82 earlier lines · ctrl+r folds every block")),
-  slab("  drwxr-xr-x+  4 vinve staff  128  9月 10  2024 Public"),
-  slab("  drwxr-xr-x@ 12 vinve staff  384  6月 24 13:35 uooki_workspace"),
+  slab("  drwxr-xr-x+  4 vinve staff  128  9\u6708 10  2024 Public"),
+  slab("  drwxr-xr-x@ 12 vinve staff  384  6\u6708 24 13:35 uooki_workspace"),
   slab(""),
   slab(d("  took 0.0s")), "",
   it("  The current directory is the home directory /Users/vinve,"),
@@ -64,12 +64,12 @@ frame("2 · ctrl+r — every command SLAB collapses to one line",
  [chip, "",
   it("  The user wants me to look at the current project. Let me"),
   it("  check the current working directory to see what's there."), "",
-  "好的,让我先看看当前目录的内容。", "",
+  "\u597d\u7684,\u8ba9\u6211\u5148\u770b\u770b\u5f53\u524d\u76ee\u5f55\u7684\u5185\u5bb9\u3002", "",
   slab(`  $ pwd && ls -la${d("  · 86 lines · exit 0 · 0.0s")}`), "",
   it("  The current directory is the home directory /Users/vinve,"),
   it("  not a specific project. Let me check the package.json."), "",
   slab(`  $ cat package.json${d("  · 5 lines · exit 0 · 0.0s")}`), "",
-  "当前目录是你的用户主目录,不是一个具体的项目目录。", ""]);
+  "\u5f53\u524d\u76ee\u5f55\u662f\u4f60\u7684\u7528\u6237\u4e3b\u76ee\u5f55,\u4e0d\u662f\u4e00\u4e2a\u5177\u4f53\u7684\u9879\u76ee\u76ee\u5f55\u3002", ""]);
 
 frame("3 · what a long think does — the one real risk",
  "A model that thinks for two thousand words would wall the screen in italic. The cap is the answer the product already uses everywhere else: show the head, name what was cut, and let the same key open it.",
@@ -80,7 +80,7 @@ frame("3 · what a long think does — the one real risk",
   it("  npm's own long-standing optional-dependency bug — so build and"),
   it("  typecheck pass and only vitest dies."),
   d("  … 38 more lines of thinking · ctrl+r"), "",
-  "根因确认了:rollup 的平台包在干净 Linux 上没装上。", ""]);
+  "\u6839\u56e0\u786e\u8ba4\u4e86:rollup \u7684\u5e73\u53f0\u5305\u5728\u5e72\u51c0 Linux \u4e0a\u6ca1\u88c5\u4e0a\u3002", ""]);
 
 frame("4 · the register table",
  "Three registers, three jobs. No mark is needed to tell them apart — the FORM does it, and the form survives a pipe as bytes.",
