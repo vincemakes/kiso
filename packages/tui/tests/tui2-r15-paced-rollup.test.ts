@@ -110,10 +110,23 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		body.endTurn(0);
 		tick();
 		tick();
-		const settle = plain(writes.slice(settleFrom).join(""));
-		// the paced burst settled as ONE thing — the fold — and the run is
-		// intact behind the key.
-		expect(settle).toContain("✦ read 6 files");
+		// DECLARED SUPERSESSION (R4 tense + R6/D3, together): the SETTLE
+		// EMITS NO BYTES ANY MORE, and the reason is worth recording.
+		//
+		// R4 made the stretch line's tense PER TERM, so a stretch whose
+		// calls are all done already reads `read 6 files` while live.
+		// R6/D3 then removed the mark, which was the last thing that
+		// differed between the live row and the settled one. They are now
+		// byte-identical, so the diff renderer has nothing to write at the
+		// boundary — and a slice of the write stream taken after the
+		// settle is empty of it by construction.
+		//
+		// That is not a defect: the row says the same true thing before
+		// and after. It does mean the claim has to be made about the
+		// SCREEN, which is the honest surface anyway.
+		const sc = new Screen(80, 24);
+		sc.feed(writes.join(""));
+		const settle = sc.rows.map((r) => r.join("").replace(/\s+$/, "")).join("\n");
 		expect(settle).toContain("read 6 files · listed 1 directory · ran 1 search");
 		const opened = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
 		expect(opened).toContain("explored 6 files · 1 dir · 1 search");
@@ -136,10 +149,15 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		body.endTurn(0);
 		tick();
 		tick();
-		const settle = plain(writes.slice(settleFrom).join(""));
-		// the settle frame commits the run as the fold, and never as six
-		// individual read rows — which is this case's actual claim.
-		expect(settle).toContain("✦ read 6 files");
+		// R4 tense + R6/D3: the settle emits no bytes (see the case above
+		// for why), so the claim is made about the SCREEN. It is the
+		// stronger surface anyway: this case is about what a human is
+		// left looking at.
+		const sc2 = new Screen(80, 24);
+		sc2.feed(writes.join(""));
+		const settle = sc2.rows.map((r) => r.join("").replace(/\s+$/, "")).join("\n");
+		// the run settled as the fold, and never as six individual reads
+		expect(settle).toContain("read 6 files");
 		expect(settle.match(/ {2}read {2}src\/f\d/g) ?? []).toHaveLength(0);
 		// W13's single-name projection is what the key opens. One space,
 		// not two: the double space was the COMMITTED row's verb-column
@@ -186,7 +204,7 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		// R3b: the two runs and the write between them live in the fold's
 		// expansion; the ORDER — which is the group key's proof — is what
 		// this case is about and it is asserted there.
-		expect(settled).toContain("✦ read 2 files");
+		expect(settled).toContain("read 2 files"); // R6/D3: the fold wears no mark
 		const opened = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
 		expect(opened.match(/explored 1 file · 1 search · 1 dir/g) ?? []).toHaveLength(2);
 		expect(opened).toContain("write out.ts");

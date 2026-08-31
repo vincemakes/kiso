@@ -292,7 +292,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// plus the behaviour the unit suite pins (ctrl+r appends the run's
 		// rows). A row cannot promise which fold a key opens, so it stopped
 		// promising; the reference implementation's row is clean too.
-		expect(grid.join("\n")).toMatch(/✦ (thought \d+s · )?read /);
+		expect(grid.join("\n")).toMatch(/ {2}read /);
 	}, 60_000);
 
 	it("R1.5 4 at 120 cols: the same, at the wide width — no body rows, no cut row", () => {
@@ -311,7 +311,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// R3b: the advisory rode the read's own row, which is inside the
 		// segment fold now. R4a: the fold row prints no key (see the 60-col
 		// case above) — its words are the evidence it stands for the run.
-		expect(grid.join("\n")).toMatch(/✦ (thought \d+s · )?read /);
+		expect(grid.join("\n")).toMatch(/ {2}read /);
 	}, 60_000);
 
 	it("W8: two parallel tools, one streaming — the window is a FIXED 3 rows and every row BELOW the streaming cell is byte-identical across the run's frames until settle", () => {
@@ -328,7 +328,10 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// subject: everything below the streaming cell is byte-identical
 		// across frames, with the running header the one allowed, and
 		// in-place, variance.
-		const running = frames.filter((f) => f.grid.some((l) => /^[✧✦✶✸✺] .*\bfile\b/.test(l)) && f.grid.some((l) => /^● shell /.test(l)));
+		// R6/D3: the LIVE stretch line lost its twinkle too — the owner's
+		// rule is one moving mark on screen and the status row has it. The
+		// row is found by its words now.
+		const running = frames.filter((f) => f.grid.some((l) => /^ {2}read .*\bfile\b/.test(l)) && f.grid.some((l) => /^● shell /.test(l)));
 		expect(running.length).toBeGreaterThanOrEqual(2); // NON-vacuous: the moment really spans frames
 		// the window EXISTS and is 3 rows: 2 blank-padded rows + the waiting row
 		const first = running[0]!.grid;
@@ -345,7 +348,8 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		for (let i = 0; i < running.length - 1; i += 1) {
 			const g1 = running[i]!.grid;
 			const g2 = running[i + 1]!.grid;
-			const readIdx = g1.findIndex((l) => /^[✧✦✶✸✺] /.test(l));
+			// R6/D3: the live stretch line wears no mark — found by words.
+			const readIdx = g1.findIndex((l) => /^ {2}read .*\bfile\b/.test(l));
 			const readBottom = readIdx; // the stretch line is ONE row, always
 			const shellHeader = g1.findIndex((l) => /^● shell /.test(l));
 			expect(shellHeader).toBeGreaterThan(readBottom); // the shell sits BELOW the streaming cell

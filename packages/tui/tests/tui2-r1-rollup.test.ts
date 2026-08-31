@@ -119,9 +119,10 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// R3b: the burst's COMMITTED form is the segment fold — ONE row for
 		// twenty-two calls, which is the same claim this case always made,
 		// one row tighter.
-		expect(frame).toContain("✦ read 8 files");
+		// R6/D3: the fold row wears no mark — its words ARE the row.
+		expect(frame).toContain("read 8 files");
 		expect(frame).toContain("read 8 files · ran 14 searches"); // the fold's own terms
-		expect(frame.match(/✦ read 8 files/g) ?? []).toHaveLength(1);
+		expect(frame.match(/read 8 files/g) ?? []).toHaveLength(1);
 		// and the exploration row is what the key opens — the per-tool
 		// counts and the subjects, unchanged.
 		const opened = body.expandNext();
@@ -198,7 +199,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// key opens. "The generalization adds, it never rewrites" is still
 		// the claim — the single-name run keeps W13's row rather than
 		// growing an exploration one.
-		expect(plain(writes.join(""))).toContain("✦ read");
+		expect(plain(writes.join(""))).toContain("read"); // R6/D3: the fold wears no mark
 		const opened = plain((body.expandNext() as { lines: string[] }).lines.join("\n"));
 		// one space, not two: the double space was the COMMITTED row's
 		// verb-column pad (W3); the expansion is a list, not a column.
@@ -257,7 +258,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// R3b: the committed row is the segment fold rather than the
 		// exploration row, and the claim this case makes — that the
 		// members' CONTENT never reached the screen — is unchanged.
-		expect(frame).toContain("✦ read 1 file · ran 1 search · listed 1 directory");
+		expect(frame).toContain("read 1 file · ran 1 search · listed 1 directory"); // R6/D3
 		for (const hidden of ["alpha", "beta", "gamma", "delta"]) expect(frame).not.toContain(hidden);
 		// …and every member's own input is still there to be read back:
 		// the expand walks the CELLS, so a rewrite would show up here.

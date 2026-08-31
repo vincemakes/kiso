@@ -182,7 +182,6 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// (the EOF before the exit feed = the invariant-① crash class)
 		expect(out.startsWith("ALIVE=1\n")).toBe(true);
 
-		require("node:fs").writeFileSync("/tmp/storm-test-transcript.txt", out);
 		// The storm window: from the recap's freeze frame (the turn is
 		// fully frozen — the idle dock redraw lands BEFORE the body's 16ms
 		// frame commits the frozen cells, and those real-LF commits must

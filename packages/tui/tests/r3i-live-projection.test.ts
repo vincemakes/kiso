@@ -124,14 +124,23 @@ describe("R3i P2 — the live line is present tense and carries no key", () => {
 		expect(rows).toContain("npm run check");
 	});
 
-	it("a stretch that has only thought says so", () => {
+	// DECLARED SUPERSESSION (R7, owner-ruled 2026-08-31) — a stretch that
+	// has only thought is NOT A STRETCH. Thinking is words now: it closes
+	// segments the way text does and never opens one, so there is no
+	// stretch line to say `thinking 4s` — and nothing is lost, because
+	// the thought itself is on screen in full, which is the whole point
+	// of the ruling. What the case still holds is that a turn which has
+	// only thought shows that thought.
+	it("a turn that has only thought shows the THOUGHT, not a line about it", () => {
 		const { body, body_, tick } = makeBody();
 		body.enter();
 		body.userLine("x");
-		body.thinkingAppend("planning");
+		body.thinkingAppend("planning the CI investigation");
 		vi.advanceTimersByTime(4000);
 		tick();
-		expect(body_().join("\n")).toContain("thinking 4s");
+		const shown = body_().join("\n");
+		expect(shown).toContain("planning the CI investigation");
+		expect(shown).not.toContain("thinking 4s");
 	});
 });
 
@@ -187,7 +196,13 @@ describe("R3i P4 — this phase does not move a single commit", () => {
 		tick();
 		// R4a: the settled fold no longer prints a key — its WORDS are the
 		// evidence it committed.
-		expect(screen().join("\n")).toContain("thought 9s · read 6 files");
+		// DECLARED SUPERSESSION (R7): and `thought 9s` is gone from those
+		// words. Nothing deleted it: thinking no longer joins a segment,
+		// so the segment's thinking clock never starts, and R3h's own
+		// zero-term rule drops a term about something that did not
+		// happen. The thought is above the fold, in full.
+		expect(screen().join("\n")).toContain("read 6 files");
+		expect(screen().join("\n")).not.toMatch(/thought \d+s · read 6 files/);
 	});
 });
 

@@ -793,7 +793,7 @@ describe("TUI v6 — the one compositor", () => {
 		// subject is unchanged and so is the formula being tested: a
 		// one-row cell followed by a one-row cell packs tight, with no
 		// blank between them. Only the identity of the second cell moved.
-		const foldAt = rows.findIndex((l) => l.trimStart().startsWith("✦ "));
+		const foldAt = rows.findIndex((l) => /^ {2}(read|edited|wrote|listed|ran|explored|thought)\b/.test(l) && !l.includes("("));
 		expect(foldAt).toBeGreaterThan(0);
 		expect(foldAt).toBe(userAt + 1); // one-row user → one-row fold: pack tight
 		// a multi-row block (the 2-line raw recap) breathes on BOTH sides
@@ -992,7 +992,8 @@ describe("TUI v6 — the one compositor", () => {
 		// the fold's glyph is bold-wrapped, so the needle is taken on the
 		// stripped text — `✦` and `thought` are not contiguous in bytes.
 		const bare = frame.replace(/\x1b\[[0-9;]*m/g, "");
-		expect(bare).toContain("✦ read 5 files");
+		// R6/D3: the fold row wears no mark — its words ARE the row.
+		expect(bare).toContain("read 5 files");
 		expect(bare.match(/ {2}read {2}\S/g) ?? []).toHaveLength(0);
 		// the fold joined the expand history: the expand shows the run's
 		// own projection — W13's title and the FULL per-call children, one
@@ -1065,13 +1066,28 @@ describe("TUI v6 — the one compositor", () => {
 		const held = writes.join("").replace(/\x1b\[[0-9;]*m/g, "");
 		expect(held).toContain("read 5 files");
 		expect(held).not.toMatch(/read 5 files · ctrl\+r \d/); // ...but NOT settled
-		writes.length = 0; // drop the hold frame — only the fold frame below
+		// R4 tense + R6/D3: the writes are NOT cleared any more. Clearing
+		// them isolated "the fold frame", and there is no such frame left:
+		// the live row and the settled one are byte-identical, so the
+		// settle emits nothing and a cleared stream replays to a blank
+		// screen. The whole stream is kept and the claim is made about the
+		// screen it paints.
+		const beforeSettle = writes.length;
 		// the boundary: the terminal closes the turn — the fold line lands
 		// at the FIRST held cell's commit (the thinking cell — endTurn
 		// closes it), the members render [] after
 		body.endTurn(19);
 		tick();
-		const frame = writes.join("");
+		// R4 tense + R6/D3: the settle EMITS NO BYTES any more. The live
+		// row already read `read 5 files` (the tense is per term, and
+		// every call is done), and D3 removed the mark, which was the last
+		// thing that differed — so the two rows are byte-identical and the
+		// diff renderer has nothing to write at the boundary. The claim is
+		// therefore made about the SCREEN, which is the honest surface for
+		// "what is the human left looking at" anyway.
+		const sc = new Screen(80, 24);
+		sc.feed(writes.join(""));
+		const frame = sc.rows.map((r) => r.join("").replace(/\s+$/, "")).join("\n");
 		// the claimed shape: the thought-seconds and the reads term (the
 		// fold glyph is bold-wrapped, so the check anchors on the
 		// contiguous term text)
@@ -1081,14 +1097,28 @@ describe("TUI v6 — the one compositor", () => {
 		// where a run is usually all reads or all edits — half the row was
 		// the half saying nothing. A term earns its place by having a
 		// count. Every other claim in this case is unchanged.
-		expect(frame).toContain("\u2726");
-		// R3i phase 3: the seconds are the SEGMENT's own thinking clock,
-		// so the fixture advances it rather than handing a number to
-		// endTurn.
-		expect(frame).toContain("thought 19s · read 5 files");
+		// DECLARED SUPERSESSION (R6/D3): and the fold wears no ✦ either.
+		// Law 1.3 — a symbol earns its cell by carrying a fact the words
+		// do not — and when the fold, the live line and the status row all
+		// wore one, none of them distinguished anything. §4 listed this
+		// mark PROPOSED and §8 listed it OPEN, so nothing settled is being
+		// reversed: this is that proposal's ruling arriving as a decline.
+		// The row's own WORDS are asserted below.
+		expect(frame).not.toMatch(/\u2726 (read|thought|ran|listed)/);
+		// DECLARED SUPERSESSION (R7): the `thought Ns` term is gone.
+		// Thinking is words now — it never joins a segment, so the
+		// segment's thinking clock never starts, and R3h's own zero-term
+		// rule drops a term about something that did not happen. The
+		// thought itself is on screen above the fold, in full.
+		expect(frame).toContain("read 5 files");
+		expect(frame).not.toMatch(/thought \d+s · read 5 files/);
 		expect(frame).not.toContain("no edits");
 		// the members folded away — no individual read rows
 		expect(frame.match(/✓/g) ?? []).toHaveLength(0);
+		// and the settle really did emit nothing new — the row was already
+		// right before the boundary, which is the property the two
+		// supersessions above describe.
+		expect(writes.slice(beforeSettle).join("")).not.toContain("read 5 files");
 		// the extension: the mixed counts — 1 edit + 1 shell pluralize
 		// ("1 edit · 1 shell", the others in first-call order; R3b: the
 		// absent `reads` term is simply not written)

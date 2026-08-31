@@ -46,7 +46,17 @@ const call = (body: Body, name: string, id: string, input: Record<string, unknow
 const foldLine = (writes: string[]): string => {
 	const s = new Screen(100, 40);
 	s.feed(writes.join(""));
-	return s.rows.map((r) => r.join("").replace(/\s+$/, "")).find((l) => l.trimStart().startsWith("✦ ")) ?? "(no fold line)";
+	// DECLARED SUPERSESSION (R6/D3): the fold row wears no mark, so the
+	// glyph no longer finds it. Its GRAMMAR does — a counting verb, then
+	// its count and noun — which is the fact law 1.3 says should have
+	// been carrying the row all along. A settled CALL card starts with
+	// the same verbs but carries parenthesised meta; a thinking paragraph
+	// is a sentence, not a verb-first count.
+	return (
+		s.rows
+			.map((r) => r.join("").replace(/\s+$/, ""))
+			.find((l) => /^ {2}(read|edited|wrote|listed|ran|explored)\b/.test(l) && !l.includes("(")) ?? "(no fold line)"
+	);
 };
 
 beforeEach(() => {

@@ -144,7 +144,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		// the exploration row is what `ctrl+r` opens. This case's subject —
 		// the PTY collapses and the PIPE never does — is unchanged, and the
 		// pipe leg below still proves the durable record is identical.
-		expect(out).toMatch(/✦ (thought \d+s · )?read 3 files · ran 2 searches · listed 1 directory/);
+		expect(out).toMatch(/read 3 files · ran 2 searches · listed 1 directory/);
 		// R4a: the fold row prints no key — the row above IS the settled
 		// form, and what `ctrl+r` opens is pinned in the unit suite.
 

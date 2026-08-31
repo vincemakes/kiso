@@ -117,12 +117,16 @@ describe("R3b — a segment folds at the text boundary", () => {
 	 * TARGET. Both are gated in `r3i-commit-semantics.test.ts` ①.
 	 */
 	it("EACH STRETCH collapses to one line, and every word between survives", () => {
-		const { body, writes, tick } = makeBody();
+		const { body, writes, screen, tick } = makeBody();
 		body.enter();
 		twoSegments(body);
 		tick();
 		const frame = plain(writes.join(""));
-		expect((frame.match(/✦/g) ?? []).length).toBe(2); // two stretches, two lines
+		// R6/D3: the glyph is gone, so counting it counts nothing. Count
+		// the fold ROWS by their grammar — and off the SCREEN, because the
+		// compositor positions with CUP and never with newlines, so
+		// splitting the byte stream on \n does not yield rows at all.
+		expect(screen().filter((l) => /^ {2}(read|edited|wrote|listed|ran|explored|thought)\b/.test(l) && !l.includes("(")).length).toBe(2);
 		expect(frame).toContain("Found it.");
 		expect(frame).toContain("Fixed.");
 	});
@@ -132,7 +136,7 @@ describe("R3b — a segment folds at the text boundary", () => {
 		body.enter();
 		twoSegments(body);
 		tick();
-		const folds = screen().filter((l) => l.trimStart().startsWith("✦ "));
+		const folds = screen().filter((l) => /^ {2}(read|edited|wrote|listed|ran|explored|thought)\b/.test(l) && !l.includes("("));
 		expect(folds[0]).toContain("read 3 files");
 		expect(folds[0]).not.toContain("edited");
 		expect(folds[1]).toContain("edited 1 file");
@@ -140,12 +144,28 @@ describe("R3b — a segment folds at the text boundary", () => {
 		expect(folds[1]).not.toContain("read");
 	});
 
-	it("the thinking row folds WITH its segment — it is the segment's first cell", () => {
+	// DECLARED SUPERSESSION (R7, owner-ruled 2026-08-31) — THE THINKING
+	// ROW DOES NOT FOLD, AND IS NOT THE SEGMENT'S FIRST CELL.
+	//
+	// R3b classified thinking as work, so it opened a segment and folded
+	// with it. Four rounds of consequences followed from that one line:
+	// hidden, it became unreachable, and R4's ordinal, R5's viewer, R6's
+	// index and a look-back viewport were each built to hand it back. The
+	// owner's ruling is to stop hiding it, and then none of those is
+	// answering a question anyone still asks.
+	//
+	// So the case inverts: the thought is VISIBLE, and it is the fold
+	// that no longer speaks for it.
+	it("the thinking is VISIBLE — the fold speaks for the calls, not the thought", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		twoSegments(body);
 		tick();
-		expect(plain(writes.join(""))).not.toContain("let me look first");
+		const shown = plain(writes.join(""));
+		expect(shown).toContain("let me look first");
+		for (const fold of shown.split("\n").filter((l) => l.trimStart().startsWith("✦ "))) {
+			expect(fold).not.toContain("let me look first");
+		}
 	});
 
 	it("ZERO terms are dropped (owner ruling) — a term earns its place by having a count", () => {
@@ -223,7 +243,7 @@ describe("R3b — the fold's boundaries", () => {
 	});
 
 	it("the fold is emitted ONCE per segment, however many cells it holds", () => {
-		const { body, writes, tick } = makeBody();
+		const { body, writes, screen, tick } = makeBody();
 		body.enter();
 		body.userLine("many");
 		for (let i = 0; i < 9; i += 1) call(body, "read_file", `r${i}`, { path: `f${i}.ts` }, "x");
@@ -232,9 +252,10 @@ describe("R3b — the fold's boundaries", () => {
 		body.endTurn(1);
 		tick();
 		// R3i: this stretch does no thinking, so its line has no thought
-		// term (the zero-drop rule) — the fold's own gutter is what makes
-		// "exactly once" checkable.
-		expect((plain(writes.join("")).match(/✦/g) ?? []).length).toBe(1);
+		// term (the zero-drop rule).
+		// R6/D3: and the fold has no gutter glyph left to count, so
+		// "exactly once" is counted on the fold ROWS, off the screen.
+		expect(screen().filter((l) => /^ {2}(read|edited|wrote|listed|ran|explored|thought)\b/.test(l) && !l.includes("(")).length).toBe(1);
 	});
 
 	it("a QUIET turn still folds exactly as W14 made it — the segment never closes until the settle", () => {
@@ -381,13 +402,14 @@ describe("R3d — the layout only grows until the settle", () => {
 		// the height cannot grow with the call count.
 		expect(mid).not.toContain("read  a.ts");
 		expect(mid).toContain("read  b.ts");
-		// R3i phase 3: the CLOSED stretch has already folded — the text
-		// that closed it is what committed it, which is the whole point
-		// of a fold standing with the prose it led to. It held thinking
-		// and ONE call, so its line names the call's TARGET rather than
-		// counting it: `✦ listed . · ctrl+r`, which says everything the
-		// two rows it replaced said.
-		expect(mid).toContain("listed .");
+		// R3i phase 3: the CLOSED stretch has already committed — the text
+		// that closed it is what committed it.
+		// DECLARED SUPERSESSION (R7): it held thinking and ONE call, and
+		// thinking is no longer a cell of the segment — so the segment
+		// holds ONE cell, falls below the >= 2 fold gate, and the CALL
+		// KEEPS ITS OWN ROW. That is more than the fold said, not less:
+		// the row carries the call's own target and its outcome.
+		expect(mid).toContain("list");
 		// and the OPEN stretch has not folded. DECLARED SUPERSESSION (R4):
 		// "its line is present tense" is no longer how you can tell — the
 		// tense is per term now, and both reads are done. What it still
@@ -414,7 +436,7 @@ describe("R3d — the layout only grows until the settle", () => {
 	});
 
 	it("the collapse happens exactly ONCE, at the settle", () => {
-		const { body, writes, tick } = makeBody();
+		const { body, writes, screen, tick } = makeBody();
 		body.enter();
 		body.userLine("look");
 		body.thinkingAppend("thinking"); body.thinkingEnd();
@@ -426,15 +448,23 @@ describe("R3d — the layout only grows until the settle", () => {
 		body.endTurn(9);
 		tick();
 		const frame = plain(writes.join(""));
-		// DECLARED SUPERSESSION (R3i phase 3): the collapse happens once
-		// PER STRETCH, at that stretch's own close — the shape the owner
-		// asked for, one summary standing with the prose it led to. What
-		// "exactly once" still forbids, and is still this case's subject,
-		// is a stretch collapsing twice or re-collapsing as the turn goes
-		// on: two stretches, two lines, no more.
-		expect((frame.match(/✦/g) ?? []).length).toBe(2);
-		expect(frame).toContain("read 1 file"); // the first stretch's own work
-		expect(frame).toContain("ran 1 shell command"); // the second's
+		// DECLARED SUPERSESSION (R3i phase 3 → R7 → R6/D3), stated once
+		// rather than as three layers:
+		//
+		// The collapse happens once PER STRETCH, at that stretch's own
+		// close. R7 took thinking out of the segment, so this fixture's
+		// FIRST stretch now holds a single call (list_dir) and keeps its
+		// own row instead of folding; the second holds two (a read and a
+		// shell) and still folds. And R6/D3 left the fold row no glyph to
+		// count, so the count is over fold ROWS, found by their grammar,
+		// off the screen.
+		//
+		// The case's subject is unchanged and is the reason for the
+		// count: what is forbidden is a stretch collapsing TWICE, or
+		// re-collapsing as the turn goes on.
+		expect(screen().filter((l) => /^ {2}(read|edited|wrote|listed|ran|explored|thought)\b/.test(l) && !l.includes("(")).length).toBe(1);
+		expect(frame).toContain("read"); // the first stretch's own call row
+		expect(frame).toContain("shell"); // the second's
 		// and both narrations survive, where they happened (law 1.7)
 		expect(frame).toContain("narrating.");
 		expect(frame).toContain("done.");
@@ -578,6 +608,7 @@ describe("R3f — the fold never claims work the screen already shows", () => {
 		// rule) and the line is its work alone.
 		// R4a: the key is retired from the row; the WORK the row states is
 		// what this case was pinning.
-		expect(plain(writes.join(""))).toContain("✦ read 20 files");
+		// R6/D3: the fold row wears no mark — its words ARE the row.
+		expect(plain(writes.join(""))).toContain("read 20 files");
 	});
 });

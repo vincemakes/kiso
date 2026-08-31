@@ -313,7 +313,17 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// the right edge — the char count went with the move (it told the
 		// reader nothing they could act on). A 110-A block has no word
 		// boundary, so it falls back to the cell cut with the honest "…".
-		expect(clean).toMatch(/⋯ A+…\s+\/think/); // the folded line — W2: the ⋯ gutter
+		// DECLARED SUPERSESSION (R7): there is no folded thinking row, and
+		// so no `⋯` gutter and no `/think` hint on it. Thinking is words
+		// now — it commits in full, indented two and italic — so the block
+		// is simply THERE, which is more than the hint ever offered. The
+		// command survives and stays discoverable in /help and the `/`
+		// picker; what is gone is the row that advertised it.
+		// (not anchored with /m: the compositor positions with CUP and
+		// never emits a newline, so `^` finds no row starts in the byte
+		// stream. The indent is asserted where rows exist — the unit
+		// gates over ThinkingBlock.)
+		expect(clean).toMatch(/A{20,}/); // the thinking is on screen, at length
 		expect(clean).toContain("SECRETTAIL"); // the full block came back
 		// v6: the /think output is a raw cell — the compositor hard-folds it
 		// at W (invariant ① — no soft-wraps), so the 110-A block arrives as

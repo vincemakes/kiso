@@ -30,7 +30,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { stretchLine, type StretchTerms } from "../src/components.js";
+import { stretchLine, turnFold, type StretchTerms } from "../src/components.js";
 import { visibleWidth } from "../src/width.js";
 
 const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
@@ -116,7 +116,7 @@ describe("R3i G1 — the line you watch is the line you keep", () => {
 	});
 
 	it("`thought Ns` is the SETTLED lead; a live stretch says what it is doing", () => {
-		expect(plain(stretchLine({ ...TERMS, phase: "settled" }, 120)[0]!)).toMatch(/^\S+ thought 9s/);
+		expect(plain(stretchLine({ ...TERMS, phase: "settled" }, 120)[0]!)).toMatch(/^ {2}thought 9s/);
 		expect(plain(stretchLine({ ...TERMS, phase: "acting" }, 120)[0]!)).not.toContain("thought");
 		expect(plain(stretchLine({ thoughtSeconds: 4, calls: [], targets: [], trouble: [], phase: "thinking" }, 120)[0]!)).toContain("thinking 4s");
 	});
@@ -264,5 +264,37 @@ describe("R3i G3 — every fact survives the escapes being stripped", () => {
 		const row = plain(stretchLine({ ...t, phase: "settled" }, 100)[0]!);
 		expect(row).toContain("2 failed");
 		expect((row.match(/failed/g) ?? []).length).toBe(1);
+	});
+});
+
+describe("R6/D3 + R7 — no fold row wears a mark, in ANY tier", () => {
+	// This suite exists because the first D3 pass missed six sites and the
+	// OWNER found them by looking at the screen. They were the `turnFold`
+	// tiers that carry the user's words as a chip (A9) — a combination no
+	// gate covered, so nothing went red. A ladder with tiers needs a gate
+	// that walks the tiers.
+	const TERMS = { thoughtSeconds: 0, calls: [["read_file", 4] as [string, number]], targets: [], trouble: [] };
+
+	it("the stretch line is markless at every width and in every phase", () => {
+		for (const phase of ["thinking", "acting", "settled"] as const) {
+			for (let W = 20; W <= 140; W += 1) {
+				const row = plain(stretchLine({ ...TERMS, phase }, W)[0]!);
+				expect(row, `W=${W} ${phase}`).not.toMatch(/[✦✧✶✸✺]/);
+			}
+		}
+	});
+
+	it("turnFold is markless at every width — WITH the words chip and without", () => {
+		// the chip branch is the one that was missed: six emission sites
+		// across its own compact ladder and two degenerate floors.
+		for (const words of ["", "why does the CI job fail but not on my machine"]) {
+			for (let W = 12; W <= 140; W += 1) {
+				const rows = turnFold({ words, thoughtSeconds: 9, reads: 6, edits: 1, others: [["shell", 2]] }, W);
+				expect(rows, `W=${W} words=${words.length}`).toHaveLength(1);
+				const row = plain(rows[0]!);
+				expect(row, `W=${W} words=${words.length}`).not.toMatch(/[✦✧✶✸✺]/);
+				expect(row.length, `W=${W} words=${words.length}`).toBeLessThanOrEqual(W);
+			}
+		}
 	});
 });

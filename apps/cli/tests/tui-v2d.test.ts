@@ -105,7 +105,16 @@ const CELL_LINE = [
 	// subject is interleaving — two cells' content welded into one write
 	// — and this is a well-formed single row; it just did not exist when
 	// the table was written.
-	/^[✧✦✶✸✺] \S.*$/,
+	// DECLARED SUPERSESSION (R6/D3): the stretch line wears NO mark, in
+	// any phase. Law 1.3 — a symbol earns its cell by carrying a fact the
+	// words do not — and when the fold, the live line and the status row
+	// all wore one, none of them distinguished anything. The gutter is
+	// two spaces now, which the lint trims, so the shape to recognise is
+	// the TERMS: a counting verb, its count and noun, ` · ` between.
+	// (design.md §4 listed the mark PROPOSED and §8 listed it OPEN — this
+	// is that proposal's ruling arriving, as a decline.)
+	/^(read|reading|edited|editing|wrote|writing|listed|listing|ran|running|explored|thought|thinking)\b.*$/,
+
 	/^● \S+ .*\d+s?$/, // the ToolCell running (W2: the mark IS the gutter). R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
 	/^⏸ \S+ .*$/, // the approval badge (W2: the ⏸ is the left gutter)
 	// MOVED (EC-1 ②③, the SCHEDULER-TIMING class — DECLARED THIS ROUND):
@@ -213,6 +222,14 @@ const lint = (raw: string): string[] => {
 		// the RAW segment carries the classifier; the split never breaks
 		// the chip: its CSIs are m-final, outside the ABDGKJ split class).
 		if (/^\x1b\[7m .* \x1b\[27m/.test(seg)) continue;
+		// DECLARED SUPERSESSION (R7): THINKING IS A BLOCK OF WORDS, and it
+		// is classified on the RAW segment for exactly the reason the chip
+		// above is — stripped and trimmed, an italic paragraph is
+		// indistinguishable from any other prose, and a pattern that
+		// accepted "any prose" would accept the interleaved lines this
+		// lint exists to catch. The classifier is the two-space lead plus
+		// the dim+italic pair the ThinkingBlock emits.
+		if (/^ {2}\x1b\[2m\x1b\[3m/.test(seg)) continue;
 		const t = seg
 			.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
 			.replace(/\[[0-9;]*m/g, "") // any residual SGR fragment (the split can strand a "[2m")
@@ -347,7 +364,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// segment fold, which names them by COUNT. The verb vocabulary this
 		// case pins (one screen, one wording — `list`, not `list_dir`) is
 		// asserted where it now lives: the fold's terms, and the expansion.
-		expect(clean).toMatch(/✦ (thought \d+s · )?listed 1 directory · ran 1 shell command · 1 × asky_read/);
+		expect(clean).toMatch(/listed 1 directory · ran 1 shell command · 1 × asky_read/);
 
 
 		expect(clean).not.toContain("approved by"); // R1.5 5: no policy byline anywhere

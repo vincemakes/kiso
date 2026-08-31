@@ -282,7 +282,10 @@ export function cellComponent(cell: BodyCell): Component {
 		case "user":
 			return new UserMessage(cell);
 		case "thinking":
-			return new ThinkingFold(cell);
+			// R7: the committed/live surface is the BLOCK. ThinkingFold
+			// survives for the pipe path (render.ts's foldThinking), whose
+			// bytes are asserted by the --plain identity gate.
+			return new ThinkingBlock(cell);
 		case "tool":
 			return new ToolExecution(cell);
 		case "md":
@@ -416,6 +419,51 @@ export function pendingQueueRows(lines: readonly string[], W: number): string[] 
  *  CJK — 2 cells per char — and tripped invariant ① on a real
  *  Chinese session). W2: the leading ⋯ is the thinking gutter — the
  *  midline mark (the state), never the text ellipsis (the truncation). */
+/**
+ * R7 — THINKING IS A BLOCK OF WORDS.
+ *
+ * The owner's ruling, arrived at from a side-by-side with pi's screen:
+ * the model's reasoning reads as its own paragraphs — italic, dim,
+ * indented two — and is never folded away. `ThinkingFold` (below, kept
+ * for the pipe path) summarised it to one row with a key; four rounds
+ * of machinery were then built to hand the rest back, and the owner's
+ * complaint through all of them was the same sentence: I cannot see
+ * what it was thinking.
+ *
+ * THE INDENT IS NOT DECORATION. Law 1.2 is SETTLED — "strip every
+ * escape sequence and no fact is lost" — and italic is SGR 3, which a
+ * pipe strips and `COLOR_OFF` empties outright. Stripped, an italic
+ * paragraph and the model's ANSWER are the same bytes, and the reader
+ * cannot tell the reasoning from the reply. The two-space indent is the
+ * byte that survives: reasoning sits in, the answer stands at the
+ * margin. The owner chose this over the un-indented form for exactly
+ * that reason, with the cost stated.
+ *
+ * Paragraphs are preserved (a blank line between them); the newlines
+ * INSIDE a paragraph collapse, because a hard-wrapped source line is
+ * the model's line width, not the reader's.
+ */
+class ThinkingBlock implements Component {
+	constructor(private readonly cell: { text: string; done: boolean }) {}
+	render(W: number, _ctx: FrameCtx): string[] {
+		const p = palette();
+		const text = escapeTerminal(this.cell.text).trim();
+		if (text === "") return [];
+		const room = Math.max(1, W - 2);
+		const rows: string[] = [];
+		for (const para of text.split(/\n\s*\n/)) {
+			const flat = para.replace(/\s+/g, " ").trim();
+			if (flat === "") continue;
+			if (rows.length > 0) rows.push("");
+			// foldLine is the ONE width authority and returns real rows —
+			// invariant ①b (a row is one physical row) holds by
+			// construction rather than by remembering to split.
+			for (const line of foldLine(flat, room)) rows.push(`  ${p.dim}${p.italic}${line}${p.italicEnd}${p.reset}`);
+		}
+		return rows;
+	}
+}
+
 class ThinkingFold implements Component {
 	constructor(private readonly cell: { text: string; done: boolean }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
@@ -1407,7 +1455,30 @@ function troubleClause(t: StretchTerms): string {
 export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "acting" | "settled" }, W: number): string[] {
 	const p = palette();
 	const live = t.phase !== "settled";
-	const mark = t.phase === "settled" ? `${p.bold}✦${p.reset}` : `${p.dim}${t.mark ?? "✧"}${p.reset}`;
+	// DECLARED SUPERSESSION (R6/D3, owner-ruled) — THE STRETCH LINE WEARS
+	// NO MARK, in any phase.
+	//
+	// Law 1.3: a symbol earns its cell by carrying a fact the words do
+	// not. When every settled fold, the live line AND the status row all
+	// wear a star, none of them distinguishes anything — it is the tick
+	// and the cross again (R2 retired those on exactly this ground), at
+	// the stretch scale. design.md §7.4 had already ruled the principle
+	// one scale down: "only the call still running carries a mark,
+	// because only it is moving", with a settled call's mark "(none) —
+	// the outcome is in the words. SETTLED." A settled STRETCH wearing
+	// one contradicted a precedent the file had already ratified.
+	//
+	// Nothing settled is being reversed: §4 lists this mark PROPOSED and
+	// §8 lists it OPEN. This is that proposal's ruling arriving, as a
+	// decline, on the owner's own dogfood.
+	//
+	// The replacement is a two-space INDENT, not a column shift: the row
+	// joins the settled-call family's geometry, the indent survives a
+	// pipe as bytes (prose never starts at column 3), and both forms are
+	// 2 cells so the width ladder below does not reflow. The status row's
+	// twinkle survives as the ONE moving mark; `✦ took` survives as the
+	// turn's seal.
+	const mark = " ";
 	// R4a (owner ruling, 2026-08-30) — the fold row prints NO key.
 	//
 	// R4 printed `· ctrl+r 3` so the row could name its own target. The
@@ -1449,6 +1520,9 @@ export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "ac
 	return [visibleWidth(row) <= W ? row : cutLine(row, W)];
 }
 
+/** R6/D3: the quiet turn's fold wears no mark either — the SECOND
+ *  emission site, and the one the D3 brief did not name. Same ruling,
+ *  same two-space indent; see stretchLine above for the argument. */
 export function turnFold(t: { words: string; thoughtSeconds: number; reads: number; edits: number; others: [string, number][] }, W: number): string[] {
 	const p = palette();
 	// R3b (owner, 2026-08-27): ZERO TERMS ARE DROPPED. W14 always wrote
@@ -1511,12 +1585,12 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 	const keyW = KEY.length;
 	const key = `${p.dim}${KEY}${p.reset}`;
 	if (words === "") {
-		const keyed = `${p.bold}✦${p.reset} ${meta}${key}`;
+		const keyed = `  ${meta}${key}`;
 		if (visibleWidth(keyed) <= W) return [keyed];
 		let tightMeta = meta;
 		for (const [long, short] of COMPACT) {
 			tightMeta = tightMeta.replaceAll(long, short);
-			const tight = `${p.bold}✦${p.reset} ${tightMeta}${key}`;
+			const tight = `  ${tightMeta}${key}`;
 			if (visibleWidth(tight) <= W) return [tight];
 		}
 		// the meta cuts with the honest "…" — the COMPACT form of it, so a
@@ -1531,29 +1605,29 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 			// closed in the thinking fold, still open here. A width with no
 			// room for the mark is a width with nothing to say: the row is
 			// a hard cut of what it would have said.
-			const cut = `${p.bold}✦${p.reset} ${widthCut(tightMeta, Math.max(1, W - 3))}…`;
-			return [visibleWidth(cut) <= W ? cut : cutLine(`${p.bold}✦${p.reset} ${tightMeta}`, W)];
+			const cut = `  ${widthCut(tightMeta, Math.max(1, W - 3))}…`;
+			return [visibleWidth(cut) <= W ? cut : cutLine(`  ${tightMeta}`, W)];
 		}
-		return [`${p.bold}✦${p.reset} ${widthCut(tightMeta, room)}…${key}`];
+		return [`  ${widthCut(tightMeta, room)}…${key}`];
 	}
 	// A9 (ruling R2, mock A): the user chip rides the fold — the human's
 	// words LEAD the one line, the same SGR-7 bracket as the live user
 	// row (#16f, side pads included). The words take the fold's width
-	// budget: W − the gutter ("✦ " = 2) − the join (" · " = 3) − the
+	// budget: W − the gutter (two spaces = 2, R6/D3) − the join (3) − the
 	// chip's side pads (2) − the cut-tail reserve (1, the "…") − the
 	// metadata's own width — the metadata survives, the words width-cut
 	// at the end with the honest "…" (the "…" alone is the honest floor:
 	// the words were there, cut).
-	const budget = Math.max(0, W - visibleWidth(`✦ ${meta}`) - 6 - keyW);
+	const budget = Math.max(0, W - visibleWidth(`  ${meta}`) - 6 - keyW);
 	const cut = visibleWidth(words) > budget ? `${widthCut(words, budget)}…` : words;
-	const row = `${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${meta}${key}`;
+	const row = `  ${p.rv} ${cut} ${p.rvEnd} · ${meta}${key}`;
 	if (visibleWidth(row) <= W) return [row];
 	// R3h: the same COMPACT ladder the wordless branch walks — the nouns
 	// shorten before the words or the metadata lose anything.
 	let chipMeta = meta;
 	for (const [long, short] of COMPACT) {
 		chipMeta = chipMeta.replaceAll(long, short);
-		const tighter = `${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${chipMeta}${key}`;
+		const tighter = `  ${p.rv} ${cut} ${p.rvEnd} · ${chipMeta}${key}`;
 		if (visibleWidth(tighter) <= W) return [tighter];
 	}
 	// the last resort: the METADATA gives way — the words hold their
@@ -1566,10 +1640,10 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 		// bracket's pads, the join and the "…" are ten cells before a
 		// single character of content, so every width below ten threw
 		// invariant ① — see the wordless branch above for the same class.
-		const tail = `${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(compactAll(meta), Math.max(1, W - 8 - visibleWidth(cut)))}…`;
-		return [visibleWidth(tail) <= W ? tail : cutLine(`${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd}`, W)];
+		const tail = `  ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(compactAll(meta), Math.max(1, W - 8 - visibleWidth(cut)))}…`;
+		return [visibleWidth(tail) <= W ? tail : cutLine(`  ${p.rv} ${cut} ${p.rvEnd}`, W)];
 	}
-	return [`${p.bold}✦${p.reset} ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(compactAll(meta), room)}…${key}`];
+	return [`  ${p.rv} ${cut} ${p.rvEnd} · ${widthCut(compactAll(meta), room)}…${key}`];
 }
 
 // ---- the bounded-block flow contract (W7, W8, W10) ----

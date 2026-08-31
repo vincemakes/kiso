@@ -183,6 +183,11 @@ export interface BodyOptions {
 interface TurnRecord {
 	ended: boolean;
 	hasText: boolean;
+	/** R6/D1 — the turn has produced its first thinking or tool cell, so
+	 *  the act block is allocated. It stays allocated until endTurn: a
+	 *  settling stretch commits its fold row ABOVE a block that does not
+	 *  move, and the next stretch swaps the block's CONTENTS. */
+	begun: boolean;
 	thoughtSeconds: number;
 	reads: number;
 	edits: number;
@@ -652,7 +657,7 @@ export class Body {
 		// W14: the turn boundary — the record the fold-hold's release
 		// state machine reads; the cell carries the record's index. A9:
 		// the user's own words ride the record — the fold's leading chip.
-		this.#turns.push({ ended: false, hasText: false, thoughtSeconds: 0, reads: 0, edits: 0, others: new Map(), seen: new Map(), words: text, folded: false, segments: [] });
+		this.#turns.push({ ended: false, hasText: false, begun: false, thoughtSeconds: 0, reads: 0, edits: 0, others: new Map(), seen: new Map(), words: text, folded: false, segments: [] });
 		this.#cells.push({ kind: "user", text, done: true, turn: this.#turns.length - 1 });
 		this.#mark();
 	}
@@ -667,20 +672,34 @@ export class Body {
 			last.text += text;
 		} else {
 			this.#cells.push({ kind: "thinking", text, done: false, turn: this.#turns.length - 1 });
-			// R3b: thinking is WORK, so it opens a segment too — a turn that
-			// thinks, speaks, then thinks again has two segments, and the
-			// second one's clock starts here rather than at a tool call it
-			// may never make.
+			// DECLARED SUPERSESSION (R7, owner-ruled 2026-08-31) — THINKING
+			// IS WORDS, NOT WORK.
 			//
-			// OPEN then STAMP, in that order: the stamp records the segment
-			// the cell belongs to, and a stamp taken first records the
-			// PREVIOUS segment (or none at all) — which left the thinking
-			// row standing outside the fold it should have led.
-			const seg = openSegment(this.#turns[this.#turns.length - 1], Date.now());
-			// R3i: the stretch's thinking clock starts HERE — at the first
-			// delta of this stretch, the same moment the CLI starts the
-			// turn's — and stops at the next non-thinking event below.
-			if (seg !== null && seg.thinkingSince === null) seg.thinkingSince = Date.now();
+			// R3b made thinking open a segment, on the reading that it is
+			// work like a tool call. Four rounds of consequences followed
+			// from that one classification: folded away with the calls, it
+			// became unreachable, and R4's printed ordinal, R5's viewer,
+			// R6's subject index and a look-back viewport were each built
+			// to hand it back. The owner's ruling is to stop hiding it —
+			// and then none of those mechanisms is answering a question
+			// anyone still asks.
+			//
+			// So thinking CLOSES the open segment, exactly as text does
+			// (see textAppend): a segment is what sits between two of
+			// these. It must close rather than merely not-open, because
+			// `#committed` is a PREFIX count — a thinking cell cannot
+			// commit past a held call, so think → call → think would
+			// otherwise flush at the segment's close with the second
+			// thought printing BELOW the fold that contains the later
+			// call.
+			//
+			// Consequence, and it is wanted: the segment's thinking clock
+			// never starts, so `thought Ns` drops off every fold line by
+			// R3h's own zero-term rule. The line stops claiming a fact the
+			// paragraph above it already states in full.
+			const t0 = this.#turns[this.#turns.length - 1];
+			closeSegment(t0, Date.now());
+			if (t0 !== undefined) t0.begun = true; // R6/D1: the block allocates here
 			// R3i: and the beat starts HERE. Law 1.4 says "a running thought
 			// twinkles", and `#armSpinner`'s own predicate has always
 			// included an open thinking cell — but the only caller was
@@ -689,7 +708,6 @@ export class Body {
 			// derivation, so without the beat they also never ticked: the
 			// row read `thinking 0s` for as long as the model thought.
 			this.#armSpinner();
-			this.#stampSegment();
 		}
 		this.#mark();
 	}
@@ -798,6 +816,8 @@ export class Body {
 			}
 		}
 		this.#stampSegment();
+		const t1 = this.#turns[this.#turns.length - 1];
+		if (t1 !== undefined) t1.begun = true; // R6/D1: the block allocates here
 		this.#mark();
 	}
 
@@ -2123,8 +2143,10 @@ export class Body {
 		const openSeg = open !== null && open.closedAt === null ? open : null;
 		let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
 		let stretchDrawn = false;
+		let lastIdx = this.#committed;
 		for (let i = this.#committed; i < this.#cells.length; i += 1) {
 			const cell = this.#cells[i]!;
+			lastIdx = i;
 			const inOpen = openSeg !== null && openSeg.cells.includes(i);
 			if (inOpen) {
 				// R4 — the open stretch is ONE contiguous block: its line
@@ -2142,7 +2164,20 @@ export class Body {
 					...stretchLine({ ...this.#stretchTerms(openSeg), liveNames: this.#liveNames(openSeg), phase: this.#stretchPhase(openSeg), mark: twinkleFrame(this.#spinnerI) }, W),
 					...this.#actSlot(openSeg, W, ctx, budget, focus),
 				];
-				out.push(...this.#space(i, prev, rows));
+				// R6/D1: NO W11 blank above the block.
+				//
+				// The blank is the spacing rule for a multi-row block among
+				// blocks, and the live block is multi-row while the fold it
+				// commits into is a single row — so the blank existed while
+				// running and vanished at the settle, and the fold row moved
+				// UP into it. One row, every stretch, and the owner saw it
+				// immediately.
+				//
+				// The block is not a block among blocks: it is the bench at
+				// the bottom of the turn, in one place from the turn's first
+				// thought to its last. Furniture does not take a separator
+				// that changes when its contents do.
+				out.push(...rows);
 				prev = rows;
 				continue;
 			}
@@ -2153,7 +2188,45 @@ export class Body {
 			out.push(...this.#space(i, prev, rows));
 			prev = rows;
 		}
+		// R6/D1 — THE BLOCK STANDS FOR THE TURN, not for the stretch.
+		//
+		// R4 made the block's height constant WITHIN a stretch. Between
+		// two stretches it was released and rebuilt, so the live region
+		// breathed by its whole height twice per stretch — and the live
+		// region is anchored to the bottom (liveTop below), so every
+		// committed row on screen moved with it. The owner's report, and
+		// their own formulation of the cure: "once something is at a line
+		// it should not jump up or down — hold the absolute position and
+		// update the content there."
+		//
+		// So when the turn has begun work and no open stretch drew the
+		// block above, it is drawn HERE, after the live cells, with its
+		// top row swapped to the slot's own pad: the closed stretch's
+		// terms are already the committed fold row further up, and
+		// printing them again one screen apart is the duplication A9's
+		// narrowing forbids.
+		//
+		// Projection-only. Commit order, commit timing and every
+		// committed byte are untouched — which is why the transcript this
+		// leaves behind cannot regress: it cannot differ.
+		if (!stretchDrawn && turn !== undefined && !turn.ended && turn.begun) {
+			const p = palette();
+			const rows = [`${p.dim}\u2502${p.reset}`, ...this.#actSlot(null, W, ctx, budget, focus)];
+			out.push(...rows); // no W11 blank — see the open-stretch draw above
+		}
 		return out;
+	}
+
+	/** R6/D1 — the turn's most recent CLOSED segment: what the block
+	 *  shows in the gap between two stretches. */
+	#lastClosedSegment(): SegmentRecord | null {
+		const turn = this.#turns[this.#turns.length - 1];
+		if (turn === undefined) return null;
+		for (let i = turn.segments.length - 1; i >= 0; i -= 1) {
+			const seg = turn.segments[i]!;
+			if (seg.cells.some((j) => j >= this.#committed)) return seg;
+		}
+		return null;
 	}
 
 	/**
@@ -2177,12 +2250,20 @@ export class Body {
 	 *  - THINKING, before any call: the thinking's own tail (R3i ruling
 	 *    5, wired at last).
 	 */
-	#actSlot(seg: SegmentRecord, W: number, ctx: FrameCtx, budget: number, focus: number): string[] {
+	#actSlot(seg: SegmentRecord | null, W: number, ctx: FrameCtx, budget: number, focus: number): string[] {
 		const tint = (i: number, rows: string[]): string[] => {
 			if (i === focus && rows.length > 0) rows[0] = focusToken(rows[0]!, W);
 			return rows;
 		};
-		const live = seg.cells.filter((i) => i >= this.#committed);
+		// R6/D1: with no open stretch (the gap BETWEEN two of them) the
+		// slot looks at the turn's last closed segment instead — the call
+		// that just finished keeps its head and its tail, which is R4 B's
+		// rule extended across the boundary. Cells outlive their commit,
+		// so these are live repaints of live rows, never a rewrite of a
+		// committed one.
+		const src = seg ?? this.#lastClosedSegment();
+		if (src === null) return slotPad([], budget);
+		const live = src.cells.filter((i) => i >= this.#committed);
 		const tools: number[] = [];
 		for (const i of live) if (this.#cells[i]?.kind === "tool") tools.push(i);
 		const toolAt = (i: number): Extract<BodyCell, { kind: "tool" }> => this.#cells[i] as Extract<BodyCell, { kind: "tool" }>;
@@ -2867,6 +2948,11 @@ export class Body {
 		// when it is done, like prose, and is never held for a fold that
 		// is not going to speak for it.
 		if (cell.kind === "tool" && cell.name === "ask_user") return false;
+		// R7: and neither is THINKING. It is words now (law 1.7 — work
+		// folds, words do not), so it commits when it is done, like prose,
+		// and is never held for a fold that no longer speaks for it. The
+		// ask_user exemption one line up is the precedent this follows.
+		if (cell.kind === "thinking") return false;
 		const turn = cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
 		if (turn === undefined || turn !== this.#turns[this.#turns.length - 1]) return false;
 		// R3b (owner, 2026-08-27) — the hold is the SEGMENT's, not the

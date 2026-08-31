@@ -348,7 +348,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// moved behind `ctrl+r`. What this case is really about — the
 		// expand reaching the FULL per-call children — is unchanged and is
 		// asserted below.
-		expect(clean).toMatch(/✦ (thought \d+s · )?read 5 files/);
+		expect(clean).toMatch(/read 5 files/);
 		// the expand: the FULL per-call children, one └ row each — a.ts
 		// appears twice (the rollup's joined children row starts the └;
 		// b/c ride "· ", so only the expand's own └ matches for them);

@@ -71,7 +71,7 @@ describe("TUI2-R1.5 ① — the exploration rollup at real pacing (real CLI)", (
 		// opens. The claim these cases make — the burst settles as ONE
 		// thing, with no keypress, and never as N individual rows — is
 		// unchanged and is stronger now: one row for the whole segment.
-		expect(joined).toMatch(/✦ (thought \d+s · )?read 6 files · ran 1 search · listed 1 directory/);
+		expect(joined).toMatch(/read 6 files · ran 1 search · listed 1 directory/);
 		// …and NOT the eight individual rows the walkthrough saw
 		expect(grid.filter((l) => /✓ read {2}f\d\.txt/.test(l))).toHaveLength(0);
 		// R4a: the affordance is no longer ON the row — a row cannot say
@@ -104,7 +104,7 @@ describe("TUI2-R1.5 ① — the exploration rollup at real pacing (real CLI)", (
 		// opens. The claim these cases make — the burst settles as ONE
 		// thing, with no keypress, and never as N individual rows — is
 		// unchanged and is stronger now: one row for the whole segment.
-		expect(grid.join("\n")).toMatch(/✦ (thought \d+s · )?read 4 files · ran 1 search/);
+		expect(grid.join("\n")).toMatch(/read 4 files · ran 1 search/);
 		expect(grid.filter((l) => /✓ read {2}f\d\.txt/.test(l))).toHaveLength(0);
 	}, 240_000);
 });

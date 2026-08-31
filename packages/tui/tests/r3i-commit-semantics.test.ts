@@ -53,7 +53,24 @@ const call = (b: Body, name: string, id: string, input: Record<string, unknown>,
 	b.toolRunning(id);
 	b.toolResult(id, { content: "x", isError });
 };
-const isFold = (l: string): boolean => /^✦ /.test(l.trimStart());
+/**
+ * DECLARED SUPERSESSION (R6/D3): the stretch's summary row wears no mark,
+ * so `/^✦ /` no longer finds it.
+ *
+ * What identifies it now is its GRAMMAR, which is the thing law 1.3 says
+ * should have been carrying the fact all along: a fold row is telegraphic
+ * — a counting verb, then its count and noun, with ` · ` between terms
+ * and no sentence punctuation. A settled CALL card starts with the same
+ * verbs but carries parenthesised meta (`(exit 0, 12.4s)`), and a
+ * THINKING paragraph is a sentence, not a verb-first count.
+ *
+ * Worth stating plainly: after D3 a fold row and a thinking row are both
+ * "two spaces then words" on a stripped screen. The registers differ in
+ * grammar, which is what a reader uses and what this predicate uses —
+ * but a shape-only test cannot tell them apart, and that is the honest
+ * cost of retiring the mark.
+ */
+const isFold = (l: string): boolean => /^ {2}(read|edited|wrote|listed|ran|explored|thought)\b/.test(l) && !l.includes("(");
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -88,8 +105,13 @@ describe("R3i ① — one summary per stretch, standing with its prose", () => {
 		const prose1 = r.findIndex((l) => l.includes("I'll read a few core files"));
 		const fold2 = r.findIndex((l, i) => i > prose1 && isFold(l));
 		const prose2 = r.findIndex((l) => l.includes("Here is the map."));
+		// DECLARED SUPERSESSION (R7): the fold no longer sits IMMEDIATELY
+		// under the chip — the turn's thinking stands between them now,
+		// visible, which is the ruling. The ORDER is what this case was
+		// always for and it is unchanged: chip, then the stretch's
+		// summary, then the prose it led to, then the next pair.
 		expect(chip).toBe(0);
-		expect(fold1).toBe(chip + 1);
+		expect(fold1).toBeGreaterThan(chip);
 		expect(prose1).toBeGreaterThan(fold1);
 		expect(fold2).toBeGreaterThan(prose1);
 		expect(prose2).toBeGreaterThan(fold2);
@@ -118,7 +140,19 @@ describe("R3i ① — one summary per stretch, standing with its prose", () => {
 		expect(folds[1]).not.toContain("read");
 	});
 
-	it("the seconds are the SEGMENT's thinking, not the turn's", () => {
+	// DECLARED SUPERSESSION (R7, owner-ruled) — THERE ARE NO SECONDS.
+	//
+	// R3i's subject here was that `thought Ns` measured the SEGMENT's
+	// thinking rather than the turn's, which was the R3g defect closed at
+	// a finer scale. R7 retires the term itself: thinking never joins a
+	// segment, so a segment's thinking clock never starts, and R3h's
+	// zero-term rule drops a term about something that did not happen.
+	//
+	// What survives, and it is the better claim: the two stretches are
+	// still told apart, each thought is on screen IN FULL above the work
+	// it led to, and a one-call stretch keeps its call's own row while a
+	// two-call one folds.
+	it("each stretch keeps its own thought and its own work, told apart", () => {
 		const { body, rows, tick } = makeBody();
 		body.enter();
 		body.userLine("x");
@@ -135,9 +169,18 @@ describe("R3i ① — one summary per stretch, standing with its prose", () => {
 		body.textEnd();
 		body.endTurn(18);
 		tick();
+		const all = rows().join("\n");
+		// both thoughts are on screen, in full — the thing four rounds of
+		// machinery were built to hand back
+		expect(all).toContain("first");
+		expect(all).toContain("second");
+		// the one-call stretch keeps its call's row; the two-call one folds
+		expect(all).toContain("a.ts");
 		const folds = rows().filter(isFold);
-		expect(folds[0]).toContain("thought 8s");
-		expect(folds[1]).toContain("thought 10s");
+		expect(folds).toHaveLength(1);
+		expect(folds[0]).toContain("read 2 files");
+		// and no fold claims a thinking time any more
+		for (const f of folds) expect(f).not.toMatch(/thought \d+s/);
 	});
 
 	it("a stretch of ONE call and no thinking keeps the call's own row", () => {
@@ -165,9 +208,15 @@ describe("R3i ① — one summary per stretch, standing with its prose", () => {
 		body.textEnd();
 		body.endTurn(2);
 		tick();
-		const fold = rows().find(isFold) ?? "";
-		expect(fold).toContain("read editor.ts");
-		expect(fold).not.toContain("1 file"); // the count would say less than the two rows it replaces
+		// DECLARED SUPERSESSION (R7) — and the case's own NAME was already
+		// the R7 behaviour: "a stretch of ONE call keeps the call's own
+		// row". It could not be, while thinking counted as the segment's
+		// second cell and pushed the run over the >= 2 fold gate. Thinking
+		// is words now, so this segment holds ONE cell, does not fold, and
+		// the call keeps its row — with its target verbatim, which is
+		// strictly more than `read 1 file` ever said.
+		expect(rows().find(isFold)).toBeUndefined();
+		expect(rows().join("\n")).toContain("editor.ts");
 	});
 });
 

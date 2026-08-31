@@ -207,25 +207,33 @@ describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulato
 		expect(markers.done).toBeGreaterThan(0);
 		const { turn, final } = screens(full, markers);
 
-		// The scenario is on screen: the fold froze with its suffix.
-		require("node:fs").writeFileSync("/tmp/reflow-turn.txt", JSON.stringify(turn));
-		require("node:fs").writeFileSync("/tmp/reflow-final.txt", JSON.stringify(final));
-		require("node:fs").writeFileSync("/tmp/reflow-markers.txt", JSON.stringify(markers));
-		expect(turn.some((l) => l.includes("/think"))).toBe(true);
+		// The scenario is on screen.
+		// DECLARED SUPERSESSION (R7): "the fold froze with its suffix" is
+		// gone with the folded thinking row — thinking commits in full,
+		// indented, so the block itself is the evidence the turn happened.
+		// (Three writeFileSync calls to /tmp were sitting here: debugging
+		// leftovers that ran on every invocation of a tracked test. Removed
+		// with the assertion they were debugging.)
+		expect(turn.some((l) => /^ {2}\S/.test(l))).toBe(true);
 
 		// ① the response text appears EXACTLY once on the turn-after screen.
 		expect(responseOnce(turn)).toBe(1);
 		// ② no separator wall — box rails in the BODY region (1..H-4) ≤ 1.
 		expect(bodySepRows(turn, 24)).toBeLessThanOrEqual(1);
-		// ③ the fold is its own row ENDING with the /think suffix — the
-		// fold/body merge (the recorded symptom) would swallow the suffix.
-		const foldRow = turn.find((l) => l.includes("/think"));
-		expect(foldRow).toBeDefined();
-		// R2: the fold's affordance moved to the RIGHT EDGE and the char
-		// count went with the move, so the row ends with the bare `/think`
-		// rather than `… chars · /think)`.
-		expect(foldRow!.trimEnd().match(/\/think$/)).not.toBeNull();
-		expect(foldRow!.includes(RESPONSE)).toBe(false);
+		// ③ DECLARED SUPERSESSION (R7): there is no folded thinking row
+		// and so no `/think` suffix to end it with. The recorded symptom
+		// this guarded — a fold MERGING into the body row below it and
+		// swallowing its own tail — is still worth guarding, and the
+		// thinking block guards it better: every one of its rows carries
+		// the two-space lead, so a merge would show up as a row that has
+		// content but not the lead.
+		const thinkRows = turn.filter((l) => /^ {2}\S/.test(l));
+		expect(thinkRows.length).toBeGreaterThan(0);
+		// ...and no such row has swallowed the response text — which is
+		// the merge this case is named for, now checked against every
+		// indented row rather than against the one folded row that used
+		// to exist.
+		for (const r of thinkRows) expect(r.includes(RESPONSE)).toBe(false);
 
 		// ④ after the 5-resize sequence, ① ② hold on the FINAL screen —
 		// the reflow left no ghost, no wall, no cut. v6: the content sits

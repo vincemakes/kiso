@@ -155,9 +155,10 @@ describe("R4 C — the slot never causes a force-commit (the clamp)", () => {
 
 	it("the slot GIVES WAY on a short terminal instead of committing real work", () => {
 		// The slot is the thing that shrinks. At H=40 it stands at its
-		// full budget (blank + stretch line + 4 slot rows = 6 content
-		// rows, so liveCount is 10); at H=9 the content cap is 5, so the
-		// slot must give way by one row. A slot that did NOT give way
+		// full budget. R6/D1 removed the block's W11 blank (it existed
+		// while running and vanished at the settle, moving the fold row
+		// up one), so the block is 5 content rows now, not 6 — and the
+		// screen has to be one shorter for the clamp to fire at all. A slot that did NOT give way
 		// would have made the force-commit loop push a real cell into
 		// the scrollback to make room for its own blank padding.
 		const tall = makeBody({ H: 40 });
@@ -167,7 +168,7 @@ describe("R4 C — the slot never causes a force-commit (the clamp)", () => {
 		running(tall.body, "shell", "s1", { command: "npm run check" });
 		tall.tick();
 
-		const short = makeBody({ H: 9 });
+		const short = makeBody({ H: 8 });
 		short.body.enter();
 		short.body.userLine("x");
 		short.body.thinkingAppend("planning");
@@ -175,7 +176,7 @@ describe("R4 C — the slot never causes a force-commit (the clamp)", () => {
 		short.tick();
 
 		expect(short.body.liveCount()).toBeLessThan(tall.body.liveCount());
-		expect(short.body.liveCount()).toBeLessThanOrEqual(9);
+		expect(short.body.liveCount()).toBeLessThanOrEqual(8);
 	});
 
 	it("the live region fits the content cap in every phase of a stretch, at H=10", () => {
@@ -235,12 +236,19 @@ describe("R4 E — DC-27: the scalar measures the screen", () => {
 });
 
 describe("R4a — the fold row prints no key, and ctrl+r opens the MOST RECENT", () => {
+	// R7: a stretch needs TWO calls to fold now — thinking left the
+	// segment, so think + one call is a single cell and stays below the
+	// >= 2 gate (which is the ruling working: a lone call keeps its own
+	// row, with its target verbatim). These gates are about the FOLD, so
+	// their fixture makes one.
 	const stretch = (b: Body, i: number): void => {
 		b.thinkingAppend(`thinking ${i}`);
 		b.thinkingEnd();
-		b.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
-		b.toolRunning(`r${i}`);
-		b.toolResult(`r${i}`, { content: "one\ntwo\nthree", isError: false });
+		for (const k of [0, 1]) {
+			b.toolStart("read_file", `r${i}-${k}`, { path: `f${i}${k === 0 ? "" : "b"}.ts` });
+			b.toolRunning(`r${i}-${k}`);
+			b.toolResult(`r${i}-${k}`, { content: "one\ntwo\nthree", isError: false });
+		}
 		b.textAppend(`narrating ${i}.\n`);
 		b.textEnd();
 	};
@@ -250,7 +258,8 @@ describe("R4a — the fold row prints no key, and ctrl+r opens the MOST RECENT",
 		plain(writes.join(""))
 			.split(/\x1b\[\d+;1H|\n/)
 			.map((l) => l.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim())
-			.filter((l) => l.startsWith("✦ ") && !l.startsWith("✦ took") && !l.startsWith("✦ expanded"));
+			// R6/D3: the fold wears no mark — its grammar is what finds it.
+			.filter((l) => /^(read|edited|wrote|listed|ran|explored|thought)\b/.test(l) && !l.includes("("));
 
 	it("no committed fold advertises a key — the row is its words alone", () => {
 		const { body, writes, tick } = makeBody({ H: 40 });
