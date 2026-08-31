@@ -164,7 +164,19 @@ describe("T-Q1 — the rows: the frames the human reads", () => {
 		expect(rows).toMatch(/ 1   vite {2,}fast dev server/);
 		expect(rows).toMatch(/ 2   esbuild {2,}one binary/);
 		expect(rows).toContain("t   type your own answer");
-		expect(rows).toContain("1-4 pick · t type · esc decline");
+		// DECLARED SUPERSESSION (R6/D2): the row names the FINISHER and the
+		// REAL option count. It said `1-4 pick · t type · esc decline` in
+		// both modes, never mentioning enter — on the one panel shape
+		// where enter is the only way to finish — and hardcoding 1-4
+		// whatever the count was (REL-0152-D3's defect, one function down
+		// from where that finding fixed it). The owner could not find the
+		// finisher because the screen did not name it.
+		expect(rows).toContain("⏎ confirms");
+		expect(rows).toContain("esc declines");
+		// ...and the range is this question's OWN count. ONE has three
+		// options plus the type-your-own row, so a hardcoded "1-4" was
+		// wrong here in the most literal way available.
+		expect(rows).toContain("1-3 instant");
 	});
 
 	it("the ‹ n/m › counter appears only when there is more than one question, and ← joins the keys", () => {
@@ -177,10 +189,14 @@ describe("T-Q1 — the rows: the frames the human reads", () => {
 		expect(rows).toContain("← back");
 	});
 
-	it("multi-select marks the chosen options and says space toggles", () => {
+	it("multi-select marks the chosen options, names its mode, and names what SENDS", () => {
 		const state = walk(TWO, ["1", "1"]).state;
 		const rows = plain(askBlockRows(askView(TWO), state, 80, 20));
-		expect(rows).toContain("pick any — space toggles");
+		// R6/D2: the header names the MODE; the keys live on the keys row,
+		// once — and the key that was missing from it is the one that
+		// finishes a multi-select.
+		expect(rows).toContain("pick any");
+		expect(rows).toContain("⏎ sends the set");
 		expect(rows).toContain("◉ vitest");
 		expect(rows).toContain("◯ node:test");
 	});

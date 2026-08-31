@@ -51,7 +51,15 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 			// a list with a bar on it — so the row names the gestures
 			// outright, in the SAME words the live panel's own hint line
 			// uses ("↑↓ move · ⏎ or click confirms · 1-4 instant").
-			"panels: ↑↓ move · ⏎ or click confirms · 1-4 instant · space toggles · t types",
+			// DECLARED SUPERSESSION (R6/D2): the row claims only what is
+			// true of EVERY panel. `1-4 instant` was false on the ask's
+			// multi-select and on the pick panel (a digit there only moves
+			// the cursor), `or click` was false on both (their frames
+			// report no clickable span), and "1-4" was wrong for any panel
+			// with a different option count — while its own comment said
+			// the sentence was true of every flavor. Each panel's own row
+			// now states that panel's whole truth.
+			"panels: ↑↓ move · ⏎ confirms · digits act on their row · t types",
 		]);
 	});
 

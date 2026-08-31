@@ -272,7 +272,13 @@ describe("TUI2-R1 T-V4 — the ? keys sheet on a real PTY", () => {
 		expect(out).toContain("enter send");
 		expect(out).toContain("ctrl+r expand cells");
 		// MOVED (R1.5 pin 6, the wrap/copy class): see the tui-cells unit.
-		expect(out).toContain("panels: ↑↓ move · ⏎ or click confirms · 1-4 instant · space toggles · t types");
+		// DECLARED SUPERSESSION (R6/D2): the row claims only what is true
+		// of EVERY panel now. `1-4 instant` was false on the ask's
+		// multi-select and on the pick panel, `or click` was false on
+		// both, and "1-4" was wrong for any panel with a different option
+		// count — while the row's own comment said it was true of every
+		// flavor. Each panel's own affordance row states its whole truth.
+		expect(out).toContain("panels: ↑↓ move · ⏎ confirms · digits act on their row · t types");
 		// the `?` never became text, and neither did the key that closed it.
 		// R2: the composer has no wall and no prompt glyph, so the needle
 		// is the row's erase-to-end immediately followed by the character —

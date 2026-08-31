@@ -289,7 +289,19 @@ export function displayVerb(name: string): string {
  * The two ask-only gestures keep their clauses because the ask is the
  * only flavor with a set to build and an answer to write.
  */
-export const PANEL_KEYS_ROW = "panels: ↑↓ move · ⏎ or click confirms · 1-4 instant · space toggles · t types";
+/**
+ * R6/D2 — the row claims only what is TRUE OF EVERY panel.
+ *
+ * Its old sentence ("⏎ or click confirms · 1-4 instant · space toggles")
+ * was documented as true of every flavor, and had silently stopped
+ * being: `1-4 instant` is false on the ask's multi-select and on the
+ * pick panel (where a digit only moves the cursor and never commits),
+ * `or click` is false on both (their frames deliberately report no
+ * clickable span), and "1-4" is wrong whenever a panel has a different
+ * option count. Layered honesty: this row states the invariant, and each
+ * panel's own affordance row states that panel's whole truth.
+ */
+export const PANEL_KEYS_ROW = "panels: ↑↓ move \u00b7 ⏎ confirms \u00b7 digits act on their row \u00b7 t types";
 
 /** The sheet's grid: the first six bindings in two 3-column rows, the
  *  last four in two 2-column rows (the wide entries get the room). The

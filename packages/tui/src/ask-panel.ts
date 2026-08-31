@@ -182,7 +182,26 @@ export function askKey(spec: AskSpec, state: AskRuntime, key: string): AskStep {
 		// on the custom row, enter is the way in — the same gesture the
 		// row's neighbours answer with.
 		if (state.cursor === customRow(q)) return { state: { ...state, phase: "custom" } };
-		return answered(state, state.qIndex) ? advance(spec, state) : { state };
+		if (answered(state, state.qIndex)) return advance(spec, state);
+		// R6/D2 — ENTER TAKES THE BAR'S ROW.
+		//
+		// It used to return `{ state }` here: the cursor is not a pick, so
+		// bar-on-option-1 + enter did NOTHING, in either mode, with no
+		// message. The approval panel ruled the opposite in TUI2-R3v2 ①
+		// ("the panel used to ignore the key every human presses first"),
+		// so the product had two selection models under one identical
+		// bar — and the owner's dogfood is that trap verbatim: bar to
+		// option 1, enter (silence), "do I really have to type 1?", digit
+		// (a mark appears), enter (it commits).
+		//
+		// Single-select takes the row and advances, which is what the bar
+		// has always promised. Multi MARKS the row and stays: the press
+		// becomes visible (◯ → ◉), which teaches the mode in one frame,
+		// and the second enter sends the set. A press that "did nothing"
+		// is the defect; a press that does the smallest true thing is the
+		// fix.
+		const taken = toggle(state, state.cursor, multi);
+		return multi ? { state: taken } : advance(spec, taken);
 	}
 	// SPACE selects at the cursor and NEVER commits — in either mode. It
 	// used to answer-and-advance a single-select question, which made a
@@ -303,7 +322,10 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	// here), but the multi-select gesture it carried is INFORMATION and
 	// rides the header instead — dropping it would have been a regression
 	// wearing a restyle's clothes.
-	const gesture = multi ? `${p.dim} · pick any — space toggles${p.reset}` : "";
+	// R6/D2: the header names the MODE; the keys live on the keys row,
+	// once. It used to name `space toggles` there and nowhere say what
+	// finishes the set.
+	const gesture = multi ? `${p.dim} · pick any${p.reset}` : "";
 	rows.push(`  ${cutLine(`${p.dim}${header}${p.reset}${gesture}`, Math.max(1, W - 2))}`);
 	rows.push("");
 	const picks = state.picks[state.qIndex] ?? [];
@@ -346,7 +368,9 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	} else {
 		rows.push(...body);
 	}
-	rows.push(`  ${p.dim}${askAffordance(state)}${p.reset}`);
+	// R6/D2: FITTED, and the two-space indent is inside the budget —
+	// the uncut push here is what made a narrow ask throw.
+	rows.push(`  ${p.dim}${askAffordanceFit(state, q, Math.max(1, W - 2))}${p.reset}`);
 	// R2, shared with the approval panel: the block closes with the SAME
 	// dashed rule it opened with, and the same one the composer uses.
 	// TUI2-R1.5 ⑪ had already replaced a two-cell `\u2514 ` stub with a
@@ -356,10 +380,67 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	return rows;
 }
 
-/** The status row's right-hand hint — the phase's keys. */
-export function askAffordance(state: AskRuntime): string {
+/**
+ * R6/D2 — the affordance names the FINISHER, and it names the real keys.
+ *
+ * Three defects lived in the one line this replaces:
+ *  - it never mentioned ENTER, on the one panel shape where enter is the
+ *    only way to finish. The owner could not find the finisher because
+ *    the screen did not name it;
+ *  - it said the same words in both modes, while a digit means two
+ *    different things across them (take vs mark);
+ *  - it hardcoded "1-4" whatever the option count was — the same defect
+ *    REL-0152-D3 fixed in the input LEAD one function up, and missed
+ *    here.
+ *
+ * The clauses are returned whole; `askAffordanceFit` below is what a
+ * width-bound caller uses.
+ */
+export function askAffordance(state: AskRuntime, q?: AskQuestion): string {
 	if (state.phase === "custom") return "enter answers · esc backs out";
-	return state.qIndex > 0 ? "1-4 pick · t type · ← back · esc decline" : "1-4 pick · t type · esc decline";
+	const n = q?.options.length ?? 4;
+	const multi = q?.multiSelect === true;
+	const back = state.qIndex > 0 ? ["← back"] : [];
+	return (multi
+		? ["↑↓ move", `space or 1-${n} marks`, "⏎ sends the set", "t types", ...back, "esc declines"]
+		: ["↑↓ move", "⏎ confirms", `1-${n} instant`, "t types", ...back, "esc declines"]
+	).join(" · ");
+}
+
+/**
+ * The affordance at a width, by the DC-2 clause ladder.
+ *
+ * The row this serves used to be pushed UNCUT into the panel block
+ * (`askBlockRows`), unlike the approval's cutLine'd row — and panel rows
+ * go through `#checked`, which THROWS on any row wider than W
+ * (invariant ①). A multi-question ask on question 2 at W ≤ 41, or any
+ * ask at W ≤ 32, killed the renderer. So the ladder is not polish; it is
+ * the fix for a crash.
+ *
+ * The order gives way from the least load-bearing inward, and the LAST
+ * standing pair in both modes is the way through and the way out. In
+ * multi, `⏎ sends` is the fact whose absence caused this whole finding:
+ * it gives way never.
+ */
+export function askAffordanceFit(state: AskRuntime, q: AskQuestion | undefined, W: number): string {
+	if (state.phase === "custom") return cutLine("enter answers · esc backs out", W);
+	const n = q?.options.length ?? 4;
+	const multi = q?.multiSelect === true;
+	const back = state.qIndex > 0 ? ["← back"] : [];
+	const act = multi ? `space or 1-${n} marks` : `1-${n} instant`;
+	const go = multi ? "⏎ sends the set" : "⏎ confirms";
+	const tiers: string[][] = [
+		["↑↓ move", act, go, "t types", ...back, "esc declines"],
+		["↑↓ move", act, go, ...back, "esc declines"],
+		[act, go, ...back, "esc declines"],
+		[multi ? "space marks" : `1-${n} picks`, multi ? "⏎ sends" : "⏎ confirms", "esc declines"],
+		[multi ? "⏎ sends" : "⏎ confirms", "esc declines"],
+	];
+	for (const tier of tiers) {
+		const row = tier.join(" · ");
+		if (visibleWidth(row) <= W) return row;
+	}
+	return cutLine(tiers[tiers.length - 1]!.join(" · "), W);
 }
 
 /** The status row's left text — the ask's own line, with the walk. */
@@ -413,7 +494,7 @@ export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number, 
 
 export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: number, ask?: AskRuntime, pick?: PickRuntime, safer?: SaferRuntime): string {
 	if (view.pick !== undefined && pick !== undefined) return pickAffordance(pick);
-	if (view.ask !== undefined && ask !== undefined) return askAffordance(ask);
+	if (view.ask !== undefined && ask !== undefined) return askAffordance(ask, view.ask.questions[ask.qIndex]);
 	return basePanelAffordance(view, phase, cursor, safer);
 }
 
