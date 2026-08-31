@@ -331,14 +331,32 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// R6/D3: the LIVE stretch line lost its twinkle too — the owner's
 		// rule is one moving mark on screen and the status row has it. The
 		// row is found by its words now.
-		const running = frames.filter((f) => f.grid.some((l) => /^ {2}read .*\bfile\b/.test(l)) && f.grid.some((l) => /^● shell /.test(l)));
+		//
+		// DECLARED SUPERSESSION (R7a, owner-ruled 2026-08-31) — THE MARK
+		// MOVED UP ONE LEVEL. It used to ride each call's head row; a
+		// four-file burst therefore drew four of them, distinguishing
+		// nothing, and on a read that returns in 200ms one appeared for
+		// less time than the eye needs to land. It now rides the ACTIVITY
+		// line, lit while and only while a call is in flight, and the
+		// head rows under it wear a plain gutter. So the two selectors
+		// below swap their prefixes: the stretch line is the `●` row and
+		// the shell's header is the indented one. The test's subject —
+		// everything below the streaming cell is byte-identical across
+		// frames — is untouched.
+		const running = frames.filter((f) => f.grid.some((l) => /^● read .*\bfile\b/.test(l)) && f.grid.some((l) => /^ {2}shell /.test(l)));
 		expect(running.length).toBeGreaterThanOrEqual(2); // NON-vacuous: the moment really spans frames
 		// the window EXISTS and is 3 rows: 2 blank-padded rows + the waiting row
 		const first = running[0]!.grid;
 		expect(first.some((l) => l.includes("└ waiting for output"))).toBe(true);
-		// W6: the box's input row also opens with "│ " — the blank rows are
-		// the ones WITHOUT the › prompt (the window's blanks carry no glyph)
-		expect(first.filter((l) => l.startsWith("│ ") && !l.includes("›")).length).toBe(2);
+		// R7a: the window's pad is BLANK, not `│ ` — a gutter marks a row
+		// that has content (law 1.3), and the owner's screenshot was a
+		// bar running down the screen under a short block. The window is
+		// still 3 rows and VD-4 still holds: the waiting row is the
+		// FIRST of them, hugging its header, with the pad below.
+		const waitAt = first.findIndex((l) => l.includes("└ waiting for output"));
+		const shellAt = first.findIndex((l) => /^ {2}shell /.test(l));
+		expect(waitAt - shellAt, "the waiting row does not hug its header").toBe(1);
+		expect(first.slice(waitAt + 1, waitAt + 3).every((l) => l.trim() === ""), "the window's pad is not blank").toBe(true);
 		// the anti-jitter: pairwise across the consecutive running frames,
 		// every CONTENT row below the streaming cell's block is byte-identical
 		// — the running shell's OWN block (its folded header: the spinner-
@@ -349,9 +367,9 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 			const g1 = running[i]!.grid;
 			const g2 = running[i + 1]!.grid;
 			// R6/D3: the live stretch line wears no mark — found by words.
-			const readIdx = g1.findIndex((l) => /^ {2}read .*\bfile\b/.test(l));
+			const readIdx = g1.findIndex((l) => /^● read .*\bfile\b/.test(l));
 			const readBottom = readIdx; // the stretch line is ONE row, always
-			const shellHeader = g1.findIndex((l) => /^● shell /.test(l));
+			const shellHeader = g1.findIndex((l) => /^ {2}shell /.test(l));
 			expect(shellHeader).toBeGreaterThan(readBottom); // the shell sits BELOW the streaming cell
 			const headerEnd = g1.findIndex((l, i) => i > shellHeader && (l.startsWith("│ ") || l.startsWith("└ ")));
 			for (let r = readBottom + 1; r <= 19; r += 1) {
@@ -363,7 +381,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// spinner glyph + the elapsed) differs across the run — ≥ 2 distinct
 		const headers = new Set(
 			running.map((f) => {
-				const h = f.grid.findIndex((l) => /^● shell /.test(l));
+				const h = f.grid.findIndex((l) => /^ {2}shell /.test(l));
 				const he = f.grid.findIndex((l, i) => i > h && (l.startsWith("│ ") || l.startsWith("└ ")));
 				return f.grid.slice(h, he).join("");
 			}),

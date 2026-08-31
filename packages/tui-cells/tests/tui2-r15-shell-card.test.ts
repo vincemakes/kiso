@@ -104,7 +104,11 @@ describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)",
 		// the W8 fixed-window pad still holds the block's height — it just
 		// sits BELOW the output now instead of above it
 		expect(body).toHaveLength(3);
-		expect(body[1]!.trim()).toBe("│");
+		// DECLARED SUPERSESSION (R7a, owner-ruled 2026-08-31): the pad is
+		// BLANK. This test's own subject — the first tail row is never
+		// blank — is untouched and asserted above; what changes is the
+		// glyph on the rows the pad occupies, which marked nothing.
+		expect(body[1]).toBe("");
 	});
 
 	it("LEADING empty output lines are skipped — the sidecar's own blanks", () => {

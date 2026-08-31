@@ -113,7 +113,19 @@ const CELL_LINE = [
 	// the TERMS: a counting verb, its count and noun, ` · ` between.
 	// (design.md §4 listed the mark PROPOSED and §8 listed it OPEN — this
 	// is that proposal's ruling arriving, as a decline.)
-	/^(read|reading|edited|editing|wrote|writing|listed|listing|ran|running|explored|thought|thinking)\b.*$/,
+	//
+	// R7a AMENDS D3 by ONE case, owner-ruled 2026-08-31: the line takes
+	// the breathing `●` while — and only while — a call is in flight.
+	// D3 declined a mark on the SETTLED line, where the words carry the
+	// outcome; "work is moving right now" is a fact the words do not
+	// carry, which is law 1.3's own test. It is also where the mark
+	// migrated FROM: it used to ride each call's head row, so a
+	// four-file burst drew four marks distinguishing nothing and a read
+	// that returns in 200ms showed one for less time than the eye needs.
+	// The prefix is OPTIONAL here and the terms after it are unchanged —
+	// the lint's subject is interleaving, and widening the terms would
+	// give that up.
+	/^(● )?(read|reading|edited|editing|wrote|writing|listed|listing|ran|running|explored|thought|thinking)\b.*$/,
 
 	/^● \S+ .*\d+s?$/, // the ToolCell running (W2: the mark IS the gutter). R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
 	/^⏸ \S+ .*$/, // the approval badge (W2: the ⏸ is the left gutter)

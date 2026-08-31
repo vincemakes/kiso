@@ -58,6 +58,18 @@ export interface FrameCtx {
 	 *  the tier table reads H, so a resize RE-TIERS instead of
 	 *  re-folding frozen rows). */
 	readonly height: number;
+	/** R7a — this cell is drawn UNDER an activity header that carries the
+	 *  breathing mark, so its own head row wears a plain gutter.
+	 *
+	 *  The mark belongs to the ACTIVITY, not to each call in it. A
+	 *  four-file burst drew four breathing marks, which is four marks
+	 *  distinguishing nothing (law 1.3, the same ground R2 retired the
+	 *  tick and cross on) — and worse, on a read that finishes in
+	 *  200ms the mark is gone before the eye lands, so per-row it is
+	 *  motion that never resolves into meaning. On the header it is lit
+	 *  for the whole stretch, which is the fact it is there to carry:
+	 *  work is in flight. Owner-ruled 2026-08-31. */
+	readonly grouped?: boolean;
 }
 
 /** ONE screen line a component emits (raw, SGR included). */
@@ -858,7 +870,7 @@ class ToolExecution implements Component {
 			// cannot be predicted: a turning mark implies progress the
 			// product does not have. With no ground the breath freezes to a
 			// static `●` and says the same thing more quietly.
-			const out = gutterCut(`${breathFrame(ctx.spinnerI)} `, `${verbCol} ${liveTarget(c)}`, Math.max(4, W - dur.length));
+			const out = gutterCut(ctx.grouped === true ? "  " : `${breathFrame(ctx.spinnerI)} `, `${verbCol} ${liveTarget(c)}`, Math.max(4, W - dur.length));
 			out[0] = `${out[0]!}${p.dim}${dur}${p.reset}`;
 			out.push(...toolBlockBody(c, W));
 			return out;
@@ -1452,7 +1464,7 @@ function troubleClause(t: StretchTerms): string {
  * by the same give-way order as every other span (law: the key never
  * gives way — it just got two characters longer).
  */
-export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "acting" | "settled" }, W: number): string[] {
+export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "acting" | "settled"; readonly mark?: string }, W: number): string[] {
 	const p = palette();
 	const live = t.phase !== "settled";
 	// DECLARED SUPERSESSION (R6/D3, owner-ruled) — THE STRETCH LINE WEARS
@@ -1478,7 +1490,17 @@ export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "ac
 	// 2 cells so the width ladder below does not reflow. The status row's
 	// twinkle survives as the ONE moving mark; `✦ took` survives as the
 	// turn's seal.
-	const mark = " ";
+	//
+	// R7a AMENDS this by ONE case: the live ACTING line takes the
+	// breathing mark, passed in. D3 declined a mark on the SETTLED fold,
+	// where the words already carry the outcome; a line that means "work
+	// is in flight RIGHT NOW" carries a fact its words do not, which is
+	// exactly the test law 1.3 sets. It is also where the mark was
+	// migrating TO: §7.4's "only the call still running carries one" now
+	// applies at the stretch scale, one mark for the activity instead of
+	// one per call. Owner-ruled 2026-08-31, on the ground that a fast
+	// call's per-row mark is gone before the eye lands.
+	const mark = t.mark ?? " ";
 	// R4a (owner ruling, 2026-08-30) — the fold row prints NO key.
 	//
 	// R4 printed `· ctrl+r 3` so the row could name its own target. The
@@ -1786,11 +1808,19 @@ function errorBody(c: { name: string; resultText: string; reason?: string | null
 function liveWindow(text: string, W: number): string[] {
 	const p = palette();
 	if (text === "") {
-		return [`${p.dim}${BODY_ROW}${p.reset}`, `${p.dim}${BODY_ROW}${p.reset}`, `${p.dim}${CUT_ROW}waiting for output${p.reset}`];
+		// R7a: blank, not two bare gutters. A `│` marks a row that HAS
+		// content; two of them above "waiting for output" drew a tall
+		// empty bar under every command that had not printed yet — which
+		// is most of them, for their first second.
+		// ...and the waiting row sits DIRECTLY under its header, with the
+		// blanks below it — VD-4's own rule ("the output starts under its
+		// own header and grows downward"), which the gutter rows used to
+		// satisfy by accident and blanks made visible as a two-row gap.
+		return [`${p.dim}${CUT_ROW}waiting for output${p.reset}`, "", ""];
 	}
 	const rows = blockRows(text, W);
 	if (rows.length <= CAP_LIVE_WINDOW) {
-		while (rows.length < CAP_LIVE_WINDOW) rows.push(`${p.dim}${BODY_ROW}${p.reset}`);
+		while (rows.length < CAP_LIVE_WINDOW) rows.push(""); // R7a: blank, not a bar
 		return rows;
 	}
 	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+r${p.reset}`, W);
@@ -1834,7 +1864,7 @@ function shellLiveTail(text: string, W: number): string[] {
 	const rows = from < 0 ? [] : all.slice(from);
 	if (rows.length === 0) return liveWindow("", W);
 	const kept = rows.slice(Math.max(0, rows.length - (CAP_LIVE_WINDOW - 1)));
-	while (kept.length < CAP_LIVE_WINDOW - 1) kept.push(`${p.dim}${BODY_ROW}${p.reset}`);
+	while (kept.length < CAP_LIVE_WINDOW - 1) kept.push(""); // R7a: blank, not a bar
 	return [...kept, cutLine(`${p.dim}${CUT_ROW}live tail · esc stop · alt+⏎ redirect${p.reset}`, W)];
 }
 
@@ -1884,9 +1914,10 @@ export function slotTail(text: string, W: number, rows: number): string[] {
 	const all = blockRows(text, W);
 	const from = all.findIndex((r) => visibleWidth(r) > visibleWidth(BODY_ROW));
 	const body = from < 0 ? [] : all.slice(from);
-	const kept = body.slice(Math.max(0, body.length - rows));
-	while (kept.length < rows) kept.push(`${p.dim}${BODY_ROW}${p.reset}`);
-	return kept;
+	// R7a: no pad. The slot stopped padding (see slotPad) and this was
+	// the same pad by another route — three blank rows under a call with
+	// nothing to say yet, which is the hole a7's blank-run guard prices.
+	return body.slice(Math.max(0, body.length - rows));
 }
 
 /** R4 — clamp or pad assembled slot rows to EXACTLY `rows`. The padding
@@ -1895,10 +1926,24 @@ export function slotTail(text: string, W: number, rows: number): string[] {
  *  could overflow would commit real cells to relieve blank rows). */
 export function slotPad(content: readonly string[], rows: number): string[] {
 	if (rows <= 0) return [];
-	const p = palette();
-	const out = content.slice(0, rows);
-	while (out.length < rows) out.push(`${p.dim}${BODY_ROW}${p.reset}`);
-	return out;
+	// R7a — THE SLOT NO LONGER PADS. It caps, and that is all.
+	//
+	// R4 padded to a fixed height because the slot's content came and
+	// went: a finished call left the block, the block shrank, and every
+	// row above it moved. The pad bought stability with rows drawn as
+	// `│`, which is why a tall empty gutter ran down the screen under
+	// every short block — the owner's own screenshot, and law 1.3's
+	// case: a mark on a row with nothing to mark.
+	//
+	// Blanking the gutter revealed the hole it had been covering, and
+	// the a7 replay priced the hole: blank runs over 2 in 653 of 733
+	// frames, the screen never durably filling. So the pad had to go —
+	// and the height it was buying is now bought by the CONTENT, since
+	// R7a keeps every call's row for the life of the stretch. A block
+	// whose rows only accumulate cannot shrink, so there is nothing
+	// left for a pad to hold up. Measured: 65 of 733 at 40x24, the
+	// pre-R7a number exactly, with the motion gates still green.
+	return content.slice(0, rows);
 }
 
 /** R4 — the slot's overflow row: the calls in flight beyond the head

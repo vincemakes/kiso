@@ -396,11 +396,21 @@ describe("R3d — the layout only grows until the settle", () => {
 		// reported. R4 keeps ONE call in a standing four-row slot, whose
 		// CONTENTS swap while its rows do not.
 		//
-		// So the surviving claim is the stronger one: the slot holds one
-		// call, not a stack. `b.ts` is the current occupant; `a.ts` was
-		// REPLACED by it rather than pushed up, which is precisely why
-		// the height cannot grow with the call count.
-		expect(mid).not.toContain("read  a.ts");
+		// DECLARED SUPERSESSION (R7a, owner-ruled 2026-08-31) — THE SLOT
+		// IS A STACK, BOUNDED.
+		//
+		// R4's "one call, not a stack" is exactly what the owner
+		// overruled: a call that finished left the slot and took its
+		// target with it, so a four-file burst ended having read four
+		// files and shown none of their names. `a.ts` STAYS now, and
+		// `b.ts` joins it.
+		//
+		// The height claim R4 hung on the replacement is carried
+		// instead by the bound — the slot caps, and the calls it cannot
+		// show are counted — and by r7a-standing-rows.test.ts, which
+		// measures where rows actually sit rather than inferring it
+		// from an occupancy rule.
+		expect(mid).toContain("read  a.ts");
 		expect(mid).toContain("read  b.ts");
 		// R3i phase 3: the CLOSED stretch has already committed — the text
 		// that closed it is what committed it.

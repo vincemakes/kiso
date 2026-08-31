@@ -670,9 +670,16 @@ describe("TUI v6 — the one compositor", () => {
 		const windowTop = before.findIndex((r) => r.includes("shell"));
 		expect(windowTop, "the tool window is not on the screen").toBeGreaterThanOrEqual(0);
 		const waitingAt = before.findIndex((r) => r.includes("└ waiting for output"));
-		// the head row, then the two blank-padded rows, then the waiting
-		// row: the waiting row sits three below the head
-		expect(waitingAt - windowTop, "the running window is not 3 rows").toBe(3);
+		// DECLARED SUPERSESSION (R7a, owner-ruled 2026-08-31): the offset
+		// was three because the W8 pad sat ABOVE the waiting row, drawn
+		// as `│ `. Blanking the pad (a gutter marks a row that has
+		// content) left the tail opening on two blank rows, which is
+		// VD-4's own violation — "the live tail's first row is never
+		// blank" — so the waiting row moved to the top and the pad below
+		// it. The WINDOW is unchanged at 3 rows and this test's subject
+		// is unchanged: it does not move while the call runs, which the
+		// two assertions below are what actually prove.
+		expect(waitingAt - windowTop, "the waiting row does not hug its head").toBe(1);
 		// a SECOND frame (the spinner tick): the window has NOT moved
 		vi.advanceTimersByTime(200);
 		const after = screenOf(writes);

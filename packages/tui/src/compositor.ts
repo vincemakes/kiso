@@ -89,7 +89,7 @@ import {
 	visibleWidth,
 	type BodyCell,
 	type FrameCtx,
-	twinkleFrame,
+	breathFrame,
 } from "./components.js";
 import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, toolTarget, type BannerMeta, type ResumeMeta } from "./render.js";
 import { displayVerb, keysSheetRows } from "./strings.js";
@@ -2160,24 +2160,35 @@ export class Body {
 				// region's height moved between every pair of calls.
 				if (stretchDrawn) continue;
 				stretchDrawn = true;
+				// R7a — a ONE-CELL stretch draws NO line.
+				//
+				// It said `running 1 shell command` directly above a row
+				// reading `● shell npm run check`: the same fact twice, and
+				// fable's R4 review had already named the duplication. R7
+				// then made it a SWALLOW as well — a one-cell segment does
+				// not fold, so that line has no committed counterpart and
+				// vanished at the settle, taking a row off the screen. The
+				// call's own head row is the line; a summary of one thing
+				// is the thing.
+				const single = openSeg.cells.filter((j) => this.#cells[j]?.kind === "tool").length <= 1;
 				const rows = [
-					...stretchLine({ ...this.#stretchTerms(openSeg), liveNames: this.#liveNames(openSeg), phase: this.#stretchPhase(openSeg), mark: twinkleFrame(this.#spinnerI) }, W),
+					...(single
+						? []
+						: stretchLine({ ...this.#stretchTerms(openSeg), liveNames: this.#liveNames(openSeg), phase: this.#stretchPhase(openSeg), ...(this.#inFlight(openSeg) ? { mark: breathFrame(this.#spinnerI) } : {}) }, W)),
 					...this.#actSlot(openSeg, W, ctx, budget, focus),
 				];
-				// R6/D1: NO W11 blank above the block.
+				// R7a — the block TAKES the W11 blank, like everything else.
 				//
-				// The blank is the spacing rule for a multi-row block among
-				// blocks, and the live block is multi-row while the fold it
-				// commits into is a single row — so the blank existed while
-				// running and vanished at the settle, and the fold row moved
-				// UP into it. One row, every stretch, and the owner saw it
-				// immediately.
-				//
-				// The block is not a block among blocks: it is the bench at
-				// the bottom of the turn, in one place from the turn's first
-				// thought to its last. Furniture does not take a separator
-				// that changes when its contents do.
-				out.push(...rows);
+				// CORRECTION of my own R6/D1 change, which removed it. The
+				// reasoning then was that the committed fold is a single row
+				// and single rows take no blank — but `bodySpacing` gives a
+				// blank after any MULTI-row sibling, and the thinking block
+				// above the work is exactly that. So the committed side had
+				// one and the live side did not, and a blank row APPEARED at
+				// every settle, shoving everything below it down. The owner
+				// saw it and said the blank is the correct form; it is, and
+				// the fix is to have it on both sides rather than neither.
+				out.push(...this.#blockSpace(i, prev, rows));
 				prev = rows;
 				continue;
 			}
@@ -2210,9 +2221,14 @@ export class Body {
 		// committed byte are untouched — which is why the transcript this
 		// leaves behind cannot regress: it cannot differ.
 		if (!stretchDrawn && turn !== undefined && !turn.ended && turn.begun) {
-			const p = palette();
-			const rows = [`${p.dim}\u2502${p.reset}`, ...this.#actSlot(null, W, ctx, budget, focus)];
-			out.push(...rows); // no W11 blank — see the open-stretch draw above
+			// R7a: the top row is BLANK, not a `│`. It stands where the
+			// stretch line stands while a stretch is open, and between two
+			// stretches there is no line to draw — a bare gutter there is
+			// a mark on a row with nothing to mark (law 1.3), and it is
+			// the "long vertical line" the owner saw under a finished
+			// turn. The ROW is what holds the height; the glyph never was.
+			const rows = ["", ...this.#actSlot(null, W, ctx, budget, focus)];
+			out.push(...this.#blockSpace(lastIdx, prev, rows)); // R7a: the same blank
 		}
 		return out;
 	}
@@ -2262,7 +2278,7 @@ export class Body {
 		// so these are live repaints of live rows, never a rewrite of a
 		// committed one.
 		const src = seg ?? this.#lastClosedSegment();
-		if (src === null) return slotPad([], budget);
+		if (src === null) return [];
 		const live = src.cells.filter((i) => i >= this.#committed);
 		const tools: number[] = [];
 		for (const i of live) if (this.#cells[i]?.kind === "tool") tools.push(i);
@@ -2308,29 +2324,139 @@ export class Body {
 			return out;
 		}
 
-		const flight = tools.filter((i) => !toolAt(i).done);
-		if (flight.length > 0) {
-			// the commonest frame — exactly one call, the full budget — is
-			// the W8 block verbatim, which is what 0.17.0 already drew.
-			if (flight.length === 1 && budget >= ACT_SLOT_ROWS) return slotPad(tint(flight[0]!, cellComponent(this.#cells[flight[0]!]!).render(W, ctx)), budget);
-			const heads = flight.slice(0, Math.max(1, Math.min(flight.length, budget - 1, LIVE_ACT_HEADS)));
-			const hidden = flight.length - heads.length;
+		// R7a — ONE PATH, whether or not anything is in flight.
+		//
+		// There used to be two: the in-flight composition, and a
+		// "last finished call plus its output" composition for the gap
+		// between stretches. The moment the last call of a burst
+		// returned, the block re-composed from four head rows to one
+		// head and a tail — a row shorter, so on a full screen every
+		// row above slid DOWN. The block is supposed to change its
+		// CONTENTS, not its shape; the last call returning is not a
+		// reason to redraw the stretch differently.
+		if (tools.length > 0) {
+			// the one-call special case is GONE: the path below draws a
+			// lone running call by its own component (the W8 block
+			// verbatim, which is what 0.17.0 drew) and a lone finished
+			// one as its head plus its output. The special case only
+			// differed once the call SETTLED, where it collapsed to the
+			// bare head row — a three-row shrink the moment a single
+			// call returned.
+			// R7a — EVERY call of the stretch keeps its row, not just the
+			// ones still in flight.
+			//
+			// R4 showed the in-flight calls only, so a finished one left
+			// the block and its target went with it: a four-file burst
+			// ended having shown four names and left none of them, while
+			// the rows below shuffled up one at a time. Two complaints in
+			// one — "I can't see what it read" and "the rows keep moving".
+			//
+			// A call now takes a row when it STARTS and changes in place
+			// when it finishes: `● read x · 1s` becomes the settled head.
+			// Nothing moves, every target stays, and exactly ONE row wears
+			// the breathing mark — the running one — which is the mark's
+			// whole job (§7.4: only the call still running carries one,
+			// because only it is moving).
+			//
+			// The slot's fixed height is what pays for this: the rows are
+			// already allocated, so the names fill blanks rather than
+			// pushing anything.
+			// TRUNCATION NEVER DROPS A CALL THAT IS STILL RUNNING.
+			//
+			// Taking the first N is wrong the moment a burst outlives the
+			// slot: four reads that finished held every row while the
+			// shell still running was cut, so the screen said "4 files"
+			// and showed nothing of the work actually in flight. The
+			// in-flight set is admitted first, then the most RECENT
+			// finished calls fill what is left — newest first, because
+			// the oldest is the one the eye has already read.
+			const live = tools.filter((i) => !toolAt(i).done);
+			const past = tools.filter((i) => toolAt(i).done);
+			// WHAT IS HAPPENING NOW OUTRANKS WHAT HAPPENED. In order:
+			// the in-flight rows, then that call's output when it is the
+			// only one running, then the finished NAMES, newest first.
+			//
+			// This is the line between R3i P1 and the owner's R7a ruling,
+			// which look contradictory and are not. The ruling is about a
+			// parallel burst — four reads whose names vanished one at a
+			// time, so the turn ended having shown four files and left
+			// none of them. P1 is about a burst that is OVER and a new
+			// call running: there the finished names have had their time
+			// on screen and the work in flight has not. Recency decides
+			// both, and neither gate has to give.
+			// the lone in-flight call is drawn by its OWN component, head
+			// and tail together — that is where the waiting row, VD-4's
+			// never-blank-first-row rule and the shell's live window all
+			// already live. Reaching past it to slotTail() lost every one
+			// of them: a running shell with no output yet drew three
+			// blank rows where `└ waiting for output` belongs.
+			// `grouped` says "an activity line above wears the mark for
+			// us". A stretch of ONE call draws no such line (R7a), so
+			// there is nothing above to carry it and the head keeps its
+			// own — otherwise a lone running call breathes nowhere.
+			const grouped = { ...ctx, grouped: tools.length > 1 };
+			const soloRows = live.length === 1 ? tint(live[0]!, cellComponent(this.#cells[live[0]!]!).render(W, grouped)) : [];
+			const tailWant = Math.max(0, soloRows.length - 1);
+			// the overflow row is itself a row: an in-flight set larger
+			// than the slot gives one back so `+N more running` fits.
+			const liveRows = live.slice(0, live.length > budget ? Math.max(1, budget - 1) : budget);
+			const spare = Math.max(0, budget - liveRows.length - tailWant);
+			const nameRoom = past.length > spare ? Math.max(0, spare - 1) : spare;
+			const keep = new Set([...liveRows, ...past.slice(past.length - nameRoom)]);
+			const shown = tools.filter((i) => keep.has(i));
+			// `+N more running` COUNTS ONLY CALLS THAT ARE RUNNING.
+			//
+			// Counting every dropped call said "+1 more running" over a
+			// read that had already returned — a false sentence of the
+			// R3h class, and the stretch line above had ALREADY counted
+			// that read ("read 1 file"), so the row was both wrong and
+			// redundant. A finished name giving way to live work is the
+			// recency rule doing its job, not an overflow.
+			const hidden = live.length - shown.filter((i) => !toolAt(i).done).length;
 			const rows: string[] = [];
-			for (const i of heads) rows.push(tint(i, cellComponent(this.#cells[i]!).render(W, ctx))[0] ?? "");
-			const rest = budget - rows.length - (hidden > 0 ? 1 : 0);
-			if (rest > 0) rows.push(...slotTail(toolAt(heads[heads.length - 1]!).resultText, W, rest));
+			// the mark lives on the ACTIVITY line above, so the members
+			// wear a plain gutter — see FrameCtx.grouped.
+			for (const i of shown) {
+				if (i === live[0] && live.length === 1) rows.push(...soloRows.slice(0, Math.max(1, budget - rows.length)));
+				else rows.push(tint(i, cellComponent(this.#cells[i]!).render(W, grouped))[0] ?? "");
+			}
 			if (hidden > 0) rows.push(moreRunningRow(hidden, W));
+			// R3i P3 SURVIVES: the call in flight keeps its row AND its
+			// output. R7a gave every call a row, which spent the budget
+			// the tail used to hold — but a running shell with no output
+			// on screen is the defect R3i named, and the owner's ruling
+			// was about the finished calls' NAMES, not about this. The
+			// tail takes whatever the head rows leave, so it is full
+			// height for a lone call and gives way to the names first.
+			// R4 B SURVIVES THE UNIFICATION: between two calls — nothing
+			// in flight — the slot still shows the call that just
+			// finished AND its output. It is appended UNDER the head
+			// rows now instead of replacing them, so the block's shape
+			// does not change when the last call of a burst returns.
+			const rest = budget - rows.length;
+			if (live.length === 0 && rest > 0 && tools.length > 0) rows.push(...slotTail(toolAt(tools[tools.length - 1]!).resultText, W, rest));
 			return slotPad(rows, budget);
 		}
 
-		const settled = tools.length > 0 ? tools[tools.length - 1]! : null;
-		if (settled !== null) {
-			const head = tint(settled, cellComponent(this.#cells[settled]!).render(W, ctx))[0] ?? "";
-			return slotPad([head, ...slotTail(toolAt(settled).resultText, W, budget - 1)], budget);
-		}
-
 		const think = [...live].reverse().find((i) => this.#cells[i]?.kind === "thinking");
-		return slotPad(think === undefined ? [] : slotTail((this.#cells[think] as Extract<BodyCell, { kind: "thinking" }>).text, W, budget), budget);
+		// R7a — A SLOT WITH NOTHING TO SHOW TAKES NO ROWS.
+		//
+		// R7 moved thinking OUT of the slot (it is words, and words do
+		// not fold), which left this branch — the pre-tool phase of a
+		// stretch — with nothing to put in the rows it was still
+		// reserving. It padded them anyway: six blank rows between the
+		// thought and the composer, on 653 of a 733-frame dogfood
+		// replay. Until today those rows were drawn as `│`, so the
+		// blank-run guard never saw them and the owner saw a gutter
+		// running down the screen marking nothing; blanking the gutter
+		// (law 1.3) revealed the hole the gutter had been covering.
+		//
+		// Reserving height buys stability only where the content
+		// CHANGES under it — a stretch whose calls come and go. Before
+		// the first call there is nothing to stabilise, so the rows are
+		// pure cost, and both complaints are the same complaint.
+		const tail = think === undefined ? [] : slotTail((this.#cells[think] as Extract<BodyCell, { kind: "thinking" }>).text, W, budget);
+		return tail.length === 0 ? [] : slotPad(tail, budget);
 	}
 
 	/** R4 — the tool names with a call still IN FLIGHT in this segment.
@@ -2721,6 +2847,39 @@ export class Body {
 	 *  the only place that knows it. Every other pair is untouched,
 	 *  including the boundary INTO a markdown message (the blank under the
 	 *  user chip is still W11's). */
+	/** R7a — the live block's spacing is the spacing its COMMITTED form
+	 *  will get, never its own.
+	 *
+	 *  W11 gives a blank when either side is multi-row. The block is
+	 *  always multi-row and the fold it commits into is always ONE row,
+	 *  so the two sides disagreed by construction and a blank appeared
+	 *  or vanished at every settle, shoving the whole transcript by a
+	 *  row. Both directions occur: after a two-row thought the settle
+	 *  ADDED one (my R6/D1 note saw only this case and removed the
+	 *  block's blank, which fixed that direction and broke the other);
+	 *  after a one-row thought it REMOVED one.
+	 *
+	 *  Deciding on a one-row stand-in makes the block spaced exactly as
+	 *  its fold will be, so the settle changes the row's CONTENT and
+	 *  never its position — which is the whole claim of the standing
+	 *  block. */
+	/** R7a — is any call of this stretch actually RUNNING?
+	 *
+	 *  The phase is not the same question. A stretch stays "acting" from
+	 *  its first tool to its close, so between two bursts — every call
+	 *  returned, the model is composing the next one — the phase still
+	 *  said acting and the activity line went on breathing over four
+	 *  finished reads. A mark that is lit when nothing moves is the
+	 *  spinner-implies-progress error §5.3 forbids, one scale up. */
+	#inFlight(seg: SegmentRecord): boolean {
+		return seg.cells.some((i) => { const c = this.#cells[i]; return c?.kind === "tool" && !c.done; });
+	}
+
+	#blockSpace(i: number, prev: readonly string[] | null, rows: string[]): string[] {
+		const lead = bodySpacing(this.#lastDrawn(i, prev), ["x"]).length > 1 ? [""] : [];
+		return [...lead, ...rows];
+	}
+
 	#space(i: number, prev: readonly string[] | null, rows: string[]): string[] {
 		if (i > 0 && this.#cells[i]?.kind === "md" && this.#cells[i - 1]?.kind === "md") return rows;
 		return bodySpacing(this.#lastDrawn(i, prev), rows);
@@ -3476,6 +3635,21 @@ export class Body {
 		// march below is clamped to the window instead, which makes the
 		// sheet displace content ON SCREEN. Closing takes the full-redraw
 		// path with the same #lastSkip and every displaced row comes back.
+		// R7a — a monotone skip was TRIED HERE AND REJECTED, measured.
+		//
+		// The seam it aimed at is real: the turn boundary releases the
+		// block into a one-row fold, so a full screen's computed skip
+		// drops and every row above slides down one. Holding skip at its
+		// high-water mark removes that motion exactly.
+		//
+		// It also holds the window BELOW the content, and the a7 dogfood
+		// replay prices that at 40x24: the frame from which the screen
+		// durably fills (no blank run over 2) goes 65 -> 692 of 733 —
+		// a three-row hole above the composer through most of a real
+		// session. One row of motion once per turn, at the moment the
+		// answer lands and the eye is on it, is the cheaper of the two.
+		// The A8b guard is written against a real session; this is what
+		// it exists to catch.
 		const skip = overlay
 			? this.#lastSkip
 			: Math.max(0, all.length + CHROME_ROWS + inputExtra + queueRows.length + menuRows.length - H);

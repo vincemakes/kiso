@@ -75,7 +75,35 @@ describe("R4 A — the height stands still across a whole stretch", () => {
 		tick();
 		const next = body_().length;
 
-		expect({ thinking, acting, gap, next }).toEqual({ thinking, acting: thinking, gap: thinking, next: thinking });
+		// DECLARED SUPERSESSION (R7a, owner-ruled 2026-08-31) — THE
+		// REGION IS MONOTONE WITHIN A STRETCH, not constant.
+		//
+		// R4 held the height constant by PADDING the slot, because its
+		// content came and went: a finished call left the block and the
+		// block shrank under everything above it. Two rulings retired
+		// that. The pad was drawn as `│`, a gutter down rows with
+		// nothing on them, and blanking it (law 1.3) turned the padding
+		// into a hole — the a7 replay priced it at blank runs over 2 in
+		// 653 of 733 frames. And a finished call now KEEPS its row,
+		// because a burst that dropped each name as it completed ended
+		// having read four files and shown none of them.
+		//
+		// Keeping the rows is what makes the pad unnecessary: a block
+		// whose rows only accumulate cannot shrink, so nothing above it
+		// can be pulled down. That is the property below — the height
+		// never DECREASES across a stretch — and it is strictly what
+		// this test was protecting. The screen-position subject itself
+		// is gated directly in r7a-standing-rows.test.ts.
+		//
+		// A per-stretch high-water pad was built to make `next` monotone
+		// too, and measured: it did not (the re-composition is the
+		// stretch line and the spacing, not the slot alone) and it put
+		// a7's hole back. So the claim stops where it is TRUE — a call
+		// finishing never shrinks the region, which is the ruling's own
+		// content — and the screen-position subject is gated directly.
+		expect(acting, "a call in flight must not shrink the region").toBeGreaterThanOrEqual(thinking);
+		expect(gap, "a call FINISHING must not shrink the region — its name stays").toBeGreaterThanOrEqual(acting);
+		expect(Math.abs(next - gap), "the next call re-composed the region by more than one row").toBeLessThanOrEqual(1);
 	});
 
 	it("a three-call parallel burst does NOT grow the region", () => {
@@ -90,7 +118,18 @@ describe("R4 A — the height stands still across a whole stretch", () => {
 		running(body, "read_file", "r2", { path: "b.ts" });
 		running(body, "read_file", "r3", { path: "c.ts" });
 		tick();
-		expect(body_().length).toBe(one);
+		const three = body_().length;
+		// R7a: each call takes a row (the owner's ruling — a burst has
+		// to leave its four names behind), so three calls are taller
+		// than one. What must hold is that the growth is BOUNDED by the
+		// slot and never reverses: finishing them does not shrink it.
+		expect(three).toBeGreaterThanOrEqual(one);
+		expect(three - one, "three calls cost more than three rows").toBeLessThanOrEqual(3);
+		finish(body, "r1");
+		finish(body, "r2");
+		finish(body, "r3");
+		tick();
+		expect(body_().length, "finishing shrank the region").toBeGreaterThanOrEqual(three);
 	});
 
 	it("six calls in flight stay inside the slot and the overflow is COUNTED, not dropped", () => {
@@ -103,7 +142,10 @@ describe("R4 A — the height stands still across a whole stretch", () => {
 		const one = body_().length;
 		for (let i = 2; i <= 6; i += 1) running(body, "read_file", `r${i}`, { path: `f${i}.ts` });
 		tick();
-		expect(body_().length).toBe(one);
+		// the CAP is the subject and it holds: six calls do not draw six
+		// rows. R7a lets each call take a row up to the slot's budget,
+		// and the rest are counted rather than dropped.
+		expect(body_().length, "six calls escaped the slot").toBeLessThanOrEqual(one + 4);
 		expect(body_().join("\n")).toMatch(/\+\d+ more running/);
 	});
 });
@@ -161,20 +203,28 @@ describe("R4 C — the slot never causes a force-commit (the clamp)", () => {
 		// screen has to be one shorter for the clamp to fire at all. A slot that did NOT give way
 		// would have made the force-commit loop push a real cell into
 		// the scrollback to make room for its own blank padding.
+		// R7a: the slot no longer PADS, so one running shell fits inside
+		// H=8 on its own and the clamp has nothing to do — the old setup
+		// stopped exercising the mechanism it was written for. A burst
+		// is what wants more rows than a short screen has, so that is
+		// what the two bodies are given now. The subject is unchanged:
+		// the slot gives way rather than force-committing real work.
+		const burst = (b: Body): void => {
+			b.enter();
+			b.userLine("x");
+			b.thinkingAppend("planning");
+			running(b, "shell", "s1", { command: "npm run check" });
+			for (let i = 1; i <= 5; i += 1) running(b, "read_file", `r${i}`, { path: `packages/tui/src/f${i}.ts` });
+		};
 		const tall = makeBody({ H: 40 });
-		tall.body.enter();
-		tall.body.userLine("x");
-		tall.body.thinkingAppend("planning");
-		running(tall.body, "shell", "s1", { command: "npm run check" });
+		burst(tall.body);
 		tall.tick();
 
 		const short = makeBody({ H: 8 });
-		short.body.enter();
-		short.body.userLine("x");
-		short.body.thinkingAppend("planning");
-		running(short.body, "shell", "s1", { command: "npm run check" });
+		burst(short.body);
 		short.tick();
 
+		expect(tall.body.liveCount(), "the burst does not exceed H=8 on the tall body — the clamp is untested").toBeGreaterThan(8);
 		expect(short.body.liveCount()).toBeLessThan(tall.body.liveCount());
 		expect(short.body.liveCount()).toBeLessThanOrEqual(8);
 	});
@@ -217,21 +267,31 @@ describe("R4 D — DC-28: ctrl+r mid-stretch acts, and is seen to act", () => {
 
 describe("R4 E — DC-27: the scalar measures the screen", () => {
 	it("liveCount tracks the projection through a stretch, not a render of its own", () => {
-		const { body, tick } = makeBody({ H: 40 });
+		const { body, body_, tick } = makeBody({ H: 40 });
 		body.enter();
 		body.userLine("x");
 		body.thinkingAppend("planning");
 		running(body, "shell", "s1", { command: "npm run check" });
 		tick();
 		const withOne = body.liveCount();
-		// five FINISHED calls draw nothing of their own — the old scalar
-		// counted five four-row blocks the screen does not contain.
+		// R7a: a finished call KEEPS its row (the owner's ruling), so the
+		// five below are worth up to five rows — not zero, as R4 had it,
+		// and emphatically not the twenty the pre-DC-27 scalar counted
+		// by re-rendering each as a four-row block the screen does not
+		// contain. The subject is that the scalar measures the SAME
+		// projection the screen is painted from; the bound is what
+		// discriminates it from a second render of its own.
 		for (let i = 0; i < 5; i += 1) {
 			running(body, "read_file", `r${i}`, { path: `f${i}.ts` });
 			finish(body, `r${i}`);
 		}
 		tick();
-		expect(body.liveCount()).toBe(withOne);
+		expect(body.liveCount()).toBeGreaterThanOrEqual(withOne);
+		expect(body.liveCount(), "the scalar is rendering blocks the screen does not have").toBeLessThanOrEqual(withOne + 5);
+		// and it agrees with the screen: the live region starts where the
+		// scalar says it does, counting up from the bottom.
+		const rows = body_();
+		expect(rows.length, "the scalar disagrees with the painted rows").toBeLessThanOrEqual(body.liveCount());
 	});
 });
 

@@ -63,10 +63,21 @@ const render = (cell: BodyCell, W = 80): string[] => cellComponent(cell).render(
 //      BOTTOM, so a command's first line is never printed under an empty
 //      gutter row. The window height is unchanged — W8 still holds, and
 //      its own test in this file passes untouched.
+//
+// DECLARED SUPERSESSION (R7a, owner-ruled 2026-08-31) — THE PAD IS
+// BLANK. It was `│ `, a gutter on rows with nothing on them, and under
+// a short block it drew a bar running down the screen marking nothing
+// (law 1.3; the owner's screenshot). The rows below change from `│ ` to
+// `""` for that reason and no other: the window's HEIGHT is untouched,
+// every `│` on a row that HAS content stays, and a live tail whose
+// first row was already the output keeps that shape. See
+// packages/tui/tests/r7a-standing-rows.test.ts group B, which fails on
+// the pre-ruling tree at all four widths.
 describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 	it("no output yet: the shape is exactly today's — nothing observed, nothing claimed", () => {
 		setTTY(false);
-		expect(render(running())).toEqual(["● shell npm test · 12s", "│ ", "│ ", "└ waiting for output"]);
+		// VD-4 already put the waiting row FIRST; R7a blanks the pad
+		expect(render(running())).toEqual(["● shell npm test · 12s", "└ waiting for output", "", ""]);
 	});
 
 	it("output observed: the LAST lines ride the block, the footer names the state and the two gestures", () => {
@@ -105,14 +116,14 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		// the pad is BELOW the output now (VD-4(b)) — the first tail row
 		// carries the command's first line, never an empty gutter
 		expect(rows[1]).toBe("\x1b[2m│ building…\x1b[0m");
-		expect(rows[2]).toBe("\x1b[2m│ \x1b[0m");
+		expect(rows[2]).toBe(""); // R7a: the pad is blank
 		expect(rows[3]).toBe("\x1b[2m└ live tail · esc stop · alt+⏎ redirect\x1b[0m");
 	});
 
 	it("a NON-shell running tool keeps liveWindow byte for byte — the tail is the shell's alone", () => {
 		setTTY(false);
 		const rows = render(running({ name: "read_file", input: "big.txt", inputFull: JSON.stringify({ path: "big.txt" }) }));
-		expect(rows).toEqual(["● read  big.txt · 12s", "│ ", "│ ", "└ waiting for output"]);
+		expect(rows).toEqual(["● read  big.txt · 12s", "└ waiting for output", "", ""]);
 	});
 
 	it("COMPLETION collapses to one line — the tail is gone, A's suffix names what it hid", () => {
