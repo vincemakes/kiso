@@ -144,14 +144,30 @@ describe("v2a/v5/KC3: the palette", () => {
 		// and the wash is a greyscale BACKGROUND from the same 256-cube ramp
 		// this regex already admits as a foreground. What the gate forbids
 		// is unchanged — a hue outside red/green/warn.
-		const MONO = /^\x1b\[(?:0|1|2|3|4|7|23|24|27|49|38;5;(?:23[2-9]|24\d|25[0-5])|48;5;(?:23[2-9]|24\d|25[0-5]))m$/;
+		// R7a: 22 (normal intensity) and 39 (default foreground) join the
+		// set, and an entry may be a SEQUENCE of admitted escapes rather
+		// than exactly one. `lift` — the focus marker's emphasis, which
+		// replaced DC-3's background wash at the owner's request — has to
+		// cancel a dim that is SGR 2 in the neutral palette and a
+		// 256-colour foreground in the resolved ones, then emphasise; no
+		// single escape does that. Neither addition is chromatic: 39 is
+		// the ABSENCE of a colour and 22 is an attribute, on the same
+		// precedent as 1, 2 and 7.
+		//
+		// The gate is not weakened by admitting sequences, because every
+		// escape in an entry is still matched against the same alphabet
+		// individually and nothing between them is allowed — a hue
+		// cannot hide inside a sequence.
+		const MONO = /^\x1b\[(?:0|1|2|3|4|7|22|23|24|27|39|49|38;5;(?:23[2-9]|24\d|25[0-5])|48;5;(?:23[2-9]|24\d|25[0-5]))m$/;
 		const FUNCTIONAL: Record<string, string> = { red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m" };
 		for (const [name, code] of Object.entries(COLOR_ON)) {
 			if (name in FUNCTIONAL) {
 				expect(code, `${name} is a FUNCTIONAL color — the recolor never moves it`).toBe(FUNCTIONAL[name]);
 				continue;
 			}
-			expect(code, `${name}=${JSON.stringify(code)} is chromatic — the mono discipline forbids it`).toMatch(MONO);
+			const parts = code === "" ? [] : (code.match(/\x1b\[[0-9;]*m/g) ?? []);
+			expect(parts.join(""), `${name}=${JSON.stringify(code)} carries bytes that are not SGR escapes`).toBe(code);
+			for (const one of parts) expect(one, `${name}=${JSON.stringify(code)} is chromatic — the mono discipline forbids it`).toMatch(MONO);
 		}
 	});
 

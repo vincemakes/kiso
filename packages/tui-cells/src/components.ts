@@ -1052,7 +1052,7 @@ export function focusToken(row: string, W: number): string {
 		// attribute like bold is spent everywhere. It closes with washEnd
 		// rather than a reset, so the surrounding dim survives instead of
 		// having to be re-applied.
-		return `${row.slice(0, at)}${p.wash}${CTRL_R}${p.washEnd}${row.slice(at + CTRL_R.length)}`;
+		return `${row.slice(0, at)}${p.lift}${CTRL_R}${p.dim}${row.slice(at + CTRL_R.length)}`;
 	}
 	// A LIVE row does not carry the affordance today, and the live cell is
 	// the one ctrl+r takes FIRST (expandNext scans the live tail before
@@ -1063,7 +1063,7 @@ export function focusToken(row: string, W: number): string {
 	// renders a cell with no focus and is untouched).
 	const room = W - visibleWidth(row);
 	if (room < SUFFIX_MIN) return row; // never at the cost of invariant ①
-	return `${row}${p.dim} · ${p.reset}${p.wash}${CTRL_R}${p.washEnd}`;
+	return `${row}${p.dim} · ${p.lift}${CTRL_R}${p.reset}`;
 }
 
 const CTRL_R = "ctrl+r";

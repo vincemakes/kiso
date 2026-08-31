@@ -39,13 +39,26 @@ function makeBody(rows = 24, cols = 100) {
  * The marker is the WASH. That is not only a contrast fix: the invariant
  * here is "exactly one BRIGHT token per frame", and an attribute like
  * bold is spent all over a frame, so it could not carry uniqueness.
+ *
+ * DECLARED SUPERSESSION (R7a, owner-ruled 2026-08-31) — THE MARKER IS
+ * NO LONGER A BACKGROUND. DC-3's wash is a background once a ground is
+ * resolved (`48;5;236` on dark), which reads as a black block behind
+ * the key on an otherwise plain row; the owner asked for it gone. The
+ * emphasis is `lift` now — cancel the dim, default foreground, bold —
+ * which is MORE contrast than the wash carried, not less.
+ *
+ * The invariant is untouched and is still what every case below
+ * asserts: exactly one bright token per frame. Bold alone could not
+ * carry uniqueness, as the note above says, and it is not being asked
+ * to: what distinguishes the focused token is that it is the one NOT
+ * dim, among siblings that are.
  */
 const esc = (v: string): string => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const OPENER = new RegExp(`(?:${esc(COLOR_ON.wash)}|${esc(COLOR_ON.dim)})[^\\x1b]*ctrl\\+r`, "g");
+const OPENER = new RegExp(`(?:${esc(COLOR_ON.lift)}|${esc(COLOR_ON.dim)})[^\\x1b]*ctrl\\+r`, "g");
 function tokens(bytes: string): { tint: "bright" | "dim" | "other" }[] {
 	const out: { tint: "bright" | "dim" | "other" }[] = [];
 	for (const m of bytes.matchAll(OPENER)) {
-		out.push({ tint: m[0].startsWith(COLOR_ON.wash) ? "bright" : m[0].startsWith(COLOR_ON.dim) ? "dim" : "other" });
+		out.push({ tint: m[0].startsWith(COLOR_ON.lift) ? "bright" : m[0].startsWith(COLOR_ON.dim) ? "dim" : "other" });
 	}
 	return out;
 }
@@ -106,14 +119,14 @@ describe("TUI2-R2 ⑤ — the live focus marker (candidate 1)", () => {
 		body.toolRunning("a");
 		writes.length = 0;
 		tick();
-		expect(writes.join("")).toContain(`${COLOR_ON.wash}`); // the only cell has it
+		expect(writes.join("")).toContain(`${COLOR_ON.lift}`); // the only cell has it
 		body.toolStart("read_file", "b", { path: "src/two.ts" });
 		body.toolRunning("b");
 		writes.length = 0;
 		tick();
 		const frame = writes.join("");
 		// the bright token is on the row that names the NEW cell
-		const row = frame.split(/\x1b\[\d+;1H\x1b\[0K/).find((r) => r.includes(COLOR_ON.wash + "ctrl+r") || r.includes(COLOR_ON.wash));
+		const row = frame.split(/\x1b\[\d+;1H\x1b\[0K/).find((r) => r.includes(COLOR_ON.lift + "ctrl+r") || r.includes(COLOR_ON.lift));
 		expect(row ?? "", "the focus did not move to the newest cell").toContain("two.ts");
 		expect(tokens(frame).filter((t) => t.tint === "bright")).toHaveLength(1);
 	});

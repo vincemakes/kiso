@@ -80,6 +80,23 @@ export interface Palette {
 	 *  spans and must end without stranding them. */
 	readonly wash: string;
 	readonly washEnd: string;
+	/** R7a — THE FOCUS MARKER'S EMPHASIS, and it is not a background.
+	 *
+	 *  DC-3 gave the `ctrl+r` token the wash, which is a BACKGROUND once
+	 *  a ground is resolved: `48;5;236` on dark reads as a black block
+	 *  behind the key, on a row that is otherwise plain text. The owner
+	 *  asked for it gone. The invariant DC-3 was serving — exactly one
+	 *  bright token per frame, because the key has exactly one target —
+	 *  never required a background; it required CONTRAST against the dim
+	 *  siblings, and full-strength bold foreground is more of it than a
+	 *  wash was.
+	 *
+	 *  Three escapes because "dim" has two forms here: SGR 2 in the
+	 *  neutral palette, a 256-colour foreground in the resolved ones.
+	 *  22 cancels the attribute, 39 restores the default foreground, 1
+	 *  is the emphasis. It closes by re-opening the palette's own dim,
+	 *  like `washEnd`, so the surrounding span survives. */
+	readonly lift: string;
 	readonly reset: string;
 }
 const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m", italic: "\x1b[3m", italicEnd: "\x1b[23m", underline: "\x1b[4m", underlineEnd: "\x1b[24m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" } as const;
@@ -104,7 +121,7 @@ const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32
  * 4's principle exactly: when the ground is unknown, use the thing that
  * is correct on any ground rather than guessing one.
  */
-const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: string = BASE.dim): Palette => ({ ...BASE, red, dim, wash, washEnd, code: wash });
+const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: string = BASE.dim): Palette => ({ ...BASE, red, dim, wash, washEnd, code: wash, lift: "\x1b[22m\x1b[39m\x1b[1m" });
 /**
  * DC-3 — one table per ground.
  *
@@ -132,7 +149,7 @@ export const COLOR_DARK: Palette = withWash("\x1b[48;5;236m", "\x1b[49m", "\x1b[
  *  not been established. Unchanged in every byte except `code`, which
  *  was the defect. */
 export const COLOR_ON: Palette = COLOR_NEUTRAL;
-export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", underline: "", underlineEnd: "", rv: "", rvEnd: "", wash: "", washEnd: "", reset: "" };
+export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", underline: "", underlineEnd: "", rv: "", rvEnd: "", wash: "", washEnd: "", lift: "", reset: "" };
 
 /** DC-3 — the resolved ground, set once at startup when the terminal
  *  answers (see `ground.ts`). It starts UNKNOWN and may stay that way
