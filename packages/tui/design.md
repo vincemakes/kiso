@@ -278,7 +278,7 @@ kiso <version>
   WORKSPACE   <cwd>
   EXTENSIONS  <n> loaded · /ext lists them
 
-  esc interrupt · ctrl+c exit · / commands · ! bash · ctrl+r expand
+  esc interrupt · ctrl+c exit · / commands · @ files · ? keys
 ```
 
 Three labelled facts answer the three questions a first screen is asked
