@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-tui-cells",
-	"version": "0.19.1",
+	"version": "0.20.0",
 	"description": "kiso tui-cells — the components cell renderer (components, diff, width, the render slice). Zero runtime dependencies: input is data, output is bytes.",
 	"type": "module",
 	"license": "MIT",
