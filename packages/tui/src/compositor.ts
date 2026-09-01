@@ -1514,7 +1514,43 @@ export class Body {
 		];
 	}
 
-	expandNext(): { kind: "toggled" } | { kind: "appended"; lines: string[] } | { kind: "none" } {
+	/** DC-35 — the last block this key appended, and the cell count when
+	 *  it did. An expansion earns its rows by showing something the
+	 *  transcript does not already END with. */
+	#lastAppend: { lines: string; atCells: number } | null = null;
+
+	/**
+	 * DC-35 — ctrl+r does not print the same expansion twice in a row.
+	 *
+	 * The ring walks newest-back and restarts its cycle once every entry
+	 * has been opened (R4/C1, which is what makes the walk immune to the
+	 * ring growing underneath it). With a ring of ONE the restart is
+	 * immediate, so holding the key appended the identical block over
+	 * and over — the owner got three copies of the same four rows, each
+	 * closing with `ctrl+r opens the one before it`, a footer naming
+	 * something that does not exist.
+	 *
+	 * The bar is the BOTTOM of the transcript, not "ever shown": once
+	 * other content has arrived the expansion has scrolled up and
+	 * re-opening it is the point of the key, so the guard clears itself
+	 * the moment a cell is added.
+	 */
+	expandNext(): { kind: "toggled" } | { kind: "appended"; lines: string[] } | { kind: "none"; why?: "already-last" } {
+		const out = this.#expandNextRaw();
+		if (out.kind !== "appended") return out;
+		const lines = out.lines.join("\n");
+		if (this.#lastAppend !== null && this.#lastAppend.lines === lines && this.#lastAppend.atCells === this.#cells.length) {
+			// NOT the same answer as "nothing is folded". The caller says
+			// which, because a reader who pressed the key deserves to know
+			// whether there is nothing to open or whether they are already
+			// looking at it.
+			return { kind: "none", why: "already-last" };
+		}
+		this.#lastAppend = { lines, atCells: this.#cells.length };
+		return out;
+	}
+
+	#expandNextRaw(): { kind: "toggled" } | { kind: "appended"; lines: string[] } | { kind: "none" } {
 		for (let i = this.#cells.length - 1; i >= this.#committed; i -= 1) {
 			const cell = this.#cells[i]!;
 			if (cell.kind === "tool" && cell.state !== "pending") {

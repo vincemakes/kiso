@@ -936,10 +936,24 @@ describe("TUI v6 — the one compositor", () => {
 		expect(lines.some((l) => l.includes('"command": "make build"'))).toBe(true); // the full input, pretty-printed
 		expect(lines).toContain("--- shell output ---");
 		expect(lines[lines.length - 1]!.split("\n").at(-1)).toBe("row 29 of a long build log");
-		// the cell is committed — the SAME key appends again (the single
-		// collapsed entry cycles), it can never rewrite the committed rows
+		// DECLARED SUPERSESSION (DC-35, from the owner's own screen): the
+		// second press used to append this block AGAIN, because a ring of
+		// one restarts its cycle immediately. Held down it printed the
+		// same four rows over and over, each closing with "ctrl+r opens
+		// the one before it" — a footer naming something that does not
+		// exist. The key now answers `none` with the honest reason.
 		const again = body.expandNext();
-		expect(again.kind).toBe("appended");
+		expect(again.kind).toBe("none");
+		expect(again.kind === "none" ? again.why : undefined).toBe("already-last");
+		// what this case is FOR is unchanged: a committed cell can never
+		// toggle, only append — so once other content has arrived, the
+		// same key appends it again rather than rewriting history.
+		body.userLine("next");
+		body.textAppend("ok");
+		body.textEnd();
+		body.endTurn(0);
+		tick();
+		expect(body.expandNext().kind).toBe("appended");
 	});
 
 	it("W15: the expand pointer cycles the collapsed history newest-first; an empty body answers none", () => {

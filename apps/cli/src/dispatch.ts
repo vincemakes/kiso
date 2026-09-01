@@ -125,7 +125,11 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			if (r.kind === "appended") {
 				for (const line of r.lines) bodyLog(line);
 			} else if (r.kind === "none") {
-				bodyLog("[nothing to expand]");
+				// DC-35: "nothing to expand" was said in two situations and
+				// was only true in one of them. A reader who pressed the key
+				// on a ring of one had something to open — they were already
+				// looking at it — and the old line told them the opposite.
+				bodyLog(r.why === "already-last" ? "[that expansion is already the last thing on screen — ctrl+o opens the transcript]" : "[nothing to expand]");
 			}
 			ctx.input.prompt();
 		};
