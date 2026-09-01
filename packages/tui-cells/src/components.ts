@@ -1150,8 +1150,10 @@ export function exploreRows(parts: readonly { name: string; subjects: readonly s
 	// outputs". /last shows the LAST call only — for a nine-call burst that
 	// is one output out of nine, and a footer that sends the human to a
 	// place the content is not is worse than a footer that says nothing.
-	rows.push(cutLine(`${p.dim}${CUT_ROW}${COLLAPSE_ROW}${p.reset}`, W));
-	return rows;
+	// R8a: the footer is an in-block note — the same indent, no glyph —
+	// and the corner opens the block's first row, like every other one.
+	rows.push(cutLine(`${p.dim}${NOTE_ROW}${COLLAPSE_ROW}${p.reset}`, W));
+	return openBlock(rows);
 }
 
 /** The count term with the singular/plural forms — "no reads", "1 read",
@@ -1681,8 +1683,42 @@ const CAP_ERROR = 3; // the error text head
  *  block's body, └ the block's last row — what was cut, where the rest
  *  is — at the LEFT EDGE (the gutter column: the left edge alone
  *  distinguishes the states at --plain). Structural (constraint 1). */
-const BODY_ROW = "│ ";
+/** R8a — A TOOL BLOCK'S ROWS ARE INDENTED, NOT GUTTERED.
+ *
+ *  `│ ` on every row drew a bar down the left of every multi-row
+ *  output, which is what the owner kept pointing at. The fact the bar
+ *  carried — "these rows are the call's output, not prose" — is real
+ *  and law 1.2 requires it survive a pipe, so it moves into the
+ *  INDENT: four columns, one level deeper than the header (2) and than
+ *  prose (2). Bytes still tell them apart; no column of glyphs.
+ *
+ *  `└` survives as the mark that OPENS the block, once, on its first
+ *  row (see openBlock). In-block notes take NOTE_ROW — the same indent,
+ *  no glyph — because a second `└` inside one block would be the same
+ *  mark meaning two things (§4.1). CUT_ROW is unchanged for the
+ *  surfaces that are not a tool block: the fold row's target list, the
+ *  slot's overflow count. */
+const BODY_ROW = "    ";
+const NOTE_ROW = "    ";
 const CUT_ROW = "└ ";
+
+/** R8a — stamp `└` on a block's FIRST row, after every slice and note
+ *  has been assembled, so the mark is always on the first row actually
+ *  emitted rather than on one a cap may have dropped. */
+function openBlock(rows: string[]): string[] {
+	// the corner goes on the first row that HAS something on it. A cap
+	// or a blank leading output line can put an empty row first, and a
+	// corner there would be a mark on a row with nothing to mark — law
+	// 1.3, which is the rule this whole change is serving.
+	const i = rows.findIndex((r) => visibleWidth(r) > visibleWidth(BODY_ROW));
+	if (i < 0) return rows;
+	const first = rows[i]!;
+	const at = first.indexOf(BODY_ROW);
+	if (at < 0) return rows;
+	// the corner REPLACES two of the four indent columns, so the text
+	// stays in the same column as every other row of the block.
+	return [...rows.slice(0, i), `${first.slice(0, at)}  \u2514 ${first.slice(at + BODY_ROW.length)}`, ...rows.slice(i + 1)];
+}
 
 /** W9 — the per-cell memo: the bounded block's folded body is cached
  *  per (width, state, content reference) — a steady stream re-measures
@@ -1743,14 +1779,15 @@ function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): strin
 						? diffBody(c.diff, W)
 						: [];
 	const note = c.expanded ? null : toolCutNote(c.name, c.resultText);
-	if (note !== null) rows.push(...foldLine(`${p.dim}${CUT_ROW}${note}${p.reset}`, W));
+	if (note !== null) rows.push(...foldLine(`${p.dim}${NOTE_ROW}${note}${p.reset}`, W));
 	// TUI2-R1 (A): an EXPANDED block says how to put it back. The footer
 	// rides a block that HAS rows — an expanded delegate whose summary
 	// marker is missing renders nothing, and a lone footer under a head
 	// row would be an affordance for an empty block.
-	if (c.expanded && rows.length > 0) rows.push(...foldLine(`${p.dim}${CUT_ROW}${COLLAPSE_ROW}${p.reset}`, W));
-	blockMemo.set(c, { width: W, state, content, rows });
-	return rows;
+	if (c.expanded && rows.length > 0) rows.push(...foldLine(`${p.dim}${NOTE_ROW}${COLLAPSE_ROW}${p.reset}`, W));
+	const opened = openBlock(rows);
+	blockMemo.set(c, { width: W, state, content, rows: opened });
+	return opened;
 }
 
 /** Fold result text into dim body rows (the BODY_ROW prefix): escape,
@@ -1776,7 +1813,7 @@ function shellTail(text: string, W: number): string[] {
 	const rows = blockRows(text, W);
 	if (rows.length <= CAP_SHELL_SETTLED) return rows;
 	const kept = CAP_SHELL_SETTLED - 1;
-	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - kept} earlier rows · ctrl+r${p.reset}`, W);
+	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - kept} earlier rows · ctrl+r${p.reset}`, W);
 	return [...rows.slice(rows.length - kept), ...cut];
 }
 
@@ -1796,7 +1833,7 @@ function errorBody(c: { name: string; resultText: string; reason?: string | null
 	const skipFirst = c.name === "shell" && /^exit \d+/.test(c.resultText) ? 0 : c.reason !== null && c.reason !== undefined ? 0 : 1;
 	const rows = blockRows(c.resultText.split("\n").slice(skipFirst).join("\n"), W);
 	if (rows.length <= CAP_ERROR) return rows;
-	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - (CAP_ERROR - 1)} more · ctrl+r${p.reset}`, W);
+	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - (CAP_ERROR - 1)} more · ctrl+r${p.reset}`, W);
 	return [...rows.slice(0, CAP_ERROR - 1), ...cut];
 }
 
@@ -1816,14 +1853,14 @@ function liveWindow(text: string, W: number): string[] {
 		// blanks below it — VD-4's own rule ("the output starts under its
 		// own header and grows downward"), which the gutter rows used to
 		// satisfy by accident and blanks made visible as a two-row gap.
-		return [`${p.dim}${CUT_ROW}waiting for output${p.reset}`, "", ""];
+		return [`${p.dim}${NOTE_ROW}waiting for output${p.reset}`, "", ""];
 	}
 	const rows = blockRows(text, W);
 	if (rows.length <= CAP_LIVE_WINDOW) {
 		while (rows.length < CAP_LIVE_WINDOW) rows.push(""); // R7a: blank, not a bar
 		return rows;
 	}
-	const cut = foldLine(`${p.dim}${CUT_ROW}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+r${p.reset}`, W);
+	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+r${p.reset}`, W);
 	return [...rows.slice(rows.length - (CAP_LIVE_WINDOW - 1)), ...cut];
 }
 
@@ -1865,7 +1902,7 @@ function shellLiveTail(text: string, W: number): string[] {
 	if (rows.length === 0) return liveWindow("", W);
 	const kept = rows.slice(Math.max(0, rows.length - (CAP_LIVE_WINDOW - 1)));
 	while (kept.length < CAP_LIVE_WINDOW - 1) kept.push(""); // R7a: blank, not a bar
-	return [...kept, cutLine(`${p.dim}${CUT_ROW}live tail · esc stop · alt+⏎ redirect${p.reset}`, W)];
+	return [...kept, cutLine(`${p.dim}${NOTE_ROW}live tail · esc stop · alt+⏎ redirect${p.reset}`, W)];
 }
 
 /**
@@ -1917,7 +1954,8 @@ export function slotTail(text: string, W: number, rows: number): string[] {
 	// R7a: no pad. The slot stopped padding (see slotPad) and this was
 	// the same pad by another route — three blank rows under a call with
 	// nothing to say yet, which is the hole a7's blank-run guard prices.
-	return body.slice(Math.max(0, body.length - rows));
+	// R8a: the corner opens whatever slice survives the cap.
+	return openBlock(body.slice(Math.max(0, body.length - rows)));
 }
 
 /** R4 — clamp or pad assembled slot rows to EXACTLY `rows`. The padding
@@ -2165,7 +2203,11 @@ export function cutLine(line: string, W: number): string {
 		width += cw;
 		i += 1;
 	}
-	return `${out}\x1b[0m…`;
+	// R8a: the reset comes from the PALETTE, not hardcoded. `\x1b[0m`
+	// here put an escape into every cut row under NO_COLOR and behind a
+	// pipe — the one context COLOR_OFF exists to keep clean (§1.2). A
+	// coloured palette is byte-identical, because its reset IS `\x1b[0m`.
+	return `${out}${palette().reset}…`;
 }
 
 /** W20 — the settled block's duration, the `2h 14m` form (the task

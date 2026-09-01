@@ -44,7 +44,7 @@
  */
 
 import { truncateDiff } from "./diff.js";
-import { displayWidth, type MenuItem } from "./editor.js";
+import { MENU_ITEMS, displayWidth, type MenuItem } from "./editor.js";
 import { leadWidth } from "./width.js"; // W23: the ONE width authority (the editor, #inputRow, and editCol share it)
 // KC3.5: the panel-slot reads come from the DISPATCHERS — one source
 // for four reads, so an ask can never render half as an approval.
@@ -77,6 +77,7 @@ import {
 	focusToken,
 	exploreRows,
 	foldLine,
+	gutterCut,
 	cutLine,
 	isExploreTool,
 	moreRunningRow,
@@ -133,6 +134,9 @@ const CHROME_ROWS = 4; // box top + input + box bottom + status — the design �
  *  same unbounded height the projection exists to remove; the rest are
  *  COUNTED, never dropped silently. */
 const LIVE_ACT_HEADS = 3;
+/** R8 — the command band's window: five rows plus a counter, the same
+ *  budget the composer's own ceiling can afford above it. */
+const MENU_WINDOW = 5;
 
 /** KC1 §5 — the input row's bound state. The legacy pair stays
  *  REQUIRED and keeps its exact meaning (the cursor line's visible
@@ -1606,7 +1610,9 @@ export class Body {
 					// always the part a reader could use.
 					`${p.bold}✦${p.reset} expanded · ${escapeTerminal(head.length === 0 ? "thinking" : head.join(" · "))} · ${back}`,
 					...body,
-					`  ${p.dim}└ end of expansion · ctrl+r opens the one before it${p.reset}`,
+					// R8a: an in-block note takes the block's indent, not a
+					// second corner — the corner opens the body above it.
+					`${p.dim}    end of expansion · ctrl+r opens the one before it${p.reset}`,
 				],
 			};
 		}
@@ -3429,15 +3435,39 @@ export class Body {
 		// picker's does. Both render frameless directly above the composer,
 		// so with scrollback behind them there was nothing to say where the
 		// surface began — the rows read as more history.
+		// R8 — THE BAND IS A WINDOW, and the rows are a table.
+		//
+		// It used to draw every match and fold each long description over
+		// as many rows as it took, which is why a bare `/` could not open
+		// it: eleven commands plus wraps is most of a short terminal. A
+		// fixed window is what lets the trigger be the `/` the banner
+		// advertises (see the editor's #menuFiltered).
+		//
+		// Three shape rules, all of them §1.3 or §1.2:
+		//  - the leading `/` comes off the rows. It is already on the
+		//    input line directly below, so printing it eleven more times
+		//    is a mark carrying no fact the screen does not have.
+		//  - the name column is padded to the longest command in the
+		//    WHOLE list, not the visible slice, so the descriptions do
+		//    not shift sideways as the window scrolls.
+		//  - a description is CUT, never folded — a folded row would
+		//    break the window's height, which is the thing being bought.
+		const items = menu.items;
+		const col = MENU_ITEMS.reduce((n: number, m: MenuItem) => Math.max(n, m.name.length - 1), 0);
+		const windowed = items.length > MENU_WINDOW;
+		// the window's top is derived from the selection alone (this
+		// method is re-entered per frame and keeps no state): centre it,
+		// clamped to the ends.
+		const top = windowed ? Math.max(0, Math.min(menu.selected - ((MENU_WINDOW - 1) >> 1), items.length - MENU_WINDOW)) : 0;
 		const rows: string[] = [bandHeader("commands", W)];
-		for (let i = 0; i < menu.items.length; i += 1) {
-			const item = menu.items[i]!;
-			const text =
-				i === menu.selected
-					? `${p.bold}▸ ${item.name}${p.reset} ${item.desc}`
-					: `${p.dim}  ${item.name} ${item.desc}${p.reset}`;
-			rows.push(...foldLine(text, W));
+		for (let i = top; i < Math.min(items.length, top + MENU_WINDOW); i += 1) {
+			const item = items[i]!;
+			const label = `${item.name.slice(1).padEnd(col)} ${item.desc}`;
+			rows.push(...(i === menu.selected ? gutterCut(`${p.bold}▸${p.reset} `, `${p.bold}${label}${p.reset}`, W) : gutterCut("  ", `${p.dim}${label}${p.reset}`, W)));
 		}
+		// the counter earns its row only when the list is CUT — over a
+		// list you can see all of, it says nothing the rows do not.
+		if (windowed) rows.push(`  ${p.dim}(${menu.selected + 1}/${items.length})${p.reset}`);
 		return rows;
 	}
 

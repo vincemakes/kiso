@@ -245,11 +245,15 @@ function shellBody(grid: string[]): string[] {
 	expect(h).toBeGreaterThanOrEqual(0);
 	// R1.5 ④: a settled shell has NO body rows at all, so "none" is a legal
 	// answer here now — the helper reports what it finds.
-	const start = grid.findIndex((l, i) => i > h && (l.startsWith("│ ") || l.startsWith("└ ")));
+	// R8a: a tool block's rows are INDENTED (four columns), with `└`
+	// opening the first one — the bar is gone. The needle moves; the
+	// claim does not.
+	const BLOCK = (l: string): boolean => l.startsWith("  \u2514 ") || l.startsWith("    ");
+	const start = grid.findIndex((l, i) => i > h && BLOCK(l));
 	if (start < 0) return [];
 	const body: string[] = [];
 	for (let i = start; i < grid.length; i += 1) {
-		if (grid[i]!.startsWith("│ ") || grid[i]!.startsWith("└ ")) body.push(grid[i]!);
+		if (BLOCK(grid[i]!)) body.push(grid[i]!);
 		else break;
 	}
 	return body;
@@ -306,7 +310,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// must still not show is the tail.
 		expect(grid.findIndex((l) => l.startsWith("✦ "))).toBeGreaterThanOrEqual(0); // R3g: the fold OR the recap — the claim is that the turn settled
 		expect(grid.join("")).not.toContain("earlier rows");
-		expect(grid.join("\n")).not.toMatch(/^│ (seq|1[012])/m);
+		expect(grid.join("\n")).not.toMatch(/^(?: {2}\u2514 | {4})(seq|1[012])/m);
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND).
 		// R3b: the advisory rode the read's own row, which is inside the
 		// segment fold now. R4a: the fold row prints no key (see the 60-col
@@ -371,7 +375,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 			const readBottom = readIdx; // the stretch line is ONE row, always
 			const shellHeader = g1.findIndex((l) => /^ {2}shell /.test(l));
 			expect(shellHeader).toBeGreaterThan(readBottom); // the shell sits BELOW the streaming cell
-			const headerEnd = g1.findIndex((l, i) => i > shellHeader && (l.startsWith("│ ") || l.startsWith("└ ")));
+			const headerEnd = g1.findIndex((l, i) => i > shellHeader && (l.startsWith("  \u2514 ") || l.startsWith("    ")));
 			for (let r = readBottom + 1; r <= 19; r += 1) {
 				if (r >= shellHeader && r < headerEnd) continue; // the running cell's own header span
 				expect(g2[r]).toBe(g1[r]); // byte-identical
@@ -382,7 +386,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		const headers = new Set(
 			running.map((f) => {
 				const h = f.grid.findIndex((l) => /^ {2}shell /.test(l));
-				const he = f.grid.findIndex((l, i) => i > h && (l.startsWith("│ ") || l.startsWith("└ ")));
+				const he = f.grid.findIndex((l, i) => i > h && (l.startsWith("  \u2514 ") || l.startsWith("    ")));
 				return f.grid.slice(h, he).join("");
 			}),
 		);

@@ -73,11 +73,22 @@ const render = (cell: BodyCell, W = 80): string[] => cellComponent(cell).render(
 // first row was already the output keeps that shape. See
 // packages/tui/tests/r7a-standing-rows.test.ts group B, which fails on
 // the pre-ruling tree at all four widths.
+//
+// DECLARED SUPERSESSION (R8a, owner-ruled 2026-09-01) — A TOOL BLOCK'S
+// ROWS ARE INDENTED, NOT GUTTERED. `│ ` on every row drew a bar down
+// the left of every multi-row output; the owner asked for the corner
+// form instead. The fact the bar carried — these rows are the call's
+// output, not prose — moves into the INDENT (four columns, deeper than
+// prose and the header), so law 1.2 still holds in plain bytes. `└`
+// survives as the mark that OPENS a block, once, on its first row with
+// content; in-block notes take the same indent with no glyph, because
+// a second `└` inside one block would be one mark meaning two things.
+
 describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 	it("no output yet: the shape is exactly today's — nothing observed, nothing claimed", () => {
 		setTTY(false);
 		// VD-4 already put the waiting row FIRST; R7a blanks the pad
-		expect(render(running())).toEqual(["● shell npm test · 12s", "└ waiting for output", "", ""]);
+		expect(render(running())).toEqual(["● shell npm test · 12s", "  └ waiting for output", "", ""]);
 	});
 
 	it("output observed: the LAST lines ride the block, the footer names the state and the two gestures", () => {
@@ -85,9 +96,9 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		const rows = render(running({ resultText: "packages/runtime    184 tests\npackages/tui      ⠸ 88/120" }));
 		expect(rows).toEqual([
 			"● shell npm test · 12s",
-			"│ packages/runtime    184 tests",
-			"│ packages/tui      ⠸ 88/120",
-			"└ live tail · esc stop · alt+⏎ redirect",
+			"  └ packages/runtime    184 tests",
+			"    packages/tui      ⠸ 88/120",
+			"    live tail · esc stop · alt+⏎ redirect",
 		]);
 	});
 
@@ -98,8 +109,8 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		}
 		// growing output scrolls: the LAST two lines are what shows
 		const rows = render(running({ resultText: "one\ntwo\nthree\nfour\nfive\nsix" }));
-		expect(rows[1]).toBe("│ five");
-		expect(rows[2]).toBe("│ six");
+		expect(rows[1]).toBe("  └ five");
+		expect(rows[2]).toBe("    six");
 	});
 
 	it("a long line is width-truncated inside the block, never folded into a fourth row", () => {
@@ -115,15 +126,15 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		const rows = render(running({ resultText: "building…" }));
 		// the pad is BELOW the output now (VD-4(b)) — the first tail row
 		// carries the command's first line, never an empty gutter
-		expect(rows[1]).toBe("\x1b[2m│ building…\x1b[0m");
+		expect(rows[1]).toBe("\x1b[2m  └ building…\x1b[0m");
 		expect(rows[2]).toBe(""); // R7a: the pad is blank
-		expect(rows[3]).toBe("\x1b[2m└ live tail · esc stop · alt+⏎ redirect\x1b[0m");
+		expect(rows[3]).toBe("\x1b[2m    live tail · esc stop · alt+⏎ redirect\x1b[0m");
 	});
 
 	it("a NON-shell running tool keeps liveWindow byte for byte — the tail is the shell's alone", () => {
 		setTTY(false);
 		const rows = render(running({ name: "read_file", input: "big.txt", inputFull: JSON.stringify({ path: "big.txt" }) }));
-		expect(rows).toEqual(["● read  big.txt · 12s", "└ waiting for output", "", ""]);
+		expect(rows).toEqual(["● read  big.txt · 12s", "  └ waiting for output", "", ""]);
 	});
 
 	it("COMPLETION collapses to one line — the tail is gone, A's suffix names what it hid", () => {

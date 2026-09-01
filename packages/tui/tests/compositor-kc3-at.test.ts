@@ -325,6 +325,8 @@ describe("KC3 T-A3: N=1 byte identity on every non-@ scenario", () => {
 				b.bindAt(() => null);
 			}),
 		);
-		expect(frame(menu)).toContain("/mode");
+		// R8: the rows dropped the leading `/` — the byte-identity subject
+		// of this case is untouched; only the needle moves.
+		expect(frame(menu)).toContain("mode ");
 	});
 });

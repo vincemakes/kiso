@@ -146,7 +146,10 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 	it("an EXPANDED block gains the collapse footer — the way back, at the block's last row", () => {
 		setTTY(false);
 		const rows = render(toolCell({ expanded: true, resultText: "alpha\nbeta\ngamma" }));
-		expect(rows).toEqual(["  read  src/parser.ts (3 lines, 2.4s)", "│ alpha", "│ beta", "│ gamma", "└ ctrl+r collapses"]);
+		// R8a (owner-ruled 2026-09-01): a tool block's rows are INDENTED, not
+		// guttered — `└` opens the block once, on its first row with content,
+		// and every other row is the same four-column indent with no glyph.
+		expect(rows).toEqual(["  read  src/parser.ts (3 lines, 2.4s)", "  └ alpha", "    beta", "    gamma", "    ctrl+r collapses"]);
 		// the expanded head row drops the collapsed suffix — it would be
 		// telling the reader to expand what is already expanded
 		expect(rows[0]).not.toContain("expands");
@@ -160,7 +163,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// point of this case — is byte-identical.
 		expect(rows[0]).toBe("  read  src/parser.ts (2.4s)\x1b[2m · 3 lines · ctrl+r expands\x1b[0m"); // R2: no tick
 		const expanded = render(toolCell({ expanded: true, resultText: "a\nb\nc" }));
-		expect(expanded[expanded.length - 1]).toBe("\x1b[2m└ ctrl+r collapses\x1b[0m");
+		expect(expanded[expanded.length - 1]).toBe("\x1b[2m    ctrl+r collapses\x1b[0m");
 	});
 
 	it("a running / queued / approval / denied cell is never suffixed — the affordance is a settled-cell statement", () => {

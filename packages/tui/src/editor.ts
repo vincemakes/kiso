@@ -611,11 +611,20 @@ export class Editor {
 		return { items: this.#menuFiltered(), selected: this.#menuSel };
 	}
 
-	/** v3 §04: the filtered command list for the current buffer — open
-	 *  only while the line is "/" + something (a bare "/" waits). */
+	/** v3 §04: the filtered command list for the current buffer.
+	 *
+	 *  A BARE `/` OPENS IT (owner-ruled 2026-09-01). It used to wait for
+	 *  a second character, which made the key the banner advertises —
+	 *  `/ commands` — a thing you had to already know the answer to: the
+	 *  list that tells you the commands appeared only once you had typed
+	 *  one. The reason for the wait was real and is fixed on the other
+	 *  side: the band drew EVERY match with no window, so a bare `/`
+	 *  would have piled eleven rows plus wraps above the composer. The
+	 *  band windows now (see the compositor's #menuRows), so the trigger
+	 *  no longer has to do the rationing. */
 	#menuFiltered(): MenuItem[] {
 		const line = this.line();
-		if (!line.startsWith("/") || line === "/") return [];
+		if (!line.startsWith("/")) return [];
 		return MENU_ITEMS.filter((m) => m.name.startsWith(line));
 	}
 

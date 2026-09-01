@@ -256,7 +256,10 @@ describe("TUI v6 — the one compositor", () => {
 		// says that directly, where the old byte-shape assertion said it
 		// by naming the one write that would have destroyed it.
 		const rows = screenOf(writes);
-		expect(rows[19], "the menu row was erased by the gap").toContain("/mode");
+		// R8: the rows dropped the leading `/` (it is on the input line
+		// directly below). The needle is the row's own shape, which is
+		// no less specific than the name it replaced.
+		expect(rows[19], "the menu row was erased by the gap").toContain("▸ mode ");
 	});
 
 	it("a done cell's lines emit EXACTLY once — the freeze frame writes them, later frames never re-emit", () => {
@@ -357,8 +360,10 @@ describe("TUI v6 — the one compositor", () => {
 		tick();
 		const bytes = writes.join("");
 		const rows = screenOf(writes); // REL-0152-R1: the screen, not one frame
-		expect(rows.join("\n")).toContain("/mode");
-		expect(rows.join("\n")).toContain("/model");
+		// R8: the rows dropped the leading `/`; both commands are still
+		// named, each on its own row.
+		expect(rows.join("\n")).toContain("▸ mode ");
+		expect(rows.join("\n")).toContain("  model ");
 		// DECLARED SUPERSESSION (REL-0152-R1): this used to assert the
 		// EMISSION ORDER — status first, then the menu rows last-first,
 		// then the content — because the renderer reached them by marching
@@ -617,7 +622,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the head (the answer is at the start): the body starts at line 2,
 		// capped at 3 rows — the tail is cut, the cut names "+3 more"
 		expect(frame).toContain("lint error 2");
-		expect(frame).toContain("└ +3 more · ctrl+r");
+		expect(frame).toContain("    +3 more · ctrl+r");
 		expect(frame).not.toContain("lint error 6");
 		expect(matchBodyWalls(frame).length).toBeLessThanOrEqual(3);
 		// a read result: the settled row carries the count — zero body rows
@@ -899,7 +904,7 @@ describe("TUI v6 — the one compositor", () => {
 		// still gone (nothing is cut), and the block's last row is the
 		// collapse footer. "no ctrl+r at all" becomes "no ctrl+r CUT".
 		expect(frame).not.toContain("ctrl+r to expand");
-		expect(frame).toContain("└ ctrl+r collapses");
+		expect(frame).toContain("    ctrl+r collapses");
 		// THE SECOND PRESS: the cut returns — the toggle flips both ways
 		expect(body.expandNext()).toEqual({ kind: "toggled" });
 		writes.length = 0;

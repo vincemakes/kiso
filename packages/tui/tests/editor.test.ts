@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { charWidth, displayWidth, Editor, PROMPT_WIDTH } from "../src/editor.js";
+import { charWidth, displayWidth, Editor, MENU_ITEMS, PROMPT_WIDTH } from "../src/editor.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
@@ -178,11 +178,16 @@ describe("v3 §04: the slash-command menu", () => {
 		return { editor, events };
 	};
 
-	it("opens on a slash prefix, filters by the buffer, closes on a bare slash or a non-slash line", () => {
+	it("opens on the slash itself, filters by the buffer, closes when nothing matches", () => {
 		const { editor } = make();
 		expect(editor.menuState()).toBeNull();
 		editor.feed(enc("/"));
-		expect(editor.menuState()).toBeNull(); // a bare "/" waits
+		// DECLARED SUPERSESSION (R8, owner-ruled 2026-09-01): a bare `/`
+		// used to WAIT for a second character, so the list that names the
+		// commands appeared only once you had named one. It opens on the
+		// sigil now — the band windows, which is what the wait was
+		// standing in for. See r8-command-band.test.ts.
+		expect(editor.menuState()?.items.length).toBe(MENU_ITEMS.length);
 		editor.feed(enc("m"));
 		const s1 = editor.menuState();
 		expect(s1?.items.map((m) => m.name)).toEqual(["/mode", "/model"]);

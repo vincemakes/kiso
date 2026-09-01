@@ -201,8 +201,10 @@ describe("TUI2-R1 T-V3 — the live tail on a real PTY", () => {
 		expect(out).toContain("live tail · esc stop · alt+⏎ redirect");
 		// …and it MOVED — early steps and late steps were both on screen
 		// inside the running block (the sidecar was re-read, not read once)
-		expect(out).toContain("│ step 1 of six");
-		expect(out).toContain("│ step 6 of six");
+		// R8a: the block is indented, `└` opens its first row — either
+		// prefix is the block, and neither is prose.
+		expect(out).toMatch(/(?: {2}\u2514 | {4})step 1 of six/);
+		expect(out).toMatch(/(?: {2}\u2514 | {4})step 6 of six/);
 
 		// COMPLETION collapses: the settled row is one line with A's
 		// suffix, and the live-tail footer is not part of it.

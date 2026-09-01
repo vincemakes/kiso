@@ -51,9 +51,11 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		expect(joined).not.toContain('{"command"');
 		expect(joined).toMatch(/shell sh steps\.sh · \d+s/);
 		// the tail is live and its first row is output, never a bare gutter
-		const first = grid.findIndex((l) => l.startsWith("│ "));
+		// R8a: the block's first row is the CORNER row, and it must carry
+		// real output — the subject of this case, unchanged.
+		const first = grid.findIndex((l) => l.startsWith("  \u2514 "));
 		expect(first).toBeGreaterThan(0);
-		expect(grid[first]).toMatch(/│ step \d of six/);
+		expect(grid[first]).toMatch(/ {2}\u2514 step \d of six/);
 		expect(joined).toContain("live tail · esc stop · alt+⏎ redirect");
 	}, 240_000);
 

@@ -225,8 +225,9 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		expect(lines[0]).toContain("expanded · read 8 files · ran 14 searches · 0 turns back");
 		const body_ = lines.join("\n");
 		expect(body_).toContain("explored 8 files · 14 searches");
-		expect(body_).toContain("│ read   src/parser.ts · src/lexer.ts · src/ast.ts (+5)");
-		expect(body_).toContain('│ search "parseExpr" ×6 · "Token" ×8');
+		// R8a: indented, not guttered
+		expect(body_).toContain("  └ read   src/parser.ts · src/lexer.ts · src/ast.ts (+5)");
+		expect(body_).toContain('    search "parseExpr" ×6 · "Token" ×8');
 		// MOVED (R1.5 ①, the tool-cell suffix supersession class): the
 		// footer used to promise "· /last shows the full outputs". /last
 		// shows the LAST call only, so for this 22-call burst the promise
@@ -239,7 +240,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// opens the NEXT fold. The footer says what the key does. The
 		// LIVE toggle keeps the old wording, where it is true.
 		// R4a: the ordinal is retired; the footer names the direction.
-		expect(body_).toContain("└ end of expansion · ctrl+r opens the one before it");
+		expect(body_).toContain("    end of expansion · ctrl+r opens the one before it");
 		expect(body_).not.toContain("/last shows the full outputs");
 	});
 
