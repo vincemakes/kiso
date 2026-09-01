@@ -10,7 +10,7 @@
  *  human sees — a stale live copy left above a committed section is
  *  visible duplication. */
 export class Screen {
-	readonly W: number;
+	W: number;
 	readonly H: number;
 	rows: string[][];
 	/** the SCROLLBACK — every row evicted by a bottom scroll (a real
@@ -24,6 +24,33 @@ export class Screen {
 		this.W = W;
 		this.H = H;
 		this.rows = Array.from({ length: H }, () => Array.from({ length: W }, () => " "));
+	}
+
+	/** DC-34 — the terminal's width changing, WITHOUT reflow.
+	 *
+	 *  Terminal.app does not re-wrap what it has already drawn: a row
+	 *  folded at the old width stays folded, in the scrollback and on
+	 *  the screen alike. kiso's own rows are hard lines regardless —
+	 *  frames run with autowrap off and every row is placed by cursor
+	 *  address — so no terminal can rejoin them. Widening therefore
+	 *  makes each row LONGER and never makes them fewer, which is
+	 *  exactly the asymmetry the defect lives in.
+	 *
+	 *  Only the grid's width moves. The cursor, the scrollback and
+	 *  every drawn cell stay where they are. */
+	resizeTo(W: number): void {
+		// WIDEN ONLY. A real terminal REFLOWS on a narrowing and pushes
+		// what it displaces into its scrollback (see the compositor's own
+		// D18 and TT-1B comments); truncating would model a terminal that
+		// does not exist, and a gate built on it would be measuring
+		// fiction. Narrowing needs its own model and does not have one
+		// yet — DC-34 rider 2.
+		if (W < this.W) throw new Error("Screen.resizeTo models a WIDEN only — see DC-34 rider 2");
+		const pad = (row: string[]): string[] => (W <= row.length ? row.slice(0, W) : [...row, ...Array.from({ length: W - row.length }, () => " ")]);
+		this.rows = this.rows.map(pad);
+		this.history = this.history.map(pad);
+		this.W = W;
+		this.c = Math.min(this.c, W - 1);
 	}
 
 	/** every line the terminal has ever shown — scrollback then visible. */

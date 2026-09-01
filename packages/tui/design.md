@@ -129,7 +129,7 @@ done, which bounds how confidently §2 can be said to ship as designed.
 | `⏸` | it needs you: an approval or a question is pending |
 | `◦` | queued, not started |
 | `✦` | the turn's seal (`✦ took …`) and the checklist header |
-| `▾ ▸ │` | the transcript viewer's marks (§8) |
+| `▾ ▸ │` | the transcript viewer's marks (§9) |
 | (none) | a settled call, and a folded stretch — the outcome is in the words |
 
 **4.1 One mark, one meaning, everywhere.** A mark that means two things
@@ -240,7 +240,18 @@ turn's first thought and released when the stretch folds. Within it:
 - **The block takes the spacing its FOLD will take**, never its own, so
   a settle changes a row's content and not its position.
 
-**7.4 A settled call reads verb · target · outcome.**
+**7.4 A tool block's rows are INDENTED, not guttered.** Four columns,
+one level deeper than prose and than the header row. The fact this
+carries — these rows are the call's output, not something the model
+said — is a §1.2 fact and so it lives in the indent, which survives a
+pipe, rather than in a glyph. `└` opens a block, exactly once, on its
+first row that has content; the notes inside it (`+N earlier rows`,
+`waiting for output`, the collapse footer) take the same indent and no
+glyph, because a second `└` in one block is one mark meaning two
+things. The diff's `│` is untouched: there it SCOPES rather than
+separates, which is the case §1.1 keeps it for.
+
+**7.5 A settled call reads verb · target · outcome.**
 
 ```
   edit  compositor.ts       +7 −3 · 0.4s · ctrl+r
@@ -251,25 +262,25 @@ turn's first thought and released when the stretch folds. Within it:
 The verb column is padded to 5 so targets line up. Only a call still
 running carries a mark, because only it is moving.
 
-**7.5 A folded stretch is one line, and prints no key.** It says what the
+**7.6 A folded stretch is one line, and prints no key.** It says what the
 work was, in the tense each term earned — `read 4 files · ran 1 shell
 command` — and drops any term whose count is zero. It prints no
 selector: a number you cannot type is decoration that costs a column.
 
-**7.6 `ctrl+r` has exactly one target and says which.** The row it will
+**7.7 `ctrl+r` has exactly one target and says which.** The row it will
 act on renders its own `ctrl+r` token at full strength among dim
 siblings — exactly one bright token per frame. Two would be a lie about
 a single-target key; zero puts the reader back to pressing and finding
 out. Per §2.4 the emphasis is weight, not a background.
 
-**7.7 The composer is four rows and stays four rows.** `CHROME_ROWS` is
+**7.8 The composer is four rows and stays four rows.** `CHROME_ROWS` is
 4: rule, input, rule, status. Every gate keyed on `H − 4` depends on it.
 
-**7.8 The user's words span the width.** Full width, washed, per §1.6.
+**7.9 The user's words span the width.** Full width, washed, per §1.6.
 The block is padded to `W` by *display* width, so a CJK row pads
 correctly.
 
-**7.9 The opening.** No logo. The name is the mark.
+**7.10 The opening.** No logo. The name is the mark.
 
 ```
 kiso <version>
@@ -287,33 +298,69 @@ seven rows to say what `kiso` says in one.
 
 ---
 
-## 8. The transcript viewer
+## 8. The bands, and the hint
+
+A band is a surface that opens directly above the composer: the
+command list, the `@` picker, the session picker. The keys sheet is
+the same vocabulary on the body.
+
+**8.1 A band names itself.** `─── commands ───`, `─── files ───`,
+`─── sessions ───`, `─── keys ───`. With scrollback behind it, nothing
+else says where the surface begins.
+
+**8.2 A band is a WINDOW, not the whole list.** Five rows and a
+counter — and the counter appears only when the list is actually cut,
+because over rows you can all see it says nothing they do not. Rows
+are a table: the name column padded to the longest entry in the WHOLE
+list so the descriptions do not shift as the window scrolls, and a
+long description CUT rather than folded, since a fold would break the
+height the window buys.
+
+**8.3 A band opens on its sigil.** `/` alone opens the command list;
+the list that names the commands must not require you to name one
+first. The rows do not repeat the sigil — it is on the input line
+directly below them.
+
+**8.4 Enter completes; the NEXT enter sends.** The same rule for every
+band. Completing and sending on one key would send a fragment.
+
+**8.5 The idle hint gives way in order, and it is where a key that
+nothing else advertises has to live.** The hint is dropped WHOLE when
+it does not fit, so the forms are a ladder and every rung is one that
+fitted at some width — a rung skipped is an affordance lost at a width
+that could have shown it. Order by how findable the key is WITHOUT the
+hint: `/ commands` survives longest, and a key like `ctrl+o` that
+nothing stumbles onto outranks one like `↑ history` that everyone does.
+
+---
+
+## 9. The transcript viewer
 
 `ctrl+o` opens a reader over the turn's record. It exists because §7.1
 makes expand-in-place impossible: looking back needs a surface that can
 be redrawn, and committed rows are not one.
 
-**8.1 It lives on the PRIMARY screen.** No alternate screen — it is a
+**9.1 It lives on the PRIMARY screen.** No alternate screen — it is a
 second, divergent world to keep correct, and it takes the viewer's rows
 away on exit along with anything printed while it was up. The keys
 sheet is the precedent: an overlay that leaves nothing behind.
 
-**8.2 While it is up, nothing commits.** The window is frozen at its
+**9.2 While it is up, nothing commits.** The window is frozen at its
 pre-open position and no line feed is emitted, so the viewer displaces
 content *on screen* and the close restores every displaced row.
 
-**8.3 The cursor is the keyboard's.** `↑↓` move, `⏎` toggles, `a` toggles
+**9.3 The cursor is the keyboard's.** `↑↓` move, `⏎` toggles, `a` toggles
 all, `esc` closes. The marks are `▾` open, `▸` the cursor on a closed
 row, `│` a body row — and `▾` does not depend on where the cursor is,
 because a mark that vanishes when you look away is not a mark.
 
-**8.4 The mouse is out of scope.** Click and hover would mean taking
+**9.4 The mouse is out of scope.** Click and hover would mean taking
 over the terminal's own selection, and the cost is the user's copy and
 paste everywhere.
 
 ---
 
-## 9. Open
+## 10. Open
 
 - **`⏸` against §6.1.** It is absent from Menlo *and* present in Apple
   Color Emoji — both failure modes §6 names, in one glyph, and worse
@@ -330,7 +377,7 @@ paste everywhere.
 
 ---
 
-## 10. Amending this file
+## 11. Amending this file
 
 State the rule as it now stands, in the present tense, and delete what
 it replaced. This file is the contract, not its history — the arguments
