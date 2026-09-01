@@ -90,7 +90,7 @@ def run(cli, env, cwd, script, winch_after):
     start = time.time()
     sent = False
     off = -1
-    while time.time() - start < 30:
+    while time.time() - start < 16:
         r, _, _ = select.select([fd], [], [], 0.02)
         if r:
             try:
@@ -108,9 +108,9 @@ def run(cli, env, cwd, script, winch_after):
             off = len(full)
             win(${WIDE})
         # the turn's seal, then let the live band collapse and settle
-        if sent and b"\\xe2\\x9c\\xa6 took" in full and time.time() - start > 6:
+        if sent and b"\\xe2\\x9c\\xa6 took" in full and time.time() - start > 3:
             break
-    deadline = time.time() + 2.5
+    deadline = time.time() + 1.5
     while time.time() < deadline:
         r, _, _ = select.select([fd], [], [], 0.2)
         if not r:
@@ -131,7 +131,24 @@ def run(cli, env, cwd, script, winch_after):
     sys.exit(0)
 `;
 
-function capture(winchAfter: string | null): { screen: Screen; off: number; preLF: number; bytes: Buffer; before: Screen } {
+type Capture = { screen: Screen; off: number; preLF: number; bytes: Buffer; before: Screen };
+
+/** ONE run per scenario, shared by every case. `execFileSync` blocks the
+ *  vitest worker for the whole run, and a spawn per case starved the
+ *  reporter's RPC ("Timeout calling onTaskUpdate") once this file had
+ *  five of them. The captures are pure data; sharing them changes
+ *  nothing a case can observe. */
+const CAPTURES = new Map<string, Capture>();
+function capture(winchAfter: string | null): Capture {
+	const key = winchAfter ?? "";
+	const hit = CAPTURES.get(key);
+	if (hit !== undefined) return hit;
+	const made = captureOnce(winchAfter);
+	CAPTURES.set(key, made);
+	return made;
+}
+
+function captureOnce(winchAfter: string | null): Capture {
 	const { env } = isolatedEnv();
 	const dir = mkdtempSync(join(process.cwd(), ".kiso-dc34-"));
 	try {
