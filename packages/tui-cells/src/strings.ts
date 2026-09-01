@@ -20,7 +20,7 @@
 
 import type { PanelView } from "./approval-panel.js";
 import { escapeTerminal, palette } from "./render.js";
-import { displayWidth } from "./width.js";
+import { displayWidth, visibleWidth } from "./width.js";
 
 /** v2a: the interactive prompt — the identity accent. readline owns the
  *  echo of what the user types; we own the prompt's color. (v2c: the
@@ -338,6 +338,27 @@ const SHEET_STOPS: readonly (readonly number[])[] = [
  * screens pretending to be one. A narrow terminal shows fewer columns
  * of the same truth, which is the honest degradation.
  */
+/** R8b — the band's own opening row: a labelled rule at full width.
+ *
+ *  Moved here from the @ picker, unchanged in every byte, because the
+ *  keys sheet needs it too and `components.ts` already imports this
+ *  module — the dependency only runs one way. `at-picker.ts` re-exports
+ *  it, so every existing import site is untouched. */
+export function bandHeader(label: string, W: number): string {
+	const p = palette();
+	const head = `\u2500\u2500\u2500 ${label} `;
+	const line = `${head}${"\u2500".repeat(Math.max(1, W - head.length))}`;
+	let out = "";
+	let w = 0;
+	for (const ch of line) {
+		const cw = displayWidth(ch);
+		if (w + cw > Math.max(1, W)) break;
+		out += ch;
+		w += cw;
+	}
+	return `${p.dim}${out}${p.reset}`;
+}
+
 export function keysSheetRows(W: number): string[] {
 	const p = palette();
 	const cell = (i: number): string => {
@@ -351,7 +372,14 @@ export function keysSheetRows(W: number): string[] {
 		const b = KEY_BINDINGS[i];
 		return b === undefined ? "" : `${b.keys} ${b.what}`;
 	};
-	const rows = [`${p.bold}keys${p.reset}`];
+	// R8b — THE SHEET NAMES ITSELF, in the band vocabulary.
+	//
+	// Every other overlay does: `─── commands ───`, `─── files ───`,
+	// `─── sessions ───`, `── transcript · N folds ──`. This one opened
+	// with a bare bold word at column 0, which is the exact condition
+	// TUI2-R1.5 ⑦(b) named when it made the rule — with scrollback
+	// behind an overlay, nothing said where the surface began.
+	const rows = [bandHeader("keys", W)];
 	for (let r = 0; r < SHEET_GRID.length; r += 1) {
 		const indexes = SHEET_GRID[r]!;
 		let row = "";

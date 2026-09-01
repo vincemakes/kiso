@@ -9,6 +9,7 @@
 		"apps/cli/tests/coding-agent.test.ts",
 		"apps/cli/tests/compact-cli.test.ts",
 		"apps/cli/tests/config-e2e.test.ts",
+		"apps/cli/tests/dc33-resize-midturn.test.ts",
 		"apps/cli/tests/e2e.test.ts",
 		"apps/cli/tests/e5-composition.test.ts",
 		"apps/cli/tests/extensions-e2e.test.ts",

@@ -15,6 +15,7 @@
 
 import { escapeTerminal, palette } from "./render.js";
 import { selectionBar, visibleWidth, widthCut } from "./components.js";
+import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
 
 /** The bound source's item — a repo-relative path and nothing else.
  *  Structural: the CLI passes whatever it likes as long as it has a
@@ -286,8 +287,8 @@ export function atPanelRows(state: { matches: readonly AtMatch[]; selected: numb
  * composer and every panel now share, so a band opens the way everything
  * else does and the label tells you WHICH band in the same row.
  */
-export function bandHeader(label: string, W: number): string {
-	const p = palette();
-	const head = `\u2500\u2500\u2500 ${label} `;
-	return `${p.dim}${widthCut(`${head}${"\u2500".repeat(Math.max(1, W - head.length))}`, Math.max(1, W))}${p.reset}`;
-}
+// R8b: bandHeader MOVED to tui-cells/strings.ts — the keys sheet needs
+// it and lives there, and `components.ts` already imports that module,
+// so the dependency only runs one way. Re-exported here so every
+// existing import site is untouched.
+export { bandHeader };

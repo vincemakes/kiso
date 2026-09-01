@@ -2295,6 +2295,33 @@ class Checklist implements Component {
  *  W21: the question param is gone — the old question slot retires; a
  *  pending approval's status IS the panel's (the compositor derives
  *  it from the bound panel state). */
+/** R8b — THE IDLE HINT GIVES WAY IN ORDER, and `ctrl+o` is on it.
+ *
+ *  The transcript viewer shipped in 0.19.0 and was reachable only from
+ *  the `?` sheet: not on the banner's key line, not here. A feature
+ *  whose only advertisement is a screen you have to already know to
+ *  open is DC-30's lesson pointing the other way.
+ *
+ *  It cannot simply be appended, because this hint is dropped WHOLE
+ *  when it does not fit — a longer string would take `/ commands` down
+ *  with it on a narrow terminal. So the forms are a ladder, and the
+ *  order says which affordance is least replaceable: `/ commands`
+ *  survives longest because it is the door to everything; `ctrl+o`
+ *  outranks `↑ history` because pressing up is how a person finds the
+ *  history by accident, and nothing finds ctrl+o by accident. */
+export function idleHint(room: number): string {
+	// The third rung is today's hint, kept so that NO width loses
+	// something that used to fit: without it, a room of 24-30 columns
+	// fell all the way to `/ commands` even though the old form fitted.
+	// So the ladder is not a strict ranking of the three affordances —
+	// it is the widest honest form at each room, and ctrl+o is on the
+	// first two rungs rather than on all of them.
+	for (const form of [" / commands · ↑ history · ctrl+o transcript", " / commands · ctrl+o transcript", " / commands · ↑ history", " / commands"]) {
+		if (visibleWidth(form) <= room) return form;
+	}
+	return "";
+}
+
 export function statusLine(status: string, tail: string, W: number, hint?: string): string {
 	const p = palette();
 	const text = `${status}${tail === "" ? "" : ` · ${tail}`}`;
@@ -2302,13 +2329,13 @@ export function statusLine(status: string, tail: string, W: number, hint?: strin
 	// "esc to cancel" (the same one-line-bounded shape as W12's delegate
 	// row; the #16g rule still cuts the HINT first, then the status with
 	// a "…" — never a fold).
-	const hintText = hint ?? " / commands · ↑ history";
 	const statusW = visibleWidth(text);
 	if (statusW > W) {
 		return `${p.dim}${widthCut(text, W - 1)}…${p.reset}`;
 	}
+	const hintText = hint ?? idleHint(Math.max(0, W - statusW));
 	const hintW = visibleWidth(hintText);
-	if (statusW + hintW > W) return `${p.dim}${text}${p.reset}`;
+	if (hintW === 0 || statusW + hintW > W) return `${p.dim}${text}${p.reset}`;
 	return `${p.dim}${text}${" ".repeat(Math.max(0, W - statusW - hintW))}${hintText}${p.reset}`;
 }
 

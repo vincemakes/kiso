@@ -37,8 +37,16 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		// DECLARED ADDITION (R5): ctrl+o joins at index 8 and the tail
 		// shifts by one, so the last two bindings now share a row and the
 		// undo row is no longer alone. The stops are untouched.
-		expect(keysSheetRows(80)).toEqual([
-			"keys",
+		// DECLARED SUPERSESSION (R8b, 2026-09-01): the sheet opens with a
+		// LABELLED RULE now, like every other band (`─── commands ───`,
+		// `─── files ───`, `─── sessions ───`). It used to be a bare bold
+		// word at column 0 — the exact condition TUI2-R1.5 ⑦(b) named
+		// when it made the rule, since with scrollback behind an overlay
+		// nothing said where the surface began. The GRID below is
+		// untouched, which is what this case is actually about.
+		const sheet = keysSheetRows(80);
+		expect(sheet[0]).toMatch(/^─── keys ─+$/);
+		expect(sheet.slice(1)).toEqual([
 			"enter send      ctrl+j / shift+⏎ newline   @ files",
 			"esc stop        alt+⏎ / ctrl+⏎ redirect    / commands",
 			"↑↓ history / queue pop              ctrl+r expand cells",
@@ -75,7 +83,9 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 	it("the header is bold, the keys tinted, the panel row dim — the prototype's placement", () => {
 		setTTY(true);
 		const rows = keysSheetRows(80);
-		expect(rows[0]).toBe("\x1b[1mkeys\x1b[0m");
+		// R8b: the header is the band's dim labelled rule now, not a bold
+		// word — see the frame case above for why.
+		expect(rows[0]).toMatch(/^\x1b\[2m─── keys ─+\x1b\[0m$/);
 		// DC-3 supersession: the key NAMES borrowed the inline-code tint
 		// (#d0d0d0, 1.54:1 on a white terminal), which made the least
 		// readable thing on screen the one screen whose whole job is being
@@ -94,7 +104,9 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		// header/footer, and what is left is whitespace
 		let residue = sheet;
 		for (const b of KEY_BINDINGS) residue = residue.replace(`${b.keys} ${b.what}`, "");
-		residue = residue.replace("keys", "").replace(PANEL_KEYS_ROW, "");
+		// R8b: strip the band header as a HEADER — matching the bare word
+		// left its rule behind and the residue stopped being whitespace.
+		residue = residue.replace(/─+ keys ─+/, "").replace(PANEL_KEYS_ROW, "");
 		expect(residue.trim()).toBe("");
 	});
 

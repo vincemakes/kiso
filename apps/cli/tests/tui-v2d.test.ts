@@ -163,7 +163,14 @@ const CELL_LINE = [
 	/^error: .*$/, // the error terminal label
 	/^▸ .* · \/mode to switch.*$/, // v3 idle status line
 	/^⏸ run paused.*$/, // W21: the panel's paused status (the lead owns the input row — the affordance rides the status)
-	/^\/ commands · ↑ history$/, // TUI v5 #16g: the dock's idle hint — the status row at enter (the status is still empty)
+	// TUI v5 #16g: the dock's idle hint — the status row at enter (the
+	// status is still empty).
+	// R8b: the hint is a LADDER now — ctrl+o joined it, and because the
+	// hint is dropped whole when it does not fit, the shorter rungs had
+	// to stay so no width loses what used to fit. The alternation is the
+	// exact set of rungs, not a wildcard: a row that is any OTHER
+	// arrangement of these words is still an interleave and still fails.
+	/^\/ commands(?: · ↑ history)?(?: · ctrl\+o transcript)?$/,
 	/^[✧✦✶✸✺] working \d+s.*$/, // the running status line — R3 (§5.2): the twinkle, not the retired quadrant rotation
 	// MOVED (the focus-marker class, TUI2-R2 ⑤): a running tool cell's
 	// head row carries `· ctrl+r` when it is the FOCUSED cell — the one
