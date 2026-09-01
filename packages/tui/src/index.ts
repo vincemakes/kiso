@@ -20,6 +20,7 @@ export {
 	panelStatus,
 	// TUI2-R2 ④: the pick payload — the panel slot's third occupant.
 	PICK_MAX,
+	modePickView,
 	modelPickView,
 	pickAffordance,
 	pickBlockRows,

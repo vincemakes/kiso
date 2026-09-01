@@ -86,7 +86,13 @@ describe("TUI2-R2 ④ — the /model panel's block (the picker-surface class)", 
 		const options = { view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options" } } as const;
 		expect(strip(panelLeadOf(options))).toBe("1-3> ");
 		expect(panelStatusOf(options)).toBe("▸ run paused");
-		expect(panelAffordanceOf(options)).toBe("digits pick · ⏎ confirms · esc");
+		// DC-36: the row NAMES the arrows now. ↑↓ have walked this cursor
+		// since this very round (TUI2-R2 ④) and the keys sheet has said so
+		// since, but the row a human reads while the panel is up
+		// advertised only the digits — which is why the owner read the
+		// mode panel as "type the answer". The subject of this case (the
+		// three dispatchers are the approval panel's own) is untouched.
+		expect(strip(panelAffordanceOf(options))).toBe("↑↓ move · digits pick · ⏎ confirms · esc");
 		const typing = { view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "custom" } } as const;
 		expect(strip(panelLeadOf(typing))).toBe("provider/model: ");
 		expect(panelAffordanceOf(typing)).toBe("enter commits · esc backs out");

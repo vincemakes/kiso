@@ -309,9 +309,13 @@ export interface PickOption {
 export interface PickSpec {
 	readonly header: string;
 	readonly options: readonly PickOption[];
-	/** the `t` row \u2014 typing it directly is always available, because a
-	 *  list of profiles is never the list of models that exist */
-	readonly typeHint: string;
+	/** the `t` row — typing directly. OPTIONAL, and its absence means the
+	 *  option list is the WHOLE world: `/model`'s profiles never are (a
+	 *  model that exists but is not configured has to be typeable), and
+	 *  `/mode`'s five tiers always are. Offering a `t` row over a closed
+	 *  set is a row that carries no fact — §1.3 — and it is what made
+	 *  the owner read the mode panel as "type the answer". */
+	readonly typeHint?: string;
 	/** shown INSTEAD of the options when there are none. The copy is the
 	 *  caller's and is reproduced verbatim. */
 	readonly emptyNote?: string;
@@ -830,8 +834,10 @@ export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, ma
 		}
 	}
 	const typing = state.phase === "custom";
-	const tText = cutLine(`${typing ? p.bold : ""}${typing ? "\u2192" : " "} t ${p.reset}${p.dim}${escapeTerminal(spec.typeHint)}${p.reset}`, room);
-	rows.push(typing ? selectionBar(tText, visibleWidth(tText), W) : ` ${tText}`);
+	if (spec.typeHint !== undefined) {
+		const tText = cutLine(`${typing ? p.bold : ""}${typing ? "\u2192" : " "} t ${p.reset}${p.dim}${escapeTerminal(spec.typeHint)}${p.reset}`, room);
+		rows.push(typing ? selectionBar(tText, visibleWidth(tText), W) : ` ${tText}`);
+	}
 	rows.push(`  ${p.dim}${cutLine(pickAffordance(state), room)}${p.reset}`);
 	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
 	return rows;
@@ -862,12 +868,38 @@ export function pickStatus(view: PanelView): string {
 }
 
 export function pickAffordance(state: PickRuntime): string {
-	return state.phase === "custom" ? "enter commits \u00b7 esc backs out" : "digits pick \u00b7 \u23ce confirms \u00b7 esc";
+	// DC-36 — the row NAMES the arrows. TUI2-R2 ④ bound ↑↓ to the pick's
+	// cursor and the keys sheet has said `panels: ↑↓ move` ever since,
+	// but this row — the one a human is actually looking at while the
+	// panel is up — advertised only the digits. The owner read it as
+	// "type the answer", which is the same lesson DC-30 filed: a hint
+	// that omits the gesture is why the gesture goes unused.
+	return state.phase === "custom" ? "enter commits \u00b7 esc backs out" : "\u2191\u2193 move \u00b7 digits pick \u00b7 \u23ce confirms \u00b7 esc";
 }
 
 /** Compose a pick view. The flavor/name/title/args fields exist for the
  *  approval path and are given inert values here \u2014 the pick block
  *  reads none of them. */
+/** DC-36 — the same shell for the MODE picker.
+ *
+ *  `/model` learned to pick in TUI2-R2 ④; `/mode` never did, and the
+ *  five tiers are a CLOSED set — the one case where making a human
+ *  type the answer is least defensible. The pick block reads only
+ *  `pick` and `statusText`, so a second flavour is a name and a
+ *  fallback question, not a second mechanism. */
+export function modePickView(spec: PickSpec, statusText: string): PanelView {
+	return {
+		flavor: "simple",
+		name: "mode",
+		title: "mode",
+		speaker: "you",
+		statusText,
+		args: { kind: "text", lines: [] },
+		fallbackQuestion: "switch mode? (name) ",
+		pick: spec,
+	};
+}
+
 export function modelPickView(spec: PickSpec, statusText: string): PanelView {
 	return {
 		flavor: "simple",

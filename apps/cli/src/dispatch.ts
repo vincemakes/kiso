@@ -4,11 +4,11 @@
  * the context (the chain, the run state, the prompt arming).
  */
 
-import { contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modelPickView, palette, type PickResult } from "@vincemakes/kiso-tui";
+import { contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modePickView, modelPickView, palette, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
 import { buildAdapter, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
-import { MODES, getMode, setMode } from "./mode.js";
+import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
 import { agentModel, body, bodyLog, configModels, dock, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
 import { directWriteProfile, profileAvailable } from "./config.js";
 
@@ -202,6 +202,49 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const m = MODES.find((x) => x === trimmed.slice(5).trim());
 			if (trimmed.slice(5).trim() === "") {
+				// DC-36 — BARE /mode PICKS, the way bare /model has since
+				// TUI2-R2 ④. The five tiers are a CLOSED set, which makes
+				// this the least defensible place in the product to have
+				// asked a human to type the answer: everything needed to
+				// make it a choice was on screen and only the choosing was
+				// missing.
+				//
+				// The printed form survives VERBATIM wherever there is no
+				// panel to draw — a pipe, a dock-less TTY — because that is
+				// a machine-readable surface and this round moves no bytes
+				// on one. `/mode <name>` is untouched.
+				if (dock.active && ctx.input.panelAsk !== undefined) {
+					const current = getMode();
+					const picked = await new Promise<PickResult | null>((resolve) => {
+						ctx.input.panelAsk!(
+							modePickView(
+								{
+									header: `mode — current: ${current}`,
+									options: MODES.map((name) => ({ label: name, note: [MODE_NOTE[name], ...(name === current ? ["current"] : [])].join(" · ") })),
+								},
+								// DC-12 (design §4): a panel WAITING ON A HUMAN says ⏸.
+								ctx.isRunning() ? "⏸ run paused" : `▸ ${current}`,
+							),
+							(v) => resolve(v.action === "picked" ? v.result : null),
+						);
+					});
+					ctx.paintIdle();
+					if (picked === null) {
+						ctx.input.prompt();
+						return; // esc — nothing switched, nothing said
+					}
+					const chosen = "index" in picked ? MODES[picked.index] : MODES.find((x) => x === picked.custom.trim());
+					if (chosen === undefined) {
+						bodyLog(`no such mode: ${"index" in picked ? String(picked.index) : picked.custom.trim()}`);
+						bodyLog(`tiers: ${MODES.join(" ")}`);
+					} else {
+						setMode(chosen);
+						body.notice(`mode → ${chosen}`);
+						ctx.paintIdle();
+					}
+					ctx.input.prompt();
+					return;
+				}
 				bodyLog(`mode ${getMode()}`);
 				bodyLog(`tiers: ${MODES.join(" ")}`);
 			} else if (m === undefined) {

@@ -204,6 +204,74 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		expect(readFileSync(join(workdir, "out.txt"), "utf8")).toBe("hello");
 	}, 120_000);
 
+	it("DC-36: bare /mode PICKS — the tiers are a list you choose from, not a word you type", () => {
+		// The owner's report: `/mode` printed `tiers: manual default …`
+		// and stopped, so switching meant typing the answer — while bare
+		// `/model` has opened a picker since TUI2-R2 ④. Five fixed tiers
+		// is the least defensible place in the product to make a human
+		// type: everything needed to make it a choice was already on
+		// screen and only the choosing was missing.
+		const { env, dirs } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-modes-"));
+		const workdir = join(dir, "work");
+		mkdirSync(workdir, { recursive: true });
+		const script = join(dir, "faux.json");
+		writeFileSync(script, JSON.stringify([{ events: [{ type: "text_delta", text: "ok" }, { type: "stop", reason: "end_turn" }] }]), "utf8");
+		const out = ptyRun(
+			{ ...env, KISO_FAUX_SCRIPT: script } as NodeJS.ProcessEnv,
+			[
+				["▌ ", "/mode\r"],
+				// the panel is up: take `bypass` by its digit. The ARROWS
+				// have their own case — a pty feed fires once on its needle,
+				// so a burst of them cannot prove a cursor walked.
+				// the needle is a NOTE, not the header: the header carries SGR
+				// between its words, and a pty driver scans the raw stream
+				// for a contiguous run (DC-25/DC-29, filed twice already).
+				["every tool asks", "5\r"],
+				// and QUIT. Without it the driver waits out its whole
+				// timeout: `execFileSync` blocks the vitest worker for that
+				// long, and enough of those starve the reporter's RPC
+				// ("Timeout calling onTaskUpdate") — the same trap DC-34's
+				// file hit from the other direction.
+				["mode \u2192 bypass", "exit\r"],
+			],
+			workdir,
+			{ session: "pick" },
+		);
+		const plain = out.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+		// the PANEL, not a printed list
+		expect(plain, "bare /mode did not open a picker").toContain("mode — current: default");
+		// every tier is offered, each saying what it DOES — the notes are
+		// transcribed from decide(), so a drifting description is a bug
+		for (const tier of ["manual", "default", "accept-edits", "plan", "bypass"]) expect(plain, `${tier} is not on the panel`).toContain(tier);
+		expect(plain).toContain("every tool asks"); // manual's note
+		expect(plain).toContain("read-only"); // plan's note
+		// the row a human is looking at names the arrows, not only the
+		// digits — DC-30's lesson: a hint that omits the gesture is why
+		// the gesture goes unused, and it is why the owner read this
+		// panel as "type the answer".
+		expect(plain, "the pick row does not name the arrows").toContain("↑↓ move");
+		// and choosing switched it — no word was typed
+		expect(plain, "the pick did not take effect").toContain("mode → bypass");
+	}, 120_000);
+
+	it("DC-36: with no dock — a PIPE — /mode prints exactly what it always printed", () => {
+		// the machine-readable surface. The picker is a dock affordance;
+		// this round moves no bytes where there is no dock to draw on.
+		const { env } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-modes-"));
+		const workdir = join(dir, "work");
+		mkdirSync(workdir, { recursive: true });
+		const script = join(dir, "faux.json");
+		writeFileSync(script, JSON.stringify([{ events: [{ type: "text_delta", text: "ok" }, { type: "stop", reason: "end_turn" }] }]), "utf8");
+		const piped = runCli(["chat", "modepipe"], { ...env, KISO_FAUX_SCRIPT: script }, { input: "/mode\nexit\n", timeout: 60_000 });
+		expect(piped.status).toBe(0);
+		expect(piped.stdout).toContain("mode default");
+		expect(piped.stdout).toContain("tiers: manual default accept-edits plan bypass");
+		expect(piped.stdout, "a panel leaked onto a pipe").not.toContain("mode — current");
+		expect(piped.stdout, "pipes are byte-plain").not.toContain("\u001b[");
+	}, 120_000);
+
 	it("--mode bypass still loses to a user extension's deny (monotonicity)", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-modes-"));

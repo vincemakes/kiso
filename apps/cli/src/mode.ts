@@ -17,6 +17,18 @@ export type Mode = "manual" | "default" | "accept-edits" | "plan" | "bypass";
 
 export const MODES: readonly Mode[] = ["manual", "default", "accept-edits", "plan", "bypass"];
 
+/** DC-36 — one line per tier, for the picker, TRANSCRIBED FROM decide()
+ *  below rather than written fresh. A description that drifts from the
+ *  behaviour is worse than none: this is the row a human reads before
+ *  handing over the approval gate. */
+export const MODE_NOTE: Readonly<Record<Mode, string>> = {
+	manual: "every tool asks",
+	default: "reads run; writes, edits and shell ask",
+	"accept-edits": "reads, writes and edits run; shell asks",
+	plan: "reads run; everything else is denied — read-only",
+	bypass: "everything runs, nothing asks",
+};
+
 /** The read-only tool set (plan): reading is allowed, everything else
  *  denied with the guiding reason. */
 const READ_TOOLS = new Set(["read_file", "list_dir", "search_text", "read_skill"]);

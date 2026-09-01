@@ -1077,7 +1077,11 @@ export class Editor {
 						i += 1;
 						continue;
 					}
-					if (!typing && (c === "t" || c === "T")) {
+					// DC-36: no `t` row means no custom phase to enter — the
+					// option list IS the world (a closed set), and a key
+					// that leads to a surface the panel does not draw is
+					// worse than an absent key.
+					if (!typing && (c === "t" || c === "T") && this.#panel?.view.pick?.typeHint !== undefined) {
 						panel.pick = { cursor: panel.pick.cursor, phase: "custom" };
 						this.#chars = [];
 						this.#cursor = 0;
