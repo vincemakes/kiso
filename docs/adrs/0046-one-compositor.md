@@ -90,7 +90,7 @@ mechanism that kills each)
 
 | recorded symptom | root cause (≤ v5) | v6 mechanism |
 |---|---|---|
-| first frame | startup CUP draws over shell leftovers / pre-clear | sequential emission from the current position, NO pre-clear, no ED2/3J — the banner rows emit in order, whole |
+| first frame | startup CUP draws over shell leftovers / pre-clear | H line feeds from the shell's cursor scroll the inherited screen into the scrollback as content — no pre-clear, no ED2/3J — and the frame then owns rows 1..H. The feeds precede the entry reset: `ESC[r` homes the cursor, and feeds after it scroll one row, not r (DC-40, 2026-09-02; the row read "sequential emission from the current position" from v6 to 0.20.3 while the bytes were absolute CUP) |
 | logo row cut | soft-wrap + reflow split a logo row | invariant ①: each row hard-folds ≤ W and emits whole |
 | same-row duplicate | two writers painting one row (body + dock) | one compositor: every row written once per frame after `\x1b[0K` |
 | approval takeover | question rendered as an overlay at the status row | the ApprovalPrompt SLOT occupant — the question takes the input row, focus follows |

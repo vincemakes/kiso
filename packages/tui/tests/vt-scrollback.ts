@@ -80,7 +80,18 @@ export class VtScrollback {
 				else if (cmd === "B") this.#r = Math.min(this.#h, this.#r + n(1));
 				else if (cmd === "K") this.#row().length = this.#c - 1;
 				else if (cmd === "J") for (let rr = this.#r; rr <= this.#h; rr += 1) this.#rows[rr - 1]!.length = rr === this.#r ? this.#c - 1 : 0;
-				// m (SGR), h/l (modes), r (margins) — stripped
+				else if (cmd === "r") {
+					// DECSTBM HOMES THE CURSOR (VT100; Apple Terminal, xterm,
+					// xterm.js and tmux all do). The margins themselves are still
+					// not modelled — the homing is what DC-40 needed an
+					// instrument for: line feeds emitted after `ESC[r` start
+					// from row 1 and scroll one row, not the r the shell's
+					// cursor stood on. An emulator that strips `r` passes the
+					// wrong order; the real terminal does not.
+					this.#r = 1;
+					this.#c = 1;
+				}
+				// m (SGR), h/l (modes) — stripped
 				i += whole.length;
 				continue;
 			}

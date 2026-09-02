@@ -2907,25 +2907,37 @@ export class Body {
 			// the steady state for the session's whole life. It repairs a
 			// killed predecessor straight into the same state. The visible
 			// cursor comes back exactly once, in editor.exit().
+			// DC-40 — H line feeds BEFORE the reset, from wherever the shell
+			// left the cursor. The first frame is the full-redraw path and
+			// addresses rows 1..H absolutely; at launch those rows are the
+			// shell's (its prompt, the launch command, the tail of whatever
+			// ran before), and the frame painted over them — gone, not in
+			// the scrollback (REL-0152-D20 established the mechanism; 37/60
+			// shell lines survived on Apple Terminal, every line ON SCREEN
+			// lost). From cursor row r, H feeds move H−r rows and then
+			// scroll exactly r: the shell's rows 1..r enter the scrollback
+			// as CONTENT (at most one blank row — the cursor's own line),
+			// the screen is blank, and the model's assumption "row 0 is the
+			// terminal's row 1" is true by construction. The count does not
+			// depend on r, so nothing is asked of the terminal.
+			//
+			// THE ORDER IS THE FIX. `ESC[r` (DECSTBM) HOMES THE CURSOR to
+			// row 1 — VT100 semantics, honoured by Apple Terminal, xterm,
+			// xterm.js and tmux alike. Feeds emitted AFTER the reset start
+			// from row 1, move H−1 rows and scroll ONE: measured on Apple
+			// Terminal, 1/20 shell lines survived with an otherwise
+			// byte-identical frame. Feeds BEFORE the reset: 20/20. The house
+			// emulators did not model the homing and passed the wrong order;
+			// VtScrollback does now, and the DC-40 gate is red on it.
+			//
+			// The reset still precedes the FRAME (REL-0152-D19: a frame
+			// drawn into an inherited sub-region is the defect); only the
+			// feeds run under whatever region the shell left. A region a
+			// killed foreign program left set makes the feeds scroll that
+			// region alone and the frame paint over the rows outside it —
+			// which is what every frame did before this fix, never worse.
+			out.push("\n".repeat(H));
 			out.push("\x1b[r\x1b[?69l\x1b[?7h\x1b[?25l");
-			// REL-0152-D20 — the mechanism is understood and the obvious fix
-			// is NOT taken here. See the finding.
-			//
-			// The first frame addresses rows 1..H absolutely and draws over
-			// whatever the terminal was showing. Scrolling a screenful away
-			// first would fix that, and it was built and measured: it pushes
-			// up to H BLANK rows into the scrollback, and TUI2-R2pre's
-			// blank-share gate went from 14/43 to 29/43 — past the "a
-			// healthy session's scrollback is mostly content" invariant that
-			// gate exists to hold. Trading a symptom with a five-second
-			// user-side setting for a broken invariant is a worse deal.
-			//
-			// The correct version scrolls only as far as the terminal's
-			// content actually reaches, which needs a cursor-position query
-			// at boot — its own round, with its own risk (this file already
-			// declined a boot-time round-trip once, for racing the editor
-			// for stdin).
-
 		}
 		out.push("\x1b[?7l");
 		// REL-0161: ?25l is the STEADY state now, not a frame bracket —

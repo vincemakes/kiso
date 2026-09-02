@@ -92,5 +92,6 @@ describe("REL-0152-D19 — the dock resets the terminal on entry", () => {
 		vi.advanceTimersByTime(60);
 		expect(writes.join("")).not.toContain("\x1b[?69l");
 		expect(writes.join("")).not.toContain("\x1b[r");
+		expect(writes.join(""), "DC-40: no line feeds either — a pipe has no screen to scroll away").not.toContain("\n");
 	});
 });
