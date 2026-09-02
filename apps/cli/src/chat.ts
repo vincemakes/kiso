@@ -683,10 +683,10 @@ export async function consumeRun(
 				break;
 			}
 			case "uncertain_pending":
-				// ruling #12 (ADR-0038): the ⚠ line is pure INFORMATION now — the
+				// ruling #12 (ADR-0038): the notice line is pure INFORMATION now — the
 				// approval chain guards retries, and the human question belongs
 				// only to the crash window's recovery flow (resolveUncertains).
-				body.notice(`⚠ ${escapeTerminal(ev.name)} FAILED — the side effect may have applied. ${escapeTerminal(ev.error)}`);
+				body.notice(`${escapeTerminal(ev.name)} FAILED — the side effect may have applied. ${escapeTerminal(ev.error)}`);
 				break;
 			case "permission_requested": {
 				// v2d: the ToolCell shows the ❯ badge; the question takes over

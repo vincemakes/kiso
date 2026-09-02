@@ -550,7 +550,7 @@ export function askView(spec: AskSpec): PanelView {
 		speaker: "kiso",
 		statusText: "❯ a question for you",
 		args: { kind: "text", lines: askDeclineList(spec) },
-		fallbackQuestion: `⚠ ${escapeTerminal(first.question)} — this terminal cannot show the option panel; the question is declined `,
+		fallbackQuestion: `${escapeTerminal(first.question)} — this terminal cannot show the option panel; the question is declined `,
 		ask: spec,
 	};
 }

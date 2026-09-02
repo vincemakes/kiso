@@ -130,7 +130,7 @@ export function uncertainView(name: string, executionId: string): PanelView {
 		args: { kind: "text", lines: [executionId] },
 		ruleOverride: "an interrupted execution may have applied — rerun it?",
 		simpleOptions: ["rerun it", "abandon it"],
-		fallbackQuestion: `⚠ interrupted execution: ${escapeTerminal(name)} (${executionId}) — rerun it? (y)es / (n)o `,
+		fallbackQuestion: `interrupted execution: ${escapeTerminal(name)} (${executionId}) — rerun it? (y)es / (n)o `,
 	};
 }
 
@@ -158,7 +158,7 @@ export function unansweredAskView(executionId: string): PanelView {
 		args: { kind: "text", lines: [executionId] },
 		ruleOverride: "an unanswered question was interrupted — ask it again?",
 		simpleOptions: ["ask it again", "drop it"],
-		fallbackQuestion: `⚠ an unanswered question was interrupted (${executionId}) — ask it again? (y)es / (n)o `,
+		fallbackQuestion: `an unanswered question was interrupted (${executionId}) — ask it again? (y)es / (n)o `,
 	};
 }
 

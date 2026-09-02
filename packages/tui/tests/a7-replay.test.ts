@@ -107,7 +107,7 @@ export function replay(W: number, H: number): { frames: Frame[]; writes: string[
 				usage.known = Boolean(ev.known);
 				break;
 			case "uncertain_pending":
-				body.notice(`⚠ ${String(ev.name ?? "?")} FAILED — the side effect may have applied. ${String(ev.error ?? "")}`);
+				body.notice(`${String(ev.name ?? "?")} FAILED — the side effect may have applied. ${String(ev.error ?? "")}`);
 				break;
 			case "permission_requested":
 				body.toolApproval(String(ev.callId ?? "?"), null);

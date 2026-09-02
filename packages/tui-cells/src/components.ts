@@ -2132,7 +2132,7 @@ class MarkdownBlock implements Component {
 	}
 }
 
-/** The ⚠ / notice lines — the error surface. */
+/** The notice lines — the error surface. */
 class ErrorLine implements Component {
 	constructor(private readonly cell: { text: string }) {}
 	render(W: number, _ctx: FrameCtx): string[] {

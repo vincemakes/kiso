@@ -125,14 +125,14 @@ describe("KC3 §1: uncertainView — the uncertain execution's panel", () => {
 		// deliberately NOT preserved; every other byte still is.
 		expect(view.ruleOverride).toBe("an interrupted execution may have applied — rerun it?");
 		expect(view.simpleOptions).toEqual(["rerun it", "abandon it"]);
-		expect(view.fallbackQuestion).toBe("⚠ interrupted execution: shell (exec-7) — rerun it? (y)es / (n)o ");
+		expect(view.fallbackQuestion).toBe("interrupted execution: shell (exec-7) — rerun it? (y)es / (n)o ");
 	});
 
 	it("the fallback question ESCAPES the tool name — it reaches the terminal as raw text there", () => {
 		// 867a0fa: escapeTerminal(uncertain.name) — an ESC in the name can
 		// never become a control sequence in the dock-less question.
 		const view = uncertainView("sh\x1b[31mell", "exec-7");
-		expect(view.fallbackQuestion).toBe("⚠ interrupted execution: sh[31mell (exec-7) — rerun it? (y)es / (n)o ");
+		expect(view.fallbackQuestion).toBe("interrupted execution: sh[31mell (exec-7) — rerun it? (y)es / (n)o ");
 		// the TITLE is not pre-escaped — the panel renderer escapes its own
 		// rows (the 867a0fa behavior, unchanged by the move)
 		expect(view.title).toBe("sh\x1b[31mell (exec-7)");

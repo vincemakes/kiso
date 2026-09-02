@@ -156,7 +156,7 @@ export function renderEvent(ev: RenderInput, prevThinking = false, resolvePath: 
 			return { text: `${p.dim}  [summarized up to seq ${ev.coversToSeq}]${p.reset}\n`, newline: true, prompt: false };
 		case "uncertain_pending":
 			return {
-				text: `${p.red}⚠ ${escapeTerminal(ev.name)} failed (${ev.executionId}): ${escapeTerminal(ev.error.slice(0, 160))}${p.reset}\n`,
+				text: `${p.red}${escapeTerminal(ev.name)} failed (${ev.executionId}): ${escapeTerminal(ev.error.slice(0, 160))}${p.reset}\n`,
 				newline: true,
 				prompt: false,
 			};

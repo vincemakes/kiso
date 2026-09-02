@@ -83,7 +83,7 @@ describe("TUI2-R3v2 ① — the selection panel on a real PTY", () => {
 			delays: [[2.5, "\x1b"], [4, "exit\r"]], // esc — the hint is READ, not acted on
 		});
 		const grid = screenAt(raw, "1-4 instant").join("\n");
-		expect(grid).toContain("⚠ deletes files permanently (build-artifacts)");
+		expect(grid).toContain("deletes files permanently (build-artifacts)");
 	}, 240_000);
 
 	it("the digit is instant — 1 approves with no enter after it", () => {

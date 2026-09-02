@@ -208,7 +208,7 @@ kiso help                      this help
 - **范围化读取(0.1.27,token 轮):** 读取可设范围——`read_file` 接受 `offset`/`limit`(1 基行),大文件默认只返回头部 200 行,`search_text` 上限 50 条摘录,`list_dir` 上限 200 条。每次截断都带可执行的续读提示(`… N more lines (call again with offset=…)`、`… +N more matches (narrow the pattern)`)——模型总有确定性路径拿到完整内容。系统提示引导在一轮内批量独立调用(并行执行让它很快)、先定位再读、永不重读未变的文件。
 - 会话是 `$KISO_HOME/sessions` 下的追加式 JSONL——退出、重启、`kiso resume <id>`,对话以连续 seq 继续。
 - 开箱即有无密钥 faux 模式;`ANTHROPIC_API_KEY`(或 `OPENAI_API_KEY` + `OPENAI_BASE_URL`)切换真实 provider。
-- 被打断的副作用在恢复时浮出(`⚠ interrupted execution`)并阻塞到人类消解——已确认的成功永不重跑。
+- 被打断的副作用在恢复时浮出(`interrupted execution`)并阻塞到人类消解——已确认的成功永不重跑。
 
 ### 模型配置(`~/.kiso/config.json`,0.1.23)
 
@@ -252,7 +252,7 @@ $ kiso chat k9                        # faux trajectory: edit f1.txt → slow
 $ kill -9 -PGID                       # the agent's whole process group —
                                       # and the shell's own detached group
 $ kiso resume k9
-⚠ interrupted execution: shell (ex-12) — rerun it? (y)es / (n)o y
+interrupted execution: shell (ex-12) — rerun it? (y)es / (n)o y
   rerun
 → edit_file({"path":"f3.txt",...})    # the ORIGINAL trajectory continues
 ```

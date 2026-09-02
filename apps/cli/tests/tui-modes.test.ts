@@ -5,7 +5,7 @@
  *
  *  1. `--mode plan`: reads auto-allowed, the write DENIED with the
  *     guiding reason, decidedBy: "mode:plan" lands in the session log;
- *     the status bar shows "⚠ plan".
+ *     the status bar names the mode.
  *  2. `/mode default`: the notice cell leaves the audit line; the next
  *     write is ASKED of the human again — with the v2e mini-diff — and
  *     the human decision is decidedBy-free (a human, not a policy).

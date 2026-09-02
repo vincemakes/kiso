@@ -90,7 +90,7 @@ kiso <sessionId>         # reopen the full interactive session
 ```
 
 `kill -9` mid-run is the designed case, not the edge case: the log is
-write-ahead, an interrupted side effect is surfaced as `⚠ interrupted
+write-ahead, an interrupted side effect is surfaced as `interrupted
 execution` and asked about — a confirmed success is never re-run.
 
 ## 6. Extensions in one line each

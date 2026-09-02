@@ -214,15 +214,15 @@ function segmentRisk(segment: string): string | null {
 		const letters = flags.join("");
 		if (!letters.includes("r") || !letters.includes("f")) return null;
 		const targets = words.slice(1).filter((w) => !/^-/.test(w));
-		return targets.length === 0 ? "⚠ deletes files permanently" : `⚠ deletes files permanently (${targets.join(", ")})`;
+		return targets.length === 0 ? "deletes files permanently" : `deletes files permanently (${targets.join(", ")})`;
 	}
 	if (verb !== "git") return null;
 	const sub = words[1];
 	// `git checkout -- <paths>` discards; `git checkout <branch>` does not,
 	// and conflating them would put a red line on the most ordinary command
 	// in the product.
-	if (sub === "checkout" && words.includes("--")) return "⚠ discards your uncommitted changes — unrecoverable";
-	if (sub === "reset" && words.includes("--hard")) return "⚠ throws away commits and working changes";
+	if (sub === "checkout" && words.includes("--")) return "discards your uncommitted changes — unrecoverable";
+	if (sub === "reset" && words.includes("--hard")) return "throws away commits and working changes";
 	// `git clean -n` is a DRY RUN and is the reason this checks for the f
 	// rather than for the command.
 	if (sub === "clean") {
@@ -230,7 +230,7 @@ function segmentRisk(segment: string): string | null {
 			.slice(2)
 			.filter((w) => /^-[a-zA-Z]+$/.test(w))
 			.join("");
-		if (letters.includes("f")) return "⚠ deletes untracked files permanently";
+		if (letters.includes("f")) return "deletes untracked files permanently";
 	}
 	return null;
 }
@@ -612,8 +612,15 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	rows.push(...shown);
 	// TUI2-R3v2 ④: the risk hint sits directly under the args, because it
 	// is a sentence ABOUT those args — the v4 frame's placement. The warn
-	// tint is the palette's existing functional yellow (no new colour),
-	// and under NO_COLOR the ⚠ still carries it.
+	// tint is the palette's existing functional yellow (no new colour).
+	//
+	// DC-42: it used to open with a warning mark, on the argument that
+	// the mark carried the warning once NO_COLOR took the tint away. It does not
+	// carry anything the sentence does not — "deletes files permanently"
+	// IS the warning, and §1.3 gives a symbol its cell only for a fact
+	// the words lack. What separates kiso's sentence from the command's
+	// own lines survives the strip either way: the args wear the `│`
+	// gutter and this row wears the plain two-space indent.
 	const risk = view.riskHint;
 	if (risk !== undefined && risk !== "") rows.push(`${gutter}${cutLine(`${p.warn}${escapeTerminal(risk)}${p.reset}`, Math.max(1, W - 2))}`);
 	// TUI2-R3v2 ①: the option LIST. While the typed phase is open the list

@@ -15,7 +15,7 @@
  */
 
 /** Unicode Emoji_Presentation=Yes inside U+2000..U+2BFF (the singles and
- *  short runs — the rest of the block is narrow, ✓ ✗ ⚠ ❯ included). */
+ *  short runs — the rest of the block is narrow, ✓ ✗ ❯ included). */
 const EP_SINGLES: readonly (readonly [number, number])[] = [
 	[0x231a, 0x231b],
 	[0x23e9, 0x23ec],

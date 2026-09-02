@@ -3,7 +3,7 @@
  *
  * On a tty too small for the dock, `askView`'s fallback prints
  *
- *   ⚠ <question> — this terminal cannot show the option panel; the question is declined
+ *   <question> — this terminal cannot show the option panel; the question is declined
  *
  * — a sentence in the past tense, describing a resolved state. The code
  * resolved nothing: askPanel called input.question() and waited for a

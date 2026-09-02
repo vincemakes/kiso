@@ -3339,7 +3339,7 @@ export class Body {
 		const cell = this.#cells[i]!;
 		if (cell.kind !== "tool" || !isExploreTool(cell.name)) return false;
 		// the run is still growing while NOTHING but explore cells follow —
-		// the turn-less noise cells (permission raws, ⚠ notices) are
+		// the turn-less noise cells (permission raws, notices) are
 		// transparent here for the same reason the run scan sees through
 		// them: the streaming execution interleaves them between the calls.
 		for (let j = i + 1; j < this.#cells.length; j += 1) {
@@ -3446,7 +3446,7 @@ export class Body {
 		// split every real burst into fragments. Writes, edits, shells and
 		// extension tools still break the run at the first one.
 		// the maximal read-only run around i — forward/backward scans over
-		// the cells. The turn-less noise cells (the permission raws, the ⚠
+		// the cells. The turn-less noise cells (the permission raws, the
 		// notices) are TRANSPARENT: the streaming execution (loop.ts launch)
 		// interleaves them BETWEEN the calls of one burst, so the run must
 		// see through them. It never crosses a user/text/thinking cell —

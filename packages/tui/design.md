@@ -37,6 +37,10 @@ saying it went fine, so the tick is gone; so is the cross. A gutter is a
 mark too: a `│` on a row with no content is the same error one scale
 down.
 
+A warning is the same case as the tick: a row that says *deletes files
+permanently* does not also need a mark saying it is serious, and the
+sentence is what survives `NO_COLOR` (DC-42).
+
 *Known cost, accepted:* a failure has no shape, only a colour and its
 words. `❯` survives this law because it does not describe an outcome —
 it means *you have to do something*.
@@ -401,13 +405,6 @@ paste everywhere.
 
 ## 10. Open
 
-- **`⚠` against §6.1.** Measured 2026-09-02 while retiring `⏸`: `⚠` is
-  in Apple Color Emoji too. Menlo has it, so macOS's default terminal
-  draws it correctly and nothing has been reported — but it is in the
-  company §6.1 bans by name. Eight strings still lead with it, and
-  whether it is dropped (§1.3's standing argument), replaced, or
-  blessed by narrowing §6.1 is a ruling this round did not carry
-  (DC-42). The gate carries it as declared debt meanwhile.
 - **The wider OSC 11 survey** (§3.2). Bounds how much of §2 can be said
   to ship as designed.
 - **Spilled stretches.** A stretch too tall for its slot spills; how a

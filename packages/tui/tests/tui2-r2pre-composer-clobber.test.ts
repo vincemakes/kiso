@@ -73,18 +73,14 @@ const EMOJI_PARA =
  *  gates: every one measures a single column (T-R2p-2), and none of
  *  them is a glyph Apple Color Emoji supplies (T-R2p-4). A new mark
  *  joins here or it is not measured at all. */
-const CHROME_GLYPHS = ["✓", "✗", "⚠", "❯", "✦", "✧", "✶", "✸", "✺", "●", "▸", "▖", "▣", "□", "→", "\u2500", "│", "└", "█", "▀", "▄"] as const;
+const CHROME_GLYPHS = ["✓", "✗", "❯", "✦", "✧", "✶", "✸", "✺", "●", "▸", "▖", "▣", "□", "→", "\u2500", "│", "└", "█", "▀", "▄"] as const;
 
-/** DECLARED DEBT, not an exemption on the merits.
- *
- *  `⚠` (U+26A0) is in Apple Color Emoji and so breaks §6.1 exactly the
- *  way `\u23F8` did — measured 2026-09-02, while retiring `\u23F8`. It is
- *  still emitted by eight strings (the approval panel's danger notes,
- *  the two interrupted-execution questions, the failure notice), and
- *  choosing its replacement is a design ruling this round does not
- *  carry. Recorded as DC-42 so it is visible rather than quietly
- *  tolerated; the gate above is true for everything else from today. */
-const EMOJI_FONT_DEBT = new Set(["⚠"]);
+/* The debt this gate shipped with is PAID. `\u26A0` was carried here for
+ * one release as a declared exception (DC-42) because it is in Apple
+ * Color Emoji too; the owner ruled it dropped rather than replaced —
+ * §1.3, the words already say "deletes files permanently" — so the
+ * filter below is unconditional and there is no exception list to grow
+ * back into. */
 
 describe("TUI2-R2pre ① — the width table is the composer's floor", () => {
 	it("T-R2p-1: the emoji-presentation glyphs measure 2 — the table's hole is what lets a line overrun W", () => {
@@ -96,7 +92,7 @@ describe("TUI2-R2pre ① — the width table is the composer's floor", () => {
 	});
 
 	it("T-R2p-2: the chrome's own glyphs stay NARROW — the fix widens emoji, never the box rails", () => {
-		// ✓ ✗ ⚠ ❯ are Emoji_Presentation=No: text presentation, one column.
+		// ✓ ✗ ❯ are Emoji_Presentation=No: text presentation, one column.
 		// Widening these would break every card head in the suite.
 		// R2: the glyphs the renderer actually emits now — ✦ and the star
 		// ramp joined (the fold mark and the thinking twinkle), ● joined
@@ -120,7 +116,7 @@ describe("TUI2-R2pre ① — the width table is the composer's floor", () => {
 	 * closes the class.
 	 */
 	it("T-R2p-4: no chrome glyph is one Apple Color Emoji supplies (design §6.1)", () => {
-		const offenders = CHROME_GLYPHS.filter((g) => APPLE_COLOR_EMOJI_2000_2BFF.has(g.codePointAt(0)!) && !EMOJI_FONT_DEBT.has(g));
+		const offenders = CHROME_GLYPHS.filter((g) => APPLE_COLOR_EMOJI_2000_2BFF.has(g.codePointAt(0)!));
 		expect(offenders).toEqual([]);
 	});
 

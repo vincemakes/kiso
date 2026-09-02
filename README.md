@@ -357,7 +357,7 @@ kiso help                      this help
   OPENAI wins (checked first). Env-only defaults: `ANTHROPIC_MODEL` falls back to
   `claude-sonnet-5`, `OPENAI_MODEL` to `gpt-4o` — export the `*_MODEL`
   variable to pick a model without touching the config file.
-- Interrupted side effects are surfaced on resume (`⚠ interrupted execution`)
+- Interrupted side effects are surfaced on resume (`interrupted execution`)
   and block until a human resolves them — a confirmed success never re-runs.
 
 ### Model configuration (`~/.kiso/config.json`, 0.1.23)
@@ -419,7 +419,7 @@ $ kiso chat k9                        # faux trajectory: edit f1.txt → slow
 $ kill -9 -PGID                       # the agent's whole process group —
                                       # and the shell's own detached group
 $ kiso resume k9
-⚠ interrupted execution: shell (ex-12) — rerun it? (y)es / (n)o y
+interrupted execution: shell (ex-12) — rerun it? (y)es / (n)o y
   rerun
 → edit_file({"path":"f3.txt",...})    # the ORIGINAL trajectory continues
 ```

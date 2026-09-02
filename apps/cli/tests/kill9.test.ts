@@ -147,7 +147,7 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         # exits on its own.
         # NOTE: the 0-row pty (no window size) keeps the dock out — the
         # dock-less fallback renders the W21 fallback questions: the
-        # uncertain one "⚠ interrupted execution: <name> (<id>) — rerun
+        # uncertain one "interrupted execution: <name> (<id>) — rerun
         # it? (y)es / (n)o" (its "rerun it?" is the anchor — RD1B-F1
         # moved this question from the state to the action), and
         # every approval as "approve <tool>? (y/n)" (the "approve " is
