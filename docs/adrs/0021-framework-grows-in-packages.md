@@ -51,3 +51,14 @@ A package grows past the point where it can stay small without reaching into
 the core — pull the repeating shape down into core only when 2+ packages
 express the same semantic (mauri §11 discipline), and only if the core stays
 within 2,000 lines. Otherwise: split the package.
+
+## Amendment 1 (2026-09-02): the cap figure defers to ADR-0043
+
+"When to revisit" and item 1 above name 2,000 lines. That figure was
+adjudicated upward by ADR-0043 Amendments 9 and 10 (2,100, then 2,200 —
+each inside a ratified round) without this ADR being touched; ADR-0043
+Amendment 11 adds the tenancy-audit rule every further move must
+satisfy. The number is ADR-0043's to hold; this ADR keeps the
+principle: the repeating shape sinks into core only when 2+ packages
+express the same semantic, and the core stays under whatever cap
+ADR-0043 currently adjudicates. Otherwise: split the package.

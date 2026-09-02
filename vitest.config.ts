@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 /**
@@ -23,7 +24,12 @@ export default defineConfig({
 		// verdict depended on the invoking shell's profile. The setup file
 		// strips it once per worker; tests that TEST NO_COLOR set it
 		// themselves inside the test body and are unaffected.
-		setupFiles: ["./tests/setup-env.ts"],
+		// Absolute on purpose: a workspace-scoped run (`npm test --workspace
+		// packages/core`) finds this config by walking up but resolves
+		// relative setup paths against ITS cwd — the file "did not exist"
+		// at packages/core/tests/setup-env.ts (ADR-0043 Amendment 11's
+		// hygiene item).
+		setupFiles: [fileURLToPath(new URL("./tests/setup-env.ts", import.meta.url))],
 		exclude: [
 			"**/node_modules/**",
 			"**/dist/**",

@@ -364,3 +364,81 @@ Ruling:
   the next explicit adjudication, exactly as the last two did.
 - Both crossings ship inside their ratified rounds and are reverted by
   reverting them; the 0.16 release report carries both explicitly.
+
+## Amendment 11 (2026-09-02): a cap move requires an incumbent tenancy audit — and the audit the last two moves owed
+
+The occasion: an external review of the 2,113/2,200 kernel made a
+structural point that stands on its own — Amendments 9 and 10 each
+proved why NEW code belonged in core and neither re-examined whether
+every incumbent still did. Two adjudicated crossings in one day, each
+raised "to preserve pressure", is how a ceiling stops being one. This
+amendment closes the method gap and pays the audit retroactively.
+
+### The rule
+
+A proposal to move the core cap attaches a **tenancy ledger**: every
+counted file (or segment) classified as **must** (a second correctness
+authority would appear if it moved), **compat-debt** (kept for durable
+replay or type compatibility, with its scheduled hatch named), or
+**under-review** (a stated question, with its remedy and the remedy's
+line cost). The ledger states how many counted lines the debt would
+recover. The crossing is adjudicated against the ledger, never against
+the delta alone. ADR-0021's "2+ packages express the same semantic"
+test applies in BOTH directions: nothing sinks into core without it,
+and nothing is made injectable or generic inside core on the strength
+of one product's hypothetical either.
+
+### The ledger at 2,113 (the audit Amendments 9/10 skipped)
+
+Counted lines are the size gate's own (code lines; blank and
+comment-only lines excluded).
+
+| file | counted | class | note |
+|---|---:|---|---|
+| protocol/events.ts | 472 | must | the frozen event union + validators (ADR-0051). `compacted`, `hook_stopped` kinds: compat-debt inside a must file — durable replay of old logs; they stay |
+| protocol/messages.ts, adapter.ts, index.ts | 120 | must | message shapes, the adapter trust boundary |
+| kernel/loop.ts | 874 | must, with 4 lines of compat-debt and ~9 under review | Turn Commit, draft voiding, F4 retry, write-ahead execution, MG-1 stamping/caps. Debt: `compaction?` (ADR-0044, ignored), `resolveUncertainty?`/`uncertaintyVerdict?` (DEAD) — all labeled "Removed at 1.0". Under review: the ModeProfile plumbing (`modes?`/`mode?`, the `subset` branch at ~187) |
+| kernel/project.ts | 360 | must | deterministic projection, invariant ⑥. `MICROCOMPACTABLE` (l.45): under review — see finding below |
+| kernel/event-log.ts, compaction.ts, permission.ts | 71 | must | seq allocation; the mechanical half of context economy; the permission lattice |
+| kernel/hooks.ts | 28 | must, with 2 lines of compat-debt | `onPreCompact`/`onPostCompact` never fire (ADR-0044), "Removed at 1.0" |
+| kernel/mode.ts | 11 | under review | `ModeProfile`/`resolveModeProfile`: applied by the loop, but no production caller in the repo passes `modes` — the products filter structurally via `registry.subset()` before `loop()`. On the public SDK surface (core index) |
+| tools/registry.ts, tool.ts, validate.ts | 112 | must | the closed-world tool table the kernel's dispatch consults; `registerLive` is a generic live-source mechanism used by the runtime for every extension (its comment mis-framed it as one bridge's; corrected in this amendment's commit) |
+| protocol/extension.ts | 31 | must, 1 line under review | `connecting?`: a readiness datum the kernel never consults, documented (until now) as a banner instruction. Doc generalized in this commit; the field stays under review |
+| errors.ts, index.ts | 34 | must | |
+
+### Findings from the ledger
+
+1. **Recoverable on frozen surfaces: ~26 counted lines** — the
+   ModeProfile family (mode.ts 11 + ~9 in loop.ts + 1 export) and the
+   five "Removed at 1.0" fields. All are public-SDK or hook-contract
+   members: their removal is an ADR-0051 rule-5 evolution through the
+   whitelist ceremony, not a cleanup. **CT-1** (scheduled after the
+   current UI round, before PA-1) may pull the 1.0 hatch forward; its
+   target is the kernel back under 2,100 with F4 and MG-1 untouched.
+2. **`MICROCOMPACTABLE` stays in core, and the review's remedy is
+   refused**: the projection re-derives clearability from this set when
+   it REPLAYS a `microcompacted` boundary (project.ts ~451). Sourcing
+   the set from runtime tool metadata would make an old log project
+   differently after a metadata change — the projection would stop
+   being a pure function of the log. The correct remedy is to persist
+   the cleared set in the boundary event itself (a rule-1 optional
+   field) and grandfather old events on the frozen set — which ADDS
+   lines. Recorded as a finding for the compaction lane, not as a
+   removal.
+3. **Policy constants stay**: the execution window (4), the retry
+   count and its 250ms×n backoff, `KEEP_COMPACTABLE_RESULTS`. No
+   second product demands a different value; making them injectable
+   would grow the frozen `LoopConfig` on a hypothetical — the 2+ test,
+   applied in reverse.
+4. **A sibling inconsistency, fixed alongside**: ADR-0021's "When to
+   revisit" still read "within 2,000 lines" after Amendments 9/10;
+   ADR-0021 Amendment 1 defers that figure to this ADR.
+5. **Hygiene**: `npm test --workspace packages/core` failed to start
+   (the root vitest config's setup path resolved against the workspace
+   cwd); fixed in this commit — 24 files / 187 tests run
+   workspace-scoped, matching the root figure.
+
+Ruling:
+- **core: 2,200, still HARD — with the ledger attached.** The cap does
+  not move in either direction here. CT-1 owns the recovery; the next
+  crossing, in whichever direction, attaches its ledger first.

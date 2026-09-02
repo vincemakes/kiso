@@ -12,11 +12,12 @@
  * model cannot call a tool that is not in its registry — no prompt can
  * achieve that guarantee.
  *
- * 0.1.26 (MCP lazy connection): `registerLive()` adds a LIVE tool source — a
- * function returning the extension's current tools array. The array grows
- * when the extension's background connections settle (the MCP bridge
- * registers its servers' tools post-connect); the registry consults the
- * live sources on every lookup. The registered map wins a name collision
+ * `registerLive()` adds a LIVE tool source — a function returning an
+ * extension's CURRENT tools array. Any extension whose tool table settles
+ * after load is such a source (the runtime registers every extension's
+ * table this way — agent.ts; a bridge that connects in the background was
+ * the first to need it, 0.1.26); the registry consults the live sources
+ * on every lookup. The registered map wins a name collision
  * (the agent's built-ins are authoritative); the collision check that
  * would otherwise fire at registration time cannot run against a live,
  * still-growing source.

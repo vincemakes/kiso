@@ -81,9 +81,11 @@ export interface KisoExtension {
 	 */
 	readonly systemPrompt?: { readonly append: string };
 	/**
-	 * 0.1.26 (MCP lazy connection): an optional LIVE flag — the CLI's banner renders
-	 * "name (connecting…)" while it is true. Soft surface: absent = no
-	 * marker (the default).
+	 * An optional readiness datum: true while the extension's tool table is
+	 * still settling (its live source — registerLive — may still grow).
+	 * The kernel does not consult it; surfaces may render it (the CLI
+	 * banner does). Soft surface: absent = settled (the default). Under
+	 * review in ADR-0043 Amendment 11's ledger.
 	 */
 	readonly connecting?: boolean;
 	/**
