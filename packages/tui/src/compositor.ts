@@ -3037,6 +3037,16 @@ export class Body {
 
 	#space(i: number, prev: readonly string[] | null, rows: string[]): string[] {
 		if (i > 0 && this.#cells[i]?.kind === "md" && this.#cells[i - 1]?.kind === "md") return rows;
+		// R7a, extended to the SETTLED side (R9 P2 / D4). R7a made the LIVE
+		// block claim the spacing its fold will take, so a settle changed a
+		// row's content and not its position. That held while a settled
+		// tool cell was one row; D4 makes it five, and `bodySpacing` gives a
+		// blank for a multi-row cell — so the blank appeared at the settle
+		// and pushed the head row down by one, which is the exact defect
+		// R7a closed. A tool cell is spaced by the ONE-ROW stand-in on both
+		// sides now: the fold is what every form of this cell is spaced
+		// against, live, settled and folded alike.
+		if (this.#cells[i]?.kind === "tool") return [...bodySpacing(this.#lastDrawn(i, prev), ["x"]).slice(0, -1), ...rows];
 		return bodySpacing(this.#lastDrawn(i, prev), rows);
 	}
 

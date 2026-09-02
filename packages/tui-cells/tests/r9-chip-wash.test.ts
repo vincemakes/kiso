@@ -1,29 +1,30 @@
 /**
- * R9 P1 + Q3 — the human's words take the WASH, and fold by WORD.
+ * The user chip's SURFACE, and its fold.
  *
- * P1 is a bug fix against design.md §7.9, not a new rule. §1.6 has always
- * said the wash means verbatim — "the human's own words, and inline
- * code" — and §7.9 has always said the chip is "full width, washed".
- * Inline code took the wash at DC-3; the chip never did. It still drew
- * with SGR 7 on EVERY ground, which on a light terminal is a full-width
- * black band with white text, on a dark one a white band, and either way
- * the heaviest thing on a screen that has one per turn. Per §11 a rule
- * the code contradicts is a bug in one of them: here the design is right
- * and the code is the stale side.
+ * R9 P1 (0.21.0) moved the chip onto the wash, reading §1.6's
+ * "verbatim" as one surface shared by the human's words and the
+ * machine's. The owner reversed it one release later and split §1.6
+ * instead: reverse video is THE HUMAN'S surface, the wash is the
+ * MACHINE'S verbatim one (inline code, tool output).
  *
- * The reason this is safe to change is the LADDER (§3, ground.ts): with
- * no ground established `wash` IS reverse video — rung 4, correct on any
- * ground — so the unknown-ground chip is byte-identical to what shipped.
- * That identity is asserted below rather than assumed, because it is the
- * whole argument for why every existing reverse-video pin still holds.
+ * The argument for the reversal is contrast, and it is structural
+ * rather than a matter of taste. Reverse video INVERTS whatever the
+ * terminal is, so the human's own words carry the same weight on a
+ * light terminal, a dark one, and one whose ground was never
+ * established — one form, no ladder, nothing to under-read. The wash
+ * cannot promise that: it is a chosen background on the two known
+ * grounds and degrades to reverse video on the third (§3 rung 4), so a
+ * chip on the wash was really two different weights wearing one name.
  *
- * Q3 is the second half of the same component (R12 §1). The chip folded
- * by CHARACTER, defended as lossless. That defence does not survive CJK,
- * which has no spaces to lose, and every other prose surface in the
- * product already folds by word — ErrorLine took `foldWords` at VD-10.
- * A word longer than the width still hard-breaks, because an overflowing
- * row breaks invariant ① and a word that cannot fit has to break
- * somewhere.
+ * These are the cases R9 P1 shipped, re-derived against the contract
+ * that replaced it. The file keeps its name because its subject is
+ * "which surface does the chip take" — that is the question, and the
+ * answer is what moved.
+ *
+ * Q3 is untouched by the reversal and is still asserted below: the chip
+ * folds by WORD. The character fold was defended as lossless, which is
+ * not a property CJK has, and every other prose surface already folds
+ * by word (ErrorLine, VD-10).
  */
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -44,8 +45,8 @@ const chip = (text: string, W = 56): string[] =>
 	cellComponent({ kind: "user", text, done: true, turn: 0 } as BodyCell).render(W, CTX);
 const plain = (row: string): string => row.replace(/\x1b\[[0-9;]*m/g, "");
 
-describe("R9 P1 — the chip is washed, and the ladder still degrades", () => {
-	it("with NO ground it is byte-identical to the reverse-video chip that shipped", () => {
+describe("the chip is REVERSE VIDEO, and the same on every ground", () => {
+	it("unknown ground: SGR 7, closed with SGR 27", () => {
 		setGround("unknown");
 		const rows = chip("look around");
 		expect(rows).toHaveLength(1);
@@ -53,20 +54,23 @@ describe("R9 P1 — the chip is washed, and the ladder still degrades", () => {
 		expect(rows[0]!.endsWith(" \x1b[27m")).toBe(true);
 	});
 
-	it("on a LIGHT ground it is the wash — a background, closed by 49, never SGR 7", () => {
-		setGround("light");
-		const rows = chip("look around");
-		expect(rows[0]!.startsWith("\x1b[48;5;255m ")).toBe(true);
-		expect(rows[0]!.endsWith(" \x1b[49m")).toBe(true);
-		expect(rows[0]).not.toContain("\x1b[7m");
+	it("light and dark grounds: the SAME bytes — the chip has no ladder", () => {
+		setGround("unknown");
+		const neutral = chip("look around");
+		for (const g of ["light", "dark"] as const) {
+			setGround(g);
+			expect(chip("look around"), `ground=${g}`).toEqual(neutral);
+		}
 	});
 
-	it("on a DARK ground it is the wash too", () => {
-		setGround("dark");
-		const rows = chip("look around");
-		expect(rows[0]!.startsWith("\x1b[48;5;236m ")).toBe(true);
-		expect(rows[0]!.endsWith(" \x1b[49m")).toBe(true);
-		expect(rows[0]).not.toContain("\x1b[7m");
+	it("never takes the wash on ANY ground — that surface is the machine's now (§1.6)", () => {
+		for (const g of ["unknown", "light", "dark"] as const) {
+			setGround(g);
+			const joined = chip("look around\nand again").join("");
+			expect(joined, `ground=${g}`).not.toContain("\x1b[48;5;255m");
+			expect(joined, `ground=${g}`).not.toContain("\x1b[48;5;236m");
+			expect(joined, `ground=${g}`).not.toContain("\x1b[49m");
+		}
 	});
 
 	it("spans the full width on every ground — §7.9 pads by DISPLAY width", () => {
@@ -85,7 +89,7 @@ describe("R9 P1 — the chip is washed, and the ladder still degrades", () => {
 		const rows = chip(Array.from({ length: 40 }, (_, i) => `line ${i}`).join("\n"));
 		const notice = rows.at(-1)!;
 		expect(plain(notice)).toContain("sent in full");
-		expect(notice).not.toContain("\x1b[48;5;255m");
+		expect(notice).not.toContain("\x1b[7m");
 	});
 });
 

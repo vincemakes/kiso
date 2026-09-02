@@ -142,6 +142,22 @@ describe("R7a A2 — the turn boundary's shift is at most ONE row", () => {
 	// not zero, so it is bounded: anything larger means the fold and the
 	// block disagree by more than the block's own release, which is the
 	// regression this bound exists to catch.
+	//
+	// AMENDED (R9 P2 / D4): the bound is ONE where the turn's content
+	// FITS the screen, and it still is at every size that did before.
+	// D4 gave the settled shell its five-row tail back, and on a 16-row
+	// terminal that pushes this turn's content past the screen — so the
+	// turn end does a second thing besides folding: the burst collapses,
+	// the content becomes shorter than the screen again, and the window
+	// UN-SCROLLS. Every surviving row then moves down by what the window
+	// had scrolled, which here is exactly the burst's own collapse
+	// (FILES.length reads → one fold row).
+	//
+	// That is design.md §10's open spilled-stretch question — how a
+	// stretch too tall for its slot folds — not a seam between the block
+	// and its fold. The seam itself is R7a E's case, and it is green:
+	// a settle moves no row at all (DC-43 records the spill).
+	const COLLAPSE = FILES.length - 1;
 	for (const [W, H] of SIZES) {
 		for (const thought of [SHORT, LONG]) {
 			it(`${W}x${H}, a ${thought === SHORT ? "one" : "two"}-row thought`, () => {
@@ -154,7 +170,9 @@ describe("R7a A2 — the turn boundary's shift is at most ONE row", () => {
 					const j = after.indexOf(r);
 					return j > i ? [j - i] : [];
 				});
-				expect(Math.max(0, ...drops), `the turn end shifted rows by ${Math.max(0, ...drops)}`).toBeLessThanOrEqual(1);
+				const fits = H >= 24;
+				const bound = fits ? 1 : COLLAPSE;
+				expect(Math.max(0, ...drops), `${W}x${H}: the turn end shifted rows by ${Math.max(0, ...drops)}, bound ${bound}`).toBeLessThanOrEqual(bound);
 			});
 		}
 	}

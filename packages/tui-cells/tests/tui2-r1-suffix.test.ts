@@ -78,7 +78,12 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		expect(rows).toHaveLength(1);
 	});
 
-	it("a shell whose settled tail is CUT names the key too — the count is the full output", () => {
+	// DECLARED REVERSAL (R9 P2 / D4): a settled shell has its tail back, so
+	// the key is named by the SLAB'S NOTE ROW rather than by a head-row
+	// suffix. TUI2-R1's rule is unchanged and is what forces the move —
+	// two affordances for one cell is exactly what it forbids, and the
+	// note row is the one that sits where the content stops.
+	it("a shell whose settled tail is CUT names the key on its NOTE row, not on the head", () => {
 		setTTY(false);
 		const rows = render(
 			toolCell({
@@ -88,16 +93,18 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 				resultText: Array.from({ length: 22 }, (_, i) => `out ${i + 1}`).join("\n"),
 			}),
 		);
-		expect(rows[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+o expands");
+		expect(rows[0]).toBe("  shell npm test");
+		expect(rows.map((r) => r.trim().replace(/^└ /, ""))).toContain("… 17 earlier lines · ctrl+o expands");
+		expect((rows.join("\n").match(/ctrl\+o/g) ?? []).length, "exactly one affordance for the cell").toBe(1);
+		expect(rows.at(-1)).toBe("    exit 0 · 22 lines · 2.4s");
 	});
 
-	// MOVED (R1.5 slice ④, the settled-shell-body class — DECLARED THIS
-	// ROUND): the premise "the shell whose whole tail is already on
-	// screen" no longer exists. VD-5 collapses a settled shell to its head
-	// row, so a one-line output is hidden exactly like every other settled
-	// call's, and the rule the case really pins — nothing hidden, no
-	// suffix — is now carried by the empty result.
-	it("a cell that hides NOTHING carries NO suffix — the empty result", () => {
+	// MOVED AGAIN (R9 P2 / D4): the premise "the shell whose whole tail is
+	// already on screen" is BACK, because the tail is. The rule the case
+	// pins is unchanged — nothing hidden, no suffix — and it now has two
+	// witnesses: the empty result, and a shell whose whole output fits
+	// inside the cap and therefore has no note either.
+	it("a cell that hides NOTHING carries NO suffix — the empty result, and a whole tail", () => {
 		setTTY(false);
 		const rows = render(
 			toolCell({
@@ -111,34 +118,43 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		expect(rows.join("\n")).not.toContain("ctrl+o");
 		// an empty result hides nothing for any tool
 		expect(render(toolCell({ resultText: "" }))[0]).toBe("  read  src/parser.ts (0 lines, 2.4s)");
-		// …and a shell WITH output now says so, where it used to stay silent
-		expect(render(toolCell({ name: "shell", input: "echo hi", inputFull: JSON.stringify({ command: "echo hi" }), resultText: "hi" }))[0]).toBe(
-			"  shell echo hi (exit 0, 2.4s) · 1 line · ctrl+o expands",
-		);
+		// …and a shell whose ONE line is on screen hides nothing either: it
+		// is a slab with no note, so nothing anywhere names the key.
+		const whole = render(toolCell({ name: "shell", input: "echo hi", inputFull: JSON.stringify({ command: "echo hi" }), resultText: "hi" }));
+		expect(whole.map((r) => r.trim().replace(/^└ /, ""))).toEqual(["shell echo hi", "hi", "exit 0 · 1 line · 2.4s"]);
+		expect(whole.join("\n")).not.toContain("ctrl+o");
 	});
 
-	it("the suffix takes the width that is LEFT — full, then terse, then absent (the prototype's three forms)", () => {
+	// MOVED (R9 P2 / D4): the fixture is a READ now, not a shell. The rule
+	// this case pins — the suffix degrades full → terse → key, and never
+	// pushes a row past the width — is unchanged and applies wherever a
+	// head row still CARRIES a suffix. A settled shell no longer does: its
+	// note row names the key instead, so it is the wrong witness for a
+	// head-row rule, not a counter-example to it.
+	it("the suffix takes the width that is LEFT — full, then terse, then key (the prototype's three forms)", () => {
 		setTTY(false);
 		const cell = toolCell({
-			name: "shell",
-			input: "npm test",
-			inputFull: JSON.stringify({ command: "npm test" }),
+			name: "read_file",
+			input: "src/parser.ts",
+			inputFull: JSON.stringify({ path: "src/parser.ts" }),
 			resultText: Array.from({ length: 22 }, (_, i) => `out ${i + 1}`).join("\n"),
 		});
-		expect(render(cell, 80)[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+o expands");
-		expect(render(cell, 54)[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+o");
-		expect(render(cell, 44)[0]).toBe("  shell npm test (exit 0, 2.4s) · ctrl+o");
-		// MOVED (R1.5 slice ⑤ then pin 4, the R1 tool-cell suffix class):
-		// there is no "absent" affordance tier any more — the affordance is
-		// the semantics, so the shortest tier is reserved and the head gives
-		// up its cells instead (VD-6). Pin 4 then fixed WHICH cells: the
-		// parens' result core renders WHOLE or not at all, never cut open,
-		// so at 32 the group drops entirely rather than becoming the
-		// half-sentence `(exit…`. The three-tier degradation above is
-		// unchanged.
-		expect(render(cell, 32)[0]).toBe("  shell npm test · ctrl+o");
+		const tierAt = (W: number): string => {
+			const row = render(cell, W)[0]!;
+			if (row.includes("· 22 lines · ctrl+o expands")) return "full";
+			if (row.includes("· 22 lines · ctrl+o")) return "terse";
+			if (row.includes("· ctrl+o")) return "key";
+			return "absent";
+		};
+		expect(tierAt(80)).toBe("full");
+		expect(tierAt(48)).toBe("terse");
+		expect(tierAt(36)).toBe("key");
+		// TUI2-R1.5 ⑤: the shortest tier is RESERVED — the affordance is the
+		// semantics, so it never degrades to nothing while there is a cell
+		// hiding something.
+		expect(tierAt(24)).toBe("key");
 		// invariant ①: the suffix NEVER pushes a row past the width
-		for (const W of [20, 32, 40, 44, 54, 60, 80, 120]) {
+		for (const W of [20, 24, 32, 36, 44, 48, 60, 80, 120]) {
 			for (const row of render(cell, W)) expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
 		}
 	});
@@ -177,6 +193,11 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		).not.toContain("expands");
 	});
 
+	// MOVED (R9 P2 / D4): an errored shell is a SLAB too — the head row
+	// names the call and the outcome row carries `exit 1` in the failure
+	// colour (R9: no tint on the object, only on the fact). The rule the
+	// case pins is untouched: ONE affordance for the cell, and it is the
+	// error body's own cut row.
 	it("an errored cell keeps its own cut row and gains no second affordance", () => {
 		setTTY(false);
 		const rows = render(
@@ -188,10 +209,12 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 				resultText: `exit 1: boom\n${Array.from({ length: 9 }, (_, i) => `err ${i}`).join("\n")}`,
 			}),
 		);
-		expect(rows[0]).toBe("  shell npm test (exit 1, 2.4s)");
+		expect(rows[0]).toBe("  shell npm test");
 		expect(rows[0]).not.toContain("ctrl+o");
+		expect(rows.at(-1), "the outcome closes the block").toBe("    exit 1 · 10 lines · 2.4s");
 		// the error body's own renderer cut is the affordance there, unchanged
-		expect(rows[rows.length - 1]).toContain("more · ctrl+o");
+		expect((rows.join("\n").match(/ctrl\+o/g) ?? []).length, "one affordance for the cell").toBe(1);
+		expect(rows.join("\n")).toContain("more · ctrl+o");
 	});
 
 	/**

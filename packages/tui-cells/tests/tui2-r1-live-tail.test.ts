@@ -137,7 +137,12 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		expect(rows).toEqual(["● read  big.txt · 12s", "  └ waiting for output", "", ""]);
 	});
 
-	it("COMPLETION collapses to one line — the tail is gone, A's suffix names what it hid", () => {
+	// DECLARED REVERSAL (R9 P2 / D4): completion no longer collapses. The
+	// property this case exists for is the one it still asserts — the LIVE
+	// tail's footer is gone once the call settles, because that footer
+	// names a state ("waiting for output") that has ended. What replaces
+	// the live window is the settled slab, not a single row.
+	it("COMPLETION replaces the live tail with the settled slab — the live footer is gone", () => {
 		setTTY(false);
 		const settled = render(
 			running({
@@ -147,7 +152,9 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 				resultText: Array.from({ length: 22 }, (_, i) => `out ${i}`).join("\n"),
 			}),
 		);
-		expect(settled[0]).toBe("  shell npm test (exit 0, 18.2s) · 22 lines · ctrl+o expands");
+		expect(settled[0]).toBe("  shell npm test");
+		expect(settled.at(-1)).toBe("    exit 0 · 22 lines · 18.2s");
+		expect(settled.map((r) => r.trim().replace(/^└ /, ""))).toContain("… 17 earlier lines · ctrl+o expands");
 		expect(settled.join("\n")).not.toContain("live tail");
 	});
 });

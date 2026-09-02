@@ -12,12 +12,12 @@
  * (b) The live tail padded SHORT output upward with blank `│ ` rows, so
  *     a command's first line arrived under an empty gutter row.
  *
- * (c) VD-5: a completed shell kept its last rows plus
- *     `└ +N earlier rows · ctrl+o` forever — six rows per call, for the
- *     whole session. The approved R1 prototype settles it to ONE line.
+ * (c) VD-5 collapsed a completed shell to ONE line. R9 P2 / D4 reversed
+ *     that once the slab gave those rows an edge — see the declared
+ *     reversal below. (a) and (b) stand exactly as written.
  *
  * Red on base: (a) the running header contains `{"command"`; (b) a
- * one-line tail's first row is blank; (c) the settled card is 6 rows.
+ * one-line tail's first row is blank.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -123,10 +123,30 @@ describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)",
 	});
 });
 
-describe("TUI2-R1.5 ④(c) — the completed shell collapses to ONE line (VD-5)", () => {
-	/** A SHORT command, so the row has room for the full suffix grammar —
-	 *  the tiered degradation on a wide command is R1's own design and has
-	 *  its own case below. */
+/**
+ * DECLARED REVERSAL (R9 P2 / D4, owner-ruled 2026-09-02) — A SETTLED
+ * SHELL KEEPS ITS TAIL.
+ *
+ * VD-5 collapsed it to one row, and the reason was sound at the time:
+ * six ungrounded rows per call meant three shells owned a screen. What
+ * changed is not the arithmetic but the CONTAINER. The slab is a
+ * surface that says where a call begins and ends, so its rows read as
+ * one object instead of as five loose lines, and the cost VD-5 was
+ * avoiding is the cost of rows with no edge.
+ *
+ * What VD-5 decided and this does NOT reverse: the cap is still five
+ * rows (CAP_SHELL_SETTLED), and the tail is still the END of the output
+ * rather than its head, because a command's conclusion is at the
+ * bottom. Only the emptiness is reversed.
+ *
+ * The head-row suffix goes with it. The slab's note row names the key
+ * where there is more ("… N earlier lines · ctrl+o expands"), so a
+ * suffix on the head row as well would be TUI2-R1's two affordances for
+ * one cell — the thing that rule exists to forbid.
+ */
+describe("R9 P2 / D4 — the settled shell keeps its tail (reversing VD-5)", () => {
+	/** A SHORT command, so the row has room for the full grammar — the
+	 *  tiered degradation on a wide command is R1's own design. */
 	const done = (over: Partial<Extract<BodyCell, { kind: "tool" }>> = {}) =>
 		shellCell({
 			command: "npm test",
@@ -137,23 +157,45 @@ describe("TUI2-R1.5 ④(c) — the completed shell collapses to ONE line (VD-5)"
 			...over,
 		} as Partial<Extract<BodyCell, { kind: "tool" }>>);
 
-	it("the settled card is ONE row: the head plus the suffix", () => {
+	it("the head row names the call; the outcome closes the block on its own row", () => {
 		const rows = render(done());
-		expect(rows).toHaveLength(1);
-		expect(rows[0]).toBe("  shell npm test (exit 0, 6.0s) · 7 lines · ctrl+o expands");
-		// the tail rows and the "earlier rows" cut are gone
-		expect(rows[0]).not.toContain("earlier rows");
+		expect(rows[0]).toBe("  shell npm test");
+		expect(rows.at(-1)).toBe("    exit 0 · 7 lines · 6.0s");
 	});
 
-	it("a WIDE command still collapses to one row — the suffix degrades, the tail never returns", () => {
-		const rows = render(shellCell({ state: "done", done: true, doneAt: 14_000, resultText: "a\nb\nc\nd\ne\nf\ng" }));
-		expect(rows).toHaveLength(1);
-		expect(rows[0]).not.toContain("earlier rows");
+	it("the tail is the LAST five rows, with a note above saying what was cut", () => {
+		// these render with the palette OFF, so the block is unpainted and
+		// R8a's corner still opens it — the corner is the surface's
+		// alternative, not part of the note.
+		const rows = render(done()).map((r) => r.trim().replace(/^└ /, ""));
+		expect(rows).toContain("… 2 earlier lines · ctrl+o expands");
+		expect(rows.slice(2, 7)).toEqual(["step 3", "step 4", "step 5", "step 6", "build done"]);
 	});
 
-	it("the suffix states the line count EXACTLY ONCE", () => {
-		const row = render(done())[0]!;
-		expect(row.match(/\d+ lines/g) ?? []).toHaveLength(1);
+	it("an output inside the cap is whole, and gets no note", () => {
+		const rows = render(done({ resultText: "one\ntwo\nthree" })).map((r) => r.trim().replace(/^└ /, ""));
+		expect(rows.join("\n")).not.toContain("earlier lines");
+		expect(rows.filter((r) => r !== "")).toEqual(["shell npm test", "one", "two", "three", "exit 0 · 3 lines · 6.0s"]);
+	});
+
+	it("the line count is stated EXACTLY ONCE, and it is on the outcome row", () => {
+		const rows = render(done());
+		expect(rows.join("\n").match(/\d+ lines/g) ?? []).toHaveLength(1);
+		expect(rows[0]).not.toContain("lines");
+	});
+
+	it("no SECOND affordance: the note names the key, the head row does not", () => {
+		const rows = render(done());
+		expect((rows.join("\n").match(/ctrl\+o/g) ?? []).length).toBe(1);
+		expect(rows[0]).not.toContain("ctrl+o");
+	});
+
+	it("a WIDE command still fits — invariant ① at every width", () => {
+		for (const W of [24, 40, 60, 80, 120]) {
+			for (const row of render(shellCell({ state: "done", done: true, doneAt: 14_000, resultText: "a\nb\nc\nd\ne\nf\ng" }), W)) {
+				expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
+			}
+		}
 	});
 
 	it("ctrl+o EXPANDS it — the whole block plus the way back", () => {
@@ -164,18 +206,13 @@ describe("TUI2-R1.5 ④(c) — the completed shell collapses to ONE line (VD-5)"
 		expect(rows[rows.length - 1]).toContain("ctrl+o collapses");
 	});
 
-	it("a shell that produced NO output hides nothing and carries no suffix", () => {
+	it("a shell that produced NO output is still ONE row — nothing to close", () => {
 		const rows = render(done({ resultText: "" }));
 		expect(rows).toHaveLength(1);
 		expect(rows[0]).not.toContain("ctrl+o");
 	});
 
-	it("a SHORT shell now says so too — four hidden lines used to claim nothing", () => {
-		const row = render(done({ resultText: "one\ntwo\nthree" }))[0]!;
-		expect(row).toContain("· 3 lines · ctrl+o expands");
-	});
-
-	it("a FAILED shell still shows its error body — the collapse never hides a failure", () => {
+	it("a FAILED shell still shows its error body — the collapse never hid a failure, and neither does this", () => {
 		const rows = render(done({ isError: true, resultText: "exit 1\nls: /nonexistent: No such file or directory" }));
 		expect(rows.length).toBeGreaterThan(1);
 		expect(rows.join("\n")).toContain("No such file or directory");

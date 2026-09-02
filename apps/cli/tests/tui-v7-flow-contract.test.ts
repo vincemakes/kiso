@@ -409,6 +409,13 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// the narrow 50-col geometry (the caps hold there too)
 		const grid = frames[frames.length - 1]!.grid;
 		const body = shellBody(grid);
-		expect(body.length).toBeLessThanOrEqual(5);
+		// AMENDED (R9 P2 / D4): the bound is DERIVED, not observed — the
+		// settled shell's block is CAP_SHELL_SETTLED output rows plus the
+		// slab's two metadata rows (the note that says what was cut, and
+		// the outcome that closes it). VD-5's bound of five was the cap
+		// alone, when the note was spent out of it and there was no
+		// outcome row.
+		const CAP_SHELL_SETTLED = 5;
+		expect(body.length).toBeLessThanOrEqual(CAP_SHELL_SETTLED + 2);
 	}, 60_000);
 });

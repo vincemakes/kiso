@@ -145,7 +145,11 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 				["plan ready", "/mode default\r"], // the way-forward row → the only exit
 				["▸ default · /mode to switch", "go\r"], // turn 2 executes normally
 				["needs approval", "y\r"], // the ask RESTORED under default — the rule line's dim run
-				["shell echo hi (exit 0", "exit\r"], // the shell ran (A4: the target rides the settled row's head)
+				// NEEDLE MOVED (R9 P2 / D4): the head row no longer carries the
+				// result, so the old needle never matched and the scenario spent
+				// its whole 60s wall — a driver whose wait cannot match reports
+				// as a product timeout. The outcome ROW is the moment now.
+				["exit 0 · 1 line", "exit\r"], // the shell ran and settled
 			],
 			workdir,
 		);
@@ -190,7 +194,12 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		expect(clean).toContain("shell needs approval");
 		// MOVED (R1.5 slice ⑤, the approval-attribution class): the human
 		// answered this ask, and that is what the row records.
-		expect(clean).toMatch(/  shell echo hi \(exit 0 · approved, \d+\.\ds\)/); // A4: the target rides the settled row's head
+		// MOVED (R9 P2 / D4): the settled shell is a slab. The head row
+		// carries the target (A4's fact, unchanged); the outcome row
+		// carries the result, the timing and the attribution, in pin 4's
+		// order.
+		expect(clean).toContain("  shell echo hi");
+		expect(clean).toMatch(/ {4}exit 0 · 1 line · \d+\.\ds · approved/);
 		// R3g: the recap is the turn's COST now — its ordinary shape is
 		// `✦ took Ns · …`, and what this case actually claims is that
 		// turn 2 ended in that ordinary row rather than a second

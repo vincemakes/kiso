@@ -222,7 +222,13 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// verdict is what the row records. `approved by mode:*` was the
 		// runtime's backfill for "no policy expressed an opinion", read by
 		// a human as an attribution (VD-11).
-		expect(clean).toMatch(/\(exit 0, \d+\.\ds\) · 8 lines · ctrl\+o expands/);
+		// MOVED (R9 P2 / D4): the settled shell is a slab, so the count and
+		// the timing ride the OUTCOME row and the key rides the note row.
+		// The fact this line pins — the row states the count exactly once,
+		// with the key — is unchanged; both are simply on the rows that
+		// carry them now.
+		expect(clean).toMatch(/ {4}exit 0 · 8 lines · \d+\.\ds/);
+		expect(clean).toMatch(/… \d+ earlier lines? · ctrl\+o expands/);
 
 		// THE DONE-WHEN: split the stream at the block's first byte — the
 		// pre-key part is the state before the key. The emulator replays

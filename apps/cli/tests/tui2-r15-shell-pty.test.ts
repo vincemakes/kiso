@@ -45,8 +45,13 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 			],
 			cwd: ws,
 		});
-		// the frame while the command was still running
-		const grid = screenAt(raw, "step 2 of six");
+		// the frame while the command was still running.
+		// NEEDLE MOVED (R9 P2 / D4): "step 2 of six" used to exist only in
+		// the live tail, because a settled shell showed no output at all.
+		// It now appears in the settled slab too, so the old needle picks
+		// the wrong moment — the live-tail FOOTER is the one string that
+		// exists only while the call is running.
+		const grid = screenAt(raw, "live tail · esc stop");
 		const joined = grid.join("\n");
 		expect(joined).not.toContain('{"command"');
 		expect(joined).toMatch(/shell sh steps\.sh · \d+s/);
@@ -59,7 +64,7 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		expect(joined).toContain("live tail · esc stop · alt+⏎ redirect");
 	}, 240_000);
 
-	it("SETTLED: the whole shell is ONE row — the output is behind the key", () => {
+	it("SETTLED: the shell is a SLAB — its tail is on screen and the note names the key", () => {
 		const ws = workspace();
 		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: fauxScript(shellTurns()), KISO_MODE: "bypass" });
 		const raw = ptyRun(["--mode", "bypass", "r15-sh-settle"], env as NodeJS.ProcessEnv, {
@@ -76,10 +81,15 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		const head = grid.findIndex((l) => /^ {2}shell /.test(l));
 		expect(head, "no settled shell row on the screen").toBeGreaterThan(0);
 		expect(grid[head]).not.toContain("\u2713"); // the tick is retired, not moved
-		expect(grid[head]).toContain("ctrl+o expands");
+		// DECLARED REVERSAL (R9 P2 / D4): the head row names the command
+		// and nothing else; the KEY moved to the slab's note row, which is
+		// where the content stops. One affordance for the cell, still.
+		expect(grid.join("\n")).toContain("ctrl+o expands");
+		expect(grid[head]).not.toContain("ctrl+o");
 		// nothing of the output is on the screen, and no cut row survives
 		expect(grid[head + 1] ?? "").not.toMatch(/^\u2502 step/);
-		expect(grid.join("")).not.toContain("earlier rows");
+		expect(grid.join("")).not.toContain("earlier rows"); // the pre-slab wording
+		expect(grid.join("\n"), "the tail is back, inside the slab").toMatch(/step 6 of six/);
 		expect(grid.join("\n")).not.toMatch(/^\u2502 step \d of six/m);
 	}, 240_000);
 

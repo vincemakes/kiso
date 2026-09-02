@@ -514,7 +514,12 @@ describe("TUI v6 — the one compositor", () => {
 	// shell must never own more than a bounded number of rows — is now
 	// pinned at its limit: ONE row, at every width. The whole output is
 	// behind ctrl+o, and the head row says how much.
-	it("R1.5 ④: the settled shell owns exactly ONE row at every width — the tail is behind the key", () => {
+	// DECLARED REVERSAL (R9 P2 / D4): the settled shell keeps a five-row
+	// tail again, inside the slab. What the case still pins is the part
+	// that did not change: the block has NO gutter walls (R8a's indent
+	// carries the fact), the newest output is what survives, and the key
+	// is named exactly once.
+	it("R9 P2: the settled shell keeps its five-row tail at every width, and no gutter", () => {
 		const output = Array.from({ length: 30 }, (_, i) => `shell line ${String(i).padStart(2, "0")} ` + "x".repeat(52)).join("\n");
 		for (const W of [120, 60]) {
 			const { body, writes, tick } = makeBody({ W });
@@ -524,11 +529,13 @@ describe("TUI v6 — the one compositor", () => {
 			body.toolResult("c1", { content: output, isError: false });
 			tick();
 			const frame = writes.join("");
-			expect(frame, `W=${W}`).not.toContain("earlier rows");
 			expect(matchBodyWalls(frame), `W=${W}`).toHaveLength(0);
-			// the head row names what it is holding, and the key that shows it
+			// the note row names what was cut, and the key that shows it
+			expect(frame, `W=${W}`).toContain("earlier line");
 			expect(frame, `W=${W}`).toContain("ctrl+o");
-			expect(frame, `W=${W}`).not.toContain("shell line 29");
+			// the TAIL is what survives: the newest rows, not the oldest
+			expect(frame, `W=${W}`).toContain("shell line 29");
+			expect(frame, `W=${W}`).not.toContain("shell line 00");
 		}
 	});
 

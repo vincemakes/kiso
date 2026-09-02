@@ -65,47 +65,53 @@ function shell(command: string, over: Partial<Extract<BodyCell, { kind: "tool" }
 	} as BodyCell;
 }
 
-const row = (cell: BodyCell, W: number): string => cellComponent(cell).render(W, CTX)[0]!;
+const rows = (cell: BodyCell, W: number): string[] => cellComponent(cell).render(W, CTX);
+const row = (cell: BodyCell, W: number): string => rows(cell, W)[0]!;
+/** MOVED (R9 P2 / D4): a settled shell with output is a SLAB, so the
+ *  paren core that used to ride its head row now rides the OUTCOME row,
+ *  in the slab's own grammar (`exit 0 · 6 lines · 3.0s · approved`).
+ *  Pin 4's rule is unchanged and is what these cases still measure: the
+ *  parts give way in a pinned order — attribution first, then the count
+ *  — and the core is never cut open. The row it is measured on moved
+ *  because the fact moved. */
+const outcome = (cell: BodyCell, W: number): string => rows(cell, W).at(-1)!.trim();
 
 describe("TUI2-R1.5 pin 4 — the parens never break", () => {
-	it("the walkthrough's S1 row closes its parenthesis at 100 cols", () => {
-		const r = row(shell(S1), 100);
-		expect(r).not.toContain("approv…");
-		expect(r).toMatch(/\(exit 0, 3\.0s\)/);
-		expect(r).toContain("ctrl+o");
-		expect(visibleWidth(r)).toBeLessThanOrEqual(100);
+	it("the walkthrough's S1 block carries its whole core at 100 cols", () => {
+		expect(outcome(shell(S1), 100)).toBe("exit 0 · 6 lines · 3.0s · approved");
+		expect(row(shell(S1), 100)).not.toContain("approv…");
+		expect(rows(shell(S1), 100).join("\n")).toContain("ctrl+o");
+		for (const r of rows(shell(S1), 100)) expect(visibleWidth(r)).toBeLessThanOrEqual(100);
 	});
 
-	it("the walkthrough's S2 row keeps exit AND duration at 100 cols", () => {
-		const r = row(shell(S2), 100);
-		expect(r).toMatch(/\(exit 0, 3\.0s\)/);
-		expect(r).toContain("…"); // the COMMAND is what gave way
-		expect(r).toContain("ctrl+o");
-		expect(visibleWidth(r)).toBeLessThanOrEqual(100);
+	it("the walkthrough's S2 block keeps exit AND duration at 100 cols", () => {
+		expect(outcome(shell(S2), 100)).toContain("exit 0");
+		expect(outcome(shell(S2), 100)).toContain("3.0s");
+		expect(row(shell(S2), 100)).toContain("…"); // the COMMAND is what gave way
+		expect(rows(shell(S2), 100).join("\n")).toContain("ctrl+o");
+		for (const r of rows(shell(S2), 100)) expect(visibleWidth(r)).toBeLessThanOrEqual(100);
 	});
 
 	it("the ATTRIBUTION drops before the core is touched — the boundary width", () => {
 		// wide enough for the whole row: the verdict is there
-		expect(row(shell("echo hi"), 60)).toContain("· approved");
-		// squeezed: the verdict goes, the core stays whole
-		const tight = row(shell(S1), 56);
+		expect(outcome(shell("echo hi"), 60)).toContain("· approved");
+		// squeezed: the verdict goes, the core stays whole and uncut
+		const tight = outcome(shell(S1), 30);
 		expect(tight).not.toContain("approved");
-		expect(tight).toMatch(/\(exit 0, 3\.0s\)/);
-		expect(tight).toContain("ctrl+o");
+		expect(tight).toBe("exit 0 · 6 lines · 3.0s");
+		expect(tight).not.toContain("…");
 	});
 
-	it("EVERY width from 24 to 120: the parens are whole or absent, never cut open", () => {
+	it("EVERY width from 24 to 120: the core is whole or shorter, never cut open", () => {
 		for (const command of [S1, S2, "echo hi"]) {
 			for (let W = 24; W <= 120; W += 1) {
-				const r = row(shell(command), W);
-				expect(visibleWidth(r), `W=${W}`).toBeLessThanOrEqual(W);
-				const opens = (r.match(/\(/g) ?? []).length;
-				const closes = (r.match(/\)/g) ?? []).length;
-				expect(opens, `W=${W} unbalanced parens: ${r}`).toBe(closes);
-				// and when a paren group IS present it carries the whole core
-				// whole means: opens with the result, closes with the timing —
-				// the attribution rides between them only while there is room
-				if (opens > 0) expect(r, `W=${W}: ${r}`).toMatch(/\(exit 0(?: · approved)?, 3\.0s\)/);
+				const all = rows(shell(command), W);
+				for (const r of all) expect(visibleWidth(r), `W=${W}: ${r}`).toBeLessThanOrEqual(W);
+				// the outcome row is one of the pinned forms, entire — never a
+				// form with its tail sliced off (which is what the ellipsis
+				// would say)
+				const o = outcome(shell(command), W);
+				expect(o, `W=${W}: ${o}`).toMatch(/^exit 0(?: · \d+ lines?)?(?: · 3\.0s)?(?: · approved)?$/);
 			}
 		}
 	});
@@ -120,10 +126,21 @@ describe("TUI2-R1.5 pin 4 — the parens never break", () => {
 		}
 	});
 
-	it("the affordance survives every width that has a paren group at all", () => {
-		for (let W = 30; W <= 120; W += 1) {
-			const r = row(shell(S2), W);
-			expect(r, `W=${W}: ${r}`).toContain("ctrl+o");
+	// MOVED (R9 P2 / D4): the affordance is on the slab's NOTE row now, not
+	// on the head row — the head row of a shell carries the command and
+	// nothing else. The rule is the one TUI2-R1.5 ⑤ wrote and is unchanged:
+	// the key is the semantics, so it is the part that is RESERVED while
+	// every other part of the row gives way.
+	it("the affordance survives every width — the note row reserves the key", () => {
+		for (const command of [S1, S2]) {
+			for (let W = 24; W <= 120; W += 1) {
+				const all = rows(shell(command), W);
+				const note = all.map((r) => r.trim().replace(/^└ /, "")).find((r) => r.startsWith("…") || r === "· ctrl+o");
+				expect(note, `W=${W}: no note row`).toBeDefined();
+				expect(note, `W=${W}: ${note}`).toContain("ctrl+o");
+				// and it is never cut mid-key
+				expect(note, `W=${W}: ${note}`).not.toMatch(/ctrl\+o\S*…$/);
+			}
 		}
 	});
 });

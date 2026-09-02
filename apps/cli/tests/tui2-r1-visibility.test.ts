@@ -184,7 +184,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 });
 
 describe("TUI2-R1 T-V3 — the live tail on a real PTY", () => {
-	it("a long shell shows its output WHILE it runs, the tail moves, and the completed cell is one line again", () => {
+	it("a long shell shows its output WHILE it runs, the tail moves, and the completed cell settles into its slab", () => {
 		const ws = workspace();
 		// a SHORT command string on purpose: the settled head row must have
 		// room for A's suffix, and a 60-char command would spend it all.
@@ -206,15 +206,20 @@ describe("TUI2-R1 T-V3 — the live tail on a real PTY", () => {
 		expect(out).toMatch(/(?: {2}\u2514 | {4})step 1 of six/);
 		expect(out).toMatch(/(?: {2}\u2514 | {4})step 6 of six/);
 
-		// COMPLETION collapses: the settled row is one line with A's
-		// suffix, and the live-tail footer is not part of it.
+		// DECLARED REVERSAL (R9 P2 / D4, owner-ruled): completion does not
+		// collapse. The settled shell is a SLAB — the head row names the
+		// command, the outcome closes it, and the key is named by the note
+		// row when there is more. What this case still pins is the part
+		// that did not change: the live-tail footer is gone once the call
+		// settles, because it names a state that has ended.
 		// MOVED (R1.5 slice 5, the approval-attribution class — DECLARED
 		// THIS ROUND): a POLICY verdict is ambient and silent; a HUMAN
 		// verdict is what the row records. `approved by mode:*` was the
 		// runtime's backfill for "no policy expressed an opinion", read by
 		// a human as an attribution (VD-11).
-		expect(out).toContain("  shell sh steps.sh (exit 0, ");
-		expect(out).toContain(") · 6 lines · ctrl+o expands");
+		expect(out).toContain("  shell sh steps.sh");
+		expect(out).toMatch(/ {4}exit 0 · 6 lines · \d+\.\ds/);
+		expect(out).toMatch(/… 1 earlier line · ctrl\+o expands/);
 		const settledAt = out.lastIndexOf("  shell");
 		expect(settledAt).toBeGreaterThan(0);
 		expect(out.slice(settledAt)).not.toContain("live tail");

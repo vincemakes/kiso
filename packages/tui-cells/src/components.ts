@@ -34,6 +34,7 @@ import {
 	toolTarget,
 	kUnit,
 	palette,
+	currentGround,
 	type Palette,
 	type ResumeMeta,
 	type BannerMeta,
@@ -332,19 +333,22 @@ export function cellComponent(cell: BodyCell): Component {
  * The padding is by cells (charWidth is the width authority), so a CJK
  * row pads by width, never by chars, and the chip never overruns.
  *
- * R9 P1 — the surface is the WASH (§1.6, §7.9), closed with 49 rather
- * than SGR 0 so the chip composes with a surrounding span. It drew with
- * SGR 7 on every ground until now, which §7.9 never asked for: on a
- * light terminal that is a full-width black band, on a dark one a white
- * one, and every turn has exactly one. §11 settles which side was
- * stale — the design said washed, the code predated DC-3's ground-
- * resolved wash and was never moved onto it. The ladder makes the move
- * safe: with no ground `wash` IS reverse video (§3 rung 4), so the
- * unknown-ground chip is byte-identical to what shipped.
+ * THE SURFACE IS REVERSE VIDEO, on every ground (owner ruling
+ * 2026-09-02, reversing R9 P1 one release after it shipped).
  *
- * NEVER dim inside it, on either surface: §2.1 on a resolved wash, and
- * on rung 4 because reverse video inverts the CURRENT colours, so
- * dimmed text inverts into a dimmed block with no contrast.
+ * R9 P1 moved the chip onto the wash, reading §1.6's "verbatim" as one
+ * surface shared by the human's words and the machine's. §1.6 now
+ * splits the two, and the split is the reason: reverse video is THE
+ * HUMAN'S surface and it is full contrast by construction — it inverts
+ * whatever the terminal is, so it is the same weight on every ground
+ * and cannot be under-read. The wash is the MACHINE'S verbatim surface
+ * (inline code, tool output), where a lighter ground is right because
+ * those rows are read as content rather than as an utterance.
+ *
+ * SGR 7 closed with SGR 27 — never SGR 0, the chip composes with a
+ * surrounding span. NEVER dim inside it: reverse video inverts the
+ * CURRENT colours, so dimmed text inverts into a dimmed block with no
+ * contrast.
  */
 /**
  * REL-0152-D13 — how much of a turn the chip shows.
@@ -405,7 +409,7 @@ class UserMessage implements Component {
 		// row is two cells per character and pads by cells.
 		const inner = chipW;
 		for (const row of content) {
-			rows.push(`${p.wash} ${row}${" ".repeat(Math.max(0, inner - displayWidth(row)))} ${p.washEnd}`);
+			rows.push(`${p.rv} ${row}${" ".repeat(Math.max(0, inner - displayWidth(row)))} ${p.rvEnd}`);
 		}
 		if (!truncated) return rows;
 		// The notice is OUTSIDE the chip's reverse video, in the cut-row
@@ -424,8 +428,8 @@ class UserMessage implements Component {
 }
 
 /** W22: the pending-queue chips — queued user lines pre-render above
- *  the input row as the SAME UserMessage chip (undimmed: §2.1 forbids
- *  dim ON the wash, and on rung 4 reverse video would invert it into a
+ *  the input row as the SAME UserMessage chip (undimmed: reverse video
+ *  inverts the CURRENT colours, so a dim span would invert into a
  *  dimmed block), the dim `□` gutter marking the queued
  *  state (the gutter rides EVERY row — the gutterFold precedent: the
  *  left edge alone distinguishes the states). Each chip folds at W−3
@@ -858,10 +862,55 @@ class ToolExecution implements Component {
 			// metadata, in words, which is also the only form that survives
 			// a pipe with the colour stripped. A failure keeps its colour
 			// AND its words — see settledMeta.
+			const parts = toolBlockParts(c, W);
+			const body = parts.rows;
+			if (body.length > 0 && c.expanded) {
+				// An EXPANDED block is already showing everything, and its own
+				// footer ("ctrl+o collapses") is what closes it. Giving it an
+				// outcome row as well would put two closing rows on one block
+				// and move the metadata off a head row every width gate pins.
+				// It takes the SURFACE and nothing else.
+				const head = c.isError ? `  ${p.red}${text}${p.reset}` : `  ${text}`;
+				return slabBlock(appendSuffix(head, expandSuffix(hidden, W - visibleWidth(head))), body, null, W);
+			}
+			if (parts.output > 0) {
+				// R9 P2 — THE SLAB'S SHAPE. A call with rows on screen is one
+				// object: the head row names it, the output sits inside, and
+				// the outcome CLOSES it on its own line (§7.5's words, moved
+				// off the head row because the head row is no longer the only
+				// row). D6: the target is bold there — the head row's job is
+				// to say WHAT was run, and the metadata has its own row now.
+				//
+				// A failure takes NO tint on the head row (R9): only the
+				// outcome word is coloured, which is §1.2 exactly — the
+				// colour rides the fact, not the object that carries it.
+				const target = escapeTerminal(toolTargetOf(c));
+				const head = cutLine(`  ${verbCol} ${p.bold}${target}${p.reset}`, W);
+				// §7.5's outcome, in words, on its own row: what happened, how
+				// much of it there was, how long it took. The count is stated
+				// exactly ONCE (VD-6) — a meta that already counts lines does
+				// not get a second count beside it.
+				const n = countLines(c.resultText);
+				const counted = n > 0 && !/^\d+( of \d+)? lines?$/.test(rawMeta) ? `${n} line${n === 1 ? "" : "s"}` : "";
+				// pin 4's order, on the row that carries the core now: the
+				// ATTRIBUTION drops first, then the count, and the core —
+				// what happened and how long it took — is never cut open.
+				const join = (...xs: string[]): string => xs.filter((x) => x !== "").join(" · ");
+				const attr = approvedBy.replace(/^ · /, "");
+				const words = pickTier(
+					[join(meta, counted, `${elapsed}s`, attr), join(meta, counted, `${elapsed}s`), join(meta, `${elapsed}s`), meta],
+					W - visibleWidth(NOTE_ROW),
+				);
+				const outcome = c.isError ? `${p.red}${words}${p.reset}` : words;
+				return slabBlock(head, body, outcome, W);
+			}
+			// No body: nothing to close, so the outcome stays on the head row
+			// in the form every width gate already pins. A read is a ONE-ROW
+			// slab — the surface, without the shape a body would give it.
 			const out = c.isError ? [`  ${p.red}${text}${p.reset}`] : [`  ${text}`];
 			out[0] = appendSuffix(out[0]!, expandSuffix(hidden, W - visibleWidth(out[0]!)));
-			out.push(...toolBlockBody(c, W));
-			return out;
+			out.push(...body);
+			return slabPaints() ? out.map((r) => slabRow(r, W)) : out;
 		}
 		if (c.state === "approval") {
 			// W2: the ❯ is the GUTTER (the left edge), never the line's tail
@@ -924,12 +973,11 @@ function hiddenLines(c: Extract<BodyCell, { kind: "tool" }>, W: number): number 
 	const n = countLines(c.resultText);
 	if (n === 0) return null;
 	if (c.isError) return null; // errorBody's own cut row is the affordance there
-	// TUI2-R1.5 ④(c) (VD-5): a settled shell renders NO body, so its whole
-	// output is behind the key exactly like every other settled call. The
-	// retired branch only claimed a suffix once the output passed the
-	// five-row cap, because below that the tail was on screen; there is no
-	// tail now, and a card hiding four lines while saying nothing is the
-	// silence TUI2-R1 (A) set out to remove.
+	// R9 P2 / D4: a settled shell has its tail back on screen, and when
+	// the tail is cut the slab's own note row says so and names the key.
+	// A head-row suffix as well would be TUI2-R1's two affordances for
+	// one cell — the thing that rule exists to forbid.
+	if (c.name === "shell") return null;
 	return n; // every other settled call renders NO body — all of it is behind the key
 }
 
@@ -1721,6 +1769,91 @@ const BODY_ROW = "    ";
 const NOTE_ROW = "    ";
 const CUT_ROW = "└ ";
 
+/**
+ * R9 P2 — THE SLAB: a single call's block is one washed object.
+ *
+ * §1.6 gives the wash to the machine's verbatim text, and a call's own
+ * output is exactly that. The slab is the surface that says so: full-
+ * width washed rows, the head row naming the call, the output inside,
+ * the outcome closing it. `└` does not open a slab — the surface is the
+ * container, and a corner inside it is §1.3's empty mark one scale up.
+ *
+ * THE DEGRADATION IS THE POINT OF THE PREDICATE. `wash` is a chosen
+ * background on the two KNOWN grounds and reverse video on the third
+ * (§3 rung 4). A chip inverting for one row is the design working; eight
+ * output rows inverting is a blackboard in the middle of the transcript.
+ * So a slab paints only where the wash is a real background, and where
+ * it is not the block degrades to what it has always been — the R8a
+ * four-column indent with a dim tail. Never to reverse video.
+ *
+ * The content shape does NOT change with the surface: the note row and
+ * the outcome row exist either way, in `washDim` on the slab and in the
+ * ordinary dim off it. Only the surface and its two blank rows are
+ * contingent, because an unpainted blank row is §1.3's empty mark at the
+ * scale of a row.
+ */
+function slabPaints(): boolean {
+	const p = palette();
+	return p.wash !== "" && currentGround() !== "unknown";
+}
+
+/** One washed row, padded to the full width by DISPLAY width. A reset
+ *  inside the content would strand the background for the rest of the
+ *  row, so every reset re-opens it — the selection bar's discipline,
+ *  applied to a surface that spans many rows instead of one. */
+function slabRow(inner: string, W: number): string {
+	const p = palette();
+	const body = inner.replaceAll(p.reset, `${p.reset}${p.wash}`);
+	const pad = Math.max(0, W - visibleWidth(inner));
+	return `${p.wash}${body}${" ".repeat(pad)}${p.washEnd}`;
+}
+
+/** A metadata row inside (or under) a block: `washDim` on the slab,
+ *  the ordinary dim off it. §2.1 is why there are two. */
+/** The widest form that fits the row, or the last one — the head row's
+ *  own discipline (TUI2-R1.5 ⑤, pin 4) applied to the slab's two
+ *  metadata rows: the parts give way in a PINNED ORDER, and the part
+ *  that carries the semantics is the one reserved. */
+function pickTier(tiers: readonly string[], room: number): string {
+	for (const t of tiers) if (visibleWidth(t) <= room) return t;
+	return tiers[tiers.length - 1]!;
+}
+
+function noteRow(text: string, W: number, tone: "dim" | "body"): string[] {
+	const p = palette();
+	// CUT, never folded — A6's rule for the tool header, and for the same
+	// reason: a metadata row that wraps costs the block a row it did not
+	// budget, and at 30 columns the fold put "expands" alone on a line of
+	// its own. The row names a fact; a cut names it shorter.
+	const open = tone === "body" ? p.washDim : p.dim;
+	const close = tone === "body" ? p.washDimEnd : p.reset;
+	return [cutLine(`${open}${NOTE_ROW}${text}${close}`, W)];
+}
+
+/**
+ * Assemble a call's block.
+ *
+ * `head` is the row that names the call, `body` its rows (already
+ * indented and toned), `outcome` the closing line in words (§7.5) or
+ * null for a call whose head row already carries it — a read has no
+ * body, so nothing needs closing and its outcome stays inline.
+ */
+function slabBlock(head: string, body: readonly string[], outcome: string | null, W: number): string[] {
+	if (!slabPaints()) {
+		const out = [head, ...body];
+		if (outcome !== null) out.push(...noteRow(outcome, W, "dim"));
+		return out;
+	}
+	const rows = [slabRow(head, W)];
+	if (body.length > 0) rows.push(slabRow("", W));
+	for (const r of body) rows.push(slabRow(r, W));
+	if (outcome !== null) {
+		if (body.length > 0) rows.push(slabRow("", W));
+		for (const r of noteRow(outcome, W, "body")) rows.push(slabRow(r, W));
+	}
+	return rows;
+}
+
 /** R8a — stamp `└` on a block's FIRST row, after every slice and note
  *  has been assembled, so the mark is always on the first row actually
  *  emitted rather than on one a cap may have dropped. */
@@ -1751,15 +1884,21 @@ interface BlockMemo {
 	state: string;
 	content: unknown;
 	rows: string[];
+	/** R9 P2: how many of `rows` are the call's own OUTPUT — a cut note
+	 *  is kiso's sentence, not a line of the result. */
+	readonly output: number;
 }
 const blockMemo = new WeakMap<object, BlockMemo>();
 
 /** The block's body rows below the header (memoized, W9). */
-function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): string[] {
+function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number): { rows: string[]; output: number } {
 	const memo = blockMemo.get(c);
-	const state = `${c.state}:${c.isError}:${c.name}:${c.expanded ? "x" : ""}`;
+	// the SURFACE is part of the key: the same cell renders different rows
+	// painted and unpainted, and a ground resolved after the first frame
+	// would otherwise be served the pre-ground shape forever.
+	const state = `${c.state}:${c.isError}:${c.name}:${c.expanded ? "x" : ""}:${slabPaints() ? "slab" : "flat"}`;
 	const content: unknown = c.state === "approval" ? (c.diff ?? null) : c.resultText;
-	if (memo !== undefined && memo.width === W && memo.state === state && memo.content === content) return memo.rows;
+	if (memo !== undefined && memo.width === W && memo.state === state && memo.content === content) return memo;
 	const p = palette();
 	const rows =
 		c.expanded
@@ -1779,15 +1918,19 @@ function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): strin
 					? errorBody(c, W)
 					: c.name === "delegate"
 						? delegateSettled(c, W)
-						: // TUI2-R1.5 ④(c) (VD-5): a settled shell collapses like
-							// every other settled call. It used to keep its last
-							// rows plus a "+N earlier rows · ctrl+o" cut FOREVER —
-							// six rows per call, so three shells owned a screen. The
-							// approved R1 prototype's state 2 is one line; the head
-							// row's own suffix already names the count and the key,
-							// and ctrl+o shows the whole block, not a five-row window
-							// of it.
-							[]
+						: // R9 P2 / D4 — DECLARED REVERSAL of TUI2-R1.5 ④(c) (VD-5),
+							// owner-ruled. VD-5 collapsed a settled shell to its head
+							// row because six ungrounded rows per call let three
+							// shells own a screen. The slab is what changes that
+							// arithmetic: the rows are inside a surface that says
+							// where the call begins and ends, so five of them read as
+							// one object rather than as five loose lines. The cap and
+							// the tail direction are VD-5's own (CAP_SHELL_SETTLED,
+							// the conclusion at the end); only the emptiness is
+							// reversed.
+							c.name === "shell"
+								? shellTail(c.resultText, W, slabPaints() ? "body" : "dim")
+								: []
 				: c.state === "running"
 					? c.name === "delegate"
 						? delegateRunning(c, W)
@@ -1797,6 +1940,11 @@ function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): strin
 					: c.state === "approval"
 						? diffBody(c.diff, W)
 						: [];
+	// R9 P2: how many of these rows are the call's OWN OUTPUT. A cut note
+	// is kiso's sentence about a result the TOOL truncated, not a line of
+	// it — a read that has only that note has nothing verbatim on screen
+	// and stays a ONE-ROW slab, outcome inline, exactly as R9 draws it.
+	const output = rows.length;
 	const note = c.expanded ? null : toolCutNote(c.name, c.resultText);
 	if (note !== null) rows.push(...foldLine(`${p.dim}${NOTE_ROW}${note}${p.reset}`, W));
 	// TUI2-R1 (A): an EXPANDED block says how to put it back. The footer
@@ -1804,20 +1952,37 @@ function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): strin
 	// marker is missing renders nothing, and a lone footer under a head
 	// row would be an affordance for an empty block.
 	if (c.expanded && rows.length > 0) rows.push(...foldLine(`${p.dim}${NOTE_ROW}${COLLAPSE_ROW}${p.reset}`, W));
-	const opened = openBlock(rows);
-	blockMemo.set(c, { width: W, state, content, rows: opened });
-	return opened;
+	// R9 P2: `└` opens a block that has no surface. Inside a slab the
+	// surface IS the container, and a corner in it is §1.3's empty mark
+	// one scale up — so the corner and the slab are alternatives, never
+	// both.
+	const opened = slabPaints() ? rows : openBlock(rows);
+	const parts = { width: W, state, content, rows: opened, output };
+	blockMemo.set(c, parts);
+	return parts;
+}
+
+/** The rows alone — every caller but the settled branch, which needs to
+ *  know whether any of them are the call's own OUTPUT. */
+function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): string[] {
+	return toolBlockParts(c, W).rows;
 }
 
 /** Fold result text into dim body rows (the BODY_ROW prefix): escape,
  *  split, fold each line at W−prefix; trailing empty rows (the result's
  *  final newline) drop. */
-function blockRows(text: string, W: number): string[] {
+function blockRows(text: string, W: number, tone: "dim" | "body" = "dim"): string[] {
 	const p = palette();
 	const textW = Math.max(1, W - visibleWidth(BODY_ROW));
 	const rows: string[] = [];
+	// R9 P2: inside a SLAB the output rows are body strength, never dim —
+	// §2.1 bars dim from the wash (3.91:1 light, 4.35:1 dark) and these
+	// rows are the verbatim content the surface exists for. The metadata
+	// rows around them take `washDim`, which was chosen for that ground.
+	const open = tone === "dim" ? p.dim : "";
+	const close = tone === "dim" ? p.reset : "";
 	for (const raw of escapeTerminal(text).split("\n")) {
-		for (const row of foldLine(raw, textW)) rows.push(`${p.dim}${BODY_ROW}${row}${p.reset}`);
+		for (const row of foldLine(raw, textW)) rows.push(`${open}${BODY_ROW}${row}${close}`);
 	}
 	while (rows.length > 0 && visibleWidth(rows[rows.length - 1]!) === visibleWidth(BODY_ROW)) rows.pop();
 	return rows;
@@ -1827,13 +1992,24 @@ function blockRows(text: string, W: number): string[] {
  *  renderer cut at the block's bottom ("earlier rows" — the conclusion
  *  is at the end, the reference implementation's truncateToVisualLines
  *  direction). */
-function shellTail(text: string, W: number): string[] {
-	const p = palette();
-	const rows = blockRows(text, W);
+function shellTail(text: string, W: number, tone: "dim" | "body" = "dim"): string[] {
+	const rows = blockRows(text, W, tone);
 	if (rows.length <= CAP_SHELL_SETTLED) return rows;
-	const kept = CAP_SHELL_SETTLED - 1;
-	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - kept} earlier rows · ctrl+o${p.reset}`, W);
-	return [...rows.slice(rows.length - kept), ...cut];
+	// R9 P2 / D4: FIVE output rows, and the note is a row of its own. The
+	// pre-slab arithmetic spent one of the five on the cut note, because
+	// the note had nowhere else to live; the slab's metadata rows are not
+	// output and are not counted against the output's cap.
+	const kept = CAP_SHELL_SETTLED;
+	// The note goes ABOVE the tail: it says what was cut, and what was
+	// cut is what came BEFORE these rows. One position on both surfaces —
+	// the surface degrades, the content shape does not.
+	const cut = rows.length - kept;
+	const n = `${cut} earlier line${cut === 1 ? "" : "s"}`;
+	// the KEY is reserved (TUI2-R1.5 ⑤): the count gives way before it,
+	// because a row that says how much is hidden without saying how to
+	// see it is the silence TUI2-R1 (A) set out to remove.
+	const note = noteRow(pickTier([`… ${n} · ctrl+o expands`, `… ${n} · ctrl+o`, `… ${cut} · ctrl+o`, "· ctrl+o"], W - visibleWidth(NOTE_ROW)), W, tone);
+	return [...note, ...rows.slice(rows.length - kept)];
 }
 
 /** The error text head: the FIRST rows, capped at 3 — the answer is at

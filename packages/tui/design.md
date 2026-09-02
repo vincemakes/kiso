@@ -51,10 +51,17 @@ thought twinkles. Nothing else in the product moves. See §5.
 **1.5 Labels are mono, uppercase, dim.** `MODEL`, `WORKSPACE`. They mark
 sections. They are never content.
 
-**1.6 The wash means verbatim.** A washed surface says *this text is
-reproduced exactly as it was given*: the human's own words, and inline
-code. One token, one idea. The wash is a surface, never an emphasis —
-nothing is washed to make it stand out.
+**1.6 Two surfaces, and they mean different things.** **Reverse video
+is the HUMAN'S surface** — their own words, at full contrast. It
+inverts whatever the terminal is, so it is the same weight on a light
+ground, a dark one, and one that was never established: one form, no
+ladder, nothing to under-read. **The wash is the MACHINE'S verbatim
+surface** — *this text is reproduced exactly as it was given*: inline
+code, and a call's own output. A lighter ground is right there, because
+those rows are read as content rather than heard as an utterance.
+
+Neither is an emphasis. Nothing is washed, and nothing is inverted, to
+make it stand out.
 
 **1.7 Work folds, words do not.** Tool calls collapse to one dim line
 when their stretch closes. Everything the model *says* — its answer and
@@ -104,8 +111,8 @@ theme-resolved like everything else in the table.
 **2.4 Emphasis is never a background.** To make one token the brightest
 thing in a dim run, cancel the dim and add weight — do not paint behind
 it. A background reads as a block on an otherwise plain row, and the
-property wanted was contrast, not a surface. (§1.6 is the one thing that
-gets a surface, and it means something else.)
+property wanted was contrast, not a surface. (§1.6's two surfaces are
+the exception, and they mean something else.)
 
 ---
 
@@ -260,27 +267,56 @@ turn's first thought and released when the stretch folds. Within it:
 - **The block takes the spacing its FOLD will take**, never its own, so
   a settle changes a row's content and not its position.
 
-**7.4 A tool block's rows are INDENTED, not guttered.** Four columns,
-one level deeper than prose and than the header row. The fact this
-carries — these rows are the call's output, not something the model
-said — is a §1.2 fact and so it lives in the indent, which survives a
-pipe, rather than in a glyph. `└` opens a block, exactly once, on its
-first row that has content; the notes inside it (`+N earlier rows`,
+**7.4 A tool block is a SLAB, and its rows are INDENTED.** A single
+call's block is one object: the head row names the call, its own output
+sits inside, and the outcome closes it. Where the ground is known, the
+whole block is washed full width — §1.6's machine-verbatim surface,
+saying where the call begins and ends — and `└` does not open it,
+because the surface is the container and a corner inside one is §1.3's
+empty mark a scale up.
+
+**Where the ground is NOT known the slab does not paint at all.** Rung 4's
+wash is reverse video (§3), and one inverted chip row is the ladder
+working while eight inverted output rows are a black slab in the middle
+of the transcript. Unpainted, the block is what it has always been: the
+four-column indent, one level deeper than prose and than the header row,
+with `└` opening it and the metadata rows dim. The CONTENT is the same
+either way — only the surface and its two blank rows are contingent,
+because an unpainted blank row is §1.3 at the scale of a row.
+
+The indent carries a §1.2 fact — these rows are the call's output, not
+something the model said — which is why it is an indent and not a glyph:
+it survives a pipe. The notes inside the block (`… N earlier lines`,
 `waiting for output`, the collapse footer) take the same indent and no
-glyph, because a second `└` in one block is one mark meaning two
-things. The diff's `│` is untouched: there it SCOPES rather than
+glyph. The diff's `│` is untouched: there it SCOPES rather than
 separates, which is the case §1.1 keeps it for.
 
-**7.5 A settled call reads verb · target · outcome.**
+**7.5 A settled call reads verb · target · outcome.** Where the call
+has no output on screen it is ONE row and the outcome rides it; where it
+does, the outcome closes the slab on its own row and the head row is
+free to be the command:
 
 ```
-  edit  compositor.ts       +7 −3 · 0.4s · ctrl+o
-  shell npm run check       exit 0 · 82 lines · 12.4s · ctrl+o
-  shell npm test            exit 1 · 4 failures · 2.1s · ctrl+o
+  read  loop.ts             412 lines · 0.1s · ctrl+o expands
+
+  shell pwd && ls -la
+    … 83 earlier lines · ctrl+o expands
+    <the last five output rows>
+    exit 0 · 88 lines · 0.4s
 ```
 
-The verb column is padded to 5 so targets line up. Only a call still
-running carries a mark, because only it is moving.
+The verb column is padded to 5 so targets line up, and the target is
+bold on a slab's head row — the row's job there is to say WHAT was run.
+A failure takes no tint on the block; only the outcome word is coloured,
+which is §1.2 exactly — the colour rides the fact, not the object
+carrying it.
+
+Both metadata rows give way in a pinned order when the width squeezes:
+the attribution first, then the count, and the key is RESERVED — a row
+that says how much is hidden without saying how to see it is the silence
+the affordance exists to remove. Neither row ever folds; it is cut.
+
+Only a call still running carries a mark, because only it is moving.
 
 **7.6 A folded stretch is one line, and prints no key.** It says what the
 work was, in the tense each term earned — `read 4 files · ran 1 shell
@@ -296,9 +332,8 @@ out. Per §2.4 the emphasis is weight, not a background.
 **7.8 The composer is four rows and stays four rows.** `CHROME_ROWS` is
 4: rule, input, rule, status. Every gate keyed on `H − 4` depends on it.
 
-**7.9 The user's words span the width.** Full width, washed, per §1.6 —
-the wash itself, so the chip is the same surface as inline code and
-degrades to reverse video only where the ground is unknown (§3 rung 4).
+**7.9 The user's words span the width.** Full width, REVERSE VIDEO, per
+§1.6 — the human's surface, one form on every ground, never the wash.
 The block is padded to `W` by *display* width, so a CJK row pads
 correctly, and it folds by WORD: the character fold was defended as
 lossless, which is not a property CJK has, and every other prose
