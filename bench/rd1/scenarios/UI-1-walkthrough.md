@@ -41,7 +41,7 @@ failure, seen; anything ambiguous is a finding, not a pass.
    all four names on screen, one `●` on the activity line, no row
    moving as they finish one by one.
 
-6. **`ctrl+o`, mid-stream.** Open the viewer while a turn is running.
+6. **`ctrl+r`, mid-stream.** Open the viewer while a turn is running.
    WATCH: nothing enters the scrollback while it is up, and every
    displaced row comes back on close.
 

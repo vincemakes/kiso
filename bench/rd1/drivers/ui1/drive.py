@@ -303,7 +303,7 @@ def run(out, cli, cols, rows):
         )
         p.mark("item5.end")
 
-        # ---- item 6: ctrl+o mid-stream ------------------------------
+        # ---- item 6: ctrl+r mid-stream ------------------------------
         p.mark("item6.begin")
         p.send(
             b"Run these three shell commands, one separate call each: "
@@ -316,11 +316,14 @@ def run(out, cli, cols, rows):
         # second one, so probe C's pair brackets the viewer's whole life.
         # item6.up is the one to LOOK at — the viewer is on screen there.
         p.mark("item6.open")
-        p.send(b"\x0f")  # ctrl+o
+        # DC-41 (0.21.0): the viewer is ctrl+r now. \x0f is the EXPAND
+        # key, so sending it here would drive the wrong surface and
+        # probe C would judge a viewer that never opened.
+        p.send(b"\x12")  # ctrl+r
         p.pump(4.0)
         p.mark("item6.up")
         p.mark("item6.close")
-        p.send(b"\x0f")
+        p.send(b"\x12")  # the key that opens it puts it away
         p.pump(2.0)
         p.mark("item6.closed")
         p.wait_state("idle", 240.0, why="item6:settle", hold=0.4)

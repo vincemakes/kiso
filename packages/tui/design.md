@@ -204,15 +204,15 @@ row whose width was computed as one cell. `✳` (`U+2733`) and `✴`
 that font — which is why the twinkle uses `✧ ✦ ✶ ✸ ✺`. Check the emoji
 font's table before adopting any new symbol.
 
+**6.2 Ink area is the size axis, not the code point.** A ramp is ordered
+by measured ink. At 60px in Menlo: `·` 72, `✧` 144, `•` 235, `✦` 248,
+`✶` 311, `○` 364, `✸` 536, `✺` 566, `●` 1014.
+
 **6.3 The rule is gated, not merely written.** The chrome's glyph set is
 checked against Apple Color Emoji's coverage, pinned as data so the gate
 runs off macOS too. Measuring the width table instead answers a
 different question — the table is kiso's own opinion, and this rule is
 about the terminal's.
-
-**6.2 Ink area is the size axis, not the code point.** A ramp is ordered
-by measured ink. At 60px in Menlo: `·` 72, `✧` 144, `•` 235, `✦` 248,
-`✶` 311, `○` 364, `✸` 536, `✺` 566, `●` 1014.
 
 ---
 
