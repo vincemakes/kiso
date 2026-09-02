@@ -76,20 +76,20 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		const head = grid.findIndex((l) => /^ {2}shell /.test(l));
 		expect(head, "no settled shell row on the screen").toBeGreaterThan(0);
 		expect(grid[head]).not.toContain("\u2713"); // the tick is retired, not moved
-		expect(grid[head]).toContain("ctrl+r expands");
+		expect(grid[head]).toContain("ctrl+o expands");
 		// nothing of the output is on the screen, and no cut row survives
 		expect(grid[head + 1] ?? "").not.toMatch(/^\u2502 step/);
 		expect(grid.join("")).not.toContain("earlier rows");
 		expect(grid.join("\n")).not.toMatch(/^\u2502 step \d of six/m);
 	}, 240_000);
 
-	it("ctrl+r EXPANDS the settled shell — the whole output, plus the way back", () => {
+	it("ctrl+o EXPANDS the settled shell — the whole output, plus the way back", () => {
 		const ws = workspace();
 		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: fauxScript(shellTurns()), KISO_MODE: "bypass" });
 		const raw = ptyRun(["--mode", "bypass", "r15-sh-expand"], env as NodeJS.ProcessEnv, {
 			feeds: [
 				["\u258c ", "go\r"],
-				["ran it.", "\x12"],
+				["ran it.", "\x0f"],
 			],
 			delays: [[7, "exit\r"]],
 			cwd: ws,
@@ -97,7 +97,7 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		// W15 is unchanged by this round: a COMMITTED cell never toggles in
 		// place (history is never rewritten, ADR-0046) — the key appends the
 		// expanded block instead, and names what it aimed at. The in-place
-		// toggle with its `└ ctrl+r collapses` footer is the LIVE cell's
+		// toggle with its `└ ctrl+o collapses` footer is the LIVE cell's
 		// form, pinned in the tui-cells unit.
 		const after = settledScreen(raw).join("\n");
 		expect(after).toContain("✦ expanded · shell sh steps.sh");
@@ -111,7 +111,7 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		expect(res.status, res.stderr).toBe(0);
 		const out = stripANSI(res.stdout);
 		expect(out).toContain("✓ shell sh steps.sh (exit 0)");
-		expect(out).not.toContain("ctrl+r");
+		expect(out).not.toContain("ctrl+o");
 		expect(out).not.toContain("live tail");
 		expect(out).not.toContain("│ ");
 		// the result itself still reaches a pipe consumer, in full

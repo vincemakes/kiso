@@ -235,7 +235,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		);
 		const clean = stripANSI(out);
 		expect(clean).toContain("asky_read needs approval"); // the panel's rule line
-		// W21: the panel superseded the ⏸ badge row — the approved cell
+		// W21: the panel superseded the ❯ badge row — the approved cell
 		// settles at the done form, and the [result] no longer flows into
 		// the body (/last has it). A5: the decider tail (`· approved by
 		// X`) rides ONLY the extension/mode-decided cells — the human's
@@ -258,7 +258,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// human's own verdict.
 		// R2: no tick — the settled row's gutter is two spaces and the
 		// outcome is in the words.
-		expect(clean).toMatch(/ {2}asky_read {2}\(approved, \d+\.\ds\) · 1 line · ctrl\+r/);
+		expect(clean).toMatch(/ {2}asky_read {2}\(approved, \d+\.\ds\) · 1 line · ctrl\+o/);
 		expect(clean).not.toContain("asky ok"); // the full result stays out of the stream
 		expect(clean).toContain("the tour is done");
 		// The status bar returned after the question (the model name is back).

@@ -21,7 +21,7 @@
  * parallel tools, one streaming, every row BELOW the streaming cell is
  * byte-identical across the run's frames — the spinner row the one
  * in-place variance); W10 names BOTH cuts (the renderer's └ +N …
- * ctrl+r and the tool's └ capped by read_file · offset=201); W9's
+ * ctrl+o and the tool's └ capped by read_file · offset=201); W9's
  * frame cadence stays at the 0.1.35 bound (no per-frame re-measure
  * storm) and a post-run resize repaints exactly once.
  */
@@ -264,7 +264,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 	// ROUND): W7's five-row cap on the settled shell tail is retired with
 	// the tail itself (VD-5). What the case pins now is the limit: the
 	// settled shell owns ZERO body rows at either width, and the CJK line
-	// it was guarding is behind ctrl+r rather than on the screen. The
+	// it was guarding is behind ctrl+o rather than on the screen. The
 	// read_file cut note, the ALIVE check and the wide-char fold at the
 	// narrow winch are untouched — they were never about the shell.
 	it("R1.5 4 at 60 cols: the settled shell owns NO body rows; the tool's own cut note still reaches the human", () => {
@@ -272,7 +272,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		expect(alive).toBe("ALIVE"); // the R2 crash class (a ≤100 thinking at a narrow winch) survives
 		const grid = finalGrid(hex, 60);
 		// R3b (owner ruling): the settled shell is inside the segment fold —
-		// the run's rows moved behind `ctrl+r`. "The settled shell owns ZERO
+		// the run's rows moved behind `ctrl+o`. "The settled shell owns ZERO
 		// body rows" is this case's claim and it is now true by
 		// construction; what the grid must show is the FOLD, and what it
 		// must still not show is the tail.
@@ -293,7 +293,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// prints no key. The claim here — the advisory is not dropped, it
 		// is folded and reachable — is unchanged; what carried it was the
 		// printed key, and what carries it now is the fold's own WORDS
-		// plus the behaviour the unit suite pins (ctrl+r appends the run's
+		// plus the behaviour the unit suite pins (ctrl+o appends the run's
 		// rows). A row cannot promise which fold a key opens, so it stopped
 		// promising; the reference implementation's row is clean too.
 		expect(grid.join("\n")).toMatch(/ {2}read /);
@@ -304,7 +304,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		expect(alive).toBe("ALIVE");
 		const grid = finalGrid(hex, 120);
 		// R3b (owner ruling): the settled shell is inside the segment fold —
-		// the run's rows moved behind `ctrl+r`. "The settled shell owns ZERO
+		// the run's rows moved behind `ctrl+o`. "The settled shell owns ZERO
 		// body rows" is this case's claim and it is now true by
 		// construction; what the grid must show is the FOLD, and what it
 		// must still not show is the tail.

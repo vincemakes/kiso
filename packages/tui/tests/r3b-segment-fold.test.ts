@@ -26,7 +26,7 @@
  * closing it collapses to one line that names its own key.
  *
  * What these gates hold, in order of what would hurt most if it broke:
- *   - the work is never UNREACHABLE — the fold names ctrl+r and ctrl+r
+ *   - the work is never UNREACHABLE — the fold names ctrl+o and ctrl+o
  *     answers with the run's own rows;
  *   - the fold is emitted ONCE per segment, and never for a segment
  *     that already spilled past the hold into the scrollback;
@@ -180,13 +180,13 @@ describe("R3b — a segment folds at the text boundary", () => {
 });
 
 describe("R3b — the work is never unreachable", () => {
-	it("the fold NAMES ctrl+r, and ctrl+r answers with the run's own rows", () => {
+	it("the fold NAMES ctrl+o, and ctrl+o answers with the run's own rows", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		twoSegments(body);
 		tick();
 		// DECLARED SUPERSESSION (R4a) — the fold row prints no key, so
-		// `ctrl+r` is no longer an observable for "this folded". The claim
+		// `ctrl+o` is no longer an observable for "this folded". The claim
 		// the case was always making is REACHABILITY, and that is behaviour:
 		// the key answers with the run's own rows.
 		const r = body.expandNext();
@@ -384,9 +384,9 @@ describe("R3d — the layout only grows until the settle", () => {
 		// still holds is that the OPEN stretch's work rides its own line.
 		expect(mid).toContain("read 2 files");
 		// no FOLD row here names a key — the slot's tool card is a
-		// different row, and its own `ctrl+r expands` is still true.
+		// different row, and its own `ctrl+o expands` is still true.
 		for (const row of mid.split(/\x1b\[\d+;1H|\n/).filter((l) => l.trim().startsWith("✦ "))) {
-			expect(row).not.toContain("ctrl+r");
+			expect(row).not.toContain("ctrl+o");
 		}
 		// DECLARED SUPERSESSION (R4 — the standing act slot): "the calls'
 		// own rows are not on screen" is no longer the claim, and it was
@@ -425,7 +425,7 @@ describe("R3d — the layout only grows until the settle", () => {
 		// tense is per term now, and both reads are done. What it still
 		// carries no trace of is the KEY, which only a committed fold has,
 		// and which now names an ordinal no live row can print.
-		expect(mid).not.toMatch(/read 2 files · ctrl\+r/);
+		expect(mid).not.toMatch(/read 2 files · ctrl\+o/);
 	});
 
 	it("a LATER call never removes an earlier row — the layout only grows", () => {

@@ -1,7 +1,7 @@
 /**
  * TUI2-R1 slice ② — T-V1: A, the tool card names its own expand key.
  *
- * ctrl+r has existed since W15 and lived only in /help. A collapsed cell
+ * ctrl+o has existed since W15 and lived only in /help. A collapsed cell
  * that is HIDING something now says so, in the cell, with the REAL count
  * of what it hides; an expanded block says how to put it back.
  *
@@ -73,7 +73,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// stated EXACTLY ONCE now (VD-6). This very row is the one the
 		// walkthrough quoted: the parens and the suffix were written by
 		// different rounds, each unaware the other was counting.
-		expect(rows[0]).toBe("  read  src/parser.ts (2.4s) · 12 lines · ctrl+r expands");
+		expect(rows[0]).toBe("  read  src/parser.ts (2.4s) · 12 lines · ctrl+o expands");
 		// nothing else changed: the collapsed body is still empty
 		expect(rows).toHaveLength(1);
 	});
@@ -88,7 +88,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 				resultText: Array.from({ length: 22 }, (_, i) => `out ${i + 1}`).join("\n"),
 			}),
 		);
-		expect(rows[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r expands");
+		expect(rows[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+o expands");
 	});
 
 	// MOVED (R1.5 slice ④, the settled-shell-body class — DECLARED THIS
@@ -108,12 +108,12 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 			}),
 		);
 		expect(rows[0]).toBe("  shell echo hi (exit 0, 2.4s)");
-		expect(rows.join("\n")).not.toContain("ctrl+r");
+		expect(rows.join("\n")).not.toContain("ctrl+o");
 		// an empty result hides nothing for any tool
 		expect(render(toolCell({ resultText: "" }))[0]).toBe("  read  src/parser.ts (0 lines, 2.4s)");
 		// …and a shell WITH output now says so, where it used to stay silent
 		expect(render(toolCell({ name: "shell", input: "echo hi", inputFull: JSON.stringify({ command: "echo hi" }), resultText: "hi" }))[0]).toBe(
-			"  shell echo hi (exit 0, 2.4s) · 1 line · ctrl+r expands",
+			"  shell echo hi (exit 0, 2.4s) · 1 line · ctrl+o expands",
 		);
 	});
 
@@ -125,9 +125,9 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 			inputFull: JSON.stringify({ command: "npm test" }),
 			resultText: Array.from({ length: 22 }, (_, i) => `out ${i + 1}`).join("\n"),
 		});
-		expect(render(cell, 80)[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r expands");
-		expect(render(cell, 54)[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+r");
-		expect(render(cell, 44)[0]).toBe("  shell npm test (exit 0, 2.4s) · ctrl+r");
+		expect(render(cell, 80)[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+o expands");
+		expect(render(cell, 54)[0]).toBe("  shell npm test (exit 0, 2.4s) · 22 lines · ctrl+o");
+		expect(render(cell, 44)[0]).toBe("  shell npm test (exit 0, 2.4s) · ctrl+o");
 		// MOVED (R1.5 slice ⑤ then pin 4, the R1 tool-cell suffix class):
 		// there is no "absent" affordance tier any more — the affordance is
 		// the semantics, so the shortest tier is reserved and the head gives
@@ -136,7 +136,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// so at 32 the group drops entirely rather than becoming the
 		// half-sentence `(exit…`. The three-tier degradation above is
 		// unchanged.
-		expect(render(cell, 32)[0]).toBe("  shell npm test · ctrl+r");
+		expect(render(cell, 32)[0]).toBe("  shell npm test · ctrl+o");
 		// invariant ①: the suffix NEVER pushes a row past the width
 		for (const W of [20, 32, 40, 44, 54, 60, 80, 120]) {
 			for (const row of render(cell, W)) expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
@@ -149,7 +149,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// R8a (owner-ruled 2026-09-01): a tool block's rows are INDENTED, not
 		// guttered — `└` opens the block once, on its first row with content,
 		// and every other row is the same four-column indent with no glyph.
-		expect(rows).toEqual(["  read  src/parser.ts (3 lines, 2.4s)", "  └ alpha", "    beta", "    gamma", "    ctrl+r collapses"]);
+		expect(rows).toEqual(["  read  src/parser.ts (3 lines, 2.4s)", "  └ alpha", "    beta", "    gamma", "    ctrl+o collapses"]);
 		// the expanded head row drops the collapsed suffix — it would be
 		// telling the reader to expand what is already expanded
 		expect(rows[0]).not.toContain("expands");
@@ -161,9 +161,9 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// MOVED (R1.5 slice ⑤, the R1 tool-cell suffix class): the parens
 		// lost their duplicate count (VD-6); the SGR placement — the whole
 		// point of this case — is byte-identical.
-		expect(rows[0]).toBe("  read  src/parser.ts (2.4s)\x1b[2m · 3 lines · ctrl+r expands\x1b[0m"); // R2: no tick
+		expect(rows[0]).toBe("  read  src/parser.ts (2.4s)\x1b[2m · 3 lines · ctrl+o expands\x1b[0m"); // R2: no tick
 		const expanded = render(toolCell({ expanded: true, resultText: "a\nb\nc" }));
-		expect(expanded[expanded.length - 1]).toBe("\x1b[2m    ctrl+r collapses\x1b[0m");
+		expect(expanded[expanded.length - 1]).toBe("\x1b[2m    ctrl+o collapses\x1b[0m");
 	});
 
 	it("a running / queued / approval / denied cell is never suffixed — the affordance is a settled-cell statement", () => {
@@ -189,9 +189,9 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 			}),
 		);
 		expect(rows[0]).toBe("  shell npm test (exit 1, 2.4s)");
-		expect(rows[0]).not.toContain("ctrl+r");
+		expect(rows[0]).not.toContain("ctrl+o");
 		// the error body's own renderer cut is the affordance there, unchanged
-		expect(rows[rows.length - 1]).toContain("more · ctrl+r");
+		expect(rows[rows.length - 1]).toContain("more · ctrl+o");
 	});
 
 	/**

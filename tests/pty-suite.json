@@ -11,6 +11,7 @@
 		"apps/cli/tests/config-e2e.test.ts",
 		"apps/cli/tests/dc33-resize-midturn.test.ts",
 		"apps/cli/tests/dc34-widen-seam.test.ts",
+		"apps/cli/tests/dc41-key-swap-pty.test.ts",
 		"apps/cli/tests/e2e.test.ts",
 		"apps/cli/tests/e5-composition.test.ts",
 		"apps/cli/tests/extensions-e2e.test.ts",

@@ -128,7 +128,7 @@ const CELL_LINE = [
 	/^(● )?(read|reading|edited|editing|wrote|writing|listed|listing|ran|running|explored|thought|thinking)\b.*$/,
 
 	/^● \S+ .*\d+s?$/, // the ToolCell running (W2: the mark IS the gutter). R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
-	/^⏸ \S+ .*$/, // the approval badge (W2: the ⏸ is the left gutter)
+	/^❯ \S+ .*$/, // the approval badge (W2: the ❯ is the left gutter)
 	// MOVED (EC-1 ②③, the SCHEDULER-TIMING class — DECLARED THIS ROUND):
 	// the metadata segment is OPTIONAL now. A call queued behind the FIFO
 	// exclusive fence (ADR-0052 invariant 5) has not started and has
@@ -136,8 +136,8 @@ const CELL_LINE = [
 	/^◦ \S+( .*)?$/, // the ToolCell queued (W2: ◦ replaces → — · is the metadata separator)
 	// SUPERSESSION (TUI2-R1, the tool-cell suffix class): the settled head
 	// row may end with the self-naming expand affordance — ` · N lines ·
-	// ctrl+r expands`, its terse ` · N lines · ctrl+r`, or the bare ` ·
-	// ctrl+r` (the width tiers). A cell hiding nothing still matches the
+	// ctrl+o expands`, its terse ` · N lines · ctrl+o`, or the bare ` ·
+	// ctrl+o` (the width tiers). A cell hiding nothing still matches the
 	// unsuffixed form, which is why the tail is optional here.
 	// MOVED (R1.5 slice 5, the R1 tool-cell suffix class + the
 	// approval-attribution class): the parens hold the facts that are NOT
@@ -146,7 +146,7 @@ const CELL_LINE = [
 	// R2: the settled row's gutter is two spaces, and the lint TRIMS its
 	// segments — so the shape to recognise is the verb column itself, no
 	// longer a mark that is gone.
-	/^\S+ +.*\((?:\S.*, )?\d+\.\ds\)( · (\d+ lines? · )?ctrl\+r( expands)?)?$/, // the ToolCell done (A4: the target rides the head row)
+	/^\S+ +.*\((?:\S.*, )?\d+\.\ds\)( · (\d+ lines? · )?ctrl\+o( expands)?)?$/, // the ToolCell done (A4: the target rides the head row)
 	/^\S+ +.*\((?:\S.*, )?\d+\.\ds\)$/, // the ToolCell failed (an error's own cut row is its affordance — never suffixed)
 	/^answer truncated at max_tokens.*$/, // D4: the truncation notice row — R2 (law 1.1): a notice is a sentence, it wears no box corner
 	/^✦.*$/, // v3: the recap line ends the run
@@ -158,27 +158,27 @@ const CELL_LINE = [
 	// with the ONE dashed rule above. Its pattern is removed rather than
 	// left in place: an allowed shape that can no longer occur is a hole
 	// in the lint, not a harmless leftover.
-	/^└(?: .*)?$/, // v7 W7/W8/W10 + W21: the cut/waiting rows (the "  └ " family — "waiting for output", "+N earlier rows · ctrl+r", "capped by …") + the approval panel's bare └ corner
+	/^└(?: .*)?$/, // v7 W7/W8/W10 + W21: the cut/waiting rows (the "  └ " family — "waiting for output", "+N earlier rows · ctrl+o", "capped by …") + the approval panel's bare └ corner
 	/^aborted \(.*\)$/, // the aborted terminal label
 	/^error: .*$/, // the error terminal label
 	/^▸ .* · \/mode to switch.*$/, // v3 idle status line
-	/^⏸ run paused.*$/, // W21: the panel's paused status (the lead owns the input row — the affordance rides the status)
+	/^❯ run paused.*$/, // W21: the panel's paused status (the lead owns the input row — the affordance rides the status)
 	// TUI v5 #16g: the dock's idle hint — the status row at enter (the
 	// status is still empty).
-	// R8b: the hint is a LADDER now — ctrl+o joined it, and because the
+	// R8b: the hint is a LADDER now — ctrl+r joined it, and because the
 	// hint is dropped whole when it does not fit, the shorter rungs had
 	// to stay so no width loses what used to fit. The alternation is the
 	// exact set of rungs, not a wildcard: a row that is any OTHER
 	// arrangement of these words is still an interleave and still fails.
-	/^\/ commands(?: · ↑ history)?(?: · ctrl\+o transcript)?$/,
+	/^\/ commands(?: · ↑ history)?(?: · ctrl\+r transcript)?$/,
 	/^[✧✦✶✸✺] working \d+s.*$/, // the running status line — R3 (§5.2): the twinkle, not the retired quadrant rotation
 	// MOVED (the focus-marker class, TUI2-R2 ⑤): a running tool cell's
-	// head row carries `· ctrl+r` when it is the FOCUSED cell — the one
+	// head row carries `· ctrl+o` when it is the FOCUSED cell — the one
 	// the next press will act on. The affordance IS the marker there, so
 	// the row it appears on is exactly one per frame; the pattern above
 	// already admitted the unfocused form (`▖ name · 1s`) and this admits
 	// the focused one.
-	/^● .* · \d+s · ctrl\+r$/,
+	/^● .* · \d+s · ctrl\+o$/,
 	/^streaming text.*$/, // the TextCell body
 	/^session \S+$/, // the session header
 	/^\[faux mode.*$/, // the faux banner line
@@ -351,7 +351,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		const clean = stripANSI(out);
 		// The scenario actually ran: the three tools + the approvals + the
 		// text. W21: list_dir auto-approves under the default tier (no
-		// panel — the ⏸ badge row is gone, the panel superseded it).
+		// panel — the ❯ badge row is gone, the panel superseded it).
 		// MOVED (EC-1 ②③, the SCHEDULER-TIMING class): calls no longer all
 		// launch immediately — the undeclared shell is exclusive, so the
 		// FIFO fence (ADR-0052 invariant 5) queues the calls behind it and

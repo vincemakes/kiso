@@ -2,7 +2,7 @@
  * R3i phase 5 — THE ANSWERED QUESTION HAS A BLOCK.
  *
  * Today a settled `ask_user` renders `  ask_user  (3 lines, 41.2s) ·
- * ctrl+r` — an empty target and the answers thrown away, even though
+ * ctrl+o` — an empty target and the answers thrown away, even though
  * the tool_result already carries them as JSON (`{answers:[{q, choice
  * | choices | custom}]}` from `askAnswers`, `{declined:[…]}` from
  * `askDeclineAll`). The owner asked for the block by pointing at one:

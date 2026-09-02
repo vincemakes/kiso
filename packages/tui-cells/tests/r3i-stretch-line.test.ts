@@ -10,7 +10,7 @@
  *
  *   thinking   ✧ thinking 4s                        moving, present
  *   acting     ✶ reading 6 files · running 4 shell commands
- *   settled    ✦ thought 9s · read 6 files · ran 4 shell commands · ctrl+r
+ *   settled    ✦ thought 9s · read 6 files · ran 4 shell commands · ctrl+o
  *
  * G1 is the gate that makes that sentence true and would have caught
  * the drift the v9 review found: the live rows had been written by hand
@@ -97,7 +97,7 @@ describe("R3i G1 — the line you watch is the line you keep", () => {
 	//
 	// R3i made the key the thing that never gives way, and the settled
 	// line's one distinguishing mark. R4 then printed an ordinal beside
-	// it (`ctrl+r 3`) so a row could name its own target, and the owner's
+	// it (`ctrl+o 3`) so a row could name its own target, and the owner's
 	// objection landed: a number you cannot type is not a selector. The
 	// reference implementation, checked rather than assumed, prints
 	// nothing on the row either — its expansion lives in a MODE you
@@ -106,11 +106,11 @@ describe("R3i G1 — the line you watch is the line you keep", () => {
 	//
 	// So no phase carries a key now. What still separates the settled
 	// line is what it always said: the past TENSE, and the bold mark.
-	// `ctrl+r` still works and is taught in the keys sheet (`?`), which
+	// `ctrl+o` still works and is taught in the keys sheet (`?`), which
 	// is where the reference teaches its own binding too.
 	it("no phase prints a key — the settled line is distinguished by its TENSE", () => {
 		for (const phase of ["settled", "acting", "thinking"] as const) {
-			expect(plain(stretchLine({ ...TERMS, phase }, 120)[0]!)).not.toContain("ctrl+r");
+			expect(plain(stretchLine({ ...TERMS, phase }, 120)[0]!)).not.toContain("ctrl+o");
 		}
 		expect(plain(stretchLine({ ...TERMS, phase: "settled" }, 120)[0]!)).toContain("read");
 	});

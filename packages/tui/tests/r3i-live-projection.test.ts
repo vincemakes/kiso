@@ -118,7 +118,7 @@ describe("R3i P2 — the live line is present tense and carries no key", () => {
 		const rows = body_().join("\n");
 		const line = body_().find((l) => l.includes("reading 2 files")) ?? "";
 		expect(line).not.toContain("thought"); // the past tense is the settle's
-		expect(line).not.toContain("ctrl+r"); // and so is the key
+		expect(line).not.toContain("ctrl+o"); // and so is the key
 		// (the call in flight keeps its OWN affordance — that row is not
 		// the stretch line, and its work is reachable while it runs)
 		expect(rows).toContain("npm run check");
@@ -182,7 +182,7 @@ describe("R3i P4 — this phase does not move a single commit", () => {
 		// only as a cell leaves the live region — so its absence is the
 		// honest observable for "nothing of this turn has become ink".
 		expect(body.liveCount()).toBeGreaterThan(0);
-		expect(plain(writes.join(""))).not.toMatch(/✦[^\n]*ctrl\+r/);
+		expect(plain(writes.join(""))).not.toMatch(/✦[^\n]*ctrl\+o/);
 	});
 
 	it("the settle still produces the turn's fold, unchanged by this phase", () => {

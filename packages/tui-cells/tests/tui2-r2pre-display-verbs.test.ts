@@ -81,7 +81,7 @@ describe("TUI2-R2pre ④ — one display-verb table", () => {
 		expect(render(toolCell({ name: "search_text", inputFull: JSON.stringify({ pattern: "parseExpr" }) }))[0]).toContain("  search ");
 		expect(render(toolCell({ name: "search_text", inputFull: JSON.stringify({ pattern: "parseExpr" }) }))[0]).not.toContain("search_text");
 		// the heads that were already short stay byte-identical
-		expect(render(toolCell())[0]).toBe("  read  src/parser.ts (2.4s) · 2 lines · ctrl+r expands");
+		expect(render(toolCell())[0]).toBe("  read  src/parser.ts (2.4s) · 2 lines · ctrl+o expands");
 	});
 
 	it("T-R2p-14: the advisory family says what the human should read, not what the model calls", () => {

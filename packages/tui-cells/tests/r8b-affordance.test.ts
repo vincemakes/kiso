@@ -5,7 +5,7 @@
  * Two small gaps found by driving the installed binary and reading its
  * chrome next to another agent's, rather than by reading the source.
  *
- *  - `ctrl+o` shipped as 0.19.0's headline and was reachable only from
+ *  - `ctrl+r` shipped as 0.19.0's headline and was reachable only from
  *    the `?` sheet: not on the banner's key line, not on the idle
  *    status. A feature whose only advertisement is a screen you must
  *    already know to open is DC-30's lesson pointing the other way.
@@ -28,9 +28,9 @@ import { visibleWidth } from "../src/width.js";
 const STATUS = "▸ default · /mode to switch · faux · ctx left ~100%";
 const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
-describe("R8b — ctrl+o is on the permanent surface", () => {
+describe("R8b — ctrl+r is on the permanent surface", () => {
 	it("the idle row advertises the transcript when there is room", () => {
-		expect(plain(statusLine(STATUS, "", 110))).toContain("ctrl+o transcript");
+		expect(plain(statusLine(STATUS, "", 110))).toContain("ctrl+r transcript");
 	});
 
 	it("the ladder only ever gets SHORTER as the room does — no width loses something that fits", () => {
@@ -47,10 +47,10 @@ describe("R8b — ctrl+o is on the permanent surface", () => {
 		for (let room = 0; room <= 60; room += 1) expect(visibleWidth(idleHint(room)), `room=${room}`).toBeLessThanOrEqual(room);
 	});
 
-	it("there is a real width band where ctrl+o is advertised", () => {
+	it("there is a real width band where ctrl+r is advertised", () => {
 		const rooms = [];
-		for (let room = 0; room <= 60; room += 1) if (idleHint(room).includes("ctrl+o")) rooms.push(room);
-		expect(rooms.length, "ctrl+o never appears at any width").toBeGreaterThan(5);
+		for (let room = 0; room <= 60; room += 1) if (idleHint(room).includes("ctrl+r")) rooms.push(room);
+		expect(rooms.length, "ctrl+r never appears at any width").toBeGreaterThan(5);
 	});
 
 	it("a hint NEVER pushes the row past its width — invariant ① holds at every size", () => {
@@ -81,6 +81,6 @@ describe("R8b — the keys sheet names itself", () => {
 
 	it("naming it did not cost a row of content", () => {
 		const rows = keysSheetRows(92).map(plain);
-		expect(rows.slice(1).join("\n")).toContain("ctrl+o transcript");
+		expect(rows.slice(1).join("\n")).toContain("ctrl+r transcript");
 	});
 });

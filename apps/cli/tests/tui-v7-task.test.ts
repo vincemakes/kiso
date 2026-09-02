@@ -7,7 +7,7 @@
  *   1. the live block redraws IN PLACE — the run's forms each painted
  *      ONCE at its TRUE row (the A8b single-copy discipline — the old
  *      row-1 clamp pile is gone), the done items stay COLLAPSED behind
- *      the cut family (`└ +N more` / `└ +N done · ctrl+r` — the W15
+ *      the cut family (`└ +N more` / `└ +N done · ctrl+o` — the W15
  *      toggle's affordance), and the live repaints never touch the
  *      committed band.
  *   2. exactly ONE settled `✦ task done · 10 items · <duration>` block
@@ -37,8 +37,8 @@
  * the exit teardown — its marker varies (`[?1049l` or the `[r`
  * scroll-reset + chrome clears) — the gate slices the turn before it.
  *
- * The ctrl+r toggle itself is unreachable at the PTY: the key's needle
- * (`└ +N done · ctrl+r`) exists only in the settle's repaint, so the
+ * The ctrl+o toggle itself is unreachable at the PTY: the key's needle
+ * (`└ +N done · ctrl+o`) exists only in the settle's repaint, so the
  * key always lands AFTER the checklist settled (done — never toggles);
  * the toggle's coverage lives in the compositor's unit gates. The e2e
  * gate asserts the affordance (the cut family) and the collapse.
@@ -432,7 +432,7 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		// longer be relied on to exist (the fold commits fewer rows, so the
 		// settle may need no scroll at all).
 		const lastSlice = turn.slice(lastForm.index!, frameEnd(lastForm.index!));
-		expect(/└ \+[0-9]+ done · ctrl\+r/.test(lastSlice)).toBe(true); // the done-collapse rides the live form
+		expect(/└ \+[0-9]+ done · ctrl\+o/.test(lastSlice)).toBe(true); // the done-collapse rides the live form
 		expect(lastSlice).not.toContain("▣ item"); // and hides, never lists, the done rows
 
 		// ③ exactly ONE settled block at the turn's end — the recap

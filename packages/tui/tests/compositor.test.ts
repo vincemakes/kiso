@@ -310,7 +310,7 @@ describe("TUI v6 — the one compositor", () => {
 			title: "edit examples/foo.ts",
 			speaker: "mode:default",
 			hint: "/mode accept-edits auto-approves edits",
-			statusText: "⏸ run paused", // R2 (design §4): the pending mark
+			statusText: "❯ run paused", // R2 (design §4): the pending mark
 			args: { kind: "text", lines: ["old", "new"] },
 			fallbackQuestion: "approve edit_file? (y/n) ",
 		};
@@ -335,7 +335,7 @@ describe("TUI v6 — the one compositor", () => {
 		// proven by what the row SAYS, which is what the note above already
 		// argued it should be — the chevron was never the evidence.
 		expect(bytes).not.toContain("\x1b[2m› \x1b[0m");
-		expect(plain).toContain("⏸ run paused"); // the phase status (the CLI's painting status is out)
+		expect(plain).toContain("❯ run paused"); // the phase status (the CLI's painting status is out)
 		expect(plain).toContain("↑↓ move · ⏎ or click confirms · 1-4 instant · esc"); // the phase affordance
 		body.bindApproval(() => null);
 		body.raw(["y"]);
@@ -509,11 +509,11 @@ describe("TUI v6 — the one compositor", () => {
 	// MOVED (R1.5 slice ④, the settled-shell-body class — DECLARED THIS
 	// ROUND): W7's five-row cap on the SETTLED shell tail is retired
 	// because the settled tail is. VD-5: a completed shell kept its last
-	// rows plus "+N earlier rows · ctrl+r" for the rest of the session, so
+	// rows plus "+N earlier rows · ctrl+o" for the rest of the session, so
 	// three shells owned a screen. The cap's real subject — a settled
 	// shell must never own more than a bounded number of rows — is now
 	// pinned at its limit: ONE row, at every width. The whole output is
-	// behind ctrl+r, and the head row says how much.
+	// behind ctrl+o, and the head row says how much.
 	it("R1.5 ④: the settled shell owns exactly ONE row at every width — the tail is behind the key", () => {
 		const output = Array.from({ length: 30 }, (_, i) => `shell line ${String(i).padStart(2, "0")} ` + "x".repeat(52)).join("\n");
 		for (const W of [120, 60]) {
@@ -527,7 +527,7 @@ describe("TUI v6 — the one compositor", () => {
 			expect(frame, `W=${W}`).not.toContain("earlier rows");
 			expect(matchBodyWalls(frame), `W=${W}`).toHaveLength(0);
 			// the head row names what it is holding, and the key that shows it
-			expect(frame, `W=${W}`).toContain("ctrl+r");
+			expect(frame, `W=${W}`).toContain("ctrl+o");
 			expect(frame, `W=${W}`).not.toContain("shell line 29");
 		}
 	});
@@ -548,7 +548,7 @@ describe("TUI v6 — the one compositor", () => {
 			body.toolApproval("c1", { lines: diff, added: 30, removed: 30 });
 			tick();
 			const frame = writes.join("");
-			const cut = frame.match(/└ \+(\d+) rows · ctrl\+r to expand/);
+			const cut = frame.match(/└ \+(\d+) rows · ctrl\+o to expand/);
 			expect(cut).not.toBeNull();
 			// the head + the named middle + the tail = 12 rows total
 			expect(matchBodyWalls(frame).length + 1).toBeLessThanOrEqual(12);
@@ -578,7 +578,7 @@ describe("TUI v6 — the one compositor", () => {
 		expect(matchBodyWalls(frame).length + 1).toBeLessThanOrEqual(12);
 		// the cut is ONE row: the truncated head of the text survives, the
 		// foldable tail is GONE (a folded cut would contain the full text)
-		const cut = frame.match(/└ \+(\d+) rows · ctrl\+r/);
+		const cut = frame.match(/└ \+(\d+) rows · ctrl\+o/);
 		expect(cut).not.toBeNull();
 		expect(frame).not.toContain("/last for the full diff");
 		// the pair survives at the floor: head AND tail both present
@@ -605,7 +605,7 @@ describe("TUI v6 — the one compositor", () => {
 		expect(matchBodyWalls(frame).length + 1).toBeLessThanOrEqual(12);
 		expect(frame).toContain("line00"); // the head survives
 		expect(frame).not.toContain("line59"); // the tail is dropped — no pair
-		const cut = frame.match(/└ \+(\d+) rows · ctrl\+r/);
+		const cut = frame.match(/└ \+(\d+) rows · ctrl\+o/);
 		expect(cut).not.toBeNull(); // the └ row carries the rest
 		expect(frame).not.toContain("/last for the full diff"); // one row, never a fold
 	});
@@ -622,7 +622,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the head (the answer is at the start): the body starts at line 2,
 		// capped at 3 rows — the tail is cut, the cut names "+3 more"
 		expect(frame).toContain("lint error 2");
-		expect(frame).toContain("    +3 more · ctrl+r");
+		expect(frame).toContain("    +3 more · ctrl+o");
 		expect(frame).not.toContain("lint error 6");
 		expect(matchBodyWalls(frame).length).toBeLessThanOrEqual(3);
 		// a read result: the settled row carries the count — zero body rows
@@ -871,7 +871,7 @@ describe("TUI v6 — the one compositor", () => {
 
 	it("W15: the expand key on a LIVE tool toggles in place — the full approval diff replaces the cut, the second press cuts it back", () => {
 		// The live region's toggle window is the non-done cell — an
-		// approval diff (its "ctrl+r to expand" affordance is exactly the
+		// approval diff (its "ctrl+o to expand" affordance is exactly the
 		// invite): 15 one-row lines, short enough that the EXPANDED form
 		// fits the screen (1 + 15 + chrome ≤ H), tall enough that the
 		// 12-row cap cuts it.
@@ -888,7 +888,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the cut: the head window (id00–id04) and the tail window
 		// (id09–id14) show, the middle (id05–id08) is cut behind the └
 		const pre = writes.join("");
-		expect(pre).toContain("ctrl+r to expand");
+		expect(pre).toContain("ctrl+o to expand");
 		expect(pre).toContain("id00");
 		expect(pre).toContain("id14");
 		expect(pre).not.toContain("id07");
@@ -902,14 +902,14 @@ describe("TUI v6 — the one compositor", () => {
 		// SUPERSESSION (TUI2-R1, the tool-cell suffix class): the expanded
 		// block is no longer silent about the way back — the cut note is
 		// still gone (nothing is cut), and the block's last row is the
-		// collapse footer. "no ctrl+r at all" becomes "no ctrl+r CUT".
-		expect(frame).not.toContain("ctrl+r to expand");
-		expect(frame).toContain("    ctrl+r collapses");
+		// collapse footer. "no ctrl+o at all" becomes "no ctrl+o CUT".
+		expect(frame).not.toContain("ctrl+o to expand");
+		expect(frame).toContain("    ctrl+o collapses");
 		// THE SECOND PRESS: the cut returns — the toggle flips both ways
 		expect(body.expandNext()).toEqual({ kind: "toggled" });
 		writes.length = 0;
 		tick();
-		expect(writes.join("")).toContain("ctrl+r");
+		expect(writes.join("")).toContain("ctrl+o");
 	});
 
 	it("W15: the expand key on a COMMITTED tool appends the expanded block — the /last shape, the N-turns-back header, the full input", () => {
@@ -939,7 +939,7 @@ describe("TUI v6 — the one compositor", () => {
 		// DECLARED SUPERSESSION (DC-35, from the owner's own screen): the
 		// second press used to append this block AGAIN, because a ring of
 		// one restarts its cycle immediately. Held down it printed the
-		// same four rows over and over, each closing with "ctrl+r opens
+		// same four rows over and over, each closing with "ctrl+o opens
 		// the one before it" — a footer naming something that does not
 		// exist. The key now answers `none` with the honest reason.
 		const again = body.expandNext();
@@ -1011,7 +1011,7 @@ describe("TUI v6 — the one compositor", () => {
 		const frame = writes.join("");
 		// DECLARED SUPERSESSION (R3b, owner ruling): the run's COMMITTED
 		// form is the segment fold — the rollup row, its children and the
-		// overflow all moved behind `ctrl+r`. The members being GONE from
+		// overflow all moved behind `ctrl+o`. The members being GONE from
 		// the screen is what this case was always about, and it is a
 		// stronger claim now: one row for the run, and that row is the
 		// fold.
@@ -1058,9 +1058,9 @@ describe("TUI v6 — the one compositor", () => {
 		//
 		// DECLARED SUPERSESSION (R4 — the standing act slot): the KEY is
 		// no longer an observable that discriminates. It was, while the
-		// only row carrying `ctrl+r` was a committed fold; R4's slot
+		// only row carrying `ctrl+o` was a committed fold; R4's slot
 		// keeps the call that just finished, and a settled head row
-		// carries its own `ctrl+r expands`. That affordance is now TRUE
+		// carries its own `ctrl+o expands`. That affordance is now TRUE
 		// where it used to be a lie — DC-28 found that mid-stretch the
 		// key toggled a flag and drew nothing — so the right assertion
 		// is that it IS there, on the call.
@@ -1068,13 +1068,13 @@ describe("TUI v6 — the one compositor", () => {
 		// (An earlier draft of this comment said the TENSE carries the
 		// discrimination alone. It does not — see the second supersession
 		// below. What discriminates is the fold's KEY WITH ITS ORDINAL:
-		// `· ctrl+r 3` is emitted by exactly one code path, the settled
+		// `· ctrl+o 3` is emitted by exactly one code path, the settled
 		// stretch line, and a live row can never carry it.)
-		// (on the STRIPPED bytes: `ctrl+r` is reverse-video, so the raw
+		// (on the STRIPPED bytes: `ctrl+o` is reverse-video, so the raw
 		// stream carries an SGR reset between the key and the verb — the
 		// non-contiguous-needle trap DC-25 recorded, and it caught this
 		// assertion on its first draft too.)
-		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("ctrl+r expands");
+		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("ctrl+o expands");
 		// DECLARED SUPERSESSION (R4 — the tense is PER TERM). R3i put the
 		// whole live line in the present, so five FINISHED reads read
 		// `reading 5 files` while nothing was being read. The standing
@@ -1086,12 +1086,12 @@ describe("TUI v6 — the one compositor", () => {
 		// says it truthfully.
 		//
 		// The cost is that the tense no longer separates live from
-		// settled. The KEY does, and only the key: `· ctrl+r <n>` comes
+		// settled. The KEY does, and only the key: `· ctrl+o <n>` comes
 		// from one code path — the settled stretch line — and carries an
 		// ordinal no live row has.
 		const held = writes.join("").replace(/\x1b\[[0-9;]*m/g, "");
 		expect(held).toContain("read 5 files");
-		expect(held).not.toMatch(/read 5 files · ctrl\+r \d/); // ...but NOT settled
+		expect(held).not.toMatch(/read 5 files · ctrl\+o \d/); // ...but NOT settled
 		// R4 tense + R6/D3: the writes are NOT cleared any more. Clearing
 		// them isolated "the fold frame", and there is no such frame left:
 		// the live row and the settled one are byte-identical, so the
@@ -1246,7 +1246,7 @@ describe("TUI v6 — the one compositor", () => {
 		// reason is why, and the decider was ambient.
 		expect(frame.replace(/\x1b\[[0-9;]*m/g, "")).toContain("  edit_file bar.ts (no touch)");
 		// the HUMAN approval (no decidedBy): the settled row unchanged —
-		// no decider tail, the ⏸ → spinner →   sequence told the story
+		// no decider tail, the ❯ → spinner →   sequence told the story
 		body.userLine("human approval");
 		body.toolStart("read_file", "c3", { path: "x.ts" });
 		body.toolApproval("c3", null);
@@ -1340,8 +1340,8 @@ describe("W20 — the task checklist as STATE (the live block, the settle, the c
 		expect(rows[1]).toContain("\x1b[1m▸\x1b[0m"); // the W20 glyph, bold (the menu vocabulary)
 		expect(rows[2]).toContain("□ item 4");
 		expect(rows[3]).toContain("□ item 5");
-		expect(rows[4]).toContain("└ +5 more · ctrl+r"); // 7 pending, 2 shown
-		expect(rows[5]).toContain("└ +2 done · ctrl+r"); // the done collapse
+		expect(rows[4]).toContain("└ +5 more · ctrl+o"); // 7 pending, 2 shown
+		expect(rows[5]).toContain("└ +2 done · ctrl+o"); // the done collapse
 	});
 
 	it("the cap holds when a long item text would wrap — the row CUTS, never folds", () => {
@@ -1353,7 +1353,7 @@ describe("W20 — the task checklist as STATE (the live block, the settle, the c
 		}
 	});
 
-	it("the LIVE ctrl+r toggle: the capped form flips to the FULL list in place — the ▣ the collapse hid", () => {
+	it("the LIVE ctrl+o toggle: the capped form flips to the FULL list in place — the ▣ the collapse hid", () => {
 		const rows = liveCell(true).render(80, CTX);
 		expect(rows).toHaveLength(11); // header + all 10 items, no collapse rows
 		// the full table in MODEL order (the promotion is the capped
@@ -1362,7 +1362,7 @@ describe("W20 — the task checklist as STATE (the live block, the settle, the c
 		expect(rows[3]).toContain("item 3");
 		expect(rows[3]).toContain("\x1b[1m▸\x1b[0m"); // the live active glyph at its own row
 		expect(rows[10]).toContain("□ item 10");
-		expect(rows.join("")).not.toContain("ctrl+r");
+		expect(rows.join("")).not.toContain("ctrl+o");
 	});
 
 	it("the SETTLED block: the recap idiom + the model tail + the FULL final list in the existing checklist shape", () => {
@@ -1375,7 +1375,7 @@ describe("W20 — the task checklist as STATE (the live block, the settle, the c
 		expect(rows[1]).toContain("▣ item 1");
 		expect(rows[3]).toContain("▖ item 3");
 		expect(rows[4]).toContain("□ item 4");
-		expect(rows.join("")).not.toContain("ctrl+r");
+		expect(rows.join("")).not.toContain("ctrl+o");
 	});
 
 	it("formatDuration — the `2h 14m` form: seconds under a minute, m s under an hour, h m past it", () => {

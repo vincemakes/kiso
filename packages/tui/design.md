@@ -38,7 +38,7 @@ mark too: a `│` on a row with no content is the same error one scale
 down.
 
 *Known cost, accepted:* a failure has no shape, only a colour and its
-words. `⏸` survives this law because it does not describe an outcome —
+words. `❯` survives this law because it does not describe an outcome —
 it means *you have to do something*.
 
 **1.4 Two marks, one beat.** A running command breathes; a running
@@ -68,6 +68,7 @@ kiso emits 256-colour indices, never truecolor.
 | body | terminal default | terminal default | — |
 | dim | `243` `#767676` | `246` `#949494` | 4.54 / 5.50 |
 | wash (bg) | `255` `#EEEEEE` | `236` `#303030` | 14.55 / 10.20 |
+| washDim | `241` `#626262` | `247` `#9E9E9E` | 5.26 / 4.93 *(on the wash)* |
 | failure | `#A8442B` | `#E08A6B` | 5.95 / 6.36 |
 | added / removed | `32` / `31` | `32` / `31` | — |
 
@@ -76,8 +77,17 @@ ground (dark measured against `#1E1E1E`). The floor for anything a human
 reads is **4.5:1**.
 
 **2.1 Nothing dim ever sits on the wash.** `#767676` on `#EEEEEE` is
-3.91:1 and `#949494` on `#303030` is 4.35:1 — both under the floor. The
-wash carries body text only.
+3.91:1 and `#949494` on `#303030` is 4.35:1 — both under the floor.
+
+A washed surface that carries metadata still wants it quieter than the
+content it annotates, and the answer is not to relax the floor: it is
+**`washDim`**, a second grey measured against the WASH rather than
+against the ground. `dim` remains barred from the wash exactly as
+above — this is a different token with a different job, the way `warn`
+was the mono ruling's own set gaining its missing member. With no
+ground it is nothing at all: §3.1 forbids an absolute foreground in a
+palette with no established background, and rung 4's wash is reverse
+video, where a grey inverts into a grey block.
 
 **2.2 The floor is a floor, including mid-animation.** A mark that
 breathes bottoms out at the dim token and never below it. This has
@@ -126,7 +136,7 @@ done, which bounds how confidently §2 can be said to ship as designed.
 |---|---|
 | `●` | work is in flight — see §7.3 for which row wears it |
 | twinkle (§5.2) | the model is thinking (the status row) |
-| `⏸` | it needs you: an approval or a question is pending |
+| `❯` | it needs you: an approval or a question is pending |
 | `◦` | queued, not started |
 | `✦` | the turn's seal (`✦ took …`) and the checklist header |
 | `▾ ▸ │` | the transcript viewer's marks (§9) |
@@ -141,7 +151,7 @@ tick and the cross again (§1.3) at the stretch scale. A folded stretch
 is indented two spaces to join the settled-call family's geometry, and
 its words carry the record.
 
-**4.3 `⏸ ask pending · answers are durable facts`.** The pending panel
+**4.3 `❯ ask pending · answers are durable facts`.** The pending panel
 states its own durability, and it is the only line in the interface that
 can: kill the process, come back, the question is still here and the
 answered ones are not asked again.
@@ -193,6 +203,12 @@ row whose width was computed as one cell. `✳` (`U+2733`) and `✴`
 (`U+2734`) are the two a star ramp reaches for first, and both are in
 that font — which is why the twinkle uses `✧ ✦ ✶ ✸ ✺`. Check the emoji
 font's table before adopting any new symbol.
+
+**6.3 The rule is gated, not merely written.** The chrome's glyph set is
+checked against Apple Color Emoji's coverage, pinned as data so the gate
+runs off macOS too. Measuring the width table instead answers a
+different question — the table is kiso's own opinion, and this rule is
+about the terminal's.
 
 **6.2 Ink area is the size axis, not the code point.** A ramp is ordered
 by measured ink. At 60px in Menlo: `·` 72, `✧` 144, `•` 235, `✦` 248,
@@ -254,9 +270,9 @@ separates, which is the case §1.1 keeps it for.
 **7.5 A settled call reads verb · target · outcome.**
 
 ```
-  edit  compositor.ts       +7 −3 · 0.4s · ctrl+r
-  shell npm run check       exit 0 · 82 lines · 12.4s · ctrl+r
-  shell npm test            exit 1 · 4 failures · 2.1s · ctrl+r
+  edit  compositor.ts       +7 −3 · 0.4s · ctrl+o
+  shell npm run check       exit 0 · 82 lines · 12.4s · ctrl+o
+  shell npm test            exit 1 · 4 failures · 2.1s · ctrl+o
 ```
 
 The verb column is padded to 5 so targets line up. Only a call still
@@ -267,8 +283,8 @@ work was, in the tense each term earned — `read 4 files · ran 1 shell
 command` — and drops any term whose count is zero. It prints no
 selector: a number you cannot type is decoration that costs a column.
 
-**7.7 `ctrl+r` has exactly one target and says which.** The row it will
-act on renders its own `ctrl+r` token at full strength among dim
+**7.7 `ctrl+o` has exactly one target and says which.** The row it will
+act on renders its own `ctrl+o` token at full strength among dim
 siblings — exactly one bright token per frame. Two would be a lie about
 a single-target key; zero puts the reader back to pressing and finding
 out. Per §2.4 the emphasis is weight, not a background.
@@ -276,9 +292,14 @@ out. Per §2.4 the emphasis is weight, not a background.
 **7.8 The composer is four rows and stays four rows.** `CHROME_ROWS` is
 4: rule, input, rule, status. Every gate keyed on `H − 4` depends on it.
 
-**7.9 The user's words span the width.** Full width, washed, per §1.6.
+**7.9 The user's words span the width.** Full width, washed, per §1.6 —
+the wash itself, so the chip is the same surface as inline code and
+degrades to reverse video only where the ground is unknown (§3 rung 4).
 The block is padded to `W` by *display* width, so a CJK row pads
-correctly.
+correctly, and it folds by WORD: the character fold was defended as
+lossless, which is not a property CJK has, and every other prose
+surface already folds by word. A word wider than the row still breaks
+mid-word, because an overflowing row breaks invariant ①.
 
 **7.10 The opening.** No logo. The name is the mark.
 
@@ -336,16 +357,27 @@ nothing else advertises has to live.** The hint is dropped WHOLE when
 it does not fit, so the forms are a ladder and every rung is one that
 fitted at some width — a rung skipped is an affordance lost at a width
 that could have shown it. Order by how findable the key is WITHOUT the
-hint: `/ commands` survives longest, and a key like `ctrl+o` that
+hint: `/ commands` survives longest, and a key like `ctrl+r` that
 nothing stumbles onto outranks one like `↑ history` that everyone does.
 
 ---
 
 ## 9. The transcript viewer
 
-`ctrl+o` opens a reader over the turn's record. It exists because §7.1
+`ctrl+r` opens a reader over the turn's record. It exists because §7.1
 makes expand-in-place impossible: looking back needs a surface that can
 be redrawn, and committed rows are not one.
+
+**9.0 Which key, and why this one.** The viewer held `ctrl+o` from
+0.19.0 to 0.20.4, on the bet that a borrowed key transfers muscle
+memory. It transfers the key and betrays the action: elsewhere `ctrl+o`
+expands the tool output in front of you, which is §7.7's job, not this
+one — reported from real use (DC-41). So `ctrl+o` is the expand key and
+the viewer takes `ctrl+r`. No control key was free of a collision
+somewhere; `ctrl+r` is the cheapest, because what it displaces
+elsewhere is renaming a session and kiso has nothing to rename. The
+viewer fires only on an idle, empty composer, so the collision can only
+ever land where the other product's binding is itself a no-op.
 
 **9.1 It lives on the PRIMARY screen.** No alternate screen — it is a
 second, divergent world to keep correct, and it takes the viewer's rows
@@ -369,9 +401,13 @@ paste everywhere.
 
 ## 10. Open
 
-- **`⏸` against §6.1.** It is absent from Menlo *and* present in Apple
-  Color Emoji — both failure modes §6 names, in one glyph, and worse
-  than the `✳`/`✴` that §6.1 bans. Unresolved; the mark is still in use.
+- **`⚠` against §6.1.** Measured 2026-09-02 while retiring `⏸`: `⚠` is
+  in Apple Color Emoji too. Menlo has it, so macOS's default terminal
+  draws it correctly and nothing has been reported — but it is in the
+  company §6.1 bans by name. Eight strings still lead with it, and
+  whether it is dropped (§1.3's standing argument), replaced, or
+  blessed by narrowing §6.1 is a ruling this round did not carry
+  (DC-42). The gate carries it as declared debt meanwhile.
 - **The wider OSC 11 survey** (§3.2). Bounds how much of §2 can be said
   to ship as designed.
 - **Spilled stretches.** A stretch too tall for its slot spills; how a

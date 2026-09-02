@@ -3,7 +3,7 @@
  * #16e: "charWidth is the width authority"). The table covers the East
  * Asian Wide/Fullwidth ranges and Emoji_Presentation=Yes; everything
  * else is one column, the box-drawing/brick glyphs █▀▄▞▸ and the text-
- * presentation marks ✓ ✗ ⚠ ⏸ included.
+ * presentation marks ✓ ✗ ⚠ ❯ included.
  *
  * This is the compositor's FLOOR, not a cosmetic detail: a glyph scored
  * one column that a terminal draws in two makes a line whose measured
@@ -20,7 +20,7 @@
 
 /** TUI2-R2pre ① — the Emoji_Presentation=Yes code points inside
  *  U+2000..U+2BFF. The rest of that span is TEXT presentation and stays
- *  one column: ✓ ✗ ⚠ ⏸ ▞ ▸ and the box-drawing rails are all narrow, and
+ *  one column: ✓ ✗ ⚠ ❯ ▞ ▸ and the box-drawing rails are all narrow, and
  *  widening any of them would move every card head on the screen. Listed
  *  as ranges because that is what the property is — the singles are
  *  singles in Unicode too. */

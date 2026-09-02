@@ -247,7 +247,7 @@ describe("R4 C — the slot never causes a force-commit (the clamp)", () => {
 	});
 });
 
-describe("R4 D — DC-28: ctrl+r mid-stretch acts, and is seen to act", () => {
+describe("R4 D — DC-28: ctrl+o mid-stretch acts, and is seen to act", () => {
 	it("expanding the finished call between two calls RENDERS the expansion", () => {
 		const { body, body_, tick } = makeBody({ H: 40 });
 		body.enter();
@@ -295,7 +295,7 @@ describe("R4 E — DC-27: the scalar measures the screen", () => {
 	});
 });
 
-describe("R4a — the fold row prints no key, and ctrl+r opens the MOST RECENT", () => {
+describe("R4a — the fold row prints no key, and ctrl+o opens the MOST RECENT", () => {
 	// R7: a stretch needs TWO calls to fold now — thinking left the
 	// segment, so think + one call is a single cell and stays below the
 	// >= 2 gate (which is the ruling working: a lone call keeps its own
@@ -312,7 +312,7 @@ describe("R4a — the fold row prints no key, and ctrl+r opens the MOST RECENT",
 		b.textAppend(`narrating ${i}.\n`);
 		b.textEnd();
 	};
-	/** the committed FOLD rows only — a tool card's own `ctrl+r expands`
+	/** the committed FOLD rows only — a tool card's own `ctrl+o expands`
 	 *  is a different row with a different (still true) promise. */
 	const foldRows = (writes: string[]): string[] =>
 		plain(writes.join(""))
@@ -330,7 +330,7 @@ describe("R4a — the fold row prints no key, and ctrl+r opens the MOST RECENT",
 		tick();
 		const rows = foldRows(writes);
 		expect(rows.length).toBeGreaterThanOrEqual(2); // the folds are there...
-		for (const r of rows) expect(r).not.toContain("ctrl+r"); // ...and none names a key
+		for (const r of rows) expect(r).not.toContain("ctrl+o"); // ...and none names a key
 	});
 
 	it("...and the work is still reachable: the key answers with the run's own rows", () => {

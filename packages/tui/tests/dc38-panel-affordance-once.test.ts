@@ -11,7 +11,7 @@
  * It is width-dependent, which is what makes it worse than a plain
  * duplicate: the status row drops its hint when the left text plus the
  * hint will not fit, so the ask panel (long left text) shows one copy
- * and an approval (`⏸ run paused`, twelve cells) shows two. The build
+ * and an approval (`❯ run paused`, twelve cells) shows two. The build
  * that duplicates and the build that does not are the same build.
  *
  * Found by the UI-1 walkthrough item 4 against the installed 0.20.3.
@@ -51,7 +51,7 @@ const approval: PanelView = {
 	title: "edit examples/foo.ts",
 	speaker: "mode:default",
 	hint: "/mode accept-edits auto-approves edits",
-	statusText: "⏸ run paused",
+	statusText: "❯ run paused",
 	args: { kind: "text", lines: ["old", "new"] },
 	fallbackQuestion: "approve edit_file? (y/n) ",
 };
@@ -72,7 +72,7 @@ afterEach(() => {
 
 describe("DC-38 — the panel key hint is printed once", () => {
 	// The width matters and is the point: 100 is where the status row has
-	// room for the hint beside "⏸ run paused" and so prints the second
+	// room for the hint beside "❯ run paused" and so prints the second
 	// copy. At 80 it does not fit and the bug is invisible — which is why
 	// the fixed-width gates never saw it.
 	for (const W of [100, 120, 160]) {
@@ -97,7 +97,7 @@ describe("DC-38 — the panel key hint is printed once", () => {
 		tick();
 		const rows = rowsOf(writes, W, 24);
 		const at = rows.findIndex((r) => r.includes(AFFORDANCE));
-		const status = rows.findIndex((r) => r.includes("⏸ run paused"));
+		const status = rows.findIndex((r) => r.includes("❯ run paused"));
 		expect(at).toBeGreaterThanOrEqual(0);
 		expect(status).toBeGreaterThanOrEqual(0);
 		// the panel's block sits ABOVE the status row; keeping the hint
@@ -115,6 +115,6 @@ describe("DC-38 — the panel key hint is printed once", () => {
 		tick();
 		// W21's other half is untouched: the panel's status REPLACES the
 		// CLI's painting status. Only the hint moves out.
-		expect(rowsOf(writes, W, 24).some((r) => r.includes("⏸ run paused"))).toBe(true);
+		expect(rowsOf(writes, W, 24).some((r) => r.includes("❯ run paused"))).toBe(true);
 	});
 });

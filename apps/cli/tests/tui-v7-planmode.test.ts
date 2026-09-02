@@ -165,7 +165,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// the denial rather than leaving a row to be found. What a human
 		// must see without pressing anything is unchanged and is asserted
 		// below: WHICH call was refused and WHY. The settled row's own
-		// shape (`  read  a.ts (0.0s) · N lines · ctrl+r`) is A4's claim
+		// shape (`  read  a.ts (0.0s) · N lines · ctrl+o`) is A4's claim
 		// and is gated where it belongs, in compositor.test.ts.
 		expect(clean).toContain("read 1 file"); // the work it DID, on the fold
 		expect(clean).not.toContain("wrote 1 file"); // ...and not the write it did not

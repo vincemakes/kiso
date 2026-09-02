@@ -31,7 +31,7 @@ const view: PanelView = {
 	name: "shell",
 	title: "shell rm -rf build",
 	speaker: "mode:default",
-	statusText: "⏸ run paused",
+	statusText: "❯ run paused",
 	args: { kind: "text", lines: ["rm -rf build && npm run build"] },
 	fallbackQuestion: "approve shell? (y/n) ",
 };
@@ -110,7 +110,7 @@ describe("TUI2-R3v2 ① — the option list and its bar", () => {
 
 	it("the typed phase says where the words GO, and leads with amend›", () => {
 		expect(panelLeadPlain(view, "amend", 3)).toBe("amend› ");
-		expect(panelStatus(view, "amend", 3)).toBe("⏸ your note goes to the model — it will propose a new call");
+		expect(panelStatus(view, "amend", 3)).toBe("❯ your note goes to the model — it will propose a new call");
 		expect(panelAffordance(view, "amend", 3)).toBe("⏎ send · esc back");
 	});
 });

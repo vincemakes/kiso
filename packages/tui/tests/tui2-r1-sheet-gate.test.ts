@@ -53,7 +53,7 @@ describe("TUI2-R1 T-V4 — the ? gate", () => {
 	});
 
 	it("ANY key closes it — and the key that closed it never reaches the buffer", () => {
-		for (const key of ["x", "\r", "\x1b", " ", "\x12", "\x1b[A"]) {
+		for (const key of ["x", "\r", "\x1b", " ", "\x0f", "\x1b[A"]) {
 			editor.feed(enc("?"));
 			expect(editor.sheetOpen(), `open before ${JSON.stringify(key)}`).toBe(true);
 			editor.feed(enc(key));

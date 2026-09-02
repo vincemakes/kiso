@@ -1,10 +1,10 @@
 /**
- * DC-35 — ctrl+r must not print the same expansion again and again.
+ * DC-35 — ctrl+o must not print the same expansion again and again.
  *
- * The owner pressed ctrl+r a few times on a turn with ONE folded
+ * The owner pressed ctrl+o a few times on a turn with ONE folded
  * stretch and got the identical block appended three times over, each
  * headed `expanded · listed 1 directory · 0 turns back` and each
- * closing with `ctrl+r opens the one before it` — a footer naming
+ * closing with `ctrl+o opens the one before it` — a footer naming
  * something that does not exist.
  *
  * The ring itself is not wrong: `#opened` walks newest-back and

@@ -7,8 +7,8 @@
  * the answer was "whatever happens to be last" — the parens. The
  * integrator's walkthrough caught both failure modes:
  *
- *   ✓ shell printf '…' 1 2 … 12 (exit 0 · approv… · ctrl+r
- *   ✓ shell for i in 1 2 3 …                          … · ctrl+r
+ *   ✓ shell printf '…' 1 2 … 12 (exit 0 · approv… · ctrl+o
+ *   ✓ shell for i in 1 2 3 …                          … · ctrl+o
  *
  * The first is an UNCLOSED parenthesis — the row states the beginning of
  * a fact and stops. The second lost the exit code and the duration
@@ -72,7 +72,7 @@ describe("TUI2-R1.5 pin 4 — the parens never break", () => {
 		const r = row(shell(S1), 100);
 		expect(r).not.toContain("approv…");
 		expect(r).toMatch(/\(exit 0, 3\.0s\)/);
-		expect(r).toContain("ctrl+r");
+		expect(r).toContain("ctrl+o");
 		expect(visibleWidth(r)).toBeLessThanOrEqual(100);
 	});
 
@@ -80,7 +80,7 @@ describe("TUI2-R1.5 pin 4 — the parens never break", () => {
 		const r = row(shell(S2), 100);
 		expect(r).toMatch(/\(exit 0, 3\.0s\)/);
 		expect(r).toContain("…"); // the COMMAND is what gave way
-		expect(r).toContain("ctrl+r");
+		expect(r).toContain("ctrl+o");
 		expect(visibleWidth(r)).toBeLessThanOrEqual(100);
 	});
 
@@ -91,7 +91,7 @@ describe("TUI2-R1.5 pin 4 — the parens never break", () => {
 		const tight = row(shell(S1), 56);
 		expect(tight).not.toContain("approved");
 		expect(tight).toMatch(/\(exit 0, 3\.0s\)/);
-		expect(tight).toContain("ctrl+r");
+		expect(tight).toContain("ctrl+o");
 	});
 
 	it("EVERY width from 24 to 120: the parens are whole or absent, never cut open", () => {
@@ -123,7 +123,7 @@ describe("TUI2-R1.5 pin 4 — the parens never break", () => {
 	it("the affordance survives every width that has a paren group at all", () => {
 		for (let W = 30; W <= 120; W += 1) {
 			const r = row(shell(S2), W);
-			expect(r, `W=${W}: ${r}`).toContain("ctrl+r");
+			expect(r, `W=${W}: ${r}`).toContain("ctrl+o");
 		}
 	});
 });

@@ -453,7 +453,7 @@ export function askStatus(view: PanelView, state: AskRuntime): string {
 	// that no competitor can copy without building the log first.
 	const total = view.ask!.questions.length;
 	const where = total > 1 ? `question ${state.qIndex + 1} of ${total}` : "a question for you";
-	return `⏸ ${where} · answers are durable facts`;
+	return `❯ ${where} · answers are durable facts`;
 }
 
 /** The input row's lead: the digit lead while picking, the typing lead
@@ -548,7 +548,7 @@ export function askView(spec: AskSpec): PanelView {
 		name: "ask_user",
 		title: first.header ?? first.question,
 		speaker: "kiso",
-		statusText: "⏸ a question for you",
+		statusText: "❯ a question for you",
 		args: { kind: "text", lines: askDeclineList(spec) },
 		fallbackQuestion: `⚠ ${escapeTerminal(first.question)} — this terminal cannot show the option panel; the question is declined `,
 		ask: spec,

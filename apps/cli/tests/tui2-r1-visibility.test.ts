@@ -141,12 +141,12 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		const pty = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
 		const out = stripANSI(ptyRun(["--mode", "bypass", "r1-pty"], pty.env as NodeJS.ProcessEnv, [["▌ ", "go\r"], ["explored.", "exit\r"]], 40, ws));
 		// R3b (owner ruling): the burst's SETTLED form is the segment fold;
-		// the exploration row is what `ctrl+r` opens. This case's subject —
+		// the exploration row is what `ctrl+o` opens. This case's subject —
 		// the PTY collapses and the PIPE never does — is unchanged, and the
 		// pipe leg below still proves the durable record is identical.
 		expect(out).toMatch(/read 3 files · ran 2 searches · listed 1 directory/);
 		// R4a: the fold row prints no key — the row above IS the settled
-		// form, and what `ctrl+r` opens is pinned in the unit suite.
+		// form, and what `ctrl+o` opens is pinned in the unit suite.
 
 		// the PIPE leg — no compositor, no row, byte-for-byte the line mode
 		const pipe = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
@@ -158,8 +158,8 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		// fold here" would now fire on the recap. What the pipe must not
 		// have is the fold's own affordance: nothing is collapsed, so
 		// nothing offers to expand.
-		expect(res.stdout).not.toContain("ctrl+r");
-		expect(res.stdout).not.toContain("ctrl+r");
+		expect(res.stdout).not.toContain("ctrl+o");
+		expect(res.stdout).not.toContain("ctrl+o");
 		// the pipe's own per-call rows are intact — all six, one each
 		expect(res.stdout.match(/\u2713 read /g) ?? []).toHaveLength(3); // R2: the pipe keeps its mark
 		expect(res.stdout.match(/\u2713 search_text /g) ?? []).toHaveLength(2);
@@ -214,7 +214,7 @@ describe("TUI2-R1 T-V3 — the live tail on a real PTY", () => {
 		// runtime's backfill for "no policy expressed an opinion", read by
 		// a human as an attribution (VD-11).
 		expect(out).toContain("  shell sh steps.sh (exit 0, ");
-		expect(out).toContain(") · 6 lines · ctrl+r expands");
+		expect(out).toContain(") · 6 lines · ctrl+o expands");
 		const settledAt = out.lastIndexOf("  shell");
 		expect(settledAt).toBeGreaterThan(0);
 		expect(out.slice(settledAt)).not.toContain("live tail");
@@ -272,7 +272,7 @@ describe("TUI2-R1 T-V4 — the ? keys sheet on a real PTY", () => {
 		);
 		// the sheet was on screen, in full
 		expect(out).toContain("enter send");
-		expect(out).toContain("ctrl+r expand cells");
+		expect(out).toContain("ctrl+o expand cells");
 		// MOVED (R1.5 pin 6, the wrap/copy class): see the tui-cells unit.
 		// DECLARED SUPERSESSION (R6/D2): the row claims only what is true
 		// of EVERY panel now. `1-4 instant` was false on the ask's

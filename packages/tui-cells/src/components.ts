@@ -243,7 +243,7 @@ export type BodyCell =
 			 *  settled head row aggregates name + status + decidedBy in ONE
 			 *  row: a denied call's pinned row gains `· by <decidedBy>`; an
 			 *  extension-approved call's settled row gains `· approved by
-			 *  <decidedBy>` (the human approval needs no marker — the ⏸ →
+			 *  <decidedBy>` (the human approval needs no marker — the ❯ →
 			 *  spinner → ✓ sequence told the story). Null until a decision
 			 *  lands (the auto-allowed calls never have one). */
 			verdict: { decision: "approved" | "denied"; decidedBy?: string; reason?: string } | null;
@@ -272,7 +272,7 @@ export type BodyCell =
 			 *  live region); true once SETTLED — endTurn committed it as the
 			 *  turn's one recap block. */
 			done: boolean;
-			/** W20: the LIVE block's ctrl+r toggle (W15) — the capped form
+			/** W20: the LIVE block's ctrl+o toggle (W15) — the capped form
 			 *  flips to the full list in place. The settled render ignores
 			 *  it (already full). */
 			expanded: boolean;
@@ -331,10 +331,20 @@ export function cellComponent(cell: BodyCell): Component {
  *
  * The padding is by cells (charWidth is the width authority), so a CJK
  * row pads by width, never by chars, and the chip never overruns.
- * SGR 7 closed with SGR 27 — never SGR 0, the chip composes with a
- * surrounding span — and NEVER dim: reverse video inverts the CURRENT
- * colours, so dimmed text would invert into a dimmed block with no
- * contrast.
+ *
+ * R9 P1 — the surface is the WASH (§1.6, §7.9), closed with 49 rather
+ * than SGR 0 so the chip composes with a surrounding span. It drew with
+ * SGR 7 on every ground until now, which §7.9 never asked for: on a
+ * light terminal that is a full-width black band, on a dark one a white
+ * one, and every turn has exactly one. §11 settles which side was
+ * stale — the design said washed, the code predated DC-3's ground-
+ * resolved wash and was never moved onto it. The ladder makes the move
+ * safe: with no ground `wash` IS reverse video (§3 rung 4), so the
+ * unknown-ground chip is byte-identical to what shipped.
+ *
+ * NEVER dim inside it, on either surface: §2.1 on a resolved wash, and
+ * on rung 4 because reverse video inverts the CURRENT colours, so
+ * dimmed text inverts into a dimmed block with no contrast.
  */
 /**
  * REL-0152-D13 — how much of a turn the chip shows.
@@ -370,7 +380,13 @@ class UserMessage implements Component {
 				truncated = true;
 				break;
 			}
-			for (const row of foldLine(escapeTerminal(para), chipW)) {
+			// R9 Q3: by WORD. The char fold was defended as lossless, and
+			// that argument does not survive CJK — a run with no spaces has
+			// nothing to lose — while every other prose surface in the
+			// product already folds by word (ErrorLine, VD-10). foldWords
+			// falls through to foldLine's hard break for a word wider than
+			// the row, so invariant ① still outranks the word.
+			for (const row of foldWords(escapeTerminal(para), chipW)) {
 				if (content.length >= USER_CHIP_ROWS) {
 					truncated = true;
 					break;
@@ -389,7 +405,7 @@ class UserMessage implements Component {
 		// row is two cells per character and pads by cells.
 		const inner = chipW;
 		for (const row of content) {
-			rows.push(`${p.rv} ${row}${" ".repeat(Math.max(0, inner - displayWidth(row)))} ${p.rvEnd}`);
+			rows.push(`${p.wash} ${row}${" ".repeat(Math.max(0, inner - displayWidth(row)))} ${p.washEnd}`);
 		}
 		if (!truncated) return rows;
 		// The notice is OUTSIDE the chip's reverse video, in the cut-row
@@ -408,8 +424,9 @@ class UserMessage implements Component {
 }
 
 /** W22: the pending-queue chips — queued user lines pre-render above
- *  the input row as the SAME UserMessage chip (undimmed: reverse video
- *  inverts the CURRENT colours), the dim `□` gutter marking the queued
+ *  the input row as the SAME UserMessage chip (undimmed: §2.1 forbids
+ *  dim ON the wash, and on rung 4 reverse video would invert it into a
+ *  dimmed block), the dim `□` gutter marking the queued
  *  state (the gutter rides EVERY row — the gutterFold precedent: the
  *  left edge alone distinguishes the states). Each chip folds at W−3
  *  (the gutter's 2 cells), so a long line hard-folds INSIDE the chip
@@ -491,7 +508,7 @@ class ThinkingFold implements Component {
 		// opens with a numbered plan ("1. …\n2. …") produces exactly it.
 		// Invariant ①b now catches the class at the emit; this stops
 		// producing it. Whitespace collapses because the row is a
-		// SUMMARY — the full text is one ctrl+r away, unchanged.
+		// SUMMARY — the full text is one ctrl+o away, unchanged.
 		const trimmed = escapeTerminal(block.trim()).replace(/\s+/g, " ");
 		// R2 (owner, 2026-08-27) — three changes, each independent.
 		//
@@ -722,7 +739,7 @@ function toolTargetOf(c: Extract<BodyCell, { kind: "tool" }>): string {
  *  own render; the lines fold (the summary gives way first). W7 (the
  *  flow contract): the block's BODY (the rows below the header) is
  *  capped in SCREEN rows AFTER the fold, at the current width — the
- *  renderer-cut row (`└ +N … · ctrl+r`) sits INSIDE the cap (a
+ *  renderer-cut row (`└ +N … · ctrl+o`) sits INSIDE the cap (a
  *  truncated block is cap−1 output rows + the cut row); the TOOL-cut
  *  row (`└ capped by …` — the tool's OWN truncation note, W10) is a
  *  DIFFERENT fact, never counted in the output cap. W3: the verb is
@@ -758,7 +775,7 @@ class ToolExecution implements Component {
 			const head = `  explored ${p.bold}${counts}${p.reset}`; // R2: no tick
 			const tail = ` (${r.elapsed}s)`;
 			const room = W - visibleWidth(head) - tail.length;
-			const affordance = " · ctrl+r lists them";
+			const affordance = " · ctrl+o lists them";
 			return [cutLine(`${head}${p.dim}${tail}${affordance.length <= room ? affordance : ""}${p.reset}`, W)];
 		}
 		if (c.rolled !== null) {
@@ -766,14 +783,14 @@ class ToolExecution implements Component {
 			// the work order's claimed shape, verbatim — the verbCol's
 			// 5-char pad reproduces the "read  5 files" double space, the
 			// children are the first 3 basename targets, the overflow row
-			// carries the ctrl+r affordance (its "└ … ctrl+r" joins the
+			// carries the ctrl+o affordance (its "└ … ctrl+o" joins the
 			// W15 expand history — the head's commit captures it).
 			const r = c.rolled;
 			const noun = ROLLUP_NOUN[c.name] ?? "calls";
 			const out = gutterCut("  ", `${verbCol} ${r.count} ${noun} (${kUnit(r.lines)} lines, ${r.elapsed}s)`, W); // R2: no tick
 			const shown = r.targets.slice(0, 3);
 			if (shown.length > 0) out.push(`  ${p.dim}${CUT_ROW}${escapeTerminal(shown.join(" · "))}${p.reset}`);
-			if (r.targets.length > 3) out.push(`  ${p.dim}${CUT_ROW}+${r.targets.length - 3} more — ctrl+r expands${p.reset}`);
+			if (r.targets.length > 3) out.push(`  ${p.dim}${CUT_ROW}+${r.targets.length - 3} more — ctrl+o expands${p.reset}`);
 			return out;
 		}
 		if (c.state === "done") {
@@ -803,7 +820,7 @@ class ToolExecution implements Component {
 			}
 			const elapsed = c.startedAt !== null && c.doneAt !== null ? ((c.doneAt - c.startedAt) / 1000).toFixed(1) : "?";
 			// TUI2-R1.5 ⑤ (VD-6): the line count is stated EXACTLY ONCE. Every
-			// read card carried it twice — `(2 lines, 0.0s) · 2 lines · ctrl+r
+			// read card carried it twice — `(2 lines, 0.0s) · 2 lines · ctrl+o
 			// expands` — because the parens and the suffix were written by
 			// different rounds, each unaware the other was counting. The
 			// SUFFIX keeps it (it is the one that also names the key), so a
@@ -847,8 +864,8 @@ class ToolExecution implements Component {
 			return out;
 		}
 		if (c.state === "approval") {
-			// W2: the ⏸ is the GUTTER (the left edge), never the line's tail
-			const out = gutterCut(`${p.bold}⏸${p.reset} `, `${verbCol} ${liveTarget(c)}`, W);
+			// W2: the ❯ is the GUTTER (the left edge), never the line's tail
+			const out = gutterCut(`${p.bold}❯${p.reset} `, `${verbCol} ${liveTarget(c)}`, W);
 			out.push(...toolBlockBody(c, W));
 			return out;
 		}
@@ -891,7 +908,7 @@ class ToolExecution implements Component {
  * The affordance is a statement about hidden content: a cell whose body
  * is already whole on screen must not advertise a key that would show it
  * the same thing, and a cell that already carries its own renderer cut
- * (`└ +N earlier rows · ctrl+r`, `└ +N more · ctrl+r`) already teaches
+ * (`└ +N earlier rows · ctrl+o`, `└ +N more · ctrl+o`) already teaches
  * the key at the place the content stops. What is LEFT — and it is the
  * common case — is every settled non-shell call, whose collapsed body is
  * empty: the whole result sits behind the key with nothing on screen
@@ -927,12 +944,12 @@ function hiddenLines(c: Extract<BodyCell, { kind: "tool" }>, W: number): number 
  * against the room the row actually has).
  */
 /** TUI2-R1.5 ⑤ — the cells a settled head row reserves for its
- *  affordance: exactly the shortest tier, " · ctrl+r". The suffix used
+ *  affordance: exactly the shortest tier, " · ctrl+o". The suffix used
  *  to take whatever width happened to be left, so a long target spent it
  *  all and the card said nothing about the lines behind the key. Every
  *  row that fitted its head before still fits it; only a head that would
  *  have eaten the whole row gives up its last nine cells. */
-const SUFFIX_MIN = " · ctrl+r".length;
+const SUFFIX_MIN = " · ctrl+o".length;
 
 /**
  * TUI2-R1.5 pin 4 — the settled head row's text, with a PINNED cut
@@ -943,8 +960,8 @@ const SUFFIX_MIN = " · ctrl+r".length;
  * came last, so the parens were what got cut. The walkthrough caught
  * both consequences —
  *
- *   ✓ shell printf '…' 1 2 … 12 (exit 0 · approv… · ctrl+r
- *   ✓ shell for i in 1 2 3 …                          … · ctrl+r
+ *   ✓ shell printf '…' 1 2 … 12 (exit 0 · approv… · ctrl+o
+ *   ✓ shell for i in 1 2 3 …                          … · ctrl+o
  *
  * — an UNCLOSED parenthesis, and a row that lost the exit code and the
  * duration to a command string that had no claim on them. A cut that
@@ -1006,7 +1023,7 @@ function attribution(c: Extract<BodyCell, { kind: "tool" }>): string {
 export function expandSuffix(lines: number | null, room: number): string {
 	if (lines === null) return "";
 	const count = `${lines} line${lines === 1 ? "" : "s"}`;
-	for (const tier of [` · ${count} · ctrl+r expands`, ` · ${count} · ctrl+r`, " · ctrl+r"]) {
+	for (const tier of [` · ${count} · ctrl+o expands`, ` · ${count} · ctrl+o`, " · ctrl+o"]) {
 		if (tier.length <= room) return tier;
 	}
 	return "";
@@ -1023,7 +1040,7 @@ function appendSuffix(row: string, suffix: string): string {
 /**
  * TUI2-R2 ⑤ (D, candidate 1) — the FOCUS tint.
  *
- * The cell the next ctrl+r will act on brightens its own `ctrl+r` token
+ * The cell the next ctrl+o will act on brightens its own `ctrl+o` token
  * to the code tint; the rest of the suffix — the separator, the count —
  * stays dim, because what is being marked is the KEY's target, not the
  * row. Zero new rows, zero new columns: the affordance the cell already
@@ -1031,7 +1048,7 @@ function appendSuffix(row: string, suffix: string): string {
  *
  * Applied to a row rather than composed into it on purpose. The token is
  * emitted from several places (the settled suffix, the renderer's own
- * `└ +N … · ctrl+r` cut rows) and threading a flag through all of them
+ * `└ +N … · ctrl+o` cut rows) and threading a flag through all of them
  * would put the invariant "exactly one bright token" in as many hands as
  * there are emitters. Here it has exactly one.
  *
@@ -1039,7 +1056,7 @@ function appendSuffix(row: string, suffix: string): string {
  */
 export function focusToken(row: string, W: number): string {
 	const p = palette();
-	const at = row.lastIndexOf(CTRL_R);
+	const at = row.lastIndexOf(EXPAND_KEY);
 	if (at !== -1) {
 		// the row already names the key — brighten the token in place, and
 		// leave every other span exactly as it was
@@ -1052,10 +1069,10 @@ export function focusToken(row: string, W: number): string {
 		// attribute like bold is spent everywhere. It closes with washEnd
 		// rather than a reset, so the surrounding dim survives instead of
 		// having to be re-applied.
-		return `${row.slice(0, at)}${p.lift}${CTRL_R}${p.dim}${row.slice(at + CTRL_R.length)}`;
+		return `${row.slice(0, at)}${p.lift}${EXPAND_KEY}${p.dim}${row.slice(at + EXPAND_KEY.length)}`;
 	}
 	// A LIVE row does not carry the affordance today, and the live cell is
-	// the one ctrl+r takes FIRST (expandNext scans the live tail before
+	// the one ctrl+o takes FIRST (expandNext scans the live tail before
 	// the committed ring) — so the row the key is aimed at was the one row
 	// that never said the key existed. The affordance IS the marker here:
 	// it appears on the focused row and nowhere else, which is why no
@@ -1063,15 +1080,17 @@ export function focusToken(row: string, W: number): string {
 	// renders a cell with no focus and is untouched).
 	const room = W - visibleWidth(row);
 	if (room < SUFFIX_MIN) return row; // never at the cost of invariant ①
-	return `${row}${p.dim} · ${p.lift}${CTRL_R}${p.reset}`;
+	return `${row}${p.dim} · ${p.lift}${EXPAND_KEY}${p.reset}`;
 }
 
-const CTRL_R = "ctrl+r";
+/** DC-41 — the label in ONE place. The key has moved once now, and
+ *  a constant named after its binding is a comment that lies. */
+const EXPAND_KEY = "ctrl+o";
 
 /** TUI2-R1 (A) — the expanded block's last row: the way back. The
  *  rollup's expanded list carries a second clause (its members' full
  *  outputs live in /last, which the group row cannot show). */
-const COLLAPSE_ROW = "ctrl+r collapses";
+const COLLAPSE_ROW = "ctrl+o collapses";
 
 /** W13 — the rollup opt-in table: which tools collapse, and the count
  *  NOUN (read_file calls → "5 files", list_dir → "5 dirs", search_text
@@ -1181,7 +1200,7 @@ function countTerm(n: number, singular: string, plural: string): string {
  *  DECLARED SUPERSESSION (R3g, 2026-08-28) — A9 also ruled that "the
  *  metadata terms give way LAST". They do not any more: the KEY does.
  *  A9 was taken when this line carried no key, and at a width where the
- *  chip, the full metadata and " · ctrl+r" cannot coexist, a fold with
+ *  chip, the full metadata and " · ctrl+o" cannot coexist, a fold with
  *  no key is the turn's work behind a line with no way back to it. So
  *  the order is now words, then metadata, then — never — the key. The
  *  glyph is ✦ and the zero terms are dropped (R3b), so the example above
@@ -1289,7 +1308,7 @@ export function foldTerms(reads: number, edits: number, others: readonly [string
  *
  *   thinking   ✧ thinking 4s
  *   acting     ✶ reading 6 files · running 4 shell commands
- *   settled    ✦ thought 9s · read 6 files · ran 4 shell commands · ctrl+r
+ *   settled    ✦ thought 9s · read 6 files · ran 4 shell commands · ctrl+o
  *
  * THE GIVE-WAY LADDER, in order, because at some width everything
  * cannot fit:
@@ -1448,7 +1467,7 @@ function troubleClause(t: StretchTerms): string {
 /**
  * R4 (C1) — the fold NAMES ITS OWN TARGET.
  *
- * `ctrl+r` used to be printed identically on every fold on the screen,
+ * `ctrl+o` used to be printed identically on every fold on the screen,
  * and the key walked a ring whose order nothing on screen expressed —
  * so the owner's report was exact: "there is no way to know which
  * stretch it opens". The tint that marks the next target can only be
@@ -1505,7 +1524,7 @@ export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "ac
 	const mark = t.mark ?? " ";
 	// R4a (owner ruling, 2026-08-30) — the fold row prints NO key.
 	//
-	// R4 printed `· ctrl+r 3` so the row could name its own target. The
+	// R4 printed `· ctrl+o 3` so the row could name its own target. The
 	// owner's objection is the right one: a number you cannot type is not
 	// a selector, it is decoration that costs a column — and the
 	// reference implementation, checked rather than assumed, prints
@@ -1514,7 +1533,7 @@ export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "ac
 	// scrolled away; the row itself stays clean.
 	//
 	// So the affordance is retired here and owed to that mode. Until it
-	// exists, `ctrl+r` still opens the most recent fold — it is simply no
+	// exists, `ctrl+o` still opens the most recent fold — it is simply no
 	// longer advertised on a row that cannot say which one it means.
 	const key = "";
 	const lead = t.phase === "thinking" ? [`thinking ${t.thoughtSeconds}s`] : t.phase === "settled" && t.thoughtSeconds > 0 ? [`thought ${t.thoughtSeconds}s`] : [];
@@ -1605,7 +1624,7 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 		for (const [long, short] of COMPACT) out = out.replaceAll(long, short);
 		return out;
 	};
-	const KEY = " · ctrl+r";
+	const KEY = " · ctrl+o";
 	const keyW = KEY.length;
 	const key = `${p.dim}${KEY}${p.reset}`;
 	if (words === "") {
@@ -1762,11 +1781,11 @@ function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): strin
 						? delegateSettled(c, W)
 						: // TUI2-R1.5 ④(c) (VD-5): a settled shell collapses like
 							// every other settled call. It used to keep its last
-							// rows plus a "+N earlier rows · ctrl+r" cut FOREVER —
+							// rows plus a "+N earlier rows · ctrl+o" cut FOREVER —
 							// six rows per call, so three shells owned a screen. The
 							// approved R1 prototype's state 2 is one line; the head
 							// row's own suffix already names the count and the key,
-							// and ctrl+r shows the whole block, not a five-row window
+							// and ctrl+o shows the whole block, not a five-row window
 							// of it.
 							[]
 				: c.state === "running"
@@ -1813,7 +1832,7 @@ function shellTail(text: string, W: number): string[] {
 	const rows = blockRows(text, W);
 	if (rows.length <= CAP_SHELL_SETTLED) return rows;
 	const kept = CAP_SHELL_SETTLED - 1;
-	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - kept} earlier rows · ctrl+r${p.reset}`, W);
+	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - kept} earlier rows · ctrl+o${p.reset}`, W);
 	return [...rows.slice(rows.length - kept), ...cut];
 }
 
@@ -1833,7 +1852,7 @@ function errorBody(c: { name: string; resultText: string; reason?: string | null
 	const skipFirst = c.name === "shell" && /^exit \d+/.test(c.resultText) ? 0 : c.reason !== null && c.reason !== undefined ? 0 : 1;
 	const rows = blockRows(c.resultText.split("\n").slice(skipFirst).join("\n"), W);
 	if (rows.length <= CAP_ERROR) return rows;
-	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - (CAP_ERROR - 1)} more · ctrl+r${p.reset}`, W);
+	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - (CAP_ERROR - 1)} more · ctrl+o${p.reset}`, W);
 	return [...rows.slice(0, CAP_ERROR - 1), ...cut];
 }
 
@@ -1860,7 +1879,7 @@ function liveWindow(text: string, W: number): string[] {
 		while (rows.length < CAP_LIVE_WINDOW) rows.push(""); // R7a: blank, not a bar
 		return rows;
 	}
-	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+r${p.reset}`, W);
+	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+o${p.reset}`, W);
 	return [...rows.slice(rows.length - (CAP_LIVE_WINDOW - 1)), ...cut];
 }
 
@@ -2066,7 +2085,7 @@ export function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number,
 	// W17: the └ cut is ONE row at every width — the count leads, the
 	// expand affordances are cuttable (the same one-line shape as W12's
 	// delegate row and W18's status row).
-	const cut = (n: number): string => oneLineRow(p, `+${n} rows · ctrl+r to expand · /last for the full diff`, W);
+	const cut = (n: number): string => oneLineRow(p, `+${n} rows · ctrl+o to expand · /last for the full diff`, W);
 	// W17: the floor — the head window shows the lines whose fold starts
 	// before `head` rows; the tail window the lines whose fold ENDS after
 	// `rows.length - tail` (starts[i+1] is line i's end). When the pair
@@ -2227,9 +2246,9 @@ export function formatDuration(totalSeconds: number): string {
  * the compositor-derived counts (the model tail rides AFTER — never
  * model-controlled), the active item first with ▸ (the menu's "the
  * current one"), pending next (≤2), the done items COLLAPSED behind the
- * W10 cut family `└ +N done · ctrl+r`, overflow pending behind
- * `└ +N more · ctrl+r` — every row cut at W so the cap holds at every
- * width. ctrl+r (W15) toggles the full list in place (expanded). SETTLED
+ * W10 cut family `└ +N done · ctrl+o`, overflow pending behind
+ * `└ +N more · ctrl+o` — every row cut at W so the cap holds at every
+ * width. ctrl+o (W15) toggles the full list in place (expanded). SETTLED
  * (done:true): the recap idiom `task done · N items · <duration>` + the
  * FULL final item list in the checklist's existing shape (▖/□/▣ —
  * indented two, the glyph leads, no │ gutter).
@@ -2257,7 +2276,7 @@ class Checklist implements Component {
 			: `task · ${plural(items.length, "item")} · ${active.length} active · ${doneCount} done`;
 		const header = `${p.bold}✦${p.reset} ${escapeTerminal(fixed + tail)}`;
 		// the FULL-list forms: SETTLED — the durable record (the fold is
-		// fine — committed content wraps naturally) — and the LIVE ctrl+r
+		// fine — committed content wraps naturally) — and the LIVE ctrl+o
 		// toggle (the header CUTS — the block stays one window high; the
 		// expanded rows show the ▣ the collapse hid). The live flag picks
 		// the glyphs: the settled list keeps the durable ▖, the expanded
@@ -2274,13 +2293,13 @@ class Checklist implements Component {
 		// LIVE — the fixed window: the header + the item rows CUT at W
 		// (one screen row each — the block's height is its row count,
 		// CAP_TASK_LIVE, at every width). The cut is the momentary view;
-		// the settle (and the ctrl+r toggle) show everything.
+		// the settle (and the ctrl+o toggle) show everything.
 		const itemRows: string[] = [];
 		if (active.length > 0) itemRows.push(`  ${p.bold}▸${p.reset} ${escapeTerminal(active[0]!.text)}`);
 		for (const item of pending.slice(0, 2)) itemRows.push(`  □ ${escapeTerminal(item.text)}`);
 		const more = pending.length - 2;
-		if (more > 0) itemRows.push(`  ${p.dim}└ +${more} more · ctrl+r${p.reset}`);
-		if (doneCount > 0) itemRows.push(`  ${p.dim}└ +${doneCount} done · ctrl+r${p.reset}`);
+		if (more > 0) itemRows.push(`  ${p.dim}└ +${more} more · ctrl+o${p.reset}`);
+		if (doneCount > 0) itemRows.push(`  ${p.dim}└ +${doneCount} done · ctrl+o${p.reset}`);
 		return [cutLine(header, W), ...itemRows.map((r) => cutLine(r, W))];
 	}
 }
@@ -2295,7 +2314,7 @@ class Checklist implements Component {
  *  W21: the question param is gone — the old question slot retires; a
  *  pending approval's status IS the panel's (the compositor derives
  *  it from the bound panel state). */
-/** R8b — THE IDLE HINT GIVES WAY IN ORDER, and `ctrl+o` is on it.
+/** R8b — THE IDLE HINT GIVES WAY IN ORDER, and `ctrl+r` is on it.
  *
  *  The transcript viewer shipped in 0.19.0 and was reachable only from
  *  the `?` sheet: not on the banner's key line, not here. A feature
@@ -2306,17 +2325,17 @@ class Checklist implements Component {
  *  when it does not fit — a longer string would take `/ commands` down
  *  with it on a narrow terminal. So the forms are a ladder, and the
  *  order says which affordance is least replaceable: `/ commands`
- *  survives longest because it is the door to everything; `ctrl+o`
+ *  survives longest because it is the door to everything; `ctrl+r`
  *  outranks `↑ history` because pressing up is how a person finds the
- *  history by accident, and nothing finds ctrl+o by accident. */
+ *  history by accident, and nothing finds ctrl+r by accident. */
 export function idleHint(room: number): string {
 	// The third rung is today's hint, kept so that NO width loses
 	// something that used to fit: without it, a room of 24-30 columns
 	// fell all the way to `/ commands` even though the old form fitted.
 	// So the ladder is not a strict ranking of the three affordances —
-	// it is the widest honest form at each room, and ctrl+o is on the
+	// it is the widest honest form at each room, and ctrl+r is on the
 	// first two rungs rather than on all of them.
-	for (const form of [" / commands · ↑ history · ctrl+o transcript", " / commands · ctrl+o transcript", " / commands · ↑ history", " / commands"]) {
+	for (const form of [" / commands · ↑ history · ctrl+r transcript", " / commands · ctrl+r transcript", " / commands · ↑ history", " / commands"]) {
 		if (visibleWidth(form) <= room) return form;
 	}
 	return "";

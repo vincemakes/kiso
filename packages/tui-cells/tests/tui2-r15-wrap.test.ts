@@ -104,7 +104,7 @@ describe("TUI2-R1.5 ⑨ — the surfaces that wrap by word (VD-10)", () => {
 		} as unknown as BodyCell;
 		// R8a: the block's rows are indented, not guttered — the corner
 		// opens the first one and the rest carry the same four columns.
-		const rows = render(cell, 14).filter((r) => (r.startsWith("  └ ") || r.startsWith("    ")) && !r.includes("ctrl+r"));
+		const rows = render(cell, 14).filter((r) => (r.startsWith("  └ ") || r.startsWith("    ")) && !r.includes("ctrl+o"));
 		// the hard fold splits mid-word at the width; a word wrap would not
 		expect(rows.some((r) => /\S$/.test(r) && !/ $/.test(r))).toBe(true);
 		expect(rows.join("").replace(/ {2}└ | {4}/g, "")).toBe("aaaa bbbb cccc dddd eeee".replace(/ /g, " "));

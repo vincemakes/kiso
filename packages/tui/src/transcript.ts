@@ -60,7 +60,7 @@ export interface ViewerState {
 }
 
 export function viewerInit(entries: readonly ViewerEntry[]): ViewerState {
-	// the cursor starts on the NEWEST fold — the one ctrl+r would have
+	// the cursor starts on the NEWEST fold — the one ctrl+o would have
 	// opened, so the two mechanisms agree on their first answer.
 	return { cursor: Math.max(0, entries.length - 1), top: 0, open: new Set() };
 }

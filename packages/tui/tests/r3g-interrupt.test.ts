@@ -225,10 +225,10 @@ describe("R3g ③ — the rollup never speaks for a run it did not finish", () =
 	 * count, so a clean run of any length no longer spills and the
 	 * commit-time rollup is unreachable for it. Measured while retiring
 	 * this: eight paced reads at H=8 render `reading 2 files` …
-	 * `reading 8 files` in place and settle as `✦ read 8 files · ctrl+r`
+	 * `reading 8 files` in place and settle as `✦ read 8 files · ctrl+o`
 	 * — no force-commit, no rollup, nothing to control.
 	 *
-	 * The rollup itself is NOT gone: it is what `ctrl+r` opens on a
+	 * The rollup itself is NOT gone: it is what `ctrl+o` opens on a
 	 * folded stretch, through the same `rolledOf` / `rolledDetail`
 	 * projection, and `r3b-segment-fold.test.ts` gates it there. Writing
 	 * a new spill shape here just to keep a green row would be a gate

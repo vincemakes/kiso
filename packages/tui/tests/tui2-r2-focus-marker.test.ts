@@ -1,10 +1,10 @@
 /**
  * TUI2-R2 slice ⑤ — D, the live focus marker (the owner's candidate 1).
  *
- * ctrl+r acts on ONE cell, and until now nothing on screen said which.
+ * ctrl+o acts on ONE cell, and until now nothing on screen said which.
  * The key was learnable and its target was not: you pressed it and found
  * out. Candidate 1 answers it with zero new rows and zero new columns —
- * the cell the next press will act on renders its own `ctrl+r` token in
+ * the cell the next press will act on renders its own `ctrl+o` token in
  * the wash, and every other suffix stays dim.
  *
  * Candidate 2 (a `▸` marker in a new leading column) was rejected by the
@@ -29,7 +29,7 @@ function makeBody(rows = 24, cols = 100) {
 }
 
 /**
- * Every `ctrl+r` token in the frame, with the SGR that opened it.
+ * Every `ctrl+o` token in the frame, with the SGR that opened it.
  *
  * DC-3 supersession: the opener used to be matched by its LITERAL bytes
  * (`38;5;252`), which pinned this test to one palette rather than to the
@@ -54,7 +54,7 @@ function makeBody(rows = 24, cols = 100) {
  * dim, among siblings that are.
  */
 const esc = (v: string): string => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const OPENER = new RegExp(`(?:${esc(COLOR_ON.lift)}|${esc(COLOR_ON.dim)})[^\\x1b]*ctrl\\+r`, "g");
+const OPENER = new RegExp(`(?:${esc(COLOR_ON.lift)}|${esc(COLOR_ON.dim)})[^\\x1b]*ctrl\\+o`, "g");
 function tokens(bytes: string): { tint: "bright" | "dim" | "other" }[] {
 	const out: { tint: "bright" | "dim" | "other" }[] = [];
 	for (const m of bytes.matchAll(OPENER)) {
@@ -84,18 +84,18 @@ function protoFrame(body: Body): void {
 	body.toolRunning("t1");
 	body.toolResult("t1", { content: "a\nb\nc\nd\ne\nf", isError: false });
 	body.toolStart("shell", "t2", { command: "npm test" });
-	body.toolRunning("t2"); // the live cell ctrl+r is aimed at
+	body.toolRunning("t2"); // the live cell ctrl+o is aimed at
 }
 
 describe("TUI2-R2 ⑤ — the live focus marker (candidate 1)", () => {
-	it("the cell the next ctrl+r will act on renders its token in the CODE tint; every other stays dim", () => {
+	it("the cell the next ctrl+o will act on renders its token in the CODE tint; every other stays dim", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		protoFrame(body);
 		writes.length = 0;
 		tick();
 		const found = tokens(writes.join(""));
-		expect(found.length, "no ctrl+r token in the frame at all").toBeGreaterThan(0);
+		expect(found.length, "no ctrl+o token in the frame at all").toBeGreaterThan(0);
 		expect(found.filter((t) => t.tint === "bright"), "the focused cell's token is not the bright one").toHaveLength(1);
 	});
 
@@ -126,7 +126,7 @@ describe("TUI2-R2 ⑤ — the live focus marker (candidate 1)", () => {
 		tick();
 		const frame = writes.join("");
 		// the bright token is on the row that names the NEW cell
-		const row = frame.split(/\x1b\[\d+;1H\x1b\[0K/).find((r) => r.includes(COLOR_ON.lift + "ctrl+r") || r.includes(COLOR_ON.lift));
+		const row = frame.split(/\x1b\[\d+;1H\x1b\[0K/).find((r) => r.includes(COLOR_ON.lift + "ctrl+o") || r.includes(COLOR_ON.lift));
 		expect(row ?? "", "the focus did not move to the newest cell").toContain("two.ts");
 		expect(tokens(frame).filter((t) => t.tint === "bright")).toHaveLength(1);
 	});
@@ -140,6 +140,6 @@ describe("TUI2-R2 ⑤ — the live focus marker (candidate 1)", () => {
 		tick();
 		const bytes = writes.join("");
 		expect(bytes).not.toContain("\x1b[38;5;252m");
-		expect(bytes).toContain("ctrl+r"); // the affordance itself survives
+		expect(bytes).toContain("ctrl+o"); // the affordance itself survives
 	});
 });

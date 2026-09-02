@@ -147,7 +147,7 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 				resultText: Array.from({ length: 22 }, (_, i) => `out ${i}`).join("\n"),
 			}),
 		);
-		expect(settled[0]).toBe("  shell npm test (exit 0, 18.2s) · 22 lines · ctrl+r expands");
+		expect(settled[0]).toBe("  shell npm test (exit 0, 18.2s) · 22 lines · ctrl+o expands");
 		expect(settled.join("\n")).not.toContain("live tail");
 	});
 });

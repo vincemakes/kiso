@@ -87,7 +87,7 @@ function workspace(): string {
 
 describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
 	// NOTE: the four single-state cases (post-turn, post-/context,
-	// typed-during-run, post-ctrl+r) were folded into the every-frame gate
+	// typed-during-run, post-ctrl+o) were folded into the every-frame gate
 	// below, which strictly subsumes them — it walks EVERY frame of a
 	// session that exercises all four. Each one cost its own blocking
 	// execFileSync PTY spawn, and six spawns in one file starve vitest's
@@ -117,7 +117,7 @@ describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
 			feeds: [
 				["▌ ", "go\r"],
 				["needs approval", "1\r"],
-				["fixed it.", "\x12"],
+				["fixed it.", "\x0f"],
 			],
 			delays: [[5, "/context\r"], [7, "exit\r"]],
 			cwd: ws,

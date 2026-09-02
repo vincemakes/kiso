@@ -421,7 +421,7 @@ function taskVerdictWords(kind: "verified" | "stale" | "none" | "unreadable"): s
 
 /** W21 — the panel view for a permission_requested: the rule line (the
  *  why-asked speaker + the §3.5 fix hint), the toolTarget title, the
- *  "⏸ run paused" status, and the ALWAYS-verbose args. */
+ *  "❯ run paused" status, and the ALWAYS-verbose args. */
 function approvalView(name: string, ev: { speaker?: string; input?: Record<string, unknown> }, amended = false): PanelView {
 	const speaker = ev.speaker ?? "kiso";
 	const input = ev.input ?? {};
@@ -439,7 +439,7 @@ function approvalView(name: string, ev: { speaker?: string; input?: Record<strin
 		speaker,
 		...(hint !== undefined ? { hint } : {}),
 		...(risk !== null ? { riskHint: risk } : {}),
-		statusText: "⏸ run paused",
+		statusText: "❯ run paused",
 		args: approvalArgs(name, input),
 		fallbackQuestion: `approve ${escapeTerminal(name)}? (y/n) `,
 		// TUI2-R3v2 ③: the v4 frame's "(amended)" marker. It says WHY this
@@ -689,7 +689,7 @@ export async function consumeRun(
 				body.notice(`⚠ ${escapeTerminal(ev.name)} FAILED — the side effect may have applied. ${escapeTerminal(ev.error)}`);
 				break;
 			case "permission_requested": {
-				// v2d: the ToolCell shows the ⏸ badge; the question takes over
+				// v2d: the ToolCell shows the ❯ badge; the question takes over
 				// the dock status position; the answer lands at the input line.
 				// v2e: the mini-diff for edit/write at the approval moment —
 				// the human sees the change BEFORE deciding (auto-allowed tools
@@ -1241,7 +1241,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		}
 		dispatch(line, dispatchCtx);
 	});
-	// W15: the expand key — the editor forwards ctrl+r; dispatch runs the
+	// W15: the expand key — the editor forwards ctrl+o; dispatch runs the
 	// chain action (the sentinel's control char marks the key, so a typed
 	// "expand" turn is never intercepted).
 	input.onExpand(() => dispatch("\x12expand", dispatchCtx));

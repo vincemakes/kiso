@@ -1,5 +1,5 @@
 /**
- * TUI v7 W15 — the expand key (ctrl+r), the work order's done-when:
+ * TUI v7 W15 — the expand key (ctrl+o), the work order's done-when:
  * "expanding a tool from three turns back prints a new block at the
  * bottom and the rows above it are byte-identical to before."
  *
@@ -12,10 +12,10 @@
  *      comparison pins it).
  *  (2) LIVE cells TOGGLE in place — the compositor owns those rows and
  *      redraws them. The reachable live cell is the approval diff (its
- *      "ctrl+r to expand" affordance is the invite); the key must
+ *      "ctrl+o to expand" affordance is the invite); the key must
  *      answer AT the approval pause, never after the run.
  *
- * Both ride the REAL key: the driver writes the raw \x12 byte through
+ * Both ride the REAL key: the driver writes the raw \x0f byte through
  * the PTY, the editor's feed dispatches it.
  */
 
@@ -135,10 +135,10 @@ function stripANSI(text: string): string {
 }
 
 describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
-	it("COMMITTED: ctrl+r on a tool from three turns back appends the expanded block — the rows above it byte-identical (the work order's done-when)", () => {
+	it("COMMITTED: ctrl+o on a tool from three turns back appends the expanded block — the rows above it byte-identical (the work order's done-when)", () => {
 		const { env } = isolatedEnv();
 		// Three turns; the FIRST's shell (`seq 1 8`) settles into the 5-row
-		// tail with the ctrl+r affordance and freezes; turns 2–3 are
+		// tail with the ctrl+o affordance and freezes; turns 2–3 are
 		// text-only. bypass: the shell runs without the approval question —
 		// this gate is about the KEY, not the policy chain.
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v7-expand-"));
@@ -164,7 +164,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 				["▌ ", "go\r"], // the brick — the startup paint is race-proof in BOTH modes
 				["built.", "go\r"], // turn 1's response → turn 2
 				["second turn.", "go\r"], // turn 2's response → turn 3
-				["third turn.", "\x12"], // the REAL key — the turn-1 shell has long since frozen
+				["third turn.", "\x0f"], // the REAL key — the turn-1 shell has long since frozen
 				["expanded · shell", "exit\r"],
 			],
 		);
@@ -211,8 +211,8 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		const screenNow = new VtScreen(24, 80);
 		screenNow.write(Buffer.from(out, "utf8"));
 		const visible = screenNow.visible().join("\n");
-		expect((visible.match(/ctrl\+r/g) ?? []).length, "one affordance per cell on screen").toBeLessThanOrEqual(2);
-		expect((clean.match(/ctrl\+r/g) ?? []).length).toBeGreaterThanOrEqual(1);
+		expect((visible.match(/ctrl\+o/g) ?? []).length, "one affordance per cell on screen").toBeLessThanOrEqual(2);
+		expect((clean.match(/ctrl\+o/g) ?? []).length).toBeGreaterThanOrEqual(1);
 		// the REAL count, at the tier this row's width affords: the bypass
 		// tier's `· approved by mode:bypass` takes the room the full form
 		// would have needed, so the terse tier lands — the count survives,
@@ -222,7 +222,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// verdict is what the row records. `approved by mode:*` was the
 		// runtime's backfill for "no policy expressed an opinion", read by
 		// a human as an attribution (VD-11).
-		expect(clean).toMatch(/\(exit 0, \d+\.\ds\) · 8 lines · ctrl\+r expands/);
+		expect(clean).toMatch(/\(exit 0, \d+\.\ds\) · 8 lines · ctrl\+o expands/);
 
 		// THE DONE-WHEN: split the stream at the block's first byte — the
 		// pre-key part is the state before the key. The emulator replays
@@ -281,10 +281,10 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 				["▌ ", "go\r"],
 				// The v8 panel replaces the live cut — the ALWAYS-verbose diff
 				// is up immediately (the 15-line write folds at the H−4 cap
-				// with the notice row; the ctrl+r affordance is GONE).
+				// with the notice row; the ctrl+o affordance is GONE).
 				// Answer with 1 (Yes) + enter.
 				["needs approval — asked by", "y\r"],
-				["written.", "\x12"], // the second key: the cell is settled+committed
+				["written.", "\x0f"], // the second key: the cell is settled+committed
 				["nothing to expand", "exit\r"],
 			],
 		);
@@ -296,7 +296,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		expect(clean).toContain("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
 		expect(clean).toContain("more rows — the full args are in the event log");
 		expect(clean).toContain("line07"); // the always-verbose middle — never hidden
-		expect(clean).not.toContain("ctrl+r to expand"); // the live cut is gone — the panel superseded it
+		expect(clean).not.toContain("ctrl+o to expand"); // the live cut is gone — the panel superseded it
 		// The second key appended nothing — the settled cell was never cut
 		// with the affordance (its committed form is the result text), so
 		// the answer is the empty message, not a block.
@@ -335,7 +335,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 				// settled form). Its bytes land after the frame's capture
 				// completed — never the text's live bytes, which can precede
 				// the commit by a frame.
-				["five files read.", "\x12"],
+				["five files read.", "\x0f"],
 				["read 5 files · 0 turns back", "exit\r"],
 			],
 			60,
@@ -345,7 +345,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 
 		// DECLARED SUPERSESSION (R3b, owner ruling): the run's SETTLED form
 		// is the segment fold; W13's row, its children and the overflow
-		// moved behind `ctrl+r`. What this case is really about — the
+		// moved behind `ctrl+o`. What this case is really about — the
 		// expand reaching the FULL per-call children — is unchanged and is
 		// asserted below.
 		expect(clean).toMatch(/read 5 files/);

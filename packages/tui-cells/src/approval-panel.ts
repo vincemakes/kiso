@@ -356,7 +356,7 @@ export interface PanelView {
 	/** The fix hint per speaker (the v8 design §3.5 table). */
 	readonly hint?: string;
 	/** The options-phase status-left text — the CLI knows the context
-	 *  ("⏸ run paused", the trust gate's line). */
+	 *  ("❯ run paused", the trust gate's line). */
 	readonly statusText: string;
 	/** The ALWAYS-verbose args — the full command/content/diff. */
 	readonly args: PanelArgs;
@@ -724,8 +724,8 @@ export function panelLeadWidth(view: PanelView, phase: PanelPhase, cursor: numbe
 
 /** The status row's left text while the panel is up — the phase, not
  *  the CLI's painting status (the compositor derives it from the panel
- *  state; the "⏸ run paused" etc. ride the options phase). */
-// R2 (design §4, the ⏸ ruling): a panel that is WAITING ON A HUMAN says
+ *  state; the "❯ run paused" etc. ride the options phase). */
+// R2 (design §4, the ❯ ruling): a panel that is WAITING ON A HUMAN says
 // so with the one mark that means it. `▸` is the checklist's "the
 // current one" — a mark meaning two things is worse than two marks
 // (law 4.2), and the thing this row has to convey is not "here" but
@@ -739,7 +739,7 @@ export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number):
 	// the verdict" described the plumbing to whoever wrote it; the human
 	// typing needs to know the model will read this and answer with a new
 	// call — which is what the v4 frame says, in those words.
-	if (phase === "amend") return "⏸ your note goes to the model — it will propose a new call";
+	if (phase === "amend") return "❯ your note goes to the model — it will propose a new call";
 	return view.statusText;
 }
 

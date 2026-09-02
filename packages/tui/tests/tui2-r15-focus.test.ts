@@ -1,5 +1,5 @@
 /**
- * TUI2-R1.5 slice ⑥ — VD-7: ctrl+r acts on exactly one cell.
+ * TUI2-R1.5 slice ⑥ — VD-7: ctrl+o acts on exactly one cell.
  *
  * The walkthrough's 06→07→08 sequence saw one press collapse the read
  * group AND expand the error card. A screen diff cannot prove or
@@ -15,7 +15,7 @@
  * RETURN. A marker cannot ride the cells (a committed row's bytes are
  * frozen in the scrollback, ADR-0046) and the status hint, the only
  * always-repainted surface, collides with three "emitted exactly once"
- * gates when it carries the literal `ctrl+r`.
+ * gates when it carries the literal `ctrl+o`.
  */
 
 /**
@@ -127,14 +127,14 @@ describe("TUI2-R1.5 ⑥ — one press, one cell (VD-7)", () => {
 		expect(lines).toContain("expanded · read 4 files · ran 1 search");
 		expect(lines).toContain("explored 4 files · 1 search");
 		// DECLARED SUPERSESSION (R3i phase 4): in the APPENDED path the
-		// footer said `ctrl+r collapses`, which is false there — a
+		// footer said `ctrl+o collapses`, which is false there — a
 		// committed row is ink (ADR-0046 forbids rewriting history), so
 		// nothing about this block can be taken back and the next press
 		// opens the NEXT fold. The footer says what the key does. The
 		// LIVE toggle keeps the old wording, where it is true.
 		// R4a: the ordinal is retired; the footer says which DIRECTION the
 		// walk goes, which is the promise the key can actually keep.
-		expect(lines).toContain("end of expansion · ctrl+r opens the one before it");
+		expect(lines).toContain("end of expansion · ctrl+o opens the one before it");
 		expect(lines.match(/expanded ·/g) ?? []).toHaveLength(1);
 	});
 

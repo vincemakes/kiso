@@ -7,7 +7,7 @@
  * reporter RPC. The sweep is strictly stronger as a gate — but "no frame
  * in this session was wrong" is not the same record as "the cursor is
  * right after a turn, after /context, while typing during a run, after
- * ctrl+r, and under an approval panel", and the round asked for the
+ * ctrl+o, and under an approval panel", and the round asked for the
  * second one.
  *
  * So: ONE spawn, five NAMED assertions harvested from it. The session
@@ -132,7 +132,7 @@ beforeAll(() => {
 		feeds: [
 			["▌ ", "go\r"],
 			["needs approval", "1\r"],
-			["fixed it.", "\x12"],
+			["fixed it.", "\x0f"],
 		],
 		delays: [[5, "/context\r"], [7, "exit\r"]],
 		cwd: ws,
@@ -164,7 +164,7 @@ describe("TUI2-R2 ⑤ — the cursor parks at the active input, in every named s
 	});
 
 	it("POST-CTRL+R: the expand key's own frame parks like any other", () => {
-		expectParked(termAt(raw, "expanded", ROWS, COLS), "post-ctrl+r");
+		expectParked(termAt(raw, "expanded", ROWS, COLS), "post-ctrl+o");
 	});
 
 	it("EVERY FRAME of the same session ends on an input row (the R1.5 sweep, carried)", () => {

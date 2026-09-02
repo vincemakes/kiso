@@ -127,7 +127,7 @@ export function renderEvent(ev: RenderInput, prevThinking = false, resolvePath: 
 		case "permission_requested":
 			// round 8: the tool NAME is model text — escaped like everything else.
 			return {
-				text: `⏸ ${escapeTerminal(ev.name)} needs approval ${p.dim}${approvalDetail(ev.name, ev.input, resolvePath)}${p.reset} `,
+				text: `❯ ${escapeTerminal(ev.name)} needs approval ${p.dim}${approvalDetail(ev.name, ev.input, resolvePath)}${p.reset} `,
 				newline: false,
 				prompt: true,
 			};

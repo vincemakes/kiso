@@ -106,7 +106,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		return;
 	}
 	if (trimmed === "\x12expand") {
-		// W15: the expand key (ctrl+r) — /last aimed at a chosen cell.
+		// W15: the expand key (ctrl+o) — /last aimed at a chosen cell.
 		// The TARGET is picked at press time: a LIVE tool cell toggles
 		// IMMEDIATELY in place (the compositor owns those rows and
 		// redraws them — the approval pause is exactly when the user
@@ -129,7 +129,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				// was only true in one of them. A reader who pressed the key
 				// on a ring of one had something to open — they were already
 				// looking at it — and the old line told them the opposite.
-				bodyLog(r.why === "already-last" ? "[that expansion is already the last thing on screen — ctrl+o opens the transcript]" : "[nothing to expand]");
+				bodyLog(r.why === "already-last" ? "[that expansion is already the last thing on screen — ctrl+r opens the transcript]" : "[nothing to expand]");
 			}
 			ctx.input.prompt();
 		};
@@ -222,8 +222,8 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 									header: `mode — current: ${current}`,
 									options: MODES.map((name) => ({ label: name, note: [MODE_NOTE[name], ...(name === current ? ["current"] : [])].join(" · ") })),
 								},
-								// DC-12 (design §4): a panel WAITING ON A HUMAN says ⏸.
-								ctx.isRunning() ? "⏸ run paused" : `▸ ${current}`,
+								// DC-12 (design §4): a panel WAITING ON A HUMAN says ❯.
+								ctx.isRunning() ? "❯ run paused" : `▸ ${current}`,
 							),
 							(v) => resolve(v.action === "picked" ? v.result : null),
 						);
@@ -297,10 +297,10 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 								// the path spelled out
 								...(names.length === 0 ? { emptyNote: "no profiles — define models in ~/.kiso/config.json" } : {}),
 							},
-							// DC-12 (design §4): a panel WAITING ON A HUMAN says ⏸. The
+							// DC-12 (design §4): a panel WAITING ON A HUMAN says ❯. The
 							// else-branch keeps ▸ — it names the current tier, which is
 							// what ▸ means everywhere else.
-							ctx.isRunning() ? "⏸ run paused" : `▸ ${getMode()}`,
+							ctx.isRunning() ? "❯ run paused" : `▸ ${getMode()}`,
 						),
 						(v) => resolve(v.action === "picked" ? v.result : null),
 					);

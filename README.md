@@ -828,17 +828,17 @@ token: no extra request, no extra event, no estimate presented as a
 measurement.
 
 - **Cards name their own key.** A collapsed tool cell that is hiding
-  something says how much and how to see it — `· 22 lines · ctrl+r
-  expands` — and an expanded block ends with `└ ctrl+r collapses`. A
+  something says how much and how to see it — `· 22 lines · ctrl+o
+  expands` — and an expanded block ends with `└ ctrl+o collapses`. A
   cell whose output is already whole on screen says nothing, because the
   affordance is a statement about hidden content. The suffix takes the
-  width that is left and degrades (`· N lines · ctrl+r`, then `·
-  ctrl+r`, then nothing) rather than cutting the path the row exists to
+  width that is left and degrades (`· N lines · ctrl+o`, then `·
+  ctrl+o`, then nothing) rather than cutting the path the row exists to
   name.
 - **Exploration rolls up.** A consecutive run of read-only calls
   (`read_file` / `list_dir` / `search_text`) collapses to one line —
-  `✓ explored 8 files · 14 searches (3.2s) · ctrl+r lists them` — and
-  ctrl+r lists them per tool, with the repeated subjects counted.
+  `✓ explored 8 files · 14 searches (3.2s) · ctrl+o lists them` — and
+  ctrl+o lists them per tool, with the repeated subjects counted.
   Writes, edits, shells and extension tools **never** group: a burst of
   side effects is a list of things that happened, and every row of it
   carries meaning. The grouping is display-only — the durable log is
@@ -865,7 +865,7 @@ measurement.
   renders no number. kiso does not invent a price.
 
 ```text
-  ✓ explored 8 files · 14 searches (3.2s) · ctrl+r lists them
+  ✓ explored 8 files · 14 searches (3.2s) · ctrl+o lists them
   ▖ shell npm test (12s)
   │ packages/runtime  ✓ 184 tests
   │ packages/tui      ⠸ 88/120
@@ -875,7 +875,8 @@ measurement.
 
 **The keys:** `enter` send · `ctrl+j / shift+⏎` newline · `@` files ·
 `esc` stop · `alt+⏎ / ctrl+⏎` redirect · `/` commands · `↑↓` history /
-queue pop · `ctrl+r` expand cells · `tab` complete · `?` this sheet.
+queue pop · `ctrl+o` expand cells · `ctrl+r` transcript · `tab` complete · `?` this
+sheet.
 Panels: digits select · space toggles · `t` types an answer.
 
 ## Task — durable long-horizon working memory
@@ -1184,7 +1185,7 @@ decline`); the body scrolls
   mutate cells, so interleaving is impossible by construction); completed
   cells freeze once, unfinished cells render in an active tail at the
   region's bottom and redraw in place; a tool's life is ONE line
-  (`→ name summary` → ⏸ → running spinner + Ns → `✓ name (summary, 1.2s)`),
+  (`→ name summary` → ❯ → running spinner + Ns → `✓ name (summary, 1.2s)`),
   the [result] no longer flows into the stream (`/last` holds it); the
   pipe bytes stay byte-identical. `resume` is the recovery flow (uncertain executions are
   decided rerun/abandon — uncertainty belongs to the crash window alone,

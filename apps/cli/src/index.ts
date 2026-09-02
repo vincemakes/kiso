@@ -88,7 +88,7 @@ function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
 			/* readline has no bare-Esc semantics — ignored. */
 		},
 		onExpand() {
-			/* readline has no ctrl+r binding — ignored (W15 rides the
+			/* readline has no ctrl+o binding — ignored (W15 rides the
 			 * editor path only). */
 		},
 		question(query, cb) {

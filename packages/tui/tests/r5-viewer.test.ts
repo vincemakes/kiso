@@ -35,7 +35,7 @@ const entry = (n: number, bodyRows = 3): ViewerEntry => ({
 const ENTRIES = [entry(1), entry(2), entry(3), entry(4)];
 
 describe("R5 A — the cursor is the answer to “which one”", () => {
-	it("starts on the NEWEST fold — the one ctrl+r would have opened", () => {
+	it("starts on the NEWEST fold — the one ctrl+o would have opened", () => {
 		expect(viewerInit(ENTRIES).cursor).toBe(ENTRIES.length - 1);
 	});
 
@@ -127,7 +127,7 @@ describe("R5 D — invariant ① holds on every viewer row", () => {
 		const long: ViewerEntry[] = [
 			{
 				head: "✦ thought 43s · read 14 files · listed 5 directories · ran 11 searches · edited 2 files",
-				body: ["  read packages/tui/src/compositor.ts (0.3s) · 3120 lines · ctrl+r expands", "  ran npm run check --workspaces --if-present (exit 0, 91.2s)"],
+				body: ["  read packages/tui/src/compositor.ts (0.3s) · 3120 lines · ctrl+o expands", "  ran npm run check --workspaces --if-present (exit 0, 91.2s)"],
 			},
 		];
 		for (let W = 40; W <= 120; W += 1) {
@@ -320,7 +320,7 @@ describe("R5 G — the viewer is the live region's occupant, and says so", () =>
 		expect(body.viewerOpen()).toBe(true);
 	});
 
-	it("it lists the SAME set ctrl+r walks — one source of truth", () => {
+	it("it lists the SAME set ctrl+o walks — one source of truth", () => {
 		const { body, screen, tick } = makeBody({ H: 30 });
 		body.enter();
 		body.userLine("x");
@@ -367,7 +367,7 @@ describe("R5 I — the key table", () => {
 		expect(viewerCommand("a")).toBe("all");
 		expect(viewerCommand("\x1b")).toBe("close");
 		expect(viewerCommand("q")).toBe("close");
-		expect(viewerCommand("\x0f")).toBe("close"); // the key that opens it puts it away
+		expect(viewerCommand("\x12")).toBe("close"); // the key that opens it puts it away
 	});
 
 	it("anything unrecognised is SWALLOWED, never typed into the composer behind it", () => {

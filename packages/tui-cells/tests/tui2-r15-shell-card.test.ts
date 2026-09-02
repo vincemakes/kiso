@@ -13,7 +13,7 @@
  *     a command's first line arrived under an empty gutter row.
  *
  * (c) VD-5: a completed shell kept its last rows plus
- *     `└ +N earlier rows · ctrl+r` forever — six rows per call, for the
+ *     `└ +N earlier rows · ctrl+o` forever — six rows per call, for the
  *     whole session. The approved R1 prototype settles it to ONE line.
  *
  * Red on base: (a) the running header contains `{"command"`; (b) a
@@ -140,7 +140,7 @@ describe("TUI2-R1.5 ④(c) — the completed shell collapses to ONE line (VD-5)"
 	it("the settled card is ONE row: the head plus the suffix", () => {
 		const rows = render(done());
 		expect(rows).toHaveLength(1);
-		expect(rows[0]).toBe("  shell npm test (exit 0, 6.0s) · 7 lines · ctrl+r expands");
+		expect(rows[0]).toBe("  shell npm test (exit 0, 6.0s) · 7 lines · ctrl+o expands");
 		// the tail rows and the "earlier rows" cut are gone
 		expect(rows[0]).not.toContain("earlier rows");
 	});
@@ -156,23 +156,23 @@ describe("TUI2-R1.5 ④(c) — the completed shell collapses to ONE line (VD-5)"
 		expect(row.match(/\d+ lines/g) ?? []).toHaveLength(1);
 	});
 
-	it("ctrl+r EXPANDS it — the whole block plus the way back", () => {
+	it("ctrl+o EXPANDS it — the whole block plus the way back", () => {
 		const rows = render(done({ expanded: true }));
 		expect(rows.length).toBeGreaterThan(2);
 		expect(rows.join("\n")).toContain("step 1");
 		expect(rows.join("\n")).toContain("build done");
-		expect(rows[rows.length - 1]).toContain("ctrl+r collapses");
+		expect(rows[rows.length - 1]).toContain("ctrl+o collapses");
 	});
 
 	it("a shell that produced NO output hides nothing and carries no suffix", () => {
 		const rows = render(done({ resultText: "" }));
 		expect(rows).toHaveLength(1);
-		expect(rows[0]).not.toContain("ctrl+r");
+		expect(rows[0]).not.toContain("ctrl+o");
 	});
 
 	it("a SHORT shell now says so too — four hidden lines used to claim nothing", () => {
 		const row = render(done({ resultText: "one\ntwo\nthree" }))[0]!;
-		expect(row).toContain("· 3 lines · ctrl+r expands");
+		expect(row).toContain("· 3 lines · ctrl+o expands");
 	});
 
 	it("a FAILED shell still shows its error body — the collapse never hides a failure", () => {

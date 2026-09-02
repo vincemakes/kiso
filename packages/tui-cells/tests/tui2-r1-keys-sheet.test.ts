@@ -34,7 +34,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		// it at 43, which is a hand-spacing slip, not a design. The stops
 		// are 16/43 on both rows, so the column the prototype was drawing
 		// is the column that renders.
-		// DECLARED ADDITION (R5): ctrl+o joins at index 8 and the tail
+		// DECLARED ADDITION (R5): ctrl+r joins at index 8 and the tail
 		// shifts by one, so the last two bindings now share a row and the
 		// undo row is no longer alone. The stops are untouched.
 		// DECLARED SUPERSESSION (R8b, 2026-09-01): the sheet opens with a
@@ -49,8 +49,8 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		expect(sheet.slice(1)).toEqual([
 			"enter send      ctrl+j / shift+⏎ newline   @ files",
 			"esc stop        alt+⏎ / ctrl+⏎ redirect    / commands",
-			"↑↓ history / queue pop              ctrl+r expand cells",
-			"ctrl+o transcript                   tab complete (menu / @)",
+			"↑↓ history / queue pop              ctrl+o expand cells",
+			"ctrl+r transcript                   tab complete (menu / @)",
 			"? this sheet                        ctrl+z / ctrl+y undo / redo",
 			// MOVED (the TUI2-R3v2 panel-selection supersession class): R1.5
 			// pin 6 chose "digits pick · ⏎ confirms" as the one sentence true
@@ -129,7 +129,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		// the editor's gesture set, transcribed from editor.ts's feed():
 		// enter submits, ctrl+j/shift+⏎ insert a newline, esc stops,
 		// alt+⏎/ctrl+⏎ redirect, @ picks files, / opens the menu, ↑↓ walk
-		// the history and pop the queue, ctrl+r expands, tab completes,
+		// the history and pop the queue, ctrl+o expands, tab completes,
 		// ? opens this sheet, ctrl+z/ctrl+y undo and redo (UD-1).
 		expect(KEY_BINDINGS.map((b) => b.keys)).toEqual([
 			"enter",
@@ -139,8 +139,8 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 			"alt+⏎ / ctrl+⏎",
 			"/",
 			"↑↓",
-			"ctrl+r",
-			"ctrl+o", // R5: the transcript viewer
+			"ctrl+o",
+			"ctrl+r", // R5: the transcript viewer
 			"tab",
 			"?",
 			"ctrl+z / ctrl+y",

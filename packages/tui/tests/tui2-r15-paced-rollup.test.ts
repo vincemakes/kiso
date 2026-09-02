@@ -3,7 +3,7 @@
  *
  * DECLARED SUPERSESSION (R3b, owner ruling 2026-08-27): the rollup's
  * ADDRESS moved. A closed segment's committed form is the fold line, and
- * the rollup — with its per-tool counts and subjects — is what `ctrl+r`
+ * the rollup — with its per-tool counts and subjects — is what `ctrl+o`
  * opens. The subject of these cases is PACING, not address: the run must
  * still form as ONE thing when the burst arrives one frame at a time,
  * which is exactly what a fold that says "6 reads" and opens onto
@@ -258,6 +258,6 @@ describe("TUI2-R1.5 ① — the rollup at REAL pacing (VD-1)", () => {
 		// turn lands: that is still exactly what is asserted.
 		expect(frame).toContain("done."); // the screen never stuck
 		expect(frame).toContain("read 20 files"); // and the run is all there, in one line
-		expect(frame).toContain("ctrl+r"); // with the way back to it
+		expect(frame).toContain("ctrl+o"); // with the way back to it
 	});
 });

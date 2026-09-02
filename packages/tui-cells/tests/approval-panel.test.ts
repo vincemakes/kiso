@@ -30,7 +30,7 @@ function approvalView(): PanelView {
 		title: "edit /a/very/long/path/that/must/cut/at/narrow/widths/file.ts",
 		speaker: "mode:default",
 		hint: "/mode accept-edits auto-approves edits",
-		statusText: "⏸ run paused",
+		statusText: "❯ run paused",
 		args: {
 			kind: "diff",
 			diff: [
@@ -51,7 +51,7 @@ function simpleView(): PanelView {
 		name: "project trust",
 		title: "/a/very/long/project/root/that/must/cut/at/narrow/widths",
 		speaker: "kiso",
-		statusText: "⏸ project trust",
+		statusText: "❯ project trust",
 		args: { kind: "text", lines: ["config.mjs  (a1b2c3)", "mcp.json  (d4e5f6)"] },
 		ruleOverride: "trust this project's .kiso?",
 		fallbackQuestion: "trust this project's .kiso? (y/n) ",
@@ -188,10 +188,10 @@ describe("W21: the panel chrome helpers", () => {
 	it("the status is the phase, the affordance the v4 hint line", () => {
 		// DECLARED SUPERSESSION (R2, design §4): the pending mark was `▸`,
 		// which is also the checklist's "the current one". A panel waiting
-		// on a human says `⏸` — the one mark that means "nothing moves
+		// on a human says `❯` — the one mark that means "nothing moves
 		// until you answer". The 867a0fa literals are otherwise intact.
-		expect(panelStatus(approvalView(), "options", 0)).toBe("⏸ run paused");
-		expect(panelStatus(approvalView(), "amend", 3)).toBe("⏸ your note goes to the model — it will propose a new call");
+		expect(panelStatus(approvalView(), "options", 0)).toBe("❯ run paused");
+		expect(panelStatus(approvalView(), "amend", 3)).toBe("❯ your note goes to the model — it will propose a new call");
 		expect(panelAffordance(approvalView(), "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
 		expect(panelAffordance(approvalView(), "options", 1)).toBe("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
 		expect(panelAffordance(simpleView(), "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1-2 instant · esc");

@@ -67,7 +67,7 @@ describe("TUI2-R1.5 ① — the exploration rollup at real pacing (real CLI)", (
 		const grid = settledScreen(raw);
 		const joined = grid.join("\n");
 		// DECLARED SUPERSESSION (R3b, owner ruling): the burst's SETTLED
-		// form is the segment fold; the exploration row is what `ctrl+r`
+		// form is the segment fold; the exploration row is what `ctrl+o`
 		// opens. The claim these cases make — the burst settles as ONE
 		// thing, with no keypress, and never as N individual rows — is
 		// unchanged and is stronger now: one row for the whole segment.
@@ -76,7 +76,7 @@ describe("TUI2-R1.5 ① — the exploration rollup at real pacing (real CLI)", (
 		expect(grid.filter((l) => /✓ read {2}f\d\.txt/.test(l))).toHaveLength(0);
 		// R4a: the affordance is no longer ON the row — a row cannot say
 		// which fold a key would open, so it stopped claiming to. That
-		// ctrl+r still has something to do is pinned behaviourally in
+		// ctrl+o still has something to do is pinned behaviourally in
 		// packages/tui/tests/r4-act-slot.test.ts ("R4a").
 	}, 240_000);
 
@@ -100,7 +100,7 @@ describe("TUI2-R1.5 ① — the exploration rollup at real pacing (real CLI)", (
 		});
 		const grid = settledScreen(raw);
 		// DECLARED SUPERSESSION (R3b, owner ruling): the burst's SETTLED
-		// form is the segment fold; the exploration row is what `ctrl+r`
+		// form is the segment fold; the exploration row is what `ctrl+o`
 		// opens. The claim these cases make — the burst settles as ONE
 		// thing, with no keypress, and never as N individual rows — is
 		// unchanged and is stronger now: one row for the whole segment.

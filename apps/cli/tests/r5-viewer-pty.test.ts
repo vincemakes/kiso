@@ -55,13 +55,13 @@ const screenAtIndex = (raw: string, end: number): string[] => {
 };
 
 describe("R5 — the transcript viewer leaves the scrollback alone (the blocker)", () => {
-	it("ctrl+o, move, expand, esc: ZERO rows scroll away and the screen comes back", () => {
+	it("ctrl+r, move, expand, esc: ZERO rows scroll away and the screen comes back", () => {
 		const ws = workspace();
 		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: fauxScript(turns()), KISO_MODE: "bypass" });
 		const raw = ptyRun(["--mode", "bypass", "r5-viewer-litter"], env as NodeJS.ProcessEnv, {
 			feeds: [["▌ ", "go\r"]],
 			delays: [
-				[5, "\x0f"], // ctrl+o — open
+				[5, "\x12"], // ctrl+r — open
 				[6, "\x1b[A"], // ↑ — move the cursor
 				[7, "\r"], // ⏎ — expand in place
 				[8, "\x1b"], // esc — close
@@ -121,7 +121,7 @@ describe("R5 — the transcript viewer leaves the scrollback alone (the blocker)
 		const CLI = join(__dirname, "..", "dist", "index.js");
 		const out = execFileSync("node", [CLI, "chat", "r5-viewer-pipe"], {
 			env: env as NodeJS.ProcessEnv,
-			input: "go\n\x0f\nexit\n",
+			input: "go\n\x12\nexit\n",
 			encoding: "utf8",
 			cwd: ws,
 			timeout: 120_000,

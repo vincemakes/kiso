@@ -82,7 +82,7 @@ export interface Palette {
 	readonly washEnd: string;
 	/** R7a — THE FOCUS MARKER'S EMPHASIS, and it is not a background.
 	 *
-	 *  DC-3 gave the `ctrl+r` token the wash, which is a BACKGROUND once
+	 *  DC-3 gave the `ctrl+o` token the wash, which is a BACKGROUND once
 	 *  a ground is resolved: `48;5;236` on dark reads as a black block
 	 *  behind the key, on a row that is otherwise plain text. The owner
 	 *  asked for it gone. The invariant DC-3 was serving — exactly one
@@ -97,6 +97,31 @@ export interface Palette {
 	 *  is the emphasis. It closes by re-opening the palette's own dim,
 	 *  like `washEnd`, so the surrounding span survives. */
 	readonly lift: string;
+	/** R9 P3 — THE ONE GREY ALLOWED ON THE WASH.
+	 *
+	 *  §2.1 bars `dim` from the wash and the measurement is why: `#767676`
+	 *  on `#EEEEEE` is 3.91:1, under the 4.5:1 floor. A washed surface
+	 *  carrying metadata rows — a slab's `… N earlier lines`, its outcome
+	 *  line — still wants them quieter than the output they annotate, so
+	 *  the palette gains a grey chosen FOR the wash rather than against
+	 *  the ground:
+	 *
+	 *    light  241 `#626262`  5.26:1 on the wash, 6.10:1 on the ground
+	 *    dark   247 `#9E9E9E`  4.93:1 on the wash, 6.22:1 on the ground
+	 *
+	 *  §2.1 is untouched — `dim` still may not sit on the wash. This is a
+	 *  different token with a different job, the way `warn` was the mono
+	 *  ruling's own set gaining its missing member.
+	 *
+	 *  With NO ground it is NOTHING: §3.1 forbids an absolute foreground
+	 *  in a palette that has not established a background, and rung 4's
+	 *  wash is reverse video, where any foreground grey inverts into a
+	 *  grey block. Body text on the surface is the correct degradation.
+	 *  It closes with 39 (the default foreground) rather than SGR 0, for
+	 *  the reason `washEnd` closes with 49: the wash underneath it must
+	 *  survive the close. */
+	readonly washDim: string;
+	readonly washDimEnd: string;
 	readonly reset: string;
 }
 const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m", italic: "\x1b[3m", italicEnd: "\x1b[23m", underline: "\x1b[4m", underlineEnd: "\x1b[24m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" } as const;
@@ -121,7 +146,20 @@ const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32
  * 4's principle exactly: when the ground is unknown, use the thing that
  * is correct on any ground rather than guessing one.
  */
-const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: string = BASE.dim): Palette => ({ ...BASE, red, dim, wash, washEnd, code: wash, lift: "\x1b[22m\x1b[39m\x1b[1m" });
+/** `washDimEnd` is DERIVED, never passed: a grey that cannot be closed
+ *  without taking the wash with it is not a usable token, and deriving
+ *  the close makes the pair impossible to mis-wire at a call site. */
+const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: string = BASE.dim, washDim = ""): Palette => ({
+	...BASE,
+	red,
+	dim,
+	wash,
+	washEnd,
+	washDim,
+	washDimEnd: washDim === "" ? "" : "\x1b[39m",
+	code: wash,
+	lift: "\x1b[22m\x1b[39m\x1b[1m",
+});
 /**
  * DC-3 — one table per ground.
  *
@@ -143,13 +181,13 @@ const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: st
  * attribute is exactly the "correct on any ground" degradation there.
  */
 export const COLOR_NEUTRAL: Palette = withWash("\x1b[7m", "\x1b[27m");
-export const COLOR_LIGHT: Palette = withWash("\x1b[48;5;255m", "\x1b[49m", "\x1b[38;5;124m", "\x1b[38;5;243m");
-export const COLOR_DARK: Palette = withWash("\x1b[48;5;236m", "\x1b[49m", "\x1b[38;5;173m", "\x1b[38;5;246m");
+export const COLOR_LIGHT: Palette = withWash("\x1b[48;5;255m", "\x1b[49m", "\x1b[38;5;124m", "\x1b[38;5;243m", "\x1b[38;5;241m");
+export const COLOR_DARK: Palette = withWash("\x1b[48;5;236m", "\x1b[49m", "\x1b[38;5;173m", "\x1b[38;5;246m", "\x1b[38;5;247m");
 /** The historical name — the palette for a colour TTY whose ground has
  *  not been established. Unchanged in every byte except `code`, which
  *  was the defect. */
 export const COLOR_ON: Palette = COLOR_NEUTRAL;
-export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", underline: "", underlineEnd: "", rv: "", rvEnd: "", wash: "", washEnd: "", lift: "", reset: "" };
+export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", underline: "", underlineEnd: "", rv: "", rvEnd: "", wash: "", washEnd: "", washDim: "", washDimEnd: "", lift: "", reset: "" };
 
 /** DC-3 — the resolved ground, set once at startup when the terminal
  *  answers (see `ground.ts`). It starts UNKNOWN and may stay that way
@@ -524,7 +562,7 @@ export function bannerLines(W: number, H: number, version: string, extensionsTex
 	if (meta !== undefined && W >= 40) {
 		// R2/DC-2's device: the keys row is a list of independent clauses,
 		// so a narrow terminal drops whole clauses from the end rather than
-		// cutting one in half. `ctrl+r ex (+8)` teaches nothing.
+		// cutting one in half. `ctrl+o ex (+8)` teaches nothing.
 		const clauses = BANNER_KEYS.split(" \u00b7 ");
 		let keys = clauses[0]!;
 		for (let n = clauses.length; n > 1; n -= 1) {

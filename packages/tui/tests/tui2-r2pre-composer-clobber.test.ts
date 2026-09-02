@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 import { displayWidth } from "../src/width.js";
 import { WideScreen, referenceWidth } from "./helpers/wide-screen.js";
+import { APPLE_COLOR_EMOJI_2000_2BFF } from "./helpers/emoji-font.js";
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -68,6 +69,23 @@ const EMOJI_PARA =
 	"❌ \u4f46\u662f\u9519\u8bef\u6062\u590d\u7684\u903b\u8f91\u5206\u6563\u5728\u82e5\u5e72\u4e2a\u4e0d\u540c\u7684\u4f4d\u7f6e\uff0c\u5bfc\u81f4\u540c\u4e00\u7c7b\u8bed\u6cd5\u9519\u8bef" +
 	"\u5728\u4e0d\u540c\u7684\u4e0a\u4e0b\u6587\u91cc\u4f1a\u4ea7\u751f\u4e0d\u4e00\u6837\u7684\u8bca\u65ad\u4fe1\u606f\uff0c\u5efa\u8bae\u7edf\u4e00\u5230\u4e00\u4e2a\u6a21\u5757\u91cc\u3002";
 
+/** The glyphs the renderer actually emits as chrome — one list, two
+ *  gates: every one measures a single column (T-R2p-2), and none of
+ *  them is a glyph Apple Color Emoji supplies (T-R2p-4). A new mark
+ *  joins here or it is not measured at all. */
+const CHROME_GLYPHS = ["✓", "✗", "⚠", "❯", "✦", "✧", "✶", "✸", "✺", "●", "▸", "▖", "▣", "□", "→", "\u2500", "│", "└", "█", "▀", "▄"] as const;
+
+/** DECLARED DEBT, not an exemption on the merits.
+ *
+ *  `⚠` (U+26A0) is in Apple Color Emoji and so breaks §6.1 exactly the
+ *  way `\u23F8` did — measured 2026-09-02, while retiring `\u23F8`. It is
+ *  still emitted by eight strings (the approval panel's danger notes,
+ *  the two interrupted-execution questions, the failure notice), and
+ *  choosing its replacement is a design ruling this round does not
+ *  carry. Recorded as DC-42 so it is visible rather than quietly
+ *  tolerated; the gate above is true for everything else from today. */
+const EMOJI_FONT_DEBT = new Set(["⚠"]);
+
 describe("TUI2-R2pre ① — the width table is the composer's floor", () => {
 	it("T-R2p-1: the emoji-presentation glyphs measure 2 — the table's hole is what lets a line overrun W", () => {
 		// every one of these is Emoji_Presentation=Yes: a terminal draws it
@@ -78,16 +96,40 @@ describe("TUI2-R2pre ① — the width table is the composer's floor", () => {
 	});
 
 	it("T-R2p-2: the chrome's own glyphs stay NARROW — the fix widens emoji, never the box rails", () => {
-		// ✓ ✗ ⚠ ⏸ are Emoji_Presentation=No: text presentation, one column.
+		// ✓ ✗ ⚠ ❯ are Emoji_Presentation=No: text presentation, one column.
 		// Widening these would break every card head in the suite.
 		// R2: the glyphs the renderer actually emits now — ✦ and the star
 		// ramp joined (the fold mark and the thinking twinkle), ● joined
-		// (the command breath), ✦ left. §6.1 forbids any glyph the emoji
-		// font could draw double-width, so the ramp is measured here.
-		for (const glyph of ["✓", "✗", "⚠", "⏸", "✦", "✧", "✶", "✸", "✺", "●", "▸", "▖", "▣", "□", "→", "─", "\u2500", "│", "└", "█", "▀", "▄"]) {
+		// (the command breath), ✦ left.
+		for (const glyph of CHROME_GLYPHS) {
 			expect(`${glyph} measures ${displayWidth(glyph)}`).toBe(`${glyph} measures 1`);
 		}
 		expect(displayWidth("\u4e2d")).toBe(2); // the CJK ranges were never the hole
+	});
+
+	/**
+	 * R9 Q4 — §6.1's OTHER half, which nothing enforced.
+	 *
+	 * T-R2p-2 above measures kiso's OWN table, and a glyph that table
+	 * scores 1 can still be drawn in two columns by a terminal that
+	 * resolves it to Apple Color Emoji. That is what §6.1 actually bans,
+	 * and `\u23F8` sat inside the gate above for its whole life while
+	 * breaking it — absent from Menlo AND present in the emoji font, both
+	 * failure modes §6 names, in one glyph. design.md §10 wrote it down;
+	 * no gate ever asked. Retiring it for `❯` closes the instance. This
+	 * closes the class.
+	 */
+	it("T-R2p-4: no chrome glyph is one Apple Color Emoji supplies (design §6.1)", () => {
+		const offenders = CHROME_GLYPHS.filter((g) => APPLE_COLOR_EMOJI_2000_2BFF.has(g.codePointAt(0)!) && !EMOJI_FONT_DEBT.has(g));
+		expect(offenders).toEqual([]);
+	});
+
+	it("T-R2p-4b: the gate DISCRIMINATES — the glyphs §6 names are all caught by it", () => {
+		// ✳ and ✴ are §6.1's two named bans; \u23F8 is the one R9 Q4
+		// retired. A gate that cannot fail on these is not a gate.
+		for (const cp of [0x2733, 0x2734, 0x23f8]) {
+			expect(`U+${cp.toString(16)} in the emoji font: ${APPLE_COLOR_EMOJI_2000_2BFF.has(cp)}`).toBe(`U+${cp.toString(16)} in the emoji font: true`);
+		}
 	});
 
 	it("T-R2p-3: the source table and the reference agree on every glyph the renderer can emit", () => {

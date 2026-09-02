@@ -89,7 +89,7 @@ describe("R8a — the notes join the block", () => {
 	it("the collapse footer is an indented note, not a second corner", () => {
 		const rows = body(tool({ expanded: true }));
 		const last = rows[rows.length - 1]!;
-		expect(last).toContain("ctrl+r collapses");
+		expect(last).toContain("ctrl+o collapses");
 		expect(last.startsWith("    ")).toBe(true);
 	});
 

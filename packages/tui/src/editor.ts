@@ -96,7 +96,7 @@ export function viewerCommand(text: string): "up" | "down" | "toggle" | "all" | 
 			return "end";
 		case "\x1b":
 		case "q":
-		case "\x0f": // ctrl+o — the key that opens it also puts it away
+		case "\x12": // ctrl+r — the key that opens it also puts it away
 			return "close";
 		default:
 			return null;
@@ -323,7 +323,7 @@ export class Editor {
 	// the CLI's — here it is only "these two keys, pressed together, hand
 	// the line over by a different door than Enter's".
 	#redirectCbs: ((line: string) => void)[] = [];
-	// W15: the expand-key list (ctrl+r) — the CLI's dispatch decides the
+	// W15: the expand-key list (ctrl+o) — the CLI's dispatch decides the
 	// target (a live cell toggles in place; a committed cell appends the
 	// expanded block). Mirrors the escape list: multiple listeners can
 	// coexist; the editor never interprets the key itself.
@@ -1003,7 +1003,7 @@ export class Editor {
 		// sheet (which any key dismisses) this surface is INTERACTIVE, so
 		// the chunk is matched against its own bindings and anything
 		// unrecognised is swallowed rather than typed into the composer
-		// behind it. esc closes; ctrl+o closes too, so the key that opens
+		// behind it. esc closes; ctrl+r closes too, so the key that opens
 		// it also puts it away.
 		if (this.#viewerUp?.() === true) {
 			const cmd = viewerCommand(text);
@@ -1452,16 +1452,28 @@ export class Editor {
 					this.#onRender();
 				}
 				i += 1;
-			} else if (c === "\x12") {
-				// W15: the expand key (ctrl+r) — rides the chain like a
-				// command, the editor just forwards it.
+			} else if (c === "\x0f") {
+				// W15: the expand key — rides the chain like a command, the
+				// editor just forwards it.
+				//
+				// DC-41 (owner ruling 2026-09-02): this is ctrl+o now. R5
+				// gave ctrl+o to the viewer because it was free and because
+				// the reference implementation uses it — betting that the
+				// finger cared about the KEY. It does not: the reference's
+				// ctrl+o expands the tool output in front of you, which is
+				// this action, and the owner reported reaching for it and
+				// getting a reader. The gesture and the job are together
+				// again; §7.1 is why kiso's form of it appends rather than
+				// toggling in place.
 				for (const cb of [...this.#expandCbs]) cb();
 				i += 1;
-			} else if (c === "\x0f" && this.#composerIdle() && this.#chars.length === 0) {
-				// R5 — ctrl+o opens the transcript viewer. Free in kiso, and
-				// the same key the reference implementation uses, so the
-				// muscle memory transfers even though what it opens is not
-				// the same surface. Idle composer only, exactly like `?`:
+			} else if (c === "\x12" && this.#composerIdle() && this.#chars.length === 0) {
+				// R5 — the transcript viewer, on ctrl+r since DC-41. The
+				// reference binds ctrl+r to renaming a session, which kiso
+				// has no equivalent of, so nothing a reference user means by
+				// it is displaced; every other free control key in this
+				// dispatch collides with something that surface actually
+				// does. Idle composer only, exactly like `?`:
 				// mid-text it would be a keystroke stolen from the human.
 				this.#viewerSend("open");
 				i += 1;

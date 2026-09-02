@@ -5,7 +5,7 @@
  * The defect: `code` was 256-colour index 252 (#d0d0d0), picked on a
  * dark terminal, and on a white one it measures 1.54:1 against a 4.5:1
  * floor. Five call sites shared it — inline code, whole fenced blocks,
- * the ctrl+r affordance, the approval hint and the keys sheet's key
+ * the ctrl+o affordance, the approval hint and the keys sheet's key
  * names — so on a light terminal the code the model wrote and the key
  * that would reveal the rest of a cell were equally unreadable.
  *
@@ -186,5 +186,61 @@ describe("DC-9 — the failure colour knows its ground", () => {
 		} finally {
 			Object.defineProperty(process.stdout, "isTTY", { value: tty, configurable: true });
 		}
+	});
+});
+
+/**
+ * R9 P3 (design §2) — `washDim`, the one grey allowed on the wash.
+ *
+ * §2.1 keeps its rule exactly: `dim` may not sit on the wash, because
+ * `#767676` on `#EEEEEE` is 3.91:1. But a washed surface that carries
+ * metadata — a slab's `… N earlier lines`, its outcome line — needs
+ * those rows quieter than the output they annotate, and the answer is
+ * not to relax the floor. It is a second token, measured against the
+ * surface it actually sits on rather than against the terminal's ground.
+ *
+ * The floor gate at the top of this file already measures every absolute
+ * foreground against the GROUND, so `washDim` clears 4.5:1 there for
+ * free. What is asserted here is the ratio nothing else measures: the
+ * token against the WASH — the background it was chosen for, read off
+ * the palette rather than hard-coded, so the gate follows if the wash
+ * ever moves.
+ */
+const bgIndexOf = (p: Palette): number => Number(/\x1b\[48;5;(\d+)m/.exec(p.wash)![1]);
+const fgIndexOf = (s: string): number => Number(/\x1b\[38;5;(\d+)m/.exec(s)![1]);
+/** The ratio is read off the PALETTE, never off a literal repeated here:
+ *  a pinned index only proves the value did not change, and the contract
+ *  is the measurement. Any grey that fails on the wash fails this. */
+const onTheWash = (p: Palette): number => contrast(rgbOf(fgIndexOf(p.washDim)), rgbOf(bgIndexOf(p)));
+
+describe("R9 P3 — washDim clears the floor ON THE WASH", () => {
+	it("light: whatever grey the light palette carries clears 4.5:1 on its own wash", () => {
+		expect(onTheWash(COLOR_LIGHT)).toBeGreaterThanOrEqual(4.5);
+	});
+
+	it("dark: whatever grey the dark palette carries clears 4.5:1 on its own wash", () => {
+		expect(onTheWash(COLOR_DARK)).toBeGreaterThanOrEqual(4.5);
+	});
+
+	it("carries design §2's chosen indices — 241 light, 247 dark", () => {
+		expect(COLOR_LIGHT.washDim).toBe("\x1b[38;5;241m");
+		expect(COLOR_DARK.washDim).toBe("\x1b[38;5;247m");
+	});
+
+	it("§2.1 is UNTOUCHED — the ordinary dim still fails on the wash, which is why this token exists", () => {
+		expect(contrast(rgbOf(243), rgbOf(bgIndexOf(COLOR_LIGHT)))).toBeLessThan(4.5);
+		expect(contrast(rgbOf(246), rgbOf(bgIndexOf(COLOR_DARK)))).toBeLessThan(4.5);
+	});
+
+	it("is NOTHING with no ground — rung 4's wash is reverse video, where a grey inverts into a grey block", () => {
+		expect(COLOR_NEUTRAL.washDim).toBe("");
+		expect(COLOR_NEUTRAL.washDimEnd).toBe("");
+		expect(fgIndexes(COLOR_NEUTRAL)).toEqual([]);
+	});
+
+	it("closes with 39, not SGR 0 — the wash underneath has to survive the close", () => {
+		expect(COLOR_LIGHT.washDimEnd).toBe("\x1b[39m");
+		expect(COLOR_DARK.washDimEnd).toBe("\x1b[39m");
+		expect(COLOR_OFF.washDim).toBe("");
 	});
 });

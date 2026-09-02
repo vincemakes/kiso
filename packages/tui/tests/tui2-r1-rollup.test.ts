@@ -6,8 +6,8 @@
  *
  * The segment fold now collapses a whole run of work into one line the
  * moment the model speaks, so a closed run's COMMITTED form is
- * `✦ thought Ns · 5 reads · ctrl+r`, not the exploration row. The
- * exploration row is what `ctrl+r` opens — the owner chose to keep it
+ * `✦ thought Ns · 5 reads · ctrl+o`, not the exploration row. The
+ * exploration row is what `ctrl+o` opens — the owner chose to keep it
  * precisely because it says more than a fold line can: the per-tool
  * counts, and one row per tool with its subjects.
  *
@@ -207,7 +207,7 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		expect(opened).not.toContain("explored");
 	});
 
-	it("ctrl+r LISTS THEM — one row per tool, the subjects with their ×counts, and the collapse footer", () => {
+	it("ctrl+o LISTS THEM — one row per tool, the subjects with their ×counts, and the collapse footer", () => {
 		const { body, tick } = makeBody({ W: 80 });
 		body.enter();
 		body.userLine("explore");
@@ -234,13 +234,13 @@ describe("TUI2-R1 T-V2 — the exploration rollup", () => {
 		// was false 21 times over (VD-15). The footer now says only what
 		// the key does.
 		// DECLARED SUPERSESSION (R3i phase 4): in the APPENDED path the
-		// footer said `ctrl+r collapses`, which is false there — a
+		// footer said `ctrl+o collapses`, which is false there — a
 		// committed row is ink (ADR-0046 forbids rewriting history), so
 		// nothing about this block can be taken back and the next press
 		// opens the NEXT fold. The footer says what the key does. The
 		// LIVE toggle keeps the old wording, where it is true.
 		// R4a: the ordinal is retired; the footer names the direction.
-		expect(body_).toContain("    end of expansion · ctrl+r opens the one before it");
+		expect(body_).toContain("    end of expansion · ctrl+o opens the one before it");
 		expect(body_).not.toContain("/last shows the full outputs");
 	});
 

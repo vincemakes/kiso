@@ -277,7 +277,7 @@ function rolledTitle(cell: Extract<BodyCell, { kind: "tool" }>): string {
  *  one.
  *
  *  Extracted at R3b so the segment fold's expansion opens a run to the
- *  SAME rows `ctrl+r` on the run itself would have opened. Two copies of
+ *  SAME rows `ctrl+o` on the run itself would have opened. Two copies of
  *  this would be two answers to "show me that run". */
 function rolledDetail(cell: Extract<BodyCell, { kind: "tool" }>, W: number): string[] {
 	const p = palette();
@@ -514,7 +514,7 @@ export class Body {
 	#mdBase = 0;
 	#toolCells = new Map<string, number>(); // callId → cell index (parallel tools)
 	// W15: the collapsed (cut) tool cells — committed cells whose last
-	// rendered row carried the "ctrl+r" affordance; the expand key's
+	// rendered row carried the "ctrl+o" affordance; the expand key's
 	// cycling pointer walks this list from the newest back.
 	#collapsed: number[] = [];
 	/** R4 (C1) — the ring walk is by IDENTITY, not by a modular pointer.
@@ -1218,7 +1218,7 @@ export class Body {
 		return this.#lastTool;
 	}
 
-	/** W15 — the expand key's target (ctrl+r). A cell still in the LIVE
+	/** W15 — the expand key's target (ctrl+o). A cell still in the LIVE
 	 *  region (the newest live tool) TOGGLES in place — the compositor
 	 *  owns those rows and redraws them (the body flips to the full
 	 *  form, no cap). A committed cell can never toggle — history is
@@ -1228,7 +1228,7 @@ export class Body {
 	 *  the header names the target ("N turns back" — the user cells
 	 *  after it), so every press tells the user what they got. */
 	/**
-	 * TUI2-R2 ⑤ — the cell the next ctrl+r will act on, or -1.
+	 * TUI2-R2 ⑤ — the cell the next ctrl+o will act on, or -1.
 	 *
 	 * The rule is expandNext's own first loop, extracted verbatim: the
 	 * LAST live cell that can toggle. It is a separate method rather than
@@ -1335,7 +1335,7 @@ export class Body {
 					const saved = head.rolled;
 					head.rolled = rolledOf(run);
 					// the run OPENS. The fold's key already asked to see the
-					// work, so what lands is the same rows `ctrl+r` on the
+					// work, so what lands is the same rows `ctrl+o` on the
 					// run itself would have opened — its title, then its
 					// detail — never its collapsed row, which would make the
 					// reader press a second time for what the first press
@@ -1404,7 +1404,7 @@ export class Body {
 		return this.#viewer !== null;
 	}
 
-	/** ctrl+o — open on the newest fold, or close. */
+	/** ctrl+r — open on the newest fold, or close. */
 	viewerToggleMode(): void {
 		if (this.#viewer !== null) {
 			this.#viewer = null;
@@ -1467,7 +1467,7 @@ export class Body {
 	/**
 	 * The expandable things in the transcript, oldest first.
 	 *
-	 * The set is `#collapsed` — the SAME ring `ctrl+r` walks — so the two
+	 * The set is `#collapsed` — the SAME ring `ctrl+o` walks — so the two
 	 * mechanisms can never disagree about what is reachable. The ring is
 	 * newest-first (it is unshifted on commit); reading order is the
 	 * other way, so it is reversed here.
@@ -1492,7 +1492,7 @@ export class Body {
 				continue;
 			}
 			if (cell.kind !== "tool") continue;
-			// the tool card's FULL body — the same rows its own ctrl+r
+			// the tool card's FULL body — the same rows its own ctrl+o
 			// opens. The expanded flag is saved and restored inside this
 			// synchronous call, the pattern the rollup path has always
 			// used for head.rolled; it never outlives the render, so the
@@ -1534,14 +1534,14 @@ export class Body {
 	#lastAppend: { lines: string; atCells: number } | null = null;
 
 	/**
-	 * DC-35 — ctrl+r does not print the same expansion twice in a row.
+	 * DC-35 — ctrl+o does not print the same expansion twice in a row.
 	 *
 	 * The ring walks newest-back and restarts its cycle once every entry
 	 * has been opened (R4/C1, which is what makes the walk immune to the
 	 * ring growing underneath it). With a ring of ONE the restart is
 	 * immediate, so holding the key appended the identical block over
 	 * and over — the owner got three copies of the same four rows, each
-	 * closing with `ctrl+r opens the one before it`, a footer naming
+	 * closing with `ctrl+o opens the one before it`, a footer naming
 	 * something that does not exist.
 	 *
 	 * The bar is the BOTTOM of the transcript, not "ever shown": once
@@ -1574,7 +1574,7 @@ export class Body {
 			}
 			// W20: the LIVE task block toggles in place too — the capped
 			// form flips to the full list (the "done-collapse expands
-			// under ctrl+r" claim). The SETTLED block is already full —
+			// under ctrl+o" claim). The SETTLED block is already full —
 			// no toggle, and its rows carry no affordance, so it never
 			// joins #collapsed (the committed /last append is moot).
 			if (cell.kind === "checklist" && !cell.done) {
@@ -1644,12 +1644,12 @@ export class Body {
 			// R3i phase 4 — THE FOOTER TELLS THE TRUTH ABOUT THIS PATH.
 			//
 			// The rows come from the rollup's own projection, whose last
-			// row reads `└ ctrl+r collapses` — true where it was written
+			// row reads `└ ctrl+o collapses` — true where it was written
 			// (the LIVE toggle, which really does close again) and false
 			// here. A committed row is ink: ADR-0046 forbids rewriting
 			// history, so nothing about this block can be taken back. The
 			// next press opens the NEXT fold, and the row now says so.
-			const closing = rows.length > 0 && /ctrl\+r collapses/.test(rows[rows.length - 1] ?? "");
+			const closing = rows.length > 0 && /ctrl\+o collapses/.test(rows[rows.length - 1] ?? "");
 			const body = closing ? rows.slice(0, -1) : rows;
 			return {
 				kind: "appended",
@@ -1662,7 +1662,7 @@ export class Body {
 					...body,
 					// R8a: an in-block note takes the block's indent, not a
 					// second corner — the corner opens the body above it.
-					`${p.dim}    end of expansion · ctrl+r opens the one before it${p.reset}`,
+					`${p.dim}    end of expansion · ctrl+o opens the one before it${p.reset}`,
 				],
 			};
 		}
@@ -2015,7 +2015,7 @@ export class Body {
 		// to the options it names. And it never disappears: the status row
 		// drops its hint when the left text plus the hint will not fit, so
 		// the duplicate was width-dependent — one copy on an ask (long left
-		// text), two on an approval (`⏸ run paused`, twelve cells) — which
+		// text), two on an approval (`❯ run paused`, twelve cells) — which
 		// is why every fixed-width gate was blind to it. Each flavour's
 		// block carries its own row (approval-panel.ts pushes it for the
 		// approval and the pick, ask-panel.ts for the ask), so nothing is
@@ -2326,7 +2326,7 @@ export class Body {
 	 * The phases, in the order they are tested:
 	 *  - an EXPANDED live cell outranks the slot (W15 — "the user asked
 	 *    for it"): it renders in full, variable height. This is also
-	 *    DC-28's cure: mid-stretch `ctrl+r` had a target it toggled and
+	 *    DC-28's cure: mid-stretch `ctrl+o` had a target it toggled and
 	 *    never drew, so the press did nothing visible now and changed a
 	 *    later expansion's shape;
 	 *  - CALLS IN FLIGHT: one head row each within the budget, the tail
@@ -2368,8 +2368,8 @@ export class Body {
 		//
 		// (The approval half is a regression this round caused and its
 		// gate caught: the first draft treated a pending approval as a
-		// call in flight, so `⏸ edit x.ts` lost its diff tail and the
-		// `ctrl+r to expand` note with it.)
+		// call in flight, so `❯ edit x.ts` lost its diff tail and the
+		// `ctrl+o to expand` note with it.)
 		const owned = tools.filter((i) => toolAt(i).expanded || toolAt(i).state === "approval");
 		if (owned.length > 0) {
 			// In CELL ORDER, so the frame reads the way the work happened:
@@ -2826,7 +2826,7 @@ export class Body {
 			liveLines = frame.rows;
 			panelSpan = frame.options;
 		} else {
-			// TUI2-R2 ⑤ (D, candidate 1): the FOCUS — the cell the next ctrl+r
+			// TUI2-R2 ⑤ (D, candidate 1): the FOCUS — the cell the next ctrl+o
 			// will act on brightens its own token. The index is derived from
 			// the SAME scan expandNext performs (#focusIndex shares its rule
 			// by construction), so the marker can never point at a cell the
@@ -3070,11 +3070,11 @@ export class Body {
 	#commitCell(i: number, W: number, ctx: FrameCtx): void {
 		const cell = this.#cells[i]!;
 		const lines = this.#foldOrRollup(cell, i, W, ctx);
-		// W15: a tool cell whose committed rows carried the "ctrl+r"
+		// W15: a tool cell whose committed rows carried the "ctrl+o"
 		// affordance joins the expand history — the detection is the
 		// renderer's OWN output, so the read's "/last"-only cut note never
 		// lands here. TUI2-R1 (A/B): the affordance is no longer only the
-		// renderer cut's "└ … ctrl+r" — the self-naming head suffix and
+		// renderer cut's "└ … ctrl+o" — the self-naming head suffix and
 		// the exploration row carry it on the HEAD row, and a promise the
 		// key does not answer would be the one thing worse than silence.
 		// unshift: the cells commit oldest-first, so the NEWEST cut lands
@@ -3088,13 +3088,13 @@ export class Body {
 		// printed bytes.
 		//
 		// This used to require the rendered rows to contain the literal
-		// "ctrl+r", which made the affordance LOAD-BEARING: retiring the
+		// "ctrl+o", which made the affordance LOAD-BEARING: retiring the
 		// printed key (the owner's ruling) would have silently emptied the
 		// ring and taken the expand key with it — not a missing hint, a
 		// missing feature. A fold head is a fold head because the segment
 		// says so; a tool cell is expandable when it is hiding rows.
 		const isFoldHead = this.#segmentOf(i)?.headCell === i;
-		const hidesRows = cell.kind === "tool" && lines.some((l) => l.includes("ctrl+r"));
+		const hidesRows = cell.kind === "tool" && lines.some((l) => l.includes("ctrl+o"));
 		if (isFoldHead || hidesRows) {
 			this.#collapsed.unshift(i);
 			// R4a — a new fold resets the walk, so the FIRST press after any
