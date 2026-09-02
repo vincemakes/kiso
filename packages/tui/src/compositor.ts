@@ -48,7 +48,7 @@ import { MENU_ITEMS, displayWidth, type MenuItem } from "./editor.js";
 import { leadWidth } from "./width.js"; // W23: the ONE width authority (the editor, #inputRow, and editCol share it)
 // KC3.5: the panel-slot reads come from the DISPATCHERS — one source
 // for four reads, so an ask can never render half as an approval.
-import { panelAffordanceOf, panelFrameOf, panelLeadOf, panelRowsOf, panelStatusOf } from "./ask-panel.js";
+import { panelFrameOf, panelLeadOf, panelRowsOf, panelStatusOf } from "./ask-panel.js";
 import { MOUSE_OFF } from "./editor.js";
 import type { PanelState } from "./approval-panel.js";
 import { atPanelRows, bandHeader, type AtMatch } from "./at-picker.js";
@@ -2003,7 +2003,24 @@ export class Body {
 	 *  now). */
 	#statusSource(): { status: string; hint: string | undefined } {
 		const panel = this.#panelState?.() ?? null;
-		if (panel !== null) return { status: panelStatusOf(panel), hint: panelAffordanceOf(panel) };
+		// DC-38: the panel's STATUS replaces the CLI's painting status —
+		// that half of W21 stands. The HINT does not come with it, because
+		// the panel block already ends in its own affordance row and has
+		// since TUI2-R1.5 ("the affordance — the phase's key hint, ONE
+		// row"). Both sites read `panelAffordance`, neither knew about the
+		// other, and an approval at W≥100 printed the same 48-cell sentence
+		// twice, six rows apart.
+		//
+		// The block's copy is the one to keep, on two grounds. It sits next
+		// to the options it names. And it never disappears: the status row
+		// drops its hint when the left text plus the hint will not fit, so
+		// the duplicate was width-dependent — one copy on an ask (long left
+		// text), two on an approval (`⏸ run paused`, twelve cells) — which
+		// is why every fixed-width gate was blind to it. Each flavour's
+		// block carries its own row (approval-panel.ts pushes it for the
+		// approval and the pick, ask-panel.ts for the ask), so nothing is
+		// lost anywhere.
+		if (panel !== null) return { status: panelStatusOf(panel), hint: undefined };
 		// W22: while turns wait in the queue, the right hint shows the
 		// count — the chips below carry the lines themselves.
 		const queued = this.#queueState?.().length ?? 0;
