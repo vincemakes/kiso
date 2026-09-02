@@ -475,6 +475,20 @@ export class Body {
 	#needsReset = false;
 	#resizeTimer: ReturnType<typeof setTimeout> | null = null;
 	#lastH = 0;
+	/** DC-34 — did THIS FRAME refold the committed cells?
+	 *
+	 *  It must be reset where the question is asked, not only where it
+	 *  is answered. Armed once and consumed later, it latched: the
+	 *  session's FIRST frame ran a vacuous refold over zero committed
+	 *  cells and set it, and nothing cleared it until the first resize —
+	 *  so every session's first widen still ran the adopt it was
+	 *  supposed to skip, and swallowed the live band's worth of
+	 *  committed rows. Three paragraphs, in the measurement that found
+	 *  it. */
+	#refolded = false;
+	/** DC-34 — the previous frame's width; the reach-back guard is for a
+	 *  WIDTH change, which re-indexes the model, not a height change. */
+	#lastW = 0;
 	// KC1 §6: the composer's recorded extent — the row count the last
 	// frame drew (exit's clear walks it) and the row its CHA parked the
 	// cursor on (the steady frame's relative anchor). N = 1 reproduces
@@ -2635,15 +2649,85 @@ export class Body {
 		// the NEW width, so the cached folds are stale. Re-fold the
 		// committed cells so the every-row draw below re-paints them at the
 		// current geometry — the frame's model and the screen agree.
+		// DC-34 — A WIDEN DOES NOT REFOLD WHAT IS ALREADY COMMITTED.
+		//
+		// Every count here is physical ROWS at the fold width in force
+		// when it was computed. Refolding the committed cells at a new W
+		// changes what every index MEANS while `#scrolledOff` is carried
+		// across untranslated — and no translation exists, because the
+		// row the scroll stopped at does not occur in the new fold. On a
+		// widen the stale count then points at text the terminal already
+		// holds, and the frame paints it a second time.
+		//
+		// A committed row is ink (ADR-0046): the rows still on screen are
+		// the same thing as the rows in the scrollback minus a scroll
+		// that has not happened, and no terminal reflows either. Leaving
+		// them folded as they were printed keeps every index valid.
+		//
+		// NARROWING still refolds — an old wide row does not FIT, and
+		// `#checked` would throw invariant ①. The comparison is against
+		// the CACHE's fold width, not the last render's: after 60 → 100
+		// (no refold, the cache is still 60) a narrowing to 80 must NOT
+		// refold, because 80 columns hold a 60-column row.
+		this.#refolded = false;
 		if (this.#fullRedraw) {
-			this.#lineCache = this.#lineCache.map(() => null);
+			// DC-34 — THE REFOLD IS SCOPED BY THE FRONTIER.
+			//
+			// `#scrolledOff` is the record of what reached the terminal:
+			// rows [0, #scrolledOff) are in its scrollback, immutable, and
+			// no path of ours may contradict them. A cell with any row
+			// down there keeps the fold it was COMMITTED at, forever — in
+			// either direction. A cell entirely above the frontier has
+			// never left the screen, so re-folding it is free.
+			//
+			// Two scalar predicates were tried before this and both
+			// failed, in different ways: the last-refold width crashed on
+			// 60 → 100 → 80 (a cell committed at 100 emitted into an
+			// 80-column screen), and the cache's widest fold fires a FULL
+			// refold at the first narrowing, which re-wraps rows the
+			// scrollback already holds — the original defect, alive in
+			// the other direction. The frontier is not an approximation
+			// of them; it is the question they were both approximating.
+			// A cell is refolded when EITHER is true:
+			//   - it is entirely above the frontier (never left the
+			//     screen, so re-wrapping it contradicts nothing), or
+			//   - it does not FIT: some cached row is wider than W.
+			//
+			// The second is not a compromise of the first, it is the
+			// answer to a question the first cannot reach. A cell can
+			// STRADDLE the frontier — its head in the scrollback, its
+			// tail still on screen — and the tail must be painted at the
+			// current width. Holding its commit fold there emitted a
+			// 100-column row into an 80-column screen and invariant ①
+			// threw (60 → 100 → 80, measured). Fitting wins: a crash is
+			// worse than a seam, and the seam a narrowing leaves is
+			// rider 2's, stated rather than hidden.
+			let row = 0;
+			const refold: boolean[] = new Array<boolean>(this.#committed).fill(false);
+			for (let i = 0; i < this.#committed; i += 1) {
+				const lines = this.#lineCache[i];
+				if (lines === null || lines === undefined) {
+					refold[i] = true;
+					continue;
+				}
+				const above = row >= this.#scrolledOff;
+				const fits = lines.every((l) => visibleWidth(l) <= W);
+				refold[i] = above || !fits;
+				const prev = i > 0 ? this.#lineCache[i - 1] : null;
+				row += this.#space(i, prev ?? null, lines).length;
+			}
+			for (let i = 0; i < this.#committed; i += 1) {
+				if (refold[i]) this.#lineCache[i] = cellComponent(this.#cells[i]!).render(W, ctx);
+			}
+			// #committedLines is re-derived over the WHOLE cache, because
+			// the frozen prefix still occupies its own rows.
 			this.#committedLines = 0;
 			for (let i = 0; i < this.#committed; i += 1) {
-				const cell = this.#cells[i]!;
-				const lines = cellComponent(cell).render(W, ctx);
-				this.#lineCache[i] = lines; // the cell's OWN rows — the cache stays raw
-				this.#committedLines += this.#space(i, i > 0 ? this.#lineCache[i - 1]! : null, lines).length;
+				const lines = this.#lineCache[i] ?? cellComponent(this.#cells[i]!).render(W, ctx);
+				this.#lineCache[i] = lines;
+				this.#committedLines += this.#space(i, i > 0 ? (this.#lineCache[i - 1] ?? []) : null, lines).length;
 			}
+			this.#refolded = refold.some(Boolean);
 		}
 		// 1. the natural commits — the leading DONE cells freeze: their
 		//    lines leave the live region, the scrolls + the committed
@@ -3744,7 +3828,24 @@ export class Body {
 			// discarded because a reflow invalidates every row of it: the
 			// next diff repaints the whole screen, which is exactly what a
 			// resize needs.
-			this.#scrolledOff = Math.max(this.#scrolledOff, Math.max(0, Math.min(skip, all.length)));
+			// DC-34 — NO HIGH-WATER MARK ON A RESIZE.
+			//
+			// This was `max(#scrolledOff, …)`, which held a stale count
+			// whenever a widen made the fresh one smaller; `leaving` then
+			// stayed <= 0 and the text that marched past in the meantime
+			// never entered the scrollback at all — the hole, the other
+			// half of the same off-by-a-refold.
+			//
+			// The other implementation in this space reached the same
+			// conclusion independently and says so in its own source: a
+			// historical high-water mark "caused self-reinforcing
+			// inflation that pushed content into scrollback on terminal
+			// widen". Dropping it alone brings the DUPLICATE back — it is
+			// the pair with the no-refold rule above, not a substitute
+			// for it.
+			// PROBE 3: a widen leaves it ALONE; a narrow keeps REL-0152-R1.
+			if (this.#refolded) this.#scrolledOff = Math.max(this.#scrolledOff, Math.max(0, Math.min(skip, all.length)));
+			this.#refolded = false;
 			this.#screen = new Array(H).fill(NOT_PAINTED);
 			this.#resizeFrame = false;
 		} else if (!overlay) {
@@ -3762,7 +3863,26 @@ export class Body {
 		// OLDEST on screen — they are still in the model and come back on
 		// the close.
 		const contentRows = Math.max(0, H - CHROME_ROWS - inputExtra - queueRows.length - menuRows.length);
-		const march = all.slice(skip);
+		// DC-34 — THE MARCH NEVER REACHES BELOW THE FRONTIER.
+		//
+		// Rows [0, #scrolledOff) are in the terminal's scrollback and are
+		// immutable; painting one puts the same prose on screen twice,
+		// which is the owner's report. `skip` can drop below it whenever
+		// the model shrinks under a fixed screen — a widen refolding the
+		// cells above the frontier, or the live band collapsing — and
+		// nothing stopped it (rider 3's ungated reach-back).
+		//
+		// Clamping costs a gap under short content for one frame, which
+		// the next commit fills. Reaching back costs a duplicate that
+		// stands in the transcript forever.
+		// ...but only when the WIDTH moved. A height change re-indexes
+		// nothing — the folds are untouched, every row means what it
+		// meant — so reaching back there is the pre-existing behaviour a
+		// gate already covers (the A8 windowing case: grow the screen and
+		// the banner returns). The duplication measured in this round is
+		// width-driven, and so is the guard.
+		const march = all.slice(this.#lastW !== 0 && this.#lastW !== W ? Math.max(skip, this.#scrolledOff) : skip);
+		this.#lastW = W;
 		for (const line of march.length > contentRows ? march.slice(march.length - contentRows) : march) {
 			desired[r - 1] = this.#checked(line, W);
 			r += 1;

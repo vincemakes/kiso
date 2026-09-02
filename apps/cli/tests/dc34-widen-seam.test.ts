@@ -244,22 +244,31 @@ describe("DC-34 — a widen during a turn", () => {
 		).toEqual([]);
 	}, 120_000);
 
-	// KNOWN RED — DC-34 is OPEN. `it.fails` asserts the case DOES fail, so
-	// the suite stays honest without the defect being hidden: the day a
-	// fix lands this inverts and forces someone to come back here. It is
-	// not a skip — the case runs, on the real binary, every time.
+	it("no token is on ZERO lines — the widen must not drop prose out of the history", () => {
+		// the other half of the same off-by-a-refold. The window paints
+		// from stale text (the duplicate) and `leaving` stays <= 0 for as
+		// long as the stale count exceeds the fresh floor, so the prose
+		// that marches past in the meantime never enters the scrollback.
+		// It took BOTH rules to close: no refold on a widen, and no
+		// high-water mark on the resize frame.
+		const { screen } = capture("P12S1");
+		const at = placement(screen);
+		const missing = [...at].filter(([, ls]) => ls.length === 0).map(([t]) => t);
+		expect(missing, `the widen left a hole in the scrollback (${missing.length} tokens)`).toEqual([]);
+	}, 120_000);
+
+	// KNOWN RED, and it is MINE, not the ruling's. Option C's operative
+	// sentence is "the frame does not repaint the committed rows above
+	// the seam"; this case reads that off the wire — the frame must not
+	// ADDRESS a row above its own `ESC[N;1H ESC[0J`. With the two rules
+	// above the frame no longer paints anything DIFFERENT up there, and
+	// the defect the owner reported is gone; what it still does is
+	// re-emit identical bytes, because `#write` forgets the whole held
+	// screen by design (REL-0152-R1) and the settle's erase goes through
+	// it. Making that surgical is a change to a contract older than this
+	// round, so the case stays asserted-to-fail rather than softened to
+	// something it can pass.
 	it.fails("the frame does not paint above the region its own erase claims", () => {
-		// RIDER 1's claim, read off the product rather than assumed, and
-		// measured on the WIRE rather than on two screens taken minutes
-		// apart — an earlier draft of this case compared the screen at
-		// the winch against the screen at the end and called ordinary
-		// scrolling a repaint. What the claim is about is one frame.
-		//
-		// `#settleResize` writes `ESC[N;1H ESC[0J` — "from row N down is
-		// mine". Rows 1..N-1 are committed ink the terminal is still
-		// showing; ADR-0046 governs them exactly as it governs the
-		// scrollback. So the frame that follows that erase must not
-		// address a row above N.
 		const { bytes, off } = capture("P12S1");
 		expect(off, "the winch never fired").toBeGreaterThan(0);
 		const tail = bytes.subarray(off).toString("utf8");
@@ -267,28 +276,10 @@ describe("DC-34 — a widen during a turn", () => {
 		expect(erase, "the resize frame emitted no erase — the boundary is unreadable").not.toBeNull();
 		const owned = Number(erase![1]);
 		expect(owned, "the erase claims the whole screen; there is no seam to test").toBeGreaterThan(1);
-		// the frame the erase opens ends at the next synchronized-output
-		// close (or the cursor-show of the conservative path)
 		const from = erase!.index + erase![0].length;
 		const endRel = tail.slice(from).search(/\x1b\[\?2026l|\x1b\[\?25h/);
 		const frame = tail.slice(from, endRel < 0 ? undefined : from + endRel);
 		const above = [...frame.matchAll(/\x1b\[(\d+);1H/g)].map((m) => Number(m[1])).filter((row) => row < owned);
-		expect(above, `the frame addressed ${above.length} row(s) above its own erase (rows ${[...new Set(above)].join(",")}), owned=${owned}`).toEqual([]);
-	}, 120_000);
-
-	// KNOWN RED — DC-34 is OPEN. `it.fails` asserts the case DOES fail, so
-	// the suite stays honest without the defect being hidden: the day a
-	// fix lands this inverts and forces someone to come back here. It is
-	// not a skip — the case runs, on the real binary, every time.
-	it.fails("no token is on ZERO lines — the widen must not drop prose out of the history", () => {
-		const { screen } = capture("P12S1");
-		const at = placement(screen);
-		const missing = [...at].filter(([, ls]) => ls.length === 0).map(([t]) => t);
-		if (missing.length > 0) {
-			const lines = screen.allLines();
-			console.log(`--- history has ${lines.length} lines; last 12 ---`);
-			lines.slice(-12).forEach((l, i) => console.log(`${lines.length - 12 + i}| ${l.replace(/\s+$/, "").slice(0, 90)}`));
-		}
-		expect(missing, `the widen left a hole in the scrollback (${missing.length} tokens)`).toEqual([]);
+		expect(above, `the frame addressed ${above.length} row(s) above its own erase`).toEqual([]);
 	}, 120_000);
 });

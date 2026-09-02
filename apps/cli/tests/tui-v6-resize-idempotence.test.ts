@@ -204,8 +204,44 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		expect(rails[1]! - rails[0]!).toBe(2); // exactly ONE row between them
 	});
 
-	it("② the resize idempotence: five consecutive resizes to 100×30 == a single direct 100×30, cell for cell", () => {
+	// DECLARED SUPERSESSION (DC-34, adjudicated 2026-09-01) — ② ASSERTED
+	// PATH INDEPENDENCE, AND THE INK CONTRACT FORBIDS IT.
+	//
+	// The old storm passed through a geometry short enough to push
+	// committed rows off the top. On a terminal that does not reflow its
+	// scrollback, those rows are IRREVERSIBLY there — at the width they
+	// left at — and the direct path, which never shrank, never put them
+	// there. The two histories genuinely differ, and equalising them
+	// would mean reaching into the terminal's scrollback: exactly what
+	// ADR-0046 refuses, and what the other implementation does instead.
+	//
+	// The condition is NOT "no width narrower than the destination". Two
+	// measured counter-examples killed that reading: a storm dipping to
+	// 20 columns with tall heights stays identical (the frontier never
+	// moves), and a storm whose widths never drop below 40 diverges (a
+	// 20-ROW intermediate overflows). What decides it is whether an
+	// intermediate geometry SCROLLS committed content off the top.
+	//
+	// So the case keeps its subject — a storm ends where a direct resize
+	// ends — over the family where that is achievable: intermediates
+	// with room for the content they hold.
+	it("② the resize idempotence: a NON-OVERFLOWING storm to 100×30 == a single direct 100×30, cell for cell", () => {
 		const consecutive = runAndScreen([
+			[100, 60],
+			[100, 140],
+			[100, 20],
+			[100, 40],
+			[100, 30],
+		]);
+		const direct = runAndScreen([[100, 30]]);
+		expect(consecutive.grid).toEqual(direct.grid);
+	});
+
+	it("② the seam ADR-0046 leaves: a storm that scrolls content away does NOT end where the direct resize ends", () => {
+		// the other side of the same ruling, asserted so the exception
+		// cannot quietly widen. A 24-row intermediate at 20 columns
+		// overflows; its rows leave at 20 columns and stay there.
+		const overflowing = runAndScreen([
 			[20, 60],
 			[40, 140],
 			[24, 20],
@@ -213,6 +249,6 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 			[100, 30],
 		]);
 		const direct = runAndScreen([[100, 30]]);
-		expect(consecutive.grid).toEqual(direct.grid);
+		expect(overflowing.grid, "the storm equalled the direct resize — the ink seam this case documents is gone, which is a REASON TO COME BACK, not a pass").not.toEqual(direct.grid);
 	});
 });
