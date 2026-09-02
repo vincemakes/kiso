@@ -296,6 +296,13 @@ Three labelled facts answer the three questions a first screen is asked
 — what model, where am I, what is loaded. A rendered wordmark costs
 seven rows to say what `kiso` says in one.
 
+The opening scrolls the shell's screen away first: H line feeds from
+the shell's cursor carry its prompt, the launch command and the tail of
+what ran before into the scrollback as content, and the first frame
+then owns rows 1..H. What was on screen is one scroll up, not gone
+(DC-40). The feeds precede the entry reset, because `ESC[r` homes the
+cursor and feeds after it scroll one row instead of the shell's r.
+
 ---
 
 ## 8. The bands, and the hint
