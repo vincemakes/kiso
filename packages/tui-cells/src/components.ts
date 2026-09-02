@@ -904,13 +904,19 @@ class ToolExecution implements Component {
 				const outcome = c.isError ? `${p.red}${words}${p.reset}` : words;
 				return slabBlock(head, body, outcome, W);
 			}
-			// No body: nothing to close, so the outcome stays on the head row
-			// in the form every width gate already pins. A read is a ONE-ROW
-			// slab — the surface, without the shape a body would give it.
+			// No output on screen: the row is PLAIN, and the outcome stays on
+			// it in the form every width gate already pins.
+			//
+			// Owner ruling 2026-09-02, narrowing R9's "one-row slab": §1.6
+			// gives the wash to the machine's VERBATIM text, and a row like
+			// `read loop.ts · 412 lines · 0.1s` is kiso's summary of a result
+			// — not one line of it. A surface with nothing verbatim on it is
+			// a surface making a claim it cannot keep, so the wash appears
+			// only where the call's own output does.
 			const out = c.isError ? [`  ${p.red}${text}${p.reset}`] : [`  ${text}`];
 			out[0] = appendSuffix(out[0]!, expandSuffix(hidden, W - visibleWidth(out[0]!)));
 			out.push(...body);
-			return slabPaints() ? out.map((r) => slabRow(r, W)) : out;
+			return out;
 		}
 		if (c.state === "approval") {
 			// W2: the ❯ is the GUTTER (the left edge), never the line's tail

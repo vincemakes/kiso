@@ -157,6 +157,12 @@ describe("R7a A2 — the turn boundary's shift is at most ONE row", () => {
 	// stretch too tall for its slot folds — not a seam between the block
 	// and its fold. The seam itself is R7a E's case, and it is green:
 	// a settle moves no row at all (DC-43 records the spill).
+	//
+	// TRANSITIONAL, WITH AN EXPIRY. The derived bound exists because the
+	// window un-scrolls, and the window is what DC-19's third decision
+	// settles. When that lands (Round 3, route B) this bound returns to
+	// ONE at every size and DC-43 closes — it is in that round's gate
+	// table, so it is owed rather than merely intended.
 	const COLLAPSE = FILES.length - 1;
 	for (const [W, H] of SIZES) {
 		for (const thought of [SHORT, LONG]) {

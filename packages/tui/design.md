@@ -269,11 +269,12 @@ turn's first thought and released when the stretch folds. Within it:
 
 **7.4 A tool block is a SLAB, and its rows are INDENTED.** A single
 call's block is one object: the head row names the call, its own output
-sits inside, and the outcome closes it. Where the ground is known, the
-whole block is washed full width — §1.6's machine-verbatim surface,
-saying where the call begins and ends — and `└` does not open it,
-because the surface is the container and a corner inside one is §1.3's
-empty mark a scale up.
+sits inside, and the outcome closes it. Where the ground is known AND
+the call has output on screen, the whole block is washed full width —
+§1.6's machine-verbatim surface, saying where the call begins and ends —
+and `└` does not open it, because the surface is the container and a
+corner inside one is §1.3's empty mark a scale up. A call with no output
+on screen has no slab at all: one plain row, per §7.5.
 
 **Where the ground is NOT known the slab does not paint at all.** Rung 4's
 wash is reverse video (§3), and one inverted chip row is the ladder
@@ -294,7 +295,10 @@ separates, which is the case §1.1 keeps it for.
 **7.5 A settled call reads verb · target · outcome.** Where the call
 has no output on screen it is ONE row and the outcome rides it; where it
 does, the outcome closes the slab on its own row and the head row is
-free to be the command:
+free to be the command. **A call with no output on screen is a PLAIN
+row: the wash appears only where the call's own verbatim text does.** A
+settled read's row is kiso's summary of a result, not a line of it, and
+a surface there would be making a claim §1.6 does not support:
 
 ```
   read  loop.ts             412 lines · 0.1s · ctrl+o expands

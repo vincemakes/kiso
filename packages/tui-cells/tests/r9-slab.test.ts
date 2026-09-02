@@ -92,12 +92,42 @@ describe("R9 P2 — the slab's shape", () => {
 		expect(rows.filter((r) => r !== "")).toEqual(["shell pwd && ls -la", "row 1", "row 2", "row 3", "exit 0 · 3 lines · 0.4s"]);
 	});
 
-	it("a call with NO body stays one row — nothing to close, so the outcome stays inline", () => {
-		setGround("light");
+	/**
+	 * Owner ruling 2026-09-02, NARROWING R9's "one-row slab".
+	 *
+	 * R9 drew a bodiless call as a washed row too. §1.6 as it now stands
+	 * gives the wash to the machine's VERBATIM text, and a row like
+	 * `read loop.ts · 412 lines · 0.1s` is kiso's SUMMARY of a result —
+	 * not one line of it. So the wash appears only where the call's own
+	 * output does, and a call with nothing on screen is a plain row.
+	 *
+	 * Asserted on all three grounds, because the failure this forbids is
+	 * a surface on a row with nothing verbatim on it, and that would be
+	 * invisible on the ground where nothing paints anyway.
+	 */
+	it("a call with NO output on screen is a PLAIN row — no wash, and no reverse video either", () => {
 		const read = { ...shell(0), name: "read_file", input: "src/parser.ts", inputFull: JSON.stringify({ path: "src/parser.ts" }), resultText: "" };
-		const rows = render(read as Extract<BodyCell, { kind: "tool" }>);
-		expect(rows).toHaveLength(1);
-		expect(plain(rows[0]!)).toContain("0.4s");
+		for (const g of ["light", "dark", "unknown"] as const) {
+			setGround(g);
+			const rows = render(read as Extract<BodyCell, { kind: "tool" }>);
+			expect(rows, `ground=${g}`).toHaveLength(1);
+			expect(rows[0], `ground=${g}`).not.toContain(WASH.light);
+			expect(rows[0], `ground=${g}`).not.toContain(WASH.dark);
+			expect(rows[0], `ground=${g}`).not.toContain("\x1b[49m");
+			expect(rows[0], `ground=${g}`).not.toContain("\x1b[7m");
+		}
+	});
+
+	it("…and its CONTENT is untouched by the ruling — the same row on every ground", () => {
+		const read = { ...shell(0), name: "read_file", input: "src/parser.ts", inputFull: JSON.stringify({ path: "src/parser.ts" }), resultText: "" };
+		setGround("unknown");
+		const bare = plain(render(read as Extract<BodyCell, { kind: "tool" }>)[0]!);
+		expect(bare).toContain("read  src/parser.ts");
+		expect(bare).toContain("0.4s");
+		for (const g of ["light", "dark"] as const) {
+			setGround(g);
+			expect(plain(render(read as Extract<BodyCell, { kind: "tool" }>)[0]!), `ground=${g}`).toBe(bare);
+		}
 	});
 
 	it("§1.3: no corner inside a slab — the surface IS the container", () => {
