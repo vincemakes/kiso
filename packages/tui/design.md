@@ -139,6 +139,14 @@ from a colour it was handed. Both are asked in one write at startup,
 neither is waited on, and when both answer and agree the screen is
 repainted once.
 
+**Rung 2 has never been seen to answer.** Measured 2026-09-03: Apple
+Terminal 470.2 returns nothing to `CSI ? 996 n` within 1.5s, answers
+OSC 11 in the same window, and is unaffected by the two sequences
+sharing one write — no crosstalk, no cost. It is kept because it is
+free and because it asks the better question of any terminal that does
+implement it; it is recorded as unproven because no terminal available
+here implements it.
+
 **3.1 The LAST rung is the safety property, not a leftover.** When the ground is
 unknown kiso does not guess a wash; it uses the mark that is correct on
 any ground. The design degrades; it never renders light-mode paint on a
@@ -474,13 +482,13 @@ paste everywhere.
 
 ## 10. Open
 
-- **The wider terminal survey** (§3.2). Which terminals answer `CSI ?
-  996 n`, which answer OSC 11, and which answer neither is still
-  unmeasured beyond Apple Terminal. It bounds how often the ground
-  resolves in the field — no longer how often it CAN, since §3's rung 1
-  is persistable now. **Re-probing mid-session** (a terminal that
-  announces a scheme change while kiso is running) is owed and not
-  built.
+- **The wider terminal survey** (§3.2). Apple Terminal answers OSC 11
+  and does NOT answer `CSI ? 996 n` (measured 2026-09-03); every other
+  terminal is unmeasured, and rung 2 has therefore never been observed
+  answering anywhere. It bounds how often the ground resolves in the
+  field — no longer how often it CAN, since §3's rung 1 is persistable
+  now. **Re-probing mid-session** (a terminal that announces a scheme
+  change while kiso is running) is owed and not built.
 - **Spilled stretches.** A stretch too tall for its slot spills; how a
   spilled stretch folds is not settled.
 - **A per-call title.** Naming what a call is *for*, in the model's own

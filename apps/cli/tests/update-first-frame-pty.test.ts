@@ -16,35 +16,32 @@
  * The stub is local. The suite never reaches the public registry —
  * `isolatedEnv` switches the check off for every other e2e so this file
  * is the only place it runs, and even here it is pointed at 127.0.0.1.
+ *
+ * IT IS ALSO OUT OF PROCESS, and this gate is why that matters. `ptyRun`
+ * is `spawnSync`: a server created in THIS process cannot accept a
+ * connection while the CLI is up, so an in-process "slow" stub and an
+ * in-process "silent" stub are the SAME experiment — a registry that
+ * never answers. Compared against each other they agree no matter what
+ * the product does, and this case was green on exactly that for its
+ * first day. The `ok` mode below can only exist out of process, and it
+ * is the one worth having: a registry that answers AT ONCE, so the line
+ * really is produced during this session. If the check could reach the
+ * opening, that is where it would.
  */
 
-import { createServer, type Server } from "node:http";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 import { fauxScript, ptyRun, spares } from "./helpers/pty.js";
+import { startRegistryStub, type RegistryStub, type StubMode } from "./helpers/registry-stub.js";
 
-let server: Server | null = null;
-afterEach(async () => {
-	if (server !== null) await new Promise<void>((r) => server!.close(() => r()));
-	server = null;
+let stub: RegistryStub | null = null;
+afterEach(() => {
+	stub?.stop();
+	stub = null;
 });
-
-/** A registry stub that is deliberately useless: it either answers long
- *  after the opening is drawn, or never. */
-async function uselessStub(mode: "slow" | "silent"): Promise<string> {
-	server = createServer((_req, res) => {
-		if (mode === "silent") return;
-		setTimeout(() => {
-			res.writeHead(200, { "content-type": "application/json" });
-			res.end(JSON.stringify({ latest: "99.0.0" }));
-		}, 10_000);
-	});
-	await new Promise<void>((r) => server!.listen(0, "127.0.0.1", r));
-	return `http://127.0.0.1:${(server!.address() as { port: number }).port}/dist-tags`;
-}
 
 /** Everything up to and including the first frame's close — the opening
  *  as the terminal receives it. */
@@ -70,16 +67,16 @@ function open(extra: Record<string, string>): string {
 }
 
 describe("the update check never touches the first frame", () => {
-	it("slow stub and silent stub both leave the opening byte-identical", async () => {
+	it("an answering stub, a slow one and a silent one all leave the opening byte-identical", () => {
 		// the control: the check is off, which is what every other e2e runs
 		const off = firstFrame(open({ KISO_NO_UPDATE_CHECK: "1" }));
 		expect(off.length, "no first frame at all").toBeGreaterThan(0);
 
-		for (const mode of ["slow", "silent"] as const) {
-			if (server !== null) await new Promise<void>((r) => server!.close(() => r()));
-			const endpoint = await uselessStub(mode);
-			const on = firstFrame(open({ KISO_NO_UPDATE_CHECK: "0", KISO_UPDATE_ENDPOINT: endpoint }));
+		for (const mode of ["ok", "slow", "silent"] as readonly StubMode[]) {
+			stub?.stop();
+			stub = startRegistryStub(mode);
+			const on = firstFrame(open({ KISO_NO_UPDATE_CHECK: "0", KISO_UPDATE_ENDPOINT: stub.url }));
 			expect(on, `mode=${mode}: the opening's bytes moved`).toBe(off);
 		}
-	}, 180_000);
+	}, 240_000);
 });

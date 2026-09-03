@@ -92,6 +92,47 @@ describe("who never asks", () => {
 	});
 });
 
+/**
+ * The cache is not a way around the three answers.
+ *
+ * `shouldCheck` is false for four reasons and only ONE of them is about
+ * the request. An opt-out is an answer about the feature; a faux session
+ * is a test or a demo; a pipe has no banner — and an inactive Body
+ * writes a notice straight to stdout, so speaking there would put a row
+ * of kiso's own prose into piped bytes. Each was reachable through the
+ * cached path once, which is the defect these three cases pin.
+ */
+describe("GATE — a stored update is not announced where the LINE is unwanted", () => {
+	/** a cache that is fresh AND carries an unannounced newer version:
+	 *  the exact state that used to speak regardless of the reason */
+	const primed = (): void => {
+		writeFileSync(join(home, "update-check.json"), JSON.stringify({ checkedAt: Date.now(), latest: "9.9.9" }));
+	};
+
+	it("an opt-out stays silent, though the cache has something to say", async () => {
+		primed();
+		process.env.KISO_NO_UPDATE_CHECK = "1";
+		expect(await checkForUpdate(deps())).toBeNull();
+	});
+
+	it("a faux session stays silent — with no test seam set, which is production", async () => {
+		primed();
+		expect(process.env.KISO_UPDATE_ENDPOINT, "the seam must be absent for this to mean anything").toBeUndefined();
+		expect(await checkForUpdate(deps({ faux: true }))).toBeNull();
+		expect(shouldCheck(deps({ faux: true }))).toBe(false);
+	});
+
+	it("a PIPE stays silent — a notice there is a row of prose in piped bytes", async () => {
+		primed();
+		expect(await checkForUpdate(deps({ isTTY: false }))).toBeNull();
+	});
+
+	it("…and a merely RECENT check still speaks, which is the one reason that is about the request", async () => {
+		primed();
+		expect(await checkForUpdate(deps())).toBe(updateLine("9.9.9"));
+	});
+});
+
 describe("GATE — a cache inside the window sends NO request", () => {
 	it("the stub is never hit when the last check was an hour ago", async () => {
 		process.env.KISO_UPDATE_ENDPOINT = await stub("ok");

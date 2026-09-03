@@ -382,10 +382,16 @@ async function announceUpdate(): Promise<void> {
 	try {
 		const line = await checkForUpdate({ kisoHome: kisoHome(), version: VERSION, isTTY: process.stdout.isTTY === true, faux: currentFaux });
 		if (line === null) return;
-		// A turn may have started while the request was in flight. The
-		// notice is a cell like any other, so it lands where the transcript
-		// is — never spliced into a frame the reader is mid-way through.
-		body.notice(line);
+		// THE RAW CHANNEL, not `notice`. A notice renders through ErrorLine,
+		// which calls `escapeTerminal` — so every SGR in it is stripped and
+		// the line could only ever be full-strength prose. The raw channel
+		// is the one the banner itself uses: the styling is applied HERE, at
+		// composition, and the fold keeps the span intact (#16b).
+		//
+		// A turn may have started while the request was in flight. A raw
+		// cell is a cell like any other, so it lands at the transcript's
+		// end — never spliced into a frame the reader is mid-way through.
+		bodyLog(`${palette().dim}${line}${palette().reset}`, "words");
 	} catch {
 		// belt and braces: checkForUpdate does not throw, and if it ever
 		// did, a version check is not a reason to disturb a session.

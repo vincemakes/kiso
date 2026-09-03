@@ -75,6 +75,7 @@
 		"apps/cli/tests/tv1b-driver.test.ts",
 		"apps/cli/tests/ud1-undo-pty.test.ts",
 		"apps/cli/tests/update-first-frame-pty.test.ts",
+		"apps/cli/tests/update-line-onscreen-pty.test.ts",
 		"apps/cli/tests/xp1-status-truth-pty.test.ts",
 		"apps/cli/tests/zombie-resume-gate.test.ts",
 		"extensions/mcp/tests/dispose-e2e.test.ts",

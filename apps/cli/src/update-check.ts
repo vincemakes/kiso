@@ -120,13 +120,34 @@ export interface UpdateCheckDeps {
  * Should this launch even ask? Pure, so the reasons are testable without
  * a network, a clock or a terminal.
  */
-export function shouldCheck({ kisoHome, isTTY, faux, now = Date.now() }: UpdateCheckDeps): boolean {
-	if (process.env.KISO_NO_UPDATE_CHECK === "1") return false;
-	if (faux) return false; // the test and demo path never reaches the network
-	if (!isTTY) return false; // a pipe has no banner to append a line to
+export function shouldCheck(deps: UpdateCheckDeps): boolean {
+	return reasonNotToCheck(deps) === null;
+}
+
+/**
+ * WHY a launch does not ask — and the distinction matters, because only
+ * ONE of these reasons permits the line to be shown from cache.
+ *
+ * "recent" means the request is redundant; the human is still someone
+ * who wants to be told. The other three mean the LINE is unwanted: an
+ * opt-out is an answer about the feature, a faux session is a test or a
+ * demo, and a pipe has no banner — worse, an inactive Body writes a
+ * notice straight to stdout, so showing it there would put a row of
+ * kiso's own prose into piped bytes and break pipe identity.
+ */
+function reasonNotToCheck({ kisoHome, isTTY, faux, now = Date.now() }: UpdateCheckDeps): "opt-out" | "faux" | "not-a-tty" | "recent" | null {
+	if (process.env.KISO_NO_UPDATE_CHECK === "1") return "opt-out";
+	// A faux session is the test and demo path, and the rule it exists for
+	// is "never reaches the network". The redirect below is a TEST SEAM
+	// pointing at a local stub — where it is set there is no network to
+	// reach, and refusing anyway would make the one behaviour worth
+	// showing on a screen unobservable. In production nothing sets it, so
+	// a faux session still never asks.
+	if (faux && process.env.KISO_UPDATE_ENDPOINT === undefined) return "faux";
+	if (!isTTY) return "not-a-tty"; // and never writes a line into a pipe
 	const cached = readCache(kisoHome);
-	if (cached !== null && now - cached.checkedAt < EVERY_MS) return false;
-	return true;
+	if (cached !== null && now - cached.checkedAt < EVERY_MS) return "recent";
+	return null;
 }
 
 /**
@@ -136,10 +157,14 @@ export function shouldCheck({ kisoHome, isTTY, faux, now = Date.now() }: UpdateC
  */
 export async function checkForUpdate(deps: UpdateCheckDeps): Promise<string | null> {
 	const { kisoHome, version, now = Date.now() } = deps;
-	if (!shouldCheck(deps)) {
-		// still worth reporting a version we learned earlier and have not
-		// mentioned yet — the request is what the cache suppresses, not
-		// the line.
+	const why = reasonNotToCheck(deps);
+	if (why !== null) {
+		// ONLY a recent check may still speak. The other three reasons are
+		// about the LINE, not about the request, so the cache is no way
+		// around them — an opt-out that still got announced, or a piped
+		// run that gained a row of kiso's prose, would be the feature
+		// ignoring the answer it was given.
+		if (why !== "recent") return null;
 		const cached = readCache(kisoHome);
 		if (cached?.latest !== undefined && cached.told !== cached.latest && isNewer(version, cached.latest)) {
 			writeCache(kisoHome, { ...cached, told: cached.latest });
