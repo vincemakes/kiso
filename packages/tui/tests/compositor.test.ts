@@ -617,20 +617,25 @@ describe("TUI v6 — the one compositor", () => {
 		expect(frame).not.toContain("/last for the full diff"); // one row, never a fold
 	});
 
-	it("W7: the error text caps at 3 head rows (the header already shows line 1 — the body starts at line 2); a read result renders NO body", () => {
+	it("W7: the error text caps at FIVE head rows (the header already shows line 1 — the body starts at line 2); a read result renders NO body", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		body.toolStart("shell", "c1", { command: "lint" });
 		body.toolRunning("c1");
-		const err = Array.from({ length: 6 }, (_, i) => `lint error ${i + 1}: something went wrong here`).join("\n");
+		// R13 widened the cap from three rows to the card's five, so the
+		// fixture grows with it — the subject is that the body CUTS and names
+		// the cut, and it needs more lines than the cap to have one.
+		const err = Array.from({ length: 10 }, (_, i) => `lint error ${i + 1}: something went wrong here`).join("\n");
 		body.toolResult("c1", { content: err, isError: true });
 		tick();
 		const frame = writes.join("");
 		// the head (the answer is at the start): the body starts at line 2,
-		// capped at 3 rows — the tail is cut, the cut names "+3 more"
+		// capped at 5 rows — the tail is cut, and the note is the card's own
 		expect(frame).toContain("lint error 2");
-		expect(frame).toContain("    +3 more · ctrl+o");
-		expect(frame).not.toContain("lint error 6");
+		// R13: an error previews like any other card — the cap is five and
+		// the note is the card's own wording.
+		expect(frame).toContain("more lines · ctrl+o");
+		expect(frame).not.toContain("lint error 10");
 		expect(matchBodyWalls(frame).length).toBeLessThanOrEqual(3);
 		// a read result: the settled row carries the count — zero body rows
 		const b2 = makeBody();
@@ -1118,7 +1123,9 @@ describe("TUI v6 — the one compositor", () => {
 		// The old expectation ("the settled row unchanged") was the exact
 		// inversion the walkthrough objected to — the ambient default got a
 		// byline and the human's own answer got none.
-		expect(plain3).toContain("  read  x.ts (approved, 0.0s)");
+		// R13 MOVED THIS: one grammar for both cards — the head row's W4
+		// parentheses became the `·` chain the outcome row already used.
+		expect(plain3).toContain("  read  x.ts · 1 line · 0.0s · approved");
 		expect(plain3).not.toContain("approved by");
 	});
 

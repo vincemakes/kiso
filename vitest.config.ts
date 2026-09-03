@@ -30,6 +30,12 @@ export default defineConfig({
 		// at packages/core/tests/setup-env.ts (ADR-0043 Amendment 11's
 		// hygiene item).
 		setupFiles: [fileURLToPath(new URL("./tests/setup-env.ts", import.meta.url))],
+		// The per-run TMPDIR root (tests/global-tmpdir.ts, the 2026-09-03
+		// TMPDIR finding): one directory per vitest invocation under the real
+		// tmpdir, every worker's and every child's os.tmpdir() inside it,
+		// removed at teardown. Both pools spread this config, so both
+		// inherit it. Absolute for setupFiles' reason.
+		globalSetup: [fileURLToPath(new URL("./tests/global-tmpdir.ts", import.meta.url))],
 		exclude: [
 			"**/node_modules/**",
 			"**/dist/**",

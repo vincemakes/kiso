@@ -252,7 +252,8 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 				nFill,
 				`${W}x${H}: the fill comes before the session's deep phase (the pre-fix last band sat at 731/725/723)`,
 			).toBeLessThan(bound);
-			console.log(`FILL ${W}x${H}: nFill=${nFill} of ${frames.length}`);
+			const holes = frames.filter((f) => f.maxBlankRun > 2).length;
+			console.log(`HOLES ${W}x${H}: ${holes} of ${frames.length} frames (${((holes / frames.length) * 100).toFixed(1)}%) · nFill=${nFill}`);
 			for (let n = nFill; n < frames.length; n += 1) {
 				const f = frames[n]!;
 				expect(

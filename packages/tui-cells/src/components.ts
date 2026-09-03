@@ -509,13 +509,19 @@ class ThinkingBlock implements Component {
 		// DC-47 — THINKING GOES ONE LEVEL DEEPER THAN PROSE, and the
 		// reason is a law rather than a taste.
 		//
-		// §7.2: "the indent is the price of §1.2 — italic is an escape
-		// sequence, so a piped transcript would lose the line between the
-		// model's reasoning and its answer. Two spaces survive as bytes."
-		// R13's E3 moved PROSE to column 2, which is where the thinking
-		// already was, so after `sed 's/\x1b\[[0-9;]*m//g'` the two became
-		// the same row. Measured, not reasoned: both rendered
+		// §7.2: the indent is the price of §1.2 — italic and dim are
+		// escape sequences, so a rendered frame with its colour stripped
+		// (a terminal capture, a paste out of the scrollback, a log of
+		// what was drawn) would lose the line between the model's
+		// reasoning and its answer. R13's E3 moved PROSE to column 2,
+		// which is where the thinking already was, so after
+		// `sed 's/\x1b\[[0-9;]*m//g'` the two became the same row.
+		// Measured, not reasoned: both rendered
 		// `"  Weighing the two shapes."` exactly.
+		//
+		// NOT a pipe, though §7.2 used to say so: `thinkingEnd`'s inactive
+		// path writes `foldThinking` — one dim line — so a pipe never sees
+		// a thinking paragraph to confuse with prose.
 		//
 		// So the thinking takes the next column in. It is still the only
 		// carrier that survives a pipe, and it is still one indent step —
@@ -844,8 +850,17 @@ class ToolExecution implements Component {
 			// "200 of 250 lines", a diff's "+1 -1", a shell's "exit 0" — is a
 			// different fact and stays.
 			const rawMeta = settledMeta(c);
-			const dup = hiddenLines(c, W) !== null && new RegExp(`^${hiddenLines(c, W)} lines?$`).test(rawMeta);
-			const meta = dup ? "" : escapeTerminal(rawMeta);
+			// VD-6's suppression RETIRED with the thing it was suppressing.
+			// A read card said `(2 lines, 0.0s) · 2 lines · ctrl+o expands`
+			// because the parens and the suffix were written by different
+			// rounds, each unaware the other was counting; the fix blanked
+			// the meta whenever the suffix would repeat it. R13 takes the
+			// count OUT of the suffix, so there is one place again and the
+			// meta is it — blanking it now would drop the fact entirely.
+			// "Stated exactly once" is unchanged and is what `countedHead`
+			// below preserves: a meta that already counts lines gets no
+			// second count beside it.
+			const meta = escapeTerminal(rawMeta);
 			// A4: the target rides the settled head row — the verb's
 			// summary column (W3's 5-char pad keeps the paths lined up).
 			// A5: an extension's auto-approval appends `· approved by
@@ -865,7 +880,9 @@ class ToolExecution implements Component {
 			// TUI2-R1.5 ⑤: the shortest tier is RESERVED — the affordance is
 			// the semantics. TUI2-R1.5 pin 4: and the parts give way in a
 			// PINNED ORDER, rather than whichever happened to be last.
-			const text = settledHeadText(verbCol, escapeTerminal(toolTargetOf(c)), meta, approvedBy, elapsed, W - 2 - (hidden === null ? 0 : SUFFIX_MIN));
+			const nAll = countLines(c.resultText);
+			const countedHead = nAll > 0 && !/^\d+( of \d+)? lines?$/.test(rawMeta) ? `${nAll} line${nAll === 1 ? "" : "s"}` : "";
+			const text = settledHeadText(verbCol, escapeTerminal(toolTargetOf(c)), meta, approvedBy, elapsed, W - 2 - (hidden === null ? 0 : SUFFIX_MIN), countedHead);
 			// R2 (owner, 2026-08-27): no tick, no cross. A symbol earns its
 			// cell by carrying a fact the words do not, and a row that
 			// already says `exit 0` does not need one more thing saying it
@@ -1067,12 +1084,24 @@ const SUFFIX_MIN = " · ctrl+o".length;
  *      compressible thing on the row — a reader recognises a command
  *      from its head — and it is the only part with a natural ellipsis.
  */
-function settledHeadText(verbCol: string, target: string, meta: string, attr: string, elapsed: string, room: number): string {
-	const core = `(${meta === "" ? "" : `${meta}, `}${elapsed}s)`;
-	const withAttr = `(${[meta, attr.replace(" · ", "")].filter((x) => x !== "").join(" · ")}${meta === "" && attr === "" ? "" : ", "}${elapsed}s)`;
+function settledHeadText(verbCol: string, target: string, meta: string, attr: string, elapsed: string, room: number, counted = ""): string {
+	// R13 — ONE GRAMMAR FOR BOTH CARDS. This row used to close with W4's
+	// parentheses — `read  a.ts (0.1s) · 10 lines · ctrl+o expands` —
+	// while the bodied card's outcome row said `exit 0 · 90 lines · 0.4s`
+	// in a `·` chain. Two shapes for the same facts, and which one a call
+	// got depended on whether it happened to have a preview. The chain
+	// wins: it is the one the outcome row already uses, it reads in one
+	// direction, and it puts the elapsed where the other card puts it.
+	//
+	// The giving-way order is pin 4's, unchanged: the ATTRIBUTION drops
+	// first, then the count, and the core — what happened and how long it
+	// took — is never cut open; below that the target itself truncates.
+	const join = (...xs: string[]): string => xs.filter((x) => x !== "").join(" · ");
+	const core = join(meta, counted, `${elapsed}s`);
+	const withAttr = join(meta, counted, `${elapsed}s`, attr.replace(" · ", ""));
 	const lead = `${verbCol} `;
-	const fit = (t: string, parens: string): string | null => {
-		const line = `${lead}${t}${parens === "" ? "" : ` ${parens}`}`;
+	const fit = (t: string, tail: string): string | null => {
+		const line = `${lead}${t}${tail === "" ? "" : ` · ${tail}`}`;
 		return visibleWidth(line) <= room ? line : null;
 	};
 	// 1. everything
@@ -1081,9 +1110,14 @@ function settledHeadText(verbCol: string, target: string, meta: string, attr: st
 	// 2. the attribution gives way
 	const bare = fit(target, core);
 	if (bare !== null) return bare;
+	// 2b. the COUNT gives way next (pin 4), where the suffix is not
+	//     already carrying it
+	const short = fit(target, join(meta, `${elapsed}s`));
+	if (short !== null) return short;
 	// 3. the target truncates, the core stays whole
-	const budget = room - visibleWidth(lead) - visibleWidth(core) - 2; // the space + the ellipsis
-	if (budget >= 1) return `${lead}${widthCut(target, budget)}… ${core}`;
+	const stem = join(meta, `${elapsed}s`);
+	const budget = room - visibleWidth(lead) - visibleWidth(stem) - 4; // the ellipsis + " · "
+	if (budget >= 1) return `${lead}${widthCut(target, budget)}… · ${stem}`;
 	// 4. below that even the core cannot ride: the row is the call's
 	//    identity and its affordance, and no half-open parenthesis.
 	return `${lead}${widthCut(target, Math.max(1, room - visibleWidth(lead)))}`;
@@ -1111,8 +1145,13 @@ function attribution(c: Extract<BodyCell, { kind: "tool" }>): string {
 
 export function expandSuffix(lines: number | null, room: number): string {
 	if (lines === null) return "";
-	const count = `${lines} line${lines === 1 ? "" : "s"}`;
-	for (const tier of [` · ${count} · ctrl+o expands`, ` · ${count} · ctrl+o`, " · ctrl+o"]) {
+	// R13 — the COUNT left this suffix for the head row's own `·` chain,
+	// where the bodied card keeps it too (`… · 10 lines · 0.1s`). It was
+	// here because the parenthesised core had nowhere to put it and the
+	// suffix was the only tail the row had; with one grammar for both
+	// cards there is one place, and VD-6's "stated exactly once" is what
+	// forbids leaving a copy behind.
+	for (const tier of [" · ctrl+o expands", " · ctrl+o"]) {
 		if (tier.length <= room) return tier;
 	}
 	return "";
@@ -1683,7 +1722,6 @@ export const LIVE_WINDOW = CAP_PREVIEW + 1;
  *  blanks and the metadata row. Below this there is no card (DC-43). */
 const CARD_CHROME = 6;
 const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
-const CAP_ERROR = 3; // the error text head
 
 /** The block body rows' prefixes (W2's gutter table): │ a bounded
  *  block's body, └ the block's last row — what was cut, where the rest
@@ -1975,13 +2013,7 @@ function shellTail(text: string, W: number, tone: "dim" | "body" = "dim"): strin
 	// The note goes ABOVE the tail: it says what was cut, and what was
 	// cut is what came BEFORE these rows. One position on both surfaces —
 	// the surface degrades, the content shape does not.
-	const cut = rows.length - kept;
-	const n = `${cut} earlier line${cut === 1 ? "" : "s"}`;
-	// the KEY is reserved (TUI2-R1.5 ⑤): the count gives way before it,
-	// because a row that says how much is hidden without saying how to
-	// see it is the silence TUI2-R1 (A) set out to remove.
-	const note = noteRow(pickTier([`… ${n} · ctrl+o expands`, `… ${n} · ctrl+o`, `… ${cut} · ctrl+o`, "· ctrl+o"], W - visibleWidth(noteIndent())), W, tone);
-	return [...note, ...rows.slice(rows.length - kept)];
+	return [...cutNote(rows.length - kept, "earlier", W, tone), ...rows.slice(rows.length - kept)];
 }
 
 /** R13 — the preview every OTHER settled call gets: the FIRST rows,
@@ -1999,12 +2031,16 @@ function shellTail(text: string, W: number, tone: "dim" | "body" = "dim"): strin
 function previewHead(text: string, W: number, tone: "dim" | "body"): string[] {
 	const rows = blockRows(text, W, tone);
 	if (rows.length <= CAP_PREVIEW) return rows;
-	const cut = rows.length - CAP_PREVIEW;
-	const n = `${cut} more line${cut === 1 ? "" : "s"}`;
-	// the KEY is reserved, as in shellTail: a row that says how much is
-	// hidden without saying how to see it is TUI2-R1 (A)'s silence.
-	const note = noteRow(pickTier([`… ${n} · ctrl+o expands`, `… ${n} · ctrl+o`, `… ${cut} · ctrl+o`, "· ctrl+o"], W - visibleWidth(noteIndent())), W, tone);
-	return [...rows.slice(0, CAP_PREVIEW), ...note];
+	return [...rows.slice(0, CAP_PREVIEW), ...cutNote(rows.length - CAP_PREVIEW, "more", W, tone)];
+}
+
+/** The preview's cut note, in one place so the head and the tail
+ *  directions cannot drift apart. The KEY is reserved (TUI2-R1.5 ⑤): a
+ *  row that says how much is hidden without saying how to see it is the
+ *  silence the affordance exists to remove. */
+function cutNote(cut: number, word: "more" | "earlier", W: number, tone: "dim" | "body"): string[] {
+	const n = `${cut} ${word} line${cut === 1 ? "" : "s"}`;
+	return noteRow(pickTier([`… ${n} · ctrl+o expands`, `… ${n} · ctrl+o`, `… ${cut} · ctrl+o`, "· ctrl+o"], W - visibleWidth(noteIndent())), W, tone);
 }
 
 /** The error text head: the FIRST rows, capped at 3 — the answer is at
@@ -2021,10 +2057,12 @@ function errorBody(c: { name: string; resultText: string; reason?: string | null
 	// FULL content including the "[Permission denied] " prefix (never
 	// hide information — the folded body rides the pinned row).
 	const skipFirst = c.name === "shell" && /^exit \d+/.test(c.resultText) ? 0 : c.reason !== null && c.reason !== undefined ? 0 : 1;
-	const rows = blockRows(c.resultText.split("\n").slice(skipFirst).join("\n"), W);
-	if (rows.length <= CAP_ERROR) return rows;
-	const cut = foldLine(`${p.dim}${noteIndent()}+${rows.length - (CAP_ERROR - 1)} more · ctrl+o${p.reset}`, W);
-	return [...rows.slice(0, CAP_ERROR - 1), ...cut];
+	// R13 — a failure is a CARD like any other call: the same cap of
+	// five, the same note wording, the same direction (an error's answer
+	// is at the top). It kept a cap of three and `+2 more · ctrl+o` from
+	// before the card existed, which made the one shape a reader most
+	// wants to read the one shape that showed least of itself.
+	return previewHead(c.resultText.split("\n").slice(skipFirst).join("\n"), W, slabPaints() ? "body" : "dim");
 }
 
 /** The running tool's FIXED-height window (W8): exactly 3 rows from

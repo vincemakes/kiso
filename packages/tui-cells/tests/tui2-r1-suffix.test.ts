@@ -72,7 +72,11 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// stated EXACTLY ONCE now (VD-6). This very row is the one the
 		// walkthrough quoted: the parens and the suffix were written by
 		// different rounds, each unaware the other was counting.
-		expect(rows[0]).toBe("  read  src/parser.ts (2.4s) · 12 lines · ctrl+o expands");
+		// R13 MOVED THIS ASSERTION: one grammar for both cards. The head
+		// row's W4 parentheses became the `·` chain the bodied card's
+		// outcome row already used, and the COUNT moved out of the suffix
+		// into that chain, where it is still stated exactly once.
+		expect(rows[0]).toBe("  read  src/parser.ts · 12 lines · 2.4s · ctrl+o expands");
 		// nothing else changed: the collapsed body is still empty
 		expect(rows).toHaveLength(1);
 	});
@@ -113,10 +117,10 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 				resultText: "",
 			}),
 		);
-		expect(rows[0]).toBe("  shell echo hi (exit 0, 2.4s)");
+		expect(rows[0]).toBe("  shell echo hi · exit 0 · 2.4s");
 		expect(rows.join("\n")).not.toContain("ctrl+o");
 		// an empty result hides nothing for any tool
-		expect(render(toolCell({ resultText: "" }))[0]).toBe("  read  src/parser.ts (0 lines, 2.4s)");
+		expect(render(toolCell({ resultText: "" }))[0]).toBe("  read  src/parser.ts · 0 lines · 2.4s");
 		// …and a shell whose ONE line is on screen hides nothing either: it
 		// is a slab with no note, so nothing anywhere names the key.
 		const whole = render(toolCell({ name: "shell", input: "echo hi", inputFull: JSON.stringify({ command: "echo hi" }), resultText: "hi" }));
@@ -140,8 +144,13 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		});
 		const tierAt = (W: number): string => {
 			const row = render(cell, W)[0]!;
-			if (row.includes("· 22 lines · ctrl+o expands")) return "full";
-			if (row.includes("· 22 lines · ctrl+o")) return "terse";
+			// R13: the COUNT lives in the head's own `·` chain now and the
+			// affordance in the suffix, so the two are no longer adjacent.
+			// The LADDER is unchanged — full, terse, key, and the key is
+			// reserved — and that is what the tiers below still pin.
+			const count = row.includes("· 22 lines");
+			if (count && row.includes("ctrl+o expands")) return "full";
+			if (count && row.includes("ctrl+o")) return "terse";
 			if (row.includes("· ctrl+o")) return "key";
 			return "absent";
 		};
@@ -164,7 +173,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// R8a (owner-ruled 2026-09-01): a tool block's rows are INDENTED, not
 		// guttered — `└` opens the block once, on its first row with content,
 		// and every other row is the same four-column indent with no glyph.
-		expect(rows).toEqual(["  read  src/parser.ts (3 lines, 2.4s)", "  └ alpha", "    beta", "    gamma", "    ctrl+o collapses"]);
+		expect(rows).toEqual(["  read  src/parser.ts · 3 lines · 2.4s", "  └ alpha", "    beta", "    gamma", "    ctrl+o collapses"]);
 		// the expanded head row drops the collapsed suffix — it would be
 		// telling the reader to expand what is already expanded
 		expect(rows[0]).not.toContain("expands");
@@ -176,7 +185,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// MOVED (R1.5 slice ⑤, the R1 tool-cell suffix class): the parens
 		// lost their duplicate count (VD-6); the SGR placement — the whole
 		// point of this case — is byte-identical.
-		expect(rows[0]).toBe("  read  src/parser.ts (2.4s)\x1b[2m · 3 lines · ctrl+o expands\x1b[0m"); // R2: no tick
+		expect(rows[0]).toBe("  read  src/parser.ts · 3 lines · 2.4s\x1b[2m · ctrl+o expands\x1b[0m"); // R2: no tick
 		const expanded = render(toolCell({ expanded: true, resultText: "a\nb\nc" }));
 		expect(expanded[expanded.length - 1]).toBe("\x1b[2m    ctrl+o collapses\x1b[0m");
 	});
@@ -213,7 +222,7 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		expect(rows.at(-1), "the outcome closes the block").toBe("    exit 1 · 10 lines · 2.4s");
 		// the error body's own renderer cut is the affordance there, unchanged
 		expect((rows.join("\n").match(/ctrl\+o/g) ?? []).length, "one affordance for the cell").toBe(1);
-		expect(rows.join("\n")).toContain("more · ctrl+o");
+		expect(rows.join("\n")).toContain("more lines · ctrl+o"); // R13: an error previews like any card
 	});
 
 	/**

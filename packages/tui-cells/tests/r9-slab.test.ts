@@ -120,7 +120,7 @@ describe("R9 P2 — the slab's shape", () => {
 			setGround(g);
 			const rows = render(read as Extract<BodyCell, { kind: "tool" }>);
 			expect(rows, `ground=${g}`).toHaveLength(3);
-			expect(plain(rows[1]!).trimEnd(), `ground=${g}`).toBe("  read  src/parser.ts (0 lines, 0.4s)");
+			expect(plain(rows[1]!).trimEnd(), `ground=${g}`).toBe("  read  src/parser.ts · 0 lines · 0.4s");
 			for (const row of rows) {
 				expect(row, `ground=${g}`).toContain(g === "light" ? WASH.light : WASH.dark);
 				expect(row, `ground=${g}`).not.toContain("\x1b[7m");

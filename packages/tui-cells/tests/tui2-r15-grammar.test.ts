@@ -60,7 +60,7 @@ describe("TUI2-R1.5 ⑤ — the line count is stated exactly once (VD-6)", () =>
 	it("a read card names its lines in the SUFFIX, not in the parens as well", () => {
 		const row = render(toolCell())[0]!;
 		expect(row.match(/\d+ lines?/g) ?? []).toHaveLength(1);
-		expect(row).toBe("  read  src/parser.ts (2.4s) · 2 lines · ctrl+o expands");
+		expect(row).toBe("  read  src/parser.ts · 2 lines · 2.4s · ctrl+o expands");
 	});
 
 	it("a read whose result the TOOL truncated keeps its own of-N meta — that is a different fact", () => {
@@ -87,7 +87,7 @@ describe("TUI2-R1.5 ⑤ — approval attribution is about humans (VD-11)", () =>
 		const row = render(toolCell({ verdict: { decision: "approved", decidedBy: "mode:default" } }))[0]!;
 		expect(row).not.toContain("approved by");
 		expect(row).not.toContain("mode:default");
-		expect(row).toBe("  read  src/parser.ts (2.4s) · 2 lines · ctrl+o expands");
+		expect(row).toBe("  read  src/parser.ts · 2 lines · 2.4s · ctrl+o expands");
 	});
 
 	it("a HUMAN approval says `approved` — the thing the human actually did", () => {
@@ -102,7 +102,7 @@ describe("TUI2-R1.5 ⑤ — approval attribution is about humans (VD-11)", () =>
 		const withMeta = render(toolCell({ name: "edit_file", added: 1, removed: 1, resultText: "edited", verdict: { decision: "approved" } })).join("\n");
 		expect(withMeta).toContain("+1 -1 · 1 line · 2.4s · approved");
 		const bare = render(toolCell({ verdict: { decision: "approved" } }))[0]!;
-		expect(bare).toContain("(approved, 2.4s)");
+		expect(bare).toContain("· approved");
 		expect(bare).not.toContain("approved by");
 	});
 

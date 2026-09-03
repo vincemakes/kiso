@@ -198,3 +198,59 @@ describe("R13 — the live region still shows the work in flight", () => {
 		expect(screen().map(plain).join("\n")).toContain("The lockfile is missing the linux optional dep.");
 	});
 });
+
+/**
+ * DC-46 — the live region is bounded by the SCREEN, never by how much
+ * has already been committed.
+ *
+ * The first fix for DC-46 capped the live region at
+ * `H − chrome − #committedLines`, on the argument that a live region
+ * inside the leftover room keeps `skip` a function of `#committedLines`
+ * alone and therefore monotone. The argument was right about `skip` and
+ * wrong about the quantity: **`#committedLines` is CUMULATIVE** — it is
+ * re-derived over the whole line cache every frame and counts rows that
+ * left for the terminal's scrollback long ago. So one screenful into any
+ * session it exceeds `H`, the room clamps to its floor of one row, and
+ * every running call from then on is a head row with its output gone.
+ *
+ * Measured at both 24 and 40 rows on a screen with eight blank rows
+ * still on it. That is not "a short terminal with a lot of committed
+ * work" — it is every session that runs longer than one screen, and it
+ * breaks E2 and R7a D outright.
+ *
+ * The window's top is held by the `skip` clamp instead (`max(
+ * #scrolledOff, fresh)`): rows that have reached the terminal's
+ * scrollback are immutable, so the paint may not go back above them.
+ * A live region that grows scrolls committed rows away through
+ * `#emitScroll`, which is an APPEND and not an un-scroll.
+ */
+describe("DC-46 — a running call keeps its output however much has committed", () => {
+	const lines = (n: number, f: (i: number) => string): string => Array.from({ length: n }, (_, i) => f(i)).join("\n");
+
+	for (const H of [24, 40]) {
+		it(`H=${H}: after a turn that commits more than a screenful, the live tail is still on screen`, () => {
+			const { body, screen, tick } = makeBody({ W: 100, H });
+			body.enter();
+			body.userLine("look at the project");
+			call(body, "list_dir", "l1", { path: "." }, lines(30, (i) => `src/m${i}.ts`));
+			call(body, "search_text", "g1", { pattern: "TODO" }, lines(20, (i) => `src/x${i}.ts:${i}: // TODO`));
+			body.textAppend("that is the directory.\n");
+			body.textEnd();
+			body.endTurn(1);
+			tick();
+
+			body.userLine("run the tests");
+			body.toolStart("shell", "s1", { command: "npm test" });
+			body.toolRunning("s1");
+			let acc = "";
+			for (let i = 1; i <= 12; i += 1) {
+				acc += `> vitest run · file ${i}\n`;
+				body.toolProgress("s1", acc);
+			}
+			tick();
+			const rows = screen().map(plain);
+			expect(rows.join("\n"), "the running call lost its row entirely").toContain("npm test");
+			expect(rows.join("\n"), "the running call's live output is gone").toContain("vitest run · file 12");
+		});
+	}
+});

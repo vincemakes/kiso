@@ -1971,27 +1971,25 @@ export class Body {
 	 * settle still produces the same fold it did before. That is the
 	 * charter's line between this phase and the next.
 	 */
-	/**
-	 * R13 / DC-43 — THE ROOM THE COMMITTED ROWS LEAVE.
-	 *
-	 * The live region must fit in what is left of the window after the
-	 * rows already committed, because that is what keeps the window's top
-	 * MONOTONE: `skip` is read off the total height, and if the live part
-	 * can push the total over H then a settle that shrinks it pulls the
-	 * total back under, the top falls, and every row on screen slides
-	 * down by the difference. R4's standing slot bought monotonicity by
-	 * never letting the live region shrink at all; R13 retires the slot,
-	 * so the same property has to come from the other side — the live
-	 * region gives way, and `skip` then depends only on `#committedLines`,
-	 * which only ever grows.
-	 *
-	 * The floor is ONE row: where the committed rows alone fill the
-	 * screen there is nothing left to give, and `skip` grows with them —
-	 * monotonically, which is all the invariant asks.
-	 */
-	#liveRoom(H: number, inputExtra: number, queueRows: number): number {
-		return Math.max(1, H - CHROME_ROWS - inputExtra - queueRows - this.#committedLines);
-	}
+	/* DC-46 — `#liveRoom` RETIRED, and the reasoning with it.
+	   It capped the live region at `H − chrome − #committedLines`, to
+	   keep `skip` a function of `#committedLines` alone and therefore
+	   monotone. The argument was right about `skip` and wrong about the
+	   quantity: `#committedLines` is CUMULATIVE — re-derived over the
+	   whole line cache every frame, counting rows that left for the
+	   terminal's scrollback long ago — so one screenful into any session
+	   it exceeds H, the room clamps to its floor of one row, and every
+	   running call after that is a head row with its output gone.
+	   Measured at 24 and 40 rows with eight blank rows still on screen.
+
+	   The live region is bounded by the SCREEN (the content cap the
+	   force-commit loop already uses). What holds the window's top is
+	   the `skip` clamp below: rows in [0, #scrolledOff) have reached the
+	   terminal's scrollback and are immutable, so the paint may not go
+	   back above them. A live region that GROWS scrolls committed rows
+	   away through #emitScroll, which is an append and not an un-scroll.
+	   The residue is a transient hole above the composer at a settle,
+	   bounded by the shrink itself and filled by the next commit. */
 
 	#liveProjection(W: number, ctx: FrameCtx, cap?: number): string[] {
 		const rows = this.#project(W, ctx, LIVE_WINDOW);
@@ -2388,7 +2386,7 @@ export class Body {
 		const W = this.#opts.width();
 		// the SAME content cap the force-commit loop applies, so the
 		// scalar sees the same slot budget the screen gets.
-		const rows = this.#liveProjection(W, ctx, Math.min(this.#opts.height() - 4 - inputExtra - queueRows.length, this.#liveRoom(this.#opts.height(), inputExtra, queueRows.length)));
+		const rows = this.#liveProjection(W, ctx, this.#opts.height() - 4 - inputExtra - queueRows.length);
 		return rows.length + CHROME_ROWS + inputExtra + this.#menuRows(W).length + queueRows.length;
 	}
 
@@ -2578,7 +2576,7 @@ export class Body {
 			// by construction), so the marker can never point at a cell the
 			// key would not take — which is the only way a focus marker is
 			// worth having.
-			liveLines = this.#liveProjection(W, ctx, Math.min(H - 4 - inputExtra - queueRows.length, this.#liveRoom(H, inputExtra, queueRows.length)));
+			liveLines = this.#liveProjection(W, ctx, H - 4 - inputExtra - queueRows.length);
 		}
 		// 3. the FORCE commits — the live region's hard cap H−1: overflow
 		//    commits the oldest live cell UNCONDITIONALLY (the one sharp
@@ -2599,7 +2597,7 @@ export class Body {
 			this.#commitCell(this.#committed, W, ctx);
 			// TUI2-R2 ⑤: the focus re-derives after a commit — the cell it
 			// pointed at may have just left the live region.
-			liveLines = this.#liveProjection(W, ctx, Math.min(H - 4 - inputExtra - queueRows.length, this.#liveRoom(H, inputExtra, queueRows.length)));
+			liveLines = this.#liveProjection(W, ctx, H - 4 - inputExtra - queueRows.length);
 		}
 		// 4. the geometry — the live region's first row:
 		//    liveTop = min(totalCommitted, H - liveRows) + 1 — the screen
@@ -3453,8 +3451,26 @@ export class Body {
 			this.#screen = new Array(H).fill(NOT_PAINTED);
 			this.#resizeFrame = false;
 		} else if (!overlay) {
-			const floor = Math.max(0, this.#committedLines + CHROME_ROWS - H);
-			this.#emitScroll(out, W, H, all, floor);
+			// DC-46 — THE ROWS THAT LEAVE THE WINDOW SCROLL, and the target
+			// is `skip` itself.
+			//
+			// It used to be a FLOOR: where the window's top would sit with
+			// the live band empty. The floor was the conservative choice
+			// because the top could come back down when the live region
+			// shrank, and a scroll is the frame's one irreversible act — so
+			// only the part of the movement that could never reverse was
+			// paid out.
+			//
+			// R13 makes the top monotone (the clamp above: rows in
+			// [0, #scrolledOff) are in the terminal's scrollback and the
+			// paint may not go back above them), so a row above `skip` has
+			// left for good and there is nothing conservative left to be.
+			// Keeping the floor with a live region that can now grow by a
+			// whole card LOST rows: painted over in place, never scrolled,
+			// present in neither the screen nor the scrollback. Measured on
+			// R7a D — a four-call burst on a 24-row terminal, and the first
+			// call's head row was never emitted at all.
+			this.#emitScroll(out, W, H, all, skip);
 		}
 		if (!overlay) this.#lastSkip = skip;
 		// REL-0152-R1: the rows this frame WANTS on the screen — the same

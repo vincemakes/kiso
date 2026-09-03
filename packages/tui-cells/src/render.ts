@@ -317,6 +317,8 @@ function toolSummaryDetail(name: string, input: Record<string, unknown>, result:
 		}
 		case "list_dir":
 			return String(input.path ?? "(root)");
+		case "search_text":
+			return searchSubject(input);
 		default:
 			return String(input.path ?? input.command ?? "");
 	}
@@ -336,9 +338,24 @@ export function toolTarget(name: string, input: Record<string, unknown>): string
 			return String(input.command ?? "?");
 		case "list_dir":
 			return String(input.path ?? "(root)");
+		case "search_text":
+			return searchSubject(input);
 		default:
 			return String(input.path ?? input.command ?? "");
 	}
+}
+
+/** R13 — a search's subject is WHAT IT LOOKED FOR. The schema is
+ *  `pattern` (required) + `path` (optional), and both switches here fell
+ *  through to the default, which reads `path` — so a search of the whole
+ *  tree had an EMPTY head row, and one scoped to a directory named the
+ *  directory instead of the pattern. The scope is a fact too, so it
+ *  rides behind: `search TODO · src`. */
+function searchSubject(input: Record<string, unknown>): string {
+	const pattern = String(input.pattern ?? input.query ?? "");
+	const path = input.path === undefined || input.path === null || input.path === "" ? "" : String(input.path);
+	if (pattern === "") return path;
+	return path === "" ? pattern : `${pattern} · ${path}`;
 }
 
 /** The exit code of a shell result: parsed from the failure text, 0 on success. */

@@ -277,11 +277,15 @@ describe("E3 · D4 — one left edge: prose, the chip and the card all begin at 
 /**
  * DC-47 — the law E3 walked into.
  *
- * §7.2 says the thinking's indent is "the price of §1.2": italic is an
- * escape sequence, so a piped transcript would lose the line between
- * the model's reasoning and its answer, and two spaces survive as
- * bytes. E3 moved PROSE to column 2 — the column the thinking was
- * already in — and the two became the same row under `sed`.
+ * §7.2 says the thinking's indent is "the price of §1.2": italic and
+ * dim are escape sequences, so a rendered frame with its colour
+ * stripped — a terminal capture, a paste out of the scrollback, a log
+ * of what was drawn — would lose the line between the model's reasoning
+ * and its answer. E3 moved PROSE to column 2 — the column the thinking
+ * was already in — and the two became the same row under `sed`.
+ *
+ * (A PIPE is not the surface, though §7.2 used to say so: the inactive
+ * path writes one folded line, never the paragraph.)
  *
  * That is a law broken by a taste, so the taste gives way at the
  * cheapest point: the thinking takes the next column in. It is still
@@ -314,5 +318,49 @@ describe("DC-47 — thinking and prose are told apart with every escape stripped
 			expect(strip(thought(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(4);
 			expect(strip(say(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(2);
 		}
+	});
+});
+
+/**
+ * THE THREE DEVIATIONS fable's byte-comparison found between the built
+ * card and the mock the owner ruled on.
+ *
+ * Honest provenance: these are NOT red-before-green in the usual sense.
+ * The deviations were found by replaying the real compositor's bytes
+ * beside `mock-blocks.mjs` and reading the difference, so the red was a
+ * PICTURE, not a failing assertion. These gates were written after the
+ * fix and their job is to keep it — a regression guard, and saying so is
+ * better than dressing it as a proof.
+ */
+describe("R13 — the three deviations from the ruled mock", () => {
+	it("① a FAILURE previews like any other card: five rows, the card's own note", () => {
+		setGround("light");
+		const rows = render(tool({ isError: true, input: "npm run lint", inputFull: JSON.stringify({ command: "npm run lint" }), resultText: `exit 1\n${lines(9, (i) => `src/a${i}.ts:3:1  error  Unexpected any`)}` })).map(plain);
+		const body = rows.slice(3, -3).filter((r) => r.trim() !== "");
+		expect(body.filter((r) => !r.includes("ctrl+o")).length, "the error preview is not five rows").toBe(5);
+		expect(rows.join("\n"), "the pre-card note wording survived").not.toContain("more · ctrl+o");
+		expect(rows.some((r) => /… \d+ more lines · ctrl\+o expands/.test(r)), "the card's note is missing").toBe(true);
+	});
+
+	it("② a SEARCH names what it looked for, and its scope behind it", () => {
+		setGround("unknown");
+		const bare = render(tool({ name: "search_text", input: "TODO", inputFull: JSON.stringify({ pattern: "TODO" }), resultText: "a.ts:1: // TODO" })).map(plain);
+		expect(bare[0]!.trimEnd(), "a whole-tree search had an EMPTY head row").toBe("  search TODO");
+		const scoped = render(tool({ name: "search_text", input: "TODO", inputFull: JSON.stringify({ pattern: "TODO", path: "src" }), resultText: "src/a.ts:1: // TODO" })).map(plain);
+		expect(scoped[0]!.trimEnd(), "a scoped search named the directory instead of the pattern").toBe("  search TODO · src");
+	});
+
+	it("③ ONE grammar for both cards — the head row's chain is the outcome row's", () => {
+		setGround("unknown");
+		// the three-row card: no parentheses, the same `·` chain, the
+		// elapsed in the same place the bodied card puts it
+		const read = render(tool({ name: "read_file", input: "a.ts", inputFull: JSON.stringify({ path: "a.ts" }), resultText: lines(10, (i) => `l${i}`) })).map(plain);
+		expect(read).toHaveLength(1);
+		expect(read[0]).toBe("  read  a.ts · 10 lines · 0.1s · ctrl+o expands");
+		// …and the bodied card's outcome row, for comparison: same order,
+		// same separator, and the count stated exactly once on each
+		const shell = render(tool({ resultText: lines(90, (i) => `out ${i}`) })).map(plain);
+		expect(shell.at(-1)!.trim()).toBe("exit 0 · 90 lines · 0.1s");
+		expect((read[0]!.match(/\d+ lines?/g) ?? []).length, "the count is said twice on the head row").toBe(1);
 	});
 });

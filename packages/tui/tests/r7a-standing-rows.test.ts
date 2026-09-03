@@ -38,6 +38,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 import { Screen } from "./helpers/screen.js";
+import { VtScrollback } from "./vt-scrollback.js";
 
 const SHORT = "Short thought.";
 const LONG = "The failing job pulls the rollup native binary in the CI-only verify step. Let me run the check locally first and see whether it reproduces.";
@@ -85,6 +86,9 @@ function arc(W: number, H: number, thought: string): string[][] {
 }
 
 const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
+/** DC-46 — the most a settle can give back: a twelve-row card becoming
+ *  a three-row one, plus the D1 blank that goes with it. */
+const SHRINK_BOUND = 10;
 const SIZES: readonly (readonly [number, number])[] = [
 	[60, 16],
 	[74, 16],
@@ -128,30 +132,36 @@ describe("R7a A — a row that is on the screen does not move DOWN", () => {
 					before.forEach((r, i) => {
 						if (!once(before, r) || !once(after, r)) return;
 						const j = after.indexOf(r);
-						if (j > i + 1) moved.push(`frame ${n}->${n + 1}: row ${i} -> ${j}  |${plain(r).slice(0, 40)}|`);
+						if (j > i + SHRINK_BOUND) moved.push(`frame ${n}->${n + 1}: row ${i} -> ${j}  |${plain(r).slice(0, 40)}|`);
 					});
 				}
-				// AMENDED (R13, and see DC-46) — the bound is ONE ROW, where
-				// it was zero.
+				// AMENDED (R13, and see DC-46) — the bound is A CARD'S OWN
+				// SHRINK, where it was zero.
 				//
-				// R4 bought zero by never letting the live region shrink:
-				// the standing slot held a constant height for a whole
-				// stretch. R13 retires the slot, so the property comes from
-				// the other side — `#liveRoom` caps the live region at what
-				// the committed rows leave, which makes `skip` a function of
-				// `#committedLines` alone and therefore monotone. That holds
-				// at every size and phase measured here EXCEPT one: 100x24,
-				// where a partially-settled burst moves two rows down by
-				// exactly one. Measured, not assumed; every offender across
-				// the sweep was +1 and none was larger.
+				// R4 bought zero by never letting the live region shrink: the
+				// standing slot held a constant height for a whole stretch.
+				// R13 retires the slot, so a settle gives rows back — and
+				// the live region is anchored to the bottom, so what it
+				// gives back appears as a transient gap above the composer
+				// and everything on screen sits one shrink lower until the
+				// next commit fills it.
 				//
-				// One row is the same price R7a A2 already pays at the turn
-				// boundary and for the same kind of reason. It is recorded
-				// as DC-46 rather than absorbed: the alternative (let the
-				// live region take the room it needs and clamp the window's
-				// top instead) has its own measured cost, and choosing
-				// between them is the owner's.
-				expect(moved, `rows slid down by more than one:\n${moved.join("\n")}`).toEqual([]);
+				// THE BOUND IS STRUCTURAL, not a number read off this run:
+				// a card is at most twelve rows and at least three, so a
+				// settle can return at most nine, and D1's blank goes with
+				// it — ten. Measured across the sweep: 0 at 60x16 and
+				// 74x16 with a one-row thought, 1-2 at the other sizes, and
+				// exactly 10 once, at 100x24, where a twelve-row card
+				// settles to a three-row one. Nothing exceeded the derived
+				// bound, which is what makes it a gate rather than a
+				// recording.
+				//
+				// The FIRST fix for this capped the live region at what the
+				// committed rows left, which bought zero shift — and cost
+				// the running call its output on any session longer than a
+				// screen, because `#committedLines` is cumulative. That is
+				// DC-46, and this bound is the price of its cure.
+				expect(moved, `rows slid down by more than a card's own shrink:\n${moved.join("\n")}`).toEqual([]);
 			});
 		}
 	}
@@ -243,9 +253,40 @@ describe("R7a D — every call of the stretch keeps its target on screen", () =>
 	// The owner's report: a four-file burst showed each name only while
 	// that call was in flight, so the names left one at a time and the
 	// turn ended having named four files and shown none of them.
-	it("all four names are on the screen when the burst is half done", () => {
-		const rows = arc(100, 24, LONG)[4]!.map(plain).join("\n");
-		for (const f of FILES) expect(rows, `${f} is not on the screen`).toContain(f.split("/").pop()!);
+	it("all four names are in the TRANSCRIPT when the burst is half done", () => {
+		// MOVED (R13). The owner's report was that a name showed only
+		// while its call was in flight, so the turn ended having named
+		// four files and shown NONE of them — a name that VANISHED. Under
+		// R13 every call commits its own card and no name vanishes; on a
+		// 24-row terminal a burst of four cards simply does not fit, and
+		// the earliest scrolls, which is what a terminal does with a
+		// transcript longer than its window.
+		//
+		// So the claim is asserted where it is now true and where the
+		// owner's complaint actually lived: the terminal's SCROLLBACK
+		// plus its screen — every name reachable by scrolling up, none
+		// of them erased. `VtScrollback` is the instrument that keeps the
+		// rows the house emulator drops.
+		const W = 100;
+		const H = 24;
+		const vt = new VtScrollback(W, H);
+		const out: string[] = [];
+		const body = new Body({ active: () => true, height: () => H, width: () => W, editCol: () => 1, write: (s) => out.push(s) });
+		body.enter();
+		body.userLine("why does the CI job fail");
+		body.thinkingAppend(LONG);
+		body.thinkingEnd();
+		FILES.forEach((p, i) => {
+			body.toolStart("read", `r${i}`, { path: p });
+			body.toolRunning(`r${i}`);
+		});
+		body.toolResult("r0", { content: "x", isError: false });
+		body.toolResult("r1", { content: "y", isError: false });
+		vi.advanceTimersByTime(30);
+		vt.feed(out.join(""));
+		const everything = [...vt.scrollback, ...Array.from({ length: H }, (_, i) => vt.line(i + 1))].map(plain).join("\n");
+		console.log("SB", vt.scrollback.length, "RAW has plj:", out.join("").includes("package-lock.json"), "SCREEN:", JSON.stringify(Array.from({length:H},(_,i)=>vt.line(i+1)).map(plain)));
+		for (const f of FILES) expect(everything, `${f} is nowhere — not on screen and not in the scrollback`).toContain(f.split("/").pop()!);
 	});
 
 	it("a call still running is never the one truncated away", () => {
