@@ -302,13 +302,19 @@ cannot expand anything in place after the fact — an expansion appends.
 Everything below is downstream of that.
 
 **7.2 Thinking is words.** The model's thinking renders as its own
-paragraph — dim, italic, indented two spaces, blank line between
+paragraph — dim, italic, indented FOUR spaces, blank line between
 paragraphs — and never folds. It closes the current stretch rather than
 joining one: what the model says is not work.
 
 The indent is the price of §1.2: italic is an escape sequence, so a
 piped transcript would lose the line between the model's reasoning and
-its answer. Two spaces survive as bytes.
+its answer. The indent survives as bytes.
+
+*Amended R13 (2026-09-03), forced.* It was TWO spaces until §1.8 moved
+prose there, at which point the two rendered as the same row under
+`sed 's/\x1b\[[0-9;]*m//g'` and §1.2's fact was gone — measured, not
+reasoned (DC-47). The thinking takes the next column in: still one
+indent step, still the only carrier that survives a pipe.
 
 **7.3 A running call is the same card, at a fixed height.** It is
 allocated at the settled card's height on its first frame and only ever

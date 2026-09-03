@@ -506,7 +506,21 @@ class ThinkingBlock implements Component {
 		const p = palette();
 		const text = escapeTerminal(this.cell.text).trim();
 		if (text === "") return [];
-		const room = Math.max(1, W - 2);
+		// DC-47 — THINKING GOES ONE LEVEL DEEPER THAN PROSE, and the
+		// reason is a law rather than a taste.
+		//
+		// §7.2: "the indent is the price of §1.2 — italic is an escape
+		// sequence, so a piped transcript would lose the line between the
+		// model's reasoning and its answer. Two spaces survive as bytes."
+		// R13's E3 moved PROSE to column 2, which is where the thinking
+		// already was, so after `sed 's/\x1b\[[0-9;]*m//g'` the two became
+		// the same row. Measured, not reasoned: both rendered
+		// `"  Weighing the two shapes."` exactly.
+		//
+		// So the thinking takes the next column in. It is still the only
+		// carrier that survives a pipe, and it is still one indent step —
+		// what moved is which step, because prose took the one it had.
+		const room = Math.max(1, W - THINK_COL.length);
 		const rows: string[] = [];
 		for (const para of text.split(/\n\s*\n/)) {
 			const flat = para.replace(/\s+/g, " ").trim();
@@ -515,7 +529,7 @@ class ThinkingBlock implements Component {
 			// foldLine is the ONE width authority and returns real rows —
 			// invariant ①b (a row is one physical row) holds by
 			// construction rather than by remembering to split.
-			for (const line of foldLine(flat, room)) rows.push(`  ${p.dim}${p.italic}${line}${p.italicEnd}${p.reset}`);
+			for (const line of foldLine(flat, room)) rows.push(`${THINK_COL}${p.dim}${p.italic}${line}${p.italicEnd}${p.reset}`);
 		}
 		return rows;
 	}
@@ -1701,6 +1715,9 @@ const CARD_ROW = "  ";
 /** R13 E3 — the column the model's words begin in, the same one the
  *  card's rows and the chip's text begin in. */
 const PROSE_COL = "  ";
+/** DC-47 — the model's THINKING, one level deeper than its prose, so
+ *  the two are still told apart once the escapes are stripped (§1.2). */
+const THINK_COL = "    ";
 const bodyRow = (): string => (slabPaints() ? CARD_ROW : BODY_ROW_FLAT);
 const noteIndent = (): string => (slabPaints() ? CARD_ROW : NOTE_ROW_FLAT);
 const CUT_ROW = "└ ";

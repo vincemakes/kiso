@@ -273,3 +273,46 @@ describe("E3 · D4 — one left edge: prose, the chip and the card all begin at 
 		for (const r of rows) expect(visibleWidth(r), JSON.stringify(r)).toBe(W);
 	});
 });
+
+/**
+ * DC-47 — the law E3 walked into.
+ *
+ * §7.2 says the thinking's indent is "the price of §1.2": italic is an
+ * escape sequence, so a piped transcript would lose the line between
+ * the model's reasoning and its answer, and two spaces survive as
+ * bytes. E3 moved PROSE to column 2 — the column the thinking was
+ * already in — and the two became the same row under `sed`.
+ *
+ * That is a law broken by a taste, so the taste gives way at the
+ * cheapest point: the thinking takes the next column in. It is still
+ * one indent step and still the only carrier that survives a pipe.
+ *
+ * This gate is on the STRIPPED bytes, because that is the only surface
+ * on which the fact it protects exists at all.
+ */
+describe("DC-47 — thinking and prose are told apart with every escape stripped", () => {
+	const strip = (r: string): string => r.replace(/\x1b\[[0-9;]*m/g, "");
+	const say = (text: string, W = 60): string[] => cellComponent({ kind: "md", block: { kind: "para", lines: [text], gap: false, lang: "" } } as unknown as BodyCell).render(W, CTX);
+	const thought = (text: string, W = 60): string[] => cellComponent({ kind: "thinking", text, done: true } as unknown as BodyCell).render(W, CTX);
+
+	it("the same sentence renders as two DIFFERENT rows once the colour is gone", () => {
+		const t = "Weighing the two shapes.";
+		expect(strip(thought(t)[0]!)).not.toBe(strip(say(t)[0]!));
+	});
+
+	it("prose sits at column 2, thinking at column 4 — one step, and it is a fact in bytes", () => {
+		expect(strip(say("answer")[0]!)).toBe("  answer");
+		expect(strip(thought("reasoning")[0]!)).toBe("    reasoning");
+	});
+
+	it("…at every width, and both still fold inside the terminal", () => {
+		const long = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike november";
+		for (const W of [30, 40, 60, 100]) {
+			for (const rows of [say(long, W), thought(long, W)]) {
+				for (const r of rows) expect(visibleWidth(r), `W=${W}: ${JSON.stringify(r)}`).toBeLessThanOrEqual(W);
+			}
+			expect(strip(thought(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(4);
+			expect(strip(say(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(2);
+		}
+	});
+});
