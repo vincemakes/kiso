@@ -274,13 +274,25 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// blank rows between the sections are the container's W11 spacing
 		// (bodySpacing: a blank before a multi-row cell) — the block is ONE
 		// logged sequence, the blanks belong to its layout.
+		// AMENDED (R13 D1): the offsets are RELATIVE now, not fixed. D1
+		// made the spacing a constant — one blank between any two elements
+		// whatever their height — where W11 gave a blank only when a side
+		// was multi-row, so every gap inside this block moved by one. The
+		// claim is the block's CONTENT and its ORDER, which is what the
+		// walk below asserts; the exact gap widths were never the subject
+		// and pinning them made this case break on a spacing change.
 		expect(gridB[r]!).toContain("expanded · shell seq 1 8 · 2 turns back");
-		expect(gridB[r + 1]!).toBe("--- shell input ---");
-		expect(gridB[r + 3]!).toBe("{");
-		expect(gridB[r + 4]!).toBe('  "command": "seq 1 8"');
-		expect(gridB[r + 5]!).toBe("}");
-		expect(gridB[r + 7]!).toBe("--- shell output ---");
-		for (let i = 0; i < 8; i += 1) expect(gridB[r + 9 + i]!).toBe(String(i + 1));
+		const after = gridB.slice(r + 1);
+		const want = ["--- shell input ---", "{", '  "command": "seq 1 8"', "}", "--- shell output ---", ...Array.from({ length: 8 }, (_, i) => String(i + 1))];
+		let seen = 0;
+		for (const line of want) {
+			const found = after.indexOf(line, seen);
+			expect(found, `the expanded block is missing ${JSON.stringify(line)}, or it is out of order`).toBeGreaterThanOrEqual(0);
+			seen = found + 1;
+		}
+		// …and nothing but blanks between the pieces — the block is ONE
+		// logged sequence, never interleaved with anything else.
+		expect(after.slice(0, seen).filter((l) => l !== "" && !want.includes(l)), "something else landed inside the block").toEqual([]);
 		// the rows ABOVE the block: the pre-key screen's rows, byte-identical
 		expect(gridB.slice(0, r)).toEqual(gridA.slice(0, r));
 	}, 120_000);

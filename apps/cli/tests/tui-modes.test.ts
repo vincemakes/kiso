@@ -152,10 +152,10 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\r"],
-				// R3i phase 3: the denied write's own row is absorbed by the
-				// stretch fold, which NAMES the denial instead — so the
-				// needle is the clause, which is what a human now reads.
-				["1 denied:", ""], // the write is denied, not asked
+				// R13: the fold is retired, so the denial is back on the
+				// denied call's OWN row — the full call name, the target and
+				// the reason, which is strictly more than the fold's clause.
+				["write_file out.txt", ""], // the write is denied, not asked
 				["plan mode: read-only", ""], // the guiding reason reaches the model
 				["plan turn done", ""],
 				["▸ plan (read-only) · /mode to switch", ""], // W19: the idle row names the read-only posture (the v3 idle state)

@@ -180,7 +180,7 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so the
 		// row is the words plus the band's padding — trimmed, it is what it
 		// always was, and "exactly once" is still the claim.
-		expect(grid.filter((l) => l.trimEnd() === " go").length).toBe(1); // the 2026-08-09 ruling: the chip alone, flush left (one space each side — the rail + the indent retired)
+		expect(grid.filter((l) => l.trimEnd() === "  go").length).toBe(1); // the 2026-08-09 ruling: the chip alone, flush left. R13 D4: TWO columns of inner pad now, so the chip's text begins in the same column as the model's (E3) and as a card's rows (E4).
 		expect(grid.filter((l) => l.includes("✦ took ")).length).toBe(1);
 		// R2: the opening grew from five rows to seven (three labelled facts
 		// and a keys row replaced two art rows and a tagline), so on a

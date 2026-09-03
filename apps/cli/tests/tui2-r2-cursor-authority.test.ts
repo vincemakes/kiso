@@ -25,7 +25,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
-import { fauxScript, ptyRun, spares, termAt } from "./helpers/pty.js";
+import { fauxScript, frameEndAfter, ptyRun, spares, termAt } from "./helpers/pty.js";
 import { VtScreen } from "./helpers/vt-screen.js";
 
 const ROWS = 24;
@@ -122,8 +122,18 @@ beforeAll(() => {
 		name: "edit_file",
 		input: { path: "src/parser.ts", search: "// OLD", replace: "if (t == null) throw new Error('null token');", expectedRevision: "rev:fb218fcdf7981cd6" },
 	};
+	// R13 — the fixture gains a READ, because ctrl+o needs something that
+	// HIDES rows to have a target at all. Before this round a settled
+	// non-shell call rendered no body (VD-5), so every one of them was
+	// expandable; now a call whose whole output is already on screen hides
+	// nothing and carries no affordance — which is the rule
+	// tui2-r1-suffix has always stated ("a cell that hides NOTHING carries
+	// NO suffix"), reaching further than it used to. A read never previews
+	// (E1), so it is always the one with something behind the key.
+	const read = { type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "src/parser.ts" } };
 	const script = fauxScript([
 		{ events: [{ type: "text_delta", text: "Fixing it." }, edit, { type: "stop", reason: "tool_use" }] },
+		{ events: [{ type: "text_delta", text: "reading it." }, read, { type: "stop", reason: "tool_use" }] },
 		{ events: [{ type: "text_delta", text: "fixed it." }, { type: "stop", reason: "end_turn" }] },
 		...spares(3),
 	]);
@@ -164,7 +174,17 @@ describe("TUI2-R2 ⑤ — the cursor parks at the active input, in every named s
 	});
 
 	it("POST-CTRL+R: the expand key's own frame parks like any other", () => {
-		expectParked(termAt(raw, "expanded", ROWS, COLS), "post-ctrl+o");
+		// AMENDED (R13): anchored on the FIRST occurrence, not the last.
+		// `termAt` takes `lastIndexOf`, and the appended block grew with
+		// D1's constant spacing until its last "expanded" fell inside the
+		// EXIT teardown — a partial final frame with the chrome already
+		// torn down, which is not a frame this case has ever been about.
+		// The subject is the expand key's OWN frame: the first one.
+		const expAt = raw.indexOf("expanded");
+		expect(expAt, "the expansion never happened").toBeGreaterThan(0);
+		const term = new VtScreen(ROWS, COLS);
+		term.write(Buffer.from(raw.slice(0, frameEndAfter(raw, expAt + "expanded".length)), "utf8"));
+		expectParked(term, "post-ctrl+o");
 	});
 
 	it("EVERY FRAME of the same session ends on an input row (the R1.5 sweep, carried)", () => {

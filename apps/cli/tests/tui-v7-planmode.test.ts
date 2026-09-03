@@ -176,7 +176,12 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// MOVED (R1.5 slice 5, the approval-attribution class): a POLICY
 		// denial keeps only its REASON — the reason is the answer to "why",
 		// and mode:plan deciding it is the ambient default of plan mode.
-		expect(clean).toContain("1 denied: sub/out.txt (plan mode: read-only)"); // which call, and why
+		// MOVED (R13): the fold is retired, so the denial is back on the
+		// denied call's OWN row, which says strictly more — the full call
+		// name, the target, and the reason. The subject is unchanged: WHICH
+		// call was refused, and WHY.
+		expect(clean).toContain("sub/out.txt");
+		expect(clean).toContain("plan mode: read-only"); // which call, and why
 		expect(clean).not.toContain("by mode:plan");
 		expect(clean).not.toContain("approve write_file"); // the denied call never asked
 		expect(clean).not.toMatch(/plan mode: read-only, \d+\.\ds/); // no (0.0s) noise

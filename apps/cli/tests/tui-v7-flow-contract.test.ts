@@ -315,6 +315,11 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		expect(grid.join("\n")).toMatch(/ {2}read /);
 	}, 60_000);
 
+	/** R13 E2 — a running card's height: the head row, the six-row window
+	 *  (five preview rows plus its note) and the metadata row. Fixed from
+	 *  the first frame, so the settle can only ever shrink it. */
+	const CARD_ROWS = 8;
+
 	it("W8: two parallel tools, one streaming — the window is a FIXED 3 rows and every row BELOW the streaming cell is byte-identical across the run's frames until settle", () => {
 		const { hex, alive } = runFlow(80);
 		expect(alive).toBe("ALIVE");
@@ -344,7 +349,11 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// the shell's header is the indented one. The test's subject —
 		// everything below the streaming cell is byte-identical across
 		// frames — is untouched.
-		const running = frames.filter((f) => f.grid.some((l) => /^● read .*\bfile\b/.test(l)) && f.grid.some((l) => /^ {2}shell /.test(l)));
+		// MOVED (R13): the stretch LINE is retired, so the moment this case
+		// needs is back to what it originally was — a settled read's own
+		// card on screen beside a running shell. A finished call commits
+		// now instead of waiting for a fold, so the pair occurs again.
+		const running = frames.filter((f) => f.grid.some((l) => /^ {2}read {2}\S/.test(l)) && f.grid.some((l) => /^● shell /.test(l)));
 		expect(running.length).toBeGreaterThanOrEqual(2); // NON-vacuous: the moment really spans frames
 		// the window EXISTS. AMENDED (R13 E2): it is the SETTLED card's
 		// window now — six rows, five preview plus its note row — where W8
@@ -360,7 +369,10 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// still 3 rows and VD-4 still holds: the waiting row is the
 		// FIRST of them, hugging its header, with the pad below.
 		const waitAt = first.findIndex((l) => l.includes("└ waiting for output"));
-		const shellAt = first.findIndex((l) => /^ {2}shell /.test(l));
+		// R13: the running shell's head row wears the breathing mark again
+		// — there is no activity line left to carry it (R7a's grouping went
+		// with the slot), so the selector goes back to the `●` prefix.
+		const shellAt = first.findIndex((l) => /^● shell /.test(l));
 		expect(waitAt - shellAt, "the waiting row does not hug its header").toBe(1);
 		expect(first.slice(waitAt + 1, waitAt + 6).every((l) => l.trim() === ""), "the window's pad is not blank").toBe(true);
 		// the anti-jitter: pairwise across the consecutive running frames,
@@ -373,23 +385,36 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 			const g1 = running[i]!.grid;
 			const g2 = running[i + 1]!.grid;
 			// R6/D3: the live stretch line wears no mark — found by words.
-			const readIdx = g1.findIndex((l) => /^● read .*\bfile\b/.test(l));
-			const readBottom = readIdx; // the stretch line is ONE row, always
-			const shellHeader = g1.findIndex((l) => /^ {2}shell /.test(l));
+			// R13: the settled read's own card, and the running shell's own
+			// head row — the two selectors swap prefixes back, because the
+			// breathing mark is on the running CALL again now that there is
+			// no activity line to carry it.
+			const readIdx = g1.findIndex((l) => /^ {2}read {2}\S/.test(l));
+			const readBottom = readIdx; // the head row is where the card starts
+			const shellHeader = g1.findIndex((l) => /^● shell /.test(l));
 			expect(shellHeader).toBeGreaterThan(readBottom); // the shell sits BELOW the streaming cell
-			const headerEnd = g1.findIndex((l, i) => i > shellHeader && (l.startsWith("  \u2514 ") || l.startsWith("    ")));
+			// AMENDED (R13 E2): the allowed variance is the running cell's
+			// WHOLE CARD, not just its header span. The elapsed moved off
+			// the head row onto the card's metadata row — the LAST row of
+			// the card — because that is where the settled card keeps it,
+			// which is what makes the settle a change of content and never
+			// of position. So the span runs from the head row to the end of
+			// the card, and the claim this case exists for is unchanged:
+			// every row BELOW that card is byte-identical, and the card's
+			// own variance is IN PLACE (its height never moves).
+			const cardEnd = shellHeader + CARD_ROWS;
+			expect(g2.length, "the frames are different heights").toBe(g1.length);
 			for (let r = readBottom + 1; r <= 19; r += 1) {
-				if (r >= shellHeader && r < headerEnd) continue; // the running cell's own header span
-				expect(g2[r]).toBe(g1[r]); // byte-identical
+				if (r >= shellHeader && r < cardEnd) continue; // the running card's own span
+				expect(g2[r], `row ${r} moved under a card that is supposed to hold its height`).toBe(g1[r]);
 			}
 		}
 		// the in-place variance really exists: the running header (the
 		// spinner glyph + the elapsed) differs across the run — ≥ 2 distinct
 		const headers = new Set(
 			running.map((f) => {
-				const h = f.grid.findIndex((l) => /^ {2}shell /.test(l));
-				const he = f.grid.findIndex((l, i) => i > h && (l.startsWith("  \u2514 ") || l.startsWith("    ")));
-				return f.grid.slice(h, he).join("");
+				const h = f.grid.findIndex((l) => /^● shell /.test(l));
+				return f.grid.slice(h, h + CARD_ROWS).join("");
 			}),
 		);
 		expect(headers.size).toBeGreaterThanOrEqual(2);

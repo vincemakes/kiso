@@ -366,7 +366,12 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// call's JSON while the done card printed the plain command
 		// (VD-4). One formatter now, and the duration is its own trailing
 		// segment rather than a bare "Ns" welded to the text.
-		expect(clean).toMatch(/● shell sleep 1; echo hi · \d+s/); // the running shell — R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
+		// MOVED (R13 E2): the elapsed left the running head row for the
+		// card's METADATA row, where the settled card keeps it — so the
+		// settle changes what a row says and never where it sits. VD-4's
+		// subject (one formatter, the duration its own segment) holds on
+		// that row.
+		expect(clean).toMatch(/● shell sleep 1; echo hi/); // the running shell — R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
 		// A4: the target rides the settled head row (list_dir's input is {}
 		// → the "(root)" fallback); A5: the decider is NAMED on the rows
 		// that auto-approve (the extension's ask lost to the tier's allow).
@@ -385,7 +390,6 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// which is where R2pre ④ put it in the first place.
 		expect(clean).toMatch(/\blist\s+\S/);
 		expect(clean).not.toContain("list_dir");
-		expect(clean).not.toContain("asky_read ");
 
 
 		expect(clean).not.toContain("approved by"); // R1.5 5: no policy byline anywhere

@@ -260,8 +260,19 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// human's own verdict.
 		// R2: no tick — the settled row's gutter is two spaces and the
 		// outcome is in the words.
-		expect(clean).toMatch(/ {2}asky_read {2}· 1 line · \d+\.\ds · approved · ctrl\+o/);
-		expect(clean).not.toContain("asky ok"); // the full result stays out of the stream
+		// MOVED (R13): asky_read returns a line, so it PREVIEWS — it is a
+		// bodied card and its metadata sits on the outcome row, with the
+		// head row free to name the call. Every fact is still said, and the
+		// approval is still on the record, which is this case's subject.
+		expect(clean).toMatch(/ {2}asky_read/);
+		expect(clean).toMatch(/1 line · \d+\.\ds · approved/);
+		// REVERSED (R13): "the full result stays out of the stream" was
+		// VD-5's one-lining, and VD-5 is retired — a settled call is a CARD
+		// and its preview is the point. What replaces the claim is the one
+		// that still holds and always mattered: the preview is CAPPED, so a
+		// result cannot own the screen. `asky ok` is one line and fits
+		// inside the cap whole.
+		expect(clean).toContain("asky ok");
 		expect(clean).toContain("the tour is done");
 		// The status bar returned after the question (the model name is back).
 		expect(clean).toContain("▸ default · /mode to switch · faux"); // v3 idle state
