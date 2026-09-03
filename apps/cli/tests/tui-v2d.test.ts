@@ -146,8 +146,19 @@ const CELL_LINE = [
 	// R2: the settled row's gutter is two spaces, and the lint TRIMS its
 	// segments — so the shape to recognise is the verb column itself, no
 	// longer a mark that is gone.
-	/^\S+ +.*\((?:\S.*, )?\d+\.\ds\)( · (\d+ lines? · )?ctrl\+o( expands)?)?$/, // the ToolCell done (A4: the target rides the head row)
-	/^\S+ +.*\((?:\S.*, )?\d+\.\ds\)$/, // the ToolCell failed (an error's own cut row is its affordance — never suffixed)
+	// R13 — ONE GRAMMAR FOR BOTH CARDS: the head row's W4 parentheses
+	// became the `·` chain the outcome row already used, so the two
+	// patterns that pinned the parenthesised form are one pattern now.
+	/^\S+ +\S.*?(?: · [^·]+)*(?: · ctrl\+o(?: expands)?)?$/, // the card's HEAD row (A4: the target rides it)
+	// …and the head row of a call with NOTHING to name: an extension tool
+	// invoked with an empty input has no target, so the row is the tool's
+	// own name and the verb column's padding, which trims to a bare
+	// identifier. Kept DELIBERATELY narrow — lowercase, digits and
+	// underscores only — because the whole point of this set is that
+	// arbitrary prose must not match it, and prose has spaces or capitals.
+	/^[a-z][a-z0-9_]*$/,
+	/^(?:[^·]+ · )*\d+\.?\d*s(?: · [^·]+)*$/, // the card's OUTCOME row — `exit 0 · 90 lines · 0.4s · approved`, and the running card's bare `3s`
+	/^… \d+ (?:more|earlier) lines? · ctrl\+o(?: expands)?$/, // the card's cut note
 	/^answer truncated at max_tokens.*$/, // D4: the truncation notice row — R2 (law 1.1): a notice is a sentence, it wears no box corner
 	/^✦.*$/, // v3: the recap line ends the run
 	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)
@@ -248,7 +259,19 @@ const lint = (raw: string): string[] => {
 		// accepted "any prose" would accept the interleaved lines this
 		// lint exists to catch. The classifier is the two-space lead plus
 		// the dim+italic pair the ThinkingBlock emits.
-		if (/^ {2}\x1b\[2m\x1b\[3m/.test(seg)) continue;
+		// DC-47: the lead is FOUR spaces now — prose took column 2 (E3), so
+		// the thinking moved one column in to stay distinguishable once the
+		// escapes come off, which is the fact §7.2 exists to keep.
+		if (/^ {4}\x1b\[2m\x1b\[3m/.test(seg)) continue;
+		// R13 — A CARD'S BODY ROW, classified on the RAW segment for the
+		// same reason the chip and the thinking are: stripped and trimmed,
+		// a line of a tool's output is arbitrary text, and a pattern that
+		// accepted "any prose" would accept the interleaved lines this lint
+		// exists to catch. Unpainted, the classifier is the dim opener plus
+		// the four-column R8a indent; painted, it is the wash. Before this
+		// round a settled non-shell call had no body at all, so these rows
+		// never reached the transcript and the set never needed them.
+		if (/^\x1b\[2m {4}/.test(seg) || /^\x1b\[48;5;(?:255|236)m/.test(seg)) continue;
 		const t = seg
 			.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
 			.replace(/\[[0-9;]*m/g, "") // any residual SGR fragment (the split can strand a "[2m")
