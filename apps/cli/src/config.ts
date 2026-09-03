@@ -60,6 +60,13 @@ export interface KisoConfig {
 	readonly contextWindow?: number;
 	readonly autoCompact?: AutoCompactConfig;
 	readonly projectTrust?: "ask" | "never";
+	/** DC-3 §3 rung 1, persisted. The terminal's light/dark, for terminals
+	 *  that answer neither `CSI ? 996 n` nor OSC 11. USER-LEVEL ONLY: a
+	 *  terminal is a property of the human sitting at one, not of the
+	 *  repository they happen to have open, so the same setting in a
+	 *  project file is a LOUD error rather than a silent win. `KISO_THEME`
+	 *  still outranks it — the environment is the more local answer. */
+	readonly theme?: "dark" | "light";
 }
 
 /** The resolved, merged config — project wins over user, both validated. */
@@ -92,11 +99,22 @@ export function parseConfig(text: string, source: string): KisoConfig {
 		contextWindow?: number;
 		autoCompact?: AutoCompactConfig;
 		projectTrust?: "ask" | "never";
+		theme?: "dark" | "light";
 	} = {};
 	const obj = raw as Record<string, unknown>;
 	const fail = (key: string, why: string): never => {
 		throw new ConfigError(`config ${source}: ${key} — ${why}`);
 	};
+	if (obj.theme !== undefined) {
+		// LOUD on both counts: an invalid value, and a valid value in the
+		// wrong file. A theme silently ignored is the worst outcome here —
+		// the human set it precisely because their terminal answers
+		// nothing, so a quiet failure looks exactly like the defect it was
+		// meant to fix.
+		if (obj.theme !== "dark" && obj.theme !== "light") fail("theme", 'expected "dark" or "light"');
+		if (source.startsWith("<cwd>")) fail("theme", "belongs in the USER config — a terminal is a property of the person at it, not of the project");
+		out.theme = obj.theme as "dark" | "light";
+	}
 	if (obj.model !== undefined) {
 		if (typeof obj.model !== "string" || obj.model === "") fail("model", "expected a profile name or provider/model string");
 		out.model = obj.model as string;

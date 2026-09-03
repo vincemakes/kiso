@@ -69,8 +69,12 @@ function fromColorFgBg(value: string): Ground {
 }
 
 export interface GroundInputs {
-	/** KISO_THEME — an explicit answer from the human. */
+	/** KISO_THEME, or the user config's `theme` — an explicit answer from
+	 *  the human. The environment wins over the file; both are rung 1. */
 	readonly theme?: string | undefined;
+	/** The terminal's OWN account of its colour scheme, from its answer to
+	 *  `CSI ? 996 n` (`CSI ? 997 ; 1|2 n`). */
+	readonly colorScheme?: "dark" | "light" | undefined;
 	/** The body of the terminal's OSC 11 answer, if one arrived. */
 	readonly osc?: string | undefined;
 	/** The COLORFGBG environment variable, if it is set. */
@@ -81,10 +85,26 @@ export interface GroundInputs {
  * The ladder, first hit wins. Every rung that cannot answer falls
  * through rather than guessing, and the bottom of the ladder is
  * `unknown` — see the module comment for why that is a result.
+ *
+ *   1  theme        an explicit answer from the human (env, then config)
+ *   2  colorScheme  the terminal's own report (CSI 997)
+ *   3  osc          the background colour, and a luminance threshold
+ *   4  colorfgbg    an environment variable some terminals set
+ *      unknown      reverse video, correct on any ground
+ *
+ * kiso never guesses. A terminal that answers nothing and a human who
+ * set nothing leave the ground `unknown`, and `unknown` degrades — it
+ * does not default to dark and hope.
  */
-export function resolveGround({ theme, osc, colorfgbg }: GroundInputs): Ground {
+export function resolveGround({ theme, colorScheme, osc, colorfgbg }: GroundInputs): Ground {
 	const explicit = theme?.trim().toLowerCase();
 	if (explicit === "light" || explicit === "dark") return explicit;
+	// The terminal's own REPORT outranks the colour it hands over. OSC 11
+	// gives a background colour and kiso infers a ground from its
+	// luminance — a threshold applied to someone else's number. `CSI 997`
+	// is the terminal saying which it is. When both answer they normally
+	// agree; when they do not, the account beats the inference.
+	if (colorScheme === "dark" || colorScheme === "light") return colorScheme;
 	if (osc !== undefined && osc !== "") {
 		const rgb = parseOscColor(osc);
 		if (rgb !== null) return groundFrom(rgb);

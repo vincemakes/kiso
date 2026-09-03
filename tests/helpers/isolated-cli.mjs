@@ -39,6 +39,13 @@ export function isolatedEnv(extra = {}) {
 			KISO_EXTENSIONS_DIR: dirs.extensions,
 			KISO_MCP_CONFIG: dirs.mcpConfig,
 			KISO_SKILLS_DIR: dirs.skills,
+			// The update check is OFF for every e2e by default. A leg that
+			// carries a real model config would otherwise reach the public
+			// registry from the test suite, and a suite that touches the
+			// network is a suite that fails for reasons that are not the
+			// product's. The one test that exercises the check turns it
+			// back on and points it at a local stub.
+			KISO_NO_UPDATE_CHECK: "1",
 			...extra,
 		},
 	};

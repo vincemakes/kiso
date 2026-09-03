@@ -158,7 +158,7 @@ describe("setGround selects the palette", () => {
  * a dark-terminal user reads it. The floor gate above already covers the
  * ratios; what this pins is that the token VARIES by ground at all, and
  * that the unknown ground keeps the terminal's own red rather than
- * guessing an absolute one (rung 4's principle, applied to a foreground).
+ * guessing an absolute one (the last rung's principle, applied to a foreground).
  */
 describe("DC-9 — the failure colour knows its ground", () => {
 	it("is an absolute index once the ground is known, and a different one per ground", () => {
@@ -232,7 +232,7 @@ describe("R9 P3 — washDim clears the floor ON THE WASH", () => {
 		expect(contrast(rgbOf(246), rgbOf(bgIndexOf(COLOR_DARK)))).toBeLessThan(4.5);
 	});
 
-	it("is NOTHING with no ground — rung 4's wash is reverse video, where a grey inverts into a grey block", () => {
+	it("is NOTHING with no ground — the last rung's wash is reverse video, where a grey inverts into a grey block", () => {
 		expect(COLOR_NEUTRAL.washDim).toBe("");
 		expect(COLOR_NEUTRAL.washDimEnd).toBe("");
 		expect(fgIndexes(COLOR_NEUTRAL)).toEqual([]);

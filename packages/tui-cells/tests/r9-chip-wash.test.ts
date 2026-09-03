@@ -13,7 +13,8 @@
  * light terminal, a dark one, and one whose ground was never
  * established — one form, no ladder, nothing to under-read. The wash
  * cannot promise that: it is a chosen background on the two known
- * grounds and degrades to reverse video on the third (§3 rung 4), so a
+ * grounds and degrades to reverse video where none is known (§3's last
+ * rung), so a
  * chip on the wash was really two different weights wearing one name.
  *
  * These are the cases R9 P1 shipped, re-derived against the contract

@@ -9,7 +9,7 @@
  *
  * THE DEGRADATION IS SEPARATELY GATED, below, because getting it wrong
  * is not a cosmetic miss. `wash` is a chosen background on the two KNOWN
- * grounds and REVERSE VIDEO on the third (§3 rung 4). A one-row chip
+ * grounds and REVERSE VIDEO where none is known (§3's last rung). A one-row chip
  * inverting is the ladder working as designed; eight output rows
  * inverting is a black slab dropped into the middle of the transcript on
  * every terminal that never answered OSC 11. So the slab paints only
@@ -168,7 +168,7 @@ describe("R9 P2 — the slab's shape", () => {
 
 /**
  * THE DEGRADATION. Its own describe, because it is the case that decides
- * whether this surface may ship at all: rung 4's wash IS `\x1b[7m`, and a
+ * whether this surface may ship at all: the last rung's wash IS `\x1b[7m`, and a
  * slab that reached for `p.wash` on an unresolved ground would invert
  * every one of its rows.
  */

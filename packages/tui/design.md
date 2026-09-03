@@ -97,7 +97,7 @@ against the ground. `dim` remains barred from the wash exactly as
 above — this is a different token with a different job, the way `warn`
 was the mono ruling's own set gaining its missing member. With no
 ground it is nothing at all: §3.1 forbids an absolute foreground in a
-palette with no established background, and rung 4's wash is reverse
+palette with no established background, and the last rung's wash is reverse
 video, where a grey inverts into a grey block.
 
 **2.2 The floor is a floor, including mid-animation.** A mark that
@@ -121,23 +121,46 @@ the exception, and they mean something else.)
 Every rule in §2 needs one fact: **is the terminal light or dark**.
 Resolution ladder, first hit wins:
 
-1. `KISO_THEME=light|dark` — an explicit answer always wins.
-2. **OSC 11** — ask the terminal for its background colour, compute
-   luminance. Queried once at startup with a bounded wait; never per
-   frame.
-3. `COLORFGBG` — set by some terminals, absent on many.
-4. **Reverse video** — theme-free by construction. Heavier, never wrong.
+1. `KISO_THEME=light|dark`, then the user config's `theme` — an
+   explicit answer always wins, and the environment is the more local of
+   the two. USER-level only: a terminal is a property of the person
+   sitting at one, not of the repository they have open, so a project
+   config carrying `theme` is a LOUD error.
+2. **`CSI ? 996 n`** — ask the terminal to REPORT its colour scheme; it
+   answers `CSI ? 997 ; 1 n` (dark) or `; 2 n` (light).
+3. **OSC 11** — ask the terminal for its background colour, compute
+   luminance.
+4. `COLORFGBG` — set by some terminals, absent on many.
+5. **Reverse video** — theme-free by construction. Heavier, never wrong.
 
-**3.1 Rung 4 is the safety property, not a leftover.** When the ground is
+Rungs 2 and 3 are two different questions and rung 2 is the better one:
+the terminal's own account of its scheme outranks a ground kiso infers
+from a colour it was handed. Both are asked in one write at startup,
+neither is waited on, and when both answer and agree the screen is
+repainted once.
+
+**3.1 The LAST rung is the safety property, not a leftover.** When the ground is
 unknown kiso does not guess a wash; it uses the mark that is correct on
 any ground. The design degrades; it never renders light-mode paint on a
 dark screen.
 
-**3.2 The ladder runs whether or not the terminal answers.** Rungs 1 and
-3 are resolved before the OSC query and again with its reply. A terminal
-that never answers still gets `KISO_THEME` and `COLORFGBG`; only rung 2
-is contingent. Apple Terminal answers rung 2; the wider survey is not
-done, which bounds how confidently §2 can be said to ship as designed.
+**3.2 The ladder runs whether or not the terminal answers.** The
+environment rungs are resolved before either query and again with each
+reply, so a terminal that answers nothing still gets `KISO_THEME`, the
+config's `theme` and `COLORFGBG` (DC-14). Only rungs 2 and 3 are
+contingent. Apple Terminal answers rung 3; the wider survey across
+terminals is still not done, which is why rung 2 was added and why rung
+1 is persistable — between them, a terminal that reports nothing is a
+setting away from a resolved ground rather than a dead end.
+
+**3.3 kiso does not guess.** Where nothing answers and nothing is set,
+the ground stays `unknown` and the design degrades (§3.1) — it does not
+default to dark and hope. The reference implementation makes the other
+choice; the cost of guessing wrong is light-mode paint on a dark screen,
+or a full-width wash that is the wrong colour on every row of a command
+block, and a settled default is indistinguishable from a resolved one to
+everything downstream. The persisted `theme` is the answer for a
+terminal that reports nothing.
 
 ---
 
@@ -204,9 +227,16 @@ Measured against Menlo, macOS's terminal default:
 - **Available:** quadrant and shade blocks, eighth bars, box drawing,
   circles and arcs (`· • ● ○ ◎ ◉ ◦ ∘`), triangles, diamonds, the star
   family, arrows.
-- **Absent:** braille (`U+2800`–`U+28FF`) and the finer legacy block
-  sets (sextants, octants). They render as empty boxes; no macOS system
-  font supplies them.
+- **Absent:** the finer legacy block sets (sextants, octants). They
+  render as empty boxes; no macOS system font supplies them.
+- **Braille** (`U+2800`–`U+28FF`) is NOT absent — measured on the real
+  terminal 2026-09-02, correcting what this section used to say. Apple
+  Terminal's default Menlo falls back to Apple Braille and draws solid
+  dots. It is still unusable for a raster: the dot pitch does not divide
+  the cell height, so a densely tiled image shows horizontal banding.
+  Rasterising a mark through it reads at 12×6 cells and up and turns to
+  dominoes below 10×5 — the same threshold R2 measured for block
+  characters. Rejected on looks, not on availability.
 
 **6.1 Emoji-capable glyphs are forbidden in chrome.** A glyph present in
 Apple Color Emoji may be drawn coloured and **double-width**, tearing a
@@ -444,8 +474,13 @@ paste everywhere.
 
 ## 10. Open
 
-- **The wider OSC 11 survey** (§3.2). Bounds how much of §2 can be said
-  to ship as designed.
+- **The wider terminal survey** (§3.2). Which terminals answer `CSI ?
+  996 n`, which answer OSC 11, and which answer neither is still
+  unmeasured beyond Apple Terminal. It bounds how often the ground
+  resolves in the field — no longer how often it CAN, since §3's rung 1
+  is persistable now. **Re-probing mid-session** (a terminal that
+  announces a scheme change while kiso is running) is owed and not
+  built.
 - **Spilled stretches.** A stretch too tall for its slot spills; how a
   spilled stretch folds is not settled.
 - **A per-call title.** Naming what a call is *for*, in the model's own

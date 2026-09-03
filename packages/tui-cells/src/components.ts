@@ -1786,7 +1786,7 @@ const CUT_ROW = "└ ";
  *
  * THE DEGRADATION IS THE POINT OF THE PREDICATE. `wash` is a chosen
  * background on the two KNOWN grounds and reverse video on the third
- * (§3 rung 4). A chip inverting for one row is the design working; eight
+ * (§3's last rung). A chip inverting for one row is the design working; eight
  * output rows inverting is a blackboard in the middle of the transcript.
  * So a slab paints only where the wash is a real background, and where
  * it is not the block degrades to what it has always been — the R8a

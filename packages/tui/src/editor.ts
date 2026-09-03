@@ -399,6 +399,11 @@ export class Editor {
 	#pending = ""; // an incomplete ESC/CSI/OSC prefix across chunks
 	/** DC-7: the terminal's own reports (OSC). Never a keystroke. */
 	#oscCb: ((body: string) => void) | null = null;
+	/** The terminal's own account of its colour scheme (`CSI ? 997 ; 1|2 n`).
+	 *  Its OWN channel, never `#oscCb`: OSC 11 reports a COLOUR that kiso
+	 *  reads a ground out of, this reports the GROUND itself, and a
+	 *  listener wanting one must not be handed the other. */
+	#colorSchemeCb: ((scheme: "dark" | "light") => void) | null = null;
 	#decoder = new TextDecoder();
 	#entered = false;
 	#onData: (raw: Uint8Array) => void;
@@ -421,6 +426,10 @@ export class Editor {
 	 *  keeping it out of the draft; deciding what a report MEANS belongs to
 	 *  whoever asked the question.
 	 */
+	onColorScheme(cb: (scheme: "dark" | "light") => void): void {
+		this.#colorSchemeCb = cb;
+	}
+
 	onOsc(cb: (body: string) => void): void {
 		this.#oscCb = cb;
 	}
@@ -1542,6 +1551,22 @@ export class Editor {
 		if (params.startsWith("<")) {
 			this.#mouseEvent(params, final === "M");
 			return;
+		}
+		// The terminal's colour-scheme REPORT — `CSI ? 997 ; 1 n` (dark) or
+		// `; 2 n` (light), answering the `CSI ? 996 n` sent at startup.
+		//
+		// Routed high and narrow, for the mouse branch's reason: a report
+		// is never a key and must never fall through to one. It used to
+		// reach the END of this method instead, which dropped it in
+		// silence — the terminal answered and nothing could hear it. The
+		// pattern is exact (997 only, 1 or 2 only) because `n` is a final
+		// that device-status reports share.
+		if (final === "n") {
+			const scheme = /^\?997;([12])$/.exec(params);
+			if (scheme !== null) {
+				this.#colorSchemeCb?.(scheme[1] === "1" ? "dark" : "light");
+				return;
+			}
 		}
 		// R3a — Shift+Tab (CSI Z, the universal back-tab encoding) cycles
 		// the approval tier. Composer-idle ONLY: a panel, picker, menu,

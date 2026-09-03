@@ -32,6 +32,17 @@ import type { Ground } from "./ground.js";
  * The functional colors are deliberately NOT moved and not
  * approximated: red stays SGR 31, green stays SGR 32. A reader who has
  * learned that colour means something must keep being right.
+ *
+ * R2's retired wordmark, re-measured 2026-09-02 and recorded so the
+ * question is not reopened from memory: braille (U+2800–U+28FF) IS
+ * available — Apple Terminal's default Menlo falls back to Apple
+ * Braille and draws solid dots, correcting what design.md §6 used to
+ * say. Rasterised through it, a four-leaf mark reads from 12×6 cells
+ * upward and turns to dominoes below 10×5 — the same threshold R2
+ * measured for block characters — and a dense tiling bands
+ * horizontally, because the font's dot pitch does not divide the cell
+ * height. The owner looked at it on the real terminal and declined it.
+ * §7.10 stands: no logo, the name is the mark.
  */
 export interface Palette {
 	readonly bold: string;
@@ -74,7 +85,7 @@ export interface Palette {
 	readonly rvEnd: string;
 	/** DC-3 — the VERBATIM surface: the human's own words, and inline
 	 *  code. A background, so it needs the ground; with no ground it is
-	 *  reverse video, which is correct on any ground and is rung 4 of the
+	 *  reverse video, which is correct on any ground and is the LAST rung of the
 	 *  ladder in `ground.ts`. Closed with 49 rather than SGR 0, for the
 	 *  reason `rv` is closed with 27: a washed span sits inside other
 	 *  spans and must end without stranding them. */
@@ -114,7 +125,7 @@ export interface Palette {
 	 *  ruling's own set gaining its missing member.
 	 *
 	 *  With NO ground it is NOTHING: §3.1 forbids an absolute foreground
-	 *  in a palette that has not established a background, and rung 4's
+	 *  in a palette that has not established a background, and the last rung's
 	 *  wash is reverse video, where any foreground grey inverts into a
 	 *  grey block. Body text on the surface is the correct degradation.
 	 *  It closes with 39 (the default foreground) rather than SGR 0, for
@@ -142,7 +153,7 @@ const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32
  *   dark   173 `#d7875f`  5.97:1
  *
  * With NO ground established the token stays ANSI 31 — the TERMINAL's
- * own red, which its theme picked for its own background. That is rung
+ * own red, which its theme picked for its own background. That is the last rung
  * 4's principle exactly: when the ground is unknown, use the thing that
  * is correct on any ground rather than guessing one.
  */

@@ -166,7 +166,7 @@ export function viewerRows(entries: readonly ViewerEntry[], state: ViewerState, 
  * An open entry's rows take the VERBATIM SURFACE — `wash`, the same
  * background DC-3 gave the human's own words and inline code. It is
  * ground-resolved already, and with no ground it degrades to reverse
- * video, which is correct on any ground (ground.ts rung 4).
+ * video, which is correct on any ground (ground.ts's last rung).
  *
  * Padded to the full width so the block reads as ONE thing rather than
  * a ragged stack. Under NO_COLOR `wash` is empty and the row's bytes

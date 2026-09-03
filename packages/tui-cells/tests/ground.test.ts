@@ -86,3 +86,51 @@ describe("resolveGround — the ladder", () => {
 		expect(resolveGround({ osc: "11;rgb:ffff/ffff/ffff", colorfgbg: undefined })).toBe("light");
 	});
 });
+
+/**
+ * The FIVE-rung ladder (2026-09-02): `colorScheme` joins between the
+ * human's answer and the OSC inference.
+ *
+ * OSC 11 hands over a background COLOUR and kiso computes a ground from
+ * its luminance — a threshold applied to someone else's number. `CSI
+ * 997` is the terminal reporting which scheme it is. Where both answer
+ * they normally agree; where they disagree, the account outranks the
+ * inference, and that precedence is the case worth pinning because it
+ * is the one nothing else would catch.
+ */
+describe("the ladder's fifth rung — the terminal's own colour-scheme report", () => {
+	const WHITE = "11;rgb:ffff/ffff/ffff";
+	const BLACK = "11;rgb:1e1e/1e1e/1e1e";
+
+	it("rung 2: the report answers on its own", () => {
+		expect(resolveGround({ colorScheme: "dark" })).toBe("dark");
+		expect(resolveGround({ colorScheme: "light" })).toBe("light");
+	});
+
+	it("rung 1 still wins: an explicit human answer outranks the terminal's", () => {
+		expect(resolveGround({ theme: "light", colorScheme: "dark" })).toBe("light");
+		expect(resolveGround({ theme: "dark", colorScheme: "light" })).toBe("dark");
+	});
+
+	it("THE CONFLICT: 997 beats OSC 11 — the account beats the inference", () => {
+		// a terminal reporting DARK while handing over a white background
+		expect(resolveGround({ colorScheme: "dark", osc: WHITE })).toBe("dark");
+		expect(resolveGround({ colorScheme: "light", osc: BLACK })).toBe("light");
+	});
+
+	it("and when they AGREE the answer is that agreement, not a coin toss", () => {
+		expect(resolveGround({ colorScheme: "light", osc: WHITE })).toBe("light");
+		expect(resolveGround({ colorScheme: "dark", osc: BLACK })).toBe("dark");
+	});
+
+	it("the lower rungs are unchanged and still reachable beneath it", () => {
+		expect(resolveGround({ osc: WHITE })).toBe("light");
+		expect(resolveGround({ colorfgbg: "0;15" })).toBe("light");
+		expect(resolveGround({})).toBe("unknown");
+	});
+
+	it("kiso NEVER guesses: nothing answered and nothing set is `unknown`, not dark", () => {
+		expect(resolveGround({ theme: undefined, colorScheme: undefined, osc: undefined, colorfgbg: undefined })).toBe("unknown");
+		expect(resolveGround({ theme: "", colorScheme: undefined, osc: "", colorfgbg: "" })).toBe("unknown");
+	});
+});

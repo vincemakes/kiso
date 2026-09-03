@@ -49,6 +49,7 @@ import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { autoCompactFromEnv, chat, contextWindowTokens, estimateCtxRatio } from "./chat.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
+import { checkForUpdate } from "./update-check.js";
 import { resume } from "./resume.js";
 import { resumeTail } from "./resume-tail.js";
 import { armByteTrace } from "./byte-trace.js";
@@ -240,7 +241,23 @@ function editorInput(editor: Editor): LineInput {
 /** One input source per process: the raw-mode Editor on a TTY (entered
  *  here, bound to the dock once — the trust question, chat, and resume
  *  all read through it), readline elsewhere. */
+/** The user config's `theme`, read the way the mode is (index.ts's
+ *  `loadUserConfig()?.mode`): the ground is settled inside
+ *  `makeLineInput`, which runs long before `mergedConfig` exists, so the
+ *  merged view is not available and the USER file is the only one that
+ *  may carry it anyway (config.ts rejects a project-level theme LOUDLY).
+ *  A broken config is not this function's business to report — the
+ *  loader is LOUD about that on its own path. */
+function userThemeSetting(): string | undefined {
+	try {
+		return loadUserConfig()?.theme;
+	} catch {
+		return undefined;
+	}
+}
+
 function makeLineInput(): LineInput {
+	const userTheme = userThemeSetting();
 	if (process.stdin.isTTY) {
 		const editor = new Editor(() => (dock.active ? dock.redraw() : editor.selfRender()));
 		editor.enter();
@@ -265,20 +282,43 @@ function makeLineInput(): LineInput {
 		// exists FOR the terminals without OSC 11, and could only ever be
 		// consulted when an OSC reply had arrived and been malformed. With
 		// §3.2 recording that rung 2 is unmeasured, that was the mainline.
-		setGround(resolveGround({ theme: process.env.KISO_THEME, colorfgbg: process.env.COLORFGBG }));
-		// the reply, when there is one, re-walks the ladder WITH it — and
-		// `theme` goes in first again, so an explicit answer still wins.
-		editor.onOsc((reply) => {
-			const next = resolveGround({ theme: process.env.KISO_THEME, osc: reply, colorfgbg: process.env.COLORFGBG });
+		// The two answers accumulate here; whichever arrives first is used
+		// at once, and the ladder decides between them when both have.
+		let osc: string | undefined;
+		let colorScheme: "dark" | "light" | undefined;
+		const theme = (): string | undefined => process.env.KISO_THEME ?? userTheme;
+		const rewalk = (): void => {
+			const next = resolveGround({ theme: theme(), colorScheme, osc, colorfgbg: process.env.COLORFGBG });
+			// DC-3/DC-14's model: the first frame never waits for a reply.
+			// A reply that changes nothing repaints nothing — which is also
+			// why two answers that AGREE cost one repaint and not two.
 			if (next === currentGround()) return;
 			setGround(next);
 			body.onGroundChange();
+		};
+		setGround(resolveGround({ theme: theme(), colorfgbg: process.env.COLORFGBG }));
+		// the reply, when there is one, re-walks the ladder WITH it — and
+		// `theme` goes in first again, so an explicit answer still wins.
+		editor.onOsc((reply) => {
+			osc = reply;
+			rewalk();
+		});
+		// …and the terminal's OWN account of its scheme, which outranks the
+		// luminance kiso would infer from a background colour (§3 rung 2).
+		editor.onColorScheme((scheme) => {
+			colorScheme = scheme;
+			rewalk();
 		});
 		// The query is COLOUR machinery, so it obeys the colour gate: a piped
 		// stdout and NO_COLOR both carry zero ANSI, and an OSC written into a
 		// pipe would be the first byte to break that. `palette().bold` is the
 		// same test the dock activates on — one gate, not a second opinion.
-		if (palette().bold !== "" && process.stdout.isTTY) process.stdout.write("\x1b]11;?\x07");
+		// Both questions ride ONE write and ONE gate: `CSI ? 996 n` asks the
+		// terminal to report its colour scheme, OSC 11 asks for its
+		// background colour. Neither is waited on (§3.2) — a terminal that
+		// answers neither leaves the ground `unknown`, which is a supported
+		// palette rather than a failure.
+		if (palette().bold !== "" && process.stdout.isTTY) process.stdout.write("\x1b[?996n\x1b]11;?\x07");
 		// W6: the box's prompt goes light — "› " (the box already says
 		// "input lives here"; the line-mode path keeps the brick ▌, so
 		// pipe bytes do not change)
@@ -330,6 +370,28 @@ function bannerExtensionText(): string {
  *  W5 resume list as a LIVE banner cell (W1: the tier re-derives on
  *  resize; the resume list re-gates with the tier); off-TTY: the
  *  historical `[N extensions: ...]` standalone line (zero change). */
+/**
+ * The update line, when there is one, appended after the opening.
+ *
+ * It never blocks: the caller does not await it, and the banner is
+ * already drawn when this starts. If the check fails, times out, is
+ * switched off, or finds nothing newer, this does nothing at all and
+ * says nothing about having tried.
+ */
+async function announceUpdate(): Promise<void> {
+	try {
+		const line = await checkForUpdate({ kisoHome: kisoHome(), version: VERSION, isTTY: process.stdout.isTTY === true, faux: currentFaux });
+		if (line === null) return;
+		// A turn may have started while the request was in flight. The
+		// notice is a cell like any other, so it lands where the transcript
+		// is — never spliced into a frame the reader is mid-way through.
+		body.notice(line);
+	} catch {
+		// belt and braces: checkForUpdate does not throw, and if it ever
+		// did, a version check is not a reason to disturb a session.
+	}
+}
+
 function extensionsBanner(resume: ResumeMeta[] = []): void {
 	const text = bannerExtensionText();
 	if (!process.stdout.isTTY) {
@@ -684,6 +746,12 @@ async function chatLoop(
 			// throws on profile drift — so one drifted session anywhere in the
 			// history stopped kiso from starting at all.
 			extensionsBanner();
+			// The one line the opening may gain (§7.10's ruling): "there is
+			// a newer kiso". FIRED AND FORGOTTEN — the banner above is
+			// already on screen and this never delays it. When the answer
+			// arrives it rides `body.notice`, the commit path notices
+			// already use, rather than a second channel into the frame.
+			void announceUpdate();
 		} else {
 			bodyLog(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
 			for (const line of resumeTail(session.log.all, process.stdout.columns ?? 80)) bodyLog(line);
