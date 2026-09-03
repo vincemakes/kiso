@@ -56,6 +56,29 @@ def driver(cli, args, env, feeds, timeout, cwd, rows, cols, delays):
             try:
                 data = os.read(fd, 4096)
             except OSError:
+                # THE CHILD IS GONE — on Linux. A pty master raises EIO
+                # once the last slave fd closes; macOS returns b"" for the
+                # same event, and that path (below) sets done. Treating
+                # only the macOS shape as an exit made every Linux run
+                # report "the CLI never exited" on a CLI that had exited
+                # cleanly a fraction of a second earlier.
+                #
+                # R3c keeps its teeth: reap with WNOHANG for up to a
+                # second, and only call it an exit if the child really is
+                # gone. A process still alive behind a broken pty is a
+                # stall, and still spends its wall.
+                reaped = False
+                for _ in range(100):
+                    try:
+                        if os.waitpid(pid, os.WNOHANG)[0] != 0:
+                            reaped = True
+                            break
+                    except ChildProcessError:
+                        reaped = True
+                        break
+                    time.sleep(0.01)
+                if reaped:
+                    done = True
                 break
             if not data:
                 done = True

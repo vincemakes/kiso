@@ -231,7 +231,26 @@ describe("graceful-exit release gate (E area, R-G 0.1.48)", () => {
 		expect(tombstones(home)).toEqual([]);
 	}, 180_000);
 
-	it("③ the fd-close at the prompt — the stream EOF fires the EOT callback and the release runs", () => {
+	/**
+	 * darwin-only, and the reason is a real platform difference rather
+	 * than a harness quirk (DC-44).
+	 *
+	 * This case's premise is that closing the pty master reaches the CLI
+	 * as a signal-free EOF on stdin. On Linux it does not: closing the
+	 * master hangs up the terminal, and the kernel sends SIGHUP to the
+	 * session leader. Measured 2026-09-03 in a Linux container — with no
+	 * handler installed, node dies of signal 1 before stdin emits
+	 * anything at all; install a SIGHUP handler and stdin's 'end' does
+	 * arrive.
+	 *
+	 * PH-F6 settles that SIGTERM and SIGHUP keep their default lethal
+	 * disposition, so the release this case is about never runs on
+	 * Linux and the lock is left for the next launch to repair — the
+	 * kill -9 contract, reached by a gentler-looking door. Whether the
+	 * product should install a SIGHUP handler that releases the lock and
+	 * re-raises is an owner ruling, recorded as DC-44's open item.
+	 */
+	it.runIf(process.platform === "darwin")("③ the fd-close at the prompt — the stream EOF fires the EOT callback and the release runs", () => {
 		const { dir, home, scriptPath } = freshDir("fd");
 		runDriver("fdclose", dir, home, scriptPath, "ge3");
 		expect(lockBytes(home, "ge3")).toBe(0);

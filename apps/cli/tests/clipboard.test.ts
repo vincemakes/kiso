@@ -41,7 +41,12 @@ describe("REL-0152-D11 — the clipboard route decides honestly", () => {
 		expect(clipboardImage(dir, runner)).toBeNull();
 	});
 
-	it("returns the path when a real PNG lands, and the path attaches", () => {
+	// darwin-only BY THE PRODUCT'S DESIGN, not by the harness's: the
+	// clipboard reader returns null on any non-darwin platform at
+	// clipboard.ts:42, because the AppleScript it drives does not exist
+	// elsewhere. The case asserts what happens when a PNG really lands,
+	// which cannot happen where the reader declines to look.
+	it.runIf(process.platform === "darwin")("returns the path when a real PNG lands, and the path attaches", () => {
 		const runner = (_c: string, args: readonly string[]): { status: number | null } => {
 			const target = JSON.parse(args.find((a) => a.includes("POSIX file "))!.split("POSIX file ")[1]!.split(" with write")[0]!) as string;
 			writeFileSync(target, PNG_BYTES);
