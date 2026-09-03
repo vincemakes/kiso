@@ -163,6 +163,12 @@ driver(${a(CLI)}, ${a(args)}, ${a(env)}, ${a(opts.feeds ?? [])}, ${opts.timeout 
  * passing. It was found by reading DURATIONS, because there was nothing
  * to read in the failures.
  *
+ * THE STARVATION ITSELF is a separate mechanism and now has a separate
+ * cure: `tests/setup-pty-yield.ts` turns the event loop once per test,
+ * because the worker's reply to the runner is a macrotask and a file of
+ * synchronous spawnSync cases never reaches one. A wasted wall is still
+ * this file's business; the worker starving is that one's.
+ *
  * So the driver reports how it ended and this turns "wall" into a red
  * that names the needle nobody reached. A scenario whose CLI exits on
  * its own (`eof`) is silent, as it always was.
