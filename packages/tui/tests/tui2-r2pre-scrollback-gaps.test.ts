@@ -130,13 +130,25 @@ describe("TUI2-R2pre ② — the scrollback is the transcript", () => {
 		expect(worst).toEqual([]);
 	});
 
-	it("T-R2p-7: the scrollback holds real transcript — the blank share never dominates", () => {
+	it("T-R2p-7: the scrollback holds real transcript — content is never the minority", () => {
 		// the direct consequence of the over-scroll: rows the repaint had
-		// already blanked were pushed into the history as blanks. A healthy
-		// session's scrollback is mostly content.
+		// already blanked were pushed into the history as blanks.
+		//
+		// R13 RE-DERIVED THE BOUND, from 1/3 to 1/2. The old number was
+		// read off a transcript W11 spaced by height, where most siblings
+		// packed tight; under D1 there is exactly one blank between any two
+		// elements, so a history of N elements carries N−1 blanks BY
+		// CONSTRUCTION and a run of short elements approaches an even
+		// split. The bound that still says something is that blanks never
+		// EXCEED content — the over-scroll pushes blanks without pushing
+		// the elements that would justify them.
+		//
+		// T-R2p-5 above is the sharp gate for this bug and its bound did
+		// not move: D1's blanks come one at a time, so a RUN of three is
+		// still the artefact and still forbidden.
 		const screen = session(80, 24, 5);
 		const rows = screen.scrollback;
 		const blanks = rows.filter((r) => r.trim() === "").length;
-		expect(`${rows.length} rows, ${blanks} blank`).toBe(`${rows.length} rows, ${Math.min(blanks, Math.floor(rows.length / 3))} blank`);
+		expect(`${rows.length} rows, ${blanks} blank`).toBe(`${rows.length} rows, ${Math.min(blanks, Math.floor(rows.length / 2))} blank`);
 	});
 });

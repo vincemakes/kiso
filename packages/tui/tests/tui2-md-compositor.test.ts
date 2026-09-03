@@ -75,6 +75,14 @@ function stream(text: string, W: number, H: number, chunk: (i: number) => number
 
 const RAGGED = (n: number): number => [3, 17, 1, 41, 9, 128, 5][n % 7]!;
 
+/** R13 E3 — the body renders a markdown block at COLUMN 2, folded in the
+ *  room that leaves. The reference these cases compare the screen against
+ *  is still the md renderer itself; the transform is written out here so
+ *  the gate pins the indent as well as the rendering, rather than asking
+ *  the component what it did. */
+const PROSE = "  ";
+const prose = (text: string, W: number): string[] => renderMarkdown(text, W - PROSE.length).map((r) => (r === "" ? r : `${PROSE}${r}`));
+
 describe("TUI2-MD ⑤ — the compositor wiring", () => {
 	it("T-MD-37: the committed history IS the rendered markdown, in order", () => {
 		// at a height where the paint clamp of finding TUI2-MD-1 (below) does
@@ -83,7 +91,7 @@ describe("TUI2-MD ⑤ — the compositor wiring", () => {
 		const offenders: string[] = [];
 		for (const [W, H] of [[80, 30], [100, 40], [60, 32]] as const) {
 			const { screen } = stream(MD_BENCHMARK, W, H, RAGGED);
-			const want = renderMarkdown(MD_BENCHMARK, W).map(plain).filter((r) => r !== "");
+			const want = prose(MD_BENCHMARK, W).map(plain).filter((r) => r !== "");
 			const got = screen.all().map(plain);
 			let at = 0;
 			for (const row of want) {
@@ -127,7 +135,7 @@ describe("TUI2-MD ⑤ — the compositor wiring", () => {
 		const worst: string[] = [];
 		for (const [W, H, cap] of [[80, 20, 4], [80, 24, 4], [60, 20, 4]] as const) {
 			const { screen } = stream(MD_BENCHMARK, W, H, RAGGED);
-			const want = renderMarkdown(MD_BENCHMARK, W).map(plain).filter((r) => r !== "");
+			const want = prose(MD_BENCHMARK, W).map(plain).filter((r) => r !== "");
 			const got = screen.all().map(plain);
 			const absent = want.filter((r) => !got.includes(r)).length;
 			if (absent > cap) worst.push(`${W}x${H}: ${absent} absent (cap ${cap})`);
@@ -207,12 +215,12 @@ describe("TUI2-MD ⑤ — the compositor wiring", () => {
 		const W = 80;
 		const { screen } = stream("first paragraph here\n\n## A heading\n\nsecond paragraph here\n", W, 24, () => 7);
 		const rows = screen.all().map(plain);
-		const at = rows.indexOf("A heading");
+		const at = rows.indexOf(`${PROSE}A heading`);
 		expect(at).toBeGreaterThan(0);
 		// exactly ONE blank row above and below the heading — the style
 		// table's rhythm, not the W11 row-count formula (which would give a
 		// heading between two one-row paragraphs no blank at all)
 		expect(`${rows[at - 1]}|${rows[at + 1]}`).toBe("|");
-		expect(`${rows[at - 2]}|${rows[at + 2]}`).toBe("first paragraph here|second paragraph here");
+		expect(`${rows[at - 2]}|${rows[at + 2]}`).toBe(`${PROSE}first paragraph here|${PROSE}second paragraph here`);
 	});
 });

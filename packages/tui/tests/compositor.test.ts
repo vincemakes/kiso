@@ -765,18 +765,24 @@ describe("TUI v6 — the one compositor", () => {
 		expect(writes.join("")).not.toContain("└ 1 child");
 	});
 
-	it("W11: spacing is a formula — one-row siblings pack tight, multi-row blocks breathe on both sides, the first cell never gets the blank above", () => {
+	it("D1: spacing is a CONSTANT — one blank between any two elements, and the first cell never gets the blank above", () => {
 		// The final screen's rows, replayed from the writes (each row's LAST
 		// write wins — the CUP writes + the gap/stale ELs reproduce the
 		// screen, the way the VT emulator sees it).
 		const { body, writes, tick } = makeBody();
 		body.enter();
-		// R2: a banner with no extensions and no bound model is now ONE row
-		// (`kiso 0.1.37`), and a one-row cell packs tight by W11's own
-		// formula — which would make this test assert the opposite of its
-		// subject. It is given the shape the CLI actually builds, so the
-		// cell is multi-row and "breathes on both sides" is still what is
-		// under test.
+		// DECLARED REVERSAL — R13 D1 retires W11's FORMULA (one-row
+		// siblings pack tight, multi-row blocks breathe on both sides) for
+		// a constant: exactly one blank between any two elements, whatever
+		// their height. W11's formula made a settle that changed a cell's
+		// height change the spacing around it — the mechanism behind two
+		// closed defects (R7a, R12 Round 2 §3), both of them "the settle
+		// shifted the screen". A constant makes a settle change content
+		// and never position BY CONSTRUCTION.
+		//
+		// The multi-row half of this case is UNCHANGED and still asserted
+		// below: a block that breathed on both sides still does. What
+		// moved is the packed pair, and it moved by exactly one row.
 		body.banner("0.1.37", "[1 extension: asky]");
 		body.userLine("go");
 		body.toolStart("read_file", "c1", { path: "x" });
@@ -808,13 +814,11 @@ describe("TUI v6 — the one compositor", () => {
 		expect(rows[userAt - 1]).toBe(""); // the banner (multi-row) breathes below
 		// DECLARED SUPERSESSION (R3i phase 2): the two tool rows are no
 		// longer siblings — a stretch's completed calls fold into its one
-		// line, so what stands next to the user's row is the FOLD. The
-		// subject is unchanged and so is the formula being tested: a
-		// one-row cell followed by a one-row cell packs tight, with no
-		// blank between them. Only the identity of the second cell moved.
+		// line, so what stands next to the user's row is the FOLD.
 		const foldAt = rows.findIndex((l) => /^ {2}(read|edited|wrote|listed|ran|explored|thought)\b/.test(l) && !l.includes("("));
 		expect(foldAt).toBeGreaterThan(0);
-		expect(foldAt).toBe(userAt + 1); // one-row user → one-row fold: pack tight
+		expect(foldAt).toBe(userAt + 2); // R13 D1: one blank, even between two one-row cells
+		expect(rows[userAt + 1]).toBe(""); // …and it is a blank, not a shifted row
 		// a multi-row block (the 2-line raw recap) breathes on BOTH sides
 		body.raw(["first", "second"]);
 		body.userLine("again");
@@ -1236,7 +1240,13 @@ describe("TUI v6 — the one compositor", () => {
 		// A verdict WITH decidedBy is a policy's, and policy is ambient:
 		// silent. A verdict WITHOUT one is the human's, and that is the
 		// fact worth the row: ` · approved` / ` · denied`.
-		expect(plain).toContain("  edit  examples/foo.ts (+1 -1, 0.0s)");
+		// MOVED AGAIN (R13, the card): an edit with a result PREVIEWS, so
+		// it is a card — the head row names the call and the metadata sits
+		// on the outcome row. Every fact A4/A5 pins is still said; the W4
+		// parentheses are now the bodiless call's form (the read below
+		// keeps them).
+		expect(plain).toContain("  edit  examples/foo.ts");
+		expect(plain).toContain("+1 -1 · 1 line · 0.0s");
 		expect(plain).not.toContain("approved by");
 		// the DENIED call: the W19 pinned row (the full name + target) with
 		// the decider's tail — the aggregated head row, one line

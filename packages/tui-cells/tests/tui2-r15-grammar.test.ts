@@ -65,8 +65,14 @@ describe("TUI2-R1.5 ⑤ — the line count is stated exactly once (VD-6)", () =>
 	});
 
 	it("a read whose result the TOOL truncated keeps its own of-N meta — that is a different fact", () => {
-		const row = render(toolCell({ resultText: `${Array.from({ length: 200 }, (_, i) => `l${i}`).join("\n")}\n… 50 more lines` }))[0]!;
-		expect(row).toContain("(200 of 250 lines, 2.4s)");
+		// R13 MOVED THIS ASSERTION. A read the tool capped carries its
+		// continuation note (W10), so it has a body row and is a card —
+		// and a card's metadata sits on the outcome row, not in the head
+		// row's W4 parentheses. The count is still stated exactly once,
+		// which is this describe's subject.
+		const rows = render(toolCell({ resultText: `${Array.from({ length: 200 }, (_, i) => `l${i}`).join("\n")}\n… 50 more lines` }));
+		expect(rows.join("\n")).toContain("200 of 250 lines");
+		expect(rows.join("\n").match(/\d+ (?:of \d+ )?lines?/g) ?? []).toHaveLength(1);
 	});
 
 	it("the affordance is never lost to a long target — the shortest tier is reserved", () => {
@@ -86,11 +92,16 @@ describe("TUI2-R1.5 ⑤ — approval attribution is about humans (VD-11)", () =>
 	});
 
 	it("a HUMAN approval says `approved` — the thing the human actually did", () => {
-		// the verdict is a FACT in the W4 parentheses group, `·`-separated
-		// from the others; with a meta fact present the separator is there,
-		// and with none it would be dangling, so it is not emitted.
-		const withMeta = render(toolCell({ name: "edit_file", added: 1, removed: 1, resultText: "edited", verdict: { decision: "approved" } }))[0]!;
-		expect(withMeta).toContain("(+1 -1 · approved, 2.4s)");
+		// the verdict is a FACT among the others, `·`-separated.
+		//
+		// R13 MOVED THIS ASSERTION, it did not weaken it. An edit with a
+		// result now previews, so it is a card and its metadata sits on the
+		// outcome row instead of in the head row's W4 parentheses — the
+		// grammar changed, every fact is still said. `bare` below has no
+		// preview (a read), keeps the head row, and pins the parenthesised
+		// form that still exists.
+		const withMeta = render(toolCell({ name: "edit_file", added: 1, removed: 1, resultText: "edited", verdict: { decision: "approved" } })).join("\n");
+		expect(withMeta).toContain("+1 -1 · 1 line · 2.4s · approved");
 		const bare = render(toolCell({ verdict: { decision: "approved" } }))[0]!;
 		expect(bare).toContain("(approved, 2.4s)");
 		expect(bare).not.toContain("approved by");

@@ -165,8 +165,20 @@ export interface Component {
  *  (heights, the fold cache) never sees a fake row. */
 export function bodySpacing(prev: readonly string[] | null, rows: readonly string[]): string[] {
 	if (rows.length === 0 || prev === null || prev.length === 0) return rows as string[];
-	if (rows.length > 1 || prev.length > 1) return ["", ...rows];
-	return rows as string[];
+	// R13 D1 — ONE blank between any two elements, whatever their height.
+	//
+	// W11 spaced by height: one-row siblings packed tight, anything
+	// multi-row breathed on both sides. A reader could not tell where the
+	// next blank would fall — and worse, the spacing was a function of a
+	// cell's CURRENT height, so a cell growing from one row to five moved
+	// everything around it. That is the mechanism behind R7a and behind
+	// R12 Round 2's settle shift, both of them "the screen moved under
+	// the reader".
+	//
+	// A constant cannot do that: a live block, its settled form and the
+	// card it becomes are spaced identically BY CONSTRUCTION, which is
+	// exactly what R7a's one-row stand-in was simulating.
+	return ["", ...rows];
 }
 
 /** The container — vertical concatenation with the W11 formula. No
@@ -359,12 +371,20 @@ export function cellComponent(cell: BodyCell): Component {
  * the same rule as three thousand short ones.
  */
 const USER_CHIP_ROWS = 12;
+/** R13 D4 — the chip's inner pad: two columns, so its text begins in
+ *  the same column as everything else on the page. */
+const CHIP_PAD = "  ";
 
 class UserMessage implements Component {
 	constructor(private readonly cell: { text: string }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
-		const chipW = Math.max(1, W - 2);
+		// R13 D4 — TWO columns of inner pad, where R2 had one. The chip
+		// keeps its surface (reverse video, one row per folded line, no
+		// pad rows — R12 Round 2's ruling stands); what changes is where
+		// its text STARTS, so the human's words begin in the same column
+		// as the model's (E3) and as a card's rows (E4).
+		const chipW = Math.max(1, W - 2 * CHIP_PAD.length);
 		const rows: string[] = [];
 		// REL-0152-D13: fold only as far as the bound needs. A pasted file
 		// has thousands of lines and folding all of them to show twelve is
@@ -409,7 +429,7 @@ class UserMessage implements Component {
 		// row is two cells per character and pads by cells.
 		const inner = chipW;
 		for (const row of content) {
-			rows.push(`${p.rv} ${row}${" ".repeat(Math.max(0, inner - displayWidth(row)))} ${p.rvEnd}`);
+			rows.push(`${p.rv}${CHIP_PAD}${row}${" ".repeat(Math.max(0, inner - displayWidth(row)))}${CHIP_PAD}${p.rvEnd}`);
 		}
 		if (!truncated) return rows;
 		// The notice is OUTSIDE the chip's reverse video, in the cut-row
@@ -420,8 +440,20 @@ class UserMessage implements Component {
 		const shown = rows.length;
 		const total = paras.length;
 		const more = Math.max(0, total - shown);
+		// DC-45: THE NOTICE FOLDS TOO. It was written at a fixed 30 columns
+		// and emitted verbatim at every width, so a paste of thirteen lines
+		// in a terminal narrower than the sentence tripped the compositor's
+		// invariant ① and killed the session. The tiers are TUI2-R1.5 ⑤'s
+		// discipline: `sent in full` is the SEMANTICS — the whole reason
+		// the row exists — so the count gives way before it, and `cutLine`
+		// is the backstop that holds at any width there is.
+		const count = more > 0 ? `+${more} more line${more === 1 ? "" : "s"}` : "cut here";
+		const short = more > 0 ? `+${more}` : "cut";
 		rows.push(
-			`${p.dim}\u2514 ${more > 0 ? `+${more} more line${more === 1 ? "" : "s"}` : "cut here"} \u00b7 sent in full${p.reset}`,
+			cutLine(
+				`${p.dim}\u2514 ${pickTier([`${count} \u00b7 sent in full`, `${short} \u00b7 sent in full`, "sent in full", count], Math.max(1, W - 2))}${p.reset}`,
+				W,
+			),
 		);
 		return rows;
 	}
@@ -862,8 +894,7 @@ class ToolExecution implements Component {
 			// metadata, in words, which is also the only form that survives
 			// a pipe with the colour stripped. A failure keeps its colour
 			// AND its words — see settledMeta.
-			const parts = toolBlockParts(c, W);
-			const body = parts.rows;
+			const body = toolBlockParts(c, W).rows;
 			if (body.length > 0 && c.expanded) {
 				// An EXPANDED block is already showing everything, and its own
 				// footer ("ctrl+o collapses") is what closes it. Giving it an
@@ -873,13 +904,13 @@ class ToolExecution implements Component {
 				const head = c.isError ? `  ${p.red}${text}${p.reset}` : `  ${text}`;
 				return slabBlock(appendSuffix(head, expandSuffix(hidden, W - visibleWidth(head))), body, null, W);
 			}
-			if (parts.output > 0) {
-				// R9 P2 — THE SLAB'S SHAPE. A call with rows on screen is one
-				// object: the head row names it, the output sits inside, and
-				// the outcome CLOSES it on its own line (§7.5's words, moved
-				// off the head row because the head row is no longer the only
-				// row). D6: the target is bold there — the head row's job is
-				// to say WHAT was run, and the metadata has its own row now.
+			if (body.length > 0) {
+				// R13 — THE CARD, when there is something to preview: the head
+				// row names the call, the preview sits inside, and the outcome
+				// CLOSES it on its own line (§7.5's words, moved off the head
+				// row because the head row is no longer the only row). D6: the
+				// target is bold there — the head row's job is to say WHAT was
+				// run, and the metadata has its own row now.
 				//
 				// A failure takes NO tint on the head row (R9): only the
 				// outcome word is coloured, which is §1.2 exactly — the
@@ -899,24 +930,24 @@ class ToolExecution implements Component {
 				const attr = approvedBy.replace(/^ · /, "");
 				const words = pickTier(
 					[join(meta, counted, `${elapsed}s`, attr), join(meta, counted, `${elapsed}s`), join(meta, `${elapsed}s`), meta],
-					W - visibleWidth(NOTE_ROW),
+					W - visibleWidth(noteIndent()),
 				);
 				const outcome = c.isError ? `${p.red}${words}${p.reset}` : words;
 				return slabBlock(head, body, outcome, W);
 			}
-			// No output on screen: the row is PLAIN, and the outcome stays on
-			// it in the form every width gate already pins.
+			// R13 — nothing to preview: the SAME card, three rows, with the
+			// outcome riding the head row because there is nothing between
+			// them to close.
 			//
-			// Owner ruling 2026-09-02, narrowing R9's "one-row slab": §1.6
-			// gives the wash to the machine's VERBATIM text, and a row like
-			// `read loop.ts · 412 lines · 0.1s` is kiso's summary of a result
-			// — not one line of it. A surface with nothing verbatim on it is
-			// a surface making a claim it cannot keep, so the wash appears
-			// only where the call's own output does.
-			const out = c.isError ? [`  ${p.red}${text}${p.reset}`] : [`  ${text}`];
-			out[0] = appendSuffix(out[0]!, expandSuffix(hidden, W - visibleWidth(out[0]!)));
-			out.push(...body);
-			return out;
+			// DECLARED REVERSAL of the owner's 2026-09-02 narrowing ("a call
+			// with no output on screen has no slab at all"), which read §1.6
+			// as giving the wash to the machine's VERBATIM text only. The
+			// ruling of 2026-09-03 supersedes it: the surface says WORK, not
+			// VERBATIM, and a page where some calls are cards and others are
+			// loose rows is the instability the owner was pointing at. §1.6
+			// moves with it.
+			const bare = c.isError ? `  ${p.red}${text}${p.reset}` : `  ${text}`;
+			return slabBlock(appendSuffix(bare, expandSuffix(hidden, W - visibleWidth(bare))), [], null, W);
 		}
 		if (c.state === "approval") {
 			// W2: the ❯ is the GUTTER (the left edge), never the line's tail
@@ -979,12 +1010,13 @@ function hiddenLines(c: Extract<BodyCell, { kind: "tool" }>, W: number): number 
 	const n = countLines(c.resultText);
 	if (n === 0) return null;
 	if (c.isError) return null; // errorBody's own cut row is the affordance there
-	// R9 P2 / D4: a settled shell has its tail back on screen, and when
-	// the tail is cut the slab's own note row says so and names the key.
+	// R13: a call that PREVIEWS carries the key on its own note row when
+	// something is cut, and needs no affordance at all when nothing is.
 	// A head-row suffix as well would be TUI2-R1's two affordances for
-	// one cell — the thing that rule exists to forbid.
-	if (c.name === "shell") return null;
-	return n; // every other settled call renders NO body — all of it is behind the key
+	// one cell — the thing that rule exists to forbid. read_file is the
+	// one call with no preview (E1), so the key lives on its head row.
+	if (c.name !== "read_file") return null;
+	return n;
 }
 
 /**
@@ -1217,7 +1249,7 @@ export function exploreRows(parts: readonly { name: string; subjects: readonly s
 		const shown = [...counts.entries()].slice(0, 3).map(([s, n]) => (n > 1 ? `${s} ×${n}` : s));
 		const more = counts.size > 3 ? ` (+${counts.size - 3})` : "";
 		const verb = displayVerb(part.name);
-		rows.push(cutLine(`${p.dim}${BODY_ROW}${escapeTerminal(`${verb.padEnd(6)} ${shown.join(" · ")}${more}`)}${p.reset}`, W));
+		rows.push(cutLine(`${p.dim}${bodyRow()}${escapeTerminal(`${verb.padEnd(6)} ${shown.join(" · ")}${more}`)}${p.reset}`, W));
 	}
 	// TUI2-R1.5 ① (VD-15): the footer used to promise "/last shows the full
 	// outputs". /last shows the LAST call only — for a nine-call burst that
@@ -1225,7 +1257,7 @@ export function exploreRows(parts: readonly { name: string; subjects: readonly s
 	// place the content is not is worse than a footer that says nothing.
 	// R8a: the footer is an in-block note — the same indent, no glyph —
 	// and the corner opens the block's first row, like every other one.
-	rows.push(cutLine(`${p.dim}${NOTE_ROW}${COLLAPSE_ROW}${p.reset}`, W));
+	rows.push(cutLine(`${p.dim}${noteIndent()}${COLLAPSE_ROW}${p.reset}`, W));
 	return openBlock(rows);
 }
 
@@ -1747,7 +1779,9 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 
 /** The caps — screen rows counted AFTER the fold, at the current width
  *  (the W7 table). The renderer-cut row is inside the cap. */
-const CAP_SHELL_SETTLED = 5; // the shell output tail, settled
+/** R13 — ONE preview cap, every tool. It was the shell's alone while
+ *  the shell was the only settled call with rows on screen. */
+const CAP_PREVIEW = 5;
 const CAP_LIVE_WINDOW = 3; // the running tool's FIXED window (W8)
 const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
 const CAP_ERROR = 3; // the error text head
@@ -1766,13 +1800,24 @@ const CAP_ERROR = 3; // the error text head
  *  prose (2). Bytes still tell them apart; no column of glyphs.
  *
  *  `└` survives as the mark that OPENS the block, once, on its first
- *  row (see openBlock). In-block notes take NOTE_ROW — the same indent,
+ *  row (see openBlock). In-block notes take the same indent,
  *  no glyph — because a second `└` inside one block would be the same
  *  mark meaning two things (§4.1). CUT_ROW is unchanged for the
  *  surfaces that are not a tool block: the fold row's target list, the
  *  slot's overflow count. */
-const BODY_ROW = "    ";
-const NOTE_ROW = "    ";
+/** R8a's four columns — off the surface. Inside a painted card every
+ *  row sits at column 2 (R13 E4): the head row and the outcome row
+ *  bracket the preview, so the indent is no longer what says "these
+ *  rows are output". Where nothing paints, it is exactly that, and R8a
+ *  stands unchanged. */
+const BODY_ROW_FLAT = "    ";
+const NOTE_ROW_FLAT = "    ";
+const CARD_ROW = "  ";
+/** R13 E3 — the column the model's words begin in, the same one the
+ *  card's rows and the chip's text begin in. */
+const PROSE_COL = "  ";
+const bodyRow = (): string => (slabPaints() ? CARD_ROW : BODY_ROW_FLAT);
+const noteIndent = (): string => (slabPaints() ? CARD_ROW : NOTE_ROW_FLAT);
 const CUT_ROW = "└ ";
 
 /**
@@ -1833,7 +1878,7 @@ function noteRow(text: string, W: number, tone: "dim" | "body"): string[] {
 	// its own. The row names a fact; a cut names it shorter.
 	const open = tone === "body" ? p.washDim : p.dim;
 	const close = tone === "body" ? p.washDimEnd : p.reset;
-	return [cutLine(`${open}${NOTE_ROW}${text}${close}`, W)];
+	return [cutLine(`${open}${noteIndent()}${text}${close}`, W)];
 }
 
 /**
@@ -1850,14 +1895,23 @@ function slabBlock(head: string, body: readonly string[], outcome: string | null
 		if (outcome !== null) out.push(...noteRow(outcome, W, "dim"));
 		return out;
 	}
-	const rows = [slabRow(head, W)];
-	if (body.length > 0) rows.push(slabRow("", W));
-	for (const r of body) rows.push(slabRow(r, W));
-	if (outcome !== null) {
-		if (body.length > 0) rows.push(slabRow("", W));
-		for (const r of noteRow(outcome, W, "body")) rows.push(slabRow(r, W));
+	// R13 — THE CARD. pad · head · blank · preview · blank · outcome ·
+	// pad, and a call with nothing to preview is three rows with its
+	// outcome riding the head. Every row sits at column 2 (E4): R8a put
+	// a block's body at column 4 so a pipe could tell output from prose,
+	// and inside a painted card the head and the outcome bracket it
+	// instead — off the surface R8a's indent is still the fact, which is
+	// why the degradation above keeps it.
+	if (body.length === 0) {
+		const only = outcome === null ? head : `${head} ${outcome}`;
+		return [slabRow("", W), slabRow(only, W), slabRow("", W)];
 	}
-	return rows;
+	const top = [slabRow("", W), slabRow(head, W), slabRow("", W), ...body.map((r) => slabRow(r, W))];
+	// An EXPANDED block closes with its own footer and passes no outcome;
+	// a blank row and an empty metadata row under it would be §1.3's
+	// empty mark twice over.
+	if (outcome === null) return [...top, slabRow("", W)];
+	return [...top, slabRow("", W), ...noteRow(outcome, W, "body").map((r) => slabRow(r, W)), slabRow("", W)];
 }
 
 /** R8a — stamp `└` on a block's FIRST row, after every slice and note
@@ -1868,14 +1922,14 @@ function openBlock(rows: string[]): string[] {
 	// or a blank leading output line can put an empty row first, and a
 	// corner there would be a mark on a row with nothing to mark — law
 	// 1.3, which is the rule this whole change is serving.
-	const i = rows.findIndex((r) => visibleWidth(r) > visibleWidth(BODY_ROW));
+	const i = rows.findIndex((r) => visibleWidth(r) > visibleWidth(bodyRow()));
 	if (i < 0) return rows;
 	const first = rows[i]!;
-	const at = first.indexOf(BODY_ROW);
+	const at = first.indexOf(BODY_ROW_FLAT);
 	if (at < 0) return rows;
 	// the corner REPLACES two of the four indent columns, so the text
 	// stays in the same column as every other row of the block.
-	return [...rows.slice(0, i), `${first.slice(0, at)}  \u2514 ${first.slice(at + BODY_ROW.length)}`, ...rows.slice(i + 1)];
+	return [...rows.slice(0, i), `${first.slice(0, at)}  \u2514 ${first.slice(at + BODY_ROW_FLAT.length)}`, ...rows.slice(i + 1)];
 }
 
 /** W9 — the per-cell memo: the bounded block's folded body is cached
@@ -1890,14 +1944,11 @@ interface BlockMemo {
 	state: string;
 	content: unknown;
 	rows: string[];
-	/** R9 P2: how many of `rows` are the call's own OUTPUT — a cut note
-	 *  is kiso's sentence, not a line of the result. */
-	readonly output: number;
 }
 const blockMemo = new WeakMap<object, BlockMemo>();
 
 /** The block's body rows below the header (memoized, W9). */
-function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number): { rows: string[]; output: number } {
+function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number): { rows: string[] } {
 	const memo = blockMemo.get(c);
 	// the SURFACE is part of the key: the same cell renders different rows
 	// painted and unpainted, and a ground resolved after the first frame
@@ -1924,19 +1975,18 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number): { ro
 					? errorBody(c, W)
 					: c.name === "delegate"
 						? delegateSettled(c, W)
-						: // R9 P2 / D4 — DECLARED REVERSAL of TUI2-R1.5 ④(c) (VD-5),
-							// owner-ruled. VD-5 collapsed a settled shell to its head
-							// row because six ungrounded rows per call let three
-							// shells own a screen. The slab is what changes that
-							// arithmetic: the rows are inside a surface that says
-							// where the call begins and ends, so five of them read as
-							// one object rather than as five loose lines. The cap and
-							// the tail direction are VD-5's own (CAP_SHELL_SETTLED,
-							// the conclusion at the end); only the emptiness is
-							// reversed.
-							c.name === "shell"
-								? shellTail(c.resultText, W, slabPaints() ? "body" : "dim")
-								: []
+						: // R13 — EVERY settled call previews. The shell's tail is
+							// VD-5's own cap and direction (the conclusion is at the
+							// end); everything else shows its head, because that is
+							// where its answer is. read_file is the single exception
+							// (E1): its result is the file, kiso has nothing to add by
+							// showing five lines of it, and the head row's key opens
+							// the whole thing.
+							noPreview(c)
+								? []
+								: c.name === "shell"
+									? shellTail(c.resultText, W, slabPaints() ? "body" : "dim")
+									: previewHead(c.resultText, W, slabPaints() ? "body" : "dim")
 				: c.state === "running"
 					? c.name === "delegate"
 						? delegateRunning(c, W)
@@ -1946,40 +1996,49 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number): { ro
 					: c.state === "approval"
 						? diffBody(c.diff, W)
 						: [];
-	// R9 P2: how many of these rows are the call's OWN OUTPUT. A cut note
-	// is kiso's sentence about a result the TOOL truncated, not a line of
-	// it — a read that has only that note has nothing verbatim on screen
-	// and stays a ONE-ROW slab, outcome inline, exactly as R9 draws it.
-	const output = rows.length;
+	// E1 governs the PREVIEW — five lines of a file kiso has nothing to
+	// add to — not kiso's sentence about the result. `offset=201 for the
+	// rest` is actionable and no other row says it (W10 pins exactly
+	// that), so a read the TOOL capped takes one body row and a read it
+	// did not takes none. That shape difference is information: the two
+	// events are different, and the row is what says so.
 	const note = c.expanded ? null : toolCutNote(c.name, c.resultText);
-	if (note !== null) rows.push(...foldLine(`${p.dim}${NOTE_ROW}${note}${p.reset}`, W));
+	if (note !== null) rows.push(...foldLine(`${p.dim}${noteIndent()}${note}${p.reset}`, W));
 	// TUI2-R1 (A): an EXPANDED block says how to put it back. The footer
 	// rides a block that HAS rows — an expanded delegate whose summary
 	// marker is missing renders nothing, and a lone footer under a head
 	// row would be an affordance for an empty block.
-	if (c.expanded && rows.length > 0) rows.push(...foldLine(`${p.dim}${NOTE_ROW}${COLLAPSE_ROW}${p.reset}`, W));
+	if (c.expanded && rows.length > 0) rows.push(...foldLine(`${p.dim}${noteIndent()}${COLLAPSE_ROW}${p.reset}`, W));
 	// R9 P2: `└` opens a block that has no surface. Inside a slab the
 	// surface IS the container, and a corner in it is §1.3's empty mark
 	// one scale up — so the corner and the slab are alternatives, never
 	// both.
 	const opened = slabPaints() ? rows : openBlock(rows);
-	const parts = { width: W, state, content, rows: opened, output };
+	const parts = { width: W, state, content, rows: opened };
 	blockMemo.set(c, parts);
 	return parts;
 }
 
-/** The rows alone — every caller but the settled branch, which needs to
- *  know whether any of them are the call's own OUTPUT. */
+/** R13 E1 — the one settled call that previews NOTHING. A read's result
+ *  IS the file; five lines of it tell a reader less than the head row
+ *  already does, and the key opens the whole thing. (The reference
+ *  implementation makes the same call, for the same reason.) Everything
+ *  else previews: a shell its tail, the rest their head. */
+function noPreview(c: Extract<BodyCell, { kind: "tool" }>): boolean {
+	return c.state === "done" && !c.expanded && !c.isError && c.reason === null && c.name === "read_file";
+}
+
+/** The block's body rows. */
 function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): string[] {
 	return toolBlockParts(c, W).rows;
 }
 
-/** Fold result text into dim body rows (the BODY_ROW prefix): escape,
+/** Fold result text into body rows (the block's own indent): escape,
  *  split, fold each line at W−prefix; trailing empty rows (the result's
  *  final newline) drop. */
 function blockRows(text: string, W: number, tone: "dim" | "body" = "dim"): string[] {
 	const p = palette();
-	const textW = Math.max(1, W - visibleWidth(BODY_ROW));
+	const textW = Math.max(1, W - visibleWidth(bodyRow()));
 	const rows: string[] = [];
 	// R9 P2: inside a SLAB the output rows are body strength, never dim —
 	// §2.1 bars dim from the wash (3.91:1 light, 4.35:1 dark) and these
@@ -1988,9 +2047,9 @@ function blockRows(text: string, W: number, tone: "dim" | "body" = "dim"): strin
 	const open = tone === "dim" ? p.dim : "";
 	const close = tone === "dim" ? p.reset : "";
 	for (const raw of escapeTerminal(text).split("\n")) {
-		for (const row of foldLine(raw, textW)) rows.push(`${open}${BODY_ROW}${row}${close}`);
+		for (const row of foldLine(raw, textW)) rows.push(`${open}${bodyRow()}${row}${close}`);
 	}
-	while (rows.length > 0 && visibleWidth(rows[rows.length - 1]!) === visibleWidth(BODY_ROW)) rows.pop();
+	while (rows.length > 0 && visibleWidth(rows[rows.length - 1]!) === visibleWidth(bodyRow())) rows.pop();
 	return rows;
 }
 
@@ -2000,12 +2059,12 @@ function blockRows(text: string, W: number, tone: "dim" | "body" = "dim"): strin
  *  direction). */
 function shellTail(text: string, W: number, tone: "dim" | "body" = "dim"): string[] {
 	const rows = blockRows(text, W, tone);
-	if (rows.length <= CAP_SHELL_SETTLED) return rows;
+	if (rows.length <= CAP_PREVIEW) return rows;
 	// R9 P2 / D4: FIVE output rows, and the note is a row of its own. The
 	// pre-slab arithmetic spent one of the five on the cut note, because
 	// the note had nowhere else to live; the slab's metadata rows are not
 	// output and are not counted against the output's cap.
-	const kept = CAP_SHELL_SETTLED;
+	const kept = CAP_PREVIEW;
 	// The note goes ABOVE the tail: it says what was cut, and what was
 	// cut is what came BEFORE these rows. One position on both surfaces —
 	// the surface degrades, the content shape does not.
@@ -2014,8 +2073,31 @@ function shellTail(text: string, W: number, tone: "dim" | "body" = "dim"): strin
 	// the KEY is reserved (TUI2-R1.5 ⑤): the count gives way before it,
 	// because a row that says how much is hidden without saying how to
 	// see it is the silence TUI2-R1 (A) set out to remove.
-	const note = noteRow(pickTier([`… ${n} · ctrl+o expands`, `… ${n} · ctrl+o`, `… ${cut} · ctrl+o`, "· ctrl+o"], W - visibleWidth(NOTE_ROW)), W, tone);
+	const note = noteRow(pickTier([`… ${n} · ctrl+o expands`, `… ${n} · ctrl+o`, `… ${cut} · ctrl+o`, "· ctrl+o"], W - visibleWidth(noteIndent())), W, tone);
 	return [...note, ...rows.slice(rows.length - kept)];
+}
+
+/** R13 — the preview every OTHER settled call gets: the FIRST rows,
+ *  capped at five, the cut note BELOW them. A shell's conclusion is at
+ *  the bottom of its output, so its preview is the tail and its note
+ *  opens the block (shellTail above); a list, a search, a fetch all
+ *  answer at the top, so the note closes it. One rule, two directions,
+ *  and the direction follows where the answer is.
+ *
+ *  This is the DECLARED REVERSAL of VD-5 for every tool but the shell
+ *  (0.22.0 reversed the shell alone): VD-5 collapsed a settled call to
+ *  its head row because ungrounded output rows owned the screen, and
+ *  the card is what changes that arithmetic — the rows are inside a
+ *  surface that says where the call begins and ends. */
+function previewHead(text: string, W: number, tone: "dim" | "body"): string[] {
+	const rows = blockRows(text, W, tone);
+	if (rows.length <= CAP_PREVIEW) return rows;
+	const cut = rows.length - CAP_PREVIEW;
+	const n = `${cut} more line${cut === 1 ? "" : "s"}`;
+	// the KEY is reserved, as in shellTail: a row that says how much is
+	// hidden without saying how to see it is TUI2-R1 (A)'s silence.
+	const note = noteRow(pickTier([`… ${n} · ctrl+o expands`, `… ${n} · ctrl+o`, `… ${cut} · ctrl+o`, "· ctrl+o"], W - visibleWidth(noteIndent())), W, tone);
+	return [...rows.slice(0, CAP_PREVIEW), ...note];
 }
 
 /** The error text head: the FIRST rows, capped at 3 — the answer is at
@@ -2034,7 +2116,7 @@ function errorBody(c: { name: string; resultText: string; reason?: string | null
 	const skipFirst = c.name === "shell" && /^exit \d+/.test(c.resultText) ? 0 : c.reason !== null && c.reason !== undefined ? 0 : 1;
 	const rows = blockRows(c.resultText.split("\n").slice(skipFirst).join("\n"), W);
 	if (rows.length <= CAP_ERROR) return rows;
-	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - (CAP_ERROR - 1)} more · ctrl+o${p.reset}`, W);
+	const cut = foldLine(`${p.dim}${noteIndent()}+${rows.length - (CAP_ERROR - 1)} more · ctrl+o${p.reset}`, W);
 	return [...rows.slice(0, CAP_ERROR - 1), ...cut];
 }
 
@@ -2054,14 +2136,14 @@ function liveWindow(text: string, W: number): string[] {
 		// blanks below it — VD-4's own rule ("the output starts under its
 		// own header and grows downward"), which the gutter rows used to
 		// satisfy by accident and blanks made visible as a two-row gap.
-		return [`${p.dim}${NOTE_ROW}waiting for output${p.reset}`, "", ""];
+		return [`${p.dim}${noteIndent()}waiting for output${p.reset}`, "", ""];
 	}
 	const rows = blockRows(text, W);
 	if (rows.length <= CAP_LIVE_WINDOW) {
 		while (rows.length < CAP_LIVE_WINDOW) rows.push(""); // R7a: blank, not a bar
 		return rows;
 	}
-	const cut = foldLine(`${p.dim}${NOTE_ROW}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+o${p.reset}`, W);
+	const cut = foldLine(`${p.dim}${noteIndent()}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+o${p.reset}`, W);
 	return [...rows.slice(rows.length - (CAP_LIVE_WINDOW - 1)), ...cut];
 }
 
@@ -2098,12 +2180,12 @@ function shellLiveTail(text: string, W: number): string[] {
 	//    output starts under its own header and grows downward, and the
 	//    height is just as fixed.
 	const all = blockRows(text, W);
-	const from = all.findIndex((r) => visibleWidth(r) > visibleWidth(BODY_ROW));
+	const from = all.findIndex((r) => visibleWidth(r) > visibleWidth(bodyRow()));
 	const rows = from < 0 ? [] : all.slice(from);
 	if (rows.length === 0) return liveWindow("", W);
 	const kept = rows.slice(Math.max(0, rows.length - (CAP_LIVE_WINDOW - 1)));
 	while (kept.length < CAP_LIVE_WINDOW - 1) kept.push(""); // R7a: blank, not a bar
-	return [...kept, cutLine(`${p.dim}${NOTE_ROW}live tail · esc stop · alt+⏎ redirect${p.reset}`, W)];
+	return [...kept, cutLine(`${p.dim}${noteIndent()}live tail · esc stop · alt+⏎ redirect${p.reset}`, W)];
 }
 
 /**
@@ -2150,7 +2232,7 @@ export function slotTail(text: string, W: number, rows: number): string[] {
 	if (rows <= 0) return [];
 	const p = palette();
 	const all = blockRows(text, W);
-	const from = all.findIndex((r) => visibleWidth(r) > visibleWidth(BODY_ROW));
+	const from = all.findIndex((r) => visibleWidth(r) > visibleWidth(bodyRow()));
 	const body = from < 0 ? [] : all.slice(from);
 	// R7a: no pad. The slot stopped padding (see slotPad) and this was
 	// the same pad by another route — three blank rows under a call with
@@ -2310,7 +2392,18 @@ function toolCutNote(name: string, resultText: string): string | null {
 class MarkdownBlock implements Component {
 	constructor(private readonly cell: { block: MdBlock }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
-		return renderBlock(this.cell.block, W);
+		// R13 E3 — THE MODEL'S WORDS MOVE TO COLUMN 2. A card's rows sit
+		// there (E4) and the chip's text does too (D4), so prose at column
+		// 0 would leave the page with three left edges for three registers
+		// — the opposite of one rhythm. The registers are told apart by
+		// SURFACE, which is §1.6's argument; the column is not one of the
+		// things doing that work.
+		//
+		// The block folds in the room the indent leaves, so invariant ①
+		// holds by construction. A block's own leading blank (its `gap`)
+		// stays EMPTY: an indented blank row is trailing whitespace, and
+		// §1.3 forbids a mark on a row with nothing to mark.
+		return renderBlock(this.cell.block, Math.max(1, W - PROSE_COL.length)).map((r) => (r === "" ? r : `${PROSE_COL}${r}`));
 	}
 }
 

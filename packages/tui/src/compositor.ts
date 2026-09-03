@@ -3030,23 +3030,19 @@ export class Body {
 		return seg.cells.some((i) => { const c = this.#cells[i]; return c?.kind === "tool" && !c.done; });
 	}
 
+	/** R13 D1 — the same constant as everything else. This used to compute
+	 *  the lead from a ONE-ROW STAND-IN so the live block would claim the
+	 *  spacing its fold was going to get; with the rhythm constant there
+	 *  is nothing to simulate, and R7a's device retires with the formula
+	 *  that needed it. */
 	#blockSpace(i: number, prev: readonly string[] | null, rows: string[]): string[] {
-		const lead = bodySpacing(this.#lastDrawn(i, prev), ["x"]).length > 1 ? [""] : [];
-		return [...lead, ...rows];
+		return bodySpacing(this.#lastDrawn(i, prev), rows);
 	}
 
 	#space(i: number, prev: readonly string[] | null, rows: string[]): string[] {
 		if (i > 0 && this.#cells[i]?.kind === "md" && this.#cells[i - 1]?.kind === "md") return rows;
-		// R7a, extended to the SETTLED side (R9 P2 / D4). R7a made the LIVE
-		// block claim the spacing its fold will take, so a settle changed a
-		// row's content and not its position. That held while a settled
-		// tool cell was one row; D4 makes it five, and `bodySpacing` gives a
-		// blank for a multi-row cell — so the blank appeared at the settle
-		// and pushed the head row down by one, which is the exact defect
-		// R7a closed. A tool cell is spaced by the ONE-ROW stand-in on both
-		// sides now: the fold is what every form of this cell is spaced
-		// against, live, settled and folded alike.
-		if (this.#cells[i]?.kind === "tool") return [...bodySpacing(this.#lastDrawn(i, prev), ["x"]).slice(0, -1), ...rows];
+		// R13 D1 retires the tool cell's stand-in: the rhythm is a constant,
+		// so a settle changes content and never position by construction.
 		return bodySpacing(this.#lastDrawn(i, prev), rows);
 	}
 

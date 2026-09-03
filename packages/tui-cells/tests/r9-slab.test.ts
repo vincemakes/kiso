@@ -57,16 +57,20 @@ const render = (c: Extract<BodyCell, { kind: "tool" }>, W = 64): string[] => cel
 const WASH = { light: "\x1b[48;5;255m", dark: "\x1b[48;5;236m" } as const;
 
 describe("R9 P2 — the slab's shape", () => {
-	it("head, blank, note, five output rows, blank, outcome", () => {
+	it("pad, head, blank, note, five output rows, blank, outcome, pad", () => {
+		// R13 added the two PAD rows; everything between them is R9 P2's
+		// shape unchanged, at the same offsets shifted by one.
 		setGround("light");
 		const rows = render(shell(88)).map(plain);
-		expect(rows).toHaveLength(10);
-		expect(rows[0]!.trimEnd()).toBe("  shell pwd && ls -la");
-		expect(rows[1]!.trim()).toBe("");
-		expect(rows[2]!.trim()).toBe("… 83 earlier lines · ctrl+o expands");
-		expect(rows.slice(3, 8).map((r) => r.trim())).toEqual(["row 84", "row 85", "row 86", "row 87", "row 88"]);
-		expect(rows[8]!.trim()).toBe("");
-		expect(rows[9]!.trim()).toBe("exit 0 · 88 lines · 0.4s");
+		expect(rows).toHaveLength(12);
+		expect(rows[0]!.trim()).toBe("");
+		expect(rows[1]!.trimEnd()).toBe("  shell pwd && ls -la");
+		expect(rows[2]!.trim()).toBe("");
+		expect(rows[3]!.trim()).toBe("… 83 earlier lines · ctrl+o expands");
+		expect(rows.slice(4, 9).map((r) => r.trim())).toEqual(["row 84", "row 85", "row 86", "row 87", "row 88"]);
+		expect(rows[9]!.trim()).toBe("");
+		expect(rows[10]!.trim()).toBe("exit 0 · 88 lines · 0.4s");
+		expect(rows[11]!.trim()).toBe("");
 	});
 
 	it("every row is EXACTLY the width — a slab that stops short is not a slab", () => {
@@ -93,40 +97,57 @@ describe("R9 P2 — the slab's shape", () => {
 	});
 
 	/**
-	 * Owner ruling 2026-09-02, NARROWING R9's "one-row slab".
+	 * DECLARED REVERSAL — R13 (owner, 2026-09-03) reverses the owner's own
+	 * narrowing of 2026-09-02.
 	 *
-	 * R9 drew a bodiless call as a washed row too. §1.6 as it now stands
-	 * gives the wash to the machine's VERBATIM text, and a row like
-	 * `read loop.ts · 412 lines · 0.1s` is kiso's SUMMARY of a result —
-	 * not one line of it. So the wash appears only where the call's own
-	 * output does, and a call with nothing on screen is a plain row.
+	 * That ruling read §1.6 as giving the wash to the machine's VERBATIM
+	 * text, so a row like `read loop.ts · 412 lines · 0.1s` — kiso's
+	 * SUMMARY of a result, not one line of it — got no surface, and a
+	 * bodiless call was a plain row. What it produced was a page where
+	 * some calls are cards and others are loose rows, which is the
+	 * instability the owner was pointing at when they compared kiso to the
+	 * reference. §1.6 moves with the reversal: the surface says WORK, not
+	 * VERBATIM.
 	 *
-	 * Asserted on all three grounds, because the failure this forbids is
-	 * a surface on a row with nothing verbatim on it, and that would be
-	 * invisible on the ground where nothing paints anyway.
+	 * So a bodiless call is the THREE-ROW card, its outcome riding the
+	 * head row because there is nothing between them to close. The
+	 * degradation is what did not move, and it is asserted below and in
+	 * r13-rhythm-surface: where no ground is known nothing paints, and the
+	 * fallback is never reverse video.
 	 */
-	it("a call with NO output on screen is a PLAIN row — no wash, and no reverse video either", () => {
+	it("a call with NO output on screen is the THREE-ROW card, and never reverse video", () => {
 		const read = { ...shell(0), name: "read_file", input: "src/parser.ts", inputFull: JSON.stringify({ path: "src/parser.ts" }), resultText: "" };
-		for (const g of ["light", "dark", "unknown"] as const) {
-			setGround(g);
-			const rows = render(read as Extract<BodyCell, { kind: "tool" }>);
-			expect(rows, `ground=${g}`).toHaveLength(1);
-			expect(rows[0], `ground=${g}`).not.toContain(WASH.light);
-			expect(rows[0], `ground=${g}`).not.toContain(WASH.dark);
-			expect(rows[0], `ground=${g}`).not.toContain("\x1b[49m");
-			expect(rows[0], `ground=${g}`).not.toContain("\x1b[7m");
-		}
-	});
-
-	it("…and its CONTENT is untouched by the ruling — the same row on every ground", () => {
-		const read = { ...shell(0), name: "read_file", input: "src/parser.ts", inputFull: JSON.stringify({ path: "src/parser.ts" }), resultText: "" };
-		setGround("unknown");
-		const bare = plain(render(read as Extract<BodyCell, { kind: "tool" }>)[0]!);
-		expect(bare).toContain("read  src/parser.ts");
-		expect(bare).toContain("0.4s");
 		for (const g of ["light", "dark"] as const) {
 			setGround(g);
-			expect(plain(render(read as Extract<BodyCell, { kind: "tool" }>)[0]!), `ground=${g}`).toBe(bare);
+			const rows = render(read as Extract<BodyCell, { kind: "tool" }>);
+			expect(rows, `ground=${g}`).toHaveLength(3);
+			expect(plain(rows[1]!).trimEnd(), `ground=${g}`).toBe("  read  src/parser.ts (0 lines, 0.4s)");
+			for (const row of rows) {
+				expect(row, `ground=${g}`).toContain(g === "light" ? WASH.light : WASH.dark);
+				expect(row, `ground=${g}`).not.toContain("\x1b[7m");
+			}
+		}
+		setGround("unknown");
+		const flat = render(read as Extract<BodyCell, { kind: "tool" }>);
+		expect(flat).toHaveLength(1);
+		expect(flat[0]).not.toContain(WASH.light);
+		expect(flat[0]).not.toContain(WASH.dark);
+		expect(flat[0]).not.toContain("\x1b[49m");
+		expect(flat[0]).not.toContain("\x1b[7m");
+	});
+
+	it("…and its CONTENT is the same on every ground — only the surface is contingent", () => {
+		const read = { ...shell(0), name: "read_file", input: "src/parser.ts", inputFull: JSON.stringify({ path: "src/parser.ts" }), resultText: "" };
+		setGround("unknown");
+		const bare = render(read as Extract<BodyCell, { kind: "tool" }>).map((r) => plain(r).trim());
+		expect(bare[0]).toContain("read  src/parser.ts");
+		expect(bare[0]).toContain("0.4s");
+		for (const g of ["light", "dark"] as const) {
+			setGround(g);
+			const said = render(read as Extract<BodyCell, { kind: "tool" }>)
+				.map((r) => plain(r).trim())
+				.filter((r) => r !== "");
+			expect(said, `ground=${g}`).toEqual(bare);
 		}
 	});
 
@@ -140,7 +161,7 @@ describe("R9 P2 — the slab's shape", () => {
 		const rows = render(shell(88));
 		// rows 3..7 are the output; none of them may open SGR 2 or the
 		// ground's own dim index
-		for (const row of rows.slice(3, 8)) {
+		for (const row of rows.slice(4, 9)) {
 			expect(row).not.toContain("\x1b[2m");
 			expect(row).not.toContain("\x1b[38;5;243m");
 		}
@@ -149,20 +170,20 @@ describe("R9 P2 — the slab's shape", () => {
 	it("the note and the outcome take washDim, the grey chosen FOR the wash", () => {
 		setGround("light");
 		const rows = render(shell(88));
-		expect(rows[2], "the note row").toContain("\x1b[38;5;241m");
-		expect(rows[9], "the outcome row").toContain("\x1b[38;5;241m");
+		expect(rows[3], "the note row").toContain("\x1b[38;5;241m");
+		expect(rows[10], "the outcome row").toContain("\x1b[38;5;241m");
 		setGround("dark");
 		const dk = render(shell(88));
-		expect(dk[2]).toContain("\x1b[38;5;247m");
-		expect(dk[9]).toContain("\x1b[38;5;247m");
+		expect(dk[3]).toContain("\x1b[38;5;247m");
+		expect(dk[10]).toContain("\x1b[38;5;247m");
 	});
 
 	it("D6: the head row's target is BOLD, and a failure tints only the outcome", () => {
 		setGround("light");
-		expect(render(shell(88))[0]).toContain("\x1b[1m");
+		expect(render(shell(88))[1], "the head row is row 1 — row 0 is the pad").toContain("\x1b[1m");
 		const bad = render({ ...shell(9), isError: true, resultText: `exit 1: boom\n${Array.from({ length: 9 }, (_, i) => `err ${i}`).join("\n")}` });
-		expect(bad[0], "the head row takes no tint").not.toContain("\x1b[38;5;124m");
-		expect(bad.at(-1), "the outcome word does").toContain("\x1b[38;5;124m");
+		expect(bad[1], "the head row takes no tint").not.toContain("\x1b[38;5;124m");
+		expect(bad.at(-2), "the outcome word does — row −1 is the pad").toContain("\x1b[38;5;124m");
 	});
 });
 

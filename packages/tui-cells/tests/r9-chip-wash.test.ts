@@ -107,7 +107,50 @@ describe("R9 Q3 — the chip folds by WORD", () => {
 		setGround("unknown");
 		const rows = chip("x".repeat(200), 20);
 		expect(rows.length).toBeGreaterThan(1);
-		for (const row of rows) expect(displayWidth(plain(row))).toBe(20);
+		// the BAND's rows are exactly the width; the cut notice below it is
+		// outside the reverse video by design and only has to fit (DC-45).
+		for (const row of rows) expect(displayWidth(plain(row)), JSON.stringify(plain(row))).toBeLessThanOrEqual(20);
+		for (const row of rows.filter((r) => !plain(r).startsWith("\u2514"))) expect(displayWidth(plain(row))).toBe(20);
+	});
+
+	/**
+	 * DC-45 — the cut notice was the one row of the chip nobody folded.
+	 *
+	 * `└ +3 more lines · sent in full` is written at a fixed 30 columns and
+	 * was emitted verbatim at every width. A paste of thirteen lines is
+	 * what reaches it (USER_CHIP_ROWS is 12), and in a terminal narrower
+	 * than the sentence the compositor's invariant ① does exactly what it
+	 * promises — it THROWS. So kiso died on a wide paste in a narrow
+	 * terminal, and had since the notice was written.
+	 *
+	 * Found during R13 (the chip's inner pad went from one column to two,
+	 * which moved a neighbouring case across the truncation boundary and
+	 * put this row on screen). It is not R13's defect: the row folds no
+	 * better at HEAD.
+	 *
+	 * The tiers follow TUI2-R1.5 ⑤'s discipline — the SEMANTICS is
+	 * reserved. "sent in full" is the whole point of the row (a bounded
+	 * display of a complete message is not a truncated message); the count
+	 * gives way before it, and `cutLine` is the backstop that makes the
+	 * invariant hold at every width there is.
+	 */
+	it("DC-45: the cut notice FITS at every width — it used to be 30 columns wide, always", () => {
+		setGround("unknown");
+		const many = Array.from({ length: 15 }, (_, i) => `line ${i}`).join("\n");
+		for (let W = 4; W <= 40; W += 1) {
+			const rows = chip(many, W);
+			const notice = rows.map(plain).find((r) => r.startsWith("\u2514"));
+			expect(notice, `W=${W}: no cut notice at all`).toBeDefined();
+			expect(displayWidth(notice!), `W=${W}: ${JSON.stringify(notice)}`).toBeLessThanOrEqual(W);
+		}
+	});
+
+	it("DC-45: …and it keeps the words that matter for as long as it can", () => {
+		setGround("unknown");
+		const many = Array.from({ length: 15 }, (_, i) => `line ${i}`).join("\n");
+		expect(plain(chip(many, 40).map(plain).find((r) => r.startsWith("\u2514"))!)).toBe("\u2514 +3 more lines \u00b7 sent in full");
+		// where the count no longer fits, the CLAIM is what survives
+		expect(chip(many, 20).map(plain).find((r) => r.startsWith("\u2514"))!).toContain("sent in full");
 	});
 
 	it("a space-free CJK run folds and never overruns — the case the char fold was defended with", () => {
