@@ -202,6 +202,26 @@ describe("UD-1 — boundaries", () => {
 });
 
 describe("UD-1 — the invariant, property-tested (seed 20260827)", () => {
+	/**
+	 * THE BUDGET IS A HANG DETECTOR, NOT A PERFORMANCE GATE.
+	 *
+	 * This case sweeps ten thousand scripted sessions, so its wall time is
+	 * a property of the MACHINE and not of the product. vitest's 5000ms
+	 * default was never a measured budget for it — 1.2s here, 6.5s on a
+	 * two-core CI runner (2026-09-03), and the default sat between the
+	 * two, so the same green suite went red on the slower machine with
+	 * nothing changed.
+	 *
+	 * 60s is ten times the slowest machine known to run it. What this gate
+	 * asserts is the INVARIANT — any gesture that destroyed two or more
+	 * characters is undone exactly, and redone exactly — and that is not a
+	 * claim about seconds. The cost of the wider budget is that a genuine
+	 * hang here surfaces 55 seconds later than it would have; the cost of
+	 * the narrow one was a gate that reported the runner's core count.
+	 *
+	 * Shrinking the sweep instead was considered and declined: it would
+	 * trade real coverage for a number with no argument behind it.
+	 */
 	it("after any gesture that shrank the buffer by ≥2, one undo restores it exactly; redo returns", () => {
 		let seed = 20260827;
 		const rnd = () => {
@@ -237,5 +257,5 @@ describe("UD-1 — the invariant, property-tested (seed 20260827)", () => {
 				}
 			}
 		}
-	});
+	}, 60_000);
 });
