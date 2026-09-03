@@ -265,7 +265,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 				["▌ ", "one\rtwo\rthree\r"],
 				// The three-chip needle — ↑ pops the LAST queued line back
 				// into the editor (the chip leaves the queue).
-				["\x1b[2m□\x1b[0m \x1b[7m three", "\x1b[A"],
+				["\x1b[2m□\x1b[0m \x1b[7m  three", "\x1b[A"],
 				// The popped line in the input row — esc pops ONE MORE
 				// ("two") and ends the pop-mode.
 				// R2: the composer has no `\u203a` — the popped line stands at
@@ -287,8 +287,8 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		// The chips are the SAME UserMessage chip as the body record — the
 		// dim □ gutter marks the queued state (never dimmed: the chip
 		// inverts the CURRENT colours).
-		expect(out).toContain("\x1b[2m□\x1b[0m \x1b[7m two");
-		expect(out).toContain("\x1b[2m□\x1b[0m \x1b[7m three");
+		expect(out).toContain("\x1b[2m□\x1b[0m \x1b[7m  two");
+		expect(out).toContain("\x1b[2m□\x1b[0m \x1b[7m  three");
 		// The status hint carries the queue depth.
 		expect(out).toContain("+2 queued");
 		expect(out).toContain("+1 queued");

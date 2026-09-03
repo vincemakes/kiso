@@ -137,9 +137,9 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 				// the needles ride the POST-RESET text (the glyphs are SGR-
 				// wrapped in the raw stream — "✦\x1b[0m plan ready" never
 				// matches "✦ plan ready"; the post-reset run is contiguous)
-				// R3i phase 3: the read's own row is absorbed by the stretch
-				// fold — the count on the line is what says it ran.
-				["read 1 file", ""], // the read ran under plan
+				// R13: the fold is retired — the read's OWN card is what
+				// says it ran, and its head row names the file.
+				["read  a.ts", ""], // the read ran under plan
 				["(plan mode: read-only", ""], // the pinned deny row's reason (A5: the · by <decider> tail rides INSIDE the parens — no trailing paren in the needle)
 				["the survey is done.", ""], // the model's answer after the denial
 				["plan ready", "/mode default\r"], // the way-forward row → the only exit
@@ -171,7 +171,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// below: WHICH call was refused and WHY. The settled row's own
 		// shape (`  read  a.ts (0.0s) · N lines · ctrl+o`) is A4's claim
 		// and is gated where it belongs, in compositor.test.ts.
-		expect(clean).toContain("read 1 file"); // the work it DID, on the fold
+		expect(clean).toContain("read  a.ts"); // the work it DID, on its own card
 		expect(clean).not.toContain("wrote 1 file"); // ...and not the write it did not
 		// MOVED (R1.5 slice 5, the approval-attribution class): a POLICY
 		// denial keeps only its REASON — the reason is the answer to "why",

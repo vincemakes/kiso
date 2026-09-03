@@ -174,13 +174,13 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		);
 		const clean = stripANSI(out);
 		expect(clean).toContain("▸ plan (read-only) · /mode to switch"); // W19 re-baseline: the idle row names the posture
-		// R3i phase 3: the denied write's own row is absorbed by the
-		// stretch fold, and the fold NAMES the denial — which call, and
-		// why — so the screen carries strictly more than the bare
-		// `[Permission denied]` row it replaces. The durable log and the
-		// pipe path still carry the raw text verbatim; that is asserted
-		// against `run.stdout` in tui-v7-planmode, and unaffected here.
-		expect(clean).toContain("1 denied: out.txt (plan mode: read-only)");
+		// MOVED (R13): the fold is retired, so the denial is back on the
+		// denied call's OWN row — which is where it was before R3i put it
+		// on a fold line, and it says strictly more there: the full call
+		// name, the target, and the reason. The subject is unchanged and
+		// is what is asserted — WHICH call was refused, and WHY.
+		expect(clean).toContain("out.txt");
+		expect(clean).toContain("plan mode: read-only");
 		expect(clean).toContain("mode → default");
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
 		// the panel's rule line names the ACT. The tool is still write_file

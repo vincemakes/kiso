@@ -379,11 +379,13 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// the settled row says "list", padded into the same 5-column verb
 		// gutter the read/edit heads already used — which is the point of
 		// the ruling: one screen, one vocabulary.
-		// R3b (owner ruling): the turn's three settled calls are inside the
-		// segment fold, which names them by COUNT. The verb vocabulary this
-		// case pins (one screen, one wording — `list`, not `list_dir`) is
-		// asserted where it now lives: the fold's terms, and the expansion.
-		expect(clean).toMatch(/listed 1 directory · ran 1 shell command · 1 × asky_read/);
+		// MOVED AGAIN (R13): the fold is retired, so the vocabulary this
+		// case pins — one screen, one wording, `list` and not `list_dir` —
+		// is asserted where it now lives: on each call's OWN head row,
+		// which is where R2pre ④ put it in the first place.
+		expect(clean).toMatch(/\blist\s+\S/);
+		expect(clean).not.toContain("list_dir");
+		expect(clean).not.toContain("asky_read ");
 
 
 		expect(clean).not.toContain("approved by"); // R1.5 5: no policy byline anywhere

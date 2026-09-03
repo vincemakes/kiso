@@ -157,7 +157,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so the
 		// bar no longer closes right after the words — the open and the
 		// words are the stable part, the pad depends on the terminal.
-		const userEcho = "\x1b[7m look around"; // the chip, flush left, opening the full-width band
+		const userEcho = "\x1b[7m  look around"; // the chip, opening the full-width band. R13 D4: the chip's inner pad is TWO columns now, so its text begins in the same column as the model's (E3) and as a card's rows (E4).
 		expect(out).toContain(userEcho);
 		// DECLARED SUPERSESSION (REL-0152-R1): counted on the SCREEN. The
 		// old renderer moved rows by scrolling the terminal, so a
@@ -250,7 +250,9 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// the verdict is a FACT in the W4 parentheses group; with no other
 		// fact beside it the `·` separator would be dangling, so the row
 		// reads "(approved, 0.0s)".
-		expect(clean).toMatch(/\((?:[^()]* · )?approved, \d+\.\ds\)/);
+		// MOVED (R13): one grammar for both cards — the head row's W4
+		// parentheses became the `·` chain the outcome row already used.
+		expect(clean).toMatch(/· approved/);
 		expect(clean).not.toContain("approved by");
 		// MOVED (R1.5 slice 5, the R1 tool-cell suffix class): the line
 		// count is stated EXACTLY ONCE (VD-6) and lives in the suffix, so
@@ -258,7 +260,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// human's own verdict.
 		// R2: no tick — the settled row's gutter is two spaces and the
 		// outcome is in the words.
-		expect(clean).toMatch(/ {2}asky_read {2}\(approved, \d+\.\ds\) · 1 line · ctrl\+o/);
+		expect(clean).toMatch(/ {2}asky_read {2}· 1 line · \d+\.\ds · approved · ctrl\+o/);
 		expect(clean).not.toContain("asky ok"); // the full result stays out of the stream
 		expect(clean).toContain("the tour is done");
 		// The status bar returned after the question (the model name is back).

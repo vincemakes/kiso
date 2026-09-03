@@ -20,7 +20,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cellComponent, exploreRows, type BodyCell, type FrameCtx } from "../src/components.js";
+import { cellComponent, type BodyCell, type FrameCtx } from "../src/components.js";
 import { panelBlockRows } from "../src/approval-panel.js";
 import { renderToolSummary } from "../src/render.js";
 import { displayVerb } from "../src/strings.js";
@@ -91,22 +91,8 @@ describe("TUI2-R2pre ④ — one display-verb table", () => {
 		expect(capped).not.toContain("capped by read_file");
 	});
 
-	it("T-R2p-15: the rollup's expanded list uses the SAME table, not its own copy", () => {
-		const rows = exploreRows(
-			[
-				{ name: "read_file", subjects: ["a.ts"] },
-				{ name: "list_dir", subjects: ["src"] },
-				{ name: "search_text", subjects: ['"tok"'] },
-				{ name: "write_file", subjects: ["out.ts"] },
-			],
-			100,
-		).join("\n");
-		expect(rows).toContain("read ");
-		expect(rows).toContain("list ");
-		expect(rows).toContain("search ");
-		expect(rows).toContain("write ");
-		expect(rows).not.toContain("write_file");
-	});
+	/* R13 — the case that exercised `exploreRows` retired with
+	   TUI2-R1 (B)'s exploration row itself. */
 
 	it("T-R2p-16: the approval panel's rule line names the act", () => {
 		const view = {

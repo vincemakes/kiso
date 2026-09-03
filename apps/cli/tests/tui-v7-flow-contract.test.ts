@@ -303,18 +303,15 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		const { hex, alive } = runFlow(120);
 		expect(alive).toBe("ALIVE");
 		const grid = finalGrid(hex, 120);
-		// R3b (owner ruling): the settled shell is inside the segment fold —
-		// the run's rows moved behind `ctrl+o`. "The settled shell owns ZERO
-		// body rows" is this case's claim and it is now true by
-		// construction; what the grid must show is the FOLD, and what it
-		// must still not show is the tail.
-		expect(grid.findIndex((l) => l.startsWith("✦ "))).toBeGreaterThanOrEqual(0); // R3g: the fold OR the recap — the claim is that the turn settled
-		expect(grid.join("")).not.toContain("earlier rows");
-		expect(grid.join("\n")).not.toMatch(/^(?: {2}\u2514 | {4})(seq|1[012])/m);
-		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND).
-		// R3b: the advisory rode the read's own row, which is inside the
-		// segment fold now. R4a: the fold row prints no key (see the 60-col
-		// case above) — its words are the evidence it stands for the run.
+		// REVERSED (R13): "the settled shell owns ZERO body rows" was VD-5,
+		// and VD-5 is retired — a settled call is a CARD and its preview is
+		// the point. What survives, and is the half this case was really
+		// about, is that the wide width behaves like the narrow one: the
+		// tail is CAPPED, and the cap is named.
+		expect(grid.findIndex((l) => l.startsWith("✦ "))).toBeGreaterThanOrEqual(0); // R3g: the recap — the claim is that the turn settled
+		expect(grid.join("\n"), "the preview is not capped at 120 columns").toMatch(/… \d+ earlier lines · ctrl\+o expands/);
+		// the display-verb class (TUI2-R2pre ④): one screen, one vocabulary,
+		// asserted on the call's own head row now that it has one.
 		expect(grid.join("\n")).toMatch(/ {2}read /);
 	}, 60_000);
 
@@ -349,7 +346,12 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// frames — is untouched.
 		const running = frames.filter((f) => f.grid.some((l) => /^● read .*\bfile\b/.test(l)) && f.grid.some((l) => /^ {2}shell /.test(l)));
 		expect(running.length).toBeGreaterThanOrEqual(2); // NON-vacuous: the moment really spans frames
-		// the window EXISTS and is 3 rows: 2 blank-padded rows + the waiting row
+		// the window EXISTS. AMENDED (R13 E2): it is the SETTLED card's
+		// window now — six rows, five preview plus its note row — where W8
+		// made it three. The reason is unchanged (the height must not move
+		// while the command runs) and the change is that it is fixed at a
+		// height the settle can only ever SHRINK, rather than at one the
+		// settle then changed.
 		const first = running[0]!.grid;
 		expect(first.some((l) => l.includes("└ waiting for output"))).toBe(true);
 		// R7a: the window's pad is BLANK, not `│ ` — a gutter marks a row
@@ -360,7 +362,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		const waitAt = first.findIndex((l) => l.includes("└ waiting for output"));
 		const shellAt = first.findIndex((l) => /^ {2}shell /.test(l));
 		expect(waitAt - shellAt, "the waiting row does not hug its header").toBe(1);
-		expect(first.slice(waitAt + 1, waitAt + 3).every((l) => l.trim() === ""), "the window's pad is not blank").toBe(true);
+		expect(first.slice(waitAt + 1, waitAt + 6).every((l) => l.trim() === ""), "the window's pad is not blank").toBe(true);
 		// the anti-jitter: pairwise across the consecutive running frames,
 		// every CONTENT row below the streaming cell's block is byte-identical
 		// — the running shell's OWN block (its folded header: the spinner-

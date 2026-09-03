@@ -19,7 +19,7 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { cellComponent, exploreRows, type BodyCell, type FrameCtx } from "../src/components.js";
+import { cellComponent, type BodyCell, type FrameCtx } from "../src/components.js";
 
 
 const CTX: FrameCtx = { spinnerI: 0, now: 13_000, height: 30 };
@@ -93,12 +93,8 @@ describe("R8a — the notes join the block", () => {
 		expect(last.startsWith("    ")).toBe(true);
 	});
 
-	it("the rollup's expansion opens with a corner and closes with a note", () => {
-		const rows = exploreRows([{ name: "read_file", subjects: ["a.ts", "b.ts"] }, { name: "search_text", subjects: ["x"] }], 80).map(plain);
-		expect(rows[0]!.startsWith("  └ ")).toBe(true);
-		expect(rows.filter((r) => r.trimStart().startsWith("└")).length).toBe(1);
-		expect(rows[rows.length - 1]!.startsWith("    ")).toBe(true);
-	});
+	/* R13 — the case that exercised `exploreRows` retired with
+	   TUI2-R1 (B)'s exploration row itself. */
 });
 
 describe("R8a — the diff's bar is a SCOPE mark and is NOT touched", () => {

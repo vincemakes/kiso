@@ -54,7 +54,13 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		const grid = screenAt(raw, "live tail · esc stop");
 		const joined = grid.join("\n");
 		expect(joined).not.toContain('{"command"');
-		expect(joined).toMatch(/shell sh steps\.sh · \d+s/);
+		// MOVED (R13 E2): the elapsed left the running head row for the
+		// card's METADATA row, which is where the settled card keeps it — so
+		// the settle changes what a row says and never where it sits. VD-4's
+		// subject (the duration is its own segment, never welded to a cut
+		// word) is unchanged and holds on that row.
+		expect(joined).toMatch(/shell sh steps\.sh/);
+		expect(joined).toMatch(/\n\s+\d+s\b/);
 		// the tail is live and its first row is output, never a bare gutter
 		// R8a: the block's first row is the CORNER row, and it must carry
 		// real output — the subject of this case, unchanged.

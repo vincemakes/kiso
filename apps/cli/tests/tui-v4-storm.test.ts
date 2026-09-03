@@ -265,7 +265,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// fixed dark background.
 		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so
 		// the bar no longer closes right after the words.
-		expect(out).toContain("\x1b[7m look around");
+		expect(out).toContain("\x1b[7m  look around"); // R13 D4: the chip's inner pad is TWO columns now, so its text begins in the same column as the model's (E3) and as a card's rows (E4).
 		expect(out).not.toContain("\x1b[48;5;237m"); // the fixed dark background stays banned
 
 		// ④ #16d/#16e: the input row carries NO prompt glyph at all (R2 —

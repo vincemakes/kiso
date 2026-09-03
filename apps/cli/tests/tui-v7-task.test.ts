@@ -302,7 +302,7 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 			[
 				["▌ ", "go\r"], // the brick — the startup prompt
 				["the task list is final.", ""], // the turn's text — the settle follows
-				["10 × task_set", "exit\r"], // the fold — then the prompt quits. R3h: the leading " · " went with `thought 0s` (the faux model does no thinking and a zero term is dropped), so the needle is the term itself.
+				["task_set", "exit\r"], // R13: the rollup is retired — each call is its own card, and the last one settling is the needle.
 			],
 			workdir,
 		);
@@ -448,7 +448,12 @@ describe("TUI v7 W20 — the task checklist as STATE (real PTY, 40×80)", () => 
 		expect(finalGrid[doneRow + 2]).toContain("▣ item 2");
 		expect(finalGrid[doneRow + 10]).toContain("▖ item 10"); // the durable active glyph
 		expect(turn).toContain("the task list is final."); // the turn's text — asserted on the BYTES: it rode the during-run band, and whether the settle's scrolls leave it in the final grid varies with the scroll count — the paint itself is deterministic
-		expect(finalGrid.join("\n")).toContain("10 × task_set"); // R3d: a tool with no term table counts its CALLS — "10 × task_set" — rather than inventing a plural noun for them
+		// MOVED (R13): the W13 rollup that produced "10 × task_set" is
+		// retired. This case's subject is the LIVE block redrawing in place
+		// and then settling, which the assertions above and below carry; what
+		// stands at the end is the calls' own cards.
+		expect(finalGrid.join("\n")).toContain("task_set");
+		expect(finalGrid.join("\n")).not.toContain("10 × task_set");
 
 		// ④ the idle chrome survived — the mode line (asserted on the
 		// FRAMES: the settle's real-LF scrolls and the exit teardown can

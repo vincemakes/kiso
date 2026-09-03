@@ -62,7 +62,6 @@
 		"apps/cli/tests/tui2-r1-visibility.test.ts",
 		"apps/cli/tests/tui2-r15-approval-pty.test.ts",
 		"apps/cli/tests/tui2-r15-cursor-pty.test.ts",
-		"apps/cli/tests/tui2-r15-rollup-pty.test.ts",
 		"apps/cli/tests/tui2-r15-sheet-pty.test.ts",
 		"apps/cli/tests/tui2-r15-shell-pty.test.ts",
 		"apps/cli/tests/tui2-r15-timers-pty.test.ts",

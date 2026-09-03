@@ -227,7 +227,11 @@ describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulato
 		// thinking block guards it better: every one of its rows carries
 		// the two-space lead, so a merge would show up as a row that has
 		// content but not the lead.
-		const thinkRows = turn.filter((l) => /^ {2}\S/.test(l));
+		// AMENDED (R13 E3 / DC-47): prose moved to column 2, so "indented
+		// is thinking" no longer separates them — the thinking took the
+		// next column in, and that is the discriminator now. The subject is
+		// unchanged: no thinking row has swallowed the response text.
+		const thinkRows = turn.filter((l) => /^ {4}\S/.test(l));
 		expect(thinkRows.length).toBeGreaterThan(0);
 		// ...and no such row has swallowed the response text — which is
 		// the merge this case is named for, now checked against every
