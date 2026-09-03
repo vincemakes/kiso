@@ -53,7 +53,6 @@ function shellCell(over: Partial<Extract<BodyCell, { kind: "tool" }>> = {}): Ext
 		done: false,
 		expanded: false,
 		turn: 0,
-		rolled: null,
 		reason: null,
 		verdict: null,
 		...over,
@@ -72,12 +71,16 @@ describe("TUI2-R1.5 ④(a) — the running shell header is the clean one (VD-4)"
 		expect(rows[0]).toContain("shell for i in 1 2 3 4 5 6;");
 	});
 
-	it("the duration is its OWN trailing segment — never glued to a cut word", () => {
+	it("the duration is its OWN row — never glued to a cut word", () => {
+		// MOVED (R13 E2): the duration left the head row for the card's
+		// METADATA row, which is where the settled card keeps it — so the
+		// settle changes what that row says and never where anything sits.
+		// VD-4's subject survives the move intact and is what is asserted:
+		// the duration is never welded to the cut head.
 		const rows = render(shellCell({ resultText: "x" }), 60);
-		// the head is cut with an ellipsis, and the duration follows it as a
-		// separated segment rather than riding the cut
-		expect(rows[0]).toMatch(/· \d+s$/);
+		expect(rows.at(-1)).toMatch(/\d+s$/);
 		expect(rows[0]).not.toMatch(/[A-Za-z0-9]\d+s$/);
+		expect(rows[0]).not.toMatch(/\ds$/);
 	});
 
 	it("the row still fits the width — invariant ① holds at every width", () => {
@@ -101,9 +104,11 @@ describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)",
 		const rows = render(shellCell({ resultText: "step 1 · compiling module 1 of 6" }));
 		const body = rows.slice(1);
 		expect(body[0]).toContain("step 1 · compiling module 1 of 6");
-		// the W8 fixed-window pad still holds the block's height — it just
-		// sits BELOW the output now instead of above it
-		expect(body).toHaveLength(3);
+		// the fixed-window pad still holds the block's height — it just
+		// sits BELOW the output now instead of above it. R13 E2 widened
+		// the window from W8's three rows to the SETTLED card's six, so
+		// the settle can only ever shrink it.
+		expect(body).toHaveLength(7);
 		// DECLARED SUPERSESSION (R7a, owner-ruled 2026-08-31): the pad is
 		// BLANK. This test's own subject — the first tail row is never
 		// blank — is untouched and asserted above; what changes is the
@@ -119,7 +124,8 @@ describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)",
 
 	it("the live-tail footer is unchanged", () => {
 		const rows = render(shellCell({ resultText: "a\nb\nc" }));
-		expect(rows[rows.length - 1]).toContain("live tail · esc stop · alt+⏎ redirect");
+		// …and the metadata row (R13 E2's elapsed) closes the card below it
+		expect(rows.at(-2)).toContain("live tail · esc stop · alt+⏎ redirect");
 	});
 });
 

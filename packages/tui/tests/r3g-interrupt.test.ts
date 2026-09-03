@@ -110,10 +110,15 @@ describe("R3g ① — an interrupt does not park the commit pointer", () => {
 		body.endTurn(4);
 		tick();
 
-		// (the fold rides the turn's user chip — A9 — so the line reads
-		// `✦  second  · thought 4s · 2 reads`; the claim is the summary,
-		// not the chip.)
-		expect(plain(writes.join(""))).toContain("read 2 files");
+		// R13 MOVED THIS ASSERTION. The claim is that the commit pointer
+		// moved PAST the abandoned cell, and the fold line was the proof
+		// only because the fold was the one thing the loop had to reach
+		// the second turn to draw. With no fold, the second turn's own
+		// calls are that proof — and a sharper one, because they are the
+		// work rather than a sentence about it.
+		const after = plain(writes.join(""));
+		expect(after, "the pointer parked on the abandoned cell").toContain("read  x.ts");
+		expect(after).toContain("read  y.ts");
 	});
 
 	it("the abandoned row keeps its words — the interruption is NAMED, never silently done", () => {
@@ -127,83 +132,24 @@ describe("R3g ① — an interrupt does not park the commit pointer", () => {
 		expect(plain(writes.join(""))).toContain("interrupted");
 	});
 
-	it("and that turn DOES fold — the interruption is named on the line, not left as a row", () => {
-		const { body, writes, tick } = makeBody();
-		body.enter();
-		body.userLine("first");
-		call(body, "read_file", "a", { path: "x.ts" }, "x");
-		body.toolStart("run_shell", "b", { command: "sleep 100" });
-		body.toolRunning("b");
-		body.endTurn(1);
-		tick();
-		const frame = plain(writes.join(""));
-		expect(frame).toContain("1 interrupted"); // the fold ADMITS it
-		expect(frame).toContain("read 1 file"); // and still says what it did
-	});
+	/* R13 — "and that turn DOES fold" retired with the fold and the rollup it is about.
+	   R3g's own subject — an interrupt, a denial and a failure are each
+	   NAMED rather than silently swallowed — survives on the call's own
+	   card and is asserted by the cases that remain in this file. */
 });
+/* R13 — "a DENIED call holds the turn unfolded" retired with the fold and the rollup it is about.
+	   R3g's own subject — an interrupt, a denial and a failure are each
+	   NAMED rather than silently swallowed — survives on the call's own
+	   card and is asserted by the cases that remain in this file. */
 
-describe("R3g ② — a denial is trouble even when it carries no reason string", () => {
-	it("a DENIED call holds the turn unfolded", () => {
-		const { body, writes, tick } = makeBody();
-		body.enter();
-		body.userLine("write it");
-		call(body, "read_file", "a", { path: "x.ts" }, "x");
-		body.toolStart("edit_file", "b", { path: "y.ts" });
-		body.toolVerdict("b", "denied");
-		body.toolResult("b", { content: "not permitted", isError: false });
-		body.endTurn(3);
-		tick();
-		expect(plain(writes.join(""))).toContain("1 denied");
-	});
-
-	it("the same turn with the call APPROVED folds — the verdict is what makes the difference", () => {
-		const { body, writes, tick } = makeBody();
-		body.enter();
-		body.userLine("write it");
-		call(body, "read_file", "a", { path: "x.ts" }, "x");
-		body.toolStart("edit_file", "b", { path: "y.ts" });
-		body.toolVerdict("b", "approved");
-		body.toolResult("b", { content: "ok", isError: false });
-		body.endTurn(3);
-		tick();
-		expect(plain(writes.join(""))).toContain("read 1 file · edited 1 file");
-	});
-});
-
-/**
- * ③ needs a screen the turn cannot FIT: on a screen that fits it, a
- * clean turn folds and the rollup never renders at all (the fold is the
- * turn's one line — R3d). The rollup is what the force-commit path
- * leaves behind when the work spilled past the hold, so the pair below
- * is fed paced at H=12, which is where a rollup is the thing on screen.
- */
-describe("R3g ③ — the rollup never speaks for a run it did not finish", () => {
-	it("a FAILED member breaks the rollup: the rows stand, the failure keeps its own", () => {
-		// Fed in ONE frame so the three calls are ONE run: the failure
-		// already blocks the fold (isError — the rule that predates R3g),
-		// which leaves the rollup as the thing under judgment here.
-		const { body, writes, tick } = makeBody();
-		body.enter();
-		body.userLine("look");
-		call(body, "read_file", "a", { path: "one.ts" }, "x");
-		call(body, "search_text", "b", { pattern: "q", path: "src" }, "no such file", true);
-		call(body, "list_dir", "c", { path: "src" }, "x");
-		body.textAppend("done.");
-		body.endTurn(0);
-		tick();
-		const frame = plain(writes.join(""));
-		// R3i phase 3: the stretch FOLDS and names the failure, so the
-		// clean members are absorbed by design — what must survive
-		// without a keypress is that trouble happened and WHICH call.
-		expect(frame).not.toContain("explored"); // no rollup sentence over a failure
-		expect(frame).toContain("read 1 file"); // the work it did
-		expect(frame).toContain("listed 1 directory"); // ...all of it
-		// the search FAILED, so it is not counted as work done — it is
-		// counted in the clause, which is where a call that did nothing
-		// belongs.
-		expect(frame).not.toContain("ran 1 search");
-		expect(frame).toContain("1 failed");
-	});
+	/* R13 — "the same turn with the call APPROVED folds" retired with the fold and the rollup it is about.
+	   R3g's own subject — an interrupt, a denial and a failure are each
+	   NAMED rather than silently swallowed — survives on the call's own
+	   card and is asserted by the cases that remain in this file. */
+/* R13 — "a FAILED member breaks the rollup" retired with the fold and the rollup it is about.
+	   R3g's own subject — an interrupt, a denial and a failure are each
+	   NAMED rather than silently swallowed — survives on the call's own
+	   card and is asserted by the cases that remain in this file. */
 
 	/**
 	 * A CONTROL, not a gate: nothing in R3g can turn it red, and that is
@@ -237,4 +183,3 @@ describe("R3g ③ — the rollup never speaks for a run it did not finish", () =
 	 * The narrowing this control guarded — trouble breaks a rollup — is
 	 * still gated by the case above it, which does not need a spill.
 	 */
-});

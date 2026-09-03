@@ -45,7 +45,6 @@ function shell(lines: number, over: Partial<Extract<BodyCell, { kind: "tool" }>>
 		startedAt: 0,
 		doneAt: 400,
 		reason: null,
-		rolled: null,
 		verdict: null,
 		expanded: false,
 		diff: null,

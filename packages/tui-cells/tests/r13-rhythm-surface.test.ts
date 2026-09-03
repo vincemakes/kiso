@@ -59,7 +59,6 @@ const tool = (over: Partial<Extract<BodyCell, { kind: "tool" }>> = {}): Extract<
 		startedAt: 0,
 		doneAt: 100,
 		reason: null,
-		rolled: null,
 		verdict: null,
 		expanded: false,
 		diff: null,

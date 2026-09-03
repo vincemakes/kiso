@@ -55,18 +55,43 @@ sections. They are never content.
 is the HUMAN'S surface** — their own words, at full contrast. It
 inverts whatever the terminal is, so it is the same weight on a light
 ground, a dark one, and one that was never established: one form, no
-ladder, nothing to under-read. **The wash is the MACHINE'S verbatim
-surface** — *this text is reproduced exactly as it was given*: inline
-code, and a call's own output. A lighter ground is right there, because
+ladder, nothing to under-read. **The wash is the MACHINE'S surface** —
+*this is the machine's work: what was run, and what came back*: inline
+code, and every settled call. A lighter ground is right there, because
 those rows are read as content rather than heard as an utterance.
+
+*Amended R13 (2026-09-03), reversing the narrowing of 2026-09-02.* The
+wash was the machine's VERBATIM surface, and the reading was exact — a
+row like `read loop.ts · 412 lines` is kiso's summary of a result, not a
+line of it, so it got no surface. What that produced was a page where
+some calls are cards and others are loose rows, which is the instability
+the reversal is about: the reader cannot predict what the machine's work
+will look like. The surface says WORK. One register, one form.
 
 Neither is an emphasis. Nothing is washed, and nothing is inverted, to
 make it stand out.
 
-**1.7 Work folds, words do not.** Tool calls collapse to one dim line
-when their stretch closes. Everything the model *says* — its answer and
-its thinking alike — stays as words. The fold line names what it stands
-for in words.
+**1.7 One rhythm, one surface: nothing folds and nothing is one-lined.**
+Every settled call stands in the transcript as its own CARD (§7.4), at a
+height that depends on what it did and on nothing else. Everything the
+model *says* — its answer and its thinking alike — stays as words.
+
+*Amended R13 (2026-09-03), owner-ruled.* This law used to read "work
+folds, words do not", and four mechanisms implemented it: the segment
+fold (R3b–R3i, W14), the W13 rollup, TUI2-R1 (B)'s exploration row and
+VD-5's one-row settle. Each answered the same pressure — ungrounded
+output rows owned the screen, so work was collapsed into sentences ABOUT
+the work. The card changes that arithmetic: a call's rows sit inside a
+surface that says where it begins and ends, so five of them read as one
+object rather than five loose lines, and the collapse costs more than it
+buys. What keeps a burst from owning the screen now is the preview cap —
+five rows a call, and none at all for a read — which is a constant per
+call rather than a judgement about runs.
+
+**1.8 One left edge.** Prose, the human's words and a card's rows all
+begin in column 2. The registers are told apart by SURFACE (§1.6), and
+the column is not one of the things doing that work. A block's own
+internal indents — a list's bullet, a fence's rail — are its own.
 
 ---
 
@@ -285,73 +310,87 @@ The indent is the price of §1.2: italic is an escape sequence, so a
 piped transcript would lose the line between the model's reasoning and
 its answer. Two spaces survive as bytes.
 
-**7.3 The activity block stands for the turn.** It is allocated at the
-turn's first thought and released when the stretch folds. Within it:
+**7.3 A running call is the same card, at a fixed height.** It is
+allocated at the settled card's height on its first frame and only ever
+shrinks — at the settle, when its result turns out to be shorter than
+the window it was given. So a settle changes a row's CONTENT and never
+its position: the breathing mark becomes two spaces in the same two
+columns, and the metadata row that said `3s` says `exit 0 · 90 lines ·
+3.2s`.
 
-- **Every call keeps its row** for the life of the stretch: it takes one
-  when it starts and changes *in place* when it finishes, so a four-file
-  burst leaves four names behind. Rows only accumulate, which is what
-  holds the height steady — **no padding**, because reserving rows with
-  nothing in them is §1.3 at the block scale and leaves a hole above the
-  composer.
-- **What is happening now outranks what happened.** In-flight rows are
-  admitted first and are never truncated; the call's own output follows
-  when it is the only one running; finished names fill what is left,
-  newest first; the rest is counted (`+N more running`), and that count
-  is of calls actually running.
-- **One breathing mark** — on the activity line when the stretch has
-  more than one call, on the call's own row when it has one, lit only
-  while something is in flight (§5.3).
-- **The block takes the spacing its FOLD will take**, never its own, so
-  a settle changes a row's content and not its position.
+The live region as a whole is capped at the room the committed rows
+leave. That is what keeps the window's top from falling: it is read off
+the total height, so a live region that can push the total over `H`
+makes a settle pull it back under, and every row on screen slides down
+by the difference. Capped, the top depends only on how much has
+committed, which only grows. Where the room is tight the cards give way
+first — the window shrinks toward one preview row, and below the
+seven-row skeleton a call keeps its head row until it commits (DC-43).
+Committed cards are never trimmed (§7.1).
 
-**7.4 A tool block is a SLAB, and its rows are INDENTED.** A single
-call's block is one object: the head row names the call, its own output
-sits inside, and the outcome closes it. Where the ground is known AND
-the call has output on screen, the whole block is washed full width —
-§1.6's machine-verbatim surface, saying where the call begins and ends —
-and `└` does not open it, because the surface is the container and a
-corner inside one is §1.3's empty mark a scale up. A call with no output
-on screen has no slab at all: one plain row, per §7.5.
+*Amended R13 (2026-09-03), owner-ruled.* This section described the
+standing activity block (R4): one allocation for a whole stretch, its
+contents swapping, its height constant. It bought "nothing moves" by
+never shrinking. With the fold retired there is no one-line form for it
+to release into, and the same property comes from the other side — the
+card's fixed height, and the live region's cap. The residual cost is
+recorded as DC-46.
 
-**Where the ground is NOT known the slab does not paint at all.** Rung 4's
-wash is reverse video (§3), and one inverted chip row is the ladder
+**7.4 A settled call is a CARD.** One object, one shape, every call:
+
+```
+  <pad>
+  shell npm test
+  <blank>
+  … 85 earlier lines · ctrl+o expands
+  <the last five output rows>
+  <blank>
+  exit 0 · 90 lines · 0.4s
+  <pad>
+```
+
+Pad, head, blank, preview, blank, outcome, pad — twelve rows at most,
+every row at COLUMN 2 (§1.8), the whole of it washed full width where
+the ground is known. `└` does not open it: the surface is the container,
+and a corner inside one is §1.3's empty mark a scale up.
+
+**A call with nothing to preview is the same card in three rows**, its
+outcome riding the head row because there is nothing between them to
+close.
+
+**The preview caps at five rows.** A shell shows its TAIL with the cut
+note above it — the conclusion of a command is at the bottom of its
+output — and everything else shows its HEAD with the note below, because
+that is where their answer is. **A read shows nothing at all**: its
+result is the file, five lines of it tell a reader less than the head
+row already does, and the key opens the whole thing. Its continuation
+note, when the tool itself capped the result, is not a preview and stays.
+
+**Where the ground is NOT known the card does not paint at all.** Rung
+4's wash is reverse video (§3), and one inverted chip row is the ladder
 working while eight inverted output rows are a black slab in the middle
-of the transcript. Unpainted, the block is what it has always been: the
-four-column indent, one level deeper than prose and than the header row,
-with `└` opening it and the metadata rows dim. The CONTENT is the same
-either way — only the surface and its two blank rows are contingent,
-because an unpainted blank row is §1.3 at the scale of a row.
+of the transcript. Unpainted, the block is the four-column indent, one
+level deeper than prose and than the head row, with `└` opening it and
+the metadata rows dim. The CONTENT is the same either way — only the
+surface, its pads and its two blank rows are contingent, because an
+unpainted blank row is §1.3 at the scale of a row.
 
-The indent carries a §1.2 fact — these rows are the call's output, not
-something the model said — which is why it is an indent and not a glyph:
-it survives a pipe. The notes inside the block (`… N earlier lines`,
-`waiting for output`, the collapse footer) take the same indent and no
-glyph. The diff's `│` is untouched: there it SCOPES rather than
-separates, which is the case §1.1 keeps it for.
+That four-column indent carries a §1.2 fact — these rows are the call's
+output, not something the model said — which is why it is an indent and
+not a glyph: it survives a pipe. Inside a painted card the head row and
+the outcome row bracket the preview instead, so the indent is no longer
+what says "these rows are output" and every row sits at column 2. The
+diff's `│` is untouched: there it SCOPES rather than separates, which is
+the case §1.1 keeps it for.
 
-**7.5 A settled call reads verb · target · outcome.** Where the call
-has no output on screen it is ONE row and the outcome rides it; where it
-does, the outcome closes the slab on its own row and the head row is
-free to be the command. **A call with no output on screen is a PLAIN
-row: the wash appears only where the call's own verbatim text does.** A
-settled read's row is kiso's summary of a result, not a line of it, and
-a surface there would be making a claim §1.6 does not support:
-
-```
-  read  loop.ts             412 lines · 0.1s · ctrl+o expands
-
-  shell pwd && ls -la
-    … 83 earlier lines · ctrl+o expands
-    <the last five output rows>
-    exit 0 · 88 lines · 0.4s
-```
+**7.5 A card reads verb · target, then outcome.** The head row says what
+was run; the outcome row says what happened, how much of it there was
+and how long it took. On the three-row card the two share a row.
 
 The verb column is padded to 5 so targets line up, and the target is
-bold on a slab's head row — the row's job there is to say WHAT was run.
-A failure takes no tint on the block; only the outcome word is coloured,
-which is §1.2 exactly — the colour rides the fact, not the object
-carrying it.
+bold on the head row. A failure takes no tint on the card; only the
+outcome word is coloured, which is §1.2 exactly — the colour rides the
+fact, not the object carrying it.
 
 Both metadata rows give way in a pinned order when the width squeezes:
 the attribution first, then the count, and the key is RESERVED — a row
@@ -360,10 +399,10 @@ the affordance exists to remove. Neither row ever folds; it is cut.
 
 Only a call still running carries a mark, because only it is moving.
 
-**7.6 A folded stretch is one line, and prints no key.** It says what the
-work was, in the tense each term earned — `read 4 files · ran 1 shell
-command` — and drops any term whose count is zero. It prints no
-selector: a number you cannot type is decoration that costs a column.
+**7.6 Deleted (R13, 2026-09-03).** It read: *a folded stretch is one
+line, and prints no key*. Nothing folds (§1.7), so there is no line for
+it to govern. Kept as a numbered stub because §7's numbers are
+referenced from the code and from the findings record.
 
 **7.7 `ctrl+o` has exactly one target and says which.** The row it will
 act on renders its own `ctrl+o` token at full strength among dim
@@ -376,7 +415,9 @@ out. Per §2.4 the emphasis is weight, not a background.
 
 **7.9 The user's words span the width.** Full width, REVERSE VIDEO, per
 §1.6 — the human's surface, one form on every ground, never the wash.
-The block is padded to `W` by *display* width, so a CJK row pads
+Its inner pad is TWO columns, so the human's words begin in the same
+column as the model's and as a card's rows (§1.8). The block is padded
+to `W` by *display* width, so a CJK row pads
 correctly, and it folds by WORD: the character fold was defended as
 lossless, which is not a property CJK has, and every other prose
 surface already folds by word. A word wider than the row still breaks
@@ -489,8 +530,17 @@ paste everywhere.
   field — no longer how often it CAN, since §3's rung 1 is persistable
   now. **Re-probing mid-session** (a terminal that announces a scheme
   change while kiso is running) is owed and not built.
-- **Spilled stretches.** A stretch too tall for its slot spills; how a
-  spilled stretch folds is not settled.
+- **The live region's floor (DC-46).** The live region is capped at what
+  the committed rows leave (§7.3), which is what keeps the window's top
+  from falling. On a SHORT terminal with a lot of committed work that
+  leaves one row, so DC-43's shrink takes the running call down to its
+  head row — and the running call's output is the one thing on screen
+  the human is waiting for. The alternative (give the live region the
+  room it needs and clamp the window's top instead) has its own measured
+  cost, the blank hole above the composer that R7a priced at 65 → 692 of
+  733 frames. Both measurements are in DC-46; the choice is the owner's.
+  Until then a residual one-row shift at a partially-settled burst is
+  bounded and gated (R7a A).
 - **A per-call title.** Naming what a call is *for*, in the model's own
   words, would mean the model authoring it — a request-byte change and a
   different release tier, not a visual round. §7.2's visible thinking

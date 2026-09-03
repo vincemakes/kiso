@@ -54,101 +54,20 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-describe("R4 A — the height stands still across a whole stretch", () => {
-	it("thinking, one call running, the gap after it, and the next call all occupy the SAME height", () => {
-		const { body, body_, tick } = makeBody({ H: 40 });
-		body.enter();
-		body.userLine("x");
-		body.thinkingAppend("the failing job pulls rollup in the CI-only verify step");
-		tick();
-		const thinking = body_().length;
+/* R13 — R4 A RETIRED, owner-ruled 2026-09-03, and the reversal is
+   explicit: the standing act slot is gone, so the live region's height
+   is a function of the calls IN FLIGHT rather than a constant. Its three
+   cases said a stretch occupies one height whatever happens inside it,
+   a three-call burst does not grow the region, and six calls in flight
+   stay inside the slot with the overflow counted. None of them can be
+   true without the slot.
 
-		running(body, "shell", "s1", { command: "npm run check" });
-		tick();
-		const acting = body_().length;
-
-		finish(body, "s1");
-		tick();
-		const gap = body_().length; // 0.17.0 collapses here — this is the jump
-
-		running(body, "read_file", "r1", { path: "packages/tui/src/compositor.ts" });
-		tick();
-		const next = body_().length;
-
-		// DECLARED SUPERSESSION (R7a, owner-ruled 2026-08-31) — THE
-		// REGION IS MONOTONE WITHIN A STRETCH, not constant.
-		//
-		// R4 held the height constant by PADDING the slot, because its
-		// content came and went: a finished call left the block and the
-		// block shrank under everything above it. Two rulings retired
-		// that. The pad was drawn as `│`, a gutter down rows with
-		// nothing on them, and blanking it (law 1.3) turned the padding
-		// into a hole — the a7 replay priced it at blank runs over 2 in
-		// 653 of 733 frames. And a finished call now KEEPS its row,
-		// because a burst that dropped each name as it completed ended
-		// having read four files and shown none of them.
-		//
-		// Keeping the rows is what makes the pad unnecessary: a block
-		// whose rows only accumulate cannot shrink, so nothing above it
-		// can be pulled down. That is the property below — the height
-		// never DECREASES across a stretch — and it is strictly what
-		// this test was protecting. The screen-position subject itself
-		// is gated directly in r7a-standing-rows.test.ts.
-		//
-		// A per-stretch high-water pad was built to make `next` monotone
-		// too, and measured: it did not (the re-composition is the
-		// stretch line and the spacing, not the slot alone) and it put
-		// a7's hole back. So the claim stops where it is TRUE — a call
-		// finishing never shrinks the region, which is the ruling's own
-		// content — and the screen-position subject is gated directly.
-		expect(acting, "a call in flight must not shrink the region").toBeGreaterThanOrEqual(thinking);
-		expect(gap, "a call FINISHING must not shrink the region — its name stays").toBeGreaterThanOrEqual(acting);
-		expect(Math.abs(next - gap), "the next call re-composed the region by more than one row").toBeLessThanOrEqual(1);
-	});
-
-	it("a three-call parallel burst does NOT grow the region", () => {
-		const { body, body_, tick } = makeBody({ H: 40 });
-		body.enter();
-		body.userLine("x");
-		body.thinkingAppend("planning");
-		running(body, "read_file", "r1", { path: "a.ts" });
-		tick();
-		const one = body_().length;
-
-		running(body, "read_file", "r2", { path: "b.ts" });
-		running(body, "read_file", "r3", { path: "c.ts" });
-		tick();
-		const three = body_().length;
-		// R7a: each call takes a row (the owner's ruling — a burst has
-		// to leave its four names behind), so three calls are taller
-		// than one. What must hold is that the growth is BOUNDED by the
-		// slot and never reverses: finishing them does not shrink it.
-		expect(three).toBeGreaterThanOrEqual(one);
-		expect(three - one, "three calls cost more than three rows").toBeLessThanOrEqual(3);
-		finish(body, "r1");
-		finish(body, "r2");
-		finish(body, "r3");
-		tick();
-		expect(body_().length, "finishing shrank the region").toBeGreaterThanOrEqual(three);
-	});
-
-	it("six calls in flight stay inside the slot and the overflow is COUNTED, not dropped", () => {
-		const { body, body_, tick } = makeBody({ H: 40 });
-		body.enter();
-		body.userLine("x");
-		body.thinkingAppend("planning");
-		running(body, "read_file", "r1", { path: "a.ts" });
-		tick();
-		const one = body_().length;
-		for (let i = 2; i <= 6; i += 1) running(body, "read_file", `r${i}`, { path: `f${i}.ts` });
-		tick();
-		// the CAP is the subject and it holds: six calls do not draw six
-		// rows. R7a lets each call take a row up to the slot's budget,
-		// and the rest are counted rather than dropped.
-		expect(body_().length, "six calls escaped the slot").toBeLessThanOrEqual(one + 4);
-		expect(body_().join("\n")).toMatch(/\+\d+ more running/);
-	});
-});
+   What replaces the property they were buying: `#liveRoom` caps the live
+   region at what the committed rows leave, so the WINDOW's top depends
+   only on `#committedLines` and therefore never falls — which is what
+   R7a A measures directly, and where the residual one-row shift is
+   priced (DC-46). The overflow is no longer "counted"; DC-43's shrink is
+   what handles it, down to head rows. */
 
 describe("R4 B — the slot's contents SWAP rather than vanish", () => {
 	it("between two calls the slot keeps the call that just finished, and its output", () => {
@@ -182,9 +101,21 @@ describe("R4 B — the slot's contents SWAP rather than vanish", () => {
 		finish(body, "s1", "OUTPUT-OF-FIRST");
 		running(body, "shell", "s2", { command: "second command" });
 		tick();
-		const shown = body_().join("\n");
+		// R13 MOVED THIS ASSERTION, and it is a stronger one now. Under R4
+		// the finished call's output was in the SLOT, under the running
+		// call's head, so the only way to state "the tail belongs to its
+		// own call" was to forbid the older output entirely. Under R13
+		// each call is its own card and the first call's output is on
+		// screen where it belongs — under the FIRST head. So the subject
+		// is asserted directly: the output is above the second call's
+		// head, not below it.
+		const rows = body_();
+		const shown = rows.join("\n");
 		expect(shown).toContain("second command");
-		expect(shown).not.toContain("OUTPUT-OF-FIRST");
+		const at = rows.findIndex((r) => r.includes("OUTPUT-OF-FIRST"));
+		const second = rows.findIndex((r) => r.includes("second command"));
+		expect(at, "the first call's output is not on screen at all").toBeGreaterThanOrEqual(0);
+		expect(at, "the first call's output landed under the SECOND call's head").toBeLessThan(second);
 	});
 });
 
@@ -254,14 +185,27 @@ describe("R4 D — DC-28: ctrl+o mid-stretch acts, and is seen to act", () => {
 		body.userLine("x");
 		body.thinkingAppend("planning");
 		running(body, "shell", "s1", { command: "npm run check" });
-		finish(body, "s1", ["row one", "row two", "row three", "row four", "row five", "row six"].join("\n"));
+		// R13 E2 widened the window from three rows to the settled card's
+		// five-plus-note, so the fixture grows with it: DC-28's subject is
+		// that the PRESS is visible, and it needs a row the cap hides.
+		finish(body, "s1", Array.from({ length: 9 }, (_, i) => `row ${i + 1}`).join("\n"));
 		tick();
 		const before = body_().join("\n");
-		expect(before).not.toContain("row one"); // outside the 3-row window
+		expect(before).not.toContain("row 1 "); // outside the preview cap
 
-		body.expandNext();
-		tick();
-		expect(body_().join("\n")).toContain("row one"); // the press is VISIBLE
+		// R13 CHANGED THE FORM OF THIS PRESS, and the change is worth
+		// stating. Under R4 a finished call was still LIVE (its committed
+		// form waited on the fold), so `ctrl+o` TOGGLED it and the
+		// expansion appeared in place. With no fold to wait for, a done
+		// call commits at once — so the press takes the COMMITTED path and
+		// APPENDS, which is R5/W15's own shape and the one ADR-0046
+		// requires of history that is already in the scrollback.
+		//
+		// DC-28's subject is unchanged and is what is asserted: the press
+		// ACTS, and what it produces carries the rows the cap had hidden.
+		const pressed = body.expandNext();
+		expect(pressed.kind, "the press did nothing at all").toBe("appended");
+		expect((pressed as { lines: string[] }).lines.join("\n")).toContain("row 1");
 	});
 });
 
@@ -287,7 +231,13 @@ describe("R4 E — DC-27: the scalar measures the screen", () => {
 		}
 		tick();
 		expect(body.liveCount()).toBeGreaterThanOrEqual(withOne);
-		expect(body.liveCount(), "the scalar is rendering blocks the screen does not have").toBeLessThanOrEqual(withOne + 5);
+		// R13: a finished call keeps its CARD, not its row, so five of them
+		// are worth up to five cards. A read's card is three rows painted
+		// and one unpainted; here nothing paints, and the blank D1 puts
+		// between each pair is the second row. The bound moves from
+		// five rows to ten and still discriminates: the pre-DC-27 scalar
+		// re-rendered each call as its own block and counted twenty.
+		expect(body.liveCount(), "the scalar is rendering blocks the screen does not have").toBeLessThanOrEqual(withOne + 10);
 		// and it agrees with the screen: the live region starts where the
 		// scalar says it does, counting up from the bottom.
 		const rows = body_();
@@ -295,100 +245,16 @@ describe("R4 E — DC-27: the scalar measures the screen", () => {
 	});
 });
 
-describe("R4a — the fold row prints no key, and ctrl+o opens the MOST RECENT", () => {
-	// R7: a stretch needs TWO calls to fold now — thinking left the
-	// segment, so think + one call is a single cell and stays below the
-	// >= 2 gate (which is the ruling working: a lone call keeps its own
-	// row, with its target verbatim). These gates are about the FOLD, so
-	// their fixture makes one.
-	const stretch = (b: Body, i: number): void => {
-		b.thinkingAppend(`thinking ${i}`);
-		b.thinkingEnd();
-		for (const k of [0, 1]) {
-			b.toolStart("read_file", `r${i}-${k}`, { path: `f${i}${k === 0 ? "" : "b"}.ts` });
-			b.toolRunning(`r${i}-${k}`);
-			b.toolResult(`r${i}-${k}`, { content: "one\ntwo\nthree", isError: false });
-		}
-		b.textAppend(`narrating ${i}.\n`);
-		b.textEnd();
-	};
-	/** the committed FOLD rows only — a tool card's own `ctrl+o expands`
-	 *  is a different row with a different (still true) promise. */
-	const foldRows = (writes: string[]): string[] =>
-		plain(writes.join(""))
-			.split(/\x1b\[\d+;1H|\n/)
-			.map((l) => l.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim())
-			// R6/D3: the fold wears no mark — its grammar is what finds it.
-			.filter((l) => /^(read|edited|wrote|listed|ran|explored|thought)\b/.test(l) && !l.includes("("));
+/* R13 — R4a's four cases RETIRED with the fold row they are about: two
+   of them said the committed fold prints no key and that its key still
+   opens the run, and two said the ring's FIRST press opens the most
+   recent fold with repeats walking back.
 
-	it("no committed fold advertises a key — the row is its words alone", () => {
-		const { body, writes, tick } = makeBody({ H: 40 });
-		body.enter();
-		body.userLine("x");
-		for (let i = 0; i < 3; i += 1) stretch(body, i);
-		body.endTurn(1);
-		tick();
-		const rows = foldRows(writes);
-		expect(rows.length).toBeGreaterThanOrEqual(2); // the folds are there...
-		for (const r of rows) expect(r).not.toContain("ctrl+o"); // ...and none names a key
-	});
-
-	it("...and the work is still reachable: the key answers with the run's own rows", () => {
-		const { body, tick } = makeBody({ H: 40 });
-		body.enter();
-		body.userLine("x");
-		stretch(body, 0);
-		body.endTurn(1);
-		tick();
-		const r = body.expandNext();
-		expect(r.kind).toBe("appended");
-		if (r.kind !== "appended") return;
-		expect(plain(r.lines.join("\n"))).toContain("f0.ts");
-	});
-
-	it("the FIRST press after new work opens the MOST RECENT fold, always", () => {
-		// The owner's question was "with that many folds, do you know which
-		// one opens?" — the answer has to be the same sentence every time.
-		// A new fold resets the walk, so it is: the last one.
-		const { body, tick } = makeBody({ H: 40 });
-		body.enter();
-		body.userLine("x");
-		stretch(body, 0);
-		stretch(body, 1);
-		body.endTurn(1);
-		tick();
-		const first = body.expandNext();
-		expect(first.kind).toBe("appended");
-		if (first.kind === "appended") expect(plain(first.lines.join("\n"))).toContain("f1.ts");
-
-		// a walk already in progress, and then NEW work lands
-		body.expandNext(); // walks back to the older one
-		body.userLine("y");
-		stretch(body, 2);
-		body.endTurn(1);
-		tick();
-		const after = body.expandNext();
-		expect(after.kind).toBe("appended");
-		if (after.kind === "appended") expect(plain(after.lines.join("\n"))).toContain("f2.ts");
-	});
-
-	it("repeats walk BACK — the older folds stay reachable from the keyboard", () => {
-		const { body, tick } = makeBody({ H: 40 });
-		body.enter();
-		body.userLine("x");
-		stretch(body, 0);
-		stretch(body, 1);
-		body.endTurn(1);
-		tick();
-		const seen: string[] = [];
-		for (let i = 0; i < 2; i += 1) {
-			const r = body.expandNext();
-			if (r.kind === "appended") seen.push(plain(r.lines.join("\n")));
-		}
-		expect(seen[0]).toContain("f1.ts"); // newest first...
-		expect(seen[1]).toContain("f0.ts"); // ...then back
-	});
-});
+   The ring survives and so does its walk — it holds CARDS now, and
+   `#collapsed` is fed by the same `hidesRows` test it always was. What
+   is gone is the fold head that used to be fed alongside them. The
+   walk's own rule (newest first, repeats walk back, the cycle restarts)
+   is unchanged code and is exercised by dc35-expand-repeat. */
 
 describe("R4 G — C4(d): the append-only re-wrap", () => {
 	const para = "The failing job pulls the rollup native binary in the CI-only verify step, which is where the lockfile's optional platform package never gets installed on a clean Linux runner.";

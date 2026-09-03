@@ -71,6 +71,13 @@ export interface FrameCtx {
 	 *  for the whole stretch, which is the fact it is there to carry:
 	 *  work is in flight. Owner-ruled 2026-08-31. */
 	readonly grouped?: boolean;
+	/** R13 E2 / DC-43 — how many PREVIEW rows a running card may take this
+	 *  frame. Undefined is the full window (`LIVE_WINDOW`); the compositor
+	 *  lowers it when the live region is tight, and 0 degrades the card to
+	 *  its head row alone. It is a frame input, not a property of the
+	 *  cell: the same call renders taller or shorter as the room changes,
+	 *  and never as its own content changes. */
+	readonly liveWindow?: number;
 }
 
 /** ONE screen line a component emits (raw, SGR included). */
@@ -230,21 +237,6 @@ export type BodyCell =
 			 *  created this cell (the fold-hold's owner; −1 when no turn
 			 *  exists yet — the pre-turn cells never hold). */
 			turn: number;
-			/** W13: the rolled-up group summary — set at COMMIT time when
-			 *  the head of an N > 2 same-tool run renders the group (the
-			 *  work order's claimed shape: "✓ read  5 files (2.4k lines,
-			 *  1.1s)" + the target children). The members carry null — the
-			 *  compositor's rolled-heads bookkeeping renders them [].
-			 *  TUI2-R1 (B): `parts` is set when the run spans MORE THAN ONE
-			 *  read-only tool — the same mechanism, the exploration row.
-			 *  Absent (a single-name run) keeps W13's row byte for byte. */
-			rolled: null | {
-				count: number;
-				lines: number;
-				elapsed: string;
-				targets: string[];
-				parts?: readonly { name: string; subjects: readonly string[] }[];
-			};
 			/** W19: a DENIED call's reason (the CLI extracted it from the
 			 *  result's "[Permission denied] " prefix, keyed on the "denied"
 			 *  tag). Non-null renders the pinned row — the full call name,
@@ -798,37 +790,10 @@ class ToolExecution implements Component {
 		const c = this.cell;
 		const verb = escapeTerminal(displayVerb(c.name));
 		const verbCol = verb.length < 5 ? `${verb}${" ".repeat(5 - verb.length)}` : verb;
-		const parts = c.rolled?.parts;
-		if (c.rolled !== null && parts !== undefined) {
-			// TUI2-R1 (B) — the exploration row: a run that spans more than
-			// one read-only tool. The counts are BOLD (what the reader is
-			// being told), the timing and the affordance dim — the
-			// prototype's placement. The affordance names what the key
-			// SHOWS here ("lists them"), because a group row's expand is a
-			// list of calls, not a body of output.
-			const r = c.rolled;
-			const counts = exploreCounts(parts);
-			const head = `  explored ${p.bold}${counts}${p.reset}`; // R2: no tick
-			const tail = ` (${r.elapsed}s)`;
-			const room = W - visibleWidth(head) - tail.length;
-			const affordance = " · ctrl+o lists them";
-			return [cutLine(`${head}${p.dim}${tail}${affordance.length <= room ? affordance : ""}${p.reset}`, W)];
-		}
-		if (c.rolled !== null) {
-			// W13 — the rolled-up group's ONE row + the target children:
-			// the work order's claimed shape, verbatim — the verbCol's
-			// 5-char pad reproduces the "read  5 files" double space, the
-			// children are the first 3 basename targets, the overflow row
-			// carries the ctrl+o affordance (its "└ … ctrl+o" joins the
-			// W15 expand history — the head's commit captures it).
-			const r = c.rolled;
-			const noun = ROLLUP_NOUN[c.name] ?? "calls";
-			const out = gutterCut("  ", `${verbCol} ${r.count} ${noun} (${kUnit(r.lines)} lines, ${r.elapsed}s)`, W); // R2: no tick
-			const shown = r.targets.slice(0, 3);
-			if (shown.length > 0) out.push(`  ${p.dim}${CUT_ROW}${escapeTerminal(shown.join(" · "))}${p.reset}`);
-			if (r.targets.length > 3) out.push(`  ${p.dim}${CUT_ROW}+${r.targets.length - 3} more — ctrl+o expands${p.reset}`);
-			return out;
-		}
+		// R13 — the W13 rollup row and TUI2-R1 (B)'s exploration row stood
+		// here, ahead of everything else a settled call could be. Both are
+		// retired with the `rolled` field they read (see the compositor's
+		// #foldOrRollup for the reversal in full).
 		if (c.state === "done") {
 			// R3i phase 5: an answered (or declined) ask_user renders its
 			// OWN block — the questions and what the human said. The row
@@ -851,7 +816,7 @@ class ToolExecution implements Component {
 			if (c.reason !== null) {
 				const by = attribution(c);
 				const out = gutterCut("  ", `${p.red}${escapeTerminal(`${c.name} ${toolTargetOf(c)}`)} (${escapeTerminal(c.reason)}${by})${p.reset}`, W);
-				out.push(...toolBlockBody(c, W));
+				out.push(...toolBlockBody(c, W, ctx));
 				return out;
 			}
 			const elapsed = c.startedAt !== null && c.doneAt !== null ? ((c.doneAt - c.startedAt) / 1000).toFixed(1) : "?";
@@ -894,7 +859,7 @@ class ToolExecution implements Component {
 			// metadata, in words, which is also the only form that survives
 			// a pipe with the colour stripped. A failure keeps its colour
 			// AND its words — see settledMeta.
-			const body = toolBlockParts(c, W).rows;
+			const body = toolBlockParts(c, W, ctx).rows;
 			if (body.length > 0 && c.expanded) {
 				// An EXPANDED block is already showing everything, and its own
 				// footer ("ctrl+o collapses") is what closes it. Giving it an
@@ -952,7 +917,7 @@ class ToolExecution implements Component {
 		if (c.state === "approval") {
 			// W2: the ❯ is the GUTTER (the left edge), never the line's tail
 			const out = gutterCut(`${p.bold}❯${p.reset} `, `${verbCol} ${liveTarget(c)}`, W);
-			out.push(...toolBlockBody(c, W));
+			out.push(...toolBlockBody(c, W, ctx));
 			return out;
 		}
 		if (c.state === "running") {
@@ -973,10 +938,34 @@ class ToolExecution implements Component {
 			// cannot be predicted: a turning mark implies progress the
 			// product does not have. With no ground the breath freezes to a
 			// static `●` and says the same thing more quietly.
-			const out = gutterCut(ctx.grouped === true ? "  " : `${breathFrame(ctx.spinnerI)} `, `${verbCol} ${liveTarget(c)}`, Math.max(4, W - dur.length));
-			out[0] = `${out[0]!}${p.dim}${dur}${p.reset}`;
-			out.push(...toolBlockBody(c, W));
-			return out;
+			// R13 E2 — A RUNNING CALL IS THE SAME CARD, allocated at the
+			// SETTLED card's height from its first frame. The settle then
+			// changes CONTENT and never position: the spinner becomes two
+			// spaces in the same two columns, the live window gives back
+			// the rows the result did not need, and the metadata row that
+			// said `3s` says `exit 0 · 90 lines · 3.2s`.
+			//
+			// The elapsed moves OFF the head row onto that metadata row,
+			// which is where the settled card keeps it — the head row's job
+			// is to say what is running, and it says the same thing before
+			// and after.
+			//
+			// DC-43: with too little room for the seven-row skeleton (two
+			// pads, the head, two blanks, one preview row and the metadata)
+			// there is no card — the call keeps its head row until it
+			// commits, which is the one form that fits anywhere.
+			const liveRows = ctx.liveWindow ?? LIVE_WINDOW;
+			const gutter = ctx.grouped === true ? "  " : `${breathFrame(ctx.spinnerI)} `;
+			if (liveRows <= 0) {
+				// the degraded form is the head row ALONE, so it keeps the
+				// duration it would otherwise have lost with its card — cut
+				// against the room the duration leaves (VD-4: the duration
+				// is its own segment, never welded to a cut word).
+				const bare = gutterCut(gutter, `${verbCol} ${liveTarget(c)}`, Math.max(4, W - dur.length));
+				return [`${bare[0]!}${p.dim}${dur}${p.reset}`];
+			}
+			const head = gutterCut(gutter, `${verbCol} ${liveTarget(c)}`, W)[0]!;
+			return slabBlock(head, toolBlockBody(c, W, ctx), `${elapsed}s`, W);
 		}
 		// W2: ◦ replaces → for QUEUED — · is the separator inside every
 		// metadata group; a queued marker that is also the separator
@@ -1005,7 +994,7 @@ class ToolExecution implements Component {
  * never a cap.
  */
 function hiddenLines(c: Extract<BodyCell, { kind: "tool" }>, W: number): number | null {
-	if (c.expanded || c.state !== "done" || c.rolled !== null || c.reason !== null) return null;
+	if (c.expanded || c.state !== "done" || c.reason !== null) return null;
 	if (c.name === "delegate") return null; // its body is the one-line summary, always whole
 	const n = countLines(c.resultText);
 	if (n === 0) return null;
@@ -1216,23 +1205,6 @@ const EXPLORE_NOUN: Readonly<Record<string, [string, string]>> = {
  *  carries meaning). */
 export function isExploreTool(name: string): boolean {
 	return EXPLORE_NOUN[name] !== undefined;
-}
-
-/** "8 files · 14 searches" — the per-tool counts in first-call order. */
-export function exploreCounts(parts: readonly { name: string; subjects: readonly string[] }[]): string {
-	return parts
-		.map((part) => {
-			const [singular, plural] = EXPLORE_NOUN[part.name] ?? ["call", "calls"];
-			// R3h (fable, 2026-08-29): DISTINCT subjects. This counted calls
-			// while exploreRows — the very next function, the expansion of
-			// THIS row — deduped them with `×N`. So the head said "6 files"
-			// over a list showing four, one of them `a.ts ×3`. The head and
-			// the body are two views of one run and must count alike; the
-			// body was right (a file read twice is one file).
-			const n = foldCountsObjects(part.name) ? new Set(part.subjects).size : part.subjects.length;
-			return `${n} ${n === 1 ? singular : plural}`;
-		})
-		.join(" · ");
 }
 
 /** TUI2-R1 (B) — the expanded list: ONE row per tool, the verb column
@@ -1550,105 +1522,6 @@ function troubleClause(t: StretchTerms): string {
 		.join(" · ");
 }
 
-/**
- * R4 (C1) — the fold NAMES ITS OWN TARGET.
- *
- * `ctrl+o` used to be printed identically on every fold on the screen,
- * and the key walked a ring whose order nothing on screen expressed —
- * so the owner's report was exact: "there is no way to know which
- * stretch it opens". The tint that marks the next target can only be
- * drawn on a LIVE row, and every fold worth reopening is, by
- * construction, in the scrollback where nothing can be tinted.
- *
- * A pointer cannot fix this either, and the bound is worth stating
- * once: SGR mouse reports address the VIEWPORT, so a fold that has
- * scrolled into the terminal's own scrollback is unreachable by any
- * pointer, permanently, on the primary screen. The ordinal is not a
- * cheaper substitute for clicking — it is the form of the affordance
- * that reaches every fold, and it survives a pipe as characters.
- *
- * The number rides the KEY, inside the width ladder, so it is paid for
- * by the same give-way order as every other span (law: the key never
- * gives way — it just got two characters longer).
- */
-export function stretchLine(t: StretchTerms & { readonly phase: "thinking" | "acting" | "settled"; readonly mark?: string }, W: number): string[] {
-	const p = palette();
-	const live = t.phase !== "settled";
-	// DECLARED SUPERSESSION (R6/D3, owner-ruled) — THE STRETCH LINE WEARS
-	// NO MARK, in any phase.
-	//
-	// Law 1.3: a symbol earns its cell by carrying a fact the words do
-	// not. When every settled fold, the live line AND the status row all
-	// wear a star, none of them distinguishes anything — it is the tick
-	// and the cross again (R2 retired those on exactly this ground), at
-	// the stretch scale. design.md §7.4 had already ruled the principle
-	// one scale down: "only the call still running carries a mark,
-	// because only it is moving", with a settled call's mark "(none) —
-	// the outcome is in the words. SETTLED." A settled STRETCH wearing
-	// one contradicted a precedent the file had already ratified.
-	//
-	// Nothing settled is being reversed: §4 lists this mark PROPOSED and
-	// §8 lists it OPEN. This is that proposal's ruling arriving, as a
-	// decline, on the owner's own dogfood.
-	//
-	// The replacement is a two-space INDENT, not a column shift: the row
-	// joins the settled-call family's geometry, the indent survives a
-	// pipe as bytes (prose never starts at column 3), and both forms are
-	// 2 cells so the width ladder below does not reflow. The status row's
-	// twinkle survives as the ONE moving mark; `✦ took` survives as the
-	// turn's seal.
-	//
-	// R7a AMENDS this by ONE case: the live ACTING line takes the
-	// breathing mark, passed in. D3 declined a mark on the SETTLED fold,
-	// where the words already carry the outcome; a line that means "work
-	// is in flight RIGHT NOW" carries a fact its words do not, which is
-	// exactly the test law 1.3 sets. It is also where the mark was
-	// migrating TO: §7.4's "only the call still running carries one" now
-	// applies at the stretch scale, one mark for the activity instead of
-	// one per call. Owner-ruled 2026-08-31, on the ground that a fast
-	// call's per-row mark is gone before the eye lands.
-	const mark = t.mark ?? " ";
-	// R4a (owner ruling, 2026-08-30) — the fold row prints NO key.
-	//
-	// R4 printed `· ctrl+o 3` so the row could name its own target. The
-	// owner's objection is the right one: a number you cannot type is not
-	// a selector, it is decoration that costs a column — and the
-	// reference implementation, checked rather than assumed, prints
-	// nothing on the row either. Its expansion lives in a MODE you enter,
-	// where the pointer can reach every fold including the ones that have
-	// scrolled away; the row itself stays clean.
-	//
-	// So the affordance is retired here and owed to that mode. Until it
-	// exists, `ctrl+o` still opens the most recent fold — it is simply no
-	// longer advertised on a row that cannot say which one it means.
-	const key = "";
-	const lead = t.phase === "thinking" ? [`thinking ${t.thoughtSeconds}s`] : t.phase === "settled" && t.thoughtSeconds > 0 ? [`thought ${t.thoughtSeconds}s`] : [];
-	const clauseText = troubleClause(t);
-
-	let meta = [...lead, ...(t.phase === "thinking" ? [] : stretchTerms(t, live))].join(" · ");
-	let clause = clauseText === "" ? "" : ` · ${clauseText}`;
-	let words = t.words === undefined || t.words === "" ? "" : ` ${escapeTerminal(t.words).replace(/\s+/g, " ")} `;
-	const width = (): number => 2 + (words === "" ? 0 : visibleWidth(words) + 3) + visibleWidth(meta) + visibleWidth(clause) + visibleWidth(key);
-	const trim = (text: string, room: number, floor: number): string => (room >= floor ? `${widthCut(text, room)}…` : "");
-
-	if (words !== "" && width() > W) words = trim(words, W - (width() - visibleWidth(words)) - 1, 4);
-	if (width() > W) {
-		for (const [long, short] of STRETCH_COMPACT) {
-			meta = meta.replaceAll(long, short);
-			if (width() <= W) break;
-		}
-	}
-	if (width() > W) {
-		const room = W - (width() - visibleWidth(meta)) - 1;
-		meta = room >= 2 ? `${widthCut(meta, room)}…` : "…";
-	}
-	if (width() > W && clause !== "") clause = trim(clause, W - (width() - visibleWidth(clause)) - 1, 5);
-	// the degenerate floor: below the width where even the mark and one
-	// character fit, the row is a hard cut of what it would have said.
-	const row = `${mark}${words === "" ? "" : ` ${p.rv}${words}${p.rvEnd}${p.dim} ·${p.reset}`} ${meta}${clause === "" ? "" : `${p.red}${clause}${p.reset}`}${key === "" ? "" : `${p.dim}${key}${p.reset}`}`;
-	return [visibleWidth(row) <= W ? row : cutLine(row, W)];
-}
-
 /** R6/D3: the quiet turn's fold wears no mark either — the SECOND
  *  emission site, and the one the D3 brief did not name. Same ruling,
  *  same two-space indent; see stretchLine above for the argument. */
@@ -1782,7 +1655,19 @@ export function turnFold(t: { words: string; thoughtSeconds: number; reads: numb
 /** R13 — ONE preview cap, every tool. It was the shell's alone while
  *  the shell was the only settled call with rows on screen. */
 const CAP_PREVIEW = 5;
-const CAP_LIVE_WINDOW = 3; // the running tool's FIXED window (W8)
+/** R13 E2 — the running card's preview window: the SETTLED card's, so
+ *  the settle can only shrink it. A settled card's preview is at most
+ *  five rows plus its cut note (CAP_PREVIEW + 1), which makes the card
+ *  twelve rows; a running card takes all six from the first frame and
+ *  gives back whatever the result did not need.
+ *
+ *  DECLARED REVERSAL of W8's three-row window, which was fixed for the
+ *  same reason (the height must not move while the command runs) but at
+ *  a height the settle then changed. */
+export const LIVE_WINDOW = CAP_PREVIEW + 1;
+/** The rows a card costs besides its preview: two pads, the head, two
+ *  blanks and the metadata row. Below this there is no card (DC-43). */
+const CARD_CHROME = 6;
 const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
 const CAP_ERROR = 3; // the error text head
 
@@ -1948,12 +1833,13 @@ interface BlockMemo {
 const blockMemo = new WeakMap<object, BlockMemo>();
 
 /** The block's body rows below the header (memoized, W9). */
-function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number): { rows: string[] } {
+function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: FrameCtx): { rows: string[] } {
 	const memo = blockMemo.get(c);
 	// the SURFACE is part of the key: the same cell renders different rows
 	// painted and unpainted, and a ground resolved after the first frame
 	// would otherwise be served the pre-ground shape forever.
-	const state = `${c.state}:${c.isError}:${c.name}:${c.expanded ? "x" : ""}:${slabPaints() ? "slab" : "flat"}`;
+	const liveRows = ctx.liveWindow ?? LIVE_WINDOW;
+	const state = `${c.state}:${c.isError}:${c.name}:${c.expanded ? "x" : ""}:${slabPaints() ? "slab" : "flat"}:${liveRows}`;
 	const content: unknown = c.state === "approval" ? (c.diff ?? null) : c.resultText;
 	if (memo !== undefined && memo.width === W && memo.state === state && memo.content === content) return memo;
 	const p = palette();
@@ -1990,9 +1876,13 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number): { ro
 				: c.state === "running"
 					? c.name === "delegate"
 						? delegateRunning(c, W)
-						: c.name === "shell"
-							? shellLiveTail(c.resultText, W)
-							: liveWindow(c.resultText, W)
+						: // R13 E1 — the call with no preview settled has none while
+							// it runs either; its card is three rows the whole way.
+							noPreview({ ...c, state: "done" })
+							? []
+							: c.name === "shell"
+								? shellLiveTail(c.resultText, W, liveRows)
+								: liveWindow(c.resultText, W, liveRows)
 					: c.state === "approval"
 						? diffBody(c.diff, W)
 						: [];
@@ -2029,8 +1919,8 @@ function noPreview(c: Extract<BodyCell, { kind: "tool" }>): boolean {
 }
 
 /** The block's body rows. */
-function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number): string[] {
-	return toolBlockParts(c, W).rows;
+function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: FrameCtx): string[] {
+	return toolBlockParts(c, W, ctx).rows;
 }
 
 /** Fold result text into body rows (the block's own indent): escape,
@@ -2125,7 +2015,7 @@ function errorBody(c: { name: string; resultText: string; reason?: string | null
  *  cut inside the window. The height changes exactly once, at settle —
  *  a cell that grows mid-list would shift every row after it on every
  *  delta (the parallel-tools jitter). */
-function liveWindow(text: string, W: number): string[] {
+function liveWindow(text: string, W: number, n: number): string[] {
 	const p = palette();
 	if (text === "") {
 		// R7a: blank, not two bare gutters. A `│` marks a row that HAS
@@ -2136,15 +2026,15 @@ function liveWindow(text: string, W: number): string[] {
 		// blanks below it — VD-4's own rule ("the output starts under its
 		// own header and grows downward"), which the gutter rows used to
 		// satisfy by accident and blanks made visible as a two-row gap.
-		return [`${p.dim}${noteIndent()}waiting for output${p.reset}`, "", ""];
+		return [`${p.dim}${noteIndent()}waiting for output${p.reset}`, ...Array.from({ length: Math.max(0, n - 1) }, () => "")];
 	}
 	const rows = blockRows(text, W);
-	if (rows.length <= CAP_LIVE_WINDOW) {
-		while (rows.length < CAP_LIVE_WINDOW) rows.push(""); // R7a: blank, not a bar
+	if (rows.length <= n) {
+		while (rows.length < n) rows.push(""); // R7a: blank, not a bar
 		return rows;
 	}
-	const cut = foldLine(`${p.dim}${noteIndent()}+${rows.length - (CAP_LIVE_WINDOW - 1)} earlier rows · ctrl+o${p.reset}`, W);
-	return [...rows.slice(rows.length - (CAP_LIVE_WINDOW - 1)), ...cut];
+	const cut = foldLine(`${p.dim}${noteIndent()}+${rows.length - (n - 1)} earlier rows · ctrl+o${p.reset}`, W);
+	return [...rows.slice(rows.length - (n - 1)), ...cut].slice(0, n);
 }
 
 /**
@@ -2164,8 +2054,8 @@ function liveWindow(text: string, W: number): string[] {
  * The footer names the state AND the two gestures that apply while a
  * command runs, because this is precisely when a human wants them.
  */
-function shellLiveTail(text: string, W: number): string[] {
-	if (text === "") return liveWindow("", W);
+function shellLiveTail(text: string, W: number, n: number): string[] {
+	if (text === "") return liveWindow("", W, n);
 	const p = palette();
 	// TUI2-R1.5 ④(b) (VD-4): the tail's first row is never a blank gutter.
 	// Two sources, both fixed here, and the W8 fixed-window height is kept
@@ -2182,9 +2072,9 @@ function shellLiveTail(text: string, W: number): string[] {
 	const all = blockRows(text, W);
 	const from = all.findIndex((r) => visibleWidth(r) > visibleWidth(bodyRow()));
 	const rows = from < 0 ? [] : all.slice(from);
-	if (rows.length === 0) return liveWindow("", W);
-	const kept = rows.slice(Math.max(0, rows.length - (CAP_LIVE_WINDOW - 1)));
-	while (kept.length < CAP_LIVE_WINDOW - 1) kept.push(""); // R7a: blank, not a bar
+	if (rows.length === 0) return liveWindow("", W, n);
+	const kept = rows.slice(Math.max(0, rows.length - (n - 1)));
+	while (kept.length < n - 1) kept.push(""); // R7a: blank, not a bar
 	return [...kept, cutLine(`${p.dim}${noteIndent()}live tail · esc stop · alt+⏎ redirect${p.reset}`, W)];
 }
 

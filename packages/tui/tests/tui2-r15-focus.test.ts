@@ -103,39 +103,8 @@ describe("TUI2-R1.5 ⑥ — one press, one cell (VD-7)", () => {
 		expect(after).not.toContain("\x1b[1;1H"); // no full repaint of the history
 	});
 
-	it("the ROLLUP is ONE cell — a press expands the group, not its members", () => {
-		const { body, tick } = makeBody();
-		body.enter();
-		body.userLine("go");
-		body.textAppend("Exploring.");
-		body.textEnd();
-		tick();
-		for (let i = 0; i < 4; i += 1) call(body, "read_file", `r${i}`, { path: `f${i}.ts` }, "x\ny");
-		call(body, "search_text", "s0", { pattern: "q", path: "." }, "hit");
-		body.textAppend("done.");
-		body.textEnd();
-		body.endTurn(0);
-		tick();
-		tick();
-		const r = body.expandNext();
-		expect(r.kind).toBe("appended");
-		const lines = (r as { lines: string[] }).lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
-		// R3b: the expansion is the SEGMENT's now — its header names what
-		// the segment did, and the run's own "explored …" title sits one
-		// row below it. The claim — ONE expansion naming the group, not
-		// five per-call ones — is unchanged and is what is asserted.
-		expect(lines).toContain("expanded · read 4 files · ran 1 search");
-		expect(lines).toContain("explored 4 files · 1 search");
-		// DECLARED SUPERSESSION (R3i phase 4): in the APPENDED path the
-		// footer said `ctrl+o collapses`, which is false there — a
-		// committed row is ink (ADR-0046 forbids rewriting history), so
-		// nothing about this block can be taken back and the next press
-		// opens the NEXT fold. The footer says what the key does. The
-		// LIVE toggle keeps the old wording, where it is true.
-		// R4a: the ordinal is retired; the footer says which DIRECTION the
-		// walk goes, which is the promise the key can actually keep.
-		expect(lines).toContain("end of expansion · ctrl+o opens the one before it");
-		expect(lines.match(/expanded ·/g) ?? []).toHaveLength(1);
-	});
+	/* R13 — "the ROLLUP is ONE cell" retired with the rollup itself: with
+	   no group there is no group to press, and the two cases above (a live
+	   cell, a committed one) are the whole of VD-7's subject now. */
 
 });

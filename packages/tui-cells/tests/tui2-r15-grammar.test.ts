@@ -48,7 +48,6 @@ function toolCell(over: Partial<Extract<BodyCell, { kind: "tool" }>> = {}): Extr
 		done: true,
 		expanded: false,
 		turn: 0,
-		rolled: null,
 		reason: null,
 		verdict: null,
 		...over,

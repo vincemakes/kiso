@@ -58,7 +58,6 @@ function shell(command: string, over: Partial<Extract<BodyCell, { kind: "tool" }
 		done: true,
 		expanded: false,
 		turn: 0,
-		rolled: null,
 		reason: null,
 		verdict: { decision: "approved" },
 		...over,

@@ -45,7 +45,6 @@ function running(over: Partial<Extract<BodyCell, { kind: "tool" }>> = {}): BodyC
 		done: false,
 		expanded: false,
 		turn: 0,
-		rolled: null,
 		reason: null,
 		verdict: null,
 		...over,
@@ -88,37 +87,45 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 	it("no output yet: the shape is exactly today's — nothing observed, nothing claimed", () => {
 		setTTY(false);
 		// VD-4 already put the waiting row FIRST; R7a blanks the pad
-		expect(render(running())).toEqual(["● shell npm test · 12s", "  └ waiting for output", "", ""]);
+		// R13 E2: the window is the SETTLED card's (six rows, five preview
+		// plus its note row) and the elapsed rides the metadata row, where
+		// the settled card keeps it. The head row and the waiting row are
+		// unchanged.
+		expect(render(running())).toEqual(["● shell npm test", "  └ waiting for output", "", "", "", "", "", "    12s"]);
 	});
 
 	it("output observed: the LAST lines ride the block, the footer names the state and the two gestures", () => {
 		setTTY(false);
 		const rows = render(running({ resultText: "packages/runtime    184 tests\npackages/tui      ⠸ 88/120" }));
 		expect(rows).toEqual([
-			"● shell npm test · 12s",
+			"● shell npm test",
 			"  └ packages/runtime    184 tests",
 			"    packages/tui      ⠸ 88/120",
+			"",
+			"",
+			"",
 			"    live tail · esc stop · alt+⏎ redirect",
+			"    12s",
 		]);
 	});
 
 	it("the tail UPDATES and the height NEVER changes — the W8 fixed window survives every length", () => {
 		setTTY(false);
 		for (const text of ["one", "one\ntwo", "one\ntwo\nthree", "one\ntwo\nthree\nfour\nfive\nsix"]) {
-			expect(render(running({ resultText: text })), text).toHaveLength(4);
+			expect(render(running({ resultText: text })), text).toHaveLength(8);
 		}
-		// growing output scrolls: the LAST two lines are what shows
+		// growing output scrolls: the LAST five lines are what shows
 		const rows = render(running({ resultText: "one\ntwo\nthree\nfour\nfive\nsix" }));
-		expect(rows[1]).toBe("  └ five");
-		expect(rows[2]).toBe("    six");
+		expect(rows[1]).toBe("  └ two");
+		expect(rows.slice(2, 6)).toEqual(["    three", "    four", "    five", "    six"]);
 	});
 
 	it("a long line is width-truncated inside the block, never folded into a fourth row", () => {
 		setTTY(false);
 		const rows = render(running({ resultText: `short\n${"x".repeat(300)}` }), 40);
-		expect(rows).toHaveLength(4);
+		expect(rows).toHaveLength(8);
 		for (const row of rows) expect(row.length).toBeLessThanOrEqual(40);
-		expect(rows[3]).toContain("live tail");
+		expect(rows.at(-2)).toContain("live tail");
 	});
 
 	it("the tail is DIM — the running content is context, never the message", () => {
@@ -128,13 +135,19 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		// carries the command's first line, never an empty gutter
 		expect(rows[1]).toBe("\x1b[2m  └ building…\x1b[0m");
 		expect(rows[2]).toBe(""); // R7a: the pad is blank
-		expect(rows[3]).toBe("\x1b[2m    live tail · esc stop · alt+⏎ redirect\x1b[0m");
+		expect(rows.at(-2)).toBe("\x1b[2m    live tail · esc stop · alt+⏎ redirect\x1b[0m");
 	});
 
 	it("a NON-shell running tool keeps liveWindow byte for byte — the tail is the shell's alone", () => {
 		setTTY(false);
 		const rows = render(running({ name: "read_file", input: "big.txt", inputFull: JSON.stringify({ path: "big.txt" }) }));
-		expect(rows).toEqual(["● read  big.txt · 12s", "  └ waiting for output", "", ""]);
+		// R13 E1: a read previews nothing, running or settled — its card is
+		// the head row and its metadata, and the settle changes only what
+		// they say. `liveWindow` itself is unchanged and still the non-
+		// shell form for every other tool (the list below).
+		expect(rows).toEqual(["● read  big.txt", "    12s"]);
+		const listed = render(running({ name: "list_dir", input: ".", inputFull: JSON.stringify({ path: "." }) }));
+		expect(listed).toEqual(["● list  .", "  └ waiting for output", "", "", "", "", "", "    12s"]);
 	});
 
 	// DECLARED REVERSAL (R9 P2 / D4): completion no longer collapses. The

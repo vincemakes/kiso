@@ -98,7 +98,6 @@ describe("TUI2-R1.5 ⑨ — the surfaces that wrap by word (VD-10)", () => {
 			done: true,
 			expanded: true,
 			turn: 0,
-			rolled: null,
 			reason: null,
 			verdict: null,
 		} as unknown as BodyCell;

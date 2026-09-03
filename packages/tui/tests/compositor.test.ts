@@ -815,7 +815,10 @@ describe("TUI v6 — the one compositor", () => {
 		// DECLARED SUPERSESSION (R3i phase 2): the two tool rows are no
 		// longer siblings — a stretch's completed calls fold into its one
 		// line, so what stands next to the user's row is the FOLD.
-		const foldAt = rows.findIndex((l) => /^ {2}(read|edited|wrote|listed|ran|explored|thought)\b/.test(l) && !l.includes("("));
+		// R13: the sibling next to the user's row is the first CALL's own
+		// card — the fold that used to stand there is retired. The subject
+		// is unchanged: two one-row cells, one blank between them.
+		const foldAt = rows.findIndex((l) => /^ {2}read {2}x/.test(l));
 		expect(foldAt).toBeGreaterThan(0);
 		expect(foldAt).toBe(userAt + 2); // R13 D1: one blank, even between two one-row cells
 		expect(rows[userAt + 1]).toBe(""); // …and it is a blank, not a shifted row
@@ -1000,182 +1003,17 @@ describe("TUI v6 — the one compositor", () => {
 		expect((third as { lines: string[] }).lines[0]).toContain("0 turns back");
 	});
 
-	it("W13: the run of 5 read_file calls + text rolls up to ONE row — the claimed shape, the first-3 children, the overflow, and the expand", () => {
-		// The natural turn shape [user, 5× read, text]: the text releases
-		// the fold-hold, and at that frame the head's forward scan sees
-		// all 5 members done → the ONE rollup row (the claimed shape).
-		// The permission raws interleave (the streaming execution — the
-		// loop's launch runs the calls concurrently with the model stream):
-		// the run must SEE THROUGH them, never crossing a user/text cell.
-		const { body, writes, tick } = makeBody({ W: 80 });
-		body.enter();
-		body.userLine("w13");
-		for (let i = 0; i < 5; i += 1) {
-			body.toolStart("read_file", `r${i}`, { path: `${"abcde"[i]}.ts` });
-			body.toolRunning(`r${i}`);
-			if (i === 1 || i === 3) body.raw(["  approved"]);
-			body.toolResult(`r${i}`, { content: "line one\nline two", isError: false });
-		}
-		body.textAppend("five files read.");
-		body.endTurn(0); // R3d: the fold is the TURN's
-		tick();
-		const frame = writes.join("");
-		// DECLARED SUPERSESSION (R3b, owner ruling): the run's COMMITTED
-		// form is the segment fold — the rollup row, its children and the
-		// overflow all moved behind `ctrl+o`. The members being GONE from
-		// the screen is what this case was always about, and it is a
-		// stronger claim now: one row for the run, and that row is the
-		// fold.
-		// the fold's glyph is bold-wrapped, so the needle is taken on the
-		// stripped text — `✦` and `thought` are not contiguous in bytes.
-		const bare = frame.replace(/\x1b\[[0-9;]*m/g, "");
-		// R6/D3: the fold row wears no mark — its words ARE the row.
-		expect(bare).toContain("read 5 files");
-		expect(bare.match(/ {2}read {2}\S/g) ?? []).toHaveLength(0);
-		// the fold joined the expand history: the expand shows the run's
-		// own projection — W13's title and the FULL per-call children, one
-		// └ row each, never rewriting anything.
-		const r = body.expandNext();
-		expect(r.kind).toBe("appended");
-		const lines = (r as { lines: string[] }).lines;
-		expect(lines[0]).toContain("expanded · read 5 files · 0 turns back");
-		expect(lines.join("\n")).toContain("read 5 files");
-		for (const t of ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"]) {
-			expect(lines.some((l) => l.includes(t))).toBe(true);
-		}
-	});
+	/* R13 — "W13: the run of 5 read_file calls + text rolls up to ONE row…" retired, owner-ruled 2026-09-03. W13's rollup row
+	   and W14's quiet-turn fold are two of the four collapses this round
+	   reverses (see the compositor's #foldOrRollup for the reversal in
+	   full, and r13-one-surface for what stands in their place: every
+	   settled call is its own card, and nothing is held from committing). */
 
-	it("W14: the QUIET turn folds — thinking + 5 reads with no text become the ONE fold line at the boundary; the hold keeps them live before it; the mix terms pluralize", () => {
-		const { body, writes, tick } = makeBody({ W: 80 });
-		body.enter();
-		body.userLine("quiet turn");
-		body.thinkingAppend("thinking quietly");
-		vi.advanceTimersByTime(19_000); // R3i: the seconds are the segment's own thinking clock
-		for (let i = 0; i < 5; i += 1) {
-			body.toolStart("read_file", `r${i}`, { path: `f${i}.ts` });
-			body.toolRunning(`r${i}`);
-			body.toolResult(`r${i}`, { content: "x", isError: false });
-		}
-		// the HOLD: done cells of an open text-less turn stay live — the
-		// frame commits nothing of them (no fold line, no rollup)
-		tick();
-		// R3i phase 3: the glyph alone cannot answer "has this committed".
-		// The live mark walks the twinkle's own cycle (§5.2's set), and
-		// ✦ is one of its frames — so a running stretch reads `✦ reading
-		// 5 files` for one 200ms frame, settled GLYPH with present tense.
-		// §4.1 blesses the shared glyph ("the mark that runs is the mark
-		// that stays"); what distinguishes the settled line is the TENSE
-		// and the KEY.
-		//
-		// DECLARED SUPERSESSION (R4 — the standing act slot): the KEY is
-		// no longer an observable that discriminates. It was, while the
-		// only row carrying `ctrl+o` was a committed fold; R4's slot
-		// keeps the call that just finished, and a settled head row
-		// carries its own `ctrl+o expands`. That affordance is now TRUE
-		// where it used to be a lie — DC-28 found that mid-stretch the
-		// key toggled a flag and drew nothing — so the right assertion
-		// is that it IS there, on the call.
-		//
-		// (An earlier draft of this comment said the TENSE carries the
-		// discrimination alone. It does not — see the second supersession
-		// below. What discriminates is the fold's KEY WITH ITS ORDINAL:
-		// `· ctrl+o 3` is emitted by exactly one code path, the settled
-		// stretch line, and a live row can never carry it.)
-		// (on the STRIPPED bytes: `ctrl+o` is reverse-video, so the raw
-		// stream carries an SGR reset between the key and the verb — the
-		// non-contiguous-needle trap DC-25 recorded, and it caught this
-		// assertion on its first draft too.)
-		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("ctrl+o expands");
-		// DECLARED SUPERSESSION (R4 — the tense is PER TERM). R3i put the
-		// whole live line in the present, so five FINISHED reads read
-		// `reading 5 files` while nothing was being read. The standing
-		// act slot made that a visible contradiction: the gap frame put
-		// `running npm run check` directly above a head row saying
-		// `(exit 0, 12.4s)`. A term whose calls are all done is in the
-		// past, whatever the line's own phase is — so this stretch, with
-		// five reads done and nothing running, says `read 5 files`, and
-		// says it truthfully.
-		//
-		// The cost is that the tense no longer separates live from
-		// settled. The KEY does, and only the key: `· ctrl+o <n>` comes
-		// from one code path — the settled stretch line — and carries an
-		// ordinal no live row has.
-		const held = writes.join("").replace(/\x1b\[[0-9;]*m/g, "");
-		expect(held).toContain("read 5 files");
-		expect(held).not.toMatch(/read 5 files · ctrl\+o \d/); // ...but NOT settled
-		// R4 tense + R6/D3: the writes are NOT cleared any more. Clearing
-		// them isolated "the fold frame", and there is no such frame left:
-		// the live row and the settled one are byte-identical, so the
-		// settle emits nothing and a cleared stream replays to a blank
-		// screen. The whole stream is kept and the claim is made about the
-		// screen it paints.
-		const beforeSettle = writes.length;
-		// the boundary: the terminal closes the turn — the fold line lands
-		// at the FIRST held cell's commit (the thinking cell — endTurn
-		// closes it), the members render [] after
-		body.endTurn(19);
-		tick();
-		// R4 tense + R6/D3: the settle EMITS NO BYTES any more. The live
-		// row already read `read 5 files` (the tense is per term, and
-		// every call is done), and D3 removed the mark, which was the last
-		// thing that differed — so the two rows are byte-identical and the
-		// diff renderer has nothing to write at the boundary. The claim is
-		// therefore made about the SCREEN, which is the honest surface for
-		// "what is the human left looking at" anyway.
-		const sc = new Screen(80, 24);
-		sc.feed(writes.join(""));
-		const frame = sc.rows.map((r) => r.join("").replace(/\s+$/, "")).join("\n");
-		// the claimed shape: the thought-seconds and the reads term (the
-		// fold glyph is bold-wrapped, so the check anchors on the
-		// contiguous term text)
-		// DECLARED SUPERSESSION (R3b, owner ruling): ZERO TERMS ARE
-		// DROPPED. W14 always wrote `no reads · no edits`, which is a
-		// sentence about things that did not happen; on a segment fold —
-		// where a run is usually all reads or all edits — half the row was
-		// the half saying nothing. A term earns its place by having a
-		// count. Every other claim in this case is unchanged.
-		// DECLARED SUPERSESSION (R6/D3): and the fold wears no ✦ either.
-		// Law 1.3 — a symbol earns its cell by carrying a fact the words
-		// do not — and when the fold, the live line and the status row all
-		// wore one, none of them distinguished anything. §4 listed this
-		// mark PROPOSED and §8 listed it OPEN, so nothing settled is being
-		// reversed: this is that proposal's ruling arriving as a decline.
-		// The row's own WORDS are asserted below.
-		expect(frame).not.toMatch(/\u2726 (read|thought|ran|listed)/);
-		// DECLARED SUPERSESSION (R7): the `thought Ns` term is gone.
-		// Thinking is words now — it never joins a segment, so the
-		// segment's thinking clock never starts, and R3h's own zero-term
-		// rule drops a term about something that did not happen. The
-		// thought itself is on screen above the fold, in full.
-		expect(frame).toContain("read 5 files");
-		expect(frame).not.toMatch(/thought \d+s · read 5 files/);
-		expect(frame).not.toContain("no edits");
-		// the members folded away — no individual read rows
-		expect(frame.match(/✓/g) ?? []).toHaveLength(0);
-		// and the settle really did emit nothing new — the row was already
-		// right before the boundary, which is the property the two
-		// supersessions above describe.
-		expect(writes.slice(beforeSettle).join("")).not.toContain("read 5 files");
-		// the extension: the mixed counts — 1 edit + 1 shell pluralize
-		// ("1 edit · 1 shell", the others in first-call order; R3b: the
-		// absent `reads` term is simply not written)
-		const mix = makeBody({ W: 80 });
-		mix.body.enter();
-		mix.body.userLine("mix");
-		mix.body.toolStart("edit_file", "e1", { path: "x.ts" });
-		mix.body.toolRunning("e1");
-		mix.body.toolResult("e1", { content: "ok", isError: false });
-		mix.body.toolStart("shell", "s1", { command: "echo hi" });
-		mix.body.toolRunning("s1");
-		mix.body.toolResult("s1", { content: "hi", isError: false });
-		mix.body.endTurn(7);
-		mix.tick();
-		// R3i phase 3: this stretch does no thinking, so its line has no
-		// thought term (R3b's zero-drop rule, which the thought term was
-		// exempt from by accident until R3h). The mixed counts — the
-		// subject of this leg — are unchanged.
-		expect(mix.writes.join("")).toContain("edited 1 file · ran 1 shell command");
-	});
+	/* R13 — "W14: the QUIET turn folds…" retired, owner-ruled 2026-09-03. W13's rollup row
+	   and W14's quiet-turn fold are two of the four collapses this round
+	   reverses (see the compositor's #foldOrRollup for the reversal in
+	   full, and r13-one-surface for what stands in their place: every
+	   settled call is its own card, and nothing is held from committing). */
 
 	/**
 	 * RETIRED (R3i phase 3, owner-ruled) — A9 NARROWS: the fold carries
