@@ -126,7 +126,17 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		// toggle with its `└ ctrl+o collapses` footer is the LIVE cell's
 		// form, pinned in the tui-cells unit.
 		const after = settledScreen(raw).join("\n");
-		expect(after).toContain("✦ expanded · shell sh steps.sh");
+		// MOVED (0.24.2 ③): the expansion is a CARD — its head row names the
+		// call, and it carries no `✦` (that is the recap's mark; §4.1).
+		//
+		// The head row is asserted on the RAW STREAM, not on the final
+		// screen, and the reason is worth stating: the card's body is
+		// UNCAPPED (an expansion that capped would be no expansion), so on
+		// a 24-row terminal a long one pushes its own head off the top.
+		// That is inherent to APPENDING an uncapped block and is recorded
+		// in DC-50, not something this case can assert away.
+		expect(raw.replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/shell sh steps\.sh · expanded · \d+ turns? back/);
+		expect(raw, "the recap's mark is on the expansion").not.toMatch(/✦\x1b\[0m expanded|✦ expanded/);
 		expect(after).toContain("step 6 of six");
 	}, 240_000);
 

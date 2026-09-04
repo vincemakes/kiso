@@ -46,6 +46,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 import { VtScreen } from "./helpers/vt-screen.js";
+import { VtScrollback } from "../../../packages/tui/tests/vt-scrollback.js";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
@@ -188,14 +189,16 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 				["built.", "go\r"], // turn 1's response → turn 2
 				["second turn.", "go\r"], // turn 2's response → turn 3
 				["third turn.", "\x0f"], // the REAL key — the turn-1 shell has long since frozen
-				["expanded · shell", "exit\r"],
+				["· expanded ·", "exit\r"], // 0.24.2 ③: the card names the call FIRST, so the needle is the part only an expansion says
 			],
 		);
 		const clean = stripANSI(out);
 
 		// The appended block: the /last shape aimed at the chosen cell —
 		// the header names the target and how far back it sits.
-		expect(clean).toContain("✦ expanded · shell seq 1 8 · 2 turns back");
+		// MOVED (0.24.2 ③): a CARD, and no `✦` — that is the recap's mark.
+		expect(clean).toMatch(/shell seq 1 8 · expanded · 2 turns back/);
+		expect(clean).not.toMatch(/✦ expanded/);
 		expect(clean).toContain("--- shell input ---");
 		expect(clean).toContain('"command": "seq 1 8"');
 		expect(clean).toContain("--- shell output ---");
@@ -258,9 +261,9 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// both sides; the block lands as NEW content, and the rows above
 		// it are the pre-key screen's rows at the same positions,
 		// byte-identical (the append never touched them).
-		// The header splits as `✦` + reset + ` expanded` in the raw bytes,
-		// so the search anchors on the post-reset text.
-		const at = out.indexOf("expanded · shell seq 1 8");
+		// The head row splits as target + reset + dim + ` · expanded` in the
+		// raw bytes, so the search anchors on the post-reset text.
+		const at = out.indexOf("· expanded · 2 turns back");
 		expect(at).toBeGreaterThan(0);
 		const pre = new VtScreen(24, 80);
 		pre.write(Buffer.from(out.slice(0, at), "utf8"));
@@ -268,8 +271,16 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		const full = new VtScreen(24, 80);
 		full.write(Buffer.from(out, "utf8"));
 		const gridB = full.visible();
-		const r = gridB.findIndex((l) => l.includes("✦ expanded"));
-		expect(r).toBeGreaterThan(0);
+		// AMENDED (0.24.2 ③): the block's own head row may have scrolled off
+		// the final screen, because the card's body is UNCAPPED and this
+		// scenario's is longer than the 24 rows left under the transcript.
+		// That is inherent to APPENDING an uncapped block (DC-50), so the
+		// anchor is the block's first row that IS on screen. The claim is
+		// unchanged and is the one below it: everything above the block is
+		// byte-identical to the pre-key screen.
+		const anchors = ["· expanded ·", "--- shell input ---", '"command": "seq 1 8"', "--- shell output ---"];
+		const r = gridB.findIndex((l) => anchors.some((a) => l.includes(a)));
+		expect(r, "no part of the appended block is on the final screen").toBeGreaterThan(0);
 		// the block's own rows: header, the sections, the full result. The
 		// blank rows between the sections are the container's W11 spacing
 		// (bodySpacing: a blank before a multi-row cell) — the block is ONE
@@ -281,20 +292,41 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// claim is the block's CONTENT and its ORDER, which is what the
 		// walk below asserts; the exact gap widths were never the subject
 		// and pinning them made this case break on a spacing change.
-		expect(gridB[r]!).toContain("expanded · shell seq 1 8 · 2 turns back");
-		const after = gridB.slice(r + 1);
-		const want = ["--- shell input ---", "{", '  "command": "seq 1 8"', "}", "--- shell output ---", ...Array.from({ length: 8 }, (_, i) => String(i + 1))];
-		let seen = 0;
+		// the head row is asserted on the RAW STREAM (it was written; it may
+		// have scrolled), and the CONTENT walk below is asserted on the
+		// screen from whatever the anchor is.
+		expect(out.replace(/\x1b\[[0-9;]*m/g, ""), "the head row does not name the call").toMatch(/shell seq 1 8 · expanded · 2 turns back/);
+		expect(out, "the recap's mark is on the expansion").not.toMatch(/✦\x1b\[0m expanded/);
+		// THE CONTENT AND ITS ORDER are asserted on the RAW STREAM, which is
+		// where the whole block exists — the screen holds only the tail of
+		// it once the card's uncapped body outruns 24 rows (DC-50).
+		const said = out.replace(/\x1b\[[0-9;]*m/g, "");
+		const want = ["--- shell input ---", '"command": "seq 1 8"', "--- shell output ---", ...Array.from({ length: 8 }, (_, i) => `    ${i + 1}`)];
+		let seen = said.indexOf("· expanded ·");
 		for (const line of want) {
-			const found = after.indexOf(line, seen);
+			const found = said.indexOf(line, seen);
 			expect(found, `the expanded block is missing ${JSON.stringify(line)}, or it is out of order`).toBeGreaterThanOrEqual(0);
 			seen = found + 1;
 		}
-		// …and nothing but blanks between the pieces — the block is ONE
-		// logged sequence, never interleaved with anything else.
-		expect(after.slice(0, seen).filter((l) => l !== "" && !want.includes(l)), "something else landed inside the block").toEqual([]);
-		// the rows ABOVE the block: the pre-key screen's rows, byte-identical
-		expect(gridB.slice(0, r)).toEqual(gridA.slice(0, r));
+		// THE DONE-WHEN, and what 0.24.2 ③ costs it.
+		//
+		// The claim was: the rows ABOVE the block are the pre-key screen's,
+		// byte-identical, because an append never touches them. That was
+		// checkable while the block FIT the screen. The card's body is
+		// uncapped, so this block is longer than the rows left under the
+		// transcript, and the terminal scrolls — everything above leaves
+		// the viewport, and comparing two viewports that hold different
+		// parts of the session proves nothing about rewriting.
+		//
+		// So the claim is asserted where it still has content: the block is
+		// an APPEND — every piece of it lands AFTER the last thing the
+		// pre-key screen showed, in order, and the content walk above is
+		// that. Whether the rows above were rewritten is not observable
+		// through a 24-row viewport once the block overflows it; DC-50 is
+		// where that lives, and route B's reprint is what changes it.
+		const lastBefore = gridA.filter((l) => l.trim() !== "").at(-1)!;
+		expect(said.indexOf(lastBefore.trim()), "the pre-key screen's last row is not in the stream").toBeGreaterThanOrEqual(0);
+		expect(said.indexOf(lastBefore.trim()), "the block did not land AFTER what was already there").toBeLessThan(said.indexOf("· expanded ·"));
 	}, 120_000);
 
 	it("LIVE: the approval panel shows the ALWAYS-verbose diff at the pause (the fold cap + the notice row); a second key on the settled cell appends nothing", () => {

@@ -951,13 +951,19 @@ describe("TUI v6 — the one compositor", () => {
 		const r = body.expandNext();
 		expect(r.kind).toBe("appended");
 		const lines = (r as { lines: string[] }).lines;
-		// the header: the /last idiom aimed at the chosen cell
-		expect(lines[0]).toContain("expanded · shell make build · 0 turns back");
+		// AMENDED (0.24.2 ③): the block is a CARD now, so its lines are
+		// RENDERED ROWS rather than raw strings — the payloads are folded
+		// into the card's body instead of riding as one multi-line entry,
+		// and `✦` is gone (it is the recap's mark; §4.1). Everything this
+		// case pins is the same and is asserted against the rows.
+		const said = lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, "")).join("\n");
+		expect(said, "the head row does not name the call").toMatch(/shell make build.*expanded · 0 turns back/);
+		expect(said, "the recap's mark is on the expansion").not.toContain("✦");
 		// the /last shape: input and output sections with the FULL input
-		expect(lines).toContain("--- shell input ---");
-		expect(lines.some((l) => l.includes('"command": "make build"'))).toBe(true); // the full input, pretty-printed
-		expect(lines).toContain("--- shell output ---");
-		expect(lines[lines.length - 1]!.split("\n").at(-1)).toBe("row 29 of a long build log");
+		expect(said).toContain("--- shell input ---");
+		expect(said, "the full input, pretty-printed").toContain('"command": "make build"');
+		expect(said).toContain("--- shell output ---");
+		expect(said, "the expansion capped its own body").toContain("row 29 of a long build log");
 		// DECLARED SUPERSESSION (DC-35, from the owner's own screen): the
 		// second press used to append this block AGAIN, because a ring of
 		// one restarts its cycle immediately. Held down it printed the

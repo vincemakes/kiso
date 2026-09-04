@@ -63,6 +63,8 @@ export interface AtPanelState {
 }
 import {
 	CAP_PREVIEW,
+	thinkingRow,
+	expandedCard,
 	Container,
 	ROLLUP_NOUN,
 	MOTION_FRAMES,
@@ -1432,18 +1434,25 @@ export class Body {
 		}
 		const turnsBack = this.#cells.slice(idx + 1).filter((c) => c.kind === "user").length;
 		const p = palette();
-		const header = `${p.bold}✦${p.reset} expanded · ${escapeTerminal(`${displayVerb(cell.name)} ${toolTarget(cell.name, input)}`)} · ${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`;
+		// 0.24.2 ③ — the expansion is a CARD, and `✦` is not its mark: that
+		// glyph is the turn recap's, and one symbol with two meanings is
+		// §4.1. The head row names the call, which is the tie to it that
+		// the mark's sentence used to be.
+		const verb = displayVerb(cell.name);
+		const elapsed = cell.startedAt !== null && cell.doneAt !== null ? ((cell.doneAt - cell.startedAt) / 1000).toFixed(1) : "?";
+		const n = cell.resultText === "" ? 0 : cell.resultText.split("\n").length;
 		return {
 			kind: "appended",
-			lines: [
-				header,
+			lines: expandedCard(
+				verb,
+				toolTarget(cell.name, input),
+				`expanded · ${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`,
 				// TUI2-R2pre ④: the SECTION HEADERS say the act; the payloads
 				// below them (inputFull, resultText) are RAW and byte-identical.
-				`--- ${displayVerb(cell.name)} input ---`,
-				cell.inputFull,
-				`--- ${displayVerb(cell.name)} output${cell.isError ? " (error)" : ""} ---`,
-				cell.resultText,
-			],
+				[`--- ${verb} input ---`, cell.inputFull, `--- ${verb} output${cell.isError ? " (error)" : ""} ---`, cell.resultText],
+				[cell.isError ? "failed" : "exit 0", `${n} line${n === 1 ? "" : "s"}`, `${elapsed}s`].filter((x) => x !== "").join(" · "),
+				this.#opts.width(),
+			),
 		};
 	}
 
@@ -2009,7 +2018,32 @@ export class Body {
 			out.push(...this.#space(i, prev, rows));
 			prev = rows;
 		}
+		// 0.24.2 ② — THE PLACEHOLDER. A turn in flight whose live region
+		// has drawn nothing leaves the composer under a blank stretch,
+		// with only the status row saying anything is happening; the owner
+		// read that as the product having stopped.
+		//
+		// So one row says it: `thinking…`, dim italic at column 2, no
+		// glyph — the SAME column and the same font a thinking paragraph
+		// takes, so whatever arrives replaces it in place and the eye sees
+		// a word change rather than a jump.
+		//
+		// It is NOT a cell. It never commits, never reaches the
+		// scrollback, and neither `/last` nor the pipe has heard of it —
+		// which is the whole of why a row that is a guess about the future
+		// is allowed at all: a row that never becomes history cannot make
+		// history wrong.
+		if (out.length === 0 && this.#thinkingGap()) return [...bodySpacing(this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null, [thinkingRow()]) ];
 		return out;
+	}
+
+	/** 0.24.2 ② — is this the gap the placeholder is for? A turn has
+	 *  begun and not ended, and nothing else is drawing a live row (the
+	 *  caller has already found the projection empty, which is what "no
+	 *  card is running" reduces to once every cell renders itself). */
+	#thinkingGap(): boolean {
+		const turn = this.#turns[this.#turns.length - 1];
+		return turn !== undefined && !turn.ended;
 	}
 
 	/** The live region's scalar — the unit tests assert the cap directly

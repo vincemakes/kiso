@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.24.1
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.24.2
 ```
 
 (The block letter above is `assets/logo.svg` in pixel form — an 8×8 K

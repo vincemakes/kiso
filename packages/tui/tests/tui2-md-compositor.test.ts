@@ -171,8 +171,15 @@ describe("TUI2-MD ⑤ — the compositor wiring", () => {
 		// close, so the force-commit path is never what is moving them. And
 		// the peak is CONSTANT — the same after 200 lines as after 20, which
 		// is the block-freeze property stated as a number.
+		//
+		// AMENDED (0.24.2 ②): 4 → 6. The `thinking…` placeholder occupies
+		// the live region in the gaps where the projection is empty — one
+		// row plus D1's blank — and this stream has such gaps between a
+		// frozen fence line and the next. The property this case exists
+		// for is the CONSTANT, not the number: it is still the same after
+		// 200 lines as after 20, which is what the assertion below pins.
 		const peak = Math.max(...peaks);
-		expect(`peak=${peak} of cap ${H - 4}`).toBe(`peak=4 of cap ${H - 4}`);
+		expect(`peak=${peak} of cap ${H - 4}`).toBe(`peak=6 of cap ${H - 4}`);
 		expect(Math.max(...peaks.slice(0, 20))).toBe(peak);
 	});
 

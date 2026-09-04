@@ -78,7 +78,11 @@ describe("DC-41 — ctrl+o expands, ctrl+r reads back, and neither does the othe
 
 	it("both surfaces appear, in the order the keys were pressed", () => {
 		const raw = transcript();
-		const expandedAt = raw.indexOf("expanded · shell");
+		// NEEDLE MOVED (0.24.2 ③): the expansion is a card and its head row
+		// names the CALL first — `shell … · expanded · N turns back` —
+		// where the old block led with `✦ expanded · shell …`. The needle
+		// is the part that only an expansion says.
+		const expandedAt = raw.indexOf("· expanded ·");
 		const viewerAt = raw.indexOf("esc closes");
 		expect(expandedAt, "ctrl+o did not append an expansion").toBeGreaterThan(0);
 		expect(viewerAt, "ctrl+r did not open the viewer").toBeGreaterThan(0);

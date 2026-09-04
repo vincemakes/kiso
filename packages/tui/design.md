@@ -351,6 +351,15 @@ any. Where the room is tight a window may not GROW past it, and below
 the seven-row skeleton a call keeps its head row until it commits
 (DC-43). A window that already grew is never pulled back in.
 
+**A turn in flight with an empty live region says so.** One row —
+`thinking…`, dim italic at column 2, no glyph — stands where the model's
+first words will, so whatever arrives replaces it in the same column and
+the same font and the eye sees a word change rather than a jump. It is
+NOT a cell: it never commits, never reaches the scrollback, and neither
+`/last` nor the pipe has heard of it. That is what makes a row which is
+a guess about the future permissible at all — a row that never becomes
+history cannot make history wrong.
+
 *Amended twice on 2026-09-03.* This section first described R4's
 standing activity block — one allocation for a whole stretch, contents
 swapping, height constant — which bought "nothing moves" by never
@@ -525,6 +534,17 @@ somewhere; `ctrl+r` is the cheapest, because what it displaces
 elsewhere is renaming a session and kiso has nothing to rename. The
 viewer fires only on an idle, empty composer, so the collision can only
 ever land where the other product's binding is itself a no-op.
+
+**9.0b The `ctrl+o` expansion is a CARD, and it APPENDS.** Its head row
+names the call it opened — `shell curl … · expanded · 2 turns back` —
+because appending means it lands wherever the bottom is, which on a
+settled turn is after the recap, and the head row is the only tie to
+what the reader pressed. It carries no `✦`: that is the turn recap's
+mark, and one symbol with two meanings is §4.1. Its body is the WHOLE
+result, uncapped — an expansion that capped would be no expansion.
+
+Appending rather than expanding in place is §7.1, not a preference, and
+DC-50 records what route B's reprint would make possible instead.
 
 **9.1 It lives on the PRIMARY screen.** No alternate screen — it is a
 second, divergent world to keep correct, and it takes the viewer's rows
