@@ -227,17 +227,22 @@ describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulato
 		// thinking block guards it better: every one of its rows carries
 		// the two-space lead, so a merge would show up as a row that has
 		// content but not the lead.
-		// AMENDED (R13 E3 / DC-47): prose moved to column 2, so "indented
-		// is thinking" no longer separates them — the thinking took the
-		// next column in, and that is the discriminator now. The subject is
-		// unchanged: no thinking row has swallowed the response text.
-		const thinkRows = turn.filter((l) => /^ {4}\S/.test(l));
-		expect(thinkRows.length).toBeGreaterThan(0);
-		// ...and no such row has swallowed the response text — which is
-		// the merge this case is named for, now checked against every
-		// indented row rather than against the one folded row that used
-		// to exist.
-		for (const r of thinkRows) expect(r.includes(RESPONSE)).toBe(false);
+		// AMENDED TWICE. R13's E3 moved prose to column 2, so "indented is
+		// thinking" stopped separating them; the thinking went to column 4
+		// and became the discriminator. Then the owner ruled the thinking
+		// back to column 2 (DC-47), so there is no INDENT that tells them
+		// apart at all — on this surface, with the escapes stripped, there
+		// is nothing that does (§1.2's declared exception).
+		//
+		// So the symptom is asserted DIRECTLY instead of through a proxy
+		// for it. The merge this case is named for is a row that carries
+		// the response text welded to something else; the response owns
+		// its row or it does not.
+		const body = turn.filter((l) => /^ {2}\S/.test(l));
+		expect(body.length, "no body rows at all").toBeGreaterThan(0);
+		const carrying = turn.filter((l) => l.includes(RESPONSE));
+		expect(carrying.length, "the response is not on the screen once").toBe(1);
+		expect(carrying[0]!.trim(), "a row swallowed the response text").toBe(RESPONSE);
 
 		// ④ after the 5-resize sequence, ① ② hold on the FINAL screen —
 		// the reflow left no ghost, no wall, no cut. v6: the content sits

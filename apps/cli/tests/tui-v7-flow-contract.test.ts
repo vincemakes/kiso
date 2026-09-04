@@ -371,16 +371,28 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// R13: the running shell's head row wears the breathing mark again
 		// — there is no activity line left to carry it (R7a's grouping went
 		// with the slot), so the selector goes back to the `●` prefix.
+		// AMENDED AGAIN (DC-48): the OUTPUT-ROW claim leaves this case,
+		// because this scenario never had one. Its command sleeps two
+		// seconds before printing, and every frame here is inside that
+		// sleep — the old gate saw a window anyway because W8 PADDED it,
+		// so what it was really asserting was the pad's existence. A
+		// window that is its content has none until content arrives, and
+		// the running call's tail really being live is gated where it is
+		// actually produced (tui2-r1-visibility: early AND late steps both
+		// reach the screen while the command runs).
+		//
+		// What stays here is this case's own subject: the card's height
+		// does not move on its own, and nothing below it is repainted.
 		const first = running[0]!.grid;
 		expect(first.join("\n"), "a call with nothing back still claims a window").not.toContain("waiting for output");
 		const shellAt = first.findIndex((l) => /^● shell /.test(l));
-		const firstOut = first.findIndex((l, i) => i > shellAt && /^ {2}\u2514 |^ {4}\S/.test(l));
-		expect(firstOut, "the streaming shell has no output row at all").toBeGreaterThan(0);
-		expect(firstOut - shellAt, "the first output row does not hug its header").toBe(1);
 		// DC-46: there is no pad to be blank — the window is the output, so
 		// R7a's "blank, not a bar" retires with the rows it governed.
-		const statusAt = first.findIndex((l, i) => i > shellAt && /\d+s · esc stops/.test(l));
-		expect(statusAt, "the running card has no status row").toBeGreaterThan(shellAt);
+		// DC-48: with nothing back yet the card is ONE row — the call and
+		// its status joined, cut against the room they have. Either way
+		// there is no pad, which is what "the window is its content" means.
+		const statusAt = first.findIndex((l, i) => i >= shellAt && /\d+s · esc stops/.test(l));
+		expect(statusAt, "the running card has no status row").toBeGreaterThanOrEqual(shellAt);
 		expect(statusAt - shellAt, "the card grew past its ceiling").toBeLessThanOrEqual(CARD_ROWS - 1);
 		expect(first.slice(shellAt + 1, statusAt).filter((l) => l.trim() === ""), "the window padded").toEqual([]);
 		// the anti-jitter: pairwise across the consecutive running frames,

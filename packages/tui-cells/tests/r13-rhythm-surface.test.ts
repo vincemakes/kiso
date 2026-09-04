@@ -35,6 +35,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { bodySpacing, cellComponent, type BodyCell, type FrameCtx, type MdBlock } from "../src/components.js";
 import { renderBlock } from "../src/md.js";
+import { foldThinking } from "../src/render.js";
 import { setGround } from "../src/render.js";
 import { visibleWidth } from "../src/width.js";
 
@@ -275,38 +276,66 @@ describe("E3 · D4 — one left edge: prose, the chip and the card all begin at 
 });
 
 /**
- * DC-47 — the law E3 walked into.
+ * DC-47 — ADJUDICATED: the thinking is back in COLUMN 2, and §1.2 takes
+ * a declared exception.
  *
- * §7.2 says the thinking's indent is "the price of §1.2": italic and
- * dim are escape sequences, so a rendered frame with its colour
- * stripped — a terminal capture, a paste out of the scrollback, a log
- * of what was drawn — would lose the line between the model's reasoning
- * and its answer. E3 moved PROSE to column 2 — the column the thinking
- * was already in — and the two became the same row under `sed`.
+ * The history in one paragraph. §7.2 called the thinking's indent "the
+ * price of §1.2": italic and dim are escape sequences, so a rendered
+ * frame with the colour stripped — a terminal capture, a paste out of
+ * the scrollback, a log of what was drawn — would lose the line between
+ * the model's reasoning and its answer. E3 moved PROSE to column 2, the
+ * column the thinking was already in, and the two became the same row
+ * under `sed`. The thinking was pushed to column 4 to restore it.
  *
- * (A PIPE is not the surface, though §7.2 used to say so: the inactive
- * path writes one folded line, never the paragraph.)
+ * The owner looked at that and ruled against it: *"the thinking area is
+ * not indented by the same two as the first line — it needs to keep the
+ * same first-line indent as everything else"* (2026-09-04). §1.8's one
+ * left edge outranks the distinction.
  *
- * That is a law broken by a taste, so the taste gives way at the
- * cheapest point: the thinking takes the next column in. It is still
- * one indent step and still the only carrier that survives a pipe.
+ * SO WHAT IS ACTUALLY GIVEN UP, stated rather than glossed: on a
+ * rendered frame with its escapes stripped, a thinking paragraph and an
+ * answer paragraph are the same bytes. Everywhere else the fact
+ * survives — on screen by italic and dim, in a PIPE because the
+ * inactive path writes `foldThinking`, one summary line, and never the
+ * paragraph at all. §1.2 carries this as its one declared exception.
  *
- * This gate is on the STRIPPED bytes, because that is the only surface
- * on which the fact it protects exists at all.
+ * These gates keep what is left, and they say what they no longer
+ * check: the two are told apart on the SCREEN by their own escapes, and
+ * a pipe never confuses them because it never shows one.
  */
-describe("DC-47 — thinking and prose are told apart with every escape stripped", () => {
+describe("DC-47 — one left edge, and what the exception costs", () => {
 	const strip = (r: string): string => r.replace(/\x1b\[[0-9;]*m/g, "");
 	const say = (text: string, W = 60): string[] => cellComponent({ kind: "md", block: { kind: "para", lines: [text], gap: false, lang: "" } } as unknown as BodyCell).render(W, CTX);
 	const thought = (text: string, W = 60): string[] => cellComponent({ kind: "thinking", text, done: true } as unknown as BodyCell).render(W, CTX);
 
-	it("the same sentence renders as two DIFFERENT rows once the colour is gone", () => {
-		const t = "Weighing the two shapes.";
-		expect(strip(thought(t)[0]!)).not.toBe(strip(say(t)[0]!));
+	it("prose AND thinking both sit at column 2 — one left edge (§1.8)", () => {
+		expect(strip(say("answer")[0]!)).toBe("  answer");
+		expect(strip(thought("reasoning")[0]!)).toBe("  reasoning");
 	});
 
-	it("prose sits at column 2, thinking at column 4 — one step, and it is a fact in bytes", () => {
-		expect(strip(say("answer")[0]!)).toBe("  answer");
-		expect(strip(thought("reasoning")[0]!)).toBe("    reasoning");
+	it("the ESCAPES are what tell them apart, and they still do", () => {
+		const t = "Weighing the two shapes.";
+		expect(thought(t)[0], "the thinking lost its italic").toContain("\x1b[3m");
+		expect(say(t)[0], "prose took the thinking's italic").not.toContain("\x1b[3m");
+		expect(thought(t)[0], "the two are the same bytes on screen").not.toBe(say(t)[0]);
+	});
+
+	it("THE DECLARED EXCEPTION, asserted rather than glossed: stripped, they ARE the same row", () => {
+		// This is the cost of the owner's ruling and it is written down
+		// here so a later reader meets it as a decision, not a surprise.
+		// §1.2's own text carries the exception.
+		const t = "Weighing the two shapes.";
+		expect(strip(thought(t)[0]!)).toBe(strip(say(t)[0]!));
+	});
+
+	it("a PIPE never confuses them — it never shows a thinking paragraph at all", () => {
+		// `thinkingEnd`'s inactive path writes `foldThinking`: one dim
+		// summary line. The paragraph this describe is about exists only
+		// on a TTY, which is why the pipe was never the surface at risk.
+		const long = "Weighing the two shapes and their costs, at length, ".repeat(4);
+		const folded = foldThinking(long);
+		expect(folded.split("\n").filter((r) => r !== ""), "the pipe printed a paragraph").toHaveLength(1);
+		expect(folded).toMatch(/\(\d+ chars · \/think\)/);
 	});
 
 	it("…at every width, and both still fold inside the terminal", () => {
@@ -315,7 +344,7 @@ describe("DC-47 — thinking and prose are told apart with every escape stripped
 			for (const rows of [say(long, W), thought(long, W)]) {
 				for (const r of rows) expect(visibleWidth(r), `W=${W}: ${JSON.stringify(r)}`).toBeLessThanOrEqual(W);
 			}
-			expect(strip(thought(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(4);
+			expect(strip(thought(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(2);
 			expect(strip(say(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(2);
 		}
 	});
@@ -461,5 +490,56 @@ describe("DC-46 — the running card grows and never shrinks", () => {
 			const settled = render(tool({ resultText: text })).length;
 			expect(settled, `${n} lines: the settle gave ${live - settled} rows back`).toBeGreaterThanOrEqual(live);
 		}
+	});
+});
+
+/**
+ * DC-48 — the three-row card's ONE row was assembled outside the
+ * cutting discipline, and it killed the session.
+ *
+ * The owner's dogfood, 80 columns, first frame of a long `find`:
+ *
+ *     kiso-tui invariant ① violated: a line of visible width 113 > 80
+ *     was about to be emitted
+ *
+ * The running branch cut its head row to `W` and then handed it to
+ * `slabBlock`, whose no-body branch joins head and outcome into one row
+ * and cut nothing. So the row was `W` wide PLUS the whole status — and
+ * the state it happens in is a running call with nothing back yet, which
+ * is the first second of every command.
+ *
+ * Same shape as DC-45: a row assembled after the fold, by a caller who
+ * did not know it was making a row. The settled three-row card was never
+ * exposed — `settledHeadText` builds its own chain against the room it
+ * has — which is why only the live form crashed.
+ *
+ * THE FIXTURE DOES NOT SIT AT A BOUNDARY (DC-45's lesson): one command
+ * long enough to overflow every width, walked from 20 to 200.
+ */
+describe("DC-48 — the card's one row fits, at every width", () => {
+	const CMD = "find ~ -maxdepth 3 -type d \\( -iname '*kiso*' \\) 2>/dev/null | grep -v node_modules | head -40";
+
+	for (const [label, over] of [
+		["running", { state: "running", doneAt: null, startedAt: 9_000, resultText: "" }],
+		["settled", { resultText: "" }],
+	] as const) {
+		it(`${label}: no row is wider than the terminal, and the elapsed survives`, () => {
+			for (const g of ["light", "unknown"] as const) {
+				setGround(g);
+				for (let W = 20; W <= 200; W += 1) {
+					const rows = cellComponent(tool({ input: CMD, inputFull: JSON.stringify({ command: CMD }), ...over })).render(W, CTX);
+					for (const row of rows) {
+						expect(visibleWidth(row), `${label} ${g} W=${W}: ${JSON.stringify(plain(row))}`).toBeLessThanOrEqual(W);
+					}
+					expect(rows.map(plain).join("\n"), `${label} ${g} W=${W}: the elapsed was cut away`).toMatch(/\d+\.?\d*s/);
+				}
+			}
+		});
+	}
+
+	it("the target and the elapsed are separated by the `·` every other chain uses", () => {
+		setGround("light");
+		const rows = render(tool({ state: "running", doneAt: null, startedAt: 9_000, resultText: "" })).map(plain);
+		expect(rows[1]!.trim()).toMatch(/shell npm test · 1s/);
 	});
 });

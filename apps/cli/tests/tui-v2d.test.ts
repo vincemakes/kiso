@@ -259,10 +259,13 @@ const lint = (raw: string): string[] => {
 		// accepted "any prose" would accept the interleaved lines this
 		// lint exists to catch. The classifier is the two-space lead plus
 		// the dim+italic pair the ThinkingBlock emits.
-		// DC-47: the lead is FOUR spaces now — prose took column 2 (E3), so
-		// the thinking moved one column in to stay distinguishable once the
-		// escapes come off, which is the fact §7.2 exists to keep.
-		if (/^ {4}\x1b\[2m\x1b\[3m/.test(seg)) continue;
+		// DC-47, ADJUDICATED (owner, 2026-09-04): the lead is TWO spaces —
+		// the same as everything else (§1.8). It went to four for one day
+		// so that stripping the escapes would still tell thinking from
+		// prose; the owner ruled the edge outranks that, and §1.2 carries
+		// the exception. The classifier is the dim+italic PAIR, which is
+		// what actually separates them, and it always was.
+		if (/^ {2}\x1b\[2m\x1b\[3m/.test(seg)) continue;
 		// R13 — A CARD'S BODY ROW, classified on the RAW segment for the
 		// same reason the chip and the thinking are: stripped and trimmed,
 		// a line of a tool's output is arbitrary text, and a pattern that

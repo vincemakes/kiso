@@ -92,7 +92,10 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		// status row says how long, which is the whole of what that row
 		// carried. This case's subject — nothing observed, nothing claimed
 		// — is the same one, stated more strictly.
-		expect(render(running())).toEqual(["● shell npm test", "    12s · esc stops · alt+⏎ redirects"]);
+		// DC-48: the three-row card is ONE row, and it is assembled against
+		// the room it has — so the call and its status share the row, joined
+		// by the `·` every other chain uses.
+		expect(render(running())).toEqual(["● shell npm test · 12s · esc stops · alt+⏎ redirects"]);
 	});
 
 	it("output observed: the LAST lines ride the block, the footer names the state and the two gestures", () => {
@@ -161,7 +164,7 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		// the head row and its metadata, and the settle changes only what
 		// they say. `liveWindow` itself is unchanged and still the non-
 		// shell form for every other tool (the list below).
-		expect(rows).toEqual(["● read  big.txt", "    12s"]);
+		expect(rows).toEqual(["● read  big.txt · 12s"]);
 		// a non-shell tool takes the same window — grown from its content,
 		// and with no gestures on its status row, because it has none.
 		const listed = render(running({ name: "list_dir", input: ".", inputFull: JSON.stringify({ path: "." }), resultText: "a.ts\nb.ts" }));

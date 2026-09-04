@@ -31,6 +31,16 @@ lost** — which is why an outcome is words, an emphasis is never the only
 carrier of meaning, and output rows are distinguishable from prose in
 plain bytes.
 
+*One DECLARED EXCEPTION (owner-ruled 2026-09-04, DC-47).* The model's
+THINKING and its answer are the same bytes once the escapes come off.
+§1.8's one left edge put them in the same column, and the owner ruled
+that the edge outranks the distinction. What is given up is exactly
+this: a rendered frame with its colour stripped — a terminal capture, a
+paste out of the scrollback — cannot tell reasoning from answer.
+Everywhere else the fact survives: on screen by italic and dim, and in
+a PIPE because the inactive path writes one folded summary line and
+never a thinking paragraph at all.
+
 **1.3 No empty marks.** A symbol earns its cell by carrying a fact the
 words do not. A row that already says `exit 0` does not also need a tick
 saying it went fine, so the tick is gone; so is the cross. A gutter is a
@@ -302,24 +312,23 @@ cannot expand anything in place after the fact — an expansion appends.
 Everything below is downstream of that.
 
 **7.2 Thinking is words.** The model's thinking renders as its own
-paragraph — dim, italic, indented FOUR spaces, blank line between
+paragraph — dim, italic, indented two spaces, blank line between
 paragraphs — and never folds. It closes the current stretch rather than
 joining one: what the model says is not work.
 
-The indent is the price of §1.2: italic and dim are escape sequences,
-so a rendered frame with its colour stripped — a terminal capture, a
-paste out of the scrollback, a log of what was drawn — would lose the
-line between the model's reasoning and its answer. The indent survives
-as bytes.
+The indent is the same two columns as everything else (§1.8), and the
+ITALIC is what tells thinking from answer. That is a §1.2 exception and
+§1.2 carries it: strip the escapes and the two are the same row.
 
-*Amended R13 (2026-09-03), twice.* The indent was TWO spaces until §1.8
-moved prose there, at which point the two rendered as the same row once
-the escapes came off and §1.2's fact was gone — measured, not reasoned
-(DC-47). The thinking takes the next column in: still one indent step,
-still the only carrier the stripping leaves. And this paragraph used to
-say a PIPE was what lost it, which was never true: `thinkingEnd`'s
-inactive path writes one folded line, not the paragraph, so a pipe has
-no paragraph to confuse with prose.
+*Amended twice on 2026-09-03/04.* This paragraph used to say the indent
+was "the price of §1.2 — a piped transcript would lose the line between
+the model's reasoning and its answer". Two things were wrong with it. A
+PIPE never sees a thinking paragraph (`thinkingEnd`'s inactive path
+writes `foldThinking`, one summary line), so the pipe was never the
+surface at risk — the surface is a rendered frame with its escapes
+stripped. And when E3 moved prose to column 2, the thinking was pushed
+to 4 to keep the distinction; the owner ruled against that (DC-47), and
+the edge won.
 
 **7.3 A running call is the same card, and it GROWS.** A call with
 nothing back yet is the three-row card a settled call with no output is.

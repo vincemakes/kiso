@@ -8,7 +8,15 @@
  * lives HERE: every line a component returns must fit the terminal
  * width — the compositor's crash-on-violation invariant backs it up
  * (a component that forgets to fold CRASHES with a diagnostic, never
- * silently truncates — the crash is the contract, not a symptom).
+ * silently truncates — the crash is the contract UNDER TEST; in the
+ * field the row is cut and the fact is said, once, through the notice
+ * channel. DECLARED REVERSAL of "the crash is the contract, not a
+ * symptom" (owner-lane, 2026-09-04): two instances of this class in two
+ * days, one caught by a gate (DC-45) and one by the owner on the first
+ * frame of an ordinary command (DC-48). In a gate the crash is right; in
+ * a human's hands it costs them the composer and the session to save
+ * them a row one column too wide. `KISO_INVARIANTS=throw` is what every
+ * suite here runs under).
  *
  * The fold is SGR-AWARE: a line whose bold/dim span would straddle a
  * fold boundary closes the span at the break and reopens it on the
@@ -995,7 +1003,6 @@ class ToolExecution implements Component {
 				const bare = gutterCut(gutter, `${verbCol} ${liveTarget(c)}`, Math.max(4, W - dur.length));
 				return [`${bare[0]!}${p.dim}${dur}${p.reset}`];
 			}
-			const head = gutterCut(gutter, `${verbCol} ${liveTarget(c)}`, W)[0]!;
 			// DC-46 — the two GESTURES ride the status row, where they cost
 			// nothing. They were a footer INSIDE the window, spending one of
 			// its rows on a sentence that is not output; with the window
@@ -1006,7 +1013,31 @@ class ToolExecution implements Component {
 			// 3.2s`.
 			const gestures = c.name === "shell" ? " · esc stops · alt+⏎ redirects" : "";
 			const status = pickTier([`${elapsed}s${gestures}`, `${elapsed}s`], Math.max(1, W - visibleWidth(noteIndent())));
-			return slabBlock(head, toolBlockBody(c, W, ctx), status, W);
+			const live = toolBlockBody(c, W, ctx);
+			if (live.length > 0) return slabBlock(gutterCut(gutter, `${verbCol} ${liveTarget(c)}`, W)[0]!, live, status, W);
+			// DC-48 — THE THREE-ROW CARD IS ONE ROW, so it is assembled here
+			// against the room it actually has.
+			//
+			// This branch used to cut the head to `W` and hand it to
+			// `slabBlock`, which joins head and outcome and cut nothing —
+			// so the row came out `W` wide PLUS the whole status, and the
+			// compositor did what it promises: it threw. On the owner's
+			// 80-column terminal a long `find` produced a 113-column row on
+			// its FIRST FRAME, which is the first second of every command.
+			//
+			// Pin 4's order: the command is the cuttable span and the
+			// elapsed is never cut open, so the command takes what the
+			// status leaves — the `· ` between them and the two-column
+			// gutter included.
+			// the status takes its own tier against the room the row has, not
+			// against a whole width: on a narrow terminal the gestures give
+			// way so the COMMAND keeps something to say, and the elapsed —
+			// pin 4's core — never does.
+			const MIN_TARGET = 10; // the gutter, the verb column, a character of command
+			const oneRow = pickTier([`${elapsed}s${gestures}`, `${elapsed}s`], Math.max(1, W - MIN_TARGET - 3));
+			const room = Math.max(4, W - visibleWidth(oneRow) - 3);
+			const only = gutterCut(gutter, `${verbCol} ${liveTarget(c)}`, room)[0]!;
+			return slabBlock(`${only}${p.dim} · ${oneRow}${p.reset}`, [], null, W);
 		}
 		// W2: ◦ replaces → for QUEUED — · is the separator inside every
 		// metadata group; a queued marker that is also the separator
@@ -1128,8 +1159,15 @@ function settledHeadText(verbCol: string, target: string, meta: string, attr: st
 	const stem = join(meta, `${elapsed}s`);
 	const budget = room - visibleWidth(lead) - visibleWidth(stem) - 4; // the ellipsis + " · "
 	if (budget >= 1) return `${lead}${widthCut(target, budget)}… · ${stem}`;
-	// 4. below that even the core cannot ride: the row is the call's
-	//    identity and its affordance, and no half-open parenthesis.
+	// 4. DC-48 — the ELAPSED still rides, and the target takes what is
+	//    left. This used to return the target alone, on the argument that
+	//    a cut core would leave a half-open parenthesis; R13's chain has
+	//    no bracket to leave open, so the reason retired with the
+	//    parentheses and pin 4's own rule applies at every width: what
+	//    happened and how long it took is never cut away.
+	const floor = `${elapsed}s`;
+	const left = room - visibleWidth(lead) - visibleWidth(floor) - 4; // the ellipsis + " · "
+	if (left >= 1) return `${lead}${widthCut(target, left)}… · ${floor}`;
 	return `${lead}${widthCut(target, Math.max(1, room - visibleWidth(lead)))}`;
 }
 
@@ -1584,9 +1622,17 @@ const CARD_ROW = "  ";
 /** R13 E3 — the column the model's words begin in, the same one the
  *  card's rows and the chip's text begin in. */
 const PROSE_COL = "  ";
-/** DC-47 — the model's THINKING, one level deeper than its prose, so
- *  the two are still told apart once the escapes are stripped (§1.2). */
-const THINK_COL = "    ";
+/** DC-47, ADJUDICATED — the model's THINKING begins in the SAME column
+ *  as everything else: two.
+ *
+ *  It went to four when E3 moved prose to two, so that stripping the
+ *  escapes would still tell them apart (§1.2). The owner looked at it
+ *  and ruled against it: "the thinking area is not indented by the same
+ *  two as the first line — it needs to keep the same first-line indent
+ *  as everything else" (2026-09-04). §1.8's one left edge outranks the
+ *  distinction, and §1.2 takes a DECLARED EXCEPTION for this one pair —
+ *  see design.md §1.2 and §7.2 for what is given up and what is not. */
+const THINK_COL = "  ";
 const bodyRow = (): string => (slabPaints() ? CARD_ROW : BODY_ROW_FLAT);
 const noteIndent = (): string => (slabPaints() ? CARD_ROW : NOTE_ROW_FLAT);
 const CUT_ROW = "└ ";
@@ -1674,7 +1720,12 @@ function slabBlock(head: string, body: readonly string[], outcome: string | null
 	// instead — off the surface R8a's indent is still the fact, which is
 	// why the degradation above keeps it.
 	if (body.length === 0) {
-		const only = outcome === null ? head : `${head} ${outcome}`;
+		// DC-48: the join makes a ROW, so it is cut like every other row.
+		// The callers above size their parts against the room they have;
+		// this is the backstop that makes invariant ① hold whatever they
+		// do, and it is what was missing when a running card's head was
+		// cut to W and then had a whole status appended to it.
+		const only = cutLine(outcome === null ? head : `${head} ${outcome}`, W);
 		return [slabRow("", W), slabRow(only, W), slabRow("", W)];
 	}
 	const top = [slabRow("", W), slabRow(head, W), slabRow("", W), ...body.map((r) => slabRow(r, W))];

@@ -3288,6 +3288,9 @@ export class Body {
 
 	/** Invariant ①: every emitted line fits the width — a violation is a
 	 *  CRASH with the diagnostic, never a silent truncate. */
+	/** DC-48 — the field cut is announced ONCE per session. */
+	#cutOnce = false;
+
 	#checked(line: string, W: number): string {
 		// Invariant ①b (R3f): a ROW IS ONE PHYSICAL ROW.
 		//
@@ -3319,9 +3322,25 @@ export class Body {
 		}
 		const w = visibleWidth(line);
 		if (w > W) {
-			throw new Error(
-				`kiso-tui invariant ① violated: a line of visible width ${w} > ${W} was about to be emitted — ${JSON.stringify(line.slice(0, 80))}`,
-			);
+			// DECLARED REVERSAL of "the crash is the contract, not a
+			// symptom" — owner-lane ruling 2026-09-04, after the SECOND
+			// instance of this class in two days: DC-45 in a gate, DC-48 in
+			// the owner's hands. Under test the crash is exactly right and
+			// keeps every tooth; in the field it costs a human the
+			// composer's contents and the whole session, to save them a row
+			// that is one column too wide.
+			//
+			// So: THROW UNDER TEST, CUT IN THE FIELD, and say so. The
+			// notice is once per session — a defect worth reporting is
+			// worth saying once, and a row-by-row complaint on a resize
+			// storm would be its own defect.
+			const why = `kiso-tui invariant ① violated: a line of visible width ${w} > ${W} was about to be emitted — ${JSON.stringify(line.slice(0, 80))}`;
+			if (process.env.KISO_INVARIANTS === "throw") throw new Error(why);
+			if (!this.#cutOnce) {
+				this.#cutOnce = true;
+				queueMicrotask(() => this.notice("kiso-tui: a row was cut to width (invariant ①) · please report"));
+			}
+			return cutLine(line, W);
 		}
 		return line;
 	}

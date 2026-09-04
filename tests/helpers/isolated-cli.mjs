@@ -46,6 +46,11 @@ export function isolatedEnv(extra = {}) {
 			// product's. The one test that exercises the check turns it
 			// back on and points it at a local stub.
 			KISO_NO_UPDATE_CHECK: "1",
+			// DC-48: invariant ① THROWS under test. In the field it cuts the
+			// row and says so once (compositor #checked) — the crash is the
+			// contract UNDER TEST, and a gate that lost its teeth here would
+			// be the whole point of the reversal thrown away.
+			KISO_INVARIANTS: "throw",
 			...extra,
 		},
 	};

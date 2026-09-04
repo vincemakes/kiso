@@ -104,5 +104,10 @@
 		"tests/tmpdir-root-pty.test.ts",
 		"tests/tool-schema-closed-world.test.ts"
 	],
-	"exempt": []
+	"exempt": [
+		{
+			"file": "packages/tui/tests/dc48-invariant-fallback.test.ts",
+			"reason": "spawns nothing and drives the compositor in process. The classifier reads SOURCE TEXT, and this file's comments name isolated-cli.mjs to say where KISO_INVARIANTS=throw is set for PTY children — prose about a helper, not an import of one. Verified: no child_process, no spawn, no pty helper."
+		}
+	]
 }
