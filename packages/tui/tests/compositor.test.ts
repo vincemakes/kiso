@@ -664,44 +664,47 @@ describe("TUI v6 — the one compositor", () => {
 		expect(writes.join("")).toContain("└ capped by read · offset=201 for the rest");
 	});
 
-	it("W8: the running tool's window is a FIXED 3 rows from the first frame — the height never changes while running", () => {
+	it("W8 → DC-46: the running tool's window GROWS with its output and never comes back down", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		body.toolStart("shell", "c1", { command: "sleep" });
 		body.toolRunning("c1");
 		tick();
-		// the window: 2 blank-padded rows + the waiting row — 3 total.
-		// W6: the box's chrome wall is the SAME bytes as a blank window
-		// row (`\x1b[2m│ \x1b[0m`), so the 2-blank probe is the ADJACENT
-		// pair — the two blanks are the only dim walls that are neighbors
-		// at the row level (the row prefix — a CUP/relative move + a 0K —
-		// sits between them); the box's single wall never pairs.
-		// DECLARED SUPERSESSION (REL-0152-R1): asserted on the SCREEN. The
-		// old shape counted adjacent dim-wall pairs in one frame's bytes,
-		// which only works while every frame repaints every row. The
-		// property — a running tool owns a FIXED three rows, and the
-		// height never changes while it runs — is about the screen, and
-		// the second frame's job is to prove it did not move.
+		// DECLARED REVERSAL (DC-46) of W8's fixed three rows. W8 fixed the
+		// height so it would not move while a command ran, and fixed it at
+		// a height the SETTLE then changed — a card allocated high and
+		// settling low gives rows back, the window's top is clamped and
+		// cannot follow, and the difference is a blank band above the
+		// composer (measured on the a7 replay: hole-frames 8.9/13.5/3.8
+		// percent at 0.23.0 against 16.9/24.6/7.9 with the shrink).
+		//
+		// So the window is its CONTENT: nothing back yet is no window row
+		// at all, and each line adds one to the cap. W8's real subject —
+		// the height never moves on its own — is unchanged and is what the
+		// two frames below still prove; what is gone is the claim that the
+		// number is three, and the `waiting for output` row, which said
+		// nothing the breathing mark and the elapsed do not (§1.3).
 		const before = screenOf(writes);
-		expect(before.join("\n")).toContain("└ waiting for output");
+		expect(before.join("\n"), "a call with nothing back still claims a window").not.toContain("waiting for output");
 		const windowTop = before.findIndex((r) => r.includes("shell"));
 		expect(windowTop, "the tool window is not on the screen").toBeGreaterThanOrEqual(0);
-		const waitingAt = before.findIndex((r) => r.includes("└ waiting for output"));
+		const height = (rows: readonly string[]): number => rows.filter((r) => r.trim() !== "").length;
+		const h0 = height(before);
 		// DECLARED SUPERSESSION (R7a, owner-ruled 2026-08-31): the offset
-		// was three because the W8 pad sat ABOVE the waiting row, drawn
-		// as `│ `. Blanking the pad (a gutter marks a row that has
-		// content) left the tail opening on two blank rows, which is
-		// VD-4's own violation — "the live tail's first row is never
-		// blank" — so the waiting row moved to the top and the pad below
-		// it. The WINDOW is unchanged at 3 rows and this test's subject
-		// is unchanged: it does not move while the call runs, which the
-		// two assertions below are what actually prove.
-		expect(waitingAt - windowTop, "the waiting row does not hug its head").toBe(1);
-		// a SECOND frame (the spinner tick): the window has NOT moved
+		// a SECOND frame (the spinner tick) with nothing new back: the
+		// window has NOT moved and has NOT grown
 		vi.advanceTimersByTime(200);
 		const after = screenOf(writes);
-		expect(after.findIndex((r) => r.includes("shell"))).toBe(windowTop);
-		expect(after.findIndex((r) => r.includes("└ waiting for output"))).toBe(waitingAt);
+		expect(after.findIndex((r) => r.includes("shell")), "the head row moved on a tick").toBe(windowTop);
+		expect(height(after), "the card changed height with no new output").toBe(h0);
+
+		// …and a line of output GROWS it, in place, from the same top
+		body.toolProgress("c1", "first line\n");
+		tick();
+		const grown = screenOf(writes);
+		expect(grown.findIndex((r) => r.includes("shell")), "growing moved the head row").toBe(windowTop);
+		expect(grown.join("\n")).toContain("first line");
+		expect(height(grown), "the output did not grow the card").toBeGreaterThan(h0);
 	});
 
 	it("W18: the compacting status row — the indeterminate form with the right-aligned cancel hint (the #16g hint cut first at a narrow width, then the status with the … — never a fold)", () => {

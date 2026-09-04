@@ -315,9 +315,9 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		expect(grid.join("\n")).toMatch(/ {2}read /);
 	}, 60_000);
 
-	/** R13 E2 — a running card's height: the head row, the six-row window
-	 *  (five preview rows plus its note) and the metadata row. Fixed from
-	 *  the first frame, so the settle can only ever shrink it. */
+	/** DC-46 — a running card's MAXIMUM height: the head row, five window
+	 *  rows plus the cut note, and the status row. The card GROWS to this
+	 *  and never shrinks, so it is a ceiling rather than an allocation. */
 	const CARD_ROWS = 8;
 
 	it("W8: two parallel tools, one streaming — the window is a FIXED 3 rows and every row BELOW the streaming cell is byte-identical across the run's frames until settle", () => {
@@ -355,26 +355,34 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// now instead of waiting for a fold, so the pair occurs again.
 		const running = frames.filter((f) => f.grid.some((l) => /^ {2}read {2}\S/.test(l)) && f.grid.some((l) => /^● shell /.test(l)));
 		expect(running.length).toBeGreaterThanOrEqual(2); // NON-vacuous: the moment really spans frames
-		// the window EXISTS. AMENDED (R13 E2): it is the SETTLED card's
-		// window now — six rows, five preview plus its note row — where W8
-		// made it three. The reason is unchanged (the height must not move
-		// while the command runs) and the change is that it is fixed at a
-		// height the settle can only ever SHRINK, rather than at one the
-		// settle then changed.
-		const first = running[0]!.grid;
-		expect(first.some((l) => l.includes("└ waiting for output"))).toBe(true);
-		// R7a: the window's pad is BLANK, not `│ ` — a gutter marks a row
-		// that has content (law 1.3), and the owner's screenshot was a
-		// bar running down the screen under a short block. The window is
-		// still 3 rows and VD-4 still holds: the waiting row is the
-		// FIRST of them, hugging its header, with the pad below.
-		const waitAt = first.findIndex((l) => l.includes("└ waiting for output"));
+		// the window EXISTS, and it IS the output. DECLARED REVERSAL
+		// (DC-46) of W8's fixed three rows and of R13's first draft, which
+		// allocated six: both fixed a height so it would not move while a
+		// command ran, and both fixed it at a height the SETTLE then
+		// changed. A card allocated high and settling low gives rows back,
+		// the window's top is clamped and cannot follow, and the difference
+		// is a blank band above the composer.
+		//
+		// A call with nothing back yet has no window row at all — the
+		// `waiting for output` row said nothing the breathing mark and the
+		// elapsed do not (§1.3), and it was what made a command returning
+		// NOTHING settle from seven rows to three.
+		//
 		// R13: the running shell's head row wears the breathing mark again
 		// — there is no activity line left to carry it (R7a's grouping went
 		// with the slot), so the selector goes back to the `●` prefix.
+		const first = running[0]!.grid;
+		expect(first.join("\n"), "a call with nothing back still claims a window").not.toContain("waiting for output");
 		const shellAt = first.findIndex((l) => /^● shell /.test(l));
-		expect(waitAt - shellAt, "the waiting row does not hug its header").toBe(1);
-		expect(first.slice(waitAt + 1, waitAt + 6).every((l) => l.trim() === ""), "the window's pad is not blank").toBe(true);
+		const firstOut = first.findIndex((l, i) => i > shellAt && /^ {2}\u2514 |^ {4}\S/.test(l));
+		expect(firstOut, "the streaming shell has no output row at all").toBeGreaterThan(0);
+		expect(firstOut - shellAt, "the first output row does not hug its header").toBe(1);
+		// DC-46: there is no pad to be blank — the window is the output, so
+		// R7a's "blank, not a bar" retires with the rows it governed.
+		const statusAt = first.findIndex((l, i) => i > shellAt && /\d+s · esc stops/.test(l));
+		expect(statusAt, "the running card has no status row").toBeGreaterThan(shellAt);
+		expect(statusAt - shellAt, "the card grew past its ceiling").toBeLessThanOrEqual(CARD_ROWS - 1);
+		expect(first.slice(shellAt + 1, statusAt).filter((l) => l.trim() === ""), "the window padded").toEqual([]);
 		// the anti-jitter: pairwise across the consecutive running frames,
 		// every CONTENT row below the streaming cell's block is byte-identical
 		// — the running shell's OWN block (its folded header: the spinner-

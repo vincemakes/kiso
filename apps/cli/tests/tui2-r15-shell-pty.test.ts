@@ -46,12 +46,16 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 			cwd: ws,
 		});
 		// the frame while the command was still running.
-		// NEEDLE MOVED (R9 P2 / D4): "step 2 of six" used to exist only in
-		// the live tail, because a settled shell showed no output at all.
-		// It now appears in the settled slab too, so the old needle picks
-		// the wrong moment — the live-tail FOOTER is the one string that
-		// exists only while the call is running.
-		const grid = screenAt(raw, "live tail · esc stop");
+		// NEEDLE MOVED TWICE. First (R9 P2 / D4): "step 2 of six" used to
+		// exist only in the live tail, because a settled shell showed no
+		// output at all — it appears in the settled card too now, so it
+		// picks the wrong moment. Then (DC-46): the live-tail FOOTER that
+		// replaced it is gone as well — its two gestures moved onto the
+		// status row rather than spending a window row. That row is the
+		// needle now, and it is still the one string that exists only
+		// while the call is running: the settle rewrites it in place as
+		// `exit 0 · N lines · Ns`.
+		const grid = screenAt(raw, "esc stops · alt+⏎ redirects");
 		const joined = grid.join("\n");
 		expect(joined).not.toContain('{"command"');
 		// MOVED (R13 E2): the elapsed left the running head row for the
@@ -60,14 +64,20 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		// subject (the duration is its own segment, never welded to a cut
 		// word) is unchanged and holds on that row.
 		expect(joined).toMatch(/shell sh steps\.sh/);
-		expect(joined).toMatch(/\n\s+\d+s\b/);
-		// the tail is live and its first row is output, never a bare gutter
-		// R8a: the block's first row is the CORNER row, and it must carry
-		// real output — the subject of this case, unchanged.
+		// DC-46: the status row carries the elapsed AND the two gestures.
+		expect(joined).toMatch(/\n\s+\d+s · esc stops/);
+		// the tail is live and its first row is never a BARE GUTTER — VD-4's
+		// subject, and this case's.
+		//
+		// AMENDED (DC-46): the live window is the settled window now, so it
+		// carries the same cut note when the output outruns the cap, and
+		// `openBlock` puts the corner on that note — the block's first row.
+		// So the row after the head is output OR the note, never blank, and
+		// a real output row follows it immediately.
 		const first = grid.findIndex((l) => l.startsWith("  \u2514 "));
 		expect(first).toBeGreaterThan(0);
-		expect(grid[first]).toMatch(/ {2}\u2514 step \d of six/);
-		expect(joined).toContain("live tail · esc stop · alt+⏎ redirect");
+		expect(grid[first], "the block opens on a bare gutter").toMatch(/ {2}\u2514 (?:step \d of six|… \d+ earlier lines? · ctrl\+o expands)/);
+		expect(grid.slice(first, first + 2).some((l) => / {2}\u2514 step \d of six| {4}step \d of six/.test(l)), "no real output row in the live window").toBe(true);
 	}, 240_000);
 
 	it("SETTLED: the shell is a SLAB — its tail is on screen and the note names the key", () => {

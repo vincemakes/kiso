@@ -78,7 +78,7 @@ describe("TUI2-R1.5 ④(a) — the running shell header is the clean one (VD-4)"
 		// VD-4's subject survives the move intact and is what is asserted:
 		// the duration is never welded to the cut head.
 		const rows = render(shellCell({ resultText: "x" }), 60);
-		expect(rows.at(-1)).toMatch(/\d+s$/);
+		expect(rows.at(-1)).toMatch(/^\s*\d+s · esc stops/); // DC-46: the gestures share the row
 		expect(rows[0]).not.toMatch(/[A-Za-z0-9]\d+s$/);
 		expect(rows[0]).not.toMatch(/\ds$/);
 	});
@@ -104,16 +104,16 @@ describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)",
 		const rows = render(shellCell({ resultText: "step 1 · compiling module 1 of 6" }));
 		const body = rows.slice(1);
 		expect(body[0]).toContain("step 1 · compiling module 1 of 6");
-		// the fixed-window pad still holds the block's height — it just
-		// sits BELOW the output now instead of above it. R13 E2 widened
-		// the window from W8's three rows to the SETTLED card's six, so
-		// the settle can only ever shrink it.
-		expect(body).toHaveLength(7);
-		// DECLARED SUPERSESSION (R7a, owner-ruled 2026-08-31): the pad is
-		// BLANK. This test's own subject — the first tail row is never
-		// blank — is untouched and asserted above; what changes is the
-		// glyph on the rows the pad occupies, which marked nothing.
-		expect(body[1]).toBe("");
+		// DC-46: there is no pad. The window is the output, so ONE line of
+		// output is one row — which is this case's subject stated exactly
+		// (the first tail row is never blank, because there are no other
+		// rows for it to be) — and the status row closes the card.
+		expect(body).toHaveLength(2);
+		// R7a's "the pad is BLANK, not a bar" RETIRES with the pad (DC-46):
+		// there are no reserved rows left to draw anything on. The subject
+		// — the first tail row is never blank — is asserted above and is
+		// now true by construction.
+		expect(body[1]).toContain("esc stops");
 	});
 
 	it("LEADING empty output lines are skipped — the sidecar's own blanks", () => {
@@ -124,8 +124,10 @@ describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)",
 
 	it("the live-tail footer is unchanged", () => {
 		const rows = render(shellCell({ resultText: "a\nb\nc" }));
-		// …and the metadata row (R13 E2's elapsed) closes the card below it
-		expect(rows.at(-2)).toContain("live tail · esc stop · alt+⏎ redirect");
+		// DC-46: the footer no longer spends a window row — its two keys
+		// ride the status row, where they cost nothing and where the settle
+		// rewrites them in place.
+		expect(rows.at(-1)).toContain("esc stops · alt+⏎ redirects");
 	});
 });
 

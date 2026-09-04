@@ -364,3 +364,102 @@ describe("R13 — the three deviations from the ruled mock", () => {
 		expect((read[0]!.match(/\d+ lines?/g) ?? []).length, "the count is said twice on the head row").toBe(1);
 	});
 });
+
+/**
+ * DC-46, THE RULING — a running card GROWS, and a settle never shrinks it.
+ *
+ * DECLARED REVERSAL of E2 as it was first written ("allocated at the
+ * settled card's height from the first frame, and only ever shrinks at
+ * settle"), owner-lane ruling 2026-09-03, and the reason is a
+ * measurement rather than a preference. A card allocated at twelve rows
+ * and settling at three gives nine rows back, the window's top is
+ * clamped and cannot follow, and what is left is a transient blank band
+ * above the composer. Measured on the a7 replay: hole-frames went
+ * 8.9 / 13.5 / 3.8 percent (0.23.0) to 16.9 / 24.6 / 7.9.
+ *
+ * The only source of that band is the shrink, so the cure is to stop
+ * shrinking — not to shrink less, and not to move the band somewhere
+ * else.
+ *
+ *   · a running card starts at its SKELETON: pad · head · blank · one
+ *     window row · blank · status · pad = seven rows. A read is three.
+ *   · the window GROWS one row per output line, to five.
+ *   · there are NO blank padding rows in a window, ever. R7a's "blank,
+ *     not a bar" was about padding a FIXED height; the height is the
+ *     content now, so there is nothing to pad.
+ *   · past five rows the cut note appears ABOVE the window — once per
+ *     call — and the card grows by that one row.
+ *   · the shell's two gestures ride the STATUS row instead of spending a
+ *     window row on a footer, so a settle swaps that row's content
+ *     (`3s · esc stops` → `exit 0 · 90 lines · 3.2s`) and changes no
+ *     height at all.
+ */
+describe("DC-46 — the running card grows and never shrinks", () => {
+	const running = (over: Partial<Extract<BodyCell, { kind: "tool" }>> = {}): Extract<BodyCell, { kind: "tool" }> =>
+		tool({ state: "running", doneAt: null, startedAt: 9_000, resultText: "", ...over });
+
+	it("a running call with NO OUTPUT YET is the three-row card, and grows to seven at the first line", () => {
+		// DERIVED FROM THE RULING, and a deviation from its literal text,
+		// which put a `waiting for output` row in the running skeleton. A
+		// command that returns NOTHING — `true`, a silent build — would
+		// then settle from seven rows to three, which is exactly the shrink
+		// the ruling exists to remove: its own rule cannot hold with that
+		// row in place. Nothing is lost by dropping it — the breathing mark
+		// says the call is in flight and the status row says for how long,
+		// so the row carried no fact they do not (§1.3).
+		setGround("light");
+		const bare = render(running()).map(plain);
+		expect(bare).toHaveLength(3);
+		expect(bare[1]!.trim()).toMatch(/shell npm test/);
+		expect(bare.join("\n")).not.toContain("waiting for output");
+		const first = render(running({ resultText: "out 1" })).map(plain);
+		expect(first).toHaveLength(7);
+		expect(first[1]!.trim()).toMatch(/shell npm test$/);
+		expect(first[3]!.trim()).toBe("out 1");
+		expect(first[5]!.trim()).toMatch(/^1s/);
+	});
+
+	it("…and a running READ is the three-row card, the same as its settled form", () => {
+		setGround("light");
+		expect(render(running({ name: "read_file", input: "loop.ts", inputFull: JSON.stringify({ path: "loop.ts" }) }))).toHaveLength(3);
+	});
+
+	it("the window GROWS one row per line, to five, and never pads", () => {
+		setGround("light");
+		for (const [n, want] of [[1, 7], [2, 8], [3, 9], [4, 10], [5, 11]] as const) {
+			const rows = render(running({ resultText: lines(n, (i) => `out ${i + 1}`) })).map(plain);
+			expect(rows, `${n} line(s) of output`).toHaveLength(want);
+			const window = rows.slice(3, 3 + n);
+			expect(window.map((r) => r.trim()), `${n}: the window is not the output`).toEqual(Array.from({ length: n }, (_, i) => `out ${i + 1}`));
+			expect(window.filter((r) => r.trim() === ""), `${n}: the window padded`).toEqual([]);
+		}
+	});
+
+	it("past five, the note appears ABOVE the window and the card grows by exactly one — once", () => {
+		setGround("light");
+		const at5 = render(running({ resultText: lines(5, (i) => `out ${i + 1}`) })).length;
+		const at6 = render(running({ resultText: lines(6, (i) => `out ${i + 1}`) })).map(plain);
+		expect(at6).toHaveLength(at5 + 1);
+		expect(at6[3]!.trim()).toBe("… 1 earlier line · ctrl+o expands");
+		expect(at6.slice(4, 9).map((r) => r.trim())).toEqual(["out 2", "out 3", "out 4", "out 5", "out 6"]);
+		// …and NEVER again: 90 lines is the same height as 6
+		expect(render(running({ resultText: lines(90, (i) => `out ${i + 1}`) }))).toHaveLength(at5 + 1);
+	});
+
+	it("the shell's gestures ride the STATUS row — no footer spends a window row", () => {
+		setGround("light");
+		const rows = render(running({ resultText: lines(3, (i) => `out ${i + 1}`) })).map(plain);
+		expect(rows.join("\n"), "the footer still owns a row").not.toMatch(/^\s*live tail/m);
+		expect(rows.at(-2)!.trim()).toMatch(/^1s · esc stops · alt\+⏎ redirects$/);
+	});
+
+	it("THE SETTLE NEVER SHRINKS — at every output length, the settled card is at least as tall", () => {
+		setGround("light");
+		for (const n of [0, 1, 3, 5, 6, 40, 90]) {
+			const text = n === 0 ? "" : lines(n, (i) => `out ${i + 1}`);
+			const live = render(running({ resultText: text })).length;
+			const settled = render(tool({ resultText: text })).length;
+			expect(settled, `${n} lines: the settle gave ${live - settled} rows back`).toBeGreaterThanOrEqual(live);
+		}
+	});
+});

@@ -50,7 +50,11 @@ describe("R8a — no bar, and exactly one corner", () => {
 	});
 
 	it("the corner opens the block ONCE — never on a note, never twice", () => {
-		for (const cell of [tool({ expanded: true }), tool({ state: "running", resultText: "building…" }), tool({ state: "running", resultText: "" }), tool({ isError: true, resultText: "e1\ne2\ne3\ne4\ne5" })]) {
+		// DC-46: `{ state: "running", resultText: "" }` left this list — a
+		// running call with nothing back has no BLOCK now (its card is the
+		// three-row form), and a corner opens a block. The subject is
+		// unchanged and the three fixtures that have blocks still carry it.
+		for (const cell of [tool({ expanded: true }), tool({ state: "running", resultText: "building…" }), tool({ isError: true, resultText: "e1\ne2\ne3\ne4\ne5" })]) {
 			const rows = body(cell);
 			const corners = rows.filter((r) => r.trimStart().startsWith("└"));
 			expect(corners.length, `corners: ${JSON.stringify(rows)}`).toBe(1);

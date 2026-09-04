@@ -72,7 +72,7 @@ export interface FrameCtx {
 	 *  work is in flight. Owner-ruled 2026-08-31. */
 	readonly grouped?: boolean;
 	/** R13 E2 / DC-43 — how many PREVIEW rows a running card may take this
-	 *  frame. Undefined is the full window (`LIVE_WINDOW`); the compositor
+	 *  frame. Undefined is the full window (`CAP_PREVIEW`); the compositor
 	 *  lowers it when the live region is tight, and 0 degrades the card to
 	 *  its head row alone. It is a frame input, not a property of the
 	 *  cell: the same call renders taller or shorter as the room changes,
@@ -985,7 +985,7 @@ class ToolExecution implements Component {
 			// pads, the head, two blanks, one preview row and the metadata)
 			// there is no card — the call keeps its head row until it
 			// commits, which is the one form that fits anywhere.
-			const liveRows = ctx.liveWindow ?? LIVE_WINDOW;
+			const liveRows = ctx.liveWindow ?? CAP_PREVIEW;
 			const gutter = ctx.grouped === true ? "  " : `${breathFrame(ctx.spinnerI)} `;
 			if (liveRows <= 0) {
 				// the degraded form is the head row ALONE, so it keeps the
@@ -996,7 +996,17 @@ class ToolExecution implements Component {
 				return [`${bare[0]!}${p.dim}${dur}${p.reset}`];
 			}
 			const head = gutterCut(gutter, `${verbCol} ${liveTarget(c)}`, W)[0]!;
-			return slabBlock(head, toolBlockBody(c, W, ctx), `${elapsed}s`, W);
+			// DC-46 — the two GESTURES ride the status row, where they cost
+			// nothing. They were a footer INSIDE the window, spending one of
+			// its rows on a sentence that is not output; with the window
+			// grown from its content, that row was the difference between a
+			// settle that swaps content and one that changes height. The
+			// row's shape is the settled outcome row's, so the settle
+			// rewrites it in place: `3s · esc stops` → `exit 0 · 90 lines ·
+			// 3.2s`.
+			const gestures = c.name === "shell" ? " · esc stops · alt+⏎ redirects" : "";
+			const status = pickTier([`${elapsed}s${gestures}`, `${elapsed}s`], Math.max(1, W - visibleWidth(noteIndent())));
+			return slabBlock(head, toolBlockBody(c, W, ctx), status, W);
 		}
 		// W2: ◦ replaces → for QUEUED — · is the separator inside every
 		// metadata group; a queued marker that is also the separator
@@ -1535,20 +1545,13 @@ function stretchTerms(t: StretchTerms, live: boolean): string[] {
  *  (the W7 table). The renderer-cut row is inside the cap. */
 /** R13 — ONE preview cap, every tool. It was the shell's alone while
  *  the shell was the only settled call with rows on screen. */
-const CAP_PREVIEW = 5;
-/** R13 E2 — the running card's preview window: the SETTLED card's, so
- *  the settle can only shrink it. A settled card's preview is at most
- *  five rows plus its cut note (CAP_PREVIEW + 1), which makes the card
- *  twelve rows; a running card takes all six from the first frame and
- *  gives back whatever the result did not need.
- *
- *  DECLARED REVERSAL of W8's three-row window, which was fixed for the
- *  same reason (the height must not move while the command runs) but at
- *  a height the settle then changed. */
-export const LIVE_WINDOW = CAP_PREVIEW + 1;
-/** The rows a card costs besides its preview: two pads, the head, two
- *  blanks and the metadata row. Below this there is no card (DC-43). */
-const CARD_CHROME = 6;
+export const CAP_PREVIEW = 5;
+/** DC-46 — the running window's ceiling is the SETTLED preview's, and a
+ *  running card reaches it by growing rather than by being handed it.
+ *  `LIVE_WINDOW` (CAP_PREVIEW + 1) retires with the allocation it sized. */
+/** The rows a card costs besides its window: two pads, the head, two
+ *  blanks and the status row. Below this there is no card (DC-43). */
+export const CARD_CHROME = 6;
 const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
 
 /** The block body rows' prefixes (W2's gutter table): │ a bounded
@@ -1721,7 +1724,7 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: 
 	// the SURFACE is part of the key: the same cell renders different rows
 	// painted and unpainted, and a ground resolved after the first frame
 	// would otherwise be served the pre-ground shape forever.
-	const liveRows = ctx.liveWindow ?? LIVE_WINDOW;
+	const liveRows = ctx.liveWindow ?? CAP_PREVIEW;
 	const state = `${c.state}:${c.isError}:${c.name}:${c.expanded ? "x" : ""}:${slabPaints() ? "slab" : "flat"}:${liveRows}`;
 	const content: unknown = c.state === "approval" ? (c.diff ?? null) : c.resultText;
 	if (memo !== undefined && memo.width === W && memo.state === state && memo.content === content) return memo;
@@ -1763,9 +1766,7 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: 
 							// it runs either; its card is three rows the whole way.
 							noPreview({ ...c, state: "done" })
 							? []
-							: c.name === "shell"
-								? shellLiveTail(c.resultText, W, liveRows)
-								: liveWindow(c.resultText, W, liveRows)
+							: liveWindow(c, W, liveCap(c, liveRows), slabPaints() ? "body" : "dim")
 					: c.state === "approval"
 						? diffBody(c.diff, W)
 						: [];
@@ -1892,74 +1893,71 @@ function errorBody(c: { name: string; resultText: string; reason?: string | null
 	// wants to read the one shape that showed least of itself.
 	return previewHead(c.resultText.split("\n").slice(skipFirst).join("\n"), W, slabPaints() ? "body" : "dim");
 }
-
-/** The running tool's FIXED-height window (W8): exactly 3 rows from
- *  the FIRST frame — blank-padded before output arrives, the renderer
- *  cut inside the window. The height changes exactly once, at settle —
- *  a cell that grows mid-list would shift every row after it on every
- *  delta (the parallel-tools jitter). */
-function liveWindow(text: string, W: number, n: number): string[] {
-	const p = palette();
-	if (text === "") {
-		// R7a: blank, not two bare gutters. A `│` marks a row that HAS
-		// content; two of them above "waiting for output" drew a tall
-		// empty bar under every command that had not printed yet — which
-		// is most of them, for their first second.
-		// ...and the waiting row sits DIRECTLY under its header, with the
-		// blanks below it — VD-4's own rule ("the output starts under its
-		// own header and grows downward"), which the gutter rows used to
-		// satisfy by accident and blanks made visible as a two-row gap.
-		return [`${p.dim}${noteIndent()}waiting for output${p.reset}`, ...Array.from({ length: Math.max(0, n - 1) }, () => "")];
-	}
-	const rows = blockRows(text, W);
-	if (rows.length <= n) {
-		while (rows.length < n) rows.push(""); // R7a: blank, not a bar
-		return rows;
-	}
-	const cut = foldLine(`${p.dim}${noteIndent()}+${rows.length - (n - 1)} earlier rows · ctrl+o${p.reset}`, W);
-	return [...rows.slice(rows.length - (n - 1)), ...cut].slice(0, n);
-}
-
 /**
- * TUI2-R1 (C) — the RUNNING shell's live tail.
+ * DC-46 — THE RUNNING WINDOW GROWS, and nothing pads it.
  *
- * The rows are the sidecar's last lines, NEWEST AT THE BOTTOM (a tail
- * grows downward, and the row nearest the footer is the newest thing the
- * command said). The window is the SAME three rows W8 fixed: two tail
- * rows and the footer, blank-padded before the output fills them, so the
- * block's height still changes exactly once — at settle.
+ * DECLARED REVERSAL of W8's fixed window and of E2 as first written
+ * ("allocated at the settled card's height, and only ever shrinks at
+ * settle"). Both fixed a height so it would not move while a command
+ * ran; both fixed it at a height the SETTLE then changed, and the settle
+ * is where the cost landed. A card allocated at twelve rows and settling
+ * at three gives nine rows back, the window's top is clamped and cannot
+ * follow, and the difference is a blank band above the composer.
+ * Measured on the a7 replay: hole-frames 8.9 / 13.5 / 3.8 percent at
+ * 0.23.0 against 16.9 / 24.6 / 7.9 with the shrink. The only source is
+ * the shrink, so the cure is to stop shrinking.
  *
- * With nothing observed the shape is exactly today's "waiting for
- * output": a sidecar that never appeared, a command that has not
- * printed, and a temp dir that refused the write are indistinguishable
- * from here, and all three mean the same thing — nothing to show.
+ * So the window IS its content: one row while nothing has arrived, one
+ * more per line to the cap, then the cut note above a scrolling tail.
+ * R7a's "blank, not a bar" retires with the padding it governed — it was
+ * about what to draw on rows a FIXED height reserved, and no height is
+ * reserved now.
  *
- * The footer names the state AND the two gestures that apply while a
- * command runs, because this is precisely when a human wants them.
+ * The direction is the SETTLED card's, so a settle swaps content and
+ * moves nothing: a shell shows its tail with the note above, everything
+ * else its head with the note below.
  */
-function shellLiveTail(text: string, W: number, n: number): string[] {
-	if (text === "") return liveWindow("", W, n);
+function liveWindow(c: Extract<BodyCell, { kind: "tool" }>, W: number, cap: number, tone: "dim" | "body"): string[] {
 	const p = palette();
-	// TUI2-R1.5 ④(b) (VD-4): the tail's first row is never a blank gutter.
-	// Two sources, both fixed here, and the W8 fixed-window height is kept
-	// by both fixes:
-	//  - leading empty lines in the sidecar (a 4096-byte tail can begin on
-	//    a line boundary, and the reader's .trimEnd only trims the other
-	//    end) are skipped;
-	//  - the short-output pad moved from the TOP to the BOTTOM. It exists
-	//    so the block's height never changes while the command runs (W8);
-	//    at the top it put an empty row above the command's very first
-	//    line, which is the frame the walkthrough filed. At the bottom the
-	//    output starts under its own header and grows downward, and the
-	//    height is just as fixed.
-	const all = blockRows(text, W);
+	// TUI2-R1.5 ④(b) (VD-4): leading empty lines in the sidecar (a
+	// 4096-byte tail can begin on a line boundary) are skipped, so the
+	// output starts under its own header.
+	const all = blockRows(c.resultText, W, tone);
 	const from = all.findIndex((r) => visibleWidth(r) > visibleWidth(bodyRow()));
-	const rows = from < 0 ? [] : all.slice(from);
-	if (rows.length === 0) return liveWindow("", W, n);
-	const kept = rows.slice(Math.max(0, rows.length - (n - 1)));
-	while (kept.length < n - 1) kept.push(""); // R7a: blank, not a bar
-	return [...kept, cutLine(`${p.dim}${noteIndent()}live tail · esc stop · alt+⏎ redirect${p.reset}`, W)];
+	// DC-46, derived — NOTHING YET IS NO WINDOW AT ALL, so a running call
+	// with no output is the same THREE-ROW card as a settled one with
+	// none. The ruling's skeleton put a `waiting for output` row here; a
+	// command that returns nothing (`true`, a silent build) would then
+	// settle from seven rows to three, which is the very shrink the ruling
+	// exists to remove — its own rule cannot hold with that row in place.
+	//
+	// Nothing is lost: the breathing mark says the call is in flight and
+	// the status row's elapsed says how long, so a row reading "waiting
+	// for output" carries no fact they do not (§1.3). The card grows the
+	// instant a line arrives, and growth is what this design permits.
+	if (from < 0) return [];
+	const rows = all.slice(from);
+	if (rows.length <= cap) return rows;
+	return c.name === "shell"
+		? [...cutNote(rows.length - cap, "earlier", W, tone), ...rows.slice(rows.length - cap)]
+		: [...rows.slice(0, cap), ...cutNote(rows.length - cap, "more", W, tone)];
 }
+
+/** DC-46 — the window's HIGH-WATER, per cell: the room a frame leaves
+ *  caps how far a window may GROW, and never shrinks one that already
+ *  grew. Without this a second call starting would pull the first's
+ *  window in, which is the same shrink by another route. Keyed on the
+ *  cell, like `blockMemo`, and it only ever matters while the cell is
+ *  live — a settled cell renders from its result alone. */
+const liveHighWater = new WeakMap<object, number>();
+function liveCap(c: object, room: number): number {
+	const want = Math.min(CAP_PREVIEW, Math.max(1, room));
+	const held = liveHighWater.get(c) ?? 0;
+	const cap = Math.max(want, held);
+	liveHighWater.set(c, cap);
+	return cap;
+}
+
 
 /**
  * R4 — the standing act slot.

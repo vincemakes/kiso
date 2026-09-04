@@ -201,8 +201,12 @@ describe("TUI2-R1 T-V3 — the live tail on a real PTY", () => {
 		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
 		const out = stripANSI(ptyRun(["--mode", "bypass", "r1-tail"], env as NodeJS.ProcessEnv, [["▌ ", "go\r"], ["ran it.", "exit\r"]], 60, ws));
 
-		// THE TAIL WAS LIVE: the footer appeared while the command ran…
-		expect(out).toContain("live tail · esc stop · alt+⏎ redirect");
+		// THE TAIL WAS LIVE. MOVED (DC-46): the footer no longer spends a
+		// window row — its two gestures ride the STATUS row, where the
+		// settle rewrites them in place. The evidence that the tail was
+		// live is the same and is asserted below (early AND late steps both
+		// reached the screen); the gestures are what say it can be stopped.
+		expect(out).toMatch(/esc stops · alt\+⏎ redirects/);
 		// …and it MOVED — early steps and late steps were both on screen
 		// inside the running block (the sidecar was re-read, not read once)
 		// R8a: the block is indented, `└` opens its first row — either

@@ -62,7 +62,7 @@ export interface AtPanelState {
 	readonly capped: boolean;
 }
 import {
-	LIVE_WINDOW,
+	CAP_PREVIEW,
 	Container,
 	ROLLUP_NOUN,
 	MOTION_FRAMES,
@@ -1954,7 +1954,7 @@ export class Body {
 	   bounded by the shrink itself and filled by the next commit. */
 
 	#liveProjection(W: number, ctx: FrameCtx, cap?: number): string[] {
-		const rows = this.#project(W, ctx, LIVE_WINDOW);
+		const rows = this.#project(W, ctx, CAP_PREVIEW);
 		if (cap === undefined || rows.length <= cap) return rows;
 		// DC-43 / R13 E2 — THE WINDOW SHRINKS TO THE ROOM, one row at a
 		// time, before any cell is force-committed. A running card that
@@ -1966,7 +1966,7 @@ export class Body {
 		//
 		// Committed cards are never trimmed: this is the LIVE projection,
 		// and a row in the scrollback is final (§7.1).
-		for (let n = LIVE_WINDOW - 1; n >= 1; n -= 1) {
+		for (let n = CAP_PREVIEW - 1; n >= 1; n -= 1) {
 			const tighter = this.#project(W, ctx, n);
 			if (tighter.length <= cap) return tighter;
 		}

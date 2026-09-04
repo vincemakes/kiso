@@ -321,31 +321,36 @@ say a PIPE was what lost it, which was never true: `thinkingEnd`'s
 inactive path writes one folded line, not the paragraph, so a pipe has
 no paragraph to confuse with prose.
 
-**7.3 A running call is the same card, at a fixed height.** It is
-allocated at the settled card's height on its first frame and only ever
-shrinks — at the settle, when its result turns out to be shorter than
-the window it was given. So a settle changes a row's CONTENT and never
-its position: the breathing mark becomes two spaces in the same two
-columns, and the metadata row that said `3s` says `exit 0 · 90 lines ·
-3.2s`.
+**7.3 A running call is the same card, and it GROWS.** A call with
+nothing back yet is the three-row card a settled call with no output is.
+Each line of output adds a row, to five; past five the cut note appears
+above a scrolling tail and the card grows by that one row, once. Nothing
+pads a window — the height is the content.
 
-The live region as a whole is capped at the room the committed rows
-leave. That is what keeps the window's top from falling: it is read off
-the total height, so a live region that can push the total over `H`
-makes a settle pull it back under, and every row on screen slides down
-by the difference. Capped, the top depends only on how much has
-committed, which only grows. Where the room is tight the cards give way
-first — the window shrinks toward one preview row, and below the
-seven-row skeleton a call keeps its head row until it commits (DC-43).
-Committed cards are never trimmed (§7.1).
+**The settle never shrinks it.** That is what makes a settle a change of
+content and nothing else: the breathing mark becomes two spaces in the
+same two columns, and the status row that said `3s · esc stops` says
+`exit 0 · 90 lines · 3.2s`. The shell's two gestures ride that status
+row rather than spending a window row on a footer, so the row count is
+the same before and after.
 
-*Amended R13 (2026-09-03), owner-ruled.* This section described the
-standing activity block (R4): one allocation for a whole stretch, its
-contents swapping, its height constant. It bought "nothing moves" by
-never shrinking. With the fold retired there is no one-line form for it
-to release into, and the same property comes from the other side — the
-card's fixed height, and the live region's cap. The residual cost is
-recorded as DC-46.
+The live region as a whole is bounded by the SCREEN, and the window's
+top never falls: rows that have reached the terminal's scrollback are
+immutable (§7.1), so the paint may not go back above them, and a live
+region that grows scrolls committed rows away rather than reclaiming
+any. Where the room is tight a window may not GROW past it, and below
+the seven-row skeleton a call keeps its head row until it commits
+(DC-43). A window that already grew is never pulled back in.
+
+*Amended twice on 2026-09-03.* This section first described R4's
+standing activity block — one allocation for a whole stretch, contents
+swapping, height constant — which bought "nothing moves" by never
+shrinking. It was then replaced by a card allocated at its settled
+height that shrank at the settle; measured on the a7 replay, that shrink
+took hole-frames from 8.9 / 13.5 / 3.8 percent to 16.9 / 24.6 / 7.9,
+because the window's top is clamped and cannot follow rows given back.
+A card that only grows measures 8.9 / 13.5 / 3.5 — at or below the
+figure before this round. DC-46 carries all of it.
 
 **7.4 A settled call is a CARD.** One object, one shape, every call:
 
@@ -541,17 +546,13 @@ paste everywhere.
   field — no longer how often it CAN, since §3's rung 1 is persistable
   now. **Re-probing mid-session** (a terminal that announces a scheme
   change while kiso is running) is owed and not built.
-- **The live region's floor (DC-46).** The live region is capped at what
-  the committed rows leave (§7.3), which is what keeps the window's top
-  from falling. On a SHORT terminal with a lot of committed work that
-  leaves one row, so DC-43's shrink takes the running call down to its
-  head row — and the running call's output is the one thing on screen
-  the human is waiting for. The alternative (give the live region the
-  room it needs and clamp the window's top instead) has its own measured
-  cost, the blank hole above the composer that R7a priced at 65 → 692 of
-  733 frames. Both measurements are in DC-46; the choice is the owner's.
-  Until then a residual one-row shift at a partially-settled burst is
-  bounded and gated (R7a A).
+- **What the a7 replay's remaining holes are.** DC-46 closed by making
+  the running card grow rather than shrink, and the hole rate came back
+  to 8.9 / 13.5 / 3.5 percent — at or below where 0.23.0 sat. The
+  expectation was BELOW at every size, since both of 0.23.0's sources
+  (the act slot's release, the fold) are retired; two of three landed
+  exactly on it. So the residual is something older that this round did
+  not touch and did not measure.
 - **A per-call title.** Naming what a call is *for*, in the model's own
   words, would mean the model authoring it — a request-byte change and a
   different release tier, not a visual round. §7.2's visible thinking
