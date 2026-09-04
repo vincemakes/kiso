@@ -56,7 +56,11 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			// TUI2-R1.5 9 (VD-10): /help is sentences for a human — the keys
 			// row in particular is one long line that hard-folded mid-word.
-			for (const row of helpRows()) bodyLog(row, "words");
+			// DC-51: ONE call, because one call is ONE CELL. D1 puts a blank
+			// between any two elements, so a row-per-call group comes out
+			// double-spaced — which is what the owner photographed on the
+			// ctrl+o expansion.
+			bodyLog(helpRows().join("\n"), "words");
 			ctx.input.prompt();
 		});
 		return;
@@ -123,7 +127,23 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		}
 		const land = async (): Promise<void> => {
 			if (r.kind === "appended") {
-				for (const line of r.lines) bodyLog(line);
+				// DC-51 — ONE CALL, because one call is ONE CELL.
+				//
+				// This was a loop, one `bodyLog` per line, and each call
+				// makes its own raw cell — so D1 put a blank between every
+				// pair and the expansion came out laced with unpainted
+				// rows, twice the height of the card it is meant to be.
+				// The owner saw it as stripes.
+				//
+				// It only became wrong when the block became RENDERED ROWS
+				// (0.24.2 ③). Before that the lines were a header and two
+				// multi-line payloads — four cells, and the payloads' own
+				// newlines kept their rows inside one cell each.
+				//
+				// `bodyLog` splits on newlines, and a rendered row may not
+				// contain one (invariant ①b throws on it), so joining is
+				// exactly reversible here.
+				bodyLog(r.lines.join("\n"));
 			} else if (r.kind === "none") {
 				// DC-35: "nothing to expand" was said in two situations and
 				// was only true in one of them. A reader who pressed the key
@@ -150,7 +170,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				bodyLog("[/rewrap] no prose to re-wrap yet");
 			} else {
 				bodyLog(`--- re-wrapped ${r.blocks} block${r.blocks === 1 ? "" : "s"} at the current width (appended — the history above is unchanged) ---`);
-				for (const line of r.lines) bodyLog(line);
+				bodyLog(r.lines.join("\n")); // DC-51: one call, one cell
 				if (r.skipped > 0) bodyLog(`--- ${r.skipped} earlier block${r.skipped === 1 ? "" : "s"} not re-wrapped (bounded at two screens) ---`);
 			}
 			ctx.input.prompt();

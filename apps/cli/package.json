@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-code",
-	"version": "0.24.2",
+	"version": "0.24.3",
 	"description": "kiso CLI — the durable coding agent that survives kill -9: kiso chat / kiso resume / kiso sessions.",
 	"type": "module",
 	"license": "MIT",
@@ -18,19 +18,19 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@vincemakes/kiso-ask-ext": "0.24.2",
-		"@vincemakes/kiso-core": "0.24.2",
-		"@vincemakes/kiso-evals": "0.24.2",
-		"@vincemakes/kiso-mcp-ext": "0.24.2",
-		"@vincemakes/kiso-provider-anthropic": "0.24.2",
-		"@vincemakes/kiso-provider-openai": "0.24.2",
-		"@vincemakes/kiso-runtime": "0.24.2",
-		"@vincemakes/kiso-skills-ext": "0.24.2",
-		"@vincemakes/kiso-subagent-ext": "0.24.2",
-		"@vincemakes/kiso-task-ext": "0.24.2",
-		"@vincemakes/kiso-tools-node": "0.24.2",
-		"@vincemakes/kiso-tui": "0.24.2",
-		"@vincemakes/kiso-tui-cells": "0.24.2"
+		"@vincemakes/kiso-ask-ext": "0.24.3",
+		"@vincemakes/kiso-core": "0.24.3",
+		"@vincemakes/kiso-evals": "0.24.3",
+		"@vincemakes/kiso-mcp-ext": "0.24.3",
+		"@vincemakes/kiso-provider-anthropic": "0.24.3",
+		"@vincemakes/kiso-provider-openai": "0.24.3",
+		"@vincemakes/kiso-runtime": "0.24.3",
+		"@vincemakes/kiso-skills-ext": "0.24.3",
+		"@vincemakes/kiso-subagent-ext": "0.24.3",
+		"@vincemakes/kiso-task-ext": "0.24.3",
+		"@vincemakes/kiso-tools-node": "0.24.3",
+		"@vincemakes/kiso-tui": "0.24.3",
+		"@vincemakes/kiso-tui-cells": "0.24.3"
 	},
 	"devDependencies": {
 		"@types/node": "^26.1.2",

@@ -244,7 +244,7 @@ export async function resolveProjectTrust(input: LineInput): Promise<ProjectArti
 	// the bodyLog below records, verbatim — the listing still lands in
 	// the scrollback; the panel is a bounded block, the record is not).
 	bodyLog(`[project .kiso] ${artifacts.root}`);
-	for (const row of projectTrustRows(artifacts.files, "  ")) bodyLog(row);
+	bodyLog(projectTrustRows(artifacts.files, "  ").join("\n")); // DC-51: one call, one cell
 	const verdict = await askPanel(input, projectTrustView(artifacts.root, artifacts.files));
 	// A cancel is a "no" HERE — refused is sticky, the project does not
 	// load (re-evaluate by deleting the trust line or changing a file).

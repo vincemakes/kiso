@@ -301,6 +301,33 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// where the whole block exists — the screen holds only the tail of
 		// it once the card's uncapped body outruns 24 rows (DC-50).
 		const said = out.replace(/\x1b\[[0-9;]*m/g, "");
+		// DC-51 — THE BLOCK IS ONE CARD, so it is the height a card is.
+		//
+		// The owner's screenshot of 0.24.2: every other row of an expanded
+		// block was the terminal's own white, so the card read as stripes.
+		// The CLI printed the block ONE LINE PER `bodyLog` CALL, and each
+		// call makes its own raw cell — so D1 put a blank between every
+		// pair, and twelve rendered rows became twelve cells laced with
+		// eleven unpainted blanks.
+		//
+		// Every existing gate missed it because they all assert CONTENT and
+		// ORDER, which interleaved blanks do not disturb. What it changes
+		// is the HEIGHT: the block came out more than twice as tall as the
+		// card, which is why its head row was off the screen — a symptom I
+		// had recorded in DC-50 as the uncapped body's doing. It was not.
+		//
+		// So the assertion is the one the owner can see: press the key, and
+		// the row naming what you opened is ON THE SCREEN.
+		{
+			const grid = new VtScreen(24, 80);
+			grid.write(Buffer.from(out, "utf8"));
+			const g = grid.visible();
+			const head = g.findIndex((l) => l.includes("· expanded ·"));
+			expect(head, "the expansion's head row is off the screen — the block is taller than a card").toBeGreaterThanOrEqual(0);
+			const outcome = g.map((l) => /exit 0 · \d+ lines? · /.test(l)).lastIndexOf(true);
+			expect(outcome, "the card has no outcome row on screen").toBeGreaterThan(head);
+			expect(g.slice(head + 1, outcome).filter((l) => l.trim() === "").length, "the expansion is laced with unpainted blank rows").toBeLessThanOrEqual(1);
+		}
 		const want = ["--- shell input ---", '"command": "seq 1 8"', "--- shell output ---", ...Array.from({ length: 8 }, (_, i) => `    ${i + 1}`)];
 		let seen = said.indexOf("· expanded ·");
 		for (const line of want) {

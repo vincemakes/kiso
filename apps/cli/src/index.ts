@@ -742,7 +742,7 @@ async function chatLoop(
 			// prompt inside a conversation with thousands of events — the
 			// durable log was right there and none of it was shown. Empty for
 			// a fresh session, so `kiso chat` is byte-identical.
-			for (const line of resumeTail(session.log.all, process.stdout.columns ?? 80)) bodyLog(line);
+			bodyLog(resumeTail(session.log.all, process.stdout.columns ?? 80).join("\n")); // DC-51: one call, one cell
 			// R2 (owner, 2026-08-27): the resume list is NOT on the opening
 			// screen. `/resume` is where you go looking for a session; the
 			// opening's job is to say what THIS one is.
@@ -760,7 +760,7 @@ async function chatLoop(
 			void announceUpdate();
 		} else {
 			bodyLog(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
-			for (const line of resumeTail(session.log.all, process.stdout.columns ?? 80)) bodyLog(line);
+			bodyLog(resumeTail(session.log.all, process.stdout.columns ?? 80).join("\n")); // DC-51: one call, one cell
 			if (currentFaux) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 		}
 		// XP-1 §3.3.6: a /clear-fresh session INHERITS the live selection,
@@ -1022,7 +1022,7 @@ async function main(): Promise<void> {
 				if (faux && arg === undefined) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 				// REL-0152-D5 — the same tail on the explicit-id form. NOT on
 				// the -p path above: that one's stdout is a machine's input.
-				for (const line of resumeTail(session.log.all, process.stdout.columns ?? 80)) bodyLog(line);
+				bodyLog(resumeTail(session.log.all, process.stdout.columns ?? 80).join("\n")); // DC-51: one call, one cell
 				await resume(session, prompt, faux, input);
 				break;
 			}
