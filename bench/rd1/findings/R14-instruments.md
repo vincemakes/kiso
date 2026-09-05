@@ -1,11 +1,11 @@
-# R14 — the instruments were wrong seven times, and that is the finding
+# R14 — the instruments were wrong eight times, and that is the finding
 
 - **id:** R14-INSTRUMENTS
 - **class:** methodology, not a product defect
 - **round:** R14 / route B (0.25.0)
 - **status:** recorded for the next round. Two rules at the bottom.
 
-Route B produced four product changes and seven false readings. The
+Route B produced four product changes and eight false readings. The
 false readings cost more time than the changes did, and every one of
 them had the same shape: **a measurement that looked like a result.**
 They are written down here rather than in `design.md`, which is the
@@ -98,6 +98,29 @@ like catastrophe and is a syntax error.)
 
 Diagnostics from a process whose OUTPUT is the measurement go to a
 file.
+
+## 8. `origin/main` is a snapshot, and a stale one by default
+
+Reported to the round's author, twice, that nothing had been pushed —
+"remote: zero". It was read off the local remote-tracking ref without a
+`git fetch`. A `fetch` showed `origin/main` six commits ahead of what
+that ref said: another lane had pushed main, and because their work sat
+on top of this round's, the push carried six of this round's commits to
+the remote with it.
+
+Nobody did anything wrong — that is how a shared branch works — but the
+claim was false, and it was load-bearing: the ruling that followed
+offered a rebase on the explicit grounds that "nothing is pushed, so it
+is technically safe". It was not safe; those commits were public, and
+the option evaporated when the fact was checked.
+
+`git status` does not fetch. Neither does `git log origin/main`. In a
+tree several sessions share, the remote-tracking ref is a snapshot of
+the last time someone looked, and the default assumption should be that
+it is out of date.
+
+**"Nothing has been pushed" is a claim about the world, not about the
+working copy. Go and look before making it.**
 
 ---
 
