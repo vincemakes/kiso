@@ -78,13 +78,19 @@ describe("DC-41 — ctrl+o expands, ctrl+r reads back, and neither does the othe
 
 	it("both surfaces appear, in the order the keys were pressed", () => {
 		const raw = transcript();
-		// NEEDLE MOVED (0.24.2 ③): the expansion is a card and its head row
-		// names the CALL first — `shell … · expanded · N turns back` —
-		// where the old block led with `✦ expanded · shell …`. The needle
-		// is the part that only an expansion says.
-		const expandedAt = raw.indexOf("· expanded ·");
+		// NEEDLE MOVED AGAIN (DC-50 / R14, 2026-09-05). `· expanded ·` was
+		// the appended block's head row saying which card it was a copy of.
+		// There is no copy now — ctrl+o flips a switch and the session is
+		// REPRINTED in place — so the addressing text is gone with the
+		// thing that needed it.
+		//
+		// The needle is the erase. It is what only ctrl+o does here: this
+		// fixture never resizes, and opening the viewer is an overlay that
+		// erases nothing. DC-41's subject is untouched — the two keys make
+		// two different surfaces, in the order they were pressed.
+		const expandedAt = raw.indexOf("\x1b[2J\x1b[H\x1b[3J");
 		const viewerAt = raw.indexOf("esc closes");
-		expect(expandedAt, "ctrl+o did not append an expansion").toBeGreaterThan(0);
+		expect(expandedAt, "ctrl+o did not reprint the session").toBeGreaterThan(0);
 		expect(viewerAt, "ctrl+r did not open the viewer").toBeGreaterThan(0);
 		// THE CROSSING, both directions. ctrl+o was pressed first and the
 		// viewer must not be what answered it; ctrl+r came second and the

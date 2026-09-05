@@ -120,24 +120,32 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 			delays: [[7, "exit\r"]],
 			cwd: ws,
 		});
-		// W15 is unchanged by this round: a COMMITTED cell never toggles in
-		// place (history is never rewritten, ADR-0046) — the key appends the
-		// expanded block instead, and names what it aimed at. The in-place
-		// toggle with its `└ ctrl+o collapses` footer is the LIVE cell's
-		// form, pinned in the tui-cells unit.
-		const after = settledScreen(raw).join("\n");
-		// MOVED (0.24.2 ③): the expansion is a CARD — its head row names the
-		// call, and it carries no `✦` (that is the recap's mark; §4.1).
+		// DECLARED SUPERSESSION (DC-50 / R14, 2026-09-05) — THE SETTLED
+		// CELL TOGGLES IN PLACE NOW.
 		//
-		// The head row is asserted on the RAW STREAM, not on the final
-		// screen, and the reason is worth stating: the card's body is
-		// UNCAPPED (an expansion that capped would be no expansion), so on
-		// a 24-row terminal a long one pushes its own head off the top.
-		// That is inherent to APPENDING an uncapped block and is recorded
-		// in DC-50, not something this case can assert away.
-		expect(raw.replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/shell sh steps\.sh · expanded · \d+ turns? back/);
+		// This case said "a COMMITTED cell never toggles in place (history
+		// is never rewritten, ADR-0046) — the key appends the expanded
+		// block instead, and names what it aimed at", and its own comment
+		// pointed at DC-50 for the cost of that: an uncapped block appended
+		// to a 24-row terminal pushes its own head off the top, which is
+		// why the head row had to be asserted on the raw stream rather than
+		// on the screen.
+		//
+		// Amendment 1 removes the premise. The card is re-rendered where
+		// the call stands, so there is no copy to name its original —
+		// `expanded · N turns back` was addressing for a block printed far
+		// from its card, and it retires with the block. What survives is
+		// the capability, and it is asserted where a reader would look for
+		// it: the whole output is reachable, and the card says how to put
+		// it back.
+		const plainRaw = raw.replace(/\x1b\[[0-9;]*m/g, "");
+		expect(raw, "the press did not reprint").toContain("\x1b[2J\x1b[H\x1b[3J");
+		// the WHOLE output, not the five-line preview the settled card cuts to
+		for (const n of [1, 3, 6]) {
+			expect(plainRaw, `step ${n} of the output is not reachable after the expand`).toContain(`step ${n} of six`);
+		}
+		expect(plainRaw, "the expanded card does not say how to collapse").toContain("ctrl+o collapses");
 		expect(raw, "the recap's mark is on the expansion").not.toMatch(/✦\x1b\[0m expanded|✦ expanded/);
-		expect(after).toContain("step 6 of six");
 	}, 240_000);
 
 	it("THE PIPE PATH is untouched — no compositor, no tail, no affordance, the result in full", () => {

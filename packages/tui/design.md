@@ -306,10 +306,28 @@ A turn is thinking, work, and an answer. §7 says how those three occupy
 rows, and it is the part of this file the rest of the product is most
 easily broken against: **the screen must not move under the reader.**
 
-**7.1 Committed rows are final.** A row that has entered the terminal's
-scrollback is never re-emitted, reflowed or erased (ADR-0046). So kiso
-cannot expand anything in place after the fact — an expansion appends.
-Everything below is downstream of that.
+**7.1 Committed rows are final WITHIN a rendering.** A row that has
+entered the terminal's scrollback is never re-emitted, reflowed or
+erased by the frame path. One act stands outside the frame path: a
+SETTLED RESIZE, and `ctrl+o`, which is the same act. Either erases the
+terminal's screen and scrollback (`2J H 3J`) and reprints the session
+from the model at the current geometry, so the terminal holds exactly
+one rendering of the record (ADR-0046 Amendment 1).
+
+DECLARED REVERSAL (R14, 2026-09-05). This section used to end "so kiso
+cannot expand anything in place after the fact — an expansion appends",
+and §7.7, §9.0b and the whole append apparatus were downstream of that
+sentence. R10 measured the old rule on the owner's terminal and it did
+not hold up: kiso already erased the visible screen at launch (DC-40), a
+grow lost 16 rows (DC-39), a narrow duplicated four tokens, and the
+scrolled-off transcript never reflowed at all. The seam is not
+removable under the old rule, because the scrollback is the terminal's
+and `3J` is the only instruction that rewrites it.
+
+What is still true, and is what this section is for: **the screen must
+not move under the reader.** A reprint is not motion under the reader —
+it is the same record, redrawn whole, at the geometry the reader is
+now looking at.
 
 **7.2 Thinking is words.** The model's thinking renders as its own
 paragraph — dim, italic, indented two spaces, blank line between
@@ -344,10 +362,11 @@ row rather than spending a window row on a footer, so the row count is
 the same before and after.
 
 The live region as a whole is bounded by the SCREEN, and the window's
-top never falls: rows that have reached the terminal's scrollback are
-immutable (§7.1), so the paint may not go back above them, and a live
-region that grows scrolls committed rows away rather than reclaiming
-any. Where the room is tight a window may not GROW past it, and below
+top never falls: within a rendering, rows that have reached the
+terminal's scrollback are immutable (§7.1 — a reprint starts a NEW
+rendering and is not bound by this), so the paint may not go back above
+them, and a live region that grows scrolls committed rows away rather
+than reclaiming any. Where the room is tight a window may not GROW past it, and below
 the seven-row skeleton a call keeps its head row until it commits
 (DC-43). A window that already grew is never pulled back in.
 
@@ -438,11 +457,25 @@ line, and prints no key*. Nothing folds (§1.7), so there is no line for
 it to govern. Kept as a numbered stub because §7's numbers are
 referenced from the code and from the findings record.
 
-**7.7 `ctrl+o` has exactly one target and says which.** The row it will
-act on renders its own `ctrl+o` token at full strength among dim
-siblings — exactly one bright token per frame. Two would be a lie about
-a single-target key; zero puts the reader back to pressing and finding
-out. Per §2.4 the emphasis is weight, not a background.
+**7.7 `ctrl+o` is one switch, and every settled card obeys it.**
+Pressing it flips a single state and reprints the session (§7.1): every
+card whose content is SETTLED renders expanded — the whole body, and
+`ctrl+o collapses` in place of the cut note — or collapsed, which is the
+five-row preview and `ctrl+o expands`. A card whose content is still
+ARRIVING is exempt: its height is E2/DC-43's, and a global "show
+everything" has no business reaching into it. A card parked for approval
+is settled, not arriving — its diff is complete and a human is reading
+it — and that is exactly when the key must answer.
+
+DECLARED REVERSAL (DC-50 / R14, 2026-09-05). This section used to read
+"`ctrl+o` has exactly one target and says which. The row it will act on
+renders its own `ctrl+o` token at full strength among dim siblings —
+exactly one bright token per frame." The one-bright-token rule existed
+because the key had ONE target and the reader had to be told which; with
+no target to name, the rule has nothing left to protect and retires with
+it. The per-card `ctrl+o expands` affordance stays — it is now true of
+every card, which is what makes the switch legible without a bright
+token to single one out.
 
 **7.8 The composer is four rows and stays four rows.** `CHROME_ROWS` is
 4: rule, input, rule, status. Every gate keyed on `H − 4` depends on it.
@@ -520,9 +553,15 @@ nothing stumbles onto outranks one like `↑ history` that everyone does.
 
 ## 9. The transcript viewer
 
-`ctrl+r` opens a reader over the turn's record. It exists because §7.1
-makes expand-in-place impossible: looking back needs a surface that can
-be redrawn, and committed rows are not one.
+`ctrl+r` opens a reader over the turn's record. It was born because §7.1
+made expand-in-place impossible; R14 makes it possible, and the viewer
+stays anyway, because the two answer different questions. `ctrl+o`
+changes how the transcript is PRINTED — it is still the transcript,
+still scrolled through the terminal's own scrollback. `ctrl+r` opens a
+SURFACE with its own cursor, its own paging, and its own rendering at
+today's width, for walking back through a session that is longer than
+anything printing can help with. Both exist; neither does the other's
+job (DC-41).
 
 **9.0 Which key, and why this one.** The viewer held `ctrl+o` from
 0.19.0 to 0.20.4, on the bet that a borrowed key transfers muscle
@@ -535,16 +574,22 @@ elsewhere is renaming a session and kiso has nothing to rename. The
 viewer fires only on an idle, empty composer, so the collision can only
 ever land where the other product's binding is itself a no-op.
 
-**9.0b The `ctrl+o` expansion is a CARD, and it APPENDS.** Its head row
-names the call it opened — `shell curl … · expanded · 2 turns back` —
-because appending means it lands wherever the bottom is, which on a
-settled turn is after the recap, and the head row is the only tie to
-what the reader pressed. It carries no `✦`: that is the turn recap's
-mark, and one symbol with two meanings is §4.1. Its body is the WHOLE
-result, uncapped — an expansion that capped would be no expansion.
+**9.0b The `ctrl+o` expansion is the CARD ITSELF, re-rendered.**
+DECLARED REVERSAL (DC-50 / R14, 2026-09-05). This section described an
+APPENDED card whose head row named the call it opened — `shell curl … ·
+expanded · 2 turns back` — because a block that lands wherever the
+bottom happens to be needs to say which call it is a copy of. Amendment
+1 removes the copy: the card is re-rendered where the call stands, so
+the addressing retires with the thing that needed addressing. What
+survives unchanged is the part that was never about appending — the body
+is the WHOLE result, uncapped, because an expansion that capped would be
+no expansion.
 
-Appending rather than expanding in place is §7.1, not a preference, and
-DC-50 records what route B's reprint would make possible instead.
+**9.0c The viewer and the switch coexist, and a reprint closes the
+viewer.** A reprint is a commit storm and nothing commits while the
+viewer is up (§9.2), so a settled resize — or a `ctrl+o` — closes it
+first. The reader reopens it: one keypress, stated here rather than
+discovered.
 
 **9.1 It lives on the PRIMARY screen.** No alternate screen — it is a
 second, divergent world to keep correct, and it takes the viewer's rows

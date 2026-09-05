@@ -180,10 +180,17 @@ describe("TUI2-R2 ⑤ — the cursor parks at the active input, in every named s
 		// EXIT teardown — a partial final frame with the chrome already
 		// torn down, which is not a frame this case has ever been about.
 		// The subject is the expand key's OWN frame: the first one.
-		const expAt = raw.indexOf("expanded");
+		//
+		// NEEDLE MOVED (DC-50 / R14, 2026-09-05): the word "expanded" was
+		// the appended block's head row. There is no block — the key
+		// REPRINTS — so the anchor is the erase, which is the first byte of
+		// the frame this case is about. The subject is unchanged: whatever
+		// the expand key does, its frame parks the cursor at the input like
+		// every other frame.
+		const expAt = raw.indexOf("\x1b[2J\x1b[H\x1b[3J");
 		expect(expAt, "the expansion never happened").toBeGreaterThan(0);
 		const term = new VtScreen(ROWS, COLS);
-		term.write(Buffer.from(raw.slice(0, frameEndAfter(raw, expAt + "expanded".length)), "utf8"));
+		term.write(Buffer.from(raw.slice(0, frameEndAfter(raw, expAt + "\x1b[2J\x1b[H\x1b[3J".length)), "utf8"));
 		expectParked(term, "post-ctrl+o");
 	});
 

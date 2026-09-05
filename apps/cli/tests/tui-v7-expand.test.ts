@@ -159,10 +159,38 @@ function stripANSI(text: string): string {
 }
 
 describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
-	it("COMMITTED: ctrl+o on a tool from three turns back appends the expanded block — the rows above it byte-identical (the work order's done-when)", () => {
+	/**
+	 * DECLARED SUPERSESSION (DC-50 / R14, 2026-09-05) — THERE IS NO
+	 * APPENDED BLOCK, so this case asserts what replaces it.
+	 *
+	 * It was: "ctrl+o on a tool from three turns back APPENDS the expanded
+	 * block — the rows above it byte-identical (the work order's
+	 * done-when)". Every needle in it was the block's addressing —
+	 * `shell seq 1 8 · expanded · 2 turns back`, the `--- shell input ---`
+	 * section headers — which existed so a copy printed far from its call
+	 * could say which call it was a copy of. Amendment 1 removes the copy:
+	 * the card is re-rendered where the call stands.
+	 *
+	 * THE DONE-WHEN MOVED, and honestly rather than quietly. "The rows
+	 * above are byte-identical" was a claim about an APPEND, and it needs
+	 * a screen where the block fits and nothing scrolls to mean anything
+	 * — which is why the H=200 version of it was withdrawn from 0.24.2 and
+	 * carried into this round (route-b-carried-items #1). Its route-B form
+	 * is a ROUND TRIP — collapse, expand, collapse, and the rows above are
+	 * reproduced — and it is gated at H=200 in
+	 * `packages/tui/tests/r14-global-expand.test.ts`, with the non-vacuity
+	 * guard the carried item insisted on. On this 24-row terminal the
+	 * expanded body is taller than the screen, so two viewports holding
+	 * different parts of one session would say nothing about whether
+	 * anything was rewritten — the same reason the original was withdrawn.
+	 *
+	 * What this case keeps is what only a real PTY can show: the key,
+	 * pressed for real, reaches the whole of a settled call's output.
+	 */
+	it("COMMITTED: ctrl+o expands a tool from three turns back IN PLACE — its whole output, and the way back", () => {
 		const { env } = isolatedEnv();
 		// Three turns; the FIRST's shell (`seq 1 8`) settles into the 5-row
-		// tail with the ctrl+o affordance and freezes; turns 2–3 are
+		// tail with the ctrl+o affordance and freezes; turns 2-3 are
 		// text-only. bypass: the shell runs without the approval question —
 		// this gate is about the KEY, not the policy chain.
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v7-expand-"));
@@ -185,178 +213,25 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" },
 			[
-				["▌ ", "go\r"], // the brick — the startup paint is race-proof in BOTH modes
+				["\u258c ", "go\r"], // the brick — the startup paint is race-proof in BOTH modes
 				["built.", "go\r"], // turn 1's response → turn 2
 				["second turn.", "go\r"], // turn 2's response → turn 3
 				["third turn.", "\x0f"], // the REAL key — the turn-1 shell has long since frozen
-				["· expanded ·", "exit\r"], // 0.24.2 ③: the card names the call FIRST, so the needle is the part only an expansion says
+				["ctrl+o collapses", "exit\r"], // the expanded card's own affordance
 			],
 		);
 		const clean = stripANSI(out);
-
-		// The appended block: the /last shape aimed at the chosen cell —
-		// the header names the target and how far back it sits.
-		// MOVED (0.24.2 ③): a CARD, and no `✦` — that is the recap's mark.
-		expect(clean).toMatch(/shell seq 1 8 · expanded · 2 turns back/);
-		expect(clean).not.toMatch(/✦ expanded/);
-		expect(clean).toContain("--- shell input ---");
-		expect(clean).toContain('"command": "seq 1 8"');
-		expect(clean).toContain("--- shell output ---");
-		// SUPERSESSION (TUI2-R1, the tool-cell suffix class): the settled
-		// shell now names its own key on the HEAD row as well as at the
-		// block's cut — two affordances for one cell, each a different
-		// fact (the head says how much is hidden, the cut says where the
-		// visible tail begins). Both still emit exactly once: the
-		// committed rows are never re-emitted after the freeze.
-		// MOVED (R1.5 slice ④, the settled-shell-body class — DECLARED THIS
-		// ROUND): there is no block cut any more, because there is no
-		// settled block (VD-5). ONE affordance for one cell, on the head
-		// row — which is what "one grammar, stated once per card" asked
-		// for. The "emits exactly once" property the case exists to pin is
-		// unchanged and is what the count still measures.
-		// MOVED (the focus-marker class, TUI2-R2 ⑤): the count is the
-		// settled cell's ONE affordance plus the live cell's focus marker,
-		// when a live cell is on screen holding the focus. The property this
-		// line exists to pin — "emits exactly once", i.e. the committed rows
-		// are never re-emitted after the freeze — is unchanged: what the
-		// count now admits is a SECOND cell's single affordance, never a
-		// second copy of the first cell's.
-		// DECLARED SUPERSESSION (REL-0152-R1): counted on the SCREEN, not
-		// in the byte stream. The stream count was a proxy for "the
-		// committed rows are never re-emitted after the freeze", which
-		// held while the renderer moved rows by scrolling the terminal. A
-		// diff rewrites a row whenever its content changes — and when the
-		// window shifts, every row's content changes — so the same row's
-		// text appears in the stream many times while appearing on screen
-		// exactly once.
-		//
-		// The property the case is named for is about the SCREEN, and it
-		// is asserted there. That a committed line reaches the scrollback
-		// exactly once is the A7 replay's and TT-1B's job, and both are
-		// green.
-		const screenNow = new VtScreen(24, 80);
-		screenNow.write(Buffer.from(out, "utf8"));
-		const visible = screenNow.visible().join("\n");
-		expect((visible.match(/ctrl\+o/g) ?? []).length, "one affordance per cell on screen").toBeLessThanOrEqual(2);
-		expect((clean.match(/ctrl\+o/g) ?? []).length).toBeGreaterThanOrEqual(1);
-		// the REAL count, at the tier this row's width affords: the bypass
-		// tier's `· approved by mode:bypass` takes the room the full form
-		// would have needed, so the terse tier lands — the count survives,
-		// the teaching word gives way (invariant ①: the row still fits 80).
-		// MOVED (R1.5 slice 5, the approval-attribution class — DECLARED
-		// THIS ROUND): a POLICY verdict is ambient and silent; a HUMAN
-		// verdict is what the row records. `approved by mode:*` was the
-		// runtime's backfill for "no policy expressed an opinion", read by
-		// a human as an attribution (VD-11).
-		// MOVED (R9 P2 / D4): the settled shell is a slab, so the count and
-		// the timing ride the OUTCOME row and the key rides the note row.
-		// The fact this line pins — the row states the count exactly once,
-		// with the key — is unchanged; both are simply on the rows that
-		// carry them now.
-		expect(clean).toMatch(/ {4}exit 0 · 8 lines · \d+\.\ds/);
-		expect(clean).toMatch(/… \d+ earlier lines? · ctrl\+o expands/);
-
-		// THE DONE-WHEN: split the stream at the block's first byte — the
-		// pre-key part is the state before the key. The emulator replays
-		// both sides; the block lands as NEW content, and the rows above
-		// it are the pre-key screen's rows at the same positions,
-		// byte-identical (the append never touched them).
-		// The head row splits as target + reset + dim + ` · expanded` in the
-		// raw bytes, so the search anchors on the post-reset text.
-		const at = out.indexOf("· expanded · 2 turns back");
-		expect(at).toBeGreaterThan(0);
-		const pre = new VtScreen(24, 80);
-		pre.write(Buffer.from(out.slice(0, at), "utf8"));
-		const gridA = pre.visible();
-		const full = new VtScreen(24, 80);
-		full.write(Buffer.from(out, "utf8"));
-		const gridB = full.visible();
-		// AMENDED (0.24.2 ③): the block's own head row may have scrolled off
-		// the final screen, because the card's body is UNCAPPED and this
-		// scenario's is longer than the 24 rows left under the transcript.
-		// That is inherent to APPENDING an uncapped block (DC-50), so the
-		// anchor is the block's first row that IS on screen. The claim is
-		// unchanged and is the one below it: everything above the block is
-		// byte-identical to the pre-key screen.
-		const anchors = ["· expanded ·", "--- shell input ---", '"command": "seq 1 8"', "--- shell output ---"];
-		const r = gridB.findIndex((l) => anchors.some((a) => l.includes(a)));
-		expect(r, "no part of the appended block is on the final screen").toBeGreaterThan(0);
-		// the block's own rows: header, the sections, the full result. The
-		// blank rows between the sections are the container's W11 spacing
-		// (bodySpacing: a blank before a multi-row cell) — the block is ONE
-		// logged sequence, the blanks belong to its layout.
-		// AMENDED (R13 D1): the offsets are RELATIVE now, not fixed. D1
-		// made the spacing a constant — one blank between any two elements
-		// whatever their height — where W11 gave a blank only when a side
-		// was multi-row, so every gap inside this block moved by one. The
-		// claim is the block's CONTENT and its ORDER, which is what the
-		// walk below asserts; the exact gap widths were never the subject
-		// and pinning them made this case break on a spacing change.
-		// the head row is asserted on the RAW STREAM (it was written; it may
-		// have scrolled), and the CONTENT walk below is asserted on the
-		// screen from whatever the anchor is.
-		expect(out.replace(/\x1b\[[0-9;]*m/g, ""), "the head row does not name the call").toMatch(/shell seq 1 8 · expanded · 2 turns back/);
+		expect(out, "the press did not reprint the session").toContain("\x1b[2J\x1b[H\x1b[3J");
+		// the WHOLE output of `seq 1 8`, not the settled card's five-row tail
+		for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
+			expect(clean, `line ${n} of the output is not reachable after the expand`).toMatch(new RegExp(`(^|\\s)${n}(\\s|$)`, "m"));
+		}
+		expect(clean, "the expanded card does not say how to put it back").toContain("ctrl+o collapses");
+		expect(clean, "the addressing text outlived the block it addressed").not.toMatch(/· expanded · \d+ turns? back/);
 		expect(out, "the recap's mark is on the expansion").not.toMatch(/✦\x1b\[0m expanded/);
-		// THE CONTENT AND ITS ORDER are asserted on the RAW STREAM, which is
-		// where the whole block exists — the screen holds only the tail of
-		// it once the card's uncapped body outruns 24 rows (DC-50).
-		const said = out.replace(/\x1b\[[0-9;]*m/g, "");
-		// DC-51 — THE BLOCK IS ONE CARD, so it is the height a card is.
-		//
-		// The owner's screenshot of 0.24.2: every other row of an expanded
-		// block was the terminal's own white, so the card read as stripes.
-		// The CLI printed the block ONE LINE PER `bodyLog` CALL, and each
-		// call makes its own raw cell — so D1 put a blank between every
-		// pair, and twelve rendered rows became twelve cells laced with
-		// eleven unpainted blanks.
-		//
-		// Every existing gate missed it because they all assert CONTENT and
-		// ORDER, which interleaved blanks do not disturb. What it changes
-		// is the HEIGHT: the block came out more than twice as tall as the
-		// card, which is why its head row was off the screen — a symptom I
-		// had recorded in DC-50 as the uncapped body's doing. It was not.
-		//
-		// So the assertion is the one the owner can see: press the key, and
-		// the row naming what you opened is ON THE SCREEN.
-		{
-			const grid = new VtScreen(24, 80);
-			grid.write(Buffer.from(out, "utf8"));
-			const g = grid.visible();
-			const head = g.findIndex((l) => l.includes("· expanded ·"));
-			expect(head, "the expansion's head row is off the screen — the block is taller than a card").toBeGreaterThanOrEqual(0);
-			const outcome = g.map((l) => /exit 0 · \d+ lines? · /.test(l)).lastIndexOf(true);
-			expect(outcome, "the card has no outcome row on screen").toBeGreaterThan(head);
-			expect(g.slice(head + 1, outcome).filter((l) => l.trim() === "").length, "the expansion is laced with unpainted blank rows").toBeLessThanOrEqual(1);
-		}
-		const want = ["--- shell input ---", '"command": "seq 1 8"', "--- shell output ---", ...Array.from({ length: 8 }, (_, i) => `    ${i + 1}`)];
-		let seen = said.indexOf("· expanded ·");
-		for (const line of want) {
-			const found = said.indexOf(line, seen);
-			expect(found, `the expanded block is missing ${JSON.stringify(line)}, or it is out of order`).toBeGreaterThanOrEqual(0);
-			seen = found + 1;
-		}
-		// THE DONE-WHEN, and what 0.24.2 ③ costs it.
-		//
-		// The claim was: the rows ABOVE the block are the pre-key screen's,
-		// byte-identical, because an append never touches them. That was
-		// checkable while the block FIT the screen. The card's body is
-		// uncapped, so this block is longer than the rows left under the
-		// transcript, and the terminal scrolls — everything above leaves
-		// the viewport, and comparing two viewports that hold different
-		// parts of the session proves nothing about rewriting.
-		//
-		// So the claim is asserted where it still has content: the block is
-		// an APPEND — every piece of it lands AFTER the last thing the
-		// pre-key screen showed, in order, and the content walk above is
-		// that. Whether the rows above were rewritten is not observable
-		// through a 24-row viewport once the block overflows it; DC-50 is
-		// where that lives, and route B's reprint is what changes it.
-		const lastBefore = gridA.filter((l) => l.trim() !== "").at(-1)!;
-		expect(said.indexOf(lastBefore.trim()), "the pre-key screen's last row is not in the stream").toBeGreaterThanOrEqual(0);
-		expect(said.indexOf(lastBefore.trim()), "the block did not land AFTER what was already there").toBeLessThan(said.indexOf("· expanded ·"));
 	}, 120_000);
 
-	it("LIVE: the approval panel shows the ALWAYS-verbose diff at the pause (the fold cap + the notice row); a second key on the settled cell appends nothing", () => {
+	it("LIVE: the approval panel shows the ALWAYS-verbose diff at the pause (the fold cap + the notice row); a second key on the settled cell EXPANDS it", () => {
 		const { env } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v7-expand-"));
 		const target = join(dir, "target.txt");
@@ -384,8 +259,13 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 				// with the notice row; the ctrl+o affordance is GONE).
 				// Answer with 1 (Yes) + enter.
 				["needs approval — asked by", "y\r"],
+				// DC-50 / R14: the second key no longer DECLINES. There is no
+				// "nothing to expand" any more — the key is a switch, and a
+				// settled card obeys it, so the press expands the write's
+				// card and the card says how to put it back. The needle is
+				// the affordance the new state carries.
 				["written.", "\x0f"], // the second key: the cell is settled+committed
-				["nothing to expand", "exit\r"],
+				["ctrl+o collapses", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
@@ -397,11 +277,15 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		expect(clean).toContain("more rows — the full args are in the event log");
 		expect(clean).toContain("line07"); // the always-verbose middle — never hidden
 		expect(clean).not.toContain("ctrl+o to expand"); // the live cut is gone — the panel superseded it
-		// The second key appended nothing — the settled cell was never cut
-		// with the affordance (its committed form is the result text), so
-		// the answer is the empty message, not a block.
+		// DECLARED SUPERSESSION (DC-50 / R14): the second key used to answer
+		// with `[nothing to expand]`, because this settled cell was never
+		// cut with an affordance and the walk had nothing to open. The key
+		// is a switch now — it does not look for a target and cannot
+		// decline — so the message is gone with the branch that produced
+		// it, and the press reprints with every settled card expanded.
 		expect(clean).not.toContain("✦ expanded");
-		expect(clean).toContain("[nothing to expand]");
+		expect(clean).not.toContain("[nothing to expand]");
+		expect(clean, "the press did not reprint").toContain("ctrl+o collapses");
 		// The write really happened (the answer flow completed).
 		expect(clean).toContain("written.");
 	}, 120_000);

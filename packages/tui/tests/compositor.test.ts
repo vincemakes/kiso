@@ -917,7 +917,7 @@ describe("TUI v6 — the one compositor", () => {
 		expect(compact.writes.join("")).not.toContain("✦ resume");
 	});
 
-	it("W15: the expand key on a LIVE tool toggles in place — the full approval diff replaces the cut, the second press cuts it back", () => {
+	it("W15 / DC-50: the expand key on a card parked for APPROVAL toggles it in place — the full diff replaces the cut, the second press cuts it back", () => {
 		// The live region's toggle window is the non-done cell — an
 		// approval diff (its "ctrl+o to expand" affordance is exactly the
 		// invite): 15 one-row lines, short enough that the EXPANDED form
@@ -941,9 +941,16 @@ describe("TUI v6 — the one compositor", () => {
 		expect(pre).toContain("id14");
 		expect(pre).not.toContain("id07");
 		// THE TOGGLE: in place, no append, the cut note gone, the whole
-		// diff there — the middle rows the cut hid
-		expect(body.expandNext()).toEqual({ kind: "toggled" });
+		// diff there — the middle rows the cut hid.
+		//
+		// DC-50 / R14: the key is a global switch and the flip is a
+		// REPRINT, so the frame arrives inside `toggleExpanded` rather
+		// than on the next tick — the writes are cleared BEFORE the press
+		// now, not after it. The claim is untouched: this card is parked
+		// for approval, its content is complete, and the key must answer
+		// while the human is reading it.
 		writes.length = 0;
+		body.toggleExpanded();
 		tick();
 		const frame = writes.join("");
 		expect(frame).toContain("id07");
@@ -954,131 +961,30 @@ describe("TUI v6 — the one compositor", () => {
 		expect(frame).not.toContain("ctrl+o to expand");
 		expect(frame).toContain("    ctrl+o collapses");
 		// THE SECOND PRESS: the cut returns — the toggle flips both ways
-		expect(body.expandNext()).toEqual({ kind: "toggled" });
 		writes.length = 0;
+		body.toggleExpanded();
 		tick();
 		expect(writes.join("")).toContain("ctrl+o");
 	});
 
-	it("W15: the expand key on a COMMITTED tool appends the expanded block — the /last shape, the N-turns-back header, the full input", () => {
-		const { body, tick } = makeBody({ W: 60 });
-		body.enter();
-		body.userLine("turn one");
-		body.toolStart("shell", "c1", { command: "make build" });
-		body.toolRunning("c1");
-		const big = Array.from({ length: 30 }, (_, i) => `row ${String(i).padStart(2, "0")} of a long build log`).join("\n");
-		body.toolResult("c1", { content: big, isError: false });
-		// the natural turn shape: the text releases the fold-hold (W14) —
-		// the held tool commits at the next frame; its cut note (its last
-		// rendered row at commit) carries the affordance → #collapsed.
-		body.textAppend("first turn built.");
-		body.endTurn(0); // R3d: the fold is the TURN's — nothing commits before the settle
-		tick();
-		const r = body.expandNext();
-		expect(r.kind).toBe("appended");
-		const lines = (r as { lines: string[] }).lines;
-		// AMENDED (0.24.2 ③): the block is a CARD now, so its lines are
-		// RENDERED ROWS rather than raw strings — the payloads are folded
-		// into the card's body instead of riding as one multi-line entry,
-		// and `✦` is gone (it is the recap's mark; §4.1). Everything this
-		// case pins is the same and is asserted against the rows.
-		const said = lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, "")).join("\n");
-		expect(said, "the head row does not name the call").toMatch(/shell make build.*expanded · 0 turns back/);
-		expect(said, "the recap's mark is on the expansion").not.toContain("✦");
-		// the /last shape: input and output sections with the FULL input
-		expect(said).toContain("--- shell input ---");
-		expect(said, "the full input, pretty-printed").toContain('"command": "make build"');
-		expect(said).toContain("--- shell output ---");
-		expect(said, "the expansion capped its own body").toContain("row 29 of a long build log");
-		// DECLARED SUPERSESSION (DC-35, from the owner's own screen): the
-		// second press used to append this block AGAIN, because a ring of
-		// one restarts its cycle immediately. Held down it printed the
-		// same four rows over and over, each closing with "ctrl+o opens
-		// the one before it" — a footer naming something that does not
-		// exist. The key now answers `none` with the honest reason.
-		const again = body.expandNext();
-		expect(again.kind).toBe("none");
-		expect(again.kind === "none" ? again.why : undefined).toBe("already-last");
-		// what this case is FOR is unchanged: a committed cell can never
-		// toggle, only append — so once other content has arrived, the
-		// same key appends it again rather than rewriting history.
-		body.userLine("next");
-		body.textAppend("ok");
-		body.textEnd();
-		body.endTurn(0);
-		tick();
-		expect(body.expandNext().kind).toBe("appended");
-	});
-
-	it("W15: the expand pointer cycles the collapsed history newest-first; an empty body answers none", () => {
-		const fresh = makeBody({ W: 60 });
-		fresh.body.enter();
-		expect(fresh.body.expandNext()).toEqual({ kind: "none" });
-		// two committed cut shells — turn 1 and turn 2, each pushed past the cap
-		const { body, tick } = makeBody({ W: 60 });
-		body.enter();
-		const turn = (t: string) => {
-			body.userLine(t);
-			body.toolStart("shell", `c${t}`, { command: `build ${t}` });
-			body.toolRunning(`c${t}`);
-			body.toolResult(`c${t}`, { content: Array.from({ length: 30 }, (_, i) => `row ${i}`).join("\n"), isError: false });
-			body.textAppend("built.");
-			tick();
-			body.raw(Array.from({ length: 30 }, (_, i) => `filler ${t} ${i}`));
-			tick();
-		};
-		turn("one");
-		turn("two");
-		// the first press: the NEWEST collapsed cell (turn two — 0 turns back)
-		const first = body.expandNext();
-		expect(first.kind).toBe("appended");
-		expect((first as { lines: string[] }).lines[0]).toContain("0 turns back");
-		// the second press: the OLDER cell — turn one's tool, one user cell after it
-		const second = body.expandNext();
-		expect(second.kind).toBe("appended");
-		expect((second as { lines: string[] }).lines[0]).toContain("1 turn back");
-		// the third press: the cycle returns to the newest
-		const third = body.expandNext();
-		expect(third.kind).toBe("appended");
-		expect((third as { lines: string[] }).lines[0]).toContain("0 turns back");
-	});
-
-	/* R13 — "W13: the run of 5 read_file calls + text rolls up to ONE row…" retired, owner-ruled 2026-09-03. W13's rollup row
-	   and W14's quiet-turn fold are two of the four collapses this round
-	   reverses (see the compositor's #foldOrRollup for the reversal in
-	   full, and r13-one-surface for what stands in their place: every
-	   settled call is its own card, and nothing is held from committing). */
-
-	/* R13 — "W14: the QUIET turn folds…" retired, owner-ruled 2026-09-03. W13's rollup row
-	   and W14's quiet-turn fold are two of the four collapses this round
-	   reverses (see the compositor's #foldOrRollup for the reversal in
-	   full, and r13-one-surface for what stands in their place: every
-	   settled call is its own card, and nothing is held from committing). */
-
-	/**
-	 * RETIRED (R3i phase 3, owner-ruled) — A9 NARROWS: the fold carries
-	 * WORK; the human's words stay on the chip band alone.
+	/*
+	 * RETIRED (DC-50 / R14, 2026-09-05) — two cases went with the append.
 	 *
-	 * A9 put the user's words on the fold line as the SGR-7 chip, so a
-	 * quiet turn read as one row. Measured under R3i, it prints them
-	 * TWICE: the chip band commits on the frame it is pushed (it always
-	 * has — the hold exempts non-thinking/tool cells), so the screen
-	 * showed ` fix the flaky test ` on its own row and the same words
-	 * again inside the fold directly beneath it. The band is the record
-	 * of what was ASKED; the fold is the record of what was DONE. One
-	 * fact, one row, each.
+	 * "the expand key on a COMMITTED tool appends the expanded block —
+	 * the /last shape, the N-turns-back header, the full input" and "the
+	 * expand pointer cycles the collapsed history newest-first; an empty
+	 * body answers none" both asserted the mechanism, not the capability.
+	 * There is no append: a committed card is re-rendered where it stands,
+	 * so there is no block to shape, no header to carry a turn distance,
+	 * and no pointer to cycle. `expandedCard`, the renderer those cases
+	 * pinned, has no caller left either.
 	 *
-	 * The claims A9 made that outlive it are gated elsewhere and were
-	 * not weakened: the ONE row never exceeds W and never contains a
-	 * newline (`r3i-stretch-line.test.ts` G2, swept W=4..160 in both
-	 * chip and chipless forms), the metadata degrades by a stated
-	 * ladder rather than a truncation (G2's order gate), and the key
-	 * gives way never (G2 again). The chip's own width behaviour is
-	 * still exercised there through `stretchLine`'s `words` field, which
-	 * the compositor no longer passes but the renderer still honours for
-	 * any caller that does.
+	 * The CAPABILITY they existed for — a committed card's full body and
+	 * its full input are reachable from the keyboard — is gated in
+	 * `r14-global-expand.test.ts`, on the screen rather than on a returned
+	 * block, which is a stronger place to stand: the old cases could pass
+	 * over a block that never reached the terminal.
 	 */
-
 	it("A4+A5: the settled head row carries the TARGET and the VERDICT — `  edit  examples/foo.ts (… · approved by X)`; the denied call's pinned row names the decider; the human approval stays bare", () => {
 		// A4: the settled-success row keeps toolTarget — the work order's
 		// shape `  edit examples/foo.ts`, the target in the verb's summary

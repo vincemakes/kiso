@@ -1736,28 +1736,20 @@ function slabBlock(head: string, body: readonly string[], outcome: string | null
 	return [...top, slabRow("", W), ...noteRow(outcome, W, "body").map((r) => slabRow(r, W)), slabRow("", W)];
 }
 
-/**
- * 0.24.2 ③ — the appended expansion, as a CARD.
+/*
+ * RETIRED (DC-50 / R14, 2026-09-05) — `expandedCard`.
  *
- * `ctrl+o` used to append bare ground under a `✦` — the turn recap's own
- * mark, one symbol for two meanings (§4.1) — in a page where every other
- * piece of machine work is a card. And it lands after the recap, so the
- * only tie to the call it came from was that mark's sentence.
+ * It drew the APPENDED block the old ctrl+o produced: a card printed far
+ * below the call it belonged to, which is why its head row had to carry
+ * `expanded · N turns back` and why its body carried section headers
+ * around the raw input and output. All of that was addressing — a way
+ * for a copy to say which original it was a copy of.
  *
- * The card's head row names the call, which is the tie, so the mark is
- * not needed for it. The body is the WHOLE result: an expansion that
- * capped would be no expansion.
- *
- * Expanding IN PLACE is a different problem — committed rows are final
- * (§7.1) — and it waits for route B (DC-50).
+ * DC-50 removes the copy. An expanded card is the ordinary `toolCard`
+ * with `expanded` set, rendered where the call stands, so nothing needs
+ * to say where it came from. Its shape is gated in
+ * `r13-rhythm-surface.test.ts`.
  */
-export function expandedCard(verb: string, target: string, meta: string, sections: readonly string[], outcome: string, W: number): string[] {
-	const p = palette();
-	const head = cutLine(`  ${verb} ${p.bold}${escapeTerminal(target)}${p.reset}${slabPaints() ? p.washDim : p.dim} · ${escapeTerminal(meta)}${slabPaints() ? p.washDimEnd : p.reset}`, W);
-	const body: string[] = [];
-	for (const raw of sections) for (const row of blockRows(raw, W, slabPaints() ? "body" : "dim")) body.push(row);
-	return slabBlock(head, body, outcome, W);
-}
 
 /** 0.24.2 ② — the live region's `thinking…` placeholder: dim italic at
  *  column 2, no glyph, the SAME shape a thinking paragraph takes so that

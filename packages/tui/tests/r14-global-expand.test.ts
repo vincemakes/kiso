@@ -97,6 +97,12 @@ describe("DC-50 — one switch, every settled card", () => {
 				expect(after.some((l) => l.includes(row)), `${row} is missing after the expand`).toBe(true);
 			}
 		}
+		// the affordance follows the state: an expanded card says how to
+		// put it back. This also pins WHICH renderer draws an expanded
+		// card — the ordinary one with the flag set, not the separate
+		// `expandedCard` block the retired append path used.
+		expect(after.some((l) => l.includes("ctrl+o collapses")), "an expanded card does not say how to collapse").toBe(true);
+		expect(before.some((l) => l.includes("ctrl+o expands")), "a collapsed card does not say how to expand").toBe(true);
 	});
 
 	it("a SECOND press collapses all three again", () => {
@@ -203,5 +209,69 @@ describe("DC-50 — the reprint reproduces what was above the card", () => {
 		vi.advanceTimersByTime(100);
 
 		expect(rowsAbove()).toEqual(first);
+	});
+});
+
+/**
+ * THE APPROVAL PAUSE, and this case is a deviation from the ruling as
+ * written — flagged, not slipped in.
+ *
+ * DC-50 says a RUNNING card is not governed by the switch, because its
+ * height is E2/DC-43's business: content is still arriving and a global
+ * "show everything" must not reach into it. Filtering on `done` alone
+ * implements that sentence and loses something else with it. A card
+ * waiting for approval is `state: "approval"`, `done: false` — and its
+ * content is NOT still arriving. The diff is complete; the card is
+ * parked, waiting for a human to read it and decide.
+ *
+ * The mechanism being retired said so explicitly, in the dispatch
+ * comment this round deleted: "a LIVE tool cell toggles IMMEDIATELY in
+ * place — the approval pause is exactly when the user reads a cut diff,
+ * and the key must answer then, never after the run." `expandNext`
+ * toggled any cell whose state was not "pending", which included this
+ * one. A `done`-only switch answers the key with nothing at the one
+ * moment the answer matters most.
+ *
+ * So the switch governs cards whose CONTENT IS SETTLED — done, or
+ * parked for approval — and exempts only the one that is still growing.
+ * That is the ruling's reason applied rather than its wording copied.
+ * Raised with the round's author; this case is what would go red if the
+ * call is reversed.
+ */
+describe("DC-50 — a card parked for approval is settled, not running", () => {
+	const diff = Array.from({ length: 40 }, (_, i) => ({
+		kind: (i % 2 ? "+" : "-") as "-" | "+",
+		text: `line ${String(i).padStart(2, "0")} of the diff`,
+	}));
+
+	it("ctrl+o opens the cut diff DURING the approval pause", () => {
+		const h = harness({ H: 200 });
+		h.body.enter();
+		h.body.toolStart("edit_file", "a1", { path: "x" });
+		h.body.toolApproval("a1", { lines: diff, added: 20, removed: 20 });
+		vi.advanceTimersByTime(50);
+
+		const before = held(h.screen);
+		expect(before.some((l) => l.includes("ctrl+o")), "the cut diff offered no affordance to test").toBe(true);
+		expect(before.some((l) => l.includes("line 20 of the diff")), "the diff was not cut (head+middle+tail all shown), so there is nothing to open").toBe(false);
+
+		h.body.toggleExpanded();
+		vi.advanceTimersByTime(100);
+
+		const after = held(h.screen);
+		expect(after.some((l) => l.includes("line 20 of the diff")), "the key did not answer during the approval pause").toBe(true);
+	});
+
+	it("a RUNNING card is still exempt — the exemption is about content still arriving", () => {
+		const h = harness({ H: 200 });
+		h.body.enter();
+		h.body.toolStart("shell", "r2", { command: "sleep" });
+		h.body.toolRunning("r2");
+		h.body.toolProgress("r2", Array.from({ length: BODY }, (_, i) => `GROW${String(i + 1).padStart(2, "0")}`).join("\n"));
+		vi.advanceTimersByTime(50);
+		const before = held(h.screen).join("\n");
+		h.body.toggleExpanded();
+		vi.advanceTimersByTime(100);
+		expect(held(h.screen).join("\n").includes("GROW01")).toBe(before.includes("GROW01"));
 	});
 });

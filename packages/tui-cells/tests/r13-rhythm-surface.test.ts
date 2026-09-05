@@ -543,3 +543,62 @@ describe("DC-48 — the card's one row fits, at every width", () => {
 		expect(rows[1]!.trim()).toMatch(/shell npm test · 1s/);
 	});
 });
+
+/**
+ * DC-50 / R14 — THE CARD IN ITS EXPANDED STATE.
+ *
+ * This file exercised `expanded: false` and nothing else, which was
+ * enough while an expanded card was a different renderer:
+ * `expandedCard` drew the APPENDED block the old ctrl+o produced, and
+ * `r14-expanded-card.test.ts` gated its shape. DC-50 retires the append,
+ * so an expanded card is THIS renderer with the flag set — and the
+ * coverage has to move here or be lost.
+ *
+ * Claims carried over verbatim where they transfer. The ones that do NOT
+ * are `expandedCard`'s own and retire with it: its head row's `expanded ·
+ * N turns back` metadata (a block printed far away from its card needed to
+ * say which card; one rendered in place does not), and its section
+ * headers around the raw input and output.
+ */
+describe("DC-50 — an EXPANDED card keeps the card's shape", () => {
+	const long = tool({ expanded: true, resultText: lines(40, (i) => `out ${i + 1}`) });
+
+	it("the body is the WHOLE result — an expansion that capped would be no expansion", () => {
+		const said = render(long).join("\n");
+		for (const n of [1, 20, 40]) expect(said, `line ${n} is missing`).toContain(`out ${n}`);
+	});
+
+	it("no cut note when nothing is cut, and the way back is offered instead", () => {
+		const said = render(long).join("\n");
+		expect(said, "an expanded card still advertises a cut").not.toContain("ctrl+o expands");
+		expect(said, "an expanded card does not say how to put it back").toContain("ctrl+o collapses");
+	});
+
+	/*
+	 * OBSERVED, not asserted, and recorded because DC-50 makes it
+	 * universal rather than rare.
+	 *
+	 * The expanded card's shape is NOT the collapsed card's. Collapsed
+	 * ends with its own outcome row; expanded carries the outcome INLINE
+	 * in the head (`shell npm test · exit 0 · 40 lines · 0.1s`) and ends
+	 * with the affordance row instead. Until this round that shape was
+	 * reachable only for a live or approval-parked cell, so few ever saw
+	 * it; now every settled card takes it on one keypress.
+	 *
+	 * Left alone deliberately. It is pre-existing, it is not a defect this
+	 * round introduced, and §7.4/§7.5's card is the owner's to rule on.
+	 * Raised with the round's author rather than changed here.
+	 *
+	 * Three claims that belong to the COLLAPSED cases above are deliberately
+	 * NOT repeated here: the leading pad, the wash, and the full width.
+	 * All three were tried and all three were wrong for this harness
+	 * rather than wrong in the product. Measured: collapsed and expanded
+	 * alike render 0-of-N washed rows, with no leading pad, and a head row
+	 * 43 cells wide at W=90 — because the ground is UNKNOWN in this file's
+	 * context and the card degrades to plain indentation by design (§1.2).
+	 * Every one of those three is a property of the slab, and the slab is
+	 * not painting here. A gate asserting them would have been asserting
+	 * the harness, which this round has already done four times.
+	 */
+
+});

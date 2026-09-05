@@ -64,7 +64,6 @@ export interface AtPanelState {
 import {
 	CAP_PREVIEW,
 	thinkingRow,
-	expandedCard,
 	Container,
 	ROLLUP_NOUN,
 	MOTION_FRAMES,
@@ -443,18 +442,12 @@ export class Body {
 	#mdBase = 0;
 	#toolCells = new Map<string, number>(); // callId → cell index (parallel tools)
 	// W15: the collapsed (cut) tool cells — committed cells whose last
-	// rendered row carried the "ctrl+o" affordance; the expand key's
-	// cycling pointer walks this list from the newest back.
+	// rendered row carried the "ctrl+o" affordance.
+	//
+	// DC-50 / R14: the expand key no longer WALKS this. It is the
+	// VIEWER's index now (ctrl+r, `#viewerEntries`) — the two surfaces
+	// coexist and §9 says so. It is kept, not retired, for that reader.
 	#collapsed: number[] = [];
-	/** R4 (C1) — the ring walk is by IDENTITY, not by a modular pointer.
-	 *  `#collapsed` is unshifted on every commit that carries the key, so
-	 *  a numeric pointer's target silently CHANGED whenever a new fold
-	 *  landed mid-cycle: the ring was not stable under itself, and the
-	 *  next press opened something other than what the last press
-	 *  implied. This set records what the current cycle has already
-	 *  opened; the walk takes the newest entry not in it, and empties it
-	 *  when every entry has been seen. */
-	#opened = new Set<number>();
 	// W14: the turn records — one per userLine, the fold-hold's state
 	// machine (ended / hasText / folded) plus the folded-turn line's
 	// counts (accumulated at toolStart). The cells carry the record's
@@ -1370,115 +1363,32 @@ export class Body {
 		];
 	}
 
-	/** DC-35 — the last block this key appended, and the cell count when
-	 *  it did. An expansion earns its rows by showing something the
-	 *  transcript does not already END with. */
-	#lastAppend: { lines: string; atCells: number } | null = null;
-
-	/**
-	 * DC-35 — ctrl+o does not print the same expansion twice in a row.
+	/*
+	 * RETIRED (DC-50 / R14, 2026-09-05) — `expandNext`, `#expandNextRaw`,
+	 * `#lastAppend`, and the `#opened` bookkeeping that went with them.
 	 *
-	 * The ring walks newest-back and restarts its cycle once every entry
-	 * has been opened (R4/C1, which is what makes the walk immune to the
-	 * ring growing underneath it). With a ring of ONE the restart is
-	 * immediate, so holding the key appended the identical block over
-	 * and over — the owner got three copies of the same four rows, each
-	 * closing with `ctrl+o opens the one before it`, a footer naming
-	 * something that does not exist.
+	 * The whole apparatus served ONE constraint: ADR-0046 §3 forbade
+	 * re-rendering a committed card, so the only way to show one's body
+	 * was to APPEND a copy further down the transcript. That needed a ring
+	 * to choose which card came next, a set to stop the ring repeating
+	 * itself, and DC-35's guard to stop a HELD key printing the same four
+	 * rows three times — a defect the owner met in the field, each copy
+	 * closing with a footer that named something which did not exist.
 	 *
-	 * The bar is the BOTTOM of the transcript, not "ever shown": once
-	 * other content has arrived the expansion has scrolled up and
-	 * re-opening it is the point of the key, so the guard clears itself
-	 * the moment a cell is added.
+	 * Amendment 1 removes the constraint. The terminal's scrollback is
+	 * ours to erase, so a committed card is re-rendered where it stands:
+	 * nothing to append, nothing to choose between, no repeat to guard.
+	 * `toggleExpanded` is the whole of the feature now.
+	 *
+	 * `#collapsed` STAYS — the viewer (ctrl+r) reads it as its index of
+	 * expandable cells, and §9 keeps the two surfaces side by side.
+	 *
+	 * `expandedCard` does NOT stay, and an earlier draft of this note said
+	 * it did. An expanded card is drawn by the ORDINARY card renderer with
+	 * `expanded` set — full body, `ctrl+o collapses` in place of the cut
+	 * note — which `r14-global-expand` pins. `expandedCard` was the shape
+	 * of the APPENDED block and has no caller once the append is gone.
 	 */
-	expandNext(): { kind: "toggled" } | { kind: "appended"; lines: string[] } | { kind: "none"; why?: "already-last" } {
-		const out = this.#expandNextRaw();
-		if (out.kind !== "appended") return out;
-		const lines = out.lines.join("\n");
-		if (this.#lastAppend !== null && this.#lastAppend.lines === lines && this.#lastAppend.atCells === this.#cells.length) {
-			// NOT the same answer as "nothing is folded". The caller says
-			// which, because a reader who pressed the key deserves to know
-			// whether there is nothing to open or whether they are already
-			// looking at it.
-			return { kind: "none", why: "already-last" };
-		}
-		this.#lastAppend = { lines, atCells: this.#cells.length };
-		return out;
-	}
-
-	#expandNextRaw(): { kind: "toggled" } | { kind: "appended"; lines: string[] } | { kind: "none" } {
-		for (let i = this.#cells.length - 1; i >= this.#committed; i -= 1) {
-			const cell = this.#cells[i]!;
-			if (cell.kind === "tool" && cell.state !== "pending") {
-				cell.expanded = !cell.expanded;
-				this.#mark();
-				return { kind: "toggled" };
-			}
-			// W20: the LIVE task block toggles in place too — the capped
-			// form flips to the full list (the "done-collapse expands
-			// under ctrl+o" claim). The SETTLED block is already full —
-			// no toggle, and its rows carry no affordance, so it never
-			// joins #collapsed (the committed /last append is moot).
-			if (cell.kind === "checklist" && !cell.done) {
-				cell.expanded = !cell.expanded;
-				this.#mark();
-				return { kind: "toggled" };
-			}
-		}
-		if (this.#collapsed.length === 0) return { kind: "none" };
-		// R4 (C1) — the newest entry this cycle has not opened yet. When
-		// every entry has been seen the cycle restarts, so the walk is
-		// still "newest back" — it is simply immune to the ring growing
-		// underneath it.
-		if (this.#collapsed.every((i) => this.#opened.has(i))) this.#opened.clear();
-		const idx = this.#collapsed.find((i) => !this.#opened.has(i)) ?? this.#collapsed[0]!;
-		this.#opened.add(idx);
-		const cell = this.#cells[idx]!;
-		// R3b — a folded SEGMENT expands to the work it stands for.
-		//
-		// The fold line collapses a run of thinking and tool cells into
-		// one row; without this the run would be unreachable, which is
-		// hiding a durable record behind a summary. The rows are APPENDED
-		// (ADR-0046 — history is never rewritten), exactly as every other
-		// expand in this method does, and they are the cells' OWN renders,
-		// so the expansion cannot drift from what was folded.
-		// R13 — expandNext's FOLD branch retired with the segment fold.
-		// A fold line collapsed a run of cells into one row, so the key had
-		// to be able to open the run; with every call standing as its own
-		// card there is nothing collapsed for it to open, and `#collapsed`
-		// now holds cards alone.
-		if (cell.kind !== "tool") return { kind: "none" };
-		// R13 — and the ROLLUP branch retired with `rolled`.
-		let input: Record<string, unknown> = {};
-		try {
-			input = JSON.parse(cell.inputFull) as Record<string, unknown>;
-		} catch {
-			// the full JSON is always parseable (it was stringified at
-			// toolStart) — the empty fallback never fires
-		}
-		const turnsBack = this.#cells.slice(idx + 1).filter((c) => c.kind === "user").length;
-		const p = palette();
-		// 0.24.2 ③ — the expansion is a CARD, and `✦` is not its mark: that
-		// glyph is the turn recap's, and one symbol with two meanings is
-		// §4.1. The head row names the call, which is the tie to it that
-		// the mark's sentence used to be.
-		const verb = displayVerb(cell.name);
-		const elapsed = cell.startedAt !== null && cell.doneAt !== null ? ((cell.doneAt - cell.startedAt) / 1000).toFixed(1) : "?";
-		const n = cell.resultText === "" ? 0 : cell.resultText.split("\n").length;
-		return {
-			kind: "appended",
-			lines: expandedCard(
-				verb,
-				toolTarget(cell.name, input),
-				`expanded · ${turnsBack} ${turnsBack === 1 ? "turn" : "turns"} back`,
-				// TUI2-R2pre ④: the SECTION HEADERS say the act; the payloads
-				// below them (inputFull, resultText) are RAW and byte-identical.
-				[`--- ${verb} input ---`, cell.inputFull, `--- ${verb} output${cell.isError ? " (error)" : ""} ---`, cell.resultText],
-				[cell.isError ? "failed" : "exit 0", `${n} line${n === 1 ? "" : "s"}`, `${elapsed}s`].filter((x) => x !== "").join(" · "),
-				this.#opts.width(),
-			),
-		};
-	}
 
 	// ---- the Dock façade (the CLI's chrome API — same shape as the old dock) ----
 
@@ -1844,7 +1754,22 @@ export class Body {
 	toggleExpanded(): void {
 		this.#expandedAll = !this.#expandedAll;
 		for (const cell of this.#cells) {
-			if (cell.kind === "tool" && cell.done) cell.expanded = this.#expandedAll;
+			// SETTLED CONTENT, not "done". A card parked for approval is
+			// `state: "approval"`, `done: false` — and its content is not
+			// still arriving: the diff is complete and the card is waiting
+			// for a human to read it and decide. The mechanism this
+			// replaces toggled it (any state but "pending"), and the
+			// dispatch comment said why: "the approval pause is exactly
+			// when the user reads a cut diff, and the key must answer then,
+			// never after the run." A `done`-only switch answers with
+			// nothing at the one moment the answer matters most.
+			//
+			// The exemption is for the card still GROWING — E2 and DC-43
+			// own its height, and a global "show everything" has no
+			// business reaching into content that is still arriving. That
+			// is the ruling's reason; `done` alone was its wording.
+			if (cell.kind !== "tool") continue;
+			if (cell.done || cell.state === "approval") cell.expanded = this.#expandedAll;
 		}
 		this.#reprint();
 	}
@@ -2705,11 +2630,9 @@ export class Body {
 		const hidesRows = cell.kind === "tool" && lines.some((l) => l.includes("ctrl+o"));
 		if (isFoldHead || hidesRows) {
 			this.#collapsed.unshift(i);
-			// R4a — a new fold resets the walk, so the FIRST press after any
-			// new work always opens the most recent one. That is the whole
-			// of the owner's "which one does it open": the answer is always
-			// "the last one", and repeats walk back from there.
-			this.#opened.clear();
+			// R4a's walk reset retired with the walk (DC-50): there is no
+			// "which one does it open" any more — one press opens all of
+			// them.
 		}
 		this.#lineCache[i] = lines;
 		const placed = this.#space(i, i > 0 ? this.#lineCache[i - 1]! : null, lines);

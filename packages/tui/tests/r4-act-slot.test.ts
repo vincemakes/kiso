@@ -193,19 +193,24 @@ describe("R4 D — DC-28: ctrl+o mid-stretch acts, and is seen to act", () => {
 		const before = body_().join("\n");
 		expect(before).not.toContain("row 1 "); // outside the preview cap
 
-		// R13 CHANGED THE FORM OF THIS PRESS, and the change is worth
-		// stating. Under R4 a finished call was still LIVE (its committed
-		// form waited on the fold), so `ctrl+o` TOGGLED it and the
-		// expansion appeared in place. With no fold to wait for, a done
-		// call commits at once — so the press takes the COMMITTED path and
-		// APPENDS, which is R5/W15's own shape and the one ADR-0046
-		// requires of history that is already in the scrollback.
+		// THE FORM OF THIS PRESS HAS CHANGED TWICE, and DC-28's subject has
+		// survived both. Under R4 a finished call was still LIVE (its
+		// committed form waited on the fold), so `ctrl+o` TOGGLED it in
+		// place. R13 removed the fold, so a done call commits at once and
+		// the press took the COMMITTED path and APPENDED a copy — the
+		// shape ADR-0046 §3 required of history already in the scrollback.
+		// DC-50 / R14 removes that requirement: the scrollback is ours to
+		// erase, so the card is re-rendered where it stands and there is
+		// no copy.
 		//
-		// DC-28's subject is unchanged and is what is asserted: the press
-		// ACTS, and what it produces carries the rows the cap had hidden.
-		const pressed = body.expandNext();
-		expect(pressed.kind, "the press did nothing at all").toBe("appended");
-		expect((pressed as { lines: string[] }).lines.join("\n")).toContain("row 1");
+		// DC-28's subject is unchanged and is still what is asserted: the
+		// press ACTS, and what it produces carries the rows the cap had
+		// hidden. The observation point moves from a returned block to the
+		// projection, which is the stronger place — a returned block could
+		// pass this case without ever reaching the terminal.
+		body.toggleExpanded();
+		tick();
+		expect(body_().join("\n"), "the press did nothing at all").toContain("row 1");
 	});
 });
 

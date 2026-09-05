@@ -50,9 +50,12 @@ component-rendered, with the cursor derived from the frame itself.
    `lines[] + commitIndex`: every line renders into the flat store; a
    line COMMITS (leaves the live region) by the real-LF scroll path
    (`\x1b[1B\n` at the last row — CUP-free) when its cell is DONE and
-   the region needs the room. The committed bytes are never re-emitted
-   (zero replay, zero `\x1b[3J` — the user's shell history is never
-   touched). The live region is hard-capped at **H−1 lines**; overflow
+   the region needs the room. Committed bytes are never re-emitted by
+   the frame path. **A settled resize is the one exception** (Amendment
+   1): it erases the terminal's screen and scrollback (`2J H 3J`) and
+   reprints the session at the new geometry, so the terminal holds
+   exactly one rendering of the record at all times. The live region is
+   hard-capped at **H−1 lines**; overflow
    force-commits the oldest live line unconditionally — the ONE sharp
    edge this round introduces, pinned by the VT-emulator gate asserting
    the scalar directly.
@@ -90,13 +93,13 @@ mechanism that kills each)
 
 | recorded symptom | root cause (≤ v5) | v6 mechanism |
 |---|---|---|
-| first frame | startup CUP draws over shell leftovers / pre-clear | H line feeds from the shell's cursor scroll the inherited screen into the scrollback as content — no pre-clear, no ED2/3J — and the frame then owns rows 1..H. The feeds precede the entry reset: `ESC[r` homes the cursor, and feeds after it scroll one row, not r (DC-40, 2026-09-02; the row read "sequential emission from the current position" from v6 to 0.20.3 while the bytes were absolute CUP) |
+| first frame | startup CUP draws over shell leftovers / pre-clear | H line feeds scroll the inherited screen into the scrollback; the frame then owns rows 1..H (DC-40). The feeds precede the entry reset: `ESC[r` homes the cursor, and feeds after it scroll one row, not r (DC-40, 2026-09-02; the row read "sequential emission from the current position" from v6 to 0.20.3 while the bytes were absolute CUP) |
 | logo row cut | soft-wrap + reflow split a logo row | invariant ①: each row hard-folds ≤ W and emits whole |
 | same-row duplicate | two writers painting one row (body + dock) | one compositor: every row written once per frame after `\x1b[0K` |
 | approval takeover | question rendered as an overlay at the status row | the ApprovalPrompt SLOT occupant — the question takes the input row, focus follows |
 | concatenated lines | per-event writes interleaving cells | one doRender; components never share a line |
 | fold/body merge (reflow) | pre-fill CUP rows reflowed as soft lines (#17) | real-LF commits (scrollback fork) — committed lines are logical lines |
-| tail ghost / separator wall (resize) | stale geometry + overlay chrome | resize = ED0 from the recorded live top + full live repaint, O(height), zero replay |
+| tail ghost / separator wall (resize) | stale geometry + overlay chrome | **Amendment 1**: a settled resize = `2J H 3J` + a reprint of the session at the new geometry, staged through the scrollback exactly as a resumed session's replay is. A same-size SIGWINCH emits nothing |
 | idle leak (#14/#15) | 200ms heartbeat re-painting | zero timers (decision 6) |
 
 ## Consequences
@@ -114,13 +117,9 @@ mechanism that kills each)
 ## Trade-off note (the 0.1.35 round — recorded so the next lab pass
 does not re-report it as a new finding)
 
-- **V6-1's scrollback cost under a shrink storm**: the resize's first
-  frame re-paints the committed content (the screen-state == frame-state
-  rule — the visible screen is the invariant), so a shrink storm
-  re-emits the committed lines into the NATIVE scrollback — AT MOST one
-  extra copy per resize, strictly bounded (measured: the session line
-  appears ×6 after 1 turn + 5 resizes). The scrollback is explicitly
-  NOT the invariant; this is the accepted cost of the rule.
+- **V6-1's scrollback cost under a shrink storm** — STRUCK by Amendment
+  1. There is no extra copy: the terminal holds one rendering of the
+  session, because the settle erases what it held before reprinting.
 - **Fix C is a sanctioned reinterpretation of invariant ②, not a silent
   retirement**: the steady frame CUPs the LIVE lines at their model rows
   (the relative march drew them adjacent to the chrome, where the
@@ -131,3 +130,55 @@ does not re-report it as a new finding)
   H−4−menu — the committed band, the stale/gap ELs, the live lines at
   their model rows); the CHROME rows (H−3..H) are relative-only; CUP
   over the whole screen exists only in the full-redraw path.
+
+---
+
+## Amendment 1 (2026-09-05) — a settled resize erases and reprints
+
+§3's clause "The committed bytes are never re-emitted (zero replay,
+zero `\x1b[3J` — the user's shell history is never touched)" becomes:
+
+> Committed bytes are never re-emitted by the frame path. A settled
+> resize is the one exception: it erases the terminal's screen and
+> scrollback (`2J H 3J`) and reprints the session at the new geometry,
+> so the terminal holds exactly one rendering of the record at all
+> times.
+
+**What it costs, declared.** The history the terminal held before kiso
+started is erased at the first resize. That is the price, chosen
+2026-09-04 against the alternative — a transcript whose scrolled-off
+part never reflows — after both were measured on the owner's own
+terminal (R10 §6). kiso's own record is unaffected: the session log
+holds it and `--resume` replays it. The reference implementation's
+measured behaviour is the same, 0-of-60 shell lines surviving in every
+direction, so this is a behaviour being adopted rather than introduced.
+A gate asserts the 0/60 so the cost cannot drift silently.
+
+**Why the old clause could not hold.** It promised that kiso never
+touches the terminal's history, and R10 measured otherwise: the first
+frame already erased the visible screen row by row (DC-40), a grow lost
+16 rows outright (DC-39), a narrow duplicated four tokens, and the
+scrolled-off part of the transcript never reflowed at all. Those are
+one fault seen from four sides — kiso doing window arithmetic over rows
+the terminal had already reflowed underneath it, carrying `#scrolledOff`
+across a fold change that makes every index mean something else. No
+design under the old §3 removes the seam, because the scrollback is the
+terminal's and `3J` is the only instruction that rewrites it.
+
+**Consequences.**
+
+- The ghost-spectrum row "first frame" becomes: "H line feeds scroll
+  the inherited screen into the scrollback; the frame then owns rows
+  1..H (DC-40)."
+- The trade-off note's "at most one extra copy per resize" is struck:
+  there is no extra copy.
+- DC-34's rules 1–3 (the adopt, the width clamp, the frontier-scoped
+  refold), the `#refolded` latch and the width latch retire with the
+  counter they served. DC-37 is moot. DC-19's two halves apply
+  unconditionally.
+- **DC-50** rides the same mechanism: `ctrl+o` is a global switch and
+  flipping it is the same reprint, which is what makes a committed
+  card's body reachable without printing a second copy of it.
+- Path independence (V6 ②) stops being an exception granted to
+  non-overflowing storms and becomes the contract: the terminal holds
+  one rendering of a transcript that does not remember how it got here.
