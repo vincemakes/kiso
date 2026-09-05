@@ -35,7 +35,7 @@ import {
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { open, readdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -99,6 +99,38 @@ const YIELD_EVERY = 64;
 
 const MAX_SEARCH_MATCHES = 50;
 const MAX_DIR_ENTRIES = 200;
+
+/**
+ * DC-54 — the bounds. The defect they close: `search_text` read every
+ * file WHOLE and SYNCHRONOUSLY, so one 994 GB sparse disk image under a
+ * workspace rooted at `~` stopped the event loop and never restarted it.
+ *
+ * Each constant answers a different unbounded thing, and all four are
+ * needed — per-file bounds still leave 296,924 files to traverse under
+ * `~`, and a call that traverses forever is a freeze whatever it does
+ * per file. The tool must ALWAYS return.
+ */
+/** Skip a file larger than this. Not a PREFIX read: a partial match is a
+ *  result that has to be explained, and a source file over 1 MiB is
+ *  almost never what the model was looking for. */
+const SEARCH_MAX_FILE_BYTES = 1024 * 1024;
+/** Stop the walk after this many files, whatever it has found. */
+const SEARCH_MAX_FILES = 20_000;
+/** Stop the walk after this long, whatever it has found. */
+const SEARCH_MAX_MS = 10_000;
+/** read_file refuses above this rather than freezing on it. The ceiling
+ *  is a REFUSAL, not a truncation, because the `[rev:…]` token hashes
+ *  the whole file: a revision issued over a prefix would never match the
+ *  full-file hash write_file computes, and every later write would be
+ *  refused as stale. No read, no revision, no lie. */
+const READ_MAX_FILE_BYTES = 64 * 1024 * 1024;
+/** How much of a file's head decides whether it is text. */
+const BINARY_SNIFF_BYTES = 8 * 1024;
+
+/** Bytes as the refusal should say them: "128.0 MiB". */
+function mib(bytes: number): string {
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
 
 function cap(text: string): string {
 	return text.length > OUTPUT_CAP ? `${text.slice(0, OUTPUT_CAP)}\n…[truncated]` : text;
@@ -211,6 +243,22 @@ export interface WorkspaceToolsOptions {
 	 * the keys are an exposure surface for any command).
 	 */
 	readonly shellEnv?: "inherit";
+	/**
+	 * DC-54 — the bounds that keep a tool call finite. Every field is
+	 * optional and defaults to the constant beside it; a host embedding
+	 * kiso over an unusually large or unusually small tree can move them,
+	 * and the gate can set them low enough to observe the stop.
+	 */
+	readonly limits?: {
+		/** search_text: skip a file larger than this (default 1 MiB). */
+		readonly searchMaxFileBytes?: number;
+		/** search_text: stop the walk after this many files (default 20,000). */
+		readonly searchMaxFiles?: number;
+		/** search_text: stop the walk after this long (default 10s). */
+		readonly searchMaxMs?: number;
+		/** read_file: refuse a file larger than this (default 64 MiB). */
+		readonly readMaxFileBytes?: number;
+	};
 }
 
 /**
@@ -340,12 +388,45 @@ export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 		promptSnippet: "read_file — whole files or offset/limit ranges, workspace-relative paths",
 		promptGuidelines: ["read only the range you need — offset/limit beat whole-file reads"],
 		execute: async ({ path, offset, limit }) => {
+			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
 			try {
 				const full = resolveWithinRoot(opts.workspaceRoot, path);
 				const denied = await inodeReadPolicy(opts.workspaceRoot, full);
 				if (denied !== null) return escapeResult(denied);
+				// DC-54 — the ceiling. `read_file` had the same unbounded
+				// `readFileSync` that froze `search_text`, and the same 994 GB
+				// `Docker.raw` would have frozen it identically.
+				//
+				// It REFUSES rather than truncating, because the `[rev:…]`
+				// token this tool issues hashes the whole file: a revision
+				// computed over a prefix would never equal the full-file hash
+				// `write_file` computes, so every later write would be refused
+				// as stale. A bounded read here would buy a freeze-free read
+				// at the price of a write path that silently stops working.
+				const size = statSync(full).size;
+				if (size > maxReadBytes) {
+					return precondition(
+						`read_file: ${path} is ${mib(size)} — too large to read (ceiling ${mib(maxReadBytes)}); use shell with sed/head to take a range`,
+					);
+				}
 				// WR-1: hash the raw bytes BEFORE decoding — the revision is a
 				// fact about the world, not about UTF-8 replacement semantics.
+				//
+				// DC-54, and this read stays SYNCHRONOUS on purpose. The
+				// ruling said to make it async; the first build did, and
+				// `tui2-r1-visibility` went red on an invariant worth more
+				// than the microseconds: the durable log of three concurrent
+				// `read_file` calls stopped being deterministic, because
+				// completion order became the libuv threadpool's to decide.
+				// That test compares a PTY session's log to a pipe session's
+				// to prove the rollup is display-side only, and it cannot do
+				// that job over a log that varies run to run.
+				//
+				// The freeze came from UNBOUNDED work, not from synchronous
+				// work. With the ceiling above, the worst case here is a
+				// 64 MiB read — about 100 ms, measured — against the 180+
+				// seconds this finding is named for. Determinism is worth
+				// more than that hitch.
 				const bytes = readFileSync(full);
 				const content = bytes.toString("utf8");
 				// The lines the file DISPLAYS: a trailing newline's empty split
@@ -433,15 +514,26 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string }
 		execute: async ({ path }) => {
 			try {
 				const dir = resolveWithinRoot(opts.workspaceRoot, path ?? ".");
-				const entries = readdirSync(dir, { withFileTypes: true }).map((e) => {
+				// DC-54 — TRUNCATED BEFORE IT BUILDS. It was a `.map` over
+				// EVERY entry with the 200-entry slice only after: a directory
+				// of 200,000 entries built 200,000 strings to show 200 of
+				// them. Milder than the `search_text` freeze and the same
+				// mistake — unbounded work before the bound.
+				//
+				// `readdirSync`, still: same reason as read_file above. The
+				// listing is one syscall whose cost is the directory's size,
+				// which no bound of ours can shrink, and making it async buys
+				// nothing while costing the durable log its determinism.
+				const dirents = readdirSync(dir, { withFileTypes: true });
+				const entries = dirents.slice(0, MAX_DIR_ENTRIES).map((e) => {
 					const isDir = e.isDirectory();
 					return `${isDir ? "dir " : "file"} ${e.name}${isDir ? "/" : ""}`;
 				});
-				let content = entries.length ? cap(entries.slice(0, MAX_DIR_ENTRIES).join("\n")) : "(empty directory)";
-				if (entries.length > MAX_DIR_ENTRIES) {
+				let content = entries.length ? cap(entries.join("\n")) : "(empty directory)";
+				if (dirents.length > MAX_DIR_ENTRIES) {
 					// R-C item 2: the N of M form — the cap names its
 					// continuation (narrow to a subdirectory for more).
-					content += `\n… ${MAX_DIR_ENTRIES} of ${entries.length} entries shown (narrow to a subdirectory for more)`;
+					content += `\n… ${MAX_DIR_ENTRIES} of ${dirents.length} entries shown (narrow to a subdirectory for more)`;
 				}
 				return { content, isError: false };
 			} catch (err) {
@@ -514,6 +606,35 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			// DC-52 — what the search did NOT look at, so the note can say so.
 			let multiLink = 0;
 			let unreadableDirs = 0;
+			// DC-54 — the same discipline for the two new refusals, and for
+			// the call budget: a silent skip is a result the model cannot
+			// tell is incomplete.
+			let skippedFiles = 0;
+			let filesSeen = 0;
+			// An explicit flag, NOT `stoppedAt > 0`: a wall-clock budget can
+			// expire before the first file is scanned, and a zero-valued
+			// sentinel would then read as "never stopped" — the walk would
+			// still end, but silently, which is the one thing every note in
+			// this function exists to prevent.
+			let stopped = false;
+			let stoppedAt = 0;
+			const maxFileBytes = opts.limits?.searchMaxFileBytes ?? SEARCH_MAX_FILE_BYTES;
+			const maxFiles = opts.limits?.searchMaxFiles ?? SEARCH_MAX_FILES;
+			const deadline = Date.now() + (opts.limits?.searchMaxMs ?? SEARCH_MAX_MS);
+			/** DC-54 ④ — the CALL budget. Per-file bounds are not enough:
+			 *  under `~` the walk still reaches 296,924 files, and 10 seconds
+			 *  of traversal with nothing on screen is the same freeze from
+			 *  the outside. Whichever bound trips first stops the walk, and
+			 *  the note names the continuation. */
+			const outOfBudget = (): boolean => {
+				if (stopped) return true;
+				if (filesSeen >= maxFiles || Date.now() > deadline) {
+					stopped = true;
+					stoppedAt = filesSeen;
+					return true;
+				}
+				return false;
+			};
 			// R3 — the walk YIELDS. It was `readdirSync` + `readFileSync` all
 			// the way down inside an `async` body, which is the shape that
 			// blocks Node's event loop for the whole traversal: measured at
@@ -523,9 +644,15 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			//
 			// The fix is not "make it faster" — a big tree is legitimately
 			// slow. It is to stop OWNING the loop: `fs.promises.readdir`,
-			// and a yield every YIELD_EVERY files so a long read stretch
-			// cannot monopolise it either. Same traversal, same order, same
-			// caps, same results; only the loop is shared now.
+			// and a yield every YIELD_EVERY files.
+			//
+			// DC-54 corrects what this comment used to claim next — that
+			// the yield also stopped "a long read stretch" monopolising the
+			// loop. It never did and could not: `breathe()` runs BETWEEN
+			// files, and nothing preempts a single synchronous read once
+			// entered. R3 bounded the traversal; the FILE stayed unbounded
+			// until DC-54 ①–③ above, and one 994 GB image was enough to
+			// stop the process dead with this yield fully in place.
 			let sinceYield = 0;
 			const breathe = async (): Promise<void> => {
 				sinceYield += 1;
@@ -539,6 +666,8 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			// Two copies would be two answers to "what does searching this
 			// file mean".
 			const scanFile = async (full: string): Promise<void> => {
+				if (outOfBudget()) return;
+				filesSeen += 1;
 				await breathe();
 				try {
 					// DC-52 — SEARCH DOES NOT RUN THE INODE GUARD.
@@ -559,11 +688,61 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 					// which is a loss of coverage rather than of safety.
 					// read_file keeps the guard (bounded, above), and that
 					// is where the file's contents can actually be had.
-					if (statSync(full).nlink > 1) {
+					const st = statSync(full);
+					if (st.nlink > 1) {
 						multiLink += 1;
 						return;
 					}
-					const text = readFileSync(full, "utf8");
+					// DC-54 ① — SIZE, decided before anything is opened.
+					//
+					// This is the line that was missing when a workspace
+					// rooted at `~` met `Docker.raw`: 994 GB went into
+					// `readFileSync(full, "utf8")` and the process never came
+					// back. Measured on the owner's machine, without it: a
+					// 467 MB `.mov` read SUCCESSFULLY, 3,817 ms of dead loop
+					// and 2.06 GB of RSS, split into 1,823,112 "lines".
+					if (st.size > maxFileBytes) {
+						skippedFiles += 1;
+						return;
+					}
+					// DC-54 ② — BINARY, decided from the head alone.
+					//
+					// One open serves both the sniff and the read. The sniff
+					// passes an explicit position, which by contract leaves
+					// the handle's own position at 0, so `readFile()` below
+					// still sees the whole file.
+					const fh = await open(full, "r");
+					let text: string;
+					try {
+						const headLen = Math.min(BINARY_SNIFF_BYTES, st.size);
+						const head = Buffer.alloc(headLen);
+						if (headLen > 0) {
+							// An explicit `position` leaves the handle's own
+							// position at 0, so the whole-file read below still
+							// starts at byte 0. The gate proves it with a
+							// needle placed PAST the sniff window: were the
+							// position to advance, every line number in this
+							// file's matches would be silently wrong.
+							await fh.read(head, 0, headLen, 0);
+							if (head.includes(0)) {
+								skippedFiles += 1;
+								return;
+							}
+						}
+						// DC-54 ③ — the read is ASYNCHRONOUS. R3 made the walk
+						// yield and its comment claimed that stopped a long
+						// read owning the loop; it never could. `breathe()`
+						// runs BETWEEN files, and nothing preempts a
+						// `readFileSync` once entered. Bounded above by ①, so
+						// this is at most a 1 MiB read that shares the loop.
+						//
+						// A file that fits inside the sniff window is already
+						// entirely in `head`: reading it a second time would
+						// double the syscalls for the commonest small file.
+						text = (st.size <= headLen ? head : await fh.readFile()).toString("utf8");
+					} finally {
+						await fh.close();
+					}
 					for (const [i, line] of text.split("\n").entries()) {
 						if (regex.test(line)) {
 							totalMatches += 1;
@@ -577,7 +756,7 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 				}
 			};
 			const walk = async (dir: string, depth: number): Promise<void> => {
-				if (depth > 8) return;
+				if (depth > 8 || outOfBudget()) return;
 				// DC-52 — a directory the OS REFUSES is skipped, not fatal.
 				//
 				// An unreadable FILE has always been skipped (the catch in
@@ -599,6 +778,7 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 					throw err;
 				}
 				for (const entry of entries) {
+					if (outOfBudget()) return;
 					if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
 					const full = join(dir, entry.name);
 					if (entry.isDirectory()) await walk(full, depth + 1);
@@ -616,6 +796,14 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			// result the model cannot tell is incomplete.
 			if (multiLink > 0) content += `\n… ${multiLink} multi-link ${multiLink === 1 ? "file" : "files"} skipped (read_file verifies them individually)`;
 			if (unreadableDirs > 0) content += `\n… ${unreadableDirs} unreadable ${unreadableDirs === 1 ? "directory" : "directories"} skipped`;
+			// DC-54 — one merged sentence, and only when it happened. A note
+			// that always fires says nothing.
+			if (skippedFiles > 0 || stopped) {
+				const parts: string[] = [];
+				if (skippedFiles > 0) parts.push(`${skippedFiles} ${skippedFiles === 1 ? "file" : "files"} skipped (large or binary)`);
+				if (stopped) parts.push(`stopped after ${stoppedAt} ${stoppedAt === 1 ? "file" : "files"} — narrow the path`);
+				content += `\n… ${parts.join(" · ")}`;
+			}
 			if (totalMatches > matches.length) {
 				// R-C item 2: the N of M form — the cap names its
 				// continuation (narrow the pattern for more).

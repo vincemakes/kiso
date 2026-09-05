@@ -90,6 +90,7 @@
 		"packages/runtime/tests/zombie-holder-lock.test.ts",
 		"packages/tools-node/tests/dc23-search-text.test.ts",
 		"packages/tools-node/tests/dc52-inode-guard.test.ts",
+		"packages/tools-node/tests/dc54-search-budget.test.ts",
 		"packages/tools-node/tests/hardening.test.ts",
 		"packages/tools-node/tests/r3-search-yields.test.ts",
 		"packages/tools-node/tests/safety.test.ts",
