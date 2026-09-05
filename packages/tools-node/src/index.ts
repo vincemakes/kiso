@@ -241,8 +241,15 @@ export interface WorkspaceToolsOptions {
 	 * STRIPPED — a shell command must not inherit the agent's API keys (a
 	 * nested kiso would hit the REAL provider and blow up faux e2e runs;
 	 * the keys are an exposure surface for any command).
+	 *
+	 * ADR-0031 Amendment 1: a RECORD is the third shape — the STRIPPED
+	 * environment plus these explicit entries, the entries winning (the
+	 * MCP surface's decision 2, applied here). An embedding host injects
+	 * what its tools need without a temp file and without opening the
+	 * whole environment; an entry may deliberately re-add a stripped
+	 * name — explicit beats the heuristic, as it does for MCP servers.
 	 */
-	readonly shellEnv?: "inherit";
+	readonly shellEnv?: "inherit" | Readonly<Record<string, string>>;
 	/**
 	 * DC-54 — the bounds that keep a tool call finite. Every field is
 	 * optional and defaults to the constant beside it; a host embedding
@@ -1157,13 +1164,17 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				// not just the outer shell (Area 4). cwd is the workspace.
 				// bootstrap #3 (finding #7): the shell child NEVER inherits kiso's own
 				// provider credentials by default — only the explicit
-				// shellEnv: "inherit" opt-in keeps them.
+				// shellEnv: "inherit" opt-in keeps them. A record (ADR-0031
+				// Amendment 1) rides on the STRIPPED base and wins per key.
 				const child = spawn(command, {
 					shell: true,
 					detached: true,
 					cwd: opts.workspaceRoot,
 					stdio: ["ignore", "pipe", "pipe"],
-					env: opts.shellEnv === "inherit" ? process.env : strippedShellEnv(process.env),
+					env:
+						opts.shellEnv === "inherit"
+							? process.env
+							: { ...strippedShellEnv(process.env), ...(opts.shellEnv ?? {}) },
 				});
 				let stdout = "";
 				let stderr = "";

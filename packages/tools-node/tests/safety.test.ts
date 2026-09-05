@@ -190,4 +190,45 @@ describe("bootstrap #3 (finding #7): shell children never inherit kiso's credent
 			delete process.env.ANTHROPIC_API_KEY;
 		}
 	});
+	// ADR-0031 Amendment 1 — the shell surface gains the MCP surface's
+	// explicit-env shape (decision 2): the STRIPPED environment plus a
+	// host-supplied record, the record winning. An embedding host injects
+	// what its tools need without a temp file and without "inherit".
+	it("shellEnv as a record: the extras reach the child on top of the STRIPPED base", async () => {
+		const dir = root();
+		process.env.OPENAI_API_KEY = "sk-must-not-leak";
+		process.env.KISO_TEST_BENIGN = "kept";
+		try {
+			const result = await shellTool({ workspaceRoot: dir, shellEnv: { KISO_APP_INJECTED: "from-the-host" } }).execute(
+				{ command: "env" },
+				CTX(NEVER_ABORT),
+			);
+			expect(result.isError).toBe(false);
+			expect(result.content).toContain("KISO_APP_INJECTED=from-the-host"); // the extra arrived
+			expect(result.content).toContain("KISO_TEST_BENIGN=kept"); // the base is still the process env…
+			expect(result.content).not.toContain("OPENAI_API_KEY="); // …STRIPPED — a record is not an "inherit"
+		} finally {
+			delete process.env.OPENAI_API_KEY;
+			delete process.env.KISO_TEST_BENIGN;
+		}
+	});
+
+	it("shellEnv as a record: an explicit entry wins, and may deliberately re-add a stripped name (ADR-0031 decision 2)", async () => {
+		const dir = root();
+		process.env.OPENAI_API_KEY = "sk-from-process";
+		process.env.KISO_TEST_BENIGN = "process-value";
+		try {
+			const result = await shellTool({
+				workspaceRoot: dir,
+				shellEnv: { OPENAI_API_KEY: "sk-explicit", KISO_TEST_BENIGN: "record-value" },
+			}).execute({ command: "env" }, CTX(NEVER_ABORT));
+			expect(result.isError).toBe(false);
+			expect(result.content).toContain("OPENAI_API_KEY=sk-explicit"); // re-added ON PURPOSE, the host's value
+			expect(result.content).not.toContain("sk-from-process"); // never the process's copy
+			expect(result.content).toContain("KISO_TEST_BENIGN=record-value"); // the record wins over the base
+		} finally {
+			delete process.env.OPENAI_API_KEY;
+			delete process.env.KISO_TEST_BENIGN;
+		}
+	});
 });

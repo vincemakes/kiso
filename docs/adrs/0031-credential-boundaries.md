@@ -65,3 +65,22 @@ lists are the boundary.
 - Tests: `packages/tools-node/tests/safety.test.ts` (strip + inherit
   opt-in); `extensions/mcp/tests/mcp.test.ts` (④ credential strip +
   CUSTOM_VAR overlay).
+
+## Amendment 1 (2026-09-05): the shell surface gains the explicit-env shape
+
+Decision 1 offered the shell two shapes — strip by default, or
+`shellEnv: "inherit"`. An embedding host that needs a few variables in
+its tool subprocesses had to choose between opening the whole
+environment and writing the values to a temporary file for the command
+to source. Neither is the boundary this ADR meant.
+
+`shellEnv` now accepts a third shape, a record of explicit entries,
+with exactly decision 2's semantics: the child receives the STRIPPED
+environment plus the record, and the record wins per key — so an entry
+may deliberately re-add a stripped name, as an MCP server's configured
+`env` already may. Absent and `"inherit"` are unchanged. The record is
+the host's declaration, not the command author's, which is the same
+line decision 2 drew: the operator authorizes precisely.
+
+Gated in `packages/tools-node/tests/safety.test.ts` (the record reaches
+the child; the base stays stripped; an explicit entry wins).
