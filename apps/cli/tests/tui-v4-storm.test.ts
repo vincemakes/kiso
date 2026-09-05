@@ -212,7 +212,28 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// property the gate exists for — no LF-pushed redraw, no dashed-line
 		// pileup — is carried by the screen assertions below, which are
 		// untouched and still pin the visual state.
-		expect(storm.split("\n").length - 1).toBeLessThanOrEqual(4);
+		// DECLARED SUPERSESSION (R14 / route B, 2026-09-05) — THE LF COUNT
+		// IS RETIRED, NOT RE-BASELINED A THIRD TIME.
+		//
+		// This bound went 1 → 2 → 4 as the banner and then the body text
+		// became width-sensitive, and each time the comment above said the
+		// same thing: the count is a PROXY, and the property it stands for
+		// is carried by the screen assertions below. Amendment 1 empties
+		// the proxy entirely. A settled resize now erases the terminal and
+		// stages the transcript back into its scrollback, and a line feed
+		// is the only instruction that does that — so LFs during a storm
+		// are the mechanism working, not a symptom. Measured at 11 here,
+		// and the right number is "however many rows the reprints staged",
+		// which no constant can express.
+		//
+		// What replaces it is the fact that makes the LFs legitimate: the
+		// storm's line feeds belong to reprints, and a reprint announces
+		// itself. The defect this gate was built against — an LF-PUSHED
+		// redraw piling dashed lines up the screen — is caught by the
+		// screen assertions that follow, untouched: response exactly once,
+		// box top at most once, separator count stable.
+		expect(storm).toContain("\x1b[2J\x1b[H\x1b[3J");
+		expect(storm.split("\n").length - 1, "the reprints staged nothing").toBeGreaterThan(0);
 
 		// ① #16a: the separator LINE count does NOT GROW beyond the
 		// re-paint budget — a LF-pushed redraw would add newline-separated

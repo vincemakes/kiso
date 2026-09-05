@@ -92,22 +92,32 @@ describe("TUI2-R2pre ③ — the dock's resize listener is a singleton", () => {
 		body.exit(); // never entered
 		expect(listeners()).toBe(base);
 		let repaints = 0;
+		// R14 / route B: the geometry has to actually CHANGE for the winch
+		// to be a resize. It used to be two constants, and a same-size
+		// winch used to repaint; now it deliberately emits nothing (the
+		// terminal is already holding the right picture, and erasing its
+		// scrollback to repaint an identical one is pure loss). What this
+		// case is for — the handler is LIVE, not merely absent — is
+		// unchanged; it just has to hand the handler a real resize.
+		let W = 80;
+		let H = 24;
 		const watched = new Body({
 			active: () => true,
-			height: () => 24,
-			width: () => 80,
+			height: () => H,
+			width: () => W,
 			editCol: () => 1,
 			write: () => {
 				repaints += 1;
 			},
 		});
 		watched.enter();
+		vi.advanceTimersByTime(50); // a frame paints, so a geometry is on screen
 		repaints = 0;
+		W = 70;
+		H = 20;
 		process.stdout.emit("resize");
 		// REL-0152-D18: a drag coalesces, so the repaint arrives once the
-		// signals stop. What this case is for — the handler is LIVE, not
-		// merely absent — is unchanged; it just has to wait for the drag
-		// to be over, exactly as a real one does.
+		// signals stop.
 		vi.advanceTimersByTime(100);
 		expect(repaints).toBeGreaterThan(0);
 		watched.exit();

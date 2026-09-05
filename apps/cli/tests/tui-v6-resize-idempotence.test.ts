@@ -237,10 +237,31 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		expect(consecutive.grid).toEqual(direct.grid);
 	});
 
-	it("② the seam ADR-0046 leaves: a storm that scrolls content away does NOT end where the direct resize ends", () => {
-		// the other side of the same ruling, asserted so the exception
-		// cannot quietly widen. A 24-row intermediate at 20 columns
-		// overflows; its rows leave at 20 columns and stay there.
+	/**
+	 * DECLARED SUPERSESSION (R14 / route B, 2026-09-05) — THE SEAM IS
+	 * GONE, AND THIS CASE CAME BACK FOR IT.
+	 *
+	 * The case that stood here asserted the OPPOSITE of what stands here
+	 * now: that a storm which scrolls content away does NOT end where the
+	 * direct resize ends. It carried its own instruction for this moment —
+	 * "the storm equalled the direct resize, which is a REASON TO COME
+	 * BACK, not a pass" — and route B is that reason.
+	 *
+	 * The seam was never a defect in the renderer. It followed from
+	 * ADR-0046 §3: the scrollback belongs to the terminal, kiso may not
+	 * rewrite it, so rows that left at 20 columns stay folded at 20
+	 * columns forever and the path taken to a geometry is visible in the
+	 * result. Amendment 1 retires that premise. `2J H 3J` erases the
+	 * scrollback and the session is reprinted from the model at the
+	 * current width, so the terminal holds one rendering of a transcript
+	 * that does not remember how it got here. Path independence stops
+	 * being an exception granted to non-overflowing storms and becomes
+	 * the contract.
+	 *
+	 * This is the plan's G7, measured on a real CLI rather than on the
+	 * unit-level emulator (`r14-reprint-completeness` carries that half).
+	 */
+	it("G7 — an OVERFLOWING storm now ends where the direct resize ends too", () => {
 		const overflowing = runAndScreen([
 			[20, 60],
 			[40, 140],
@@ -249,6 +270,11 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 			[100, 30],
 		]);
 		const direct = runAndScreen([[100, 30]]);
-		expect(overflowing.grid, "the storm equalled the direct resize — the ink seam this case documents is gone, which is a REASON TO COME BACK, not a pass").not.toEqual(direct.grid);
+		// NON-VACUITY: two empty grids are equal. The direct render has to
+		// be holding the session before the comparison says anything —
+		// this round has already caught three gates that were green
+		// against the defect they named.
+		expect(direct.grid.flat().join("").trim().length, "the direct resize rendered nothing to compare").toBeGreaterThan(20);
+		expect(overflowing.grid).toEqual(direct.grid);
 	});
 });

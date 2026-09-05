@@ -144,20 +144,24 @@ describe("KC1 T-C3 — a resize at N>1 is idempotent", () => {
 		body.onResize();
 		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
 		const first = writes.join("");
-		expect(first).toContain("\x1b[0J"); // ED0 from the recorded top — never 2J/3J
-		expect(first).not.toContain("\x1b[2J");
-		expect(first).not.toContain("\x1b[3J");
-		expect(first).not.toContain("\n"); // zero LF on the resize path
+		// DECLARED SUPERSESSION (R14 / route B, 2026-09-05) — the resize
+		// ERASES and reprints (ADR-0046 Amendment 1). This case pinned the
+		// scoped ED0 and "never 2J/3J"; both invert. What it was really
+		// guarding — that the repaint lands at the NEW geometry, and that
+		// a repeat is idempotent — is kept, with idempotence re-derived:
+		// the same size twice is not a resize at all now, so the second
+		// winch emits NOTHING rather than the same bytes again. That is a
+		// stronger form of the same claim, and it is the one the terminal
+		// cares about (erasing a scrollback to repaint an identical
+		// picture is pure loss).
+		expect(first).toContain("\x1b[2J\x1b[H\x1b[3J");
+		expect(first).not.toContain("\x1b[0J");
+		expect(first).not.toContain("\n"); // one committed row: nothing to stage
 		expect(railRows(first)[0]).toBe(20 - 5); // the NEW geometry: H−2−N
 		writes.length = 0;
 		body.onResize(); // the same size again — the V6-1 idempotence rule
-		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
-		// the ED0's start row follows the RECORDED extent (which shrank
-		// with the first repaint) — the existing resize gate already
-		// declares the SCREEN the invariant, never the byte count; what
-		// must be identical is the PAINT that covers every row
-		const paint = (s: string): string => s.slice(s.indexOf("\x1b[?2026h"));
-		expect(paint(writes.join(""))).toBe(paint(first));
+		vi.advanceTimersByTime(100);
+		expect(writes.join("")).toBe("");
 	});
 });
 

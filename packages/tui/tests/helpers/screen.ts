@@ -38,14 +38,29 @@ export class Screen {
 	 *
 	 *  Only the grid's width moves. The cursor, the scrollback and
 	 *  every drawn cell stay where they are. */
-	resizeTo(W: number): void {
-		// WIDEN ONLY. A real terminal REFLOWS on a narrowing and pushes
-		// what it displaces into its scrollback (see the compositor's own
-		// D18 and TT-1B comments); truncating would model a terminal that
-		// does not exist, and a gate built on it would be measuring
-		// fiction. Narrowing needs its own model and does not have one
-		// yet — DC-34 rider 2.
-		if (W < this.W) throw new Error("Screen.resizeTo models a WIDEN only — see DC-34 rider 2");
+	resizeTo(W: number, opts: { readonly narrowing?: "truncate-post-erase" } = {}): void {
+		// WIDEN ONLY, BY DEFAULT. A real terminal REFLOWS on a narrowing
+		// and pushes what it displaces into its scrollback (see the
+		// compositor's own D18 and TT-1B comments); truncating would model
+		// a terminal that does not exist, and a gate built on it would be
+		// measuring fiction. Narrowing needs its own model and does not
+		// have one yet — DC-34 rider 2.
+		//
+		// R14 / route B opens ONE door in that wall, and only because the
+		// route removes the thing the fiction could corrupt. A settled
+		// resize writes `2J H 3J`: screen erased, scrollback erased. Every
+		// row the terminal held before the settle is gone whatever the
+		// terminal did to it in the meantime, reflow or truncation alike —
+		// so a case that asserts state AFTER a settle cannot be reached by
+		// the difference between the two models.
+		//
+		// The opt-in is deliberately ugly to type. It is a promise about
+		// WHERE the assertion stands, and a case that narrows and then
+		// asserts on the pre-settle screen is making a false claim with
+		// it. Nothing enforces that but the name.
+		if (W < this.W && opts.narrowing !== "truncate-post-erase") {
+			throw new Error("Screen.resizeTo models a WIDEN only — see DC-34 rider 2 (post-erase narrowing is opt-in)");
+		}
 		const pad = (row: string[]): string[] => (W <= row.length ? row.slice(0, W) : [...row, ...Array.from({ length: W - row.length }, () => " ")]);
 		this.rows = this.rows.map(pad);
 		this.history = this.history.map(pad);
@@ -143,9 +158,35 @@ export class Screen {
 							this.pending = false;
 							for (let cc = this.c; cc < this.W; cc += 1) this.rows[this.r]![cc] = " ";
 						} else if (fin === "J") {
+							// R14 / route B — ED takes a PARAMETER, and this
+							// emulator used to ignore it and always do ED0.
+							// That was harmless while kiso only ever wrote
+							// `0J`; the reprint writes `2J` and `3J`, and an
+							// emulator that treats them as "erase below the
+							// cursor" keeps the pre-reprint history forever —
+							// so the reprint reads as DUPLICATION and three
+							// resize gates fail for a reason that is in the
+							// instrument, not the product.
+							//
+							// ED's default is 0, not 1, so the shared `nums`
+							// mapping above (which turns an empty parameter
+							// into 1) cannot be used here.
 							this.pending = false;
-							for (let rr = this.r; rr < this.H; rr += 1) {
+							const mode = params[0] === undefined || params[0] === "" ? 0 : Number(params[0]);
+							const blank = (rr: number): void => {
 								for (let cc = 0; cc < this.W; cc += 1) this.rows[rr]![cc] = " ";
+							};
+							if (mode === 0) {
+								for (let rr = this.r; rr < this.H; rr += 1) blank(rr);
+							} else if (mode === 1) {
+								for (let rr = 0; rr <= this.r; rr += 1) blank(rr);
+							} else if (mode === 2) {
+								for (let rr = 0; rr < this.H; rr += 1) blank(rr);
+							} else if (mode === 3) {
+								// The scrollback, and ONLY the scrollback —
+								// what makes the terminal hold exactly one
+								// rendering of the session after a settle.
+								this.history = [];
 							}
 						} else if (fin === "m" || fin === "u" || fin === "h" || fin === "l" || fin === "r" || fin === "f" || fin === "n") {
 							this.pending = false;

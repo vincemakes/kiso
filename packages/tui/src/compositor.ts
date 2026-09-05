@@ -394,6 +394,30 @@ export class Body {
 	/** DC-34 — the previous frame's width; the reach-back guard is for a
 	 *  WIDTH change, which re-indexes the model, not a height change. */
 	#lastW = 0;
+	/** R14 — the geometry the last SETTLE ran at. A winch back to the
+	 *  same size is not a resize and must not erase the scrollback. */
+	/** R14 — the geometry the last frame PAINTED, and the snapshot of it
+	 *  taken when a winch opens a settle window.
+	 *
+	 *  Three versions of this question were wrong before this one.
+	 *  Seeding in `enter()` never ran under the unit pool (it bails on a
+	 *  non-TTY), so a same-size winch erased the scrollback. Comparing
+	 *  against the CURRENT frame's geometry let an ordinary frame render
+	 *  at the new size between the winch and the settle and eat the
+	 *  change, so a real resize silently stopped reprinting. Seeding once
+	 *  on the first frame had the same hole whenever the first frame had
+	 *  not run yet.
+	 *
+	 *  The question the settle actually asks is "is the terminal holding
+	 *  a rendering made at a DIFFERENT geometry than the one we have
+	 *  now" — so the comparison is against what was on screen when the
+	 *  winch arrived, snapshotted then, once per storm. */
+	#paintedW = 0;
+	#paintedH = 0;
+	#winchFromW = 0;
+	#winchFromH = 0;
+	/** DC-50 — the ONE expansion switch ctrl+o flips. */
+	#expandedAll = false;
 	// KC1 §6: the composer's recorded extent — the row count the last
 	// frame drew (exit's clear walks it) and the row its CHA parked the
 	// cursor on (the steady frame's relative anchor). N = 1 reproduces
@@ -1689,6 +1713,14 @@ export class Body {
 	 */
 	onResize(): void {
 		if (!this.#isActive()) return;
+		// R14 — the FIRST winch of a storm snapshots what the terminal is
+		// currently holding. A drag fires many winches; the settle must
+		// compare its end against the storm's beginning, not against the
+		// previous winch.
+		if (!this.#resizePending) {
+			this.#winchFromW = this.#paintedW;
+			this.#winchFromH = this.#paintedH;
+		}
 		this.#resizePending = true;
 		if (this.#resizeTimer !== null) clearTimeout(this.#resizeTimer);
 		this.#resizeTimer = setTimeout(() => {
@@ -1716,18 +1748,110 @@ export class Body {
 		this.onResize();
 	}
 
-	/** The one repaint a drag earns, once its signals have stopped. */
+	/**
+	 * R14 / route B — THE ONE REPAINT A DRAG EARNS IS A REPRINT.
+	 *
+	 * It used to be `ESC[from;1H ESC[0J` — erase from the recorded live
+	 * top down, then redraw the live area, leaving the committed rows
+	 * above to whatever the terminal's own reflow had made of them. That
+	 * is the shape R10 measured on the owner's real terminal, and it
+	 * lost: a grow dropped 16 rows of history (DC-39), a narrow
+	 * duplicated four tokens, and the scrolled-off transcript never
+	 * reflowed at all. All three are one fault — kiso doing window
+	 * arithmetic over rows the terminal had already reflowed underneath
+	 * it, with `#scrolledOff` carried across a fold change that makes
+	 * every index mean something else.
+	 *
+	 * So it stops arguing. `2J H 3J` — erase screen, home, erase
+	 * scrollback, in THAT order because on Apple Terminal a bare `2J`
+	 * scrolls the screen into history and only the following `3J` makes
+	 * the state clean — and then the whole committed transcript is
+	 * reprinted at the new geometry through the path a fresh terminal
+	 * already uses. The terminal ends holding exactly one rendering.
+	 *
+	 * The declared cost (ADR-0046 Amendment 1): everything the terminal
+	 * held before kiso started is erased at the first resize. Measured
+	 * on the reference implementation as 0/60 in every direction — this
+	 * is the behaviour being adopted, not a regression. kiso's own
+	 * record is untouched: the session log holds it, `--resume` replays
+	 * it, and G4' asserts the 0/60 so the cost cannot drift silently.
+	 *
+	 * D-B2: EVERY settled resize reprints, height-only included. A
+	 * SIGWINCH at the same geometry emits nothing at all.
+	 */
 	#settleResize(): void {
 		if (!this.#resizePending || !this.#isActive()) return;
 		this.#resizePending = false;
 		const H = this.#opts.height();
-		const liveRows = this.#lastLiveRows > 0 ? this.#lastLiveRows : 3;
-		const from = Math.max(1, (this.#lastH > 0 ? this.#lastH : H) - liveRows + 1);
-		this.#write(`\x1b[${Math.min(from, Math.max(1, H))};1H\x1b[0J`);
+		const W = this.#opts.width();
+		// D-B2's other half: a winch that did not change the geometry is
+		// not a resize. Emitting the erase for it would throw away the
+		// terminal's scrollback for nothing (the V6-1 idempotence case).
+		if (this.#winchFromW === W && this.#winchFromH === H) return;
+		// §9.2 — the viewer is closed first. Nothing commits while it is
+		// up and a reprint is a commit storm; the user reopens it. One
+		// keypress, stated rather than hidden.
+		if (this.#viewer !== null) {
+			this.#viewer = null;
+			this.#viewerWasUp = true;
+		}
+		this.#reprint();
+	}
+
+	/**
+	 * R14 — ERASE THE TERMINAL AND PRINT THE SESSION AGAIN.
+	 *
+	 * Two callers: a settled resize, and DC-50's ctrl+o. They are the
+	 * same act — the rendering the terminal holds is wrong (wrong
+	 * geometry, or wrong expansion state) and the model is the only
+	 * authority on what it should be — so they share the path rather
+	 * than growing two.
+	 */
+	#reprint(): void {
+		const H = this.#opts.height();
+		this.#write("\x1b[2J\x1b[H\x1b[3J");
+		// The terminal now holds nothing, so every record of what it held
+		// is void. `#scrolledOff` is the frontier of what reached its
+		// scrollback: after the erase, that is zero — which is also what
+		// releases the committed cells to be refolded at the new width
+		// without contradicting anything, the thing DC-34's frontier rule
+		// existed to prevent.
+		this.#scrolledOff = 0;
+		for (let i = 0; i < this.#committed; i += 1) this.#lineCache[i] = null;
+		this.#screen = new Array(Math.max(1, H)).fill(NOT_PAINTED);
+		this.#cursorRow = 1;
 		this.#fullRedraw = true;
 		this.#resizeFrame = true;
 		this.#dirty = true;
 		this.render();
+	}
+
+	/**
+	 * DC-50 — ctrl+o flips ONE switch, and every settled card obeys it.
+	 *
+	 * The walk this replaces existed because ADR-0046 §3 forbade
+	 * re-rendering a committed card, so the only way to show one's body
+	 * was to APPEND a copy further down — with a ring to decide which
+	 * card was next, `#opened` to keep the ring from repeating, and
+	 * `#lastAppend` to stop a held key printing the same rows three times
+	 * (DC-35). Amendment 1 removes the premise: the scrollback is ours to
+	 * erase, so a card can simply be re-rendered where it stands.
+	 *
+	 * A RUNNING card is exempt. Its height is E2/DC-43's — it grows from
+	 * its own content — and a global "show everything" has no business
+	 * reaching into a card whose content is still arriving.
+	 */
+	toggleExpanded(): void {
+		this.#expandedAll = !this.#expandedAll;
+		for (const cell of this.#cells) {
+			if (cell.kind === "tool" && cell.done) cell.expanded = this.#expandedAll;
+		}
+		this.#reprint();
+	}
+
+	/** DC-50 — the switch itself, for the CLI's affordance text. */
+	expandedAll(): boolean {
+		return this.#expandedAll;
 	}
 
 	/** W18: the status row's right-aligned hint is part of the status
@@ -2145,6 +2269,10 @@ export class Body {
 		const W = this.#opts.width();
 		if (H < 4) return;
 		this.#lastH = H;
+		// R14 — the geometry THIS frame painted. `onResize` snapshots it
+		// at the moment the winch arrives; see `#winchFromW`.
+		this.#paintedW = W;
+		this.#paintedH = H;
 		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: H };
 		// V6-1 (the screen-state == frame-state rule): the resize's first
 		// frame — the terminal's reflow re-wrapped the committed content at
@@ -3126,36 +3254,32 @@ export class Body {
 		// sit with the live band empty and the chrome at its minimum — the
 		// one-way part of a movement that otherwise goes both ways.
 		if (this.#resizeFrame) {
-			// REL-0152-R1: a resize scrolls NOTHING of ours. Shrinking the
-			// window is the terminal's own scroll — it reflows the old
-			// content and pushes the overflow into its scrollback before we
-			// are called — so emitting our own LFs on top put the same rows
-			// in twice (TT-1B: twelve rows of a forty-line burst). The
-			// counter adopts the terminal's work, and the held screen is
-			// discarded because a reflow invalidates every row of it: the
-			// next diff repaints the whole screen, which is exactly what a
-			// resize needs.
-			// DC-34 — NO HIGH-WATER MARK ON A RESIZE.
+			// R14 / route B — THE RESIZE FRAME SCROLLS LIKE ANY OTHER.
 			//
-			// This was `max(#scrolledOff, …)`, which held a stale count
-			// whenever a widen made the fresh one smaller; `leaving` then
-			// stayed <= 0 and the text that marched past in the meantime
-			// never entered the scrollback at all — the hole, the other
-			// half of the same off-by-a-refold.
+			// Everything this branch used to hold is retired with the
+			// window arithmetic it served. It adopted the terminal's own
+			// reflow-scroll into `#scrolledOff` (REL-0152-R1), then had to
+			// stop adopting it on a widen and keep adopting it on a narrow
+			// (DC-34), because the counter it was feeding meant a different
+			// thing at every fold width. There is no such counter to feed
+			// now: `#settleResize` erased the terminal and set
+			// `#scrolledOff` to zero, so the frontier is real and empty and
+			// the frame simply reprints from the top.
 			//
-			// The other implementation in this space reached the same
-			// conclusion independently and says so in its own source: a
-			// historical high-water mark "caused self-reinforcing
-			// inflation that pushed content into scrollback on terminal
-			// widen". Dropping it alone brings the DUPLICATE back — it is
-			// the pair with the no-refold rule above, not a substitute
-			// for it.
-			// PROBE 3: a widen leaves it ALONE; a narrow keeps REL-0152-R1.
-			if (this.#refolded) this.#scrolledOff = Math.max(this.#scrolledOff, Math.max(0, Math.min(skip, all.length)));
+			// Falling through to `#emitScroll` is not a convenience — it is
+			// the whole point. The transcript above the last screenful has
+			// to reach the scrollback, chunked and staged from the model,
+			// exactly as a resumed session's replay does. Without it the
+			// reprint painted the last screenful onto a terminal whose
+			// history it had just erased, and everything above was simply
+			// GONE: `dc34-widen-seam` measured 36 tokens missing from the
+			// scrollback the first time this branch was left in place.
 			this.#refolded = false;
 			this.#screen = new Array(H).fill(NOT_PAINTED);
 			this.#resizeFrame = false;
-		} else if (!overlay) {
+		}
+		if (!overlay) {
+
 			// DC-46 — THE ROWS THAT LEAVE THE WINDOW SCROLL, and the target
 			// is `skip` itself.
 			//

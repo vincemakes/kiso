@@ -156,17 +156,35 @@ describe("DC-33 — a mid-turn resize", () => {
 	// which is what REL-0152-R1's sentence actually binds; and the
 	// PROTECTION, measured on content, which is what the count was
 	// standing in for.
-	it("the winch's own repaint frame emits no line feed of ours", () => {
+	// DECLARED SUPERSESSION (R14 / route B, 2026-09-05) — THE WINCH FRAME
+	// NOW EMITS LINE FEEDS, AND MUST.
+	//
+	// The claim above was frame-scoped and true under ADR-0046 §3: the
+	// repaint re-addressed rows in place and never scrolled, because the
+	// terminal's scrollback already held the transcript and re-feeding it
+	// would duplicate. Amendment 1 removes that premise. The settle writes
+	// `2J H 3J` — the scrollback is EMPTY afterwards — so the transcript
+	// above the last screenful has to be staged back into it, and a line
+	// feed is the only instruction that does that. Zero LFs here would now
+	// mean the reprint dropped everything above the final screenful.
+	//
+	// The claim inverts; the PROTECTION does not move. "Every committed
+	// row stands on exactly one history line after the settle" is measured
+	// on the screen by the sibling case below, which is where it always
+	// belonged (DC-34 already split the literal invariant from the thing
+	// the LF count was standing in for). This case now pins the half that
+	// changed: the staging happens at all.
+	it("the winch's own repaint frame STAGES the transcript — line feeds, once", () => {
 		const { after } = midTurnResize(3.5);
 		const text = after.toString("utf8");
-		// the frame the resize opens: from its erase to the close of the
-		// synchronized-output pair (or the conservative path's cursor-show)
-		const erase = /\x1b\[\d+;1H\x1b\[0J/.exec(text);
-		expect(erase, "the resize frame emitted no erase — its extent is unreadable").not.toBeNull();
-		const from = erase!.index;
-		const rel = text.slice(from).search(/\x1b\[\?2026l|\x1b\[\?25h/);
-		const frame = text.slice(from, rel < 0 ? undefined : from + rel);
-		expect(frame.split("\n").length - 1, "the resize frame scrolled something of ours").toBe(0);
+		const at = text.indexOf("\x1b[2J\x1b[H\x1b[3J");
+		expect(at, "the settle emitted no erase — route B did not run").toBeGreaterThanOrEqual(0);
+		const rel = text.slice(at).search(/\x1b\[\?2026l|\x1b\[\?25h/);
+		const frame = text.slice(at, rel < 0 ? undefined : at + rel);
+		// NOT vacuous: this session has committed more rows than the screen
+		// holds (the sibling asserts >4 line feeds BEFORE the winch), so
+		// there is genuinely something above the last screenful to stage.
+		expect(frame.split("\n").length - 1, "the reprint staged nothing into the scrollback").toBeGreaterThan(0);
 	}, 90_000);
 
 	it("no row committed before the winch is emitted again after it", () => {

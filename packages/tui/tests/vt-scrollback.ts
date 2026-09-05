@@ -79,7 +79,31 @@ export class VtScrollback {
 				else if (cmd === "A") this.#r = Math.max(1, this.#r - n(1));
 				else if (cmd === "B") this.#r = Math.min(this.#h, this.#r + n(1));
 				else if (cmd === "K") this.#row().length = this.#c - 1;
-				else if (cmd === "J") for (let rr = this.#r; rr <= this.#h; rr += 1) this.#rows[rr - 1]!.length = rr === this.#r ? this.#c - 1 : 0;
+				else if (cmd === "J") {
+					// R14 / route B — ED TAKES A PARAMETER.
+					//
+					// This ignored it and always did ED0 (erase from the
+					// cursor down), which was harmless while kiso only wrote
+					// `0J`. The reprint writes `2J` (the whole screen) and
+					// `3J` (the SCROLLBACK), and an emulator that treats `3J`
+					// as ED0 keeps the pre-reprint scrollback AND receives
+					// the reprint's staging on top — so a correct reprint
+					// reads as 32 duplicated rows. `tt1-clamp` failed exactly
+					// that way, and the fault was here, not in the product.
+					//
+					// ED's default is 0, not 1, so `n(…)` (which substitutes a
+					// default for an empty parameter) is not used.
+					const mode = args === "" ? 0 : Number(args.split(";")[0]!) || 0;
+					if (mode === 3) {
+						this.scrollback.length = 0;
+					} else if (mode === 2) {
+						for (let rr = 1; rr <= this.#h; rr += 1) this.#rows[rr - 1]!.length = 0;
+					} else if (mode === 1) {
+						for (let rr = 1; rr <= this.#r; rr += 1) this.#rows[rr - 1]!.length = rr === this.#r ? this.#c - 1 : 0;
+					} else {
+						for (let rr = this.#r; rr <= this.#h; rr += 1) this.#rows[rr - 1]!.length = rr === this.#r ? this.#c - 1 : 0;
+					}
+				}
 				else if (cmd === "r") {
 					// DECSTBM HOMES THE CURSOR (VT100; Apple Terminal, xterm,
 					// xterm.js and tmux all do). The margins themselves are still

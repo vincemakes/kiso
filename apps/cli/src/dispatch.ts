@@ -110,50 +110,28 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		return;
 	}
 	if (trimmed === "\x12expand") {
-		// W15: the expand key (ctrl+o) — /last aimed at a chosen cell.
-		// The TARGET is picked at press time: a LIVE tool cell toggles
-		// IMMEDIATELY in place (the compositor owns those rows and
-		// redraws them — the approval pause is exactly when the user
-		// reads a cut diff, and the key must answer then, never after
-		// the run). A COMMITTED cell can never toggle — history is never
-		// rewritten (ADR-0046) — so its expanded block and the empty
-		// answer queue on the chain like /last: the block lands as new
-		// content after any in-flight turn. The sentinel carries the
-		// control char so a typed "expand" turn is never intercepted.
-		const r = body.expandNext();
-		if (r.kind === "toggled") {
-			ctx.input.prompt(); // in place — the frame already repainted
-			return;
-		}
-		const land = async (): Promise<void> => {
-			if (r.kind === "appended") {
-				// DC-51 — ONE CALL, because one call is ONE CELL.
-				//
-				// This was a loop, one `bodyLog` per line, and each call
-				// makes its own raw cell — so D1 put a blank between every
-				// pair and the expansion came out laced with unpainted
-				// rows, twice the height of the card it is meant to be.
-				// The owner saw it as stripes.
-				//
-				// It only became wrong when the block became RENDERED ROWS
-				// (0.24.2 ③). Before that the lines were a header and two
-				// multi-line payloads — four cells, and the payloads' own
-				// newlines kept their rows inside one cell each.
-				//
-				// `bodyLog` splits on newlines, and a rendered row may not
-				// contain one (invariant ①b throws on it), so joining is
-				// exactly reversible here.
-				bodyLog(r.lines.join("\n"));
-			} else if (r.kind === "none") {
-				// DC-35: "nothing to expand" was said in two situations and
-				// was only true in one of them. A reader who pressed the key
-				// on a ring of one had something to open — they were already
-				// looking at it — and the old line told them the opposite.
-				bodyLog(r.why === "already-last" ? "[that expansion is already the last thing on screen — ctrl+r opens the transcript]" : "[nothing to expand]");
-			}
-			ctx.input.prompt();
-		};
-		ctx.chainRef.current = ctx.chainRef.current.then(land);
+		// DC-50 / R14 — ONE SWITCH, AND THE SESSION IS PRINTED AGAIN.
+		//
+		// What stood here: the key picked a TARGET at press time. A live
+		// tool cell toggled in place; a committed one could not, because
+		// ADR-0046 §3 forbade rewriting history — so its body was
+		// APPENDED as new content, chained behind any in-flight turn,
+		// with a ring choosing which card was next, `#opened` keeping the
+		// ring from repeating, `#lastAppend` stopping a held key printing
+		// the same rows three times (DC-35), and a two-branch "nothing to
+		// expand" message for the two ways it could decline.
+		//
+		// Amendment 1 removes the premise the whole apparatus served: the
+		// terminal's scrollback is ours to erase, so a committed card can
+		// be re-rendered where it stands. The key flips one boolean and
+		// the session is reprinted; every settled card obeys it, running
+		// cards keep their own window (E2/DC-43).
+		//
+		// It no longer chains. There is no content to land after an
+		// in-flight turn — nothing is appended — so the repaint is
+		// immediate, exactly as the live-cell toggle always was.
+		body.toggleExpanded();
+		ctx.input.prompt();
 		return;
 	}
 	if (trimmed === "/rewrap") {

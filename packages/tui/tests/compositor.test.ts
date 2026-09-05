@@ -387,28 +387,54 @@ describe("TUI v6 — the one compositor", () => {
 		expect(bytes.length).toBeGreaterThan(0);
 	});
 
-	it("the resize: ED0 from the recorded live top + the full CUP redraw — zero LF, zero 3J, idempotent", () => {
-		const { body, writes } = makeBody();
+	/**
+	 * DECLARED SUPERSESSION (R14 / route B, 2026-09-05) — THE RESIZE
+	 * ERASES AND REPRINTS.
+	 *
+	 * This case pinned the old contract in its title: ED0 from the
+	 * recorded live top, zero LF, zero 3J. ADR-0046 Amendment 1 replaces
+	 * it. R10 measured the old shape on the owner's real terminal and it
+	 * did not hold up — a grow lost 16 rows of history (DC-39), a narrow
+	 * duplicated four tokens, and the scrolled-off transcript never
+	 * reflowed. A settled resize now writes `2J H 3J` and reprints the
+	 * session at the new geometry, so the terminal holds exactly one
+	 * rendering of it.
+	 *
+	 * Three assertions invert and one is new, each re-derived rather
+	 * than deleted:
+	 *   - `0J` → the erase triple (the clear is now total, not scoped);
+	 *   - `not 3J` → `3J`, exactly once (it is the point);
+	 *   - the second same-size winch used to REPAINT (V6-1's every-row
+	 *     rule) and now emits NOTHING at all — the geometry did not
+	 *     change, so the terminal is already holding the right picture
+	 *     and erasing its scrollback would be pure loss;
+	 *   - zero LF SURVIVES here and is worth keeping for the reason it
+	 *     is true: this session is one committed row on a 24-row screen,
+	 *     so the reprint has nothing to stage into the scrollback. A
+	 *     transcript taller than the screen does emit LFs, by design —
+	 *     that is `#emitScroll` doing what a resumed session's replay
+	 *     does, and `r14-reprint` gates it there.
+	 */
+	it("the resize ERASES (2J H 3J) and reprints; a same-size winch emits nothing", () => {
+		const { body, writes, setSize } = makeBody();
 		body.enter();
 		body.raw(["frozen"]);
+		vi.advanceTimersByTime(50); // the first frame paints, so a geometry is on screen
 		writes.length = 0;
+		setSize(70, 20);
 		body.onResize();
 		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
 		const bytes = writes.join("");
-		expect(bytes).toContain("\x1b[0J"); // the ED0 clear of the old live area
-		expect(bytes).not.toContain("\x1b[3J");
-		expect(bytes).not.toContain("\n"); // zero LF
+		expect(bytes).toContain("\x1b[2J\x1b[H\x1b[3J"); // the erase, in order
+		expect(bytes).not.toContain("\x1b[0J"); // the scoped clear is gone
+		expect(bytes).not.toContain("\n"); // one row, nothing to stage
 		expect(bytes).toMatch(/\x1b\[\d+;\d+H/); // the CUP full redraw
-		expect(bytes).toContain("frozen"); // the committed line drawn at the resize
-		// idempotent: a second resize has the same shape — and V6-1's
-		// every-row rule re-paints the committed content (the screen-state
-		// == frame-state), so the "frozen" IS re-emitted — the SCREEN is
-		// the invariant, never the byte count.
+		expect(bytes).toContain("frozen"); // the committed line REPRINTED
+		// The same size again is not a resize.
 		writes.length = 0;
 		body.onResize();
-		vi.advanceTimersByTime(100); // REL-0152-D18: the drag settles, then it repaints
-		expect(writes.join("")).toContain("\x1b[0J");
-		expect(writes.join("")).toContain("frozen");
+		vi.advanceTimersByTime(100);
+		expect(writes.join("")).toBe("");
 	});
 
 	it("the resize with a force commit: the frozen bound counts the cells committed BEFORE the frame — the committed content re-paints on the winch (the V6-1 frozen-loop bug), and the A8 march bound WINDOWS the model", () => {
