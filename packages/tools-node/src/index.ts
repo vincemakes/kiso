@@ -18,7 +18,8 @@
  * always has a path to the full content.
  */
 
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
+import { promisify } from "node:util";
 import {
 	chmodSync,
 	existsSync,
@@ -223,10 +224,39 @@ export interface WorkspaceToolsOptions {
  *   - non-regular files (sockets, devices, fifos): refused.
  * Returns a denial reason, or null when the file is safe to read.
  */
-function inodeReadPolicy(root: string, full: string): string | null {
+/** DC-52 — the guard's verdict, per (dev, ino), for this process. The
+ *  scan is the expensive thing; the answer is a fact about an inode and
+ *  does not change under us within a call. */
+const inodeVerdict = new Map<string, string | null>();
+
+/**
+ * DC-52 — BOUNDED, ASYNCHRONOUS, AND SILENT.
+ *
+ * This was `execFileSync("find", [root, "-xdev", "-inum", …])` with no
+ * `stdio`, run once per multi-link file. Three faults in one line:
+ *
+ *   1. no `stdio` gives the child the PARENT'S stderr, which is the
+ *      terminal — `find: …: Operation not permitted` went straight past
+ *      the compositor's frame and over the composer;
+ *   2. the scan is unbounded, and SYNCHRONOUS: with the workspace root
+ *      at `~` a single call is tens of seconds with the event loop
+ *      frozen, so `esc` does nothing and the whole product looks hung;
+ *   3. it ran for `search_text` too, which returns a 160-character
+ *      excerpt — a disk traversal to decide whether a line may be
+ *      quoted is not a trade anyone would make.
+ *
+ * Now: `execFile` with a 2s budget, stderr discarded, verdict cached.
+ * A scan that does not finish inside the budget is fail-closed exactly
+ * as an unverifiable one always was — refused, never hung. Fault 3 is
+ * answered by `search_text` not calling this at all.
+ */
+async function inodeReadPolicy(root: string, full: string): Promise<string | null> {
 	const st = statSync(full);
 	if (!st.isFile()) return `not a regular file — refusing to read (${full})`;
 	if (st.nlink <= 1) return null;
+	const key = `${st.dev}:${st.ino}`;
+	const cached = inodeVerdict.get(key);
+	if (cached !== undefined) return cached;
 	// round 4: the link count is verified STRUCTURALLY, never by counting
 	// newline-split text. `find -print0` emits NUL-separated paths — a file
 	// named "inside\nspoof" is ONE path, not two — and every match is then
@@ -240,10 +270,17 @@ function inodeReadPolicy(root: string, full: string): string | null {
 	let inside = 0;
 	try {
 		const rootReal = realpathSync(root);
-		const out = execFileSync(
+		const { stdout: out } = await promisify(execFile)(
 			"find",
 			[rootReal, "-xdev", "-inum", String(st.ino), "-print0"],
-			{ encoding: "utf8", maxBuffer: 1 << 20 },
+			// DC-52: the child never outlives the budget, and its stderr
+			// never reaches the terminal. The second is the ASYNC form's
+			// own doing and is the whole reason to prefer it here:
+			// `execFileSync` without an explicit `stdio` gives the child
+			// the PARENT'S stderr, which is how `find: … Operation not
+			// permitted` got over the composer. `execFile` pipes both
+			// streams into the callback; there is nowhere for it to go.
+			{ encoding: "utf8", maxBuffer: 1 << 20, timeout: INODE_SCAN_MS },
 		);
 		for (const path of out.split("\0")) {
 			if (path === "") continue;
@@ -258,12 +295,17 @@ function inodeReadPolicy(root: string, full: string): string | null {
 	} catch {
 		inside = -1; // cannot verify — refuse (fail-closed)
 	}
-	if (inside < 0 || inside < st.nlink) {
-		const verified = inside < 0 ? "unverifiable" : `${inside}/${st.nlink}`;
-		return `file has hard links outside the workspace (${verified} inside) — refusing to read (${full})`;
-	}
-	return null;
+	const verdict =
+		inside < 0 || inside < st.nlink
+			? `file has hard links outside the workspace (${inside < 0 ? "unverifiable" : `${inside}/${st.nlink}`} inside) — refusing to read (${full})`
+			: null;
+	inodeVerdict.set(key, verdict);
+	return verdict;
 }
+
+/** DC-52 — the guard's budget. A scan that outruns it is fail-closed,
+ *  which is what an unverifiable scan has always been. */
+const INODE_SCAN_MS = 2_000;
 
 /** The "… N more lines" note — the actionable continuation: the exact
  *  line the next read must start at, so the model can always reach the
@@ -300,7 +342,7 @@ export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 		execute: async ({ path, offset, limit }) => {
 			try {
 				const full = resolveWithinRoot(opts.workspaceRoot, path);
-				const denied = inodeReadPolicy(opts.workspaceRoot, full);
+				const denied = await inodeReadPolicy(opts.workspaceRoot, full);
 				if (denied !== null) return escapeResult(denied);
 				// WR-1: hash the raw bytes BEFORE decoding — the revision is a
 				// fact about the world, not about UTF-8 replacement semantics.
@@ -469,6 +511,9 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			// depth cap and the node_modules/dotfile skip stay.
 			const matches: string[] = [];
 			let totalMatches = 0;
+			// DC-52 — what the search did NOT look at, so the note can say so.
+			let multiLink = 0;
+			let unreadableDirs = 0;
 			// R3 — the walk YIELDS. It was `readdirSync` + `readFileSync` all
 			// the way down inside an `async` body, which is the shape that
 			// blocks Node's event loop for the whole traversal: measured at
@@ -496,13 +541,28 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			const scanFile = async (full: string): Promise<void> => {
 				await breathe();
 				try {
-					// round 8: same inode boundary as read_file — a hard link
-					// to an external inode is not searched. round 4 (adversarial):
-					// the link count is verified against the WORKSPACE
-					// root, not the search subroot — a link that lives
-					// inside the workspace but outside the search dir is
-					// legal and must not be silently skipped.
-					if (inodeReadPolicy(opts.workspaceRoot, full) !== null) return;
+					// DC-52 — SEARCH DOES NOT RUN THE INODE GUARD.
+					//
+					// Round 8 gave search the same inode boundary read_file
+					// has, and the boundary is right; what was wrong is the
+					// price. The guard's verification is a `find` over the
+					// whole workspace root, once per multi-link file — with
+					// the root at `~` that is tens of seconds each, and it
+					// ran on the owner's machine for eight minutes without
+					// finishing. A search returns a 160-character excerpt of
+					// a line. No excerpt is worth a disk traversal.
+					//
+					// So a multi-link file is SKIPPED, and counted, and the
+					// count is said. That is fail-closed at zero cost: the
+					// external-link case the guard exists for is refused
+					// exactly as before, and the legal case is refused too,
+					// which is a loss of coverage rather than of safety.
+					// read_file keeps the guard (bounded, above), and that
+					// is where the file's contents can actually be had.
+					if (statSync(full).nlink > 1) {
+						multiLink += 1;
+						return;
+					}
 					const text = readFileSync(full, "utf8");
 					for (const [i, line] of text.split("\n").entries()) {
 						if (regex.test(line)) {
@@ -518,7 +578,27 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			};
 			const walk = async (dir: string, depth: number): Promise<void> => {
 				if (depth > 8) return;
-				for (const entry of await readdir(dir, { withFileTypes: true })) {
+				// DC-52 — a directory the OS REFUSES is skipped, not fatal.
+				//
+				// An unreadable FILE has always been skipped (the catch in
+				// scanFile); an unreadable DIRECTORY threw out of the walk
+				// and failed the whole tool. On macOS that is not an edge
+				// case — `~/Library/Accounts` and its neighbours are TCC
+				// protected, so a search anywhere under `~` died on one of
+				// them. The asymmetry was the defect: same fact, same
+				// remedy.
+				let entries;
+				try {
+					entries = await readdir(dir, { withFileTypes: true });
+				} catch (err) {
+					const code = (err as NodeJS.ErrnoException).code;
+					if (code === "EACCES" || code === "EPERM") {
+						unreadableDirs += 1;
+						return;
+					}
+					throw err;
+				}
+				for (const entry of entries) {
 					if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
 					const full = join(dir, entry.name);
 					if (entry.isDirectory()) await walk(full, depth + 1);
@@ -532,6 +612,10 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 				return { content: `search_text failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
 			}
 			let content = matches.length ? cap(matches.join("\n")) : "(no matches)";
+			// DC-52: what was NOT searched is said. A silent skip is a
+			// result the model cannot tell is incomplete.
+			if (multiLink > 0) content += `\n… ${multiLink} multi-link ${multiLink === 1 ? "file" : "files"} skipped (read_file verifies them individually)`;
+			if (unreadableDirs > 0) content += `\n… ${unreadableDirs} unreadable ${unreadableDirs === 1 ? "directory" : "directories"} skipped`;
 			if (totalMatches > matches.length) {
 				// R-C item 2: the N of M form — the cap names its
 				// continuation (narrow the pattern for more).

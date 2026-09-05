@@ -30,11 +30,11 @@
  * 0s` — which is exactly the sentence the rule forbids.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { isolatedEnv, runCli, stripANSI } from "../../../tests/helpers/isolated-cli.mjs";
 
@@ -131,6 +131,70 @@ function workspace(): string {
 	for (let i = 0; i < 3; i += 1) writeFileSync(join(dir, `f${i}.txt`), `alpha ${i}\nbeta ${i}\n`, "utf8");
 	return dir;
 }
+
+/** DC-52 — the two shapes that made the owner's terminal fill with
+ *  `find:`: a HARD-LINKED file (which used to trigger a full-root scan)
+ *  and a directory the process may not read. */
+function hostileWorkspace(): string {
+	const dir = mkdtempSync(join(tmpdir(), "kiso-dc52-"));
+	writeFileSync(join(dir, "plain.txt"), "alpha here\n", "utf8");
+	writeFileSync(join(dir, "linked.txt"), "alpha there\n", "utf8");
+	linkSync(join(dir, "linked.txt"), join(dir, "alias.txt"));
+	const locked = join(dir, "locked");
+	mkdirSync(locked, { recursive: true });
+	writeFileSync(join(locked, "inside.txt"), "alpha inside\n", "utf8");
+	chmodSync(locked, 0o000);
+	// a 0o000 directory outlives the test: the run's TMPDIR teardown
+	// cannot remove it and the whole suite dies at cleanup.
+	lockedDirs.push(locked);
+	return dir;
+}
+
+const lockedDirs: string[] = [];
+afterAll(() => {
+	for (const d of lockedDirs) {
+		try {
+			chmodSync(d, 0o755);
+		} catch {
+			// already gone — nothing to restore
+		}
+	}
+});
+
+describe("DC-52 — the inode guard never writes to the terminal", () => {
+	/**
+	 * The owner's screen filled with `find: …: Operation not permitted`
+	 * while a search hung. `execFileSync` without an explicit `stdio`
+	 * gives the child the PARENT'S stderr — which is the terminal — so
+	 * the noise arrived past the compositor's frame, over the composer.
+	 *
+	 * A child that inherits the fd is invisible to an in-process spy on
+	 * `process.stderr.write`, so the unit gate cannot see this half at
+	 * all. Only a real PTY can: whatever any descendant writes to that
+	 * terminal is in this stream.
+	 */
+	it("a search over a hard link and a locked directory: nothing from `find` reaches the terminal, and the search finishes", () => {
+		const ws = hostileWorkspace();
+		const script = fauxScript([
+			{ events: [{ type: "tool_call_end", callId: "s0", name: "search_text", input: { pattern: "alpha", path: "." } }, { type: "stop", reason: "tool_use" }] },
+			{ events: [{ type: "text_delta", text: "searched." }, { type: "stop", reason: "end_turn" }] },
+		]);
+		const pty = isolatedEnv({ KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" });
+		const raw = ptyRun(["--mode", "bypass", "dc52-quiet"], pty.env as NodeJS.ProcessEnv, [["▌ ", "go\r"], ["searched.", "exit\r"]], 60, ws);
+		const out = stripANSI(raw);
+		// the P1 itself: a foreign writer on the compositor's own fd
+		expect(out, "`find` wrote to the terminal").not.toContain("find:");
+		expect(out, "a child's error text reached the screen").not.toContain("Operation not permitted");
+		// …and the search still ran and SAID what it skipped. The matched
+		// row itself is a full tmpdir path and is cut at the width, so the
+		// evidence is the call's own head row and the two notes — which is
+		// the whole of what this case is about: it FINISHED, and it did
+		// not lie about being complete.
+		expect(out, "the search never ran").toMatch(/search alpha/);
+		expect(out, "the multi-link skip is silent").toMatch(/multi-link files? skipped/);
+		expect(out, "the unreadable directory is unaccounted for").toMatch(/unreadable director/);
+	}, 120_000);
+});
 
 describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", () => {
 	it("the PTY shows ONE exploration row; the PIPE never does; both durable logs carry every call in full", () => {

@@ -1979,7 +1979,23 @@ export class Body {
 			const tighter = this.#project(W, ctx, n);
 			if (tighter.length <= cap) return tighter;
 		}
-		return this.#project(W, ctx, 0);
+		const heads = this.#project(W, ctx, 0);
+		if (heads.length <= cap) return heads;
+		// DC-53 — the LAST RESORT, and ONLY when the force-commit loop is
+		// blocked. If the head of the queue can still be committed, this
+		// projection must hand back everything it has: the loop counts its
+		// rows to decide what to spill, and a truncated projection tells
+		// it the region fits when it does not — which LOSES the rows it
+		// would have committed (measured: a 40-line burst on a 12-row
+		// screen kept 13 of them). Only a RUNNING CALL at the head makes
+		// the loop unable to act, and only then is counting the tail the
+		// honest thing left to draw.
+		const head = this.#cells[this.#committed];
+		if (head === undefined || head.kind !== "tool" || head.done) return heads;
+		const keep = Math.max(1, cap - 1);
+		const hidden = heads.length - keep;
+		const p = palette();
+		return [...heads.slice(0, keep), cutLine(`${p.dim}  +${hidden} more${p.reset}`, W)];
 	}
 
 	/**
@@ -2043,7 +2059,15 @@ export class Body {
 	 *  card is running" reduces to once every cell renders itself). */
 	#thinkingGap(): boolean {
 		const turn = this.#turns[this.#turns.length - 1];
-		return turn !== undefined && !turn.ended;
+		if (turn === undefined || turn.ended) return false;
+		// DC-53 — and NOTHING is in flight. The caller has already found
+		// the projection empty, which used to be taken as "nothing is
+		// happening"; it is also what a wrongly-committed running cell
+		// leaves behind, and the placeholder then sat beside a call that
+		// was running. An uncommitted cell is work in flight whether or
+		// not it drew a row this frame.
+		for (let i = this.#committed; i < this.#cells.length; i += 1) if (!this.#cells[i]!.done) return false;
+		return true;
 	}
 
 	/** The live region's scalar — the unit tests assert the cap directly
@@ -2299,7 +2323,36 @@ export class Body {
 		//    commits the oldest live cell UNCONDITIONALLY (the one sharp
 		//    edge — the cap scalar is asserted by the gates). W22: the
 		//    queue band shrinks the cap by its rows (empty queue → H−4).
-		while (liveLines.length > H - 4 - inputExtra - queueRows.length && this.#committed < this.#cells.length) { // V6-3: the content cap H−4 (KC1: −N's extra rows)
+		// DC-53 — AND NEVER A CELL THAT IS NOT DONE.
+		//
+		// This loop committed `#committed` unconditionally. R4's standing
+		// slot held the live region at a constant height, so the
+		// projection never grew past the cap on its own and the loop never
+		// reached a running cell; R13 retired the slot (DC-46) and it
+		// promptly did. Three parallel searches, the last two settling
+		// first: their cards pushed the region over the cap, the loop
+		// committed the FIRST call — still in flight — froze its
+		// three-row running card and its breathing mark into the
+		// scrollback, and stepped `#committed` past it. When the result
+		// arrived there was no live cell left to draw it into, so the work
+		// never reached the screen at all.
+		//
+		// A cell that is not done has no committed form yet; committing
+		// one is writing history that has not happened. When the head is
+		// running, the region gives way instead — the cards behind it
+		// degrade first, then the running window shrinks (DC-43's own
+		// ladder, in #liveProjection), and the remainder is counted.
+		// The guard is on a RUNNING TOOL CALL specifically, not on any
+		// unfinished cell. A streaming text or raw cell HAS a committed
+		// form — the rows it has already written are final, append-only —
+		// and spilling those is exactly what this loop is for. A running
+		// call does not: its card changes shape at the settle, so a
+		// committed one is a row that will never be corrected.
+		while (
+			liveLines.length > H - 4 - inputExtra - queueRows.length && // V6-3: the content cap H−4 (KC1: −N's extra rows)
+			this.#committed < this.#cells.length &&
+			!(this.#cells[this.#committed]!.kind === "tool" && !this.#cells[this.#committed]!.done)
+		) {
 			// R3f: the cell about to be force-committed marks its segment
 			// SPILLED. The rule was written at R3b — "a segment too big for
 			// the screen already has rows in the scrollback that cannot be
