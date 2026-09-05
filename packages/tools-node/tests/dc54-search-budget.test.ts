@@ -40,7 +40,7 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { listDirTool, readFileTool, searchTextTool } from "../src/index.js";
+import { editFileTool, listDirTool, readFileTool, searchTextTool, writeFileTool } from "../src/index.js";
 import type { ToolContext } from "@vincemakes/kiso-core";
 
 const CTX: ToolContext = {
@@ -285,6 +285,73 @@ describe("DC-54 — read_file cannot be made to swallow a disk image", () => {
 		expect(res.isError).toBe(false);
 		expect(res.content).toContain(NEEDLE);
 		expect(res.content).toMatch(/\[rev:/);
+	});
+});
+
+/**
+ * DC-54's OWED half, closed in R14: `read_file`'s ceiling shut one of
+ * three whole-file reads in this module. The other two live on the
+ * MUTATION path — `write_file`'s stale check and `edit_file`'s WR-1
+ * snapshot — and both read the whole file to compute a revision BEFORE
+ * the comparison that would reject the call, so the freeze happens on
+ * the way to the refusal rather than instead of it.
+ *
+ * The exposure is narrower than `search_text`'s and the gate says which
+ * door is actually open: a model can only cite a revision `read_file`
+ * gave it, and `read_file` refuses above the ceiling, so no legitimate
+ * token exists for a file this could freeze on. What reaches it is a
+ * token gone stale in the dangerous direction — read under the ceiling,
+ * grown past it before the write — or a fabricated one. The cases below
+ * use a fabricated token, because that is the cheap way to stand in the
+ * same place the grown-file case stands.
+ *
+ * There is deliberately NO loop-liveness or timing case here, and the
+ * reason is worth keeping. These reads are `readFileSync(full)` with no
+ * encoding — a Buffer, no utf8 decode, no split — so 128 MiB costs about
+ * 110 ms cold rather than the 200+ ms the search path pays, and 46 ms
+ * once this file's earlier cases have warmed the page cache. Two drafts
+ * were tried and BOTH went green against the defect: a 120 ms loop-stall
+ * threshold (measured 113 ms) and a 50 ms call-duration threshold
+ * (measured 46 ms). No threshold this fixture can support separates the
+ * two states reliably.
+ *
+ * What survives is stronger anyway: the refusal cases below are EXACT.
+ * Unfixed code cannot produce the sentence "too large to read" at all,
+ * at any speed. A timing case that is green against the defect is worse
+ * than no case — see the same call made for `list_dir` below.
+ */
+describe("DC-54 owed — the write path refuses what it cannot bound", () => {
+	it("write_file refuses above the ceiling instead of reading to compare", async () => {
+		const tool = writeFileTool({ workspaceRoot: ROOT, limits: { readMaxFileBytes: MIB } });
+		const res = await tool.execute(
+			{ path: "oversize/big.txt", content: "x", expectedRevision: "rev:0000000000000000" },
+			CTX,
+		);
+		expect(res.isError).toBe(true);
+		expect(res.content).toContain("too large to read");
+		expect(res.content).toMatch(/\d+(\.\d+)? MiB/);
+		expect(res.content).toContain("shell");
+	});
+
+	it("edit_file refuses above the ceiling instead of snapshotting", async () => {
+		const tool = editFileTool({ workspaceRoot: ROOT, limits: { readMaxFileBytes: MIB } });
+		const res = await tool.execute(
+			{ path: "oversize/big.txt", search: "a", replace: "b", expectedRevision: "rev:0000000000000000" },
+			CTX,
+		);
+		expect(res.isError).toBe(true);
+		expect(res.content).toContain("too large to read");
+	});
+
+	it("a file UNDER the ceiling still gets the ordinary stale refusal — the bound is not a new answer", async () => {
+		const tool = writeFileTool({ workspaceRoot: ROOT });
+		const res = await tool.execute(
+			{ path: "normal.txt", content: "x", expectedRevision: "rev:0000000000000000" },
+			CTX,
+		);
+		expect(res.isError).toBe(true);
+		expect(res.content).toContain("changed since");
+		expect(res.content).not.toContain("too large");
 	});
 });
 

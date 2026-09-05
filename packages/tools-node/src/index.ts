@@ -835,6 +835,7 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 		promptSnippet: "write_file — create or replace a whole file",
 		promptGuidelines: ["write/edit: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"],
 		execute: async ({ path, content, expectedRevision: citedRevision }) => {
+			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
 			// WR-1-F2: normalize every plausible copy of the token FIRST —
 			// tolerance in the reader, strictness in the comparison.
 			const expectedRevision = citedRevision === undefined ? undefined : normalizeRevision(citedRevision);
@@ -865,6 +866,21 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			} else {
 				if (!exists) {
 					return precondition(`write_file: ${path} no longer exists — pass expectedRevision:"absent" to create it`);
+				}
+				// DC-54 owed (R14) — the ceiling, before the read.
+				//
+				// `read_file` got this bound in 0.24.5; these two did not,
+				// and they read the WHOLE file to compute a revision BEFORE
+				// the comparison that would reject the call — so the freeze
+				// happened on the way to the refusal rather than instead of
+				// it. Same ceiling, same precondition shape, same reason: a
+				// revision over a prefix could never match, so there is
+				// nothing to compute and nothing to compare.
+				const wSize = statSync(full).size;
+				if (wSize > maxReadBytes) {
+					return precondition(
+						`write_file: ${path} is ${mib(wSize)} — too large to read (ceiling ${mib(maxReadBytes)}); use shell with sed/head to take a range`,
+					);
 				}
 				const current = contentRevision(readFileSync(full));
 				if (current !== expectedRevision) {
@@ -960,6 +976,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 		promptSnippet: "edit_file — replace an exact old_string block (never rewrite whole files)",
 		promptGuidelines: ["write/edit: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"],
 		execute: async ({ path, search, replace, edits, expectedRevision: citedRevision }) => {
+			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
 			// WR-1-F2: normalize the citation (see write_file).
 			const expectedRevision = citedRevision === undefined ? undefined : normalizeRevision(citedRevision);
 			// WR-1E2 — the form XOR (the draft-07 subset has no oneOf; the
@@ -1004,6 +1021,21 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				// what was edited (the external validation→replacement window
 				// remains and is the narrowed claim). Staleness reports BEFORE
 				// the pattern search: the truer cause first.
+				// DC-54 owed (R14) — the ceiling, before the read.
+				//
+				// `read_file` got this bound in 0.24.5; these two did not,
+				// and they read the WHOLE file to compute a revision BEFORE
+				// the comparison that would reject the call — so the freeze
+				// happened on the way to the refusal rather than instead of
+				// it. Same ceiling, same precondition shape, same reason: a
+				// revision over a prefix could never match, so there is
+				// nothing to compute and nothing to compare.
+				const eSize = statSync(full).size;
+				if (eSize > maxReadBytes) {
+					return precondition(
+						`edit_file: ${path} is ${mib(eSize)} — too large to read (ceiling ${mib(maxReadBytes)}); use shell with sed/head to take a range`,
+					);
+				}
 				const bytes = readFileSync(full);
 				const current = contentRevision(bytes);
 				if (current !== expectedRevision) {
