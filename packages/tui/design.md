@@ -411,6 +411,31 @@ and a corner inside one is §1.3's empty mark a scale up.
 outcome riding the head row because there is nothing between them to
 close.
 
+**An EXPANDED card is the same card too** — pad, head, blank, the WHOLE
+body, blank, outcome, pad. The head row says only what was run; the
+outcome row says what happened and carries the key back:
+
+```
+  <pad>
+  shell npm test
+  <blank>
+  <every output row, uncapped>
+  <blank>
+  exit 0 · 90 lines · 0.4s · ctrl+o collapses
+  <pad>
+```
+
+DECLARED REVERSAL (2026-09-05). An expanded card used to take a
+DIFFERENT skeleton: the outcome inline on the head row, no outcome row,
+and `ctrl+o collapses` as a row of its own at the end of the body. That
+was tolerable while an expanded card was rare — reachable only for a
+live or approval-parked cell — and stopped being tolerable when §7.7
+made `ctrl+o` a switch that expands every settled card at once. One
+call with two skeletons, chosen by a global toggle, is exactly the
+instability §7.4's first sentence forbids. The affordance rides the
+outcome row because it is a fact about the card's state, and the outcome
+row is where this card's facts live.
+
 **The preview caps at five rows.** A shell shows its TAIL with the cut
 note above it — the conclusion of a command is at the bottom of its
 output — and everything else shows its HEAD with the note below, because
@@ -438,7 +463,11 @@ the case §1.1 keeps it for.
 
 **7.5 A card reads verb · target, then outcome.** The head row says what
 was run; the outcome row says what happened, how much of it there was
-and how long it took. On the three-row card the two share a row.
+and how long it took. On the three-row card the two share a row — that
+is the ONE place they do, and it is because nothing stands between them
+to close. An expanded card does not share them (§7.4): it has a body,
+so it has the two rows the body sits between, and the outcome row also
+carries `ctrl+o collapses`.
 
 The verb column is padded to 5 so targets line up, and the target is
 bold on the head row. A failure takes no tint on the card; only the

@@ -217,7 +217,14 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 				["built.", "go\r"], // turn 1's response → turn 2
 				["second turn.", "go\r"], // turn 2's response → turn 3
 				["third turn.", "\x0f"], // the REAL key — the turn-1 shell has long since frozen
-				["ctrl+o collapses", "exit\r"], // the expanded card's own affordance
+				// THE WAIT NEEDLE IS THE ERASE, not the affordance text. The
+				// affordance was tried and the driver hung on it: needles are
+				// matched on the RAW stream and the outcome row carries SGR
+				// codes inside it, so `ctrl+o collapses` is only contiguous
+				// after stripANSI — which is where this case asserts it,
+				// below. The erase is contiguous by construction and only
+				// the press produces one here (this scenario never resizes).
+				["\x1b[2J\x1b[H\x1b[3J", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
@@ -265,7 +272,11 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 				// card and the card says how to put it back. The needle is
 				// the affordance the new state carries.
 				["written.", "\x0f"], // the second key: the cell is settled+committed
-				["ctrl+o collapses", "exit\r"],
+				// the ERASE, not the affordance text: needles match the RAW
+				// stream and the outcome row that carries `ctrl+o collapses`
+				// has SGR codes inside it, so the literal is only contiguous
+				// after stripANSI (where it IS asserted, below).
+				["\x1b[2J\x1b[H\x1b[3J", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
@@ -285,7 +296,14 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// it, and the press reprints with every settled card expanded.
 		expect(clean).not.toContain("✦ expanded");
 		expect(clean).not.toContain("[nothing to expand]");
-		expect(clean, "the press did not reprint").toContain("ctrl+o collapses");
+		// The press REPRINTED — that is what a switch does, and the erase is
+		// the proof of it. What it did NOT do is grow an affordance on this
+		// card, and that is correct rather than a miss: this write was
+		// refused, so its result is one line, so the card is §7.4's
+		// three-row form with nothing between head and outcome to close.
+		// A card hiding nothing has no way back to offer.
+		expect(out, "the press did not reprint").toContain("\x1b[2J\x1b[H\x1b[3J");
+		expect(clean, "a card with no body grew a collapse affordance").not.toContain("ctrl+o collapses");
 		// The write really happened (the answer flow completed).
 		expect(clean).toContain("written.");
 	}, 120_000);

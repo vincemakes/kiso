@@ -574,6 +574,32 @@ describe("DC-50 — an EXPANDED card keeps the card's shape", () => {
 		expect(said, "an expanded card does not say how to put it back").toContain("ctrl+o collapses");
 	});
 
+	it("ONE SKELETON — the head row says only WHAT was run, and the outcome row carries the key", () => {
+		// The ruling this case exists for (2026-09-05): an expanded card
+		// used to take a different shape — the outcome inline on the head
+		// row, no outcome row, and the affordance as a row of its own at
+		// the end of the body. Defensible while an expanded card was rare;
+		// not once ctrl+o expands every settled card at once, because then
+		// the same call has two skeletons depending on a global toggle.
+		const rows = render(long).map(plain);
+		const expandedHead = rows.find((r) => r.includes("shell npm test"))!;
+		const collapsedHead = render(tool({ resultText: lines(90, (i) => `out ${i + 1}`) }))
+			.map(plain)
+			.find((r) => r.includes("shell npm test"))!;
+		// the head row is the SAME in both states: verb + target, nothing else
+		expect(expandedHead.trim(), "the expanded head row carries the outcome").toBe(collapsedHead.trim());
+		expect(expandedHead, "the head row carries an outcome").not.toMatch(/exit 0|\d+ lines/);
+		// the outcome row carries what happened AND the way back. Found by
+		// CONTENT, not by position: the ground is unknown in this file, so
+		// the slab degrades to indentation and the pads that would fix the
+		// outcome at rows.at(-2) are not painted (§1.2).
+		const outcome = rows.find((r) => r.includes("exit 0"));
+		expect(outcome, "no outcome row at all").toBeDefined();
+		expect(outcome, "the affordance does not ride the outcome row").toContain("ctrl+o collapses");
+		// and it is not ALSO a row of its own
+		expect(rows.filter((r) => r.includes("ctrl+o collapses")).length, "the affordance is stated twice").toBe(1);
+	});
+
 	/*
 	 * OBSERVED, not asserted, and recorded because DC-50 makes it
 	 * universal rather than rare.

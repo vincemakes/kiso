@@ -167,16 +167,39 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		}
 	});
 
-	it("an EXPANDED block gains the collapse footer — the way back, at the block's last row", () => {
+	// DECLARED SUPERSESSION (DC-50 / R14, 2026-09-05) — THE WAY BACK MOVED
+	// ONTO THE OUTCOME ROW.
+	//
+	// The footer used to be a row of its own at the end of the block, and
+	// the expanded card's head row carried the outcome inline. That gave
+	// the expanded card a DIFFERENT skeleton from the collapsed one,
+	// which was tolerable while an expanded card was rare and stopped
+	// being tolerable when §7.7 made ctrl+o expand every settled card at
+	// once. Both states are pad · head · blank · body · blank · outcome ·
+	// pad now: the head row says only what was run, and the outcome row
+	// says what happened AND how to put it back.
+	//
+	// The claim this case makes is unchanged — an expanded block offers
+	// the way back, exactly once, and does not also advertise expanding
+	// what is already expanded. Only its address moved.
+	it("an EXPANDED block offers the way back on its OUTCOME row", () => {
 		setTTY(false);
 		const rows = render(toolCell({ expanded: true, resultText: "alpha\nbeta\ngamma" }));
 		// R8a (owner-ruled 2026-09-01): a tool block's rows are INDENTED, not
 		// guttered — `└` opens the block once, on its first row with content,
 		// and every other row is the same four-column indent with no glyph.
-		expect(rows).toEqual(["  read  src/parser.ts · 3 lines · 2.4s", "  └ alpha", "    beta", "    gamma", "    ctrl+o collapses"]);
+		expect(rows).toEqual([
+			"  read  src/parser.ts",
+			"  └ alpha",
+			"    beta",
+			"    gamma",
+			"    3 lines · 2.4s · ctrl+o collapses",
+		]);
 		// the expanded head row drops the collapsed suffix — it would be
 		// telling the reader to expand what is already expanded
 		expect(rows[0]).not.toContain("expands");
+		// and the way back is stated ONCE, not on both rows
+		expect(rows.filter((r) => r.includes("ctrl+o collapses"))).toHaveLength(1);
 	});
 
 	it("the suffix and the footer are DIM (the prototype's placement), the head row's own SGR untouched", () => {
@@ -186,8 +209,20 @@ describe("TUI2-R1 T-V1 — the self-naming suffix", () => {
 		// lost their duplicate count (VD-6); the SGR placement — the whole
 		// point of this case — is byte-identical.
 		expect(rows[0]).toBe("  read  src/parser.ts · 3 lines · 2.4s\x1b[2m · ctrl+o expands\x1b[0m"); // R2: no tick
+		// DC-50 / R14: the way back rides the OUTCOME row now (one skeleton
+		// for both states — see the case above). The claim here is
+		// unchanged and is about SGR PLACEMENT: the dim opens the row and
+		// the reset closes it, with nothing of the head row's own styling
+		// leaking in. It is asserted structurally rather than as one
+		// literal, because the metadata inside it belongs to §7.5's tier
+		// ladder and moves when the ladder does — pinning the whole string
+		// would make every metadata change land in an SGR case.
 		const expanded = render(toolCell({ expanded: true, resultText: "a\nb\nc" }));
-		expect(expanded[expanded.length - 1]).toBe("\x1b[2m    ctrl+o collapses\x1b[0m");
+		const last = expanded[expanded.length - 1]!;
+		expect(last.startsWith("\x1b[2m"), `the outcome row does not open dim: ${JSON.stringify(last)}`).toBe(true);
+		expect(last.endsWith("\x1b[0m"), `the outcome row does not close its SGR: ${JSON.stringify(last)}`).toBe(true);
+		expect(last).toContain("ctrl+o collapses");
+		expect(last.slice(5, -4), "the outcome row carries SGR of its own inside").not.toMatch(/\x1b\[/);
 	});
 
 	it("a running / queued / approval / denied cell is never suffixed — the affordance is a settled-cell statement", () => {

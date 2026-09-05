@@ -899,15 +899,6 @@ class ToolExecution implements Component {
 			// a pipe with the colour stripped. A failure keeps its colour
 			// AND its words — see settledMeta.
 			const body = toolBlockParts(c, W, ctx).rows;
-			if (body.length > 0 && c.expanded) {
-				// An EXPANDED block is already showing everything, and its own
-				// footer ("ctrl+o collapses") is what closes it. Giving it an
-				// outcome row as well would put two closing rows on one block
-				// and move the metadata off a head row every width gate pins.
-				// It takes the SURFACE and nothing else.
-				const head = c.isError ? `  ${p.red}${text}${p.reset}` : `  ${text}`;
-				return slabBlock(appendSuffix(head, expandSuffix(hidden, W - visibleWidth(head))), body, null, W);
-			}
 			if (body.length > 0) {
 				// R13 — THE CARD, when there is something to preview: the head
 				// row names the call, the preview sits inside, and the outcome
@@ -932,11 +923,37 @@ class ToolExecution implements Component {
 				// what happened and how long it took — is never cut open.
 				const join = (...xs: string[]): string => xs.filter((x) => x !== "").join(" · ");
 				const attr = approvedBy.replace(/^ · /, "");
+				// DC-50 / R14: the key is RESERVED (§7.5), so its width comes
+				// out of the budget BEFORE the tiers are picked — not
+				// appended after, which is what the first build did and
+				// which let a narrow row cut the affordance off entirely.
+				// The tier ladder is what gives way; the key never is.
+				const keySuffix = c.expanded ? ` · ${COLLAPSE_ROW}` : "";
 				const words = pickTier(
 					[join(meta, counted, `${elapsed}s`, attr), join(meta, counted, `${elapsed}s`), join(meta, `${elapsed}s`), meta],
-					W - visibleWidth(noteIndent()),
+					W - visibleWidth(noteIndent()) - keySuffix.length,
 				);
-				const outcome = c.isError ? `${p.red}${words}${p.reset}` : words;
+				// DC-50 / R14 — ONE CARD, ONE SKELETON, expanded or not.
+				//
+				// The expanded card used to take a DIFFERENT shape: its head
+				// row carried the outcome inline (`shell npm test · exit 0 ·
+				// 40 lines · 0.1s`), it had no outcome row at all, and the
+				// `ctrl+o collapses` affordance was a row of its own at the
+				// end of the body. That was defensible while an expanded card
+				// was rare — reachable only for a live or approval-parked
+				// cell — and it stopped being defensible the moment ctrl+o
+				// became a switch that expands EVERY settled card at once: a
+				// page where the same call has two skeletons depending on a
+				// global toggle is the instability this round is named for.
+				//
+				// So both states are pad · head · blank · body · blank ·
+				// outcome · pad. The head row says WHAT was run and nothing
+				// else; the outcome row says what happened, how much, how
+				// long — and carries the affordance, because the affordance
+				// is a fact about this card's state and the outcome row is
+				// where this card's facts live.
+				const withKey = `${words}${keySuffix}`;
+				const outcome = c.isError ? `${p.red}${withKey}${p.reset}` : withKey;
 				return slabBlock(head, body, outcome, W);
 			}
 			// R13 — nothing to preview: the SAME card, three rows, with the
@@ -1857,7 +1874,13 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: 
 	// rides a block that HAS rows — an expanded delegate whose summary
 	// marker is missing renders nothing, and a lone footer under a head
 	// row would be an affordance for an empty block.
-	if (c.expanded && rows.length > 0) rows.push(...foldLine(`${p.dim}${noteIndent()}${COLLAPSE_ROW}${p.reset}`, W));
+	//
+	// DC-50 / R14: a SETTLED card carries the affordance on its OUTCOME
+	// row instead, so that both states have one skeleton. This footer is
+	// for the states that have no outcome row to carry it — a card parked
+	// for approval, or one still running that was expanded before it
+	// settled.
+	if (c.expanded && rows.length > 0 && c.state !== "done") rows.push(...foldLine(`${p.dim}${noteIndent()}${COLLAPSE_ROW}${p.reset}`, W));
 	// R9 P2: `└` opens a block that has no surface. Inside a slab the
 	// surface IS the container, and a corner in it is §1.3's empty mark
 	// one scale up — so the corner and the slab are alternatives, never
