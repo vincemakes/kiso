@@ -94,8 +94,16 @@ describe("E1 §1 — the boundary: whitespace, punctuation, CJK", () => {
 
 	it("CJK is ONE CHARACTER PER WORD — the owner types Chinese", () => {
 		// A whole sentence is not a useful unit to move or delete by.
-		expect(kill("中文字", "\x1b\x7f")).toBe("中文");
-		expect(probe("中文字", "\x1bb")).toBe("中文|字");
+		//
+		// The characters are ESCAPED, not literal: the tracked tree is
+		// CJK-free (README.zh.md is the only exception) and `check-cjk`
+		// enforces it. It scans TRACKED files only, so a new file passes
+		// locally while it is still untracked and fails the moment it is
+		// committed — which is exactly how this one reached CI.
+		const CJK = "\u4e2d\u6587\u5b57"; // three Han characters
+		const TWO = "\u4e2d\u6587";
+		expect(kill(CJK, "\x1b\x7f")).toBe(TWO);
+		expect(probe(CJK, "\x1bb")).toBe(`${TWO}|\u5b57`);
 	});
 
 	it("a run of separators is crossed, then one run of word", () => {
@@ -160,12 +168,13 @@ describe("E1 §1 — the two ways the bytes can lie about themselves", () => {
 
 describe("E1 §1 — UD-1: every deletion is undoable exactly", () => {
 	it("ctrl+z restores a killed CJK character", () => {
+		const CJK = "\u4e2d\u6587\u5b57"; // escaped — see the boundary case above
 		const ed = make();
-		ed.feed(enc("中文字"));
+		ed.feed(enc(CJK));
 		ed.feed(enc("\x1b\x7f"));
-		expect(ed.line()).toBe("中文");
+		expect(ed.line()).toBe("\u4e2d\u6587");
 		ed.feed(enc("\x1a"));
-		expect(ed.line()).toBe("中文字");
+		expect(ed.line()).toBe(CJK);
 	});
 
 	it("ctrl+z restores a killed emoji whole", () => {
