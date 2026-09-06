@@ -74,7 +74,6 @@ import {
 	boxBottom,
 	boxTop,
 	cellComponent,
-	focusToken,
 	gutterCut,
 	cutLine,
 	pendingQueueRows,
@@ -910,20 +909,11 @@ export class Body {
 		return this.#lastTool;
 	}
 
-	/** TUI2-R2 ⑤ — the cell whose head row wears the bright token, or -1:
-	 *  the newest live cell that can toggle. Committed cells are never
-	 *  marked — their rows are history, and a tint on them could not
-	 *  move. DC-50 made ctrl+o a global switch (`toggleExpanded`), so the
-	 *  token no longer names the key's one target; it marks the card the
-	 *  affordance is read from. */
-	#focusIndex(): number {
-		for (let i = this.#cells.length - 1; i >= this.#committed; i -= 1) {
-			const cell = this.#cells[i]!;
-			if (cell.kind === "tool" && cell.state !== "pending") return i;
-			if (cell.kind === "checklist" && !cell.done) return i;
-		}
-		return -1;
-	}
+	/* DECLARED REVERSAL (D-S2-1, owner-ruled 2026-09-06): `#focusIndex`
+	   stood here — TUI2-R2 ⑤'s bright ctrl+o token on the newest live
+	   card, "the cell the next press will act on". DC-50 made ctrl+o a
+	   global switch, so there was no target left for a marker to name;
+	   the status row's idle hint names the switch instead (#statusSource). */
 
 	/**
 	 * R4 (C4d) — `/rewrap`: the recent PROSE, re-rendered at the current
@@ -1515,7 +1505,7 @@ export class Body {
 	 *  compositor derives both from the bound panel state; the old
 	 *  question slot's dim-pending shape is the normal branch's shape
 	 *  now). */
-	#statusSource(): { status: string; hint: string | undefined } {
+	#statusSource(): { status: string; hint: string | undefined; expand: "expand all" | "collapse all" | null } {
 		const panel = this.#panelState?.() ?? null;
 		// DC-38: the panel's STATUS replaces the CLI's painting status —
 		// that half of W21 stands. The HINT does not come with it, because
@@ -1534,12 +1524,20 @@ export class Body {
 		// block carries its own row (approval-panel.ts pushes it for the
 		// approval and the pick, ask-panel.ts for the ask), so nothing is
 		// lost anywhere.
-		if (panel !== null) return { status: panelStatusOf(panel), hint: undefined };
+		if (panel !== null) return { status: panelStatusOf(panel), hint: undefined, expand: null };
 		// W22: while turns wait in the queue, the right hint shows the
 		// count — the chips below carry the lines themselves.
 		const queued = this.#queueState?.().length ?? 0;
-		if (queued > 0) return { status: this.#status, hint: `+${queued} queued` };
-		return { status: this.#status, hint: this.#statusHint ?? undefined };
+		if (queued > 0) return { status: this.#status, hint: `+${queued} queued`, expand: null };
+		// D-S2-1 (owner-ruled 2026-09-06): the idle hint names the ctrl+o
+		// SWITCH — `expand all` or `collapse all` by its state — and only
+		// while a committed card has something behind the key (#collapsed
+		// is the index of exactly those). A hint for a key that would
+		// change nothing is a hint that lies. This replaced the per-card
+		// bright token (TUI2-R2 ⑤), which had no single target left to
+		// mark once DC-50 made the key global.
+		const expand = this.#collapsed.length > 0 ? (this.#expandedAll ? "collapse all" : "expand all") : null;
+		return { status: this.#status, hint: this.#statusHint ?? undefined, expand };
 	}
 
 	/** Bind the editor's panel state — the PanelSelect slot occupant
@@ -1741,14 +1739,10 @@ export class Body {
 	 */
 	#project(W: number, ctx: FrameCtx, budget: number): string[] {
 		const out: string[] = [];
-		const focus = this.#focusIndex();
 		const live: FrameCtx = { ...ctx, liveWindow: budget };
 		let prev: string[] | null = this.#committed > 0 ? this.#lineCache[this.#committed - 1]! : null;
 		for (let i = this.#committed; i < this.#cells.length; i += 1) {
 			const rows = cellComponent(this.#cells[i]!).render(W, live);
-			// the head row carries the affordance; the tint lands on it and
-			// nowhere else, which is what makes "exactly one" structural
-			if (i === focus && rows.length > 0) rows[0] = focusToken(rows[0]!, W);
 			out.push(...this.#space(i, prev, rows));
 			prev = rows;
 		}
@@ -1935,8 +1929,7 @@ export class Body {
 	 *  reports where its clickable rows are (TUI2-R3v2 ②: the rows and
 	 *  the span come from one call, so the hit-test reads the arithmetic
 	 *  that placed the rows). Otherwise the projection of the live
-	 *  cells, with the bright token on the newest card's head row
-	 *  (TUI2-R2 ⑤: #project, #focusIndex). render() paints this and
+	 *  cells. render() paints this and
 	 *  liveCount() measures it — the same rows, by construction. */
 	#liveRows(W: number, ctx: FrameCtx, cap: number): { lines: string[]; panelSpan: { offset: number; count: number; first: number } | null } {
 		const capped = Math.max(1, cap);
@@ -2580,7 +2573,7 @@ export class Body {
 		for (let i = 0; i < editor.rows.length; i += 1) desired[H - 2 - inputExtra + i - 1] = this.#checked(editor.rows[i]!, W);
 		desired[H - 1 - 1] = boxBottom(W);
 		const statusRow = this.#statusSource();
-		desired[H - 1] = this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint), W);
+		desired[H - 1] = this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint, statusRow.expand), W);
 		this.#emitDiff(out, W, H, desired);
 		// REL-0152-R1: park from where the cursor ACTUALLY is — see
 		// #cursorRow. It used to be parked from H, which the bottom-up

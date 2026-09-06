@@ -181,15 +181,11 @@ const CELL_LINE = [
 	// to stay so no width loses what used to fit. The alternation is the
 	// exact set of rungs, not a wildcard: a row that is any OTHER
 	// arrangement of these words is still an interleave and still fails.
-	/^\/ commands(?: · ↑ history)?(?: · ctrl\+r transcript)?$/,
+	/^\/ commands(?: · ↑ history)?(?: · ctrl\+o (?:expand|collapse) all)?(?: · ctrl\+r transcript)?$/,
 	/^[✧✦✶✸✺] working \d+s.*$/, // the running status line — R3 (§5.2): the twinkle, not the retired quadrant rotation
-	// MOVED (the focus-marker class, TUI2-R2 ⑤): a running tool cell's
-	// head row carries `· ctrl+o` when it is the FOCUSED cell — the one
-	// the next press will act on. The affordance IS the marker there, so
-	// the row it appears on is exactly one per frame; the pattern above
-	// already admitted the unfocused form (`▖ name · 1s`) and this admits
-	// the focused one.
-	/^● .* · \d+s · ctrl\+o$/,
+	// D-S2-1: the focused running row (`● name · 1s · ctrl+o`, TUI2-R2 ⑤)
+	// is gone with the marker; the idle row above admits the switch rung
+	// (`ctrl+o expand all` / `collapse all`) in its place.
 	/^streaming text.*$/, // the TextCell body
 	/^session \S+$/, // the session header
 	/^\[faux mode.*$/, // the faux banner line

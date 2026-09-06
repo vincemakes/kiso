@@ -15,7 +15,6 @@ export {
 	bodySpacing,
 	Container,
 	cellComponent,
-	focusToken,
 	foldTerms,
 	CAP_TASK_LIVE,
 	formatDuration,

@@ -1129,55 +1129,11 @@ function appendSuffix(row: string, suffix: string): string {
 	return `${row}${p.dim}${suffix}${p.reset}`;
 }
 
-/**
- * TUI2-R2 ⑤ (D, candidate 1) — the FOCUS tint.
- *
- * The cell the next ctrl+o will act on brightens its own `ctrl+o` token
- * to the code tint; the rest of the suffix — the separator, the count —
- * stays dim, because what is being marked is the KEY's target, not the
- * row. Zero new rows, zero new columns: the affordance the cell already
- * prints is the marker.
- *
- * Applied to a row rather than composed into it on purpose. The token is
- * emitted from several places (the settled suffix, the renderer's own
- * cut notes) and threading a flag through all of them
- * would put the invariant "exactly one bright token" in as many hands as
- * there are emitters. Here it has exactly one.
- *
- * NO_COLOR: p.dim is empty, so the row's bytes are untouched.
- */
-export function focusToken(row: string, W: number): string {
-	const p = palette();
-	const at = row.lastIndexOf(EXPAND_KEY);
-	if (at !== -1) {
-		// the row already names the key — brighten the token in place, and
-		// leave every other span exactly as it was
-		if (p.dim === "") return row;
-		// DC-3: the marker takes the WASH. It used to take the inline-code
-		// tint and inherited its 1.54:1 — the cue naming the key that
-		// reveals a cell was itself the least readable thing on a white
-		// terminal. The wash is right for a second reason: this token has
-		// to be UNIQUE on the frame ("exactly one bright token"), and an
-		// attribute like bold is spent everywhere. It closes with washEnd
-		// rather than a reset, so the surrounding dim survives instead of
-		// having to be re-applied.
-		return `${row.slice(0, at)}${p.lift}${EXPAND_KEY}${p.dim}${row.slice(at + EXPAND_KEY.length)}`;
-	}
-	// A LIVE row does not carry the affordance today, and the live cell is
-	// the one ctrl+o takes FIRST (expandNext scans the live tail before
-	// the committed ring) — so the row the key is aimed at was the one row
-	// that never said the key existed. The affordance IS the marker here:
-	// it appears on the focused row and nowhere else, which is why no
-	// unfocused row's bytes move (every existing live-row assertion
-	// renders a cell with no focus and is untouched).
-	const room = W - visibleWidth(row);
-	if (room < SUFFIX_MIN) return row; // never at the cost of invariant ①
-	return `${row}${p.dim} · ${p.lift}${EXPAND_KEY}${p.reset}`;
-}
-
-/** DC-41 — the label in ONE place. The key has moved once now, and
- *  a constant named after its binding is a comment that lies. */
-const EXPAND_KEY = "ctrl+o";
+/* DECLARED REVERSAL (D-S2-1, owner-ruled 2026-09-06): `focusToken` and
+   `EXPAND_KEY` stood here — TUI2-R2 ⑤'s bright ctrl+o token on the
+   newest live card, "exactly one bright token per frame". DC-50 made
+   ctrl+o a global switch, so there was no target left for a marker to
+   name; the status row's idle hint names the switch (`idleHint`). */
 
 /** TUI2-R1 (A) — the expanded card's key suffix: the way back. */
 const COLLAPSE_ROW = "ctrl+o collapses";
@@ -2051,20 +2007,28 @@ class Checklist implements Component {
  *  survives longest because it is the door to everything; `ctrl+r`
  *  outranks `↑ history` because pressing up is how a person finds the
  *  history by accident, and nothing finds ctrl+r by accident. */
-export function idleHint(room: number): string {
+export function idleHint(room: number, expand: "expand all" | "collapse all" | null = null): string {
 	// The third rung is today's hint, kept so that NO width loses
 	// something that used to fit: without it, a room of 24-30 columns
 	// fell all the way to `/ commands` even though the old form fitted.
 	// So the ladder is not a strict ranking of the three affordances —
 	// it is the widest honest form at each room, and ctrl+r is on the
 	// first two rungs rather than on all of them.
-	for (const form of [" / commands · ↑ history · ctrl+r transcript", " / commands · ctrl+r transcript", " / commands · ↑ history", " / commands"]) {
+	//
+	// D-S2-1 (owner-ruled 2026-09-06): the ctrl+o SWITCH is named on the
+	// two widest rungs, beside ctrl+r, and only while a card on screen
+	// has something behind the key — the caller passes null otherwise,
+	// and the ladder is then exactly the one above. It replaced the
+	// per-card bright token (TUI2-R2 ⑤): a global switch has no single
+	// target to mark.
+	const switchRungs = expand === null ? [] : [` / commands · ↑ history · ctrl+o ${expand} · ctrl+r transcript`, ` / commands · ctrl+o ${expand} · ctrl+r transcript`];
+	for (const form of [...switchRungs, " / commands · ↑ history · ctrl+r transcript", " / commands · ctrl+r transcript", " / commands · ↑ history", " / commands"]) {
 		if (visibleWidth(form) <= room) return form;
 	}
 	return "";
 }
 
-export function statusLine(status: string, tail: string, W: number, hint?: string): string {
+export function statusLine(status: string, tail: string, W: number, hint?: string, expand: "expand all" | "collapse all" | null = null): string {
 	const p = palette();
 	const text = `${status}${tail === "" ? "" : ` · ${tail}`}`;
 	// W18: the hint is a parameter — the compacting row right-aligns its
@@ -2075,7 +2039,7 @@ export function statusLine(status: string, tail: string, W: number, hint?: strin
 	if (statusW > W) {
 		return `${p.dim}${widthCut(text, W - 1)}…${p.reset}`;
 	}
-	const hintText = hint ?? idleHint(Math.max(0, W - statusW));
+	const hintText = hint ?? idleHint(Math.max(0, W - statusW), expand);
 	const hintW = visibleWidth(hintText);
 	if (hintW === 0 || statusW + hintW > W) return `${p.dim}${text}${p.reset}`;
 	return `${p.dim}${text}${" ".repeat(Math.max(0, W - statusW - hintW))}${hintText}${p.reset}`;

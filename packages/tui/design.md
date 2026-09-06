@@ -504,7 +504,11 @@ because the key had ONE target and the reader had to be told which; with
 no target to name, the rule has nothing left to protect and retires with
 it. The per-card `ctrl+o expands` affordance stays — it is now true of
 every card, which is what makes the switch legible without a bright
-token to single one out.
+token to single one out. D-S2-1 (owner-ruled 2026-09-06): the marker
+itself is gone from the code — it had lingered as "the card the
+affordance is read from" — and the status row's idle hint names the
+switch instead, `ctrl+o expand all` / `ctrl+o collapse all`, shown only
+while some card on screen has something behind the key.
 
 **7.8 The composer is four rows and stays four rows.** `CHROME_ROWS` is
 4: rule, input, rule, status. Every gate keyed on `H − 4` depends on it.

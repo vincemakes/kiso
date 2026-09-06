@@ -146,8 +146,8 @@ describe("v2a/v5/KC3: the palette", () => {
 		// is unchanged — a hue outside red/green/warn.
 		// R7a: 22 (normal intensity) and 39 (default foreground) join the
 		// set, and an entry may be a SEQUENCE of admitted escapes rather
-		// than exactly one. `lift` — the focus marker's emphasis, which
-		// replaced DC-3's background wash at the owner's request — has to
+		// than exactly one. `lift` — the focus marker's emphasis, retired
+		// with the marker (D-S2-1); the admission stays — had to
 		// cancel a dim that is SGR 2 in the neutral palette and a
 		// 256-colour foreground in the resolved ones, then emphasise; no
 		// single escape does that. Neither addition is chromatic: 39 is
