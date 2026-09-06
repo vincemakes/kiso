@@ -160,6 +160,10 @@ export interface LineInput {
 	/** W15: the expand key (ctrl+o) — the chain-level action, never the
 	 *  editor's own interpretation. */
 	onExpand(cb: () => void): void;
+	/** E1 §3: the copy key (ctrl+x) — the chain-level action, never the
+	 *  composer's own. The readline input ignores it; `/copy` is the
+	 *  route that works everywhere. */
+	onCopy(cb: () => void): void;
 	/** KC2 §2: the redirect gesture (Alt+Enter / Ctrl+Enter) — the
 	 *  buffer's text arrives as a line at the same instant the run is told
 	 *  to stop. OPTIONAL: the pipe path has no raw keys and never wires

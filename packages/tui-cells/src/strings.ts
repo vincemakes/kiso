@@ -233,6 +233,14 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
 	{ keys: "ctrl+r", what: "transcript" },
 	{ keys: "tab", what: "complete (menu / @)" },
 	{ keys: "?", what: "this sheet" },
+	// E1 §1/§3 — the editor's daily three. Three spellings of the word
+	// gestures reach the same code (alt, ctrl+arrow, and alt+b/f where
+	// the terminal sends meta); the sheet names the two a reader is most
+	// likely to have. ctrl+w is listed beside them because it works on
+	// every terminal, including the ones that send none of the three.
+	{ keys: "alt+←→ / ctrl+←→", what: "word motion" },
+	{ keys: "alt+⌫ / alt+d", what: "delete word (ctrl+w too)" },
+	{ keys: "ctrl+x", what: "copy the last answer" },
 	{ keys: "ctrl+z / ctrl+y", what: "undo / redo" },
 ];
 
@@ -320,7 +328,14 @@ const SHEET_GRID: readonly (readonly number[])[] = [
 	[8, 9],
 	// UD-1's undo row shares this one now — the table has an even count
 	// again, so no binding needs a row to itself.
+	//
+	// E1 §1/§3 — three more, and the warning above earned itself a second
+	// time: adding them to KEY_BINDINGS without touching this grid pushed
+	// the last three off the sheet, and the "ONE SOURCE" gate caught it
+	// exactly as its comment predicted it would.
 	[10, 11],
+	[12, 13],
+	[14],
 ];
 const SHEET_STOPS: readonly (readonly number[])[] = [
 	[16, 43],
@@ -328,6 +343,18 @@ const SHEET_STOPS: readonly (readonly number[])[] = [
 	[36],
 	[36],
 	[36],
+	// E1 §1/§3 — the two-column rows the three new bindings land on.
+	// A THIRD table that must agree with the other two and nothing makes
+	// it: `SHEET_GRID` says which bindings share a row, this says where
+	// their second column starts, and `KEY_BINDINGS` says what they are.
+	// The grid's own comment warned about the pair; the trio is worse.
+	// The stop is 39 here because `alt+⌫ / alt+d delete word (ctrl+w too)`
+	// is the widest first cell on the sheet — a narrower stop packs the
+	// two cells together with a single space and the column disappears.
+	// The last row has ONE binding, so it pads nothing (an empty stop
+	// list, not a stop of 36, which would leave trailing blanks).
+	[39],
+	[],
 ];
 
 /**
@@ -449,6 +476,7 @@ export function helpRows(): string[] {
 		// R4 (C4d): a committed row is the terminal's, and cannot be
 		// re-wrapped in place (ADR-0046) — this appends it re-folded.
 		["/rewrap", "re-print the recent prose at the current width"],
+		["/copy", "copy the last answer (raw markdown) — ctrl+x does the same"],
 		["/status", "show session id, event count, and context estimate"],
 		["/mode", "show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)"],
 		["/model", "list model profiles; /model <name|provider/model> switches"],

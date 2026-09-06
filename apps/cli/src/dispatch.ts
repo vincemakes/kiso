@@ -9,6 +9,7 @@ import { newSessionId } from "./session-id.js";
 import { buildAdapter, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
+import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { agentModel, body, bodyLog, configModels, dock, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
 import { directWriteProfile, profileAvailable } from "./config.js";
 
@@ -132,6 +133,45 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// immediate, exactly as the live-cell toggle always was.
 		body.toggleExpanded();
 		ctx.input.prompt();
+		return;
+	}
+	if (trimmed === "\x18copy" || trimmed === "/copy") {
+		// E1 §3 — the last answer onto the clipboard, as RAW MARKDOWN.
+		//
+		// The source is the session's PROJECTION, which is derived from
+		// committed events: a message a retry or an abort voided is already
+		// absent from it, and anything still streaming has not landed in it
+		// yet. Deliberately NOT the rendered rows (folded, washed, cut —
+		// that is the terminal's layout, not the answer) and NOT a join of
+		// the trailing text_delta frames (a live projection, not a record).
+		//
+		// One implementation for the key and the command: they are the same
+		// action reached two ways, and two implementations would be two
+		// behaviours waiting to drift.
+		// IT CHAINS, like `/last` and unlike `ctrl+o`. The distinction is
+		// what the action DEPENDS ON: ctrl+o repaints what is already on
+		// screen and can answer at once, while a copy reads the last
+		// ANSWER — which may be the turn currently in flight.
+		//
+		// Found by the pipe gate: a pipe hands the CLI every line at once,
+		// so an unchained `/copy` typed after `go` ran BEFORE the turn and
+		// said "nothing to copy — no answer yet" above the answer it was
+		// asked to copy.
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			const answer = lastAnswer(ctx.session.projected());
+			if (answer === null) {
+				bodyLog("[nothing to copy — no answer yet]");
+			} else {
+				const r = clipboardWrite(answer);
+				// The MESSAGE comes from clipboardWrite, never from here —
+				// the claim and the act must not be able to drift apart. On
+				// the dock it rides the W18 hint slot (gone at the next
+				// keypress); in a pipe it is a line like any other.
+				if (dock.active) dock.setStatus(r.message);
+				else bodyLog(`[${r.message}]`);
+			}
+			ctx.input.prompt();
+		});
 		return;
 	}
 	if (trimmed === "/rewrap") {

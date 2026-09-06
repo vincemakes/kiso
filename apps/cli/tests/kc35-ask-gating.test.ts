@@ -72,7 +72,7 @@ describe("T-Q3 — the banner counts what loaded: 4 on a TTY, 3 on a pipe", () =
 });
 
 describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
-	it("the /help rows are the eight extracted rows PLUS the mini-spec pair", () => {
+	it("the /help rows are the eight extracted rows PLUS the declared additions", () => {
 		// DC-1 supersession: the gap was four spaces after the name whatever
 		// the name's length, so `/help`'s description began three columns
 		// left of `/compact`'s and the second column wandered down the list.
@@ -90,6 +90,11 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 			"/think      show the last full thinking block",
 			"/last       show the most recent tool call's input and output",
 			"/rewrap     re-print the recent prose at the current width",
+			// E1 §3 — a DECLARED ADDITION in the same class as /clear,
+			// /resume and /rewrap: the pre-move rows keep their exact bytes
+			// and the computed stop is unchanged, because `/compact` is
+			// still the longest name.
+			"/copy       copy the last answer (raw markdown) — ctrl+x does the same",
 			"/status     show session id, event count, and context estimate",
 			"/mode       show the approval tier; /mode <name> switches (manual/default/accept-edits/plan/bypass)",
 			"/model      list model profiles; /model <name|provider/model> switches",
@@ -105,7 +110,7 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 	});
 
 	it("the last row still carries its own newline — two rows from one bodyLog call", () => {
-		expect(helpRows()).toHaveLength(11); // 8 extracted + the mini-spec pair + /rewrap (R4)
+		expect(helpRows()).toHaveLength(12); // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3)
 		expect(helpRows().filter((r) => r.includes("\n"))).toHaveLength(1);
 	});
 

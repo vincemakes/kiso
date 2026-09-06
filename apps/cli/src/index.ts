@@ -92,6 +92,10 @@ function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
 			/* readline has no ctrl+o binding — ignored (W15 rides the
 			 * editor path only). */
 		},
+		onCopy() {
+			/* readline has no ctrl+x binding — ignored. `/copy` still
+			 * works here: it is a typed command, not a key. */
+		},
 		question(query, cb) {
 			rl.question(query, cb);
 		},
@@ -173,6 +177,9 @@ function editorInput(editor: Editor): LineInput {
 		},
 		onExpand(cb) {
 			editor.onExpand(cb);
+		},
+		onCopy(cb) {
+			editor.onCopy(cb);
 		},
 		// KC2 §2: the redirect gesture — the editor decides WHEN (the
 		// same-chunk pair, the precedence gate); chat decides what it MEANS.

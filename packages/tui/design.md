@@ -578,6 +578,32 @@ that could have shown it. Order by how findable the key is WITHOUT the
 hint: `/ commands` survives longest, and a key like `ctrl+r` that
 nothing stumbles onto outranks one like `↑ history` that everyone does.
 
+**8.6 The editor's keys, and the one gesture with three spellings.**
+`alt+←/→` moves the cursor by word and `alt+⌫` / `alt+d` delete a word
+back and forward; `ctrl+x` copies the last answer. A WORD is decided
+once, by one function five operations share: whitespace and the
+newline separate; punctuation and alphanumerics separate FROM EACH
+OTHER, so `foo.bar` is three words; a CJK character is one word on its
+own, because a sentence is not a unit anyone wants to step through. A
+combining mark, a ZWJ join or a variation selector never ends a word —
+they belong to the character before them, so an emoji is deleted whole
+rather than dismantled.
+
+The word gestures arrive in three encodings (`alt+←`, `ctrl+←`, and
+`alt+b`/`alt+f` where the terminal sends meta) and all three reach the
+same code. **A terminal that sends none of them has no word motion, and
+there is no probe and no fallback** — `ctrl+w` is listed beside them in
+the sheet because it works everywhere. Alt gestures are recognised
+SAME-CHUNK only, following KC2 §2's ruling for `alt+⏎`: a lone `\x1b`
+is a bare Esc and fires at once, and Esc's immediacy is worth more than
+joining a split pair.
+
+The clipboard says only what it knows: `copied N chars` where a real
+`pbcopy` reported an exit status, `asked the terminal to copy N chars`
+where the route was OSC 52 (a request the terminal need not honour and
+most do not answer), and nothing at all — no escape emitted — when
+stdout is not a terminal.
+
 ---
 
 ## 9. The transcript viewer

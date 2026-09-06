@@ -51,7 +51,9 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 			"esc stop        alt+⏎ / ctrl+⏎ redirect    / commands",
 			"↑↓ history / queue pop              ctrl+o expand cells",
 			"ctrl+r transcript                   tab complete (menu / @)",
-			"? this sheet                        ctrl+z / ctrl+y undo / redo",
+			"? this sheet                        alt+←→ / ctrl+←→ word motion",
+			"alt+⌫ / alt+d delete word (ctrl+w too) ctrl+x copy the last answer",
+			"ctrl+z / ctrl+y undo / redo",
 			// MOVED (the TUI2-R3v2 panel-selection supersession class): R1.5
 			// pin 6 chose "digits pick · ⏎ confirms" as the one sentence true
 			// of an approval where a digit SELECTED and an ask where a digit
@@ -75,7 +77,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		setTTY(false);
 		for (const W of [20, 34, 50, 60, 80, 120]) {
 			const rows = keysSheetRows(W);
-			expect(rows).toHaveLength(7); // UD-1: + the undo row
+			expect(rows).toHaveLength(9); // E1: the grid grew by two rows for the three new bindings
 			for (const row of rows) expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
 		}
 	});
@@ -91,7 +93,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		// readable thing on screen the one screen whose whole job is being
 		// read. They are the sheet's CONTENT, so they are bold.
 		expect(rows[1]).toContain("\x1b[1menter\x1b[0m send");
-		expect(rows[6]).toBe(`\x1b[2m${PANEL_KEYS_ROW}\x1b[0m`); // R5: the grid packed to 5 rows again, so the panel row is back at 6
+		expect(rows.at(-1)).toBe(`\x1b[2m${PANEL_KEYS_ROW}\x1b[0m`); // the panel row is always LAST — indexing from the end survives a grid that grows
 	});
 
 	it("ONE SOURCE — every binding in the table reaches the sheet, and nothing but the table does", () => {
@@ -130,7 +132,13 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		// enter submits, ctrl+j/shift+⏎ insert a newline, esc stops,
 		// alt+⏎/ctrl+⏎ redirect, @ picks files, / opens the menu, ↑↓ walk
 		// the history and pop the queue, ctrl+o expands, tab completes,
-		// ? opens this sheet, ctrl+z/ctrl+y undo and redo (UD-1).
+		// ? opens this sheet, ctrl+z/ctrl+y undo and redo (UD-1), and
+		// E1's three: word motion, word deletion, copy the last answer.
+		//
+		// This case is why the round updated the table rather than only
+		// the code — it FAILED when the three gestures existed in the
+		// editor and not in KEY_BINDINGS, which is exactly the drift it
+		// is here to catch.
 		expect(KEY_BINDINGS.map((b) => b.keys)).toEqual([
 			"enter",
 			"ctrl+j / shift+⏎",
@@ -143,6 +151,9 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 			"ctrl+r", // R5: the transcript viewer
 			"tab",
 			"?",
+			"alt+←→ / ctrl+←→", // E1 §1
+			"alt+⌫ / alt+d", // E1 §1 (ctrl+w is the everywhere baseline)
+			"ctrl+x", // E1 §3
 			"ctrl+z / ctrl+y",
 		]);
 	});

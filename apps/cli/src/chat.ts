@@ -1245,6 +1245,9 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// chain action (the sentinel's control char marks the key, so a typed
 	// "expand" turn is never intercepted).
 	input.onExpand(() => dispatch("\x12expand", dispatchCtx));
+	// E1 §3 — ctrl+x and `/copy` are the same action reached two ways, so
+	// they are the same sentinel: one implementation, one behaviour.
+	input.onCopy(() => dispatch("\x18copy", dispatchCtx));
 	// R3a — Shift+Tab: the approval-tier cycle (the /mode ring, in the
 	// MODES order). The switch is the SAME live-extension flip /mode
 	// performs; the status row repaints at once with a one-line notice.

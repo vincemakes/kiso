@@ -103,6 +103,17 @@ export function viewerCommand(text: string): "up" | "down" | "toggle" | "all" | 
 	}
 }
 
+/** E1 §1 — the two-byte alt spellings of word motion and word deletion.
+ *  A table because one gesture has several encodings, and a table is
+ *  what keeps them from drifting into several features. */
+const ALT_WORD = new Map<string, "left" | "right" | "killBack" | "killFwd">([
+	["b", "left"],
+	["f", "right"],
+	["d", "killFwd"],
+	["\x7f", "killBack"],
+	["\x08", "killBack"],
+]);
+
 export const MOUSE_ON = "\x1b[?1000h\x1b[?1006h";
 export const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l";
 
@@ -328,6 +339,9 @@ export class Editor {
 	// expanded block). Mirrors the escape list: multiple listeners can
 	// coexist; the editor never interprets the key itself.
 	#expandCbs: (() => void)[] = [];
+	/** E1 §3 — ctrl+x. Same shape as the expand key: the editor owns the
+	 *  KEY, the CLI owns what it means. */
+	#copyCbs: (() => void)[] = [];
 	#onRender: () => void;
 	/** TUI2-R1 (D): the keys sheet — a static one-screen overlay opened by
 	 *  `?` on an empty composer and closed by the next key, whatever it
@@ -460,6 +474,11 @@ export class Editor {
 	 *  CLI (which tier follows which); the editor only reports the key. */
 	onModeCycle(cb: () => void): void {
 		this.#onModeCycle = cb;
+	}
+
+	/** E1 §3 — the copy key (ctrl+x). */
+	onCopy(cb: () => void): void {
+		this.#copyCbs.push(cb);
 	}
 
 	onExpand(cb: () => void): void {
@@ -1316,6 +1335,35 @@ export class Editor {
 					i += 1 + end.index + end[0]!.length;
 				} else if (rest.startsWith("O")) {
 					i += 3; // SS3 (function keys) — ignored
+				} else if (rest !== "" && ALT_WORD.has(rest[0]!) && !this.#pasting && this.#composerIdle()) {
+					// E1 §1 — the two-byte alt spellings, SAME-CHUNK ONLY.
+					//
+					// This follows Alt+Enter below, which ruled the identical
+					// question for the identical byte shape: "A terminal sends
+					// Alt+X as ESC and X in ONE write, so SAME-CHUNK is the
+					// whole test: no timer, no hold, nothing parked. The
+					// identical two bytes arriving in SEPARATE chunks are NOT
+					// combined — the bare Esc fires at once (its immediacy is
+					// exactly what a hold would spend)."
+					//
+					// The work order asked for the split pair to be JOINED
+					// through #pending. Built that way first, and it broke six
+					// gates across four files — `dc7-osc-swallow`'s case is
+					// titled "a chunk boundary between ESC and ] is known to
+					// leak — Esc stays immediate", which is the same ruling
+					// stated from the other side. Parking a lone ESC is what
+					// joining requires, and esc immediacy is what parking
+					// spends: esc interrupts a run. The conflict is reported
+					// rather than resolved here.
+					//
+					// Inside a paste these bytes are CONTENT — `\x1bb` in
+					// someone's text is an escape and a letter, not a motion.
+					const op = ALT_WORD.get(rest[0]!)!;
+					if (op === "left" || op === "right") this.#moveWord(op === "left" ? -1 : 1);
+					else if (op === "killBack") this.#killWord();
+					else this.#killWordForward();
+					this.#onRender();
+					i += 2;
 				} else if (rest.startsWith("\x0d") && this.#composerIdle()) {
 					// KC2 §2 — Alt+Enter. A terminal sends Alt+X as ESC and X in
 					// ONE write, so SAME-CHUNK is the whole test: no timer, no
@@ -1476,6 +1524,19 @@ export class Editor {
 				// toggling in place.
 				for (const cb of [...this.#expandCbs]) cb();
 				i += 1;
+			} else if (c === "\x18" && this.#composerIdle()) {
+				// E1 §3 — ctrl+x copies the last answer. `\x18` was unbound
+				// across the whole tree (checked before the round started),
+				// so nothing is displaced.
+				//
+				// Composer-idle only, like `?` and ctrl+r: a panel, picker,
+				// menu or question owns its keys first. The buffer is NOT
+				// required to be empty — ctrl+x copies the ANSWER, not the
+				// composer, so a half-written follow-up is no reason to
+				// refuse. (ctrl+r requires an empty buffer because it opens
+				// a surface OVER the composer; this prints one status row.)
+				for (const cb of [...this.#copyCbs]) cb();
+				i += 1;
 			} else if (c === "\x12" && this.#composerIdle() && this.#chars.length === 0) {
 				// R5 — the transcript viewer, on ctrl+r since DC-41. The
 				// reference binds ctrl+r to renaming a session, which kiso
@@ -1499,8 +1560,22 @@ export class Editor {
 			} else if (c !== undefined && c < " ") {
 				i += 1; // other control — ignored
 			} else {
-				this.#insert(text.codePointAt(i)!);
-				i += c!.length;
+				// E1 §1 (found by the word-op gate, PRE-EXISTING): advance by
+				// the CODE POINT, not by `text[i]`.
+				//
+				// `c` is one UTF-16 unit, so `c.length` is always 1, while
+				// `codePointAt` returns the whole astral code point. Typing
+				// one emoji therefore inserted the code point AND then the
+				// lone low surrogate left under the cursor — `"😀"` came back
+				// as `"😀\ude00"`, three UTF-16 units for one glyph.
+				//
+				// Verified pre-existing by stashing this round's changes and
+				// re-running: the baseline is identically wrong. It surfaces
+				// now because word motion is the first feature that has to
+				// STEP over a grapheme rather than only append to it.
+				const cp = text.codePointAt(i)!;
+				this.#insert(cp);
+				i += cp > 0xffff ? 2 : 1;
 			}
 		}
 	}
@@ -1567,6 +1642,21 @@ export class Editor {
 				this.#colorSchemeCb?.(scheme[1] === "1" ? "dark" : "light");
 				return;
 			}
+		}
+		// E1 §1 — alt+←/→ and ctrl+←/→, the CSI spellings of word motion.
+		//
+		// `1;3` is alt (meta), `1;5` is ctrl. Terminal.app sends the CSI
+		// form for alt+← unless "Use Option as Meta Key" is on, in which
+		// case it sends `\x1bb` — handled in the escape branch. Both are
+		// the same gesture and both route here, because a gesture with
+		// three spellings is a table, not three features.
+		//
+		// Composer-idle only, for the back-tab's reason below: a panel,
+		// picker, menu or question owns its keys first.
+		if ((final === "D" || final === "C") && (params === "1;3" || params === "1;5") && this.#composerIdle()) {
+			this.#moveWord(final === "D" ? -1 : 1);
+			this.#onRender();
+			return;
 		}
 		// R3a — Shift+Tab (CSI Z, the universal back-tab encoding) cycles
 		// the approval tier. Composer-idle ONLY: a panel, picker, menu,
@@ -2176,16 +2266,119 @@ export class Editor {
 		if (!this.#pasting) this.#onRender();
 	}
 
-	/** Ctrl+W — the word kill. The newline rides as a non-space code
-	 *  point (a kill at a line's start joins it to the one above, the
-	 *  readline behavior); A3 scopes A/E/U/K, not W. */
+	/**
+	 * E1 §1 — WHERE A WORD ENDS. One function, five operations.
+	 *
+	 * `#killWord` used to answer this inline, and only for `0x20`: no
+	 * tab, no punctuation, and a whole Chinese sentence was one word from
+	 * its first character to its last. Five operations asking the
+	 * question separately is five chances for a motion and a deletion to
+	 * disagree about the same text, so they ask here.
+	 *
+	 * Three classes over the CODE POINT:
+	 *
+	 *   - SEPARATOR — whitespace, and the newline the flat buffer carries
+	 *     as an ordinary code point;
+	 *   - CJK — one character IS one word. A sentence is not a unit
+	 *     anyone wants to move or delete by, and the owner types Chinese;
+	 *   - otherwise WORD vs PUNCT, which split from each other: `foo.bar`
+	 *     is three words, the readline behaviour and every editor's.
+	 *
+	 * Combining marks, ZWJ joins and variation selectors are NOT their
+	 * own class — they belong to whatever precedes them (`#glyphStart`),
+	 * so a family emoji deletes whole instead of shedding a member and
+	 * stranding a joiner.
+	 */
+	#classOf(cp: number): "sep" | "cjk" | "word" | "punct" {
+		if (cp === 0x20 || cp === 0x09 || cp === 0x0a || cp === 0x0d) return "sep";
+		// CJK ideographs, kana, Hangul, the fullwidth forms — one per word.
+		if (
+			(cp >= 0x1100 && cp <= 0x11ff) ||
+			(cp >= 0x2e80 && cp <= 0x9fff) ||
+			(cp >= 0xa960 && cp <= 0xa97f) ||
+			(cp >= 0xac00 && cp <= 0xd7ff) ||
+			(cp >= 0xf900 && cp <= 0xfaff) ||
+			(cp >= 0xff00 && cp <= 0xffef) ||
+			(cp >= 0x20000 && cp <= 0x3ffff)
+		) {
+			return "cjk";
+		}
+		const ch = String.fromCodePoint(cp);
+		if (/[\p{L}\p{N}_]/u.test(ch)) return "word";
+		return "punct";
+	}
+
+	/** True when `i` is a continuation of the glyph before it — a
+	 *  combining mark, a ZWJ, or a variation selector. Never a boundary. */
+	#joins(cp: number): boolean {
+		return (
+			(cp >= 0x0300 && cp <= 0x036f) || // combining diacriticals
+			(cp >= 0x1ab0 && cp <= 0x1aff) ||
+			(cp >= 0x20d0 && cp <= 0x20ff) ||
+			(cp >= 0xfe00 && cp <= 0xfe0f) || // variation selectors
+			cp === 0x200d || // ZWJ
+			(cp >= 0xe0100 && cp <= 0xe01ef)
+		);
+	}
+
+	/** The index one WORD away from `from`, in `dir`. Skips a run of
+	 *  separators, then crosses one run of a single class. Joiners never
+	 *  end a run, so a grapheme is never split. */
+	#wordEdge(from: number, dir: -1 | 1): number {
+		const at = (i: number): number => this.#chars[dir < 0 ? i - 1 : i] ?? -1;
+		let i = from;
+		const end = dir < 0 ? 0 : this.#chars.length;
+		const more = (): boolean => (dir < 0 ? i > end : i < end);
+		while (more() && this.#classOf(at(i)) === "sep") i += dir;
+		if (!more()) return i;
+		// A JOINER NEVER DECIDES THE RUN'S CLASS. Walking backwards, the
+		// first thing seen at the end of `café` is the combining acute —
+		// which is not a letter, so classifying from it made the run
+		// "punct" and the kill stopped after one mark, leaving `e`.
+		// Joiners belong to the character before them; step over them
+		// first and classify from the base.
+		while (more() && this.#joins(at(i))) i += dir;
+		if (!more()) return i;
+		// CJK: exactly one character (plus anything joined to it).
+		const cls = this.#classOf(at(i));
+		if (cls === "cjk") {
+			i += dir;
+			while (more() && this.#joins(at(i))) i += dir;
+			return i;
+		}
+		while (more()) {
+			const c = at(i);
+			if (!this.#joins(c) && this.#classOf(c) !== cls) break;
+			i += dir;
+		}
+		return i;
+	}
+
+	/** Ctrl+W and alt+backspace — the word kill. A3 scopes A/E/U/K, not
+	 *  W. UD-1: an archive point only when something is actually removed;
+	 *  a no-op kill at the buffer's start must not eat the next ctrl+z. */
 	#killWord(): void {
-		let i = this.#cursor;
-		while (i > 0 && this.#chars[i - 1] === 0x20) i -= 1; // trailing spaces
-		while (i > 0 && this.#chars[i - 1] !== 0x20) i -= 1; // the word
-		if (i < this.#cursor) this.#checkpoint(); // UD-1
+		const i = this.#wordEdge(this.#cursor, -1);
+		if (i >= this.#cursor) return;
+		this.#checkpoint(); // UD-1
 		this.#chars.splice(i, this.#cursor - i);
 		this.#cursor = i;
+		this.#reflow();
+	}
+
+	/** alt+d — the word kill FORWARD. Same boundary, same archive rule. */
+	#killWordForward(): void {
+		const j = this.#wordEdge(this.#cursor, 1);
+		if (j <= this.#cursor) return;
+		this.#checkpoint(); // UD-1
+		this.#chars.splice(this.#cursor, j - this.#cursor);
+		this.#reflow();
+	}
+
+	/** alt+←/→ — the cursor one word over. No archive point: nothing is
+	 *  destroyed. */
+	#moveWord(dir: -1 | 1): void {
+		this.#cursor = this.#wordEdge(this.#cursor, dir);
 		this.#reflow();
 	}
 
