@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
-import { renderRecap } from "../src/render.js";
+import { renderRecap } from "../src/lines.js";
 import { A7_SESSION } from "./fixtures/a7-session.js";
 
 import { Screen } from "./helpers/screen.js";

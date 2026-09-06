@@ -22,7 +22,7 @@
  * widens to name the new gesture.
  */
 
-import { kUnit } from "./render.js";
+import { kUnit } from "./lines.js";
 import { TWINKLE } from "@vincemakes/kiso-tui-cells/render";
 
 /**

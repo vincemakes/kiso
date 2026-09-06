@@ -13,7 +13,7 @@
  * on the machine's locale).
  */
 
-import { escapeTerminal, palette } from "./render.js";
+import { escapeTerminal, palette } from "./lines.js";
 import { selectionBar, visibleWidth, widthCut } from "./components.js";
 import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
 

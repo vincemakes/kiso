@@ -51,7 +51,7 @@ import { MENU_ITEMS, displayWidth, type MenuItem } from "./editor.js";
 import { leadWidth } from "./width.js"; // W23: the ONE width authority (the editor, #inputRow, and editCol share it)
 // KC3.5: the panel-slot reads come from the DISPATCHERS — one source
 // for four reads, so an ask can never render half as an approval.
-import { panelFrameOf, panelLeadOf, panelRowsOf, panelStatusOf } from "./ask-panel.js";
+import { panelFrameOf, panelLeadOf, panelStatusOf } from "./ask-panel.js";
 import { MOUSE_OFF } from "./editor.js";
 import type { PanelState } from "./approval-panel.js";
 import { atPanelRows, bandHeader, type AtMatch } from "./at-picker.js";
@@ -84,7 +84,7 @@ import {
 	type FrameCtx,
 	breathFrame,
 } from "./components.js";
-import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, type BannerMeta, type ResumeMeta } from "./render.js";
+import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, type BannerMeta, type ResumeMeta } from "./lines.js";
 import { displayVerb, keysSheetRows } from "./strings.js";
 // R5 — the transcript viewer's PURE projection. The compositor supplies
 // the entries (it holds the cells); the arrangement lives there.
@@ -196,6 +196,20 @@ function sameTask(a: { text: string; status: "pending" | "active" | "done" }[], 
 
 /** The one compositor — implements the Body façade AND the Dock chrome
  *  API (see the class comments on each method group). */
+/** The chrome a frame wears and the room it leaves the live region —
+ *  one derivation for the frame (`render`) and for the scalar
+ *  (`liveCount`): `rows` is what the chrome costs, `cap` the content
+ *  cap V6-3 leaves (H−4, less the composer's extra rows and the queue
+ *  band; KC1 §6, W22). */
+interface Chrome {
+	readonly menuRows: string[];
+	readonly queueRows: string[];
+	readonly editor: { rows: string[]; markerRow: number; markerCol: number };
+	readonly inputExtra: number;
+	readonly rows: number;
+	readonly cap: number;
+}
+
 export class Body {
 	#opts: BodyOptions;
 	#cells: BodyCell[] = [];
@@ -1779,56 +1793,17 @@ export class Body {
 	 *  blanks are join artifacts — the count includes them (they are real
 	 *  screen rows), threaded against the previous sibling's OWN rows. */
 	liveCount(): number {
-		const panel = this.#panelState?.() ?? null;
-		const sheet = this.#sheetState?.() === true;
-		const queueRows = this.#queueRows(this.#opts.width(), this.#opts.height());
-		// KC1 §6: the composer's extra rows are chrome too — the scalar
-		// counts them exactly like the menu/queue bands (N = 1 ⇒ +0)
-		const inputExtra = this.#inputRows(this.#opts.width(), this.#opts.height(), this.#menuRows(this.#opts.width()).length, queueRows.length).rows.length - 1;
-		// TUI2-R1 (D): the sheet occupies the live region, exactly like the
-		// panel — the scalar must say so, or the cap arithmetic disagrees
-		// with the screen.
-		// R5 — the viewer occupies the live region exactly like the sheet,
-		// so the scalar must say so, or the cap arithmetic disagrees with
-		// the screen (the same rule DC-27 was about).
-		if (this.#viewer !== null) {
-			const capV = Math.max(1, this.#opts.height() - 4 - inputExtra - queueRows.length);
-			return this.#viewerBand(this.#opts.width()).slice(0, capV).length + CHROME_ROWS + inputExtra + queueRows.length;
-		}
-		if (sheet) {
-			return (
-				keysSheetRows(this.#opts.width()).slice(0, Math.max(1, this.#opts.height() - 4 - inputExtra - queueRows.length)).length +
-				CHROME_ROWS +
-				inputExtra +
-				queueRows.length
-			);
-		}
-		if (panel !== null) {
-			// W21: the panel's own rows (the cap is exact — the scalar
-			// reflects the screen). W22: the queue chips occupy their
-			// own band — the panel's cap shrinks by their rows.
-			return (
-				panelRowsOf(panel, this.#opts.width(), Math.max(1, this.#opts.height() - 4 - inputExtra - queueRows.length)).length +
-				CHROME_ROWS +
-				inputExtra +
-				queueRows.length
-			);
-		}
-		// DC-27 — the scalar measures the PROJECTION, not a second render
-		// of its own. A loop that re-rendered every live cell in full
-		// counted rows the projection never drew; nothing broke, because
-		// the force-commit loop measures liveLines.length and the
-		// over-count was conservative, but the cap and geometry gates were
-		// asserting a property of a function nothing paints from. The rule
-		// this file already states for the sheet ("the scalar must say so,
-		// or the cap arithmetic disagrees with the screen") is the same
-		// rule here.
-		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
 		const W = this.#opts.width();
-		// the SAME content cap the force-commit loop applies, so the
-		// scalar sees the same budget the screen gets.
-		const rows = this.#liveProjection(W, ctx, this.#opts.height() - 4 - inputExtra - queueRows.length);
-		return rows.length + CHROME_ROWS + inputExtra + this.#menuRows(W).length + queueRows.length;
+		const H = this.#opts.height();
+		const chrome = this.#chrome(W, H);
+		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: H };
+		// DC-27 — the scalar measures what the SCREEN gets: the same
+		// selector render() paints from, under the same chrome. A scalar
+		// with rules of its own asserted a property of a function nothing
+		// painted from, so the cap and geometry gates could not move on a
+		// real regression ("the scalar must say so, or the cap arithmetic
+		// disagrees with the screen" — TUI2-R1 D, R5, DC-27, one rule).
+		return this.#liveRows(W, ctx, chrome.cap).lines.length + chrome.rows;
 	}
 
 	/** The lines committed THIS frame — the writes land in the frame's
@@ -1850,136 +1825,163 @@ export class Body {
 		this.#paintedW = W;
 		this.#paintedH = H;
 		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: H };
-		// A full redraw re-derives the committed rows from the cache. A
-		// cell whose cache was invalidated (a settled resize, R14) is
-		// rendered again at the current width; every other cell keeps the
-		// rows it was committed with, because those rows are already the
-		// terminal's (ADR-0046) and this frame paints the same bytes.
-		//
-		// DECLARED REVERSAL (R14): DC-34's frontier-scoped REFOLD stood
-		// here — a widen never refolded a committed cell, a narrowing
-		// refolded the cells that no longer fit. Route B reprints the
-		// whole session from the model on a settled resize, so no
-		// committed row is refolded in place any more, and the width
-		// guard that decided which ones were went with it.
-		if (this.#fullRedraw) {
-			this.#committedLines = 0;
-			for (let i = 0; i < this.#committed; i += 1) {
-				const lines = this.#lineCache[i] ?? cellComponent(this.#cells[i]!).render(W, ctx);
-				this.#lineCache[i] = lines;
-				this.#committedLines += this.#space(i, i > 0 ? (this.#lineCache[i - 1] ?? []) : null, lines).length;
-			}
+		if (this.#fullRedraw) this.#rederiveCommitted(W, ctx);
+		// 1. the natural commits — the leading DONE cells freeze.
+		this.#commitDone(W, ctx);
+		// 2. the live lines — the unfinished cells (the tail) + the chrome.
+		const chrome = this.#chrome(W, H);
+		this.#noteOverlay();
+		const live = this.#liveRows(W, ctx, chrome.cap);
+		// 3. the FORCE commits — the live region's hard cap.
+		const liveLines = this.#capLive(live.lines, W, ctx, chrome.cap);
+		// 4. the geometry — the live region's first row:
+		//    liveTop = min(totalCommitted, H - liveRows) + 1 — the screen
+		//    shows the bottom H rows; the live region anchors to the bottom.
+		const liveRowsTotal = liveLines.length + chrome.rows;
+		const liveTop = Math.min(this.#committedLines, H - liveRowsTotal) + 1;
+		// TUI2-R3v2 ②: the option rows' ABSOLUTE screen rows, recorded per
+		// frame. A click is answered against the frame the human was looking
+		// at when they clicked, which is this one.
+		this.#panelRowSpan =
+			live.panelSpan === null ? null : { top: liveTop + live.panelSpan.offset, count: live.panelSpan.count, first: live.panelSpan.first };
+		// 5. the frame bytes.
+		this.#paint(W, H, liveTop, liveLines, liveRowsTotal, chrome);
+	}
+
+	/** Phase 0 — a full redraw re-derives the committed rows from the
+	 *  cache. A cell whose cache was invalidated (a settled resize, R14)
+	 *  is rendered again at the current width; every other cell keeps
+	 *  the rows it was committed with, because those rows are already
+	 *  the terminal's (ADR-0046) and this frame paints the same bytes.
+	 *
+	 *  DECLARED REVERSAL (R14): DC-34's frontier-scoped REFOLD stood
+	 *  here — a widen never refolded a committed cell, a narrowing
+	 *  refolded the cells that no longer fit. Route B reprints the
+	 *  whole session from the model on a settled resize, so no
+	 *  committed row is refolded in place any more, and the width
+	 *  guard that decided which ones were went with it. */
+	#rederiveCommitted(W: number, ctx: FrameCtx): void {
+		this.#committedLines = 0;
+		for (let i = 0; i < this.#committed; i += 1) {
+			const lines = this.#lineCache[i] ?? cellComponent(this.#cells[i]!).render(W, ctx);
+			this.#lineCache[i] = lines;
+			this.#committedLines += this.#space(i, i > 0 ? (this.#lineCache[i - 1] ?? []) : null, lines).length;
 		}
-		// 1. the natural commits — the leading DONE cells freeze: their
-		//    lines leave the live region, the scrolls + the committed
-		//    writes below place them (the #17 "freeze as a real line",
-		//    short sessions included — the frame coalescing keeps a
-		//    cell's first frame its freeze frame, so the frozen bytes
-		//    emit exactly once).
+	}
+
+	/** Phase 1 — the natural commits: the leading DONE cells freeze —
+	 *  their lines leave the live region, the scrolls + the committed
+	 *  writes below place them (the #17 "freeze as a real line", short
+	 *  sessions included — the frame coalescing keeps a cell's first
+	 *  frame its freeze frame, so the frozen bytes emit exactly once). */
+	#commitDone(W: number, ctx: FrameCtx): void {
 		this.#committedAtFrameStart = this.#committed;
 		this.#committedLinesThisFrame = [];
 		while (this.#committed < this.#cells.length && this.#cells[this.#committed]!.done) {
 			this.#commitCell(this.#committed, W, ctx);
 		}
-		// 2. the live lines — the unfinished cells (the tail) + the chrome.
-		//    W11: the formula's blank above the first live cell hangs off
-		//    the last COMMITTED sibling (the join spans the boundary).
+	}
+
+	/** The chrome this frame wears: the menu band, the queue band (W22:
+	 *  the menu-rows family's other occupant — the band above the box
+	 *  top), the composer (KC1 §6: N rows; N = 1 ⇒ today's chrome
+	 *  exactly — chromeRows = 3 + N + menu + queue, and the content cap
+	 *  loses the composer's EXTRA rows the same way it loses the bands).
+	 *  W11: the formula's blank above the first live cell hangs off the
+	 *  last COMMITTED sibling (the join spans the boundary). */
+	#chrome(W: number, H: number): Chrome {
 		const menuRows = this.#menuRows(W);
-		// W22: the queue chips are the menu-rows family's other occupant
-		// (the band above the box top) — the chrome rows and the live
-		// caps account for both.
 		const queueRows = this.#queueRows(W, H);
-		// KC1 §6: the input is N rows now (N = 1 ⇒ today's chrome exactly)
-		// — chromeRows = 3 + N + menu + queue, and the content cap loses
-		// the composer's EXTRA rows the same way it loses the bands.
 		const editor = this.#inputRows(W, H, menuRows.length, queueRows.length);
 		const inputExtra = editor.rows.length - 1;
-		const chromeRows = CHROME_ROWS + inputExtra + menuRows.length + queueRows.length;
-		let liveLines: string[] = [];
-		// TUI2-R3v2 ②: where this frame put the panel's option rows, relative
-		// to the live region's top. Resolved to ABSOLUTE screen rows once
-		// liveTop is known, below.
-		let panelSpan: { offset: number; count: number; first: number } | null = null;
-		const panel = this.#panelState?.() ?? null;
-		// TUI2-R1.5 ⑦(a) (VD-8): the sheet is an OVERLAY, and the frame it
-		// opens on — and the one it closes on — take the full-redraw path.
-		// The sheet REPLACES the live region, so on an idle composer (where
-		// the live region is empty) opening it GROWS the model by its own
-		// height; the frame's skip grows with it and the difference is paid
-		// in real LFs — rows scrolled permanently into the terminal's
-		// scrollback, which closing cannot undo, because the scrollback is
-		// not ours to rewrite. Measured: three rows per open on a full
-		// screen. The overlay below displaces content on screen instead.
+		return {
+			menuRows,
+			queueRows,
+			editor,
+			inputExtra,
+			rows: CHROME_ROWS + inputExtra + menuRows.length + queueRows.length,
+			cap: H - 4 - inputExtra - queueRows.length,
+		};
+	}
+
+	/** The overlay bookkeeping. TUI2-R1.5 ⑦(a) (VD-8): the sheet is an
+	 *  OVERLAY, and the frame it opens on — and the one it closes on —
+	 *  take the full-redraw path. The sheet REPLACES the live region, so
+	 *  on an idle composer (where the live region is empty) opening it
+	 *  GROWS the model by its own height; the frame's skip grows with it
+	 *  and the difference is paid in real LFs — rows scrolled
+	 *  permanently into the terminal's scrollback, which closing cannot
+	 *  undo, because the scrollback is not ours to rewrite. Measured:
+	 *  three rows per open on a full screen. The overlay displaces
+	 *  content on screen instead. R5 — the viewer is an overlay of
+	 *  exactly the same kind, so it joins the same flag. That one word
+	 *  is what buys it the whole zero-litter discipline: the window
+	 *  freezes, #emitScroll is skipped, and the close repaints from
+	 *  #lastSkip. */
+	#noteOverlay(): void {
 		const sheetUp = this.#sheetState?.() === true;
-		// R5 — the viewer is an overlay of exactly the same kind, so it
-		// joins the same flag. That one word is what buys it the whole
-		// zero-litter discipline below: the window freezes, #emitScroll
-		// is skipped, and the close repaints from #lastSkip.
 		const viewerUp = this.#viewer !== null;
 		this.#overlayFrame = sheetUp || this.#sheetWasUp || viewerUp || this.#viewerWasUp;
 		this.#sheetWasUp = sheetUp;
 		this.#viewerWasUp = viewerUp;
-		if (viewerUp) {
-			// R5: the viewer REPLACES the live region — the same slot the
-			// sheet and the panel use, for the same reason (it is what the
-			// human is reading right now). It is opened only from an idle
-			// composer, so it cannot coexist with a panel.
-			liveLines = this.#viewerBand(W).slice(0, Math.max(1, H - 4 - inputExtra - queueRows.length));
-		} else if (sheetUp) {
-			// TUI2-R1 (D): the sheet REPLACES the live region — the same
-			// slot the panel uses, for the same reason (it is what the
-			// human is reading right now). It cannot coexist with a panel:
-			// the editor only opens it from an idle composer.
-			liveLines = keysSheetRows(W).slice(0, Math.max(1, H - 4 - inputExtra - queueRows.length));
-		} else if (panel !== null) {
-			// W21: the panel REPLACES the running tool's live window — the
-			// bounded block, capped at H−4 (the panel IS the live region;
-			// the W11 blank would separate it from the frozen content).
-			// The cap is exact, so the force-commit loop never fires. W22:
-			// the queue band sits below the panel — the cap shrinks by it.
-			// TUI2-R3v2 ②: the rows and the CLICKABLE span come from one
-			// call, so the hit-test reads the arithmetic that placed the
-			// rows rather than a second copy of it.
-			const frame = panelFrameOf(panel, W, Math.max(1, H - 4 - inputExtra - queueRows.length));
-			liveLines = frame.rows;
-			panelSpan = frame.options;
-		} else {
-			// TUI2-R2 ⑤: the bright token rides the newest live card's head
-			// row (#project, #focusIndex).
-			liveLines = this.#liveProjection(W, ctx, H - 4 - inputExtra - queueRows.length);
+	}
+
+	/** Phase 2 — ONE overlay selector: what occupies the live region
+	 *  this frame. The transcript viewer (R5), the keys sheet (TUI2-R1
+	 *  D) and the approval panel (W21) each REPLACE the live region —
+	 *  it is what the human is reading right now — capped at the
+	 *  content cap; the sheet and the viewer open only from an idle
+	 *  composer, so neither can coexist with a panel. The panel also
+	 *  reports where its clickable rows are (TUI2-R3v2 ②: the rows and
+	 *  the span come from one call, so the hit-test reads the arithmetic
+	 *  that placed the rows). Otherwise the projection of the live
+	 *  cells, with the bright token on the newest card's head row
+	 *  (TUI2-R2 ⑤: #project, #focusIndex). render() paints this and
+	 *  liveCount() measures it — the same rows, by construction. */
+	#liveRows(W: number, ctx: FrameCtx, cap: number): { lines: string[]; panelSpan: { offset: number; count: number; first: number } | null } {
+		const capped = Math.max(1, cap);
+		if (this.#viewer !== null) return { lines: this.#viewerBand(W).slice(0, capped), panelSpan: null };
+		if (this.#sheetState?.() === true) return { lines: keysSheetRows(W).slice(0, capped), panelSpan: null };
+		const panel = this.#panelState?.() ?? null;
+		if (panel !== null) {
+			// W21: the panel's cap is exact, so the force-commit loop never
+			// fires on it. W22: the queue band sits below the panel — the
+			// cap shrinks by it.
+			const frame = panelFrameOf(panel, W, capped);
+			return { lines: frame.rows, panelSpan: frame.options };
 		}
-		// 3. the FORCE commits — the live region's hard cap: overflow
-		//    commits the oldest live cell (W22: the queue band shrinks the
-		//    cap by its rows) — but NEVER A TOOL CALL STILL RUNNING (DC-53).
-		//    A running card has no committed form yet: its shape changes
-		//    at the settle, so a committed one would be a row that is
-		//    never corrected — measured as a burst's first call frozen into
-		//    the scrollback with its breathing mark, its result never
-		//    drawn. A streaming text or raw cell DOES have a committed form
-		//    (its rows are final, append-only) and spills normally. When
-		//    the head is running the region gives way instead: the cards
-		//    behind it degrade, then the window shrinks (#liveProjection).
+		return { lines: this.#liveProjection(W, ctx, cap), panelSpan: null };
+	}
+
+	/** Phase 3 — the FORCE commits: overflow past the content cap
+	 *  commits the oldest live cell (W22: the queue band shrinks the
+	 *  cap by its rows) — but NEVER A TOOL CALL STILL RUNNING (DC-53).
+	 *  A running card has no committed form yet: its shape changes at
+	 *  the settle, so a committed one would be a row that is never
+	 *  corrected — measured as a burst's first call frozen into the
+	 *  scrollback with its breathing mark, its result never drawn. A
+	 *  streaming text or raw cell DOES have a committed form (its rows
+	 *  are final, append-only) and spills normally. When the head is
+	 *  running the region gives way instead: the cards behind it
+	 *  degrade, then the window shrinks (#liveProjection). */
+	#capLive(lines: string[], W: number, ctx: FrameCtx, cap: number): string[] {
 		while (
-			liveLines.length > H - 4 - inputExtra - queueRows.length && // V6-3: the content cap H−4 (KC1: −N's extra rows)
+			lines.length > cap && // V6-3: the content cap H−4 (KC1: −N's extra rows)
 			this.#committed < this.#cells.length &&
 			!(this.#cells[this.#committed]!.kind === "tool" && !this.#cells[this.#committed]!.done)
 		) {
 			this.#commitCell(this.#committed, W, ctx);
 			// TUI2-R2 ⑤: the focus re-derives after a commit — the cell it
 			// pointed at may have just left the live region.
-			liveLines = this.#liveProjection(W, ctx, H - 4 - inputExtra - queueRows.length);
+			lines = this.#liveProjection(W, ctx, cap);
 		}
-		// 4. the geometry — the live region's first row:
-		//    liveTop = min(totalCommitted, H - liveRows) + 1 — the screen
-		//    shows the bottom H rows; the live region anchors to the bottom.
-		const liveRowsTotal = liveLines.length + chromeRows;
-		const liveTop = Math.min(this.#committedLines, H - liveRowsTotal) + 1;
-		// TUI2-R3v2 ②: the option rows' ABSOLUTE screen rows, recorded per
-		// frame. A click is answered against the frame the human was looking
-		// at when they clicked, which is this one.
-		this.#panelRowSpan =
-			panelSpan === null ? null : { top: liveTop + panelSpan.offset, count: panelSpan.count, first: panelSpan.first };
-		// 5. the frame bytes.
+		return lines;
+	}
+
+	/** Phase 5 — the frame bytes: the one-time reset, autowrap off, the
+	 *  synchronised-update bracket, the ONE renderer, and the
+	 *  bookkeeping the next frame's relative moves start from. */
+	#paint(W: number, H: number, liveTop: number, liveLines: string[], liveRowsTotal: number, chrome: Chrome): void {
 		const out: string[] = [];
 		// REL-0152-D14 — AUTOWRAP OFF for the frame's duration.
 		//
@@ -2065,7 +2067,7 @@ export class Body {
 		// the old steady/full split (a scrolling path that could not draw
 		// a window moving the wrong way, finding #A8) has nothing left to
 		// dispatch between.
-		this.#drawFull(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
+		this.#drawFull(out, W, H, liveTop, liveLines, chrome.queueRows, chrome.menuRows, chrome.editor);
 		this.#fullRedraw = false;
 		// REL-0161: the frame close no longer shows the cursor — hidden IS
 		// the steady state (Terminal.app infers "a prompt line" from
@@ -2081,20 +2083,11 @@ export class Body {
 		}
 		this.#lastLiveTop = liveTop;
 		this.#lastLiveRows = liveRowsTotal;
-		this.#lastInputRows = editor.rows.length;
+		this.#lastInputRows = chrome.editor.rows.length;
 		// KC1 §6: the next steady frame's relative moves start where THIS
 		// frame's CHA parked the cursor — the marker's row inside the
 		// composer (N = 1 ⇒ H−2, the retired hard-coded anchor).
-		this.#lastAnchorRow = H - 1 - editor.rows.length + editor.markerRow;
-	}
-
-	/** R13 D1 — the same constant as everything else. This used to compute
-	 *  the lead from a ONE-ROW STAND-IN so the live block would claim the
-	 *  spacing its fold was going to get; with the rhythm constant there
-	 *  is nothing to simulate, and R7a's device retires with the formula
-	 *  that needed it. */
-	#blockSpace(i: number, prev: readonly string[] | null, rows: string[]): string[] {
-		return bodySpacing(this.#lastDrawn(i, prev), rows);
+		this.#lastAnchorRow = H - 1 - chrome.editor.rows.length + chrome.editor.markerRow;
 	}
 
 	#space(i: number, prev: readonly string[] | null, rows: string[]): string[] {

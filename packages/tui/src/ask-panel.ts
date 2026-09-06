@@ -53,7 +53,7 @@ import {
 	type PickRuntime,
 } from "./approval-panel.js";
 import { cutLine, selectionBar, visibleWidth, widthCut } from "@vincemakes/kiso-tui-cells/components";
-import { escapeTerminal, palette } from "./render.js";
+import { escapeTerminal, palette } from "./lines.js";
 
 /** The schema's own bounds — the registry refuses anything outside them
  *  (extensions/ask validates; these are the numbers it validates to). */

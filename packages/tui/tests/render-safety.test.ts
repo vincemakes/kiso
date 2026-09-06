@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { foldThinking, renderEvent, renderSessionLine, renderStatusLine, renderToolSummary } from "../src/render.js";
+import { foldThinking, renderEvent, renderSessionLine, renderStatusLine, renderToolSummary } from "../src/lines.js";
 
 const NUL = "\u0000";
 const BS = "\u0008";

@@ -24,7 +24,7 @@
  * listing render from ONE definition instead of two that drift.
  */
 
-import { escapeTerminal, palette } from "./render.js";
+import { escapeTerminal, palette } from "./lines.js";
 import { selectionBar, visibleWidth, widthCut } from "./components.js";
 import { atEmbed, bandHeader, longestRun, AT_VISIBLE, atWindow } from "./at-picker.js";
 

@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from "vitest";
 import { visibleWidth } from "@vincemakes/kiso-tui-cells/width";
-import { renderRecap } from "../src/render.js";
+import { renderRecap } from "../src/lines.js";
 
 const stats = (width: number | undefined) => ({
 	seconds: 37,

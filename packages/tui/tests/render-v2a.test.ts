@@ -35,7 +35,7 @@ import {
 	truncateRow,
 	type RenderInput,
 	type ResumeMeta,
-} from "../src/render.js";
+} from "../src/lines.js";
 import { displayWidth } from "../src/width.js";
 import { visibleWidth } from "../src/components.js";
 
@@ -269,7 +269,7 @@ describe("v2a: the rhythm — the render sequence → the expected bytes", () =>
  * the usage segments, the cache arithmetic and the omissions.
  */
 describe("v3 §02: the recap line (all fields derived locally — zero tokens)", () => {
-	const usage = (u: Partial<import("../src/render.js").RunUsage> = {}): import("../src/render.js").RunUsage => ({
+	const usage = (u: Partial<import("../src/lines.js").RunUsage> = {}): import("../src/lines.js").RunUsage => ({
 		in: 8200,
 		out: 410,
 		cache: 7954,

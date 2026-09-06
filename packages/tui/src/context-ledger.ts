@@ -18,7 +18,7 @@
  * estimates, projects, or predicts.
  */
 
-import { palette } from "./render.js";
+import { palette } from "./lines.js";
 
 /** The counts one request's ledger yields, already grouped by surface.
  *  Estimated tokens throughout (the rent ledger's own chars/4 convention

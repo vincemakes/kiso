@@ -34,7 +34,7 @@
  * window arithmetic for the rest of the session.
  */
 
-import { palette } from "./render.js";
+import { palette } from "./lines.js";
 import { cutLine, visibleWidth } from "./components.js";
 
 /** The gutter every viewer row carries: the cursor mark and its space. */

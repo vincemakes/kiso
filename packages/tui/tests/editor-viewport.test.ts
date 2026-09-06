@@ -23,7 +23,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 import { Editor } from "../src/editor.js";
-import { renderEvent } from "../src/render.js";
+import { renderEvent } from "../src/lines.js";
 import type { PanelView } from "../src/approval-panel.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);

@@ -22,7 +22,7 @@ import { Editor } from "../src/editor.js";
 import { Body } from "../src/compositor.js";
 import { idColumn, sessionFilter, sessionListFooter, sessionListRow, sessionPickerRows, sessionRow, type SessionCardView } from "../src/session-picker.js";
 import { visibleWidth } from "../src/components.js";
-import { COLOR_ON } from "../src/render.js";
+import { COLOR_ON } from "../src/lines.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const NOW = 1_000_000_000_000;

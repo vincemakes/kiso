@@ -88,7 +88,7 @@ export {
 	type RenderInput,
 	type RenderResult,
 	type RunUsage,
-} from "./render.js";
+} from "./lines.js";
 export { editFileDiff, truncateDiff, writeFileDiff, type DiffLine, type DiffResult } from "./diff.js";
 // KC2 §5: the status rows' formatters — the CLI keeps the state and the
 // repaint, the terminal layer owns what the row says.

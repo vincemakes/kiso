@@ -26,7 +26,7 @@ import { charWidth, displayWidth, leadWidth, widthOf } from "./width.js";
 // the width primitives moved to width.ts (W1, the single width
 // authority) — re-exported so the editor's public surface is unchanged.
 export { charWidth, displayWidth, widthOf };
-import { palette } from "./render.js";
+import { palette } from "./lines.js";
 import {
 	PICK_MAX,
 	panelOptions,

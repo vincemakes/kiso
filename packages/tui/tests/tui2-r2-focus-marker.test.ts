@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
-import { COLOR_ON } from "../src/render.js";
+import { COLOR_ON } from "../src/lines.js";
 
 const ORIG = { tty: process.stdout.isTTY };
 
