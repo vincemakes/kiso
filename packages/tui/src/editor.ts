@@ -177,6 +177,39 @@ const ellipsis = (): string => {
 };
 
 /**
+ * DC-55 — the composer's DISPLAY form of the buffer.
+ *
+ * A tab is kept as U+0009 in `#chars`, because the submitted line and
+ * the durable event must carry the indentation the human pasted. It
+ * cannot be PAINTED as itself: the terminal expands it to the next tab
+ * stop while `charWidth(0x09)` returns 1, so the row on screen becomes
+ * wider than the row kiso measured — invariant ① in its literal form —
+ * and every cursor column after it is wrong by the same amount.
+ *
+ * So the projection shows `→`, ONE code point for one code point: every
+ * index and every cursor column the compositor computes from this string
+ * stays true. `line()` and `#chars` never see it.
+ *
+ * ONE CELL, not an expansion to a tab stop. A tab's width is a property
+ * of its POSITION, and `charWidth(cp)` takes a code point with no
+ * context to answer that from. CJK's two cells work because two is a
+ * property of the character; these are different problems, and reusing
+ * that path for this one would be a mis-fit that surfaces later as
+ * drift. The cost is stated in design §8: a pasted block's alignment in
+ * the composer is approximate, while the block itself is exact.
+ *
+ * The dim is safe for the reason the ellipsis above is: `cursorCol`
+ * COUNTS markers and sums the buffer's own widths — it never measures
+ * this string — so an SGR span in it has never been part of the
+ * arithmetic.
+ */
+const shown = (chars: readonly number[]): string => {
+	if (!chars.includes(0x09)) return String.fromCodePoint(...chars);
+	const p = palette();
+	return chars.map((cp) => (cp === 0x09 ? `${p.dim}\u2192${p.reset}` : String.fromCodePoint(cp))).join("");
+};
+
+/**
  * The editor. Raw mode + bracketed paste (?2004h) on enter, restored on
  * exit. The input row is rendered by `onRender` (the CLI wires it to the
  * dock's redraw when docked, the editor's own self-render otherwise) —
@@ -622,7 +655,7 @@ export class Editor {
 			const scrolled = i === cursorLine && this.#scroll > 0 ? ellipsis() : "";
 			const above = i === first && first > 0 ? ellipsis() : "";
 			const below = i === first + n - 1 && first + n < bounds.length ? ellipsis() : "";
-			lines.push(`${above}${scrolled}${String.fromCodePoint(...this.#chars.slice(from, b.end))}${below}`);
+			lines.push(`${above}${scrolled}${shown(this.#chars.slice(from, b.end))}${below}`);
 		}
 		const cursorRow = cursorLine - first;
 		// the window trails the cursor, so the hidden-above marker can only
@@ -1556,6 +1589,27 @@ export class Editor {
 				// insert a `?` still inserts one.
 				this.#sheetOpen = true;
 				this.#onRender();
+				i += 1;
+			} else if (c === "\t" && this.#pasting) {
+				// DC-55 — a TAB is content, and the branch below would have
+				// eaten it.
+				//
+				// `c < " "` discards every unclaimed control byte, and a
+				// paste has no other way into the buffer, so pasting
+				// indented code silently lost its indentation: `alpha\tbeta`
+				// arrived as `alphabeta`.
+				//
+				// `#pasting` IS TESTED, and the first build left it out on the
+				// reasoning that a typed Tab is claimed further up anyway.
+				// It is claimed CONDITIONALLY: `\t && #menuOpen` completes a
+				// command and `\t && #atUp()` completes a path, so with
+				// neither surface open a typed Tab falls through to exactly
+				// here. Without the guard it started inserting a tab — the
+				// completion key silently became an insert key on an idle
+				// composer, which the typed-Tab gate caught.
+				//
+				// A paste is the one context where a tab is CONTENT.
+				this.#insert(0x09);
 				i += 1;
 			} else if (c !== undefined && c < " ") {
 				i += 1; // other control — ignored

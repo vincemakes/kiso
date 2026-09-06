@@ -40,19 +40,38 @@ describe("KC3 T-A1: where a picker opens", () => {
 		expect(editor.line()).toBe("look at @");
 	});
 
-	it("a TAB can never precede the `@` — the buffer's alphabet has no tab in it", () => {
+	// DECLARED SUPERSESSION (DC-55, 2026-09-06) — THE ALPHABET WIDENED,
+	// and this case said in advance that it would.
+	//
+	// It used to assert that `"look\tat\t"` lands in the buffer as
+	// `"lookat"`, because a pasted tab was dropped with the other control
+	// characters — and it pinned that "so it cannot change unnoticed",
+	// keeping the TAB branch in `#atToken` "as defence, because the
+	// alphabet is the editor's to widen later". DC-55 widened it: a
+	// PASTED tab is content now, so the buffer holds it and the defence
+	// is live for the first time.
+	//
+	// The claim inverts and gets stronger. It was "the boundary is
+	// unreachable"; it is now "the boundary WORKS" — which is what the
+	// defence was written for and what nothing had ever exercised.
+	it("a TAB before the `@` opens the picker — the boundary in #atToken is live now", () => {
 		const editor = makeEditor();
-		// PRE-EXISTING behavior, discovered while pinning the boundary rule
-		// and pinned here so it cannot change unnoticed: \t is a KEY, never
-		// a character. Typed, it accepts (menu/picker); pasted, it is
-		// dropped with the other control characters. So "look\tat\t" lands
-		// in the buffer as "lookat", and the picker's TAB boundary is
-		// unreachable today — kept in #atToken as defence, because the
-		// alphabet is the editor's to widen later.
 		editor.feed(enc("\x1b[200~look\tat\t\x1b[201~"));
-		expect(editor.line()).toBe("lookat");
+		expect(editor.line(), "the pasted tabs did not survive").toBe("look\tat\t");
 		editor.feed(enc("@"));
-		expect(editor.atState()).toBeNull(); // "lookat@" — mid-word, inert
+		// the `@` sits after a TAB, which `#atToken` treats exactly as it
+		// treats a space: a word boundary, so the picker opens
+		expect(editor.atState(), "the tab did not act as a word boundary").not.toBeNull();
+	});
+
+	it("and a `@` glued to a word after a tab is still inert — mid-word wins", () => {
+		// The other half, so widening the alphabet cannot quietly turn
+		// every `@` into a picker: the boundary rule is about what is
+		// IMMEDIATELY before the `@`, and a letter there still refuses.
+		const editor = makeEditor();
+		editor.feed(enc("\x1b[200~look\tat\x1b[201~"));
+		editor.feed(enc("@"));
+		expect(editor.atState()).toBeNull(); // "look\tat@" — mid-word, inert
 	});
 
 	it("`@` MID-WORD is inert — an email address is not a file reference", () => {

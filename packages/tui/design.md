@@ -612,6 +612,22 @@ SAME-CHUNK only, following KC2 §2's ruling for `alt+⏎`: a lone `\x1b`
 is a bare Esc and fires at once, and Esc's immediacy is worth more than
 joining a split pair.
 
+**A pasted TAB is kept, and shown as `→`.** The buffer holds the real
+U+0009, so the submitted line and the durable record carry the
+indentation the human pasted; the composer shows a one-cell `→` in its
+place. It has to: a terminal expands a tab to the next tab stop while
+kiso measures it as one cell, so a painted tab makes the row on screen
+wider than the row kiso computed — invariant ① — and every cursor column
+after it drifts by the same amount.
+
+One cell rather than an expansion, because **a tab's width is a property
+of its position** and the width layer answers per code point with no
+context; CJK's two cells work because two is a property of the
+character. **The declared cost:** a pasted block's alignment in the
+composer is approximate, while the block itself is exact. A TYPED Tab is
+unchanged — it completes in the menu and the `@` picker, and inserts
+nothing.
+
 The clipboard says only what it knows: `copied N chars` where a real
 `pbcopy` reported an exit status, `asked the terminal to copy N chars`
 where the route was OSC 52 (a request the terminal need not honour and
