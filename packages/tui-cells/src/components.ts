@@ -169,7 +169,7 @@ export interface Component {
  *  `prev` is the previous sibling's OWN rows (raw — a cell's own blank
  *  must never count toward its height). The blank is a JOIN artifact:
  *  the cell's own render stays blank-free, so per-cell accounting
- *  (heights, the fold cache) never sees a fake row. */
+ *  (heights, the line cache) never sees a fake row. */
 export function bodySpacing(prev: readonly string[] | null, rows: readonly string[]): string[] {
 	if (rows.length === 0 || prev === null || prev.length === 0) return rows as string[];
 	// R13 D1 — ONE blank between any two elements, whatever their height.
@@ -233,9 +233,9 @@ export type BodyCell =
 			 *  rows and redraws them); a committed cell can never toggle
 			 *  (history is never rewritten — ADR-0046). */
 			expanded: boolean;
-			/** W14: the turn boundary — the index of the turn record that
-			 *  created this cell (the fold-hold's owner; −1 when no turn
-			 *  exists yet — the pre-turn cells never hold). */
+			/** W14: the index of the turn record that created this cell
+			 *  (−1 before the first turn). The checklist reads it: a task
+			 *  list belongs to its turn. */
 			turn: number;
 			/** W19: a DENIED call's reason (the CLI extracted it from the
 			 *  result's "[Permission denied] " prefix, keyed on the "denied"
@@ -536,11 +536,17 @@ class ThinkingBlock implements Component {
 	}
 }
 
-/** Fold a line's CONTENT at W−2 and prefix EVERY row with the gutter
- *  (W2: a wrapped tool row keeps its state mark — the left edge alone
- *  distinguishes the states at --plain; the UserMessage rail precedent,
- *  v5 #16f). The gutter carries its own SGR (e.g. the bold ✓). W21:
- *  exported for the approval panel's text args (the same │ gutter). */
+/** The SGR spans still open at the end of `text`, given those open at
+ *  its start. A reset closes everything; anything else stacks. */
+function spansOpenAfter(text: string, before: readonly string[]): string[] {
+	let open = [...before];
+	for (const m of text.matchAll(/\x1b\[[0-9;]*m/g)) {
+		if (m[0] === "\x1b[0m") open = [];
+		else open.push(m[0]);
+	}
+	return open;
+}
+
 /**
  * TUI2-R1.5 ⑨ (VD-10) — the WORD-aware fold, for text a human reads.
  *
@@ -559,17 +565,6 @@ class ThinkingBlock implements Component {
  * overflowing row would violate invariant ①, and a word that cannot fit
  * has to be broken somewhere.
  */
-/** The SGR spans still open at the end of `text`, given those open at
- *  its start. A reset closes everything; anything else stacks. */
-function spansOpenAfter(text: string, before: readonly string[]): string[] {
-	let open = [...before];
-	for (const m of text.matchAll(/\x1b\[[0-9;]*m/g)) {
-		if (m[0] === "\x1b[0m") open = [];
-		else open.push(m[0]);
-	}
-	return open;
-}
-
 export function foldWords(line: string, W: number): string[] {
 	if (W < 1) return [line];
 	const out: string[] = [];
@@ -713,25 +708,17 @@ function toolTargetOf(c: Extract<BodyCell, { kind: "tool" }>): string {
 	return toolTarget(c.name, input);
 }
 
-/** The tool execution line + the bounded block — every state is its
- *  own render; the lines fold (the summary gives way first). W7 (the
- *  flow contract): the block's BODY (the rows below the header) is
- *  capped in SCREEN rows AFTER the fold, at the current width — the
- *  renderer-cut row (`└ +N … · ctrl+o`) sits INSIDE the cap (a
- *  truncated block is cap−1 output rows + the cut row); the TOOL-cut
- *  row (`└ capped by …` — the tool's OWN truncation note, W10) is a
- *  DIFFERENT fact, never counted in the output cap. W3: the verb is
- *  stripped of its "_file" suffix and padded to 5 columns — the target
- *  paths line up (the pipe path strips the same suffix, render.ts —
- *  both paths print the same verb; a verb ≥ 5 columns is not padded).
- *  The block's cut note keeps the RAW name (it names the tool the
- *  model should call again). W4: the settled row's parentheses hold
- *  the human metadata (settledMeta) — the input summary lived in the
- *  running row; the OUTCOME is what the settled row says. A4: the
- *  settled row keeps the TARGET — verb + target + outcome, the running
- *  row's summary column (the W19 pinned row keeps the full call name
- *  instead). A5: the verdict rides the head row — a decidedBy present
- *  on the cell appends `· approved by X` (extension auto-approvals) or
+/** THE TOOL CARD — one per call, every state its own render (R13):
+ *  pad · head row · blank · the preview, capped at CAP_PREVIEW rows and
+ *  cut with a note that names the key · blank · the outcome row · pad;
+ *  a call with nothing to show is the three-row bodiless card. The body
+ *  is capped in SCREEN rows at the current width; the tool's OWN
+ *  truncation note (W10, `capped by …`) is a different fact, never
+ *  counted against the cap. W3: the verb drops its "_file" suffix and
+ *  pads to 5 columns so the targets line up (the pipe path prints the
+ *  same verb). A4: the settled head row is verb + target + outcome; the
+ *  W19 pinned deny keeps the full call name instead. A5: a decidedBy on
+ *  the cell appends `· approved by X` (an extension's auto-approval) or
  *  `· by X` on the pinned deny; the human decision needs no marker. */
 class ToolExecution implements Component {
 	constructor(private readonly cell: Extract<BodyCell, { kind: "tool" }>) {}
@@ -740,10 +727,9 @@ class ToolExecution implements Component {
 		const c = this.cell;
 		const verb = escapeTerminal(displayVerb(c.name));
 		const verbCol = verb.length < 5 ? `${verb}${" ".repeat(5 - verb.length)}` : verb;
-		// R13 — the W13 rollup row and TUI2-R1 (B)'s exploration row stood
-		// here, ahead of everything else a settled call could be. Both are
-		// retired with the `rolled` field they read (see the compositor's
-		// #foldOrRollup for the reversal in full).
+		// DECLARED REVERSAL (R13): the W13 rollup row and TUI2-R1 (B)'s
+		// exploration row stood here, ahead of everything else a settled
+		// call could be; both retired with the `rolled` field they read.
 		if (c.state === "done") {
 			// R3i phase 5: an answered (or declined) ask_user renders its
 			// OWN block — the questions and what the human said. The row
@@ -994,8 +980,8 @@ class ToolExecution implements Component {
  * The affordance is a statement about hidden content: a cell whose body
  * is already whole on screen must not advertise a key that would show it
  * the same thing, and a cell that already carries its own renderer cut
- * (`└ +N earlier rows · ctrl+o`, `└ +N more · ctrl+o`) already teaches
- * the key at the place the content stops. What is LEFT — and it is the
+ * (the `… N · ctrl+o expands` note) already teaches the key at the
+ * place the content stops. What is LEFT — and it is the
  * common case — is every settled non-shell call, whose collapsed body is
  * empty: the whole result sits behind the key with nothing on screen
  * saying so.
@@ -1160,7 +1146,7 @@ function appendSuffix(row: string, suffix: string): string {
  *
  * Applied to a row rather than composed into it on purpose. The token is
  * emitted from several places (the settled suffix, the renderer's own
- * `└ +N … · ctrl+o` cut rows) and threading a flag through all of them
+ * cut notes) and threading a flag through all of them
  * would put the invariant "exactly one bright token" in as many hands as
  * there are emitters. Here it has exactly one.
  *
@@ -1199,9 +1185,7 @@ export function focusToken(row: string, W: number): string {
  *  a constant named after its binding is a comment that lies. */
 const EXPAND_KEY = "ctrl+o";
 
-/** TUI2-R1 (A) — the expanded block's last row: the way back. The
- *  rollup's expanded list carries a second clause (its members' full
- *  outputs live in /last, which the group row cannot show). */
+/** TUI2-R1 (A) — the expanded card's key suffix: the way back. */
 const COLLAPSE_ROW = "ctrl+o collapses";
 
 /* DECLARED REVERSAL (R13, owner-ruled 2026-09-03): the W13 rollup's
@@ -1268,7 +1252,7 @@ export function foldTerms(reads: number, edits: number, others: readonly [string
  * is emphasis, never information). A typed answer says `(typed)`,
  * because where an answer came from is a fact about it.
  *
- * It is WORDS, not work (law 1.7): it never folds into a stretch line,
+ * It is WORDS, not work (law 1.7): no summary ever stands for it,
  * because the one thing a summary must not do is speak for the human.
  *
  * A result that is not the ask's own JSON yields NOTHING. This renderer
@@ -1324,10 +1308,6 @@ export const CAP_PREVIEW = 5;
  *  `LIVE_WINDOW` (CAP_PREVIEW + 1) retires with the allocation it sized. */
 const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
 
-/** The block body rows' prefixes (W2's gutter table): │ a bounded
- *  block's body, └ the block's last row — what was cut, where the rest
- *  is — at the LEFT EDGE (the gutter column: the left edge alone
- *  distinguishes the states at --plain). Structural (constraint 1). */
 /** R8a — A TOOL BLOCK'S ROWS ARE INDENTED, NOT GUTTERED.
  *
  *  `│ ` on every row drew a bar down the left of every multi-row
@@ -1341,8 +1321,7 @@ const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
  *  row (see openBlock). In-block notes take the same indent,
  *  no glyph — because a second `└` inside one block would be the same
  *  mark meaning two things (§4.1). CUT_ROW is unchanged for the
- *  surfaces that are not a tool block: the fold row's target list, the
- *  slot's overflow count. */
+ *  surfaces that are not a tool block. */
 /** R8a's four columns — off the surface. Inside a painted card every
  *  row sits at column 2 (R13 E4): the head row and the outcome row
  *  bracket the preview, so the indent is no longer what says "these
@@ -2083,7 +2062,7 @@ class Checklist implements Component {
 	}
 }
 
-// ---- the chrome components (the status container, the slot, the footer) ----
+// ---- the chrome components (the status container, the footer) ----
 
 /** The status container's row: the status text (+ the tail) with the
  *  right-aligned "/ commands · ↑ history" hint in the idle state —

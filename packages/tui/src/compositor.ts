@@ -11,14 +11,17 @@
  *    the reference implementation's model): a line COMMITS (leaves the
  *    live region) via the real-LF
  *    scroll at the last row (`\x1b[1B\n` — CUP-free) when its cell is
- *    DONE and the region needs the room. Committed bytes are never
- *    re-emitted — the native scrollback gets them, reflow-safe, and
- *    the user's shell history is never touched (zero \x1b[3J, zero
- *    replay);
+ *    DONE and the region needs the room. Within a geometry, committed
+ *    bytes are never re-emitted — the native scrollback gets them. The
+ *    one exception is a SETTLED RESIZE (ADR-0046 Amendment 1, R14):
+ *    `2J H 3J`, then the whole session reprinted from the model, so the
+ *    terminal holds exactly one rendering; the shell history the
+ *    terminal held before kiso started is the declared cost;
  *  - the live region (content + chrome + menu) is hard-capped: the
  *    content at H−4 (V6-3 — the four-row chrome); overflow FORCE-
- *    commits the oldest live line regardless of done-ness — the one
- *    sharp edge (asserted by the VT-emulator gate);
+ *    commits the oldest live cell that has a committed form — never a
+ *    tool call still running (DC-53); a running card's window shrinks
+ *    to the room instead (DC-43);
  *  - two crash invariants: ① every emitted line's visible width ≤ W
  *    (components fold; a violation THROWS with diagnostics — the
  *    no-silent-truncate ruling); ② every steady-
@@ -267,22 +270,6 @@ export class Body {
 	#needsReset = false;
 	#resizeTimer: ReturnType<typeof setTimeout> | null = null;
 	#lastH = 0;
-	/** DC-34 — did THIS FRAME refold the committed cells?
-	 *
-	 *  It must be reset where the question is asked, not only where it
-	 *  is answered. Armed once and consumed later, it latched: the
-	 *  session's FIRST frame ran a vacuous refold over zero committed
-	 *  cells and set it, and nothing cleared it until the first resize —
-	 *  so every session's first widen still ran the adopt it was
-	 *  supposed to skip, and swallowed the live band's worth of
-	 *  committed rows. Three paragraphs, in the measurement that found
-	 *  it.
-	 *
-	 *  DECLARED REVERSAL (R14, owner-ruled 2026-09-05): the flag and the
-	 *  refold it guarded (`#refolded`, `#lastW`, the frontier-scoped
-	 *  refold at the top of render()) are gone. A settled resize erases
-	 *  the terminal and reprints from the model, so no committed row is
-	 *  ever refolded in place any more. */
 	/** R14 — the geometry the last frame PAINTED, and the snapshot of it
 	 *  taken when a winch opens a settle window.
 	 *
@@ -488,14 +475,14 @@ export class Body {
 			last.text += text;
 		} else {
 			this.#cells.push({ kind: "thinking", text, done: false, turn: this.#turns.length - 1 });
-			// R7 (owner-ruled 2026-08-31): thinking is WORDS, not work — it
-			// never folded and never joined a stretch; it is a cell like prose.
+			// R7 (owner-ruled 2026-08-31): thinking is WORDS, not work — a
+			// cell like prose.
 			const t0 = this.#turns[this.#turns.length - 1];
 			if (t0 !== undefined) t0.begun = true;
 			// R3i: the beat starts HERE. Law 1.4 says "a running thought
 			// twinkles", and `#armSpinner`'s predicate includes an open
 			// thinking cell — but its only caller used to be `toolRunning`,
-			// so a stretch that thought and did nothing else never moved.
+			// so a turn that thought and did nothing else never moved.
 			this.#armSpinner();
 		}
 		this.#mark();
@@ -528,9 +515,7 @@ export class Body {
 		// `done` flag says otherwise. The commit loop takes leading DONE
 		// cells, so that one stale flag parked the whole rest of the turn
 		// behind it — every tool cell then reached the screen through the
-		// FORCE-commit path, which by design bypasses the fold-hold. That is
-		// why the walkthrough saw nine individual rows: not a fold that
-		// declined to form, a fold that was never consulted.
+		// FORCE-commit path.
 		this.#closeOpenThinking();
 		this.#closeOpenText();
 		// W12: the cell carries the delegate's child roles from the FULL
@@ -767,9 +752,7 @@ export class Body {
 		// and only ever left it through the force-commit cap. The turn's
 		// end is the boundary that closes them, exactly as it closes an
 		// open thinking cell. `reason` is set so the row keeps its words
-		// AND so #segmentHasTrouble holds the turn unfolded — an
-		// interruption is trouble, and law 1.3 says trouble is never
-		// summarised away.
+		// (law 1.3: trouble is never summarised away).
 		for (const c of this.#cells) {
 			if (c.kind === "tool" && !c.done) {
 				c.state = "done";
@@ -779,10 +762,8 @@ export class Body {
 			}
 		}
 		// the QUIET turn: an open thinking cell closes at the boundary —
-		// its natural closer is the text's arrival (never comes here — the
-		// text-less turn), so without this the fold could never commit AT
-		// it (the commit loop only takes done cells — the fold would stall
-		// forever behind the live thinking).
+		// its natural closer is the text's arrival, which a text-less turn
+		// never has, and the commit loop only takes done cells.
 		for (let i = this.#cells.length - 1; i >= 0; i -= 1) {
 			const c = this.#cells[i]!;
 			if (c.kind === "thinking" && !c.done) {
@@ -915,29 +896,12 @@ export class Body {
 		return this.#lastTool;
 	}
 
-	/** W15 — the expand key's target (ctrl+o). A cell still in the LIVE
-	 *  region (the newest live tool) TOGGLES in place — the compositor
-	 *  owns those rows and redraws them (the body flips to the full
-	 *  form, no cap). A committed cell can never toggle — history is
-	 *  never rewritten (ADR-0046) — so the key APPENDS a fresh expanded
-	 *  block at the bottom instead, the /last idiom aimed at a chosen
-	 *  cell: the pointer cycles the collapsed history, newest first, and
-	 *  the header names the target ("N turns back" — the user cells
-	 *  after it), so every press tells the user what they got. */
-	/**
-	 * TUI2-R2 ⑤ — the cell the next ctrl+o will act on, or -1.
-	 *
-	 * The rule is expandNext's own first loop, extracted verbatim: the
-	 * LAST live cell that can toggle. It is a separate method rather than
-	 * a shared constant because the marker and the key must not merely
-	 * agree today — the marker is a PROMISE about what the key will do,
-	 * and the only way to keep it is to derive it from the same scan.
-	 *
-	 * The committed fallback (the #collapsed ring) is deliberately NOT
-	 * marked: those rows are frozen history, never re-emitted, so a tint
-	 * on them could not be moved when the pointer advances. A live target
-	 * is the one the marker can tell the truth about.
-	 */
+	/** TUI2-R2 ⑤ — the cell whose head row wears the bright token, or -1:
+	 *  the newest live cell that can toggle. Committed cells are never
+	 *  marked — their rows are history, and a tint on them could not
+	 *  move. DC-50 made ctrl+o a global switch (`toggleExpanded`), so the
+	 *  token no longer names the key's one target; it marks the card the
+	 *  affordance is read from. */
 	#focusIndex(): number {
 		for (let i = this.#cells.length - 1; i >= this.#committed; i -= 1) {
 			const cell = this.#cells[i]!;
@@ -948,34 +912,18 @@ export class Body {
 	}
 
 	/**
-	 * R4 (C4d) — THE APPEND-ONLY RE-WRAP.
-	 *
-	 * The owner's report: resize the window and the reference
-	 * implementation's text re-wraps to the new width while kiso's does
-	 * not. It is true, and it is not a bug to be fixed — it is the price
-	 * of ADR-0046, and the price is worth naming precisely.
-	 *
-	 * A terminal can only reflow a SOFT-wrapped line: one long logical
-	 * line the terminal itself wrapped as the cursor flowed past the last
-	 * column. Every row kiso commits is either painted by cursor
-	 * addressing (#emitDiff) or scrolled out by a bare LF (#emitScroll),
-	 * and frames run with autowrap OFF — so no byte kiso commits can ever
-	 * carry a continuation flag, and nothing downstream can rejoin rows an
-	 * application hard-split. That same LF is what makes the transcript
-	 * the TERMINAL's: it survives kiso's death, a pipe, and tmux. A
-	 * product whose transcript reflows is a product that repaints its
-	 * transcript from its own memory, and that transcript dies with it.
-	 *
-	 * What kiso can do — and this is all it can do — is APPEND. The
-	 * committed cells are still in memory; re-render them at the current
-	 * width and put them at the BOTTOM, where writing is allowed. Nothing
-	 * above is rewritten, so ADR-0046 holds exactly.
+	 * R4 (C4d) — `/rewrap`: the recent PROSE, re-rendered at the current
+	 * width and APPENDED at the bottom. Committed rows carry no soft-wrap
+	 * flag (autowrap is OFF; every row is painted or scrolled out by a
+	 * bare LF), so the terminal cannot reflow them itself. R14
+	 * (ADR-0046 Amendment 1, D-B3) made a settled resize reprint the
+	 * whole session from the model on its own; this stays as the
+	 * user-invoked form, and it still appends rather than erasing —
+	 * nothing above the append is rewritten.
 	 *
 	 * Scoped to PROSE. Text is what reads badly at the wrong width — a
 	 * paragraph folded for 120 columns and read at 60 is the complaint.
-	 * Tool rows, folds and chips are short, already carry their own
-	 * width ladders, and re-printing them would duplicate work the folds
-	 * exist to state once.
+	 * Cards and chips are short and carry their own width ladders.
 	 */
 	rewrap(): { lines: string[]; blocks: number; skipped: number } {
 		const W = this.#opts.width();
@@ -1104,8 +1052,7 @@ export class Body {
 			if (cell.kind !== "tool") continue;
 			// the tool card's FULL body — the same rows its own ctrl+o
 			// opens. The expanded flag is saved and restored inside this
-			// synchronous call, the pattern the rollup path has always
-			// used for head.rolled; it never outlives the render, so the
+			// synchronous call; it never outlives the render, so the
 			// committed geometry #committedLines derives can never see it.
 			const saved = cell.expanded;
 			cell.expanded = true;
@@ -1138,32 +1085,13 @@ export class Body {
 		];
 	}
 
-	/*
-	 * RETIRED (DC-50 / R14, 2026-09-05) — `expandNext`, `#expandNextRaw`,
-	 * `#lastAppend`, and the `#opened` bookkeeping that went with them.
-	 *
-	 * The whole apparatus served ONE constraint: ADR-0046 §3 forbade
-	 * re-rendering a committed card, so the only way to show one's body
-	 * was to APPEND a copy further down the transcript. That needed a ring
-	 * to choose which card came next, a set to stop the ring repeating
-	 * itself, and DC-35's guard to stop a HELD key printing the same four
-	 * rows three times — a defect the owner met in the field, each copy
-	 * closing with a footer that named something which did not exist.
-	 *
-	 * Amendment 1 removes the constraint. The terminal's scrollback is
-	 * ours to erase, so a committed card is re-rendered where it stands:
-	 * nothing to append, nothing to choose between, no repeat to guard.
-	 * `toggleExpanded` is the whole of the feature now.
-	 *
-	 * `#collapsed` STAYS — the viewer (ctrl+r) reads it as its index of
-	 * expandable cells, and §9 keeps the two surfaces side by side.
-	 *
-	 * `expandedCard` does NOT stay, and an earlier draft of this note said
-	 * it did. An expanded card is drawn by the ORDINARY card renderer with
-	 * `expanded` set — full body, `ctrl+o collapses` in place of the cut
-	 * note — which `r14-global-expand` pins. `expandedCard` was the shape
-	 * of the APPENDED block and has no caller once the append is gone.
-	 */
+	/* DECLARED REVERSAL (DC-50 / R14, 2026-09-05): the APPENDED expansion
+	   stood here — `expandNext`, `#expandNextRaw`, `#lastAppend`, the
+	   `#opened` set. ADR-0046 §3 forbade re-rendering a committed card,
+	   so the only way to show a body was to print a copy further down.
+	   Amendment 1 lets a settled reprint re-render every card where it
+	   stands, and `toggleExpanded` is the whole feature. `#collapsed`
+	   stays: the viewer (ctrl+r) reads it as its index of cut cells. */
 
 	// ---- the Dock façade (the CLI's chrome API — same shape as the old dock) ----
 
@@ -1498,7 +1426,7 @@ export class Body {
 		// The terminal now holds nothing, so every record of what it held
 		// is void. `#scrolledOff` is the frontier of what reached its
 		// scrollback: after the erase, that is zero — which is also what
-		// releases the committed cells to be refolded at the new width
+		// releases the committed cells to be re-rendered at the new width
 		// without contradicting anything, the thing DC-34's frontier rule
 		// existed to prevent.
 		this.#scrolledOff = 0;
@@ -1742,50 +1670,17 @@ export class Body {
 	// ---- the one writer ----
 
 	/**
-	 * R3i phase 2 — THE LIVE PROJECTION.
-	 *
-	 * One definition, called from the natural path and from inside the
-	 * force-commit loop, because two copies of "what the live region
-	 * looks like" is two answers to one question.
-	 *
-	 * The change this phase makes, and the ONLY one: the cells of the
-	 * OPEN stretch no longer each hold a row. The stretch is one line —
-	 * the same line the settle will keep, in the present tense — plus
-	 * the calls actually in flight. A completed call renders nothing;
-	 * its count rides the line.
-	 *
-	 * What it fixes: a 28-call turn used to spend 28 rows of a 30-row
-	 * live region, so overflow was the NORM on real turns rather than
-	 * the edge — and a turn that overflows may not fold (R3f: a line
-	 * cannot claim rows already in the scrollback), which is why the
-	 * fold missed exactly the turns it exists for. The block's height
-	 * no longer depends on the call count at all.
-	 *
-	 * What it does NOT change: nothing about what commits or when. The
-	 * hold is untouched, the force-commit cap is untouched, and the
-	 * settle still produces the same fold it did before. That is the
-	 * charter's line between this phase and the next.
+	 * THE LIVE PROJECTION — the uncommitted cells as rows, one definition
+	 * for the natural path and the force-commit loop alike (two copies of
+	 * "what the live region looks like" would be two answers to one
+	 * question). The live region is bounded by the SCREEN, and nothing
+	 * else: DC-46's `#liveRoom` capped it at `H − chrome − #committedLines`
+	 * to keep the window's top monotone, but `#committedLines` is
+	 * cumulative, so one screenful into any session every running call
+	 * was a head row with its output gone. The window's top is held by
+	 * the `skip` clamp in render() instead; a live region that grows
+	 * scrolls committed rows away, which is an append and not an un-scroll.
 	 */
-	/* DC-46 — `#liveRoom` RETIRED, and the reasoning with it.
-	   It capped the live region at `H − chrome − #committedLines`, to
-	   keep `skip` a function of `#committedLines` alone and therefore
-	   monotone. The argument was right about `skip` and wrong about the
-	   quantity: `#committedLines` is CUMULATIVE — re-derived over the
-	   whole line cache every frame, counting rows that left for the
-	   terminal's scrollback long ago — so one screenful into any session
-	   it exceeds H, the room clamps to its floor of one row, and every
-	   running call after that is a head row with its output gone.
-	   Measured at 24 and 40 rows with eight blank rows still on screen.
-
-	   The live region is bounded by the SCREEN (the content cap the
-	   force-commit loop already uses). What holds the window's top is
-	   the `skip` clamp below: rows in [0, #scrolledOff) have reached the
-	   terminal's scrollback and are immutable, so the paint may not go
-	   back above them. A live region that GROWS scrolls committed rows
-	   away through #emitScroll, which is an append and not an un-scroll.
-	   The residue is a transient hole above the composer at a settle,
-	   bounded by the shrink itself and filled by the next commit. */
-
 	#liveProjection(W: number, ctx: FrameCtx, cap?: number): string[] {
 		const rows = this.#project(W, ctx, CAP_PREVIEW);
 		if (cap === undefined || rows.length <= cap) return rows;
@@ -1823,27 +1718,12 @@ export class Body {
 	}
 
 	/**
-	 * R13 — ONE PASS, AND EVERY CELL RENDERS ITSELF.
-	 *
-	 * DECLARED REVERSAL of R3i's stretch line, R4's standing activity
-	 * slot and R6/D1's block-stands-for-the-turn, all owner-ruled on
-	 * 2026-09-03 and all of them the same idea: the open stretch drew ONE
-	 * line plus a fixed slot, and every other cell of the segment drew
-	 * nothing, so the live region's height was independent of the call
-	 * count. That was the answer to a 28-call turn spending 28 rows of a
-	 * 30-row region.
-	 *
-	 * The card answers it differently, and the ruling prefers this
-	 * answer: a running call is its own card at a FIXED height (E2), so
-	 * the height is a function of how many calls are IN FLIGHT rather
-	 * than of how many have happened — and the window shrinks to the room
-	 * before anything is force-committed (above). The live form and the
-	 * committed form are now the same form, which is what makes a settle
-	 * a change of content and never of position.
-	 *
-	 * What this keeps from R4: the height never moves ON ITS OWN. What it
-	 * gives up: the one-line summary of a stretch, which the owner ruled
-	 * costs more than it buys.
+	 * ONE PASS, AND EVERY CELL RENDERS ITSELF. The live form and the
+	 * committed form are the same form, which is what makes a settle a
+	 * change of content and never of position (DECLARED REVERSAL, R13:
+	 * R3i's stretch line and R4's standing slot drew one line plus a
+	 * fixed block for the whole stretch and had every other cell draw
+	 * nothing; the owner ruled the summary costs more than it buys).
 	 */
 	#project(W: number, ctx: FrameCtx, budget: number): string[] {
 		const out: string[] = [];
@@ -1935,22 +1815,18 @@ export class Body {
 			);
 		}
 		// DC-27 — the scalar measures the PROJECTION, not a second render
-		// of its own. This loop used to walk every live cell and render it
-		// in full: no open-segment collapse, no flight rule, no act-slot
-		// budget. After R3i that described a screen the compositor had
-		// stopped drawing — for an open stretch with five finished calls
-		// it counted five four-row blocks that were not there. Nothing
-		// broke, because the force-commit loop measures liveLines.length
-		// and the over-count is conservative; but the cap and geometry
-		// gates were asserting a property of a function nothing paints
-		// from, so a real regression in the region's height could not
-		// have moved them. The rule this file already states for the
-		// sheet ("the scalar must say so, or the cap arithmetic disagrees
-		// with the screen") is the same rule here.
+		// of its own. A loop that re-rendered every live cell in full
+		// counted rows the projection never drew; nothing broke, because
+		// the force-commit loop measures liveLines.length and the
+		// over-count was conservative, but the cap and geometry gates were
+		// asserting a property of a function nothing paints from. The rule
+		// this file already states for the sheet ("the scalar must say so,
+		// or the cap arithmetic disagrees with the screen") is the same
+		// rule here.
 		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: this.#opts.height() };
 		const W = this.#opts.width();
 		// the SAME content cap the force-commit loop applies, so the
-		// scalar sees the same slot budget the screen gets.
+		// scalar sees the same budget the screen gets.
 		const rows = this.#liveProjection(W, ctx, this.#opts.height() - 4 - inputExtra - queueRows.length);
 		return rows.length + CHROME_ROWS + inputExtra + this.#menuRows(W).length + queueRows.length;
 	}
@@ -2068,43 +1944,21 @@ export class Body {
 			liveLines = frame.rows;
 			panelSpan = frame.options;
 		} else {
-			// TUI2-R2 ⑤ (D, candidate 1): the FOCUS — the cell the next ctrl+o
-			// will act on brightens its own token. The index is derived from
-			// the SAME scan expandNext performs (#focusIndex shares its rule
-			// by construction), so the marker can never point at a cell the
-			// key would not take — which is the only way a focus marker is
-			// worth having.
+			// TUI2-R2 ⑤: the bright token rides the newest live card's head
+			// row (#project, #focusIndex).
 			liveLines = this.#liveProjection(W, ctx, H - 4 - inputExtra - queueRows.length);
 		}
-		// 3. the FORCE commits — the live region's hard cap H−1: overflow
-		//    commits the oldest live cell UNCONDITIONALLY (the one sharp
-		//    edge — the cap scalar is asserted by the gates). W22: the
-		//    queue band shrinks the cap by its rows (empty queue → H−4).
-		// DC-53 — AND NEVER A CELL THAT IS NOT DONE.
-		//
-		// This loop committed `#committed` unconditionally. R4's standing
-		// slot held the live region at a constant height, so the
-		// projection never grew past the cap on its own and the loop never
-		// reached a running cell; R13 retired the slot (DC-46) and it
-		// promptly did. Three parallel searches, the last two settling
-		// first: their cards pushed the region over the cap, the loop
-		// committed the FIRST call — still in flight — froze its
-		// three-row running card and its breathing mark into the
-		// scrollback, and stepped `#committed` past it. When the result
-		// arrived there was no live cell left to draw it into, so the work
-		// never reached the screen at all.
-		//
-		// A cell that is not done has no committed form yet; committing
-		// one is writing history that has not happened. When the head is
-		// running, the region gives way instead — the cards behind it
-		// degrade first, then the running window shrinks (DC-43's own
-		// ladder, in #liveProjection), and the remainder is counted.
-		// The guard is on a RUNNING TOOL CALL specifically, not on any
-		// unfinished cell. A streaming text or raw cell HAS a committed
-		// form — the rows it has already written are final, append-only —
-		// and spilling those is exactly what this loop is for. A running
-		// call does not: its card changes shape at the settle, so a
-		// committed one is a row that will never be corrected.
+		// 3. the FORCE commits — the live region's hard cap: overflow
+		//    commits the oldest live cell (W22: the queue band shrinks the
+		//    cap by its rows) — but NEVER A TOOL CALL STILL RUNNING (DC-53).
+		//    A running card has no committed form yet: its shape changes
+		//    at the settle, so a committed one would be a row that is
+		//    never corrected — measured as a burst's first call frozen into
+		//    the scrollback with its breathing mark, its result never
+		//    drawn. A streaming text or raw cell DOES have a committed form
+		//    (its rows are final, append-only) and spills normally. When
+		//    the head is running the region gives way instead: the cards
+		//    behind it degrade, then the window shrinks (#liveProjection).
 		while (
 			liveLines.length > H - 4 - inputExtra - queueRows.length && // V6-3: the content cap H−4 (KC1: −N's extra rows)
 			this.#committed < this.#cells.length &&
@@ -2206,27 +2060,11 @@ export class Body {
 		// never paired with a ?25h. Sync (2026) still brackets the frame
 		// where the terminal understands it.
 		out.push(this.#conservative ? "\x1b[?25l" : "\x1b[?2026h\x1b[?25l");
-		// A8: the bottom-anchored window (the model's last H rows) shifts
-		// DOWN when the live region SHRINKS — the done-fold, the fold-hold
-		// release at the terminal event. The steady path's scroll syncs
-		// exactly N committed lines, but the window moves N + liveDelta:
-		// a shrink with commits (liveTop grows by LESS than N — the scroll
-		// overshoots by liveDelta) slips past the pure-shrink trigger, the
-		// stale pass erases the old live rows, and nothing re-paints the
-		// band between the committed window and the new liveTop (finding
-		// #A8 — the W11-boundary pileup). A GROWTH is safe on the steady
-		// path (the new live's bottom-anchored extent covers the old — the
-		// erased rows are all re-painted); a shrink takes the full-redraw
-		// path: the window re-paints at the model's positions, every row
-		// covered (the V6-1 every-row rule).
-		// REL-0152-R1: ONE renderer. The steady/full split existed because
-		// the steady path moved rows by scrolling and could not handle a
-		// window that moved the wrong way, so the frames it could not draw
-		// were handed to a full repaint. A diff has no such frames: it
-		// emits the rows that differ, and on a frame where everything
-		// differs that IS a full repaint. The dispatch, the two geometries
-		// and the invariant about which moves each path may use all go
-		// with it.
+		// REL-0152-R1: ONE renderer. A diff emits the rows that differ, and
+		// on a frame where everything differs that IS a full repaint — so
+		// the old steady/full split (a scrolling path that could not draw
+		// a window moving the wrong way, finding #A8) has nothing left to
+		// dispatch between.
 		this.#drawFull(out, W, H, liveTop, liveLines, queueRows, menuRows, editor);
 		this.#fullRedraw = false;
 		// REL-0161: the frame close no longer shows the cursor — hidden IS
@@ -2266,18 +2104,9 @@ export class Body {
 		return bodySpacing(this.#lastDrawn(i, prev), rows);
 	}
 
-	/**
-	 * R3i — the previous DRAWN sibling, not the previous cell.
-	 *
-	 * The spacing formula reads what stood above; a cell that rendered
-	 * nothing did not stand above anything. Since R3d whole families of
-	 * cells render `[]` — the members a fold speaks for — and the
-	 * formula was reading that empty array as "a zero-row sibling", so a
-	 * multi-row block following a fold lost the blank that belongs above
-	 * it. The defect predates this round (any folded turn followed by a
-	 * raw block has it); R3i's projection is what finally put a test on
-	 * the path.
-	 */
+	/** The previous DRAWN sibling, not the previous cell: the spacing
+	 *  formula reads what stood above, and a cell that rendered nothing
+	 *  did not stand above anything (R3i). */
 	#lastDrawn(i: number, prev: readonly string[] | null): readonly string[] | null {
 		if (prev !== null && prev.length > 0) return prev;
 		for (let j = i - 1; j >= 0; j -= 1) {
