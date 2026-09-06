@@ -9,6 +9,8 @@
 		"apps/cli/tests/coding-agent.test.ts",
 		"apps/cli/tests/compact-cli.test.ts",
 		"apps/cli/tests/config-e2e.test.ts",
+		"apps/cli/tests/cx1-f5-task-file.test.ts",
+		"apps/cli/tests/cx1-f9-entry-equivalence.test.ts",
 		"apps/cli/tests/dc33-resize-midturn.test.ts",
 		"apps/cli/tests/dc34-widen-seam.test.ts",
 		"apps/cli/tests/dc41-key-swap-pty.test.ts",
@@ -87,6 +89,7 @@
 		"extensions/mcp/tests/mcp-e2e.test.ts",
 		"extensions/mcp/tests/mcp.test.ts",
 		"extensions/skills/tests/skills-e2e.test.ts",
+		"extensions/subagent/tests/cx1-batch-a.test.ts",
 		"extensions/subagent/tests/subagent-e2e.test.ts",
 		"extensions/subagent/tests/subagent.test.ts",
 		"packages/runtime/tests/framing-lock.test.ts",
@@ -116,7 +119,7 @@
 	"exempt": [
 		{
 			"file": "packages/tui/tests/dc48-invariant-fallback.test.ts",
-			"reason": "spawns nothing and drives the compositor in process. The classifier reads SOURCE TEXT, and this file's comments name isolated-cli.mjs to say where KISO_INVARIANTS=throw is set for PTY children — prose about a helper, not an import of one. Verified: no child_process, no spawn, no pty helper."
+			"reason": "spawns nothing and drives the compositor in process. The classifier reads SOURCE TEXT, and this file's comments name isolated-cli.mjs to say where KISO_INVARIANTS=throw is set for PTY children \u2014 prose about a helper, not an import of one. Verified: no child_process, no spawn, no pty helper."
 		}
 	]
 }

@@ -192,6 +192,9 @@ export function atWalkFor(root: string, excludeRoots: readonly string[]): readon
  * source.
  */
 export interface LineInput {
+	/** CX-1 F5: task-file mode — every line delivered is a TURN, never a
+	 *  command; the dispatcher is bypassed (a leading `/` is content). */
+	readonly literal?: boolean;
 	onLine(cb: (line: string) => void): void;
 	onSigint(cb: () => void): void;
 	onEot(cb: () => void): void;

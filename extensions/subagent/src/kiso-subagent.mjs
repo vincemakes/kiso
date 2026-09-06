@@ -19,7 +19,8 @@
  */
 
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -74,9 +75,17 @@ export default async function createSubagentExtension() {
 					const parentId = ctx.sessionId ?? discoverParentId(sessionsDir);
 					const bin = process.env.KISO_SUBAGENT_BIN ?? process.argv[1];
 					const timeout = Number.parseInt(process.env.KISO_SUBAGENT_TIMEOUT_MS ?? "", 10) || TIMEOUT_MS;
+					// CX-1 F6 (audit F6): every delegate invocation mints its own
+					// identity — ToolContext carries none — so two invocations never
+					// share a child session, and the result is located by identity.
+					const delegationId = randomBytes(12).toString("hex");
+					const manifestDir = join(sessionsDir, "subagent");
+					mkdirSync(manifestDir, { recursive: true });
 					const sections = await runLimited(tasks, CONCURRENCY, (task, i) =>
 						runChild({
-							childId: `sub-${parentId}-${i + 1}-${task.role}`,
+							childId: `sub-${parentId}-${delegationId}-${i + 1}-${task.role}`,
+							manifestDir,
+							manifest: { parentId, delegationId, index: i + 1, role: task.role, startedAt: Date.now() },
 							role: task.role,
 							task: task.task,
 							sessionsDir,
@@ -144,15 +153,24 @@ function runLimited(items, limit, fn) {
 	return Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker)).then(() => results);
 }
 
-async function runChild({ childId, role, task, sessionsDir, bin, timeout, signal, parentCwd }) {
+async function runChild({ childId, role, task, sessionsDir, bin, timeout, signal, parentCwd, manifestDir, manifest }) {
 	// implementer isolation: a detached git worktree; the child works inside
 	// it and its diff comes back. Non-git parents fail the task HONESTLY.
+	// CX-1 F6: the manifest binds this invocation to its child session
+	// BEFORE anything runs — the durable record of "which run is mine".
+	if (manifestDir !== undefined) {
+		writeFileSync(join(manifestDir, `${childId}.json`), `${JSON.stringify({ ...manifest, childId })}\n`, "utf8");
+	}
 	let worktree = null;
+	let baseRev = null;
 	let childCwd = parentCwd;
 	if (role === "implementer") {
 		worktree = mkdtempSync(join(tmpdir(), "kiso-subagent-wt-"));
 		try {
 			execFileSync("git", ["-C", parentCwd, "worktree", "add", "--detach", worktree], { stdio: "ignore" });
+			// CX-1 F2: the base revision — a child that COMMITS is compared
+			// against it, never read as "unchanged".
+			baseRev = execFileSync("git", ["-C", worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 			childCwd = worktree;
 		} catch (err) {
 			rmSync(worktree, { recursive: true, force: true });
@@ -164,9 +182,14 @@ async function runChild({ childId, role, task, sessionsDir, bin, timeout, signal
 	writeFileSync(join(policyDir, "policy.mjs"), rolePolicyContent(role), "utf8");
 	let keepWorktree = false;
 	try {
-		const { code, stdout, killed } = await runProcess(childId, bin, childCwd, policyDir, task, timeout, signal);
+		// CX-1 F5 (audit F5): the task travels as a FILE the child reads into
+		// exactly one user turn — never as stdin lines (the non-TTY path is a
+		// line-oriented readline: newlines were turns, `exit` ended input).
+		const taskPath = join(manifestDir ?? policyDir, `${childId}.task`);
+		writeFileSync(taskPath, task, "utf8");
+		const { code, stdout, killed } = await runProcess(childId, bin, childCwd, policyDir, taskPath, timeout, signal);
 		const extraction = await extractChildResult(sessionsDir, childId, `exit ${code}\n${stdout}`);
-		const failed = code !== 0 || killed !== null || extraction.failed;
+		let failed = code !== 0 || killed !== null || extraction.failed;
 		let text = `[subagent] ${role}: ${task}\n  outcome: ${extraction.outcome}\n  tools: ${extraction.toolCalls}`;
 		if (killed === "timeout") {
 			text += `\n  FAILED: timed out after ${timeout}ms (the child process group was killed)`;
@@ -179,16 +202,28 @@ async function runChild({ childId, role, task, sessionsDir, bin, timeout, signal
 		}
 		if (extraction.text !== "") text += `\n${extraction.text}`;
 		if (role === "implementer") {
-			const diff = worktreeDiff(worktree);
-			if (diff !== null) {
+			// CX-1 F2 (audit F2): tri-state collection. `collected` is earned
+			// (the patch file closed AND git exited 0); a failure PRESERVES the
+			// worktree and says so; "consumed" is undefined this batch, so a
+			// worktree with changes is always kept and named.
+			const patchPath = join(manifestDir ?? tmpdir(), `${childId}.patch`);
+			const col = await collectWorktree(worktree, baseRev, patchPath);
+			if (col.kind === "collected") {
 				keepWorktree = true;
-				text += `\n  diff:\n${diff}\n  worktree kept at: ${worktree}`;
+				text += `\n  diff:\n${col.stat}\n  patch: ${patchPath}`;
+				if (col.bytes <= INLINE_PATCH_BYTES) text += `\n${readFileSync(patchPath, "utf8")}`;
+				else text += `\n  (patch is ${col.bytes} bytes — read it with the shell: cat ${patchPath}, or git -C ${worktree} diff ${baseRev})`;
+				text += `\n  worktree kept at: ${worktree}`;
+			} else if (col.kind === "failed") {
+				keepWorktree = true;
+				failed = true;
+				text += `\n  FAILED: collecting the worktree's changes: ${col.reason}${col.partialPath !== undefined ? ` (partial patch at ${col.partialPath})` : ""}\n  worktree kept at: ${worktree}`;
 			}
 		}
 		return { failed, text, toolCalls: extraction.toolCalls };
 	} finally {
 		rmSync(policyDir, { recursive: true, force: true });
-		if (worktree !== null && !keepWorktree) rmSync(worktree, { recursive: true, force: true });
+		if (worktree !== null && !keepWorktree) removeWorktree(parentCwd, worktree);
 	}
 }
 
@@ -204,9 +239,9 @@ async function runChild({ childId, role, task, sessionsDir, bin, timeout, signal
  * spawn the human just approved in the ask tier, so the provider
  * credentials the parent was trusted with ride along.
  */
-function runProcess(childId, bin, cwd, policyDir, task, timeout, signal) {
+function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal) {
 	const depth = Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0;
-	const child = spawn(process.execPath, [bin, "chat", childId], {
+	const child = spawn(process.execPath, [bin, "chat", childId, "--task-file", taskPath], {
 		cwd,
 		env: {
 			...process.env,
@@ -223,8 +258,7 @@ function runProcess(childId, bin, cwd, policyDir, task, timeout, signal) {
 		detached: true,
 		stdio: ["pipe", "pipe", "inherit"],
 	});
-	child.stdin.write(`${task}\nexit\n`);
-	child.stdin.end();
+	child.stdin.end(); // CX-1 F5: nothing rides stdin — the task is the file
 	let stdout = "";
 	child.stdout.on("data", (d) => {
 		stdout += String(d);
@@ -290,12 +324,19 @@ export async function extractChildResult(sessionsDir, childId, diag) {
 		try {
 			// The store's JSONL records are {runId, ts, event} wrappers —
 			// unwrap; bare events (fixtures) pass through.
-			events = readFileSync(file, "utf8")
+			const records = readFileSync(file, "utf8")
 				.trim()
 				.split("\n")
 				.filter((l) => l !== "")
-				.map((l) => JSON.parse(l))
-				.map((r) => r.event ?? r);
+				.map((l) => JSON.parse(l));
+			// CX-1 F6: the child session is fresh by construction, so its log
+			// holds exactly ONE run — the result is located by that identity,
+			// never by position. More than one run is ambiguous, and reported.
+			const runIds = new Set(records.map((r) => r.runId).filter((id) => typeof id === "string"));
+			if (runIds.size > 1) {
+				return { outcome: "ambiguous", toolCalls: 0, text: "", failed: true, reason: `child session ${childId} holds ${runIds.size} runs — the result cannot be located by identity`, diag };
+			}
+			events = records.map((r) => r.event ?? r);
 		} catch (err) {
 			lastErr = err;
 			events = null;
@@ -336,18 +377,64 @@ function finalText(events) {
 	return text;
 }
 
-/** The implementer's changes: git diff (with its --stat header) over the
- *  worktree — intent-to-add first so NEW files are part of the diff, not
- *  silently invisible to `git diff`. null = no changes. */
-function worktreeDiff(worktree) {
+/** CX-1 F2: a patch body this size or smaller rides inline in the section;
+ *  larger ones are named by path (the parent reads them with the shell). */
+const INLINE_PATCH_BYTES = 64 * 1024;
+
+/** CX-1 F2: the implementer's changes against the BASE revision, streamed to
+ *  a file — intent-to-add first so NEW files are part of the diff. Three
+ *  states, never a null that means two things:
+ *    { kind: "unchanged" }
+ *    { kind: "collected", stat, bytes }   — file closed AND git exited 0
+ *    { kind: "failed", reason, partialPath? }
+ *  Old shape: execFileSync buffered the patch, threw ENOBUFS above 1 MiB,
+ *  and the catch returned null — "no changes" — so the worktree was
+ *  deleted with the work in it. */
+async function collectWorktree(worktree, baseRev, patchPath) {
+	let stat;
 	try {
 		execFileSync("git", ["-C", worktree, "add", "-N", "."], { stdio: "ignore" });
-		const stat = execFileSync("git", ["-C", worktree, "diff", "--stat"], { encoding: "utf8" }).trim();
-		const diff = execFileSync("git", ["-C", worktree, "diff"], { encoding: "utf8" });
-		if (stat === "" && diff.trim() === "") return null;
-		return `${stat}\n${diff}`;
+		const base = baseRev ?? "HEAD";
+		stat = execFileSync("git", ["-C", worktree, "diff", "--stat", base], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
+		if (stat === "") return { kind: "unchanged" };
+	} catch (err) {
+		return { kind: "failed", reason: `git diff --stat: ${msg(err)}` };
+	}
+	let fd = null;
+	try {
+		fd = openSync(patchPath, "w");
+		const code = await new Promise((resolve, reject) => {
+			const p = spawn("git", ["-C", worktree, "diff", baseRev ?? "HEAD"], { stdio: ["ignore", fd, "pipe"] });
+			let stderr = "";
+			p.stderr.on("data", (d) => {
+				stderr += String(d);
+			});
+			p.on("error", reject);
+			p.on("exit", (c) => resolve({ c, stderr }));
+		});
+		closeSync(fd);
+		fd = null;
+		if (code.c !== 0) return { kind: "failed", reason: `git diff exited ${code.c}: ${code.stderr.trim()}`, partialPath: patchPath };
+		return { kind: "collected", stat, bytes: statSync(patchPath).size };
+	} catch (err) {
+		if (fd !== null) closeSync(fd);
+		return { kind: "failed", reason: `git diff: ${msg(err)}`, partialPath: patchPath };
+	}
+}
+
+/** CX-1 F2: an UNCHANGED worktree leaves through git, so the registration
+ *  under .git/worktrees goes with it; the directory fallback covers a git
+ *  that no longer recognizes it. */
+function removeWorktree(parentCwd, worktree) {
+	try {
+		execFileSync("git", ["-C", parentCwd, "worktree", "remove", "--force", worktree], { stdio: "ignore" });
 	} catch {
-		return null;
+		rmSync(worktree, { recursive: true, force: true });
+		try {
+			execFileSync("git", ["-C", parentCwd, "worktree", "prune"], { stdio: "ignore" });
+		} catch {
+			// nothing left to prune
+		}
 	}
 }
 

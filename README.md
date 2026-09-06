@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.26.0
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.26.1
 ```
 
 (The block letter above is `assets/logo.svg` in pixel form — an 8×8 K
@@ -130,12 +130,12 @@ resume, the one with it executes exactly once.
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts     874
+  packages/core/src/kernel/loop.ts     899
   packages/core/src/protocol/events.ts 472
   packages/core/src/kernel/project.ts  360
   ...
-  total                               2113  / 2200
-  ✓ 87 lines of headroom remaining.
+  total                               2138  / 2200
+  ✓ 62 lines of headroom remaining.
 
 cli:
   apps/cli/src/chat.ts  716
@@ -1051,7 +1051,7 @@ below is MEASURED by `npm run check` (the size gates: core is enforced,
 the cli/tui/tui-cells caps are report-only since Amendment 8 — the
 numbers are pressure readings, not passed gates):
 
-- **core** (2,113/2,200 lines, enforced) — protocol, loop (single honest terminal;
+- **core** (2,138/2,200 lines, enforced) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; a retryable pre-stream failure retries in place, and a
   mid-stream cut retries over a durably voided draft — never a silent

@@ -1234,12 +1234,18 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		if (!Number.isFinite(ratio) || ratio < autoCompact.thresholdRatio) return;
 		dispatch("/compact", dispatchCtx);
 	};
+	// CX-1 F5: a literal input (task-file mode) submits the turn directly —
+	// its bytes never meet the slash dispatcher.
+	const route = (line: string): void => {
+		if (input.literal === true) dispatchCtx.submitTurn(line);
+		else dispatch(line, dispatchCtx);
+	};
 	input.onLine((line) => {
 		if (!replReady) {
 			queuedLines.push(line);
 			return;
 		}
-		dispatch(line, dispatchCtx);
+		route(line);
 	});
 	// W15: the expand key — the editor forwards ctrl+o; dispatch runs the
 	// chain action (the sentinel's control char marks the key, so a typed
@@ -1298,7 +1304,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// chain BEFORE the appends and the replayed turns would never be
 	// awaited (the F-group regression).
 	for (const line of queuedLines) {
-		dispatch(line, dispatchCtx);
+		route(line);
 	}
 	queuedLines.length = 0;
 	input.prompt();

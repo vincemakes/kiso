@@ -27,6 +27,7 @@
 import { appendFileSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { newSessionId } from "./session-id.js";
 import { createInterface } from "node:readline";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { Body, Editor, bannerLines, currentGround, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
@@ -47,7 +48,7 @@ import { agentModel, atFiles, body, bodyLog, kisoHome, builtInExtensions, curren
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
-import { autoCompactFromEnv, chat, contextWindowTokens, estimateCtxRatio } from "./chat.js";
+import { chat, contextWindowTokens, estimateCtxRatio } from "./chat.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { checkForUpdate } from "./update-check.js";
 import { resume } from "./resume.js";
@@ -65,6 +66,23 @@ export { applyProjectMerges } from "./trust-ui.js";
  *  prompt. Only ever constructed when stdin is NOT a TTY. The rl starts
  *  consuming stdin at construction (main), so 'line' events are buffered
  *  until chat() wires the handler — pipe input must never be dropped. */
+/** CX-1 F5 (audit F5): the task-file input — the file's whole content is
+ *  ONE turn, delivered the moment the loop listens, and the input is
+ *  closed right after: chat still awaits the in-flight chain before it
+ *  exits, so the turn runs to its terminal and nothing else is read.
+ *  Built on an EMPTY readline so every other member keeps the pipe
+ *  path's exact semantics (auto-denied asks, no chips, no pops). */
+function taskFileInput(content: string): LineInput {
+	const base = readlineInput(createInterface({ input: Readable.from([]), output: process.stdout }));
+	return {
+		...base,
+		literal: true,
+		onLine(cb) {
+			cb(content);
+		},
+	};
+}
+
 function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
 	let lineCb: ((line: string) => void) | null = null;
 	const pending: string[] = [];
@@ -892,6 +910,23 @@ async function main(): Promise<void> {
 	} else {
 		setMode(modeFromEnv() ?? loadUserConfig()?.mode ?? "default");
 	}
+	// CX-1 F5: --task-file <path> — the file is the ONE user turn (the
+	// structured child entry). Read BEFORE any session exists: an
+	// unreadable file is a usage error with nothing executed.
+	let taskFile: string | undefined;
+	{
+		const i = args.indexOf("--task-file");
+		if (i !== -1) {
+			const path = args[i + 1];
+			if (path === undefined) throw new CliUsageError("--task-file needs a path");
+			try {
+				taskFile = readFileSync(path, "utf8");
+			} catch (err) {
+				throw new CliUsageError(`--task-file: cannot read ${path}: ${(err as Error).message}`);
+			}
+			args.splice(i, 2);
+		}
+	}
 	const [command, arg] = args;
 	// round 8: faux mode is the keyless demo script — an exhausted script must
 	// exit non-zero, never masquerade as a successful provider run. The
@@ -904,7 +939,7 @@ async function main(): Promise<void> {
 	// (entered here, dock-bound, trusted before any extension loads),
 	// readline elsewhere. The trust question, chat, and resume all read
 	// through it; main's finally closes it on every exit path.
-	const input = makeLineInput();
+	const input = taskFile !== undefined ? taskFileInput(taskFile) : makeLineInput();
 	// R3a — cross-session input history: ~/.kiso/history, one line per
 	// entry, appended on submit, tail-500 at load (truncated by REWRITE
 	// at startup so the file never grows unbounded). Unreadable file =
@@ -1119,7 +1154,12 @@ async function main(): Promise<void> {
 				agent = await makeAgent(id, input, modelFlag);
 				// finding E4-1's faux resolution rides chatLoop (currentFaux).
 				faux = currentFaux;
-				await chatLoop(agent, id, input, autoCompactFromEnv());
+				// CX-1 F9 (audit F9): the bare entry resolves autoCompact from
+				// the SAME merged config chat/resume use — the env override
+				// lives inside the resolver. It used to pass the env-only
+				// reader, so a user's config.json autoCompact worked on
+				// `kiso chat` and silently vanished on the default entry.
+				await chatLoop(agent, id, input, resolveAutoCompact(mergedConfig));
 				break;
 			}
 		}

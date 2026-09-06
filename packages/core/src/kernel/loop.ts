@@ -1112,18 +1112,64 @@ async function decideCall(
 	// its verdict. A throwing chain counts as ask. Allow/deny are recorded
 	// durably with decidedBy = the deciding extension, never pausing for a
 	// human.
-	const originalCall = [...log.all].reverse().find(
-		(e): e is Event & { type: "tool_call_end" } => e.type === "tool_call_end" && e.callId === call.callId,
-	);
-	const durable =
-		originalCall !== undefined && JSON.stringify(originalCall.input) === JSON.stringify(call.input)
-			? log.all.find(
-					(e): e is Event & { type: "permission_decided" } =>
-						e.type === "permission_decided" && e.decidedBy !== undefined && e.callId === call.callId,
-				)
-			: undefined;
+	// CX-1 F1 (audit F1): a durable decision is consumable ONCE — by the
+	// invocation it was recorded for, or by that invocation's RE-ISSUE on
+	// resume (same callId, same tool, identical input, and the original
+	// never produced a result). A provider callId alone is correlation,
+	// never identity: the old lookup found the current call itself
+	// (already appended), compared its input to its own, and took the
+	// FIRST decision with that callId in the whole log — so a reused
+	// callId inherited an old allow for a new call.
+	//
+	// The decision's invocationSeq names the original call (every
+	// producer stamps it, round 5). A legacy decision (no invocationSeq,
+	// pre-round-5 logs) binds to the nearest PRECEDING same-callId call
+	// before it — call first, decision after — with no run boundary
+	// between; one that binds to nothing is ambiguous, and the call goes
+	// to ask, never to the chain's allow.
+	const all = log.all;
+	const legacyBinding = (d: Event & { type: "permission_decided" }): number | undefined => {
+		for (let i = all.length - 1; i >= 0; i -= 1) {
+			const e = all[i]!;
+			if (e.seq >= d.seq) continue;
+			if (e.type === "terminal") return undefined;
+			if (e.type === "tool_call_end" && e.callId === call.callId) return e.seq;
+		}
+		return undefined;
+	};
+	/** The re-issue rule: a resume re-issues the pending call under the SAME
+	 *  provider id — same callId, same tool, identical input — and the
+	 *  original never completed: no result and no other call under that id
+	 *  stands between the original and this call. A different callId with
+	 *  the same arguments is a new invocation (the /mode-switch shape: a
+	 *  write denied under plan is asked afresh under default). */
+	const reissues = (origSeq: number): boolean => {
+		const orig = all.find((e) => e.seq === origSeq);
+		if (orig === undefined || orig.type !== "tool_call_end") return false;
+		if (orig.callId !== call.callId || orig.name !== call.name) return false;
+		if (JSON.stringify(orig.input) !== JSON.stringify(call.input)) return false;
+		for (const e of all) {
+			if (e.seq <= origSeq || e.seq >= call.seq) continue;
+			if ((e.type === "tool_result" || e.type === "tool_call_end") && e.callId === orig.callId) return false;
+		}
+		return true;
+	};
+	let durable: (Event & { type: "permission_decided" }) | undefined;
+	let legacyAmbiguous = false;
+	for (const e of all) {
+		if (e.type !== "permission_decided" || e.decidedBy === undefined) continue;
+		if (e.invocationSeq === undefined && e.callId !== call.callId) continue;
+		const origSeq = e.invocationSeq ?? legacyBinding(e);
+		if (origSeq === undefined) {
+			legacyAmbiguous = true;
+			continue;
+		}
+		if (origSeq === call.seq || reissues(origSeq)) durable = e;
+	}
 	let chainVerdict: ChainVerdict | undefined;
-	if (durable === undefined && approvalPolicy !== undefined) {
+	if (durable === undefined && legacyAmbiguous) {
+		chainVerdict = { action: "ask" }; // the conservative reading of an old log
+	} else if (durable === undefined && approvalPolicy !== undefined) {
 		try {
 			chainVerdict = await raceAbort(Promise.resolve(approvalPolicy.decide(payload, ctx)), signal);
 		} catch {

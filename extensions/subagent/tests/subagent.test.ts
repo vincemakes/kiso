@@ -234,7 +234,10 @@ describe("④ subagent: real child processes", () => {
 			{ signal: new AbortController().signal, sessionId: "parent-sess-42" },
 		)) as { content: string; isError: boolean };
 		expect(r.isError).toBe(false);
-		const file = readdirSync(join(home, "sessions")).find((f) => f.startsWith("sub-parent-sess-42-1-explorer.jsonl"));
+		// DECLARED SUPERSESSION (CX-1 F6): the child id carries a per-invocation
+		// delegation identity between the parent id and the index —
+		// sub-<parent>-<24 hex>-<i>-<role> — so two invocations never share a file.
+		const file = readdirSync(join(home, "sessions")).find((f) => /^sub-parent-sess-42-[0-9a-f]{24}-1-explorer\.jsonl$/.test(f));
 		expect(file).toBeDefined(); // the threaded session id names the child
 	}, 60_000);
 
