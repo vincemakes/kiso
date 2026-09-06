@@ -32,8 +32,9 @@ describe("S3 D-2 — widthCut never splits an astral code point", () => {
 
 	it("BMP text is untouched by the change — the cell cut every pinned row relies on", () => {
 		expect(widthCut("abcdef", 3)).toBe("abc");
-		expect(widthCut("中文字", 3)).toBe("中");
-		expect(widthCut("中文字", 4)).toBe("中文");
+		// wide BMP glyphs (CJK), written as escapes: the tracked tree is CJK-free by rule
+		expect(widthCut("\u4e2d\u6587\u5b57", 3)).toBe("\u4e2d");
+		expect(widthCut("\u4e2d\u6587\u5b57", 4)).toBe("\u4e2d\u6587");
 		expect(widthCut("abc", 0)).toBe("");
 	});
 });
