@@ -7,7 +7,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -121,7 +121,8 @@ export function atFiles(): readonly AtItem[] {
 	try {
 		paths = execFileSync("git", ["ls-files", "-c", "-o", "--exclude-standard"], { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 1 << 24 }).split("\n").filter((p) => p !== "");
 	} catch {
-		paths = atWalk(process.cwd(), "", []);
+		// DC-49: the fallback walk excludes kiso's own state directory.
+		paths = atWalk(process.cwd(), "", [], [kisoHome()]);
 	}
 	return paths.slice(0, AT_CAP + 1).map((path) => ({ path }));
 }
@@ -131,18 +132,56 @@ export function atFiles(): readonly AtItem[] {
  *  directory contributes nothing and ends nothing — the recursion's own
  *  try catches it at that level, so one locked subtree cannot stop a
  *  file picker from opening. */
-function atWalk(dir: string, prefix: string, out: string[]): string[] {
+function atWalk(dir: string, prefix: string, out: string[], excluded: readonly string[] = []): string[] {
 	try {
 		for (const e of readdirSync(dir, { withFileTypes: true })) {
 			if (out.length > AT_CAP) break;
 			if (AT_SKIP.has(e.name)) continue;
-			if (e.isDirectory()) atWalk(`${dir}/${e.name}`, `${prefix}${e.name}/`, out);
-			else if (e.isFile()) out.push(`${prefix}${e.name}`);
+			const full = `${dir}/${e.name}`;
+			if (e.isDirectory()) {
+				// DC-49 — the picker does not DESCEND into an excluded root.
+				//
+				// `AT_SKIP` is a list of NAMES with no dot rule, so unlike
+				// tools-node's walk this one has never skipped `~/.kiso` at
+				// all: with the workspace at `~` and no git repo there, `@`
+				// lists the user's own session logs among their files. That
+				// is current behaviour, not a future risk.
+				if (excluded.length > 0 && isUnder(full, excluded)) continue;
+				atWalk(full, `${prefix}${e.name}/`, out, excluded);
+			} else if (e.isFile()) out.push(`${prefix}${e.name}`);
 		}
 	} catch {
 		// unreadable — skipped
 	}
 	return out;
+}
+
+/** DC-49 — realpath on BOTH sides. darwin's `/tmp` is a symlink to
+ *  `/private/tmp`, so a raw string compare is a check that passes on one
+ *  machine and not another. */
+function isUnder(dir: string, roots: readonly string[]): boolean {
+	let real: string;
+	try {
+		real = realpathSync(dir);
+	} catch {
+		real = dir;
+	}
+	return roots.some((r) => {
+		let rr: string;
+		try {
+			rr = realpathSync(r);
+		} catch {
+			rr = r;
+		}
+		return real === rr || real.startsWith(`${rr}/`);
+	});
+}
+
+/** DC-49 — the walk, addressable for the gate. `atFiles` is driven by
+ *  `process.cwd()` and `kisoHome()`, neither of which a unit case can
+ *  set honestly; this is the same function with both supplied. */
+export function atWalkFor(root: string, excludeRoots: readonly string[]): readonly string[] {
+	return atWalk(root, "", [], excludeRoots);
 }
 
 /**

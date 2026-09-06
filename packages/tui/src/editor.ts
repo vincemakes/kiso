@@ -2290,7 +2290,12 @@ export class Editor {
 	 * stranding a joiner.
 	 */
 	#classOf(cp: number): "sep" | "cjk" | "word" | "punct" {
-		if (cp === 0x20 || cp === 0x09 || cp === 0x0a || cp === 0x0d) return "sep";
+		// U+3000 IS A SPACE, and it sits inside the CJK range below, so it
+		// has to be named before the range test rather than after it. It
+		// classed as "cjk" in the first build — an ideographic space
+		// deleted as though it were a character, which is exactly what the
+		// CJK-per-character rule is NOT about.
+		if (cp === 0x20 || cp === 0x09 || cp === 0x0a || cp === 0x0d || cp === 0x3000) return "sep";
 		// CJK ideographs, kana, Hangul, the fullwidth forms — one per word.
 		if (
 			(cp >= 0x1100 && cp <= 0x11ff) ||

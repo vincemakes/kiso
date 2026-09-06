@@ -587,7 +587,17 @@ OTHER, so `foo.bar` is three words; a CJK character is one word on its
 own, because a sentence is not a unit anyone wants to step through. A
 combining mark, a ZWJ join or a variation selector never ends a word —
 they belong to the character before them, so an emoji is deleted whole
-rather than dismantled.
+rather than dismantled. The ideographic space (U+3000) is a SEPARATOR,
+not a character, even though it sits inside the CJK range.
+
+**This is not a grapheme-cluster segmenter, and the gap is larger than
+it looks.** Measured: `👍🏽` and a flag each delete in one press — correct,
+but by accident, because an emoji and its modifier both fall in the same
+"punctuation" class and form one run rather than because anything knows
+they are one glyph. The same accident makes `😀😁` delete BOTH in one
+press, which is wrong. Skin-tone modifiers and regional-indicator pairs
+are not joiners. A real segmenter is the fix and is not in this
+round.
 
 The word gestures arrive in three encodings (`alt+←`, `ctrl+←`, and
 `alt+b`/`alt+f` where the terminal sends meta) and all three reach the

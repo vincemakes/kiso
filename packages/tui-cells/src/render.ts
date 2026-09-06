@@ -472,6 +472,9 @@ export interface BannerMeta {
 	readonly model: string;
 	readonly mode: string;
 	readonly cwd: string;
+	/** DC-49 — the workspace IS the user's home directory. Computed by the
+	 *  CLI (realpath on both sides); the banner only renders it. */
+	readonly homeWorkspace?: boolean;
 }
 
 /** W20 — the ONE-ROW cut with the honest mark, SGR-aware. A line that
@@ -578,6 +581,16 @@ export function bannerLines(W: number, H: number, version: string, extensionsTex
 	const facts: [string, string][] = [];
 	if (meta !== undefined) {
 		facts.push([BANNER_LABELS[0], `${meta.model}${meta.mode === "" ? "" : ` · ${meta.mode}`}`], [BANNER_LABELS[1], meta.cwd]);
+		// DC-49 — ONE row under the cwd, and only when the workspace is the
+		// home directory. It STATES a fact and names the remedy; it does not
+		// warn, because the configuration is ALLOWED (owner, 2026-09-06) and
+		// a warning about an allowed thing teaches people to skip rows.
+		//
+		// An empty label puts it in the value column under `WORKSPACE`,
+		// where it reads as a note on that fact rather than a fact of its
+		// own. It must FIT at W=80 under the label indent: a cut row loses
+		// the remedy, which is the only actionable half of the sentence.
+		if (meta.homeWorkspace === true) facts.push(["", "home directory as workspace — cd into a project to narrow it"]);
 	}
 	if (extensionsText !== "") facts.push([BANNER_LABELS[2], extensionsText]);
 	if (facts.length > 0) {

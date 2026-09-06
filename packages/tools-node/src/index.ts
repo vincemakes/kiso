@@ -256,6 +256,21 @@ export interface WorkspaceToolsOptions {
 	 * kiso over an unusually large or unusually small tree can move them,
 	 * and the gate can set them low enough to observe the stop.
 	 */
+	/**
+	 * DC-49 — roots a WALK may not descend into, as realpaths.
+	 *
+	 * The CLI passes `$KISO_HOME`. With the workspace at `~` the walks
+	 * otherwise report the user's own session logs as though they were
+	 * their work — and `~/.kiso` escapes the dot-name skip only by
+	 * accident, so a KISO_HOME anywhere else is walked in full.
+	 *
+	 * DISCOVERY, NOT ACCESS. This removes a directory from what a walk
+	 * FINDS when it descends from above. A path the user or the model
+	 * NAMES is still served, at the root or inside it: the exclusion is
+	 * not a permission, and anything the model can name it can still
+	 * read.
+	 */
+	readonly excludeRoots?: readonly string[];
 	readonly limits?: {
 		/** search_text: skip a file larger than this (default 1 MiB). */
 		readonly searchMaxFileBytes?: number;
@@ -617,7 +632,33 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			// the call budget: a silent skip is a result the model cannot
 			// tell is incomplete.
 			let skippedFiles = 0;
+			let excludedDirs = 0;
 			let filesSeen = 0;
+			// DC-49 — realpath on BOTH sides, so a symlinked HOME still
+			// matches (the reviewer's constraint (d): `/tmp` is a symlink to
+			// `/private/tmp` on darwin, and a raw string compare there is a
+			// gate that passes on one machine and not another).
+			//
+			// A root that CONTAINS the search root is not an exclusion: the
+			// caller pointed at it, and refusing would make an explicit path
+			// unservable. That is the reviewer's constraint (c), expressed
+			// where it belongs — in the predicate, not in four call sites.
+			const realOrSelf = (p: string): string => {
+				try {
+					return realpathSync(p);
+				} catch {
+					return p;
+				}
+			};
+			const searchRootReal = realOrSelf(root);
+			const excluded = (opts.excludeRoots ?? [])
+				.map(realOrSelf)
+				.filter((ex) => !(searchRootReal === ex || searchRootReal.startsWith(`${ex}/`)));
+			const isExcluded = (dir: string): boolean => {
+				if (excluded.length === 0) return false;
+				const r = realOrSelf(dir);
+				return excluded.some((ex) => r === ex || r.startsWith(`${ex}/`));
+			};
 			// An explicit flag, NOT `stoppedAt > 0`: a wall-clock budget can
 			// expire before the first file is scanned, and a zero-valued
 			// sentinel would then read as "never stopped" — the walk would
@@ -788,8 +829,18 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 					if (outOfBudget()) return;
 					if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
 					const full = join(dir, entry.name);
-					if (entry.isDirectory()) await walk(full, depth + 1);
-					else if (entry.isFile()) await scanFile(full);
+					if (entry.isDirectory()) {
+						// DC-49 — a walk does not DESCEND into an excluded root.
+						// Reaching it from above is what is refused; being
+						// pointed at it is not (see `excluded` below, which is
+						// seeded from the SEARCH ROOT and therefore empty when
+						// the root is itself excluded).
+						if (isExcluded(full)) {
+							excludedDirs += 1;
+							continue;
+						}
+						await walk(full, depth + 1);
+					} else if (entry.isFile()) await scanFile(full);
 				}
 			};
 			try {
@@ -805,6 +856,12 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			if (unreadableDirs > 0) content += `\n… ${unreadableDirs} unreadable ${unreadableDirs === 1 ? "directory" : "directories"} skipped`;
 			// DC-54 — one merged sentence, and only when it happened. A note
 			// that always fires says nothing.
+			// DC-49 — what a WALK did not enter, in the same discipline the
+			// file skips already follow: a scoped result that reads as total
+			// is one the model cannot tell is scoped.
+			if (excludedDirs > 0) {
+				content += `\n… ${excludedDirs} ${excludedDirs === 1 ? "directory" : "directories"} excluded`;
+			}
 			if (skippedFiles > 0 || stopped) {
 				const parts: string[] = [];
 				if (skippedFiles > 0) parts.push(`${skippedFiles} ${skippedFiles === 1 ? "file" : "files"} skipped (large or binary)`);

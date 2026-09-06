@@ -106,6 +106,21 @@ describe("E1 §1 — the boundary: whitespace, punctuation, CJK", () => {
 		expect(probe(CJK, "\x1bb")).toBe(`${TWO}|\u5b57`);
 	});
 
+	it("U+3000, the IDEOGRAPHIC SPACE, is a separator and not a character", () => {
+		// It lives inside the CJK range, so a range test alone classes it as
+		// a character and deletes it as one. Measured before the fix:
+		// `<CJK> <IDEO-SPACE> <CJK>` killed twice left the first character;
+		// as a separator the second kill crosses the space and takes it.
+		const A = "\u4e2d";
+		const B = "\u6587";
+		expect(kill(`${A}\u3000${B}`, "\x1b\x7f")).toBe(`${A}\u3000`);
+		const ed = make();
+		ed.feed(enc(`${A}\u3000${B}`));
+		ed.feed(enc("\x1b\x7f"));
+		ed.feed(enc("\x1b\x7f"));
+		expect(ed.line(), "the second kill treated the ideographic space as a character").toBe("");
+	});
+
 	it("a run of separators is crossed, then one run of word", () => {
 		expect(probe("alpha   beta", "\x1bb")).toBe("alpha   |beta");
 	});
@@ -129,6 +144,37 @@ describe("E1 §1 — a grapheme is ONE unit, never dismantled", () => {
 		expect(kill("❤️", "\x1b\x7f")).toBe("");
 	});
 
+	it("typing ONE emoji leaves exactly ONE code point in the buffer", () => {
+		// The direct case for the pre-existing insert defect this round
+		// fixed: the feed loop advanced by `text[i].length` (always 1) while
+		// reading a full code point, so an astral character was inserted AND
+		// its low surrogate after it — `"😀"` became three UTF-16 units.
+		// The motion cases above catch it indirectly; this one names it.
+		const ed = make();
+		ed.feed(enc("\u{1F600}"));
+		expect([...ed.line()]).toHaveLength(1);
+		expect(ed.line()).toBe("\u{1F600}");
+	});
+
+	/*
+	 * WHAT THIS BOUNDARY IS NOT: a grapheme cluster segmenter.
+	 *
+	 * Measured, and the results are right for the wrong reason in two
+	 * cases and wrong in a third:
+	 *
+	 *   `👍🏽`  deletes in ONE press — correct, but by accident: the emoji
+	 *          and the skin-tone modifier both class as "punct" and form
+	 *          one run. `#joins` does not list U+1F3FB–1F3FF.
+	 *   `🇯🇵`  deletes in ONE press — same accident, two regional
+	 *          indicators in one "punct" run.
+	 *   `😀😁` deletes in ONE press — and this one IS wrong: two separate
+	 *          glyphs, one run, because "punct" does not distinguish them.
+	 *
+	 * A real segmenter (Intl.Segmenter, or the UAX #29 tables) is the fix
+	 * and is out of this round's scope. Recorded here rather than left to
+	 * be rediscovered, because the two accidental passes make the gap look
+	 * smaller than it is.
+	 */
 	it("motion never lands inside a surrogate pair", () => {
 		const out = probe("ab \u{1F600}", "\x1bb");
 		expect(out).toBe("ab |\u{1F600}");

@@ -419,10 +419,25 @@ function extensionsBanner(resume: ResumeMeta[] = []): void {
 	// filesystem calls it.
 	const home = homedir();
 	const cwd = process.cwd();
+	/** DC-49: realpath, falling back to the raw path when it cannot be
+	 *  resolved — an unresolvable path is not a match, and throwing here
+	 *  would take the banner down over a cosmetic row. */
+	const realOf = (dir: string): string => {
+		try {
+			return realpathSync(dir);
+		} catch {
+			return dir;
+		}
+	};
 	body.banner(VERSION, text.replace(/^ · /, ""), resume, {
 		model: agentModel,
 		mode: getMode() === "plan" ? "plan (read-only)" : getMode(),
 		cwd: cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd,
+		// DC-49 — REALPATH on both sides. A symlinked HOME (or a symlinked
+		// cwd) compares unequal as raw strings while being the same
+		// directory, and the row would then be absent exactly where it is
+		// most needed.
+		homeWorkspace: realOf(cwd) === realOf(home),
 	});
 }
 
@@ -606,7 +621,7 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 		store,
 		// Area 5: the coding tools are bound to the workspace — every path
 		// they touch is canonicalized inside cwd, escapes are refused.
-		tools: [...createCodingTools({ workspaceRoot: process.cwd() })],
+		tools: [...createCodingTools({ workspaceRoot: process.cwd(), excludeRoots: [kisoHome()] })], // DC-49
 		// Modes: the five tiers ride the E1 policy chain (mode:<tier>
 		// extensions, current tier first) — the old static PERMISSION_POLICY
 		// is gone, its semantics live in the "default" tier. The banner
