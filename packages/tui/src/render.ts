@@ -280,9 +280,9 @@ export interface RecapStats {
 	readonly mode?: string;
 }
 
-/** R3d — the per-tool terms of a settled turn, in the fold line's own
- *  vocabulary (ROLLUP_NOUN plurals, zero terms dropped). One wording for
- *  "what a run did", wherever it is said. */
+/** R3d — the per-tool terms of a settled turn (`read 4 files · ran 1
+ *  shell command`, zero terms dropped). One wording for "what a run
+ *  did", wherever it is said. */
 function recapWork(byTool: readonly [string, number][]): string[] {
 	let reads = 0;
 	let edits = 0;

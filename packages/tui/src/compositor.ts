@@ -65,31 +65,23 @@ import {
 	CAP_PREVIEW,
 	thinkingRow,
 	Container,
-	ROLLUP_NOUN,
 	MOTION_FRAMES,
 	MdStream,
 	bodySpacing,
 	boxBottom,
 	boxTop,
 	cellComponent,
-	foldCountsObjects,
-	foldTerms,
 	focusToken,
-	foldLine,
 	gutterCut,
 	cutLine,
-	isExploreTool,
-	moreRunningRow,
 	pendingQueueRows,
-	slotPad,
-	slotTail,
 	statusLine,
 	visibleWidth,
 	type BodyCell,
 	type FrameCtx,
 	breathFrame,
 } from "./components.js";
-import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, toolTarget, type BannerMeta, type ResumeMeta } from "./render.js";
+import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, type BannerMeta, type ResumeMeta } from "./render.js";
 import { displayVerb, keysSheetRows } from "./strings.js";
 // R5 — the transcript viewer's PURE projection. The compositor supplies
 // the entries (it holds the cells); the arrangement lives there.
@@ -174,126 +166,22 @@ export interface BodyOptions {
 	write?: (s: string) => void;
 }
 
-/** W14 — one turn's record: pushed at userLine, released at the turn's
- *  text (hasText — the tool cells commit individually, with the W13
- *  rollups) or at its end (ended — a QUIET turn folds into the one line).
- *  The counts are the folded-turn line's terms, accumulated at toolStart
- *  (reads = read_file, edits = edit_file, others = the rest in
- *  first-call order). A9: `words` is the user's own line — the chip that
- *  leads the fold (ruling R2, mock A). */
+/** One turn's record, pushed at userLine. `ended` is what the live
+ *  projection reads (the `thinking…` placeholder stands only while a
+ *  turn is in flight); `begun` and `hasText` are the turn's two
+ *  boundaries as the compositor sees them.
+ *
+ *  DECLARED REVERSAL (R13, owner-ruled 2026-09-03): the record used to
+ *  carry the folded-turn line's terms (reads / edits / others / seen /
+ *  words / folded) and a list of SEGMENTS (R3b–R3i), each with its own
+ *  counters, thinking clock and fold anchor. Every one of those existed
+ *  to decide the fold; with nothing folding, nothing read them, and
+ *  they went with the mechanism. */
 interface TurnRecord {
 	ended: boolean;
 	hasText: boolean;
-	/** R6/D1 — the turn has produced its first thinking or tool cell, so
-	 *  the act block is allocated. It stays allocated until endTurn: a
-	 *  settling stretch commits its fold row ABOVE a block that does not
-	 *  move, and the next stretch swaps the block's CONTENTS. */
 	begun: boolean;
 	thoughtSeconds: number;
-	reads: number;
-	edits: number;
-	others: Map<string, number>;
-	/** R3h — the distinct targets already counted, per OBJECT-counting
-	 *  tool (see foldCountsObjects). A second read of the same file is a
-	 *  second act but not a second file, and the fold's noun is the file. */
-	seen: Map<string, Set<string>>;
-	words: string;
-	/** the fold was emitted at the first held cell's commit — the rest of
-	 *  the turn's thinking/tool cells render [] (never a second fold). */
-	folded: boolean;
-	/**
-	 * R3b — the turn's SEGMENTS, in order.
-	 *
-	 * A segment is a maximal run of thinking/tool cells with no text
-	 * between them. The turn's own counters above are the WHOLE turn's
-	 * (the quiet-turn fold's terms, unchanged); these are each segment's
-	 * own, because a fold line that says `thought 19s · 5 reads` for the
-	 * third segment of a turn has to mean that segment and not the sum
-	 * of everything before it.
-	 *
-	 * `openedAt` is wall time, so a segment can report its own elapsed
-	 * without waiting for `endTurn` — which is the only place
-	 * `thoughtSeconds` is written today, and therefore useless to a fold
-	 * that has to happen mid-turn.
-	 */
-	segments: SegmentRecord[];
-}
-
-/** R3b — one segment: the run of work between two text blocks. */
-interface SegmentRecord {
-	/** wall ms at the segment's first cell — its own clock */
-	openedAt: number;
-	/** wall ms at the text (or turn end) that closed it; null while open */
-	closedAt: number | null;
-	reads: number;
-	edits: number;
-	others: Map<string, number>;
-	/** R3h — this segment's own distinct targets (see TurnRecord.seen). */
-	seen: Map<string, Set<string>>;
-	/** R3i — the segment's OWN thinking milliseconds, and its open clock.
-	 *  The live line reports the thinking of the stretch a human is
-	 *  watching, not the turn's total, and it runs by the same rule the
-	 *  CLI applies to the turn: from the first thinking delta until the
-	 *  first non-thinking event. Never a wall clock wearing the word
-	 *  "thought" — that was the R3g defect. */
-	thinkingMs: number;
-	thinkingSince: number | null;
-	/** the fold line was emitted for this segment — the rest of its cells
-	 *  render [] (never a second fold, and never a lost one). */
-	folded: boolean;
-	/** the cell index that emitted this segment's fold line — the expand
-	 *  key's anchor, and null until the fold is emitted. */
-	headCell: number | null;
-	/**
-	 * R3b — the segment's own cell indices, appended as they are stamped.
-	 *
-	 * The fold's tests (how many cells? any trouble? which tools?) used to
-	 * SCAN every cell in the body, and they run per cell inside the commit
-	 * loop — O(n²) over a session's history. It was not visible in a unit
-	 * test and was very visible in the PTY suite, where it burned enough
-	 * worker CPU to starve vitest's reporter RPC. Membership is recorded
-	 * where it is known, once.
-	 */
-	cells: number[];
-	/** the segment was force-committed past the hold, so its cells are
-	 *  already in the scrollback and CANNOT be replaced by a fold line.
-	 *  The honest degradation: it stays expanded, and says nothing false. */
-	spilled: boolean;
-}
-/* R13 — `rolledTitle`, `rolledDetail` and `rolledOf` retired with the
-   W13 rollup and TUI2-R1 (B)'s exploration row (see #foldOrRollup). */
-
-/** R3b — the turn's open segment, opened on demand at the first cell of
- *  work that follows a text block (or the turn's start). Returns null
- *  only when there is no turn at all, which is the pipe path's shape. */
-function openSegment(turn: TurnRecord | undefined, now: number): SegmentRecord | null {
-	if (turn === undefined) return null;
-	const last = turn.segments[turn.segments.length - 1];
-	if (last !== undefined && last.closedAt === null) return last;
-	const fresh: SegmentRecord = { openedAt: now, closedAt: null, reads: 0, edits: 0, others: new Map(), seen: new Map(), thinkingMs: 0, thinkingSince: null, folded: false, spilled: false, headCell: null, cells: [] };
-	turn.segments.push(fresh);
-	return fresh;
-}
-
-/** R3b — close the turn's open segment, if it has one. Idempotent: text
- *  arriving twice in a row closes nothing the second time, which is what
- *  keeps a zero-cell segment from ever existing. */
-function closeSegment(turn: TurnRecord | undefined, now: number): void {
-	const last = turn?.segments[turn.segments.length - 1];
-	if (last === undefined || last.closedAt !== null) return;
-	stopThinking(last, now);
-	last.closedAt = now;
-}
-
-/** R3i — the segment's thinking clock stops. It runs from the first
- *  thinking delta of a stretch and stops at the first NON-thinking
- *  event, the same rule the CLI applies to the turn — so `thought Ns`
- *  is thinking time at every scale and never a wall clock wearing the
- *  word (the R3g defect, kept closed at the new scale). */
-function stopThinking(seg: SegmentRecord | undefined, now: number): void {
-	if (seg === undefined || seg.thinkingSince === null) return;
-	seg.thinkingMs += Math.max(0, now - seg.thinkingSince);
-	seg.thinkingSince = null;
 }
 
 /** W20 — the whole-table-replace comparison: the live task block only
@@ -388,13 +276,13 @@ export class Body {
 	 *  so every session's first widen still ran the adopt it was
 	 *  supposed to skip, and swallowed the live band's worth of
 	 *  committed rows. Three paragraphs, in the measurement that found
-	 *  it. */
-	#refolded = false;
-	/** DC-34 — the previous frame's width; the reach-back guard is for a
-	 *  WIDTH change, which re-indexes the model, not a height change. */
-	#lastW = 0;
-	/** R14 — the geometry the last SETTLE ran at. A winch back to the
-	 *  same size is not a resize and must not erase the scrollback. */
+	 *  it.
+	 *
+	 *  DECLARED REVERSAL (R14, owner-ruled 2026-09-05): the flag and the
+	 *  refold it guarded (`#refolded`, `#lastW`, the frontier-scoped
+	 *  refold at the top of render()) are gone. A settled resize erases
+	 *  the terminal and reprints from the model, so no committed row is
+	 *  ever refolded in place any more. */
 	/** R14 — the geometry the last frame PAINTED, and the snapshot of it
 	 *  taken when a winch opens a settle window.
 	 *
@@ -429,11 +317,6 @@ export class Body {
 	#lastThinking: string | null = null;
 	#lastTool: { name: string; input: Record<string, unknown>; result: { content: string; isError: boolean } } | null = null;
 	#pendingCalls = new Map<string, { name: string; input: Record<string, unknown>; result: { content: string; isError: boolean } }>();
-	/** R3b — cell index → the index of the segment it belongs to, for
-	 *  thinking/tool cells; -1 for every other kind. Parallel to #cells,
-	 *  because a segment is the COMPOSITOR's bookkeeping and does not
-	 *  belong on the cell type the renderer sees. */
-	readonly #cellSegment: number[] = [];
 	#pipeBuf = ""; // the passthrough's thinking buffer
 	/** TUI2-MD ⑤ — the markdown scanner of the message currently
 	 *  streaming, and the cell index its first block landed at. Null
@@ -448,14 +331,9 @@ export class Body {
 	// VIEWER's index now (ctrl+r, `#viewerEntries`) — the two surfaces
 	// coexist and §9 says so. It is kept, not retired, for that reader.
 	#collapsed: number[] = [];
-	// W14: the turn records — one per userLine, the fold-hold's state
-	// machine (ended / hasText / folded) plus the folded-turn line's
-	// counts (accumulated at toolStart). The cells carry the record's
+	// the turn records — one per userLine; the cells carry the record's
 	// index as their turn boundary.
 	#turns: TurnRecord[] = [];
-	// W13: the rolled-up run heads — the commit-time scan's verdict:
-	// the head's group summary renders, the members render [].
-	#rolledHeads = new Set<number>();
 	#write: (s: string) => void;
 	#resizeHandler: (() => void) | null = null;
 	/** TUI2-R3v2 ②: the panel option rows' absolute screen span, as of the
@@ -594,10 +472,8 @@ export class Body {
 		}
 		this.#closeOpenThinking();
 		this.#closeOpenText();
-		// W14: the turn boundary — the record the fold-hold's release
-		// state machine reads; the cell carries the record's index. A9:
-		// the user's own words ride the record — the fold's leading chip.
-		this.#turns.push({ ended: false, hasText: false, begun: false, thoughtSeconds: 0, reads: 0, edits: 0, others: new Map(), seen: new Map(), words: text, folded: false, segments: [] });
+		// the turn boundary; the cell carries the record's index.
+		this.#turns.push({ ended: false, hasText: false, begun: false, thoughtSeconds: 0 });
 		this.#cells.push({ kind: "user", text, done: true, turn: this.#turns.length - 1 });
 		this.#mark();
 	}
@@ -612,41 +488,14 @@ export class Body {
 			last.text += text;
 		} else {
 			this.#cells.push({ kind: "thinking", text, done: false, turn: this.#turns.length - 1 });
-			// DECLARED SUPERSESSION (R7, owner-ruled 2026-08-31) — THINKING
-			// IS WORDS, NOT WORK.
-			//
-			// R3b made thinking open a segment, on the reading that it is
-			// work like a tool call. Four rounds of consequences followed
-			// from that one classification: folded away with the calls, it
-			// became unreachable, and R4's printed ordinal, R5's viewer,
-			// R6's subject index and a look-back viewport were each built
-			// to hand it back. The owner's ruling is to stop hiding it —
-			// and then none of those mechanisms is answering a question
-			// anyone still asks.
-			//
-			// So thinking CLOSES the open segment, exactly as text does
-			// (see textAppend): a segment is what sits between two of
-			// these. It must close rather than merely not-open, because
-			// `#committed` is a PREFIX count — a thinking cell cannot
-			// commit past a held call, so think → call → think would
-			// otherwise flush at the segment's close with the second
-			// thought printing BELOW the fold that contains the later
-			// call.
-			//
-			// Consequence, and it is wanted: the segment's thinking clock
-			// never starts, so `thought Ns` drops off every fold line by
-			// R3h's own zero-term rule. The line stops claiming a fact the
-			// paragraph above it already states in full.
+			// R7 (owner-ruled 2026-08-31): thinking is WORDS, not work — it
+			// never folded and never joined a stretch; it is a cell like prose.
 			const t0 = this.#turns[this.#turns.length - 1];
-			closeSegment(t0, Date.now());
-			if (t0 !== undefined) t0.begun = true; // R6/D1: the block allocates here
-			// R3i: and the beat starts HERE. Law 1.4 says "a running thought
-			// twinkles", and `#armSpinner`'s own predicate has always
-			// included an open thinking cell — but the only caller was
-			// `toolRunning`, so a stretch that thought and did nothing else
-			// never moved at all. The line's seconds are a frame-time
-			// derivation, so without the beat they also never ticked: the
-			// row read `thinking 0s` for as long as the model thought.
+			if (t0 !== undefined) t0.begun = true;
+			// R3i: the beat starts HERE. Law 1.4 says "a running thought
+			// twinkles", and `#armSpinner`'s predicate includes an open
+			// thinking cell — but its only caller used to be `toolRunning`,
+			// so a stretch that thought and did nothing else never moved.
 			this.#armSpinner();
 		}
 		this.#mark();
@@ -655,10 +504,6 @@ export class Body {
 	thinkingEnd(): void {
 		const last = this.#cells[this.#cells.length - 1];
 		if (last !== undefined && last.kind === "thinking" && !last.done) {
-			// R3i: every closer — text, a notice, a terminal label, the next
-			// turn — routes through here, so the clock cannot keep running
-			// past the thing that ended it.
-			stopThinking(this.#turns[this.#turns.length - 1]?.segments.at(-1), Date.now());
 			last.done = true;
 			this.#lastThinking = last.text;
 			if (!this.#isActive()) this.#write(foldThinking(last.text));
@@ -700,64 +545,10 @@ export class Body {
 		}
 		this.#toolCells.set(callId, this.#cells.length);
 		this.#cells.push({ kind: "tool", name, input: summary, inputFull: JSON.stringify(input, null, 2), childRoles, state: "pending", isError: false, resultText: "", diff: null, added: 0, removed: 0, startedAt: null, doneAt: null, done: false, expanded: false, turn: this.#turns.length - 1, reason: null, verdict: null });
-		// W14: the turn record's counts — the folded-turn line's terms
-		// (reads = read_file, edits = edit_file, the rest in first-call
-		// order). The CLI's recap counts the same way (edit_file).
+		// R3i phase 5 — an ANSWER is words (law 1.7): `ask_user` never
+		// counted as the turn's work, so it does not mark the turn begun.
 		const turn = this.#turns[this.#turns.length - 1];
-		if (turn !== undefined) {
-			// R3h (fable, 2026-08-29): an OBJECT-counting tool counts the
-			// distinct thing, not the act. Reading one file twice used to
-			// fold as `read 2 files` — a sentence law 1.3 forbids, and one
-			// this product shipped. `bump` is false on the second sighting
-			// of a target the term has already counted; an ACT-counting
-			// tool (a search, a shell command) always bumps, because two
-			// searches for the same pattern really are two searches.
-			// R3i phase 5 — an ANSWER is words, and words do not fold (law
-			// 1.7). `ask_user` closes the open stretch exactly as prose
-			// does, and never joins one: absorbed into `1 × ask_user`,
-			// what the human said would be gone from the screen — and the
-			// one thing a summary must not do is speak for the human.
-			if (name === "ask_user") {
-				// no stamp: it belongs to NO stretch, so no fold can speak
-				// for it — the same standing a block of prose has.
-				closeSegment(turn, Date.now());
-				this.#mark();
-				return;
-			}
-			const target = foldCountsObjects(name) ? toolTarget(name, input) : null;
-			const bump = (rec: { seen: Map<string, Set<string>> }): boolean => {
-				if (target === null) return true;
-				let set = rec.seen.get(name);
-				if (set === undefined) {
-					set = new Set();
-					rec.seen.set(name, set);
-				}
-				if (set.has(target)) return false;
-				set.add(target);
-				return true;
-			};
-			if (bump(turn)) {
-				if (name === "read_file") turn.reads += 1;
-				else if (name === "edit_file") turn.edits += 1;
-				else turn.others.set(name, (turn.others.get(name) ?? 0) + 1);
-			}
-			// R3b: and into the SEGMENT, which opens here when this is the
-			// first work since the last text block. Its set is its OWN — a
-			// file read once per segment is one file in each segment's
-			// terms and one file in the turn's.
-			const seg = openSegment(turn, Date.now());
-			// R3i: a tool call is a NON-thinking event — the clock stops,
-			// exactly as the CLI's does at the same boundary.
-			stopThinking(seg ?? undefined, Date.now());
-			if (seg !== null && bump(seg)) {
-				if (name === "read_file") seg.reads += 1;
-				else if (name === "edit_file") seg.edits += 1;
-				else seg.others.set(name, (seg.others.get(name) ?? 0) + 1);
-			}
-		}
-		this.#stampSegment();
-		const t1 = this.#turns[this.#turns.length - 1];
-		if (t1 !== undefined) t1.begun = true; // R6/D1: the block allocates here
+		if (turn !== undefined && name !== "ask_user") turn.begun = true;
 		this.#mark();
 	}
 
@@ -877,16 +668,8 @@ export class Body {
 			this.#write(escapeTerminal(text));
 			return;
 		}
-		// W14: the text's arrival RELEASES the fold-hold — the turn now
-		// has text, its held cells commit individually (with the W13
-		// rollups; the fold is only for the QUIET turn).
 		const turn = this.#turns[this.#turns.length - 1];
 		if (turn !== undefined) turn.hasText = true;
-		// R3b: text CLOSES the open segment. This is the boundary design.md
-		// §8 names — "folding at every text boundary changes what commits
-		// and when" — and it is the whole mechanism: a segment is what sits
-		// between two of these.
-		closeSegment(turn, Date.now());
 		// TUI2-MD ⑤: assistant body text is MARKDOWN, scanned as it
 		// streams. The scanner yields CLOSED blocks (final source, final
 		// render) and one OPEN tail block; each becomes a cell, and the
@@ -953,23 +736,15 @@ export class Body {
 		this.#mark();
 	}
 
-	/** W14 — the turn boundary's END: the CLI calls this at the run's
-	 *  terminal event, once per run, BEFORE the recap (so the fold line
-	 *  commits before the recap in the cell order). `thoughtSeconds` is
-	 *  the CLI's wall-clocked thinking window. The QUIET turn (ended, no
-	 *  text) releases its held cells as the ONE fold line; a turn with
-	 *  text releases them as individual commits (the W13 rollups). The
-	 *  release is LAZY — the held cells commit at the next frame, when
-	 *  the fold/rollup decision runs. */
+	/** The turn boundary's END: the CLI calls this at the run's terminal
+	 *  event, once per run, BEFORE the recap. `thoughtSeconds` is the
+	 *  CLI's wall-clocked thinking window. */
 	endTurn(thoughtSeconds: number): void {
 		if (!this.#isActive()) return;
 		const turn = this.#turns[this.#turns.length - 1];
 		if (turn === undefined || turn.ended) return;
 		turn.ended = true;
 		turn.thoughtSeconds = thoughtSeconds;
-		// R3b: the settle closes the last open segment — the turn's end is
-		// a boundary exactly as a text block is.
-		closeSegment(turn, Date.now());
 		// W20: the turn's live task block settles HERE — the ONE recap
 		// block for the turn ("`task done · N items · <duration>", the
 		// duration clocked compositor-side from the block's first call —
@@ -2199,90 +1974,25 @@ export class Body {
 		this.#paintedW = W;
 		this.#paintedH = H;
 		const ctx: FrameCtx = { spinnerI: this.#spinnerI, now: Date.now(), height: H };
-		// V6-1 (the screen-state == frame-state rule): the resize's first
-		// frame — the terminal's reflow re-wrapped the committed content at
-		// the NEW width, so the cached folds are stale. Re-fold the
-		// committed cells so the every-row draw below re-paints them at the
-		// current geometry — the frame's model and the screen agree.
-		// DC-34 — A WIDEN DOES NOT REFOLD WHAT IS ALREADY COMMITTED.
+		// A full redraw re-derives the committed rows from the cache. A
+		// cell whose cache was invalidated (a settled resize, R14) is
+		// rendered again at the current width; every other cell keeps the
+		// rows it was committed with, because those rows are already the
+		// terminal's (ADR-0046) and this frame paints the same bytes.
 		//
-		// Every count here is physical ROWS at the fold width in force
-		// when it was computed. Refolding the committed cells at a new W
-		// changes what every index MEANS while `#scrolledOff` is carried
-		// across untranslated — and no translation exists, because the
-		// row the scroll stopped at does not occur in the new fold. On a
-		// widen the stale count then points at text the terminal already
-		// holds, and the frame paints it a second time.
-		//
-		// A committed row is ink (ADR-0046): the rows still on screen are
-		// the same thing as the rows in the scrollback minus a scroll
-		// that has not happened, and no terminal reflows either. Leaving
-		// them folded as they were printed keeps every index valid.
-		//
-		// NARROWING still refolds — an old wide row does not FIT, and
-		// `#checked` would throw invariant ①. The comparison is against
-		// the CACHE's fold width, not the last render's: after 60 → 100
-		// (no refold, the cache is still 60) a narrowing to 80 must NOT
-		// refold, because 80 columns hold a 60-column row.
-		this.#refolded = false;
+		// DECLARED REVERSAL (R14): DC-34's frontier-scoped REFOLD stood
+		// here — a widen never refolded a committed cell, a narrowing
+		// refolded the cells that no longer fit. Route B reprints the
+		// whole session from the model on a settled resize, so no
+		// committed row is refolded in place any more, and the width
+		// guard that decided which ones were went with it.
 		if (this.#fullRedraw) {
-			// DC-34 — THE REFOLD IS SCOPED BY THE FRONTIER.
-			//
-			// `#scrolledOff` is the record of what reached the terminal:
-			// rows [0, #scrolledOff) are in its scrollback, immutable, and
-			// no path of ours may contradict them. A cell with any row
-			// down there keeps the fold it was COMMITTED at, forever — in
-			// either direction. A cell entirely above the frontier has
-			// never left the screen, so re-folding it is free.
-			//
-			// Two scalar predicates were tried before this and both
-			// failed, in different ways: the last-refold width crashed on
-			// 60 → 100 → 80 (a cell committed at 100 emitted into an
-			// 80-column screen), and the cache's widest fold fires a FULL
-			// refold at the first narrowing, which re-wraps rows the
-			// scrollback already holds — the original defect, alive in
-			// the other direction. The frontier is not an approximation
-			// of them; it is the question they were both approximating.
-			// A cell is refolded when EITHER is true:
-			//   - it is entirely above the frontier (never left the
-			//     screen, so re-wrapping it contradicts nothing), or
-			//   - it does not FIT: some cached row is wider than W.
-			//
-			// The second is not a compromise of the first, it is the
-			// answer to a question the first cannot reach. A cell can
-			// STRADDLE the frontier — its head in the scrollback, its
-			// tail still on screen — and the tail must be painted at the
-			// current width. Holding its commit fold there emitted a
-			// 100-column row into an 80-column screen and invariant ①
-			// threw (60 → 100 → 80, measured). Fitting wins: a crash is
-			// worse than a seam, and the seam a narrowing leaves is
-			// rider 2's, stated rather than hidden.
-			let row = 0;
-			const refold: boolean[] = new Array<boolean>(this.#committed).fill(false);
-			for (let i = 0; i < this.#committed; i += 1) {
-				const lines = this.#lineCache[i];
-				if (lines === null || lines === undefined) {
-					refold[i] = true;
-					continue;
-				}
-				const above = row >= this.#scrolledOff;
-				const fits = lines.every((l) => visibleWidth(l) <= W);
-				refold[i] = above || !fits;
-				const prev = i > 0 ? this.#lineCache[i - 1] : null;
-				row += this.#space(i, prev ?? null, lines).length;
-			}
-			for (let i = 0; i < this.#committed; i += 1) {
-				if (refold[i]) this.#lineCache[i] = cellComponent(this.#cells[i]!).render(W, ctx);
-			}
-			// #committedLines is re-derived over the WHOLE cache, because
-			// the frozen prefix still occupies its own rows.
 			this.#committedLines = 0;
 			for (let i = 0; i < this.#committed; i += 1) {
 				const lines = this.#lineCache[i] ?? cellComponent(this.#cells[i]!).render(W, ctx);
 				this.#lineCache[i] = lines;
 				this.#committedLines += this.#space(i, i > 0 ? (this.#lineCache[i - 1] ?? []) : null, lines).length;
 			}
-			this.#refolded = refold.some(Boolean);
 		}
 		// 1. the natural commits — the leading DONE cells freeze: their
 		//    lines leave the live region, the scrolls + the committed
@@ -2292,13 +2002,7 @@ export class Body {
 		//    emit exactly once).
 		this.#committedAtFrameStart = this.#committed;
 		this.#committedLinesThisFrame = [];
-		// W14: the natural loop HONORS the fold-hold — a thinking/tool
-		// cell of the OPEN quiet turn (no text yet) does not commit: its
-		// committed form is decided at the release (the turn's text →
-		// individual commits with the W13 rollups; the turn's end → the
-		// fold). The FORCE-commit path below bypasses the hold — the
-		// screen never sticks, the rollup degrades to individuals.
-		while (this.#committed < this.#cells.length && this.#cells[this.#committed]!.done && !this.#held(this.#committed)) {
+		while (this.#committed < this.#cells.length && this.#cells[this.#committed]!.done) {
 			this.#commitCell(this.#committed, W, ctx);
 		}
 		// 2. the live lines — the unfinished cells (the tail) + the chrome.
@@ -2406,17 +2110,6 @@ export class Body {
 			this.#committed < this.#cells.length &&
 			!(this.#cells[this.#committed]!.kind === "tool" && !this.#cells[this.#committed]!.done)
 		) {
-			// R3f: the cell about to be force-committed marks its segment
-			// SPILLED. The rule was written at R3b — "a segment too big for
-			// the screen already has rows in the scrollback that cannot be
-			// taken back, so it renders normally and does not collapse" —
-			// and then never wired: `spilled` had a declaration, an
-			// initializer and a read, and nothing ever set it. The read was
-			// therefore vacuously true, so a 43-call turn force-committed
-			// thirty expanded rows and STILL printed `✦ thought 103s · 43
-			// reads` underneath them, claiming as folded the work standing
-			// visible above it.
-			this.#markSpilled(this.#committed);
 			this.#commitCell(this.#committed, W, ctx);
 			// TUI2-R2 ⑤: the focus re-derives after a commit — the cell it
 			// pointed at may have just left the live region.
@@ -2602,38 +2295,13 @@ export class Body {
 	 *  this cell's commit — the cache stays raw, the placed rows count. */
 	#commitCell(i: number, W: number, ctx: FrameCtx): void {
 		const cell = this.#cells[i]!;
-		const lines = this.#foldOrRollup(cell, i, W, ctx);
-		// W15: a tool cell whose committed rows carried the "ctrl+o"
-		// affordance joins the expand history — the detection is the
-		// renderer's OWN output, so the read's "/last"-only cut note never
-		// lands here. TUI2-R1 (A/B): the affordance is no longer only the
-		// renderer cut's "└ … ctrl+o" — the self-naming head suffix and
-		// the exploration row carry it on the HEAD row, and a promise the
-		// key does not answer would be the one thing worse than silence.
-		// unshift: the cells commit oldest-first, so the NEWEST cut lands
-		// at the front — the expand pointer's "newest back" walk starts
-		// where the user's last key press would aim.
-		// R3b: a fold HEAD joins the ring too. The test used to demand a
-		// tool cell, and a segment's fold can be emitted at a thinking
-		// cell — which would have left the whole segment unreachable by
-		// the very key its own row advertises.
-		// R4a — the ring captures by IDENTITY, not by searching our own
-		// printed bytes.
-		//
-		// This used to require the rendered rows to contain the literal
-		// "ctrl+o", which made the affordance LOAD-BEARING: retiring the
-		// printed key (the owner's ruling) would have silently emptied the
-		// ring and taken the expand key with it — not a missing hint, a
-		// missing feature. A fold head is a fold head because the segment
-		// says so; a tool cell is expandable when it is hiding rows.
-		const isFoldHead = this.#segmentOf(i)?.headCell === i;
-		const hidesRows = cell.kind === "tool" && lines.some((l) => l.includes("ctrl+o"));
-		if (isFoldHead || hidesRows) {
-			this.#collapsed.unshift(i);
-			// R4a's walk reset retired with the walk (DC-50): there is no
-			// "which one does it open" any more — one press opens all of
-			// them.
-		}
+		const lines = cellComponent(cell).render(W, ctx);
+		// W15: a tool cell whose committed rows hide something (its rows
+		// carry the "ctrl+o" affordance — the renderer's OWN output, so the
+		// read's "/last"-only cut note never lands here) joins the collapsed
+		// index the viewer reads (ctrl+r). unshift: cells commit
+		// oldest-first, so the newest cut is at the front.
+		if (cell.kind === "tool" && lines.some((l) => l.includes("ctrl+o"))) this.#collapsed.unshift(i);
 		this.#lineCache[i] = lines;
 		const placed = this.#space(i, i > 0 ? this.#lineCache[i - 1]! : null, lines);
 		this.#committed += 1;
@@ -2641,192 +2309,23 @@ export class Body {
 		this.#committedLinesThisFrame.push(...placed);
 	}
 
-	/** R3b — record which segment the cell just pushed belongs to. Called
-	 *  right after the push, so #cells.length-1 is that cell. */
-	#stampSegment(): void {
-		const turn = this.#turns[this.#turns.length - 1];
-		const idx = turn === undefined ? -1 : turn.segments.length - 1;
-		const at = this.#cells.length - 1;
-		this.#cellSegment[at] = idx;
-		if (turn !== undefined && idx >= 0) turn.segments[idx]!.cells.push(at);
-	}
+	/* DECLARED REVERSAL (R13, owner-ruled 2026-09-03): the segment
+	   bookkeeping stood here — `#stampSegment`, `#segmentOf`,
+	   `#segmentHasTrouble`, `#segmentTroubleTerms`, `#markSpilled` — and
+	   with it the three commit HOLDS (`#held`: W14's quiet turn, R3b/R3i's
+	   segment, TUI2-R1.5 ①'s explore run). All of it decided whether a
+	   fold or a rollup would stand for a done cell. Nothing folds, so a
+	   done cell commits the instant it is done, and holding it back only
+	   made finished work compete with the running call for rows (R7a D). */
 
-	/**
-	 * R3b — does the segment hold a call that FAILED or was DENIED?
-	 *
-	 * Such a segment does not fold. Routine work is what the fold is for;
-	 * a refusal and an error are the opposite of routine, and putting
-	 * either behind a key hides the one thing on the screen that most
-	 * needs a human's eye. Law 1.3 makes the same call about marks — a
-	 * failure keeps its colour AND its words — and this is that rule at
-	 * the scale of a run.
-	 *
-	 * The cost, accepted: a turn that reads twenty files and hits one
-	 * denial keeps all twenty rows. The alternative is a screen that says
-	 * `✦ thought 3s · 20 reads` while a write was refused inside it.
-	 */
-	/**
-	 * R3i — the trouble the stretch met, as the line's own terms.
-	 *
-	 * Law 1.3: an outcome is stated in WORDS, "the only form that
-	 * survives a pipe". So the kind is a different word, never a
-	 * different colour — `2 failed`, `1 denied`, `1 interrupted` — and
-	 * the failure's identity rides with it. In this phase the terms are
-	 * only DRAWN (the live line names trouble the moment it happens);
-	 * whether trouble still blocks the fold is the next phase's ruling.
-	 */
-	/** R3i — is this cell one the fold must not count as work done? */
-	#cellInTrouble(i: number): boolean {
-		const c = this.#cells[i];
-		if (c === undefined || c.kind !== "tool") return false;
-		return c.isError || c.reason !== null || c.verdict?.decision === "denied";
-	}
-
-	#segmentTroubleTerms(seg: SegmentRecord): ["failed" | "denied" | "interrupted", number, string][] {
-		let failed = 0;
-		let denied = 0;
-		let interrupted = 0;
-		let what = "";
-		for (const j of seg.cells) {
-			const c = this.#cells[j];
-			if (c === undefined || c.kind !== "tool") continue;
-			// WHICH call, and WHY. The target alone answers the first and
-			// not the second, and for a policy denial the second is the
-			// whole point: `sub/out.txt` does not tell a human that plan
-			// mode is read-only, and that sentence is the one they act
-			// on. Law 1.3's own words — an outcome is stated in words —
-			// and the ladder cuts this clause last, so it degrades to the
-			// target before it disappears.
-			const named = (): string => {
-				const t = toolTarget(c.name, JSON.parse(c.inputFull) as Record<string, unknown>);
-				const why = c.verdict?.reason ?? c.reason;
-				return why === null || why === undefined || why === "" || why === "interrupted" ? t : `${t} (${why})`;
-			};
-			if (c.verdict?.decision === "denied" || (c.reason !== null && c.reason !== "interrupted" && /denied/i.test(c.reason))) {
-				denied += 1;
-				if (what === "") what = named();
-			} else if (c.reason === "interrupted") {
-				interrupted += 1;
-			} else if (c.isError || c.reason !== null) {
-				failed += 1;
-				if (what === "") what = named();
-			}
-		}
-		const out: ["failed" | "denied" | "interrupted", number, string][] = [];
-		if (failed > 0) out.push(["failed", failed, what]);
-		if (denied > 0) out.push(["denied", denied, what]);
-		if (interrupted > 0) out.push(["interrupted", interrupted, ""]);
-		return out;
-	}
-
-	#segmentHasTrouble(seg: SegmentRecord): boolean {
-		// R3g (fable, 2026-08-28): a DENIED call is the case this rule
-		// exists for, and it was the one case the predicate could not
-		// see — a denial carrying no `reason` string leaves isError
-		// false and reason null, so `✦ thought 3s · 20 reads` could
-		// stand over a refused write. The verdict is the record of it.
-		return this.#segmentTools(seg).some((c) => c.isError || c.reason !== null || c.verdict?.decision === "denied");
-	}
-
-	/** R3b — the segment's TOOL cells, in order. */
-	#segmentTools(seg: SegmentRecord): Extract<BodyCell, { kind: "tool" }>[] {
-		const out: Extract<BodyCell, { kind: "tool" }>[] = [];
-		for (const j of seg.cells) {
-			const c = this.#cells[j]!;
-			if (c.kind === "tool") out.push(c);
-		}
-		return out;
-	}
-
-	/** R3f — the cell is leaving the live region under the screen's hard
-	 *  cap, so its segment can no longer be represented by a fold. */
-	#markSpilled(i: number): void {
-		const seg = this.#segmentOf(i);
-		if (seg !== null) seg.spilled = true;
-	}
-
-	/** R3b — the segment a committed cell belongs to, or null when it has
-	 *  none (a cell of the pipe path, or a kind that is not work). */
-	#segmentOf(i: number): SegmentRecord | null {
-		const cell = this.#cells[i]!;
-		if (cell.kind !== "thinking" && cell.kind !== "tool") return null;
-		const turn = cell.turn >= 0 ? this.#turns[cell.turn] : undefined;
-		const si = this.#cellSegment[i];
-		if (turn === undefined || si === undefined || si < 0) return null;
-		return turn.segments[si] ?? null;
-	}
-
-	/** W14 — the fold-hold: a thinking/tool cell of the OPEN quiet turn
-	 *  (no text yet) does not commit — its committed form is decided at
-	 *  the release. The cell's OWN turn must be the CURRENT one (a cell
-	 *  of a released turn commits normally). The force-commit path never
-	 *  consults this — the screen's hard cap wins over the hold. */
-	#held(i: number): boolean {
-		// R13 — NOTHING IS HELD ANY MORE. DECLARED REVERSAL of W14's
-		// quiet-turn hold, R3b/R3i's segment hold and TUI2-R1.5 ①'s
-		// explore-run hold, all three of them owner-ruled away on
-		// 2026-09-03 with the mechanism they served.
-		//
-		// Every one of them existed for the same reason: a done cell's
-		// COMMITTED FORM was undecided while its segment or its run was
-		// still open, because a fold line or a rollup row might yet stand
-		// for it — and a committed row cannot be taken back (ADR-0046).
-		// With no fold and no rollup, a call's committed form is its own
-		// card and is settled the instant the call is: there is nothing
-		// left to wait for.
-		//
-		// It is not only dead weight. Holding done cells in the live
-		// region made the region carry work that was FINISHED, so a burst
-		// of four reads and a shell in flight competed for the same rows
-		// and DC-43's shrink took the running call's output away — the
-		// one thing on the screen the human is waiting for (R7a D). Let
-		// them commit and the room is there.
-		void i;
-		return false;
-	}
-	/* R13 — `#growingRun` retired with the rollup's commit hold (#held). */
-
-	/** W14/W13 — the release-time decision at a commit, BEFORE the cell's
-	 *  own render: the folded-turn fold first (a QUIET turn — ended, no
-	 *  text — becomes the ONE fold line; the rest of its thinking/tool
-	 *  cells render [] after the fold), then the W13 rollup (a text
-	 *  turn's N > 2 same-tool run: the HEAD renders the group summary,
-	 *  the members render [] — the scan is the work order's "group key",
-	 *  derived at commit time, never pre-stored). */
-	#foldOrRollup(cell: BodyCell, i: number, W: number, ctx: FrameCtx): string[] {
-		// R13 — DECLARED REVERSAL, three at once, all of them the same
-		// idea and all of them owner-ruled on 2026-09-03:
-		//
-		//   · the SEGMENT FOLD (R3b–R3i, W14) — a closed stretch of two or
-		//     more cells collapsed into one settled line;
-		//   · the W13 ROLLUP and the `rolled` cell field — a run of three
-		//     or more same-tool calls collapsed into a group summary;
-		//   · TUI2-R1 (B)'s EXPLORATION ROW — the mixed read-only variant
-		//     of the same collapse.
-		//
-		// Every one of them answered the same pressure: ungrounded output
-		// rows owned the screen, so work was collapsed into sentences
-		// ABOUT the work. The card is what changes that arithmetic — a
-		// call's rows sit inside a surface that says where it begins and
-		// ends, so five of them read as one object rather than five loose
-		// lines — and the owner's ruling is that the collapse costs more
-		// than it buys: a page where the machine's work is sometimes a
-		// card, sometimes a summary line and sometimes nothing at all is
-		// a page a reader cannot predict. One rhythm, one surface.
-		//
-		// So every cell renders itself, and this method is the record of
-		// what used to happen here. What the folds bought is bought
-		// differently now: the preview cap (five rows a call, E1's read
-		// showing none) is what keeps a burst from owning the screen, and
-		// it is a CONSTANT per call rather than a decision about runs.
-		//
-		// What goes with them: `#growingRun`'s commit hold existed only so
-		// a run's committed FORM could be decided once the run closed —
-		// with no run-level form left to decide, a done cell commits when
-		// it is done. `#rolledHeads`, `rolledOf`, `rolledTitle`,
-		// `rolledDetail` and the `rolled` field go with the rollup.
-		return cellComponent(cell).render(W, ctx);
-	}
+	/* DECLARED REVERSAL (R13, owner-ruled 2026-09-03): `#foldOrRollup`
+	   stood here — the commit-time decision whether a cell rendered
+	   itself, a segment's fold line (R3b–R3i, W14), a W13 rollup summary
+	   or TUI2-R1 (B)'s exploration row. All three collapses answered one
+	   pressure (ungrounded output rows owning the screen) by turning work
+	   into sentences ABOUT work; the card answers it with a constant
+	   preview cap per call, and a page whose work is always the same
+	   shape is one a reader can predict. Every cell renders itself. */
 
 	/** The slot occupant's extra rows — the slash-command menu (above the
 	 *  status, in the rhythm gap + the content's spare rows — the old
@@ -3197,7 +2696,6 @@ export class Body {
 			// history it had just erased, and everything above was simply
 			// GONE: `dc34-widen-seam` measured 36 tokens missing from the
 			// scrollback the first time this branch was left in place.
-			this.#refolded = false;
 			this.#screen = new Array(H).fill(NOT_PAINTED);
 			this.#resizeFrame = false;
 		}
@@ -3235,26 +2733,12 @@ export class Body {
 		// OLDEST on screen — they are still in the model and come back on
 		// the close.
 		const contentRows = Math.max(0, H - CHROME_ROWS - inputExtra - queueRows.length - menuRows.length);
-		// DC-34 — THE MARCH NEVER REACHES BELOW THE FRONTIER.
-		//
-		// Rows [0, #scrolledOff) are in the terminal's scrollback and are
-		// immutable; painting one puts the same prose on screen twice,
-		// which is the owner's report. `skip` can drop below it whenever
-		// the model shrinks under a fixed screen — a widen refolding the
-		// cells above the frontier, or the live band collapsing — and
-		// nothing stopped it (rider 3's ungated reach-back).
-		//
-		// Clamping costs a gap under short content for one frame, which
-		// the next commit fills. Reaching back costs a duplicate that
-		// stands in the transcript forever.
-		// ...but only when the WIDTH moved. A height change re-indexes
-		// nothing — the folds are untouched, every row means what it
-		// meant — so reaching back there is the pre-existing behaviour a
-		// gate already covers (the A8 windowing case: grow the screen and
-		// the banner returns). The duplication measured in this round is
-		// width-driven, and so is the guard.
-		const march = all.slice(this.#lastW !== 0 && this.#lastW !== W ? Math.max(skip, this.#scrolledOff) : skip);
-		this.#lastW = W;
+		// The march starts at `skip`, which is already clamped to the
+		// frontier above (rows in [0, #scrolledOff) are the terminal's and
+		// are never painted again). DC-34's width-only reach-back guard
+		// stood here until R14: a resize now reprints from the model, so
+		// there is no stale fold for a width change to re-index.
+		const march = all.slice(skip);
 		for (const line of march.length > contentRows ? march.slice(march.length - contentRows) : march) {
 			desired[r - 1] = this.#checked(line, W);
 			r += 1;

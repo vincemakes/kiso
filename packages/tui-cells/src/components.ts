@@ -1208,14 +1208,11 @@ function attribution(c: Extract<BodyCell, { kind: "tool" }>): string {
 	return c.verdict.decision === "denied" ? " · denied" : " · approved";
 }
 
-export function expandSuffix(lines: number | null, room: number): string {
+/** The expand key as a row's tail, in two tiers; empty when there is
+ *  nothing hidden. R13 moved the line COUNT off this suffix onto the
+ *  head row's own `·` chain (VD-6: stated exactly once). */
+function expandSuffix(lines: number | null, room: number): string {
 	if (lines === null) return "";
-	// R13 — the COUNT left this suffix for the head row's own `·` chain,
-	// where the bodied card keeps it too (`… · 10 lines · 0.1s`). It was
-	// here because the parenthesised core had nowhere to put it and the
-	// suffix was the only tail the row had; with one grammar for both
-	// cards there is one place, and VD-6's "stated exactly once" is what
-	// forbids leaving a copy behind.
 	for (const tier of [" · ctrl+o expands", " · ctrl+o"]) {
 		if (tier.length <= room) return tier;
 	}
@@ -1285,45 +1282,10 @@ const EXPAND_KEY = "ctrl+o";
  *  outputs live in /last, which the group row cannot show). */
 const COLLAPSE_ROW = "ctrl+o collapses";
 
-/** W13 — the rollup opt-in table: which tools collapse, and the count
- *  NOUN (read_file calls → "5 files", list_dir → "5 dirs", search_text
- *  → "5 matches"). Only these tools opt in — a shell burst is never
- *  rolled up (its rows carry meaning). The folded-turn line (W14) reuses
- *  the plurals for its other-tool terms ("2 dirs", "1 match"). */
-export const ROLLUP_NOUN: Readonly<Record<string, string>> = {
-	read_file: "files",
-	list_dir: "dirs",
-	search_text: "matches",
-};
-
-// ---- TUI2-R1 (B): the exploration rollup ----
-
-/** TUI2-R1 (B) — the exploration row's nouns. Deliberately NOT
- *  ROLLUP_NOUN: that table says what a SINGLE-tool rollup counts
- *  ("5 matches"), and this row counts CALLS across tools, where
- *  "14 searches" is what happened. Both tables stay — changing the
- *  older one would move an assertion this round did not declare. */
-const EXPLORE_NOUN: Readonly<Record<string, [string, string]>> = {
-	read_file: ["file", "files"],
-	list_dir: ["dir", "dirs"],
-	search_text: ["search", "searches"],
-};
-
-/** TUI2-R1 (B) — the verb column of the expanded list names the ACT.
- *  TUI2-R2pre ④: this used to be a private three-tool table saying the
- *  same thing as the card head's `_file` strip, in a different way and
- *  for a different set of tools. Both are `displayVerb` now — the whole
- *  point of the ruling is that there is ONE answer to "what does the
- *  screen call this". The cut note, which used to be the deliberate
- *  exception here, moved with it (see toolCutNote). */
-
-/** Whether a tool joins an exploration run. Exactly the read-only set —
- *  writes, edits, shells and extension tools never group (a burst of
- *  side effects is a list of things that HAPPENED, and every row of it
- *  carries meaning). */
-export function isExploreTool(name: string): boolean {
-	return EXPLORE_NOUN[name] !== undefined;
-}
+/* DECLARED REVERSAL (R13, owner-ruled 2026-09-03): the W13 rollup's
+   noun table (`ROLLUP_NOUN`) and TUI2-R1 (B)'s exploration-run set
+   (`EXPLORE_NOUN`, `isExploreTool`) stood here. Both collapses retired
+   with the fold; the verb column is `displayVerb` for every tool. */
 
 /** W14 — the folded-turn line: a whole QUIET turn (no text), once it is
  *  scrollback, becomes ONE line — the work order's claimed shape
@@ -1400,25 +1362,10 @@ const FOLD_TERM: Readonly<Record<string, readonly [string, string, string]>> = O
 	Object.entries(TERM).map(([name, [past, , singular, plural]]) => [name, [past, singular, plural] as const]),
 );
 
-/**
- * R3h (fable, 2026-08-29) — WHICH TERMS COUNT OBJECTS.
- *
- * The rule, one sentence: a term that counts OBJECTS counts distinct
- * objects; a term that counts ACTS counts calls. `read 2 files` after
- * reading ONE file twice is a false sentence, and law 1.3 does not
- * become optional because the falsehood is small. `ran 2 searches`
- * after searching the same pattern twice is TRUE — the acts happened.
- *
- * The table sits beside FOLD_TERM so the two cannot drift: a tool whose
- * noun is a thing ("files", "directories") belongs here; a tool whose
- * noun is an act ("searches", "shell commands") does not.
- */
-const FOLD_COUNTS_OBJECTS: ReadonlySet<string> = new Set(["read_file", "edit_file", "write_file", "list_dir"]);
-
-/** Does this tool's fold term count distinct targets rather than calls? */
-export function foldCountsObjects(name: string): boolean {
-	return FOLD_COUNTS_OBJECTS.has(name);
-}
+/* R3h's object-vs-act distinction (`foldCountsObjects`: a term that
+   counts OBJECTS counts distinct targets, one that counts ACTS counts
+   calls) retired with the segment fold that consumed it (R13). The
+   recap's terms below count calls, which is what the CLI hands them. */
 
 function foldTerm(name: string, n: number): string {
 	const t = FOLD_TERM[name];
@@ -1437,41 +1384,6 @@ export function foldTerms(reads: number, edits: number, others: readonly [string
 	return parts;
 }
 
-/**
- * R3i — THE STRETCH LINE: the turn's one working row, in three phases.
- *
- * A STRETCH is the run of thinking and tool calls between two blocks of
- * the model's prose. While it runs it is this line plus a bounded act
- * window; when it closes it commits as this same line, frozen, with its
- * key. The contract in one sentence: **the line you watch is the line
- * you keep** — the settle changes the mark, the tense and the key, and
- * nothing else.
- *
- *   thinking   ✧ thinking 4s
- *   acting     ✶ reading 6 files · running 4 shell commands
- *   settled    ✦ thought 9s · read 6 files · ran 4 shell commands · ctrl+o
- *
- * THE GIVE-WAY LADDER, in order, because at some width everything
- * cannot fit:
- *
- *   1. the human's WORDS (the A9 chip on a quiet turn) — they are on
- *      screen above, in the chip band;
- *   2. the NOUNS compact, cheapest word first, and stop as soon as the
- *      row fits — buying one cell must not spend every substitution;
- *   3. the COUNTS cut, with the honest "…";
- *   4. the TROUBLE CLAUSE cuts. The design first said it never gives
- *      way, and that was unimplementable: a long clause overflows after
- *      the counts have already cut to a bare "…", and invariant ①
- *      throws on that row;
- *   5. the KEY gives way NEVER. A fold with no key is the turn's work
- *      behind a line with no way back to it, which is the one thing
- *      this row must not be.
- *
- * `…` in this file means CUT HERE and nothing else — which is why the
- * live phases carry no trailing ellipsis for in-flight, though the
- * reference implementation uses one. The moving mark and the present
- * tense already say it twice.
- */
 /**
  * R3i phase 5 — THE ANSWERED QUESTION'S BLOCK.
  *
@@ -1527,72 +1439,11 @@ export function askedBlock(resultText: string, seconds: number, W: number): stri
 	];
 }
 
-export interface StretchTerms {
-	/** the segment's OWN measured thinking seconds; 0 drops the term */
-	readonly thoughtSeconds: number;
-	/** the segment's calls as [tool name, count], in first-call order.
-	 *  Object-counting tools are deduped by target upstream (R3h). */
-	readonly calls: readonly (readonly [string, number])[];
-	/** the targets acted on — read only when the stretch made exactly
-	 *  ONE call, where naming the target says everything the two rows it
-	 *  replaces said (see the one-call rule below). */
-	readonly targets: readonly string[];
-	/** the trouble the stretch met: [kind, count, what it was]. */
-	readonly trouble: readonly (readonly ["failed" | "denied" | "interrupted", number, string])[];
-	/** R4 — the tool names that still have a call IN FLIGHT. The tense is
-	 *  PER TERM, not per line: a stretch whose shell has finished while a
-	 *  read runs says `ran 1 shell command · reading 1 file`. The whole
-	 *  line used to go progressive, which the standing act slot made a
-	 *  visible contradiction — the gap frame put `running npm run check`
-	 *  directly above a row reading `(exit 0, 12.4s)`. Absent ⇒ every
-	 *  term takes the line's own tense, which is what the settled line
-	 *  wants. */
-	readonly liveNames?: readonly string[];
-	/** A9 — the human's words, on a QUIET turn's fold only. */
-	readonly words?: string;
-	/** the live mark; the caller passes the spinner's current frame. */
-	readonly mark?: string;
-}
-
-const STRETCH_COMPACT: readonly (readonly [string, string])[] = [
-	["directories", "dirs"],
-	["directory", "dir"],
-	["shell commands", "commands"],
-	["shell command", "command"],
-];
-
-/** R3i — a stretch of exactly ONE call names its TARGET instead of its
- *  count. `thought 2s · read 1 file` replaces two rows — the thinking
- *  and the call — with a row that says less than either of them did,
- *  and "thinking plus one call" is the commonest shape a narrating
- *  model makes. This is the answer to the defect R3d killed R3b's
- *  per-segment folds over; the "absorbs at least two rows" rule alone
- *  does not answer it. */
-function stretchTerms(t: StretchTerms, live: boolean): string[] {
-	// R4 — the tense is per TERM. A name with nothing in flight is in the
-	// past whatever the line's own phase is; with liveNames absent (the
-	// settled line) every term follows the line.
-	const tense = (name: string): 0 | 1 => (live && (t.liveNames === undefined || t.liveNames.includes(name)) ? 1 : 0);
-	const total = t.calls.reduce((n, [, c]) => n + c, 0);
-	// R4 — the one-call TARGET form is the SETTLED line's. Live, the act
-	// slot directly below already names the target on its head row, so
-	// the line was printing the same words twice, one above the other
-	// (`running npm run check` over `shell npm run check`). Settled there
-	// is no slot, and naming the target is strictly more than counting to
-	// one — which is the R3i rule this keeps, where it applies.
-	if (total === 1 && t.targets.length === 1 && !live) {
-		const [name] = t.calls[0]!;
-		const e = TERM[name];
-		return [`${e === undefined ? name : e[0]} ${t.targets[0]!}`];
-	}
-	return t.calls
-		.filter(([, n]) => n > 0)
-		.map(([name, n]) => {
-			const e = TERM[name];
-			if (e === undefined) return `${n} × ${displayVerb(name)}`;
-			return `${e[tense(name)]} ${n} ${n === 1 ? e[2] : e[3]}`;
-		});
-}
+/* DECLARED REVERSAL (R13, owner-ruled 2026-09-03): the stretch line's
+   term machinery stood here — `StretchTerms`, `STRETCH_COMPACT`,
+   `stretchTerms` (R3i's one-line-per-stretch, R4's per-term tense).
+   The line retired with the fold; the TERM table above survives for the
+   turn's recap alone. */
 
 // ---- the bounded-block flow contract (W7, W8, W10) ----
 
@@ -1604,9 +1455,6 @@ export const CAP_PREVIEW = 5;
 /** DC-46 — the running window's ceiling is the SETTLED preview's, and a
  *  running card reaches it by growing rather than by being handed it.
  *  `LIVE_WINDOW` (CAP_PREVIEW + 1) retires with the allocation it sized. */
-/** The rows a card costs besides its window: two pads, the head, two
- *  blanks and the status row. Below this there is no card (DC-43). */
-export const CARD_CHROME = 6;
 const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
 
 /** The block body rows' prefixes (W2's gutter table): │ a bounded
@@ -2057,92 +1905,12 @@ function liveCap(c: object, room: number): number {
 }
 
 
-/**
- * R4 — the standing act slot.
- *
- * The stretch's ONE line sits above it; this is the region under it,
- * and it STANDS: allocated when the stretch opens, released at the
- * fold.
- *
- * R3i built the same window INTERMITTENTLY — a running call got its
- * fixed 1+3 block (W8), a finished one got nothing — so the live
- * region's height was a function of how many calls happened to be in
- * flight this frame. Over one real stretch that is 2 rows, then 7,
- * then 2, then 17 for a three-call batch, then 2 again, and every
- * transition scrolls everything above it. The owner's report was that
- * the screen "keeps jumping", and it was an accurate description of
- * the design, not a defect in its execution.
- *
- * The cure is not a smaller window, it is a STANDING one: between two
- * calls the slot keeps the call that just finished rather than
- * collapsing, and before any call it keeps the thinking that is
- * producing them — which is R3i ruling 5 ("thinking belongs on the
- * stretch line, IN THE ACT WINDOW, and in full in expansions") finally
- * wired, since R3i stated it while building no window for the thinking
- * phase to live in.
- *
- * Four rows, deliberately the same 1+3 shape W8 gave a running call, so
- * the commonest frame — exactly one call in flight — renders byte-for-
- * byte what 0.17.0 shipped.
- */
-export const ACT_SLOT_ROWS = 4;
-
-/**
- * R4 — the slot's body rows: the tail of `text`, newest at the BOTTOM,
- * bottom-padded to exactly `rows`.
- *
- * The same dim │ gutter a running call's window uses (W2's table), and
- * the same two VD-4 rules: leading blank gutters are skipped, and the
- * short-output pad goes at the BOTTOM so output starts under its own
- * header and grows downward. The slot's CONTENTS change; its shape
- * does not.
- */
-export function slotTail(text: string, W: number, rows: number): string[] {
-	if (rows <= 0) return [];
-	const p = palette();
-	const all = blockRows(text, W);
-	const from = all.findIndex((r) => visibleWidth(r) > visibleWidth(bodyRow()));
-	const body = from < 0 ? [] : all.slice(from);
-	// R7a: no pad. The slot stopped padding (see slotPad) and this was
-	// the same pad by another route — three blank rows under a call with
-	// nothing to say yet, which is the hole a7's blank-run guard prices.
-	// R8a: the corner opens whatever slice survives the cap.
-	return openBlock(body.slice(Math.max(0, body.length - rows)));
-}
-
-/** R4 — clamp or pad assembled slot rows to EXACTLY `rows`. The padding
- *  is what makes the slot stand; the clamp is what keeps the slot from
- *  ever being the thing that trips the force-commit cap (a slot that
- *  could overflow would commit real cells to relieve blank rows). */
-export function slotPad(content: readonly string[], rows: number): string[] {
-	if (rows <= 0) return [];
-	// R7a — THE SLOT NO LONGER PADS. It caps, and that is all.
-	//
-	// R4 padded to a fixed height because the slot's content came and
-	// went: a finished call left the block, the block shrank, and every
-	// row above it moved. The pad bought stability with rows drawn as
-	// `│`, which is why a tall empty gutter ran down the screen under
-	// every short block — the owner's own screenshot, and law 1.3's
-	// case: a mark on a row with nothing to mark.
-	//
-	// Blanking the gutter revealed the hole it had been covering, and
-	// the a7 replay priced the hole: blank runs over 2 in 653 of 733
-	// frames, the screen never durably filling. So the pad had to go —
-	// and the height it was buying is now bought by the CONTENT, since
-	// R7a keeps every call's row for the life of the stretch. A block
-	// whose rows only accumulate cannot shrink, so there is nothing
-	// left for a pad to hold up. Measured: 65 of 733 at 40x24, the
-	// pre-R7a number exactly, with the motion gates still green.
-	return content.slice(0, rows);
-}
-
-/** R4 — the slot's overflow row: the calls in flight beyond the head
- *  budget. It lives INSIDE the slot (it is one of the four rows), which
- *  is what keeps a parallel burst from growing the region. */
-export function moreRunningRow(n: number, W: number): string {
-	const p = palette();
-	return cutLine(`  ${p.dim}${CUT_ROW}+${n} more running${p.reset}`, W);
-}
+/* DECLARED REVERSAL (R13, owner-ruled 2026-09-03): R4's standing act
+   slot stood here — `ACT_SLOT_ROWS`, `slotTail`, `slotPad`,
+   `moreRunningRow` — a fixed four-row region that held the stretch's
+   running call so the live region's height would not follow the call
+   count. Every call is its own card now, allocated at its own height
+   (E2, DC-46), so there is no slot for a call to occupy. */
 
 /** W12: the delegate's child sessions collapse to the tool row plus ONE
  *  line — the height NEVER changes (running → settled replaces the row

@@ -16,7 +16,6 @@ export {
 	Container,
 	cellComponent,
 	focusToken,
-	ROLLUP_NOUN,
 	foldTerms,
 	CAP_TASK_LIVE,
 	formatDuration,
