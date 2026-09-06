@@ -35,7 +35,7 @@
  */
 
 import { palette } from "./render.js";
-import { visibleWidth } from "./components.js";
+import { cutLine, visibleWidth } from "./components.js";
 
 /** The gutter every viewer row carries: the cursor mark and its space. */
 export const VIEWER_GUTTER = 3;
@@ -157,7 +157,7 @@ export function viewerRows(entries: readonly ViewerEntry[], state: ViewerState, 
 		const mark = line.head ? (open ? "▾" : onCursor ? "▸" : " ") : "│";
 		const gutter = onCursor ? `${p.bold}${mark}${p.reset} ` : `${p.dim}${mark}${p.reset} `;
 		const row = ` ${gutter}${line.text}`;
-		out.push(open ? shade(row, W) : cut(row, W));
+		out.push(open ? shade(row, W) : cutLine(row, W));
 	}
 	return out;
 }
@@ -175,30 +175,9 @@ export function viewerRows(entries: readonly ViewerEntry[], state: ViewerState, 
  */
 function shade(row: string, W: number): string {
 	const p = palette();
-	const body = cut(row, W);
+	const body = cutLine(row, W);
 	if (p.wash === "") return body;
 	return `${p.wash}${body}${" ".repeat(Math.max(0, W - visibleWidth(body)))}${p.washEnd}`;
-}
-
-/** The last resort — the row is cut at W rather than overflowing it. */
-function cut(row: string, W: number): string {
-	if (visibleWidth(row) <= W) return row;
-	let out = "";
-	let n = 0;
-	for (let i = 0; i < row.length; ) {
-		if (row[i] === "\x1b") {
-			const j = row.indexOf("m", i);
-			if (j < 0) break;
-			out += row.slice(i, j + 1);
-			i = j + 1;
-			continue;
-		}
-		if (n >= W - 1) break;
-		out += row[i];
-		n += 1;
-		i += 1;
-	}
-	return `${out}…${palette().reset}`;
 }
 
 /** The viewer's affordance row — what the keys do, where they are

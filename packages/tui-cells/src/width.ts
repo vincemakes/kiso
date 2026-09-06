@@ -134,6 +134,26 @@ export function displayWidth(text: string): number {
 	return w;
 }
 
+/** The display-width prefix of a text — the cell cut, no mark. Steps
+ *  by CODE POINT, so an astral character (an emoji) counts its true
+ *  width and is never split between its surrogates: the cut lands
+ *  before it when it does not fit. SGR-blind — the caller cuts what it
+ *  has already measured as visible text. The one cutter under
+ *  `cutLine` (the marked one-row cut), the banner's plain rows (DC-18)
+ *  and the approval panel's option-2 rule name (W21). */
+export function widthCut(text: string, max: number): string {
+	let w = 0;
+	let i = 0;
+	while (i < text.length) {
+		const cp = text.codePointAt(i)!;
+		const cw = charWidth(cp);
+		if (w + cw > max) break;
+		w += cw;
+		i += cp > 0xffff ? 2 : 1;
+	}
+	return text.slice(0, i);
+}
+
 /** The visible width of a RENDERED line — the same table, asked with
  *  the SGR/CSI sequences skipped. The compositor's invariant ① measures
  *  with this, so every producer of a screen row must measure with it

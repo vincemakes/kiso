@@ -6,7 +6,7 @@
  * dependencies (the tui-cells package has none).
  */
 
-import { charWidth, displayWidth } from "./width.js";
+import { charWidth, displayWidth, visibleWidth, widthCut } from "./width.js";
 import type { Ground } from "./ground.js";
 
 /**
@@ -436,20 +436,6 @@ export function twinkleFrame(step: number): string {
  *  marks stay in step on a screen showing both. */
 export const MOTION_FRAMES = 7;
 
-/** DC-18: the display-width prefix of PLAIN text. `widthCut` lives in
- *  components.ts, which imports this module — the dependency runs one
- *  way, so the four lines live here rather than inverting it. */
-function plainCut(text: string, max: number): string {
-	let w = 0;
-	let i = 0;
-	for (; i < text.length; i += 1) {
-		const cw = charWidth(text.codePointAt(i)!);
-		if (w + cw > max) break;
-		w += cw;
-	}
-	return text.slice(0, i);
-}
-
 export const TAGLINE = "the coding agent that survives kill -9";
 /**
  * R2 — the wordmark is retired (2026-08-27, the nineteen-screen review).
@@ -488,6 +474,44 @@ export interface BannerMeta {
 	readonly cwd: string;
 }
 
+/** W20 — the ONE-ROW cut with the honest mark, SGR-aware. A line that
+ *  fits (≤ W) passes through whole; an overflow cuts the content at
+ *  W−1 — the ellipsis's slot — and the ellipsis rides AFTER the reset
+ *  (post-reset — the PTY needles' convention). The cut row never
+ *  exceeds W (invariant ①). One implementation for every one-row
+ *  surface: the live task rows, the approval panel's lines (W21), the
+ *  help and keys rows, the transcript viewer's rows. (The strings module
+ *  and the viewer each carried a copy; the viewer's put the ellipsis
+ *  before the reset, and now does not.) */
+export function cutLine(line: string, W: number): string {
+	if (visibleWidth(line) <= W) return line;
+	let out = "";
+	let width = 0;
+	for (let i = 0; i < line.length; ) {
+		if (line[i] === "\x1b") {
+			// exec returns an ARRAY — copying m coerces it (the match), but
+			// m.length is the CAPTURE count (1), not the sequence length:
+			// the old `i += m.length` re-processed the sequence's bracket
+			// text as literal rows, doubling every code in a cut line
+			// (the W21 panel-slot red test). Index 0 is the sequence.
+			const m = /^\x1b\[[0-9;]*m/.exec(line.slice(i))?.[0] ?? line[i]!;
+			out += m;
+			i += m.length;
+			continue;
+		}
+		const cw = displayWidth(line[i]!);
+		if (width + cw > W - 1) break; // reserve the ellipsis's column
+		out += line[i]!;
+		width += cw;
+		i += 1;
+	}
+	// R8a: the reset comes from the PALETTE, not hardcoded. `\x1b[0m`
+	// here put an escape into every cut row under NO_COLOR and behind a
+	// pipe — the one context COLOR_OFF exists to keep clean (§1.2). A
+	// coloured palette is byte-identical, because its reset IS `\x1b[0m`.
+	return `${out}${palette().reset}…`;
+}
+
 /** v3 §01 (W1): truncate a row at `width`, marking the hidden span
  *  " (+N)". W1: the width math is the charWidth authority (the banner's
  *  brick glyphs are 1 cell — the art's 38 columns clear 40), and the
@@ -502,7 +526,7 @@ export function truncateRow(row: string, width: number): string {
 	// regardless, so every width ≤ 6 returned a row WIDER than the
 	// terminal — and invariant ① throws rather than truncating. A marker
 	// wider than the row it marks is not a marker.
-	if (width < 7) return plainCut(row, Math.max(0, width));
+	if (width < 7) return widthCut(row, Math.max(0, width));
 	// iterate the marker to a fixpoint: the marker's width changes the
 	// cut, the cut changes the hidden count the marker reports
 	let marker = " (+0)";
@@ -547,7 +571,7 @@ export function bannerLines(W: number, H: number, version: string, extensionsTex
 	// measured 11 cells and invariant ① threw AT STARTUP — the function
 	// whose own comment preaches "invariant ① holds at every width".
 	// The cut is taken on the plain text, per the note above.
-	const namePlain = plainCut(`kiso ${version}`, Math.max(1, W));
+	const namePlain = widthCut(`kiso ${version}`, Math.max(1, W));
 	const nameCut = namePlain.slice(0, 4); // "kiso", or its surviving prefix
 	const verCut = namePlain.slice(5); // the version, if the width left room for it
 	const rows: string[] = [`${p.bold}${nameCut}${p.reset}${verCut === "" ? "" : `${p.dim} ${verCut}${p.reset}`}`];

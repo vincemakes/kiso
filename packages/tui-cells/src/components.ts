@@ -26,7 +26,7 @@
  * tint, fold wording).
  */
 
-import { displayWidth, visibleWidth } from "./width.js";
+import { displayWidth, visibleWidth, widthCut } from "./width.js";
 // TUI2-R2pre ④: the ONE display-verb table (strings.ts, beside
 // KEY_BINDINGS). strings.js imports only render/width here, so this edge
 // adds no cycle.
@@ -34,6 +34,7 @@ import { displayVerb } from "./strings.js";
 import {
 	bannerLines,
 	breathFrame,
+	cutLine,
 	escapeTerminal,
 	foldThinking,
 	foldResult,
@@ -154,7 +155,8 @@ export function foldLine(line: string, W: number): string[] {
  *  renderer can measure without importing this module back — the
  *  re-export is verbatim, so every existing importer and the barrel see
  *  exactly what they saw. */
-export { visibleWidth } from "./width.js";
+export { visibleWidth, widthCut } from "./width.js";
+export { cutLine } from "./render.js";
 
 /** A component: render the display lines for one piece of state. */
 export interface Component {
@@ -1066,20 +1068,12 @@ function settledHeadText(verbCol: string, target: string, meta: string, attr: st
 	const core = join(meta, counted, `${elapsed}s`);
 	const withAttr = join(meta, counted, `${elapsed}s`, attr.replace(" · ", ""));
 	const lead = `${verbCol} `;
-	const fit = (t: string, tail: string): string | null => {
-		const line = `${lead}${t}${tail === "" ? "" : ` · ${tail}`}`;
-		return visibleWidth(line) <= room ? line : null;
-	};
-	// 1. everything
-	const full = fit(target, withAttr);
-	if (full !== null) return full;
-	// 2. the attribution gives way
-	const bare = fit(target, core);
-	if (bare !== null) return bare;
-	// 2b. the COUNT gives way next (pin 4), where the suffix is not
-	//     already carrying it
-	const short = fit(target, join(meta, `${elapsed}s`));
-	if (short !== null) return short;
+	const row = (tail: string): string => `${lead}${target}${tail === "" ? "" : ` · ${tail}`}`;
+	// 1. everything; 2. the attribution gives way; 2b. the COUNT gives
+	//    way next (pin 4), where the suffix is not already carrying it —
+	//    the target whole through all three
+	const whole = firstFit([row(withAttr), row(core), row(join(meta, `${elapsed}s`))], room);
+	if (whole !== null) return whole;
 	// 3. the target truncates, the core stays whole
 	const stem = join(meta, `${elapsed}s`);
 	const budget = room - visibleWidth(lead) - visibleWidth(stem) - 4; // the ellipsis + " · "
@@ -1394,8 +1388,17 @@ function slabRow(inner: string, W: number): string {
  *  metadata rows: the parts give way in a PINNED ORDER, and the part
  *  that carries the semantics is the one reserved. */
 function pickTier(tiers: readonly string[], room: number): string {
+	return firstFit(tiers, room) ?? tiers[tiers.length - 1]!;
+}
+
+/** The widest form that fits the row, or null when none does — the
+ *  settled head row asks this with its target whole, and only then
+ *  cuts the target. The three rows that give way in a pinned order
+ *  (the settled head, the running head, the outcome row) share this
+ *  walk; their ORDERS differ by ruling and stay their own. */
+function firstFit(tiers: readonly string[], room: number): string | null {
 	for (const t of tiers) if (visibleWidth(t) <= room) return t;
-	return tiers[tiers.length - 1]!;
+	return null;
 }
 
 function noteRow(text: string, W: number, tone: "dim" | "body"): string[] {
@@ -1949,44 +1952,6 @@ class Banner implements Component {
  *  height is its row count. */
 export const CAP_TASK_LIVE = 6;
 
-/** W20 — the live block's fixed-window row cut: an SGR-aware ONE-ROW
- *  truncation (foldLine wraps; a wrapped row would break the height
- *  cap — every live row is exactly one screen row at every width).
- *  A line that fits (≤ W) passes through whole; an overflow cuts the
- *  content at W−1 — the ellipsis's slot — and the ellipsis rides AFTER
- *  the reset (post-reset — the PTY needles' convention). The cut row
- *  never exceeds W (invariant ①). W21: exported for the approval
- *  panel's single-row lines (the rule line, the title, the divider,
- *  the options/affordance rows). */
-export function cutLine(line: string, W: number): string {
-	if (visibleWidth(line) <= W) return line;
-	let out = "";
-	let width = 0;
-	for (let i = 0; i < line.length; ) {
-		if (line[i] === "\x1b") {
-			// exec returns an ARRAY — copying m coerces it (the match), but
-			// m.length is the CAPTURE count (1), not the sequence length:
-			// the old `i += m.length` re-processed the sequence's bracket
-			// text as literal rows, doubling every code in a cut line
-			// (the W21 panel-slot red test). Index 0 is the sequence.
-			const m = /^\x1b\[[0-9;]*m/.exec(line.slice(i))?.[0] ?? line[i]!;
-			out += m;
-			i += m.length;
-			continue;
-		}
-		const cw = displayWidth(line[i]!);
-		if (width + cw > W - 1) break; // reserve the ellipsis's column
-		out += line[i]!;
-		width += cw;
-		i += 1;
-	}
-	// R8a: the reset comes from the PALETTE, not hardcoded. `\x1b[0m`
-	// here put an escape into every cut row under NO_COLOR and behind a
-	// pipe — the one context COLOR_OFF exists to keep clean (§1.2). A
-	// coloured palette is byte-identical, because its reset IS `\x1b[0m`.
-	return `${out}${palette().reset}…`;
-}
-
 /** W20 — the settled block's duration, the `2h 14m` form (the task
  *  narrative's long-horizon idiom): minutes+seconds under an hour,
  *  hours+minutes past it. */
@@ -2114,19 +2079,6 @@ export function statusLine(status: string, tail: string, W: number, hint?: strin
 	const hintW = visibleWidth(hintText);
 	if (hintW === 0 || statusW + hintW > W) return `${p.dim}${text}${p.reset}`;
 	return `${p.dim}${text}${" ".repeat(Math.max(0, W - statusW - hintW))}${hintText}${p.reset}`;
-}
-
-/** The display-width prefix of a plain (SGR-free) text. W21: exported
- *  for the approval panel's option-2 rule-name cut. */
-export function widthCut(text: string, max: number): string {
-	let w = 0;
-	let i = 0;
-	for (; i < text.length; i += 1) {
-		const cw = displayWidth(text[i]!);
-		if (w + cw > max) break;
-		w += cw;
-	}
-	return text.slice(0, i);
 }
 
 /**

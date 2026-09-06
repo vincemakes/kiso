@@ -19,8 +19,8 @@
  */
 
 import type { PanelView } from "./approval-panel.js";
-import { escapeTerminal, palette } from "./render.js";
-import { displayWidth, visibleWidth } from "./width.js";
+import { cutLine, escapeTerminal, palette } from "./render.js";
+import { displayWidth } from "./width.js";
 
 /** v2a: the interactive prompt — the identity accent. readline owns the
  *  echo of what the user types; we own the prompt's color. (v2c: the
@@ -396,7 +396,7 @@ export function keysSheetRows(W: number): string[] {
 		rows.push(row);
 	}
 	rows.push(`${p.dim}${panelKeysRow(W)}${p.reset}`);
-	return rows.map((row) => cutRow(row, W));
+	return rows.map((row) => cutLine(row, W));
 }
 
 /**
@@ -406,7 +406,7 @@ export function keysSheetRows(W: number): string[] {
  * used to lose the tail of the last one, so `t types` became `t`: the
  * reader was told a key existed and not told what it did, on a row that
  * still looked complete. Dropping a whole clause says less; it never
- * says something false. `cutRow`'s ellipsis is the floor below this, for
+ * says something false. `cutLine`'s ellipsis is the floor below this, for
  * a width that cannot hold even the first clause.
  */
 function panelKeysRow(W: number): string {
@@ -416,35 +416,6 @@ function panelKeysRow(W: number): string {
 		if (displayWidth(row) <= W) return row;
 	}
 	return clauses[0]!;
-}
-
-/** One row, cut at the width — SGR-aware, the ellipsis after the reset
- *  (the cutLine convention; duplicated here rather than imported so the
- *  strings module keeps its no-components-dependency shape). */
-function cutRow(row: string, W: number): string {
-	// DC-2: a cut is MARKED. This returned the surviving prefix with
-	// nothing to say it was a prefix, so a row that had lost its tail read
-	// as a whole row — the one thing the tree's own fold rule forbids
-	// ("the honest …, never a silent truncate"). The mark costs a column,
-	// so the cut lands one column earlier to pay for it.
-	if (displayWidth(row.replace(/\x1b\[[0-9;]*m/g, "")) <= W) return row;
-	const limit = Math.max(0, W - 1);
-	let out = "";
-	let width = 0;
-	for (let i = 0; i < row.length; ) {
-		if (row[i] === "\x1b") {
-			const m = /^\x1b\[[0-9;]*m/.exec(row.slice(i))?.[0] ?? row[i]!;
-			out += m;
-			i += m.length;
-			continue;
-		}
-		const cw = displayWidth(row[i]!);
-		if (width + cw > limit) break;
-		out += row[i]!;
-		width += cw;
-		i += 1;
-	}
-	return `${out}${palette().reset}\u2026`;
 }
 
 /** TUI2-R1 (D) — the keys as ONE line, for /help. The same table the
