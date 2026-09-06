@@ -67,18 +67,10 @@ export interface FrameCtx {
 	 *  the tier table reads H, so a resize RE-TIERS instead of
 	 *  re-folding frozen rows). */
 	readonly height: number;
-	/** R7a — this cell is drawn UNDER an activity header that carries the
-	 *  breathing mark, so its own head row wears a plain gutter.
-	 *
-	 *  The mark belongs to the ACTIVITY, not to each call in it. A
-	 *  four-file burst drew four breathing marks, which is four marks
-	 *  distinguishing nothing (law 1.3, the same ground R2 retired the
-	 *  tick and cross on) — and worse, on a read that finishes in
-	 *  200ms the mark is gone before the eye lands, so per-row it is
-	 *  motion that never resolves into meaning. On the header it is lit
-	 *  for the whole stretch, which is the fact it is there to carry:
-	 *  work is in flight. Owner-ruled 2026-08-31. */
-	readonly grouped?: boolean;
+	/* DECLARED REVERSAL (R13): R7a's `grouped` flag stood here — a cell
+	   drawn UNDER an activity header wore a plain gutter, the breathing
+	   mark belonging to the activity. The header retired with the
+	   standing slot, and no caller set the flag after that. */
 	/** R13 E2 / DC-43 — how many PREVIEW rows a running card may take this
 	 *  frame. Undefined is the full window (`CAP_PREVIEW`); the compositor
 	 *  lowers it when the live region is tight, and 0 degrades the card to
@@ -307,9 +299,9 @@ export function cellComponent(cell: BodyCell): Component {
 		case "user":
 			return new UserMessage(cell);
 		case "thinking":
-			// R7: the committed/live surface is the BLOCK. ThinkingFold
-			// survives for the pipe path (render.ts's foldThinking), whose
-			// bytes are asserted by the --plain identity gate.
+			// R7: the committed/live surface is the BLOCK; the pipe path
+			// prints render.ts's one-row foldThinking instead, whose bytes
+			// are asserted by the --plain identity gate.
 			return new ThinkingBlock(cell);
 		case "tool":
 			return new ToolExecution(cell);
@@ -478,19 +470,14 @@ export function pendingQueueRows(lines: readonly string[], W: number): string[] 
 	return out;
 }
 
-/** The thinking fold — one dim line, width-capped so the /think suffix
- *  rides the fold's own row (the #17 fix's slice, componentized). The
- *  slice is DISPLAY-WIDTH-based (the char-based slice overflowed with
- *  CJK — 2 cells per char — and tripped invariant ① on a real
- *  Chinese session). W2: the leading ⋯ is the thinking gutter — the
- *  midline mark (the state), never the text ellipsis (the truncation). */
 /**
  * R7 — THINKING IS A BLOCK OF WORDS.
  *
  * The owner's ruling, arrived at from a side-by-side with pi's screen:
  * the model's reasoning reads as its own paragraphs — italic, dim,
- * indented two — and is never folded away. `ThinkingFold` (below, kept
- * for the pipe path) summarised it to one row with a key; four rounds
+ * indented two — and is never folded away. A one-row fold (the pipe
+ * path's `foldThinking` is what remains of it) stood for it, with a
+ * key; four rounds
  * of machinery were then built to hand the rest back, and the owner's
  * complaint through all of them was the same sentence: I cannot see
  * what it was thinking.
@@ -547,71 +534,6 @@ class ThinkingBlock implements Component {
 		}
 		return rows;
 	}
-}
-
-class ThinkingFold implements Component {
-	constructor(private readonly cell: { text: string; done: boolean }) {}
-	render(W: number, _ctx: FrameCtx): string[] {
-		const p = palette();
-		const block = this.cell.text;
-		// R3f — the fold is ONE ROW, so its text is one line.
-		//
-		// `escapeTerminal` strips C0 but KEEPS \n and \t, and
-		// `charWidth(0x0A)` is 1 — so a multi-line thinking block sailed
-		// through every width check as a legal single row, and the
-		// terminal then wrapped it across the chrome. That shipped in
-		// 0.16.6 and is what smashed the composer: a model whose thinking
-		// opens with a numbered plan ("1. …\n2. …") produces exactly it.
-		// Invariant ①b now catches the class at the emit; this stops
-		// producing it. Whitespace collapses because the row is a
-		// SUMMARY — the full text is one ctrl+o away, unchanged.
-		const trimmed = escapeTerminal(block.trim()).replace(/\s+/g, " ");
-		// R2 (owner, 2026-08-27) — three changes, each independent.
-		//
-		// ITALIC marks the row as not-the-answer without spending a colour,
-		// on the same argument that admitted italic to the alphabet.
-		//
-		// The cut lands on a WORD. It used to cut on a byte, so the fold
-		// read as `…the user's h` and the reader's eye had to reassemble a
-		// word it already knew.
-		//
-		// The affordance moves to the RIGHT EDGE, so the left edge of every
-		// row on screen is content. The char count goes with the move: it
-		// told the reader nothing they could act on, and the row it was
-		// crowding is the one thing this cell says.
-		//
-		// The ≤100 short-circuit stays width-aware: a short block at a
-		// narrow width returned the line UNFOLDED and tripped invariant ①.
-		// DC-15: the affordance is DROPPED, not squeezed. `room` floored at
-		// 1 while `pad` floored at 1 independently, so a narrow terminal
-		// produced 2 + cut + pad + 6 = 11 cells no matter what W was — and
-		// invariant ① does not truncate, it THROWS. Measured 11 cells at
-		// every W ≤ 10. Below the width where the tail and one word of
-		// content can both stand, the row is the CONTENT: a cell that
-		// cannot hold the key's name has nothing to say about the key.
-		const tail = "/think";
-		const room = W - 2 - tail.length - 1;
-		// the belt: cutLine is SGR-aware and single-row, so the invariant
-		// holds by CONSTRUCTION at every width rather than by arithmetic
-		// that has to be re-proved every time a span moves.
-		if (room < 2) return [cutLine(`${p.dim}⋯ ${p.italic}${wordCut(trimmed, Math.max(1, W - 2))}${p.italicEnd}${p.reset}`, W)];
-		const cut = wordCut(trimmed, room);
-		const body = `⋯ ${p.italic}${cut}${p.italicEnd}`;
-		const pad = Math.max(1, W - 2 - visibleWidth(cut) - tail.length);
-		return [cutLine(`${p.dim}${body}${" ".repeat(pad)}${tail}${p.reset}`, W)];
-	}
-}
-
-/** R2 — cut at a word boundary, with the honest ellipsis. widthCut cuts
- *  at a cell, which is right for verbatim output and wrong for prose:
- *  the reader has to reassemble "h" into "home". Falls back to the cell
- *  cut when the first word alone overruns, because a row that cannot
- *  hold one word has no boundary to find. */
-function wordCut(text: string, room: number): string {
-	if (visibleWidth(text) <= room) return text;
-	const hard = widthCut(text, Math.max(1, room - 1));
-	const at = hard.lastIndexOf(" ");
-	return `${at > room / 3 ? hard.slice(0, at) : hard}\u2026`;
 }
 
 /** Fold a line's CONTENT at W−2 and prefix EVERY row with the gutter
@@ -1011,7 +933,7 @@ class ToolExecution implements Component {
 			// there is no card — the call keeps its head row until it
 			// commits, which is the one form that fits anywhere.
 			const liveRows = ctx.liveWindow ?? CAP_PREVIEW;
-			const gutter = ctx.grouped === true ? "  " : `${breathFrame(ctx.spinnerI)} `;
+			const gutter = `${breathFrame(ctx.spinnerI)} `;
 			if (liveRows <= 0) {
 				// the degraded form is the head row ALONE, so it keeps the
 				// duration it would otherwise have lost with its card — cut
@@ -1287,88 +1209,33 @@ const COLLAPSE_ROW = "ctrl+o collapses";
    (`EXPLORE_NOUN`, `isExploreTool`) stood here. Both collapses retired
    with the fold; the verb column is `displayVerb` for every tool. */
 
-/** W14 — the folded-turn line: a whole QUIET turn (no text), once it is
- *  scrollback, becomes ONE line — the work order's claimed shape
- *  (`▞ thought 19s · 5 reads · no edits`), the counts accumulated at
- *  toolStart: read_file → "reads", edit_file → "edits", the other tools
- *  as first-call-order terms (the ROLLUP_NOUN plurals when the tool opts
- *  in, the verb + "s" otherwise).
- *  A9 (ruling R2, mock A): the user chip rides the fold — the human's
- *  words LEAD the one line, `✦ <chip> · thought 19s · read 5 files` —
- *  the chip the SAME SGR-7 bracket as the live user row (#16f, side
- *  pads included). The words take the fold's width budget and width-cut
- *  at the end with the honest "…" (never a silent truncate — invariant
- *  ① holds on the ONE row by construction).
- *
- *  DECLARED SUPERSESSION (R3g, 2026-08-28) — A9 also ruled that "the
- *  metadata terms give way LAST". They do not any more: the KEY does.
- *  A9 was taken when this line carried no key, and at a width where the
- *  chip, the full metadata and " · ctrl+o" cannot coexist, a fold with
- *  no key is the turn's work behind a line with no way back to it. So
- *  the order is now words, then metadata, then — never — the key. The
- *  glyph is ✦ and the zero terms are dropped (R3b), so the example above
- *  is written as the code renders it rather than as A9 first wrote it. */
 /**
- * R3b — what a run of work DID, in words. One definition, because two
- * surfaces say it: the fold line (`turnFold`, above) and the expand
- * header the compositor writes when that fold is opened. A second copy
- * would be a second answer to the same question, and the first thing to
- * drift would be the plurals — `search_text` is "matches", not
- * "searchs", and only the ROLLUP_NOUN table knows that.
+ * THE TERM TABLE — [past, singular, plural], one row per tool the recap
+ * names (R3g's phrasing, the owner's: "thought 17s · read 4 files ·
+ * listed 1 directory · ran 4 shell commands"). A tool with no entry
+ * says `3 × <verb>`, which counts calls without inventing a noun for
+ * them; a zero term is dropped (R3b: a term earns its place by having a
+ * count). The terms count CALLS, which is what the CLI hands them.
  *
- * Zero terms are dropped (owner ruling, R3b): a term earns its place by
- * having a count.
+ * DECLARED REVERSAL (R13, owner-ruled 2026-09-03): this table served
+ * the folded-turn line (W14, `turnFold`) and R3i's stretch line, and
+ * carried a PROGRESSIVE column so the live tense and the settled tense
+ * could not drift apart. Nothing folds and nothing reads the
+ * progressive; the recap (`foldTerms`) is the table's only reader.
+ * R3h's object-vs-act distinction (`foldCountsObjects`) retired with
+ * the fold that consumed it.
  */
-/**
- * R3g (2026-08-28) — the fold's own terms, VERB + COUNT + NOUN.
- *
- * DECLARED SUPERSESSION. R3b built these terms out of ROLLUP_NOUN,
- * whose own comment says not to: that table names what a single-tool
- * rollup COUNTS ("5 matches" — five matched lines), and this line
- * counts CALLS. So one search_text call rendered `1 match`, a sentence
- * that is false whenever the search matched any other number — which is
- * almost always. `shell` fell through to the verb branch and read
- * `4 shells`.
- *
- * The phrasing is the owner's, from the shape they asked for:
- * "thought 17s · read 4 files · listed 1 directory · ran 4 shell
- * commands". A tool with no entry says `3 × <verb>`, which counts calls
- * without inventing a noun for them.
- */
-/**
- * R3i — ONE TERM TABLE, TWO TENSES: [past, progressive, singular, plural].
- *
- * The stretch line is the same row at every instant of a turn: while
- * the work runs it says what it is DOING, and at the settle it says
- * what it DID. That sentence is only true if both tenses come from one
- * table. The v9 review found the alternative already happening on a
- * hand-written prototype — `searching 1 pattern` live against `ran 1
- * search` settled, the NOUN swapping at the settle, and `running 4
- * shells`, which is verbatim the R3g defect the previous round removed.
- *
- * FOLD_TERM below is derived from this, so the settled vocabulary
- * cannot drift from the live one by construction.
- */
-const TERM: Readonly<Record<string, readonly [string, string, string, string]>> = {
-	read_file: ["read", "reading", "file", "files"],
-	edit_file: ["edited", "editing", "file", "files"],
-	write_file: ["wrote", "writing", "file", "files"],
-	list_dir: ["listed", "listing", "directory", "directories"],
-	search_text: ["ran", "running", "search", "searches"],
-	shell: ["ran", "running", "shell command", "shell commands"],
+const TERM: Readonly<Record<string, readonly [string, string, string]>> = {
+	read_file: ["read", "file", "files"],
+	edit_file: ["edited", "file", "files"],
+	write_file: ["wrote", "file", "files"],
+	list_dir: ["listed", "directory", "directories"],
+	search_text: ["ran", "search", "searches"],
+	shell: ["ran", "shell command", "shell commands"],
 };
 
-const FOLD_TERM: Readonly<Record<string, readonly [string, string, string]>> = Object.fromEntries(
-	Object.entries(TERM).map(([name, [past, , singular, plural]]) => [name, [past, singular, plural] as const]),
-);
-
-/* R3h's object-vs-act distinction (`foldCountsObjects`: a term that
-   counts OBJECTS counts distinct targets, one that counts ACTS counts
-   calls) retired with the segment fold that consumed it (R13). The
-   recap's terms below count calls, which is what the CLI hands them. */
-
 function foldTerm(name: string, n: number): string {
-	const t = FOLD_TERM[name];
+	const t = TERM[name];
 	if (t === undefined) return `${n} × ${displayVerb(name)}`;
 	return `${t[0]} ${n} ${n === 1 ? t[1] : t[2]}`;
 }
