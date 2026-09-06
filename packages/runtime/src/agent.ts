@@ -84,12 +84,16 @@ export class AgentRuntime {
 		// E1: extension tools join the registry — a collision with a built-in
 		// name throws here, at agent creation: a loud startup failure.
 		for (const ext of definition.extensions ?? []) {
-			for (const tool of ext.tools ?? []) this.#registry.register(tool);
-			// 0.1.26 (MCP lazy connection): an extension's tools array is LIVE — the
-			// registry consults it on every lookup, so tools registered by a
-			// background connect (the MCP bridge's servers) are callable the
-			// moment they land, without a session rebuild.
-			this.#registry.registerLive(() => ext.tools ?? []);
+			// CX-1 F7a (audit F7): extension tools are reached ONLY through
+			// their live source — never frozen into static entries that would
+			// win every lookup and mask a background refresh (the MCP bridge
+			// replacing its cached definitions). The loud startup collision
+			// stays: a startup tool sharing a built-in's name (or an earlier
+			// extension's) throws here, at agent creation.
+			for (const tool of ext.tools ?? []) {
+				if (this.#registry.has(tool.name)) throw new Error(`Tool already registered: ${tool.name} (extension ${ext.name})`);
+			}
+			this.#registry.registerLive(() => ext.tools ?? [], ext.name);
 		}
 		this.#adapterPromise = resolveAdapter(definition);
 	}

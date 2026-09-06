@@ -32,7 +32,9 @@ function workspace() {
 	writeFileSync(join(root, "src", "b.ts"), "// needle in the second file\n", "utf8");
 	return root;
 }
-const ctx = {} as never;
+// ToolContext.signal is REQUIRED — the kernel always supplies one, and since CX-1 F4
+// search_text reads it (the shell tool always did). An empty context is not a context.
+const ctx = { signal: new AbortController().signal };
 
 describe("DC-23 — a file is a place text lives", () => {
 	it("a FILE path searches that file — not an ENOTDIR", async () => {

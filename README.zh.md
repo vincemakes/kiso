@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.26.1
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.26.2
 ```
 
 (上面的块状字母是 `assets/logo.svg` 的像素形态——一个 8×8 的 K,底行是这个框架得名的基岩基础。)
@@ -68,32 +68,32 @@ Turn Commit 自身的证明是两个崩溃前缀的字节比对,二者恰好相�
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts     899
+  packages/core/src/kernel/loop.ts     914
   packages/core/src/protocol/events.ts 472
   packages/core/src/kernel/project.ts  360
   ...
-  total                               2138  / 2200
-  ✓ 62 lines of headroom remaining.
+  total                               2189  / 2200
+  ✓ 11 lines of headroom remaining.
 
 cli:
   apps/cli/src/chat.ts  478
   apps/cli/src/index.ts 382
   ...
   total                 1870  / 1920
-  ✓ 50 lines of headroom remaining.
+  ✓ 11 lines of headroom remaining.
 
 tui:
   packages/tui/src/compositor.ts 986
   packages/tui/src/editor.ts     535
   ...
   total                          1761  / 2400
-  ✓ 639 lines of headroom remaining.
+  ✓ 11 lines of headroom remaining.
 
 tui-cells:
   packages/tui-cells/src/components.ts 618
   ...
   total                                1116  / 1280
-  ✓ 164 lines of headroom remaining.
+  ✓ 11 lines of headroom remaining.
 ```
 
 (上方规则约束的是**内核**——硬预算就是设计本身,只经裁决式修正案移动,至今两次(Amendment 9、10)。产品面自 ADR-0043 Amendment 8 起走另一套制度:cli/tui/tui-cells 的数字是**参考数字**,每次 check 照常打印(可见性保留)但永不拦截——它们的保护移交给架构红线(TUI 永不拥有持久真相、TUI 状态可丢、交互必有 PTY 证明、公开面有 surface 门)与每个 UX 轮 spec 必答的四问门:是否减少人的摩擦 · 是否保全真相语义 · 是否新增需先测量的租金 · 能否确定性 PTY 测试。修正案史——抽取逃生舱、历次重校准——在 ADR-0043。)

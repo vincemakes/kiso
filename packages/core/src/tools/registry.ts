@@ -26,9 +26,16 @@
 import type { ToolSpec } from "../protocol/messages.js";
 import type { Tool } from "./tool.js";
 
+/** CX-1 F7: a captured tool table — what ONE request advertises and
+ *  dispatches from. */
+export interface ToolTable {
+	readonly specs: readonly ToolSpec[];
+	get(name: string): Tool<any> | undefined;
+}
+
 export class ToolRegistry {
 	readonly #tools = new Map<string, Tool>();
-	readonly #live: (() => readonly Tool[])[] = [];
+	readonly #live: { readonly source: () => readonly Tool[]; readonly owner: string }[] = [];
 
 	register(tool: Tool<any>): void {
 		if (this.#tools.has(tool.name)) {
@@ -39,15 +46,41 @@ export class ToolRegistry {
 
 	/** 0.1.26: a live tool source — consulted on every lookup, never
 	 *  snapshotted. The source returns the CURRENT array (it may grow). */
-	registerLive(source: () => readonly Tool[]): void {
-		this.#live.push(source);
+	registerLive(source: () => readonly Tool[], owner = `live#${this.#live.length + 1}`): void {
+		this.#live.push({ source, owner });
+	}
+
+	/** CX-1 F7 (audit F7) — ONE table per request. The loop takes a
+	 *  snapshot at request assembly and dispatches from it: the definition
+	 *  sent to the model, the schema validated against, the `execute` that
+	 *  runs and the `effects` the scheduler reads are the SAME captured
+	 *  values (a shallow copy of each Tool — extensions replace their Tool
+	 *  objects rather than mutating them, and the copy makes that a
+	 *  contract). Two sources publishing one name is an error the moment
+	 *  it is observed, naming both owners — never a traversal-order pick;
+	 *  the one exception is the SAME Tool object reached twice (the 0.1.27
+	 *  dedup), which is one tool. */
+	snapshot(): ToolTable {
+		const captured = new Map<string, { tool: Tool; original: Tool; owner: string }>();
+		const take = (t: Tool, owner: string): void => {
+			const prior = captured.get(t.name);
+			if (prior !== undefined) {
+				if (prior.original === t) return; // the same object reached twice — one tool
+				throw new Error(`tool table: '${t.name}' is published by two sources (${prior.owner}, ${owner})`);
+			}
+			captured.set(t.name, { tool: Object.freeze({ ...t }) as Tool, original: t, owner });
+		};
+		for (const t of this.#tools.values()) take(t, "registered");
+		for (const { source, owner } of this.#live) for (const t of source()) take(t, owner);
+		const specs: ToolSpec[] = [...captured.values()].map(({ tool: t }) => ({ name: t.name, description: t.description, inputSchema: t.parameters }));
+		return { specs, get: (name) => captured.get(name)?.tool };
 	}
 
 	get(name: string): Tool<any> | undefined {
 		const t = this.#tools.get(name);
 		if (t !== undefined) return t;
-		for (const src of this.#live) {
-			const found = src().find((x) => x.name === name);
+		for (const { source } of this.#live) {
+			const found = source().find((x) => x.name === name);
 			if (found !== undefined) return found;
 		}
 		return undefined;
@@ -67,8 +100,8 @@ export class ToolRegistry {
 			seen.add(t.name);
 			out.push(t);
 		}
-		for (const src of this.#live) {
-			for (const t of src()) {
+		for (const { source } of this.#live) {
+			for (const t of source()) {
 				if (!seen.has(t.name)) {
 					seen.add(t.name);
 					out.push(t);
@@ -80,7 +113,7 @@ export class ToolRegistry {
 
 	has(name: string): boolean {
 		if (this.#tools.has(name)) return true;
-		return this.#live.some((src) => src().some((x) => x.name === name));
+		return this.#live.some(({ source }) => source().some((x) => x.name === name));
 	}
 
 	/** A registry restricted to the named tools. Unknown names are dropped

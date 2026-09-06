@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.26.1
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.26.2
 ```
 
 (The block letter above is `assets/logo.svg` in pixel form — an 8×8 K
@@ -130,12 +130,12 @@ resume, the one with it executes exactly once.
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts     899
+  packages/core/src/kernel/loop.ts     914
   packages/core/src/protocol/events.ts 472
   packages/core/src/kernel/project.ts  360
   ...
-  total                               2138  / 2200
-  ✓ 62 lines of headroom remaining.
+  total                               2189  / 2200
+  ✓ 11 lines of headroom remaining.
 
 cli:
   apps/cli/src/chat.ts  716
@@ -149,7 +149,7 @@ tui:
   packages/tui/src/editor.ts     1206
   ...
   total                          3307  / 4000
-  ✓ 693 lines of headroom remaining.
+  ✓ 11 lines of headroom remaining.
 
 tui-cells:
   packages/tui-cells/src/components.ts 779

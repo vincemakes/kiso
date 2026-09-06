@@ -251,6 +251,16 @@ export async function summarizeConversation(options: SummarizeConversationOption
 	const { adapter, model, messages } = options;
 	let text = "";
 	let usage: RawUsage | null = null;
+	// CX-1 F3 (audit F3): the turn's SHAPE is validated, not just its text.
+	// A max_tokens cut after the last required heading, a turn with no
+	// stop, a turn that called a tool — all passed the section check and
+	// were persisted as a checkpoint that was not one. Exactly one stop,
+	// reason end_turn, zero tool-call events, no model output after the
+	// stop; `usage` after the stop is the one permitted trailer.
+	let stops = 0;
+	let stopReason: string | undefined;
+	let toolCalls = 0;
+	let afterStop: string | undefined;
 	for await (const ev of adapter.stream({
 		model,
 		messages,
@@ -258,12 +268,23 @@ export async function summarizeConversation(options: SummarizeConversationOption
 		...(options.signal !== undefined ? { signal: options.signal } : {}),
 		...(options.maxOutputTokens !== undefined ? { maxTokens: options.maxOutputTokens } : {}),
 	})) {
+		if (stops > 0 && ev.type !== "usage" && ev.type !== "stop" && afterStop === undefined) afterStop = ev.type;
 		if (ev.type === "text_delta") text += ev.text;
+		else if (ev.type === "tool_call_start" || ev.type === "tool_call_end" || ev.type === "tool_call_input_delta") toolCalls += 1;
+		else if (ev.type === "stop") {
+			stops += 1;
+			stopReason = ev.reason;
+		}
 		// The LAST usage event is the call's (a turn reports usage once).
 		if (ev.type === "usage" && ev.known) {
 			usage = { inputTokens: ev.inputTokens, outputTokens: ev.outputTokens, cacheRead: ev.cacheRead, cacheWrite: ev.cacheWrite };
 		}
 	}
+	if (stops === 0) throw new Error("the summary turn never stopped — not a complete turn");
+	if (stops > 1) throw new Error(`the summary turn stopped ${stops} times — not a complete turn`);
+	if (toolCalls > 0) throw new Error("the summary turn called a tool — a summary is text, never a tool call");
+	if (stopReason !== "end_turn") throw new Error(`the summary turn ended with ${String(stopReason)} — not a complete turn`);
+	if (afterStop !== undefined) throw new Error(`the summary turn produced ${afterStop} after its stop — not a complete turn`);
 	const trimmed = text.trim();
 	if (trimmed === "") {
 		throw new Error("the summary call produced no text");

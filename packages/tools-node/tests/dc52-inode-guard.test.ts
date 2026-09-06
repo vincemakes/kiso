@@ -38,7 +38,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileTool, searchTextTool } from "../src/index.js";
 
-const ctx = {} as never;
+// ToolContext.signal is REQUIRED — the kernel always supplies one, and since CX-1 F4
+// search_text reads it (the shell tool always did). An empty context is not a context.
+const ctx = { signal: new AbortController().signal };
 
 /** A workspace with the two shapes that broke: a HARD-LINKED file, and
  *  a directory the process may not read. */

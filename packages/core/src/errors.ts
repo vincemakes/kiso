@@ -8,9 +8,31 @@
 
 import type { StructuredError } from "./protocol/events.js";
 
-export function mapApiError(status: number | undefined, message: string): StructuredError {
-	const withStatus = (e: Omit<StructuredError, "status">): StructuredError =>
-		status !== undefined ? { ...e, status } : e;
+/** CX-1 F8: `Retry-After` → milliseconds. Integer seconds or an HTTP-date;
+ *  anything else — negative, non-finite, a date already past — is
+ *  undefined (the kernel falls back to its own backoff). Never shortened:
+ *  a wait above the kernel's cap is reported as-is and the kernel stops
+ *  rather than retrying early. */
+export function parseRetryAfter(value: string | null | undefined, now = Date.now()): number | undefined {
+	if (value === null || value === undefined) return undefined;
+	const v = value.trim();
+	if (v === "") return undefined;
+	if (/^\d+$/.test(v)) {
+		const ms = Number(v) * 1000;
+		return Number.isFinite(ms) ? ms : undefined;
+	}
+	const at = Date.parse(v);
+	if (!Number.isFinite(at)) return undefined;
+	const ms = at - now;
+	return ms >= 0 ? ms : undefined;
+}
+
+export function mapApiError(status: number | undefined, message: string, retryAfterMs?: number): StructuredError {
+	const withStatus = (e: Omit<StructuredError, "status">): StructuredError => ({
+		...e,
+		...(status !== undefined ? { status } : {}),
+		...(retryAfterMs !== undefined && Number.isFinite(retryAfterMs) && retryAfterMs >= 0 ? { retryAfterMs } : {}),
+	});
 
 	switch (status) {
 		case 401:

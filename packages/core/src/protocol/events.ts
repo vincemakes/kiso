@@ -517,6 +517,10 @@ export interface StructuredError {
 	readonly status?: number;
 	readonly retryable: boolean;
 	readonly message: string;
+	/** CX-1 F8: the provider's `Retry-After`, normalized to milliseconds
+	 *  (finite, >= 0) — the kernel owns retries and honors it; absent when
+	 *  the header was missing, unparseable, or a date already past. */
+	readonly retryAfterMs?: number;
 }
 
 /**

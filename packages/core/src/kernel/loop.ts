@@ -54,6 +54,7 @@ import type { ModeProfile } from "./mode.js";
 import { resolveModeProfile } from "./mode.js";
 import { denialResult, type PermissionDecision } from "./permission.js";
 import { messagesToEvents, MICROCOMPACTABLE, DO_NOT_COMPACT, projectMessages } from "./project.js";
+import type { ToolTable } from "../tools/registry.js";
 
 /** Zero-dependency sleep: the kernel must not import host globals (ADR-0001). */
 declare function setTimeout(cb: () => void, ms: number): unknown;
@@ -177,6 +178,9 @@ export interface LoopConfig {
  */
 export const DEFAULT_MAX_TURNS = Number.POSITIVE_INFINITY;
 export const DEFAULT_MAX_RETRIES = 2;
+/** CX-1 F8: the longest Retry-After the kernel will honor; beyond it the
+ *  run stops with an explicit error rather than waiting or retrying early. */
+export const RETRY_AFTER_MAX_MS = 60_000;
 
 export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	const log = config.log ?? new EventLog();
@@ -189,6 +193,13 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		mode?.visibleToolNames !== undefined
 			? config.registry.subset(mode.visibleToolNames)
 			: config.registry;
+	// CX-1 F7b (audit F7): ONE tool table per request — captured at
+	// assembly, dispatched from until the next assembly. The definition
+	// the model saw, the schema the arguments are validated against, the
+	// execute that runs and the effects the scheduler reads are the same
+	// captured values; a live source that changes mid-request reaches the
+	// NEXT request.
+	let table: ToolTable = registry.snapshot();
 
 	// Seed: a fresh log encodes the seed history as events so the projection
 	// (and any later replay) contains it. A non-empty log (session resume)
@@ -431,7 +442,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	};
 	const launch = (call: ToolCallEnd): void => {
 		execActive += 1;
-		const tool = registry.get(call.name);
+		const tool = table.get(call.name);
 		const slot = reserve(tool);
 		// EC-1 ③ — this call's place in the ASK order, filled in by the
 		// decide chain (call order). `ahead` is the gate of an ask ACCEPTED
@@ -445,7 +456,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					decideChain = decideChain.then(async () => {
 						const v = await decideCall(
 							call,
-							registry,
+							table,
 							hooks,
 							{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) },
 							log,
@@ -548,7 +559,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					try {
 						await runLedgered(
 							call,
-							registry,
+							table,
 							hooks,
 							{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) },
 							signal,
@@ -649,7 +660,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		// invariant 3) suppresses the marker — no void over a started
 		// fact, the pre-F4 abandon exactly.
 		const unsafeStartedInDraft = (): boolean =>
-			log.all.some((e) => e.type === "tool_execution_started" && e.seq > turnStart && registry.get(e.name)?.effects?.precommitSafe !== true);
+			log.all.some((e) => e.type === "tool_execution_started" && e.seq > turnStart && table.get(e.name)?.effects?.precommitSafe !== true);
 		const abandonDraft = async function* (reason: string): AsyncGenerator<Event> {
 			settleTurn();
 			violated = true;
@@ -676,7 +687,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					messages,
 					...(config.reasoning !== undefined ? { reasoning: config.reasoning } : {}),
 					...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
-					tools: registry.toSpecs(),
+					tools: (table = registry.snapshot()).specs,
 					...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
 					...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
 					...(signal !== undefined ? { signal } : {}),
@@ -754,13 +765,28 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					yield await terminal({ kind: "aborted", by: "user" });
 					return;
 				}
-				const structured = toStructuredError(err);
+				let structured = toStructuredError(err);
+				// CX-1 F8 (ruled: the kernel owns retries): the wait is
+				// max(attempts × 250 ms, the provider's Retry-After), abortable.
+				// A wait above the cap is never shortened — the run stops with
+				// an explicit error instead of retrying early.
+				const retryWait = (): number | null => {
+					const ms = Math.max((attempts + 1) * 250, structured.retryAfterMs ?? 0);
+					return ms > RETRY_AFTER_MAX_MS ? null : ms;
+				};
+				if (structured.retryable && attempts < maxRetries && retryWait() === null) {
+					structured = {
+						...structured,
+						retryable: false,
+						message: `${structured.message} (the provider asked to wait ${structured.retryAfterMs}ms — beyond the ${RETRY_AFTER_MAX_MS}ms cap; not retried)`,
+					};
+				}
 				// Phase B: never SILENTLY re-stream a turn that already emitted
 				// content — duplicates are worse than failures. Nothing streamed
 				// yet: the cheap in-place retry (no draft exists to void).
 				if (structured.retryable && !streamed && attempts < maxRetries) {
 					attempts += 1;
-					await sleep(attempts * 250, signal); // abortable backoff
+					await sleep(retryWait() ?? attempts * 250, signal); // abortable backoff, Retry-After honored
 					continue;
 				}
 				// F4 — ABANDON HYGIENE, every streamed exit: settle, drain,
@@ -775,7 +801,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				// budget (ADR-0005 Amendment 1: frame state, per-process).
 				if (structured.retryable && attempts < maxRetries && !unsafeStartedInDraft()) {
 					attempts += 1;
-					await sleep(attempts * 250, signal); // the same abortable backoff
+					await sleep(retryWait() ?? attempts * 250, signal); // the same abortable backoff, Retry-After honored
 					// Fresh per-attempt state — the marker is the boundary now.
 					pending.length = 0;
 					lastStop = undefined;
@@ -1057,7 +1083,7 @@ function resultEvent(call: ToolCallEnd, result: ToolResult, executionId?: string
  */
 async function decideCall(
 	call: ToolCallEnd,
-	registry: ToolRegistry,
+	registry: ToolTable,
 	hooks: HookHost,
 	ctx: ToolContext,
 	log: EventLog,
@@ -1323,7 +1349,7 @@ async function humanPause(
  */
 async function runLedgered(
 	call: ToolCallEnd,
-	registry: ToolRegistry,
+	registry: ToolTable,
 	hooks: HookHost,
 	ctx: ToolContext,
 	signal: AbortSignalLike | undefined,
@@ -1472,6 +1498,8 @@ export function toStructuredError(err: unknown): StructuredError {
 				...(e.status !== undefined ? { status: e.status } : {}),
 				retryable: e.retryable,
 				message: typeof e.message === "string" ? e.message : String(err),
+				// CX-1 F8: the provider's Retry-After rides through to the kernel
+				...(typeof e.retryAfterMs === "number" && Number.isFinite(e.retryAfterMs) && e.retryAfterMs >= 0 ? { retryAfterMs: e.retryAfterMs } : {}),
 			};
 		}
 	}

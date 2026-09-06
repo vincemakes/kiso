@@ -20,22 +20,10 @@
 
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import {
-	chmodSync,
-	existsSync,
-	linkSync,
-	readdirSync,
-	readFileSync,
-	realpathSync,
-	renameSync,
-	statSync,
-	appendFileSync,
-	mkdirSync,
-	rmSync,
-	unlinkSync,
-	writeFileSync,
-} from "node:fs";
-import { open, readdir } from "node:fs/promises";
+import { appendFileSync, chmodSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { Worker } from "node:worker_threads";
+import { fileURLToPath } from "node:url";
+import type { SearchReply, SearchRequest } from "./search-worker.js";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -566,6 +554,108 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string }
 	});
 }
 
+// ───────────────────────────── CX-1 F4: the search worker host ─────────────────────────────
+//
+// One Worker per call, at most SEARCH_WORKERS in flight; further calls
+// QUEUE, and queue time counts against the call's budget. Each call
+// carries a token, so a message from a terminated or superseded worker
+// is ignored. Workers are unreferenced (an idle one never holds the
+// process open) and always terminated when the call settles. Pooling is
+// a later decision, on the startup cost gate (e) measures.
+const SEARCH_WORKERS = 2;
+/** The host kills the worker this long after the deadline — the room a
+ *  cooperative stop (between files, counters reported) needs to land
+ *  before the backstop for an uncooperative regex fires. */
+const SEARCH_KILL_GRACE_MS = 150;
+let searchInFlight = 0;
+let searchAlive = 0;
+let searchToken = 0;
+const searchQueue: (() => void)[] = [];
+
+/** The instrument behind gate (d): live workers and queue depth. */
+export function searchWorkerStats(): { alive: number; inFlight: number; queued: number } {
+	return { alive: searchAlive, inFlight: searchInFlight, queued: searchQueue.length };
+}
+
+function searchWorkerUrl(): URL {
+	// Built layout: dist/index.js beside dist/search-worker.js. Under a
+	// source-mode test runner the sibling is a .ts file the Worker cannot
+	// load, so the built copy is used — tools-node tests run against a
+	// built dist, like the tui's.
+	const beside = new URL("./search-worker.js", import.meta.url);
+	if (existsSync(fileURLToPath(beside))) return beside;
+	return new URL("../dist/search-worker.js", import.meta.url);
+}
+
+type SearchOutcome = { kind: "done"; reply: SearchReply } | { kind: "timeout"; reply?: undefined } | { kind: "aborted" } | { kind: "error"; message: string };
+
+async function runSearchWorker(req: Omit<SearchRequest, "token"> & { token: number }, deadline: number, signal: { readonly aborted: boolean; addEventListener?: (t: "abort", cb: () => void, o?: { once: boolean }) => void; removeEventListener?: (t: "abort", cb: () => void) => void }): Promise<SearchOutcome> {
+	if (signal.aborted) return { kind: "aborted" };
+	// the slot — queue time is inside the budget
+	if (searchInFlight >= SEARCH_WORKERS) {
+		const waited = await new Promise<"slot" | "timeout" | "aborted">((resolve) => {
+			const timer = setTimeout(() => {
+				const i = searchQueue.indexOf(wake);
+				if (i >= 0) searchQueue.splice(i, 1);
+				resolve("timeout");
+			}, Math.max(0, deadline - Date.now()));
+			const onAbort = (): void => {
+				clearTimeout(timer);
+				const i = searchQueue.indexOf(wake);
+				if (i >= 0) searchQueue.splice(i, 1);
+				resolve("aborted");
+			};
+			const wake = (): void => {
+				clearTimeout(timer);
+				signal.removeEventListener?.("abort", onAbort);
+				resolve("slot");
+			};
+			signal.addEventListener?.("abort", onAbort, { once: true });
+			searchQueue.push(wake);
+		});
+		if (waited !== "slot") return waited === "timeout" ? { kind: "timeout" } : { kind: "aborted" };
+	}
+	searchInFlight += 1;
+	searchAlive += 1;
+	const token = ++searchToken;
+	const worker = new Worker(searchWorkerUrl());
+	worker.unref();
+	const settle = (): void => {
+		searchInFlight -= 1;
+		searchQueue.shift()?.();
+	};
+	return new Promise<SearchOutcome>((resolve) => {
+		let done = false;
+		const finish = (outcome: SearchOutcome): void => {
+			if (done) return;
+			done = true;
+			clearTimeout(timer);
+			signal.removeEventListener?.("abort", onAbort);
+			void worker.terminate().then(
+				() => {
+					searchAlive -= 1;
+				},
+				() => {
+					searchAlive -= 1;
+				},
+			);
+			settle();
+			resolve(outcome);
+		};
+		const onAbort = (): void => finish({ kind: "aborted" });
+		const timer = setTimeout(() => finish({ kind: "timeout" }), Math.max(0, deadline + SEARCH_KILL_GRACE_MS - Date.now()));
+		signal.addEventListener?.("abort", onAbort, { once: true });
+		worker.on("message", (m: SearchReply) => {
+			if (m.token === token) finish({ kind: "done", reply: m });
+		});
+		worker.on("error", (err) => finish({ kind: "error", message: (err as Error).message }));
+		worker.on("exit", (code) => {
+			if (!done) finish({ kind: "error", message: `search worker exited with code ${code}` });
+		});
+		worker.postMessage({ ...req, token });
+	});
+}
+
 export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: string; path?: string; caseSensitive?: boolean }> {
 	return defineTool<{ pattern: string; path?: string; caseSensitive?: boolean }>({
 		name: "search_text",
@@ -589,7 +679,7 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 		effects: { precommitSafe: true, concurrency: "shared" },
 		promptSnippet: "search_text — regex search over workspace files",
 		promptGuidelines: ["narrow the pattern when the result caps — never re-run a broad search"],
-		execute: async ({ pattern, path, caseSensitive }) => {
+		execute: async ({ pattern, path, caseSensitive }, ctx) => {
 			let root: string;
 			try {
 				root = resolveWithinRoot(opts.workspaceRoot, path ?? ".");
@@ -597,52 +687,20 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				throw err;
 			}
-			// DC-23 (the 0.16.7 dogfood): an INVALID pattern threw raw out
-			// of execute — `new RegExp` sat outside every try in this
-			// function, so a bad regex was a crash rather than a result the
-			// model could act on. And the "i" flag was hardcoded, so a
-			// case-sensitive search was not expressible at all.
-			let regex: RegExp;
+			// DC-23: an INVALID pattern is a result the model can act on, never
+			// a crash — validated here; the worker compiles its own copy.
+			const flags = caseSensitive === true ? "" : "i";
 			try {
-				regex = new RegExp(pattern, caseSensitive === true ? "" : "i");
+				new RegExp(pattern, flags);
 			} catch (err) {
 				return { content: `search_text failed: invalid pattern — ${(err as Error).message}`, isError: true, errorKind: "invalid_input" };
 			}
-			// DC-23: a FILE is a place text lives. The tool took only a
-			// directory and answered a file path with libuv's own words
-			// ("ENOTDIR: not a directory, scandir <path>"), which is the
-			// obvious thing to ask for — the file is already known and the
-			// question is where in it something is. The real dogfood model
-			// asked twice and learned nothing either time. One stat.
 			let single: string | null = null;
 			try {
 				if (statSync(root).isFile()) single = root;
 			} catch (err) {
 				return { content: `search_text failed: ${path ?? "."} — ${(err as Error).message}`, isError: true, errorKind: "invalid_input" };
 			}
-			// The walk NEVER early-aborts on the cap: the overflow note's count
-			// must be the file-true total, not a bound (the red line). The
-			// depth cap and the node_modules/dotfile skip stay.
-			const matches: string[] = [];
-			let totalMatches = 0;
-			// DC-52 — what the search did NOT look at, so the note can say so.
-			let multiLink = 0;
-			let unreadableDirs = 0;
-			// DC-54 — the same discipline for the two new refusals, and for
-			// the call budget: a silent skip is a result the model cannot
-			// tell is incomplete.
-			let skippedFiles = 0;
-			let excludedDirs = 0;
-			let filesSeen = 0;
-			// DC-49 — realpath on BOTH sides, so a symlinked HOME still
-			// matches (the reviewer's constraint (d): `/tmp` is a symlink to
-			// `/private/tmp` on darwin, and a raw string compare there is a
-			// gate that passes on one machine and not another).
-			//
-			// A root that CONTAINS the search root is not an exclusion: the
-			// caller pointed at it, and refusing would make an explicit path
-			// unservable. That is the reviewer's constraint (c), expressed
-			// where it belongs — in the predicate, not in four call sites.
 			const realOrSelf = (p: string): string => {
 				try {
 					return realpathSync(p);
@@ -653,225 +711,41 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			const searchRootReal = realOrSelf(root);
 			const excluded = (opts.excludeRoots ?? [])
 				.map(realOrSelf)
-				.filter((ex) => !(searchRootReal === ex || searchRootReal.startsWith(`${ex}/`)));
-			const isExcluded = (dir: string): boolean => {
-				if (excluded.length === 0) return false;
-				const r = realOrSelf(dir);
-				return excluded.some((ex) => r === ex || r.startsWith(`${ex}/`));
-			};
-			// An explicit flag, NOT `stoppedAt > 0`: a wall-clock budget can
-			// expire before the first file is scanned, and a zero-valued
-			// sentinel would then read as "never stopped" — the walk would
-			// still end, but silently, which is the one thing every note in
-			// this function exists to prevent.
-			let stopped = false;
-			let stoppedAt = 0;
+				.filter((ex) => !(searchRootReal === ex || searchRootReal.startsWith(`${ex}/`)))
+				.map((ex) => relative(searchRootReal, ex));
 			const maxFileBytes = opts.limits?.searchMaxFileBytes ?? SEARCH_MAX_FILE_BYTES;
 			const maxFiles = opts.limits?.searchMaxFiles ?? SEARCH_MAX_FILES;
 			const deadline = Date.now() + (opts.limits?.searchMaxMs ?? SEARCH_MAX_MS);
-			/** DC-54 ④ — the CALL budget. Per-file bounds are not enough:
-			 *  under `~` the walk still reaches 296,924 files, and 10 seconds
-			 *  of traversal with nothing on screen is the same freeze from
-			 *  the outside. Whichever bound trips first stops the walk, and
-			 *  the note names the continuation. */
-			const outOfBudget = (): boolean => {
-				if (stopped) return true;
-				if (filesSeen >= maxFiles || Date.now() > deadline) {
-					stopped = true;
-					stoppedAt = filesSeen;
-					return true;
-				}
-				return false;
-			};
-			// R3 — the walk YIELDS. It was `readdirSync` + `readFileSync` all
-			// the way down inside an `async` body, which is the shape that
-			// blocks Node's event loop for the whole traversal: measured at
-			// 18.4 seconds over a home directory, during which no timer
-			// fires, no frame paints and the `working` mark freezes solid.
-			// A user reasonably reads a frozen liveness mark as a crash.
-			//
-			// The fix is not "make it faster" — a big tree is legitimately
-			// slow. It is to stop OWNING the loop: `fs.promises.readdir`,
-			// and a yield every YIELD_EVERY files.
-			//
-			// DC-54 corrects what this comment used to claim next — that
-			// the yield also stopped "a long read stretch" monopolising the
-			// loop. It never did and could not: `breathe()` runs BETWEEN
-			// files, and nothing preempts a single synchronous read once
-			// entered. R3 bounded the traversal; the FILE stayed unbounded
-			// until DC-54 ①–③ above, and one 994 GB image was enough to
-			// stop the process dead with this yield fully in place.
-			let sinceYield = 0;
-			const breathe = async (): Promise<void> => {
-				sinceYield += 1;
-				if (sinceYield < YIELD_EVERY) return;
-				sinceYield = 0;
-				await new Promise<void>((r) => setImmediate(r));
-			};
-			// DC-23: the per-file scan is its own function now, because the
-			// single-file path and the walk must scan a file the SAME way —
-			// same inode boundary, same cap accounting, same excerpt shape.
-			// Two copies would be two answers to "what does searching this
-			// file mean".
-			const scanFile = async (full: string): Promise<void> => {
-				if (outOfBudget()) return;
-				filesSeen += 1;
-				await breathe();
-				try {
-					// DC-52 — SEARCH DOES NOT RUN THE INODE GUARD.
-					//
-					// Round 8 gave search the same inode boundary read_file
-					// has, and the boundary is right; what was wrong is the
-					// price. The guard's verification is a `find` over the
-					// whole workspace root, once per multi-link file — with
-					// the root at `~` that is tens of seconds each, and it
-					// ran on the owner's machine for eight minutes without
-					// finishing. A search returns a 160-character excerpt of
-					// a line. No excerpt is worth a disk traversal.
-					//
-					// So a multi-link file is SKIPPED, and counted, and the
-					// count is said. That is fail-closed at zero cost: the
-					// external-link case the guard exists for is refused
-					// exactly as before, and the legal case is refused too,
-					// which is a loss of coverage rather than of safety.
-					// read_file keeps the guard (bounded, above), and that
-					// is where the file's contents can actually be had.
-					const st = statSync(full);
-					if (st.nlink > 1) {
-						multiLink += 1;
-						return;
-					}
-					// DC-54 ① — SIZE, decided before anything is opened.
-					//
-					// This is the line that was missing when a workspace
-					// rooted at `~` met `Docker.raw`: 994 GB went into
-					// `readFileSync(full, "utf8")` and the process never came
-					// back. Measured on the owner's machine, without it: a
-					// 467 MB `.mov` read SUCCESSFULLY, 3,817 ms of dead loop
-					// and 2.06 GB of RSS, split into 1,823,112 "lines".
-					if (st.size > maxFileBytes) {
-						skippedFiles += 1;
-						return;
-					}
-					// DC-54 ② — BINARY, decided from the head alone.
-					//
-					// One open serves both the sniff and the read. The sniff
-					// passes an explicit position, which by contract leaves
-					// the handle's own position at 0, so `readFile()` below
-					// still sees the whole file.
-					const fh = await open(full, "r");
-					let text: string;
-					try {
-						const headLen = Math.min(BINARY_SNIFF_BYTES, st.size);
-						const head = Buffer.alloc(headLen);
-						if (headLen > 0) {
-							// An explicit `position` leaves the handle's own
-							// position at 0, so the whole-file read below still
-							// starts at byte 0. The gate proves it with a
-							// needle placed PAST the sniff window: were the
-							// position to advance, every line number in this
-							// file's matches would be silently wrong.
-							await fh.read(head, 0, headLen, 0);
-							if (head.includes(0)) {
-								skippedFiles += 1;
-								return;
-							}
-						}
-						// DC-54 ③ — the read is ASYNCHRONOUS. R3 made the walk
-						// yield and its comment claimed that stopped a long
-						// read owning the loop; it never could. `breathe()`
-						// runs BETWEEN files, and nothing preempts a
-						// `readFileSync` once entered. Bounded above by ①, so
-						// this is at most a 1 MiB read that shares the loop.
-						//
-						// A file that fits inside the sniff window is already
-						// entirely in `head`: reading it a second time would
-						// double the syscalls for the commonest small file.
-						text = (st.size <= headLen ? head : await fh.readFile()).toString("utf8");
-					} finally {
-						await fh.close();
-					}
-					for (const [i, line] of text.split("\n").entries()) {
-						if (regex.test(line)) {
-							totalMatches += 1;
-							if (matches.length < MAX_SEARCH_MATCHES) {
-								matches.push(`${full}:${i + 1}: ${line.trim().slice(0, 160)}`);
-							}
-						}
-					}
-				} catch {
-					// unreadable file — skip
-				}
-			};
-			const walk = async (dir: string, depth: number): Promise<void> => {
-				if (depth > 8 || outOfBudget()) return;
-				// DC-52 — a directory the OS REFUSES is skipped, not fatal.
-				//
-				// An unreadable FILE has always been skipped (the catch in
-				// scanFile); an unreadable DIRECTORY threw out of the walk
-				// and failed the whole tool. On macOS that is not an edge
-				// case — `~/Library/Accounts` and its neighbours are TCC
-				// protected, so a search anywhere under `~` died on one of
-				// them. The asymmetry was the defect: same fact, same
-				// remedy.
-				let entries;
-				try {
-					entries = await readdir(dir, { withFileTypes: true });
-				} catch (err) {
-					const code = (err as NodeJS.ErrnoException).code;
-					if (code === "EACCES" || code === "EPERM") {
-						unreadableDirs += 1;
-						return;
-					}
-					throw err;
-				}
-				for (const entry of entries) {
-					if (outOfBudget()) return;
-					if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-					const full = join(dir, entry.name);
-					if (entry.isDirectory()) {
-						// DC-49 — a walk does not DESCEND into an excluded root.
-						// Reaching it from above is what is refused; being
-						// pointed at it is not (see `excluded` below, which is
-						// seeded from the SEARCH ROOT and therefore empty when
-						// the root is itself excluded).
-						if (isExcluded(full)) {
-							excludedDirs += 1;
-							continue;
-						}
-						await walk(full, depth + 1);
-					} else if (entry.isFile()) await scanFile(full);
-				}
-			};
-			try {
-				if (single !== null) await scanFile(single);
-				else await walk(root, 0);
-			} catch (err) {
-				return { content: `search_text failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
-			}
+			// CX-1 F4 (audit F4): the walk-and-match runs on its OWN thread, which
+			// the deadline and the abort both TERMINATE. A catastrophic regex used
+			// to block this loop — no budget check, timer or abort could run.
+			const outcome = await runSearchWorker(
+				{ token: 0, root: searchRootReal, single, pattern, flags, excluded, maxFileBytes, maxFiles, deadline, maxMatches: MAX_SEARCH_MATCHES, sniffBytes: BINARY_SNIFF_BYTES },
+				deadline,
+				ctx.signal,
+			);
+			if (outcome.kind === "aborted") return { content: "search_text aborted", isError: true, errorKind: "fatal" };
+			if (outcome.kind === "error") return { content: `search_text failed: ${outcome.message}`, isError: true, errorKind: "fatal" };
+			const r = outcome.reply;
+			if (r?.error !== undefined) return { content: `search_text failed: ${r.error}`, isError: true, errorKind: "fatal" };
+			const matches = r?.matches ?? [];
+			const stopped = outcome.kind === "timeout" || (r?.stopped ?? false);
 			let content = matches.length ? cap(matches.join("\n")) : "(no matches)";
-			// DC-52: what was NOT searched is said. A silent skip is a
-			// result the model cannot tell is incomplete.
-			if (multiLink > 0) content += `\n… ${multiLink} multi-link ${multiLink === 1 ? "file" : "files"} skipped (read_file verifies them individually)`;
-			if (unreadableDirs > 0) content += `\n… ${unreadableDirs} unreadable ${unreadableDirs === 1 ? "directory" : "directories"} skipped`;
-			// DC-54 — one merged sentence, and only when it happened. A note
-			// that always fires says nothing.
-			// DC-49 — what a WALK did not enter, in the same discipline the
-			// file skips already follow: a scoped result that reads as total
-			// is one the model cannot tell is scoped.
-			if (excludedDirs > 0) {
-				content += `\n… ${excludedDirs} ${excludedDirs === 1 ? "directory" : "directories"} excluded`;
+			if (r !== undefined) {
+				if (r.multiLink > 0) content += `\n… ${r.multiLink} multi-link ${r.multiLink === 1 ? "file" : "files"} skipped (read_file verifies them individually)`;
+				if (r.unreadableDirs > 0) content += `\n… ${r.unreadableDirs} unreadable ${r.unreadableDirs === 1 ? "directory" : "directories"} skipped`;
+				if (r.excludedDirs > 0) content += `\n… ${r.excludedDirs} ${r.excludedDirs === 1 ? "directory" : "directories"} excluded`;
 			}
-			if (skippedFiles > 0 || stopped) {
+			if ((r?.skippedFiles ?? 0) > 0 || stopped) {
 				const parts: string[] = [];
-				if (skippedFiles > 0) parts.push(`${skippedFiles} ${skippedFiles === 1 ? "file" : "files"} skipped (large or binary)`);
-				if (stopped) parts.push(`stopped after ${stoppedAt} ${stoppedAt === 1 ? "file" : "files"} — narrow the path`);
+				const skipped = r?.skippedFiles ?? 0;
+				if (skipped > 0) parts.push(`${skipped} ${skipped === 1 ? "file" : "files"} skipped (large or binary)`);
+				if (outcome.kind === "timeout") parts.push("stopped — the search budget elapsed before it finished (narrow the path or the pattern)");
+				else if (stopped) parts.push(`stopped after ${r?.stoppedAt ?? 0} ${(r?.stoppedAt ?? 0) === 1 ? "file" : "files"} — narrow the path`);
 				content += `\n… ${parts.join(" · ")}`;
 			}
-			if (totalMatches > matches.length) {
-				// R-C item 2: the N of M form — the cap names its
-				// continuation (narrow the pattern for more).
-				content += `\n… ${matches.length} of ${totalMatches} matches shown (narrow the pattern for more)`;
+			if (r !== undefined && r.totalMatches > matches.length) {
+				content += `\n… ${matches.length} of ${r.totalMatches} matches shown (narrow the pattern for more)`;
 			}
 			return { content, isError: false };
 		},

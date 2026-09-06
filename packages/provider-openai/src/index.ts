@@ -22,7 +22,7 @@ import type { Adapter, StreamOptions } from "@vincemakes/kiso-core";
 import type { AdapterEvent, Event, StopReason } from "@vincemakes/kiso-core";
 import type { AssistantBlock, ContentBlock, Message } from "@vincemakes/kiso-core";
 import type { ToolSpec } from "@vincemakes/kiso-core";
-import { mapApiError } from "@vincemakes/kiso-core";
+import { mapApiError, parseRetryAfter } from "@vincemakes/kiso-core";
 
 interface PendingToolCall {
 	readonly index: number;
@@ -71,6 +71,10 @@ export function createOpenAICompatProvider(config: OpenAICompatProviderConfig = 
 	const client = new OpenAI({
 		...(config.apiKey !== undefined ? { apiKey: config.apiKey } : {}),
 		...(config.baseUrl !== undefined ? { baseURL: config.baseUrl } : {}),
+		// CX-1 F8: ONE retry authority — the kernel. The SDK's implicit two
+		// retries used to run beneath the kernel's budget (maxRetries = 0
+		// still made three requests) and beneath the request trace.
+		maxRetries: 0,
 	});
 	const origin = ((): string | undefined => {
 		if (config.baseUrl === undefined) return undefined;
@@ -519,6 +523,13 @@ function vendorOf(model: string): string {
 	return (id.split("-")[0] ?? id).toLowerCase();
 }
 
+function retryAfterOf(headers: unknown): number | undefined {
+	if (headers === null || typeof headers !== "object") return undefined;
+	const h = headers as { get?: (k: string) => string | null } & Record<string, unknown>;
+	const raw = typeof h.get === "function" ? h.get("retry-after") : (h["retry-after"] ?? h["Retry-After"]);
+	return parseRetryAfter(typeof raw === "string" ? raw : undefined);
+}
+
 function toOpenAIError(err: unknown, model: string): unknown {
 	const label = `[${vendorOf(model)}] request failed: `;
 	// D4: connection-level failures are recognized, not lumped into unknown.
@@ -529,7 +540,8 @@ function toOpenAIError(err: unknown, model: string): unknown {
 		return { code: "network", retryable: true, message: label + err.message };
 	}
 	if (err instanceof OpenAI.APIError) {
-		return mapApiError(err.status, label + err.message);
+		// CX-1 F8: the kernel owns retries — Retry-After travels with the error
+		return mapApiError(err.status, label + err.message, retryAfterOf(err.headers));
 	}
 	return err;
 }
