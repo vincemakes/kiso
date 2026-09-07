@@ -60,6 +60,14 @@ export function createAnthropicAdapter(client: Anthropic, adapterOpts: Anthropic
 	const caching = adapterOpts.promptCaching === true;
 	return {
 		async *stream(options: StreamOptions): AsyncIterable<AdapterEvent> {
+			// PA-1a (D3, the thinking table read 2026-09-07): the thinking wire.
+			// `adaptive` and `disabled` serialize as { type }; absent adds NO
+			// key (the byte anchor — every 5-line model thinks by default).
+			// `enabled` is manual extended thinking and needs a budget_tokens
+			// the XP-1 setting has no axis for; the registry lists it for no
+			// first-party model, so reaching here with it is a wiring error —
+			// refused loudly, never guessed. Checked BEFORE the request.
+			const thinking = options.reasoning?.thinking === undefined ? undefined : thinkingParam(options.reasoning.thinking);
 			// D4: the stream CREATION is inside the error normalization —
 			// connection/timeout/5xx failures before the first byte are
 			// mapped, retryable StructuredErrors.
@@ -75,6 +83,7 @@ export function createAnthropicAdapter(client: Anthropic, adapterOpts: Anthropic
 						// mode list for the entered models, so no valid
 						// selection can produce one; nothing is guessed.
 						...(options.reasoning?.effort !== undefined ? ({ output_config: { effort: options.reasoning.effort } } as Record<string, unknown>) : {}),
+						...(thinking !== undefined ? ({ thinking } as Record<string, unknown>) : {}),
 						...(options.systemPrompt !== undefined
 							? {
 									system: caching
@@ -371,6 +380,14 @@ function toAnthropicMessages(messages: readonly Message[], model: string): Anthr
 		}
 	}
 	return out;
+}
+
+/** PA-1a (D3): the request's `thinking` object for a RESOLVED mode. */
+function thinkingParam(mode: "adaptive" | "enabled" | "disabled"): { type: "adaptive" | "disabled" } {
+	if (mode === "enabled") {
+		throw new Error("thinking 'enabled' (extended thinking with budget_tokens) is not driven by kiso on this provider — select adaptive or disabled");
+	}
+	return { type: mode };
 }
 
 /** PH-1c.1 — the rolling conversation breakpoint: the LAST message's

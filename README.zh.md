@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.27.0
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.28.0
 ```
 
 (上面的块状字母是 `assets/logo.svg` 的像素形态——一个 8×8 的 K,底行是这个框架得名的基岩基础。)
@@ -225,7 +225,12 @@ kiso help                      this help
       "apiKeyEnv": "DEEPSEEK_API_KEY",       // the key's env var — never the key
       "baseUrl": "https://api.deepseek.com"  // optional
     },
-    "claude": { "kind": "anthropic", "model": "claude-sonnet-5", "apiKeyEnv": "ANTHROPIC_API_KEY" }
+    "claude": {
+      "kind": "anthropic",
+      "model": "claude-opus-5",              // claude-fable-5-1 / claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "promptCaching": false                 // 可选,默认关;见下面的首方说明
+    }
   },
   "mode": "default",                         // manual/default/accept-edits/plan/bypass
   "contextWindow": 160000,                   // tokens
@@ -234,7 +239,8 @@ kiso help                      this help
 }
 ```
 
-- `kiso --model deepseek chat`——flag 胜过一切;`provider/model` 直写也可(`--model openai-compat/gpt-4o`)。
+- `kiso --model deepseek chat`——flag 胜过一切;`provider/model` 直写也可(`--model openai-compat/gpt-4o`、`--model anthropic/claude-sonnet-5`)。
+- **Anthropic 首方说明(PA-1a,0.28.0)。** 当前型号线——Claude Fable 5.1、Opus 5、Sonnet 5、Haiku 4.5——已登记,上下文窗口、effort 档位、思考模式、价格都带日期和来源(2026-09-07 读自官方文档;`/model` 可见)。effort(`low` … `max`)与思考(`adaptive` / `disabled`,按型号)按文档原样上线;Haiku 4.5 的手动思考预算不驱动。`promptCaching` **默认关**:打开会放两个 ephemeral `cache_control` 断点(系统提示与滚动的最后一块),请求字节和账单都会变——缓存读取按输入价的 10%(Fable 5.1 为 2.5%)计费,5 分钟缓存写入按 125%。默认值只在真实 Anthropic 腿上的配对 bench 证明省钱后才翻转;在那之前按档案单独设置。提醒(finding MG1-F1):签名思考块的回放只对 SDK 和兼容方言验证过,尚未对 `api.anthropic.com` 验证——首次真实使用可能暴露线上偏差。
 - 会话内 `/model` 列出各 profile(每个标注可用 / 不可用——未设置的 apiKeyEnv 永不崩溃),并切换会话后续回合的适配器(由 NoticeCell 记录)。
 - env 变量未设置的 profile 在切换时被响亮拒绝——config 永不存密钥,所以缺失 env 是诚实的"未配置"。
 - 工程自身的 `.kiso/config.json` 乘 E3 信任门:已授予工程的 config 生效,未信任的永不读取(其摘要覆盖 config 文件)。

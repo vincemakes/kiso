@@ -95,4 +95,27 @@ describe("XP-1 — anthropic-messages wire", () => {
 		await drain(adapter.stream({ model: "claude-sonnet-5", messages: [{ role: "user", content: "go" }] }));
 		expect("output_config" in captured).toBe(false);
 	});
+
+	it("PA-1a (D3): thinking serializes as { type } for adaptive and disabled; ABSENT adds no key; enabled is refused before any request", async () => {
+		let captured: Record<string, unknown> = {};
+		let creates = 0;
+		const adapter = createAnthropicAdapter(
+			fakeAnthropic({
+				onCreate: (p) => {
+					creates += 1;
+					captured = p as Record<string, unknown>;
+				},
+			}),
+		);
+		await drain(adapter.stream({ model: "claude-opus-5", messages: [{ role: "user", content: "go" }], reasoning: { thinking: "adaptive", effort: "max" } }));
+		expect(captured.thinking).toEqual({ type: "adaptive" });
+		expect(captured.output_config).toEqual({ effort: "max" });
+		await drain(adapter.stream({ model: "claude-opus-5", messages: [{ role: "user", content: "go" }], reasoning: { thinking: "disabled" } }));
+		expect(captured.thinking).toEqual({ type: "disabled" });
+		await drain(adapter.stream({ model: "claude-opus-5", messages: [{ role: "user", content: "go" }] }));
+		expect("thinking" in captured).toBe(false); // the byte anchor
+		const before = creates;
+		await expect(drain(adapter.stream({ model: "claude-opus-5", messages: [{ role: "user", content: "go" }], reasoning: { thinking: "enabled" } }))).rejects.toThrow(/budget_tokens/);
+		expect(creates).toBe(before); // refused BEFORE the SDK was called
+	});
 });

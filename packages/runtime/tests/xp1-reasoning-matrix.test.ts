@@ -52,7 +52,8 @@ describe("XP-1 — the DeepSeek V4 identity fix, dated and sourced", () => {
 		expect(r?.effort?.levels).toEqual(["low", "medium", "high", "xhigh", "max"]);
 		expect(r?.effort?.default).toBe("high");
 		expect(r?.effort?.wire).toBe("output_config.effort");
-		expect(r?.asOf).toBe("2026-08-26");
+		expect(r?.asOf).toBe("2026-09-07"); // refreshed by PA-1a from the live effort page (was 2026-08-26)
+		expect(r?.thinking).toEqual({ modes: ["adaptive", "disabled"], default: "adaptive" }); // and the thinking table
 	});
 });
 

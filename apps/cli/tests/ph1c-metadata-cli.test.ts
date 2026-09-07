@@ -30,7 +30,9 @@ afterEach(() => {
 describe("PH-F15 — the window follows the live model", () => {
 	it("a registry-known model moves the window; an unknown model keeps the default", () => {
 		setAgentModel("claude-sonnet-5");
-		expect(contextWindowTokens()).toBe(200_000);
+		expect(contextWindowTokens()).toBe(1_000_000); // PA-1a: the dated row (2026-09-07) — 1M, no longer equal to the default
+		setAgentModel("claude-haiku-4-5");
+		expect(contextWindowTokens()).toBe(200_000); // the alias row resolves too
 		setAgentModel("gpt-4o");
 		expect(contextWindowTokens()).toBe(128_000);
 		setAgentModel("some-unregistered-model");

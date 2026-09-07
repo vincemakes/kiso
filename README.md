@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.27.0
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.28.0
 ```
 
 (The block letter above is `assets/logo.svg` in pixel form — an 8×8 K
@@ -378,7 +378,12 @@ a broken config file fails loudly with the file named.
       "apiKeyEnv": "DEEPSEEK_API_KEY",       // the key's env var — never the key
       "baseUrl": "https://api.deepseek.com"  // optional
     },
-    "claude": { "kind": "anthropic", "model": "claude-sonnet-5", "apiKeyEnv": "ANTHROPIC_API_KEY" }
+    "claude": {
+      "kind": "anthropic",
+      "model": "claude-opus-5",              // claude-fable-5-1 / claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "promptCaching": false                 // opt-in; see the first-party notes below
+    }
   },
   "mode": "default",                         // manual/default/accept-edits/plan/bypass
   "contextWindow": 160000,                   // tokens
@@ -388,7 +393,23 @@ a broken config file fails loudly with the file named.
 ```
 
 - `kiso --model deepseek chat` — the flag beats everything; `provider/model`
-  direct writes work too (`--model openai-compat/gpt-4o`).
+  direct writes work too (`--model openai-compat/gpt-4o`,
+  `--model anthropic/claude-sonnet-5`).
+- **Anthropic first-party notes (PA-1a, 0.28.0).** The current line —
+  Claude Fable 5.1, Opus 5, Sonnet 5, Haiku 4.5 — is registered with
+  dated, sourced context windows, effort levels, thinking modes and
+  prices (read from the docs on 2026-09-07; `/model` shows them). Effort
+  (`low` … `max`) and thinking (`adaptive` / `disabled`, per model) go
+  on the wire exactly as documented; Haiku 4.5's manual thinking budget
+  is not driven. `promptCaching` is **off by default**: turning it on
+  places two ephemeral `cache_control` breakpoints (the system prompt
+  and the rolling last block) and changes the request bytes and the
+  bill — cache reads cost 10% of input (2.5% on Fable 5.1), a 5-minute
+  cache write 125%. The default flips only after a paired bench on a
+  live Anthropic leg proves the saving; until then set it per profile.
+  Caveat (finding MG1-F1): the adapter's signed thinking-block replay is
+  verified against the SDK and a compatible dialect, not yet against
+  `api.anthropic.com` — the first live use may surface wire drift.
 - `/model` in a session lists the profiles (each annotated available /
   unavailable — an unset apiKeyEnv is never a crash) and switches the
   session's adapter for subsequent turns (a NoticeCell records it).

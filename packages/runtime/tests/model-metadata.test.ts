@@ -33,10 +33,13 @@ describe("PH-1c — lookupModelMetadata", () => {
 	});
 
 	it("capability honesty: a model we can name but not price is pricing: null", () => {
+		// PA-1a (2026-09-07) priced the Anthropic line from the live page, so
+		// the example moved to a row that is still unpriced on purpose.
+		const gpt = lookupModelMetadata("gpt-4o");
+		expect(gpt).not.toBeNull();
+		expect(gpt!.pricing).toBeNull(); // no live-sourced rate — no number
 		const sonnet = lookupModelMetadata("claude-sonnet-5");
-		expect(sonnet).not.toBeNull();
-		expect(sonnet!.capabilities.contextWindow).toBe(200_000);
-		expect(sonnet!.pricing).toBeNull(); // no live-sourced rate — no number
+		expect(sonnet!.pricing?.asOf).toBe("2026-09-07"); // and a priced row says WHEN
 	});
 });
 
@@ -52,10 +55,14 @@ describe("PH-1c — canonicalizeUsageForModel (the model-keyed cost path)", () =
 		expect(c.input).toBe(1_000_000);
 	});
 
-	it("a model with NO priced entry costs null — the anthropic run is never priced at DeepSeek's rates again", () => {
+	it("an anthropic run is priced at ITS OWN dated rates (PA-1a) — never at DeepSeek's; an unregistered anthropic id costs null", () => {
 		const c = canonicalizeUsageForModel("claude-sonnet-5", undefined, "anthropic", RAW);
-		expect(c.costUsd).toBeNull();
+		expect(c.costUsd).toBeCloseTo(2 + 10, 9); // the pricing page, read 2026-09-07
+		expect(c.costUsd).not.toBeCloseTo(0.27 + 1.1, 9);
+		expect(c.pricingTableId).toBe("metadata");
 		expect(c.input).toBe(1_000_000); // anthropic convention: fresh as-is
+		const u = canonicalizeUsageForModel("claude-unregistered", undefined, "anthropic", RAW);
+		expect(u.costUsd).toBeNull();
 	});
 
 	it("an unknown model on an unknown route: null cost, total convention — honest on both axes", () => {

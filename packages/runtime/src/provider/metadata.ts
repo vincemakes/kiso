@@ -126,6 +126,75 @@ const DEEPSEEK_PRICING: ModelPricing = {
 	source: "https://api-docs.deepseek.com/quick_start/pricing",
 };
 
+/** PA-1a: the Anthropic rates as read on 2026-09-07 (base input, output,
+ *  cache read = "cache hits and refreshes", cache write = the 5-minute
+ *  write). The pricing page notes Sonnet 5's $2/$10 is the standard
+ *  price (the announced September increase did not occur). */
+const ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing";
+const ANTHROPIC_MODELS_SOURCE = "https://platform.claude.com/docs/en/models/overview";
+const ANTHROPIC_EFFORT_SOURCE = "https://platform.claude.com/docs/en/build-with-claude/effort";
+const ANTHROPIC_ASOF = "2026-09-07";
+const anthropicPricing = (inputPerM: number, outputPerM: number, cacheReadPerM: number, cacheWritePerM: number): ModelPricing => ({
+	inputPerM,
+	outputPerM,
+	cacheReadPerM,
+	cacheWritePerM,
+	asOf: ANTHROPIC_ASOF,
+	source: ANTHROPIC_PRICING_SOURCE,
+});
+/** The 5-line's effort control: five native levels, default high, wire
+ *  output_config.effort (the effort page, read 2026-09-07). The thinking
+ *  table (https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting)
+ *  gives the modes per model. */
+const FIVE_LEVELS = { levels: ["low", "medium", "high", "xhigh", "max"] as const, default: "high" as const, wire: "output_config.effort" };
+function anthropicLine(): ModelMetadataEntry[] {
+	const row = (model: string, capabilities: ModelCapabilities, pricing: ModelPricing): ModelMetadataEntry => ({
+		model,
+		providerId: "anthropic",
+		capabilities,
+		capabilitiesAsOf: ANTHROPIC_ASOF,
+		capabilitiesSource: ANTHROPIC_MODELS_SOURCE,
+		pricing,
+	});
+	const fiveLine = (thinkingModes: readonly ("adaptive" | "disabled")[], forbidden?: readonly ReasoningSetting[]): ModelCapabilities => ({
+		contextWindow: 1_000_000,
+		maxOutputTokens: 128_000,
+		promptCaching: "explicit",
+		reasoning: {
+			emitsThinkingStream: true,
+			thinking: { modes: thinkingModes, default: "adaptive" },
+			effort: FIVE_LEVELS,
+			...(forbidden !== undefined ? { forbidden } : {}),
+			asOf: ANTHROPIC_ASOF,
+			source: ANTHROPIC_EFFORT_SOURCE,
+		},
+		inputModalities: ["text", "image"],
+	});
+	const haiku: ModelCapabilities = {
+		contextWindow: 200_000,
+		maxOutputTokens: 64_000,
+		promptCaching: "explicit",
+		// Extended thinking only (budget_tokens; adaptive rejected) — the
+		// XP-1 setting has no budget axis, so the toggle is not driven;
+		// effort: "Not supported" on the models overview. Unknown stays null.
+		reasoning: { emitsThinkingStream: true, thinking: null, effort: null, asOf: ANTHROPIC_ASOF, source: ANTHROPIC_EFFORT_SOURCE },
+		inputModalities: ["text", "image"],
+	};
+	const haikuPricing = anthropicPricing(1, 5, 0.1, 1.25);
+	return [
+		// Fable 5.1: adaptive only, ALWAYS on — "enabled" and "disabled" both 400.
+		row("claude-fable-5-1", fiveLine(["adaptive"]), anthropicPricing(10, 50, 0.25, 12.5)),
+		// Opus 5: adaptive, on by default; "disabled" accepted at effort high
+		// or below — with xhigh or max it is a 400 (the forbidden pair).
+		row("claude-opus-5", fiveLine(["adaptive", "disabled"], [{ thinking: "disabled", effort: "xhigh" }, { thinking: "disabled", effort: "max" }]), anthropicPricing(5, 25, 0.5, 6.25)),
+		// Sonnet 5: adaptive, on by default; "disabled" accepted.
+		row("claude-sonnet-5", fiveLine(["adaptive", "disabled"]), anthropicPricing(2, 10, 0.2, 2.5)),
+		// Haiku 4.5: the pinned id and its alias (the registry matches exact ids).
+		row("claude-haiku-4-5-20251001", haiku, haikuPricing),
+		row("claude-haiku-4-5", haiku, haikuPricing),
+	];
+}
+
 /** The v1 table. Nulls outnumber numbers ON PURPOSE: only values with a
  *  named source enter; everything else waits for one. */
 const ENTRIES: readonly ModelMetadataEntry[] = [
@@ -151,22 +220,16 @@ const ENTRIES: readonly ModelMetadataEntry[] = [
 		capabilities: { contextWindow: null, maxOutputTokens: null, promptCaching: "automatic", reasoning: { emitsThinkingStream: true, thinking: null, effort: null, asOf: null, source: null }, inputModalities: null },
 		pricing: DEEPSEEK_PRICING,
 	},
-	{
-		model: "claude-sonnet-5",
-		providerId: "anthropic",
-		capabilities: { contextWindow: 200_000, maxOutputTokens: null, promptCaching: "explicit",
-			reasoning: {
-				emitsThinkingStream: true,
-				thinking: null,
-				effort: { levels: ["low", "medium", "high", "xhigh", "max"], default: "high", wire: "output_config.effort" },
-				asOf: "2026-08-26",
-				source: "https://platform.claude.com/docs/en/build-with-claude/effort",
-			},
-			inputModalities: null },
-		// Priced only when the rates are read from the live billing page
-		// and dated — never copied from memory (the review's boundary ②).
-		pricing: null,
-	},
+	// PA-1a (2026-09-07): the Anthropic first-party line, read from the live
+	// docs that day — the models overview (ids, context, max output,
+	// modalities, thinking type, default effort), the thinking table
+	// (accepted / rejected thinking.type per model, the Opus 5 forbidden
+	// pair), the effort page (levels), the pricing page (rates). Each row
+	// carries the dates; nothing here is from memory. Extended thinking
+	// (`enabled` + budget_tokens) is registered for NO model: the 5-line
+	// rejects it, and Haiku 4.5's manual-budget mode has no axis in the
+	// XP-1 setting — recorded as `thinking: null` on that row, never guessed.
+	...anthropicLine(),
 	{
 		// XP-1: the current DeepSeek line — the model every RD-1 benchmark
 		// artifact was produced with, previously ABSENT (null pricing and
