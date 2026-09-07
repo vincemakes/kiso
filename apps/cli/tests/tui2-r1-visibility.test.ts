@@ -234,14 +234,25 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		expect(res.stdout.match(/\u2713 list_dir /g) ?? []).toHaveLength(1);
 
 		// THE DURABLE LOGS: the rolled session's events are the unrolled
-		// session's events — same types, same order, same contents. The
+		// session's events — same types, same contents, and the same order
+		// WITHIN each call (call_end → started → succeeded → result). The
 		// only fields allowed to differ are the per-session identities.
+		// Finding CX1-F4-1 (CI on 0.27.0, 2026-09-07): the order ACROSS
+		// concurrent calls is scheduling, not display — since CX-1 F4 put
+		// search_text on a worker thread, two searches and a list_dir may
+		// complete in a machine-dependent order, and a byte-equal flat log
+		// asserted more than the rollup's display-side claim needs. The
+		// shape is therefore grouped by callId (a stable sort keeps each
+		// call's own order); DC-54's ruling that READS stay synchronous is
+		// unaffected — the three read_file calls still land in one order.
 		const shape = (home: string, sid: string): string =>
 			JSON.stringify(
 				logLines(home, sid)
 					.map((l) => l.event)
 					.filter((e) => String(e.type).startsWith("tool_"))
-					.map((e) => ({ type: e.type, name: e.name, callId: e.callId, content: e.content, isError: e.isError })),
+					.map((e, i) => ({ i, type: e.type, name: e.name, callId: e.callId, content: e.content, isError: e.isError }))
+					.sort((a, b) => (String(a.callId) < String(b.callId) ? -1 : String(a.callId) > String(b.callId) ? 1 : a.i - b.i))
+					.map(({ i: _i, ...e }) => e),
 			);
 		const rolled = shape(pty.env.KISO_HOME as string, "r1-pty");
 		const flat = shape(pipe.env.KISO_HOME as string, "r1-pipe");
