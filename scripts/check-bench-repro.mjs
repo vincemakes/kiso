@@ -99,6 +99,10 @@ try {
 	// proven)
 	const f8 = lh1("cost-geometry.mjs", ["--rd1-clean", "--check"]);
 	if (f8.code !== 0 || !/F8 reproduced/.test(f8.out)) errs.push(`bench/lh1 cost-geometry did not re-derive F8 from a fresh clone:\n${f8.out.slice(-800)}`);
+	// the evaluator calibration: the overlapping axes must reproduce the
+	// frozen rescore grid from the tracked archives (protocol §7.4)
+	const cal = lh1("calibrate.mjs", ["--check"]);
+	if (cal.code !== 0 || !/0 disagree; .* 0 wrong/.test(cal.out)) errs.push(`bench/lh1 calibration did not reproduce the rescore grid from a fresh clone:\n${cal.out.slice(-800)}`);
 	// every fixture in the tracked tree closes its loop — a fixture whose
 	// loop does not close is not a fixture yet
 	const tasks = readdirSync(join(dir, "bench/lh1/tasks")).filter((t) => !t.startsWith(".")).sort();

@@ -51,6 +51,14 @@ task's `expected.json`.
   only, write) a fixture's golden battery.
 - `drivers/kiso/` — the kiso driver, the surrogate-arm playbook
   generator and the declared policy (below).
+- `lib/axes.mjs` + `run/calibrate.mjs` — the evaluator calibration
+  (protocol §7.4): the LH-1 axes that overlap RD-1's (duplicate effect
+  by effect identity, silent retry, lost work, fabricated certainty)
+  ported rule for rule, re-derived over every scored cell of the
+  tracked clean-replay archives and compared with the frozen rescore
+  grid (`--check`: 144 axis cells, zero disagreement), plus 17
+  synthetic boundary cases. A disagreement is an evaluator bug, never
+  a new verdict. Gated from a fresh clone.
 - `run/cost-geometry.mjs` — the cost-geometry extractor (protocol §4):
   first-request fresh / cacheRead and hit% PER SESSION START within a
   leg (every resume is a new start), beside the leg's totals
