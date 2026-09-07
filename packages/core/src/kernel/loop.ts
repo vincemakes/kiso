@@ -766,15 +766,13 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					return;
 				}
 				let structured = toStructuredError(err);
-				// CX-1 F8 (ruled: the kernel owns retries): the wait is
-				// max(attempts × 250 ms, the provider's Retry-After), abortable.
-				// A wait above the cap is never shortened — the run stops with
-				// an explicit error instead of retrying early.
-				const retryWait = (): number | null => {
-					const ms = Math.max((attempts + 1) * 250, structured.retryAfterMs ?? 0);
-					return ms > RETRY_AFTER_MAX_MS ? null : ms;
-				};
-				if (structured.retryable && attempts < maxRetries && retryWait() === null) {
+				// CX-1 F8 (ruled: the kernel owns retries): the n-th retry waits
+				// max(n × 250 ms, the provider's Retry-After), abortable — computed
+				// BEFORE `attempts` advances (the 2026-09-07 review's P3: computed
+				// after it, the first wait was 500 ms). A wait above the cap is
+				// never shortened — the run stops with an explicit error instead.
+				const retryWait = (): number => Math.max((attempts + 1) * 250, structured.retryAfterMs ?? 0);
+				if (structured.retryable && attempts < maxRetries && retryWait() > RETRY_AFTER_MAX_MS) {
 					structured = {
 						...structured,
 						retryable: false,
@@ -785,8 +783,8 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				// content — duplicates are worse than failures. Nothing streamed
 				// yet: the cheap in-place retry (no draft exists to void).
 				if (structured.retryable && !streamed && attempts < maxRetries) {
+					await sleep(retryWait(), signal); // abortable backoff, Retry-After honored
 					attempts += 1;
-					await sleep(retryWait() ?? attempts * 250, signal); // abortable backoff, Retry-After honored
 					continue;
 				}
 				// F4 — ABANDON HYGIENE, every streamed exit: settle, drain,
@@ -800,8 +798,8 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				// F4 — the mid-stream retry: same classification, same per-turn
 				// budget (ADR-0005 Amendment 1: frame state, per-process).
 				if (structured.retryable && attempts < maxRetries && !unsafeStartedInDraft()) {
+					await sleep(retryWait(), signal); // the same abortable backoff, Retry-After honored
 					attempts += 1;
-					await sleep(retryWait() ?? attempts * 250, signal); // the same abortable backoff, Retry-After honored
 					// Fresh per-attempt state — the marker is the boundary now.
 					pending.length = 0;
 					lastStop = undefined;
@@ -1138,14 +1136,18 @@ async function decideCall(
 	// its verdict. A throwing chain counts as ask. Allow/deny are recorded
 	// durably with decidedBy = the deciding extension, never pausing for a
 	// human.
-	// CX-1 F1 (audit F1): a durable decision is consumable ONCE — by the
-	// invocation it was recorded for, or by that invocation's RE-ISSUE on
-	// resume (same callId, same tool, identical input, and the original
-	// never produced a result). A provider callId alone is correlation,
-	// never identity: the old lookup found the current call itself
-	// (already appended), compared its input to its own, and took the
-	// FIRST decision with that callId in the whole log — so a reused
-	// callId inherited an old allow for a new call.
+	// CX-1 F1 (audit F1): a durable decision binds to EXACTLY the
+	// invocation it was recorded for — `invocationSeq === call.seq`. A
+	// provider callId alone is correlation, never identity: the old lookup
+	// took the FIRST decision with that callId in the whole log, so a
+	// reused callId inherited an old allow for a new call. The 0.26.1
+	// "re-issue" exception (same callId, same input, no result yet) is
+	// RETRACTED (the 2026-09-07 review's P1): it let a same-turn duplicate
+	// and a voided draft's retry inherit a verdict, and nothing needed it —
+	// a committed turn's pending call is executed by the recovery driver
+	// under its ORIGINAL seq, and a re-streamed call after a void is a new
+	// invocation the chain decides again (a policy is a function; running
+	// it twice costs nothing and gives a stateful one its say).
 	//
 	// The decision's invocationSeq names the original call (every
 	// producer stamps it, round 5). A legacy decision (no invocationSeq,
@@ -1163,23 +1165,6 @@ async function decideCall(
 		}
 		return undefined;
 	};
-	/** The re-issue rule: a resume re-issues the pending call under the SAME
-	 *  provider id — same callId, same tool, identical input — and the
-	 *  original never completed: no result and no other call under that id
-	 *  stands between the original and this call. A different callId with
-	 *  the same arguments is a new invocation (the /mode-switch shape: a
-	 *  write denied under plan is asked afresh under default). */
-	const reissues = (origSeq: number): boolean => {
-		const orig = all.find((e) => e.seq === origSeq);
-		if (orig === undefined || orig.type !== "tool_call_end") return false;
-		if (orig.callId !== call.callId || orig.name !== call.name) return false;
-		if (JSON.stringify(orig.input) !== JSON.stringify(call.input)) return false;
-		for (const e of all) {
-			if (e.seq <= origSeq || e.seq >= call.seq) continue;
-			if ((e.type === "tool_result" || e.type === "tool_call_end") && e.callId === orig.callId) return false;
-		}
-		return true;
-	};
 	let durable: (Event & { type: "permission_decided" }) | undefined;
 	let legacyAmbiguous = false;
 	for (const e of all) {
@@ -1190,7 +1175,7 @@ async function decideCall(
 			legacyAmbiguous = true;
 			continue;
 		}
-		if (origSeq === call.seq || reissues(origSeq)) durable = e;
+		if (origSeq === call.seq) durable = e;
 	}
 	let chainVerdict: ChainVerdict | undefined;
 	if (durable === undefined && legacyAmbiguous) {

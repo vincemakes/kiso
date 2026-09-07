@@ -90,6 +90,7 @@
 		"extensions/mcp/tests/mcp.test.ts",
 		"extensions/skills/tests/skills-e2e.test.ts",
 		"extensions/subagent/tests/cx1-batch-a.test.ts",
+		"extensions/subagent/tests/cx1-review-projection.test.ts",
 		"extensions/subagent/tests/subagent-e2e.test.ts",
 		"extensions/subagent/tests/subagent.test.ts",
 		"packages/runtime/tests/framing-lock.test.ts",

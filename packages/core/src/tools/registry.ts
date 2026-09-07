@@ -54,9 +54,11 @@ export class ToolRegistry {
 	 *  snapshot at request assembly and dispatches from it: the definition
 	 *  sent to the model, the schema validated against, the `execute` that
 	 *  runs and the `effects` the scheduler reads are the SAME captured
-	 *  values (a shallow copy of each Tool — extensions replace their Tool
-	 *  objects rather than mutating them, and the copy makes that a
-	 *  contract). Two sources publishing one name is an error the moment
+	 *  values: the declaration data (schema, effects) is COPIED into the
+	 *  table, the handler stays by reference — an in-place edit to the
+	 *  source after the snapshot cannot reach a request already under way
+	 *  (the 2026-09-07 review's P2: a shallow copy shared the nested
+	 *  objects). Two sources publishing one name is an error the moment
 	 *  it is observed, naming both owners — never a traversal-order pick;
 	 *  the one exception is the SAME Tool object reached twice (the 0.1.27
 	 *  dedup), which is one tool. */
@@ -68,7 +70,8 @@ export class ToolRegistry {
 				if (prior.original === t) return; // the same object reached twice — one tool
 				throw new Error(`tool table: '${t.name}' is published by two sources (${prior.owner}, ${owner})`);
 			}
-			captured.set(t.name, { tool: Object.freeze({ ...t }) as Tool, original: t, owner });
+			const copy = { ...t, parameters: structuredClone(t.parameters), ...(t.effects === undefined ? {} : { effects: Object.freeze(structuredClone(t.effects)) }) };
+			captured.set(t.name, { tool: Object.freeze(copy) as Tool, original: t, owner });
 		};
 		for (const t of this.#tools.values()) take(t, "registered");
 		for (const { source, owner } of this.#live) for (const t of source()) take(t, owner);

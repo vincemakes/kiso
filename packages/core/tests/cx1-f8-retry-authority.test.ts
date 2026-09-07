@@ -53,6 +53,18 @@ describe("CX-1 F8 — the kernel honors Retry-After", () => {
 		expect(terminalOf(events)?.outcome.kind).toBe("completed");
 	});
 
+	it("no Retry-After: the ladder is 250, 500 — computed before the attempt counter advances (the 2026-09-07 review's P3 measured 502 ms for the first)", async () => {
+		const f = flaky({ code: "rate_limit", retryable: true, message: "429" }, 2);
+		const events = await run(f.adapter, 2);
+		expect(f.calls()).toBe(3);
+		const [t0, t1, t2] = f.at() as [number, number, number];
+		expect(t1 - t0).toBeGreaterThanOrEqual(240);
+		expect(t1 - t0).toBeLessThan(450); // the off-by-one gave ~500
+		expect(t2 - t1).toBeGreaterThanOrEqual(490);
+		expect(t2 - t1).toBeLessThan(700); // the off-by-one gave ~750
+		expect(terminalOf(events)?.outcome.kind).toBe("completed");
+	});
+
 	it("maxRetries = 0: exactly one attempt, the error is the terminal", async () => {
 		const f = flaky({ code: "rate_limit", retryable: true, message: "429", retryAfterMs: 100 }, 1);
 		const events = await run(f.adapter, 0);

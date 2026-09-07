@@ -63,4 +63,20 @@ describe("CX-1 F7 — the registry snapshot", () => {
 		reg2.registerLive(() => [tool("clash", "extension")], "ext");
 		expect(() => reg2.snapshot()).toThrow(/clash/);
 	});
+
+	it("the review's in-place shape (2026-09-07 P2): editing the SOURCE's nested schema and effects after the snapshot does not reach the table — advertised, validated and scheduled values are the captured ones", () => {
+		const schema = { type: "object", properties: { target: { type: "string" } } };
+		const effects: { precommitSafe?: true } = {};
+		const reg = new ToolRegistry();
+		reg.register({ name: "x", description: "x", parameters: schema, effects, execute: async () => ({ content: "x", isError: false }) } as never);
+		const table = reg.snapshot();
+		const before = JSON.stringify(table.specs);
+		(schema.properties.target as { type: string }).type = "number";
+		effects.precommitSafe = true;
+		expect(JSON.stringify(table.specs)).toBe(before); // the advertised schema did not move
+		expect((table.get("x")!.parameters as typeof schema).properties.target.type).toBe("string"); // nor the one validated against
+		expect(table.get("x")!.effects?.precommitSafe).toBeUndefined(); // nor what the scheduler reads
+		expect(table.get("x")!.execute).toBeTypeOf("function"); // the handler is by reference
+		expect(reg.snapshot().specs[0]!.inputSchema).toEqual({ type: "object", properties: { target: { type: "number" } } }); // the NEXT request sees the edit
+	});
 });

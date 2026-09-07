@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.26.2
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.26.3
 ```
 
 (上面的块状字母是 `assets/logo.svg` 的像素形态——一个 8×8 的 K,底行是这个框架得名的基岩基础。)
@@ -68,12 +68,12 @@ Turn Commit 自身的证明是两个崩溃前缀的字节比对,二者恰好相�
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts     914
+  packages/core/src/kernel/loop.ts     900
   packages/core/src/protocol/events.ts 472
   packages/core/src/kernel/project.ts  360
   ...
-  total                               2189  / 2200
-  ✓ 11 lines of headroom remaining.
+  total                               2176  / 2200
+  ✓ 24 lines of headroom remaining.
 
 cli:
   apps/cli/src/chat.ts  478

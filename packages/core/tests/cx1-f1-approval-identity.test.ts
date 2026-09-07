@@ -144,6 +144,54 @@ describe("CX-1 F1 — a reused provider callId never inherits an earlier decisio
 		expect(h.ran).toEqual([]); // and nothing executed
 	});
 
+	it("the review's same-turn shape (2026-09-07 P1): ONE turn, TWO calls under one callId with identical input — the policy decides both, the second is denied, the handler runs once", async () => {
+		const h = harness();
+		let n = 0;
+		h.approvalPolicy.decide = async () => (++n === 1 ? { action: "allow", decidedBy: "policy" } : { action: "deny", decidedBy: "policy", reason: "only the first" });
+		const events = await drive(
+			scripted([
+				[
+					{ type: "tool_call_end", callId: "same", name: "act", input: { target: "t" }, seq: 0 },
+					{ type: "text_delta", text: "next", seq: 1 },
+					{ type: "tool_call_end", callId: "same", name: "act", input: { target: "t" }, seq: 2 },
+					{ type: "stop", reason: "tool_use", seq: 3 },
+				],
+				[{ type: "stop", reason: "end_turn", seq: 0 }],
+			] as unknown as Event[][]),
+			h,
+		);
+		expect(n).toBe(2); // decided twice — the retracted re-issue rule let the second inherit the first
+		expect(h.ran).toEqual(["t"]); // executed once
+		expect(events.filter((e) => e.type === "permission_decided").map((d) => (d as { decision: string }).decision)).toEqual(["approved", "denied"]);
+	});
+
+	it("the review's voided-draft shape (2026-09-07 P1): the draft's call is approved, the stream fails, the retry re-emits the SAME callId — decided again, bound to the NEW invocation", async () => {
+		const h = harness();
+		let n = 0;
+		h.approvalPolicy.decide = async () => (++n === 1 ? { action: "allow", decidedBy: "policy" } : { action: "deny", decidedBy: "policy", reason: "now denied" });
+		let phase = 0;
+		const adapter = {
+			stream: async function* () {
+				const p = phase++;
+				if (p < 2) {
+					yield { type: "tool_call_end", callId: "same", name: "act", input: { target: "t" }, seq: 0 };
+					yield { type: "text_delta", text: "draft", seq: 1 };
+					if (p === 0) throw { code: "network", message: "cut", retryable: true };
+					yield { type: "stop", reason: "tool_use", seq: 2 };
+				} else yield { type: "stop", reason: "end_turn", seq: 0 };
+			},
+		} as unknown as Adapter;
+		const events: Event[] = [];
+		for await (const ev of loop({ adapter, model: "faux", registry: h.registry, messages: [USER], maxRetries: 1, approvalPolicy: h.approvalPolicy })) events.push(ev);
+		expect(events.some((e) => e.type === "model_output_abandoned")).toBe(true); // the draft was voided
+		expect(n).toBe(2); // the retry's call was decided anew
+		expect(h.ran).toEqual([]); // and the new verdict (deny) governed it — nothing inherited the draft's allow
+		const decisions = events.filter((e) => e.type === "permission_decided") as (Event & { type: "permission_decided"; invocationSeq?: number })[];
+		const calls = events.filter((e): e is Event & { type: "tool_call_end" } => e.type === "tool_call_end");
+		expect(decisions).toHaveLength(2);
+		expect(decisions[1]!.invocationSeq).toBe(calls[1]!.seq);
+	});
+
 	it("the /mode-switch shape: a DIFFERENT callId with identical arguments after a denial is a new invocation — decided anew (the wide re-issue rule inherited the denial; caught by tui-modes)", async () => {
 		const h = harness();
 		// the policy denies the first, allows the second — the shape the

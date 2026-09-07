@@ -363,14 +363,27 @@ export async function extractChildResult(sessionsDir, childId, diag) {
 	};
 }
 
-function countToolCalls(events) {
-	return events.filter((e) => e.type === "tool_call_end").length;
+/** The canonical projection's void scope (core `project.ts`, the R-E 0.1.44
+ *  sentence): a `model_output_abandoned` marker voids (voidFromSeq, seq] —
+ *  the abandoned draft's events. A voided text_delta is not the child's
+ *  answer and a voided tool_call_end never ran; both are skipped here
+ *  exactly as the kernel skips them when it builds the next request. (The
+ *  2026-09-07 review's P2: the old extractor glued a discarded draft onto
+ *  the final answer and counted its calls — and reported success.) */
+function committed(events) {
+	const voids = events.filter((e) => e.type === "model_output_abandoned").map((e) => ({ from: e.voidFromSeq, to: e.seq }));
+	return events.filter((e) => !voids.some((r) => e.seq > r.from && e.seq <= r.to));
 }
 
-/** Projection-equivalent: the assistant text since the last flush boundary. */
+function countToolCalls(events) {
+	return committed(events).filter((e) => e.type === "tool_call_end").length;
+}
+
+/** Projection-equivalent: the assistant text since the last flush boundary,
+ *  over the COMMITTED events only. */
 function finalText(events) {
 	let text = "";
-	for (const e of events) {
+	for (const e of committed(events)) {
 		if (e.type === "text_delta") text += e.text;
 		else if (e.type === "tool_result" || e.type === "user_input") text = "";
 	}

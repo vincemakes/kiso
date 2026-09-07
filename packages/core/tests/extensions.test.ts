@@ -50,15 +50,23 @@ const decided = (log: EventLog): (Event & { type: "permission_decided" })[] =>
 const resultOf = (log: EventLog): (Event & { type: "tool_result" }) | undefined =>
 	log.all.find((e): e is Event & { type: "tool_result" } => e.type === "tool_result");
 
-describe("E1: a durable decision takes effect on resume — the chain never re-runs", () => {
-	it("a durable APPROVAL executes the call with the policy called ZERO times", async () => {
+describe("E1 (re-pinned by CX-1 F1, 2026-09-07): a verdict binds to its invocation — a voided draft's decision does not carry to the re-streamed call", () => {
+	// Pre-CX-1 these two gates asserted the OPPOSITE: a decision recorded
+	// inside an UNCOMMITTED draft (no stop) was inherited by the resumed
+	// model's re-streamed call under the same callId, "the chain never
+	// re-runs". That was the re-issue exception the 2026-09-07 review
+	// showed to be a bypass (a same-turn duplicate callId and a voided
+	// draft's retry both inherited a verdict). On a real resume the
+	// runtime's recovery voids the draft (F4b); at the kernel level the
+	// seeded draft is simply an uncommitted prefix. Either way the
+	// re-streamed call is a NEW invocation: the chain decides it again
+	// and records a NEW decision. A committed turn's pending call is a
+	// different story: the recovery driver executes it under its
+	// ORIGINAL seq, and the durable decision binds exactly.
+	it("a durable APPROVAL inside the voided draft: the chain runs ONCE more, records a second decision, and the call executes under THAT one", async () => {
 		const log = new EventLog();
 		log.append({ type: "user_input", content: "go" });
 		log.append({ type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "a.ts" } });
-		// The crash window: the policy decided (decisionId d-2, the id the
-		// original run computed) and the process died before the execution.
-		// The resumed model RE-ISSUES the same call (same callId, same input)
-		// — the durable verdict speaks for it; the chain never re-runs.
 		log.append({ type: "permission_decided", decisionId: "d-2", callId: "r1", decision: "approved", decidedBy: "reader" });
 		let calls = 0;
 		for await (const _ev of loop({
@@ -69,18 +77,21 @@ describe("E1: a durable decision takes effect on resume — the chain never re-r
 			approvalPolicy: {
 				decide: async () => {
 					calls += 1;
-					return { action: "ask" };
+					return { action: "allow", decidedBy: "reader" };
 				},
 			},
 		})) {
 			// drain
 		}
-		expect(calls).toBe(0); // the policy never re-runs
-		expect(decided(log)).toHaveLength(1); // nothing new recorded
-		expect(log.all.some((e) => e.type === "tool_result" && e.content === "ok")).toBe(true); // the durable approval executed
+		expect(calls).toBe(1); // the chain decided the re-streamed call
+		const ds = decided(log);
+		expect(ds).toHaveLength(2); // the old one (voided with its draft) and the new one
+		const call = log.all.filter((e): e is Event & { type: "tool_call_end" } => e.type === "tool_call_end").at(-1)!;
+		expect((ds[1] as { invocationSeq?: number }).invocationSeq).toBe(call.seq); // bound to the NEW invocation
+		expect(log.all.some((e) => e.type === "tool_result" && e.content === "ok")).toBe(true);
 	});
 
-	it("a durable DENIAL emits the denial result with the policy called ZERO times", async () => {
+	it("a durable DENIAL inside the voided draft: the re-streamed call is decided again — the result carries the NEW reason, not the old", async () => {
 		const log = new EventLog();
 		log.append({ type: "user_input", content: "go" });
 		log.append({ type: "tool_call_end", callId: "s1", name: "shell", input: { command: "git reset --hard" } });
@@ -101,14 +112,15 @@ describe("E1: a durable decision takes effect on resume — the chain never re-r
 			approvalPolicy: {
 				decide: async () => {
 					calls += 1;
-					return { action: "allow", decidedBy: "guard" };
+					return { action: "deny", decidedBy: "guard", reason: "decided again" };
 				},
 			},
 		})) {
 			// drain
 		}
-		expect(calls).toBe(0);
-		expect(resultOf(log)?.content).toContain("[Permission denied] already denied");
+		expect(calls).toBe(1);
+		expect(resultOf(log)?.content).toContain("[Permission denied] decided again");
+		expect(resultOf(log)?.content).not.toContain("already denied");
 		expect(log.all.some((e) => e.type === "tool_execution_started")).toBe(false);
 	});
 });
