@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.29.0
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.30.0
 ```
 
 (上面的块状字母是 `assets/logo.svg` 的像素形态——一个 8×8 的 K,底行是这个框架得名的基岩基础。)
@@ -414,7 +414,7 @@ cp dist/kiso-subagent.mjs ~/.kiso/extensions/
 |---|---|---|---|
 | explorer | read/list/search | 父的 cwd | 角色策略 |
 | reviewer | read/list/search | 父的 cwd | 角色策略 |
-| tester | 全部六种 | 父的 cwd | 角色策略 |
+| tester | 全部六种 | 一个 `git worktree`——`after` 指向 implementer 时用它保留的那个,否则从 HEAD 新建 | 角色策略 |
 | implementer | 全部六种 | 分离的 `git worktree` | diff 回来 |
 
 - **角色策略按子进程生成**(临时扩展目录):只 allow/deny——绝不 ask(无头子进程无法回答审批提示)。Explorer/reviewer 只能读;implementer/tester 可以改。
@@ -423,6 +423,7 @@ cp dist/kiso-subagent.mjs ~/.kiso/extensions/
 - **深度守卫**:`KISO_SUBAGENT_DEPTH ≥ 1`(每个子进程都设)让工厂返回空工具——子代理永不嵌套。
 - **超时**:每个子进程默认 10 分钟(`KISO_SUBAGENT_TIMEOUT_MS` 覆盖);超时或父运行中止 SIGKILL 整个子进程组。
 - **provider 凭据随父环境刻意下传**——与 shell 工具(#7)的区别:shell 跑任意命令(默认剥离);delegate 是刚经人类批准的可控 spawn。
+- **任务契约(DT-1a,0.30.0)。** 每个任务可加:`scope`——允许**写入**的路径(相对 worktree 的 glob);设了 scope 的任务**没有 shell 工具**(shell 想写哪写哪,它只认 worktree 这一道边界),每次 `write_file` / `edit_file` 的目标路径规范化(解析符号链接)后按 glob 检查;`acceptance`——`{ "check": "名字" }` 指向配置里 `checks` 表的一项(`"checks": { "test": "npm test" }`,用户写的或受信任的项目配置),或 `{ "evaluator": "/绝对路径" }` 指向父方持有、放在项目之外的脚本;**模型永远不能直接给命令**,其他形式在子进程启动前就拒绝;验收由父进程在子进程 `completed` 之后于其 worktree 里运行(独立进程组、沿用子任务超时、输出封顶、父方中断即杀);check 的退出码只证明命令在子进程留下的树上跑过,只有 evaluator 证明正确;`model`——配置里的档案名;`after`——已完成的 implementer 子 id(仅 tester;tester 在那个 worktree 里跑);`timeoutMs`。每个子进程看到的是父的 `HEAD`,父目录未提交的改动不可见,段落里会写明。每个任务写 `<sessions>/subagent/<childId>.result.json`(状态、来自 `git diff --numstat` / `--name-status` 的改动文件、patch 路径、验收、子进程的 `UNRESOLVED` 清单或"未报告"、用量按"带 usage 的响应数"加"作废次数")。
 - **审批:无自动放行。** `delegate` 落在 ask 档——人类看到每次委派并可拒绝。
 
 ## 技能——两级渐进式技能加载

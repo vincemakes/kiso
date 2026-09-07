@@ -67,6 +67,11 @@ export interface KisoConfig {
 	 *  project file is a LOUD error rather than a silent win. `KISO_THEME`
 	 *  still outranks it — the environment is the more local answer. */
 	readonly theme?: "dark" | "light";
+	/** DT-1a: named acceptance checks a delegated task may reference —
+	 *  user-authored (or trust-gated project) commands, run by the PARENT
+	 *  in the child's worktree. A model never supplies a command; it names
+	 *  one of these. `{ "test": "npm test", "lint": "npm run lint" }`. */
+	readonly checks?: Readonly<Record<string, string>>;
 }
 
 /** The resolved, merged config — project wins over user, both validated. */
@@ -100,6 +105,7 @@ export function parseConfig(text: string, source: string): KisoConfig {
 		autoCompact?: AutoCompactConfig;
 		projectTrust?: "ask" | "never";
 		theme?: "dark" | "light";
+		checks?: Record<string, string>;
 	} = {};
 	const obj = raw as Record<string, unknown>;
 	const fail = (key: string, why: string): never => {
@@ -114,6 +120,14 @@ export function parseConfig(text: string, source: string): KisoConfig {
 		if (obj.theme !== "dark" && obj.theme !== "light") fail("theme", 'expected "dark" or "light"');
 		if (source.startsWith("<cwd>")) fail("theme", "belongs in the USER config — a terminal is a property of the person at it, not of the project");
 		out.theme = obj.theme as "dark" | "light";
+	}
+	if (obj.checks !== undefined) {
+		if (obj.checks === null || typeof obj.checks !== "object" || Array.isArray(obj.checks)) fail("checks", "expected an object of name → command");
+		for (const [name, cmd] of Object.entries(obj.checks as Record<string, unknown>)) {
+			if (!/^[A-Za-z0-9_-]+$/.test(name)) fail(`checks.${name}`, "a check name is letters, digits, _ or -");
+			if (typeof cmd !== "string" || cmd.trim() === "") fail(`checks.${name}`, "expected a non-empty command string");
+		}
+		out.checks = obj.checks as Record<string, string>;
 	}
 	if (obj.model !== undefined) {
 		if (typeof obj.model !== "string" || obj.model === "") fail("model", "expected a profile name or provider/model string");
@@ -204,6 +218,8 @@ export function mergeConfigs(user: KisoConfig | null, project: KisoConfig | null
 		...(p.autoCompact !== undefined ? { autoCompact: p.autoCompact } : {}),
 		...(u.projectTrust !== undefined ? { projectTrust: u.projectTrust } : {}),
 		...(p.projectTrust !== undefined ? { projectTrust: p.projectTrust } : {}),
+		// DT-1a: checks merge per name — a (trusted) project's check wins over the user's
+		...(u.checks !== undefined || p.checks !== undefined ? { checks: { ...(u.checks ?? {}), ...(p.checks ?? {}) } } : {}),
 	};
 }
 

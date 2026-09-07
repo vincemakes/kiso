@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import createSubagentExtension, { extractChildResult } from "../dist/kiso-subagent.mjs";
+import createSubagentExtension, { extractChildResult, UNRESOLVED_INSTRUCTION } from "../dist/kiso-subagent.mjs";
 
 const CLI = join(fileURLToPath(new URL("../../../apps/cli", import.meta.url)), "dist", "index.js");
 const ctx = { signal: new AbortController().signal };
@@ -79,7 +79,7 @@ describe("CX-1 F6 — a delegation invocation has its own identity", () => {
 		}
 		const sessions = readdirSync(join(home, "sessions")).filter((f) => f.startsWith("sub-") && f.endsWith(".jsonl"));
 		expect(sessions).toHaveLength(3); // one child session per invocation — never the same file reopened
-		const manifests = readdirSync(join(home, "sessions", "subagent")).filter((f) => f.endsWith(".json"));
+		const manifests = readdirSync(join(home, "sessions", "subagent")).filter((f) => f.endsWith(".json") && !f.endsWith(".result.json")); // DT-1a writes a result file beside each manifest
 		expect(manifests).toHaveLength(3);
 		for (const m of manifests) {
 			const rec = JSON.parse(readFileSync(join(home, "sessions", "subagent", m), "utf8")) as { childId: string; role: string; parentId: string };
@@ -193,7 +193,7 @@ describe("CX-1 F5 — the delegated task enters the child as exactly one input",
 			.map((l) => (JSON.parse(l) as { event: { type: string; content: string } }).event)
 			.filter((e) => e.type === "user_input");
 		expect(inputs).toHaveLength(1); // one turn — not four lines, not a command, not an early exit
-		expect(inputs[0]!.content).toBe(task); // byte-equal
+		expect(inputs[0]!.content).toBe(`${task}\n\n${UNRESOLVED_INSTRUCTION}\n`); // byte-equal to the task FILE: the task, then DT-1a's fixed trailer — one input, nothing split
 	});
 });
 

@@ -209,7 +209,7 @@ describe("④ subagent: real child processes", () => {
 		);
 		const r2 = (await delegateWith([{ role: "implementer", task: "do nothing" }], home)) as { content: string; isError: boolean };
 		expect(String(r2.content)).not.toContain("worktree kept at"); // no diff → deleted
-		expect(String(r2.content)).toContain("outcome: completed");
+		expect(String(r2.content)).toContain("status: completed"); // DT-1a: the section's first line is status · verification
 		// W12: the blob OPENS with the machine-readable summary line the
 		// TUI's settled row renders (the per-section text is preserved
 		// below it — the model's view is unchanged)

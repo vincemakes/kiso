@@ -607,6 +607,10 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 	const projectCfg = loadProjectConfig(process.cwd(), project !== null);
 	const merged = mergeConfigs(userCfg, projectCfg);
 	setMergedConfig(merged);
+	// DT-1a: what a delegated task may NAME — the configured checks and the
+	// model profiles — handed to the (in-process) subagent extension through
+	// the environment. A model never supplies a command; it names a check.
+	process.env.KISO_DELEGATION_CONFIG_JSON = JSON.stringify({ checks: merged.checks ?? {}, profiles: Object.keys(merged.models ?? {}) });
 	setConfigModels(merged.models ?? {});
 	setConfiguredWindow(resolveContextWindow(merged));
 

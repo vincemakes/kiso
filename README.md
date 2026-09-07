@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.29.0
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.30.0
 ```
 
 (The block letter above is `assets/logo.svg` in pixel form — an 8×8 K
@@ -691,6 +691,28 @@ Configuration: `$KISO_MCP_CONFIG` (default `~/.kiso/mcp.json`):
   wins and may deliberately re-add a variable.
 - Calls carry the run's abort signal and a 60s timeout — an interrupted
   call returns an error, never a hang.
+- **The task contract (DT-1a, 0.30.0).** Each task may add:
+  `scope` — allowed WRITE paths (globs relative to the worktree); a
+  scoped task has **no shell tool** (a shell writes anywhere; the
+  worktree is the only boundary a shell respects) and every
+  `write_file` / `edit_file` target is checked after path
+  normalization (symlinks resolved); `acceptance` — `{ "check": "name" }`
+  names an entry of the config's `checks` map (`"checks": { "test":
+  "npm test" }`, user-authored or trust-gated project config) or
+  `{ "evaluator": "/abs/path" }` names a script the PARENT holds outside
+  the project; **a model never supplies a command** — anything else is
+  refused before a child runs; the parent runs the acceptance in the
+  child's worktree after a `completed` child (own process group, the
+  child's timeout, output capped, killed on abort); a check's exit code
+  proves the command ran on the tree as the child left it, only an
+  evaluator proves correctness; `model` — a configured profile name;
+  `after` — a completed implementer's child id (tester only; the tester
+  runs in that worktree); `timeoutMs`. Every child sees the parent's
+  `HEAD` — uncommitted parent changes are not visible, and the section
+  says so. Each task writes `<sessions>/subagent/<childId>.result.json`
+  (status, changed files from `git diff --numstat` / `--name-status`,
+  patch path, verification, the child's `UNRESOLVED` list or "not
+  reported", usage as responses-with-usage plus abandoned attempts).
 - **Approval: no auto-allow.** `mcp__` tools fall in the ask tier — an
   external tool must pass human review before it runs. Write your own
   policy extension to allow specific ones:
@@ -728,7 +750,7 @@ child kiso processes (the same binary), at most 4 concurrently:
 |---|---|---|---|
 | explorer | read/list/search | parent's cwd | role policy |
 | reviewer | read/list/search | parent's cwd | role policy |
-| tester | all six | parent's cwd | role policy |
+| tester | all six | a `git worktree` — the implementer's kept one when `after` names it, else fresh from HEAD | role policy |
 | implementer | all six | a detached `git worktree` | diff comes back |
 
 - **Role policies are generated per child** (a temporary extensions dir):

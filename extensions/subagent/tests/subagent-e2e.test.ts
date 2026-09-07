@@ -126,7 +126,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(workdir
 		// E5: task left the default — the built-in column drops it.
 		expect(out).toContain("[5 extensions: built-in: mcp, skills, ask · safe-defaults");
 		expect(out).toContain("approve delegate"); // the ask tier reached the human (ruling A)
-		expect(out).toContain("outcome: completed"); // the child's result section returned to the model
+		expect(out).toContain("status: completed"); // the child's result section returned to the model (DT-1a wording)
 		expect(out).toContain("done");
 		// The durable-child selling point: the child's own session exists
 		// with a terminal, right in the normal sessions directory.

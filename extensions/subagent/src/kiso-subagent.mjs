@@ -19,10 +19,11 @@
  */
 
 import { spawn, execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Default per-child timeout (ms) — a subagent must never hang the parent. */
 const TIMEOUT_MS = 10 * 60 * 1000;
@@ -45,6 +46,18 @@ const DELEGATE_PARAMETERS = {
 				properties: {
 					role: { type: "string", enum: ROLES },
 					task: { type: "string", minLength: 1 },
+					// DT-1a: the contract's inputs. scope = allowed WRITE paths (globs,
+					// relative to the worktree) — a scoped task has NO shell tool;
+					// acceptance names a configured check ({ check }) or a parent-held
+					// evaluator ({ evaluator: absolute path outside the project }) —
+					// never a command; model names a configured profile; after names
+					// a completed implementer's childId (tester only): the tester runs
+					// in that worktree.
+					scope: { type: "array", items: { type: "string", minLength: 1 }, maxItems: 32 },
+					acceptance: { type: "object", properties: { check: { type: "string", minLength: 1 }, evaluator: { type: "string", minLength: 1 } }, additionalProperties: false },
+					model: { type: "string", minLength: 1 },
+					after: { type: "string", minLength: 1 },
+					timeoutMs: { type: "integer", minimum: 1000 },
 				},
 				required: ["role", "task"],
 				additionalProperties: false,
@@ -79,8 +92,20 @@ export default async function createSubagentExtension() {
 					// identity — ToolContext carries none — so two invocations never
 					// share a child session, and the result is located by identity.
 					const delegationId = randomBytes(12).toString("hex");
-					const manifestDir = join(sessionsDir, "subagent");
+					// DT-1a: the artifact dir is PARENT-configured and stays under
+					// KISO_HOME — never a per-task free path.
+					const home = process.env.KISO_HOME ?? join(homedir(), ".kiso");
+					const manifestDir = artifactDir(home, sessionsDir);
+					if (manifestDir === null) return { content: "delegate: refused — KISO_SUBAGENT_ARTIFACTS must lie under KISO_HOME", isError: true };
 					mkdirSync(manifestDir, { recursive: true });
+					// DT-1a: every task is validated BEFORE any child runs — a refusal
+					// spawns nothing (acceptance never carries a model-supplied command).
+					const cfg = delegationConfig();
+					const parentCwd = process.cwd();
+					for (let i = 0; i < tasks.length; i += 1) {
+						const why = validateTask(tasks[i], cfg, parentCwd, manifestDir);
+						if (why !== null) return { content: `delegate: refused — task ${i + 1}: ${why}`, isError: true };
+					}
 					const sections = await runLimited(tasks, CONCURRENCY, (task, i) =>
 						runChild({
 							childId: `sub-${parentId}-${delegationId}-${i + 1}-${task.role}`,
@@ -88,11 +113,16 @@ export default async function createSubagentExtension() {
 							manifest: { parentId, delegationId, index: i + 1, role: task.role, startedAt: Date.now() },
 							role: task.role,
 							task: task.task,
+							scope: task.scope,
+							acceptance: task.acceptance,
+							model: task.model,
+							after: task.after,
+							cfg,
 							sessionsDir,
 							bin,
-							timeout,
+							timeout: task.timeoutMs ?? timeout,
 							signal: ctx.signal,
-							parentCwd: process.cwd(),
+							parentCwd,
 						}),
 					);
 					// Partial success is not overall failure — only ALL failed
@@ -153,19 +183,32 @@ function runLimited(items, limit, fn) {
 	return Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker)).then(() => results);
 }
 
-async function runChild({ childId, role, task, sessionsDir, bin, timeout, signal, parentCwd, manifestDir, manifest }) {
-	// implementer isolation: a detached git worktree; the child works inside
-	// it and its diff comes back. Non-git parents fail the task HONESTLY.
+async function runChild({ childId, role, task, scope, acceptance, model, after, cfg, sessionsDir, bin, timeout, signal, parentCwd, manifestDir, manifest }) {
 	// CX-1 F6: the manifest binds this invocation to its child session
 	// BEFORE anything runs — the durable record of "which run is mine".
+	// DT-1a: the contract's inputs ride in it, verbatim.
+	const startedAt = manifest?.startedAt ?? Date.now();
 	if (manifestDir !== undefined) {
-		writeFileSync(join(manifestDir, `${childId}.json`), `${JSON.stringify({ ...manifest, childId })}\n`, "utf8");
+		writeFileSync(join(manifestDir, `${childId}.json`), `${JSON.stringify({ ...manifest, childId, task, ...(scope !== undefined ? { scope } : {}), ...(acceptance !== undefined ? { acceptance } : {}), ...(model !== undefined ? { model } : {}), ...(after !== undefined ? { after } : {}) })}\n`, "utf8");
 	}
+	// Isolation (DT-1a R2.2): implementer → its own detached worktree from
+	// the parent's HEAD (the parent's UNCOMMITTED changes are not visible —
+	// the section says so); tester → the implementer's kept worktree when
+	// `after` names one, else a fresh worktree from HEAD; explorer and
+	// reviewer → the parent's tree under a read-only policy. Non-git
+	// parents fail the task HONESTLY.
 	let worktree = null;
 	let baseRev = null;
 	let childCwd = parentCwd;
-	if (role === "implementer") {
+	let ownsWorktree = false;
+	if (role === "tester" && after !== undefined) {
+		const prior = readResultFile(manifestDir, after);
+		worktree = prior.worktree;
+		baseRev = prior.baseRev;
+		childCwd = worktree;
+	} else if (role === "implementer" || role === "tester") {
 		worktree = mkdtempSync(join(tmpdir(), "kiso-subagent-wt-"));
+		ownsWorktree = true;
 		try {
 			execFileSync("git", ["-C", parentCwd, "worktree", "add", "--detach", worktree], { stdio: "ignore" });
 			// CX-1 F2: the base revision — a child that COMMITS is compared
@@ -174,57 +217,338 @@ async function runChild({ childId, role, task, sessionsDir, bin, timeout, signal
 			childCwd = worktree;
 		} catch (err) {
 			rmSync(worktree, { recursive: true, force: true });
-			return failSection(childId, role, task, `implementer needs a git repository: ${msg(err)}`);
+			return failSection(childId, role, task, `${role} needs a git repository: ${msg(err)}`);
 		}
 	}
 	// The child-only role policy: one .mjs in its own temp extensions dir.
+	// DT-1a R2.1: a scoped task's policy denies shell outright and checks
+	// every write target against the globs after path normalization.
 	const policyDir = mkdtempSync(join(tmpdir(), "kiso-subagent-policy-"));
-	writeFileSync(join(policyDir, "policy.mjs"), rolePolicyContent(role), "utf8");
+	writeFileSync(join(policyDir, "policy.mjs"), rolePolicyContent(role, scope !== undefined ? { root: childCwd, globs: scope } : undefined), "utf8");
 	let keepWorktree = false;
 	try {
 		// CX-1 F5 (audit F5): the task travels as a FILE the child reads into
-		// exactly one user turn — never as stdin lines (the non-TTY path is a
-		// line-oriented readline: newlines were turns, `exit` ended input).
+		// exactly one user turn — never as stdin lines. DT-1a: it ends with
+		// the fixed UNRESOLVED instruction the result parser reads back.
 		const taskPath = join(manifestDir ?? policyDir, `${childId}.task`);
-		writeFileSync(taskPath, task, "utf8");
-		const { code, stdout, killed } = await runProcess(childId, bin, childCwd, policyDir, taskPath, timeout, signal);
+		writeFileSync(taskPath, `${task}\n\n${UNRESOLVED_INSTRUCTION}\n`, "utf8");
+		const { code, stdout, killed } = await runProcess(childId, bin, childCwd, policyDir, taskPath, timeout, signal, model);
 		const extraction = await extractChildResult(sessionsDir, childId, `exit ${code}\n${stdout}`);
+		const status = killed === "timeout" ? "timeout" : killed === "abort" ? "killed" : code !== 0 && extraction.outcome === "missing" ? "spawn-failed" : extraction.outcome;
 		let failed = code !== 0 || killed !== null || extraction.failed;
-		let text = `[subagent] ${role}: ${task}\n  outcome: ${extraction.outcome}\n  tools: ${extraction.toolCalls}`;
+		const lines = [];
 		if (killed === "timeout") {
-			text += `\n  FAILED: timed out after ${timeout}ms (the child process group was killed)`;
+			lines.push(`  FAILED: timed out after ${timeout}ms (the child process group was killed)`);
 		} else if (killed === "abort") {
-			text += "\n  FAILED: aborted by the parent run (the child process group was killed)";
+			lines.push("  FAILED: aborted by the parent run (the child process group was killed)");
 		} else if (code !== 0) {
-			text += `\n  FAILED: the child exited with code ${code}\n${stdout}`;
+			lines.push(`  FAILED: the child exited with code ${code}\n${stdout}`);
 		} else if (extraction.failed) {
-			text += `\n  FAILED: ${extraction.reason}${extraction.diag !== "" ? `\n${extraction.diag}` : ""}`;
+			lines.push(`  FAILED: ${extraction.reason}${extraction.diag !== "" ? `\n${extraction.diag}` : ""}`);
 		}
-		if (extraction.text !== "") text += `\n${extraction.text}`;
+		const unresolved = parseUnresolved(extraction.text);
+		// the collection (implementers only — a tester's worktree is the
+		// implementer's or a throwaway; its changes are not its result)
+		let changedFiles = null;
+		let patchPath = null;
+		let patchBytes = null;
+		let collection = null;
 		if (role === "implementer") {
 			// CX-1 F2 (audit F2): tri-state collection. `collected` is earned
 			// (the patch file closed AND git exited 0); a failure PRESERVES the
-			// worktree and says so; "consumed" is undefined this batch, so a
-			// worktree with changes is always kept and named.
-			const patchPath = join(manifestDir ?? tmpdir(), `${childId}.patch`);
-			const col = await collectWorktree(worktree, baseRev, patchPath);
-			if (col.kind === "collected") {
+			// worktree and says so; "consumed" is undefined, so a worktree
+			// with changes is always kept and named.
+			patchPath = join(manifestDir ?? tmpdir(), `${childId}.patch`);
+			collection = await collectWorktree(worktree, baseRev, patchPath);
+			if (collection.kind === "collected") {
 				keepWorktree = true;
-				text += `\n  diff:\n${col.stat}\n  patch: ${patchPath}`;
-				if (col.bytes <= INLINE_PATCH_BYTES) text += `\n${readFileSync(patchPath, "utf8")}`;
-				else text += `\n  (patch is ${col.bytes} bytes — read it with the shell: cat ${patchPath}, or git -C ${worktree} diff ${baseRev})`;
-				text += `\n  worktree kept at: ${worktree}`;
-			} else if (col.kind === "failed") {
+				changedFiles = collection.changedFiles;
+				patchBytes = collection.bytes;
+			} else if (collection.kind === "failed") {
 				keepWorktree = true;
 				failed = true;
-				text += `\n  FAILED: collecting the worktree's changes: ${col.reason}${col.partialPath !== undefined ? ` (partial patch at ${col.partialPath})` : ""}\n  worktree kept at: ${worktree}`;
+			} else {
+				changedFiles = [];
+				patchPath = null;
+			}
+		}
+		// DT-1a R2.3: acceptance — the PARENT runs the named check or the
+		// evaluator in the worktree, only after a COMPLETED child, with the
+		// child's timeout, an output cap, and the parent's abort.
+		let verification = null;
+		if (acceptance !== undefined) {
+			if (status !== "completed") verification = { skipped: status };
+			else verification = await runAcceptance(acceptance, cfg, worktree ?? childCwd, baseRev, timeout, signal);
+			if (verification.passed === false) failed = true;
+		}
+		const endedAt = Date.now();
+		const result = {
+			identity: { ...manifest, childId, role, startedAt, endedAt },
+			status,
+			task,
+			...(scope !== undefined ? { scope } : {}),
+			...(acceptance !== undefined ? { acceptance } : {}),
+			...(model !== undefined ? { model } : {}),
+			...(after !== undefined ? { after } : {}),
+			worktree,
+			baseRev,
+			changedFiles,
+			patchPath,
+			patchBytes,
+			verification,
+			unresolved,
+			answer: extraction.text,
+			usage: extraction.usage,
+			toolCalls: extraction.toolCalls,
+			failed,
+			diag: failed ? extraction.diag : "",
+		};
+		if (manifestDir !== undefined) writeFileSync(join(manifestDir, `${childId}.result.json`), `${JSON.stringify(result)}\n`, "utf8");
+		// The section (what the model reads) — rendered from the result.
+		const verdict = verification === null ? "none" : verification.skipped !== undefined ? `SKIPPED (${verification.skipped})` : verification.passed ? "PASSED" : "FAILED";
+		let text = `[subagent] ${role}: ${task}\n  status: ${status} · verification: ${verdict}${changedFiles !== null ? ` · files changed: ${changedFiles.length}` : ""} · tools: ${extraction.toolCalls}`;
+		if (scope !== undefined) text += `\n  scoped: no shell · writes only under ${scope.join(", ")}`;
+		if (baseRev !== null) text += `\n  child saw HEAD ${baseRev.slice(0, 7)}; the parent's uncommitted changes were not visible`;
+		if (verification !== null && verification.skipped === undefined) {
+			text += `\n  verification: ${verification.kind} ${verification.passed ? "PASSED" : "FAILED"} · exit ${verification.exitCode === null ? "killed" : verification.exitCode} · ${verification.durationMs}ms · ${verification.kind === "check" ? verification.command : verification.evaluator}`;
+			if (!verification.passed && verification.tail !== "") text += `\n${verification.tail}`;
+		}
+		for (const l of lines) text += `\n${l}`;
+		if (extraction.text !== "") text += `\n${extraction.text}`;
+		text += unresolved === null ? "\n  unresolved: not reported" : unresolved.length === 0 ? "\n  unresolved: none" : `\n  unresolved:\n${unresolved.map((u) => `  - ${u}`).join("\n")}`;
+		if (collection !== null) {
+			if (collection.kind === "collected") {
+				text += `\n  diff:\n${collection.stat}\n  patch: ${patchPath}`;
+				if (collection.bytes <= INLINE_PATCH_BYTES) text += `\n${readFileSync(patchPath, "utf8")}`;
+				else text += `\n  (patch is ${collection.bytes} bytes — read it with the shell: cat ${patchPath}, or git -C ${worktree} diff ${baseRev})`;
+				text += `\n  worktree kept at: ${worktree}`;
+			} else if (collection.kind === "failed") {
+				text += `\n  FAILED: collecting the worktree's changes: ${collection.reason}${collection.partialPath !== undefined ? ` (partial patch at ${collection.partialPath})` : ""}\n  worktree kept at: ${worktree}`;
 			}
 		}
 		return { failed, text, toolCalls: extraction.toolCalls };
 	} finally {
 		rmSync(policyDir, { recursive: true, force: true });
-		if (worktree !== null && !keepWorktree) removeWorktree(parentCwd, worktree);
+		if (worktree !== null && ownsWorktree && !keepWorktree) removeWorktree(parentCwd, worktree);
 	}
+}
+
+/** DT-1a: the fixed trailer every task file ends with — the parser reads the section back. */
+export const UNRESOLVED_INSTRUCTION = 'When you finish, end your reply with a section titled UNRESOLVED listing what you could not do or verify, one item per line starting with "- ", or the single word none.';
+
+/** DT-1a: what a delegated task may NAME — the parent CLI hands the configured
+ *  checks and model profiles through the environment. Absent = nothing configured. */
+function delegationConfig() {
+	try {
+		const raw = process.env.KISO_DELEGATION_CONFIG_JSON;
+		const parsed = raw === undefined ? {} : JSON.parse(raw);
+		return { checks: parsed.checks ?? {}, profiles: parsed.profiles ?? [] };
+	} catch {
+		return { checks: {}, profiles: [] };
+	}
+}
+
+/** DT-1a: the artifact dir — the default under the sessions dir, or the
+ *  parent-configured KISO_SUBAGENT_ARTIFACTS, which must lie under KISO_HOME. */
+function artifactDir(home, sessionsDir) {
+	const configured = process.env.KISO_SUBAGENT_ARTIFACTS;
+	if (configured === undefined || configured === "") return join(sessionsDir, "subagent");
+	const abs = resolve(configured);
+	const homeAbs = resolve(home);
+	return abs === homeAbs || abs.startsWith(homeAbs + sep) ? abs : null;
+}
+
+/** DT-1a: every task's inputs are judged BEFORE any child runs; a string is the refusal. */
+export function validateTask(task, cfg, parentCwd, manifestDir) {
+	if (task === null || typeof task !== "object") return "a task must be an object";
+	if (!ROLES.includes(task.role)) return `unknown role ${JSON.stringify(task.role)}`;
+	if (typeof task.task !== "string" || task.task.trim() === "") return "task must be a non-empty string";
+	if (task.scope !== undefined) {
+		if (!Array.isArray(task.scope) || task.scope.length === 0 || task.scope.some((g) => typeof g !== "string" || g === "" || isAbsolute(g) || g.split("/").includes(".."))) return "scope must be a non-empty list of relative globs (no absolute paths, no ..)";
+		if (task.role !== "implementer" && task.role !== "tester") return "scope applies to implementer and tester tasks only";
+	}
+	if (task.acceptance !== undefined) {
+		const a = task.acceptance;
+		const keys = a !== null && typeof a === "object" ? Object.keys(a) : [];
+		const one = keys.length === 1 && (keys[0] === "check" || keys[0] === "evaluator") && typeof a[keys[0]] === "string";
+		if (!one) return "refused: acceptance must name a configured check ({ check }) or an evaluator path ({ evaluator }) — never a command";
+		if (keys[0] === "check" && !Object.prototype.hasOwnProperty.call(cfg.checks, a.check)) return `refused: unknown check ${JSON.stringify(a.check)} (configured: ${Object.keys(cfg.checks).join(", ") || "none"})`;
+		if (keys[0] === "evaluator") {
+			if (!isAbsolute(a.evaluator) || !existsSync(a.evaluator)) return `refused: evaluator must be an existing absolute path: ${a.evaluator}`;
+			const real = realpathSync(a.evaluator);
+			const project = realpathSync(parentCwd);
+			if (real === project || real.startsWith(project + sep)) return `refused: evaluator must live OUTSIDE the project (the child could reach it): ${a.evaluator}`;
+		}
+	}
+	if (task.model !== undefined && !cfg.profiles.includes(task.model)) return `refused: unknown model profile ${JSON.stringify(task.model)} (configured: ${cfg.profiles.join(", ") || "none"})`;
+	if (task.after !== undefined) {
+		if (task.role !== "tester") return "refused: `after` is for tester tasks";
+		let prior;
+		try {
+			prior = readResultFile(manifestDir, task.after);
+		} catch (err) {
+			return `refused: \`after\` names no completed implementer result: ${task.after} (${msg(err)})`;
+		}
+		if (prior.identity?.role !== "implementer" || prior.status !== "completed" || typeof prior.worktree !== "string" || !existsSync(prior.worktree)) return `refused: \`after\` must name a COMPLETED implementer whose worktree was kept: ${task.after}`;
+	}
+	if (task.timeoutMs !== undefined && (!Number.isInteger(task.timeoutMs) || task.timeoutMs < 1000)) return "timeoutMs must be an integer ≥ 1000";
+	return null;
+}
+
+function readResultFile(manifestDir, childId) {
+	if (!/^[A-Za-z0-9_-]+$/.test(childId)) throw new Error("not a child id");
+	return JSON.parse(readFileSync(join(manifestDir, `${childId}.result.json`), "utf8"));
+}
+
+/** DT-1a: `**` crosses directories, `*` stays inside one, `?` is one char; everything else is literal. */
+export function globToRegExp(glob) {
+	let re = "^";
+	for (let i = 0; i < glob.length; i += 1) {
+		const c = glob[i];
+		if (c === "*") {
+			if (glob[i + 1] === "*") {
+				re += ".*";
+				i += 1;
+				if (glob[i + 1] === "/") i += 1;
+			} else re += "[^/]*";
+		} else if (c === "?") re += "[^/]";
+		else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+	}
+	return new RegExp(`${re}$`);
+}
+
+/** DT-1a: is `target` (relative to `root`, or absolute) inside `root` AND under one of the globs —
+ *  after `..` normalization and symlink resolution of the deepest existing ancestor? */
+export function pathInScope(root, target, globs) {
+	const rootReal = realpathSync(root);
+	const abs = resolve(root, target);
+	// resolve symlinks along the existing prefix, keep the rest verbatim
+	let existing = abs;
+	const rest = [];
+	while (!existsSync(existing)) {
+		const parent = dirname(existing);
+		if (parent === existing) break;
+		rest.unshift(existing.slice(parent.length + 1));
+		existing = parent;
+	}
+	let real;
+	try {
+		real = join(realpathSync(existing), ...rest);
+	} catch {
+		return false;
+	}
+	if (!(real === rootReal || real.startsWith(rootReal + sep))) return false;
+	const rel = relative(rootReal, real).split(sep).join("/");
+	return globs.some((g) => globToRegExp(g).test(rel));
+}
+
+/** DT-1a: the child's trailing UNRESOLVED section → items, [] for `none`, null when absent. */
+export function parseUnresolved(text) {
+	const m = /(?:^|\n)\s*(?:#+\s*)?UNRESOLVED\s*:?\s*\n([\s\S]*)$/i.exec(text ?? "");
+	if (m === null) return null;
+	const body = m[1].trim();
+	if (body === "" || /^none\.?$/i.test(body)) return [];
+	return body
+		.split("\n")
+		.map((l) => l.replace(/^\s*[-*•]\s*/, "").trim())
+		.filter((l) => l !== "");
+}
+
+/** DT-1a: git's machine formats → explicit entries (renames as { from }, binaries as { binary }). */
+export function parseChangedFiles(numstat, nameStatus) {
+	const counts = new Map();
+	for (const line of (numstat ?? "").split("\n")) {
+		if (line.trim() === "") continue;
+		const [a, r, ...pathParts] = line.split("\t");
+		let path = pathParts.join("\t");
+		const brace = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(path);
+		if (brace !== null) path = `${brace[1]}${brace[3]}${brace[4]}`;
+		else if (path.includes(" => ")) path = path.split(" => ").pop();
+		counts.set(path, a === "-" ? null : { added: Number(a), removed: Number(r) });
+	}
+	const out = [];
+	for (const line of (nameStatus ?? "").split("\n")) {
+		if (line.trim() === "") continue;
+		const parts = line.split("\t");
+		const status = parts[0][0];
+		const path = status === "R" || status === "C" ? parts[2] : parts[1];
+		const c = counts.get(path);
+		const entry = { path, status };
+		if (status === "R" || status === "C") entry.from = parts[1];
+		if (c === null) entry.binary = true;
+		else if (c !== undefined) {
+			entry.added = c.added;
+			entry.removed = c.removed;
+		}
+		out.push(entry);
+	}
+	return out;
+}
+
+const ACCEPTANCE_OUTPUT_CAP = 64 * 1024;
+const ACCEPTANCE_TAIL = 2 * 1024;
+
+/** DT-1a R2.3: the parent runs the acceptance in the worktree — a configured check
+ *  through /bin/sh (user-authored), or the evaluator binary with the worktree as
+ *  its argument. Own process group (the abort and the timeout kill it whole), the
+ *  output capped, the tail kept. The exit code proves the command RAN on the tree
+ *  as the child left it (patchSha256 names that state); only an evaluator proves
+ *  correctness — the child can edit a check's tests. */
+export async function runAcceptance(acceptance, cfg, worktree, baseRev, timeout, signal) {
+	const kind = acceptance.check !== undefined ? "check" : "evaluator";
+	const command = kind === "check" ? cfg.checks[acceptance.check] : acceptance.evaluator;
+	const started = Date.now();
+	let patchSha256 = createHash("sha256").update("").digest("hex");
+	try {
+		execFileSync("git", ["-C", worktree, "add", "-N", "."], { stdio: "ignore" });
+		const patch = execFileSync("git", ["-C", worktree, "diff", baseRev ?? "HEAD"], { maxBuffer: 256 * 1024 * 1024 });
+		patchSha256 = createHash("sha256").update(patch).digest("hex");
+	} catch {
+		// a non-git worktree: the state hash stays the empty one
+	}
+	const child = kind === "check" ? spawn("/bin/sh", ["-c", command], { cwd: worktree, detached: true, stdio: ["ignore", "pipe", "pipe"] }) : spawn(command, [worktree], { cwd: worktree, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+	let output = "";
+	const capture = (d) => {
+		if (output.length < ACCEPTANCE_OUTPUT_CAP) output += String(d).slice(0, ACCEPTANCE_OUTPUT_CAP - output.length);
+	};
+	child.stdout.on("data", capture);
+	child.stderr.on("data", capture);
+	let killed = null;
+	const killGroup = () => {
+		try {
+			process.kill(-child.pid, "SIGKILL");
+		} catch {
+			// already gone
+		}
+	};
+	const timer = setTimeout(() => {
+		killed = "timeout";
+		killGroup();
+	}, timeout);
+	const onAbort = () => {
+		killed = "abort";
+		killGroup();
+	};
+	if (signal?.aborted) onAbort();
+	else signal?.addEventListener("abort", onAbort, { once: true });
+	const exitCode = await new Promise((resolveExit) => {
+		child.on("error", () => resolveExit(null));
+		child.on("exit", (code) => resolveExit(code));
+	});
+	clearTimeout(timer);
+	signal?.removeEventListener("abort", onAbort);
+	const code = killed !== null ? null : exitCode;
+	return {
+		kind,
+		...(kind === "check" ? { name: acceptance.check, command } : { evaluator: command }),
+		exitCode: code,
+		passed: code === 0,
+		...(killed !== null ? { killed } : {}),
+		tail: output.slice(-ACCEPTANCE_TAIL),
+		durationMs: Date.now() - started,
+		patchSha256,
+		baseRev,
+	};
 }
 
 /**
@@ -239,9 +563,15 @@ async function runChild({ childId, role, task, sessionsDir, bin, timeout, signal
  * spawn the human just approved in the ask tier, so the provider
  * credentials the parent was trusted with ride along.
  */
-function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal) {
+export function childArgs(bin, childId, taskPath, model) {
+	// DT-1a: a configured profile name rides as the CLI's own --model flag
+	// (the flag beats everything; the child shares the parent's config).
+	return [bin, ...(model !== undefined ? ["--model", model] : []), "chat", childId, "--task-file", taskPath];
+}
+
+function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal, model) {
 	const depth = Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0;
-	const child = spawn(process.execPath, [bin, "chat", childId, "--task-file", taskPath], {
+	const child = spawn(process.execPath, childArgs(bin, childId, taskPath, model), {
 		cwd,
 		env: {
 			...process.env,
@@ -296,12 +626,34 @@ function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal) {
 /** The role policy: read-only for explorer/reviewer, the full six for
  *  implementer/tester. Only allow/deny — NEVER ask (a headless child cannot
  *  answer an approval prompt; ask would deadlock). */
-export function rolePolicyContent(role) {
+export function rolePolicyContent(role, scope) {
 	const allowed = role === "implementer" || role === "tester" ? SIX_TOOLS : READ_ONLY;
-	return `export default { name: "subagent-${role}", approvals: [{
+	if (scope === undefined) {
+		return `export default { name: "subagent-${role}", approvals: [{
 	decide(call) {
 		if (${JSON.stringify(allowed)}.includes(call.name)) return { action: "allow" };
 		return { action: "deny", reason: "not allowed for the ${role} role" };
+	}
+}] };
+`;
+	}
+	// DT-1a R2.1: a scoped task has NO shell (a shell writes anywhere; the
+	// worktree is the only filesystem boundary a shell respects), and every
+	// write target is checked after normalization — the helper is imported
+	// from this very module by absolute URL, so the child runs the same code.
+	const self = new URL(import.meta.url).href;
+	return `import { pathInScope } from ${JSON.stringify(self)};
+const ROOT = ${JSON.stringify(scope.root)};
+const GLOBS = ${JSON.stringify(scope.globs)};
+export default { name: "subagent-${role}-scoped", approvals: [{
+	decide(call) {
+		if (!${JSON.stringify(allowed)}.includes(call.name)) return { action: "deny", reason: "not allowed for the ${role} role" };
+		if (call.name === "shell") return { action: "deny", reason: "scoped task: no shell (writes are limited to " + GLOBS.join(", ") + "; run the task unscoped for a shell)" };
+		if (call.name === "write_file" || call.name === "edit_file") {
+			const target = String((call.input && call.input.path) ?? "");
+			if (!pathInScope(ROOT, target, GLOBS)) return { action: "deny", reason: "outside the task scope: " + target + " (allowed: " + GLOBS.join(", ") + ")" };
+		}
+		return { action: "allow" };
 	}
 }] };
 `;
@@ -334,7 +686,7 @@ export async function extractChildResult(sessionsDir, childId, diag) {
 			// never by position. More than one run is ambiguous, and reported.
 			const runIds = new Set(records.map((r) => r.runId).filter((id) => typeof id === "string"));
 			if (runIds.size > 1) {
-				return { outcome: "ambiguous", toolCalls: 0, text: "", failed: true, reason: `child session ${childId} holds ${runIds.size} runs — the result cannot be located by identity`, diag };
+				return { outcome: "ambiguous", toolCalls: 0, text: "", usage: NO_USAGE, failed: true, reason: `child session ${childId} holds ${runIds.size} runs — the result cannot be located by identity`, diag };
 			}
 			events = records.map((r) => r.event ?? r);
 		} catch (err) {
@@ -344,11 +696,11 @@ export async function extractChildResult(sessionsDir, childId, diag) {
 		if (events === null || !events.some((e) => e.type === "terminal")) await new Promise((r) => setTimeout(r, 200));
 	}
 	if (events === null) {
-		return { outcome: "missing", toolCalls: 0, text: "", failed: true, reason: `child session JSONL missing: ${msg(lastErr)}`, diag };
+		return { outcome: "missing", toolCalls: 0, text: "", usage: NO_USAGE, failed: true, reason: `child session JSONL missing: ${msg(lastErr)}`, diag };
 	}
 	const terminal = events.find((e) => e.type === "terminal");
 	if (terminal === undefined) {
-		return { outcome: "no-terminal", toolCalls: countToolCalls(events), text: finalText(events), failed: true, reason: "child session has no terminal", diag };
+		return { outcome: "no-terminal", toolCalls: countToolCalls(events), text: finalText(events), usage: usageOf(events), failed: true, reason: "child session has no terminal", diag };
 	}
 	const outcome = terminal.outcome?.kind ?? "unknown";
 	const toolCalls = countToolCalls(events);
@@ -357,6 +709,7 @@ export async function extractChildResult(sessionsDir, childId, diag) {
 		outcome,
 		toolCalls,
 		text,
+		usage: usageOf(events),
 		failed: outcome !== "completed",
 		reason: outcome === "completed" ? "" : `child ended with ${outcome}`,
 		diag: outcome === "completed" ? "" : diag,
@@ -377,6 +730,23 @@ function committed(events) {
 
 function countToolCalls(events) {
 	return committed(events).filter((e) => e.type === "tool_call_end").length;
+}
+
+const NO_USAGE = { completedResponses: null, abandonedAttempts: null, inputTokens: null, outputTokens: null, cacheRead: null };
+
+/** DT-1a R2.4: the cost of the delegation, honestly — responses that carried a
+ *  usage event (never a "requests" count: a failed request leaves none), the
+ *  abandoned attempts counted separately, token sums over the former only. */
+function usageOf(events) {
+	const usages = committed(events).filter((e) => e.type === "usage");
+	const sum = (k) => usages.reduce((n, e) => n + (typeof e[k] === "number" ? e[k] : 0), 0);
+	return {
+		completedResponses: usages.length,
+		abandonedAttempts: events.filter((e) => e.type === "model_output_abandoned").length,
+		inputTokens: sum("inputTokens"),
+		outputTokens: sum("outputTokens"),
+		cacheRead: sum("cacheRead"),
+	};
 }
 
 /** Projection-equivalent: the assistant text since the last flush boundary,
@@ -410,6 +780,11 @@ async function collectWorktree(worktree, baseRev, patchPath) {
 		const base = baseRev ?? "HEAD";
 		stat = execFileSync("git", ["-C", worktree, "diff", "--stat", base], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
 		if (stat === "") return { kind: "unchanged" };
+		// DT-1a R2.4: the machine formats — never a parsed --stat
+		var changedFiles = parseChangedFiles(
+			execFileSync("git", ["-C", worktree, "diff", "--numstat", "-M", base], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }),
+			execFileSync("git", ["-C", worktree, "diff", "--name-status", "-M", base], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }),
+		);
 	} catch (err) {
 		return { kind: "failed", reason: `git diff --stat: ${msg(err)}` };
 	}
@@ -428,7 +803,7 @@ async function collectWorktree(worktree, baseRev, patchPath) {
 		closeSync(fd);
 		fd = null;
 		if (code.c !== 0) return { kind: "failed", reason: `git diff exited ${code.c}: ${code.stderr.trim()}`, partialPath: patchPath };
-		return { kind: "collected", stat, bytes: statSync(patchPath).size };
+		return { kind: "collected", stat, bytes: statSync(patchPath).size, changedFiles };
 	} catch (err) {
 		if (fd !== null) closeSync(fd);
 		return { kind: "failed", reason: `git diff: ${msg(err)}`, partialPath: patchPath };
