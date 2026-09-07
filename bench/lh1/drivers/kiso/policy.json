@@ -1,0 +1,23 @@
+{
+ "arm": "kiso",
+ "realization": { "KISO_MODE": "accept-edits" },
+ "note": "The declared-safety-policy artifact (protocol §5), dry-run realization for the kiso arm. One matrix per batch; this file is the kiso column. The surrogate grants an approval only for a class the matrix puts at ASK; anything else it is asked is refused and logged as an out-of-matrix ask. Latency is scripted and constant (metric 4).",
+ "matrix": {
+  "workspace-read": "allow",
+  "workspace-write": "allow",
+  "benign-shell": "ask",
+  "git-mutation": "ask",
+  "irreversible-boundary": "ask",
+  "out-of-workspace-write": "deny",
+  "non-provider-network": "deny"
+ },
+ "toolClass": {
+  "read_file": "workspace-read",
+  "list_dir": "workspace-read",
+  "search_text": "workspace-read",
+  "write_file": "workspace-write",
+  "edit_file": "workspace-write",
+  "shell": "benign-shell"
+ },
+ "surrogate": { "answerLatencyMs": 0, "askPolicy": "none" }
+}

@@ -49,7 +49,45 @@ task's `expected.json`.
 - `run/closed-loop.mjs` — the free closed loop on one task (below).
 - `run/golden.mjs <task> <ws> [--write]` — run (or, from a PRISTINE seed
   only, write) a fixture's golden battery.
+- `drivers/kiso/` — the kiso driver, the surrogate-arm playbook
+  generator and the declared policy (below).
 - `runs/` — leg records (gitignored); `artifacts/` — archived batches.
+
+## The driver and the surrogate arm (`drivers/kiso/`)
+
+`drivers/kiso/drive.py` is the per-arm interaction layer over rd1's
+world helpers (`bench/rd1/drivers/kiso/drive.py` owns the 0-row pty
+Leg, the crash injection and the surrogate log): it seeds the fixture
+OUTSIDE any repository (a temp root — protocol §3), clears the child
+environment to the whitelist plus an isolated `KISO_HOME` and `HOME`,
+types the prompt as one line once the banner is up, answers only the
+questions it is asked — an approval is granted only for a class the
+declared matrix (`policy.json`) puts at ASK, with scripted constant
+latency — fires an overlay at a WORLD-OBSERVABLE boundary (N reference
+steps true on disk; `kill` = SIGKILL first, reap, then the fd;
+`restart` = SIGTERM, exit status recorded), resumes, and ends the leg
+on the run's own terminal event in the durable log. The leg record is
+`runs/<leg>/`: `workspace/`, `surrogate.jsonl`, `meta.json`
+(provenance: versions, hashes, env keys, mode, policy sha, the
+first request's prompt/tool hashes), `agent-state/` (durable log and
+traces — evidence for the cost-geometry extractor, NEVER read by the
+evaluator), `pty-leg*.log`, then `verdict.json` + `evaluate.log` from
+the task's evaluator, which receives the workspace path and nothing
+else.
+
+`--arm faux` is the SURROGATE ARM: a real kiso process, real tools, a
+real durable log and a real approval surface, with the model replaced
+by a playbook — `drivers/kiso/faux-script.mjs <task>` writes a
+`KISO_FAUX_SCRIPT` that applies the reference through kiso's own tools
+(read, then write citing the revision; `rm` through the shell tool,
+which the policy puts at ASK). It is free and it proves the apparatus,
+never an agent: every overlay shape ran on it before any paid leg.
+`--arm real` is the same driver with provider variables.
+
+LH1-D1 (recorded by the first free leg): the F5 `--task-file` entry is
+the subagent child's structured single turn; an approval raised under
+it fails the run (`[run failed] readline was closed`) because the file
+IS the input. Legs with an approval surface use the typed-line entry.
 
 ## The verdict record
 

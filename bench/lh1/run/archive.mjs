@@ -3,6 +3,7 @@
  *    <name>.tar.gz   the whole run tree, nested .git included
  *    <name>.sha256   a per-file SHA-256 manifest, sorted, plain text
  *  usage: archive.mjs <runDir> <artifactsDir> <name>
+ *         archive.mjs --create <runDir> <artifactsDir> <name>   (the immutable pair, then verify)
  *         archive.mjs --verify <artifactsDir> <name>   (re-hashes the tarball's entries against the manifest)
  *         archive.mjs --extract <artifactsDir> <name> <destDir> */
 import { createHash } from "node:crypto";
@@ -54,7 +55,17 @@ export function verify(artifactsDir, name) {
 
 if (process.argv[1] !== undefined && process.argv[1].endsWith("archive.mjs")) {
 	const [a, b, c, d] = process.argv.slice(2);
-	if (a === "--verify") {
+	if (a === "--create") {
+		const [runDir, artifactsDir, name] = process.argv.slice(3);
+		if (!runDir || !artifactsDir || !name) {
+			console.error("usage: archive.mjs --create <runDir> <artifactsDir> <name>");
+			process.exit(2);
+		}
+		const r = archive(runDir, artifactsDir, name);
+		const v = verify(artifactsDir, name);
+		console.log(`[lh1:archive] ${name}: ${r.entries} entries, ${r.bytes} bytes; verify ${v.ok ? "INTACT" : "DRIFTED"}`);
+		process.exit(v.ok ? 0 : 1);
+	} else if (a === "--verify") {
 		const v = verify(b, c);
 		console.log(`[lh1:archive] ${c}: ${v.ok ? "INTACT" : "DRIFTED"} (${v.entries} entries${v.ok ? "" : `; missing ${v.missing.length}, extra ${v.extra.length}`})`);
 		process.exit(v.ok ? 0 : 1);
