@@ -10,12 +10,22 @@
  * `ToolRegistry.subset()` (no caller). The gate is the TYPECHECK: each
  * constant compiles only while its member is absent — a present member
  * makes the type `true`, and `false` is not assignable to `true`.
- * Red first: on the pre-CT-1 tree all nine failed to compile.
+ * Red first: on the pre-CT-1 tree all nine failed to compile. The
+ * ModeProfile TYPE export is pinned by the `@ts-expect-error` import
+ * below; the runtime's two `compaction` mirror fields (D2) are pinned in
+ * `packages/runtime/tests/ct1-retired-mirror.test.ts`.
  */
 
 import { describe, expect, it } from "vitest";
 import * as core from "../src/index.js";
 import type { HookHost, LoopConfig, ToolRegistry } from "../src/index.js";
+// The TYPE export is not a value, so `keyof typeof core` cannot see it; the
+// directive below is satisfied only while the import fails — re-adding
+// `ModeProfile` to the index makes it unused and `tsc` fails (TS2578).
+// (The 2026-09-07 review: the nine value-level assertions did not cover it.)
+// @ts-expect-error — ModeProfile left core with the mode plumbing (CT-1)
+import type { ModeProfile } from "../src/index.js";
+const modeProfileGone: ModeProfile | undefined = undefined;
 
 type Has<T, K extends string> = K extends keyof T ? true : false;
 
@@ -30,9 +40,10 @@ const registrySubset: Has<ToolRegistry, "subset"> = false;
 const exportResolveModeProfile: Has<typeof core, "resolveModeProfile"> = false;
 
 describe("CT-1 — the retired kernel surface", () => {
-	it("nine retired members are absent (the typecheck is the gate; this run only records it)", () => {
+	it("nine retired members and the ModeProfile type are absent (the typecheck is the gate; this run only records it)", () => {
 		for (const absent of [loopModes, loopMode, loopCompaction, loopResolveUncertainty, loopUncertaintyVerdict, hookPreCompact, hookPostCompact, registrySubset, exportResolveModeProfile]) {
 			expect(absent).toBe(false);
 		}
+		expect(modeProfileGone).toBeUndefined();
 	});
 });
