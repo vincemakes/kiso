@@ -1,0 +1,24 @@
+{
+  "id": "no-tabs",
+  "description": "Tabs are not allowed in source files.",
+  "severity": 2,
+  "when": "js,ts",
+  "enabled": "yes",
+  "pattern": "\\t",
+  "message": "tab found",
+  "fix": null,
+  "options": {
+    "allowInStrings": false
+  },
+  "tags": [
+    "style"
+  ],
+  "examples": {
+    "bad": [
+      "\tx"
+    ],
+    "good": [
+      "  x"
+    ]
+  }
+}

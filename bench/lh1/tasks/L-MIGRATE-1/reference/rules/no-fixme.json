@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "id": "no-fixme",
+  "description": "FIXME markers are errors: the fix is due now.",
+  "level": "error",
+  "files": [
+    "js",
+    "ts"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "\\bFIXME\\b",
+    "message": "FIXME left in source"
+  },
+  "fix": null,
+  "options": {},
+  "tags": [
+    "hygiene"
+  ],
+  "examples": {
+    "bad": [
+      "// FIXME"
+    ],
+    "good": [
+      "// fixed in #4"
+    ]
+  }
+}

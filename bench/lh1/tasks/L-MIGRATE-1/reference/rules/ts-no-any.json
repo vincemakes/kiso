@@ -1,0 +1,29 @@
+{
+  "schema": 2,
+  "id": "ts-no-any",
+  "description": "any defeats the type checker.",
+  "level": "warn",
+  "files": [
+    "ts"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": ":\\s*any\\b",
+    "message": "explicit any"
+  },
+  "fix": null,
+  "options": {
+    "allowInTests": true
+  },
+  "tags": [
+    "types"
+  ],
+  "examples": {
+    "bad": [
+      "x: any"
+    ],
+    "good": [
+      "x: unknown"
+    ]
+  }
+}

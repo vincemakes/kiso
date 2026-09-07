@@ -1,0 +1,23 @@
+{
+  "id": "no-nested-ternary",
+  "description": "Nested ternaries are hard to read.",
+  "severity": 1,
+  "when": "js,ts",
+  "enabled": "yes",
+  "pattern": "\\?[^:\\n]*\\?[^:\\n]*:",
+  "message": "nested ternary",
+  "fix": null,
+  "options": {},
+  "tags": [
+    "style"
+  ],
+  "examples": {
+    "bad": [
+      "a ? b ? c : d : e"
+    ],
+    "good": [
+      "if"
+    ]
+  },
+  "deprecated": true
+}

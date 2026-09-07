@@ -1,0 +1,34 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { loadRules } from "../src/loader.mjs";
+import { validateRule } from "../src/schema.mjs";
+
+test("hidden: the scaffold emits version 2 with the field-named flags", () => {
+	const dir = mkdtempSync(join(tmpdir(), "lh1-scaffold-"));
+	const r = spawnSync(process.execPath, ["scripts/new-rule.mjs", "demo", "A demo rule", "--level", "error", "--files", "js, ts", "--dir", dir], { encoding: "utf8" });
+	assert.equal(r.status, 0, r.stderr);
+	assert.equal(r.stdout, `wrote ${join(dir, "demo.json")}\n`);
+	const data = JSON.parse(readFileSync(join(dir, "demo.json"), "utf8"));
+	assert.equal(data.schema, 2);
+	assert.equal(data.level, "error");
+	assert.deepEqual(data.files, ["js", "ts"]);
+	assert.equal(data.enabled, true);
+	assert.equal(typeof data.match.pattern, "string");
+	assert.equal(typeof data.match.message, "string");
+	for (const k of ["severity", "when", "deprecated", "pattern", "message"]) assert.equal(Object.hasOwn(data, k), false, `v1 key ${k}`);
+	assert.deepEqual(validateRule("demo.json", data), []);
+	const [rule] = loadRules(dir);
+	assert.equal(rule.id, "demo");
+	assert.equal(rule.level, "error");
+	const defaults = spawnSync(process.execPath, ["scripts/new-rule.mjs", "plain", "Plain", "--dir", dir], { encoding: "utf8" });
+	assert.equal(defaults.status, 0, defaults.stderr);
+	const plain = JSON.parse(readFileSync(join(dir, "plain.json"), "utf8"));
+	assert.equal(plain.level, "warn");
+	assert.deepEqual(plain.files, ["*"]);
+	const old = spawnSync(process.execPath, ["scripts/new-rule.mjs", "x", "X", "--severity", "1", "--dir", dir], { encoding: "utf8" });
+	assert.equal(old.status, 1);
+});

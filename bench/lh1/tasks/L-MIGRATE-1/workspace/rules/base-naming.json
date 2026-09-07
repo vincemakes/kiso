@@ -1,0 +1,20 @@
+{
+  "id": "base-naming",
+  "description": "Base rule for naming rules; not applied on its own.",
+  "severity": 0,
+  "when": "*",
+  "enabled": "no",
+  "pattern": "$^",
+  "message": "naming",
+  "fix": null,
+  "options": {
+    "style": "camel"
+  },
+  "tags": [
+    "naming"
+  ],
+  "examples": {
+    "bad": [],
+    "good": []
+  }
+}

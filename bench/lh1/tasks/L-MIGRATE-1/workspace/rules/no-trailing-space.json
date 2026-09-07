@@ -1,0 +1,23 @@
+{
+  "id": "no-trailing-space",
+  "description": "Lines must not end in whitespace.",
+  "severity": 1,
+  "when": "*",
+  "enabled": "yes",
+  "pattern": "[ \\t]+$",
+  "message": "trailing whitespace",
+  "fix": "trim",
+  "options": {},
+  "tags": [
+    "style",
+    "whitespace"
+  ],
+  "examples": {
+    "bad": [
+      "x "
+    ],
+    "good": [
+      "x"
+    ]
+  }
+}

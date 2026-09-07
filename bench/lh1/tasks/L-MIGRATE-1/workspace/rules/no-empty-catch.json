@@ -1,0 +1,22 @@
+{
+  "id": "no-empty-catch",
+  "description": "An empty catch swallows the error.",
+  "severity": 1,
+  "when": "js,ts",
+  "enabled": "yes",
+  "pattern": "catch\\s*(\\([^)]*\\))?\\s*\\{\\s*\\}",
+  "message": "empty catch block",
+  "fix": null,
+  "options": {},
+  "tags": [
+    "correctness"
+  ],
+  "examples": {
+    "bad": [
+      "catch {}"
+    ],
+    "good": [
+      "catch (e) { log(e) }"
+    ]
+  }
+}

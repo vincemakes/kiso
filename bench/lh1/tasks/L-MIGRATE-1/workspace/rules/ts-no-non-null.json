@@ -1,0 +1,22 @@
+{
+  "id": "ts-no-non-null",
+  "description": "The non-null assertion hides a real check.",
+  "severity": 1,
+  "when": "ts",
+  "enabled": "yes",
+  "pattern": "[A-Za-z0-9_$)\\]]!\\.",
+  "message": "non-null assertion",
+  "fix": null,
+  "options": {},
+  "tags": [
+    "types"
+  ],
+  "examples": {
+    "bad": [
+      "a!.b"
+    ],
+    "good": [
+      "a?.b"
+    ]
+  }
+}

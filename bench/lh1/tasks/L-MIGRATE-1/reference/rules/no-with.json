@@ -1,0 +1,29 @@
+{
+  "schema": 2,
+  "id": "no-with",
+  "description": "with statements are removed from strict mode.",
+  "level": "error",
+  "files": [
+    "js"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "\\bwith\\s*\\(",
+    "message": "with statement"
+  },
+  "fix": null,
+  "options": {},
+  "tags": [
+    "security",
+    "modern",
+    "deprecated"
+  ],
+  "examples": {
+    "bad": [
+      "with (o) {}"
+    ],
+    "good": [
+      "o.x"
+    ]
+  }
+}

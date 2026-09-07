@@ -1,0 +1,26 @@
+{
+  "id": "no-console",
+  "description": "Console output belongs in the CLI layer only.",
+  "severity": 2,
+  "when": "js,ts",
+  "enabled": "yes",
+  "pattern": "\\bconsole\\.(log|warn|error)\\(",
+  "message": "console call",
+  "fix": null,
+  "options": {
+    "allowIn": [
+      "src/cli.mjs"
+    ]
+  },
+  "tags": [
+    "correctness"
+  ],
+  "examples": {
+    "bad": [
+      "console.log(1)"
+    ],
+    "good": [
+      "out.write(1)"
+    ]
+  }
+}

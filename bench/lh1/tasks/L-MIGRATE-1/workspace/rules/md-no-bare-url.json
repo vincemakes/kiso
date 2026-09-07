@@ -1,0 +1,22 @@
+{
+  "id": "md-no-bare-url",
+  "description": "Bare URLs in markdown should be links.",
+  "severity": 1,
+  "when": "md",
+  "enabled": "yes",
+  "pattern": "(?<![(<\\[])https?://\\S+",
+  "message": "bare URL",
+  "fix": null,
+  "options": {},
+  "tags": [
+    "markdown"
+  ],
+  "examples": {
+    "bad": [
+      "see https://x"
+    ],
+    "good": [
+      "see <https://x>"
+    ]
+  }
+}

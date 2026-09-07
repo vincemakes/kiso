@@ -1,0 +1,31 @@
+{
+  "schema": 2,
+  "id": "max-line-120",
+  "description": "Lines longer than 120 characters hurt review.",
+  "level": "warn",
+  "files": [
+    "js",
+    "ts",
+    "md"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "^.{121,}$",
+    "message": "line longer than 120 characters"
+  },
+  "fix": null,
+  "options": {
+    "limit": 120
+  },
+  "tags": [
+    "style"
+  ],
+  "examples": {
+    "bad": [
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "good": [
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "camel-case-vars",
+  "description": "Variables are camelCase.",
+  "extends": "base-naming",
+  "severity": 1,
+  "when": "js,ts",
+  "enabled": "yes",
+  "pattern": "\\b(?:let|const|var)\\s+[a-z]+_[a-z]",
+  "message": "snake_case variable"
+}

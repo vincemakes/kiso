@@ -1,0 +1,27 @@
+{
+  "schema": 2,
+  "id": "md-no-bare-url",
+  "description": "Bare URLs in markdown should be links.",
+  "level": "warn",
+  "files": [
+    "md"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "(?<![(<\\[])https?://\\S+",
+    "message": "bare URL"
+  },
+  "fix": null,
+  "options": {},
+  "tags": [
+    "markdown"
+  ],
+  "examples": {
+    "bad": [
+      "see https://x"
+    ],
+    "good": [
+      "see <https://x>"
+    ]
+  }
+}

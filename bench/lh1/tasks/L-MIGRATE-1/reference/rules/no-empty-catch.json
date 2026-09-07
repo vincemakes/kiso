@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "id": "no-empty-catch",
+  "description": "An empty catch swallows the error.",
+  "level": "warn",
+  "files": [
+    "js",
+    "ts"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "catch\\s*(\\([^)]*\\))?\\s*\\{\\s*\\}",
+    "message": "empty catch block"
+  },
+  "fix": null,
+  "options": {},
+  "tags": [
+    "correctness"
+  ],
+  "examples": {
+    "bad": [
+      "catch {}"
+    ],
+    "good": [
+      "catch (e) { log(e) }"
+    ]
+  }
+}

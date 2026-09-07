@@ -1,0 +1,26 @@
+{
+  "id": "no-http-url",
+  "description": "Plain http URLs must be https.",
+  "severity": 1,
+  "when": "*",
+  "enabled": "yes",
+  "pattern": "http://",
+  "message": "insecure URL",
+  "fix": "https",
+  "options": {
+    "allow": [
+      "http://localhost"
+    ]
+  },
+  "tags": [
+    "security"
+  ],
+  "examples": {
+    "bad": [
+      "http://x"
+    ],
+    "good": [
+      "https://x"
+    ]
+  }
+}

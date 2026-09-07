@@ -1,0 +1,25 @@
+{
+ "task": "L-MIGRATE-1",
+ "family": "L-MIGRATE",
+ "durationLabel": "60-120 min",
+ "durationBasis": {
+  "referenceFilesTouched": 34,
+  "referenceLinesAdded": 389,
+  "referenceLinesRemoved": 221,
+  "files": [
+   { "path": "rules/*.json", "kind": "modified", "count": 30, "note": "every rule file rewritten from version 1 to version 2" },
+   { "path": "src/loader.mjs", "kind": "modified", "added": 19, "removed": 27 },
+   { "path": "src/schema.mjs", "kind": "modified", "added": 15, "removed": 13 },
+   { "path": "scripts/new-rule.mjs", "kind": "modified", "added": 11, "removed": 11 },
+   { "path": "docs/RULE-FORMAT.md", "kind": "modified", "added": 19, "removed": 15 }
+  ],
+  "seedRuleFiles": 30,
+  "seedRuleLines": 656,
+  "seedSourceLines": 312,
+  "visibleTests": 13,
+  "hiddenTests": 8,
+  "goldenCases": 28,
+  "goldenInputs": 12,
+  "note": "The label is a claim until the calibration batch times a real leg (protocol §8). The rule files carry the irregularities a real tree accumulates (numeric-string severities, spaced kind lists, a missing enabled, two deprecated markers, an extends pair with omitted keys), so a one-line sed does not finish the job; the semantics truth is the original tree's own loader output, computed by the evaluator from the seed tag."
+ }
+}

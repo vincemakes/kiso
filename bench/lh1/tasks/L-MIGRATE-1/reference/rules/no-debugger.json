@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "id": "no-debugger",
+  "description": "debugger statements never ship.",
+  "level": "error",
+  "files": [
+    "js",
+    "ts"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "^\\s*debugger;?\\s*$",
+    "message": "debugger statement"
+  },
+  "fix": "remove-line",
+  "options": {},
+  "tags": [
+    "correctness"
+  ],
+  "examples": {
+    "bad": [
+      "debugger;"
+    ],
+    "good": [
+      ""
+    ]
+  }
+}

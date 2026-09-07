@@ -1,0 +1,16 @@
+{
+  "schema": 2,
+  "id": "camel-case-vars",
+  "description": "Variables are camelCase.",
+  "extends": "base-naming",
+  "level": "warn",
+  "files": [
+    "js",
+    "ts"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "\\b(?:let|const|var)\\s+[a-z]+_[a-z]",
+    "message": "snake_case variable"
+  }
+}

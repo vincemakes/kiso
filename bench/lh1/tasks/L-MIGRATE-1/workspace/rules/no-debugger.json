@@ -1,0 +1,22 @@
+{
+  "id": "no-debugger",
+  "description": "debugger statements never ship.",
+  "severity": 2,
+  "when": "js,ts",
+  "enabled": "yes",
+  "pattern": "^\\s*debugger;?\\s*$",
+  "message": "debugger statement",
+  "fix": "remove-line",
+  "options": {},
+  "tags": [
+    "correctness"
+  ],
+  "examples": {
+    "bad": [
+      "debugger;"
+    ],
+    "good": [
+      ""
+    ]
+  }
+}

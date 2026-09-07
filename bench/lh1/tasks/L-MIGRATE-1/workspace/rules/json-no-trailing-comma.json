@@ -1,0 +1,22 @@
+{
+  "id": "json-no-trailing-comma",
+  "description": "A trailing comma breaks strict parsers.",
+  "severity": 2,
+  "when": "json",
+  "enabled": "yes",
+  "pattern": ",\\s*[}\\]]",
+  "message": "trailing comma",
+  "fix": "remove",
+  "options": {},
+  "tags": [
+    "correctness"
+  ],
+  "examples": {
+    "bad": [
+      "[1,]"
+    ],
+    "good": [
+      "[1]"
+    ]
+  }
+}

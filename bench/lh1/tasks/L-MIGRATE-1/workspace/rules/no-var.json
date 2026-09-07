@@ -1,0 +1,22 @@
+{
+  "id": "no-var",
+  "description": "Use let or const.",
+  "severity": 2,
+  "when": "js,ts",
+  "enabled": "yes",
+  "pattern": "\\bvar\\s+[A-Za-z_$]",
+  "message": "var declaration",
+  "fix": null,
+  "options": {},
+  "tags": [
+    "modern"
+  ],
+  "examples": {
+    "bad": [
+      "var x = 1;"
+    ],
+    "good": [
+      "let x = 1;"
+    ]
+  }
+}

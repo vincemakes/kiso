@@ -1,0 +1,142 @@
+{
+ "list": {
+  "status": 0,
+  "stdout": "id                      level  files     note\nbase-naming             off    *         disabled\ncamel-case-vars         warn   js,ts\njson-no-comments        error  json\njson-no-trailing-comma  error  json\nmax-line-120            warn   js,ts,md\nmd-heading-space        error  md\nmd-no-bare-url          warn   md\nmd-trailing-hashes      off    md\nno-alert                warn   js\nno-console              error  js,ts\nno-debugger             error  js,ts\nno-empty-catch          warn   js,ts\nno-eval                 error  js,ts\nno-fixme                error  js,ts\nno-hardcoded-secret     error  *\nno-http-url             warn   *\nno-legacy-import        error  js,ts\nno-nested-ternary       warn   js,ts     deprecated\nno-only-tests           error  js,ts\nno-skip-tests           warn   js,ts\nno-sleep                warn   js,ts\nno-tabs                 error  js,ts\nno-todo                 warn   js,ts,md\nno-trailing-space       warn   *\nno-var                  error  js,ts\nno-with                 error  js        deprecated\npascal-case-classes     error  js,ts\nprefer-const            warn   js,ts     disabled\nts-no-any               warn   ts\nts-no-non-null          warn   ts\n",
+  "stderr": ""
+ },
+ "list-kind-js": {
+  "status": 0,
+  "stdout": "id                   level  files     note\ncamel-case-vars      warn   js,ts\nmax-line-120         warn   js,ts,md\nno-alert             warn   js\nno-console           error  js,ts\nno-debugger          error  js,ts\nno-empty-catch       warn   js,ts\nno-eval              error  js,ts\nno-fixme             error  js,ts\nno-hardcoded-secret  error  *\nno-http-url          warn   *\nno-legacy-import     error  js,ts\nno-only-tests        error  js,ts\nno-skip-tests        warn   js,ts\nno-sleep             warn   js,ts\nno-tabs              error  js,ts\nno-todo              warn   js,ts,md\nno-trailing-space    warn   *\nno-var               error  js,ts\npascal-case-classes  error  js,ts\n",
+  "stderr": ""
+ },
+ "list-kind-ts": {
+  "status": 0,
+  "stdout": "id                   level  files     note\ncamel-case-vars      warn   js,ts\nmax-line-120         warn   js,ts,md\nno-console           error  js,ts\nno-debugger          error  js,ts\nno-empty-catch       warn   js,ts\nno-eval              error  js,ts\nno-fixme             error  js,ts\nno-hardcoded-secret  error  *\nno-http-url          warn   *\nno-legacy-import     error  js,ts\nno-only-tests        error  js,ts\nno-skip-tests        warn   js,ts\nno-sleep             warn   js,ts\nno-tabs              error  js,ts\nno-todo              warn   js,ts,md\nno-trailing-space    warn   *\nno-var               error  js,ts\npascal-case-classes  error  js,ts\nts-no-any            warn   ts\nts-no-non-null       warn   ts\n",
+  "stderr": ""
+ },
+ "list-kind-md": {
+  "status": 0,
+  "stdout": "id                   level  files     note\nmax-line-120         warn   js,ts,md\nmd-heading-space     error  md\nmd-no-bare-url       warn   md\nno-hardcoded-secret  error  *\nno-http-url          warn   *\nno-todo              warn   js,ts,md\nno-trailing-space    warn   *\n",
+  "stderr": ""
+ },
+ "list-kind-json": {
+  "status": 0,
+  "stdout": "id                      level  files  note\njson-no-comments        error  json\njson-no-trailing-comma  error  json\nno-hardcoded-secret     error  *\nno-http-url             warn   *\nno-trailing-space       warn   *\n",
+  "stderr": ""
+ },
+ "list-kind-py": {
+  "status": 0,
+  "stdout": "id                   level  files  note\nno-hardcoded-secret  error  *\nno-http-url          warn   *\nno-trailing-space    warn   *\n",
+  "stderr": ""
+ },
+ "list-kind-empty": {
+  "status": 0,
+  "stdout": "id                   level  files  note\nno-hardcoded-secret  error  *\nno-http-url          warn   *\nno-trailing-space    warn   *\n",
+  "stderr": ""
+ },
+ "check-sample-js": {
+  "status": 1,
+  "stdout": "inputs/sample.js:1: warn camel-case-vars: snake_case variable\ninputs/sample.js:1: error no-var: var declaration\ninputs/sample.js:2: error no-console: console call\ninputs/sample.js:2: error no-tabs: tab found\ninputs/sample.js:3: warn no-todo: TODO left in source\ninputs/sample.js:4: error pascal-case-classes: lower-case class name\ninputs/sample.js:5: warn no-http-url: insecure URL\ninputs/sample.js:7: warn no-empty-catch: empty catch block\n8 findings, 4 errors\n",
+  "stderr": ""
+ },
+ "check-three": {
+  "status": 1,
+  "stdout": "inputs/sample.ts:1: warn ts-no-any: explicit any\ninputs/sample.ts:2: warn ts-no-non-null: non-null assertion\ninputs/sample.ts:3: error no-only-tests: focused test\ninputs/sample.ts:4: error no-debugger: debugger statement\ninputs/README.md:1: error md-heading-space: heading without a space\ninputs/README.md:2: warn md-no-bare-url: bare URL\ninputs/data.json:2: error json-no-comments: comment in JSON\ninputs/data.json:3: error json-no-trailing-comma: trailing comma\n8 findings, 5 errors\n",
+  "stderr": ""
+ },
+ "check-clean": {
+  "status": 0,
+  "stdout": "0 findings, 0 errors\n",
+  "stderr": ""
+ },
+ "check-trailing": {
+  "status": 1,
+  "stdout": "inputs/trailing.js:1: warn no-trailing-space: trailing whitespace\ninputs/trailing.js:2: error no-tabs: tab found\ninputs/trailing.js:2: warn no-trailing-space: trailing whitespace\n3 findings, 1 errors\n",
+  "stderr": ""
+ },
+ "check-long-md": {
+  "status": 0,
+  "stdout": "inputs/long.md:2: warn max-line-120: line longer than 120 characters\n1 findings, 0 errors\n",
+  "stderr": ""
+ },
+ "check-secret-ts": {
+  "status": 1,
+  "stdout": "inputs/secret.ts:1: warn camel-case-vars: snake_case variable\ninputs/secret.ts:1: error no-hardcoded-secret: possible hard-coded secret\ninputs/secret.ts:2: warn ts-no-any: explicit any\ninputs/secret.ts:3: warn ts-no-non-null: non-null assertion\n4 findings, 1 errors\n",
+  "stderr": ""
+ },
+ "check-misc-js": {
+  "status": 1,
+  "stdout": "inputs/misc.js:1: error no-legacy-import: legacy-utils import\ninputs/misc.js:2: error no-eval: eval call\ninputs/misc.js:4: warn no-alert: alert call\ninputs/misc.js:5: warn no-sleep: sleep in code\ninputs/misc.js:6: warn no-skip-tests: skipped test\ninputs/misc.js:7: warn camel-case-vars: snake_case variable\ninputs/misc.js:8: error no-fixme: FIXME left in source\n7 findings, 3 errors\n",
+  "stderr": ""
+ },
+ "check-empty": {
+  "status": 0,
+  "stdout": "0 findings, 0 errors\n",
+  "stderr": ""
+ },
+ "check-noext": {
+  "status": 0,
+  "stdout": "inputs/Makefile:2: warn no-http-url: insecure URL\n1 findings, 0 errors\n",
+  "stderr": ""
+ },
+ "check-missing-second": {
+  "status": 2,
+  "stdout": "",
+  "stderr": "lintr: cannot read inputs/nope.js\n"
+ },
+ "validate": {
+  "status": 0,
+  "stdout": "30 rules ok\n",
+  "stderr": ""
+ },
+ "validate-empty-dir": {
+  "status": 0,
+  "stdout": "0 rules ok\n",
+  "stderr": ""
+ },
+ "usage-none": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "usage: lintr <list|check|validate> [options]\n  list [--kind <kind>] [--rules <dir>]\n  check <file>... [--rules <dir>]\n  validate [--rules <dir>]\n"
+ },
+ "usage-unknown": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "usage: lintr <list|check|validate> [options]\n  list [--kind <kind>] [--rules <dir>]\n  check <file>... [--rules <dir>]\n  validate [--rules <dir>]\n"
+ },
+ "usage-check-no-files": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "usage: lintr <list|check|validate> [options]\n  list [--kind <kind>] [--rules <dir>]\n  check <file>... [--rules <dir>]\n  validate [--rules <dir>]\n"
+ },
+ "usage-list-positional": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "usage: lintr <list|check|validate> [options]\n  list [--kind <kind>] [--rules <dir>]\n  check <file>... [--rules <dir>]\n  validate [--rules <dir>]\n"
+ },
+ "unknown-option": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "lintr: unknown option --frob\n"
+ },
+ "missing-value": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "lintr: missing value for --rules\n"
+ },
+ "kind-on-check": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "lintr: unknown option --kind\n"
+ },
+ "rules-dir-missing": {
+  "status": 2,
+  "stdout": "",
+  "stderr": "lintr: cannot read rules directory nope\n"
+ },
+ "check-file-missing": {
+  "status": 2,
+  "stdout": "",
+  "stderr": "lintr: cannot read nope.js\n"
+ }
+}

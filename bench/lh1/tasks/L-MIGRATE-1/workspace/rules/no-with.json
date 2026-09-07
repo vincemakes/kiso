@@ -1,0 +1,24 @@
+{
+  "id": "no-with",
+  "description": "with statements are removed from strict mode.",
+  "severity": 2,
+  "when": "js",
+  "enabled": "yes",
+  "pattern": "\\bwith\\s*\\(",
+  "message": "with statement",
+  "fix": null,
+  "options": {},
+  "tags": [
+    "security",
+    "modern"
+  ],
+  "examples": {
+    "bad": [
+      "with (o) {}"
+    ],
+    "good": [
+      "o.x"
+    ]
+  },
+  "deprecated": true
+}

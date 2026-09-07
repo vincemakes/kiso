@@ -1,0 +1,27 @@
+{
+  "schema": 2,
+  "id": "no-alert",
+  "description": "alert is a browser-only debugging aid.",
+  "level": "warn",
+  "files": [
+    "js"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "\\balert\\(",
+    "message": "alert call"
+  },
+  "fix": null,
+  "options": {},
+  "tags": [
+    "browser"
+  ],
+  "examples": {
+    "bad": [
+      "alert(1)"
+    ],
+    "good": [
+      "notify(1)"
+    ]
+  }
+}

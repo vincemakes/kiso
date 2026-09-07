@@ -41,14 +41,19 @@ export function treeHash(ws) {
 	return createHash("sha256").update(diff).digest("hex");
 }
 
-/** The verdict: prints one line per check and exits 0/1 — the LH-1 prefix. */
+/** The verdict: prints one line per check (with a detail for humans) and
+ *  exits 0/1. The `[lh1:verdict-json]` line is the leg's RECORD and carries
+ *  only what is scored — name and ok per check — so that a rescore from
+ *  the archive is byte-comparable: a detail (a test runner's output, a
+ *  path under a temp directory, a duration) is diagnostic, not scored,
+ *  and would make two evaluations of the same tree differ. */
 export function verdict(taskName, checks) {
 	let pass = true;
 	const rows = [];
 	for (const [name, ok, detail] of checks) {
 		if (!ok) pass = false;
-		rows.push({ name, ok, detail: ok ? "" : String(detail ?? "").slice(0, 400) });
-		console.log(`[lh1:${taskName}] ${ok ? "ok " : "RED"} — ${name}${!ok && detail ? ` (${String(detail).slice(0, 200)})` : ""}`);
+		rows.push({ name, ok });
+		console.log(`[lh1:${taskName}] ${ok ? "ok " : "RED"} — ${name}${!ok && detail ? ` (${String(detail).slice(0, 400).replace(/\n/g, " ⏎ ")})` : ""}`);
 	}
 	console.log(`[lh1:${taskName}] ${pass ? "PASS" : "FAIL"}`);
 	console.log(`[lh1:verdict-json] ${JSON.stringify({ task: taskName, pass, checks: rows })}`);

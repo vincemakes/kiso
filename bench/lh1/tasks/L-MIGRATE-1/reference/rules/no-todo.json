@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "id": "no-todo",
+  "description": "TODO markers must become tickets before merge.",
+  "level": "warn",
+  "files": [
+    "js",
+    "ts",
+    "md"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "\\bTODO\\b",
+    "message": "TODO left in source"
+  },
+  "fix": null,
+  "tags": [
+    "hygiene"
+  ],
+  "examples": {
+    "bad": [
+      "// TODO later"
+    ],
+    "good": [
+      "// see #12"
+    ]
+  }
+}

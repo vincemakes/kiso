@@ -27,7 +27,7 @@
   "hiddenTests": 11,
   "goldenCases": 41,
   "goldenInputs": 12,
-  "goldenInputsStoredAs": "golden/inputs.json (materialized into a scratch directory per run)",
+  "goldenInputsStoredAs": "golden/inputs.json (materialized into a scratch directory per run by lib/golden.mjs)",
   "seedSourceLines": 283,
   "note": "The label is a claim until the calibration batch times a real leg (protocol §8). The seed's three readers drift on blank lines by design (SPEC §4); the golden battery is the seed's own output on 12 inputs, proven at selftest time by seed-check.mjs."
  }

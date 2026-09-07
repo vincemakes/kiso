@@ -1,0 +1,22 @@
+{
+  "id": "no-sleep",
+  "description": "Sleeping in tests makes them slow and flaky.",
+  "severity": 1,
+  "when": "js,ts",
+  "enabled": "yes",
+  "pattern": "\\bsetTimeout\\(\\s*resolve",
+  "message": "sleep in code",
+  "fix": null,
+  "options": {},
+  "tags": [
+    "tests"
+  ],
+  "examples": {
+    "bad": [
+      "await new Promise(resolve => setTimeout(resolve, 100))"
+    ],
+    "good": [
+      "await event"
+    ]
+  }
+}

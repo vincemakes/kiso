@@ -1,0 +1,14 @@
+{
+  "id": "pascal-case-classes",
+  "description": "Classes are PascalCase.",
+  "extends": "base-naming",
+  "severity": 2,
+  "when": "js,ts",
+  "enabled": "yes",
+  "pattern": "\\bclass\\s+[a-z]",
+  "message": "lower-case class name",
+  "tags": [
+    "naming",
+    "classes"
+  ]
+}

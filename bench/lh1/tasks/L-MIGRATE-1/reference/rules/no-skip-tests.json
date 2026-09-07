@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "id": "no-skip-tests",
+  "description": "A skipped test needs a reason in a ticket.",
+  "level": "warn",
+  "files": [
+    "js",
+    "ts"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "\\b(it|test|describe)\\.skip\\(",
+    "message": "skipped test"
+  },
+  "fix": null,
+  "options": {},
+  "tags": [
+    "tests"
+  ],
+  "examples": {
+    "bad": [
+      "it.skip(...)"
+    ],
+    "good": [
+      "it(...)"
+    ]
+  }
+}

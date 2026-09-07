@@ -29,8 +29,9 @@ task's `expected.json`.
 - `tasks/<t>/golden/` (L-REFACTOR) — the behavior-preservation truth:
   `cases.json` (argument vectors), `inputs.json` (the input files, some
   deliberately malformed), and `expected.json`, the
-  SEED's own stdout/stderr/exit code per case; `run-cases.mjs` runs a
-  workspace against it from a scratch directory. `tasks/<t>/seed-check.mjs`
+  SEED's own stdout/stderr/exit code per case; `lib/golden.mjs` runs a
+  workspace against it from a scratch directory (`run/golden.mjs <task>
+  <ws> [--write]` is the CLI). `tasks/<t>/seed-check.mjs`
   is an optional fixture-level invariant the selftest runs on the
   PRISTINE seed (here: the goldens ARE the seed's output), so a golden
   can never drift from the behavior it claims to pin.
@@ -46,7 +47,19 @@ task's `expected.json`.
 - `run/selftest.mjs` — every evaluator must FAIL on pristine and PASS on
   the reference, and the reference must respect the allowed paths.
 - `run/closed-loop.mjs` — the free closed loop on one task (below).
+- `run/golden.mjs <task> <ws> [--write]` — run (or, from a PRISTINE seed
+  only, write) a fixture's golden battery.
 - `runs/` — leg records (gitignored); `artifacts/` — archived batches.
+
+## The verdict record
+
+`evaluator.mjs` prints one row per check with a detail for humans, then
+one `[lh1:verdict-json]` line — the leg's RECORD — carrying only what is
+scored: `{ task, pass, checks: [{ name, ok }] }`. Details (a test
+runner's output, a temp path, a duration) are diagnostic and would make
+two evaluations of the same tree differ; the closed loop's rescore
+compares the record byte for byte, so the record carries none. The full
+evaluator output of a leg is kept beside it as `evaluate.log`.
 
 ## Families (protocol §2)
 
@@ -63,4 +76,11 @@ family.
   invariants stated in the SPEC exactly as the hidden test runs them
   (`node:fs`/`process.` only in cli.mjs, `.toFixed(` once, the header
   literal once, the old modules gone); closed loop green.
-- **L-MIGRATE-1** — open.
+- **L-MIGRATE-1** "lintr, rule files v1 → v2" — a mechanical migration
+  across 30 rule files plus the loader, validator, scaffold and format
+  doc; the truths are a completeness scan (every file schema 2, no v1
+  key: zero stragglers), the ORIGINAL tree's own loader output as the
+  semantics oracle (the evaluator extracts the `seed` tag and runs its
+  loader; the migrated tree must match rule for rule), a 28-case golden
+  battery, and hidden tests for the retirement of v1 (`missing schema`),
+  the pinned validator wording and the scaffold; closed loop green.

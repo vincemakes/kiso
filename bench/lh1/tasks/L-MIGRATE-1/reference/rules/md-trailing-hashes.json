@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "id": "md-trailing-hashes",
+  "description": "Closing hashes on headings are noise.",
+  "level": "off",
+  "files": [
+    "md"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "^#{1,6} .*#+\\s*$",
+    "message": "closing hashes"
+  },
+  "fix": "strip",
+  "options": {},
+  "tags": [
+    "markdown",
+    "style"
+  ],
+  "examples": {
+    "bad": [
+      "# T #"
+    ],
+    "good": [
+      "# T"
+    ]
+  }
+}

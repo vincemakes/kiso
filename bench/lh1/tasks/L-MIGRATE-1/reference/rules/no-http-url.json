@@ -1,0 +1,31 @@
+{
+  "schema": 2,
+  "id": "no-http-url",
+  "description": "Plain http URLs must be https.",
+  "level": "warn",
+  "files": [
+    "*"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "http://",
+    "message": "insecure URL"
+  },
+  "fix": "https",
+  "options": {
+    "allow": [
+      "http://localhost"
+    ]
+  },
+  "tags": [
+    "security"
+  ],
+  "examples": {
+    "bad": [
+      "http://x"
+    ],
+    "good": [
+      "https://x"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+ "sample.js": "var count_total = 0;\n\tconsole.log(\"tab and console\");\n// TODO: remove\nclass widget {}\nconst url = \"http://example.com\";\nlet x = a ? b ? c : d : e;\ntry { risky(); } catch {}\n",
+ "sample.ts": "const n: any = 1;\nconst v = obj!.value;\nit.only(\"x\", () => {});\ndebugger;\n",
+ "README.md": "#Title\nsee https://example.com for details\n# Heading #\n",
+ "data.json": "{\n  // comment\n  \"a\": [1,]\n}\n",
+ "clean.js": "const x = 1;\nexport default x;\n",
+ "trailing.js": "const a = 1;   \nconst b = 2;\t\n",
+ "long.md": "# Title\nword word word word word word word word word word word word word word word word word word word word word word word word word word word word word word end\nshort\n",
+ "secret.ts": "const api_key = \"abcdefghijklmnopqrstuvwxyz\";\nconst secretKey: any = env.KEY;\nconst ok = a!.b;\n",
+ "misc.js": "import x from \"legacy-utils\";\neval(code);\nwith (obj) {}\nalert(1);\nawait new Promise(resolve => setTimeout(resolve, 100));\nit.skip(\"later\", () => {});\nlet snake_name = 1;\n// FIXME now\n",
+ "empty.js": "",
+ "Makefile": "all:\n\tcurl http://example.com\n",
+ "empty-dir/.keep": ""
+}

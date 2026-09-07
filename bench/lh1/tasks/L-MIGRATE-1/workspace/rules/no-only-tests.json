@@ -1,0 +1,22 @@
+{
+  "id": "no-only-tests",
+  "description": "A focused test silently skips the suite.",
+  "severity": 2,
+  "when": "js,ts",
+  "enabled": "yes",
+  "pattern": "\\b(it|test|describe)\\.only\\(",
+  "message": "focused test",
+  "fix": "remove-only",
+  "options": {},
+  "tags": [
+    "tests"
+  ],
+  "examples": {
+    "bad": [
+      "it.only(...)"
+    ],
+    "good": [
+      "it(...)"
+    ]
+  }
+}

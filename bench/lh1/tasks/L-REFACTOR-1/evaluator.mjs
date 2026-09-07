@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { runTests, runWithHidden, changedSinceSeed, outsideAllowed, unchangedSinceSeed, readJson, verdict } from "../../lib/eval-kit.mjs";
-import { compareCases } from "./golden/run-cases.mjs";
+import { compareCases } from "../../lib/golden.mjs";
 
 const taskDir = dirname(fileURLToPath(import.meta.url));
 const ws = process.argv[2];
@@ -20,7 +20,7 @@ const readme = existsSync(join(ws, "README.md")) ? readFileSync(join(ws, "README
 const visible = runTests(ws);
 // the behavior-preservation truth: the seed's own outputs, byte for byte,
 // on more inputs than the visible suite shows (including every error path)
-const golden = compareCases(ws);
+const golden = compareCases(taskDir, ws);
 const hidden = runWithHidden(ws, taskDir);
 verdict("L-REFACTOR-1", [
 	["tests/ untouched since seed", testsUntouched, changedSinceSeed(ws, "tests/").join(",")],

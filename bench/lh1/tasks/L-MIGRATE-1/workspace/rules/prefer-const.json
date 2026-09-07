@@ -1,0 +1,22 @@
+{
+  "id": "prefer-const",
+  "description": "A let that is never reassigned should be const.",
+  "severity": 1,
+  "when": "js,ts",
+  "enabled": "no",
+  "pattern": "\\blet\\s+[A-Za-z_$][A-Za-z0-9_$]*\\s*=\\s*[^;]+;\\s*$",
+  "message": "let could be const",
+  "fix": null,
+  "options": {},
+  "tags": [
+    "modern"
+  ],
+  "examples": {
+    "bad": [
+      "let x = 1;"
+    ],
+    "good": [
+      "const x = 1;"
+    ]
+  }
+}

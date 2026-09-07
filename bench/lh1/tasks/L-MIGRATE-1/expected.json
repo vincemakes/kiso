@@ -1,0 +1,4 @@
+{
+ "allowed": ["rules/**", "src/**", "scripts/**", "docs/RULE-FORMAT.md", "README.md"],
+ "untouched": ["tests/**", "fixtures/**", "SPEC.md", "package.json", "docs/CHANGELOG.md"]
+}

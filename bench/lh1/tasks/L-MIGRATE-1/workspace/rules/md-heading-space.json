@@ -1,0 +1,22 @@
+{
+  "id": "md-heading-space",
+  "description": "A markdown heading needs a space after the hashes.",
+  "severity": 2,
+  "when": "md",
+  "enabled": "yes",
+  "pattern": "^#{1,6}[^# \\n]",
+  "message": "heading without a space",
+  "fix": "insert-space",
+  "options": {},
+  "tags": [
+    "markdown"
+  ],
+  "examples": {
+    "bad": [
+      "#Title"
+    ],
+    "good": [
+      "# Title"
+    ]
+  }
+}

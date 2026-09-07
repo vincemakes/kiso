@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "id": "no-var",
+  "description": "Use let or const.",
+  "level": "error",
+  "files": [
+    "js",
+    "ts"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "\\bvar\\s+[A-Za-z_$]",
+    "message": "var declaration"
+  },
+  "fix": null,
+  "options": {},
+  "tags": [
+    "modern"
+  ],
+  "examples": {
+    "bad": [
+      "var x = 1;"
+    ],
+    "good": [
+      "let x = 1;"
+    ]
+  }
+}

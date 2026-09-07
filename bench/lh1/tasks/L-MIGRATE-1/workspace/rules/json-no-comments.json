@@ -1,0 +1,22 @@
+{
+  "id": "json-no-comments",
+  "description": "JSON has no comments.",
+  "severity": 2,
+  "when": "json",
+  "enabled": "yes",
+  "pattern": "^\\s*//",
+  "message": "comment in JSON",
+  "fix": null,
+  "options": {},
+  "tags": [
+    "correctness"
+  ],
+  "examples": {
+    "bad": [
+      "// x"
+    ],
+    "good": [
+      "{}"
+    ]
+  }
+}

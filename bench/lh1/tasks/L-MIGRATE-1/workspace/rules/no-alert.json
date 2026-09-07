@@ -1,0 +1,22 @@
+{
+  "id": "no-alert",
+  "description": "alert is a browser-only debugging aid.",
+  "severity": 1,
+  "when": "js",
+  "enabled": "yes",
+  "pattern": "\\balert\\(",
+  "message": "alert call",
+  "fix": null,
+  "options": {},
+  "tags": [
+    "browser"
+  ],
+  "examples": {
+    "bad": [
+      "alert(1)"
+    ],
+    "good": [
+      "notify(1)"
+    ]
+  }
+}

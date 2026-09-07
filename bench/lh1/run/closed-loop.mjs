@@ -76,10 +76,13 @@ const evaluate = (dir) => {
 		out = `${err.stdout ?? ""}`;
 	}
 	const line = out.split("\n").find((l) => l.startsWith("[lh1:verdict-json] "));
-	return { status, verdict: line ? JSON.parse(line.slice("[lh1:verdict-json] ".length)) : null };
+	return { status, out, verdict: line ? JSON.parse(line.slice("[lh1:verdict-json] ".length)) : null };
 };
 const first = evaluate(ws);
 writeFileSync(join(leg, "verdict.json"), `${JSON.stringify(first.verdict, null, 1)}\n`);
+// the evaluator's full output (details, for humans) is part of the leg,
+// not of the verdict: the verdict is what a rescore must reproduce
+writeFileSync(join(leg, "evaluate.log"), first.out);
 writeFileSync(join(leg, "meta.json"), `${JSON.stringify({ leg: legId, task, arm: "surrogate", model: null, treeHash: hash, steps: steps.length, createdAt: Date.now() }, null, 1)}\n`);
 say(`evaluated: ${first.status === 0 ? "PASS" : "FAIL"} (${first.verdict?.checks.filter((c) => c.ok).length}/${first.verdict?.checks.length} checks)`);
 

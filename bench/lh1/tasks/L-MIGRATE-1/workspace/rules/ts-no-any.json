@@ -1,0 +1,24 @@
+{
+  "id": "ts-no-any",
+  "description": "any defeats the type checker.",
+  "severity": 1,
+  "when": "ts",
+  "enabled": "yes",
+  "pattern": ":\\s*any\\b",
+  "message": "explicit any",
+  "fix": null,
+  "options": {
+    "allowInTests": true
+  },
+  "tags": [
+    "types"
+  ],
+  "examples": {
+    "bad": [
+      "x: any"
+    ],
+    "good": [
+      "x: unknown"
+    ]
+  }
+}

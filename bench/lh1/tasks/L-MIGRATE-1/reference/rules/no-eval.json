@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "id": "no-eval",
+  "description": "eval is never acceptable.",
+  "level": "error",
+  "files": [
+    "js",
+    "ts"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "\\beval\\(",
+    "message": "eval call"
+  },
+  "fix": null,
+  "options": {},
+  "tags": [
+    "security"
+  ],
+  "examples": {
+    "bad": [
+      "eval(s)"
+    ],
+    "good": [
+      "JSON.parse(s)"
+    ]
+  }
+}

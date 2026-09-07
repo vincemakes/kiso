@@ -1,0 +1,20 @@
+{
+  "schema": 2,
+  "id": "pascal-case-classes",
+  "description": "Classes are PascalCase.",
+  "extends": "base-naming",
+  "level": "error",
+  "files": [
+    "js",
+    "ts"
+  ],
+  "enabled": true,
+  "match": {
+    "pattern": "\\bclass\\s+[a-z]",
+    "message": "lower-case class name"
+  },
+  "tags": [
+    "naming",
+    "classes"
+  ]
+}

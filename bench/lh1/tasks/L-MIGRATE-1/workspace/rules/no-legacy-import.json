@@ -1,0 +1,23 @@
+{
+  "id": "no-legacy-import",
+  "description": "The legacy package was removed in 2.0.",
+  "severity": "2",
+  "when": "js,ts",
+  "enabled": "yes",
+  "pattern": "from\\s+[\"']legacy-utils[\"']",
+  "message": "legacy-utils import",
+  "fix": null,
+  "options": {},
+  "tags": [
+    "modern",
+    "migration"
+  ],
+  "examples": {
+    "bad": [
+      "import x from \"legacy-utils\""
+    ],
+    "good": [
+      "import x from \"utils\""
+    ]
+  }
+}
