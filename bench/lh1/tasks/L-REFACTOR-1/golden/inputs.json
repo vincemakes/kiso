@@ -1,0 +1,14 @@
+{
+ "bad-header.csv": "name;value;unit;tags\nq,4,ms,\n",
+ "bad-value.csv": "name,value,unit,tags\nq,4,ms,\nq,four,ms,\n",
+ "double-final-newline.csv": "name,value,unit,tags\nq,4,ms,\nq,6,ms,\n\n",
+ "five-fields.csv": "name,value,unit,tags\nq,4,ms,a,b\n",
+ "header-only.csv": "name,value,unit,tags\n",
+ "mixed.csv": "name,value,unit,tags\ncpu,0.5,ratio,host1\ncpu,0.75,ratio,host2\n\nmem,512,mb,host1\nmem,256,mb,host2\n",
+ "negatives.csv": "name,value,unit,tags\nswing,-1.5,c,\nswing,2.25,c,\nswing,-0.75,c,\nswing,0,c,\n",
+ "no-final-newline.csv": "name,value,unit,tags\nq,4,ms,\nq,6,ms,",
+ "sample.csv": "name,value,unit,tags\nlatency,12.5,ms,api;web\nlatency,7.25,ms,api\nthroughput,120,rps,api\nlatency,10,ms,web\nerrors,3,count,\nthroughput,80,rps,web\n",
+ "spaces.csv": "name,value,unit,tags\nx,1,ms,\n   \nx,3,ms,\n",
+ "thirds.csv": "name,value,unit,tags\nt,0.1,s,\nt,0.2,s,\nt,0.3,s,\nu,0.3,s,\nu,0.2,s,\nu,0.1,s,\n",
+ "ties.csv": "name,value,unit,tags\nb,2,ms,\na,2,ms,\nc,1,ms,x\nd,2,ms,y;z\n"
+}

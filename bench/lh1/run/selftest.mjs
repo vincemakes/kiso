@@ -39,6 +39,17 @@ for (const task of tasks) {
 		}
 	};
 	const pristine = evaluate();
+	// an optional fixture-level invariant on the pristine seed (e.g. goldens
+	// are the seed's own output); it must hold BEFORE any solution is applied
+	let seedOk = true;
+	if (existsSync(join(taskDir, "seed-check.mjs"))) {
+		try {
+			execFileSync(process.execPath, [join(taskDir, "seed-check.mjs"), ws], { stdio: "pipe", encoding: "utf8" });
+		} catch (err) {
+			seedOk = false;
+			console.log(String(err.stdout ?? "").trim());
+		}
+	}
 	applyReference(taskDir, ws);
 	const allowed = JSON.parse(readFileSync(join(taskDir, "expected.json"), "utf8")).allowed;
 	const offenders = outsideAllowed(ws, allowed);
@@ -46,8 +57,8 @@ for (const task of tasks) {
 	const redOk = pristine !== 0;
 	const greenOk = solved === 0;
 	const disciplineOk = offenders.length === 0;
-	if (!redOk || !greenOk || !disciplineOk) bad += 1;
-	console.log(`[lh1:selftest] ${task}: pristine ${redOk ? "RED (correct)" : "GREEN (BROKEN EVALUATOR)"} / reference ${greenOk ? "GREEN (correct)" : "RED (BROKEN EVALUATOR or reference)"} / reference inside allowed paths ${disciplineOk ? "yes" : `NO: ${offenders.join(",")}`}`);
+	if (!redOk || !greenOk || !disciplineOk || !seedOk) bad += 1;
+	console.log(`[lh1:selftest] ${task}: pristine ${redOk ? "RED (correct)" : "GREEN (BROKEN EVALUATOR)"} / reference ${greenOk ? "GREEN (correct)" : "RED (BROKEN EVALUATOR or reference)"} / reference inside allowed paths ${disciplineOk ? "yes" : `NO: ${offenders.join(",")}`}${existsSync(join(taskDir, "seed-check.mjs")) ? ` / seed-check ${seedOk ? "ok" : "FAILED"}` : ""}`);
 	rmSync(tmp, { recursive: true, force: true });
 }
 console.log(`[lh1:selftest] ${bad === 0 ? "PASS" : "FAIL"} — ${tasks.length} tasks, ${bad} broken`);

@@ -24,7 +24,16 @@ task's `expected.json`.
 - `tasks/<t>/PROMPT.txt` — the user prompt, one paragraph.
 - `tasks/<t>/expected.json` — allowed write paths (globs), the files
   that must survive byte-identical, the CLI probes.
-- `tasks/<t>/hidden/` — hidden tests injected by the evaluator.
+- `tasks/<t>/hidden/` — hidden tests injected by the evaluator (flat:
+  files only, copied into the workspace's `tests/`).
+- `tasks/<t>/golden/` (L-REFACTOR) — the behavior-preservation truth:
+  `cases.json` (argument vectors), `inputs.json` (the input files, some
+  deliberately malformed), and `expected.json`, the
+  SEED's own stdout/stderr/exit code per case; `run-cases.mjs` runs a
+  workspace against it from a scratch directory. `tasks/<t>/seed-check.mjs`
+  is an optional fixture-level invariant the selftest runs on the
+  PRISTINE seed (here: the goldens ARE the seed's output), so a golden
+  can never drift from the behavior it claims to pin.
 - `tasks/<t>/reference/` — the reference solution the selftest and the
   surrogate apply (files copied over; `_DELETE` lists removals).
 - `tasks/<t>/evaluator.mjs` — the external judge. Never shown to the agent.
@@ -44,4 +53,14 @@ task's `expected.json`.
 L-IMPL (30–60 min, implement a specified multi-file feature),
 L-REFACTOR (30–90, behavior-preserving restructure), L-MIGRATE
 (60–120, mechanical migration across the tree). One fixture per
-family; L-IMPL-1 first.
+family.
+
+- **L-IMPL-1** "ledger, multi-currency" — hidden tests + CLI probes;
+  closed loop green.
+- **L-REFACTOR-1** "statz, one reader/one aggregator/pure commands" —
+  the truth is a 41-case golden battery (every error path, the drift
+  between the seed's readers, order-sensitive float sums) plus layout
+  invariants stated in the SPEC exactly as the hidden test runs them
+  (`node:fs`/`process.` only in cli.mjs, `.toFixed(` once, the header
+  literal once, the old modules gone); closed loop green.
+- **L-MIGRATE-1** — open.

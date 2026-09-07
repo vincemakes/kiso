@@ -1,0 +1,207 @@
+{
+ "summary-sample": {
+  "status": 0,
+  "stdout": "name        count  min    max     mean    p50     unit\nerrors      1      3.00   3.00    3.00    3.00    count\nlatency     3      7.25   12.50   9.92    10.00   ms\nthroughput  2      80.00  120.00  100.00  100.00  rps\n",
+  "stderr": ""
+ },
+ "summary-sample-unit-ms": {
+  "status": 0,
+  "stdout": "name     count  min   max    mean  p50    unit\nlatency  3      7.25  12.50  9.92  10.00  ms\n",
+  "stderr": ""
+ },
+ "summary-sample-unit-none": {
+  "status": 0,
+  "stdout": "name  count  min  max  mean  p50  unit\n",
+  "stderr": ""
+ },
+ "summary-sample-sort-mean": {
+  "status": 0,
+  "stdout": "name        count  min    max     mean    p50     unit\nthroughput  2      80.00  120.00  100.00  100.00  rps\nlatency     3      7.25   12.50   9.92    10.00   ms\nerrors      1      3.00   3.00    3.00    3.00    count\n",
+  "stderr": ""
+ },
+ "summary-mixed": {
+  "status": 0,
+  "stdout": "name  count  min     max     mean    p50     unit\ncpu   2      0.50    0.75    0.63    0.63    ratio\nmem   2      256.00  512.00  384.00  384.00  mb\n",
+  "stderr": ""
+ },
+ "summary-header-only": {
+  "status": 0,
+  "stdout": "name  count  min  max  mean  p50  unit\n",
+  "stderr": ""
+ },
+ "summary-ties": {
+  "status": 0,
+  "stdout": "name  count  min   max   mean  p50   unit\na     1      2.00  2.00  2.00  2.00  ms\nb     1      2.00  2.00  2.00  2.00  ms\nd     1      2.00  2.00  2.00  2.00  ms\nc     1      1.00  1.00  1.00  1.00  ms\n",
+  "stderr": ""
+ },
+ "summary-negatives": {
+  "status": 0,
+  "stdout": "name   count  min    max   mean  p50    unit\nswing  4      -1.50  2.25  0.00  -0.38  c\n",
+  "stderr": ""
+ },
+ "summary-spaces": {
+  "status": 0,
+  "stdout": "name  count  min   max   mean  p50   unit\nx     2      1.00  3.00  2.00  2.00  ms\n",
+  "stderr": ""
+ },
+ "summary-no-final-newline": {
+  "status": 0,
+  "stdout": "name  count  min   max   mean  p50   unit\nq     2      4.00  6.00  5.00  5.00  ms\n",
+  "stderr": ""
+ },
+ "summary-bad-header": {
+  "status": 3,
+  "stdout": "",
+  "stderr": "statz: bad header\n"
+ },
+ "summary-bad-value": {
+  "status": 3,
+  "stdout": "",
+  "stderr": "statz: bad value on line 3\n"
+ },
+ "summary-five-fields": {
+  "status": 3,
+  "stdout": "",
+  "stderr": "statz: bad line 2\n"
+ },
+ "summary-missing-file": {
+  "status": 2,
+  "stdout": "",
+  "stderr": "statz: cannot read inputs/does-not-exist.csv\n"
+ },
+ "summary-sort-then-unit-errors": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "statz: bad value for --sort\n"
+ },
+ "summary-unit-missing-value": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "statz: missing value for --unit\n"
+ },
+ "summary-unknown-option": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "statz: unknown option --frob\n"
+ },
+ "top-sample": {
+  "status": 0,
+  "stdout": "throughput  100.00\nlatency     9.92\nerrors      3.00\n",
+  "stderr": ""
+ },
+ "top-sample-n2-max": {
+  "status": 0,
+  "stdout": "throughput  120.00\nlatency     12.50\n",
+  "stderr": ""
+ },
+ "top-sample-n9": {
+  "status": 0,
+  "stdout": "throughput  100.00\nlatency     9.92\nerrors      3.00\n",
+  "stderr": ""
+ },
+ "top-ties": {
+  "status": 0,
+  "stdout": "a  2.00\nb  2.00\nd  2.00\nc  1.00\n",
+  "stderr": ""
+ },
+ "top-mixed-blank-line": {
+  "status": 3,
+  "stdout": "",
+  "stderr": "statz: bad line 4\n"
+ },
+ "top-spaces": {
+  "status": 3,
+  "stdout": "",
+  "stderr": "statz: bad line 3\n"
+ },
+ "top-double-final-newline": {
+  "status": 3,
+  "stdout": "",
+  "stderr": "statz: bad line 4\n"
+ },
+ "top-no-final-newline": {
+  "status": 0,
+  "stdout": "q  5.00\n",
+  "stderr": ""
+ },
+ "top-header-only": {
+  "status": 0,
+  "stdout": "",
+  "stderr": ""
+ },
+ "top-n-zero": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "statz: bad value for --n\n"
+ },
+ "top-n-word": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "statz: bad value for --n\n"
+ },
+ "top-by-bad": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "statz: bad value for --by\n"
+ },
+ "top-by-missing-value": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "statz: missing value for --by\n"
+ },
+ "export-sample-json": {
+  "status": 0,
+  "stdout": "[\n  {\n    \"name\": \"errors\",\n    \"count\": 1,\n    \"min\": 3,\n    \"max\": 3,\n    \"mean\": 3,\n    \"p50\": 3,\n    \"unit\": \"count\"\n  },\n  {\n    \"name\": \"latency\",\n    \"count\": 3,\n    \"min\": 7.25,\n    \"max\": 12.5,\n    \"mean\": 9.916666666666666,\n    \"p50\": 10,\n    \"unit\": \"ms\"\n  },\n  {\n    \"name\": \"throughput\",\n    \"count\": 2,\n    \"min\": 80,\n    \"max\": 120,\n    \"mean\": 100,\n    \"p50\": 100,\n    \"unit\": \"rps\"\n  }\n]\n",
+  "stderr": ""
+ },
+ "export-sample-csv": {
+  "status": 0,
+  "stdout": "name,count,min,max,mean,p50,unit\nerrors,1,3.00,3.00,3.00,3.00,count\nlatency,3,7.25,12.50,9.92,10.00,ms\nthroughput,2,80.00,120.00,100.00,100.00,rps\n",
+  "stderr": ""
+ },
+ "export-thirds-json": {
+  "status": 0,
+  "stdout": "[\n  {\n    \"name\": \"t\",\n    \"count\": 3,\n    \"min\": 0.1,\n    \"max\": 0.3,\n    \"mean\": 0.20000000000000004,\n    \"p50\": 0.2,\n    \"unit\": \"s\"\n  },\n  {\n    \"name\": \"u\",\n    \"count\": 3,\n    \"min\": 0.1,\n    \"max\": 0.3,\n    \"mean\": 0.19999999999999998,\n    \"p50\": 0.2,\n    \"unit\": \"s\"\n  }\n]\n",
+  "stderr": ""
+ },
+ "export-mixed-json": {
+  "status": 0,
+  "stdout": "[\n  {\n    \"name\": \"cpu\",\n    \"count\": 2,\n    \"min\": 0.5,\n    \"max\": 0.75,\n    \"mean\": 0.625,\n    \"p50\": 0.625,\n    \"unit\": \"ratio\"\n  },\n  {\n    \"name\": \"mem\",\n    \"count\": 2,\n    \"min\": 256,\n    \"max\": 512,\n    \"mean\": 384,\n    \"p50\": 384,\n    \"unit\": \"mb\"\n  }\n]\n",
+  "stderr": ""
+ },
+ "export-header-only-json": {
+  "status": 0,
+  "stdout": "[]\n",
+  "stderr": ""
+ },
+ "export-header-only-csv": {
+  "status": 0,
+  "stdout": "name,count,min,max,mean,p50,unit\n",
+  "stderr": ""
+ },
+ "export-format-bad": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "statz: bad value for --format\n"
+ },
+ "export-bad-value": {
+  "status": 3,
+  "stdout": "",
+  "stderr": "statz: bad value on line 3\n"
+ },
+ "usage-no-args": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "usage: statz <summary|top|export> <file> [options]\n"
+ },
+ "usage-no-file": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "usage: statz <summary|top|export> <file> [options]\n"
+ },
+ "usage-unknown-command": {
+  "status": 1,
+  "stdout": "",
+  "stderr": "usage: statz <summary|top|export> <file> [options]\n"
+ }
+}

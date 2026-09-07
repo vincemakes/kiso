@@ -19,7 +19,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -93,8 +93,14 @@ try {
 	};
 	const self = lh1("selftest.mjs", []);
 	if (self.code !== 0 || !/\[lh1:selftest\] PASS/.test(self.out)) errs.push(`bench/lh1 selftest did not PASS from a fresh clone:\n${self.out.slice(-600)}`);
-	const loop = lh1("closed-loop.mjs", ["L-IMPL-1"]);
-	if (loop.code !== 0 || !/CLOSED LOOP OK/.test(loop.out)) errs.push(`bench/lh1 closed loop did not close from a fresh clone:\n${loop.out.slice(-600)}`);
+	// every fixture in the tracked tree closes its loop — a fixture whose
+	// loop does not close is not a fixture yet
+	const tasks = readdirSync(join(dir, "bench/lh1/tasks")).filter((t) => !t.startsWith(".")).sort();
+	if (tasks.length === 0) errs.push("bench/lh1/tasks is empty in a fresh clone");
+	for (const task of tasks) {
+		const loop = lh1("closed-loop.mjs", [task]);
+		if (loop.code !== 0 || !/CLOSED LOOP OK/.test(loop.out)) errs.push(`bench/lh1 closed loop did not close for ${task} from a fresh clone:\n${loop.out.slice(-600)}`);
+	}
 }
 	rmSync(dir, { recursive: true, force: true });
 }

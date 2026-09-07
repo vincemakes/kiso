@@ -1,0 +1,7 @@
+name,value,unit,tags
+latency,12.5,ms,api;web
+latency,7.25,ms,api
+throughput,120,rps,api
+latency,10,ms,web
+errors,3,count,
+throughput,80,rps,web

@@ -1,0 +1,4 @@
+{
+ "allowed": ["src/**", "README.md"],
+ "untouched": ["tests/**", "fixtures/**", "SPEC.md", "package.json"]
+}

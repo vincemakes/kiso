@@ -1,0 +1,6 @@
+name,value,unit,tags
+cpu,0.5,ratio,host1
+cpu,0.75,ratio,host2
+
+mem,512,mb,host1
+mem,256,mb,host2
