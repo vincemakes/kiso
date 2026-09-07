@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.26.3
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.27.0
 ```
 
 (The block letter above is `assets/logo.svg` in pixel form — an 8×8 K
@@ -130,12 +130,12 @@ resume, the one with it executes exactly once.
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts     900
+  packages/core/src/kernel/loop.ts     888
   packages/core/src/protocol/events.ts 472
   packages/core/src/kernel/project.ts  360
   ...
-  total                               2176  / 2200
-  ✓ 24 lines of headroom remaining.
+  total                               2139  / 2200
+  ✓ 61 lines of headroom remaining.
 
 cli:
   apps/cli/src/chat.ts  716
@@ -178,7 +178,7 @@ A framework, in two layers:
 
 | Layer | Owns |
 |---|---|
-| **core** (`@vincemakes/kiso-core`, ≤ 2,200 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · modes · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
+| **core** (`@vincemakes/kiso-core`, ≤ 2,200 lines) | L1 protocol (event sum type with `seq` · message union · adapter contract) · L2 kernel (loop · hooks · compaction · permissions) · L3 tool (contract · registry · real JSON Schema validation) · L7 eval hooks (delivery truth) |
 | **packages** (unbounded) | `@vincemakes/kiso-evals` (faux provider · incident fixtures · contract tests) · `@vincemakes/kiso-provider-anthropic` · `@vincemakes/kiso-provider-openai` · `@vincemakes/kiso-runtime` (durable sessions, approvals) · `@vincemakes/kiso-tools-node` (file/search/edit/shell) · `@vincemakes/kiso-tui` (the pure terminal layer — cell renderer, dock, raw editor, diff; zero runtime deps, input is data / output is bytes — reusable standalone, API still 0.x semantics) · `@vincemakes/kiso-tui-cells` (the components cell renderer, extracted from the tui — the ADR-0041 escape hatch) · the four official extensions (`@vincemakes/kiso-mcp-ext` · `@vincemakes/kiso-skills-ext` · `@vincemakes/kiso-subagent-ext` · `@vincemakes/kiso-task-ext` — the first three ship INSIDE the CLI, task is opt-in, see Extensions) · `@vincemakes/kiso-code` (the flagship coding agent) |
 
 The core stays a kernel: it decides nothing that repeats across products. The
@@ -1051,13 +1051,13 @@ below is MEASURED by `npm run check` (the size gates: core is enforced,
 the cli/tui/tui-cells caps are report-only since Amendment 8 — the
 numbers are pressure readings, not passed gates):
 
-- **core** (2,138/2,200 lines, enforced) — protocol, loop (single honest terminal;
+- **core** (2,139/2,200 lines, enforced) — protocol, loop (single honest terminal;
   missing/duplicate stops and tool_use-without-a-call are structured
   errors; a retryable pre-stream failure retries in place, and a
   mid-stream cut retries over a durably voided draft — never a silent
   re-stream, never a glued projection (F4); one abort signal reaches
   backoff, approval waits, every pending tool, and the SDK), hooks,
-  ModeProfile, permissions, microcompact (a `microcompacted` boundary is a
+  permissions, microcompact (a `microcompacted` boundary is a
   persisted fact — the projection derives the compacted view
   deterministically; whitelist read/list/search/shell, `do-not-compact`
   respected, recent turns intact), the extension policy chain (E1: a

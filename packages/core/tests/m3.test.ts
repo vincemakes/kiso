@@ -36,7 +36,7 @@ function assistantWithTool(callId: string, name: string): Message {
 }
 
 describe("loop auto-compaction (ADR-0044: retired)", () => {
-	it("config.compaction is IGNORED — no compacted events, no pre/post hooks, the run completes", async () => {
+	it("a history above any old threshold produces NO compacted event and the run completes (CT-1 retired the field and the two hooks this test once passed)", async () => {
 		const registry = new ToolRegistry();
 		registry.register(
 			defineTool({
@@ -59,28 +59,20 @@ describe("loop auto-compaction (ADR-0044: retired)", () => {
 			{ events: [{ type: "stop", reason: "end_turn" }] },
 		];
 
-		let pre = 0;
-		let post = 0;
+		// CT-1 (ADR-0051 Amendment 6): the deprecated `compaction` field and
+		// the `onPreCompact` / `onPostCompact` hooks this test used to pass
+		// are RETIRED — their absence is pinned by ct1-retired-surface.test.ts.
+		// What remains to prove: a history above any old threshold produces
+		// no `compacted` event, and the run completes.
 		const events: Event[] = [];
 		for await (const ev of loop({
 			adapter: createFauxProvider(script),
 			model: "faux",
 			registry,
 			messages: [...history, userMsg("do it")],
-			compaction: { thresholdTokens: 100 }, // deprecated — must be inert
-			hooks: {
-				onPreCompact: async () => {
-					pre += 1;
-				},
-				onPostCompact: async () => {
-					post += 1;
-				},
-			},
 		})) {
 			events.push(ev);
 		}
-		expect(pre).toBe(0); // the deprecated hooks never fire
-		expect(post).toBe(0);
 		expect(events.some((e) => e.type === "compacted")).toBe(false); // no new compacted events
 		expect(events.at(-1)).toMatchObject({ type: "terminal", outcome: { kind: "completed" } });
 	});

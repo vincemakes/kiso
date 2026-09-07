@@ -44,14 +44,6 @@ export interface HookHost {
 	onPreTool?(call: ToolCallPayload, ctx: HookContext): Promise<PermissionDecision>;
 	/** Execute: rewrite the result a tool returns. */
 	onPostTool?(call: ToolCallPayload, result: ToolResult, ctx: HookContext): Promise<ToolResult>;
-	/**
-	 * DEPRECATED (ADR-0044): the classic auto-compaction path is retired —
-	 * the loop never fires these (the microcompact boundary replaced it).
-	 * Kept so the extension contract type-checks; inert. Removed at 1.0.
-	 */
-	onPreCompact?(messages: readonly Message[], ctx: HookContext): Promise<void>;
-	/** DEPRECATED (ADR-0044): see onPreCompact — never invoked. */
-	onPostCompact?(messages: readonly Message[], ctx: HookContext): Promise<void>;
 	/** Lifecycle: the loop paused (human decision pending). */
 	onPause?(reason: string, ctx: HookContext): Promise<void>;
 	/** Lifecycle: the loop is about to stop. */

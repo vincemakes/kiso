@@ -36,7 +36,6 @@ export class Run implements AsyncIterable<Event> {
 	readonly #abort = new AbortController();
 	readonly #externalSignal: AbortSignalLike | undefined;
 	readonly #decisionIds: string[] = [];
-	readonly #uncertaintyIds: string[] = [];
 	#started = false;
 
 	constructor(
@@ -147,7 +146,6 @@ export class Run implements AsyncIterable<Event> {
 					...(this.#config.maxTurns !== undefined ? { maxTurns: this.#config.maxTurns } : {}),
 					...(this.#config.maxTokens !== undefined ? { maxTokens: this.#config.maxTokens } : {}),
 					...(this.#config.temperature !== undefined ? { temperature: this.#config.temperature } : {}),
-					...(this.#config.compaction !== undefined ? { compaction: this.#config.compaction } : {}),
 					...(microcompact !== undefined ? { microcompact } : {}),
 					...(this.#config.maxRetries !== undefined ? { maxRetries: this.#config.maxRetries } : {}),
 					// MG-1 (A5): the kernel stamps committed envelopes with this.
@@ -170,12 +168,6 @@ export class Run implements AsyncIterable<Event> {
 					// the human gave in the same instant as the abort is
 					// recorded, exactly once.
 					approvalVerdict: (decisionId: string) => this.#session.approvalVerdict(decisionId),
-					uncertaintyVerdict: (executionId: string) => this.#session.uncertaintyVerdict(executionId),
-					resolveUncertainty: (executionId: string) =>
-						new Promise<"rerun" | "abandoned">((resolve) => {
-							this.#uncertaintyIds.push(executionId);
-							this.#session.registerUncertaintyResolver(executionId, resolve);
-						}),
 				}) satisfies Parameters<typeof loop>[0];
 
 			const self = this;
@@ -310,9 +302,6 @@ export class Run implements AsyncIterable<Event> {
 			// still durable.
 			for (const decisionId of this.#decisionIds) {
 				this.#session.dropResolver(decisionId);
-			}
-			for (const executionId of this.#uncertaintyIds) {
-				this.#session.dropUncertaintyResolver(executionId);
 			}
 			// E1: the run's ledger story — the run_end lands synchronously
 			// (a killed run leaves no run_end, and the next init marks it).

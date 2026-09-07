@@ -597,3 +597,55 @@ the SEMANTICS still never leak.
    tool_use; (b) compat reasoning replay is scope-gated. Both bite ONLY
    on turns that carry an envelope; every no-envelope request path is
    byte-identical and gated as such.
+
+## Amendment 6 (2026-09-07): CT-1 — the compat-debt hatches on the kernel's configuration surface are exercised
+
+ADR-0043 Amendment 11's tenancy ledger classified four groups of
+counted kernel lines as compat-debt or under review, every one labeled
+"Removed at 1.0". That label named THIS freeze; Amendment 2 moved the
+version line (1.x → 0.2), not the ritual — so their retirement lands
+as an amendment, declared here before the code. Verified against the
+tree at 0.26.3 (2ba130e): none has a reader outside the plumbing that
+forwards it.
+
+1. **`LoopConfig.compaction?`** — deprecated at ADR-0044, IGNORED by
+   the loop since; the runtime forwarded it (`agent.ts`, `run.ts`).
+   Retired. The runtime's mirror fields `AgentDefinition.compaction?`
+   and `SessionConfig.compaction?` existed only to forward it and go
+   with it (owner-ruled 2026-09-07, D2). `microcompact` is untouched.
+2. **`LoopConfig.resolveUncertainty?` / `uncertaintyVerdict?`** — dead
+   since ADR-0038 (the crash window is the recovery driver's, never the
+   loop's). Retired; the runtime stops passing them, and with them goes the runtime's live-resolver
+   cluster that existed only to serve that pass-through —
+   `Session.uncertaintyVerdict()`, the resolver registry, the live
+   branch of `resolveUncertain` and its pending-flush loop — all
+   unreachable since ADR-0038 (the loop never invoked the callback that
+   would have registered a resolver). The durable path stays:
+   `resolveUncertain` persists the verdict directly, which is the only
+   path that ever ran.
+3. **`HookHost.onPreCompact` / `onPostCompact`** — never fired since
+   ADR-0044. Retired; `compose.ts` drops the two keys.
+4. **`LoopConfig.modes?` / `mode?`, `ModeProfile`, `resolveModeProfile`,
+   `ToolRegistry.subset()`** — SC-1b (0.12.0) left the profile one
+   member; no caller in the repo passes `modes`; `subset()`'s only
+   caller is the loop's mode branch (Amendment 11's note that "the
+   products filter via `subset()`" was wrong — none does). Retired as
+   a group; `kernel/mode.ts` is deleted. A harness that wants a
+   physically smaller tool table builds a registry with the tools it
+   wants — the same guarantee, no kernel field.
+
+What this amendment does NOT touch: the event union (§2), the envelope,
+the recovery derivation, the adapter whitelist (§4), the prefix table.
+None of the retired members is an event or reaches a durable byte; old
+logs — `compacted` events included — replay unchanged, and the
+projection is untouched (invariant ⑥ holds by construction, no
+declared supersession is needed).
+
+Version: **0.27.0** — public types leave core and runtime (Amendment 1:
+a public-surface change is a minor).
+
+Gate: `packages/core/tests/ct1-retired-surface.test.ts` — one
+type-level assertion per retired member (`false` is assignable to
+`K extends keyof T ? true : false` only while the member is absent).
+The typecheck is the drift gate: re-adding any member fails `tsc`.
+Red first: on the pre-CT-1 tree all nine assertions fail to compile.

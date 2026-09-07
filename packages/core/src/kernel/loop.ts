@@ -50,8 +50,6 @@ import { ToolRegistry } from "../tools/registry.js";
 import { validateArgs } from "../tools/validate.js";
 import type { HookHost, ToolCallPayload } from "./hooks.js";
 import { NoOpHooks } from "./hooks.js";
-import type { ModeProfile } from "./mode.js";
-import { resolveModeProfile } from "./mode.js";
 import { denialResult, type PermissionDecision } from "./permission.js";
 import { messagesToEvents, MICROCOMPACTABLE, DO_NOT_COMPACT, projectMessages } from "./project.js";
 import type { ToolTable } from "../tools/registry.js";
@@ -65,9 +63,6 @@ export interface LoopConfig {
 	readonly systemPrompt?: string;
 	readonly registry: ToolRegistry;
 	readonly hooks?: HookHost;
-	readonly modes?: readonly ModeProfile[];
-	/** Active mode name; applies visibleToolNames structurally. */
-	readonly mode?: string;
 	readonly maxTurns?: number;
 	readonly maxRetries?: number;
 	/**
@@ -87,14 +82,6 @@ export interface LoopConfig {
 	readonly messages?: readonly Message[];
 	/** The run's event log. Pass the session's log to make this run durable. */
 	readonly log?: EventLog;
-	/**
-	 * DEPRECATED (ADR-0044): the classic auto-compaction path is retired —
-	 * the loop no longer produces `compacted` events; the microcompact
-	 * boundary (below) absorbed the responsibility. Kept so old configs
-	 * type-check; IGNORED. Old sessions' `compacted` events still replay
-	 * verbatim (the projection). Removed at 1.0.
-	 */
-	readonly compaction?: { readonly thresholdTokens: number };
 	/**
 	 * C area: MICROCOMPACT — when the projected context exceeds the threshold,
 	 * append ONE durable `microcompacted` boundary (clearing compactable tool
@@ -121,25 +108,6 @@ export interface LoopConfig {
 	 * human's decision outranks the abort.
 	 */
 	readonly approvalVerdict?: (decisionId: string) => boolean | undefined;
-	/**
-	 * DEAD — accepted by the type, never read by this loop.
-	 *
-	 * It was the C group channel for the failed-receipt pause: the loop
-	 * persisted `uncertain_pending` and awaited a human verdict. ADR-0038
-	 * removed that pause (a complete receipt IS the outcome), and with it
-	 * every read of this field — a failure is now simply recorded failed and
-	 * the siblings run on. The runtime still passes both callbacks
-	 * (runtime/run.ts), so supplying them is harmless and changes nothing.
-	 *
-	 * The crash window — started, no receipt — is the ONLY uncertainty left,
-	 * and the runtime's recovery driver owns it (RESOLVE_UNCERTAIN in
-	 * runtime/recovery-plan.ts), not the loop. Both fields are kept because
-	 * the surface is frozen (ADR-0051); do not read them as live wiring.
-	 */
-	readonly resolveUncertainty?: (executionId: string) => Promise<"rerun" | "abandoned">;
-	/** DEAD, as above — the uncertainty twin of `approvalVerdict`
-	 *  (round 4, adversarial). Never read by the loop since ADR-0038. */
-	readonly uncertaintyVerdict?: (executionId: string) => "rerun" | "abandoned" | undefined;
 	/**
 	 * E1: the COMPOSED approval chain — the runtime composes the
 	 * extensions' policies (deny > allow > ask, the R3 ruling) into ONE
@@ -188,18 +156,13 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	const maxTurns = config.maxTurns ?? DEFAULT_MAX_TURNS;
 	const maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
 	const signal = config.signal;
-	const mode = resolveModeProfile(config.modes, config.mode);
-	const registry =
-		mode?.visibleToolNames !== undefined
-			? config.registry.subset(mode.visibleToolNames)
-			: config.registry;
 	// CX-1 F7b (audit F7): ONE tool table per request — captured at
 	// assembly, dispatched from until the next assembly. The definition
 	// the model saw, the schema the arguments are validated against, the
 	// execute that runs and the effects the scheduler reads are the same
 	// captured values; a live source that changes mid-request reaches the
 	// NEXT request.
-	let table: ToolTable = registry.snapshot();
+	let table: ToolTable = config.registry.snapshot();
 
 	// Seed: a fresh log encodes the seed history as events so the projection
 	// (and any later replay) contains it. A non-empty log (session resume)
@@ -687,7 +650,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					messages,
 					...(config.reasoning !== undefined ? { reasoning: config.reasoning } : {}),
 					...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
-					tools: (table = registry.snapshot()).specs,
+					tools: (table = config.registry.snapshot()).specs,
 					...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
 					...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
 					...(signal !== undefined ? { signal } : {}),

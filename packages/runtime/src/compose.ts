@@ -75,7 +75,7 @@ export function composeHooks(existing: HookHost | undefined, extensions: readonl
 			for (const h of handlers) await h(payload, ctx);
 		};
 	};
-	for (const key of ["onPreLlm", "onEvent", "onPreCompact", "onPostCompact", "onPause", "onStop"] as const) {
+	for (const key of ["onPreLlm", "onEvent", "onPause", "onStop"] as const) {
 		const handler = observers((h) => h[key]);
 		if (handler !== undefined) (out as Record<string, unknown>)[key] = handler;
 	}

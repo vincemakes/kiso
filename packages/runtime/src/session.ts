@@ -165,26 +165,21 @@ export class AgentSession {
 	// selection or first request — never eagerly at open.
 	#profilePending: boolean;
 	readonly #pendingResolvers = new Map<string, (decision: PermissionDecision) => void>();
-	readonly #uncertaintyResolvers = new Map<string, (resolution: "rerun" | "abandoned") => void>();
 	readonly #answered = new Set<string>();
-	/** round 7: verdicts already passed to a live resolver — the resolution event
-	 *  lands in the log asynchronously (the loop owns it), so the ledger
-	 *  alone cannot make resolveUncertain idempotent across the same tick. */
-	readonly #uncertaintyAnswered = new Set<string>();
 	/** round 4 (adversarial): verdicts the human GAVE, recorded when passed to a live
 	 *  resolver. If an abort races the verdict, the loop / recovery queries
 	 *  these and records the decision (exactly once) instead of losing it. */
 	readonly #approvalVerdicts = new Map<string, boolean>();
-	readonly #uncertaintyVerdicts = new Map<string, "rerun" | "abandoned">();
 	/** round 5(P1-5): verdicts submitted to a LIVE resolver but not yet known
-	 *  durable. An async generator only advances on next(), so approve()/
-	 *  resolveUncertain() CANNOT wait for the loop to persist — that would
-	 *  deadlock (the consumer waits while the generator needs a next()).
-	 *  Instead the verdict is recorded here, and the Run's iterator FINALLY
-	 *  flushes every not-yet-durable verdict to disk — an abandoned generator
-	 *  can never lose a verdict the human gave. */
+	 *  durable. An async generator only advances on next(), so approve()
+	 *  CANNOT wait for the loop to persist — that would deadlock (the
+	 *  consumer waits while the generator needs a next()). Instead the
+	 *  verdict is recorded here, and the Run's iterator FINALLY flushes
+	 *  every not-yet-durable verdict to disk — an abandoned generator can
+	 *  never lose a verdict the human gave. (CT-1: uncertainty verdicts no
+	 *  longer have a live resolver — the loop never took one since
+	 *  ADR-0038 — so they always take the direct-persist path below.) */
 	readonly #pendingDurableApprovals = new Map<string, boolean>();
-	readonly #pendingDurableUncertainties = new Map<string, { resolution: "rerun" | "abandoned"; callId: string }>();
 	#poisoned: string | null = null;
 	/** E6 (h): the circuit-breaker counter — consecutive auto-policy
 	 *  summary failures this session (a success resets it). */
@@ -766,29 +761,10 @@ export class AgentSession {
 		this.ensureHealthy();
 		const record = executionLedger(this.log.all).get(executionId);
 		if (!record) throw new Error(`no execution record for ${executionId}`);
-		if (record.status !== "uncertain") return; // idempotent + irreversible
-		// round 7: a verdict already passed to a live resolver is FINAL — the
-		// loop's resolution event lands asynchronously, so the ledger alone
-		// cannot make this idempotent across the same tick.
-		if (this.#uncertaintyAnswered.has(executionId)) return;
-		this.#uncertaintyAnswered.add(executionId);
-		// round 7: with a LIVE resolver, the active loop / recovery generator
-		// OWNS the resolution event — it appends, yields, and persists it
-		// through the Run, so the consumer's stream and the durable log
-		// stay identical. We only pass the verdict; a hidden append here
-		// would leave a seq gap. round 4 (adversarial): the verdict is recorded so an
-		// abort racing it cannot lose it.
-		const resolver = this.#uncertaintyResolvers.get(executionId);
-		if (resolver !== undefined) {
-			this.#uncertaintyVerdicts.set(executionId, resolution);
-			// round 5(P1-5): submitted — flushed to disk by the Run's finally
-			// if the generator never persists it.
-			this.#pendingDurableUncertainties.set(executionId, { resolution, callId: record.callId });
-			this.#uncertaintyResolvers.delete(executionId);
-			resolver(resolution);
-			return;
-		}
-		// round 7: OFFLINE verdict — no live resolver: persist directly.
+		if (record.status !== "uncertain") return; // idempotent + irreversible (the append below is synchronous, so a same-tick second call sees it)
+		// CT-1 (ADR-0051 Amendment 6): the verdict is persisted directly — there
+		// is no live resolver to hand it to (the loop never read one since
+		// ADR-0038; the round-7 live branch that waited for it was unreachable).
 		// round 4: the verdict is attributed to the ORIGINAL run of the execution
 		// — never the fake runId "resolution".
 		const runId = this.runIdFor(executionId);
@@ -844,14 +820,6 @@ export class AgentSession {
 		return rec.runId;
 	}
 
-	registerUncertaintyResolver(executionId: string, resolve: (resolution: "rerun" | "abandoned") => void): void {
-		this.#uncertaintyResolvers.set(executionId, resolve);
-	}
-
-	dropUncertaintyResolver(executionId: string): void {
-		this.#uncertaintyResolvers.delete(executionId);
-	}
-
 	// ── internal: the resolver registry ──────────────────────────────────
 
 	registerResolver(decisionId: string, resolve: (decision: PermissionDecision) => void): void {
@@ -861,11 +829,6 @@ export class AgentSession {
 	/** round 4 (adversarial): a verdict the human already gave for a live decision. */
 	approvalVerdict(decisionId: string): boolean | undefined {
 		return this.#approvalVerdicts.get(decisionId);
-	}
-
-	/** round 4 (adversarial): a verdict the human already gave for a live execution. */
-	uncertaintyVerdict(executionId: string): "rerun" | "abandoned" | undefined {
-		return this.#uncertaintyVerdicts.get(executionId);
 	}
 
 	/**
@@ -890,22 +853,6 @@ export class AgentSession {
 				await this.persist(runId, app);
 			}
 			this.#pendingDurableApprovals.delete(decisionId);
-		}
-		for (const [executionId, pending] of this.#pendingDurableUncertainties) {
-			const resolved = log.all.find(
-				(e): e is Event & { type: "tool_execution_resolved" } =>
-					e.type === "tool_execution_resolved" && e.executionId === executionId,
-			);
-			if (resolved === undefined) {
-				const app = log.append({
-					type: "tool_execution_resolved",
-					executionId,
-					callId: pending.callId,
-					resolution: pending.resolution,
-				});
-				await this.persist(runId, app);
-			}
-			this.#pendingDurableUncertainties.delete(executionId);
 		}
 	}
 
@@ -993,11 +940,6 @@ export interface SessionConfig {
 	readonly maxTurns?: number;
 	readonly maxTokens?: number;
 	readonly temperature?: number;
-	/**
-	 * DEPRECATED (ADR-0044): forwarded to the loop's deprecated field,
-	 * which IGNORES it — kept for type compatibility, removed at 1.0.
-	 */
-	readonly compaction?: { readonly thresholdTokens: number };
 	/** C area: microcompact threshold — passed through to the loop verbatim. */
 	readonly microcompact?: { readonly thresholdTokens: number };
 	/** E6: the session context policy (run-start actions, injection-side only). */

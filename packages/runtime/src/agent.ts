@@ -52,13 +52,6 @@ export interface AgentDefinition {
 	readonly maxTurns?: number;
 	readonly maxTokens?: number;
 	readonly temperature?: number;
-	/**
-	 * DEPRECATED (ADR-0044): the classic auto-compaction path is retired —
-	 * the loop ignores this (microcompact absorbed the responsibility; old
-	 * sessions' `compacted` events still replay). Kept so old definitions
-	 * type-check; removed at 1.0.
-	 */
-	readonly compaction?: { readonly thresholdTokens: number };
 	/** C area: microcompact threshold — passed through to every session. */
 	readonly microcompact?: { readonly thresholdTokens: number };
 	/** E6: the session context policy (run-start actions, injection-side only). */
@@ -201,7 +194,6 @@ export class AgentRuntime {
 			...(this.#definition.maxTurns !== undefined ? { maxTurns: this.#definition.maxTurns } : {}),
 			...(this.#definition.maxTokens !== undefined ? { maxTokens: this.#definition.maxTokens } : {}),
 			...(this.#definition.temperature !== undefined ? { temperature: this.#definition.temperature } : {}),
-			...(this.#definition.compaction !== undefined ? { compaction: this.#definition.compaction } : {}),
 			...(this.#definition.microcompact !== undefined ? { microcompact: this.#definition.microcompact } : {}),
 			...(this.#definition.contextPolicy !== undefined ? { contextPolicy: this.#definition.contextPolicy } : {}),
 			...(this.#definition.maxRetries !== undefined ? { maxRetries: this.#definition.maxRetries } : {}),

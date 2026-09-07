@@ -7,11 +7,6 @@
  * implementation's hand-maintained agent-tool sets and its six copies of the
  * default tool list — see ADR-0001).
  *
- * `subset()` is the structural tool filter: a mode or a subagent gets a
- * registry whose tool table PHYSICALLY lacks the tools it must not see. The
- * model cannot call a tool that is not in its registry — no prompt can
- * achieve that guarantee.
- *
  * `registerLive()` adds a LIVE tool source — a function returning an
  * extension's CURRENT tools array. Any extension whose tool table settles
  * after load is such a source (the runtime registers every extension's
@@ -117,20 +112,6 @@ export class ToolRegistry {
 	has(name: string): boolean {
 		if (this.#tools.has(name)) return true;
 		return this.#live.some(({ source }) => source().some((x) => x.name === name));
-	}
-
-	/** A registry restricted to the named tools. Unknown names are dropped
-	 *  loudly (the kernel never silently shrinks a tool set). */
-	subset(names: readonly string[]): ToolRegistry {
-		const out = new ToolRegistry();
-		for (const name of names) {
-			const tool = this.get(name);
-			if (tool === undefined) {
-				throw new Error(`subset(): unknown tool '${name}'`);
-			}
-			out.register(tool);
-		}
-		return out;
 	}
 
 	/** The minimal projection an adapter may see (never the handlers). */

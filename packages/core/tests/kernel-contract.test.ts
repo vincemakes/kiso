@@ -72,11 +72,14 @@ describe("registry: the eager map wins against a live source", () => {
 	});
 });
 
-describe("mode: visibleToolNames is a structural filter", () => {
-	it("physically removes a tool from the registry the model can reach", async () => {
+describe("the tool table is the structural filter (CT-1 re-pin: the mode plumbing that once built a subset is retired — ADR-0051 Amendment 6)", () => {
+	it("a tool that is not in the registry cannot be reached: the call is refused as unknown, never silently executed", async () => {
+		// Pre-CT-1 this test passed `modes: [{ visibleToolNames: ["web_search"] }]`
+		// and let the loop subset the registry. The guarantee is the same
+		// and now lives where it always was enforced: the registry the
+		// harness hands the loop is the table the model can reach.
 		const registry = new ToolRegistry();
 		registry.register(searchTool);
-		registry.register(artifactTool);
 
 		const events = await run(
 			[
@@ -89,14 +92,11 @@ describe("mode: visibleToolNames is a structural filter", () => {
 				{ events: [{ type: "stop", reason: "end_turn" }] },
 			],
 			registry,
-			{
-				modes: [{ name: "plan", visibleToolNames: ["web_search"] }],
-				mode: "plan",
-			},
+			{},
 		);
 
-		// The tool is not in the subset registry: the call is refused as
-		// unknown — never silently executed.
+		// The tool is not in the registry: the call is refused as unknown —
+		// never silently executed.
 		const result = events.find((e) => e.type === "tool_result");
 		expect(result).toMatchObject({ isError: true, errorKind: "invalid_input" });
 		expect((result as { content: string }).content).toContain("Unknown tool");

@@ -442,3 +442,44 @@ Ruling:
 - **core: 2,200, still HARD — with the ledger attached.** The cap does
   not move in either direction here. CT-1 owns the recovery; the next
   crossing, in whichever direction, attaches its ledger first.
+
+## Amendment 12 (2026-09-07): CT-1 — the hatches exercised; the ledger at 2,139
+
+Amendment 11 named the compat-debt and under-review lines and made
+CT-1 their owner. CT-1 (0.27.0, ADR-0051 Amendment 6) retired them —
+every one verified reader-less against the 0.26.3 tree first:
+`LoopConfig.compaction`, `resolveUncertainty`, `uncertaintyVerdict`,
+`modes` / `mode`; `HookHost.onPreCompact` / `onPostCompact`;
+`kernel/mode.ts` (`ModeProfile`, `resolveModeProfile`) with its core
+export; `ToolRegistry.subset()`. One correction to Amendment 11's
+ledger: its note that "the products filter structurally via
+`registry.subset()` before `loop()`" was wrong — no product did;
+`subset()`'s only caller was the loop's own mode branch, which is why
+it went with the mode plumbing. `Extension.connecting?` stays: it has
+a live producer (the MCP extension) and a live consumer (the CLI
+banner), so it is neither debt nor under review any more — reclassified
+**must** (a surface datum the kernel carries for the products).
+
+### The ledger at 2,139
+
+| file | 2,176 (0.26.3) | 2,139 (0.27.0) | class |
+|---|---:|---:|---|
+| kernel/loop.ts | 900 | 888 | must; the 4 compat-debt lines and the ~9 under review are gone |
+| tools/registry.ts | 83 | 72 | must; `subset()` gone |
+| kernel/hooks.ts | 28 | 26 | must; no debt left |
+| index.ts | 11 | 10 | must |
+| kernel/mode.ts | 11 | — | deleted |
+| every other counted file | unchanged | unchanged | as in Amendment 11 |
+
+Recovered: **37 counted lines** (Amendment 11 estimated ~26; the
+`subset()` method and its doc were not in that estimate). Headroom:
+61. The reviewer's arithmetic stands in spirit: the core is inside the
+2,200 cap with room, and it is NOT back under 2,100 — nothing here
+claims it is. What remains under review after CT-1: `MICROCOMPACTABLE`
+in `project.ts` (Amendment 11's finding — the projection must stay a
+pure function of the log, so it stays where it is until a better
+argument exists).
+
+Ruling:
+- **core: 2,200, still HARD.** No move in either direction. The next
+  crossing attaches its ledger first, as Amendment 11 requires.
