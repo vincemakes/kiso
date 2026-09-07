@@ -407,9 +407,11 @@ a broken config file fails loudly with the file named.
   bill — cache reads cost 10% of input (2.5% on Fable 5.1), a 5-minute
   cache write 125%. The default flips only after a paired bench on a
   live Anthropic leg proves the saving; until then set it per profile.
-  Caveat (finding MG1-F1): the adapter's signed thinking-block replay is
-  verified against the SDK and a compatible dialect, not yet against
-  `api.anthropic.com` — the first live use may surface wire drift.
+  Finding MG1-F1 (2026-09-07): the adapter's signed and redacted
+  thinking-block replay is verified against Claude Sonnet 5 through
+  OpenRouter's Anthropic-format endpoint — byte-identical replays, all
+  accepted; the first-party beta surface (beta headers, Fable 5.1's
+  thinking-block binding) is not yet exercised directly.
 - `/model` in a session lists the profiles (each annotated available /
   unavailable — an unset apiKeyEnv is never a crash) and switches the
   session's adapter for subsequent turns (a NoticeCell records it).
