@@ -92,6 +92,17 @@ which the policy puts at ASK). It is free and it proves the apparatus,
 never an agent: every overlay shape ran on it before any paid leg.
 `--arm real` is the same driver with provider variables.
 
+`drive.py --probe` is the policy-consistency probe (protocol §5.3): one
+representative operation per effect class (`drivers/kiso/probe-script.mjs`)
+under the declared realization; what happened to each call is read from
+the durable log — executed / gated (with the surrogate's decision) /
+refused — and compared with the matrix cell; a mismatch exits 1 and the
+batch does not start. The surrogate classifies a pending call from the
+durable log (name and input through the permission's callId), so a shell
+command's class follows `policy.json`'s `shellClass` table. First run on
+0.30.0: LH1-P1 — non-provider network is GATED under `accept-edits`
+where the matrix says DENY; fix the realization or declare the class.
+
 LH1-D1 (recorded by the first free leg): the F5 `--task-file` entry is
 the subagent child's structured single turn; an approval raised under
 it fails the run (`[run failed] readline was closed`) because the file

@@ -44,6 +44,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -130,6 +131,86 @@ def durable_terminal(home, sid):
         return None
 
 
+def durable_events(home, sid):
+    path = os.path.join(home, "sessions", sid + ".jsonl")
+    out = []
+    try:
+        for line in open(path):
+            if line.strip():
+                try:
+                    out.append(json.loads(line)["event"])
+                except (ValueError, KeyError):
+                    pass
+    except OSError:
+        pass
+    return out
+
+
+def classify_call(policy, name, inp):
+    """The declared class of a call: the tool's class, refined for shell by
+    the first matching command pattern (benign-shell otherwise)."""
+    cls = policy["toolClass"].get(name, "unclassified")
+    if name == "shell":
+        cmd = (inp or {}).get("command", "")
+        for row in policy.get("shellClass", []):
+            if re.search(row["pattern"], cmd):
+                return row["class"]
+        return "benign-shell"
+    if name in ("write_file", "edit_file"):
+        path = str((inp or {}).get("path", ""))
+        if path.startswith("../") or path.startswith("/"):
+            return "out-of-workspace-write"
+    return cls
+
+
+def pending_ask(home, sid, policy):
+    """The call behind the approval on the surface: the last permission_requested
+    without a permission_decided, joined to its tool_call_end — name, input,
+    class. The agent's own durable record, read by the driver."""
+    events = durable_events(home, sid)
+    decided = {e.get("decisionId") for e in events if e.get("type") == "permission_decided"}
+    calls = {e.get("callId"): e for e in events if e.get("type") == "tool_call_end"}
+    for e in reversed(events):
+        if e.get("type") == "permission_requested" and e.get("decisionId") not in decided:
+            call = calls.get(e.get("callId"), {})
+            name = call.get("name") or e.get("name") or "?"
+            inp = call.get("input")
+            return {"callId": e.get("callId"), "name": name, "input": inp, "class": classify_call(policy, name, inp)}
+    return None
+
+
+def observe_calls(home, sid, policy, ops):
+    """For the probe: what happened to each scripted call, from the durable log
+    — executed (a succeeded execution), gated (a permission was requested; with
+    the surrogate's decision), refused (the tool answered with an error result
+    and nothing executed)."""
+    events = durable_events(home, sid)
+    rows = []
+    for op in ops:
+        cid = op["callId"]
+        mine = [e for e in events if e.get("callId") == cid]
+        requested = any(e.get("type") == "permission_requested" for e in mine)
+        decision = next((e.get("decision") for e in mine if e.get("type") == "permission_decided"), None)
+        executed = any(e.get("type") == "tool_execution_succeeded" for e in mine)
+        failed = any(e.get("type") == "tool_execution_failed" for e in mine)
+        result = next((e for e in mine if e.get("type") == "tool_result"), None)
+        call = next((e for e in mine if e.get("type") == "tool_call_end"), {})
+        content = ""
+        if result is not None:
+            content = str((result.get("result") or {}).get("content") or result.get("content") or "")[:160]
+        if requested:
+            observed = "gated"
+        elif executed:
+            observed = "executed"
+        elif failed or (result is not None and result.get("isError")):
+            observed = "refused"
+        else:
+            observed = "unknown"
+        rows.append({"callId": cid, "class": op["cls"], "tool": call.get("name"), "declared": policy["matrix"].get(op["cls"], "deny"),
+                     "observed": observed, "decision": decision, "resultIsError": bool(result and result.get("isError")), "resultHead": content})
+    return rows
+
+
 def tool_after_approve(buf):
     """The dock-less question is `approve <tool>? (y/n)`; `consume` has eaten
     `approve `, so the tool name is what the buffer now starts with."""
@@ -185,7 +266,8 @@ def run_leg(argv, env, ws, log, phase, ctx):
         if leg.consume(b"approve "):
             seen = leg.last_data
             tool = tool_after_approve(leg.buf)
-            cls = policy["toolClass"].get(tool, "unclassified")
+            ask = pending_ask(ctx["home"], ctx["sid"], policy)
+            cls = ask["class"] if ask else policy["toolClass"].get(tool, "unclassified")
             cell = policy["matrix"].get(cls, "deny")
             answer = "y" if cell == "ask" else "n"
             time.sleep(policy["surrogate"]["answerLatencyMs"] / 1000.0)
@@ -247,6 +329,7 @@ def main():
     ap.add_argument("--archive", help="artifacts dir: write the immutable pair for this leg")
     ap.add_argument("--deadline", type=float, default=600.0)
     ap.add_argument("--label", default="")
+    ap.add_argument("--probe", action="store_true", help="the policy-consistency probe (protocol §5.3): one op per class on the surrogate arm, non-scored")
     a = ap.parse_args()
 
     task_dir = os.path.join(LH1, "tasks", a.task)
@@ -279,7 +362,22 @@ def main():
     }
     steps = []
     script_path = None
-    if a.arm == "faux":
+    probe_ops = None
+    if a.probe:
+        a.arm = "faux"
+        a.overlay = "none"
+        script_path = os.path.join(root, "probe-script.json")
+        os.makedirs(os.path.join(root, "world", "outside-ledger"))
+        code, out = run_node(os.path.join(HERE, "probe-script.mjs"), "--out", script_path,
+                             "--effect-py", os.path.join(REPO, "bench", "rd1", "harness", "effect.py"),
+                             "--ledger", os.path.join(root, "world", "outside-ledger", "ledger.jsonl"),
+                             "--effect-output", os.path.join(root, "world", "outside-ledger", "effect-output.txt"))
+        if code != 0:
+            print(out, file=sys.stderr)
+            return 2
+        probe_ops = json.load(open(script_path + ".ops.json"))
+        env["KISO_FAUX_SCRIPT"] = script_path
+    elif a.arm == "faux":
         script_path = a.faux_script or os.path.join(root, "faux-script.json")
         if a.faux_script is None:
             code, out = run_node(os.path.join(HERE, "faux-script.mjs"), a.task, "--out", script_path)
@@ -384,6 +482,20 @@ def main():
     open(os.path.join(leg_dir, "pty-leg1.log"), "wb").write(pty1)
     if pty2:
         open(os.path.join(leg_dir, "pty-leg2.log"), "wb").write(pty2)
+
+    if probe_ops is not None:
+        rows = observe_calls(home, sid, policy, probe_ops)
+        mismatches = [r for r in rows if policy["probe"]["expected"].get(r["declared"]) != r["observed"]]
+        report = {"leg": leg_id, "arm": "kiso", "realization": policy["realization"], "rows": rows, "mismatches": len(mismatches),
+                  "approvals": ctx["approvals"], "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+        json.dump(report, open(os.path.join(leg_dir, "policy-probe.json"), "w"), indent=1)
+        shutil.rmtree(root, ignore_errors=True)
+        print(f"[lh1:policy-probe] {leg_id} realization={policy['realization']}")
+        for r in rows:
+            mark = "ok " if policy["probe"]["expected"].get(r["declared"]) == r["observed"] else "MISMATCH"
+            print(f"  {mark} {r['class']:<24} declared {r['declared']:<6} observed {r['observed']:<9}" + (f" (decision {r['decision']})" if r["decision"] else "") + (f" [{r['resultHead'][:70]}]" if r["observed"] == "refused" else ""))
+        print(f"[lh1:policy-probe] {'MATCH' if not mismatches else f'{len(mismatches)} MISMATCH — the realization must change before any scored leg'}")
+        return 0 if not mismatches else 1
 
     # ── the external evaluation: the workspace path and nothing else ──
     code, out = run_node(os.path.join(task_dir, "evaluator.mjs"), os.path.join(leg_dir, "workspace"))
