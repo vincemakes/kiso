@@ -93,6 +93,12 @@ try {
 	};
 	const self = lh1("selftest.mjs", []);
 	if (self.code !== 0 || !/\[lh1:selftest\] PASS/.test(self.out)) errs.push(`bench/lh1 selftest did not PASS from a fresh clone:\n${self.out.slice(-600)}`);
+	// the cost-geometry extractor must re-derive RD1B-F8's per-cell table
+	// from the tracked clean-replay archives (protocol §4's acceptance: an
+	// extractor that cannot re-derive the finding that motivated it is not
+	// proven)
+	const f8 = lh1("cost-geometry.mjs", ["--rd1-clean", "--check"]);
+	if (f8.code !== 0 || !/F8 reproduced/.test(f8.out)) errs.push(`bench/lh1 cost-geometry did not re-derive F8 from a fresh clone:\n${f8.out.slice(-800)}`);
 	// every fixture in the tracked tree closes its loop — a fixture whose
 	// loop does not close is not a fixture yet
 	const tasks = readdirSync(join(dir, "bench/lh1/tasks")).filter((t) => !t.startsWith(".")).sort();

@@ -51,6 +51,14 @@ task's `expected.json`.
   only, write) a fixture's golden battery.
 - `drivers/kiso/` — the kiso driver, the surrogate-arm playbook
   generator and the declared policy (below).
+- `run/cost-geometry.mjs` — the cost-geometry extractor (protocol §4):
+  first-request fresh / cacheRead and hit% PER SESSION START within a
+  leg (every resume is a new start), beside the leg's totals
+  (cost-weighted = fresh + 0.1 × cacheRead + output, rd1's population).
+  `--leg <legDir>` reads a leg's `agent-state/sessions/traces`;
+  `--rd1-clean --check` re-derives RD1B-F8's per-cell table from the
+  tracked clean-replay archives, both arms, the c7 cells printed as the
+  declared I-STREAM exclusion — the extractor's acceptance, and a gate.
 - `runs/` — leg records (gitignored); `artifacts/` — archived batches.
 
 ## The driver and the surrogate arm (`drivers/kiso/`)
