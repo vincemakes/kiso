@@ -24,3 +24,4 @@ design-previews/
 # packages/tui/tests/a7-replay.test.ts. Untracking any of them would turn
 # a checkable claim into a dangling one, so the comment above names what
 # it actually covers instead (TUI2-R2pre ⑥, audit #6).
+bench/lh1/runs/

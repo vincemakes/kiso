@@ -79,6 +79,23 @@ try {
 	if (metrics.code !== 0) errs.push(`metrics.py exited ${metrics.code} in a fresh clone:\n${metrics.out.trim().split("\n").slice(-3).join("\n")}`);
 	else if (!/cost-weighted/.test(metrics.out)) errs.push(`metrics.py printed no cost table:\n${metrics.out.trim()}`);
 } finally {
+// LH-1 (the dry-run apparatus): the evaluators' red/green selftest and the
+// free closed loop (seed → surrogate → evaluate → archive → rescore →
+// replay) must run from the TRACKED files alone — the same property the
+// rd1 batches are gated on. Both are model-free.
+{
+	const lh1 = (script, args) => {
+		try {
+			return { out: execFileSync(process.execPath, [join(dir, "bench/lh1/run", script), ...args], { cwd: dir, encoding: "utf8", timeout: 300_000 }), code: 0 };
+		} catch (err) {
+			return { out: `${err.stdout ?? ""}${err.stderr ?? ""}`, code: err.status ?? 1 };
+		}
+	};
+	const self = lh1("selftest.mjs", []);
+	if (self.code !== 0 || !/\[lh1:selftest\] PASS/.test(self.out)) errs.push(`bench/lh1 selftest did not PASS from a fresh clone:\n${self.out.slice(-600)}`);
+	const loop = lh1("closed-loop.mjs", ["L-IMPL-1"]);
+	if (loop.code !== 0 || !/CLOSED LOOP OK/.test(loop.out)) errs.push(`bench/lh1 closed loop did not close from a fresh clone:\n${loop.out.slice(-600)}`);
+}
 	rmSync(dir, { recursive: true, force: true });
 }
 

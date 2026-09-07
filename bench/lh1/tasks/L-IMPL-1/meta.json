@@ -1,0 +1,63 @@
+{
+ "task": "L-IMPL-1",
+ "family": "L-IMPL",
+ "durationLabel": "30-60 min",
+ "durationBasis": {
+  "referenceFilesTouched": 8,
+  "referenceLinesAdded": 211,
+  "referenceLinesRemoved": 33,
+  "files": [
+   {
+    "path": "README.md",
+    "kind": "modified",
+    "added": 20,
+    "removed": 0
+   },
+   {
+    "path": "src/journal.mjs",
+    "kind": "modified",
+    "added": 19,
+    "removed": 7
+   },
+   {
+    "path": "src/currency.mjs",
+    "kind": "new",
+    "added": 10,
+    "removed": 0
+   },
+   {
+    "path": "src/money.mjs",
+    "kind": "modified",
+    "added": 23,
+    "removed": 10
+   },
+   {
+    "path": "src/ledger.mjs",
+    "kind": "modified",
+    "added": 32,
+    "removed": 2
+   },
+   {
+    "path": "src/report.mjs",
+    "kind": "modified",
+    "added": 33,
+    "removed": 8
+   },
+   {
+    "path": "src/rates.mjs",
+    "kind": "new",
+    "added": 39,
+    "removed": 0
+   },
+   {
+    "path": "src/cli.mjs",
+    "kind": "modified",
+    "added": 35,
+    "removed": 6
+   }
+  ],
+  "hiddenTests": 9,
+  "visibleTests": 11,
+  "note": "the label is a claim until the calibration batch measures a real agent (protocol \u00a78); the basis is what the reference solution had to change"
+ }
+}

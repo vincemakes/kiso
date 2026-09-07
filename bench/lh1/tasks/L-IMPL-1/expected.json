@@ -1,0 +1,5 @@
+{
+  "allowed": ["src/**", "README.md"],
+  "untouched": ["tests/**", "SPEC.md", "package.json"],
+  "durationLabel": "30-60 min (a claim until the calibration batch measures it — protocol §8)"
+}
