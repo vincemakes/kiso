@@ -48,7 +48,7 @@ import { agentModel, atFiles, body, bodyLog, kisoHome, builtInExtensions, curren
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
-import { chat, contextWindowTokens, estimateCtxRatio } from "./chat.js";
+import { chat, contextWindowTokens, displayCtxRatio } from "./chat.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { checkForUpdate } from "./update-check.js";
 import { resume } from "./resume.js";
@@ -749,7 +749,7 @@ async function pickSession(agent: Awaited<ReturnType<typeof makeAgent>>, input: 
  */
 function paintBootStatus(session: { log: { all: readonly unknown[] } }): void {
 	if (!dock.active) return;
-	dock.setStatus(idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), agentModel, estimateCtxRatio(session as never)));
+	dock.setStatus(idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), agentModel, displayCtxRatio(session as never)));
 }
 
 /** PH-1a (finding PH-F12): a usage error raised from inside the TUI —

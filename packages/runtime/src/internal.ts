@@ -32,3 +32,7 @@ export * from "./provider/metadata.js";
 export { canonicalizeUsageForModel } from "./usage/canonical.js";
 // MG-1 (A5): the identity layer — manifests and the scope resolver.
 export { BUILTIN_MANIFESTS, resolveContinuationScope, type ModelRef, type ProviderManifest } from "./provider/manifest.js";
+// A1a: the checkpoint boundary (a definition — nothing fires it until A1b)
+// and the request-budget accounting the CLI's status line reads.
+export * from "./checkpoint.js";
+export * from "./request-budget.js";

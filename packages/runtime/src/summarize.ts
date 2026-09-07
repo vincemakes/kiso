@@ -320,7 +320,7 @@ export function lastSummaryPoint(events: readonly Event[]): number {
 /** The chars/4 token proxy for a single EVENT (the same convention as
  *  estimateTokens, event-shaped — the (f) keep-floor walk needs the kept
  *  suffix's tokens without projecting it). */
-function estimateEventTokens(ev: Event): number {
+export function estimateEventTokens(ev: Event): number {
 	switch (ev.type) {
 		case "user_input":
 			return Math.ceil(ev.content.length / 4);

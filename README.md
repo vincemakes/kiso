@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.28.0
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.29.0
 ```
 
 (The block letter above is `assets/logo.svg` in pixel form — an 8×8 K
@@ -895,6 +895,12 @@ measurement.
   └ live tail · esc stop · alt+⏎ redirect
 ▸ default · /mode to switch · deepseek-v4-flash · CH 92% · $0.0042 · ctx left ~74%
 ```
+
+`ctx left` is the estimated headroom counting every part of the next
+request — the system prompt, the tool table, the messages with their
+continuation envelopes, and the output reserve when the profile sets
+one (A1a, 0.29.0); it is still an estimate (chars / 4), marked `~`. The
+auto-compact trigger reads its own number, unchanged this round.
 
 **The keys:** `enter` send · `ctrl+j / shift+⏎` newline · `@` files ·
 `esc` stop · `alt+⏎ / ctrl+⏎` redirect · `/` commands · `↑↓` history /

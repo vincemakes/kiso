@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.28.0
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.29.0
 ```
 
 (上面的块状字母是 `assets/logo.svg` 的像素形态——一个 8×8 的 K,底行是这个框架得名的基岩基础。)
@@ -493,6 +493,8 @@ description: a review checklist for pull requests
   └ live tail · esc stop · alt+⏎ redirect
 ▸ default · /mode to switch · deepseek-v4-flash · CH 92% · $0.0042 · ctx left ~74%
 ```
+
+`ctx left` 是把下一次请求的每个部分都算进去的估算余量——系统提示、工具表、带续接信封的消息、以及档案设置了输出上限时的输出预留(A1a,0.29.0);仍是估算(字符数 / 4),带 `~`。自动压缩的触发读它自己的数字,本轮不变。
 
 **键位:** `enter` 发送 · `ctrl+j / shift+⏎` 换行 · `@` 文件 · `esc` 停止 · `alt+⏎ / ctrl+⏎` 改道 · `/` 命令 · `↑↓` 历史 / 取回排队 · `ctrl+o` 展开卡片 · `ctrl+r` 会话记录 · `tab` 补全 · `?` 本表。面板内:数字键选择 · 空格切换 · `t` 自由作答。
 

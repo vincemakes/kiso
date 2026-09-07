@@ -328,6 +328,20 @@ export class AgentSession {
 		return this.#model;
 	}
 
+	/** A1a: the parts of the NEXT request as the kernel would assemble them —
+	 *  the system prompt, the tool table (the same snapshot the loop sends:
+	 *  live extension tools included), the projected messages with their
+	 *  continuation envelopes, and the request's max_tokens (absent when
+	 *  the provider sends none). For `requestBudget` — accounting, no policy. */
+	requestParts(): { readonly systemPrompt?: string; readonly toolSpecs: readonly import("@vincemakes/kiso-core").ToolSpec[]; readonly messages: readonly Message[]; readonly maxTokens?: number } {
+		return {
+			...(this.#config.systemPrompt !== undefined ? { systemPrompt: this.#config.systemPrompt } : {}),
+			toolSpecs: this.#config.registry.snapshot().specs,
+			messages: this.projected(),
+			...(this.#config.maxTokens !== undefined ? { maxTokens: this.#config.maxTokens } : {}),
+		};
+	}
+
 	/** XP-1: the selected reasoning axes (resolution happens per request). */
 	get reasoning(): ReasoningSetting {
 		return this.#reasoning;

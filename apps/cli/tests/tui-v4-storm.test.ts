@@ -330,11 +330,15 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// itself is never truncated for it. The idle row's dim span ends
 		// IMMEDIATELY after the status (the hint, had it fit, would sit
 		// between the status and the reset).
-		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["/ commands · \u2191 history", "look around\r"]], 30, 50, []);
-		// v6 invariant ①: the status itself must fit W — at 50 cols the
-		// 51-cell status CUTS at W−1 with a … (the old code soft-wrapped
-		// it; the crash-on-violation makes the cut structural).
-		expect(narrow).toContain("▸ default · /mode to switch · faux · ctx left ~10…\x1b[0m");
+		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["/ commands · \u2191 history", "look around\r"]], 30, 44, []);
+		// v6 invariant ①: the status itself must fit W — a status wider
+		// than W CUTS at W−1 with a … (the old code soft-wrapped it; the
+		// crash-on-violation makes the cut structural). A1a (0.29.0): the
+		// idle status counts the tool table and the system prompt, so a
+		// fresh faux session reads ~99% (50 cells) instead of ~100% (51);
+		// at 50 cols it now FITS, so the cut is asserted at 44 cols, where
+		// the expected string does not depend on the percentage's digits.
+		expect(narrow).toContain("▸ default · /mode to switch · faux · ctx le…\x1b[0m");
 		// DECLARED SUPERSESSION (REL-0152-R1): the status row is written
 		// by ROW NUMBER now, not by a CHA at the end of a bottom-up march.
 		// The property is that it is never truncated from the LEFT — the

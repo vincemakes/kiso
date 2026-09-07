@@ -25,7 +25,7 @@ import {
 import { deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
-import { canonicalizeUsageForModel } from "@vincemakes/kiso-runtime/internal";
+import { canonicalizeUsageForModel, requestBudget } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import { dispatch, type DispatchCtx } from "./dispatch.js";
 import { agentModel, body, bodyLog, configuredWindow, dock, type LineInput } from "./state.js";
@@ -89,6 +89,21 @@ export function estimateCtxRatio(session: AgentSession): number {
 	const projected = session.projected();
 	const chars = JSON.stringify(projected).length;
 	return chars / 4 / contextWindowTokens();
+}
+
+/** A1a: the ratio the STATUS LINE and the ctx displays show — the request
+ *  budget counting the parts (system prompt, tool table, messages with
+ *  their continuation envelopes, the output reserve when known) over the
+ *  window. Still ~ (chars/4). The auto-compact policy does NOT read this
+ *  (see autoCompactRatio) — moving the policy's number is A1b's. */
+export function displayCtxRatio(session: AgentSession): number {
+	return requestBudget(session.requestParts(), contextWindowTokens()).ratio;
+}
+
+/** A1a: the number the auto-compact decision reads — the pre-A1a estimate,
+ *  unchanged this round, named so a gate can pin that it did not move. */
+export function autoCompactRatio(session: AgentSession): number {
+	return estimateCtxRatio(session);
 }
 
 /** R-C item 4: the per-turn cache miss — the overlap with the previous
@@ -679,7 +694,7 @@ export async function consumeRun(
 				missed = delta.missed;
 				// TUI2-R1 (E): the request's canonical cost rides the same
 				// callback the usage does — one settled request, one addition.
-				statusCb?.(usage, estimateCtxRatio(session), delta.costUsd);
+				statusCb?.(usage, displayCtxRatio(session), delta.costUsd);
 				break;
 			}
 			case "uncertain_pending":
@@ -787,8 +802,8 @@ export async function consumeRun(
 				// v3 §02: the run's recap line REPLACES the old "done" label
 				// + status line — one local line, derived from this run's
 				// events (zero tokens). The dock's status bar still paints.
-				statusCb?.(usage, estimateCtxRatio(session));
-				const ratio = estimateCtxRatio(session);
+				statusCb?.(usage, displayCtxRatio(session));
+				const ratio = displayCtxRatio(session);
 				// TV-1B: the settle verdict — the checklist stops lying. When
 				// every item is CLAIMED done, the settled block's tail says
 				// what the projection actually proves ("no passing check yet"
@@ -1113,7 +1128,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// KC2 §5: the STATE (the glyph, the run's start, the usage, the dock)
 	// stays here; the ROW's text is the tui's status formatter.
 	const paintRunning = (): void => {
-		if (dock.active) dock.setStatus(runningStatus(runGlyph, runStart, runUsage.out, estimateCtxRatio(session)));
+		if (dock.active) dock.setStatus(runningStatus(runGlyph, runStart, runUsage.out, displayCtxRatio(session)));
 	};
 	// W19: under plan the idle row makes the posture unmistakable — the W4
 	// parentheses idiom names the read-only constraint. The tier is the
@@ -1124,7 +1139,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// when unknown, so a session that has not called the model paints
 		// exactly the pre-round row.
 		dock.setStatus(
-			idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), agentModel, estimateCtxRatio(session), {
+			idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), agentModel, displayCtxRatio(session), {
 				cacheHitPct: cacheHitPct(runUsage),
 				costUsd: spentUsd,
 			}),
@@ -1208,7 +1223,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		isRunning: () => currentRun !== null,
 		paintIdle,
 		submitTurn,
-		estimateCtx: () => estimateCtxRatio(session),
+		estimateCtx: () => displayCtxRatio(session),
 		contextWindow: () => contextWindowTokens(),
 		// the /resume+/clear mini-spec: the switch directive and the
 		// session-navigation seam (absent nav = the commands degrade to
@@ -1230,7 +1245,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	const maybeAutoCompact = (): void => {
 		if (autoCompact === undefined) return;
 		if (currentRun !== null) return; // dispatch would refuse — skip the noise
-		const ratio = estimateCtxRatio(session);
+		const ratio = autoCompactRatio(session); // A1a: the policy keeps the pre-A1a number — A1b decides if it moves
 		if (!Number.isFinite(ratio) || ratio < autoCompact.thresholdRatio) return;
 		dispatch("/compact", dispatchCtx);
 	};
