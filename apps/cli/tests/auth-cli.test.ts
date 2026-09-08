@@ -30,7 +30,7 @@ describe("kiso login / logout / auth", () => {
 		const { env } = isolatedEnv();
 		const bad = runCli(["login", "nope"], env, { input: "k\n" });
 		expect(bad.status).not.toBe(0);
-		expect(bad.stderr + bad.stdout).toContain("one of: anthropic, openai, deepseek, zai");
+		expect(bad.stderr + bad.stdout).toContain("one of: anthropic, openai, deepseek, zai, chatgpt");
 		const none = runCli(["login"], env, { input: "k\n" });
 		expect(none.status).not.toBe(0);
 		const empty = runCli(["login", "openai"], env, { input: "\n" });

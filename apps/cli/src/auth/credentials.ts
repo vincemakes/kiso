@@ -45,7 +45,9 @@ export class AuthError extends Error {}
 /** The providers a credential can be stored for (the runtime's built-in
  *  manifests; `custom` endpoints stay on env vars — a key for an unknown
  *  origin has no identity to own). */
-export const KNOWN_PROVIDERS: readonly string[] = ["anthropic", "openai", "deepseek", "zai"];
+export const KNOWN_PROVIDERS: readonly string[] = ["anthropic", "openai", "deepseek", "zai", "chatgpt"];
+/** The providers whose sign-in is an OAuth flow rather than a key. */
+export const OAUTH_PROVIDERS: readonly string[] = ["chatgpt"];
 
 // Mirrors the runtime's known-origin table (packages/runtime/src/provider/
 // manifest.ts, not on the SDK surface): a compat profile whose baseUrl origin

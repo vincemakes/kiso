@@ -1166,7 +1166,7 @@ async function main(): Promise<void> {
 				// `login <provider>` reads the key from a hidden prompt on a TTY
 				// or from stdin otherwise (never from an argument — shell history);
 				// `logout <provider>` deletes; `auth` lists, keys masked.
-				const { KNOWN_PROVIDERS, authPath, deleteCredential, maskSecret, readAuthFile, setCredential } = await import("./auth/credentials.js");
+				const { KNOWN_PROVIDERS, OAUTH_PROVIDERS, authPath, deleteCredential, maskSecret, readAuthFile, setCredential } = await import("./auth/credentials.js");
 				const provider = arg;
 				if (command === "auth") {
 					const file = readAuthFile();
@@ -1189,6 +1189,27 @@ async function main(): Promise<void> {
 					process.stdout.write(had ? `signed out of ${provider}\n` : `nothing stored for ${provider}\n`);
 					break;
 				}
+				if (OAUTH_PROVIDERS.includes(provider)) {
+					// the subscription sign-in (plan step 2): the browser flow with a
+					// paste path; the callback host/port can be moved by env for tests
+					const { chatgptFlow } = await import("./auth/oauth/chatgpt.js");
+					const { createInterface } = await import("node:readline");
+					const rl = createInterface({ input: process.stdin, output: process.stdout });
+					const cbPort = process.env.KISO_OAUTH_CALLBACK_PORT !== undefined ? Number(process.env.KISO_OAUTH_CALLBACK_PORT) : undefined;
+					try {
+						const cred = await chatgptFlow.login({
+							notify: (line) => process.stdout.write(`${line}\n`),
+							prompt: (q) => new Promise<string>((resolve) => rl.question(q, resolve)),
+							...(cbPort !== undefined ? { callback: { host: process.env.KISO_OAUTH_CALLBACK_HOST ?? "127.0.0.1", port: cbPort } } : {}),
+							...(process.env.KISO_OAUTH_TOKEN_URL !== undefined ? { tokenUrl: process.env.KISO_OAUTH_TOKEN_URL } : {}),
+						});
+						setCredential(provider, cred);
+						process.stdout.write(`signed in to ${provider} (${chatgptFlow.label}) — account ${cred.accountId ?? "?"}, expires ${new Date(cred.expires).toISOString()} — stored in ${authPath()}\n`);
+					} finally {
+						rl.close();
+					}
+					break;
+				}
 				const key = (await readSecret(`API key for ${provider}: `)).trim();
 				if (key === "") throw new CliUsageError(`kiso login ${provider}: no key given`);
 				setCredential(provider, { type: "api-key", key, savedAt: Date.now() });
@@ -1209,7 +1230,8 @@ async function main(): Promise<void> {
 						"  kiso resume              pick a session to continue (TTY picker)\n" +
 						"  kiso resume <id> [prompt]   continue a session (one-shot)\n" +
 						"  kiso sessions           list durable sessions\n" +
-						"  kiso login <provider>    store an API key (anthropic|openai|deepseek|zai); hidden prompt, or stdin when piped\n" +
+						"  kiso login <provider>    anthropic|openai|deepseek|zai: store an API key (hidden prompt, or stdin when piped);\n" +
+						"                           chatgpt: sign in with a ChatGPT subscription (browser; unofficial third-party flow)\n" +
 						"  kiso logout <provider>   remove the stored credential\n" +
 						"  kiso auth               list stored credentials (keys masked)\n" +
 						"  kiso help               this help\n\n" +
