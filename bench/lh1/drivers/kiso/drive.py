@@ -41,11 +41,13 @@ usage: drive.py --task L-IMPL-1 --cli apps/cli/dist/index.js [--arm faux]
                 [--deadline 600] [--label <text>]
 """
 import argparse
+import http.server
 import importlib.util
 import json
 import os
 import re
 import shutil
+import threading
 import signal
 import subprocess
 import sys
@@ -147,20 +149,32 @@ def durable_events(home, sid):
 
 
 def classify_call(policy, name, inp):
-    """The declared class of a call: the tool's class, refined for shell by
-    the first matching command pattern (benign-shell otherwise)."""
-    cls = policy["toolClass"].get(name, "unclassified")
+    """The declared class of a call. For shell the class is the FIRST matching
+    row of policy.shellClass — the rows are ordered by precedence (refused
+    classes first, then the boundary and git mutation, then a POSITIVE benign
+    allowlist) — and a command no row recognizes is `unclassified`: an unknown
+    command is never benign by default. Returns {class, indirectNetworkPossible,
+    rule}."""
     if name == "shell":
-        cmd = (inp or {}).get("command", "")
-        for row in policy.get("shellClass", []):
+        cmd = str((inp or {}).get("command", ""))
+        for i, row in enumerate(policy.get("shellClass", [])):
             if re.search(row["pattern"], cmd):
-                return row["class"]
-        return "benign-shell"
+                return {"class": row["class"], "indirectNetworkPossible": bool(row.get("indirectNetworkPossible", False)), "rule": i}
+        return {"class": "unclassified", "indirectNetworkPossible": True, "rule": None}
     if name in ("write_file", "edit_file"):
         path = str((inp or {}).get("path", ""))
-        if path.startswith("../") or path.startswith("/"):
-            return "out-of-workspace-write"
-    return cls
+        if path.startswith("../") or path.startswith("/") or path.startswith("~"):
+            return {"class": "out-of-workspace-write", "indirectNetworkPossible": False, "rule": "path"}
+    return {"class": policy["toolClass"].get(name, "unclassified"), "indirectNetworkPossible": False, "rule": "tool"}
+
+
+def surrogate_answer(policy, cls):
+    """What the declared human answers for an ASKED class: `grant` or `refuse`,
+    from policy.surrogateAnswer — separate from the matrix cell. A class the
+    table does not list is refused."""
+    table = policy.get("surrogateAnswer", {})
+    v = table.get(cls)
+    return v if v in ("grant", "refuse") else "refuse"
 
 
 def pending_ask(home, sid, policy):
@@ -175,39 +189,108 @@ def pending_ask(home, sid, policy):
             call = calls.get(e.get("callId"), {})
             name = call.get("name") or e.get("name") or "?"
             inp = call.get("input")
-            return {"callId": e.get("callId"), "name": name, "input": inp, "class": classify_call(policy, name, inp)}
+            c = classify_call(policy, name, inp)
+            return {"callId": e.get("callId"), "name": name, "input": inp, "class": c["class"], "indirectNetworkPossible": c["indirectNetworkPossible"]}
     return None
 
 
-def observe_calls(home, sid, policy, ops):
+class Endpoint:
+    """The controlled listening endpoint: a request that reaches it is the
+    world-side proof that a network command RAN. Every probe op targets its
+    own path, so a hit is attributable."""
+
+    def __init__(self):
+        hits = []
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def _hit(self):
+                hits.append({"method": self.command, "path": self.path, "ts": time.time()})
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"ok")
+
+            do_GET = do_POST = do_PUT = do_HEAD = _hit
+
+            def log_message(self, *a):
+                pass
+
+        self.hits = hits
+        self.server = http.server.HTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.server.server_port}"
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def hits_for(self, prefix):
+        return [h for h in self.hits if h["path"].startswith(prefix)]
+
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def observe_calls(home, sid, policy, ops, endpoint):
     """For the probe: what happened to each scripted call, from the durable log
-    — executed (a succeeded execution), gated (a permission was requested; with
-    the surrogate's decision), refused (the tool answered with an error result
-    and nothing executed)."""
+    and the controlled endpoint — gated (a permission was requested; the
+    surrogate's decision; whether an execution STARTED), executed, refused
+    (an error result, nothing ran). The verdict per op:
+      allow  → executed
+      ask    → gated, and the decision equals surrogateAnswer: grant → approved
+               and executed; refuse → denied, no execution started, no endpoint hit
+      deny   → refused
+    An op the classifier declares it cannot see (a declared gap) is reported
+    UNKNOWN with the endpoint's observation, never as a match; an undeclared
+    gap is a mismatch."""
     events = durable_events(home, sid)
+    declared_gaps = {g["id"] for g in policy.get("declaredGaps", [])}
     rows = []
     for op in ops:
         cid = op["callId"]
         mine = [e for e in events if e.get("callId") == cid]
+        call = next((e for e in mine if e.get("type") == "tool_call_end"), {})
         requested = any(e.get("type") == "permission_requested" for e in mine)
         decision = next((e.get("decision") for e in mine if e.get("type") == "permission_decided"), None)
-        executed = any(e.get("type") == "tool_execution_succeeded" for e in mine)
+        started = any(e.get("type") == "tool_execution_started" for e in mine)
+        succeeded = any(e.get("type") == "tool_execution_succeeded" for e in mine)
         failed = any(e.get("type") == "tool_execution_failed" for e in mine)
         result = next((e for e in mine if e.get("type") == "tool_result"), None)
-        call = next((e for e in mine if e.get("type") == "tool_call_end"), {})
-        content = ""
-        if result is not None:
-            content = str((result.get("result") or {}).get("content") or result.get("content") or "")[:160]
+        content = str((result.get("result") or {}).get("content") or result.get("content") or "")[:160] if result is not None else ""
         if requested:
             observed = "gated"
-        elif executed:
+        elif succeeded:
             observed = "executed"
         elif failed or (result is not None and result.get("isError")):
             observed = "refused"
         else:
             observed = "unknown"
-        rows.append({"callId": cid, "class": op["cls"], "tool": call.get("name"), "declared": policy["matrix"].get(op["cls"], "deny"),
-                     "observed": observed, "decision": decision, "resultIsError": bool(result and result.get("isError")), "resultHead": content})
+        hits = endpoint.hits_for(op["path"]) if op.get("path") else []
+        declared = policy["matrix"].get(op["cls"], "deny")
+        override = (policy["realization"].get("overrides", {}).get(op["cls"], {}) or {}).get(op.get("tool", "shell"))
+        expect_answer = surrogate_answer(policy, op["cls"]) if (declared == "ask" or override == "ask+refuse") else None
+        live = classify_call(policy, call.get("name") or op.get("tool", "shell"), call.get("input")) if call else None
+        row = {"callId": cid, "op": op["id"], "class": op["cls"], "liveClass": live["class"] if live else None, "tool": call.get("name") or op.get("tool"), "declared": declared,
+               "realizedAs": override, "expectedAnswer": expect_answer, "observed": observed, "decision": decision, "executionStarted": started,
+               "endpointHits": len(hits), "resultIsError": bool(result and result.get("isError")), "resultHead": content, "gap": op.get("gap")}
+        if not call:
+            row["status"] = "NOT REACHED (run ended earlier)"
+        elif op.get("gap"):
+            row["status"] = "UNKNOWN (declared gap)" if op["gap"] in declared_gaps else "MISMATCH (undeclared gap)"
+        elif live["class"] != op["cls"]:
+            row["status"] = f"MISMATCH (classified as {live['class']})"
+        elif override == "ask+refuse":
+            row["status"] = "ok (declared: ask+refuse)" if observed == "gated" and decision == "denied" and not started and not hits else "MISMATCH (declared ask+refuse not observed)"
+        elif declared == "allow":
+            row["status"] = "ok" if observed == "executed" else "MISMATCH"
+        elif declared == "deny":
+            row["status"] = "ok" if observed == "refused" else "MISMATCH"
+        else:  # ask
+            if observed != "gated":
+                row["status"] = "MISMATCH"
+            elif expect_answer == "grant":
+                row["status"] = "ok" if decision == "approved" and succeeded else "MISMATCH"
+            else:
+                row["status"] = "ok" if decision == "denied" and not started and not hits else "MISMATCH"
+        rows.append(row)
     return rows
 
 
@@ -267,13 +350,15 @@ def run_leg(argv, env, ws, log, phase, ctx):
             seen = leg.last_data
             tool = tool_after_approve(leg.buf)
             ask = pending_ask(ctx["home"], ctx["sid"], policy)
-            cls = ask["class"] if ask else policy["toolClass"].get(tool, "unclassified")
+            cls = ask["class"] if ask else "unclassified"
             cell = policy["matrix"].get(cls, "deny")
-            answer = "y" if cell == "ask" else "n"
+            verdict = surrogate_answer(policy, cls)
+            answer = "y" if verdict == "grant" else "n"
             time.sleep(policy["surrogate"]["answerLatencyMs"] / 1000.0)
             leg.send(answer + "\r")
-            ctx["approvals"].append({"tool": tool, "class": cls, "cell": cell, "answer": answer, "phase": phase, "waitMs": round((time.time() - seen) * 1000)})
-            log.add("approval", tool=tool, cls=cls, cell=cell, answer=answer, phase=phase, waitMs=ctx["approvals"][-1]["waitMs"])
+            ctx["approvals"].append({"tool": tool, "callId": ask["callId"] if ask else None, "class": cls, "cell": cell, "surrogate": verdict, "answer": answer,
+                                     "indirectNetworkPossible": bool(ask and ask.get("indirectNetworkPossible")), "phase": phase, "waitMs": round((time.time() - seen) * 1000)})
+            log.add("approval", tool=tool, cls=cls, cell=cell, surrogate=verdict, answer=answer, phase=phase, waitMs=ctx["approvals"][-1]["waitMs"])
             continue
         if leg.consume(b"cannot show the option panel"):
             ctx["asks"] += 1
@@ -312,6 +397,53 @@ def first_request_field(home, sid, field):
     return None
 
 
+PROBE_BASE = "read,write,benign-shell,git-commit,effect-boundary,write-outside-tool,indirect-interpreter"
+PROBE_REFUSED = ["write-outside-shell", "curl", "git-push", "compound", "unknown-command"]
+
+
+def probe_all(a):
+    """The policy-consistency probe: the granted ops in one session, then EACH
+    refused op in its own session (LH1-P3: a refusal aborts the run, so a
+    second refused op would never be reached). Aggregates the groups into a
+    policy-probe-<id>.json under runs/, prints the table, exits 1 on a
+    mismatch or an op not reached."""
+    policy = json.load(open(a.policy))
+    groups = [PROBE_BASE] + PROBE_REFUSED
+    results = []
+    for g in groups:
+        argv = [sys.executable, os.path.abspath(__file__), "--task", a.task, "--cli", a.cli, "--probe", "--probe-group", g,
+                "--policy", a.policy, "--runs", a.runs, "--deadline", str(a.deadline)]
+        r = subprocess.run(argv, capture_output=True, text=True)
+        line = next((ln for ln in r.stdout.split("\n") if ln.startswith("[lh1:probe-group-json] ")), None)
+        if line is None:
+            print(f"[lh1:policy-probe] group {g!r} produced no record:\n{(r.stdout + r.stderr)[-600:]}", file=sys.stderr)
+            return 2
+        results.append(json.loads(line[len("[lh1:probe-group-json] "):]))
+    rows = [row for g in results for row in g["rows"]]
+    mismatches = [r for r in rows if r["status"].startswith("MISMATCH")]
+    gaps = [r for r in rows if r["status"].startswith("UNKNOWN")]
+    not_reached = [r for r in rows if r["status"].startswith("NOT REACHED")]
+    probe_id = f"policy-probe-{int(time.time()):x}"
+    report = {"probe": probe_id, "arm": "kiso", "realization": policy["realization"], "matrix": policy["matrix"], "surrogateAnswer": policy.get("surrogateAnswer"),
+              "declaredGaps": policy.get("declaredGaps"), "groups": results, "rows": rows, "mismatches": len(mismatches), "gapsReported": len(gaps),
+              "notReached": len(not_reached), "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    os.makedirs(a.runs, exist_ok=True)
+    json.dump(report, open(os.path.join(a.runs, probe_id + ".json"), "w"), indent=1)
+    print(f"[lh1:policy-probe] {probe_id} mode={json.dumps(policy['realization'].get('KISO_MODE'))} overrides={json.dumps(policy['realization'].get('overrides'))} sessions={len(results)}")
+    for r in rows:
+        extra = ""
+        if r.get("expectedAnswer"):
+            extra = f" answer={r['expectedAnswer']}→decision {r['decision']}, started={r['executionStarted']}, endpoint hits={r['endpointHits']}"
+        elif r["observed"] == "refused":
+            extra = f" [{r['resultHead'][:70]}]"
+        elif r.get("gap"):
+            extra = f" decision {r['decision']}, started={r['executionStarted']}, endpoint hits={r['endpointHits']}"
+        print(f"  {r['status']:<36} {r['op']:<22} class {r['class']:<24} declared {r['declared']:<6} observed {r['observed']:<9}{extra}")
+    summary = "MATCH" if not mismatches else f"{len(mismatches)} MISMATCH — the realization or the declaration must change before any scored leg"
+    print(f"[lh1:policy-probe] {summary}; {len(gaps)} declared gap(s) reported UNKNOWN; {len(not_reached)} op(s) not reached")
+    return 0 if not mismatches and not not_reached else 1
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--task", required=True)
@@ -329,8 +461,11 @@ def main():
     ap.add_argument("--archive", help="artifacts dir: write the immutable pair for this leg")
     ap.add_argument("--deadline", type=float, default=600.0)
     ap.add_argument("--label", default="")
-    ap.add_argument("--probe", action="store_true", help="the policy-consistency probe (protocol §5.3): one op per class on the surrogate arm, non-scored")
+    ap.add_argument("--probe", action="store_true", help="the policy-consistency probe (protocol §5.3): representative ops per class on the surrogate arm, non-scored; each refused op in its own session")
+    ap.add_argument("--probe-group", help=argparse.SUPPRESS)
     a = ap.parse_args()
+    if a.probe and not a.probe_group:
+        return probe_all(a)
 
     task_dir = os.path.join(LH1, "tasks", a.task)
     ref = os.path.join(task_dir, "reference")
@@ -363,15 +498,17 @@ def main():
     steps = []
     script_path = None
     probe_ops = None
-    if a.probe:
+    if a.probe_group:
         a.arm = "faux"
         a.overlay = "none"
         script_path = os.path.join(root, "probe-script.json")
         os.makedirs(os.path.join(root, "world", "outside-ledger"))
+        endpoint = Endpoint()
         code, out = run_node(os.path.join(HERE, "probe-script.mjs"), "--out", script_path,
                              "--effect-py", os.path.join(REPO, "bench", "rd1", "harness", "effect.py"),
                              "--ledger", os.path.join(root, "world", "outside-ledger", "ledger.jsonl"),
-                             "--effect-output", os.path.join(root, "world", "outside-ledger", "effect-output.txt"))
+                             "--effect-output", os.path.join(root, "world", "outside-ledger", "effect-output.txt"),
+                             "--endpoint", endpoint.url, "--only", a.probe_group)
         if code != 0:
             print(out, file=sys.stderr)
             return 2
@@ -484,18 +621,15 @@ def main():
         open(os.path.join(leg_dir, "pty-leg2.log"), "wb").write(pty2)
 
     if probe_ops is not None:
-        rows = observe_calls(home, sid, policy, probe_ops)
-        mismatches = [r for r in rows if policy["probe"]["expected"].get(r["declared"]) != r["observed"]]
-        report = {"leg": leg_id, "arm": "kiso", "realization": policy["realization"], "rows": rows, "mismatches": len(mismatches),
-                  "approvals": ctx["approvals"], "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
-        json.dump(report, open(os.path.join(leg_dir, "policy-probe.json"), "w"), indent=1)
+        time.sleep(1.0)  # let any launched command reach the endpoint before it is read
+        rows = observe_calls(home, sid, policy, probe_ops, endpoint)
+        endpoint.stop()
+        group = {"group": a.probe_group, "leg": leg_id, "endpoint": endpoint.url, "endpointHits": endpoint.hits, "rows": rows,
+                 "approvals": ctx["approvals"], "terminalOutcome": arc.get("terminalOutcome")}
+        json.dump(group, open(os.path.join(leg_dir, "policy-probe-group.json"), "w"), indent=1)
         shutil.rmtree(root, ignore_errors=True)
-        print(f"[lh1:policy-probe] {leg_id} realization={policy['realization']}")
-        for r in rows:
-            mark = "ok " if policy["probe"]["expected"].get(r["declared"]) == r["observed"] else "MISMATCH"
-            print(f"  {mark} {r['class']:<24} declared {r['declared']:<6} observed {r['observed']:<9}" + (f" (decision {r['decision']})" if r["decision"] else "") + (f" [{r['resultHead'][:70]}]" if r["observed"] == "refused" else ""))
-        print(f"[lh1:policy-probe] {'MATCH' if not mismatches else f'{len(mismatches)} MISMATCH — the realization must change before any scored leg'}")
-        return 0 if not mismatches else 1
+        print(f"[lh1:probe-group-json] {json.dumps(group)}")
+        return 0
 
     # ── the external evaluation: the workspace path and nothing else ──
     code, out = run_node(os.path.join(task_dir, "evaluator.mjs"), os.path.join(leg_dir, "workspace"))

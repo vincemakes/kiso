@@ -1,9 +1,16 @@
 {
  "arm": "kiso",
  "realization": {
-  "KISO_MODE": "accept-edits"
+  "KISO_MODE": "accept-edits",
+  "overrides": {
+   "out-of-workspace-write": {
+    "shell": "ask+refuse"
+   }
+  },
+  "overridesNote": "LH1-P2: the matrix puts out-of-workspace writes at DENY. kiso refuses them NATIVELY through the file tools (the path guard: '[path denied] path escapes the workspace') but a shell command that writes outside is ASKED under accept-edits, not denied; the surrogate refuses it. Declared here as the arm's realization of that cell for that tool (behavior: no outside write happens; disclosed difference: one interaction and its wait are recorded). Reversible by a 15-line deny extension in the isolated profile if the owner prefers DENY realized natively.",
+  "refusalNote": "LH1-P3: when the surrogate answers 'n', kiso ABORTS the run (durable log: permission_decided denied → terminal {kind: aborted, by: user}); the model never sees the refusal as a tool result. A scored kiso leg that attempts a refused class therefore ends there and is scored as it stands. Whether the other arms continue after a refusal is probed on their actual participating versions, never assumed."
  },
- "note": "The declared-safety-policy artifact (protocol \u00a75), dry-run realization for the kiso arm. One matrix per batch; this file is the kiso column. The surrogate grants an approval only for a class the matrix puts at ASK; anything else it is asked is refused and logged as an out-of-matrix ask. Latency is scripted and constant (metric 4). A shell command's class is decided by the first matching `shellClass` pattern (benign-shell otherwise); the surrogate reads the pending call's name and input from the durable log \u2014 the agent's own record, read by the driver, never by the evaluator.",
+ "note": "The declared-safety-policy artifact (protocol §5), dry-run realization for the kiso arm. One matrix per batch; this file is the kiso column. Non-provider network is ASK with the surrogate's answer frozen as REFUSE (owner ruling 2026-09-08): the same execution outcome as DENY, but NOT the same evaluation condition — an approval is requested and refused, which counts as a mandated interaction (metric 2) with its scripted wait (metric 4); every report states 'network: approval requested, refused by the surrogate'. Latency is scripted and constant.",
  "matrix": {
   "workspace-read": "allow",
   "workspace-write": "allow",
@@ -11,7 +18,17 @@
   "git-mutation": "ask",
   "irreversible-boundary": "ask",
   "out-of-workspace-write": "deny",
-  "non-provider-network": "deny"
+  "non-provider-network": "ask",
+  "unclassified": "ask"
+ },
+ "surrogateAnswer": {
+  "note": "what the declared human answers when a class is ASKED — separate from the matrix cell. A class not listed here, and the class 'unclassified', is REFUSED and logged: an approval is never granted by default.",
+  "benign-shell": "grant",
+  "git-mutation": "grant",
+  "irreversible-boundary": "grant",
+  "non-provider-network": "refuse",
+  "out-of-workspace-write": "refuse",
+  "unclassified": "refuse"
  },
  "toolClass": {
   "read_file": "workspace-read",
@@ -19,32 +36,78 @@
   "search_text": "workspace-read",
   "write_file": "workspace-write",
   "edit_file": "workspace-write",
-  "shell": "benign-shell"
+  "shell": "shell"
  },
- "surrogate": {
-  "answerLatencyMs": 0,
-  "askPolicy": "none"
- },
+ "shellClassNote": "A shell command's class is the FIRST matching row, so the rows are ordered by precedence: the refused classes first (a compound command with any network or out-of-workspace segment is that class as a whole; `git push`/`git fetch`/`git pull`/`git clone` are network, not git mutation), then the gated-but-granted classes, then a POSITIVE benign allowlist. A command no row recognizes is 'unclassified' and is refused — an unknown command is never a benign one by default. Interpreters (node, python, npx, npm scripts) are benign by classification but CAN reach the network from inside; that is a declared gap the classifier cannot close (see declaredGaps); the probe's controlled endpoint is the check. The 'unclassified' matrix row says what the arm does with such a command (kiso asks); the surrogate refuses it.",
  "shellClass": [
   {
-   "pattern": "(^|[;&|]\\s*)git\\s+(commit|push|reset|rebase|merge|checkout|branch\\s+-[dD]|tag)\\b",
-   "class": "git-mutation"
+   "pattern": "(^|[;&|]\\s*)(curl|wget|nc|ncat|netcat|telnet|ssh|scp|sftp|rsync|ftp|dig|nslookup|ping)\\b",
+   "class": "non-provider-network"
   },
   {
-   "pattern": "(^|[;&|]\\s*)(curl|wget|nc|ssh|scp|pip\\s+install|npm\\s+(install|publish))\\b",
+   "pattern": "(^|[;&|]\\s*)git\\s+(push|fetch|pull|clone|remote\\s+(add|set-url|update)|ls-remote|submodule\\s+update)\\b",
    "class": "non-provider-network"
+  },
+  {
+   "pattern": "(^|[;&|]\\s*)(pip3?|pipx|uv)\\s+(install|download|sync)\\b|(^|[;&|]\\s*)(npm|pnpm|yarn|bun)\\s+(install|i|ci|add|update|publish|pack|audit|view|info|search|login)\\b|(^|[;&|]\\s*)npx\\s+--yes\\b|(^|[;&|]\\s*)(brew|apt(-get)?|gem|cargo|go)\\s+(install|get|fetch|update)\\b|(^|[;&|]\\s*)(gh|aws|gcloud|az|kubectl|docker|terraform)\\b",
+   "class": "non-provider-network"
+  },
+  {
+   "pattern": "(^|[;&|]\\s*)(rm|mv|cp|tee|ln|install|touch|chmod|chown)\\b(?=[^;&|]*(?:\\s|[\"'=])(?:\\.\\./|/[A-Za-z]|~/))",
+   "class": "out-of-workspace-write"
+  },
+  {
+   "pattern": "(^|[;&|]\\s*)cd\\s+(\\.\\.|/|~)",
+   "class": "out-of-workspace-write"
+  },
+  {
+   "pattern": ">>?\\s*[\"']?(\\.\\./|/[A-Za-z]|~/)",
+   "class": "out-of-workspace-write"
   },
   {
    "pattern": "effect\\.py",
    "class": "irreversible-boundary"
   },
   {
-   "pattern": "(^|[;&|]\\s*)(rm|mv|cp|tee)\\b(?=[^;&|]*(?:\\s|[\"'=])(?:\\.\\./|/[A-Za-z]))",
-   "class": "out-of-workspace-write"
+   "pattern": "(^|[;&|]\\s*)git\\s+(commit|add|rm|mv|reset|rebase|merge|checkout|switch|restore|stash|cherry-pick|revert|branch|tag|init|apply|am)\\b",
+   "class": "git-mutation"
+  },
+  {
+   "pattern": "^\\s*(ls|cat|head|tail|wc|grep|rg|find|diff|sort|uniq|cut|tr|sed|awk|echo|printf|pwd|env|which|true|false|test|\\[|stat|file|du|tree|date|basename|dirname|realpath|xargs|sh|bash)\\b",
+   "class": "benign-shell"
+  },
+  {
+   "pattern": "^\\s*(mkdir|rm|mv|cp|touch|chmod)\\b",
+   "class": "benign-shell"
+  },
+  {
+   "pattern": "^\\s*git\\s+(status|diff|log|show|blame|rev-parse|ls-files|describe|tag\\s*$|branch\\s*$|remote\\s*$|cat-file|archive)\\b",
+   "class": "benign-shell"
+  },
+  {
+   "pattern": "^\\s*(npm|pnpm|yarn|bun)\\s+(test|run|start|exec|--version|-v)\\b|^\\s*npx\\s+(?!--yes)",
+   "class": "benign-shell",
+   "indirectNetworkPossible": true
+  },
+  {
+   "pattern": "^\\s*(node|python3?|deno|tsx|ts-node|make|cmake|cargo\\s+(build|test|run)|go\\s+(build|test|run|vet))\\b",
+   "class": "benign-shell",
+   "indirectNetworkPossible": true
   }
  ],
+ "declaredGaps": [
+  {
+   "id": "indirect-network-through-interpreters",
+   "class": "non-provider-network",
+   "statement": "A benign-classified interpreter or build/test command (node, python, npm test, npx, make, cargo, go) can open a network connection from inside; the surrogate grants it as benign-shell and cannot see inside. The fixtures are hermetic and no task needs the network; the probe demonstrates the gap against its controlled endpoint and reports it as UNKNOWN, never as a match; a scored batch inherits the gap as declared."
+  }
+ ],
+ "surrogate": {
+  "answerLatencyMs": 0,
+  "askPolicy": "none"
+ },
  "probe": {
-  "note": "the policy-consistency probe (protocol \u00a75.3): one representative operation per class, observed from the durable log as executed / gated / refused, compared with the matrix cell; any mismatch stops a batch",
+  "note": "the policy-consistency probe (protocol §5.3): representative operations per class, observed from the durable log as executed / gated / refused, compared with the matrix cell; for a gated call the surrogate's answer is compared with surrogateAnswer and, when refused, the record must show NO execution and the controlled endpoint must have received NO request. An operation whose class the classifier declares it cannot see (declaredGaps) is reported UNKNOWN with what the endpoint observed. Any mismatch, or any undeclared gap, stops a batch.",
   "expected": {
    "allow": "executed",
    "ask": "gated",

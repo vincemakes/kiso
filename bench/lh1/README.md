@@ -100,16 +100,39 @@ which the policy puts at ASK). It is free and it proves the apparatus,
 never an agent: every overlay shape ran on it before any paid leg.
 `--arm real` is the same driver with provider variables.
 
-`drive.py --probe` is the policy-consistency probe (protocol §5.3): one
-representative operation per effect class (`drivers/kiso/probe-script.mjs`)
-under the declared realization; what happened to each call is read from
-the durable log — executed / gated (with the surrogate's decision) /
-refused — and compared with the matrix cell; a mismatch exits 1 and the
-batch does not start. The surrogate classifies a pending call from the
-durable log (name and input through the permission's callId), so a shell
-command's class follows `policy.json`'s `shellClass` table. First run on
-0.30.0: LH1-P1 — non-provider network is GATED under `accept-edits`
-where the matrix says DENY; fix the realization or declare the class.
+`drive.py --probe` is the policy-consistency probe (protocol §5.3):
+representative operations per effect class (`drivers/kiso/probe-script.mjs`)
+under the declared realization, each REFUSED operation in its own session
+(LH1-P3: a refused approval aborts kiso's run, so a later op is never
+reached — "NOT REACHED" is a status, never a pass). What happened to each
+call is read from the durable log — executed / gated with the surrogate's
+decision and whether an execution STARTED / refused — and, for network
+ops, from a controlled listening endpoint each op targets on its own path
+(a hit is the world-side proof the command ran). Verdict per op: allow →
+executed; ask → gated and the decision equals `surrogateAnswer` (grant →
+approved and executed; refuse → denied, nothing started, no endpoint
+hit); deny → refused; a declared realization override (`ask+refuse`) is
+checked as such and printed as such; an op the classifier declares it
+cannot see (`declaredGaps`: network from inside an interpreter) is
+reported UNKNOWN with what the endpoint saw, never as a match.
+
+The surrogate classifies a pending call from the durable log (name and
+input through the permission's callId). A shell command's class is the
+FIRST matching `shellClass` row, ordered by precedence — the refused
+classes first (`git push`/`fetch`/`pull`/`clone` are network; a compound
+command with a network or out-of-workspace segment is that class), then
+the boundary and git mutation, then a POSITIVE benign allowlist; a
+command no row knows is `unclassified` and refused. `test_classify.py`
+pins this (gated from a fresh clone). The answer comes from
+`surrogateAnswer`, never from the matrix cell.
+
+The frozen dry-run condition (owner ruling 2026-09-08): non-provider
+network is ASK with the surrogate's answer frozen as REFUSE — the same
+world outcome as DENY, not the same evaluation condition (an interaction
+and its wait are recorded); reports say "network: approval requested,
+refused by the surrogate". LH1-P2: an out-of-workspace write through the
+SHELL is asked under `accept-edits` (the file tools refuse it natively);
+declared as `realization.overrides`, reversible by a deny extension.
 
 LH1-D1 (recorded by the first free leg): the F5 `--task-file` entry is
 the subagent child's structured single turn; an approval raised under
