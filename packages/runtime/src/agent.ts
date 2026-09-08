@@ -41,10 +41,19 @@ export interface AgentDefinition {
 	readonly hooks?: HookHost;
 	/** Direct adapter injection (tests, faux, custom providers). */
 	readonly adapter?: Adapter;
-	/** Lazy provider: "anthropic" | "openai-compat" (imports the peer package). */
-	readonly provider?: "anthropic" | "openai-compat";
+	/** Lazy provider: "anthropic" | "openai-compat" | "openai-responses"
+	 *  (imports the peer package). */
+	readonly provider?: "anthropic" | "openai-compat" | "openai-responses";
 	readonly apiKey?: string;
 	readonly baseUrl?: string;
+	/** OR-1: the Responses adapter's ChatGPT target — a thunk that yields
+	 *  a FRESH token per request (the CLI's calls the credential store's
+	 *  refresh). Its presence is what selects that target; `apiKey`
+	 *  selects the first-party one. Ignored by the other providers. */
+	readonly oauth?: () => Promise<{ readonly access: string; readonly accountId: string }>;
+	/** OR-1: the ChatGPT backend's prefix-cache key — the session id, so
+	 *  one session's requests share a cache lane. */
+	readonly promptCacheKey?: string;
 	/** PH-1c.1: opt-in Anthropic prompt caching (cache_control
 	 *  breakpoints) — OFF by default; the openai-compat path ignores it
 	 *  (that dialect's caching is server-automatic). Type-only additive. */
@@ -241,8 +250,14 @@ function policyHooks(policy: PermissionPolicy): HookHost {
  * takes effect.
  */
 export async function buildAdapter(
-	provider: "anthropic" | "openai-compat",
-	opts: { readonly apiKey?: string; readonly baseUrl?: string; readonly promptCaching?: boolean } = {},
+	provider: "anthropic" | "openai-compat" | "openai-responses",
+	opts: {
+		readonly apiKey?: string;
+		readonly baseUrl?: string;
+		readonly promptCaching?: boolean;
+		readonly oauth?: () => Promise<{ readonly access: string; readonly accountId: string }>;
+		readonly promptCacheKey?: string;
+	} = {},
 ): Promise<Adapter> {
 	// resolveAdapter consumes only provider/apiKey/baseUrl from the
 	// definition — the rest is irrelevant for a bare adapter build.
@@ -278,8 +293,26 @@ async function resolveAdapter(definition: AgentDefinition): Promise<Adapter> {
 					: {}),
 			});
 		}
+		case "openai-responses": {
+			const { createOpenAIResponsesProvider } = await import("@vincemakes/kiso-provider-openai-responses");
+			// MG-1 (A5): the adapter's replay identity is the SAME one the
+			// run's stamping scope uses, so emit and replay agree — the
+			// openai-compat case's rule, one dialect over.
+			const scope = resolveContinuationScope("openai-responses", "", definition.baseUrl);
+			// The adapter picks its TARGET from these options — an `oauth`
+			// thunk is the ChatGPT backend, an `apiKey` is the first-party
+			// API — so no separate switch exists to disagree with the
+			// credential the CLI resolved.
+			return createOpenAIResponsesProvider({
+				...(scope !== undefined ? { scope: { providerId: scope.providerId } } : {}),
+				...(definition.apiKey !== undefined ? { apiKey: definition.apiKey } : {}),
+				...(definition.oauth !== undefined ? { oauth: definition.oauth } : {}),
+				...(definition.baseUrl !== undefined ? { baseUrl: definition.baseUrl } : {}),
+				...(definition.promptCacheKey !== undefined ? { promptCacheKey: definition.promptCacheKey } : {}),
+			});
+		}
 		default:
-			throw new Error("createAgent: pass an `adapter` or a `provider` (\"anthropic\" | \"openai-compat\")");
+			throw new Error("createAgent: pass an `adapter` or a `provider` (\"anthropic\" | \"openai-compat\" | \"openai-responses\")");
 	}
 }
 

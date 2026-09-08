@@ -41,6 +41,7 @@ const ALL = {
 	"@vincemakes/kiso-tools-node": true,
 	"@vincemakes/kiso-provider-anthropic": true,
 	"@vincemakes/kiso-provider-openai": true,
+	"@vincemakes/kiso-provider-openai-responses": true,
 	"@vincemakes/kiso-tui-cells": true,
 	"@vincemakes/kiso-tui": true,
 	// R-D 0.1.45 (decision point A): the four official extensions joined
@@ -231,15 +232,16 @@ console.log("tier A2 OK — nested install resolves the runtime closure");
 // ── tier B: the provider closure ───────────────────────────────────────
 {
 	const proj = tempProject("providers");
-	installTier("providers", ["@vincemakes/kiso-core", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai"], proj);
+	installTier("providers", ["@vincemakes/kiso-core", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-provider-openai-responses"], proj);
 	writeFileSync(
 		join(proj, "providers.mjs"),
 		`import { createAnthropicAdapter } from "@vincemakes/kiso-provider-anthropic";
 import { createOpenAICompatAdapter } from "@vincemakes/kiso-provider-openai";
+import { createOpenAIResponsesProvider } from "@vincemakes/kiso-provider-openai-responses";
 import { mapApiError } from "@vincemakes/kiso-core";
-if (typeof createAnthropicAdapter !== "function" || typeof createOpenAICompatAdapter !== "function") throw new Error("adapter factories missing");
+if (typeof createAnthropicAdapter !== "function" || typeof createOpenAICompatAdapter !== "function" || typeof createOpenAIResponsesProvider !== "function") throw new Error("adapter factories missing");
 if (mapApiError(529, "x").code !== "overloaded") throw new Error("error mapping broken");
-console.log("tier B OK — provider closure: both factories import, error mapping works");
+console.log("tier B OK — provider closure: the three factories import, error mapping works");
 `,
 	);
 	execSync("node providers.mjs", { cwd: proj, stdio: "inherit" });
@@ -253,7 +255,7 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 		"cli",
 		[
 			"@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node",
-			"@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai",
+			"@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-provider-openai-responses",
 			// the tui closure must come from the PACKED tree too: kiso-code's
 			// exact tui pin would otherwise resolve the PUBLISHED tui (stale
 			// whenever the tree is ahead of the registry — the toolTarget
@@ -302,7 +304,7 @@ console.log("tier B OK — provider closure: both factories import, error mappin
 {
 	const proj = tempProject("nested-cli");
 	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-cli-"));
-	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-tui-cells", "@vincemakes/kiso-tui", "@vincemakes/kiso-mcp-ext", "@vincemakes/kiso-skills-ext", "@vincemakes/kiso-subagent-ext", "@vincemakes/kiso-task-ext", "@vincemakes/kiso-ask-ext", "@vincemakes/kiso-code"].map((n) =>
+	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-provider-openai-responses", "@vincemakes/kiso-tui-cells", "@vincemakes/kiso-tui", "@vincemakes/kiso-mcp-ext", "@vincemakes/kiso-skills-ext", "@vincemakes/kiso-subagent-ext", "@vincemakes/kiso-task-ext", "@vincemakes/kiso-ask-ext", "@vincemakes/kiso-code"].map((n) =>
 		pack(stage, n),
 	);
 	for (const tarball of tarballs) {

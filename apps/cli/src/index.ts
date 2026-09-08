@@ -50,6 +50,7 @@ import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { chat, contextWindowTokens, displayCtxRatio } from "./chat.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
+import { oauthTokenThunk } from "./auth/token.js";
 import { checkForUpdate } from "./update-check.js";
 import { resume } from "./resume.js";
 import { resumeTail } from "./resume-tail.js";
@@ -674,7 +675,18 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 		...(resolved !== null
 			? {
 					provider: resolved.profile.kind,
-					apiKey: resolved.apiKey,
+					// OR-1: exactly one sign-in shape reaches the adapter. An
+					// OAuth profile has no key to pass — it passes the thunk
+					// the adapter re-resolves per request instead.
+					...(resolved.oauthProviderId !== undefined
+						? { oauth: oauthTokenThunk(resolved.oauthProviderId) }
+						: { apiKey: resolved.apiKey ?? "none" }),
+					// OR-1: the ChatGPT backend's cache lane is the SESSION —
+					// one conversation's requests share a key, different
+					// conversations never do. The one entry point that hands
+					// no session id is `kiso sessions`, a read-only listing
+					// that streams nothing, so its absence costs no cache.
+					...(sessionId !== undefined ? { promptCacheKey: sessionId } : {}),
 					...(resolved.profile.baseUrl !== undefined ? { baseUrl: resolved.profile.baseUrl } : {}),
 					...(resolved.profile.promptCaching !== undefined ? { promptCaching: resolved.profile.promptCaching } : {}),
 				}

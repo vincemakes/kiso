@@ -8,8 +8,9 @@
  *
  * Schema v1:
  *   model?: string   — a profile NAME (models.<name>) or "provider/model"
- *                      direct write (provider: "openai-compat" | "anthropic")
- *   models?: { [name]: { kind: "openai-compat"|"anthropic",
+ *                      direct write (provider: "openai-compat" |
+ *                      "anthropic" | "openai-responses")
+ *   models?: { [name]: { kind: "openai-compat"|"anthropic"|"openai-responses",
  *                        baseUrl?: string, model: string, apiKeyEnv: string } }
  *   mode?: "manual"|"default"|"accept-edits"|"plan"|"bypass"
  *   contextWindow?: number      — tokens
@@ -33,7 +34,11 @@ import { kisoHome } from "./state.js";
 import type { Mode } from "./mode.js";
 import { AuthError, getCredential, providerIdOf } from "./auth/credentials.js";
 
-export type ProfileKind = "openai-compat" | "anthropic";
+/** OR-1: `openai-responses` is a DIALECT, not a vendor — the same kind
+ *  drives the first-party Responses API and the ChatGPT subscription
+ *  backend, and which one it is follows the profile's baseUrl (and so
+ *  the credential it resolves to). */
+export type ProfileKind = "openai-compat" | "anthropic" | "openai-responses";
 
 export interface ModelProfile {
 	readonly kind: ProfileKind;
@@ -81,7 +86,7 @@ export interface ResolvedConfig {
 	readonly project: KisoConfig;
 }
 
-const KINDS: readonly string[] = ["openai-compat", "anthropic"];
+const KINDS: readonly string[] = ["openai-compat", "anthropic", "openai-responses"];
 const MODES_LIST: readonly string[] = ["manual", "default", "accept-edits", "plan", "bypass"];
 
 export class ConfigError extends Error {}
@@ -224,12 +229,24 @@ export function mergeConfigs(user: KisoConfig | null, project: KisoConfig | null
 	};
 }
 
-/** Where a profile's credential comes from, or why it has none. The
- *  sign-in plan's resolve rule: a stored credential OWNS the provider (an
- *  unusable stored one is an error, never a silent fall back to env); with
- *  nothing stored, the profile's env var applies; a keyless profile (no
- *  apiKeyEnv — PH-1c, finding PH-F19) is an unauthenticated endpoint. */
-export function credentialForProfile(name: string, p: ModelProfile): { readonly apiKey: string; readonly source: "store" | "env" | "none" } {
+/** What a profile's sign-in actually IS. The two shapes are not
+ *  interchangeable: an API key is a string an adapter holds, an OAuth
+ *  sign-in is a token that expires and must be re-resolved per request. */
+export type ProfileAuth =
+	| { readonly type: "api-key"; readonly apiKey: string; readonly source: "store" | "env" | "none" }
+	| { readonly type: "oauth"; readonly providerId: string };
+
+/** Where a profile's sign-in comes from, or why it has none. The sign-in
+ *  plan's resolve rule: a stored credential OWNS the provider (an
+ *  unusable stored one is an error, never a silent fall back to env);
+ *  with nothing stored, the profile's env var applies; a keyless profile
+ *  (no apiKeyEnv — PH-1c, finding PH-F19) is an unauthenticated endpoint.
+ *
+ *  OR-1: a stored OAuth credential is USABLE only by an adapter that can
+ *  drive one, which today is the Responses adapter's ChatGPT target. For
+ *  every other kind it stays the same loud refusal it has always been —
+ *  the caller is told which sign-in it has and which one it needs. */
+export function authForProfile(name: string, p: ModelProfile): ProfileAuth {
 	const providerId = providerIdOf(p.kind, p.baseUrl);
 	if (providerId !== null) {
 		let stored;
@@ -240,13 +257,14 @@ export function credentialForProfile(name: string, p: ModelProfile): { readonly 
 			throw err;
 		}
 		if (stored !== undefined) {
-			if (stored.type === "api-key") return { apiKey: stored.key, source: "store" };
+			if (stored.type === "api-key") return { type: "api-key", apiKey: stored.key, source: "store" };
+			if (p.kind === "openai-responses") return { type: "oauth", providerId };
 			throw new ConfigError(`model ${name}: signed in to ${providerId} with OAuth, but this profile's adapter needs an API key — run \`kiso login ${providerId}\` with a key, or \`kiso logout ${providerId}\` to use the env var ${p.apiKeyEnv ?? "(none configured)"}`);
 		}
 	}
-	if (p.apiKeyEnv === undefined) return { apiKey: "none", source: "none" };
+	if (p.apiKeyEnv === undefined) return { type: "api-key", apiKey: "none", source: "none" };
 	const fromEnv = process.env[p.apiKeyEnv];
-	if (fromEnv !== undefined) return { apiKey: fromEnv, source: "env" };
+	if (fromEnv !== undefined) return { type: "api-key", apiKey: fromEnv, source: "env" };
 	const hint = providerId !== null ? `run \`kiso login ${providerId}\` or set the env var ${p.apiKeyEnv}` : `set the env var ${p.apiKeyEnv}`;
 	throw new ConfigError(`model ${name}: unavailable — no credential: ${hint} (configs never store keys, only the env-var name)`);
 }
@@ -254,28 +272,35 @@ export function credentialForProfile(name: string, p: ModelProfile): { readonly 
 /** The reason a profile is unavailable, for the surfaces that print it. */
 export function unavailableReason(name: string, p: ModelProfile): string {
 	try {
-		credentialForProfile(name, p);
+		authForProfile(name, p);
 		return "";
 	} catch (err) {
 		return err instanceof Error ? err.message : String(err);
 	}
 }
 
-/** A profile is available when a credential resolves for it. */
+/** A profile is available when a sign-in resolves for it — of EITHER
+ *  shape: an OAuth-only profile is available, and calling the key-only
+ *  resolver here would have declared it broken. */
 export function profileAvailable(p: ModelProfile): boolean {
 	try {
-		credentialForProfile("?", p);
+		authForProfile("?", p);
 		return true;
 	} catch {
 		return false;
 	}
 }
 
-/** The resolved runtime model — what the adapter is built from. */
+/** The resolved runtime model — what the adapter is built from. Exactly
+ *  one of the two sign-in fields is set: an OAuth profile has no key to
+ *  hand over, and the caller must build the adapter from the token thunk
+ *  instead (the compiler enforces the branch — `apiKey` is optional). */
 export interface ResolvedModel {
 	readonly name: string;
 	readonly profile: ModelProfile;
-	readonly apiKey: string;
+	readonly apiKey?: string;
+	/** OR-1: the provider whose stored OAuth sign-in this profile uses. */
+	readonly oauthProviderId?: string;
 }
 
 /** "provider/model" direct write → a profile. */
@@ -283,10 +308,14 @@ export function directWriteProfile(value: string): ModelProfile | null {
 	const slash = value.indexOf("/");
 	if (slash <= 0 || slash === value.length - 1) return null;
 	const kind = value.slice(0, slash);
-	if (kind !== "openai-compat" && kind !== "anthropic") return null;
+	if (kind !== "openai-compat" && kind !== "anthropic" && kind !== "openai-responses") return null;
 	return {
 		kind,
 		model: value.slice(slash + 1),
+		// OR-1: a direct-write `openai-responses/…` names no baseUrl, so it
+		// is the FIRST-PARTY target and its env var is OpenAI's. The
+		// ChatGPT backend needs a baseUrl and a stored sign-in, which is a
+		// configured profile's job, not a one-line direct write.
 		apiKeyEnv: kind === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY",
 	};
 }
@@ -349,7 +378,8 @@ export function resolveModel(modelFlag: string | undefined, merged: KisoConfig):
 function resolveProfile(name: string, p: ModelProfile): ResolvedModel {
 	// PH-1c (finding PH-F19): a keyless profile hands the adapter a
 	// placeholder — the SDKs require SOME string; the endpoint ignores it.
-	return { name, profile: p, apiKey: credentialForProfile(name, p).apiKey };
+	const auth = authForProfile(name, p);
+	return auth.type === "oauth" ? { name, profile: p, oauthProviderId: auth.providerId } : { name, profile: p, apiKey: auth.apiKey };
 }
 
 /** Mode: env (KISO_MODE) beats config.mode; the --mode flag is applied by

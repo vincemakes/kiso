@@ -8,8 +8,8 @@
 		"extensions/*"
 	],
 	"scripts": {
-		"build": "npm run build -w @vincemakes/kiso-core && npm run build -w @vincemakes/kiso-evals && npm run build -w @vincemakes/kiso-provider-anthropic && npm run build -w @vincemakes/kiso-provider-openai && npm run build -w @vincemakes/kiso-runtime && npm run build -w @vincemakes/kiso-tui-cells && npm run build -w @vincemakes/kiso-tui && npm run build -w @vincemakes/kiso-tools-node && npm run build -w @vincemakes/kiso-code && npm run build -w @vincemakes/kiso-mcp-ext && npm run build -w @vincemakes/kiso-subagent-ext && npm run build -w @vincemakes/kiso-skills-ext && npm run build -w @vincemakes/kiso-task-ext && npm run build -w @vincemakes/kiso-ask-ext",
-		"typecheck": "tsc -p tsconfig.json && npm run typecheck -w @vincemakes/kiso-core && npm run typecheck -w @vincemakes/kiso-evals && npm run typecheck -w @vincemakes/kiso-provider-anthropic && npm run typecheck -w @vincemakes/kiso-provider-openai && npm run typecheck -w @vincemakes/kiso-runtime && npm run typecheck -w @vincemakes/kiso-tui-cells && npm run typecheck -w @vincemakes/kiso-tui && npm run typecheck -w @vincemakes/kiso-tools-node && npm run typecheck -w @vincemakes/kiso-code && npm run typecheck -w @vincemakes/kiso-mcp-ext && npm run typecheck -w @vincemakes/kiso-subagent-ext && npm run typecheck -w @vincemakes/kiso-skills-ext && npm run typecheck -w @vincemakes/kiso-task-ext && npm run typecheck -w @vincemakes/kiso-ask-ext",
+		"build": "npm run build -w @vincemakes/kiso-core && npm run build -w @vincemakes/kiso-evals && npm run build -w @vincemakes/kiso-provider-anthropic && npm run build -w @vincemakes/kiso-provider-openai && npm run build -w @vincemakes/kiso-provider-openai-responses && npm run build -w @vincemakes/kiso-runtime && npm run build -w @vincemakes/kiso-tui-cells && npm run build -w @vincemakes/kiso-tui && npm run build -w @vincemakes/kiso-tools-node && npm run build -w @vincemakes/kiso-code && npm run build -w @vincemakes/kiso-mcp-ext && npm run build -w @vincemakes/kiso-subagent-ext && npm run build -w @vincemakes/kiso-skills-ext && npm run build -w @vincemakes/kiso-task-ext && npm run build -w @vincemakes/kiso-ask-ext",
+		"typecheck": "tsc -p tsconfig.json && npm run typecheck -w @vincemakes/kiso-core && npm run typecheck -w @vincemakes/kiso-evals && npm run typecheck -w @vincemakes/kiso-provider-anthropic && npm run typecheck -w @vincemakes/kiso-provider-openai && npm run typecheck -w @vincemakes/kiso-provider-openai-responses && npm run typecheck -w @vincemakes/kiso-runtime && npm run typecheck -w @vincemakes/kiso-tui-cells && npm run typecheck -w @vincemakes/kiso-tui && npm run typecheck -w @vincemakes/kiso-tools-node && npm run typecheck -w @vincemakes/kiso-code && npm run typecheck -w @vincemakes/kiso-mcp-ext && npm run typecheck -w @vincemakes/kiso-subagent-ext && npm run typecheck -w @vincemakes/kiso-skills-ext && npm run typecheck -w @vincemakes/kiso-task-ext && npm run typecheck -w @vincemakes/kiso-ask-ext",
 		"test": "npm run test:unit && npm run test:pty",
 		"test:unit": "vitest run -c vitest.unit.config.ts",
 		"test:pty": "vitest run -c vitest.pty.config.ts",
@@ -26,6 +26,7 @@
 		"@vincemakes/kiso-evals": "0.30.0",
 		"@vincemakes/kiso-provider-anthropic": "0.30.0",
 		"@vincemakes/kiso-provider-openai": "0.30.0",
+		"@vincemakes/kiso-provider-openai-responses": "0.30.0",
 		"@types/node": "^26.1.2",
 		"openai": "^7.3.0",
 		"tsx": "^4.23.5",

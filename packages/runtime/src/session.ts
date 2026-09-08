@@ -156,7 +156,7 @@ export class AgentSession {
 	// #effectiveConfig at run construction (next-turn semantics, same as
 	// setAdapter always had).
 	#model: string;
-	#provider: "anthropic" | "openai-compat" | undefined;
+	#provider: "anthropic" | "openai-compat" | "openai-responses" | undefined;
 	// MG-1 (A5): travels WITH the adapter, same next-turn semantics.
 	#continuationScope: ContinuationScope | undefined;
 	// XP-1: the selected axes; resolved per request (next-turn semantics).
@@ -295,7 +295,7 @@ export class AgentSession {
 	setModelBinding(binding: {
 		readonly adapter: Adapter;
 		readonly model: string;
-		readonly provider?: "anthropic" | "openai-compat";
+		readonly provider?: "anthropic" | "openai-compat" | "openai-responses";
 		/** MG-1 (A5): the run's continuation scope — moves atomically with
 		 *  the adapter (absent = unscoped: the kernel strips envelopes). */
 		readonly scope?: ContinuationScope;
@@ -313,11 +313,11 @@ export class AgentSession {
 		this.#recordProfile();
 	}
 
-	/** E2: the adapter identity ("anthropic" | "openai-compat") — the route
+	/** E2: the adapter identity (anthropic / openai-compat / openai-responses) — the route
 	 *  key the canonical consumer (CLI usage, the trace block) keys on. The
 	 *  per-run tracer reads the SAME live binding; one source, one
 	 *  route — the CLI and the trace can never disagree. */
-	get provider(): "anthropic" | "openai-compat" | undefined {
+	get provider(): "anthropic" | "openai-compat" | "openai-responses" | undefined {
 		return this.#provider;
 	}
 
@@ -937,9 +937,9 @@ export interface ContextPolicy {
 
 export interface SessionConfig {
 	readonly model: string;
-	/** E1: the adapter identity ("anthropic" | "openai-compat") — trace
+	/** E1: the adapter identity (anthropic / openai-compat / openai-responses) — trace
 	 *  provenance, additive (S1 surface untouched: type-only, optional). */
-	readonly provider?: "anthropic" | "openai-compat";
+	readonly provider?: "anthropic" | "openai-compat" | "openai-responses";
 	/** MG-1 (A5): the run's continuation scope — the kernel stamps it on
 	 *  committed envelopes; absent = unscoped (envelopes stripped). */
 	readonly continuationScope?: import("@vincemakes/kiso-core").ContinuationScope;

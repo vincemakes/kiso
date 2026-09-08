@@ -387,7 +387,7 @@ export const CANCELLED = Symbol("kiso-question-cancelled");
 export interface LastBinding {
 	readonly adapter: import("@vincemakes/kiso-core").Adapter;
 	readonly model: string;
-	readonly provider?: "anthropic" | "openai-compat";
+	readonly provider?: "anthropic" | "openai-compat" | "openai-responses";
 	readonly scope?: import("@vincemakes/kiso-core").ContinuationScope;
 	readonly reasoning?: import("@vincemakes/kiso-runtime/internal").ReasoningSetting;
 }

@@ -11,7 +11,8 @@ import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { agentModel, body, bodyLog, configModels, dock, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
-import { credentialForProfile, directWriteProfile, profileAvailable, unavailableReason } from "./config.js";
+import { authForProfile, directWriteProfile, profileAvailable, unavailableReason } from "./config.js";
+import { oauthTokenThunk } from "./auth/token.js";
 
 /** Everything dispatch touches that chat() owns. */
 export interface DispatchCtx {
@@ -380,10 +381,16 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 							unavailableReason(arg, profile),
 						);
 					} else {
+						const auth = authForProfile(profName, profile);
 						const adapter = await buildAdapter(profile.kind, {
 							// PH-1c (PH-F19): a keyless profile = an unauthenticated
 							// endpoint — the placeholder satisfies the SDK's ctor.
-							apiKey: credentialForProfile(profName, profile).apiKey,
+							// OR-1: an OAuth profile passes a token thunk instead
+							// — there is no key, and the adapter re-resolves the
+							// token per request.
+							...(auth.type === "oauth"
+								? { oauth: oauthTokenThunk(auth.providerId), ...(ctx.session.id !== undefined ? { promptCacheKey: ctx.session.id } : {}) }
+								: { apiKey: auth.apiKey }),
 							...(profile.baseUrl !== undefined ? { baseUrl: profile.baseUrl } : {}),
 							...(profile.promptCaching !== undefined ? { promptCaching: profile.promptCaching } : {}),
 						});

@@ -21,6 +21,9 @@ const PACKAGES = [
 	"@vincemakes/kiso-tools-node",
 	"@vincemakes/kiso-provider-anthropic",
 	"@vincemakes/kiso-provider-openai",
+	// OR-1: the 15th package — the Responses adapter (the ChatGPT target's
+	// only usable half; the manifest advertised its apiId since 0.15).
+	"@vincemakes/kiso-provider-openai-responses",
 	"@vincemakes/kiso-code",
 	"@vincemakes/kiso-mcp-ext",
 	"@vincemakes/kiso-skills-ext",

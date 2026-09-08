@@ -24,6 +24,7 @@
 		"@vincemakes/kiso-mcp-ext": "0.30.0",
 		"@vincemakes/kiso-provider-anthropic": "0.30.0",
 		"@vincemakes/kiso-provider-openai": "0.30.0",
+		"@vincemakes/kiso-provider-openai-responses": "0.30.0",
 		"@vincemakes/kiso-runtime": "0.30.0",
 		"@vincemakes/kiso-skills-ext": "0.30.0",
 		"@vincemakes/kiso-subagent-ext": "0.30.0",

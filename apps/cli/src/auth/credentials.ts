@@ -59,14 +59,32 @@ const ORIGIN_TO_PROVIDER: Readonly<Record<string, string>> = {
 	"https://open.bigmodel.cn": "zai",
 };
 
+/** The ChatGPT backend's origin — the one that means the SUBSCRIPTION
+ *  identity rather than OpenAI's. Mirrors the runtime's CHATGPT_ORIGIN.
+ *  Absent from ORIGIN_TO_PROVIDER on purpose: that table resolves
+ *  openai-CHAT profiles, and the subscription backend serves only the
+ *  Responses dialect. */
+const CHATGPT_ORIGIN = "https://chatgpt.com";
+
 /** The provider identity a profile's credential is stored under, or null
  *  for an origin nobody recognizes (custom: env var only). */
 export function providerIdOf(kind: string, baseUrl?: string): string | null {
 	if (kind === "anthropic") return "anthropic";
+	// OR-1: exactly two identities serve the Responses dialect — the
+	// ChatGPT subscription backend, and OpenAI. There is no `custom`
+	// bucket: a Responses endpoint that is neither is still OpenAI's API
+	// shape behind a proxy, and its credential is OpenAI's.
+	if (kind === "openai-responses") return originOf(baseUrl) === CHATGPT_ORIGIN ? "chatgpt" : "openai";
 	if (kind !== "openai-compat") return null;
 	if (baseUrl === undefined) return "openai";
+	const origin = originOf(baseUrl);
+	return origin === null ? null : (ORIGIN_TO_PROVIDER[origin] ?? null);
+}
+
+function originOf(baseUrl: string | undefined): string | null {
+	if (baseUrl === undefined) return null;
 	try {
-		return ORIGIN_TO_PROVIDER[new URL(baseUrl).origin] ?? null;
+		return new URL(baseUrl).origin;
 	} catch {
 		return null;
 	}
