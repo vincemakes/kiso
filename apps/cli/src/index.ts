@@ -831,6 +831,50 @@ async function chatLoop(
 	}
 }
 
+/** A secret from the terminal: hidden input on a TTY, the whole of stdin
+ *  otherwise (a pipe, a heredoc) — never an argument, which shell history
+ *  would keep. */
+async function readSecret(prompt: string): Promise<string> {
+	if (process.stdin.isTTY !== true) {
+		return await new Promise<string>((resolve) => {
+			let buf = "";
+			process.stdin.setEncoding("utf8");
+			process.stdin.on("data", (d: string) => {
+				buf += d;
+			});
+			process.stdin.on("end", () => resolve(buf.split("\n")[0] ?? ""));
+			process.stdin.resume();
+		});
+	}
+	process.stdout.write(prompt);
+	return await new Promise<string>((resolve) => {
+		let buf = "";
+		process.stdin.setRawMode(true);
+		process.stdin.resume();
+		process.stdin.setEncoding("utf8");
+		const onData = (chunk: string): void => {
+			for (const ch of chunk) {
+				if (ch === "\r" || ch === "\n") {
+					process.stdin.setRawMode(false);
+					process.stdin.pause();
+					process.stdin.off("data", onData);
+					process.stdout.write("\n");
+					resolve(buf);
+					return;
+				}
+				if (ch === "\u0003") {
+					process.stdin.setRawMode(false);
+					process.stdout.write("\n");
+					process.exit(130);
+				}
+				if (ch === "\u007f" || ch === "\b") buf = buf.slice(0, -1);
+				else buf += ch;
+			}
+		};
+		process.stdin.on("data", onData);
+	});
+}
+
 async function main(): Promise<void> {
 	// E group (the graceful-exit gate ③, R-G 0.1.48): a terminal closing
 	// turns the in-flight stdout/stderr writes into EIO, and node's
@@ -1115,6 +1159,42 @@ async function main(): Promise<void> {
 				}
 				break;
 			}
+			case "login":
+			case "logout":
+			case "auth": {
+				// the sign-in plan (2026-09-08), step 1: the credential store.
+				// `login <provider>` reads the key from a hidden prompt on a TTY
+				// or from stdin otherwise (never from an argument — shell history);
+				// `logout <provider>` deletes; `auth` lists, keys masked.
+				const { KNOWN_PROVIDERS, authPath, deleteCredential, maskSecret, readAuthFile, setCredential } = await import("./auth/credentials.js");
+				const provider = arg;
+				if (command === "auth") {
+					const file = readAuthFile();
+					const rows = Object.entries(file.credentials);
+					const lines = [`credentials: ${authPath()}${rows.length === 0 ? " (none stored)" : ""}`];
+					for (const [id, cred] of rows) {
+						if (cred.type === "api-key") lines.push(`  ${id.padEnd(10)} api-key ${maskSecret(cred.key)}  saved ${new Date(cred.savedAt).toISOString().slice(0, 10)}`);
+						else lines.push(`  ${id.padEnd(10)} oauth   ${cred.accountId ?? ""}  expires ${new Date(cred.expires).toISOString()}${cred.expires < Date.now() ? " (expired)" : ""}`);
+					}
+					const envs = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"].filter((k) => process.env[k] !== undefined);
+					lines.push(`env vars set: ${envs.length ? envs.join(", ") : "none"} (a stored credential owns its provider; env applies only when nothing is stored)`);
+					process.stdout.write(`${lines.join("\n")}\n`);
+					break;
+				}
+				if (provider === undefined || !KNOWN_PROVIDERS.includes(provider)) {
+					throw new CliUsageError(`kiso ${command} <provider> — one of: ${KNOWN_PROVIDERS.join(", ")}`);
+				}
+				if (command === "logout") {
+					const had = deleteCredential(provider);
+					process.stdout.write(had ? `signed out of ${provider}\n` : `nothing stored for ${provider}\n`);
+					break;
+				}
+				const key = (await readSecret(`API key for ${provider}: `)).trim();
+				if (key === "") throw new CliUsageError(`kiso login ${provider}: no key given`);
+				setCredential(provider, { type: "api-key", key, savedAt: Date.now() });
+				process.stdout.write(`signed in to ${provider} with an API key (${maskSecret(key)}) — stored in ${authPath()}\n`);
+				break;
+			}
 			case "help": {
 				// PH-1b (finding PH-F21): the CLI must be able to describe its
 				// own configuration — the old help listed five commands and
@@ -1129,6 +1209,9 @@ async function main(): Promise<void> {
 						"  kiso resume              pick a session to continue (TTY picker)\n" +
 						"  kiso resume <id> [prompt]   continue a session (one-shot)\n" +
 						"  kiso sessions           list durable sessions\n" +
+						"  kiso login <provider>    store an API key (anthropic|openai|deepseek|zai); hidden prompt, or stdin when piped\n" +
+						"  kiso logout <provider>   remove the stored credential\n" +
+						"  kiso auth               list stored credentials (keys masked)\n" +
 						"  kiso help               this help\n\n" +
 						"flags (any position):\n" +
 						"  --model <profile|provider/model>   pick the model (also /model in-session)\n" +

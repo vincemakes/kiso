@@ -1,6 +1,7 @@
 {
 	"pty": [
 		"apps/cli/tests/at-files.test.ts",
+		"apps/cli/tests/auth-cli.test.ts",
 		"apps/cli/tests/banner.test.ts",
 		"apps/cli/tests/bare-command-faux-label.test.ts",
 		"apps/cli/tests/bare-command-trust-gate.test.ts",
@@ -9,6 +10,7 @@
 		"apps/cli/tests/coding-agent.test.ts",
 		"apps/cli/tests/compact-cli.test.ts",
 		"apps/cli/tests/config-e2e.test.ts",
+		"apps/cli/tests/credentials.test.ts",
 		"apps/cli/tests/cx1-f5-task-file.test.ts",
 		"apps/cli/tests/cx1-f9-entry-equivalence.test.ts",
 		"apps/cli/tests/dc33-resize-midturn.test.ts",

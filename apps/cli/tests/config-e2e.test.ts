@@ -105,7 +105,7 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 			ptyRun(env, [
 				["/ commands · \u2191 history", "/model\r"],
 				["digits pick", "2\r"],
-				["not set", "/model ds\r"],
+				["no credential", "/model ds\r"], // the unavailable line's words changed with the credential store (sign-in step 1)
 				["model → ds", "exit\r"],
 			], workdir),
 		);
@@ -114,7 +114,7 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		expect(out).toContain("profile: ds");
 		expect(out).toContain("anthropic/claude-sonnet-5");
 		expect(out).toContain("unavailable"); // the qualifier rides the row, as (unavailable) rode the line
-		expect(out).toContain("model claude: unavailable — the env var ANTHROPIC_API_KEY is not set");
+		expect(out).toContain("model claude: unavailable — no credential: run `kiso login anthropic` or set the env var ANTHROPIC_API_KEY");
 		expect(out).toContain("model → ds (deepseek-v4-flash) — takes effect on the next turn");
 	});
 

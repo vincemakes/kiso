@@ -31,6 +31,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { kisoHome } from "./state.js";
 import type { Mode } from "./mode.js";
+import { AuthError, getCredential, providerIdOf } from "./auth/credentials.js";
 
 export type ProfileKind = "openai-compat" | "anthropic";
 
@@ -223,11 +224,51 @@ export function mergeConfigs(user: KisoConfig | null, project: KisoConfig | null
 	};
 }
 
-/** A profile is available when its apiKeyEnv var is set (the key exists). */
+/** Where a profile's credential comes from, or why it has none. The
+ *  sign-in plan's resolve rule: a stored credential OWNS the provider (an
+ *  unusable stored one is an error, never a silent fall back to env); with
+ *  nothing stored, the profile's env var applies; a keyless profile (no
+ *  apiKeyEnv — PH-1c, finding PH-F19) is an unauthenticated endpoint. */
+export function credentialForProfile(name: string, p: ModelProfile): { readonly apiKey: string; readonly source: "store" | "env" | "none" } {
+	const providerId = providerIdOf(p.kind, p.baseUrl);
+	if (providerId !== null) {
+		let stored;
+		try {
+			stored = getCredential(providerId);
+		} catch (err) {
+			if (err instanceof AuthError) throw new ConfigError(`model ${name}: ${err.message}`);
+			throw err;
+		}
+		if (stored !== undefined) {
+			if (stored.type === "api-key") return { apiKey: stored.key, source: "store" };
+			throw new ConfigError(`model ${name}: signed in to ${providerId} with OAuth, but this profile's adapter needs an API key — run \`kiso login ${providerId}\` with a key, or \`kiso logout ${providerId}\` to use the env var ${p.apiKeyEnv ?? "(none configured)"}`);
+		}
+	}
+	if (p.apiKeyEnv === undefined) return { apiKey: "none", source: "none" };
+	const fromEnv = process.env[p.apiKeyEnv];
+	if (fromEnv !== undefined) return { apiKey: fromEnv, source: "env" };
+	const hint = providerId !== null ? `run \`kiso login ${providerId}\` or set the env var ${p.apiKeyEnv}` : `set the env var ${p.apiKeyEnv}`;
+	throw new ConfigError(`model ${name}: unavailable — no credential: ${hint} (configs never store keys, only the env-var name)`);
+}
+
+/** The reason a profile is unavailable, for the surfaces that print it. */
+export function unavailableReason(name: string, p: ModelProfile): string {
+	try {
+		credentialForProfile(name, p);
+		return "";
+	} catch (err) {
+		return err instanceof Error ? err.message : String(err);
+	}
+}
+
+/** A profile is available when a credential resolves for it. */
 export function profileAvailable(p: ModelProfile): boolean {
-	// PH-1c (finding PH-F19): a keyless profile (no apiKeyEnv) is an
-	// unauthenticated endpoint — always available.
-	return p.apiKeyEnv === undefined || process.env[p.apiKeyEnv] !== undefined;
+	try {
+		credentialForProfile("?", p);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 /** The resolved runtime model — what the adapter is built from. */
@@ -306,12 +347,9 @@ export function resolveModel(modelFlag: string | undefined, merged: KisoConfig):
 }
 
 function resolveProfile(name: string, p: ModelProfile): ResolvedModel {
-	if (!profileAvailable(p)) {
-		throw new ConfigError(`model ${name}: unavailable — the env var ${p.apiKeyEnv} is not set (configs never store keys, only the env-var name)`);
-	}
 	// PH-1c (finding PH-F19): a keyless profile hands the adapter a
 	// placeholder — the SDKs require SOME string; the endpoint ignores it.
-	return { name, profile: p, apiKey: p.apiKeyEnv === undefined ? "none" : (process.env[p.apiKeyEnv] as string) };
+	return { name, profile: p, apiKey: credentialForProfile(name, p).apiKey };
 }
 
 /** Mode: env (KISO_MODE) beats config.mode; the --mode flag is applied by

@@ -11,7 +11,7 @@ import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { agentModel, body, bodyLog, configModels, dock, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
-import { directWriteProfile, profileAvailable } from "./config.js";
+import { credentialForProfile, directWriteProfile, profileAvailable, unavailableReason } from "./config.js";
 
 /** Everything dispatch touches that chat() owns. */
 export interface DispatchCtx {
@@ -377,13 +377,13 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 						bodyLog(`no such model profile: ${profName}`);
 					} else if (!profileAvailable(profile)) {
 						bodyLog(
-							`model ${arg}: unavailable — the env var ${profile.apiKeyEnv} is not set (configs never store keys, only the env-var name)`,
+							unavailableReason(arg, profile),
 						);
 					} else {
 						const adapter = await buildAdapter(profile.kind, {
 							// PH-1c (PH-F19): a keyless profile = an unauthenticated
 							// endpoint — the placeholder satisfies the SDK's ctor.
-							apiKey: profile.apiKeyEnv === undefined ? "none" : (process.env[profile.apiKeyEnv] as string),
+							apiKey: credentialForProfile(profName, profile).apiKey,
 							...(profile.baseUrl !== undefined ? { baseUrl: profile.baseUrl } : {}),
 							...(profile.promptCaching !== undefined ? { promptCaching: profile.promptCaching } : {}),
 						});

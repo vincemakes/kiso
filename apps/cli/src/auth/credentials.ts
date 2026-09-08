@@ -1,0 +1,167 @@
+/**
+ * The credential store — sign-in's foundation (the sign-in plan, 2026-09-08).
+ *
+ * `~/.kiso/auth.json` holds one credential per provider: an API key, or an
+ * OAuth token set (the flows arrive in the next step; the shape is fixed now
+ * so a stored OAuth credential is recognized, never misread as a key). The
+ * file is written atomically (tmp + rename) with mode 0600 on creation; the
+ * ONE write path is `modifyAuthFile`, serialized across processes by a
+ * directory lock beside the file — no dependency, and a stale lock (an
+ * earlier process that died) is reclaimed by age.
+ *
+ * The resolve rule (the reference implementation's, kept as design): a
+ * stored credential OWNS its provider. When one exists it is used; when it is
+ * unusable (an OAuth token where the adapter needs a key; a malformed file)
+ * the failure is named and there is NO silent fall back to an env var — "which
+ * key paid for this" stays answerable. Only when nothing is stored does the
+ * profile's env var apply, as before.
+ *
+ * Keys never appear in stdout, in the session log, or in an error message —
+ * `maskSecret` is the only rendering.
+ */
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { kisoHome } from "../state.js";
+
+export type Credential =
+	| { readonly type: "api-key"; readonly key: string; readonly savedAt: number }
+	| {
+			readonly type: "oauth";
+			readonly access: string;
+			readonly refresh: string;
+			/** epoch milliseconds */
+			readonly expires: number;
+			readonly accountId?: string;
+			readonly savedAt: number;
+	  };
+
+export interface AuthFile {
+	readonly version: 1;
+	readonly credentials: Readonly<Record<string, Credential>>;
+}
+
+export class AuthError extends Error {}
+
+/** The providers a credential can be stored for (the runtime's built-in
+ *  manifests; `custom` endpoints stay on env vars — a key for an unknown
+ *  origin has no identity to own). */
+export const KNOWN_PROVIDERS: readonly string[] = ["anthropic", "openai", "deepseek", "zai"];
+
+// Mirrors the runtime's known-origin table (packages/runtime/src/provider/
+// manifest.ts, not on the SDK surface): a compat profile whose baseUrl origin
+// is a built-in endpoint resolves to that provider's identity.
+const ORIGIN_TO_PROVIDER: Readonly<Record<string, string>> = {
+	"https://api.openai.com": "openai",
+	"https://api.deepseek.com": "deepseek",
+	"https://api.z.ai": "zai",
+	"https://open.bigmodel.cn": "zai",
+};
+
+/** The provider identity a profile's credential is stored under, or null
+ *  for an origin nobody recognizes (custom: env var only). */
+export function providerIdOf(kind: string, baseUrl?: string): string | null {
+	if (kind === "anthropic") return "anthropic";
+	if (kind !== "openai-compat") return null;
+	if (baseUrl === undefined) return "openai";
+	try {
+		return ORIGIN_TO_PROVIDER[new URL(baseUrl).origin] ?? null;
+	} catch {
+		return null;
+	}
+}
+
+export function authPath(): string {
+	return join(kisoHome(), "auth.json");
+}
+
+const EMPTY: AuthFile = { version: 1, credentials: {} };
+
+export function readAuthFile(path: string = authPath()): AuthFile {
+	if (!existsSync(path)) return EMPTY;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(readFileSync(path, "utf8"));
+	} catch (err) {
+		throw new AuthError(`${path} is not valid JSON (${(err as Error).message}) — fix or remove it; kiso never guesses at credentials`);
+	}
+	if (typeof parsed !== "object" || parsed === null || (parsed as { version?: unknown }).version !== 1 || typeof (parsed as { credentials?: unknown }).credentials !== "object") {
+		throw new AuthError(`${path} has an unknown shape (expected version 1) — fix or remove it`);
+	}
+	return parsed as AuthFile;
+}
+
+export function getCredential(providerId: string, path: string = authPath()): Credential | undefined {
+	return readAuthFile(path).credentials[providerId];
+}
+
+/** The lock: a directory beside the file. mkdir is atomic on every platform
+ *  Node runs on; a lock older than STALE_MS belongs to a process that died
+ *  and is reclaimed. Waits up to WAIT_MS, then refuses by name. */
+const STALE_MS = 30_000;
+const WAIT_MS = 10_000;
+function sleepSync(ms: number): void {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+function withLock<T>(path: string, fn: () => T): T {
+	const lock = `${path}.lock`;
+	const deadline = Date.now() + WAIT_MS;
+	for (;;) {
+		try {
+			mkdirSync(lock);
+			break;
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+			let age = 0;
+			try {
+				age = Date.now() - statSync(lock).mtimeMs;
+			} catch {
+				continue; // it vanished between the mkdir and the stat — try again
+			}
+			if (age > STALE_MS) {
+				rmSync(lock, { recursive: true, force: true });
+				continue;
+			}
+			if (Date.now() > deadline) throw new AuthError(`${path} is locked by another kiso process (${lock}); try again, or remove the lock if no kiso is running`);
+			sleepSync(25);
+		}
+	}
+	try {
+		return fn();
+	} finally {
+		rmSync(lock, { recursive: true, force: true });
+	}
+}
+
+/** The one write path: lock, read, transform, write atomically (mode 0600
+ *  on creation; the home directory 0700 on creation). Returns what was written. */
+export function modifyAuthFile(fn: (file: AuthFile) => AuthFile, path: string = authPath()): AuthFile {
+	mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+	return withLock(path, () => {
+		const next = fn(readAuthFile(path));
+		const tmp = `${path}.tmp-${process.pid}`;
+		writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+		renameSync(tmp, path);
+		return next;
+	});
+}
+
+export function setCredential(providerId: string, credential: Credential, path: string = authPath()): void {
+	modifyAuthFile((file) => ({ version: 1, credentials: { ...file.credentials, [providerId]: credential } }), path);
+}
+
+/** Removes the credential; false when there was none. */
+export function deleteCredential(providerId: string, path: string = authPath()): boolean {
+	let had = false;
+	modifyAuthFile((file) => {
+		had = providerId in file.credentials;
+		const { [providerId]: _gone, ...rest } = file.credentials;
+		return { version: 1, credentials: rest };
+	}, path);
+	return had;
+}
+
+/** The only rendering of a secret: its length class and last four characters. */
+export function maskSecret(secret: string): string {
+	if (secret.length <= 4) return "••••";
+	return `••••${secret.slice(-4)}`;
+}
