@@ -44,7 +44,9 @@ export interface ModelCapabilities {
  *  effort affects whole responses with or without explicit thinking, and
  *  some model/effort combinations forbid thinking-disabled. */
 export type ThinkingMode = "default" | "adaptive" | "enabled" | "disabled";
-export type ReasoningEffort = "default" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+/** `none` is the OpenAI Responses dialect's zero-reasoning level — a NATIVE
+ *  value a request carries, distinct from "default" (no field sent). */
+export type ReasoningEffort = "default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface ReasoningSetting {
 	readonly thinking: ThinkingMode;
@@ -195,6 +197,48 @@ function anthropicLine(): ModelMetadataEntry[] {
 	];
 }
 
+const OPENAI_MODELS_ASOF = "2026-09-08";
+/** the vendor CLI's per-model presets, pinned (the levels it offers a
+ *  subscription; a first-party model page says nothing about that backend). */
+const CHATGPT_PRESETS_SOURCE = "https://github.com/openai/codex/blob/37f4bb94c9f4e180535a12e3f2c2f93f4a773df0/codex-rs/models-manager/models.json";
+const RESPONSES_WIRE = "reasoning.effort";
+/** A first-party Responses row: the model page is the source for the
+ *  levels, the window, the output cap and the price alike (read the same
+ *  day). The adapter asks for no reasoning summaries (encrypted items
+ *  only), so no thinking stream is emitted. */
+const openaiRow = (model: string, effortDefault: "none" | "medium", rate: { readonly inputPerM: number; readonly outputPerM: number; readonly cacheReadPerM: number }, page: string): ModelMetadataEntry => ({
+	model,
+	providerId: "openai",
+	endpoint: "https://api.openai.com",
+	capabilities: { contextWindow: 1_050_000, maxOutputTokens: 128_000, promptCaching: "automatic", reasoning: {
+		emitsThinkingStream: false,
+		thinking: null,
+		effort: { levels: ["none", "low", "medium", "high", "xhigh"], default: effortDefault, wire: RESPONSES_WIRE },
+		asOf: OPENAI_MODELS_ASOF,
+		source: page,
+	}, inputModalities: null },
+	capabilitiesAsOf: OPENAI_MODELS_ASOF,
+	capabilitiesSource: page,
+	pricing: { ...rate, cacheWritePerM: 0, asOf: OPENAI_MODELS_ASOF, source: page },
+});
+/** The subscription backend's row for the same id: the presets' four
+ *  levels (no `none`), the presets' context window, no price. */
+const chatgptRow = (model: string): ModelMetadataEntry => ({
+	model,
+	providerId: "chatgpt",
+	endpoint: "https://chatgpt.com",
+	capabilities: { contextWindow: 272_000, maxOutputTokens: null, promptCaching: null, reasoning: {
+		emitsThinkingStream: false,
+		thinking: null,
+		effort: { levels: ["low", "medium", "high", "xhigh"], default: "medium", wire: RESPONSES_WIRE },
+		asOf: OPENAI_MODELS_ASOF,
+		source: CHATGPT_PRESETS_SOURCE,
+	}, inputModalities: null },
+	capabilitiesAsOf: OPENAI_MODELS_ASOF,
+	capabilitiesSource: CHATGPT_PRESETS_SOURCE,
+	pricing: null,
+});
+
 /** The v1 table. Nulls outnumber numbers ON PURPOSE: only values with a
  *  named source enter; everything else waits for one. */
 const ENTRIES: readonly ModelMetadataEntry[] = [
@@ -272,6 +316,20 @@ const ENTRIES: readonly ModelMetadataEntry[] = [
 		capabilities: { contextWindow: 128_000, maxOutputTokens: null, promptCaching: "automatic", reasoning: { emitsThinkingStream: false, thinking: null, effort: null, asOf: null, source: null }, inputModalities: null },
 		pricing: null,
 	},
+	// OR-1 (2026-09-08): the Responses-dialect rows. The SAME model id gets
+	// TWO rows because it answers differently at each endpoint: the
+	// first-party API documents `none` and a per-token price; the
+	// subscription backend is paid by the subscription (pricing: null — a
+	// first-party rate must never be shown as if it were the bill) and
+	// offers the levels the vendor's own CLI presets list, pinned to a
+	// commit. The first-party row is listed FIRST on purpose: an
+	// endpoint-less lookup (the run-side resolver passes none) resolves to
+	// it, and its levels are a superset of the subscription row's, so the
+	// run can never refuse a level the CLI accepted for either profile.
+	openaiRow("gpt-5.5", "medium", { inputPerM: 5, outputPerM: 30, cacheReadPerM: 0.5 }, "https://developers.openai.com/api/docs/models/gpt-5.5"),
+	openaiRow("gpt-5.4", "none", { inputPerM: 2.5, outputPerM: 15, cacheReadPerM: 0.25 }, "https://developers.openai.com/api/docs/models/gpt-5.4"),
+	chatgptRow("gpt-5.5"),
+	chatgptRow("gpt-5.4"),
 ];
 
 /**

@@ -430,7 +430,9 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 						let refused: string | null = null;
 						if (effortTok !== undefined) {
 							const candidate = { thinking: "default", effort: effortTok } as import("@vincemakes/kiso-runtime/internal").ReasoningSetting;
-							const resolved = resolveReasoning(profile.model, candidate);
+							// OR-1: the endpoint narrows the row — the same model id answers
+							// differently at the first-party API and at the subscription backend
+							const resolved = resolveReasoning(profile.model, candidate, profile.baseUrl);
 							if (resolved.ok) reasoning = candidate;
 							else refused = resolved.reason;
 						}
