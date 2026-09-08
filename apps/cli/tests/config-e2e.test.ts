@@ -114,6 +114,8 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		expect(out).toContain("profile: ds");
 		expect(out).toContain("anthropic/claude-sonnet-5");
 		expect(out).toContain("unavailable"); // the qualifier rides the row, as (unavailable) rode the line
+		// the picker's CLI half: each row shows the model's LEGAL effort levels with the default bracketed
+		expect(out).toContain("effort: low · [high] · max"); // deepseek-v4-flash's three native levels, the default bracketed
 		expect(out).toContain("model claude: unavailable — no credential: run `kiso login anthropic` or set the env var ANTHROPIC_API_KEY");
 		expect(out).toContain("model → ds (deepseek-v4-flash) — takes effect on the next turn");
 	});

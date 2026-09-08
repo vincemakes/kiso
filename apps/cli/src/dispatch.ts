@@ -6,12 +6,35 @@
 
 import { contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modePickView, modelPickView, palette, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
-import { buildAdapter, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
+import { buildAdapter, lookupModelMetadata, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { agentModel, body, bodyLog, configModels, dock, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
-import { authForProfile, directWriteProfile, profileAvailable, unavailableReason } from "./config.js";
+import { authForProfile, directWriteProfile, profileAvailable, unavailableReason, type ModelProfile } from "./config.js";
+
+/** The picker's CLI half (owner 2026-09-08): a profile's LEGAL effort levels
+ *  and its default, from the registry, shown wherever the profile is listed
+ *  — kiso never silently drops a level, and now it shows the ones it takes.
+ *  A model the registry does not know shows no levels (nothing is guessed). */
+function effortNote(p: ModelProfile): string {
+	const reasoning = lookupModelMetadata(p.model, p.baseUrl)?.capabilities.reasoning ?? null;
+	const effort = reasoning?.effort ?? null;
+	if (effort === null) return "effort: none";
+	return `effort: ${effort.levels.map((l) => (l === effort.default ? `[${l}]` : l)).join(" · ")}`;
+}
+
+/** What signs a profile in, for the listing: the env var's name, `oauth`
+ *  for a subscription sign-in, or `no key` for an unauthenticated endpoint. */
+function signInNote(p: ModelProfile): string {
+	try {
+		const auth = authForProfile("?", p);
+		if (auth.type === "oauth") return "oauth";
+	} catch {
+		// unavailable — the availability mark says so; the env name still names what would sign it in
+	}
+	return p.apiKeyEnv ?? "no key";
+}
 import { oauthTokenThunk } from "./auth/token.js";
 
 /** Everything dispatch touches that chat() owns. */
@@ -323,7 +346,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 								header: `model — current: ${agentModel}`,
 								options: names.map((name) => {
 									const profile = configModels[name]!;
-									const marks = [`profile: ${name}`, ...(profileAvailable(profile) ? [] : ["unavailable"]), ...(profile.model === agentModel ? ["current"] : [])];
+									const marks = [`profile: ${name}`, ...(profileAvailable(profile) ? [] : ["unavailable"]), ...(profile.model === agentModel ? ["current"] : []), effortNote(profile)];
 									return { label: `${profile.kind}/${profile.model}`, note: marks.join(" · ") };
 								}),
 								// PH-1a (finding PH-F4): the example must be a syntax
@@ -360,7 +383,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					for (const name of names) {
 						const p = configModels[name]!;
 						bodyLog(
-							`  ${name} → ${p.kind}/${p.model} · ${p.apiKeyEnv} ${profileAvailable(p) ? "(available)" : "(unavailable)"}`,
+							`  ${name} → ${p.kind}/${p.model} · ${signInNote(p)} ${profileAvailable(p) ? "(available)" : "(unavailable)"} · ${effortNote(p)}`,
 						);
 					}
 				}
