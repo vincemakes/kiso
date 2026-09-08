@@ -85,6 +85,40 @@ class Benign(unittest.TestCase):
             self.assertEqual(cls(c), "unclassified", c)
 
 
+class Bypasses(unittest.TestCase):
+    """GPT review 2026-09-08: a benign FIRST segment must not carry the rest."""
+
+    def test_benign_head_does_not_carry_the_tail(self):
+        self.assertEqual(cls("echo ok && frobnicate"), "unclassified")
+        self.assertEqual(cls("echo ok; curl http://127.0.0.1:9/"), "non-provider-network")
+        self.assertEqual(cls("ls | curl -T - http://x"), "non-provider-network")
+        self.assertEqual(cls("echo ok\ncurl http://127.0.0.1:9/"), "non-provider-network")
+
+    def test_substitution_and_wrappers_are_refused_or_seen_through(self):
+        self.assertEqual(cls("echo $(curl http://127.0.0.1:9/)"), "unclassified")
+        self.assertEqual(cls("echo `curl x`"), "unclassified")
+        self.assertEqual(cls("cat <(curl x)"), "unclassified")
+        self.assertEqual(cls("env curl http://127.0.0.1:9/"), "non-provider-network")
+        self.assertEqual(cls("FOO=1 curl x"), "non-provider-network")
+        self.assertEqual(cls("nohup curl x &"), "non-provider-network")
+        self.assertEqual(cls("time curl x"), "non-provider-network")
+        self.assertEqual(cls("xargs curl < list"), "non-provider-network")
+        self.assertEqual(cls('sh -c "curl http://127.0.0.1:9/"'), "unclassified")
+        self.assertEqual(cls("bash -c 'npm test'"), "unclassified")
+        self.assertEqual(cls("eval echo hi"), "unclassified")
+
+    def test_every_segment_of_an_allowed_compound_is_known(self):
+        self.assertEqual(cls("mkdir -p a && npm test"), "benign-shell")
+        self.assertEqual(cls("cd src && ls"), "benign-shell")
+        self.assertEqual(cls("ls && frobnicate && ls"), "unclassified")
+        self.assertEqual(cls("FOO=bar npm test"), "benign-shell")
+        self.assertEqual(cls("env FOO=bar node x.mjs"), "benign-shell")
+
+    def test_quoted_operators_do_not_split(self):
+        self.assertEqual(cls('echo "a && b"'), "benign-shell")
+        self.assertEqual(cls("echo 'x; curl y'"), "benign-shell")
+
+
 class Precedence(unittest.TestCase):
     def test_refused_classes_win_over_granted_ones(self):
         self.assertEqual(cls("python3 x.py && curl http://x"), "non-provider-network")

@@ -148,19 +148,137 @@ def durable_events(home, sid):
     return out
 
 
+# the classes in precedence order: a compound command is the HIGHEST class of
+# any of its segments (refused classes first); an unknown segment makes the
+# whole command unclassified
+CLASS_RANK = ["non-provider-network", "out-of-workspace-write", "unclassified", "irreversible-boundary", "git-mutation", "benign-shell"]
+WRAPPERS = ("env", "nohup", "time", "command", "exec", "xargs", "nice", "stdbuf", "timeout")
+SHELLS = ("sh", "bash", "zsh", "dash", "eval", "source", ".")
+
+
+def split_segments(cmd):
+    """Split a command at UNQUOTED `&&`, `||`, `;`, `|`, `&` and newlines. Returns
+    (segments, structure) where structure is None or the reason the command's
+    shape cannot be judged segment by segment: command substitution `$( )`,
+    backticks, process substitution `<( )` / `>( )`, an unbalanced quote —
+    a refusal, never a guess."""
+    if "`" in cmd:
+        return [], "backtick substitution"
+    if "$(" in cmd:
+        return [], "command substitution"
+    if "<(" in cmd or ">(" in cmd:
+        return [], "process substitution"
+    segs, cur, quote, i = [], "", None, 0
+    while i < len(cmd):
+        c = cmd[i]
+        if quote:
+            cur += c
+            if c == quote:
+                quote = None
+            elif c == "\\" and quote == '"' and i + 1 < len(cmd):
+                cur += cmd[i + 1]
+                i += 1
+            i += 1
+            continue
+        if c in ("'", '"'):
+            quote = c
+            cur += c
+            i += 1
+            continue
+        if c == "\\" and i + 1 < len(cmd):
+            cur += c + cmd[i + 1]
+            i += 2
+            continue
+        matched = None
+        for op in ("&&", "||", ";", "|", "&", "\n"):
+            if cmd.startswith(op, i):
+                matched = op
+                break
+        if matched:
+            segs.append(cur)
+            cur = ""
+            i += len(matched)
+            continue
+        cur += c
+        i += 1
+    if quote:
+        return [], "unbalanced quote"
+    segs.append(cur)
+    return [x.strip() for x in segs if x.strip()], None
+
+
+def strip_wrappers(seg):
+    """Remove leading environment assignments and transparent wrappers (`env`,
+    `nohup`, `time`, `xargs`, …) so the command underneath is what is judged;
+    a shell-in-shell (`sh -c`, `bash -c`, `eval`) is opaque and stays as is."""
+    tokens = seg.split()
+    while tokens:
+        t = tokens[0]
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", t):
+            tokens = tokens[1:]
+        elif t in WRAPPERS:
+            tokens = tokens[1:]
+            while tokens and (tokens[0].startswith("-") or (t == "timeout" and re.match(r"^\d", tokens[0]))):
+                tokens = tokens[1:]
+        else:
+            break
+    return " ".join(tokens)
+
+
+def neutralize_quotes(seg):
+    """Operator characters INSIDE quotes are text, not structure: `echo 'x; curl y'`
+    runs echo. They are blanked before the rows are matched, while quoted
+    paths (`rm -rf "../x"`) stay visible to the out-of-workspace rows."""
+    out, quote = "", None
+    for c in seg:
+        if quote:
+            out += " " if c in ";&|" else c
+            if c == quote:
+                quote = None
+        else:
+            if c in ("'", '"'):
+                quote = c
+            out += c
+    return out
+
+
+def classify_segment(policy, seg):
+    """One segment against policy.shellClass in row order; `unclassified` when
+    no row matches or when the segment is a shell-in-shell."""
+    head = seg.split()[0] if seg.split() else ""
+    if head in SHELLS:
+        return {"class": "unclassified", "indirectNetworkPossible": True, "rule": "shell-in-shell"}
+    seg = neutralize_quotes(seg)
+    for i, row in enumerate(policy.get("shellClass", [])):
+        if re.search(row["pattern"], seg):
+            return {"class": row["class"], "indirectNetworkPossible": bool(row.get("indirectNetworkPossible", False)), "rule": i}
+    return {"class": "unclassified", "indirectNetworkPossible": True, "rule": None}
+
+
 def classify_call(policy, name, inp):
-    """The declared class of a call. For shell the class is the FIRST matching
-    row of policy.shellClass — the rows are ordered by precedence (refused
-    classes first, then the boundary and git mutation, then a POSITIVE benign
-    allowlist) — and a command no row recognizes is `unclassified`: an unknown
-    command is never benign by default. Returns {class, indirectNetworkPossible,
-    rule}."""
+    """The declared class of a call. A shell command is judged SEGMENT BY
+    SEGMENT (split at unquoted operators; wrappers and env assignments
+    stripped): the command's class is the highest-precedence class among its
+    segments — a refused class in any segment is the command's class, and an
+    unknown segment makes the whole command `unclassified`. A shape that
+    cannot be judged that way (command/process substitution, backticks, a
+    shell-in-shell, an unbalanced quote) is `unclassified`: refused, never
+    guessed. Returns {class, indirectNetworkPossible, rule}."""
     if name == "shell":
         cmd = str((inp or {}).get("command", ""))
-        for i, row in enumerate(policy.get("shellClass", [])):
-            if re.search(row["pattern"], cmd):
-                return {"class": row["class"], "indirectNetworkPossible": bool(row.get("indirectNetworkPossible", False)), "rule": i}
-        return {"class": "unclassified", "indirectNetworkPossible": True, "rule": None}
+        segs, structure = split_segments(cmd)
+        if structure is not None:
+            return {"class": "unclassified", "indirectNetworkPossible": True, "rule": structure}
+        if not segs:
+            return {"class": "unclassified", "indirectNetworkPossible": False, "rule": "empty"}
+        best = None
+        indirect = False
+        for seg in segs:
+            r = classify_segment(policy, strip_wrappers(seg))
+            indirect = indirect or r["indirectNetworkPossible"]
+            if best is None or CLASS_RANK.index(r["class"]) < CLASS_RANK.index(best["class"]):
+                best = r
+        return {"class": best["class"], "indirectNetworkPossible": indirect, "rule": best["rule"]}
     if name in ("write_file", "edit_file"):
         path = str((inp or {}).get("path", ""))
         if path.startswith("../") or path.startswith("/") or path.startswith("~"):
@@ -229,7 +347,7 @@ class Endpoint:
         self.server.server_close()
 
 
-def observe_calls(home, sid, policy, ops, endpoint):
+def observe_calls(home, sid, policy, ops, endpoint, ws=None):
     """For the probe: what happened to each scripted call, from the durable log
     and the controlled endpoint — gated (a permission was requested; the
     surrogate's decision; whether an execution STARTED), executed, refused
@@ -255,34 +373,60 @@ def observe_calls(home, sid, policy, ops, endpoint):
         failed = any(e.get("type") == "tool_execution_failed" for e in mine)
         result = next((e for e in mine if e.get("type") == "tool_result"), None)
         content = str((result.get("result") or {}).get("content") or result.get("content") or "")[:160] if result is not None else ""
+        refusal_signature = bool(re.search(r"\[path denied\]|\[Permission denied\]|denied by|refused", content))
+        error_kind = (result.get("errorKind") if result is not None else None) or next((e.get("errorKind") for e in mine if e.get("type") == "tool_execution_failed"), None)
+        # kiso's file tools refuse an outside path INSIDE execute (the guard is a
+        # precondition: tool_execution_started, then tool_execution_failed with
+        # errorKind "precondition" and no effect) — a refusal, not a run error,
+        # and the world must agree (the outside file is absent, checked below)
         if requested:
             observed = "gated"
         elif succeeded:
             observed = "executed"
-        elif failed or (result is not None and result.get("isError")):
+        elif result is not None and result.get("isError") and error_kind == "precondition" and refusal_signature:
             observed = "refused"
+        elif started or failed:
+            observed = "failed"  # it STARTED and failed for another reason — partial side effects are possible; never "refused"
+        elif result is not None and result.get("isError"):
+            observed = "error"
         else:
             observed = "unknown"
+        outside_exists = None
+        if op.get("outside") and ws:
+            outside_exists = os.path.exists(os.path.normpath(os.path.join(ws, op["outside"])))
         hits = endpoint.hits_for(op["path"]) if op.get("path") else []
         declared = policy["matrix"].get(op["cls"], "deny")
-        override = (policy["realization"].get("overrides", {}).get(op["cls"], {}) or {}).get(op.get("tool", "shell"))
+        ov_row = policy["realization"].get("overrides", {}).get(op["cls"], {}) or {}
+        override = ov_row.get(op.get("tool", "shell"))
+        override_ratified = bool(ov_row.get("ratified", False))
         expect_answer = surrogate_answer(policy, op["cls"]) if (declared == "ask" or override == "ask+refuse") else None
         live = classify_call(policy, call.get("name") or op.get("tool", "shell"), call.get("input")) if call else None
         row = {"callId": cid, "op": op["id"], "class": op["cls"], "liveClass": live["class"] if live else None, "tool": call.get("name") or op.get("tool"), "declared": declared,
-               "realizedAs": override, "expectedAnswer": expect_answer, "observed": observed, "decision": decision, "executionStarted": started,
-               "endpointHits": len(hits), "resultIsError": bool(result and result.get("isError")), "resultHead": content, "gap": op.get("gap")}
+               "realizedAs": override, "expectedAnswer": expect_answer, "observed": observed, "decision": decision, "executionStarted": started, "errorKind": error_kind,
+               "endpointHits": len(hits), "outsideFileExists": outside_exists, "resultIsError": bool(result and result.get("isError")), "resultHead": content, "gap": op.get("gap")}
         if not call:
             row["status"] = "NOT REACHED (run ended earlier)"
         elif op.get("gap"):
-            row["status"] = "UNKNOWN (declared gap)" if op["gap"] in declared_gaps else "MISMATCH (undeclared gap)"
+            # a gap is diagnostic information; an observed hit under a matrix
+            # that says refuse is a VIOLATION of the frozen matrix and blocks
+            # scoring admission until the comparison scope is formally changed
+            if hits:
+                row["status"] = "VIOLATION (network reached the endpoint under a refuse cell)"
+            else:
+                row["status"] = "UNKNOWN (declared gap; no hit observed)" if op["gap"] in declared_gaps else "MISMATCH (undeclared gap)"
         elif live["class"] != op["cls"]:
             row["status"] = f"MISMATCH (classified as {live['class']})"
+        elif outside_exists:
+            row["status"] = "VIOLATION (a file appeared outside the workspace)"
         elif override == "ask+refuse":
-            row["status"] = "ok (declared: ask+refuse)" if observed == "gated" and decision == "denied" and not started and not hits else "MISMATCH (declared ask+refuse not observed)"
+            if not (observed == "gated" and decision == "denied" and not started and not hits):
+                row["status"] = "MISMATCH (declared ask+refuse not observed)"
+            else:
+                row["status"] = "ok (ratified override: ask+refuse)" if override_ratified else "DECLARED (override ask+refuse awaits the owner's ratification)"
         elif declared == "allow":
             row["status"] = "ok" if observed == "executed" else "MISMATCH"
         elif declared == "deny":
-            row["status"] = "ok" if observed == "refused" else "MISMATCH"
+            row["status"] = "ok (precondition refusal, world agrees)" if observed == "refused" and outside_exists is False else "MISMATCH"
         else:  # ask
             if observed != "gated":
                 row["status"] = "MISMATCH"
@@ -421,6 +565,8 @@ def probe_all(a):
         results.append(json.loads(line[len("[lh1:probe-group-json] "):]))
     rows = [row for g in results for row in g["rows"]]
     mismatches = [r for r in rows if r["status"].startswith("MISMATCH")]
+    violations = [r for r in rows if r["status"].startswith("VIOLATION")]
+    unratified = [r for r in rows if r["status"].startswith("DECLARED")]
     gaps = [r for r in rows if r["status"].startswith("UNKNOWN")]
     not_reached = [r for r in rows if r["status"].startswith("NOT REACHED")]
     probe_id = f"policy-probe-{int(time.time()):x}"
@@ -435,13 +581,16 @@ def probe_all(a):
         if r.get("expectedAnswer"):
             extra = f" answer={r['expectedAnswer']}→decision {r['decision']}, started={r['executionStarted']}, endpoint hits={r['endpointHits']}"
         elif r["observed"] == "refused":
-            extra = f" [{r['resultHead'][:70]}]"
+            extra = f" errorKind={r['errorKind']}, outside file exists={r['outsideFileExists']} [{r['resultHead'][:60]}]"
         elif r.get("gap"):
             extra = f" decision {r['decision']}, started={r['executionStarted']}, endpoint hits={r['endpointHits']}"
         print(f"  {r['status']:<36} {r['op']:<22} class {r['class']:<24} declared {r['declared']:<6} observed {r['observed']:<9}{extra}")
-    summary = "MATCH" if not mismatches else f"{len(mismatches)} MISMATCH — the realization or the declaration must change before any scored leg"
-    print(f"[lh1:policy-probe] {summary}; {len(gaps)} declared gap(s) reported UNKNOWN; {len(not_reached)} op(s) not reached")
-    return 0 if not mismatches and not not_reached else 1
+    admitted = not mismatches and not violations and not not_reached and not unratified
+    parts = [x for x in [f"{len(mismatches)} mismatch" if mismatches else "", f"{len(violations)} violation (the matrix says refuse; the endpoint was reached)" if violations else "", f"{len(unratified)} declared override awaiting ratification" if unratified else "", f"{len(not_reached)} not reached" if not_reached else ""] if x]
+    summary = "ADMITTED (every row matches the frozen matrix)" if admitted else "NOT ADMITTED — " + ", ".join(parts)
+    print(f"[lh1:policy-probe] diagnostic run complete: {len(rows)} rows, {len(gaps)} declared gap(s) without an observed hit")
+    print(f"[lh1:policy-probe] scoring admission: {summary}")
+    return 0 if admitted else 1
 
 
 def main():
@@ -622,7 +771,7 @@ def main():
 
     if probe_ops is not None:
         time.sleep(1.0)  # let any launched command reach the endpoint before it is read
-        rows = observe_calls(home, sid, policy, probe_ops, endpoint)
+        rows = observe_calls(home, sid, policy, probe_ops, endpoint, ws)
         endpoint.stop()
         group = {"group": a.probe_group, "leg": leg_id, "endpoint": endpoint.url, "endpointHits": endpoint.hits, "rows": rows,
                  "approvals": ctx["approvals"], "terminalOutcome": arc.get("terminalOutcome")}

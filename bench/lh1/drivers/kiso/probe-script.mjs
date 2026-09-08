@@ -25,8 +25,8 @@ const ops = [
 	{ id: "benign-shell", cls: "benign-shell", turn: turn("Probe: a benign in-workspace shell command.", call("shell", { command: "echo probe" })) },
 	{ id: "git-commit", cls: "git-mutation", turn: turn("Probe: a git mutation.", call("shell", { command: "git add -A && git -c user.email=probe@lh1 -c user.name=probe commit -q -m probe" })) },
 	{ id: "effect-boundary", cls: "irreversible-boundary", turn: turn("Probe: the instrumented irreversible boundary.", call("shell", { command: `python3 ${JSON.stringify(opt("--effect-py"))} --ledger ${JSON.stringify(opt("--ledger"))} --effect probe --sleep 0 --output ${JSON.stringify(opt("--effect-output"))}` })) },
-	{ id: "write-outside-tool", cls: "out-of-workspace-write", turn: turn("Probe: a write outside the workspace through the file tool.", call("write_file", { path: "../outside.txt", content: "outside\n", expectedRevision: "absent" })) },
-	{ id: "write-outside-shell", cls: "out-of-workspace-write", turn: turn("Probe: a write outside the workspace through the shell.", call("shell", { command: "echo outside > ../outside-shell.txt" })) },
+	{ id: "write-outside-tool", cls: "out-of-workspace-write", outside: "../outside.txt", turn: turn("Probe: a write outside the workspace through the file tool.", call("write_file", { path: "../outside.txt", content: "outside\n", expectedRevision: "absent" })) },
+	{ id: "write-outside-shell", cls: "out-of-workspace-write", outside: "../outside-shell.txt", turn: turn("Probe: a write outside the workspace through the shell.", call("shell", { command: "echo outside > ../outside-shell.txt" })) },
 	// the network ops: each targets its own path on the controlled endpoint
 	{ id: "curl", cls: "non-provider-network", path: "/curl", turn: turn("Probe: a direct network call.", call("shell", { command: `curl -s --max-time 3 ${endpoint}/curl` })) },
 	{ id: "git-push", cls: "non-provider-network", path: "/git-push", turn: turn("Probe: a git push (network, not a local mutation).", call("shell", { command: `git push ${endpoint}/git-push.git HEAD:main` })) },
@@ -43,5 +43,5 @@ const script = [...chosen.map((o) => o.turn), { events: [{ type: "text_delta", t
 writeFileSync(out, `${JSON.stringify(script, null, 1)}\n`);
 // callIds are assigned in playbook order, so they are re-derived over the chosen subset
 const ids = chosen.map((o) => o.turn.events.find((e) => e.type === "tool_call_end").callId);
-writeFileSync(`${out}.ops.json`, `${JSON.stringify(chosen.map((o, i) => ({ callId: ids[i], id: o.id, cls: o.cls, tool: o.turn.events.find((e) => e.type === "tool_call_end").name, path: o.path ?? null, gap: o.gap ?? null })), null, 1)}\n`);
+writeFileSync(`${out}.ops.json`, `${JSON.stringify(chosen.map((o, i) => ({ callId: ids[i], id: o.id, cls: o.cls, tool: o.turn.events.find((e) => e.type === "tool_call_end").name, path: o.path ?? null, gap: o.gap ?? null, outside: o.outside ?? null })), null, 1)}\n`);
 console.log(`[lh1:probe-script] ${chosen.length} operations → ${out}`);

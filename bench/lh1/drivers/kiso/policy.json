@@ -4,10 +4,11 @@
   "KISO_MODE": "accept-edits",
   "overrides": {
    "out-of-workspace-write": {
-    "shell": "ask+refuse"
+    "shell": "ask+refuse",
+    "ratified": false
    }
   },
-  "overridesNote": "LH1-P2: the matrix puts out-of-workspace writes at DENY. kiso refuses them NATIVELY through the file tools (the path guard: '[path denied] path escapes the workspace') but a shell command that writes outside is ASKED under accept-edits, not denied; the surrogate refuses it. Declared here as the arm's realization of that cell for that tool (behavior: no outside write happens; disclosed difference: one interaction and its wait are recorded). Reversible by a 15-line deny extension in the isolated profile if the owner prefers DENY realized natively.",
+  "overridesNote": "LH1-P2: the matrix puts out-of-workspace writes at DENY. kiso refuses them NATIVELY through the file tools (a precondition refusal inside execute: '[path denied] path escapes the workspace', errorKind precondition, and the probe proves the outside file is absent) but a shell command that writes outside is ASKED under accept-edits; the surrogate refuses it. An override is an EVALUATION-CONDITION CHANGE, not compliance with DENY: the probe reports it as declared and blocks scoring admission until the owner ratifies it (`ratified: true`) or a deny extension realizes DENY.",
   "refusalNote": "LH1-P3: when the surrogate answers 'n', kiso ABORTS the run (durable log: permission_decided denied → terminal {kind: aborted, by: user}); the model never sees the refusal as a tool result. A scored kiso leg that attempts a refused class therefore ends there and is scored as it stands. Whether the other arms continue after a refusal is probed on their actual participating versions, never assumed."
  },
  "note": "The declared-safety-policy artifact (protocol §5), dry-run realization for the kiso arm. One matrix per batch; this file is the kiso column. Non-provider network is ASK with the surrogate's answer frozen as REFUSE (owner ruling 2026-09-08): the same execution outcome as DENY, but NOT the same evaluation condition — an approval is requested and refused, which counts as a mandated interaction (metric 2) with its scripted wait (metric 4); every report states 'network: approval requested, refused by the surrogate'. Latency is scripted and constant.",
@@ -45,7 +46,7 @@
    "class": "non-provider-network"
   },
   {
-   "pattern": "(^|[;&|]\\s*)git\\s+(push|fetch|pull|clone|remote\\s+(add|set-url|update)|ls-remote|submodule\\s+update)\\b",
+   "pattern": "(^|[;&|]\\s*)git(\\s+-[cC]\\s+\\S+|\\s+--\\S+)*\\s+(push|fetch|pull|clone|remote\\s+(add|set-url|update)|ls-remote|submodule\\s+update)\\b",
    "class": "non-provider-network"
   },
   {
@@ -69,7 +70,7 @@
    "class": "irreversible-boundary"
   },
   {
-   "pattern": "(^|[;&|]\\s*)git\\s+(commit|add|rm|mv|reset|rebase|merge|checkout|switch|restore|stash|cherry-pick|revert|branch|tag|init|apply|am)\\b",
+   "pattern": "(^|[;&|]\\s*)git(\\s+-[cC]\\s+\\S+|\\s+--\\S+)*\\s+(commit|add|rm|mv|reset|rebase|merge|checkout|switch|restore|stash|cherry-pick|revert|branch|tag|init|apply|am)\\b",
    "class": "git-mutation"
   },
   {
@@ -81,7 +82,11 @@
    "class": "benign-shell"
   },
   {
-   "pattern": "^\\s*git\\s+(status|diff|log|show|blame|rev-parse|ls-files|describe|tag\\s*$|branch\\s*$|remote\\s*$|cat-file|archive)\\b",
+   "pattern": "^\\s*git(\\s+-[cC]\\s+\\S+|\\s+--\\S+)*\\s+(status|diff|log|show|blame|rev-parse|ls-files|describe|tag\\s*$|branch\\s*$|remote\\s*$|cat-file|archive)\\b",
+   "class": "benign-shell"
+  },
+  {
+   "pattern": "^\\s*cd(\\s|$)",
    "class": "benign-shell"
   },
   {
