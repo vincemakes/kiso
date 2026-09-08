@@ -668,7 +668,7 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 		// field survives for the callers that want a bound (subagents, the
 		// SDK, `kiso run`); the interactive front door does not set one.
 		// Modes: the five tiers join at the CHAIN HEAD, before the user/
-		// project extensions (the deny>ask>allow composition keeps a user
+		// project extensions (the deny>allow>ask composition keeps a user
 		// deny winning over any mode tier — bypass included).
 		extensions,
 		...(resolved !== null

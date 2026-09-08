@@ -11,9 +11,10 @@
  * The contract (packages/runtime/src/extensions.ts): the default export is
  * the extension, or a factory returning it. `name` must be unique per
  * installation; a broken file or a duplicate name fails the process LOUDLY
- * at startup. Verdicts compose deny > ask > allow across all loaded
- * policies: any deny wins, else any ask goes to the human, only an
- * all-allow chain auto-approves. A durable decision survives kill -9 —
+ * at startup. Verdicts compose deny > allow > ask across all loaded
+ * policies: any deny wins, else any allow wins (a later allow overrides
+ * an earlier ask), and only a chain with an ask and no allow goes to the
+ * human. A durable decision survives kill -9 —
  * the policy never re-runs for an already-decided call.
  */
 export default {

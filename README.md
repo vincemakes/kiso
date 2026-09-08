@@ -581,11 +581,14 @@ A policy's `decide` returns `{ action: "allow" }`, `{ action: "deny",
 reason }`, or `{ action: "ask" }`. The chain runs **before** the human
 approval flow and composes across all loaded policies:
 
-- **deny > ask > allow** — any deny wins (the FIRST denial's reason reaches
-  the model); else any ask goes DIRECTLY to the human approval pause (the
-  CLI prompts `approve ...? (y/n)` — never through the static policy hook,
-  which must not answer for the human; ruling A, the E1 ask semantics fix); only an
-  **all-allow** chain auto-approves.
+- **deny > allow > ask** — any deny wins (the FIRST denial's reason reaches
+  the model); else any **allow** wins — a later allow overrides an earlier
+  ask (the allow-only don't-ask-again extension must be able to override
+  a mode tier's ask; `packages/runtime/src/compose.ts`); a chain in which
+  nobody allowed and someone asked goes DIRECTLY to the human approval
+  pause (the CLI prompts `approve ...? (y/n)` — never through the static
+  policy hook, which must not answer for the human; ruling A, the E1 ask
+  semantics fix).
 - A policy that throws counts as **ask**; `ask` with no approval channel
   configured (no `resolveApproval`) degrades to an honest denial — judged
   by the channel's presence, not the hook's.
@@ -630,7 +633,7 @@ tier that decided, exactly like it names the extension.
 | `manual` | EVERY tool asks the human |
 | `accept-edits` | `default` + write_file/edit_file allow |
 | `plan` | read/list/search/read_skill allow; everything else denied with `plan mode: read-only` (the deny reason guides the model to output a plan; the startup prompt adds a plan directive) |
-| `bypass` | everything allows — but a user extension's `deny` still wins (the chain's deny>ask>allow monotonicity; bypass cannot override an extension) |
+| `bypass` | everything allows — but a user extension's `deny` still wins (the chain's deny>allow>ask composition; a deny wins over every tier, bypass included) |
 
 - `/mode` prints the current tier and the list; `/mode <name>` switches
   immediately (the change applies to the next tool call), leaving a
@@ -1112,7 +1115,7 @@ numbers are pressure readings, not passed gates):
   persisted fact — the projection derives the compacted view
   deterministically; whitelist read/list/search/shell, `do-not-compact`
   respected, recent turns intact), the extension policy chain (E1: a
-  deny > ask > allow composition decided BEFORE the human flow — allow/deny
+  deny > allow > ask composition decided BEFORE the human flow — allow/deny
   recorded durably with `decidedBy`, a throwing policy counts as ask, a
   durable verdict survives kill -9 and the policy never re-runs), delivery
   truth, the lossless event-log projection (messages are a pure function of

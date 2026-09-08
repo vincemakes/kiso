@@ -6,7 +6,7 @@
  * switches take effect immediately. The extension NAME rides the runtime's decidedBy
  * field: an automated denial records decidedBy: "mode:<name>" — the
  * audit sell. User-level extensions stay on the chain AFTER the mode
- * tiers; a user deny always wins (the chain's deny>ask>allow
+ * tiers; a user deny always wins (the chain's deny>allow>ask
  * monotonicity — bypass cannot override an extension deny).
  */
 
@@ -85,7 +85,7 @@ function tierVerdict(tier: Mode, call: { name: string }): PolicyVerdict {
  *  extension name). The CURRENT tier is first: an all-allow chain records
  *  decidedBy = the FIRST SPEAKER, so an auto-allow under the startup mode
  *  names that mode honestly. Order never affects verdicts — the chain is
- *  deny>ask>allow over the SPEAKING verdicts (abstain = no opinion), so a
+ *  deny>allow>ask over the SPEAKING verdicts (abstain = no opinion), so a
  *  user extension's deny wins over any mode tier, bypass included (the
  *  monotonicity e2e pins it). */
 export function modeExtensions(): readonly KisoExtension[] {
