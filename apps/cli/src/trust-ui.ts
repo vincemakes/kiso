@@ -105,11 +105,26 @@ export function askPanel(
 				}
 				settled = true;
 				pendingAsk = null;
-				const yes = answer.trim().toLowerCase().startsWith("y");
-				resolve(yes ? { action: "allow", reason: "" } : { action: "deny", reason: "" });
+				resolve(parseFallbackAnswer(answer));
 			});
 		}
 	});
+}
+
+/**
+ * The dock-less fallback line → a verdict. `y…` allows. `n <reason>` / `no
+ * <reason>` DENIES WITH THE REASON — the words become the tool result and
+ * the run continues with the model seeing them, the same verdict the panel's
+ * "No + words" produces (chat.ts, the deny case). A bare `n`/`no`, or any
+ * other line, is the bare denial that aborts the run — unchanged. (LH-1 ruling
+ * 2026-09-08: the default refusal across arms is refuse-with-a-reason-and-
+ * continue, and the surface a piped or 0-row leg drives is this one.)
+ */
+export function parseFallbackAnswer(answer: string): { action: "allow" | "deny"; reason: string } {
+	const line = answer.trim();
+	if (line.toLowerCase().startsWith("y")) return { action: "allow", reason: "" };
+	const m = /^(?:n|no)\b[\s:,-]*(.*)$/is.exec(line);
+	return { action: "deny", reason: (m?.[1] ?? "").trim() };
 }
 
 /**
