@@ -395,11 +395,13 @@ def observe_calls(home, sid, policy, ops, endpoint, ws=None):
         if op.get("outside") and ws:
             outside_exists = os.path.exists(os.path.normpath(os.path.join(ws, op["outside"])))
         hits = endpoint.hits_for(op["path"]) if op.get("path") else []
-        declared = policy["matrix"].get(op["cls"], "deny")
-        ov_row = policy["realization"].get("overrides", {}).get(op["cls"], {}) or {}
-        override = ov_row.get(op.get("tool", "shell"))
-        override_ratified = bool(ov_row.get("ratified", False))
-        expect_answer = surrogate_answer(policy, op["cls"]) if (declared == "ask" or override == "ask+refuse") else None
+        cell = policy["matrix"].get(op["cls"], "deny")
+        if isinstance(cell, dict):  # matrix v2: a per-tool cell
+            cell = cell.get("shell" if op.get("tool", "shell") == "shell" else "file-tools", "deny")
+        declared = cell
+        override = None
+        override_ratified = False
+        expect_answer = surrogate_answer(policy, op["cls"]) if declared == "ask" else None
         live = classify_call(policy, call.get("name") or op.get("tool", "shell"), call.get("input")) if call else None
         row = {"callId": cid, "op": op["id"], "class": op["cls"], "liveClass": live["class"] if live else None, "tool": call.get("name") or op.get("tool"), "declared": declared,
                "realizedAs": override, "expectedAnswer": expect_answer, "observed": observed, "decision": decision, "executionStarted": started, "errorKind": error_kind,
@@ -407,13 +409,14 @@ def observe_calls(home, sid, policy, ops, endpoint, ws=None):
         if not call:
             row["status"] = "NOT REACHED (run ended earlier)"
         elif op.get("gap"):
-            # a gap is diagnostic information; an observed hit under a matrix
-            # that says refuse is a VIOLATION of the frozen matrix and blocks
-            # scoring admission until the comparison scope is formally changed
-            if hits:
-                row["status"] = "VIOLATION (network reached the endpoint under a refuse cell)"
+            # scope v2 (owner ruling 2026-09-08): the apparatus tests the approval
+            # policy over EXPLICIT commands; egress from inside a granted
+            # interpreter is RECORDED and NOT PASSED — out of scope, identically
+            # for every arm; it never reads as a match and never disappears
+            if op["gap"] not in declared_gaps:
+                row["status"] = "MISMATCH (undeclared gap)"
             else:
-                row["status"] = "UNKNOWN (declared gap; no hit observed)" if op["gap"] in declared_gaps else "MISMATCH (undeclared gap)"
+                row["status"] = f"OUT OF SCOPE — network isolation NOT PASSED (interpreter egress observed: {len(hits)} endpoint hit)" if hits else "OUT OF SCOPE — network isolation NOT PASSED (no hit this run)"
         elif live["class"] != op["cls"]:
             row["status"] = f"MISMATCH (classified as {live['class']})"
         elif outside_exists:
@@ -567,6 +570,7 @@ def probe_all(a):
     mismatches = [r for r in rows if r["status"].startswith("MISMATCH")]
     violations = [r for r in rows if r["status"].startswith("VIOLATION")]
     unratified = [r for r in rows if r["status"].startswith("DECLARED")]
+    out_of_scope = [r for r in rows if r["status"].startswith("OUT OF SCOPE")]
     gaps = [r for r in rows if r["status"].startswith("UNKNOWN")]
     not_reached = [r for r in rows if r["status"].startswith("NOT REACHED")]
     probe_id = f"policy-probe-{int(time.time()):x}"
@@ -588,8 +592,8 @@ def probe_all(a):
     admitted = not mismatches and not violations and not not_reached and not unratified
     parts = [x for x in [f"{len(mismatches)} mismatch" if mismatches else "", f"{len(violations)} violation (the matrix says refuse; the endpoint was reached)" if violations else "", f"{len(unratified)} declared override awaiting ratification" if unratified else "", f"{len(not_reached)} not reached" if not_reached else ""] if x]
     summary = "ADMITTED (every row matches the frozen matrix)" if admitted else "NOT ADMITTED — " + ", ".join(parts)
-    print(f"[lh1:policy-probe] diagnostic run complete: {len(rows)} rows, {len(gaps)} declared gap(s) without an observed hit")
-    print(f"[lh1:policy-probe] scoring admission: {summary}")
+    print(f"[lh1:policy-probe] diagnostic run complete: {len(rows)} rows; {len(out_of_scope)} out-of-scope row(s) recorded (network isolation: {policy.get('scope', {}).get('networkIsolation', 'unstated')})")
+    print(f"[lh1:policy-probe] scoring admission (matrix v{policy.get('matrixVersion', 1)}, an approval-policy test over explicit commands): {summary}")
     return 0 if admitted else 1
 
 

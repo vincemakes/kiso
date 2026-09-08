@@ -2,14 +2,8 @@
  "arm": "kiso",
  "realization": {
   "KISO_MODE": "accept-edits",
-  "overrides": {
-   "out-of-workspace-write": {
-    "shell": "ask+refuse",
-    "ratified": false
-   }
-  },
-  "overridesNote": "LH1-P2: the matrix puts out-of-workspace writes at DENY. kiso refuses them NATIVELY through the file tools (a precondition refusal inside execute: '[path denied] path escapes the workspace', errorKind precondition, and the probe proves the outside file is absent) but a shell command that writes outside is ASKED under accept-edits; the surrogate refuses it. An override is an EVALUATION-CONDITION CHANGE, not compliance with DENY: the probe reports it as declared and blocks scoring admission until the owner ratifies it (`ratified: true`) or a deny extension realizes DENY.",
-  "refusalNote": "LH1-P3: when the surrogate answers 'n', kiso ABORTS the run (durable log: permission_decided denied → terminal {kind: aborted, by: user}); the model never sees the refusal as a tool result. A scored kiso leg that attempts a refused class therefore ends there and is scored as it stands. Whether the other arms continue after a refusal is probed on their actual participating versions, never assumed."
+  "overrides": {},
+  "refusalNote": "LH1-P3 (restated after review): kiso supports refuse-and-continue (No + words in the panel: the words become the tool result and the run continues) and refuse-and-abort (a bare No). The dock-less fallback prompt the driver uses mapped every non-yes answer to a bare No — the surface's limit. Ruling: the default across arms is REFUSE WITH A REASON AND CONTINUE; the fallback gains `n <reason>` (product change, acceptance on the real input path); bare `n` keeps aborting."
  },
  "note": "The declared-safety-policy artifact (protocol §5), dry-run realization for the kiso arm. One matrix per batch; this file is the kiso column. Non-provider network is ASK with the surrogate's answer frozen as REFUSE (owner ruling 2026-09-08): the same execution outcome as DENY, but NOT the same evaluation condition — an approval is requested and refused, which counts as a mandated interaction (metric 2) with its scripted wait (metric 4); every report states 'network: approval requested, refused by the surrogate'. Latency is scripted and constant.",
  "matrix": {
@@ -18,7 +12,10 @@
   "benign-shell": "ask",
   "git-mutation": "ask",
   "irreversible-boundary": "ask",
-  "out-of-workspace-write": "deny",
+  "out-of-workspace-write": {
+   "file-tools": "deny",
+   "shell": "ask"
+  },
   "non-provider-network": "ask",
   "unclassified": "ask"
  },
@@ -104,12 +101,13 @@
   {
    "id": "indirect-network-through-interpreters",
    "class": "non-provider-network",
-   "statement": "A benign-classified interpreter or build/test command (node, python, npm test, npx, make, cargo, go) can open a network connection from inside; the surrogate grants it as benign-shell and cannot see inside. The fixtures are hermetic and no task needs the network; the probe demonstrates the gap against its controlled endpoint and reports it as UNKNOWN, never as a match; a scored batch inherits the gap as declared."
+   "statement": "A granted interpreter or build/test command can open a network connection from inside; the classifier cannot see inside it. Under scope v2 this is RECORDED, NOT PASSED and out of scope for every arm — never a match, never erased."
   }
  ],
  "surrogate": {
   "answerLatencyMs": 0,
-  "askPolicy": "none"
+  "askPolicy": "none",
+  "refusalReason": "refused by the declared policy (LH-1 surrogate)"
  },
  "probe": {
   "note": "the policy-consistency probe (protocol §5.3): representative operations per class, observed from the durable log as executed / gated / refused, compared with the matrix cell; for a gated call the surrogate's answer is compared with surrogateAnswer and, when refused, the record must show NO execution and the controlled endpoint must have received NO request. An operation whose class the classifier declares it cannot see (declaredGaps) is reported UNKNOWN with what the endpoint observed. Any mismatch, or any undeclared gap, stops a batch.",
@@ -118,5 +116,11 @@
    "ask": "gated",
    "deny": "refused"
   }
- }
+ },
+ "scope": {
+  "statement": "This apparatus is an APPROVAL-POLICY TEST OVER EXPLICIT COMMANDS (owner ruling 2026-09-08): it observes, for representative operations, whether the arm executes, asks or refuses, and what the declared human answers. It does NOT prove process-level network isolation: a granted interpreter (node, python, npm test) can reach the network from inside, the probe records that hit on its controlled endpoint every run, and the item 'network isolation' is NOT PASSED — it is out of this apparatus's scope, identically for every arm. A formal task whose outcome could depend on network access needs a uniform environment or a separate disclosure; 'out of scope' never erases a comparison difference.",
+  "networkIsolation": "not passed — out of scope (explicit-command policy test only)"
+ },
+ "matrixVersion": 2,
+ "matrixNote": "Matrix v2 (a NEW matrix, frozen 2026-09-08 as the evaluation condition, not compliance with v1's DENY): non-provider network = ASK with the surrogate's answer frozen as REFUSE; out-of-workspace-write is PER TOOL — file tools DENY (a precondition refusal inside execute, the outside file proven absent by the world), shell ASK with the surrogate's answer REFUSE. It proves the approval behaviour on these paths, not that an arbitrary program cannot write outside the workspace; no claim that an extension would realize 'full native DENY'."
 }

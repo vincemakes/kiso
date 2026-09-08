@@ -130,6 +130,8 @@ class Precedence(unittest.TestCase):
         self.assertEqual(drive.surrogate_answer(POLICY, "benign-shell"), "grant")
         self.assertEqual(drive.surrogate_answer(POLICY, "unclassified"), "refuse")
         self.assertEqual(drive.surrogate_answer(POLICY, "never-heard-of"), "refuse")
+        self.assertEqual(POLICY["matrix"]["out-of-workspace-write"], {"file-tools": "deny", "shell": "ask"})
+        self.assertEqual(POLICY["matrixVersion"], 2)
 
 
 class FileTools(unittest.TestCase):
