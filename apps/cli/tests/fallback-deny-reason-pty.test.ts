@@ -99,7 +99,7 @@ exec(open(${JSON.stringify(join(dir, "driver.py"))}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify(childEnv)}, ${JSON.stringify(feeds)}, ${JSON.stringify(workdir)}, ${timeout}, ${JSON.stringify(session)})
 `;
 	const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 60_000, env: process.env });
-	const events = new SessionStore(join(env.KISO_HOME!, "sessions")).load(session).map((r) => r.event) as Array<Record<string, unknown> & { type: string }>;
+	const events = new SessionStore(join(env.KISO_HOME!, "sessions")).load(session).map((r) => r.event) as unknown as Array<Record<string, unknown> & { type: string }>;
 	return { out, events };
 }
 
