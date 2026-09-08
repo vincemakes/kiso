@@ -34,7 +34,14 @@ const SIX_TOOLS = ["read_file", "list_dir", "search_text", "write_file", "edit_f
 const READ_ONLY = ["read_file", "list_dir", "search_text"];
 const ROLES = ["explorer", "implementer", "reviewer", "tester"];
 
-const DELEGATE_PARAMETERS = {
+// DT1a-F2 (owner dogfood 2026-09-08): the model's first delegate call was
+// refused twice — `scope` on an explorer, then an `acceptance` naming no
+// configured check — because nothing in the schema said where scope applies
+// or which checks exist. The field descriptions say so, and the configured
+// check and profile names are written into the schema when the extension
+// loads (the tool table is snapshotted per request — F7b — so this is the
+// table the model reads).
+const delegateParameters = (cfg) => ({
 	type: "object",
 	properties: {
 		tasks: {
@@ -53,11 +60,21 @@ const DELEGATE_PARAMETERS = {
 					// never a command; model names a configured profile; after names
 					// a completed implementer's childId (tester only): the tester runs
 					// in that worktree.
-					scope: { type: "array", items: { type: "string", minLength: 1 }, maxItems: 32 },
-					acceptance: { type: "object", properties: { check: { type: "string", minLength: 1 }, evaluator: { type: "string", minLength: 1 } }, additionalProperties: false },
-					model: { type: "string", minLength: 1 },
-					after: { type: "string", minLength: 1 },
-					timeoutMs: { type: "integer", minimum: 1000 },
+					scope: {
+						type: "array",
+						items: { type: "string", minLength: 1 },
+						maxItems: 32,
+						description: "implementer and tester tasks ONLY (an explorer or reviewer task with scope is refused): path globs the child may write; a scoped child has no shell and a write outside the scope is refused",
+					},
+					acceptance: {
+						type: "object",
+						properties: { check: { type: "string", minLength: 1 }, evaluator: { type: "string", minLength: 1 } },
+						additionalProperties: false,
+						description: `optional; implementer and tester only. Exactly one of: { check } naming a check configured by the user (configured now: ${Object.keys(cfg.checks).length ? Object.keys(cfg.checks).join(", ") : "none configured — omit acceptance"}), or { evaluator } — an absolute path to an evaluator script OUTSIDE the project. Never a command: the parent runs the acceptance after the child completes`,
+					},
+					model: { type: "string", minLength: 1, description: `a model profile configured by the user (configured now: ${cfg.profiles.length ? cfg.profiles.map((x) => (typeof x === "string" ? x : x.name ?? x.id ?? JSON.stringify(x))).join(", ") : "none — omit model"})` },
+					after: { type: "string", minLength: 1, description: "tester only: the earlier task (by its index, 1-based) whose worktree this tester runs in" },
+					timeoutMs: { type: "integer", minimum: 1000, description: "the child's wall-clock budget in milliseconds" },
 				},
 				required: ["role", "task"],
 				additionalProperties: false,
@@ -66,7 +83,7 @@ const DELEGATE_PARAMETERS = {
 	},
 	required: ["tasks"],
 	additionalProperties: false,
-};
+});
 
 export default async function createSubagentExtension() {
 	const depth = Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0;
@@ -77,10 +94,10 @@ export default async function createSubagentExtension() {
 			{
 				name: "delegate",
 				description: "run subagent tasks (explorer/implementer/reviewer/tester) in child kiso processes",
-				parameters: DELEGATE_PARAMETERS,
+				parameters: delegateParameters(delegationConfig()),
 				execute: async (input, ctx) => {
 					const tasks = ((input ?? {}).tasks ?? []).slice(0, 8);
-					if (tasks.length === 0) return { content: "delegate: no tasks", isError: true };
+					if (tasks.length === 0) return { content: "delegate: no tasks", isError: true, errorKind: "precondition" };
 					const sessionsDir = join(process.env.KISO_HOME ?? join(homedir(), ".kiso"), "sessions");
 					// P3: the loop now threads the session id through
 					// ToolContext.sessionId — the discovery heuristic below is
@@ -96,7 +113,7 @@ export default async function createSubagentExtension() {
 					// KISO_HOME — never a per-task free path.
 					const home = process.env.KISO_HOME ?? join(homedir(), ".kiso");
 					const manifestDir = artifactDir(home, sessionsDir);
-					if (manifestDir === null) return { content: "delegate: refused — KISO_SUBAGENT_ARTIFACTS must lie under KISO_HOME", isError: true };
+					if (manifestDir === null) return { content: "delegate: refused — KISO_SUBAGENT_ARTIFACTS must lie under KISO_HOME", isError: true, errorKind: "precondition" };
 					mkdirSync(manifestDir, { recursive: true });
 					// DT-1a: every task is validated BEFORE any child runs — a refusal
 					// spawns nothing (acceptance never carries a model-supplied command).
@@ -104,7 +121,11 @@ export default async function createSubagentExtension() {
 					const parentCwd = process.cwd();
 					for (let i = 0; i < tasks.length; i += 1) {
 						const why = validateTask(tasks[i], cfg, parentCwd, manifestDir);
-						if (why !== null) return { content: `delegate: refused — task ${i + 1}: ${why}`, isError: true };
+						// DT1a-F1 (owner dogfood 2026-09-08): a refusal BEFORE any child exists is a
+						// precondition — nothing ran, nothing could have partially applied — so the
+						// kernel must not append the non-idempotent "side effects may have partially
+						// applied" banner (loop.ts keys that banner on errorKind !== "precondition")
+						if (why !== null) return { content: `delegate: refused — task ${i + 1}: ${why}`, isError: true, errorKind: "precondition" };
 					}
 					const sections = await runLimited(tasks, CONCURRENCY, (task, i) =>
 						runChild({

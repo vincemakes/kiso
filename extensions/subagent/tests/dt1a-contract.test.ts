@@ -71,6 +71,36 @@ afterEach(() => {
 	delete process.env.KISO_DELEGATION_CONFIG_JSON;
 });
 
+describe("DT1a-F1/F2 (owner dogfood 2026-09-08): a refusal before any child is a precondition, and the schema says the rules", () => {
+	it("a scoped explorer and an unknown check are refused with errorKind precondition — nothing ran, so no partial-side-effects banner can attach", async () => {
+		const { home } = repo();
+		fauxEnv();
+		const scoped = (await delegateWith([{ role: "explorer", task: "look", scope: ["src/**"] }], home)) as { content: string; isError: boolean; errorKind?: string };
+		expect(scoped.isError).toBe(true);
+		expect(scoped.content).toContain("scope applies to implementer and tester tasks only");
+		expect(scoped.errorKind).toBe("precondition");
+		const unknown = (await delegateWith([{ role: "implementer", task: "do", acceptance: { check: "nope" } }], home)) as { content: string; isError: boolean; errorKind?: string };
+		expect(unknown.isError).toBe(true);
+		expect(unknown.errorKind).toBe("precondition");
+	});
+
+	it("the delegate schema tells the model where scope and acceptance apply, and names the configured checks", async () => {
+		fauxEnv({ KISO_DELEGATION_CONFIG_JSON: JSON.stringify({ checks: { test: "npm test", lint: "npm run lint" } }) });
+		const ext = await createSubagentExtension();
+		const delegate = ext.tools!.find((t) => t.name === "delegate")!;
+		const props = (delegate.parameters as { properties: { tasks: { items: { properties: Record<string, { description?: string }> } } } }).properties.tasks.items.properties;
+		expect(props.scope!.description).toMatch(/implementer|tester/);
+		expect(props.scope!.description).toMatch(/explorer|reviewer/);
+		expect(props.acceptance!.description).toContain("test");
+		expect(props.acceptance!.description).toContain("lint");
+		expect(props.acceptance!.description).toMatch(/never a command/i);
+		delete process.env.KISO_DELEGATION_CONFIG_JSON;
+		const bare = (await createSubagentExtension()).tools!.find((t) => t.name === "delegate")!;
+		const bareProps = (bare.parameters as { properties: { tasks: { items: { properties: Record<string, { description?: string }> } } } }).properties.tasks.items.properties;
+		expect(bareProps.acceptance!.description).toMatch(/none configured/i);
+	});
+});
+
 describe("DT-1a — scope: no shell, normalized path checks", () => {
 	it("a scoped implementer: shell is denied, a write outside the globs is denied, a write inside lands; changedFiles lists only the inside file", async () => {
 		const { dir, home } = repo();
