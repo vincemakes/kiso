@@ -135,13 +135,21 @@ for (const { name, limit, dir, enforce = true } of GATES) {
 		// SH-1: the README's size snapshot must state the CURRENT total —
 		// a stale "real output" in the README is a credibility leak (the
 		// 1971-vs-1997 exhibit). The size gate owns the number it computes.
+		//
+		// The 2026-09-09 README redesign moved the printed `npm run size`
+		// snapshot to docs/kernel-rule.md and left the total in the README's
+		// prose. Both publish the number, so both are checked — and the prose
+		// spells it with a thousands separator, which counts.
 		if (name === "core") {
-			const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
-			if (!readme.includes(`${total}`)) {
-				console.error(`  ✗ README size snapshot is stale — it does not mention the current core total ${total}. Update the snapshot.`);
-				process.exitCode = 1;
+			const grouped = total.toLocaleString("en-US");
+			for (const rel of ["../README.md", "../docs/kernel-rule.md"]) {
+				const text = readFileSync(new URL(rel, import.meta.url), "utf8");
+				if (!text.includes(`${total}`) && !text.includes(grouped)) {
+					console.error(`  ✗ ${rel.slice(3)} size snapshot is stale — it does not mention the current core total ${total}. Update the snapshot.`);
+					process.exitCode = 1;
+				}
 			}
-		};
+		}
 	}
 }
 
