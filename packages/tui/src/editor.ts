@@ -626,7 +626,8 @@ export class Editor {
 	 *      row half empty for text that breaks anywhere;
 	 *   3. otherwise the last whitespace RUN that fits: the whole run ends
 	 *      the row it is on, so a continuation row never begins with a
-	 *      space;
+	 *      space — unless the run itself straddles the budget, where ①
+	 *      wins and the leftover spaces open the next row (OR11-F1);
 	 *   4. otherwise a hard break at the last code point that fits — never
 	 *      inside a wide character, because `#indexAtWidth` is that walk. */
 	#foldLine(start: number, end: number, budget: number): { start: number; end: number }[] {
@@ -652,7 +653,17 @@ export class Editor {
 				}
 				if (w >= 0) {
 					while (this.#chars[w + 1] === SPACE && w + 1 < end) w += 1;
-					cut = w + 1;
+					// OR11-F1: capped at `fits`. Ending the row with the WHOLE
+					// run is what keeps a continuation row from opening with a
+					// space — but that is a preference, and invariant ① is
+					// not: every row kiso produces measures ≤ W, because
+					// autowrap is off and the terminal will not save it. A run
+					// STRADDLING the boundary was carrying the row past the
+					// budget (34 letters + 12 spaces + 20 letters at width 40
+					// measured 46 against 39). When the run itself does not
+					// fit, the row stops at the budget and the leftover spaces
+					// open the next row.
+					cut = Math.min(w + 1, fits);
 				}
 			}
 			if (cut <= from || cut >= end) break; // no progress, or the rest fits

@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body } from "../src/compositor.js";
 import { Editor } from "../src/editor.js";
 import { renderEvent } from "../src/lines.js";
+import { displayWidth } from "../src/width.js";
 import type { PanelView } from "../src/approval-panel.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -378,5 +379,70 @@ describe("OR-11 — the composer folds a long line into visual rows", () => {
 		const editor = bare();
 		editor.feed(enc("short"));
 		expect(editor.dockState().lines).toEqual(["short"]);
+	});
+});
+
+/**
+ * OR11-F1 — a whitespace run at the fold must not push the row past the
+ * budget.
+ *
+ * The break rule prefers the last whitespace RUN that fits, and ends the
+ * row with the whole run so that no continuation row opens with a space.
+ * It absorbed the run with no cap: a run STRADDLING the boundary carried
+ * the row past the budget, which is invariant ① — every row kiso produces
+ * measures ≤ W, because autowrap is off and the terminal will not save it.
+ * The compositor throws on it under KISO_INVARIANTS=throw and cuts with a
+ * notice in the field, and the hidden columns put the cursor mapping out.
+ *
+ * The rule yields: "a continuation row never begins with whitespace" is a
+ * preference, and ① is not. When the run itself does not fit, the row
+ * stops at the budget and the leftover spaces open the next row.
+ *
+ * Reachable by any short paste of indented code under the capsule
+ * threshold, or a few spaces typed at the boundary.
+ */
+describe("OR11-F1 — no row is wider than its budget", () => {
+	const strip = (t: string): string => t.replace(/\x1b\[[0-9;]*m/g, "");
+
+	const rowsOf = (input: string, columns: number): string[] => {
+		Object.defineProperty(process.stdout, "columns", { value: columns, configurable: true });
+		const editor = new Editor(() => {});
+		editor.setInputLead(() => "");
+		editor.feed(enc(input));
+		return editor.dockState().lines.map(strip);
+	};
+
+	it("the straddling run: 34 letters, 12 spaces, 20 letters at width 40", () => {
+		const input = `${"a".repeat(34)}${" ".repeat(12)}${"b".repeat(20)}`;
+		const rows = rowsOf(input, 40);
+		// before the fix these measured [46, 20] against a budget of 39
+		for (const row of rows) expect(displayWidth(row), `row "${row.slice(0, 12)}…" fits`).toBeLessThanOrEqual(39);
+		expect(rows.join(""), "and the rows still tile the buffer exactly").toBe(input);
+	});
+
+	it("property: over letters, spaces, CJK and a wide emoji, every row fits and the rows tile", () => {
+		// a seeded LCG, so a failure names an input that can be replayed
+		let seed = 0x5eed;
+		const rnd = (n: number): number => {
+			seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+			return seed % n;
+		};
+		// \u4f60 and \u597d are two-column CJK; \u{1f600} is a wide emoji and
+		// a surrogate pair, so it also pins that the fold walks CODE POINTS.
+		const alphabet = [..."abcde ", "\u4f60", "\u597d", "\u{1f600}"];
+		for (let i = 0; i < 300; i += 1) {
+			const columns = [20, 40, 80][i % 3]!;
+			const budget = columns - 1;
+			// short enough to fit the 6-row window, so no edge marker rides
+			// a row and changes what is being measured
+			let input = "";
+			const cells = 8 + rnd(70);
+			while (displayWidth(input) < cells) input += alphabet[rnd(alphabet.length)]!;
+			const rows = rowsOf(input, columns);
+			for (const row of rows) {
+				expect(displayWidth(row), `seed ${i}, width ${columns}, input ${JSON.stringify(input)}`).toBeLessThanOrEqual(budget);
+			}
+			expect(rows.join(""), `seed ${i}, width ${columns}: the rows tile the buffer`).toBe(input);
+		}
 	});
 });
