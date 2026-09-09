@@ -220,7 +220,7 @@ kiso help                      this help
   "model": "deepseek",                       // the startup profile
   "models": {
     "deepseek": {
-      "kind": "openai-compat",               // or "anthropic"
+      "kind": "openai-compat",               // "openai-compat" | "anthropic" | "openai-responses"
       "model": "deepseek-v4-flash",
       "apiKeyEnv": "DEEPSEEK_API_KEY",       // the key's env var — never the key
       "baseUrl": "https://api.deepseek.com"  // optional
@@ -241,6 +241,7 @@ kiso help                      this help
 
 - `kiso --model deepseek chat`——flag 胜过一切;`provider/model` 直写也可(`--model openai-compat/gpt-4o`、`--model anthropic/claude-sonnet-5`)。
 - **Anthropic 首方说明(PA-1a,0.28.0)。** 当前型号线——Claude Fable 5.1、Opus 5、Sonnet 5、Haiku 4.5——已登记,上下文窗口、effort 档位、思考模式、价格都带日期和来源(2026-09-07 读自官方文档;`/model` 可见)。effort(`low` … `max`)与思考(`adaptive` / `disabled`,按型号)按文档原样上线;Haiku 4.5 的手动思考预算不驱动。`promptCaching` **默认关**:打开会放两个 ephemeral `cache_control` 断点(系统提示与滚动的最后一块),请求字节和账单都会变——缓存读取按输入价的 10%(Fable 5.1 为 2.5%)计费,5 分钟缓存写入按 125%。默认值只在真实 Anthropic 腿上的配对 bench 证明省钱后才翻转;在那之前按档案单独设置。finding MG1-F1(2026-09-07):签名与 redacted 思考块的回放已经过 OpenRouter 的 Anthropic 格式端点对 Claude Sonnet 5 验证——回放逐字节一致、全部被接受;第一方特有的 beta 面(beta 头、Fable 5.1 的思考块绑定)尚未直接验证。
+- **登录与 OpenAI Responses 方言(OR-1,0.31.0)。** `kiso login <provider>` 把凭据存进 `~/.kiso/auth.json`(权限 0600):`anthropic` / `openai` / `deepseek` / `zai` 存 API key,`chatgpt` 存订阅的 OAuth 登录。已存凭据**拥有**该 provider——存的不可用就是响亮报错,绝不静默退回 env 变量;`kiso logout <provider>` 删除,`kiso auth` 列出(已遮蔽)。`kind: "openai-responses"` 的 profile 可指向首方 API(`api.openai.com`,用 key)或 ChatGPT 订阅后端(`"baseUrl": "https://chatgpt.com/backend-api"`,不设 `apiKeyEnv`,`kiso login chatgpt`)。gpt-5.5 与 gpt-5.4 在**两个端点各登记一行**,带日期与来源:`/model` 显示每个 profile 的合法 effort 档位;订阅跑的费用记为 `null`(订阅不按 token 计费),上下文按预设的 272,000 度量;后端没有的档位在 `/model` 和 run 侧都按名拒绝。验证状态直说:DeepSeek 凭据存储路径有真腿(2026-09-08);Responses 适配器——两个目标——**离线验证通过**(字节 rig),**真实接入待验收**(包内 README 的支持级表在真腿落地前写 `unrun`)。Anthropic 保持 API key:厂商禁止第三方订阅登录。
 - 会话内 `/model` 列出各 profile(每个标注可用 / 不可用——未设置的 apiKeyEnv 永不崩溃),并切换会话后续回合的适配器(由 NoticeCell 记录)。
 - env 变量未设置的 profile 在切换时被响亮拒绝——config 永不存密钥,所以缺失 env 是诚实的"未配置"。
 - 工程自身的 `.kiso/config.json` 乘 E3 信任门:已授予工程的 config 生效,未信任的永不读取(其摘要覆盖 config 文件)。
