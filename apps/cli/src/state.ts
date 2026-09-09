@@ -22,6 +22,14 @@ export function kisoHome(): string {
 	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
 }
 
+/** DC-49 — the workspace the coding tools may touch, and the one place it
+ *  is decided. The session's own tool set and the `!` command's runner both
+ *  need it, and two copies of a ruling-bearing literal is how a later DC-49
+ *  amendment reaches one caller and not the other. */
+export function codingToolOptions(): { readonly workspaceRoot: string; readonly excludeRoots: readonly string[] } {
+	return { workspaceRoot: process.cwd(), excludeRoots: [kisoHome()] };
+}
+
 export function sessionsDir(): string {
 	return join(kisoHome(), "sessions");
 }

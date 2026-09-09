@@ -10,10 +10,9 @@ import { buildAdapter, lookupModelMetadata, resolveContinuationScope, resolveRea
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
-import { agentModel, body, bodyLog, configModels, dock, lastBinding, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
+import { agentModel, body, bodyLog, codingToolOptions, configModels, dock, lastBinding, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
 import { authForProfile, directWriteProfile, profileAvailable, unavailableReason, type ModelProfile } from "./config.js";
 import { shellTool } from "@vincemakes/kiso-tools-node";
-import { kisoHome } from "./state.js";
 
 /** The picker's CLI half (owner 2026-09-08): a profile's LEGAL effort levels
  *  and its default, from the registry, shown wherever the profile is listed
@@ -153,7 +152,7 @@ function runBang(command: string, send: boolean, ctx: DispatchCtx): void {
 		const controller = new AbortController();
 		activeBang = controller;
 		try {
-			const tool = shellTool({ workspaceRoot: process.cwd(), excludeRoots: [kisoHome()] });
+			const tool = shellTool(codingToolOptions());
 			const result = await tool.execute({ command }, { signal: controller.signal });
 			// one fenced block, read as a terminal transcript: the command
 			// and what it printed. The tool's own overflow note rides inside
