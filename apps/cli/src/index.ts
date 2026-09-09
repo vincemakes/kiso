@@ -44,6 +44,7 @@ import {
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, getMode, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
+import { breakerExtension } from "./breaker.js";
 import { builtInLayer } from "./builtin.js";
 import { agentModel, atFiles, body, bodyLog, codingToolOptions, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setSessionStore, userExtensions, VERSION, type LineInput , lastBinding , acceptDrift, setAcceptDrift } from "./state.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
@@ -714,7 +715,9 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 	// generated extension into it so a first-time rule joins the chain
 	// at the NEXT run (the run's policies are fixed at its start; run.ts
 	// re-reads the config's extensions array per run).
-	const extensions = [...modeExtensions(), ...loadedExtensions];
+	// LT-2: the loop breaker at the chain HEAD — it speaks first when it speaks,
+	// so `decidedBy` names it; a deny there beats every tier, bypass included.
+	const extensions = [breakerExtension(), ...modeExtensions(), ...loadedExtensions];
 	setCurrentAgentExtensions(extensions);
 
 	// E6: the run-start context policy (captured once — exactOptionalPropertyTypes).
