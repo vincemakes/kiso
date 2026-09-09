@@ -24,7 +24,7 @@
  * makeAgent, and main.
  */
 
-import { appendFileSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { newSessionId } from "./session-id.js";
 import { createInterface } from "node:readline";
@@ -46,7 +46,7 @@ import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, getMode, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
 import { breakerExtension } from "./breaker.js";
 import { builtInLayer } from "./builtin.js";
-import { agentModel, atFiles, body, bodyLog, codingToolOptions, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput , lastBinding , acceptDrift, setAcceptDrift } from "./state.js";
+import { agentModel, atFiles, body, bodyLog, codingToolOptions, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput , lastBinding , acceptDrift, setAcceptDrift } from "./state.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
@@ -874,23 +874,17 @@ class CliUsageError extends Error {
  *  line (the previous conversation stays resumable — clear/switch
  *  never erase history). Faux sessions re-arm the scripted adapter at
  *  the NEW session's durable position, exactly like the picker path. */
-/** §2.5 — how many skills are IN FORCE, counted where the skills
- *  extension itself scanned: `KISO_SKILLS_DIR` is the merged directory
- *  when a trusted project contributed skills, and the user's own
- *  otherwise. Symlinks are followed, because the merge is made of them. */
+/** §2.5 — how many skills are IN FORCE, taken from the extension that
+ *  indexed them rather than by walking the directory again. The first
+ *  version re-scanned `KISO_SKILLS_DIR` for one number in one log line,
+ *  which is a second answer to a question already answered and free to
+ *  disagree with the first (lead's review of 5bee644, observation 2).
+ *  An extension that reports no count is reported as none, never guessed. */
 function skillCount(): number {
-	const dir = process.env.KISO_SKILLS_DIR ?? join(kisoHome(), "skills");
-	try {
-		return readdirSync(dir).filter((n) => {
-			try {
-				return statSync(join(dir, n)).isDirectory();
-			} catch {
-				return false; // a broken link is not a skill
-			}
-		}).length;
-	} catch {
-		return 0; // no skills directory is not an error, it is no skills
-	}
+	// `skills` is declared on the extension's own published type
+	// (extensions/skills/index.d.ts), not invented here.
+	const skills = loadedExtensions.find((e) => e.name === "skills") as ({ skills?: number } | undefined);
+	return skills?.skills ?? 0;
 }
 
 /**
@@ -926,6 +920,23 @@ async function reloadAgent(
 	const oldUser = userExtensions;
 	const oldProject = projectExtensions;
 	const oldTemps = mergedTempPaths.splice(0);
+	// makeAgent publishes the config side BEFORE it can fail on the model,
+	// so a failure past the extension load would leave a NEW window, model
+	// name and profile table beside the OLD agent — and the failure line
+	// says nothing changed. Rather than soften the line, the snapshot makes
+	// it true: a failed reload is atomic, which is what load-then-swap
+	// promises. (Lead's review of 5bee644, observation 1.)
+	const oldCfg = {
+		merged: mergedConfig,
+		models: configModels,
+		window: configuredWindow,
+		faux: currentFaux,
+		modelName: currentModelName,
+		choice: modelChoice,
+		agent: agentModel,
+		endpoint: agentBaseUrl,
+		delegation: process.env.KISO_DELEGATION_CONFIG_JSON,
+	};
 	let next: Awaited<ReturnType<typeof makeAgent>>;
 	try {
 		next = await makeAgent(id, input, modelChoice);
@@ -943,6 +954,15 @@ async function reloadAgent(
 		}
 		mergedTempPaths.push(...oldTemps);
 		setExtensionLists(oldBuiltIn, oldUser, oldProject, oldLoaded);
+		setMergedConfig(oldCfg.merged);
+		setConfigModels(oldCfg.models);
+		setConfiguredWindow(oldCfg.window);
+		setCurrentFaux(oldCfg.faux);
+		setCurrentModelName(oldCfg.modelName);
+		setModelChoice(oldCfg.choice);
+		setAgentModel(oldCfg.agent, oldCfg.endpoint);
+		if (oldCfg.delegation === undefined) delete process.env.KISO_DELEGATION_CONFIG_JSON;
+		else process.env.KISO_DELEGATION_CONFIG_JSON = oldCfg.delegation;
 		bodyLog(`[reload] ${err instanceof Error ? err.message : String(err)} — nothing changed, the previous set is still in force`);
 		return old;
 	}

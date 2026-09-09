@@ -41,11 +41,15 @@ export default async function createSkillsExtension() {
 	const { index, broken } = loadIndex(skillsDir);
 	// finding #8: no persistent resources — SKILL.md files are read per call;
 	// nothing is spawned or connected — no dispose is needed, explicitly.
-	if (index.length === 0 && broken.length === 0) return { name: "skills", tools: [] };
+	if (index.length === 0 && broken.length === 0) return { name: "skills", skills: 0, tools: [] };
 	const tools = index.length > 0 ? [readSkillTool(index, broken)] : [];
 	return {
 		name: "skills",
 		tools,
+		// §2.5: how many skills THIS load indexed. The CLI's reload line reads
+		// it here rather than walking the directory again — one scan, one
+		// answer, and no second count free to disagree with this one.
+		skills: index.length,
 		systemPrompt: { append: skillsPromptAppend(index, broken) },
 	};
 }

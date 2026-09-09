@@ -22,7 +22,7 @@
  * not there when the session was built.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -261,6 +261,78 @@ describe("§2.5 — /reload", () => {
 		const asks = out.split("trust this project's .kiso?").length - 1;
 		expect(asks, "asked once — the reload did not re-put a question already answered").toBe(1);
 	}, 300_000);
+
+	it("gate 8 — RL-F4: the mcp merge reads the ORIGINAL user config, and its temp does not collide", () => {
+		// RL-F1's sibling, one function up, found by the lead reviewing the
+		// commit that fixed RL-F1. applyMcpMerge reads KISO_MCP_CONFIG and
+		// then assigns the merged file to it, so a second merge takes the
+		// first merged file — which already holds the project's servers — as
+		// the user config, and the "exists in both" check throws for every
+		// one of them. Every reload would fail, loudly and on the old set,
+		// in exactly the projects that carry MCP servers.
+		//
+		// None of gates 1-7 has a project mcp.json, which is why seven green
+		// gates did not see it. That is the finding under the finding.
+		const { env, dirs } = isolatedEnv({ KISO_FAUX_SCRIPT: fauxScript(spares(8)) });
+		rmSync(dirs.mcpConfig, { recursive: true, force: true }); // the helper leaves a placeholder DIR here
+		writeFileSync(dirs.mcpConfig, JSON.stringify({ mcpServers: { userside: { command: "/bin/echo", args: ["u"] } } }), "utf8");
+		const workdir = mkdtempSync(join(tmpdir(), "kiso-reload-mcp-"));
+		mkdirSync(join(workdir, ".kiso"), { recursive: true });
+		writeFileSync(join(workdir, ".kiso", "mcp.json"), JSON.stringify({ mcpServers: { projectside: { command: "/bin/echo", args: ["p"] } } }), "utf8");
+		const raw = ptyRun(["--mode", "bypass", "reload-mcp"], env as NodeJS.ProcessEnv, {
+			cwd: workdir,
+			timeout: 110,
+			feeds: [["trust this project's .kiso?", "y\r"]],
+			delays: [
+				[8, "/reload\r"],
+				[15, "/reload\r"],
+				[22, "/reload\r"],
+				[30, "exit\r"],
+			],
+		});
+		const out = strip(raw);
+		// the collision error is the loop's own signature: it can only fire
+		// if the user side already contains the project's servers
+		expect(out, "the merge never read its own output back as the user config").not.toContain("exists in both");
+		expect(out.split("the conversation is unchanged").length - 1, "all three reloads SUCCEEDED").toBeGreaterThanOrEqual(3);
+	}, 360_000);
+
+	it("gate 9 — RL-F5: a rule file written before this change keeps its rules through the first grant", () => {
+		// The upgrade path RL-F2's fix opened. A file generated before §2.5
+		// exports RULES and puts nothing on the extension, so `live.rules` is
+		// undefined, the union starts from nothing, and the first new grant
+		// rewrites the file with that grant ALONE — every rule the human
+		// gave under 0.31.x, gone from disk, invisible in-session in exactly
+		// the way RL-F2 was.
+		const legacy = [
+			'export const RULES = new Set(["read_file"]);',
+			"",
+			"export default {",
+			'  name: "dont-ask-again",',
+			"  approvals: [{ decide(call) { return RULES.has(call.name) ? { action: \"allow\" } : { action: \"abstain\" }; } }],",
+			"};",
+			"",
+		].join("\n");
+		const { env, dirs } = isolatedEnv({
+			KISO_FAUX_SCRIPT: fauxScript([
+				{ events: [{ type: "tool_call_end", callId: "g1", name: "shell", input: { command: "echo ruled" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "text_delta", text: "granted." }, { type: "stop", reason: "end_turn" }] },
+				...spares(4),
+			]),
+		});
+		writeFileSync(join(dirs.extensions, "dont-ask-again.mjs"), legacy, "utf8");
+		ptyRun(["chat", "reload-legacy"], env as NodeJS.ProcessEnv, {
+			timeout: 110,
+			feeds: [
+				["/ commands · ↑ history", "go\r"],
+				["don't ask again", "2"], // grant `shell` on top of the legacy `read_file`
+			],
+			delays: [[20, "exit\r"]],
+		});
+		const after = readFileSync(join(dirs.extensions, "dont-ask-again.mjs"), "utf8");
+		expect(after, "the rule granted now is on disk").toContain("shell");
+		expect(after, "and the rule granted before the upgrade SURVIVED it").toContain("read_file");
+	}, 360_000);
 
 	it("gate 7 — a don't-ask-again rule granted AFTER a reload is live, and survives the next one", () => {
 		// The hazard the cache-busting loader creates. The W21 writer made a
