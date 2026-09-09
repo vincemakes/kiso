@@ -16,11 +16,12 @@ import { authForProfile, directWriteProfile, profileAvailable, unavailableReason
 /** The picker's CLI half (owner 2026-09-08): a profile's LEGAL effort levels
  *  and its default, from the registry, shown wherever the profile is listed
  *  — kiso never silently drops a level, and now it shows the ones it takes.
- *  A model the registry does not know shows no levels (nothing is guessed). */
+ *  A model the registry does not know shows `unknown` (nothing is guessed);
+ *  it must not read `none`, which is a REAL level since the Responses rows. */
 function effortNote(p: ModelProfile): string {
 	const reasoning = lookupModelMetadata(p.model, p.baseUrl)?.capabilities.reasoning ?? null;
 	const effort = reasoning?.effort ?? null;
-	if (effort === null) return "effort: none";
+	if (effort === null) return "effort: unknown";
 	return `effort: ${effort.levels.map((l) => (l === effort.default ? `[${l}]` : l)).join(" · ")}`;
 }
 
@@ -445,12 +446,15 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 								adapter,
 								model: profile.model,
 								provider: profile.kind,
+								// OR-1: the endpoint is the fourth passenger — the cost
+								// path and the window lookup key on (model, endpoint).
+								...(profile.baseUrl !== undefined ? { baseUrl: profile.baseUrl } : {}),
 								...(scope !== undefined ? { scope } : {}),
 								...(reasoning !== undefined ? { reasoning } : {}),
 							};
 							ctx.session.setModelBinding(binding);
 							setLastBinding(binding);
-							setAgentModel(profile.model);
+							setAgentModel(profile.model, profile.baseUrl);
 							setCurrentModelName(arg);
 							body.notice(`model → ${profName} (${profile.model}${effortTok !== undefined ? ` · ${effortTok}` : ""}) — takes effect on the next turn`);
 						}

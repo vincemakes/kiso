@@ -39,6 +39,16 @@ describe("PH-F15 — the window follows the live model", () => {
 		expect(contextWindowTokens()).toBe(200_000); // the default, not a guess
 	});
 
+	it("OR-1: the window follows the live ENDPOINT too — gpt-5.5 is 1,050,000 at the first-party API and 272,000 at the subscription backend", () => {
+		setAgentModel("gpt-5.5", "https://api.openai.com/v1");
+		expect(contextWindowTokens()).toBe(1_050_000);
+		setAgentModel("gpt-5.5", "https://chatgpt.com/backend-api");
+		expect(contextWindowTokens()).toBe(272_000);
+		// endpoint unknown: the id's first row (the first-party superset), as the run-side resolver sees it
+		setAgentModel("gpt-5.5");
+		expect(contextWindowTokens()).toBe(1_050_000);
+	});
+
 	it("env and config still beat the registry", () => {
 		setAgentModel("gpt-4o");
 		process.env.KISO_CONTEXT_WINDOW = "42000";

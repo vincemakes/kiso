@@ -28,7 +28,7 @@ import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
 import { canonicalizeUsageForModel, requestBudget } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import { dispatch, type DispatchCtx } from "./dispatch.js";
-import { agentModel, body, bodyLog, configuredWindow, dock, type LineInput } from "./state.js";
+import { agentBaseUrl, agentModel, body, bodyLog, configuredWindow, dock, type LineInput } from "./state.js";
 import { attachImages } from "./attachments.js";
 import { lookupModelMetadata } from "@vincemakes/kiso-runtime/internal";
 import { addDontAskAgainRule, askPanel, fixHintFor, pendingAsk, resolveUncertains } from "./trust-ui.js";
@@ -75,8 +75,10 @@ export function contextWindowTokens(): number {
 	// window (and the microcompact threshold derived from it) without an
 	// env var. agentModel is the same live binding the status row shows;
 	// an unknown model keeps the 200k default — the registry never
-	// guesses, so neither do we.
-	const known = lookupModelMetadata(agentModel)?.capabilities.contextWindow;
+	// guesses, so neither do we. OR-1: the ENDPOINT narrows the row —
+	// gpt-5.5 is 1,050,000 at the first-party API and 272,000 at the
+	// subscription backend; the two are set together (setAgentModel).
+	const known = lookupModelMetadata(agentModel, agentBaseUrl)?.capabilities.contextWindow;
 	if (known !== undefined && known !== null) return known;
 	return DEFAULT_CONTEXT_WINDOW;
 }
@@ -165,8 +167,12 @@ export function usageFromEvent(
 	// guess); omitted, the legacy route-keyed path stands (old callers,
 	// old tests, unchanged bytes).
 	model?: string,
+	// OR-1: the live ENDPOINT — the same model id is priced at the
+	// first-party API and unpriced at the subscription backend; the
+	// session hands it over next to `provider` (one binding, one row).
+	endpoint?: string,
 ): UsageDelta {
-	const c = model === undefined ? canonicalizeUsage(route ?? "adapter", ev) : canonicalizeUsageForModel(model, undefined, route ?? "adapter", ev);
+	const c = model === undefined ? canonicalizeUsage(route ?? "adapter", ev) : canonicalizeUsageForModel(model, endpoint, route ?? "adapter", ev);
 	const total = c.input + c.cacheRead + (c.cacheWrite ?? 0);
 	let missed: number | null = null;
 	// R-C item 4: min(prevTotal, total) is the part that could have been
@@ -688,7 +694,7 @@ export async function consumeRun(
 				body.notice("stream interrupted — the draft above is abandoned");
 				break;
 			case "usage": {
-				const delta = usageFromEvent(session.provider, ev, prevTotal, agentModel);
+				const delta = usageFromEvent(session.provider, ev, prevTotal, agentModel, session.baseUrl);
 				usage = delta.usage;
 				prevTotal = delta.total;
 				missed = delta.missed;

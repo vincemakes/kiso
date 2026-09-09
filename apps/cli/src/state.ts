@@ -286,8 +286,12 @@ export function setSessionStore(value: { load(id: string): readonly StoreRecord[
 
 /** The model name for the status bar — set by makeAgent. */
 export let agentModel = "faux";
-export function setAgentModel(value: string): void {
+/** OR-1: the live model's ENDPOINT, set in the same call as the model so
+ *  the two can never drift: the window lookup keys on (model, endpoint). */
+export let agentBaseUrl: string | undefined;
+export function setAgentModel(value: string, baseUrl?: string): void {
 	agentModel = value;
+	agentBaseUrl = baseUrl;
 }
 
 /** merge round B: whether the agent runs on the faux provider (no real key) —
@@ -388,6 +392,8 @@ export interface LastBinding {
 	readonly adapter: import("@vincemakes/kiso-core").Adapter;
 	readonly model: string;
 	readonly provider?: "anthropic" | "openai-compat" | "openai-responses";
+	/** OR-1: the endpoint inherits with the adapter (the cost path keys on it). */
+	readonly baseUrl?: string;
 	readonly scope?: import("@vincemakes/kiso-core").ContinuationScope;
 	readonly reasoning?: import("@vincemakes/kiso-runtime/internal").ReasoningSetting;
 }

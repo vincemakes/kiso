@@ -627,7 +627,7 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 		setCurrentFaux(false);
 		setCurrentModelName(resolved.name);
 	}
-	setAgentModel(model); // v2b: the status bar shows it
+	setAgentModel(model, resolved?.profile.baseUrl); // v2b: the status bar shows it; OR-1: the endpoint rides along
 
 	// W21: the extensions array is built ONCE per agent and shared with
 	// the runtime by reference — the don't-ask-again writer pushes the
@@ -829,7 +829,7 @@ async function chatLoop(
 		// XP-1 §2.1: the switched-to session's OWN truth repaints the row —
 		// the global display state never outlives the session it described
 		// (pre-XP the row kept the previous session's /model selection).
-		setAgentModel(session.model);
+		setAgentModel(session.model, session.baseUrl);
 		setCurrentModelName(session.model);
 		paintBootStatus(session);
 		const nav = {

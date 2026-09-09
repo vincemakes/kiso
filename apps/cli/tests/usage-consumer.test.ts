@@ -105,3 +105,13 @@ describe("E2 R2a-1 — the CLI usage consumer is canonical (in is FRESH-ONLY)", 
 		expect(d1.missed).toBe(15000);
 	});
 });
+
+describe("OR-1 — the endpoint decides the price the status row adds", () => {
+	it("a subscription run of gpt-5.5 carries a null cost; the first-party run carries the page's rate", () => {
+		const ev = event({ inputTokens: 1_000_000, cacheRead: 0, outputTokens: 1_000_000 });
+		// the ChatGPT backend's row has pricing: null — a subscription is not billed per token
+		expect(usageFromEvent("openai-responses", ev, null, "gpt-5.5", "https://chatgpt.com/backend-api").costUsd).toBeNull();
+		// the first-party row: $5 in + $30 out per 1M (the model page, 2026-09-08)
+		expect(usageFromEvent("openai-responses", ev, null, "gpt-5.5", "https://api.openai.com/v1").costUsd).toBeCloseTo(35, 9);
+	});
+});

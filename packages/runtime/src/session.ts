@@ -157,6 +157,8 @@ export class AgentSession {
 	// setAdapter always had).
 	#model: string;
 	#provider: "anthropic" | "openai-compat" | "openai-responses" | undefined;
+	// OR-1: the fourth passenger — the endpoint moves with the adapter too.
+	#baseUrl: string | undefined;
 	// MG-1 (A5): travels WITH the adapter, same next-turn semantics.
 	#continuationScope: ContinuationScope | undefined;
 	// XP-1: the selected axes; resolved per request (next-turn semantics).
@@ -213,6 +215,7 @@ export class AgentSession {
 		this.#config = composedHooks === undefined ? config : { ...config, hooks: composedHooks };
 		this.#model = config.model;
 		this.#provider = config.provider;
+		this.#baseUrl = config.baseUrl;
 		this.#continuationScope = config.continuationScope;
 		this.#reasoning = config.reasoning ?? { thinking: "default", effort: "default" };
 		this.#profilePending = config.profilePending === true;
@@ -223,11 +226,12 @@ export class AgentSession {
 	 *  fresh per call so an in-flight run keeps the config it started with
 	 *  — the same boundary setAdapter has always drawn. */
 	#effectiveConfig(): SessionConfig {
-		const { provider: _startup, continuationScope: _startupScope, ...rest } = this.#config;
+		const { provider: _startup, baseUrl: _startupUrl, continuationScope: _startupScope, ...rest } = this.#config;
 		return {
 			...rest,
 			model: this.#model,
 			...(this.#provider !== undefined ? { provider: this.#provider } : {}),
+			...(this.#baseUrl !== undefined ? { baseUrl: this.#baseUrl } : {}),
 			...(this.#continuationScope !== undefined ? { continuationScope: this.#continuationScope } : {}),
 			reasoning: this.#reasoning,
 		};
@@ -296,6 +300,10 @@ export class AgentSession {
 		readonly adapter: Adapter;
 		readonly model: string;
 		readonly provider?: "anthropic" | "openai-compat" | "openai-responses";
+		/** OR-1: the endpoint moves with the adapter too — the cost path
+		 *  and the window lookup key on (model, endpoint); absent = an
+		 *  endpoint-less lookup (the first row for the id). */
+		readonly baseUrl?: string;
 		/** MG-1 (A5): the run's continuation scope — moves atomically with
 		 *  the adapter (absent = unscoped: the kernel strips envelopes). */
 		readonly scope?: ContinuationScope;
@@ -306,6 +314,7 @@ export class AgentSession {
 		this.#adapter = binding.adapter;
 		this.#model = binding.model;
 		this.#provider = binding.provider;
+		this.#baseUrl = binding.baseUrl;
 		this.#continuationScope = binding.scope;
 		this.#reasoning = binding.reasoning ?? { thinking: "default", effort: "default" };
 		// XP-1: an explicit selection is DURABLE — the setting survives
@@ -319,6 +328,13 @@ export class AgentSession {
 	 *  route — the CLI and the trace can never disagree. */
 	get provider(): "anthropic" | "openai-compat" | "openai-responses" | undefined {
 		return this.#provider;
+	}
+
+	/** OR-1: the live binding's endpoint — what the CLI hands the cost
+	 *  path next to `provider` and `model`, so the status row's dollar
+	 *  figure and the ledger's can never key on different registry rows. */
+	get baseUrl(): string | undefined {
+		return this.#baseUrl;
 	}
 
 	/** XP-1: the model that will answer the NEXT request — the live
@@ -414,6 +430,8 @@ export class AgentSession {
 			runId,
 			provider: this.#provider ?? "adapter",
 			model: this.#model,
+			// OR-1: the side query is priced by the same live endpoint as a run.
+			...(this.#baseUrl !== undefined ? { endpoint: this.#baseUrl } : {}),
 			adapterVersion: runtimeVersion(),
 			purpose: options.purpose,
 			// the manifest's seqRange pointers derive from the log, and a side
@@ -559,7 +577,7 @@ export class AgentSession {
 		// a degraded ledger costs one stderr line, never the summary.
 		if (usage !== null) {
 			try {
-				const canonical = canonicalizeUsageForModel(this.#model, undefined, this.#provider ?? "adapter", usage);
+				const canonical = canonicalizeUsageForModel(this.#model, this.#baseUrl, this.#provider ?? "adapter", usage);
 				const line = JSON.stringify({ kind: "summary", canonical }) + "\n";
 				mkdirSync(join(this.#store.root, "traces"), { recursive: true });
 				appendFileSync(join(this.#store.root, "traces", `${this.id}.jsonl`), line);
@@ -940,6 +958,12 @@ export interface SessionConfig {
 	/** E1: the adapter identity (anthropic / openai-compat / openai-responses) — trace
 	 *  provenance, additive (S1 surface untouched: type-only, optional). */
 	readonly provider?: "anthropic" | "openai-compat" | "openai-responses";
+	/** OR-1: the adapter's endpoint. The registry row for one model id can
+	 *  differ per endpoint (gpt-5.5 is priced at the first-party API and
+	 *  unpriced at the ChatGPT backend), so the cost path and the window
+	 *  lookup key on (model, endpoint). Travels with the live binding,
+	 *  exactly as `provider` does. Type-only, optional. */
+	readonly baseUrl?: string;
 	/** MG-1 (A5): the run's continuation scope — the kernel stamps it on
 	 *  committed envelopes; absent = unscoped (envelopes stripped). */
 	readonly continuationScope?: import("@vincemakes/kiso-core").ContinuationScope;

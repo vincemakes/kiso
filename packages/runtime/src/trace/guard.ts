@@ -38,6 +38,9 @@ export interface RequestTracerDeps {
 	runId: string;
 	provider: string;
 	model: string;
+	/** OR-1: the adapter's endpoint — the registry row (and so the price)
+	 *  for one model id can differ per endpoint; absent = endpoint-less. */
+	endpoint?: string;
 	/** The adapter contract's implementation version (the runtime's own),
 	 *  resolved once at tracer init; null on failure (soft-fail). */
 	adapterVersion?: string | null;
@@ -60,6 +63,7 @@ export class RequestTracer {
 	readonly #writer: TraceWriter;
 	readonly #log: readonly Event[];
 	readonly #provider: string;
+	readonly #endpoint: string | undefined;
 	readonly #runId: string;
 	readonly #adapterVersion: string | null;
 	readonly #rentParts: RentParts | undefined;
@@ -71,6 +75,7 @@ export class RequestTracer {
 		this.#writer = new TraceWriter({ root: deps.root, sessionId: deps.sessionId });
 		this.#log = deps.log;
 		this.#provider = deps.provider;
+		this.#endpoint = deps.endpoint;
 		this.#runId = deps.runId;
 		this.#adapterVersion = deps.adapterVersion ?? null;
 		this.#rentParts = deps.rentParts;
@@ -247,7 +252,10 @@ export class RequestTracer {
 		// MODEL via the metadata registry (route-keyed pricing priced an
 		// Anthropic run at DeepSeek's rates); the convention still keys on
 		// the route. An unpriced model costs null — never a fallback rate.
-		record.canonical = canonicalizeUsageForModel(record.model, undefined, this.#provider, {
+		// OR-1: and on the binding's ENDPOINT — the same id is priced at the
+		// first-party API and unpriced at the subscription backend; an
+		// endpoint-less lookup here priced a subscription run at $5/$30.
+		record.canonical = canonicalizeUsageForModel(record.model, this.#endpoint, this.#provider, {
 			inputTokens: p.inputTokens,
 			outputTokens: p.outputTokens,
 			cacheRead: p.cacheRead,

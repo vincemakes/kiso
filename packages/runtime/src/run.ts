@@ -117,6 +117,8 @@ export class Run implements AsyncIterable<Event> {
 				runId: this.runId,
 				provider: this.#config.provider ?? "adapter",
 				model: this.#config.model,
+				// OR-1: the binding's endpoint — the record's price keys on it.
+				...(this.#config.baseUrl !== undefined ? { endpoint: this.#config.baseUrl } : {}),
 				adapterVersion: runtimeVersion(),
 				log: log.all,
 				rentParts,

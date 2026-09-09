@@ -185,6 +185,9 @@ export class AgentRuntime {
 		const config: SessionConfig = {
 			model: restored?.model ?? this.#definition.model,
 			...(this.#definition.provider !== undefined ? { provider: this.#definition.provider } : {}),
+			// OR-1: the endpoint rides with the provider — the cost path and
+			// the window lookup key on (model, endpoint), never on the id alone.
+			...(this.#definition.baseUrl !== undefined ? { baseUrl: this.#definition.baseUrl } : {}),
 			...((restored !== null ? restored.scope : startupScope) !== undefined
 				? { continuationScope: (restored !== null ? restored.scope : startupScope)! }
 				: {}),
