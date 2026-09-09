@@ -892,6 +892,26 @@ export class Editor {
 		this.#setMouse(this.#panelInput.up() || this.#pickInput.up() || this.#atUp());
 	}
 
+	/** OR-11 (a) — the lead the composer's row is DRAWN with, which is not
+	 *  always the brick. The CLI binds the compositor's input lead as `""`
+	 *  (a prompt character is a third thing saying "input lives here", and
+	 *  it cost the row a column), while the editor measured against PROMPT
+	 *  — so the editor believed the row two columns narrower than the
+	 *  compositor drew it, and W23's "the two width authorities can never
+	 *  disagree" was off by two.
+	 *
+	 *  A PROVIDER, not a string, because both renderers are live in the
+	 *  same process: the dock draws the row when it is active and
+	 *  `selfRender` draws it when it is not, and they lead it differently.
+	 *  Whoever binds the row answers for whichever is drawing. The default
+	 *  is the brick, which is what `selfRender` has always drawn. */
+	setInputLead(lead: () => string): void {
+		this.#inputLead = lead;
+		this.#reflow();
+	}
+
+	#inputLead: () => string = () => PROMPT;
+
 	/** The row's own render when the dock is inactive (a TTY without a
 	 *  real size): \r + clear + blue brick prompt + visible + cursor
 	 *  column. */
@@ -902,7 +922,7 @@ export class Editor {
 		// W21: the panel's lead owns the row while up (the brick returns
 		// when the panel closes).
 		const panel = this.#panelInput.state();
-		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.cursor, panel.ask) : `${p.bold}${PROMPT}${p.reset}`;
+		const lead = panel !== null ? panelLead(panel.view, panel.phase, panel.cursor, panel.ask) : `${p.bold}${this.#inputLead()}${p.reset}`;
 		// W23: the ONE width authority — leadWidth(lead), the ANSI-stripped
 		// visible width (the styled panel lead / the styled brick measure
 		// the same as their plain text — a lead can never measure
@@ -2069,7 +2089,7 @@ export class Editor {
 		// the lead the editor itself renders (the panel lead when the panel
 		// owns the keys, the brick otherwise): maxW = W − walls − lead.
 		const ps = this.#panelInput.state();
-		const lead = ps !== null ? panelLead(ps.view, ps.phase, ps.cursor, ps.ask) : PROMPT;
+		const lead = ps !== null ? panelLead(ps.view, ps.phase, ps.cursor, ps.ask) : this.#inputLead();
 		const leadW = leadWidth(lead);
 		// DC-17: ONE column, not four. W6's box took 2+2 and this kept
 		// reserving them after law 1.1 retired it — so the horizontal

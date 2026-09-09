@@ -31,7 +31,7 @@ import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { Body, Editor, bannerLines, currentGround, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
+import { Body, Editor, PROMPT, bannerLines, currentGround, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListRow, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
 import {
 	createAgent,
 	disposeExtensions,
@@ -378,7 +378,15 @@ function makeLineInput(): LineInput {
 		// here", which is the argument W6 made for the box and the only part
 		// of it that survives. A prompt character is a third thing saying
 		// the same thing, and it cost the row a column.
-		dock.bindInput(() => editor.dockState(), "");
+		// OR-11 (a): ONE literal. The compositor draws this lead and the
+		// editor measures its rows against it; two copies is how they came
+		// to disagree by two columns in the first place.
+		const COMPOSER_LEAD = "";
+		dock.bindInput(() => editor.dockState(), COMPOSER_LEAD);
+		// …and BOTH renderers are live: the dock draws this row while it is
+		// active, the editor's own selfRender draws it (with the brick) when
+		// it is not. The budget follows whichever is drawing.
+		editor.setInputLead(() => (dock.active ? COMPOSER_LEAD : PROMPT));
 		// TUI2-R3v2 ②: the click hit-test's wiring — the compositor places
 		// the panel's option rows, so the compositor is what the editor asks
 		// where they are. Neither side computes the other's geometry.

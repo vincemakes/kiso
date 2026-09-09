@@ -263,3 +263,39 @@ describe("OR-11 — Home/End repaint like Ctrl+A/E", () => {
 		expect(editor.dockState().cursorCol).toBe("hello world".length);
 	});
 });
+
+/**
+ * OR-11 (a) — the budget follows the lead that is actually drawn.
+ *
+ * `#reflow` measured against PROMPT (`"▌ "`, two columns) while the CLI
+ * binds the compositor's lead as `""`. The editor therefore believed the
+ * row was two columns narrower than the compositor drew it, so the
+ * horizontal scroll fired two columns early and the last two cells of
+ * every row were unreachable — the two width authorities W23 says must
+ * never disagree, disagreeing by two.
+ */
+describe("OR-11 — the reflow budget is the bound lead's, not the brick's", () => {
+	it("with an empty lead the row reaches its last usable column", () => {
+		Object.defineProperty(process.stdout, "columns", { value: 40, configurable: true });
+		const editor = new Editor(() => {});
+		editor.setInputLead(() => ""); // what the CLI binds while the dock draws
+		// W − leadW − 1 = 39 cells, and the caret needs one of them, so 38
+		// characters are what fits whole: no scroll, no marker, the cursor
+		// at the far end. (39 would scroll by one — the caret's own cell is
+		// why the formula subtracts a column.)
+		editor.feed(enc("x".repeat(38)));
+		const st = editor.dockState();
+		expect(st.lines, "the row is not scrolled").toEqual(["x".repeat(38)]);
+		expect(st.cursorCol).toBe(38);
+	});
+
+	it("the default is still the brick, so a self-rendering editor is unchanged", () => {
+		Object.defineProperty(process.stdout, "columns", { value: 40, configurable: true });
+		const editor = new Editor(() => {});
+		// no setInputLead: PROMPT's two columns, budget 37 — the SAME 38
+		// characters scroll, which is the two-column difference stated as a
+		// behaviour rather than as arithmetic.
+		editor.feed(enc("x".repeat(38)));
+		expect(editor.dockState().cursorCol).toBeLessThan(38);
+	});
+});
