@@ -111,6 +111,42 @@ describe("OR-1 — the Responses rows: one model id, two endpoints, two answers"
 		expect(resolveReasoning("gpt-5.5", { thinking: "default", effort: "xhigh" }, SUB)).toEqual({ ok: true, wire: { effort: "xhigh" } });
 	});
 
+	// OR-6 (2026-09-09): the owner asked why the picker had no newer GPT — the
+	// model page lists gpt-6-astra and the gpt-5.6 line above gpt-5.5, and
+	// both gpt-6-astra and gpt-5.6-sol answered on the subscription backend
+	// (probed the same day). Rows from the pages and the presets pinned to a
+	// commit; `ultra` is the presets' top rung and exists ONLY at the
+	// subscription — the first-party pages stop at `max`.
+	it("OR-6: gpt-6-astra — the page's five levels (default not stated → null) and price at the first-party API; the presets' six (ultra, default low) at the subscription", () => {
+		const first = lookupModelMetadata("gpt-6-astra", FIRST);
+		expect(first?.capabilities.reasoning?.effort).toEqual({ levels: ["low", "medium", "high", "xhigh", "max"], default: null, wire: "reasoning.effort" });
+		expect(first?.capabilities.contextWindow).toBe(1_050_000);
+		expect(first?.pricing).toEqual({ inputPerM: 10, outputPerM: 50, cacheReadPerM: 1, cacheWritePerM: 0, asOf: "2026-09-09", source: "https://developers.openai.com/api/docs/models/gpt-6-astra" });
+		const sub = lookupModelMetadata("gpt-6-astra", SUB);
+		expect(sub?.providerId).toBe("chatgpt");
+		expect(sub?.capabilities.reasoning?.effort).toEqual({ levels: ["low", "medium", "high", "xhigh", "max", "ultra"], default: "low", wire: "reasoning.effort" });
+		expect(sub?.capabilities.contextWindow).toBe(272_000);
+		expect(sub?.pricing).toBeNull();
+		expect(sub?.capabilitiesSource).toMatch(/\/blob\/634ebc1865c6ac840ed3ba118f040d527bf4b55d\//);
+	});
+
+	it("OR-6: gpt-5.6-sol — none…max (default medium) and $4/$0.4/$20 at the first-party API; low…ultra (default low) at the subscription", () => {
+		const first = lookupModelMetadata("gpt-5.6-sol", FIRST);
+		expect(first?.capabilities.reasoning?.effort).toEqual({ levels: ["none", "low", "medium", "high", "xhigh", "max"], default: "medium", wire: "reasoning.effort" });
+		expect(first?.pricing).toEqual({ inputPerM: 4, outputPerM: 20, cacheReadPerM: 0.4, cacheWritePerM: 0, asOf: "2026-09-09", source: "https://developers.openai.com/api/docs/models/gpt-5.6-sol" });
+		expect(lookupModelMetadata("gpt-5.6-sol", SUB)?.capabilities.reasoning?.effort?.levels).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+	});
+
+	it("OR-6: ultra is native at the subscription and refused, by name, at the first-party API; none is refused for gpt-6-astra everywhere", () => {
+		const ultra = { thinking: "default", effort: "ultra" } as const;
+		expect(resolveReasoning("gpt-6-astra", ultra, SUB)).toEqual({ ok: true, wire: { effort: "ultra" } });
+		const refused = resolveReasoning("gpt-6-astra", ultra, FIRST);
+		expect(refused.ok).toBe(false);
+		if (!refused.ok) expect(refused.reason).toContain("native: low/medium/high/xhigh/max");
+		expect(resolveReasoning("gpt-6-astra", { thinking: "default", effort: "none" }, FIRST).ok).toBe(false);
+		expect(resolveReasoning("gpt-6-astra", { thinking: "default", effort: "none" }, SUB).ok).toBe(false);
+	});
+
 	it("cost: the first-party row prices a run; the subscription row prices nothing", () => {
 		const RAW = { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheRead: 0, cacheWrite: null };
 		expect(canonicalizeUsageForModel("gpt-5.5", FIRST, "openai-compat", RAW).costUsd).toBeCloseTo(35, 9);

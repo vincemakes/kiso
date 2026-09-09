@@ -45,8 +45,10 @@ export interface ModelCapabilities {
  *  some model/effort combinations forbid thinking-disabled. */
 export type ThinkingMode = "default" | "adaptive" | "enabled" | "disabled";
 /** `none` is the OpenAI Responses dialect's zero-reasoning level — a NATIVE
- *  value a request carries, distinct from "default" (no field sent). */
-export type ReasoningEffort = "default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+ *  value a request carries, distinct from "default" (no field sent).
+ *  `ultra` (OR-6) is the vendor CLI presets' top rung for the ChatGPT
+ *  backend — native THERE only; the first-party model pages stop at `max`. */
+export type ReasoningEffort = "default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
 export interface ReasoningSetting {
 	readonly thinking: ThinkingMode;
@@ -206,38 +208,48 @@ const RESPONSES_WIRE = "reasoning.effort";
  *  levels, the window, the output cap and the price alike (read the same
  *  day). The adapter asks for no reasoning summaries (encrypted items
  *  only), so no thinking stream is emitted. */
-const openaiRow = (model: string, effortDefault: "none" | "medium", rate: { readonly inputPerM: number; readonly outputPerM: number; readonly cacheReadPerM: number }, page: string): ModelMetadataEntry => ({
+type NativeEffort = Exclude<ReasoningEffort, "default">;
+/** OR-6: a row may name its own levels and read date; the 5.5/5.4 rows keep
+ *  the 2026-09-08 defaults. A default the page does not state stays null. */
+type RowOpts = { readonly levels?: readonly NativeEffort[]; readonly asOf?: string };
+const openaiRow = (model: string, effortDefault: NativeEffort | null, rate: { readonly inputPerM: number; readonly outputPerM: number; readonly cacheReadPerM: number }, page: string, opts: RowOpts = {}): ModelMetadataEntry => ({
 	model,
 	providerId: "openai",
 	endpoint: "https://api.openai.com",
 	capabilities: { contextWindow: 1_050_000, maxOutputTokens: 128_000, promptCaching: "automatic", reasoning: {
 		emitsThinkingStream: false,
 		thinking: null,
-		effort: { levels: ["none", "low", "medium", "high", "xhigh"], default: effortDefault, wire: RESPONSES_WIRE },
-		asOf: OPENAI_MODELS_ASOF,
+		effort: { levels: opts.levels ?? ["none", "low", "medium", "high", "xhigh"], default: effortDefault, wire: RESPONSES_WIRE },
+		asOf: opts.asOf ?? OPENAI_MODELS_ASOF,
 		source: page,
 	}, inputModalities: null },
-	capabilitiesAsOf: OPENAI_MODELS_ASOF,
+	capabilitiesAsOf: opts.asOf ?? OPENAI_MODELS_ASOF,
 	capabilitiesSource: page,
-	pricing: { ...rate, cacheWritePerM: 0, asOf: OPENAI_MODELS_ASOF, source: page },
+	pricing: { ...rate, cacheWritePerM: 0, asOf: opts.asOf ?? OPENAI_MODELS_ASOF, source: page },
 });
 /** The subscription backend's row for the same id: the presets' four
  *  levels (no `none`), the presets' context window, no price. */
-const chatgptRow = (model: string): ModelMetadataEntry => ({
+const chatgptRow = (model: string, opts: RowOpts & { readonly default?: NativeEffort; readonly source?: string } = {}): ModelMetadataEntry => ({
 	model,
 	providerId: "chatgpt",
 	endpoint: "https://chatgpt.com",
 	capabilities: { contextWindow: 272_000, maxOutputTokens: null, promptCaching: null, reasoning: {
 		emitsThinkingStream: false,
 		thinking: null,
-		effort: { levels: ["low", "medium", "high", "xhigh"], default: "medium", wire: RESPONSES_WIRE },
-		asOf: OPENAI_MODELS_ASOF,
-		source: CHATGPT_PRESETS_SOURCE,
+		effort: { levels: opts.levels ?? ["low", "medium", "high", "xhigh"], default: opts.default ?? "medium", wire: RESPONSES_WIRE },
+		asOf: opts.asOf ?? OPENAI_MODELS_ASOF,
+		source: opts.source ?? CHATGPT_PRESETS_SOURCE,
 	}, inputModalities: null },
-	capabilitiesAsOf: OPENAI_MODELS_ASOF,
-	capabilitiesSource: CHATGPT_PRESETS_SOURCE,
+	capabilitiesAsOf: opts.asOf ?? OPENAI_MODELS_ASOF,
+	capabilitiesSource: opts.source ?? CHATGPT_PRESETS_SOURCE,
 	pricing: null,
 });
+/** OR-6 (2026-09-09): the newer line, read the same day — the model pages for
+ *  the first-party rows, the presets pinned to a later commit for the
+ *  subscription rows (both ids answered on the backend that day). */
+const OPENAI_MODELS_ASOF_2 = "2026-09-09";
+const CHATGPT_PRESETS_SOURCE_2 = "https://github.com/openai/codex/blob/634ebc1865c6ac840ed3ba118f040d527bf4b55d/codex-rs/models-manager/models.json";
+const ULTRA_LADDER: readonly NativeEffort[] = ["low", "medium", "high", "xhigh", "max", "ultra"];
 
 /** The v1 table. Nulls outnumber numbers ON PURPOSE: only values with a
  *  named source enter; everything else waits for one. */
@@ -333,6 +345,17 @@ const ENTRIES: readonly ModelMetadataEntry[] = [
 	openaiRow("gpt-5.4", "none", { inputPerM: 2.5, outputPerM: 15, cacheReadPerM: 0.25 }, "https://developers.openai.com/api/docs/models/gpt-5.4"),
 	chatgptRow("gpt-5.5"),
 	chatgptRow("gpt-5.4"),
+	// OR-6 (2026-09-09): gpt-6-astra and gpt-5.6-sol. The astra page names
+	// no default, so the first-party default stays null (unknown is null);
+	// the presets say `low` at the subscription. `ultra` exists only there.
+	// The ordering keeps the first-party row first for endpoint-less
+	// callers; the run-side resolver passes the endpoint (45a9df5), so the
+	// two rows need not be nested — astra's subscription row has a level
+	// (ultra) its first-party row lacks.
+	openaiRow("gpt-6-astra", null, { inputPerM: 10, outputPerM: 50, cacheReadPerM: 1 }, "https://developers.openai.com/api/docs/models/gpt-6-astra", { levels: ["low", "medium", "high", "xhigh", "max"], asOf: OPENAI_MODELS_ASOF_2 }),
+	openaiRow("gpt-5.6-sol", "medium", { inputPerM: 4, outputPerM: 20, cacheReadPerM: 0.4 }, "https://developers.openai.com/api/docs/models/gpt-5.6-sol", { levels: ["none", "low", "medium", "high", "xhigh", "max"], asOf: OPENAI_MODELS_ASOF_2 }),
+	chatgptRow("gpt-6-astra", { levels: ULTRA_LADDER, default: "low", source: CHATGPT_PRESETS_SOURCE_2, asOf: OPENAI_MODELS_ASOF_2 }),
+	chatgptRow("gpt-5.6-sol", { levels: ULTRA_LADDER, default: "low", source: CHATGPT_PRESETS_SOURCE_2, asOf: OPENAI_MODELS_ASOF_2 }),
 ];
 
 /**
