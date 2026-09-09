@@ -22,9 +22,16 @@ import { join } from "node:path";
 const ROOT = new URL("..", import.meta.url).pathname;
 const orphans = [];
 
-for (const pkg of readdirSync(join(ROOT, "packages"))) {
-	const dist = join(ROOT, "packages", pkg, "dist");
-	const src = join(ROOT, "packages", pkg, "src");
+// 0.31.1 (2026-09-09): apps/* and extensions/* publish too. This gate walked
+// packages/ alone, and apps/cli/dist carried diff.js + diff.d.ts (built
+// 2026-08-05, source removed in 88ac764) inside every kiso-code tarball
+// since — found by packing the release from a clean worktree and comparing
+// it with the shared checkout's tarball (14/15 identical, the CLI's two
+// files over). Same lesson, one tier wider.
+const TIERS = ["packages", "apps", "extensions"];
+for (const [tier, pkg] of TIERS.flatMap((t) => readdirSync(join(ROOT, t)).map((p) => [t, p]))) {
+	const dist = join(ROOT, tier, pkg, "dist");
+	const src = join(ROOT, tier, pkg, "src");
 	if (!existsSync(dist) || !existsSync(src)) continue;
 	const walk = (dir, rel = "") => {
 		for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -37,7 +44,7 @@ for (const pkg of readdirSync(join(ROOT, "packages"))) {
 			if (!entry.name.endsWith(".js")) continue;
 			const stem = relPath.replace(/\.js$/, "");
 			if (existsSync(join(src, `${stem}.ts`)) || existsSync(join(src, `${stem}.tsx`))) continue;
-			orphans.push(`packages/${pkg}/dist/${relPath}`);
+			orphans.push(`${tier}/${pkg}/dist/${relPath}`);
 		}
 	};
 	walk(dist);
