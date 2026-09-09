@@ -12,6 +12,8 @@ import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { agentModel, body, bodyLog, configModels, dock, lastBinding, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
 import { authForProfile, directWriteProfile, profileAvailable, unavailableReason, type ModelProfile } from "./config.js";
+import { shellTool } from "@vincemakes/kiso-tools-node";
+import { kisoHome } from "./state.js";
 
 /** The picker's CLI half (owner 2026-09-08): a profile's LEGAL effort levels
  *  and its default, from the registry, shown wherever the profile is listed
@@ -105,8 +107,99 @@ export interface DispatchCtx {
  *  replay routes through it too — a queued "/last" must never become a
  *  user turn (v2c: the rl lives in main, so lines arrive earlier and the
  *  queue is the common path). */
+/** §2.2 — the `!` command in flight, if one is. A `!` command and a model
+ *  run are never both running (the dispatcher is serialized on the chain),
+ *  so one slot is the whole state. */
+let activeBang: AbortController | null = null;
+
+/** esc while a `!` command runs kills it — the SAME abort the shell tool
+ *  gives a model's call, so the whole process group goes, children
+ *  included. Exported because the esc key reaches the editor first: chat
+ *  offers it here before it reaches a model run, and only one of the two
+ *  can be in flight. */
+export function abortBangCommand(): boolean {
+	if (activeBang === null) return false;
+	activeBang.abort();
+	return true;
+}
+
+/** §2.2 — what a submitted line asks for, if it asks for a shell at all.
+ *  Split out from the dispatcher so the rule is testable without a
+ *  terminal: `null` means this is not the gesture and the line is a turn.
+ *
+ *  `!!` is checked before `!` because the longer prefix is the narrower
+ *  claim; testing `!` first would swallow both. */
+export function parseBang(trimmed: string): { readonly command: string; readonly send: boolean } | null {
+	// a multi-line paste that merely begins with `!` is prose, the same
+	// rule `/` already follows one branch below.
+	if (trimmed.includes("\n") || !trimmed.startsWith("!")) return null;
+	const send = !trimmed.startsWith("!!");
+	return { command: trimmed.slice(send ? 1 : 2).trim(), send };
+}
+
+/** §2.2 — `!cmd` runs a command and SENDS it, `!!cmd` runs one and shows
+ *  it. Both go through the shell tool's own runner, so the timeout (30 s),
+ *  the output cap (100,000 chars, which names what it dropped), the
+ *  whole-tree kill and the STRIPPED environment are the tool's and not a
+ *  second set of rules. The `!`/`!!` difference is what the MODEL sees,
+ *  never what leaves the machine.
+ *
+ *  No approval panel, at any tier including plan: the human typed the
+ *  command. That is not a policy exemption, it is structural — this
+ *  dispatcher only ever sees lines a human submitted, so a model cannot
+ *  reach this branch. */
+function runBang(command: string, send: boolean, ctx: DispatchCtx): void {
+	ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+		const controller = new AbortController();
+		activeBang = controller;
+		try {
+			const tool = shellTool({ workspaceRoot: process.cwd(), excludeRoots: [kisoHome()] });
+			const result = await tool.execute({ command }, { signal: controller.signal });
+			// one fenced block, read as a terminal transcript: the command
+			// and what it printed. The tool's own overflow note rides inside
+			// `content`, so a capped run says so in the same words a model's
+			// call would.
+			const block = ["```console", `$ ${command}`, result.content, "```"].join("\n");
+			if (send) {
+				// an ORDINARY user turn: durable, in the log, and the model
+				// sees exactly what the human saw.
+				ctx.submitTurn(block);
+				return; // submitTurn owns the prompt from here
+			}
+			bodyLog(block, "words");
+		} finally {
+			activeBang = null;
+		}
+		ctx.input.prompt();
+	});
+}
+
 export function dispatch(line: string, ctx: DispatchCtx): void {
 	const trimmed = line.trim();
+	// §2.2 — the `!` gesture is the COMPOSER's alone. A piped session, `-p`
+	// and `--task-file` keep `!` as ordinary text: those lines are content,
+	// and a headless run that shelled out because a prompt began with `!`
+	// would be executing its input.
+	if (dock.active && !trimmed.includes("\n")) {
+		if (trimmed.startsWith("\\!")) {
+			// the ONE escape: `\!` sends the literal text starting with `!`.
+			ctx.submitTurn(line.replace("\\!", "!"));
+			return;
+		}
+		const bang = parseBang(trimmed);
+		if (bang !== null) {
+			const { command, send } = bang;
+			if (command === "") {
+				ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+					bodyLog("!<command> runs it and sends the result · !!<command> runs it and shows it here · \\! sends a literal !");
+					ctx.input.prompt();
+				});
+				return;
+			}
+			runBang(command, send, ctx);
+			return;
+		}
+	}
 	if (trimmed === "/help") {
 		// KC3.5 slice ⓪ (the extraction): the ROWS moved to the terminal
 		// layer's strings module (helpRows — the KC3 §1 pattern: what the

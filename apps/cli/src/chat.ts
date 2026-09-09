@@ -27,7 +27,7 @@ import { canonicalTargetPath, shellProgressPath } from "@vincemakes/kiso-tools-n
 import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
 import { canonicalizeUsageForModel, requestBudget } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
-import { dispatch, type DispatchCtx } from "./dispatch.js";
+import { dispatch, type DispatchCtx, abortBangCommand } from "./dispatch.js";
 import { agentBaseUrl, agentModel, body, bodyLog, configuredWindow, dock, type LineInput } from "./state.js";
 import { attachImages } from "./attachments.js";
 import { lookupModelMetadata } from "@vincemakes/kiso-runtime/internal";
@@ -1097,6 +1097,13 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		if (!currentRun) exitAtEmptyPrompt();
 	});
 	input.onEscape(() => {
+		// §2.2: a `!` command is offered the key FIRST. The two are never
+		// both in flight — the dispatcher is serialized on the chain — so
+		// this is an ordering, not a precedence rule.
+		if (abortBangCommand()) {
+			console.log("\n[aborting command]");
+			return;
+		}
 		if (currentRun) {
 			console.log("\n[aborting run]");
 			pendingAsk?.();

@@ -483,6 +483,12 @@ export function helpRows(): string[] {
 		["/compact", "summarize the older conversation to free context"],
 		["/clear", "start a fresh conversation (the old session stays resumable)"],
 		["/resume", "switch to another session; /resume <id> goes directly"],
+		// §2.2: the two shell gestures and their one escape. They sit
+		// beside the slash commands because that is what a reader is
+		// looking for when they look here, even though `!` is not one.
+		["!<cmd>", "run a shell command and send it with its output as your turn"],
+		["!!<cmd>", "run one and show it here only — the model never sees it"],
+		["\\!", "send a line that really starts with ! (the only escape)"],
 		["exit", "leave the session"],
 		// TUI2-R1 (D): the SENTENCE is deliberately unchanged. Deriving it
 		// from KEY_BINDINGS would be an improvement and it would also move
