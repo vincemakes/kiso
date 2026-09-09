@@ -1437,11 +1437,12 @@ export class Body {
 	/**
 	 * R14 — ERASE THE TERMINAL AND PRINT THE SESSION AGAIN.
 	 *
-	 * Two callers: a settled resize, and DC-50's ctrl+o. They are the
-	 * same act — the rendering the terminal holds is wrong (wrong
-	 * geometry, or wrong expansion state) and the model is the only
-	 * authority on what it should be — so they share the path rather
-	 * than growing two.
+	 * Four callers now: a settled resize, DC-50's ctrl+o, §2.3's ctrl+t,
+	 * and §2.4's return from an external editor. They are the same act —
+	 * the rendering the terminal holds is wrong (wrong geometry, wrong
+	 * expansion state, wrong fold, or another program drew over it) and
+	 * the model is the only authority on what it should be — so they
+	 * share the path rather than growing four.
 	 */
 	#reprint(): void {
 		const H = this.#opts.height();
@@ -1497,6 +1498,13 @@ export class Body {
 			if (cell.kind !== "tool") continue;
 			if (cell.done || cell.state === "approval") cell.expanded = this.#expandedAll;
 		}
+		this.#reprint();
+	}
+
+	/** §2.4 — the terminal holds someone else's drawing (an external
+	 *  editor had it) and the model is the only authority on what should
+	 *  be there. The same act as a resize; the same path. */
+	reprint(): void {
 		this.#reprint();
 	}
 

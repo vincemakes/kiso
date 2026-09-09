@@ -106,6 +106,9 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 			// looks for a key, and a gesture the sheet does not name is a
 			// gesture nobody uses.
 			"ctrl+t      fold the thinking blocks, and fold them back",
+			// §2.4 — the same class again: the row names the variables because
+			// they are what a reader has to set for the key to do anything.
+			"ctrl+g      edit the composer in $VISUAL or $EDITOR — the text comes back unsent",
 			// §2.2 — three DECLARED ADDITIONS in the same class as /clear,
 			// /resume, /rewrap and /copy. `!` is not a slash command, but it
 			// is what a reader is looking for when they look here, and a
@@ -125,7 +128,7 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 	});
 
 	it("the last row still carries its own newline — two rows from one bodyLog call", () => {
-		expect(helpRows()).toHaveLength(16); // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's ctrl+t
+		expect(helpRows()).toHaveLength(17); // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's ctrl+t + §2.4's ctrl+g
 		expect(helpRows().filter((r) => r.includes("\n"))).toHaveLength(1);
 	});
 

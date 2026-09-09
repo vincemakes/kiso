@@ -10,9 +10,12 @@ import { buildAdapter, lookupModelMetadata, resolveContinuationScope, resolveRea
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
-import { agentModel, body, bodyLog, codingToolOptions, configModels, dock, lastBinding, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
+import { agentModel, body, bodyLog, codingToolOptions, kisoHome, configModels, dock, lastBinding, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
 import { authForProfile, directWriteProfile, profileAvailable, unavailableReason, type ModelProfile } from "./config.js";
 import { shellTool } from "@vincemakes/kiso-tools-node";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 /** The picker's CLI half (owner 2026-09-08): a profile's LEGAL effort levels
  *  and its default, from the registry, shown wherever the profile is listed
@@ -290,6 +293,60 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// in-flight turn — nothing is appended — so the repaint is
 		// immediate, exactly as the live-cell toggle always was.
 		body.toggleExpanded();
+		ctx.input.prompt();
+		return;
+	}
+	if (trimmed === "\x07editor") {
+		// §2.4 — ctrl+g hands the composer to the human's own editor.
+		//
+		// The split: the EDITOR owns the terminal handover (raw mode, the
+		// mouse, bracketed paste — see `externalEdit`), and this owns the
+		// spawn, because the tui package is pure terminal and spawning is
+		// not. Neither reaches into the other.
+		//
+		// $VISUAL before $EDITOR — VISUAL is the variable for a full-screen
+		// editor and EDITOR is the fallback — and NO guess beyond them. In
+		// an environment that sets neither, dropping someone into an editor
+		// they did not choose is the product deciding for them.
+		//
+		// It never SUBMITS. What comes back is text in the composer and
+		// enter is still the human's: one key that both opens an editor and
+		// sends is a gesture with no way back.
+		const bin = process.env.VISUAL ?? process.env.EDITOR ?? "";
+		if (bin.trim() === "") {
+			ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+				bodyLog("no editor configured — set $VISUAL or $EDITOR to open one with ctrl+g");
+				ctx.input.prompt();
+			});
+			return;
+		}
+		ctx.input.externalEdit?.((text) => {
+			// per RUN, not per call: a directory per invocation is how the
+			// tree grew 400,000 of them once.
+			const root = join(kisoHome(), "tmp");
+			mkdirSync(root, { recursive: true });
+			const dir = mkdtempSync(join(root, "compose-"));
+			const file = join(dir, "message.md"); // .md so the editor lights it up
+			try {
+				writeFileSync(file, text, "utf8");
+				const r = spawnSync(bin, [file], { stdio: "inherit", shell: false });
+				if (r.error !== undefined || (r.status !== null && r.status !== 0)) {
+					// the buffer is NOT replaced: a failed edit must not eat
+					// what the human had already written.
+					body.notice(`[ctrl+g] ${bin} exited ${r.status ?? "abnormally"} — the composer is unchanged`);
+					return null;
+				}
+				return readFileSync(file, "utf8").replace(/\n+$/, "");
+			} catch (err) {
+				body.notice(`[ctrl+g] ${err instanceof Error ? err.message : String(err)} — the composer is unchanged`);
+				return null;
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		});
+		// the external program drew over the screen; the model is the only
+		// authority on what should be there (R14).
+		body.reprint();
 		ctx.input.prompt();
 		return;
 	}

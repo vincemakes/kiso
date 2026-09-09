@@ -1329,6 +1329,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// "expand" turn is never intercepted).
 	input.onExpand(() => dispatch("\x12expand", dispatchCtx));
 	input.onThink?.(() => dispatch("\x14think", dispatchCtx));
+	input.onEditor?.(() => dispatch("\x07editor", dispatchCtx));
 	// E1 §3 — ctrl+x and `/copy` are the same action reached two ways, so
 	// they are the same sentinel: one implementation, one behaviour.
 	input.onCopy(() => dispatch("\x18copy", dispatchCtx));

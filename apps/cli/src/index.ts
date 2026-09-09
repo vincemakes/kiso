@@ -88,6 +88,17 @@ function openInBrowser(url: string): void {
 	}
 }
 
+/** LT-1: the stream watchdog's bound from the environment — a non-negative
+ *  number of milliseconds (0 disables it); anything else is ignored. The
+ *  PTY rigs use it to trip the watchdog in seconds against a stub that
+ *  never finishes a stream. */
+function streamIdleFromEnv(): number | undefined {
+	const raw = process.env.KISO_STREAM_IDLE_MS;
+	if (raw === undefined || raw === "") return undefined;
+	const n = Number(raw);
+	return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 /** OR-3: the commands that own their own stdin reader (a hidden key prompt,
  *  an OAuth paste prompt) or read nothing at all — never the editor.
  *  OR-9 adds `update`: npm inherits the terminal for the install's own
@@ -139,6 +150,13 @@ function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
 		onThink() {
 			/* §2.3: same as ctrl+o above — readline has no binding, and a
 			 * dock-less session has no committed rows to reprint. */
+		},
+		onEditor() {
+			/* §2.4: readline has no ctrl+g, and a piped session has no
+			 * composer to hand over. */
+		},
+		externalEdit() {
+			/* §2.4: nothing to suspend — this path never took the terminal. */
 		},
 		onCopy() {
 			/* readline has no ctrl+x binding — ignored. `/copy` still
@@ -228,6 +246,12 @@ function editorInput(editor: Editor): LineInput {
 		},
 		onThink(cb) {
 			editor.onThink(cb);
+		},
+		onEditor(cb) {
+			editor.onEditor(cb);
+		},
+		externalEdit(edit) {
+			editor.externalEdit(edit);
 		},
 		onCopy(cb) {
 			editor.onCopy(cb);
@@ -745,8 +769,13 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 					...(sessionId !== undefined ? { promptCacheKey: sessionId } : {}),
 					...(resolved.profile.baseUrl !== undefined ? { baseUrl: resolved.profile.baseUrl } : {}),
 					...(resolved.profile.promptCaching !== undefined ? { promptCaching: resolved.profile.promptCaching } : {}),
+					// LT-1: the profile's stream watchdog bound, if it states one
+					...(resolved.profile.streamIdleMs !== undefined ? { streamIdleMs: resolved.profile.streamIdleMs } : {}),
 				}
 			: { adapter: createFauxProvider(readFauxScript().slice(fauxSkipTurns)) }),
+		// LT-1: KISO_STREAM_IDLE_MS (the test rigs' knob) beats the profile —
+		// the last spread wins, which is why it sits after the profile's.
+		...(streamIdleFromEnv() !== undefined ? { streamIdleMs: streamIdleFromEnv() } : {}),
 	};
 	return createAgent(definition);
 }

@@ -214,6 +214,11 @@ export interface LineInput {
 	 *  onExpand. Optional: the readline input has no such key, and a
 	 *  dock-less session has nothing to reprint. */
 	onThink?(cb: () => void): void;
+	/** §2.4: the external-editor key (ctrl+g). */
+	onEditor?(cb: () => void): void;
+	/** §2.4: hand the terminal over, run `edit`, take it back. The editor
+	 *  owns the handover; the CLI owns the spawn. */
+	externalEdit?(edit: (text: string) => string | null): void;
 	/** E1 §3: the copy key (ctrl+x) — the chain-level action, never the
 	 *  composer's own. The readline input ignores it; `/copy` is the
 	 *  route that works everywhere. */

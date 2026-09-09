@@ -338,6 +338,7 @@ export class Editor {
 	// coexist; the editor never interprets the key itself.
 	#expandCbs: (() => void)[] = [];
 	#thinkCbs: (() => void)[] = [];
+	#editorCbs: (() => void)[] = [];
 	/** E1 §3 — ctrl+x. Same shape as the expand key: the editor owns the
 	 *  KEY, the CLI owns what it means. */
 	#copyCbs: (() => void)[] = [];
@@ -487,6 +488,52 @@ export class Editor {
 	 *  the compositor throws, never an interpretation the editor makes. */
 	onThink(cb: () => void): void {
 		this.#thinkCbs.push(cb);
+	}
+
+	/** §2.4: the external-editor key (ctrl+g). */
+	onEditor(cb: () => void): void {
+		this.#editorCbs.push(cb);
+	}
+
+	/** §2.4 — hand the terminal to an external program, and take it back.
+	 *
+	 *  `run` receives the composer's text and returns what should replace
+	 *  it, or null to leave it alone (no editor configured, the editor
+	 *  failed, nothing changed). The SPAWN is the caller's: this package is
+	 *  pure terminal — input is data, output is bytes, zero runtime deps —
+	 *  so what lives here is the handover and nothing else.
+	 *
+	 *  NOT `exit()` / `enter()`. Those are the session's boundary: exit()
+	 *  also resolves the closed promise, which tells the layer above that
+	 *  the session is over. Suspending is a different act with the same
+	 *  terminal moves, and conflating them would end the session every time
+	 *  someone opened their editor. */
+	externalEdit(run: (text: string) => string | null): void {
+		const before = this.line();
+		let next: string | null = null;
+		process.stdin.off("data", this.#onData);
+		process.stdout.write(MOUSE_OFF);
+		process.stdout.write("\x1b[?2004l"); // bracketed paste OFF — the child's, not ours
+		process.stdout.write("\x1b[?25h"); // and it needs a cursor to draw
+		process.stdin.setRawMode(false);
+		try {
+			next = run(before);
+		} finally {
+			// the handover comes back whatever the child did, including
+			// throwing: a terminal left in the child's mode is unusable and
+			// the human has no way to ask for it back.
+			process.stdin.setRawMode(true);
+			process.stdout.write(MOUSE_OFF);
+			this.#mouseOn = false;
+			process.stdout.write("\x1b[?2004h");
+			process.stdin.on("data", this.#onData);
+		}
+		if (next !== null && next !== before) {
+			this.#chars = [...next].map((ch) => ch.codePointAt(0)!);
+			this.#cursor = this.#chars.length;
+			this.#reflow();
+		}
+		this.#onRender();
 	}
 
 	/** KC2 §2: the redirect chain — the gesture hands the buffer's text
@@ -1368,6 +1415,18 @@ export class Editor {
 				// Forwarded, not interpreted: the switch is the
 				// compositor's, exactly as ctrl+o's is.
 				for (const cb of [...this.#thinkCbs]) cb();
+				i += 1;
+			} else if (c === "\x07") {
+				// §2.4 — ctrl+g opens $VISUAL / $EDITOR on the composer.
+				//
+				// 0x07 is BEL, which is also the terminator a terminal puts
+				// on an OSC reply (DC-7). This branch is only reached by a
+				// BARE 0x07: the OSC arm above consumes its own terminator,
+				// so the terminal's answer never arrives here. One byte, two
+				// meanings, told apart by what precedes it — and there is a
+				// gate for exactly that, because "should not reach here" is
+				// not something to take on trust.
+				for (const cb of [...this.#editorCbs]) cb();
 				i += 1;
 			} else if (c === "\x18" && this.#composerIdle()) {
 				// E1 §3 — ctrl+x copies the last answer. `\x18` was unbound

@@ -489,6 +489,9 @@ export function helpRows(): string[] {
 		// §2.3: the switch belongs beside ctrl+o's job, and a gesture the
 		// sheet does not name is a gesture nobody uses (DC-30, DC-36).
 		["ctrl+t", "fold the thinking blocks, and fold them back"],
+		// §2.4: the composer, in your own editor. It names the variables
+		// because that is what a reader has to set for it to work.
+		["ctrl+g", "edit the composer in $VISUAL or $EDITOR — the text comes back unsent"],
 		["!<cmd>", "run a shell command and send it with its output as your turn"],
 		["!!<cmd>", "run one and show it here only — the model never sees it"],
 		["\\!", "send a line that really starts with ! (the only escape)"],
