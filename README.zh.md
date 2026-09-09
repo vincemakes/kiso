@@ -137,7 +137,7 @@ kiso sessions                  列出持久会话及其状态
 | DeepSeek 及其他 OpenAI 兼容端点 | `kiso login deepseek`,或 env 里放 key | **有真实厂商腿。** 凭据存储路径于 2026-09-08 对着厂商跑过,bench 的任务腿跑在 `deepseek-v4-flash` 上。 |
 | Anthropic | `kiso login anthropic`——只有 API key | **只有 API key**:厂商禁止第三方订阅登录。当前型号线已登记,带日期与来源的上下文窗口、effort 档位、思考模式与价格(2026-09-07 读取)。发现 MG1-F1:签名与脱敏的思考块重放,是通过 OpenRouter 的 Anthropic 格式端点按字节一致验证的,不是对着首方 beta 面。 |
 | OpenAI Responses(首方) | `kiso login openai`——API key | **离线验证通过;真实接入待验收。** 对着录制的字节 rig 得到证明;在真腿落地前,包内 README 的支持级表写 `unrun`。 |
-| ChatGPT 订阅 | `kiso login chatgpt`——OAuth | **离线验证通过;真实接入待验收。** 同一批 rig,同样的 `unrun`。订阅跑的费用记为 `null`(订阅不按 token 计费),上下文按预设的 272,000 度量。 |
+| ChatGPT 订阅 | `kiso login chatgpt`——OAuth | **真腿 2026-09-09**,在 owner 的订阅上:存储的登录驱动了工具调用与续轮、effort 透传(`xhigh` 接受、`none` 按名拒绝)、中途取消带 durable 作废、厂商错误映射(`400 invalid_request`)且会话存活。订阅跑的费用记为 `null`(订阅不按 token 计费),上下文按预设的 272,000 度量。 |
 
 Anthropic profile 的提示词缓存**默认关闭**:打开它会改变请求字节与账单,默认值只有在一条真实腿上的配对 bench 证明省钱之后才会翻转。效率数字——同一个模型、同一批任务、三个 Agent,连同协议与每一条诚实脚注——见 [bench/README.md](bench/README.md)。这里不摘录其中任何数字。
 

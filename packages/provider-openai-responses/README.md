@@ -31,7 +31,7 @@ LOCAL double (`tests/helpers/rig.ts`); no test reaches a vendor.
 | cancel | ✓ | ✓ | `or1-errors` — an abort ends the turn with an `AbortError`, no `stop`, nothing retryable |
 | error mapping | ✓ | ✓ | `or1-errors` — 429/401/400/503 by status, both `Retry-After` forms in milliseconds |
 | retry authority | ✓ | ✓ | `or1-retry-authority` — exactly one request per stream, on every failure class |
-| **a real vendor leg** | **unrun** | **unrun** | needs a key / a subscription sign-in and an owner-budgeted run |
+| **a real vendor leg** | **unrun** | **2026-09-09** | first-party: needs a key and an owner-budgeted run. ChatGPT: the owner's subscription — sign-in, a tool call and the next turn, effort passthrough, a mid-stream cancel, a vendor error mapped; five proofs observed |
 
 `unrun` means exactly that: the behaviour is proven against the recorded
 dialect, and nobody has yet pointed this adapter at the vendor.
