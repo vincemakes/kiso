@@ -6,7 +6,13 @@
 - **agent:** kiso 0.15.12 (working tree)
 - **found by:** auditing every consumer of `p.code` while writing
   `packages/tui/design.md`
-- **status:** OPEN
+- **status:** FIXED (the R2 UI round, 0.16.3). The ground probe
+  establishes what the terminal's background actually is, and the
+  invisible grey is retired AS A COLOUR rather than re-tuned:
+  `packages/tui/tests/render-v2a.test.ts` records the retirement, and
+  `packages/tui/src/compositor.ts` names this finding at the repaint the
+  answer triggers. `packages/tui-cells/src/ground.ts` holds the palette,
+  including the honest `unknown` for a terminal that does not answer.
 
 ## The measurement
 

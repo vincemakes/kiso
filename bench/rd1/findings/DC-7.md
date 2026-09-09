@@ -6,7 +6,19 @@
 - **agent:** kiso 0.16.2
 - **found by:** checking what the editor would do with an OSC 11 answer
   before designing the ground probe
-- **status:** OPEN
+- **status:** FIXED for the editor (`packages/tui/tests/dc7-osc-swallow.test.ts`,
+  8 cases): an OSC reply is swallowed rather than typed into the draft,
+  and `apps/cli/src/index.ts` routes the ground query through the editor
+  BECAUSE it is the process's single reader of stdin — this finding is
+  cited there as the reason.
+
+  THE FAMILY IS NOT CLOSED. The defect is not the editor's; it belongs to
+  any reader of stdin that does not expect a terminal to answer back. It
+  recurred once outside the editor: `kiso login` / `logout` / `auth` read
+  with a prompt of their own, and an OSC reply landed in it. That instance
+  is OR-3 (`d3f2e64`), fixed with its own gate
+  (`apps/cli/tests/auth-tty.test.ts`). A second reader of stdin is the
+  precondition; whoever adds the next one inherits this.
 
 ## The measurement
 
