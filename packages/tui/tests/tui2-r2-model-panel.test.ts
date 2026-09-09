@@ -61,7 +61,7 @@ afterEach(() => {
 describe("TUI2-R2 ④ — the /model panel's block (the picker-surface class)", () => {
 	it("the prototype's C-1 frame: the header names the current model, the options are numbered, `t` is the escape hatch", () => {
 		const view = modelPickView(SPEC, "▸ idle");
-		const rows = panelRowsOf({ view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options" } }, 80, 12).map(strip);
+		const rows = panelRowsOf({ view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 80, 12).map(strip);
 		// R2: the block opens with the same dashed rule it closes with, so
 		// every content row moves down one.
 		expect(rows[0]!.startsWith("\u2500")).toBe(true);
@@ -76,14 +76,14 @@ describe("TUI2-R2 ④ — the /model panel's block (the picker-surface class)", 
 
 	it("the ZERO-PROFILE state keeps today's copy verbatim — the config path is the one useful thing the old command said", () => {
 		const view = modelPickView(EMPTY, "▸ idle");
-		const rows = panelRowsOf({ view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options" } }, 80, 12).map(strip);
+		const rows = panelRowsOf({ view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 80, 12).map(strip);
 		expect(rows.join("\n")).toContain("no profiles — define models in ~/.kiso/config.json");
 		expect(rows.join("\n")).toContain("t type provider/model directly (e.g. openai/deepseek-reasoner)");
 	});
 
 	it("the lead, the status and the affordance come from the SAME dispatchers the approval panel uses", () => {
 		const view = modelPickView(SPEC, "▸ run paused");
-		const options = { view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options" } } as const;
+		const options = { view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } } as const;
 		expect(strip(panelLeadOf(options))).toBe("1-3> ");
 		expect(panelStatusOf(options)).toBe("▸ run paused");
 		// DC-36: the row NAMES the arrows now. ↑↓ have walked this cursor
@@ -93,7 +93,7 @@ describe("TUI2-R2 ④ — the /model panel's block (the picker-surface class)", 
 		// mode panel as "type the answer". The subject of this case (the
 		// three dispatchers are the approval panel's own) is untouched.
 		expect(strip(panelAffordanceOf(options))).toBe("↑↓ move · digits pick · ⏎ confirms · esc");
-		const typing = { view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "custom" } } as const;
+		const typing = { view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "custom", level: null } } as const;
 		expect(strip(panelLeadOf(typing))).toBe("provider/model: ");
 		expect(panelAffordanceOf(typing)).toBe("enter commits · esc backs out");
 	});
@@ -101,7 +101,7 @@ describe("TUI2-R2 ④ — the /model panel's block (the picker-surface class)", 
 	it("every row fits W at any width — invariant ① can never fire from this block", () => {
 		for (const W of [40, 60, 80, 120]) {
 			for (const spec of [SPEC, EMPTY]) {
-				for (const row of panelRowsOf({ view: modelPickView(spec, "▸ idle"), phase: "options", cursor: 0, pick: { cursor: 1, phase: "options" } }, W, 12)) {
+				for (const row of panelRowsOf({ view: modelPickView(spec, "▸ idle"), phase: "options", cursor: 0, pick: { cursor: 1, phase: "options", level: null } }, W, 12)) {
 					expect(visibleWidth(row), `W=${W}: ${JSON.stringify(strip(row))}`).toBeLessThanOrEqual(W);
 				}
 			}

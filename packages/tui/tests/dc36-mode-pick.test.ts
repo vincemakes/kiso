@@ -28,7 +28,7 @@ const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 describe("DC-36 — the mode picker", () => {
 	it("offers every tier, and no `t` row: the five are the whole world", () => {
-		const rows = panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, phase: "options" } }, 90, 14).map(plain);
+		const rows = panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 90, 14).map(plain);
 		const body = rows.join("\n");
 		for (const t of TIERS) expect(body, `${t} is not offered`).toContain(t);
 		expect(body, "a closed set was given a `type it directly` row").not.toMatch(/^\s*t\s/m);
@@ -39,13 +39,13 @@ describe("DC-36 — the mode picker", () => {
 		// TUI2-R2 ④, but THIS row — the one a human reads while the panel
 		// is up — advertised only the digits, and the owner read it as
 		// "type the answer".
-		const rows = panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, phase: "options" } }, 90, 14).map(plain);
+		const rows = panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 90, 14).map(plain);
 		expect(rows.join("\n")).toContain("↑↓ move");
 	});
 
 	it("the cursor is what the panel marks — it moves with the pick state", () => {
 		const at = (cursor: number): string =>
-			panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor, phase: "options" } }, 90, 14)
+			panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor, phase: "options", level: null } }, 90, 14)
 				.map(plain)
 				.find((r) => r.trimStart().startsWith("→")) ?? "";
 		expect(at(0), "the cursor does not mark the first tier").toContain("manual");
@@ -58,7 +58,7 @@ describe("DC-36 — the mode picker", () => {
 		// configured has to stay typeable, which is why typeHint is
 		// optional rather than gone.
 		const withHint: PickSpec = { ...SPEC, typeHint: "type provider/model directly" };
-		const rows = panelRowsOf({ view: modePickView(withHint, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, phase: "options" } }, 90, 14).map(plain);
+		const rows = panelRowsOf({ view: modePickView(withHint, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 90, 14).map(plain);
 		expect(rows.join("\n")).toContain("type provider/model directly");
 	});
 });

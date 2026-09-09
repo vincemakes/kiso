@@ -302,6 +302,69 @@ export interface PickOption {
 	/** the dim qualifier ("profile: ds \u00b7 current") \u2014 what tells two
 	 *  similar rows apart */
 	readonly note?: string;
+	/** OR-7 — the SECOND axis. The model's NATIVE levels in vendor order,
+	 *  from the registry. Absent = this option has no second axis and the
+	 *  row renders exactly as it did before. */
+	readonly levels?: readonly string[];
+	/** where the level cursor starts. UNDEFINED is a real state, not a
+	 *  missing value: a row whose registry default is null (the page
+	 *  states none) marks nothing, and enter applies the profile alone.
+	 *  The panel never invents a default. */
+	readonly level?: number;
+	/** indexes forbidden for the current thinking mode. The cursor never
+	 *  rests on one \u2014 see `enabledLevel`. */
+	readonly disabled?: readonly number[];
+	/** shown after the strip when the cursor did NOT land where the
+	 *  previous selection asked ("effort xhigh \u2192 high: the nearest this
+	 *  model supports"). The caller's sentence, reproduced verbatim. */
+	readonly levelNote?: string;
+}
+
+/** The level cursor, CORRECTED at read time: never off the end, never on
+ *  a forbidden index, and never invented where the caller supplied none.
+ *
+ *  One rule instead of two. The alternative \u2014 letting the cursor rest on
+ *  a forbidden index and refusing at enter \u2014 needs a second mechanism to
+ *  say why nothing happened, and a key that silently does nothing is the
+ *  defect this panel already fixed once (DC-36). Correcting on read is
+ *  the discipline the session picker uses for its own selection. */
+export function enabledLevel(o: PickOption | undefined, want: number | null): number | null {
+	const levels = o?.levels;
+	if (levels === undefined || levels.length === 0 || want === null) return null;
+	const off = new Set(o?.disabled ?? []);
+	if (off.size >= levels.length) return null; // every level forbidden: nothing to point at
+	const clamped = Math.max(0, Math.min(levels.length - 1, want));
+	if (!off.has(clamped)) return clamped;
+	// walk outward from the asked-for index, nearest first
+	for (let d = 1; d < levels.length; d += 1) {
+		const hi = clamped + d;
+		if (hi < levels.length && !off.has(hi)) return hi;
+		const lo = clamped - d;
+		if (lo >= 0 && !off.has(lo)) return lo;
+	}
+	return null;
+}
+
+/** Where the cursor OPENS on an option: what the caller asked for,
+ *  corrected. The two callers (the panel opening, and the highlight
+ *  moving to another row) mean exactly this and nothing else. */
+export function startLevel(o: PickOption | undefined): number | null {
+	return enabledLevel(o, o?.level ?? null);
+}
+
+/** The next enabled index in `dir`, or the current one at the end of the
+ *  ladder. Forbidden indexes are stepped OVER, never landed on. */
+export function stepLevel(o: PickOption, from: number | null, dir: -1 | 1): number | null {
+	const levels = o.levels;
+	if (levels === undefined || levels.length === 0) return null;
+	// the first press on a row that marks nothing enters the ladder at
+	// its near end rather than guessing a middle.
+	if (from === null) return enabledLevel(o, dir === 1 ? 0 : levels.length - 1);
+	const off = new Set(o.disabled ?? []);
+	for (let i = from + dir; i >= 0 && i < levels.length; i += dir) {
+		if (!off.has(i)) return i;
+	}
+	return from;
 }
 
 /** The whole pick: the header sentence, the options, the free-text
@@ -326,6 +389,9 @@ export interface PickSpec {
 export interface PickRuntime {
 	readonly cursor: number;
 	readonly phase: "options" | "custom";
+	/** OR-7: the level cursor within the highlighted option. null = the
+	 *  option has no levels, or has no default to mark. */
+	readonly level: number | null;
 }
 
 /** What was picked: a listed option by INDEX (never a label the caller
@@ -403,8 +469,9 @@ export type PanelVerdict =
 	| { readonly action: "answers"; readonly result: AskResult }
 	/** TUI2-R2 \u2463: the pick's verdict \u2014 the chosen index or the typed
 	 *  text. Only pick views ever produce it, so the approval path's
-	 *  switch is untouched. */
-	| { readonly action: "picked"; readonly result: PickResult };
+	 *  switch is untouched. OR-7 adds the second axis beside it: the
+	 *  level INDEX, absent when the option had no levels or marked none. */
+	| { readonly action: "picked"; readonly result: PickResult; readonly level?: number };
 
 /** The bound panel state the compositor reads — the editor owns the
  *  phase/selection state machine and the key routing; the compositor
@@ -806,7 +873,14 @@ export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, ma
 		// content were scrolled irreversibly into the scrollback every time
 		// `/model` opened on a tight screen. The `+N more` row is a sixth
 		// when it appears, so it is paid for too.
-		const chrome = 5 + (spec.options.length > Math.min(Math.max(1, maxRows - 5), PICK_MAX) ? 1 : 0);
+		// OR-7: the level strip is a row of its own under the highlighted
+		// option, so it is chrome and it is paid for here. Inline after the
+		// note was the coordination note's shape and it does not fit: five
+		// levels need 42 columns and the note column has 48 at width 100,
+		// which it already spends on `profile: <name>`. A second axis that
+		// truncates on a normal terminal is not a second axis.
+		const strip = spec.options[state.cursor]?.levels !== undefined && state.phase === "options" ? 1 : 0;
+		const chrome = 5 + strip + (spec.options.length > Math.min(Math.max(1, maxRows - 5 - strip), PICK_MAX) ? 1 : 0);
 		const budget = Math.max(1, maxRows - chrome);
 		const shown = spec.options.slice(0, Math.min(budget, PICK_MAX));
 		// R2: the note takes a COLUMN, not three spaces after a label of
@@ -839,13 +913,34 @@ export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, ma
 		if (spec.options.length > shown.length) {
 			rows.push(`  ${cutLine(`${p.dim} \u2514 +${spec.options.length - shown.length} more \u2014 /model <name> takes any of them${p.reset}`, room)}`);
 		}
+		const axis = shown[state.cursor];
+		if (strip === 1 && axis?.levels !== undefined) {
+			const off = new Set(axis.disabled ?? []);
+			// the RUNTIME cursor, not the option's starting index: the option
+			// says where the cursor opens, the state says where it is now.
+			// Reading the option here rendered a bracket that never moved
+			// while the state underneath it did — the silent movement this
+			// whole axis exists to replace.
+			const cur = enabledLevel(axis, state.level);
+			// the bracket means THE CURSOR IS HERE. It used to mean "the
+			// registry default" in the note's text form; a row whose
+			// default is null now marks nothing at all rather than
+			// promoting the first level into one.
+			const cells = axis.levels.map((l, i) => {
+				const text = escapeTerminal(l);
+				if (off.has(i)) return `${p.dim}${text}${p.reset}`;
+				return i === cur ? `${p.bold}[${text}]${p.reset}` : text;
+			});
+			const note = axis.levelNote === undefined ? "" : ` ${p.dim}\u2014 ${escapeTerminal(axis.levelNote)}${p.reset}`;
+			rows.push(`  ${cutLine(`${p.dim}effort: ${p.reset}${cells.join(`${p.dim} \u00b7 ${p.reset}`)}${note}`, room)}`);
+		}
 	}
 	const typing = state.phase === "custom";
 	if (spec.typeHint !== undefined) {
 		const tText = cutLine(`${typing ? p.bold : ""}${typing ? "\u2192" : " "} t ${p.reset}${p.dim}${escapeTerminal(spec.typeHint)}${p.reset}`, room);
 		rows.push(typing ? selectionBar(tText, visibleWidth(tText), W) : ` ${tText}`);
 	}
-	rows.push(`  ${p.dim}${cutLine(pickAffordance(state), room)}${p.reset}`);
+	rows.push(`  ${p.dim}${cutLine(pickAffordance(state, spec.options[state.cursor]?.levels !== undefined), room)}${p.reset}`);
 	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
 	return rows;
 }
@@ -874,14 +969,18 @@ export function pickStatus(view: PanelView): string {
 	return view.statusText;
 }
 
-export function pickAffordance(state: PickRuntime): string {
+export function pickAffordance(state: PickRuntime, axis = false): string {
 	// DC-36 — the row NAMES the arrows. TUI2-R2 ④ bound ↑↓ to the pick's
 	// cursor and the keys sheet has said `panels: ↑↓ move` ever since,
 	// but this row — the one a human is actually looking at while the
 	// panel is up — advertised only the digits. The owner read it as
 	// "type the answer", which is the same lesson DC-30 filed: a hint
 	// that omits the gesture is why the gesture goes unused.
-	return state.phase === "custom" ? "enter commits \u00b7 esc backs out" : "\u2191\u2193 move \u00b7 digits pick \u00b7 \u23ce confirms \u00b7 esc";
+	// OR-7 names \u2190\u2192 here for the same reason DC-36 named \u2191\u2193: a gesture
+	// this row omits is a gesture that goes unused. It appears only when
+	// there is a second axis to walk.
+	if (state.phase === "custom") return "enter commits \u00b7 esc backs out";
+	return axis ? "\u2191\u2193 move \u00b7 \u2190\u2192 effort \u00b7 digits pick \u00b7 \u23ce confirms \u00b7 esc" : "\u2191\u2193 move \u00b7 digits pick \u00b7 \u23ce confirms \u00b7 esc";
 }
 
 /** Compose a pick view. The flavor/name/title/args fields exist for the

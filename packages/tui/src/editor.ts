@@ -1450,7 +1450,9 @@ export class Editor {
 			// question one it stays put — esc is the decline, never ←.
 			if (!this.#panelInput.left()) this.#move(-1);
 		} else if (final === "C") {
-			this.#move(1);
+			// OR-7: → walks the pick panel's level axis when one is up; the
+			// composer keeps the key everywhere else, exactly as ← does.
+			if (!this.#panelInput.right()) this.#move(1);
 		} else if (final === "H") {
 			this.#cursor = this.#cursorBounds().start; // A3: Home follows Ctrl+A — line-local
 			this.#reflow();

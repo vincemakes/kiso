@@ -26,6 +26,8 @@ import {
 	type PanelVerdict,
 	type PanelView,
 	type PickRuntime,
+	startLevel,
+	stepLevel,
 	type SaferAnswer,
 	type SaferOption,
 } from "./approval-panel.js";
@@ -127,7 +129,7 @@ export class PanelInput {
 			safer: opts?.safer,
 			saferRun: null,
 			ask: view.ask === undefined ? null : askStart(view.ask),
-			pick: view.pick === undefined ? null : { cursor: 0, phase: "options" as const },
+			pick: view.pick === undefined ? null : { cursor: 0, phase: "options" as const, level: startLevel(view.pick.options[0]) },
 			onCommit,
 			stash: this.host.stash(),
 		};
@@ -192,8 +194,9 @@ export class PanelInput {
 					this.#pickPanelDigit(Number(c) - 1);
 					return 1;
 				}
+				if (!typing && (c === "h" || c === "l") && this.#levelStep(c === "h" ? -1 : 1)) return 1;
 				if (!typing && (c === "t" || c === "T") && panel.view.pick?.typeHint !== undefined) {
-					panel.pick = { cursor: panel.pick.cursor, phase: "custom" };
+					panel.pick = { cursor: panel.pick.cursor, phase: "custom", level: panel.pick.level };
 					this.host.clear();
 					this.host.render();
 					return 1;
@@ -282,18 +285,45 @@ export class PanelInput {
 		if (panel.pick !== null && panel.pick.phase === "options") {
 			const n = Math.min(panel.view.pick!.options.length, PICK_MAX);
 			const cur = panel.pick.cursor;
-			panel.pick = { cursor: dir === "up" ? Math.max(0, cur - 1) : Math.min(Math.max(0, n - 1), cur + 1), phase: "options" };
+			const next = dir === "up" ? Math.max(0, cur - 1) : Math.min(Math.max(0, n - 1), cur + 1);
+			// OR-7: the second axis belongs to the highlighted option, so it
+			// re-lands on THAT option's own level. Carrying the previous
+			// row's index across would point at a level this model may not
+			// have — the silent clamp the coordination note exists to end.
+			panel.pick = { cursor: next, phase: "options", level: startLevel(panel.view.pick!.options[next]) };
 		} else if (panel.ask !== null && panel.ask.phase === "options") this.#askStep(dir);
 		else if (panel.phase === "safer") this.#saferMove(dir === "up" ? -1 : 1);
 		else if (panel.phase !== "asking") this.#panelMove(dir === "up" ? -1 : 1);
 		return true;
 	}
 
-	/** ← while an ask's option row is up walks the ask; otherwise the key is the composer's. */
+	/** ← while an ask's option row is up walks the ask; while a pick's is
+	 *  up it walks the highlighted option's level axis (OR-7); otherwise
+	 *  the key is the composer's. */
 	left(): boolean {
+		if (this.#levelStep(-1)) return true;
 		const panel = this.#panel;
 		if (panel?.ask == null || panel.ask.phase !== "options") return false;
 		this.#askStep("left");
+		return true;
+	}
+
+	/** → is the level axis's other direction. The ask never owned it (its
+	 *  own walk is ← back and enter forward), so this key was the
+	 *  composer's alone until OR-7 and still is when no axis is up. */
+	right(): boolean {
+		return this.#levelStep(1);
+	}
+
+	/** One step along the highlighted option's levels. False when there is
+	 *  no axis to walk, which is what leaves the key to the composer. */
+	#levelStep(dir: -1 | 1): boolean {
+		const panel = this.#panel;
+		if (panel === null || panel.pick === null || panel.pick.phase !== "options") return false;
+		const o = panel.view.pick?.options[panel.pick.cursor];
+		if (o?.levels === undefined) return false;
+		panel.pick = { cursor: panel.pick.cursor, phase: "options", level: stepLevel(o, panel.pick.level, dir) };
+		this.host.render();
 		return true;
 	}
 
@@ -481,7 +511,7 @@ export class PanelInput {
 		const panel = this.#panel;
 		if (panel === null || panel.pick === null) return;
 		if (index < 0 || index >= Math.min(panel.view.pick!.options.length, PICK_MAX)) return;
-		panel.pick = { cursor: index, phase: "options" };
+		panel.pick = { cursor: index, phase: "options", level: startLevel(panel.view.pick!.options[index]) };
 		this.host.render();
 	}
 
@@ -495,14 +525,15 @@ export class PanelInput {
 			return;
 		}
 		if (panel.view.pick!.options.length === 0) return; // nothing to take
-		this.#close({ action: "picked", result: { index: panel.pick.cursor } });
+		const level = panel.pick.level;
+		this.#close({ action: "picked", result: { index: panel.pick.cursor }, ...(level === null ? {} : { level }) });
 	}
 
 	#pickPanelEsc(): void {
 		const panel = this.#panel;
 		if (panel === null || panel.pick === null) return;
 		if (panel.pick.phase === "custom") {
-			panel.pick = { cursor: panel.pick.cursor, phase: "options" };
+			panel.pick = { cursor: panel.pick.cursor, phase: "options", level: panel.pick.level };
 			this.host.clear();
 			this.host.render();
 			return;
