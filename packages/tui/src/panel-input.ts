@@ -33,11 +33,12 @@ import {
 } from "./approval-panel.js";
 import { askCommitCustom, askKey, askOnCustomRow, askStart } from "./ask-panel.js";
 
-/** The composer's buffer, as a band puts it aside and gets it back. */
+/** The composer's buffer, as a band puts it aside and gets it back.
+ *  OR-11 dropped `scroll`: a long line folds now, so there is no
+ *  horizontal offset left to put aside. */
 export interface BufferStash {
 	readonly chars: number[];
 	readonly cursor: number;
-	readonly scroll: number;
 }
 
 /** The composer, as a band controller is allowed to see it. Every
@@ -48,7 +49,7 @@ export interface BandHost {
 	line(): string;
 	/** The buffer with its paste capsules expanded — the text that would leave the editor. */
 	expandPastes(line: string): string;
-	/** Empty the buffer: chars, cursor, scroll and the ↑↓ goal column. */
+	/** Empty the buffer: chars, cursor and the ↑↓ goal column. */
 	clear(): void;
 	/** Type one code point at the cursor. */
 	insert(cp: number): void;

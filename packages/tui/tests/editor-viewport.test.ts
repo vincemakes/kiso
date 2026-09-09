@@ -299,3 +299,84 @@ describe("OR-11 — the reflow budget is the bound lead's, not the brick's", () 
 		expect(editor.dockState().cursorCol).toBeLessThan(38);
 	});
 });
+
+/**
+ * OR-11 — a long line WRAPS.
+ *
+ * DECLARED SUPERSESSION of ADR-0039 Amendment 2's horizontal scrolling:
+ * one logical line used to be one row, scrolled sideways under a dim `…`
+ * so that the text you were not looking at was simply not there. It folds
+ * into visual rows now. The vertical window survives unchanged — N_MAX
+ * counts VISUAL rows, the edge markers stay, the cursor's row is always
+ * in view — and enter still submits the whole logical line.
+ */
+describe("OR-11 — the composer folds a long line into visual rows", () => {
+	beforeEach(() => {
+		Object.defineProperty(process.stdout, "columns", { value: 40, configurable: true });
+	});
+
+	const bare = (): InstanceType<typeof Editor> => {
+		const e = new Editor(() => {});
+		e.setInputLead(() => ""); // the CLI's lead: budget = 40 − 0 − 1 = 39
+		return e;
+	};
+
+	it("100 ASCII characters at width 40 become three rows, with no scroll marker", () => {
+		const editor = bare();
+		editor.feed(enc("x".repeat(100)));
+		const st = editor.dockState();
+		expect(st.lines).toHaveLength(3);
+		expect(st.lines.join(""), "every character is on screen, none scrolled away").toBe("x".repeat(100));
+		expect(st.lines.some((l) => l.includes("…")), "no scroll marker survives").toBe(false);
+		expect(st.cursorRow).toBe(2);
+		expect(st.cursorCol).toBe(100 - 39 * 2);
+	});
+
+	it("it breaks at a space, and a continuation row never begins with one", () => {
+		const editor = bare();
+		// 38 characters, a space, then a word: the space ends the first row
+		// rather than opening the second.
+		editor.feed(enc(`${"a".repeat(38)} second`));
+		const st = editor.dockState();
+		expect(st.lines[0]).toBe(`${"a".repeat(38)} `);
+		expect(st.lines[1]).toBe("second");
+	});
+
+	it("CJK breaks between any two characters and never splits a wide one", () => {
+		const editor = bare();
+		// U+5BBD, a two-column CJK ideograph, written as an escape because
+		// the tracked tree is English-only (the CJK gate) — the code point
+		// under test is real, only its spelling here is ASCII.
+		const WIDE = "\u5bbd";
+		editor.feed(enc(WIDE.repeat(30))); // 60 columns of wide characters
+		const st = editor.dockState();
+		expect(st.lines).toHaveLength(2);
+		// 39 columns of budget hold 19 wide characters, never 19.5
+		expect([...st.lines[0]!].length).toBe(19);
+		expect(st.lines.join("")).toBe(WIDE.repeat(30));
+	});
+
+	it("a run with no break point hard-breaks at the last character that fits", () => {
+		const editor = bare();
+		const url = `https://example.com/${"a".repeat(100)}`;
+		editor.feed(enc(url));
+		const st = editor.dockState();
+		expect(st.lines.join("")).toBe(url);
+		expect(st.lines.every((l) => [...l].length <= 39)).toBe(true);
+	});
+
+	it("8 visual rows of ONE logical line window to 6 with the markers, the cursor in view", () => {
+		const editor = bare();
+		editor.feed(enc("y".repeat(39 * 8)));
+		const st = editor.dockState();
+		expect(st.lines).toHaveLength(6);
+		expect(st.lines[0], "the hidden-above marker").toContain("\x1b[2m…");
+		expect(st.cursorRow).toBe(5);
+	});
+
+	it("a line that fits carries no marker at all", () => {
+		const editor = bare();
+		editor.feed(enc("short"));
+		expect(editor.dockState().lines).toEqual(["short"]);
+	});
+});

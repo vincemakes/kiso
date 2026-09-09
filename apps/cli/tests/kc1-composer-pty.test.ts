@@ -50,7 +50,16 @@ def driver(cli, session, env, feeds, timeout):
             full += data
         for i, (needle, text, delay) in enumerate(feeds):
             if i not in fed and time.time() - t0 >= delay and needle.encode() in full:
-                os.write(fd, text.encode())
+                # OR-11: a feed may RESIZE instead of typing. The composer's
+                # bugs have always lived on the resize path (R14, DC-33), so
+                # a wrap gate that never narrows the terminal is not a wrap
+                # gate. Additive: every existing feed still just types.
+                if text.startswith("__COLS__"):
+                    cols = int(text[8:])
+                    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, cols, 0, 0))
+                    os.kill(pid, signal.SIGWINCH)
+                else:
+                    os.write(fd, text.encode())
                 fed.add(i)
     try:
         os.kill(pid, signal.SIGTERM)
@@ -208,5 +217,66 @@ describe("KC1 T-P2 — Ctrl+J grows the box; the submit collapses it; a queued m
 		const inputs = userInputs(dirs.home, "kc1p2");
 		expect(inputs).toContain("one\ntwo\nthree");
 		expect(inputs).toContain("queued one\nqueued two\nqueued three");
+	}, 180_000);
+});
+
+/**
+ * OR-11 T-P3 — a long line WRAPS on a real terminal, and re-folds when
+ * the terminal narrows.
+ *
+ * The unit gates prove the fold; this proves the CLAIM on the absolute
+ * grid T-P1 measures: a hundred characters typed into a 24×80 composer
+ * occupy TWO rows between the rails, narrowing to 40 columns re-folds
+ * them to three, and Enter still submits ONE logical line — the whole
+ * hundred characters, not the row the cursor happened to be on.
+ *
+ * The cursor's own row is asserted in the unit gates (`cursorRow`); what
+ * a grid can see is the geometry, and that is what is read here.
+ */
+describe("OR-11 T-P3 — the composer wraps, and re-folds on a resize (real PTY, 24×80)", () => {
+	const LINE = "wrap".repeat(25); // 100 characters, with no space to break on
+
+	it("100 typed characters occupy TWO rows between the rails at 80 columns", () => {
+		const { env } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-kc1-p3a-"));
+		const script = fauxScript(dir, [{ events: [{ type: "text_delta", text: "unused" }, { type: "stop", reason: "end_turn" }] }]);
+		// deliberately NOT submitted: the composer holding the line is what
+		// is being measured, and a submit collapses it to one row before the
+		// transcript ends.
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script }, "kc1p3a", [["/ commands · \u2191 history", LINE, 2]], 8);
+		const grid = frameGrids(out).at(-1)!;
+		// the budget is 80 − 0 (the bound lead) − 1 = 79, so a hundred
+		// characters are two rows; the rails move up by exactly one from
+		// the one-row case T-P1 settles on (20/22 → 19/22).
+		expect(grid[19]!.includes("\u2500"), "the top rail moved up one row").toBe(true);
+		expect(grid[20]).toContain("wrapwrap");
+		expect(grid[21]).toContain("wrap");
+		expect(grid[22]!.includes("\u2500"), "the bottom rail is where it always is").toBe(true);
+		// and no scroll marker anywhere: every character is on the screen
+		expect(grid.slice(19, 23).join("")).not.toContain("\u2026");
+	}, 180_000);
+
+	it("narrowing the terminal re-folds the SAME line to three rows, and Enter still sends one logical line", () => {
+		const { env, dirs } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-kc1-p3b-"));
+		const script = fauxScript(dir, [{ events: [{ type: "text_delta", text: "one long line received" }, { type: "stop", reason: "end_turn" }] }]);
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script }, "kc1p3b", [
+			["/ commands · \u2191 history", LINE, 2],
+			// the needle is the thing about to be asserted — the composer
+			// carrying the line — never a neighbouring event that races the
+			// repaint which draws it.
+			[LINE.slice(0, 40), "__COLS__40", 4],
+			[LINE.slice(0, 40), "\r", 7],
+		], 20);
+		const grids = frameGrids(out);
+
+		// at 40 columns the budget is 39: the same hundred characters are
+		// three rows, and the rails move up again (18/22).
+		const narrow = grids.find((g) => g[18]!.includes("\u2500") && g[19]!.includes("wrap") && g[20]!.includes("wrap") && g[21]!.includes("wrap") && g[22]!.includes("\u2500"));
+		expect(narrow, "a frame shows it re-folded to three rows").toBeDefined();
+
+		// Enter submits ONE logical line — the whole hundred characters,
+		// not the row the cursor happened to be on.
+		expect(userInputs(dirs.home, "kc1p3b")).toEqual([LINE]);
 	}, 180_000);
 });

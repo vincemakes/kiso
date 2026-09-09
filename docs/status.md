@@ -127,7 +127,7 @@ decline`); the body scrolls
   the terminal's `reset` command saves it. v2c: the TTY path draws its own input line (ADR-0039
   Amendment 2) — a zero-dependency raw-mode editor (display-width cursor
   math — CJK wide chars land on the right column, the hard acceptance —
-  bracketed paste, horizontal scrolling with a dim … marker) with the
+  bracketed paste) with the
   kiso brick motif: a bold half-block ▌you> row and a dim dotted ╌
   separator; the sent line renders into the body exactly once, a turn
   submitted while another runs queues with a live `+N queued` status, and
@@ -135,7 +135,20 @@ decline`); the body scrolls
   newlines (LF/CR/CRLF all normalize to one), Ctrl+J (or Shift+Enter where
   the terminal encodes it) inserts a newline, Enter sends the whole block
   as ONE turn, and the box grows to at most 6 rows before scrolling
-  internally. KC2: **Alt+Enter (or Ctrl+Enter) REDIRECTS** — one gesture
+  internally. OR-11 — **a long line WRAPS**, which is a DECLARED
+  SUPERSESSION of ADR-0039 Amendment 2's horizontal scrolling: the
+  amendment described a SINGLE-line editor and was never revisited when
+  KC1 made the composer multi-line, so one logical line stayed one row,
+  slid sideways under a dim `…`, and the text you were not looking at was
+  simply not there. A logical line folds into visual rows now — at the
+  same width budget the compositor gives the row, breaking at a space run
+  (which ends the row it is on, so no continuation row opens with one),
+  at any CJK boundary, and otherwise at the last code point that fits, so
+  a wide character is never split. The 6-row cap counts VISUAL rows, the
+  edge markers and the always-visible cursor row are unchanged, ↑/↓ walk
+  visual rows while Home/End/Ctrl+A/E/U/K stay logical, and Enter still
+  submits the whole logical line. The horizontal scroll and its `…` prefix
+  are gone, code and all. KC2: **Alt+Enter (or Ctrl+Enter) REDIRECTS** — one gesture
   aborts the running turn and sends what you just typed instead, ahead of
   anything already queued; Esc alone still just stops. KC3: **`@` opens a
   fuzzy file picker** — typed at a word boundary (never mid-word, so an

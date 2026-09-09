@@ -22,7 +22,7 @@
  * source funnels through the ONE normalizer in feed() (§3).
  */
 
-import { charWidth, displayWidth, leadWidth, widthOf } from "./width.js";
+import { breakable, charWidth, displayWidth, leadWidth, widthOf } from "./width.js";
 // the width primitives moved to width.ts (W1, the single width
 // authority) — re-exported so the editor's public surface is unchanged.
 export { charWidth, displayWidth, widthOf };
@@ -160,8 +160,9 @@ const N_MAX = 6;
  *  deaf. */
 const OSC_MAX = 1024;
 
-/** The dim "…" — the ONE truncation mark: the horizontal scroll's
- *  prefix (unchanged) and the viewport's hidden-rows markers. */
+/** The dim "…" — the ONE truncation mark. OR-11 retired its other use
+ *  (the horizontal scroll's prefix) with the scroll itself; what is left
+ *  is the viewport's hidden-rows markers, above and below. */
 /** R3: built per call from the palette — `dim` is an absolute grey once
  *  the ground is known, so a frozen SGR 2 here would be the one span
  *  that ignores it. */
@@ -213,11 +214,10 @@ const shown = (chars: readonly number[]): string => {
 export class Editor {
 	#chars: number[] = [];
 	#cursor = 0;
-	#scroll = 0; // chars scrolled off the left of the CURSOR'S LINE (width-based reflow; KC1: line-local, so a single-line buffer is unchanged)
 	// KC1 §2 — the ONE new ephemeral field: the desired column for the
 	// ↑/↓ walk (a long line's column 20 → a short line clamps to 5 → the
 	// next long line RETURNS to 20). Set on the first vertical move,
-	// kept across consecutive ones, reset by any horizontal move, insert
+	// kept across consecutive ones, reset by any left/right move, insert
 	// or delete. Never stashed — it is a walk's state, not the buffer's.
 	#verticalGoalCol: number | null = null;
 	#questionCb: ((answer: string) => void) | null = null;
@@ -541,7 +541,6 @@ export class Editor {
 		this.#redoStack.length = 0;
 		this.#chars = [];
 		this.#cursor = 0;
-		this.#scroll = 0;
 		this.#verticalGoalCol = null;
 		this.#onRender();
 	}
@@ -574,11 +573,115 @@ export class Editor {
 		return bounds.length - 1;
 	}
 
-	/** The cursor's OWN line — the unit of the horizontal scroll and of
-	 *  the line-local A/E/U/K (A3). */
+	/** The cursor's OWN LOGICAL line — the unit of the line-local A/E/U/K
+	 *  (A3) and of the `@` token scan. The visual rows a long line folds
+	 *  into are `#visualRows`; these two answer different questions and
+	 *  OR-11 kept them apart deliberately. */
 	#cursorBounds(): { start: number; end: number } {
 		const bounds = this.#lineBounds();
 		return bounds[this.#cursorLine(bounds)]!;
+	}
+
+	/** OR-11 — the row's width budget: the SAME number the compositor
+	 *  gives the row (W23's one formula), against the lead that is
+	 *  actually drawn. The fold and the cursor math both ask here. */
+	#budget(): number {
+		const W = (process.stdout.columns ?? 0) || 80;
+		const ps = this.#panelInput.state();
+		const lead = ps !== null ? panelLead(ps.view, ps.phase, ps.cursor, ps.ask) : this.#inputLead();
+		return Math.max(1, W - leadWidth(lead) - 1);
+	}
+
+	/** The `[Pasted text #N +M lines]` tokens inside [start, end).
+	 *  A capsule is ONE thing on screen and one thing to the cursor, so a
+	 *  fold never lands inside it: it is cut when drawn if it is wider
+	 *  than the row, and it is never split into two. */
+	#capsules(start: number, end: number): readonly { start: number; end: number }[] {
+		const text = String.fromCodePoint(...this.#chars.slice(start, end));
+		const units: number[] = [];
+		// the regex indexes UTF-16 units; the buffer is code points
+		let cp = start;
+		for (const ch of text) {
+			units.push(cp);
+			cp += 1;
+			if (ch.length === 2) units.push(cp - 1); // a surrogate pair is one code point
+		}
+		units.push(end);
+		const out: { start: number; end: number }[] = [];
+		for (const m of text.matchAll(Editor.#CAPSULE)) {
+			const i = m.index ?? 0;
+			out.push({ start: units[i] ?? start, end: units[i + m[0].length] ?? end });
+		}
+		return out;
+	}
+
+	/** OR-11 — one logical line's VISUAL rows, as [start, end) into
+	 *  #chars. The rows TILE the line exactly: no character is dropped and
+	 *  none is shown twice, which is what lets the cursor map back.
+	 *
+	 *  The break, in order:
+	 *   1. everything fits — one row;
+	 *   2. the cut falls on a CJK boundary (either side breakable) — take
+	 *      it, because looking further back for a space would leave the
+	 *      row half empty for text that breaks anywhere;
+	 *   3. otherwise the last whitespace RUN that fits: the whole run ends
+	 *      the row it is on, so a continuation row never begins with a
+	 *      space;
+	 *   4. otherwise a hard break at the last code point that fits — never
+	 *      inside a wide character, because `#indexAtWidth` is that walk. */
+	#foldLine(start: number, end: number, budget: number): { start: number; end: number }[] {
+		const rows: { start: number; end: number }[] = [];
+		const atoms = this.#capsules(start, end);
+		let from = start;
+		while (from < end) {
+			const fits = this.#fitsWithin(from, end, budget);
+			if (fits >= end) break;
+			let cut = fits;
+			const atom = atoms.find((a) => a.start < cut && cut < a.end);
+			if (atom !== undefined) {
+				// the capsule keeps its own row: start one before it when
+				// there is text ahead of it, otherwise let it run whole.
+				cut = atom.start > from ? atom.start : atom.end;
+			} else if (!breakable(this.#chars[fits] ?? 0) && !breakable(this.#chars[fits - 1] ?? 0)) {
+				let w = -1;
+				for (let i = cut - 1; i > from; i -= 1) {
+					if (this.#chars[i] === SPACE) {
+						w = i;
+						break;
+					}
+				}
+				if (w >= 0) {
+					while (this.#chars[w + 1] === SPACE && w + 1 < end) w += 1;
+					cut = w + 1;
+				}
+			}
+			if (cut <= from || cut >= end) break; // no progress, or the rest fits
+			rows.push({ start: from, end: cut });
+			from = cut;
+		}
+		rows.push({ start: from, end });
+		return rows;
+	}
+
+	/** OR-11 — every VISUAL row of the buffer, in order. ONE fold, built
+	 *  once per read; `dockState`, the cursor mapping and the ↑/↓ walk all
+	 *  READ this table rather than folding again. */
+	#visualRows(): { start: number; end: number }[] {
+		const budget = this.#budget();
+		const out: { start: number; end: number }[] = [];
+		for (const b of this.#lineBounds()) out.push(...this.#foldLine(b.start, b.end, budget));
+		return out;
+	}
+
+	/** The visual row the cursor is on: the LAST row it can belong to. At
+	 *  a fold boundary that is the row the next character would go on; at
+	 *  a newline it is the row the newline closes, never the next line. */
+	#cursorVisualRow(rows: readonly { start: number; end: number }[]): number {
+		let hit = 0;
+		for (let i = 0; i < rows.length; i += 1) {
+			if (rows[i]!.start <= this.#cursor && this.#cursor <= rows[i]!.end) hit = i;
+		}
+		return hit;
 	}
 
 	/** KC1 §5 — N_visible = min(lineCount, N_MAX, max(1, H − 3 − the
@@ -605,27 +708,27 @@ export class Editor {
 	 *  stash / restore / clear / submit path has new state to carry. A
 	 *  dim "…" marks whichever edge hides rows. */
 	dockState(): { line: string; cursor: number; lines: string[]; cursorRow: number; cursorCol: number } {
-		const bounds = this.#lineBounds();
-		const cursorLine = this.#cursorLine(bounds);
-		const n = this.#visibleRows(bounds.length);
-		const first = Math.max(0, Math.min(cursorLine - n + 1, bounds.length - n));
+		// OR-11: VISUAL rows. One logical line may be several of them, and
+		// the window, the markers and the cursor all count them the same
+		// way — N_MAX has always been about how tall the box may get, and
+		// a folded line is as tall as a pasted one.
+		const rows = this.#visualRows();
+		const cursorLine = this.#cursorVisualRow(rows);
+		const n = this.#visibleRows(rows.length);
+		const first = Math.max(0, Math.min(cursorLine - n + 1, rows.length - n));
 		const lines: string[] = [];
 		for (let i = first; i < first + n; i += 1) {
-			const b = bounds[i]!;
-			// the cursor's own row carries the horizontal scroll (and its
-			// "…"); the other rows render whole and cap at the frame's wall
-			const from = i === cursorLine ? b.start + this.#scroll : b.start;
-			const scrolled = i === cursorLine && this.#scroll > 0 ? ellipsis() : "";
+			const b = rows[i]!;
 			const above = i === first && first > 0 ? ellipsis() : "";
-			const below = i === first + n - 1 && first + n < bounds.length ? ellipsis() : "";
-			lines.push(`${above}${scrolled}${shown(this.#chars.slice(from, b.end))}${below}`);
+			const below = i === first + n - 1 && first + n < rows.length ? ellipsis() : "";
+			lines.push(`${above}${shown(this.#chars.slice(b.start, b.end))}${below}`);
 		}
 		const cursorRow = cursorLine - first;
 		// the window trails the cursor, so the hidden-above marker can only
 		// share the cursor's row in the degenerate one-row window (a tiny
-		// terminal) — where it shifts the column like the scroll's does
-		const marks = (cursorRow === 0 && first > 0 ? 1 : 0) + (this.#scroll > 0 ? 1 : 0);
-		const cursorCol = marks + widthOf(this.#chars.slice(bounds[cursorLine]!.start + this.#scroll, this.#cursor));
+		// terminal) — where it shifts the column by its one cell
+		const marks = cursorRow === 0 && first > 0 ? 1 : 0;
+		const cursorCol = marks + widthOf(this.#chars.slice(rows[cursorLine]!.start, this.#cursor));
 		return { line: lines[cursorRow]!, cursor: cursorCol, lines, cursorRow, cursorCol };
 	}
 
@@ -1094,7 +1197,6 @@ export class Editor {
 					if (this.#chars.length > 0) this.#checkpoint(); // UD-1
 					this.#chars = [];
 					this.#cursor = 0;
-					this.#scroll = 0;
 					this.#verticalGoalCol = null;
 					this.#refreshMenu();
 					i += 1;
@@ -1447,11 +1549,18 @@ export class Editor {
 				// line 2 of a composer must still select.
 				const view = this.#atView()!;
 				this.#atSel = final === "A" ? Math.max(0, view.selected - 1) : Math.min(view.matches.length - 1, view.selected + 1);
-			} else if (this.#chars.includes(NEWLINE)) {
-				// KC1 §4: a MULTI-LINE buffer's ↑↓ walk its lines. The
-				// history and the queue-pop below stay gated on an EMPTY
-				// buffer — a multi-line buffer is never empty, so the
-				// precedence can only ever add, never take.
+			} else if (this.#visualRows().length > 1) {
+				// KC1 §4, restated by OR-11 over VISUAL rows: a buffer that
+				// occupies more than one row has its ↑↓ walk them. It used
+				// to read `#chars.includes(NEWLINE)`, which was the same
+				// question while one logical line was always one row; a
+				// folded line is several now, and the walk is about what the
+				// eye sees.
+				//
+				// The history and the queue-pop below stay gated on an EMPTY
+				// buffer, and an empty buffer is exactly one row — so the
+				// precedence can only ever add, never take, which is what
+				// T-E4 pins.
 				this.#verticalMove(final === "A" ? -1 : 1);
 			} else if (final === "A" && this.#queuePop !== null && (this.#queuePopMode || this.line() === "") && this.#queueState().length > 0) {
 				// W22: ↑ pops the LAST queued message into the buffer — the
@@ -1474,7 +1583,7 @@ export class Editor {
 			// composer keeps the key everywhere else, exactly as ← does.
 			if (!this.#panelInput.right()) this.#move(1);
 		} else if (final === "H") {
-			// OR-11 (a): and REPAINT. Ctrl+A and Ctrl+E render; their arrow
+			// OR-11 (b): and REPAINT. Ctrl+A and Ctrl+E render; their arrow
 			// spellings reflowed and stopped there, so the caret stayed
 			// where it had been until some later key happened to draw. A
 			// gesture that moves the cursor is a gesture that shows it.
@@ -1490,12 +1599,14 @@ export class Editor {
 
 	/** KC1 §4 — the ↑/↓ walk. The cursor keeps its DESIRED column across
 	 *  a short line: the goal is captured at the FIRST vertical move and
-	 *  survives consecutive ones (#reflow clears it, so any horizontal
+	 *  survives consecutive ones (#reflow clears it, so any left/right
 	 *  move / insert / delete ends the walk); a step past either end
 	 *  stays put. */
 	#verticalMove(delta: number): void {
-		const bounds = this.#lineBounds();
-		const cur = this.#cursorLine(bounds);
+		// OR-11: VISUAL rows — one long logical line is several of them, and
+		// ↑/↓ walk what the eye sees. The goal column is unchanged.
+		const bounds = this.#visualRows();
+		const cur = this.#cursorVisualRow(bounds);
 		const next = cur + delta;
 		if (next < 0 || next >= bounds.length) return;
 		const from = bounds[cur]!;
@@ -1521,16 +1632,14 @@ export class Editor {
 			clear: () => {
 				this.#chars = [];
 				this.#cursor = 0;
-				this.#scroll = 0;
 				this.#verticalGoalCol = null;
 			},
 			insert: (cp) => this.#insert(cp),
 			newline: () => this.#insert(NEWLINE),
-			stash: () => ({ chars: this.#chars, cursor: this.#cursor, scroll: this.#scroll }),
+			stash: () => ({ chars: this.#chars, cursor: this.#cursor }),
 			restore: (st) => {
 				this.#chars = [...st.chars];
 				this.#cursor = st.cursor;
-				this.#scroll = st.scroll;
 			},
 			reflow: () => this.#reflow(),
 			render: () => this.#onRender(),
@@ -1628,7 +1737,6 @@ export class Editor {
 	#restoreSnap(s: { chars: readonly number[]; cursor: number }): void {
 		this.#chars = [...s.chars];
 		this.#cursor = s.cursor;
-		this.#scroll = 0;
 		this.#verticalGoalCol = null;
 		this.#reflow();
 		this.#refreshMenu();
@@ -1789,8 +1897,8 @@ export class Editor {
 		this.#reflow();
 	}
 
-	/** KC1/KC2 — the buffer LEAVES: the flat chars, the cursor, the
-	 *  horizontal scroll, the ↑/↓ goal, the menu and the pop-walk all
+	/** KC1/KC2 — the buffer LEAVES: the flat chars, the cursor, the ↑/↓
+	 *  goal, the menu and the pop-walk all
 	 *  reset together (W22: a departing line ends the pop-walk, so the
 	 *  next esc at rest interrupts again). Shared by the submit and the
 	 *  redirect — the two doors a line can leave by. */
@@ -1903,7 +2011,6 @@ export class Editor {
 		this.#redoStack.length = 0;
 		this.#chars = [];
 		this.#cursor = 0;
-		this.#scroll = 0;
 		this.#verticalGoalCol = null;
 		this.#menuOpen = false;
 		this.#menuSel = 0;
@@ -2070,52 +2177,44 @@ export class Editor {
 		if (this.#chars.length > 0) this.#checkpoint(); // UD-1: a mid-walk edit is recoverable
 		this.#chars = [...line].map((ch) => ch.codePointAt(0)!);
 		this.#cursor = this.#chars.length;
-		this.#scroll = 0;
 		this.#verticalGoalCol = null;
 		this.#onRender();
 	}
 
-	// ---- width-based horizontal scroll ----
+	// ---- the width walks ----
 
 	#reflow(): void {
 		// KC1: any key that reaches the reflow ended a ↑/↓ walk (the walk
 		// itself re-arms the goal right after its own reflow call).
 		this.#verticalGoalCol = null;
-		const W = (process.stdout.columns ?? 0) || 80; // degenerate 0 falls back to 80
-		// W21: the panel's phase lead owns the input row while up — the
-		// line's max width follows the lead (the rule/amend leads are
-		// wider than the brick).
-		// W23: the ONE width authority — leadWidth(lead) — the cap follows
-		// the lead the editor itself renders (the panel lead when the panel
-		// owns the keys, the brick otherwise): maxW = W − walls − lead.
-		const ps = this.#panelInput.state();
-		const lead = ps !== null ? panelLead(ps.view, ps.phase, ps.cursor, ps.ask) : this.#inputLead();
-		const leadW = leadWidth(lead);
-		// DC-17: ONE column, not four. W6's box took 2+2 and this kept
-		// reserving them after law 1.1 retired it — so the horizontal
-		// scroll fired three columns early, the cursor could never reach
-		// the row's last three cells, and the two width authorities the
-		// W23 contract says must never disagree disagreed by 3. The
-		// compositor's walk caps at W−1 (the drawn cursor's own cell);
-		// this is the same one column, on the same row.
-		const maxW = Math.max(1, W - leadW - 1);
-		// KC1: the scroll is the CURSOR LINE's own offset — a single-line
-		// buffer's line starts at 0, so the math is today's exactly. The
-		// clamp catches a walk onto a line SHORTER than the old offset.
-		const { start, end } = this.#cursorBounds();
-		this.#scroll = Math.min(this.#scroll, end - start);
-		const curCol = widthOf(this.#chars.slice(start, this.#cursor));
-		const scrolledW = widthOf(this.#chars.slice(start, start + this.#scroll));
-		if (curCol < scrolledW) {
-			this.#scroll = this.#indexAtWidth(start, end, curCol) - start;
-		} else if (curCol >= scrolledW + maxW) {
-			this.#scroll = this.#indexAtWidth(start, end, Math.max(0, curCol - maxW + 1)) - start;
-		}
+		// OR-11 — DECLARED SUPERSESSION of ADR-0039 Amendment 2's horizontal
+		// scrolling. There is nothing to reflow horizontally any more: a
+		// long line FOLDS (see #foldLine), so every character is on screen
+		// and the row offset that used to be kept here is gone with it.
+		// What survives is the goal-column reset above, which every key
+		// that is not a ↑/↓ walk still owes.
 	}
 
 	/** The first index in [start, end] whose display width from `start`
 	 *  reaches `target` — the width-based column walk (a wide char never
 	 *  splits: the index lands BEFORE it). */
+	/** OR-11 — the end of the WIDEST PREFIX of [start, end) that fits in
+	 *  `budget` columns. Distinct from `#indexAtWidth`, which answers the
+	 *  scroll's question ("the first index AT or past this width") and is
+	 *  one character too generous for a fold: 20 wide characters are 40
+	 *  columns and do not fit in 39. The walk stops BEFORE a character
+	 *  that would overflow, so a wide character is never split — the same
+	 *  `w + cw > limit` the compositor's own row cut uses. */
+	#fitsWithin(start: number, end: number, budget: number): number {
+		let w = 0;
+		for (let i = start; i < end; i += 1) {
+			const cw = charWidth(this.#chars[i]!);
+			if (w + cw > budget) return i;
+			w += cw;
+		}
+		return end;
+	}
+
 	#indexAtWidth(start: number, end: number, target: number): number {
 		let w = 0;
 		for (let i = start; i < end; i += 1) {

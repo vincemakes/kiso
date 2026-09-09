@@ -298,3 +298,55 @@ describe("KC1 A3 — Ctrl+A/E/U/K are LINE-local (single-line behavior identical
 		expect(editor.dockState().cursor).toBe(3);
 	});
 });
+
+/**
+ * OR-11 (T-E4 family) — ↑/↓ walk VISUAL rows.
+ *
+ * One long logical line is several rows on screen now, and the walk is
+ * about what the eye sees: pressing ↓ on the first visual row of a folded
+ * line lands on its second, not on the next logical line. The goal column
+ * survives the walk exactly as it did across logical lines, and
+ * Home/End/Ctrl+A/E stay LOGICAL (A3) — they are about the line, not the
+ * row.
+ */
+describe("OR-11 — the vertical walk is over visual rows", () => {
+	const folded = (): InstanceType<typeof Editor> => {
+		Object.defineProperty(process.stdout, "columns", { value: 40, configurable: true });
+		const e = new Editor(() => {});
+		e.setInputLead(() => ""); // budget 39
+		e.feed(enc("z".repeat(90))); // three visual rows, ONE logical line
+		return e;
+	};
+
+	it("↑ steps back one visual row inside a single logical line", () => {
+		const editor = folded();
+		expect(editor.dockState().cursorRow).toBe(2);
+		editor.feed(enc("\x1b[A"));
+		expect(editor.dockState().cursorRow).toBe(1);
+		editor.feed(enc("\x1b[A"));
+		expect(editor.dockState().cursorRow).toBe(0);
+		editor.feed(enc("\x1b[A"));
+		expect(editor.dockState().cursorRow, "the top holds").toBe(0);
+	});
+
+	it("the goal column survives the walk", () => {
+		const editor = folded();
+		// park at column 5 of the last row, then walk up two rows
+		editor.feed(enc("\x1b[H")); // Home — logical, the line's start
+		for (let i = 0; i < 44; i += 1) editor.feed(enc("\x1b[C"));
+		const col = editor.dockState().cursorCol;
+		editor.feed(enc("\x1b[B"));
+		editor.feed(enc("\x1b[A"));
+		expect(editor.dockState().cursorCol, "the goal column came back").toBe(col);
+	});
+
+	it("Home and End stay LOGICAL — the whole line, not the row", () => {
+		const editor = folded();
+		editor.feed(enc("\x1b[H"));
+		const st = editor.dockState();
+		expect(st.cursorRow, "Home went to the line's first visual row").toBe(0);
+		expect(st.cursorCol).toBe(0);
+		editor.feed(enc("\x1b[F"));
+		expect(editor.dockState().cursorRow, "End went to the line's last").toBe(2);
+	});
+});

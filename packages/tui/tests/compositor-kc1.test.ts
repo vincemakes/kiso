@@ -110,14 +110,36 @@ describe("KC1 T-C1 — N=1 byte identity (the anchor: the legacy row and the com
 		expect(frames(() => editor.dockState(), script)).toBe(frames(legacy(st.line, st.cursor), script));
 	});
 
-	it("a horizontally SCROLLED line keeps its dim … prefix and its column — identical bytes", () => {
+	// DECLARED SUPERSESSION (OR-11, 2026-09-09): this case read "a
+	// horizontally SCROLLED line keeps its dim … prefix and its column —
+	// identical bytes". There is no horizontal scroll any more: ADR-0039
+	// Amendment 2's single-line editor was never revisited when KC1 made
+	// the composer multi-line, and a long line FOLDS now, so the text you
+	// are not looking at is on the next row rather than nowhere.
+	//
+	// What T-C1 is for is unchanged and is what this case still proves:
+	// for an N=1 buffer the composer's row and the legacy row are the
+	// SAME BYTES. The line simply has to be one that fits, because a long
+	// one is no longer N=1 — it is the case below.
+	it("a line that FILLS the row is still byte-identical to the legacy row", () => {
+		const editor = new Editor(() => {});
+		Object.defineProperty(process.stdout, "columns", { value: 40, configurable: true });
+		editor.feed(enc("x".repeat(30)));
+		const st = editor.dockState();
+		expect(st.lines).toHaveLength(1); // still one row: nothing folded
+		const script = (b: Body): void => b.raw(["x"]);
+		expect(frames(() => editor.dockState(), script, { W: 40 })).toBe(frames(legacy(st.line, st.cursor), script, { W: 40 }));
+		Object.defineProperty(process.stdout, "columns", { value: 80, configurable: true });
+	});
+
+	it("and a line too long for the row folds instead of scrolling", () => {
 		const editor = new Editor(() => {});
 		Object.defineProperty(process.stdout, "columns", { value: 40, configurable: true });
 		editor.feed(enc("x".repeat(60)));
 		const st = editor.dockState();
-		expect(st.line.startsWith("\x1b[2m…")).toBe(true); // the scroll really engaged
-		const script = (b: Body): void => b.raw(["x"]);
-		expect(frames(() => editor.dockState(), script, { W: 40 })).toBe(frames(legacy(st.line, st.cursor), script, { W: 40 }));
+		expect(st.lines.length, "it folded").toBeGreaterThan(1);
+		expect(st.lines.join(""), "and kept every character").toBe("x".repeat(60));
+		expect(st.line.includes("…"), "no scroll marker anywhere").toBe(false);
 		Object.defineProperty(process.stdout, "columns", { value: 80, configurable: true });
 	});
 
