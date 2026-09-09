@@ -2,7 +2,7 @@
 
 <p align="center"><b>v0.31.1</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.zh.md">Chinese edition</a></p>
 
-**kiso** (Japanese: foundation) is a durable runtime for AI agents. Every
+**kiso** is a durable runtime for AI agents. Every
 approval, tool result and event is written to disk as it happens, so an agent
 that is interrupted, crashes or is killed mid-task resumes exactly where it
 stopped, with the same approvals and the same results. The kernel is 2,200

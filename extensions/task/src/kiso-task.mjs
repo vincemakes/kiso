@@ -1,5 +1,5 @@
 /**
- * kiso (foundation) official task extension — ⑥: long-horizon working memory,
+ * kiso official task extension — ⑥: long-horizon working memory,
  * kernel untouched.
  *
  * task_set is a WHOLE-TABLE REPLACE (the CC whole-table-replace shape): the model

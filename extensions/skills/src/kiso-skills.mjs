@@ -1,5 +1,5 @@
 /**
- * kiso (foundation) official skills extension — ⑤: two-tier progressive skills,
+ * kiso official skills extension — ⑤: two-tier progressive skills,
  * kernel untouched.
  *
  * Tier 1 (resident): the skills index — every ${KISO_SKILLS_DIR:-~/.kiso/

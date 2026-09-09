@@ -1,5 +1,5 @@
 /**
- * kiso (foundation) official subagent extension — ④: child kiso processes with
+ * kiso official subagent extension — ④: child kiso processes with
  * role policies, kernel untouched.
  *
  * `delegate` spawns child kiso processes (the SAME binary) that work in

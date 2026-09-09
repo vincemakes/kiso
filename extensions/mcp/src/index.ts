@@ -1,5 +1,5 @@
 /**
- * kiso (foundation) official MCP bridge — ③: an extension, kernel untouched.
+ * kiso official MCP bridge — ③: an extension, kernel untouched.
  *
  * Reads ${KISO_MCP_CONFIG:-~/.kiso/mcp.json} and turns every configured MCP
  * server's tools into kiso tools named mcp__<server>__<tool>. Stdio servers
