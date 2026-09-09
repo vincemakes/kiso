@@ -2,6 +2,7 @@
 	"pty": [
 		"apps/cli/tests/at-files.test.ts",
 		"apps/cli/tests/auth-cli.test.ts",
+		"apps/cli/tests/auth-tty.test.ts",
 		"apps/cli/tests/banner.test.ts",
 		"apps/cli/tests/bare-command-faux-label.test.ts",
 		"apps/cli/tests/bare-command-trust-gate.test.ts",
@@ -128,7 +129,7 @@
 	"exempt": [
 		{
 			"file": "packages/tui/tests/dc48-invariant-fallback.test.ts",
-			"reason": "spawns nothing and drives the compositor in process. The classifier reads SOURCE TEXT, and this file's comments name isolated-cli.mjs to say where KISO_INVARIANTS=throw is set for PTY children \u2014 prose about a helper, not an import of one. Verified: no child_process, no spawn, no pty helper."
+			"reason": "spawns nothing and drives the compositor in process. The classifier reads SOURCE TEXT, and this file's comments name isolated-cli.mjs to say where KISO_INVARIANTS=throw is set for PTY children — prose about a helper, not an import of one. Verified: no child_process, no spawn, no pty helper."
 		}
 	]
 }

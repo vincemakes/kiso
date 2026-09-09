@@ -73,6 +73,10 @@ export { applyProjectMerges } from "./trust-ui.js";
  *  exits, so the turn runs to its terminal and nothing else is read.
  *  Built on an EMPTY readline so every other member keeps the pipe
  *  path's exact semantics (auto-denied asks, no chips, no pops). */
+/** OR-3: the commands that own their own stdin reader (a hidden key prompt,
+ *  an OAuth paste prompt) or read nothing at all — never the editor. */
+const CREDENTIAL_COMMANDS: ReadonlySet<string> = new Set(["login", "logout", "auth"]);
+
 function taskFileInput(content: string): LineInput {
 	const base = readlineInput(createInterface({ input: Readable.from([]), output: process.stdout }));
 	return {
@@ -858,10 +862,15 @@ async function readSecret(prompt: string): Promise<string> {
 			process.stdin.resume();
 		});
 	}
-	process.stdout.write(prompt);
 	return await new Promise<string>((resolve) => {
 		let buf = "";
+		// OR-3: raw mode BEFORE the prompt — the hidden prompt must be hidden
+		// before it is shown. Written the other way round, a key that arrives
+		// between the prompt and setRawMode is echoed by the tty line
+		// discipline (the auth-tty gate caught it: a driver that types the
+		// instant the prompt appears saw the key on screen two runs in three).
 		process.stdin.setRawMode(true);
+		process.stdout.write(prompt);
 		process.stdin.resume();
 		process.stdin.setEncoding("utf8");
 		const onData = (chunk: string): void => {
@@ -999,7 +1008,21 @@ async function main(): Promise<void> {
 	// (entered here, dock-bound, trusted before any extension loads),
 	// readline elsewhere. The trust question, chat, and resume all read
 	// through it; main's finally closes it on every exit path.
-	const input = taskFile !== undefined ? taskFileInput(taskFile) : makeLineInput();
+	// OR-3 (owner, 2026-09-09): the credential commands never read the shared
+	// line input, and on a TTY makeLineInput() enters the raw-mode editor and
+	// sends the ground probe (CSI ?996n + OSC 11) BEFORE the command switch.
+	// `kiso login chatgpt` then had two readers on stdin: the editor swallowed
+	// the keystrokes, the terminal's OSC reply was typed into the login's own
+	// readline, the "open this URL" line vanished under the dock's repaint,
+	// and the sign-in never completed. These commands get an input over an
+	// EMPTY readable instead — no editor, no probe, stdin untouched — so the
+	// hidden key prompt and the OAuth paste prompt are the only readers.
+	const input =
+		taskFile !== undefined
+			? taskFileInput(taskFile)
+			: CREDENTIAL_COMMANDS.has(command ?? "")
+				? readlineInput(createInterface({ input: Readable.from([]), output: process.stdout }))
+				: makeLineInput();
 	// R3a — cross-session input history: ~/.kiso/history, one line per
 	// entry, appended on submit, tail-500 at load (truncated by REWRITE
 	// at startup so the file never grows unbounded). Unreadable file =
