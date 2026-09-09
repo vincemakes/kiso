@@ -33,6 +33,7 @@ import { join } from "node:path";
 import { kisoHome } from "./state.js";
 import type { Mode } from "./mode.js";
 import { AuthError, getCredential, providerIdOf } from "./auth/credentials.js";
+import { BUILTIN_MANIFESTS } from "@vincemakes/kiso-runtime/internal";
 
 /** OR-1: `openai-responses` is a DIALECT, not a vendor — the same kind
  *  drives the first-party Responses API and the ChatGPT subscription
@@ -262,11 +263,28 @@ export function authForProfile(name: string, p: ModelProfile): ProfileAuth {
 			throw new ConfigError(`model ${name}: signed in to ${providerId} with OAuth, but this profile's adapter needs an API key — run \`kiso login ${providerId}\` with a key, or \`kiso logout ${providerId}\` to use the env var ${p.apiKeyEnv ?? "(none configured)"}`);
 		}
 	}
+	// OR-2 (2026-09-09): a provider whose manifest takes NO API key (the ChatGPT
+	// backend: authMethods ["oauth"]) is never an "unauthenticated endpoint" —
+	// with nothing stored it is a profile waiting for its sign-in. Without this
+	// the keyless rule below handed it a placeholder key, `/model` said
+	// "available", and the adapter (an apiKey selects the first-party target)
+	// would have sent an unauthenticated request to the wrong URL.
+	if (providerId !== null && !manifestTakesKey(providerId)) {
+		throw new ConfigError(`model ${name}: unavailable — not signed in: run \`kiso login ${providerId}\` (this provider takes no API key)`);
+	}
 	if (p.apiKeyEnv === undefined) return { type: "api-key", apiKey: "none", source: "none" };
 	const fromEnv = process.env[p.apiKeyEnv];
 	if (fromEnv !== undefined) return { type: "api-key", apiKey: fromEnv, source: "env" };
 	const hint = providerId !== null ? `run \`kiso login ${providerId}\` or set the env var ${p.apiKeyEnv}` : `set the env var ${p.apiKeyEnv}`;
 	throw new ConfigError(`model ${name}: unavailable — no credential: ${hint} (configs never store keys, only the env-var name)`);
+}
+
+/** OR-2: does the provider's manifest admit an API key (or no auth at all)?
+ *  An unknown id answers yes — the keyless-endpoint rule stays for custom
+ *  origins; only a manifest that says OAuth-only takes the sign-in path. */
+function manifestTakesKey(providerId: string): boolean {
+	const m = BUILTIN_MANIFESTS.find((x) => x.id === providerId);
+	return m === undefined || m.authMethods.includes("api-key") || m.authMethods.includes("none");
 }
 
 /** The reason a profile is unavailable, for the surfaces that print it. */

@@ -130,6 +130,21 @@ describe("the resolve rule", () => {
 		expect(() => authForProfile("ds", deepseek)).toThrow(/signed in to deepseek with OAuth.*kiso logout deepseek/);
 		expect(profileAvailable(deepseek)).toBe(false);
 	});
+	// OR-2 (2026-09-09): the subscription backend takes NO API key (its manifest
+	// says authMethods: ["oauth"]), so a chatgpt profile with nothing stored is not
+	// an unauthenticated endpoint — it is waiting for its sign-in. The keyless rule
+	// used to hand it a placeholder key: the listing said "available", and the
+	// adapter (an apiKey selects the first-party target) would have sent an
+	// unauthenticated request to the wrong URL.
+	it("OR-2: a chatgpt profile with nothing stored is UNAVAILABLE and names kiso login chatgpt — never a placeholder key", () => {
+		const subscription: ModelProfile = { kind: "openai-responses", baseUrl: "https://chatgpt.com/backend-api", model: "gpt-5.5" };
+		expect(profileAvailable(subscription)).toBe(false);
+		expect(unavailableReason("sub", subscription)).toContain("run `kiso login chatgpt`");
+		expect(() => authForProfile("sub", subscription)).toThrow(/not signed in/);
+		// the first-party Responses profile keeps the key rule: env or store, else unavailable naming both
+		const first: ModelProfile = { kind: "openai-responses", model: "gpt-5.5", apiKeyEnv: "OPENAI_KEY_FOR_TEST" };
+		expect(unavailableReason("openai", first)).toContain("run `kiso login openai` or set the env var OPENAI_KEY_FOR_TEST");
+	});
 	it("a keyless profile is an unauthenticated endpoint; a custom origin stays on env", () => {
 		expect(authForProfile("local", local)).toEqual({ type: "api-key", apiKey: "none", source: "none" });
 		expect(unavailableReason("c", custom)).toContain("set the env var CUSTOM_KEY");
