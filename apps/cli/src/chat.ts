@@ -191,7 +191,24 @@ export function usageFromEvent(
 		const m = Math.min(prevTotal, total) - c.cacheRead;
 		missed = m > CACHE_MISS_FLOOR ? m : null;
 	}
-	return { usage: { in: c.input, out: c.output, cache: c.cacheRead, known: ev.known }, total, missed, costUsd: c.costUsd };
+	// OR-10 (owner, 2026-09-09): a backend whose cache figure cannot be
+	// observed has no cache figure. The ChatGPT backend answers
+	// `cached_tokens` 0 to a third-party client on every request, so its 0
+	// and "not reported" are one value, and a CH 0% built on it claims a
+	// measurement that never happened. The registry ROW says which
+	// endpoints these are; the status row, the recap and the usage line
+	// already render a null cache as nothing ("an unmeasured cache is not
+	// a 0% cache"), so this is one decision at the one place the endpoint
+	// is known. The trace ledger is written by the runtime from the
+	// backend's own words and keeps its 0 — the display's rule, not the
+	// record's.
+	const unobservable = model !== undefined && lookupModelMetadata(model, endpoint)?.capabilities.promptCaching === "unobservable";
+	return {
+		usage: { in: c.input, out: c.output, cache: unobservable ? null : c.cacheRead, known: ev.known },
+		total,
+		missed: unobservable ? null : missed,
+		costUsd: c.costUsd,
+	};
 }
 
 /** v2b: the spinner merged into the STATUS BAR (the v2a standalone glyph

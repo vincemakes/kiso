@@ -115,3 +115,24 @@ describe("OR-1 — the endpoint decides the price the status row adds", () => {
 		expect(usageFromEvent("openai-responses", ev, null, "gpt-5.5", "https://api.openai.com/v1").costUsd).toBeCloseTo(35, 9);
 	});
 });
+
+describe("OR-10 (owner, 2026-09-09) — no cache meter where the backend's figure carries no information", () => {
+	it("the same event on the ChatGPT backend carries a null cache and no miss; on the first-party endpoint, the numbers", () => {
+		// the ChatGPT backend answers cached_tokens 0 to a third-party client
+		// on every request (the 2026-09-09 probe: three identical 1,922-token
+		// requests, one prompt_cache_key, 0 at every attribution level) — its
+		// 0 and "not reported" are one value, so the row declares the figure
+		// unobservable and the display shows none. The record keeps the 0.
+		const ev = event({ inputTokens: 5_000, cacheRead: 0, outputTokens: 100 });
+		const sub = usageFromEvent("openai-responses", ev, 20_000, "gpt-6-astra", "https://chatgpt.com/backend-api");
+		expect(sub.usage.cache, "the backend's 0 is not a measurement").toBeNull();
+		expect(sub.missed, "no miss can be derived from an unobserved figure").toBeNull();
+		expect(sub.usage.in, "the fresh input is still what it was").toBe(5_000);
+		expect(sub.usage.known).toBe(true);
+		// the first-party endpoint reports real hits above its 1,024-token
+		// floor: its 0 is a measurement and the miss is derived from it
+		const api = usageFromEvent("openai-responses", ev, 20_000, "gpt-6-astra", "https://api.openai.com/v1");
+		expect(api.usage.cache).toBe(0);
+		expect(api.missed).toBe(5_000);
+	});
+});

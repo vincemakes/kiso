@@ -153,3 +153,12 @@ describe("OR-1 — the Responses rows: one model id, two endpoints, two answers"
 		expect(canonicalizeUsageForModel("gpt-5.5", SUB, "openai-compat", RAW).costUsd).toBeNull();
 	});
 });
+
+describe("OR-10 (owner, 2026-09-09) — a cache figure that cannot be observed is declared, never zeroed", () => {
+	it("every ChatGPT-backend row says unobservable; the first-party rows keep automatic", () => {
+		for (const m of ["gpt-5.5", "gpt-5.4", "gpt-6-astra", "gpt-5.6-sol"]) {
+			expect(lookupModelMetadata(m, "https://chatgpt.com/backend-api")?.capabilities.promptCaching, m).toBe("unobservable");
+			expect(lookupModelMetadata(m, "https://api.openai.com/v1")?.capabilities.promptCaching, m).toBe("automatic");
+		}
+	});
+});

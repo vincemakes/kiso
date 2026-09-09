@@ -25,8 +25,15 @@ export interface ModelCapabilities {
 	readonly maxOutputTokens: number | null;
 	/** "automatic" — the provider caches without request markup (DeepSeek,
 	 *  OpenAI); "explicit" — the request must place cache_control
-	 *  breakpoints (Anthropic); "none" — no caching; null = unknown. */
-	readonly promptCaching: "none" | "automatic" | "explicit" | null;
+	 *  breakpoints (Anthropic); "none" — no caching; "unobservable" — the
+	 *  endpoint answers a cache figure that carries no information (OR-10,
+	 *  owner 2026-09-09: the ChatGPT backend reports `cached_tokens` 0 to
+	 *  a third-party client on every request — three identical 1,922-token
+	 *  requests, one prompt_cache_key, 0 at every attribution level — so
+	 *  its 0 and "not reported" are one value; a display shows no cache
+	 *  meter for such a row, while the record keeps what the backend
+	 *  said); null = unknown. */
+	readonly promptCaching: "none" | "automatic" | "explicit" | "unobservable" | null;
 	/** XP-1: the reasoning capability matrix — supersedes the pre-XP-1
 	 *  boolean IN PLACE (zero consumers existed, verified). null = unknown:
 	 *  no mode list, no effort levels, nothing downstream may guess. */
@@ -228,12 +235,13 @@ const openaiRow = (model: string, effortDefault: NativeEffort | null, rate: { re
 	pricing: { ...rate, cacheWritePerM: 0, asOf: opts.asOf ?? OPENAI_MODELS_ASOF, source: page },
 });
 /** The subscription backend's row for the same id: the presets' four
- *  levels (no `none`), the presets' context window, no price. */
+ *  levels (no `none`), the presets' context window, no price, and a cache
+ *  figure no client can observe (OR-10 — see ModelCapabilities). */
 const chatgptRow = (model: string, opts: RowOpts & { readonly default?: NativeEffort; readonly source?: string } = {}): ModelMetadataEntry => ({
 	model,
 	providerId: "chatgpt",
 	endpoint: "https://chatgpt.com",
-	capabilities: { contextWindow: 272_000, maxOutputTokens: null, promptCaching: null, reasoning: {
+	capabilities: { contextWindow: 272_000, maxOutputTokens: null, promptCaching: "unobservable", reasoning: {
 		emitsThinkingStream: false,
 		thinking: null,
 		effort: { levels: opts.levels ?? ["low", "medium", "high", "xhigh"], default: opts.default ?? "medium", wire: RESPONSES_WIRE },
