@@ -21,11 +21,11 @@
  * helpers/registry-stub.ts, which is where that cost a green gate.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
+import { isolatedEnv, runCli } from "../../../tests/helpers/isolated-cli.mjs";
 import { fauxScript, ptyRun, spares } from "./helpers/pty.js";
 import { startRegistryStub, type RegistryStub } from "./helpers/registry-stub.js";
 import { VtScreen } from "./helpers/vt-screen.js";
@@ -73,33 +73,44 @@ const screen = (raw: string): string[] => {
 	t.write(Buffer.from(raw, "utf8"));
 	return t.visible();
 };
-const LINE = "99.0.0 is out · npm i -g @vincemakes/kiso-code@latest";
+// OR-9 (owner, 2026-09-09): the update is a CARD under the banner — a rule,
+// a bold title, the version with the command that installs it, the
+// changelog, a rule — shown at every start while a newer version is known.
+const LINE = "New version 99.0.0 is available. Run kiso update";
+const TITLE = "Update available";
 
-describe("the update line reaches the screen, dim", () => {
-	it("idle: it sits under the opening's keys row and above the composer", async () => {
+describe("the update card reaches the screen", () => {
+	it("idle: the card sits under the opening's keys row and above the composer", async () => {
 		const raw = run({ busy: false });
 		const rows = screen(raw).map((r) => r.replace(/\s+$/, ""));
 		const at = rows.findIndex((r) => r.includes(LINE));
-		expect(at, "the line never reached the screen").toBeGreaterThanOrEqual(0);
+		expect(at, "the card never reached the screen").toBeGreaterThanOrEqual(0);
 
 		// it follows the opening rather than displacing it
 		const keys = rows.findIndex((r) => r.includes("esc interrupt"));
 		expect(keys, "no opening on screen").toBeGreaterThanOrEqual(0);
 		expect(at, "the line landed above the opening's keys row").toBeGreaterThan(keys);
 
-		// …and it is the LAST thing the opening says: nothing of kiso's own
-		// prose follows it, which is what "one line, appended" means.
+		// …and the CARD is the last thing the opening says: the title and the
+		// opening rule stand over the version line, the changelog and the
+		// closing rule under it, and nothing of kiso's own prose follows —
+		// which is what "a card, appended" means.
+		expect(rows[at - 1], "the title does not stand over the version line").toContain(TITLE);
+		expect(rows[at - 2]?.trim(), "no rule opens the card").toMatch(/^\u2500+$/);
+		expect(rows[at + 1], "the changelog does not follow the version line").toContain("Changelog: https://github.com/vincemakes/kiso/releases");
+		expect(rows[at + 2]?.trim(), "no rule closes the card").toMatch(/^\u2500+$/);
 		const lastText = rows.map((r) => r.trim()).reduce((acc, r, i) => (r === "" ? acc : i), -1);
-		expect(lastText, "something followed the update line").toBe(at);
+		expect(lastText, "something followed the card").toBe(at + 2);
 
-		// exactly one of it — a line announced twice is the defect the
-		// `told` field exists to prevent, seen from the screen's side
+		// exactly one card in this process — the boot's cache paint and the
+		// async check's answer never both land for the same version
 		expect(rows.filter((r) => r.includes(LINE))).toHaveLength(1);
+		expect(rows.filter((r) => r.includes(TITLE))).toHaveLength(1);
 
-		// DIM, which is the whole reason it left `body.notice`: that path
-		// renders through escapeTerminal and would have stripped this.
-		const i = raw.lastIndexOf(LINE);
-		expect(raw.slice(Math.max(0, i - 40), i), "the line is not dim").toMatch(/\x1b\[(2|38;5;\d+)m/);
+		// the title is BOLD, styled at composition on the raw channel —
+		// `body.notice` renders through escapeTerminal and would strip it.
+		const i = raw.lastIndexOf(TITLE);
+		expect(raw.slice(Math.max(0, i - 12), i), "the title is not bold").toContain("\x1b[1m");
 	}, 120_000);
 
 	it("busy: an answer arriving mid-turn lands at the transcript's end, not inside the turn", async () => {
@@ -112,4 +123,30 @@ describe("the update line reaches the screen, dim", () => {
 		expect(answer, "no turn on screen").toBeGreaterThanOrEqual(0);
 		expect(at, "the line was spliced into the turn").toBeGreaterThan(answer);
 	}, 120_000);
+});
+
+describe("kiso update — the command the card names", () => {
+	function fakeNpm(exit: number): { bin: string; record: string } {
+		const bin = mkdtempSync(join(tmpdir(), "kiso-fake-npm-"));
+		const record = join(bin, "argv.txt");
+		writeFileSync(join(bin, "npm"), `#!/bin/sh\nprintf '%s\\n' "$@" > "${record}"\nexit ${exit}\n`, { mode: 0o755 });
+		return { bin, record };
+	}
+
+	it("runs npm i -g @vincemakes/kiso-code@latest from PATH, inherits its stdio, and reports the install", () => {
+		const { bin, record } = fakeNpm(0);
+		const { env } = isolatedEnv({ PATH: `${bin}:${process.env.PATH ?? ""}` });
+		const r = runCli(["update"], env);
+		expect(r.status).toBe(0);
+		expect(readFileSync(record, "utf8").trim().split("\n")).toEqual(["i", "-g", "@vincemakes/kiso-code@latest"]);
+		expect(r.stdout).toContain("kiso updated");
+	});
+
+	it("npm's failure is npm's exit code, and the message names the manual command", () => {
+		const { bin } = fakeNpm(3);
+		const { env } = isolatedEnv({ PATH: `${bin}:${process.env.PATH ?? ""}` });
+		const r = runCli(["update"], env);
+		expect(r.status).toBe(3);
+		expect(r.stderr).toContain("npm i -g @vincemakes/kiso-code@latest");
+	});
 });

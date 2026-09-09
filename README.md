@@ -33,6 +33,9 @@ kiso                              # the interactive session
 
 Or run it without installing: `npx @vincemakes/kiso-code`.
 
+A newer release announces itself under the banner at every start; `kiso update`
+installs it (the same `npm install -g`, nothing more).
+
 **The first run needs no key.** kiso opens in a keyless faux mode — a scripted
 four-round trajectory, so the shape is visible before anything is spent. When
 the script runs out the session exits non-zero with a set-a-key message: that

@@ -48,8 +48,6 @@ export interface UpdateCache {
 	readonly checkedAt: number;
 	/** the latest version the registry reported, if the check succeeded */
 	readonly latest?: string;
-	/** the version already mentioned to this human — never mentioned twice */
-	readonly told?: string;
 }
 
 const cachePath = (kisoHome: string): string => join(kisoHome, "update-check.json");
@@ -63,7 +61,6 @@ function readCache(kisoHome: string): UpdateCache | null {
 		return {
 			checkedAt: c.checkedAt,
 			...(typeof c.latest === "string" ? { latest: c.latest } : {}),
-			...(typeof c.told === "string" ? { told: c.told } : {}),
 		};
 	} catch {
 		// a missing, unreadable or corrupt cache is simply no cache
@@ -106,7 +103,22 @@ export function isNewer(current: string, latest: string): boolean {
 
 /** The one line, when there is one. Words only — a human can read it,
  *  paste it, and nothing about it needs colour to be understood (§1.2). */
-export const updateLine = (latest: string): string => `${latest} is out · npm i -g @vincemakes/kiso-code@latest`;
+export const CHANGELOG_URL = "https://github.com/vincemakes/kiso/releases";
+/** OR-9 (owner, 2026-09-09): the card under the banner, as WORDS — a
+ *  title, the version with the command that installs it, the changelog.
+ *  The CLI styles them at composition; nothing here needs colour. */
+export function updateCardLines(latest: string): readonly string[] {
+	return ["Update available", `New version ${latest} is available. Run kiso update`, `Changelog: ${CHANGELOG_URL}`];
+}
+/** OR-9: what the cache already knows, with NO request — the boot paints
+ *  it under the banner before any check runs. Same silences as the check
+ *  (opt-out, faux without a seam, a pipe); a merely-recent cache speaks. */
+export function knownUpdate(deps: UpdateCheckDeps): string | null {
+	const why = reasonNotToCheck(deps);
+	if (why !== null && why !== "recent") return null;
+	const cached = readCache(deps.kisoHome);
+	return cached?.latest !== undefined && isNewer(deps.version, cached.latest) ? cached.latest : null;
+}
 
 export interface UpdateCheckDeps {
 	readonly kisoHome: string;
@@ -158,20 +170,13 @@ function reasonNotToCheck({ kisoHome, isTTY, faux, now = Date.now() }: UpdateChe
 export async function checkForUpdate(deps: UpdateCheckDeps): Promise<string | null> {
 	const { kisoHome, version, now = Date.now() } = deps;
 	const why = reasonNotToCheck(deps);
-	if (why !== null) {
-		// ONLY a recent check may still speak. The other three reasons are
-		// about the LINE, not about the request, so the cache is no way
-		// around them — an opt-out that still got announced, or a piped
-		// run that gained a row of kiso's prose, would be the feature
-		// ignoring the answer it was given.
-		if (why !== "recent") return null;
-		const cached = readCache(kisoHome);
-		if (cached?.latest !== undefined && cached.told !== cached.latest && isNewer(version, cached.latest)) {
-			writeCache(kisoHome, { ...cached, told: cached.latest });
-			return updateLine(cached.latest);
-		}
-		return null;
-	}
+	// ONLY a recent check may still speak from cache. The other three
+	// reasons are about the CARD, not the request, so the cache is no way
+	// around them. OR-9: no `told` gate — a newer version is known at
+	// EVERY start (the card is shown every start; the once-only rule of
+	// §7.10 is superseded by the owner's 2026-09-09 ruling), only the
+	// REQUEST stays at most once a day.
+	if (why !== null) return why === "recent" ? knownUpdate(deps) : null;
 	let latest: string | undefined;
 	try {
 		const ctl = new AbortController();
@@ -189,15 +194,6 @@ export async function checkForUpdate(deps: UpdateCheckDeps): Promise<string | nu
 	} catch {
 		// every failure is silence — see the header
 	}
-	const prev = readCache(kisoHome);
-	const show = latest !== undefined && isNewer(version, latest) && prev?.told !== latest;
-	// `told` survives a check that learned nothing: forgetting it would
-	// re-announce a version this human has already been told about.
-	const told = show ? latest : prev?.told;
-	writeCache(kisoHome, {
-		checkedAt: now,
-		...(latest === undefined ? {} : { latest }),
-		...(told === undefined ? {} : { told }),
-	});
-	return show && latest !== undefined ? updateLine(latest) : null;
+	writeCache(kisoHome, { checkedAt: now, ...(latest === undefined ? {} : { latest }) });
+	return latest !== undefined && isNewer(version, latest) ? latest : null;
 }

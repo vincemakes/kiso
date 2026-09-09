@@ -18,7 +18,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { checkForUpdate, isNewer, shouldCheck, updateLine } from "../src/update-check.js";
+import { checkForUpdate, isNewer, knownUpdate, shouldCheck, updateCardLines } from "../src/update-check.js";
 
 let server: Server | null = null;
 let hits = 0;
@@ -129,7 +129,7 @@ describe("GATE — a stored update is not announced where the LINE is unwanted",
 
 	it("…and a merely RECENT check still speaks, which is the one reason that is about the request", async () => {
 		primed();
-		expect(await checkForUpdate(deps())).toBe(updateLine("9.9.9"));
+		expect(await checkForUpdate(deps())).toBe("9.9.9");
 	});
 });
 
@@ -150,20 +150,39 @@ describe("GATE — a cache inside the window sends NO request", () => {
 	});
 });
 
-describe("GATE — the same version is announced exactly once", () => {
-	it("the second launch says nothing, though the registry says the same thing", async () => {
+// OR-9 (owner, 2026-09-09): "every start, under the banner, like the
+// reference shows it". The once-only `told` rule (§7.10) is superseded — a
+// newer version is announced at EVERY start while it is newer; the REQUEST
+// stays at most once a day.
+describe("GATE — a newer version is announced at every start while it is newer; the request stays daily", () => {
+	it("the second launch says it again from the cache — no request — and the card's words carry the version, the command and the changelog", async () => {
 		process.env.KISO_UPDATE_ENDPOINT = await stub("ok", "0.23.0");
-		expect(await checkForUpdate(deps())).toBe(updateLine("0.23.0"));
-		expect(cache().told).toBe("0.23.0");
-		// a day later, same answer
-		writeFileSync(join(home, "update-check.json"), JSON.stringify({ ...cache(), checkedAt: Date.now() - 25 * 60 * 60 * 1_000 }));
-		expect(await checkForUpdate(deps()), "the same version was announced twice").toBeNull();
+		expect(await checkForUpdate(deps())).toBe("0.23.0");
+		expect(hits).toBe(1);
+		expect(await checkForUpdate(deps()), "the recent cache speaks again").toBe("0.23.0");
+		expect(hits, "a recent cache never asks the registry").toBe(1);
+		// what the boot paints, synchronously, before any request
+		expect(knownUpdate(deps())).toBe("0.23.0");
+		expect(updateCardLines("0.23.0")).toEqual(["Update available", "New version 0.23.0 is available. Run kiso update", "Changelog: https://github.com/vincemakes/kiso/releases"]);
 	});
 
-	it("but a NEWER one is announced", async () => {
-		writeFileSync(join(home, "update-check.json"), JSON.stringify({ checkedAt: Date.now() - 25 * 60 * 60 * 1_000, latest: "0.23.0", told: "0.23.0" }));
+	it("a NEWER one replaces it", async () => {
+		writeFileSync(join(home, "update-check.json"), JSON.stringify({ checkedAt: Date.now() - 25 * 60 * 60 * 1_000, latest: "0.23.0" }));
 		process.env.KISO_UPDATE_ENDPOINT = await stub("ok", "0.24.0");
-		expect(await checkForUpdate(deps())).toBe(updateLine("0.24.0"));
+		expect(await checkForUpdate(deps())).toBe("0.24.0");
+		expect(knownUpdate(deps())).toBe("0.24.0");
+	});
+
+	it("knownUpdate is silent when the cache is not ahead, on an opt-out, in faux with no seam, and on a pipe", () => {
+		writeFileSync(join(home, "update-check.json"), JSON.stringify({ checkedAt: Date.now(), latest: "0.22.0" }));
+		expect(knownUpdate(deps())).toBeNull();
+		writeFileSync(join(home, "update-check.json"), JSON.stringify({ checkedAt: Date.now(), latest: "0.30.0" }));
+		expect(knownUpdate(deps())).toBe("0.30.0");
+		process.env.KISO_NO_UPDATE_CHECK = "1";
+		expect(knownUpdate(deps())).toBeNull();
+		delete process.env.KISO_NO_UPDATE_CHECK;
+		expect(knownUpdate(deps({ faux: true }))).toBeNull();
+		expect(knownUpdate(deps({ isTTY: false }))).toBeNull();
 	});
 });
 
@@ -193,10 +212,6 @@ describe("GATE — every failure is silence", () => {
 });
 
 describe("the line itself", () => {
-	it("is words a human can paste, and needs no colour to be understood", () => {
-		expect(updateLine("0.23.0")).toBe("0.23.0 is out · npm i -g @vincemakes/kiso-code@latest");
-	});
-
 	it("says nothing when the registry is not ahead of us", async () => {
 		process.env.KISO_UPDATE_ENDPOINT = await stub("ok", "0.22.0");
 		expect(await checkForUpdate(deps())).toBeNull();

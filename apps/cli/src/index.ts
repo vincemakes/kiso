@@ -25,7 +25,7 @@
  */
 
 import { appendFileSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { newSessionId } from "./session-id.js";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
@@ -52,7 +52,7 @@ import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { chat, contextWindowTokens, displayCtxRatio, statusModelLabel } from "./chat.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { oauthTokenThunk } from "./auth/token.js";
-import { checkForUpdate } from "./update-check.js";
+import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
 import { resume } from "./resume.js";
 import { resumeTail } from "./resume-tail.js";
 import { armByteTrace } from "./byte-trace.js";
@@ -89,8 +89,14 @@ function openInBrowser(url: string): void {
 }
 
 /** OR-3: the commands that own their own stdin reader (a hidden key prompt,
- *  an OAuth paste prompt) or read nothing at all — never the editor. */
-const CREDENTIAL_COMMANDS: ReadonlySet<string> = new Set(["login", "logout", "auth"]);
+ *  an OAuth paste prompt) or read nothing at all — never the editor.
+ *  OR-9 adds `update`: npm inherits the terminal for the install's own
+ *  progress and prompts, so no editor may hold stdin while it runs. */
+const CREDENTIAL_COMMANDS: ReadonlySet<string> = new Set(["login", "logout", "auth", "update"]);
+
+/** OR-9: the one install command the README gives, which `kiso update`
+ *  runs and the failure message names. */
+const INSTALL_COMMAND = ["npm", "i", "-g", "@vincemakes/kiso-code@latest"] as const;
 
 function taskFileInput(content: string): LineInput {
 	const base = readlineInput(createInterface({ input: Readable.from([]), output: process.stdout }));
@@ -416,27 +422,43 @@ function bannerExtensionText(): string {
  *  resize; the resume list re-gates with the tier); off-TTY: the
  *  historical `[N extensions: ...]` standalone line (zero change). */
 /**
- * The update line, when there is one, appended after the opening.
+ * The update card, when there is one, appended after the opening.
  *
- * It never blocks: the caller does not await it, and the banner is
- * already drawn when this starts. If the check fails, times out, is
- * switched off, or finds nothing newer, this does nothing at all and
- * says nothing about having tried.
+ * Two painters, one card. The boot paints what the CACHE already knows,
+ * synchronously, so a known newer version is under the banner on the
+ * first frame; the check then runs fired-and-forgotten (at most one
+ * request a day) and paints only a version the boot did not. If the check
+ * fails, times out, is switched off, or finds nothing newer, it does
+ * nothing at all and says nothing about having tried.
  */
+/** OR-9: the version this process has already carded — the boot's cache
+ *  paint and the async check's answer never both card one version. */
+let updateShown: string | null = null;
+
+const updateDeps = () => ({ kisoHome: kisoHome(), version: VERSION, isTTY: process.stdout.isTTY === true, faux: currentFaux });
+
+/** OR-9 (owner, 2026-09-09): the update is a CARD under the banner — a
+ *  rule, a bold title, the version with the command that installs it, the
+ *  changelog, a rule — the shape the reference shows at every start. The
+ *  RAW channel (not `notice`, which strips SGR through escapeTerminal); a
+ *  raw cell lands at the transcript's end, never spliced mid-frame. A
+ *  declared exception to R2 law 1.1 (a notice wears no edge): a card is
+ *  not a notice, and the owner asked for the edges. */
+function paintUpdateCard(latest: string): void {
+	if (latest === updateShown) return;
+	updateShown = latest;
+	const p = palette();
+	const width = Math.min(process.stdout.columns ?? 80, 80);
+	const rule = `${p.dim}${"─".repeat(width)}${p.reset}`;
+	const [title, line, changelog] = updateCardLines(latest);
+	bodyLog(`${rule}\n${p.bold}${title}${p.reset}\n${line}\n${changelog}\n${rule}`, "words");
+}
+
 async function announceUpdate(): Promise<void> {
 	try {
-		const line = await checkForUpdate({ kisoHome: kisoHome(), version: VERSION, isTTY: process.stdout.isTTY === true, faux: currentFaux });
-		if (line === null) return;
-		// THE RAW CHANNEL, not `notice`. A notice renders through ErrorLine,
-		// which calls `escapeTerminal` — so every SGR in it is stripped and
-		// the line could only ever be full-strength prose. The raw channel
-		// is the one the banner itself uses: the styling is applied HERE, at
-		// composition, and the fold keeps the span intact (#16b).
-		//
-		// A turn may have started while the request was in flight. A raw
-		// cell is a cell like any other, so it lands at the transcript's
-		// end — never spliced into a frame the reader is mid-way through.
-		bodyLog(`${palette().dim}${line}${palette().reset}`, "words");
+		const latest = await checkForUpdate(updateDeps());
+		if (latest === null) return;
+		paintUpdateCard(latest);
 	} catch {
 		// belt and braces: checkForUpdate does not throw, and if it ever
 		// did, a version check is not a reason to disturb a session.
@@ -827,11 +849,15 @@ async function chatLoop(
 			// throws on profile drift — so one drifted session anywhere in the
 			// history stopped kiso from starting at all.
 			extensionsBanner();
-			// The one line the opening may gain (§7.10's ruling): "there is
-			// a newer kiso". FIRED AND FORGOTTEN — the banner above is
-			// already on screen and this never delays it. When the answer
-			// arrives it rides `body.notice`, the commit path notices
-			// already use, rather than a second channel into the frame.
+			// OR-9 (owner, 2026-09-09): the update card under the banner, at
+			// EVERY start while a newer version is known — §7.10's once-only
+			// line is superseded. What the cache knows is painted NOW, with
+			// no request, so the card is part of the opening rather than a
+			// late arrival; the check itself stays FIRED AND FORGOTTEN — the
+			// banner is already on screen and it never delays it — and it
+			// paints only a version the boot did not know.
+			const known = knownUpdate(updateDeps());
+			if (known !== null) paintUpdateCard(known);
 			void announceUpdate();
 		} else {
 			bodyLog(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
@@ -1269,6 +1295,27 @@ async function main(): Promise<void> {
 				process.stdout.write(`signed in to ${provider} with an API key (${maskSecret(key)}) — stored in ${authPath()}\n`);
 				break;
 			}
+			case "update": {
+				// OR-9: the command the update card names. A thin hand-off to
+				// the ONE install command the README gives — npm resolved from
+				// PATH, its stdio inherited so its progress, its prompts and
+				// its own errors are what the person sees, its exit code the
+				// outcome. kiso adds nothing to what npm knows: no version
+				// pinning, no registry, no elevation. A failure (a global
+				// prefix this user cannot write, a network that is down) is
+				// npm's to explain; the message names the manual command so
+				// the person can run it with whatever their setup needs.
+				const [bin, ...installArgs] = INSTALL_COMMAND;
+				const r = spawnSync(bin, installArgs, { stdio: "inherit" });
+				if (r.error !== undefined || r.status !== 0) {
+					const why = r.error !== undefined ? `could not run npm (${r.error.message})` : `npm exited ${r.status ?? "on a signal"}`;
+					process.stderr.write(`kiso update: ${why} — run it yourself: ${INSTALL_COMMAND.join(" ")}\n`);
+					process.exitCode = r.status ?? 1;
+					break;
+				}
+				process.stdout.write("kiso updated — the next `kiso` runs the new version\n");
+				break;
+			}
 			case "help": {
 				// PH-1b (finding PH-F21): the CLI must be able to describe its
 				// own configuration — the old help listed five commands and
@@ -1287,6 +1334,7 @@ async function main(): Promise<void> {
 						"                           chatgpt: sign in with a ChatGPT subscription (browser; unofficial third-party flow)\n" +
 						"  kiso logout <provider>   remove the stored credential\n" +
 						"  kiso auth               list stored credentials (keys masked)\n" +
+						"  kiso update             install the latest release (npm i -g @vincemakes/kiso-code@latest)\n" +
 						"  kiso help               this help\n\n" +
 						"flags (any position):\n" +
 						"  --model <profile|provider/model>   pick the model (also /model in-session)\n" +
