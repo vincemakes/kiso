@@ -58,8 +58,14 @@ Profile 存在 `~/.kiso/config.json`(ADR-0045)。**凭据永远不在里面**—
       "apiKeyEnv": "DEEPSEEK_API_KEY",       // 密钥的 env 变量名——不是密钥本身
       "baseUrl": "https://api.deepseek.com"
     },
-    "claude": { "kind": "anthropic", "model": "claude-opus-5", "apiKeyEnv": "ANTHROPIC_API_KEY" },
-    "chatgpt": { "kind": "openai-responses", "baseUrl": "https://chatgpt.com/backend-api" }
+    "claude": {
+      "kind": "anthropic",
+      "model": "claude-opus-5",
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "promptCaching": false                 // 默认关,opt-in;见 configuration.md
+    },
+    // 订阅:不设 apiKeyEnv——由 `kiso login chatgpt` 拥有
+    "chatgpt": { "kind": "openai-responses", "model": "gpt-5.5", "baseUrl": "https://chatgpt.com/backend-api" }
   },
   "mode": "default"                          // manual/default/accept-edits/plan/bypass
 }

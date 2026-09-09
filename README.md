@@ -41,9 +41,8 @@ exit is the design, not a crash. [Sign in](#sign-in) to reach a real model.
 Then talk to it. The model gets six tools — read file, list directory, search
 text, write file, edit file, shell — and writes and shell sit behind the
 approval policy: the run **pauses**, asks, persists the decision, and resumes
-the same run (ADR-0024). [Extensions](#extending-kiso) add the rest.
-
-The five-minute walkthrough is [docs/cli-quickstart.md](docs/cli-quickstart.md);
+the same run (ADR-0024). [Extensions](#extending-kiso) add the rest. The
+five-minute walkthrough is [docs/cli-quickstart.md](docs/cli-quickstart.md);
 the full command surface is [docs/cli.md](docs/cli.md).
 
 ## Sign in
@@ -61,9 +60,9 @@ kiso logout deepseek    # remove it
 
 **A stored credential OWNS its provider.** An unusable stored one is a loud
 error, never a silent fall back to the environment variable — what you signed
-in with is what runs. Without one the env layer still works:
-`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` alone is enough (with both exported,
-OpenAI wins), and `OPENAI_BASE_URL` retargets any compatible endpoint.
+in with is what runs. Without one the env layer still works: `ANTHROPIC_API_KEY`
+or `OPENAI_API_KEY` alone is enough (with both exported, OpenAI wins), and
+`OPENAI_BASE_URL` retargets any compatible endpoint.
 
 ## Models and effort
 
@@ -73,9 +72,9 @@ opens a picker. Legal effort levels are shown per profile and refused by name �
 at `/model` and again by the run — when the endpoint lacks them.
 
 Profiles live in `~/.kiso/config.json` (ADR-0045). **Credentials are never
-inside it** — a profile only NAMES the environment variable holding its key,
-or leans on `kiso login`. Precedence: **flags > env > project config > user
-config > default**, and a broken config file fails loudly with the file named.
+inside it** — a profile only NAMES the environment variable holding its key, or
+leans on `kiso login`. Precedence: **flags > env > project config > user config
+> default**, and a broken config file fails loudly with the file named.
 
 ```jsonc
 {
@@ -87,8 +86,14 @@ config > default**, and a broken config file fails loudly with the file named.
       "apiKeyEnv": "DEEPSEEK_API_KEY",       // the key's env var — never the key
       "baseUrl": "https://api.deepseek.com"
     },
-    "claude": { "kind": "anthropic", "model": "claude-opus-5", "apiKeyEnv": "ANTHROPIC_API_KEY" },
-    "chatgpt": { "kind": "openai-responses", "baseUrl": "https://chatgpt.com/backend-api" }
+    "claude": {
+      "kind": "anthropic",
+      "model": "claude-opus-5",
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "promptCaching": false                   // opt-in; see configuration.md
+    },
+    // the subscription: no apiKeyEnv — `kiso login chatgpt` owns it
+    "chatgpt": { "kind": "openai-responses", "model": "gpt-5.5", "baseUrl": "https://chatgpt.com/backend-api" }
   },
   "mode": "default"                          // manual/default/accept-edits/plan/bypass
 }
@@ -96,13 +101,13 @@ config > default**, and a broken config file fails loudly with the file named.
 
 `kiso --model deepseek` beats everything, and `--model anthropic/claude-sonnet-5`
 style direct writes work too. The full reference — registry rows with their
-dates and sources, prompt caching, thinking modes, auto-compaction, the
-project-config trust gate — is [docs/configuration.md](docs/configuration.md).
+dates and sources, prompt caching, thinking modes, auto-compaction, the project
+trust gate — is [docs/configuration.md](docs/configuration.md).
 
 ## Sessions
 
-Sessions are append-only JSONL under `$KISO_HOME/sessions`. Exit, restart,
-`kiso resume <id>`, and the conversation continues with a contiguous seq.
+Sessions are append-only JSONL under `$KISO_HOME/sessions`. Exit, restart, and
+`kiso resume <id>` continues the conversation with a contiguous seq.
 
 ```
 kiso [sessionId]               interactive session (default; `kiso chat` is the same)
@@ -127,9 +132,8 @@ state kiso will resume into, read from the session's own durable log:
 `microcompacted` boundary event is appended and the projection derives the
 compacted view from it — old read/list/search/shell output becomes a fixed
 placeholder, writes and edits never do. `/compact` compresses the older
-CONVERSATION into one durable summary. Both are persisted facts, so a crash
-and resume land on the byte-identical projection —
-[docs/context.md](docs/context.md).
+CONVERSATION into one durable summary. Both are persisted facts, so a crash and
+resume land on the byte-identical projection — [docs/context.md](docs/context.md).
 
 ## Modes
 
@@ -146,7 +150,7 @@ names the tier that decided.
 | `plan` | read/list/search/read_skill allow; everything else denied with `plan mode: read-only` |
 | `bypass` | everything allows — but a user extension's `deny` still wins |
 
-Startup: `--mode <name>` or `KISO_MODE=<name>`. The status bar names the tier,
+Startup: `--mode <name>` or `KISO_MODE=<name>`; the status bar names the tier,
 so the constraint is visible rather than encoded in a hue.
 
 ## Interactive mode
@@ -169,8 +173,7 @@ In a panel: digits select · space toggles · `t` types an answer.
   already on *Yes, run it*: look, press enter. One option grants a **durable**
   don't-ask-again rule by writing a human-readable, human-deletable extension
   file, and deleting that file is the revocation path. Another asks the model
-  for two or three narrower versions of the call, costing one request, only
-  when pressed.
+  for two or three narrower versions of the call, one request, only when pressed.
 - **Irreversible deletes say so.** Four commands carry one yellow line naming
   what goes: `rm -rf` with its targets listed, `git checkout --`,
   `git reset --hard`, `git clean -f`. Nothing else does — a warning on every
@@ -200,15 +203,15 @@ Support is stated by the evidence behind it, not by the presence of code.
 Prompt caching is **off by default** on Anthropic profiles: turning it on
 changes the request bytes and the bill, and the default flips only after a
 paired bench on a live leg proves the saving. For efficiency numbers — same
-model, same tasks, three agents, with the protocol and every honest footnote —
-see [bench/README.md](bench/README.md). Nothing from it is summarized here.
+model, same tasks, three agents, protocol and honest footnotes included — see
+[bench/README.md](bench/README.md). Nothing from it is summarized here.
 
 ## Durable execution, in one screen
 
 > **Agents crash. Side effects don't rewind. kiso makes execution durable.**
 
-The trajectory itself is the durable artifact, so a killed process costs
-nothing but the process. Three facts are on disk before the crash:
+The trajectory is the durable artifact, so a killed process costs nothing but
+the process. Three facts are on disk before the crash:
 
 - **The session.** Every run is an append-only JSONL stream of `seq`-numbered
   events, and the messages the model sees are a pure function of that log
@@ -233,11 +236,11 @@ interrupted execution: shell (ex-12) — rerun it? (y)es / (n)o y
 ```
 
 That is not a story: it is `apps/cli/tests/kill9.test.ts` — a real PTY, real
-processes, a real SIGKILL — asserting that exactly one execution is
-`uncertain`, that the interrupted command's marker file does not exist, and
-that the resume CONTINUES the trajectory rather than replaying it.
-`scripts/demo-kill9.sh` runs the same story against the published binary,
-twice in a row, on a fresh home each time.
+processes, a real SIGKILL — asserting that exactly one execution is `uncertain`,
+that the interrupted command's marker file does not exist, and that the resume
+CONTINUES the trajectory rather than replaying it. `scripts/demo-kill9.sh` runs
+the same story against the published binary, twice in a row, fresh home each
+time.
 
 **The session format is frozen** (ADR-0051, adjudicated 2026-08-12) — a
 contract with executable gates in `npm run check`, not a versioned API that can
@@ -291,8 +294,8 @@ written against that same contract — nothing they do is privileged:
   on demand, and anything else there is read by path when needed.
 - **Ask** — `ask_user` puts 1-4 real questions to you, 2-4 options each. The
   answers ride an ordinary tool result, so an answered question is never asked
-  again, including across `kill -9`. A piped session never loads it: nothing
-  pays prompt rent for a question nobody could answer.
+  again, including across `kill -9`. A piped session never loads it at all:
+  nothing pays prompt rent for a question nobody could answer.
 - **Task** — a whole-table todo replace whose list is durable events rather
   than runtime state, so it survives `kill -9` and `/compact`. Opt-in since
   0.3.0: over 13 consecutive real sessions it paid rent every request and was
@@ -301,10 +304,9 @@ written against that same contract — nothing they do is privileged:
 A project's own `.kiso` directory is cloned code that would execute on your
 machine, so it rides one content-digest trust gate: kiso lists the artifacts,
 asks once, records the verdict, and re-asks only when the files change — with
-deliberately no environment variable that skips the ask.
-
-The reference — the contract's types, the `deny > allow > ask` composition, the
-`safe-defaults` tutorial extension, each official extension in full — is
+deliberately no environment variable that skips the ask. The reference — the
+contract's types, the `deny > allow > ask` composition, the `safe-defaults`
+tutorial extension, each official extension in full — is
 [docs/extensions.md](docs/extensions.md).
 
 ## Using it
@@ -362,14 +364,13 @@ snapshot discipline, not a self-adjusting ratchet: it has moved exactly twice,
 each by adjudicated amendment, and the standing escape hatch is EXTRACTION
 (ADR-0043). The core sits at **2,139 of 2,200** lines today. The product
 surfaces run a different regime since Amendment 8 — printed every check for
-visibility, never failing it, their protection moved to the architecture
-gates.
+visibility, never failing it, protected by the architecture gates instead.
 
 The core owns the L1 protocol, the L2 kernel, the tool contract with its JSON
 Schema validation, and the eval hooks. It refuses to own loop business logic,
 UI, permission policy, billing, skills content and retrieval: those live in
-packages, where the cap does not bind them. A core that decides them for you
-is a blob, and a blob is the thing you eventually fight.
+packages, where the cap does not bind them. A core that decides them for you is
+a blob, and a blob is the thing you eventually fight —
 [docs/kernel-rule.md](docs/kernel-rule.md) has it in full.
 
 ## Documentation

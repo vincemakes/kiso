@@ -12,7 +12,11 @@ import { parseConfig } from "../src/config.js";
 
 function readmeExample(): string {
 	const readme = readFileSync(fileURLToPath(new URL("../../../README.md", import.meta.url)), "utf8");
-	const start = readme.indexOf("### Model configuration");
+	// The 2026-09-09 redesign renamed the section; anchor on the new
+	// heading and FAIL if it is gone, rather than silently falling back to
+	// whatever the file's first jsonc fence happens to be.
+	const start = readme.indexOf("## Models and effort");
+	expect(start).toBeGreaterThanOrEqual(0);
 	const open = readme.indexOf("```jsonc", start);
 	const close = readme.indexOf("```", open + 8);
 	expect(open).toBeGreaterThan(start);
