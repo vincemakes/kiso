@@ -98,6 +98,15 @@ export function estimateCtxRatio(session: AgentSession): number {
  *  their continuation envelopes, the output reserve when known) over the
  *  window. Still ~ (chars/4). The auto-compact policy does NOT read this
  *  (see autoCompactRatio) — moving the policy's number is A1b's. */
+/** OR-8 (owner, 2026-09-09): the status row names the effort next to the
+ *  model — `gpt-5.6-sol · xhigh` — whenever the live binding carries one;
+ *  the provider's default shows as the bare model, as before. The effort
+ *  is the session's own (the durable profile), never the CLI's memory. */
+export function statusModelLabel(session: { readonly reasoning?: { readonly effort: string } }): string {
+	const effort = session.reasoning?.effort;
+	return effort !== undefined && effort !== "default" ? `${agentModel} · ${effort}` : agentModel;
+}
+
 export function displayCtxRatio(session: AgentSession): number {
 	return requestBudget(session.requestParts(), contextWindowTokens()).ratio;
 }
@@ -1156,7 +1165,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// when unknown, so a session that has not called the model paints
 		// exactly the pre-round row.
 		dock.setStatus(
-			idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), agentModel, displayCtxRatio(session), {
+			idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), statusModelLabel(session), displayCtxRatio(session), {
 				cacheHitPct: cacheHitPct(runUsage),
 				costUsd: spentUsd,
 			}),

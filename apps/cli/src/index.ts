@@ -49,7 +49,7 @@ import { agentModel, atFiles, body, bodyLog, kisoHome, builtInExtensions, curren
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
-import { chat, contextWindowTokens, displayCtxRatio } from "./chat.js";
+import { chat, contextWindowTokens, displayCtxRatio, statusModelLabel } from "./chat.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { oauthTokenThunk } from "./auth/token.js";
 import { checkForUpdate } from "./update-check.js";
@@ -782,9 +782,9 @@ async function pickSession(agent: Awaited<ReturnType<typeof makeAgent>>, input: 
  * formatter — never a boot-time copy, which would drift from the real
  * row the moment either changed.
  */
-function paintBootStatus(session: { log: { all: readonly unknown[] } }): void {
+function paintBootStatus(session: { log: { all: readonly unknown[] }; reasoning?: { readonly effort: string } }): void {
 	if (!dock.active) return;
-	dock.setStatus(idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), agentModel, displayCtxRatio(session as never)));
+	dock.setStatus(idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), statusModelLabel(session), displayCtxRatio(session as never)));
 }
 
 /** PH-1a (finding PH-F12): a usage error raised from inside the TUI —

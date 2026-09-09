@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isolatedEnv, runCli, stripANSI } from "../../../tests/helpers/isolated-cli.mjs";
+import { screenAt } from "./helpers/pty.js";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
@@ -101,14 +102,13 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		// the SWITCH is unchanged, which is what the second half proves:
 		// picking option 2 resolves to exactly the argument `/model claude`
 		// would have passed, and lands in exactly the same refusal.
-		const out = stripANSI(
-			ptyRun(env, [
-				["/ commands · \u2191 history", "/model\r"],
-				["digits pick", "2\r"],
-				["no credential", "/model ds\r"], // the unavailable line's words changed with the credential store (sign-in step 1)
-				["model → ds", "exit\r"],
-			], workdir),
-		);
+		const raw = ptyRun(env, [
+			["/ commands · \u2191 history", "/model\r"],
+			["digits pick", "2\r"],
+			["no credential", "/model ds max\r"], // the unavailable line's words changed with the credential store (sign-in step 1); OR-8: with a level
+			["model → ds", "exit\r"],
+		], workdir);
+		const out = stripANSI(raw);
 		expect(out).toContain("model — current: faux"); // the panel's header, where "model: faux" used to print
 		expect(out).toContain("openai-compat/deepseek-v4-flash");
 		expect(out).toContain("profile: ds");
@@ -117,7 +117,16 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		// the picker's CLI half: each row shows the model's LEGAL effort levels with the default bracketed
 		expect(out).toContain("effort: low · [high] · max"); // deepseek-v4-flash's three native levels, the default bracketed
 		expect(out).toContain("model claude: unavailable — no credential: run `kiso login anthropic` or set the env var ANTHROPIC_API_KEY");
-		expect(out).toContain("model → ds (deepseek-v4-flash) — takes effect on the next turn");
+		expect(out).toContain("model → ds (deepseek-v4-flash · max) — takes effect on the next turn");
+		// OR-7 / OR-8 (owner, 2026-09-09): the status row is repainted BY the
+		// switch — the owner watched it keep saying the old model until the
+		// first turn — and it names the effort next to the model. Read the
+		// screen at the notice's frame: the status row already carries both.
+		const screen = screenAt(raw, "takes effect on the next turn");
+		const statusRow = screen.find((row) => row.includes("/mode to switch"));
+		expect(statusRow, screen.join("\n")).toBeDefined();
+		expect(statusRow).toContain("deepseek-v4-flash · max");
+		expect(statusRow).not.toContain("faux");
 	});
 
 	it("a direct provider/model write switches too", () => {
