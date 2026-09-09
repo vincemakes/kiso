@@ -975,7 +975,14 @@ export async function consumeRun(
  *  switch hands main another session id to re-enter chat with — the
  *  editor survives, the durable law is untouched (the /resume+/clear
  *  mini-spec). */
-export type ChatEnd = { readonly next: "exit" } | { readonly next: "switch"; readonly id: string };
+export type ChatEnd =
+	| { readonly next: "exit" }
+	| { readonly next: "switch"; readonly id: string }
+	/** §2.5: the caller REBUILDS the agent and re-enters on the same id.
+	 *  Not "switch": switching keeps the agent and only changes the id,
+	 *  which would reload nothing at all — the tool registry lives in the
+	 *  agent's constructor. */
+	| { readonly next: "reload"; readonly id: string };
 
 /** The session-navigation seam main provides: the OTHER sessions'
  *  ids, and (when a dock is up) the existing picker. */
@@ -988,6 +995,9 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// the switch directive — set once by dispatch's /clear or /resume,
 	// resolved through the end signal so the final awaits still run
 	let switchTo: string | null = null;
+	// §2.5: the reload directive — same resolution path as switchTo, so the
+	// final awaits still run before chat() returns.
+	let reloadReq = false;
 	let resolveEnd: () => void = () => {};
 	const endSignal = new Promise<void>((r) => {
 		resolveEnd = r;
@@ -1336,6 +1346,10 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			switchTo = id;
 			resolveEnd();
 		},
+		requestReload: () => {
+			reloadReq = true;
+			resolveEnd();
+		},
 		sessions: () => nav?.sessions() ?? [],
 		...(nav?.pick !== undefined ? { pickSession: nav.pick } : {}),
 	};
@@ -1439,5 +1453,8 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// runs before the exit or the chain is already settled. One level is
 	// enough: the /compact segment appends nothing of its own.
 	await chainRef.current;
-	return switchTo === null ? { next: "exit" } : { next: "switch", id: switchTo };
+	if (switchTo !== null) return { next: "switch", id: switchTo };
+	// a switch beats a reload: /resume and /clear are going somewhere else,
+	// and the agent they land on is rebuilt by the caller either way.
+	return reloadReq ? { next: "reload", id: session.id } : { next: "exit" };
 }

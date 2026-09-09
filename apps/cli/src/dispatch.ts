@@ -10,7 +10,7 @@ import { buildAdapter, lookupModelMetadata, resolveContinuationScope, resolveRea
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
-import { agentModel, body, bodyLog, codingToolOptions, kisoHome, configModels, dock, lastBinding, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
+import { agentModel, body, bodyLog, codingToolOptions, kisoHome, configModels, dock, lastBinding, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, setModelChoice, type LineInput , setLastBinding } from "./state.js";
 import { authForProfile, directWriteProfile, profileAvailable, unavailableReason, type ModelProfile } from "./config.js";
 import { shellTool } from "@vincemakes/kiso-tools-node";
 import { join } from "node:path";
@@ -102,6 +102,9 @@ export interface DispatchCtx {
 	/** the /resume+/clear mini-spec: end this chat() with a switch to
 	 *  another session — main re-enters chat there; the editor survives. */
 	readonly requestSwitch: (id: string) => void;
+	/** §2.5: end this chat() with a REBUILD of the agent on the SAME
+	 *  session — extensions, skills and config are read again. */
+	readonly requestReload: () => void;
 	/** every durable session id (the /resume validation + listing). */
 	readonly sessions: () => readonly string[];
 	/** the dock's session picker, when one exists (bare /resume). */
@@ -682,6 +685,9 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 							setLastBinding(binding);
 							setAgentModel(profile.model, profile.baseUrl);
 							setCurrentModelName(arg);
+							// §2.5: the ONE source a reload reads for the model — a
+							// switch made here must survive the rebuild.
+							setModelChoice(arg);
 							// OR-7 (owner, 2026-09-09): the status row is repainted BY the
 							// switch — it used to keep the old model until the next
 							// recap repainted it, so "takes effect on the next turn"
@@ -819,6 +825,21 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			return;
 		}
 		ctx.requestSwitch(newSessionId(sessionsDir()));
+		return;
+	}
+	if (trimmed === "/reload") {
+		// §2.5: extensions, skills and config, read again into a session that
+		// keeps its conversation. It is a REBUILD — the tool registry is
+		// built in the agent's constructor and has no unregister, so nothing
+		// short of constructing the agent again can drop a tool or add one.
+		// The durable log is untouched: a reload is invisible in the record,
+		// because nothing the model said or did changes.
+		if (ctx.isRunning()) {
+			body.notice("[/reload] a run is in flight — let it finish (esc stops it), then reload");
+			ctx.input.prompt();
+			return;
+		}
+		ctx.requestReload();
 		return;
 	}
 	if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {

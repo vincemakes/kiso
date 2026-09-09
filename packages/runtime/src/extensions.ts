@@ -36,6 +36,28 @@ export async function loadProjectExtensions(dir: string, existing: readonly Kiso
 	return projectExts;
 }
 
+/**
+ * §2.5 — the load counter behind the import URL's `?load=` query.
+ *
+ * Node caches ESM modules by URL forever. Without a distinguishing query
+ * a second load of the same directory returns the FIRST load's modules,
+ * so `/reload` would report success and change nothing — and a
+ * module-level Set held across the boundary would be mutated by one side
+ * and read by the other.
+ *
+ * It is unconditional on purpose. A parameter would put a stale mode
+ * back within reach and would move `loadExtensions` in the public
+ * surface file for no gain: at startup this is one load and invisible,
+ * and on a reload it is the entire point.
+ *
+ * The cost, stated rather than hidden: Node has no module unloader, so
+ * each superseded module object stays allocated and unreachable for the
+ * life of the process — one per extension file per reload. The only
+ * real resources an extension holds are its MCP servers, and those are
+ * torn down by `disposeExtensions`, which whoever loaded them owes.
+ */
+let loadSerial = 0;
+
 export async function loadExtensions(dir: string): Promise<KisoExtension[]> {
 	let files: string[];
 	try {
@@ -45,10 +67,11 @@ export async function loadExtensions(dir: string): Promise<KisoExtension[]> {
 		throw err;
 	}
 	const out: KisoExtension[] = [];
+	const serial = ++loadSerial; // one nonce per CALL — a directory's files load together
 	for (const file of files) {
 		let ext: unknown;
 		try {
-			const mod = (await import(pathToFileURL(join(dir, file)).href)) as { default?: unknown };
+			const mod = (await import(`${pathToFileURL(join(dir, file)).href}?load=${serial}`)) as { default?: unknown };
 			ext = mod.default;
 			if (typeof ext === "function") ext = await ext(); // a factory
 		} catch (err) {

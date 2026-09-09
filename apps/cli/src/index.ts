@@ -24,7 +24,7 @@
  * makeAgent, and main.
  */
 
-import { appendFileSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { newSessionId } from "./session-id.js";
 import { createInterface } from "node:readline";
@@ -46,7 +46,7 @@ import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, getMode, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
 import { breakerExtension } from "./breaker.js";
 import { builtInLayer } from "./builtin.js";
-import { agentModel, atFiles, body, bodyLog, codingToolOptions, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, projectExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setSessionStore, userExtensions, VERSION, type LineInput , lastBinding , acceptDrift, setAcceptDrift } from "./state.js";
+import { agentModel, atFiles, body, bodyLog, codingToolOptions, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput , lastBinding , acceptDrift, setAcceptDrift } from "./state.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
@@ -650,6 +650,10 @@ function positiveIntEnv(name: string): number | undefined {
 }
 
 async function makeAgent(sessionId: string | undefined, input?: LineInput, modelFlag?: string) {
+	// §2.5: the ONE source a reload reads for the model, seeded here from
+	// the startup flag. Without this a session started with `--model X`
+	// would silently revert to the env/config default on its first reload.
+	if (modelFlag !== undefined) setModelChoice(modelFlag);
 	// E3: the project-level trust gate runs BEFORE any extension load (the
 	// mcp/skills merges must be in the env when the user-level extensions
 	// load). Untrusted project capability is never loaded — never silently.
@@ -870,17 +874,111 @@ class CliUsageError extends Error {
  *  line (the previous conversation stays resumable — clear/switch
  *  never erase history). Faux sessions re-arm the scripted adapter at
  *  the NEW session's durable position, exactly like the picker path. */
+/** §2.5 — how many skills are IN FORCE, counted where the skills
+ *  extension itself scanned: `KISO_SKILLS_DIR` is the merged directory
+ *  when a trusted project contributed skills, and the user's own
+ *  otherwise. Symlinks are followed, because the merge is made of them. */
+function skillCount(): number {
+	const dir = process.env.KISO_SKILLS_DIR ?? join(kisoHome(), "skills");
+	try {
+		return readdirSync(dir).filter((n) => {
+			try {
+				return statSync(join(dir, n)).isDirectory();
+			} catch {
+				return false; // a broken link is not a skill
+			}
+		}).length;
+	} catch {
+		return 0; // no skills directory is not an error, it is no skills
+	}
+}
+
+/**
+ * §2.5 — the reload: the agent is CONSTRUCTED AGAIN on the same session.
+ *
+ * Nothing short of this reloads the whole surface. `run.ts` composes the
+ * system prompt and the approval chain per run, so mutating the shared
+ * extensions array reaches those — but the tool registry is built in the
+ * agent's constructor and has no unregister, and hooks are frozen into
+ * the session's config. Half a reload is worse than none: a prompt that
+ * announces a skill whose tool is not in the table is the DC-19 family.
+ *
+ * LOAD FIRST, SWAP ONLY ON SUCCESS. `loadExtensions` is deliberately
+ * loud, so tearing the old agent down first would leave a typo in an
+ * extension holding a live session with no agent and no way back. The
+ * cost is that two sets of MCP servers are briefly alive; a stdio server
+ * holding an exclusive resource — a port, a lock — fails to start twice
+ * and so fails the reload cleanly, which is the honest outcome.
+ *
+ * The conversation survives because the id does not change and its truth
+ * is the durable log on disk. The record never moves: a reload is
+ * invisible in it, because nothing the model said or did changes.
+ */
+async function reloadAgent(
+	old: Awaited<ReturnType<typeof makeAgent>>,
+	id: string,
+	input: LineInput,
+): Promise<Awaited<ReturnType<typeof makeAgent>>> {
+	// Snapshot BEFORE makeAgent: it overwrites every one of these, so the
+	// old set would be unreachable by the time we needed to dispose it.
+	const oldLoaded = loadedExtensions;
+	const oldBuiltIn = builtInExtensions;
+	const oldUser = userExtensions;
+	const oldProject = projectExtensions;
+	const oldTemps = mergedTempPaths.splice(0);
+	let next: Awaited<ReturnType<typeof makeAgent>>;
+	try {
+		next = await makeAgent(id, input, modelChoice);
+	} catch (err) {
+		// Nothing is swapped. Clean up whatever the failed attempt managed
+		// to create, put the old set's own temp paths back so exit still
+		// removes them, and restore the lists in case makeAgent got far
+		// enough to publish new ones.
+		for (const p of mergedTempPaths.splice(0)) {
+			try {
+				rmSync(p, { recursive: true, force: true });
+			} catch {
+				// best-effort — the temp dir would be reaped by the OS
+			}
+		}
+		mergedTempPaths.push(...oldTemps);
+		setExtensionLists(oldBuiltIn, oldUser, oldProject, oldLoaded);
+		bodyLog(`[reload] ${err instanceof Error ? err.message : String(err)} — nothing changed, the previous set is still in force`);
+		return old;
+	}
+	// The new set is built and sound; only now does the old one go.
+	old.close();
+	await disposeExtensions(oldLoaded);
+	for (const p of oldTemps) {
+		try {
+			rmSync(p, { recursive: true, force: true });
+		} catch {
+			// best-effort — the temp dir would be reaped by the OS
+		}
+	}
+	bodyLog(`[reload] ${loadedExtensions.length} extensions, ${skillCount()} skills — the conversation is unchanged`);
+	return next;
+}
+
 async function chatLoop(
-	agent: Awaited<ReturnType<typeof makeAgent>>,
+	first: Awaited<ReturnType<typeof makeAgent>>,
 	firstId: string,
 	input: LineInput,
 	autoCompact: Parameters<typeof chat>[3],
 ): Promise<void> {
 	let id = firstId;
 	let prev: string | null = null;
+	let agent = first;
+	// §2.5: a rebuilt agent re-enters on the SAME conversation, so it prints
+	// neither the opening banner nor the "switched — previous" line. The
+	// reload said what it did; repeating the session's opening would read
+	// as a new session, which is the one thing it is not.
+	let rebuilt = false;
 	for (;;) {
 		const session = await agent.session({ id, ...(acceptDrift() ? { acceptDrift: true } : {}) });
-		if (prev === null) {
+		if (rebuilt) {
+			rebuilt = false;
+		} else if (prev === null) {
 			bodyLog(`session ${id}\n`);
 			// REL-0152-D5: a session with history says what that history WAS.
 			// Resuming used to print this one line and drop you at an empty
@@ -931,6 +1029,11 @@ async function chatLoop(
 		};
 		const end = await chat(session, currentFaux, input, autoCompact, nav);
 		if (end.next === "exit") return;
+		if (end.next === "reload") {
+			agent = await reloadAgent(agent, id, input);
+			rebuilt = true;
+			continue; // the same id, the same conversation, a new agent
+		}
 		prev = id;
 		id = end.id;
 	}

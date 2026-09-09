@@ -108,6 +108,47 @@ shell is denied, and the resume re-presents only the one undecided request
 while the extension's own call log (a marker file written per `decide`
 call) proves the policy never re-runs across the kill.
 
+## `/reload` — read the extensions again, without losing the conversation
+
+`/reload` rereads the extension directories, the skills, and the config into
+the session you are already in. The conversation is untouched: its truth is
+the durable log on disk, so a reload is invisible in the record — nothing the
+model said or did changes.
+
+It is a REBUILD, and it has to be. The system prompt and the approval chain
+are composed per run, so those would follow a swapped array on their own, but
+the tool registry is built once when the agent is constructed and has no
+unregister, and hooks are frozen into the session's config. Reloading two of
+those four surfaces would be worse than reloading none: a system prompt that
+announces a skill whose tool is not in the table is a change that appears to
+have happened and did not.
+
+What that buys you:
+
+- an extension you just edited takes effect, source and all;
+- a skill you just wrote is in the index AND readable by `read_skill`;
+- an extension you deleted stops being callable;
+- `config.json` is read again;
+- a wedged MCP server is torn down and started again, which makes `/reload`
+  the way to recover one without losing your session.
+
+What it does not do: it does not reload kiso itself, and a run in flight
+refuses it — let the turn finish, or stop it with esc.
+
+A broken extension does not cost you the session. The new set is loaded FIRST
+and swapped in only if it is sound; a file that throws leaves one line saying
+so and the previous set still in force. The one case that fails cleanly rather
+than silently is a stdio MCP server holding an exclusive resource such as a
+port or a lock: two of them are briefly alive during the swap, so the second
+will not start, and the reload reports the failure.
+
+The cost, stated plainly: kiso appends a per-load nonce to each extension's
+import URL, because Node caches ES modules by URL forever and would otherwise
+hand back the code you just edited. Node has no module unloader, so every
+reload leaves one unreachable module object per extension file allocated for
+the life of the process. The only real resources an extension holds are its
+MCP servers, and those are disposed.
+
 ## MCP — external tools over the MCP bridge
 
 **Ships built-in in the CLI** — every `kiso chat` has the `mcp__` bridge

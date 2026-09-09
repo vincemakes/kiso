@@ -101,6 +101,12 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 			"/compact    summarize the older conversation to free context",
 			"/clear      start a fresh conversation (the old session stays resumable)",
 			"/resume     switch to another session; /resume <id> goes directly",
+			// §2.5 — a DECLARED ADDITION in the same class as /clear, /resume,
+			// /rewrap and /copy. It sits beside /resume because both answer
+			// "put me somewhere else without losing this", and the computed
+			// stop does not move: `/compact` is eight characters and
+			// `/reload` is seven, so every pre-move row keeps its padding.
+			"/reload     reread extensions, skills and config into this session",
 			// §2.3 — a DECLARED ADDITION in the same class: the switch is
 			// beside the shell gestures because that is where a reader
 			// looks for a key, and a gesture the sheet does not name is a
@@ -128,7 +134,7 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 	});
 
 	it("the last row still carries its own newline — two rows from one bodyLog call", () => {
-		expect(helpRows()).toHaveLength(17); // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's ctrl+t + §2.4's ctrl+g
+		expect(helpRows()).toHaveLength(18); // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's ctrl+t + §2.4's ctrl+g + §2.5's /reload
 		expect(helpRows().filter((r) => r.includes("\n"))).toHaveLength(1);
 	});
 

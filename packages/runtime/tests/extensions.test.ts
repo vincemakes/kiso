@@ -430,3 +430,42 @@ describe("E1-P2 (re-review): onUserMessage composes as a pipe with veto short-ci
 		expect(modelSaw).toBe("rewritten"); // the single handler's rewrite reached the model
 	});
 });
+
+/**
+ * §2.5 — the loader evaluates the file FRESH on every call.
+ *
+ * Node caches ESM modules by URL forever, so re-importing an edited
+ * `.mjs` hands back the old module and `/reload` would report success
+ * while changing nothing. The loader appends a per-call nonce to the
+ * URL, unconditionally: there is no second mode, so there is no way to
+ * call it in the stale shape by accident.
+ *
+ * The cost is stated rather than hidden — Node has no unloader, so each
+ * superseded module object stays reachable-by-nobody and unfreed. The
+ * only real resources extensions hold are MCP servers, and those are
+ * disposed by whoever loaded them.
+ */
+describe("§2.5 — loadExtensions re-evaluates edited files", () => {
+	it("a file rewritten between two loads yields the NEW extension, not the cached one", async () => {
+		const dir = extDir();
+		writeExt(dir, "edited.mjs", `export default { name: "edited", systemPrompt: { append: "FIRST" } };`);
+		const first = await loadExtensions(dir);
+		expect(first[0]?.systemPrompt?.append).toBe("FIRST");
+
+		writeExt(dir, "edited.mjs", `export default { name: "edited", systemPrompt: { append: "SECOND" } };`);
+		const second = await loadExtensions(dir);
+		expect(second[0]?.systemPrompt?.append, "the edited file is what loaded").toBe("SECOND");
+	});
+
+	it("two loads of an UNCHANGED file yield independent module instances", async () => {
+		// the flip side of the same fact, and the one that breaks anyone
+		// holding a module-level Set across a reload: the second load's
+		// state is not the first load's state.
+		const dir = extDir();
+		writeExt(dir, "stateful.mjs", `const seen = new Set(); export default { name: "stateful", tools: [], seen };`);
+		const a = (await loadExtensions(dir))[0] as unknown as { seen: Set<string> };
+		a.seen.add("x");
+		const b = (await loadExtensions(dir))[0] as unknown as { seen: Set<string> };
+		expect(b.seen.has("x"), "the second load starts clean — mutating the first reaches nothing").toBe(false);
+	});
+});

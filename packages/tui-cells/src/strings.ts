@@ -483,6 +483,9 @@ export function helpRows(): string[] {
 		["/compact", "summarize the older conversation to free context"],
 		["/clear", "start a fresh conversation (the old session stays resumable)"],
 		["/resume", "switch to another session; /resume <id> goes directly"],
+		// §2.5: the conversation is untouched — this rereads what kiso was
+		// built with, not what it has said.
+		["/reload", "reread extensions, skills and config into this session"],
 		// §2.2: the two shell gestures and their one escape. They sit
 		// beside the slash commands because that is what a reader is
 		// looking for when they look here, even though `!` is not one.

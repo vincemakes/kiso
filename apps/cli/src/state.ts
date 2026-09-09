@@ -340,6 +340,27 @@ export function setConfigModels(models: Readonly<Record<string, import("./config
 }
 /** The name of the model currently driving the session ("faux" or the
  *  profile name / provider/model write / env model). */
+/**
+ * §2.5 — the profile the human CHOSE by name, and the only source a
+ * rebuild may read for the model.
+ *
+ * Not `currentModelName`: that holds whatever resolution produced, and
+ * an env-resolved session's name ("gpt-4o", "claude-sonnet-5") is not a
+ * key in `models`, so handing it back to `resolveModel` throws. Not the
+ * startup flag either, or a `/model` switch would silently revert on the
+ * first reload — the effort-axis round produced that bug once already
+ * from having two sources for the model.
+ *
+ * One variable, seeded by `makeAgent` from the startup flag and
+ * overwritten by `/model`. Undefined means "resolve exactly as this
+ * process did at startup", which is the right answer for a session that
+ * never named a profile.
+ */
+export let modelChoice: string | undefined;
+export function setModelChoice(value: string | undefined): void {
+	modelChoice = value;
+}
+
 export let currentModelName = "faux";
 export function setCurrentModelName(value: string): void {
 	currentModelName = value;
