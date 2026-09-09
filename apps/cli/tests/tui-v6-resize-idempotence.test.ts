@@ -234,7 +234,15 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 			[100, 30],
 		]);
 		const direct = runAndScreen([[100, 30]]);
-		expect(consecutive.grid).toEqual(direct.grid);
+		// The recap's `took Ns` is a wall clock, not screen state: two
+		// independent runs cross a second boundary independently (CI
+		// 34335803842 on the 0.31.1 bump: `took 0s` against `took 1s`,
+		// every other cell equal). The subject here is what the resize left
+		// on screen, so the seconds are masked on both sides; the recap row
+		// still has to match cell for cell otherwise, and ① still asserts
+		// the marker's presence.
+		const wallFree = (grid: readonly string[]): string[] => grid.map((l) => l.replace(/\u2726 took \d+s/, "\u2726 took Ns"));
+		expect(wallFree(consecutive.grid)).toEqual(wallFree(direct.grid));
 	});
 
 	/**
