@@ -54,6 +54,9 @@ export interface ModelProfile {
 	/** PH-1c.1: opt-in Anthropic prompt caching for this profile —
 	 *  default off (a request-byte cost behavior never flips silently). */
 	readonly promptCaching?: boolean;
+	/** LT-1: milliseconds the model stream may go silent before the request
+	 *  is aborted and retried. Default 120,000; 0 disables the watchdog. */
+	readonly streamIdleMs?: number;
 }
 
 export interface AutoCompactConfig {
@@ -152,12 +155,15 @@ export function parseConfig(text: string, source: string): KisoConfig {
 				fail(`models.${name}.apiKeyEnv`, "expected an env var name (the config never stores keys); omit it entirely for an unauthenticated local endpoint");
 			if (p.baseUrl !== undefined && typeof p.baseUrl !== "string") fail(`models.${name}.baseUrl`, "expected a string");
 			if (p.promptCaching !== undefined && typeof p.promptCaching !== "boolean") fail(`models.${name}.promptCaching`, "expected a boolean");
+			if (p.streamIdleMs !== undefined && (typeof p.streamIdleMs !== "number" || !Number.isFinite(p.streamIdleMs) || p.streamIdleMs < 0))
+				fail(`models.${name}.streamIdleMs`, "expected a non-negative number of milliseconds (0 disables the stream watchdog)");
 			models[name] = {
 				kind: p.kind as ProfileKind,
 				model: p.model as string,
 				...(typeof p.apiKeyEnv === "string" ? { apiKeyEnv: p.apiKeyEnv } : {}),
 				...(typeof p.baseUrl === "string" ? { baseUrl: p.baseUrl } : {}),
 				...(typeof p.promptCaching === "boolean" ? { promptCaching: p.promptCaching } : {}),
+				...(typeof p.streamIdleMs === "number" ? { streamIdleMs: p.streamIdleMs } : {}),
 			};
 		}
 		out.models = models;

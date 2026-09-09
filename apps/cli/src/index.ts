@@ -719,6 +719,7 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 
 	// E6: the run-start context policy (captured once — exactOptionalPropertyTypes).
 	const contextPolicy = contextPolicyFromEnv();
+	const idleFromEnv = streamIdleFromEnv(); // read once: a narrowed const, not a call per spread
 	const definition: AgentDefinition = {
 		model,
 		store,
@@ -775,7 +776,7 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 			: { adapter: createFauxProvider(readFauxScript().slice(fauxSkipTurns)) }),
 		// LT-1: KISO_STREAM_IDLE_MS (the test rigs' knob) beats the profile —
 		// the last spread wins, which is why it sits after the profile's.
-		...(streamIdleFromEnv() !== undefined ? { streamIdleMs: streamIdleFromEnv() } : {}),
+		...(idleFromEnv !== undefined ? { streamIdleMs: idleFromEnv } : {}),
 	};
 	return createAgent(definition);
 }

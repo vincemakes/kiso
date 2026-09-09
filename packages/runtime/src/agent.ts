@@ -66,6 +66,10 @@ export interface AgentDefinition {
 	/** E6: the session context policy (run-start actions, injection-side only). */
 	readonly contextPolicy?: import("./session.js").ContextPolicy;
 	readonly maxRetries?: number;
+	/** LT-1: the stream watchdog — milliseconds between adapter events
+	 *  before the request is aborted and retried (default 120 s; 0 off).
+	 *  Type-only additive; read by the runtime's idle guard. */
+	readonly streamIdleMs?: number;
 	/** E1: loaded extensions — their tools merge into the registry (a name
 	 *  collision with a built-in is a loud startup error), their hooks
 	 *  compose after the agent's own (the existing come first), their approvals join the
@@ -209,6 +213,7 @@ export class AgentRuntime {
 			...(this.#definition.microcompact !== undefined ? { microcompact: this.#definition.microcompact } : {}),
 			...(this.#definition.contextPolicy !== undefined ? { contextPolicy: this.#definition.contextPolicy } : {}),
 			...(this.#definition.maxRetries !== undefined ? { maxRetries: this.#definition.maxRetries } : {}),
+			...(this.#definition.streamIdleMs !== undefined ? { streamIdleMs: this.#definition.streamIdleMs } : {}),
 			...(this.#definition.extensions !== undefined ? { extensions: this.#definition.extensions } : {}),
 		};
 		return new AgentSession(options.id, log, store, adapter, config);

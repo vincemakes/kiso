@@ -72,6 +72,7 @@ import { Run } from "./run.js";
 // TUI2-R3v2 ③ — the side query rides the SAME tracer the runs ride; that
 // sameness is the whole point (one ledger, one shape, no second path).
 import { RequestTracer, traceGuard } from "./trace/guard.js";
+import { DEFAULT_STREAM_IDLE_MS, idleGuard } from "./idle-guard.js";
 import { runtimeVersion } from "./trace/writer.js";
 
 /** TUI2-R3v2 ③ — one off-trajectory model request (session.sideQuery).
@@ -443,7 +444,8 @@ export class AgentSession {
 			rentParts: { base: options.systemPrompt, appends: [] },
 		});
 		tracer.init();
-		const guarded = traceGuard(tracer, this.#adapter);
+		// LT-1: the summary request is a model stream too — the same watchdog
+		const guarded = traceGuard(tracer, idleGuard(this.#adapter, this.#config.streamIdleMs ?? DEFAULT_STREAM_IDLE_MS));
 		let text = "";
 		try {
 			for await (const ev of guarded.stream({
@@ -991,6 +993,8 @@ export interface SessionConfig {
 	/** E6: the session context policy (run-start actions, injection-side only). */
 	readonly contextPolicy?: ContextPolicy;
 	readonly maxRetries?: number;
+	/** LT-1: the stream watchdog's idle bound (ms); default 120 s, 0 off. */
+	readonly streamIdleMs?: number;
 	/**
 	 * E1: loaded extensions — their tools join the registry (idempotently;
 	 * a collision with a built-in name was already rejected at agent

@@ -39,6 +39,13 @@ a broken config file fails loudly with the file named.
       "model": "claude-opus-5",              // claude-fable-5-1 / claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5
       "apiKeyEnv": "ANTHROPIC_API_KEY",
       "promptCaching": false                 // opt-in; see the first-party notes below
+    },
+    "slow": {
+      "kind": "openai-compat",
+      "model": "some-reasoning-model",
+      "baseUrl": "https://example.invalid/v1",
+      "apiKeyEnv": "SLOW_KEY",
+      "streamIdleMs": 300000                 // the stream watchdog: 5 min of silence before a retry (default 120 s; 0 off)
     }
   },
   "mode": "default",                         // manual/default/accept-edits/plan/bypass
@@ -102,3 +109,15 @@ a broken config file fails loudly with the file named.
   config profile above is the replacement form (typed, switchable at
   runtime, and the key stays in your environment either way). The wrapper
   pattern is legacy, supported.
+
+**The stream watchdog (LT-1).** A model stream that stops writing — a hung socket, an
+upstream that went quiet without closing — is ended `streamIdleMs` milliseconds after
+its last event: the request is aborted and the attempt voided (a durable
+`model_output_abandoned` marker per attempt), the kernel retries with backoff, and when
+the retry budget is spent the run ends in an error terminal that names the stall — on
+screen (`run failed — network (retryable): stream stalled: no event for 120s …`) and in
+the log.
+The bound is per EVENT, so a long think that keeps streaming is never touched. Default
+120,000 ms; a profile may raise it for a backend that thinks silently at high effort,
+or set `0` to disable the watchdog for that profile. `KISO_STREAM_IDLE_MS` overrides
+every profile (the test rigs use it).

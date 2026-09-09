@@ -11,6 +11,7 @@ import { resolveReasoning, type WireReasoning } from "./provider/metadata.js";
 import { deriveRecoveryPlan, invocationSeqOf } from "./recovery-plan.js";
 import { composeApprovalChain, composeSystemPrompt, composeToolTable, microcompactFor } from "./compose.js";
 import { truncationGuard } from "./truncation-guard.js";
+import { DEFAULT_STREAM_IDLE_MS, idleGuard } from "./idle-guard.js";
 import { RequestTracer, traceGuard } from "./trace/guard.js";
 import type { RentParts } from "./trace/rent.js";
 import { runtimeVersion } from "./trace/writer.js";
@@ -139,7 +140,10 @@ export class Run implements AsyncIterable<Event> {
 				({
 					// 0.1.40 (R-C item 3): the truncation guard gates the model
 					// stream — a truncated turn's tool batch never executes.
-					adapter: traceGuard(tracer!, truncationGuard(this.#adapter)), // tracer assigned above, before loopConfig
+					// LT-1: the idle guard sits closest to the adapter — a stall is
+					// aborted and thrown there, the truncation guard and the tracer see
+					// the same events and the same error every other transport failure shows them.
+					adapter: traceGuard(tracer!, truncationGuard(idleGuard(this.#adapter, this.#config.streamIdleMs ?? DEFAULT_STREAM_IDLE_MS))), // tracer assigned above, before loopConfig
 					model: this.#config.model,
 					sessionId: this.#session.id, // P3: tools see their session (ToolContext.sessionId)
 					...(systemPrompt !== undefined ? { systemPrompt } : {}),
