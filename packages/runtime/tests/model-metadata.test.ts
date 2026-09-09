@@ -105,8 +105,8 @@ describe("OR-1 — the Responses rows: one model id, two endpoints, two answers"
 		const refused = resolveReasoning("gpt-5.5", none, SUB);
 		expect(refused.ok).toBe(false);
 		if (!refused.ok) expect(refused.reason).toContain("native: low/medium/high/xhigh");
-		// endpoint-less (the run-side resolver): the first-party row, listed first — a superset,
-		// so nothing the CLI accepted for either profile is refused at run time
+		// endpoint-less (a caller with no baseUrl): the first-party row, listed first — the superset
+		// fallback; the run-side resolver itself passes the binding's endpoint (or1-binding-snapshot)
 		expect(resolveReasoning("gpt-5.5", none)).toEqual({ ok: true, wire: { effort: "none" } });
 		expect(resolveReasoning("gpt-5.5", { thinking: "default", effort: "xhigh" }, SUB)).toEqual({ ok: true, wire: { effort: "xhigh" } });
 	});

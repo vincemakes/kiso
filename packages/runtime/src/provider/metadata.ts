@@ -323,9 +323,12 @@ const ENTRIES: readonly ModelMetadataEntry[] = [
 	// first-party rate must never be shown as if it were the bill) and
 	// offers the levels the vendor's own CLI presets list, pinned to a
 	// commit. The first-party row is listed FIRST on purpose: an
-	// endpoint-less lookup (the run-side resolver passes none) resolves to
-	// it, and its levels are a superset of the subscription row's, so the
-	// run can never refuse a level the CLI accepted for either profile.
+	// endpoint-less lookup (a caller with no baseUrl — a direct-write
+	// profile, the faux path) resolves to it, and its levels are a
+	// superset of the subscription row's. The run-side resolver passes
+	// the binding's endpoint (the second OR-1 review), so this ordering
+	// is the endpoint-less FALLBACK, not the guard that keeps a
+	// subscription run from carrying a level its backend lacks.
 	openaiRow("gpt-5.5", "medium", { inputPerM: 5, outputPerM: 30, cacheReadPerM: 0.5 }, "https://developers.openai.com/api/docs/models/gpt-5.5"),
 	openaiRow("gpt-5.4", "none", { inputPerM: 2.5, outputPerM: 15, cacheReadPerM: 0.25 }, "https://developers.openai.com/api/docs/models/gpt-5.4"),
 	chatgptRow("gpt-5.5"),

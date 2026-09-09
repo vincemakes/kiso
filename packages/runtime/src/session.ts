@@ -537,14 +537,22 @@ export class AgentSession {
 		});
 		let summary: string;
 		let usage: import("./usage/canonical.js").RawUsage | null = null;
+		// OR-1 (the second review): the summary is priced by the binding that
+		// MADE the request. A /model switch during this call — the session's
+		// longest single request — moves #model/#baseUrl/#provider under it;
+		// reading them after the await priced a subscription summary at the
+		// first-party rate. ONE snapshot serves the request and the ledger
+		// line, the PH-F8 law (adapter, model, provider move together)
+		// applied to the one off-loop call.
+		const binding = { adapter: this.#adapter, model: this.#model, baseUrl: this.#baseUrl, provider: this.#provider };
 		if (options.drop === true) {
 			// E6 — the crux drop arm: mechanical, no model call, the fixed
 			// placeholder replaces the covered range (experiment-only).
 			summary = DROP_PLACEHOLDER;
 		} else {
 			const call = await summarizeConversation({
-				adapter: this.#adapter,
-				model: this.#model,
+				adapter: binding.adapter,
+				model: binding.model,
 				// E6 (a): ONE serialized user message — the DSML bug's
 				// raw-message array is structurally dead on this path.
 				messages: [{ role: "user", content: serializedInput }],
@@ -577,7 +585,7 @@ export class AgentSession {
 		// a degraded ledger costs one stderr line, never the summary.
 		if (usage !== null) {
 			try {
-				const canonical = canonicalizeUsageForModel(this.#model, this.#baseUrl, this.#provider ?? "adapter", usage);
+				const canonical = canonicalizeUsageForModel(binding.model, binding.baseUrl, binding.provider ?? "adapter", usage);
 				const line = JSON.stringify({ kind: "summary", canonical }) + "\n";
 				mkdirSync(join(this.#store.root, "traces"), { recursive: true });
 				appendFileSync(join(this.#store.root, "traces", `${this.id}.jsonl`), line);

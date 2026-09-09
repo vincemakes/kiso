@@ -44,7 +44,7 @@ describe("PH-F15 — the window follows the live model", () => {
 		expect(contextWindowTokens()).toBe(1_050_000);
 		setAgentModel("gpt-5.5", "https://chatgpt.com/backend-api");
 		expect(contextWindowTokens()).toBe(272_000);
-		// endpoint unknown: the id's first row (the first-party superset), as the run-side resolver sees it
+		// endpoint unknown (a profile with no baseUrl): the id's first row, the first-party superset
 		setAgentModel("gpt-5.5");
 		expect(contextWindowTokens()).toBe(1_050_000);
 	});

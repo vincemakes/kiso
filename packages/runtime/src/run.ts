@@ -155,7 +155,12 @@ export class Run implements AsyncIterable<Event> {
 					// XP-1: native-only resolution — an unsupported recorded
 					// setting REFUSES the run with the reason (no silent
 					// downgrade); default/default adds nothing (byte anchor).
-					...(this.#config.reasoning !== undefined ? resolveReasoningOrThrow(this.#config.model, this.#config.reasoning) : {}),
+					// OR-1: resolved against the binding's ENDPOINT — the same
+					// model id offers different levels at the first-party API
+					// and at the subscription backend, and the CLI's /model
+					// pre-check is not the runtime's guarantee (a direct
+					// setModelBinding or a recorded profile reaches here without it).
+					...(this.#config.reasoning !== undefined ? resolveReasoningOrThrow(this.#config.model, this.#config.reasoning, this.#config.baseUrl) : {}),
 					// E1: the composed approval chain — the extensions'
 					// policies composed into ONE gate (deny > allow > ask).
 					...(approvalChain !== undefined ? { approvalPolicy: approvalChain } : {}),
@@ -863,8 +868,8 @@ export class Run implements AsyncIterable<Event> {
 
 /** XP-1: the run-side half of "no silent downgrade" — a setting the
  *  matrix refuses becomes an actionable failure, never a quiet default. */
-function resolveReasoningOrThrow(model: string, setting: import("./provider/metadata.js").ReasoningSetting): { reasoning?: WireReasoning } {
-	const r = resolveReasoning(model, setting);
+function resolveReasoningOrThrow(model: string, setting: import("./provider/metadata.js").ReasoningSetting, endpoint?: string): { reasoning?: WireReasoning } {
+	const r = resolveReasoning(model, setting, endpoint);
 	if (!r.ok) throw new Error(`the session's recorded reasoning setting cannot run here: ${r.reason}`);
 	return Object.keys(r.wire).length > 0 ? { reasoning: r.wire } : {};
 }
