@@ -25,6 +25,7 @@
  */
 
 import { appendFileSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { newSessionId } from "./session-id.js";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
@@ -73,6 +74,20 @@ export { applyProjectMerges } from "./trust-ui.js";
  *  exits, so the turn runs to its terminal and nothing else is read.
  *  Built on an EMPTY readline so every other member keeps the pipe
  *  path's exact semantics (auto-denied asks, no chips, no pops). */
+/** OR-4: hand a URL to the platform's opener, detached, and never let a
+ *  missing or failing opener touch the sign-in — the printed URL is the
+ *  path that always works. macOS `open`, Linux `xdg-open`; elsewhere the
+ *  URL stays printed (Windows is unsupported by the CLI as a whole). */
+function openInBrowser(url: string): void {
+	const opener = process.platform === "darwin" ? "open" : process.platform === "linux" ? "xdg-open" : null;
+	if (opener === null) return;
+	try {
+		spawn(opener, [url], { detached: true, stdio: "ignore" }).unref();
+	} catch {
+		// the URL is on screen; opening it is the person's fallback
+	}
+}
+
 /** OR-3: the commands that own their own stdin reader (a hidden key prompt,
  *  an OAuth paste prompt) or read nothing at all — never the editor. */
 const CREDENTIAL_COMMANDS: ReadonlySet<string> = new Set(["login", "logout", "auth"]);
@@ -1235,6 +1250,9 @@ async function main(): Promise<void> {
 						const cred = await chatgptFlow.login({
 							notify: (line) => process.stdout.write(`${line}\n`),
 							prompt: (q) => new Promise<string>((resolve) => rl.question(q, resolve)),
+							// OR-4: a person at a terminal gets the browser opened for
+							// them; a pipe, a test rig or KISO_NO_BROWSER=1 gets the URL only.
+							...(process.stdout.isTTY === true && process.env.KISO_NO_BROWSER === undefined ? { open: openInBrowser } : {}),
 							...(cbPort !== undefined ? { callback: { host: process.env.KISO_OAUTH_CALLBACK_HOST ?? "127.0.0.1", port: cbPort } } : {}),
 							...(process.env.KISO_OAUTH_TOKEN_URL !== undefined ? { tokenUrl: process.env.KISO_OAUTH_TOKEN_URL } : {}),
 						});

@@ -14,6 +14,11 @@ export interface LoginInteraction {
 	/** Ask the person for a line (the pasted redirect URL or code when the
 	 *  local callback cannot be reached); resolves "" when unavailable. */
 	readonly prompt: (question: string) => Promise<string>;
+	/** OR-4: open the authorize URL in the person's browser, when there is
+	 *  one. OPTIONAL — the CLI passes it on a TTY; tests and pipes never do,
+	 *  so nothing opens a browser under a test rig. The URL is always
+	 *  printed too: this is a convenience, never the only path. */
+	readonly open?: (url: string) => void;
 	readonly signal?: AbortSignal;
 	/** Test seam: the callback listener's host/port (defaults 127.0.0.1:1455). */
 	readonly callback?: { readonly host: string; readonly port: number };

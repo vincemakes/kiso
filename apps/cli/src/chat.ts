@@ -844,6 +844,17 @@ export async function consumeRun(
 					// is a sentence addressed to a human; it needs no edge.
 					body.notice('answer truncated at max_tokens — say "continue" to finish');
 				}
+				// OR-5 (the ChatGPT real leg, 2026-09-09): a run that ended in an
+				// ERROR terminal printed nothing but the recap — the vendor's 400
+				// lived in the durable log alone and the turn read as "took 1s".
+				// A failure that fires silently is indistinguishable from a
+				// crash, the one thing this product must never be: the mapped
+				// error is named here, before the recap, code and status and the
+				// provider's own words.
+				if (ev.outcome.kind === "error") {
+					const e = ev.outcome.error as { code: string; message: string; retryable: boolean; status?: number };
+					body.notice(`run failed — ${e.code}${e.status !== undefined ? ` ${e.status}` : ""}${e.retryable ? " (retryable)" : ""}: ${escapeTerminal(e.message)}`);
+				}
 				bodyLog(
 					renderRecap({
 						seconds: Math.round((Date.now() - turnStart) / 1000),

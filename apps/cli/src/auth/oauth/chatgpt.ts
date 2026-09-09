@@ -181,6 +181,12 @@ export const chatgptFlow: OAuthFlow = {
 		const flow = createAuthorizationFlow(redirectUri);
 		const server = await startCallbackServer(flow.state, cb.host, cb.port);
 		interaction.notify(`open this URL to sign in:\n  ${flow.url}`);
+		// OR-4 (owner, 2026-09-09): the URL is opened for the person when the
+		// caller can — the printed line stays the fallback and the paste path.
+		if (interaction.open !== undefined) {
+			interaction.open(flow.url);
+			interaction.notify("(opened in your browser — if nothing opened, copy the URL above)");
+		}
 		let code: string | null = null;
 		if (server !== null) {
 			interaction.notify(`waiting for the browser to come back to ${redirectUri} … (or paste the redirected URL here)`);

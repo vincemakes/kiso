@@ -127,6 +127,10 @@ describe("the whole flow against local doubles", () => {
 	it("login: the browser comes back with the code, the code is exchanged with the PKCE verifier, the credential carries the account id", async () => {
 		const port = await freePort();
 		const lines: string[] = [];
+		// OR-4 (owner, 2026-09-09): the flow hands the authorize URL to the
+		// interaction's `open` — the CLI opens the browser on a TTY; here the
+		// stub records it, and the URL must be the one the notify line printed.
+		const opened: string[] = [];
 		const cred = await chatgptFlow.login({
 			notify: (l) => {
 				lines.push(l);
@@ -136,11 +140,15 @@ describe("the whole flow against local doubles", () => {
 					setTimeout(() => void fetch(`http://127.0.0.1:${port}/auth/callback?code=from-browser&state=${state}`), 50);
 				}
 			},
+			open: (url) => opened.push(url),
 			prompt: () => new Promise(() => {}), // nobody pastes
 			callback: { host: "127.0.0.1", port },
 			tokenUrl: tokens.url,
 		});
 		expect(cred.type).toBe("oauth");
+		const printed = /open this URL to sign in:\n\s+(\S+)/.exec(lines.join("\n"))?.[1];
+		expect(opened).toEqual([printed]); // opened exactly once, with the printed URL
+		expect(lines.some((l) => l.includes("opened in your browser"))).toBe(true);
 		expect(cred.accountId).toBe("acct-123");
 		expect(cred.refresh).toBe("refresh-1");
 		expect(cred.expires).toBeGreaterThan(Date.now() + 3500_000);

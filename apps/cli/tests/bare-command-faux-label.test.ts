@@ -67,6 +67,12 @@ describe("E4-1: the bare-command faux mislabel", () => {
 			// provider's failure. Pre-patch (red): failOnFauxExhaustion wraps
 			// the message as "[faux mode] the scripted model failed: <error>".
 			expect(out).not.toContain("[faux mode]");
+			// OR-5 (the ChatGPT real leg, 2026-09-09): a run that ends in an
+			// ERROR terminal must SAY so on screen — before this, the failed
+			// turn printed only the recap ("took 1s") and the vendor's error
+			// lived in the durable log alone. The notice names the mapped
+			// code and carries the provider's own words.
+			expect(out).toMatch(/run failed — [a-z_0-9]+[^\n]*(request failed|Connection error|fetch failed)/i);
 		},
 		60_000,
 	);
