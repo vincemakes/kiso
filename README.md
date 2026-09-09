@@ -3,7 +3,7 @@
 ```
 █ █ ▀█▀ █▀▀ █▀█
 █▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.31.0
+▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.31.1
 ```
 
 kiso is the Japanese word for foundation. A Chinese edition of this page:
