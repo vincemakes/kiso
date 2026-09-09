@@ -31,6 +31,10 @@ const PACKAGES = [
 	"@vincemakes/kiso-task-ext",
 	// KC3.5: the 14th package — the ask extension (built-in #4).
 	"@vincemakes/kiso-ask-ext",
+	// rel-031: the two TUI packages were published by every release ritual
+	// but never listed here (carried from the Responses adapter review).
+	"@vincemakes/kiso-tui-cells",
+	"@vincemakes/kiso-tui",
 ];
 
 let failed = false;

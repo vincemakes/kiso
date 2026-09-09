@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-provider-openai-responses",
-	"version": "0.30.0",
+	"version": "0.31.0",
 	"description": "kiso OpenAI Responses adapter — the first-party Responses API and the ChatGPT subscription backend, one adapter, plain fetch + SSE.",
 	"type": "module",
 	"license": "MIT",
@@ -21,7 +21,7 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@vincemakes/kiso-core": "0.30.0"
+		"@vincemakes/kiso-core": "0.31.0"
 	},
 	"devDependencies": {
 		"@types/node": "^26.1.2",
