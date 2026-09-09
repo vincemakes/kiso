@@ -136,6 +136,10 @@ function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
 			/* readline has no ctrl+o binding — ignored (W15 rides the
 			 * editor path only). */
 		},
+		onThink() {
+			/* §2.3: same as ctrl+o above — readline has no binding, and a
+			 * dock-less session has no committed rows to reprint. */
+		},
 		onCopy() {
 			/* readline has no ctrl+x binding — ignored. `/copy` still
 			 * works here: it is a typed command, not a key. */
@@ -221,6 +225,9 @@ function editorInput(editor: Editor): LineInput {
 		},
 		onExpand(cb) {
 			editor.onExpand(cb);
+		},
+		onThink(cb) {
+			editor.onThink(cb);
 		},
 		onCopy(cb) {
 			editor.onCopy(cb);

@@ -337,6 +337,7 @@ export class Editor {
 	// expanded block). Mirrors the escape list: multiple listeners can
 	// coexist; the editor never interprets the key itself.
 	#expandCbs: (() => void)[] = [];
+	#thinkCbs: (() => void)[] = [];
 	/** E1 §3 — ctrl+x. Same shape as the expand key: the editor owns the
 	 *  KEY, the CLI owns what it means. */
 	#copyCbs: (() => void)[] = [];
@@ -479,6 +480,13 @@ export class Editor {
 
 	onExpand(cb: () => void): void {
 		this.#expandCbs.push(cb);
+	}
+
+	/** §2.3: the thinking key (ctrl+t) — the chain-level action, wired
+	 *  exactly like ctrl+o because it is the same kind of thing: a switch
+	 *  the compositor throws, never an interpretation the editor makes. */
+	onThink(cb: () => void): void {
+		this.#thinkCbs.push(cb);
 	}
 
 	/** KC2 §2: the redirect chain — the gesture hands the buffer's text
@@ -1349,6 +1357,17 @@ export class Editor {
 				// again; §7.1 is why kiso's form of it appends rather than
 				// toggling in place.
 				for (const cb of [...this.#expandCbs]) cb();
+				i += 1;
+			} else if (c === "\x14") {
+				// §2.3 — ctrl+t folds the committed thinking blocks, and
+				// folds them back. `\x14` was unbound across the tree
+				// (checked before the round), and it is the key the
+				// reference implementation uses for this same gesture, so a
+				// reader arriving from it is not retrained.
+				//
+				// Forwarded, not interpreted: the switch is the
+				// compositor's, exactly as ctrl+o's is.
+				for (const cb of [...this.#thinkCbs]) cb();
 				i += 1;
 			} else if (c === "\x18" && this.#composerIdle()) {
 				// E1 §3 — ctrl+x copies the last answer. `\x18` was unbound

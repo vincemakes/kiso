@@ -210,6 +210,10 @@ export interface LineInput {
 	/** W15: the expand key (ctrl+o) — the chain-level action, never the
 	 *  editor's own interpretation. */
 	onExpand(cb: () => void): void;
+	/** §2.3: the thinking key (ctrl+t) — the same chain-level shape as
+	 *  onExpand. Optional: the readline input has no such key, and a
+	 *  dock-less session has nothing to reprint. */
+	onThink?(cb: () => void): void;
 	/** E1 §3: the copy key (ctrl+x) — the chain-level action, never the
 	 *  composer's own. The readline input ignores it; `/copy` is the
 	 *  route that works everywhere. */

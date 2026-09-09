@@ -228,10 +228,35 @@ export function escapeTerminal(text: string): string {
  * strategy is presentation-independent.
  */
 export function foldThinking(block: string): string {
+	// the PIPE's line: no room limit, so the row path below reproduces
+	// today's bytes exactly and this stays the one source of the shape.
+	return `${foldThinkingRow(block, Number.POSITIVE_INFINITY)}\n`;
+}
+
+/** §2.3 — the same fold, as a ROW that fits `room` columns.
+ *
+ *  A row must measure ≤ W (invariant ①), and the pipe's line does not:
+ *  `…` + 100 characters + " (N chars · /think)" is about 122 columns, so
+ *  on an 80-column terminal the frame's cut takes the SUFFIX — which is
+ *  the affordance, the one part of a folded block that says how to read
+ *  the rest of it. Cutting from the right removes exactly the thing the
+ *  fold exists to leave behind.
+ *
+ *  So the suffix is reserved FIRST and the head takes what is left. The
+ *  vocabulary is unchanged — the leading `…`, the character count, the
+ *  `/think` route — and with unlimited room the result is byte-for-byte
+ *  the line the pipe has always written, which is what keeps the two
+ *  renderings one shape rather than two. */
+export function foldThinkingRow(block: string, room: number): string {
 	const p = palette();
 	const trimmed = escapeTerminal(block.trim());
 	const truncated = trimmed.length > 100;
-	return `${p.dim}…${trimmed.slice(0, 100)}${truncated ? ` (${block.length} chars · /think)` : ""}${p.reset}\n`;
+	const suffix = truncated ? ` (${block.length} chars · /think)` : "";
+	const head = Number.isFinite(room)
+		? // the leading … costs one column, the suffix costs its own width
+			widthCut(trimmed.slice(0, 100), Math.max(1, room - 1 - displayWidth(suffix)))
+		: trimmed.slice(0, 100);
+	return `${p.dim}…${head}${suffix}${p.reset}`;
 }
 
 /** v2b — the [result] echo truncates at 160 chars + a /last hint. */

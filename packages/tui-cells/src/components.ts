@@ -37,6 +37,7 @@ import {
 	cutLine,
 	escapeTerminal,
 	foldThinking,
+	foldThinkingRow,
 	foldResult,
 	renderTerminalGap,
 	renderToolSummary,
@@ -211,7 +212,7 @@ export class Container implements Component {
 
 export type BodyCell =
 	| { kind: "user"; text: string; done: true; turn: number }
-	| { kind: "thinking"; text: string; done: boolean; turn: number }
+	| { kind: "thinking"; text: string; done: boolean; turn: number; folded?: boolean }
 	| {
 			kind: "tool";
 			name: string;
@@ -498,11 +499,21 @@ export function pendingQueueRows(lines: readonly string[], W: number): string[] 
  * the model's line width, not the reader's.
  */
 class ThinkingBlock implements Component {
-	constructor(private readonly cell: { text: string; done: boolean }) {}
+	constructor(private readonly cell: { text: string; done: boolean; folded?: boolean }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
 		const text = escapeTerminal(this.cell.text).trim();
 		if (text === "") return [];
+		// §2.3 — ctrl+t folded this block. The row is the pipe's own fold,
+		// fitted: `foldThinkingRow` is the single source of the shape and
+		// with unlimited room it IS `foldThinking`, so thinking has two
+		// renderings in the product and not three. It is width-aware here
+		// because a row must measure ≤ W and the pipe's line does not —
+		// cutting it from the right would take the `/think` suffix, which
+		// is the one part of a folded block that says how to read the rest.
+		// It keeps the block's own indent, so a folded block sits in the
+		// column an unfolded one does (DC-47).
+		if (this.cell.folded) return [`${THINK_COL}${foldThinkingRow(this.cell.text, Math.max(1, W - THINK_COL.length))}`];
 		// DC-47 — THINKING GOES ONE LEVEL DEEPER THAN PROSE, and the
 		// reason is a law rather than a taste.
 		//

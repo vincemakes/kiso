@@ -323,6 +323,9 @@ export class Body {
 	#lastTool: { name: string; input: Record<string, unknown>; result: { content: string; isError: boolean } } | null = null;
 	#pendingCalls = new Map<string, { name: string; input: Record<string, unknown>; result: { content: string; isError: boolean } }>();
 	#pipeBuf = ""; // the passthrough's thinking buffer
+	// §2.3 — the ctrl+t switch. A block that completes AFTER the press
+	// inherits it, so the session stays one way up rather than mixing.
+	#thinkingFolded = false;
 	/** TUI2-MD ⑤ — the markdown scanner of the message currently
 	 *  streaming, and the cell index its first block landed at. Null
 	 *  between messages: the scanner's life is one assistant message. */
@@ -510,6 +513,9 @@ export class Body {
 		const last = this.#cells[this.#cells.length - 1];
 		if (last !== undefined && last.kind === "thinking" && !last.done) {
 			last.done = true;
+			// §2.3: a block that SETTLES after the switch was thrown is
+			// folded like the rest — the session stays one way up.
+			last.folded = this.#thinkingFolded;
 			this.#lastThinking = last.text;
 			if (!this.#isActive()) this.#write(foldThinking(last.text));
 			this.#mark();
@@ -1497,6 +1503,26 @@ export class Body {
 	/** DC-50 — the switch itself, for the CLI's affordance text. */
 	expandedAll(): boolean {
 		return this.#expandedAll;
+	}
+
+	/** §2.3 — ctrl+t: the committed thinking blocks fold, and fold back.
+	 *
+	 *  DC-50's mechanism exactly: one boolean, then the session is printed
+	 *  again, so the blocks ALREADY on screen obey the switch rather than
+	 *  only the next ones. Nothing durable moves — the events are
+	 *  untouched and `/think` still reaches the last block whole.
+	 *
+	 *  COMMITTED blocks only. The live `thinking…` placeholder belongs to
+	 *  the live region, not to a cell, and an OPEN thinking cell is text
+	 *  still arriving; a global "quiet down" has no business reaching into
+	 *  either, which is the same exemption `toggleExpanded` states for a
+	 *  card that is still growing. */
+	toggleThinking(): void {
+		this.#thinkingFolded = !this.#thinkingFolded;
+		for (const cell of this.#cells) {
+			if (cell.kind === "thinking" && cell.done) cell.folded = this.#thinkingFolded;
+		}
+		this.#reprint();
 	}
 
 	/** W18: the status row's right-aligned hint is part of the status

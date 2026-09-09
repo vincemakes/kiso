@@ -101,6 +101,11 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 			"/compact    summarize the older conversation to free context",
 			"/clear      start a fresh conversation (the old session stays resumable)",
 			"/resume     switch to another session; /resume <id> goes directly",
+			// §2.3 — a DECLARED ADDITION in the same class: the switch is
+			// beside the shell gestures because that is where a reader
+			// looks for a key, and a gesture the sheet does not name is a
+			// gesture nobody uses.
+			"ctrl+t      fold the thinking blocks, and fold them back",
 			// §2.2 — three DECLARED ADDITIONS in the same class as /clear,
 			// /resume, /rewrap and /copy. `!` is not a slash command, but it
 			// is what a reader is looking for when they look here, and a
@@ -120,7 +125,7 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 	});
 
 	it("the last row still carries its own newline — two rows from one bodyLog call", () => {
-		expect(helpRows()).toHaveLength(15); // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows
+		expect(helpRows()).toHaveLength(16); // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's ctrl+t
 		expect(helpRows().filter((r) => r.includes("\n"))).toHaveLength(1);
 	});
 

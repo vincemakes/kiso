@@ -293,6 +293,22 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.input.prompt();
 		return;
 	}
+	if (trimmed === "\x14think") {
+		// §2.3 — ctrl+t folds the committed thinking blocks, and folds them
+		// back. DC-50's mechanism, not a second one: one boolean, then the
+		// session is reprinted, so the blocks already on screen obey the
+		// switch rather than only the next ones.
+		//
+		// The folded row is `foldThinking`'s, which is what the PIPE writes
+		// — so thinking has two renderings in the product and not three,
+		// and the pipe's byte-identity gate is this row's gate too.
+		//
+		// The live `thinking…` placeholder is NOT touched: it belongs to
+		// the live region, and this switch is about committed blocks.
+		body.toggleThinking();
+		ctx.input.prompt();
+		return;
+	}
 	if (trimmed === "\x18copy" || trimmed === "/copy") {
 		// E1 §3 — the last answer onto the clipboard, as RAW MARKDOWN.
 		//

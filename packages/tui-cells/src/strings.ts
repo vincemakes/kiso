@@ -486,6 +486,9 @@ export function helpRows(): string[] {
 		// §2.2: the two shell gestures and their one escape. They sit
 		// beside the slash commands because that is what a reader is
 		// looking for when they look here, even though `!` is not one.
+		// §2.3: the switch belongs beside ctrl+o's job, and a gesture the
+		// sheet does not name is a gesture nobody uses (DC-30, DC-36).
+		["ctrl+t", "fold the thinking blocks, and fold them back"],
 		["!<cmd>", "run a shell command and send it with its output as your turn"],
 		["!!<cmd>", "run one and show it here only — the model never sees it"],
 		["\\!", "send a line that really starts with ! (the only escape)"],
