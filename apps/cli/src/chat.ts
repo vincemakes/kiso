@@ -22,7 +22,7 @@ import {
 	type RenderInput,
 	type RunUsage,
 } from "@vincemakes/kiso-tui";
-import { deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
+import { askView, deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
 import { canonicalizeUsageForModel, requestBudget } from "@vincemakes/kiso-runtime/internal";
@@ -593,6 +593,41 @@ function toRenderInput(ev: import("@vincemakes/kiso-core").Event): RenderInput |
  * echo is UI, the chip is the record; the momentary double-render is
  * the design's explicit point).
  */
+/** LT-2b — the turn checkpoint (kiso-doc/kiso-lt1-mini-spec-2026-09-09.md,
+ *  part two). R3e stands: no hard turn limit on an interactive session. What
+ *  a long run gets instead is a QUESTION every CHECKPOINT_TURNS model turns —
+ *  the run is paused between two model turns (the generator is simply not
+ *  pulled while the panel is up; the kernel does nothing meanwhile) and the
+ *  human answers. "Keep going" resumes it, the next question one checkpoint
+ *  later; "Stop here" aborts the run — `aborted by user`, resumable, never
+ *  silent. A decline (esc) is "keep going": the run was already running, and
+ *  esc on a panel is the panel's decline, not the run's abort. Headless
+ *  entries never see it: the panel needs the dock, and a pipe, `-p` or a
+ *  task file has none. 50 is named here; a finding moves it, never a stray
+ *  edit. */
+export const CHECKPOINT_TURNS = 50;
+
+async function checkpointAsk(input: LineInput, turns: number): Promise<boolean> {
+	const verdict = await askPanel(
+		input,
+		askView({
+			questions: [
+				{
+					question: `${turns} turns and still working — keep going?`,
+					header: "checkpoint",
+					options: [
+						{ label: "Keep going", description: `the next question at ${turns + CHECKPOINT_TURNS}` },
+						{ label: "Stop here", description: "the run ends as aborted by you; kiso resume continues it later" },
+					],
+				},
+			],
+		}),
+	);
+	if (verdict.action !== "answers" || !("answers" in verdict.result)) return true; // declined: nothing changes
+	const first = verdict.result.answers[0];
+	return !(first !== undefined && "choice" in first && first.choice === "Stop here");
+}
+
 export async function consumeRun(
 	session: AgentSession,
 	run: Run,
@@ -630,8 +665,15 @@ export async function consumeRun(
 		tailers.delete(callId);
 	};
 	try {
+	let modelTurns = 0;
 	for await (const ev of run) {
 		last = ev;
+		// LT-2b: a model turn ends with its stop; every CHECKPOINT_TURNS of them
+		// the human is asked before the run is pulled any further
+		if (ev.type === "stop" && dock.active) {
+			modelTurns += 1;
+			if (modelTurns % CHECKPOINT_TURNS === 0 && !(await checkpointAsk(input, modelTurns))) run.abort();
+		}
 		if (ev.type !== "thinking") {
 			if (thinkingSince !== null) {
 				thoughtSeconds += (Date.now() - thinkingSince) / 1000;
