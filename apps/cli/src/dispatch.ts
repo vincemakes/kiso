@@ -4,13 +4,13 @@
  * the context (the chain, the run state, the prompt arming).
  */
 
-import { contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modePickView, modelPickView, palette, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
+import { contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modePickView, modelPickView, palette, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
 import { buildAdapter, lookupModelMetadata, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
-import { agentModel, body, bodyLog, configModels, dock, lastBinding, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
+import { agentModel, body, bodyLog, configModels, dock, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
 import { authForProfile, directWriteProfile, profileAvailable, unavailableReason, type ModelProfile } from "./config.js";
 
 /** The picker's CLI half (owner 2026-09-08): a profile's LEGAL effort levels
@@ -23,41 +23,6 @@ function effortNote(p: ModelProfile): string {
 	const effort = reasoning?.effort ?? null;
 	if (effort === null) return "effort: unknown";
 	return `effort: ${effort.levels.map((l) => (l === effort.default ? `[${l}]` : l)).join(" · ")}`;
-}
-
-/** OR-7 — the pick panel's second axis, as DATA. `effortNote` above stays
- *  the PRINTED list's string (a machine-readable surface whose bytes do
- *  not move); the panel gets the levels structured so its cursor can walk
- *  them, and so the bracket can mean "the cursor is here" rather than
- *  "the registry default".
- *
- *  Where the cursor starts: the session's CURRENT effort when this model
- *  has that level, else the model's default, else nowhere — a row whose
- *  registry default is null (the model page states none) marks nothing,
- *  and enter on it applies the profile alone. Nothing is invented. */
-function effortAxis(p: ModelProfile): Pick<PickOption, "levels" | "level" | "disabled" | "levelNote"> {
-	const effort = lookupModelMetadata(p.model, p.baseUrl)?.capabilities.reasoning?.effort ?? null;
-	if (effort === null) return {};
-	const levels = effort.levels;
-	const carried = lastBinding()?.reasoning?.effort;
-	const carriedIdx = carried === undefined || carried === "default" ? -1 : levels.indexOf(carried as (typeof levels)[number]);
-	const defaultIdx = effort.default === null ? -1 : levels.indexOf(effort.default);
-	const level = carriedIdx >= 0 ? carriedIdx : defaultIdx;
-	// the forbidden set is per THINKING mode, and the panel applies its
-	// pick as thinking "default" — the same setting `/model <p> <e>`
-	// builds — so only pairs forbidden at that mode are dimmed here.
-	const forbidden = lookupModelMetadata(p.model, p.baseUrl)?.capabilities.reasoning?.forbidden ?? [];
-	const disabled = forbidden.filter((f) => f.thinking === "default").map((f) => levels.indexOf(f.effort as (typeof levels)[number])).filter((i) => i >= 0);
-	return {
-		levels,
-		...(level >= 0 ? { level } : {}),
-		...(disabled.length > 0 ? { disabled } : {}),
-		// the sentence the coordination note asked for: said only when the
-		// cursor could NOT land where the previous selection asked.
-		...(carried !== undefined && carried !== "default" && carriedIdx < 0 && defaultIdx >= 0
-			? { levelNote: `effort ${carried} \u2192 ${levels[defaultIdx]}: the nearest this model supports` }
-			: {}),
-	};
 }
 
 /** What signs a profile in, for the listing: the env var's name, `oauth`
@@ -313,8 +278,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				// on one. `/mode <name>` is untouched.
 				if (dock.active && ctx.input.panelAsk !== undefined) {
 					const current = getMode();
-					let pickedLevel: number | undefined;
-				const picked = await new Promise<PickResult | null>((resolve) => {
+					const picked = await new Promise<PickResult | null>((resolve) => {
 						ctx.input.panelAsk!(
 							modePickView(
 								{
@@ -324,10 +288,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 								// DC-12 (design §4): a panel WAITING ON A HUMAN says ❯.
 								ctx.isRunning() ? "❯ run paused" : `▸ ${current}`,
 							),
-							(v) => {
-							if (v.action === "picked") pickedLevel = v.level;
-							resolve(v.action === "picked" ? v.result : null);
-						},
+							(v) => resolve(v.action === "picked" ? v.result : null),
 						);
 					});
 					ctx.paintIdle();
@@ -386,11 +347,8 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 								header: `model — current: ${agentModel}`,
 								options: names.map((name) => {
 									const profile = configModels[name]!;
-									// the note keeps what tells two rows apart; the levels
-									// left it for the axis below (they were being cut off
-									// the end of the note column at 100 columns).
-									const marks = [`profile: ${name}`, ...(profileAvailable(profile) ? [] : ["unavailable"]), ...(profile.model === agentModel ? ["current"] : [])];
-									return { label: `${profile.kind}/${profile.model}`, note: marks.join(" · "), ...effortAxis(profile) };
+									const marks = [`profile: ${name}`, ...(profileAvailable(profile) ? [] : ["unavailable"]), ...(profile.model === agentModel ? ["current"] : []), effortNote(profile)];
+									return { label: `${profile.kind}/${profile.model}`, note: marks.join(" · ") };
 								}),
 								// PH-1a (finding PH-F4): the example must be a syntax
 								// directWriteProfile actually ACCEPTS — the old
@@ -415,15 +373,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					ctx.input.prompt();
 					return; // esc — nothing switched, nothing said
 				}
-				if ("index" in picked) {
-					// OR-7: the panel hands back both axes and the command
-					// string is where they meet — everything below is the
-					// typed `/model <profile> <effort>` path, unchanged, so
-					// the refusal wording and the durable revision are its.
-					const name = names[picked.index]!;
-					const level = pickedLevel === undefined ? undefined : effortAxis(configModels[name]!).levels?.[pickedLevel];
-					arg = level === undefined ? name : `${name} ${level}`;
-				} else arg = picked.custom;
+				arg = "index" in picked ? names[picked.index]! : picked.custom;
 			}
 			if (arg === "") {
 				bodyLog(`model: ${agentModel}`);
