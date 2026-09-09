@@ -7,7 +7,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -146,28 +146,57 @@ describe("④ subagent: real child processes", () => {
 		fauxEnv({ KISO_HOME: home, KISO_FAUX_SCRIPT: script });
 		const ext = await createSubagentExtension();
 		const delegate = ext.tools!.find((t) => t.name === "delegate")!;
-		// The probe: count child sessions WITHOUT a terminal — in-flight
-		// children — and track the peak while the delegate runs.
+		// Two probes. The CAP is a cap on PROCESSES (runLimited → runProcess),
+		// so the cap assertion counts LIVE child processes (ps) — the metric
+		// the cap actually governs. The session-log view — child sessions
+		// WITHOUT a terminal — stays as the concurrency witness and as a
+		// diagnostic. SA-F1 (CI 34308267020, a docs-only commit; the same
+		// code green before and after): this view read a peak of 6. A child
+		// that exits WITHOUT a terminal stays "in flight" in this view until
+		// the parent gives up on it (extractChildResult's 2 s retry) and frees
+		// the slot, so a log peak above the cap can mean "children failed on
+		// this runner", not "the cap broke" — and the old assertion order
+		// (peak before completion) could not tell the two apart. Completion
+		// first, the process cap second, the log view last with its snapshot.
 		let running = true;
 		const probe = (async () => {
-			let peak = 0;
+			let logPeak = 0;
+			let psPeak = 0;
+			let snapshot: string[] = [];
+			let psSnapshot: string[] = [];
 			while (running) {
-				let inflight = 0;
-				for (const f of readdirSync(sessions).filter((f) => f.startsWith("sub-parent-") && f.endsWith(".jsonl"))) {
-					if (!readFileSync(join(sessions, f), "utf8").includes('"terminal"')) inflight += 1;
+				const files = readdirSync(sessions).filter((f) => f.startsWith("sub-parent-") && f.endsWith(".jsonl"));
+				const open = files.filter((f) => !readFileSync(join(sessions, f), "utf8").includes('"terminal"'));
+				if (open.length > logPeak) {
+					logPeak = open.length;
+					snapshot = open.map((f) => `${f} (${statSync(join(sessions, f)).size} bytes)`);
 				}
-				peak = Math.max(peak, inflight);
+				// Only OUR children: the delegate spawns from this very process, so
+				// the parent pid is ours. A bare command-line match over-counts —
+				// any shell whose command text mentions the pattern matches too.
+				const alive = execFileSync("ps", ["-eo", "pid=,ppid=,command="], { encoding: "utf8" })
+					.split("\n")
+					.filter((l) => l.includes("chat sub-parent-") && Number.parseInt(l.trim().split(/\s+/)[1] ?? "", 10) === process.pid);
+				if (alive.length > psPeak) {
+					psPeak = alive.length;
+					psSnapshot = alive.map((l) => l.trim().slice(0, 160));
+				}
 				await sleep(50);
 			}
-			return peak;
+			return { logPeak, psPeak, snapshot, psSnapshot };
 		})();
 		const tasks = Array.from({ length: 6 }, (_, i) => ({ role: "tester", task: `task ${i + 1}` }));
 		const r = (await delegate.execute({ tasks }, ctx)) as { content: string; isError: boolean };
 		running = false;
-		const peak = await probe;
-		expect(peak).toBeGreaterThanOrEqual(2); // genuinely concurrent
-		expect(peak).toBeLessThanOrEqual(4); // the cap held
-		expect(r.isError).toBe(false); // all six completed
+		const { logPeak, psPeak, snapshot, psSnapshot } = await probe;
+		// 1. every child completed — a failed child is a different finding than a broken cap
+		expect(r.isError).toBe(false);
+		expect(r.content.split("\n")[0]).toMatch(/^summary: \d+ tool calls · 1 role · 0 failed$/);
+		// 2. the cap, on the metric it governs
+		expect(psPeak, `live child processes at the peak:\n${psSnapshot.join("\n")}`).toBeLessThanOrEqual(4);
+		expect(psPeak, "live child processes at the peak").toBeGreaterThanOrEqual(2); // genuinely concurrent
+		// 3. the session-log view agrees once every child completed (a slot is held until its terminal is seen)
+		expect(logPeak, `child sessions without a terminal at the peak: ${snapshot.join(", ")}`).toBeLessThanOrEqual(4);
 	}, 120_000);
 
 	it("⑥ implementer: a diff lands and its worktree is KEPT; a no-change child's worktree is DELETED", async () => {
