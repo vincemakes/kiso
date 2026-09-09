@@ -9,3 +9,8 @@
 # true binaries, so the text gates skip them by this declaration rather
 # than by carrying a suffix rule of their own.
 bench/rd1/artifacts/*.tar.gz -text
+
+# The README's head and the share card (2026-09-09): rendered PNGs, tracked
+# so the README shows them from a fresh clone — true binaries, declared so
+# the whitespace / CJK / control-byte gates skip them by this row alone.
+assets/*.png -text
