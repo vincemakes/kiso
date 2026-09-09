@@ -21,6 +21,9 @@ function fauxEnv(extra: Record<string, string> = {}): void {
 	delete process.env.ANTHROPIC_API_KEY;
 	delete process.env.OPENAI_API_KEY;
 	delete process.env.KISO_SUBAGENT_DEPTH;
+	// SA-F2: every case starts from the extension's DEFAULT child timeout. A
+	// case that wants a short one sets it in `extra`; nothing inherits it.
+	delete process.env.KISO_SUBAGENT_TIMEOUT_MS;
 	Object.assign(process.env, {
 		KISO_SUBAGENT_BIN: CLI,
 		...(extra ?? {}),
@@ -144,6 +147,14 @@ describe("④ subagent: real child processes", () => {
 			"utf8",
 		);
 		fauxEnv({ KISO_HOME: home, KISO_FAUX_SCRIPT: script });
+		// SA-F2 (CI 34328173204, 34336662959, 34353537248 — three times on
+		// 2026-09-09, green on every re-run): the children "failed on the
+		// runner" because the ④ timeout case's KISO_SUBAGENT_TIMEOUT_MS=1500
+		// was still in process.env — fauxEnv merged and never cleared it —
+		// so six children each running `sleep 1` plus a node start-up had
+		// 1.5 s on a loaded 2-core runner. This probe measures the CAP; it
+		// must start from the extension's default timeout.
+		expect(process.env.KISO_SUBAGENT_TIMEOUT_MS, "a previous case's child timeout leaked into this one").toBeUndefined();
 		const ext = await createSubagentExtension();
 		const delegate = ext.tools!.find((t) => t.name === "delegate")!;
 		// Two probes. The CAP is a cap on PROCESSES (runLimited → runProcess),
