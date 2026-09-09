@@ -46,7 +46,7 @@ import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, getMode, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
 import { breakerExtension } from "./breaker.js";
 import { builtInLayer } from "./builtin.js";
-import { agentModel, atFiles, body, bodyLog, codingToolOptions, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput , lastBinding , acceptDrift, setAcceptDrift } from "./state.js";
+import { agentModel, atFiles, body, bodyLog, codingToolOptions, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, currentAgentExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput , lastBinding , acceptDrift, setAcceptDrift } from "./state.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
@@ -927,6 +927,16 @@ async function reloadAgent(
 	// it true: a failed reload is atomic, which is what load-then-swap
 	// promises. (Lead's review of 5bee644, observation 1.)
 	const oldCfg = {
+		// RL-F6: makeAgent publishes this BEFORE createAgent, and createAgent
+		// throws on a tool-name collision — a user extension exposing
+		// `read_file` is enough — so a failure CAN land after it. Left
+		// unrestored, the new array stands beside the old agent, whose config
+		// holds the old one by reference, and the don't-ask-again writer
+		// mutates whatever this is: a rule granted after a failed reload goes
+		// into an array nothing reads. RL-F3's family one level up, and the
+		// same symptom — the human grants a rule and is asked again on the
+		// very next identical call.
+		agentExtensions: currentAgentExtensions,
 		merged: mergedConfig,
 		models: configModels,
 		window: configuredWindow,
@@ -954,6 +964,7 @@ async function reloadAgent(
 		}
 		mergedTempPaths.push(...oldTemps);
 		setExtensionLists(oldBuiltIn, oldUser, oldProject, oldLoaded);
+		setCurrentAgentExtensions(oldCfg.agentExtensions);
 		setMergedConfig(oldCfg.merged);
 		setConfigModels(oldCfg.models);
 		setConfiguredWindow(oldCfg.window);

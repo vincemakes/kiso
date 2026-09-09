@@ -334,6 +334,60 @@ describe("§2.5 — /reload", () => {
 		expect(after, "and the rule granted before the upgrade SURVIVED it").toContain("read_file");
 	}, 360_000);
 
+	it("gate 10 — RL-F6: a reload that fails LATE leaves the rule writer pointed at the live chain", () => {
+		// The lead's review of 353a278 named this as a nit; it is reachable,
+		// which makes it a finding. makeAgent publishes currentAgentExtensions
+		// BEFORE createAgent, and createAgent throws on a tool-name collision
+		// — a user extension exposing `read_file` is enough. So a failed
+		// reload could leave the NEW array published beside the OLD agent,
+		// whose config holds the old array by reference.
+		//
+		// The damage is RL-F3's family one level up: the don't-ask-again
+		// writer mutates whatever currentAgentExtensions is, so a rule granted
+		// after a failed reload would go into an array nothing reads. The
+		// human clicks don't-ask-again and is asked again on the very next
+		// identical call — the same symptom, a different orphaned object.
+		//
+		// The extension must appear MID-SESSION: present at startup it would
+		// stop the session from starting at all, which is a different (and
+		// already correct) behaviour.
+		const call = (id: string) => ({
+			events: [{ type: "tool_call_end", callId: id, name: "shell", input: { command: "echo ruled" } }, { type: "stop", reason: "tool_use" }],
+		});
+		const said = (t: string) => ({ events: [{ type: "text_delta", text: t }, { type: "stop", reason: "end_turn" }] });
+		const { env, dirs } = isolatedEnv({
+			KISO_FAUX_SCRIPT: fauxScript([call("c1"), said("GRANTED-AFTER-FAILURE"), call("c2"), said("STILL-RULED"), ...spares(4)]),
+		});
+		const mod = 'export default { name: "collide", tools: [{ name: "read_file", description: "x", parameters: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: "x", isError: false }) }] };\n';
+		const b64 = Buffer.from(mod, "utf8").toString("base64");
+		const raw = ptyRun(["chat", "reload-latefail"], env as NodeJS.ProcessEnv, {
+			timeout: 130,
+			feeds: [
+				["/ commands · ↑ history", `!!printf %s ${b64} | base64 -d > ${join(dirs.extensions, "collide.mjs")}\r`],
+				["don't ask again", "2"], // the grant, on the panel the first turn raises
+			],
+			delays: [
+				[9, "/reload\r"], // fails: the collision is refused by the agent constructor
+				[16, "go\r"], // the turn that asks
+				[30, "again\r"], // must NOT ask — the rule has to have reached the LIVE chain
+				// esc before exit, so the scenario ENDS in both worlds. On the
+				// unfixed tree the second call raises a panel and `exit` would
+				// be typed into it, and the run would wait out its whole wall
+				// — a stall the harness reports instead of the assertion that
+				// names the defect. The esc dismisses a panel if there is one
+				// and costs nothing if there is not.
+				[40, "\x1b"],
+				[46, "exit\r"],
+			],
+		});
+		const out = strip(raw);
+		expect(out, "the reload FAILED, which is the precondition this gate needs").toContain("Tool already registered");
+		expect(out, "and it failed the honest way").toContain("still in force");
+		const afterGrant = out.slice(out.indexOf("don't ask again") + 24);
+		expect(afterGrant, "the rule reached the chain the OLD agent actually reads").not.toContain("don't ask again");
+		expect(out, "and the ruled turn ran").toContain("STILL-RULED");
+	}, 360_000);
+
 	it("gate 7 — a don't-ask-again rule granted AFTER a reload is live, and survives the next one", () => {
 		// The hazard the cache-busting loader creates. The W21 writer made a
 		// rule live by re-importing the plain file URL and mutating the
