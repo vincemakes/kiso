@@ -1,22 +1,18 @@
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg"><img src="assets/logo.svg" width="96" alt="kiso"></picture></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.png"><img src="assets/hero.png" width="100%" alt="kiso — the durable runtime for AI agents"></picture></p>
 
-```
-█ █ ▀█▀ █▀▀ █▀█
-█▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.31.1
-```
+<p align="center"><b>v0.31.1</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.zh.md">Chinese edition</a></p>
 
-kiso is the Japanese word for foundation. A Chinese edition of this page:
-[README.zh.md](README.zh.md).
+**kiso** (Japanese: foundation) is a durable runtime for AI agents. Every
+approval, tool result and event is written to disk as it happens, so an agent
+that is interrupted, crashes or is killed mid-task resumes exactly where it
+stopped, with the same approvals and the same results. The kernel is 2,200
+lines of TypeScript, event-sourced, and every design decision ships with an
+ADR that says why, and when to overturn it.
 
-**kiso is a coding agent that survives `kill -9`.** An interrupted execution
-gets a human verdict, approvals persist across processes, and every event is on
-disk — `kiso resume` continues the interrupted trajectory in a fresh process,
-exactly. **It is also the durable TypeScript framework that agent is built
-on**: a 2,200-line kernel, event-sourced sessions, durable approvals and
-crash-consistent tool execution with receipts, usable on its own in your own
-product. **Every design decision ships with an ADR that says why, and when to
-overturn it.**
+**kiso-code** is the coding agent built on it: the daily tool, and the proof.
+`kill -9` it in the middle of an edit, run `kiso resume`, and it continues the
+interrupted trajectory in a fresh process. Everything below starts there;
+[the SDK](#using-it) is where the runtime becomes yours.
 
 [Quick start](#quick-start) · [Sign in](#sign-in) · [Models and effort](#models-and-effort) · [Sessions](#sessions) · [Modes](#modes) · [Interactive mode](#interactive-mode) · [What is verified](#what-is-verified-and-what-is-not) · [Durable execution](#durable-execution-in-one-screen) · [What is delivered](#what-is-delivered) · [Extending kiso](#extending-kiso) · [The SDK](#using-it) · [Docs](#documentation)
 

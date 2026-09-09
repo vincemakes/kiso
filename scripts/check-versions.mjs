@@ -32,7 +32,12 @@ import { join } from "node:path";
 
 const ROOT = process.cwd();
 const PIN_KINDS = ["dependencies", "devDependencies", "peerDependencies"];
-const README_LINE = 6; // 1-based — the banner row of the ASCII logo block
+// The version banner: the FIRST line in the README's head that names a
+// `vX.Y.Z`. It was pinned to line 6 (the ASCII logo block's third row) until
+// the 2026-09-09 header redesign replaced the block with a hero image and a
+// meta line; a head with no version line at all is still a failure, never a
+// silent pass.
+const README_HEAD = 12; // lines searched, 1-based
 
 const read = (p) => JSON.parse(readFileSync(p, "utf8"));
 
@@ -90,18 +95,23 @@ for (const { rel, pkg } of manifests) {
 	}
 }
 
-// 3. both README banners name it
+// 3. both README banners name it — the first version line in the head
 for (const file of ["README.md", "README.zh.md"]) {
-	const lines = readFileSync(join(ROOT, file), "utf8").split("\n");
-	const line = lines[README_LINE - 1] ?? "";
-	const m = /v(\d+\.\d+\.\d+)/.exec(line);
-	if (m === null) {
-		problems.push(`${file}:${README_LINE}: no version banner found on the banner line`);
-	} else if (m[1] !== expected) {
-		problems.push(`${file}:${README_LINE}: banner says "v${m[1]}" — the lockstep is "${expected}"`);
+	const lines = readFileSync(join(ROOT, file), "utf8").split("\n").slice(0, README_HEAD);
+	let found = null;
+	for (const [i, line] of lines.entries()) {
+		const m = /\bv(\d+\.\d+\.\d+)\b/.exec(line);
+		if (m !== null) {
+			found = { at: i + 1, version: m[1] };
+			break;
+		}
+	}
+	if (found === null) {
+		problems.push(`${file}: no version banner in the first ${README_HEAD} lines`);
+	} else if (found.version !== expected) {
+		problems.push(`${file}:${found.at}: banner says "v${found.version}" — the lockstep is "${expected}"`);
 	}
 }
-
 if (problems.length > 0) {
 	console.error("[check-versions] FAIL:");
 	for (const p of problems) console.error(`  ${p}`);

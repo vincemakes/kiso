@@ -1,14 +1,10 @@
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg"><img src="assets/logo.svg" width="96" alt="kiso"></picture></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.png"><img src="assets/hero.png" width="100%" alt="kiso — the durable runtime for AI agents"></picture></p>
 
-```
-█ █ ▀█▀ █▀▀ █▀█
-█▀▄  █  ▀▀█ █ █   the coding agent that survives kill -9
-▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀   v0.31.1
-```
+<p align="center"><b>v0.31.1</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English edition</a></p>
 
-kiso 是日语「基础」。[English edition](README.md)。
+**kiso**(日语「基础」)是一个可靠续跑的 AI agent 运行时。每一次审批、每一个工具结果、每一条事件都在发生的当下写进磁盘,所以一个被打断、崩溃或被强杀的 agent 会从停下的那一步原样接着跑,审批还在、结果还在。内核是 2,200 行 TypeScript,事件溯源,每个设计决策都随附一份 ADR,写明为什么,以及何时推翻它。
 
-**kiso 是一个挺得过 `kill -9` 的编码 Agent。** 被打断的执行会得到人类裁决,审批跨进程持久,每个事件都落在磁盘上——`kiso resume` 在新进程里精确续上被打断的轨迹。**它同时是这个 Agent 所构建于其上的持久化 TypeScript 框架**:2,200 行内核、事件溯源会话、持久化审批、带回执的崩溃一致工具执行,可以单独用在你自己的产品里。**每个设计决策都随附一份 ADR,写明为什么,以及何时推翻它。**
+**kiso-code** 是跑在它上面的编程 agent:日常工具,也是活证明。编辑到一半 `kill -9`,再 `kiso resume`,它会在新进程里接着走完被打断的轨迹。下面的一切从它开始;[SDK](#使用) 那一节是运行时归你用的地方。
 
 [快速开始](#快速开始) · [登录](#登录) · [模型与 effort](#模型与-effort) · [会话](#会话) · [模式](#模式) · [交互界面](#交互界面) · [验证到哪一步](#验证到哪一步) · [持久执行](#持久执行一屏讲完) · [已交付什么](#已交付什么) · [扩展 kiso](#扩展-kiso) · [SDK](#使用) · [文档](#文档)
 
