@@ -130,3 +130,39 @@ describe("R5 — the transcript viewer leaves the scrollback alone (the blocker)
 		expect(out).not.toContain("esc closes");
 	}, 240_000);
 });
+
+// DC-56 (owner, 2026-09-09): ctrl+r on a light terminal showed "transcript ·
+// 5 folds" over a block of blank grey rows. R13 gave every tool card a
+// washed PAD row above its head on the palettes with a real background
+// (light, dark) — the neutral palette's reverse-video wash has none — and
+// the viewer took `rows[0]` as the entry's head. Under neutral that is the
+// head; under light it is the pad, so every collapsed fold was a blank
+// washed row. The head is the first row that SAYS something.
+describe("DC-56 — the viewer's heads say what they are on a real-background palette", () => {
+	it("theme light: every collapsed fold shows its head text, never a blank washed row", () => {
+		const ws = workspace();
+		const { env, dirs } = isolatedEnv({ KISO_FAUX_SCRIPT: fauxScript(turns()), KISO_MODE: "bypass" });
+		writeFileSync(join(dirs.home, "config.json"), JSON.stringify({ theme: "light" }), "utf8");
+		const raw = ptyRun(["--mode", "bypass", "r5-viewer-light"], env as NodeJS.ProcessEnv, {
+			feeds: [["▌ ", "go\r"]],
+			delays: [
+				[5, "\x12"], // ctrl+r — open
+				[7, "\x1b"], // esc — close
+				[8, "exit\r"],
+			],
+			timeout: 40,
+			cwd: ws,
+		});
+		const openAt = raw.lastIndexOf("transcript ·");
+		expect(openAt).toBeGreaterThan(0);
+		const screen = screenAtIndex(raw, frameEnd(raw, openAt));
+		const top = screen.findIndex((l) => l.includes("transcript ·"));
+		const bottom = screen.findIndex((l) => l.includes("esc closes"));
+		expect(top).toBeGreaterThanOrEqual(0);
+		expect(bottom).toBeGreaterThan(top);
+		const band = screen.slice(top + 1, bottom).map((l) => l.trim());
+		// every fold row carries a head — the tool's verb and its target
+		expect(band.length).toBeGreaterThan(0);
+		for (const row of band) expect(row, `a blank fold row in the viewer band:\n${screen.join("\n")}`).toMatch(/read\s+f\d\.txt/);
+	}, 40_000);
+});

@@ -85,6 +85,11 @@ import {
 } from "./components.js";
 import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, type BannerMeta, type ResumeMeta } from "./lines.js";
 import { displayVerb, keysSheetRows } from "./strings.js";
+/** DC-56: does a rendered row carry any visible text once its SGR is
+ *  stripped? A washed pad row is spaces under a background colour — width
+ *  without words. */
+const saysSomething = (row: string): boolean => row.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim() !== "";
+
 // R5 — the transcript viewer's PURE projection. The compositor supplies
 // the entries (it holds the cells); the arrangement lives there.
 import {
@@ -1062,7 +1067,15 @@ export class Body {
 			cell.expanded = true;
 			const rows = cellComponent(cell).render(inner, ctx);
 			cell.expanded = saved;
-			out.push({ head: rows[0] ?? "", body: rows.slice(1) });
+			// DC-56 (owner, 2026-09-09): the head is the first row that SAYS
+			// something. R13's card wears a washed PAD row above its head on
+			// the palettes with a real background (light, dark) and none under
+			// the neutral reverse-video wash — so `rows[0]` was the head on
+			// one palette and a blank washed row on the others, and ctrl+r on
+			// a light terminal showed "5 folds" over five empty grey rows.
+			const first = rows.findIndex((r) => saysSomething(r));
+			const headAt = first < 0 ? 0 : first;
+			out.push({ head: rows[headAt] ?? "", body: rows.slice(headAt + 1) });
 		}
 		return out;
 	}
