@@ -4,7 +4,6 @@
 		"apps/cli/tests/auth-cli.test.ts",
 		"apps/cli/tests/auth-tty.test.ts",
 		"apps/cli/tests/bang-command-pty.test.ts",
-		"apps/cli/tests/bang-command.test.ts",
 		"apps/cli/tests/banner.test.ts",
 		"apps/cli/tests/bare-command-faux-label.test.ts",
 		"apps/cli/tests/bare-command-trust-gate.test.ts",

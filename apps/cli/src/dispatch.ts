@@ -13,8 +13,6 @@ import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { agentModel, body, bodyLog, codingToolOptions, kisoHome, configModels, dock, lastBinding, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, type LineInput , setLastBinding } from "./state.js";
 import { authForProfile, directWriteProfile, profileAvailable, unavailableReason, type ModelProfile } from "./config.js";
 import { shellTool } from "@vincemakes/kiso-tools-node";
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** The picker's CLI half (owner 2026-09-08): a profile's LEGAL effort levels
@@ -320,34 +318,33 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			});
 			return;
 		}
-		ctx.input.externalEdit?.((text) => {
-			// per RUN, not per call: a directory per invocation is how the
-			// tree grew 400,000 of them once.
+		// The process spawn lives in its own module, reached HERE and not
+		// imported at the top. The PTY manifest gate classifies a test by
+		// the RESOURCE closure of what it imports, so a static process
+		// import in the dispatcher moves every test that imports the
+		// dispatcher into the single-file-serial pool — it took `!cmd`'s
+		// millisecond-long parser test with it. Loading the module at the
+		// key makes the closure honest: importing the dispatcher cannot
+		// start a process.
+		//
+		// (The gate scans SOURCE, comments included, so naming the node
+		// module here in prose would reclassify this file just as surely as
+		// importing it. Deliberately over-wide — see the gate's own note.)
+		//
+		// Joining the chain is a FIX, not the price of that. Handing the
+		// terminal to a full-screen editor while a turn is streaming rows
+		// into that same terminal gives the child a screen kiso is still
+		// painting over. An idle chain resolves on the next microtask, so
+		// the press that is not mid-turn is unchanged.
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			const { runExternalEditor } = await import("./external-editor.js");
 			const root = join(kisoHome(), "tmp");
-			mkdirSync(root, { recursive: true });
-			const dir = mkdtempSync(join(root, "compose-"));
-			const file = join(dir, "message.md"); // .md so the editor lights it up
-			try {
-				writeFileSync(file, text, "utf8");
-				const r = spawnSync(bin, [file], { stdio: "inherit", shell: false });
-				if (r.error !== undefined || (r.status !== null && r.status !== 0)) {
-					// the buffer is NOT replaced: a failed edit must not eat
-					// what the human had already written.
-					body.notice(`[ctrl+g] ${bin} exited ${r.status ?? "abnormally"} — the composer is unchanged`);
-					return null;
-				}
-				return readFileSync(file, "utf8").replace(/\n+$/, "");
-			} catch (err) {
-				body.notice(`[ctrl+g] ${err instanceof Error ? err.message : String(err)} — the composer is unchanged`);
-				return null;
-			} finally {
-				rmSync(dir, { recursive: true, force: true });
-			}
+			ctx.input.externalEdit?.((text) => runExternalEditor(bin, root, text, (msg) => body.notice(msg)));
+			// the external program drew over the screen; the model is the only
+			// authority on what should be there (R14).
+			body.reprint();
+			ctx.input.prompt();
 		});
-		// the external program drew over the screen; the model is the only
-		// authority on what should be there (R14).
-		body.reprint();
-		ctx.input.prompt();
 		return;
 	}
 	if (trimmed === "\x14think") {
