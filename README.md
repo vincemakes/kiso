@@ -373,7 +373,7 @@ a broken config file fails loudly with the file named.
   "model": "deepseek",                       // the startup profile
   "models": {
     "deepseek": {
-      "kind": "openai-compat",               // or "anthropic"
+      "kind": "openai-compat",               // "openai-compat" | "anthropic" | "openai-responses"
       "model": "deepseek-v4-flash",
       "apiKeyEnv": "DEEPSEEK_API_KEY",       // the key's env var — never the key
       "baseUrl": "https://api.deepseek.com"  // optional
@@ -412,6 +412,26 @@ a broken config file fails loudly with the file named.
   OpenRouter's Anthropic-format endpoint — byte-identical replays, all
   accepted; the first-party beta surface (beta headers, Fable 5.1's
   thinking-block binding) is not yet exercised directly.
+- **Sign-in and the OpenAI Responses dialect (OR-1, 0.31.0).**
+  `kiso login <provider>` stores a credential in `~/.kiso/auth.json`
+  (mode 0600): an API key for `anthropic` / `openai` / `deepseek` /
+  `zai`, the subscription OAuth sign-in for `chatgpt`. A stored
+  credential OWNS its provider — an unusable stored one is a loud error,
+  never a silent fall back to the env var; `kiso logout <provider>`
+  removes it, `kiso auth` lists them masked. `kind: "openai-responses"`
+  profiles reach the first-party API (`api.openai.com`, a key) or the
+  ChatGPT subscription backend (`"baseUrl": "https://chatgpt.com/backend-api"`,
+  no `apiKeyEnv`, `kiso login chatgpt`). gpt-5.5 and gpt-5.4 are
+  registered at BOTH endpoints, dated and sourced: `/model` shows each
+  profile's legal effort levels; a subscription run is priced `null` (a
+  subscription is not billed per token) and measured against the presets'
+  272,000 window; a level the backend lacks is refused by name at `/model`
+  and again by the run itself. Verification status, stated plainly: the
+  DeepSeek credential-store path has a real leg (2026-09-08); the Responses
+  adapter — both targets — is **offline-verified** against its byte rigs
+  and **pending real-integration acceptance** (the package README's
+  support-level table says `unrun` until a real leg lands). Anthropic
+  stays API-key: the vendor prohibits third-party subscription sign-in.
 - `/model` in a session lists the profiles (each annotated available /
   unavailable — an unset apiKeyEnv is never a crash) and switches the
   session's adapter for subsequent turns (a NoticeCell records it).
