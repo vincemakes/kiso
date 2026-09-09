@@ -86,6 +86,11 @@ export interface DispatchCtx {
 	readonly isRunning: () => boolean;
 	/** the /mode switch repaints the status bar at once. */
 	readonly paintIdle: () => void;
+	/** DF-0311-F1: a successful /model switch repaints the row with NO meter.
+	 *  The meter is the last TURN's figure, measured on the binding that is
+	 *  gone; a binding that has not run yet paints none — an unmeasured
+	 *  cache is not a 0% cache, and it is not the previous model's either. */
+	readonly modelSwitched: () => void;
 	/** submit a real turn: queue + chain (the turn closure lives in chat). */
 	readonly submitTurn: (line: string) => void;
 	/** the /status context estimate. */
@@ -612,7 +617,10 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 							// recap repainted it, so "takes effect on the next turn"
 							// read as "did not take". Painted BEFORE the notice so the
 							// frame that carries the notice already carries the row.
-							ctx.paintIdle();
+							// DF-0311-F1: repainted with NO meter — the 0.31.1 dogfood
+							// (and the owner's) read `gpt-6-astra · CH 92%`, the new
+							// model beside the previous model's figure.
+							ctx.modelSwitched();
 							body.notice(`model → ${profName} (${profile.model}${effortTok !== undefined ? ` · ${effortTok}` : ""}) — takes effect on the next turn`);
 						}
 					}

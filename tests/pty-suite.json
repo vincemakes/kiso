@@ -22,6 +22,7 @@
 		"apps/cli/tests/dc49-at-walk.test.ts",
 		"apps/cli/tests/dc49-banner.test.ts",
 		"apps/cli/tests/dc55-paste-tab-pipe.test.ts",
+		"apps/cli/tests/df0311-f1-meter-reset-pty.test.ts",
 		"apps/cli/tests/e1-copy.test.ts",
 		"apps/cli/tests/e1-pipe-identity.test.ts",
 		"apps/cli/tests/e2e.test.ts",

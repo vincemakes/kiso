@@ -1208,6 +1208,17 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// a turn ended. One call, and the SAME formatter — a boot-time copy of
 	// the row would drift from the real one the moment either changed.
 	paintIdle();
+	// DF-0311-F1 (the 0.31.1 dogfood, reproduced by the owner): the meter is
+	// the last TURN's figure. After /model the row named the NEW model beside
+	// the OLD model's CH until the next recap — and beside a model whose
+	// cache is unobservable (OR-10) that is a measurement it never had. A new
+	// binding starts with no meter; its first turn paints the first figure.
+	// The session's running cost is untouched: it is the session's, not the
+	// binding's, and the row does not render it anyway.
+	const modelSwitched = (): void => {
+		runUsage = { in: null, out: null, cache: null, known: false };
+		paintIdle();
+	};
 	const statusCb = (u: RunUsage, ctx: number, costUsd?: number | null): void => {
 		runUsage = u;
 		addCost(costUsd ?? null);
@@ -1272,6 +1283,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		chainRef,
 		isRunning: () => currentRun !== null,
 		paintIdle,
+		modelSwitched,
 		submitTurn,
 		estimateCtx: () => displayCtxRatio(session),
 		contextWindow: () => contextWindowTokens(),
