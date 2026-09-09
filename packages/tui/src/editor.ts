@@ -159,6 +159,13 @@ const N_MAX = 6;
  *  payload for someone else, and holding it is how the editor goes
  *  deaf. */
 const OSC_MAX = 1024;
+/** TMUX-F1 ①: a CSI parameter string longer than this with no final byte
+ *  is not a sequence any terminal sends; it is dropped rather than held, so
+ *  a runaway can never park the editor. */
+const CSI_MAX = 64;
+/** TMUX-F1 ②: identical arrow sequences in ONE read at or past this count
+ *  are a wheel notch, not a hand — treated as one press. */
+const ARROW_BURST = 3;
 
 /** The dim "…" — the ONE truncation mark. OR-11 retired its other use
  *  (the horizontal scroll's prefix) with the scroll itself; what is left
@@ -1183,13 +1190,46 @@ export class Editor {
 					// never complete. The editor went deaf. It never happened
 					// because nothing ever enabled reporting — which is exactly
 					// the kind of latent break turning a feature on discovers.
-					const m = rest.match(/^\[([0-9;?<]*)([A-Za-z~])/);
+					//
+					// TMUX-F1 ①: the whole CSI grammar — parameters (the private
+					// markers `?` `<` `>` `=` included), intermediates (0x20–0x2F),
+					// a final (0x40–0x7E). The class above could not END a sequence
+					// carrying an intermediate — tmux answers DECRQM with
+					// `ESC[?69;0$y` — so it was parked as "incomplete" and every
+					// later keystroke joined a sequence that never completed: the
+					// editor went deaf for the session. A sequence with
+					// intermediates is a reply kiso did not ask for; it is skipped
+					// whole. A parameter string past CSI_MAX with no final is
+					// dropped, not held.
+					const m = rest.match(/^\[([0-9;?<>=]*)([ -/]*)([@-~])/);
 					if (m === null) {
+						const junk = /^\[[0-9;?<>=]*[ -/]*/.exec(rest)![0];
+						if (junk.length > CSI_MAX) {
+							i += 1 + junk.length; // the introducer and its runaway parameters go; parsing continues
+							continue;
+						}
 						this.#pending = text.slice(i); // incomplete CSI — wait for more
 						break;
 					}
-					this.#csi(m[1]!, m[2]!);
-					i += m[0]!.length + 1;
+					const seqLen = m[0]!.length + 1;
+					if (m[2] !== "") {
+						i += seqLen; // intermediates: a report kiso did not ask for — skipped whole
+						continue;
+					}
+					// TMUX-F1 ②: a BURST of identical arrows in ONE read is a wheel,
+					// not a hand. Apple Terminal turns wheel and trackpad scrolling
+					// into arrow keys for an alternate-screen app (tmux's client is
+					// one) — three or more per notch in a single write, which a
+					// person never produces in one read — and each one walked the
+					// history. The burst is one press (owner ruling 2026-09-10, c);
+					// separate reads stay separate presses.
+					const seq = `\x1b${m[0]!}`;
+					let run = 1;
+					if (m[1] === "" && "ABCD".includes(m[3]!)) {
+						while (text.startsWith(seq, i + run * seq.length)) run += 1;
+					}
+					this.#csi(m[1]!, m[3]!, run);
+					i += run * seqLen;
 				} else if (rest.startsWith("]")) {
 					// DC-7: an OSC is a message FROM the terminal — a background
 					// colour answer, a theme-change notice, a clipboard report.
@@ -1537,7 +1577,21 @@ export class Editor {
 		this.#panelRows = fn;
 	}
 
-	#csi(params: string, final: string): void {
+	/** TMUX-F1 ②: `run` identical arrow sequences arrived in ONE read. Every
+	 *  surface but one gets every press — a wheel over the transcript viewer,
+	 *  a panel, a multi-row draft scrolls, as a wheel should. The HISTORY
+	 *  walk is the one that replaces the draft's content, and there a burst
+	 *  (ARROW_BURST or more in one read — a wheel notch, never a hand) is one
+	 *  step. The first press decides which branch it was, so the gate is not
+	 *  written twice. */
+	#csi(params: string, final: string, run = 1): void {
+		const took = this.#csiOnce(params, final);
+		if (took === "history" && run >= ARROW_BURST) return;
+		for (let k = 1; k < run; k += 1) this.#csiOnce(params, final);
+	}
+
+	#csiOnce(params: string, final: string): "history" | undefined {
+		let took: "history" | undefined;
 		// TUI2-R3v2 ②: an SGR 1006 report — `\x1b[<b;col;rowM` (press) or
 		// `...m` (release). It is routed FIRST because a `<` parameter is
 		// never anything else, and because a mouse byte must never fall
@@ -1661,6 +1715,7 @@ export class Editor {
 				this.#queuePopIntoBuffer();
 			} else if (this.#historyIdx !== null || this.line() === "") {
 				this.#historyMove(final === "A" ? -1 : 1);
+				took = "history"; // the repaint below is still owed — an early return here left the recall unpainted (r3a red)
 			}
 			this.#onRender();
 		} else if (final === "D") {
@@ -1684,6 +1739,7 @@ export class Editor {
 			this.#reflow();
 			this.#onRender();
 		}
+		return took;
 	}
 
 	/** KC1 §4 — the ↑/↓ walk. The cursor keeps its DESIRED column across
