@@ -229,3 +229,37 @@ afterEach(() => {
 	delete (process.stdout as { columns?: number }).columns;
 	delete (process.stdout as { isTTY?: boolean }).isTTY;
 });
+
+/**
+ * OR-11 (a) — Home and End repaint.
+ *
+ * CSI H / F moved the cursor and reflowed, but never called the render
+ * callback: Ctrl+A and Ctrl+E repainted and their own arrow-key spellings
+ * did not, so the caret sat where it had been until the next keystroke
+ * happened to draw. The gesture that moves a cursor is the gesture that
+ * has to show it.
+ */
+describe("OR-11 — Home/End repaint like Ctrl+A/E", () => {
+	it("CSI H and CSI F each fire the render callback", () => {
+		let renders = 0;
+		const editor = new Editor(() => {
+			renders += 1;
+		});
+		editor.feed(enc("hello world"));
+		const typed = renders;
+		editor.feed(enc("\x1b[H")); // Home
+		expect(renders, "Home repainted").toBeGreaterThan(typed);
+		const afterHome = renders;
+		editor.feed(enc("\x1b[F")); // End
+		expect(renders, "End repainted").toBeGreaterThan(afterHome);
+	});
+
+	it("and they still move the cursor where A3 put them", () => {
+		const editor = new Editor(() => {});
+		editor.feed(enc("hello world"));
+		editor.feed(enc("\x1b[H"));
+		expect(editor.dockState().cursorCol).toBe(0);
+		editor.feed(enc("\x1b[F"));
+		expect(editor.dockState().cursorCol).toBe("hello world".length);
+	});
+});

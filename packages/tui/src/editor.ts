@@ -1454,11 +1454,17 @@ export class Editor {
 			// composer keeps the key everywhere else, exactly as ← does.
 			if (!this.#panelInput.right()) this.#move(1);
 		} else if (final === "H") {
+			// OR-11 (a): and REPAINT. Ctrl+A and Ctrl+E render; their arrow
+			// spellings reflowed and stopped there, so the caret stayed
+			// where it had been until some later key happened to draw. A
+			// gesture that moves the cursor is a gesture that shows it.
 			this.#cursor = this.#cursorBounds().start; // A3: Home follows Ctrl+A — line-local
 			this.#reflow();
+			this.#onRender();
 		} else if (final === "F") {
 			this.#cursor = this.#cursorBounds().end; // A3: End follows Ctrl+E — line-local
 			this.#reflow();
+			this.#onRender();
 		}
 	}
 
