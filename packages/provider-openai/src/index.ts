@@ -170,8 +170,13 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 						continue; // content and finish reasons after the first finish: ignored
 					}
 					// Reasoning dialect → thinking (digested here, not in the union).
-					const reasoning = (chunk.choices?.[0]?.delta as { reasoning_content?: string } | undefined)
-						?.reasoning_content;
+					// Two spellings of one thing: DeepSeek's own API says
+					// `reasoning_content`; OpenRouter normalises every vendor it
+					// fronts (GLM, Qwen, …) into `reasoning`. GLM-F1 (2026-09-09):
+					// z-ai/glm-5.3-flash through openrouter.ai streamed its whole
+					// think under `reasoning` and the adapter showed none of it.
+					const d = chunk.choices?.[0]?.delta as { reasoning_content?: string; reasoning?: string } | undefined;
+					const reasoning = d?.reasoning_content || d?.reasoning;
 					if (reasoning) {
 						yield { seq: 0, type: "thinking", text: reasoning };
 					}
@@ -311,6 +316,19 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 			// Area 6 hardening (review finding 4): a stream that ended with
 			// NO finish_reason is a TRUNCATED turn — the stop is an explicit
 			// error, never a default end_turn/completed.
+			// COMPAT-F1 (2026-09-09, the GLM leg): the SDK closes an ABORTED
+			// stream quietly — the iterator just ends, no finish_reason — and
+			// that used to read as the provider's failure below, so esc on a
+			// DeepSeek or OpenRouter turn recorded an error terminal and no
+			// durable void. The kernel classifies an abort only when the
+			// adapter THROWS while the signal is set (its catch asks
+			// `aborted()` first), which is what the Responses adapter does.
+			// An early end WITHOUT an abort stays the provider's error.
+			if (options.signal?.aborted) {
+				const err = new Error("stream aborted by the caller");
+				err.name = "AbortError";
+				throw err;
+			}
 			yield { seq: 0, type: "stop", reason: finishReason === null ? "error" : stopReason };
 		},
 	};
@@ -542,6 +560,16 @@ function toOpenAIError(err: unknown, model: string): unknown {
 	if (err instanceof OpenAI.APIError) {
 		// CX-1 F8: the kernel owns retries — Retry-After travels with the error
 		return mapApiError(err.status, label + err.message, retryAfterOf(err.headers));
+	}
+	// COMPAT-F2 (2026-09-09, the GLM leg): a response BODY cut by the
+	// transport after the headers — the upstream dropped a long answer 14 s
+	// in — reaches here as Node's own `TypeError: terminated` (undici), not
+	// as any OpenAI error class, and used to pass through as `unknown`,
+	// non-retryable: an error terminal where the mid-stream retry belongs.
+	// The name is fetch's, not the vendor's, so it is a transport failure by
+	// construction — the same class as APIConnectionError above.
+	if (err instanceof TypeError && (err.message === "terminated" || err.message === "fetch failed")) {
+		return { code: "network", retryable: true, message: label + err.message };
 	}
 	return err;
 }

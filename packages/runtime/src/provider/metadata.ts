@@ -364,6 +364,36 @@ const ENTRIES: readonly ModelMetadataEntry[] = [
 	openaiRow("gpt-5.6-sol", "medium", { inputPerM: 4, outputPerM: 20, cacheReadPerM: 0.4 }, "https://developers.openai.com/api/docs/models/gpt-5.6-sol", { levels: ["none", "low", "medium", "high", "xhigh", "max"], asOf: OPENAI_MODELS_ASOF_2 }),
 	chatgptRow("gpt-6-astra", { levels: ULTRA_LADDER, default: "low", source: CHATGPT_PRESETS_SOURCE_2, asOf: OPENAI_MODELS_ASOF_2 }),
 	chatgptRow("gpt-5.6-sol", { levels: ULTRA_LADDER, default: "low", source: CHATGPT_PRESETS_SOURCE_2, asOf: OPENAI_MODELS_ASOF_2 }),
+	// The compat table's SECOND row (roadmap R3.2 §1a step 1): GLM 5.3 Flash
+	// through OpenRouter, read from OpenRouter's models API on 2026-09-09. The
+	// id is OpenRouter's, so the row is keyed to that origin; the
+	// continuation scope stamps such a profile `custom` at openrouter.ai
+	// (manifest.ts's KNOWN_ORIGINS is deliberately not widened — the scope
+	// identity is a durable fact and this row needs only the lookup). The
+	// window is the TOP provider's (1,048,576), not the listing's 1,310,720:
+	// what a request actually gets. No default effort — the page states
+	// none. `reasoning_effort` is in the model's supported parameters; the
+	// stream's think arrives as `reasoning` (GLM-F1, the compat adapter).
+	{
+		model: "z-ai/glm-5.3-flash",
+		endpoint: "https://openrouter.ai",
+		capabilities: {
+			contextWindow: 1_048_576,
+			maxOutputTokens: 131_072,
+			promptCaching: "automatic",
+			reasoning: {
+				emitsThinkingStream: true,
+				thinking: null,
+				effort: { levels: ["low", "medium", "high"], default: null, wire: "reasoning_effort" },
+				asOf: "2026-09-09",
+				source: "https://openrouter.ai/docs/use-cases/reasoning-tokens",
+			},
+			inputModalities: null,
+		},
+		capabilitiesAsOf: "2026-09-09",
+		capabilitiesSource: "https://openrouter.ai/api/v1/models",
+		pricing: { inputPerM: 0.075, outputPerM: 0.25, cacheReadPerM: 0.015, cacheWritePerM: 0, asOf: "2026-09-09", source: "https://openrouter.ai/api/v1/models" },
+	},
 ];
 
 /**

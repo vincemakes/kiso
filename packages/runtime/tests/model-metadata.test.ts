@@ -162,3 +162,18 @@ describe("OR-10 (owner, 2026-09-09) — a cache figure that cannot be observed i
 		}
 	});
 });
+
+describe("GLM 5.3 Flash through OpenRouter — the compat table's second row (2026-09-09)", () => {
+	it("resolves at the OpenRouter origin with its levels, its window and its dated price; nowhere else", () => {
+		const row = lookupModelMetadata("z-ai/glm-5.3-flash", "https://openrouter.ai/api/v1");
+		expect(row).not.toBeNull();
+		expect(row!.capabilities.reasoning?.effort?.levels).toEqual(["low", "medium", "high"]);
+		expect(row!.capabilities.reasoning?.effort?.wire).toBe("reasoning_effort");
+		expect(row!.capabilities.reasoning?.emitsThinkingStream).toBe(true);
+		expect(row!.capabilities.contextWindow).toBe(1_048_576);
+		expect(row!.pricing?.inputPerM).toBe(0.075);
+		expect(row!.pricing?.asOf).toBe("2026-09-09");
+		// the id is OpenRouter's; at another origin it is nobody's row
+		expect(lookupModelMetadata("z-ai/glm-5.3-flash", "https://api.z.ai")).toBeNull();
+	});
+});

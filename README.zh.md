@@ -136,6 +136,7 @@ kiso sessions                  列出持久会话及其状态
 | Anthropic | `kiso login anthropic`——只有 API key | **只有 API key**:厂商禁止第三方订阅登录。当前型号线已登记,带日期与来源的上下文窗口、effort 档位、思考模式与价格(2026-09-07 读取)。发现 MG1-F1:签名与脱敏的思考块重放,是通过 OpenRouter 的 Anthropic 格式端点按字节一致验证的,不是对着首方 beta 面。 |
 | OpenAI Responses(首方) | `kiso login openai`——API key | **离线验证通过;真实接入待验收。** 对着录制的字节 rig 得到证明;在真腿落地前,包内 README 的支持级表写 `unrun`。 |
 | ChatGPT 订阅 | `kiso login chatgpt`——OAuth | **真腿 2026-09-09**,在 owner 的订阅上:存储的登录驱动了工具调用与续轮、effort 透传(`xhigh` 接受、`none` 按名拒绝)、中途取消带 durable 作废、厂商错误映射(`400 invalid_request`)且会话存活。订阅跑的费用记为 `null`(订阅不按 token 计费),上下文按预设的 272,000 度量。 |
+| GLM 走 OpenRouter | env 里放 key(`OPENROUTER_API_KEY`);暂无 `kiso login` 对应 provider | **真腿 2026-09-09**(`z-ai/glm-5.3-flash`,兼容表第二行):env key 驱动了流式且思考可见、一次工具调用与其后一轮、`/model glm high` 接受而 `xhigh` 按名拒绝(`native: low/medium/high`)、中途 esc 记为 `aborted by user`、错误型号映射成 `invalid_request 400` 且会话存活。顺手修了三个缺陷:适配器丢掉 OpenRouter 的 `reasoning` 思考流(GLM-F1)、把被取消的流当成厂商错误(COMPAT-F1,DeepSeek 同样中招)、把传输层断流记成不可重试(COMPAT-F2)。当晚上游切断过一次长回答,重试恢复。价格取自 OpenRouter 的 models API(2026-09-09)。 |
 
 Anthropic profile 的提示词缓存**默认关闭**:打开它会改变请求字节与账单,默认值只有在一条真实腿上的配对 bench 证明省钱之后才会翻转。效率数字——同一个模型、同一批任务、三个 Agent,连同协议与每一条诚实脚注——见 [bench/README.md](bench/README.md)。这里不摘录其中任何数字。
 

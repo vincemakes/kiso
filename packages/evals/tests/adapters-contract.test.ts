@@ -225,6 +225,105 @@ describe("openai-compat adapter", () => {
 		expect(events[0]).toMatchObject({ type: "thinking", text: "let me think" });
 		expect(events.some((e) => e.type === "text_delta")).toBe(true);
 	});
+
+	it("digests OpenRouter's `reasoning` delta into thinking too (GLM-F1: the second compat-table row)", async () => {
+		// OpenRouter normalises every vendor's reasoning stream into
+		// `delta.reasoning` (plus `reasoning_details`); DeepSeek's own API
+		// says `reasoning_content`. Observed 2026-09-09 on z-ai/glm-5.3-flash
+		// through openrouter.ai: the deltas carried `reasoning` and the
+		// adapter dropped every one of them on the floor.
+		const stubClient = {
+			chat: {
+				completions: {
+					create: async () => ({
+						async *[Symbol.asyncIterator]() {
+							yield {
+								choices: [{ delta: { content: "", reasoning: "User wants", reasoning_details: [{ type: "reasoning.text", text: "User wants" }] }, finish_reason: null }],
+								usage: undefined,
+							};
+							yield { choices: [{ delta: { content: "hi" }, finish_reason: "stop" }], usage: undefined };
+						},
+					}),
+				},
+			},
+		};
+		const events = await collect(createOpenAICompatAdapter(stubClient as never));
+		expect(events[0]).toMatchObject({ type: "thinking", text: "User wants" });
+		expect(events.filter((e) => e.type === "thinking")).toHaveLength(1);
+		expect(events.some((e) => e.type === "text_delta" && (e as { text: string }).text === "hi")).toBe(true);
+	});
+});
+
+describe("COMPAT-F1 — a stream cut by the caller's abort is an ABORT, not a provider error", () => {
+	// The SDK closes an aborted stream quietly: the iterator ends with no
+	// finish_reason. The adapter used to read that as "the provider stopped
+	// with an error" and yield stop:error — so esc on a DeepSeek or
+	// OpenRouter turn recorded an error terminal and no durable void, while
+	// the same esc on the Responses adapter (which throws) recorded
+	// `aborted by user`. Observed 2026-09-09 on the GLM leg.
+	function earlyEnd() {
+		return {
+			chat: {
+				completions: {
+					create: async () => ({
+						async *[Symbol.asyncIterator]() {
+							yield { choices: [{ delta: { content: "Harbors are" }, finish_reason: null }], usage: undefined };
+							// …and the stream ends here, no finish_reason: the abort closed it
+						},
+					}),
+				},
+			},
+		};
+	}
+	it("aborted signal + early end → the adapter THROWS (the kernel's catch records `aborted by user`)", async () => {
+		const ctl = new AbortController();
+		ctl.abort();
+		const adapter = createOpenAICompatAdapter(earlyEnd() as never);
+		const drain = async (): Promise<void> => {
+			for await (const _ of adapter.stream({ ...OPTS, signal: ctl.signal })) {
+				// the caller has already given up; whatever arrives is discarded
+			}
+		};
+		await expect(drain()).rejects.toThrow();
+	});
+	it("an early end WITHOUT an abort is still the provider's error — stop:error, as before", async () => {
+		const events = await collect(createOpenAICompatAdapter(earlyEnd() as never));
+		expect(events.at(-1)).toMatchObject({ type: "stop", reason: "error" });
+	});
+});
+
+describe("COMPAT-F2 — a stream cut by the transport mid-body is a retryable network error, not `unknown`", () => {
+	// Observed 2026-09-09 on the GLM leg (no abort involved): the upstream
+	// cut the response body ~14 s into a long answer. Node's fetch surfaces
+	// that as `TypeError: terminated` (undici), which is neither an
+	// OpenAI.APIError nor an APIConnectionError, so the adapter passed it
+	// through untouched and the kernel filed it as `unknown`, non-retryable —
+	// an error terminal where the mid-stream retry (F4) should have run.
+	it("a TypeError('terminated') from the body reader → { code: network, retryable: true }", async () => {
+		const stubClient = {
+			chat: {
+				completions: {
+					create: async () => ({
+						async *[Symbol.asyncIterator]() {
+							yield { choices: [{ delta: { content: "Harbors are" }, finish_reason: null }], usage: undefined };
+							throw new TypeError("terminated");
+						},
+					}),
+				},
+			},
+		};
+		const adapter = createOpenAICompatAdapter(stubClient as never);
+		let caught: unknown = null;
+		try {
+			for await (const _ of adapter.stream(OPTS)) {
+				// draining
+			}
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toMatchObject({ code: "network", retryable: true });
+		expect(String((caught as { message: string }).message)).toContain("terminated");
+	});
 });
 
 describe("mapApiError classification", () => {
