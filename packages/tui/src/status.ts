@@ -24,6 +24,7 @@
 
 import { kUnit } from "./lines.js";
 import { TWINKLE } from "@vincemakes/kiso-tui-cells/render";
+import { displayWidth } from "@vincemakes/kiso-tui-cells/width";
 
 /**
  * R3 (design §5.2) — the working glyph family is the TWINKLE, and the
@@ -127,17 +128,85 @@ export interface StatusMeter {
 	readonly tokPerSec: number | null;
 }
 
-/** The IDLE row: the approval tier as the CALLER names it, the /mode
- *  hint, the model driving the session, the TUI2-R1 meter when there is
- *  one, and the ctx estimate. Called without a meter — or with one that
- *  knows nothing — the row is byte-identical to the pre-round row. */
-export function idleStatus(tier: string, model: string, ctxRatio: number, meter?: StatusMeter): string {
-	const parts = [`▸ ${tier}`, "/mode to switch", model];
-	if (meter?.cacheHitPct != null) parts.push(`CH ${Math.round(meter.cacheHitPct)}%`);
-	// costUsd deliberately NOT rendered — see StatusMeter.costUsd.
-	parts.push(`ctx left ~${ctxLeft(ctxRatio)}%`);
-	if (meter?.tokPerSec != null) parts.push(`${meter.tokPerSec} tok/s`); // TPS-1: last, after the ctx estimate
-	return parts.join(" · ");
+/** DF-0330-F1 — how far the model id may be squeezed on the ROW. Twenty
+ *  visible columns keeps a head and a tail: `deepseek-v…s-on-0910` still
+ *  says which binding is driving, and the tail is where the parts that
+ *  distinguish one id from its neighbours live (`-flash`, `-0910`). */
+const MODEL_ON_ROW = 20;
+
+/** Elide in the MIDDLE, keeping the head and the tail. A string already
+ *  within budget is returned untouched, so this is a no-op for every
+ *  ordinary model name.
+ *
+ *  Budgeted in DISPLAY COLUMNS, not code points. A first version sliced
+ *  code points and a wide-character id came out at 28 columns while the
+ *  function claimed 20 — which would have put the row straight back over
+ *  its budget and handed it to invariant ①'s cut, the exact defect this
+ *  whole change exists to prevent. No such model id exists today; the
+ *  guarantee should not depend on that staying true. */
+function elideMiddle(text: string, max: number): string {
+	if (displayWidth(text) <= max) return text;
+	const chars = [...text];
+	const room = max - 1; // the ellipsis costs one column
+	const headBudget = Math.ceil(room / 2);
+	let head = "";
+	for (const c of chars) {
+		if (displayWidth(head + c) > headBudget) break;
+		head += c;
+	}
+	let tail = "";
+	const tailBudget = room - displayWidth(head);
+	for (let i = chars.length - 1; i >= 0; i -= 1) {
+		if (displayWidth(chars[i]! + tail) > tailBudget) break;
+		tail = chars[i]! + tail;
+	}
+	return `${head}…${tail}`;
+}
+
+/**
+ * The IDLE row: the approval tier as the CALLER names it, the /mode hint,
+ * the model driving the session, the TUI2-R1 meter when there is one, and
+ * the ctx estimate. Called without a meter — or with one that knows
+ * nothing — the row is byte-identical to the pre-round row.
+ *
+ * DF-0330-F1 — THE DROP ORDER. `W` is the row's budget; given one, the row
+ * gives ground in a fixed order rather than letting invariant ① cut its
+ * end off. Found the hard way: at 100 columns the ` · N tok/s` segment
+ * never appeared and at 140 it did, because the row was 102 columns wide
+ * and the segment TPS-1 added sat last.
+ *
+ *   1. the MODEL ID is elided in its middle. It is the only segment that
+ *      varies, it is the one that grew (the owner's is 35 columns of a
+ *      90-column row), and eliding it gives the row back a budget instead
+ *      of re-allocating a deficit;
+ *   2. `/mode to switch` is dropped. It teaches a gesture; `/mode` and `?`
+ *      still exist and the row is not the only place they are taught;
+ *   3. the FACTS are never dropped and never cut — the tier, CH, the ctx
+ *      estimate and the rate. A row that silently drops a measurement is
+ *      the defect this rule exists to prevent.
+ *
+ * The elision is ON THE ROW only. `/model`, the session log and the trace
+ * ledger all keep the id whole — the row is a view, never the record.
+ *
+ * No `W` means no dropping, which is what the callers that do not know
+ * their width should get: today's row, unchanged.
+ */
+export function idleStatus(tier: string, model: string, ctxRatio: number, meter?: StatusMeter, W?: number): string {
+	const compose = (label: string, hint: boolean): string => {
+		const parts = [`▸ ${tier}`];
+		if (hint) parts.push("/mode to switch");
+		parts.push(label);
+		if (meter?.cacheHitPct != null) parts.push(`CH ${Math.round(meter.cacheHitPct)}%`);
+		// costUsd deliberately NOT rendered — see StatusMeter.costUsd.
+		parts.push(`ctx left ~${ctxLeft(ctxRatio)}%`);
+		if (meter?.tokPerSec != null) parts.push(`${meter.tokPerSec} tok/s`); // TPS-1: last, after the ctx estimate
+		return parts.join(" · ");
+	};
+	const full = compose(model, true);
+	if (W === undefined || displayWidth(full) <= W) return full;
+	const squeezed = compose(elideMiddle(model, MODEL_ON_ROW), true);
+	if (displayWidth(squeezed) <= W) return squeezed;
+	return compose(elideMiddle(model, MODEL_ON_ROW), false);
 }
 
 /** TUI2-R1 (E) — the cache hit rate the status row shows, from the usage

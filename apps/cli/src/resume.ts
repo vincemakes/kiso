@@ -35,7 +35,11 @@ export async function resume(session: AgentSession, prompt: string | undefined, 
 	// the recovery flow prints the BARE mode (chat spells plan's posture) —
 	// the extraction keeps that difference, it was not asked to settle it.
 	const paintIdle = (): void => {
-		if (dock.active) dock.setStatus(idleStatus(getMode(), agentModel, estimateCtxRatio(session)));
+		// DF-0330-F1: the recovery flow paints the same row, so it gets the
+		// same budget. It has no meter, so nothing here can be dropped that
+		// was not already at risk of being cut.
+		if (dock.active)
+			dock.setStatus(idleStatus(getMode(), agentModel, estimateCtxRatio(session), undefined, process.stdout.columns > 0 ? process.stdout.columns : 80));
 	};
 	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
 		currentRun = run;

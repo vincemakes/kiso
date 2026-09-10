@@ -27,15 +27,26 @@ import { describe, expect, it } from "vitest";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 import { fauxScript, ptyRun, screenAt, spares } from "./helpers/pty.js";
 
-const statusRowOf = (screen: string[]): string => screen.find((row) => row.includes("/mode to switch")) ?? "";
+// DF-0330-F1: the idle row is found by its TIER MARKER, not by the /mode
+// hint — the hint is the first thing the drop order gives up, so a needle
+// on it silently finds nothing at exactly the widths worth testing. (This
+// helper keyed on the hint until the narrow-width leg went red on an empty
+// string rather than on a missing rate.)
+const statusRowOf = (screen: string[]): string => screen.find((row) => row.trimStart().startsWith("▸ ")) ?? "";
 const rateOn = (row: string): number | null => {
 	const m = /· (\d+) tok\/s/.exec(row);
 	return m === null ? null : Number(m[1]);
 };
 
-const home = (dirs: { home: string }): void => {
-	writeFileSync(join(dirs.home, "config.json"), `${JSON.stringify({ models: { ds: { kind: "openai-compat", model: "deepseek-v4-flash", apiKeyEnv: "MY_TEST_KEY" } } })}\n`);
+const home = (dirs: { home: string }, model = "deepseek-v4-flash"): void => {
+	writeFileSync(join(dirs.home, "config.json"), `${JSON.stringify({ models: { ds: { kind: "openai-compat", model, apiKeyEnv: "MY_TEST_KEY" } } })}\n`);
 };
+
+/** DF-0330-F1 — the owner's OWN model id, and the reason that finding
+ *  exists. Thirty-five columns where this suite's fixture had seventeen: a
+ *  fixture comfortably shorter than reality tests a world with more room in
+ *  it than the one the product ships into. */
+const LONG_ID = "deepseek-v4.1-flash-expires-on-0910";
 
 describe("TPS-1 — the settled decode rate on the status row", () => {
 	it("a call that decoded for a known window paints a rate; /model clears it", () => {
@@ -187,4 +198,50 @@ describe("TPS-1 — the settled decode rate on the status row", () => {
 		expect(rate, "the row carries the first call's rate — the clock is per turn, not per call").toBeLessThan(30);
 		expect(rate).toBeGreaterThan(2);
 	}, 150_000);
+	it("DF-0330-F1 — the CLI hands the row its WIDTH: at 60 columns the hint goes and every fact stays", () => {
+		// What this level proves, and the unit gates cannot: that the CLI
+		// passes its terminal width to the formatter at all. Before the fix
+		// the row was composed blind and invariant ① cut whatever sat last,
+		// which is how a measured rate went missing at 100 columns with the
+		// owner's 35-column model id.
+		//
+		// The id-length cases live in the unit gates (every length from 1 to
+		// 40, with the owner's real id), because the faux session's label is
+		// `faux` and no fixture can make it long. Here the WIDTH is the
+		// variable instead: at 60 columns even the short label overflows, so
+		// the drop order has to run end to end.
+		const { env, dirs } = isolatedEnv({
+			KISO_FAUX_SCRIPT: fauxScript([
+				{
+					events: [
+						{ type: "text_delta", text: "one." },
+						{ type: "delay", ms: 1500 },
+						{ type: "usage", inputTokens: 1000, outputTokens: 120, cacheRead: 900, cacheWrite: null, known: true },
+						{ type: "stop", reason: "end_turn" },
+					],
+				},
+				...spares(4),
+			]),
+			MY_TEST_KEY: "sk-fake",
+		});
+		home(dirs);
+		const workdir = mkdtempSync(join(tmpdir(), "kiso-tps1-narrow-"));
+		const raw = ptyRun(["chat", "tps1-narrow"], env as NodeJS.ProcessEnv, {
+			cwd: workdir,
+			cols: 60,
+			feeds: [
+				["/ commands", "go\r"],
+				["tok/s", "exit\r"],
+			],
+			timeout: 60,
+		});
+		const settled = statusRowOf(screenAt(raw, "tok/s"));
+		// the FACTS all survive
+		expect(rateOn(settled), `no rate on the row at 60 columns: ${settled}`).not.toBeNull();
+		expect(settled).toContain("▸ default");
+		expect(settled).toContain("CH ");
+		expect(settled).toContain("ctx left");
+		// and the teaching hint is what gave ground
+		expect(settled, `the hint survived a row that had no room for it: ${settled}`).not.toContain("/mode to switch");
+	}, 120_000);
 });

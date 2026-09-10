@@ -214,6 +214,23 @@ yet. A call that cannot be measured leaves the figure the previous one
 earned rather than blanking the row, so a turn of quick tool round-trips
 does not make the number flicker.
 
+The half-second floor is on TIME rather than on token count, and that is
+deliberate. The rate's error comes from timing — when a chunk is observed
+and how coarse the clock is, together on the order of 50 ms — divided by
+the elapsed window. That is about 10% at half a second and about 50% at a
+tenth of one, and counting more tokens does not shrink it. A fast model
+answering a short question can decode in around 100 ms; the rate there
+would be a large number with an error bar to match, so kiso does not
+print it. The consequence is worth stating plainly: on a fast model doing
+short turns you will often see no rate at all.
+
+The row has a WIDTH BUDGET. When it does not fit, the model name is
+shortened in its middle first (its head and tail are kept, so the binding
+is still recognisable), and then the `/mode to switch` hint is dropped.
+The facts — the tier, the cache figure, the context estimate and the rate
+— are never dropped and never cut. The shortening is on the row only:
+`/model`, the session log and the request trace all keep the name whole.
+
 **The keys:** `enter` send · `ctrl+j / shift+⏎` newline · `@` files ·
 `esc` stop · `alt+⏎ / ctrl+⏎` redirect · `/` commands · `↑↓` history /
 queue pop · `ctrl+o` expand cells · `ctrl+r` transcript · `tab` complete · `?` this

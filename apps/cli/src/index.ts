@@ -859,7 +859,17 @@ async function pickSession(agent: Awaited<ReturnType<typeof makeAgent>>, input: 
  */
 function paintBootStatus(session: { log: { all: readonly unknown[] }; reasoning?: { readonly effort: string } }): void {
 	if (!dock.active) return;
-	dock.setStatus(idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), statusModelLabel(session), displayCtxRatio(session as never)));
+	// DF-0330-F1: the BOOT row gets the budget too — it is the same row, and
+	// the opening screen is where a long model id is first seen.
+	dock.setStatus(
+		idleStatus(
+			getMode() === "plan" ? "plan (read-only)" : getMode(),
+			statusModelLabel(session),
+			displayCtxRatio(session as never),
+			undefined,
+			process.stdout.columns > 0 ? process.stdout.columns : 80,
+		),
+	);
 }
 
 /** PH-1a (finding PH-F12): a usage error raised from inside the TUI —
