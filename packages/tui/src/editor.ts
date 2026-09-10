@@ -1430,7 +1430,16 @@ export class Editor {
 					this.#onRender();
 				}
 				i += 1;
-			} else if (c === "\x0f") {
+			} else if (c === "\x0f" && !this.#pasting) {
+				// DC-58 (0.32.1): this branch and the two below take `!#pasting`,
+				// the guard tab and CR already had — inside a paste a control byte
+				// is content or nothing, never a gesture. Unguarded, a pasted BEL
+				// opened $VISUAL mid-paste and the rest of the body went to that
+				// child's stdin: DC-7's rule from the third side (a byte from a
+				// paste is data the human handed over, as a reply's byte is the
+				// terminal's). Unclaimed control bytes were discarded already;
+				// now the claimed ones fall to the same discard while pasting.
+				//
 				// W15: the expand key — rides the chain like a command, the
 				// editor just forwards it.
 				//
@@ -1445,7 +1454,7 @@ export class Editor {
 				// toggling in place.
 				for (const cb of [...this.#expandCbs]) cb();
 				i += 1;
-			} else if (c === "\x14") {
+			} else if (c === "\x14" && !this.#pasting) {
 				// §2.3 — ctrl+t folds the committed thinking blocks, and
 				// folds them back. `\x14` was unbound across the tree
 				// (checked before the round), and it is the key the
@@ -1456,7 +1465,7 @@ export class Editor {
 				// compositor's, exactly as ctrl+o's is.
 				for (const cb of [...this.#thinkCbs]) cb();
 				i += 1;
-			} else if (c === "\x07") {
+			} else if (c === "\x07" && !this.#pasting) {
 				// §2.4 — ctrl+g opens $VISUAL / $EDITOR on the composer.
 				//
 				// 0x07 is BEL, which is also the terminator a terminal puts
