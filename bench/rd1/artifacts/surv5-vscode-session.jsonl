@@ -1,0 +1,4 @@
+{"runId":"022099ad-0017-4d26-a2d3-37b4751e1a05","ts":1789008248840,"event":{"type":"user_input","content":"VSROW-TYPED-BY-HAND","seq":0}}
+{"runId":"022099ad-0017-4d26-a2d3-37b4751e1a05","ts":1789008248847,"event":{"type":"text_delta","text":"VSROW-1","seq":1}}
+{"runId":"022099ad-0017-4d26-a2d3-37b4751e1a05","ts":1789008248853,"event":{"type":"stop","reason":"end_turn","seq":2}}
+{"runId":"022099ad-0017-4d26-a2d3-37b4751e1a05","ts":1789008248857,"event":{"type":"terminal","outcome":{"kind":"completed"},"seq":3}}
