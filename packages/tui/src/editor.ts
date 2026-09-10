@@ -1424,6 +1424,11 @@ export class Editor {
 				if (file !== null && file !== "") {
 					// REL-0152-D16: the capsule goes in the buffer, the file
 					// goes beside it. See #attachments.
+					//
+					// DC-61: and it is an archive point, for the same reason
+					// the bracketed-paste path is — this inserts a token the
+					// human did not type, so one ctrl+z has to take it back.
+					this.#checkpoint();
 					this.#attachSeq += 1;
 					this.#attachments.set(this.#attachSeq, file);
 					for (const ch of `[Image #${this.#attachSeq}]`) this.#insert(ch.codePointAt(0)!);
@@ -2127,6 +2132,19 @@ export class Editor {
 		}
 		if (this.#historyIdx !== null) this.#historyIdx = null;
 		this.#queuePopMode = false;
+		// DC-61: a paste is an ARCHIVE POINT. UD-1's invariant was written
+		// around destructive gestures — no gesture may discard more than one
+		// code point without a checkpoint — and a paste discards nothing, so
+		// it never took one. The loss arrived from the other side: ctrl+z
+		// after a paste did nothing, or reached an OLDER checkpoint and threw
+		// away the paste plus everything typed since it in one press.
+		//
+		// It sits here, after the image branch has either returned or filled
+		// `run`, so both shapes are covered by one call and the
+		// nothing-happened case (an empty paste with no clipboard image)
+		// still takes no checkpoint — a phantom entry would make ctrl+z a
+		// press the human has to repeat.
+		this.#checkpoint();
 		const pasted = Editor.#textOf(run);
 		const lines = pasted.split("\n").length;
 		const small = lines < Editor.#PASTE_LINES && run.length < Editor.#PASTE_CHARS;

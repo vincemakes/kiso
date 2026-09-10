@@ -259,3 +259,77 @@ describe("UD-1 — the invariant, property-tested (seed 20260827)", () => {
 		}
 	}, 60_000);
 });
+
+/**
+ * DC-61 — a paste is an archive point too.
+ *
+ * UD-1's invariant was written around DESTRUCTIVE gestures: no single
+ * gesture may discard more than one code point without a checkpoint. A
+ * paste discards nothing, so it never took one — and the consequence is
+ * the same loss from the other side. ctrl+z after a paste either did
+ * nothing at all, or, where an older checkpoint existed, restored THAT
+ * state and threw away the paste plus everything typed since it.
+ *
+ * The invariant is amended: a paste is an archive point too. It is the
+ * one gesture that puts an arbitrary amount of text in at once, and
+ * "what a single gesture did, one ctrl+z undoes" is the property the
+ * human actually relies on — in both directions.
+ *
+ * Driven on the REAL BYTE SHAPE, `ESC[200~ … ESC[201~`, because that is
+ * the only way into the paste path and because a test that called an
+ * internal would not have caught this: the checkpoint is missing from
+ * the byte path, not from a helper.
+ */
+describe("DC-61 — a paste is undoable", () => {
+	it("ctrl+z after a paste restores the pre-paste buffer AND cursor; ctrl+y brings it back", () => {
+		const { editor, feed } = make();
+		feed("before ");
+		feed("\x1b[200~pasted words\x1b[201~");
+		expect(editor.line()).toBe("before pasted words");
+		feed(UNDO);
+		expect(state(editor)).toEqual({ line: "before ", cursor: 7 });
+		feed(REDO);
+		expect(state(editor)).toEqual({ line: "before pasted words", cursor: 19 });
+	});
+
+	it("the paste does not take an OLDER checkpoint's state with it", () => {
+		// the shape the owner hit: a kill leaves a checkpoint, then a paste
+		// lands, and ctrl+z jumps past the paste to the kill — dropping the
+		// pasted text and everything typed after it in one press.
+		const { editor, feed } = make();
+		feed("first draft");
+		feed("\x15"); // ctrl+u — a checkpoint of "first draft"
+		feed("second ");
+		feed("\x1b[200~and pasted\x1b[201~");
+		expect(editor.line()).toBe("second and pasted");
+		feed(UNDO);
+		expect(editor.line(), "one press undoes the PASTE, not everything back to the kill").toBe("second ");
+	});
+
+	it("a large paste — the capsule token — is undoable the same way", () => {
+		// past #PASTE_LINES / #PASTE_CHARS the run is replaced by a capsule
+		// token in the buffer; the checkpoint has to cover that path too,
+		// because it is the same gesture wearing a different shape.
+		const { editor, feed } = make();
+		feed("head ");
+		feed(`\x1b[200~${"x".repeat(950)}\x1b[201~`);
+		const withCapsule = editor.line();
+		expect(withCapsule.length, "the capsule is shorter than the run").toBeLessThan(950);
+		expect(withCapsule.startsWith("head "), "and it sits where the paste landed").toBe(true);
+		feed(UNDO);
+		expect(state(editor)).toEqual({ line: "head ", cursor: 5 });
+	});
+
+	it("an EMPTY paste takes no checkpoint — nothing happened", () => {
+		// the dedupe against the top already covers this, and it must: an
+		// empty bracketed paste is the image case, and on a terminal with no
+		// image it changes nothing at all. A checkpoint there would make
+		// ctrl+z a no-op press that the human has to repeat.
+		const { editor, feed } = make();
+		feed("typed");
+		feed("\x15"); // a real checkpoint of "typed"
+		feed("\x1b[200~\x1b[201~"); // empty paste, no clipboard image
+		feed(UNDO);
+		expect(editor.line(), "ctrl+z reaches the kill, not a phantom paste").toBe("typed");
+	});
+});
