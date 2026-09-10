@@ -33,8 +33,13 @@ export function isFirstRun(): boolean {
  *  first-run sequence is evidenced by the FILES, not an announcement. */
 export function scaffoldFirstRun(): void {
 	const home = kisoHome();
-	mkdirSync(home, { recursive: true });
+	// R6: the home is PRIVATE from its first moment. This is usually the
+	// first thing that creates it, so the mode set here is the one every
+	// later writer inherits by finding the directory already there. The
+	// config may name an env var and the sentinel is empty, but the
+	// directory itself will hold session logs and the history.
+	mkdirSync(home, { recursive: true, mode: 0o700 });
 	const config = join(home, "config.json");
-	if (!existsSync(config)) writeFileSync(config, CONFIG_SCAFFOLD, "utf8");
-	writeFileSync(join(home, SENTINEL), "", "utf8");
+	if (!existsSync(config)) writeFileSync(config, CONFIG_SCAFFOLD, { encoding: "utf8", mode: 0o600 });
+	writeFileSync(join(home, SENTINEL), "", { encoding: "utf8", mode: 0o600 });
 }

@@ -1266,14 +1266,21 @@ async function main(): Promise<void> {
 		let seed: string[] = [];
 		try {
 			seed = readFileSync(historyPath, "utf8").split("\n").filter((l) => l !== "").slice(-500);
-			writeFileSync(historyPath, seed.length > 0 ? seed.join("\n") + "\n" : "");
+			// R6: the rewrite keeps the file private. It only runs when the
+			// file already existed, so this is a trim of the user's own
+			// history rather than a creation — the mode is stated so the trim
+			// cannot widen it.
+			writeFileSync(historyPath, seed.length > 0 ? seed.join("\n") + "\n" : "", { mode: 0o600 });
 		} catch {
 			// no file yet, or unreadable — start empty
 		}
 		input.bindHistory(seed, (line) => {
 			try {
-				mkdirSync(kisoHome(), { recursive: true });
-				appendFileSync(historyPath, line.replaceAll("\n", " ") + "\n");
+				// R6: every submitted line lands here, so the history is as
+				// private as the session logs — 0700 home, 0600 file, at
+				// CREATION. An existing file keeps its mode (not migrated).
+				mkdirSync(kisoHome(), { recursive: true, mode: 0o700 });
+				appendFileSync(historyPath, line.replaceAll("\n", " ") + "\n", { mode: 0o600 });
 			} catch {
 				// best-effort — a full disk never breaks a submit
 			}

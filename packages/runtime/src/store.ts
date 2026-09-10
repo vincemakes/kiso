@@ -175,7 +175,18 @@ export class SessionStore {
 	constructor(root: string, opts?: { lockAdapter?: LockAdapter }) {
 		this.root = root;
 		this.#lockAdapter = opts?.lockAdapter ?? nativeLockAdapter;
-		mkdirSync(root, { recursive: true });
+		// R6: PRIVATE by default. Under the common umask 022 this came out
+		// 0755 and the logs 0644 — a session's full transcript, prompts and
+		// tool inputs and the contents of every file the model read, was
+		// world-readable on a shared machine. `auth.json` has been 0700/0600
+		// since the credential store shipped; the logs are no less sensitive
+		// and were never given the same treatment.
+		//
+		// EXISTING FILES ARE NOT MIGRATED. Changing modes under someone's
+		// feet is its own surprise, and a deliberate 0644 is a choice kiso
+		// should not silently reverse. A fresh home is private; an old one
+		// stays as its owner left it.
+		mkdirSync(root, { recursive: true, mode: 0o700 });
 		fsyncDir(root);
 	}
 
@@ -328,7 +339,9 @@ export class SessionStore {
 		if (existing !== undefined) return existing;
 
 		const path = this.pathFor(sessionId);
-		const fd = openSync(path, "a+");
+		// R6: the mode applies at CREATION only — an existing log keeps
+		// whatever it has, which is the not-migrated rule above.
+		const fd = openSync(path, "a+", 0o600);
 		repairTornTail(fd);
 		fsyncDir(dirname(path));
 		this.#fds.set(sessionId, fd);
