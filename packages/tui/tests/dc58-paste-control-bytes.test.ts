@@ -191,3 +191,53 @@ describe("DC-62b — ESC-led shapes inside a paste", () => {
 		expect(e.line(), "the paste closed and the ! is ordinary input").toBe("body!");
 	});
 });
+
+/**
+ * DC-62c — a lone trailing ESC inside a paste is HELD, not consumed.
+ *
+ * Measured, not reasoned: with the paste-end marker split immediately
+ * after its ESC byte — the chunk ends on the bare ESC, the next begins
+ * `[201~` — the marker was missed and `#pasting` never cleared. The
+ * composer then went DEAF: every later keystroke was collected and
+ * nothing reached the screen until some intact `ESC[201~` arrived and
+ * flushed the lot. That is the TMUX-F1 shape, and it predates DC-62b
+ * (byte-identical on d874af7's editor).
+ *
+ * The hold is free HERE and nowhere else. CA-4 says a bare Esc fires at
+ * once rather than waiting for a possible CSI, because its immediacy is
+ * what a hold would spend — esc interrupts a run. Inside a paste, after
+ * DC-62b, a bare ESC already does NOTHING, so there is no promptness to
+ * spend. Outside a paste CA-4 is untouched, and the third case pins that
+ * so nobody widens this later.
+ */
+describe("DC-62c — the paste end split on its own ESC", () => {
+	it("the marker is recognised across the split, and the composer is live again", () => {
+		const e = new Editor(() => {});
+		e.feed(enc("\x1b[200~body"));
+		e.feed(enc("\x1b")); // the chunk ends on the bare ESC
+		e.feed(enc("[201~after"));
+		expect(e.line(), "the paste closed and the rest is ordinary input").toBe("bodyafter");
+		e.feed(enc("X"));
+		expect(e.line(), "and the composer is not deaf").toBe("bodyafterX");
+	});
+
+	it("a held ESC followed by an ordinary byte skips one and collects the byte", () => {
+		const fired: string[] = [];
+		const e = new Editor(() => {});
+		e.onEscape(() => fired.push("escape"));
+		e.feed(enc("\x1b[200~body"));
+		e.feed(enc("\x1b"));
+		e.feed(enc("x"));
+		e.feed(enc("\x1b[201~"));
+		expect(fired, "the held ESC is nothing, not a gesture").toEqual([]);
+		expect(e.line()).toBe("bodyx");
+	});
+
+	it("OUTSIDE a paste a lone trailing ESC still fires at once — CA-4 unchanged", () => {
+		const fired: string[] = [];
+		const e = new Editor(() => {});
+		e.onEscape(() => fired.push("escape"));
+		e.feed(enc("\x1b"));
+		expect(fired, "esc interrupts a run; its immediacy is the point").toEqual(["escape"]);
+	});
+});

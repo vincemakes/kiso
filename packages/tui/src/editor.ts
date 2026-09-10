@@ -1305,6 +1305,37 @@ export class Editor {
 					// terminal's answer either. Skipped to its terminator.
 					if (!this.#pasting) this.#oscCb?.(rest.slice(1, end.index));
 					i += 1 + end.index + end[0]!.length;
+				} else if (this.#pasting && rest === "") {
+					// DC-62c: a lone trailing ESC inside a paste is HELD, not
+					// consumed — parked in `#pending` the way an incomplete CSI
+					// parks, so the next feed resolves it.
+					//
+					// Measured: with the paste-end marker split immediately after
+					// its ESC byte (the chunk ends on the bare ESC, the next
+					// begins `[201~`), the marker was missed, `#pasting` never
+					// cleared, and THE COMPOSER WENT DEAF — every later keystroke
+					// collected, nothing on screen, until some intact `ESC[201~`
+					// arrived and flushed the lot. The TMUX-F1 shape, and it
+					// predates DC-62b: byte-identical on the editor before it.
+					//
+					// The hold is free HERE and nowhere else. CA-4 rules that a
+					// bare Esc fires at once rather than waiting for a possible
+					// CSI, because its immediacy is what a hold would spend — esc
+					// interrupts a run. Inside a paste, after DC-62b, a bare ESC
+					// already does nothing at all, so there is no promptness to
+					// spend and nothing to protect. Outside a paste CA-4 is
+					// untouched, and a gate pins that so this is not widened.
+					//
+					// KNOWN RESIDUAL, the mirror at the paste START: a lone
+					// trailing ESC OUTSIDE a paste followed by `[200~body` in the
+					// next chunk fires the bare esc, and the body arrives as
+					// keystrokes, control bytes and all. That one cannot be fixed
+					// without holding the ESC exactly where CA-4 says not to, so
+					// it stays — same rarity argument, a terminal writes each
+					// marker in one write. A real log showing it makes it a
+					// finding of its own.
+					this.#pending = text.slice(i);
+					break;
 				} else if (this.#pasting) {
 					// DC-62b: inside a paste, the CSI arm above has already let
 					// `ESC[201~` through and skipped every other complete CSI, and
