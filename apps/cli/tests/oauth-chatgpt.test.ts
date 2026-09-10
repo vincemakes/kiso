@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { generatePkce, randomState } from "../src/auth/oauth/pkce.js";
 import { CHATGPT, accountIdOf, chatgptFlow, createAuthorizationFlow, credentialFromTokens, decodeJwtPayload, parseAuthorizationInput, startCallbackServer } from "../src/auth/oauth/chatgpt.js";
-import { AuthError, getCredential, setCredential } from "../src/auth/credentials.js";
+import { AuthError, deleteCredential, getCredential, setCredential } from "../src/auth/credentials.js";
 import { FRESH_WINDOW_MS, ensureFresh } from "../src/auth/refresh.js";
 import { createHash } from "node:crypto";
 
@@ -250,6 +250,48 @@ describe("ensureFresh — when a refresh happens", () => {
 		const result = (await ensureFresh("chatgpt", flow, path, now)) as { access?: string };
 		expect(result.access).toBe("THEIRS");
 	});
+	/**
+	 * R2a — a refresh cannot resurrect a logout.
+	 *
+	 * `flow.refresh` is awaited outside the store lock, and the write-back
+	 * kept only a LATER-EXPIRING entry. So an entry deleted by `kiso
+	 * logout` during the refresh was not later-expiring — it was absent —
+	 * and the branch fell through and wrote the old credential back. A
+	 * sign-out that the human performed, undone by a network round trip
+	 * they never saw.
+	 *
+	 * The same hole let a NEW LOGIN of another type be overwritten: an
+	 * api-key entry is not an oauth entry with a later expiry either.
+	 *
+	 * The rule: write only if the entry is still the oauth generation this
+	 * refresh began from. Anything else — absent, a different type, a
+	 * different generation — leaves the file alone.
+	 */
+	it("R2a: a logout DURING the refresh is not resurrected by it", async () => {
+		const now = 1_000_000_000_000;
+		setCredential("chatgpt", { type: "oauth", access: "A", refresh: "R", expires: now + 1000, accountId: "a", savedAt: 1 }, path);
+		const flow = fakeFlow(async () => {
+			// the human runs `kiso logout chatgpt` while we are on the wire
+			deleteCredential("chatgpt", path);
+			return { access: "MINE", refresh: "RM", expires: now + 3_600_000 };
+		});
+		await expect(ensureFresh("chatgpt", flow, path, now)).rejects.toThrow(AuthError);
+		expect(getCredential("chatgpt", path), "the sign-out stands").toBeUndefined();
+	});
+
+	it("R2a: a NEW LOGIN during the refresh wins over the refresh's write-back", async () => {
+		const now = 1_000_000_000_000;
+		setCredential("chatgpt", { type: "oauth", access: "A", refresh: "R", expires: now + 1000, accountId: "a", savedAt: 1 }, path);
+		const flow = fakeFlow(async () => {
+			// a key login replaces the oauth entry while we are on the wire
+			setCredential("chatgpt", { type: "api-key", key: "THE-NEW-ONE", savedAt: 2 }, path);
+			return { access: "MINE", refresh: "RM", expires: now + 3_600_000 };
+		});
+		const result = await ensureFresh("chatgpt", flow, path, now);
+		expect(result, "the newer sign-in is what the file holds").toMatchObject({ type: "api-key", key: "THE-NEW-ONE" });
+		expect(getCredential("chatgpt", path)).toMatchObject({ type: "api-key", key: "THE-NEW-ONE" });
+	});
+
 	afterAll(() => {
 		if (savedHome === undefined) delete process.env.KISO_HOME;
 		else process.env.KISO_HOME = savedHome;

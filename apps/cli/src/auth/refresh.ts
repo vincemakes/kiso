@@ -27,11 +27,35 @@ export async function ensureFresh(providerId: string, flow: OAuthFlow, path?: st
 	}
 	if (refreshed === undefined) throw new AuthError(`signed out of ${providerId} (the token could not be refreshed: ${error?.message ?? "unknown"}) — run \`kiso login ${providerId}\``);
 	const written = refreshed;
+	// R2a — THE WRITE-BACK MAY NOT RESURRECT WHAT THE HUMAN REMOVED.
+	//
+	// `flow.refresh` is awaited outside the store lock, so anything can
+	// happen to the file while it is on the wire. The old condition kept
+	// only a LATER-EXPIRING entry, which asks the wrong question: an entry
+	// deleted by `kiso logout` is not later-expiring, it is ABSENT, so the
+	// branch fell through and wrote the old credential back — a sign-out
+	// the human performed, undone by a network round trip they never saw.
+	// A new login of another type was overwritten the same way: an api-key
+	// entry is not an oauth entry with a later expiry either.
+	//
+	// The question that is actually being asked is "is this still the
+	// generation I began from?", so that is what is compared: the refresh
+	// token and the expiry captured BEFORE the await. Absent, a different
+	// type, or a different generation — including the concurrent refresh
+	// the old condition was written for — all leave the file alone.
+	const began = current;
 	modifyAuthFile((file) => {
 		const latest = file.credentials[providerId];
-		// if a concurrent refresh already wrote a fresher token, keep it
-		if (latest !== undefined && latest.type === "oauth" && latest.expires > written.expires) return file;
+		if (latest === undefined) return file; // logged out while we were on the wire
+		if (latest.type !== "oauth") return file; // replaced by a login of another type
+		if (latest.refresh !== began.refresh || latest.expires !== began.expires) return file; // a different generation
 		return { version: 1, credentials: { ...file.credentials, [providerId]: written } };
 	}, path);
-	return readAuthFile(path).credentials[providerId] as Credential;
+	// What the FILE holds, not what this refresh produced: if the write was
+	// declined the caller must be told the truth on disk, and an absent
+	// entry is the not-signed-in error rather than an undefined cast to a
+	// Credential.
+	const after = readAuthFile(path).credentials[providerId];
+	if (after === undefined) throw new AuthError(`not signed in to ${providerId}: run \`kiso login ${providerId}\``);
+	return after;
 }
