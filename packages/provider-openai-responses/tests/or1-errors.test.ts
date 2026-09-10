@@ -97,6 +97,14 @@ describe("OR-1 errors — status in, StructuredError out", () => {
 		})();
 		await until(() => rig.openConnections() === 1); // the request is really in flight
 		expect(rig.openConnections()).toBe(1);
+		// CI-F1 (2026-09-10, the 0.32.1 release run): the rig records a request
+		// when its BODY has been read (`req.on("end")`), while the connection
+		// count moves on the TCP `connection` event. On a slow runner the
+		// abort below cut the socket between the two, and the last assertion
+		// found zero requests recorded for a request the server had indeed
+		// received — a race in the rig's bookkeeping, not in the adapter.
+		// The abort is meant to land on a request the server HAS; wait for it.
+		await until(() => rig.requests.length === 1);
 		const startedAt = Date.now();
 		controller.abort();
 		const err = await pending.then(() => null, (e: unknown) => e);
