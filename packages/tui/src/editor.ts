@@ -1150,6 +1150,37 @@ export class Editor {
 					continue;
 				}
 			}
+			// DC-62 — ONE RULE, at the top of the chain: inside a paste a
+			// control byte is CONTENT OR NOTHING, never a gesture.
+			//
+			// DC-58 guarded three branches (0x07, 0x14, 0x0f) and stated the
+			// rule generally; the rule was right and the placement was not.
+			// Every other claimed control byte still ran: a pasted backspace
+			// ate the text typed BEFORE the paste, a pasted 0x15 emptied the
+			// buffer, a pasted 0x1a rewound it — and a pasted 0x03 or 0x04
+			// fired the exit callbacks, so a paste could end the session.
+			// `#insert` only COLLECTS what reaches it, so none of these ever
+			// reached the collection; they acted instead.
+			//
+			// Nothing rather than content, because that is what the chain
+			// already does with an UNCLAIMED control byte (`c < " "` discards
+			// it), and a paste should not be the one place where 0x15 becomes
+			// visible text. Three bytes are let through to branches that
+			// already know about `#pasting` and treat them as content: CR and
+			// LF become a newline, TAB stays a tab (DC-55). ESC is let
+			// through because the parser must still see `ESC[201~` to END the
+			// paste — swallow that and the editor never leaves paste mode.
+			//
+			// The three DC-58 guards are retired into this: one rule, not
+			// twelve, and the next control byte someone claims is covered
+			// without anyone remembering to guard it.
+			if (this.#pasting && c !== undefined && c !== "\x1b" && c !== "\x0d" && c !== "\x0a" && c !== "\t") {
+				const code = c.codePointAt(0)!;
+				if (code < 0x20 || code === 0x7f) {
+					i += 1;
+					continue;
+				}
+			}
 			if (this.#panelInput.up()) {
 				// S5: the panel answers PARSED keys — a bare Esc, an Enter, a
 				// Tab, a character — and says how many bytes it took, or null
@@ -1435,7 +1466,7 @@ export class Editor {
 					this.#onRender();
 				}
 				i += 1;
-			} else if (c === "\x0f" && !this.#pasting) {
+			} else if (c === "\x0f") {
 				// DC-58 (0.32.1): this branch and the two below take `!#pasting`,
 				// the guard tab and CR already had — inside a paste a control byte
 				// is content or nothing, never a gesture. Unguarded, a pasted BEL
@@ -1459,7 +1490,7 @@ export class Editor {
 				// toggling in place.
 				for (const cb of [...this.#expandCbs]) cb();
 				i += 1;
-			} else if (c === "\x14" && !this.#pasting) {
+			} else if (c === "\x14") {
 				// §2.3 — ctrl+t folds the committed thinking blocks, and
 				// folds them back. `\x14` was unbound across the tree
 				// (checked before the round), and it is the key the
@@ -1470,7 +1501,7 @@ export class Editor {
 				// compositor's, exactly as ctrl+o's is.
 				for (const cb of [...this.#thinkCbs]) cb();
 				i += 1;
-			} else if (c === "\x07" && !this.#pasting) {
+			} else if (c === "\x07") {
 				// §2.4 — ctrl+g opens $VISUAL / $EDITOR on the composer.
 				//
 				// 0x07 is BEL, which is also the terminator a terminal puts

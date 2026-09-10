@@ -49,3 +49,75 @@ describe("DC-58 — control bytes inside a bracketed paste", () => {
 		expect(fired).toEqual(["editor", "think", "expand"]);
 	});
 });
+
+/**
+ * DC-62 — DC-58's siblings, asked of every function beside it.
+ *
+ * DC-58 guarded three branches. The rule it stated is general, so the
+ * question is whether the rest of the chain obeys it: the kills, the
+ * backspace, the undo pair, the exit callbacks, the home/end moves. Each
+ * of these is CLAIMED, so the "unclaimed control bytes are discarded"
+ * fallback never sees them, and `#insert` only collects what reaches it.
+ *
+ * Driven on the real byte shape. If these pass on the current source, the
+ * finding is not real and the per-branch guards are enough; if they fail,
+ * the fix is one rule at the top of the chain rather than nine more
+ * guards, and DC-58's three retire into it.
+ */
+describe("DC-62 — the rest of the chain, inside a paste", () => {
+	it("a pasted backspace does not eat the text the human typed before pasting", () => {
+		const { e } = wired();
+		e.feed(enc("KEEP"));
+		e.feed(enc(paste("\x08\x08 tail")));
+		expect(e.line(), "the pre-paste text survives; the paste lands without the control bytes").toBe("KEEP tail");
+	});
+
+	it("a pasted kill-to-start does not empty the buffer", () => {
+		const { e } = wired();
+		e.feed(enc("KEEP"));
+		e.feed(enc(paste("x\x15y")));
+		expect(e.line()).toBe("KEEPxy");
+	});
+
+	it("a pasted kill-to-end and kill-word leave the line alone", () => {
+		const { e } = wired();
+		e.feed(enc("KEEP ME"));
+		e.feed(enc(paste("\x0b\x17z")));
+		expect(e.line()).toBe("KEEP MEz");
+	});
+
+	it("a pasted 0x03 / 0x04 fires no exit callback", () => {
+		const fired: string[] = [];
+		const e = new Editor(() => {});
+		e.onSigint(() => fired.push("sigint"));
+		e.onEot(() => fired.push("eot"));
+		e.feed(enc(paste("a\x03b\x04c")));
+		expect(fired, "a paste cannot end the session").toEqual([]);
+		expect(e.line()).toBe("abc");
+	});
+
+	it("a pasted undo/redo does not rewind the buffer", () => {
+		const { e } = wired();
+		e.feed(enc("first"));
+		e.feed(enc("\x15")); // a real checkpoint
+		e.feed(enc("second"));
+		e.feed(enc(paste("\x1a\x1a tail")));
+		expect(e.line(), "the paste is text, not two presses of ctrl+z").toBe("second tail");
+	});
+
+	it("a pasted ESC[A does not walk the history", () => {
+		const e = new Editor(() => {});
+		e.bindHistory(["an older turn"], () => {});
+		e.feed(enc("typed"));
+		e.feed(enc(paste("\x1b[Amore")));
+		expect(e.line(), "the history stays where it is").toBe("typedmore");
+	});
+
+	it("ESC[201~ still ENDS the paste — the parser must keep seeing it", () => {
+		// the one CSI that must survive any rule applied to the chain
+		const { e } = wired();
+		e.feed(enc(paste("body")));
+		e.feed(enc("!"));
+		expect(e.line(), "the ! is ordinary input after the paste closed").toBe("body!");
+	});
+});
