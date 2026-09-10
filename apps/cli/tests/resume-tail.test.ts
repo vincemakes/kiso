@@ -37,3 +37,52 @@ describe("REL-0152-D5 — a resumed session shows where you were", () => {
 		expect(out.join("").length).toBeLessThan(700);
 	});
 });
+
+/**
+ * R7b — an image-bearing turn does not vanish from the resumed tail.
+ *
+ * The tail kept only STRING `user_input`, so a turn carrying an image was
+ * skipped entirely — and skipping an ASK does not just lose that ask: the
+ * reply that followed it attached to the PREVIOUS one. A resumed session
+ * showed an answer under a question it did not answer, which is worse
+ * than showing nothing.
+ *
+ * The same shape as R7 at the title, and the same fix in the other
+ * direction: the CLI may depend on tui-cells, so the tail uses the live
+ * echo's own projection (`echoText`) rather than a second one. The
+ * RUNTIME keeps its own `contentText` because it cannot depend on
+ * tui-cells — two implementations, one direction each, and they agree on
+ * "(image)".
+ */
+describe("R7b — an image-bearing ask in the resumed tail", () => {
+	it("the ask appears with its image marked, and keeps its own reply", () => {
+		const out = resumeTail([
+			rec({ type: "user_input", content: "the first question" }),
+			rec({ type: "text_delta", text: "the first answer" }),
+			rec({
+				type: "user_input",
+				content: [
+					{ type: "text", text: "what is wrong here?" },
+					{ type: "image", sourceType: "base64", mediaType: "image/png", data: "AAAA" },
+				],
+			}),
+			rec({ type: "text_delta", text: "the second answer" }),
+		] as never, 80);
+		const text = out.join("\n");
+		expect(text, "the image-bearing ask is on screen").toContain("what is wrong here? (image)");
+		expect(text, "and so is its own reply").toContain("the second answer");
+		// the pairing is the point: the second answer must not have drifted
+		// up under the first question
+		expect(text.indexOf("the second answer"), "the reply follows ITS ask").toBeGreaterThan(text.indexOf("what is wrong here?"));
+	});
+
+	it("an image-ONLY ask still appears", () => {
+		const out = resumeTail([
+			rec({ type: "user_input", content: [{ type: "image", sourceType: "base64", mediaType: "image/png", data: "AAAA" }] }),
+			rec({ type: "text_delta", text: "an answer about the picture" }),
+		] as never, 80);
+		const text = out.join("\n");
+		expect(text).toContain("(image)");
+		expect(text).toContain("an answer about the picture");
+	});
+});

@@ -61,6 +61,7 @@
 		"apps/cli/tests/project-trust.test.ts",
 		"apps/cli/tests/r14-kill-mid-reprint.test.ts",
 		"apps/cli/tests/r3a-input.test.ts",
+		"apps/cli/tests/r6b-private-writers.test.ts",
 		"apps/cli/tests/r5-viewer-pty.test.ts",
 		"apps/cli/tests/rd1b-f1-dockless-uncertainty.test.ts",
 		"apps/cli/tests/rd1b-f6-dockless-ask.test.ts",

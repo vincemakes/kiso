@@ -43,7 +43,13 @@ function line(dir: "out" | "err" | "in", data: string | Uint8Array): void {
 	if (path === null) return;
 	const buf = typeof data === "string" ? Buffer.from(data, "utf8") : Buffer.from(data);
 	try {
-		appendFileSync(path, `${JSON.stringify({ ms: Date.now() - start, dir, n: buf.length, b: buf.toString("base64") })}\n`);
+		// R6b: 0600 at CREATION. This file is every keystroke and every
+		// paste, base64 — the session log plus the things that never became
+		// a turn, including anything typed and deleted. It is opt-in
+		// debugging, which makes it easy to leave behind and easy to forget
+		// is there; it is the most sensitive file kiso writes and it was the
+		// least protected. An existing file keeps its mode (R6's rule).
+		appendFileSync(path, `${JSON.stringify({ ms: Date.now() - start, dir, n: buf.length, b: buf.toString("base64") })}\n`, { mode: 0o600 });
 	} catch {
 		// a trace that fails must never take the session with it
 		path = null;
@@ -66,7 +72,12 @@ export function armByteTrace(): void {
 	path = target;
 	start = Date.now();
 	try {
-		writeFileSync(path, "");
+		// R6b: the mode belongs HERE, where the file is created. The append
+		// below states it too, but `appendFileSync`'s mode only applies when
+		// it creates the file — and this truncating write always gets there
+		// first, so without this the trace was born 0644 and the append
+		// never had a chance to say otherwise.
+		writeFileSync(path, "", { mode: 0o600 });
 	} catch {
 		path = null;
 		return;

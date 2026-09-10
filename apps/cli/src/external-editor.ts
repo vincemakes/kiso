@@ -35,11 +35,16 @@ import { join } from "node:path";
 export function runExternalEditor(bin: string, root: string, text: string, onFailure: (line: string) => void): string | null {
 	// per INVOCATION, not per run: a directory per call is how the tree
 	// grew 400,000 of them once.
-	mkdirSync(root, { recursive: true });
+	// R6b: the draft is the human's own words on their way to an editor.
+	// `mkdtemp` already gives its own directory 0700, so the file was
+	// shielded by WHERE IT SITS rather than by what it is — and the root
+	// above it was created with no mode at all. Both stated now, so the
+	// shield is the file's own and does not depend on a neighbour's default.
+	mkdirSync(root, { recursive: true, mode: 0o700 });
 	const dir = mkdtempSync(join(root, "compose-"));
 	const file = join(dir, "message.md"); // .md so the editor lights it up
 	try {
-		writeFileSync(file, text, "utf8");
+		writeFileSync(file, text, { encoding: "utf8", mode: 0o600 });
 		const r = spawnSync(bin, [file], { stdio: "inherit", shell: false });
 		if (r.error !== undefined || (r.status !== null && r.status !== 0)) {
 			onFailure(`[ctrl+g] ${bin} exited ${r.status ?? "abnormally"} — the composer is unchanged`);

@@ -16,6 +16,8 @@
  * with the session because it holds no state of its own.
  */
 
+import { echoText } from "@vincemakes/kiso-tui-cells/render";
+
 /** How much of the tail is worth showing. Two turns is enough to
  *  recognise a conversation and short enough that resuming does not
  *  bury the prompt. */
@@ -38,9 +40,22 @@ export function resumeTail(events: readonly { readonly type: string }[], W = 80)
 	let reply = "";
 	for (const ev of events) {
 		const e = ev as { type?: string; content?: unknown; text?: unknown };
-		if (e.type === "user_input" && typeof e.content === "string") {
+		if (e.type === "user_input") {
+			// R7b: a turn carrying an IMAGE is a content ARRAY, and this kept
+			// only strings — so such a turn was skipped entirely. Skipping an
+			// ASK does not merely lose it: the reply that followed attached to
+			// the PREVIOUS ask, and the resumed tail showed an answer under a
+			// question it did not answer. Worse than showing nothing.
+			//
+			// Projected with the LIVE ECHO's own function, so the tail and the
+			// echo cannot drift: cli → tui-cells is the right direction. The
+			// RUNTIME keeps its own `contentText` (R7) because it cannot
+			// depend on tui-cells — two implementations, one per direction,
+			// agreeing on "(image)".
+			const text = echoText(e.content as Parameters<typeof echoText>[0]).trim();
+			if (text === "") continue;
 			if (ask !== null) turns.push({ ask, reply });
-			ask = e.content;
+			ask = text;
 			reply = "";
 		} else if (e.type === "text_delta" && typeof e.text === "string" && ask !== null) {
 			reply += e.text;
