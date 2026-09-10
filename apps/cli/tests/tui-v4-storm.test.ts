@@ -331,14 +331,33 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// IMMEDIATELY after the status (the hint, had it fit, would sit
 		// between the status and the reset).
 		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["/ commands · \u2191 history", "look around\r"]], 30, 44, []);
-		// v6 invariant ①: the status itself must fit W — a status wider
-		// than W CUTS at W−1 with a … (the old code soft-wrapped it; the
-		// crash-on-violation makes the cut structural). A1a (0.29.0): the
+		// v6 invariant ①: the status itself must fit W. A1a (0.29.0): the
 		// idle status counts the tool table and the system prompt, so a
 		// fresh faux session reads ~99% (50 cells) instead of ~100% (51);
-		// at 50 cols it now FITS, so the cut is asserted at 44 cols, where
-		// the expected string does not depend on the percentage's digits.
-		expect(narrow).toContain("▸ default · /mode to switch · faux · ctx le…\x1b[0m");
+		// at 50 cols it FITS, so the short case is asserted at 44 cols,
+		// where the expected string does not depend on the percentage's
+		// digits.
+		//
+		// DECLARED SUPERSESSION (DF-0330-F1, 0.33.0): this asserted
+		// `▸ default · /mode to switch · faux · ctx le…` — the invariant's
+		// `…` cut landing on `ctx left ~99%`. That cut a FACT to keep a
+		// teaching hint, and the round that added `tok/s` to this row found
+		// out what that costs: at 100 columns with the owner's own model id
+		// the rate never rendered at all, because the row was 102 columns
+		// and the last segment fell off.
+		//
+		// The idle row now has a DROP ORDER instead: the model id is elided
+		// in its middle, then `/mode to switch` is dropped, and the facts —
+		// tier, CH, ctx left, tok/s — are never dropped and never cut. At 44
+		// columns the hint gives way and the context estimate survives
+		// whole. The invariant's `…` is still the last resort; it is simply
+		// no longer the FIRST thing that happens.
+		//
+		// This gate's own property is unchanged and still asserted: the
+		// right-hand hint is cut before the status text, and the status is
+		// never truncated from the left.
+		expect(narrow).toContain("▸ default · faux · ctx left ~99%");
+		expect(narrow, "the teaching hint survived a row with no room for it").not.toContain("/mode to switch · faux");
 		// DECLARED SUPERSESSION (REL-0152-R1): the status row is written
 		// by ROW NUMBER now, not by a CHA at the end of a bottom-up march.
 		// The property is that it is never truncated from the LEFT — the

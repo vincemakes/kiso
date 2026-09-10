@@ -1252,6 +1252,11 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// measurement), never at a turn's END, so the idle row can carry the
 	// last call of the last turn.
 	let lastTokPerSec: number | null = null;
+	// DF-0330-F1: the terminal's own width, read at paint time so a resize
+	// is honoured. winsize reports 0 columns in some hosts and 0 is not
+	// nullish, so the guard is `> 0` rather than `??` (the same shape the
+	// compositor's own width call uses).
+	const rowWidth = (): number => (process.stdout.columns > 0 ? process.stdout.columns : 80);
 	// KC2 §5: the STATE (the glyph, the run's start, the usage, the dock)
 	// stays here; the ROW's text is the tui's status formatter.
 	const paintRunning = (): void => {
@@ -1266,11 +1271,20 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// when unknown, so a session that has not called the model paints
 		// exactly the pre-round row.
 		dock.setStatus(
-			idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), statusModelLabel(session), displayCtxRatio(session), {
-				cacheHitPct: cacheHitPct(runUsage),
-				costUsd: spentUsd,
-				tokPerSec: lastTokPerSec,
-			}),
+			idleStatus(
+				getMode() === "plan" ? "plan (read-only)" : getMode(),
+				statusModelLabel(session),
+				displayCtxRatio(session),
+				{
+					cacheHitPct: cacheHitPct(runUsage),
+					costUsd: spentUsd,
+					tokPerSec: lastTokPerSec,
+				},
+				// DF-0330-F1: the row's budget. Without it the row is composed
+				// blind and invariant ① cuts whatever sits last — which is how
+				// a measured rate went missing at 100 columns.
+				rowWidth(),
+			),
 		);
 	};
 	// TUI2-R2 ⑥ — the BOOT status line. The row is the product's one
