@@ -138,11 +138,40 @@ const isOpener = (t: string): boolean => [...t].length < MIN_TITLE_CHARS || ASCI
  * and the picker kept showing bare ids, so the fix reached the surface
  * nobody uses and missed the one everybody does.
  */
+/**
+ * R7 — what a `user_input` SAYS, as one string.
+ *
+ * A turn carrying an image is a content ARRAY, and the title only ever
+ * read `typeof content === "string"` — so such a turn was filtered out
+ * entirely and the session was titled "(no prompt)". Worse where a
+ * greeting came first: the opener `isOpener` exists to skip became the
+ * title, because the substantive turn was not in the list to be found.
+ * Exactly the sessions a human recognises by what they showed it.
+ *
+ * Projected HERE, in the runtime, with no dependency on the TUI packages.
+ * The dependency runs one way; a store that reached into the renderer to
+ * name a session would invert it. Unknown block types contribute nothing
+ * rather than a guess — a title is a label, and a label that invents is
+ * worse than a label that is short.
+ */
+function contentText(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	const parts: string[] = [];
+	for (const block of content) {
+		if (block === null || typeof block !== "object") continue;
+		const b = block as { type?: unknown; text?: unknown };
+		if (b.type === "text" && typeof b.text === "string") parts.push(b.text);
+		else if (b.type === "image") parts.push("(image)");
+	}
+	return parts.join(" ");
+}
+
 export function sessionTitle(records: readonly StoreRecord[]): string {
 	const asked = records
 		.map((r) => r.event as { type: string; content?: unknown })
-		.filter((e) => e.type === "user_input" && typeof e.content === "string")
-		.map((e) => (e.content as string).trim())
+		.filter((e) => e.type === "user_input")
+		.map((e) => contentText(e.content).trim())
 		.filter((t) => t !== "");
 	if (asked.length === 0) return "(no prompt)";
 	const substantive = asked.find((t) => !isOpener(t));
