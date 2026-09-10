@@ -115,6 +115,22 @@ verify=pass (T3 9/9, T5 6/6). Raw runs: `bench/runs/3way-040/` (T3) and
 |  |  | 2 | 304,109 | 1,731,200 | 2,035,309 | 477,229 | 19,743 | 62 | 289s |
 | | median | | 303,406 | 1,464,640 | 1,768,046 | **449,870** | 16,530 | 54.0 | 259.0s |
 
+> **ERRATUM (2026-09-10) — the rival-side ratios below are SUPERSEDED and no token
+> claim against the reference implementation or the vendor CLI is published.** The
+> three-way drivers (`run-t5.sh`, the T3 kit) ran the rival arms with this machine's
+> REAL home directory — the reference implementation loaded its installed skills and
+> the ancestor instruction files, the vendor CLI its own — and every cell in a fresh
+> working directory, which invalidates the reference implementation's prefix cache per
+> cell while kiso's is cwd-independent. Both are benchmark artifacts, found and named
+> in the RD-1B round (RD1B-F7 the environment, RD1B-F8 the cache): under symmetric
+> environments (`--isolate-home`, the product's own no-skills/no-config switches,
+> `os.environ` cleared to one whitelist) the paired cost ratio against the reference
+> implementation is **1.01×** — the two agents cost the same
+> (kiso-doc/kiso-rd1b-clean-replay-report.md). The kiso columns stand as measured;
+> the rows stay for the record (immutability); the ratios are not evidence. The launch
+> scorecard's cost axis re-measures T5/T6 three-way under the symmetric protocol
+> before any comparative sentence is written again.
+
 **The headline ratios (median cost-weighted = fresh + 0.1×cached):**
 T3 — kiso 1,885 vs pi 4,800 = **2.55×**, vs Claude Code 61,059 =
 **32×**. T5 — kiso 20,849 vs pi 34,133 = **1.64×**, vs Claude Code
@@ -173,6 +189,22 @@ bench-allow extension.
 | | claude | 1 | 29,379 | 801,408 | 830,787 | 109,520 | 10,067 | 31 | 92s |
 | | | 2 | 29,779 | 1,015,808 | 1,045,587 | 131,360 | 10,309 | 29 | 135s |
 | | median | | 29,579 | 908,608 | 938,187 | **120,440** | 10,188 | 30.0 | 113.5s |
+
+> **ERRATUM (2026-09-10) — the rival-side ratios below are SUPERSEDED and no token
+> claim against the reference implementation or the vendor CLI is published.** The
+> three-way drivers (`run-t5.sh`, the T3 kit) ran the rival arms with this machine's
+> REAL home directory — the reference implementation loaded its installed skills and
+> the ancestor instruction files, the vendor CLI its own — and every cell in a fresh
+> working directory, which invalidates the reference implementation's prefix cache per
+> cell while kiso's is cwd-independent. Both are benchmark artifacts, found and named
+> in the RD-1B round (RD1B-F7 the environment, RD1B-F8 the cache): under symmetric
+> environments (`--isolate-home`, the product's own no-skills/no-config switches,
+> `os.environ` cleared to one whitelist) the paired cost ratio against the reference
+> implementation is **1.01×** — the two agents cost the same
+> (kiso-doc/kiso-rd1b-clean-replay-report.md). The kiso columns stand as measured;
+> the rows stay for the record (immutability); the ratios are not evidence. The launch
+> scorecard's cost axis re-measures T5/T6 three-way under the symmetric protocol
+> before any comparative sentence is written again.
 
 **The headline ratios (median cost-weighted = fresh + 0.1×cached):**
 T3 — kiso 2,211 vs pi 4,711 = **2.1×**, vs Claude Code 42,957 =
