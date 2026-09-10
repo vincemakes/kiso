@@ -53,7 +53,13 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 			"ctrl+r transcript                   tab complete (menu / @)",
 			"? this sheet                        alt+←→ / ctrl+←→ word motion",
 			"alt+⌫ / alt+d delete word (ctrl+w too) ctrl+x copy the last answer",
-			"ctrl+z / ctrl+y undo / redo",
+			// DECLARED ADDITION (REL-0152-D15/D16, 0.32.2): ctrl+v joins the
+			// undo row rather than taking one of its own — the count is even
+			// again, and the stop is 39, the same as its neighbour above.
+			// The image key is on the sheet because a terminal's own Cmd+V
+			// pastes only TEXT, so the obvious gesture does not lead a human
+			// to it: precisely the case the sheet exists for.
+			"ctrl+z / ctrl+y undo / redo            ctrl+v attach a clipboard image",
 			// MOVED (the TUI2-R3v2 panel-selection supersession class): R1.5
 			// pin 6 chose "digits pick · ⏎ confirms" as the one sentence true
 			// of an approval where a digit SELECTED and an ask where a digit
@@ -155,6 +161,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 			"alt+⌫ / alt+d", // E1 §1 (ctrl+w is the everywhere baseline)
 			"ctrl+x", // E1 §3
 			"ctrl+z / ctrl+y",
+			"ctrl+v", // REL-0152-D15/D16: the clipboard image attach
 		]);
 	});
 });

@@ -167,6 +167,20 @@ stop · `alt+⏎ / ctrl+⏎` redirect · `/` commands · `↑↓` history / queu
 `ctrl+o` expand cells · `ctrl+r` transcript · `tab` complete · `?` this sheet.
 In a panel: digits select · space toggles · `t` types an answer.
 
+- **Images.** `ctrl+v` attaches the image on your clipboard — the terminal's
+  own paste only ever carries text, so the obvious gesture cannot reach it.
+  A path in your message works too, which is what dragging a file into the
+  window leaves behind: `look at shot.png` sends the picture with the words,
+  in place. PNG, JPEG, GIF and WebP, identified by content rather than by
+  extension, up to 5 MB.
+- **The palette follows the terminal.** kiso asks it for its colour scheme and
+  its background, and picks dark or light from the answer; a terminal that
+  answers neither is treated as unknown, which is a supported outcome rather
+  than a failure. To decide it yourself, set `theme` to `"dark"` or `"light"`
+  in `~/.kiso/config.json`; `KISO_THEME` outranks that for one run. It is a
+  USER setting — a terminal belongs to the person at it, not to the project —
+  so a `theme` in a project config is a loud error, never a silent win.
+
 - **The approval is a selection, not a form.** The pause shows the full call —
   the whole command, the whole diff, never truncated — with the highlight bar
   already on *Yes, run it*: look, press enter. One option grants a **durable**

@@ -199,3 +199,49 @@ auto-compact trigger reads its own number, unchanged this round.
 queue pop · `ctrl+o` expand cells · `ctrl+r` transcript · `tab` complete · `?` this
 sheet.
 Panels: digits select · space toggles · `t` types an answer.
+
+## Images
+
+`ctrl+v` attaches the image on the clipboard. The terminal's own paste
+(Cmd+V, Ctrl+Shift+V) only ever carries TEXT, so an image on the clipboard
+cannot arrive by the gesture a reader would try first — which is why the key
+is on the `?` sheet rather than left to be discovered.
+
+The buffer shows a capsule, `[Image #1]`, and the file stays beside it: a
+pasted screenshot never puts a path in the line, so it can never be read as a
+slash command. A capsule whose file has gone stays as literal text rather than
+failing the turn.
+
+Naming a file works too, and is what dragging one into the window leaves
+behind:
+
+```text
+▌ look at shot.png and tell me what is wrong
+```
+
+The words are kept in place around the picture — the question is half of the
+turn. PNG, JPEG, GIF and WebP are accepted, identified by their content and
+not by the extension, up to 5 MB each; anything else is left as the text it
+already was.
+
+## Theme
+
+kiso asks the terminal for its colour scheme and its background — `CSI ?996n`,
+then `OSC 11` — and picks the dark or the light palette from what comes back.
+Neither question is waited on: a terminal that answers neither leaves the
+ground `unknown`, which is a supported palette rather than a failure. Inside a
+multiplexer the answer may be the multiplexer's rather than the terminal's.
+
+To decide it yourself:
+
+```json
+{ "theme": "dark" }
+```
+
+in `~/.kiso/config.json` — `"dark"` or `"light"`, nothing else. `KISO_THEME`
+outranks it for a single run.
+
+It is a USER setting on purpose. A terminal is a property of the person
+sitting at it, not of the repository they happen to be in, so a `theme` in a
+project-level config is a LOUD error rather than a silent win — the same rule
+the rest of the project surface follows.

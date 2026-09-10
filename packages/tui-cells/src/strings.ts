@@ -242,6 +242,12 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
 	{ keys: "alt+⌫ / alt+d", what: "delete word (ctrl+w too)" },
 	{ keys: "ctrl+x", what: "copy the last answer" },
 	{ keys: "ctrl+z / ctrl+y", what: "undo / redo" },
+	// REL-0152-D15/D16 — the image paste. It is on the sheet because a
+	// terminal's own Cmd+V only ever pastes TEXT: a human with an image on
+	// the clipboard has no way to discover this key by trying the obvious
+	// one, which is exactly the case the sheet exists for. It pairs with
+	// the undo row above and keeps the table's count even.
+	{ keys: "ctrl+v", what: "attach a clipboard image" },
 ];
 
 /**
@@ -335,7 +341,10 @@ const SHEET_GRID: readonly (readonly number[])[] = [
 	// exactly as its comment predicted it would.
 	[10, 11],
 	[12, 13],
-	[14],
+	// ctrl+v joins the undo row's neighbour: the count is even again, so
+	// the last row pairs instead of standing alone. The warning three
+	// comments up applies unchanged — this grid does not update itself.
+	[14, 15],
 ];
 const SHEET_STOPS: readonly (readonly number[])[] = [
 	[16, 43],
@@ -351,10 +360,11 @@ const SHEET_STOPS: readonly (readonly number[])[] = [
 	// The stop is 39 here because `alt+⌫ / alt+d delete word (ctrl+w too)`
 	// is the widest first cell on the sheet — a narrower stop packs the
 	// two cells together with a single space and the column disappears.
-	// The last row has ONE binding, so it pads nothing (an empty stop
-	// list, not a stop of 36, which would leave trailing blanks).
+	// The last row PAIRS now that ctrl+v joined (it had one binding and an
+	// empty stop list); it takes a stop like its neighbours so the second
+	// column lines up rather than following a single space.
 	[39],
-	[],
+	[39],
 ];
 
 /**
