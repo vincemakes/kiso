@@ -27,7 +27,7 @@ export const ABORTED = Symbol("kiso-resume-aborted");
 /** Resolve with the decision, or ABORTED when the signal fires first. */
 export async function abortable<T>(promise: Promise<T>, signal: AbortSignalLike): Promise<T | typeof ABORTED> {
 	if (signal.aborted) return ABORTED;
-	return new Promise<T | typeof ABORTED>((resolve) => {
+	return new Promise<T | typeof ABORTED>((resolve, reject) => {
 		const onAbort = (): void => {
 			signal.removeEventListener("abort", onAbort);
 			resolve(ABORTED);
@@ -39,8 +39,16 @@ export async function abortable<T>(promise: Promise<T>, signal: AbortSignalLike)
 				resolve(value);
 			},
 			(err) => {
+				// R3: REJECT, do not throw. Throwing here creates a new
+				// rejected promise that nobody holds, while the executor
+				// above never calls resolve or reject — so the outer promise
+				// NEVER SETTLES. Three recovery sites await this, so a
+				// decision hook that rejects hung the run and left an
+				// unhandled rejection behind it. A hook that throws is a host
+				// bug: it fails the run, the tool never runs, and there is no
+				// silent allow.
 				signal.removeEventListener("abort", onAbort);
-				throw err;
+				reject(err);
 			},
 		);
 	});
@@ -52,27 +60,56 @@ export async function abortable<T>(promise: Promise<T>, signal: AbortSignalLike)
  */
 export class MergedSignal implements AbortSignalStub {
 	readonly #sources: readonly AbortSignalLike[];
-	readonly #listeners = new Set<() => void>();
+	/** R5: the ORIGINAL listeners, by identity. The previous Set held
+	 *  WRAPPERS while `removeEventListener` deleted the original, so
+	 *  removal never removed anything and every listener ever added fired
+	 *  for the life of the run. */
+	readonly #listeners = new Set<(this: AbortSignalStub, ev: unknown) => void>();
+	/** R5: `aborted` is a TRANSITION, not a stream. Two sources aborting
+	 *  fired every listener twice. */
+	#fired = false;
+	/** R5: the source subscriptions, released on the transition — they
+	 *  were never released at all. */
+	#cleanups: (() => void)[] = [];
 
 	constructor(...sources: readonly AbortSignalLike[]) {
 		this.#sources = sources;
 		for (const source of sources) {
 			if (source.aborted) continue;
-			source.addEventListener("abort", () => {
-				for (const listener of this.#listeners) listener();
-			});
+			const onSource = (): void => this.#fire();
+			source.addEventListener("abort", onSource, { once: true });
+			this.#cleanups.push(() => source.removeEventListener("abort", onSource));
 		}
 	}
 
-	get aborted(): boolean {
-		return this.#sources.some((s) => s.aborted);
+	/** One transition: latch, release the sources, then call each listener
+	 *  once. Clearing the set before the calls is what honours `once` for
+	 *  every listener without tracking the flag per listener — after the
+	 *  one transition there is nothing left to fire a second time. */
+	#fire(): void {
+		if (this.#fired) return;
+		this.#fired = true;
+		for (const cleanup of this.#cleanups) cleanup();
+		this.#cleanups = [];
+		const listeners = [...this.#listeners];
+		this.#listeners.clear();
+		for (const listener of listeners) listener.call(this, undefined);
 	}
 
-	addEventListener(_type: string, listener: (this: AbortSignalStub, ev: unknown) => void): void {
-		this.#listeners.add(() => listener.call(this, undefined));
+	get aborted(): boolean {
+		return this.#fired || this.#sources.some((s) => s.aborted);
+	}
+
+	addEventListener(_type: string, listener: (this: AbortSignalStub, ev: unknown) => void, _options?: { once?: boolean }): void {
+		// A listener added AFTER the transition never fires, which is what a
+		// real AbortSignal does — the event is the transition. Callers read
+		// `aborted` for the state; `abortable` checks it before it ever
+		// subscribes, which is the guard that makes this safe.
+		if (this.#fired) return;
+		this.#listeners.add(listener);
 	}
 
 	removeEventListener(_type: string, listener: (this: AbortSignalStub, ev: unknown) => void): void {
-		this.#listeners.delete(listener as () => void);
+		this.#listeners.delete(listener);
 	}
 }
