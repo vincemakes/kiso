@@ -205,8 +205,18 @@ export function usageFromEvent(
 	// backend's own words and keeps its 0 — the display's rule, not the
 	// record's.
 	const unobservable = model !== undefined && lookupModelMetadata(model, endpoint)?.capabilities.promptCaching === "unobservable";
+	// DF-0322-F2: the DISPLAY is handed the provider's own word, not the
+	// canonical one. `canonicalizeUsage` sets `cacheRead ?? 0` because
+	// accounting has to sum numbers — correct there, and pinned that way by
+	// the gate — but it erases the difference between "the backend answered
+	// zero" and "the backend said nothing about caching". Handing the row the
+	// canonical zero made it claim a measurement that never happened, which
+	// is the family OR-10 and DF-0311-F1 belong to. OR-10's own comment drew
+	// this line first: the ledger keeps the backend's 0, the display's rule
+	// is not the record's.
+	const reportedCache = ev.cacheRead === null ? null : c.cacheRead;
 	return {
-		usage: { in: c.input, out: c.output, cache: unobservable ? null : c.cacheRead, known: ev.known },
+		usage: { in: c.input, out: c.output, cache: unobservable ? null : reportedCache, known: ev.known },
 		total,
 		missed: unobservable ? null : missed,
 		costUsd: c.costUsd,
