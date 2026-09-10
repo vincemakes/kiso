@@ -24,6 +24,7 @@ import {
 } from "@vincemakes/kiso-tui";
 import { askView, deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, shellProgressPath } from "@vincemakes/kiso-tools-node";
+import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
 import { canonicalizeUsageForModel, requestBudget } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
@@ -698,7 +699,9 @@ export async function consumeRun(
 					body.notice(`  ${typeof ev.content === "string" ? ev.content : ""}`);
 					break;
 				}
-				body.userLine(typeof ev.content === "string" ? ev.content : "");
+				// DC-60: a turn that carries an image is a content ARRAY — its words
+				// still echo, the image as a mark; an empty chip was the bug.
+				body.userLine(echoText(ev.content));
 				break;
 			case "thinking":
 				body.thinkingAppend(ev.text);

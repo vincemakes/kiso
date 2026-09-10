@@ -14,7 +14,7 @@
  * session line).
  */
 
-import { escapeTerminal, foldResult, foldThinking, kUnit, palette } from "@vincemakes/kiso-tui-cells/render";
+import { echoText, escapeTerminal, foldResult, foldThinking, kUnit, palette } from "@vincemakes/kiso-tui-cells/render";
 import { foldTerms, widthCut } from "@vincemakes/kiso-tui-cells/components";
 import { visibleWidth } from "@vincemakes/kiso-tui-cells/width";
 export * from "@vincemakes/kiso-tui-cells/render";
@@ -115,7 +115,7 @@ export function renderEvent(ev: RenderInput, prevThinking = false, resolvePath: 
 		case "tool_execution_failed":
 			return { text: `${p.red}  failed: ${escapeTerminal(ev.error.slice(0, 160))}${p.reset}\n`, newline: true, prompt: false };
 		case "tool_result": {
-			const content = typeof ev.content === "string" ? ev.content : ev.content.map((b) => (b.type === "text" ? b.text : "(image)")).join("");
+			const content = echoText(ev.content); // DC-60: one projection, shared with the live echo
 			return {
 				// v2b: the echo truncates at 160 chars + a /last hint — the
 				// full content stays in the event stream.

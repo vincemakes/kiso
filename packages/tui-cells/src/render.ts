@@ -259,6 +259,26 @@ export function foldThinkingRow(block: string, room: number): string {
 	return `${p.dim}…${head}${suffix}${p.reset}`;
 }
 
+/**
+ * DC-60 (0.32.2) — the words of a turn, whatever shape its content took.
+ *
+ * A turn that carries an image is an ARRAY of blocks (text, image, text…)
+ * in the durable log. Its echo — the user chip while the session runs, the
+ * transcript's replay, the session listing — must say the words and mark
+ * the image, and it must say them from ONE definition: the live echo used
+ * to pass a string through and an array became an empty chip, while the
+ * transcript path projected the array on its own. The image mark is
+ * "(image)"; the bytes are never shown.
+ */
+export function echoText(content: string | readonly { readonly type?: string; readonly text?: string }[]): string {
+	if (typeof content === "string") return content;
+	return content
+		.map((b) => (b.type === "text" ? (b.text ?? "") : "(image)"))
+		.join(" ")
+		.replace(/ +/g, " ")
+		.trim();
+}
+
 /** v2b — the [result] echo truncates at 160 chars + a /last hint. */
 export function foldResult(content: string): string {
 	const flat = content.replaceAll("\n", " ");
