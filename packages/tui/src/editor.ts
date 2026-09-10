@@ -1247,6 +1247,19 @@ export class Editor {
 						i += seqLen; // intermediates: a report kiso did not ask for — skipped whole
 						continue;
 					}
+					// DC-62b: inside a paste the ONLY ESC-led gesture is the paste
+					// end. DC-62's rule passes ESC through so the parser can still
+					// see `ESC[201~`, and everything else ESC-led rode through with
+					// it: a pasted `ESC[3~` forward-deleted the text after the
+					// cursor. A complete CSI that is not the paste end is skipped
+					// WHOLE — neither content nor gesture, the same answer the C0
+					// rule gives. The incomplete case above is untouched: a CSI
+					// split across two feeds still parks, or a paste arriving in
+					// pieces would lose its end.
+					if (this.#pasting && !(m[1] === "201" && m[3] === "~")) {
+						i += seqLen;
+						continue;
+					}
 					// TMUX-F1 ②: a BURST of identical arrows in ONE read is a wheel,
 					// not a hand. Apple Terminal turns wheel and trackpad scrolling
 					// into arrow keys for an alternate-screen app (tmux's client is
@@ -1284,8 +1297,39 @@ export class Editor {
 						this.#pending = tail; // incomplete OSC — wait for more
 						break;
 					}
-					this.#oscCb?.(rest.slice(1, end.index));
+					// DC-62b: a pasted OSC is not a terminal report. A shell's
+					// PROMPT_COMMAND writes `ESC]0;title BEL` on every prompt, so
+					// it is in any captured log a human might paste — and it was
+					// reaching the ground-probe reply handler, which is DC-7's
+					// rule inverted: kiso must not read the human's data as the
+					// terminal's answer either. Skipped to its terminator.
+					if (!this.#pasting) this.#oscCb?.(rest.slice(1, end.index));
 					i += 1 + end.index + end[0]!.length;
+				} else if (this.#pasting) {
+					// DC-62b: inside a paste, the CSI arm above has already let
+					// `ESC[201~` through and skipped every other complete CSI, and
+					// the OSC arm has skipped its report. Everything ESC-led that
+					// reaches here is a gesture the human did not make: a bare ESC
+					// fires the escape callbacks (interrupting a running turn), a
+					// double ESC is the redirect, and `ESC(B` — a charset reset,
+					// in any captured terminal log — took the same road.
+					//
+					// ONE BYTE: the ESC is nothing and what follows is content.
+					//
+					// Not because the rest cannot be parsed — an ECMA-48 nF
+					// escape is deterministic (ESC, intermediates 0x20–0x2F, one
+					// final 0x30–0x7E), so `ESC(B` and `ESC=` COULD be consumed
+					// whole. The reason is smaller and still enough: beside CSI
+					// and OSC these forms are rare in pasted logs, the C0 rule
+					// already gives the shape "nothing, not content", and the two
+					// failure modes are not equal — `(B` left visible is
+					// recoverable by the human, text eaten by a misread is not.
+					//
+					// KNOWN RESIDUAL: a pasted nF escape leaves its intermediates
+					// and its final as text. Named here rather than implied,
+					// because the next reader deserves the cost and not only the
+					// choice.
+					i += 1;
 				} else if (rest.startsWith("O")) {
 					i += 3; // SS3 (function keys) — ignored
 				} else if (rest !== "" && ALT_WORD.has(rest[0]!) && !this.#pasting && this.#composerIdle()) {
@@ -1467,14 +1511,20 @@ export class Editor {
 				}
 				i += 1;
 			} else if (c === "\x0f") {
-				// DC-58 (0.32.1): this branch and the two below take `!#pasting`,
-				// the guard tab and CR already had — inside a paste a control byte
-				// is content or nothing, never a gesture. Unguarded, a pasted BEL
-				// opened $VISUAL mid-paste and the rest of the body went to that
-				// child's stdin: DC-7's rule from the third side (a byte from a
-				// paste is data the human handed over, as a reply's byte is the
-				// terminal's). Unclaimed control bytes were discarded already;
-				// now the claimed ones fall to the same discard while pasting.
+				// DC-58 (0.32.1) guarded THIS branch and the two below with
+				// `!#pasting`, the guard tab and CR already had: unguarded, a
+				// pasted BEL opened $VISUAL mid-paste and the rest of the body
+				// went to that child's stdin — DC-7's rule from the third side (a
+				// byte from a paste is data the human handed over, as a reply's
+				// byte is the terminal's).
+				//
+				// DC-62 (0.32.2) RETIRED those three guards into one rule at the
+				// top of the byte loop, because the same question asked of every
+				// other branch found the same answer: a pasted backspace ate the
+				// text typed before the paste, and a pasted 0x03 fired the exit
+				// callback. There is no per-branch guard here any more — look at
+				// the top of the loop, not at this line, for why a control byte
+				// inside a paste reaches nothing.
 				//
 				// W15: the expand key — rides the chain like a command, the
 				// editor just forwards it.

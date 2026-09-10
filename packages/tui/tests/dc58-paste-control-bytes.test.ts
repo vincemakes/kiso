@@ -121,3 +121,73 @@ describe("DC-62 — the rest of the chain, inside a paste", () => {
 		expect(e.line(), "the ! is ordinary input after the paste closed").toBe("body!");
 	});
 });
+
+/**
+ * DC-62b — the ESC-led siblings, the ones DC-62 consciously let through.
+ *
+ * DC-62's rule passes ESC so the parser can still see `ESC[201~` and end
+ * the paste. That is necessary and it is also a hole: every OTHER
+ * ESC-led shape rides through with it. The question DC-58 was asked and
+ * DC-62 was asked is now asked of the escape chain, which is the third
+ * time the same question has found something.
+ *
+ * The shapes that matter, all of them ordinary in captured terminal
+ * output rather than exotic:
+ *   - an OSC title string, which is what a shell's PROMPT_COMMAND leaves
+ *     in any captured log, reaching the ground-probe reply handler;
+ *   - `ESC[3~`, forward delete;
+ *   - a bare or non-CSI ESC (`ESC(B`, `ESC=`), which falls to the
+ *     escape callbacks and interrupts a running turn;
+ *   - `ESC ESC`, the double-escape redirect.
+ */
+describe("DC-62b — ESC-led shapes inside a paste", () => {
+	it("a pasted OSC title string does not reach the terminal-report handler", () => {
+		const reports: string[] = [];
+		const e = new Editor(() => {});
+		e.onOsc((body) => reports.push(body));
+		e.feed(enc(paste("before \x1b]0;my shell title\x07 after")));
+		expect(reports, "a title in a pasted log is not a terminal report").toEqual([]);
+		expect(e.line()).toBe("before  after");
+	});
+
+	it("a pasted ESC[3~ does not forward-delete the text after the cursor", () => {
+		const e = new Editor(() => {});
+		e.feed(enc("KEEPTAIL"));
+		e.feed(enc("\x1b[D".repeat(4))); // cursor before TAIL
+		e.feed(enc(paste("\x1b[3~x")));
+		expect(e.line(), "the tail survives; the paste lands").toBe("KEEPxTAIL");
+	});
+
+	it("a pasted non-CSI escape does not fire the escape callbacks", () => {
+		const fired: string[] = [];
+		const e = new Editor(() => {});
+		e.onEscape(() => fired.push("escape"));
+		e.feed(enc(paste("a\x1b(Bb")));
+		expect(fired, "a paste cannot stop a running turn").toEqual([]);
+		// the ESC is nothing and what follows is CONTENT. An nF escape could
+		// be consumed whole — the grammar is deterministic — but beside CSI
+		// and OSC it is rare in pasted logs, and `(B` left visible is
+		// recoverable where text eaten by a misread is not. The residual is
+		// exactly this line: the intermediates and the final stay as text.
+		expect(e.line()).toBe("a(Bb");
+	});
+
+	it("a pasted double escape does not fire the escape callbacks either", () => {
+		const fired: string[] = [];
+		const e = new Editor(() => {});
+		e.onEscape(() => fired.push("escape"));
+		e.feed(enc(paste("a\x1b\x1bb")));
+		expect(fired).toEqual([]);
+		expect(e.line()).toBe("ab");
+	});
+
+	it("ESC[201~ still ends the paste when it arrives in a SEPARATE feed", () => {
+		// the chunk boundary: a CSI split across two feeds must park as
+		// incomplete, not be dropped half-way by any rule applied here
+		const e = new Editor(() => {});
+		e.feed(enc("\x1b[200~body"));
+		e.feed(enc("\x1b[20"));
+		e.feed(enc("1~!"));
+		expect(e.line(), "the paste closed and the ! is ordinary input").toBe("body!");
+	});
+});
