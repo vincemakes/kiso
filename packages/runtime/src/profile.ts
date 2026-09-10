@@ -110,7 +110,11 @@ export function writeProfile(root: string, sessionId: string, profile: Execution
 	const tmpDir = mkdtempSync(join(root, ".meta-"));
 	const tmp = join(tmpDir, "meta.json");
 	try {
-		writeFileSync(tmp, `${JSON.stringify({ profile }, null, "\t")}\n`);
+		// DF-0322-F1: 0600 on the file kiso CREATES. The mode rides the temp
+		// because rename preserves it, and rename is the only path by which
+		// this file comes into existence. Existing files are not migrated —
+		// R6's choice, kept.
+		writeFileSync(tmp, `${JSON.stringify({ profile }, null, "\t")}\n`, { mode: 0o600 });
 		const fd = openSync(tmp, "r");
 		try {
 			fsyncSync(fd);

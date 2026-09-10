@@ -589,8 +589,8 @@ export class AgentSession {
 			try {
 				const canonical = canonicalizeUsageForModel(binding.model, binding.baseUrl, binding.provider ?? "adapter", usage);
 				const line = JSON.stringify({ kind: "summary", canonical }) + "\n";
-				mkdirSync(join(this.#store.root, "traces"), { recursive: true });
-				appendFileSync(join(this.#store.root, "traces", `${this.id}.jsonl`), line);
+				mkdirSync(join(this.#store.root, "traces"), { recursive: true, mode: 0o700 }); // DF-0322-F1
+				appendFileSync(join(this.#store.root, "traces", `${this.id}.jsonl`), line, { mode: 0o600 });
 			} catch (err) {
 				console.error(
 					`[kiso] summary usage ledger degraded (${err instanceof Error ? err.message : String(err)}); the summary call's cost is not recorded`,
