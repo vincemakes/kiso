@@ -90,7 +90,16 @@ describe("E2 R2a-1 — the CLI usage consumer is canonical (in is FRESH-ONLY)", 
 		const d1 = usageFromEvent("openai-compat", unknown, null);
 		// the canonical "0 = unknown" convention (the guard's quartet shape);
 		// known:false suppresses every render, so the zeros are invisible
-		expect(d1.usage).toEqual({ in: 0, out: 0, cache: 0, known: false });
+		//
+		// DECLARED SUPERSESSION (DF-0322-F2, 0.34.0): `cache` was 0 here. The
+		// display is now handed the PROVIDER'S OWN WORD rather than the
+		// canonical figure, and an unknown-usage event reported nothing about
+		// caching — so the field is null. `in` and `out` keep the canonical
+		// zeros: this round changed the cache field alone, which is where the
+		// row was claiming a measurement that never happened. Incidental to
+		// what this case tests, which is that the CARRIER RECOVERS on the next
+		// known event — unchanged and still asserted below.
+		expect(d1.usage).toEqual({ in: 0, out: 0, cache: null, known: false });
 		expect(d1.missed).toBe(null);
 		// the NEXT known turn: the carrier is fresh again → the signal fires
 		const d2 = usageFromEvent("openai-compat", df2(), d1.total);
