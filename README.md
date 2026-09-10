@@ -57,6 +57,12 @@ kiso auth               # what is stored, masked
 kiso logout deepseek    # remove it
 ```
 
+**A stored credential never leaves the vendor's own origin.** Point a profile
+at a gateway or any other custom endpoint and it authenticates with that
+profile's own env var alone — the key you signed in with is not forwarded
+there. Anyone who signed in and then retargeted a profile needs that key in
+the environment.
+
 **A stored credential OWNS its provider.** An unusable stored one is a loud
 error, never a silent fall back to the environment variable — what you signed
 in with is what runs. Without one the env layer still works: `ANTHROPIC_API_KEY`
@@ -106,7 +112,10 @@ trust gate — is [docs/configuration.md](docs/configuration.md).
 ## Sessions
 
 Sessions are append-only JSONL under `$KISO_HOME/sessions`. Exit, restart, and
-`kiso resume <id>` continues the conversation with a contiguous seq.
+`kiso resume <id>` continues the conversation with a contiguous seq. Since
+0.32.2 the store is private by default — the directory `0700`, the log and the
+history `0600` — so a transcript is not readable by every account on a shared
+machine. Files that already existed are left as their owner set them.
 
 ```
 kiso [sessionId]               interactive session (default; `kiso chat` is the same)
@@ -155,17 +164,46 @@ so the constraint is visible rather than encoded in a hue.
 ## Interactive mode
 
 ```text
-  ✓ explored 8 files · 14 searches (3.2s) · ctrl+o lists them
-  ▖ shell npm test (12s)
-  │ packages/tui      ⠸ 88/120
-  └ live tail · esc stop · alt+⏎ redirect
-▸ default · /mode to switch · deepseek-v4-flash · CH 92% · $0.0042 · ctx left ~74%
+  read  suite.sh · 7 lines · 0.0s · ctrl+o expands
+
+● shell ./suite.sh; echo "exit=$?"
+  └ packages/core      ok  184 tests
+    packages/runtime   ok  221 tests
+    packages/tui       ok  120 tests
+    1s · esc stops · alt+⏎ redirects
+✦ working 19s ↓ 94 tokens · 186 tok/s · esc stop · alt+⏎ redirect · ctx left ~98%
 ```
 
-**The keys:** `enter` send · `ctrl+j / shift+⏎` newline · `@` files · `esc`
-stop · `alt+⏎ / ctrl+⏎` redirect · `/` commands · `↑↓` history / queue pop ·
-`ctrl+o` expand cells · `ctrl+r` transcript · `tab` complete · `?` this sheet.
-In a panel: digits select · space toggles · `t` types an answer.
+and the same turn once it settles:
+
+```text
+  shell ./suite.sh; echo "exit=$?"
+  └ packages/core      ok  184 tests
+    packages/runtime   ok  221 tests
+    packages/tui       ok  120 tests
+    exit=0
+    exit 0 · 4 lines · 2.6s
+
+✦ took 22s · in 175 out 54 · cache 97% · ctx left ~98%
+▸ bypass · /mode to switch · deepseek-v…s-on-0910 · CH 97% · ctx left ~98% · 186 tok/s
+```
+
+Both blocks are rows lifted from a real 100-column screen, not typed: a live
+call carries its output while it runs and settles into a record of it. The
+session is in `bypass`, which is why the command ran without the pause the
+approval bullet below describes. `186 tok/s` is the decode rate of the last
+call that could be measured, and the model name is shortened in its middle
+because the row ran out of width — the facts never are.
+
+**The keys**, the whole sheet `?` shows: `enter` send · `ctrl+j / shift+⏎`
+newline · `@` files · `esc` stop · `alt+⏎ / ctrl+⏎` redirect · `/` commands ·
+`↑↓` history / queue pop · `ctrl+o` expand cells · `ctrl+r` transcript · `tab`
+complete · `?` this sheet · `alt+←→ / ctrl+←→` word motion · `alt+⌫ / alt+d`
+delete word · `ctrl+x` copy the last answer · `ctrl+z / ctrl+y` undo / redo ·
+`ctrl+v` attach a clipboard image.
+In a panel, in the product's own words: `panels: ↑↓ move · ⏎ confirms · digits
+act on their row · t types`. Space selects at the cursor and never commits, so
+a stray one cannot answer anything.
 
 - **Images.** `ctrl+v` attaches the image on your clipboard — the terminal's
   own paste only ever carries text, so the obvious gesture cannot reach it.
@@ -196,7 +234,7 @@ In a panel: digits select · space toggles · `t` types an answer.
   for warnings. `NO_COLOR` or a pipe disables all of it, and a pipe carries
   zero ANSI.
 
-None of this costs a token: the rollups, the live shell tail, `/context`'s rent
+None of this costs a token: the per-call cards, the live shell tail, `/context`'s rent
 ledger and the status meter all read what the session already knew — no extra
 request, no estimate presented as a measurement. The whole surface — every
 command, the scoped-read rules, each visibility mechanism — is
@@ -400,7 +438,7 @@ a blob, and a blob is the thing you eventually fight —
 `npm run check` is the whole gate: build → typecheck → tests → size → pack →
 API surface → hero → whitespace → CJK → versions → PTY manifest → dist
 inventory → bench repro → bytes → `git diff --check` → consumer smoke tiers →
-demo. **2,792 tests green in 378 files** (2,212 unit, 580 PTY), 6 incident
+demo. **2,988 tests green in 412 files** (2,350 unit, 638 PTY), 6 incident
 fixtures on the real runtime, 39 ADRs.
 
 ## Why another one

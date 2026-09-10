@@ -1,0 +1,23 @@
+name: Feature request
+description: Something kiso should be able to do and cannot.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you were trying to do
+      description: The task, not the feature. What the tool should have let you finish.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What happens today
+      description: Including the workaround you are using, if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: What you think it should look like
+      description: Optional. A rough shape is more useful than a precise design.

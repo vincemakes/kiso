@@ -156,14 +156,14 @@ measurement.
   width that is left and degrades (`· N lines · ctrl+o`, then `·
   ctrl+o`, then nothing) rather than cutting the path the row exists to
   name.
-- **Exploration rolls up.** A consecutive run of read-only calls
-  (`read_file` / `list_dir` / `search_text`) collapses to one line —
-  `✓ explored 8 files · 14 searches (3.2s) · ctrl+o lists them` — and
-  ctrl+o lists them per tool, with the repeated subjects counted.
-  Writes, edits, shells and extension tools **never** group: a burst of
-  side effects is a list of things that happened, and every row of it
-  carries meaning. The grouping is display-only — the durable log is
-  byte-identical, and `/last` still reaches the full outputs.
+- **Every call gets its own card.** Read-only calls used to collapse into
+  one `✓ explored …` line; that rollup was retired at R13 and the string
+  it produced no longer exists anywhere in the product. A call now shows
+  as a card — the tool, its subject, a bounded preview, and what it cost
+  — and `ctrl+o` expands the one under the cursor. A burst of calls is a
+  list of things that happened, and every row of it carries meaning. The
+  card is display-only: the durable log is byte-identical, and `/last`
+  still reaches the full outputs.
 - **A running command shows its tail.** Long shells used to say
   "waiting for output" for as long as they ran. They now show the last
   lines as they arrive, in the same fixed three-row window, with
@@ -180,18 +180,35 @@ measurement.
   messages, free. It reads the trace sidecar — an observation surface;
   correctness never reads it — and a session that has not called the
   model yet says so rather than drawing an empty bar.
-- **The status line shows the meter.** `CH 92% · $0.0042` — the cache
-  hit rate over the total the model was given, and the canonical cost.
-  A route with no rate in the pricing table records no cost, and no cost
-  renders no number. kiso does not invent a price.
+- **The status line shows the meter.** `CH 97% · 186 tok/s` — the cache
+  hit rate over the total the model was given, and the decode rate of the
+  last measurable call. The canonical COST is recorded (the trace ledger,
+  `/context`) and deliberately not rendered here: live prices move and the
+  table is an approximation, so a four-decimal figure on the status bar
+  claimed a precision the data never had. A route with no rate in the
+  pricing table records no cost either — kiso does not invent a price.
+
+Rows from a real 100-column screen, while a call runs and once it settles:
 
 ```text
-  ✓ explored 8 files · 14 searches (3.2s) · ctrl+o lists them
-  ▖ shell npm test (12s)
-  │ packages/runtime  ✓ 184 tests
-  │ packages/tui      ⠸ 88/120
-  └ live tail · esc stop · alt+⏎ redirect
-▸ default · /mode to switch · deepseek-v4-flash · CH 92% · $0.0042 · ctx left ~74%
+● shell ./suite.sh; echo "exit=$?"
+  └ packages/core      ok  184 tests
+    packages/runtime   ok  221 tests
+    packages/tui       ok  120 tests
+    1s · esc stops · alt+⏎ redirects
+✦ working 19s ↓ 94 tokens · 186 tok/s · esc stop · alt+⏎ redirect · ctx left ~98%
+```
+
+```text
+  shell ./suite.sh; echo "exit=$?"
+  └ packages/core      ok  184 tests
+    packages/runtime   ok  221 tests
+    packages/tui       ok  120 tests
+    exit=0
+    exit 0 · 4 lines · 2.6s
+
+✦ took 22s · in 175 out 54 · cache 97% · ctx left ~98%
+▸ bypass · /mode to switch · deepseek-v…s-on-0910 · CH 97% · ctx left ~98% · 186 tok/s
 ```
 
 `ctx left` is the estimated headroom counting every part of the next

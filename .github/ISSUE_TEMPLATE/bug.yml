@@ -1,0 +1,46 @@
+name: Bug report
+description: Something behaves differently from what it says it does.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An issue is a claim — enough detail that someone else can check it.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `kiso --version`.
+      placeholder: "0.33.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and terminal
+      placeholder: "macOS 15.6, Apple Terminal (or tmux 3.7, iTerm2, VS Code…)"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What you ran, and what happened
+      description: In that order. Paste the screen if it is a display question.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: The smallest reproduction you have
+      description: A command, a config, a sequence of keys — whatever makes it happen again.
+  - type: textarea
+    id: log
+    attributes:
+      label: Session log, if you can share it
+      description: "`$KISO_HOME/sessions/<id>.jsonl`. It contains your prompts and the files the model read — read it before you paste it."
