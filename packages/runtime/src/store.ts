@@ -146,7 +146,14 @@ export function sessionTitle(records: readonly StoreRecord[]): string {
 		.filter((t) => t !== "");
 	if (asked.length === 0) return "(no prompt)";
 	const substantive = asked.find((t) => !isOpener(t));
-	return (substantive ?? asked[0]!).slice(0, 60);
+	// HF-2 (0.32.1): a title is a LABEL and goes on one row — the resume
+	// picker's card row, `kiso sessions`, the session card. A pasted
+	// heredoc as the first turn kept its newlines here and reached the
+	// compositor's one-physical-row check through the picker (the HF-1
+	// family). Projected at the source, where the value is produced, so
+	// the three consumers cannot differ: a break or a tab is one space,
+	// runs collapse, and the cut applies to the projected line.
+	return (substantive ?? asked[0]!).replace(/[\r\n\t ]+/g, " ").trim().slice(0, 60);
 }
 
 export class SessionStore {
