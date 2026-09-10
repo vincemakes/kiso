@@ -54,6 +54,7 @@ import { chat, contextWindowTokens, displayCtxRatio, statusModelLabel } from "./
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { oauthTokenThunk } from "./auth/token.js";
 import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
+import { tmuxMouseHint } from "./tmux-hint.js";
 import { resume } from "./resume.js";
 import { resumeTail } from "./resume-tail.js";
 import { armByteTrace } from "./byte-trace.js";
@@ -1035,6 +1036,13 @@ async function chatLoop(
 			// paints only a version the boot did not know.
 			const known = knownUpdate(updateDeps());
 			if (known !== null) paintUpdateCard(known);
+			// DC-59: under tmux without `mouse on`, say why a scroll walks the
+			// history — once, at start, only when it is knowable.
+			const tmuxHint = tmuxMouseHint(process.env, () => {
+				const r = spawnSync("tmux", ["show", "-gv", "mouse"], { encoding: "utf8", timeout: 500 });
+				return r.status === 0 ? r.stdout.trim() : null;
+			});
+			if (tmuxHint !== null) body.notice(tmuxHint);
 			void announceUpdate();
 		} else {
 			bodyLog(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
