@@ -66,18 +66,48 @@ const ORIGIN_TO_PROVIDER: Readonly<Record<string, string>> = {
  *  Responses dialect. */
 const CHATGPT_ORIGIN = "https://chatgpt.com";
 
+/** R1 — the vendors' OWN origins. A profile whose baseUrl points anywhere
+ *  else authenticates with `apiKeyEnv` and nothing else, however familiar
+ *  the dialect it speaks. */
+const ANTHROPIC_ORIGIN = "https://api.anthropic.com";
+const OPENAI_ORIGIN = "https://api.openai.com";
+
 /** The provider identity a profile's credential is stored under, or null
  *  for an origin nobody recognizes (custom: env var only). */
 export function providerIdOf(kind: string, baseUrl?: string): string | null {
-	if (kind === "anthropic") return "anthropic";
-	// OR-1: exactly two identities serve the Responses dialect — the
-	// ChatGPT subscription backend, and OpenAI. There is no `custom`
-	// bucket: a Responses endpoint that is neither is still OpenAI's API
-	// shape behind a proxy, and its credential is OpenAI's.
-	if (kind === "openai-responses") return originOf(baseUrl) === CHATGPT_ORIGIN ? "chatgpt" : "openai";
+	// R1 — A STORED CREDENTIAL NEVER LEAVES THE VENDOR'S OWN ORIGIN.
+	//
+	// This returned `anthropic` for every anthropic-kind profile and
+	// `openai` for every non-ChatGPT Responses profile, whatever the
+	// baseUrl said. `authForProfile` takes the stored credential BEFORE
+	// the profile's `apiKeyEnv`, so a profile pointing at a proxy — with
+	// an explicit key named for that proxy — sent THE VENDOR'S STORED KEY
+	// to the proxy and never read the env var at all. Reproduced against a
+	// local capture in the 2026-09-10 external review.
+	//
+	// OR-1's reasoning is superseded for this question, and the sentence it
+	// turned on is where it went wrong: "a Responses endpoint that is
+	// neither is still OpenAI's API shape behind a proxy, and its
+	// credential is OpenAI's". The DIALECT is OpenAI's; the CREDENTIAL is
+	// not. Who speaks the protocol and who should be paid to answer are
+	// different questions, and only the second one decides where a secret
+	// may go.
+	//
+	// The compat kind was already right — an unrecognized origin resolves
+	// to null and the env var pays — so this makes the other two agree with
+	// the one that had the rule.
+	const origin = originOf(baseUrl);
+	if (kind === "anthropic") {
+		if (baseUrl === undefined) return "anthropic"; // the vendor's own default endpoint
+		return origin === ANTHROPIC_ORIGIN ? "anthropic" : null;
+	}
+	if (kind === "openai-responses") {
+		if (baseUrl === undefined) return "openai"; // the vendor's own default endpoint
+		if (origin === CHATGPT_ORIGIN) return "chatgpt";
+		return origin === OPENAI_ORIGIN ? "openai" : null;
+	}
 	if (kind !== "openai-compat") return null;
 	if (baseUrl === undefined) return "openai";
-	const origin = originOf(baseUrl);
 	return origin === null ? null : (ORIGIN_TO_PROVIDER[origin] ?? null);
 }
 

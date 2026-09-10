@@ -94,15 +94,26 @@ describe("the resolve rule", () => {
 		expect(providerIdOf("openai-compat", "http://localhost:11434")).toBeNull();
 		expect(providerIdOf("openai-compat", "not a url")).toBeNull();
 	});
-	// OR-1: the Responses dialect is served by exactly two identities, so
+	// DECLARED SUPERSESSION (R1, 2026-09-10). This case asserted OR-1's
+	// rule: "the Responses dialect is served by exactly two identities, so
 	// it has no `custom` bucket — an unrecognized origin is still OpenAI's
-	// API shape behind a proxy, and OpenAI's credential pays for it.
-	it("provider identity: the Responses dialect is chatgpt at that origin and openai everywhere else", () => {
+	// API shape behind a proxy, and OpenAI's credential pays for it."
+	//
+	// The sentence is where it went wrong. The DIALECT is OpenAI's; the
+	// CREDENTIAL is not. Who speaks the protocol and who should be paid to
+	// answer are different questions, and only the second decides where a
+	// secret may travel — an external review reproduced the stored key
+	// reaching a localhost capture. An unrecognized origin now resolves to
+	// null and the profile's own `apiKeyEnv` pays.
+	//
+	// The two recognized origins are unchanged, which is the half of OR-1
+	// that was always right.
+	it("provider identity: the Responses dialect is chatgpt at that origin, openai at OpenAI's, and null elsewhere", () => {
 		expect(providerIdOf("openai-responses")).toBe("openai");
 		expect(providerIdOf("openai-responses", "https://chatgpt.com/backend-api")).toBe("chatgpt");
 		expect(providerIdOf("openai-responses", "https://api.openai.com/v1")).toBe("openai");
-		expect(providerIdOf("openai-responses", "http://127.0.0.1:8080")).toBe("openai");
-		expect(providerIdOf("openai-responses", "not a url")).toBe("openai");
+		expect(providerIdOf("openai-responses", "http://127.0.0.1:8080")).toBeNull();
+		expect(providerIdOf("openai-responses", "not a url")).toBeNull();
 	});
 	it("OR-1: a stored OAuth sign-in is USABLE by the Responses kind — the same credential that is a refusal for a key-only kind", () => {
 		const subscription: ModelProfile = { kind: "openai-responses", baseUrl: "https://chatgpt.com/backend-api", model: "gpt-5.5" };
@@ -153,5 +164,76 @@ describe("the resolve rule", () => {
 	it("a secret is only ever rendered masked", () => {
 		expect(maskSecret("sk-abcdefgh1234")).toBe("••••1234");
 		expect(maskSecret("abc")).toBe("••••");
+	});
+});
+
+/**
+ * R1 — a stored FIRST-PARTY credential is used only for the vendor's own
+ * origin.
+ *
+ * `providerIdOf` returned `anthropic` for every anthropic-kind profile
+ * and `openai` for every non-ChatGPT Responses profile, whatever the
+ * baseUrl said, and `authForProfile` takes the stored credential BEFORE
+ * the profile's `apiKeyEnv`. So a profile pointing at a proxy, with an
+ * explicit key named for that proxy, sent the VENDOR'S STORED KEY to the
+ * proxy instead. The compat kind was already right: an unknown origin
+ * resolves to null and the env var pays.
+ *
+ * The rule: a stored credential resolves only when the origin is the
+ * vendor's own — unset (the vendor's default), or one of the recognized
+ * origins. Any other origin authenticates with `apiKeyEnv` only, and a
+ * keyless custom endpoint gets nothing stored.
+ */
+describe("R1 — a stored credential never leaves the vendor's own origin", () => {
+	const KEY = "ENV_KEY_FOR_TEST";
+	beforeEach(() => {
+		process.env[KEY] = "env-key-value";
+	});
+	afterEach(() => {
+		delete process.env[KEY];
+	});
+
+	it("anthropic at a CUSTOM origin resolves no stored identity", () => {
+		expect(providerIdOf("anthropic", "https://proxy.example/v1")).toBeNull();
+		expect(providerIdOf("anthropic", "http://localhost:8080")).toBeNull();
+	});
+
+	it("the Responses dialect at a CUSTOM origin resolves no stored identity", () => {
+		expect(providerIdOf("openai-responses", "http://127.0.0.1:8080")).toBeNull();
+		expect(providerIdOf("openai-responses", "https://proxy.example")).toBeNull();
+	});
+
+	it("the vendors' OWN origins are unchanged", () => {
+		expect(providerIdOf("anthropic")).toBe("anthropic");
+		expect(providerIdOf("anthropic", "https://api.anthropic.com")).toBe("anthropic");
+		expect(providerIdOf("openai-responses")).toBe("openai");
+		expect(providerIdOf("openai-responses", "https://api.openai.com/v1")).toBe("openai");
+		expect(providerIdOf("openai-responses", "https://chatgpt.com/backend-api")).toBe("chatgpt");
+		expect(providerIdOf("openai-compat", "https://api.deepseek.com/v1")).toBe("deepseek");
+	});
+
+	it("with a key STORED and a key in the ENV, a proxied profile authenticates with the ENV key", () => {
+		// the wire consequence, at the resolver: this is the value that
+		// would have gone to the custom endpoint.
+		setCredential("anthropic", { type: "api-key", key: "STORED-VENDOR-KEY", savedAt: 1 }, path);
+		setCredential("openai", { type: "api-key", key: "STORED-VENDOR-KEY", savedAt: 1 }, path);
+		const proxiedAnthropic: ModelProfile = { kind: "anthropic", baseUrl: "https://proxy.example/v1", model: "m", apiKeyEnv: KEY };
+		const proxiedResponses: ModelProfile = { kind: "openai-responses", baseUrl: "http://127.0.0.1:8080", model: "m", apiKeyEnv: KEY };
+		const proxiedCompat: ModelProfile = { kind: "openai-compat", baseUrl: "http://localhost:11434", model: "m", apiKeyEnv: KEY };
+		for (const [label, p] of [["anthropic", proxiedAnthropic], ["responses", proxiedResponses], ["compat", proxiedCompat]] as const) {
+			expect(authForProfile(label, p), `${label}: the env key pays for a custom origin`).toEqual({ type: "api-key", apiKey: "env-key-value", source: "env" });
+		}
+	});
+
+	it("a KEYLESS custom endpoint gets nothing stored", () => {
+		setCredential("anthropic", { type: "api-key", key: "STORED-VENDOR-KEY", savedAt: 1 }, path);
+		const keyless: ModelProfile = { kind: "anthropic", baseUrl: "http://localhost:8080", model: "m" };
+		expect(authForProfile("keyless", keyless)).toEqual({ type: "api-key", apiKey: "none", source: "none" });
+	});
+
+	it("the vendor's own origin still prefers the stored key over the env", () => {
+		setCredential("anthropic", { type: "api-key", key: "STORED-VENDOR-KEY", savedAt: 1 }, path);
+		const first: ModelProfile = { kind: "anthropic", model: "m", apiKeyEnv: KEY };
+		expect(authForProfile("first", first)).toEqual({ type: "api-key", apiKey: "STORED-VENDOR-KEY", source: "store" });
 	});
 });
