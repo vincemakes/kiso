@@ -111,14 +111,36 @@ kiso sessions                  列出持久会话及其状态
 ## 交互界面
 
 ```text
-  ✓ explored 8 files · 14 searches (3.2s) · ctrl+o lists them
-  ▖ shell npm test (12s)
-  │ packages/tui      ⠸ 88/120
-  └ live tail · esc stop · alt+⏎ redirect
-▸ default · /mode to switch · deepseek-v4-flash · CH 92% · $0.0042 · ctx left ~74%
+  read  suite.sh · 7 lines · 0.0s · ctrl+o expands
+
+● shell ./suite.sh; echo "exit=$?"
+  └ packages/core      ok  184 tests
+    packages/runtime   ok  221 tests
+    packages/tui       ok  120 tests
+    1s · esc stops · alt+⏎ redirects
+✦ working 19s ↓ 94 tokens · 186 tok/s · esc stop · alt+⏎ redirect · ctx left ~98%
 ```
 
-**键位:** `enter` 发送 · `ctrl+j / shift+⏎` 换行 · `@` 文件 · `esc` 停 · `alt+⏎ / ctrl+⏎` 改道 · `/` 命令 · `↑↓` 历史 / 弹出队列 · `ctrl+o` 展开单元 · `ctrl+r` transcript · `tab` 补全 · `?` 这张表。面板里:数字选中 · 空格切换 · `t` 自己写答案。
+回合结束之后,同一次调用:
+
+```text
+  shell ./suite.sh; echo "exit=$?"
+  └ packages/core      ok  184 tests
+    packages/runtime   ok  221 tests
+    packages/tui       ok  120 tests
+    exit=0
+    exit 0 · 4 lines · 2.6s
+
+✦ took 22s · in 175 out 54 · cache 97% · ctx left ~98%
+▸ bypass · /mode to switch · deepseek-v…s-on-0910 · CH 97% · ctx left ~98% · 186 tok/s
+```
+
+两段都是从真实的 100 列屏幕上取下来的行,不是手写的:一次调用运行时带着自己的
+输出,结束后沉淀成对它的记录。这个会话在 `bypass` 模式,所以命令没有停在下面
+那条「审批」讲的那一步。`186 tok/s` 是最后一次可测量的调用的解码速率;模型名
+从中间缩短是因为这一行的宽度不够了 —— 事实永远不会被缩。
+
+**键位**(`?` 显示的整张表): `enter` 发送 · `ctrl+j / shift+⏎` 换行 · `@` 文件 · `esc` 停 · `alt+⏎ / ctrl+⏎` 改道 · `/` 命令 · `↑↓` 历史 / 弹出队列 · `ctrl+o` 展开单元 · `ctrl+r` transcript · `tab` 补全 · `?` 这张表 · `alt+←→ / ctrl+←→` 按词移动 · `alt+⌫ / alt+d` 删词 · `ctrl+x` 复制上一条回答 · `ctrl+z / ctrl+y` 撤销 / 重做 · `ctrl+v` 贴剪贴板里的图。面板里,用产品自己的话:`panels: ↑↓ move · ⏎ confirms · digits act on their row · t types`;空格只在光标处选中,永远不提交,所以误按一下不会替你回答。
 
 - **审批是一次选择,不是一张表单。** 暂停时展示完整的调用——整条命令、整份 diff,永不截断——高亮条已经停在 *Yes, run it* 上:看一眼,回车。其中一项授予该工具**持久的**「别再问了」规则,做法是写一个人可读、人可删的扩展文件,删掉那个文件就是撤销路径。另一项让模型给出两三个更窄的版本,代价是一次请求,且只在你按下时才发生。
 - **不可逆的删除会自己说出来。** 四条命令带一行黄色提示,写明什么会没:`rm -rf`(列出目标)、`git checkout --`、`git reset --hard`、`git clean -f`。别的都不带——给每条危险命令都加警告,只会教会眼睛跳过警告。
@@ -254,7 +276,7 @@ for await (const ev of session.run("What is 2+3?")) {
 | **面** | [sdk.md](docs/sdk.md)——公开面与事件流契约 · [usage.md](docs/usage.md)——规范 usage schema 与价格表 · [request-trace.md](docs/request-trace.md)——请求追踪账本 |
 | **记录** | [status.md](docs/status.md)——逐个面的交付状态 · [docs/adrs/](docs/adrs/README.md)——39 份架构决策记录 · [bench/README.md](bench/README.md)——bench:同一个模型、同一批任务、三个 Agent |
 
-`npm run check` 是完整门链:build → typecheck → tests → size → pack → API 面 → hero → whitespace → CJK → versions → PTY manifest → dist inventory → bench repro → bytes → `git diff --check` → 消费者冒烟层 → demo。**2,792 个测试全绿,378 个文件**(单元 2,212,PTY 580),6 个事故夹具跑在真实运行时上,39 份 ADR。
+`npm run check` 是完整门链:build → typecheck → tests → size → pack → API 面 → hero → whitespace → CJK → versions → PTY manifest → dist inventory → bench repro → bytes → `git diff --check` → 消费者冒烟层 → demo。**2,988 个测试全绿,412 个文件**(单元 2,350,PTY 638),6 个事故夹具跑在真实运行时上,39 份 ADR。
 
 ## 为什么还要做一个
 
