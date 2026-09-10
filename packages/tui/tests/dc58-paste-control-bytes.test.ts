@@ -15,6 +15,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { Editor } from "../src/editor.js";
+import { askView } from "../src/ask-panel.js";
+import type { AskSpec } from "../src/approval-panel.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const paste = (body: string) => `\x1b[200~${body}\x1b[201~`;
@@ -239,5 +241,55 @@ describe("DC-62c — the paste end split on its own ESC", () => {
 		e.onEscape(() => fired.push("escape"));
 		e.feed(enc("\x1b"));
 		expect(fired, "esc interrupts a run; its immediacy is the point").toEqual(["escape"]);
+	});
+});
+
+/**
+ * R4 — two shapes the earlier gates did not reach, from the external
+ * review.
+ *
+ * The first is the panel: while an approval panel is up, the panel takes
+ * the keys BEFORE the escape chain runs, so a mouse report inside a paste
+ * takes a different road than the one DC-62b closed. A pasted SGR press
+ * must not become a click on whatever row the bar happens to be on — that
+ * is a verdict the human never gave.
+ *
+ * The second is my own pin's weakness, and it is worth naming: DC-62b's
+ * arrow case seeded "typed" into the composer first. The history walk
+ * only fires on an EMPTY draft, so that gate proved the arrow did not
+ * disturb a non-empty line — not that it did not walk history. The
+ * condition it was written to exercise was never reached.
+ */
+describe("R4 — the two shapes the earlier gates did not reach", () => {
+	// A PIN, not a reproduction: green on d874af7 and on 391b269 too. The
+	// panel path already hands `#pasting` to `PanelInput.feed`, so this road
+	// was closed before any of DC-62's work. It is here because nothing said
+	// so, and the panel takes the keys BEFORE the escape chain — a future
+	// change to either could open it without touching the chain DC-62b
+	// guards.
+	it("a pasted SGR mouse press produces NO panel verdict", () => {
+		const spec: AskSpec = { questions: [{ question: "q", options: [{ label: "a" }, { label: "b" }] }] };
+		const verdicts: unknown[] = [];
+		const e = new Editor(() => {});
+		e.beginPanel(askView(spec), (v) => verdicts.push(v));
+		e.feed(enc(paste("log \x1b[<0;10;5M more")));
+		expect(verdicts, "a pasted click is not a click").toEqual([]);
+	});
+
+	// A REPRODUCTION, and a correction to the record. Against d874af7 and
+	// 391b269 this gives `bodyan older turn`: a pasted arrow on an EMPTY
+	// draft DID walk the history. DC-62b's CSI skip fixed it, but DC-62b's
+	// commit body says the arrow branch "needed no rule" — and that claim
+	// rested on DC-62b's own arrow case, which seeded "typed" into the
+	// composer first and so never reached the empty-draft condition the walk
+	// requires. The gate passed for the wrong reason and the conclusion drawn
+	// from it was wrong. The rule WAS needed; the fix happened to supply it.
+	it("a pasted ESC[A on an EMPTY draft does not walk the history", () => {
+		const e = new Editor(() => {});
+		e.bindHistory(["an older turn"], () => {});
+		// NOTHING typed first: this is the condition the walk needs, and the
+		// condition DC-62b's arrow case never reached.
+		e.feed(enc(paste("\x1b[Abody")));
+		expect(e.line(), "the history stays where it is").toBe("body");
 	});
 });
