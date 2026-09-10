@@ -795,6 +795,17 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		});
 		return;
 	}
+	if (trimmed === "" && dock.active) {
+		// DC-57 (owner ruling 2026-09-10): a bare Enter on the EMPTY composer
+		// does nothing. It used to fall through to the exit below — a rule
+		// from the readline era, where an empty line on a pipe means the
+		// input is over — and the docked editor inherited it, so a stray
+		// Enter at the idle prompt ended the session (measured on 0.32.0).
+		// The pipe path keeps its byte-pinned end; the dock keeps `exit`
+		// and ctrl+c as the ways out.
+		ctx.input.prompt();
+		return;
+	}
 	if (trimmed === "exit" || trimmed === "") {
 		// PH-1a (finding PH-F11): closing the input MID-RUN killed the very
 		// surface a later approval would ask through ("readline was

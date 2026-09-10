@@ -17,6 +17,7 @@
 		"apps/cli/tests/cx1-f5-task-file.test.ts",
 		"apps/cli/tests/cx1-f9-entry-equivalence.test.ts",
 		"apps/cli/tests/dc33-resize-midturn.test.ts",
+		"apps/cli/tests/dc57-empty-enter-pty.test.ts",
 		"apps/cli/tests/dc34-widen-seam.test.ts",
 		"apps/cli/tests/dc41-key-swap-pty.test.ts",
 		"apps/cli/tests/dc49-at-walk.test.ts",
