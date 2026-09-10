@@ -200,6 +200,20 @@ continuation envelopes, and the output reserve when the profile sets
 one (A1a, 0.29.0); it is still an estimate (chars / 4), marked `~`. The
 auto-compact trigger reads its own number, unchanged this round.
 
+`N tok/s` is the DECODE rate of the last model call whose rate could be
+measured: its output tokens over the seconds from the call's first
+streamed event to its usage event. The wait before the first token is
+excluded, so this is the speed of text arriving rather than the speed of
+the whole call. It counts reasoning and thinking tokens too, so on a
+model that thinks before it answers the figure can run well ahead of the
+visible text.
+
+It shows nothing when there is nothing to show: a provider that reports
+no usage, a call under half a second, or a model binding that has not run
+yet. A call that cannot be measured leaves the figure the previous one
+earned rather than blanking the row, so a turn of quick tool round-trips
+does not make the number flicker.
+
 **The keys:** `enter` send · `ctrl+j / shift+⏎` newline · `@` files ·
 `esc` stop · `alt+⏎ / ctrl+⏎` redirect · `/` commands · `↑↓` history /
 queue pop · `ctrl+o` expand cells · `ctrl+r` transcript · `tab` complete · `?` this

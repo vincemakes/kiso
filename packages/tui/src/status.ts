@@ -50,6 +50,31 @@ function ctxLeft(ratio: number): number | null {
 }
 
 /**
+ * TPS-1 — the settled DECODE rate of one model call: its output tokens
+ * over the seconds from the call's first streamed event to its usage
+ * event. TTFT is excluded on purpose; this is the speed of the text
+ * arriving, which is what "tokens per second" means to the person
+ * watching it.
+ *
+ * The null rule, and every branch of it is the same principle: a number
+ * on this row is a MEASUREMENT or it is absent. No output count (the
+ * provider reported no usage) is not a zero. Under half a second of
+ * decoding is a sample too short to divide by. A non-positive elapsed is
+ * a clock, not a rate. And a call that decoded NOTHING has no rate to
+ * report: `0 tok/s` would read as a measured speed and it is not one — it
+ * is the absence of output, which the transcript already shows. The
+ * condition is on the RENDERED INTEGER rather than on the token count, so
+ * a slow trickle that rounds to the same `0` reaches the same absence for
+ * the same reason.
+ */
+export function decodeRate(outputTokens: number | null, elapsedMs: number): number | null {
+	if (outputTokens === null) return null;
+	if (!Number.isFinite(elapsedMs) || elapsedMs < 500) return null;
+	const rate = Math.round(outputTokens / (elapsedMs / 1000));
+	return rate > 0 ? rate : null;
+}
+
+/**
  * The RUNNING row: the rotating glyph, the wall seconds since `since`
  * (never below 1 — a run that just started still reads "1s", so the row
  * never claims a turn took no time), the streamed output tokens once the
@@ -59,10 +84,15 @@ function ctxLeft(ratio: number): number | null {
  * — stop, and do THIS instead. The row is where the gesture is taught,
  * because it is on screen exactly when the gesture is useful.
  */
-export function runningStatus(glyph: string, since: number, outTokens: number | null, ctxRatio: number): string {
+export function runningStatus(glyph: string, since: number, outTokens: number | null, ctxRatio: number, tokPerSec: number | null = null): string {
 	const out = outTokens !== null ? ` ↓ ${kUnit(outTokens)} tokens` : "";
+	// TPS-1: after each call SETTLES within the turn, between the tokens
+	// segment and the stop hint. The default is null and that is the honest
+	// rule spelled as a default — the recovery flow has no per-call timing
+	// state, so its row says nothing rather than guessing.
+	const rate = tokPerSec !== null ? ` · ${tokPerSec} tok/s` : "";
 	const seconds = Math.max(1, Math.round((Date.now() - since) / 1000));
-	return `${glyph} working ${seconds}s${out} · esc stop · alt+⏎ redirect · ctx left ~${ctxLeft(ctxRatio)}%`;
+	return `${glyph} working ${seconds}s${out}${rate} · esc stop · alt+⏎ redirect · ctx left ~${ctxLeft(ctxRatio)}%`;
 }
 
 /**
@@ -89,6 +119,12 @@ export interface StatusMeter {
 	 *  (trace ledger, /context); the field is kept so callers need not
 	 *  change shape, and it renders NOTHING. */
 	readonly costUsd: number | null;
+	/** TPS-1 — the decode rate of the LAST settled call, carried into the
+	 *  idle row so the figure a person watched during the turn is still
+	 *  there when the turn ends. Null renders nothing (see `decodeRate`);
+	 *  a new model binding starts with none, exactly as the cache figure
+	 *  does (DF-0311-F1: an unmeasured binding has no measurement). */
+	readonly tokPerSec: number | null;
 }
 
 /** The IDLE row: the approval tier as the CALLER names it, the /mode
@@ -100,6 +136,7 @@ export function idleStatus(tier: string, model: string, ctxRatio: number, meter?
 	if (meter?.cacheHitPct != null) parts.push(`CH ${Math.round(meter.cacheHitPct)}%`);
 	// costUsd deliberately NOT rendered — see StatusMeter.costUsd.
 	parts.push(`ctx left ~${ctxLeft(ctxRatio)}%`);
+	if (meter?.tokPerSec != null) parts.push(`${meter.tokPerSec} tok/s`); // TPS-1: last, after the ctx estimate
 	return parts.join(" · ");
 }
 

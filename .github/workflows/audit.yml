@@ -1,0 +1,40 @@
+name: audit
+
+# REPORT ONLY, never a gate. `npm audit` needs the registry, so it cannot be a
+# step in `npm run check` (which must pass offline on a clean checkout) and it
+# must not be able to turn the repo red because a third party published an
+# advisory overnight. It runs weekly, writes what it found into the run's
+# summary, and always succeeds.
+#
+# The production closure is the one that matters: a dev-only advisory is not
+# something a user of kiso can be reached through. R8 (0.32.2) was found this
+# way — fast-uri 3.1.5, a production high, invisible from the workspace install
+# and visible from the packed one.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays, 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: npm audit (production closure, high and above)
+        run: |
+          {
+            echo '## npm audit — production closure, high and above'
+            echo
+            echo '```'
+            npm audit --omit=dev --audit-level=high 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

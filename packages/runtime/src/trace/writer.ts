@@ -70,7 +70,7 @@ export class TraceWriter {
 	init(): void {
 		if (this.#degraded) return;
 		try {
-			mkdirSync(join(this.#root, "traces"), { recursive: true });
+			mkdirSync(join(this.#root, "traces"), { recursive: true, mode: 0o700 }); // DF-0322-F1
 			const fresh = !existsSync(this.#path);
 			if (this.#crashDetect()) {
 				this.#writeSync([
@@ -141,7 +141,11 @@ export class TraceWriter {
 	#writeSync(lines: TraceLine[]): void {
 		if (lines.length === 0) return;
 		try {
-			appendFileSync(this.#path, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`);
+			// DF-0322-F1: the mode applies when THIS call creates the file, and
+			// it is the only call that ever does — nothing truncates the ledger
+			// into existence first (the R6b trap, where an earlier writeFileSync
+			// made the append's mode a no-op).
+			appendFileSync(this.#path, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`, { mode: 0o600 });
 		} catch (err) {
 			this.#degrade(err);
 		}

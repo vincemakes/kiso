@@ -72,6 +72,7 @@
 		"apps/cli/tests/session-id-identity.test.ts",
 		"apps/cli/tests/task-e2e.test.ts",
 		"apps/cli/tests/thinking-toggle-pty.test.ts",
+		"apps/cli/tests/tps1-tok-per-sec-pty.test.ts",
 		"apps/cli/tests/tui-modes.test.ts",
 		"apps/cli/tests/tui-v2a.test.ts",
 		"apps/cli/tests/tui-v2b.test.ts",

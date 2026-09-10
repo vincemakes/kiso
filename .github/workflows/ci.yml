@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+# A superseded PR run is wasted minutes, and the account's Actions budget is
+# shared with every other project on this machine. Cancel the older run when a
+# branch is pushed again — but NEVER on main: the release rule is "CI green on
+# the bump commit", and a cancelled main run would leave that unanswerable.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
