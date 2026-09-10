@@ -39,7 +39,7 @@ them; nothing below is a commitment or a sequence.
 - **Diet D re-discussion** — the diet-micro riders A/B/C landed in
   0.1.48 with D reverted (the 0.1.47 void adjudication); D's re-entry
   is an open discussion, not a commitment.
-- **Plan the next core extraction (core at 1997/2000)** — registered by
+- **Plan the next core extraction (core at 2,139/2,200 — `npm run size` is the truth; this line is hand-maintained and drifts)** — registered by
   the 0.9.0 field-report audit (TUI2-R2pre ⑥): the kernel is 28 lines
   under its own budget, so the next feature that touches it has nowhere
   to land. What to extract is the open question — this line exists so

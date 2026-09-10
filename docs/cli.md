@@ -102,7 +102,13 @@ kiso help                      this help
   `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` switches to a real provider
   (`OPENAI_BASE_URL` is OPTIONAL — set it to retarget any
   OpenAI-compatible endpoint such as DeepSeek; unset, the key alone
-  talks to the default OpenAI endpoint); with both keys exported,
+  talks to the default OpenAI endpoint). **A retargeted or custom origin
+  authenticates with the profile's own env var ONLY: a credential saved by
+  `kiso login` never leaves the vendor's own origin** (R1, 0.32.2). If you
+  signed in with `kiso login` and then pointed a profile at a gateway, that
+  profile now needs its key in the environment — before this it silently
+  sent the stored vendor key to the gateway, which is what the change stops.
+  With both keys exported,
   OPENAI wins (checked first). Env-only defaults: `ANTHROPIC_MODEL` falls back to
   `claude-sonnet-5`, `OPENAI_MODEL` to `gpt-4o` — export the `*_MODEL`
   variable to pick a model without touching the config file.

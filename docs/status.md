@@ -46,7 +46,7 @@ numbers are pressure readings, not passed gates):
   is a clean failure whose result carries the honest partial-side-effect
   note, and the retry re-passes the approval chain).
 - **runtime** — `createAgent` / durable multi-turn sessions / crash-safe
-  JSONL store (torn-tail repair under a kernel-flock cross-process writer
+  JSONL store (torn-tail repair under a native identity-confirmed link-lock cross-process writer
   lock — upgrade requires QUARANTINE: stop every old-format process before
   starting the new version; the pidfile guard is best-effort, not a
   seamless rolling upgrade (the fifth round P1-4), strict
@@ -58,7 +58,7 @@ numbers are pressure readings, not passed gates):
   startup failure on a bad file or duplicate name; extension tools merge
   into the registry (built-in collision = startup error), hooks compose
   AFTER the harness's own (existing-first), approvals enter the policy chain.
-- **cli** (3,660 lines against a 1,920 report-only cap) — the coding agent: bare `kiso` enters chat;
+- **cli** (4,145 lines against a 1,920 report-only cap) — the coding agent: bare `kiso` enters chat;
   the startup extension scan — the built-in layer first (the three default
   official extensions load in-process by module import: mcp, skills,
   subagent; E5: task is opt-in — a user copy shadows loudly, a project
@@ -198,6 +198,6 @@ tree stays CJK-free — `README.zh.md` is the only exemption)
 → `git diff --check` on the working tree and the index
 → consumer smoke tiers (runtime, NESTED install, providers, CLI, nested
   CLI with real Anthropic/OpenAI env)
-→ demo start-and-exit gate. **2,792 tests green (378 files)** — 2,212 unit,
-580 PTY. 39 ADRs (index: `docs/adrs/README.md`).
+→ demo start-and-exit gate. **2,958 tests green (407 files)** — 2,326 unit,
+632 PTY. 39 ADRs (index: `docs/adrs/README.md`).
 6 incident fixtures running on the real runtime.
