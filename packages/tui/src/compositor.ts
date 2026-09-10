@@ -84,6 +84,7 @@ import {
 	breathFrame,
 } from "./components.js";
 import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, type BannerMeta, type ResumeMeta } from "./lines.js";
+import { oneRow } from "@vincemakes/kiso-tui-cells/render";
 import { displayVerb, keysSheetRows } from "./strings.js";
 /** DC-56: does a rendered row carry any visible text once its SGR is
  *  stripped? A washed pad row is spaces under a background colour — width
@@ -2770,6 +2771,8 @@ export class Body {
 	 *  CRASH with the diagnostic, never a silent truncate. */
 	/** DC-48 — the field cut is announced ONCE per session. */
 	#cutOnce = false;
+	/** HF-1: the ①b notice, once per session (the same discipline as #cutOnce). */
+	#breakOnce = false;
 
 	#checked(line: string, W: number): string {
 		// Invariant ①b (R3f): a ROW IS ONE PHYSICAL ROW.
@@ -2796,9 +2799,22 @@ export class Body {
 		// (it moves the cursor to column 1).
 		const bad = /[\n\r]/.exec(line);
 		if (bad !== null) {
-			throw new Error(
-				`kiso-tui invariant ①b violated: a row containing ${JSON.stringify(bad[0])} was about to be emitted — a row must be ONE physical row, and the width check cannot see this (charWidth counts a newline as one cell) — ${JSON.stringify(line.slice(0, 80))}`,
-			);
+			// HF-1 (0.32.1): the SAME ruling as the width half below. This
+			// threw in the field on a heredoc shell command (the running
+			// card's head carried the model's newlines) and the owner's
+			// session died with it. Under test the crash keeps its teeth;
+			// in the field the break is projected to ⏎ — the row goes out
+			// as one row — and a notice says so once. The builders project
+			// first (tui-cells `oneRow`), so this branch is the net under
+			// the net: a builder nobody has found yet costs a mark, not a
+			// session.
+			const why = `kiso-tui invariant ①b violated: a row containing ${JSON.stringify(bad[0])} was about to be emitted — a row must be ONE physical row, and the width check cannot see this (charWidth counts a newline as one cell) — ${JSON.stringify(line.slice(0, 80))}`;
+			if (process.env.KISO_INVARIANTS === "throw") throw new Error(why);
+			if (!this.#breakOnce) {
+				this.#breakOnce = true;
+				queueMicrotask(() => this.notice("kiso-tui: a row carried a line break and was shown as one row (invariant ①b) · please report"));
+			}
+			line = oneRow(line);
 		}
 		const w = visibleWidth(line);
 		if (w > W) {

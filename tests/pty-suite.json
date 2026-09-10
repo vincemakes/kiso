@@ -45,6 +45,7 @@
 		"apps/cli/tests/kc35-ask-semantics-probe.test.ts",
 		"apps/cli/tests/kill9.test.ts",
 		"apps/cli/tests/kiso-home.test.ts",
+		"apps/cli/tests/hf1-multiline-command-pty.test.ts",
 		"apps/cli/tests/lt1-stall-pty.test.ts",
 		"apps/cli/tests/lt2-breaker-pty.test.ts",
 		"apps/cli/tests/lt2-checkpoint-pty.test.ts",

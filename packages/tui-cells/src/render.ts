@@ -289,7 +289,7 @@ export function renderToolSummary(
 	}
 	const mark = result.isError ? `${p.red}✗${p.reset}` : `${p.bold}✓${p.reset}`;
 	const shortName = name.replace("_file", "");
-	const detail = toolSummaryDetail(name, input, result);
+	const detail = oneRow(toolSummaryDetail(name, input, result)); // HF-1: one row, whatever the command
 	return `${mark} ${escapeTerminal(`${shortName} ${detail}`)}`;
 }
 
@@ -336,6 +336,29 @@ function toolSummaryDetail(name: string, input: Record<string, unknown>, result:
  *  the summary detail uses, WITHOUT the counts (the header names what
  *  was expanded, not its size). */
 export function toolTarget(name: string, input: Record<string, unknown>): string {
+	return oneRow(toolTargetRaw(name, input));
+}
+
+/**
+ * HF-1 (0.32.1) — a head row is ONE row, whatever the model wrote.
+ *
+ * The owner's 0.32.0 dogfood: the model issued a heredoc shell command
+ * (`python3 - <<'EOF' …`), the running card's head carried its newlines
+ * into the compositor, invariant ①b threw in the field and the process
+ * died. `escapeTerminal` keeps `\n` on purpose (text blocks need it); a
+ * HEAD ROW does not — it is one physical row by construction. So every
+ * builder that puts a tool's target on a row projects the breaks to a
+ * visible mark first: a line break becomes `⏎` (CRLF is one), a tab
+ * becomes one cell of space (its width is a property of the column, and
+ * a cut row has no column to give it). The full command is still on the
+ * approval panel and in the durable log; the row says what ran, in one
+ * row.
+ */
+export function oneRow(text: string): string {
+	return text.replace(/\r\n|\n|\r/g, "\u23ce").replace(/\t/g, " ");
+}
+
+function toolTargetRaw(name: string, input: Record<string, unknown>): string {
 	switch (name) {
 		case "read_file":
 		case "write_file":
