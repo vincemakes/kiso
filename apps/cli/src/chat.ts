@@ -9,6 +9,7 @@ import { readFileSync, statSync } from "node:fs";
 import {
 	escapeTerminal,
 	cacheHitPct,
+	decodeRate,
 	idleStatus,
 	palette,
 	renderEvent,
@@ -635,7 +636,7 @@ export async function consumeRun(
 	input: LineInput,
 	turnNo: number,
 	faux: boolean,
-	statusCb: ((usage: RunUsage, ctxRatio: number, costUsd?: number | null) => void) | null,
+	statusCb: ((usage: RunUsage, ctxRatio: number, costUsd?: number | null, tokPerSec?: number | null) => void) | null,
 	/** W21: the amend words ("Yes + feedback") ride the NEXT user turn —
 	 *  threaded from chat's submitTurn; absent in the recovery flow
 	 *  (resume) where a dropped amend is noticed instead. */
@@ -643,6 +644,10 @@ export async function consumeRun(
 ): Promise<import("@vincemakes/kiso-core").Event | undefined> {
 	let last: import("@vincemakes/kiso-core").Event | undefined;
 	let usage: RunUsage = { in: null, out: null, cache: null, known: false };
+	// TPS-1: the decode clock, armed by the FIRST streamed event of a call
+	// and read at that call's usage event. Per CALL, not per turn — a turn
+	// with three model calls reports the third, and each one times itself.
+	let callFirstEventAt: number | null = null;
 	let prevTotal: number | null = null;
 	let missed: number | null = null;
 	// v3 §02: the recap line derives ENTIRELY from the local event stream
@@ -704,6 +709,7 @@ export async function consumeRun(
 				body.userLine(echoText(ev.content));
 				break;
 			case "thinking":
+				callFirstEventAt ??= Date.now(); // TPS-1: reasoning IS decoding
 				body.thinkingAppend(ev.text);
 				break;
 			case "tool_call_end":
@@ -750,6 +756,7 @@ export async function consumeRun(
 				break;
 			}
 			case "text_delta":
+				callFirstEventAt ??= Date.now(); // TPS-1
 				body.textAppend(ev.text);
 				break;
 			case "text_end":
@@ -771,7 +778,12 @@ export async function consumeRun(
 				missed = delta.missed;
 				// TUI2-R1 (E): the request's canonical cost rides the same
 				// callback the usage does — one settled request, one addition.
-				statusCb?.(usage, displayCtxRatio(session), delta.costUsd);
+				// TPS-1: the rate of the call that just settled. The clock is
+				// cleared here rather than at the turn boundary, so a turn's
+				// second call is timed from ITS own first event.
+				const tokPerSec = callFirstEventAt === null ? null : decodeRate(ev.outputTokens, Date.now() - callFirstEventAt);
+				callFirstEventAt = null;
+				statusCb?.(usage, displayCtxRatio(session), delta.costUsd, tokPerSec);
 				break;
 			}
 			case "uncertain_pending":
@@ -1044,6 +1056,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			// rotates every 200ms; the idle state returns after the run.
 			runStart = Date.now();
 			runUsage = { in: null, out: null, cache: null, known: false };
+			lastTokPerSec = null; // TPS-1: nothing has settled in THIS turn yet
 			const stopSpinner = startStatusSpinner((g) => {
 				runGlyph = g;
 				paintRunning();
@@ -1230,10 +1243,19 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	let spentUsd: number | null = null;
 	let runGlyph = "▖";
 	let runStart = Date.now();
+	// TPS-1: the decode rate of the last SETTLED call. One variable serves
+	// both rows because they want the same number at different moments;
+	// only the reset points differ, and they are all on the ENTRY side —
+	// cleared when a turn starts (so the running row never shows the
+	// previous turn's figure while a new one is in flight) and when the
+	// binding changes (DF-0311-F1: a model that has not run has no
+	// measurement), never at a turn's END, so the idle row can carry the
+	// last call of the last turn.
+	let lastTokPerSec: number | null = null;
 	// KC2 §5: the STATE (the glyph, the run's start, the usage, the dock)
 	// stays here; the ROW's text is the tui's status formatter.
 	const paintRunning = (): void => {
-		if (dock.active) dock.setStatus(runningStatus(runGlyph, runStart, runUsage.out, displayCtxRatio(session)));
+		if (dock.active) dock.setStatus(runningStatus(runGlyph, runStart, runUsage.out, displayCtxRatio(session), lastTokPerSec));
 	};
 	// W19: under plan the idle row makes the posture unmistakable — the W4
 	// parentheses idiom names the read-only constraint. The tier is the
@@ -1247,6 +1269,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			idleStatus(getMode() === "plan" ? "plan (read-only)" : getMode(), statusModelLabel(session), displayCtxRatio(session), {
 				cacheHitPct: cacheHitPct(runUsage),
 				costUsd: spentUsd,
+				tokPerSec: lastTokPerSec,
 			}),
 		);
 	};
@@ -1272,11 +1295,15 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// binding's, and the row does not render it anyway.
 	const modelSwitched = (): void => {
 		runUsage = { in: null, out: null, cache: null, known: false };
+		lastTokPerSec = null; // TPS-1: the rate belonged to the old binding
 		paintIdle();
 	};
-	const statusCb = (u: RunUsage, ctx: number, costUsd?: number | null): void => {
+	const statusCb = (u: RunUsage, ctx: number, costUsd?: number | null, tokPerSec?: number | null): void => {
 		runUsage = u;
 		addCost(costUsd ?? null);
+		// TPS-1: a call that could not be measured leaves the row as it was
+		// rather than blanking a figure the previous call earned.
+		if (tokPerSec != null) lastTokPerSec = tokPerSec;
 		paintRunning();
 	};
 	// TUI2-R1 (E): the canonical cost of one settled request, added to the
@@ -1421,6 +1448,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// spent, reported as seconds it did.
 		runStart = Date.now();
 		runUsage = { in: null, out: null, cache: null, known: false };
+		lastTokPerSec = null; // TPS-1: nothing has settled in THIS turn yet
 		const last = await consumeRun(session, recoveryRun, input, turnNo, faux, statusCb, submitTurn);
 		currentRun = null;
 		failOnFauxExhaustion(last, faux, input);
