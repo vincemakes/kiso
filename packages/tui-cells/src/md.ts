@@ -89,7 +89,25 @@ const SETEXT = /^ {0,3}(=+|-+) *$/;
  *  stays a list. That is a deliberate deviation, and the reason is
  *  frequency: a four-space nested list is far more common in model prose
  *  than an indented code block that opens with a list marker. A TAB indent
- *  is not recognised here (it stays prose) — stated rather than implied. */
+ *  is not recognised here (it stays prose) — stated rather than implied.
+ *
+ *  MD1-F4 — and the indent alone is NOT enough: a line that would classify
+ *  here is PROSE when the most recent block is a `list`. For `1. ` the
+ *  content indent is three columns, so a line indented four after a blank
+ *  is the item's continuation paragraph and code inside that item would
+ *  need seven. Models write that shape constantly — numbered steps, each
+ *  with an explanatory paragraph under it — and rendering it verbatim
+ *  destroyed the reflow and kept a four-space indent. `code-line` is
+ *  therefore reached only after a paragraph, heading, rule, quote, table
+ *  or fence, or at the start of a message.
+ *
+ *  Two consequences, stated rather than discovered: an indented code block
+ *  nested INSIDE a list item is not recognised (it renders as the item's
+ *  paragraph), and because only the MOST RECENT block is consulted, a
+ *  second indented block after such a continuation paragraph is code
+ *  again. And blank lines inside an indented block collapse to ONE gap
+ *  row, exactly as they do between paragraphs — two blank lines in a code
+ *  block come back as one. */
 const CODE = /^ {4,}/;
 
 /** The kind a line would START. null = blank (a block separator). */
@@ -182,6 +200,12 @@ export class MdStream {
 	/** blocks STARTED so far — the gap rule's only input (the first block
 	 *  of a message opens tight; every later one carries its own blank). */
 	#started = 0;
+	/** MD-1.4 / MD1-F4 — the kind of the most recent BLOCK, which is what
+	 *  decides whether an indented line is code or prose. Kept HERE rather
+	 *  than read back off `#closed`: the tail block is not in `#closed` at
+	 *  all, and `blocks()` hands out fresh objects. It is only ever read
+	 *  while `#open` is null, so "most recent" is never ambiguous. */
+	#lastKind: MdKind | null = null;
 	/** MD-1.4 — was the last COMPLETE line an indented code line? Each such
 	 *  line is its own block (line-local, so a long indented block streams
 	 *  through the live region exactly as a fence body does), which means the
@@ -226,9 +250,17 @@ export class MdStream {
 			out.push(p === "" ? frozen(this.#open) : frozen(this.#open, p));
 			return out;
 		}
-		const k = classify(p);
+		const k = this.#kindOf(p);
 		if (k !== null) out.push({ kind: k, lines: [p], gap: this.#started > 0 && !(k === "code-line" && this.#code), lang: k === "fence-open" ? fenceLang(p) : "" });
 		return out;
+	}
+
+	/** MD1-F4 — the kind a line starts HERE, which is `classify` plus the
+	 *  one piece of context that decides code from prose: an indented line
+	 *  after a list is the list item's continuation paragraph. */
+	#kindOf(line: string): MdKind | null {
+		const k = classify(line);
+		return k === "code-line" && this.#lastKind === "list" ? "para" : k;
 	}
 
 	/** How many leading blocks are CLOSED — the commit-eligible count. */
@@ -268,9 +300,10 @@ export class MdStream {
 		if (this.#open !== null && this.#open.kind === "para" && SETEXT.test(line)) {
 			this.#closed.push({ kind: "heading", lines: [...this.#open.lines, line], gap: this.#open.gap, lang: "" });
 			this.#open = null;
+			this.#lastKind = "heading";
 			return;
 		}
-		const k = classify(line);
+		const k = this.#kindOf(line);
 		if (k === null) {
 			this.#shut();
 			return;
@@ -304,11 +337,13 @@ export class MdStream {
 	#push(b: MdBlock): void {
 		this.#closed.push(b);
 		this.#started += 1;
+		this.#lastKind = b.kind;
 	}
 
 	#shut(): void {
 		if (this.#open === null) return;
 		this.#closed.push(frozen(this.#open));
+		this.#lastKind = this.#open.kind;
 		this.#open = null;
 	}
 }

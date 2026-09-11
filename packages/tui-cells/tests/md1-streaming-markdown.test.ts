@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { boxTop, visibleWidth } from "../src/components.js";
 import { MdStream, renderBlock, renderMarkdown, splitCells, tableShape } from "../src/md.js";
 import { palette } from "../src/render.js";
-import { INDENTED, QUOTED, SETEXT, TABLE5, TABLE6 } from "./helpers/md1-samples.js";
+import { INDENTED, LIST_PARA, LIST_PARA_FLAT, QUOTED, SETEXT, TABLE5, TABLE6 } from "./helpers/md1-samples.js";
 
 beforeEach(() => {
 	Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
@@ -650,5 +650,86 @@ describe("MD1-F3 — the record form's separator can open a row", () => {
 			}
 		}
 		expect(rows).toBe(29);
+	});
+});
+
+describe("MD1-F4 — an indented paragraph after a list item is prose, not code", () => {
+	/**
+	 * FOUND IN REVIEW of this branch, and it blocked. MD-1.4's `CODE` rule
+	 * fired on the one prose shape that carries a four-space indent: a
+	 * numbered list whose items each carry an explanatory paragraph. The
+	 * paragraph rendered VERBATIM through the fence-body fold, keeping its
+	 * indent and losing its reflow, where on main it had been an ordinary
+	 * paragraph.
+	 *
+	 * CommonMark says why: for `1. ` the content indent is THREE columns, so
+	 * a line indented four after a blank is the item's continuation
+	 * paragraph, and indented code inside that item would need seven. The
+	 * rule is therefore contextual — `code-line` is reached only after a
+	 * paragraph, heading, rule, quote, table or fence, or at the start of a
+	 * message — and the context is kept on the stream as `#lastKind`.
+	 */
+	it("MD1-F4a: the block kinds — a continuation paragraph, not a code block", () => {
+		const s = new MdStream();
+		s.push(LIST_PARA);
+		s.end();
+		expect(s.blocks().map((b) => b.kind)).toEqual(["para", "list", "para", "list", "para", "para"]);
+	});
+
+	it("MD1-F4b: it renders exactly as the same paragraph unindented", () => {
+		// the oracle is the document itself with that one line's four spaces
+		// removed: a continuation paragraph and a plain paragraph are the same
+		// block, so their renders must be byte-identical.
+		for (const w of [46, 60, 78]) expect(renderMarkdown(LIST_PARA, w), `W=${w}`).toEqual(renderMarkdown(LIST_PARA_FLAT, w));
+		// and it is reflowed prose, not an indented verbatim block
+		const rows = renderMarkdown(LIST_PARA, 46).map(plain);
+		expect(rows.some((r) => r.startsWith("    Run the installer"))).toBe(false);
+		expect(rows).toContain("Run the installer and wait for it to finish;");
+	});
+
+	it("MD1-F4c: the boundary the rule KEEPS — indented code after a heading is still code", () => {
+		const s = new MdStream();
+		s.push("## A heading\n\n    const x = 1;\n");
+		s.end();
+		expect(s.blocks().map((b) => b.kind)).toEqual(["heading", "code-line"]);
+		// and after a paragraph, and at the start of a message
+		expect(renderMarkdown(INDENTED, W(80)).map(plain)).toEqual(["some prose first", "", "    const x = 1;", "    const y = 2;"]);
+		const first = new MdStream();
+		first.push("    const x = 1;\n");
+		first.end();
+		expect(first.blocks().map((b) => b.kind)).toEqual(["code-line"]);
+	});
+
+	it("MD1-F4d: the LIVE path takes the same rule — the tail never flickers into code", () => {
+		// `blocks()` classifies the open partial line, and a partial that
+		// styled itself as code and then flipped to prose would be a visible
+		// flicker in the live region.
+		const s = new MdStream();
+		s.push("1. Install the package\n\n");
+		s.push("    Run the ins");
+		const tail = s.blocks()[s.blocks().length - 1]!;
+		expect(tail.kind).toBe("para");
+		expect(plain(renderBlock(tail, 46).join("|"))).not.toContain("    Run");
+	});
+
+	it("MD1-F4e: BLOCK-FREEZE holds over the new context — every delta split agrees", () => {
+		const one = new MdStream();
+		one.push(LIST_PARA);
+		one.end();
+		const want = one.blocks().map((b) => `${b.kind}|${b.gap}|${JSON.stringify(b.lines)}`);
+		const offenders: string[] = [];
+		for (const n of [1, 2, 3, 5, 7, 13, 64, 257]) {
+			const s = new MdStream();
+			for (let i = 0; i < LIST_PARA.length; i += n) s.push(LIST_PARA.slice(i, i + n));
+			s.end();
+			if (JSON.stringify(s.blocks().map((b) => `${b.kind}|${b.gap}|${JSON.stringify(b.lines)}`)) !== JSON.stringify(want)) offenders.push(`chunk=${n}`);
+		}
+		expect(offenders).toEqual([]);
+	});
+
+	it("MD1-F4f: blank lines inside an indented block collapse to ONE gap row", () => {
+		// stated rather than discovered: the gap rule is the paragraph rule,
+		// so two blank lines in an indented code block come back as one.
+		expect(renderMarkdown("p\n\n    a\n\n\n    b", W(80)).map(plain)).toEqual(["p", "", "    a", "", "    b"]);
 	});
 });

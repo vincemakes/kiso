@@ -62,3 +62,26 @@ export const QUOTED = [
 	`>`,
 	`> And a second paragraph.`,
 ].join("\n");
+
+/** MD1-F4 — the lead's review input: a numbered list whose items carry an
+ *  explanatory paragraph, one indented four spaces and one indented three.
+ *  The shape models write constantly, and the one place MD-1.4's `CODE`
+ *  rule fired on prose. `LIST_PARA_FLAT` is the same document with that
+ *  one line's four spaces removed — the independent oracle, since a
+ *  continuation paragraph must render exactly as the same paragraph
+ *  unindented. */
+export const LIST_PARA = [
+	`Steps:`,
+	``,
+	`1. Install the package`,
+	``,
+	`    Run the installer and wait for it to finish; this paragraph is indented four spaces after a blank line, which is how models often nest a paragraph under a numbered item.`,
+	``,
+	`2. Configure it`,
+	``,
+	`   Three-space continuation under item two, the other common shape.`,
+	``,
+	`Done.`,
+].join("\n");
+
+export const LIST_PARA_FLAT = LIST_PARA.replace("\n    Run the installer", "\nRun the installer");
