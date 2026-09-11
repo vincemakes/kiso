@@ -331,11 +331,18 @@ export function renderMarkdown(text: string, W: number): string[] {
 /** One block's screen rows. Pure in (block, W) — this is the whole
  *  freeze guarantee: same source, same width, same bytes, forever. */
 export function renderBlock(b: MdBlock, W: number): string[] {
-	const rows = blockBody(b, Math.max(1, W));
+	const rows = blockBody(b, Math.max(1, W), 0);
 	return b.gap ? ["", ...rows] : rows;
 }
 
-function blockBody(b: MdBlock, W: number): string[] {
+/** MD-1.5 — how deep a quote may nest before it stops being rendered as
+ *  blocks. A `>>>>>` quote in a narrow terminal spends two columns per
+ *  level, and past this it degrades to the flattened form rather than
+ *  recursing on nothing. Cheap insurance: the wrapper already degrades an
+ *  over-wide prefix instead of throwing. */
+const QUOTE_DEPTH = 4;
+
+function blockBody(b: MdBlock, W: number, depth: number): string[] {
 	const p = palette();
 	switch (b.kind) {
 		case "heading": {
@@ -393,13 +400,41 @@ function blockBody(b: MdBlock, W: number): string[] {
 			return foldLineWidth(src.slice(indent.length), W - visibleWidth(gutter), indent).map((r) => `${gutter}${r}`);
 		}
 		case "quote": {
-			const text = b.lines.map((l) => QUOTE.exec(l)?.[1] ?? l).join(" ");
 			// R2: one gutter glyph. A quote and a fenced block both say "this
 			// text is not mine", and the screen was saying it two ways — ▏
 			// here and │ for code. The fences took their own ``` rails, so │
 			// is free and the quote takes it.
 			const gutter = `${p.dim}\u2502${p.reset} `;
-			return wrap(`${p.dim}${inlineSpans(text, p.dim)}${p.reset}`, W - visibleWidth(gutter), "", "").map((r) => `${gutter}${r}`);
+			const bar = `${p.dim}\u2502${p.reset}`;
+			const text = b.lines.map((l) => QUOTE.exec(l)?.[1] ?? l).join("\n");
+			const room = Math.max(1, W - visibleWidth(gutter));
+			// MD-1.5 — a quote's content is BLOCKS. Joining its lines with
+			// spaces made a quoted list and a quoted second paragraph into one
+			// reflowed line, which is the same class of defect as MD-1.4's: the
+			// structure the model sent was destroyed, not merely unstyled. The
+			// stripped text goes through a nested stream — a LOCAL, built per
+			// render, so `renderBlock` stays pure in (block, W) — and every row
+			// it produces takes the gutter.
+			//
+			// MD-1.5's judgement call: the blanket `dim` over the whole quote is
+			// GONE and the gutter carries "not mine" alone. With inner blocks
+			// the blanket dim would put dim OVER bold in a quoted heading, which
+			// is a contradiction, and over a fence body's inset in a quoted
+			// fence. It is also MD-1.2's argument one item earlier: `dim` is a
+			// LABEL tier and a quote is body text. The gutter stays dim, because
+			// a gutter IS a label.
+			if (depth >= QUOTE_DEPTH) return wrap(inlineSpans(text.split("\n").join(" "), ""), room, "", "").map((r) => `${gutter}${r}`);
+			const inner = new MdStream();
+			inner.push(text);
+			inner.end();
+			const rows = inner.blocks().flatMap((blk) => {
+				const body = blockBody(blk, room, depth + 1);
+				return blk.gap ? ["", ...body] : body;
+			});
+			// a blank row inside a quote takes the bar and no trailing space:
+			// the gutter says "still the quote", the space would be whitespace
+			// a human copies for nothing.
+			return rows.map((r) => (r === "" ? bar : `${gutter}${r}`));
 		}
 		case "list":
 			return listRows(b, W);

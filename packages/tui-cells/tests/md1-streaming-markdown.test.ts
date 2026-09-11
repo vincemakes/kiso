@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { visibleWidth } from "../src/components.js";
 import { MdStream, renderBlock, renderMarkdown, splitCells, tableShape } from "../src/md.js";
 import { palette } from "../src/render.js";
-import { INDENTED, SETEXT, TABLE5, TABLE6 } from "./helpers/md1-samples.js";
+import { INDENTED, QUOTED, SETEXT, TABLE5, TABLE6 } from "./helpers/md1-samples.js";
 
 beforeEach(() => {
 	Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
@@ -481,5 +481,83 @@ describe("MD-1.4 — setext headings and indented code blocks", () => {
 			}
 		}
 		expect(offenders).toEqual([]);
+	});
+});
+
+describe("MD-1.5 — a blockquote keeps its block structure", () => {
+	/**
+	 * `blockBody`'s quote case joined every line of the quote with spaces, so
+	 * a quoted list and a quoted second paragraph became one reflowed line:
+	 * `A quote with a list: - one - two  And a second paragraph.` The quote's
+	 * content is BLOCKS, and it is rendered as blocks — through a nested
+	 * `MdStream` constructed per render, which is a local, so `renderBlock`
+	 * stays pure in (block, W).
+	 *
+	 * THE JUDGEMENT CALL, and the choice made: the blanket `dim` over the
+	 * whole quote is DROPPED, and the `│ ` gutter carries "this text is not
+	 * mine" on its own. Two reasons, both from this round. With inner blocks
+	 * the blanket dim would put dim OVER bold in a quoted heading, which is
+	 * a contradiction — bold says more, dim says less — and dim over a
+	 * fence body's inset in a quoted fence. And it is the same argument
+	 * MD-1.2 makes one item earlier: `dim` is a LABEL tier, and a quote is
+	 * body text. The gutter stays dim, because the gutter IS a label.
+	 */
+	it("MD1-5a: a quoted list and a quoted second paragraph keep their shape", () => {
+		expect(renderMarkdown(QUOTED, W(80)).map(plain)).toEqual([
+			"│ A quote with a list:",
+			"│",
+			"│   - one",
+			"│   - two",
+			"│",
+			"│ And a second paragraph.",
+		]);
+	});
+
+	it("MD1-5b: the quote's CONTENT is at body strength; only the gutter is dim", () => {
+		const rows = renderMarkdown(QUOTED, W(80));
+		const dimText = rows.flatMap((r) => dimRuns(r).filter((x) => x.dim).map((x) => x.text)).join("");
+		const litText = rows.flatMap((r) => dimRuns(r).filter((x) => !x.dim).map((x) => x.text)).join("");
+		expect(dimText.replace(/\s/g, "")).toBe("│".repeat(6)); // the gutter, six rows of it
+		expect(litText).toContain("A quote with a list:");
+		expect(litText).toContain("And a second paragraph.");
+	});
+
+	it("MD1-5c: a quoted heading and a quoted fence render as what they are", () => {
+		const p = palette();
+		const rows = renderMarkdown("> ## Heading\n>\n> ```ts\n> const a = 1;\n> ```", W(80));
+		expect(rows.map(plain)).toEqual(["│ Heading", "│", "│ ```ts", "│   const a = 1;", "│ ```"]);
+		// the heading's bold survives inside the quote, which the blanket dim
+		// would have been fighting
+		expect(rows[0]).toContain(p.bold);
+	});
+
+	it("MD1-5d: nesting works, and a deep nest neither throws nor overruns", () => {
+		expect(renderMarkdown("> > nested", W(80)).map(plain)).toEqual(["│ │ nested"]);
+		const offenders: string[] = [];
+		for (const depth of [1, 2, 3, 4, 5, 6, 8]) {
+			const src = `${"> ".repeat(depth)}deep`;
+			for (let w = 12; w <= 80; w += 4) {
+				const rows = renderMarkdown(src, w);
+				for (const row of rows) if (visibleWidth(row) > w) offenders.push(`depth=${depth} W=${w} w=${visibleWidth(row)}`);
+				// the text SURVIVES, wrapped if it must be: at W=12 a deep nest
+				// spends two columns per level and the word breaks by code point,
+				// so the needle is the bag and not a substring.
+				for (const [ch, n] of bag("deep")) if ((bag(rows.join("")).get(ch) ?? 0) < n) offenders.push(`depth=${depth} W=${w}: lost ${ch}`);
+			}
+		}
+		expect(offenders.slice(0, 5)).toEqual([]);
+	});
+
+	it("MD1-5e: the quote is still a pure function of (block, W)", () => {
+		// the nested stream is a LOCAL, built per render: two renders of the
+		// same block at the same width are byte-identical, and a render never
+		// reaches the outer stream's state.
+		for (const w of [20, 40, 60, 78]) expect(renderMarkdown(QUOTED, w)).toEqual(renderMarkdown(QUOTED, w));
+	});
+
+	it("MD1-5f: no quote row exceeds W, 12..120", () => {
+		const offenders: string[] = [];
+		for (let w = 12; w <= 120; w += 1) for (const row of renderMarkdown(QUOTED, w)) if (visibleWidth(row) > w) offenders.push(`W=${w} w=${visibleWidth(row)}`);
+		expect(offenders.slice(0, 5)).toEqual([]);
 	});
 });
