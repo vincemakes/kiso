@@ -657,18 +657,34 @@ function cellBox(cell: string, w: number, align: MdAlign, bold: boolean): string
 	});
 }
 
-/** The narrow degradation: one record per row. The first column names
- *  the record (bold, with a dim colon); the rest is a dim `label:
- *  value` run joined by `·`, wrapped rather than cut. A blank row
- *  separates records — nothing is dropped at any width. */
+/**
+ * The narrow degradation: one record per row. The first column names the
+ * record (bold, with a dim colon); the rest is a `label: value` run
+ * joined by `·`, wrapped rather than cut. A blank row separates records —
+ * nothing is dropped at any width.
+ *
+ * MD-1.2 — the LABEL is dim and the VALUE is not. This used to wrap every
+ * label AND every value in ONE `p.dim` span, so a table's actual content
+ * arrived at the lowest contrast tier on the screen while the labels —
+ * scaffolding the reader already read in the header row — carried equal
+ * weight. The emphasis was exactly inverted.
+ *
+ * Per-token contrast was never the defect: `dim` measures 4.54:1 on a
+ * resolved light ground, which is legal for a LABEL. Setting a whole
+ * paragraph of body text in it is a different thing, and on a terminal
+ * that never answered OSC 11 it is worse — the palette keeps SGR 2 there
+ * rather than an absolute grey. `dim` is a label tier; this is the first
+ * place it was asked to be a body tier, and it is no longer asked.
+ */
 function recordRows(t: MdTable, W: number): string[] {
 	const p = palette();
 	const out: string[] = [];
 	for (const r of t.rows) {
 		if (out.length > 0) out.push("");
 		out.push(...wrap(`${p.bold}${inlineSpans(t.header[0] ?? "", p.bold)}${p.reset}${p.dim}:${p.reset} ${inlineSpans(r[0] ?? "", "")}`, W, "", ""));
-		const rest = t.header.slice(1).map((h, i) => `${h}: ${r[i + 1] ?? ""}`);
-		if (rest.length > 0) out.push(...wrap(`${p.dim}${inlineSpans(rest.join(" · "), p.dim)}${p.reset}`, W, "", ""));
+		const rest = t.header.slice(1).map((h, i) => `${p.dim}${inlineSpans(h, p.dim)}:${p.reset} ${inlineSpans(r[i + 1] ?? "", "")}`);
+		// the `·` stays dim: it is punctuation between pairs, not content.
+		if (rest.length > 0) out.push(...wrap(rest.join(`${p.dim} \u00b7 ${p.reset}`), W, "", ""));
 	}
 	return out.length > 0 ? out : [row0(t)];
 }
@@ -677,7 +693,7 @@ function recordRows(t: MdTable, W: number): string[] {
  *  the header alone, so the block still says what it is. */
 function row0(t: MdTable): string {
 	const p = palette();
-	return `${p.bold}${t.header.join(" · ")}${p.reset}`;
+	return `${p.bold}${t.header.join(" \u00b7 ")}${p.reset}`;
 }
 
 // ---- the wrapper ----------------------------------------------------

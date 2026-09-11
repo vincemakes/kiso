@@ -16,6 +16,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { visibleWidth } from "../src/components.js";
 import { renderMarkdown, splitCells, tableShape } from "../src/md.js";
+import { palette } from "../src/render.js";
 import { TABLE5, TABLE6 } from "./helpers/md1-samples.js";
 
 beforeEach(() => {
@@ -163,5 +164,101 @@ describe("MD-1.1 \u2014 a table SHRINKS before it falls to the record form", () 
 		}
 		// and the tokenizer the shrink measures through is untouched
 		expect(splitCells("| a | `x | y` | b |")).toEqual(["a", "`x | y`", "b"]);
+	});
+});
+
+/** Split a styled row into runs, each tagged with whether `dim` is open
+ *  over it. The record form's whole subject is WHICH tier a run is in, so
+ *  the gate reads the tier rather than grepping for an escape. */
+function dimRuns(row: string): { text: string; dim: boolean }[] {
+	const p = palette();
+	const out: { text: string; dim: boolean }[] = [];
+	let dim = false;
+	let i = 0;
+	let cur = "";
+	const flush = (): void => {
+		if (cur !== "") out.push({ text: cur, dim });
+		cur = "";
+	};
+	while (i < row.length) {
+		const m = /^\x1b\[[0-9;]*m/.exec(row.slice(i));
+		if (m !== null) {
+			const next = m[0] === p.dim ? true : m[0] === p.reset ? false : dim;
+			if (next !== dim) {
+				flush();
+				dim = next;
+			}
+			i += m[0].length;
+			continue;
+		}
+		cur += row[i];
+		i += 1;
+	}
+	flush();
+	return out;
+}
+
+describe("MD-1.2 — in the record form only the LABELS are dim", () => {
+	/**
+	 * COMPLAINT 2, reproduced and answered. `recordRows` wrapped every
+	 * label AND every value after the first column in ONE `p.dim` span, so
+	 * the table's actual content arrived at the lowest contrast tier on the
+	 * screen while the labels — scaffolding the reader already read in the
+	 * header — were given equal weight. The emphasis was exactly inverted.
+	 *
+	 * Per-token contrast was never the defect: `dim` measures 4.54:1 on a
+	 * resolved light ground, which is a legal token for a LABEL. Setting a
+	 * whole paragraph of body text in it is a different thing, and on a
+	 * terminal that never answered OSC 11 it is worse still — the palette
+	 * keeps SGR 2 there rather than an absolute grey.
+	 */
+	it("MD1-2a: every VALUE is at body strength, every LABEL is dim", () => {
+		const t = tableShape(TABLE6.split("\n"))!;
+		const rows = renderMarkdown(TABLE6, W(48));
+		expect(isRecord(rows.map(plain))).toBe(true);
+		const dimText = rows.flatMap((r) => dimRuns(r).filter((x) => x.dim).map((x) => x.text)).join("");
+		const litText = rows.flatMap((r) => dimRuns(r).filter((x) => !x.dim).map((x) => x.text)).join("");
+		const offenders: string[] = [];
+		// every value, at body strength and NOWHERE in a dim run. The runs are
+		// concatenated with no delimiter and compared with whitespace removed,
+		// because a long value wraps and a wrapped value's two halves are two
+		// runs on two rows.
+		const flat = (s: string): string => s.replace(/\s/g, "");
+		for (const value of t.rows.flat()) {
+			if (!flat(litText).includes(flat(value))) offenders.push(`value not at body strength: ${value}`);
+			if (flat(dimText).includes(flat(value))) offenders.push(`value dimmed: ${value}`);
+		}
+		// every label except the record's own name, dim
+		for (const label of t.header.slice(1)) {
+			if (!flat(dimText).includes(flat(label))) offenders.push(`label not dim: ${label}`);
+		}
+		expect(offenders).toEqual([]);
+	});
+
+	it("MD1-2b: the record's NAME keeps its bold, and its colon keeps its dim", () => {
+		const p = palette();
+		const rows = renderMarkdown(TABLE6, W(48));
+		// the first column names the record: bold, with a dim colon. That
+		// half of the shape is unchanged — it was never the complaint.
+		expect(rows[0]!.startsWith(`${p.bold}`)).toBe(true);
+		expect(rows[0]).toContain(`${p.reset}${p.dim}:${p.reset} `);
+	});
+
+	it("MD1-2c: the separator stays dim — it is punctuation, not content", () => {
+		const p = palette();
+		const rows = renderMarkdown(TABLE6, W(48));
+		const seps = rows.flatMap((r) => dimRuns(r).filter((x) => x.text.includes("·")));
+		expect(seps.length).toBeGreaterThan(0);
+		expect(seps.every((x) => x.dim)).toBe(true);
+	});
+
+	it("MD1-2d: no row exceeds W in the record form either, 12..120", () => {
+		const offenders: string[] = [];
+		for (let w = 12; w <= 120; w += 1) {
+			const rows = renderMarkdown(TABLE6, w);
+			if (!isRecord(rows.map(plain))) continue;
+			for (const row of rows) if (visibleWidth(row) > w) offenders.push(`W=${w} w=${visibleWidth(row)}`);
+		}
+		expect(offenders.slice(0, 5)).toEqual([]);
 	});
 });

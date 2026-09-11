@@ -97,14 +97,20 @@ describe("TUI2-MD \u2463 \u2014 tables", () => {
 		// rather than being cut \u2014 is untouched, and it is exercised at the
 		// new threshold. The long value wrapping across two rows is the same
 		// ruling seen from the other side: wrapped, never cut.
+		//
+		// DECLARED SUPERSESSION (MD-1.2, 2026-09-11): the tail row's bytes
+		// change from `dim("n: 1")` to `dim("n:") + " 1"`. The value leaves
+		// the dim span \u2014 `dim` is a LABEL tier and this was the one place it
+		// was asked to carry body text. The record's own name keeps its bold
+		// and its dim colon, which was never the complaint.
 		expect(renderMarkdown(wide, 14)).toEqual([
 			`${p.bold}area${p.reset}${p.dim}:${p.reset}`,
 			"a-very-long-ar",
 			"ea-name",
-			`${p.dim}n: 1${p.reset}`,
+			`${p.dim}n:${p.reset} 1`,
 			"",
 			`${p.bold}area${p.reset}${p.dim}:${p.reset} b`,
-			`${p.dim}n: 2${p.reset}`,
+			`${p.dim}n:${p.reset} 2`,
 		]);
 		// one column more and the aligned table is back \u2014 at SHRUNK columns
 		// (8/1), which is the whole of MD-1.1 in one assertion
