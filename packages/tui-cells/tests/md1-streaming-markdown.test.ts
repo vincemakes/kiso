@@ -14,7 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { visibleWidth } from "../src/components.js";
+import { boxTop, visibleWidth } from "../src/components.js";
 import { MdStream, renderBlock, renderMarkdown, splitCells, tableShape } from "../src/md.js";
 import { palette } from "../src/render.js";
 import { INDENTED, QUOTED, SETEXT, TABLE5, TABLE6 } from "./helpers/md1-samples.js";
@@ -559,5 +559,65 @@ describe("MD-1.5 — a blockquote keeps its block structure", () => {
 		const offenders: string[] = [];
 		for (let w = 12; w <= 120; w += 1) for (const row of renderMarkdown(QUOTED, w)) if (visibleWidth(row) > w) offenders.push(`W=${w} w=${visibleWidth(row)}`);
 		expect(offenders.slice(0, 5)).toEqual([]);
+	});
+});
+
+describe("MD-1.6 — the markdown rule is not the chrome's rule", () => {
+	/**
+	 * `blockBody`'s `rule` case and `boxTop` emitted IDENTICAL bytes — the
+	 * same glyph, the same dim, the same full width — so in scrollback you
+	 * could not tell "the model drew a divider" from "kiso closed a panel".
+	 * Raised in `design-md-amendments-R2.md` §L and unruled since.
+	 *
+	 * The fix is §L's own suggestion, the INSET, and not a new glyph. R3
+	 * (owner, 2026-08-27) ruled that the rule is a solid hairline EVERYWHERE
+	 * — "the composer, every panel's open and close, the band headers and
+	 * the markdown rule. One line, one weight, no exceptions to remember."
+	 * A new glyph would reverse that ruling; taking the block inset does
+	 * not. Content and chrome then differ by their LEFT EDGE, which is how
+	 * every other register is told apart under R13 E3.
+	 *
+	 * One honest correction to the report: §4.4 calls the two rows
+	 * byte-identical, and that is true of the two FUNCTIONS at equal W but
+	 * not of the rendered rows. `MarkdownBlock` already hands a block W − 2
+	 * and insets it by two, so on screen the markdown rule was two columns
+	 * in from `boxTop` before this item. What the item buys is that the
+	 * renderer's own output no longer collides, which is the level every
+	 * other gate in this suite reads.
+	 */
+	it("MD1-6a: the rule takes the block inset, like the fence body", () => {
+		const p = palette();
+		expect(renderMarkdown("---", W(80))).toEqual([`  ${p.dim}${"─".repeat(76)}${p.reset}`]);
+	});
+
+	it("MD1-6b: it differs from boxTop at every width a block can hold content", () => {
+		const offenders: string[] = [];
+		for (let w = 4; w <= 120; w += 1) {
+			const rule = renderMarkdown("---", w);
+			if (rule.length !== 1) offenders.push(`W=${w}: ${rule.length} rows`);
+			if (rule[0] === boxTop(w)) offenders.push(`W=${w}: byte-identical to boxTop`);
+		}
+		expect(offenders.slice(0, 5)).toEqual([]);
+	});
+
+	it("MD1-6c: the rule never exceeds W, and a degenerate width drops the inset", () => {
+		const offenders: string[] = [];
+		for (let w = 1; w <= 120; w += 1) {
+			for (const row of renderMarkdown("---", w)) if (visibleWidth(row) > w) offenders.push(`W=${w} w=${visibleWidth(row)}`);
+		}
+		expect(offenders).toEqual([]);
+		// the inset is chrome this renderer generates, so at a width that
+		// cannot pay for it, it yields — the same rule `mdWrap` applies to an
+		// over-wide prefix.
+		expect(plain(renderMarkdown("---", 3)[0]!)).toBe("───");
+		expect(plain(renderMarkdown("---", 4)[0]!)).toBe("  ──");
+	});
+
+	it("MD1-6d: every form of the markdown rule takes the inset", () => {
+		for (const src of ["---", "***", "___", "- - -", "*****"]) {
+			const rows = renderMarkdown(src, W(80)).map(plain);
+			if (!/^─+$/.test(rows[0]!.trimStart())) continue; // not a rule in this subset
+			expect(rows[0]!.startsWith("  "), src).toBe(true);
+		}
 	});
 });

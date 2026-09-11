@@ -359,11 +359,26 @@ function blockBody(b: MdBlock, W: number, depth: number): string[] {
 			const marker = level >= 3 ? `${"#".repeat(level)} ` : "";
 			return wrap(`${style}${marker}${inlineSpans(text, style)}${p.reset}`, W, "", "");
 		}
-		case "rule":
-			// R2: the dashed rule, at the block's own width. The 28 was a
-			// guess that read as a short line rather than a divider, and ─
-			// belonged to the box vocabulary this round is collapsing.
-			return [`${p.dim}${"\u2500".repeat(Math.max(1, W))}${p.reset}`];
+		case "rule": {
+			// R2: the rule at the block's own width. The 28 was a guess that
+			// read as a short line rather than a divider.
+			//
+			// MD-1.6 — and it takes the BLOCK INSET, two columns, like a fence
+			// body. Without it this row and `boxTop` emitted identical bytes —
+			// same glyph, same dim, same full width — so in scrollback you could
+			// not tell "the model drew a divider" from "kiso closed a panel".
+			// The fix is the inset and NOT a new glyph: R3 (owner, 2026-08-27)
+			// ruled the rule is a solid hairline everywhere, "one line, one
+			// weight, no exceptions to remember", and a new glyph would reverse
+			// that. Content and chrome differ by their LEFT EDGE instead, which
+			// is how every other register is told apart under R13 E3.
+			//
+			// The inset is chrome this renderer generates, so at a width that
+			// cannot pay for it, it yields — the same rule `mdWrap` applies to
+			// an over-wide prefix.
+			const inset = W >= 4 ? "  " : "";
+			return [`${inset}${p.dim}${"\u2500".repeat(Math.max(1, W - inset.length))}${p.reset}`];
+		}
 		case "fence-open":
 			// E2: the RAIL, not a gutter. A block drawn with ``` is still a
 			// fenced block when a human selects it and pastes it somewhere
