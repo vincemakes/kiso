@@ -573,6 +573,7 @@ function tableRows(b: MdBlock, W: number): string[] {
 	const natural = t.header.map((h, i) => Math.max(cellWidth(h), ...t.rows.map((r) => cellWidth(r[i] ?? ""))));
 	const cols = shrinkCols(natural, W);
 	if (cols === null) return recordRows(t, W);
+	const p = palette();
 	// R2: no rails. The drawn width is two columns of inset plus the
 	// columns and their two-space gutters — a table is bounded by the
 	// blank lines above and below it, exactly as every other block on the
@@ -589,7 +590,19 @@ function tableRows(b: MdBlock, W: number): string[] {
 		}
 		return rows;
 	};
-	return [...row(t.header, true), ...t.rows.flatMap((r) => row(r, false))];
+	// MD-1.3 / R2 AMENDMENT 1 (owner ruling, 2026-09-11) — ONE rule under
+	// the header row, at the grid's own width. R2 removed the RAILS: the
+	// four-sided box that BOUNDS a table. This bounds nothing; it SEPARATES
+	// the header from the body, which is the one job the round's governing
+	// distinction gives a rule — a rule separates, a gutter scopes, a rail
+	// bounds. Rails stay out.
+	//
+	// What it buys is not decoration: without it a six-row table's header
+	// was carried by SGR bold ALONE, so in a pipe, under NO_COLOR, or on a
+	// terminal with weak bold, seven identical rows arrived with nothing
+	// saying which one names the columns.
+	const ruleW = cols.reduce((n, w) => n + w, 0) + Math.max(0, cols.length - 1) * 2;
+	return [...row(t.header, true), `  ${p.dim}${"\u2500".repeat(ruleW)}${p.reset}`, ...t.rows.flatMap((r) => row(r, false))];
 }
 
 /** A cell's column count: what a human sees, styling removed. */

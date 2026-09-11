@@ -1,13 +1,13 @@
 /**
- * TUI2-MD slice \u2463 \u2014 tables, and the narrow degradation that NEVER
+ * TUI2-MD slice ④ — tables, and the narrow degradation that NEVER
  * truncates.
  *
  * A table is the one construct whose layout depends on content the
  * scanner has not seen yet: column widths are measured from the rows,
  * so a later long cell changes every earlier line. Under a mutable
- * transcript that is free. Under committed lines it is forbidden \u2014
+ * transcript that is free. Under committed lines it is forbidden —
  * which is why the table block stays in the live region until it
- * CLOSES, and only then becomes commit-eligible (slice \u2460's T-MD-6).
+ * CLOSES, and only then becomes commit-eligible (slice ①'s T-MD-6).
  *
  * The width question is settled honestly rather than cleverly. Columns
  * are measured at their NATURAL widths on the inline-rendered,
@@ -39,7 +39,7 @@ function plain(s: string): string {
 
 const TABLE = ["| area | lines | budget |", "|---|---|---|", "| core | 1972 | 2000 |", "| cli | 2012 | 1920 |"].join("\n");
 
-describe("TUI2-MD \u2463 \u2014 tables", () => {
+describe("TUI2-MD ④ — tables", () => {
 	/**
 	 * R2 supersession (2026-08-27, the nineteen-screen review): the rails
 	 * are gone. A table is bounded by the blank lines above and below it,
@@ -48,11 +48,19 @@ describe("TUI2-MD \u2463 \u2014 tables", () => {
 	 * does the work the rails were doing, the header is still bold, and a
 	 * copied table is closer to markdown without them.
 	 */
-	it("T-MD-28: the aligned table \u2014 a bold header, padded columns, no rails", () => {
+	it("T-MD-28: the aligned table — a bold header, one rule, padded columns, no rails", () => {
 		const p = palette();
 		const rows = renderMarkdown(TABLE, 60);
+		// DECLARED SUPERSESSION (MD-1.3 / R2 AMENDMENT 1, owner ruling
+		// 2026-09-11): ONE rule is drawn under the header row, at the grid's
+		// own width (4+5+6 columns plus two 2-space gutters = 19). R2 removed
+		// the RAILS — the four-sided box that BOUNDS a table; this bounds
+		// nothing and SEPARATES the header from the body, which is the one job
+		// the round's governing distinction gives a rule. Rails stay out, and
+		// the assertion below still holds them out.
 		expect(rows).toEqual([
 			`  ${p.bold}area${p.reset}  ${p.bold}lines${p.reset}  ${p.bold}budget${p.reset}`,
+			`  ${p.dim}${"\u2500".repeat(19)}${p.reset}`,
 			"  core  1972   2000",
 			"  cli   2012   1920",
 		]);
@@ -63,14 +71,16 @@ describe("TUI2-MD \u2463 \u2014 tables", () => {
 		// two-column CJK headers and cells, mixed with narrow ASCII
 		const src = ["| \u5ef6\u8fdf | ms |", "|---|---|", "| \u4fee\u590d\u524d | 120 |", "| a | 45 |"].join("\n");
 		// R2: without rails the rows no longer pad to a common width, so the
-		// subject is stated directly \u2014 every COLUMN starts at the same
+		// subject is stated directly — every COLUMN starts at the same
 		// place, which is what "the columns line up" always meant.
-		const rows = renderMarkdown(src, 60).map(plain);
+		// MD-1.3: the header rule is one unbroken run and has no columns in
+		// it, so it is not one of the rows this case is about.
+		const rows = renderMarkdown(src, 60).map(plain).filter((r) => !/^ {2}\u2500+$/.test(r));
 		const second = rows.map((r) => visibleWidth(r.slice(0, r.lastIndexOf("  ") + 2)));
 		expect(new Set(second).size).toBe(1);
 	});
 
-	it("T-MD-30: styled cell content is measured STRIPPED \u2014 SGR has no width", () => {
+	it("T-MD-30: styled cell content is measured STRIPPED — SGR has no width", () => {
 		const bold = ["| a | b |", "|---|---|", "| **45ms** | x |"].join("\n");
 		const flat = ["| a | b |", "|---|---|", "| 45ms | x |"].join("\n");
 		expect(renderMarkdown(bold, 60).map((r) => visibleWidth(r))).toEqual(renderMarkdown(flat, 60).map((r) => visibleWidth(r)));
@@ -78,14 +88,15 @@ describe("TUI2-MD \u2463 \u2014 tables", () => {
 
 	it("T-MD-31: the alignment column comes from the delimiter row", () => {
 		const src = ["| head | head | head |", "|:--|:-:|--:|", "| a | b | c |"].join("\n");
-		expect(plain(renderMarkdown(src, 60)[1]!)).toBe("  a      b       c"); // left, centre, right \u2014 R2: no rails
+		// row 1 is MD-1.3's header rule; row 2 is the body row this is about
+		expect(plain(renderMarkdown(src, 60)[2]!)).toBe("  a      b       c"); // left, centre, right — R2: no rails
 	});
 
 	it("T-MD-32: too narrow -> the VERTICAL record, every cell kept", () => {
 		const p = palette();
 		const wide = ["| area | n |", "|---|---|", "| a-very-long-area-name | 1 |", "| b | 2 |"].join("\n");
 		// DECLARED SUPERSESSION (MD-1.1, 2026-09-11): the flip width moves
-		// from 27/28 to 14/15, and it is not a threshold tweak \u2014 the test
+		// from 27/28 to 14/15, and it is not a threshold tweak — the test
 		// that reaches the record form CHANGED. A table no longer has to fit
 		// at its NATURAL widths: the columns shrink and the cells wrap inside
 		// them first, and the record form is reached only when every column
@@ -93,14 +104,14 @@ describe("TUI2-MD \u2463 \u2014 tables", () => {
 		// fit. For this fixture that minimum is 2 + 8 + 2 + 1 + 2 = 15, so 14
 		// is the widest width at which records are still the right answer.
 		//
-		// The SUBJECT \u2014 that a table which cannot be drawn becomes records
-		// rather than being cut \u2014 is untouched, and it is exercised at the
+		// The SUBJECT — that a table which cannot be drawn becomes records
+		// rather than being cut — is untouched, and it is exercised at the
 		// new threshold. The long value wrapping across two rows is the same
 		// ruling seen from the other side: wrapped, never cut.
 		//
 		// DECLARED SUPERSESSION (MD-1.2, 2026-09-11): the tail row's bytes
 		// change from `dim("n: 1")` to `dim("n:") + " 1"`. The value leaves
-		// the dim span \u2014 `dim` is a LABEL tier and this was the one place it
+		// the dim span — `dim` is a LABEL tier and this was the one place it
 		// was asked to carry body text. The record's own name keeps its bold
 		// and its dim colon, which was never the complaint.
 		expect(renderMarkdown(wide, 14)).toEqual([
@@ -112,13 +123,14 @@ describe("TUI2-MD \u2463 \u2014 tables", () => {
 			`${p.bold}area${p.reset}${p.dim}:${p.reset} b`,
 			`${p.dim}n:${p.reset} 2`,
 		]);
-		// one column more and the aligned table is back \u2014 at SHRUNK columns
+		// one column more and the aligned table is back — at SHRUNK columns
 		// (8/1), which is the whole of MD-1.1 in one assertion
 		expect(plain(renderMarkdown(wide, 15)[0]!)).toBe("  area      n");
-		expect(plain(renderMarkdown(wide, 15)[1]!)).toBe("  a-very-l  1");
+		expect(plain(renderMarkdown(wide, 15)[1]!)).toBe(`  ${"\u2500".repeat(11)}`); // MD-1.3's rule
+		expect(plain(renderMarkdown(wide, 15)[2]!)).toBe("  a-very-l  1");
 	});
 
-	it("T-MD-33: NOTHING is ever truncated \u2014 every cell appears at every width", () => {
+	it("T-MD-33: NOTHING is ever truncated — every cell appears at every width", () => {
 		const cells = ["area", "lines", "budget", "core", "1972", "2000", "cli", "2012", "1920"];
 		for (let W = 12; W <= 90; W += 1) {
 			const text = renderMarkdown(TABLE, W).map(plain).join(" ");
@@ -143,7 +155,7 @@ describe("TUI2-MD \u2463 \u2014 tables", () => {
 		// DECLARED SUPERSESSION (MD-1.1, 2026-09-11), and a DEAD NEEDLE
 		// caught while making it: the narrow width moves 34 -> 33, because
 		// the acceptance table's floors now fit in 34. Left at 34 this case
-		// still PASSED \u2014 but on a grid, because the only `": "` on the screen
+		// still PASSED — but on a grid, because the only `": "` on the screen
 		// was the `MaxListenersExceededWarning: 11` paragraph. A
 		// discriminator that any prose can satisfy is not a discriminator, so
 		// it is replaced by one the record form alone can produce: the
