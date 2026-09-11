@@ -262,3 +262,30 @@ describe("MD-1.2 — in the record form only the LABELS are dim", () => {
 		expect(offenders.slice(0, 5)).toEqual([]);
 	});
 });
+
+describe("MD1-F1 — a zero-width SGR token rides the token it precedes", () => {
+	/**
+	 * FOUND while making MD-1.2 green, and fixed because it is the
+	 * tokenizer breaking its own stated contract: "SGR sequences are
+	 * zero-width and ride the token they precede". A `cur` holding nothing
+	 * but SGR was flushed as a token of its own whenever the next character
+	 * was break-eligible, and a zero-width token still reaches the fitting
+	 * test — `w + pendW + 0 > room` — so a row could be broken AT a style
+	 * boundary. The pending space was dropped into the break and the row
+	 * ended in whitespace, with an empty style span after it.
+	 *
+	 * NOT a visible change: the PLAIN text of every fixture in this suite
+	 * plus the acceptance content, at every width from 10 to 120, hashes
+	 * identically before and after. What it buys is copy fidelity — a
+	 * copied row no longer carries trailing whitespace it never needed.
+	 */
+	it("MD1-F1a: no record-form row ends in whitespace, 12..120", () => {
+		const offenders: string[] = [];
+		for (let w = 12; w <= 120; w += 1) {
+			const rows = renderMarkdown(TABLE6, w);
+			if (!isRecord(rows.map(plain))) continue;
+			for (const row of rows) if (/\s$/.test(plain(row)) && plain(row).trim() !== "") offenders.push(`W=${w}: ${JSON.stringify(plain(row).slice(-12))}`);
+		}
+		expect(offenders.slice(0, 5)).toEqual([]);
+	});
+});

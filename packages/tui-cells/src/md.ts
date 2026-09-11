@@ -754,7 +754,16 @@ function tokens(text: string): Tok[] {
 			prev = ch;
 			continue;
 		}
-		if (cur !== "" && prev !== "" && breaks(prev, ch)) flush();
+		// MD1-F1: a `cur` holding nothing but SGR is ZERO-WIDTH and RIDES the
+		// token it precedes — this function's own contract, which the flush
+		// below used to break. Emitted as a token of its own it measures 0, so
+		// `w + pendW + 0 > room` can take a break AT it: the pending space is
+		// dropped, the style lands at the head of the next row, and the word it
+		// belonged to goes to the row after. Invisible while every style
+		// boundary sat at a space (every ASCII case), visible the moment one
+		// sits before a CJK character — MD-1.2's per-label dim put a bare `\u00b7`
+		// separator at the head of a row in the record form.
+		if (cur !== "" && w > 0 && prev !== "" && breaks(prev, ch)) flush();
 		cur += ch;
 		w += charWidth(cp);
 		prev = ch;
