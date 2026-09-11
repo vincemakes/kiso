@@ -16,7 +16,9 @@ validateTraceLine (a misaligned segmentHashes list is a corrupt ledger
 line, counted invalid and skipped), and seqRange pointers must stay within
 the event log.
 
-Run: python3 -m unittest tests/test_trace_report.py   (from bench/)
+Run: python3 tests/test_trace_report.py   (from bench/)
+All five files, as the check chain runs them:
+     node scripts/check-bench-tests.mjs   (from the repo root)
 """
 import json, os, subprocess, tempfile, unittest
 

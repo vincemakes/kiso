@@ -19,7 +19,9 @@ where the old fresh went NEGATIVE). Pinned on synthetic records so a
 future edit cannot regress the labeling (the exact bug that produced the
 "fresh ≈ system prompt size" phantom anomaly in the 0.1.22 bench).
 
-Run: python3 -m unittest tests/test_extract.py   (from bench/)
+Run: python3 tests/test_extract.py   (from bench/)
+All five files, as the check chain runs them:
+     node scripts/check-bench-tests.mjs   (from the repo root)
 """
 import importlib.util, json, os, sys, tempfile, unittest
 
@@ -257,6 +259,79 @@ class KisoAccountingTest(unittest.TestCase):
         self.assertEqual(m["fresh"], 400)
         self.assertEqual(m["total"], 5000)
         self.assertEqual(m["cost_weighted"], 400 + 0.1 * 4600)
+
+
+class MetricV2Test(unittest.TestCase):
+    """metric v2 — `cost_equivalent` = F + 0.02*H + 4*O.
+
+    Pinned for all three tools, and pinned NOT to disturb v1. The reason v2
+    exists is the last test in this class: v1 counts only what goes IN, so a
+    change that makes the agent write more to say the same thing is free
+    under v1 and is not free on the bill.
+    """
+
+    def _kiso(self, fresh, cache, out):
+        d = tempfile.mkdtemp()
+        os.makedirs(f"{d}/kiso-home/sessions")
+        with open(f"{d}/kiso-home/sessions/s.jsonl", "w") as f:
+            f.write(json.dumps({"event": {"type": "usage",
+                                          "inputTokens": fresh + cache,
+                                          "cacheRead": cache,
+                                          "outputTokens": out}}) + "\n")
+        return extract.kiso(d)
+
+    def _pi(self, inp, cache, out):
+        d = tempfile.mkdtemp()
+        with open(f"{d}/stdout.log", "w") as f:
+            f.write(json.dumps({"type": "message_end", "message": {"usage": {
+                "input": inp, "cacheRead": cache, "output": out}}}) + "\n")
+        return extract.pi(d)
+
+    def _claude(self, inp, cache, out):
+        d = tempfile.mkdtemp()
+        with open(f"{d}/stdout.log", "w") as f:
+            f.write("[claude-code:warn] {\"noise\": true}\n")
+            f.write(json.dumps({"num_turns": 3, "usage": {
+                "input_tokens": inp, "cache_read_input_tokens": cache,
+                "output_tokens": out}}) + "\n")
+        return extract.claude(d)
+
+    def test_kiso_cost_equivalent(self):
+        m = self._kiso(1000, 20000, 500)
+        self.assertEqual(m["cost_equivalent"], 1000 + 0.02 * 20000 + 4 * 500)
+
+    def test_pi_cost_equivalent(self):
+        m = self._pi(1000, 20000, 500)
+        self.assertEqual(m["cost_equivalent"], 1000 + 0.02 * 20000 + 4 * 500)
+
+    def test_claude_cost_equivalent(self):
+        m = self._claude(1000, 20000, 500)
+        self.assertEqual(m["cost_equivalent"], 1000 + 0.02 * 20000 + 4 * 500)
+        self.assertEqual(m["output"], 500)   # the claude row still reports output
+
+    def test_v1_is_untouched_by_v2_for_every_tool(self):
+        # A metric that changes under a comparison is not a metric. Every row
+        # already published was judged on v1; v2 rides beside it.
+        for m in (self._kiso(1000, 20000, 500),
+                  self._pi(1000, 20000, 500),
+                  self._claude(1000, 20000, 500)):
+            self.assertEqual(m["cost_weighted"], 1000 + 0.1 * 20000)
+            self.assertNotEqual(m["cost_weighted"], m["cost_equivalent"])
+
+    def test_output_only_growth_is_free_under_v1_and_priced_under_v2(self):
+        # THE reason v2 exists, stated as a test rather than as a comment.
+        same_in = self._kiso(1000, 20000, 500)
+        writes_more = self._kiso(1000, 20000, 1500)
+        self.assertEqual(same_in["cost_weighted"], writes_more["cost_weighted"])
+        self.assertEqual(writes_more["cost_equivalent"] - same_in["cost_equivalent"],
+                         4 * 1000)
+
+    def test_v2_weights_cache_lower_than_v1(self):
+        # Why the two metrics can disagree on the same data, and in which
+        # direction: on a cache-heavy row v1 reads HIGHER. Measured on the
+        # PR-1b pairs as +42.4% (v1) against +32.5% (v2).
+        m = self._kiso(1000, 100000, 100)
+        self.assertGreater(m["cost_weighted"], m["cost_equivalent"])
 
 if __name__ == "__main__":
     unittest.main()

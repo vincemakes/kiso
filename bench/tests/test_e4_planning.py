@@ -14,7 +14,9 @@ Pins on synthetic ON/OFF runs:
     a cut here); OFF fails where ON passes, or OFF reworks ≥ ON → the
     insurance holds.
 
-Run: python3 -m unittest tests/test_e4_planning.py   (from bench/)
+Run: python3 tests/test_e4_planning.py   (from bench/)
+All five files, as the check chain runs them:
+     node scripts/check-bench-tests.mjs   (from the repo root)
 """
 import importlib.util, json, os, sys, tempfile, unittest
 

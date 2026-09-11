@@ -15,7 +15,9 @@ Pins on synthetic extracted JSON the S1-1 / 0.1.46 verdict machinery:
 The tool is node; this test drives it as a subprocess the way the report
 will:  node band-compare.mjs <prev.json> <this.json>  → one JSON verdict.
 
-Run: python3 -m unittest tests/test_e4_band.py   (from bench/)
+Run: python3 tests/test_e4_band.py   (from bench/)
+All five files, as the check chain runs them:
+     node scripts/check-bench-tests.mjs   (from the repo root)
 """
 import json, os, subprocess, sys, tempfile, unittest
 
