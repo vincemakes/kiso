@@ -186,7 +186,7 @@ function dimRuns(row: string): { text: string; dim: boolean }[] {
 	while (i < row.length) {
 		const m = /^\x1b\[[0-9;]*m/.exec(row.slice(i));
 		if (m !== null) {
-			const next = m[0] === p.dim ? true : m[0] === p.reset ? false : dim;
+			const next: boolean = m[0] === p.dim ? true : m[0] === p.reset ? false : dim;
 			if (next !== dim) {
 				flush();
 				dim = next;
@@ -619,5 +619,36 @@ describe("MD-1.6 — the markdown rule is not the chrome's rule", () => {
 			if (!/^─+$/.test(rows[0]!.trimStart())) continue; // not a rule in this subset
 			expect(rows[0]!.startsWith("  "), src).toBe(true);
 		}
+	});
+});
+
+describe("MD1-F3 — the record form's separator can open a row", () => {
+	/**
+	 * FINDING MD1-F3, pre-existing and NOT fixed in this round. `·` is in the
+	 * kinsoku NO_START set — it may not open a row — but the kinsoku rules
+	 * are applied between ADJACENT CHARACTERS while tokenizing, and a `·`
+	 * surrounded by spaces is already its own token. Row fitting breaks at
+	 * spaces freely, so the separator can land at the head of a row, which is
+	 * exactly the "reads as broken" the set exists to prevent.
+	 *
+	 * MEASURED, so the round's own change is not blamed for it: across widths
+	 * 20..60 the 6-column sample produces the same 29 such rows with MD-1.2
+	 * and MD1-F1 applied as it does with both reverted. The fix belongs to
+	 * the wrapper — NO_START would have to be consulted at the row boundary,
+	 * not only between characters — and that is every block's business, not
+	 * this item's.
+	 *
+	 * Pinned as it is so the defect is visible and this case flips loudly
+	 * when someone fixes it. Invert it then.
+	 */
+	it("MD1-F3a: a separator at a row head is still reachable — pinned, not endorsed", () => {
+		let rows = 0;
+		for (let w = 20; w <= 60; w += 1) {
+			for (const row of renderMarkdown(TABLE6, w).map(plain)) {
+				const head = row.trimStart()[0];
+				if (head !== undefined && "·、。，".includes(head)) rows += 1;
+			}
+		}
+		expect(rows).toBe(29);
 	});
 });

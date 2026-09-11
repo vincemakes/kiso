@@ -764,7 +764,7 @@ function shrinkCols(natural: readonly number[], W: number): number[] | null {
 		let at = -1;
 		for (let i = 0; i < cols.length; i += 1) if (cols[i]! > floor[i]! && (at < 0 || cols[i]! > cols[at]!)) at = i;
 		if (at < 0) return null;
-		cols[at] -= 1;
+		cols[at] = cols[at]! - 1;
 	}
 	return cols;
 }
@@ -887,9 +887,11 @@ function tokens(text: string): Tok[] {
 		// `w + pendW + 0 > room` can take a break AT it: the pending space is
 		// dropped, the style lands at the head of the next row, and the word it
 		// belonged to goes to the row after. Invisible while every style
-		// boundary sat at a space (every ASCII case), visible the moment one
-		// sits before a CJK character — MD-1.2's per-label dim put a bare `\u00b7`
-		// separator at the head of a row in the record form.
+		// boundary sat at a space (every ASCII case), reachable the moment one
+		// sits before a CJK character, which MD-1.2's per-label dim made
+		// common in the record form. What it costs there is a trailing space
+		// and an empty style span; what it does NOT cause is FINDING MD1-F3
+		// below, which is older than this and survives the guard.
 		if (cur !== "" && w > 0 && prev !== "" && breaks(prev, ch)) flush();
 		cur += ch;
 		w += charWidth(cp);
