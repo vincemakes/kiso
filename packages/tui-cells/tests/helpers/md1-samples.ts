@@ -85,3 +85,20 @@ export const LIST_PARA = [
 ].join("\n");
 
 export const LIST_PARA_FLAT = LIST_PARA.replace("\n    Run the installer", "\nRun the installer");
+
+/** MD1-F4b — the lead's follow-up input: ONE numbered item carrying TWO
+ *  indented paragraphs, the shape a numbered step with an explanation and
+ *  a caveat takes. `LIST_PARA2_FLAT` is the same document with both
+ *  indents removed — the same oracle as MD1-F4b's, since a continuation
+ *  paragraph and a plain paragraph are the same block. */
+export const LIST_PARA2 = [
+	`1. Install it`,
+	``,
+	`    First paragraph under the item, long enough to need a wrap at forty columns.`,
+	``,
+	`    Second paragraph under the same item, also long enough to need a wrap here.`,
+	``,
+	`2. Next`,
+].join("\n");
+
+export const LIST_PARA2_FLAT = LIST_PARA2.replace("\n    First paragraph", "\nFirst paragraph").replace("\n    Second paragraph", "\nSecond paragraph");

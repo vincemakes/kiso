@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { boxTop, visibleWidth } from "../src/components.js";
 import { MdStream, renderBlock, renderMarkdown, splitCells, tableShape } from "../src/md.js";
 import { palette } from "../src/render.js";
-import { INDENTED, LIST_PARA, LIST_PARA_FLAT, QUOTED, SETEXT, TABLE5, TABLE6 } from "./helpers/md1-samples.js";
+import { INDENTED, LIST_PARA, LIST_PARA2, LIST_PARA2_FLAT, LIST_PARA_FLAT, QUOTED, SETEXT, TABLE5, TABLE6 } from "./helpers/md1-samples.js";
 
 beforeEach(() => {
 	Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
@@ -731,5 +731,87 @@ describe("MD1-F4 — an indented paragraph after a list item is prose, not code"
 		// stated rather than discovered: the gap rule is the paragraph rule,
 		// so two blank lines in an indented code block come back as one.
 		expect(renderMarkdown("p\n\n    a\n\n\n    b", W(80)).map(plain)).toEqual(["p", "", "    a", "", "    b"]);
+	});
+});
+
+describe("MD1-F4b — the list context outlives the paragraph it demoted", () => {
+	/**
+	 * FOUND IN REVIEW, one round after MD1-F4, and it is the same complaint
+	 * class one paragraph later. MD1-F4's first rule consulted only the MOST
+	 * RECENT block, so the second indented paragraph under one numbered item
+	 * saw a `para` behind it rather than a `list` and rendered VERBATIM —
+	 * hard-folded, four-space indent kept. A numbered step with an
+	 * explanation and a caveat under it is not a rare shape.
+	 *
+	 * The demoted paragraph IS the item's continuation, so the context has to
+	 * survive it: the open block is marked at demotion, and closing a marked
+	 * block leaves `#lastKind` as `list`. The context still ends where it
+	 * should, because an unindented block and a heading/rule/quote/table/fence
+	 * all name their own kind.
+	 */
+	it("MD1-F4b-a: two indented paragraphs under one item are BOTH prose", () => {
+		const s = new MdStream();
+		s.push(LIST_PARA2);
+		s.end();
+		expect(s.blocks().map((b) => b.kind)).toEqual(["list", "para", "para", "list"]);
+	});
+
+	it("MD1-F4b-b: and both render as the same paragraphs unindented", () => {
+		for (const w of [40, 60, 78]) expect(renderMarkdown(LIST_PARA2, w), `W=${w}`).toEqual(renderMarkdown(LIST_PARA2_FLAT, w));
+		const rows = renderMarkdown(LIST_PARA2, 40).map(plain);
+		expect(rows.some((r) => r.startsWith("    "))).toBe(false);
+	});
+
+	it("MD1-F4b-c: a nested list between them does not break the context either", () => {
+		const s = new MdStream();
+		s.push(["1. a", "", "    p1", "", "    - nested", "", "    p2"].join("\n"));
+		s.end();
+		expect(s.blocks().map((b) => b.kind)).toEqual(["list", "para", "list", "para"]);
+	});
+
+	it("MD1-F4b-d: the context ENDS at an unindented block, and at the block kinds that name themselves", () => {
+		const kinds = (src: string): string[] => {
+			const s = new MdStream();
+			s.push(src);
+			s.end();
+			return s.blocks().map((b) => b.kind);
+		};
+		// an unindented paragraph between them ends it: the indented line after
+		// it is code again, because nothing says "still inside the item"
+		expect(kinds("1. a\n\n    p1\n\nback at the margin\n\n    const x = 1;")).toEqual(["list", "para", "para", "code-line"]);
+		// and each of the kinds that names its own: heading, rule, fence
+		expect(kinds("1. a\n\n    p1\n\n## H\n\n    const x = 1;")).toEqual(["list", "para", "heading", "code-line"]);
+		expect(kinds("1. a\n\n    p1\n\n---\n\n    const x = 1;")).toEqual(["list", "para", "rule", "code-line"]);
+		expect(kinds("1. a\n\n    p1\n\n> q\n\n    const x = 1;")).toEqual(["list", "para", "quote", "code-line"]);
+	});
+
+	it("MD1-F4b-e: the boundary MD1-F4c keeps is untouched", () => {
+		const s = new MdStream();
+		s.push("## A heading\n\n    const x = 1;\n");
+		s.end();
+		expect(s.blocks().map((b) => b.kind)).toEqual(["heading", "code-line"]);
+		expect(renderMarkdown(INDENTED, W(80)).map(plain)).toEqual(["some prose first", "", "    const x = 1;", "    const y = 2;"]);
+	});
+
+	it("MD1-F4b-f: the LIVE path and BLOCK-FREEZE hold over a context that outlives a block", () => {
+		// the live tail classifies the open partial line through the same rule,
+		// so a second indented paragraph never flickers into code
+		const live = new MdStream();
+		live.push("1. Install it\n\n    First paragraph.\n\n");
+		live.push("    Second para");
+		expect(live.blocks()[live.blocks().length - 1]!.kind).toBe("para");
+		// and every delta split still yields the same closed blocks
+		const one = new MdStream();
+		one.push(LIST_PARA2);
+		one.end();
+		const want = one.blocks().map((b) => `${b.kind}|${b.gap}|${JSON.stringify(b.lines)}`);
+		const offenders: string[] = [];
+		for (const n of [1, 2, 3, 5, 7, 13, 64, 257]) {
+			const s = new MdStream();
+			for (let i = 0; i < LIST_PARA2.length; i += n) s.push(LIST_PARA2.slice(i, i + n));
+			s.end();
+			if (JSON.stringify(s.blocks().map((b) => `${b.kind}|${b.gap}|${JSON.stringify(b.lines)}`)) !== JSON.stringify(want)) offenders.push(`chunk=${n}`);
+		}
+		expect(offenders).toEqual([]);
 	});
 });

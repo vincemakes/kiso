@@ -101,11 +101,18 @@ const SETEXT = /^ {0,3}(=+|-+) *$/;
  *  therefore reached only after a paragraph, heading, rule, quote, table
  *  or fence, or at the start of a message.
  *
+ *  MD1-F4b — and the context OUTLIVES the paragraph it demoted. A demoted
+ *  block is the item's continuation, so closing one leaves the context as
+ *  `list` and the SECOND and third indented paragraphs under one item are
+ *  prose as well. An earlier version of this rule consulted only the most
+ *  recent block, and a numbered step with two paragraphs under it rendered
+ *  the second one verbatim — the same defect one paragraph later. The
+ *  context ends where it should: at the first unindented block, or at a
+ *  heading, rule, quote, table or fence, each of which names its own kind.
+ *
  *  Two consequences, stated rather than discovered: an indented code block
  *  nested INSIDE a list item is not recognised (it renders as the item's
- *  paragraph), and because only the MOST RECENT block is consulted, a
- *  second indented block after such a continuation paragraph is code
- *  again. And blank lines inside an indented block collapse to ONE gap
+ *  paragraph), and blank lines inside an indented block collapse to ONE gap
  *  row, exactly as they do between paragraphs — two blank lines in a code
  *  block come back as one. */
 const CODE = /^ {4,}/;
@@ -185,6 +192,12 @@ interface OpenBlock {
 	lines: string[];
 	gap: boolean;
 	lang: string;
+	/** MD1-F4b — this block was DEMOTED from `code-line` to `para` because a
+	 *  list preceded it, so it is the list item's continuation and the list
+	 *  context must outlive it. Scanner state, never part of the block's
+	 *  identity: `frozen` does not carry it, because two documents that
+	 *  produce the same block must produce the same bytes. */
+	cont: boolean;
 }
 
 function frozen(b: OpenBlock, extra?: string): MdBlock {
@@ -250,17 +263,20 @@ export class MdStream {
 			out.push(p === "" ? frozen(this.#open) : frozen(this.#open, p));
 			return out;
 		}
-		const k = this.#kindOf(p);
+		const { kind: k } = this.#kindOf(p);
 		if (k !== null) out.push({ kind: k, lines: [p], gap: this.#started > 0 && !(k === "code-line" && this.#code), lang: k === "fence-open" ? fenceLang(p) : "" });
 		return out;
 	}
 
-	/** MD1-F4 — the kind a line starts HERE, which is `classify` plus the
-	 *  one piece of context that decides code from prose: an indented line
-	 *  after a list is the list item's continuation paragraph. */
-	#kindOf(line: string): MdKind | null {
+	/** MD1-F4 — the kind a line starts HERE: `classify` plus the one piece of
+	 *  context that decides code from prose, an indented line after a list
+	 *  being the list item's continuation paragraph. `demoted` says the
+	 *  answer CAME from that context, which is what the open block is marked
+	 *  with so the context can outlive it (MD1-F4b). */
+	#kindOf(line: string): { kind: MdKind | null; demoted: boolean } {
 		const k = classify(line);
-		return k === "code-line" && this.#lastKind === "list" ? "para" : k;
+		const demoted = k === "code-line" && this.#lastKind === "list";
+		return { kind: demoted ? "para" : k, demoted };
 	}
 
 	/** How many leading blocks are CLOSED — the commit-eligible count. */
@@ -313,7 +329,7 @@ export class MdStream {
 			this.#lastKind = "heading";
 			return;
 		}
-		const k = this.#kindOf(line);
+		const { kind: k, demoted } = this.#kindOf(line);
 		if (k === null) {
 			this.#shut();
 			return;
@@ -339,7 +355,7 @@ export class MdStream {
 			this.#code = true;
 			return;
 		}
-		this.#open = { kind: k, lines: [line], gap: this.#started > 0, lang: "" };
+		this.#open = { kind: k, lines: [line], gap: this.#started > 0, lang: "", cont: demoted };
 		this.#started += 1;
 	}
 
@@ -353,7 +369,12 @@ export class MdStream {
 	#shut(): void {
 		if (this.#open === null) return;
 		this.#closed.push(frozen(this.#open));
-		this.#lastKind = this.#open.kind;
+		// MD1-F4b — a DEMOTED block is the list item's continuation, so the
+		// list context outlives it: the second and third indented paragraphs
+		// under one item are prose too. The context ends where it should, at
+		// the first unindented block or at a heading, rule, quote, table or
+		// fence, because those set `#lastKind` to their own kind.
+		this.#lastKind = this.#open.cont ? "list" : this.#open.kind;
 		this.#open = null;
 	}
 }
