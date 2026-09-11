@@ -21,7 +21,20 @@ primitives fresh / cache_read / output before summing —
 The output rows carry the uniform fields: input = fresh, fresh, total =
 fresh + cache_read, cost_weighted = fresh + 0.1 × cache_read (0.1 is
 DeepSeek's cache-hit price ratio,
-https://api-docs.deepseek.com/quick_start/pricing). The v8-and-older kiso
+https://api-docs.deepseek.com/quick_start/pricing).
+
+METRIC v2 (launch-bench protocol revision 4 §7): `cost_equivalent` =
+F + 0.02·H + 4·O — fresh, cache HIT at its own ratio, and OUTPUT at the
+ratio it actually costs. It rides BESIDE cost_weighted rather than
+replacing it: every row already published, and every comparison already
+adjudicated, was judged on v1, and a metric that changes under a
+comparison is not a metric. v1 and its consumers are untouched here.
+
+Why output enters at all: v1 counts only what goes IN. A change that makes
+the agent write more to say the same thing is free under v1 and is not free
+on the bill. The prompt round that motivated this had one arm asking a
+question instead of running a command — cheaper in, and v1 could not see
+the difference. The v8-and-older kiso
 tables kept the openai-compat raw shape (input = total) — on healthy data
 the numbers are identical; the canonical switch fixes the >100% disease
 (cache_read > inputTokens: the old fresh went NEGATIVE).
@@ -68,6 +81,7 @@ def kiso(work):
             if first is None: first = fr + ca
     return dict(input=fresh, cache_read=cache, output=out, requests=reqs,
                 fresh=fresh, total=fresh + cache, cost_weighted=fresh + 0.1 * cache,
+                cost_equivalent=fresh + 0.02 * cache + 4 * out,
                 first_prompt=first)
 
 def pi(work):
@@ -95,6 +109,7 @@ def pi(work):
             if first is None: first = (u.get("input") or 0) + (u.get("cacheRead") or 0)
     return dict(input=inp, cache_read=cache, output=out, requests=reqs,
                 fresh=inp, total=inp + cache, cost_weighted=inp + 0.1 * cache,
+                cost_equivalent=inp + 0.02 * cache + 4 * out,
                 first_prompt=first)
 
 def claude(work):
@@ -118,10 +133,12 @@ def claude(work):
     u = d.get("usage", {})
     inp = u.get("input_tokens", 0)
     cache = u.get("cache_read_input_tokens", 0)
+    out = u.get("output_tokens", 0)
     return dict(input=inp, cache_read=cache,
-                output=u.get("output_tokens", 0),
+                output=out,
                 requests=d.get("num_turns", 0),
                 fresh=inp, total=inp + cache, cost_weighted=inp + 0.1 * cache,
+                cost_equivalent=inp + 0.02 * cache + 4 * out,
                 first_prompt=None)
 
 def main(workdir):
