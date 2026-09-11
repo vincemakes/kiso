@@ -15,9 +15,9 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { visibleWidth } from "../src/components.js";
-import { renderMarkdown, splitCells, tableShape } from "../src/md.js";
+import { MdStream, renderBlock, renderMarkdown, splitCells, tableShape } from "../src/md.js";
 import { palette } from "../src/render.js";
-import { TABLE5, TABLE6 } from "./helpers/md1-samples.js";
+import { INDENTED, SETEXT, TABLE5, TABLE6 } from "./helpers/md1-samples.js";
 
 beforeEach(() => {
 	Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
@@ -351,5 +351,135 @@ describe("MD-1.3 — ONE rule under the table header", () => {
 			for (let w = 12; w <= 120; w += 1) for (const row of renderMarkdown(src, w)) if (visibleWidth(row) > w) offenders.push(`W=${w} w=${visibleWidth(row)}`);
 		}
 		expect(offenders.slice(0, 5)).toEqual([]);
+	});
+});
+
+describe("MD-1.4 — setext headings and indented code blocks", () => {
+	/**
+	 * Neither of these was merely unstyled: both produced CORRUPTED output,
+	 * and kiso's own standard for the table path is that a guess printed
+	 * into scrollback is indistinguishable from a fact. A paragraph that has
+	 * eaten its own `===` underline, and a code block reflowed into prose,
+	 * are the same failure.
+	 *
+	 *   Setext heading          ->  Setext heading ==============
+	 *   ==============
+	 *
+	 *   Another setext          ->  Another setext
+	 *   --------------              (and a full-width rule under it)
+	 *
+	 *       const x = 1;        ->  const x = 1;     const y = 2;
+	 *       const y = 2;
+	 *
+	 * BLOCK-FREEZE holds by construction: the underline is a COMPLETE line
+	 * when it is read, and the paragraph it promotes has not closed yet, so
+	 * no committed row changes. MD1-4g states that as a gate.
+	 */
+	it("MD1-4a: a setext H1 is an H1 — underlined, with no `=` left in the text", () => {
+		const p = palette();
+		const rows = renderMarkdown("Setext heading\n==============", W(80));
+		expect(rows).toEqual([`${p.bold}${p.underline}Setext heading${p.reset}`]);
+		expect(plain(rows.join(""))).not.toContain("=");
+	});
+
+	it("MD1-4b: a setext H2 is an H2 — bold, and NOT a paragraph under a rule", () => {
+		const p = palette();
+		const rows = renderMarkdown("Another setext\n--------------", W(80));
+		expect(rows).toEqual([`${p.bold}Another setext${p.reset}`]);
+		expect(plain(rows.join(""))).not.toContain("─");
+	});
+
+	it("MD1-4c: both samples together, at the report's three widths", () => {
+		for (const term of [80, 100, 120]) {
+			const rows = renderMarkdown(SETEXT, W(term)).map(plain);
+			expect(rows, `terminal ${term}`).toEqual(["Setext heading", "", "Another setext"]);
+		}
+	});
+
+	it("MD1-4d: a `---` with NO open paragraph is still a rule", () => {
+		// the underline can only be an underline where a paragraph is open,
+		// which is exactly the condition `#line` has at that point. Everywhere
+		// else `---` keeps its own meaning.
+		const rows = renderMarkdown("a paragraph\n\n---\n\nanother", W(80)).map(plain);
+		expect(rows.some((r) => /^ *─+$/.test(r))).toBe(true); // MD-1.6 decides the inset
+		expect(rows).toContain("a paragraph");
+		expect(rows).toContain("another");
+	});
+
+	it("MD1-4e: an indented code block keeps its LINES and its indentation", () => {
+		const rows = renderMarkdown(INDENTED, W(80)).map(plain);
+		expect(rows).toEqual(["some prose first", "", "    const x = 1;", "    const y = 2;"]);
+	});
+
+	it("MD1-4f: relative indentation inside the block survives too", () => {
+		const src = ["    function f() {", "      if (x) {", "        return 1;", "      }", "    }"].join("\n");
+		expect(renderMarkdown(src, W(80)).map(plain)).toEqual([
+			"    function f() {",
+			"      if (x) {",
+			"        return 1;",
+			"      }",
+			"    }",
+		]);
+	});
+
+	it("MD1-4g: a 4-space-indented LIST is still a list, and a paragraph is not interrupted", () => {
+		// a deliberate deviation from CommonMark, and the reason is frequency:
+		// a nested list written with four spaces is far more common in model
+		// prose than an indented code block that starts with a list marker.
+		expect(renderMarkdown("- one\n    - two", W(80)).map(plain)).toEqual(["  - one", "      - two"]);
+		// and an indented line after a paragraph is that paragraph's own
+		// continuation — indented code cannot interrupt a paragraph.
+		//
+		// FINDING MD1-F2 (pre-existing, NOT fixed in this round): a
+		// paragraph's soft line breaks join with a space and the continuation
+		// line's OWN leading spaces ride along, so the reflowed text carries
+		// five spaces where it should carry one. The subject of this assertion
+		// is that the line JOINS; the spacing is pinned as it is so the defect
+		// is visible here and flips loudly when it is fixed.
+		expect(renderMarkdown("a paragraph\n    continued here", W(80)).map(plain)).toEqual(["a paragraph     continued here"]);
+	});
+
+	it("MD1-4h: an indented code line is LINE-LOCAL — it closes the instant its newline lands", () => {
+		const s = new MdStream();
+		s.push("intro\n\n");
+		const before = s.closed();
+		s.push("    const x = 1;\n");
+		expect(s.closed()).toBe(before + 1);
+		expect(s.blocks()[before]!.kind).toBe("code-line");
+		s.push("    const y = 2;\n");
+		expect(s.closed()).toBe(before + 2);
+		// the live region holds the open block, never the message: a long
+		// indented block streams through it exactly as a fence body does.
+		expect(s.blocks().every((b) => b.lines.length === 1 || b.kind !== "code-line")).toBe(true);
+	});
+
+	it("MD1-4i: BLOCK-FREEZE — every delta split yields the same closed blocks and renders", () => {
+		const offenders: string[] = [];
+		for (const src of [SETEXT, INDENTED, `${SETEXT}\n\n${INDENTED}`]) {
+			const one = new MdStream();
+			one.push(src);
+			one.end();
+			const want = one.blocks().map((b) => `${b.kind}|${b.gap}|${JSON.stringify(b.lines)}`);
+			for (const n of [1, 2, 3, 5, 7, 13, 64]) {
+				const s = new MdStream();
+				for (let i = 0; i < src.length; i += n) s.push(src.slice(i, i + n));
+				s.end();
+				if (JSON.stringify(s.blocks().map((b) => `${b.kind}|${b.gap}|${JSON.stringify(b.lines)}`)) !== JSON.stringify(want)) offenders.push(`chunk=${n}`);
+			}
+			// and no CLOSED block's render ever changes as more text arrives
+			for (const n of [1, 7]) {
+				const s = new MdStream();
+				const atClose = new Map<number, string>();
+				for (let i = 0; i < src.length; i += n) {
+					s.push(src.slice(i, i + n));
+					const blocks = s.blocks();
+					for (let b = 0; b < s.closed(); b += 1) if (!atClose.has(b)) atClose.set(b, JSON.stringify(renderBlock(blocks[b]!, 60)));
+				}
+				s.end();
+				const final = s.blocks();
+				for (const [b, was] of atClose) if (JSON.stringify(renderBlock(final[b]!, 60)) !== was) offenders.push(`chunk=${n} block=${b} moved`);
+			}
+		}
+		expect(offenders).toEqual([]);
 	});
 });

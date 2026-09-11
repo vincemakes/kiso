@@ -43,8 +43,9 @@ import { escapeTerminal } from "./render.js";
 import { visibleWidth } from "./components.js";
 
 /** The block kinds. `fence-open`/`fence-line` are separate kinds on
- *  purpose: a fence's rows must be able to freeze ONE AT A TIME. */
-export type MdKind = "para" | "heading" | "list" | "table" | "quote" | "rule" | "fence-open" | "fence-line" | "fence-close";
+ *  purpose: a fence's rows must be able to freeze ONE AT A TIME, and
+ *  MD-1.4's `code-line` is the same shape for the same reason. */
+export type MdKind = "para" | "heading" | "list" | "table" | "quote" | "rule" | "fence-open" | "fence-line" | "fence-close" | "code-line";
 
 /** One block: its SOURCE lines, never a rendered form. The render is a
  *  pure function of (block, width), which is what makes the freeze
@@ -75,6 +76,21 @@ const RULE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,}) *$/;
 const QUOTE = /^ {0,3}> ?(.*)$/;
 const TABLE = /^ {0,3}\|/;
 const ITEM = /^( *)([-*+]|\d{1,9}[.)])[ \t]+(.*)$/;
+/** MD-1.4 — a SETEXT underline. Only meaningful under an OPEN paragraph,
+ *  which is the only place `#line` consults it. Before this, `=` was not a
+ *  construct at all, so it leaked into the paragraph's own text, and a `-`
+ *  underline classified as a RULE, so the heading's text became a
+ *  paragraph with a full-width divider under it. Both outputs were
+ *  CORRUPTED, not merely unstyled, and a guess printed into scrollback is
+ *  indistinguishable from a fact. */
+const SETEXT = /^ {0,3}(=+|-+) *$/;
+/** MD-1.4 — an indented code block's line. Four columns, the markdown
+ *  marker; tested AFTER `ITEM`, so a nested list written with four spaces
+ *  stays a list. That is a deliberate deviation, and the reason is
+ *  frequency: a four-space nested list is far more common in model prose
+ *  than an indented code block that opens with a list marker. A TAB indent
+ *  is not recognised here (it stays prose) — stated rather than implied. */
+const CODE = /^ {4,}/;
 
 /** The kind a line would START. null = blank (a block separator). */
 function classify(line: string): MdKind | null {
@@ -85,6 +101,7 @@ function classify(line: string): MdKind | null {
 	if (QUOTE.test(line)) return "quote";
 	if (TABLE.test(line)) return "table";
 	if (ITEM.test(line)) return "list";
+	if (CODE.test(line)) return "code-line";
 	return "para";
 }
 
@@ -95,13 +112,16 @@ function joins(kind: MdKind, line: string): boolean {
 	if (c === null) return false; // a blank closes everything
 	switch (kind) {
 		case "para":
-			return c === "para";
+			// MD-1.4: an indented line CONTINUES a paragraph rather than opening
+			// a code block — indented code cannot interrupt a paragraph, so a
+			// `code-line` only ever starts one after a blank.
+			return c === "para" || c === "code-line";
 		case "list":
 			// a list item's continuation must be INDENTED — an unindented
 			// paragraph after a list starts a paragraph (the lazy-continuation
 			// rule is a documented deviation: predictable beats compliant when
 			// the output is committed).
-			return c === "list" || (c === "para" && /^[ \t]/.test(line));
+			return c === "list" || ((c === "para" || c === "code-line") && /^[ \t]/.test(line));
 		case "table":
 			return c === "table";
 		case "quote":
@@ -109,6 +129,16 @@ function joins(kind: MdKind, line: string): boolean {
 		default:
 			return false;
 	}
+}
+
+/** A heading's LEVEL and TEXT, ATX or setext. A setext block's lines are
+ *  the paragraph's own with the underline last — the SOURCE, never a
+ *  rewritten ATX form, so the block still says what the model sent. */
+function headingShape(lines: readonly string[]): { level: number; text: string } {
+	const last = lines[lines.length - 1] ?? "";
+	if (lines.length > 1 && SETEXT.test(last)) return { level: last.trimStart().startsWith("=") ? 1 : 2, text: lines.slice(0, -1).join(" ") };
+	const m = HEADING.exec(lines[0] ?? "");
+	return { level: (m?.[1] ?? "#").length, text: m?.[2] ?? lines[0] ?? "" };
 }
 
 /** The fence marker a line opens with (``` or ~~~, 3+). */
@@ -152,6 +182,12 @@ export class MdStream {
 	/** blocks STARTED so far — the gap rule's only input (the first block
 	 *  of a message opens tight; every later one carries its own blank). */
 	#started = 0;
+	/** MD-1.4 — was the last COMPLETE line an indented code line? Each such
+	 *  line is its own block (line-local, so a long indented block streams
+	 *  through the live region exactly as a fence body does), which means the
+	 *  gap rule needs to know that the block before it was the same block:
+	 *  the FIRST line of a block carries the blank, the rest do not. */
+	#code = false;
 
 	/** Append streamed text. Only COMPLETE lines reach the state machine. */
 	push(text: string): void {
@@ -191,7 +227,7 @@ export class MdStream {
 			return out;
 		}
 		const k = classify(p);
-		if (k !== null) out.push({ kind: k, lines: [p], gap: this.#started > 0, lang: k === "fence-open" ? fenceLang(p) : "" });
+		if (k !== null) out.push({ kind: k, lines: [p], gap: this.#started > 0 && !(k === "code-line" && this.#code), lang: k === "fence-open" ? fenceLang(p) : "" });
 		return out;
 	}
 
@@ -201,6 +237,10 @@ export class MdStream {
 	}
 
 	#line(line: string): void {
+		// MD-1.4: `#code` describes the PREVIOUS complete line, so it is read
+		// and cleared here and set again only on the code-line path.
+		const wasCode = this.#code;
+		this.#code = false;
 		if (this.#fence !== null) {
 			// E2: the closer emits its OWN block now. The rule it used to
 			// obey — "a bottom border is drawn only by an actual close, and
@@ -215,6 +255,19 @@ export class MdStream {
 				return;
 			}
 			this.#push({ kind: "fence-line", lines: [line], gap: false, lang: "" });
+			return;
+		}
+		// MD-1.4 — a SETEXT underline closes the OPEN paragraph as a HEADING.
+		// The decision is taken on the COMPLETE underline line, which is the
+		// freeze rule itself: the paragraph has not closed yet when the
+		// underline arrives, so no committed row changes. This is also the
+		// whole of the `rule` interaction — a `-` underline outranks RULE
+		// exactly where a paragraph is open, which is the only condition under
+		// which it could be an underline at all. The block keeps its SOURCE
+		// lines, underline last; `headingShape` reads the level off it.
+		if (this.#open !== null && this.#open.kind === "para" && SETEXT.test(line)) {
+			this.#closed.push({ kind: "heading", lines: [...this.#open.lines, line], gap: this.#open.gap, lang: "" });
+			this.#open = null;
 			return;
 		}
 		const k = classify(line);
@@ -234,6 +287,13 @@ export class MdStream {
 		}
 		if (k === "heading" || k === "rule") {
 			this.#push({ kind: k, lines: [line], gap: this.#started > 0, lang: "" });
+			return;
+		}
+		if (k === "code-line") {
+			// line-local like a fence body: final the moment its newline lands.
+			// Only the FIRST line of the block carries the blank above it.
+			this.#push({ kind: k, lines: [line], gap: this.#started > 0 && !wasCode, lang: "" });
+			this.#code = true;
 			return;
 		}
 		this.#open = { kind: k, lines: [line], gap: this.#started > 0, lang: "" };
@@ -287,9 +347,7 @@ function blockBody(b: MdBlock, W: number): string[] {
 			// and a marker is the only carrier that survives a pipe. A
 			// `**bold**` inside a heading is still a no-op, which is the mono
 			// discipline paying for itself.
-			const m = HEADING.exec(b.lines[0] ?? "");
-			const level = (m?.[1] ?? "#").length;
-			const text = m?.[2] ?? b.lines[0] ?? "";
+			const { level, text } = headingShape(b.lines);
 			const style = level === 1 ? `${p.bold}${p.underline}` : p.bold;
 			const marker = level >= 3 ? `${"#".repeat(level)} ` : "";
 			return wrap(`${style}${marker}${inlineSpans(text, style)}${p.reset}`, W, "", "");
@@ -311,14 +369,20 @@ function blockBody(b: MdBlock, W: number): string[] {
 			// unterminated fence draws no bottom, which is the truth about
 			// an unterminated fence.
 			return [`${p.dim}${RAIL}${p.reset}`];
-		case "fence-line": {
+		case "fence-line":
+		case "code-line": {
 			// a fence body's INDENTATION is its content. The wrapper drops
 			// leading spaces \u2014 right for prose, a lie for code \u2014 so the indent
 			// rides as the row prefix instead, and a wrapped long line hangs
 			// under it rather than returning to the gutter.
 			const src = (b.lines[0] ?? "").replace(/\t/g, "    ");
 			const indent = /^ */.exec(src)![0];
-			const gutter = "  "; // E2: the rails bound the block; the body just insets
+			// MD-1.4: a fence body insets under its own ``` rails. An indented
+			// code block has no rails, so it takes no gutter either: its four
+			// spaces ARE the marker the model wrote, and a block that pastes
+			// back as indented code is the copy-fidelity goal. Saying "verbatim"
+			// twice would cost four columns and buy nothing.
+			const gutter = b.kind === "fence-line" ? "  " : "";
 			// DC-3: a fenced BODY carries no colour token. It used to take
 			// `code` — 1.54:1 on a white terminal, applied to whole blocks,
 			// which made the code the model just wrote the least readable
