@@ -555,9 +555,11 @@ function listRows(b: MdBlock, W: number): string[] {
 /**
  * The table. Columns are measured at their NATURAL widths, on the
  * inline-rendered text with the SGR stripped (a bold cell is four
- * columns, not twelve). If the whole table fits, it is drawn aligned
- * with the dim rails; if it does not, it does NOT shrink and it does
- * NOT cut — every row becomes a record, and every cell survives.
+ * columns, not twelve). If the natural widths fit, the table is drawn at
+ * them; if they do not, the columns SHRINK and the cells wrap inside
+ * them (MD-1.1); only when every column has reached its floor and the
+ * table still does not fit does every row become a record. It never
+ * cuts, at any width, in any form.
  *
  * A rejected shape (no delimiter row, or a body row wider than the
  * header) falls back to its own source lines, which are still valid
@@ -566,21 +568,28 @@ function listRows(b: MdBlock, W: number): string[] {
  * fact.
  */
 function tableRows(b: MdBlock, W: number): string[] {
-	const p = palette();
 	const t = tableShape(b.lines);
 	if (t === null) return b.lines.flatMap((l) => wrap(l, W, "", ""));
-	const cols = t.header.map((h, i) => Math.max(cellWidth(h), ...t.rows.map((r) => cellWidth(r[i] ?? ""))));
+	const natural = t.header.map((h, i) => Math.max(cellWidth(h), ...t.rows.map((r) => cellWidth(r[i] ?? ""))));
+	const cols = shrinkCols(natural, W);
+	if (cols === null) return recordRows(t, W);
 	// R2: no rails. The drawn width is two columns of inset plus the
 	// columns and their two-space gutters — a table is bounded by the
 	// blank lines above and below it, exactly as every other block on the
 	// screen is, and it was the last box left on a screen that has decided
 	// not to have boxes. Alignment does the work the rails were doing, and
 	// a copied table is closer to markdown without them.
-	const total = cols.reduce((n, w) => n + w + 2, 2);
-	if (total > W) return recordRows(t, W);
-	const row = (cells: readonly string[], bold: boolean): string =>
-		`  ${cells.map((c, i) => pad(c, cols[i]!, t.align[i]!, bold)).join("  ")}`.replace(/\s+$/, "");
-	return [row(t.header, true), ...t.rows.map((r) => row(r, false))];
+	const row = (cells: readonly string[], bold: boolean): string[] => {
+		const boxes = cells.map((c, i) => cellBox(c, cols[i]!, t.align[i]!, bold));
+		const rows: string[] = [];
+		for (let k = 0; k < Math.max(...boxes.map((x) => x.length)); k += 1) {
+			// a short box pays its blanks so the columns to its right do not
+			// move: a cell is a BOX, and the row is as tall as its tallest.
+			rows.push(`  ${boxes.map((x, i) => x[k] ?? " ".repeat(cols[i]!)).join("  ")}`.replace(/\s+$/, ""));
+		}
+		return rows;
+	};
+	return [...row(t.header, true), ...t.rows.flatMap((r) => row(r, false))];
 }
 
 /** A cell's column count: what a human sees, styling removed. */
@@ -588,14 +597,64 @@ function cellWidth(cell: string): number {
 	return visibleWidth(inlineSpans(cell, ""));
 }
 
-/** One padded cell — the styling goes on AFTER the measure, so it can
- *  never move a column. */
-function pad(cell: string, w: number, align: MdAlign, bold: boolean): string {
+/** MD-1.1 — the SHRINK FLOOR: eight columns, four CJK characters. A
+ *  column whose natural width is already at or below it never shrinks at
+ *  all. The 8 is a judgement and not a measurement — it is where the
+ *  report's sample stopped reading as a table — and it is the one number
+ *  that decides when the record form is still the better answer. */
+const CELL_FLOOR = 8;
+
+/** The drawn width of a grid with these columns, by the measure the R2
+ *  table has always used: the two-column inset plus every column AND its
+ *  two-space gutter. Conservative by one gutter (the last column has
+ *  none), which is where the table's right margin comes from — kept as
+ *  it was, because the record threshold has always been stated in it. */
+function gridWidth(cols: readonly number[]): number {
+	return cols.reduce((n, w) => n + w + 2, 2);
+}
+
+/**
+ * MD-1.1 — take one column off the WIDEST column until the grid fits.
+ * Returns null when every column has reached its floor and it still does
+ * not, which is the one case the record form exists for.
+ *
+ * There was no shrink step at all before this: a table either fitted at
+ * its natural width or the whole block was abandoned. That made the
+ * degradation a cliff — the owner's 6-column sample missed the grid by 8
+ * columns at terminal 80 and collapsed into eleven rows of records, when
+ * the two columns carrying long CJK phrases would each have wrapped
+ * inside their cell for free.
+ *
+ * Greedy, and therefore PREDICTABLE rather than optimal: always the
+ * widest column, ties to the left. A column holding one long unbreakable
+ * token will spend its way to the floor and force its neighbours
+ * narrower — the cost of a rule a human can hold in their head.
+ */
+function shrinkCols(natural: readonly number[], W: number): number[] | null {
+	const floor = natural.map((w) => Math.min(w, CELL_FLOOR));
+	const cols = [...natural];
+	while (gridWidth(cols) > W) {
+		let at = -1;
+		for (let i = 0; i < cols.length; i += 1) if (cols[i]! > floor[i]! && (at < 0 || cols[i]! > cols[at]!)) at = i;
+		if (at < 0) return null;
+		cols[at] -= 1;
+	}
+	return cols;
+}
+
+/** One cell as a BOX: its text wrapped inside the column, every row
+ *  padded to the column's width by the column's alignment. The styling
+ *  goes on AFTER the measure, so it can never move a column, and the
+ *  wrapper is the same one every other block folds through — so a cell
+ *  obeys the kinsoku set and the width authority like all other text. */
+function cellBox(cell: string, w: number, align: MdAlign, bold: boolean): string[] {
 	const p = palette();
 	const body = bold ? `${p.bold}${inlineSpans(cell, p.bold)}${p.reset}` : inlineSpans(cell, "");
-	const slack = Math.max(0, w - cellWidth(cell));
-	const left = align === "right" ? slack : align === "center" ? Math.floor(slack / 2) : 0;
-	return `${" ".repeat(left)}${body}${" ".repeat(slack - left)}`;
+	return mdWrap(body, w, "", "").map((r) => {
+		const slack = Math.max(0, w - visibleWidth(r));
+		const left = align === "right" ? slack : align === "center" ? Math.floor(slack / 2) : 0;
+		return `${" ".repeat(left)}${r}${" ".repeat(slack - left)}`;
+	});
 }
 
 /** The narrow degradation: one record per row. The first column names
