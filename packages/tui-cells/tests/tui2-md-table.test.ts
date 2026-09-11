@@ -11,11 +11,12 @@
  *
  * The width question is settled honestly rather than cleverly. Columns
  * are measured at their NATURAL widths on the inline-rendered,
- * SGR-stripped text; if the table cannot fit, it does not shrink and it
- * does not cut — each row becomes a record: the first column is the
- * record's name, the rest a dim `label: value` run. Every cell survives
- * at every width, which is the only property that matters when the
- * bytes are about to become permanent.
+ * SGR-stripped text; if those do not fit, the columns SHRINK and the
+ * cells wrap inside them (MD-1.1), and only when every column has
+ * reached its floor does each row become a record: the first column is
+ * the record's name, the rest a `label: value` run. Nothing is cut in
+ * either form. Every cell survives at every width, which is the only
+ * property that matters when the bytes are about to become permanent.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -47,15 +48,23 @@ describe("TUI2-MD ④ — tables", () => {
 	 * does the work the rails were doing, the header is still bold, and a
 	 * copied table is closer to markdown without them.
 	 */
-	it("T-MD-28: the aligned table — a bold header, padded columns, no rails", () => {
+	it("T-MD-28: the aligned table — a bold header, one rule, padded columns, no rails", () => {
 		const p = palette();
 		const rows = renderMarkdown(TABLE, 60);
+		// DECLARED SUPERSESSION (MD-1.3 / R2 AMENDMENT 1, owner ruling
+		// 2026-09-11): ONE rule is drawn under the header row, at the grid's
+		// own width (4+5+6 columns plus two 2-space gutters = 19). R2 removed
+		// the RAILS — the four-sided box that BOUNDS a table; this bounds
+		// nothing and SEPARATES the header from the body, which is the one job
+		// the round's governing distinction gives a rule. Rails stay out, and
+		// the assertion below still holds them out.
 		expect(rows).toEqual([
 			`  ${p.bold}area${p.reset}  ${p.bold}lines${p.reset}  ${p.bold}budget${p.reset}`,
+			`  ${p.dim}${"\u2500".repeat(19)}${p.reset}`,
 			"  core  1972   2000",
 			"  cli   2012   1920",
 		]);
-		expect(rows.every((r) => !plain(r).includes("│"))).toBe(true);
+		expect(rows.every((r) => !plain(r).includes("\u2502"))).toBe(true);
 	});
 
 	it("T-MD-29: CJK cells measure with the width authority, so the columns line up", () => {
@@ -64,7 +73,9 @@ describe("TUI2-MD ④ — tables", () => {
 		// R2: without rails the rows no longer pad to a common width, so the
 		// subject is stated directly — every COLUMN starts at the same
 		// place, which is what "the columns line up" always meant.
-		const rows = renderMarkdown(src, 60).map(plain);
+		// MD-1.3: the header rule is one unbroken run and has no columns in
+		// it, so it is not one of the rows this case is about.
+		const rows = renderMarkdown(src, 60).map(plain).filter((r) => !/^ {2}\u2500+$/.test(r));
 		const second = rows.map((r) => visibleWidth(r.slice(0, r.lastIndexOf("  ") + 2)));
 		expect(new Set(second).size).toBe(1);
 	});
@@ -77,25 +88,46 @@ describe("TUI2-MD ④ — tables", () => {
 
 	it("T-MD-31: the alignment column comes from the delimiter row", () => {
 		const src = ["| head | head | head |", "|:--|:-:|--:|", "| a | b | c |"].join("\n");
-		expect(plain(renderMarkdown(src, 60)[1]!)).toBe("  a      b       c"); // left, centre, right — R2: no rails
+		// row 1 is MD-1.3's header rule; row 2 is the body row this is about
+		expect(plain(renderMarkdown(src, 60)[2]!)).toBe("  a      b       c"); // left, centre, right — R2: no rails
 	});
 
 	it("T-MD-32: too narrow -> the VERTICAL record, every cell kept", () => {
 		const p = palette();
 		const wide = ["| area | n |", "|---|---|", "| a-very-long-area-name | 1 |", "| b | 2 |"].join("\n");
-		// R2: the rails cost four columns, so the natural table is 28 now
-		// and the record threshold moved with it. The SUBJECT — that a
-		// table which cannot be drawn becomes records rather than being
-		// cut — is untouched, and it is exercised at the new threshold.
-		expect(renderMarkdown(wide, 27)).toEqual([
-			`${p.bold}area${p.reset}${p.dim}:${p.reset} a-very-long-area-name`,
-			`${p.dim}n: 1${p.reset}`,
+		// DECLARED SUPERSESSION (MD-1.1, 2026-09-11): the flip width moves
+		// from 27/28 to 14/15, and it is not a threshold tweak — the test
+		// that reaches the record form CHANGED. A table no longer has to fit
+		// at its NATURAL widths: the columns shrink and the cells wrap inside
+		// them first, and the record form is reached only when every column
+		// has spent itself down to CELL_FLOOR (8) and the grid still does not
+		// fit. For this fixture that minimum is 2 + 8 + 2 + 1 + 2 = 15, so 14
+		// is the widest width at which records are still the right answer.
+		//
+		// The SUBJECT — that a table which cannot be drawn becomes records
+		// rather than being cut — is untouched, and it is exercised at the
+		// new threshold. The long value wrapping across two rows is the same
+		// ruling seen from the other side: wrapped, never cut.
+		//
+		// DECLARED SUPERSESSION (MD-1.2, 2026-09-11): the tail row's bytes
+		// change from `dim("n: 1")` to `dim("n:") + " 1"`. The value leaves
+		// the dim span — `dim` is a LABEL tier and this was the one place it
+		// was asked to carry body text. The record's own name keeps its bold
+		// and its dim colon, which was never the complaint.
+		expect(renderMarkdown(wide, 14)).toEqual([
+			`${p.bold}area${p.reset}${p.dim}:${p.reset}`,
+			"a-very-long-ar",
+			"ea-name",
+			`${p.dim}n:${p.reset} 1`,
 			"",
 			`${p.bold}area${p.reset}${p.dim}:${p.reset} b`,
-			`${p.dim}n: 2${p.reset}`,
+			`${p.dim}n:${p.reset} 2`,
 		]);
-		// one column more and the aligned table is back
-		expect(plain(renderMarkdown(wide, 28)[0]!)).toBe("  area                   n");
+		// one column more and the aligned table is back — at SHRUNK columns
+		// (8/1), which is the whole of MD-1.1 in one assertion
+		expect(plain(renderMarkdown(wide, 15)[0]!)).toBe("  area      n");
+		expect(plain(renderMarkdown(wide, 15)[1]!)).toBe(`  ${"\u2500".repeat(11)}`); // MD-1.3's rule
+		expect(plain(renderMarkdown(wide, 15)[2]!)).toBe("  a-very-l  1");
 	});
 
 	it("T-MD-33: NOTHING is ever truncated — every cell appears at every width", () => {
@@ -103,7 +135,7 @@ describe("TUI2-MD ④ — tables", () => {
 		for (let W = 12; W <= 90; W += 1) {
 			const text = renderMarkdown(TABLE, W).map(plain).join(" ");
 			for (const cell of cells) expect(`W=${W} ${cell}: ${text.includes(cell)}`).toBe(`W=${W} ${cell}: true`);
-			expect(text).not.toContain("…"); // no ellipsis anywhere: the cut that never happens
+			expect(text).not.toContain("\u2026"); // no ellipsis anywhere: the cut that never happens
 		}
 	});
 
@@ -118,12 +150,21 @@ describe("TUI2-MD ④ — tables", () => {
 
 	it("T-MD-35: the acceptance content's table renders wide and degrades narrow", () => {
 		// R2: the wide form is an ALIGNED table (no rails to look for), the
-		// narrow form is records. The discriminator is the record form's
-		// own `label: value` shape, which no aligned row has.
+		// narrow form is records.
+		//
+		// DECLARED SUPERSESSION (MD-1.1, 2026-09-11), and a DEAD NEEDLE
+		// caught while making it: the narrow width moves 34 -> 33, because
+		// the acceptance table's floors now fit in 34. Left at 34 this case
+		// still PASSED — but on a grid, because the only `": "` on the screen
+		// was the `MaxListenersExceededWarning: 11` paragraph. A
+		// discriminator that any prose can satisfy is not a discriminator, so
+		// it is replaced by one the record form alone can produce: the
+		// record's own leading row, `header[0]: value`, verbatim.
 		const wide = renderMarkdown(MD_BENCHMARK, 100).map(plain);
-		const narrow = renderMarkdown(MD_BENCHMARK, 34).map(plain);
+		const narrow = renderMarkdown(MD_BENCHMARK, 33).map(plain);
 		expect(wide.some((r) => /^ {2}\S+ +\S/.test(r) && !r.includes(": "))).toBe(true);
-		expect(narrow.some((r) => r.includes(": "))).toBe(true);
+		expect(narrow).toContain("\u533a\u57df: core"); // the record form and nothing else draws this
+		expect(wide.some((r) => r.startsWith("\u533a\u57df: "))).toBe(false);
 		// the numbers from the table body are present at BOTH widths
 		for (const cell of ["1972", "2000", "2012", "1920", "1468", "1280"]) {
 			expect(`${cell} wide=${wide.join(" ").includes(cell)} narrow=${narrow.join(" ").includes(cell)}`).toBe(`${cell} wide=true narrow=true`);
