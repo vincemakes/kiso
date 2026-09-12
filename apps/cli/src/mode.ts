@@ -20,13 +20,22 @@ export const MODES: readonly Mode[] = ["manual", "default", "accept-edits", "pla
 /** DC-36 — one line per tier, for the picker, TRANSCRIBED FROM decide()
  *  below rather than written fresh. A description that drifts from the
  *  behaviour is worse than none: this is the row a human reads before
- *  handing over the approval gate. */
+ *  handing over the approval gate.
+ *
+ *  Astra F4: these describe THE TIER'S CONTRIBUTION TO THE CHAIN, not the
+ *  chain's verdict. "every tool asks" read as a promise that manual is a
+ *  revocation — pick it and you are asked about everything again — and it
+ *  is not. A tier that ASKS abstains in favour of anything that ALLOWS, so
+ *  a saved don't-ask-again rule still allows, and the side effect runs with
+ *  no new question. The composition (deny > allow > ask) is the ruling and
+ *  is unchanged; the copy was the thing that was wrong. `plan` needs no
+ *  qualification because it DENIES, and a deny is what nothing overrides. */
 export const MODE_NOTE: Readonly<Record<Mode, string>> = {
-	manual: "every tool asks",
-	default: "reads run; writes, edits and shell ask",
-	"accept-edits": "reads, writes and edits run; shell asks",
-	plan: "reads run; everything else is denied — read-only",
-	bypass: "everything runs, nothing asks",
+	manual: "asks for every tool — a saved allow still allows",
+	default: "reads run; writes, edits and shell ask — a saved allow still allows",
+	"accept-edits": "reads, writes and edits run; shell asks — a saved allow still allows",
+	plan: "reads run; everything else is denied — read-only, and a deny wins",
+	bypass: "everything runs, nothing asks — a user deny still wins",
 };
 
 /** The read-only tool set (plan): reading is allowed, everything else

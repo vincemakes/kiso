@@ -102,13 +102,23 @@ kiso sessions                  列出持久会话及其状态
 
 `/mode` 切换整个会话的审批姿态。五个档位建在扩展链**之上**,内核不变:每档是一个进程内的 `mode:<name>` 扩展,其自动裁决记为 `decidedBy: "mode:<name>"`,审计轨迹会指名是哪一档决定的。
 
-| 档位 | 语义 |
+一档是链条里的**一个声音,不是最终裁决**。链条按 `deny > allow > ask` 合成,所以一个
+「问」的档位会让位给任何「放行」:已保存的「别再问了」规则照样放行,调用不会再问一次。
+因此切到 `manual` **并不是撤销**你已经给出的规则。
+
+| 档位 | 这一档的贡献 |
 |---|---|
 | `default` | 读放行;write/edit/shell 问人;扩展工具归扩展自己管 |
-| `manual` | **每个**工具都问人 |
-| `accept-edits` | `default` 加上 write_file/edit_file 放行 |
-| `plan` | read/list/search/read_skill 放行;其余一律以 `plan mode: read-only` 拒绝 |
+| `manual` | 每个工具都问——已保存的放行规则照样放行 |
+| `accept-edits` | `default` 加上 write_file/edit_file 放行;shell 问人——已保存的放行规则照样放行 |
+| `plan` | read/list/search/read_skill 放行;其余一律以 `plan mode: read-only` **拒绝**——而拒绝是谁也压不过的 |
 | `bypass` | 全部放行——但用户扩展的 `deny` 依然胜出 |
+
+**想被重新问,就删掉那条规则。** 「别再问了」的授权写在
+`~/.kiso/extensions/dont-ask-again.mjs`,这个文件可以人工编辑、人工删除:
+把某个工具从集合里去掉,或者整个删掉文件,下一次调用就会问。
+该文件按设计**只会放行**——永远不会产生 deny 或 ask——所以 mode 与 safe-defaults
+两道护城河的牙齿都还在。
 
 启动时:`--mode <name>` 或 `KISO_MODE=<name>`。状态栏写出当前档位,约束是看得见的,而不是编码在色相里。
 

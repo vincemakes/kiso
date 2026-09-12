@@ -160,13 +160,25 @@ the extension chain, kernel untouched: each is an in-process `mode:<name>`
 extension whose verdicts record `decidedBy: "mode:<name>"`, so the audit trail
 names the tier that decided.
 
-| tier | semantics |
+A tier is **one voice in that chain, not the verdict**. The chain composes
+`deny > allow > ask`, so a tier that ASKS abstains in favour of anything that
+ALLOWS: a saved "don't ask again" rule still allows, and the call runs without
+a new question. Switching to `manual` is therefore **not a revocation** of
+rules you already granted.
+
+| tier | its contribution |
 |---|---|
 | `default` | reads allow; write/edit/shell ask the human; extension tools are the extensions' business |
-| `manual` | EVERY tool asks the human |
-| `accept-edits` | `default` + write_file/edit_file allow |
-| `plan` | read/list/search/read_skill allow; everything else denied with `plan mode: read-only` |
+| `manual` | every tool asks — a saved allow still allows |
+| `accept-edits` | `default` + write_file/edit_file allow; shell asks — a saved allow still allows |
+| `plan` | read/list/search/read_skill allow; everything else **denied** with `plan mode: read-only` — and a deny is what nothing overrides |
 | `bypass` | everything allows — but a user extension's `deny` still wins |
+
+**To be asked again, remove the rule.** Grants from "don't ask again" are
+written to `~/.kiso/extensions/dont-ask-again.mjs`, which is human-editable and
+human-deletable: drop a tool from its set, or delete the file, and the next call
+asks. The file is allow-only by design — it can never deny or ask — so the mode
+and safe-defaults moats keep their teeth.
 
 Startup: `--mode <name>` or `KISO_MODE=<name>`; the status bar names the tier,
 so the constraint is visible rather than encoded in a hue.
