@@ -122,6 +122,7 @@
 		"packages/runtime/tests/native-lock-race.test.ts",
 		"packages/runtime/tests/state-probe-lock.test.ts",
 		"packages/runtime/tests/zombie-holder-lock.test.ts",
+		"packages/tools-node/tests/astra-f7-apikeyenv-strip.test.ts",
 		"packages/tools-node/tests/cx1-f4-search-worker.test.ts",
 		"packages/tools-node/tests/dc23-search-text.test.ts",
 		"packages/tools-node/tests/dc49-exclude-roots.test.ts",

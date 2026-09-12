@@ -361,30 +361,46 @@ export function resolveModel(modelFlag: string | undefined, merged: KisoConfig):
 		return resolveProfile(modelFlag, p);
 	}
 	// env beats config: a key in the environment names the provider.
+	//
+	// Astra F2: the credential goes through authForProfile like every other
+	// route. This returned process.env.OPENAI_API_KEY directly, so the two
+	// ways into the same adapter disagreed about which key a profile uses.
+	// The safety property held by accident — the env key is not the stored
+	// one — and an accident is not a rule. Now: the stored key at the
+	// vendor's origin, the env key at a custom one, and a stored vendor key
+	// is never forwarded to a custom environment URL.
+	//
+	// The env var is folded into the profile EXPLICITLY, so the resolved
+	// endpoint is the profile's and the SDK never reads it again (F1).
 	if (process.env.OPENAI_API_KEY !== undefined) {
+		const profile = {
+			kind: "openai-compat",
+			model: process.env.OPENAI_MODEL ?? "gpt-4o",
+			...(process.env.OPENAI_BASE_URL !== undefined ? { baseUrl: process.env.OPENAI_BASE_URL } : {}),
+			apiKeyEnv: "OPENAI_API_KEY",
+		} as ModelProfile;
+		const auth = authForProfile(process.env.OPENAI_MODEL ?? "gpt-4o", profile);
 		return {
 			name: process.env.OPENAI_MODEL ?? "gpt-4o",
-			profile: {
-				kind: "openai-compat",
-				model: process.env.OPENAI_MODEL ?? "gpt-4o",
-				...(process.env.OPENAI_BASE_URL !== undefined ? { baseUrl: process.env.OPENAI_BASE_URL } : {}),
-				apiKeyEnv: "OPENAI_API_KEY",
-			},
-			apiKey: process.env.OPENAI_API_KEY,
+			profile,
+			apiKey: auth.type === "api-key" ? auth.apiKey : process.env.OPENAI_API_KEY,
 		};
 	}
 	if (process.env.ANTHROPIC_API_KEY !== undefined) {
+		// Astra F2, the sibling. Same rule, same reason.
+		const profile = {
+			kind: "anthropic",
+			model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5",
+			apiKeyEnv: "ANTHROPIC_API_KEY",
+			// PH-1c (finding PH-F19): symmetric with OPENAI_BASE_URL —
+			// proxies and compat gateways serve the anthropic dialect too.
+			...(process.env.ANTHROPIC_BASE_URL !== undefined ? { baseUrl: process.env.ANTHROPIC_BASE_URL } : {}),
+		} as ModelProfile;
+		const auth = authForProfile(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5", profile);
 		return {
 			name: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5",
-			profile: {
-				kind: "anthropic",
-				model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5",
-				apiKeyEnv: "ANTHROPIC_API_KEY",
-				// PH-1c (finding PH-F19): symmetric with OPENAI_BASE_URL —
-				// proxies and compat gateways serve the anthropic dialect too.
-				...(process.env.ANTHROPIC_BASE_URL !== undefined ? { baseUrl: process.env.ANTHROPIC_BASE_URL } : {}),
-			},
-			apiKey: process.env.ANTHROPIC_API_KEY,
+			profile,
+			apiKey: auth.type === "api-key" ? auth.apiKey : process.env.ANTHROPIC_API_KEY,
 		};
 	}
 	// config (project wins over user) names a model; default is faux.

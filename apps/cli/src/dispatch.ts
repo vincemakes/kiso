@@ -11,6 +11,7 @@ import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { agentModel, body, bodyLog, codingToolOptions, kisoHome, configModels, dock, lastBinding, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, setModelChoice, type LineInput , setLastBinding } from "./state.js";
+import { effectiveBaseUrl } from "./auth/credentials.js";
 import { authForProfile, directWriteProfile, profileAvailable, unavailableReason, type ModelProfile } from "./config.js";
 import { shellTool } from "@vincemakes/kiso-tools-node";
 import { join } from "node:path";
@@ -644,7 +645,15 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 							...(auth.type === "oauth"
 								? { oauth: oauthTokenThunk(auth.providerId), ...(ctx.session.id !== undefined ? { promptCacheKey: ctx.session.id } : {}) }
 								: { apiKey: auth.apiKey }),
-							...(profile.baseUrl !== undefined ? { baseUrl: profile.baseUrl } : {}),
+							// Astra F1 (P0): ALWAYS explicit. Passing nothing let the SDK
+							// read ANTHROPIC_BASE_URL / OPENAI_BASE_URL itself, so a
+							// profile with no baseUrl sent the STORED VENDOR KEY —
+							// which authForProfile correctly chose for the vendor's own
+							// endpoint — to whatever the environment named. The same
+							// resolver decides both sides now.
+							...(effectiveBaseUrl(profile.kind, profile.baseUrl) !== undefined
+								? { baseUrl: effectiveBaseUrl(profile.kind, profile.baseUrl) as string }
+								: {}),
 							...(profile.promptCaching !== undefined ? { promptCaching: profile.promptCaching } : {}),
 						});
 						// PH-1a (finding PH-F8, P0): the switch is ATOMIC —

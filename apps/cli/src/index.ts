@@ -51,6 +51,7 @@ import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { chat, contextWindowTokens, displayCtxRatio, statusModelLabel } from "./chat.js";
+import { effectiveBaseUrl } from "./auth/credentials.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
 import { oauthTokenThunk } from "./auth/token.js";
 import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
@@ -789,7 +790,15 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 					// no session id is `kiso sessions`, a read-only listing
 					// that streams nothing, so its absence costs no cache.
 					...(sessionId !== undefined ? { promptCacheKey: sessionId } : {}),
-					...(resolved.profile.baseUrl !== undefined ? { baseUrl: resolved.profile.baseUrl } : {}),
+					// Astra F1 (P0): the STARTUP adapter, always explicit. This is the
+					// path every launch takes, and it had the same defect as the
+					// /model path: no url passed meant the SDK read
+					// ANTHROPIC_BASE_URL / OPENAI_BASE_URL itself while
+					// authForProfile had already chosen the STORED VENDOR KEY for
+					// the vendor's own endpoint.
+					...(effectiveBaseUrl(resolved.profile.kind, resolved.profile.baseUrl) !== undefined
+						? { baseUrl: effectiveBaseUrl(resolved.profile.kind, resolved.profile.baseUrl) as string }
+						: {}),
 					...(resolved.profile.promptCaching !== undefined ? { promptCaching: resolved.profile.promptCaching } : {}),
 					// LT-1: the profile's stream watchdog bound, if it states one
 					...(resolved.profile.streamIdleMs !== undefined ? { streamIdleMs: resolved.profile.streamIdleMs } : {}),
