@@ -1,6 +1,6 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.png"><img src="assets/hero.png" width="100%" alt="kiso — the durable runtime for AI agents"></picture></p>
 
-<p align="center"><b>v0.35.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English edition</a></p>
+<p align="center"><b>v0.36.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English edition</a></p>
 
 **kiso** 是一个可靠续跑的 AI agent 运行时。每一次审批、每一个工具结果、每一条事件都在发生的当下写进磁盘,所以一个被打断、崩溃或被强杀的 agent 会**从已提交的持久前缀**接着跑——审批还在、结果还在——而不是从头再来。崩溃时仍在生成中的内容可能被重新生成;结果不明的副作用交给人来裁定。内核**上限**是 2,200 行 TypeScript,事件溯源,每个设计决策都随附一份 ADR,写明为什么,以及何时推翻它。
 
