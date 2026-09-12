@@ -302,7 +302,7 @@ for await (const ev of session.run("What is 2+3?")) {
 | **面** | [sdk.md](docs/sdk.md)——公开面与事件流契约 · [usage.md](docs/usage.md)——规范 usage schema 与价格表 · [request-trace.md](docs/request-trace.md)——请求追踪账本 |
 | **记录** | [status.md](docs/status.md)——逐个面的交付状态 · [docs/adrs/](docs/adrs/README.md)——39 份架构决策记录 · [bench/README.md](bench/README.md)——bench:同一个模型、同一批任务、三个 Agent |
 
-`npm run check` 是完整门链:build → typecheck → tests → size → pack → API 面 → hero → whitespace → CJK → versions → PTY manifest → dist inventory → bench repro → bytes → `git diff --check` → 消费者冒烟层 → demo。**2,988 个测试全绿,412 个文件**(单元 2,350,PTY 638),6 个事故夹具跑在真实运行时上,39 份 ADR。
+CI 先按锁文件安装,然后跑 `npm run check`——这就是完整门链:build → typecheck → tests → size → pack → API 面 → hero → whitespace → CJK → versions → PTY manifest → dist inventory → bench repro → bench tests → bytes → `git diff --check` → 消费者冒烟层 → demo。**3,120 个测试全绿,426 个文件**(单元 2,468,PTY 652),6 个事故夹具跑在真实运行时上,39 份 ADR。
 
 ## 为什么还要做一个
 

@@ -490,11 +490,12 @@ a blob, and a blob is the thing you eventually fight —
 | **The surfaces** | [sdk.md](docs/sdk.md) — the public surface and the Event Stream Contract · [usage.md](docs/usage.md) — the canonical usage schema and the pricing table · [request-trace.md](docs/request-trace.md) — the request trace ledger |
 | **The record** | [status.md](docs/status.md) — what is delivered, surface by surface · [docs/adrs/](docs/adrs/README.md) — 39 architecture decision records · [bench/README.md](bench/README.md) — the bench: same model, same tasks, three agents |
 
-`npm run check` is the whole gate: build → typecheck → tests → size → pack →
-API surface → hero → whitespace → CJK → versions → PTY manifest → dist
-inventory → bench repro → bytes → `git diff --check` → consumer smoke tiers →
-demo. **2,988 tests green in 412 files** (2,350 unit, 638 PTY), 6 incident
-fixtures on the real runtime, 39 ADRs.
+CI installs from the lockfile, then runs `npm run check`, which is the whole
+gate: build → typecheck → tests → size → pack → API surface → hero →
+whitespace → CJK → versions → PTY manifest → dist inventory → bench repro →
+bench tests → bytes → `git diff --check` → consumer smoke tiers → demo.
+**3,120 tests green in 426 files** (2,468 unit, 652 PTY), 6 incident fixtures
+on the real runtime, 39 ADRs.
 
 ## Why another one
 
