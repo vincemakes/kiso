@@ -64,17 +64,17 @@ const delegateParameters = (cfg) => ({
 						type: "array",
 						items: { type: "string", minLength: 1 },
 						maxItems: 32,
-						description: "implementer and tester tasks ONLY (an explorer or reviewer task with scope is refused): path globs the child may write; a scoped child has no shell and a write outside the scope is refused",
+						description: "implementer/tester only (explorer or reviewer with scope: refused). Write-path globs; a scoped child has no shell; a write outside the scope is refused",
 					},
 					acceptance: {
 						type: "object",
 						properties: { check: { type: "string", minLength: 1 }, evaluator: { type: "string", minLength: 1 } },
 						additionalProperties: false,
-						description: `optional; implementer and tester only. Exactly one of: { check } naming a check configured by the user (configured now: ${Object.keys(cfg.checks).length ? Object.keys(cfg.checks).join(", ") : "none configured — omit acceptance"}), or { evaluator } — an absolute path to an evaluator script OUTSIDE the project. Never a command: the parent runs the acceptance after the child completes`,
+						description: `implementer/tester only, optional. Exactly one of { check } (user-configured; now: ${Object.keys(cfg.checks).length ? Object.keys(cfg.checks).join(", ") : "none — omit acceptance"}) or { evaluator } (absolute path OUTSIDE the project). Never a command: the parent runs it after the child completes`,
 					},
-					model: { type: "string", minLength: 1, description: `a model profile configured by the user (configured now: ${cfg.profiles.length ? cfg.profiles.map((x) => (typeof x === "string" ? x : x.name ?? x.id ?? JSON.stringify(x))).join(", ") : "none — omit model"})` },
-					after: { type: "string", minLength: 1, description: "tester only: the earlier task (by its index, 1-based) whose worktree this tester runs in" },
-					timeoutMs: { type: "integer", minimum: 1000, description: "the child's wall-clock budget in milliseconds" },
+					model: { type: "string", minLength: 1, description: `a user-configured model profile (now: ${cfg.profiles.length ? cfg.profiles.map((x) => (typeof x === "string" ? x : x.name ?? x.id ?? JSON.stringify(x))).join(", ") : "none — omit model"})` },
+					after: { type: "string", minLength: 1, description: "tester only: the earlier task (1-based index) whose worktree this tester runs in" },
+					timeoutMs: { type: "integer", minimum: 1000, description: "wall-clock budget, ms" },
 				},
 				required: ["role", "task"],
 				additionalProperties: false,
@@ -93,7 +93,7 @@ export default async function createSubagentExtension() {
 		tools: [
 			{
 				name: "delegate",
-				description: "run subagent tasks (explorer/implementer/reviewer/tester) in child kiso processes",
+				description: "delegate tasks to child kiso agents: explorer, implementer, reviewer, tester",
 				parameters: delegateParameters(delegationConfig()),
 				execute: async (input, ctx) => {
 					const tasks = ((input ?? {}).tasks ?? []).slice(0, 8);
