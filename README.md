@@ -364,7 +364,8 @@ written against that same contract — nothing they do is privileged:
 
 - **MCP** — every MCP tool becomes `mcp__<server>__<tool>`, configured in
   `~/.kiso/mcp.json`. A server that fails to connect is a soft failure, and
-  stdio children get provider credentials stripped.
+  stdio children get provider credentials stripped — see below for exactly
+  which children that covers.
 - **Subagents** — one `delegate` tool runs 1-8 tasks in child kiso processes,
   4 at a time. Implementers work in a detached `git worktree` and the diff
   comes back; children are ordinary durable sessions, resumable even if the
@@ -382,6 +383,20 @@ written against that same contract — nothing they do is privileged:
   than runtime state, so it survives `kill -9` and `/compact`. Opt-in since
   0.3.0: over 13 consecutive real sessions it paid rent every request and was
   never called.
+
+**Which children are stripped.** Two, and they are the two a MODEL can cause
+to run: the shell tool, and an MCP server started over stdio. Both lose the
+same set — the exact credential list, anything ending `_API_KEY` or
+`_AUTH_TOKEN`, and **every environment variable your profiles name in
+`apiKeyEnv`**, whatever it is called. A per-child `env` in `mcp.json` is
+applied on top, explicitly, and wins.
+
+Two things are deliberately NOT stripped, and it is better to say so than to
+let the sentence above imply otherwise. A subagent's child is **kiso itself**
+— it has to reach the model, so it inherits. And the programs you start by
+hand — `$EDITOR` on `ctrl+g`, the clipboard helpers, the browser opened for a
+sign-in, `tmux show`, the installer `kiso update` runs — inherit your
+environment the way anything you launch from your shell does.
 
 A project's own `.kiso` directory is cloned code that would execute on your
 machine, so it rides one content-digest trust gate: kiso lists the artifacts,
