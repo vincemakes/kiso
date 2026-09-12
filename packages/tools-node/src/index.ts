@@ -1071,7 +1071,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 	return defineTool<{ command: string; timeoutMs?: number }>({
 		name: "shell",
 		description:
-			"Run a shell command with the workspace as the working directory. A side effect — approval required. Fails loudly on timeout or non-zero exit.",
+			"Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. Fails loudly on timeout or non-zero exit.",
 		parameters: {
 			type: "object",
 			properties: {
@@ -1081,7 +1081,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 			required: ["command"],
 			additionalProperties: false,
 		},
-		promptSnippet: "shell — real system commands only (builds, tests, git)",
+		promptSnippet: "shell — any command the task needs (builds, tests, git, curl, system queries)",
 		promptGuidelines: ["commands run in the workspace root; on failure read the error and adjust — never repeat blindly"],
 		execute: async ({ command, timeoutMs }, ctx) => {
 			const timeout = timeoutMs ?? DEFAULT_SHELL_TIMEOUT_MS;
