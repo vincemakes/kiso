@@ -75,6 +75,34 @@ a broken config file fails loudly with the file named.
   OpenRouter's Anthropic-format endpoint — byte-identical replays, all
   accepted; the first-party beta surface (beta headers, Fable 5.1's
   thinking-block binding) is not yet exercised directly.
+- **An UNREGISTERED model id keeps its defaults and refuses a level by
+  name (Astra F5).** The registry never guesses. A model with no row still
+  sends text — `default`/`default` resolves to an empty wire setting — but
+  an explicit `low`/`high`/`max` is REFUSED, by name, rather than silently
+  downgraded, and its context window is unknown. The window then falls back
+  to a conservative **200,000 tokens**, which is what the meter and the
+  microcompact threshold are computed from; for a model with a larger real
+  window that means context relief fires EARLIER than it needs to, and for
+  a smaller one the provider can refuse a request while the meter still
+  looks comfortable. Set the true number when you know it: the top-level
+  `"contextWindow"` above, or `KISO_CONTEXT_WINDOW` for one session. The
+  environment wins over the config value, as everywhere else, and both win
+  over the registry.
+
+  DeepSeek's current recommended id `deepseek-flash` is registered (dated
+  2026-09-12, sourced), with the same capabilities as the legacy
+  `deepseek-v4-flash` row, which is retained because the vendor still
+  accepts it. Both carry a null window on purpose, and the reason is
+  mechanical rather than editorial: **the microcompact threshold is derived
+  from the window, at half of it** (`apps/cli/src/index.ts`). Registering
+  the vendor-documented 1M figure would move automatic compaction from
+  100,000 tokens to 500,000 on the model the bench runs — a
+  compaction/context change, which under BM-1 §3 blocks on the request-byte
+  gates and the paired bench. That is its own measured round, not a line in
+  a documentation pass. Until then the conservative fallback applies and
+  `KISO_CONTEXT_WINDOW` is the override; set it when you know the number
+  you want and accept that it moves the compaction point with it.
+
 - **Sign-in and the OpenAI Responses dialect (OR-1, 0.31.0).**
   `kiso login <provider>` stores a credential in `~/.kiso/auth.json`
   (mode 0600): an API key for `anthropic` / `openai` / `deepseek` /
@@ -100,6 +128,13 @@ a broken config file fails loudly with the file named.
   session's adapter for subsequent turns (a NoticeCell records it).
 - A profile whose env var is unset is refused loudly on switch — configs
   never store keys, so a missing env is an honest "not configured".
+- **Changed in 0.36.0 — `/model` and startup now agree about the cache
+  lane.** Both build the adapter's wire configuration in one place, so
+  switching to a first-party OpenAI Responses profile with `/model` sends
+  `prompt_cache_key` (the session id), which starting with that profile
+  already did. One session used to have two cache lanes depending on how
+  you arrived. Nothing changes for the other provider kinds: the field
+  reaches the wire in the Responses adapter alone.
 - The project's own `.kiso/config.json` rides the E3 trust gate: a
   granted project's config applies, an untrusted one is never even read
   (its digest covers the config file).

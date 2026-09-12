@@ -1,13 +1,15 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.png"><img src="assets/hero.png" width="100%" alt="kiso — the durable runtime for AI agents"></picture></p>
 
-<p align="center"><b>v0.35.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.zh.md">Chinese edition</a></p>
+<p align="center"><b>v0.36.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.zh.md">Chinese edition</a></p>
 
 **kiso** is a durable runtime for AI agents. Every
 approval, tool result and event is written to disk as it happens, so an agent
-that is interrupted, crashes or is killed mid-task resumes exactly where it
-stopped, with the same approvals and the same results. The kernel is 2,200
-lines of TypeScript, event-sourced, and every design decision ships with an
-ADR that says why, and when to overturn it.
+that is interrupted, crashes or is killed mid-task resumes **from the durable
+committed prefix** — the same approvals, the same results — rather than
+starting over. Generation still in flight when it died may be regenerated, and
+a side effect whose outcome is ambiguous is handed to a human to rule on. The
+kernel is capped at 2,200 lines of TypeScript, event-sourced, and every design
+decision ships with an ADR that says why, and when to overturn it.
 
 **kiso-code** is the coding agent built on it: the daily tool, and the proof.
 `kill -9` it in the middle of an edit, run `kiso resume`, and it continues the
@@ -35,7 +37,13 @@ installs it (the same `npm install -g`, nothing more).
 **The first run needs no key.** kiso opens in a keyless faux mode — a scripted
 four-round trajectory, so the shape is visible before anything is spent. When
 the script runs out the session exits non-zero with a set-a-key message: that
-exit is the design, not a crash. [Sign in](#sign-in) to reach a real model.
+exit is the design, not a crash.
+
+**Two steps reach a real model, not one.** [Sign in](#sign-in) stores a
+credential under a *provider*; a *profile* selects the model that uses it. With
+a credential and no profile kiso stays in faux mode — `kiso login` says so and
+prints an example. [Models and effort](#models-and-effort) has the profile
+shapes.
 
 Then talk to it. The model gets six tools — read file, list directory, search
 text, write file, edit file, shell — and writes and shell sit behind the
@@ -69,6 +77,14 @@ in with is what runs. Without one the env layer still works: `ANTHROPIC_API_KEY`
 or `OPENAI_API_KEY` alone is enough (with both exported, OpenAI wins), and
 `OPENAI_BASE_URL` retargets any compatible endpoint.
 
+**Changed in 0.36.0.** That ownership now holds on the environment-selected
+route too. Starting kiso with only `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in
+the environment used to run on THAT key even when a credential was stored for
+a recognised origin (`api.openai.com`, `api.deepseek.com`, `api.z.ai`); the
+env key won by accident rather than by rule. The stored one wins there now.
+`kiso logout <provider>` removes it and the env var takes over again, exactly
+as the message has always said.
+
 ## Models and effort
 
 `/model` lists your profiles, each annotated available or unavailable, and
@@ -81,13 +97,17 @@ inside it** — a profile only NAMES the environment variable holding its key, o
 leans on `kiso login`. Precedence: **flags > env > project config > user config
 > default**, and a broken config file fails loudly with the file named.
 
+The block below is **annotated JSONC, not a file you can save as-is**: the file
+is plain JSON, so strip the `//` comments before writing it. `kiso login` prints
+a comment-free minimal profile you can paste directly.
+
 ```jsonc
 {
   "model": "deepseek",                       // the startup profile
   "models": {
     "deepseek": {
       "kind": "openai-compat",               // "openai-compat" | "anthropic" | "openai-responses"
-      "model": "deepseek-v4-flash",
+      "model": "deepseek-flash",                  // the vendor's current id; the legacy alias still works
       "apiKeyEnv": "DEEPSEEK_API_KEY",       // the key's env var — never the key
       "baseUrl": "https://api.deepseek.com"
     },
@@ -150,13 +170,25 @@ the extension chain, kernel untouched: each is an in-process `mode:<name>`
 extension whose verdicts record `decidedBy: "mode:<name>"`, so the audit trail
 names the tier that decided.
 
-| tier | semantics |
+A tier is **one voice in that chain, not the verdict**. The chain composes
+`deny > allow > ask`, so a tier that ASKS abstains in favour of anything that
+ALLOWS: a saved "don't ask again" rule still allows, and the call runs without
+a new question. Switching to `manual` is therefore **not a revocation** of
+rules you already granted.
+
+| tier | its contribution |
 |---|---|
 | `default` | reads allow; write/edit/shell ask the human; extension tools are the extensions' business |
-| `manual` | EVERY tool asks the human |
-| `accept-edits` | `default` + write_file/edit_file allow |
-| `plan` | read/list/search/read_skill allow; everything else denied with `plan mode: read-only` |
+| `manual` | every tool asks — a saved allow still allows |
+| `accept-edits` | `default` + write_file/edit_file allow; shell asks — a saved allow still allows |
+| `plan` | read/list/search/read_skill allow; everything else **denied** with `plan mode: read-only` — and a deny is what nothing overrides |
 | `bypass` | everything allows — but a user extension's `deny` still wins |
+
+**To be asked again, remove the rule.** Grants from "don't ask again" are
+written to `~/.kiso/extensions/dont-ask-again.mjs`, which is human-editable and
+human-deletable: drop a tool from its set, or delete the file, and the next call
+asks. The file is allow-only by design — it can never deny or ask — so the mode
+and safe-defaults moats keep their teeth.
 
 Startup: `--mode <name>` or `KISO_MODE=<name>`; the status bar names the tier,
 so the constraint is visible rather than encoded in a hue.
@@ -200,16 +232,18 @@ newline · `@` files · `esc` stop · `alt+⏎ / ctrl+⏎` redirect · `/` comma
 `↑↓` history / queue pop · `ctrl+o` expand cells · `ctrl+r` transcript · `tab`
 complete · `?` this sheet · `alt+←→ / ctrl+←→` word motion · `alt+⌫ / alt+d`
 delete word · `ctrl+x` copy the last answer · `ctrl+z / ctrl+y` undo / redo ·
-`ctrl+v` attach a clipboard image.
+`ctrl+v` attach a clipboard image (macOS).
 In a panel, in the product's own words: `panels: ↑↓ move · ⏎ confirms · digits
 act on their row · t types`. Space selects at the cursor and never commits, so
 a stray one cannot answer anything.
 
 - **Images.** `ctrl+v` attaches the image on your clipboard — the terminal's
   own paste only ever carries text, so the obvious gesture cannot reach it.
-  A path in your message works too, which is what dragging a file into the
-  window leaves behind: `look at shot.png` sends the picture with the words,
-  in place. PNG, JPEG, GIF and WebP, identified by content rather than by
+  **That gesture is macOS-only**: elsewhere there is no clipboard reader, so
+  kiso says the gesture is macOS-only rather than claiming your clipboard is
+  empty. Use a path instead, which is also what dragging a file into the
+  window leaves behind and works on both: `look at shot.png` sends the picture with the words, in
+  place. PNG, JPEG, GIF and WebP, identified by content rather than by
   extension, up to 5 MB.
 - **The palette follows the terminal.** kiso asks it for its colour scheme and
   its background, and picks dark or light from the answer; a terminal that
@@ -262,8 +296,12 @@ model, same tasks, three agents, protocol and honest footnotes included — see
 
 > **Agents crash. Side effects don't rewind. kiso makes execution durable.**
 
-The trajectory is the durable artifact, so a killed process costs nothing but
-the process. Three facts are on disk before the crash:
+The trajectory is the durable artifact: what was COMMITTED survives the
+process. An answer still streaming when it died has no committed stop, so that
+suffix is abandoned and the model is driven again from the committed
+projection — the work is not lost, but the request may be paid for twice, and
+an effect that started without a recorded outcome is marked uncertain for a
+human rather than retried. Three facts are on disk before the crash:
 
 - **The session.** Every run is an append-only JSONL stream of `seq`-numbered
   events, and the messages the model sees are a pure function of that log
@@ -334,7 +372,8 @@ written against that same contract — nothing they do is privileged:
 
 - **MCP** — every MCP tool becomes `mcp__<server>__<tool>`, configured in
   `~/.kiso/mcp.json`. A server that fails to connect is a soft failure, and
-  stdio children get provider credentials stripped.
+  stdio children get provider credentials stripped — see below for exactly
+  which children that covers.
 - **Subagents** — one `delegate` tool runs 1-8 tasks in child kiso processes,
   4 at a time. Implementers work in a detached `git worktree` and the diff
   comes back; children are ordinary durable sessions, resumable even if the
@@ -352,6 +391,20 @@ written against that same contract — nothing they do is privileged:
   than runtime state, so it survives `kill -9` and `/compact`. Opt-in since
   0.3.0: over 13 consecutive real sessions it paid rent every request and was
   never called.
+
+**Which children are stripped.** Two, and they are the two a MODEL can cause
+to run: the shell tool, and an MCP server started over stdio. Both lose the
+same set — the exact credential list, anything ending `_API_KEY` or
+`_AUTH_TOKEN`, and **every environment variable your profiles name in
+`apiKeyEnv`**, whatever it is called. A per-child `env` in `mcp.json` is
+applied on top, explicitly, and wins.
+
+Two things are deliberately NOT stripped, and it is better to say so than to
+let the sentence above imply otherwise. A subagent's child is **kiso itself**
+— it has to reach the model, so it inherits. And the programs you start by
+hand — `$EDITOR` on `ctrl+g`, the clipboard helpers, the browser opened for a
+sign-in, `tmux show`, the installer `kiso update` runs — inherit your
+environment the way anything you launch from your shell does.
 
 A project's own `.kiso` directory is cloned code that would execute on your
 machine, so it rides one content-digest trust gate: kiso lists the artifacts,
@@ -408,8 +461,10 @@ in either direction turns the check red.
 ## The kernel rule
 
 > The core cannot exceed **2,200 lines**. Any PR that pushes it over gets
-> closed, however good the feature is. CI enforces this before it installs a
-> single dependency. If you need more, grow a package. That is the point.
+> closed, however good the feature is. CI enforces it mechanically — the size
+> gate runs inside `npm run check`, after the build, the typecheck and the
+> tests — so nobody waves it through. If you need more, grow a package. That
+> is the point.
 
 Comments do not count — explain freely, implement tersely. The gate is a
 snapshot discipline, not a self-adjusting ratchet: it has moved exactly twice,
@@ -435,11 +490,12 @@ a blob, and a blob is the thing you eventually fight —
 | **The surfaces** | [sdk.md](docs/sdk.md) — the public surface and the Event Stream Contract · [usage.md](docs/usage.md) — the canonical usage schema and the pricing table · [request-trace.md](docs/request-trace.md) — the request trace ledger |
 | **The record** | [status.md](docs/status.md) — what is delivered, surface by surface · [docs/adrs/](docs/adrs/README.md) — 39 architecture decision records · [bench/README.md](bench/README.md) — the bench: same model, same tasks, three agents |
 
-`npm run check` is the whole gate: build → typecheck → tests → size → pack →
-API surface → hero → whitespace → CJK → versions → PTY manifest → dist
-inventory → bench repro → bytes → `git diff --check` → consumer smoke tiers →
-demo. **2,988 tests green in 412 files** (2,350 unit, 638 PTY), 6 incident
-fixtures on the real runtime, 39 ADRs.
+CI installs from the lockfile, then runs `npm run check`, which is the whole
+gate: build → typecheck → tests → size → pack → API surface → hero →
+whitespace → CJK → versions → PTY manifest → dist inventory → bench repro →
+bench tests → bytes → `git diff --check` → consumer smoke tiers → demo.
+**3,120 tests green in 426 files** (2,468 unit, 652 PTY), 6 incident fixtures
+on the real runtime, 39 ADRs.
 
 ## Why another one
 

@@ -316,6 +316,40 @@ const ENTRIES: readonly ModelMetadataEntry[] = [
 		pricing: null,
 	},
 	{
+		// Astra F5: THE VENDOR'S CURRENT RECOMMENDED NAME, registered so that
+		// copying it out of the vendor's own docs does not silently cost the
+		// effort controls. `deepseek-flash` had no row, and an unregistered
+		// model resolves default/default to an empty wire setting while
+		// REFUSING any explicit level by name — correct behaviour (unknown
+		// stays unknown) reached for the wrong reason: the model is known,
+		// the registry just had not been told its current name.
+		//
+		// The legacy alias is RETAINED above, not replaced: the vendor still
+		// accepts it and routes both to the same weights, so removing it
+		// would break configs that work today.
+		//
+		// SAME capabilities as the legacy row, deliberately. The vendor's
+		// page lists a 1M context window, and a window read off a page is not
+		// a measurement — it would make the meter claim precision the product
+		// has not earned, on the row that decides when context relief fires.
+		// contextWindow stays null, the CLI's conservative fallback applies,
+		// and the override is documented. Pricing likewise stays null: no
+		// price is invented for a name.
+		model: "deepseek-flash",
+		providerId: "deepseek",
+		endpoint: "https://api.deepseek.com",
+		capabilities: { contextWindow: null, maxOutputTokens: null, promptCaching: "automatic", reasoning: {
+			emitsThinkingStream: true,
+			thinking: { modes: ["enabled", "disabled"], default: "enabled" },
+			effort: { levels: ["low", "high", "max"], default: "high", wire: "reasoning_effort" },
+			asOf: "2026-09-12",
+			source: "https://api-docs.deepseek.com/quick_start/pricing/",
+		}, inputModalities: null },
+		capabilitiesAsOf: "2026-09-12",
+		capabilitiesSource: "https://api-docs.deepseek.com/quick_start/pricing/",
+		pricing: null,
+	},
+	{
 		model: "deepseek-v4-pro",
 		providerId: "deepseek",
 		endpoint: "https://api.deepseek.com",

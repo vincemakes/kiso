@@ -125,6 +125,15 @@ describe("the update card reaches the screen", () => {
 	}, 120_000);
 });
 
+/**
+ * Both legs here SPAWN A REAL CLI, so they declare the same generous bound
+ * the PTY leg above declares. They had none and inherited vitest's 5s
+ * default, which is a budget a process-spawning test cannot rely on: one of
+ * them timed out inside the serial pty pool while passing in 2.4s on its
+ * own. Not load — the pool measured 1330.0s, 1331.6s and 1331.8s across
+ * three consecutive runs, red and green alike. Real-process tests measure
+ * correctness, never speed; the helper's own comment says so.
+ */
 describe("kiso update — the command the card names", () => {
 	function fakeNpm(exit: number): { bin: string; record: string } {
 		const bin = mkdtempSync(join(tmpdir(), "kiso-fake-npm-"));
@@ -140,7 +149,7 @@ describe("kiso update — the command the card names", () => {
 		expect(r.status).toBe(0);
 		expect(readFileSync(record, "utf8").trim().split("\n")).toEqual(["i", "-g", "@vincemakes/kiso-code@latest"]);
 		expect(r.stdout).toContain("kiso updated");
-	});
+	}, 120_000);
 
 	it("npm's failure is npm's exit code, and the message names the manual command", () => {
 		const { bin } = fakeNpm(3);
@@ -148,5 +157,5 @@ describe("kiso update — the command the card names", () => {
 		const r = runCli(["update"], env);
 		expect(r.status).toBe(3);
 		expect(r.stderr).toContain("npm i -g @vincemakes/kiso-code@latest");
-	});
+	}, 120_000);
 });

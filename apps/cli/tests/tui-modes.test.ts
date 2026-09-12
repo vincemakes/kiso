@@ -227,7 +227,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 				// the needle is a NOTE, not the header: the header carries SGR
 				// between its words, and a pty driver scans the raw stream
 				// for a contiguous run (DC-25/DC-29, filed twice already).
-				["every tool asks", "5\r"],
+				["asks for every tool", "5\r"],
 				// and QUIT. Without it the driver waits out its whole
 				// timeout: `execFileSync` blocks the vitest worker for that
 				// long, and enough of those starve the reporter's RPC
@@ -244,7 +244,10 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		// every tier is offered, each saying what it DOES — the notes are
 		// transcribed from decide(), so a drifting description is a bug
 		for (const tier of ["manual", "default", "accept-edits", "plan", "bypass"]) expect(plain, `${tier} is not on the panel`).toContain(tier);
-		expect(plain).toContain("every tool asks"); // manual's note
+		// Astra F4: the note now qualifies itself. Assert the WHOLE of it, so a
+		// truncation at this width is a failure rather than a silent loss of
+		// the qualification the finding asked for.
+		expect(plain).toContain("asks for every tool — a saved allow still allows");
 		expect(plain).toContain("read-only"); // plan's note
 		// the row a human is looking at names the arrows, not only the
 		// digits — DC-30's lesson: a hint that omits the gesture is why

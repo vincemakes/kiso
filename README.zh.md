@@ -1,8 +1,8 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.png"><img src="assets/hero.png" width="100%" alt="kiso — the durable runtime for AI agents"></picture></p>
 
-<p align="center"><b>v0.35.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English edition</a></p>
+<p align="center"><b>v0.36.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English edition</a></p>
 
-**kiso** 是一个可靠续跑的 AI agent 运行时。每一次审批、每一个工具结果、每一条事件都在发生的当下写进磁盘,所以一个被打断、崩溃或被强杀的 agent 会从停下的那一步原样接着跑,审批还在、结果还在。内核是 2,200 行 TypeScript,事件溯源,每个设计决策都随附一份 ADR,写明为什么,以及何时推翻它。
+**kiso** 是一个可靠续跑的 AI agent 运行时。每一次审批、每一个工具结果、每一条事件都在发生的当下写进磁盘,所以一个被打断、崩溃或被强杀的 agent 会**从已提交的持久前缀**接着跑——审批还在、结果还在——而不是从头再来。崩溃时仍在生成中的内容可能被重新生成;结果不明的副作用交给人来裁定。内核**上限**是 2,200 行 TypeScript,事件溯源,每个设计决策都随附一份 ADR,写明为什么,以及何时推翻它。
 
 **kiso-code** 是跑在它上面的编程 agent:日常工具,也是活证明。编辑到一半 `kill -9`,再 `kiso resume`,它会在新进程里接着走完被打断的轨迹。下面的一切从它开始;[SDK](#使用) 那一节是运行时归你用的地方。
 
@@ -21,7 +21,9 @@ kiso                              # 交互会话
 
 有新版本时,每次启动都会在横幅下方提示;`kiso update` 装上它(就是同一条 `npm install -g`,没有别的)。
 
-**首次运行不需要任何密钥。** kiso 会进入无密钥的 faux 模式——一段脚本化的四轮轨迹,让你在花钱之前先看清形状。脚本跑完后会话以非零码退出并提示设置密钥:那个退出是设计,不是崩溃。[登录](#登录)接到真实模型。
+**首次运行不需要任何密钥。** kiso 会进入无密钥的 faux 模式——一段脚本化的四轮轨迹,让你在花钱之前先看清形状。脚本跑完后会话以非零码退出并提示设置密钥:那个退出是设计,不是崩溃。
+
+**接到真实模型是两步,不是一步。** [登录](#登录)把凭据存在某个*提供方*名下;*profile* 才选定用它的那个模型。只有凭据、没有 profile 时 kiso 仍留在 faux 模式——`kiso login` 会说明这一点并打印一个可直接粘贴的例子。profile 的形状见[模型与档位](#模型与档位)。
 
 然后就跟它说话。模型拿到六个工具——读文件、列目录、搜文本、写文件、改文件、shell——其中写入与 shell 位于审批策略之后:运行会**暂停**、发问、持久化裁决,然后续跑同一次运行(ADR-0024)。其余能力由[扩展](#扩展-kiso)补齐。
 
@@ -40,11 +42,15 @@ kiso logout deepseek    # 删除
 
 **已存凭据「拥有」它的 provider。** 存了但不可用就是响亮报错,绝不静默退回环境变量——你用什么登录的,跑的就是什么。没存凭据时 env 层照常工作:单独一个 `ANTHROPIC_API_KEY` 或 `OPENAI_API_KEY` 就够(两个都导出时 OpenAI 胜出),`OPENAI_BASE_URL` 可重定向到任意兼容端点。
 
+**0.36.0 的变化。** 这条「拥有」现在在 **env 选模型的那条路**上也成立。以前只在环境里放 `OPENAI_API_KEY` 或 `ANTHROPIC_API_KEY` 启动 kiso,即使你为某个已识别的原点(`api.openai.com`、`api.deepseek.com`、`api.z.ai`)存过凭据,跑的仍是**环境里那把**——env 胜出是巧合,不是规则。现在已存的那把胜出。`kiso logout <provider>` 删掉它,env 变量重新接管,和提示语一直说的一样。
+
 ## 模型与 effort
 
 `/model` 列出你的 profile,逐条标注可用 / 不可用,并为之后的回合切换会话的适配器;不带参数时打开选择器。每个 profile 的合法 effort 档位都会显示,端点没有的档位在 `/model` 和 run 侧都按名拒绝。
 
 Profile 存在 `~/.kiso/config.json`(ADR-0045)。**凭据永远不在里面**——profile 只**命名**持有密钥的环境变量,或者交给 `kiso login`。优先级:**flag > env > 项目配置 > 用户配置 > 默认**;配置文件坏掉会响亮失败并指名文件。
+
+下面这段是**带注释的 JSONC,不能原样存盘**:配置文件是纯 JSON,写进去之前要把 `//` 注释去掉。`kiso login` 会打印一个不含注释、可直接粘贴的最小 profile。
 
 ```jsonc
 {
@@ -52,7 +58,7 @@ Profile 存在 `~/.kiso/config.json`(ADR-0045)。**凭据永远不在里面**—
   "models": {
     "deepseek": {
       "kind": "openai-compat",               // "openai-compat" | "anthropic" | "openai-responses"
-      "model": "deepseek-v4-flash",
+      "model": "deepseek-flash",                  // the vendor's current id; the legacy alias still works
       "apiKeyEnv": "DEEPSEEK_API_KEY",       // 密钥的 env 变量名——不是密钥本身
       "baseUrl": "https://api.deepseek.com"
     },
@@ -98,13 +104,23 @@ kiso sessions                  列出持久会话及其状态
 
 `/mode` 切换整个会话的审批姿态。五个档位建在扩展链**之上**,内核不变:每档是一个进程内的 `mode:<name>` 扩展,其自动裁决记为 `decidedBy: "mode:<name>"`,审计轨迹会指名是哪一档决定的。
 
-| 档位 | 语义 |
+一档是链条里的**一个声音,不是最终裁决**。链条按 `deny > allow > ask` 合成,所以一个
+「问」的档位会让位给任何「放行」:已保存的「别再问了」规则照样放行,调用不会再问一次。
+因此切到 `manual` **并不是撤销**你已经给出的规则。
+
+| 档位 | 这一档的贡献 |
 |---|---|
 | `default` | 读放行;write/edit/shell 问人;扩展工具归扩展自己管 |
-| `manual` | **每个**工具都问人 |
-| `accept-edits` | `default` 加上 write_file/edit_file 放行 |
-| `plan` | read/list/search/read_skill 放行;其余一律以 `plan mode: read-only` 拒绝 |
+| `manual` | 每个工具都问——已保存的放行规则照样放行 |
+| `accept-edits` | `default` 加上 write_file/edit_file 放行;shell 问人——已保存的放行规则照样放行 |
+| `plan` | read/list/search/read_skill 放行;其余一律以 `plan mode: read-only` **拒绝**——而拒绝是谁也压不过的 |
 | `bypass` | 全部放行——但用户扩展的 `deny` 依然胜出 |
+
+**想被重新问,就删掉那条规则。** 「别再问了」的授权写在
+`~/.kiso/extensions/dont-ask-again.mjs`,这个文件可以人工编辑、人工删除:
+把某个工具从集合里去掉,或者整个删掉文件,下一次调用就会问。
+该文件按设计**只会放行**——永远不会产生 deny 或 ask——所以 mode 与 safe-defaults
+两道护城河的牙齿都还在。
 
 启动时:`--mode <name>` 或 `KISO_MODE=<name>`。状态栏写出当前档位,约束是看得见的,而不是编码在色相里。
 
@@ -140,7 +156,7 @@ kiso sessions                  列出持久会话及其状态
 那条「审批」讲的那一步。`186 tok/s` 是最后一次可测量的调用的解码速率;模型名
 从中间缩短是因为这一行的宽度不够了 —— 事实永远不会被缩。
 
-**键位**(`?` 显示的整张表): `enter` 发送 · `ctrl+j / shift+⏎` 换行 · `@` 文件 · `esc` 停 · `alt+⏎ / ctrl+⏎` 改道 · `/` 命令 · `↑↓` 历史 / 弹出队列 · `ctrl+o` 展开单元 · `ctrl+r` transcript · `tab` 补全 · `?` 这张表 · `alt+←→ / ctrl+←→` 按词移动 · `alt+⌫ / alt+d` 删词 · `ctrl+x` 复制上一条回答 · `ctrl+z / ctrl+y` 撤销 / 重做 · `ctrl+v` 贴剪贴板里的图。面板里,用产品自己的话:`panels: ↑↓ move · ⏎ confirms · digits act on their row · t types`;空格只在光标处选中,永远不提交,所以误按一下不会替你回答。
+**键位**(`?` 显示的整张表): `enter` 发送 · `ctrl+j / shift+⏎` 换行 · `@` 文件 · `esc` 停 · `alt+⏎ / ctrl+⏎` 改道 · `/` 命令 · `↑↓` 历史 / 弹出队列 · `ctrl+o` 展开单元 · `ctrl+r` transcript · `tab` 补全 · `?` 这张表 · `alt+←→ / ctrl+←→` 按词移动 · `alt+⌫ / alt+d` 删词 · `ctrl+x` 复制上一条回答 · `ctrl+z / ctrl+y` 撤销 / 重做 · `ctrl+v` 贴剪贴板里的图(**仅 macOS**;其他平台没有剪贴板读取器,kiso 会直说这一点,而不是声称你的剪贴板是空的——把图片路径写进消息里即可)。面板里,用产品自己的话:`panels: ↑↓ move · ⏎ confirms · digits act on their row · t types`;空格只在光标处选中,永远不提交,所以误按一下不会替你回答。
 
 - **审批是一次选择,不是一张表单。** 暂停时展示完整的调用——整条命令、整份 diff,永不截断——高亮条已经停在 *Yes, run it* 上:看一眼,回车。其中一项授予该工具**持久的**「别再问了」规则,做法是写一个人可读、人可删的扩展文件,删掉那个文件就是撤销路径。另一项让模型给出两三个更窄的版本,代价是一次请求,且只在你按下时才发生。
 - **不可逆的删除会自己说出来。** 四条命令带一行黄色提示,写明什么会没:`rm -rf`(列出目标)、`git checkout --`、`git reset --hard`、`git clean -f`。别的都不带——给每条危险命令都加警告,只会教会眼睛跳过警告。
@@ -166,7 +182,7 @@ Anthropic profile 的提示词缓存**默认关闭**:打开它会改变请求字
 
 > **Agent 会崩溃。副作用不会回滚。kiso 让执行持久化。**
 
-轨迹本身就是持久化工件,所以被杀掉的进程只损失进程本身。崩溃之前,三件事已经在磁盘上:
+轨迹本身就是持久化工件:**已提交的**部分越过进程活下来。崩溃时还在流式输出的回答没有已提交的终止,那一段会被作废,模型从已提交的投影处重新驱动——工作没有丢,但那次请求可能要付两次钱;已经开始、结果却没有记录下来的副作用会被标记为不确定,交给人,而不是自动重试。崩溃之前,三件事已经在磁盘上:
 
 - **会话。** 每次运行都是带 `seq` 编号的追加式 JSONL 流,模型看到的消息是该日志的纯函数(ADR-0002)——一个可读、可重放、可审计的文件。
 - **裁决。** 一次审批是持久化事实,并记录是谁作出的(ADR-0024),无论那是你还是你安装的策略。已裁决的调用永不重问,策略的 `decide` 也不会为它重跑。
@@ -212,11 +228,21 @@ interrupted execution: shell (ex-12) — rerun it? (y)es / (n)o y
 
 一个扩展就是一个普通 `.mjs` 文件——没有 SDK,没有构建步骤——其默认导出提供钩子、工具、审批策略、压缩参数,或一段 systemPrompt 追加。加载是**响亮**的:坏文件或重名会在启动时让进程失败,并指出是哪个文件。级联顺序是**内置 → 用户 → 项目**;用户扩展可以按名遮蔽内置并在 banner 里说出来,项目扩展永远不可以遮蔽内置。官方扩展写在同一份契约上,它们做的事没有任何特权:
 
-- **MCP**——每个 MCP 工具变成 `mcp__<server>__<tool>`,配置在 `~/.kiso/mcp.json`。连不上的 server 是软失败,stdio 子进程的 provider 凭据会被剥离。
+- **MCP**——每个 MCP 工具变成 `mcp__<server>__<tool>`,配置在 `~/.kiso/mcp.json`。连不上的 server 是软失败,stdio 子进程的 provider 凭据会被剥离——具体剥离哪些子进程见下。
 - **子代理**——一个 `delegate` 工具在子 kiso 进程里跑 1-8 个任务,并发 4 个。implementer 在分离的 `git worktree` 里干活,diff 会回来;子进程是普通的持久会话,父进程被杀掉也能恢复。任务可以声明允许写入的路径(代价是失去 shell 工具)和一条父方持有的验收检查——命令永远不由模型提供。
 - **技能**——`~/.kiso/skills` 下带 `SKILL.md` 的目录。frontmatter 变成一行常驻索引,`read_skill` 按需取正文,目录里别的文件在需要时按路径读。
 - **提问**——`ask_user` 一次向你提 1-4 个真问题,每个 2-4 个选项。答案搭在普通的 tool result 上,所以答过的问题永不重问,`kill -9` 也一样。管道会话根本不加载它:没人能回答的问题不该付提示词租金。
 - **任务**——整表替换的待办清单,清单是持久事件而非运行时状态,因此挺得过 `kill -9` 与 `/compact`。0.3.0 起 opt-in:在连续 13 个真实会话里它每次请求都付租,却一次也没被调用。
+
+**哪些子进程会被剥离。** 两个,正是模型能促使其运行的那两个:shell 工具,以及以 stdio
+启动的 MCP server。两者剥掉同一组:那份精确的凭据清单、任何以 `_API_KEY` 或
+`_AUTH_TOKEN` 结尾的变量,以及**你的 profile 在 `apiKeyEnv` 里点名的每一个环境变量**
+——不管它叫什么名字。`mcp.json` 里为某个 server 显式写的 `env` 会覆盖在上面,显式的赢。
+
+有两类**故意不剥离**,与其让上面那句话暗示相反,不如直说。subagent 的子进程**就是
+kiso 自己**——它必须够得到模型,所以继承环境。你亲手启动的程序——`ctrl+g` 的 `$EDITOR`、
+剪贴板助手、登录时打开的浏览器、`tmux show`、`kiso update` 调起的安装命令——继承你的
+环境,和你从 shell 里启动任何东西一样。
 
 项目自己的 `.kiso` 目录是会在你机器上执行的克隆代码,所以它走一道内容摘要信任门:kiso 列出工件、问一次、记下裁决,只有文件变了才重问——并且刻意没有任何可以跳过这一问的环境变量。
 
@@ -260,7 +286,7 @@ for await (const ev of session.run("What is 2+3?")) {
 
 ## 内核规则
 
-> 内核不能超过 **2,200 行**。任何把它推过线的 PR 都会被关掉,无论特性多好。CI 在安装任何依赖之前就强制它。需要更多,就生长一个包。这正是重点。
+> 内核不能超过 **2,200 行**。任何把它推过线的 PR 都会被关掉,无论特性多好。CI 用机器强制它——size 门跑在 `npm run check` 链条里,在 build、typecheck 和测试之后——所以没人能把它挥手放过。需要更多,就生长一个包。这正是重点。
 
 注释不计入——解释可以充分,实现必须精悍。这道门是快照纪律,不是自调节棘轮:它只移动过两次,每次都经裁定修正,而常备的逃生口是**抽取**(ADR-0043)。今天内核停在 **2,139 / 2,200** 行。产品面自 Amendment 8 起走另一套体制——每次 check 打印以供观察,但从不让 check 失败,它们的保护转移到了架构门禁上。
 
@@ -276,7 +302,7 @@ for await (const ev of session.run("What is 2+3?")) {
 | **面** | [sdk.md](docs/sdk.md)——公开面与事件流契约 · [usage.md](docs/usage.md)——规范 usage schema 与价格表 · [request-trace.md](docs/request-trace.md)——请求追踪账本 |
 | **记录** | [status.md](docs/status.md)——逐个面的交付状态 · [docs/adrs/](docs/adrs/README.md)——39 份架构决策记录 · [bench/README.md](bench/README.md)——bench:同一个模型、同一批任务、三个 Agent |
 
-`npm run check` 是完整门链:build → typecheck → tests → size → pack → API 面 → hero → whitespace → CJK → versions → PTY manifest → dist inventory → bench repro → bytes → `git diff --check` → 消费者冒烟层 → demo。**2,988 个测试全绿,412 个文件**(单元 2,350,PTY 638),6 个事故夹具跑在真实运行时上,39 份 ADR。
+CI 先按锁文件安装,然后跑 `npm run check`——这就是完整门链:build → typecheck → tests → size → pack → API 面 → hero → whitespace → CJK → versions → PTY manifest → dist inventory → bench repro → bench tests → bytes → `git diff --check` → 消费者冒烟层 → demo。**3,120 个测试全绿,426 个文件**(单元 2,468,PTY 652),6 个事故夹具跑在真实运行时上,39 份 ADR。
 
 ## 为什么还要做一个
 
