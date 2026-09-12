@@ -36,6 +36,11 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { KisoExtension, Tool, ToolContext, ToolResult } from "@vincemakes/kiso-core";
+// Astra F7: THE strip — one implementation, shared with the shell tool.
+// This file used to carry its own copy with a "keep in sync" comment; the
+// copy never learned the configured secret NAMES, so a custom-named key
+// reached every stdio child while the shell tool was already clean.
+import { strippedShellEnv } from "@vincemakes/kiso-tools-node/secret-env";
 
 /** Default single-call timeout (ms) — an external tool must never hang the
  *  agent forever. */
@@ -110,7 +115,14 @@ function kisoHome(): string {
 	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
 }
 
-export default function createMcpExtension(): KisoExtension {
+/** Astra F7: the names of env vars the configured model profiles
+ *  authenticate with. Only the config knows them, so the CLI declares them;
+ *  a standalone load declares none and gets exactly the pre-F7 behaviour. */
+export interface McpExtensionOptions {
+	readonly secretEnvNames?: readonly string[];
+}
+
+export default function createMcpExtension(opts: McpExtensionOptions = {}): KisoExtension {
 	const config = readConfig(process.env.KISO_MCP_CONFIG ?? join(kisoHome(), "mcp.json"));
 	const status: ServerStatus[] = [];
 	// 0.1.26: the LIVE tools array — the cached tools register immediately;
@@ -137,7 +149,7 @@ export default function createMcpExtension(): KisoExtension {
 	for (const [name, server] of entries) {
 		// The cached tools register IMMEDIATELY — names + schemas known, the
 		// execute waits for the background connect below.
-		const connectPromise = connectServer(name, server, clients);
+		const connectPromise = connectServer(name, server, clients, opts.secretEnvNames);
 		for (const cached of cache[name] ?? []) {
 			tools.push(mapCachedTool(name, cached, () => connectPromise.then(({ client }) => client)));
 		}
@@ -312,7 +324,7 @@ function readConfig(path: string): McpConfig {
  *  has no new UI for it — the tool itself presents it (the cost of zero
  *  kernel changes, stated). */
 
-async function connectServer(name: string, cfg: McpServerConfig, clients: Client[]): Promise<{ tools: Tool[]; stderr?: StderrRing; client: Client }> {
+async function connectServer(name: string, cfg: McpServerConfig, clients: Client[], secretEnvNames: readonly string[] = []): Promise<{ tools: Tool[]; stderr?: StderrRing; client: Client }> {
 	const client = new Client({ name: "kiso-mcp", version: "0.1.7" });
 	clients.push(client);
 	let ring: StderrRing | undefined;
@@ -325,9 +337,10 @@ async function connectServer(name: string, cfg: McpServerConfig, clients: Client
 		// exactOptionalPropertyTypes, so the SDK's interface is asserted.
 		await connectWithTimeout(client, transport);
 	} else {
-		// Provider credentials are stripped (the tools-node #7 list — keep in
-		// sync), then the config's explicit env overlays it (explicit wins).
-		const env = { ...strippedEnv(), ...(cfg.env ?? {}) };
+		// Astra F7: provider credentials are stripped by THE strip — the same
+		// implementation the shell tool calls, told the same declared names —
+		// then the config's explicit env overlays it (explicit wins).
+		const env = { ...strippedShellEnv(process.env, secretEnvNames), ...(cfg.env ?? {}) } as Record<string, string>;
 		// the ergonomics batch A3: the child's stderr is piped (the SDK's own PassThrough —
 		// cross-spawn rejects a raw Writable in the stdio array) into the
 		// ring (tail 4KB), NOT the host terminal — the SDK's "inherit"
@@ -400,25 +413,4 @@ function renderResult(content: readonly unknown[]): string {
 			return `[MCP ${b.type ?? "unknown"} content: ${b.mimeType ?? b.kind ?? "?"}]`;
 		})
 		.join("");
-}
-
-/** Provider credentials stripped from stdio children — the SAME list as
- *  tools-node's shell tool (packages/tools-node/src/index.ts
- *  SHELL_STRIP_EXACT / strippedShellEnv); keep in sync. */
-const STRIP_EXACT = [
-	"ANTHROPIC_API_KEY",
-	"OPENAI_API_KEY",
-	"ANTHROPIC_BASE_URL",
-	"OPENAI_BASE_URL",
-	"ANTHROPIC_MODEL",
-	"OPENAI_MODEL",
-];
-function strippedEnv(): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (const [key, value] of Object.entries(process.env)) {
-		if (STRIP_EXACT.includes(key)) continue;
-		if (key.endsWith("_API_KEY") || key.endsWith("_AUTH_TOKEN")) continue;
-		if (value !== undefined) out[key] = value;
-	}
-	return out;
 }

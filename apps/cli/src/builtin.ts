@@ -35,8 +35,13 @@ export async function builtInLayer(
 	 *  a headless session never pays the rent for a question nobody could
 	 *  answer, and its tool table cannot mention ask_user. */
 	ask?: AskUI,
+	/** Astra F7: the env-var NAMES the configured profiles authenticate with.
+	 *  The mcp extension spawns its stdio children while it is being
+	 *  constructed, so the names have to arrive here — after construction is
+	 *  too late. Only the config knows them; nothing else can. */
+	secretEnvNames: readonly string[] = [],
 ): Promise<readonly KisoExtension[]> {
-	const all = await Promise.all([createMcp(), createSkills(), createSubagent(), ...(ask === undefined ? [] : [createAsk(ask)])]);
+	const all = await Promise.all([createMcp({ secretEnvNames }), createSkills(), createSubagent(), ...(ask === undefined ? [] : [createAsk(ask)])]);
 	const shadowed = all.filter((b) => user.some((u) => u.name === b.name));
 	for (const s of shadowed) {
 		console.error(`[extensions] user extension "${s.name}" shadows the built-in — the built-in is not loaded`);

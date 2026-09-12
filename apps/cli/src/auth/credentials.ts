@@ -72,6 +72,37 @@ const CHATGPT_ORIGIN = "https://chatgpt.com";
 const ANTHROPIC_ORIGIN = "https://api.anthropic.com";
 const OPENAI_ORIGIN = "https://api.openai.com";
 
+/**
+ * Astra F1 (P0) — THE ONE RESOLVED EFFECTIVE ENDPOINT.
+ *
+ * `providerIdOf` read an ABSENT `baseUrl` as the vendor's own endpoint and
+ * returned the vendor id, so `authForProfile` handed back the STORED vendor
+ * key. Correct in isolation. But the adapter factories passed `baseURL` to the
+ * SDK only when the profile NAMED one, and with none named the Anthropic and
+ * OpenAI SDKs read `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` from the
+ * environment themselves — so the saved official key went to whatever the
+ * environment named.
+ *
+ * Two sides disagreed about what "no baseUrl" meant. THE FIX IS TO RESOLVE IT
+ * ONCE, here, and give both sides the same answer: the credential resolver
+ * decides which key may go, the adapter is handed an EXPLICIT url so the SDK
+ * never consults its environment.
+ *
+ * 0.32.2's R1 bound the explicit-URL path. This is the absent-URL path, which
+ * is the common configuration.
+ */
+export const VENDOR_DEFAULT: Readonly<Record<string, string>> = {
+	anthropic: ANTHROPIC_ORIGIN,
+	"openai-compat": `${OPENAI_ORIGIN}/v1`,
+	"openai-responses": `${OPENAI_ORIGIN}/v1`,
+};
+
+/** The endpoint a profile ACTUALLY talks to: its own, or the vendor's
+ *  default for its kind. Never the environment's — that is the defect. */
+export function effectiveBaseUrl(kind: string, baseUrl?: string): string | undefined {
+	return baseUrl ?? VENDOR_DEFAULT[kind];
+}
+
 /** The provider identity a profile's credential is stored under, or null
  *  for an origin nobody recognizes (custom: env var only). */
 export function providerIdOf(kind: string, baseUrl?: string): string | null {
@@ -96,18 +127,21 @@ export function providerIdOf(kind: string, baseUrl?: string): string | null {
 	// The compat kind was already right — an unrecognized origin resolves
 	// to null and the env var pays — so this makes the other two agree with
 	// the one that had the rule.
-	const origin = originOf(baseUrl);
-	if (kind === "anthropic") {
-		if (baseUrl === undefined) return "anthropic"; // the vendor's own default endpoint
-		return origin === ANTHROPIC_ORIGIN ? "anthropic" : null;
-	}
+	//
+	// Astra F1: THE SAME RESOLVER THE ADAPTER USES. An absent baseUrl used to
+	// be a special case here — three `if (baseUrl === undefined) return "<the
+	// vendor>"` branches — and a DIFFERENT special case at the adapter, where
+	// it meant "let the SDK read the environment". Two copies of one rule is
+	// how the two sides came to disagree. Resolved once, this function is left
+	// with the single question it exists to ask: does that origin belong to
+	// the vendor?
+	const origin = originOf(effectiveBaseUrl(kind, baseUrl));
+	if (kind === "anthropic") return origin === ANTHROPIC_ORIGIN ? "anthropic" : null;
 	if (kind === "openai-responses") {
-		if (baseUrl === undefined) return "openai"; // the vendor's own default endpoint
 		if (origin === CHATGPT_ORIGIN) return "chatgpt";
 		return origin === OPENAI_ORIGIN ? "openai" : null;
 	}
 	if (kind !== "openai-compat") return null;
-	if (baseUrl === undefined) return "openai";
 	return origin === null ? null : (ORIGIN_TO_PROVIDER[origin] ?? null);
 }
 

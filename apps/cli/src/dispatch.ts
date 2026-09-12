@@ -11,6 +11,7 @@ import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { agentModel, body, bodyLog, codingToolOptions, kisoHome, configModels, dock, lastBinding, readContextLedger, sessionsDir, setAgentModel, setCurrentModelName, setModelChoice, type LineInput , setLastBinding } from "./state.js";
+import { adapterOptionsFor } from "./auth/adapter-options.js";
 import { authForProfile, directWriteProfile, profileAvailable, unavailableReason, type ModelProfile } from "./config.js";
 import { shellTool } from "@vincemakes/kiso-tools-node";
 import { join } from "node:path";
@@ -74,7 +75,6 @@ function signInNote(p: ModelProfile): string {
 	}
 	return p.apiKeyEnv ?? "no key";
 }
-import { oauthTokenThunk } from "./auth/token.js";
 
 /** Everything dispatch touches that chat() owns. */
 export interface DispatchCtx {
@@ -635,18 +635,11 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 						);
 					} else {
 						const auth = authForProfile(profName, profile);
-						const adapter = await buildAdapter(profile.kind, {
-							// PH-1c (PH-F19): a keyless profile = an unauthenticated
-							// endpoint — the placeholder satisfies the SDK's ctor.
-							// OR-1: an OAuth profile passes a token thunk instead
-							// — there is no key, and the adapter re-resolves the
-							// token per request.
-							...(auth.type === "oauth"
-								? { oauth: oauthTokenThunk(auth.providerId), ...(ctx.session.id !== undefined ? { promptCacheKey: ctx.session.id } : {}) }
-								: { apiKey: auth.apiKey }),
-							...(profile.baseUrl !== undefined ? { baseUrl: profile.baseUrl } : {}),
-							...(profile.promptCaching !== undefined ? { promptCaching: profile.promptCaching } : {}),
-						});
+						// Astra F1 (P0): the wire config is built in ONE place
+						// (auth/adapter-options.ts) — this site and the startup
+						// site were the same spread written twice, which is the
+						// finding's own defect class.
+						const adapter = await buildAdapter(profile.kind, adapterOptionsFor(profile, auth, ctx.session.id));
 						// PH-1a (finding PH-F8, P0): the switch is ATOMIC —
 						// adapter, model id, and provider route move together.
 						// setAdapter alone left the session's frozen config

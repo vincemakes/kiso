@@ -29,6 +29,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 // WR-1/WR-1A — the revision-guard primitives (unit-tested in wr1a-coda):
+import { strippedShellEnv } from "./secret-env.js";
 import { contentRevision, normalizeRevision, postEffectEscape, precondition, publishNewFile, revalidateBeforeRename } from "./wr1.js";
 
 /**
@@ -238,6 +239,12 @@ export interface WorkspaceToolsOptions {
 	 * name — explicit beats the heuristic, as it does for MCP servers.
 	 */
 	readonly shellEnv?: "inherit" | Readonly<Record<string, string>>;
+	/** Astra F7: the env var NAMES the configured profiles authenticate with.
+	 *  The strip's suffix rules (`_API_KEY`, `_AUTH_TOKEN`) cannot see a name
+	 *  like `REVIEW_PROVIDER_TOKEN`, and only the config knows which names are
+	 *  secrets — so it says so. Ignored when `shellEnv` is "inherit", which is
+	 *  an explicit opt-in to the whole environment. */
+	readonly secretEnvNames?: readonly string[];
 	/**
 	 * DC-54 — the bounds that keep a tool call finite. Every field is
 	 * optional and defaults to the constant beside it; a host embedding
@@ -1041,31 +1048,11 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 	});
 }
 
-/**
- * bootstrap #3 (finding #7): the explicit credential list stripped from shell
- * children — the agent's own provider surface (both families' keys, base
- * URLs, and model choices) plus the generic API-key / auth-token patterns
- * that cover other providers. Everything else in the environment passes
- * through untouched.
- */
-const SHELL_STRIP_EXACT = new Set([
-	"ANTHROPIC_API_KEY",
-	"OPENAI_API_KEY",
-	"ANTHROPIC_BASE_URL",
-	"OPENAI_BASE_URL",
-	"ANTHROPIC_MODEL",
-	"OPENAI_MODEL",
-]);
-
-function strippedShellEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-	const out: NodeJS.ProcessEnv = {};
-	for (const [key, value] of Object.entries(env)) {
-		if (SHELL_STRIP_EXACT.has(key)) continue;
-		if (key.endsWith("_API_KEY") || key.endsWith("_AUTH_TOKEN")) continue;
-		if (value !== undefined) out[key] = value;
-	}
-	return out;
-}
+// Astra F7: the strip is ONE implementation, shared with the MCP
+// extension's stdio children (./secret-env.ts). It used to live here
+// with a hand-kept copy over there; the copy never learned the
+// declared names, which is how MCP children kept leaking.
+export { SHELL_STRIP_EXACT, strippedShellEnv } from "./secret-env.js";
 
 export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; timeoutMs?: number }> {
 	return defineTool<{ command: string; timeoutMs?: number }>({
@@ -1105,7 +1092,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 					env:
 						opts.shellEnv === "inherit"
 							? process.env
-							: { ...strippedShellEnv(process.env), ...(opts.shellEnv ?? {}) },
+							: { ...strippedShellEnv(process.env, opts.secretEnvNames), ...(opts.shellEnv ?? {}) },
 				});
 				let stdout = "";
 				let stderr = "";

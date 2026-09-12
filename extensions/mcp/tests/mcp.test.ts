@@ -46,7 +46,7 @@ async function settled(ext: KisoExtension, server: string): Promise<void> {
 	throw new Error(`mcp server ${server} never settled; tools: ${ext.tools?.map((t) => t.name).join(", ")}`);
 }
 
-async function extWith(config: Record<string, unknown> | null): Promise<KisoExtension> {
+async function extWith(config: Record<string, unknown> | null, secretEnvNames?: readonly string[]): Promise<KisoExtension> {
 	const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-"));
 	const path = join(dir, "mcp.json");
 	if (config !== null) writeFileSync(path, JSON.stringify(config), "utf8");
@@ -55,7 +55,7 @@ async function extWith(config: Record<string, unknown> | null): Promise<KisoExte
 	const prevHome = process.env.KISO_HOME;
 	process.env.KISO_HOME = join(dir, "home");
 	try {
-		const ext = await createMcpExtension();
+		const ext = await createMcpExtension(secretEnvNames === undefined ? undefined : { secretEnvNames });
 		if (config !== null && (config.mcpServers as Record<string, unknown> | undefined) !== undefined) {
 			for (const name of Object.keys((config as { mcpServers: Record<string, unknown> }).mcpServers)) {
 				await settled(ext, name);
@@ -138,6 +138,49 @@ describe("③ MCP bridge: environment", () => {
 			delete process.env.OPENAI_API_KEY;
 			delete process.env.ANTHROPIC_BASE_URL;
 			delete process.env.GLM_AUTH_TOKEN;
+		}
+	}, 30_000);
+
+	/**
+	 * Astra F7 — A DECLARED apiKeyEnv NAME NEVER REACHES A STDIO CHILD.
+	 *
+	 * ④ above is the gate that stayed green on the defect: it tests the two
+	 * suffix families and the exact list, which is the case that MOTIVATED
+	 * the rule, not the rule's whole surface. A profile's `apiKeyEnv` can be
+	 * ANY name — `REVIEW_PROVIDER_TOKEN` ends in neither suffix and is on no
+	 * list — and this extension carried its own copy of the strip that could
+	 * not be told about it. The shell tool was fixed first, and for a while
+	 * the claim said this child was covered too. It was not.
+	 */
+	it("④b a DECLARED secret name is stripped from the stdio child (F7)", async () => {
+		process.env.REVIEW_PROVIDER_TOKEN = "sk-SECRET-CUSTOM-NAME";
+		process.env.PLAIN_VAR = "not-a-secret";
+		try {
+			const ext = await extWith({ mcpServers: { fake: fakeConfig() } }, ["REVIEW_PROVIDER_TOKEN"]);
+			const probe = tool(ext, "mcp__fake__env_probe");
+			const run = async (name: string): Promise<string> => String((await probe.execute({ name }, ctx)).content);
+			expect(await run("REVIEW_PROVIDER_TOKEN")).toBe("");
+			// The strip removes what is declared and what matches — nothing else.
+			expect(await run("PLAIN_VAR")).toBe("not-a-secret");
+		} finally {
+			delete process.env.REVIEW_PROVIDER_TOKEN;
+			delete process.env.PLAIN_VAR;
+		}
+	}, 30_000);
+
+	it("④c declaring nothing is exactly the pre-F7 behaviour — a standalone load is not weakened", async () => {
+		process.env.OPENAI_API_KEY = "sk-suffix";
+		process.env.REVIEW_PROVIDER_TOKEN = "sk-SECRET-CUSTOM-NAME";
+		try {
+			const ext = await extWith({ mcpServers: { fake: fakeConfig() } });
+			const probe = tool(ext, "mcp__fake__env_probe");
+			const run = async (name: string): Promise<string> => String((await probe.execute({ name }, ctx)).content);
+			expect(await run("OPENAI_API_KEY")).toBe("");
+			// Undeclared and unmatched: the host never said this one was a secret.
+			expect(await run("REVIEW_PROVIDER_TOKEN")).toBe("sk-SECRET-CUSTOM-NAME");
+		} finally {
+			delete process.env.OPENAI_API_KEY;
+			delete process.env.REVIEW_PROVIDER_TOKEN;
 		}
 	}, 30_000);
 });
