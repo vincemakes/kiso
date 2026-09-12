@@ -46,14 +46,13 @@ import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import { MODES, getMode, modeExtensions, modeFromEnv, modeSystemPrompt, setMode } from "./mode.js";
 import { breakerExtension } from "./breaker.js";
 import { builtInLayer } from "./builtin.js";
-import { agentModel, atFiles, body, bodyLog, codingToolOptions, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, currentAgentExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput , lastBinding , acceptDrift, setAcceptDrift } from "./state.js";
+import { agentModel, atFiles, body, bodyLog, codingToolOptions, kisoHome, builtInExtensions, currentFaux, dock, extensionsDir, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, currentAgentExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setExtensionLists, setMergedConfig, setModelChoice, setSessionStore, secretEnvNamesOf, userExtensions, VERSION, type LineInput , lastBinding , acceptDrift, setAcceptDrift } from "./state.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { chat, contextWindowTokens, displayCtxRatio, statusModelLabel } from "./chat.js";
-import { effectiveBaseUrl } from "./auth/credentials.js";
+import { adapterOptionsFor } from "./auth/adapter-options.js";
 import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveAutoCompact, resolveContextWindow, resolveModel } from "./config.js";
-import { oauthTokenThunk } from "./auth/token.js";
 import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
 import { tmuxMouseHint } from "./tmux-hint.js";
 import { resume } from "./resume.js";
@@ -696,7 +695,15 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 	// the panel bridge is the argument, and a non-TTY session has none to
 	// give. A piped run's composed tool table therefore cannot contain
 	// ask_user (T-Q3: the bench's structural byte-identity proof).
-	const builtIn = await builtInLayer(user, proj, input !== undefined && process.stdin.isTTY ? askUi(input) : undefined);
+	// Astra F7: the config is READ here — a pure read, its setters still run
+	// below with the rest of merge round B — because the mcp extension spawns
+	// its stdio children while it is being constructed, and the strip needs
+	// the configured secret names by then.
+	const userCfg = loadUserConfig();
+	const projectCfg = loadProjectConfig(process.cwd(), project !== null);
+	const merged = mergeConfigs(userCfg, projectCfg);
+	const secretEnvNames = secretEnvNamesOf(merged.models ?? {});
+	const builtIn = await builtInLayer(user, proj, input !== undefined && process.stdin.isTTY ? askUi(input) : undefined, secretEnvNames);
 	setExtensionLists(builtIn, user, proj, [...builtIn, ...user, ...proj]);
 
 	// merge round B — the config surface: user config + (trusted) project config,
@@ -704,9 +711,6 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 	// imports provider SDKs directly — the runtime's lazy provider
 	// resolution owns them (a config profile only ever NAMES an env var for
 	// its key; the key itself never sits in a config file).
-	const userCfg = loadUserConfig();
-	const projectCfg = loadProjectConfig(process.cwd(), project !== null);
-	const merged = mergeConfigs(userCfg, projectCfg);
 	setMergedConfig(merged);
 	// DT-1a: what a delegated task may NAME — the configured checks and the
 	// model profiles — handed to the (in-process) subagent extension through
@@ -778,29 +782,22 @@ async function makeAgent(sessionId: string | undefined, input?: LineInput, model
 		...(resolved !== null
 			? {
 					provider: resolved.profile.kind,
-					// OR-1: exactly one sign-in shape reaches the adapter. An
-					// OAuth profile has no key to pass — it passes the thunk
-					// the adapter re-resolves per request instead.
-					...(resolved.oauthProviderId !== undefined
-						? { oauth: oauthTokenThunk(resolved.oauthProviderId) }
-						: { apiKey: resolved.apiKey ?? "none" }),
-					// OR-1: the ChatGPT backend's cache lane is the SESSION —
-					// one conversation's requests share a key, different
-					// conversations never do. The one entry point that hands
-					// no session id is `kiso sessions`, a read-only listing
-					// that streams nothing, so its absence costs no cache.
-					...(sessionId !== undefined ? { promptCacheKey: sessionId } : {}),
-					// Astra F1 (P0): the STARTUP adapter, always explicit. This is the
-					// path every launch takes, and it had the same defect as the
-					// /model path: no url passed meant the SDK read
-					// ANTHROPIC_BASE_URL / OPENAI_BASE_URL itself while
-					// authForProfile had already chosen the STORED VENDOR KEY for
-					// the vendor's own endpoint.
-					...(effectiveBaseUrl(resolved.profile.kind, resolved.profile.baseUrl) !== undefined
-						? { baseUrl: effectiveBaseUrl(resolved.profile.kind, resolved.profile.baseUrl) as string }
-						: {}),
-					...(resolved.profile.promptCaching !== undefined ? { promptCaching: resolved.profile.promptCaching } : {}),
-					// LT-1: the profile's stream watchdog bound, if it states one
+					// Astra F1 (P0): the wire config is built in ONE place
+					// (auth/adapter-options.ts) — credential shape, the ALWAYS
+					// EXPLICIT endpoint, the session's cache key and the
+					// profile's caching flag. This site and the `/model` site
+					// were the same spread written twice.
+					...adapterOptionsFor(
+						resolved.profile,
+						resolved.oauthProviderId !== undefined
+							? { type: "oauth", providerId: resolved.oauthProviderId }
+							: { type: "api-key", apiKey: resolved.apiKey ?? "none" },
+						sessionId,
+					),
+					// LT-1: the profile's stream watchdog bound, if it states one.
+					// NOT an adapter option — an agent-definition field the
+					// runtime reads — so it stays here rather than moving into
+					// adapterOptionsFor.
 					...(resolved.profile.streamIdleMs !== undefined ? { streamIdleMs: resolved.profile.streamIdleMs } : {}),
 				}
 			: { adapter: createFauxProvider(readFauxScript().slice(fauxSkipTurns)) }),

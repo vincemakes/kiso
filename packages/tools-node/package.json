@@ -8,6 +8,10 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"default": "./dist/index.js"
+		},
+		"./secret-env": {
+			"types": "./dist/secret-env.d.ts",
+			"default": "./dist/secret-env.js"
 		}
 	},
 	"files": [

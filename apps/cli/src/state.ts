@@ -26,19 +26,30 @@ export function kisoHome(): string {
  *  is decided. The session's own tool set and the `!` command's runner both
  *  need it, and two copies of a ruling-bearing literal is how a later DC-49
  *  amendment reaches one caller and not the other. */
+/**
+ * Astra F7 — every configured profile's `apiKeyEnv` NAME is a secret name.
+ * The strip's suffix rules cannot see `REVIEW_PROVIDER_TOKEN`, and only the
+ * config knows which names are keys, so the config says so. ONE derivation:
+ * the shell tool reads it through codingToolOptions, and startup reads it
+ * directly for the mcp extension, which spawns its stdio children before
+ * these state setters have run.
+ */
+export function secretEnvNamesOf(models: Readonly<Record<string, unknown>>): readonly string[] {
+	return [
+		...new Set(
+			Object.values(models)
+				.map((p) => (p as { readonly apiKeyEnv?: string }).apiKeyEnv)
+				.filter((n): n is string => typeof n === "string" && n.length > 0),
+		),
+	];
+}
+
 export function codingToolOptions(): {
 	readonly workspaceRoot: string;
 	readonly excludeRoots: readonly string[];
 	readonly secretEnvNames: readonly string[];
 } {
-	// Astra F7: every configured profile's apiKeyEnv NAME is a secret name.
-	// The strip's suffix rules cannot see `REVIEW_PROVIDER_TOKEN`, and only
-	// the config knows which names are keys — so it says so here, once, for
-	// every child the CLI starts.
-	const names = Object.values(configModels)
-		.map((p) => (p as { readonly apiKeyEnv?: string }).apiKeyEnv)
-		.filter((n): n is string => typeof n === "string" && n.length > 0);
-	return { workspaceRoot: process.cwd(), excludeRoots: [kisoHome()], secretEnvNames: [...new Set(names)] };
+	return { workspaceRoot: process.cwd(), excludeRoots: [kisoHome()], secretEnvNames: secretEnvNamesOf(configModels) };
 }
 
 export function sessionsDir(): string {

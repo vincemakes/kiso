@@ -380,11 +380,14 @@ export function resolveModel(modelFlag: string | undefined, merged: KisoConfig):
 			apiKeyEnv: "OPENAI_API_KEY",
 		} as ModelProfile;
 		const auth = authForProfile(process.env.OPENAI_MODEL ?? "gpt-4o", profile);
-		return {
-			name: process.env.OPENAI_MODEL ?? "gpt-4o",
-			profile,
-			apiKey: auth.type === "api-key" ? auth.apiKey : process.env.OPENAI_API_KEY,
-		};
+		// The same total shape the config route returns (resolveProfile).
+		// The `oauth` arm is unreachable from HERE — authForProfile returns
+		// oauth only for an openai-responses profile and this route builds
+		// an openai-compat one — but writing the union out beats a fallback
+		// to the raw env var, which is the very disagreement F2 removes.
+		return auth.type === "oauth"
+			? { name: process.env.OPENAI_MODEL ?? "gpt-4o", profile, oauthProviderId: auth.providerId }
+			: { name: process.env.OPENAI_MODEL ?? "gpt-4o", profile, apiKey: auth.apiKey };
 	}
 	if (process.env.ANTHROPIC_API_KEY !== undefined) {
 		// Astra F2, the sibling. Same rule, same reason.
@@ -397,11 +400,14 @@ export function resolveModel(modelFlag: string | undefined, merged: KisoConfig):
 			...(process.env.ANTHROPIC_BASE_URL !== undefined ? { baseUrl: process.env.ANTHROPIC_BASE_URL } : {}),
 		} as ModelProfile;
 		const auth = authForProfile(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5", profile);
-		return {
-			name: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5",
-			profile,
-			apiKey: auth.type === "api-key" ? auth.apiKey : process.env.ANTHROPIC_API_KEY,
-		};
+		// The same total shape the config route returns (resolveProfile).
+		// The `oauth` arm is unreachable from HERE — authForProfile returns
+		// oauth only for an openai-responses profile and this route builds
+		// an anthropic one — but writing the union out beats a fallback
+		// to the raw env var, which is the very disagreement F2 removes.
+		return auth.type === "oauth"
+			? { name: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5", profile, oauthProviderId: auth.providerId }
+			: { name: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5", profile, apiKey: auth.apiKey };
 	}
 	// config (project wins over user) names a model; default is faux.
 	const configured = merged.model;

@@ -29,6 +29,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 // WR-1/WR-1A — the revision-guard primitives (unit-tested in wr1a-coda):
+import { strippedShellEnv } from "./secret-env.js";
 import { contentRevision, normalizeRevision, postEffectEscape, precondition, publishNewFile, revalidateBeforeRename } from "./wr1.js";
 
 /**
@@ -1047,37 +1048,11 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 	});
 }
 
-/**
- * bootstrap #3 (finding #7): the explicit credential list stripped from shell
- * children — the agent's own provider surface (both families' keys, base
- * URLs, and model choices) plus the generic API-key / auth-token patterns
- * that cover other providers. Everything else in the environment passes
- * through untouched.
- */
-const SHELL_STRIP_EXACT = new Set([
-	"ANTHROPIC_API_KEY",
-	"OPENAI_API_KEY",
-	"ANTHROPIC_BASE_URL",
-	"OPENAI_BASE_URL",
-	"ANTHROPIC_MODEL",
-	"OPENAI_MODEL",
-]);
-
-function strippedShellEnv(env: NodeJS.ProcessEnv, secretNames: readonly string[] = []): NodeJS.ProcessEnv {
-	// Astra F7: the declared names join the suffix rules. A profile's
-	// apiKeyEnv can be anything — `REVIEW_PROVIDER_TOKEN` ends in neither
-	// suffix — so the key a profile authenticates with reached every shell
-	// command and every MCP stdio child.
-	const declared = new Set(secretNames);
-	const out: NodeJS.ProcessEnv = {};
-	for (const [key, value] of Object.entries(env)) {
-		if (SHELL_STRIP_EXACT.has(key)) continue;
-		if (declared.has(key)) continue;
-		if (key.endsWith("_API_KEY") || key.endsWith("_AUTH_TOKEN")) continue;
-		if (value !== undefined) out[key] = value;
-	}
-	return out;
-}
+// Astra F7: the strip is ONE implementation, shared with the MCP
+// extension's stdio children (./secret-env.ts). It used to live here
+// with a hand-kept copy over there; the copy never learned the
+// declared names, which is how MCP children kept leaking.
+export { SHELL_STRIP_EXACT, strippedShellEnv } from "./secret-env.js";
 
 export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; timeoutMs?: number }> {
 	return defineTool<{ command: string; timeoutMs?: number }>({
