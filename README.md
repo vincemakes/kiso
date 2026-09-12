@@ -4,10 +4,12 @@
 
 **kiso** is a durable runtime for AI agents. Every
 approval, tool result and event is written to disk as it happens, so an agent
-that is interrupted, crashes or is killed mid-task resumes exactly where it
-stopped, with the same approvals and the same results. The kernel is 2,200
-lines of TypeScript, event-sourced, and every design decision ships with an
-ADR that says why, and when to overturn it.
+that is interrupted, crashes or is killed mid-task resumes **from the durable
+committed prefix** — the same approvals, the same results — rather than
+starting over. Generation still in flight when it died may be regenerated, and
+a side effect whose outcome is ambiguous is handed to a human to rule on. The
+kernel is capped at 2,200 lines of TypeScript, event-sourced, and every design
+decision ships with an ADR that says why, and when to overturn it.
 
 **kiso-code** is the coding agent built on it: the daily tool, and the proof.
 `kill -9` it in the middle of an edit, run `kiso resume`, and it continues the
@@ -222,16 +224,18 @@ newline · `@` files · `esc` stop · `alt+⏎ / ctrl+⏎` redirect · `/` comma
 `↑↓` history / queue pop · `ctrl+o` expand cells · `ctrl+r` transcript · `tab`
 complete · `?` this sheet · `alt+←→ / ctrl+←→` word motion · `alt+⌫ / alt+d`
 delete word · `ctrl+x` copy the last answer · `ctrl+z / ctrl+y` undo / redo ·
-`ctrl+v` attach a clipboard image.
+`ctrl+v` attach a clipboard image (macOS).
 In a panel, in the product's own words: `panels: ↑↓ move · ⏎ confirms · digits
 act on their row · t types`. Space selects at the cursor and never commits, so
 a stray one cannot answer anything.
 
 - **Images.** `ctrl+v` attaches the image on your clipboard — the terminal's
   own paste only ever carries text, so the obvious gesture cannot reach it.
-  A path in your message works too, which is what dragging a file into the
-  window leaves behind: `look at shot.png` sends the picture with the words,
-  in place. PNG, JPEG, GIF and WebP, identified by content rather than by
+  **That gesture is macOS-only**: elsewhere there is no clipboard reader, so
+  kiso says the gesture is macOS-only rather than claiming your clipboard is
+  empty. Use a path instead, which is also what dragging a file into the
+  window leaves behind and works on both: `look at shot.png` sends the picture with the words, in
+  place. PNG, JPEG, GIF and WebP, identified by content rather than by
   extension, up to 5 MB.
 - **The palette follows the terminal.** kiso asks it for its colour scheme and
   its background, and picks dark or light from the answer; a terminal that
@@ -284,8 +288,12 @@ model, same tasks, three agents, protocol and honest footnotes included — see
 
 > **Agents crash. Side effects don't rewind. kiso makes execution durable.**
 
-The trajectory is the durable artifact, so a killed process costs nothing but
-the process. Three facts are on disk before the crash:
+The trajectory is the durable artifact: what was COMMITTED survives the
+process. An answer still streaming when it died has no committed stop, so that
+suffix is abandoned and the model is driven again from the committed
+projection — the work is not lost, but the request may be paid for twice, and
+an effect that started without a recorded outcome is marked uncertain for a
+human rather than retried. Three facts are on disk before the crash:
 
 - **The session.** Every run is an append-only JSONL stream of `seq`-numbered
   events, and the messages the model sees are a pure function of that log

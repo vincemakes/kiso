@@ -1391,7 +1391,14 @@ async function main(): Promise<void> {
 	input.onClipboardPaste?.(() => {
 		const shot = clipboardImage(tmpdir());
 		if (shot === null) {
-			bodyLog("[no image on the clipboard — ctrl+V attaches one; a file dragged into the window works too]");
+			// Astra F8: on a platform with no clipboard reader kiso never
+			// LOOKED, so "no image on the clipboard" blamed the clipboard for
+			// a limit of the build. Say which of the two it is.
+			bodyLog(
+				process.platform === "darwin"
+					? "[no image on the clipboard — ctrl+V attaches one; a file dragged into the window works too]"
+					: "[clipboard images are macOS-only — put the image's path in your message instead; a file dragged into the window leaves one]",
+			);
 			return null;
 		}
 		return shot;
