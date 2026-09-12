@@ -1,5 +1,6 @@
 {
 	"pty": [
+		"apps/cli/tests/astra-f3-login-next-step.test.ts",
 		"apps/cli/tests/astra-f1-endpoint-e2e.test.ts",
 		"apps/cli/tests/at-files.test.ts",
 		"apps/cli/tests/auth-cli.test.ts",

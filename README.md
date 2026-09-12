@@ -35,7 +35,13 @@ installs it (the same `npm install -g`, nothing more).
 **The first run needs no key.** kiso opens in a keyless faux mode — a scripted
 four-round trajectory, so the shape is visible before anything is spent. When
 the script runs out the session exits non-zero with a set-a-key message: that
-exit is the design, not a crash. [Sign in](#sign-in) to reach a real model.
+exit is the design, not a crash.
+
+**Two steps reach a real model, not one.** [Sign in](#sign-in) stores a
+credential under a *provider*; a *profile* selects the model that uses it. With
+a credential and no profile kiso stays in faux mode — `kiso login` says so and
+prints an example. [Models and effort](#models-and-effort) has the profile
+shapes.
 
 Then talk to it. The model gets six tools — read file, list directory, search
 text, write file, edit file, shell — and writes and shell sit behind the
@@ -80,6 +86,10 @@ Profiles live in `~/.kiso/config.json` (ADR-0045). **Credentials are never
 inside it** — a profile only NAMES the environment variable holding its key, or
 leans on `kiso login`. Precedence: **flags > env > project config > user config
 > default**, and a broken config file fails loudly with the file named.
+
+The block below is **annotated JSONC, not a file you can save as-is**: the file
+is plain JSON, so strip the `//` comments before writing it. `kiso login` prints
+a comment-free minimal profile you can paste directly.
 
 ```jsonc
 {

@@ -107,6 +107,49 @@ function streamIdleFromEnv(): number | undefined {
  *  progress and prompts, so no editor may hold stdin while it runs. */
 const CREDENTIAL_COMMANDS: ReadonlySet<string> = new Set(["login", "logout", "auth", "update"]);
 
+/**
+ * Astra F3 — A STORED CREDENTIAL IS NOT A SELECTED MODEL.
+ *
+ * `kiso login` exits 0, says the key is stored, and stops. With no profile
+ * the very next command still announces the demo and runs the scripted
+ * listing, so a person who has just signed in reasonably concludes that
+ * sign-in failed or is being ignored. Nothing was broken: a credential is
+ * stored under a PROVIDER, and a PROFILE is what selects the model that
+ * uses it. The gap was that nobody said so at the one moment it matters.
+ *
+ * These are onboarding EXAMPLES, not a resolution path — nothing here ever
+ * decides where a credential goes (that is `effectiveBaseUrl` and
+ * `providerIdOf`, and it stays there).
+ */
+const PROFILE_EXAMPLE: Readonly<Record<string, string>> = {
+	anthropic: '{"model":"claude","models":{"claude":{"kind":"anthropic","model":"claude-sonnet-5"}}}',
+	openai: '{"model":"gpt","models":{"gpt":{"kind":"openai-compat","model":"gpt-4o"}}}',
+	chatgpt: '{"model":"codex","models":{"codex":{"kind":"openai-responses","model":"gpt-5-codex","baseUrl":"https://chatgpt.com/backend-api/codex"}}}',
+	deepseek: '{"model":"deepseek","models":{"deepseek":{"kind":"openai-compat","model":"deepseek-flash","baseUrl":"https://api.deepseek.com"}}}',
+	zai: '{"model":"glm","models":{"glm":{"kind":"openai-compat","model":"glm-5.3-flash","baseUrl":"https://api.z.ai"}}}',
+};
+
+/** The line a fresh sign-in needs, or nothing when profiles already exist.
+ *  Read from the USER config alone: a credential command resolves no
+ *  project trust, and profiles live in the user's own file. */
+function nextStepAfterLogin(provider: string): string {
+	let hasProfile = false;
+	try {
+		hasProfile = Object.keys(loadUserConfig()?.models ?? {}).length > 0;
+	} catch {
+		// A config that cannot be read is its own loud error elsewhere; here
+		// it only means we cannot prove a profile exists, so we say the step.
+	}
+	if (hasProfile) return "\nkiso already has profiles — `/model` in a session lists them and switches.\n";
+	const example = PROFILE_EXAMPLE[provider];
+	return (
+		`\nThe key is stored, but nothing selects a model yet: a PROFILE does that,` +
+		` and without one kiso stays in the keyless faux mode.\nPut one in ${join(kisoHome(), "config.json")}` +
+		(example === undefined ? ":\n" : `, for example:\n\n  ${example}\n`) +
+		`\nThen run kiso. \`/model\` lists your profiles and switches between them.\n`
+	);
+}
+
 /** OR-9: the one install command the README gives, which `kiso update`
  *  runs and the failure message names. */
 const INSTALL_COMMAND = ["npm", "i", "-g", "@vincemakes/kiso-code@latest"] as const;
@@ -1510,6 +1553,7 @@ async function main(): Promise<void> {
 						});
 						setCredential(provider, cred);
 						process.stdout.write(`signed in to ${provider} (${chatgptFlow.label}) — account ${cred.accountId ?? "?"}, expires ${new Date(cred.expires).toISOString()} — stored in ${authPath()}\n`);
+						process.stdout.write(nextStepAfterLogin(provider));
 					} finally {
 						rl.close();
 					}
@@ -1519,6 +1563,7 @@ async function main(): Promise<void> {
 				if (key === "") throw new CliUsageError(`kiso login ${provider}: no key given`);
 				setCredential(provider, { type: "api-key", key, savedAt: Date.now() });
 				process.stdout.write(`signed in to ${provider} with an API key (${maskSecret(key)}) — stored in ${authPath()}\n`);
+				process.stdout.write(nextStepAfterLogin(provider));
 				break;
 			}
 			case "update": {
