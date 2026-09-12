@@ -58,8 +58,25 @@ Speak English.`);
 	it("vocabulary lines are filtered to the ACTIVE tool set — no shell, no shell line", () => {
 		const table = composeToolTable(registryWith([reader]));
 		expect(table).toContain("read files with read_file");
-		expect(table).not.toContain("reserve shell");
+		// PR-1: the negative pin now uses the wording the product HAS. It read
+		// `not.toContain("reserve shell")` — a needle on a string that no longer
+		// exists anywhere, so it passed whatever the table said. A negative pin
+		// whose needle cannot appear proves nothing.
+		expect(table).not.toContain("shell for what the file tools cannot do");
 		expect(table).not.toContain("search with search_text");
+	});
+
+	it("PR-1: the shell line says what shell is FOR, in its own words", () => {
+		const sh = defineTool({
+			name: "shell",
+			description: "irrelevant here — the schema carries it",
+			parameters: { type: "object" },
+			promptSnippet: "shell — any command the task needs (builds, tests, git, curl, system queries)",
+			execute: async () => ({ content: "", isError: false }),
+		});
+		const table = composeToolTable(registryWith([reader, sh]));
+		expect(table).toContain("shell for what the file tools cannot do: commands, git, the network, the system");
+		expect(table).toContain("shell — any command the task needs (builds, tests, git, curl, system queries)");
 	});
 
 	it("a tool without a snippet contributes nothing — the description stays in the schema", () => {
