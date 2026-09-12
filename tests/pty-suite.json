@@ -145,7 +145,11 @@
 	"exempt": [
 		{
 			"file": "packages/tui/tests/dc48-invariant-fallback.test.ts",
-			"reason": "spawns nothing and drives the compositor in process. The classifier reads SOURCE TEXT, and this file's comments name isolated-cli.mjs to say where KISO_INVARIANTS=throw is set for PTY children — prose about a helper, not an import of one. Verified: no child_process, no spawn, no pty helper."
+			"reason": "spawns nothing and drives the compositor in process. The classifier reads SOURCE TEXT, and this file's comments name isolated-cli.mjs to say where KISO_INVARIANTS=throw is set for PTY children \u2014 prose about a helper, not an import of one. Verified: no child_process, no spawn, no pty helper."
+		},
+		{
+			"file": "apps/cli/tests/pr1d-clause-pins.test.ts",
+			"reason": "spawns nothing. It imports SYSTEM_PROMPT and shellTool to read the five MEASURED clause texts and assert the facts each one must state. The classifier reads SOURCE TEXT and tools-node is a module that can run commands when EXECUTED - this test only reads a tool's description and promptSnippet and never calls execute. Verified: no child_process, no spawn, no pty helper."
 		}
 	]
 }

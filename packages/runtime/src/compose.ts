@@ -20,7 +20,7 @@ const TOOL_RULES: ReadonlyArray<{ readonly tool: string; readonly line: string }
 	{ tool: "read_file", line: "read files with read_file, never shell cat/head/tail" },
 	{ tool: "search_text", line: "search with search_text, never shell grep/rg" },
 	{ tool: "list_dir", line: "list with list_dir, never ls" },
-	{ tool: "shell", line: "reserve shell for real system commands" },
+	{ tool: "shell", line: "shell for what the file tools cannot do: commands, git, the network, the system" },
 ];
 
 /** The table, or "" when the registry is empty (no vocabulary, no tools). */
