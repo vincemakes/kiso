@@ -56,7 +56,7 @@ Profile 存在 `~/.kiso/config.json`(ADR-0045)。**凭据永远不在里面**—
   "models": {
     "deepseek": {
       "kind": "openai-compat",               // "openai-compat" | "anthropic" | "openai-responses"
-      "model": "deepseek-v4-flash",
+      "model": "deepseek-flash",                  // the vendor's current id; the legacy alias still works
       "apiKeyEnv": "DEEPSEEK_API_KEY",       // 密钥的 env 变量名——不是密钥本身
       "baseUrl": "https://api.deepseek.com"
     },

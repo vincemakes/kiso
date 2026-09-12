@@ -97,7 +97,7 @@ a comment-free minimal profile you can paste directly.
   "models": {
     "deepseek": {
       "kind": "openai-compat",               // "openai-compat" | "anthropic" | "openai-responses"
-      "model": "deepseek-v4-flash",
+      "model": "deepseek-flash",                  // the vendor's current id; the legacy alias still works
       "apiKeyEnv": "DEEPSEEK_API_KEY",       // the key's env var — never the key
       "baseUrl": "https://api.deepseek.com"
     },

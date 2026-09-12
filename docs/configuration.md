@@ -75,6 +75,29 @@ a broken config file fails loudly with the file named.
   OpenRouter's Anthropic-format endpoint — byte-identical replays, all
   accepted; the first-party beta surface (beta headers, Fable 5.1's
   thinking-block binding) is not yet exercised directly.
+- **An UNREGISTERED model id keeps its defaults and refuses a level by
+  name (Astra F5).** The registry never guesses. A model with no row still
+  sends text — `default`/`default` resolves to an empty wire setting — but
+  an explicit `low`/`high`/`max` is REFUSED, by name, rather than silently
+  downgraded, and its context window is unknown. The window then falls back
+  to a conservative **200,000 tokens**, which is what the meter and the
+  microcompact threshold are computed from; for a model with a larger real
+  window that means context relief fires EARLIER than it needs to, and for
+  a smaller one the provider can refuse a request while the meter still
+  looks comfortable. Set the true number when you know it: the top-level
+  `"contextWindow"` above, or `KISO_CONTEXT_WINDOW` for one session. The
+  environment wins over the config value, as everywhere else, and both win
+  over the registry.
+
+  DeepSeek's current recommended id `deepseek-flash` is registered (dated
+  2026-09-12, sourced), with the same capabilities as the legacy
+  `deepseek-v4-flash` row, which is retained because the vendor still
+  accepts it. Both carry a null window on purpose: the vendor's page states
+  a figure, and a figure read off a page is not a measurement — the row
+  that decides when context relief fires does not get to claim precision
+  the product has not earned. Use the override when you want the vendor's
+  number.
+
 - **Sign-in and the OpenAI Responses dialect (OR-1, 0.31.0).**
   `kiso login <provider>` stores a credential in `~/.kiso/auth.json`
   (mode 0600): an API key for `anthropic` / `openai` / `deepseek` /
