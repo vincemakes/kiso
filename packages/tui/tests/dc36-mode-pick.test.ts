@@ -20,9 +20,21 @@ import { panelRowsOf } from "../src/ask-panel.js";
 import { modePickView, type PickSpec } from "../src/approval-panel.js";
 
 const TIERS = ["manual", "default", "accept-edits", "plan", "bypass"] as const;
+/** Astra F4 widened the CLI's real notes (each asking tier now says a saved
+ *  allow still allows). A fixture SHORTER than the world is the DF-0330-F1
+ *  trap — it measures an easier layout than the one that ships — so these
+ *  are the live strings, copied, and the longest of them rides the tier
+ *  whose row this file measures. */
+const NOTES: Readonly<Record<(typeof TIERS)[number], string>> = {
+	manual: "asks for every tool — a saved allow still allows",
+	default: "reads run; writes, edits and shell ask — a saved allow still allows",
+	"accept-edits": "reads, writes and edits run; shell asks — a saved allow still allows",
+	plan: "reads run; everything else is denied — read-only, and a deny wins",
+	bypass: "everything runs, nothing asks — a user deny still wins",
+};
 const SPEC: PickSpec = {
 	header: "mode — current: default",
-	options: TIERS.map((n) => ({ label: n, note: n === "default" ? "reads run; writes, edits and shell ask · current" : "a note" })),
+	options: TIERS.map((n) => ({ label: n, note: n === "default" ? `${NOTES[n]} · current` : NOTES[n] })),
 };
 const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 

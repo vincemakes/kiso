@@ -77,6 +77,14 @@ in with is what runs. Without one the env layer still works: `ANTHROPIC_API_KEY`
 or `OPENAI_API_KEY` alone is enough (with both exported, OpenAI wins), and
 `OPENAI_BASE_URL` retargets any compatible endpoint.
 
+**Changed in 0.36.0.** That ownership now holds on the environment-selected
+route too. Starting kiso with only `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in
+the environment used to run on THAT key even when a credential was stored for
+a recognised origin (`api.openai.com`, `api.deepseek.com`, `api.z.ai`); the
+env key won by accident rather than by rule. The stored one wins there now.
+`kiso logout <provider>` removes it and the env var takes over again, exactly
+as the message has always said.
+
 ## Models and effort
 
 `/model` lists your profiles, each annotated available or unavailable, and
@@ -453,8 +461,10 @@ in either direction turns the check red.
 ## The kernel rule
 
 > The core cannot exceed **2,200 lines**. Any PR that pushes it over gets
-> closed, however good the feature is. CI enforces this before it installs a
-> single dependency. If you need more, grow a package. That is the point.
+> closed, however good the feature is. CI enforces it mechanically — the size
+> gate runs inside `npm run check`, after the build, the typecheck and the
+> tests — so nobody waves it through. If you need more, grow a package. That
+> is the point.
 
 Comments do not count — explain freely, implement tersely. The gate is a
 snapshot discipline, not a self-adjusting ratchet: it has moved exactly twice,
