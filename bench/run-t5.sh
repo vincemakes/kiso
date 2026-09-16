@@ -274,9 +274,27 @@ CFG
     # the effort switch rides the FIRST segment as its opening line, which
     # is how a human sets it: there is no config field and no flag, only the
     # per-session `/model` command.
-    seg 1 printf '%s\n' "/model ds $BENCH_EFFORT" "$(TURN 1)" "$(TURN 2)" "$(TURN 3)" "$(TURN 4)" "$(TURN 5)"
-    seg 2 printf '/compact\n'
-    seg 3 printf '%s\n' "$(TURN 6)" "$(TURN 7)" "$(TURN 8)"
+    # AMENDMENT (2026-09-15): THE MID-WAY /compact IS OFF BY DEFAULT.
+    #
+    # It was sent to THIS ARM and to no other, and the diagnosis of round B
+    # measured what that cost: exactly one cache break per leg, all at turn
+    # 6, the cached prefix collapsing to the same 2,304 floor, and that ONE
+    # request carrying 30.0% / 49.6% / 40.5% of the leg's entire fresh
+    # input. Removing it from the index moves the measured T5 gap from
+    # +39.9% to +28.7% median. A step one arm takes and the other does not
+    # is not a comparison, whatever else it is.
+    #
+    # BENCH_T5_COMPACT=1 restores it for a round that WANTS to price
+    # compaction — that is a real question, just not this one — and the
+    # manifest records which way the leg ran, so no reader has to guess.
+    if [ "${BENCH_T5_COMPACT:-0}" = 1 ]; then
+      seg 1 printf '%s\n' "/model ds $BENCH_EFFORT" "$(TURN 1)" "$(TURN 2)" "$(TURN 3)" "$(TURN 4)" "$(TURN 5)"
+      seg 2 printf '/compact\n'
+      seg 3 printf '%s\n' "$(TURN 6)" "$(TURN 7)" "$(TURN 8)"
+    else
+      seg 1 printf '%s\n' "/model ds $BENCH_EFFORT" "$(TURN 1)" "$(TURN 2)" "$(TURN 3)" "$(TURN 4)" "$(TURN 5)"
+      seg 2 printf '%s\n' "$(TURN 6)" "$(TURN 7)" "$(TURN 8)"
+    fi
     node -e "
 const fs = require('fs');
 const { execSync } = require('child_process');
@@ -398,7 +416,11 @@ echo "$TOT" > "$WORK/wall_seconds"
 # that the manifest stops recording a name nobody serves.
 case "$TOOL" in
   kiso)   ARM_CMD="$KISO_BIN"; ARM_MODEL="deepseek-flash"; ARM_ENDPOINT="https://api.deepseek.com"; ARM_ENV="OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL KISO_HOME KISO_EXTENSIONS_DIR" ;;
-  pi)     ARM_CMD="pi";        ARM_MODEL="deepseek-flash"; ARM_ENDPOINT="https://api.deepseek.com"; ARM_ENV="DEEPSEEK_API_KEY" ;;
+  # The effort flag belongs IN the captured command. Round B recorded this
+  # arm's command as the bare binary name, so the manifest could not show
+  # that `--thinking high` was ever sent — the only record of its effort was
+  # what the runner INTENDED.
+  pi)     ARM_CMD="pi --provider deepseek --model deepseek-flash --thinking $BENCH_EFFORT"; ARM_MODEL="deepseek-flash"; ARM_ENDPOINT="https://api.deepseek.com"; ARM_ENV="DEEPSEEK_API_KEY" ;;
   claude) ARM_CMD="claude";    ARM_MODEL="deepseek-flash"; ARM_ENDPOINT="https://api.deepseek.com/anthropic"; ARM_ENV="ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_MODEL" ;;
 esac
 case "$TOOL" in
@@ -437,6 +459,13 @@ const cfg = captureArm({
 });
 cfg.task = 'T5'; cfg.run = '$RUN'; cfg.round = process.env.KISO_ROUND || null;
 cfg.legDeadlineSeconds = $LEG_DEADLINE_S; cfg.legMaxRequests = $LEG_MAX_REQUESTS;
+cfg.t5Compact = ${BENCH_T5_COMPACT:-0} === 1;
+// WHICH ARM'S EFFORT WAS VERIFIED ON THE WIRE, stated per leg rather than
+// left to be inferred. Ours reads its bound level back from the durable
+// profile. The other arm has no read-back until request bodies are
+// captured, so its level is REQUESTED, not verified — and the manifest
+// says which, instead of both arms carrying the same unqualified claim.
+cfg.effortVerified = '$TOOL' === 'kiso' ? 'durable-profile' : 'not-verified: the flag is in the command; no read-back exists until request bodies are captured';
 writeFileSync('$WORK/config.json', JSON.stringify(cfg, null, 1) + '\n');
 " 2>/dev/null || echo "WARN: configuration capture failed for $TOOL" >&2
 # F33-R4: execution validity is decided BEFORE the task verdict, and the
