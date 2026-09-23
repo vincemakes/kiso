@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-code",
-	"version": "0.40.2",
+	"version": "0.40.3-aci3.0",
 	"description": "kiso-code \u2014 the coding agent on kiso, the durable runtime for AI agents: kiso chat / kiso resume / kiso sessions.",
 	"type": "module",
 	"license": "MIT",
@@ -18,20 +18,20 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@vincemakes/kiso-ask-ext": "0.40.2",
-		"@vincemakes/kiso-core": "0.40.2",
-		"@vincemakes/kiso-evals": "0.40.2",
-		"@vincemakes/kiso-mcp-ext": "0.40.2",
-		"@vincemakes/kiso-provider-anthropic": "0.40.2",
-		"@vincemakes/kiso-provider-openai": "0.40.2",
-		"@vincemakes/kiso-provider-openai-responses": "0.40.2",
-		"@vincemakes/kiso-runtime": "0.40.2",
-		"@vincemakes/kiso-skills-ext": "0.40.2",
-		"@vincemakes/kiso-subagent-ext": "0.40.2",
-		"@vincemakes/kiso-task-ext": "0.40.2",
-		"@vincemakes/kiso-tools-node": "0.40.2",
-		"@vincemakes/kiso-tui": "0.40.2",
-		"@vincemakes/kiso-tui-cells": "0.40.2"
+		"@vincemakes/kiso-ask-ext": "0.40.3-aci3.0",
+		"@vincemakes/kiso-core": "0.40.3-aci3.0",
+		"@vincemakes/kiso-evals": "0.40.3-aci3.0",
+		"@vincemakes/kiso-mcp-ext": "0.40.3-aci3.0",
+		"@vincemakes/kiso-provider-anthropic": "0.40.3-aci3.0",
+		"@vincemakes/kiso-provider-openai": "0.40.3-aci3.0",
+		"@vincemakes/kiso-provider-openai-responses": "0.40.3-aci3.0",
+		"@vincemakes/kiso-runtime": "0.40.3-aci3.0",
+		"@vincemakes/kiso-skills-ext": "0.40.3-aci3.0",
+		"@vincemakes/kiso-subagent-ext": "0.40.3-aci3.0",
+		"@vincemakes/kiso-task-ext": "0.40.3-aci3.0",
+		"@vincemakes/kiso-tools-node": "0.40.3-aci3.0",
+		"@vincemakes/kiso-tui": "0.40.3-aci3.0",
+		"@vincemakes/kiso-tui-cells": "0.40.3-aci3.0"
 	},
 	"devDependencies": {
 		"@types/node": "^26.1.2",
