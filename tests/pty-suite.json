@@ -131,6 +131,7 @@
   "apps/cli/tests/v0406-model-rows-pty.test.ts",
   "apps/cli/tests/v0406-settings.test.ts",
   "apps/cli/tests/v0406-thinking-pref-pty.test.ts",
+  "apps/cli/tests/v0407-signin-source.test.ts",
   "apps/cli/tests/xp1-binding-change.test.ts",
   "apps/cli/tests/xp1-status-truth-pty.test.ts",
   "apps/cli/tests/zombie-resume-gate.test.ts",

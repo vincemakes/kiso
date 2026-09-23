@@ -107,12 +107,20 @@ function effortAxis(p: ModelProfile): Pick<PickOption, "levels" | "level" | "dis
 	};
 }
 
-/** What signs a profile in, for the listing: the env var's name, `oauth`
- *  for a subscription sign-in, or `no key` for an unauthenticated endpoint. */
+/** What signs a profile in, for the listing: `stored key` when a key in
+ *  auth.json pays (a vendor's, or a gateway's `kiso login --endpoint`),
+ *  `oauth` for a subscription sign-in, else the env var's name, or `no key`
+ *  for an unauthenticated endpoint.
+ *
+ *  0406-F1: this named the env var whenever a profile had one, so a row
+ *  paid by the stored key read `DEEPSEEK_API_KEY (available)` with that
+ *  variable unset — and after 0.40.6's endpoint login every gateway row
+ *  would have named a variable nobody exports any more. */
 function signInNote(p: ModelProfile): string {
 	try {
 		const auth = authForProfile("?", p);
 		if (auth.type === "oauth") return "oauth";
+		if (auth.source === "store") return "stored key";
 	} catch {
 		// unavailable — the availability mark says so; the env name still names what would sign it in
 	}
