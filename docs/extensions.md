@@ -461,3 +461,14 @@ that throws fails the run: it is the product's code. Hosts that must send
 a prompt identical to another system's byte for byte set
 `AgentDefinition.toolTable: "off"`, which withholds the generated
 "Tool use:" block entirely; the tool schemas still ride the request.
+
+## A tool that ends the turn (0.42.0)
+
+A tool result may carry the reserved tag `END_TURN` (exported by
+`@vincemakes/kiso-core`): `{ content, isError: false, tags: [END_TURN] }`.
+Once the batch it belongs to has settled, the loop writes
+`terminal { kind: "completed" }` instead of asking the model again, and
+the next user input continues the conversation. A question to the
+person, a product's round cap, a hand-off: the facts a tool used to be
+unable to state without an abort. The tag rides the durable
+`tool_result` event, so a resumed run honours it too.

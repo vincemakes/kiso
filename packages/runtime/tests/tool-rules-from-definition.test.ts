@@ -12,7 +12,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { defineTool, ToolRegistry } from "@vincemakes/kiso-core";
+import { defineTool, END_TURN, ToolRegistry } from "@vincemakes/kiso-core";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { composeToolTable } from "../src/compose.js";
 import { createAgent, SessionStore } from "../src/index.js";
@@ -99,5 +99,39 @@ describe("0.42.0 end to end: the per-run append reaches the adapter, the table s
 		turn = 1;
 		for await (const _ of session.run("two")) void _;
 		expect(seen).toEqual(["You are a host.\n\nPlan 0.", "You are a host.\n\nPlan 1."]);
+	});
+});
+
+describe("0.42.0: a tool result may end the turn (END_TURN)", () => {
+	it("after the batch settles the run completes without asking the model again; the next run continues the conversation", async () => {
+		let calls = 0;
+		const script = [
+			{ events: [{ type: "tool_call_end" as const, callId: "c1", name: "ask", input: { q: "which?" } }, { type: "stop" as const, reason: "tool_use" as const }] },
+			{ events: [{ type: "text_delta" as const, text: "second turn" }, { type: "stop" as const, reason: "end_turn" as const }] },
+		];
+		const base = createFauxProvider(script);
+		const ask = defineTool({
+			name: "ask",
+			description: "asks the person; the turn ends until they answer",
+			parameters: { type: "object", properties: { q: { type: "string" } } },
+			execute: async () => ({ content: "asked", isError: false, tags: [END_TURN] }),
+		});
+		const agent = createAgent({
+			model: "faux",
+			store: new SessionStore(mkdtempSync(join(tmpdir(), "kiso-endturn-"))),
+			tools: [ask],
+			adapter: { stream: (o: Parameters<typeof base.stream>[0]) => { calls += 1; return base.stream(o); } },
+		});
+		const session = await agent.session({ id: "s" });
+		const first: string[] = [];
+		for await (const ev of session.run("go")) first.push(ev.type === "terminal" ? `terminal:${ev.outcome.kind}` : ev.type);
+		expect(calls).toBe(1); // the model was NOT asked again after the tagged result
+		expect(first).toContain("tool_result");
+		expect(first.at(-1)).toBe("terminal:completed");
+		const second: string[] = [];
+		for await (const ev of session.run("the answer")) second.push(ev.type === "terminal" ? `terminal:${ev.outcome.kind}` : ev.type);
+		expect(calls).toBe(2); // the second run asked once and got the second script entry
+		expect(second.at(-1)).toBe("terminal:completed");
+		expect(second).toContain("text_delta");
 	});
 });

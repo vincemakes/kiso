@@ -50,7 +50,7 @@ import { validateArgs } from "../tools/validate.js";
 import type { HookHost, ToolCallPayload } from "./hooks.js";
 import { NoOpHooks } from "./hooks.js";
 import { denialResult, type PermissionDecision } from "./permission.js";
-import { messagesToEvents, MICROCOMPACTABLE, DO_NOT_COMPACT, projectMessages } from "./project.js";
+import { messagesToEvents, MICROCOMPACTABLE, DO_NOT_COMPACT, END_TURN, projectMessages } from "./project.js";
 import type { ToolTable } from "../tools/registry.js";
 
 /** Zero-dependency sleep: the kernel must not import host globals (ADR-0001). */
@@ -998,6 +998,14 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 
 		// ── Advance history: the log grew; re-derive for the next turn ─────
 		messages = derive();
+		// 0.42.0: a result in the batch that just settled may END THE TURN
+		// (the END_TURN tag) — the loop completes instead of asking again.
+		// Read from the log, not from the batch's locals, so a resumed run
+		// whose results were already on disk decides the same way.
+		if (batchEndsTurn(log.all)) {
+			yield await terminal({ kind: "completed" });
+			return;
+		}
 	}
 }
 
@@ -1063,6 +1071,17 @@ type ExecVerdict =
 /** The tool_result event for a call — the shared shape (executionId rides
  *  it as the durable correlation, round 5; invocationSeq = the framework
  *  identity, R-E 0.1.43). */
+/** True when a tool_result of the LAST settled batch (the results after the
+ *  most recent stop) carries the END_TURN tag. */
+function batchEndsTurn(events: readonly Event[]): boolean {
+	for (let i = events.length - 1; i >= 0; i -= 1) {
+		const e = events[i]!;
+		if (e.type === "stop") return false;
+		if (e.type === "tool_result" && (e.tags ?? []).includes(END_TURN)) return true;
+	}
+	return false;
+}
+
 function resultEvent(call: ToolCallEnd, result: ToolResult, executionId?: string): EventInput {
 	return {
 		type: "tool_result",
