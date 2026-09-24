@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import { defineTool, ToolRegistry } from "@vincemakes/kiso-core";
-import { composeSystemPrompt, composeToolTable } from "../src/compose.js";
+import { composeSystemPrompt, composeToolTable, runBasePrompt } from "../src/compose.js";
 
 const BASE = "You are a coding agent.";
 /** R1: the rows are the caller's now — the coding agent's, copied here as
@@ -91,5 +91,23 @@ Speak English.`);
 	it("deterministic: same registry twice → byte-identical table", () => {
 		const registry = registryWith([reader, plain]);
 		expect(composeToolTable(registry, RULES)).toBe(composeToolTable(registry, RULES));
+	});
+});
+
+describe("0.42.0: the table switch and the per-run append", () => {
+	it('toolTable "off" leaves the base prompt byte-identical with tools registered; "on" composes the table', () => {
+		const registry = registryWith([reader, plain]);
+		expect(runBasePrompt(BASE, registry, RULES, "off")).toBe(BASE);
+		expect(runBasePrompt(undefined, registry, RULES, "off")).toBeUndefined();
+		expect(runBasePrompt(BASE, registry, RULES, "on")).toBe(`${BASE}\n\n${composeToolTable(registry, RULES)}`);
+		expect(runBasePrompt(BASE, registry, RULES)).toBe(runBasePrompt(BASE, registry, RULES, "on")); // the default is "on"
+	});
+
+	it("an extension append may be a function: evaluated at each composition, in load order beside string appends", () => {
+		let turn = 0;
+		const dynamic = { name: "plan", systemPrompt: { append: () => `Plan for turn ${turn}.` } };
+		expect(composeSystemPrompt(BASE, [EXT, dynamic])).toBe(`${BASE}\n\nSpeak English.\n\nPlan for turn 0.`);
+		turn = 1;
+		expect(composeSystemPrompt(BASE, [EXT, dynamic])).toBe(`${BASE}\n\nSpeak English.\n\nPlan for turn 1.`);
 	});
 });

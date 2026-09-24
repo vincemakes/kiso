@@ -9,7 +9,7 @@ import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
 import { resolveReasoning, type WireReasoning } from "./provider/metadata.js";
 import { deriveRecoveryPlan, invocationSeqOf } from "./recovery-plan.js";
-import { composeApprovalChain, composeSystemPrompt, runBasePrompt } from "./compose.js";
+import { appendOf, composeApprovalChain, composeSystemPrompt, runBasePrompt } from "./compose.js";
 import { truncationGuard } from "./truncation-guard.js";
 import { overflowBelt } from "./overflow-belt.js";
 import { DEFAULT_STREAM_IDLE_MS, idleGuard } from "./idle-guard.js";
@@ -102,7 +102,7 @@ export class Run implements AsyncIterable<Event> {
 			// session's base prompt and the extension appends: generated
 			// machinery never outranks the deliberate extension text (the E2
 			// "append lands at the END" contract holds). "" when empty.
-			const basePrompt = runBasePrompt(this.#config.systemPrompt, this.#config.registry, this.#config.toolRules ?? []);
+			const basePrompt = runBasePrompt(this.#config.systemPrompt, this.#config.registry, this.#config.toolRules ?? [], this.#config.toolTable ?? "on");
 			// E3 — the ledger's parts: the base as CONFIGURED (what the CLI
 			// handed the runtime — the tool table is generated machinery, R3)
 			// and the extension appends in load order (R4 attribution). The
@@ -111,9 +111,10 @@ export class Run implements AsyncIterable<Event> {
 			// surface is an absent key — never an explicit undefined (R9).
 			const rentParts: RentParts = {
 				...(this.#config.systemPrompt !== undefined ? { base: this.#config.systemPrompt } : {}),
-				appends: (this.#config.extensions ?? []).flatMap((e) =>
-					e.systemPrompt?.append === undefined ? [] : [{ name: e.name, text: e.systemPrompt.append }],
-				),
+				appends: (this.#config.extensions ?? []).flatMap((e) => {
+					const text = appendOf(e);
+					return text === undefined ? [] : [{ name: e.name, text }];
+				}),
 			};
 			// E1 (1.2.0): the request tracer — the observation ledger. It
 			// sits at the adapter boundary; the model-visible byte stream is

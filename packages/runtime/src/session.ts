@@ -988,7 +988,7 @@ export class AgentSession {
 			// the one fallback. The budget is unchanged: measured for the
 			// manual gesture, fixed for the policy (0.39.2).
 			const cfg = this.#effectiveConfig();
-			const systemPrompt = composeSystemPrompt(runBasePrompt(cfg.systemPrompt, cfg.registry, cfg.toolRules ?? []), cfg.extensions ?? []);
+			const systemPrompt = composeSystemPrompt(runBasePrompt(cfg.systemPrompt, cfg.registry, cfg.toolRules ?? [], cfg.toolTable ?? "on"), cfg.extensions ?? []);
 			const wire = cfg.reasoning === undefined ? undefined : resolveReasoning(binding.model, cfg.reasoning, binding.baseUrl);
 			const { result: call, path } = await this.#checkpointCall({
 				messages: this.projected(),
@@ -1474,6 +1474,8 @@ export interface SessionConfig {
 	readonly streamIdleMs?: number;
 	/** R1: the tool table's vocabulary rows, the product's (see AgentDefinition). */
 	readonly toolRules?: ReadonlyArray<{ readonly tool: string; readonly line: string }>;
+	/** 0.42.0: "off" withholds the generated tool table entirely (see AgentDefinition). */
+	readonly toolTable?: "on" | "off";
 	/**
 	 * E1: loaded extensions — their tools join the registry (idempotently;
 	 * a collision with a built-in name was already rejected at agent

@@ -87,6 +87,12 @@ export interface AgentDefinition {
 	 *  tools' own snippets still compose). Type-only additive; never part of
 	 *  the profile digest. */
 	readonly toolRules?: ReadonlyArray<{ readonly tool: string; readonly line: string }>;
+	/** 0.42.0: "off" withholds the generated "Tool use:" block entirely —
+	 *  no fixed directives, no snippets, no guidelines — so the system
+	 *  prompt is exactly the configured text (a host matching another
+	 *  system byte for byte). The tool schemas still ride the request.
+	 *  Default "on". Type-only additive; never part of the profile digest. */
+	readonly toolTable?: "on" | "off";
 	/** E1: loaded extensions — their tools merge into the registry (a name
 	 *  collision with a built-in is a loud startup error), their hooks
 	 *  compose after the agent's own (the existing come first), their approvals join the
@@ -261,6 +267,7 @@ export class AgentRuntime {
 			...(this.#definition.maxRetries !== undefined ? { maxRetries: this.#definition.maxRetries } : {}),
 			...(this.#definition.streamIdleMs !== undefined ? { streamIdleMs: this.#definition.streamIdleMs } : {}),
 			...(this.#definition.toolRules !== undefined ? { toolRules: this.#definition.toolRules } : {}),
+			...(this.#definition.toolTable !== undefined ? { toolTable: this.#definition.toolTable } : {}),
 			...(this.#definition.extensions !== undefined ? { extensions: this.#definition.extensions } : {}),
 		};
 		// 0.40.0: the last bill's time rides the RECORD, not the event.

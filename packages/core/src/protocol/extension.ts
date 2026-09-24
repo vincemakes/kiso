@@ -78,8 +78,16 @@ export interface KisoExtension {
 	 * deny > allow > ask and the veto short-circuit). The session's own
 	 * systemPrompt comes first, then each extension's append in load order,
 	 * \n\n-joined.
+	 *
+	 * 0.42.0: the append may be a FUNCTION, evaluated once at the start of
+	 * each run (and for an in-band /compact) — the per-run seam for text
+	 * that changes between turns (a plan, a skill index, a model-specific
+	 * note). The session's own systemPrompt stays byte-stable for its
+	 * lifetime (it is what the profile digest hashes); what varies lives
+	 * here. A function that throws fails the run — it is the product's
+	 * code.
 	 */
-	readonly systemPrompt?: { readonly append: string };
+	readonly systemPrompt?: { readonly append: string | (() => string) };
 	/**
 	 * An optional readiness datum: true while the extension's tool table is
 	 * still settling (its live source — registerLive — may still grow).

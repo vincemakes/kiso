@@ -29,7 +29,14 @@ export type ToolRules = ReadonlyArray<{ readonly tool: string; readonly line: st
  *  then the tool table (generated machinery sits BETWEEN the base and the
  *  extension appends). One function, so an in-band summary outside a run
  *  (ADR-0055 A2, /compact) sends the exact prefix a run sends. */
-export function runBasePrompt(systemPrompt: string | undefined, registry: ToolRegistry, rules: ToolRules = []): string | undefined {
+/** 0.42.0: `"off"` leaves the base prompt exactly as configured — no
+ *  "Tool use:" block, no snippets, no guidelines — for a host whose prompt
+ *  must match another system's byte for byte. The tool SCHEMAS still ride
+ *  the request; only the generated prose is withheld. */
+export type ToolTableMode = "on" | "off";
+
+export function runBasePrompt(systemPrompt: string | undefined, registry: ToolRegistry, rules: ToolRules = [], table: ToolTableMode = "on"): string | undefined {
+	if (table === "off") return systemPrompt;
 	const toolTable = composeToolTable(registry, rules);
 	return toolTable === "" ? systemPrompt : systemPrompt === undefined ? toolTable : `${systemPrompt}\n\n${toolTable}`;
 }
@@ -59,8 +66,18 @@ export function composeToolTable(registry: ToolRegistry, rules: ToolRules = []):
  * order, \n\n-joined — deterministic (same extension list → same prompt).
  * No appends → the base passes through byte-identical.
  */
+/** An extension's append as text: a string as is, a function evaluated
+ *  NOW (0.42.0 — the per-run seam; call this once per composition). */
+export function appendOf(extension: KisoExtension): string | undefined {
+	const append = extension.systemPrompt?.append;
+	return typeof append === "function" ? append() : append;
+}
+
 export function composeSystemPrompt(base: string | undefined, extensions: readonly KisoExtension[]): string | undefined {
-	const appends = extensions.flatMap((e) => (e.systemPrompt?.append === undefined ? [] : [e.systemPrompt.append]));
+	const appends = extensions.flatMap((e) => {
+		const text = appendOf(e);
+		return text === undefined ? [] : [text];
+	});
 	if (appends.length === 0) return base;
 	return base === undefined ? appends.join("\n\n") : `${base}\n\n${appends.join("\n\n")}`;
 }

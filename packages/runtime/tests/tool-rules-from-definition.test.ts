@@ -76,3 +76,28 @@ describe("R1: the table's vocabulary rows come from the definition", () => {
 		expect(seen[1]).toContain("- read files with read_file, never shell cat/head/tail");
 	});
 });
+
+describe("0.42.0 end to end: the per-run append reaches the adapter, the table switch withholds the block", () => {
+	it("two runs see two evaluations; with toolTable off the system prompt is the base plus the appends only", async () => {
+		const seen: (string | undefined)[] = [];
+		let turn = 0;
+		const script = [{ events: [{ type: "text_delta" as const, text: "ok" }, { type: "stop" as const, reason: "end_turn" as const }] }];
+		const agent = createAgent({
+			model: "faux",
+			systemPrompt: "You are a host.",
+			store: new SessionStore(mkdtempSync(join(tmpdir(), "kiso-append-"))),
+			tools: [reader],
+			toolTable: "off",
+			extensions: [{ name: "plan", systemPrompt: { append: () => `Plan ${turn}.` } }],
+			adapter: (() => {
+				const base = createFauxProvider([...script, ...script]);
+				return { stream: (options: Parameters<typeof base.stream>[0]) => { seen.push(options.systemPrompt); return base.stream(options); } };
+			})(),
+		});
+		const session = await agent.session({ id: "s" });
+		for await (const _ of session.run("one")) void _;
+		turn = 1;
+		for await (const _ of session.run("two")) void _;
+		expect(seen).toEqual(["You are a host.\n\nPlan 0.", "You are a host.\n\nPlan 1."]);
+	});
+});
