@@ -180,8 +180,11 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 		for (const e of events) {
 			if (e.type !== "permission_decided") continue;
 			// a durable POLICY verdict binds the call (E1); a human verdict
-			// binds its request, never the call (the requests pass owns it)
-			if (e.decidedBy !== undefined && e.callId === callId && e.seq > after) return e;
+			// binds its request, never the call (the requests pass owns it).
+			// 0430-F1: a decision that names its invocation binds EXACTLY that
+			// one (callId repeats); only an old log's decision binds by callId.
+			if (e.decidedBy === undefined) continue;
+			if (e.invocationSeq !== undefined ? e.invocationSeq === after : e.callId === callId && e.seq > after) return e;
 		}
 		return undefined;
 	};
@@ -246,7 +249,7 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 	//    RECEIPT, never re-executed.
 	for (const ev of scope) {
 		if (ev.type !== "tool_execution_succeeded" && ev.type !== "tool_execution_failed") continue;
-		if (!hasResult(ev.callId, ev.seq) && !events.some((e) => e.type === "tool_result" && e.executionId === ev.executionId)) {
+		if (!hasResult(ev.callId, ev.seq, ev.invocationSeq) && !events.some((e) => e.type === "tool_result" && e.executionId === ev.executionId)) {
 			return { kind: "REPAIR_RESULT", executionId: ev.executionId };
 		}
 	}

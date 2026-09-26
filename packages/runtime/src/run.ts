@@ -768,7 +768,10 @@ export class Run implements AsyncIterable<Event> {
 				e.type === "permission_decided" &&
 				(request !== undefined
 					? e.decisionId === request.decisionId
-					: call !== undefined && e.callId === call.callId && e.seq > call.seq && e.decidedBy !== undefined),
+					: call !== undefined &&
+						e.decidedBy !== undefined &&
+						// 0430-F1: exact invocation first; an old log's decision by callId
+						(e.invocationSeq !== undefined ? e.invocationSeq === call.seq : e.callId === call.callId && e.seq > call.seq)),
 		);
 		if (decided === undefined || (request?.callId ?? call?.callId) === undefined) {
 			throw new Error(`the recovery plan derived a denial without its decision (seq ${invocationSeq})`);

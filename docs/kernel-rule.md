@@ -29,7 +29,7 @@ core:
   packages/core/src/kernel/project.ts   356
   ...
   total                                2191  / 2200
-  ✓ 11 lines of headroom remaining.
+  ✓ 9 lines of headroom remaining.
 
 cli:
   apps/cli/src/index.ts     981
