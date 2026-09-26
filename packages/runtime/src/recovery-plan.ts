@@ -164,12 +164,18 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 	//    undecided → the pipeline must decide; decided-approved without an
 	//    execution → execute the persisted call; decided-denied without a
 	//    model-facing result → repair it from the denial.
-	const hasRequest = (callId: string, after: number): boolean =>
-		events.some((e) => e.type === "permission_requested" && e.callId === callId && e.seq > after);
-	const hasExecution = (callId: string, after: number): boolean =>
-		events.some((e) => e.type === "tool_execution_started" && e.callId === callId && e.seq > after);
-	const hasResult = (callId: string, after: number): boolean =>
-		events.some((e) => e.type === "tool_result" && e.callId === callId && e.seq > after);
+	// 0430-F1: an event binds to an invocation by its OWN invocationSeq
+	// when both carry one (0.1.43+) — callId is a correlation key the model
+	// may re-use; an old log's event without one binds by callId after the
+	// call, as before.
+	const bound = (e: { readonly callId: string; readonly seq: number; readonly invocationSeq?: number }, callId: string, after: number, invocationSeq: number | undefined): boolean =>
+		e.invocationSeq !== undefined && invocationSeq !== undefined ? e.invocationSeq === invocationSeq : e.callId === callId && e.seq > after;
+	const hasRequest = (callId: string, after: number, invocationSeq?: number): boolean =>
+		events.some((e) => e.type === "permission_requested" && bound(e, callId, after, invocationSeq));
+	const hasExecution = (callId: string, after: number, invocationSeq?: number): boolean =>
+		events.some((e) => e.type === "tool_execution_started" && bound(e, callId, after, invocationSeq));
+	const hasResult = (callId: string, after: number, invocationSeq?: number): boolean =>
+		events.some((e) => e.type === "tool_result" && bound(e, callId, after, invocationSeq));
 	const decidedForCall = (callId: string, after: number): (Event & { type: "permission_decided" }) | undefined => {
 		for (const e of events) {
 			if (e.type !== "permission_decided") continue;
@@ -194,13 +200,18 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 		// a stored request owns the invocation (the requests pass below) —
 		// "only a durable permission_decided authorizes an effect"; Gap A
 		// must never re-decide over a stored request.
-		if (hasRequest(call.callId, call.seq)) continue;
-		if (hasResult(call.callId, call.seq)) continue; // closed — nothing to fill
+		if (hasRequest(call.callId, call.seq, call.seq)) continue;
+		if (hasResult(call.callId, call.seq, call.seq)) continue; // closed — nothing to fill
 		const decided = decidedForCall(call.callId, call.seq);
+		// 0430-F1: a started execution proves the invocation crossed the
+		// permission gate on the fresh path (which records no decision for
+		// a default or hook allow) — it is never re-decided; step 6 owns its
+		// receipt.
+		if (decided === undefined && hasExecution(call.callId, call.seq, call.seq)) continue;
 		if (decided === undefined) return { kind: "DECIDE_PERMISSION", invocationSeq: call.seq };
 		if (decided.decision === "approved") {
-			if (!hasExecution(call.callId, call.seq)) return { kind: "EXECUTE", invocationSeq: call.seq };
-		} else if (!hasResult(call.callId, call.seq)) {
+			if (!hasExecution(call.callId, call.seq, call.seq)) return { kind: "EXECUTE", invocationSeq: call.seq };
+		} else if (!hasResult(call.callId, call.seq, call.seq)) {
 			return { kind: "REPAIR_RESULT", invocationSeq: call.seq };
 		}
 	}
@@ -225,8 +236,8 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 			return { kind: "WAIT_PERMISSION", invocationSeq: invocationSeq ?? pending.seq };
 		}
 		if (decided.decision === "approved") {
-			if (!hasExecution(pending.callId, pending.seq)) return { kind: "EXECUTE", invocationSeq: invocationSeq ?? pending.seq };
-		} else if (!hasResult(pending.callId, pending.seq)) {
+			if (!hasExecution(pending.callId, pending.seq, invocationSeq)) return { kind: "EXECUTE", invocationSeq: invocationSeq ?? pending.seq };
+		} else if (!hasResult(pending.callId, pending.seq, invocationSeq)) {
 			return { kind: "REPAIR_RESULT", invocationSeq: invocationSeq ?? pending.seq };
 		}
 	}
