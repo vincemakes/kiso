@@ -58,7 +58,7 @@ const probe = defineTool({
 });
 
 const shape = (e: Event): string => {
-	const parts = [e.type];
+	const parts: string[] = [e.type];
 	if (e.type === "permission_decided") parts.push(e.decision, e.decidedBy ?? "-");
 	if (e.type === "tool_result") parts.push(String(e.isError), (e as { errorKind?: string }).errorKind ?? "-", ((e as { tags?: readonly string[] }).tags ?? []).join("+"), typeof e.content === "string" ? e.content.slice(0, 40) : "blocks");
 	if (e.type === "tool_execution_started") parts.push(e.executionId);
