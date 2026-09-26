@@ -730,6 +730,9 @@ export class Run implements AsyncIterable<Event> {
 				? {
 						type: "tool_result",
 						callId: ev.callId,
+						// 0430-F1: the receipt's invocation identity rides the fill, as
+						// a fresh result carries call.seq — bound exactly ever after.
+						...(ev.invocationSeq !== undefined ? { invocationSeq: ev.invocationSeq } : {}),
 						content: ev.result.content,
 						isError: false,
 						// round 8: the repaired result reproduces the normal path
@@ -740,6 +743,7 @@ export class Run implements AsyncIterable<Event> {
 				: {
 						type: "tool_result",
 						callId: ev.callId,
+						...(ev.invocationSeq !== undefined ? { invocationSeq: ev.invocationSeq } : {}),
 						content: ev.error,
 						isError: true,
 						...(ev.errorKind !== undefined ? { errorKind: ev.errorKind } : {}),
