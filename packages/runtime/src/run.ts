@@ -4,7 +4,7 @@
  * verbatim from session.ts.
  */
 
-import { denialResult, loop, type AbortSignalLike, type Adapter, type ApprovalChain, type ChainVerdict, type ContentBlock, type Event, type EventLog, type HookHost, type PermissionDecision, type ToolCallPayload, type ToolResult } from "@vincemakes/kiso-core";
+import { denialResult, loop, validateArgs, type AbortSignalLike, type Adapter, type ApprovalChain, type ChainVerdict, type ContentBlock, type Event, type EventLog, type HookHost, type PermissionDecision, type ToolCallPayload, type ToolResult } from "@vincemakes/kiso-core";
 import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
 import { resolveReasoning, type WireReasoning } from "./provider/metadata.js";
@@ -535,6 +535,17 @@ export class Run implements AsyncIterable<Event> {
 		if (call === undefined) throw new Error(`the recovery plan derived a call outside the scope (seq ${invocationSeq})`);
 		// The chain's PolicyCall carries name+input only — callId is the
 		// framework's, the hook's is the provider-facing ToolCallPayload.
+		// 0430-F1: the fresh path's preflight, in the same order and with the
+		// same words — a call the kernel refuses before any policy (unknown
+		// tool, unparsable arguments, a schema failure) is refused here the
+		// same way: one invalid_input result, no decision, no execution.
+		const tool = this.#config.registry.get(call.name);
+		const schemaError = tool !== undefined && call.input !== null ? validateArgs(tool.parameters, call.input) : null;
+		const refusal = tool === undefined ? `Unknown tool: ${call.name}` : call.input === null ? "Arguments failed to parse as JSON" : schemaError !== null ? `Arguments failed schema validation:${schemaError}` : undefined;
+		if (refusal !== undefined) {
+			yield log.append({ type: "tool_result", callId: call.callId, invocationSeq: call.seq, content: refusal, isError: true, errorKind: "invalid_input" });
+			return;
+		}
 		const payload: ToolCallPayload = { callId: call.callId, name: call.name, input: call.input ?? {} };
 		const policyCall = { name: payload.name, input: payload.input };
 		let verdict: ChainVerdict | PermissionDecision | undefined;
@@ -564,13 +575,26 @@ export class Run implements AsyncIterable<Event> {
 			else verdict = { action: "allow" };
 		}
 		if (verdict === undefined) verdict = { action: "allow" }; // no policies — the kernel's default allow
-		// The recovery's own decision is a POLICY verdict (the plan's E1
-		// rule: only a decidedBy-carrying decision binds the call — a human
-		// verdict binds its request, never the call). The driver's write
-		// must satisfy its own plan: no decidedBy → the re-derive would
-		// derive DECIDE_PERMISSION again forever (the plan cannot tell the
-		// driver's write from a human's). Stamped "mode:default" when the
-		// verdict carries none — the gates' seeded convention.
+		// 0430-F1: a verdict WITHOUT a speaker — the default allow, an
+		// onPreTool allow or deny — is not a durable fact on the fresh path
+		// and is not one here: allow goes straight to the execution (the
+		// plan no longer re-decides a started invocation), deny straight to
+		// the denial result. Only a speaking chain's verdict is recorded,
+		// exactly as the fresh path records it. (Before: a fabricated
+		// "mode:default" decision, written so the plan could make progress.)
+		if (!("decidedBy" in verdict)) {
+			if (verdict.action === "allow") {
+				yield* this.#executeInvocation(call.seq, scope, log, signal);
+				return;
+			}
+			if (verdict.action === "deny") {
+				yield* this.#denialResult(call.callId, ("reason" in verdict && verdict.reason !== undefined ? verdict.reason : undefined) ?? "denied", call.seq);
+				return;
+			}
+		}
+		// A speaking chain's decision binds the call (the plan's E1 rule: a
+		// decidedBy-carrying decision binds the call — a human verdict binds
+		// its request, never the call).
 		const decisionId = `d-${log.all.length + 1}`;
 		if (verdict.action === "allow") {
 			yield log.append({
@@ -706,6 +730,9 @@ export class Run implements AsyncIterable<Event> {
 				? {
 						type: "tool_result",
 						callId: ev.callId,
+						// 0430-F1: the receipt's invocation identity rides the fill, as
+						// a fresh result carries call.seq — bound exactly ever after.
+						...(ev.invocationSeq !== undefined ? { invocationSeq: ev.invocationSeq } : {}),
 						content: ev.result.content,
 						isError: false,
 						// round 8: the repaired result reproduces the normal path
@@ -716,6 +743,7 @@ export class Run implements AsyncIterable<Event> {
 				: {
 						type: "tool_result",
 						callId: ev.callId,
+						...(ev.invocationSeq !== undefined ? { invocationSeq: ev.invocationSeq } : {}),
 						content: ev.error,
 						isError: true,
 						...(ev.errorKind !== undefined ? { errorKind: ev.errorKind } : {}),
@@ -744,7 +772,10 @@ export class Run implements AsyncIterable<Event> {
 				e.type === "permission_decided" &&
 				(request !== undefined
 					? e.decisionId === request.decisionId
-					: call !== undefined && e.callId === call.callId && e.seq > call.seq && e.decidedBy !== undefined),
+					: call !== undefined &&
+						e.decidedBy !== undefined &&
+						// 0430-F1: exact invocation first; an old log's decision by callId
+						(e.invocationSeq !== undefined ? e.invocationSeq === call.seq : e.callId === call.callId && e.seq > call.seq)),
 		);
 		if (decided === undefined || (request?.callId ?? call?.callId) === undefined) {
 			throw new Error(`the recovery plan derived a denial without its decision (seq ${invocationSeq})`);
@@ -925,6 +956,7 @@ export class Run implements AsyncIterable<Event> {
 			content: denial.content,
 			isError: true,
 			errorKind: denial.errorKind,
+			tags: denial.tags, // 0430-F1: the fresh path's denial carries them
 		});
 	}
 }

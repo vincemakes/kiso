@@ -171,8 +171,8 @@ describe("execution identity end to end (round 4)", () => {
 		// callId is c1 again — only the executionId distinguishes it.
 		await store.append("s", "run-one", { seq: 7, type: "user_input", content: "one" });
 		await store.append("s", "run-one", { seq: 8, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
-		await store.append("s", "run-one", { seq: 9, type: "tool_execution_started", executionId: "ex-9", callId: "c1", name: "web_search", input: { query: "k" } });
-		await store.append("s", "run-one", { seq: 10, type: "tool_execution_succeeded", executionId: "ex-9", callId: "c1", result: { content: "new ok", isError: false } });
+		await store.append("s", "run-one", { seq: 9, type: "tool_execution_started", executionId: "ex-9", callId: "c1", invocationSeq: 8, name: "web_search", input: { query: "k" } });
+		await store.append("s", "run-one", { seq: 10, type: "tool_execution_succeeded", executionId: "ex-9", callId: "c1", invocationSeq: 8, result: { content: "new ok", isError: false } });
 		store.closeAll();
 
 		const session = await agent(new SessionStore(dir), join(dir, "m.txt")).session({ id: "s" });
@@ -188,6 +188,9 @@ describe("execution identity end to end (round 4)", () => {
 		expect(fill).toBeDefined();
 		expect(fill!.isError).toBe(false);
 		expect(fill!.content).toBe("new ok");
+		// 0430-F1: the fill carries the receipt's invocation identity, as a fresh
+		// result carries call.seq — a later recovery binds it exactly, never by callId.
+		expect((fill as { invocationSeq?: number }).invocationSeq).toBe(8);
 		expect(terminalOf(events)?.outcome.kind).toBe("completed");
 		// The fill is durable, attributed to the ORIGINAL run.
 		const records = new SessionStore(dir).load("s");

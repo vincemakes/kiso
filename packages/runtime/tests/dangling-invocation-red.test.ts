@@ -21,8 +21,9 @@
  * — re-decided, executed, and the continuation re-drives the provider
  * only after the pair closed. The CLOSED pair IS committed history
  * (live-path semantics — the model must see its call and its result);
- * the DANGLING shape never leaves the projection. Only a durable
- * permission_decided authorizes an effect.
+ * the DANGLING shape never leaves the projection. A speaking chain's or
+ * a human's decision is durable before an effect; a default allow records
+ * nothing on either path (0430-F1) — the execution itself is the proof.
  */
 
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -119,7 +120,11 @@ describe("R-E 0.1.43 Gap A (RED): a committed turn's undecided invocation", () =
 			}
 		}
 		const records = new SessionStore(dir).load("s");
-		expect(records.some((r) => r.event.type === "permission_decided")).toBe(true);
+		// 0430-F1: the re-decision is a DEFAULT allow (no chain, no hook), which
+		// the fresh path never records — so the recovery records none either;
+		// the execution and its result are the durable proof that it was decided.
+		expect(records.some((r) => r.event.type === "permission_decided")).toBe(false);
+		expect(records.some((r) => r.event.type === "tool_execution_started")).toBe(true);
 		expect(records.some((r) => r.event.type === "tool_result")).toBe(true);
 	});
 });

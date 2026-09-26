@@ -1,6 +1,7 @@
 export * from "./protocol/index.js";
 export * from "./tools/tool.js";
 export * from "./tools/registry.js";
+export { validateArgs } from "./tools/validate.js";
 export * from "./errors.js";
 export * from "./kernel/event-log.js";
 export * from "./kernel/hooks.js";

@@ -195,12 +195,9 @@ describe("0.43.0 (0420-F1): ToolContext is derived from the durable invocation a
 		expect(seen, "the resume executed the committed call once").toHaveLength(1);
 		expect(ctxShape(seen[0]!.ctx)).toEqual(fresh); // the same invocation context: sessionId, callId, rawInput — and the same key set
 		expect(seen[0]!.ctx.executionId).toBe(startedIdOf(events)); // the id of the durable execution THIS path wrote
-		// executionId is not compared across the two paths yet: the fresh path
-		// recorded no permission_decided for the auto-allowed call while the
-		// recovery path records one (0430-F1, its own PR), so the started seqs
-		// differ by one today. Once 0430-F1 lands, the stronger invariant —
-		// identical durable history, identical executionId, deep-equal
-		// ToolContext — becomes the assertion.
+		// 0430-F1: the two paths now write the same durable history, so the
+		// started seqs and the executionIds are equal too — the full invariant.
+		expect(seen[0]!.ctx.executionId).toBe(startedIdOf(logA));
 		expect(events.find((e) => e.type === "terminal")).toMatchObject({ outcome: { kind: "completed" } });
 	});
 });

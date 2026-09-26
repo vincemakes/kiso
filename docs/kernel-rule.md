@@ -28,8 +28,8 @@ core:
   packages/core/src/protocol/events.ts  490
   packages/core/src/kernel/project.ts   356
   ...
-  total                                2190  / 2200
-  ✓ 11 lines of headroom remaining.
+  total                                2191  / 2200
+  ✓ 9 lines of headroom remaining.
 
 cli:
   apps/cli/src/index.ts     981
