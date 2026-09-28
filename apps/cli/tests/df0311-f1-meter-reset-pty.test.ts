@@ -52,7 +52,7 @@ describe("DF-0311-F1 — /model repaints the row with no meter", () => {
 				// on `took ` it raced the idle repaint that carries the figure, and
 				// the "before" frame sometimes showed a row the switch had already
 				// cleared — a green that proved nothing either way
-				["CH 90%", "/model ds max\r"],
+				["cache 90%", "/model ds max\r"], // Graphite §8.9: `cache NN%`
 				["takes effect on the next turn", "exit\r"],
 			],
 			timeout: 60,
@@ -60,7 +60,7 @@ describe("DF-0311-F1 — /model repaints the row with no meter", () => {
 
 		// before the switch: the meter the faux usage produced reached the row
 		// (the feed that sent the switch fired on exactly these bytes)
-		expect(raw, "the turn painted no meter to lose").toContain("CH 90%");
+		expect(raw, "the turn painted no meter to lose").toContain("cache 90%");
 
 		// the switch's own frame: the new binding, and no meter at all
 		const after = statusRowOf(screenAt(raw, "takes effect on the next turn"));

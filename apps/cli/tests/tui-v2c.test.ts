@@ -3,12 +3,12 @@
  * PTY (24×80, TIOCSWINSZ): the Chinese-input cursor lands on the DISPLAY
  * width column (the drift root cure), the submitted line renders in the
  * scroll region EXACTLY once, a turn submitted while another runs queues
- * with "+N queued" and executes next, Esc cancels a paused approval (the
+ * and executes next, Esc cancels a paused approval (the
  * conservative denial continues the run — the old abort is gone), and
  * exit turns bracketed paste off (?2004l) and resets the region (CSI r).
  * W22 adds the visibility invariant's e2e: queued turns pre-render ABOVE
- * the input row as the SAME UserMessage chips (the dim □ gutter marks the
- * queued state), ↑ pops the last chip back into the editor and esc pops
+ * the input row (Graphite §8.7: one `◇ queued` row each, with its keys),
+ * ↑ pops the last one back into the editor and esc pops
  * one more, the popped turns NEVER execute, and a piped session shows no
  * chips (the pipe path has no raw keys).
  */
@@ -78,6 +78,12 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
 `;
 	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
 }
+
+// Graphite §8.7 / §7.8 — the queue band's row and the composer's row, as
+// they reach the terminal on an unknown ground (the test PTY answers no
+// OSC 11, so the lead and the word carry no colour of the ground's).
+const QUEUED = (text: string): string => `  \u25c7 \x1b[2mqueued\x1b[0m  ${text}`;
+const COMPOSER = (text: string): string => `\x1b[0K  \u203a ${text}`;
 
 describe("TUI v2c (real PTY, 24×80)", () => {
 	it("wide input (fullwidth) lands the cursor on the DISPLAY-width column — ＡＡ is 4 cells, not 2", () => {
@@ -165,7 +171,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		expect(out).toContain("\x1b[r");
 	}, 90_000);
 
-	it("a turn submitted while another runs QUEUES — '+1 queued' rides the status bar and the next turn executes", () => {
+	it("a turn submitted while another runs QUEUES and the next turn executes", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v2c-"));
 		const script = join(dir, "faux.json");
@@ -243,7 +249,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		expect(clean).toContain("the tour is done");
 	}, 90_000);
 
-	it("W22: queued turns pre-render as the □ chips above the input row — ↑ pops the last back into the editor, esc pops one more, the re-submit runs and the popped turns NEVER execute", () => {
+	it("W22: queued turns pre-render as `◇ queued` rows above the input row — ↑ pops the last back into the editor, esc pops one more, the re-submit runs and the popped turns NEVER execute", () => {
 		const { env } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v2c-"));
 		const script = join(dir, "faux.json");
@@ -263,19 +269,18 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			[
 				// "one" submits; "two" + "three" queue while turn one runs.
 				["▌ ", "one\rtwo\rthree\r"],
-				// The three-chip needle — ↑ pops the LAST queued line back
-				// into the editor (the chip leaves the queue).
-				["\x1b[2m□\x1b[0m ▌ \x1b[7m  three", "\x1b[A"], // Graphite §7.9: the unknown ground keeps the bar
+				// The third queued row's needle — ↑ pops the LAST queued line
+				// back into the editor (its row leaves the queue).
+				[QUEUED("three"), "\x1b[A"],
 				// The popped line in the input row — esc pops ONE MORE
 				// ("two") and ends the pop-mode.
-				// R2: the composer has no `\u203a` — the popped line stands at
-				// COLUMN ONE, so the needle is the row's erase-to-end
-				// immediately followed by the text. The queue CHIP for the
-				// same word cannot collide: it opens with its dim `□`
-				// gutter, so `\x1b[0Kthree` is the composer's row alone.
-				["\x1b[0Kthree", "\x1b"],
+				// Graphite §7.8: the composer's row opens with its `›` lead,
+				// so the needle is the row's erase-to-end, the lead, then the
+				// text. A queued row for the same word cannot collide: it
+				// opens with `◇`.
+				[COMPOSER("three"), "\x1b"],
 				// The esc-popped line — submit it: it runs as a fresh turn.
-				["\x1b[0Ktwo", "\r"],
+				[COMPOSER("two"), "\r"],
 				// MOVED (the boot-status class, TUI2-R2 ⑥): see above — the
 				// idle row is on screen from the first paint, so it can no
 				// longer stand in for "a turn ended". Here it mattered twice
@@ -284,14 +289,14 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 				["turn two done", "exit\r"],
 			],
 		);
-		// The chips are the SAME UserMessage chip as the body record — the
-		// dim □ gutter marks the queued state (never dimmed: the chip
-		// inverts the CURRENT colours).
-		expect(out).toContain("\x1b[2m□\x1b[0m ▌ \x1b[7m  two");
-		expect(out).toContain("\x1b[2m□\x1b[0m ▌ \x1b[7m  three");
-		// The status hint carries the queue depth.
-		expect(out).toContain("+2 queued");
-		expect(out).toContain("+1 queued");
+		// Graphite §8.7: each queued message is ONE row — the `◇`, the dim
+		// word, the text — with the key that edits it. DECLARED REMOVAL:
+		// the status hint's "+N queued" retires; every queued message is
+		// on screen as its own row (A8b's "…N more" row carries the rest).
+		expect(out).toContain(QUEUED("two"));
+		expect(out).toContain(QUEUED("three"));
+		expect(out).toContain("after this turn · ↑ edit");
+		expect(out).not.toContain("+2 queued");
 		const clean = stripANSI(out);
 		expect(clean).toContain("turn one done");
 		// The resubmitted "two" ran as a fresh turn...

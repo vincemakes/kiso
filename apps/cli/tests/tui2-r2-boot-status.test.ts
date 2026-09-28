@@ -60,15 +60,15 @@ describe("TUI2-R2 ⑥ — the status line is on the FIRST paint (the boot-status
 		// MOVED (boot-status class): this row was empty until turn one
 		expect(status, "the boot frame's status row").toContain("▸ default");
 		expect(status).toContain("/mode to switch");
-		expect(status).toContain("ctx left ~");
+		expect(status).toMatch(/ctx \d+%/); // Graphite §8.9: the share used
 	}, 240_000);
 
 	it("the row says what it can and no more — an unstarted session has no cache rate and no cost, so it shows neither", () => {
 		const { env } = isolatedEnv({ KISO_MODE: "plan" });
 		const raw = ptyRun(["r2-boot-2"], env as NodeJS.ProcessEnv, { delays: [[3, "exit\r"]], rows: ROWS, cols: COLS });
 		const status = bootFrame(raw)[ROWS - 1] ?? "";
-		expect(status).toContain("plan (read-only)"); // the tier, spelled as the REPL spells it
-		expect(status).not.toContain("CH "); // no requests yet — no cache rate to claim
+		expect(status).toContain("plan · read-only"); // the tier, spelled as the bar's chip spells it
+		expect(status).not.toContain("cache "); // no requests yet — no cache rate to claim
 		expect(status).not.toContain("$"); // and no cost
 	}, 240_000);
 

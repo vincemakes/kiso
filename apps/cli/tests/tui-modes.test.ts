@@ -160,7 +160,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 				["out.txt", ""], // the write is denied, not asked
 				["plan mode: read-only", ""], // the guiding reason reaches the model
 				["plan turn done", ""],
-				["▸ plan (read-only) · /mode to switch", ""], // W19: the idle row names the read-only posture (the v3 idle state)
+				["▸ plan · read-only · /mode to switch", ""], // Graphite §8.9: the chip reads `plan · read-only` // W19: the idle row names the read-only posture (the v3 idle state)
 				["▌ ", "/mode default\r"],
 				["mode → default", ""], // the notice cell — the switch is on the record
 				["▌ ", "go\r"],
@@ -175,7 +175,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ modeFlag: "plan", session: "modes1" },
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("▸ plan (read-only) · /mode to switch"); // W19 re-baseline: the idle row names the posture
+		expect(clean).toContain("▸ plan · read-only · /mode to switch"); // W19 re-baseline: the idle row names the posture
 		// MOVED (R13): the fold is retired, so the denial is back on the
 		// denied call's OWN row — which is where it was before R3i put it
 		// on a fold line, and it says strictly more there: the full call

@@ -8,7 +8,7 @@
 
 import { charWidth, displayWidth, visibleWidth, widthCut } from "./width.js";
 import type { Ground, Rgb } from "./ground.js";
-import { bg, breathRamp, colourTier, fg, graphiteColours, type Tier } from "./graphite.js";
+import { bg, breathRamp, colourTier, fg, graphiteColours, mix, type Tier } from "./graphite.js";
 
 /**
  * v2a — the palette, centralized (no hard-coded codes elsewhere); v5
@@ -151,6 +151,11 @@ export interface Palette {
 	readonly washDonePad: string;
 	readonly washFailPad: string;
 	readonly washAskPad: string;
+	/** Graphite §7.8 — the drawn caret: a gold cell (text on it in the dark
+	 *  ink); closed with 49 and 39. Empty where the ground is unknown — the
+	 *  caret is reverse video there. */
+	readonly caret: string;
+	readonly caretEnd: string;
 	readonly fgEnd: string;
 	/** §5.2 — the command breath's seven foreground opens; empty where
 	 *  the mark freezes (no ground, or no colour). */
@@ -205,6 +210,8 @@ const NO_GRAPHITE = {
 	washDonePad: "",
 	washFailPad: "",
 	washAskPad: "",
+	caret: "",
+	caretEnd: "",
 	fgEnd: "",
 	breath: [],
 	tier: null,
@@ -272,6 +279,8 @@ export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tie
 		washDonePad: f(c.washDone),
 		washFailPad: f(c.washFail),
 		washAskPad: f(c.washAsk),
+		caret: `${b(c.goldMark)}${f(c.humanInk)}`,
+		caretEnd: "\x1b[49m\x1b[39m",
 		fgEnd: "\x1b[39m",
 		breath: breathRamp(c).map(f),
 		tier,
@@ -632,6 +641,31 @@ export function renderTerminalGap(statusLine: string | null): string {
  *  the transition. Every glyph is in Menlo and absent from Apple Color
  *  Emoji (§6.1's test, run). */
 export const TWINKLE = ["\u2727", "\u2726", "\u2736", "\u2738", "\u273a", "\u2738", "\u2726"] as const;
+
+/**
+ * Graphite §7.8 — the composer's top rule: `gold-mark` for its first eighth,
+ * fading to `line` by a third of the width, `line` after. Drawn in a
+ * handful of runs, not a colour per cell, so the row costs a few escapes
+ * rather than one per column. Off a known ground it is the plain dim rule.
+ */
+export function fadeRule(W: number): string {
+	const p = palette();
+	const n = Math.max(0, W);
+	if (p.tier === null || ground === "unknown") return `${p.dim}${"\u2500".repeat(n)}${p.reset}`;
+	const c = graphiteColours(ground, groundRgb, p.tier);
+	const solid = Math.max(1, Math.round(n / 8));
+	const end = Math.max(solid + 1, Math.round(n / 3));
+	const STEPS = 6;
+	let out = `${fg(c.goldMark, p.tier)}${"\u2500".repeat(Math.min(n, solid))}`;
+	let at = solid;
+	for (let k = 1; k <= STEPS && at < Math.min(n, end); k += 1) {
+		const to = k === STEPS ? Math.min(n, end) : Math.min(n, solid + Math.round(((end - solid) * k) / STEPS));
+		if (to > at) out += `${fg(mix(c.goldMark, c.line, k / (STEPS + 1)), p.tier)}${"\u2500".repeat(to - at)}`;
+		at = Math.max(at, to);
+	}
+	if (at < n) out += `${fg(c.line, p.tier)}${"\u2500".repeat(n - at)}`;
+	return `${out}${p.fgEnd}`;
+}
 
 /** The breath's frame: `●` at the step's brightness (§5.2 — seven steps
  *  of gold toward the running card's ground, never under the graphic

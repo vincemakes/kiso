@@ -46,6 +46,7 @@ import {
 	palette,
 	currentGround,
 	TWINKLE,
+	fadeRule,
 	type Palette,
 	type ResumeMeta,
 	type BannerMeta,
@@ -425,19 +426,32 @@ class UserMessage implements Component {
 	}
 }
 
-/** W22: the pending-queue chips — queued lines above the input, as the
- *  person's block without its pads (the band's rows are the composer's
- *  budget), behind the dim `□` gutter that marks them queued. Each folds
- *  at W−3 (the gutter's cells), so invariant ① holds on the band. */
+/**
+ * Graphite §8.7 — a queued message is ONE row in the live zone:
+ *
+ *   ◇ queued  <the message's first line>        after this turn · ↑ edit
+ *
+ * The `◇` (a message the person sent that has not landed yet, §4) in the
+ * mark column, the message cut to its room, the keys at the right; the
+ * keys give way first when the row is short. (While Safe Admission is
+ * ahead of us the queue stands; the row retires with it.)
+ */
 export function pendingQueueRows(lines: readonly string[], W: number): string[] {
 	const p = palette();
-	const out: string[] = [];
-	for (const line of lines) {
-		for (const row of new UserMessage({ text: line }, false).render(Math.max(1, W - 3), { spinnerI: 0, now: 0, height: 0 })) {
-			out.push(`${p.dim}\u25a1${p.reset} ${row}`);
+	const mark = p.goldMark === "" ? "\u25c7" : `${p.goldMark}\u25c7${p.fgEnd}`;
+	const keys = "after this turn \u00b7 \u2191 edit";
+	return lines.map((line) => {
+		const lead = `  ${mark} ${p.dim}queued${p.reset}  `;
+		const leadW = visibleWidth(lead);
+		const text = escapeTerminal(line);
+		const withKeys = W - leadW - visibleWidth(keys) - 2;
+		if (withKeys >= Math.min(12, visibleWidth(text))) {
+			const shown = visibleWidth(text) <= withKeys ? text : `${widthCut(text, Math.max(1, withKeys - 1))}\u2026`;
+			return `${lead}${shown}${" ".repeat(Math.max(2, W - leadW - visibleWidth(shown) - visibleWidth(keys)))}${p.dim}${keys}${p.reset}`;
 		}
-	}
-	return out;
+		const room = Math.max(1, W - leadW);
+		return cutLine(`${lead}${visibleWidth(text) <= room ? text : `${widthCut(text, Math.max(1, room - 1))}\u2026`}`, W);
+	});
 }
 
 /**
@@ -1738,6 +1752,14 @@ export function idleHint(room: number, expand: "expand all" | "collapse all" | n
 	return "";
 }
 
+/** Graphite §8.5 — the key ladder the empty input shows: the idle hint's
+ *  rungs, with `@ files · ? keys` on the widest. Its widest forms open with
+ *  `/ commands · ↑ history`, the order R8b set. */
+export function keyLadder(room: number): string {
+	const widest = "/ commands \u00b7 \u2191 history \u00b7 ctrl+r transcript \u00b7 @ files \u00b7 ? keys";
+	return visibleWidth(widest) <= room ? widest : idleHint(room).trim();
+}
+
 export function statusLine(status: string, tail: string, W: number, hint?: string, expand: "expand all" | "collapse all" | null = null): string {
 	const p = palette();
 	const text = `${status}${tail === "" ? "" : ` · ${tail}`}`;
@@ -1816,18 +1838,17 @@ export function selectionBar(styled: string, visible: number, W: number): string
  * columns the walls were taking.
  */
 export function boxTop(W: number): string {
-	// R3: the palette's dim, not a hardcoded SGR 2 — `dim` is an absolute
-	// grey once the ground is known, and a rail that hardcodes the
-	// attribute would be the one chrome row not obeying the table.
-	const p = palette();
-	return `${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`;
+	// Graphite §7.8: the one rule that carries colour — gold at its left
+	// end, where the person's edge is, fading to the hairline.
+	return fadeRule(W);
 }
 
-/** R2 — the same rule below. Named for its POSITION, not its shape, so
- *  the compositor's two call sites did not have to move. */
+/** R2 — the same rule below, in the hairline colour (§1.1). Named for its
+ *  POSITION, not its shape, so the compositor's two call sites did not
+ *  have to move. */
 export function boxBottom(W: number): string {
 	const p = palette();
-	return `${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`;
+	return `${p.line === "" ? p.dim : p.line}${"\u2500".repeat(Math.max(0, W))}${p.line === "" ? p.reset : p.fgEnd}`;
 }
 
 /** The terminal label + rhythm gap (the pipe path's v2c bytes — the

@@ -168,7 +168,8 @@ describe("KC1 T-P1 — a pasted 3-line CRLF block is ONE multi-line turn (real P
 		expect(grid[20]!.includes("\u2500")).toBe(true); // R2: the rails, not the corners
 		expect(grid[21]!.includes("\u2500")).toBe(false); // the input row between them
 		expect(grid[22]!.includes("\u2500")).toBe(true);
-		expect(grid[23]).toContain("/ commands");
+		expect(grid[21]).toContain("/ commands"); // Graphite §7.8: the key ladder in the empty input
+		expect(grid[23]).toContain("/mode to switch"); // §8.9: the status bar
 		// the user's own turn rides the scrollback as a chip, all three lines
 		const scrollback = Buffer.from(out, "hex").toString("utf8");
 		for (const line of ["SELECT id", "FROM t", "WHERE x = 1"]) expect(scrollback).toContain(line);

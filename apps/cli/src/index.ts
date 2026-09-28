@@ -31,7 +31,7 @@ import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { basename, join } from "node:path";
-import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type ResumeMeta, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
+import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type ResumeMeta, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
 import { listSessionSidecars, migrateSummaries, readProfile, summaryMigrationPending } from "@vincemakes/kiso-runtime/internal";
 import { skillMenuItems } from "./skill-invoke.js";
@@ -43,7 +43,7 @@ import { isProtectedPath, protectedIdentity, PROTECTED_REFUSAL } from "@vincemak
 import { MODES, OFFERED_MODES, getMode, modeFromEnv, setMode } from "./mode.js";
 import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, kisoHome, workspaceRoot, projectRoot, ownSessionsDir, setOpenSessionFolder, builtInExtensions, currentFaux, dock, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, currentAgentExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, protectedFiles, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput, lastBinding, acceptDrift, setAcceptDrift, loadedSkillsCatalog, queuedSwitchLines } from "./state.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
-import { chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
+import { barFor, chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
 import { preferences, usePreferences } from "./preferences.js";
 import { settingsLayers } from "./state.js";
 import { loadUserConfig, resolveAutoCompact } from "./config.js";
@@ -457,7 +457,11 @@ function makeLineInput(): LineInput {
 		// OR-11 (a): ONE literal. The compositor draws this lead and the
 		// editor measures its rows against it; two copies is how they came
 		// to disagree by two columns in the first place.
-		const COMPOSER_LEAD = "";
+		// Graphite §7.8 — DECLARED REVERSAL of R2's no-glyph ruling (owner,
+		// 2026-09-28): the prompt `›` is back, in the mark column (right-
+		// aligned to column 2), so the typed text starts at the content edge
+		// with the transcript. The compositor paints the `›` gold.
+		const COMPOSER_LEAD = "  \u203a ";
 		dock.bindInput(() => editor.dockState(), COMPOSER_LEAD);
 		// …and BOTH renderers are live: the dock draws this row while it is
 		// active, the editor's own selfRender draws it (with the brick) when
@@ -835,17 +839,10 @@ function bindRestoredSession(session: {
 
 function paintBootStatus(session: { log: { all: readonly unknown[] }; reasoning?: { readonly effort: string } }): void {
 	if (!dock.active) return;
-	// DF-0330-F1: the BOOT row gets the budget too — it is the same row, and
-	// the opening screen is where a long model id is first seen.
-	dock.setStatus(
-		idleStatus(
-			getMode() === "plan" ? "plan (read-only)" : getMode(),
-			statusModelLabel(session),
-			displayCtxRatio(session as never),
-			undefined,
-			process.stdout.columns > 0 ? process.stdout.columns : 80,
-		),
-	);
+	// Graphite §8.9: the boot row is the status bar — the same builder the
+	// idle and running rows use (it used to drop `floor off`, the one fact
+	// the boot row most needs when it is true).
+	dock.setBar(barFor(session as never));
 }
 
 /** PH-1a (finding PH-F12): a usage error raised from inside the TUI —

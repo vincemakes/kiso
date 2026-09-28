@@ -426,7 +426,11 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 			// own variance is IN PLACE (its height never moves).
 			const cardEnd = shellHeader + CARD_ROWS;
 			expect(g2.length, "the frames are different heights").toBe(g1.length);
-			for (let r = readBottom + 1; r <= 19; r += 1) {
+			// Graphite §8.7: row 19 is the LIVE ROW above the composer — its
+			// glyph and its clock tick every frame by design. It is chrome,
+			// not content, so the byte-identity claim ends above it.
+			expect(g1[19], "the live row sits above the composer").toMatch(/working \d+s/);
+			for (let r = readBottom + 1; r <= 18; r += 1) {
 				if (r >= shellHeader && r < cardEnd) continue; // the running card's own span
 				expect(g2[r], `row ${r} moved under a card that is supposed to hold its height`).toBe(g1[r]);
 			}

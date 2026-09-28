@@ -289,10 +289,10 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		expect(out).toContain("\x1b[7m  look around"); // R13 D4: the chip's inner pad is TWO columns now, so its text begins in the same column as the model's (E3) and as a card's rows (E4).
 		expect(out).not.toContain("\x1b[48;5;237m"); // the fixed dark background stays banned
 
-		// ④ #16d/#16e: the input row carries NO prompt glyph at all (R2 —
-		// the cursor sits at column one). The bans this case exists for —
-		// no blue, no "you> " — are unchanged and are what it asserts.
-		expect(out).not.toContain("\u203a ");
+		// ④ Graphite §7.8 — DECLARED REVERSAL of R2's "no prompt glyph": the
+		// input row carries the `›` again, in the mark column. The bans this
+		// case exists for — no fixed blue, no "you> " — are unchanged.
+		expect(out).toContain("\u203a ");
 		expect(out).not.toContain("\x1b[38;5;75m");
 		expect(out).not.toContain("you> ");
 	}, 90_000);
@@ -330,7 +330,9 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// itself is never truncated for it. The idle row's dim span ends
 		// IMMEDIATELY after the status (the hint, had it fit, would sit
 		// between the status and the reset).
-		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["/ commands · \u2191 history", "look around\r"]], 30, 44, []);
+		// Graphite §8.9: `ctx N%` is shorter than `ctx left ~N%`, so the row
+		// with no room for the hint is 36 columns now.
+		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["/ commands", "look around\r"]], 30, 36, []);
 		// v6 invariant ①: the status itself must fit W. A1a (0.29.0): the
 		// idle status counts the tool table and the system prompt, so a
 		// fresh faux session reads ~99% (50 cells) instead of ~100% (51);
@@ -375,7 +377,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// The property is unchanged and still asserted: at 44 columns the
 		// status text is present and whole, the context estimate is not cut,
 		// and the hint gave way for it.
-		expect(narrow).toMatch(/▸ default · faux · ctx left ~\d+%/);
+		expect(narrow).toMatch(/▸ default · faux · ctx \d+%/); // Graphite §8.9: the share used
 		expect(narrow, "the teaching hint survived a row with no room for it").not.toContain("/mode to switch · faux");
 		// DECLARED SUPERSESSION (REL-0152-R1): the status row is written
 		// by ROW NUMBER now, not by a CHA at the end of a bottom-up march.

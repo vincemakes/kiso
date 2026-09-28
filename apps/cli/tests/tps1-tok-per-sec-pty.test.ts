@@ -88,7 +88,7 @@ describe("TPS-1 — the settled decode rate on the status row", () => {
 		// the segment comes after the ctx estimate — not anchored to the end of
 		// the line, because the dock's row carries the affordance hint to its
 		// right and an end-anchor would be asserting the hint, not the order.
-		expect(settled).toMatch(/ctx left ~\d+% · \d+ tok\/s/);
+		expect(settled).toMatch(/ctx \d+% · \d+ tok\/s/); // Graphite §8.9: ctx is the share used
 
 		// the switch's own frame: a new binding has no measurement
 		const after = statusRowOf(screenAt(raw, "takes effect on the next turn"));
@@ -244,8 +244,8 @@ describe("TPS-1 — the settled decode rate on the status row", () => {
 		// the FACTS all survive
 		expect(rateOn(settled), `no rate on the row at 60 columns: ${settled}`).not.toBeNull();
 		expect(settled).toContain("▸ default");
-		expect(settled).toContain("CH ");
-		expect(settled).toContain("ctx left");
+		expect(settled).toContain("cache ");
+		expect(settled).toMatch(/ctx \d+%/);
 		// and the teaching hint is what gave ground
 		expect(settled, `the hint survived a row that had no room for it: ${settled}`).not.toContain("/mode to switch");
 	}, 120_000);

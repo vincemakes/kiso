@@ -77,6 +77,7 @@ import {
 	cellComponent,
 	gutterCut,
 	cutLine,
+	keyLadder,
 	pendingQueueRows,
 	statusLine,
 	visibleWidth,
@@ -88,6 +89,17 @@ import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderT
 import { oneRow } from "@vincemakes/kiso-tui-cells/render";
 import { displayVerb, keysSheetRows } from "./strings.js";
 import { noticeMeta } from "./notice-meta.js";
+import { statusBar, type BarInput } from "./status.js";
+/** Graphite §7.8 — the drawn caret: gold on a known ground, reverse video
+ *  where there is no ground to be gold against. */
+const caretOn = (): string => {
+	const p = palette();
+	return p.caret === "" ? "\x1b[7m" : p.caret;
+};
+const caretOff = (): string => {
+	const p = palette();
+	return p.caret === "" ? "\x1b[27m" : p.caretEnd;
+};
 /** DC-56: does a rendered row carry any visible text once its SGR is
  *  stripped? A washed pad row is spaces under a background colour — width
  *  without words. */
@@ -356,6 +368,17 @@ export class Body {
 	// the chrome state (the Dock façade)
 	#status = "";
 	#statusHint: string | null = null;
+	/** Graphite §8.9 — the status bar's facts, handed over by the CLI and
+	 *  composed at paint time (the drop order spans both sides of the row,
+	 *  and only the paint knows the width and the `ctrl+o` state). Null:
+	 *  the CLI's own status text is the row (setStatus). */
+	#bar: BarInput | null = null;
+	/** Graphite §8.7 — the live row above the composer while a turn runs
+	 *  (working, retrying, compacting), or null. */
+	#live: string | null = null;
+	/** A short confirmation (the clipboard's) on the live row while nothing
+	 *  is live; the next keypress clears it. */
+	#flash: string | null = null;
 	#tail = "";
 	// W21: the panel's bound state — the PanelSelect slot occupant (the
 	// old ApprovalPrompt's question slot retires with it): while a
@@ -1603,6 +1626,29 @@ export class Body {
 	setStatus(text: string, hint: string | null = null): void {
 		this.#status = text;
 		this.#statusHint = hint;
+		// a caller that paints its own text takes the row
+		this.#bar = null;
+		this.redraw();
+	}
+
+	/** Graphite §8.9 — hand the status bar its facts. */
+	setBar(bar: BarInput | null): void {
+		this.#bar = bar;
+		this.redraw();
+	}
+
+	/** Graphite §8.7 — the live row (already composed for the width the
+	 *  caller measured; cut here if the terminal narrowed since), or null
+	 *  when nothing is live. */
+	setLive(row: string | null): void {
+		this.#live = row;
+		this.redraw();
+	}
+
+	/** A confirmation that is true for a moment — `copied 212 chars` — on the
+	 *  live row, until the next keypress. It never displaces a live row. */
+	flash(text: string): void {
+		this.#flash = text;
 		this.redraw();
 	}
 
@@ -1616,7 +1662,7 @@ export class Body {
 	 *  compositor derives both from the bound panel state; the old
 	 *  question slot's dim-pending shape is the normal branch's shape
 	 *  now). */
-	#statusSource(): { status: string; hint: string | undefined; expand: "expand all" | "collapse all" | null } {
+	#statusSource(): { status: string; hint: string | undefined; expand: "expand all" | "collapse all" | null; bar?: BarInput } {
 		const panel = this.#panelState?.() ?? null;
 		// DC-38: the panel's STATUS replaces the CLI's painting status —
 		// that half of W21 stands. The HINT does not come with it, because
@@ -1636,6 +1682,13 @@ export class Body {
 		// approval and the pick, ask-panel.ts for the ask), so nothing is
 		// lost anywhere.
 		if (panel !== null) return { status: panelStatusOf(panel), hint: undefined, expand: null };
+		// Graphite §8.9: the bar, when the CLI handed one over — the queued
+		// messages are on screen in the band above the input (§8.7), so the
+		// bar does not count them.
+		if (this.#bar !== null) {
+			const expand = this.#collapsed.length > 0 ? (this.#expandedAll ? "collapse all" : "expand all") : null;
+			return { status: "", hint: undefined, expand, bar: this.#bar };
+		}
 		// W22: while turns wait in the queue, the right hint shows the
 		// count — the chips below carry the lines themselves.
 		const queued = this.#queueState?.().length ?? 0;
@@ -1690,8 +1743,9 @@ export class Body {
 	}
 
 	/** Bind the pending-turn queue — the CLI's live slots (chat.ts):
-	 *  the chips render in the menu-rows family, the live caps shrink
-	 *  by their rows, and the +N queued hint rides the status row. */
+	 *  the queued rows render in the menu-rows family and the live caps
+	 *  shrink by their rows (Graphite §8.7). The status bar does not
+	 *  count them; without a bar the status row's hint still does. */
 	bindQueue(state: () => readonly string[]): void {
 		this.#queueState = state;
 	}
@@ -1730,6 +1784,7 @@ export class Body {
 		if (!this.#isActive()) return;
 		this.#dirty = true;
 		if (fromKey) {
+			this.#flash = null;
 			this.#scheduleInputFrame();
 			return;
 		}
@@ -2314,6 +2369,17 @@ export class Body {
 	 *  occupant (the queue is dense, like the menu; each line is its
 	 *  own chip with the □ gutter). */
 	#queueRows(W: number, H: number): string[] {
+		// Graphite §8.7: the live row opens the band above the composer; the
+		// queued messages sit under it, next to the input they wait on.
+		const panelUp = (this.#panelState?.() ?? null) !== null;
+		const p = palette();
+		const live = panelUp ? [] : this.#live !== null ? [cutLine(this.#live, W)] : this.#flash !== null ? [cutLine(`    ${p.dim}${this.#flash}${p.reset}`, W)] : [];
+		return [...live, ...this.#queuedRows(W, H - live.length)];
+	}
+
+	/** The queued messages' rows; `H` is the height they may share with
+	 *  the content, the live row's already taken out. */
+	#queuedRows(W: number, H: number): string[] {
 		const queued = this.#queueState?.() ?? [];
 		if (queued.length === 0) return [];
 		// KC1 (adjudication A4): a MULTI-LINE queued message's chip shows
@@ -2334,13 +2400,13 @@ export class Body {
 		// scroll — the scrollback lost the turns entirely (finding #A8b —
 		// the queued-flood content loss). The band keeps the first H−9
 		// chips + one "…N more" row (≤ H−8 rows — the content keeps ≥ 4);
-		// the status hint's "+N queued" already carries the count, so the
-		// cap hides nothing the status doesn't show.
+		// that row carries the count, so the cap hides nothing without
+		// saying so.
 		const keep = Math.max(1, H - 9);
 		if (lines.length <= keep) return pendingQueueRows(lines, W);
 		const p = palette();
 		const hidden = lines.length - keep;
-		return [...pendingQueueRows(lines.slice(0, keep), W), `${p.dim}□ …${hidden} more queued${p.reset}`];
+		return [...pendingQueueRows(lines.slice(0, keep), W), `    ${p.dim}…${hidden} more queued${p.reset}`];
 	}
 
 	/**
@@ -2492,7 +2558,7 @@ export class Body {
 				// the cursor rests past the content — an inverse space,
 				// taken OUT of the pad (the walk capped content at W, so
 				// the pad absorbs it and the row still totals W)
-				stripped0 = `${before}\x1b[7m \x1b[27m`;
+				stripped0 = `${before}${caretOn()} ${caretOff()}`;
 				cursorPad = 1;
 			} else if (after[0] === "\x1b" || (after.codePointAt(0)! >= 0xd800 && after.codePointAt(0)! <= 0xdfff)) {
 				// never wrap a sequence, never split a surrogate pair —
@@ -2501,7 +2567,7 @@ export class Body {
 				stripped0 = before + after;
 			} else {
 				const glyph = String.fromCodePoint(after.codePointAt(0)!);
-				stripped0 = `${before}\x1b[7m${glyph}\x1b[27m${after.slice(glyph.length)}`;
+				stripped0 = `${before}${caretOn()}${glyph}${caretOff()}${after.slice(glyph.length)}`;
 			}
 		}
 		// R2 — the box is retired (see boxTop): the composer is two dashed
@@ -2529,11 +2595,23 @@ export class Body {
 		// the lead — the panel's phase lead when the panel owns the row
 		// (1-3> / the rule input's "2 Yes, don't ask again for " / the
 		// amend "feedback (deny): "), the bound prompt otherwise
-		const lead = panel !== null ? panelLeadOf(panel) : this.#inputPrompt;
+		const p = palette();
+		// Graphite §7.8: the prompt `›` is gold (the edge of a turn); the
+		// bound lead is plain text and the colour is the paint's, so a ground
+		// resolved after the first frame reaches it.
+		const lead = panel !== null ? panelLeadOf(panel) : this.#inputPrompt.replace("\u203a", `${p.gold}\u203a${p.gold === "" ? "" : p.fgEnd}`);
 		const leadW = leadWidth(lead);
 		// a LEGACY one-row provider (the old {line, cursor} shape) keeps
 		// working: its single line is the composer's single row
 		let rows = st.lines !== undefined && st.lines.length > 0 ? [...st.lines] : [st.line];
+		// Graphite §7.8 / §8.5: an EMPTY input on an idle composer shows the
+		// keys nothing else advertises — the ladder that gives way from the
+		// right. Never while a turn runs, a panel is up, a menu is open, or
+		// the viewer or the keys sheet holds the live region (each carries
+		// its own keys): the placeholder is the idle state's, and only its.
+		const overlayUp = this.#viewer !== null || this.#sheetState?.() === true;
+		const placeholder =
+			panel === null && !overlayUp && menuRows === 0 && this.#live === null && rows.length === 1 && rows[0] === "" ? keyLadder(Math.max(0, W - leadW - 3)) : "";
 		let cursorRow = Math.min(st.cursorRow ?? 0, rows.length - 1);
 		const cursorCol = st.cursorCol ?? st.cursor;
 		// KC1 §5's N_visible, re-applied against the frame's REAL bands:
@@ -2549,7 +2627,8 @@ export class Body {
 		const out: string[] = [];
 		let markerCol = 1; // R2: no wall to skip — the row starts at column 1
 		for (let r = 0; r < rows.length; r += 1) {
-			const text = `${r === 0 ? lead : " ".repeat(leadW)}${rows[r]!}`;
+			const hint = r === 0 && placeholder !== "" ? ` ${p.rail === "" ? p.dim : p.rail}${p.italic}${placeholder}${p.italicEnd}${p.reset}` : "";
+			const text = `${r === 0 ? lead : " ".repeat(leadW)}${rows[r]!}${hint}`;
 			const bytes = this.#inputRowBytes(text, W, r === cursorRow ? leadW + cursorCol : null);
 			out.push(bytes.stripped);
 			// W23: the frame-derived column — wallL (2) + the marker's
@@ -2738,7 +2817,7 @@ export class Body {
 		for (let i = 0; i < editor.rows.length; i += 1) desired[H - 2 - inputExtra + i - 1] = this.#checked(editor.rows[i]!, W);
 		desired[H - 1 - 1] = boxBottom(W);
 		const statusRow = this.#statusSource();
-		desired[H - 1] = this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint, statusRow.expand), W);
+		desired[H - 1] = this.#checked(statusRow.bar !== undefined ? statusBar(statusRow.bar, W, statusRow.expand) : statusLine(statusRow.status, this.#tail, W, statusRow.hint, statusRow.expand), W);
 		this.#emitDiff(out, W, H, desired);
 		// REL-0152-R1: park from where the cursor ACTUALLY is — see
 		// #cursorRow. It used to be parked from H, which the bottom-up
@@ -3023,6 +3102,18 @@ export class Dock {
 	setStatus(text: string, hint?: string | null): void {
 		compositorRef?.setStatus(text, hint ?? null);
 	}
+	/** Graphite §8.9 — the status bar's facts. */
+	setBar(bar: BarInput | null): void {
+		compositorRef?.setBar(bar);
+	}
+	/** Graphite §8.7 — the live row, or null. */
+	setLive(row: string | null): void {
+		compositorRef?.setLive(row);
+	}
+	/** A short confirmation on the live row, gone at the next keypress. */
+	flash(text: string): void {
+		compositorRef?.flash(text);
+	}
 	setTail(tail: string): void {
 		compositorRef?.setTail(tail);
 	}
@@ -3093,8 +3184,8 @@ export class Dock {
 		}
 		compositorRef.bindPick(state);
 	}
-	/** W22: bind the pending-turn queue — the chips + the +N queued
-	 *  hint (the CLI binds it from chat(); the editor's pop keys ride
+	/** W22: bind the pending-turn queue — the queued rows (the CLI
+	 *  binds it from chat(); the editor's pop keys ride
 	 *  the LineInput's own bindQueue). */
 	bindQueue(state: () => readonly string[]): void {
 		if (compositorRef === null) {

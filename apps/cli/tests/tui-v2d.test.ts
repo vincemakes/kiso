@@ -212,9 +212,10 @@ const CELL_LINE = [
 	// (`╭─╮` / `╰─╯`) and the panel's own `─` divider are both retired,
 	// and the divider became a blank row, which the lint already skips.
 	/^\u2500+$/,
-	// R2: the input row is the typed text at COLUMN ONE — no wall, no
-	// prompt glyph — so it is classified by its CONTENT like any other
-	// plain row, and an EMPTY composer is the blank the lint skips.
+	// Graphite §7.8 (a declared reversal of R2's bare column one): the
+	// input row opens with the `›` lead in the mark column, then the typed
+	// text or, when the input is empty on an idle composer, the key ladder.
+	/^\u203a(?: \S.*)?$/,
 	//
 	// R2, the PANEL's own rows. They used to be classified by the `│`
 	// gutter they all carried; a gutter SCOPES a verbatim block and an

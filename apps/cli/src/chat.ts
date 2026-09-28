@@ -11,14 +11,14 @@ import {
 	escapeTerminal,
 	cacheHitPct,
 	decodeRate,
-	idleStatus,
 	palette,
 	renderEvent,
 	renderRecap, sealTiers,
-	runningStatus,
 	toolTarget,
 	STATUS_GLYPHS,
 	kUnit,
+	workingRow,
+	type BarInput,
 	type PanelArgs,
 	type PanelView,
 	type RenderInput,
@@ -29,7 +29,9 @@ import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressP
 import { queuedSwitchLines } from "./state.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage } from "@vincemakes/kiso-runtime";
-import { canonicalizeUsageForModel, requestBudget } from "@vincemakes/kiso-runtime/internal";
+import { canonicalizeUsageForModel, requestBudget, tiersFor } from "@vincemakes/kiso-runtime/internal";
+import { homedir } from "node:os";
+import { currentBranch } from "./git-branch.js";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import type { UserInputVia } from "@vincemakes/kiso-core";
 import { dispatch, type DispatchCtx, abortBangCommand } from "./dispatch.js";
@@ -312,6 +314,32 @@ export function displayCtxRatio(session: AgentSession): number {
 	return requestBudget(session.requestParts(), window).ratio;
 }
 
+/**
+ * Graphite §8.9 — the status bar's facts, one builder for every caller
+ * (the boot row, the idle row, the running turn's row), so they cannot
+ * drift apart. The context share is USED, with the runtime's own
+ * compaction tiers as shares of the same window (`tiersFor`, never a
+ * fixed fraction); an unknown window is `ctx ?`.
+ */
+export function barFor(session: AgentSession, measured: { readonly cachePct: number | null; readonly tokPerSec: number | null } = { cachePct: null, tokPerSec: null }): BarInput {
+	const window = knownContextWindow();
+	const used = displayCtxRatio(session);
+	const tiers = window === null ? null : tiersFor(window, 0);
+	const home = homedir();
+	const cwd = process.cwd();
+	return {
+		mode: getMode() === "plan" ? "plan \u00b7 read-only" : getMode(),
+		modeAlert: getMode() === "bypass",
+		floorOff: !floorOn,
+		model: statusModelLabel(session),
+		ctx: tiers === null || window === null || !Number.isFinite(used) ? null : { used, soft: tiers.soft / window, hard: tiers.hard / window },
+		cachePct: measured.cachePct,
+		tokPerSec: measured.tokPerSec,
+		branch: currentBranch(cwd),
+		folder: cwd === home ? "~" : cwd.startsWith(`${home}/`) ? `~${cwd.slice(home.length)}` : cwd,
+	};
+}
+
 /** 0.40.0 item 9: how long a prompt cache is assumed to live. PROVISIONAL:
  *  DeepSeek does not publish its TTL (the owner's cache was gone after 27
  *  minutes); Anthropic's default is 5 minutes. */
@@ -588,8 +616,8 @@ export function startStatusSpinner(onTick: (glyph: string) => void): () => void 
 	// the idle row or the next turn.
 	setRetryShown(null);
 	if (!dock.active) return () => {};
-	// v3 §03/§05: the working glyph family ▖▘▝▗, 200ms rotation — the
-	// callback repaints the running status line with the new glyph.
+	// v3 §03/§05: the working glyph family (STATUS_GLYPHS), 200ms
+	// rotation — the callback repaints the live row with the new glyph.
 	// KC2 §5: the family itself moved to the tui's status formatters.
 	let i = 0;
 	const timer = setInterval(() => onTick(STATUS_GLYPHS[i++ % STATUS_GLYPHS.length]!), 200);
@@ -1395,6 +1423,10 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 				runGlyph = g;
 				paintRunning();
 			});
+			// Graphite §8.7: the live row stands from the run's FIRST frame —
+			// the spinner's first tick is 200ms away, and a row that arrived
+			// then would move the content above it once the turn had begun.
+			paintRunning();
 			(async () => {
 				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
@@ -1550,7 +1582,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// no rate in the pricing table contributes nothing and the row shows no
 	// $ at all, because a partial total presented as a total is a lie.
 	let spentUsd: number | null = null;
-	let runGlyph = "▖";
+	let runGlyph: string = STATUS_GLYPHS[0];
 	let runStart = Date.now();
 	// TPS-1: the decode rate of the last SETTLED call. One variable serves
 	// both rows because they want the same number at different moments;
@@ -1573,33 +1605,24 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// (DF-0330-F1). A pending retry makes it thirty columns longer, and
 		// composed blind it would be cut from the END — the context figure,
 		// a fact, going before the gesture hints.
-		if (dock.active) dock.setStatus(runningStatus(runGlyph, runStart, runUsage.out, displayCtxRatio(session), lastTokPerSec, rowWidth(), retryOnRow()));
+		// Graphite §8.7 / §8.9: the turn's own facts ride the LIVE row above
+		// the composer; the status bar keeps the session's (its ctx moves as
+		// the turn reads).
+		if (!dock.active) return;
+		dock.setLive(workingRow(runGlyph, runStart, runUsage.out, lastTokPerSec, rowWidth(), retryOnRow()));
+		dock.setBar(barFor(session, { cachePct: cacheHitPct(runUsage), tokPerSec: lastTokPerSec }));
 	};
 	// W19: under plan the idle row makes the posture unmistakable — the W4
 	// parentheses idiom names the read-only constraint. The tier is the
 	// CALLER's word (the recovery flow passes the bare mode).
 	const paintIdle = (): void => {
 		if (!dock.active) return;
-		// TUI2-R1 (E): the meter rides the idle row — both fields omitted
-		// when unknown, so a session that has not called the model paints
-		// exactly the pre-round row.
-		dock.setStatus(
-			idleStatus(
-				getMode() === "plan" ? "plan (read-only)" : getMode(),
-				statusModelLabel(session),
-				displayCtxRatio(session),
-				{
-					cacheHitPct: cacheHitPct(runUsage),
-					costUsd: spentUsd,
-					tokPerSec: lastTokPerSec,
-				},
-				// DF-0330-F1: the row's budget. Without it the row is composed
-				// blind and invariant ① cuts whatever sits last — which is how
-				// a measured rate went missing at 100 columns.
-				rowWidth(),
-				!floorOn,
-			),
-		);
+		// Graphite §8.9: nothing is live; the bar carries the session and
+		// its health. TUI2-R1 (E): the meter's fields are omitted while
+		// unmeasured, so a session that has not called the model paints no
+		// cache and no rate.
+		dock.setLive(null);
+		dock.setBar(barFor(session, { cachePct: cacheHitPct(runUsage), tokPerSec: lastTokPerSec }));
 	};
 	// TUI2-R2 ⑥ — the BOOT status line. The row is the product's one
 	// persistent claim about itself (the tier, how to change it, the model,

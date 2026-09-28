@@ -3,13 +3,12 @@
  * moved verbatim from index.ts.
  */
 
-import { idleStatus, runningStatus, type RunUsage } from "@vincemakes/kiso-tui";
+import { STATUS_GLYPHS, cacheHitPct, workingRow, type RunUsage } from "@vincemakes/kiso-tui";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
-import { getMode } from "./mode.js";
-import { agentModel, dock, retryOnRow, floorOn, type LineInput } from "./state.js";
+import { dock, retryOnRow, type LineInput } from "./state.js";
 import { pendingAsk, resolveUncertains } from "./trust-ui.js";
 import { failOnFauxExhaustion } from "./faux-glue.js";
-import { consumeRun, estimateCtxRatio, startStatusSpinner } from "./chat.js";
+import { barFor, consumeRun, estimateCtxRatio, startStatusSpinner } from "./chat.js";
 
 /**
  * Resume = the RECOVERY flow (Area 2/7): uncertain executions are decided,
@@ -24,22 +23,23 @@ export async function resume(session: AgentSession, prompt: string | undefined, 
 	let turnNo = 0;
 	// v3 §03: the two-state status bar (see chat — same shapes).
 	let runUsage: RunUsage = { in: null, out: null, cache: null, known: false };
-	let runGlyph = "▖";
+	let runGlyph: string = STATUS_GLYPHS[0];
 	let runStart = Date.now();
 	// KC2 §5: the rows the REPL and this flow used to build separately are
-	// ONE formatter now — the running row was duplicated verbatim.
-	const statusCb = (u: RunUsage, ctx: number): void => {
+	// ONE formatter now. Graphite §8.7 / §8.9: the running turn's facts ride
+	// the live row, the session's the status bar — the chat's own two
+	// (barFor), so the recovery flow now spells plan's posture the same way.
+	const width = (): number => (process.stdout.columns > 0 ? process.stdout.columns : 80);
+	const statusCb = (u: RunUsage, _ctx: number): void => {
 		runUsage = u;
-		if (dock.active) dock.setStatus(runningStatus(runGlyph, runStart, u.out, ctx, null, process.stdout.columns > 0 ? process.stdout.columns : 80, retryOnRow()));
+		if (!dock.active) return;
+		dock.setLive(workingRow(runGlyph, runStart, u.out, null, width(), retryOnRow()));
+		dock.setBar(barFor(session, { cachePct: cacheHitPct(u), tokPerSec: null }));
 	};
-	// the recovery flow prints the BARE mode (chat spells plan's posture) —
-	// the extraction keeps that difference, it was not asked to settle it.
 	const paintIdle = (): void => {
-		// DF-0330-F1: the recovery flow paints the same row, so it gets the
-		// same budget. It has no meter, so nothing here can be dropped that
-		// was not already at risk of being cut.
-		if (dock.active)
-			dock.setStatus(idleStatus(getMode(), agentModel, estimateCtxRatio(session), undefined, process.stdout.columns > 0 ? process.stdout.columns : 80, !floorOn));
+		if (!dock.active) return;
+		dock.setLive(null);
+		dock.setBar(barFor(session, { cachePct: cacheHitPct(runUsage), tokPerSec: null }));
 	};
 	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
 		currentRun = run;
@@ -49,6 +49,7 @@ export async function resume(session: AgentSession, prompt: string | undefined, 
 			runGlyph = g;
 			statusCb(runUsage, estimateCtxRatio(session));
 		});
+		statusCb(runUsage, estimateCtxRatio(session)); // the live row from the run's first frame
 		try {
 			turnNo += 1;
 			const last = await consumeRun(session, run, input, turnNo, faux, statusCb);
