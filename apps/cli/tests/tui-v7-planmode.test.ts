@@ -148,8 +148,11 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 				// NEEDLE MOVED (R9 P2 / D4): the head row no longer carries the
 				// result, so the old needle never matched and the scenario spent
 				// its whole 60s wall — a driver whose wait cannot match reports
-				// as a product timeout. The outcome ROW is the moment now.
-				["exit 0 · 1 line", "exit\r"], // the shell ran and settled
+				// as a product timeout. MOVED AGAIN (Graphite §7.4): the outcome
+				// word takes its colour, so `exit 0 · 1 line` is split by an SGR
+				// in the raw stream; the model's answer after the settle is the
+				// moment now.
+				["executed.", "exit\r"], // the shell ran and settled
 			],
 			workdir,
 		);
