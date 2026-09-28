@@ -396,8 +396,10 @@ it is the same record, redrawn whole, at the geometry the reader is
 now looking at.
 
 **7.2 Thinking is words.** The model's thinking renders as its own block
-under the label `THINK <seconds>` in blue: `dim` italic paragraphs at the
-content edge, a blank line between paragraphs, shown in full, never folded.
+under the label `THINK <seconds>` in blue — the seconds only when they
+were measured; a thought replayed from the log has none — as `dim` italic
+paragraphs at the content edge, a blank line between paragraphs, shown in
+full, never folded.
 While the model thinks, the label carries the twinkle. It closes the
 current stretch rather than joining one: what the model says is not work.
 
@@ -551,8 +553,20 @@ screen has something behind the key.
 keyed on `H − 4` depends on it. The top rule is `gold-mark` for its first
 eighth and fades to `line` by a third of the width. The prompt is a gold `›`
 in the mark column and the caret is gold; the text starts at the content
-edge. *(R2)* While the line starts with `!`, the prompt is `$` (§7.13).
-The live zone (§8.7) sits above these four rows and is not part of them.
+edge, the same column as the transcript's. *(R2)* While the line starts with
+`!`, the prompt is `$` (§7.13). The live zone (§8.7) sits above these four
+rows and is not part of them. The line-mode prompt (no composer: a terminal
+kiso does not dock in) is unchanged.
+
+While the input is empty it shows the keys nothing else advertises, in
+`rail` italic, as a ladder that gives way from the right (§8.5).
+
+DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). R2 (owner,
+2026-08-27) ruled that the docked composer has no prompt glyph: the rules
+already said "input lives here", and a glyph cost the row a column. The
+design round brought back a gold `›`: with the transcript at column 4, the
+glyph sits in the mark column and costs the input nothing it did not already
+give up to line up with the transcript.
 
 **7.9 The person's words span the width.** The YOU block (§1.6): the label
 `YOU <hh:mm>` in gold at the content edge, then the `human` ground across
@@ -716,13 +730,32 @@ directly below them.
 band. Completing and sending on one key would send a fragment. `esc`
 closes every band.
 
-**8.5 The status bar gives way in order.** It drops a piece WHOLE when the
-row does not fit, in a fixed order: the `ctrl+o` hint, `/mode to switch`,
-the folder, the branch. A piece skipped is an affordance lost at a width
-that could have shown it, so the order is by how findable the key is
-WITHOUT the hint. The facts — the mode, `floor off`, the model (elided in
-its middle, DF-0330-F1), ctx, cache, tok/s — never drop. `/mode to switch`
-stays for as long as it fits: it is the one place a newcomer meets modes.
+**8.5 What gives way, and where the keys are advertised.** A piece
+skipped is an affordance lost at a width that could have shown it, so
+everything that can drop drops WHOLE, in an order set by how findable the
+key is WITHOUT the hint.
+
+The status bar (§8.9) drops, in order: the `ctrl+o` hint, `/mode to
+switch`, the folder, the branch. The facts — the mode, `floor off`, the
+model (elided in its middle, DF-0330-F1), ctx, cache, tok/s — never drop.
+`/mode to switch` stays for as long as it fits: it is the one place a
+newcomer meets modes.
+
+The key ladder lives in the empty input (§7.8), the widest form that fits:
+
+```
+/ commands · ↑ history · ctrl+r transcript · @ files · ? keys
+/ commands · ↑ history · ctrl+r transcript
+/ commands · ctrl+r transcript
+/ commands · ↑ history
+/ commands
+```
+
+`/ commands` survives longest because it is the door to everything;
+`ctrl+r` outranks `↑ history` because pressing up is how a person finds the
+history by accident, and nothing finds `ctrl+r` by accident (R8b). The
+ladder moved from the status row to the input when the status bar took the
+session's facts; the rule it carries did not change.
 
 **8.6 The editor's keys, and the one gesture with three spellings.**
 `alt+←/→` moves the cursor by word and `alt+⌫` / `alt+d` delete a word
