@@ -634,14 +634,26 @@ loaded. The design round brought a wordmark back and moved the answers: the
 model and the folder to the status bar, what is loaded to the block beside
 the wordmark. The cost is ten rows, once, at the top of a session.
 
-**7.11 The seal.** After every turn, one row at the content edge:
-`✦ turn 3 · 12.6s · 4 calls · in 14.1k · out 910` — `✦` in `gold-mark`,
-the rest `dim`. It records what the turn DID: its time, its calls, what it
-read and wrote. Cache and speed are the session's health and live in the
-status bar (§8.9); nothing is said twice. A turn the person stopped seals
-the same way, with `stopped by you after 6.2s` in place of the time and
-`everything up to here is saved` at the end, because that is the fact a
-stop makes the reader doubt.
+**7.11 The seal.** After every turn, one row at the content edge — today's
+turn line, restyled: `✦` in `gold-mark`, the rest `dim`.
+
+```
+✦ took 4.1s · fresh 1.3k out 910 · cache 96% · ctx 9%
+```
+
+It is the turn's record in the scrollback: how long it took, what it cost
+in fresh and output tokens, the cache share, and the context used when it
+ended. The status bar says the same facts for NOW; the seal keeps them for
+each turn, so a turn's cache miss or context jump stays findable after the
+bar has moved on. `ctx` is the share USED, as on the status bar's meter.
+No turn number and no call count: neither helps the person reading.
+
+The other forms keep their words: a cache miss adds `miss <n>` after the
+cache share; a cold cache reads `cache cold after <n> min · re-read <n> ·
+out <n>`; plan mode reads `plan ready · /mode default executes · /mode
+accept-edits auto-approves edits`; a turn the person stopped reads
+`stopped by you after 6.2s`, then the same facts. The row is cut, never
+folded (R3g). The pipe keeps today's bytes.
 
 **7.12 kiso's own sentences are meta rows.** Compaction, a learned
 window, a pruned result, a skill run as a turn, a run that failed after its
