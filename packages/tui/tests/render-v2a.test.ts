@@ -160,7 +160,15 @@ describe("v2a/v5/KC3: the palette", () => {
 		// cannot hide inside a sequence.
 		const MONO = /^\x1b\[(?:0|1|2|3|4|7|22|23|24|27|39|49|38;5;(?:23[2-9]|24\d|25[0-5])|48;5;(?:23[2-9]|24\d|25[0-5]))m$/;
 		const FUNCTIONAL: Record<string, string> = { red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m" };
+		// Graphite: COLOR_ON is the UNKNOWN ground's palette, and §3.1 keeps
+		// it mono — every Graphite colour member is empty there, the breath
+		// has no steps and no tier was written in. The colours live on a
+		// KNOWN ground only (dc3-palette-ground's gates).
+		expect(COLOR_ON.breath).toEqual([]);
+		expect(COLOR_ON.tier).toBeNull();
 		for (const [name, code] of Object.entries(COLOR_ON)) {
+			if (name === "breath" || name === "tier") continue;
+			if (typeof code !== "string") throw new Error(`${name} is not an SGR string`);
 			if (name in FUNCTIONAL) {
 				expect(code, `${name} is a FUNCTIONAL color — the recolor never moves it`).toBe(FUNCTIONAL[name]);
 				continue;

@@ -1372,14 +1372,26 @@ export class Body {
 	 * which time the first frame is already painted with the no-ground
 	 * palette. Rather than delay the opening to wait for an answer that
 	 * may never come, the frame is painted at once and repainted when the
-	 * answer lands. Invalidating the held screen is exactly what a resize
-	 * does, for exactly the same reason — every row's bytes are wrong —
-	 * so it rides the settle the resize already owns and costs one
-	 * repaint, once per session.
+	 * answer lands.
+	 *
+	 * It is NOT a resize, and must not ride one: the settle returns early
+	 * when the geometry did not change — which it never does here — so the
+	 * old path cleared the held screen and painted nothing, leaving the
+	 * no-ground palette up until the first keystroke. Nor is it a reprint:
+	 * `3J` would erase the shell's scrollback at every launch, since the
+	 * answer arrives at every launch. So: the committed cells' cached rows
+	 * are dropped (their bytes carry the old palette; their geometry does
+	 * not change, the palette sets no width), the held screen is voided,
+	 * and one frame repaints what is on screen. Rows already in the
+	 * terminal's scrollback keep the palette they were written in.
 	 */
 	onGroundChange(): void {
-		this.#screen = [];
-		this.onResize();
+		if (!this.#isActive()) return;
+		for (let i = 0; i < this.#committed; i += 1) this.#lineCache[i] = null;
+		this.#screen = new Array(Math.max(1, this.#opts.height())).fill(NOT_PAINTED);
+		this.#fullRedraw = true;
+		this.#dirty = true;
+		this.render();
 	}
 
 	/**
