@@ -157,7 +157,7 @@ export {
 // honestly for a question nobody answered (the ① probe's surface).
 // TUI2-R1 (D): the keys sheet + THE key table — one source for the ?
 // overlay and /help's keys row.
-export { resolveGround, type Ground } from "@vincemakes/kiso-tui-cells";
+export { currentGroundRgb, parseOscColor, resolveGround, type Ground, type Rgb } from "@vincemakes/kiso-tui-cells";
 // one duration form: the CLI's own surfaces label a settled duration the
 // way a settled card does, rather than writing a second one.
 export { settledLabel } from "@vincemakes/kiso-tui-cells";

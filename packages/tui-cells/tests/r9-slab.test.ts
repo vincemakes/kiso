@@ -20,7 +20,7 @@
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cellComponent, type BodyCell, type FrameCtx } from "../src/components.js";
-import { setGround } from "../src/render.js";
+import { COLOR_DARK, COLOR_LIGHT, setGround } from "../src/render.js";
 import { visibleWidth } from "../src/components.js";
 
 beforeAll(() => {
@@ -53,7 +53,9 @@ function shell(lines: number, over: Partial<Extract<BodyCell, { kind: "tool" }>>
 }
 const render = (c: Extract<BodyCell, { kind: "tool" }>, W = 64): string[] => cellComponent(c).render(W, CTX);
 
-const WASH = { light: "\x1b[48;5;255m", dark: "\x1b[48;5;236m" } as const;
+// Graphite (design.md §2): the settled card's ground, as the palette writes it —
+// the test environment runs in the 24-bit tier (tests/setup-env.ts).
+const WASH = { light: COLOR_LIGHT.wash, dark: COLOR_DARK.wash } as const;
 
 describe("R9 P2 — the slab's shape", () => {
 	it("pad, head, blank, note, five output rows, blank, outcome, pad", () => {
@@ -155,34 +157,34 @@ describe("R9 P2 — the slab's shape", () => {
 		expect(render(shell(88)).join("")).not.toContain("└");
 	});
 
-	it("§2.1: the output rows are body strength, never dim — dim on the wash is 3.91:1", () => {
+	it("the output rows are body strength, never dim — output is content, dim is metadata", () => {
 		setGround("light");
 		const rows = render(shell(88));
 		// rows 3..7 are the output; none of them may open SGR 2 or the
 		// ground's own dim index
 		for (const row of rows.slice(4, 9)) {
 			expect(row).not.toContain("\x1b[2m");
-			expect(row).not.toContain("\x1b[38;5;243m");
+			expect(row).not.toContain(COLOR_LIGHT.dim);
 		}
 	});
 
 	it("the note and the outcome take washDim, the grey chosen FOR the wash", () => {
 		setGround("light");
 		const rows = render(shell(88));
-		expect(rows[3], "the note row").toContain("\x1b[38;5;241m");
-		expect(rows[10], "the outcome row").toContain("\x1b[38;5;241m");
+		expect(rows[3], "the note row").toContain(COLOR_LIGHT.washDim);
+		expect(rows[10], "the outcome row").toContain(COLOR_LIGHT.washDim);
 		setGround("dark");
 		const dk = render(shell(88));
-		expect(dk[3]).toContain("\x1b[38;5;247m");
-		expect(dk[10]).toContain("\x1b[38;5;247m");
+		expect(dk[3]).toContain(COLOR_DARK.washDim);
+		expect(dk[10]).toContain(COLOR_DARK.washDim);
 	});
 
 	it("D6: the head row's target is BOLD, and a failure tints only the outcome", () => {
 		setGround("light");
 		expect(render(shell(88))[1], "the head row is row 1 — row 0 is the pad").toContain("\x1b[1m");
 		const bad = render({ ...shell(9), isError: true, resultText: `exit 1: boom\n${Array.from({ length: 9 }, (_, i) => `err ${i}`).join("\n")}` });
-		expect(bad[1], "the head row takes no tint").not.toContain("\x1b[38;5;124m");
-		expect(bad.at(-2), "the outcome word does — row −1 is the pad").toContain("\x1b[38;5;124m");
+		expect(bad[1], "the head row takes no tint").not.toContain(COLOR_LIGHT.red);
+		expect(bad.at(-2), "the outcome word does — row −1 is the pad").toContain(COLOR_LIGHT.red);
 	});
 });
 

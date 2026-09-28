@@ -31,7 +31,7 @@ import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { basename, join } from "node:path";
-import { Body, Editor, PROMPT, bannerLines, currentGround, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
+import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
 import { listSessionSidecars, migrateSummaries, readProfile, summaryMigrationPending } from "@vincemakes/kiso-runtime/internal";
 import { skillMenuItems } from "./skill-invoke.js";
@@ -407,17 +407,26 @@ function makeLineInput(): LineInput {
 		const theme = (): string | undefined => process.env.KISO_THEME ?? userTheme;
 		const rewalk = (): void => {
 			const next = resolveGround({ theme: theme(), colorScheme, osc, colorfgbg: process.env.COLORFGBG });
+			// Graphite §3.4: the colour the terminal reported rides along,
+			// whichever rung decided the ground — the surfaces are derived
+			// from it when it is of the same kind (graphite.ts decides).
+			const rgb = osc === undefined ? null : parseOscColor(osc);
 			// DC-3/DC-14's model: the first frame never waits for a reply.
 			// A reply that changes nothing repaints nothing — which is also
 			// why two answers that AGREE cost one repaint and not two.
-			if (next === currentGround()) return;
-			setGround(next);
+			const was = currentGroundRgb();
+			if (next === currentGround() && (rgb === null ? was === null : was !== null && rgb.r === was.r && rgb.g === was.g && rgb.b === was.b)) return;
+			setGround(next, rgb);
 			body.onGroundChange();
 		};
 		setGround(resolveGround({ theme: theme(), colorfgbg: process.env.COLORFGBG }));
 		// the reply, when there is one, re-walks the ladder WITH it — and
 		// `theme` goes in first again, so an explicit answer still wins.
 		editor.onOsc((reply) => {
+			// Only the answer to the question asked (OSC 11, the background
+			// colour) is the ground: any other OSC a terminal sends would
+			// otherwise overwrite it.
+			if (!reply.startsWith("11;")) return;
 			osc = reply;
 			rewalk();
 		});

@@ -7,7 +7,8 @@
  */
 
 import { charWidth, displayWidth, visibleWidth, widthCut } from "./width.js";
-import type { Ground } from "./ground.js";
+import type { Ground, Rgb } from "./ground.js";
+import { bg, breathRamp, colourTier, fg, graphiteColours, type Tier } from "./graphite.js";
 
 /**
  * v2a — the palette, centralized (no hard-coded codes elsewhere); v5
@@ -117,6 +118,37 @@ export interface Palette {
 	readonly washDim: string;
 	readonly washDimEnd: string;
 	readonly reset: string;
+	/** Graphite (design.md §2) — the tokens the redesign reads. Each is an
+	 *  SGR open for its colour in the resolved tier (§2: 24-bit or the
+	 *  nearest xterm-256 index), and EMPTY where the ground is unknown or
+	 *  colour is off: §3.1 forbids an absolute colour on a ground nobody
+	 *  established, so every one of them degrades to the terminal's own.
+	 *  Foregrounds close with `fgEnd` (39), backgrounds with `washEnd`
+	 *  (49), for the reason `rv` closes with 27. */
+	readonly ink2: string;
+	readonly rail: string;
+	readonly line: string;
+	readonly gold: string;
+	readonly goldMark: string;
+	readonly blue: string;
+	readonly ok: string;
+	readonly fail: string;
+	readonly humanInk: string;
+	readonly track: string;
+	readonly washRun: string;
+	readonly washDone: string;
+	readonly washFail: string;
+	readonly washAsk: string;
+	readonly human: string;
+	readonly codeBg: string;
+	readonly add: string;
+	readonly del: string;
+	readonly fgEnd: string;
+	/** §5.2 — the command breath's seven foreground opens; empty where
+	 *  the mark freezes (no ground, or no colour). */
+	readonly breath: readonly string[];
+	/** The tier the colours were written in, or null when none were. */
+	readonly tier: Tier | null;
 }
 const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m", italic: "\x1b[3m", italicEnd: "\x1b[23m", underline: "\x1b[4m", underlineEnd: "\x1b[24m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" } as const;
 /**
@@ -129,11 +161,8 @@ const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32
  * cannot degrade to an attribute the way `dim` does — it needs a value
  * per ground, and the ground is what §3's ladder is for.
  *
- * 256-cube indices, never truecolor (§2). Measured against the grounds
- * §2 measures against — white, and #1E1E1E:
- *
- *   light  124 `#af0000`  7.44:1
- *   dark   173 `#d7875f`  5.97:1
+ * Its values are Graphite's `fail` (design.md §2), written in the
+ * resolved tier.
  *
  * With NO ground established the token stays ANSI 31 — the TERMINAL's
  * own red, which its theme picked for its own background. That is the last rung
@@ -143,8 +172,33 @@ const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32
 /** `washDimEnd` is DERIVED, never passed: a grey that cannot be closed
  *  without taking the wash with it is not a usable token, and deriving
  *  the close makes the pair impossible to mis-wire at a call site. */
+/** The Graphite members, empty — the unknown ground's and colour-off's. */
+const NO_GRAPHITE = {
+	ink2: "",
+	rail: "",
+	line: "",
+	gold: "",
+	goldMark: "",
+	blue: "",
+	ok: "",
+	fail: "",
+	humanInk: "",
+	track: "",
+	washRun: "",
+	washDone: "",
+	washFail: "",
+	washAsk: "",
+	human: "",
+	codeBg: "",
+	add: "",
+	del: "",
+	fgEnd: "",
+	breath: [],
+	tier: null,
+} as const;
 const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: string = BASE.dim, washDim = ""): Palette => ({
 	...BASE,
+	...NO_GRAPHITE,
 	red,
 	dim,
 	wash,
@@ -153,12 +207,64 @@ const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: st
 	washDimEnd: washDim === "" ? "" : "\x1b[39m",
 	code: wash,
 });
+
+/**
+ * Graphite (design.md §2, §3.4) — the palette for a KNOWN ground.
+ *
+ * The colours come from `graphite.ts`: the table's values for the kind,
+ * with the surfaces derived from the reported ground when there is one.
+ * The members the pre-Graphite code reads keep their names and take the
+ * Graphite value of the same job: `dim` the dim token, `red` the failure
+ * colour, `green` the success colour, `warn` gold (the uncertain badge
+ * is a question for the person, which is gold's meaning), `wash` the
+ * settled card's ground, and `washDim` the dim token — which clears the
+ * floor on every card ground (§2.1), so the separate grey retires in
+ * value while the name stays for its call sites.
+ */
+export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tier): Palette {
+	const c = graphiteColours(kind, ground, tier);
+	const f = (x: Rgb): string => fg(x, tier);
+	const b = (x: Rgb): string => bg(x, tier);
+	return {
+		...BASE,
+		dim: f(c.dim),
+		red: f(c.fail),
+		green: f(c.ok),
+		warn: f(c.gold),
+		wash: b(c.washDone),
+		washEnd: "\x1b[49m",
+		washDim: f(c.dim),
+		washDimEnd: "\x1b[39m",
+		code: b(c.washDone),
+		ink2: f(c.ink2),
+		rail: f(c.rail),
+		line: f(c.line),
+		gold: f(c.gold),
+		goldMark: f(c.goldMark),
+		blue: f(c.blue),
+		ok: f(c.ok),
+		fail: f(c.fail),
+		humanInk: f(c.humanInk),
+		track: f(c.track),
+		washRun: b(c.washRun),
+		washDone: b(c.washDone),
+		washFail: b(c.washFail),
+		washAsk: b(c.washAsk),
+		human: b(c.human),
+		codeBg: b(c.code),
+		add: b(c.add),
+		del: b(c.del),
+		fgEnd: "\x1b[39m",
+		breath: breathRamp(c).map(f),
+		tier,
+	};
+}
 /**
  * DC-3 — one table per ground.
  *
- * R3 (owner, 2026-08-27) — `dim` is ABSOLUTE once the ground is known,
- * and design.md §2's table always said so: light `243` `#767676` at
- * 4.54:1, dark `246` `#949494` at 5.50:1 (both re-measured here).
+ * R3 (owner, 2026-08-27) — `dim` is ABSOLUTE once the ground is known:
+ * Graphite's `dim`, measured against the floor on every surface it can
+ * reach (design.md §2.1).
  *
  * DC-3 shipped SGR 2 instead, on the argument that an attribute adapts
  * to the ground while an absolute grey asserts one. That argument is
@@ -174,24 +280,38 @@ const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: st
  * attribute is exactly the "correct on any ground" degradation there.
  */
 export const COLOR_NEUTRAL: Palette = withWash("\x1b[7m", "\x1b[27m");
-export const COLOR_LIGHT: Palette = withWash("\x1b[48;5;255m", "\x1b[49m", "\x1b[38;5;124m", "\x1b[38;5;243m", "\x1b[38;5;241m");
-export const COLOR_DARK: Palette = withWash("\x1b[48;5;236m", "\x1b[49m", "\x1b[38;5;173m", "\x1b[38;5;246m", "\x1b[38;5;247m");
+/** The two reference palettes: Graphite on its reference grounds, in the
+ *  24-bit tier. `paletteFor` is the general form. */
+export const COLOR_LIGHT: Palette = paletteFor("light", null, "24bit");
+export const COLOR_DARK: Palette = paletteFor("dark", null, "24bit");
 /** The historical name — the palette for a colour TTY whose ground has
  *  not been established. Unchanged in every byte except `code`, which
  *  was the defect. */
 export const COLOR_ON: Palette = COLOR_NEUTRAL;
-export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", underline: "", underlineEnd: "", rv: "", rvEnd: "", wash: "", washEnd: "", washDim: "", washDimEnd: "", reset: "" };
+export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", underline: "", underlineEnd: "", rv: "", rvEnd: "", wash: "", washEnd: "", washDim: "", washDimEnd: "", reset: "", ...NO_GRAPHITE };
 
 /** DC-3 — the resolved ground, set once at startup when the terminal
  *  answers (see `ground.ts`). It starts UNKNOWN and may stay that way
  *  forever; that is a supported state, not a failure. */
 let ground: Ground = "unknown";
-export function setGround(g: Ground): void {
+/** §3.4 — the colour the terminal reported, when it reported one; the
+ *  surfaces are derived from it. Null when the ground was resolved
+ *  without a colour. */
+let groundRgb: Rgb | null = null;
+export function setGround(g: Ground, rgb: Rgb | null = null): void {
 	ground = g;
+	groundRgb = g === "unknown" ? null : rgb;
 }
 export function currentGround(): Ground {
 	return ground;
 }
+export function currentGroundRgb(): Rgb | null {
+	return groundRgb;
+}
+/** One palette per (ground, reported colour, tier): `palette()` runs on
+ *  every render and the derivation is not free, so the last answer is
+ *  kept and reused while none of its inputs changed. */
+let memo: { key: string; p: Palette } | null = null;
 export function palette(): Palette {
 	// PH-1a (finding PH-F5): the no-color.org contract is "present AND
 	// non-empty" — the old `=== undefined` check let an EMPTY `NO_COLOR=`
@@ -201,7 +321,11 @@ export function palette(): Palette {
 	// it was a bug.
 	const noColor = process.env.NO_COLOR;
 	if (!((noColor === undefined || noColor === "") && process.stdout.isTTY)) return COLOR_OFF;
-	return ground === "light" ? COLOR_LIGHT : ground === "dark" ? COLOR_DARK : COLOR_NEUTRAL;
+	if (ground === "unknown") return COLOR_NEUTRAL;
+	const tier = colourTier(process.env.COLORTERM);
+	const key = `${ground}|${groundRgb === null ? "-" : `${groundRgb.r},${groundRgb.g},${groundRgb.b}`}|${tier}`;
+	if (memo === null || memo.key !== key) memo = { key, p: paletteFor(ground, groundRgb, tier) };
+	return memo.p;
 }
 
 /**
@@ -491,23 +615,17 @@ export function renderTerminalGap(statusLine: string | null): string {
  *  Emoji (§6.1's test, run). */
 export const TWINKLE = ["\u2727", "\u2726", "\u2736", "\u2738", "\u273a", "\u2738", "\u2726"] as const;
 
-/** The COMMAND breath — brightness only, one glyph. The ramps bottom out
- *  EXACTLY on the ground's dim token (§2.2: "the floor is a floor,
- *  including mid-animation"): light ends at 243 (4.54:1 on white), dark
- *  at 246 (5.50:1 on #1e1e1e). Measured, not assumed. */
-const BREATH_LIGHT = [232, 236, 240, 243, 240, 236, 232] as const;
-const BREATH_DARK = [255, 251, 248, 246, 248, 251, 255] as const;
-
-/** The breath's frame: `●` at the step's grey, for the CURRENT ground.
- *  With no ground — or under NO_COLOR — it freezes to a static `●`,
- *  because a brightness ramp needs a background to be a ramp against and
- *  §3.1 forbids guessing one. The glyph never changes, so the freeze
- *  degrades the motion and never the meaning. */
+/** The breath's frame: `●` at the step's brightness (§5.2 — seven steps
+ *  of gold toward the running card's ground, never under the graphic
+ *  floor, `graphite.ts` `breathRamp`). With no ground — or under
+ *  NO_COLOR — it freezes to a static `●`, because a brightness ramp needs
+ *  a background to be a ramp against and §3.1 forbids guessing one. The
+ *  glyph never changes, so the freeze degrades the motion and never the
+ *  meaning. */
 export function breathFrame(step: number): string {
 	const p = palette();
-	const ramp = currentGround() === "light" ? BREATH_LIGHT : currentGround() === "dark" ? BREATH_DARK : null;
-	if (ramp === null || p.bold === "") return "\u25cf";
-	return `\x1b[38;5;${ramp[step % ramp.length]}m\u25cf${p.reset}`;
+	if (p.breath.length === 0) return "\u25cf";
+	return `${p.breath[step % p.breath.length]}\u25cf${p.reset}`;
 }
 
 /** The twinkle's frame — pure glyph, no palette involved. */

@@ -36,7 +36,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { bodySpacing, cellComponent, type BodyCell, type FrameCtx, type MdBlock } from "../src/components.js";
 import { renderBlock } from "../src/md.js";
 import { foldThinking } from "../src/render.js";
-import { setGround } from "../src/render.js";
+import { COLOR_DARK, COLOR_LIGHT, setGround } from "../src/render.js";
 import { visibleWidth } from "../src/width.js";
 
 beforeAll(() => {
@@ -45,7 +45,9 @@ beforeAll(() => {
 afterEach(() => setGround("unknown"));
 
 const CTX: FrameCtx = { spinnerI: 0, now: 10_000, height: 24 };
-const WASH = { light: "\x1b[48;5;255m", dark: "\x1b[48;5;236m" } as const;
+// Graphite (design.md §2): the settled card's ground, as the palette writes it
+// in the suite's 24-bit tier (tests/setup-env.ts).
+const WASH = { light: COLOR_LIGHT.wash, dark: COLOR_DARK.wash } as const;
 const washed = (r: string): boolean => r.includes(WASH.light) || r.includes(WASH.dark);
 const plain = (r: string): string => r.replace(/\x1b\[[0-9;]*m/g, "");
 const W = 90;
@@ -180,8 +182,8 @@ describe("the card — pad · head · blank · preview · blank · outcome · pa
 	it("a failure tints only the outcome word; the card takes no tint", () => {
 		setGround("light");
 		const rows = render(tool({ isError: true, resultText: `exit 1\n${lines(9, (i) => `e${i}`)}` }));
-		expect(rows[1], "the head row is tinted").not.toContain("\x1b[38;5;124m");
-		expect(rows.at(-2), "the outcome word is not tinted").toContain("\x1b[38;5;124m");
+		expect(rows[1], "the head row is tinted").not.toContain(COLOR_LIGHT.red);
+		expect(rows.at(-2), "the outcome word is not tinted").toContain(COLOR_LIGHT.red);
 	});
 });
 
