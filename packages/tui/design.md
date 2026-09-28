@@ -610,9 +610,13 @@ the row still breaks mid-word, because an overflowing row breaks invariant
 ①. Where the ground is unknown the block is reverse video from column 2
 with no pads, and the `▌` stays in column 0 (§3.1).
 
-On a terminal, each of the person's blocks is wrapped in OSC 133 prompt marks, so a
-terminal that supports them can jump between the person's messages; the
-marks are invisible elsewhere and never reach a pipe.
+*(R2)* On a terminal, each of the person's blocks is wrapped in OSC 133
+prompt marks, so a terminal that supports them can jump between the
+person's messages; the marks are invisible elsewhere and never reach a
+pipe. They are written by the compositor as it emits the block's first row,
+not carried inside the row: a row that carried them would have to teach
+every width measure, cut and screen model to skip an OSC, and the marks
+would follow the row into the ctrl+r viewer.
 
 *(R2)* The text renders as markdown (§7.15) in the block's own colours, so
 pasted code and lists keep their shape.
