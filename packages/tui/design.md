@@ -118,10 +118,11 @@ considered one card per stretch of work, with one row per call, and did not
 adopt it.
 
 **1.8 One content edge, one mark column.** Every block begins at column 4:
-labels, prose, thinking, cards, meta rows, the seal. Columns 0–2 are the
-mark column — in the transcript, a hanging `§` beside a second-level
-heading; in the live zone and the composer, the row's mark and the prompt
-`›`, right-aligned to column 2. The person's block is the one element that spans
+labels, prose, thinking, cards, meta rows, the seal's words. Columns 0–2
+are the mark column — in the transcript, a hanging `§` beside a
+second-level heading, the THINK twinkle while a thought streams, and the
+seal's `✦`; in the live zone and the composer, the row's mark and the
+prompt `›`, right-aligned to column 2. The person's block is the one element that spans
 the full width: its bar sits in column 0 and its text at column 4. A
 block's own internal indents — a list's bullet, a card's verb column, a
 diff's sign — are its own.
@@ -465,9 +466,9 @@ shrank at its settle.
 
 ```
     ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄   pad: half a row of the card's ground
-    ▎  RUN     npm test -- recovery      exit 0 · 90 lines · 4.1s
-    ▎          … 85 earlier lines
-    ▎          <the last five output rows>
+    ▎   SHELL   npm test -- recovery     exit 0 · 90 lines · 4.1s
+    ▎           … 85 earlier lines
+    ▎           <the last five output rows>
     ▎                                            ctrl+o expands
     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   pad
 ```
@@ -478,21 +479,27 @@ marks its left side. A `▄` row above and a `▀` row below give it half a row
 of its own ground, so two cards in a row stand one row of ground apart
 without a blank row between them.
 
-The HEAD row: the mark cell (§4), the verb, the target, and at the right
-the outcome (§7.5). The BODY, when there is one, is the preview, aligned
-under the target — five rows at most. A shell shows its TAIL with the cut
+The columns: the bar at 4, the mark cell at 6, the verb at 8, the target
+and every body row at 16. The HEAD row: the mark cell (§4), the verb, the
+target, and at the right the outcome (§7.5). The BODY, when there is one,
+is the preview in `ink2`, aligned under the target — five rows at most. A shell shows its TAIL with the cut
 note above it, because the conclusion of a command is at the bottom of its
 output; everything else shows its HEAD with the note below, because that is
 where its answer is. **A read shows nothing at all**: its result is the
 file, five lines of it tell a reader less than the head row already does,
 and the key opens the whole thing. Its continuation note, when the tool
 itself capped the result, is not a preview and stays. The FOOT row carries
-the key, right-aligned, and exists only while something is behind it. A
-call with nothing to preview is the head row between its two pads.
+the key, right-aligned, and exists only while something is behind it: on a
+collapsed card when the preview cut rows away, on an expanded one when
+collapsing would hide rows again. A call with nothing to preview is the
+head row between its two pads — and when its result sits behind the key (a
+read), the key ends the head row's outcome instead: `412 lines · 0.1s ·
+ctrl+o expands`.
 
 **An EXPANDED card is the same card** — the whole body, uncapped, and
-`ctrl+o collapses` on its foot row. One skeleton in both states, so the
-global switch (§7.7) changes a card's content and never its shape.
+`ctrl+o collapses` on its foot row when there is anything to collapse.
+One skeleton in both states, so the global switch (§7.7) changes a card's
+content and never its shape.
 
 An edit's body is its diff (§7.14), capped at twelve rows — a stated
 exception to the five-row preview, because five rows cut most diffs in
@@ -501,9 +508,9 @@ half.
 **Where the ground is NOT known the card does not paint at all.** Rung
 5's surface is reverse video (§3), and one inverted row is the ladder
 working while eight inverted output rows are a black slab in the middle
-of the transcript. Unpainted, the body is the four-column indent under the
-head row, with `└` opening it and the metadata rows dim; the pads and the
-bar are not drawn. The CONTENT is the same either way — only the surface,
+of the transcript. Unpainted, the head row sits at the content edge, the
+body four columns under it (column 8) with `└` opening it at column 6, and
+the rows dim; the pads and the bar are not drawn. The CONTENT is the same either way — only the surface,
 its bar and its pads are contingent. The indent carries a §1.2 fact — these
 rows are the call's output, not something the model said — which is why it
 is an indent and not a glyph: it survives a pipe.
@@ -516,21 +523,31 @@ foot row that exists only when needed, the pads are half rows, the ground
 is the state, and the card sits at the content edge (§1.8). One card per
 call (§1.7) is unchanged.
 
-**7.5 A card reads verb · target, then outcome.** The verb is upper case
-and `dim`, padded to seven columns so the targets line up; the target is
-`ink`. The outcome sits at the right end of the head row: what happened,
-how much of it there was, how long it took — `exit 0 · 90 lines · 4.1s`.
-Only the outcome WORD takes colour (`exit 0` ok; `exit 1`, `refused`,
-`stopped by you` fail), which is §1.2 exactly: the colour rides the fact,
-not the object carrying it. The card's ground says the state as well, and
-the word still says it alone.
+**7.5 A card reads verb · target, then outcome.** The verb is the tool's
+display verb in upper case (`SHELL`, `READ`, `EDIT`, `WRITE`, `LIST`,
+`SEARCH`), `dim`, padded to seven columns so the targets line up; the
+target is `ink`. The outcome sits at the right end of the head row: what
+happened, how much of it there was, how long it took — `exit 0 · 90 lines ·
+4.1s`. A running call's reads `running · 12s`, with the shell's gestures
+after it while there is room. Only the outcome WORD takes colour — `exit 0`
+in the success colour; `exit 1`, `failed`, `denied` in the failure colour —
+which is §1.2 exactly: the colour rides the fact, not the object carrying
+it. The card's ground says the state as well, and the word still says it
+alone.
+
+A failure's outcome word is short and its text is the body: a shell's
+`exit N`, any other tool's `failed`. A refusal reads `denied by you ·
+<reason>` when the person refused and `denied · <reason>` when a policy
+did (VD-11: the person's answer is worth recording; the ambient default is
+not).
 
 The head row gives way in a pinned order when the width squeezes: the
-attribution first, then the count; the target elides in its middle before
-the outcome word is touched, and the outcome word is never cut. The foot
-row's key is RESERVED — a card that says how much is hidden without saying
-how to see it is the silence the affordance exists to remove. No row of a
-card ever folds; it is cut.
+attribution first, then the count; then the target elides in its middle;
+then, on a very narrow row, the target goes, then the verb, then the
+outcome's segments from the front — so how long it took, and the key where
+there is one, are the last to go. The foot row's key is RESERVED — a card
+that says how much is hidden without saying how to see it is the silence
+the affordance exists to remove. No row of a card ever folds; it is cut.
 
 Only a call still running carries a mark, because only it is moving.
 
@@ -590,8 +607,8 @@ ended and how long it took is the seal's (§7.11). The block is padded to
 the character fold was defended as lossless, which is not a property CJK
 has, and every other prose surface already folds by word. A word wider than
 the row still breaks mid-word, because an overflowing row breaks invariant
-①. Where the ground is unknown the block is reverse video with no pads,
-and the `▌` stays in column 0 (§3.1).
+①. Where the ground is unknown the block is reverse video from column 2
+with no pads, and the `▌` stays in column 0 (§3.1).
 
 On a terminal, each of the person's blocks is wrapped in OSC 133 prompt marks, so a
 terminal that supports them can jump between the person's messages; the
@@ -644,8 +661,9 @@ loaded. The design round brought a wordmark back and moved the answers: the
 model and the folder to the status bar, what is loaded to the block beside
 the wordmark. The cost is ten rows, once, at the top of a session.
 
-**7.11 The seal.** After every turn, one row at the content edge — today's
-turn line, restyled: `✦` in `gold-mark`, the rest `dim`.
+**7.11 The seal.** After every turn, one row — today's turn line,
+restyled: `✦` in `gold-mark` hanging in the mark column (§1.8), the words
+`dim` at the content edge.
 
 ```
 ✦ took 4.1s · fresh 1.3k out 910 · cache 96%
@@ -664,13 +682,22 @@ accept-edits auto-approves edits`; a turn the person stopped reads
 `stopped by you after 6.2s`, then the same facts. The row is cut, never
 folded (R3g). The pipe keeps today's bytes.
 
-**7.12 kiso's own sentences are meta rows.** Compaction, a learned
-window, a pruned result, a skill run as a turn, a run that failed after its
-retries: sentences about the session, not the model's and not a tool's.
-Each is one row at the content edge — a bold `dim` label (`COMPACTED`,
-`WINDOW`, `PRUNED`, `SKILL`, `FAILED`) and the sentence, with `ctrl+o` when
-there is more behind it. No card and no ground: they are not the machine's
-work.
+**7.12 kiso's own sentences are meta rows.** The session's events —
+compaction, a pruned result, a learned window, a run that failed after its
+retries, an uncertain outcome, a limit reached, an interrupted stream, the
+verification pass — are sentences about the session, not the model's and
+not a tool's. Each is one row at the content edge: a bold label
+(`COMPACTED`, `PRUNED`, `WINDOW`, `FAILED`, `UNCERTAIN`, `LIMIT`,
+`INTERRUPTED`, `VERIFY`) in a twelve-column label column, and the sentence
+beside it, folded under itself (column 16). `FAILED` and `UNCERTAIN` name
+outcomes and take the failure colour; the rest are `dim`. No card and no
+ground: they are not the machine's work.
+
+A command's own confirmation — `mode → plan`, `model → …`, `[/compact] …`,
+`[dontAsk] …` — has no kind of its own: its words are read as a whole, and
+a label would only split them. It stays whole at the content edge, with no
+label. On the terminal the `✦` some notices open with comes off: it is the
+seal's mark (§4). A pipe prints every notice as written.
 
 **7.13 The person's own shell (R2).** `!command` runs and sends;
 `!!command` runs and only shows. It renders as a card whose verb is `$` and
