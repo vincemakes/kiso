@@ -653,18 +653,22 @@ quieter note after it:
   never names a file the model is not given), or `none`;
 - `SKILLS` — the count, and how many cannot load;
 - `MCP` — servers and tools, `connecting…` while they are;
-- `EXTENSIONS` — only when the person or the project added one (the
-  built-ins are the product);
+- `EXTENSIONS` — the same extensions line a pipe prints, so the two never
+  disagree about what loaded (and `ask (off in dontAsk)` stays beside the
+  tier that turns it off);
 - DC-49's home-directory row, when the workspace is the home directory.
 
 The model, the mode and the folder are the status bar's (§8.9) and are
-not repeated. Under 96 columns, or with more facts than the wordmark has
-rows, the facts move below the wordmark. Under 30 rows, on a terminal
+not repeated. Under 96 columns the facts move below the wordmark. Under 30 rows, on a terminal
 too narrow for the wordmark at the content edge, and on a resume (the
 history is above the opening there, and ten rows of wordmark would bury
 its tail) the head is one line —
 `✦ kiso <version> · the coding agent that survives kill -9` — and the
-facts follow it. A fact that does not fit loses its note, then is cut.
+facts follow it. A fact that does not fit loses its note; one still too
+long hangs under itself, folded by word — an extensions list cut at the
+width would hide which extensions loaded, on the one screen whose job is
+to say so. Beside the wordmark only while the folded facts fit its six
+rows.
 Where the ground is unknown the wordmark is drawn in the terminal's own
 foreground.
 
