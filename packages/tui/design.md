@@ -638,15 +638,14 @@ the wordmark. The cost is ten rows, once, at the top of a session.
 turn line, restyled: `✦` in `gold-mark`, the rest `dim`.
 
 ```
-✦ took 4.1s · fresh 1.3k out 910 · cache 96% · ctx 9%
+✦ took 4.1s · fresh 1.3k out 910 · cache 96%
 ```
 
 It is the turn's record in the scrollback: how long it took, what it cost
-in fresh and output tokens, the cache share, and the context used when it
-ended. The status bar says the same facts for NOW; the seal keeps them for
-each turn, so a turn's cache miss or context jump stays findable after the
-bar has moved on. `ctx` is the share USED, as on the status bar's meter.
-No turn number and no call count: neither helps the person reading.
+in fresh and output tokens, and the cache share, so a turn's cache miss stays
+findable after the status bar has moved on. No turn number, no call count and
+no context share (owner, 2026-09-28): the first two do not help the person
+reading, and the context lives on the status bar's meter (§8.9).
 
 The other forms keep their words: a cache miss adds `miss <n>` after the
 cache share; a cold cache reads `cache cold after <n> min · re-read <n> ·
