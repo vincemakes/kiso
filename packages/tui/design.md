@@ -39,23 +39,25 @@ it SCOPES — a quote, a diff — never where it separates.
 labels, keys and metadata are grey. Two accents exist and each means one
 thing:
 
-- **Gold is the edge of a turn:** the person's words (the `YOU` label and
-  the bar of their block), what is live (the twinkle, a running call's
+- **Gold is the edge of a turn:** the person's words (the bar of their
+  block), what is live (the twinkle, a running call's
   breath, a message waiting to land), what needs the person (`❯`), the seal
   `✦`, and the input line. Gold never colours the machine's content.
 - **Blue is the machine:** the `THINK` label, a second-level heading, inline
   code, links, the branch name, a running call's card.
 
 Outcomes keep their own colours on the outcome WORD only. **Strip every
-escape sequence and no fact is lost**: every block begins with a word
-(`YOU`, `THINK`, `KISO`, a card's verb, a meta row's label), an outcome is a
-word, and an emphasis is never the only carrier of meaning.
+escape sequence and no fact is lost**: every block that could be taken for
+another keeps a mark that is a character, not a colour — the person's words
+their `▌`, thinking its `THINK` label, a card its `▎` and its verb, a meta row
+its label — and the answer is the one block with none. An outcome is a word,
+and an emphasis is never the only carrier of meaning.
 
 DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). This law read "grey
 chrome, coloured content" and admitted no accent. The design round admitted
 gold and blue, one meaning each. The DC-47 exception this law used to carry
 — a stripped frame could not tell thinking from answer — retires, because
-the labels now say which is which in plain bytes.
+the `THINK` label now says which is which in plain bytes.
 
 **1.3 No empty marks.** A symbol earns its cell by carrying a fact the
 words do not. A row that already says `exit 0` does not also need a tick
@@ -75,23 +77,24 @@ outcome — it means *you have to do something*.
 thought twinkles. Nothing else in the product moves. See §5. The terminal
 title changes with the state and never on a tick (§5.4).
 
-**1.5 Labels are words, upper case.** `YOU`, `THINK`, `KISO`, a card's verb
-(`READ`, `RUN`, `EDIT`), a meta row's label (`COMPACTED`), a band row's key
-(`MODEL`, `SESSION`). They name what a block is; they are never content.
-Their colour follows §1.2 — gold for `YOU`, blue for `THINK`, ink for
-`KISO`, grey for everything else — and the word stands without it.
+**1.5 Labels are words, upper case.** `THINK`, a card's verb (`READ`,
+`RUN`, `EDIT`), a meta row's label (`COMPACTED`), a band row's key (`MODEL`,
+`SESSION`). They name what a block is; they are never content. `THINK` is
+blue and every other label grey (§1.2), and the word stands without it. A
+block whose surface already says what it is takes no label: the person's
+words are their block, and the answer is what is left.
 
 **1.6 Surfaces, and what each one says.** A surface is a ground painted
 behind rows. Each kind says one thing, and nothing is painted to decorate.
 
-- **The YOU block — the person's words.** A warm ground across the full
+- **The person's block — their own words.** A warm ground across the full
   width, with a gold bar in column 0 (§7.9).
 - **The card — one call of the machine's work** (§7.4). Its ground is the
   call's STATE: blue while it runs, neutral once it succeeded, red when it
   failed or was refused, gold while it waits for the person.
 - **Code** — a fenced block in an answer, and inline code (§7.15).
 
-Where the ground is not known no surface is painted (§3.1): the YOU block
+Where the ground is not known no surface is painted (§3.1): the person's block
 falls back to reverse video, and a card to its indented, unpainted form
 (§7.4).
 
@@ -99,7 +102,7 @@ Neither is an emphasis. Nothing is painted to make it stand out.
 
 DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). Reverse video was the
 person's surface on every ground, and one neutral wash was every call's.
-The YOU block takes the warm ground — reverse video remains only as the
+The person's block takes the warm ground — reverse video remains only as the
 unknown-ground fallback — and the card's ground now carries its state, as
 the reference implementation's cards do.
 
@@ -118,7 +121,7 @@ adopt it.
 labels, prose, thinking, cards, meta rows, the seal. Columns 0–2 are the
 mark column — in the transcript, a hanging `§` beside a second-level
 heading; in the live zone and the composer, the row's mark and the prompt
-`›`, right-aligned to column 2. The YOU block is the one element that spans
+`›`, right-aligned to column 2. The person's block is the one element that spans
 the full width: its bar sits in column 0 and its text at column 4. A
 block's own internal indents — a list's bullet, a card's verb column, a
 diff's sign — are its own.
@@ -149,8 +152,8 @@ ground; §3.4 derives the surfaces from the ground actually resolved.
 | wash-done | `#f1f1f1` | `#1b1b1b` | a settled call's card; a code block |
 | wash-fail | `#fbecea` | `#2a1716` | a failed or refused call's card |
 | wash-ask | `#f7f1e3` | `#211d13` | a call waiting for the person; a band's selected row |
-| human | `#f7efdc` | `#efe6cf` | the YOU block |
-| human-ink | `#171923` | `#141620` | text on the YOU block |
+| human | `#f7efdc` | `#efe6cf` | the person's block |
+| human-ink | `#171923` | `#141620` | text on the person's block |
 | gold | `#8a5a00` | `#e3b04b` | edge text |
 | gold-mark | `#c9921f` | `#e3b04b` | edge graphics: bars, the caret, `✦`, the fade |
 | blue | `#2456b5` | `#82a8f5` | the machine's accent |
@@ -269,7 +272,7 @@ without a colour (rungs 1, 2 and 4), the table's own column is used.
 | `↻` | a retry is counting down |
 | `✦` | finished and on disk: a turn's seal; with tasks, a finished task |
 | `§` | a second-level heading, hanging in the mark column |
-| `▌` `▎` | the YOU block's bar; a card's bar |
+| `▌` `▎` | the person's block's bar; a card's bar |
 | `▾ ▸ │` | the transcript viewer's marks (§9) |
 | (none) | a settled call — its outcome is in the words |
 
@@ -568,18 +571,19 @@ design round brought back a gold `›`: with the transcript at column 4, the
 glyph sits in the mark column and costs the input nothing it did not already
 give up to line up with the transcript.
 
-**7.9 The person's words span the width.** The YOU block (§1.6): the label
-`YOU <hh:mm>` in gold at the content edge, then the `human` ground across
-the full width with a gold `▌` in column 0 and the text at the content
-edge, one `▄` pad row above it and one `▀` below. The block is padded to
+**7.9 The person's words span the width.** The person's block (§1.6): the
+`human` ground across the full width with a gold `▌` in column 0 and the
+text at the content edge, one `▄` pad row above it and one `▀` below. No
+label and no time: the block says whose words these are, and when a turn
+ended and how long it took is the seal's (§7.11). The block is padded to
 `W` by *display* width, so a CJK row pads correctly, and it folds by WORD:
 the character fold was defended as lossless, which is not a property CJK
 has, and every other prose surface already folds by word. A word wider than
 the row still breaks mid-word, because an overflowing row breaks invariant
-①. Where the ground is unknown the block is reverse video with no pads
-(§3.1).
+①. Where the ground is unknown the block is reverse video with no pads,
+and the `▌` stays in column 0 (§3.1).
 
-On a terminal, every YOU block is wrapped in OSC 133 prompt marks, so a
+On a terminal, each of the person's blocks is wrapped in OSC 133 prompt marks, so a
 terminal that supports them can jump between the person's messages; the
 marks are invisible elsewhere and never reach a pipe.
 
@@ -648,8 +652,8 @@ there is more behind it. No card and no ground: they are not the machine's
 work.
 
 **7.13 The person's own shell (R2).** `!command` runs and sends;
-`!!command` runs and only shows. It renders as the label `YOU $` and a card
-whose head is `$ <command>` and whose outcome says `sent to the model` or
+`!!command` runs and only shows. It renders as a card whose verb is `$` and
+whose target is the command, and whose outcome says `sent to the model` or
 `not sent` — the one fact that differs between the two.
 
 **7.14 An edit shows its diff (R2).** Every `edit_file` and `write_file`
@@ -674,8 +678,8 @@ the outcome reads `applying`, then `edited` or `refused · <reason>`.
   content is not in the log.
 - No line numbers (§10).
 
-**7.15 The answer's markdown (R2).** The answer opens with the label
-`KISO` in ink, then:
+**7.15 The answer's markdown (R2).** The answer carries no label (§1.5); it
+is the prose at the content edge, rendered as:
 
 | element | rendering |
 |---|---|
@@ -830,8 +834,9 @@ message is one row: `◇ queued  <text>  after this turn · ↑ edit`.
 and there is no queue. A steer waits as
 `◇ steer  <text>  lands after this step · ↑ edit` until the runtime admits
 it — after the current tool batch settles, in the same run — and then
-stands in the transcript where it landed as `YOU steer · landed after
-<step>`: the gold bar without the warm ground. Several steers sent before
+stands in the transcript where it landed: the gold bar without the warm
+ground, and `steer · landed after <step>` in `dim` at the right end of its
+first row. Several steers sent before
 one admission point land together as one message. A turn stopped with a
 steer still waiting puts its text back in the input. The queued row and
 `alt+⏎` retire with the queue.
