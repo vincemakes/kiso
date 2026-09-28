@@ -87,10 +87,16 @@ import {
 import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, type BannerMeta, type ResumeMeta } from "./lines.js";
 import { oneRow } from "@vincemakes/kiso-tui-cells/render";
 import { displayVerb, keysSheetRows } from "./strings.js";
+import { noticeMeta } from "./notice-meta.js";
 /** DC-56: does a rendered row carry any visible text once its SGR is
  *  stripped? A washed pad row is spaces under a background colour — width
  *  without words. */
-const saysSomething = (row: string): boolean => row.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim() !== "";
+/** A row that says something: not blank, and not a card's half-row pad
+ *  (Graphite §7.4 — a `▄`/`▀` row is the card's edge, not its head). */
+const saysSomething = (row: string): boolean => {
+	const t = row.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim();
+	return t !== "" && !/^[\u2584\u2580]+$/.test(t);
+};
 
 // R5 — the transcript viewer's PURE projection. The compositor supplies
 // the entries (it holds the cells); the arrangement lives there.
@@ -497,7 +503,8 @@ export class Body {
 		} else {
 			// 0.40.6: a block opened while thinking is hidden is hidden from its
 			// first character — the text is never streamed to the screen.
-			this.#cells.push({ kind: "thinking", text, done: false, turn: this.#turns.length - 1, folded: this.#thinkingFolded });
+			// Graphite §7.2: the block's clock, for its `THINK <seconds>` label.
+			this.#cells.push({ kind: "thinking", text, done: false, turn: this.#turns.length - 1, folded: this.#thinkingFolded, startedAt: Date.now() });
 			// R7 (owner-ruled 2026-08-31): thinking is WORDS, not work — a
 			// cell like prose.
 			const t0 = this.#turns[this.#turns.length - 1];
@@ -515,6 +522,7 @@ export class Body {
 		const last = this.#cells[this.#cells.length - 1];
 		if (last !== undefined && last.kind === "thinking" && !last.done) {
 			last.done = true;
+			if (last.startedAt !== undefined) last.doneAt = Date.now();
 			// §2.3: a block that SETTLES after the switch was thrown is
 			// folded like the rest — the session stays one way up.
 			last.folded = this.#thinkingFolded;
@@ -834,7 +842,29 @@ export class Body {
 		}
 		this.#closeOpenThinking();
 		this.#closeOpenText();
-		this.#cells.push({ kind: "notice", text, done: true });
+		// Graphite §7.12: a meta row on the terminal; the pipe above keeps
+		// the text as written.
+		this.#cells.push({ kind: "notice", text, done: true, ...noticeMeta(text) });
+		this.#mark();
+	}
+
+	/**
+	 * Graphite §7.11 — the turn's SEAL. On the terminal a cell of its own,
+	 * drawn at the current width (widest tier that fits); a pipe gets
+	 * `pipe` — today's recap line — byte for byte.
+	 */
+	seal(tiers: readonly string[], pipe: string): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			// byte for byte what `raw(pipe.split("\n"))` wrote before the
+			// seal had a cell of its own — the trailing newline included
+			for (const line of pipe.split("\n")) this.#write(`${line}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		this.#cells.push({ kind: "seal", tiers, done: true });
 		this.#mark();
 	}
 
@@ -1053,7 +1083,7 @@ export class Body {
 			// a light terminal showed "5 folds" over five empty grey rows.
 			const first = rows.findIndex((r) => saysSomething(r));
 			const headAt = first < 0 ? 0 : first;
-			out.push({ head: rows[headAt] ?? "", body: rows.slice(headAt + 1) });
+			out.push({ head: rows[headAt] ?? "", body: rows.slice(headAt + 1).filter((r) => saysSomething(r) || r.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim() === "") });
 		}
 		return out;
 	}

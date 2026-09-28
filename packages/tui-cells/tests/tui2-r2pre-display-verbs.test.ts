@@ -75,12 +75,12 @@ describe("TUI2-R2pre ④ — one display-verb table", () => {
 	});
 
 	it("T-R2p-13: the card heads speak one language — list_dir and search_text stop showing raw", () => {
-		expect(render(toolCell({ name: "list_dir", inputFull: JSON.stringify({ path: "src" }) }))[0]).toContain("  list ");
+		expect(render(toolCell({ name: "list_dir", inputFull: JSON.stringify({ path: "src" }) }))[0]).toContain("  LIST ");
 		expect(render(toolCell({ name: "list_dir", inputFull: JSON.stringify({ path: "src" }) }))[0]).not.toContain("list_dir");
-		expect(render(toolCell({ name: "search_text", inputFull: JSON.stringify({ pattern: "parseExpr" }) }))[0]).toContain("  search ");
+		expect(render(toolCell({ name: "search_text", inputFull: JSON.stringify({ pattern: "parseExpr" }) }))[0]).toContain("  SEARCH ");
 		expect(render(toolCell({ name: "search_text", inputFull: JSON.stringify({ pattern: "parseExpr" }) }))[0]).not.toContain("search_text");
 		// the heads that were already short stay byte-identical
-		expect(render(toolCell())[0]).toBe("  read  src/parser.ts · 2 lines · 2.4s · ctrl+o expands");
+		expect(render(toolCell())[0]).toMatch(/^ {6}READ {4}src\/parser\.ts +2 lines · 2\.4s · ctrl\+o expands$/);
 	});
 
 	it("T-R2p-14: the advisory family says what the human should read, not what the model calls", () => {

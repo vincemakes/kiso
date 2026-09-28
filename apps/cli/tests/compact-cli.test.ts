@@ -254,7 +254,8 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		// W18 re-baseline: the success NoticeCell is the RECAP — the covered
 		// rounds (9 total − 4 kept = 5, pinned with the coversToSeq:14
 		// boundary below), the one summary, the savings, and the elapsed.
-		expect(plain).toContain("[/compact] ✦ compacted · 5 rounds → 1 summary · saved ~");
+		// Graphite §7.12: on the terminal the result is a COMPACTED meta row
+		expect(plain).toMatch(/COMPACTED +5 rounds → 1 summary · saved ~/);
 		// The context DROPPED after the compression: /status printed
 		// "ctx ~N%" twice — before (seeded, ~16%) and after (~7%).
 		const ctxs = [...out.matchAll(/ctx ~(\d+)%/g)].map((m) => Number(m[1]));
@@ -268,7 +269,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		// rendering anywhere.
 		expect(plain).toContain("[summarized up to seq 14]");
 		// …and it is BELOW the recap, not somewhere above it.
-		expect(plain.indexOf("[summarized up to seq 14]")).toBeGreaterThan(plain.indexOf("[/compact] ✦ compacted"));
+		expect(plain.indexOf("[summarized up to seq 14]")).toBeGreaterThan(plain.indexOf("COMPACTED"));
 
 		// The summarized event is on disk, keyed to the covered boundary:
 		// 9 rounds total (8 seed inputs at 0..21 + the go turn at 22) →
@@ -373,7 +374,7 @@ describe("0.40.0 cli: the compacting row's bar on a real PTY", () => {
 			{ ...isoEnv, KISO_FAUX_SCRIPT: scriptPath },
 			[
 				["/ commands · \u2191 history", "/compact\r"],
-				["✦ compacted", "exit\r"],
+				["COMPACTED", "exit\r"], // Graphite §7.12: the result is a meta row
 			],
 			dir,
 			"kb",
@@ -385,7 +386,7 @@ describe("0.40.0 cli: the compacting row's bar on a real PTY", () => {
 		expect(plain).toContain("→ ▱▱▱▱▱▱ 0/32k");
 		expect(plain).toContain("→ ▰▰▰▱▱▱ 16k/32k");
 		// and the call completed: the recap, and the durable checkpoint
-		expect(plain).toContain("[/compact] ✦ compacted · 4 rounds → 1 summary");
+		expect(plain).toMatch(/COMPACTED +4 rounds → 1 summary/);
 		expect(readFileSync(join(home, "sessions", "kb.jsonl"), "utf8")).toContain('"type":"summarized"');
 	});
 });

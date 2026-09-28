@@ -140,11 +140,17 @@ const kinds = (home: string, id: string): string[] =>
 		.filter((l) => l.trim() !== "")
 		.map((l) => String((JSON.parse(l) as { event: { type: string } }).event.type));
 
+/** Graphite §7.12: on a terminal the compaction is a meta row — its label,
+ *  not the pipe's `✦ compacted` sentence, is what reaches the screen. A
+ *  settle string that never appears costs the driver its whole 25s wall and
+ *  still passes, so this one is named once. */
+const COMPACTED = "COMPACTED";
+
 describe("0.40.0 — a resumed session whose cache has gone cold is offered a compaction first", () => {
 	it("⏎ compacts before any request; the panel names the size and the age", () => {
 		const { env, dirs } = isolatedEnv();
 		seed(dirs.home, "cold", 30);
-		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, ["chat", "cold"], [["cache is cold", "\r"]], ["✦ compacted"]);
+		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, ["chat", "cold"], [["cache is cold", "\r"]], [COMPACTED]);
 		expect(screen.replace(/\s+/g, " ")).toContain("this session is 151k tokens, last used 30 min ago, and its cache is cold");
 		const k = kinds(dirs.home, "cold");
 		expect(k).toContain("summarized");
@@ -185,7 +191,7 @@ describe("0.40.0 — a resumed session whose cache has gone cold is offered a co
 	it("dontAsk compacts without a panel — it is not an approval", () => {
 		const { env, dirs } = isolatedEnv();
 		seed(dirs.home, "unattended", 30);
-		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home), KISO_MODE: "dontAsk" }, ["chat", "unattended"], [], ["✦ compacted"]);
+		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home), KISO_MODE: "dontAsk" }, ["chat", "unattended"], [], [COMPACTED]);
 		expect(screen.replace(/\s+/g, " ")).toContain("[dontAsk] this session is 151k tokens");
 		expect(screen).not.toContain("keep the full history");
 		expect(kinds(dirs.home, "unattended")).toContain("summarized");

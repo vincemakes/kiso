@@ -518,11 +518,11 @@ describe("TUI v6 — the one compositor", () => {
 		// W2: the frame coalesces straight to running — the mark IS the
 		// gutter (the old assertion matched the running row's "→ " prefix).
 		// R3 (§5.2): that mark is now the breathing `●`.
-		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("● read");
+		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("● READ"); // Graphite §7.5: the verb upper case
 		expect(writes.join("")).toContain("●"); // R3 (§5.2): the breath's glyph rides the running line
 		body.toolResult("c1", { content: "ok", isError: false });
 		vi.advanceTimersByTime(16); // the toolResult's coalesced frame lands
-		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("  read");
+		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("READ"); // Graphite §7.5
 		writes.length = 0;
 		vi.advanceTimersByTime(2_000);
 		// the tool ended — no timer re-arms — the idle emits nothing
@@ -659,7 +659,9 @@ describe("TUI v6 — the one compositor", () => {
 		expect(frame).toContain("lint error 2");
 		// R13: an error previews like any other card — the cap is five and
 		// the note is the card's own wording.
-		expect(frame).toContain("more lines · ctrl+o");
+		// Graphite §7.4: the cut note counts; the key is on the card's foot
+		expect(frame).toMatch(/… \d+ more lines/);
+		expect(frame).toContain("ctrl+o expands");
 		expect(frame).not.toContain("lint error 10");
 		expect(matchBodyWalls(frame).length).toBeLessThanOrEqual(3);
 		// a read result: the settled row carries the count — zero body rows
@@ -711,7 +713,7 @@ describe("TUI v6 — the one compositor", () => {
 		// nothing the breathing mark and the elapsed do not (§1.3).
 		const before = screenOf(writes);
 		expect(before.join("\n"), "a call with nothing back still claims a window").not.toContain("waiting for output");
-		const windowTop = before.findIndex((r) => r.includes("shell"));
+		const windowTop = before.findIndex((r) => r.includes("SHELL"));
 		expect(windowTop, "the tool window is not on the screen").toBeGreaterThanOrEqual(0);
 		const height = (rows: readonly string[]): number => rows.filter((r) => r.trim() !== "").length;
 		const h0 = height(before);
@@ -720,14 +722,14 @@ describe("TUI v6 — the one compositor", () => {
 		// window has NOT moved and has NOT grown
 		vi.advanceTimersByTime(200);
 		const after = screenOf(writes);
-		expect(after.findIndex((r) => r.includes("shell")), "the head row moved on a tick").toBe(windowTop);
+		expect(after.findIndex((r) => r.includes("SHELL")), "the head row moved on a tick").toBe(windowTop);
 		expect(height(after), "the card changed height with no new output").toBe(h0);
 
 		// …and a line of output GROWS it, in place, from the same top
 		body.toolProgress("c1", "first line\n");
 		tick();
 		const grown = screenOf(writes);
-		expect(grown.findIndex((r) => r.includes("shell")), "growing moved the head row").toBe(windowTop);
+		expect(grown.findIndex((r) => r.includes("SHELL")), "growing moved the head row").toBe(windowTop);
 		expect(grown.join("\n")).toContain("first line");
 		expect(height(grown), "the output did not grow the card").toBeGreaterThan(h0);
 	});
@@ -772,7 +774,7 @@ describe("TUI v6 — the one compositor", () => {
 		// the running frame: ONE body row, derived from the input — no
 		// live channel to a running child exists, so the spec's "<child's
 		// current tool>" has no event source; the roles are the honest data
-		expect(writes.join("")).toContain("└ 3 children · explorer · implementer · reviewer");
+		expect(writes.join("").replace(/\x1b\[[0-9;]*m/g, "")).toContain("└ 3 children · explorer · implementer · reviewer");
 		expect(matchBodyWalls(writes.join("")).length).toBe(0); // no live window, no fold
 		writes.length = 0;
 		// the settled frame: the SAME single row slot, now the summary
@@ -787,7 +789,7 @@ describe("TUI v6 — the one compositor", () => {
 		});
 		tick();
 		const settled = writes.join("");
-		expect(settled).toContain("└ 12 tool calls · 3 roles · 0 failed · /last for the report");
+		expect(settled.replace(/\x1b\[[0-9;]*m/g, "")).toContain("└ 12 tool calls · 3 roles · 0 failed · /last for the report");
 		expect(matchBodyWalls(settled).length).toBe(0);
 		// an old extension's result (no marker) falls back to no body —
 		// the height contract never grows the block
@@ -843,7 +845,9 @@ describe("TUI v6 — the one compositor", () => {
 		// the first cell (the banner): NO blank above — the body starts at
 		// row 1 (the banner is multi-row, so the blank comes AFTER it)
 		expect(rows[0]).not.toBe("");
-		const userAt = rows.findIndex((l) => l.trim() === "go"); // the chip strips to " go " (the 2026-08-09 ruling retired the rail)
+		// Graphite §7.9: on the unknown ground the person's block strips to
+		// `▌   go` — the bar in column 0, the text at the content edge
+		const userAt = rows.findIndex((l) => l.replace(/^\u258c/, "").trim() === "go");
 		expect(rows[userAt - 1]).toBe(""); // the banner (multi-row) breathes below
 		// DECLARED SUPERSESSION (R3i phase 2): the two tool rows are no
 		// longer siblings — a stretch's completed calls fold into its one
@@ -851,7 +855,7 @@ describe("TUI v6 — the one compositor", () => {
 		// R13: the sibling next to the user's row is the first CALL's own
 		// card — the fold that used to stand there is retired. The subject
 		// is unchanged: two one-row cells, one blank between them.
-		const foldAt = rows.findIndex((l) => /^ {2}read {2}x/.test(l));
+		const foldAt = rows.findIndex((l) => /^ {6}READ {4}x/.test(l)); // Graphite §7.4: the head at the content edge
 		expect(foldAt).toBeGreaterThan(0);
 		expect(foldAt).toBe(userAt + 2); // R13 D1: one blank, even between two one-row cells
 		expect(rows[userAt + 1]).toBe(""); // …and it is a blank, not a shifted row
@@ -958,7 +962,8 @@ describe("TUI v6 — the one compositor", () => {
 		// still gone (nothing is cut), and the block's last row is the
 		// collapse footer. "no ctrl+o at all" becomes "no ctrl+o CUT".
 		expect(frame).not.toContain("ctrl+o to expand");
-		expect(frame).toContain("    ctrl+o collapses");
+		// Graphite §7.4: the way back is the card's foot
+		expect(frame.replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/ {4}ctrl\+o collapses/);
 		// THE SECOND PRESS: the cut returns — the toggle flips both ways
 		writes.length = 0;
 		body.toggleExpanded();
@@ -1028,7 +1033,7 @@ describe("TUI v6 — the one compositor", () => {
 		// on the outcome row. Every fact A4/A5 pins is still said; the W4
 		// parentheses are now the bodiless call's form (the read below
 		// keeps them).
-		expect(plain).toContain("  edit  examples/foo.ts");
+		expect(plain).toMatch(/EDIT +examples\/foo\.ts/);
 		expect(plain).toContain("+1 -1 · 1 line · 0.0s");
 		expect(plain).not.toContain("approved by");
 		// the DENIED call: the W19 pinned row (the full name + target) with
@@ -1044,7 +1049,9 @@ describe("TUI v6 — the one compositor", () => {
 		frame = writes.join("");
 		// MOVED (same class): a POLICY denial keeps only its reason — the
 		// reason is why, and the decider was ambient.
-		expect(frame.replace(/\x1b\[[0-9;]*m/g, "")).toContain("  edit_file bar.ts (no touch)");
+		// Graphite §7.4: a refused call is a failed card; a policy's refusal
+		// says `denied` and its reason
+		expect(frame.replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/EDIT +bar\.ts +denied · no touch/);
 		// the HUMAN approval (no decidedBy): the settled row unchanged —
 		// no decider tail, the ❯ → spinner →   sequence told the story
 		body.userLine("human approval");
@@ -1065,7 +1072,7 @@ describe("TUI v6 — the one compositor", () => {
 		// byline and the human's own answer got none.
 		// R13 MOVED THIS: one grammar for both cards — the head row's W4
 		// parentheses became the `·` chain the outcome row already used.
-		expect(plain3).toContain("  read  x.ts · 1 line · 0.0s · approved");
+		expect(plain3).toMatch(/READ +x\.ts +1 line · 0\.0s · approved/);
 		expect(plain3).not.toContain("approved by");
 	});
 
@@ -1090,7 +1097,8 @@ describe("TUI v6 — the one compositor", () => {
 		// gutter (the wrapped rows carry no ellipsis — the regex matches
 		// exactly the cut row). The invariant ① already enforced the
 		// width cap — a violated cut row would have THROWN at tick().
-		const rows = plain.match(/  edit  a{20,}…/g) ?? [];
+		// Graphite §7.5: the target elides in its MIDDLE
+		const rows = plain.match(/EDIT +a{10,}…a+/g) ?? [];
 		expect(rows.length).toBe(1);
 	});
 });

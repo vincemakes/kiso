@@ -275,7 +275,10 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 		const sizes = [[40, 12], [40, 24], [80, 24]] as const;
 		for (const [W, H] of sizes) {
 			const { frames } = replay(W, H);
-			const orphan = /^ {0,2}(approved|denied)(: |$)/;
+			// Graphite §1.8: rows begin at column 4 now, so the orphan form is
+			// matched at ANY indent — a column-bound pattern would have gone
+			// silently vacuous when the edge moved.
+			const orphan = /^\s*(approved|denied)(: |$)/;
 			for (const f of frames) {
 				for (const line of f.all) {
 					expect(line, `${W}x${H} frame ${f.n}: the free-standing verdict orphan (A5)`).not.toMatch(orphan);
@@ -295,6 +298,10 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 				`${W}x${H}: no policy byline survives anywhere (R1.5 ⑤)`,
 			).toBe(false);
 		}
+		// …and the gate is not vacuous: the human's approval IS on screen,
+		// bound into its card's head row, at a width with room for it.
+		const { frames } = replay(80, 24);
+		expect(frames.some((f) => f.all.some((l) => /[A-Z]+ +\S.*· approved/.test(l))), "no verdict bound into a head row — A5 checked nothing").toBe(true);
 	});
 
 	it("D3 — the box chrome is intact at every frame (the cells' rows never overlap the box)", () => {

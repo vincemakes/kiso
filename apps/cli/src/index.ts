@@ -31,7 +31,7 @@ import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { basename, join } from "node:path";
-import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
+import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type ResumeMeta, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
 import { listSessionSidecars, migrateSummaries, readProfile, summaryMigrationPending } from "@vincemakes/kiso-runtime/internal";
 import { skillMenuItems } from "./skill-invoke.js";
@@ -405,6 +405,7 @@ function makeLineInput(): LineInput {
 		let osc: string | undefined;
 		let colorScheme: "dark" | "light" | undefined;
 		const theme = (): string | undefined => process.env.KISO_THEME ?? userTheme;
+		const sameRgb = (a: Rgb | null, b: Rgb | null): boolean => a === b || (a !== null && b !== null && a.r === b.r && a.g === b.g && a.b === b.b);
 		const rewalk = (): void => {
 			const next = resolveGround({ theme: theme(), colorScheme, osc, colorfgbg: process.env.COLORFGBG });
 			// Graphite §3.4: the colour the terminal reported rides along,
@@ -414,8 +415,7 @@ function makeLineInput(): LineInput {
 			// DC-3/DC-14's model: the first frame never waits for a reply.
 			// A reply that changes nothing repaints nothing — which is also
 			// why two answers that AGREE cost one repaint and not two.
-			const was = currentGroundRgb();
-			if (next === currentGround() && (rgb === null ? was === null : was !== null && rgb.r === was.r && rgb.g === was.g && rgb.b === was.b)) return;
+			if (next === currentGround() && sameRgb(rgb, currentGroundRgb())) return;
 			setGround(next, rgb);
 			body.onGroundChange();
 		};

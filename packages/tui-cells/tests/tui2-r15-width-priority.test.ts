@@ -73,11 +73,22 @@ const row = (cell: BodyCell, W: number): string => rows(cell, W)[0]!;
  *  parts give way in a pinned order — attribution first, then the count
  *  — and the core is never cut open. The row it is measured on moved
  *  because the fact moved. */
-const outcome = (cell: BodyCell, W: number): string => rows(cell, W).at(-1)!.trim();
+// Graphite §7.4: the outcome rides the HEAD row's right end, two or more
+// spaces after the target.
+// (At the narrowest widths the target gives way and the verb stands right
+// before the outcome: `SHELL exit 0 · 3.0s`.)
+const outcome = (cell: BodyCell, W: number): string =>
+	row(cell, W)
+		.split(/ {2,}/)
+		.at(-1)!
+		.trim()
+		.replace(/^[A-Z]+ /, "");
 
 describe("TUI2-R1.5 pin 4 — the parens never break", () => {
-	it("the walkthrough's S1 block carries its whole core at 100 cols", () => {
-		expect(outcome(shell(S1), 100)).toBe("exit 0 · 6 lines · 3.0s · approved");
+	it("the walkthrough's S1 block: its whole chain at 120 cols; at 100 the attribution and the count give way before the command does", () => {
+		expect(outcome(shell(S1), 120)).toBe("exit 0 · 6 lines · 3.0s · approved");
+		expect(outcome(shell(S1), 100)).toBe("exit 0 · 3.0s");
+		expect(row(shell(S1), 100)).toContain(S1.replace("\\n", "\\n").slice(0, 30));
 		expect(row(shell(S1), 100)).not.toContain("approv…");
 		expect(rows(shell(S1), 100).join("\n")).toContain("ctrl+o");
 		for (const r of rows(shell(S1), 100)) expect(visibleWidth(r)).toBeLessThanOrEqual(100);
@@ -97,7 +108,7 @@ describe("TUI2-R1.5 pin 4 — the parens never break", () => {
 		// squeezed: the verdict goes, the core stays whole and uncut
 		const tight = outcome(shell(S1), 30);
 		expect(tight).not.toContain("approved");
-		expect(tight).toBe("exit 0 · 6 lines · 3.0s");
+		expect(tight, "what happened and how long it took").toBe("exit 0 · 3.0s");
 		expect(tight).not.toContain("…");
 	});
 
@@ -120,8 +131,10 @@ describe("TUI2-R1.5 pin 4 — the parens never break", () => {
 		for (let W = 24; W <= 120; W += 1) {
 			const r = row(edit, W);
 			expect(visibleWidth(r), `W=${W}`).toBeLessThanOrEqual(W);
-			const opens = (r.match(/\(/g) ?? []).length;
-			if (opens > 0) expect(r, `W=${W}: ${r}`).toMatch(/\(\+1 -1(?: · approved)?, 3\.0s\)/);
+			// the ± pair is never cut open: where it shows, it is whole and its
+			// elapsed follows it
+			if (r.includes("+1")) expect(r, `W=${W}: ${r}`).toMatch(/\+1 -1(?: · 1 line)? · 3\.0s(?: · approved)?$/);
+			expect(r, `W=${W}: the elapsed was cut away`).toMatch(/3\.0s/);
 		}
 	});
 
@@ -130,15 +143,14 @@ describe("TUI2-R1.5 pin 4 — the parens never break", () => {
 	// nothing else. The rule is the one TUI2-R1.5 ⑤ wrote and is unchanged:
 	// the key is the semantics, so it is the part that is RESERVED while
 	// every other part of the row gives way.
-	it("the affordance survives every width — the note row reserves the key", () => {
+	// Graphite §7.4: the affordance is the card's FOOT — a row of its own,
+	// so no other part of the card competes with it for room.
+	it("the affordance survives every width — the foot carries the key, whole", () => {
 		for (const command of [S1, S2]) {
 			for (let W = 24; W <= 120; W += 1) {
 				const all = rows(shell(command), W);
-				const note = all.map((r) => r.trim().replace(/^└ /, "")).find((r) => r.startsWith("…") || r === "· ctrl+o");
-				expect(note, `W=${W}: no note row`).toBeDefined();
-				expect(note, `W=${W}: ${note}`).toContain("ctrl+o");
-				// and it is never cut mid-key
-				expect(note, `W=${W}: ${note}`).not.toMatch(/ctrl\+o\S*…$/);
+				expect(all.at(-1)!.trim(), `W=${W}`).toBe("ctrl+o expands");
+				expect(all.filter((r) => r.includes("\u2026 1 earlier line")).length, `W=${W}: no cut note`).toBe(1);
 			}
 		}
 	});

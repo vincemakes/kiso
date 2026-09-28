@@ -14,7 +14,7 @@ import {
 	idleStatus,
 	palette,
 	renderEvent,
-	renderRecap,
+	renderRecap, sealTiers,
 	runningStatus,
 	toolTarget,
 	STATUS_GLYPHS,
@@ -1262,32 +1262,34 @@ export async function consumeRun(
 					const e = ev.outcome.error as { code: string; message: string; retryable: boolean; status?: number };
 					body.notice(`run failed — ${e.code}${e.status !== undefined ? ` ${e.status}` : ""}${e.retryable ? " (retryable)" : ""}: ${escapeTerminal(e.message)}`);
 				}
-				bodyLog(
-					renderRecap({
-						seconds: Math.round((Date.now() - turnStart) / 1000),
-						// R3g: the work terms are NOT passed — the fold line
-						// says what the turn did, once, where it happened and
-						// with the key that reopens it. This row is the turn's
-						// cost: how long it took and what it spent.
-						// R3g: `?? 80` is NOT enough — a PTY opened without a
-						// winsize reports 0 columns, and 0 is not nullish, so
-						// the recap cut itself down to one character. A width
-						// that is not a positive number is not a width.
-						width: process.stdout.columns > 0 ? process.stdout.columns : 80,
-						usage: turnUsage() ?? UNKNOWN_USAGE,
-						// R-C item 4: only an above-floor miss is surfaced —
-						// the recap gains "· miss N" on the cache segment.
-						...(missed !== null ? { missed } : {}),
-						// Cold: idle past the cache's assumed life (the #77
-						// constant, provisional) AND the turn did re-send a
-						// prefix uncached — the time alone is not evidence.
-						...(coldAfter(idleMs, missed, turnUsage() ?? UNKNOWN_USAGE)),
-						ctxLeftPct: Number.isFinite(ratio) ? (1 - ratio) * 100 : null,
-						// W19: under plan the recap becomes the way-forward row
-						// (the /mode hints are the mode's exits).
-						mode: getMode(),
-					}),
-				);
+				// Graphite §7.11: the seal is a cell on the terminal (drawn at
+				// the current width, no context share); the pipe keeps the recap.
+				const recapStats = {
+					seconds: Math.round((Date.now() - turnStart) / 1000),
+					stopped: ev.outcome.kind === "aborted",
+					// R3g: the work terms are NOT passed — the fold line
+					// says what the turn did, once, where it happened and
+					// with the key that reopens it. This row is the turn's
+					// cost: how long it took and what it spent.
+					// R3g: `?? 80` is NOT enough — a PTY opened without a
+					// winsize reports 0 columns, and 0 is not nullish, so
+					// the recap cut itself down to one character. A width
+					// that is not a positive number is not a width.
+					width: process.stdout.columns > 0 ? process.stdout.columns : 80,
+					usage: turnUsage() ?? UNKNOWN_USAGE,
+					// R-C item 4: only an above-floor miss is surfaced —
+					// the recap gains "· miss N" on the cache segment.
+					...(missed !== null ? { missed } : {}),
+					// Cold: idle past the cache's assumed life (the #77
+					// constant, provisional) AND the turn did re-send a
+					// prefix uncached — the time alone is not evidence.
+					...(coldAfter(idleMs, missed, turnUsage() ?? UNKNOWN_USAGE)),
+					ctxLeftPct: Number.isFinite(ratio) ? (1 - ratio) * 100 : null,
+					// W19: under plan the recap becomes the way-forward row
+					// (the /mode hints are the mode's exits).
+					mode: getMode(),
+				};
+				body.seal(sealTiers(recapStats), renderRecap(recapStats));
 				break;
 			}
 			default: {

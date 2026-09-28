@@ -161,6 +161,13 @@ const CELL_LINE = [
 	/^… \d+ (?:more|earlier) lines? · ctrl\+o(?: expands)?$/, // the card's cut note
 	/^answer truncated at max_tokens.*$/, // D4: the truncation notice row — R2 (law 1.1): a notice is a sentence, it wears no box corner
 	/^✦.*$/, // v3: the recap line ends the run
+	// Graphite §7.4: a card's HEAD row (trimmed) — the mark cell, the verb
+	// upper case, the target, the outcome at its end — and its FOOT, the key
+	/^(?:[●❯] )?[A-Z]+ +\S.*$/,
+	/^ctrl\+o (?:expands|collapses)$/,
+	// Graphite §7.2: the thinking block's LABEL — the twinkle rides it while
+	// it streams, the seconds when it settles, the key when it is hidden
+	/^(?:[✧✦✶✸✺] )?THINK(?: [\d.]+s)?(?: · hidden · ctrl\+t)?$/,
 	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)
 	// MOVED (R1.5 slice 11, the panel-frame class — DECLARED THIS ROUND):
 	// the panel's bottom edge is a real RULE now (└ + a ─ run to the
@@ -267,7 +274,8 @@ const lint = (rawWithOsc: string): string[] => {
 		// prose; the owner ruled the edge outranks that, and §1.2 carries
 		// the exception. The classifier is the dim+italic PAIR, which is
 		// what actually separates them, and it always was.
-		if (/^ {2}\x1b\[2m\x1b\[3m/.test(seg)) continue;
+		// Graphite §1.8: the lead is the content edge, FOUR columns.
+		if (/^ {4}\x1b\[2m\x1b\[3m/.test(seg)) continue;
 		// R13 — A CARD'S BODY ROW, classified on the RAW segment for the
 		// same reason the chip and the thinking are: stripped and trimmed,
 		// a line of a tool's output is arbitrary text, and a pattern that
@@ -276,7 +284,10 @@ const lint = (rawWithOsc: string): string[] => {
 		// the four-column R8a indent; painted, it is the wash. Before this
 		// round a settled non-shell call had no body at all, so these rows
 		// never reached the transcript and the set never needed them.
-		if (/^\x1b\[2m {4}/.test(seg) || /^\x1b\[48;5;(?:255|236)m/.test(seg)) continue;
+		// Graphite §7.4: unpainted, the body sits at column 8 (the indent
+		// before the dim opener now) and `└` opens it at column 6; painted,
+		// every card row starts at the content edge on the card's ground.
+		if (/^ {8}\x1b\[2m/.test(seg) || /^ {6}\u2514 /.test(seg) || /^ {4}\x1b\[48;/.test(seg)) continue;
 		const t = seg
 			.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
 			.replace(/\[[0-9;]*m/g, "") // any residual SGR fragment (the split can strand a "[2m")
@@ -399,7 +410,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// settle changes what a row says and never where it sits. VD-4's
 		// subject (one formatter, the duration its own segment) holds on
 		// that row.
-		expect(clean).toMatch(/● shell sleep 1; echo hi/); // the running shell — R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
+		expect(clean).toMatch(/● SHELL +sleep 1; echo hi/); // the running shell — R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
 		// A4: the target rides the settled head row (list_dir's input is {}
 		// → the "(root)" fallback); A5: the decider is NAMED on the rows
 		// that auto-approve (the extension's ask lost to the tier's allow).
@@ -416,7 +427,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// case pins — one screen, one wording, `list` and not `list_dir` —
 		// is asserted where it now lives: on each call's OWN head row,
 		// which is where R2pre ④ put it in the first place.
-		expect(clean).toMatch(/\blist\s+\S/);
+		expect(clean).toMatch(/\bLIST\s+\S/); // Graphite §7.5
 		expect(clean).not.toContain("list_dir");
 
 

@@ -9,7 +9,8 @@
  *
  * So: when a turn is in flight, and the live projection has drawn
  * nothing, and no card is running, the live region carries one row —
- * `  thinking…`, dim italic, column 2, no glyph. Whatever arrives
+ * `    thinking…`, dim italic, at the content edge (column 4, Graphite
+ * §1.8), no glyph. Whatever arrives
  * replaces it IN PLACE: a thinking paragraph is the same column and the
  * same font, so the eye sees a word change and not a jump.
  *
@@ -56,7 +57,7 @@ describe("0.24.2 ② — the placeholder says the turn is alive", () => {
 		expect(has(screen()), "the live region is silent while the turn is in flight").toBe(true);
 	});
 
-	it("…at column 2, dim italic, with no glyph", () => {
+	it("…at the content edge, dim italic, with no glyph", () => {
 		const { body, writes, tick } = makeBody();
 		body.enter();
 		body.userLine("go");
@@ -64,7 +65,7 @@ describe("0.24.2 ② — the placeholder says the turn is alive", () => {
 		const raw = writes.join("");
 		expect(raw, "the placeholder is not dim+italic").toMatch(/\x1b\[2m\x1b\[3m\s*thinking…|\x1b\[2m {2}\x1b\[3mthinking…/);
 		const row = screen0(writes).find((r) => r.trim() === "thinking…")!;
-		expect(row.match(/^ */)![0].length, "not at column 2").toBe(2);
+		expect(row.match(/^ */)![0].length, "not at the content edge").toBe(4);
 	});
 
 	it("a card RUNNING replaces it — two things never claim the same moment", () => {

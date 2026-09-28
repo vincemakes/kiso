@@ -117,8 +117,8 @@ describe("R3g ① — an interrupt does not park the commit pointer", () => {
 		// calls are that proof — and a sharper one, because they are the
 		// work rather than a sentence about it.
 		const after = plain(writes.join(""));
-		expect(after, "the pointer parked on the abandoned cell").toContain("read  x.ts");
-		expect(after).toContain("read  y.ts");
+		expect(after, "the pointer parked on the abandoned cell").toMatch(/READ +x\.ts/); // Graphite §7.5
+		expect(after).toMatch(/READ +y\.ts/);
 	});
 
 	it("the abandoned row keeps its words — the interruption is NAMED, never silently done", () => {

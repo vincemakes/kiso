@@ -45,7 +45,9 @@ describe("§2.3 — the thinking switch", () => {
 		// FOLDED: one row, carrying the count and the way back
 		body.toggleThinking();
 		const folded = strip(take());
-		expect(folded, "the fold names how to read the rest").toContain("/think");
+		// Graphite §7.2: the hidden form is the THINK label line, and the key
+		// that shows the blocks again is what it names
+		expect(folded, "the fold names how to read the rest").toMatch(/THINK[^\n]* · hidden · ctrl\+t/);
 		expect(folded, "and it is one row, not the paragraphs").not.toContain("leaves nothing behind");
 		expect(folded, "the prose beside it is untouched").toContain("the answer is the first one.");
 
@@ -66,7 +68,7 @@ describe("§2.3 — the thinking switch", () => {
 		body.textAppend("done.");
 		vi.advanceTimersByTime(16);
 		const out = strip(take());
-		expect(out, "the session stays one way up").toContain("/think");
+		expect(out, "the session stays one way up").toMatch(/THINK[^\n]* · hidden · ctrl\+t/);
 		expect(out).not.toContain("leaves nothing behind");
 	});
 
