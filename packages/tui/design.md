@@ -265,7 +265,7 @@ without a colour (rungs 1, 2 and 4), the table's own column is used.
 | mark | means |
 |---|---|
 | `●` | a call is running — in its card's mark cell; it breathes (§5) |
-| twinkle (§5.2) | the model is thinking — beside `THINK` and on the live row |
+| twinkle (§5.2) | the model is working — on the live row for the whole turn, and beside `THINK` while thinking streams |
 | `❯` | it needs you: an approval, a question, an unknown outcome to decide |
 | `◇` | a message the person sent that has not landed yet |
 | `◌` | an outcome kiso cannot know: a call started and no result was recorded |
@@ -408,9 +408,10 @@ current stretch rather than joining one: what the model says is not work.
 
 `ctrl+t` hides every thinking block to its label line
 (`THINK 5.2s · hidden · ctrl+t`) and shows it again; the choice is
-remembered, and shown is the default for every model. A model that does
-not stream its thinking gets the label line alone:
-`THINK 5.2s · not streamed by this model`.
+remembered, and shown is the default for every model. A turn with no
+thinking text has no THINK block at all — kiso does not announce a thought
+it cannot see; whether a provider sends thinking text is the provider's
+side (a GPT model sends summaries only when asked for them).
 
 A PIPE never sees a thinking paragraph: the inactive path writes one
 folded summary line (`foldThinking`).
@@ -442,7 +443,8 @@ commits (DC-43). A window that already grew is never pulled back in.
 `thinking…`, dim italic at the content edge, no glyph — stands where the
 model's first words will, so whatever arrives replaces it in the same
 column and the same font and the eye sees a word change rather than a
-jump. It is NOT a cell: it never commits, never reaches the scrollback, and
+jump: thinking text turns it into the THINK block, an answer replaces it
+and leaves nothing behind. It is NOT a cell: it never commits, never reaches the scrollback, and
 neither `/last` nor the pipe has heard of it. That is what makes a row
 which is a guess about the future permissible at all — a row that never
 becomes history cannot make history wrong.
@@ -824,16 +826,22 @@ where the route was OSC 52 (a request the terminal need not honour and
 most do not answer), and nothing at all — no escape emitted — when
 stdout is not a terminal.
 
-**8.7 The live zone.** Rows above the composer that exist only while
-something is live, opened by the hairline; otherwise the input sits against
-the transcript. The LIVE ROW: the mark in the mark column, the state and
-its facts, the keys at the right; hints drop from the right when the row is
-short.
+**8.7 The live zone.** Rows directly above the composer that exist only
+while something is live, with no rule of their own (owner, 2026-09-28):
+the composer's top rule is right below them. Otherwise the input sits
+against the transcript. The LIVE ROW: the mark in the mark column, the state
+and its facts, the keys at the right; hints drop from the right when the row
+is short.
+
+`working` stands for the whole turn, from its start to its end, whatever the
+model is doing — thinking, writing, waiting on a call. It never switches to
+"thinking": what the model thinks is in the stream (§7.2), and a row that
+guessed would be wrong for a model that shows no thinking. The other states
+replace it while they last.
 
 | state | row |
 |---|---|
-| thinking | `✸ thinking 6.1s · ↓ 640` |
-| working | `● working 12.4s · ↓ 1.2k · 48 tok/s` |
+| working | `✸ working 12.4s · ↓ 1.2k · 48 tok/s` |
 | retry | `↻ retrying 3/10 · <what failed> · next try in 4s`, and `esc gives up` |
 | compacting | `✸ compacting · 18s`; *(R3)* with its reason: `manual`, `past the soft tier`, `overflow` |
 | waiting | `❯ needs you · <what>` |
