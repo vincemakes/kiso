@@ -155,7 +155,9 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 				// R13: the fold is retired, so the denial is back on the
 				// denied call's OWN row — the full call name, the target and
 				// the reason, which is strictly more than the fold's clause.
-				["write_file out.txt", ""], // the write is denied, not asked
+				// Graphite §7.4: a refused card — the needle is the target, which
+				// sits inside one styled span (feeds match the RAW stream)
+				["out.txt", ""], // the write is denied, not asked
 				["plan mode: read-only", ""], // the guiding reason reaches the model
 				["plan turn done", ""],
 				["▸ plan (read-only) · /mode to switch", ""], // W19: the idle row names the read-only posture (the v3 idle state)

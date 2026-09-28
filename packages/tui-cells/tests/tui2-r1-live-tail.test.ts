@@ -83,100 +83,70 @@ const render = (cell: BodyCell, W = 80): string[] => cellComponent(cell).render(
 // content; in-block notes take the same indent with no glyph, because
 // a second `└` inside one block would be one mark meaning two things.
 
+// Graphite §7.4 (the card, unpainted — these run with colour off): the
+// head row at the content edge carries the running status at its right
+// end, where the settled outcome will stand; the window sits under it,
+// opened by `└` at column 6, its rows at column 8; there is no status
+// row of its own any more.
+const HEAD_RUNNING = /^ {4}● SHELL {3}npm test +running · 12s · esc stops · alt\+⏎ redirects$/;
+
 describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
-	it("no output yet: the shape is exactly today's — nothing observed, nothing claimed", () => {
+	it("no output yet: the head row alone — nothing observed, nothing claimed", () => {
 		setTTY(false);
-		// VD-4 already put the waiting row FIRST; R7a blanks the pad
-		// DC-46: nothing observed is now nothing SHOWN — no window row, no
-		// `waiting for output`. The mark says the call is in flight and the
-		// status row says how long, which is the whole of what that row
-		// carried. This case's subject — nothing observed, nothing claimed
-		// — is the same one, stated more strictly.
-		// DC-48: the three-row card is ONE row, and it is assembled against
-		// the room it has — so the call and its status share the row, joined
-		// by the `·` every other chain uses.
-		expect(render(running())).toEqual(["● shell npm test · 12s · esc stops · alt+⏎ redirects"]);
+		const rows = render(running());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatch(HEAD_RUNNING);
+		expect(rows[0]!.length).toBe(80);
 	});
 
-	it("output observed: the LAST lines ride the block, the footer names the state and the two gestures", () => {
+	it("output observed: the lines ride the block under the head, which names the state and the two gestures", () => {
 		setTTY(false);
 		const rows = render(running({ resultText: "packages/runtime    184 tests\npackages/tui      ⠸ 88/120" }));
-		// DC-46: the window IS the output — two lines, two rows, no padding
-		// — and the two gestures ride the status row instead of spending a
-		// window row on a footer.
-		expect(rows).toEqual([
-			"● shell npm test",
-			"  └ packages/runtime    184 tests",
-			"    packages/tui      ⠸ 88/120",
-			"    12s · esc stops · alt+⏎ redirects",
-		]);
+		expect(rows).toHaveLength(3);
+		expect(rows[0]).toMatch(HEAD_RUNNING);
+		expect(rows.slice(1)).toEqual(["      \u2514 packages/runtime    184 tests", "        packages/tui      ⠸ 88/120"]);
 	});
 
-	it("the tail UPDATES and the height NEVER changes — the W8 fixed window survives every length", () => {
+	it("the tail UPDATES and the height NEVER comes back down (DC-46)", () => {
 		setTTY(false);
-		// DECLARED REVERSAL (DC-46) of W8's fixed window — the height GROWS
-		// with the output and stops at the cap, because a height fixed
-		// higher than the settled one is a shrink waiting to happen, and
-		// the shrink is what put a blank band above the composer. What the
-		// case still pins, and what W8 was really for, is that the height
-		// never moves ON ITS OWN and never comes back DOWN.
 		let last = 0;
 		for (const text of ["", "one", "one\ntwo", "one\ntwo\nthree", "one\ntwo\nthree\nfour\nfive", "one\ntwo\nthree\nfour\nfive\nsix", `${"x\n".repeat(80)}last`]) {
 			const h = render(running({ resultText: text })).length;
 			expect(h, `${JSON.stringify(text.slice(0, 12))}: the window shrank`).toBeGreaterThanOrEqual(last);
 			last = h;
 		}
-		expect(last, "the window grew past its cap").toBe(8); // head + note + 5 + status
-		// growing output scrolls: the LAST five lines are what shows
+		expect(last, "the window grew past its cap").toBe(7); // head + note + 5
 		const rows = render(running({ resultText: "one\ntwo\nthree\nfour\nfive\nsix" }));
-		expect(rows[1]).toBe("  └ … 1 earlier line · ctrl+o expands");
-		expect(rows.slice(2, 7)).toEqual(["    two", "    three", "    four", "    five", "    six"]);
+		expect(rows[1]).toBe("      \u2514 \u2026 1 earlier line");
+		expect(rows.slice(2, 7)).toEqual(["        two", "        three", "        four", "        five", "        six"]);
 	});
 
-	it("a long line is width-truncated inside the block, never folded into a fourth row", () => {
+	it("a long line folds inside the block, and the cap still bounds it", () => {
 		setTTY(false);
 		const rows = render(running({ resultText: `short\n${"x".repeat(300)}` }), 40);
-		// DC-46: a line wider than the row FOLDS (blockRows always has), and
-		// what bounds the block is the cap — five window rows plus the note.
-		// The claim this case pins is the bound, and it holds at any line
-		// length: head + note + 5 + status.
-		expect(rows).toHaveLength(8);
+		expect(rows).toHaveLength(7);
 		for (const row of rows) expect(row.length).toBeLessThanOrEqual(40);
-		expect(rows.at(-1)).toContain("esc stops");
+		expect(rows[0], "the gestures gave way; the elapsed did not").toMatch(/running · 12s$/);
 	});
 
-	it("the tail is DIM — the running content is context, never the message", () => {
+	it("the tail is DIM off the card — the running content is context, never the message", () => {
 		setTTY(true);
 		const rows = render(running({ resultText: "building…" }));
-		// the pad is BELOW the output now (VD-4(b)) — the first tail row
-		// carries the command's first line, never an empty gutter
-		expect(rows[1]).toBe("\x1b[2m  └ building…\x1b[0m");
-		// DC-46: there is no pad row to be blank — the window is the one
-		// line of output, and the gestures ride the status row.
-		expect(rows).toHaveLength(3);
-		expect(rows.at(-1)).toBe("\x1b[2m    12s · esc stops · alt+⏎ redirects\x1b[0m");
+		expect(rows).toHaveLength(2);
+		expect(rows[1]).toBe("      \u2514 \x1b[2mbuilding…\x1b[0m");
 	});
 
-	it("a NON-shell running tool keeps liveWindow byte for byte — the tail is the shell's alone", () => {
+	it("a NON-shell running tool keeps its own window — the gestures are the shell's alone", () => {
 		setTTY(false);
 		const rows = render(running({ name: "read_file", input: "big.txt", inputFull: JSON.stringify({ path: "big.txt" }) }));
-		// R13 E1: a read previews nothing, running or settled — its card is
-		// the head row and its metadata, and the settle changes only what
-		// they say. `liveWindow` itself is unchanged and still the non-
-		// shell form for every other tool (the list below).
-		expect(rows).toEqual(["● read  big.txt · 12s"]);
-		// a non-shell tool takes the same window — grown from its content,
-		// and with no gestures on its status row, because it has none.
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatch(/^ {4}● READ {4}big\.txt +running · 12s$/);
 		const listed = render(running({ name: "list_dir", input: ".", inputFull: JSON.stringify({ path: "." }), resultText: "a.ts\nb.ts" }));
-		expect(listed).toEqual(["\u25cf list  (root)" /* was "list  ." — an explicit "." now reads as (root), owner request 2026-09-17 */, "  └ a.ts", "    b.ts", "    12s"]);
+		expect(listed[0]).toMatch(/^ {4}● LIST {4}\(root\) +running · 12s$/);
+		expect(listed.slice(1)).toEqual(["      \u2514 a.ts", "        b.ts"]);
 	});
 
-	// DECLARED REVERSAL (R9 P2 / D4): completion no longer collapses. The
-	// property this case exists for is the one it still asserts — the LIVE
-	// tail's footer is gone once the call settles, because that footer
-	// names a state ("waiting for output") that has ended. What replaces
-	// the live window is the settled slab, not a single row.
-	it("COMPLETION replaces the live tail with the settled slab — the live footer is gone", () => {
+	it("COMPLETION replaces the running status with the outcome, in the same place; the key moves to the foot", () => {
 		setTTY(false);
 		const settled = render(
 			running({
@@ -186,9 +156,9 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 				resultText: Array.from({ length: 22 }, (_, i) => `out ${i}`).join("\n"),
 			}),
 		);
-		expect(settled[0]).toBe("  shell npm test");
-		expect(settled.at(-1)).toBe("    exit 0 · 22 lines · 18.2s");
-		expect(settled.map((r) => r.trim().replace(/^└ /, ""))).toContain("… 17 earlier lines · ctrl+o expands");
-		expect(settled.join("\n")).not.toContain("live tail");
+		expect(settled[0]).toMatch(/^ {6}SHELL {3}npm test +exit 0 · 22 lines · 18\.2s$/);
+		expect(settled).toContain("      \u2514 \u2026 17 earlier lines");
+		expect(settled.at(-1)!.trim()).toBe("ctrl+o expands");
+		expect(settled.join("\n")).not.toContain("running");
 	});
 });

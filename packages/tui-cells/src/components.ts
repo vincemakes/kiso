@@ -595,7 +595,9 @@ function settledMeta(c: { name: string; input: string; resultText: string; added
 		// exit failure: the first line stays the metadata, exactly like
 		// any other error.
 		if (c.name === "shell" && /^exit \d+/.test(c.resultText)) return `exit ${/^exit (\d+)/.exec(c.resultText)![1]}`;
-		return c.resultText.split("\n")[0]!.slice(0, 60);
+		// Graphite §7.5: the outcome is a WORD on the head row — the error's
+		// own text is the card's body, where it has the room to be read
+		return "failed";
 	}
 	if (c.name === "read_file") {
 		const noteAt = c.resultText.lastIndexOf("\n… ");
@@ -664,272 +666,114 @@ function toolTargetOf(c: Extract<BodyCell, { kind: "tool" }>): string {
 	return toolTarget(c.name, input);
 }
 
-/** THE TOOL CARD — one per call, every state its own render (R13):
- *  pad · head row · blank · the preview, capped at CAP_PREVIEW rows and
- *  cut with a note that names the key · blank · the outcome row · pad;
- *  a call with nothing to show is the three-row bodiless card. The body
- *  is capped in SCREEN rows at the current width; the tool's OWN
- *  truncation note (W10, `capped by …`) is a different fact, never
- *  counted against the cap. W3: the verb drops its "_file" suffix and
- *  pads to 5 columns so the targets line up (the pipe path prints the
- *  same verb). A4: the settled head row is verb + target + outcome; the
- *  W19 pinned deny keeps the full call name instead. A5: a decidedBy on
- *  the cell appends `· approved by X` (an extension's auto-approval) or
- *  `· by X` on the pinned deny; the human decision needs no marker. */
+/**
+ * Graphite §7.4 — THE CARD: one per call (R13), one skeleton in every
+ * state —
+ *
+ *   ▄ pad · head · body · foot · ▀ pad
+ *
+ * The head carries the mark cell, the verb (padded to seven), the target,
+ * and at its right end the outcome (§7.5). The body is the preview,
+ * aligned under the target. The foot carries the `ctrl+o` key, right-
+ * aligned, and exists only while something is behind it; a card with no
+ * body carries the key at the end of its head row instead. The ground is
+ * the call's STATE (§1.6): running, settled, failed or refused, waiting
+ * for the person — and a bar in the state's edge colour marks its side.
+ *
+ * On an unknown ground nothing is painted (§3.1): the head at the content
+ * edge, the body indented under it and opened by `└`, the foot dim. The
+ * CONTENT is the same either way.
+ */
 class ToolExecution implements Component {
 	constructor(private readonly cell: Extract<BodyCell, { kind: "tool" }>) {}
 	render(W: number, ctx: FrameCtx): string[] {
 		const p = palette();
 		const c = this.cell;
-		const verb = escapeTerminal(displayVerb(c.name));
-		const verbCol = verb.length < 5 ? `${verb}${" ".repeat(5 - verb.length)}` : verb;
-		// DECLARED REVERSAL (R13): the W13 rollup row and TUI2-R1 (B)'s
-		// exploration row stood here, ahead of everything else a settled
-		// call could be; both retired with the `rolled` field they read.
+		const verb = escapeTerminal(displayVerb(c.name)).toUpperCase();
 		if (c.state === "done") {
-			// R3i phase 5: an answered (or declined) ask_user renders its
-			// OWN block — the questions and what the human said. The row
-			// it replaces was `  ask_user  (3 lines, 41.2s)`: an empty
-			// target and the answers thrown away, though the result
-			// already carried them. `askedBlock` returns [] for anything
-			// that is not the ask's own JSON, so a payload this renderer
-			// did not write can never be guessed at.
+			// R3i phase 5: an answered (or declined) ask_user renders its OWN
+			// block — the questions and what the human said.
 			if (c.name === "ask_user" && c.reason === null && !c.isError) {
 				const asked = askedBlock(c.resultText, c.startedAt !== null && c.doneAt !== null ? (c.doneAt - c.startedAt) / 1000 : c.startedAt === null && c.doneAt === null ? null : 0, W);
 				if (asked.length > 0) return asked;
 			}
-			// W19: the pinned deny — the claimed shape verbatim: the FULL
-			// call name (the denial names the call), the target, the reason
-			// in the W4 parentheses idiom, no timing (the call never ran).
-			// The same ✗ family as any failure; the [result ✗] body still
-			// rides below (never hide information). A5: an extension's
-			// denial appends `· by <decidedBy>` — the aggregated head row
-			// names the decider; a human denial (no decidedBy) has no tail.
+			// W19: the refused call — a failed card whose outcome is the
+			// refusal and its reason; the [result] body still rides below
+			// (never hide information). A5: an extension's denial names it.
 			if (c.reason !== null) {
-				const by = attribution(c);
-				const out = gutterCut("  ", `${p.red}${escapeTerminal(`${c.name} ${toolTargetOf(c)}`)} (${escapeTerminal(c.reason)}${by})${p.reset}`, W);
-				out.push(...toolBlockBody(c, W, ctx));
-				return out;
+				// VD-11: a PERSON's refusal is worth saying (they were asked
+				// and answered); a policy's is ambient. The outcome word says
+				// which, once.
+				const word = c.verdict !== null && c.verdict.decision === "denied" && c.verdict.decidedBy === undefined ? "denied by you" : "denied";
+				const outcome = [`${word} \u00b7 ${escapeTerminal(c.reason)}`, word];
+				const body = toolBlockParts(c, W, ctx);
+				return card("fail", "  ", verb, escapeTerminal(toolTargetOf(c)), outcome, body.rows, null, W, true);
 			}
-			// 4c: a card settled from the durable log carries no clock at all
-			// (the log's events have no timestamps) — it says nothing about
-			// time rather than `?s`, which reads as a measurement that failed.
+			// 4c: a card settled from the durable log carries no clock at
+			// all — it says nothing about time rather than `?s`.
 			const elapsed = c.startedAt !== null && c.doneAt !== null ? settledLabel((c.doneAt - c.startedAt) / 1000) : c.startedAt === null && c.doneAt === null ? "" : "?s";
-			// TUI2-R1.5 ⑤ (VD-6): the line count is stated EXACTLY ONCE. Every
-			// read card carried it twice — `(2 lines, 0.0s) · 2 lines · ctrl+o
-			// expands` — because the parens and the suffix were written by
-			// different rounds, each unaware the other was counting. The
-			// SUFFIX keeps it (it is the one that also names the key), so a
-			// meta that says only "<n> lines" drops out when a suffix will
-			// carry it. A meta that says something else — read_file's
-			// "200 of 250 lines", a diff's "+1 -1", a shell's "exit 0" — is a
-			// different fact and stays.
 			const rawMeta = settledMeta(c);
-			// VD-6's suppression RETIRED with the thing it was suppressing.
-			// A read card said `(2 lines, 0.0s) · 2 lines · ctrl+o expands`
-			// because the parens and the suffix were written by different
-			// rounds, each unaware the other was counting; the fix blanked
-			// the meta whenever the suffix would repeat it. R13 takes the
-			// count OUT of the suffix, so there is one place again and the
-			// meta is it — blanking it now would drop the fact entirely.
-			// "Stated exactly once" is unchanged and is what `countedHead`
-			// below preserves: a meta that already counts lines gets no
-			// second count beside it.
 			const meta = escapeTerminal(rawMeta);
-			// A4: the target rides the settled head row — the verb's
-			// summary column (W3's 5-char pad keeps the paths lined up).
-			// A5: an extension's auto-approval appends `· approved by
-			// <decidedBy>` — the "why wasn't I asked" answer; the human
-			// approval (no decidedBy) leaves the row unchanged.
-			const approvedBy = attribution(c);
-			// TUI2-R1 (A): the card names its own key — the suffix rides the
-			// settled head row.
-			// TUI2-R1.5 ④(c): the suffix is now RESERVED rather than given
-			// the leftovers. It used to take the width that happened to be
-			// left, so a long command spent it all and the row said nothing
-			// about the seven lines behind the key — tolerable while the
-			// body was on screen, a silence now that the body is not. The
-			// command is the cuttable span (the approval panel's option-2
-			// rule name is the same idea); the affordance is the semantics.
-			const hidden = hiddenLines(c, W);
-			// TUI2-R1.5 ⑤: the shortest tier is RESERVED — the affordance is
-			// the semantics. TUI2-R1.5 pin 4: and the parts give way in a
-			// PINNED ORDER, rather than whichever happened to be last.
-			const nAll = countLines(c.resultText);
-			const countedHead = nAll > 0 && !/^\d+( of \d+)? lines?$/.test(rawMeta) ? `${nAll} line${nAll === 1 ? "" : "s"}` : "";
-			const text = settledHeadText(verbCol, escapeTerminal(toolTargetOf(c)), meta, approvedBy, elapsed, W - 2 - (hidden === null ? 0 : SUFFIX_MIN), countedHead);
-			// R2 (owner, 2026-08-27): no tick, no cross. A symbol earns its
-			// cell by carrying a fact the words do not, and a row that
-			// already says `exit 0` does not need one more thing saying it
-			// went fine. The gutter is two spaces; the OUTCOME lives in the
-			// metadata, in words, which is also the only form that survives
-			// a pipe with the colour stripped. A failure keeps its colour
-			// AND its words — see settledMeta.
-			const body = toolBlockParts(c, W, ctx).rows;
-			if (body.length > 0) {
-				// R13 — THE CARD, when there is something to preview: the head
-				// row names the call, the preview sits inside, and the outcome
-				// CLOSES it on its own line (§7.5's words, moved off the head
-				// row because the head row is no longer the only row). D6: the
-				// target is bold there — the head row's job is to say WHAT was
-				// run, and the metadata has its own row now.
-				//
-				// A failure takes NO tint on the head row (R9): only the
-				// outcome word is coloured, which is §1.2 exactly — the
-				// colour rides the fact, not the object that carries it.
-				const target = escapeTerminal(toolTargetOf(c));
-				const head = cutLine(`  ${verbCol} ${p.bold}${target}${p.reset}`, W);
-				// §7.5's outcome, in words, on its own row: what happened, how
-				// much of it there was, how long it took. The count is stated
-				// exactly ONCE (VD-6) — a meta that already counts lines does
-				// not get a second count beside it.
-				const n = countLines(c.resultText);
-				const counted = n > 0 && !/^\d+( of \d+)? lines?$/.test(rawMeta) ? `${n} line${n === 1 ? "" : "s"}` : "";
-				// pin 4's order, on the row that carries the core now: the
-				// ATTRIBUTION drops first, then the count, and the core —
-				// what happened and how long it took — is never cut open.
-				const join = (...xs: string[]): string => xs.filter((x) => x !== "").join(" · ");
-				const attr = approvedBy.replace(/^ · /, "");
-				// DC-50 / R14: the key is RESERVED (§7.5), so its width comes
-				// out of the budget BEFORE the tiers are picked — not
-				// appended after, which is what the first build did and
-				// which let a narrow row cut the affordance off entirely.
-				// The tier ladder is what gives way; the key never is.
-				const keySuffix = c.expanded ? ` · ${COLLAPSE_ROW}` : "";
-				const words = pickTier(
-					[join(meta, counted, elapsed, attr), join(meta, counted, elapsed), join(meta, elapsed), meta],
-					W - visibleWidth(noteIndent()) - keySuffix.length,
-				);
-				// DC-50 / R14 — ONE CARD, ONE SKELETON, expanded or not.
-				//
-				// The expanded card used to take a DIFFERENT shape: its head
-				// row carried the outcome inline (`shell npm test · exit 0 ·
-				// 40 lines · 0.1s`), it had no outcome row at all, and the
-				// `ctrl+o collapses` affordance was a row of its own at the
-				// end of the body. That was defensible while an expanded card
-				// was rare — reachable only for a live or approval-parked
-				// cell — and it stopped being defensible the moment ctrl+o
-				// became a switch that expands EVERY settled card at once: a
-				// page where the same call has two skeletons depending on a
-				// global toggle is the instability this round is named for.
-				//
-				// So both states are pad · head · blank · body · blank ·
-				// outcome · pad. The head row says WHAT was run and nothing
-				// else; the outcome row says what happened, how much, how
-				// long — and carries the affordance, because the affordance
-				// is a fact about this card's state and the outcome row is
-				// where this card's facts live.
-				const withKey = `${words}${keySuffix}`;
-				const outcome = c.isError ? `${p.red}${withKey}${p.reset}` : withKey;
-				return slabBlock(head, body, outcome, W);
+			const attr = attribution(c).replace(/^ · /, "");
+			// VD-6: the line count is stated exactly ONCE — a meta that
+			// already counts lines gets no second count beside it.
+			const n = countLines(c.resultText);
+			const counted = n > 0 && !/^\d+( of \d+)? lines?$/.test(rawMeta) ? `${n} line${n === 1 ? "" : "s"}` : "";
+			const join = (...xs: string[]): string => xs.filter((x) => x !== "").join(" \u00b7 ");
+			// pin 4's order: the ATTRIBUTION gives way first, then the count;
+			// what happened and how long it took is never cut open.
+			// The last tier is the CORE — what happened and how long it took;
+			// below it the target elides (headCore), never the core.
+			const tiers = [join(meta, counted, elapsed, attr), join(meta, counted, elapsed), join(meta, elapsed)];
+			const body = toolBlockParts(c, W, ctx);
+			const state = c.isError ? "fail" : "done";
+			if (body.rows.length > 0) {
+				// the foot exists only while something is behind it: collapsed,
+				// when the preview cut; expanded, when collapsing would hide
+				// something again (a card whose whole body always shows has no
+				// way back to offer)
+				const collapsed = { ...c, expanded: false };
+				const behind = c.expanded && (toolBlockParts(collapsed, W, ctx).cut || hiddenLines(collapsed, W) !== null);
+				const foot = c.expanded ? (behind ? COLLAPSE_ROW : null) : body.cut ? EXPAND_ROW : null;
+				return card(state, "  ", verb, escapeTerminal(toolTargetOf(c)), tiers, body.rows, foot, W, c.isError);
 			}
-			// R13 — nothing to preview: the SAME card, three rows, with the
-			// outcome riding the head row because there is nothing between
-			// them to close.
-			//
-			// DECLARED REVERSAL of the owner's 2026-09-02 narrowing ("a call
-			// with no output on screen has no slab at all"), which read §1.6
-			// as giving the wash to the machine's VERBATIM text only. The
-			// ruling of 2026-09-03 supersedes it: the surface says WORK, not
-			// VERBATIM, and a page where some calls are cards and others are
-			// loose rows is the instability the owner was pointing at. §1.6
-			// moves with it.
-			const bare = c.isError ? `  ${p.red}${text}${p.reset}` : `  ${text}`;
-			return slabBlock(appendSuffix(bare, expandSuffix(hidden, W - visibleWidth(bare))), [], null, W);
+			// no body: the head row between its pads, and the key — when the
+			// result sits behind it (a read) — at the end of the head row
+			const hidden = hiddenLines(c, W);
+			// the key is RESERVED (TUI2-R1.5 ⑤): its words shorten only after
+			// the attribution and the count have given way
+			const keyed = hidden === null ? tiers : [...tiers.map((t) => `${t} \u00b7 ${EXPAND_ROW}`), `${tiers[tiers.length - 1]!} \u00b7 ctrl+o`];
+			return card(state, "  ", verb, escapeTerminal(toolTargetOf(c)), keyed, [], null, W, c.isError);
 		}
 		if (c.state === "approval") {
-			// W2: the ❯ is the GUTTER (the left edge), never the line's tail
-			const out = gutterCut(`${p.bold}❯${p.reset} `, `${verbCol} ${liveTarget(c)}`, W);
-			out.push(...toolBlockBody(c, W, ctx));
-			return out;
+			const body = toolBlockParts(c, W, ctx);
+			// a foot only where there is a body above it (§1.3)
+			return card("ask", `${p.gold}\u276f${p.gold === "" ? "" : p.fgEnd} `, verb, liveTarget(c), ["needs you"], body.rows, c.expanded && body.rows.length > 0 ? COLLAPSE_ROW : null, W, false);
 		}
 		if (c.state === "running") {
-			// W2: the spinner IS the gutter (the left edge); the elapsed
-			// rides the summary's tail.
-			// TUI2-R1.5 ④(a) (VD-4): the duration is its OWN trailing segment.
-			// It used to be concatenated into the text BEFORE the cut, so a
-			// header wider than the row lost it entirely or, worse, kept it
-			// welded to the last surviving characters of a cut word
-			// ("compil 1s"). The head is cut against the room the duration
-			// leaves; the duration then rides the row, always legible.
+			// R3 (design §5.2): a running call BREATHES in its mark cell; its
+			// duration rides the head row's right end, where the settled
+			// card's outcome will stand — the settle changes the words and
+			// the ground, never the height (DC-46: the settle may add only
+			// the foot).
 			const elapsed = c.startedAt !== null ? Math.max(1, Math.round((ctx.now - c.startedAt) / 1000)) : 1;
-			const dur = ` · ${elapsedLabel(elapsed)}`;
-			// R3 (design §5.2): a running command BREATHES — one glyph, seven
-			// greys, bottoming out on the ground's dim token (§2.2 applies
-			// mid-animation, not just at rest). The quadrant spinner it
-			// replaces ROTATED, which §5.3 forbids for a call whose duration
-			// cannot be predicted: a turning mark implies progress the
-			// product does not have. With no ground the breath freezes to a
-			// static `●` and says the same thing more quietly.
-			// R13 E2 — A RUNNING CALL IS THE SAME CARD, allocated at the
-			// SETTLED card's height from its first frame. The settle then
-			// changes CONTENT and never position: the spinner becomes two
-			// spaces in the same two columns, the live window gives back
-			// the rows the result did not need, and the metadata row that
-			// said `3s` says `exit 0 · 90 lines · 3.2s`.
-			//
-			// The elapsed moves OFF the head row onto that metadata row,
-			// which is where the settled card keeps it — the head row's job
-			// is to say what is running, and it says the same thing before
-			// and after.
-			//
-			// DC-43: with too little room for the seven-row skeleton (two
-			// pads, the head, two blanks, one preview row and the metadata)
-			// there is no card — the call keeps its head row until it
-			// commits, which is the one form that fits anywhere.
+			const el = elapsedLabel(elapsed);
+			const gestures = c.name === "shell" ? " \u00b7 esc stops \u00b7 alt+\u23ce redirects" : "";
+			// the gestures give way first (the live row names the same keys);
+			// `running · Ns` is the core, and the narrow ladder keeps the
+			// elapsed alone at the very end
+			const tiers = [`running \u00b7 ${el}${gestures}`, `running \u00b7 ${el}`];
+			const mark = `${breathFrame(ctx.spinnerI)} `;
+			// DC-43: with too little room for a card the call keeps its head
+			// row alone until it commits — the one form that fits anywhere.
 			const liveRows = ctx.liveWindow ?? CAP_PREVIEW;
-			const gutter = `${breathFrame(ctx.spinnerI)} `;
-			if (liveRows <= 0) {
-				// the degraded form is the head row ALONE, so it keeps the
-				// duration it would otherwise have lost with its card — cut
-				// against the room the duration leaves (VD-4: the duration
-				// is its own segment, never welded to a cut word).
-				const bare = gutterCut(gutter, `${verbCol} ${liveTarget(c)}`, Math.max(4, W - dur.length));
-				return [`${bare[0]!}${p.dim}${dur}${p.reset}`];
-			}
-			// DC-46 — the two GESTURES ride the status row, where they cost
-			// nothing. They were a footer INSIDE the window, spending one of
-			// its rows on a sentence that is not output; with the window
-			// grown from its content, that row was the difference between a
-			// settle that swaps content and one that changes height. The
-			// row's shape is the settled outcome row's, so the settle
-			// rewrites it in place: `3s · esc stops` → `exit 0 · 90 lines ·
-			// 3.2s`.
-			const gestures = c.name === "shell" ? " · esc stops · alt+⏎ redirects" : "";
-			const status = pickTier([`${elapsedLabel(elapsed)}${gestures}`, elapsedLabel(elapsed)], Math.max(1, W - visibleWidth(noteIndent())));
-			const live = toolBlockBody(c, W, ctx);
-			if (live.length > 0) return slabBlock(gutterCut(gutter, `${verbCol} ${liveTarget(c)}`, W)[0]!, live, status, W);
-			// DC-48 — THE THREE-ROW CARD IS ONE ROW, so it is assembled here
-			// against the room it actually has.
-			//
-			// This branch used to cut the head to `W` and hand it to
-			// `slabBlock`, which joins head and outcome and cut nothing —
-			// so the row came out `W` wide PLUS the whole status, and the
-			// compositor did what it promises: it threw. On the owner's
-			// 80-column terminal a long `find` produced a 113-column row on
-			// its FIRST FRAME, which is the first second of every command.
-			//
-			// Pin 4's order: the command is the cuttable span and the
-			// elapsed is never cut open, so the command takes what the
-			// status leaves — the `· ` between them and the two-column
-			// gutter included.
-			// the status takes its own tier against the room the row has, not
-			// against a whole width: on a narrow terminal the gestures give
-			// way so the COMMAND keeps something to say, and the elapsed —
-			// pin 4's core — never does.
-			const MIN_TARGET = 10; // the gutter, the verb column, a character of command
-			const oneRow = pickTier([`${elapsedLabel(elapsed)}${gestures}`, elapsedLabel(elapsed)], Math.max(1, W - MIN_TARGET - 3));
-			const room = Math.max(4, W - visibleWidth(oneRow) - 3);
-			const only = gutterCut(gutter, `${verbCol} ${liveTarget(c)}`, room)[0]!;
-			return slabBlock(`${only}${p.dim} · ${oneRow}${p.reset}`, [], null, W);
+			if (liveRows <= 0) return [cardHeadRow(mark, verb, liveTarget(c), tiers, W, false, false)];
+			const body = toolBlockParts(c, W, ctx);
+			return card("run", mark, verb, liveTarget(c), tiers, body.rows, c.expanded && body.rows.length > 0 ? COLLAPSE_ROW : null, W, false);
 		}
-		// W2: ◦ replaces → for QUEUED — · is the separator inside every
-		// metadata group; a queued marker that is also the separator
-		// glyph reads as noise
-		// The `◦` carried "not started yet" ALONE, and a marker is not a
-		// word: on a screen where running and queued rows sit together, a
-		// reader has to already know the glyph. The suffix says it.
-		return gutterCut(`${p.dim}◦${p.reset} `, `${verbCol} ${liveTarget(c)}${p.dim} · queued${p.reset}`, W);
+		// not started yet (queued behind an exclusive call): the same card,
+		// its outcome says so.
+		return card("run", "  ", verb, liveTarget(c), ["queued"], [], null, W, false);
 	}
 }
 
@@ -957,7 +801,7 @@ function hiddenLines(c: Extract<BodyCell, { kind: "tool" }>, W: number): number 
 	if (c.name === "delegate") return null; // its body is the one-line summary, always whole
 	const n = countLines(c.resultText);
 	if (n === 0) return null;
-	if (c.isError) return null; // errorBody's own cut row is the affordance there
+	if (c.isError) return null; // an error previews its text, and the foot carries the key
 	// R13: a call that PREVIEWS carries the key on its own note row when
 	// something is cut, and needs no affordance at all when nothing is.
 	// A head-row suffix as well would be TUI2-R1's two affordances for
@@ -965,89 +809,6 @@ function hiddenLines(c: Extract<BodyCell, { kind: "tool" }>, W: number): number 
 	// one call with no preview (E1), so the key lives on its head row.
 	if (c.name !== "read_file") return null;
 	return n;
-}
-
-/**
- * TUI2-R1 (A) — the suffix, in the width that is LEFT.
- *
- * Three tiers, degrading: the full form teaches the key AND what it
- * does, the terse form keeps the count and the key, the bare form keeps
- * the key alone. Below that the row is left exactly as it is today — the
- * affordance is worth a suffix, never worth cutting the path the row
- * exists to name (invariant ① holds by construction: the tier is chosen
- * against the room the row actually has).
- */
-/** TUI2-R1.5 ⑤ — the cells a settled head row reserves for its
- *  affordance: exactly the shortest tier, " · ctrl+o". The suffix used
- *  to take whatever width happened to be left, so a long target spent it
- *  all and the card said nothing about the lines behind the key. Every
- *  row that fitted its head before still fits it; only a head that would
- *  have eaten the whole row gives up its last nine cells. */
-const SUFFIX_MIN = " · ctrl+o".length;
-
-/**
- * TUI2-R1.5 pin 4 — the settled head row's text, with a PINNED cut
- * order.
- *
- * The row carries four things of very different value, and until now a
- * single trailing widthCut decided between them by position: the parens
- * came last, so the parens were what got cut. The walkthrough caught
- * both consequences —
- *
- *   ✓ shell printf '…' 1 2 … 12 (exit 0 · approv… · ctrl+o
- *   ✓ shell for i in 1 2 3 …                          … · ctrl+o
- *
- * — an UNCLOSED parenthesis, and a row that lost the exit code and the
- * duration to a command string that had no claim on them. A cut that
- * leaves `(exit 0 · approv…` has not shortened a fact, it has broken
- * one: the reader is left holding the beginning of a sentence.
- *
- * The order, tightest last:
- *   1. the affordance is already reserved by the caller (⑤);
- *   2. the RESULT CORE — `(exit 0, 3.0s)`, `(+1 -1, 0.2s)` — renders
- *      whole, closing paren included, or not at all;
- *   3. the ATTRIBUTION segment drops before the core is touched: it is
- *      a note about who decided, and the result is what happened;
- *   4. the COMMAND/target truncates with `…`. It is the most
- *      compressible thing on the row — a reader recognises a command
- *      from its head — and it is the only part with a natural ellipsis.
- */
-function settledHeadText(verbCol: string, target: string, meta: string, attr: string, elapsed: string, room: number, counted = ""): string {
-	// R13 — ONE GRAMMAR FOR BOTH CARDS. This row used to close with W4's
-	// parentheses — `read  a.ts (0.1s) · 10 lines · ctrl+o expands` —
-	// while the bodied card's outcome row said `exit 0 · 90 lines · 0.4s`
-	// in a `·` chain. Two shapes for the same facts, and which one a call
-	// got depended on whether it happened to have a preview. The chain
-	// wins: it is the one the outcome row already uses, it reads in one
-	// direction, and it puts the elapsed where the other card puts it.
-	//
-	// The giving-way order is pin 4's, unchanged: the ATTRIBUTION drops
-	// first, then the count, and the core — what happened and how long it
-	// took — is never cut open; below that the target itself truncates.
-	const join = (...xs: string[]): string => xs.filter((x) => x !== "").join(" · ");
-	const core = join(meta, counted, elapsed);
-	const withAttr = join(meta, counted, elapsed, attr.replace(" · ", ""));
-	const lead = `${verbCol} `;
-	const row = (tail: string): string => `${lead}${target}${tail === "" ? "" : ` · ${tail}`}`;
-	// 1. everything; 2. the attribution gives way; 2b. the COUNT gives
-	//    way next (pin 4), where the suffix is not already carrying it —
-	//    the target whole through all three
-	const whole = firstFit([row(withAttr), row(core), row(join(meta, elapsed))], room);
-	if (whole !== null) return whole;
-	// 3. the target truncates, the core stays whole
-	const stem = join(meta, elapsed);
-	const budget = room - visibleWidth(lead) - visibleWidth(stem) - 4; // the ellipsis + " · "
-	if (budget >= 1) return `${lead}${widthCut(target, budget)}… · ${stem}`;
-	// 4. DC-48 — the ELAPSED still rides, and the target takes what is
-	//    left. This used to return the target alone, on the argument that
-	//    a cut core would leave a half-open parenthesis; R13's chain has
-	//    no bracket to leave open, so the reason retired with the
-	//    parentheses and pin 4's own rule applies at every width: what
-	//    happened and how long it took is never cut away.
-	const floor = elapsed;
-	const left = room - visibleWidth(lead) - visibleWidth(floor) - 4; // the ellipsis + " · "
-	if (left >= 1) return `${lead}${widthCut(target, left)}… · ${floor}`;
-	return `${lead}${widthCut(target, Math.max(1, room - visibleWidth(lead)))}`;
 }
 
 /**
@@ -1070,33 +831,16 @@ function attribution(c: Extract<BodyCell, { kind: "tool" }>): string {
 	return c.verdict.decision === "denied" ? " · denied" : " · approved";
 }
 
-/** The expand key as a row's tail, in two tiers; empty when there is
- *  nothing hidden. R13 moved the line COUNT off this suffix onto the
- *  head row's own `·` chain (VD-6: stated exactly once). */
-function expandSuffix(lines: number | null, room: number): string {
-	if (lines === null) return "";
-	for (const tier of [" · ctrl+o expands", " · ctrl+o"]) {
-		if (tier.length <= room) return tier;
-	}
-	return "";
-}
-
-/** The suffix as the row's dim tail (the empty suffix leaves the row's
- *  bytes untouched — a caller never has to branch). */
-function appendSuffix(row: string, suffix: string): string {
-	if (suffix === "") return row;
-	const p = palette();
-	return `${row}${p.dim}${suffix}${p.reset}`;
-}
-
 /* DECLARED REVERSAL (D-S2-1, owner-ruled 2026-09-06): `focusToken` and
    `EXPAND_KEY` stood here — TUI2-R2 ⑤'s bright ctrl+o token on the
    newest live card, "exactly one bright token per frame". DC-50 made
    ctrl+o a global switch, so there was no target left for a marker to
    name; the status row's idle hint names the switch (`idleHint`). */
 
-/** TUI2-R1 (A) — the expanded card's key suffix: the way back. */
+/** TUI2-R1 (A) — the expanded card's key: the way back. */
 const COLLAPSE_ROW = "ctrl+o collapses";
+/** Graphite §7.4 — the key on a card with rows behind it. */
+const EXPAND_ROW = "ctrl+o expands";
 
 /* DECLARED REVERSAL (R13, owner-ruled 2026-09-03): the W13 rollup's
    noun table (`ROLLUP_NOUN`) and TUI2-R1 (B)'s exploration-run set
@@ -1182,8 +926,8 @@ export function askedBlock(resultText: string, seconds: number | null, W: number
 	const asked = parsed as { answers?: { q?: string; choice?: string; choices?: string[]; custom?: string }[]; declined?: string[] };
 	const p = palette();
 	const head = (n: number, outcome: string): string =>
-		cutLine(`  ${p.bold}asked${p.reset} ${n} ${n === 1 ? "question" : "questions"} ${p.dim}(${seconds === null ? outcome : `${outcome}, ${seconds.toFixed(1)}s`})${p.reset}`, W);
-	const row = (body: string): string => cutLine(`  ${p.dim}│${p.reset} ${body}`, W);
+		cutLine(`${EDGE}${p.bold}asked${p.reset} ${n} ${n === 1 ? "question" : "questions"} ${p.dim}(${seconds === null ? outcome : `${outcome}, ${seconds.toFixed(1)}s`})${p.reset}`, W);
+	const row = (body: string): string => cutLine(`${EDGE}${p.dim}│${p.reset} ${body}`, W);
 
 	if (Array.isArray(asked.declined) && asked.declined.length > 0) {
 		// the honest decline record: WHAT went unanswered, and what the
@@ -1232,65 +976,75 @@ const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
  *  `└` survives as the mark that OPENS the block, once, on its first
  *  row (see openBlock). In-block notes take the same indent,
  *  no glyph — because a second `└` inside one block would be the same
- *  mark meaning two things (§4.1). CUT_ROW is unchanged for the
- *  surfaces that are not a tool block. */
-/** R8a's four columns — off the surface. Inside a painted card every
- *  row sits at column 2 (R13 E4): the head row and the outcome row
- *  bracket the preview, so the indent is no longer what says "these
- *  rows are output". Where nothing paints, it is exactly that, and R8a
- *  stands unchanged. */
-const BODY_ROW_FLAT = "    ";
-const NOTE_ROW_FLAT = "    ";
-const CARD_ROW = "  ";
+ *  mark meaning two things (§4.1). */
+/** Graphite §7.4 — off the surface (unknown ground), a card's body sits
+ *  four columns under its head: the head at the content edge (4), the
+ *  body at 8, opened by `└` (R8a's indent, which is what says "these rows
+ *  are output" once nothing is painted). */
+const BODY_ROW_FLAT = "        ";
+/** The verb column's width (§7.5), so the targets line up. */
+const VERB_COL = 7;
+/** Inside a painted card: after the bar, a gap, the mark cell and the
+ *  verb column and a space — the target and the body begin at card
+ *  column 12, absolute column 16. */
+const CARD_BODY = " ".repeat(1 + 2 + VERB_COL + 1);
+/** A card's inner right margin. */
+const CARD_RIGHT = 1;
+/** The cells a painted card has after its bar. */
+const cardInner = (W: number): number => Math.max(1, W - EDGE.length - 1);
 /** Graphite §1.8 — the model's words and its thinking begin at the
  *  content edge, like every other block. */
 const PROSE_COL = EDGE;
 const THINK_COL = EDGE;
-const bodyRow = (): string => (slabPaints() ? CARD_ROW : BODY_ROW_FLAT);
-const noteIndent = (): string => (slabPaints() ? CARD_ROW : NOTE_ROW_FLAT);
-const CUT_ROW = "└ ";
+const bodyRow = (): string => (slabPaints() ? CARD_BODY : BODY_ROW_FLAT);
+const noteIndent = bodyRow;
+/** The cells a body row's text has: under the target inside a card, under
+ *  the flat indent outside one. */
+const bodyTextWidth = (W: number): number => Math.max(1, slabPaints() ? cardInner(W) - CARD_BODY.length - CARD_RIGHT : W - BODY_ROW_FLAT.length);
+/** The cells a whole body row has (its indent included). */
+const bodyRowRoom = (W: number): number => Math.max(1, slabPaints() ? cardInner(W) - CARD_RIGHT : W);
 
 /**
- * R9 P2 — THE SLAB: a single call's block is one washed object.
- *
- * §1.6 gives the wash to the machine's verbatim text, and a call's own
- * output is exactly that. The slab is the surface that says so: full-
- * width washed rows, the head row naming the call, the output inside,
- * the outcome closing it. `└` does not open a slab — the surface is the
- * container, and a corner inside it is §1.3's empty mark one scale up.
- *
- * THE DEGRADATION IS THE POINT OF THE PREDICATE. `wash` is a chosen
- * background on the two KNOWN grounds and reverse video on the third
- * (§3's last rung). A chip inverting for one row is the design working; eight
- * output rows inverting is a blackboard in the middle of the transcript.
- * So a slab paints only where the wash is a real background, and where
- * it is not the block degrades to what it has always been — the R8a
- * four-column indent with a dim tail. Never to reverse video.
- *
- * The content shape does NOT change with the surface: the note row and
- * the outcome row exist either way, in `washDim` on the slab and in the
- * ordinary dim off it. Only the surface and its two blank rows are
- * contingent, because an unpainted blank row is §1.3's empty mark at the
- * scale of a row.
+ * Graphite §7.4 / §3.1 — a card paints only where the ground is known:
+ * there its surfaces are real backgrounds. On the unknown ground they
+ * would be reverse video, and eight inverted output rows are a black slab
+ * in the middle of the transcript, so the card keeps its content and
+ * loses its surface.
  */
 function slabPaints(): boolean {
-	const p = palette();
-	return p.wash !== "" && currentGround() !== "unknown";
+	return palette().washDone !== "" && currentGround() !== "unknown";
 }
 
-/** One washed row, padded to the full width by DISPLAY width. A reset
- *  inside the content would strand the background for the rest of the
- *  row, so every reset re-opens it — the selection bar's discipline,
- *  applied to a surface that spans many rows instead of one. */
-function slabRow(inner: string, W: number): string {
+/** Graphite §7.4 — a card's STATE, which is its ground. */
+type CardState = "run" | "done" | "fail" | "ask";
+function cardPaint(state: CardState): { bg: string; bar: string; pad: string } {
 	const p = palette();
-	const body = inner.replaceAll(p.reset, `${p.reset}${p.wash}`);
-	const pad = Math.max(0, W - visibleWidth(inner));
-	return `${p.wash}${body}${" ".repeat(pad)}${p.washEnd}`;
+	if (state === "run") return { bg: p.washRun, bar: p.blue, pad: p.washRunPad };
+	if (state === "fail") return { bg: p.washFail, bar: p.fail, pad: p.washFailPad };
+	if (state === "ask") return { bg: p.washAsk, bar: p.goldMark, pad: p.washAskPad };
+	return { bg: p.washDone, bar: p.rail, pad: p.washDonePad };
 }
 
-/** A metadata row inside (or under) a block: `washDim` on the slab,
- *  the ordinary dim off it. §2.1 is why there are two. */
+/** One painted card row: the content edge, the state's ground from the
+ *  bar to the right edge, padded by DISPLAY width. A reset inside the
+ *  content would strand the ground for the rest of the row, so every
+ *  reset re-opens it (the selection bar's discipline). */
+function slabRow(inner: string, W: number, paint: { bg: string; bar: string }): string {
+	const p = palette();
+	const room = cardInner(W);
+	const fitted = visibleWidth(inner) > room ? cutLine(inner, room) : inner;
+	const body = fitted.replaceAll(p.reset, `${p.reset}${paint.bg}`);
+	const pad = Math.max(0, room - visibleWidth(fitted));
+	return `${EDGE}${paint.bg}${paint.bar}\u258e${p.fgEnd}${body}${paint.bg}${" ".repeat(pad)}${p.washEnd}`;
+}
+
+/** A half-row pad (`▄` above, `▀` below) in the card's ground colour, on
+ *  the terminal's own ground — two cards in a row stand one row apart. */
+function padRow(paint: { pad: string }, glyph: string, W: number): string {
+	const p = palette();
+	return `${EDGE}${paint.pad}${glyph.repeat(Math.max(1, W - EDGE.length))}${p.fgEnd}`;
+}
+
 /** The widest form that fits the row, or the last one — the head row's
  *  own discipline (TUI2-R1.5 ⑤, pin 4) applied to the slab's two
  *  metadata rows: the parts give way in a PINNED ORDER, and the part
@@ -1299,63 +1053,114 @@ function pickTier(tiers: readonly string[], room: number): string {
 	return firstFit(tiers, room) ?? tiers[tiers.length - 1]!;
 }
 
-/** The widest form that fits the row, or null when none does — the
- *  settled head row asks this with its target whole, and only then
- *  cuts the target. The three rows that give way in a pinned order
- *  (the settled head, the running head, the outcome row) share this
- *  walk; their ORDERS differ by ruling and stay their own. */
+/** The widest form that fits the row, or null when none does. */
 function firstFit(tiers: readonly string[], room: number): string | null {
 	for (const t of tiers) if (visibleWidth(t) <= room) return t;
 	return null;
 }
 
+/** A metadata row inside a card's body (a cut note, the tool's own cap):
+ *  cut, never folded — a metadata row that wraps costs the block a row it
+ *  did not budget. */
 function noteRow(text: string, W: number, tone: "dim" | "body"): string[] {
 	const p = palette();
-	// CUT, never folded — A6's rule for the tool header, and for the same
-	// reason: a metadata row that wraps costs the block a row it did not
-	// budget, and at 30 columns the fold put "expands" alone on a line of
-	// its own. The row names a fact; a cut names it shorter.
 	const open = tone === "body" ? p.washDim : p.dim;
 	const close = tone === "body" ? p.washDimEnd : p.reset;
-	return [cutLine(`${open}${noteIndent()}${text}${close}`, W)];
+	return [cutLine(`${open}${noteIndent()}${text}${close}`, bodyRowRoom(W))];
+}
+
+/** `text` elided in its MIDDLE to `room` cells — a path keeps its head
+ *  and its file name, which is how a reader recognises it (§7.5). */
+function elideMiddle(text: string, room: number): string {
+	if (visibleWidth(text) <= room) return text;
+	if (room <= 1) return "\u2026".slice(0, Math.max(0, room));
+	const right = Math.floor((room - 1) / 2);
+	const left = room - 1 - right;
+	const chars = Array.from(text);
+	let tail = "";
+	for (let i = chars.length - 1; i >= 0; i -= 1) {
+		if (displayWidth(chars[i]! + tail) > right) break;
+		tail = chars[i]! + tail;
+	}
+	return `${widthCut(text, left)}\u2026${tail}`;
+}
+
+/** §7.5 — only the outcome WORD takes colour: the first segment of the
+ *  outcome — `exit 0` in the success colour, a failure's word in the
+ *  failure colour — and the rest is `dim`. */
+function outcomeStyled(text: string, error: boolean): string {
+	const p = palette();
+	if (text === "") return "";
+	const at = text.indexOf(" \u00b7 ");
+	const first = at < 0 ? text : text.slice(0, at);
+	const rest = at < 0 ? "" : text.slice(at);
+	const tone = error ? p.red : /^exit 0$/.test(first) ? p.green : "";
+	return tone === "" ? `${p.dim}${text}${p.reset}` : `${tone}${first}${p.reset}${rest === "" ? "" : `${p.dim}${rest}${p.reset}`}`;
 }
 
 /**
- * Assemble a call's block.
- *
- * `head` is the row that names the call, `body` its rows (already
- * indented and toned), `outcome` the closing line in words (§7.5) or
- * null for a call whose head row already carries it — a read has no
- * body, so nothing needs closing and its outcome stays inline.
+ * §7.4 / §7.5 — a card's head row, without the card's bar: the mark cell,
+ * the verb (upper case, `dim`, padded to seven), the target, and the
+ * outcome right-aligned in `room` cells. It gives way in a pinned order:
+ * the outcome's tiers first (the attribution, then the count), then the
+ * target elides in its middle; the outcome word is never cut. The row
+ * never folds.
  */
-function slabBlock(head: string, body: readonly string[], outcome: string | null, W: number): string[] {
+function headCore(mark: string, verb: string, target: string, tiers: readonly string[], room: number, error: boolean): string {
+	const p = palette();
+	const verbCol = verb.length < VERB_COL ? verb.padEnd(VERB_COL) : verb;
+	const lead = `${mark}${p.dim}${verbCol}${p.reset} `;
+	const avail = Math.max(1, room - (2 + verbCol.length + 1));
+	const compose = (tg: string, out: string): string => `${lead}${tg}${" ".repeat(Math.max(2, avail - visibleWidth(tg) - visibleWidth(out)))}${outcomeStyled(out, error)}`;
+	for (const t of tiers) if (visibleWidth(target) + 2 + visibleWidth(t) <= avail) return compose(target, t);
+	const last = tiers[tiers.length - 1] ?? "";
+	const tRoom = avail - 2 - visibleWidth(last);
+	if (tRoom >= 4) return compose(elideMiddle(target, tRoom), last);
+	// A NARROW row: the target gives way entirely, then the verb's padding
+	// and the verb, then everything but the outcome — and the outcome's
+	// last word, how long it took, is the one thing kept to the end (pin 4:
+	// what happened and how long it took is never cut open).
+	const bareLead = `${mark}${p.dim}${verb}${p.reset} `;
+	// the outcome's segments give way from the FRONT — the count, then
+	// the outcome word — so how long it took, and the key where there is
+	// one, are the last to go
+	const segs = last.split(" \u00b7 ");
+	const suffixes = segs.map((_, k) => segs.slice(k).join(" \u00b7 "));
+	for (const row of [`${lead}${outcomeStyled(last, error)}`, `${bareLead}${outcomeStyled(last, error)}`, ...suffixes.map((x, k) => (k === 0 ? outcomeStyled(x, error) : `${p.dim}${x}${p.reset}`))]) {
+		if (visibleWidth(row) <= room) return row;
+	}
+	return cutLine(`${p.dim}${suffixes[suffixes.length - 1]}${p.reset}`, room);
+}
+
+/** DC-43 — the head row ALONE, at the content edge: a running call's
+ *  form when the room left is too small for a card. */
+function cardHeadRow(mark: string, verb: string, target: string, tiers: readonly string[], W: number, _painted: boolean, error: boolean): string {
+	return cutLine(`${EDGE}${headCore(mark, verb, target, tiers, Math.max(1, W - EDGE.length), error)}`, W);
+}
+
+/** The card's foot: the key, right-aligned. */
+function footRow(key: string, room: number): string {
+	const p = palette();
+	return `${" ".repeat(Math.max(0, room - visibleWidth(key)))}${p.dim}${key}${p.reset}`;
+}
+
+/**
+ * Graphite §7.4 — assemble a card: pad · head · body · foot · pad, on the
+ * state's ground; or, off the surface, the same content without it — the
+ * head at the content edge, the body under it, the foot dim.
+ */
+function card(state: CardState, mark: string, verb: string, target: string, tiers: readonly string[], body: readonly string[], foot: string | null, W: number, error: boolean): string[] {
 	if (!slabPaints()) {
-		const out = [head, ...body];
-		if (outcome !== null) out.push(...noteRow(outcome, W, "dim"));
+		const out = [cutLine(`${EDGE}${headCore(mark, verb, target, tiers, Math.max(1, W - EDGE.length), error)}`, W), ...body];
+		if (foot !== null) out.push(cutLine(footRow(foot, W), W));
 		return out;
 	}
-	// R13 — THE CARD. pad · head · blank · preview · blank · outcome ·
-	// pad, and a call with nothing to preview is three rows with its
-	// outcome riding the head. Every row sits at column 2 (E4): R8a put
-	// a block's body at column 4 so a pipe could tell output from prose,
-	// and inside a painted card the head and the outcome bracket it
-	// instead — off the surface R8a's indent is still the fact, which is
-	// why the degradation above keeps it.
-	if (body.length === 0) {
-		// DC-48: the join makes a ROW, so it is cut like every other row.
-		// The callers above size their parts against the room they have;
-		// this is the backstop that makes invariant ① hold whatever they
-		// do, and it is what was missing when a running card's head was
-		// cut to W and then had a whole status appended to it.
-		const only = cutLine(outcome === null ? head : `${head} ${outcome}`, W);
-		return [slabRow("", W), slabRow(only, W), slabRow("", W)];
-	}
-	const top = [slabRow("", W), slabRow(head, W), slabRow("", W), ...body.map((r) => slabRow(r, W))];
-	// An EXPANDED block closes with its own footer and passes no outcome;
-	// a blank row and an empty metadata row under it would be §1.3's
-	// empty mark twice over.
-	if (outcome === null) return [...top, slabRow("", W)];
-	return [...top, slabRow("", W), ...noteRow(outcome, W, "body").map((r) => slabRow(r, W)), slabRow("", W)];
+	const paint = cardPaint(state);
+	const inner = cardInner(W);
+	const rows = [padRow(paint, "\u2584", W), slabRow(` ${headCore(mark, verb, target, tiers, inner - 1 - CARD_RIGHT, error)}`, W, paint), ...body.map((r) => slabRow(r, W, paint))];
+	if (foot !== null) rows.push(slabRow(footRow(foot, inner - CARD_RIGHT), W, paint));
+	rows.push(padRow(paint, "\u2580", W));
+	return rows;
 }
 
 /*
@@ -1397,7 +1202,7 @@ function openBlock(rows: string[]): string[] {
 	if (at < 0) return rows;
 	// the corner REPLACES two of the four indent columns, so the text
 	// stays in the same column as every other row of the block.
-	return [...rows.slice(0, i), `${first.slice(0, at)}  \u2514 ${first.slice(at + BODY_ROW_FLAT.length)}`, ...rows.slice(i + 1)];
+	return [...rows.slice(0, i), `${first.slice(0, at)}${" ".repeat(BODY_ROW_FLAT.length - 2)}\u2514 ${first.slice(at + BODY_ROW_FLAT.length)}`, ...rows.slice(i + 1)];
 }
 
 /** W9 — the per-cell memo: the bounded block's folded body is cached
@@ -1412,11 +1217,14 @@ interface BlockMemo {
 	state: string;
 	content: unknown;
 	rows: string[];
+	cut: boolean;
 }
 const blockMemo = new WeakMap<object, BlockMemo>();
 
-/** The block's body rows below the header (memoized, W9). */
-function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: FrameCtx): { rows: string[] } {
+/** The block's body rows below the header (memoized, W9), and whether
+ *  the preview CUT anything — which is what puts the key on a card's
+ *  foot (§7.4). */
+function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: FrameCtx): { rows: string[]; cut: boolean } {
 	const memo = blockMemo.get(c);
 	// the SURFACE is part of the key: the same cell renders different rows
 	// painted and unpainted, and a ground resolved after the first frame
@@ -1426,72 +1234,59 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: 
 	const content: unknown = c.state === "approval" ? (c.diff ?? null) : c.resultText;
 	if (memo !== undefined && memo.width === W && memo.state === state && memo.content === content) return memo;
 	const p = palette();
+	const tone = slabPaints() ? "body" : "dim";
+	let cut = false;
+	const capped = (all: string[], dir: "head" | "tail"): string[] => {
+		if (all.length <= CAP_PREVIEW) return all;
+		cut = true;
+		// R9 P2 / D4: FIVE output rows, and the note is a row of its own.
+		// A shell's conclusion is at the bottom, so its note goes ABOVE the
+		// tail; everything else answers at the top, so its note closes it.
+		return dir === "tail"
+			? [...cutNote(all.length - CAP_PREVIEW, "earlier", W, tone), ...all.slice(all.length - CAP_PREVIEW)]
+			: [...all.slice(0, CAP_PREVIEW), ...cutNote(all.length - CAP_PREVIEW, "more", W, tone)];
+	};
 	const rows =
 		c.expanded
-			? // W15: the toggle's full form — the WHOLE body, no cap, no
-			  // cut note (nothing is cut; the width fold still holds — the
-			  // height may change while live, the user asked for it). The
-			  // delegate has no body — its rows are unchanged.
-			  c.state === "approval"
-					? diffBody(c.diff, W, true)
-					: c.name === "delegate"
-						? c.state === "running"
-							? delegateRunning(c, W)
-							: delegateSettled(c, W)
-						: blockRows(c.resultText, W)
+			? // W15: the WHOLE body, no cap, no cut note (nothing is cut).
+				c.state === "approval"
+				? diffBody(c.diff, W, true)
+				: c.name === "delegate"
+					? c.state === "running"
+						? delegateRunning(c, W)
+						: delegateSettled(c, W)
+					: blockRows(c.resultText, W, tone)
 			: c.state === "done"
 				? c.isError
-					? errorBody(c, W)
+					? capped(errorRows(c, W, tone), "head")
 					: c.name === "delegate"
 						? delegateSettled(c, W)
-						: // R13 — EVERY settled call previews. The shell's tail is
-							// VD-5's own cap and direction (the conclusion is at the
-							// end); everything else shows its head, because that is
-							// where its answer is. read_file is the single exception
-							// (E1): its result is the file, kiso has nothing to add by
-							// showing five lines of it, and the head row's key opens
-							// the whole thing.
+						: // R13 — EVERY settled call previews: a shell its tail,
+							// everything else its head. read_file is the single
+							// exception (E1): its result is the file, and the key
+							// opens the whole thing.
 							noPreview(c)
-								? []
-								: c.name === "shell"
-									? shellTail(c.resultText, W, slabPaints() ? "body" : "dim")
-									: previewHead(c.resultText, W, slabPaints() ? "body" : "dim")
+							? []
+							: capped(blockRows(c.resultText, W, tone), c.name === "shell" ? "tail" : "head")
 				: c.state === "running"
 					? c.name === "delegate"
 						? delegateRunning(c, W)
-						: // R13 E1 — the call with no preview settled has none while
-							// it runs either; its card is three rows the whole way.
+						: // R13 E1 — the call with no preview settled has none
+							// while it runs either.
 							noPreview({ ...c, state: "done" })
 							? []
-							: liveWindow(c, W, liveCap(c, liveRows), slabPaints() ? "body" : "dim")
+							: liveWindow(c, W, liveCap(c, liveRows), tone)
 					: c.state === "approval"
 						? diffBody(c.diff, W)
 						: [];
-	// E1 governs the PREVIEW — five lines of a file kiso has nothing to
-	// add to — not kiso's sentence about the result. `offset=201 for the
-	// rest` is actionable and no other row says it (W10 pins exactly
-	// that), so a read the TOOL capped takes one body row and a read it
-	// did not takes none. That shape difference is information: the two
-	// events are different, and the row is what says so.
+	// E1 governs the PREVIEW, not kiso's sentence about the result: a read
+	// the TOOL capped takes one body row (`offset=201 for the rest`).
 	const note = c.expanded ? null : toolCutNote(c.name, c.resultText);
-	if (note !== null) rows.push(...foldLine(`${p.dim}${noteIndent()}${note}${p.reset}`, W));
-	// TUI2-R1 (A): an EXPANDED block says how to put it back. The footer
-	// rides a block that HAS rows — an expanded delegate whose summary
-	// marker is missing renders nothing, and a lone footer under a head
-	// row would be an affordance for an empty block.
-	//
-	// DC-50 / R14: a SETTLED card carries the affordance on its OUTCOME
-	// row instead, so that both states have one skeleton. This footer is
-	// for the states that have no outcome row to carry it — a card parked
-	// for approval, or one still running that was expanded before it
-	// settled.
-	if (c.expanded && rows.length > 0 && c.state !== "done") rows.push(...foldLine(`${p.dim}${noteIndent()}${COLLAPSE_ROW}${p.reset}`, W));
-	// R9 P2: `└` opens a block that has no surface. Inside a slab the
-	// surface IS the container, and a corner in it is §1.3's empty mark
-	// one scale up — so the corner and the slab are alternatives, never
-	// both.
+	if (note !== null) rows.push(...noteRow(note, W, "dim"));
+	// R8a: `└` opens a block that has no surface; inside a card the surface
+	// IS the container.
 	const opened = slabPaints() ? rows : openBlock(rows);
-	const parts = { width: W, state, content, rows: opened };
+	const parts = { width: W, state, content, rows: opened, cut };
 	blockMemo.set(c, parts);
 	return parts;
 }
@@ -1505,97 +1300,37 @@ function noPreview(c: Extract<BodyCell, { kind: "tool" }>): boolean {
 	return c.state === "done" && !c.expanded && !c.isError && c.reason === null && c.name === "read_file";
 }
 
-/** The block's body rows. */
-function toolBlockBody(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: FrameCtx): string[] {
-	return toolBlockParts(c, W, ctx).rows;
-}
-
 /** Fold result text into body rows (the block's own indent): escape,
- *  split, fold each line at W−prefix; trailing empty rows (the result's
- *  final newline) drop. */
+ *  split, fold each line in the body's text width; trailing empty rows
+ *  (the result's final newline) drop. Inside a card the output is
+ *  `ink2` (§2: tool output); off the surface it is dim. */
 function blockRows(text: string, W: number, tone: "dim" | "body" = "dim"): string[] {
 	const p = palette();
-	const textW = Math.max(1, W - visibleWidth(bodyRow()));
+	const textW = bodyTextWidth(W);
 	const rows: string[] = [];
-	// R9 P2: inside a SLAB the output rows are body strength, never dim —
-	// §2.1 bars dim from the wash (3.91:1 light, 4.35:1 dark) and these
-	// rows are the verbatim content the surface exists for. The metadata
-	// rows around them take `washDim`, which was chosen for that ground.
-	const open = tone === "dim" ? p.dim : "";
-	const close = tone === "dim" ? p.reset : "";
+	const open = tone === "dim" ? p.dim : p.ink2;
+	const close = tone === "dim" ? p.reset : p.ink2 === "" ? "" : p.fgEnd;
 	// 0.40.0: the output's own styling is dropped whole before the escape
 	for (const raw of escapeTerminal(stripAnsi(text)).split("\n")) {
-		for (const row of foldLine(raw, textW)) rows.push(`${open}${bodyRow()}${row}${close}`);
+		for (const row of foldLine(raw, textW)) rows.push(`${bodyRow()}${open}${row}${close}`);
 	}
 	while (rows.length > 0 && visibleWidth(rows[rows.length - 1]!) === visibleWidth(bodyRow())) rows.pop();
 	return rows;
 }
 
-/** The shell output tail, settled: the LAST rows, capped at 5 — the
- *  renderer cut at the block's bottom ("earlier rows" — the conclusion
- *  is at the end, the reference implementation's truncateToVisualLines
- *  direction). */
-function shellTail(text: string, W: number, tone: "dim" | "body" = "dim"): string[] {
-	const rows = blockRows(text, W, tone);
-	if (rows.length <= CAP_PREVIEW) return rows;
-	// R9 P2 / D4: FIVE output rows, and the note is a row of its own. The
-	// pre-slab arithmetic spent one of the five on the cut note, because
-	// the note had nowhere else to live; the slab's metadata rows are not
-	// output and are not counted against the output's cap.
-	const kept = CAP_PREVIEW;
-	// The note goes ABOVE the tail: it says what was cut, and what was
-	// cut is what came BEFORE these rows. One position on both surfaces —
-	// the surface degrades, the content shape does not.
-	return [...cutNote(rows.length - kept, "earlier", W, tone), ...rows.slice(rows.length - kept)];
-}
-
-/** R13 — the preview every OTHER settled call gets: the FIRST rows,
- *  capped at five, the cut note BELOW them. A shell's conclusion is at
- *  the bottom of its output, so its preview is the tail and its note
- *  opens the block (shellTail above); a list, a search, a fetch all
- *  answer at the top, so the note closes it. One rule, two directions,
- *  and the direction follows where the answer is.
- *
- *  This is the DECLARED REVERSAL of VD-5 for every tool but the shell
- *  (0.22.0 reversed the shell alone): VD-5 collapsed a settled call to
- *  its head row because ungrounded output rows owned the screen, and
- *  the card is what changes that arithmetic — the rows are inside a
- *  surface that says where the call begins and ends. */
-function previewHead(text: string, W: number, tone: "dim" | "body"): string[] {
-	const rows = blockRows(text, W, tone);
-	if (rows.length <= CAP_PREVIEW) return rows;
-	return [...rows.slice(0, CAP_PREVIEW), ...cutNote(rows.length - CAP_PREVIEW, "more", W, tone)];
-}
-
-/** The preview's cut note, in one place so the head and the tail
- *  directions cannot drift apart. The KEY is reserved (TUI2-R1.5 ⑤): a
- *  row that says how much is hidden without saying how to see it is the
- *  silence the affordance exists to remove. */
+/** The preview's cut note — how much was cut and in which direction.
+ *  The KEY is on the card's foot (§7.4), so the note names only the
+ *  count. */
 function cutNote(cut: number, word: "more" | "earlier", W: number, tone: "dim" | "body"): string[] {
 	const n = `${cut} ${word} line${cut === 1 ? "" : "s"}`;
-	return noteRow(pickTier([`… ${n} · ctrl+o expands`, `… ${n} · ctrl+o`, `… ${cut} · ctrl+o`, "· ctrl+o"], W - visibleWidth(noteIndent())), W, tone);
+	return noteRow(pickTier([`\u2026 ${n}`, `\u2026 ${cut}`], bodyTextWidth(W)), W, tone);
 }
 
-/** The error text head: the FIRST rows, capped at 3 — the answer is at
- *  the start (opencode's collapseToolOutput direction). The header row
- *  already summarizes the first line, so the body starts at line 2. */
-function errorBody(c: { name: string; resultText: string; reason?: string | null }, W: number): string[] {
-	const p = palette();
-	// W4: a shell EXECUTION failure's line 0 ("exit 1: …") no longer
-	// rides the header — the parsed code does — so the body keeps the
-	// FULL text. Any other error keeps the pre-W4 split: line 0 is the
-	// header's metadata, the body shows the rest.
-	// W19: a DENIED call's header meta is the PARSED reason (from the
-	// denied tag), decoupled from the result text — the body keeps the
-	// FULL content including the "[Permission denied] " prefix (never
-	// hide information — the folded body rides the pinned row).
-	const skipFirst = c.name === "shell" && /^exit \d+/.test(c.resultText) ? 0 : c.reason !== null && c.reason !== undefined ? 0 : 1;
-	// R13 — a failure is a CARD like any other call: the same cap of
-	// five, the same note wording, the same direction (an error's answer
-	// is at the top). It kept a cap of three and `+2 more · ctrl+o` from
-	// before the card existed, which made the one shape a reader most
-	// wants to read the one shape that showed least of itself.
-	return previewHead(c.resultText.split("\n").slice(skipFirst).join("\n"), W, slabPaints() ? "body" : "dim");
+/** The error text, uncapped: the answer is at the start, and the whole
+ *  of it is the body — the head row carries only the outcome word
+ *  (W4, W19: never hide information). */
+function errorRows(c: { resultText: string }, W: number, tone: "dim" | "body"): string[] {
+	return blockRows(c.resultText, W, tone);
 }
 /**
  * DC-46 — THE RUNNING WINDOW GROWS, and nothing pads it.
@@ -1684,14 +1419,14 @@ function delegateRunning(c: { childRoles: string[] }, W: number): string[] {
 	const p = palette();
 	const n = c.childRoles.length;
 	const text = n === 0 ? "children running…" : `${n === 1 ? "1 child" : `${n} children`} · ${c.childRoles.join(" · ")}`;
-	return [oneLineRow(p, text, W)];
+	return [bodyLineRow(p, text, W)];
 }
 
 function delegateSettled(c: { resultText: string }, W: number): string[] {
 	const p = palette();
 	const m = /^summary: (.+)$/m.exec(c.resultText);
 	if (m === null) return [];
-	return [oneLineRow(p, `${m[1]} · /last for the report`, W)];
+	return [bodyLineRow(p, `${m[1]} · /last for the report`, W)];
 }
 
 /** ONE row at the left gutter, truncated to fit the width — never a
@@ -1699,9 +1434,17 @@ function delegateSettled(c: { resultText: string }, W: number): string[] {
  *  contract). */
 function oneLineRow(p: Palette, text: string, W: number): string {
 	const esc = escapeTerminal(text);
-	if (visibleWidth(`${p.dim}${CUT_ROW}${esc}${p.reset}`) <= W) return `${p.dim}${CUT_ROW}${esc}${p.reset}`;
-	const w = Math.max(1, W - visibleWidth(`${p.dim}${CUT_ROW}${p.reset}`));
-	return `${p.dim}${CUT_ROW}${esc.slice(0, w - 1)}…${p.reset}`;
+	if (visibleWidth(`${p.dim}\u2514 ${esc}${p.reset}`) <= W) return `${p.dim}\u2514 ${esc}${p.reset}`;
+	const w = Math.max(1, W - 2);
+	return `${p.dim}\u2514 ${esc.slice(0, w - 1)}\u2026${p.reset}`;
+}
+
+/** Graphite §7.4 — a card body's ONE row (the delegate's): at the body
+ *  column like every body row, dim, cut to its room. */
+function bodyLineRow(p: Palette, text: string, W: number): string {
+	const esc = escapeTerminal(text);
+	const room = bodyTextWidth(W);
+	return `${bodyRow()}${p.dim}${visibleWidth(esc) <= room ? esc : `${widthCut(esc, Math.max(1, room - 1))}\u2026`}${p.reset}`;
 }
 
 /** The approval mini-diff (W7): capped at 12 folded rows — the head +

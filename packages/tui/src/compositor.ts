@@ -91,7 +91,12 @@ import { noticeMeta } from "./notice-meta.js";
 /** DC-56: does a rendered row carry any visible text once its SGR is
  *  stripped? A washed pad row is spaces under a background colour — width
  *  without words. */
-const saysSomething = (row: string): boolean => row.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim() !== "";
+/** A row that says something: not blank, and not a card's half-row pad
+ *  (Graphite §7.4 — a `▄`/`▀` row is the card's edge, not its head). */
+const saysSomething = (row: string): boolean => {
+	const t = row.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim();
+	return t !== "" && !/^[\u2584\u2580]+$/.test(t);
+};
 
 // R5 — the transcript viewer's PURE projection. The compositor supplies
 // the entries (it holds the cells); the arrangement lives there.
@@ -1078,7 +1083,7 @@ export class Body {
 			// a light terminal showed "5 folds" over five empty grey rows.
 			const first = rows.findIndex((r) => saysSomething(r));
 			const headAt = first < 0 ? 0 : first;
-			out.push({ head: rows[headAt] ?? "", body: rows.slice(headAt + 1) });
+			out.push({ head: rows[headAt] ?? "", body: rows.slice(headAt + 1).filter((r) => saysSomething(r) || r.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim() === "") });
 		}
 		return out;
 	}

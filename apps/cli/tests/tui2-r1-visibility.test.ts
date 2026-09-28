@@ -190,7 +190,7 @@ describe("DC-52 — the inode guard never writes to the terminal", () => {
 		// evidence is the call's own head row and the two notes — which is
 		// the whole of what this case is about: it FINISHED, and it did
 		// not lie about being complete.
-		expect(out, "the search never ran").toMatch(/search alpha/);
+		expect(out, "the search never ran").toMatch(/SEARCH +alpha/); // Graphite §7.5
 		expect(out, "the multi-link skip is silent").toMatch(/multi-link files? skipped/);
 		expect(out, "the unreadable directory is unaccounted for").toMatch(/unreadable director/);
 	}, 120_000);
@@ -210,8 +210,8 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		// not) moot. What survives, and is the half that mattered, is that
 		// the durable record carries every call in full: the pipe leg
 		// below still proves it, and the PTY now shows the same calls.
-		expect(out).toContain("read  ");
-		expect(out).toContain("search ");
+		expect(out).toContain("READ ");
+		expect(out).toContain("SEARCH ");
 		expect(out, "an exploration row survived the retirement").not.toContain("explored ");
 		// R4a: the fold row prints no key — the row above IS the settled
 		// form, and what `ctrl+o` opens is pinned in the unit suite.
@@ -300,10 +300,11 @@ describe("TUI2-R1 T-V3 — the live tail on a real PTY", () => {
 		// verdict is what the row records. `approved by mode:*` was the
 		// runtime's backfill for "no policy expressed an opinion", read by
 		// a human as an attribution (VD-11).
-		expect(out).toContain("  shell sh steps.sh");
-		expect(out).toMatch(/ {4}exit 0 · 6 lines · \d+\.\ds/);
-		expect(out).toMatch(/… 1 earlier line · ctrl\+o expands/);
-		const settledAt = out.lastIndexOf("  shell");
+		// Graphite §7.4: the outcome at the head row's end, the key on the foot
+		expect(out).toMatch(/SHELL +sh steps\.sh +exit 0 · 6 lines · \d+\.\ds/);
+		expect(out).toMatch(/… 1 earlier line/);
+		expect(out).toContain("ctrl+o expands");
+		const settledAt = out.lastIndexOf("SHELL");
 		expect(settledAt).toBeGreaterThan(0);
 		expect(out.slice(settledAt)).not.toContain("live tail");
 

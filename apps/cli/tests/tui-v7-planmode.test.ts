@@ -139,8 +139,8 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 				// matches "✦ plan ready"; the post-reset run is contiguous)
 				// R13: the fold is retired — the read's OWN card is what
 				// says it ran, and its head row names the file.
-				["read  a.ts", ""], // the read ran under plan
-				["(plan mode: read-only", ""], // the pinned deny row's reason (A5: the · by <decider> tail rides INSIDE the parens — no trailing paren in the needle)
+				["a.ts", ""], // the read ran under plan (the target: feeds match the RAW stream)
+				["plan mode: read-only", ""], // Graphite §7.4: the refusal is the card's outcome // the pinned deny row's reason (A5: the · by <decider> tail rides INSIDE the parens — no trailing paren in the needle)
 				["the survey is done.", ""], // the model's answer after the denial
 				["plan ready", "/mode default\r"], // the way-forward row → the only exit
 				["▸ default · /mode to switch", "go\r"], // turn 2 executes normally
@@ -171,7 +171,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// below: WHICH call was refused and WHY. The settled row's own
 		// shape (`  read  a.ts (0.0s) · N lines · ctrl+o`) is A4's claim
 		// and is gated where it belongs, in compositor.test.ts.
-		expect(clean).toContain("read  a.ts"); // the work it DID, on its own card
+		expect(clean).toMatch(/READ +a\.ts/); // the work it DID, on its own card
 		expect(clean).not.toContain("wrote 1 file"); // ...and not the write it did not
 		// MOVED (R1.5 slice 5, the approval-attribution class): a POLICY
 		// denial keeps only its REASON — the reason is the answer to "why",
@@ -203,7 +203,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// carries the target (A4's fact, unchanged); the outcome row
 		// carries the result, the timing and the attribution, in pin 4's
 		// order.
-		expect(clean).toContain("  shell echo hi");
+		expect(clean).toMatch(/SHELL +echo hi/); // Graphite §7.5
 		expect(clean).toMatch(/ {4}exit 0 · 1 line · \d+\.\ds · approved/);
 		// R3g: the recap is the turn's COST now — its ordinary shape is
 		// `✦ took Ns · …`, and what this case actually claims is that

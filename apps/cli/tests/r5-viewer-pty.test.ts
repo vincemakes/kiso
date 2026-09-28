@@ -163,6 +163,6 @@ describe("DC-56 — the viewer's heads say what they are on a real-background pa
 		const band = screen.slice(top + 1, bottom).map((l) => l.trim());
 		// every fold row carries a head — the tool's verb and its target
 		expect(band.length).toBeGreaterThan(0);
-		for (const row of band) expect(row, `a blank fold row in the viewer band:\n${screen.join("\n")}`).toMatch(/read\s+f\d\.txt/);
+		for (const row of band) expect(row, `a blank fold row in the viewer band:\n${screen.join("\n")}`).toMatch(/READ\s+f\d\.txt/); // Graphite §7.5
 	}, 40_000);
 });
