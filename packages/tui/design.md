@@ -644,12 +644,31 @@ box-drawing shadow takes `mix(rail, ground, 0.35)`; the rule under it fades
 from `dim` to the ground. No gold: gold is the edge (§1.2), and the opening
 has none. `<version>` is the CLI's own package version, never a literal.
 
-Beside the wordmark when `W ≥ 96`, behind one hairline, what loaded:
-`SESSION`, `RULES`, `SKILLS`, `MCP`. The model, the mode and the folder
-are the status bar's (§8.9) and are not repeated. Under 96 columns the
-block moves below the wordmark. Under 30 rows the opening is one line:
-`✦ kiso <version> · the coding agent that survives kill -9`. Where the
-ground is unknown the wordmark is drawn in the terminal's own foreground.
+Beside the wordmark when `W ≥ 96`, behind one hairline, what loaded, one
+fact per row — the label `dim` in its column, the fact in `ink`, a
+quieter note after it:
+
+- `SESSION` — `new · resumable after kill -9`, or `resumed · N events`;
+- `RULES` — the instruction file the prompt reads (the same lookup, so it
+  never names a file the model is not given), or `none`;
+- `SKILLS` — the count, and how many cannot load;
+- `MCP` — servers and tools, `connecting…` while they are;
+- `EXTENSIONS` — only when the person or the project added one (the
+  built-ins are the product);
+- DC-49's home-directory row, when the workspace is the home directory.
+
+The model, the mode and the folder are the status bar's (§8.9) and are
+not repeated. Under 96 columns, or with more facts than the wordmark has
+rows, the facts move below the wordmark. Under 30 rows, on a terminal
+too narrow for the wordmark at the content edge, and on a resume (the
+history is above the opening there, and ten rows of wordmark would bury
+its tail) the head is one line —
+`✦ kiso <version> · the coding agent that survives kill -9` — and the
+facts follow it. A fact that does not fit loses its note, then is cut.
+Where the ground is unknown the wordmark is drawn in the terminal's own
+foreground.
+
+The R2 keys row retires: the empty input carries the key ladder (§7.8).
 
 The opening scrolls the shell's screen away first: H line feeds from
 the shell's cursor carry its prompt, the launch command and the tail of
@@ -955,7 +974,10 @@ side once extensions can set one (§10).
 The name is the one `/name` set *(R3; durable in the session log, and the
 name the resume picker and `kiso sessions` show)*, else the first
 substantive input (`sessionTitle`), else there is none and the title is
-`kiso — <folder>`. No model writes the title. It changes when the state
+`kiso — <folder>`. Working is a turn or a `/compact`; needs you is any
+panel that waits on the person's answer (an approval, an ask, the trust
+gate, an uncertain execution), and the answer puts back what the title
+said before. No model writes the title. It changes when the state
 changes and never on a tick (§5.4). No bell and no notification: nothing
 interrupts the person (owner, 2026-09-28). The text is escaped and stripped
 of bidi and invisible formatting code points, and the name is cut at 40
