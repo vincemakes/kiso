@@ -92,6 +92,25 @@ describe("§7.10 — the one-line form", () => {
 	});
 });
 
+describe("§7.10 — a long fact hangs under itself", () => {
+	it("the extensions list folds by word at the value column, never cut — it is what loaded", () => {
+		const list = "[6 extensions: built-in: mcp, skills, subagent, ask (off in dontAsk) · project: lint-guard, release-notes]";
+		const rows = plain(bannerLines(80, 24, "0.44.0", "", [], 0, { facts: [{ label: "EXTENSIONS", value: list }] }));
+		const at = rows.findIndex((r) => r.startsWith("    EXTENSIONS  [6"));
+		expect(at).toBeGreaterThan(0);
+		const hung = rows.slice(at).filter((r) => r !== "");
+		expect(hung.length).toBeGreaterThan(1);
+		for (const r of hung.slice(1)) expect(r.match(/^ */)![0].length, r).toBe(16);
+		expect(hung.map((r) => r.trim().replace(/^EXTENSIONS\s+/, "")).join(" ")).toBe(list);
+		for (const r of hung) expect(r.length).toBeLessThanOrEqual(80);
+	});
+
+	it("beside the wordmark only while the folded facts fit its six rows", () => {
+		const long = { facts: [...META.facts, { label: "EXTENSIONS", value: "x ".repeat(60).trim() }] };
+		expect(plain(bannerLines(100, 40, "0.44.0", "", [], 0, long)).some((r) => r.includes("│"))).toBe(false);
+	});
+});
+
 describe("§7.10 — the colours", () => {
 	it("on a known ground: block cells step from ink to dim, the shadow is rail toward the ground, no gold anywhere", () => {
 		setGround("light");

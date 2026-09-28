@@ -590,7 +590,7 @@ function extensionsBanner(resumedEvents = 0): void {
 			rules: projectInstructions(cwd, protectedFiles())?.name ?? null,
 			skills: skills === null ? null : { count: skills.entries.length, broken: skills.broken.length },
 			mcp: mcp === undefined ? null : { tools: (mcp.tools ?? []).map((t) => t.name), connecting: mcp.connecting === true },
-			extensions: { user: userExtensions.map((e) => e.name), project: projectExtensions.map((e) => e.name) },
+			extensions: text.replace(/^ · /, ""),
 			// DC-49 — REALPATH on both sides. A symlinked HOME (or a symlinked
 			// cwd) compares unequal as raw strings while being the same
 			// directory, and the row would then be absent exactly where it is

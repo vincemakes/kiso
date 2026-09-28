@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { openingFacts, type OpeningInputs } from "../src/opening.js";
 import { projectInstructions, readProjectInstructions } from "../src/coding-prompt.js";
 
-const BASE: OpeningInputs = { resumedEvents: 0, rules: null, skills: null, mcp: null, extensions: { user: [], project: [] }, homeWorkspace: false };
+const BASE: OpeningInputs = { resumedEvents: 0, rules: null, skills: null, mcp: null, extensions: "", homeWorkspace: false };
 
 describe("§7.10 — the facts", () => {
 	it("a new session with nothing loaded: SESSION and RULES only", () => {
@@ -43,9 +43,10 @@ describe("§7.10 — the facts", () => {
 		expect(openingFacts({ ...BASE, mcp: { tools: ["mcp__one__x"], connecting: false } })).toContainEqual({ label: "MCP", value: "1 server", note: "1 tool" });
 	});
 
-	it("EXTENSIONS only when the person or the project added one; the built-ins are the product", () => {
+	it("EXTENSIONS carries the pipe's own extensions line — one text for what loaded, the dontAsk note beside it", () => {
 		expect(openingFacts(BASE).some((f) => f.label === "EXTENSIONS")).toBe(false);
-		expect(openingFacts({ ...BASE, extensions: { user: ["dont-ask-again"], project: ["lint-guard"] } })).toContainEqual({ label: "EXTENSIONS", value: "2", note: "dont-ask-again, project: lint-guard" });
+		const line = "[5 extensions: built-in: mcp, skills, subagent, ask (off in dontAsk) · project: lint-guard]";
+		expect(openingFacts({ ...BASE, extensions: line })).toContainEqual({ label: "EXTENSIONS", value: line });
 	});
 
 	it("DC-49: the home directory as workspace is stated, last, with its remedy", () => {

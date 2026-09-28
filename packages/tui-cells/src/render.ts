@@ -847,10 +847,10 @@ export function bannerLines(W: number, H: number, version: string, extensionsTex
 		// two cells after the wordmark's widest row, the hairline, two more,
 		// then the facts
 		const factsCol = OPENING_EDGE + WORDMARK_W + 5;
-		// beside the wordmark from 96 columns, as long as the facts fit in
-		// its six rows; below it otherwise
-		if (facts.length > 0 && facts.length <= WORDMARK.length && width >= FACTS_BESIDE_W) {
-			const beside = factRows(facts, width - factsCol);
+		// beside the wordmark from 96 columns, as long as the facts' rows fit
+		// in its six; below it otherwise
+		const beside = width >= FACTS_BESIDE_W ? factRows(facts, width - factsCol) : [];
+		if (beside.length > 0 && beside.length <= WORDMARK.length) {
 			const rule = p.line !== "" ? `${p.line}\u2502${p.fgEnd}` : `${p.dim}\u2502${p.reset}`;
 			for (const [i, h] of head.entries()) {
 				if (i >= WORDMARK.length) {
@@ -911,17 +911,41 @@ function openingRule(n: number): string {
 
 /** The facts as rows `room` cells wide: the label dim in its column, the
  *  fact in ink, the note dim after it. A row that does not fit loses its
- *  note first, then is cut. */
+ *  note first; a fact still too long HANGS under itself, folded by word —
+ *  an extensions list cut at the width would hide which extensions
+ *  loaded, on the one screen whose job is to say so. */
 function factRows(facts: readonly BannerFact[], room: number): string[] {
 	const p = palette();
-	return facts.map((f) => {
+	const rows: string[] = [];
+	for (const f of facts) {
 		const label = `${p.dim}${f.label}${p.reset}${" ".repeat(Math.max(1, FACT_LABEL_W - f.label.length))}`;
 		const value = escapeTerminal(f.value);
 		const note = f.note === undefined ? "" : escapeTerminal(f.note);
 		const whole = `${label}${value}${note === "" ? "" : `${p.dim} \u00b7 ${note}${p.reset}`}`;
-		if (visibleWidth(whole) <= room) return whole;
-		return cutLine(`${label}${value}`, Math.max(1, room));
-	});
+		if (visibleWidth(whole) <= room) {
+			rows.push(whole);
+			continue;
+		}
+		const valueRoom = room - FACT_LABEL_W;
+		if (valueRoom < 8) {
+			rows.push(cutLine(`${label}${value}`, Math.max(1, room)));
+			continue;
+		}
+		const lines: string[] = [];
+		let line = "";
+		for (const word of value.split(" ")) {
+			if (line === "") line = word;
+			else if (displayWidth(`${line} ${word}`) <= valueRoom) line += ` ${word}`;
+			else {
+				lines.push(line);
+				line = word;
+			}
+		}
+		if (line !== "") lines.push(line);
+		const hang = " ".repeat(FACT_LABEL_W);
+		for (const [i, l] of lines.entries()) rows.push(cutLine(`${i === 0 ? label : hang}${l}`, Math.max(1, room)));
+	}
+	return rows;
 }
 
 /** W5 — the opening-screen resume list. Every field already exists

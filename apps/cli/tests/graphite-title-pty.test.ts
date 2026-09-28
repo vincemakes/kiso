@@ -81,7 +81,7 @@ describe("§8.10 — the title follows the state (real PTY)", () => {
 		writeFileSync(
 			script,
 			JSON.stringify([
-				{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "made.txt", content: "x" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "made.txt", content: "x", expectedRevision: "absent" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "delay", ms: 1200 }, { type: "text_delta", text: "wrote it" }, { type: "stop", reason: "end_turn" }] },
 			]),
 			"utf8",
