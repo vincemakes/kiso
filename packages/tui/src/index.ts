@@ -72,6 +72,7 @@ export {
 	palette,
 	renderEvent,
 	renderRecap,
+	sealTiers,
 	renderResumeList,
 	renderSessionLine,
 	renderStatusLine,

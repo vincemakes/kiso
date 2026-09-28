@@ -143,6 +143,14 @@ export interface Palette {
 	readonly codeBg: string;
 	readonly add: string;
 	readonly del: string;
+	/** The half-row pads (`▄` above a block, `▀` below it) are GLYPHS in
+	 *  the surface's colour on the terminal's own ground, so each padded
+	 *  surface has a foreground twin (design.md §7.4, §7.9). */
+	readonly humanPad: string;
+	readonly washRunPad: string;
+	readonly washDonePad: string;
+	readonly washFailPad: string;
+	readonly washAskPad: string;
 	readonly fgEnd: string;
 	/** §5.2 — the command breath's seven foreground opens; empty where
 	 *  the mark freezes (no ground, or no colour). */
@@ -192,6 +200,11 @@ const NO_GRAPHITE = {
 	codeBg: "",
 	add: "",
 	del: "",
+	humanPad: "",
+	washRunPad: "",
+	washDonePad: "",
+	washFailPad: "",
+	washAskPad: "",
 	fgEnd: "",
 	breath: [],
 	tier: null,
@@ -254,6 +267,11 @@ export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tie
 		codeBg: b(c.code),
 		add: b(c.add),
 		del: b(c.del),
+		humanPad: f(c.human),
+		washRunPad: f(c.washRun),
+		washDonePad: f(c.washDone),
+		washFailPad: f(c.washFail),
+		washAskPad: f(c.washAsk),
 		fgEnd: "\x1b[39m",
 		breath: breathRamp(c).map(f),
 		tier,

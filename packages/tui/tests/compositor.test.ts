@@ -843,7 +843,9 @@ describe("TUI v6 — the one compositor", () => {
 		// the first cell (the banner): NO blank above — the body starts at
 		// row 1 (the banner is multi-row, so the blank comes AFTER it)
 		expect(rows[0]).not.toBe("");
-		const userAt = rows.findIndex((l) => l.trim() === "go"); // the chip strips to " go " (the 2026-08-09 ruling retired the rail)
+		// Graphite §7.9: on the unknown ground the person's block strips to
+		// `▌   go` — the bar in column 0, the text at the content edge
+		const userAt = rows.findIndex((l) => l.replace(/^\u258c/, "").trim() === "go");
 		expect(rows[userAt - 1]).toBe(""); // the banner (multi-row) breathes below
 		// DECLARED SUPERSESSION (R3i phase 2): the two tool rows are no
 		// longer siblings — a stretch's completed calls fold into its one

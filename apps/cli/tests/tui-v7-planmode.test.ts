@@ -209,7 +209,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// `✦ took Ns · …`, and what this case actually claims is that
 		// turn 2 ended in that ordinary row rather than a second
 		// plan-ready one (asserted below).
-		expect(clean).toMatch(/✦ took \d+s · /);
+		expect(clean).toMatch(/✦ took \d+s\b/);
 		// never a SECOND way-forward row: the plan-ready row belongs to
 		// turn 1 — every occurrence must PRECEDE the turn-2 answer (A8's
 		// full draws repaint the settled rows, so the row's text repeats

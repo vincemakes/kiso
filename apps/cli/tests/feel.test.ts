@@ -120,12 +120,12 @@ describe("A1: the menu Enter executes the EXACT selection directly", () => {
 				["▌ ", "/compact\r"],
 				// W18 re-baseline: the settled notice is the RECAP — the ✦
 				// glyph is unique to it (the live row uses ▘).
-				["[/compact] ✦ compacted", "exit\r"],
+				["COMPACTED", "exit\r"], // Graphite §7.12: the result is a meta row
 			],
 			dir,
 			"f1",
 		);
-		expect(stripANSI(out)).toContain("[/compact] ✦ compacted ·"); // the recap
+		expect(stripANSI(out)).toMatch(/COMPACTED +\d+ rounds → 1 summary/); // the recap, as a meta row
 		const durable = readFileSync(join(dirs.home, "sessions", "f1.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');
 	});

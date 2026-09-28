@@ -90,7 +90,7 @@ describe("LT-1 — the stream watchdog on a real PTY", () => {
 			feeds: [
 				["/ commands · ↑ history", "Say something.\r"],
 				// the error line is the last thing the turn says; exit on it
-				["run failed", "exit\r"],
+				["FAILED", "exit\r"], // Graphite §7.12: the error is a FAILED meta row
 			],
 			timeout: 60,
 			rows: ROWS,
@@ -99,12 +99,12 @@ describe("LT-1 — the stream watchdog on a real PTY", () => {
 		const rows = screen(raw);
 		const text = rows.join("\n");
 		// the draft that arrived before the silence was voided visibly (F4), not welded to a retry
-		expect(text, "the abandoned-draft notice never showed").toContain("stream interrupted");
+		expect(text, "the abandoned-draft notice never showed").toContain("INTERRUPTED"); // Graphite §7.12: a meta row
 		// the terminal names the stall, in the watchdog's own words
 		// `run failed — network (retryable): stream stalled: no event for 2s (2s into the request)`
-		expect(text, "the error line never named the stall").toMatch(/run failed — network.*stream stalled: no event for 2s/);
+		expect(text, "the error line never named the stall").toMatch(/FAILED +network.*stream stalled: no event for 2s/);
 		// three attempts (the first plus the two pinned retries), each voided visibly
-		expect(rows.filter((r) => r.includes("stream interrupted")).length, "one abandoned notice per attempt").toBe(3);
+		expect(rows.filter((r) => r.includes("INTERRUPTED")).length, "one abandoned notice per attempt").toBe(3);
 		// the budget was spent honestly: the first attempt plus the retries all reached the stub
 		expect(stub.hits(), "the kernel did not retry the stalled request").toBeGreaterThanOrEqual(3);
 

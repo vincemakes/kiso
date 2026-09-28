@@ -207,37 +207,33 @@ describe("THE DEGRADATION — with no ground, the card does not exist", () => {
 });
 
 /**
- * ONE LEFT EDGE.
+ * Graphite §1.8 — ONE CONTENT EDGE: every block begins at column 4.
  *
- * The card's rows sit at column 2 (E4 above). If the model's answer sat
- * at column 0 and the human's words started at column 1, the page would
- * have three left edges for three registers — which is the opposite of
- * what "one rhythm" means. E3 moves prose to column 2 and D4 widens the
- * chip's inner pad to two, so every register begins in the same column
- * and the registers are told apart by SURFACE, which is §1.6's whole
- * argument.
- *
- * The banner does not move: it is not a body element, it is the opening,
- * and its own tier table owns its columns.
+ * Columns 0–2 are the mark column. The person's block is the one element
+ * that spans the width: its bar in column 0, its text at the edge. What
+ * tells the registers apart is not the column — it is each block's own
+ * mark: the person's `▌`, the thinking's `THINK` label, a card's bar and
+ * verb (§1.2).
  */
-describe("E3 · D4 — one left edge: prose, the chip and the card all begin at column 2", () => {
+describe("§1.8 — one content edge: prose, thinking and the person's words begin at column 4", () => {
 	const md = (block: MdBlock, W = 60): string[] => cellComponent({ kind: "md", block } as unknown as BodyCell).render(W, CTX);
 
-	it("a paragraph sits at column 2 and folds in the room that leaves", () => {
+	it("a paragraph sits at column 4 and folds in the room that leaves", () => {
 		const long = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima";
 		const rows = md({ kind: "para", lines: [long], gap: false, lang: "" }).map(plain);
 		expect(rows.length).toBeGreaterThan(1);
 		for (const r of rows) {
-			expect(r.match(/^ */)![0].length, `not at column 2: ${JSON.stringify(r)}`).toBe(2);
+			expect(r.match(/^ */)![0].length, `not at column 4: ${JSON.stringify(r)}`).toBe(4);
 			expect(visibleWidth(r), `folded past the width: ${JSON.stringify(r)}`).toBeLessThanOrEqual(60);
 		}
 	});
 
-	it("every kind of block moves together, EXACTLY two columns — its own indents are its own", () => {
-		// a delta, not an absolute: a list bullet already sits two columns
-		// in by the md renderer's own structure (the `- ` ruling), and a
-		// fence has its rail. E3 says the BLOCK moves right by two; what
-		// each block does inside itself is not this round's business.
+	it("…and never wider than 92 columns, however wide the terminal (§7.15)", () => {
+		const long = "word ".repeat(80).trim();
+		for (const r of md({ kind: "para", lines: [long], gap: false, lang: "" }, 200).map(plain)) expect(visibleWidth(r)).toBeLessThanOrEqual(4 + 92);
+	});
+
+	it("every kind of block moves together, EXACTLY to the edge — its own indents are its own", () => {
 		const blocks: MdBlock[] = [
 			{ kind: "heading", lines: ["## Findings"], gap: false, lang: "" },
 			{ kind: "list", lines: ["- one", "- two"], gap: false, lang: "" },
@@ -247,9 +243,9 @@ describe("E3 · D4 — one left edge: prose, the chip and the card all begin at 
 			{ kind: "rule", lines: ["---"], gap: false, lang: "" },
 		];
 		for (const b of blocks) {
-			const before = renderBlock(b, 60 - 2).map(plain);
+			const before = renderBlock(b, 60 - 4).map(plain);
 			const after = md(b).map(plain);
-			expect(after, `${b.kind}: the block did not move by two`).toEqual(before.map((r) => (r === "" ? r : `  ${r}`)));
+			expect(after, `${b.kind}: the block did not move to the edge`).toEqual(before.map((r) => (r === "" ? r : `    ${r}`)));
 			expect(after.some((r) => r.trim() !== ""), `${b.kind} rendered nothing`).toBe(true);
 		}
 	});
@@ -258,82 +254,50 @@ describe("E3 · D4 — one left edge: prose, the chip and the card all begin at 
 		const rows = md({ kind: "para", lines: ["hi"], gap: true, lang: "" });
 		expect(rows[0]).toBe("");
 	});
-
-	it("the chip's text starts at column 2 as well, and the band still spans the width", () => {
-		for (const W of [40, 64, 90]) {
-			const rows = cellComponent({ kind: "user", text: "go on then" } as BodyCell).render(W, CTX);
-			expect(rows).toHaveLength(1);
-			expect(visibleWidth(rows[0]!), `W=${W}: the band stops short`).toBe(W);
-			expect(plain(rows[0]!).match(/^ */)![0].length, `W=${W}`).toBe(2);
-			expect(plain(rows[0]!)).toMatch(/ {2}$/);
-		}
-	});
-
-	it("…and the chip folds in the room its two pads leave", () => {
-		const W = 40;
-		const rows = cellComponent({ kind: "user", text: "alpha bravo charlie delta echo foxtrot golf" } as BodyCell).render(W, CTX);
-		expect(rows.length).toBeGreaterThan(1);
-		for (const r of rows) expect(visibleWidth(r), JSON.stringify(r)).toBe(W);
-	});
 });
 
 /**
- * DC-47 — ADJUDICATED: the thinking is back in COLUMN 2, and §1.2 takes
- * a declared exception.
+ * Graphite §1.2 — THINKING AND THE ANSWER ARE TOLD APART IN PLAIN BYTES.
  *
- * The history in one paragraph. §7.2 called the thinking's indent "the
- * price of §1.2": italic and dim are escape sequences, so a rendered
- * frame with the colour stripped — a terminal capture, a paste out of
- * the scrollback, a log of what was drawn — would lose the line between
- * the model's reasoning and its answer. E3 moved PROSE to column 2, the
- * column the thinking was already in, and the two became the same row
- * under `sed`. The thinking was pushed to column 4 to restore it.
- *
- * The owner looked at that and ruled against it: *"the thinking area is
- * not indented by the same two as the first line — it needs to keep the
- * same first-line indent as everything else"* (2026-09-04). §1.8's one
- * left edge outranks the distinction.
- *
- * SO WHAT IS ACTUALLY GIVEN UP, stated rather than glossed: on a
- * rendered frame with its escapes stripped, a thinking paragraph and an
- * answer paragraph are the same bytes. Everywhere else the fact
- * survives — on screen by italic and dim, in a PIPE because the
- * inactive path writes `foldThinking`, one summary line, and never the
- * paragraph at all. §1.2 carries this as its one declared exception.
- *
- * These gates keep what is left, and they say what they no longer
- * check: the two are told apart on the SCREEN by their own escapes, and
- * a pipe never confuses them because it never shows one.
+ * DC-47's declared exception retires: both sit at the content edge, and
+ * the thinking block opens with its `THINK` label, which a stripped frame
+ * keeps. The answer carries no label (§1.5) — it is the unmarked block.
  */
-describe("DC-47 — one left edge, and what the exception costs", () => {
+describe("§1.2 / §7.2 — the THINK label is what tells thinking from the answer", () => {
 	const strip = (r: string): string => r.replace(/\x1b\[[0-9;]*m/g, "");
 	const say = (text: string, W = 60): string[] => cellComponent({ kind: "md", block: { kind: "para", lines: [text], gap: false, lang: "" } } as unknown as BodyCell).render(W, CTX);
-	const thought = (text: string, W = 60): string[] => cellComponent({ kind: "thinking", text, done: true } as unknown as BodyCell).render(W, CTX);
+	const thought = (text: string, W = 60, over: Record<string, unknown> = {}): string[] =>
+		cellComponent({ kind: "thinking", text, done: true, ...over } as unknown as BodyCell).render(W, CTX);
 
-	it("prose AND thinking both sit at column 2 — one left edge (§1.8)", () => {
-		expect(strip(say("answer")[0]!)).toBe("  answer");
-		expect(strip(thought("reasoning")[0]!)).toBe("  reasoning");
+	it("prose AND thinking both sit at column 4 — one edge (§1.8)", () => {
+		expect(strip(say("answer")[0]!)).toBe("    answer");
+		expect(strip(thought("reasoning")[1]!)).toBe("    reasoning");
 	});
 
-	it("the ESCAPES are what tell them apart, and they still do", () => {
+	it("the thinking opens with its label; stripped, the two are NOT the same rows", () => {
 		const t = "Weighing the two shapes.";
-		expect(thought(t)[0], "the thinking lost its italic").toContain("\x1b[3m");
+		expect(strip(thought(t)[0]!)).toBe("    THINK");
+		expect(thought(t).map(strip)).not.toEqual(say(t).map(strip));
+	});
+
+	it("the label carries the measured seconds, and none when the block has no clock", () => {
+		expect(strip(thought("r", 60, { startedAt: 1_000, doneAt: 6_200 })[0]!)).toBe("    THINK 5.2s");
+		expect(strip(thought("r")[0]!), "a replayed block has no clock").toBe("    THINK");
+	});
+
+	it("while the block streams the label twinkles in the mark column; settled, the column is empty (§4.2)", () => {
+		const live = cellComponent({ kind: "thinking", text: "r", done: false } as unknown as BodyCell).render(60, CTX);
+		expect(strip(live[0]!)).toMatch(/^ {2}[✧✦✶✸✺] THINK$/);
+		expect(strip(thought("r")[0]!)).toMatch(/^ {4}THINK/);
+	});
+
+	it("the escapes still differ on screen too: italic thinking, plain prose", () => {
+		const t = "Weighing the two shapes.";
+		expect(thought(t)[1], "the thinking lost its italic").toContain("\x1b[3m");
 		expect(say(t)[0], "prose took the thinking's italic").not.toContain("\x1b[3m");
-		expect(thought(t)[0], "the two are the same bytes on screen").not.toBe(say(t)[0]);
 	});
 
-	it("THE DECLARED EXCEPTION, asserted rather than glossed: stripped, they ARE the same row", () => {
-		// This is the cost of the owner's ruling and it is written down
-		// here so a later reader meets it as a decision, not a surprise.
-		// §1.2's own text carries the exception.
-		const t = "Weighing the two shapes.";
-		expect(strip(thought(t)[0]!)).toBe(strip(say(t)[0]!));
-	});
-
-	it("a PIPE never confuses them — it never shows a thinking paragraph at all", () => {
-		// `thinkingEnd`'s inactive path writes `foldThinking`: one dim
-		// summary line. The paragraph this describe is about exists only
-		// on a TTY, which is why the pipe was never the surface at risk.
+	it("a PIPE never shows a thinking paragraph at all", () => {
 		const long = "Weighing the two shapes and their costs, at length, ".repeat(4);
 		const folded = foldThinking(long);
 		expect(folded.split("\n").filter((r) => r !== ""), "the pipe printed a paragraph").toHaveLength(1);
@@ -346,8 +310,8 @@ describe("DC-47 — one left edge, and what the exception costs", () => {
 			for (const rows of [say(long, W), thought(long, W)]) {
 				for (const r of rows) expect(visibleWidth(r), `W=${W}: ${JSON.stringify(r)}`).toBeLessThanOrEqual(W);
 			}
-			expect(strip(thought(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(2);
-			expect(strip(say(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(2);
+			expect(strip(thought(long, W)[1]!).match(/^ */)![0].length, `W=${W}`).toBe(4);
+			expect(strip(say(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(4);
 		}
 	});
 });

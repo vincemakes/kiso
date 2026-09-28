@@ -45,6 +45,7 @@ import {
 	kUnit,
 	palette,
 	currentGround,
+	TWINKLE,
 	type Palette,
 	type ResumeMeta,
 	type BannerMeta,
@@ -175,6 +176,11 @@ export interface Component {
  *  (heights, the line cache) never sees a fake row. */
 export function bodySpacing(prev: readonly string[] | null, rows: readonly string[]): string[] {
 	if (rows.length === 0 || prev === null || prev.length === 0) return rows as string[];
+	// Graphite §7.4, §7.9 — two padded blocks meet on their half-row pads:
+	// the lower half of one `▀` row and the upper half of the next `▄` row
+	// are a full row of ground between them, so a blank row as well would
+	// double the gap.
+	if (isPadRow(prev[prev.length - 1]!, "\u2580") && isPadRow(rows[0]!, "\u2584")) return rows as string[];
 	// R13 D1 — ONE blank between any two elements, whatever their height.
 	//
 	// W11 spaced by height: one-row siblings packed tight, anything
@@ -189,6 +195,13 @@ export function bodySpacing(prev: readonly string[] | null, rows: readonly strin
 	// card it becomes are spaced identically BY CONSTRUCTION, which is
 	// exactly what R7a's one-row stand-in was simulating.
 	return ["", ...rows];
+}
+
+/** A half-row pad: nothing on the row but `glyph` (after its styling and
+ *  the content edge's spaces are dropped). */
+function isPadRow(row: string, glyph: string): boolean {
+	const t = stripAnsi(row).trim();
+	return t.length > 0 && [...t].every((ch) => ch === glyph);
 }
 
 /** The container — vertical concatenation with the W11 formula. No
@@ -208,11 +221,31 @@ export class Container implements Component {
 	}
 }
 
+/** Graphite §1.8 — THE CONTENT EDGE. Every block begins at column 4;
+ *  columns 0–2 are the mark column (a hanging `§`, the live row's mark,
+ *  the prompt) and the person's block's bar sits in column 0. */
+export const EDGE = "    ";
+/** §7.15 — prose, thinking and the answer wrap at 92 columns at most. */
+const PROSE_MAX = 92;
+/** The room a block of words has at the content edge. */
+const proseRoom = (W: number): number => Math.max(1, Math.min(W - EDGE.length, PROSE_MAX));
+
 // ---- the cell model (the CLI's mutation surface — unchanged from v5) ----
 
 export type BodyCell =
 	| { kind: "user"; text: string; done: true; turn: number }
-	| { kind: "thinking"; text: string; done: boolean; turn: number; folded?: boolean }
+	| {
+			kind: "thinking";
+			text: string;
+			done: boolean;
+			turn: number;
+			folded?: boolean;
+			/** Graphite §7.2 — when the block opened and settled, for the
+			 *  `THINK <seconds>` label. Absent on a block replayed from the
+			 *  log, which has no clock, and then the label has no seconds. */
+			startedAt?: number;
+			doneAt?: number;
+	  }
 	| {
 			kind: "tool";
 			name: string;
@@ -263,7 +296,13 @@ export type BodyCell =
 	 *  a resize re-renders it at the new width exactly as every other
 	 *  cell does. */
 	| { kind: "md"; block: MdBlock; done: boolean }
-	| { kind: "notice"; text: string; done: true }
+	/** Graphite §7.12 — `label` and `sentence` are the meta row's two
+	 *  halves, derived from `text` by the compositor; `text` is what a
+	 *  pipe prints, unchanged. */
+	| { kind: "notice"; text: string; done: true; label?: string; sentence?: string }
+	/** Graphite §7.11 — the turn's seal: its forms, widest first; the
+	 *  widest that fits is drawn, and the narrowest is cut. */
+	| { kind: "seal"; tiers: readonly string[]; done: true }
 	/** 4c — the resumed session's earlier history, replayed into cells and
 	 *  FOLDED: the row is ONE line on screen and never expands there (a
 	 *  resize reprint of a six-thousand-event session redraws one row);
@@ -294,6 +333,8 @@ export function cellComponent(cell: BodyCell): Component {
 			return new MarkdownBlock(cell);
 		case "notice":
 			return new ErrorLine(cell);
+		case "seal":
+			return new SealLine(cell);
 		case "fold":
 			return new FoldRow(cell);
 		case "banner":
@@ -306,40 +347,6 @@ export function cellComponent(cell: BodyCell): Component {
 }
 
 /**
- * The user message — the W16 inset chip ALONE (the 2026-08-09 ruling:
- * the ▍ rail and the indent are retired — the rail's stated pipe
- * fallback was theoretical redundancy: the CLI's pipe path is the
- * line-mode "you>" form and never renders UserMessage). The chip folds
- * the text at W−2 (the side pads) and pads every row to the FULL width.
- *
- * R2 — law 1.6's recorded reversal. This used to size the block to its
- * longest row, on the argument that "a short message like /think would
- * paint a bar across the terminal". That optimises the degenerate case
- * at the cost of every real message, which is a paragraph and reads as
- * a block only when the block has an edge. The `/think` case is the
- * accepted price, and it is recorded as such in design.md §1.6.
- *
- * The padding is by cells (charWidth is the width authority), so a CJK
- * row pads by width, never by chars, and the chip never overruns.
- *
- * THE SURFACE IS REVERSE VIDEO, on every ground (owner ruling
- * 2026-09-02, reversing R9 P1 one release after it shipped).
- *
- * R9 P1 moved the chip onto the wash, reading §1.6's "verbatim" as one
- * surface shared by the human's words and the machine's. §1.6 now
- * splits the two, and the split is the reason: reverse video is THE
- * HUMAN'S surface and it is full contrast by construction — it inverts
- * whatever the terminal is, so it is the same weight on every ground
- * and cannot be under-read. The wash is the MACHINE'S verbatim surface
- * (inline code, tool output), where a lighter ground is right because
- * those rows are read as content rather than as an utterance.
- *
- * SGR 7 closed with SGR 27 — never SGR 0, the chip composes with a
- * surrounding span. NEVER dim inside it: reverse video inverts the
- * CURRENT colours, so dimmed text inverts into a dimmed block with no
- * contrast.
- */
-/**
  * REL-0152-D13 — how much of a turn the chip shows.
  *
  * Twelve rows is enough to recognise what you sent and short enough
@@ -348,45 +355,49 @@ export function cellComponent(cell: BodyCell): Component {
  * the same rule as three thousand short ones.
  */
 const USER_CHIP_ROWS = 12;
-/** R13 D4 — the chip's inner pad: two columns, so its text begins in
- *  the same column as everything else on the page. */
-const CHIP_PAD = "  ";
+/** Graphite §7.9 — the text starts at the content edge (column 4) and
+ *  stops two columns short of the right edge. */
+const CHIP_RIGHT = 2;
 
+/**
+ * Graphite §7.9 — THE PERSON'S BLOCK.
+ *
+ * On a known ground: the warm `human` ground across the full width, a
+ * gold `▌` in column 0, the text at the content edge in `humanInk`, and a
+ * half-row pad above (`▄`) and below (`▀`) in the block's own colour. No
+ * label and no time: the block says whose words these are.
+ *
+ * On an unknown ground nothing is painted that assumes a background
+ * (§3.1): reverse video from column 2 and the `▌` in column 0, which is a
+ * character and so still marks the person's words once the escapes are
+ * stripped (§1.2). No pads — a pad is a colour, and there is none.
+ *
+ * The fold is by WORD (R9 Q3: a word wider than the row still breaks,
+ * because invariant ① outranks it), ONE width over every row (DC-6), and
+ * padding is by display width, so a CJK row pads by cells.
+ *
+ * `pads: false` is the queue band's form: the band counts against the
+ * composer's rows, and two pad rows per queued message would spend them.
+ */
 class UserMessage implements Component {
-	constructor(private readonly cell: { text: string }) {}
+	constructor(
+		private readonly cell: { text: string },
+		private readonly pads = true,
+	) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
-		// R13 D4 — TWO columns of inner pad, where R2 had one. The chip
-		// keeps its surface (reverse video, one row per folded line, no
-		// pad rows — R12 Round 2's ruling stands); what changes is where
-		// its text STARTS, so the human's words begin in the same column
-		// as the model's (E3) and as a card's rows (E4).
-		const chipW = Math.max(1, W - 2 * CHIP_PAD.length);
-		const rows: string[] = [];
-		// REL-0152-D13: fold only as far as the bound needs. A pasted file
-		// has thousands of lines and folding all of them to show twelve is
-		// work with no reader — the measurement that opened this finding
-		// was a 3000-line turn writing 260,298 bytes in one frame.
+		const painted = p.human !== "";
+		const chipW = Math.max(1, W - EDGE.length - CHIP_RIGHT);
 		const paras = this.cell.text.split("\n");
 		let truncated = false;
-		// DC-6: the folded CONTENT first, then ONE width over all of it.
-		// The pad used to be computed per source paragraph, so a message
-		// with two lines drew as two bars of two different lengths — a
-		// ragged right edge on a block that is one block. A single
-		// paragraph was always correct, which is why it survived: the
-		// shape only appears once a message has a second line.
+		// REL-0152-D13: fold only as far as the bound needs — a pasted file
+		// has thousands of lines and twelve are shown.
 		const content: string[] = [];
 		for (const para of paras) {
 			if (content.length >= USER_CHIP_ROWS) {
 				truncated = true;
 				break;
 			}
-			// R9 Q3: by WORD. The char fold was defended as lossless, and
-			// that argument does not survive CJK — a run with no spaces has
-			// nothing to lose — while every other prose surface in the
-			// product already folds by word (ErrorLine, VD-10). foldWords
-			// falls through to foldLine's hard break for a word wider than
-			// the row, so invariant ① still outranks the word.
 			for (const row of foldWords(escapeTerminal(para), chipW)) {
 				if (content.length >= USER_CHIP_ROWS) {
 					truncated = true;
@@ -395,133 +406,86 @@ class UserMessage implements Component {
 				content.push(row);
 			}
 		}
-		// R2 (law 1.6's recorded reversal): the band is FULL WIDTH. It was
-		// sized to its longest row, on the argument that a one-word turn
-		// like `/think` would otherwise paint a bar across the terminal —
-		// which optimises the degenerate case at the cost of every real
-		// message. The human's words are the one surface that gets the
-		// whole row.
-		//
-		// displayWidth stays the padding authority (never `length`): a CJK
-		// row is two cells per character and pads by cells.
-		const inner = chipW;
-		for (const row of content) {
-			rows.push(`${p.rv}${CHIP_PAD}${row}${" ".repeat(Math.max(0, inner - displayWidth(row)))}${CHIP_PAD}${p.rvEnd}`);
-		}
-		if (!truncated) return rows;
-		// The notice is OUTSIDE the chip's reverse video, in the cut-row
-		// vocabulary the rest of the product uses, and it says the thing
-		// that matters: the model got all of it. A bounded display of a
-		// complete message is not a truncated message, and the row has to
-		// make that difference visible or it reads as data loss.
-		const shown = rows.length;
-		const total = paras.length;
-		const more = Math.max(0, total - shown);
-		// DC-45: THE NOTICE FOLDS TOO. It was written at a fixed 30 columns
-		// and emitted verbatim at every width, so a paste of thirteen lines
-		// in a terminal narrower than the sentence tripped the compositor's
-		// invariant ① and killed the session. The tiers are TUI2-R1.5 ⑤'s
-		// discipline: `sent in full` is the SEMANTICS — the whole reason
-		// the row exists — so the count gives way before it, and `cutLine`
-		// is the backstop that holds at any width there is.
+		const fill = (row: string): string => " ".repeat(Math.max(0, chipW - displayWidth(row) + CHIP_RIGHT));
+		const rows = painted
+			? content.map((row) => `${p.human}${p.goldMark}\u258c${p.humanInk}   ${row}${fill(row)}${p.fgEnd}${p.washEnd}`)
+			: content.map((row) => `\u258c ${p.rv}  ${row}${fill(row)}${p.rvEnd}`);
+		const out = painted && this.pads ? [`${p.humanPad}${"\u2584".repeat(W)}${p.fgEnd}`, ...rows, `${p.humanPad}${"\u2580".repeat(W)}${p.fgEnd}`] : rows;
+		if (!truncated) return out;
+		// The notice is OUTSIDE the block, in the cut-row vocabulary, and it
+		// says what matters: the model got all of it (DC-45: it folds too —
+		// `sent in full` is the semantics and gives way last).
+		const more = Math.max(0, paras.length - content.length);
 		const count = more > 0 ? `+${more} more line${more === 1 ? "" : "s"}` : "cut here";
 		const short = more > 0 ? `+${more}` : "cut";
-		rows.push(
-			cutLine(
-				`${p.dim}\u2514 ${pickTier([`${count} \u00b7 sent in full`, `${short} \u00b7 sent in full`, "sent in full", count], Math.max(1, W - 2))}${p.reset}`,
-				W,
-			),
-		);
-		return rows;
+		// on a very narrow terminal the edge gives way before the notice does
+		const lead = W - EDGE.length >= 8 ? EDGE : "";
+		out.push(cutLine(`${lead}${p.dim}\u2514 ${pickTier([`${count} \u00b7 sent in full`, `${short} \u00b7 sent in full`, "sent in full", count], Math.max(1, W - lead.length - 2))}${p.reset}`, W));
+		return out;
 	}
 }
 
-/** W22: the pending-queue chips — queued user lines pre-render above
- *  the input row as the SAME UserMessage chip (undimmed: reverse video
- *  inverts the CURRENT colours, so a dim span would invert into a
- *  dimmed block), the dim `□` gutter marking the queued
- *  state (the gutter rides EVERY row — the gutterFold precedent: the
- *  left edge alone distinguishes the states). Each chip folds at W−3
- *  (the gutter's 2 cells), so a long line hard-folds INSIDE the chip
- *  and invariant ① holds on the band. */
+/** W22: the pending-queue chips — queued lines above the input, as the
+ *  person's block without its pads (the band's rows are the composer's
+ *  budget), behind the dim `□` gutter that marks them queued. Each folds
+ *  at W−3 (the gutter's cells), so invariant ① holds on the band. */
 export function pendingQueueRows(lines: readonly string[], W: number): string[] {
 	const p = palette();
 	const out: string[] = [];
 	for (const line of lines) {
-		for (const row of new UserMessage({ text: line }).render(Math.max(1, W - 3), { spinnerI: 0, now: 0, height: 0 })) {
-			out.push(`${p.dim}□${p.reset} ${row}`);
+		for (const row of new UserMessage({ text: line }, false).render(Math.max(1, W - 3), { spinnerI: 0, now: 0, height: 0 })) {
+			out.push(`${p.dim}\u25a1${p.reset} ${row}`);
 		}
 	}
 	return out;
 }
 
 /**
- * R7 — THINKING IS A BLOCK OF WORDS.
+ * Graphite §7.2 — THINKING IS WORDS, under its label.
  *
- * The owner's ruling, arrived at from a side-by-side with pi's screen:
- * the model's reasoning reads as its own paragraphs — italic, dim,
- * indented two — and is never folded away. A one-row fold (the pipe
- * path's `foldThinking` is what remains of it) stood for it, with a
- * key; four rounds
- * of machinery were then built to hand the rest back, and the owner's
- * complaint through all of them was the same sentence: I cannot see
- * what it was thinking.
+ * `THINK <seconds>` in blue at the content edge, then the model's
+ * reasoning as `dim` italic paragraphs, shown in full and never folded
+ * (R7, the owner: "I cannot see what it was thinking" was the complaint
+ * through four rounds of folding). While the block streams, the label
+ * carries the twinkle, hanging in the mark column; the seconds appear
+ * when it settles, and only if they were measured — a block replayed from
+ * the log has no clock.
  *
- * THE INDENT IS NOT DECORATION. Law 1.2 is SETTLED — "strip every
- * escape sequence and no fact is lost" — and italic is SGR 3, which a
- * pipe strips and `COLOR_OFF` empties outright. Stripped, an italic
- * paragraph and the model's ANSWER are the same bytes, and the reader
- * cannot tell the reasoning from the reply. The two-space indent is the
- * byte that survives: reasoning sits in, the answer stands at the
- * margin. The owner chose this over the un-indented form for exactly
- * that reason, with the cost stated.
+ * The LABEL is what tells thinking from the answer once the escapes are
+ * stripped (§1.2): the answer carries none. A pipe never sees a thinking
+ * paragraph — the inactive path writes `foldThinking`'s one line.
  *
- * Paragraphs are preserved (a blank line between them); the newlines
- * INSIDE a paragraph collapse, because a hard-wrapped source line is
- * the model's line width, not the reader's.
+ * `ctrl+t` hides every block to its label line (`· hidden · ctrl+t`), and
+ * the text is never drawn while hidden, live or settled.
+ *
+ * Paragraphs are kept (a blank row between them); newlines INSIDE one
+ * collapse, because a hard-wrapped source line is the model's width, not
+ * the reader's.
  */
 class ThinkingBlock implements Component {
-	constructor(private readonly cell: { text: string; done: boolean; folded?: boolean }) {}
-	render(W: number, _ctx: FrameCtx): string[] {
+	constructor(private readonly cell: { text: string; done: boolean; folded?: boolean; startedAt?: number; doneAt?: number }) {}
+	render(W: number, ctx: FrameCtx): string[] {
 		const p = palette();
-		const text = escapeTerminal(this.cell.text).trim();
+		const c = this.cell;
+		const text = escapeTerminal(c.text).trim();
 		if (text === "") return [];
-		// §2.3 / 0.40.6 — ctrl+t hid thinking. Hidden is ONE italic line in
-		// the block's own column (DC-47): `thinking…` while it runs,
-		// `thinking… · /think` once it settles. The text itself is never
-		// drawn, live or settled (0.40.5 folded only settled blocks, into a
-		// 100-character preview, while the open one kept streaming). The
-		// pipe keeps its own one-line fold (render.ts foldThinking).
-		if (this.cell.folded) return [`${THINK_COL}${p.dim}${p.italic}${this.cell.done ? "thinking… · /think" : "thinking…"}${p.italicEnd}${p.reset}`];
-		// DC-47 — THINKING GOES ONE LEVEL DEEPER THAN PROSE, and the
-		// reason is a law rather than a taste.
-		//
-		// §7.2: the indent is the price of §1.2 — italic and dim are
-		// escape sequences, so a rendered frame with its colour stripped
-		// (a terminal capture, a paste out of the scrollback, a log of
-		// what was drawn) would lose the line between the model's
-		// reasoning and its answer. R13's E3 moved PROSE to column 2,
-		// which is where the thinking already was, so after
-		// `sed 's/\x1b\[[0-9;]*m//g'` the two became the same row.
-		// Measured, not reasoned: both rendered
-		// `"  Weighing the two shapes."` exactly.
-		//
-		// NOT a pipe, though §7.2 used to say so: `thinkingEnd`'s inactive
-		// path writes `foldThinking` — one dim line — so a pipe never sees
-		// a thinking paragraph to confuse with prose.
-		//
-		// So the thinking takes the next column in. It is still the only
-		// carrier that survives a pipe, and it is still one indent step —
-		// what moved is which step, because prose took the one it had.
-		const room = Math.max(1, W - THINK_COL.length);
-		const rows: string[] = [];
+		const secs = c.done && c.startedAt !== undefined && c.doneAt !== undefined ? ` ${settledLabel((c.doneAt - c.startedAt) / 1000)}` : "";
+		const tail = `${secs}${c.folded ? " \u00b7 hidden \u00b7 ctrl+t" : ""}`;
+		// the twinkle hangs in the mark column (right-aligned to column 2)
+		// while the block streams; settled, the column is empty (§4.2).
+		const lead = c.done ? EDGE : `  ${p.gold}${TWINKLE[ctx.spinnerI % TWINKLE.length]}${p.gold === "" ? "" : p.fgEnd} `;
+		const label = cutLine(`${lead}${p.blue}${p.bold}THINK${p.reset}${tail === "" ? "" : `${p.dim}${tail}${p.reset}`}`, W);
+		if (c.folded) return [label];
+		const room = proseRoom(W);
+		const rows: string[] = [label];
+		let first = true;
 		for (const para of text.split(/\n\s*\n/)) {
 			const flat = para.replace(/\s+/g, " ").trim();
 			if (flat === "") continue;
-			if (rows.length > 0) rows.push("");
+			if (!first) rows.push("");
+			first = false;
 			// foldLine is the ONE width authority and returns real rows —
-			// invariant ①b (a row is one physical row) holds by
-			// construction rather than by remembering to split.
+			// invariant ①b holds by construction.
 			for (const line of foldLine(flat, room)) rows.push(`${THINK_COL}${p.dim}${p.italic}${line}${p.italicEnd}${p.reset}`);
 		}
 		return rows;
@@ -1278,20 +1242,10 @@ const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
 const BODY_ROW_FLAT = "    ";
 const NOTE_ROW_FLAT = "    ";
 const CARD_ROW = "  ";
-/** R13 E3 — the column the model's words begin in, the same one the
- *  card's rows and the chip's text begin in. */
-const PROSE_COL = "  ";
-/** DC-47, ADJUDICATED — the model's THINKING begins in the SAME column
- *  as everything else: two.
- *
- *  It went to four when E3 moved prose to two, so that stripping the
- *  escapes would still tell them apart (§1.2). The owner looked at it
- *  and ruled against it: "the thinking area is not indented by the same
- *  two as the first line — it needs to keep the same first-line indent
- *  as everything else" (2026-09-04). §1.8's one left edge outranks the
- *  distinction, and §1.2 takes a DECLARED EXCEPTION for this one pair —
- *  see design.md §1.2 and §7.2 for what is given up and what is not. */
-const THINK_COL = "  ";
+/** Graphite §1.8 — the model's words and its thinking begin at the
+ *  content edge, like every other block. */
+const PROSE_COL = EDGE;
+const THINK_COL = EDGE;
 const bodyRow = (): string => (slabPaints() ? CARD_ROW : BODY_ROW_FLAT);
 const noteIndent = (): string => (slabPaints() ? CARD_ROW : NOTE_ROW_FLAT);
 const CUT_ROW = "└ ";
@@ -1420,7 +1374,7 @@ function slabBlock(head: string, body: readonly string[], outcome: string | null
  */
 
 /** 0.24.2 ② — the live region's `thinking…` placeholder: dim italic at
- *  column 2, no glyph, the SAME shape a thinking paragraph takes so that
+ *  the content edge, no glyph, the SAME shape a thinking paragraph takes so that
  *  whatever arrives replaces it in place. Never committed — see the
  *  compositor's #project for why that is what makes it allowed. */
 export function thinkingRow(): string {
@@ -1849,16 +1803,60 @@ class MarkdownBlock implements Component {
 		// holds by construction. A block's own leading blank (its `gap`)
 		// stays EMPTY: an indented blank row is trailing whitespace, and
 		// §1.3 forbids a mark on a row with nothing to mark.
-		return renderBlock(this.cell.block, Math.max(1, W - PROSE_COL.length)).map((r) => (r === "" ? r : `${PROSE_COL}${r}`));
+		// Graphite §1.8: at the content edge, 92 columns at most (§7.15).
+		return renderBlock(this.cell.block, proseRoom(W)).map((r) => (r === "" ? r : `${PROSE_COL}${r}`));
 	}
 }
 
-/** The notice lines — the error surface. */
+/** Graphite §7.12 — the label column of a meta row: the longest label
+ *  (`INTERRUPTED`) and one space, so the sentences line up with a card's
+ *  body (column 16). */
+const META_LABEL = 12;
+/** The labels that name an outcome, and so take its colour (§1.2). */
+const META_FAIL = new Set(["FAILED", "UNCERTAIN"]);
+
+/**
+ * Graphite §7.12 — kiso's own sentences are META ROWS: a bold label at
+ * the content edge and the sentence beside it, folded by word under
+ * itself (VD-10: a notice is a sentence addressed to a human). No card
+ * and no ground — they are not the machine's work. A notice with no
+ * kind of its own (a command's confirmation) has no label and stays
+ * whole at the content edge.
+ */
 class ErrorLine implements Component {
-	constructor(private readonly cell: { text: string }) {}
+	constructor(private readonly cell: { text: string; label?: string; sentence?: string }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
-		// TUI2-R1.5 9 (VD-10): a notice is a sentence addressed to a human.
-		return foldWords(escapeTerminal(this.cell.text), W);
+		const p = palette();
+		const c = this.cell;
+		// a sentence with no kind of its own stays whole at the content edge
+		if (c.label === undefined) return foldWords(escapeTerminal(c.sentence ?? c.text), Math.max(1, W - EDGE.length)).map((r) => `${EDGE}${r}`);
+		const sentence = escapeTerminal(c.sentence ?? "");
+		const room = Math.max(1, W - EDGE.length - META_LABEL);
+		const tone = META_FAIL.has(c.label) ? p.red : p.dim;
+		const head = `${EDGE}${p.bold}${tone}${c.label.padEnd(META_LABEL - 1)}${p.reset} `;
+		// a label wider than the row's room is cut like any row (invariant ①)
+		if (sentence === "") return [cutLine(head.trimEnd(), W)];
+		const folded = foldWords(sentence, room);
+		return folded.map((r, i) => (i === 0 ? cutLine(`${head}${p.dim}${r}${p.reset}`, W) : `${EDGE}${" ".repeat(META_LABEL)}${p.dim}${r}${p.reset}`));
+	}
+}
+
+/**
+ * Graphite §7.11 — THE SEAL: the turn's line — `✦` in gold hanging in
+ * the mark column, the words `dim` at the content edge. Its forms come widest first (the cold
+ * cache sheds its label before anything is cut, R3g); the widest that
+ * fits is drawn, and the last is cut with `…` — one row at every width.
+ */
+class SealLine implements Component {
+	constructor(private readonly cell: { tiers: readonly string[] }) {}
+	render(W: number, _ctx: FrameCtx): string[] {
+		const p = palette();
+		const mark = p.goldMark === "" ? `${p.bold}\u2726${p.reset}` : `${p.goldMark}\u2726${p.fgEnd}`;
+		// the mark HANGS in the mark column (§1.8), the words at the edge
+		const room = Math.max(1, W - EDGE.length);
+		const text = pickTier(this.cell.tiers, room);
+		const fitted = visibleWidth(text) <= room ? text : `${widthCut(text, Math.max(1, room - 1))}\u2026`;
+		return [cutLine(`  ${mark} ${p.dim}${fitted}${p.reset}`, W)];
 	}
 }
 
@@ -1869,7 +1867,7 @@ class FoldRow implements Component {
 	constructor(private readonly cell: { label: string }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
-		return [cutLine(`  ${p.dim}${escapeTerminal(this.cell.label)}${p.reset}`, W)];
+		return [cutLine(`${EDGE}${p.dim}${escapeTerminal(this.cell.label)}${p.reset}`, W)];
 	}
 }
 

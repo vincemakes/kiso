@@ -161,6 +161,9 @@ const CELL_LINE = [
 	/^… \d+ (?:more|earlier) lines? · ctrl\+o(?: expands)?$/, // the card's cut note
 	/^answer truncated at max_tokens.*$/, // D4: the truncation notice row — R2 (law 1.1): a notice is a sentence, it wears no box corner
 	/^✦.*$/, // v3: the recap line ends the run
+	// Graphite §7.2: the thinking block's LABEL — the twinkle rides it while
+	// it streams, the seconds when it settles, the key when it is hidden
+	/^(?:[✧✦✶✸✺] )?THINK(?: [\d.]+s)?(?: · hidden · ctrl\+t)?$/,
 	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)
 	// MOVED (R1.5 slice 11, the panel-frame class — DECLARED THIS ROUND):
 	// the panel's bottom edge is a real RULE now (└ + a ─ run to the
@@ -267,7 +270,8 @@ const lint = (rawWithOsc: string): string[] => {
 		// prose; the owner ruled the edge outranks that, and §1.2 carries
 		// the exception. The classifier is the dim+italic PAIR, which is
 		// what actually separates them, and it always was.
-		if (/^ {2}\x1b\[2m\x1b\[3m/.test(seg)) continue;
+		// Graphite §1.8: the lead is the content edge, FOUR columns.
+		if (/^ {4}\x1b\[2m\x1b\[3m/.test(seg)) continue;
 		// R13 — A CARD'S BODY ROW, classified on the RAW segment for the
 		// same reason the chip and the thinking are: stripped and trimmed,
 		// a line of a tool's output is arbitrary text, and a pattern that

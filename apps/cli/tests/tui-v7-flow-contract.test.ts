@@ -276,7 +276,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// body rows" is this case's claim and it is now true by
 		// construction; what the grid must show is the FOLD, and what it
 		// must still not show is the tail.
-		expect(grid.findIndex((l) => l.startsWith("✦ "))).toBeGreaterThanOrEqual(0); // R3g: the fold OR the recap — the claim is that the turn settled
+		expect(grid.findIndex((l) => l.trimStart().startsWith("✦ "))).toBeGreaterThanOrEqual(0); /* Graphite §7.11: the seal's mark hangs in column 2 */ // R3g: the fold OR the recap — the claim is that the turn settled
 		// the shell's OUTPUT is behind the key: no tail rows, no cut row
 		expect(grid.join("")).not.toContain("earlier rows");
 		expect(grid.join("\n")).not.toMatch(/^\u2502 (seq|1[012])/m);
@@ -308,7 +308,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// the point. What survives, and is the half this case was really
 		// about, is that the wide width behaves like the narrow one: the
 		// tail is CAPPED, and the cap is named.
-		expect(grid.findIndex((l) => l.startsWith("✦ "))).toBeGreaterThanOrEqual(0); // R3g: the recap — the claim is that the turn settled
+		expect(grid.findIndex((l) => l.trimStart().startsWith("✦ "))).toBeGreaterThanOrEqual(0); /* Graphite §7.11: the seal's mark hangs in column 2 */ // R3g: the recap — the claim is that the turn settled
 		expect(grid.join("\n"), "the preview is not capped at 120 columns").toMatch(/… \d+ earlier lines · ctrl\+o expands/);
 		// the display-verb class (TUI2-R2pre ④): one screen, one vocabulary,
 		// asserted on the call's own head row now that it has one.
