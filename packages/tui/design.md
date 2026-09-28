@@ -787,11 +787,12 @@ skipped is an affordance lost at a width that could have shown it, so
 everything that can drop drops WHOLE, in an order set by how findable the
 key is WITHOUT the hint.
 
-The status bar (§8.9) drops, in order: the `ctrl+o` hint, `/mode to
-switch`, the folder, the branch. The facts — the mode, `floor off`, the
-model (elided in its middle, DF-0330-F1), ctx, cache, tok/s — never drop.
-`/mode to switch` stays for as long as it fits: it is the one place a
-newcomer meets modes.
+The status bar (§8.9) gives way, in order: the `ctrl+o` hint, the folder
+(the terminal title names it too, §8.10), the branch, the model's middle
+(elided, DF-0330-F1), and last `/mode to switch` — it stays for as long
+as it fits: it is the one place a newcomer meets modes. The facts — the
+mode, `floor off`, the model, ctx, cache, tok/s — never drop; past them
+the row is invariant ①'s to cut.
 
 The key ladder lives in the empty input (§7.8), the widest form that fits:
 
@@ -879,7 +880,7 @@ replace it while they last.
 | working | `✸ working 12.4s · ↓ 1.2k · 48 tok/s` |
 | retry | `↻ retrying 3/10 · <what failed> · next try in 4s`, and `esc gives up` |
 | compacting | `✸ compacting · 18s`; *(R3)* with its reason: `manual`, `past the soft tier`, `overflow` |
-| waiting | `❯ needs you · <what>` |
+| waiting *(R2, with the panels)* | `❯ needs you · <what>`; until then the open panel's own status holds the status row |
 
 The keys while a turn runs: `esc stop · ⏎ queue · alt+⏎ redirect`. A queued
 message is one row: `◇ queued  <text>  after this turn · ↑ edit`.
@@ -927,9 +928,13 @@ default  /mode to switch  deepseek-v4-flash · max  ctx ▆▆▆▆▆▆▆▆
   unknown, with no meter.
 - `cache NN%` and the last settled call's `NN tok/s`, each only once
   measured.
-- At the right: the branch in `blue`, the folder, and
+- At the right: the branch in `blue` (read from `.git/HEAD`, a detached
+  HEAD as its short sha, nothing outside a repository), the folder, and
   `ctrl+o expand all` / `ctrl+o collapse all` while a card has rows behind
   the key (§7.7).
+- The words are quiet (`dim`): only the chip, the meter's cells, the
+  branch and `floor off` carry colour. Off a known ground the chip is
+  `▸ <mode>`, the segments join with ` · `, and each side is one dim span.
 
 Nothing reserves a place for what has not shipped. With background tasks,
 `● N tasks running ↓` joins the bar; an extension's status joins its right
