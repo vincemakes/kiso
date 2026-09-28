@@ -16,6 +16,7 @@ import { projectArtifacts, recordTrust, trustFor, type ProjectArtifacts } from "
 import type { AgentSession, KisoExtension } from "@vincemakes/kiso-runtime";
 import { bodyLog, currentAgentExtensions, dock, extensionsDir, kisoHome, mergedTempPaths, neverInherited, type LineInput } from "./state.js";
 import { guardSavedAllow } from "./protected-writes.js";
+import { setTitleState, titleState } from "./window-title.js";
 import { mergeDirPrefix } from "./temp-sweep.js";
 import { loadUserConfig, resolveProjectTrustPolicy } from "./config.js";
 import { getMode } from "./mode.js";
@@ -57,7 +58,15 @@ export function askPanel(
 		console.log(`[non-interactive — no human to ask: ${view.fallbackQuestion}]`);
 		return Promise.resolve({ action: "deny", reason: "no human to ask" });
 	}
-	return new Promise((resolve) => {
+	// Graphite §8.10: while the person is asked, the title says so; the
+	// answer (or the cancel) puts back what it said before
+	const before = titleState();
+	setTitleState("needs-you");
+	return new Promise<PanelVerdict>((settle) => {
+		const resolve = (v: PanelVerdict): void => {
+			setTitleState(before);
+			settle(v);
+		};
 		let settled = false;
 		pendingAsk = () => {
 			if (settled) return;

@@ -29,6 +29,7 @@ import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import type { UserInputVia } from "@vincemakes/kiso-core";
 import { resolveSkillLine, skillsRows } from "./skill-invoke.js";
+import { setTitleState } from "./window-title.js";
 
 /** Where a skill directory really lives. Project and user skills are
  *  merged into one scan directory by symlink, so the scan root names a
@@ -957,6 +958,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				compactStart = Date.now();
 				ctxBefore = ctxPercent(ctx.estimateCtx());
 				dock.setLive(text(0));
+				setTitleState("working"); // §8.10; the idle paint after it says ready again
 				stopSpinner = startStatusSpinner((next) => {
 					glyph = next;
 					repaintCompacting();

@@ -196,13 +196,11 @@ const CELL_LINE = [
 	/^streaming text.*$/, // the TextCell body
 	/^session \S+$/, // the session header
 	/^\[faux mode.*$/, // the faux banner line
-	// R2 supersession: the wordmark, the tagline and the version row are
-	// retired. The opening is the name, three labelled facts (whose values
-	// hang under their label when they are long), and one keys row.
-	/^kiso \d+\.\d+\.\d+.*$/, // the name row
-	/^(MODEL|WORKSPACE|EXTENSIONS) {2,}.*$/, // a labelled fact (the lint trims the indent)
-	/^esc interrupt · .*$/, // the keys row
-	/^\[.*extensions?:.*$/, // an EXTENSIONS value continuing on its own row
+	// Graphite §7.10 (a declared reversal of R2's name row, three labelled
+	// facts and keys row): at 24 rows the opening is one line, then what
+	// loaded — one labelled fact per row.
+	/^✦ kiso \d+\.\d+\.\d+ · the coding agent that survives kill -9$/, // the one-line opening
+	/^(SESSION|RULES|SKILLS|MCP|EXTENSIONS) {2,}\S.*$/, // a labelled fact (the lint trims the indent)
 	/^▌\s?.*$/, // the editor's SELF-RENDER row — the LINE-MODE brick (W6-kept byte-for-byte): the editor's first paint rides the CLI's pre-dock console.log message on the same row
 	// TUI v5 #16f: the user block — the SGR-7 chip alone (the 2026-08-09
 	// ruling retired the ▍ rail + the indent). Classified by its RAW byte

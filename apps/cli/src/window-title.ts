@@ -7,13 +7,23 @@
  * place a terminal shows which session a tab holds without the user
  * switching to it, and it was the only screen kiso never wrote to.
  *
- * `kiso — <workspace>` at the start, `kiso — <session title> —
- * <workspace>` once the session has one. The session's title is
- * `sessionTitle`'s — the SAME projection the resume picker and `kiso
- * sessions` print, so a tab and the picker can never disagree about what
- * a session is called. That is also why an opener does not become the
- * title: the rule for "substantive" lives in one place and this is a
- * consumer of it, not a second opinion.
+ * Graphite §8.10 — the title is the session's state, its name and its
+ * folder, in three forms:
+ *
+ *     <name> — <folder>                 ready: no mark
+ *     ✦ <name> — <folder>               working
+ *     ❯ needs you · <name> — <folder>   an approval, a question, an unknown
+ *                                       outcome to decide
+ *
+ * The name is `sessionTitle`'s — the SAME projection the resume picker
+ * and `kiso sessions` print, so a tab and the picker can never disagree
+ * about what a session is called (an opener does not become the name:
+ * the rule for "substantive" lives in one place and this consumes it).
+ * Before there is one, the name is `kiso`. It changes when the state
+ * changes and never on a tick: a ticking title churns tab bars. No bell
+ * and no notification — nothing interrupts the person (owner,
+ * 2026-09-28). On exit the ready form is written, so a closed session
+ * never leaves a working or waiting mark behind.
  *
  * WHAT IT WRITES. OSC 0, BEL-terminated — icon name and window title in
  * one sequence, the form every terminal that supports either accepts. It
@@ -71,49 +81,87 @@ const TITLE_CELLS = 40;
  *  when nothing has been asked; it is not a label, so it is not shown. */
 const NO_TITLE = "(no prompt)";
 
+/** Graphite §8.10 — what the session is doing, as the title says it. */
+export type TitleState = "ready" | "working" | "needs-you";
+
+/** Bidi controls and invisible format characters: in a title they can
+ *  reorder or hide what a tab says (U+061C, U+200B–U+200F, U+202A–U+202E,
+ *  U+2060–U+2069, U+FEFF). */
+const INVISIBLE = /[\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+
 /**
- * The text of the title, with no IO — the whole rule, testable.
- *
- * Every part is passed through `escapeTerminal` before it can reach the
- * sequence. A title is whatever a human typed or PASTED: a BEL in it
- * would end the sequence early and an ESC would begin another one, and
- * the title would stop being a title and start being commands to the
- * terminal. The same stripper the rendered surfaces use — one definition
- * of "what is safe to put on a terminal", not a second.
+ * What may reach a title: `escapeTerminal` (the same definition of "safe
+ * on a terminal" the rendered surfaces use — a BEL would end the sequence
+ * and an ESC would begin another), then the bidi and invisible format
+ * code points, which reorder or hide text without being control bytes.
  */
-export function windowTitleText(events: readonly Event[], workspace: string): string {
-	const place = escapeTerminal(workspace);
+export function sanitizeTitle(text: string): string {
+	return escapeTerminal(text).replace(INVISIBLE, "");
+}
+
+/** The title for a state, a name (null before the session has one) and a
+ *  folder. The name is cut at 40 cells, by CELLS: a wide character counts
+ *  two, and the mark is inside the budget, never added to it. */
+export function titleText(state: TitleState, name: string | null, folder: string): string {
+	const place = sanitizeTitle(folder);
+	const safe = name === null ? "" : sanitizeTitle(name);
+	const who = safe === "" ? "kiso" : displayWidth(safe) > TITLE_CELLS ? `${widthCut(safe, TITLE_CELLS - 1)}…` : safe;
+	const base = `${who} — ${place}`;
+	return state === "working" ? `✦ ${base}` : state === "needs-you" ? `❯ needs you · ${base}` : base;
+}
+
+/**
+ * The title of a session's log in a state, with no IO — the whole rule,
+ * testable.
+ */
+export function windowTitleText(events: readonly Event[], workspace: string, st: TitleState = "ready"): string {
 	// Filtered BEFORE the wrap, so the cost is one object per user turn
 	// rather than one per event — this is re-derived on every turn of a
 	// session whose log may hold thousands. `sessionTitle` filters again;
 	// it is the authority on what counts and this is not a second opinion.
 	const inputs = events.filter((e) => e.type === "user_input");
 	const raw = sessionTitle(inputs.map((event) => ({ runId: "", ts: 0, event }) as StoreRecord));
-	if (raw === NO_TITLE) return `kiso — ${place}`;
-	const safe = escapeTerminal(raw);
-	// Cut by CELLS, not code points: a title of wide characters counts
-	// two columns each, and a count of characters would overflow the tab
-	// by as much again. The mark is inside the budget, never added to it.
-	const shown = displayWidth(safe) > TITLE_CELLS ? `${widthCut(safe, TITLE_CELLS - 1)}…` : safe;
-	return `kiso — ${shown} — ${place}`;
+	return titleText(st, raw === NO_TITLE ? null : raw, workspace);
 }
 
 /** What was last written, so a repaint of the same title writes nothing.
- *  The title is re-derived on every bind and every user turn; most of
- *  those derive what is already on screen. */
+ *  The title is re-derived on every bind, every user turn and every state
+ *  change; most of those derive what is already on screen. */
 let shown: string | null = null;
+let state: TitleState = "ready";
+let lastEvents: readonly Event[] = [];
+let lastCwd: string | null = null;
 
-/**
- * Write the title for this session's state. Called where the session is
- * BOUND (which is one place for all three entry points — first start,
- * `/resume <id>`, and a switch) and again as the session's own title
- * becomes knowable, so a tab named before the first prompt is renamed by
- * it rather than keeping a name that was only ever a placeholder.
- */
-export function paintWindowTitle(events: readonly Event[], cwd = process.cwd()): void {
-	if (process.stdout.isTTY !== true) return;
-	const text = windowTitleText(events, basename(cwd) || cwd);
+function write(): void {
+	if (process.stdout.isTTY !== true || lastCwd === null) return;
+	const text = windowTitleText(lastEvents, basename(lastCwd) || lastCwd, state);
 	if (text === shown) return;
 	shown = text;
 	process.stdout.write(`${OSC_TITLE_PREFIX}${text}${OSC_TITLE_SUFFIX}`);
+}
+
+/**
+ * Write the title for this session. Called where the session is BOUND
+ * (one place for all three entry points — first start, `/resume <id>`,
+ * and a switch) and again as the session's own name becomes knowable, so
+ * a tab named before the first prompt is renamed by it rather than keeping
+ * a name that was only ever a placeholder.
+ */
+export function paintWindowTitle(events: readonly Event[], cwd = process.cwd()): void {
+	lastEvents = events;
+	lastCwd = cwd;
+	write();
+}
+
+/** The session's state changed (§8.10): a turn began or ended, a panel
+ *  asks the person or has been answered, the process is exiting. Writes
+ *  only when the title it derives differs from the one shown. */
+export function setTitleState(next: TitleState): void {
+	state = next;
+	write();
+}
+
+/** The state the title shows now — a panel that asks restores it after. */
+export function titleState(): TitleState {
+	return state;
 }

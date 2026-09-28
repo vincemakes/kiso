@@ -39,6 +39,8 @@ import {
 import { displayWidth } from "../src/width.js";
 import { visibleWidth } from "../src/components.js";
 
+const stripAnsi = (r: string): string => r.replace(/\x1b\[[0-9;]*m/g, "");
+
 const ORIG_TTY = process.stdout.isTTY;
 const setTTY = (v: boolean): void => {
 	Object.defineProperty(process.stdout, "isTTY", { value: v, configurable: true });
@@ -380,26 +382,34 @@ describe("v7 W1: the banner tiers (the height input)", () => {
 	 * the same rows render at every height — which is one fewer state in
 	 * a table whose states existed only to protect the art.
 	 */
-	it("no art at any height — the tier the art needed is gone with it", () => {
+	/**
+	 * Graphite §7.10 — DECLARED REVERSAL of the R2 supersession above: the
+	 * wordmark is back, and a HEIGHT tier with it — 30 rows, the room ten
+	 * rows of opening leave for a session. Under it (and on a raw PTY or a
+	 * pipe, which report 0 rows) the head is one line.
+	 */
+	it("under 30 rows the head is one line; from 30, the wordmark", () => {
 		for (const [W, H] of [
 			[40, 20],
 			[80, 15],
 			[39, 24],
 			[80, 13],
 			[80, 0], // a raw PTY / pipe reports rows = 0
+			[80, 29],
 		] as const) {
 			const rows = bannerLines(W, H, V, "");
-			expect(rows[0]!, `W=${W} H=${H}`).toBe(`kiso ${V}`);
+			const head = `  ✦ kiso ${V} · the coding agent that survives kill -9`;
+			expect(stripAnsi(rows[0]!), `W=${W} H=${H}`).toBe(head.length <= W ? head : `${head.slice(0, W - 1)}…`);
 			expect(rows.every((r) => !r.includes("█"))).toBe(true);
-			for (const r of rows) expect(truncateRow(r, W), `W=${W} H=${H}: ${r}`).toBe(r);
 		}
+		expect(bannerLines(80, 30, V, "").some((r) => r.includes("█"))).toBe(true);
 	});
-	it("the name is a word now, and the extensions are a labelled fact", () => {
-		const rows = bannerLines(40, 20, V, "[3 extensions: asky]");
-		expect(rows[0]).toBe(`kiso ${V}`);
+	it("the name leads the head, and a bare extensions text is a labelled fact", () => {
+		const rows = bannerLines(80, 20, V, "[3 extensions: asky]").map(stripAnsi);
+		expect(rows[0]).toBe(`  ✦ kiso ${V} · the coding agent that survives kill -9`);
 		expect(rows[1]).toBe("");
-		expect(rows[2]).toBe("  EXTENSIONS  [3 extensions: asky]");
-		expect(rows).toHaveLength(3); // no meta bound: no MODEL, no WORKSPACE, no keys
+		expect(rows[2]).toBe("    EXTENSIONS  [3 extensions: asky]");
+		expect(rows).toHaveLength(3); // no facts bound: no SESSION, no RULES
 	});
 	it("all three tiers at 40, 64, 88, 120: no row exceeds W (truncateRow is the width authority)", () => {
 		for (const W of [40, 64, 88, 120]) {
@@ -490,10 +500,10 @@ describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
 		// list — one blank, then the list — is the subject here and is
 		// untouched.
 		const ext = big.findIndex((r) => r.includes("[3 extensions: asky]"));
-		expect(big[ext]).toBe("  EXTENSIONS  [3 extensions: asky]");
+		expect(stripAnsi(big[ext]!)).toBe("    EXTENSIONS  [3 extensions: asky]"); // Graphite §7.10: the content edge
 		expect(big[ext + 1]).toBe("");
 		expect(big[ext + 2]).toBe("  ✦ resume");
-		expect(big.length).toBe(7); // name + blank + extensions + blank + 3 resume rows
+		expect(big.length).toBe(7); // the one-line head + blank + extensions + blank + 3 resume rows
 		for (const r of big) expect(truncateRow(r, 80)).toBe(r);
 		// the narrowest BIG tier still aligns the meta at exactly W (40)
 		const narrow = bannerLines(40, 20, "0.1.37", "", METAS, NOW);

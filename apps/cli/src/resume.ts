@@ -8,6 +8,7 @@ import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { dock, retryOnRow, type LineInput } from "./state.js";
 import { pendingAsk, resolveUncertains } from "./trust-ui.js";
 import { failOnFauxExhaustion } from "./faux-glue.js";
+import { setTitleState } from "./window-title.js";
 import { barFor, consumeRun, estimateCtxRatio, startStatusSpinner } from "./chat.js";
 
 /**
@@ -37,6 +38,7 @@ export async function resume(session: AgentSession, prompt: string | undefined, 
 		dock.setBar(barFor(session, { cachePct: cacheHitPct(u), tokPerSec: null }));
 	};
 	const paintIdle = (): void => {
+		setTitleState("ready");
 		if (!dock.active) return;
 		dock.setLive(null);
 		dock.setBar(barFor(session, { cachePct: cacheHitPct(runUsage), tokPerSec: null }));
@@ -50,6 +52,7 @@ export async function resume(session: AgentSession, prompt: string | undefined, 
 			statusCb(runUsage, estimateCtxRatio(session));
 		});
 		statusCb(runUsage, estimateCtxRatio(session)); // the live row from the run's first frame
+		setTitleState("working");
 		try {
 			turnNo += 1;
 			const last = await consumeRun(session, run, input, turnNo, faux, statusCb);

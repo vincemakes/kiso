@@ -35,7 +35,7 @@ import { currentBranch } from "./git-branch.js";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import type { UserInputVia } from "@vincemakes/kiso-core";
 import { dispatch, type DispatchCtx, abortBangCommand } from "./dispatch.js";
-import { paintWindowTitle } from "./window-title.js";
+import { paintWindowTitle, setTitleState } from "./window-title.js";
 import { agentBaseUrl, agentModel, body, bodyLog, configuredWindow, dock, retryOnRow, retryShown, setRetryShown, floorOn, protectedFiles, upstreamOf, VERSION, type LineInput } from "./state.js";
 import { attachImages } from "./attachments.js";
 import { installedVersion, staleVersionNotice } from "./stale-version.js";
@@ -1427,6 +1427,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			// the spinner's first tick is 200ms away, and a row that arrived
 			// then would move the content above it once the turn had begun.
 			paintRunning();
+			setTitleState("working"); // §8.10: the title says so, once, not per tick
 			(async () => {
 				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
@@ -1616,6 +1617,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// parentheses idiom names the read-only constraint. The tier is the
 	// CALLER's word (the recovery flow passes the bare mode).
 	const paintIdle = (): void => {
+		setTitleState("ready"); // §8.10 — a dock-less TTY has a title too
 		if (!dock.active) return;
 		// Graphite §8.9: nothing is live; the bar carries the session and
 		// its health. TUI2-R1 (E): the meter's fields are omitted while

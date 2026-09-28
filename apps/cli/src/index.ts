@@ -31,7 +31,7 @@ import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { basename, join } from "node:path";
-import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type ResumeMeta, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
+import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
 import { listSessionSidecars, migrateSummaries, readProfile, summaryMigrationPending } from "@vincemakes/kiso-runtime/internal";
 import { skillMenuItems } from "./skill-invoke.js";
@@ -50,7 +50,9 @@ import { loadUserConfig, resolveAutoCompact } from "./config.js";
 import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
 import { tmuxMouseHint } from "./tmux-hint.js";
 import { resume } from "./resume.js";
-import { paintWindowTitle } from "./window-title.js";
+import { paintWindowTitle, setTitleState } from "./window-title.js";
+import { projectInstructions } from "./coding-prompt.js";
+import { openingFacts } from "./opening.js";
 import { resumeTail } from "./resume-tail.js";
 import { replayInto } from "./replay.js";
 import { armByteTrace } from "./byte-trace.js";
@@ -559,18 +561,14 @@ async function announceUpdate(): Promise<void> {
 	}
 }
 
-function extensionsBanner(resume: ResumeMeta[] = []): void {
+function extensionsBanner(resumedEvents = 0): void {
 	const text = bannerExtensionText();
 	if (!process.stdout.isTTY) {
 		if (text !== "") bodyLog(`${text}\n`);
 		return;
 	}
-	// R2: the opening answers the three questions a first screen is asked.
-	// The model and the tier come from the same state the status line reads
-	// (one source, so the two can never disagree); the workspace is the
-	// home-relative cwd, because `~/Desktop/devv/kiso` is what a human
-	// calls the place and `/Users/vinve/Desktop/devv/kiso` is what a
-	// filesystem calls it.
+	// Graphite §7.10: the opening states what loaded. The model, the mode
+	// and the folder are the status bar's now (§8.9) and are not repeated.
 	const home = homedir();
 	const cwd = process.cwd();
 	/** DC-49: realpath, falling back to the raw path when it cannot be
@@ -583,15 +581,22 @@ function extensionsBanner(resume: ResumeMeta[] = []): void {
 			return dir;
 		}
 	};
-	body.banner(VERSION, text.replace(/^ · /, ""), resume, {
-		model: agentModel,
-		mode: getMode() === "plan" ? "plan (read-only)" : getMode(),
-		cwd: cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd,
-		// DC-49 — REALPATH on both sides. A symlinked HOME (or a symlinked
-		// cwd) compares unequal as raw strings while being the same
-		// directory, and the row would then be absent exactly where it is
-		// most needed.
-		homeWorkspace: realOf(cwd) === realOf(home),
+	const skills = loadedSkillsCatalog();
+	const mcp = loadedExtensions.find((e) => e.name === "mcp") as { tools?: readonly { name: string }[]; connecting?: boolean } | undefined;
+	body.banner(VERSION, text.replace(/^ · /, ""), [], {
+		resumed: resumedEvents > 0,
+		facts: openingFacts({
+			resumedEvents,
+			rules: projectInstructions(cwd, protectedFiles())?.name ?? null,
+			skills: skills === null ? null : { count: skills.entries.length, broken: skills.broken.length },
+			mcp: mcp === undefined ? null : { tools: (mcp.tools ?? []).map((t) => t.name), connecting: mcp.connecting === true },
+			extensions: { user: userExtensions.map((e) => e.name), project: projectExtensions.map((e) => e.name) },
+			// DC-49 — REALPATH on both sides. A symlinked HOME (or a symlinked
+			// cwd) compares unequal as raw strings while being the same
+			// directory, and the row would then be absent exactly where it is
+			// most needed.
+			homeWorkspace: realOf(cwd) === realOf(home),
+		}),
 	});
 }
 
@@ -1077,7 +1082,7 @@ async function chatLoop(
 			// recent sessions just to draw a badge, and `agent.session()`
 			// throws on profile drift — so one drifted session anywhere in the
 			// history stopped kiso from starting at all.
-			extensionsBanner();
+			extensionsBanner(session.log.all.length);
 			// OR-9 (owner, 2026-09-09): the update card under the banner, at
 			// EVERY start while a newer version is known — §7.10's once-only
 			// line is superseded. What the cache knows is painted NOW, with
@@ -1742,8 +1747,8 @@ async function main(): Promise<void> {
 				// itself how to hand it a key.
 				const p = palette();
 				console.log(
+					// Graphite §7.10: the opening's head says the tagline already
 					`${p.dim}${bannerLines(80, process.stdout.rows ?? 0, VERSION, "").join("\n")}${p.reset}\n\n` +
-						"kiso — the coding agent that survives kill -9\n\n" +
 						"  kiso [sessionId]         interactive session (default command)\n" +
 						"  kiso chat [sessionId]    same as above\n" +
 						"  kiso resume              pick a session to continue (TTY picker)\n" +
@@ -1807,6 +1812,9 @@ async function main(): Promise<void> {
 		// scroll region, the cursor lands at the input line, no broken
 		// terminal (kill -9 excepted; `reset` saves it).
 		dock.exit();
+		// Graphite §8.10: a closed session never leaves a working or
+		// waiting mark in the tab
+		setTitleState("ready");
 		// finding #8 (P1): extension dispose runs on the same exit path — a
 		// dispose failure prints one line and NEVER changes the exit code.
 		await disposeExtensions(loadedExtensions);

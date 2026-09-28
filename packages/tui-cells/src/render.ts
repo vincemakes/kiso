@@ -691,43 +691,54 @@ export const MOTION_FRAMES = 7;
 
 export const TAGLINE = "the coding agent that survives kill -9";
 /**
- * R2 — the wordmark is retired (2026-08-27, the nineteen-screen review).
+ * Graphite §7.10 — the opening: the wordmark, then what loaded.
  *
- * TT-1B had already cut the 36x6 pixel art down to two rows because a
- * tall banner's mid-scroll cut state renders as glyph garbage. The
- * remaining two rows go now for a different reason: they say the word
- * `kiso` in fifteen columns of block glyphs, and the word `kiso` says it
- * in four. A rendered clover mark was tried first, at 4x2, 10x5, 14x7
- * and 16x8, and rejected on measurement — below fourteen columns the
- * centre star closes and the mark reads as a domino, and at fourteen it
- * costs seven rows.
+ * DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28) of R2's "no logo,
+ * the name is the mark". R2 retired the wordmark because it cost the rows
+ * a first screen needed for three questions — what model, where am I, what
+ * is loaded. The model and the folder moved to the status bar (§8.9), what
+ * is loaded moved beside the wordmark, and the wordmark came back: ten
+ * rows, once, at the top of a session. Under 30 rows, on a terminal too
+ * narrow for it, and on a resume (the history is above the opening there,
+ * and ten rows of wordmark would bury its tail) the opening is one line.
  *
- * What takes the room is not decoration. A first screen is asked three
- * questions — what model, where am I, what is loaded — and it now
- * answers them in one aligned column.
+ * The R2 keys row retires with it: the empty input carries the key ladder
+ * now (§7.8), so the opening does not teach keys a second time.
  */
-/** R2 — the keys a first screen teaches. One dim row, and deliberately
- *  NOT derived from KEY_BINDINGS: the sheet is the complete list and
- *  this is the opening's five, chosen rather than generated. */
-// R2: the keys row names bindings the product ACTUALLY has. The first
-// draft advertised `! bash` — there is no bang passthrough in kiso and
-// KEY_BINDINGS never had one, so the opening screen was teaching a key
-// that does nothing. A first screen that lies is worse than a short one.
-const BANNER_KEYS = "esc interrupt · ctrl+c exit · / commands · @ files · ? keys";
-/** R2 — the labels. Uppercase mono, dim, letter-spaced by the column
- *  rather than by SGR: they mark sections and are never content. */
-const BANNER_LABELS = ["MODEL", "WORKSPACE", "EXTENSIONS"] as const;
-const LABEL_STOP = Math.max(...BANNER_LABELS.map((l) => l.length)) + 2;
+export const MOTTO = "intent \u2192 effect \u2192 durable fact";
+const WORDMARK = [
+	"\u2588\u2588\u2557  \u2588\u2588\u2557\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2557",
+	"\u2588\u2588\u2551 \u2588\u2588\u2554\u255d\u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255d\u2588\u2588\u2554\u2550\u2550\u2550\u2588\u2588\u2557",
+	"\u2588\u2588\u2588\u2588\u2588\u2554\u255d \u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551   \u2588\u2588\u2551",
+	"\u2588\u2588\u2554\u2550\u2588\u2588\u2557 \u2588\u2588\u2551\u255a\u2550\u2550\u2550\u2550\u2588\u2588\u2551\u2588\u2588\u2551   \u2588\u2588\u2551",
+	"\u2588\u2588\u2551  \u2588\u2588\u2557\u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d",
+	"\u255a\u2550\u255d  \u255a\u2550\u255d\u255a\u2550\u255d\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u255d",
+] as const;
+/** The wordmark's width in cells (its widest row). */
+export const WORDMARK_W = Math.max(...WORDMARK.map((r) => displayWidth(r)));
+/** The content edge (§1.8) the opening's rows start at. */
+const OPENING_EDGE = 4;
+/** §7.10: the facts sit beside the wordmark from this width, below it under. */
+const FACTS_BESIDE_W = 96;
+/** §7.10: under this height the opening is one line. */
+const OPENING_TALL_H = 30;
+/** The facts' label column: the longest label and two spaces. */
+const FACT_LABEL_W = "EXTENSIONS".length + 2;
 
-/** R2 — what the opening knows about the session. Optional because the
- *  off-TTY caller prints a banner before a model is bound. */
+/** One fact the opening states: its label, the fact, and a quieter note
+ *  after it. An empty label continues the fact above it. */
+export interface BannerFact {
+	readonly label: string;
+	readonly value: string;
+	readonly note?: string;
+}
+
+/** §7.10 — what the opening knows: what loaded (the CLI composes the
+ *  facts; this module only lays them out), and whether the session was
+ *  resumed (a resumed session opens on the one-line form). */
 export interface BannerMeta {
-	readonly model: string;
-	readonly mode: string;
-	readonly cwd: string;
-	/** DC-49 — the workspace IS the user's home directory. Computed by the
-	 *  CLI (realpath on both sides); the banner only renders it. */
-	readonly homeWorkspace?: boolean;
+	readonly facts: readonly BannerFact[];
+	readonly resumed?: boolean;
 }
 
 /** W20 — the ONE-ROW cut with the honest mark, SGR-aware. A line that
@@ -803,99 +814,114 @@ export function truncateRow(row: string, width: number): string {
 	}
 }
 
-/** v3 §01 (V6-2) + W1: the banner lines for a width W and height H —
- *  the tier table (extends the existing "under 40 columns, skip the
- *  logo" rule with a HEIGHT input; VD-14 merged the two art tiers):
- *    W ≥ 40 and H ≥ 14 → the 2-row wordmark, 2-column indent
- *    anything smaller → text rows only
- *  then the blank, then "vX — tagline" — the art IS the wordmark, so the
- *  text row does not repeat the name — then extensions — then the W5
- *  resume list (BIG only, W5). Every row truncates at the terminal width
- *  with a " (+N)" marker. Pure. */
+/**
+ * Graphite §7.10 — the opening's rows for a width W and height H. Pure;
+ * invariant ① holds at every width (each row is cut to W).
+ *
+ *  - The tall form (H ≥ 30, W ≥ the wordmark at the content edge, not a
+ *    resume): the wordmark, its rule, the tagline with the version, the
+ *    motto. The facts sit beside it behind one hairline when W ≥ 96, and
+ *    below it otherwise.
+ *  - The one-line form otherwise: `✦ kiso <version> · <tagline>`, the
+ *    facts below it.
+ *
+ * On a known ground the block cells take `mix(ink, dim, row / 4)` top to
+ * bottom, the box-drawing shadow `mix(rail, ground, 0.35)`, and the rule
+ * fades from `dim` to the ground; there is no gold (§1.2 — gold is the
+ * edge, and the opening has none). Off one the wordmark is the terminal's
+ * own foreground. `<version>` is the caller's, never a literal.
+ */
 export function bannerLines(W: number, H: number, version: string, extensionsText: string, resume: readonly ResumeMeta[] = [], now = Date.now(), meta?: BannerMeta | undefined): string[] {
 	const p = palette();
-	// R2: the banner styles itself per span. It used to be wrapped in one
-	// blanket dim by its component, which made the answers as faint as the
-	// labels asking the questions — the labels are the quiet half, the
-	// values are what a human came to read.
-	//
-	// Every width decision below is taken on PLAIN text and the styling is
-	// applied after, because truncateRow measures with displayWidth, which
-	// counts SGR bytes as columns. Style then measure is a bug waiting.
-	// DC-18: the name row is CUT like every other row here. It was the one
-	// row in this function pushed unguarded, so at W ≤ 10 `kiso 0.16.4`
-	// measured 11 cells and invariant ① threw AT STARTUP — the function
-	// whose own comment preaches "invariant ① holds at every width".
-	// The cut is taken on the plain text, per the note above.
-	const namePlain = widthCut(`kiso ${version}`, Math.max(1, W));
-	const nameCut = namePlain.slice(0, 4); // "kiso", or its surviving prefix
-	const verCut = namePlain.slice(5); // the version, if the width left room for it
-	const rows: string[] = [`${p.bold}${nameCut}${p.reset}${verCut === "" ? "" : `${p.dim} ${verCut}${p.reset}`}`];
-	const facts: [string, string][] = [];
-	if (meta !== undefined) {
-		facts.push([BANNER_LABELS[0], `${meta.model}${meta.mode === "" ? "" : ` · ${meta.mode}`}`], [BANNER_LABELS[1], meta.cwd]);
-		// DC-49 — ONE row under the cwd, and only when the workspace is the
-		// home directory. It STATES a fact and names the remedy; it does not
-		// warn, because the configuration is ALLOWED (owner, 2026-09-06) and
-		// a warning about an allowed thing teaches people to skip rows.
-		//
-		// An empty label puts it in the value column under `WORKSPACE`,
-		// where it reads as a note on that fact rather than a fact of its
-		// own. It must FIT at W=80 under the label indent: a cut row loses
-		// the remedy, which is the only actionable half of the sentence.
-		if (meta.homeWorkspace === true) facts.push(["", "home directory as workspace — cd into a project to narrow it"]);
-	}
-	if (extensionsText !== "") facts.push([BANNER_LABELS[2], extensionsText]);
-	if (facts.length > 0) {
-		rows.push("");
-		// The value column HANGS rather than truncating. The label costs
-		// columns the value used to have, and an extension list cut at the
-		// width would hide which extensions loaded — on the one screen whose
-		// job is to say what is loaded.
-		const indent = 2 + LABEL_STOP;
-		// a terminal too narrow to hold the label column at all: the room is
-		// what is left, floored at one column, and the assembled row is
-		// truncated as a unit so invariant ① holds at every width.
-		const room = Math.max(1, W - indent);
-		for (const [label, value] of facts) {
-			const lead = `  ${p.dim}${label}${p.reset}${" ".repeat(LABEL_STOP - label.length)}`;
-			const hang = " ".repeat(indent);
-			const lines: string[] = [];
-			let line = "";
-			for (const word of value.split(" ")) {
-				if (line === "") line = word;
-				else if (displayWidth(`${line} ${word}`) <= room) line += ` ${word}`;
-				else {
-					lines.push(line);
-					line = word;
+	const width = Math.max(1, W);
+	const cut = (row: string): string => cutLine(row, width);
+	const facts: readonly BannerFact[] = meta !== undefined ? meta.facts : extensionsText !== "" ? [{ label: "EXTENSIONS", value: extensionsText }] : [];
+	const tall = H >= OPENING_TALL_H && width >= OPENING_EDGE + WORDMARK_W && meta?.resumed !== true;
+	const pad = " ".repeat(OPENING_EDGE);
+	const rows: string[] = [];
+	if (!tall) {
+		rows.push(cut(`  \u2726 ${p.bold}kiso${p.reset} ${p.dim}${version} \u00b7 ${TAGLINE}${p.reset}`));
+		if (facts.length > 0) rows.push("", ...factRows(facts, width - OPENING_EDGE).map((r) => cut(`${pad}${r}`)));
+	} else {
+		const head = [...wordmarkRows(), openingRule(WORDMARK_W), `${p.ink2}${TAGLINE}${p.fgEnd}${p.dim} \u00b7 ${version}${p.reset}`, `${p.dim}${MOTTO}${p.reset}`];
+		// two cells after the wordmark's widest row, the hairline, two more,
+		// then the facts
+		const factsCol = OPENING_EDGE + WORDMARK_W + 5;
+		// beside the wordmark from 96 columns, as long as the facts fit in
+		// its six rows; below it otherwise
+		if (facts.length > 0 && facts.length <= WORDMARK.length && width >= FACTS_BESIDE_W) {
+			const beside = factRows(facts, width - factsCol);
+			const rule = p.line !== "" ? `${p.line}\u2502${p.fgEnd}` : `${p.dim}\u2502${p.reset}`;
+			for (const [i, h] of head.entries()) {
+				if (i >= WORDMARK.length) {
+					rows.push(cut(`${pad}${h}`));
+					continue;
 				}
+				const gap = " ".repeat(WORDMARK_W + 2 - visibleWidth(h));
+				rows.push(cut(`${pad}${h}${gap}${rule}${beside[i] === undefined ? "" : `  ${beside[i]}`}`));
 			}
-			if (line !== "") lines.push(line);
-			for (const [i, l] of lines.entries()) {
-				const styled = `${i === 0 ? lead : hang}${truncateRow(l, room)}`;
-				rows.push(displayWidth(styled) - (i === 0 ? p.dim.length + p.reset.length : 0) <= W ? styled : truncateRow(`${hang}${l}`, W));
-			}
+		} else {
+			rows.push(...head.map((h) => cut(`${pad}${h}`)));
+			if (facts.length > 0) rows.push("", ...factRows(facts, width - OPENING_EDGE).map((r) => cut(`${pad}${r}`)));
 		}
-	}
-	if (meta !== undefined && W >= 40) {
-		// R2/DC-2's device: the keys row is a list of independent clauses,
-		// so a narrow terminal drops whole clauses from the end rather than
-		// cutting one in half. `ctrl+o ex (+8)` teaches nothing.
-		const clauses = BANNER_KEYS.split(" \u00b7 ");
-		let keys = clauses[0]!;
-		for (let n = clauses.length; n > 1; n -= 1) {
-			const row = clauses.slice(0, n).join(" \u00b7 ");
-			if (displayWidth(row) <= W - 2) {
-				keys = row;
-				break;
-			}
-		}
-		rows.push("", `  ${p.dim}${truncateRow(keys, W - 2)}${p.reset}`);
 	}
 	if (W >= 40 && H >= 20 && resume.length > 0) {
 		rows.push("", ...renderResumeList(resume, W, now));
 	}
 	return rows;
+}
+
+/** The wordmark's six rows, coloured per §7.10 on a known ground. */
+function wordmarkRows(): string[] {
+	const p = palette();
+	const tier = p.tier;
+	if (tier === null || ground === "unknown") return [...WORDMARK];
+	const c = graphiteColours(ground, groundRgb, tier);
+	const shadow = fg(mix(c.rail, c.ground, 0.35), tier);
+	return WORDMARK.map((row, i) => {
+		const block = fg(mix(c.ink, c.dim, Math.min(1, i / 4)), tier);
+		let out = "";
+		let run: "block" | "shadow" | "space" | null = null;
+		for (const ch of row) {
+			const kind = ch === "\u2588" ? "block" : ch === " " ? "space" : "shadow";
+			if (kind !== run && kind !== "space") out += kind === "block" ? block : shadow;
+			if (kind !== "space") run = kind;
+			out += ch;
+		}
+		return `${out}${p.fgEnd}`;
+	});
+}
+
+/** The rule under the wordmark: `dim` fading to the ground, in a few runs.
+ *  Off a known ground, the plain dim rule. */
+function openingRule(n: number): string {
+	const p = palette();
+	if (p.tier === null || ground === "unknown") return `${p.dim}${"\u2500".repeat(n)}${p.reset}`;
+	const c = graphiteColours(ground, groundRgb, p.tier);
+	const STEPS = 7;
+	let out = "";
+	let at = 0;
+	for (let k = 0; k < STEPS && at < n; k += 1) {
+		const to = k === STEPS - 1 ? n : Math.round((n * (k + 1)) / STEPS);
+		if (to > at) out += `${fg(mix(c.dim, c.ground, k / STEPS), p.tier)}${"\u2500".repeat(to - at)}`;
+		at = Math.max(at, to);
+	}
+	return `${out}${p.fgEnd}`;
+}
+
+/** The facts as rows `room` cells wide: the label dim in its column, the
+ *  fact in ink, the note dim after it. A row that does not fit loses its
+ *  note first, then is cut. */
+function factRows(facts: readonly BannerFact[], room: number): string[] {
+	const p = palette();
+	return facts.map((f) => {
+		const label = `${p.dim}${f.label}${p.reset}${" ".repeat(Math.max(1, FACT_LABEL_W - f.label.length))}`;
+		const value = escapeTerminal(f.value);
+		const note = f.note === undefined ? "" : escapeTerminal(f.note);
+		const whole = `${label}${value}${note === "" ? "" : `${p.dim} \u00b7 ${note}${p.reset}`}`;
+		if (visibleWidth(whole) <= room) return whole;
+		return cutLine(`${label}${value}`, Math.max(1, room));
+	});
 }
 
 /** W5 — the opening-screen resume list. Every field already exists
