@@ -172,16 +172,21 @@ DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). The palette was
 256-colour indices only, "never truecolor", with one wash and a `washDim`
 grey measured against it. Both retire with this table.
 
-**2.1 Every text token clears the floor on every surface it can reach.**
-Measured on both grounds, the weakest pairs are `ok` on `wash-fail` (4.61 on
-white) and `dim` on `wash-ask` (5.13 on black). A new surface or a new token
-is checked against every text token before it lands; a token that fails on
-one surface is barred from that surface, not relaxed.
+**2.1 Every text token clears the floor on every surface it can reach,
+as shown.** The surfaces include the terminal's own ground. "As shown"
+means in the tier actually written: the 256 tier rounds each colour to its
+nearest index, and the floor is measured on the rounded colour. On the
+reference grounds the weakest pairs are `ok` on `wash-fail` (4.61 on white,
+24-bit) and `dim` on `wash-ask` (5.13 on black, 24-bit); the gate also
+sweeps the common terminal themes of both kinds in both tiers. A new
+surface or a new token is checked against every text token before it
+lands; a token that fails on one surface is barred from that surface, not
+relaxed.
 
 **2.2 The floor is a floor, including mid-animation.** A mark that
-breathes never drops below the dim token's contrast on the surface under
-it. This has shipped wrong once — index `252` is 1.54:1 on white,
-invisible.
+breathes never drops below 3:1 on the surface under it — the floor for a
+graphic rather than for text (WCAG 1.4.11). This has shipped wrong once —
+index `252` is 1.54:1 on white, invisible.
 
 **2.3 A fixed red is not theme-safe.** ANSI `31` (`#CC0000`) is 5.89:1 on
 white but **2.83:1** on a dark ground, so the failure colour is
@@ -251,12 +256,16 @@ terminal that reports nothing.
 
 **3.4 Surfaces are derived from the resolved ground.** §2's table is
 Graphite evaluated on `#ffffff` and `#0b0b0b`. When OSC 11 reports any other
-ground, each surface is computed from it — a card's ground as a small mix of
-the ground toward blue, ink, the failure colour or gold; a diff row's toward
-green or red — so a terminal whose black is `#1e1e1e` still separates its
-cards from its ground. The mixes reproduce the table on those two grounds
-and keep every pair in §2.1 above the floor. When the ground is resolved
-without a colour (rungs 1, 2 and 4), the table's own column is used.
+ground of the same kind, each surface is computed from it — per channel, an
+affine map fitted so that the two reference grounds give the table exactly —
+so a terminal whose black is `#1e1e1e` still separates its cards from its
+ground. A text token that would then fall under the floor, on the ground or
+on a surface, as shown (§2.1), moves toward the kind's extreme — lighter on
+a dark ground, darker on a light one — just far enough to clear it; on the
+reference grounds nothing moves. If a pair still fails, the table is used.
+When the ground is resolved without a colour (rungs 1, 2 and 4), or the
+reported colour is of the other kind than the resolved ground, the table's
+own column is used.
 
 ---
 
@@ -305,14 +314,13 @@ cadence and the byte volume of a waiting screen do not change.
 **5.2 The two cycles.**
 
 ```
-command   ● gold-mark, seven steps of brightness: peak → floor → peak
+command   ● gold, seven steps of brightness: peak → floor → peak
 thinking  ✧ → ✦ → ✶ → ✸ → ✺ → ✸ → ✦, in gold
 ```
 
-The command breath is **brightness only** — one glyph, seven steps of
-`gold-mark` mixed toward the card's ground, the floor being the step at the
-dim token's contrast (§2.2). The seven values are pinned per ground and per
-colour tier. The thinking twinkle is **glyphs only**, so it survives
+The command breath is **brightness only** — one glyph, seven steps from
+`gold` toward the running card's ground, the floor being the deepest step
+still at 3:1 on it (§2.2). The thinking twinkle is **glyphs only**, so it survives
 `NO_COLOR` while the breath correctly freezes to a static `●`. When the
 thought ends the twinkle leaves; the `✦` that stays on screen is the turn's
 seal (§7.11), not the thought's.
