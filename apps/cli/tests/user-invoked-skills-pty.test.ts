@@ -90,7 +90,7 @@ describe("0.40.0 — user-invoked skills (PTY)", () => {
 					// "ctx left" is the BOOT status row, painted after the agent
 					// (and its extensions) exist — "/ commands" is painted
 					// earlier, and a key typed then reads an empty catalog
-					["ctx left", "/b"],
+					[" · ctx ", "/b"], // Graphite §8.9: the bar's ctx segment (used share) — one plain span, so it matches the raw stream
 					// the menu styles the typed prefix, so the raw bytes split
 					// "/b" from the rest — the needle is the unsplit part
 					["oss-call", "\x15exit\r"],

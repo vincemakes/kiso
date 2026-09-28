@@ -105,8 +105,8 @@ sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([
 			["/ commands · \u2191 history", "\u4f60", 2],
-			["/ commands · \u2191 history", "\u4f60", 3],
-			["/ commands · \u2191 history", "\r", 4], // the submit — the turn runs the shell
+			["\u4f60", "\u4f60", 3], // the key ladder left the input with the first character (§7.8)
+			["\u4f60\u4f60", "\r", 4], // the submit — the turn runs the shell
 			["needs approval", "y\r", 5], // the rule line's dim run — the default tier ASKS the shell, answer the panel
 			["/ commands · \u2191 history", "x", 8], // the post-turn char — after the 2s run ends (~t=7) — its frame is the commitless steady frame
 		])}, 12)
@@ -136,7 +136,9 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: scri
 		// right-aligned "/ commands · ↑ history" tail) — and the working
 		// status ZERO times on the final screen (the dead "working" at H
 		// was the R2 report's frozen residue).
-		expect(grid[23]).toContain("/ commands");
+		// Graphite §8.9 / §7.8: the bottom row is the status bar; the key
+		// ladder lives in the EMPTY input, and this input holds the "x"
+		expect(grid[23]).toContain("/mode to switch");
 		expect(grid.join("")).not.toContain("working");
 	}, 90_000);
 });

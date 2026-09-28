@@ -5,7 +5,7 @@
  */
 
 import type { SessionRoute } from "./projects.js";
-import { STATUS_GLYPHS, contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modePickView, modelPickView, compactingStatus, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
+import { STATUS_GLYPHS, contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modePickView, modelPickView, compactingStatus, liveRow, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
 import { buildAdapter, lookupModelMetadata, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
@@ -488,7 +488,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				// the claim and the act must not be able to drift apart. On
 				// the dock it rides the W18 hint slot (gone at the next
 				// keypress); in a pipe it is a line like any other.
-				if (dock.active) dock.setStatus(r.message);
+				if (dock.active) dock.flash(r.message);
 				else bodyLog(`[${r.message}]`);
 			}
 			ctx.input.prompt();
@@ -948,11 +948,15 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			const compacting = (info: { rounds: number; tokens: number }): void => {
 				// 0.40.0: composed by the row seam, not a template here — the row
 				// is where the launch build's progress segment plugs in.
-				const text = (elapsed: number): string => compactingStatus(glyph, info.rounds, info.tokens, elapsed, undefined, retryOnRow(), progress);
-				repaintCompacting = () => dock.setStatus(text(Math.round((Date.now() - compactStart) / 1000)), "esc to cancel");
+				// Graphite §8.7: compacting is a LIVE state — its row rides above
+				// the composer, the status bar below keeps the session. Composed
+				// against the width the row has (it used to be composed blind).
+				const W = (): number => (process.stdout.columns > 0 ? process.stdout.columns : 80);
+				const text = (elapsed: number): string => liveRow(compactingStatus(glyph, info.rounds, info.tokens, elapsed, W() - 20, retryOnRow(), progress), ["esc to cancel"], W());
+				repaintCompacting = () => dock.setLive(text(Math.round((Date.now() - compactStart) / 1000)));
 				compactStart = Date.now();
 				ctxBefore = ctxPercent(ctx.estimateCtx());
-				dock.setStatus(text(0), "esc to cancel");
+				dock.setLive(text(0));
 				stopSpinner = startStatusSpinner((next) => {
 					glyph = next;
 					repaintCompacting();

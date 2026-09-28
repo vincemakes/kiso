@@ -37,8 +37,8 @@ export interface CompactingProgress {
 /** The compacting row's bar width — short: it shares a row. */
 const BAR_ON_ROW = 6;
 import { elapsedLabel } from "@vincemakes/kiso-tui-cells";
-import { TWINKLE } from "@vincemakes/kiso-tui-cells/render";
-import { displayWidth } from "@vincemakes/kiso-tui-cells/width";
+import { TWINKLE, cutLine, palette } from "@vincemakes/kiso-tui-cells/render";
+import { displayWidth, visibleWidth } from "@vincemakes/kiso-tui-cells/width";
 
 /**
  * R3 (design §5.2) — the working glyph family is the TWINKLE, and the
@@ -359,4 +359,153 @@ export function cacheHitPct(usage: { in: number | null; cache: number | null }):
 	if (fresh === null || cached === null) return null;
 	const total = fresh + cached;
 	return total > 0 ? (cached / total) * 100 : null;
+}
+
+// ---- Graphite §8.9 / §8.7 — the status bar and the live row ----
+
+/**
+ * Graphite §8.9 — what the status bar says: the session and its health.
+ * The CLI keeps the state and hands this over; the compositor composes the
+ * row at paint time, because the drop order (§8.5) runs across both sides
+ * of the row and only the paint knows the width and the `ctrl+o` state.
+ */
+export interface BarInput {
+	/** The mode as the chip says it: `default`, `plan · read-only`, … */
+	readonly mode: string;
+	/** Bypass wears the failure colour (§8.9). */
+	readonly modeAlert?: boolean;
+	readonly floorOff: boolean;
+	readonly model: string;
+	/** The share of the window USED (0..1), and the compaction tiers as
+	 *  shares of the same window; null when the window is not known. */
+	readonly ctx: { readonly used: number; readonly soft: number; readonly hard: number } | null;
+	readonly cachePct: number | null;
+	readonly tokPerSec: number | null;
+	readonly branch: string | null;
+	readonly folder: string | null;
+}
+
+/** The ctx meter's width in cells (§8.9). */
+const METER_CELLS = 10;
+
+/**
+ * §8.9 — the ctx meter: ten `▆` cells with the used share filled, then the
+ * percentage used. Filled cells take `ink2` below the soft compaction tier,
+ * gold from the soft tier to the hard one, the failure colour past the hard
+ * tier; the empty cells are `track`. There is no marker inside the bar —
+ * the tier shows as colour only (owner, 2026-09-28). Off a known ground
+ * the colours carry nothing, so the meter is the percentage alone (§1.2:
+ * the fact survives without the colour). `ctx ?` when the window is not
+ * known.
+ */
+export function ctxMeter(ctx: BarInput["ctx"]): string {
+	if (ctx === null || !Number.isFinite(ctx.used)) return "ctx ?";
+	const used = Math.max(0, ctx.used);
+	const pct = `${Math.round(used * 100)}%`;
+	const p = palette();
+	if (p.track === "") return `ctx ${pct}`;
+	const filled = used <= 0 ? 0 : Math.min(METER_CELLS, Math.max(1, Math.round(used * METER_CELLS)));
+	const tone = used >= ctx.hard ? p.fail : used >= ctx.soft ? p.gold : p.ink2;
+	return `${p.dim}ctx${p.reset} ${tone}${"▆".repeat(filled)}${p.track}${"▆".repeat(METER_CELLS - filled)}${p.fgEnd} ${p.dim}${pct}${p.reset}`;
+}
+
+/**
+ * §8.9 — the status bar, composed for `W` cells. Left: the mode chip,
+ * `floor off`, `/mode to switch`, the model and its effort, the ctx meter,
+ * the cache share, the decode rate. Right: the branch, the folder, and the
+ * `ctrl+o` switch while a card has rows behind the key.
+ *
+ * §8.5 — what gives way, in order: the `ctrl+o` hint, the folder (the
+ * terminal title names it too), the branch, the model's middle, and last
+ * `/mode to switch` — the one place a newcomer meets modes. The facts
+ * never drop; past that the row is invariant ①'s to cut.
+ *
+ * On a known ground the chip is a surface and the segments are spaced; off
+ * one the head is today's `▸ <mode>` and the segments are joined with ` · `
+ * — the same facts, in words that survive without colour.
+ */
+export function statusBar(b: BarInput, W: number, expand: "expand all" | "collapse all" | null): string {
+	const p = palette();
+	const painted = p.washDone !== "";
+	const sep = painted ? "  " : " · ";
+	const chip = painted ? `${b.modeAlert === true ? p.fail : ""}${p.washDone} ${b.mode} ${p.washEnd}${b.modeAlert === true ? p.fgEnd : ""}` : `▸ ${b.mode}`;
+	const fail = (s: string): string => (painted ? `${p.fail}${s}${p.fgEnd}` : s);
+	const dim = (s: string): string => `${p.dim}${s}${p.reset}`;
+	// the bar's words are quiet (§1.2: grey chrome); off a known ground each
+	// side is ONE dim span — the shape the status row always had
+	const quiet = (s: string): string => (painted ? dim(s) : s);
+	type Seg = { text: string; drop: number };
+	// drop: 0 = never; otherwise the order it gives way in (1 first)
+	const left: (Seg | null)[] = [
+		b.floorOff ? { text: fail("floor off"), drop: 0 } : null,
+		{ text: quiet("/mode to switch"), drop: 4 },
+		{ text: b.model, drop: 0 },
+		{ text: ctxMeter(b.ctx), drop: 0 },
+		b.cachePct !== null ? { text: quiet(`cache ${Math.round(b.cachePct)}%`), drop: 0 } : null,
+		b.tokPerSec !== null ? { text: quiet(`${b.tokPerSec} tok/s`), drop: 0 } : null,
+	];
+	const right: (Seg | null)[] = [
+		b.branch !== null ? { text: painted ? `${p.blue}${b.branch}${p.fgEnd}` : b.branch, drop: 3 } : null,
+		b.folder !== null ? { text: quiet(b.folder), drop: 2 } : null,
+		expand !== null ? { text: quiet(`ctrl+o ${expand}`), drop: 1 } : null,
+	];
+	let model = b.model;
+	const compose = (dropped: number): string => {
+		const l = left.filter((x): x is Seg => x !== null && (x.drop === 0 || x.drop > dropped)).map((x) => (x.text === b.model ? quiet(model) : x.text));
+		const r = right.filter((x): x is Seg => x !== null && (x.drop === 0 || x.drop > dropped)).map((x) => x.text);
+		const lt = painted ? [chip, ...l].join(sep) : dim([chip, ...l].join(sep));
+		if (r.length === 0) return lt;
+		const rt = painted ? r.join("  ") : dim(r.join("  "));
+		const gap = W - visibleWidth(lt) - visibleWidth(rt);
+		return gap >= 2 ? `${lt}${" ".repeat(gap)}${rt}` : `${lt}  ${rt}`;
+	};
+	const fits = (row: string): boolean => visibleWidth(row) <= W;
+	let row = "";
+	for (const level of [0, 1, 2, 3]) {
+		row = compose(level);
+		if (fits(row)) return row;
+	}
+	// the model's middle gives way before `/mode to switch` does (DF-0330-F1)
+	model = elideMiddle(b.model, LABEL_ON_ROW);
+	for (const level of [3, 4]) {
+		row = compose(level);
+		if (fits(row)) return row;
+	}
+	return cutLine(row, W);
+}
+
+/**
+ * §8.7 — the LIVE ROW's words for a running turn: `working` for the whole
+ * turn, whatever the model is doing (it never switches to "thinking" —
+ * what the model thinks is in the stream), the elapsed, the output tokens,
+ * the decode rate. A pending retry replaces it. The keys ride the row's
+ * right end.
+ */
+export function workingRow(glyph: string, since: number, outTokens: number | null, tokPerSec: number | null, W: number, retry?: RetryOnRow | null): string {
+	// a pending retry REPLACES `working` while it lasts (§8.7): it is the one
+	// thing that explains why nothing is arriving (ADR-0005 Amendment 2),
+	// and its countdown is the row's pulse — whole seconds, rounded up, so
+	// it never says 0s while still waiting
+	if (retry != null) {
+		const wait = retry.remainingMs > 0 ? ` · next try in ${Math.ceil(retry.remainingMs / 1000)}s` : "";
+		return liveRow(`↻ retrying ${retry.attempt}/${retry.maxRetries} · ${retry.code}${wait}`, ["esc gives up"], W);
+	}
+	const out = outTokens !== null ? ` · ↓ ${kUnit(outTokens)}` : "";
+	const seconds = Math.max(1, Math.round((Date.now() - since) / 1000));
+	const facts = [`${glyph} working ${elapsedLabel(seconds)}${out}`, ...(tokPerSec !== null ? [`${tokPerSec} tok/s`] : [])].join(" · ");
+	return liveRow(facts, ["esc stop · ⏎ queue · alt+⏎ redirect", "esc stop · ⏎ queue", "esc stop"], W);
+}
+
+/** §8.7 — a live row: its mark and facts from the mark column (column 2),
+ *  its keys right-aligned; the keys give way from the right when the row
+ *  is short, the facts never (past them the row is cut). */
+export function liveRow(facts: string, keys: readonly string[], W: number): string {
+	const p = palette();
+	const lead = `  ${facts}`;
+	for (const k of [...keys, ""]) {
+		if (k === "") return visibleWidth(lead) <= W ? lead : cutLine(lead, W);
+		const gap = W - visibleWidth(lead) - visibleWidth(k);
+		if (gap >= 2) return `${lead}${" ".repeat(gap)}${p.dim}${k}${p.reset}`;
+	}
+	return cutLine(lead, W);
 }

@@ -196,7 +196,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		// status row's right side.
 		expect(clean).toContain("✦ plan ready · /mode default executes · /mode accept-edits auto-approves edits");
 		// ③ the idle posture.
-		expect(clean).toContain("▸ plan (read-only) · /mode to switch");
+		expect(clean).toContain("▸ plan · read-only · /mode to switch"); // Graphite §8.9
 		// ④ /mode default executes NORMALLY: the ask is back, the shell
 		// succeeds, the recap is the ordinary shape (not plan-ready again).
 		expect(clean).toContain("shell needs approval");

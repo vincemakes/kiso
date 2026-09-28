@@ -100,7 +100,7 @@ function recordSession(extraTurns: string[] = []): { env: NodeJS.ProcessEnv; cwd
 	const script = join(dirs.home, "faux.json");
 	writeFileSync(script, JSON.stringify([...asks.map((_, i) => say(`answer number ${i + 1} here`)), say("resumed reply")]), "utf8");
 	const envWith = { ...env, KISO_FAUX_SCRIPT: script, TERM: "xterm-256color" };
-	const feeds: [string, string][] = [["ctx left", `${asks[0]}\r`]];
+	const feeds: [string, string][] = [[" · ctx ", `${asks[0]}\r`]]; // Graphite §8.9: the bar's ctx segment (used share) — one plain span, so it matches the raw stream
 	for (let i = 1; i < asks.length; i += 1) feeds.push([`answer number ${i} here`, `${asks[i]}\r`]);
 	feeds.push([`answer number ${asks.length} here`, "exit\r"]);
 	const rec = drive(envWith, cwd, ["chat", "four-c"], feeds);
@@ -115,7 +115,7 @@ describe("4c — reopening a session replays the history into cells", () => {
 			["1 earlier turn · ctrl+r to read", "\x12"], // ctrl+r — open the viewer
 			// up (a no-op when the fold is the only entry, so it paints nothing
 			// to wait for), then enter opens the entry
-			["transcript ·", "\x1b[A"],
+			["── transcript ·", "\x1b[A"],
 			["", "\r"],
 			["first question alpha", "\x1b"], // esc closes
 		]);
@@ -147,7 +147,7 @@ describe("4c — reopening a session replays the history into cells", () => {
 		appendFileSync(log, `${JSON.stringify({ runId: last.runId, ts: Date.now(), event: { type: "summarized", coversToSeq: boundary, summary: "SUMMARY: alpha and bravo were settled", seq: last.event.seq + 1 } })}\n`);
 		const run = drive(env, cwd, ["chat", "four-c"], [
 			["checkpoint · summarizes 2 earlier turns · ctrl+r to read", "\x12"],
-			["transcript ·", "\x1b[A"],
+			["── transcript ·", "\x1b[A"],
 			["", "\r"],
 			["SUMMARY: alpha and bravo", "\x1b"],
 		]);
