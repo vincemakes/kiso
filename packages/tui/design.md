@@ -771,11 +771,21 @@ beside it, folded under itself (column 14). `FAILED` and `UNCERTAIN` name
 outcomes and take the failure colour; the rest are `dim`. No card and no
 ground: they are not the machine's work.
 
-A command's own confirmation — `mode → plan`, `model → …`, `[/compact] …`,
-`[dontAsk] …` — has no kind of its own: its words are read as a whole, and
-a label would only split them. It stays whole at the content edge, with no
-label. On the terminal the `✦` some notices open with comes off: it is the
-seal's mark (§4). A pipe prints every notice as written.
+A command's own confirmation — `model → …`, `[/compact] …`, `[dontAsk] …`
+— has no kind of its own: its words are read as a whole, and a label would
+only split them. It stays whole at the content edge, with no label. On the
+terminal the `✦` some notices open with comes off: it is the seal's mark
+(§4). A pipe prints every notice as written.
+
+A MODE switch is the exception (R3e, owner 2026-09-29): the approval tier
+is the one setting whose change alters what runs without asking, so it is
+a meta row — `MODE  default → bypass · everything runs, nothing asks — a
+user deny still wins` — the new tier bold (bypass in `fail`, plan in
+`blue`), the tier's own line after it (`MODE_NOTE`), `· shift+tab cycles`
+when that key did it. One row, not a card: shift+tab walks the ring, and a
+card per step would stack. All four ways in (/mode's picker, `/mode
+<name>`, /settings, shift+tab) draw it; a pipe prints `mode → bypass` as
+it always did.
 
 **7.13 The person's own shell (R2).** `!command` runs and sends;
 `!!command` runs and only shows. Both render as the person's card on their
