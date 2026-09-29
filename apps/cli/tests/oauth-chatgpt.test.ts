@@ -108,6 +108,53 @@ describe("the callback server", () => {
 		expect(await server!.waitForCode()).toBe("the-code");
 		server!.close();
 	});
+	it("R3c: the pages wear kiso's look — both grounds, no script, the words escaped", async () => {
+		const port = await freePort();
+		const state = randomState();
+		const server = await startCallbackServer(state, "127.0.0.1", port);
+		const ok = await fetch(`http://127.0.0.1:${port}/auth/callback?code=c&state=${state}`);
+		const html = await ok.text();
+		expect(ok.headers.get("content-type")).toBe("text/html; charset=utf-8");
+		expect(html).toContain("<h1>Signed in</h1>");
+		expect(html).toContain("\u2726</b> kiso");
+		expect(html).toContain("prefers-color-scheme:dark");
+		expect(html).toContain("--ground:#ffffff");
+		expect(html).toContain("--ground:#0b0b0b");
+		expect(html).toContain('name="viewport"');
+		expect(html).not.toMatch(/<script/i);
+		expect(await server!.waitForCode()).toBe("c");
+		server!.close();
+	});
+
+	it("R3c: a declined sign-in says so — on the page (escaped) and to the terminal — where it read \"Missing code\"", async () => {
+		const port = await freePort();
+		const state = randomState();
+		const server = await startCallbackServer(state, "127.0.0.1", port);
+		const waiting = server!.waitForCode();
+		const res = await fetch(`http://127.0.0.1:${port}/auth/callback?state=${state}&error=access_denied&error_description=${encodeURIComponent("the <b>user</b> said no")}`);
+		expect(res.status).toBe(400);
+		const html = await res.text();
+		expect(html).toContain("<h1>Sign-in failed</h1>");
+		expect(html).toContain("access_denied: the &lt;b&gt;user&lt;/b&gt; said no");
+		expect(html).not.toContain("<b>user</b>");
+		expect(html).not.toContain("Missing code");
+		await expect(waiting).rejects.toThrow("ChatGPT sign-in failed — access_denied: the <b>user</b> said no");
+		server!.close();
+	});
+
+	it("R3c: an error with a wrong state is still a state mismatch — a stray request cannot end the sign-in", async () => {
+		const port = await freePort();
+		const state = randomState();
+		const server = await startCallbackServer(state, "127.0.0.1", port);
+		const res = await fetch(`http://127.0.0.1:${port}/auth/callback?state=wrong&error=access_denied`);
+		expect(res.status).toBe(400);
+		expect(await res.text()).toContain("State mismatch");
+		const ok = await fetch(`http://127.0.0.1:${port}/auth/callback?code=later&state=${state}`);
+		expect(ok.status).toBe(200);
+		expect(await server!.waitForCode()).toBe("later");
+		server!.close();
+	});
+
 	it("a port that cannot be bound yields null (the paste path takes over)", async () => {
 		const port = await freePort();
 		const first = await startCallbackServer("s", "127.0.0.1", port);
