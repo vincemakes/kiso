@@ -18,6 +18,7 @@
  */
 import { createServer } from "node:http";
 import { type LoginInteraction, type OAuthCredential, type OAuthFlow, RefreshRejectedError } from "./index.js";
+import { callbackPage, type CallbackPage } from "./page.js";
 import { generatePkce, randomState } from "./pkce.js";
 
 export const CHATGPT = {
@@ -138,28 +139,43 @@ export function credentialFromTokens(tokens: TokenSet): OAuthCredential {
 	return { type: "oauth", access: tokens.access, refresh: tokens.refresh, expires: tokens.expires, accountId, savedAt: Date.now() };
 }
 
-const PAGE = (title: string, body: string): string => `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font:16px system-ui;padding:2rem"><h1>${title}</h1><p>${body}</p></body>`;
-
 /** The local callback: one code for one state, or null when the port cannot
  *  be bound (the paste path takes over). */
 export function startCallbackServer(state: string, host: string, port: number): Promise<{ readonly waitForCode: () => Promise<string | null>; readonly close: () => void } | null> {
 	return new Promise((resolve) => {
 		let settle: ((code: string | null) => void) | undefined;
-		const waited = new Promise<string | null>((r) => {
+		let fail: ((reason: Error) => void) | undefined;
+		const waited = new Promise<string | null>((r, j) => {
 			settle = r;
+			fail = j;
 		});
+		// a failure that lands after the paste path won the race has no one
+		// awaiting it — it must not become an unhandled rejection
+		waited.catch(() => {});
 		const server = createServer((req, res) => {
 			const url = new URL(req.url ?? "", `http://${host}`);
-			const reply = (status: number, title: string, body: string): void => {
+			// Graphite R3c: the page looks like kiso.work (page.ts)
+			const reply = (status: number, page: CallbackPage): void => {
 				res.statusCode = status;
 				res.setHeader("Content-Type", "text/html; charset=utf-8");
-				res.end(PAGE(title, body));
+				res.end(callbackPage(page));
 			};
-			if (url.pathname !== "/auth/callback") return reply(404, "Not found", "This is kiso's sign-in callback.");
-			if (url.searchParams.get("state") !== state) return reply(400, "State mismatch", "The sign-in did not start from this kiso. Start again.");
+			if (url.pathname !== "/auth/callback") return reply(404, { kind: "note", state: "not found", title: "Nothing here.", body: "This is kiso's sign-in callback. Return to your terminal." });
+			if (url.searchParams.get("state") !== state) return reply(400, { kind: "fail", state: "state mismatch", title: "Start again.", body: "This sign-in did not start from the kiso that is waiting. Run kiso login chatgpt again in your terminal." });
+			// R3c: a sign-in the person declined (or the server refused) comes
+			// back as `error` and `error_description` — said as itself, here
+			// and in the terminal, where it used to read "Missing code"
+			const error = url.searchParams.get("error");
+			if (error !== null) {
+				const why = url.searchParams.get("error_description");
+				const reason = why === null || why === "" ? error : `${error}: ${why}`;
+				reply(400, { kind: "fail", state: "sign-in failed", title: "Sign-in failed.", body: "Return to your terminal and run kiso login chatgpt again.", detail: reason });
+				fail?.(new Error(`ChatGPT sign-in failed — ${reason}`));
+				return;
+			}
 			const code = url.searchParams.get("code");
-			if (!code) return reply(400, "Missing code", "The authorization server sent no code.");
-			reply(200, "Signed in", "You can close this window and return to kiso.");
+			if (!code) return reply(400, { kind: "fail", state: "sign-in failed", title: "No code came back.", body: "The authorization server sent no code. Return to your terminal and run kiso login chatgpt again." });
+			reply(200, { kind: "ok", state: "signed in", title: "You're signed in.", body: "kiso has your ChatGPT sign-in. Close this tab and return to your terminal." });
 			settle?.(code);
 		});
 		server.on("error", () => resolve(null));
