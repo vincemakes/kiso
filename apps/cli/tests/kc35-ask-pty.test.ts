@@ -455,8 +455,9 @@ describe("0.40.0 — dontAsk offers no ask_user, and leaving dontAsk brings it b
 		const resultOf = (id: string) => log.filter((r) => r.event.type === "tool_result" && r.event.callId === id);
 
 		// ① the banner says the ask is off, beside the tier that turned it off
-		//    (at 80 columns the banner's value column wraps inside the note)
-		const flat = screen.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").replace(/\s+/g, " ");
+		//    (at 80 columns the banner's value column wraps inside the note,
+		//    and a hanging row carries the facts' border — Graphite §7.10)
+		const flat = screen.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").replace(/\u2502/g, " ").replace(/\s+/g, " ");
 		expect(flat).toContain("ask (off in dontAsk)");
 		// ② in dontAsk the tool was not in the table: the kernel refused an
 		//    unknown tool, and neither the panel nor the decline path ran

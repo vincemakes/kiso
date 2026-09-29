@@ -88,7 +88,7 @@ const render = (cell: BodyCell, W = 80): string[] => cellComponent(cell).render(
 // end, where the settled outcome will stand; the window sits under it,
 // opened by `└` at column 6, its rows at column 8; there is no status
 // row of its own any more.
-const HEAD_RUNNING = /^● SHELL {3}npm test +running · 12s · esc stops · alt\+⏎ redirects$/;
+const HEAD_RUNNING = /^● SHELL npm test +running · 12s · esc stops · alt\+⏎ redirects$/;
 
 describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 	it("no output yet: the head row alone — nothing observed, nothing claimed", () => {
@@ -140,9 +140,9 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		setTTY(false);
 		const rows = render(running({ name: "read_file", input: "big.txt", inputFull: JSON.stringify({ path: "big.txt" }) }));
 		expect(rows).toHaveLength(1);
-		expect(rows[0]).toMatch(/^● READ {4}big\.txt +running · 12s$/);
+		expect(rows[0]).toMatch(/^● READ big\.txt +running · 12s$/);
 		const listed = render(running({ name: "list_dir", input: ".", inputFull: JSON.stringify({ path: "." }), resultText: "a.ts\nb.ts" }));
-		expect(listed[0]).toMatch(/^● LIST {4}\(root\) +running · 12s$/);
+		expect(listed[0]).toMatch(/^● LIST \(root\) +running · 12s$/);
 		expect(listed.slice(1)).toEqual(["  \u2514 a.ts", "    b.ts"]);
 	});
 
@@ -156,7 +156,7 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 				resultText: Array.from({ length: 22 }, (_, i) => `out ${i}`).join("\n"),
 			}),
 		);
-		expect(settled[0]).toMatch(/^ {2}SHELL {3}npm test +exit 0 · 22 lines · 18\.2s$/);
+		expect(settled[0]).toMatch(/^ {2}SHELL npm test +exit 0 · 22 lines · 18\.2s$/);
 		expect(settled).toContain("  \u2514 \u2026 17 earlier lines");
 		expect(settled.at(-1)!.trim()).toBe("ctrl+o expands");
 		expect(settled.join("\n")).not.toContain("running");

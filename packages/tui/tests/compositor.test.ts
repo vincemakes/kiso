@@ -855,7 +855,7 @@ describe("TUI v6 — the one compositor", () => {
 		// R13: the sibling next to the user's row is the first CALL's own
 		// card — the fold that used to stand there is retired. The subject
 		// is unchanged: two one-row cells, one blank between them.
-		const foldAt = rows.findIndex((l) => /^ {2}READ {4}x/.test(l)); // Graphite §7.4: the head at the content edge (column 2, R1f)
+		const foldAt = rows.findIndex((l) => /^ {2}READ x/.test(l)); // Graphite §7.4: the head at the content edge (column 2, R1f)
 		expect(foldAt).toBeGreaterThan(0);
 		expect(foldAt).toBe(userAt + 2); // R13 D1: one blank, even between two one-row cells
 		expect(rows[userAt + 1]).toBe(""); // …and it is a blank, not a shifted row

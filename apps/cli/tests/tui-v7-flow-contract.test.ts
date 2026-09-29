@@ -354,7 +354,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// needs is back to what it originally was — a settled read's own
 		// card on screen beside a running shell. A finished call commits
 		// now instead of waiting for a fold, so the pair occurs again.
-		const running = frames.filter((f) => f.grid.some((l) => /^ {2}READ {4}\S/.test(l)) && f.grid.some((l) => /^● SHELL /.test(l)));
+		const running = frames.filter((f) => f.grid.some((l) => /^ {2}READ \S/.test(l)) && f.grid.some((l) => /^● SHELL /.test(l)));
 		expect(running.length).toBeGreaterThanOrEqual(2); // NON-vacuous: the moment really spans frames
 		// the window EXISTS, and it IS the output. DECLARED REVERSAL
 		// (DC-46) of W8's fixed three rows and of R13's first draft, which
@@ -411,7 +411,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 			// head row — the two selectors swap prefixes back, because the
 			// breathing mark is on the running CALL again now that there is
 			// no activity line to carry it.
-			const readIdx = g1.findIndex((l) => /^ {2}READ {4}\S/.test(l));
+			const readIdx = g1.findIndex((l) => /^ {2}READ \S/.test(l));
 			const readBottom = readIdx; // the head row is where the card starts
 			const shellHeader = g1.findIndex((l) => /^● SHELL /.test(l));
 			expect(shellHeader).toBeGreaterThan(readBottom); // the shell sits BELOW the streaming cell

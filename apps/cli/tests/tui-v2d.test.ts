@@ -198,7 +198,8 @@ const CELL_LINE = [
 	// facts and keys row): at 24 rows the opening is one line, then what
 	// loaded — one labelled fact per row.
 	/^✦ kiso \d+\.\d+\.\d+ · the coding agent that survives kill -9$/, // the one-line opening
-	/^(SESSION|RULES|SKILLS|MCP|EXTENSIONS) {2,}\S.*$/, // a labelled fact (the lint trims the indent)
+	/^│ {2}(SESSION|RULES|SKILLS|MCP|EXTENSIONS) {2,}\S.*$/, // a labelled fact behind the facts' border (the lint trims the indent)
+	/^│ {3,}\S.*$/, // a fact's value hanging under itself, or DC-49's row
 	/^▌\s?.*$/, // the editor's SELF-RENDER row — the LINE-MODE brick (W6-kept byte-for-byte): the editor's first paint rides the CLI's pre-dock console.log message on the same row
 	// TUI v5 #16f: the user block — the SGR-7 chip alone (the 2026-08-09
 	// ruling retired the ▍ rail + the indent). Classified by its RAW byte

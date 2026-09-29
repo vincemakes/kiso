@@ -410,7 +410,7 @@ describe("v7 W1: the banner tiers (the height input)", () => {
 		const rows = bannerLines(80, 19, V, "[3 extensions: asky]").map(stripAnsi);
 		expect(rows[0]).toBe(`✦ kiso ${V} · the coding agent that survives kill -9`);
 		expect(rows[1]).toBe("");
-		expect(rows[2]).toBe("  EXTENSIONS  [3 extensions: asky]");
+		expect(rows[2]).toBe("  │  EXTENSIONS  [3 extensions: asky]"); // Graphite §7.10: the facts' bordered list
 		expect(rows).toHaveLength(3); // no facts bound: no SESSION, no RULES
 	});
 	it("all three tiers at 40, 64, 88, 120: no row exceeds W (truncateRow is the width authority)", () => {
@@ -502,7 +502,7 @@ describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
 		// list — one blank, then the list — is the subject here and is
 		// untouched.
 		const ext = big.findIndex((r) => r.includes("[3 extensions: asky]"));
-		expect(stripAnsi(big[ext]!)).toBe("  EXTENSIONS  [3 extensions: asky]"); // Graphite §7.10: the content edge
+		expect(stripAnsi(big[ext]!)).toBe("  │  EXTENSIONS  [3 extensions: asky]"); // Graphite §7.10: the content edge, the facts' border
 		expect(big[ext + 1]).toBe("");
 		expect(big[ext + 2]).toBe("  ✦ resume");
 		expect(big.length).toBe(15); // the wordmark's nine rows + blank + extensions + blank + 3 resume rows

@@ -68,7 +68,7 @@ describe("TUI2-R1.5 ④(a) — the running shell header is the clean one (VD-4)"
 		const rows = render(shellCell({ resultText: "step 1 · compiling module 1 of 6" }));
 		expect(rows[0]).not.toContain('{"command"');
 		expect(rows[0]).not.toContain('\\"');
-		expect(rows[0]).toContain("SHELL   for i in 1 2 3 4 5 6;");
+		expect(rows[0]).toContain("SHELL for i in 1 2 3 4 5 6;");
 	});
 
 	it("the duration is its OWN segment at the head row's end — never glued to a cut word", () => {
@@ -95,7 +95,7 @@ describe("TUI2-R1.5 ④(a) — the running shell header is the clean one (VD-4)"
 		for (const state of ["pending", "approval"] as const) {
 			const rows = render(shellCell({ state }));
 			expect(rows[0], state).not.toContain('{"command"');
-			expect(rows[0], state).toContain("SHELL   for i in");
+			expect(rows[0], state).toContain("SHELL for i in");
 		}
 	});
 });
@@ -172,7 +172,7 @@ describe("R9 P2 / D4 — the settled shell keeps its tail (reversing VD-5)", () 
 
 	it("the head row names the call; the outcome closes the block on its own row", () => {
 		const rows = render(done());
-		expect(rows[0]).toMatch(/^ {2}SHELL {3}npm test +exit 0 · 7 lines · 6\.0s$/);
+		expect(rows[0]).toMatch(/^ {2}SHELL npm test +exit 0 · 7 lines · 6\.0s$/);
 		expect(rows.at(-1)!.trim()).toBe("ctrl+o expands");
 	});
 
@@ -188,7 +188,7 @@ describe("R9 P2 / D4 — the settled shell keeps its tail (reversing VD-5)", () 
 	it("an output inside the cap is whole, and gets no note", () => {
 		const rows = render(done({ resultText: "one\ntwo\nthree" })).map((r) => r.trim().replace(/^└ /, ""));
 		expect(rows.join("\n")).not.toContain("earlier lines");
-		expect(rows.filter((r) => r !== "")).toEqual([expect.stringMatching(/^SHELL {3}npm test +exit 0 · 3 lines · 6\.0s$/), "one", "two", "three"]);
+		expect(rows.filter((r) => r !== "")).toEqual([expect.stringMatching(/^SHELL npm test +exit 0 · 3 lines · 6\.0s$/), "one", "two", "three"]);
 	});
 
 	it("the line count is stated EXACTLY ONCE, and it is on the outcome row", () => {

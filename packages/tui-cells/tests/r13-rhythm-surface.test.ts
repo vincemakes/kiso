@@ -132,13 +132,13 @@ describe("§7.4 — the card: pad · head · body · foot · pad", () => {
 		}
 	});
 
-	it("the columns: the edge cell at 0, the verb at 2, the target at 10, and every body row UNDER THE VERB at 2", () => {
+	it("the columns: the edge cell at 0, the verb at 2, the target one space after it, and every body row UNDER THE VERB at 2", () => {
 		setGround("light");
 		const raw = render(tool({ resultText: lines(90, (i) => `out ${i + 1}`) }));
 		for (const r of raw) expect(r.startsWith(`${COLOR_LIGHT.runEdge} ${COLOR_LIGHT.washRun}`), "the edge cell opens every row").toBe(true);
 		const rows = raw.map(plain);
 		expect(rows[1]!.indexOf("SHELL")).toBe(2);
-		expect(rows[1]!.indexOf("npm test")).toBe(10);
+		expect(rows[1]!.indexOf("npm test")).toBe(8); // the verb and one space (owner, 2026-09-29)
 		for (const r of rows.slice(2, 8)) expect(r.search(/\S/), JSON.stringify(r)).toBe(2);
 	});
 
@@ -379,16 +379,16 @@ describe("R13 — the three deviations from the ruled mock", () => {
 	it("② a SEARCH names what it looked for, and its scope behind it", () => {
 		setGround("unknown");
 		const bare = render(tool({ name: "search_text", input: "TODO", inputFull: JSON.stringify({ pattern: "TODO" }), resultText: "a.ts:1: // TODO" })).map(plain);
-		expect(bare[0]!, "a whole-tree search had an EMPTY head row").toMatch(/^ {2}SEARCH  TODO {2,}/);
+		expect(bare[0]!, "a whole-tree search had an EMPTY head row").toMatch(/^ {2}SEARCH TODO {2,}/);
 		const scoped = render(tool({ name: "search_text", input: "TODO", inputFull: JSON.stringify({ pattern: "TODO", path: "src" }), resultText: "src/a.ts:1: // TODO" })).map(plain);
-		expect(scoped[0]!, "a scoped search named the directory instead of the pattern").toMatch(/^ {2}SEARCH  TODO · src {2,}/);
+		expect(scoped[0]!, "a scoped search named the directory instead of the pattern").toMatch(/^ {2}SEARCH TODO · src {2,}/);
 	});
 
 	it("③ ONE grammar for every card — the outcome is the same `·` chain at the head row's end", () => {
 		setGround("unknown");
 		const read = render(tool({ name: "read_file", input: "a.ts", inputFull: JSON.stringify({ path: "a.ts" }), resultText: lines(10, (i) => `l${i}`) })).map(plain);
 		expect(read).toHaveLength(1);
-		expect(read[0]).toMatch(/^ {2}READ {4}a\.ts +10 lines · 0\.1s · ctrl\+o expands$/);
+		expect(read[0]).toMatch(/^ {2}READ a\.ts +10 lines · 0\.1s · ctrl\+o expands$/);
 		const shell = render(tool({ resultText: lines(90, (i) => `out ${i}`) })).map(plain);
 		expect(shell[0]).toMatch(/ exit 0 · 90 lines · 0\.1s$/);
 		expect((read[0]!.match(/\d+ lines?/g) ?? []).length, "the count is said twice on the head row").toBe(1);

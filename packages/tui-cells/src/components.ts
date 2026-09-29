@@ -985,8 +985,6 @@ const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
  *  at 4, opened by `└` (R8a's indent, which is what says "these rows are
  *  output" once nothing is painted). */
 const BODY_ROW_FLAT = "    ";
-/** The verb column's width (§7.5), so the targets line up. */
-const VERB_COL = 7;
 /** Inside a painted card the body sits at the content edge, under the
  *  verb — the head and what it printed line up (owner, 2026-09-29, the
  *  0.44 card's alignment). */
@@ -1117,9 +1115,11 @@ function outcomeStyled(text: string, error: boolean): string {
  */
 function headCore(verb: string, target: string, tiers: readonly string[], room: number, error: boolean): string {
 	const p = palette();
-	const verbCol = verb.length < VERB_COL ? verb.padEnd(VERB_COL) : verb;
-	const lead = `${p.dim}${verbCol}${p.reset} `;
-	const avail = Math.max(1, room - (verbCol.length + 1));
+	// the verb and ONE space, then the target (owner, 2026-09-29: the verb
+	// column padded to seven left the target stranded between the verb and
+	// the body under it — 0.44's `shell pwd && ls -la` reads as one line)
+	const lead = `${p.dim}${verb}${p.reset} `;
+	const avail = Math.max(1, room - (verb.length + 1));
 	const compose = (tg: string, out: string): string => `${lead}${tg}${" ".repeat(Math.max(2, avail - visibleWidth(tg) - visibleWidth(out)))}${outcomeStyled(out, error)}`;
 	for (const t of tiers) if (visibleWidth(target) + 2 + visibleWidth(t) <= avail) return compose(target, t);
 	const last = tiers[tiers.length - 1] ?? "";

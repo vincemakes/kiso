@@ -89,7 +89,7 @@ describe("the update card reaches the screen", () => {
 		// it follows the opening rather than displacing it
 		// Graphite §7.10: the opening ends in what loaded (the R2 keys row
 		// retired to the input's key ladder); the extensions fact is its last
-		const keys = rows.findIndex((r) => /^ {2}EXTENSIONS {2}/.test(r));
+		const keys = rows.findIndex((r) => /^ {2}│ {2}EXTENSIONS {2}/.test(r));
 		expect(keys, "no opening on screen").toBeGreaterThanOrEqual(0);
 		expect(at, "the line landed above the opening's last fact").toBeGreaterThan(keys);
 

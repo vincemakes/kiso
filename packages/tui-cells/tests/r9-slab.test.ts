@@ -69,7 +69,7 @@ describe("R9 P2 → Graphite §7.4 — the card's shape", () => {
 		const rows = render(shell(88));
 		expect(rows).toHaveLength(10);
 		expect(isPad(rows[0]!) && isPad(rows[9]!)).toBe(true);
-		expect(inner(rows[1]!)).toMatch(/^SHELL {3}pwd && ls -la +exit 0 · 88 lines · 0\.4s$/);
+		expect(inner(rows[1]!)).toMatch(/^SHELL pwd && ls -la +exit 0 · 88 lines · 0\.4s$/);
 		expect(inner(rows[2]!)).toBe("\u2026 83 earlier lines");
 		expect(rows.slice(3, 8).map(inner)).toEqual(["row 84", "row 85", "row 86", "row 87", "row 88"]);
 		expect(inner(rows[8]!)).toBe("ctrl+o expands");
@@ -93,7 +93,7 @@ describe("R9 P2 → Graphite §7.4 — the card's shape", () => {
 		setGround("light");
 		const rows = render(shell(3));
 		expect(rows.map(inner).join("\n")).not.toContain("earlier lines");
-		expect(rows.filter((r) => !isPad(r)).map(inner)).toEqual([expect.stringMatching(/^SHELL {3}pwd && ls -la +exit 0 · 3 lines · 0\.4s$/), "row 1", "row 2", "row 3"]);
+		expect(rows.filter((r) => !isPad(r)).map(inner)).toEqual([expect.stringMatching(/^SHELL pwd && ls -la +exit 0 · 3 lines · 0\.4s$/), "row 1", "row 2", "row 3"]);
 	});
 
 	/**
@@ -108,7 +108,7 @@ describe("R9 P2 → Graphite §7.4 — the card's shape", () => {
 			setGround(g);
 			const rows = render(read as Extract<BodyCell, { kind: "tool" }>);
 			expect(rows, `ground=${g}`).toHaveLength(3);
-			expect(inner(rows[1]!), `ground=${g}`).toMatch(/^READ {4}src\/parser\.ts +0 lines · 0\.4s$/);
+			expect(inner(rows[1]!), `ground=${g}`).toMatch(/^READ src\/parser\.ts +0 lines · 0\.4s$/);
 			expect(rows[1], `ground=${g}`).toContain(g === "light" ? WASH.light : WASH.dark);
 			for (const row of rows) expect(row, `ground=${g}`).not.toContain("\x1b[7m");
 		}
@@ -191,7 +191,7 @@ describe("R9 P2 — with no ground, the card does not paint at all", () => {
 	it("the head at the content edge, the body two columns under it opened by `└`, the key on the foot", () => {
 		setGround("unknown");
 		const rows = render(shell(88)).map((r) => plain(r).trimEnd());
-		expect(rows[0]).toMatch(/^ {2}SHELL {3}pwd && ls -la +exit 0 · 88 lines · 0\.4s$/);
+		expect(rows[0]).toMatch(/^ {2}SHELL pwd && ls -la +exit 0 · 88 lines · 0\.4s$/);
 		expect(rows.slice(1, 7)).toEqual(["  \u2514 \u2026 83 earlier lines", "    row 84", "    row 85", "    row 86", "    row 87", "    row 88"]);
 		expect(rows[7]).toMatch(/^ +ctrl\+o expands$/);
 		expect(render(shell(88))[2], "the output rows are dim off the card").toContain("\x1b[2m");
