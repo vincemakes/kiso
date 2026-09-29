@@ -1282,7 +1282,7 @@ async function decideCall(
 		chainVerdict = { action: "ask" }; // the conservative reading of an old log
 	} else if (durable === undefined && approvalPolicy !== undefined) {
 		try {
-			chainVerdict = await raceAbort(Promise.resolve(approvalPolicy.decide(payload, ctx)), signal);
+			chainVerdict = await raceAbort(Promise.resolve(approvalPolicy.decide({ name: payload.name, input: payload.input }, { ...ctx, callId: call.callId })), signal);
 		} catch {
 			chainVerdict = { action: "ask" }; // a throwing chain counts as ask — it speaks, never silently
 		}

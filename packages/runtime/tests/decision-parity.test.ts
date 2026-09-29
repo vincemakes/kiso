@@ -157,6 +157,28 @@ describe("0430-F1: the same durable prefix, fresh and recovered, writes the same
 		expect(r.fresh.filter((s) => s.startsWith("permission_decided approved gate"))).toHaveLength(1); // decidedBy = the speaking extension
 	});
 
+	it("F3: the chain sees the same call on both paths — { name, input } first, the call's id in ctx", async () => {
+		const decided: { call: unknown; ctx: ToolContext }[] = [];
+		const gate = {
+			name: "gate",
+			approvals: [
+				{
+					decide: (call: unknown, ctx: ToolContext) => {
+						decided.push({ call, ctx });
+						return { action: "allow" as const };
+					},
+				},
+			],
+		};
+		await bothPaths({ name: "probe", input: { x: 1 } }, { extensions: [gate] } as Partial<AgentDefinition>);
+		expect(decided).toHaveLength(2); // fresh, then recovered
+		for (const d of decided) expect(d.call).toStrictEqual({ name: "probe", input: { x: 1 } });
+		expect(decided[0]!.ctx.sessionId).toBe("s");
+		expect(decided[1]!.ctx.sessionId).toBe("s");
+		expect(decided[0]!.ctx.callId).toBe("c1");
+		expect(decided[1]!.ctx.callId).toBe("c1");
+	});
+
 	it("the preflight: an unknown tool, unparsable arguments and a schema failure are refused the same way on both paths — one invalid_input result, no decision, no execution", async () => {
 		for (const call of [
 			{ name: "ghost", input: { x: 1 } },
