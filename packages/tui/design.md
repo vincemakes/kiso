@@ -1019,15 +1019,28 @@ one admission point land together as one message. A turn stopped with a
 steer still waiting puts its text back in the input. The queued row and
 `alt+⏎` retire with the queue.
 
-**8.8 The panels (R3).** `/status`, `/settings` and the model picker are
-bands (§8.1–8.4), and `esc` closes each.
+**8.8 The panels (R3e).** `/status`, `/settings` and the model picker are
+bands (§8.1–8.4). Off a dock (a pipe, `-p`) `/status` and `/settings`
+print the lines they always printed.
 
-- `/status` is read-only: SESSION, MODEL (the full id and the endpoint),
-  CONTEXT (the meter, where the window figure comes from, the split
-  system / tools / history / this turn, the soft and hard tiers), CACHE,
-  TOKENS, COLOUR (24-bit or 256), VERSION.
-- `/settings`: one row per setting — `name · value · source` (user,
-  project, env or default); `↑↓` move, `←→` change.
+- `/status` is a read-only SHEET over the input: the named hairline, a
+  fact per row, its label `dim` in a column and its value folded under
+  itself — session (the id, its `/name`, its events), model (the full id,
+  its host, its profile), context (used, and where the window figure comes
+  from), compaction (its two thresholds; `/context` has the split),
+  colour (24-bit, 256 or off, and the ground), version — and
+  `esc closes · typing goes to the input`. Unlike the keys sheet, what is
+  typed after it is typed (the chunk is parsed whole, so an arrow is an
+  arrow); only `esc` is eaten. CACHE rides the seal (§7.11), not here.
+- `/settings` is a pick panel, a row per setting (owner, 2026-09-29). The
+  SESSION's own settings change in it: the mode and thinking walk their own
+  axis with `←→` (the strip and the key row name it: `mode:`,
+  `thinking:`) and apply on `⏎` through `/mode`'s and `ctrl+t`'s own
+  paths; `⏎` on the model opens `/model`. A setting that lives in a
+  config file (floor, auto-compact, project trust, the window, the theme)
+  shows its value and source, and `⏎` prints how to change it: kiso never
+  writes the person's config (0.40.6's rule stands for those — the same
+  split as two of the reference agents; see the R3 plan).
 - The model picker: `/model`'s list as a band; `⏎` switches.
 
 **8.9 The status bar.** One row under the input: the session and its
