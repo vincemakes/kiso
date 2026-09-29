@@ -817,23 +817,41 @@ asked about showed nothing of what it changed.)
 - No line numbers (§10).
 
 **7.15 The answer's markdown (R2).** The answer carries no label (§1.5); it
-is the prose at the content edge, rendered as:
+is the prose at the content edge, rendered as below on a known ground. Off
+one (the unknown ground, no colour) the mono forms stay — `#` underlined,
+`###` printing its own marker, `- ` bullets, a `│` gutter, a solid rule —
+because there a marker is the only carrier (DC-4).
 
 | element | rendering |
 |---|---|
-| `#` | bold `gold`, then a rule fading from `gold-mark`; only an answer's first `#` takes it, and a later one renders as `##` |
-| `##` | bold `blue`, `§` hanging in the mark column |
+| `#` | bold `gold`, then a forty-column rule fading from `gold-mark` to the ground |
+| `##` | bold `blue`, `§` in `rail` hanging in the mark column |
 | `###` | bold `ink` |
-| `####` | bold `dim`, upper case |
-| bold / italic / strike | bold ink / italic / `dim` with SGR 9 |
+| `####` | bold `dim`, upper case outside code spans |
+| bold / italic / strike | bold / italic / `dim` (never SGR 9: Apple Terminal draws none) |
 | inline code | `blue` on `code` |
-| link | `blue`, underlined; an OSC 8 hyperlink where the terminal supports one, the URL in `dim` after the text where it does not |
-| bullets / ordered / tasks | `–` then `·` / `1.` in `dim` / `✓` ok, `○` dim |
-| quote | italic `ink2` behind a `dim` bar |
-| alerts | `NOTE`: a `blue` bar and label; `WARNING`: a `gold-mark` bar and label |
-| table | light box drawing in `rail`, the header row bold |
-| code fence | a `wash-done` block with its bar and the language at the top right; keywords `blue`, strings `ok`, numbers `gold`, comments `dim` italic, function names bold |
-| rule | `·  ·  ·` in `rail` |
+| link | `blue`, underlined, the URL in `dim` after the text (no OSC 8: Apple Terminal draws one as plain text) |
+| bullets / ordered / tasks | `–` then `·` in `dim` / the number in `dim` / `✓` ok, `○` dim in place of the bullet |
+| quote | a bar of `quoteBar` (a background cell, §1.5), a space, italic `ink2` |
+| alerts | `> [!NOTE]` / `TIP` / `IMPORTANT`: a `noteBar` bar and the word bold `blue`; `WARNING`: `warnBar` and `gold-mark`; `CAUTION`: `cautionBar` and `fail` |
+| table | box drawing in `edge` (between `line` and `rail`), the header row bold |
+| code fence | R2c |
+| rule | `·  ·  ·` in `rail`, inset two columns |
+
+Every `#` takes the gold form: a rule that only an answer's FIRST `#` took
+would make a block's bytes depend on the blocks before it, and the
+freeze discipline forbids that (two documents that produce the same block
+produce the same bytes). DECLARED REVERSALS, named: DC-4's "levels are not
+differentiated by colour" (colour is what Graphite differentiates them
+by; the mono forms keep the markers); E1's `- ` bullet kept for copying
+(the prototype's `–`); md.ts's "`~~` is not a construct" (struck text is
+dim); R3's "the rule is a solid hairline everywhere", for the model's own
+rule only (three dots can never be taken for kiso's chrome).
+
+The person's own words render the same way inside their block (G6), with
+the line breaks they typed kept (a soft break in an answer is a space; in
+the person's message it is theirs), and every reset inside a row re-opens
+the block's ground.
 
 Prose, thinking and the answer wrap from the content edge to two columns
 short of the right edge — the same margin on both sides, and no width cap
