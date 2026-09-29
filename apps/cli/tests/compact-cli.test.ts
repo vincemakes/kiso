@@ -73,6 +73,7 @@ def driver(cli, env, feeds, workdir, timeout, session, mode_flag):
     winsize(24, 80)
     full = b""
     idx = 0
+    pos = 0
     end = time.time() + timeout
     done = False
     while time.time() < end and not done:
@@ -109,8 +110,15 @@ def driver(cli, env, feeds, workdir, timeout, session, mode_flag):
                 done = True
                 break
             full += data
-            while idx < len(feeds) and feeds[idx][0].encode() in full:
+            # each needle is looked for AFTER the previous one matched: two
+            # feeds that wait on the same words (a second /status) must not
+            # both fire on the first occurrence (Graphite R3e)
+            while idx < len(feeds):
+                at = full.find(feeds[idx][0].encode(), pos)
+                if at < 0:
+                    break
                 os.write(fd, feeds[idx][1].encode())
+                pos = at + len(feeds[idx][0].encode())
                 idx += 1
     try:
         os.kill(pid, signal.SIGTERM)
