@@ -384,3 +384,24 @@ wiring and a gate, the ADR-0024 Amendment 2 standard.
   rather than pending invocations (ADR-0024 Amendment 3).
 - **The `liveAsk` generation-compat clause** — delete it only when the
   generation corpus no longer contains a pre-EC-1 era.
+
+## Amendment 1 (2026-09-29): streamed fragments are trajectory material, not boundaries
+
+The three durable boundaries — the turn commit (a durable `stop`),
+STARTED before any handler, the receipt — and every other fact the
+recovery reads are still synced before they are published. Streamed
+fragments (`text_delta`, `thinking`, `tool_call_input_delta`) are none of
+them: they belong to a turn that is uncommitted until its `stop` is
+durable, and an uncommitted turn is already discarded and re-requested
+after a crash. The store therefore writes them without a sync of their
+own (ADR-0025 Amendment 1), and the next boundary's sync makes them
+durable: a call's deltas are on disk before its `tool_call_end` is, so a
+precommit-safe execution never starts on arguments that are not.
+
+The durable event multiset, its order and its seq are unchanged; only
+when the fragment bytes reach the disk moves. Gate:
+`packages/runtime/tests/store-fsync-classes.test.ts` counts the syncs per
+append — 0 for a fragment, exactly 1 for everything else — and pins a
+failed STARTED sync (the handler never starts), a failed receipt sync
+(the run does not complete) and a failed fragment write (the append
+still throws).
