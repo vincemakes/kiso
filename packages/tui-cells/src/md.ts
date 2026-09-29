@@ -525,7 +525,13 @@ function blockBody(b: MdBlock, W: number, depth: number, base = "", hard = false
 			// is verbatim" (E2 replaced the `│` gutter this comment used to
 			// name with them); saying it twice cost legibility and bought
 			// nothing.
-			return foldLineWidth(src.slice(indent.length), W - visibleWidth(gutter), indent).map((r) => `${gutter}${r}`);
+			// Graphite §5 (R2c, owner 2026-09-29: "no ground — keep it blue,
+			// as the design has it") — DECLARED REVERSAL of DC-3's "a fenced
+			// body carries no colour token": DC-3 removed a 1.54:1 grey, and
+			// `blue` reads at the text floor on both grounds. The rails stay
+			// (E2: a copied block is still fenced); there is no ground.
+			const [on, off] = p.blue !== "" ? [p.blue, p.fgEnd] : ["", ""];
+			return foldLineWidth(src.slice(indent.length), W - visibleWidth(gutter), indent).map((r) => `${gutter}${on}${r}${off}`);
 		}
 		case "quote":
 			return quoteRows(b, W, depth);

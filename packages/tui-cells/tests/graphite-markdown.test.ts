@@ -135,6 +135,20 @@ describe("§5 — the answer on a known ground", () => {
 		expect(rule).toContain(`${p.rail}·  ·  ·`);
 	});
 
+	it("R2c: a fence's lines are blue with no ground, its rails dim as before (E2 stands: a copied block is still fenced)", () => {
+		setGround("light");
+		const p = palette();
+		const rows = answer("```ts\nconst a = 1;\n  return a;\n```", 80);
+		expect(rows.map(plain)).toEqual(["  ```ts", "    const a = 1;", "      return a;", "  ```"]);
+		expect(rows[1]).toContain(`${p.blue}const a = 1;${p.fgEnd}`);
+		for (const r of rows) {
+			expect(r).not.toContain(p.codeBg);
+			expect(r).not.toContain(p.washDone);
+		}
+		setGround("unknown");
+		expect(answer("```\nx\n```", 80)[1]).toBe("    x");
+	});
+
 	it("the seam law (§1.5): no block-element glyph anywhere in the answer", () => {
 		for (const g of ["light", "dark"] as const) {
 			setGround(g);
