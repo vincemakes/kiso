@@ -256,7 +256,10 @@ function runBang(command: string, send: boolean, ctx: DispatchCtx): void {
 				ctx.submitTurn(block);
 				return; // submitTurn owns the prompt from here
 			}
-			bodyLog(block, "words");
+			// G3 (R2d): `!!` is the person's command card, `not sent` — its
+			// output escaped like every tool's (the raw block this replaced
+			// printed the fence's markers and did not escape the output)
+			body.bang(command, result.content, result.isError === true);
 		} finally {
 			activeBang = null;
 		}

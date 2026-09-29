@@ -920,6 +920,35 @@ export class Body {
 		this.#mark();
 	}
 
+	/** G3 (R2d) — the person's `!!cmd`: run, shown here, never sent. Off a
+	 *  dock the command and its output are written as they always were. */
+	bang(command: string, output: string, isError: boolean): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`$ ${escapeTerminal(command)}\n${escapeTerminal(output)}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		this.#cells.push({ kind: "bang", command, output, isError, done: true });
+		this.#mark();
+	}
+
+	/** G3 (R2d) — the input's lead: a gold `$ ` while the line starts with
+	 *  `!` (the person's shell, run by `!` / `!!`); the bound prompt
+	 *  otherwise. One line only — a pasted block that begins with `!` is
+	 *  prose (dispatch's rule). */
+	#composerLead(): string {
+		const st = this.#inputState();
+		const lines = st.lines !== undefined && st.lines.length > 0 ? st.lines : [st.line];
+		if (lines.length === 1 && lines[0]!.startsWith("!")) {
+			const p = palette();
+			return `${p.gold}$${p.gold === "" ? "" : p.fgEnd} ${this.#inputPrompt}`;
+		}
+		return this.#inputPrompt;
+	}
+
 	/** The last COMPLETE thinking block, for /think. */
 	lastThinking(): string | null {
 		return this.#lastThinking;
@@ -1755,7 +1784,7 @@ export class Body {
 		// panel rows' edit column; leadWidth is the ONE authority).
 		// R2: wallL is 0 — the box is retired, so the row starts at column
 		// one and the frame's marker and this formula share the constant.
-		const lead = panel !== null ? panelLeadOf(panel) : this.#inputPrompt;
+		const lead = panel !== null ? panelLeadOf(panel) : this.#composerLead();
 		return 1 + leadWidth(lead) + st.cursor;
 	}
 
@@ -2593,7 +2622,7 @@ export class Body {
 		// Graphite §7.8: the prompt `›` is gold (the edge of a turn); the
 		// bound lead is plain text and the colour is the paint's, so a ground
 		// resolved after the first frame reaches it.
-		const lead = panel !== null ? panelLeadOf(panel) : this.#inputPrompt.replace("\u203a", `${p.gold}\u203a${p.gold === "" ? "" : p.fgEnd}`);
+		const lead = panel !== null ? panelLeadOf(panel) : this.#composerLead().replace("\u203a", `${p.gold}\u203a${p.gold === "" ? "" : p.fgEnd}`);
 		const leadW = leadWidth(lead);
 		// a LEGACY one-row provider (the old {line, cursor} shape) keeps
 		// working: its single line is the composer's single row

@@ -54,6 +54,13 @@ describe("§2.2 — the shell gesture", () => {
 
 		// both reached the screen — the human ran two commands and saw both
 		expect(raw).toContain("marker-one");
+		// G3 (R2d): each as the person's command card, saying what became of
+		// it — and no fence's markers on the screen (both used to print them)
+		expect(raw).toContain("sent to the model");
+		expect(raw).toContain("not sent");
+		// (the terminal TITLE may still carry the fence: a session is named
+		// from its first line as sent — the transcript is the subject here)
+		expect(raw.replace(/\x1b\][^\x07]*\x07/g, "")).not.toContain("```console");
 		expect(raw).toContain("marker-two");
 		// the transcript shape: one fenced block per command, read as a
 		// terminal would print it

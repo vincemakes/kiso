@@ -222,6 +222,34 @@ describe("§7.8 — the composer", () => {
 		expect(screen()[21]).toBe(`› ${line}`);
 	});
 
+	it("G3 (R2d): a line that starts with `!` is led by a gold `$ ` — one line only, and `\\!` is text", () => {
+		// the CLI binds the empty lead (R1f); the `$ ` rides in front of it
+		const at = (input: InputState): string => {
+			const writes: string[] = [];
+			const body = new Body({ active: () => true, height: () => 24, width: () => 80, editCol: () => 1, write: (s) => writes.push(s) });
+			body.bindInput(() => input, "");
+			body.enter();
+			body.redraw();
+			vi.advanceTimersByTime(16);
+			const sc = new Screen(80, 24);
+			sc.feed(writes.join(""));
+			return sc.rows.map((r) => r.join("").replace(/\s+$/, ""))[21]!;
+		};
+		expect(at({ line: "!ls -la", cursor: 7 })).toBe("$ !ls -la");
+		expect(at({ line: "!!git status", cursor: 12 })).toBe("$ !!git status");
+		expect(at({ line: "\\!not a command", cursor: 16 })).toBe("\\!not a command");
+		expect(at({ line: "ls", cursor: 2 })).toBe("ls");
+		setGround("light");
+		const p = palette();
+		const writes: string[] = [];
+		const body = new Body({ active: () => true, height: () => 24, width: () => 80, editCol: () => 1, write: (s) => writes.push(s) });
+		body.bindInput(() => ({ line: "!ls", cursor: 3 }), "");
+		body.enter();
+		body.redraw();
+		vi.advanceTimersByTime(16);
+		expect(writes.join("")).toContain(`${p.gold}$${p.fgEnd} !ls`);
+	});
+
 	it("a flash rides the live row until the next key", () => {
 		const { body, screen } = make(80, () => ({ line: "", cursor: 0 }));
 		body.flash("copied 212 chars");
