@@ -877,10 +877,15 @@ Below it: the status bar (§8.9). The terminal title (§8.10) is the input's
 state seen from another tab. The keys sheet is the band vocabulary on the
 body.
 
-**8.1 A band names itself.** It opens on the hairline, then its title row:
-the title bold gold — `commands`, `files`, `sessions`, `keys`, `needs you`,
-`status`, `settings`, `model` — and its keys at the right. With scrollback
-behind it, nothing else says where the surface begins.
+**8.1 A band names itself.** Its opening row is the hairline with its name
+in it: `─── commands ───…`, the rule in `line`, the name bold gold —
+`commands`, `files`, `sessions`, `keys`, `needs you`, `question`, `model`,
+`mode`, `status`, `settings` — and what follows the name in the label
+(`· this workspace 2 of 5 · tab all`) `dim`. One row, not a hairline and
+a title row: every band and panel keeps the height it had (R3a). It closes
+on the hairline. With scrollback behind it, nothing else says where the
+surface begins. Off a known ground the row is one dim span, the same
+words.
 
 **8.2 A band is a WINDOW, not the whole list.** Five rows and a
 counter — and the counter appears only when the list is actually cut,
@@ -888,8 +893,15 @@ because over rows you can all see it says nothing they do not. Rows
 are a table: the name column padded to the longest entry in the WHOLE
 list so the descriptions do not shift as the window scrolls, and a
 long description CUT rather than folded, since a fold would break the
-height the window buys. The selected row is on `wash-ask` with the gold bar
-and a gold `›`.
+height the window buys. The selected row — in every list that asks the
+person to pick: the approval, the question, `/model`, `/mode`, the
+commands, the files, the sessions — is a card's head in the colour that
+waits for the person: its `askEdge` cell in column 0 (a background, §1.5),
+the row on `washAsk` to the right edge, and, where the list's rows carry
+a marker column (approval, question, pick, commands), a gold `›` in column
+1; the words do not move when the cursor does. DECLARED REVERSALS: the
+reverse-video bar and its `→`, and the command list's bold `▸` (R3a). Off
+a known ground the reverse-video bar stays — one row, so no seam.
 
 **8.3 A band opens on its sigil.** `/` alone opens the command list;
 the list that names the commands must not require you to name one
