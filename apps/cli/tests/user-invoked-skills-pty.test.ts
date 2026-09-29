@@ -98,6 +98,8 @@ describe("0.40.0 — user-invoked skills (PTY)", () => {
 			}),
 		);
 		// the menu draws its entries without the leading slash
-		expect(out).toMatch(/▸ boss-call\s+mailbox between sessions · skill/);
+		// Graphite §8.2 (R3a): the selected row carries the list's `→` (a gold
+	// `›` on a known ground) right before the name, not a bold `▸`
+	expect(out).toMatch(/[\u2192\u203a]boss-call\s+mailbox between sessions · skill/);
 	}, 300_000);
 });

@@ -1996,6 +1996,19 @@ export function statusLine(status: string, tail: string, W: number, hint?: strin
  */
 export function selectionBar(styled: string, visible: number, W: number): string {
 	const p = palette();
+	// Graphite §8.2 (R3a) — on a known ground the selected row is a card's
+	// head in the colour that waits for the person: its `askEdge` cell in
+	// column 0, the row on `washAsk` to the right edge, and a row's `→`
+	// marker (the approval, question, pick and command lists carry one in
+	// column 1) drawn as a gold `›`. DECLARED REVERSAL of the reverse-video
+	// bar and its `→` there; `dim` stays (it meets the floor on washAsk).
+	// Off a known ground the reverse-video bar below stays — one row, so no
+	// seam.
+	if (slabPaints()) {
+		const marked = styled.replace(/^((?:\x1b\[[0-9;]*m)*)\u2192/, `$1${p.gold}\u203a${p.fgEnd}`);
+		const inner = marked.replaceAll(p.reset, `${p.reset}${p.washAsk}`);
+		return `${p.askEdge} ${p.washAsk}${inner}${" ".repeat(Math.max(0, W - 1 - visible))}${p.washEnd}`;
+	}
 	// R2 (design §2.1 — nothing dim ever sits on the wash): the bar IS a
 	// wash. A dim span inside it renders grey-on-grey — 3.91:1 on the
 	// light ground, under the 4.5 floor — and the dim spans are exactly

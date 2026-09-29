@@ -109,7 +109,10 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 			["model → ds", "exit\r"],
 		], workdir);
 		const out = stripANSI(raw);
-		expect(out).toContain("model — current: faux"); // the panel's header, where "model: faux" used to print
+		// Graphite §8.1 (R3a): the panel names itself on its opening row and
+	// the row under it keeps what followed the name
+	expect(out).toMatch(/\u2500{3} model \u2500/);
+	expect(out).toContain("current: faux"); // the panel's header, where "model: faux" used to print
 		expect(out).toContain("openai-compat/deepseek-v4-flash");
 		expect(out, "the row is its LABEL — the profile key is not repeated per row any more (the owner's dogfood)").not.toContain("profile: ds");
 		expect(out).toContain("anthropic/claude-sonnet-5");
@@ -173,7 +176,7 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 		expect(out).toContain("trust this project's .kiso?"); // the trust panel's rule line (the "(y/n)" suffix is gone — the panel superseded the boxed question)
 		// MOVED (the picker-surface class, TUI2-R2 ④): the same two facts,
 		// on the panel's header and option row instead of two printed lines
-		expect(out).toContain("model — current: proj-model-x"); // the project's model drives the session
+		expect(out).toContain("current: proj-model-x"); // Graphite §8.1 (R3a): under the `─── model ───` row // the project's model drives the session
 		expect(out).toContain("openai-compat/proj-model-x");
 		expect(out, "nor here: a row's note is `current`/`unavailable` only").not.toContain("profile: proj-model");
 	});

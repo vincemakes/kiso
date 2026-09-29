@@ -78,6 +78,7 @@ import {
 	gutterCut,
 	cutLine,
 	pendingQueueRows,
+	selectionBar,
 	statusLine,
 	visibleWidth,
 	type BodyCell,
@@ -2492,7 +2493,14 @@ export class Body {
 		for (let i = top; i < Math.min(items.length, top + MENU_WINDOW); i += 1) {
 			const item = items[i]!;
 			const label = `${item.name.slice(1).padEnd(col)} ${item.desc}`;
-			rows.push(...(i === menu.selected ? gutterCut(`${p.bold}▸${p.reset} `, `${p.bold}${label}${p.reset}`, W) : gutterCut("  ", `${p.dim}${label}${p.reset}`, W)));
+			// Graphite §8.2 (R3a): the selected command wears the one selected
+			// row every list has (its `→` is the gold `›` in column 1, the name
+			// from the content edge) — DECLARED REVERSAL of this list's bold `▸`
+			if (i === menu.selected) {
+				// W − 2: the bar spends a cell at each end off a known ground
+				const text = cutLine(`${p.bold}\u2192${label}${p.reset}`, Math.max(1, W - 2));
+				rows.push(selectionBar(text, visibleWidth(text), W));
+			} else rows.push(...gutterCut("  ", `${p.dim}${label}${p.reset}`, W));
 		}
 		// the counter earns its row only when the list is CUT — over a
 		// list you can see all of, it says nothing the rows do not.

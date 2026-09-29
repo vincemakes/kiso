@@ -26,10 +26,10 @@
  */
 
 import { displayWidth } from "./width.js";
-import { cutLine, diffBody, gutterFold, selectionBar, visibleWidth, widthCut } from "./components.js";
+import { boxBottom, cutLine, diffBody, gutterFold, selectionBar, visibleWidth, widthCut } from "./components.js";
 // TUI2-R2pre ④: strings.js takes only a TYPE from this module, so the
 // import is erased at compile time and no runtime cycle exists.
-import { displayVerb } from "./strings.js";
+import { bandHeader, displayVerb } from "./strings.js";
 import { escapeTerminal, palette } from "./render.js";
 
 export type PanelFlavor = "approval" | "simple";
@@ -636,7 +636,8 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// block, and none of them the composer's. A rule SEPARATES, a gutter
 	// SCOPES — the args keep their gutter because they are a verbatim
 	// block; everything that was drawing a boundary is one rule now.
-	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
+	// Graphite §8.1 (R3a): the panel names itself, like every band
+	rows.push(bandHeader("needs you", W));
 	rows.push(`  ${cutLine(panelRuleText(view), Math.max(1, W - 2))}`);
 	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(view.title)}${p.reset}`, Math.max(1, W - 2))}`);
 	// TUI2-R1.5 ⑤ (VD-11): the divider is a LABEL, not a design note. "the
@@ -755,7 +756,7 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// else in the product, so a CAPPED panel emitted two elbow rows in a
 	// row meaning entirely different things. The rule reads as an edge,
 	// and the cut notice above it reads as a notice.
-	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
+	rows.push(boxBottom(W));
 	return { rows, ...layout };
 }
 
@@ -863,9 +864,13 @@ export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: numb
 export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, maxRows: number): string[] {
 	const p = palette();
 	const spec = view.pick!;
-	const rows: string[] = [`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`]; // R2: the same rule the composer and the other panels use
+	// Graphite §8.1 (R3a): the list names itself in its opening row (the
+	// header's name — `model`, `mode`), and the row under it keeps what
+	// follows the name (`current: …`), so the block's height is unchanged
+	const name = spec.header.split(" \u2014 ")[0] ?? spec.header;
+	const rows: string[] = [bandHeader(escapeTerminal(name), W)];
 	const room = Math.max(1, W - 2);
-	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(spec.header.split(" \u2014 ")[0] ?? spec.header)}${p.reset}${p.dim}${escapeTerminal(spec.header.slice((spec.header.split(" \u2014 ")[0] ?? "").length))}${p.reset}`, room)}`);
+	rows.push(`  ${cutLine(`${p.dim}${escapeTerminal(spec.header.slice(name.length).replace(/^ \u2014 /, ""))}${p.reset}`, room)}`);
 	if (spec.options.length === 0) {
 		// the honest empty state \u2014 the caller's own copy, verbatim
 		rows.push(`  ${cutLine(`${p.dim} ${escapeTerminal(spec.emptyNote ?? "no options")}${p.reset}`, room)}`);
@@ -964,7 +969,7 @@ export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, ma
 		rows.push(typing ? selectionBar(tText, visibleWidth(tText), W) : ` ${tText}`);
 	}
 	rows.push(`  ${p.dim}${cutLine(pickAffordance(state, spec.options[state.cursor]?.levels !== undefined), room)}${p.reset}`);
-	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
+	rows.push(boxBottom(W));
 	return rows;
 }
 
