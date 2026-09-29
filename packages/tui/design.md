@@ -675,32 +675,22 @@ and the text moved to column 2.
 ██╗  ██╗██╗███████╗ ██████╗
 ██║ ██╔╝██║██╔════╝██╔═══██╗
 █████╔╝ ██║███████╗██║   ██║
-██╔═██╗ ██║╚════██║██║   ██║                 │  SESSION     new · resumable after kill -9
-██║  ██╗██║███████║╚██████╔╝                 │  RULES       AGENTS.md
-╚═╝  ╚═╝╚═╝╚══════╝ ╚═════╝                  │  SKILLS      3 · /skills lists them
-────────────────────────────────────────     │  MCP         2 servers · 14 tools
+██╔═██╗ ██║╚════██║██║   ██║
+██║  ██╗██║███████║╚██████╔╝
+╚═╝  ╚═╝╚═╝╚══════╝ ╚═════╝
+─────────────────────────────
 the coding agent that survives kill -9 · <version>
 intent → effect → durable fact
-
-──────────────────────────────────────────────────────────────────────────────
 ```
-
-(The prototype's layout, owner 2026-09-29: two columns — the wordmark,
-its forty-column rule, the tagline and the motto on the left; what loaded
-on the right, pushed to the right edge and to the BOTTOM of the left
-column, a hairline down its left side; a blank row and a hairline across
-the width close the opening.)
 
 The block cells take `mix(ink, dim, row / 4)`, top to bottom; the
 box-drawing shadow takes `mix(rail, ground, 0.35)`; the rule under it fades
 from `dim` to the ground. No gold: gold is the edge (§1.2), and the opening
 has none. `<version>` is the CLI's own package version, never a literal.
 
-What loaded, one fact per row behind its border — the label `dim` in its
-column, the fact in `ink`, a quieter note in `ink2` after it — on the
-right while the width holds both columns with a six-column gap and at
-least twenty-four columns for the values, below the left column
-otherwise:
+Beside the wordmark when `W ≥ 96`, behind one hairline, what loaded, one
+fact per row — the label `dim` in its column, the fact in `ink`, a
+quieter note after it:
 
 - `SESSION` — `new · resumable after kill -9`, or `resumed · N events`;
 - `RULES` — the instruction file the prompt reads (the same lookup, so it
@@ -713,7 +703,7 @@ otherwise:
 - DC-49's home-directory row, when the workspace is the home directory.
 
 The model, the mode and the folder are the status bar's (§8.9) and are
-not repeated. The
+not repeated. Under 96 columns the facts move below the wordmark. The
 wordmark shows from 20 rows — in the 80×24 window a Mac opens by default
 (owner, 2026-09-29: a wordmark the default window never shows is not worth
 drawing). Under 20 rows, on a terminal
@@ -879,7 +869,7 @@ The status bar (§8.9) gives way, in order: the `ctrl+o` hint, the folder
 (the terminal title names it too, §8.10), the branch, the model's middle
 (elided, DF-0330-F1), and last `/mode to switch` — it stays for as long
 as it fits: it is the one place a newcomer meets modes. The facts — the
-mode, `floor off`, the model, ctx, cache, tok/s — never drop; past them
+mode, `floor off`, the model, ctx, tok/s — never drop; past them
 the row is invariant ①'s to cut.
 
 The key ladder (`/ commands · ↑ history · ctrl+r transcript · @ files ·
@@ -990,7 +980,7 @@ bands (§8.1–8.4), and `esc` closes each.
 health.
 
 ```
-default  /mode to switch  deepseek-v4-flash · max  ctx ▆▆▆▆▆▆▆▆▆▆ 9%  cache 92%  48 tok/s     main  ~/code/kiso
+default  /mode to switch  deepseek-v4-flash · max  ctx ▆▆▆▆▆▆▆▆▆▆ 9%  48 tok/s     main  ~/code/kiso
 ```
 
 - The mode as a chip — `plan · read-only` for plan, bypass in `fail`; then
@@ -1007,8 +997,9 @@ default  /mode to switch  deepseek-v4-flash · max  ctx ▆▆▆▆▆▆▆▆
   otherwise cells round to the nearest (owner, 2026-09-29 — a lit cell
   beside `0%` read as a contradiction). `ctx ?` when the window is
   unknown, with no meter.
-- `cache NN%` and the last settled call's `NN tok/s`, each only once
-  measured.
+- The last settled call's `NN tok/s`, once measured. The cache share is
+  not on the bar: every run's seal says it (§7.11), and the bar said it a
+  second time (owner, 2026-09-29).
 - At the right: the branch in `blue` (read from `.git/HEAD`, a detached
   HEAD as its short sha, nothing outside a repository), the folder, and
   `ctrl+o expand all` / `ctrl+o collapse all` while a card has rows behind
