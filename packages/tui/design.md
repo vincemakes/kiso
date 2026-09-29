@@ -784,22 +784,36 @@ whose target is the command, and whose outcome says `sent to the model` or
 card shows what it changed, in every approval mode. The diff is built from
 the call's own hunks — `search` is the old text, `replace` the new — which
 the log holds, so the card renders the same live, after a reprint and after
-resume; nothing is read from the file and no request byte changes. It
-appears when the call's arguments are complete, before the file is written;
-the outcome reads `applying`, then `edited` or `refused · <reason>`.
+resume; nothing is read from the file and no request byte changes. The body
+is the same while the call runs and once it has, so the settle moves
+nothing. The head says the change: `+a -r`, and `N hunks` for a batch. A
+refused or failed edit is a failed card whose body is the refusal (§7.5) —
+no diff, since nothing changed. (DECLARED REVERSAL of v2e's "the diff at
+the approval moment only; the settled call one line": a call no one was
+asked about showed nothing of what it changed.)
 
-- A line-level LCS per hunk; unchanged lines inside a hunk are context
-  (`dim`); a sign column, then the text.
-- One `−` line followed by one `+` line: the changed words take a stronger
-  mix of their row's colour.
-- The hunks of one call are separated by a `⋯` row, and the head says
-  `N hunks`.
-- Twelve rows, then `… +N lines · ctrl+o expands`.
-- The approval panel shows the same diff uncapped, for every hunk of a
-  batch edit (`edits`), not only for a single `search`/`replace`.
-- `write_file`: a new file shows its first five lines as `+` rows and
-  `new file · N lines`; an overwrite shows the new head, because the old
-  content is not in the log.
+- A line-level LCS per hunk; the lines both sides keep are context (`dim`,
+  two around each change); a sign column, then the text. A `-` row sits on
+  `del`, a `+` row on `add` — backgrounds (§1.5), from the content edge to
+  the card's inner margin, on every row a long line folds to.
+- One `-` line followed by one `+` line, with no other change beside them:
+  the changed words take a deeper mix of their row's ground (`addWord` /
+  `delWord`, 0.3 toward `ok` / `fail`) — only where at least a third of the
+  words survive; below that the whole line changed and the row's own
+  colour says so.
+- The hunks of one call are separated by a `···` row (a `⋯` read as a minus
+  in the sign column).
+- Twelve rows, then `… N more lines` and the key on the foot (§7.4).
+- The approval preview reads the file, as before, and applies EVERY hunk
+  of a batch (`edits`) in order, each to what the ones before it left —
+  the tool's own rule; a hunk the tool would refuse is named (`hunk 2,
+  after hunk 1 applied`) and nothing is drawn.
+- `write_file`: a new file (`expectedRevision: "absent"`) shows its first
+  five lines as `+` rows and `new file · N lines`; an overwrite shows its
+  first five lines as they now read — no sign, since the old content is
+  not in the log — and `rewrote · N lines`.
+- Off a painted card (the unknown ground) the rows keep the flat form: the
+  sign and the text in the line's colour, the changed words underlined.
 - No line numbers (§10).
 
 **7.15 The answer's markdown (R2).** The answer carries no label (§1.5); it
