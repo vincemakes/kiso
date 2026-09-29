@@ -92,6 +92,8 @@ export function projectSessionCard(input: {
 	readonly asks: number;
 	readonly workspace?: string | null;
 	readonly profileName?: string | null;
+	/** Graphite R3d: the session's `/name`, which wins over the derived title */
+	readonly name?: string | null;
 }): SessionCard {
 	const events = input.records.map((r) => r.event);
 	// the ledger's own expression — the same one the recovery plan and the
@@ -123,7 +125,7 @@ export function projectSessionCard(input: {
 						: "failed";
 	return {
 		id: input.id,
-		title: sessionTitle(input.records),
+		title: input.name ?? sessionTitle(input.records),
 		badge,
 		turns,
 		updatedAt: input.updatedAt,
@@ -186,12 +188,12 @@ export async function collectSessionCards(
 export function cardFromListing(l: SessionListing & { readonly inferred?: boolean }): SessionCard {
 	const s = l.summary;
 	const base = { id: l.id, workspace: l.workspace, profileName: l.profileName, ...(l.inferred === true ? { inferred: true } : {}) };
-	if (s === null) return { ...base, title: l.id, badge: "unknown", turns: null, updatedAt: l.mtime, uncertain: 0, asks: 0, outcome: "no summary" };
+	if (s === null) return { ...base, title: l.name ?? l.id, badge: "unknown", turns: null, updatedAt: l.mtime, uncertain: 0, asks: 0, outcome: "no summary" };
 	const badge: SessionBadge =
 		s.uncertain > 0 ? "uncertain" : s.asks > 0 ? "ask" : s.state === "open" ? "interrupted" : s.state === "completed" ? "completed" : s.state === null ? "unknown" : "failed";
 	return {
 		...base,
-		title: s.title ?? l.id,
+		title: l.name ?? s.title ?? l.id,
 		badge,
 		turns: s.turns,
 		updatedAt: s.updatedAt,

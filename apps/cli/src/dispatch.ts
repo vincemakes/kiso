@@ -7,12 +7,12 @@
 import type { SessionRoute } from "./projects.js";
 import { STATUS_GLYPHS, contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modePickView, modelPickView, compactingStatus, liveRow, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
-import { buildAdapter, lookupModelMetadata, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
+import { buildAdapter, lookupModelMetadata, readSessionName, resolveContinuationScope, resolveReasoning, sessionTitle, writeSessionName, type StoreRecord } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, OFFERED_MODES, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { protectedBangReason, protectedShellVerdict } from "./protected-shell.js";
-import { agentBaseUrl, currentProfileName, setCurrentProfileName, currentModelName, agentModel, body, bodyLog, codingToolOptions, protectedFiles, kisoHome, configModels, dock, lastBinding, loadedSkillsCatalog, mergedConfig, readContextLedger, retryOnRow, sessionsDir, setAgentModel, setConfiguredWindow, setCurrentModelName, setModelChoice, setRetryShown, upstreamOf, VERSION, type LineInput , setLastBinding } from "./state.js";
+import { activeStoreDir, agentBaseUrl, currentProfileName, setCurrentProfileName, currentModelName, agentModel, body, bodyLog, codingToolOptions, protectedFiles, kisoHome, configModels, dock, lastBinding, loadedSkillsCatalog, mergedConfig, readContextLedger, retryOnRow, sessionsDir, setAgentModel, setConfiguredWindow, setCurrentModelName, setModelChoice, setRetryShown, upstreamOf, VERSION, type LineInput , setLastBinding } from "./state.js";
 import { adapterOptionsFor } from "./auth/adapter-options.js";
 import { profileProviderLabel, providerLabel } from "./provider-label.js";
 import { installedVersion, versionStatusLine } from "./stale-version.js";
@@ -29,7 +29,7 @@ import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import type { UserInputVia } from "@vincemakes/kiso-core";
 import { resolveSkillLine, skillsRows } from "./skill-invoke.js";
-import { setTitleState } from "./window-title.js";
+import { setTitleName, setTitleState } from "./window-title.js";
 
 /** Where a skill directory really lives. Project and user skills are
  *  merged into one scan directory by symlink, so the scan root names a
@@ -266,6 +266,9 @@ function runBang(command: string, send: boolean, ctx: DispatchCtx): void {
 		ctx.input.prompt();
 	});
 }
+
+/** Graphite R3d: a name is cut where a derived title is (`sessionTitle`). */
+const NAME_MAX = 60;
 
 /** Graphite §8.7 (R3b): the next /compact was dispatched by the opt-in
  *  auto-compact threshold, not typed — its row says `auto`. */
@@ -575,6 +578,33 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				}).join("\n\n"),
 				"words",
 			);
+			ctx.input.prompt();
+		});
+		return;
+	}
+	if (trimmed === "/name" || trimmed.startsWith("/name ")) {
+		// Graphite R3d: the person names the session. The name lives in the
+		// session's sidecar (the runtime's `name` tenant) — the terminal
+		// title, the /resume row and the session list read it, the title
+		// derived from the first real line is the fallback. Control and
+		// format characters never reach it; it is cut at 60 like a title.
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			const words = trimmed.slice("/name".length).replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim();
+			const root = activeStoreDir;
+			if (words === "") {
+				const named = readSessionName(root, ctx.session.id);
+				const derived = sessionTitle(ctx.session.log.all.map((event) => ({ runId: "", ts: 0, event }) as StoreRecord));
+				bodyLog(named !== null ? `name: ${escapeTerminal(named)} \u00b7 /name - clears it` : `unnamed \u2014 the title is "${escapeTerminal(derived)}" \u00b7 /name <words> names it`);
+			} else if (words === "-") {
+				writeSessionName(root, ctx.session.id, null);
+				setTitleName(null);
+				bodyLog("name cleared \u2014 the title is the first line again");
+			} else {
+				const name = [...words].slice(0, NAME_MAX).join("");
+				writeSessionName(root, ctx.session.id, name);
+				setTitleName(name);
+				bodyLog(`named "${escapeTerminal(name)}"`);
+			}
 			ctx.input.prompt();
 		});
 		return;

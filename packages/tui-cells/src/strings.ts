@@ -505,6 +505,7 @@ const HELP_TABLE: readonly (readonly [string, string])[] = [
 	["/rewrap", "re-print the recent prose at the current width"],
 	["/copy", "copy the last answer (raw markdown) — ctrl+x does the same"],
 	["/status", "show session id, event count, and context estimate"],
+	["/name", "name this session · /name shows it · /name - clears it"],
 	// 0.40.6: what kiso runs with, and where each value came from
 	["/settings", "show the settings in force, each value's source, and how to change it"],
 	// A command with no row is a command nobody can find. `/context` has
