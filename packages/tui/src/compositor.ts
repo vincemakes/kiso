@@ -864,11 +864,12 @@ export class Body {
 		this.#mark();
 	}
 
-	/** Graphite R3e (owner, 2026-09-29, option A) — a mode switch: on the
-	 *  terminal the MODE meta row, `from → to · what it does`, the new tier
-	 *  bold (bypass in the failure colour, plan in blue); a pipe keeps the
-	 *  confirmation it always printed, byte for byte (`text`). */
-	modeNotice(text: string, from: string, to: string, note: string): void {
+	/** Graphite R3e (owner, 2026-09-29) — a mode switch: on the terminal
+	 *  `MODE` on a row of its own and `from → to` under it, the new tier
+	 *  bold (bypass in the failure colour, plan in blue) — no explanation:
+	 *  the picker that switched it says what each tier does. A pipe keeps
+	 *  the confirmation it always printed, byte for byte (`text`). */
+	modeNotice(text: string, from: string, to: string): void {
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
 			this.#closeOpenText();
@@ -878,7 +879,7 @@ export class Body {
 		this.#closeOpenThinking();
 		this.#closeOpenText();
 		const tone = to === "bypass" ? "fail" : to === "plan" ? "blue" : "ink";
-		this.#cells.push({ kind: "notice", text, done: true, label: "MODE", sentence: `${from} \u2192 ${to} \u00b7 ${note}`, mark: { text: to, tone } });
+		this.#cells.push({ kind: "notice", text, done: true, label: "MODE", sentence: `${from} \u2192 ${to}`, mark: { text: to, tone }, stacked: true });
 		this.#mark();
 	}
 

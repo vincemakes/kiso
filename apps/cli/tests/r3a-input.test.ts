@@ -136,11 +136,10 @@ describe("R3a — Shift+Tab cycles the tier", () => {
 		const out = strip(ptyRun(["chat", "st-one"], env, [
 			["/mode to switch", "hi\r"],
 			["What would you like me to inspect", "\x1b[Z"],
-			["MODE  ", "exit\r"],
+			["MODE\x1b[0m", "exit\r"],
 		], workdir));
-		// Graphite R3e (owner, 2026-09-29, option A): the switch is the MODE
-		// row — from → to · what the tier does · the key that cycles it
-		expect(out).toContain("default → accept-edits · read-only, edits run");
-		expect(out).toContain("shift+tab cycles");
+		// Graphite R3e (owner, 2026-09-29): the switch is `MODE` over
+		// `from → to`, nothing else
+		expect(out).toMatch(/MODE\s+default → accept-edits/);
 	});
 });

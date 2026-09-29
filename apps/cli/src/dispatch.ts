@@ -609,7 +609,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					const chosen = level === undefined ? undefined : OFFERED_MODES[level];
 					if (chosen !== undefined && chosen !== mode) {
 						setMode(chosen);
-						body.modeNotice(`mode \u2192 ${chosen}`, mode, chosen, MODE_NOTE[chosen]);
+						body.modeNotice(`mode \u2192 ${chosen}`, mode, chosen);
 						ctx.paintIdle();
 					}
 					ctx.input.prompt();
@@ -771,7 +771,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					} else {
 						const was = getMode();
 						setMode(chosen);
-						body.modeNotice(`mode → ${chosen}`, was, chosen, MODE_NOTE[chosen]);
+						body.modeNotice(`mode → ${chosen}`, was, chosen);
 						ctx.paintIdle();
 					}
 					ctx.input.prompt();
@@ -785,7 +785,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			} else {
 				const was = getMode();
 				setMode(m);
-				body.modeNotice(`mode → ${m}`, was, m, MODE_NOTE[m]);
+				body.modeNotice(`mode → ${m}`, was, m);
 				ctx.paintIdle();
 			}
 			ctx.input.prompt();

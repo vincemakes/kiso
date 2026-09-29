@@ -286,7 +286,7 @@ export type BodyCell =
 	/** Graphite §7.12 — `label` and `sentence` are the meta row's two
 	 *  halves, derived from `text` by the compositor; `text` is what a
 	 *  pipe prints, unchanged. */
-	| { kind: "notice"; text: string; done: true; label?: string; sentence?: string; mark?: { readonly text: string; readonly tone: "fail" | "blue" | "ink" } }
+	| { kind: "notice"; text: string; done: true; label?: string; sentence?: string; mark?: { readonly text: string; readonly tone: "fail" | "blue" | "ink" }; stacked?: true }
 	/** Graphite §7.11 — the turn's seal: its forms, widest first; the
 	 *  widest that fits is drawn, and the narrowest is cut. */
 	| { kind: "seal"; tiers: readonly string[]; done: true }
@@ -1787,7 +1787,7 @@ const META_FAIL = new Set(["FAILED", "UNCERTAIN"]);
  * whole at the content edge.
  */
 class ErrorLine implements Component {
-	constructor(private readonly cell: { text: string; label?: string; sentence?: string; mark?: { readonly text: string; readonly tone: "fail" | "blue" | "ink" } }) {}
+	constructor(private readonly cell: { text: string; label?: string; sentence?: string; mark?: { readonly text: string; readonly tone: "fail" | "blue" | "ink" }; stacked?: true }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
 		const c = this.cell;
@@ -1799,7 +1799,11 @@ class ErrorLine implements Component {
 		const head = `${EDGE}${p.bold}${tone}${c.label.padEnd(META_LABEL - 1)}${p.reset} `;
 		// a label wider than the row's room is cut like any row (invariant ①)
 		if (sentence === "") return [cutLine(head.trimEnd(), W)];
-		const folded = foldWords(sentence, room);
+		// Graphite R3e (owner, 2026-09-29): a STACKED row — the MODE switch —
+		// puts its label on a row of its own and the sentence under it at the
+		// content edge, folded at the full width (its sentence is always long;
+		// beside the label it folded raggedly at 80 columns anyway)
+		const folded = foldWords(sentence, c.stacked === true ? Math.max(1, W - EDGE.length) : room);
 		// Graphite R3e (the MODE row): one word of the sentence carries the
 		// weight — the mode switched to, bold, bypass in the failure colour
 		const m = c.mark;
@@ -1811,6 +1815,7 @@ class ErrorLine implements Component {
 			const at = arrow >= 0 ? arrow + 2 : r.indexOf(m.text);
 			return `${p.dim}${r.slice(0, at)}${p.reset}${p.bold}${tone}${m.text}${p.reset}${p.dim}${r.slice(at + m.text.length)}${p.reset}`;
 		};
+		if (c.stacked === true) return [cutLine(`${EDGE}${p.bold}${tone}${c.label}${p.reset}`, W), ...folded.map((r) => cutLine(`${EDGE}${lit(r)}`, W))];
 		return folded.map((r, i) => (i === 0 ? cutLine(`${head}${lit(r)}`, W) : `${EDGE}${" ".repeat(META_LABEL)}${p.dim}${r}${p.reset}`));
 	}
 }

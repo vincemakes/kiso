@@ -445,7 +445,7 @@ describe("0.40.0 — dontAsk offers no ask_user, and leaving dontAsk brings it b
 			[
 				["/mode to switch", "set the project up\r", 0],
 				["first done", "/mode default\r", 1],
-				["MODE  ", "again\r", 2], // Graphite R3e: the switch is the MODE row on a terminal
+				["MODE\x1b[0m", "again\r", 2], // Graphite R3e: the switch is the MODE row on a terminal
 				["which bundler?", "\x1b", 3],
 			],
 			["second done"],
