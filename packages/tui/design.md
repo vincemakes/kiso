@@ -43,21 +43,24 @@ thing:
   block), what is live (the twinkle, a running call's
   breath, a message waiting to land), what needs the person (`❯`), the seal
   `✦`, and the input line. Gold never colours the machine's content.
-- **Blue is the machine:** the `THINK` label, a second-level heading, inline
-  code, links, the branch name, a running call's card.
+- **Blue is the machine:** a second-level heading, inline code, links, the
+  branch name, a call's card.
 
 Outcomes keep their own colours on the outcome WORD only. **Strip every
 escape sequence and no fact is lost**: every block that could be taken for
 another keeps a mark that is a character, not a colour — the person's words
-their `▌`, thinking its `THINK` label, a card its `▎` and its verb, a meta row
-its label — and the answer is the one block with none. An outcome is a word,
-and an emphasis is never the only carrier of meaning.
+their `▌` where there is no ground to paint (§7.9), a card its verb, a meta
+row its label — and the answer is the one block with none. An outcome is a
+word, and an emphasis is never the only carrier of meaning. The one stated
+exception is thinking: its mark is its grey italic, which a stripped frame
+loses (DC-47's exception, back since 2026-09-29); where colour is off, the
+plain word `thinking:` opens it (§7.2).
 
 DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). This law read "grey
 chrome, coloured content" and admitted no accent. The design round admitted
-gold and blue, one meaning each. The DC-47 exception this law used to carry
-— a stripped frame could not tell thinking from answer — retires, because
-the `THINK` label now says which is which in plain bytes.
+gold and blue, one meaning each. R1 retired the DC-47 exception with a
+`THINK` label; the owner removed the label (2026-09-29), and the exception
+is back.
 
 **1.3 No empty marks.** A symbol earns its cell by carrying a fact the
 words do not. A row that already says `exit 0` does not also need a tick
@@ -77,12 +80,25 @@ outcome — it means *you have to do something*.
 thought twinkles. Nothing else in the product moves. See §5. The terminal
 title changes with the state and never on a tick (§5.4).
 
-**1.5 Labels are words, upper case.** `THINK`, a card's verb (`READ`,
-`RUN`, `EDIT`), a meta row's label (`COMPACTED`), a band row's key (`MODEL`,
-`SESSION`). They name what a block is; they are never content. `THINK` is
-blue and every other label grey (§1.2), and the word stands without it. A
-block whose surface already says what it is takes no label: the person's
-words are their block, and the answer is what is left.
+**1.5 Labels are words, upper case; surfaces are backgrounds.** A card's
+verb (`READ`, `RUN`, `EDIT`), a meta row's label (`COMPACTED`), a band
+row's key (`MODEL`, `SESSION`). They name what a block is; they are never
+content, and they are grey (§1.2). A block whose look already says what it
+is takes no label: the person's words are their block, thinking is its
+grey italic (§7.2), and the answer is what is left.
+
+A surface is drawn with cell BACKGROUNDS only — never with block-element
+glyphs (`▌ ▎ ▄ ▀`). A terminal draws a glyph from the font, and where the
+line is taller than the font (Apple Terminal among them) the glyph stops
+short of the cell's edge: rows that should join show a seam, a bar drawn
+down several rows reads as a dashed line. A background fills its whole
+cell. (The unknown ground, which has no background to paint, keeps the
+person's `▌` as a character — §7.9.)
+
+DECLARED REVERSAL (owner, 2026-09-29) of R1's `THINK` label (blue, with
+its seconds) and of R1's half-row pads and side bars: both were seen in
+the owner's terminal and read as strange (the label) and broken (the
+seams).
 
 **1.6 Surfaces, and what each one says.** A surface is a ground painted
 behind rows. Each kind says one thing, and nothing is painted to decorate.
@@ -90,8 +106,11 @@ behind rows. Each kind says one thing, and nothing is painted to decorate.
 - **The person's block — their own words.** A warm ground across the full
   width, with a gold bar in column 0 (§7.9).
 - **The card — one call of the machine's work** (§7.4). Its ground is the
-  call's STATE: blue while it runs, neutral once it succeeded, red when it
-  failed or was refused, gold while it waits for the person.
+  call's STATE: the machine's blue while it runs AND once it has run, red
+  when it failed or was refused, gold while it waits for the person. (A
+  neutral ground once it succeeded read as a flash: a call that takes a
+  tenth of a second went blue, then grey — owner, 2026-09-29. Whether it
+  is still running is the mark's and the outcome word's to say.)
 - **Code** — a fenced block in an answer, and inline code (§7.15).
 
 Where the ground is not known no surface is painted (§3.1): the person's block
@@ -117,13 +136,14 @@ This is R13's ruling (2026-09-03) and Graphite keeps it. The design round
 considered one card per stretch of work, with one row per call, and did not
 adopt it.
 
-**1.8 One content edge, one mark column.** Every block begins at column 4:
-labels, prose, thinking, cards, meta rows, the seal's words. Columns 0–2
+**1.8 One content edge, one mark column.** Every block of kiso's begins at
+column 4: prose, thinking, cards, meta rows, the seal's words. Columns 0–2
 are the mark column — in the transcript, a hanging `§` beside a
-second-level heading, the THINK twinkle while a thought streams, and the
-seal's `✦`; in the live zone and the composer, the row's mark and the
-prompt `›`, right-aligned to column 2. The person's block is the one element that spans
-the full width: its bar sits in column 0 and its text at column 4. A
+second-level heading, the twinkle on a streaming thought's first row, and
+the seal's `✦`; in the live zone, the row's mark, right-aligned to column
+2. The PERSON's words start at column 2 — typed (the composer's `›` sits
+in column 0) and sent (the block's bar is column 0) — left of kiso's, the
+two sides of a conversation (owner, 2026-09-29: no two-space indent). A
 block's own internal indents — a list's bullet, a card's verb column, a
 diff's sign — are its own.
 
@@ -275,7 +295,7 @@ own column is used.
 | mark | means |
 |---|---|
 | `●` | a call is running — in its card's mark cell; it breathes (§5) |
-| twinkle (§5.2) | the model is working — on the live row for the whole turn, and beside `THINK` while thinking streams |
+| twinkle (§5.2) | the model is working — on the live row for the whole turn, and in the mark column of a streaming thought's first row |
 | `❯` | it needs you: an approval, a question, an unknown outcome to decide |
 | `◇` | a message the person sent that has not landed yet |
 | `◌` | an outcome kiso cannot know: a call started and no result was recorded |
@@ -372,7 +392,7 @@ by measured ink. At 60px in Menlo: `·` 72, `✧` 144, `•` 235, `✦` 248,
 checked against Apple Color Emoji's coverage, pinned as data so the gate
 runs off macOS too. Measuring the width table instead answers a
 different question — the table is kiso's own opinion, and this rule is
-about the terminal's. Graphite's glyphs — `◇ ◌ ↻ ▌ ▎ ▄ ▀ ▆ ⋯ § ✓ ○ ›` and
+about the terminal's. Graphite's glyphs — `◇ ◌ ↻ ▌ ▆ ⋯ § ✓ ○ ›` and
 the wordmark's `█ ╗ ╔ ╝ ╚ ═ ║` — lie outside that table (checked
 2026-09-28) and join the gated set.
 
@@ -407,33 +427,39 @@ not move under the reader.** A reprint is not motion under the reader —
 it is the same record, redrawn whole, at the geometry the reader is
 now looking at.
 
-**7.2 Thinking is words.** The model's thinking renders as its own block
-under the label `THINK <seconds>` in blue — the seconds only when they
-were measured; a thought replayed from the log has none — as `dim` italic
-paragraphs at the content edge, a blank line between paragraphs, shown in
-full, never folded.
-While the model thinks, the label carries the twinkle. It closes the
-current stretch rather than joining one: what the model says is not work.
+**7.2 Thinking is words.** The model's thinking renders as its own block:
+`dim` italic paragraphs at the content edge, folded by WORD like every
+prose surface, a blank line between paragraphs, shown in full. It carries
+no label — its grey italic is what tells it from the answer (§1.5). While
+the model thinks, the twinkle hangs in the mark column of the block's first
+row; settled, the column is empty. With colour off there is no grey and no
+italic to tell it by, so there — and only there — its first row opens with
+the plain word `thinking:`. It closes the current stretch rather than
+joining one: what the model says is not work.
 
-`ctrl+t` hides every thinking block to its label line
-(`THINK 5.2s · hidden · ctrl+t`) and shows it again; the choice is
+`ctrl+t` hides every thinking block to one dim row
+(`thinking · hidden · ctrl+t`) and shows it again; the choice is
 remembered, and shown is the default for every model. A turn with no
-thinking text has no THINK block at all — kiso does not announce a thought
-it cannot see; whether a provider sends thinking text is the provider's
-side (a GPT model sends summaries only when asked for them).
+thinking text has no thinking block at all — kiso does not announce a
+thought it cannot see; whether a provider sends thinking text is the
+provider's side (a GPT model sends summaries only when asked for them).
+
+DECLARED REVERSAL (owner, 2026-09-29) of R1's `THINK <seconds>` label in
+blue, which read as strange; R1 also folded thinking by character, which
+broke words mid-way.
 
 A PIPE never sees a thinking paragraph: the inactive path writes one
 folded summary line (`foldThinking`).
 
 **7.3 A running call is the same card, and it GROWS.** A call with
-nothing back yet is the card a settled call with no output is: a pad, the
-head row, a pad. Each line of output adds a row, to five; past five the cut
+nothing back yet is the card a settled call with no output is: its head
+row. Each line of output adds a row, to five; past five the cut
 note appears above a scrolling tail and the card grows by that one row,
 once. Nothing pads a window — the height is the content.
 
 **The settle never shrinks it.** That is what makes a settle a change of
-colour and content and nothing else: the ground changes from `wash-run` to
-the outcome's (§1.6), the breathing mark leaves its cell, and the head
+content and nothing else: the ground stays the machine's blue unless the
+call failed or was refused (§1.6), the breathing mark leaves its cell, and the head
 row's right end that said `running · 3s` says `exit 0 · 90 lines · 3.2s`.
 The shell's gestures ride that same row rather than spending a window row
 on a footer. The one row a settle may add is the foot row (§7.4), and only
@@ -452,7 +478,7 @@ commits (DC-43). A window that already grew is never pulled back in.
 `thinking…`, dim italic at the content edge, no glyph — stands where the
 model's first words will, so whatever arrives replaces it in the same
 column and the same font and the eye sees a word change rather than a
-jump: thinking text turns it into the THINK block, an answer replaces it
+jump: thinking text turns it into the thinking block, an answer replaces it
 and leaves nothing behind. It is NOT a cell: it never commits, never reaches the scrollback, and
 neither `/last` nor the pipe has heard of it. That is what makes a row
 which is a guess about the future permissible at all — a row that never
@@ -465,22 +491,18 @@ shrank at its settle.
 **7.4 A settled call is a CARD.** One object, one shape, every call:
 
 ```
-    ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄   pad: half a row of the card's ground
-    ▎   SHELL   npm test -- recovery     exit 0 · 90 lines · 4.1s
-    ▎           … 85 earlier lines
-    ▎           <the last five output rows>
-    ▎                                            ctrl+o expands
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   pad
+        SHELL   npm test -- recovery     exit 0 · 90 lines · 4.1s
+                … 85 earlier lines
+                <the last five output rows>
+                                                 ctrl+o expands
 ```
 
-The card runs from the content edge to the right edge of the screen. Its
-ground is its state (§1.6), and a `▎` bar in the state's edge colour (§2)
-marks its left side. A `▄` row above and a `▀` row below give it half a row
-of its own ground, so two cards in a row stand one row of ground apart
-without a blank row between them.
+The card runs from the content edge to the right edge of the screen, on
+its state's ground (§1.6) — that ground IS the card: no pad rows, no side
+bar (§1.5). Two cards are one blank row apart, like any two blocks.
 
-The columns: the bar at 4, the mark cell at 6, the verb at 8, the target
-and every body row at 16. The HEAD row: the mark cell (§4), the verb, the
+The columns: the ground from 4, the mark cell at 6, the verb at 8, the
+target and every body row at 16. The HEAD row: the mark cell (§4), the verb, the
 target, and at the right the outcome (§7.5). The BODY, when there is one,
 is the preview in `ink2`, aligned under the target — five rows at most. A shell shows its TAIL with the cut
 note above it, because the conclusion of a command is at the bottom of its
@@ -491,10 +513,9 @@ and the key opens the whole thing. Its continuation note, when the tool
 itself capped the result, is not a preview and stays. The FOOT row carries
 the key, right-aligned, and exists only while something is behind it: on a
 collapsed card when the preview cut rows away, on an expanded one when
-collapsing would hide rows again. A call with nothing to preview is the
-head row between its two pads — and when its result sits behind the key (a
-read), the key ends the head row's outcome instead: `412 lines · 0.1s ·
-ctrl+o expands`.
+collapsing would hide rows again. A call with nothing to preview is its
+head row alone — and when its result sits behind the key (a read), the key
+ends the head row's outcome instead: `412 lines · 0.1s · ctrl+o expands`.
 
 **An EXPANDED card is the same card** — the whole body, uncapped, and
 `ctrl+o collapses` on its foot row when there is anything to collapse.
@@ -510,8 +531,8 @@ half.
 working while eight inverted output rows are a black slab in the middle
 of the transcript. Unpainted, the head row sits at the content edge, the
 body four columns under it (column 8) with `└` opening it at column 6, and
-the rows dim; the pads and the bar are not drawn. The CONTENT is the same either way — only the surface,
-its bar and its pads are contingent. The indent carries a §1.2 fact — these
+the rows dim. The CONTENT is the same either way — only the surface is
+contingent. The indent carries a §1.2 fact — these
 rows are the call's output, not something the model said — which is why it
 is an indent and not a glyph: it survives a pipe.
 
@@ -519,9 +540,10 @@ DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). The card was
 `pad · head · blank · preview · blank · outcome · pad` at column 2, one
 neutral wash for every state, the outcome on a row of its own and whole
 blank rows as pads. The outcome now rides the head row, the key rides a
-foot row that exists only when needed, the pads are half rows, the ground
-is the state, and the card sits at the content edge (§1.8). One card per
-call (§1.7) is unchanged.
+foot row that exists only when needed, the ground is the state, and the
+card sits at the content edge (§1.8). One card per call (§1.7) is
+unchanged. R1 drew half-row pads and a side bar with block glyphs; they
+retired (owner, 2026-09-29) for the seams they left (§1.5).
 
 **7.5 A card reads verb · target, then outcome.** The verb is the tool's
 display verb in upper case (`SHELL`, `READ`, `EDIT`, `WRITE`, `LIST`,
@@ -582,33 +604,33 @@ screen has something behind the key.
 4: the top rule, the input, a hairline, the status bar (§8.9). Every gate
 keyed on `H − 4` depends on it. The top rule is `gold-mark` for its first
 eighth and fades to `line` by a third of the width. The prompt is a gold `›`
-in the mark column and the caret is gold; the text starts at the content
-edge, the same column as the transcript's. *(R2)* While the line starts with
+in column 0 and the caret is gold; the text starts at column 2, the column
+the person's sent words start at (§1.8, §7.9). *(R2)* While the line starts with
 `!`, the prompt is `$` (§7.13). The live zone (§8.7) sits above these four
 rows and is not part of them. The line-mode prompt (no composer: a terminal
 kiso does not dock in) is unchanged.
 
-While the input is empty it shows the keys nothing else advertises, in
-`rail` italic, as a ladder that gives way from the right (§8.5).
+While the input is empty it shows nothing: `?` lists the keys, and the
+empty row is kept for later work to speak in (follow-up suggestions).
+DECLARED REMOVAL (owner, 2026-09-29) of R1's key ladder placeholder.
 
 DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). R2 (owner,
 2026-08-27) ruled that the docked composer has no prompt glyph: the rules
 already said "input lives here", and a glyph cost the row a column. The
-design round brought back a gold `›`: with the transcript at column 4, the
-glyph sits in the mark column and costs the input nothing it did not already
-give up to line up with the transcript.
+design round brought back a gold `›`, and the owner then moved it to column
+0 with the text at column 2 (2026-09-29: no two-space indent).
 
 **7.9 The person's words span the width.** The person's block (§1.6): the
-`human` ground across the full width with a gold `▌` in column 0 and the
-text at the content edge, one `▄` pad row above it and one `▀` below. No
-label and no time: the block says whose words these are, and when a turn
+`human` ground across the full width, a gold BACKGROUND cell in column 0
+for its bar, and the text at column 2 — where the composer's text starts.
+No pad rows: the surface is backgrounds only (§1.5). No label and no time: the block says whose words these are, and when a turn
 ended and how long it took is the seal's (§7.11). The block is padded to
 `W` by *display* width, so a CJK row pads correctly, and it folds by WORD:
 the character fold was defended as lossless, which is not a property CJK
 has, and every other prose surface already folds by word. A word wider than
 the row still breaks mid-word, because an overflowing row breaks invariant
-①. Where the ground is unknown the block is reverse video from column 2
-with no pads, and the `▌` stays in column 0 (§3.1).
+①. Where the ground is unknown the `▌` stays in column 0 as a character
+and the block is reverse video from column 1 (§3.1).
 
 *(R2)* On a terminal, each of the person's blocks is wrapped in OSC 133
 prompt marks, so a terminal that supports them can jump between the
@@ -623,7 +645,9 @@ pasted code and lists keep their shape.
 
 DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). The words were
 reverse video on every ground with a two-column inner pad; the design round
-chose the warm ground with a gold bar.
+chose the warm ground with a gold bar. R1 drew the bar and half-row pads
+with glyphs and put the text at column 4; the owner saw the seams and the
+indent in Apple Terminal (2026-09-29), and both went.
 
 **7.10 The opening.** The wordmark, then what loaded.
 
@@ -672,7 +696,7 @@ rows.
 Where the ground is unknown the wordmark is drawn in the terminal's own
 foreground.
 
-The R2 keys row retires: the empty input carries the key ladder (§7.8).
+The R2 keys row retires: `?` lists the keys (§8.5).
 
 The opening scrolls the shell's screen away first: H line feeds from
 the shell's cursor carry its prompt, the launch command and the tail of
@@ -821,21 +845,11 @@ as it fits: it is the one place a newcomer meets modes. The facts — the
 mode, `floor off`, the model, ctx, cache, tok/s — never drop; past them
 the row is invariant ①'s to cut.
 
-The key ladder lives in the empty input (§7.8), the widest form that fits:
-
-```
-/ commands · ↑ history · ctrl+r transcript · @ files · ? keys
-/ commands · ↑ history · ctrl+r transcript
-/ commands · ctrl+r transcript
-/ commands · ↑ history
-/ commands
-```
-
-`/ commands` survives longest because it is the door to everything;
-`ctrl+r` outranks `↑ history` because pressing up is how a person finds the
-history by accident, and nothing finds `ctrl+r` by accident (R8b). The
-ladder moved from the status row to the input when the status bar took the
-session's facts; the rule it carries did not change.
+The key ladder (`/ commands · ↑ history · ctrl+r transcript · @ files ·
+? keys`) that R1 put in the empty input retired with the placeholder
+(§7.8, owner, 2026-09-29): `?` opens the keys sheet, and `/` opens the
+command list. The status bar's `/mode to switch` is the one teaching hint
+left on screen, which is why it is the last thing the bar gives up.
 
 **8.6 The editor's keys, and the one gesture with three spellings.**
 `alt+←/→` moves the cursor by word and `alt+⌫` / `alt+d` delete a word
@@ -907,7 +921,7 @@ replace it while they last.
 | working | `✸ working 12.4s · ↓ 1.2k · 48 tok/s` |
 | retry | `↻ retrying 3/10 · <what failed> · next try in 4s`, and `esc gives up` |
 | compacting | `✸ compacting · 18s`; *(R3)* with its reason: `manual`, `past the soft tier`, `overflow` |
-| waiting *(R2, with the panels)* | `❯ needs you · <what>`; until then the open panel's own status holds the status row |
+| waiting *(R3, with the panels)* | `❯ needs you · <what>`; until then the open panel's own status holds the status row |
 
 The keys while a turn runs: `esc stop · ⏎ queue · alt+⏎ redirect`. A queued
 message is one row: `◇ queued  <text>  after this turn · ↑ edit`.
@@ -950,8 +964,10 @@ default  /mode to switch  deepseek-v4-flash · max  ctx ▆▆▆▆▆▆▆▆
   compaction tier, `gold` from the soft tier to the hard one, `fail` past
   the hard tier, read from the runtime's tiers (`tiersFor`) and never from
   a fixed fraction. There is no marker inside the bar: the tier shows as
-  colour only (owner, 2026-09-28). At least one cell is filled once
-  anything is used; cells round to the nearest. `ctx ?` when the window is
+  colour only (owner, 2026-09-28). The cells follow the percentage SHOWN:
+  `ctx 0%` is an empty meter, and from 1% at least one cell is filled;
+  otherwise cells round to the nearest (owner, 2026-09-29 — a lit cell
+  beside `0%` read as a contradiction). `ctx ?` when the window is
   unknown, with no meter.
 - `cache NN%` and the last settled call's `NN tok/s`, each only once
   measured.
