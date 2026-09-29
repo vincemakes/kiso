@@ -334,7 +334,7 @@ describe("TUI v6 — the one compositor", () => {
 		// proven by what the row SAYS, which is what the note above already
 		// argued it should be — the chevron was never the evidence.
 		expect(bytes).not.toContain("\x1b[2m› \x1b[0m");
-		expect(plain).toContain("❯ run paused"); // the phase status (the CLI's painting status is out)
+		expect(plain).toContain("❯ needs you · run paused"); // Graphite §8.7 (R3b): a waiting status says so first // the phase status (the CLI's painting status is out)
 		expect(plain).toContain("↑↓ move · ⏎ or click confirms · 1-4 instant · esc"); // the phase affordance
 		body.bindApproval(() => null);
 		body.raw(["y"]);

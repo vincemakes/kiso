@@ -34,7 +34,7 @@ import { homedir } from "node:os";
 import { currentBranch } from "./git-branch.js";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import type { UserInputVia } from "@vincemakes/kiso-core";
-import { dispatch, type DispatchCtx, abortBangCommand } from "./dispatch.js";
+import { dispatch, markAutoCompact, type DispatchCtx, abortBangCommand } from "./dispatch.js";
 import { paintWindowTitle, setTitleState } from "./window-title.js";
 import { agentBaseUrl, agentModel, body, bodyLog, configuredWindow, dock, retryOnRow, retryShown, setRetryShown, floorOn, protectedFiles, upstreamOf, VERSION, type LineInput } from "./state.js";
 import { attachImages } from "./attachments.js";
@@ -1756,6 +1756,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		if (currentRun !== null) return; // dispatch would refuse — skip the noise
 		const ratio = autoCompactRatio(session); // A1a: the policy keeps the pre-A1a number — A1b decides if it moves
 		if (!Number.isFinite(ratio) || ratio < autoCompact.thresholdRatio) return;
+		markAutoCompact();
 		dispatch("/compact", dispatchCtx);
 	};
 	// CX-1 F5: a literal input (task-file mode) submits the turn directly —

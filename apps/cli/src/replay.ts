@@ -21,6 +21,7 @@
  */
 
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
+import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
 
 /** The Body surface the replay drives — the live run's own mutations. */
 export interface ReplayBody {
@@ -152,8 +153,10 @@ export function replayInto(body: ReplayBody, events: readonly Ev[], W = 80): num
 	const shown = rest.slice(-FULL_TURNS);
 	const earlier = rest.slice(0, rest.length - shown.length);
 	const label = total > shown.length ? `resuming · ${plural(total, "turn")}, showing the last ${shown.length}` : `resuming · ${plural(total, "turn")}`;
-	const head = `─── ${label} `;
-	body.raw([`${head}${"─".repeat(Math.max(1, W - head.length))}`.slice(0, Math.max(1, W))]);
+	// Graphite §8.1 (R3b): the resumed history opens like every band — the
+	// hairline with its name, `resuming` bold gold, the counts dim (the same
+	// words the dim rule carried)
+	body.raw([bandHeader(label, Math.max(1, W))]);
 
 	if (checkpoint !== null) {
 		const summary = checkpoint.summary;
