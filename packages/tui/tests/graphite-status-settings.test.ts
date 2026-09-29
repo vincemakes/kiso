@@ -118,15 +118,16 @@ describe("R3e — the MODE row (owner, 2026-09-29, option A)", () => {
 	const row = (from: string, to: string, W = 100): string[] =>
 		cellComponent({ kind: "notice", text: `mode → ${to}`, done: true, label: "MODE", sentence: `${from} → ${to}`, mark: { text: to, tone: to === "bypass" ? "fail" : to === "plan" ? "blue" : "ink" }, stacked: true } as never).render(W, { spinnerI: 0, now: 0, height: 24 });
 
-	it("MODE on a row of its own, then from → to at the content edge — no explanation — the new tier bold, bypass red, plan blue", () => {
+	it("one row: MODE in gold (the person's choice), two spaces, from → to — no explanation — the new tier bold, bypass red, plan blue", () => {
 		setGround("light");
 		const p = palette();
-		expect(row("default", "bypass").map(plain)).toEqual(["  MODE", "  default → bypass"]);
-		expect(row("default", "bypass")[1]).toContain(`${p.bold}${p.red}bypass${p.reset}`);
-		expect(row("bypass", "plan")[1]).toContain(`${p.bold}${p.blue}plan${p.reset}`);
+		expect(row("default", "bypass").map(plain)).toEqual(["  MODE  default → bypass"]);
+		expect(row("default", "bypass")[0]!.startsWith(`  ${p.bold}${p.gold}MODE${p.reset}  `)).toBe(true);
+		expect(row("default", "bypass")[0]).toContain(`${p.bold}${p.red}bypass${p.reset}`);
+		expect(row("bypass", "plan")[0]).toContain(`${p.bold}${p.blue}plan${p.reset}`);
 		// the word after the arrow carries it, not an earlier one
-		expect(row("plan", "plan")[1]).toContain(`plan → ${p.reset}${p.bold}${p.blue}plan`);
-		expect(row("dontAsk", "accept-edits").map(plain)).toEqual(["  MODE", "  dontAsk → accept-edits"]);
+		expect(row("plan", "plan")[0]).toContain(`plan → ${p.reset}${p.bold}${p.blue}plan`);
+		expect(row("dontAsk", "accept-edits").map(plain)).toEqual(["  MODE  dontAsk → accept-edits"]);
 	});
 
 	it("invariant ①: the row fits, W 20..200, on both grounds and the unknown one", () => {

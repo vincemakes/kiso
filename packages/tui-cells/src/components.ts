@@ -1799,11 +1799,7 @@ class ErrorLine implements Component {
 		const head = `${EDGE}${p.bold}${tone}${c.label.padEnd(META_LABEL - 1)}${p.reset} `;
 		// a label wider than the row's room is cut like any row (invariant ①)
 		if (sentence === "") return [cutLine(head.trimEnd(), W)];
-		// Graphite R3e (owner, 2026-09-29): a STACKED row — the MODE switch —
-		// puts its label on a row of its own and the sentence under it at the
-		// content edge, folded at the full width (its sentence is always long;
-		// beside the label it folded raggedly at 80 columns anyway)
-		const folded = foldWords(sentence, c.stacked === true ? Math.max(1, W - EDGE.length) : room);
+		const folded = foldWords(sentence, room);
 		// Graphite R3e (the MODE row): one word of the sentence carries the
 		// weight — the mode switched to, bold, bypass in the failure colour
 		const m = c.mark;
@@ -1815,7 +1811,15 @@ class ErrorLine implements Component {
 			const at = arrow >= 0 ? arrow + 2 : r.indexOf(m.text);
 			return `${p.dim}${r.slice(0, at)}${p.reset}${p.bold}${tone}${m.text}${p.reset}${p.dim}${r.slice(at + m.text.length)}${p.reset}`;
 		};
-		if (c.stacked === true) return [cutLine(`${EDGE}${p.bold}${tone}${c.label}${p.reset}`, W), ...folded.map((r) => cutLine(`${EDGE}${lit(r)}`, W))];
+		// Graphite R3e (owner, 2026-09-29): the MODE switch is the person's own
+		// choice, so its label is GOLD — the colour of what the person says —
+		// and its short `from → to` follows two spaces after it on the same
+		// row, not the meta rows' twelve-column label column
+		if (c.stacked === true) {
+			const label = `${EDGE}${p.bold}${p.gold}${c.label}${p.reset}  `;
+			const lead = visibleWidth(label);
+			return foldWords(sentence, Math.max(1, W - lead)).map((r, i) => cutLine(i === 0 ? `${label}${lit(r)}` : `${" ".repeat(lead)}${lit(r)}`, W));
+		}
 		return folded.map((r, i) => (i === 0 ? cutLine(`${head}${lit(r)}`, W) : `${EDGE}${" ".repeat(META_LABEL)}${p.dim}${r}${p.reset}`));
 	}
 }
