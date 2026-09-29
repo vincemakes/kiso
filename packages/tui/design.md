@@ -835,7 +835,7 @@ because there a marker is the only carrier (DC-4).
 | quote | a bar of `quoteBar` (a background cell, §1.5), a space, italic `ink2` |
 | alerts | `> [!NOTE]` / `TIP` / `IMPORTANT`: a `noteBar` bar and the word bold `blue`; `WARNING`: `warnBar` and `gold-mark`; `CAUTION`: `cautionBar` and `fail` |
 | table | box drawing in `edge` (between `line` and `rail`), the header row bold |
-| code fence | R2c |
+| code fence | its lines `blue`, no ground (owner, 2026-09-29); the ``` rails stay, `dim`, the language on the opening rail (E2: a copied block is still fenced). DECLARED REVERSAL of DC-3's colourless body — DC-3 removed a 1.54:1 grey; `blue` meets the text floor |
 | rule | `·  ·  ·` in `rail`, inset two columns |
 
 Every `#` takes the gold form: a rule that only an answer's FIRST `#` took
