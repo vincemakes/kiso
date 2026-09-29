@@ -94,7 +94,7 @@ export {
 	type RenderResult,
 	type RunUsage,
 } from "./lines.js";
-export { editFileDiff, truncateDiff, writeFileDiff, type DiffLine, type DiffResult } from "./diff.js";
+export { editFileDiff, editFileHunksDiff, hunksDiff, hunksOf, truncateDiff, writeFileDiff, type DiffLine, type DiffResult, type Hunk } from "./diff.js";
 // KC2 §5: the status rows' formatters — the CLI keeps the state and the
 // repaint, the terminal layer owns what the row says.
 export { STATUS_GLYPHS, cacheHitPct, compactingStatus, composeRow, ctxMeter, decodeRate, idleStatus, liveRow, retrySegment, runningStatus, statusBar, workingRow, type BarInput, type CompactingProgress, type RetryOnRow, type RowSegment, type StatusMeter } from "./status.js";

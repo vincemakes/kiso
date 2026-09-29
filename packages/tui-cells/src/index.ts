@@ -27,7 +27,7 @@ export {
 	type Component,
 	type BodyCell,
 } from "./components.js";
-export { editFileDiff, truncateDiff, writeFileDiff, type DiffLine, type DiffResult } from "./diff.js";
+export { editFileDiff, editFileHunksDiff, hunksDiff, hunksOf, truncateDiff, writeFileDiff, type DiffLine, type DiffResult, type Hunk } from "./diff.js";
 // W22 (the v8 input round): the pending-queue chips — the SAME
 // UserMessage chip with the □ gutter, pre-rendered above the input
 // row while turns wait in the queue.
