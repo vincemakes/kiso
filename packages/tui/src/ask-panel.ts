@@ -494,7 +494,10 @@ export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number, 
 }
 
 export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: number, ask?: AskRuntime, pick?: PickRuntime, safer?: SaferRuntime): string {
-	if (view.pick !== undefined && pick !== undefined) return pickAffordance(pick, view.pick.options[pick.cursor]?.levels !== undefined);
+	if (view.pick !== undefined && pick !== undefined) {
+		const here = view.pick.options[pick.cursor];
+		return pickAffordance(pick, here?.levels !== undefined ? (here.axisLabel ?? true) : false);
+	}
 	if (view.ask !== undefined && ask !== undefined) return askAffordance(ask, view.ask.questions[ask.qIndex]);
 	return basePanelAffordance(view, phase, cursor, safer);
 }

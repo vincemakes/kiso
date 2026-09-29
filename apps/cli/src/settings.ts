@@ -32,7 +32,7 @@ export interface SettingsInput {
 	readonly version: string;
 }
 
-interface Row {
+export interface Row {
 	readonly name: string;
 	readonly value: string;
 	readonly from: string;
@@ -86,7 +86,9 @@ function layered<K extends keyof KisoConfig>(i: SettingsInput, key: K): { value:
 	return { value: undefined, from: "default" };
 }
 
-export function settingsRows(i: SettingsInput): string[] {
+/** Graphite R3e: the settings as data — the /settings panel's rows and
+ *  the printed form below read the same list. */
+export function settingsFacts(i: SettingsInput): Row[] {
 	const trust = layered(i, "projectTrust");
 	const auto = i.env.KISO_AUTO_COMPACT !== undefined ? { value: i.env.KISO_AUTO_COMPACT, from: "env KISO_AUTO_COMPACT" } : layered(i, "autoCompact");
 	const rows: Row[] = [
@@ -116,6 +118,18 @@ export function settingsRows(i: SettingsInput): string[] {
 		},
 		{ name: "version", value: i.version, from: "running", change: "kiso update" },
 	];
+	return rows;
+}
+
+/** The printed form: one block per setting — what it is, where it came
+ *  from and how to change it (a pipe, a dock-less TTY, and a panel row's
+ *  enter). */
+export function settingRow(r: Row, width = r.name.length + 2): string {
+	return `${r.name.padEnd(width)}${r.value}\n${" ".repeat(width)}from ${r.from} · change: ${r.change}`;
+}
+
+export function settingsRows(i: SettingsInput): string[] {
+	const rows = settingsFacts(i);
 	const width = Math.max(...rows.map((r) => r.name.length)) + 2;
-	return rows.map((r) => `${r.name.padEnd(width)}${r.value}\n${" ".repeat(width)}from ${r.from} · change: ${r.change}`);
+	return rows.map((r) => settingRow(r, width));
 }

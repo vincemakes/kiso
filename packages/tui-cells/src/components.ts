@@ -30,7 +30,7 @@ import { displayWidth, visibleWidth, widthCut } from "./width.js";
 // TUI2-R2pre ④: the ONE display-verb table (strings.ts, beside
 // KEY_BINDINGS). strings.js imports only render/width here, so this edge
 // adds no cycle.
-import { displayVerb } from "./strings.js";
+import { bandHeader, displayVerb } from "./strings.js";
 import {
 	bannerLines,
 	breathFrame,
@@ -2060,6 +2060,23 @@ export function boxTop(W: number): string {
 	// Graphite §7.8: the one rule that carries colour — gold at its left
 	// end, where the person's edge is, fading to the hairline.
 	return fadeRule(W);
+}
+
+/** Graphite R3e — a read-only sheet over the input (`/status`): the band's
+ *  named hairline, one fact per row — its label dim in a column, its value
+ *  folded by word under itself — and the row that says how it closes.
+ *  It closes like the keys sheet, but what is typed after it is typed. */
+export function infoSheetRows(title: string, facts: readonly { readonly label: string; readonly value: string }[], W: number): string[] {
+	const p = palette();
+	const labelW = Math.max(0, ...facts.map((f) => f.label.length)) + 2;
+	const room = Math.max(1, W - 2 - labelW);
+	const rows = [bandHeader(title, W)];
+	for (const f of facts) {
+		const folded = foldWords(escapeTerminal(f.value), room);
+		for (const [i, line] of folded.entries()) rows.push(`  ${i === 0 ? `${p.dim}${f.label.padEnd(labelW)}${p.reset}` : " ".repeat(labelW)}${line}`);
+	}
+	rows.push(`  ${p.dim}esc closes \u00b7 typing goes to the input${p.reset}`);
+	return rows.map((r) => cutLine(r, W));
 }
 
 /** R2 — the same rule below, in the hairline colour (§1.1). Named for its

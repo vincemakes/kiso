@@ -5,9 +5,9 @@
  */
 
 import type { SessionRoute } from "./projects.js";
-import { STATUS_GLYPHS, contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modePickView, modelPickView, compactingStatus, liveRow, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
+import { STATUS_GLYPHS, contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, infoSheetRows, kUnit, modePickView, modelPickView, settingsPickView, compactingStatus, liveRow, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
-import { buildAdapter, lookupModelMetadata, readSessionName, resolveContinuationScope, resolveReasoning, sessionTitle, writeSessionName, type StoreRecord } from "@vincemakes/kiso-runtime/internal";
+import { buildAdapter, lookupModelMetadata, readSessionName, resolveContinuationScope, resolveReasoning, sessionTitle, tiersFor, writeSessionName, type StoreRecord } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODES, MODE_NOTE, OFFERED_MODES, getMode, setMode } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
@@ -17,7 +17,7 @@ import { adapterOptionsFor } from "./auth/adapter-options.js";
 import { profileProviderLabel, providerLabel } from "./provider-label.js";
 import { installedVersion, versionStatusLine } from "./stale-version.js";
 import { preferences, setPreference } from "./preferences.js";
-import { settingsRows } from "./settings.js";
+import { settingRow, settingsFacts, settingsRows } from "./settings.js";
 import { floorOn, settingsLayers } from "./state.js";
 import { currentGround } from "@vincemakes/kiso-tui-cells/render";
 import { queuedSwitchLines } from "./state.js";
@@ -560,22 +560,80 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const w = statedContextWindow();
 			const profile = currentProfileName;
+			const input = {
+				user: settingsLayers.user,
+				project: settingsLayers.project,
+				env: process.env,
+				...(settingsLayers.modeFlag !== undefined ? { modeFlag: settingsLayers.modeFlag } : {}),
+				...(settingsLayers.modelFlag !== undefined ? { modelFlag: settingsLayers.modelFlag } : {}),
+				mode: getMode(),
+				model: { label: `${agentModel}${providerLabel(agentBaseUrl, upstreamOf(agentBaseUrl))}${profile === null ? "" : ` · profile ${profile}`}`, profile, switched: settingsLayers.modelSwitched },
+				ground: currentGround(),
+				floorOn,
+				window: windowSourceNote(w).replace(/^window /, ""),
+				thinkingHidden: body.thinkingHidden(),
+				thinkingRemembered: preferences().thinking !== undefined,
+				version: versionStatusLine(installedVersion(), VERSION).replace(/^version /, ""),
+			};
+			// Graphite R3e (owner, 2026-09-29): on a dock /settings is a panel.
+			// The session's own settings change in it — the mode (←→, the same
+			// path as /mode), thinking shown/hidden (←→, ctrl+t's path), the
+			// model (⏎ opens /model). What lives in a config file shows its
+			// value and source, and ⏎ prints how to change it: kiso never
+			// writes the person's config (0.40.6's rule stands for those).
+			if (dock.active && ctx.input.panelAsk !== undefined) {
+				const facts = settingsFacts(input);
+				const mode = getMode();
+				const hidden = body.thinkingHidden();
+				const THINK = ["shown", "hidden"] as const;
+				const options = facts.map((f): PickOption => {
+					if (f.name === "mode") return { label: "mode", note: f.from, levels: OFFERED_MODES, axisLabel: "mode", ...(OFFERED_MODES.indexOf(mode) >= 0 ? { level: OFFERED_MODES.indexOf(mode) } : {}) };
+					if (f.name === "thinking") return { label: "thinking", note: f.from, levels: THINK, level: hidden ? 1 : 0, axisLabel: "thinking" };
+					if (f.name === "model") return { label: "model", note: `${f.value} \u00b7 \u23ce switches` };
+					return { label: f.name, note: `${f.value} \u00b7 ${f.from}` };
+				});
+				let level: number | undefined;
+				const picked = await new Promise<PickResult | null>((resolve) => {
+					ctx.input.panelAsk!(settingsPickView({ header: "settings \u2014 the session's own change here; the rest say how", options }, ctx.isRunning() ? "\u276f run paused" : `\u25b8 ${mode}`), (v) => {
+						if (v.action === "picked") level = v.level;
+						resolve(v.action === "picked" ? v.result : null);
+					});
+				});
+				ctx.paintIdle();
+				const f = picked !== null && "index" in picked ? facts[picked.index] : undefined;
+				if (f === undefined) {
+					ctx.input.prompt();
+					return; // esc — nothing changed, nothing said
+				}
+				if (f.name === "mode") {
+					const chosen = level === undefined ? undefined : OFFERED_MODES[level];
+					if (chosen !== undefined && chosen !== mode) {
+						setMode(chosen);
+						body.notice(`mode \u2192 ${chosen}`);
+						ctx.paintIdle();
+					}
+					ctx.input.prompt();
+					return;
+				}
+				if (f.name === "thinking") {
+					const want = level === undefined ? undefined : THINK[level];
+					if (want !== undefined && (want === "hidden") !== hidden) {
+						dispatch("\x14think", ctx); // ctrl+t's own path: the toggle, remembered
+						return;
+					}
+					ctx.input.prompt();
+					return;
+				}
+				if (f.name === "model") {
+					dispatch("/model", ctx); // the picker's own segment re-arms the prompt
+					return;
+				}
+				bodyLog(settingRow(f), "words");
+				ctx.input.prompt();
+				return;
+			}
 			bodyLog(
-				settingsRows({
-					user: settingsLayers.user,
-					project: settingsLayers.project,
-					env: process.env,
-					...(settingsLayers.modeFlag !== undefined ? { modeFlag: settingsLayers.modeFlag } : {}),
-					...(settingsLayers.modelFlag !== undefined ? { modelFlag: settingsLayers.modelFlag } : {}),
-					mode: getMode(),
-					model: { label: `${agentModel}${providerLabel(agentBaseUrl, upstreamOf(agentBaseUrl))}${profile === null ? "" : ` · profile ${profile}`}`, profile, switched: settingsLayers.modelSwitched },
-					ground: currentGround(),
-					floorOn,
-					window: windowSourceNote(w).replace(/^window /, ""),
-					thinkingHidden: body.thinkingHidden(),
-					thinkingRemembered: preferences().thinking !== undefined,
-					version: versionStatusLine(installedVersion(), VERSION).replace(/^version /, ""),
-				}).join("\n\n"),
+				settingsRows(input).join("\n\n"),
 				"words",
 			);
 			ctx.input.prompt();
@@ -616,6 +674,28 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const ctxRatio = ctx.estimateCtx();
 			const ctxPct = Number.isFinite(ctxRatio) ? `~${Math.round(ctxRatio * 100)}%` : "~?";
+			// Graphite R3e: on a dock /status is a sheet over the input — the
+			// same facts, one per row, read and then typed past; off one (a
+			// pipe, -p) the lines below are what it always printed
+			if (dock.active && ctx.input.openSheet !== undefined) {
+				const w = statedContextWindow();
+				const named = readSessionName(activeStoreDir, ctx.session.id);
+				const win = ctx.contextWindow();
+				const tiers = win > 0 ? tiersFor(win, 0) : null;
+				const pal = palette();
+				const profileOf = currentProfileName === null ? "" : ` · profile ${currentProfileName}`;
+				const facts = [
+					{ label: "session", value: `${ctx.session.id}${named === null ? "" : ` · ${named}`} · ${ctx.session.log.all.length} events` },
+					{ label: "model", value: `${agentModel}${providerLabel(agentBaseUrl, upstreamOf(agentBaseUrl))}${profileOf}` },
+					{ label: "context", value: `${ctxPct} used · ${windowSourceNote(w)}` },
+					...(tiers === null ? [] : [{ label: "compaction", value: `past ${Math.round((tiers.soft / win) * 100)}% at a phase end, past ${Math.round((tiers.hard / win) * 100)}% at once · /context for the split` }]),
+					{ label: "colour", value: `${pal.tier === null ? "off" : pal.tier === "24bit" ? "24-bit" : "256"} · ground ${currentGround()}` },
+					{ label: "version", value: versionStatusLine(installedVersion(), VERSION).replace(/^version /, "") },
+				];
+				ctx.input.openSheet((W) => infoSheetRows("status", facts, W));
+				ctx.input.prompt();
+				return;
+			}
 			bodyLog(`session ${ctx.session.id}`);
 			bodyLog(`${ctx.session.log.all.length} events`);
 			// CW-1: the percentage names its denominator and who stated it — a

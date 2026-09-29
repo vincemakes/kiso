@@ -387,6 +387,9 @@ export class Editor {
 	 *  exists for interactions (a lead, a status, a reducer, a stashed
 	 *  buffer), and the sheet has no interaction to speak of. */
 	#sheetOpen = false;
+	/** Graphite R3e: a sheet with the CALLER's rows (`/status`), null for the
+	 *  keys sheet. Any key closes either. */
+	#sheetRows: ((W: number) => string[]) | null = null;
 	#menuOpen = false; // v3 §04: the slash-command menu
 	/** 0.40.1: the menu's extra entries (the installed skills), read LIVE on
 	 *  every keystroke — a skill added by /reload appears without rebinding. */
@@ -629,6 +632,20 @@ export class Editor {
 	 *  read (bound like the menu and the picker). */
 	sheetOpen(): boolean {
 		return this.#sheetOpen;
+	}
+
+	/** Graphite R3e: what the sheet shows — false when it is closed, true for
+	 *  the keys sheet, the caller's rows otherwise. */
+	sheetContent(): boolean | ((W: number) => string[]) {
+		return !this.#sheetOpen ? false : (this.#sheetRows ?? true);
+	}
+
+	/** Graphite R3e: open a read-only sheet over the input with the caller's
+	 *  rows (`/status`). It closes like the keys sheet: any key, consumed. */
+	openSheet(rows: (W: number) => string[]): void {
+		this.#sheetRows = rows;
+		this.#sheetOpen = true;
+		this.#onRender();
 	}
 
 	clearLine(): void {
@@ -1184,9 +1201,15 @@ export class Editor {
 		// types into your composer on the way out. A dismissal costs one
 		// keystroke; that is the entire contract.
 		if (this.#sheetOpen) {
+			const callers = this.#sheetRows !== null;
 			this.#sheetOpen = false;
+			this.#sheetRows = null;
 			this.#onRender();
-			return;
+			// Graphite R3e: a caller's sheet (`/status`) is read and then
+			// typed past — the whole chunk is typed as it would have been
+			// (it is parsed whole, so an arrow is an arrow, never `[A`);
+			// only esc, which means nothing else here, is eaten
+			if (!callers || text === "\x1b") return;
 		}
 		// R5 — while the viewer is up it OWNS the keyboard. Unlike the
 		// sheet (which any key dismisses) this surface is INTERACTIVE, so
@@ -1690,6 +1713,7 @@ export class Editor {
 				// already encodes "no panel, no menu, no picker, no browse".
 				// The precedence can only ever ADD: every state that used to
 				// insert a `?` still inserts one.
+				this.#sheetRows = null;
 				this.#sheetOpen = true;
 				this.#onRender();
 				i += 1;

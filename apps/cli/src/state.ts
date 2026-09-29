@@ -339,6 +339,9 @@ export interface LineInput {
 	 *  R3v2-F1: it resolves a SaferAnswer, so a failure that can name its
 	 *  cause does — `null` still means a failure with nothing to add. */
 	panelAsk(view: PanelView, onCommit: (v: PanelVerdict) => void, opts?: { safer?: () => Promise<SaferAnswer> }): void;
+	/** Graphite R3e: a read-only sheet over the input with the caller's rows
+	 *  (`/status`); any key closes it. Absent off a dock. */
+	openSheet?(rows: (W: number) => string[]): void;
 	/** W21: cancel the panel — the SIGINT pair to panelAsk. */
 	panelCancel(): void;
 	/** TUI2-R2 ②: open the session picker — the editor takes the keys
