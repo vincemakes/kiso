@@ -55,7 +55,7 @@ import {
 // module (the tui's components shim re-exports it) — one import edge,
 // and it points one way: md.ts measures with the width authority, never
 // back through here.
-import { renderBlock, type MdBlock } from "./md.js";
+import { headingLevel, renderBlock, renderMarkdown, type MdBlock } from "./md.js";
 import { hunksDiff, hunksOf, type DiffLine } from "./diff.js";
 export { MdStream, renderBlock, renderMarkdown, type MdBlock, type MdKind } from "./md.js";
 
@@ -299,6 +299,10 @@ export type BodyCell =
 	| { kind: "fold"; label: string; children: BodyCell[]; summary: string | null; done: true }
 	| { kind: "banner"; version: string; extensionsText: string; resume: ResumeMeta[]; meta?: BannerMeta | undefined; done: true }
 	| { kind: "raw"; lines: string[]; done: true; wrap?: "words" }
+	/** Graphite §7.13 (G3, R2d) — the person's own `!!cmd`: run and shown,
+	 *  never sent (a `!cmd` is a user turn and draws the same way from its
+	 *  text, see `bangOf`). */
+	| { kind: "bang"; command: string; output: string; isError: boolean; done: true }
 	| { kind: "terminal"; label: string; line: string; done: true };
 
 const TOOL_SUMMARY_MAX = 60; // the tool line's parameter summary, chars
@@ -328,8 +332,70 @@ export function cellComponent(cell: BodyCell): Component {
 			return new Banner(cell);
 		case "raw":
 			return new RawBlock(cell);
+		case "bang":
+			return new BangCard(cell);
 		case "terminal":
 			return new TerminalBlock(cell);
+	}
+}
+
+/** G3 (R2d) — the block `!cmd` sends: a `console` fence holding `$ <command>`
+ *  and what it printed (apps/cli dispatch.ts `runBang`). Null for any
+ *  other text. */
+export function bangOf(text: string): { command: string; output: string } | null {
+	const m = /^```console\n\$ ([^\n]*)\n([\s\S]*)\n```$/.exec(text);
+	return m === null ? null : { command: m[1]!, output: m[2]! };
+}
+
+/** G3 (R2d) — the person's command as a card on their own warm ground: a
+ *  pad row, `$ <command>` with what became of it at the right (`exit N`
+ *  when the output says so, then `sent to the model` or `not sent`), what
+ *  it printed under the command in `ink2`, a pad row. `cap` keeps the
+ *  output's TAIL (a command's conclusion is at its end) with the count of
+ *  what was cut above it; null shows it all. Off a known ground: the same
+ *  words, no surface. */
+function bangRows(command: string, output: string, isError: boolean, fate: string, W: number, cap: number | null): string[] {
+	const p = palette();
+	const painted = p.human !== "";
+	const exit = /^exit (\d+)/.exec(output);
+	const outcome = [exit !== null ? `exit ${exit[1]}` : isError ? "failed" : "", fate].filter((x) => x !== "").join(" \u00b7 ");
+	const textW = Math.max(1, W - PERSON_COL - 2 - CHIP_RIGHT);
+	let lines = escapeTerminal(stripAnsi(output)).replace(/\n+$/, "").split("\n").flatMap((l) => foldLine(l, textW));
+	if (lines.length === 1 && lines[0] === "") lines = [];
+	let cut = 0;
+	if (cap !== null && lines.length > cap) {
+		cut = lines.length - cap;
+		lines = lines.slice(lines.length - cap);
+	}
+	const cmd = escapeTerminal(command);
+	const headRoom = Math.max(1, W - PERSON_COL - CHIP_RIGHT);
+	const tail = ` ${outcome}`;
+	const headText = visibleWidth(`$ ${cmd}${tail}`) + 1 <= headRoom ? `$ ${cmd}` : widthCut(`$ ${cmd}`, Math.max(1, headRoom - visibleWidth(tail) - 2));
+	const gap = " ".repeat(Math.max(1, headRoom - visibleWidth(headText) - visibleWidth(outcome)));
+	if (!painted) {
+		const rows = [cutLine(`${" ".repeat(PERSON_COL)}${p.bold}${headText}${p.reset}${gap}${p.dim}${outcome}${p.reset}`, W)];
+		if (cut > 0) rows.push(cutLine(`${" ".repeat(PERSON_COL + 2)}${p.dim}\u2026 ${cut} earlier line${cut === 1 ? "" : "s"}${p.reset}`, W));
+		for (const l of lines) rows.push(cutLine(`${" ".repeat(PERSON_COL + 2)}${p.dim}${l}${p.reset}`, W));
+		return rows;
+	}
+	const row = (inner: string): string => {
+		const pad = " ".repeat(Math.max(0, W - 2 - visibleWidth(inner)));
+		return `${p.humanEdge} ${p.human}${p.humanInk} ${inner.replaceAll("\x1b[0m", `\x1b[0m${p.human}${p.humanInk}`)}${pad}${p.fgEnd}${p.washEnd}`;
+	};
+	const padRow = `${p.humanEdge} ${p.human}${" ".repeat(Math.max(0, W - 1))}${p.washEnd}`;
+	// `$ <command>` is ONE span: a reader (and a needle) finds the command
+	// line as it was typed
+	const head = `${p.bold}${headText}${p.reset}${gap}${p.dim}${outcome}${p.reset}`;
+	const body = [...(cut > 0 ? [`  ${p.dim}\u2026 ${cut} earlier line${cut === 1 ? "" : "s"}${p.reset}`] : []), ...lines.map((l) => `  ${p.ink2}${l}${p.fgEnd}`)];
+	return [padRow, row(head), ...body.map(row), padRow].map((r) => cutLine(r, W));
+}
+
+/** G3 (R2d) — `!!cmd`: the card, all of the output (the person asked to
+ *  see it here), `not sent`. */
+class BangCard implements Component {
+	constructor(private readonly cell: { command: string; output: string; isError: boolean }) {}
+	render(W: number, _ctx: FrameCtx): string[] {
+		return bangRows(this.cell.command, this.cell.output, this.cell.isError, "not sent", W, null);
 	}
 }
 
@@ -373,31 +439,31 @@ class UserMessage implements Component {
 	constructor(private readonly cell: { text: string }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
+		// G3 (R2d): a `!cmd` turn — the block the dispatcher sends — draws as
+		// the person's command card; the model's bytes are the text as sent
+		const bang = bangOf(this.cell.text);
+		if (bang !== null) return bangRows(bang.command, bang.output, false, "sent to the model", W, USER_CHIP_ROWS);
 		const painted = p.human !== "";
 		const chipW = Math.max(1, W - PERSON_COL - CHIP_RIGHT);
 		const paras = this.cell.text.split("\n");
-		let truncated = false;
-		// REL-0152-D13: fold only as far as the bound needs — a pasted file
-		// has thousands of lines and twelve are shown.
-		const content: string[] = [];
-		for (const para of paras) {
-			if (content.length >= USER_CHIP_ROWS) {
-				truncated = true;
-				break;
-			}
-			for (const row of foldWords(escapeTerminal(para), chipW)) {
-				if (content.length >= USER_CHIP_ROWS) {
-					truncated = true;
-					break;
-				}
-				content.push(row);
-			}
-		}
-		const fill = (row: string): string => " ".repeat(Math.max(0, chipW - displayWidth(row) + CHIP_RIGHT));
+		// Graphite §5 (G6, R2b): the person's words render as markdown, the
+		// line breaks they typed kept. REL-0152-D13: only as far as the
+		// bound needs — a pasted file has thousands of lines and twelve rows
+		// are shown, so a prefix of the source is rendered (a few lines past
+		// the bound, so a block that closes there still closes).
+		const source = paras.slice(0, USER_CHIP_ROWS + 4).join("\n");
+		const rendered = renderMarkdown(escapeTerminal(source), chipW, { hardBreaks: true });
+		const truncated = rendered.length > USER_CHIP_ROWS || paras.length > USER_CHIP_ROWS + 4;
+		const content = rendered.slice(0, USER_CHIP_ROWS);
+		const fill = (row: string): string => " ".repeat(Math.max(0, chipW - visibleWidth(row) + CHIP_RIGHT));
 		const padRow = `${p.humanEdge} ${p.human}${" ".repeat(Math.max(0, W - 1))}${p.washEnd}`;
+		// every reset inside a row re-opens the block's ground and ink, so a
+		// styled span never strands the rest of the row off the block
+		const onGround = (row: string): string =>
+			row.replaceAll("\x1b[0m", `\x1b[0m${p.human}${p.humanInk}`).replaceAll("\x1b[49m", p.human).replaceAll("\x1b[39m", p.humanInk);
 		const out = painted
-			? [padRow, ...content.map((row) => `${p.humanEdge} ${p.human}${p.humanInk} ${row}${fill(row)}${p.fgEnd}${p.washEnd}`), padRow]
-			: content.map((row) => `\u258c${p.rv} ${row}${fill(row)}${p.rvEnd}`);
+			? [padRow, ...content.map((row) => `${p.humanEdge} ${p.human}${p.humanInk} ${onGround(row)}${fill(row)}${p.fgEnd}${p.washEnd}`), padRow]
+			: content.map((row) => `\u258c${p.rv} ${row.replaceAll("\x1b[0m", `\x1b[0m${p.rv}`)}${fill(row)}${p.rvEnd}`);
 		if (!truncated) return out;
 		// The notice is OUTSIDE the block, in the cut-row vocabulary, and it
 		// says what matters: the model got all of it (DC-45: it folds too —
@@ -1685,7 +1751,15 @@ class MarkdownBlock implements Component {
 		// stays EMPTY: an indented blank row is trailing whitespace, and
 		// §1.3 forbids a mark on a row with nothing to mark.
 		// Graphite §1.8: at the content edge, 92 columns at most (§7.15).
-		return renderBlock(this.cell.block, proseRoom(W)).map((r) => (r === "" ? r : `${PROSE_COL}${r}`));
+		const rows = renderBlock(this.cell.block, proseRoom(W)).map((r) => (r === "" ? r : `${PROSE_COL}${r}`));
+		// Graphite §5 (R2b): a `##` heading carries `§` in the mark column
+		// (`rail`), outside the block, the way the prototype hangs it
+		const p = palette();
+		if (headingLevel(this.cell.block) === 2 && p.rail !== "") {
+			const at = rows.findIndex((r) => r !== "");
+			if (at >= 0) rows[at] = `${p.rail}\u00a7${p.fgEnd} ${rows[at]!.slice(PROSE_COL.length)}`;
+		}
+		return rows;
 	}
 }
 

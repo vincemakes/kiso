@@ -147,6 +147,17 @@ export interface Palette {
 	 *  row's ground deepened toward its colour, as a BACKGROUND. */
 	readonly addWord: string;
 	readonly delWord: string;
+	/** Graphite §5 (R2b) — the bar down a quote's rows, and an alert's
+	 *  (NOTE / TIP / IMPORTANT in blue, WARNING in gold, CAUTION in the
+	 *  failure colour): one cell of the ground deepened toward the colour,
+	 *  as a BACKGROUND (§1.5 — a glyph bar seams between rows). */
+	/** Graphite §5 (R2b) — a table's rails: between `line` and `rail`, so
+	 *  the grid reads without outweighing the words in it. */
+	readonly edge: string;
+	readonly quoteBar: string;
+	readonly noteBar: string;
+	readonly warnBar: string;
+	readonly cautionBar: string;
 	/** Graphite §7.4 — a card's EDGE: one cell of its ground deepened
 	 *  toward the state's colour, as a BACKGROUND (§1.5: a glyph bar down
 	 *  several rows shows a break at every row in Apple Terminal; a cell's
@@ -210,6 +221,11 @@ const NO_GRAPHITE = {
 	del: "",
 	addWord: "",
 	delWord: "",
+	edge: "",
+	quoteBar: "",
+	noteBar: "",
+	warnBar: "",
+	cautionBar: "",
 	runEdge: "",
 	failEdge: "",
 	askEdge: "",
@@ -254,6 +270,9 @@ const HUMAN_EDGE_DEPTH = 0.55;
  *  row's colour: enough to find the word, not so much that ink stops
  *  reading on it. */
 const WORD_DEPTH = 0.3;
+/** How far a quote's or an alert's bar is deepened from the ground toward
+ *  its colour: a bar, not a stripe (the person's edge's measure). */
+const BAR_DEPTH = 0.5;
 
 export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tier): Palette {
 	const c = graphiteColours(kind, ground, tier);
@@ -290,6 +309,11 @@ export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tie
 		del: b(c.del),
 		addWord: b(mix(c.add, c.ok, WORD_DEPTH)),
 		delWord: b(mix(c.del, c.fail, WORD_DEPTH)),
+		edge: f(mix(c.line, c.rail, 0.5)),
+		quoteBar: b(mix(c.ground, c.rail, BAR_DEPTH)),
+		noteBar: b(mix(c.ground, c.blue, BAR_DEPTH)),
+		warnBar: b(mix(c.ground, c.goldMark, BAR_DEPTH)),
+		cautionBar: b(mix(c.ground, c.fail, BAR_DEPTH)),
 		runEdge: b(mix(c.washRun, c.blue, EDGE_DEPTH)),
 		failEdge: b(mix(c.washFail, c.fail, EDGE_DEPTH)),
 		askEdge: b(mix(c.washAsk, c.goldMark, EDGE_DEPTH)),
@@ -918,6 +942,24 @@ function wordmarkRows(): string[] {
 
 /** The rule under the wordmark: `dim` fading to the ground, in a few runs.
  *  Off a known ground, the plain dim rule. */
+/** Graphite §5 (R2b) — the rule under an answer's `#` heading: `gold-mark`
+ *  fading to the ground over `n` cells (the prototype's forty). Off a known
+ *  ground, the plain dim rule. */
+export function headingRule(n: number): string {
+	const p = palette();
+	if (p.tier === null || ground === "unknown") return `${p.dim}${"\u2500".repeat(n)}${p.reset}`;
+	const c = graphiteColours(ground, groundRgb, p.tier);
+	const STEPS = 7;
+	let out = "";
+	let at = 0;
+	for (let k = 0; k < STEPS && at < n; k += 1) {
+		const to = k === STEPS - 1 ? n : Math.round((n * (k + 1)) / STEPS);
+		if (to > at) out += `${fg(mix(c.goldMark, c.ground, k / STEPS), p.tier)}${"\u2500".repeat(to - at)}`;
+		at = Math.max(at, to);
+	}
+	return `${out}${p.fgEnd}`;
+}
+
 function openingRule(n: number): string {
 	const p = palette();
 	if (p.tier === null || ground === "unknown") return `${p.dim}${"\u2500".repeat(n)}${p.reset}`;

@@ -143,7 +143,14 @@ describe("the palette writes the Graphite colours, and only them", () => {
 				// the state's colour — a derived colour, stated here by its recipe
 				// R2a: a changed word's ground is its row's deepened toward the
 				// row's colour — derived the same way
-				const edges = new Set([p.runEdge, p.failEdge, p.askEdge, p.humanEdge, p.addWord, p.delWord]);
+				const edges = new Set([p.runEdge, p.failEdge, p.askEdge, p.humanEdge, p.addWord, p.delWord, p.edge, p.quoteBar, p.noteBar, p.warnBar, p.cautionBar]);
+				// R2b: the table's rails and the quote's and alerts' bars, each
+				// the ground (or `line`) deepened toward its colour
+				expect(p.edge).toBe(fg(mix(c.line, c.rail, 0.5), tier));
+				expect(p.quoteBar).toBe(bg(mix(c.ground, c.rail, 0.5), tier));
+				expect(p.noteBar).toBe(bg(mix(c.ground, c.blue, 0.5), tier));
+				expect(p.warnBar).toBe(bg(mix(c.ground, c.goldMark, 0.5), tier));
+				expect(p.cautionBar).toBe(bg(mix(c.ground, c.fail, 0.5), tier));
 				expect(p.addWord).toBe(bg(mix(c.add, c.ok, 0.3), tier));
 				expect(p.delWord).toBe(bg(mix(c.del, c.fail, 0.3), tier));
 				expect(p.humanEdge).toBe(bg(mix(c.human, c.goldMark, 0.55), tier));
