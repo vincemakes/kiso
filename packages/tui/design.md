@@ -837,7 +837,7 @@ because there a marker is the only carrier (DC-4).
 | `###` | bold `ink` |
 | `####` | bold `dim`, upper case outside code spans |
 | bold / italic / strike | bold / italic / `dim` (never SGR 9: Apple Terminal draws none) |
-| inline code | `blue` on `code` |
+| inline code | `blue`, no ground — like a code block (owner, 2026-09-29, choosing between the prototype's `code` ground and none, side by side in Apple Terminal) |
 | link | `blue`, underlined, the URL in `dim` after the text (no OSC 8: Apple Terminal draws one as plain text) |
 | bullets / ordered / tasks | `–` then `·` in `dim` / the number in `dim` / `✓` ok, `○` dim in place of the bullet |
 | quote | a bar of `quoteBar` (a background cell, §1.5), a space, italic `ink2` |
