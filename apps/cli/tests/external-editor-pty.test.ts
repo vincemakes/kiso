@@ -68,7 +68,7 @@ describe("§2.4 — ctrl+g opens the external editor", () => {
 		// …and NOTHING was sent: the gesture edits, enter submits
 		expect(userInputs(dirs.home, "ext-a").join("\n"), "the gesture never submits").not.toContain(EDITED);
 		// …and the screen the external program drew over is whole again
-		expect(screen, "the banner is back").toContain("WORKSPACE");
+		expect(screen, "the banner is back").toContain("SESSION"); // Graphite §7.10: what loaded
 		expect(screen, "the rails are back").toContain("───");
 		expect(screen, "the status row is back").toContain("/mode to switch");
 	}, 240_000);

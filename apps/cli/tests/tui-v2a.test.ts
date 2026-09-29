@@ -115,9 +115,13 @@ describe("TUI v2a (real PTY)", () => {
 		// function can answer.
 		const titles = [...out.matchAll(/\u001b\]0;([^\u0007]*)\u0007/g)].map((m) => m[1]!);
 		expect(titles.length).toBeGreaterThanOrEqual(2);
-		expect(titles[0]).toMatch(/^kiso — \S/); // the opening form: kiso — <workspace>
+		expect(titles[0]).toMatch(/^kiso — \S/); // the opening form: kiso — <folder>
+		// Graphite §8.10: the turn wears ✦ while it works, once — never per tick
+		const working = titles.filter((t) => t.startsWith("✦ "));
+		expect(working.length).toBeGreaterThanOrEqual(1);
+		expect(working.length, "the title ticked").toBeLessThanOrEqual(2);
 		expect(titles.at(-1)).toContain("probe-one"); // renamed by the prompt
-		expect(titles.at(-1)).toMatch(/^kiso — probe-one — \S/);
+		expect(titles.at(-1)).toMatch(/^probe-one — \S/); // …and ready again: no mark
 
 		const clean = onScreen.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\r/g, "");
 		expect((clean.match(/▌ probe-one/g) ?? []).length).toBe(1);

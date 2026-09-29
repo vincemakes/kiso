@@ -1,15 +1,12 @@
 /**
- * The banner — the block-letter startup logo, three tiers (W1). TTY
- * only: pipes, e2e drivers, and CI see byte-for-byte the historical
- * output (the existing e2e assertions are untouched — this is the
- * proof). The piped half of this test pins the absence; the PTY half
- * pins the presence at every tier:
- *   ≥ 40 cols and ≥ 20 rows → BIG (the 36x6 wordmark)
- *   ≥ 40 cols and 14–19 rows → COMPACT (v6's logo — the existing
- *     literal stays valid for this tier)
- *   anything smaller → text rows only
- * The driver sets an explicit winsize — a raw PTY reports 0x0, which
- * is the text-only tier, so the COMPACT assertions need the height.
+ * The banner — the startup opening (Graphite §7.10). TTY only: pipes,
+ * e2e drivers, and CI see byte-for-byte the historical output (the
+ * existing e2e assertions are untouched — this is the proof). The piped
+ * half of this test pins the absence; the PTY half pins the forms:
+ *   ≥ 30 rows and room for the wordmark → the wordmark, the facts beside
+ *     it from 96 columns and below it under
+ *   anything shorter or narrower → one line, the facts below it
+ * The driver sets an explicit winsize — a raw PTY reports 0x0.
  */
 
 import { execFileSync } from "node:child_process";
@@ -78,47 +75,43 @@ function plainOut(env: NodeJS.ProcessEnv, home: string, rows: number, cols: numb
 
 describe("the startup banner (logo)", () => {
 	/**
-	 * R2 supersession (2026-08-27, the nineteen-screen review): the
-	 * wordmark is retired, and the HEIGHT TIER retires with it.
-	 *
-	 * TT-1B had already cut the 36x6 pixel art to two rows because a tall
-	 * banner's mid-scroll cut renders as glyph garbage. The last two rows
-	 * go because they spell `kiso` in fifteen columns of block glyphs and
-	 * the word spells it in four. A rendered clover mark was tried first,
-	 * at four sizes, and rejected on measurement.
-	 *
-	 * The tagline goes with it. It was a claim the banner made about the
-	 * product; the three labelled facts are answers to what a human at a
-	 * fresh prompt actually needs — what model, where am I, what is
-	 * loaded — and they are the same three at every height, which is one
-	 * fewer state in a table whose states existed only to protect art.
+	 * Graphite §7.10 — DECLARED REVERSAL of the R2 supersession
+	 * (2026-08-27) this file used to pin: "no art and no tier", "answers
+	 * the three questions" (MODEL / WORKSPACE / EXTENSIONS), and "the keys
+	 * row". The Graphite round (owner-ruled 2026-09-28) brought the
+	 * wordmark back for tall terminals and moved the answers: the model and
+	 * the folder to the status bar, what loaded beside the wordmark, the
+	 * keys to the empty input. The pipe half below is unchanged: a pipe
+	 * sees none of it.
 	 */
-	it("no art and no tier: the same rows at every height", () => {
+	it("a tall, wide terminal: the wordmark, the tagline, and what loaded beside it", () => {
+		const { env, dirs } = isolatedEnv();
+		const out = plainOut(env, dirs.home, 40, 100);
+		expect(out).toContain("██╗  ██╗██╗███████╗ ██████╗");
+		expect(out).toMatch(/the coding agent that survives kill -9 · \d+\.\d+\.\d+/);
+		expect(out).toContain("intent → effect → durable fact");
+		expect(out).toMatch(/│ {2}SESSION {5}new · resumable after kill -9/);
+		expect(out).toMatch(/│ {2}RULES {7}none/);
+		for (const gone of ["MODEL", "WORKSPACE", "esc interrupt"]) expect(out, gone).not.toContain(gone);
+	}, 90_000);
+
+	it("under 30 rows the opening is one line, and what loaded follows it", () => {
 		const { env, dirs } = isolatedEnv();
 		for (const [rows, cols] of [
-			[15, 80],
 			[24, 80],
+			[29, 120],
 			[10, 80],
 		] as const) {
 			const out = plainOut(env, dirs.home, rows, cols);
 			expect(out, `${rows}x${cols}`).not.toContain("█");
-			expect(out, `${rows}x${cols}`).not.toContain("the coding agent that survives kill -9");
-			expect(out, `${rows}x${cols}`).toMatch(/kiso \d+\.\d+\.\d+/);
+			expect(out, `${rows}x${cols}`).toMatch(/✦ kiso \d+\.\d+\.\d+ · the coding agent that survives kill -9/);
 		}
-	}, 90_000);
-
-	it("answers the three questions a first screen is asked", () => {
-		const { env, dirs } = isolatedEnv();
-		const out = plainOut(env, dirs.home, 24, 80);
-		expect(out).toContain("MODEL");
-		expect(out).toContain("WORKSPACE");
-		expect(out).toContain("EXTENSIONS");
-		expect(out).toContain("/ commands"); // the keys row
+		expect(plainOut(env, dirs.home, 24, 80)).toMatch(/SESSION {5}new · resumable after kill -9/);
 	}, 90_000);
 
 	it("a narrow screen keeps the name and drops nothing silently", () => {
 		const { env, dirs } = isolatedEnv();
-		const narrow = plainOut(env, dirs.home, 24, 39);
+		const narrow = plainOut(env, dirs.home, 40, 31);
 		expect(narrow).not.toContain("█");
 		expect(narrow).toMatch(/kiso \d+\.\d+\.\d+/);
 	}, 90_000);

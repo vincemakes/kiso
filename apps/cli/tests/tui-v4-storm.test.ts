@@ -166,6 +166,12 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 						// the CJK wide-char line — 30 × 2 cells — the display-width
 						// fold at the narrow winches (a char-based cut would split it).
 						{ type: "text_delta", text: "I see the workspace" + "\u4f60".repeat(30) },
+						// Graphite §7.10: the one-line opening left the transcript
+						// shorter than the 24-row screen, and a reprint of a
+						// transcript that fits stages nothing into the scrollback —
+						// so the reply is long enough to overflow it, which is the
+						// case the reprint's line feeds exist for.
+						{ type: "text_delta", text: `\n\n${Array.from({ length: 8 }, (_, i) => `- finding ${i + 1}: the storm must not repeat this row`).join("\n")}` },
 						{ type: "stop", reason: "end_turn" },
 					],
 				},
