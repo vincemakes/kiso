@@ -576,7 +576,9 @@ A failure's outcome word is short and its text is the body: a shell's
 `exit N`, any other tool's `failed`. A refusal reads `denied by you ·
 <reason>` when the person refused and `denied · <reason>` when a policy
 did (VD-11: the person's answer is worth recording; the ambient default is
-not).
+not). A call still open when the person stopped the turn reads
+`interrupted`, on the machine's ground, with its output so far — no one
+denied it (R3b; it read `denied · interrupted` on the failure ground).
 
 The head row gives way in a pinned order when the width squeezes: the
 attribution first, then the count; then the target elides in its middle;
@@ -1000,8 +1002,8 @@ replace it while they last.
 |---|---|
 | working | `✸ working 12.4s · ↓ 1.2k · 48 tok/s` |
 | retry | `↻ retrying 3/10 · <what failed> · next try in 4s`, and `esc gives up` |
-| compacting | `✸ compacting · 18s`; *(R3)* with its reason: `manual`, `past the soft tier`, `overflow` |
-| waiting *(R3, with the panels)* | `❯ needs you · <what>`; until then the open panel's own status holds the status row |
+| compacting | `✸ compacting · manual · 6 rounds · … · 18s`: the reason first — `manual` for /compact, `auto` when the opt-in threshold dispatched it (R3b). A compaction inside a run is the runtime's and says so after the fact, as a meta row |
+| waiting | `❯ needs you · <what>` — `<what>` the open panel's own words (`run paused`, `a question for you`, `uncertain execution`), the `❯` gold. It rides the STATUS row, where the panel's status always was: while a panel is up it holds the live zone itself (R3b) |
 
 The keys while a turn runs: `esc stop · ⏎ queue · alt+⏎ redirect`. A queued
 message is one row: `◇ queued  <text>  after this turn · ↑ edit`.
