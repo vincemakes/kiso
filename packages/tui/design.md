@@ -1074,10 +1074,15 @@ side once extensions can set one (§10).
 ❯ needs you · <name> — <folder>        an approval, a question, an unknown outcome to decide
 ```
 
-The name is the one `/name` set *(R3; durable in the session log, and the
-name the resume picker and `kiso sessions` show)*, else the first
-substantive input (`sessionTitle`), else there is none and the title is
-`kiso — <folder>`. Working is a turn or a `/compact`; needs you is any
+The name is the one `/name` set (R3d: `/name <words>`, `/name` shows it,
+`/name -` clears it) — durable in the session's SIDECAR (`<id>.meta.json`,
+the runtime's `name` tenant beside `profile` and `summary`; session
+metadata, not an event, so the log and the derivation never carry it;
+owner, 2026-09-29), and the name the resume picker, the session list and
+`SessionStore.list()` show — else the first substantive input
+(`sessionTitle`), else there is none and the title is `kiso — <folder>`.
+(This section first said "durable in the session log"; the sidecar is
+where session metadata that is not an event lives, ADR-0051 §6.) Working is a turn or a `/compact`; needs you is any
 panel that waits on the person's answer (an approval, an ask, the trust
 gate, an uncertain execution), and the answer puts back what the title
 said before. No model writes the title. It changes when the state
