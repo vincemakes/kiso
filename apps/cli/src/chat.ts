@@ -43,7 +43,7 @@ import { learnedWindowFor } from "./learned-windows.js";
 import { lookupContextWindow, lookupModelMetadata, type ContextWindowSource } from "@vincemakes/kiso-runtime/internal";
 import { addDontAskAgainRule, askPanel, fixHintFor, pendingAsk, resolveUncertains } from "./trust-ui.js";
 import { FauxExhaustionError, failOnFauxExhaustion } from "./faux-glue.js";
-import { OFFERED_MODES, getMode, setMode } from "./mode.js";
+import { MODE_NOTE, OFFERED_MODES, getMode, setMode } from "./mode.js";
 
 /** B area: default context window for the ~ctx estimate (config overridable).
  *  CW-1 batch 2: 128,000, down from 200,000 — the figure a model nobody
@@ -1786,10 +1786,12 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// The switch is the SAME live-extension flip /mode performs; the status
 	// row repaints at once with a one-line notice.
 	input.onModeCycle?.(() => {
-		const next = OFFERED_MODES[(OFFERED_MODES.indexOf(getMode()) + 1) % OFFERED_MODES.length]!;
+		const was = getMode();
+		const next = OFFERED_MODES[(OFFERED_MODES.indexOf(was) + 1) % OFFERED_MODES.length]!;
 		setMode(next);
 		paintIdle();
-		body.notice(`mode → ${next} (shift+tab cycles)`);
+		// Graphite R3e: the MODE row on a terminal (the pipe keeps these words)
+		body.modeNotice(`mode → ${next} (shift+tab cycles)`, was, next, `${MODE_NOTE[next]} · shift+tab cycles`);
 	});
 
 	// Recovery first: a session with a dangling pause or uncertain

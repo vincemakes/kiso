@@ -6,7 +6,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor } from "../src/editor.js";
-import { infoSheetRows, visibleWidth } from "../src/components.js";
+import { cellComponent, infoSheetRows, visibleWidth } from "../src/components.js";
+import { Body } from "../src/compositor.js";
 import { panelRowsOf } from "../src/ask-panel.js";
 import { pickAffordance, settingsPickView, type PickSpec } from "../src/approval-panel.js";
 import { palette, setGround } from "../src/lines.js";
@@ -110,5 +111,34 @@ describe("R3e — the /settings panel", () => {
 	it("the model's effort keeps its name where no label is given", () => {
 		expect(pickAffordance({ cursor: 0, phase: "options", level: 0 }, true)).toContain("←→ effort");
 		expect(pickAffordance({ cursor: 0, phase: "options", level: 0 }, "mode")).toContain("←→ mode");
+	});
+});
+
+describe("R3e — the MODE row (owner, 2026-09-29, option A)", () => {
+	const row = (from: string, to: string, W = 100): string[] =>
+		cellComponent({ kind: "notice", text: `mode → ${to}`, done: true, label: "MODE", sentence: `${from} → ${to} · what it does`, mark: { text: to, tone: to === "bypass" ? "fail" : to === "plan" ? "blue" : "ink" } } as never).render(W, { spinnerI: 0, now: 0, height: 24 });
+
+	it("from → to · what it does, the new tier bold — bypass in the failure colour, plan in blue", () => {
+		setGround("light");
+		const p = palette();
+		expect(plain(row("default", "bypass")[0]!)).toBe("  MODE        default → bypass · what it does");
+		expect(row("default", "bypass")[0]).toContain(`${p.bold}${p.red}bypass${p.reset}`);
+		expect(row("bypass", "plan")[0]).toContain(`${p.bold}${p.blue}plan${p.reset}`);
+		// the word after the arrow carries it, not an earlier one
+		expect(row("plan", "plan")[0]).toContain(`plan → ${p.reset}${p.bold}${p.blue}plan`);
+	});
+
+	it("invariant ①: the row fits, W 20..200, on both grounds and the unknown one", () => {
+		for (const g of ["light", "dark", "unknown"] as const) {
+			setGround(g);
+			for (let W = 20; W <= 200; W += 1) for (const r of row("accept-edits", "dontAsk", W)) expect(visibleWidth(r), `${g} W=${W}`).toBeLessThanOrEqual(W);
+		}
+	});
+
+	it("a pipe keeps the confirmation it always printed, byte for byte", () => {
+		const writes: string[] = [];
+		const body = new Body({ active: () => false, height: () => 24, width: () => 80, editCol: () => 1, write: (x) => writes.push(x) });
+		body.modeNotice("mode → bypass", "default", "bypass", "everything runs, nothing asks");
+		expect(writes.join("")).toBe("mode → bypass\n");
 	});
 });

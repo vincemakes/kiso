@@ -864,6 +864,24 @@ export class Body {
 		this.#mark();
 	}
 
+	/** Graphite R3e (owner, 2026-09-29, option A) — a mode switch: on the
+	 *  terminal the MODE meta row, `from → to · what it does`, the new tier
+	 *  bold (bypass in the failure colour, plan in blue); a pipe keeps the
+	 *  confirmation it always printed, byte for byte (`text`). */
+	modeNotice(text: string, from: string, to: string, note: string): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`${text}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		const tone = to === "bypass" ? "fail" : to === "plan" ? "blue" : "ink";
+		this.#cells.push({ kind: "notice", text, done: true, label: "MODE", sentence: `${from} \u2192 ${to} \u00b7 ${note}`, mark: { text: to, tone } });
+		this.#mark();
+	}
+
 	/**
 	 * Graphite §7.11 — the turn's SEAL. On the terminal a cell of its own,
 	 * drawn at the current width (widest tier that fits); a pipe gets

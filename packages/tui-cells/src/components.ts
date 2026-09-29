@@ -286,7 +286,7 @@ export type BodyCell =
 	/** Graphite §7.12 — `label` and `sentence` are the meta row's two
 	 *  halves, derived from `text` by the compositor; `text` is what a
 	 *  pipe prints, unchanged. */
-	| { kind: "notice"; text: string; done: true; label?: string; sentence?: string }
+	| { kind: "notice"; text: string; done: true; label?: string; sentence?: string; mark?: { readonly text: string; readonly tone: "fail" | "blue" | "ink" } }
 	/** Graphite §7.11 — the turn's seal: its forms, widest first; the
 	 *  widest that fits is drawn, and the narrowest is cut. */
 	| { kind: "seal"; tiers: readonly string[]; done: true }
@@ -1787,7 +1787,7 @@ const META_FAIL = new Set(["FAILED", "UNCERTAIN"]);
  * whole at the content edge.
  */
 class ErrorLine implements Component {
-	constructor(private readonly cell: { text: string; label?: string; sentence?: string }) {}
+	constructor(private readonly cell: { text: string; label?: string; sentence?: string; mark?: { readonly text: string; readonly tone: "fail" | "blue" | "ink" } }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
 		const c = this.cell;
@@ -1800,7 +1800,18 @@ class ErrorLine implements Component {
 		// a label wider than the row's room is cut like any row (invariant ①)
 		if (sentence === "") return [cutLine(head.trimEnd(), W)];
 		const folded = foldWords(sentence, room);
-		return folded.map((r, i) => (i === 0 ? cutLine(`${head}${p.dim}${r}${p.reset}`, W) : `${EDGE}${" ".repeat(META_LABEL)}${p.dim}${r}${p.reset}`));
+		// Graphite R3e (the MODE row): one word of the sentence carries the
+		// weight — the mode switched to, bold, bypass in the failure colour
+		const m = c.mark;
+		const lit = (r: string): string => {
+			if (m === undefined || !r.includes(m.text)) return `${p.dim}${r}${p.reset}`;
+			const tone = m.tone === "fail" ? p.red : m.tone === "blue" ? p.blue : "";
+			// the word after the arrow (the mode switched TO), not an earlier one
+			const arrow = r.indexOf(`\u2192 ${m.text}`);
+			const at = arrow >= 0 ? arrow + 2 : r.indexOf(m.text);
+			return `${p.dim}${r.slice(0, at)}${p.reset}${p.bold}${tone}${m.text}${p.reset}${p.dim}${r.slice(at + m.text.length)}${p.reset}`;
+		};
+		return folded.map((r, i) => (i === 0 ? cutLine(`${head}${lit(r)}`, W) : `${EDGE}${" ".repeat(META_LABEL)}${p.dim}${r}${p.reset}`));
 	}
 }
 

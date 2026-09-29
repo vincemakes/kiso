@@ -609,7 +609,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					const chosen = level === undefined ? undefined : OFFERED_MODES[level];
 					if (chosen !== undefined && chosen !== mode) {
 						setMode(chosen);
-						body.notice(`mode \u2192 ${chosen}`);
+						body.modeNotice(`mode \u2192 ${chosen}`, mode, chosen, MODE_NOTE[chosen]);
 						ctx.paintIdle();
 					}
 					ctx.input.prompt();
@@ -769,8 +769,9 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 						bodyLog(`no such mode: ${"index" in picked ? String(picked.index) : picked.custom.trim()}`);
 						bodyLog(`tiers: ${OFFERED_MODES.join(" ")}`);
 					} else {
+						const was = getMode();
 						setMode(chosen);
-						body.notice(`mode → ${chosen}`);
+						body.modeNotice(`mode → ${chosen}`, was, chosen, MODE_NOTE[chosen]);
 						ctx.paintIdle();
 					}
 					ctx.input.prompt();
@@ -782,8 +783,9 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				bodyLog(`no such mode: ${trimmed.slice(5).trim()}`);
 				bodyLog(`tiers: ${OFFERED_MODES.join(" ")}`);
 			} else {
+				const was = getMode();
 				setMode(m);
-				body.notice(`mode → ${m}`);
+				body.modeNotice(`mode → ${m}`, was, m, MODE_NOTE[m]);
 				ctx.paintIdle();
 			}
 			ctx.input.prompt();
