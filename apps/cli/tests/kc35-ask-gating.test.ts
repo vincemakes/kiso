@@ -96,6 +96,10 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 			// still the longest name.
 			"/copy        copy the last answer (raw markdown) — ctrl+x does the same",
 			"/status      show session id, event count, and context estimate",
+			// Graphite R3d — a DECLARED ADDITION in the same class: /name sits
+			// beside /status, which shows the name. The computed stop does not
+			// move: `/name` is five characters.
+			"/name        name this session · /name shows it · /name - clears it",
 			// 0.40.6 — a DECLARED ADDITION: /settings is nine characters, one more
 			// than /compact, so the computed stop moves one column and every row
 			// above and below carries one more space (a padding re-pin, no words).
@@ -152,7 +156,7 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 	});
 
 	it("the last row still carries its own newline — two rows from one bodyLog call", () => {
-		expect(helpRows()).toHaveLength(23); // 0.40.6 (declared re-pin): + /settings // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's ctrl+t + §2.4's ctrl+g + §2.5's /reload + 0.39.1's /context repair + 0.40.0's three skill rows
+		expect(helpRows()).toHaveLength(24); // Graphite R3d (declared addition): + /name // 0.40.6 (declared re-pin): + /settings // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's ctrl+t + §2.4's ctrl+g + §2.5's /reload + 0.39.1's /context repair + 0.40.0's three skill rows
 		expect(helpRows().filter((r) => r.includes("\n"))).toHaveLength(1);
 	});
 
