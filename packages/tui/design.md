@@ -511,9 +511,9 @@ on its state's ground (§1.6), with a whole row of that ground above and
 below it (§1.5). Two cards are one blank row apart, like any two blocks.
 
 The columns: the edge cell at 0, the head's mark cell at 1 (§4), the verb
-at 2 — the content edge — the target at 10, and the BODY at 2, UNDER THE
-VERB: the head and what it printed line up (owner, 2026-09-29, the 0.44
-card's alignment). The HEAD row: the verb, the target, and at the right
+at 2 — the content edge — the target one space after it, and the BODY at
+2, UNDER THE VERB: the head and what it printed line up (owner,
+2026-09-29, the 0.44 card's alignment). The HEAD row: the verb, the target, and at the right
 the outcome (§7.5). The BODY, when there is one, is the preview in `ink2`
 — five rows at most. A shell shows its TAIL with the cut
 note above it, because the conclusion of a command is at the bottom of its
@@ -559,8 +559,11 @@ retired (owner, 2026-09-29) for the seams they left (§1.5).
 
 **7.5 A card reads verb · target, then outcome.** The verb is the tool's
 display verb in upper case (`SHELL`, `READ`, `EDIT`, `WRITE`, `LIST`,
-`SEARCH`), `dim`, padded to seven columns so the targets line up; the
-target is `ink`. The outcome sits at the right end of the head row: what
+`SEARCH`), `dim`, then ONE space and the target in `ink` — `LIST (root)`,
+`SHELL npm test`. (The verb was padded to seven columns so targets lined
+up down a run of cards; with the body under the verb that padding left the
+target stranded between them, and the owner found the card scattered —
+2026-09-29.) The outcome sits at the right end of the head row: what
 happened, how much of it there was, how long it took — `exit 0 · 90 lines ·
 4.1s`. A running call's reads `running · 12s`, with the shell's gestures
 after it while there is room. Only the outcome WORD takes colour — `exit 0`
@@ -672,22 +675,32 @@ and the text moved to column 2.
 ██╗  ██╗██╗███████╗ ██████╗
 ██║ ██╔╝██║██╔════╝██╔═══██╗
 █████╔╝ ██║███████╗██║   ██║
-██╔═██╗ ██║╚════██║██║   ██║
-██║  ██╗██║███████║╚██████╔╝
-╚═╝  ╚═╝╚═╝╚══════╝ ╚═════╝
-─────────────────────────────
+██╔═██╗ ██║╚════██║██║   ██║                 │  SESSION     new · resumable after kill -9
+██║  ██╗██║███████║╚██████╔╝                 │  RULES       AGENTS.md
+╚═╝  ╚═╝╚═╝╚══════╝ ╚═════╝                  │  SKILLS      3 · /skills lists them
+────────────────────────────────────────     │  MCP         2 servers · 14 tools
 the coding agent that survives kill -9 · <version>
 intent → effect → durable fact
+
+──────────────────────────────────────────────────────────────────────────────
 ```
+
+(The prototype's layout, owner 2026-09-29: two columns — the wordmark,
+its forty-column rule, the tagline and the motto on the left; what loaded
+on the right, pushed to the right edge and to the BOTTOM of the left
+column, a hairline down its left side; a blank row and a hairline across
+the width close the opening.)
 
 The block cells take `mix(ink, dim, row / 4)`, top to bottom; the
 box-drawing shadow takes `mix(rail, ground, 0.35)`; the rule under it fades
 from `dim` to the ground. No gold: gold is the edge (§1.2), and the opening
 has none. `<version>` is the CLI's own package version, never a literal.
 
-Beside the wordmark when `W ≥ 96`, behind one hairline, what loaded, one
-fact per row — the label `dim` in its column, the fact in `ink`, a
-quieter note after it:
+What loaded, one fact per row behind its border — the label `dim` in its
+column, the fact in `ink`, a quieter note in `ink2` after it — on the
+right while the width holds both columns with a six-column gap and at
+least twenty-four columns for the values, below the left column
+otherwise:
 
 - `SESSION` — `new · resumable after kill -9`, or `resumed · N events`;
 - `RULES` — the instruction file the prompt reads (the same lookup, so it
@@ -700,7 +713,7 @@ quieter note after it:
 - DC-49's home-directory row, when the workspace is the home directory.
 
 The model, the mode and the folder are the status bar's (§8.9) and are
-not repeated. Under 96 columns the facts move below the wordmark. The
+not repeated. The
 wordmark shows from 20 rows — in the 80×24 window a Mac opens by default
 (owner, 2026-09-29: a wordmark the default window never shows is not worth
 drawing). Under 20 rows, on a terminal
