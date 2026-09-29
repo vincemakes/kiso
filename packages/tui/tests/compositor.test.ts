@@ -1036,7 +1036,11 @@ describe("TUI v6 — the one compositor", () => {
 		// parentheses are now the bodiless call's form (the read below
 		// keeps them).
 		expect(plain).toMatch(/EDIT +examples\/foo\.ts/);
-		expect(plain).toContain("+1 -1 · 1 line · 0.0s");
+		// Graphite §6 (R2a): the card's body is the edit's own diff, and the
+		// receipt's line count (`ok`) is no fact about the edit
+		expect(plain).toContain("+1 -1 · 0.0s");
+		expect(plain).not.toContain("+1 -1 · 1 line");
+		expect(plain).toMatch(/- a\x1b\[[\s\S]*\+ b\x1b\[/);
 		expect(plain).not.toContain("approved by");
 		// the DENIED call: the W19 pinned row (the full name + target) with
 		// the decider's tail — the aggregated head row, one line

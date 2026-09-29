@@ -56,6 +56,7 @@ import {
 // and it points one way: md.ts measures with the width authority, never
 // back through here.
 import { renderBlock, type MdBlock } from "./md.js";
+import { hunksDiff, hunksOf, type DiffLine } from "./diff.js";
 export { MdStream, renderBlock, renderMarkdown, type MdBlock, type MdKind } from "./md.js";
 
 /** The spinner glyphs, cycled by the compositor's on-demand tick. */
@@ -589,7 +590,7 @@ function countLines(text: string): number {
  *  failure text — the tool names it — 0 on success); a non-shell error
  *  → the error text's first line; anything else → the result's line
  *  count. */
-function settledMeta(c: { name: string; input: string; resultText: string; added: number; removed: number; isError: boolean }): string {
+function settledMeta(c: { name: string; input: string; inputFull: string; resultText: string; added: number; removed: number; isError: boolean }): string {
 	if (c.isError) {
 		// a shell EXECUTION failure names its code first ("exit 1: …") —
 		// that IS the metadata, and the body shows the full text. A
@@ -613,6 +614,10 @@ function settledMeta(c: { name: string; input: string; resultText: string; added
 		return `${k(shown)} line${shown === 1 ? "" : "s"}`;
 	}
 	if (c.name === "write_file" || c.name === "edit_file") {
+		// R2a: the call's own diff speaks for it — a batch's hunks counted
+		// together, a write as a new file or a rewrite
+		const edit = editDiffOf(c);
+		if (edit !== null) return edit.meta;
 		if (c.added + c.removed > 0) return `+${c.added} -${c.removed}`;
 		// no approval diff (an auto-allowed write): the input summary may
 		// be sliced at TOOL_SUMMARY_MAX — best-effort, then the last resort
@@ -720,7 +725,10 @@ class ToolExecution implements Component {
 			const attr = attribution(c).replace(/^ · /, "");
 			// VD-6: the line count is stated exactly ONCE — a meta that
 			// already counts lines gets no second count beside it.
-			const n = countLines(c.resultText);
+			// R2a: an edit's or a write's result is kiso's receipt (`edited
+			// <path>` and its revision), not something it made: its diff is
+			// the body, and the receipt's line count is no fact about it
+			const n = editDiffOf(c) === null ? countLines(c.resultText) : 0;
 			const counted = n > 0 && !/^\d+( of \d+)? lines?$/.test(rawMeta) ? `${n} line${n === 1 ? "" : "s"}` : "";
 			const join = (...xs: string[]): string => xs.filter((x) => x !== "").join(" \u00b7 ");
 			// pin 4's order: the ATTRIBUTION gives way first, then the count;
@@ -1246,7 +1254,10 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: 
 	// would otherwise be served the pre-ground shape forever.
 	const liveRows = ctx.liveWindow ?? CAP_PREVIEW;
 	const state = `${c.state}:${c.isError}:${c.name}:${c.expanded ? "x" : ""}:${slabPaints() ? "slab" : "flat"}:${liveRows}`;
-	const content: unknown = c.state === "approval" ? (c.diff ?? null) : c.resultText;
+	// R2a: an edit or a write shows what it changed while it runs and once
+	// it has — never after a refusal (nothing changed) or an error
+	const edit = !c.isError && c.reason === null && (c.state === "running" || c.state === "done") ? editDiffOf(c) : null;
+	const content: unknown = c.state === "approval" ? (c.diff ?? null) : edit !== null ? edit : c.resultText;
 	if (memo !== undefined && memo.width === W && memo.state === state && memo.content === content) return memo;
 	const p = palette();
 	const tone = slabPaints() ? "body" : "dim";
@@ -1261,8 +1272,19 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: 
 			? [...cutNote(all.length - CAP_PREVIEW, "earlier", W, tone), ...all.slice(all.length - CAP_PREVIEW)]
 			: [...all.slice(0, CAP_PREVIEW), ...cutNote(all.length - CAP_PREVIEW, "more", W, tone)];
 	};
+	// a diff inside a card: its own rows, the head of them until the key
+	const diffCapped = (lines: readonly DiffLine[] | null, cap: number): string[] => {
+		const all = lines === null ? [] : diffRows(lines, W);
+		if (c.expanded || all.length <= cap) return all;
+		cut = true;
+		return [...all.slice(0, cap), ...cutNote(all.length - cap, "more", W, tone)];
+	};
 	const rows =
-		c.expanded
+		edit !== null
+			? diffCapped(edit.lines, edit.cap)
+			: c.state === "approval" && slabPaints()
+				? diffCapped(c.diff, CAP_DIFF)
+				: c.expanded
 			? // W15: the WHOLE body, no cap, no cut note (nothing is cut).
 				c.state === "approval"
 				? diffBody(c.diff, W, true)
@@ -1296,7 +1318,7 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: 
 						: [];
 	// E1 governs the PREVIEW, not kiso's sentence about the result: a read
 	// the TOOL capped takes one body row (`offset=201 for the rest`).
-	const note = c.expanded ? null : toolCutNote(c.name, c.resultText);
+	const note = c.expanded || edit !== null ? null : toolCutNote(c.name, c.resultText);
 	if (note !== null) rows.push(...noteRow(note, W, "dim"));
 	// R8a: `└` opens a block that has no surface; inside a card the surface
 	// IS the container.
@@ -1517,6 +1539,107 @@ export function diffBody(diff: import("./diff.js").DiffLine[] | null, W: number,
 	if (starts.filter((s) => s < head).length + starts.slice(1).filter((s) => s > rows.length - tail).length < 3)
 		return [...rows.slice(0, CAP_DIFF - 1), cut(rows.length - (CAP_DIFF - 1))];
 	return [...rows.slice(0, head), cut(rows.length - head - tail), ...rows.slice(rows.length - tail)];
+}
+
+/** Graphite §6 (R2a) — the rows a card shows for a diff: a `-` / `+` line
+ *  on its tint (a background, §1.5) from the content edge to the card's
+ *  inner margin, the marker in its colour, the changed words on a deeper
+ *  tint; a kept line `dim`; kiso's own notes (`···` between hunks, a miss)
+ *  `dim` in the marker column. A long line folds under its text with the
+ *  tint on every row. Off a painted card the lines keep the flat form:
+ *  marker and text in the line's colour, the changed words underlined. */
+function diffRows(lines: readonly DiffLine[], W: number): string[] {
+	const p = palette();
+	const painted = slabPaints();
+	const room = bodyRowRoom(W) - bodyRow().length;
+	const textW = Math.max(1, bodyTextWidth(W) - 2);
+	const out: string[] = [];
+	for (const d of lines) {
+		const text = escapeTerminal(d.text);
+		if (d.kind === "note") {
+			out.push(...noteRow(text, W, "dim"));
+			continue;
+		}
+		if (d.kind === " ") {
+			for (const r of foldLine(text, textW)) out.push(`${bodyRow()}${p.dim}  ${r}${p.reset}`);
+			continue;
+		}
+		const del = d.kind === "-";
+		const rows = foldLine(text, textW);
+		// the marks index the line's own text: they hold only where the
+		// escape left it as it was and the fold cut it without loss
+		const marks = text === d.text && rows.join("") === text ? (d.marks ?? []) : [];
+		const base = del ? p.del : p.add;
+		const [on, off] = painted ? [del ? p.delWord : p.addWord, base] : [p.underline, p.underlineEnd];
+		let at = 0;
+		for (const [i, r] of rows.entries()) {
+			let body = "";
+			let k = 0;
+			for (const [s0, e0] of marks) {
+				const s1 = Math.max(s0, at) - at;
+				const e1 = Math.min(e0, at + r.length) - at;
+				if (e1 <= s1) continue;
+				body += `${r.slice(k, s1)}${on}${r.slice(s1, e1)}${off}`;
+				k = e1;
+			}
+			body += r.slice(k);
+			at += r.length;
+			const lead = i === 0 ? d.kind : " ";
+			if (painted) {
+				const pad = " ".repeat(Math.max(0, room - 2 - visibleWidth(r)));
+				out.push(`${bodyRow()}${base}${del ? p.fail : p.ok}${lead}${p.fgEnd} ${body}${pad}`);
+			} else {
+				out.push(`${bodyRow()}${del ? p.red : p.green}${lead} ${body}${p.reset}`);
+			}
+		}
+	}
+	return out;
+}
+
+/** How many of a write's lines its card shows before the key. */
+const WRITE_HEAD = 5;
+
+/** R2a — what an edit or a write CHANGED, from the call's own input: the
+ *  lines to draw, the head row's words for it, and how many rows show
+ *  before the key. Null for any other call, or an input with nothing to
+ *  draw. Memoized per cell: a call's input never changes. */
+interface EditDiff {
+	readonly lines: readonly DiffLine[];
+	readonly meta: string;
+	readonly cap: number;
+}
+const editDiffMemo = new WeakMap<object, EditDiff | null>();
+function editDiffOf(c: { name: string; inputFull: string }): EditDiff | null {
+	if (c.name !== "edit_file" && c.name !== "write_file") return null;
+	const known = editDiffMemo.get(c);
+	if (known !== undefined) return known;
+	let input: Record<string, unknown> | null = null;
+	try {
+		const v: unknown = JSON.parse(c.inputFull);
+		input = typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+	} catch {
+		input = null;
+	}
+	let out: EditDiff | null = null;
+	if (input !== null && c.name === "edit_file") {
+		const hunks = hunksOf(input);
+		const d = hunks === null ? null : hunksDiff(hunks);
+		if (hunks !== null && d !== null && d.lines.length > 0) {
+			const counts = `+${d.added} -${d.removed}`;
+			out = { lines: d.lines, meta: hunks.length > 1 ? `${counts} \u00b7 ${hunks.length} hunks` : counts, cap: CAP_DIFF };
+		}
+	} else if (input !== null && typeof input.content === "string") {
+		const content = input.content.replace(/\n$/, "");
+		const all = content === "" ? [] : content.split("\n");
+		// a write that cites "absent" creates the file; any other rewrites
+		// one whose old text is not in the log, so its lines are shown as
+		// they now read, not as additions
+		const created = input.expectedRevision === "absent";
+		const n = `${all.length} line${all.length === 1 ? "" : "s"}`;
+		out = { lines: all.map((text) => ({ kind: created ? ("+" as const) : (" " as const), text })), meta: created ? `new file \u00b7 ${n}` : `rewrote \u00b7 ${n}`, cap: WRITE_HEAD };
+	}
+	editDiffMemo.set(c, out);
+	return out;
 }
 
 /** The TOOL's OWN truncation note (W10) — a different fact from the

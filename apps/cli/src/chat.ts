@@ -24,7 +24,7 @@ import {
 	type RenderInput,
 	type RunUsage,
 } from "@vincemakes/kiso-tui";
-import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
+import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileHunksDiff, hunksOf, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { queuedSwitchLines } from "./state.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
@@ -685,12 +685,14 @@ function approvalDiff(name: string, input: Record<string, unknown>): DiffResult 
 	}
 	try {
 		if (name === "edit_file") {
-			const search = typeof input.search === "string" ? input.search : "";
-			const replace = typeof input.replace === "string" ? input.replace : "";
-			if (search === "") return null;
+			// R2a: the single pair or the batch — a batch's hunks applied in
+			// order, as the tool applies them (it reached the panel with no
+			// diff while only search/replace was read)
+			const hunks = hunksOf(input);
+			if (hunks === null || hunks.some((h) => h.search === "")) return null;
 			// TUI2-R1.5 ② (VD-2): the path rides along so a miss can name the
 			// file in its honest note instead of fabricating a diff.
-			return editFileDiff(oldContent ?? "", search, replace, path);
+			return editFileHunksDiff(oldContent ?? "", hunks, path);
 		}
 		const content = typeof input.content === "string" ? input.content : "";
 		return writeFileDiff(oldContent, content);

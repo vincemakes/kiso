@@ -143,6 +143,10 @@ export interface Palette {
 	readonly codeBg: string;
 	readonly add: string;
 	readonly del: string;
+	/** Graphite §6 (R2a) — the changed words inside a `+` / `-` row: the
+	 *  row's ground deepened toward its colour, as a BACKGROUND. */
+	readonly addWord: string;
+	readonly delWord: string;
 	/** Graphite §7.4 — a card's EDGE: one cell of its ground deepened
 	 *  toward the state's colour, as a BACKGROUND (§1.5: a glyph bar down
 	 *  several rows shows a break at every row in Apple Terminal; a cell's
@@ -204,6 +208,8 @@ const NO_GRAPHITE = {
 	codeBg: "",
 	add: "",
 	del: "",
+	addWord: "",
+	delWord: "",
 	runEdge: "",
 	failEdge: "",
 	askEdge: "",
@@ -244,6 +250,10 @@ const EDGE_DEPTH = 0.22;
 /** The person's edge is gold, quieted toward the warm ground so a whole
  *  cell reads as an edge and not a stripe (the seam test's B4). */
 const HUMAN_EDGE_DEPTH = 0.55;
+/** How far a changed word's ground is deepened from its row's toward the
+ *  row's colour: enough to find the word, not so much that ink stops
+ *  reading on it. */
+const WORD_DEPTH = 0.3;
 
 export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tier): Palette {
 	const c = graphiteColours(kind, ground, tier);
@@ -278,6 +288,8 @@ export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tie
 		codeBg: b(c.code),
 		add: b(c.add),
 		del: b(c.del),
+		addWord: b(mix(c.add, c.ok, WORD_DEPTH)),
+		delWord: b(mix(c.del, c.fail, WORD_DEPTH)),
 		runEdge: b(mix(c.washRun, c.blue, EDGE_DEPTH)),
 		failEdge: b(mix(c.washFail, c.fail, EDGE_DEPTH)),
 		askEdge: b(mix(c.washAsk, c.goldMark, EDGE_DEPTH)),

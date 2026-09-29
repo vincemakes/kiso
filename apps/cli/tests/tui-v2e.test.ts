@@ -1,9 +1,13 @@
 /**
  * v2e — the approval-moment mini-diff through the CLI's topmost entry, on
  * a REAL PTY (24×80): an edit_file approval shows the ± diff below the
- * tool line (the human sees the change BEFORE deciding); after the
- * approval the frozen summary stays ONE line — no diff residue (v2d's
- * anti-leak principle).
+ * tool line (the human sees the change BEFORE deciding).
+ *
+ * Graphite §6 (R2a) — DECLARED REVERSAL of v2e's second half ("after the
+ * approval the frozen summary stays ONE line — no diff residue"): the
+ * settled card carries the edit's own diff, in every mode, so a call no
+ * one was asked about shows what it changed too. And a BATCH edit's
+ * approval shows its diff (it reached the panel with none).
  */
 
 import { execFileSync } from "node:child_process";
@@ -73,7 +77,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
 }
 
 describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
-	it("edit_file shows the ± diff at the approval, the frozen summary stays ONE line", () => {
+	it("edit_file shows the ± diff at the approval, and the settled card shows it again (R2a)", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v2e-"));
 		const workdir = join(dir, "work");
@@ -111,20 +115,93 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 		// The approval-moment diff: - OLD / + NEW visible BEFORE the decision.
 		expect(clean).toContain("- OLD");
 		expect(clean).toContain("+ NEW");
-		// The frozen summary: ONE line with the ± stats.
+		// The settled card: the ± stats on its head row.
 		expect(clean).toContain("edit"); // W3 (sanctioned): the verb strips the _file suffix — both paths print the same verb
 		expect(clean).toContain("+1 -1");
-		// NO diff residue after the freeze — the last diff row precedes the
-		// frozen summary, and the summary line itself is a single line.
-		//
-		// R2 (law 1.3): the settled row's gutter is two spaces now (the ✓
-		// is retired), so `  edit` no longer names the frozen row alone —
-		// it also matches the approval panel's own title row, which comes
-		// BEFORE the diff and made this comparison read backwards. The
-		// anchor is the ± stat, which only the frozen summary carries.
-		const lastMinus = clean.lastIndexOf("- OLD");
+		// DECLARED REVERSAL (Graphite §6, R2a, owner 2026-09-29): v2e showed
+		// the diff at the approval moment ONLY and froze the settled call to
+		// one line, so a call no one approved (accept-edits, bypass) never
+		// showed what it changed. The settled card now carries the edit's
+		// own diff under its head — the diff rows come again AFTER the ± stat.
 		const frozen = clean.indexOf("+1 -1");
-		expect(frozen, "no frozen summary row").toBeGreaterThan(0);
-		expect(lastMinus).toBeLessThan(frozen);
+		expect(frozen, "no settled head row").toBeGreaterThan(0);
+		expect(clean.indexOf("- OLD", frozen), "the settled card shows no diff").toBeGreaterThan(frozen);
+		expect(clean.indexOf("+ NEW", frozen), "the settled card shows no diff").toBeGreaterThan(frozen);
+	}, 90_000);
+
+	it("R2a: a batch edit's approval shows every hunk (red: it showed no diff at all)", () => {
+		const { env } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-v2e-"));
+		const workdir = join(dir, "work");
+		mkdirSync(workdir, { recursive: true });
+		writeFileSync(join(workdir, "work.txt"), "line1\nOLD\nline2\n", "utf8");
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{
+					events: [
+						{
+							type: "tool_call_end",
+							callId: "c1",
+							name: "edit_file",
+							input: { path: "work.txt", edits: [{ search: "line1", replace: "FIRST" }, { search: "line2", replace: "LAST" }], expectedRevision: "rev:68d57b25056a1d5a" },
+						},
+						{ type: "stop", reason: "tool_use" },
+					],
+				},
+				{ events: [{ type: "text_delta", text: "the batch is done" }, { type: "stop", reason: "end_turn" }] },
+			]),
+			"utf8",
+		);
+		const out = ptyRun(
+			{ ...env, KISO_FAUX_SCRIPT: script },
+			[
+				["\u258c ", "go\r"],
+				// the verdict waits on the panel's diff itself, the last hunk's row
+				["+ LAST", "y\r"],
+				["the batch is done", "exit\r"],
+			],
+			workdir,
+		);
+		const clean = stripANSI(out);
+		const asked = clean.indexOf("needs approval");
+		expect(asked, "the approval never opened").toBeGreaterThan(0);
+		for (const row of ["- line1", "+ FIRST", "- line2", "+ LAST"]) expect(clean.indexOf(row, asked), `the approval shows no ${row}`).toBeGreaterThan(asked);
+		expect(clean).toContain("+2 -2 \u00b7 2 hunks");
+	}, 90_000);
+
+	it("R2a: in bypass nothing asks, and the settled card still shows what the edit changed", () => {
+		const { env } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-v2e-"));
+		const workdir = join(dir, "work");
+		mkdirSync(workdir, { recursive: true });
+		writeFileSync(join(workdir, "work.txt"), "line1\nOLD\nline2\n", "utf8");
+		const script = join(dir, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{
+					events: [
+						{
+							type: "tool_call_end",
+							callId: "c1",
+							name: "edit_file",
+							input: { path: "work.txt", search: "OLD", replace: "NEW", expectedRevision: "rev:68d57b25056a1d5a" },
+						},
+						{ type: "stop", reason: "tool_use" },
+					],
+				},
+				{ events: [{ type: "text_delta", text: "the bypass edit is done" }, { type: "stop", reason: "end_turn" }] },
+			]),
+			"utf8",
+		);
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, [["\u258c ", "go\r"], ["the bypass edit is done", "exit\r"]], workdir);
+		const clean = stripANSI(out);
+		expect(clean, "bypass asked").not.toContain("needs approval");
+		const head = clean.indexOf("+1 -1");
+		expect(head, "no settled card").toBeGreaterThan(0);
+		expect(clean.indexOf("- OLD", head), "the settled card shows no diff").toBeGreaterThan(head);
+		expect(clean.indexOf("+ NEW", head), "the settled card shows no diff").toBeGreaterThan(head);
 	}, 90_000);
 });

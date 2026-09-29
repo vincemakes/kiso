@@ -191,7 +191,9 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		// v2e: the approval-time diff + the frozen one-line summary.
 		expect(clean).toContain("+ hello"); // the diff row (new file, all +)
 		expect(clean).toContain("  write"); // W3 (sanctioned): the verb strips the _file suffix — the settled row is "write" padded
-		expect(clean).toContain("+1 -0"); // the frozen ± stats
+		// Graphite §6 (R2a): a write that creates its file says so on the
+		// settled head (it was the approval's `+1 -0`)
+		expect(clean).toContain("new file · 1 line");
 		expect(clean).toContain("▸ default · /mode to switch"); // after /mode default the idle state shows the default tier
 
 		// The audit trail: r1 + w1 decided by the plan tier (decidedBy
