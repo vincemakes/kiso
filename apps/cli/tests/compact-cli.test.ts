@@ -207,7 +207,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			env,
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
-				["/ commands · \u2191 history", "/status\r"],
+				["/mode to switch", "/status\r"],
 				["ctx ~", "go\r"],
 				// The go turn's OWN shell cell ("sleep 4") marks the run
 				// mid-flight — the recovery's leftover "working" status must
@@ -240,7 +240,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 				// its work has no summary line anywhere. The row itself is
 				// the record, which is why the needle can be the row.)
 				["exit 0", "/compact\r"],
-				["/ commands · \u2191 history", "/status\r"],
+				["/mode to switch", "/status\r"],
 				["ctx ~", "exit\r"],
 			],
 			dir,
@@ -304,7 +304,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			env,
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
-				["/ commands · \u2191 history", "/compact\r"],
+				["/mode to switch", "/compact\r"],
 				// The FIRST paint of the indeterminate row marks the call
 				// live — esc lands mid-flight (the call outlives the feed by
 				// ~1.4s, so the cancel is never a race against the settle).
@@ -373,7 +373,7 @@ describe("0.40.0 cli: the compacting row's bar on a real PTY", () => {
 		const out = ptyRun(
 			{ ...isoEnv, KISO_FAUX_SCRIPT: scriptPath },
 			[
-				["/ commands · \u2191 history", "/compact\r"],
+				["/mode to switch", "/compact\r"],
 				["COMPACTED", "exit\r"], // Graphite §7.12: the result is a meta row
 			],
 			dir,

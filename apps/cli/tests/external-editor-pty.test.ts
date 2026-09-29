@@ -52,7 +52,7 @@ describe("§2.4 — ctrl+g opens the external editor", () => {
 	it("the edited text comes back to the COMPOSER, unsent, and the screen is whole again", () => {
 		const { env, dirs } = isolatedEnv({ KISO_FAUX_SCRIPT: script(), EDITOR: fakeEditor({ write: EDITED }) });
 		const raw = ptyRun(["ext-a"], env as NodeJS.ProcessEnv, {
-			feeds: [["/ commands · ↑ history", "half a thought"]],
+			feeds: [["/mode to switch", "half a thought"]],
 			delays: [
 				[3, "\x07"], // ctrl+g
 				// ctrl+u empties the composer so `exit` is a command and not
@@ -76,7 +76,7 @@ describe("§2.4 — ctrl+g opens the external editor", () => {
 	it("an editor that FAILS leaves the buffer exactly as it was", () => {
 		const { env, dirs } = isolatedEnv({ KISO_FAUX_SCRIPT: script(), EDITOR: fakeEditor({ exit: 3, write: EDITED }) });
 		const raw = ptyRun(["ext-b"], env as NodeJS.ProcessEnv, {
-			feeds: [["/ commands · ↑ history", "the words I typed"]],
+			feeds: [["/mode to switch", "the words I typed"]],
 			delays: [
 				[3, "\x07"],
 				[7, "\r"], // submit what is in the composer now
@@ -96,7 +96,7 @@ describe("§2.4 — ctrl+g opens the external editor", () => {
 		// wall. Absence has to be stated, not assumed.
 		const { env, dirs } = isolatedEnv({ KISO_FAUX_SCRIPT: script(), EDITOR: "", VISUAL: "" });
 		const raw = ptyRun(["ext-c"], env as NodeJS.ProcessEnv, {
-			feeds: [["/ commands · ↑ history", "still mine"]],
+			feeds: [["/mode to switch", "still mine"]],
 			delays: [
 				[3, "\x07"],
 				[7, "\r"],
@@ -118,7 +118,7 @@ describe("§2.4 — ctrl+g opens the external editor", () => {
 		// comes from the terminal, and only the first opens an editor.
 		const { env, dirs } = isolatedEnv({ KISO_FAUX_SCRIPT: script(), EDITOR: fakeEditor({ write: EDITED }) });
 		const raw = ptyRun(["ext-d"], env as NodeJS.ProcessEnv, {
-			feeds: [["/ commands · ↑ history", "typed by hand"]],
+			feeds: [["/mode to switch", "typed by hand"]],
 			delays: [
 				// an OSC 11 answer, terminator and all — this must be swallowed
 				[3, "\x1b]11;rgb:ffff/ffff/ffff\x07"],

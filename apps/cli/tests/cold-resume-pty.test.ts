@@ -200,7 +200,7 @@ describe("0.40.0 — a resumed session whose cache has gone cold is offered a co
 	it("a session billed a minute ago is warm — no offer", () => {
 		const { env, dirs } = isolatedEnv();
 		seed(dirs.home, "warm", 1);
-		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, ["chat", "warm"], [], ["/ commands"], 3);
+		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, ["chat", "warm"], [], ["/mode to switch"], 3);
 		expect(screen).not.toContain("cache is cold");
 		expect(kinds(dirs.home, "warm")).not.toContain("summarized");
 	}, 60_000);

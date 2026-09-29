@@ -47,7 +47,7 @@ describe("a ground answer repaints what is on screen", () => {
 		const { body, writes } = settledCard();
 		const before = writes.length;
 		setGround("dark", { r: 30, g: 30, b: 30 });
-		const wash = palette().wash;
+		const wash = palette().washRun; // a card's ground, running or run (§7.4)
 		body.onGroundChange();
 		vi.advanceTimersByTime(200);
 		const after = writes.slice(before).join("");

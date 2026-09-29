@@ -138,7 +138,7 @@ def driver(cli, home, script_path, workdir, args, sessions_mode):
         else:
             # R2: the composer has no prompt glyph, so what says "the panel
             # closed and the dock is back" is the idle status hint.
-            if not read_until("/ commands".encode(), 8):
+            if not read_until("/mode to switch".encode(), 8):
                 sys.stdout.write(full.decode(errors="replace"))
                 sys.exit(4)
             send(b"go\\r")

@@ -181,7 +181,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		const out = stormRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["/ commands · \u2191 history", "look around\r"], // #16d + W6: the box's light prompt alone (no "you> ")
+				["/mode to switch", "look around\r"], // #16d + W6: the box's light prompt alone (no "you> ")
 			],
 		);
 		// the process SURVIVED the whole storm — the driver's leading marker
@@ -292,7 +292,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// fixed dark background.
 		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so
 		// the bar no longer closes right after the words.
-		expect(out).toContain("\x1b[7m  look around"); // R13 D4: the chip's inner pad is TWO columns now, so its text begins in the same column as the model's (E3) and as a card's rows (E4).
+		expect(out).toContain("\u258c\x1b[7m look around"); // Graphite §7.9 (R1e): the bar in column 0, reverse video from column 1, the text at column 2 — where the composer's text starts.
 		expect(out).not.toContain("\x1b[48;5;237m"); // the fixed dark background stays banned
 
 		// ④ Graphite §7.8 — DECLARED REVERSAL of R2's "no prompt glyph": the
@@ -303,7 +303,7 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		expect(out).not.toContain("you> ");
 	}, 90_000);
 
-	it("TUI v5 #16g — the idle hint: right-aligned when it fits, CUT FIRST when the width is short", () => {
+	it("TUI v5 #16g → Graphite §8.5 — the teaching hint rides the status bar when it fits, and gives way FIRST when the width is short", () => {
 		const { env } = isolatedEnv();
 		// Text-only — the default faux script's tool races the driver's
 		// time-based exit under load (ADR-0024); this gate is about the
@@ -322,23 +322,23 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 			]),
 			"utf8",
 		);
-		// 80 cols: the idle status (~50 cells) + the hint (23) fit — the
-		// hint rides the status row, dim, right-aligned (the pad fills
-		// between them; the dim span closes AFTER the hint).
-		const wide = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["/ commands · \u2191 history", "look around\r"]], 30);
-		// R2: this used to assert `\u203a ` — the composer's chevron, which
-		// is gone (the cursor sits at column one now). It was a proxy for
-		// "the chrome drew", and a poor one: the byte it matched was
-		// actually the resume tail's, not the composer's. The case is about
-		// the HINT riding the status row, so that is what it asserts.
-		expect(wide).toContain("/ commands · \u2191 history");
+		// DECLARED SUPERSESSION (Graphite R1c/R1e): the key ladder this case
+		// was about is gone — the status bar replaced the idle row (R1c), and
+		// the empty input's placeholder that carried it after retired too
+		// (owner, 2026-09-29). The teaching hint that remains is the bar's
+		// `/mode to switch`, and the property carries over to it: present
+		// where it fits, the first thing to give way where it does not.
+		const wide = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["/mode to switch", "look around\r"]], 30);
+		expect(wide).toContain("/mode to switch");
 		// 50 cols: status + hint = 73 > 50 → the HINT is cut — the status
 		// itself is never truncated for it. The idle row's dim span ends
 		// IMMEDIATELY after the status (the hint, had it fit, would sit
 		// between the status and the reset).
 		// Graphite §8.9: `ctx N%` is shorter than `ctx left ~N%`, so the row
 		// with no room for the hint is 36 columns now.
-		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["/ commands", "look around\r"]], 30, 36, []);
+		// (the needle is the bar's chip: at 36 columns `/mode to switch` is
+		// exactly what is gone)
+		const narrow = stormRun({ ...env, KISO_FAUX_SCRIPT: script }, [["\u25b8 default", "look around\r"]], 30, 36, []);
 		// v6 invariant ①: the status itself must fit W. A1a (0.29.0): the
 		// idle status counts the tool table and the system prompt, so a
 		// fresh faux session reads ~99% (50 cells) instead of ~100% (51);

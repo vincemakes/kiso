@@ -460,10 +460,11 @@ function makeLineInput(): LineInput {
 		// editor measures its rows against it; two copies is how they came
 		// to disagree by two columns in the first place.
 		// Graphite §7.8 — DECLARED REVERSAL of R2's no-glyph ruling (owner,
-		// 2026-09-28): the prompt `›` is back, in the mark column (right-
-		// aligned to column 2), so the typed text starts at the content edge
-		// with the transcript. The compositor paints the `›` gold.
-		const COMPOSER_LEAD = "  \u203a ";
+		// 2026-09-28): the prompt `›` is back, in column 0 (owner,
+		// 2026-09-29: no two-space indent), so the typed text starts at
+		// column 2 — the column the person's sent words start at (§7.9).
+		// The compositor paints the `›` gold.
+		const COMPOSER_LEAD = "\u203a ";
 		dock.bindInput(() => editor.dockState(), COMPOSER_LEAD);
 		// …and BOTH renderers are live: the dock draws this row while it is
 		// active, the editor's own selfRender draws it (with the brick) when

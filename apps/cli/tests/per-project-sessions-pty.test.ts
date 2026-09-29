@@ -131,7 +131,7 @@ describe("0.40.0 — one session folder per project (CLI)", () => {
 			ptyRun(["--mode", "bypass", "pp-here"], { ...w.env, KISO_FAUX_SCRIPT: fauxScript([{ events: [{ type: "text_delta", text: "here answered." }, { type: "stop", reason: "end_turn" }] }, ...spares(6)]) }, {
 				cwd: w.alpha,
 				feeds: [
-					["/ commands · ↑ history", "the here task\r"],
+					["/mode to switch", "the here task\r"],
 					["here answered.", "/resume pp-lost\r"],
 					["previous: pp-here", "/resume pp-here\r"],
 					["previous: pp-lost", "exit\r"],
@@ -204,7 +204,7 @@ describe("0.40.0 — one session folder per project (CLI)", () => {
 			ptyRun(["--mode", "bypass", "pp-new"], { ...w.env, KISO_FAUX_SCRIPT: answer("unused.") }, {
 				cwd: w.alpha,
 				feeds: [
-					["/ commands · ↑ history", "/resume pp-beta\r"],
+					["/mode to switch", "/resume pp-beta\r"],
 					["cd there to resume it", "exit\r"],
 				],
 			}),

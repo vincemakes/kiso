@@ -104,11 +104,11 @@ import sys
 sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([
-			["/ commands · \u2191 history", "\u4f60", 2],
-			["\u4f60", "\u4f60", 3], // the key ladder left the input with the first character (§7.8)
+			["/mode to switch", "\u4f60", 2],
+			["\u4f60", "\u4f60", 3], // the first character is on the input row (§7.8)
 			["\u4f60\u4f60", "\r", 4], // the submit — the turn runs the shell
 			["needs approval", "y\r", 5], // the rule line's dim run — the default tier ASKS the shell, answer the panel
-			["/ commands · \u2191 history", "x", 8], // the post-turn char — after the 2s run ends (~t=7) — its frame is the commitless steady frame
+			["/mode to switch", "x", 8], // the post-turn char — after the 2s run ends (~t=7) — its frame is the commitless steady frame
 		])}, 12)
 `;
 		const out = execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
@@ -132,12 +132,9 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: scri
 		expect(grid[21]!.includes("\u2500")).toBe(false);
 		expect(grid[21]).toContain("x"); // the post-turn char, at H−2
 		expect(grid[22]!.includes("\u2500")).toBe(true);
-		// the status at H — the idle hint (the CLI's empty status + the
-		// right-aligned "/ commands · ↑ history" tail) — and the working
-		// status ZERO times on the final screen (the dead "working" at H
-		// was the R2 report's frozen residue).
-		// Graphite §8.9 / §7.8: the bottom row is the status bar; the key
-		// ladder lives in the EMPTY input, and this input holds the "x"
+		// the status at H — and the working status ZERO times on the final
+		// screen (the dead "working" at H was the R2 report's frozen
+		// residue). Graphite §8.9: the bottom row is the status bar
 		expect(grid[23]).toContain("/mode to switch");
 		expect(grid.join("")).not.toContain("working");
 	}, 90_000);

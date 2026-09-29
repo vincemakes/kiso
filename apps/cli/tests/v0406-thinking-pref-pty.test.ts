@@ -61,7 +61,7 @@ describe("0.40.6 — the thinking display survives a restart", () => {
 				],
 			}),
 		);
-		expect(two, "the next session's block is one line").toMatch(/THINK[^\n]*· hidden · ctrl\+t/);
+		expect(two, "the next session's block is one line").toMatch(/thinking · hidden · ctrl\+t/);
 		expect(two, "and its words never reach the screen").not.toContain("leaves nothing behind");
 		expect(two, "the prose is untouched").toContain("the answer.");
 	}, 240_000);

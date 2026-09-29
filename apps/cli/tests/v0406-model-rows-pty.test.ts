@@ -57,7 +57,7 @@ describe("0.40.6 — /model rows carry availability, not the window", () => {
 		writeFileSync(join(dirs.home, "config.json"), `${JSON.stringify(THIRTEEN)}\n`);
 		const raw = ptyRun(["chat", "rows-a"], { ...env, DS_KEY: "fake" } as NodeJS.ProcessEnv, {
 			cols: 100,
-			feeds: [["/ commands · ↑ history", "/model\r"]],
+			feeds: [["/mode to switch", "/model\r"]],
 			delays: [
 				[2.6, "\x1b"],
 				[3.6, "exit\r"],

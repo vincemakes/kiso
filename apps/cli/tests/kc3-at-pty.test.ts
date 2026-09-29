@@ -136,7 +136,7 @@ describe("KC3 T-A4 — the acceptance run", () => {
 			"kc3a4",
 			ws,
 			[
-				["/ commands · \u2191 history", "look at @ra", 2], // typed, NOT submitted — the picker opens
+				["/mode to switch", "look at @ra", 2], // typed, NOT submitted — the picker opens
 				["(1/", "\t", 3], // the counter proves the panel is up; Tab accepts
 				["@src/range.js", "\r", 4], // the completed line submits
 			],
@@ -166,7 +166,7 @@ describe("KC3 T-A4 — the acceptance run", () => {
 			"kc3a4b",
 			ws,
 			[
-				["/ commands · \u2191 history", "look at @ra", 2],
+				["/mode to switch", "look at @ra", 2],
 				["(1/", "\t", 3],
 				["@src/range.js", "\r", 4],
 			],
@@ -195,7 +195,7 @@ describe("KC3 T-A4 — the acceptance run", () => {
 		// rails are the same rule, so what the stream must carry is the
 		// rule itself — the corners are retired.
 		expect(out).toContain("\u2500\u2500\u2500");
-		expect(out).toContain("/ commands");
+		expect(out).toContain("/mode to switch"); // Graphite §8.9: the status bar
 		expect(out).toContain("chrome check answered");
 		// and the picker is GONE once the line was sent
 		expect(out.lastIndexOf("chrome check answered")).toBeGreaterThan(out.lastIndexOf("(1/"));

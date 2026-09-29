@@ -83,7 +83,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
 // they reach the terminal on an unknown ground (the test PTY answers no
 // OSC 11, so the lead and the word carry no colour of the ground's).
 const QUEUED = (text: string): string => `  \u25c7 \x1b[2mqueued\x1b[0m  ${text}`;
-const COMPOSER = (text: string): string => `\x1b[0K  \u203a ${text}`;
+const COMPOSER = (text: string): string => `\x1b[0K\u203a ${text}`; // §7.8: `›` in column 0 (R1e)
 
 describe("TUI v2c (real PTY, 24×80)", () => {
 	it("wide input (fullwidth) lands the cursor on the DISPLAY-width column — ＡＡ is 4 cells, not 2", () => {

@@ -59,8 +59,8 @@ describe("§2.3 — ctrl+t folds the committed thinking blocks", () => {
 
 		// ② the fold — 0.40.6 (declared re-pin): hidden is one italic
 		//    line, `thinking… · /think`, no longer the first 100 characters
-		// Graphite §7.2: the hidden form is the THINK label line
-		expect(out, "the hidden line carries its own way back").toMatch(/THINK[^\n]*· hidden · ctrl\+t/);
+		// Graphite §7.2 (R1e): the hidden form is one `thinking · hidden` row
+		expect(out, "the hidden line carries its own way back").toMatch(/thinking · hidden · ctrl\+t/);
 
 		// ③ the answer is untouched by either press — the toggle is about
 		//    the reasoning, never the prose beside it

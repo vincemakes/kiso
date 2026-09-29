@@ -45,7 +45,7 @@ describe("MP-1: the picker opens on the session's own row", () => {
 		const t = plain(
 			ptyRun(["chat", "mp1-a", "--model", "c"], setup(), {
 				feeds: [
-					["/ commands · ↑ history", "/model\r"],
+					["/mode to switch", "/model\r"],
 					["takes effect on the next turn", "exit\r"],
 				],
 				delays: [[2.6, "\r"]],
@@ -60,7 +60,7 @@ describe("MP-1: the picker opens on the session's own row", () => {
 		const t = plain(
 			ptyRun(["chat", "mp1-b", "--model", "c"], setup(), {
 				feeds: [
-					["/ commands · ↑ history", "/model\r"],
+					["/mode to switch", "/model\r"],
 					["from the next turn", "exit\r"],
 				],
 				delays: [
@@ -79,7 +79,7 @@ describe("MP-1: the picker opens on the session's own row", () => {
 		const t = plain(
 			ptyRun(["chat", "mp1-c", "--model", "c", "--mode", "plan"], setup(), {
 				feeds: [
-					["/ commands · ↑ history", "/mode\r"],
+					["/mode to switch", "/mode\r"],
 					["mode → ", "exit\r"],
 				],
 				delays: [[2.6, "\r"]],

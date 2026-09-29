@@ -173,7 +173,7 @@ describe("A2: ↑↓ recall the session history", () => {
 		// is the ground's), then the text. (A `^hello` on the stripped text
 		// does not work: stripping the CUP sequences joins the rows, so
 		// there is no line start to anchor to.)
-		expect((out.match(/\x1b\[0K {2}(?:\x1b\[[0-9;]*m)*\u203a(?:\x1b\[[0-9;]*m)* hello/g) ?? []).length).toBeGreaterThanOrEqual(1);
+		expect((out.match(/\x1b\[0K(?:\x1b\[[0-9;]*m)*\u203a(?:\x1b\[[0-9;]*m)* hello/g) ?? []).length).toBeGreaterThanOrEqual(1);
 	});
 });
 

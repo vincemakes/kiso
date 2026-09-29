@@ -38,7 +38,7 @@ describe("0.40.0 — user-invoked skills (PTY)", () => {
 		skill(dirs.skills, "inner", "description: only for the model\nuser-invocable: false\n", "Model-only instructions.");
 		const raw = ptyRun(["--mode", "bypass", "skill-pty"], env as NodeJS.ProcessEnv, {
 			feeds: [
-				["/ commands · ↑ history", "/skills\r"],
+				["/mode to switch", "/skills\r"],
 				["say hello properly", "/skill inner\r"],
 				["user-invocable: false", "/skill helo\r"],
 				["nearest: hello", "/skill hello world\r"],
@@ -87,9 +87,9 @@ describe("0.40.0 — user-invoked skills (PTY)", () => {
 		const out = strip(
 			ptyRun(["--mode", "bypass", "skill-menu"], env as NodeJS.ProcessEnv, {
 				feeds: [
-					// "ctx left" is the BOOT status row, painted after the agent
-					// (and its extensions) exist — "/ commands" is painted
-					// earlier, and a key typed then reads an empty catalog
+					// the ctx segment is the BOOT status bar, painted after the
+					// agent (and its extensions) exist — a key typed before it
+					// reads an empty catalog
 					[" · ctx ", "/b"], // Graphite §8.9: the bar's ctx segment (used share) — one plain span, so it matches the raw stream
 					// the menu styles the typed prefix, so the raw bytes split
 					// "/b" from the rest — the needle is the unsplit part

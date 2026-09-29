@@ -96,7 +96,7 @@ describe("R3a — cross-session history", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-r3a-h-"));
 		// process 1: submit a distinctive line, exit
 		strip(ptyRun(["chat", "hist-one"], env, [
-			["/ commands · \u2191 history", "remember this exact line\r"],
+			["/mode to switch", "remember this exact line\r"],
 			["What would you like me to inspect", "exit\r"],
 		], workdir));
 		const file = readFileSync(join(dirs.home, "history"), "utf8");
@@ -134,7 +134,7 @@ describe("R3a — Shift+Tab cycles the tier", () => {
 		// BOOT frame's prompt would race it; the settled first turn is the
 		// REPL-ready anchor
 		const out = strip(ptyRun(["chat", "st-one"], env, [
-			["/ commands · \u2191 history", "hi\r"],
+			["/mode to switch", "hi\r"],
 			["What would you like me to inspect", "\x1b[Z"],
 			["mode → accept-edits", "exit\r"],
 		], workdir));

@@ -133,7 +133,7 @@ describe("KC1 T-P1 — a pasted 3-line CRLF block is ONE multi-line turn (real P
 		// the paste: CRLF line endings, the shape a real SQL copy carries
 		const paste = "\x1b[200~SELECT id\r\nFROM t\r\nWHERE x = 1\x1b[201~";
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script }, "kc1p1", [
-			["/ commands · \u2191 history", paste, 2],
+			["/mode to switch", paste, 2],
 			["WHERE x = 1", "\r", 4], // Enter — the composer's rows are on the screen by now
 		], 16);
 		const grids = frameGrids(out);
@@ -168,7 +168,7 @@ describe("KC1 T-P1 — a pasted 3-line CRLF block is ONE multi-line turn (real P
 		expect(grid[20]!.includes("\u2500")).toBe(true); // R2: the rails, not the corners
 		expect(grid[21]!.includes("\u2500")).toBe(false); // the input row between them
 		expect(grid[22]!.includes("\u2500")).toBe(true);
-		expect(grid[21]).toContain("/ commands"); // Graphite §7.8: the key ladder in the empty input
+		expect(grid[21]!.trimEnd()).toBe("\u203a"); // Graphite §7.8: the empty input is the `›` alone
 		expect(grid[23]).toContain("/mode to switch"); // §8.9: the status bar
 		// the user's own turn rides the scrollback as a chip, all three lines
 		const scrollback = Buffer.from(out, "hex").toString("utf8");
@@ -188,7 +188,7 @@ describe("KC1 T-P2 — Ctrl+J grows the box; the submit collapses it; a queued m
 			{ events: [{ type: "text_delta", text: "second turn done" }, { type: "stop", reason: "end_turn" }] },
 		]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc1p2", [
-			["/ commands · \u2191 history", "one\x0atwo\x0athree", 2], // Ctrl+J ×2 — the composer grows LIVE
+			["/mode to switch", "one\x0atwo\x0athree", 2], // Ctrl+J ×2 — the composer grows LIVE
 			["three", "\r", 4], // Enter — the submit collapses it and starts the run
 			["one", "queued one\x0aqueued two\x0aqueued three", 6], // typed WHILE the shell sleeps
 			["queued three", "\r", 8], // the second submit — it QUEUES behind the run
@@ -244,7 +244,7 @@ describe("OR-11 T-P3 — the composer wraps, and re-folds on a resize (real PTY,
 		// deliberately NOT submitted: the composer holding the line is what
 		// is being measured, and a submit collapses it to one row before the
 		// transcript ends.
-		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script }, "kc1p3a", [["/ commands · \u2191 history", LINE, 2]], 8);
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script }, "kc1p3a", [["/mode to switch", LINE, 2]], 8);
 		const grid = frameGrids(out).at(-1)!;
 		// the budget is 80 − 0 (the bound lead) − 1 = 79, so a hundred
 		// characters are two rows; the rails move up by exactly one from
@@ -262,7 +262,7 @@ describe("OR-11 T-P3 — the composer wraps, and re-folds on a resize (real PTY,
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc1-p3b-"));
 		const script = fauxScript(dir, [{ events: [{ type: "text_delta", text: "one long line received" }, { type: "stop", reason: "end_turn" }] }]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script }, "kc1p3b", [
-			["/ commands · \u2191 history", LINE, 2],
+			["/mode to switch", LINE, 2],
 			// the needle is the thing about to be asserted — the composer
 			// carrying the line — never a neighbouring event that races the
 			// repaint which draws it.

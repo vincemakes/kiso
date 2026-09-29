@@ -47,7 +47,7 @@ describe("DF-0311-F1 — /model repaints the row with no meter", () => {
 		const raw = ptyRun(["chat", "df0311-f1"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", "go\r"],
+				["/mode to switch", "go\r"],
 				// the switch is keyed on the METER's own bytes, not the recap's: keyed
 				// on `took ` it raced the idle repaint that carries the figure, and
 				// the "before" frame sometimes showed a row the switch had already

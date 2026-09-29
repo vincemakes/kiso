@@ -165,9 +165,7 @@ const CELL_LINE = [
 	// upper case, the target, the outcome at its end — and its FOOT, the key
 	/^(?:[●❯] )?[A-Z]+ +\S.*$/,
 	/^ctrl\+o (?:expands|collapses)$/,
-	// Graphite §7.2: the thinking block's LABEL — the twinkle rides it while
-	// it streams, the seconds when it settles, the key when it is hidden
-	/^(?:[✧✦✶✸✺] )?THINK(?: [\d.]+s)?(?: · hidden · ctrl\+t)?$/,
+	/^(?:[✧✦✶✸✺] )?thinking · hidden · ctrl\+t$/, // Graphite §7.2 (R1e): hidden thinking's one row — no THINK label
 	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)
 	// MOVED (R1.5 slice 11, the panel-frame class — DECLARED THIS ROUND):
 	// the panel's bottom edge is a real RULE now (└ + a ─ run to the
@@ -274,7 +272,9 @@ const lint = (rawWithOsc: string): string[] => {
 		// the exception. The classifier is the dim+italic PAIR, which is
 		// what actually separates them, and it always was.
 		// Graphite §1.8: the lead is the content edge, FOUR columns.
-		if (/^ {4}\x1b\[2m\x1b\[3m/.test(seg)) continue;
+		// R1e: no label row — while a block streams, its FIRST row carries
+		// the twinkle in the mark column instead of the edge's spaces.
+		if (/^(?: {4}| {2}[✧✦✶✸✺] )\x1b\[2m\x1b\[3m/.test(seg)) continue;
 		// R13 — A CARD'S BODY ROW, classified on the RAW segment for the
 		// same reason the chip and the thinking are: stripped and trimmed,
 		// a line of a tool's output is arbitrary text, and a pattern that

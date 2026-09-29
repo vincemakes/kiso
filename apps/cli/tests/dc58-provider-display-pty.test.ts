@@ -41,7 +41,7 @@ describe("DC-58's sibling — the /model panel names each profile's provider", (
 		writeFileSync(join(dirs.home, "config.json"), `${JSON.stringify(TWO_ACCOUNTS)}\n`);
 		const raw = ptyRun(["chat", "prov-a", "--model", "co"], { ...env, PROV_KEY: "fake" } as NodeJS.ProcessEnv, {
 			feeds: [
-				["/ commands · ↑ history", "/model\r"],
+				["/mode to switch", "/model\r"],
 				["takes effect on the next turn", "exit\r"],
 			],
 			// Enter alone: the cursor opens on the live profile, so this

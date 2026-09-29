@@ -27,7 +27,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("0.40.6 — hidden thinking", () => {
-	it("restored at start: an open block streams NO text, only its label; settled, `THINK · hidden · ctrl+t`", () => {
+	it("restored at start: an open block streams NO text, only its row; settled, `thinking · hidden · ctrl+t`", () => {
 		const { body, take } = makeBody();
 		body.setThinkingHidden(true);
 		expect(body.thinkingHidden()).toBe(true);
@@ -39,13 +39,13 @@ describe("0.40.6 — hidden thinking", () => {
 		}
 		// Graphite §7.2: the hidden form is the label line — while it streams
 		// the twinkle hangs beside it
-		expect(live, "the live line").toMatch(/THINK · hidden · ctrl\+t/);
+		expect(live, "the live line").toMatch(/thinking · hidden · ctrl\+t/);
 		for (const c of CHUNKS) expect(live, "no thinking text reaches the screen while it runs").not.toContain(c.trim().slice(0, 20));
 		body.thinkingEnd();
 		body.textAppend("the answer is the first one.");
 		vi.advanceTimersByTime(16);
 		const settled = strip(take());
-		expect(settled, "the settled line names the way back to the text").toMatch(/THINK( [\d.]+s)? · hidden · ctrl\+t/);
+		expect(settled, "the settled line names the way back to the text").toMatch(/thinking · hidden · ctrl\+t/);
 		expect(settled).not.toContain("leaves nothing behind");
 		expect(settled, "the prose is untouched").toContain("the answer is the first one.");
 		expect(body.lastThinking(), "the record holds every word").toBe(CHUNKS.join(""));
