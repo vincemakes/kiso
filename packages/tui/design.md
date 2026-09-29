@@ -87,13 +87,18 @@ content, and they are grey (§1.2). A block whose look already says what it
 is takes no label: the person's words are their block, thinking is its
 grey italic (§7.2), and the answer is what is left.
 
-A surface is drawn with cell BACKGROUNDS only — never with block-element
-glyphs (`▌ ▎ ▄ ▀`). A terminal draws a glyph from the font, and where the
-line is taller than the font (Apple Terminal among them) the glyph stops
-short of the cell's edge: rows that should join show a seam, a bar drawn
-down several rows reads as a dashed line. A background fills its whole
-cell. (The unknown ground, which has no background to paint, keeps the
-person's `▌` as a character — §7.9.)
+A surface is drawn with cell BACKGROUNDS — never with block-element glyphs
+that must JOIN from row to row (`▄ ▀ █`, or a bar down several rows). A
+terminal draws a glyph from the font, and where the line is taller than the
+font (Apple Terminal among them) the glyph stops short of the cell's edge:
+rows that should join show a seam, a bar drawn down several rows reads as a
+dashed line. A background fills its whole cell. So a pad is a whole ROW of
+background, a card's edge is one cell of background, and the wordmark's
+letters are background cells. A glyph is fine where it has no neighbour to
+join: the person's `▌` stands beside a single text row (§7.9). (Measured on
+the owner's Apple Terminal with a seam test, 2026-09-29: half-row pads in
+either orientation, `▌` and `▎` down four rows, and `█` letters all showed
+seams; background rows and cells did not.)
 
 DECLARED REVERSAL (owner, 2026-09-29) of R1's `THINK` label (blue, with
 its seconds) and of R1's half-row pads and side bars: both were seen in
@@ -136,20 +141,21 @@ This is R13's ruling (2026-09-03) and Graphite keeps it. The design round
 considered one card per stretch of work, with one row per call, and did not
 adopt it.
 
-**1.8 One content edge, one mark column.** Every block of kiso's begins at
-column 4: prose, thinking, cards, meta rows, the seal's words. Columns 0–2
-are the mark column — in the transcript, a hanging `§` beside a
-second-level heading, the twinkle on a streaming thought's first row, and
-the seal's `✦`; in the live zone, the row's mark, right-aligned to column
-2. The PERSON's words start at column 2 — typed (the composer's `›` sits
-in column 0) and sent (the block's bar is column 0) — left of kiso's, the
-two sides of a conversation (owner, 2026-09-29: no two-space indent). A
-block's own internal indents — a list's bullet, a card's verb column, a
-diff's sign — are its own.
+**1.8 One content edge, one mark column.** Every block begins at column 2:
+prose, thinking, the person's words, a card's contents, meta rows, the
+seal's words. Columns 0–1 are the mark column — the seal's `✦`, the
+twinkle on a streaming thought's first row, a hanging `§` beside a
+second-level heading, the live row's mark, the person's `▌`, a card's edge
+and its mark. Surfaces (the person's block, a card) span the full width,
+from column 0. The composer has no prompt glyph: the caret stands in
+column 0 (§7.8). A block's own internal indents — a list's bullet, a
+card's verb column, a diff's sign — are its own.
 
-DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). The edge was column 2
-for everything, with no mark column. A hanging mark needs columns that are
-not the content's.
+DECLARED REVERSAL, twice. The Graphite design round (2026-09-28) moved the
+edge from column 2 to column 4 to give hanging marks a column of their own.
+Seen in the owner's terminal (2026-09-29), column 4 read as too much left
+margin, and column 2 came back — the 0.44 geometry — with the marks in
+columns 0–1.
 
 ---
 
@@ -491,20 +497,25 @@ shrank at its settle.
 **7.4 A settled call is a CARD.** One object, one shape, every call:
 
 ```
-        SHELL   npm test -- recovery     exit 0 · 90 lines · 4.1s
-                … 85 earlier lines
-                <the last five output rows>
-                                                 ctrl+o expands
+▌                                                              pad: a row of the card's ground
+▌ SHELL   npm test -- recovery          exit 0 · 90 lines · 4.1s
+▌ … 85 earlier lines
+▌ <the last five output rows>
+▌                                                 ctrl+o expands
+▌                                                              pad
 ```
 
-The card runs from the content edge to the right edge of the screen, on
-its state's ground (§1.6) — that ground IS the card: no pad rows, no side
-bar (§1.5). Two cards are one blank row apart, like any two blocks.
+(`▌` here stands for the card's EDGE: one cell of its ground deepened toward
+the state's colour, drawn as a background.) The card spans the full width,
+on its state's ground (§1.6), with a whole row of that ground above and
+below it (§1.5). Two cards are one blank row apart, like any two blocks.
 
-The columns: the ground from 4, the mark cell at 6, the verb at 8, the
-target and every body row at 16. The HEAD row: the mark cell (§4), the verb, the
-target, and at the right the outcome (§7.5). The BODY, when there is one,
-is the preview in `ink2`, aligned under the target — five rows at most. A shell shows its TAIL with the cut
+The columns: the edge cell at 0, the head's mark cell at 1 (§4), the verb
+at 2 — the content edge — the target at 10, and the BODY at 2, UNDER THE
+VERB: the head and what it printed line up (owner, 2026-09-29, the 0.44
+card's alignment). The HEAD row: the verb, the target, and at the right
+the outcome (§7.5). The BODY, when there is one, is the preview in `ink2`
+— five rows at most. A shell shows its TAIL with the cut
 note above it, because the conclusion of a command is at the bottom of its
 output; everything else shows its HEAD with the note below, because that is
 where its answer is. **A read shows nothing at all**: its result is the
@@ -514,8 +525,9 @@ itself capped the result, is not a preview and stays. The FOOT row carries
 the key, right-aligned, and exists only while something is behind it: on a
 collapsed card when the preview cut rows away, on an expanded one when
 collapsing would hide rows again. A call with nothing to preview is its
-head row alone — and when its result sits behind the key (a read), the key
-ends the head row's outcome instead: `412 lines · 0.1s · ctrl+o expands`.
+head row between its pads — and when its result sits behind the key (a
+read), the key ends the head row's outcome instead: `412 lines · 0.1s ·
+ctrl+o expands`.
 
 **An EXPANDED card is the same card** — the whole body, uncapped, and
 `ctrl+o collapses` on its foot row when there is anything to collapse.
@@ -603,9 +615,9 @@ screen has something behind the key.
 **7.8 The composer is four rows and stays four rows.** `CHROME_ROWS` is
 4: the top rule, the input, a hairline, the status bar (§8.9). Every gate
 keyed on `H − 4` depends on it. The top rule is `gold-mark` for its first
-eighth and fades to `line` by a third of the width. The prompt is a gold `›`
-in column 0 and the caret is gold; the text starts at column 2, the column
-the person's sent words start at (§1.8, §7.9). *(R2)* While the line starts with
+eighth and fades to `line` by a third of the width. There is no prompt
+glyph: the caret is a block in the terminal's own ink (reverse video) and
+the text starts at column 0. *(R2)* While the line starts with
 `!`, the prompt is `$` (§7.13). The live zone (§8.7) sits above these four
 rows and is not part of them. The line-mode prompt (no composer: a terminal
 kiso does not dock in) is unchanged.
@@ -617,13 +629,17 @@ DECLARED REMOVAL (owner, 2026-09-29) of R1's key ladder placeholder.
 DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). R2 (owner,
 2026-08-27) ruled that the docked composer has no prompt glyph: the rules
 already said "input lives here", and a glyph cost the row a column. The
-design round brought back a gold `›`, and the owner then moved it to column
-0 with the text at column 2 (2026-09-29: no two-space indent).
+design round brought back a gold `›` and a gold caret; the owner, seeing
+them (2026-09-29), took both out again — R2's ruling stands, with 0.44's
+caret.
 
 **7.9 The person's words span the width.** The person's block (§1.6): the
-`human` ground across the full width, a gold BACKGROUND cell in column 0
-for its bar, and the text at column 2 — where the composer's text starts.
-No pad rows: the surface is backgrounds only (§1.5). No label and no time: the block says whose words these are, and when a turn
+`human` ground across the full width with a whole row of it above and
+below (§1.5), the gold `▌` in column 0 beside each text row, and the text
+at the content edge, column 2. The `▌` is a glyph, and down several rows it
+shows a break at each row (§1.5) — so it stands beside the text rows only,
+where a one-line message, the common case, has no neighbour to break
+against. No label and no time: the block says whose words these are, and when a turn
 ended and how long it took is the seal's (§7.11). The block is padded to
 `W` by *display* width, so a CJK row pads correctly, and it folds by WORD:
 the character fold was defended as lossless, which is not a property CJK
@@ -645,9 +661,10 @@ pasted code and lists keep their shape.
 
 DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). The words were
 reverse video on every ground with a two-column inner pad; the design round
-chose the warm ground with a gold bar. R1 drew the bar and half-row pads
-with glyphs and put the text at column 4; the owner saw the seams and the
-indent in Apple Terminal (2026-09-29), and both went.
+chose the warm ground with a gold bar. R1 drew half-row pads with glyphs
+and put the text at column 4; the owner saw the seams and the indent in
+Apple Terminal (2026-09-29), and the pads became whole rows of background
+and the text moved to column 2.
 
 **7.10 The opening.** The wordmark, then what loaded.
 
@@ -683,7 +700,10 @@ quieter note after it:
 - DC-49's home-directory row, when the workspace is the home directory.
 
 The model, the mode and the folder are the status bar's (§8.9) and are
-not repeated. Under 96 columns the facts move below the wordmark. Under 30 rows, on a terminal
+not repeated. Under 96 columns the facts move below the wordmark. The
+wordmark shows from 20 rows — in the 80×24 window a Mac opens by default
+(owner, 2026-09-29: a wordmark the default window never shows is not worth
+drawing). Under 20 rows, on a terminal
 too narrow for the wordmark at the content edge, and on a resume (the
 history is above the opening there, and ten rows of wordmark would bury
 its tail) the head is one line —
@@ -693,8 +713,10 @@ long hangs under itself, folded by word — an extensions list cut at the
 width would hide which extensions loaded, on the one screen whose job is
 to say so. Beside the wordmark only while the folded facts fit its six
 rows.
-Where the ground is unknown the wordmark is drawn in the terminal's own
-foreground.
+The letters are cells of BACKGROUND, not `█` glyphs (§1.5): in Apple
+Terminal `█` left a white line through every row of the letters. Where the
+ground is unknown there is no background to paint, and the wordmark is `█`
+in the terminal's own foreground.
 
 The R2 keys row retires: `?` lists the keys (§8.5).
 
@@ -740,7 +762,7 @@ verification pass — are sentences about the session, not the model's and
 not a tool's. Each is one row at the content edge: a bold label
 (`COMPACTED`, `PRUNED`, `WINDOW`, `FAILED`, `UNCERTAIN`, `LIMIT`,
 `INTERRUPTED`, `VERIFY`) in a twelve-column label column, and the sentence
-beside it, folded under itself (column 16). `FAILED` and `UNCERTAIN` name
+beside it, folded under itself (column 14). `FAILED` and `UNCERTAIN` name
 outcomes and take the failure colour; the rest are `dim`. No card and no
 ground: they are not the machine's work.
 
@@ -796,8 +818,10 @@ is the prose at the content edge, rendered as:
 | code fence | a `wash-done` block with its bar and the language at the top right; keywords `blue`, strings `ok`, numbers `gold`, comments `dim` italic, function names bold |
 | rule | `·  ·  ·` in `rail` |
 
-Prose, thinking and the answer wrap at the content width, 92 columns at
-most.
+Prose, thinking and the answer wrap from the content edge to two columns
+short of the right edge — the same margin on both sides, and no width cap
+(owner, 2026-09-29: a 92-column cap left the words far short of the cards
+beside them on a wide terminal).
 
 ---
 
