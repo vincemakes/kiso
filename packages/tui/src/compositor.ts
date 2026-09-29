@@ -2365,7 +2365,9 @@ export class Body {
 		// queued messages sit under it, next to the input they wait on.
 		const panelUp = (this.#panelState?.() ?? null) !== null;
 		const p = palette();
-		const live = panelUp ? [] : this.#live !== null ? [cutLine(this.#live, W)] : this.#flash !== null ? [cutLine(`  ${p.dim}${this.#flash}${p.reset}`, W)] : [];
+		// a blank row above the live row keeps it off the streaming content
+		// (owner, 2026-09-29: the words ran right up to `working`)
+		const live = panelUp ? [] : this.#live !== null ? ["", cutLine(this.#live, W)] : this.#flash !== null ? ["", cutLine(`  ${p.dim}${this.#flash}${p.reset}`, W)] : [];
 		return [...live, ...this.#queuedRows(W, H - live.length)];
 	}
 

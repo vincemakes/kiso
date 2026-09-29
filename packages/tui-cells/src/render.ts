@@ -150,6 +150,11 @@ export interface Palette {
 	readonly runEdge: string;
 	readonly failEdge: string;
 	readonly askEdge: string;
+	/** Graphite §7.9 — the person's block's edge: one cell of gold toward
+	 *  the warm ground, as a BACKGROUND, the same width as a card's edge.
+	 *  A half-cell `▌` is thinner but shows a break at every row in Apple
+	 *  Terminal (the owner's seam tests, 2026-09-29). */
+	readonly humanEdge: string;
 	readonly fgEnd: string;
 	/** §5.2 — the command breath's seven foreground opens; empty where
 	 *  the mark freezes (no ground, or no colour). */
@@ -202,6 +207,7 @@ const NO_GRAPHITE = {
 	runEdge: "",
 	failEdge: "",
 	askEdge: "",
+	humanEdge: "",
 	fgEnd: "",
 	breath: [],
 	tier: null,
@@ -235,6 +241,9 @@ const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: st
  *  state's colour — quiet enough to read as the card's own edge, not a
  *  stripe (the owner's seam test, B6, 2026-09-29). */
 const EDGE_DEPTH = 0.22;
+/** The person's edge is gold, quieted toward the warm ground so a whole
+ *  cell reads as an edge and not a stripe (the seam test's B4). */
+const HUMAN_EDGE_DEPTH = 0.55;
 
 export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tier): Palette {
 	const c = graphiteColours(kind, ground, tier);
@@ -272,6 +281,7 @@ export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tie
 		runEdge: b(mix(c.washRun, c.blue, EDGE_DEPTH)),
 		failEdge: b(mix(c.washFail, c.fail, EDGE_DEPTH)),
 		askEdge: b(mix(c.washAsk, c.goldMark, EDGE_DEPTH)),
+		humanEdge: b(mix(c.human, c.goldMark, HUMAN_EDGE_DEPTH)),
 		fgEnd: "\x1b[39m",
 		breath: breathRamp(c).map(f),
 		tier,

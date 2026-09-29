@@ -141,7 +141,8 @@ describe("the palette writes the Graphite colours, and only them", () => {
 				const breath = new Set(p.breath);
 				// Graphite §7.4 (R1f): a card's EDGE is its ground deepened toward
 				// the state's colour — a derived colour, stated here by its recipe
-				const edges = new Set([p.runEdge, p.failEdge, p.askEdge]);
+				const edges = new Set([p.runEdge, p.failEdge, p.askEdge, p.humanEdge]);
+				expect(p.humanEdge).toBe(bg(mix(c.human, c.goldMark, 0.55), tier));
 				expect(p.runEdge).toBe(bg(mix(c.washRun, c.blue, 0.22), tier));
 				expect(p.failEdge).toBe(bg(mix(c.washFail, c.fail, 0.22), tier));
 				expect(p.askEdge).toBe(bg(mix(c.washAsk, c.goldMark, 0.22), tier));

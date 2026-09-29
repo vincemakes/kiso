@@ -5,9 +5,10 @@
  * seam test in Apple Terminal): on a known ground the warm `human` ground
  * across the full width with a whole ROW of it above and below (the
  * half-row glyphs R1b drew left a seam; a row of background does not —
- * §1.5), the gold `▌` in column 0 on the text rows only (beside one row a
- * glyph has no neighbour to show a break against), and the text at the
- * content edge, column 2. On an unknown ground nothing assumes a
+ * §1.5), an EDGE cell of quieted gold in column 0 down every row — a
+ * background, the same width as a card's edge (a `▌` glyph showed a break
+ * between rows in Apple Terminal) — and the text at the content edge,
+ * column 2. On an unknown ground nothing assumes a
  * background (§3.1): the `▌` in column 0 — a character, so a stripped
  * frame still marks the person's words (§1.2) — and reverse video from
  * column 1, no pads.
@@ -40,18 +41,15 @@ const isNotice = (row: string): boolean => plain(row).includes("\u2514");
 
 describe("§7.9 — the person's block", () => {
 	for (const g of ["light", "dark"] as const) {
-		it(`${g}: a row of warm ground above and below, the gold ▌ in column 0 beside the text, the text at column 2`, () => {
+		it(`${g}: a row of warm ground above and below, the gold edge cell down every row, the text at column 2`, () => {
 			setGround(g);
 			const p = palette();
 			const rows = chip("look around");
 			expect(rows).toHaveLength(3);
-			for (const pad of [rows[0]!, rows[2]!]) {
-				expect(pad.startsWith(p.human), "a pad is a row of the block's BACKGROUND").toBe(true);
-				expect(plain(pad)).toBe(" ".repeat(56));
-			}
-			expect(rows[1]!.startsWith(`${p.human}${p.goldMark}\u258c`)).toBe(true);
-			expect(plain(rows[1]!)).toMatch(/^\u258c look around {2,}$/);
-			expect(rows.map(plain).join(""), "a half-row glyph drew a pad (§1.5)").not.toMatch(/[\u2584\u2580]/);
+			for (const row of rows) expect(row.startsWith(`${p.humanEdge} ${p.human}`), "the edge is a BACKGROUND cell on every row").toBe(true);
+			for (const pad of [rows[0]!, rows[2]!]) expect(plain(pad)).toBe(" ".repeat(56));
+			expect(plain(rows[1]!)).toMatch(/^ {2}look around {2,}$/);
+			expect(rows.map(plain).join(""), "a block glyph drew the surface (§1.5)").not.toMatch(/[\u2584\u2580\u258c]/);
 			expect(rows.join(""), "no reverse video on a known ground").not.toContain("\x1b[7m");
 		});
 	}

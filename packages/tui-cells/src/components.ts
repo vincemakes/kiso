@@ -353,11 +353,11 @@ const PERSON_COL = EDGE.length;
  *
  * On a known ground: the warm `human` ground across the full width, a
  * whole row of it above and below (§1.5: a pad is a row of BACKGROUND —
- * the half-row glyphs R1b tried left a seam in Apple Terminal), the gold
- * `▌` in column 0 on the text rows only (a glyph bar down several rows
- * shows a break between them; beside one row it has none to show), and
- * the text at the content edge in `humanInk`. No label and no time: the
- * block says whose words these are.
+ * the half-row glyphs R1b tried left a seam in Apple Terminal), an EDGE
+ * cell of quieted gold in column 0 down every row — the same width as a
+ * card's edge, and like it a background, since a `▌` glyph shows a break
+ * at every row there — and the text at the content edge in `humanInk`.
+ * No label and no time: the block says whose words these are.
  *
  * On an unknown ground nothing is painted that assumes a background
  * (§3.1): the `▌` in column 0, which is a character and so still marks
@@ -393,9 +393,9 @@ class UserMessage implements Component {
 			}
 		}
 		const fill = (row: string): string => " ".repeat(Math.max(0, chipW - displayWidth(row) + CHIP_RIGHT));
-		const padRow = `${p.human}${" ".repeat(Math.max(0, W))}${p.washEnd}`;
+		const padRow = `${p.humanEdge} ${p.human}${" ".repeat(Math.max(0, W - 1))}${p.washEnd}`;
 		const out = painted
-			? [padRow, ...content.map((row) => `${p.human}${p.goldMark}\u258c${p.humanInk} ${row}${fill(row)}${p.fgEnd}${p.washEnd}`), padRow]
+			? [padRow, ...content.map((row) => `${p.humanEdge} ${p.human}${p.humanInk} ${row}${fill(row)}${p.fgEnd}${p.washEnd}`), padRow]
 			: content.map((row) => `\u258c${p.rv} ${row}${fill(row)}${p.rvEnd}`);
 		if (!truncated) return out;
 		// The notice is OUTSIDE the block, in the cut-row vocabulary, and it
