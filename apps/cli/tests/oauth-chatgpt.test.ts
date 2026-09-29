@@ -115,11 +115,11 @@ describe("the callback server", () => {
 		const ok = await fetch(`http://127.0.0.1:${port}/auth/callback?code=c&state=${state}`);
 		const html = await ok.text();
 		expect(ok.headers.get("content-type")).toBe("text/html; charset=utf-8");
-		expect(html).toContain("<h1>Signed in</h1>");
-		expect(html).toContain("\u2726</b> kiso");
+		expect(html).toContain("<h1>You&#39;re signed in<span class=\"period\">.</span></h1>");
+		expect(html).toContain('class="mark"'); // the quatrefoil, kiso.work's mark
 		expect(html).toContain("prefers-color-scheme:dark");
-		expect(html).toContain("--ground:#ffffff");
-		expect(html).toContain("--ground:#0b0b0b");
+		expect(html).toContain("--bg:#f7f7f4");
+		expect(html).toContain("--bg:#151513");
 		expect(html).toContain('name="viewport"');
 		expect(html).not.toMatch(/<script/i);
 		expect(await server!.waitForCode()).toBe("c");
@@ -134,8 +134,8 @@ describe("the callback server", () => {
 		const res = await fetch(`http://127.0.0.1:${port}/auth/callback?state=${state}&error=access_denied&error_description=${encodeURIComponent("the <b>user</b> said no")}`);
 		expect(res.status).toBe(400);
 		const html = await res.text();
-		expect(html).toContain("<h1>Sign-in failed</h1>");
-		expect(html).toContain("access_denied: the &lt;b&gt;user&lt;/b&gt; said no");
+		expect(html).toContain("<h1>Sign-in failed<span class=\"period\">.</span></h1>");
+		expect(html).toContain("<pre>access_denied: the &lt;b&gt;user&lt;/b&gt; said no</pre>");
 		expect(html).not.toContain("<b>user</b>");
 		expect(html).not.toContain("Missing code");
 		await expect(waiting).rejects.toThrow("ChatGPT sign-in failed — access_denied: the <b>user</b> said no");
@@ -148,7 +148,7 @@ describe("the callback server", () => {
 		const server = await startCallbackServer(state, "127.0.0.1", port);
 		const res = await fetch(`http://127.0.0.1:${port}/auth/callback?state=wrong&error=access_denied`);
 		expect(res.status).toBe(400);
-		expect(await res.text()).toContain("State mismatch");
+		expect(await res.text()).toContain("state mismatch");
 		const ok = await fetch(`http://127.0.0.1:${port}/auth/callback?code=later&state=${state}`);
 		expect(ok.status).toBe(200);
 		expect(await server!.waitForCode()).toBe("later");
