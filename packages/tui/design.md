@@ -779,13 +779,11 @@ terminal the `✦` some notices open with comes off: it is the seal's mark
 
 A MODE switch is the exception (R3e, owner 2026-09-29): the approval tier
 is the one setting whose change alters what runs without asking, so it is
-a meta row — `MODE  default → bypass · everything runs, nothing asks — a
-user deny still wins` — the new tier bold (bypass in `fail`, plan in
-`blue`), the tier's own line after it (`MODE_NOTE`), `· shift+tab cycles`
-when that key did it. One row, not a card: shift+tab walks the ring, and a
-card per step would stack. All four ways in (/mode's picker, `/mode
-<name>`, /settings, shift+tab) draw it; a pipe prints `mode → bypass` as
-it always did.
+marked — `MODE` bold on a row of its own, and `default → bypass` under it
+at the content edge, the new tier bold (bypass in `fail`, plan in `blue`).
+Nothing else: the picker that switched it already says what each tier
+does. All four ways in (/mode's picker, `/mode <name>`, /settings,
+shift+tab) draw it; a pipe prints `mode → bypass` as it always did.
 
 **7.13 The person's own shell (R2).** `!command` runs and sends;
 `!!command` runs and only shows. Both render as the person's card on their
