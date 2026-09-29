@@ -203,7 +203,7 @@ describe("TPS-1 — the settled decode rate on the status row", () => {
 		const recap = screenAt(raw, "took ").find((row) => row.includes("✦ took")) ?? "";
 		expect(recap, `no recap row carrying the turn's usage: ${recap}`).toContain("fresh 200 out 150");
 	}, 150_000);
-	it("DF-0330-F1 — the CLI hands the row its WIDTH: at 60 columns the hint goes and every fact stays", () => {
+	it("DF-0330-F1 — the CLI hands the row its WIDTH: at 50 columns the hint goes and every fact stays", () => {
 		// What this level proves, and the unit gates cannot: that the CLI
 		// passes its terminal width to the formatter at all. Before the fix
 		// the row was composed blind and invariant ① cut whatever sat last,
@@ -213,8 +213,10 @@ describe("TPS-1 — the settled decode rate on the status row", () => {
 		// The id-length cases live in the unit gates (every length from 1 to
 		// 40, with the owner's real id), because the faux session's label is
 		// `faux` and no fixture can make it long. Here the WIDTH is the
-		// variable instead: at 60 columns even the short label overflows, so
-		// the drop order has to run end to end.
+		// variable instead: at 50 columns even the short label overflows, so
+		// the drop order has to run end to end. (60 columns until the cache
+		// share left the bar for the seal, 2026-09-29: the row it left is
+		// 54 cells, which 60 columns now hold whole.)
 		const { env, dirs } = isolatedEnv({
 			KISO_FAUX_SCRIPT: fauxScript([
 				{
@@ -233,18 +235,19 @@ describe("TPS-1 — the settled decode rate on the status row", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-tps1-narrow-"));
 		const raw = ptyRun(["chat", "tps1-narrow"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
-			cols: 60,
+			cols: 50,
 			feeds: [
-				["\u25b8 default", "go\r"], // the bar's chip — at 60 columns the teaching hint may have given way
+				["\u25b8 default", "go\r"], // the bar's chip — at 50 columns the teaching hint may have given way
 				["tok/s", "exit\r"],
 			],
 			timeout: 60,
 		});
 		const settled = statusRowOf(screenAt(raw, "tok/s"));
 		// the FACTS all survive
-		expect(rateOn(settled), `no rate on the row at 60 columns: ${settled}`).not.toBeNull();
+		expect(rateOn(settled), `no rate on the row at 50 columns: ${settled}`).not.toBeNull();
 		expect(settled).toContain("▸ default");
-		expect(settled).toContain("cache ");
+		// the cache share is the seal's, never the bar's (owner, 2026-09-29)
+		expect(settled).not.toContain("cache");
 		expect(settled).toMatch(/ctx \d+%/);
 		// and the teaching hint is what gave ground
 		expect(settled, `the hint survived a row that had no room for it: ${settled}`).not.toContain("/mode to switch");

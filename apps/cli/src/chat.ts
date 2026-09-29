@@ -321,7 +321,7 @@ export function displayCtxRatio(session: AgentSession): number {
  * compaction tiers as shares of the same window (`tiersFor`, never a
  * fixed fraction); an unknown window is `ctx ?`.
  */
-export function barFor(session: AgentSession, measured: { readonly cachePct: number | null; readonly tokPerSec: number | null } = { cachePct: null, tokPerSec: null }): BarInput {
+export function barFor(session: AgentSession, measured: { readonly tokPerSec: number | null } = { tokPerSec: null }): BarInput {
 	const window = knownContextWindow();
 	const used = displayCtxRatio(session);
 	const tiers = window === null ? null : tiersFor(window, 0);
@@ -333,7 +333,6 @@ export function barFor(session: AgentSession, measured: { readonly cachePct: num
 		floorOff: !floorOn,
 		model: statusModelLabel(session),
 		ctx: tiers === null || window === null || !Number.isFinite(used) ? null : { used, soft: tiers.soft / window, hard: tiers.hard / window },
-		cachePct: measured.cachePct,
 		tokPerSec: measured.tokPerSec,
 		branch: currentBranch(cwd),
 		folder: cwd === home ? "~" : cwd.startsWith(`${home}/`) ? `~${cwd.slice(home.length)}` : cwd,
@@ -1611,7 +1610,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// the turn reads).
 		if (!dock.active) return;
 		dock.setLive(workingRow(runGlyph, runStart, runUsage.out, lastTokPerSec, rowWidth(), retryOnRow()));
-		dock.setBar(barFor(session, { cachePct: cacheHitPct(runUsage), tokPerSec: lastTokPerSec }));
+		dock.setBar(barFor(session, { tokPerSec: lastTokPerSec }));
 	};
 	// W19: under plan the idle row makes the posture unmistakable — the W4
 	// parentheses idiom names the read-only constraint. The tier is the
@@ -1622,9 +1621,9 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// Graphite §8.9: nothing is live; the bar carries the session and
 		// its health. TUI2-R1 (E): the meter's fields are omitted while
 		// unmeasured, so a session that has not called the model paints no
-		// cache and no rate.
+		// rate.
 		dock.setLive(null);
-		dock.setBar(barFor(session, { cachePct: cacheHitPct(runUsage), tokPerSec: lastTokPerSec }));
+		dock.setBar(barFor(session, { tokPerSec: lastTokPerSec }));
 	};
 	// TUI2-R2 ⑥ — the BOOT status line. The row is the product's one
 	// persistent claim about itself (the tier, how to change it, the model,

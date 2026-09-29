@@ -30,7 +30,6 @@ const BAR: BarInput = {
 	floorOff: false,
 	model: MODEL,
 	ctx: { used: 0.09, soft: 0.5, hard: 0.8 },
-	cachePct: 92,
 	tokPerSec: 48,
 	branch: "main",
 	folder: "~/code/kiso",
@@ -40,13 +39,13 @@ describe("§8.9 — the status bar's facts", () => {
 	it("a known ground: the chip, the words spaced, the branch and folder at the right", () => {
 		setGround("light");
 		const row = plain(statusBar(BAR, 200, "expand all"));
-		expect(row).toMatch(/^ default {3}\/mode to switch {2}deepseek-v4-flash · max {2}ctx ▆{10} 9% {2}cache 92% {2}48 tok\/s +main {2}~\/code\/kiso {2}ctrl\+o expand all$/);
+		expect(row).toMatch(/^ default {3}\/mode to switch {2}deepseek-v4-flash · max {2}ctx ▆{10} 9% {2}48 tok\/s +main {2}~\/code\/kiso {2}ctrl\+o expand all$/);
 		expect(row.length).toBe(200);
 	});
 
 	it("an unknown ground: the same facts in words that survive without colour", () => {
 		const row = plain(statusBar(BAR, 200, null));
-		expect(row).toMatch(/^▸ default · \/mode to switch · deepseek-v4-flash · max · ctx 9% · cache 92% · 48 tok\/s +main  ~\/code\/kiso$/);
+		expect(row).toMatch(/^▸ default · \/mode to switch · deepseek-v4-flash · max · ctx 9% · 48 tok\/s +main  ~\/code\/kiso$/);
 	});
 
 	it("plan's posture, bypass in the failure colour, floor off only when off", () => {
@@ -59,8 +58,7 @@ describe("§8.9 — the status bar's facts", () => {
 	});
 
 	it("unmeasured facts are absent, not zero", () => {
-		const row = plain(statusBar({ ...BAR, cachePct: null, tokPerSec: null, branch: null }, 200, null));
-		expect(row).not.toContain("cache");
+		const row = plain(statusBar({ ...BAR, tokPerSec: null, branch: null }, 200, null));
 		expect(row).not.toContain("tok/s");
 		expect(row).not.toContain("main");
 	});
@@ -90,7 +88,7 @@ describe("§8.5 — what gives way, W 20..200, on both grounds", () => {
 		it(`${ground}: the facts never drop — at 80 columns every one is on the row`, () => {
 			setGround(ground);
 			const row = plain(statusBar(BAR, 80, "expand all"));
-			for (const fact of ["default", "ctx", "9%", "cache 92%", "48 tok/s"]) expect(row, row).toContain(fact);
+			for (const fact of ["default", "ctx", "9%", "48 tok/s"]) expect(row, row).toContain(fact);
 			expect(row, "the model survives, elided in its middle at most").toMatch(/deepseek-v|…/);
 		});
 	}

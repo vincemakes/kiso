@@ -37,38 +37,27 @@ const META: BannerMeta = {
 	],
 };
 
-/**
- * The prototype's layout (owner, 2026-09-29: "follow the prototype's
- * layout and lines"): the wordmark, a forty-column rule, the tagline and
- * the motto on the left; what loaded on the RIGHT, pushed to the right
- * edge and to the bottom of the left column, behind a hairline down its
- * left side; a blank row and a hairline across the width close it.
- */
 describe("§7.10 — the tall form", () => {
-	it("at 180×40: the facts on the right, bottom-aligned, bordered; the opening closed by a hairline", () => {
-		const rows = plain(bannerLines(180, 40, "0.44.0", "", [], 0, META));
+	it("at 100×40: the wordmark at the content edge, the facts beside it behind one hairline", () => {
+		const rows = plain(bannerLines(100, 40, "0.44.0", "", [], 0, META));
 		expect(WORDMARK_W).toBe(28);
-		for (let i = 0; i < 6; i += 1) expect(rows[i]!.slice(0, 2), `row ${i}`).toBe("  ");
-		expect(rows[6]!.slice(0, 42)).toBe(`  ${"─".repeat(40)}`);
-		expect(rows[7]!.startsWith("  the coding agent that survives kill -9 · 0.44.0")).toBe(true);
-		expect(rows[8]!.startsWith("  intent → effect → durable fact")).toBe(true);
-		// four facts, bottom-aligned with the motto: rows 5..8
-		for (const r of rows.slice(0, 5)) expect(r, "a fact above its place").not.toContain("│");
-		const facts = rows.slice(5, 9).map((r) => r.slice(r.indexOf("│")));
-		expect(facts).toEqual(["│  SESSION     new · resumable after kill -9", "│  RULES       AGENTS.md", "│  SKILLS      3 · /skills lists them", "│  MCP         2 servers · 14 tools"]);
-		// pushed right: the widest fact ends two columns short of the edge
-		const col = rows[5]!.indexOf("│");
-		expect(col + "│  SESSION     new · resumable after kill -9".length).toBe(180 - 2);
-		for (const r of rows.slice(5, 9)) expect(r.indexOf("│"), "the border is one column").toBe(col);
-		expect(rows[9]).toBe("");
-		expect(rows[10]).toBe("─".repeat(180));
-		expect(rows).toHaveLength(11);
+		for (let i = 0; i < 6; i += 1) {
+			expect(rows[i]!.slice(0, 2), `row ${i}`).toBe("  ");
+			expect(rows[i]![32], `the hairline, row ${i}`).toBe("│");
+		}
+		expect(rows[0]!.slice(35)).toBe("SESSION     new · resumable after kill -9");
+		expect(rows[3]!.slice(35)).toBe("MCP         2 servers · 14 tools");
+		expect(rows[4]!.slice(32)).toBe("│");
+		expect(rows[6]).toBe(`  ${"─".repeat(28)}`);
+		expect(rows[7]).toBe("  the coding agent that survives kill -9 · 0.44.0");
+		expect(rows[8]).toBe("  intent → effect → durable fact");
+		expect(rows).toHaveLength(9);
 	});
 
-	it("when the width cannot hold both, the facts move below the left column, border and all", () => {
+	it("under 96 columns the facts move below it, label column and all", () => {
 		const rows = plain(bannerLines(80, 24, "0.44.0", "", [], 0, META));
 		expect(rows[0]!.trimEnd()).toBe("  ██╗  ██╗██╗███████╗ ██████╗");
-		expect(rows.slice(9)).toEqual(["", "  │  SESSION     new · resumable after kill -9", "  │  RULES       AGENTS.md", "  │  SKILLS      3 · /skills lists them", "  │  MCP         2 servers · 14 tools", "", "─".repeat(80)]);
+		expect(rows.slice(9)).toEqual(["", "  SESSION     new · resumable after kill -9", "  RULES       AGENTS.md", "  SKILLS      3 · /skills lists them", "  MCP         2 servers · 14 tools"]);
 	});
 
 	it("the 80×24 window a Mac opens by default shows the wordmark — from 20 rows", () => {
@@ -77,23 +66,20 @@ describe("§7.10 — the tall form", () => {
 		expect(plain(bannerLines(80, 19, "0.44.0", "", [], 0, META)).join("\n")).not.toContain("██╗");
 	});
 
-	it("facts taller than the left column push it down: both columns end on the same row", () => {
-		const many: BannerMeta = { facts: Array.from({ length: 12 }, (_, i) => ({ label: `F${i}`, value: "v" })) };
-		const rows = plain(bannerLines(180, 40, "0.44.0", "", [], 0, many));
-		const last = rows.findIndex((r) => r.includes("intent → effect"));
-		expect(rows[last]).toContain("F11");
-		expect(rows[0]).toContain("F0");
-		expect(rows[0]!.trim().startsWith("│"), "the wordmark was pushed down, not cut").toBe(true);
+	it("more facts than the wordmark has rows go below it at any width", () => {
+		const many: BannerMeta = { facts: Array.from({ length: 7 }, (_, i) => ({ label: `F${i}`, value: "v" })) };
+		const rows = plain(bannerLines(140, 40, "0.44.0", "", [], 0, many));
+		expect(rows.some((r) => r.includes("│"))).toBe(false);
+		expect(rows.filter((r) => /^ {2}F\d/.test(r))).toHaveLength(7);
 	});
 });
 
 describe("§7.10 — the one-line form", () => {
-	it("under 20 rows: the mark in the mark column, the words at the edge, the facts bordered below", () => {
+	it("under 20 rows: the mark in the mark column, the words at the edge", () => {
 		const rows = plain(bannerLines(100, 19, "0.44.0", "", [], 0, META));
 		expect(rows[0]).toBe("✦ kiso 0.44.0 · the coding agent that survives kill -9");
 		expect(rows[1]).toBe("");
-		expect(rows[2]).toBe("  │  SESSION     new · resumable after kill -9");
-		expect(rows.at(-1)).toBe("─".repeat(100));
+		expect(rows[2]).toBe("  SESSION     new · resumable after kill -9");
 		expect(rows.join("\n")).not.toMatch(/[█╗╝]/);
 	});
 
@@ -110,10 +96,10 @@ describe("§7.10 — the one-line form", () => {
 
 	it("a fact that does not fit loses its note first, then is cut", () => {
 		const rows = plain(bannerLines(40, 19, "0.44.0", "", [], 0, META));
-		expect(rows).toContain("  │  SESSION     new");
-		expect(rows, "a fact that fits keeps its note").toContain("  │  MCP         2 servers · 14 tools");
-		const narrow = plain(bannerLines(19, 19, "0.44.0", "", [], 0, META));
-		expect(narrow).toContain("  │  SESSION     n…");
+		expect(rows).toContain("  SESSION     new");
+		expect(rows, "a fact that fits keeps its note").toContain("  MCP         2 servers · 14 tools");
+		const narrow = plain(bannerLines(16, 19, "0.44.0", "", [], 0, META));
+		expect(narrow).toContain("  SESSION     n…");
 	});
 });
 
@@ -121,13 +107,18 @@ describe("§7.10 — a long fact hangs under itself", () => {
 	it("the extensions list folds by word at the value column, never cut — it is what loaded", () => {
 		const list = "[6 extensions: built-in: mcp, skills, subagent, ask (off in dontAsk) · project: lint-guard, release-notes]";
 		const rows = plain(bannerLines(80, 19, "0.44.0", "", [], 0, { facts: [{ label: "EXTENSIONS", value: list }] }));
-		const at = rows.findIndex((r) => r.startsWith("  │  EXTENSIONS  [6"));
+		const at = rows.findIndex((r) => r.startsWith("  EXTENSIONS  [6"));
 		expect(at).toBeGreaterThan(0);
-		const hung = rows.slice(at).filter((r) => r.includes("│"));
+		const hung = rows.slice(at).filter((r) => r !== "");
 		expect(hung.length).toBeGreaterThan(1);
-		for (const r of hung.slice(1)) expect(r.match(/^ {2}│ +/)![0].length, r).toBe(17);
-		expect(hung.map((r) => r.replace(/^ {2}│ +/, "").replace(/^EXTENSIONS\s+/, "")).join(" ")).toBe(list);
+		for (const r of hung.slice(1)) expect(r.match(/^ */)![0].length, r).toBe(14);
+		expect(hung.map((r) => r.trim().replace(/^EXTENSIONS\s+/, "")).join(" ")).toBe(list);
 		for (const r of hung) expect(r.length).toBeLessThanOrEqual(80);
+	});
+
+	it("beside the wordmark only while the folded facts fit its six rows", () => {
+		const long = { facts: [...META.facts, { label: "EXTENSIONS", value: "x ".repeat(60).trim() }] };
+		expect(plain(bannerLines(100, 40, "0.44.0", "", [], 0, long)).some((r) => r.includes("│"))).toBe(false);
 	});
 });
 
@@ -154,10 +145,10 @@ describe("§7.10 — the colours", () => {
 });
 
 describe("§7.10 — without the facts", () => {
-	it("the head alone (help's form, no closing rule); a bare extensions text still gets its row", () => {
+	it("the head alone; a bare extensions text still gets its row", () => {
 		expect(plain(bannerLines(80, 19, "0.44.0", ""))).toEqual(["✦ kiso 0.44.0 · the coding agent that survives kill -9"]);
 		const rows = plain(bannerLines(80, 19, "0.44.0", "[2 extensions: ask, mcp]"));
-		expect(rows[2]).toBe("  │  EXTENSIONS  [2 extensions: ask, mcp]");
+		expect(rows[2]).toBe("  EXTENSIONS  [2 extensions: ask, mcp]");
 	});
 });
 

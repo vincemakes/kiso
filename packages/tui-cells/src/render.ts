@@ -720,18 +720,12 @@ const WORDMARK = [
 export const WORDMARK_W = Math.max(...WORDMARK.map((r) => displayWidth(r)));
 /** The content edge (§1.8) the opening's rows start at. */
 const OPENING_EDGE = 2;
+/** §7.10: the facts sit beside the wordmark from this width, below it under. */
+const FACTS_BESIDE_W = 96;
 /** §7.10: under this height the opening is one line. */
 const OPENING_TALL_H = 20;
 /** The facts' label column: the longest label and two spaces. */
 const FACT_LABEL_W = "EXTENSIONS".length + 2;
-/** The rule under the wordmark is forty columns, fading (the prototype's). */
-const OPENING_RULE_W = 40;
-/** The gap between the opening's two columns, and its right margin. */
-const OPENING_GAP = 6;
-const OPENING_RIGHT = 2;
-/** The fewest value columns the facts may have beside the wordmark before
- *  they move below it. */
-const FACT_VALUE_MIN = 24;
 
 /** One fact the opening states: its label, the fact, and a quieter note
  *  after it. An empty label continues the fact above it. */
@@ -846,50 +840,33 @@ export function bannerLines(W: number, H: number, version: string, extensionsTex
 	const facts: readonly BannerFact[] = meta !== undefined ? meta.facts : extensionsText !== "" ? [{ label: "EXTENSIONS", value: extensionsText }] : [];
 	const tall = H >= OPENING_TALL_H && width >= OPENING_EDGE + WORDMARK_W && meta?.resumed !== true;
 	const pad = " ".repeat(OPENING_EDGE);
-	// the facts carry a hairline down their left side (§7.10, the prototype's
-	// bordered list); it is one per row, so a fact that hangs keeps it
-	const border = `${p.line !== "" ? p.line : p.dim}\u2502${p.line !== "" ? p.fgEnd : p.reset}  `;
-	const bordered = (room: number): string[] => factRows(facts, Math.max(1, room - 3)).map((r) => `${border}${r}`);
 	const rows: string[] = [];
 	if (!tall) {
 		rows.push(cut(`\u2726 ${p.bold}kiso${p.reset} ${p.dim}${version} \u00b7 ${TAGLINE}${p.reset}`));
-		if (facts.length > 0) rows.push("", ...bordered(width - OPENING_EDGE).map((r) => cut(`${pad}${r}`)));
+		if (facts.length > 0) rows.push("", ...factRows(facts, width - OPENING_EDGE).map((r) => cut(`${pad}${r}`)));
 	} else {
-		// the left column: the wordmark, the rule, the tagline and the motto
-		const tag = `${TAGLINE}${p.dim} \u00b7 ${version}${p.reset}`;
-		const motto = `${p.rail !== "" ? p.rail : p.dim}${MOTTO}${p.rail !== "" ? p.fgEnd : p.reset}`;
-		const leftW = Math.max(WORDMARK_W, OPENING_RULE_W, visibleWidth(tag));
-		const left = [...wordmarkRows(), openingRule(Math.min(OPENING_RULE_W, width - OPENING_EDGE)), tag, motto];
-		// the right column: what loaded, pushed to the right edge and to the
-		// BOTTOM of the left one (the prototype's `space-between` and
-		// `flex-end`), when the width holds both with a gap between them
-		// — and only while every fact fits WHOLE there: a fact that would
-		// have to hang (an extensions list folded mid-name) goes below with
-		// the rest, where it has the width (the prototype's flex-wrap)
-		const factsRoom = width - OPENING_RIGHT - (OPENING_EDGE + leftW + OPENING_GAP);
-		const whole = bordered(Number.MAX_SAFE_INTEGER);
-		const fits = whole.length === facts.length && Math.max(0, ...whole.map((r) => visibleWidth(r))) <= factsRoom;
-		const beside = facts.length > 0 && factsRoom >= 3 + FACT_LABEL_W + FACT_VALUE_MIN && fits ? whole : [];
-		if (beside.length > 0) {
-			const blockW = Math.max(...beside.map((r) => visibleWidth(r)));
-			const col = width - OPENING_RIGHT - blockW;
-			const height = Math.max(left.length, beside.length);
-			const leftTop = height - left.length;
-			const factTop = height - beside.length;
-			for (let i = 0; i < height; i += 1) {
-				const l = left[i - leftTop] ?? "";
-				const f = beside[i - factTop];
-				const gap = " ".repeat(Math.max(1, col - OPENING_EDGE - visibleWidth(l)));
-				rows.push(cut(f === undefined ? `${pad}${l}` : `${pad}${l}${gap}${f}`));
+		const head = [...wordmarkRows(), openingRule(WORDMARK_W), `${p.ink2}${TAGLINE}${p.fgEnd}${p.dim} \u00b7 ${version}${p.reset}`, `${p.dim}${MOTTO}${p.reset}`];
+		// two cells after the wordmark's widest row, the hairline, two more,
+		// then the facts
+		const factsCol = OPENING_EDGE + WORDMARK_W + 5;
+		// beside the wordmark from 96 columns, as long as the facts' rows fit
+		// in its six; below it otherwise
+		const beside = width >= FACTS_BESIDE_W ? factRows(facts, width - factsCol) : [];
+		if (beside.length > 0 && beside.length <= WORDMARK.length) {
+			const rule = p.line !== "" ? `${p.line}\u2502${p.fgEnd}` : `${p.dim}\u2502${p.reset}`;
+			for (const [i, h] of head.entries()) {
+				if (i >= WORDMARK.length) {
+					rows.push(cut(`${pad}${h}`));
+					continue;
+				}
+				const gap = " ".repeat(WORDMARK_W + 2 - visibleWidth(h));
+				rows.push(cut(`${pad}${h}${gap}${rule}${beside[i] === undefined ? "" : `  ${beside[i]}`}`));
 			}
 		} else {
-			rows.push(...left.map((l) => cut(`${pad}${l}`)));
-			if (facts.length > 0) rows.push("", ...bordered(width - OPENING_EDGE).map((r) => cut(`${pad}${r}`)));
+			rows.push(...head.map((h) => cut(`${pad}${h}`)));
+			if (facts.length > 0) rows.push("", ...factRows(facts, width - OPENING_EDGE).map((r) => cut(`${pad}${r}`)));
 		}
 	}
-	// a hairline across the width closes the opening (the prototype's bottom
-	// border), a row of air above it
-	if (meta !== undefined) rows.push("", `${p.line !== "" ? p.line : p.dim}${"\u2500".repeat(width)}${p.line !== "" ? p.fgEnd : p.reset}`);
 	if (W >= 40 && H >= 20 && resume.length > 0) {
 		rows.push("", ...renderResumeList(resume, W, now));
 	}
@@ -945,7 +922,7 @@ function openingRule(n: number): string {
 }
 
 /** The facts as rows `room` cells wide: the label dim in its column, the
- *  fact in ink, the note in `ink2` after it (the prototype's). A row that does not fit loses its
+ *  fact in ink, the note dim after it. A row that does not fit loses its
  *  note first; a fact still too long HANGS under itself, folded by word —
  *  an extensions list cut at the width would hide which extensions
  *  loaded, on the one screen whose job is to say so. */
@@ -956,9 +933,7 @@ function factRows(facts: readonly BannerFact[], room: number): string[] {
 		const label = `${p.dim}${f.label}${p.reset}${" ".repeat(Math.max(1, FACT_LABEL_W - f.label.length))}`;
 		const value = escapeTerminal(f.value);
 		const note = f.note === undefined ? "" : escapeTerminal(f.note);
-		const noteTone = p.ink2 !== "" ? p.ink2 : p.dim;
-		const noteEnd = p.ink2 !== "" ? p.fgEnd : p.reset;
-		const whole = `${label}${value}${note === "" ? "" : `${noteTone} \u00b7 ${note}${noteEnd}`}`;
+		const whole = `${label}${value}${note === "" ? "" : `${p.dim} \u00b7 ${note}${p.reset}`}`;
 		if (visibleWidth(whole) <= room) {
 			rows.push(whole);
 			continue;

@@ -91,11 +91,8 @@ describe("the startup banner (logo)", () => {
 		expect(out).toContain("██╗  ██╗██╗███████╗ ██████╗");
 		expect(out).toMatch(/the coding agent that survives kill -9 · \d+\.\d+\.\d+/);
 		expect(out).toContain("intent → effect → durable fact");
-		// the facts on the right, behind their border (at 100 columns the
-		// notes give way to the values)
-		expect(out).toMatch(/│ {2}SESSION {5}new/);
+		expect(out).toMatch(/│ {2}SESSION {5}new · resumable after kill -9/);
 		expect(out).toMatch(/│ {2}RULES {7}none/);
-		expect(out, "the opening is closed by a hairline across the width").toContain("─".repeat(100));
 		for (const gone of ["MODEL", "WORKSPACE", "esc interrupt"]) expect(out, gone).not.toContain(gone);
 	}, 90_000);
 

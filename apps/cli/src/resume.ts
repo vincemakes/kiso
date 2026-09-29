@@ -3,7 +3,7 @@
  * moved verbatim from index.ts.
  */
 
-import { STATUS_GLYPHS, cacheHitPct, workingRow, type RunUsage } from "@vincemakes/kiso-tui";
+import { STATUS_GLYPHS, workingRow, type RunUsage } from "@vincemakes/kiso-tui";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { dock, retryOnRow, type LineInput } from "./state.js";
 import { pendingAsk, resolveUncertains } from "./trust-ui.js";
@@ -35,13 +35,13 @@ export async function resume(session: AgentSession, prompt: string | undefined, 
 		runUsage = u;
 		if (!dock.active) return;
 		dock.setLive(workingRow(runGlyph, runStart, u.out, null, width(), retryOnRow()));
-		dock.setBar(barFor(session, { cachePct: cacheHitPct(u), tokPerSec: null }));
+		dock.setBar(barFor(session, { tokPerSec: null }));
 	};
 	const paintIdle = (): void => {
 		setTitleState("ready");
 		if (!dock.active) return;
 		dock.setLive(null);
-		dock.setBar(barFor(session, { cachePct: cacheHitPct(runUsage), tokPerSec: null }));
+		dock.setBar(barFor(session, { tokPerSec: null }));
 	};
 	const withRun = async (run: ReturnType<AgentSession["resume"]>): Promise<void> => {
 		currentRun = run;

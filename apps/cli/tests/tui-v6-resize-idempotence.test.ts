@@ -193,12 +193,7 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		// the chrome: two rails, the status once, the input row once — the
 		// WALL is 3+ separators. R2 (law 1.1): the two rails are the SAME
 		// dashed rule now; the COUNT is the claim and it is unchanged.
-		// Graphite §7.10: the opening is closed by a hairline across the width
-		// too — ONE, never repeated by a resize; the chrome's rails are the
-		// two in the last four rows.
-		const rules = grid.map((l, i) => (/^\u2500+$/.test(l.trimEnd()) ? i : -1)).filter((i) => i >= 0);
-		expect(rules.filter((i) => i >= grid.length - 4).length, "the chrome's rails").toBe(2);
-		expect(rules.filter((i) => i < grid.length - 4).length, "the opening's hairline, at most once").toBeLessThanOrEqual(1);
+		expect(grid.filter((l) => /^\u2500+$/.test(l.trimEnd())).length).toBe(2);
 		expect(grid.filter((l) => l.includes("▸ default")).length).toBe(1);
 		// the INPUT row, once. R2: it used to be found by its `\u203a ` lead,
 		// which is gone — and the hint cannot stand in for it, because the
@@ -206,7 +201,7 @@ describe("TUI v6 (V6-1) — the resize screen-state == frame-state", () => {
 		// before it truncates the status. The row is the one between the
 		// two rails, which is the CHROME_ROWS=4 contract and cannot be
 		// satisfied by a stray glyph anywhere else on the screen.
-		const rails = rules.filter((i) => i >= grid.length - 4);
+		const rails = grid.map((l, i) => (/^\u2500+$/.test(l.trimEnd()) ? i : -1)).filter((i) => i >= 0);
 		expect(rails).toHaveLength(2);
 		expect(rails[1]! - rails[0]!).toBe(2); // exactly ONE row between them
 	});

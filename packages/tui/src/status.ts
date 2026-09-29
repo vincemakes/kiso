@@ -379,7 +379,6 @@ export interface BarInput {
 	/** The share of the window USED (0..1), and the compaction tiers as
 	 *  shares of the same window; null when the window is not known. */
 	readonly ctx: { readonly used: number; readonly soft: number; readonly hard: number } | null;
-	readonly cachePct: number | null;
 	readonly tokPerSec: number | null;
 	readonly branch: string | null;
 	readonly folder: string | null;
@@ -416,7 +415,8 @@ export function ctxMeter(ctx: BarInput["ctx"]): string {
 /**
  * §8.9 — the status bar, composed for `W` cells. Left: the mode chip,
  * `floor off`, `/mode to switch`, the model and its effort, the ctx meter,
- * the cache share, the decode rate. Right: the branch, the folder, and the
+ * the decode rate. The cache share is the seal's (owner, 2026-09-29: every
+ * run's closing row already says it), not the bar's. Right: the branch, the folder, and the
  * `ctrl+o` switch while a card has rows behind the key.
  *
  * §8.5 — what gives way, in order: the `ctrl+o` hint, the folder (the
@@ -445,7 +445,6 @@ export function statusBar(b: BarInput, W: number, expand: "expand all" | "collap
 		{ text: quiet("/mode to switch"), drop: 4 },
 		{ text: b.model, drop: 0 },
 		{ text: ctxMeter(b.ctx), drop: 0 },
-		b.cachePct !== null ? { text: quiet(`cache ${Math.round(b.cachePct)}%`), drop: 0 } : null,
 		b.tokPerSec !== null ? { text: quiet(`${b.tokPerSec} tok/s`), drop: 0 } : null,
 	];
 	const right: (Seg | null)[] = [
