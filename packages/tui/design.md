@@ -778,12 +778,12 @@ terminal the `✦` some notices open with comes off: it is the seal's mark
 (§4). A pipe prints every notice as written.
 
 A MODE switch is the exception (R3e, owner 2026-09-29): the approval tier
-is the one setting whose change alters what runs without asking, so it is
-marked — `MODE` bold on a row of its own, and `default → bypass` under it
-at the content edge, the new tier bold (bypass in `fail`, plan in `blue`).
-Nothing else: the picker that switched it already says what each tier
-does. All four ways in (/mode's picker, `/mode <name>`, /settings,
-shift+tab) draw it; a pipe prints `mode → bypass` as it always did.
+is the person's own choice, and the person's words are gold — so it is one
+row, `MODE` bold gold, two spaces, then `default → bypass` with the new
+tier bold (bypass in `fail`, plan in `blue`). Nothing else: the picker
+that switched it already says what each tier does. All four ways in
+(/mode's picker, `/mode <name>`, /settings, shift+tab) draw it; a pipe
+prints `mode → bypass` as it always did.
 
 **7.13 The person's own shell (R2).** `!command` runs and sends;
 `!!command` runs and only shows. Both render as the person's card on their
