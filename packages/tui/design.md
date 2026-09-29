@@ -95,10 +95,10 @@ rows that should join show a seam, a bar drawn down several rows reads as a
 dashed line. A background fills its whole cell. So a pad is a whole ROW of
 background, a card's edge is one cell of background, and the wordmark's
 letters are background cells. A glyph is fine where it has no neighbour to
-join: the person's `▌` stands beside a single text row (§7.9). (Measured on
-the owner's Apple Terminal with a seam test, 2026-09-29: half-row pads in
-either orientation, `▌` and `▎` down four rows, and `█` letters all showed
-seams; background rows and cells did not.)
+join. (Measured on the owner's Apple Terminal with seam tests, 2026-09-29:
+half-row pads in either orientation, `▌` and `▎` down four rows, a `▐` laid
+over a background, and `█` letters all showed seams or ticks; background
+rows and cells did not.)
 
 DECLARED REVERSAL (owner, 2026-09-29) of R1's `THINK` label (blue, with
 its seconds) and of R1's half-row pads and side bars: both were seen in
@@ -635,11 +635,11 @@ caret.
 
 **7.9 The person's words span the width.** The person's block (§1.6): the
 `human` ground across the full width with a whole row of it above and
-below (§1.5), the gold `▌` in column 0 beside each text row, and the text
-at the content edge, column 2. The `▌` is a glyph, and down several rows it
-shows a break at each row (§1.5) — so it stands beside the text rows only,
-where a one-line message, the common case, has no neighbour to break
-against. No label and no time: the block says whose words these are, and when a turn
+below (§1.5), an EDGE cell of gold quieted toward the warm ground in column
+0 down every row, and the text at the content edge, column 2. The edge is a
+background, the same width as a card's edge: a thinner `▌` glyph, or a `▐`
+laid over a gold background, showed a gap or a tick at every row in Apple
+Terminal (checked there, 2026-09-29). No label and no time: the block says whose words these are, and when a turn
 ended and how long it took is the seal's (§7.11). The block is padded to
 `W` by *display* width, so a CJK row pads correctly, and it folds by WORD:
 the character fold was defended as lossless, which is not a property CJK
@@ -929,7 +929,8 @@ stdout is not a terminal.
 
 **8.7 The live zone.** Rows directly above the composer that exist only
 while something is live, with no rule of their own (owner, 2026-09-28):
-the composer's top rule is right below them. Otherwise the input sits
+the composer's top rule is right below them, and one blank row above them
+keeps the streaming words off the live row (owner, 2026-09-29). Otherwise the input sits
 against the transcript. The LIVE ROW: the mark in the mark column, the state
 and its facts, the keys at the right; hints drop from the right when the row
 is short.
