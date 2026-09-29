@@ -83,11 +83,13 @@ describe("§5 — the answer on a known ground", () => {
 		expect(rows.map(plain).join("\n")).not.toMatch(/^\s*#/m);
 	});
 
-	it("inline: code blue on the code ground, a link blue and underlined with its url dim after it, struck text dim", () => {
+	it("inline: code blue with no ground, a link blue and underlined with its url dim after it, struck text dim", () => {
 		setGround("light");
 		const p = palette();
 		const row = answer(DOC).find((r) => plain(r).includes("idempotent"))!;
-		expect(row).toContain(`${p.codeBg}${p.blue}MAX = 5${p.fgEnd}${p.washEnd}`);
+		expect(row).toContain(`${p.blue}MAX = 5${p.fgEnd}`);
+		// no ground under it (owner, 2026-09-29)
+		expect(row).not.toContain(p.codeBg);
 		// at a width where the sentence is one row, so no fold splits the span
 		const all = answer(DOC, 200).join("\n");
 		expect(all).toContain(`${p.blue}${p.underline}the ADR${p.underlineEnd}${p.fgEnd}${p.dim} (https://example.com/adr)`);

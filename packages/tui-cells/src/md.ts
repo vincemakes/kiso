@@ -589,8 +589,10 @@ export function inlineSpans(text: string, base: string): string {
 				// DC-3: inline code is a SURFACE (`wash`), closed with washEnd
 				// rather than a reset so the span composes inside a heading's
 				// or a quote's own style.
-				// Graphite §5 (R2b): `blue` on the `code` ground (the prototype's)
-				out += p.blue !== "" ? `${p.codeBg}${p.blue}${text.slice(i + 1, end)}${p.fgEnd}${p.washEnd}${base}` : `${p.wash}${text.slice(i + 1, end)}${p.washEnd}${base}`;
+				// Graphite §5 (R2b): `blue`, no ground — like a code block (owner,
+				// 2026-09-29, choosing between the prototype's light blue ground
+				// and none, side by side in Apple Terminal)
+				out += p.blue !== "" ? `${p.blue}${text.slice(i + 1, end)}${p.fgEnd}${base}` : `${p.wash}${text.slice(i + 1, end)}${p.washEnd}${base}`;
 				i = end + 1;
 				continue;
 			}
