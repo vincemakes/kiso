@@ -267,6 +267,13 @@ function runBang(command: string, send: boolean, ctx: DispatchCtx): void {
 	});
 }
 
+/** Graphite §8.7 (R3b): the next /compact was dispatched by the opt-in
+ *  auto-compact threshold, not typed — its row says `auto`. */
+let nextCompactAuto = false;
+export function markAutoCompact(): void {
+	nextCompactAuto = true;
+}
+
 export function dispatch(line: string, ctx: DispatchCtx): void {
 	// DC-57 (the owner's ruling, 2026-09-21): a session that is LEAVING — a
 	// switch or a reload has been requested from an earlier segment of the
@@ -912,6 +919,10 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// model summary — an OFF-LOOP call through the session's own
 		// adapter, so it must never race a running turn: refused
 		// mid-run, with a hint to wait for the turn to end.
+		// Graphite §8.7 (R3b): the row says why — the person asked, or the
+		// opt-in threshold did (`markAutoCompact`, read once here)
+		const compactWhy = nextCompactAuto ? "auto" : "manual";
+		nextCompactAuto = false;
 		if (ctx.isRunning()) {
 			body.notice("[/compact] a turn is running — wait for it to finish");
 			return;
@@ -956,7 +967,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				// the composer, the status bar below keeps the session. Composed
 				// against the width the row has (it used to be composed blind).
 				const W = (): number => (process.stdout.columns > 0 ? process.stdout.columns : 80);
-				const text = (elapsed: number): string => liveRow(compactingStatus(glyph, info.rounds, info.tokens, elapsed, W() - 20, retryOnRow(), progress), ["esc to cancel"], W());
+				const text = (elapsed: number): string => liveRow(compactingStatus(glyph, info.rounds, info.tokens, elapsed, W() - 20, retryOnRow(), progress, compactWhy), ["esc to cancel"], W());
 				repaintCompacting = () => dock.setLive(text(Math.round((Date.now() - compactStart) / 1000)));
 				compactStart = Date.now();
 				ctxBefore = ctxPercent(ctx.estimateCtx());

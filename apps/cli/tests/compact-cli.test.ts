@@ -322,7 +322,8 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 
 		// The row: the knowable pre-call data (4 covered rounds of the 8
 		// seeded, the token estimate) with the cancel affordance right-aligned.
-		expect(plain).toMatch(/[✧✦✶✸✺] compacting · 4 rounds · ~/);
+		// Graphite §8.7 (R3b): the row says why first — the person typed it
+		expect(plain).toMatch(/[✧✦✶✸✺] compacting · manual · 4 rounds · ~/);
 		expect(plain).toContain("esc to cancel");
 		// 0.40.0 (the owner's dogfood): the row WALKS the working twinkle, the
 		// same 200 ms spinner a running turn shows — never a static mark

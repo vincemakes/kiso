@@ -215,6 +215,7 @@ export function compactingStatus(
 	W?: number,
 	retry?: RetryOnRow | null,
 	progress?: CompactingProgress | null,
+	why?: string,
 ): string {
 	// 0.40.0: with a budget to measure against, the covered size and the bar
 	// are ONE fact — what went in, and how much of the output budget has
@@ -225,6 +226,9 @@ export function compactingStatus(
 			? `~${kUnit(tokens)} \u2192 ${meterGlyphs(progress.produced / progress.budget, BAR_ON_ROW)} ${kUnit(progress.produced)}/${kUnit(progress.budget)}`
 			: `~${kUnit(tokens)} tokens`;
 	return composeRow(`${glyph} compacting`, [
+		// Graphite §8.7 (R3b, G7): why it is compacting — `manual` for
+		// /compact, `auto` past the configured threshold — first, a fact
+		why !== undefined && why !== "" ? { kind: "fact", text: why } : null,
 		{ kind: "fact", text: `${rounds} rounds` },
 		{ kind: "fact", text: covered },
 		// why the figure jumped when the usage landed — a HINT, so a narrow

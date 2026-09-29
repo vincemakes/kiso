@@ -774,6 +774,14 @@ class ToolExecution implements Component {
 			// W19: the refused call — a failed card whose outcome is the
 			// refusal and its reason; the [result] body still rides below
 			// (never hide information). A5: an extension's denial names it.
+			// Graphite §7.5 (R3b): a call still open when the person stopped the
+			// turn was not refused by anyone — it says `interrupted`, on the
+			// machine's ground (it was running), its output so far below. It
+			// used to read `denied · interrupted` on the failure ground.
+			if (c.reason === "interrupted") {
+				const body = toolBlockParts(c, W, ctx);
+				return card("run", "  ", verb, escapeTerminal(toolTargetOf(c)), ["interrupted"], body.rows, null, W, false);
+			}
 			if (c.reason !== null) {
 				// VD-11: a PERSON's refusal is worth saying (they were asked
 				// and answered); a policy's is ambient. The outcome word says
@@ -1952,19 +1960,27 @@ export function idleHint(room: number, expand: "expand all" | "collapse all" | n
 
 export function statusLine(status: string, tail: string, W: number, hint?: string, expand: "expand all" | "collapse all" | null = null): string {
 	const p = palette();
-	const text = `${status}${tail === "" ? "" : ` · ${tail}`}`;
+	// Graphite §8.7 (R3b): a status that waits for the person (`❯ …`, a
+	// panel's own words) says so first — `❯ needs you · run paused` — the
+	// `❯` gold where there is colour, the words as they were after it. The
+	// window title already says `needs you` (§8.10); now the screen does.
+	const waiting = status.startsWith("\u276f ");
+	const said = waiting ? `\u276f needs you \u00b7 ${status.slice(2)}` : status;
+	const text = `${said}${tail === "" ? "" : ` · ${tail}`}`;
+	// the gold goes on the `❯` only while the cut row still starts with it
+	const lead = (s: string): string => (waiting && p.gold !== "" && s.startsWith("\u276f") ? `${p.gold}\u276f${p.fgEnd}${p.dim}${s.slice(1)}` : `${p.dim}${s}`);
 	// W18: the hint is a parameter — the compacting row right-aligns its
 	// "esc to cancel" (the same one-line-bounded shape as W12's delegate
 	// row; the #16g rule still cuts the HINT first, then the status with
 	// a "…" — never a fold).
 	const statusW = visibleWidth(text);
 	if (statusW > W) {
-		return `${p.dim}${widthCut(text, W - 1)}…${p.reset}`;
+		return `${lead(widthCut(text, W - 1))}…${p.reset}`;
 	}
 	const hintText = hint ?? idleHint(Math.max(0, W - statusW), expand);
 	const hintW = visibleWidth(hintText);
-	if (hintW === 0 || statusW + hintW > W) return `${p.dim}${text}${p.reset}`;
-	return `${p.dim}${text}${" ".repeat(Math.max(0, W - statusW - hintW))}${hintText}${p.reset}`;
+	if (hintW === 0 || statusW + hintW > W) return `${lead(text)}${p.reset}`;
+	return `${lead(text)}${" ".repeat(Math.max(0, W - statusW - hintW))}${hintText}${p.reset}`;
 }
 
 /**
