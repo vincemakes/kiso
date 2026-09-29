@@ -65,7 +65,7 @@ const render = (cell: BodyCell, W = 80): string[] => cellComponent(cell).render(
 // Graphite §7.4 (the card, unpainted — colour off here): the key rides
 // the HEAD row's end on a card with no body (a read), and the FOOT on a
 // card whose body was cut; a card hiding nothing names no key at all.
-const HEAD = (verb: string, target: string, outcome: string): RegExp => new RegExp(`^ {6}${verb} +${target.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")} +${outcome.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}$`);
+const HEAD = (verb: string, target: string, outcome: string): RegExp => new RegExp(`^ {2}${verb} +${target.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")} +${outcome.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}$`);
 
 describe("TUI2-R1 T-V1 — the self-naming key", () => {
 	it("a collapsed cell that hides its whole body names the key on its head row, with the REAL line count", () => {
@@ -86,7 +86,7 @@ describe("TUI2-R1 T-V1 — the self-naming key", () => {
 			}),
 		);
 		expect(rows[0]).toMatch(HEAD("SHELL", "npm test", "exit 0 · 22 lines · 2.4s"));
-		expect(rows).toContain("      \u2514 \u2026 17 earlier lines");
+		expect(rows).toContain("  \u2514 \u2026 17 earlier lines");
 		expect((rows.join("\n").match(/ctrl\+o/g) ?? []).length, "exactly one affordance for the cell").toBe(1);
 		expect(rows.at(-1)!.trim()).toBe("ctrl+o expands");
 	});
@@ -100,7 +100,7 @@ describe("TUI2-R1 T-V1 — the self-naming key", () => {
 		const whole = render(toolCell({ name: "shell", input: "echo hi", inputFull: JSON.stringify({ command: "echo hi" }), resultText: "hi" }));
 		expect(whole).toHaveLength(2);
 		expect(whole[0]).toMatch(HEAD("SHELL", "echo hi", "exit 0 · 1 line · 2.4s"));
-		expect(whole[1]).toBe("      \u2514 hi");
+		expect(whole[1]).toBe("  \u2514 hi");
 		expect(whole.join("\n")).not.toContain("ctrl+o");
 	});
 
@@ -133,7 +133,7 @@ describe("TUI2-R1 T-V1 — the self-naming key", () => {
 		setTTY(false);
 		const rows = render(toolCell({ expanded: true, resultText: "alpha\nbeta\ngamma" }));
 		expect(rows[0]).toMatch(HEAD("READ", "src/parser.ts", "3 lines · 2.4s"));
-		expect(rows.slice(1, 4)).toEqual(["      \u2514 alpha", "        beta", "        gamma"]);
+		expect(rows.slice(1, 4)).toEqual(["  \u2514 alpha", "    beta", "    gamma"]);
 		expect(rows.at(-1)!.trim()).toBe("ctrl+o collapses");
 		expect(rows.filter((r) => r.includes("ctrl+o collapses"))).toHaveLength(1);
 		expect(rows.join("\n")).not.toContain("expands");

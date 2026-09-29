@@ -459,12 +459,10 @@ function makeLineInput(): LineInput {
 		// OR-11 (a): ONE literal. The compositor draws this lead and the
 		// editor measures its rows against it; two copies is how they came
 		// to disagree by two columns in the first place.
-		// Graphite §7.8 — DECLARED REVERSAL of R2's no-glyph ruling (owner,
-		// 2026-09-28): the prompt `›` is back, in column 0 (owner,
-		// 2026-09-29: no two-space indent), so the typed text starts at
-		// column 2 — the column the person's sent words start at (§7.9).
-		// The compositor paints the `›` gold.
-		const COMPOSER_LEAD = "\u203a ";
+		// Graphite §7.8 (owner, 2026-09-29): no prompt glyph — R2's ruling
+		// stands again after R1c's `›`; the caret is the terminal's own
+		// ink, at column 0, as in 0.44.
+		const COMPOSER_LEAD = "";
 		dock.bindInput(() => editor.dockState(), COMPOSER_LEAD);
 		// …and BOTH renderers are live: the dock draws this row while it is
 		// active, the editor's own selfRender draws it (with the brick) when

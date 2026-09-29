@@ -21,6 +21,8 @@ import { COLOR_DARK, COLOR_LIGHT, COLOR_NEUTRAL, COLOR_OFF, currentGroundRgb, pa
 import {
 	CARDS,
 	GRAPHITE,
+	bg,
+	mix,
 	SURFACES,
 	colourTier,
 	contrast,
@@ -137,7 +139,14 @@ describe("the palette writes the Graphite colours, and only them", () => {
 				const allowed = new Set(Object.values(c).flatMap((x) => [fg(x, tier), fg(x, tier).replace("[38;", "[48;")]));
 				const p = paletteFor(kind, null, tier);
 				const breath = new Set(p.breath);
-				for (const code of colours(p)) expect(allowed.has(code) || breath.has(code), `${kind} ${tier} ${JSON.stringify(code)}`).toBe(true);
+				// Graphite §7.4 (R1f): a card's EDGE is its ground deepened toward
+				// the state's colour — a derived colour, stated here by its recipe
+				const edges = new Set([p.runEdge, p.failEdge, p.askEdge, p.humanEdge]);
+				expect(p.humanEdge).toBe(bg(mix(c.human, c.goldMark, 0.55), tier));
+				expect(p.runEdge).toBe(bg(mix(c.washRun, c.blue, 0.22), tier));
+				expect(p.failEdge).toBe(bg(mix(c.washFail, c.fail, 0.22), tier));
+				expect(p.askEdge).toBe(bg(mix(c.washAsk, c.goldMark, 0.22), tier));
+				for (const code of colours(p)) expect(allowed.has(code) || breath.has(code) || edges.has(code), `${kind} ${tier} ${JSON.stringify(code)}`).toBe(true);
 			}
 	});
 

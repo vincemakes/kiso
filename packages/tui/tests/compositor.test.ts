@@ -855,7 +855,7 @@ describe("TUI v6 — the one compositor", () => {
 		// R13: the sibling next to the user's row is the first CALL's own
 		// card — the fold that used to stand there is retired. The subject
 		// is unchanged: two one-row cells, one blank between them.
-		const foldAt = rows.findIndex((l) => /^ {6}READ {4}x/.test(l)); // Graphite §7.4: the head at the content edge
+		const foldAt = rows.findIndex((l) => /^ {2}READ x/.test(l)); // Graphite §7.4: the head at the content edge (column 2, R1f)
 		expect(foldAt).toBeGreaterThan(0);
 		expect(foldAt).toBe(userAt + 2); // R13 D1: one blank, even between two one-row cells
 		expect(rows[userAt + 1]).toBe(""); // …and it is a blank, not a shifted row
@@ -900,16 +900,18 @@ describe("TUI v6 — the one compositor", () => {
 		// SUBJECT — that the resume list sits one blank under the banner and
 		// its columns land at exactly W — is untouched and is asserted
 		// below exactly as it was.
-		// name + blank + "  ✦ resume" + 1 session row = 4 rows
-		expect(screen.get(3)).toBe("  ✦ resume");
+		// Graphite §7.10 (R1f): at 24 rows the opening is the wordmark — six
+		// rows, its rule, the tagline, the motto — so the list stands under
+		// it: blank + "  ✦ resume" + 1 session row at rows 10–12
+		expect(screen.get(11)).toBe("  ✦ resume");
 		// metaW = 18 (the single meta); titleW = 80 - 13 - 18 = 49; pad 21
-		expect(screen.get(4)).toBe(
+		expect(screen.get(12)).toBe(
 			"    now     fix the resize repaint storm" + " ".repeat(21) + " " + "41 events · 3 runs",
 		);
 		// the done-when: the row is exactly W wide, the meta at its column
 		// (R2: the session row moved from 7 to 4 with the banner's height)
-		expect(screen.get(4)!.length).toBe(80);
-		expect(screen.get(4)!.indexOf("41 events")).toBe(62);
+		expect(screen.get(12)!.length).toBe(80);
+		expect(screen.get(12)!.indexOf("41 events")).toBe(62);
 		// the tier gate is per frame — a COMPACT screen drops the list entirely
 		const compact = makeBody({ H: 15 });
 		compact.body.enter();

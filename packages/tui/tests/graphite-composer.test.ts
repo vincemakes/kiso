@@ -30,7 +30,6 @@ const BAR: BarInput = {
 	floorOff: false,
 	model: MODEL,
 	ctx: { used: 0.09, soft: 0.5, hard: 0.8 },
-	cachePct: 92,
 	tokPerSec: 48,
 	branch: "main",
 	folder: "~/code/kiso",
@@ -40,13 +39,13 @@ describe("§8.9 — the status bar's facts", () => {
 	it("a known ground: the chip, the words spaced, the branch and folder at the right", () => {
 		setGround("light");
 		const row = plain(statusBar(BAR, 200, "expand all"));
-		expect(row).toMatch(/^ default {3}\/mode to switch {2}deepseek-v4-flash · max {2}ctx ▆{10} 9% {2}cache 92% {2}48 tok\/s +main {2}~\/code\/kiso {2}ctrl\+o expand all$/);
+		expect(row).toMatch(/^ default {3}\/mode to switch {2}deepseek-v4-flash · max {2}ctx ▆{10} 9% {2}48 tok\/s +main {2}~\/code\/kiso {2}ctrl\+o expand all$/);
 		expect(row.length).toBe(200);
 	});
 
 	it("an unknown ground: the same facts in words that survive without colour", () => {
 		const row = plain(statusBar(BAR, 200, null));
-		expect(row).toMatch(/^▸ default · \/mode to switch · deepseek-v4-flash · max · ctx 9% · cache 92% · 48 tok\/s +main  ~\/code\/kiso$/);
+		expect(row).toMatch(/^▸ default · \/mode to switch · deepseek-v4-flash · max · ctx 9% · 48 tok\/s +main  ~\/code\/kiso$/);
 	});
 
 	it("plan's posture, bypass in the failure colour, floor off only when off", () => {
@@ -59,8 +58,7 @@ describe("§8.9 — the status bar's facts", () => {
 	});
 
 	it("unmeasured facts are absent, not zero", () => {
-		const row = plain(statusBar({ ...BAR, cachePct: null, tokPerSec: null, branch: null }, 200, null));
-		expect(row).not.toContain("cache");
+		const row = plain(statusBar({ ...BAR, tokPerSec: null, branch: null }, 200, null));
 		expect(row).not.toContain("tok/s");
 		expect(row).not.toContain("main");
 	});
@@ -90,7 +88,7 @@ describe("§8.5 — what gives way, W 20..200, on both grounds", () => {
 		it(`${ground}: the facts never drop — at 80 columns every one is on the row`, () => {
 			setGround(ground);
 			const row = plain(statusBar(BAR, 80, "expand all"));
-			for (const fact of ["default", "ctx", "9%", "cache 92%", "48 tok/s"]) expect(row, row).toContain(fact);
+			for (const fact of ["default", "ctx", "9%", "48 tok/s"]) expect(row, row).toContain(fact);
 			expect(row, "the model survives, elided in its middle at most").toMatch(/deepseek-v|…/);
 		});
 	}
@@ -147,16 +145,16 @@ describe("§8.7 — the live row", () => {
 	it("`working` the whole turn, with the elapsed, the output tokens and the rate", () => {
 		const since = Date.now() - 12_000;
 		const row = plain(workingRow("✦", since, 1_300, 48, 120, null));
-		expect(row).toMatch(/^ {2}✦ working 12s · ↓ 1\.3k · 48 tok\/s +esc stop · ⏎ queue · alt\+⏎ redirect$/);
+		expect(row).toMatch(/^✦ working 12s · ↓ 1\.3k · 48 tok\/s +esc stop · ⏎ queue · alt\+⏎ redirect$/);
 		expect(row).not.toContain("thinking");
 	});
 
 	it("a pending retry replaces `working` while it lasts: the attempt, what failed, the countdown", () => {
 		const row = plain(workingRow("✦", Date.now() - 12_000, 1_300, 48, 80, { attempt: 2, maxRetries: 10, code: "rate_limit", remainingMs: 3_200 }));
-		expect(row).toMatch(/^ {2}↻ retrying 2\/10 · rate_limit · next try in 4s +esc gives up$/);
+		expect(row).toMatch(/^↻ retrying 2\/10 · rate_limit · next try in 4s +esc gives up$/);
 		expect(row).not.toContain("working");
 		const inFlight = plain(workingRow("✦", Date.now(), null, null, 80, { attempt: 2, maxRetries: 10, code: "rate_limit", remainingMs: 0 }));
-		expect(inFlight).toMatch(/^ {2}↻ retrying 2\/10 · rate_limit +esc gives up$/);
+		expect(inFlight).toMatch(/^↻ retrying 2\/10 · rate_limit +esc gives up$/);
 	});
 
 	it("the keys give way from the right, whole; the facts are never cut before them", () => {
@@ -164,9 +162,9 @@ describe("§8.7 — the live row", () => {
 		for (let W = 10; W <= 120; W += 1) {
 			const row = plain(liveRow(facts, ["esc stop · ⏎ queue · alt+⏎ redirect", "esc stop · ⏎ queue", "esc stop"], W));
 			expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
-			if (row.includes("esc")) expect(row.startsWith(`  ${facts}`), `W=${W}: ${row}`).toBe(true);
-			const keys = row.slice(`  ${facts}`.length).trim();
-			expect(["", "esc stop · ⏎ queue · alt+⏎ redirect", "esc stop · ⏎ queue", "esc stop"], `W=${W}: ${row}`).toContain(row.startsWith(`  ${facts}`) ? keys : "");
+			if (row.includes("esc")) expect(row.startsWith(facts), `W=${W}: ${row}`).toBe(true);
+			const keys = row.slice(facts.length).trim();
+			expect(["", "esc stop · ⏎ queue · alt+⏎ redirect", "esc stop · ⏎ queue", "esc stop"], `W=${W}: ${row}`).toContain(row.startsWith(facts) ? keys : "");
 		}
 	});
 });
@@ -174,7 +172,7 @@ describe("§8.7 — the live row", () => {
 describe("§8.7 — a queued message is one row", () => {
 	it("the mark, the word, the text, the keys that edit it", () => {
 		const [row] = pendingQueueRows(["tidy the imports"], 80).map(plain);
-		expect(row).toMatch(/^ {2}◇ queued {2}tidy the imports +after this turn · ↑ edit$/);
+		expect(row).toMatch(/^◇ queued {2}tidy the imports +after this turn · ↑ edit$/);
 		expect(row!.length).toBe(80);
 	});
 
@@ -213,9 +211,9 @@ describe("§7.8 — the composer", () => {
 	it("the empty input is the `›` alone — no placeholder, idle or not", () => {
 		const { body, screen } = make(100, () => ({ line: "", cursor: 0 }));
 		expect(screen()[21]).toBe("›");
-		body.setLive("  ✦ working 1s");
+		body.setLive("✦ working 1s");
 		expect(screen()[21]).toBe("›");
-		expect(screen()[19], "the live row stands above the composer's rule").toBe("  ✦ working 1s");
+		expect(screen()[19], "the live row stands above the composer's rule").toBe("✦ working 1s");
 	});
 
 	it("typed text starts at column 2", () => {
@@ -227,7 +225,7 @@ describe("§7.8 — the composer", () => {
 	it("a flash rides the live row until the next key", () => {
 		const { body, screen } = make(80, () => ({ line: "", cursor: 0 }));
 		body.flash("copied 212 chars");
-		expect(screen()[19]).toBe("    copied 212 chars");
+		expect(screen()[19]).toBe("  copied 212 chars");
 		body.redraw(true);
 		expect(screen()[19]).toBe("");
 	});

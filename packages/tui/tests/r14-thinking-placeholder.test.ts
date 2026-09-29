@@ -65,7 +65,7 @@ describe("0.24.2 ② — the placeholder says the turn is alive", () => {
 		const raw = writes.join("");
 		expect(raw, "the placeholder is not dim+italic").toMatch(/\x1b\[2m\x1b\[3m\s*thinking…|\x1b\[2m {2}\x1b\[3mthinking…/);
 		const row = screen0(writes).find((r) => r.trim() === "thinking…")!;
-		expect(row.match(/^ */)![0].length, "not at the content edge").toBe(4);
+		expect(row.match(/^ */)![0].length, "not at the content edge").toBe(2); // Graphite §1.8 (R1f): column 2
 	});
 
 	it("a card RUNNING replaces it — two things never claim the same moment", () => {

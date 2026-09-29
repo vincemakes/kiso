@@ -45,18 +45,18 @@ describe("§7.12 — kiso's notices become meta rows", () => {
 
 	it("…and such a row sits whole at the content edge", () => {
 		const rows = cellComponent({ kind: "notice", text: "mode → plan", done: true, sentence: "mode → plan" } as BodyCell).render(60, CTX).map(plain);
-		expect(rows).toEqual(["    mode → plan"]);
+		expect(rows).toEqual(["  mode → plan"]); // the content edge is column 2 (R1f)
 	});
 
 	it("an indented notice continues the one above it: no label of its own", () => {
 		expect(noticeMeta("  the tests pass")).toEqual({ label: "", sentence: "the tests pass" });
 	});
 
-	it("a meta row: the label at the content edge, the sentence at column 16, folded under itself", () => {
+	it("a meta row: the label at the content edge, the sentence at column 14, folded under itself", () => {
 		const cell = { kind: "notice", text: "x", done: true, label: "COMPACTED", sentence: "alpha bravo charlie delta echo foxtrot golf hotel india" } as BodyCell;
 		const rows = cellComponent(cell).render(40, CTX).map(plain);
-		expect(rows[0]!.startsWith("    COMPACTED   alpha")).toBe(true);
-		for (const r of rows.slice(1)) expect(r.match(/^ */)![0].length).toBe(16);
+		expect(rows[0]!.startsWith("  COMPACTED   alpha")).toBe(true);
+		for (const r of rows.slice(1)) expect(r.match(/^ */)![0].length).toBe(14);
 		for (const r of rows) expect(r.length).toBeLessThanOrEqual(40);
 	});
 
@@ -100,7 +100,7 @@ describe("§7.11 — the seal", () => {
 		const tiers = sealTiers({ ...base, mode: "plan" });
 		expect(tiers[0]).toBe("plan ready · /mode default executes · /mode accept-edits auto-approves edits");
 		const row = plain(cellComponent({ kind: "seal", tiers, done: true } as BodyCell).render(80, CTX)[0]!);
-		expect(row).toBe(`  ✦ ${tiers[0]}`);
+		expect(row).toBe(`✦ ${tiers[0]}`); // the mark in column 0, the words at the edge (R1f)
 	});
 
 	it("the mark hangs in the mark column, the words at the edge; one row at every width (invariant ①)", () => {
@@ -109,7 +109,7 @@ describe("§7.11 — the seal", () => {
 			const rows = cellComponent(cell).render(W, CTX);
 			expect(rows).toHaveLength(1);
 			expect(plain(rows[0]!).length, `W=${W}`).toBeLessThanOrEqual(W);
-			expect(plain(rows[0]!).startsWith("  ✦ ")).toBe(true);
+			expect(plain(rows[0]!).startsWith("✦ ")).toBe(true);
 		}
 	});
 

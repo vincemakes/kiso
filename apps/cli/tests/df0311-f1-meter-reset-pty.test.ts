@@ -48,23 +48,22 @@ describe("DF-0311-F1 — /model repaints the row with no meter", () => {
 			cwd: workdir,
 			feeds: [
 				["/mode to switch", "go\r"],
-				// the switch is keyed on the METER's own bytes, not the recap's: keyed
-				// on `took ` it raced the idle repaint that carries the figure, and
-				// the "before" frame sometimes showed a row the switch had already
-				// cleared — a green that proved nothing either way
-				["cache 90%", "/model ds max\r"], // Graphite §8.9: `cache NN%`
+				// Graphite §8.9 (owner, 2026-09-29): the cache share left the bar
+				// for the seal, which says it once per run — the switch is keyed on
+				// the seal's figure
+				["cache 90%", "/model ds max\r"],
 				["takes effect on the next turn", "exit\r"],
 			],
 			timeout: 60,
 		});
 
-		// before the switch: the meter the faux usage produced reached the row
-		// (the feed that sent the switch fired on exactly these bytes)
-		expect(raw, "the turn painted no meter to lose").toContain("cache 90%");
+		// before the switch: the measurement the faux usage produced reached
+		// the screen, in the seal (the feed that sent the switch fired on it)
+		expect(raw, "the turn measured no cache").toContain("cache 90%");
 
 		// the switch's own frame: the new binding, and no meter at all
 		const after = statusRowOf(screenAt(raw, "takes effect on the next turn"));
 		expect(after, "the row did not repaint with the new model").toContain("deepseek-v4-flash · max");
-		expect(after, "the previous model's meter survived the switch").not.toContain("CH");
+		expect(after, "the previous model's cache figure reached the bar").not.toContain("cache");
 	}, 120_000);
 });

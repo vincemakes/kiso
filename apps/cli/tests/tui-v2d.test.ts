@@ -273,8 +273,9 @@ const lint = (rawWithOsc: string): string[] => {
 		// what actually separates them, and it always was.
 		// Graphite §1.8: the lead is the content edge, FOUR columns.
 		// R1e: no label row — while a block streams, its FIRST row carries
-		// the twinkle in the mark column instead of the edge's spaces.
-		if (/^(?: {4}| {2}[✧✦✶✸✺] )\x1b\[2m\x1b\[3m/.test(seg)) continue;
+		// the twinkle in the mark column instead of the edge's spaces (R1f:
+		// the edge is column 2, the mark column 0).
+		if (/^(?: {2}|[✧✦✶✸✺] )\x1b\[2m\x1b\[3m/.test(seg)) continue;
 		// R13 — A CARD'S BODY ROW, classified on the RAW segment for the
 		// same reason the chip and the thinking are: stripped and trimmed,
 		// a line of a tool's output is arbitrary text, and a pattern that
@@ -283,10 +284,10 @@ const lint = (rawWithOsc: string): string[] => {
 		// the four-column R8a indent; painted, it is the wash. Before this
 		// round a settled non-shell call had no body at all, so these rows
 		// never reached the transcript and the set never needed them.
-		// Graphite §7.4: unpainted, the body sits at column 8 (the indent
-		// before the dim opener now) and `└` opens it at column 6; painted,
-		// every card row starts at the content edge on the card's ground.
-		if (/^ {8}\x1b\[2m/.test(seg) || /^ {6}\u2514 /.test(seg) || /^ {4}\x1b\[48;/.test(seg)) continue;
+		// Graphite §7.4 (R1f): unpainted, the body sits at column 4 (the
+		// indent before the dim opener) and `└` opens it at column 2; painted,
+		// every card row starts in column 0 with the card's edge cell.
+		if (/^ {4}\x1b\[2m/.test(seg) || /^ {2}\u2514 /.test(seg) || /^\x1b\[48;/.test(seg)) continue;
 		const t = seg
 			.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
 			.replace(/\[[0-9;]*m/g, "") // any residual SGR fragment (the split can strand a "[2m")

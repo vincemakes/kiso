@@ -74,10 +74,10 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		// `openBlock` puts the corner on that note — the block's first row.
 		// So the row after the head is output OR the note, never blank, and
 		// a real output row follows it immediately.
-		const first = grid.findIndex((l) => l.startsWith("      \u2514 ")); // Graphite §7.4: `└` at column 6
+		const first = grid.findIndex((l) => l.startsWith("  \u2514 ")); // Graphite §7.4 (R1f): `└` at column 2
 		expect(first).toBeGreaterThan(0);
-		expect(grid[first], "the block opens on a bare gutter").toMatch(/ {6}\u2514 (?:step \d of six|… \d+ earlier lines?)/);
-		expect(grid.slice(first, first + 2).some((l) => / {6}\u2514 step \d of six| {8}step \d of six/.test(l)), "no real output row in the live window").toBe(true);
+		expect(grid[first], "the block opens on a bare gutter").toMatch(/ {2}\u2514 (?:step \d of six|… \d+ earlier lines?)/);
+		expect(grid.slice(first, first + 2).some((l) => / {2}\u2514 step \d of six| {4}step \d of six/.test(l)), "no real output row in the live window").toBe(true);
 	}, 240_000);
 
 	it("SETTLED: the shell is a SLAB — its tail is on screen and the note names the key", () => {
@@ -94,7 +94,7 @@ describe("TUI2-R1.5 ④ — the shell card on a real PTY", () => {
 		// R2 (law 1.3 — no empty marks): the settled row carries NO tick.
 		// A row that already says `exit 0` does not also need a symbol
 		// saying it went fine, and the gutter is two spaces now.
-		const head = grid.findIndex((l) => /^ {6}SHELL /.test(l)); // Graphite §7.4
+		const head = grid.findIndex((l) => /^ {2}SHELL /.test(l)); // Graphite §7.4 (R1f): the content edge
 		expect(head, "no settled shell row on the screen").toBeGreaterThan(0);
 		expect(grid[head]).not.toContain("\u2713"); // the tick is retired, not moved
 		// DECLARED REVERSAL (R9 P2 / D4): the head row names the command

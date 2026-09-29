@@ -168,7 +168,7 @@ describe("KC1 T-P1 — a pasted 3-line CRLF block is ONE multi-line turn (real P
 		expect(grid[20]!.includes("\u2500")).toBe(true); // R2: the rails, not the corners
 		expect(grid[21]!.includes("\u2500")).toBe(false); // the input row between them
 		expect(grid[22]!.includes("\u2500")).toBe(true);
-		expect(grid[21]!.trimEnd()).toBe("\u203a"); // Graphite §7.8: the empty input is the `›` alone
+		expect(grid[21]!.trim()).toBe(""); // Graphite §7.8 (R1f): the empty input shows nothing — no glyph, no placeholder
 		expect(grid[23]).toContain("/mode to switch"); // §8.9: the status bar
 		// the user's own turn rides the scrollback as a chip, all three lines
 		const scrollback = Buffer.from(out, "hex").toString("utf8");

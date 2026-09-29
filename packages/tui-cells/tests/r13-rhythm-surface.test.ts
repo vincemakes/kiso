@@ -14,16 +14,17 @@
  * their height, makes a settle change content and never position BY
  * CONSTRUCTION — which is what R7a's one-row stand-in was simulating.
  *
- * **The card** (Graphite §7.4). head · body · foot: the head carries
- * the verb, the target and — at its right end — the outcome; the body
- * sits under the target; the foot carries the key and exists only while
- * something is behind it. A call with nothing to preview is its head
- * alone. The preview caps at five and takes the END of a shell's output
- * (the conclusion is at the bottom) and the START of everything else.
- * The ground is the call's state. DECLARED REVERSAL (owner, 2026-09-29):
- * the half-row pads and the side bar R1b drew retire — block-element
- * glyphs left a seam between rows in Apple Terminal (§1.5: surfaces are
- * backgrounds only).
+ * **The card** (Graphite §7.4, as the owner settled it on 2026-09-29).
+ * pad · head · body · foot · pad, full width: a whole row of the card's
+ * ground above and below (a row of BACKGROUND — §1.5: the half-row
+ * glyphs R1b tried left a seam in Apple Terminal), one cell of a deeper
+ * tint in column 0 as its edge, the head's mark in column 1, the verb at
+ * the content edge (column 2) and the body UNDER THE VERB — the head and
+ * what it printed line up, as 0.44's card did. The foot carries the key
+ * and exists only while something is behind it. A call with nothing to
+ * preview is its head between its pads. The preview caps at five and
+ * takes the END of a shell's output (the conclusion is at the bottom) and
+ * the START of everything else. The ground is the call's state.
  *
  * **What this reverses**, each by name, because a round that quietly
  * undoes four of them is a round nobody can review: VD-5's one-lining
@@ -56,8 +57,10 @@ const CTX: FrameCtx = { spinnerI: 0, now: 10_000, height: 24 };
 const WASH = { light: COLOR_LIGHT.washRun, dark: COLOR_DARK.washRun } as const;
 const washed = (r: string): boolean => r.includes(WASH.light) || r.includes(WASH.dark);
 const plain = (r: string): string => r.replace(/\x1b\[[0-9;]*m/g, "");
-/** A painted card row's content after the edge and the lead cell. */
-const inner = (r: string): string => plain(r).slice(5).trim();
+/** A painted card row's content after the edge cell and the mark cell. */
+const inner = (r: string): string => plain(r).slice(2).trim();
+/** A card's pad: a whole row of its ground with nothing on it. */
+const isPad = (r: string): boolean => washed(r) && plain(r).trim() === "";
 /** §1.5 — no block-element glyph carries a surface. */
 const GLYPHS = /[\u2584\u2580\u258c\u258e]/;
 const W = 90;
@@ -106,15 +109,16 @@ describe("D1 — one blank between any two elements, whatever their height", () 
 	});
 });
 
-describe("§7.4 — the card: head · body · foot", () => {
-	it("a shell with a long tail: the head with its outcome, the note, the last five rows, the key — no pads", () => {
+describe("§7.4 — the card: pad · head · body · foot · pad", () => {
+	it("a shell with a long tail: pad, the head with its outcome, the note, the last five rows, the key, pad", () => {
 		setGround("light");
 		const rows = render(tool({ resultText: lines(90, (i) => `out ${i + 1}`) }));
-		expect(rows).toHaveLength(8);
-		expect(inner(rows[0]!)).toMatch(/^SHELL +npm test +exit 0 · 90 lines · 0\.1s$/);
-		expect(inner(rows[1]!), "the cut note opens a shell's preview").toBe("… 85 earlier lines");
-		expect(rows.slice(2, 7).map(inner), "the LAST five rows").toEqual(["out 86", "out 87", "out 88", "out 89", "out 90"]);
-		expect(inner(rows[7]!), "the foot carries the key").toBe("ctrl+o expands");
+		expect(rows).toHaveLength(10);
+		expect(isPad(rows[0]!) && isPad(rows[9]!), "a row of the card's ground above and below").toBe(true);
+		expect(inner(rows[1]!)).toMatch(/^SHELL +npm test +exit 0 · 90 lines · 0\.1s$/);
+		expect(inner(rows[2]!), "the cut note opens a shell's preview").toBe("… 85 earlier lines");
+		expect(rows.slice(3, 8).map(inner), "the LAST five rows").toEqual(["out 86", "out 87", "out 88", "out 89", "out 90"]);
+		expect(inner(rows[8]!), "the foot carries the key").toBe("ctrl+o expands");
 		for (const r of rows) expect(plain(r), "a block-element glyph drew a surface (§1.5)").not.toMatch(GLYPHS);
 	});
 
@@ -128,13 +132,14 @@ describe("§7.4 — the card: head · body · foot", () => {
 		}
 	});
 
-	it("the columns: the ground from 4, the verb at 8, the target and every body row at 16", () => {
+	it("the columns: the edge cell at 0, the verb at 2, the target one space after it, and every body row UNDER THE VERB at 2", () => {
 		setGround("light");
-		const rows = render(tool({ resultText: lines(90, (i) => `out ${i + 1}`) })).map(plain);
-		for (const r of rows) expect(r.slice(0, 5), JSON.stringify(r)).toBe("     ");
-		expect(rows[0]!.indexOf("SHELL")).toBe(8);
-		expect(rows[0]!.indexOf("npm test")).toBe(16);
-		for (const r of rows.slice(1, 7)) expect(r.slice(5).search(/\S/) + 5, JSON.stringify(r)).toBe(16);
+		const raw = render(tool({ resultText: lines(90, (i) => `out ${i + 1}`) }));
+		for (const r of raw) expect(r.startsWith(`${COLOR_LIGHT.runEdge} ${COLOR_LIGHT.washRun}`), "the edge cell opens every row").toBe(true);
+		const rows = raw.map(plain);
+		expect(rows[1]!.indexOf("SHELL")).toBe(2);
+		expect(rows[1]!.indexOf("npm test")).toBe(8); // the verb and one space (owner, 2026-09-29)
+		for (const r of rows.slice(2, 8)) expect(r.search(/\S/), JSON.stringify(r)).toBe(2);
 	});
 
 	it("the preview caps at FIVE, one number for every tool", () => {
@@ -146,7 +151,7 @@ describe("§7.4 — the card: head · body · foot", () => {
 			["failed shell", { isError: true, resultText: `exit 1\n${lines(40, (i) => `e${i}`)}` }],
 		] as const) {
 			const rows = render(tool(over)).map(inner);
-			const content = rows.slice(1).filter((r) => r !== "" && !r.startsWith("\u2026") && !r.includes("ctrl+o"));
+			const content = rows.slice(2).filter((r) => r !== "" && !r.startsWith("\u2026") && !r.includes("ctrl+o"));
 			expect(content.length, `${label}: preview is ${content.length} rows`).toBeLessThanOrEqual(5);
 		}
 	});
@@ -166,41 +171,42 @@ describe("§7.4 — the card: head · body · foot", () => {
 		expect(ls.includes("f1"), "a list shows the START of its output").toBe(true);
 	});
 
-	it("E1 — a read has NO preview: its head alone, the key at the end of the head", () => {
+	it("E1 — a read has NO preview: its head between its pads, the key at the end of the head", () => {
 		setGround("light");
 		const rows = render(tool({ name: "read_file", input: "loop.ts", inputFull: JSON.stringify({ path: "loop.ts" }), resultText: lines(412, (i) => `l${i}`) }));
-		expect(rows).toHaveLength(1);
-		expect(inner(rows[0]!)).toMatch(/^READ +loop\.ts +412 lines · 0\.1s · ctrl\+o expands$/);
+		expect(rows).toHaveLength(3);
+		expect(isPad(rows[0]!) && isPad(rows[2]!)).toBe(true);
+		expect(inner(rows[1]!)).toMatch(/^READ +loop\.ts +412 lines · 0\.1s · ctrl\+o expands$/);
 	});
 
 	it("…and so is a shell that produced nothing — with no key, nothing is behind it", () => {
 		setGround("light");
 		const rows = render(tool({ input: "true", inputFull: JSON.stringify({ command: "true" }), resultText: "" }));
-		expect(rows).toHaveLength(1);
+		expect(rows).toHaveLength(3);
 		expect(rows.join("")).not.toContain("ctrl+o");
 	});
 
 	it("a short output is whole: no note and no foot", () => {
 		setGround("light");
 		const rows = render(tool({ resultText: lines(3, (i) => `o${i + 1}`) })).map(inner);
-		expect(rows.slice(1)).toEqual(["o1", "o2", "o3"]);
+		expect(rows.slice(2, -1)).toEqual(["o1", "o2", "o3"]);
 		expect(rows.join("\n")).not.toContain("ctrl+o");
 	});
 });
 
 describe("§1.6 / §7.5 — the ground is the state, and only the outcome WORD takes colour", () => {
-	it("running and run share the machine's blue — no flash at the settle; failed is red, waiting gold", () => {
+	it("running and run share the machine's blue — no flash at the settle; failed is red, waiting gold; the edge follows", () => {
 		setGround("light");
-		expect(render(tool({ resultText: "ok" }))[0]).toContain(COLOR_LIGHT.washRun);
-		expect(render(tool({ state: "running", doneAt: null, startedAt: 9_000, resultText: "" }))[0]).toContain(COLOR_LIGHT.washRun);
-		expect(render(tool({ resultText: "ok" }))[0]).not.toContain(COLOR_LIGHT.washDone);
-		expect(render(tool({ isError: true, resultText: "exit 1\nboom" }))[0]).toContain(COLOR_LIGHT.washFail);
-		expect(render(tool({ state: "approval", doneAt: null, resultText: "" }))[0]).toContain(COLOR_LIGHT.washAsk);
+		expect(render(tool({ resultText: "ok" }))[1]).toContain(`${COLOR_LIGHT.runEdge} ${COLOR_LIGHT.washRun}`);
+		expect(render(tool({ state: "running", doneAt: null, startedAt: 9_000, resultText: "" }))[1]).toContain(`${COLOR_LIGHT.runEdge} ${COLOR_LIGHT.washRun}`);
+		expect(render(tool({ resultText: "ok" }))[1]).not.toContain(COLOR_LIGHT.washDone);
+		expect(render(tool({ isError: true, resultText: "exit 1\nboom" }))[1]).toContain(`${COLOR_LIGHT.failEdge} ${COLOR_LIGHT.washFail}`);
+		expect(render(tool({ state: "approval", doneAt: null, resultText: "" }))[1]).toContain(`${COLOR_LIGHT.askEdge} ${COLOR_LIGHT.washAsk}`);
 	});
 
 	it("a failure colours its outcome word and nothing else on the head row", () => {
 		setGround("light");
-		const head = render(tool({ isError: true, resultText: `exit 1\n${lines(9, (i) => `e${i}`)}` }))[0]!;
+		const head = render(tool({ isError: true, resultText: `exit 1\n${lines(9, (i) => `e${i}`)}` }))[1]!;
 		expect(head).toContain(`${COLOR_LIGHT.red}exit 1`);
 		// between the verb and the outcome word nothing is coloured
 		const between = head.slice(head.indexOf("SHELL"), head.indexOf(`${COLOR_LIGHT.red}exit 1`));
@@ -209,7 +215,7 @@ describe("§1.6 / §7.5 — the ground is the state, and only the outcome WORD t
 
 	it("a success's outcome word is the success colour", () => {
 		setGround("light");
-		expect(render(tool({ resultText: "ok" }))[0]).toContain(`${COLOR_LIGHT.green}exit 0`);
+		expect(render(tool({ resultText: "ok" }))[1]).toContain(`${COLOR_LIGHT.green}exit 0`);
 	});
 });
 
@@ -224,41 +230,41 @@ describe("THE DEGRADATION — with no ground, the card keeps its content and los
 		expect(rows.some((r) => /[\u2584\u2580]/.test(plain(r)))).toBe(false);
 	});
 
-	it("the head at the content edge, the body four columns under it, opened by `└` (R8a)", () => {
+	it("the head at the content edge, the body two columns under it, opened by `└` (R8a)", () => {
 		setGround("unknown");
 		const rows = render(tool({ resultText: lines(90, (i) => `out ${i + 1}`) })).map(plain);
-		expect(rows[0]!.indexOf("SHELL")).toBe(6);
-		expect(rows[1]!.trimEnd()).toBe("      \u2514 \u2026 85 earlier lines");
-		for (const r of rows.filter((r) => /out \d+/.test(r))) expect(r.match(/^ */)![0].length, JSON.stringify(r)).toBe(8);
+		expect(rows[0]!.indexOf("SHELL")).toBe(2);
+		expect(rows[1]!.trimEnd()).toBe("  \u2514 \u2026 85 earlier lines");
+		for (const r of rows.filter((r) => /out \d+/.test(r))) expect(r.match(/^ */)![0].length, JSON.stringify(r)).toBe(4);
 	});
 });
 
 /**
- * Graphite §1.8 — ONE CONTENT EDGE: kiso's blocks begin at column 4.
- *
- * Columns 0–2 are the mark column. The person's block is the one element
- * that spans the width: its bar in column 0, its text at column 2, the
- * column the composer's text starts at (owner, 2026-09-29) — the person's
- * words sit left of kiso's, the two sides of a conversation. What tells
- * kiso's registers apart is each block's own look: the thinking's grey
- * italic, a card's ground and verb (§1.2).
+ * Graphite §1.8 — ONE CONTENT EDGE: every block begins at column 2 (owner,
+ * 2026-09-29 — the 0.44 geometry). Columns 0–1 are the mark column: the
+ * seal's `✦`, a streaming thought's twinkle, the person's `▌`, a card's
+ * edge and mark. What tells the registers apart is each block's own look:
+ * the person's warm ground, the thinking's grey italic, a card's ground
+ * and verb (§1.2).
  */
-describe("§1.8 — one content edge: prose and thinking begin at column 4", () => {
+describe("§1.8 — one content edge: prose and thinking begin at column 2", () => {
 	const md = (block: MdBlock, W = 60): string[] => cellComponent({ kind: "md", block } as unknown as BodyCell).render(W, CTX);
 
-	it("a paragraph sits at column 4 and folds in the room that leaves", () => {
+	it("a paragraph sits at column 2 and folds in the room that leaves", () => {
 		const long = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima";
 		const rows = md({ kind: "para", lines: [long], gap: false, lang: "" }).map(plain);
 		expect(rows.length).toBeGreaterThan(1);
 		for (const r of rows) {
-			expect(r.match(/^ */)![0].length, `not at column 4: ${JSON.stringify(r)}`).toBe(4);
+			expect(r.match(/^ */)![0].length, `not at column 2: ${JSON.stringify(r)}`).toBe(2);
 			expect(visibleWidth(r), `folded past the width: ${JSON.stringify(r)}`).toBeLessThanOrEqual(60);
 		}
 	});
 
-	it("…and never wider than 92 columns, however wide the terminal (§7.15)", () => {
+	it("…and runs to two columns short of the right edge, however wide the terminal — no cap (owner, 2026-09-29)", () => {
 		const long = "word ".repeat(80).trim();
-		for (const r of md({ kind: "para", lines: [long], gap: false, lang: "" }, 200).map(plain)) expect(visibleWidth(r)).toBeLessThanOrEqual(4 + 92);
+		const rows = md({ kind: "para", lines: [long], gap: false, lang: "" }, 200).map(plain);
+		for (const r of rows) expect(visibleWidth(r)).toBeLessThanOrEqual(200 - 2);
+		expect(Math.max(...rows.map((r) => visibleWidth(r))), "a 92-column cap is back").toBeGreaterThan(190);
 	});
 
 	it("every kind of block moves together, EXACTLY to the edge — its own indents are its own", () => {
@@ -273,7 +279,7 @@ describe("§1.8 — one content edge: prose and thinking begin at column 4", () 
 		for (const b of blocks) {
 			const before = renderBlock(b, 60 - 4).map(plain);
 			const after = md(b).map(plain);
-			expect(after, `${b.kind}: the block did not move to the edge`).toEqual(before.map((r) => (r === "" ? r : `    ${r}`)));
+			expect(after, `${b.kind}: the block did not move to the edge`).toEqual(before.map((r) => (r === "" ? r : `  ${r}`)));
 			expect(after.some((r) => r.trim() !== ""), `${b.kind} rendered nothing`).toBe(true);
 		}
 	});
@@ -300,9 +306,9 @@ describe("§1.2 / §7.2 — thinking is told from the answer by its look", () =>
 	const thought = (text: string, W = 60, over: Record<string, unknown> = {}): string[] =>
 		cellComponent({ kind: "thinking", text, done: true, ...over } as unknown as BodyCell).render(W, CTX);
 
-	it("prose AND thinking both sit at column 4 — one edge (§1.8); no label row", () => {
-		expect(strip(say("answer")[0]!)).toBe("    answer");
-		expect(thought("reasoning").map(strip)).toEqual(["    reasoning"]);
+	it("prose AND thinking both sit at column 2 — one edge (§1.8); no label row", () => {
+		expect(strip(say("answer")[0]!)).toBe("  answer");
+		expect(thought("reasoning").map(strip)).toEqual(["  reasoning"]);
 		expect(thought("reasoning").join("")).not.toContain("THINK");
 	});
 
@@ -314,12 +320,12 @@ describe("§1.2 / §7.2 — thinking is told from the answer by its look", () =>
 
 	it("while the block streams the twinkle hangs in the mark column of its first row; settled, the column is empty (§4.2)", () => {
 		const live = cellComponent({ kind: "thinking", text: "r", done: false } as unknown as BodyCell).render(60, CTX);
-		expect(strip(live[0]!)).toMatch(/^ {2}[✧✦✶✸✺] r$/);
-		expect(strip(thought("r")[0]!)).toBe("    r");
+		expect(strip(live[0]!)).toMatch(/^[✧✦✶✸✺] r$/);
+		expect(strip(thought("r")[0]!)).toBe("  r");
 	});
 
 	it("hidden (ctrl+t), it is one row that says so", () => {
-		expect(thought("r", 60, { folded: true }).map(strip)).toEqual(["    thinking · hidden · ctrl+t"]);
+		expect(thought("r", 60, { folded: true }).map(strip)).toEqual(["  thinking · hidden · ctrl+t"]);
 	});
 
 	it("it folds by WORD: no word is broken across rows", () => {
@@ -343,8 +349,8 @@ describe("§1.2 / §7.2 — thinking is told from the answer by its look", () =>
 			for (const rows of [say(long, W), thought(long, W)]) {
 				for (const r of rows) expect(visibleWidth(r), `W=${W}: ${JSON.stringify(r)}`).toBeLessThanOrEqual(W);
 			}
-			expect(strip(thought(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(4);
-			expect(strip(say(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(4);
+			expect(strip(thought(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(2);
+			expect(strip(say(long, W)[0]!).match(/^ */)![0].length, `W=${W}`).toBe(2);
 		}
 	});
 });
@@ -364,25 +370,25 @@ describe("R13 — the three deviations from the ruled mock", () => {
 	it("① a FAILURE previews like any other card: five rows, the card's own note", () => {
 		setGround("light");
 		const rows = render(tool({ isError: true, input: "npm run lint", inputFull: JSON.stringify({ command: "npm run lint" }), resultText: `exit 1\n${lines(9, (i) => `src/a${i}.ts:3:1  error  Unexpected any`)}` })).map(inner);
-		const body = rows.slice(1, -1).filter((r) => r !== "" && !r.startsWith("\u2026"));
+		const body = rows.slice(2, -2).filter((r) => r !== "" && !r.startsWith("\u2026"));
 		expect(body.length, "the error preview is not five rows").toBe(5);
 		expect(rows.some((r) => /^… \d+ more lines$/.test(r)), "the card's note is missing").toBe(true);
-		expect(rows.at(-1), "the key is on the foot").toBe("ctrl+o expands");
+		expect(rows.at(-2), "the key is on the foot").toBe("ctrl+o expands");
 	});
 
 	it("② a SEARCH names what it looked for, and its scope behind it", () => {
 		setGround("unknown");
 		const bare = render(tool({ name: "search_text", input: "TODO", inputFull: JSON.stringify({ pattern: "TODO" }), resultText: "a.ts:1: // TODO" })).map(plain);
-		expect(bare[0]!, "a whole-tree search had an EMPTY head row").toMatch(/^ {6}SEARCH  TODO {2,}/);
+		expect(bare[0]!, "a whole-tree search had an EMPTY head row").toMatch(/^ {2}SEARCH TODO {2,}/);
 		const scoped = render(tool({ name: "search_text", input: "TODO", inputFull: JSON.stringify({ pattern: "TODO", path: "src" }), resultText: "src/a.ts:1: // TODO" })).map(plain);
-		expect(scoped[0]!, "a scoped search named the directory instead of the pattern").toMatch(/^ {6}SEARCH  TODO · src {2,}/);
+		expect(scoped[0]!, "a scoped search named the directory instead of the pattern").toMatch(/^ {2}SEARCH TODO · src {2,}/);
 	});
 
 	it("③ ONE grammar for every card — the outcome is the same `·` chain at the head row's end", () => {
 		setGround("unknown");
 		const read = render(tool({ name: "read_file", input: "a.ts", inputFull: JSON.stringify({ path: "a.ts" }), resultText: lines(10, (i) => `l${i}`) })).map(plain);
 		expect(read).toHaveLength(1);
-		expect(read[0]).toMatch(/^ {6}READ {4}a\.ts +10 lines · 0\.1s · ctrl\+o expands$/);
+		expect(read[0]).toMatch(/^ {2}READ a\.ts +10 lines · 0\.1s · ctrl\+o expands$/);
 		const shell = render(tool({ resultText: lines(90, (i) => `out ${i}`) })).map(plain);
 		expect(shell[0]).toMatch(/ exit 0 · 90 lines · 0\.1s$/);
 		expect((read[0]!.match(/\d+ lines?/g) ?? []).length, "the count is said twice on the head row").toBe(1);
@@ -393,7 +399,7 @@ describe("R13 — the three deviations from the ruled mock", () => {
  * DC-46, THE RULING — a running card GROWS, and a settle never shrinks it
  * (owner-lane, 2026-09-03; measured on the a7 replay). Graphite keeps it:
  *
- *   · a running call with nothing back is its head alone;
+ *   · a running call with nothing back is its head between its pads;
  *   · the window grows one row per output line, to five, and never pads;
  *   · past five the cut note appears ABOVE the window — once;
  *   · the shell's gestures ride the HEAD row's right end, where the
@@ -405,27 +411,28 @@ describe("DC-46 — the running card grows and never shrinks", () => {
 	const running = (over: Partial<Extract<BodyCell, { kind: "tool" }>> = {}): Extract<BodyCell, { kind: "tool" }> =>
 		tool({ state: "running", doneAt: null, startedAt: 9_000, resultText: "", ...over });
 
-	it("a running call with NO OUTPUT YET is its head alone, and grows at the first line", () => {
+	it("a running call with NO OUTPUT YET is its head between its pads, and grows at the first line", () => {
 		setGround("light");
 		const bare = render(running());
-		expect(bare).toHaveLength(1);
-		expect(inner(bare[0]!)).toMatch(/^\S+ SHELL +npm test +running · 1s/);
+		expect(bare).toHaveLength(3);
+		expect(plain(bare[1]!).slice(1, 2), "the breath in the mark cell, column 1").toMatch(/\S/);
+		expect(inner(bare[1]!)).toMatch(/^SHELL +npm test +running · 1s/);
 		const first = render(running({ resultText: "out 1" }));
-		expect(first).toHaveLength(2);
-		expect(inner(first[1]!)).toBe("out 1");
+		expect(first).toHaveLength(4);
+		expect(inner(first[2]!)).toBe("out 1");
 	});
 
-	it("…and a running READ is its head alone, the same as its settled form", () => {
+	it("…and a running READ is its head between its pads, the same as its settled form", () => {
 		setGround("light");
-		expect(render(running({ name: "read_file", input: "loop.ts", inputFull: JSON.stringify({ path: "loop.ts" }) }))).toHaveLength(1);
+		expect(render(running({ name: "read_file", input: "loop.ts", inputFull: JSON.stringify({ path: "loop.ts" }) }))).toHaveLength(3);
 	});
 
 	it("the window GROWS one row per line, to five, and never pads", () => {
 		setGround("light");
 		for (const n of [1, 2, 3, 4, 5]) {
 			const rows = render(running({ resultText: lines(n, (i) => `out ${i + 1}`) }));
-			expect(rows, `${n} line(s) of output`).toHaveLength(1 + n);
-			expect(rows.slice(1, 1 + n).map(inner), `${n}: the window is not the output`).toEqual(Array.from({ length: n }, (_, i) => `out ${i + 1}`));
+			expect(rows, `${n} line(s) of output`).toHaveLength(3 + n);
+			expect(rows.slice(2, 2 + n).map(inner), `${n}: the window is not the output`).toEqual(Array.from({ length: n }, (_, i) => `out ${i + 1}`));
 		}
 	});
 
@@ -434,15 +441,15 @@ describe("DC-46 — the running card grows and never shrinks", () => {
 		const at5 = render(running({ resultText: lines(5, (i) => `out ${i + 1}`) })).length;
 		const at6 = render(running({ resultText: lines(6, (i) => `out ${i + 1}`) }));
 		expect(at6).toHaveLength(at5 + 1);
-		expect(inner(at6[1]!)).toBe("\u2026 1 earlier line");
-		expect(at6.slice(2, 7).map(inner)).toEqual(["out 2", "out 3", "out 4", "out 5", "out 6"]);
+		expect(inner(at6[2]!)).toBe("\u2026 1 earlier line");
+		expect(at6.slice(3, 8).map(inner)).toEqual(["out 2", "out 3", "out 4", "out 5", "out 6"]);
 		expect(render(running({ resultText: lines(90, (i) => `out ${i + 1}`) }))).toHaveLength(at5 + 1);
 	});
 
 	it("the shell's gestures ride the HEAD row's right end — no window row is spent on them", () => {
 		setGround("light");
 		const rows = render(running({ resultText: lines(3, (i) => `out ${i + 1}`) }));
-		expect(inner(rows[0]!)).toMatch(/running · 1s · esc stops · alt\+⏎ redirects$/);
+		expect(inner(rows[1]!)).toMatch(/running · 1s · esc stops · alt\+⏎ redirects$/);
 	});
 
 	it("THE SETTLE NEVER SHRINKS — at every output length, the settled card is at least as tall", () => {
@@ -486,7 +493,7 @@ describe("DC-48 — the card's rows fit, at every width", () => {
 	it("a long target elides in its MIDDLE before the outcome is touched", () => {
 		setGround("light");
 		const path = "packages/runtime/src/deeply/nested/directory/structure/recovery-plan.ts";
-		const head = inner(cellComponent(tool({ name: "read_file", input: path, inputFull: JSON.stringify({ path }), resultText: lines(9, (i) => `l${i}`) })).render(60, CTX)[0]!);
+		const head = inner(cellComponent(tool({ name: "read_file", input: path, inputFull: JSON.stringify({ path }), resultText: lines(9, (i) => `l${i}`) })).render(60, CTX)[1]!);
 		expect(head).toMatch(/packages\/\S*…\S*\.ts/);
 		expect(head).toMatch(/9 lines · 0\.1s/);
 	});

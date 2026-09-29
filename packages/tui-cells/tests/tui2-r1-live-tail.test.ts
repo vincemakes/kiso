@@ -88,7 +88,7 @@ const render = (cell: BodyCell, W = 80): string[] => cellComponent(cell).render(
 // end, where the settled outcome will stand; the window sits under it,
 // opened by `└` at column 6, its rows at column 8; there is no status
 // row of its own any more.
-const HEAD_RUNNING = /^ {4}● SHELL {3}npm test +running · 12s · esc stops · alt\+⏎ redirects$/;
+const HEAD_RUNNING = /^● SHELL npm test +running · 12s · esc stops · alt\+⏎ redirects$/;
 
 describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 	it("no output yet: the head row alone — nothing observed, nothing claimed", () => {
@@ -104,7 +104,7 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		const rows = render(running({ resultText: "packages/runtime    184 tests\npackages/tui      ⠸ 88/120" }));
 		expect(rows).toHaveLength(3);
 		expect(rows[0]).toMatch(HEAD_RUNNING);
-		expect(rows.slice(1)).toEqual(["      \u2514 packages/runtime    184 tests", "        packages/tui      ⠸ 88/120"]);
+		expect(rows.slice(1)).toEqual(["  \u2514 packages/runtime    184 tests", "    packages/tui      ⠸ 88/120"]);
 	});
 
 	it("the tail UPDATES and the height NEVER comes back down (DC-46)", () => {
@@ -117,8 +117,8 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		}
 		expect(last, "the window grew past its cap").toBe(7); // head + note + 5
 		const rows = render(running({ resultText: "one\ntwo\nthree\nfour\nfive\nsix" }));
-		expect(rows[1]).toBe("      \u2514 \u2026 1 earlier line");
-		expect(rows.slice(2, 7)).toEqual(["        two", "        three", "        four", "        five", "        six"]);
+		expect(rows[1]).toBe("  \u2514 \u2026 1 earlier line");
+		expect(rows.slice(2, 7)).toEqual(["    two", "    three", "    four", "    five", "    six"]);
 	});
 
 	it("a long line folds inside the block, and the cap still bounds it", () => {
@@ -133,17 +133,17 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		setTTY(true);
 		const rows = render(running({ resultText: "building…" }));
 		expect(rows).toHaveLength(2);
-		expect(rows[1]).toBe("      \u2514 \x1b[2mbuilding…\x1b[0m");
+		expect(rows[1]).toBe("  \u2514 \x1b[2mbuilding…\x1b[0m");
 	});
 
 	it("a NON-shell running tool keeps its own window — the gestures are the shell's alone", () => {
 		setTTY(false);
 		const rows = render(running({ name: "read_file", input: "big.txt", inputFull: JSON.stringify({ path: "big.txt" }) }));
 		expect(rows).toHaveLength(1);
-		expect(rows[0]).toMatch(/^ {4}● READ {4}big\.txt +running · 12s$/);
+		expect(rows[0]).toMatch(/^● READ big\.txt +running · 12s$/);
 		const listed = render(running({ name: "list_dir", input: ".", inputFull: JSON.stringify({ path: "." }), resultText: "a.ts\nb.ts" }));
-		expect(listed[0]).toMatch(/^ {4}● LIST {4}\(root\) +running · 12s$/);
-		expect(listed.slice(1)).toEqual(["      \u2514 a.ts", "        b.ts"]);
+		expect(listed[0]).toMatch(/^● LIST \(root\) +running · 12s$/);
+		expect(listed.slice(1)).toEqual(["  \u2514 a.ts", "    b.ts"]);
 	});
 
 	it("COMPLETION replaces the running status with the outcome, in the same place; the key moves to the foot", () => {
@@ -156,8 +156,8 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 				resultText: Array.from({ length: 22 }, (_, i) => `out ${i}`).join("\n"),
 			}),
 		);
-		expect(settled[0]).toMatch(/^ {6}SHELL {3}npm test +exit 0 · 22 lines · 18\.2s$/);
-		expect(settled).toContain("      \u2514 \u2026 17 earlier lines");
+		expect(settled[0]).toMatch(/^ {2}SHELL npm test +exit 0 · 22 lines · 18\.2s$/);
+		expect(settled).toContain("  \u2514 \u2026 17 earlier lines");
 		expect(settled.at(-1)!.trim()).toBe("ctrl+o expands");
 		expect(settled.join("\n")).not.toContain("running");
 	});
