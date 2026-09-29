@@ -55,7 +55,7 @@ import {
 // module (the tui's components shim re-exports it) — one import edge,
 // and it points one way: md.ts measures with the width authority, never
 // back through here.
-import { renderBlock, type MdBlock } from "./md.js";
+import { headingLevel, renderBlock, renderMarkdown, type MdBlock } from "./md.js";
 import { hunksDiff, hunksOf, type DiffLine } from "./diff.js";
 export { MdStream, renderBlock, renderMarkdown, type MdBlock, type MdKind } from "./md.js";
 
@@ -376,28 +376,24 @@ class UserMessage implements Component {
 		const painted = p.human !== "";
 		const chipW = Math.max(1, W - PERSON_COL - CHIP_RIGHT);
 		const paras = this.cell.text.split("\n");
-		let truncated = false;
-		// REL-0152-D13: fold only as far as the bound needs — a pasted file
-		// has thousands of lines and twelve are shown.
-		const content: string[] = [];
-		for (const para of paras) {
-			if (content.length >= USER_CHIP_ROWS) {
-				truncated = true;
-				break;
-			}
-			for (const row of foldWords(escapeTerminal(para), chipW)) {
-				if (content.length >= USER_CHIP_ROWS) {
-					truncated = true;
-					break;
-				}
-				content.push(row);
-			}
-		}
-		const fill = (row: string): string => " ".repeat(Math.max(0, chipW - displayWidth(row) + CHIP_RIGHT));
+		// Graphite §5 (G6, R2b): the person's words render as markdown, the
+		// line breaks they typed kept. REL-0152-D13: only as far as the
+		// bound needs — a pasted file has thousands of lines and twelve rows
+		// are shown, so a prefix of the source is rendered (a few lines past
+		// the bound, so a block that closes there still closes).
+		const source = paras.slice(0, USER_CHIP_ROWS + 4).join("\n");
+		const rendered = renderMarkdown(escapeTerminal(source), chipW, { hardBreaks: true });
+		const truncated = rendered.length > USER_CHIP_ROWS || paras.length > USER_CHIP_ROWS + 4;
+		const content = rendered.slice(0, USER_CHIP_ROWS);
+		const fill = (row: string): string => " ".repeat(Math.max(0, chipW - visibleWidth(row) + CHIP_RIGHT));
 		const padRow = `${p.humanEdge} ${p.human}${" ".repeat(Math.max(0, W - 1))}${p.washEnd}`;
+		// every reset inside a row re-opens the block's ground and ink, so a
+		// styled span never strands the rest of the row off the block
+		const onGround = (row: string): string =>
+			row.replaceAll("\x1b[0m", `\x1b[0m${p.human}${p.humanInk}`).replaceAll("\x1b[49m", p.human).replaceAll("\x1b[39m", p.humanInk);
 		const out = painted
-			? [padRow, ...content.map((row) => `${p.humanEdge} ${p.human}${p.humanInk} ${row}${fill(row)}${p.fgEnd}${p.washEnd}`), padRow]
-			: content.map((row) => `\u258c${p.rv} ${row}${fill(row)}${p.rvEnd}`);
+			? [padRow, ...content.map((row) => `${p.humanEdge} ${p.human}${p.humanInk} ${onGround(row)}${fill(row)}${p.fgEnd}${p.washEnd}`), padRow]
+			: content.map((row) => `\u258c${p.rv} ${row.replaceAll("\x1b[0m", `\x1b[0m${p.rv}`)}${fill(row)}${p.rvEnd}`);
 		if (!truncated) return out;
 		// The notice is OUTSIDE the block, in the cut-row vocabulary, and it
 		// says what matters: the model got all of it (DC-45: it folds too —
@@ -1685,7 +1681,15 @@ class MarkdownBlock implements Component {
 		// stays EMPTY: an indented blank row is trailing whitespace, and
 		// §1.3 forbids a mark on a row with nothing to mark.
 		// Graphite §1.8: at the content edge, 92 columns at most (§7.15).
-		return renderBlock(this.cell.block, proseRoom(W)).map((r) => (r === "" ? r : `${PROSE_COL}${r}`));
+		const rows = renderBlock(this.cell.block, proseRoom(W)).map((r) => (r === "" ? r : `${PROSE_COL}${r}`));
+		// Graphite §5 (R2b): a `##` heading carries `§` in the mark column
+		// (`rail`), outside the block, the way the prototype hangs it
+		const p = palette();
+		if (headingLevel(this.cell.block) === 2 && p.rail !== "") {
+			const at = rows.findIndex((r) => r !== "");
+			if (at >= 0) rows[at] = `${p.rail}\u00a7${p.fgEnd} ${rows[at]!.slice(PROSE_COL.length)}`;
+		}
+		return rows;
 	}
 }
 
