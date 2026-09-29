@@ -776,9 +776,17 @@ label. On the terminal the `✦` some notices open with comes off: it is the
 seal's mark (§4). A pipe prints every notice as written.
 
 **7.13 The person's own shell (R2).** `!command` runs and sends;
-`!!command` runs and only shows. It renders as a card whose verb is `$` and
-whose target is the command, and whose outcome says `sent to the model` or
-`not sent` — the one fact that differs between the two.
+`!!command` runs and only shows. Both render as the person's card on their
+own warm ground (§7.9's `human`, its edge cell): `$ <command>` bold as one
+span, at the right what became of it — `exit N` when the output says so,
+then `sent to the model` or `not sent`, the one fact that differs between
+the two — and what it printed under the command in `ink2`, escaped like
+any tool's output. A `!` is an ordinary user turn (the model's bytes are
+unchanged: a `console` fence holding `$ <command>` and the output), and
+its block draws as this card from its own text, so resume shows it the
+same; its output keeps its last twelve rows, the count of the rest above
+them. `!!` shows all of it (the person asked to see it here). While the
+input's one line starts with `!`, a gold `$ ` leads it.
 
 **7.14 An edit shows its diff (R2).** Every `edit_file` and `write_file`
 card shows what it changed, in every approval mode. The diff is built from
