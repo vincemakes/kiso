@@ -80,10 +80,10 @@ const RAGGED = (n: number): number => [3, 17, 1, 41, 9, 128, 5][n % 7]!;
  *  is still the md renderer itself; the transform is written out here so
  *  the gate pins the indent as well as the rendering, rather than asking
  *  the component what it did. */
-// Graphite §1.8, §7.15: prose sits at the content edge (column 4) and
-// wraps at 92 columns at most.
-const PROSE = "    ";
-const prose = (text: string, W: number): string[] => renderMarkdown(text, Math.min(W - PROSE.length, 92)).map((r) => (r === "" ? r : `${PROSE}${r}`));
+// Graphite §1.8, §7.15 (R1f, owner 2026-09-29): prose sits at the content
+// edge (column 2) and wraps two columns short of the right edge — no cap.
+const PROSE = "  ";
+const prose = (text: string, W: number): string[] => renderMarkdown(text, W - PROSE.length * 2).map((r) => (r === "" ? r : `${PROSE}${r}`));
 
 describe("TUI2-MD ⑤ — the compositor wiring", () => {
 	it("T-MD-37: the committed history IS the rendered markdown, in order", () => {

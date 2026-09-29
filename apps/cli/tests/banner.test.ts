@@ -3,8 +3,9 @@
  * e2e drivers, and CI see byte-for-byte the historical output (the
  * existing e2e assertions are untouched — this is the proof). The piped
  * half of this test pins the absence; the PTY half pins the forms:
- *   ≥ 30 rows and room for the wordmark → the wordmark, the facts beside
- *     it from 96 columns and below it under
+ *   ≥ 20 rows and room for the wordmark → the wordmark, the facts beside
+ *     it from 96 columns and below it under (the 80×24 window a Mac opens
+ *     by default shows it — owner, 2026-09-29)
  *   anything shorter or narrower → one line, the facts below it
  * The driver sets an explicit winsize — a raw PTY reports 0x0.
  */
@@ -95,23 +96,30 @@ describe("the startup banner (logo)", () => {
 		for (const gone of ["MODEL", "WORKSPACE", "esc interrupt"]) expect(out, gone).not.toContain(gone);
 	}, 90_000);
 
-	it("under 30 rows the opening is one line, and what loaded follows it", () => {
+	it("the 80×24 window a Mac opens by default shows the wordmark, and what loaded below it", () => {
+		const { env, dirs } = isolatedEnv();
+		const out = plainOut(env, dirs.home, 24, 80);
+		expect(out).toContain("██╗  ██╗██╗███████╗ ██████╗");
+		expect(out).toMatch(/SESSION {5}new · resumable after kill -9/);
+	}, 90_000);
+
+	it("under 20 rows the opening is one line, and what loaded follows it", () => {
 		const { env, dirs } = isolatedEnv();
 		for (const [rows, cols] of [
-			[24, 80],
-			[29, 120],
+			[19, 80],
+			[19, 120],
 			[10, 80],
 		] as const) {
 			const out = plainOut(env, dirs.home, rows, cols);
 			expect(out, `${rows}x${cols}`).not.toContain("█");
 			expect(out, `${rows}x${cols}`).toMatch(/✦ kiso \d+\.\d+\.\d+ · the coding agent that survives kill -9/);
 		}
-		expect(plainOut(env, dirs.home, 24, 80)).toMatch(/SESSION {5}new · resumable after kill -9/);
+		expect(plainOut(env, dirs.home, 19, 80)).toMatch(/SESSION {5}new · resumable after kill -9/);
 	}, 90_000);
 
 	it("a narrow screen keeps the name and drops nothing silently", () => {
 		const { env, dirs } = isolatedEnv();
-		const narrow = plainOut(env, dirs.home, 40, 31);
+		const narrow = plainOut(env, dirs.home, 40, 29); // the wordmark needs 30 at the content edge
 		expect(narrow).not.toContain("█");
 		expect(narrow).toMatch(/kiso \d+\.\d+\.\d+/);
 	}, 90_000);

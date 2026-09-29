@@ -172,7 +172,7 @@ describe("R9 P2 / D4 — the settled shell keeps its tail (reversing VD-5)", () 
 
 	it("the head row names the call; the outcome closes the block on its own row", () => {
 		const rows = render(done());
-		expect(rows[0]).toMatch(/^ {6}SHELL {3}npm test +exit 0 · 7 lines · 6\.0s$/);
+		expect(rows[0]).toMatch(/^ {2}SHELL {3}npm test +exit 0 · 7 lines · 6\.0s$/);
 		expect(rows.at(-1)!.trim()).toBe("ctrl+o expands");
 	});
 

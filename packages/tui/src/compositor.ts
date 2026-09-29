@@ -89,16 +89,11 @@ import { oneRow } from "@vincemakes/kiso-tui-cells/render";
 import { displayVerb, keysSheetRows } from "./strings.js";
 import { noticeMeta } from "./notice-meta.js";
 import { statusBar, type BarInput } from "./status.js";
-/** Graphite §7.8 — the drawn caret: gold on a known ground, reverse video
- *  where there is no ground to be gold against. */
-const caretOn = (): string => {
-	const p = palette();
-	return p.caret === "" ? "\x1b[7m" : p.caret;
-};
-const caretOff = (): string => {
-	const p = palette();
-	return p.caret === "" ? "\x1b[27m" : p.caretEnd;
-};
+/** Graphite §7.8 — the drawn caret: a block in the terminal's own ink,
+ *  reverse video on every ground (owner, 2026-09-29 — the 0.44 caret; R1c
+ *  had painted it gold). */
+const caretOn = (): string => "\x1b[7m";
+const caretOff = (): string => "\x1b[27m";
 /** DC-56: does a rendered row carry any visible text once its SGR is
  *  stripped? A washed pad row is spaces under a background colour — width
  *  without words. */
@@ -2370,7 +2365,7 @@ export class Body {
 		// queued messages sit under it, next to the input they wait on.
 		const panelUp = (this.#panelState?.() ?? null) !== null;
 		const p = palette();
-		const live = panelUp ? [] : this.#live !== null ? [cutLine(this.#live, W)] : this.#flash !== null ? [cutLine(`    ${p.dim}${this.#flash}${p.reset}`, W)] : [];
+		const live = panelUp ? [] : this.#live !== null ? [cutLine(this.#live, W)] : this.#flash !== null ? [cutLine(`  ${p.dim}${this.#flash}${p.reset}`, W)] : [];
 		return [...live, ...this.#queuedRows(W, H - live.length)];
 	}
 

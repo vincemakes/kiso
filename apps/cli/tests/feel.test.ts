@@ -168,12 +168,13 @@ describe("A2: ↑↓ recall the session history", () => {
 		// land in ONE frame, so the recalled row's render merges with the
 		// submit; the recall's proof is the RESUBMITTED turn above. The
 		// typed row rendered (the "hello" needle waited for it).
-		// Graphite §7.8 (a declared reversal of R2's bare column one): the
-		// composer's row is the row's erase-to-end, the `›` lead (its colour
-		// is the ground's), then the text. (A `^hello` on the stripped text
+		// R2, and again since Graphite R1f (owner, 2026-09-29): no prompt
+		// glyph — the recalled text stands at COLUMN ONE, so what identifies
+		// the composer's row in the stream is the row's erase-to-end
+		// immediately followed by the text. (A `^hello` on the stripped text
 		// does not work: stripping the CUP sequences joins the rows, so
 		// there is no line start to anchor to.)
-		expect((out.match(/\x1b\[0K(?:\x1b\[[0-9;]*m)*\u203a(?:\x1b\[[0-9;]*m)* hello/g) ?? []).length).toBeGreaterThanOrEqual(1);
+		expect((out.match(/\x1b\[0Khello/g) ?? []).length).toBeGreaterThanOrEqual(1);
 	});
 });
 

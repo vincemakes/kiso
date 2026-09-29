@@ -500,12 +500,13 @@ export function workingRow(glyph: string, since: number, outTokens: number | nul
 	return liveRow(facts, ["esc stop · ⏎ queue · alt+⏎ redirect", "esc stop · ⏎ queue", "esc stop"], W);
 }
 
-/** §8.7 — a live row: its mark and facts from the mark column (column 2),
- *  its keys right-aligned; the keys give way from the right when the row
- *  is short, the facts never (past them the row is cut). */
+/** §8.7 — a live row: its mark in the mark column (column 0), its facts
+ *  from the content edge, its keys right-aligned; the keys give way from
+ *  the right when the row is short, the facts never (past them the row is
+ *  cut). */
 export function liveRow(facts: string, keys: readonly string[], W: number): string {
 	const p = palette();
-	const lead = `  ${facts}`;
+	const lead = facts;
 	for (const k of [...keys, ""]) {
 		if (k === "") return visibleWidth(lead) <= W ? lead : cutLine(lead, W);
 		const gap = W - visibleWidth(lead) - visibleWidth(k);

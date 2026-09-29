@@ -109,11 +109,12 @@ describe("TUI2-R1.5 ⑨ — the surfaces that wrap by word (VD-10)", () => {
 		// row no longer contains `ctrl+o` to be caught by that alone. This
 		// case is about the BODY folding verbatim; the outcome row is
 		// kiso's own sentence and was never part of the claim.
-		// Graphite §7.4 (unpainted): the body sits at column 8, opened by
-		// `└` at column 6; the head row and the foot are not the body.
-		const rows = render(cell, 14).filter((r) => /^ {6}└ |^ {8}\S/.test(r) && !r.includes("ctrl+o"));
+		// Graphite §7.4 (unpainted, R1f): the body sits at column 4, opened
+		// by `└` at column 2; the head row and the foot are not the body. At
+		// W=10 the body has six columns — the room the case always had.
+		const rows = render(cell, 10).filter((r) => /^ {2}└ |^ {4}\S/.test(r) && !r.includes("ctrl+o"));
 		// the hard fold splits mid-word at the width; a word wrap would not
 		expect(rows.some((r) => /\S$/.test(r) && !/ $/.test(r))).toBe(true);
-		expect(rows.map((r) => r.replace(/^ {6}└ |^ {8}/, "")).join("")).toBe("aaaa bbbb cccc dddd eeee".replace(/ /g, " "));
+		expect(rows.map((r) => r.replace(/^ {2}└ |^ {4}/, "")).join("")).toBe("aaaa bbbb cccc dddd eeee".replace(/ /g, " "));
 	});
 });

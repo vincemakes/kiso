@@ -292,13 +292,14 @@ describe("TUI v4 #16 — the resize-storm gate (real PTY, 24×80)", () => {
 		// fixed dark background.
 		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so
 		// the bar no longer closes right after the words.
-		expect(out).toContain("\u258c\x1b[7m look around"); // Graphite §7.9 (R1e): the bar in column 0, reverse video from column 1, the text at column 2 — where the composer's text starts.
+		expect(out).toContain("\u258c\x1b[7m look around"); // Graphite §7.9: the bar in column 0, reverse video from column 1, the text at the content edge, column 2.
 		expect(out).not.toContain("\x1b[48;5;237m"); // the fixed dark background stays banned
 
-		// ④ Graphite §7.8 — DECLARED REVERSAL of R2's "no prompt glyph": the
-		// input row carries the `›` again, in the mark column. The bans this
-		// case exists for — no fixed blue, no "you> " — are unchanged.
-		expect(out).toContain("\u203a ");
+		// ④ R2's "no prompt glyph" — restored by Graphite R1f (owner,
+		// 2026-09-29) after R1c's `›`: the input row is the typed text at
+		// column 0. The bans this case exists for — no fixed blue, no
+		// "you> " — are unchanged.
+		expect(out).not.toContain("\u203a ");
 		expect(out).not.toContain("\x1b[38;5;75m");
 		expect(out).not.toContain("you> ");
 	}, 90_000);

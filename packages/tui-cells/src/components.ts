@@ -210,14 +210,16 @@ export class Container implements Component {
 	}
 }
 
-/** Graphite §1.8 — THE CONTENT EDGE. Every block begins at column 4;
- *  columns 0–2 are the mark column (a hanging `§`, the live row's mark,
- *  the prompt) and the person's block's bar sits in column 0. */
-export const EDGE = "    ";
-/** §7.15 — prose, thinking and the answer wrap at 92 columns at most. */
-const PROSE_MAX = 92;
-/** The room a block of words has at the content edge. */
-const proseRoom = (W: number): number => Math.max(1, Math.min(W - EDGE.length, PROSE_MAX));
+/** Graphite §1.8 — THE CONTENT EDGE. Every block begins at column 2
+ *  (owner, 2026-09-29: the 0.44 geometry); columns 0–1 are the mark
+ *  column — the seal's `✦`, a streaming thought's twinkle, the live row's
+ *  mark, the person's `▌`, a card's edge and its mark cell. */
+export const EDGE = "  ";
+/** The room a block of words has: from the content edge to two columns
+ *  short of the right edge, the same margin on both sides. No width cap —
+ *  a cap left the answer and thinking far short of the cards beside them
+ *  on a wide terminal (owner, 2026-09-29). */
+const proseRoom = (W: number): number => Math.max(1, W - EDGE.length * 2);
 
 // ---- the cell model (the CLI's mutation surface — unchanged from v5) ----
 
@@ -343,19 +345,19 @@ const USER_CHIP_ROWS = 12;
  *  stops two columns short of the right edge. */
 const CHIP_RIGHT = 2;
 
-/** Graphite §7.9 — the person's words start at column 2, the column the
- *  composer's text starts at: what you type and what you sent line up. */
-const PERSON_COL = 2;
+/** Graphite §7.9 — the person's words start at the content edge. */
+const PERSON_COL = EDGE.length;
 
 /**
  * Graphite §7.9 — THE PERSON'S BLOCK.
  *
  * On a known ground: the warm `human` ground across the full width, a
- * gold BACKGROUND cell in column 0 for the bar, the text at column 2 in
- * `humanInk`. No label and no time: the block says whose words these are.
- * No pad rows — backgrounds only (§1.5): the half-row glyphs it once had
- * left a seam against the text row in terminals that do not stretch a
- * block element to the cell's height.
+ * whole row of it above and below (§1.5: a pad is a row of BACKGROUND —
+ * the half-row glyphs R1b tried left a seam in Apple Terminal), the gold
+ * `▌` in column 0 on the text rows only (a glyph bar down several rows
+ * shows a break between them; beside one row it has none to show), and
+ * the text at the content edge in `humanInk`. No label and no time: the
+ * block says whose words these are.
  *
  * On an unknown ground nothing is painted that assumes a background
  * (§3.1): the `▌` in column 0, which is a character and so still marks
@@ -391,8 +393,9 @@ class UserMessage implements Component {
 			}
 		}
 		const fill = (row: string): string => " ".repeat(Math.max(0, chipW - displayWidth(row) + CHIP_RIGHT));
+		const padRow = `${p.human}${" ".repeat(Math.max(0, W))}${p.washEnd}`;
 		const out = painted
-			? content.map((row) => `${p.goldBar} ${p.human}${p.humanInk} ${row}${fill(row)}${p.fgEnd}${p.washEnd}`)
+			? [padRow, ...content.map((row) => `${p.human}${p.goldMark}\u258c${p.humanInk} ${row}${fill(row)}${p.fgEnd}${p.washEnd}`), padRow]
 			: content.map((row) => `\u258c${p.rv} ${row}${fill(row)}${p.rvEnd}`);
 		if (!truncated) return out;
 		// The notice is OUTSIDE the block, in the cut-row vocabulary, and it
@@ -423,7 +426,7 @@ export function pendingQueueRows(lines: readonly string[], W: number): string[] 
 	const mark = p.goldMark === "" ? "\u25c7" : `${p.goldMark}\u25c7${p.fgEnd}`;
 	const keys = "after this turn \u00b7 \u2191 edit";
 	return lines.map((line) => {
-		const lead = `  ${mark} ${p.dim}queued${p.reset}  `;
+		const lead = `${mark} ${p.dim}queued${p.reset}  `;
 		const leadW = visibleWidth(lead);
 		const text = escapeTerminal(line);
 		const withKeys = W - leadW - visibleWidth(keys) - 2;
@@ -475,7 +478,7 @@ class ThinkingBlock implements Component {
 		const c = this.cell;
 		const text = escapeTerminal(c.text).trim();
 		if (text === "") return [];
-		const mark = c.done ? EDGE : `  ${p.gold}${TWINKLE[ctx.spinnerI % TWINKLE.length]}${p.gold === "" ? "" : p.fgEnd} `;
+		const mark = c.done ? EDGE : `${p.gold}${TWINKLE[ctx.spinnerI % TWINKLE.length]}${p.gold === "" ? "" : p.fgEnd} `;
 		if (c.folded) return [cutLine(`${mark}${p.dim}${p.italic}thinking \u00b7 hidden \u00b7 ctrl+t${p.italicEnd}${p.reset}`, W)];
 		const room = proseRoom(W);
 		const plainWord = p.italic === "" && p.dim === "" ? "thinking: " : "";
@@ -978,20 +981,21 @@ const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
  *  no glyph — because a second `└` inside one block would be the same
  *  mark meaning two things (§4.1). */
 /** Graphite §7.4 — off the surface (unknown ground), a card's body sits
- *  four columns under its head: the head at the content edge (4), the
- *  body at 8, opened by `└` (R8a's indent, which is what says "these rows
- *  are output" once nothing is painted). */
-const BODY_ROW_FLAT = "        ";
+ *  two columns under its head: the head at the content edge (2), the body
+ *  at 4, opened by `└` (R8a's indent, which is what says "these rows are
+ *  output" once nothing is painted). */
+const BODY_ROW_FLAT = "    ";
 /** The verb column's width (§7.5), so the targets line up. */
 const VERB_COL = 7;
-/** Inside a painted card: a lead cell, a gap, the mark cell and the verb
- *  column and a space — the target and the body begin at card column 12,
- *  absolute column 16. */
-const CARD_BODY = " ".repeat(1 + 2 + VERB_COL + 1);
+/** Inside a painted card the body sits at the content edge, under the
+ *  verb — the head and what it printed line up (owner, 2026-09-29, the
+ *  0.44 card's alignment). */
+const CARD_BODY = "";
 /** A card's inner right margin. */
 const CARD_RIGHT = 1;
-/** The cells a painted card has after its lead cell. */
-const cardInner = (W: number): number => Math.max(1, W - EDGE.length - 1);
+/** The cells a painted card has for its content: after its edge cell and
+ *  its mark cell, from the content edge to the right edge. */
+const cardInner = (W: number): number => Math.max(1, W - EDGE.length);
 /** Graphite §1.8 — the model's words and its thinking begin at the
  *  content edge, like every other block. */
 const PROSE_COL = EDGE;
@@ -1023,24 +1027,31 @@ function slabPaints(): boolean {
  * word. Red is failed or refused; gold waits for the person.
  */
 type CardState = "run" | "done" | "fail" | "ask";
-function cardPaint(state: CardState): { bg: string } {
+function cardPaint(state: CardState): { bg: string; edge: string } {
 	const p = palette();
-	if (state === "fail") return { bg: p.washFail };
-	if (state === "ask") return { bg: p.washAsk };
-	return { bg: p.washRun };
+	if (state === "fail") return { bg: p.washFail, edge: p.failEdge };
+	if (state === "ask") return { bg: p.washAsk, edge: p.askEdge };
+	return { bg: p.washRun, edge: p.runEdge };
 }
 
-/** One painted card row: the content edge, the state's ground to the
- *  right edge, padded by DISPLAY width. A reset inside the content would
- *  strand the ground for the rest of the row, so every reset re-opens it
- *  (the selection bar's discipline). */
-function slabRow(inner: string, W: number, paint: { bg: string }): string {
+/** One painted card row, the full width: the edge cell in column 0, the
+ *  mark cell in column 1, the content from the content edge, the state's
+ *  ground to the right edge, padded by DISPLAY width. A reset inside the
+ *  content would strand the ground for the rest of the row, so every
+ *  reset re-opens it (the selection bar's discipline). */
+function slabRow(inner: string, W: number, paint: { bg: string; edge: string }, mark = " "): string {
 	const p = palette();
 	const room = cardInner(W);
 	const fitted = visibleWidth(inner) > room ? cutLine(inner, room) : inner;
 	const body = fitted.replaceAll(p.reset, `${p.reset}${paint.bg}`);
 	const pad = Math.max(0, room - visibleWidth(fitted));
-	return `${EDGE}${paint.bg} ${body}${paint.bg}${" ".repeat(pad)}${p.washEnd}`;
+	return `${paint.edge} ${paint.bg}${mark.replaceAll(p.reset, `${p.reset}${paint.bg}`)}${body}${paint.bg}${" ".repeat(pad)}${p.washEnd}`;
+}
+
+/** A card's pad: a whole row of its ground (§1.5), its edge cell too. */
+function padRow(paint: { bg: string; edge: string }, W: number): string {
+	const p = palette();
+	return `${paint.edge} ${paint.bg}${" ".repeat(Math.max(0, W - 1))}${p.washEnd}`;
 }
 
 /** The widest form that fits the row, or the last one — the head row's
@@ -1097,18 +1108,18 @@ function outcomeStyled(text: string, error: boolean): string {
 }
 
 /**
- * §7.4 / §7.5 — a card's head row, without the card's bar: the mark cell,
+ * §7.4 / §7.5 — a card's head row, without the card's edge and mark cell:
  * the verb (upper case, `dim`, padded to seven), the target, and the
  * outcome right-aligned in `room` cells. It gives way in a pinned order:
  * the outcome's tiers first (the attribution, then the count), then the
  * target elides in its middle; the outcome word is never cut. The row
  * never folds.
  */
-function headCore(mark: string, verb: string, target: string, tiers: readonly string[], room: number, error: boolean): string {
+function headCore(verb: string, target: string, tiers: readonly string[], room: number, error: boolean): string {
 	const p = palette();
 	const verbCol = verb.length < VERB_COL ? verb.padEnd(VERB_COL) : verb;
-	const lead = `${mark}${p.dim}${verbCol}${p.reset} `;
-	const avail = Math.max(1, room - (2 + verbCol.length + 1));
+	const lead = `${p.dim}${verbCol}${p.reset} `;
+	const avail = Math.max(1, room - (verbCol.length + 1));
 	const compose = (tg: string, out: string): string => `${lead}${tg}${" ".repeat(Math.max(2, avail - visibleWidth(tg) - visibleWidth(out)))}${outcomeStyled(out, error)}`;
 	for (const t of tiers) if (visibleWidth(target) + 2 + visibleWidth(t) <= avail) return compose(target, t);
 	const last = tiers[tiers.length - 1] ?? "";
@@ -1118,7 +1129,7 @@ function headCore(mark: string, verb: string, target: string, tiers: readonly st
 	// and the verb, then everything but the outcome — and the outcome's
 	// last word, how long it took, is the one thing kept to the end (pin 4:
 	// what happened and how long it took is never cut open).
-	const bareLead = `${mark}${p.dim}${verb}${p.reset} `;
+	const bareLead = `${p.dim}${verb}${p.reset} `;
 	// the outcome's segments give way from the FRONT — the count, then
 	// the outcome word — so how long it took, and the key where there is
 	// one, are the last to go
@@ -1130,10 +1141,11 @@ function headCore(mark: string, verb: string, target: string, tiers: readonly st
 	return cutLine(`${p.dim}${suffixes[suffixes.length - 1]}${p.reset}`, room);
 }
 
-/** DC-43 — the head row ALONE, at the content edge: a running call's
- *  form when the room left is too small for a card. */
+/** DC-43 — the head row ALONE, its mark in the mark column: a running
+ *  call's form when the room left is too small for a card. `mark` is two
+ *  cells (the glyph and a space, or two spaces). */
 function cardHeadRow(mark: string, verb: string, target: string, tiers: readonly string[], W: number, _painted: boolean, error: boolean): string {
-	return cutLine(`${EDGE}${headCore(mark, verb, target, tiers, Math.max(1, W - EDGE.length), error)}`, W);
+	return cutLine(`${mark}${headCore(verb, target, tiers, Math.max(1, W - EDGE.length), error)}`, W);
 }
 
 /** The card's foot: the key, right-aligned. */
@@ -1143,20 +1155,26 @@ function footRow(key: string, room: number): string {
 }
 
 /**
- * Graphite §7.4 — assemble a card: head · body · foot, on the state's
- * ground; or, off the surface, the same content without it — the head at
- * the content edge, the body under it, the foot dim.
+ * Graphite §7.4 — assemble a card: pad · head · body · foot · pad on the
+ * state's ground, full width, its edge cell in column 0 and the head's
+ * mark in column 1; or, off the surface, the same content without it —
+ * the mark in the mark column, the head at the content edge, the body
+ * under it, the foot dim. `mark` is two cells: the glyph and a space, or
+ * two spaces.
  */
 function card(state: CardState, mark: string, verb: string, target: string, tiers: readonly string[], body: readonly string[], foot: string | null, W: number, error: boolean): string[] {
 	if (!slabPaints()) {
-		const out = [cutLine(`${EDGE}${headCore(mark, verb, target, tiers, Math.max(1, W - EDGE.length), error)}`, W), ...body];
+		const out = [cutLine(`${mark}${headCore(verb, target, tiers, Math.max(1, W - EDGE.length), error)}`, W), ...body];
 		if (foot !== null) out.push(cutLine(footRow(foot, W), W));
 		return out;
 	}
 	const paint = cardPaint(state);
 	const inner = cardInner(W);
-	const rows = [slabRow(` ${headCore(mark, verb, target, tiers, inner - 1 - CARD_RIGHT, error)}`, W, paint), ...body.map((r) => slabRow(r, W, paint))];
+	// the mark cell is ONE column inside a card: the glyph without its space
+	const markCell = mark.replace(/ $/, "");
+	const rows = [padRow(paint, W), slabRow(headCore(verb, target, tiers, inner - CARD_RIGHT, error), W, paint, markCell), ...body.map((r) => slabRow(r, W, paint))];
 	if (foot !== null) rows.push(slabRow(footRow(foot, inner - CARD_RIGHT), W, paint));
+	rows.push(padRow(paint, W));
 	return rows;
 }
 
@@ -1596,7 +1614,7 @@ class SealLine implements Component {
 		const room = Math.max(1, W - EDGE.length);
 		const text = pickTier(this.cell.tiers, room);
 		const fitted = visibleWidth(text) <= room ? text : `${widthCut(text, Math.max(1, room - 1))}\u2026`;
-		return [cutLine(`  ${mark} ${p.dim}${fitted}${p.reset}`, W)];
+		return [cutLine(`${mark} ${p.dim}${fitted}${p.reset}`, W)];
 	}
 }
 

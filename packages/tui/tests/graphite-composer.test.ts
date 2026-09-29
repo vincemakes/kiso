@@ -147,16 +147,16 @@ describe("§8.7 — the live row", () => {
 	it("`working` the whole turn, with the elapsed, the output tokens and the rate", () => {
 		const since = Date.now() - 12_000;
 		const row = plain(workingRow("✦", since, 1_300, 48, 120, null));
-		expect(row).toMatch(/^ {2}✦ working 12s · ↓ 1\.3k · 48 tok\/s +esc stop · ⏎ queue · alt\+⏎ redirect$/);
+		expect(row).toMatch(/^✦ working 12s · ↓ 1\.3k · 48 tok\/s +esc stop · ⏎ queue · alt\+⏎ redirect$/);
 		expect(row).not.toContain("thinking");
 	});
 
 	it("a pending retry replaces `working` while it lasts: the attempt, what failed, the countdown", () => {
 		const row = plain(workingRow("✦", Date.now() - 12_000, 1_300, 48, 80, { attempt: 2, maxRetries: 10, code: "rate_limit", remainingMs: 3_200 }));
-		expect(row).toMatch(/^ {2}↻ retrying 2\/10 · rate_limit · next try in 4s +esc gives up$/);
+		expect(row).toMatch(/^↻ retrying 2\/10 · rate_limit · next try in 4s +esc gives up$/);
 		expect(row).not.toContain("working");
 		const inFlight = plain(workingRow("✦", Date.now(), null, null, 80, { attempt: 2, maxRetries: 10, code: "rate_limit", remainingMs: 0 }));
-		expect(inFlight).toMatch(/^ {2}↻ retrying 2\/10 · rate_limit +esc gives up$/);
+		expect(inFlight).toMatch(/^↻ retrying 2\/10 · rate_limit +esc gives up$/);
 	});
 
 	it("the keys give way from the right, whole; the facts are never cut before them", () => {
@@ -164,9 +164,9 @@ describe("§8.7 — the live row", () => {
 		for (let W = 10; W <= 120; W += 1) {
 			const row = plain(liveRow(facts, ["esc stop · ⏎ queue · alt+⏎ redirect", "esc stop · ⏎ queue", "esc stop"], W));
 			expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
-			if (row.includes("esc")) expect(row.startsWith(`  ${facts}`), `W=${W}: ${row}`).toBe(true);
-			const keys = row.slice(`  ${facts}`.length).trim();
-			expect(["", "esc stop · ⏎ queue · alt+⏎ redirect", "esc stop · ⏎ queue", "esc stop"], `W=${W}: ${row}`).toContain(row.startsWith(`  ${facts}`) ? keys : "");
+			if (row.includes("esc")) expect(row.startsWith(facts), `W=${W}: ${row}`).toBe(true);
+			const keys = row.slice(facts.length).trim();
+			expect(["", "esc stop · ⏎ queue · alt+⏎ redirect", "esc stop · ⏎ queue", "esc stop"], `W=${W}: ${row}`).toContain(row.startsWith(facts) ? keys : "");
 		}
 	});
 });
@@ -174,7 +174,7 @@ describe("§8.7 — the live row", () => {
 describe("§8.7 — a queued message is one row", () => {
 	it("the mark, the word, the text, the keys that edit it", () => {
 		const [row] = pendingQueueRows(["tidy the imports"], 80).map(plain);
-		expect(row).toMatch(/^ {2}◇ queued {2}tidy the imports +after this turn · ↑ edit$/);
+		expect(row).toMatch(/^◇ queued {2}tidy the imports +after this turn · ↑ edit$/);
 		expect(row!.length).toBe(80);
 	});
 
@@ -213,9 +213,9 @@ describe("§7.8 — the composer", () => {
 	it("the empty input is the `›` alone — no placeholder, idle or not", () => {
 		const { body, screen } = make(100, () => ({ line: "", cursor: 0 }));
 		expect(screen()[21]).toBe("›");
-		body.setLive("  ✦ working 1s");
+		body.setLive("✦ working 1s");
 		expect(screen()[21]).toBe("›");
-		expect(screen()[19], "the live row stands above the composer's rule").toBe("  ✦ working 1s");
+		expect(screen()[19], "the live row stands above the composer's rule").toBe("✦ working 1s");
 	});
 
 	it("typed text starts at column 2", () => {
@@ -227,7 +227,7 @@ describe("§7.8 — the composer", () => {
 	it("a flash rides the live row until the next key", () => {
 		const { body, screen } = make(80, () => ({ line: "", cursor: 0 }));
 		body.flash("copied 212 chars");
-		expect(screen()[19]).toBe("    copied 212 chars");
+		expect(screen()[19]).toBe("  copied 212 chars");
 		body.redraw(true);
 		expect(screen()[19]).toBe("");
 	});

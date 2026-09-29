@@ -1,15 +1,16 @@
 /**
  * The person's block (design.md §7.9) — its surface, and its fold.
  *
- * Graphite (owner-ruled 2026-09-28, revised 2026-09-29): on a known ground
- * the warm `human` ground across the full width, a gold BACKGROUND cell in
- * column 0 for the bar, the text at column 2 — where the composer's text
- * starts. No pad rows: the half-row glyphs R1b drew (`▄` `▀`, and the `▌`
- * bar) left a seam between rows in Apple Terminal, so surfaces are
- * backgrounds only (§1.5) — a DECLARED REVERSAL of R1b's pads. On an
- * unknown ground nothing assumes a background (§3.1): the `▌` in column 0
- * — a character, so a stripped frame still marks the person's words
- * (§1.2) — and reverse video from column 1.
+ * Graphite (owner-ruled 2026-09-28, settled 2026-09-29 after the owner's
+ * seam test in Apple Terminal): on a known ground the warm `human` ground
+ * across the full width with a whole ROW of it above and below (the
+ * half-row glyphs R1b drew left a seam; a row of background does not —
+ * §1.5), the gold `▌` in column 0 on the text rows only (beside one row a
+ * glyph has no neighbour to show a break against), and the text at the
+ * content edge, column 2. On an unknown ground nothing assumes a
+ * background (§3.1): the `▌` in column 0 — a character, so a stripped
+ * frame still marks the person's words (§1.2) — and reverse video from
+ * column 1, no pads.
  *
  * DECLARED REVERSAL of the 2026-09-02 ruling this file used to assert
  * ("reverse video on every ground, one form, no ladder"): reverse video
@@ -39,14 +40,18 @@ const isNotice = (row: string): boolean => plain(row).includes("\u2514");
 
 describe("§7.9 — the person's block", () => {
 	for (const g of ["light", "dark"] as const) {
-		it(`${g}: the warm ground, the gold bar cell in column 0, the text at column 2 — no pads, no glyph`, () => {
+		it(`${g}: a row of warm ground above and below, the gold ▌ in column 0 beside the text, the text at column 2`, () => {
 			setGround(g);
 			const p = palette();
 			const rows = chip("look around");
-			expect(rows).toHaveLength(1);
-			expect(rows[0]!.startsWith(`${p.goldBar} ${p.human}`)).toBe(true);
-			expect(plain(rows[0]!)).toMatch(/^ {2}look around {2,}$/);
-			expect(plain(rows[0]!), "a block-element glyph drew the surface (§1.5)").not.toMatch(/[\u2584\u2580\u258c]/);
+			expect(rows).toHaveLength(3);
+			for (const pad of [rows[0]!, rows[2]!]) {
+				expect(pad.startsWith(p.human), "a pad is a row of the block's BACKGROUND").toBe(true);
+				expect(plain(pad)).toBe(" ".repeat(56));
+			}
+			expect(rows[1]!.startsWith(`${p.human}${p.goldMark}\u258c`)).toBe(true);
+			expect(plain(rows[1]!)).toMatch(/^\u258c look around {2,}$/);
+			expect(rows.map(plain).join(""), "a half-row glyph drew a pad (§1.5)").not.toMatch(/[\u2584\u2580]/);
 			expect(rows.join(""), "no reverse video on a known ground").not.toContain("\x1b[7m");
 		});
 	}

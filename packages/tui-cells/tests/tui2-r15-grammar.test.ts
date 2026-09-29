@@ -60,7 +60,7 @@ describe("TUI2-R1.5 ⑤ — the line count is stated exactly once (VD-6)", () =>
 	it("a read card names its lines in the SUFFIX, not in the parens as well", () => {
 		const row = render(toolCell())[0]!;
 		expect(row.match(/\d+ lines?/g) ?? []).toHaveLength(1);
-		expect(row).toMatch(/^ {6}READ {4}src\/parser\.ts +2 lines · 2\.4s · ctrl\+o expands$/);
+		expect(row).toMatch(/^ {2}READ {4}src\/parser\.ts +2 lines · 2\.4s · ctrl\+o expands$/);
 	});
 
 	it("a read whose result the TOOL truncated keeps its own of-N meta — that is a different fact", () => {
@@ -87,7 +87,7 @@ describe("TUI2-R1.5 ⑤ — approval attribution is about humans (VD-11)", () =>
 		const row = render(toolCell({ verdict: { decision: "approved", decidedBy: "mode:default" } }))[0]!;
 		expect(row).not.toContain("approved by");
 		expect(row).not.toContain("mode:default");
-		expect(row).toMatch(/^ {6}READ {4}src\/parser\.ts +2 lines · 2\.4s · ctrl\+o expands$/);
+		expect(row).toMatch(/^ {2}READ {4}src\/parser\.ts +2 lines · 2\.4s · ctrl\+o expands$/);
 	});
 
 	it("a HUMAN approval says `approved` — the thing the human actually did", () => {

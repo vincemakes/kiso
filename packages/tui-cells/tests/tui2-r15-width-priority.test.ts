@@ -85,13 +85,15 @@ const outcome = (cell: BodyCell, W: number): string =>
 		.replace(/^[A-Z]+ /, "");
 
 describe("TUI2-R1.5 pin 4 — the parens never break", () => {
-	it("the walkthrough's S1 block: its whole chain at 120 cols; at 100 the attribution and the count give way before the command does", () => {
+	// (Graphite R1f: the head starts at the content edge, column 2 — four
+	// columns earlier than it did — so the row that has to give way is 96.)
+	it("the walkthrough's S1 block: its whole chain at 120 cols; at 96 the attribution and the count give way before the command does", () => {
 		expect(outcome(shell(S1), 120)).toBe("exit 0 · 6 lines · 3.0s · approved");
-		expect(outcome(shell(S1), 100)).toBe("exit 0 · 3.0s");
-		expect(row(shell(S1), 100)).toContain(S1.replace("\\n", "\\n").slice(0, 30));
-		expect(row(shell(S1), 100)).not.toContain("approv…");
-		expect(rows(shell(S1), 100).join("\n")).toContain("ctrl+o");
-		for (const r of rows(shell(S1), 100)) expect(visibleWidth(r)).toBeLessThanOrEqual(100);
+		expect(outcome(shell(S1), 96)).toBe("exit 0 · 3.0s");
+		expect(row(shell(S1), 96)).toContain(S1.replace("\\n", "\\n").slice(0, 30));
+		expect(row(shell(S1), 96)).not.toContain("approv…");
+		expect(rows(shell(S1), 96).join("\n")).toContain("ctrl+o");
+		for (const r of rows(shell(S1), 96)) expect(visibleWidth(r)).toBeLessThanOrEqual(96);
 	});
 
 	it("the walkthrough's S2 block keeps exit AND duration at 100 cols", () => {

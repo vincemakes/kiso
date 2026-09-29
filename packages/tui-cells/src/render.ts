@@ -143,16 +143,13 @@ export interface Palette {
 	readonly codeBg: string;
 	readonly add: string;
 	readonly del: string;
-	/** Graphite §7.9 — the person's bar: a gold BACKGROUND cell. Surfaces
-	 *  are drawn with backgrounds only (§1.5): a block-element glyph (`▌`,
-	 *  `▎`, `▄`, `▀`) does not fill its cell's height in every terminal,
-	 *  and the rows it should join show a seam between them. */
-	readonly goldBar: string;
-	/** Graphite §7.8 — the drawn caret: a gold cell (text on it in the dark
-	 *  ink); closed with 49 and 39. Empty where the ground is unknown — the
-	 *  caret is reverse video there. */
-	readonly caret: string;
-	readonly caretEnd: string;
+	/** Graphite §7.4 — a card's EDGE: one cell of its ground deepened
+	 *  toward the state's colour, as a BACKGROUND (§1.5: a glyph bar down
+	 *  several rows shows a break at every row in Apple Terminal; a cell's
+	 *  background does not). One per card state. */
+	readonly runEdge: string;
+	readonly failEdge: string;
+	readonly askEdge: string;
 	readonly fgEnd: string;
 	/** §5.2 — the command breath's seven foreground opens; empty where
 	 *  the mark freezes (no ground, or no colour). */
@@ -202,9 +199,9 @@ const NO_GRAPHITE = {
 	codeBg: "",
 	add: "",
 	del: "",
-	goldBar: "",
-	caret: "",
-	caretEnd: "",
+	runEdge: "",
+	failEdge: "",
+	askEdge: "",
 	fgEnd: "",
 	breath: [],
 	tier: null,
@@ -234,6 +231,11 @@ const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: st
  * floor on every card ground (§2.1), so the separate grey retires in
  * value while the name stays for its call sites.
  */
+/** How far a card's edge cell is deepened from its ground toward the
+ *  state's colour — quiet enough to read as the card's own edge, not a
+ *  stripe (the owner's seam test, B6, 2026-09-29). */
+const EDGE_DEPTH = 0.22;
+
 export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tier): Palette {
 	const c = graphiteColours(kind, ground, tier);
 	const f = (x: Rgb): string => fg(x, tier);
@@ -267,9 +269,9 @@ export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tie
 		codeBg: b(c.code),
 		add: b(c.add),
 		del: b(c.del),
-		goldBar: b(c.goldMark),
-		caret: `${b(c.goldMark)}${f(c.humanInk)}`,
-		caretEnd: "\x1b[49m\x1b[39m",
+		runEdge: b(mix(c.washRun, c.blue, EDGE_DEPTH)),
+		failEdge: b(mix(c.washFail, c.fail, EDGE_DEPTH)),
+		askEdge: b(mix(c.washAsk, c.goldMark, EDGE_DEPTH)),
 		fgEnd: "\x1b[39m",
 		breath: breathRamp(c).map(f),
 		tier,
@@ -687,12 +689,13 @@ export const TAGLINE = "the coding agent that survives kill -9";
  * a first screen needed for three questions — what model, where am I, what
  * is loaded. The model and the folder moved to the status bar (§8.9), what
  * is loaded moved beside the wordmark, and the wordmark came back: ten
- * rows, once, at the top of a session. Under 30 rows, on a terminal too
+ * rows, once, at the top of a session — including in the 80×24 window a
+ * Mac opens by default (owner, 2026-09-29: a wordmark the default window
+ * never shows is not worth drawing). Under 20 rows, on a terminal too
  * narrow for it, and on a resume (the history is above the opening there,
  * and ten rows of wordmark would bury its tail) the opening is one line.
  *
- * The R2 keys row retires with it: the empty input carries the key ladder
- * now (§7.8), so the opening does not teach keys a second time.
+ * The R2 keys row retires with it: `?` lists the keys (§8.5).
  */
 export const MOTTO = "intent \u2192 effect \u2192 durable fact";
 const WORDMARK = [
@@ -706,11 +709,11 @@ const WORDMARK = [
 /** The wordmark's width in cells (its widest row). */
 export const WORDMARK_W = Math.max(...WORDMARK.map((r) => displayWidth(r)));
 /** The content edge (§1.8) the opening's rows start at. */
-const OPENING_EDGE = 4;
+const OPENING_EDGE = 2;
 /** §7.10: the facts sit beside the wordmark from this width, below it under. */
 const FACTS_BESIDE_W = 96;
 /** §7.10: under this height the opening is one line. */
-const OPENING_TALL_H = 30;
+const OPENING_TALL_H = 20;
 /** The facts' label column: the longest label and two spaces. */
 const FACT_LABEL_W = "EXTENSIONS".length + 2;
 
@@ -829,7 +832,7 @@ export function bannerLines(W: number, H: number, version: string, extensionsTex
 	const pad = " ".repeat(OPENING_EDGE);
 	const rows: string[] = [];
 	if (!tall) {
-		rows.push(cut(`  \u2726 ${p.bold}kiso${p.reset} ${p.dim}${version} \u00b7 ${TAGLINE}${p.reset}`));
+		rows.push(cut(`\u2726 ${p.bold}kiso${p.reset} ${p.dim}${version} \u00b7 ${TAGLINE}${p.reset}`));
 		if (facts.length > 0) rows.push("", ...factRows(facts, width - OPENING_EDGE).map((r) => cut(`${pad}${r}`)));
 	} else {
 		const head = [...wordmarkRows(), openingRule(WORDMARK_W), `${p.ink2}${TAGLINE}${p.fgEnd}${p.dim} \u00b7 ${version}${p.reset}`, `${p.dim}${MOTTO}${p.reset}`];
@@ -860,7 +863,14 @@ export function bannerLines(W: number, H: number, version: string, extensionsTex
 	return rows;
 }
 
-/** The wordmark's six rows, coloured per §7.10 on a known ground. */
+/**
+ * The wordmark's six rows, coloured per §7.10 on a known ground. The
+ * letters' cells are BACKGROUND, not `█` glyphs (§1.5): a glyph stops short
+ * of its cell in Apple Terminal and every row showed a white line through
+ * the letters (the owner's seam test, C1 against C2, 2026-09-29). The
+ * shadow stays in box-drawing glyphs, lighter than the letters. Off a known
+ * ground there is no background to paint, and the letters are `█`.
+ */
 function wordmarkRows(): string[] {
 	const p = palette();
 	const tier = p.tier;
@@ -868,16 +878,19 @@ function wordmarkRows(): string[] {
 	const c = graphiteColours(ground, groundRgb, tier);
 	const shadow = fg(mix(c.rail, c.ground, 0.35), tier);
 	return WORDMARK.map((row, i) => {
-		const block = fg(mix(c.ink, c.dim, Math.min(1, i / 4)), tier);
-		let out = "";
-		let run: "block" | "shadow" | "space" | null = null;
+		const block = bg(mix(c.ink, c.dim, Math.min(1, i / 4)), tier);
+		// the shadow's colour holds for the whole row (a letter cell is a
+		// space, which has no foreground to show); the letters open and
+		// close their background in runs
+		let out = shadow;
+		let inBlock = false;
 		for (const ch of row) {
-			const kind = ch === "\u2588" ? "block" : ch === " " ? "space" : "shadow";
-			if (kind !== run && kind !== "space") out += kind === "block" ? block : shadow;
-			if (kind !== "space") run = kind;
-			out += ch;
+			const isBlock = ch === "\u2588";
+			if (isBlock !== inBlock) out += isBlock ? block : "\x1b[49m";
+			inBlock = isBlock;
+			out += isBlock ? " " : ch;
 		}
-		return `${out}${p.fgEnd}`;
+		return `${out}${inBlock ? "\x1b[49m" : ""}${p.fgEnd}`;
 	});
 }
 
