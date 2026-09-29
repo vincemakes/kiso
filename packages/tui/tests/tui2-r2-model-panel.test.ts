@@ -64,8 +64,10 @@ describe("TUI2-R2 ④ — the /model panel's block (the picker-surface class)", 
 		const rows = panelRowsOf({ view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 80, 12).map(strip);
 		// R2: the block opens with the same dashed rule it closes with, so
 		// every content row moves down one.
-		expect(rows[0]!.startsWith("\u2500")).toBe(true);
-		expect(rows[1]).toContain("model — current: deepseek-v4-flash (openai-compat)");
+		// Graphite §8.1 (R3a): the opening row names the list (`─── model ───`)
+		// and the row under it keeps what followed the name
+		expect(rows[0]!.startsWith("\u2500\u2500\u2500 model \u2500")).toBe(true);
+		expect(rows[1]).toBe("  current: deepseek-v4-flash (openai-compat)");
 		// 0.40.1 (the owner's dogfood): a row is its LABEL — the digit column is
 		// gone (the digits still pick by visible position, documented in the
 		// keys sheet), and the note here is the SPEC's own, which the CLI no

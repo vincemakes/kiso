@@ -75,7 +75,9 @@ describe("R8 — the band is a window", () => {
 	it("the window follows the selection, and the counter follows with it", () => {
 		const rows = band("/", 6);
 		expect(plain(rows[6]!).trim()).toBe(`(7/${MENU_ITEMS.length})`);
-		const marked = rows.findIndex((r) => plain(r).startsWith("▸"));
+		// Graphite §8.2 (R3a): the selected row carries the list's `→` in
+		// column 1 (the gold `›` on a known ground), not a bold `▸`
+		const marked = rows.findIndex((r) => /^ \u2192/.test(plain(r)));
 		expect(marked, "the selected row scrolled out of its own window").toBeGreaterThan(0);
 		expect(marked).toBeLessThan(6);
 	});

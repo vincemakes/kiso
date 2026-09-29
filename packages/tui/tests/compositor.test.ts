@@ -258,7 +258,7 @@ describe("TUI v6 — the one compositor", () => {
 		// R8: the rows dropped the leading `/` (it is on the input line
 		// directly below). The needle is the row's own shape, which is
 		// no less specific than the name it replaced.
-		expect(rows[19], "the menu row was erased by the gap").toContain("▸ mode ");
+		expect(rows[19], "the menu row was erased by the gap").toContain("\u2192mode ");
 	});
 
 	it("a done cell's lines emit EXACTLY once — the freeze frame writes them, later frames never re-emit", () => {
@@ -361,7 +361,7 @@ describe("TUI v6 — the one compositor", () => {
 		const rows = screenOf(writes); // REL-0152-R1: the screen, not one frame
 		// R8: the rows dropped the leading `/`; both commands are still
 		// named, each on its own row.
-		expect(rows.join("\n")).toContain("▸ mode ");
+		expect(rows.join("\n")).toContain("\u2192mode ");
 		expect(rows.join("\n")).toContain("  model ");
 		// DECLARED SUPERSESSION (REL-0152-R1): this used to assert the
 		// EMISSION ORDER — status first, then the menu rows last-first,

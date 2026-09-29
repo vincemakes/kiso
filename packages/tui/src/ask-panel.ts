@@ -52,7 +52,8 @@ import {
 	type PanelView,
 	type PickRuntime,
 } from "./approval-panel.js";
-import { cutLine, selectionBar, visibleWidth, widthCut } from "@vincemakes/kiso-tui-cells/components";
+import { boxBottom, cutLine, selectionBar, visibleWidth, widthCut } from "@vincemakes/kiso-tui-cells/components";
+import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
 import { escapeTerminal, palette } from "./lines.js";
 
 /** The schema's own bounds — the registry refuses anything outside them
@@ -314,8 +315,8 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	const multi = q.multiSelect === true;
 	const counter = spec.questions.length > 1 ? `${p.dim} ‹ ${state.qIndex + 1}/${spec.questions.length} ›${p.reset}` : "";
 	const rows: string[] = [];
-	// R2: the same dashed rule the composer and the approval panel use.
-	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
+	// Graphite §8.1 (R3a): the panel names itself, like every band
+	rows.push(bandHeader("question", W));
 	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(q.question)}${p.reset}${counter}`, Math.max(1, W - 2))}`);
 	const header = q.header === undefined ? "the question" : escapeTerminal(q.header.slice(0, ASK_HEADER_CAP));
 	// R2: the divider row is gone (the opening rule says a block starts
@@ -376,7 +377,7 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	// TUI2-R1.5 ⑪ had already replaced a two-cell `\u2514 ` stub with a
 	// real rule for the reason that stub read as the cut-notice prefix it
 	// collides with; this keeps that finding and only changes which rule.
-	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
+	rows.push(boxBottom(W));
 	return rows;
 }
 

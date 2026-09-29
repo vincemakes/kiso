@@ -403,7 +403,16 @@ export function bandHeader(label: string, W: number): string {
 		out += ch;
 		w += cw;
 	}
-	return `${p.dim}${out}${p.reset}`;
+	// Graphite §8.1 (R3a): the hairline in `line`, the band's name bold
+	// gold — the band names itself; off a known ground, one dim span
+	if (p.line === "" || p.gold === "") return `${p.dim}${out}${p.reset}`;
+	const at = out.indexOf("\u2500 ") + 2;
+	// the NAME is the label up to its first ` · `; what follows (a scope,
+	// a count, a key) is the band's facts, dim
+	const sep = label.indexOf(" \u00b7 ");
+	const nameEnd = Math.min(out.length, at + (sep < 0 ? label.length : sep));
+	const labelEnd = Math.min(out.length, at + label.length);
+	return `${p.line}${out.slice(0, at)}${p.fgEnd}${p.bold}${p.gold}${out.slice(at, nameEnd)}${p.reset}${p.dim}${out.slice(nameEnd, labelEnd)}${p.reset}${p.line}${out.slice(labelEnd)}${p.fgEnd}`;
 }
 
 export function keysSheetRows(W: number): string[] {
