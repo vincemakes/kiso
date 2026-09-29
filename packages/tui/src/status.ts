@@ -404,7 +404,11 @@ export function ctxMeter(ctx: BarInput["ctx"]): string {
 	const pct = `${Math.round(used * 100)}%`;
 	const p = palette();
 	if (p.track === "") return `ctx ${pct}`;
-	const filled = used <= 0 ? 0 : Math.min(METER_CELLS, Math.max(1, Math.round(used * METER_CELLS)));
+	// the cells follow the percentage SHOWN: `ctx 0%` is an empty meter,
+	// and from 1% at least one cell is filled (owner, 2026-09-29 — a lit
+	// cell beside `0%` read as a contradiction)
+	const shown = Math.round(used * 100);
+	const filled = shown <= 0 ? 0 : Math.min(METER_CELLS, Math.max(1, Math.round(shown / 10)));
 	const tone = used >= ctx.hard ? p.fail : used >= ctx.soft ? p.gold : p.ink2;
 	return `${p.dim}ctx${p.reset} ${tone}${"▆".repeat(filled)}${p.track}${"▆".repeat(METER_CELLS - filled)}${p.fgEnd} ${p.dim}${pct}${p.reset}`;
 }

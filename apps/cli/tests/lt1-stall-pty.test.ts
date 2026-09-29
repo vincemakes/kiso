@@ -88,7 +88,7 @@ describe("LT-1 — the stream watchdog on a real PTY", () => {
 		const raw = ptyRun(["--mode", "bypass", "lt1-stall"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", "Say something.\r"],
+				["/mode to switch", "Say something.\r"],
 				// the error line is the last thing the turn says; exit on it
 				["FAILED", "exit\r"], // Graphite §7.12: the error is a FAILED meta row
 			],

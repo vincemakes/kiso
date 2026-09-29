@@ -157,7 +157,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// R2 (law 1.6's recorded reversal): the chip spans the WIDTH, so the
 		// bar no longer closes right after the words — the open and the
 		// words are the stable part, the pad depends on the terminal.
-		const userEcho = "\x1b[7m  look around"; // the chip, opening the full-width band. R13 D4: the chip's inner pad is TWO columns now, so its text begins in the same column as the model's (E3) and as a card's rows (E4).
+		const userEcho = "\u258c\x1b[7m look around"; // the chip, opening the full-width band. Graphite §7.9 (R1e): the bar in column 0, reverse video from column 1, the text at column 2 — the column the composer's text starts at.
 		expect(out).toContain(userEcho);
 		// DECLARED SUPERSESSION (REL-0152-R1): counted on the SCREEN. The
 		// old renderer moved rows by scrolling the terminal, so a

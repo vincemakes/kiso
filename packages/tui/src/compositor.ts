@@ -77,7 +77,6 @@ import {
 	cellComponent,
 	gutterCut,
 	cutLine,
-	keyLadder,
 	pendingQueueRows,
 	statusLine,
 	visibleWidth,
@@ -526,8 +525,7 @@ export class Body {
 		} else {
 			// 0.40.6: a block opened while thinking is hidden is hidden from its
 			// first character — the text is never streamed to the screen.
-			// Graphite §7.2: the block's clock, for its `THINK <seconds>` label.
-			this.#cells.push({ kind: "thinking", text, done: false, turn: this.#turns.length - 1, folded: this.#thinkingFolded, startedAt: Date.now() });
+			this.#cells.push({ kind: "thinking", text, done: false, turn: this.#turns.length - 1, folded: this.#thinkingFolded });
 			// R7 (owner-ruled 2026-08-31): thinking is WORDS, not work — a
 			// cell like prose.
 			const t0 = this.#turns[this.#turns.length - 1];
@@ -545,7 +543,6 @@ export class Body {
 		const last = this.#cells[this.#cells.length - 1];
 		if (last !== undefined && last.kind === "thinking" && !last.done) {
 			last.done = true;
-			if (last.startedAt !== undefined) last.doneAt = Date.now();
 			// §2.3: a block that SETTLES after the switch was thrown is
 			// folded like the rest — the session stays one way up.
 			last.folded = this.#thinkingFolded;
@@ -2604,14 +2601,10 @@ export class Body {
 		// a LEGACY one-row provider (the old {line, cursor} shape) keeps
 		// working: its single line is the composer's single row
 		let rows = st.lines !== undefined && st.lines.length > 0 ? [...st.lines] : [st.line];
-		// Graphite §7.8 / §8.5: an EMPTY input on an idle composer shows the
-		// keys nothing else advertises — the ladder that gives way from the
-		// right. Never while a turn runs, a panel is up, a menu is open, or
-		// the viewer or the keys sheet holds the live region (each carries
-		// its own keys): the placeholder is the idle state's, and only its.
-		const overlayUp = this.#viewer !== null || this.#sheetState?.() === true;
-		const placeholder =
-			panel === null && !overlayUp && menuRows === 0 && this.#live === null && rows.length === 1 && rows[0] === "" ? keyLadder(Math.max(0, W - leadW - 3)) : "";
+		// Graphite §7.8 — DECLARED REMOVAL (owner, 2026-09-29): the empty
+		// input carries no placeholder. R1c put the key ladder there; the
+		// row is kept empty — `?` lists the keys, and the empty input is
+		// where later work (follow-up suggestions) will speak.
 		let cursorRow = Math.min(st.cursorRow ?? 0, rows.length - 1);
 		const cursorCol = st.cursorCol ?? st.cursor;
 		// KC1 §5's N_visible, re-applied against the frame's REAL bands:
@@ -2627,8 +2620,7 @@ export class Body {
 		const out: string[] = [];
 		let markerCol = 1; // R2: no wall to skip — the row starts at column 1
 		for (let r = 0; r < rows.length; r += 1) {
-			const hint = r === 0 && placeholder !== "" ? ` ${p.rail === "" ? p.dim : p.rail}${p.italic}${placeholder}${p.italicEnd}${p.reset}` : "";
-			const text = `${r === 0 ? lead : " ".repeat(leadW)}${rows[r]!}${hint}`;
+			const text = `${r === 0 ? lead : " ".repeat(leadW)}${rows[r]!}`;
 			const bytes = this.#inputRowBytes(text, W, r === cursorRow ? leadW + cursorCol : null);
 			out.push(bytes.stripped);
 			// W23: the frame-derived column — wallL (2) + the marker's

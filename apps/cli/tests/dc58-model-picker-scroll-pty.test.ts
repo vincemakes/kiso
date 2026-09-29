@@ -34,7 +34,7 @@ describe("DC-58 — /model on a real pty: twelve profiles, one screen, arrows th
 		writeFileSync(join(dirs.home, "config.json"), `${JSON.stringify(twelve())}\n`);
 		const raw = ptyRun(["chat", "scroll-a", "--model", "p1"], { ...env, SCROLL_KEY: "fake" } as NodeJS.ProcessEnv, {
 			feeds: [
-				["/ commands · ↑ history", "/model\r"],
+				["/mode to switch", "/model\r"],
 				["takes effect on the next turn", "exit\r"],
 			],
 			// twelve downs (the panel is up by ~2.5s — the R1.5 lesson), then

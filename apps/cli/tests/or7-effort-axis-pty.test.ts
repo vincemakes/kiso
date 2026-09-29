@@ -58,7 +58,7 @@ describe("OR-7 — the pick panel's effort axis", () => {
 		const raw = ptyRun(["chat", "axis-a"], { ...env, OR7_KEY: "fake" } as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", "/model\r"],
+				["/mode to switch", "/model\r"],
 				["takes effect on the next turn", "exit\r"],
 			],
 			// ↓ to `axis`, then two → up its ladder (high → xhigh → max),

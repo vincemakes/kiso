@@ -1,15 +1,14 @@
 /**
  * Graphite R1c — the composer and the status bar: the bar's facts and
  * what gives way (§8.5, §8.9), the ctx meter's tiers (§8.9), the live row
- * (§8.7), the queued rows (§8.7), and the key ladder in the empty input
- * (§7.8).
+ * (§8.7), the queued rows (§8.7), and the composer (§7.8).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Body, type InputState } from "../src/compositor.js";
 import { ctxMeter, liveRow, statusBar, workingRow, type BarInput } from "../src/status.js";
 import { palette, setGround } from "../src/lines.js";
-import { keyLadder, pendingQueueRows } from "@vincemakes/kiso-tui-cells/components";
+import { pendingQueueRows } from "@vincemakes/kiso-tui-cells/components";
 import { Screen } from "./helpers/screen.js";
 
 const plain = (r: string): string => r.replace(/\x1b\[[0-9;]*m/g, "");
@@ -110,7 +109,7 @@ describe("§8.9 — the ctx meter", () => {
 		expect(ctxMeter({ used: 0.42, soft: 0.5, hard: 0.8 })).toBe("ctx 42%");
 	});
 
-	it("ten cells, rounded to the nearest, at least one once anything is used", () => {
+	it("ten cells following the percentage SHOWN: empty at 0%, at least one from 1% (owner, 2026-09-29)", () => {
 		setGround("light");
 		const p = palette();
 		const filled = (used: number): number => {
@@ -119,6 +118,9 @@ describe("§8.9 — the ctx meter", () => {
 			return [...run].length;
 		};
 		expect(plain(ctxMeter({ used: 0, soft: 0.5, hard: 0.8 }))).toBe("ctx ▆▆▆▆▆▆▆▆▆▆ 0%");
+		// a lit cell beside `0%` read as a contradiction: 0.4% shows 0% and no cell
+		expect(filled(0.004)).toBe(0);
+		expect(plain(ctxMeter({ used: 0.004, soft: 0.5, hard: 0.8 }))).toBe("ctx ▆▆▆▆▆▆▆▆▆▆ 0%");
 		expect(filled(0.01)).toBe(1);
 		expect(filled(0.14)).toBe(1);
 		expect(filled(0.16)).toBe(2);
@@ -185,11 +187,18 @@ describe("§8.7 — a queued message is one row", () => {
 	});
 });
 
-describe("§7.8 — the key ladder lives in the empty input", () => {
+/**
+ * Graphite §7.8 — the composer: `›` in column 0, the text at column 2
+ * (owner, 2026-09-29: no two-space indent — what you type lines up with
+ * what you sent), and an EMPTY input shows nothing. DECLARED REMOVAL of
+ * R1c's key ladder placeholder: `?` lists the keys, and the empty row is
+ * kept for later work to speak in.
+ */
+describe("§7.8 — the composer", () => {
 	const make = (W: number, input: () => InputState) => {
 		const writes: string[] = [];
 		const body = new Body({ active: () => true, height: () => 24, width: () => W, editCol: () => 1, write: (s) => writes.push(s) });
-		body.bindInput(input, "  › ");
+		body.bindInput(input, "› ");
 		body.enter();
 		body.redraw();
 		const screen = (): string[] => {
@@ -201,38 +210,18 @@ describe("§7.8 — the key ladder lives in the empty input", () => {
 		return { body, screen };
 	};
 
-	it("the widest form that fits, beside the `›`", () => {
-		const { screen } = make(100, () => ({ line: "", cursor: 0 }));
-		expect(screen()[21]).toBe(`  ›  ${keyLadder(100 - 4 - 3)}`);
-		expect(screen()[21]).toContain("? keys");
-	});
-
-	it("gone once there is a character; gone while a turn is live", () => {
-		let line = "";
-		const { body, screen } = make(100, () => ({ line, cursor: line.length }));
-		line = "x";
-		body.redraw(true);
-		expect(screen()[21]).not.toContain("/ commands");
-		line = "";
-		body.setLive("  ✦ working 1s");
-		expect(screen()[21]).not.toContain("/ commands");
-		expect(screen()[19], "the live row stands above the composer's rule").toBe("  ✦ working 1s");
-		body.setLive(null);
-		expect(screen()[21]).toContain("/ commands");
-	});
-
-	it("gone while the viewer holds the live region: the viewer carries its own keys", () => {
+	it("the empty input is the `›` alone — no placeholder, idle or not", () => {
 		const { body, screen } = make(100, () => ({ line: "", cursor: 0 }));
-		body.userLine("go");
-		body.toolStart("read_file", "r1", { path: "a.txt" });
-		body.toolRunning("r1");
-		body.toolResult("r1", { content: Array.from({ length: 30 }, (_, i) => `l${i}`).join("\n"), isError: false });
-		body.endTurn(0);
-		expect(screen()[21]).toContain("ctrl+r transcript");
-		body.viewerToggleMode();
-		const open = screen();
-		expect(open.some((r) => r.includes("esc closes"))).toBe(true);
-		expect(open[21]).not.toContain("ctrl+r transcript");
+		expect(screen()[21]).toBe("›");
+		body.setLive("  ✦ working 1s");
+		expect(screen()[21]).toBe("›");
+		expect(screen()[19], "the live row stands above the composer's rule").toBe("  ✦ working 1s");
+	});
+
+	it("typed text starts at column 2", () => {
+		const line = "fix the resize repaint";
+		const { screen } = make(100, () => ({ line, cursor: line.length }));
+		expect(screen()[21]).toBe(`› ${line}`);
 	});
 
 	it("a flash rides the live row until the next key", () => {

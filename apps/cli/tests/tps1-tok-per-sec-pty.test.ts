@@ -71,7 +71,7 @@ describe("TPS-1 — the settled decode rate on the status row", () => {
 		const raw = ptyRun(["chat", "tps1-rate"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", "go\r"],
+				["/mode to switch", "go\r"],
 				["tok/s", "/model ds max\r"],
 				["takes effect on the next turn", "exit\r"],
 			],
@@ -116,7 +116,7 @@ describe("TPS-1 — the settled decode rate on the status row", () => {
 		const raw = ptyRun(["chat", "tps1-unknown"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", "go\r"],
+				["/mode to switch", "go\r"],
 				["took ", "exit\r"],
 			],
 			timeout: 60,
@@ -144,7 +144,7 @@ describe("TPS-1 — the settled decode rate on the status row", () => {
 		const raw = ptyRun(["chat", "tps1-instant"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", "go\r"],
+				["/mode to switch", "go\r"],
 				["took ", "exit\r"],
 			],
 			timeout: 60,
@@ -186,7 +186,7 @@ describe("TPS-1 — the settled decode rate on the status row", () => {
 		const raw = ptyRun(["chat", "tps1-twocall"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", "go\r"],
+				["/mode to switch", "go\r"],
 				["took ", "exit\r"],
 			],
 			timeout: 90,
@@ -235,7 +235,7 @@ describe("TPS-1 — the settled decode rate on the status row", () => {
 			cwd: workdir,
 			cols: 60,
 			feeds: [
-				["/ commands", "go\r"],
+				["\u25b8 default", "go\r"], // the bar's chip — at 60 columns the teaching hint may have given way
 				["tok/s", "exit\r"],
 			],
 			timeout: 60,

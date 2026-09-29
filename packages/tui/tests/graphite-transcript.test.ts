@@ -1,7 +1,7 @@
 /**
  * Graphite R1b — the transcript's words: meta rows (§7.12), the seal
- * (§7.11), the THINK label's clock (§7.2), and padded blocks meeting on
- * their pads (§7.4, §7.9).
+ * (§7.11); and since R1e (owner, 2026-09-29), thinking with no label
+ * (§7.2) and blocks spaced by one blank with no pad rows (§1.5).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -125,8 +125,8 @@ describe("§7.11 — the seal", () => {
 	});
 });
 
-describe("§7.2 — the THINK label's clock", () => {
-	it("the seconds the block took, measured by the compositor", () => {
+describe("§7.2 — thinking carries no label (owner, 2026-09-29)", () => {
+	it("the block streams and settles as grey italic prose at the edge — no THINK row, no clock", () => {
 		const writes: string[] = [];
 		const body = new Body({ active: () => true, height: () => 24, width: () => 80, editCol: () => 1, write: (s) => writes.push(s) });
 		body.enter();
@@ -136,19 +136,15 @@ describe("§7.2 — the THINK label's clock", () => {
 		body.thinkingEnd();
 		body.textAppend("done.");
 		vi.advanceTimersByTime(50);
-		expect(plain(writes.join(""))).toContain("THINK 5.2s");
+		const said = plain(writes.join(""));
+		expect(said).toContain("weighing it");
+		expect(said).not.toContain("THINK");
 	});
 });
 
-describe("§7.4 / §7.9 — padded blocks meet on their pads", () => {
-	it("a ▀ pad followed by a ▄ pad gets no blank row: the two half rows are the gap", () => {
-		expect(bodySpacing(["x", "▀▀▀▀"], ["▄▄▄▄", "y"])).toEqual(["▄▄▄▄", "y"]);
-		expect(bodySpacing(["x", "    ▀▀▀▀"], ["    ▄▄▄▄", "y"])).toEqual(["    ▄▄▄▄", "y"]);
-	});
-
-	it("everything else keeps its one blank (R13 D1)", () => {
+describe("§1.5 — surfaces are backgrounds; blocks are spaced by one blank, always", () => {
+	it("the pad-join rule retired with the pads: every pair of blocks gets its one blank (R13 D1)", () => {
 		expect(bodySpacing(["x"], ["y"])).toEqual(["", "y"]);
-		expect(bodySpacing(["x", "▀▀▀▀"], ["y"])).toEqual(["", "y"]);
-		expect(bodySpacing(["x"], ["▄▄▄▄", "y"])).toEqual(["", "▄▄▄▄", "y"]);
+		expect(bodySpacing(["x", "▀▀▀▀"], ["▄▄▄▄", "y"])).toEqual(["", "▄▄▄▄", "y"]);
 	});
 });

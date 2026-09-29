@@ -177,11 +177,6 @@ export interface Component {
  *  (heights, the line cache) never sees a fake row. */
 export function bodySpacing(prev: readonly string[] | null, rows: readonly string[]): string[] {
 	if (rows.length === 0 || prev === null || prev.length === 0) return rows as string[];
-	// Graphite §7.4, §7.9 — two padded blocks meet on their half-row pads:
-	// the lower half of one `▀` row and the upper half of the next `▄` row
-	// are a full row of ground between them, so a blank row as well would
-	// double the gap.
-	if (isPadRow(prev[prev.length - 1]!, "\u2580") && isPadRow(rows[0]!, "\u2584")) return rows as string[];
 	// R13 D1 — ONE blank between any two elements, whatever their height.
 	//
 	// W11 spaced by height: one-row siblings packed tight, anything
@@ -196,13 +191,6 @@ export function bodySpacing(prev: readonly string[] | null, rows: readonly strin
 	// card it becomes are spaced identically BY CONSTRUCTION, which is
 	// exactly what R7a's one-row stand-in was simulating.
 	return ["", ...rows];
-}
-
-/** A half-row pad: nothing on the row but `glyph` (after its styling and
- *  the content edge's spaces are dropped). */
-function isPadRow(row: string, glyph: string): boolean {
-	const t = stripAnsi(row).trim();
-	return t.length > 0 && [...t].every((ch) => ch === glyph);
 }
 
 /** The container — vertical concatenation with the W11 formula. No
@@ -241,11 +229,6 @@ export type BodyCell =
 			done: boolean;
 			turn: number;
 			folded?: boolean;
-			/** Graphite §7.2 — when the block opened and settled, for the
-			 *  `THINK <seconds>` label. Absent on a block replayed from the
-			 *  log, which has no clock, and then the label has no seconds. */
-			startedAt?: number;
-			doneAt?: number;
 	  }
 	| {
 			kind: "tool";
@@ -360,35 +343,35 @@ const USER_CHIP_ROWS = 12;
  *  stops two columns short of the right edge. */
 const CHIP_RIGHT = 2;
 
+/** Graphite §7.9 — the person's words start at column 2, the column the
+ *  composer's text starts at: what you type and what you sent line up. */
+const PERSON_COL = 2;
+
 /**
  * Graphite §7.9 — THE PERSON'S BLOCK.
  *
  * On a known ground: the warm `human` ground across the full width, a
- * gold `▌` in column 0, the text at the content edge in `humanInk`, and a
- * half-row pad above (`▄`) and below (`▀`) in the block's own colour. No
- * label and no time: the block says whose words these are.
+ * gold BACKGROUND cell in column 0 for the bar, the text at column 2 in
+ * `humanInk`. No label and no time: the block says whose words these are.
+ * No pad rows — backgrounds only (§1.5): the half-row glyphs it once had
+ * left a seam against the text row in terminals that do not stretch a
+ * block element to the cell's height.
  *
  * On an unknown ground nothing is painted that assumes a background
- * (§3.1): reverse video from column 2 and the `▌` in column 0, which is a
- * character and so still marks the person's words once the escapes are
- * stripped (§1.2). No pads — a pad is a colour, and there is none.
+ * (§3.1): the `▌` in column 0, which is a character and so still marks
+ * the person's words once the escapes are stripped (§1.2), and reverse
+ * video from column 1.
  *
  * The fold is by WORD (R9 Q3: a word wider than the row still breaks,
  * because invariant ① outranks it), ONE width over every row (DC-6), and
  * padding is by display width, so a CJK row pads by cells.
- *
- * `pads: false` is the queue band's form: the band counts against the
- * composer's rows, and two pad rows per queued message would spend them.
  */
 class UserMessage implements Component {
-	constructor(
-		private readonly cell: { text: string },
-		private readonly pads = true,
-	) {}
+	constructor(private readonly cell: { text: string }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
 		const painted = p.human !== "";
-		const chipW = Math.max(1, W - EDGE.length - CHIP_RIGHT);
+		const chipW = Math.max(1, W - PERSON_COL - CHIP_RIGHT);
 		const paras = this.cell.text.split("\n");
 		let truncated = false;
 		// REL-0152-D13: fold only as far as the bound needs — a pasted file
@@ -408,10 +391,9 @@ class UserMessage implements Component {
 			}
 		}
 		const fill = (row: string): string => " ".repeat(Math.max(0, chipW - displayWidth(row) + CHIP_RIGHT));
-		const rows = painted
-			? content.map((row) => `${p.human}${p.goldMark}\u258c${p.humanInk}   ${row}${fill(row)}${p.fgEnd}${p.washEnd}`)
-			: content.map((row) => `\u258c ${p.rv}  ${row}${fill(row)}${p.rvEnd}`);
-		const out = painted && this.pads ? [`${p.humanPad}${"\u2584".repeat(W)}${p.fgEnd}`, ...rows, `${p.humanPad}${"\u2580".repeat(W)}${p.fgEnd}`] : rows;
+		const out = painted
+			? content.map((row) => `${p.goldBar} ${p.human}${p.humanInk} ${row}${fill(row)}${p.fgEnd}${p.washEnd}`)
+			: content.map((row) => `\u258c${p.rv} ${row}${fill(row)}${p.rvEnd}`);
 		if (!truncated) return out;
 		// The notice is OUTSIDE the block, in the cut-row vocabulary, and it
 		// says what matters: the model got all of it (DC-45: it folds too —
@@ -420,7 +402,7 @@ class UserMessage implements Component {
 		const count = more > 0 ? `+${more} more line${more === 1 ? "" : "s"}` : "cut here";
 		const short = more > 0 ? `+${more}` : "cut";
 		// on a very narrow terminal the edge gives way before the notice does
-		const lead = W - EDGE.length >= 8 ? EDGE : "";
+		const lead = W - PERSON_COL >= 8 ? " ".repeat(PERSON_COL) : "";
 		out.push(cutLine(`${lead}${p.dim}\u2514 ${pickTier([`${count} \u00b7 sent in full`, `${short} \u00b7 sent in full`, "sent in full", count], Math.max(1, W - lead.length - 2))}${p.reset}`, W));
 		return out;
 	}
@@ -476,31 +458,34 @@ export function pendingQueueRows(lines: readonly string[], W: number): string[] 
  * collapse, because a hard-wrapped source line is the model's width, not
  * the reader's.
  */
+/**
+ * Graphite §7.2 — THINKING: the model's reasoning as it streams, `dim`
+ * italic at the content edge, folded by WORD like every prose surface.
+ * No label (owner, 2026-09-29): the grey italic is what tells it from the
+ * answer. While it streams the twinkle hangs in the mark column of its
+ * first row; settled, the column is empty (§4.2). Hidden (ctrl+t), it is
+ * one dim row that says so. With colour off there is no grey and no
+ * italic to tell it by, so there — and only there — its first row opens
+ * with the plain word `thinking:`.
+ */
 class ThinkingBlock implements Component {
-	constructor(private readonly cell: { text: string; done: boolean; folded?: boolean; startedAt?: number; doneAt?: number }) {}
+	constructor(private readonly cell: { text: string; done: boolean; folded?: boolean }) {}
 	render(W: number, ctx: FrameCtx): string[] {
 		const p = palette();
 		const c = this.cell;
 		const text = escapeTerminal(c.text).trim();
 		if (text === "") return [];
-		const secs = c.done && c.startedAt !== undefined && c.doneAt !== undefined ? ` ${settledLabel((c.doneAt - c.startedAt) / 1000)}` : "";
-		const tail = `${secs}${c.folded ? " \u00b7 hidden \u00b7 ctrl+t" : ""}`;
-		// the twinkle hangs in the mark column (right-aligned to column 2)
-		// while the block streams; settled, the column is empty (§4.2).
-		const lead = c.done ? EDGE : `  ${p.gold}${TWINKLE[ctx.spinnerI % TWINKLE.length]}${p.gold === "" ? "" : p.fgEnd} `;
-		const label = cutLine(`${lead}${p.blue}${p.bold}THINK${p.reset}${tail === "" ? "" : `${p.dim}${tail}${p.reset}`}`, W);
-		if (c.folded) return [label];
+		const mark = c.done ? EDGE : `  ${p.gold}${TWINKLE[ctx.spinnerI % TWINKLE.length]}${p.gold === "" ? "" : p.fgEnd} `;
+		if (c.folded) return [cutLine(`${mark}${p.dim}${p.italic}thinking \u00b7 hidden \u00b7 ctrl+t${p.italicEnd}${p.reset}`, W)];
 		const room = proseRoom(W);
-		const rows: string[] = [label];
-		let first = true;
+		const plainWord = p.italic === "" && p.dim === "" ? "thinking: " : "";
+		const rows: string[] = [];
 		for (const para of text.split(/\n\s*\n/)) {
 			const flat = para.replace(/\s+/g, " ").trim();
 			if (flat === "") continue;
-			if (!first) rows.push("");
-			first = false;
-			// foldLine is the ONE width authority and returns real rows —
-			// invariant ①b holds by construction.
-			for (const line of foldLine(flat, room)) rows.push(`${THINK_COL}${p.dim}${p.italic}${line}${p.italicEnd}${p.reset}`);
+			if (rows.length > 0) rows.push("");
+			const lead = rows.length === 0 ? `${plainWord}${flat}` : flat;
+			for (const line of foldWords(lead, room)) rows.push(`${rows.length === 0 ? mark : THINK_COL}${p.dim}${p.italic}${line}${p.italicEnd}${p.reset}`);
 		}
 		return rows;
 	}
@@ -684,15 +669,16 @@ function toolTargetOf(c: Extract<BodyCell, { kind: "tool" }>): string {
  * Graphite §7.4 — THE CARD: one per call (R13), one skeleton in every
  * state —
  *
- *   ▄ pad · head · body · foot · ▀ pad
+ *   head · body · foot
  *
  * The head carries the mark cell, the verb (padded to seven), the target,
  * and at its right end the outcome (§7.5). The body is the preview,
  * aligned under the target. The foot carries the `ctrl+o` key, right-
  * aligned, and exists only while something is behind it; a card with no
  * body carries the key at the end of its head row instead. The ground is
- * the call's STATE (§1.6): running, settled, failed or refused, waiting
- * for the person — and a bar in the state's edge colour marks its side.
+ * the call's STATE (§1.6): the machine's blue while it runs and once it
+ * has run, red failed or refused, gold waiting for the person. No pad
+ * rows and no side bar: surfaces are backgrounds only (§1.5).
  *
  * On an unknown ground nothing is painted (§3.1): the head at the content
  * edge, the body indented under it and opened by `└`, the foot dim. The
@@ -998,13 +984,13 @@ const CAP_DIFF = 12; // the approval diff: head + the named middle + tail
 const BODY_ROW_FLAT = "        ";
 /** The verb column's width (§7.5), so the targets line up. */
 const VERB_COL = 7;
-/** Inside a painted card: after the bar, a gap, the mark cell and the
- *  verb column and a space — the target and the body begin at card
- *  column 12, absolute column 16. */
+/** Inside a painted card: a lead cell, a gap, the mark cell and the verb
+ *  column and a space — the target and the body begin at card column 12,
+ *  absolute column 16. */
 const CARD_BODY = " ".repeat(1 + 2 + VERB_COL + 1);
 /** A card's inner right margin. */
 const CARD_RIGHT = 1;
-/** The cells a painted card has after its bar. */
+/** The cells a painted card has after its lead cell. */
 const cardInner = (W: number): number => Math.max(1, W - EDGE.length - 1);
 /** Graphite §1.8 — the model's words and its thinking begin at the
  *  content edge, like every other block. */
@@ -1029,34 +1015,32 @@ function slabPaints(): boolean {
 	return palette().washDone !== "" && currentGround() !== "unknown";
 }
 
-/** Graphite §7.4 — a card's STATE, which is its ground. */
+/**
+ * Graphite §7.4 — a card's STATE, which is its ground. Running and run
+ * share the machine's blue (owner, 2026-09-29): a call that finishes in a
+ * tenth of a second used to flash blue and turn grey, and the state is
+ * already carried by the mark (the breath while it runs) and the outcome
+ * word. Red is failed or refused; gold waits for the person.
+ */
 type CardState = "run" | "done" | "fail" | "ask";
-function cardPaint(state: CardState): { bg: string; bar: string; pad: string } {
+function cardPaint(state: CardState): { bg: string } {
 	const p = palette();
-	if (state === "run") return { bg: p.washRun, bar: p.blue, pad: p.washRunPad };
-	if (state === "fail") return { bg: p.washFail, bar: p.fail, pad: p.washFailPad };
-	if (state === "ask") return { bg: p.washAsk, bar: p.goldMark, pad: p.washAskPad };
-	return { bg: p.washDone, bar: p.rail, pad: p.washDonePad };
+	if (state === "fail") return { bg: p.washFail };
+	if (state === "ask") return { bg: p.washAsk };
+	return { bg: p.washRun };
 }
 
-/** One painted card row: the content edge, the state's ground from the
- *  bar to the right edge, padded by DISPLAY width. A reset inside the
- *  content would strand the ground for the rest of the row, so every
- *  reset re-opens it (the selection bar's discipline). */
-function slabRow(inner: string, W: number, paint: { bg: string; bar: string }): string {
+/** One painted card row: the content edge, the state's ground to the
+ *  right edge, padded by DISPLAY width. A reset inside the content would
+ *  strand the ground for the rest of the row, so every reset re-opens it
+ *  (the selection bar's discipline). */
+function slabRow(inner: string, W: number, paint: { bg: string }): string {
 	const p = palette();
 	const room = cardInner(W);
 	const fitted = visibleWidth(inner) > room ? cutLine(inner, room) : inner;
 	const body = fitted.replaceAll(p.reset, `${p.reset}${paint.bg}`);
 	const pad = Math.max(0, room - visibleWidth(fitted));
-	return `${EDGE}${paint.bg}${paint.bar}\u258e${p.fgEnd}${body}${paint.bg}${" ".repeat(pad)}${p.washEnd}`;
-}
-
-/** A half-row pad (`▄` above, `▀` below) in the card's ground colour, on
- *  the terminal's own ground — two cards in a row stand one row apart. */
-function padRow(paint: { pad: string }, glyph: string, W: number): string {
-	const p = palette();
-	return `${EDGE}${paint.pad}${glyph.repeat(Math.max(1, W - EDGE.length))}${p.fgEnd}`;
+	return `${EDGE}${paint.bg} ${body}${paint.bg}${" ".repeat(pad)}${p.washEnd}`;
 }
 
 /** The widest form that fits the row, or the last one — the head row's
@@ -1159,9 +1143,9 @@ function footRow(key: string, room: number): string {
 }
 
 /**
- * Graphite §7.4 — assemble a card: pad · head · body · foot · pad, on the
- * state's ground; or, off the surface, the same content without it — the
- * head at the content edge, the body under it, the foot dim.
+ * Graphite §7.4 — assemble a card: head · body · foot, on the state's
+ * ground; or, off the surface, the same content without it — the head at
+ * the content edge, the body under it, the foot dim.
  */
 function card(state: CardState, mark: string, verb: string, target: string, tiers: readonly string[], body: readonly string[], foot: string | null, W: number, error: boolean): string[] {
 	if (!slabPaints()) {
@@ -1171,9 +1155,8 @@ function card(state: CardState, mark: string, verb: string, target: string, tier
 	}
 	const paint = cardPaint(state);
 	const inner = cardInner(W);
-	const rows = [padRow(paint, "\u2584", W), slabRow(` ${headCore(mark, verb, target, tiers, inner - 1 - CARD_RIGHT, error)}`, W, paint), ...body.map((r) => slabRow(r, W, paint))];
+	const rows = [slabRow(` ${headCore(mark, verb, target, tiers, inner - 1 - CARD_RIGHT, error)}`, W, paint), ...body.map((r) => slabRow(r, W, paint))];
 	if (foot !== null) rows.push(slabRow(footRow(foot, inner - CARD_RIGHT), W, paint));
-	rows.push(padRow(paint, "\u2580", W));
 	return rows;
 }
 
@@ -1750,14 +1733,6 @@ export function idleHint(room: number, expand: "expand all" | "collapse all" | n
 		if (visibleWidth(form) <= room) return form;
 	}
 	return "";
-}
-
-/** Graphite §8.5 — the key ladder the empty input shows: the idle hint's
- *  rungs, with `@ files · ? keys` on the widest. Its widest forms open with
- *  `/ commands · ↑ history`, the order R8b set. */
-export function keyLadder(room: number): string {
-	const widest = "/ commands \u00b7 \u2191 history \u00b7 ctrl+r transcript \u00b7 @ files \u00b7 ? keys";
-	return visibleWidth(widest) <= room ? widest : idleHint(room).trim();
 }
 
 export function statusLine(status: string, tail: string, W: number, hint?: string, expand: "expand all" | "collapse all" | null = null): string {

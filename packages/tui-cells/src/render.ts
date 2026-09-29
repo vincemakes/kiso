@@ -143,14 +143,11 @@ export interface Palette {
 	readonly codeBg: string;
 	readonly add: string;
 	readonly del: string;
-	/** The half-row pads (`▄` above a block, `▀` below it) are GLYPHS in
-	 *  the surface's colour on the terminal's own ground, so each padded
-	 *  surface has a foreground twin (design.md §7.4, §7.9). */
-	readonly humanPad: string;
-	readonly washRunPad: string;
-	readonly washDonePad: string;
-	readonly washFailPad: string;
-	readonly washAskPad: string;
+	/** Graphite §7.9 — the person's bar: a gold BACKGROUND cell. Surfaces
+	 *  are drawn with backgrounds only (§1.5): a block-element glyph (`▌`,
+	 *  `▎`, `▄`, `▀`) does not fill its cell's height in every terminal,
+	 *  and the rows it should join show a seam between them. */
+	readonly goldBar: string;
 	/** Graphite §7.8 — the drawn caret: a gold cell (text on it in the dark
 	 *  ink); closed with 49 and 39. Empty where the ground is unknown — the
 	 *  caret is reverse video there. */
@@ -205,11 +202,7 @@ const NO_GRAPHITE = {
 	codeBg: "",
 	add: "",
 	del: "",
-	humanPad: "",
-	washRunPad: "",
-	washDonePad: "",
-	washFailPad: "",
-	washAskPad: "",
+	goldBar: "",
 	caret: "",
 	caretEnd: "",
 	fgEnd: "",
@@ -274,11 +267,7 @@ export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tie
 		codeBg: b(c.code),
 		add: b(c.add),
 		del: b(c.del),
-		humanPad: f(c.human),
-		washRunPad: f(c.washRun),
-		washDonePad: f(c.washDone),
-		washFailPad: f(c.washFail),
-		washAskPad: f(c.washAsk),
+		goldBar: b(c.goldMark),
 		caret: `${b(c.goldMark)}${f(c.humanInk)}`,
 		caretEnd: "\x1b[49m\x1b[39m",
 		fgEnd: "\x1b[39m",

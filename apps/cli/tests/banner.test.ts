@@ -44,7 +44,7 @@ def driver(cli, home, rows, cols):
                 full += data
             except OSError:
                 break
-        if not sent and "/ commands · \u2191 history".encode() in out:
+        if not sent and "/mode to switch".encode() in out:
             os.write(fd, b"exit\\r")
             sent = True
     sys.stdout.write(full.decode(errors="replace"))

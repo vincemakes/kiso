@@ -1,12 +1,15 @@
 /**
  * The person's block (design.md §7.9) — its surface, and its fold.
  *
- * Graphite (owner-ruled 2026-09-28): on a known ground the warm `human`
- * ground across the full width, a gold `▌` in column 0, the text at the
- * content edge, a half-row pad above and below. On an unknown ground
- * nothing assumes a background (§3.1): reverse video from column 2 and the
- * `▌` in column 0 — a character, so a stripped frame still marks the
- * person's words (§1.2) — and no pads.
+ * Graphite (owner-ruled 2026-09-28, revised 2026-09-29): on a known ground
+ * the warm `human` ground across the full width, a gold BACKGROUND cell in
+ * column 0 for the bar, the text at column 2 — where the composer's text
+ * starts. No pad rows: the half-row glyphs R1b drew (`▄` `▀`, and the `▌`
+ * bar) left a seam between rows in Apple Terminal, so surfaces are
+ * backgrounds only (§1.5) — a DECLARED REVERSAL of R1b's pads. On an
+ * unknown ground nothing assumes a background (§3.1): the `▌` in column 0
+ * — a character, so a stripped frame still marks the person's words
+ * (§1.2) — and reverse video from column 1.
  *
  * DECLARED REVERSAL of the 2026-09-02 ruling this file used to assert
  * ("reverse video on every ground, one form, no ladder"): reverse video
@@ -33,29 +36,26 @@ const chip = (text: string, W = 56): string[] =>
 	cellComponent({ kind: "user", text, done: true, turn: 0 } as BodyCell).render(W, CTX);
 const plain = (row: string): string => row.replace(/\x1b\[[0-9;]*m/g, "");
 const isNotice = (row: string): boolean => plain(row).includes("\u2514");
-const isPad = (row: string): boolean => /^[\u2584\u2580]+$/.test(plain(row));
 
 describe("§7.9 — the person's block", () => {
 	for (const g of ["light", "dark"] as const) {
-		it(`${g}: the warm ground, the gold bar in column 0, the text at the content edge, a pad above and below`, () => {
+		it(`${g}: the warm ground, the gold bar cell in column 0, the text at column 2 — no pads, no glyph`, () => {
 			setGround(g);
 			const p = palette();
 			const rows = chip("look around");
-			expect(rows).toHaveLength(3);
-			expect(plain(rows[0]!)).toBe("\u2584".repeat(56));
-			expect(plain(rows[2]!)).toBe("\u2580".repeat(56));
-			expect(rows[0]!.startsWith(p.humanPad)).toBe(true);
-			expect(rows[1]!.startsWith(`${p.human}${p.goldMark}\u258c`)).toBe(true);
-			expect(plain(rows[1]!)).toMatch(/^\u258c {3}look around {2,}$/);
+			expect(rows).toHaveLength(1);
+			expect(rows[0]!.startsWith(`${p.goldBar} ${p.human}`)).toBe(true);
+			expect(plain(rows[0]!)).toMatch(/^ {2}look around {2,}$/);
+			expect(plain(rows[0]!), "a block-element glyph drew the surface (§1.5)").not.toMatch(/[\u2584\u2580\u258c]/);
 			expect(rows.join(""), "no reverse video on a known ground").not.toContain("\x1b[7m");
 		});
 	}
 
-	it("unknown ground: the bar in column 0, reverse video from column 2 — no pads, nothing that assumes a colour", () => {
+	it("unknown ground: the bar in column 0, reverse video from column 1, the text at column 2 — nothing that assumes a colour", () => {
 		setGround("unknown");
 		const rows = chip("look around");
 		expect(rows).toHaveLength(1);
-		expect(rows[0]!.startsWith("\u258c \x1b[7m  look around")).toBe(true);
+		expect(rows[0]!.startsWith("\u258c\x1b[7m look around")).toBe(true);
 		expect(rows[0]!.endsWith(" \x1b[27m")).toBe(true);
 	});
 
@@ -139,7 +139,7 @@ describe("R9 Q3 — the chip folds by WORD", () => {
 	it("DC-45: …and it keeps the words that matter for as long as it can", () => {
 		setGround("unknown");
 		const many = Array.from({ length: 15 }, (_, i) => `line ${i}`).join("\n");
-		expect(plain(chip(many, 40).map(plain).find((r) => r.includes("\u2514"))!)).toBe("    \u2514 +3 more lines \u00b7 sent in full");
+		expect(plain(chip(many, 40).map(plain).find((r) => r.includes("\u2514"))!)).toBe("  \u2514 +3 more lines \u00b7 sent in full"); // under the person's text, column 2
 		// where the count no longer fits, the CLAIM is what survives
 		expect(chip(many, 20).map(plain).find((r) => r.includes("\u2514"))!).toContain("sent in full");
 	});
@@ -153,7 +153,7 @@ describe("R9 Q3 — the chip folds by WORD", () => {
 
 	it("keeps ONE width across the folded rows (DC-6's invariant, unchanged)", () => {
 		setGround("unknown");
-		const rows = chip("aaaa bbbb cccc dddd eeee ffff gggg hhhh", 20).filter((r) => !isPad(r));
+		const rows = chip("aaaa bbbb cccc dddd eeee ffff gggg hhhh", 20);
 		expect(new Set(rows.map((r) => displayWidth(plain(r)))).size).toBe(1);
 	});
 });
