@@ -26,7 +26,8 @@ import {
 } from "@vincemakes/kiso-tui";
 import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressPath } from "@vincemakes/kiso-tools-node";
-import { queuedSwitchLines } from "./state.js";
+import { mergedConfig, queuedSwitchLines, tasksFor } from "./state.js";
+import { taskNoticeRow } from "./task-notice.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage, RunClosedError } from "@vincemakes/kiso-runtime";
 import { canonicalizeUsageForModel, requestBudget } from "@vincemakes/kiso-runtime/internal";
@@ -1029,6 +1030,11 @@ export async function consumeRun(
 				// the log. Since 0.44.0 (the verify offer retired) the CLI
 				// starts no such run itself; the branch keeps the rule for
 				// any run that carries one, as replay.ts does for old logs.
+				// ADR-0058: a task notice is a row, never the person's chip
+				if (ev.via?.kind === "tasks") {
+					body.notice(taskNoticeRow(ev.via.items));
+					break;
+				}
 				if (ev.source === "system") {
 					// R2 (law 1.3): the ◆ said nothing the words did not. What
 					// makes this row honest is that it NAMES itself machinery.
@@ -1038,7 +1044,7 @@ export async function consumeRun(
 				}
 				// 0.40.0: a skill turn's chip is the line the person TYPED — the
 				// SKILL.md body is what the model read, not what they said.
-				if (ev.via !== undefined) {
+				if (ev.via?.kind === "skill") {
 					body.userLine(ev.via.line);
 					break;
 				}
@@ -1385,7 +1391,8 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			// SKILL.md body, and a body that mentions `diagram.png` must not
 			// attach a file from the workspace the person never pointed at.
 			const content = via !== undefined ? text : attachImages(text, input.attachments?.(), protectedFiles());
-			const run = via !== undefined ? session.run(content, { via }) : session.run(content);
+			// ADR-0058: a task notice is the runtime's input — source "system"
+			const run = via !== undefined ? session.run(content, { via, ...(via.kind === "tasks" ? { source: "system" as const } : {}) }) : session.run(content);
 			currentRun = run;
 			turnNo += 1;
 			const myTurn = turnNo;
@@ -1652,7 +1659,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		spentUsd = (spentUsd ?? 0) + usd;
 	};
 	const queueTurn = (line: string, via?: UserInputVia): void => {
-		const slot = { line: via?.line ?? line, content: line, ...(via !== undefined ? { via } : {}), cancelled: false };
+		const slot = { line: via?.kind === "skill" ? via.line : via?.kind === "tasks" ? taskNoticeRow(via.items) : line, content: line, ...(via !== undefined ? { via } : {}), cancelled: false };
 		pendingTurns.push(slot);
 		queued += 1;
 		chainRef.current = chainRef.current.then(async () => {
@@ -1709,12 +1716,18 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			if (err instanceof RunClosedError) return false; // the run is ending: this is the next turn
 			throw err;
 		}
-		steering.push({ line: via?.line ?? line, content: line, ...(via !== undefined ? { via } : {}) });
+		steering.push({ line: (via?.kind === "skill" ? via.line : undefined) ?? line, content: line, ...(via !== undefined ? { via } : {}) });
 		return true;
 	};
 	const submitTurn = (line: string, via?: UserInputVia): void => {
 		if (!steer(line, via)) queueTurn(line, via);
 	};
+	// ADR-0058 (3c): the session's task transitions reach the model — into a
+	// live run at its next safe point, or, idle, as one wake turn through
+	// the same chain a person's turn takes (taskWake: false keeps it for
+	// the next message). Released when this chat ends.
+	const taskManager = tasksFor(session.id);
+	const stopTasks = taskManager === undefined ? () => {} : session.useTasks(taskManager, { wake: mergedConfig.taskWake !== false, onWake: (w) => queueTurn(w.content, w.via) });
 	/** The mirror of the last `n` steers the run handed back; clears it. */
 	const handed = (n: number): Steer[] => {
 		const out = n > 0 ? steering.slice(-n) : [];
@@ -1915,6 +1928,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// runs before the exit or the chain is already settled. One level is
 	// enough: the /compact segment appends nothing of its own.
 	await chainRef.current;
+	stopTasks();
 	if (switchTo !== null) return { next: "switch", id: switchTo, lines: queuedLines.slice() };
 	// a switch beats a reload: /resume and /clear are going somewhere else,
 	// and the agent they land on is rebuilt by the caller either way.

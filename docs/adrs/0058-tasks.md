@@ -545,3 +545,44 @@ the background-child lifetime (none by default), consecutive notices
    host passes the session's tasks to the coding tools; without them the
    shell's schema is byte-for-byte the pre-tasks one, and its wait still
    ends in the 30 s kill. The CLI wires them.
+
+## Amendment 2 — an external review before delivery (2026-09-30, owner-approved)
+
+A review of the task foundation and the 3c plan, before 3c was built. What
+it changed:
+
+1. **Identity is three-valued, and only "verified" is the runner (3a.1).**
+   #183 read an unverifiable identity (a live pid whose start time cannot
+   be read, or was recorded as "") as alive — the process-module plan's
+   rule, which contradicted §6's own "when identity cannot be verified,
+   the verdict is the gone row". It is reversed: a reused pid is never
+   reported running, and a stop never signals it — `stop_requested` in the
+   journal (which the runner watches) is what reaches a runner that may be
+   ours. An adopted task its own kiso still holds needs no check.
+2. **The journal is strict and its entry durable (3a.1).** Only a torn LAST
+   line is dropped; an unreadable line with a record after it is
+   corruption and fails loudly. The task directory is fsynced after
+   `planned` is written, before anything is spawned, so "no planned ⇒
+   never spawned" holds across a power loss.
+3. **One ordered ingress (3c).** A run holds a person's steers and the
+   runtime's notices in ONE queue, admitted in arrival order; only
+   neighbours of one kind merge. No rule puts facts before a person's
+   words or after them.
+4. **A wake run's first input never passes `onUserMessage` (3c).** An
+   idle wake starts a NEW run, whose input does not come through an
+   admission site; the kernel now asks the protocol (`isRuntimeInput`)
+   for a run's first input too. ADR-0051 Amendment 8, item 4.
+5. **A summary tells only what the model was told (3c).** The snapshot a
+   compaction writes is derived from the log — the tool executions that
+   started tasks and the delivered receipts — never from the live
+   journal; a transition not yet delivered is not revealed by a summary,
+   so a compaction is never a second, unreceipted delivery.
+6. **The seams delivery needs (3a.1).** `TaskManager.subscribe` for any
+   number of listeners; `TaskInfo` carries the backend, the executionId
+   and who stopped it; receipts are a cache rebuilt incrementally from the
+   log, never a second truth.
+7. **Consecutive user-role messages (3c).** A notice and a steer admitted
+   together are two user messages in a row on the wire. The three
+   adapters send them as they are (contract rigs); each dialect accepts
+   it (the Messages API combines consecutive same-role turns). No
+   wire-level merge is needed.

@@ -22,7 +22,7 @@
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import type { Adapter } from "../src/protocol/adapter.js";
-import type { Event } from "../src/protocol/events.js";
+import type { Event, UserInputVia } from "../src/protocol/events.js";
 import type { Message } from "../src/protocol/messages.js";
 import type { PermissionDecision } from "../src/kernel/permission.js";
 import { EventLog, loop, type AdmissionInput, type LoopConfig } from "../src/index.js";
@@ -308,6 +308,23 @@ describe("ADR-0057 — the hook: human input once, runtime input never", () => {
 		for await (const ev of loop({ adapter, model: "faux", registry: registryWith(() => {}), log, hooks: { onUserMessage: async (msg) => (msg.content === "forbidden" ? null : msg) } })) events.push(ev);
 		expect(requests).toHaveLength(1);
 		expect(events.at(-1)).toMatchObject({ type: "terminal", outcome: { kind: "completed" } });
+	});
+});
+
+describe("ADR-0058 (3c) — a wake run's first input is the runtime's, never the person's hook's", () => {
+	it("a fresh run whose initial input is a task notice never passes it through onUserMessage; a person's input still does", async () => {
+		const run = async (via?: UserInputVia) => {
+			const log = new EventLog();
+			log.append({ type: "user_input", content: "t1 exited", source: via !== undefined ? "system" : "user", ...(via !== undefined ? { via } : {}) });
+			let calls = 0;
+			const { adapter } = recording([END()]);
+			for await (const _ev of loop({ adapter, model: "faux", registry: registryWith(() => {}), log, hooks: { onUserMessage: async (msg) => ((calls += 1), null) } })) {
+				// drain
+			}
+			return calls;
+		};
+		expect(await run({ kind: "tasks", items: [{ taskId: "t1", transition: "exited" }] })).toBe(0);
+		expect(await run()).toBe(1);
 	});
 });
 

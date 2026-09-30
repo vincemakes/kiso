@@ -132,6 +132,9 @@ export interface KisoConfig {
 	readonly dontAsk?: boolean;
 	readonly contextWindow?: number;
 	readonly autoCompact?: AutoCompactConfig;
+	/** ADR-0058 §8.4: false turns every task wake into a notice that waits
+	 *  for your next message. Default on. */
+	readonly taskWake?: boolean;
 	readonly projectTrust?: "ask" | "never";
 	/** DC-3 §3 rung 1, persisted. The terminal's light/dark, for terminals
 	 *  that answer neither `CSI ? 996 n` nor OSC 11. USER-LEVEL ONLY: a
@@ -193,6 +196,7 @@ export function parseConfig(text: string, source: string): KisoConfig {
 		dontAsk?: boolean;
 		contextWindow?: number;
 		autoCompact?: AutoCompactConfig;
+		taskWake?: boolean;
 		projectTrust?: "ask" | "never";
 		theme?: "dark" | "light";
 		floor?: "catastrophe" | "off";
@@ -322,6 +326,10 @@ export function parseConfig(text: string, source: string): KisoConfig {
 		if (typeof r !== "number" || !Number.isFinite(r) || r <= 0 || r >= 1) fail("autoCompact.thresholdRatio", "expected a number strictly between 0 and 1");
 		out.autoCompact = { thresholdRatio: r as number };
 	}
+	if (obj.taskWake !== undefined) {
+		if (typeof obj.taskWake !== "boolean") fail("taskWake", "expected true or false");
+		out.taskWake = obj.taskWake as boolean;
+	}
 	if (obj.projectTrust !== undefined) {
 		if (obj.projectTrust !== "ask" && obj.projectTrust !== "never") fail("projectTrust", 'expected "ask" or "never" (there is deliberately no "always")');
 		out.projectTrust = obj.projectTrust as "ask" | "never";
@@ -369,6 +377,8 @@ export function mergeConfigs(user: KisoConfig | null, project: KisoConfig | null
 		...(p.contextWindow !== undefined ? { contextWindow: p.contextWindow } : {}),
 		...(u.autoCompact !== undefined ? { autoCompact: u.autoCompact } : {}),
 		...(p.autoCompact !== undefined ? { autoCompact: p.autoCompact } : {}),
+		...(u.taskWake !== undefined ? { taskWake: u.taskWake } : {}),
+		...(p.taskWake !== undefined ? { taskWake: p.taskWake } : {}),
 		...(u.projectTrust !== undefined ? { projectTrust: u.projectTrust } : {}),
 		...(p.projectTrust !== undefined ? { projectTrust: p.projectTrust } : {}),
 		// DT-1a: checks merge per name — a (trusted) project's check wins over the user's

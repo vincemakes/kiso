@@ -62,7 +62,7 @@ export function codingToolOptions(): {
  *  — the `!` gesture — has none, and its shell is today's. */
 const taskManagers = new Map<string, TaskManager>();
 let taskBackend: ReturnType<typeof processTaskBackend> | undefined;
-export function tasksFor(sessionId: string | undefined): ShellTasks | undefined {
+export function tasksFor(sessionId: string | undefined): TaskManager | undefined {
 	if (sessionId === undefined || activeStoreDir === "") return undefined;
 	let manager = taskManagers.get(sessionId);
 	if (manager === undefined) {

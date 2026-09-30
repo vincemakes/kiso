@@ -162,3 +162,68 @@ describe("ADR-0057 — the seal", () => {
 		expect(() => run.steer("after the break")).toThrow(RunClosedError);
 	});
 });
+
+describe("ADR-0058 (3c) — run.notify(): the runtime's input, one ingress, arrival order", () => {
+	const notice = (taskId: string, transition: "exited" | "ready" = "exited") => ({
+		lines: [`<kiso-task id="${taskId}" status="${transition}"/>`],
+		items: [{ taskId, transition }],
+	});
+
+	it("a notice lands as ONE system user_input carrying the tasks via, and never passes onUserMessage", async () => {
+		let hookCalls = 0;
+		const { start, requests } = await setup({
+			script: [TOOL_TURN, END],
+			during: (run) => void run.notify(notice("t1")),
+			hooks: { onUserMessage: async (m) => ((hookCalls += 1), m) },
+		});
+		const events = await drain(start("go"));
+		const landed = inputs(events).at(-1)!;
+		expect(landed.source).toBe("system");
+		expect(landed.via).toEqual({ kind: "tasks", items: [{ taskId: "t1", transition: "exited" }] });
+		expect(landed.content).toBe('<kiso-task id="t1" status="exited"/>\nRuntime notice — not the user.');
+		expect(hookCalls).toBe(1); // the person's "go", never the notice
+		expect(requests.at(-1)!.at(-1)).toMatchObject({ role: "user", content: landed.content });
+	});
+
+	it("arrival order is admission order: a steer, two notices, a steer → three inputs; only neighbours of one kind merge", async () => {
+		const { start } = await setup({
+			script: [TOOL_TURN, END],
+			during: (run) => {
+				run.steer("a");
+				run.notify(notice("t1"));
+				run.notify(notice("t2", "ready"));
+				run.steer("b");
+			},
+		});
+		const landed = inputs(await drain(start("go"))).slice(1);
+		expect(landed.map((e) => e.source)).toEqual(["user", "system", "user"]);
+		expect(landed[0]!.content).toBe("a");
+		expect(landed[1]!.via).toEqual({ kind: "tasks", items: [{ taskId: "t1", transition: "exited" }, { taskId: "t2", transition: "ready" }] });
+		expect(landed[2]!.content).toBe("b");
+	});
+
+	it("retract takes back only the person's words; a notice stays in the ingress", async () => {
+		let retracted: unknown;
+		const { start } = await setup({
+			script: [TOOL_TURN, END],
+			during: (run) => {
+				run.steer("a");
+				run.notify(notice("t1"));
+				retracted = run.retract();
+			},
+		});
+		const landed = inputs(await drain(start("go"))).slice(1);
+		expect(retracted).toEqual(["a"]);
+		expect(landed.map((e) => e.source)).toEqual(["system"]);
+	});
+
+	it("a notice after the seal is refused; one still pending at the seal is handed back, never lost", async () => {
+		const { start } = await setup({ script: [TOOL_TURN, END], maxTurns: 1, during: (run) => void run.notify(notice("t1")) });
+		const run = start("go");
+		const events = await drain(run);
+		expect(inputs(events).map((e) => e.source ?? "user")).toEqual(["user"]); // maxTurns wins: nothing admitted
+		expect(run.unadmittedNotices()).toEqual([notice("t1")]);
+		expect(run.unadmitted()).toEqual([]); // the person's leftovers stay a separate list
+		expect(run.notify(notice("t2"))).toBe(false);
+	});
+});
