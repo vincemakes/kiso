@@ -57,7 +57,7 @@ import { pickWindowOf } from "./approval-panel.js";
 import type { PanelState } from "./approval-panel.js";
 import { atPanelRows, bandHeader, type AtMatch } from "./at-picker.js";
 // TUI2-R2 ②: the session picker's rows — the band's third occupant.
-import { sessionPickerRows, type SessionPickState } from "./session-picker.js";
+import { RESUME_FILTER_HINT, sessionPickerRows, type SessionPickState } from "./session-picker.js";
 
 /** KC3 §4 — the @ picker's bound state (the editor's atState()). */
 export interface AtPanelState {
@@ -2476,7 +2476,7 @@ export class Body {
 		// occupant already has: counted in chromeRows, clamped with the
 		// composer, redrawn with the frame.
 		const pick = this.#pickState?.() ?? null;
-		if (pick !== null) return sessionPickerRows(pick, W, Date.now());
+		if (pick !== null) return sessionPickerRows(pick, W, Date.now(), this.#opts.height());
 		const at = this.#atState?.() ?? null;
 		if (at !== null) return atPanelRows(at, W);
 		const menu = this.#menuState?.();
@@ -2681,6 +2681,17 @@ export class Body {
 			// W23: the frame-derived column — wallL (2) + the marker's
 			// cell + 1 — the CHA lands the cursor AT the marker from ANY base
 			if (r === cursorRow) markerCol = 1 + bytes.markerCell;
+		}
+		// Graphite P1 (owner, 2026-09-30) — DECLARED EXCEPTION to §7.8's empty
+		// input: while the /resume picker is up and nothing is typed, the
+		// input says what typing there does. The input IS the picker's filter,
+		// so the hint names a key the person is about to press; everywhere
+		// else the empty input stays empty. It sits after the drawn cursor,
+		// in the row's pad, so the cursor and the columns do not move.
+		if (panel === null && this.#pickState?.() != null && rows.length === 1 && rows[0] === "") {
+			const pad = / +$/.exec(out[0]!);
+			const hintW = visibleWidth(RESUME_FILTER_HINT);
+			if (pad !== null && pad[0].length > hintW) out[0] = `${out[0]!.slice(0, pad.index)}${p.dim}${RESUME_FILTER_HINT}${p.reset}${" ".repeat(pad[0].length - hintW)}`;
 		}
 		return { rows: out, markerRow: cursorRow, markerCol };
 	}

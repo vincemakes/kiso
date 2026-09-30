@@ -76,11 +76,12 @@ describe("TUI2-R2 ② — bare `kiso resume`: the picker is a TTY surface", () =
 			// the picker is up as soon as the band names itself; type a
 			// filter that can only mean one session, then take it
 			// 0.40.1 — a DECLARED change (owner's ruling): the fixtures predate
-			// the recorded workspace, so the default view lists none of them
-			// and counts them in ONE row; tab shows them, then the filter runs
+			// the recorded workspace, so the default view lists none of them;
+			// Graphite P1 counts them in the key row's tab. tab shows them,
+			// then the filter runs
 			feeds: [
-				["3 older sessions without a workspace", "\t"],
-				["all 3", "ben"],
+				["no session from this workspace yet", "\t"],
+				["every workspace · 3", "ben"],
 			],
 			// the pick lands in the recovery flow's uncertainty gate (that IS
 			// the proof it went into the existing resume path), so the gate
@@ -99,13 +100,15 @@ describe("TUI2-R2 ② — bare `kiso resume`: the picker is a TTY surface", () =
 		// session's first prompt — and the id is gone from it. The
 		// fixtures' ids are still what the FILTER accepts (DC-13), which
 		// is what the feed above types.
-		expect(raw).toContain("3 older sessions without a workspace · tab all");
+		expect(raw).toContain("tab 3 more elsewhere");
+		expect(raw).toContain("⏎ resumes"); // the key row — the positive control for the "gone" check below
 		expect(raw).toContain("no session from this workspace yet");
 		expect(raw).toContain("refactor the bench");
 		expect(raw).toContain("probe the wrapper");
-		expect(raw).toContain("(1/3)");
+		expect(raw).toMatch(/ 1\/3/);
 		// the filter narrowed it to one
-		expect(raw).toContain("(1/1)");
+		expect(raw).toContain("every workspace · 1 of 3 match");
+		expect(raw).toMatch(/ 1\/1/);
 		// ⏎ went into the EXISTING resume path, and the proof is what the
 		// resume path does FIRST: bench-refactor holds an undecided
 		// execution, so the recovery flow's uncertainty gate opens on it.
@@ -113,8 +116,9 @@ describe("TUI2-R2 ② — bare `kiso resume`: the picker is a TTY surface", () =
 		// the flow that always did.
 		const screen = settledScreen(raw).join("\n");
 		expect(screen + raw).toContain("rerun it?"); // P1b: the recovery panel asks the action in its band
-		// and the picker is GONE once it has been taken
-		expect(settledScreen(raw).join("\n")).not.toContain("(1/1)");
+		// and the picker is GONE once it has been taken (Graphite P1: its key
+		// row is the line only the picker draws)
+		expect(settledScreen(raw).join("\n")).not.toContain("⏎ resumes");
 		expect(raw).not.toContain("usage: kiso resume");
 	}, 240_000);
 
@@ -124,7 +128,7 @@ describe("TUI2-R2 ② — bare `kiso resume`: the picker is a TTY surface", () =
 		const raw = ptyRun([], env as NodeJS.ProcessEnv, { delays: [[3, "exit\r"]] });
 		// a fresh session id (the ISO stamp), never the picker's band
 		expect(raw).toMatch(/session \d{4}-\d{2}-\d{2}T\d{2}-\d{2}/);
-		expect(raw).not.toContain("(1/3)");
+		expect(raw).not.toContain("⏎ resumes");
 	}, 240_000);
 });
 

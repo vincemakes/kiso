@@ -44,14 +44,14 @@ describe("0.40.0 — the resume picker is scoped to the workspace (PTY)", () => 
 			ptyRun(["--mode", "bypass", "resume"], e, {
 				cwd: alpha,
 				feeds: [
-					["this workspace 1 of 2", "\t"],
-					["all 2", "\x1b"],
+					["this workspace · 1 of 2", "\t"],
+					["every workspace · 2", "\x1b"],
 				],
 			}),
 		);
-		expect(out).toContain("sessions · this workspace 1 of 2 · tab all");
+		expect(out).toContain("resume · this workspace · 1 of 2");
 		expect(out).toContain("the alpha task");
-		expect(out).toContain("sessions · all 2 · tab this workspace (1)");
+		expect(out).toContain("resume · every workspace · 2");
 		// under ALL the foreign row says where it came from
 		expect(out).toMatch(/the beta task[^\n]*beta/);
 

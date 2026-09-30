@@ -18,7 +18,7 @@
 
 import { escapeTerminal, palette } from "./lines.js";
 import { selectionBar, visibleWidth, widthCut } from "./components.js";
-import { atEmbed, bandHeader, longestRun, AT_VISIBLE, atWindow } from "./at-picker.js";
+import { atEmbed, bandHeader, longestRun } from "./at-picker.js";
 
 /** The projected card — structurally what apps/cli/src/session-cards.ts
  *  produces. Declared here as the tui's INPUT contract (the package
@@ -71,12 +71,15 @@ export function scopeSessions(cards: readonly SessionCardView[], here: string, w
 	return { cards: wantAll ? cards : inHere, scope: { here, all: wantAll, inHere: inHere.length, total: cards.length, unknown } };
 }
 
-/** The band's title — the scope and both counts, and the key that flips it. */
-export function scopeTitle(scope: PickScopeState | null): string {
-	if (scope === null) return "sessions";
-	return scope.all
-		? `sessions \u00b7 all ${scope.total} \u00b7 tab this workspace (${scope.inHere})`
-		: `sessions \u00b7 this workspace ${scope.inHere} of ${scope.total} \u00b7 tab all`;
+/** The band's title — named after the command that opened it, then the
+ *  scope and its counts. Graphite P1 (owner, 2026-09-30): the key that
+ *  flips the scope moved to the key row, and a filter says how many of
+ *  the scope match. */
+export function scopeTitle(scope: PickScopeState | null, filter: { readonly matches: number; readonly of: number } | null = null): string {
+	const match = filter === null ? null : `${filter.matches} of ${filter.of} match`;
+	if (scope === null) return match === null ? "resume" : `resume · ${match}`;
+	if (scope.all) return `resume · every workspace · ${match ?? scope.total}`;
+	return `resume · this workspace · ${match ?? `${scope.inHere} of ${scope.total}`}`;
 }
 
 /** A workspace path as a person reads it: the home directory as `~`. */
@@ -286,36 +289,6 @@ function rowSpans(card: SessionCardView, budget: number, now: number, idCol: num
 	return { text, width: w };
 }
 
-/**
- * ONE picker row. The selection is a FULL-ROW reverse bar — the R1.5
- * ⑧ ruling's shape, shared with the @ picker and the user chip: a
- * two-cell marker in an eighty-column row is a selection you have to
- * hunt for.
- *
- * The inner spans close with rvEnd inside the bar (never SGR 0, which
- * would punch a hole in it) — the same composition atRow uses.
- */
-export function sessionRow(card: SessionCardView, selected: boolean, W: number, now: number, idCol: number, here: string | null = null): string {
-	const p = palette();
-	// both forms spend two cells of the width on their frame — the
-	// unselected row's indent, the bar's own leading/trailing cell — so
-	// the spans are built against the same budget either way and the
-	// selection cannot change the columns
-	const { text, width } = rowSpans(card, Math.max(0, W - 2), now, idCol, here);
-	if (!selected) return `  ${text}`;
-	// R2: one bar, in one place — and with it §2.1's rule that dim never
-	// sits on the wash. The age/turns/note spans were dim INSIDE the bar,
-	// grey on grey, on the row the cursor was pointing at.
-	return selectionBar(text, width, W);
-}
-
-/** The counter row — the SELECTION's 1-based place in the whole
- *  filtered list, which the visible window cannot tell the user. */
-export function sessionCounterRow(selected: number, total: number, W: number): string {
-	const p = palette();
-	return `${p.dim}${widthCut(total === 0 ? "  (0/0)" : `  (${selected + 1}/${total})`, W)}${p.reset}`;
-}
-
 /** The picker's bound state — the editor owns it, the compositor reads
  *  it (the @ picker's contract, one surface over). */
 export interface SessionPickState {
@@ -324,40 +297,292 @@ export interface SessionPickState {
 	readonly selected: number;
 	/** 0.40.0: null when the picker was opened without a workspace. */
 	readonly scope?: PickScopeState | null;
+	/** Graphite P1: the filter as typed — the title lights the letters it
+	 *  matched, and the band says how many match. Absent = no filter. */
+	readonly query?: string;
 }
 
-/**
- * The whole band: the `sessions` header (R1.5 ⑦(b) — a band names
- * itself or it reads as more scrollback), at most AT_VISIBLE windowed
- * rows, then the counter. Returned as plain strings for the menu-rows
- * channel, which already accounts them in chromeRows — the picker needs
- * no geometry of its own, which is the entire reason it rides that
- * channel.
+/*
+ * Graphite P1 — the /resume picker as a table (owner, 2026-09-30: option
+ * B, revision 2, after comparing it with the reference picker).
+ *
+ * DECLARED CHANGES, each against the ruling it touches:
+ *  - The row is a TABLE: the title, then a state word, the age and the
+ *    turns in columns measured over every card in the scope (never the
+ *    filtered subset — the idColumn rule, kept), so the eye reads down a
+ *    column and nothing moves while the person types. The facts used to
+ *    trail the title and start at a different cell on every row.
+ *  - The state is a word only when it asks for attention. A finished
+ *    session says nothing; `interrupted` is blue (unfinished work, the
+ *    running card's colour), an ask or an uncertain side effect gold (it
+ *    waits for the person), a failed ending red. 0.40.1's "words, never
+ *    glyphs" stands — the quiet default is an empty cell, not a glyph.
+ *  - The row under the cursor OPENS into a second row that says the
+ *    whole note (sessionNote — one definition with `kiso sessions`), when
+ *    the session started, its profile, and its id where they fit. The
+ *    note used to be on every row; R2's "the id left the row" stands —
+ *    it is on the opened card only.
+ *  - 0.40.1's row counting the sessions with no workspace, above the
+ *    list, is folded into the key row's `tab N more elsewhere` (N counts
+ *    them with the rest). The default view still never falls back to
+ *    every workspace; under tab they are listed, marked `unknown`.
+ *  - The counter row joins the key row; the band shows eight sessions on
+ *    a terminal 30 rows or taller, five below (it showed five).
  */
-export function sessionPickerRows(state: SessionPickState, W: number, now: number): string[] {
-	const scope = state.scope ?? null;
-	const rows: string[] = [bandHeader(scopeTitle(scope), W)];
-	// 0.40.1: the sessions without a workspace, as ONE row under CURRENT —
-	// counted, never listed (tab shows them, labelled)
-	if (scope !== null && !scope.all && scope.unknown > 0) {
-		const p = palette();
-		rows.push(`${p.dim}${widthCut(`  ${scope.unknown} older session${scope.unknown === 1 ? "" : "s"} without a workspace \u00b7 tab all`, W)}${p.reset}`);
+
+/** How many sessions the band shows: eight on a terminal 30 rows or
+ *  taller, five below (owner, 2026-09-30). */
+export function resumeVisible(height: number): number {
+	return height >= 30 ? 8 : 5;
+}
+
+/** The window over the matches, with a scroll-off of one: while more lies
+ *  past an edge, the cursor stays a row inside it, so the edge row that
+ *  carries a more-mark is never the selected one. Stateless, like
+ *  atWindow: the same (total, selected) always draws the same window. */
+export function resumeWindow(total: number, selected: number, visible: number): { first: number; count: number } {
+	const count = Math.min(total, visible);
+	return { first: Math.max(0, Math.min(selected - count + 2, total - count)), count };
+}
+
+/** The row's state word — empty for the quiet default, a finished session. */
+export function sessionStateWord(card: SessionCardView): string {
+	switch (card.badge) {
+		case "interrupted":
+			return "interrupted";
+		case "ask":
+			return `${card.asks} ask${card.asks === 1 ? "" : "s"}`;
+		case "uncertain":
+			return `${card.uncertain} uncertain`;
+		case "completed":
+			return "";
+		default:
+			// failed (the outcome's own words) and unknown ("no summary")
+			return sessionNote(card);
 	}
-	// a row is tagged with its workspace only when ALL is showing — under
-	// CURRENT every row is from here, and saying so eight times is noise
-	const here = scope !== null && scope.all ? scope.here : null;
-	const col = idColumn(state.cards);
+}
+
+/** The state's colour: blue for unfinished work, gold for what waits for
+ *  the person, red for a failed ending, dim for what is not known. Off a
+ *  known ground gold falls back to the warn tint and blue to none. */
+function stateTone(card: SessionCardView): string {
+	const p = palette();
+	switch (card.badge) {
+		case "interrupted":
+			return p.blue;
+		case "ask":
+		case "uncertain":
+			return p.gold !== "" ? p.gold : p.warn;
+		case "failed":
+			return p.red;
+		case "completed":
+			return "";
+		default:
+			return p.dim;
+	}
+}
+
+/** Where a row is from, for the workspace column (every-workspace view
+ *  only): blank for this workspace, `unknown` for a session from before
+ *  workspaces were recorded, the last directory — or on a wide terminal
+ *  the path — for another. */
+function whereOf(card: SessionCardView, here: string, wide: boolean): string {
+	if (card.workspace === here) return "";
+	if (card.workspace === null || card.workspace === undefined) return "unknown";
+	return wide ? tildePath(card.workspace) : `…/${card.workspace.split("/").filter((x) => x !== "").at(-1) ?? ""}`;
+}
+
+/** A title fitted to its column: whole when it fits; otherwise cut by
+ *  CELLS (a CJK character is two) with an ellipsis — on a space when one
+ *  lies in the last two fifths, so a word is not halved needlessly. */
+function fitTitle(text: string, room: number): string {
+	if (visibleWidth(text) <= room) return text;
+	if (room <= 1) return widthCut(text, Math.max(0, room));
+	let cut = widthCut(text, room - 1);
+	const sp = cut.lastIndexOf(" ");
+	if (sp > cut.length * 0.6) cut = cut.slice(0, sp);
+	return `${cut.trimEnd()}…`;
+}
+
+/** The columns — measured over EVERY card in the scope. `where` is
+ *  non-null only in the every-workspace view. What gives way first as the
+ *  width shrinks: the turns, then the workspace, then the state, then the
+ *  age; the title keeps at least twelve cells while any column remains. */
+interface ResumeColumns {
+	readonly title: number;
+	readonly state: number;
+	readonly where: number;
+	readonly age: number;
+	readonly turns: number;
+	/** the row's used width, its right margin included: the key row's
+	 *  counter aligns to it */
+	readonly table: number;
+}
+const TITLE_CAP = 60;
+const TITLE_FLOOR = 12;
+function resumeColumns(cards: readonly SessionCardView[], W: number, now: number, where: string | null): ResumeColumns {
+	const wide = W >= 110;
+	const width = (xs: readonly string[]): number => xs.reduce((m, x) => Math.max(m, visibleWidth(x)), 0);
+	const longest = Math.max(1, width(cards.map((c) => escapeTerminal(c.title ?? c.id))));
+	let parts = {
+		state: width(cards.map(sessionStateWord)),
+		where: where === null ? 0 : Math.min(wide ? 24 : 12, width(cards.map((c) => whereOf(c, where, wide)))),
+		age: width(cards.map((c) => sessionAge(c.updatedAt, now))),
+		turns: width(cards.map((c) => (c.turns === null ? "" : turnsOf(c.turns)))),
+	};
+	const avail = Math.max(0, W - 3); // the two-cell indent and one cell of right margin
+	const used = (x: typeof parts): number => Object.values(x).reduce((s, v) => s + (v > 0 ? v + 2 : 0), 0);
+	const floor = Math.min(longest, TITLE_FLOOR);
+	for (const drop of ["turns", "where", "state", "age"] as const) {
+		if (floor + used(parts) <= avail) break;
+		parts = { ...parts, [drop]: 0 };
+	}
+	const title = Math.max(0, Math.min(longest, TITLE_CAP, avail - used(parts)));
+	return { title, ...parts, table: 2 + title + used(parts) + 1 };
+}
+
+const turnsOf = (n: number): string => `${n} turn${n === 1 ? "" : "s"}`;
+
+/** The title with the letters the filter matched in gold — what the
+ *  person typed, in the colour of what the person says. */
+function markMatches(title: string, query: string, base: string): string {
+	const p = palette();
+	const hit = query === "" ? null : atEmbed(title.toLowerCase(), query.toLowerCase());
+	if (hit === null || hit.length === 0) return base === "" ? title : `${base}${title}${p.reset}`;
+	const on = new Set(hit);
+	const gold = p.gold !== "" ? p.gold : p.warn;
+	let out = "";
+	let i = 0;
+	for (const ch of title) {
+		out += on.has(i) ? `${p.reset}${p.bold}${gold}${ch}${p.reset}${base}` : ch;
+		i += ch.length;
+	}
+	return `${base}${out}${p.reset}`;
+}
+
+/** ONE table row. Unselected it is indented two cells, or carries a dim
+ *  more-mark in column 0 (column 1 stays empty, so the mark never reads
+ *  as the title's first letter); selected it is the Graphite selection
+ *  bar with the title in bold, its text still starting in column 2. */
+function resumeRow(card: SessionCardView, selected: boolean, cols: ResumeColumns, W: number, now: number, query: string, where: string | null, mark: string | null): string {
+	const p = palette();
+	const title = fitTitle(escapeTerminal(card.title ?? card.id), cols.title);
+	let text = `${markMatches(title, query, selected ? p.bold : "")}${" ".repeat(cols.title - visibleWidth(title))}`;
+	if (cols.state > 0) {
+		const word = sessionStateWord(card);
+		const tone = stateTone(card);
+		text += `  ${word === "" || tone === "" ? word : `${tone}${word}${p.reset}`}${" ".repeat(cols.state - visibleWidth(word))}`;
+	}
+	if (cols.where > 0 && where !== null) {
+		const at = fitTitle(whereOf(card, where, W >= 110), cols.where);
+		text += `  ${p.dim}${at}${p.reset}${" ".repeat(cols.where - visibleWidth(at))}`;
+	}
+	if (cols.age > 0) text += `  ${p.dim}${sessionAge(card.updatedAt, now).padStart(cols.age)}${p.reset}`;
+	if (cols.turns > 0) text += `  ${p.dim}${(card.turns === null ? "" : turnsOf(card.turns)).padStart(cols.turns)}${p.reset}`;
+	const w = cols.table - 3;
+	if (selected) return selectionBar(` ${text}`, w + 1, W);
+	return mark === null ? `  ${text}` : `${p.dim}${mark}${p.reset} ${text}`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** When the session started, read from its id — the id IS the UTC stamp
+ *  it was made at (apps/cli session-id.ts) — in local time. Null for an
+ *  id that is not one. */
+export function sessionStarted(id: string): string | null {
+	const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/.exec(id);
+	if (m === null) return null;
+	const t = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])));
+	if (Number.isNaN(t.getTime())) return null;
+	const two = (n: number): string => String(n).padStart(2, "0");
+	return `${MONTHS[t.getMonth()]} ${t.getDate()} ${two(t.getHours())}:${two(t.getMinutes())}`;
+}
+
+/** The opened card's second row: the whole note (its state word in the
+ *  state's colour, the rest dim), then — while they fit — when it
+ *  started, its profile, where it is from (another workspace only), and
+ *  its id. On the selection bar, like the row above it. */
+function openedRow(card: SessionCardView, W: number, where: string | null): string {
+	const p = palette();
+	const room = Math.max(0, W - 3);
+	const note = sessionNote(card);
+	const dash = note.indexOf(" — ");
+	const head = widthCut(dash < 0 ? note : note.slice(0, dash), room);
+	const tone = stateTone(card);
+	let text = tone === "" ? head : `${tone}${head}${p.reset}`;
+	let w = visibleWidth(head);
+	const facts: string[] = [];
+	if (dash >= 0) facts.push(note.slice(dash));
+	const started = sessionStarted(card.id);
+	if (started !== null) facts.push(` · started ${started}`);
+	if (typeof card.profileName === "string" && card.profileName !== "") facts.push(` · profile ${card.profileName}`);
+	if (where !== null && typeof card.workspace === "string" && card.workspace !== where) facts.push(` · ${tildePath(card.workspace)}`);
+	if (card.title !== undefined && card.title !== card.id) facts.push(` · ${card.id}`);
+	for (const f of facts) {
+		const cells = visibleWidth(escapeTerminal(f));
+		if (w + cells > room) break;
+		text += `${p.dim}${escapeTerminal(f)}${p.reset}`;
+		w += cells;
+	}
+	return selectionBar(` ${text}`, w + 1, W);
+}
+
+/** The key row: what the keys do, then the selection's place in the whole
+ *  filtered list, aligned to the table's right edge. The keys give way
+ *  from the least needed — the scope's, then the arrows' — and enter and
+ *  esc stay while anything does. */
+function resumeKeyRow(state: SessionPickState, W: number, table: number): string {
+	const p = palette();
+	const total = state.matches.length;
+	const count = total === 0 ? "0/0" : `${state.selected + 1}/${total}`;
+	const scope = state.scope ?? null;
+	const elsewhere = scope === null ? 0 : scope.total - scope.inHere;
+	const tab = scope === null ? null : scope.all ? "tab this workspace" : elsewhere > 0 ? `tab ${elsewhere} more elsewhere` : null;
+	const keys = ["↑↓ move", "⏎ resumes", tab, "esc"].filter((k): k is string => k !== null);
+	const edge = Math.min(W, Math.max(table, visibleWidth(keys.join(" · ")) + count.length + 5));
+	const fits = (ks: readonly string[]): boolean => 2 + visibleWidth(ks.join(" · ")) + 2 + count.length + 1 <= edge;
+	let kept = keys;
+	for (const drop of [tab, "↑↓ move", "⏎ resumes", "esc"]) {
+		if (fits(kept)) break;
+		kept = kept.filter((k) => k !== drop);
+	}
+	const text = kept.join(" · ");
+	const gap = Math.max(1, edge - 1 - 2 - visibleWidth(text) - count.length);
+	return `${p.dim}${widthCut(`  ${text}${" ".repeat(gap)}${count}`, W)}${p.reset}`;
+}
+
+/** What the empty input says while the picker is up: typing there filters. */
+export const RESUME_FILTER_HINT = "filter by title or id";
+
+/**
+ * The whole band: the named hairline, the windowed table with the
+ * selected row opened, and the key row. Returned as plain strings for the
+ * menu-rows channel, which already accounts them in chromeRows — the
+ * picker needs no geometry of its own, which is the entire reason it
+ * rides that channel. `height` is the terminal's: it sets how many
+ * sessions show (resumeVisible).
+ */
+export function sessionPickerRows(state: SessionPickState, W: number, now: number, height = 24): string[] {
+	const p = palette();
+	const scope = state.scope ?? null;
+	const query = state.query ?? "";
+	const rows: string[] = [bandHeader(scopeTitle(scope, query === "" ? null : { matches: state.matches.length, of: state.cards.length }), W)];
+	// the workspace column shows only when every workspace is listed
+	const where = scope !== null && scope.all ? scope.here : null;
+	const cols = resumeColumns(state.cards, W, now, where);
 	if (state.matches.length === 0) {
-		const p = palette();
-		// an empty CURRENT view says why, rather than an empty band
-		const empty = scope !== null && !scope.all && scope.inHere === 0 ? "  no session from this workspace yet" : "  no session matches";
-		rows.push(`${p.dim}${widthCut(empty, W)}${p.reset}`);
-		rows.push(sessionCounterRow(0, 0, W));
+		// an empty view says why, rather than an empty band
+		const empty = query !== "" ? `nothing matches “${escapeTerminal(query)}”` : scope !== null && !scope.all && scope.inHere === 0 ? "no session from this workspace yet" : "nothing to resume yet";
+		rows.push(`${p.dim}${widthCut(`  ${empty}`, W)}${p.reset}`);
+		rows.push(resumeKeyRow(state, W, cols.table));
 		return rows;
 	}
-	const { first, count } = atWindow(state.matches.length, state.selected, AT_VISIBLE);
-	for (let i = first; i < first + count; i += 1) rows.push(sessionRow(state.matches[i]!, i === state.selected, W, now, col, here));
-	rows.push(sessionCounterRow(state.selected, state.matches.length, W));
+	const { first, count } = resumeWindow(state.matches.length, state.selected, resumeVisible(height));
+	for (let i = first; i < first + count; i += 1) {
+		const mark = i === first && first > 0 ? "↑" : i === first + count - 1 && first + count < state.matches.length ? "↓" : null;
+		rows.push(resumeRow(state.matches[i]!, i === state.selected, cols, W, now, query, where, mark));
+		if (i === state.selected) rows.push(openedRow(state.matches[i]!, W, where));
+	}
+	rows.push(resumeKeyRow(state, W, cols.table));
 	return rows;
 }
 

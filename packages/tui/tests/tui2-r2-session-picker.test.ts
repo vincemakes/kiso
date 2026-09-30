@@ -20,7 +20,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor } from "../src/editor.js";
 import { Body } from "../src/compositor.js";
-import { idColumn, sessionFilter, sessionListFooter, sessionListRow, sessionPickerRows, sessionRow, type SessionCardView } from "../src/session-picker.js";
+import { idColumn, sessionFilter, sessionListFooter, sessionListRow, sessionPickerRows, type SessionCardView } from "../src/session-picker.js";
 import { visibleWidth } from "../src/components.js";
 import { COLOR_ON } from "../src/lines.js";
 
@@ -53,47 +53,51 @@ afterEach(() => {
 });
 
 describe("TUI2-R2 ② — the picker band (the picker-surface class)", () => {
-	it("the band NAMES itself `sessions`, carries a row per card and the counter — the prototype's A-1 frame", () => {
+	// Graphite P1 (owner, 2026-09-30, option B revision 2) — RE-DERIVED: the
+	// band is named `resume`, the rows are a table (title, state word, age,
+	// turns), the selected row opens into a second row carrying the note, and
+	// the counter rides the key row. The A-1 frame's four states are still
+	// all on one screen.
+	it("the band NAMES itself `resume`, a row per card, the selected one opened, and the key row with the counter", () => {
 		const rows = sessionPickerRows({ cards: CARDS, matches: CARDS, selected: 0 }, 80, NOW);
-		expect(strip(rows[0]!)).toMatch(/^\u2500{3} sessions \u2500+$/); // R2: the label rides the rule
-		expect(rows).toHaveLength(1 + 5 + 1); // header + the five rows + the counter
-		expect(strip(rows.at(-1)!)).toBe("  (1/5)");
+		expect(strip(rows[0]!)).toMatch(/^─{3} resume ─+$/); // R2: the label rides the rule
+		expect(rows).toHaveLength(1 + 5 + 1 + 1); // header + the five rows + the opened row + the key row
+		expect(strip(rows.at(-1)!)).toMatch(/^ {2}↑↓ move · ⏎ resumes · esc +1\/5$/);
 		const body = rows.slice(1, -1).map(strip);
-		// 0.40.1 (owner's ruling) — the state is a WORD in the note column,
-		// never a glyph: each row starts with the title
-		expect(body[0]).toMatch(/^\s*tui2-dogfood\b/);
-		expect(body[0]).toContain("1h · 8 turns · interrupted mid-run — resumes exactly");
-		expect(body[1]).toMatch(/^\s*fix-auth-race\b/);
-		expect(body[1]).toContain("2h · 14 turns · completed clean");
-		expect(body[2]).toMatch(/^\s*bench-refactor\b/);
-		expect(body[2]).toContain("3d · 21 turns · 1 uncertain — needs your verdict");
-		expect(body[3]).toMatch(/^\s*release-notes\b/);
-		expect(body[3]).toContain("5d · 3 turns · 1 ask pending");
-		expect(body[4]).toMatch(/^\s*wrapper-probe\b/);
+		// 0.40.1 (owner's ruling) — the state is a WORD, never a glyph; each row starts with the title
+		expect(body[0]).toMatch(/^ {2}tui2-dogfood {4}interrupted {2}1h {3}8 turns\s*$/);
+		// the opened row: the whole note, the product's promise, where the cursor is
+		expect(body[1]).toMatch(/^ {2}interrupted mid-run — resumes exactly\s*$/);
+		// a finished session says nothing in the state column
+		expect(body[2]).toBe("  fix-auth-race                2h  14 turns");
+		expect(body[3]).toBe("  bench-refactor  1 uncertain  3d  21 turns");
+		expect(body[4]).toBe("  release-notes   1 ask        5d   3 turns");
+		expect(body[5]).toBe("  wrapper-probe                6d   2 turns");
 	});
 
-	it("0.40.1 — no status glyph anywhere in a row (owner's ruling): the note's words carry the state", () => {
+	it("0.40.1 — no status glyph anywhere in a row (owner's ruling): words carry the state", () => {
 		for (const W of [60, 80, 120]) {
-			const rows = sessionPickerRows({ cards: CARDS, matches: CARDS, selected: 99 }, W, NOW).slice(1, -1).map(strip);
+			const rows = sessionPickerRows({ cards: CARDS, matches: CARDS, selected: 0 }, W, NOW).slice(1, -1).map(strip);
 			for (const r of rows) expect(r, `W=${W}: ${r}`).not.toMatch(/[✓✗▌◌]|(^\s*\?)/);
 		}
-		// the uncertain row's words keep the warn tint — the one note a person must act on
-		const rows = sessionPickerRows({ cards: CARDS, matches: CARDS, selected: 99 }, 80, NOW).slice(1, -1);
-		expect(rows[2]).toContain(`${COLOR_ON.warn}1 uncertain — needs your verdict${COLOR_ON.reset}`);
+		// the uncertain row's word keeps the warn tint off a known ground — it waits for the person
+		const rows = sessionPickerRows({ cards: CARDS, matches: CARDS, selected: 0 }, 80, NOW);
+		expect(rows[4]).toContain(`${COLOR_ON.warn}1 uncertain${COLOR_ON.reset}`);
 	});
 
-	it("the selection is a FULL-ROW reverse bar spanning the whole width (the R1.5 ⑧ shape), and exactly one row wears it", () => {
+	it("the selection is a FULL-ROW bar spanning the whole width, worn by the selected row and its opened row only", () => {
 		const W = 80;
 		const rows = sessionPickerRows({ cards: CARDS, matches: CARDS, selected: 0 }, W, NOW).slice(1, -1);
 		expect(rows[0]!.startsWith(COLOR_ON.rv)).toBe(true);
 		expect(rows[0]!.endsWith(COLOR_ON.rvEnd)).toBe(true);
 		expect(visibleWidth(rows[0]!)).toBe(W); // the bar spans the row, not two cells of it
-		expect(rows.filter((r) => r.startsWith(COLOR_ON.rv))).toHaveLength(1);
+		expect(visibleWidth(rows[1]!)).toBe(W);
+		expect(rows.map((r, i) => (r.startsWith(COLOR_ON.rv) ? i : -1)).filter((i) => i >= 0)).toEqual([0, 1]);
 		// the bar is never punctured: no SGR 0 survives without the bar
 		// being re-opened right after it (the atRow composition rule)
-		const inner = rows[0]!.slice(COLOR_ON.rv.length, -COLOR_ON.rvEnd.length);
-		for (const m of inner.matchAll(/\x1b\[0m/g)) {
-			expect(inner.slice(m.index! + 4, m.index! + 4 + COLOR_ON.rv.length)).toBe(COLOR_ON.rv);
+		for (const row of rows.slice(0, 2)) {
+			const inner = row.slice(COLOR_ON.rv.length, -COLOR_ON.rvEnd.length);
+			for (const m of inner.matchAll(/\x1b\[0m/g)) expect(inner.slice(m.index! + 4, m.index! + 4 + COLOR_ON.rv.length)).toBe(COLOR_ON.rv);
 		}
 	});
 
@@ -107,12 +111,12 @@ describe("TUI2-R2 ② — the picker band (the picker-surface class)", () => {
 		}
 	});
 
-	it("the id COLUMN is computed over every card, not the filtered subset — the columns never jump while typing", () => {
-		const col = idColumn(CARDS);
-		const all = strip(sessionRow(CARDS[2]!, false, 80, NOW, col));
+	it("the columns are computed over every card, not the filtered subset — nothing jumps while typing", () => {
+		const whole = sessionPickerRows({ cards: CARDS, matches: CARDS, selected: 2 }, 80, NOW).map(strip);
 		const filtered = sessionFilter(CARDS, "ben");
-		const one = strip(sessionRow(filtered[0]!, false, 80, NOW, idColumn(CARDS)));
-		expect(one).toBe(all); // same card, same columns, filtered or not
+		const one = sessionPickerRows({ cards: CARDS, matches: filtered, selected: 0, query: "ben" }, 80, NOW).map(strip);
+		// the same card, selected in both: the same row and the same opened row, filtered or not
+		expect(one.slice(1, 3)).toEqual(whole.slice(3, 5));
 	});
 
 	it("the filter is the @ picker's subsequence + rank; an empty query is the LIST, not a search", () => {
@@ -124,28 +128,23 @@ describe("TUI2-R2 ② — the picker band (the picker-surface class)", () => {
 		expect(sessionFilter(CARDS, "re").map((c) => c.id)[0]).toBe("release-notes");
 	});
 
-	it("an empty match set says so and counts (0/0) — never a confident row that is not there", () => {
-		const rows = sessionPickerRows({ cards: CARDS, matches: [], selected: 0 }, 80, NOW);
-		expect(strip(rows[1]!)).toContain("no session matches");
-		expect(strip(rows.at(-1)!)).toBe("  (0/0)");
+	it("an empty match set says so and counts 0/0 — never a confident row that is not there", () => {
+		const rows = sessionPickerRows({ cards: CARDS, matches: [], selected: 0, query: "zzz" }, 80, NOW);
+		expect(strip(rows[0]!)).toMatch(/^─{3} resume · 0 of 5 match ─+$/);
+		expect(strip(rows[1]!)).toBe("  nothing matches “zzz”");
+		expect(strip(rows.at(-1)!)).toMatch(/ 0\/0$/);
 	});
 
-	it("slice ③'s printed row is the SAME projection with no bar and no indent — one definition, two surfaces", () => {
+	it("slice ③'s printed row keeps its own shape; the note it prints is the opened card's, word for word", () => {
 		const col = idColumn(CARDS);
-		// DC-16: the listing keeps the ID and the picker row does not. The
-		// SHARED projection is still the point — the two cannot drift about
-		// what a session IS — but "share the projection" is not "be the
-		// same row": a listing is the surface you read to copy an id OUT
-		// of, which `/resume <id>` and the filter's id haystack both
-		// assume exists. So the printed row is the picker's row plus a dim
-		// id tail, and that is what is asserted.
-		// The id tail takes its width FROM the row, so the shared projection
-		// is asserted at the budget it actually gets: the printed row at W
-		// is the picker's row at W minus the tail, plus the tail.
-		const tailW = 2 + CARDS[0]!.id.length;
+		// DC-16: the listing keeps the ID at its end — it is the surface you
+		// read to copy an id OUT of. Graphite P1 moved the PICKER to a table;
+		// the listing is untouched, and what the two share is the note
+		// (sessionNote): one definition of what a session's state says.
 		const listed = strip(sessionListRow(CARDS[0]!, 80, NOW, col));
-		const picked = strip(sessionRow(CARDS[0]!, false, 80 - tailW + 2, NOW, col)).slice(2);
-		expect(listed).toBe(`${picked}  ${CARDS[0]!.id}`);
+		expect(listed).toBe("tui2-dogfood  1h · 8 turns · interrupted mid-run — resumes exactly  tui2-dogfood");
+		const opened = strip(sessionPickerRows({ cards: CARDS, matches: CARDS, selected: 0 }, 80, NOW)[2]!).trim();
+		expect(listed).toContain(opened);
 		expect(strip(sessionListFooter(7, 80))).toBe("7 sessions · kiso resume picks interactively");
 		expect(strip(sessionListFooter(1, 80))).toBe("1 session · kiso resume picks interactively");
 	});
@@ -233,9 +232,9 @@ describe("TUI2-R2 ② — the picker's KEYS (the editor's third band occupant)",
 		body.enter();
 		vi.advanceTimersByTime(16);
 		const bytes = strip(writes.join(""));
-		expect(bytes).toContain("sessions");
+		expect(bytes).toContain("resume");
 		expect(bytes).toContain("tui2-dogfood");
-		expect(bytes).toContain("(1/5)");
+		expect(bytes).toMatch(/ 1\/5/);
 		vi.useRealTimers();
 	});
 });
