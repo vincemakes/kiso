@@ -848,7 +848,14 @@ because there a marker is the only carrier (DC-4).
 | `####` | bold `dim`, upper case outside code spans |
 | bold / italic / strike | bold / italic / `dim` (never SGR 9: Apple Terminal draws none) |
 | inline code | `blue`, no ground — like a code block (owner, 2026-09-29, choosing between the prototype's `code` ground and none, side by side in Apple Terminal) |
-| link | `blue`, underlined, the URL in `dim` after the text (no OSC 8: Apple Terminal draws one as plain text) |
+| bold italic | `***x***` is bold and italic; a bold closes at the END of its asterisk run, so `**a *b***` closes the italic inside it first (R2f) |
+| code span | any run of backticks, closed by a run of the same length; one padding space off each end, so ``` `` `x` `` ``` shows `` `x` `` (R2f) |
+| link | `blue`, underlined, the URL in `dim` after the text (no OSC 8: Apple Terminal draws one as plain text); a title after the URL is read and dropped — there is no hover (R2f) |
+| autolink | `<https://…>`, `<mailto:…>`, `<a@b.c>`: the address as a link, no brackets (R2f) |
+| image | a terminal draws none, so it is named: `image` dim, the alt as a link, the URL dim — `image alt (url)` (R2f, owner 2026-09-30) |
+| reference link | `[text][label]`: the text as a link, ` [label]` dim; the URL is defined elsewhere, often below, and a row once drawn never changes (freeze). `[text][]` is the link alone; a bare `[label]` stays literal (R2f, owner 2026-09-30) |
+| reference definition | `[label]: url "title"` is a block of its own, a `dim` row per definition: `[label] url · title`. DECLARED DEVIATION: a definition line starts its own block even under a paragraph (the decision is line by line) (R2f) |
+| `<br>` | a line break wherever it stands — GitHub's reading; a table cell grows a row, its column as wide as its widest row (R2f, owner 2026-09-30) |
 | bullets / ordered / tasks | `–` then `·` in `dim` / the number in `dim` / `✓` ok, `○` dim in place of the bullet |
 | quote | a bar of `quoteBar` (a background cell, §1.5), a space, italic `ink2` |
 | alerts | `> [!NOTE]` / `TIP` / `IMPORTANT`: a `noteBar` bar and the word bold `blue`; `WARNING`: `warnBar` and `gold-mark`; `CAUTION`: `cautionBar` and `fail` |
