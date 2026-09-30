@@ -24,7 +24,7 @@ import { appendFileSync, chmodSync, existsSync, linkSync, mkdirSync, readdirSync
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import type { SearchReply, SearchRequest } from "./search-worker.js";
-import { killTree, startCommand } from "./process.js";
+import { killTree, NO_BASH, startCommand } from "./process.js";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -1286,7 +1286,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 	return defineTool<{ command: string; timeoutMs?: number }>({
 		name: "shell",
 		description:
-			"Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. Fails loudly on timeout or non-zero exit.",
+			`Run a shell command through ${process.platform === "win32" ? "bash" : "/bin/sh"} with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. Fails loudly on timeout or non-zero exit.`,
 		parameters: {
 			type: "object",
 			properties: {
@@ -1312,13 +1312,21 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 				// provider credentials by default — only the explicit
 				// shellEnv: "inherit" opt-in keeps them. A record (ADR-0031
 				// Amendment 1) rides on the STRIPPED base and wins per key.
-				const child = startCommand(command, {
-					cwd: opts.workspaceRoot,
-					env:
-						opts.shellEnv === "inherit"
-							? process.env
-							: { ...strippedShellEnv(process.env, opts.secretEnvNames), ...(opts.shellEnv ?? {}) },
-				});
+				let child: ReturnType<typeof startCommand>;
+				try {
+					child = startCommand(command, {
+						cwd: opts.workspaceRoot,
+						env:
+							opts.shellEnv === "inherit"
+								? process.env
+								: { ...strippedShellEnv(process.env, opts.secretEnvNames), ...(opts.shellEnv ?? {}) },
+					});
+				} catch (err) {
+					// win32 with no usable bash: an answer the model can act on
+					if ((err as { code?: string }).code !== NO_BASH) throw err;
+					resolvePromise({ content: `shell failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" });
+					return;
+				}
 				let stdout = "";
 				let stderr = "";
 				let stdoutDropped = 0;

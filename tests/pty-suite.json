@@ -187,6 +187,10 @@
  ],
  "exempt": [
   {
+   "file": "packages/tools-node/tests/process-win32.test.ts",
+   "reason": "spawns nothing. It exercises the process module's win32 branches on every OS by setting process.platform per case and replacing node:child_process with a scripted fake (vi.mock): spawn, execFileSync, spawnSync and execFile only record their arguments and return canned answers, and process.kill is a spy. The classifier follows the import of ../src/process.js, which spawns when it runs for real. Verified: every child_process entry point is mocked; no pty helper."
+  },
+  {
    "file": "packages/tui/tests/dc48-invariant-fallback.test.ts",
    "reason": "spawns nothing and drives the compositor in process. The classifier reads SOURCE TEXT, and this file's comments name isolated-cli.mjs to say where KISO_INVARIANTS=throw is set for PTY children — prose about a helper, not an import of one. Verified: no child_process, no spawn, no pty helper."
   },
