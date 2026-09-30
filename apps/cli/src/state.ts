@@ -62,7 +62,7 @@ export function codingToolOptions(): {
  *  — the `!` gesture — has none, and its shell is today's. */
 const taskManagers = new Map<string, TaskManager>();
 let taskBackend: ReturnType<typeof processTaskBackend> | undefined;
-export function tasksFor(sessionId: string | undefined): ShellTasks | undefined {
+export function tasksFor(sessionId: string | undefined): TaskManager | undefined {
 	if (sessionId === undefined || activeStoreDir === "") return undefined;
 	let manager = taskManagers.get(sessionId);
 	if (manager === undefined) {
@@ -558,9 +558,10 @@ export const settingsLayers: {
 	user: import("./config.js").KisoConfig | null;
 	project: import("./config.js").KisoConfig | null;
 	modeFlag: string | undefined;
+	dontAskFlag: boolean;
 	modelFlag: string | undefined;
 	modelSwitched: boolean;
-} = { user: null, project: null, modeFlag: undefined, modelFlag: undefined, modelSwitched: false };
+} = { user: null, project: null, modeFlag: undefined, dontAskFlag: false, modelFlag: undefined, modelSwitched: false };
 
 export let floorOn = true;
 export function setFloorOn(value: boolean): void {

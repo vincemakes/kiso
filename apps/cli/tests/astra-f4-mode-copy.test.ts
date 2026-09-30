@@ -33,7 +33,7 @@ describe("F4: the mode copy describes the tier's contribution, not the verdict",
 
 	it("the two tiers whose verdict nothing overrides say so, and neither borrows the allow caveat", () => {
 		expect(MODE_NOTE.plan).toContain("deny wins");
-		expect(MODE_NOTE.bypass).toContain("deny still wins");
+		expect(MODE_NOTE["full-access"]).toContain("a user deny and the floor still win");
 		expect(MODE_NOTE.plan).not.toContain("saved allow");
 	});
 

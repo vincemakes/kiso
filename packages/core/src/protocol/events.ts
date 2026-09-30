@@ -183,18 +183,27 @@ export interface UserInputEvent {
 	readonly content: string | readonly import("./messages.js").ContentBlock[];
 	/** Provenance of the prompt (Area 6) — preserved losslessly. */
 	readonly source?: import("./messages.js").MessageSource;
-	/** 0.40.0 (ADR-0051 §5 rule 1): how a PERSON's turn was composed — a
-	 *  skill they invoked, and the line they typed. Display provenance only:
-	 *  `content` is what the model receives and the projection never reads
-	 *  this, so no byte of it reaches a request. */
+	/** How the input entered the trajectory — a PERSON's skill invocation
+	 *  (0.40.0, ADR-0051 Amendment 7), or a runtime delivery of task
+	 *  transitions (ADR-0051 Amendment 8, the delivery's durable receipt).
+	 *  Display and receipt provenance only: `content` is what the model
+	 *  receives and the projection never reads this, so no byte of it
+	 *  reaches a request. */
 	readonly via?: UserInputVia;
 }
 
-export interface UserInputVia {
-	readonly kind: "skill";
-	readonly name: string;
-	readonly line: string;
+export type UserInputVia =
+	| { readonly kind: "skill"; readonly name: string; readonly line: string }
+	| { readonly kind: "tasks"; readonly items: readonly TaskDeliveryItem[] };
+
+export interface TaskDeliveryItem {
+	readonly taskId: string;
+	readonly transition: "ready" | "exited" | "failed" | "stopped" | "unknown";
 }
+
+/** An input the runtime owes the model (a task notice) — never a person's,
+ *  so it never passes onUserMessage (ADR-0057 §4, a wake run included). */
+export const isRuntimeInput = (e: { readonly via?: UserInputVia } | undefined): boolean => e?.via?.kind === "tasks";
 
 /**
  * Compaction happened at this point in the trajectory. The EXACT
@@ -724,10 +733,14 @@ function isSource(v: Record<string, unknown>): boolean {
 	return v.source === undefined || MESSAGE_SOURCES.has(v.source as import("./messages.js").MessageSource);
 }
 
+const TASK_TRANSITIONS = new Set(["ready", "exited", "failed", "stopped", "unknown"]);
 function isVia(v: Record<string, unknown>): boolean {
 	if (v.via === undefined) return true;
 	const via = v.via as Record<string, unknown>;
-	return isPlainObject(via) && via.kind === "skill" && typeof via.name === "string" && via.name !== "" && typeof via.line === "string" && via.line !== "";
+	if (!isPlainObject(via)) return false;
+	if (via.kind === "skill") return typeof via.name === "string" && via.name !== "" && typeof via.line === "string" && via.line !== "";
+	const items = via.items;
+	return via.kind === "tasks" && Array.isArray(items) && items.length > 0 && items.every((i) => isPlainObject(i) && typeof i.taskId === "string" && i.taskId !== "" && TASK_TRANSITIONS.has(i.transition as string));
 }
 
 function isTags(v: Record<string, unknown>): boolean {

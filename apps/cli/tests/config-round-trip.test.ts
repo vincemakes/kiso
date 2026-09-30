@@ -61,8 +61,10 @@ const CONFIG_SAMPLE: Record<string, unknown> = {
 	model: "p",
 	models: { p: PROFILE_SAMPLE },
 	mode: "plan",
+	dontAsk: true, // the modes round: the don't-ask switch, either config
 	contextWindow: 654_321,
 	autoCompact: { thresholdRatio: 0.5 },
+	taskWake: false, // ADR-0058 (3c): false is the value a dropped field would hide
 	projectTrust: "ask",
 	theme: "dark",
 	floor: "off", // 0.40.0, user-level only — "round-trip" is not a <cwd> source

@@ -18,7 +18,7 @@ import { bodyLog, currentAgentExtensions, dock, extensionsDir, kisoHome, mergedT
 import { guardSavedAllow } from "./protected-writes.js";
 import { mergeDirPrefix } from "./temp-sweep.js";
 import { loadUserConfig, resolveProjectTrustPolicy } from "./config.js";
-import { getMode } from "./mode.js";
+import { getDontAsk } from "./mode.js";
 
 /**
  * W21 — ask the human with the approval panel: the bounded block that
@@ -152,7 +152,7 @@ export function askUi(input: LineInput): AskUI {
 			// Launch-weekend plan §2: dontAsk asks nobody anything — a
 			// question the model puts is declined, recorded as unanswered,
 			// exactly as a non-interactive session declines it.
-			if (getMode() === "dontAsk") {
+			if (getDontAsk()) {
 				bodyLog("[dontAsk] the model's question was declined — nothing asks in dontAsk");
 				return askDeclineAll(spec);
 			}
@@ -284,7 +284,7 @@ export function fixHintFor(speaker: string, tool: string): string | undefined {
 		return "/mode accept-edits auto-approves edits";
 	}
 	if (speaker === "mode:manual" || speaker === "mode:plan") return "/mode default";
-	if (speaker === "mode:accept-edits" || speaker === "mode:bypass") return undefined;
+	if (speaker === "mode:accept-edits" || speaker === "mode:full-access") return undefined;
 	return `edit ${join(extensionsDir(), `${speaker}.mjs`).replace(homedir(), "~")}`;
 }
 
@@ -320,8 +320,8 @@ export async function resolveProjectTrust(input: LineInput): Promise<ProjectArti
 	// The lead's review of #63, B5: dontAsk takes this same path — nothing
 	// asks, so the project is not loaded, the note says so, and no refusal
 	// is recorded (a later asking session can still decide).
-	if (!process.stdin.isTTY || getMode() === "dontAsk") {
-		console.error(`${getMode() === "dontAsk" ? "[dontAsk] " : ""}${projectUntrustedNote(artifacts.files.length, artifacts.root)}`);
+	if (!process.stdin.isTTY || getDontAsk()) {
+		console.error(`${getDontAsk() ? "[dontAsk] " : ""}${projectUntrustedNote(artifacts.files.length, artifacts.root)}`);
 		return null;
 	}
 	// v2c: the shared input (the editor on a TTY) reads the answer.
@@ -479,7 +479,7 @@ export async function resolveUncertains(
 	// uncertain executions are left exactly as a cancel leaves them —
 	// uncertain and durable, no rerun or abandon fabricated — and the one
 	// line says what to do. An unattended session must not sit on a panel.
-	if (getMode() === "dontAsk") {
+	if (getDontAsk()) {
 		const n = session.uncertainExecutions().length;
 		if (n > 0) bodyLog(`[dontAsk] ${n} uncertain execution${n === 1 ? "" : "s"} left unresolved — resolve them in an asking mode`);
 		return;

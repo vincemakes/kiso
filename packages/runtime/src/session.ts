@@ -76,6 +76,8 @@ import { checkpointBoundarySeq } from "./checkpoint.js";
 import { ABORTED_BEFORE_EXECUTION, unansweredAbortedCalls } from "./aborted-calls.js";
 import { breakEvenFactor, guardedPruneSeq, KEEP_COMPACTABLE_RESULTS, microcompactBoundarySeq, outputReserve, phaseEnd, runsACheck, tierReason, tiersFor } from "./compaction-policy.js";
 import { Run } from "./run.js";
+import { TaskDelivery, type TaskDeliveryOptions } from "./tasks/delivery.js";
+import type { TaskManager } from "./tasks/manager.js";
 // TUI2-R3v2 ③ — the side query rides the SAME tracer the runs ride; that
 // sameness is the whole point (one ledger, one shape, no second path).
 import { RequestTracer, traceGuard } from "./trace/guard.js";
@@ -348,10 +350,36 @@ export class AgentSession {
 			throw new Error("this session already has an active run — one run at a time");
 		}
 		this.#activeRuns.add(run);
+		this.#delivery?.takeForRun(run); // ADR-0058: pending task notices ride its first admission
 	}
 
 	endRun(run: Run): void {
 		this.#activeRuns.delete(run);
+		this.#delivery?.onRunSettled(run); // the slot is free: a wake may follow
+	}
+
+	// ── ADR-0058 (3c): the session's tasks reach the model ────────────────
+
+	#delivery: TaskDelivery | undefined;
+
+	/** Deliver this session's task transitions to the model: into a live
+	 *  run at its next safe point, or — idle — held for the next run, or one
+	 *  continuation run through `onWake` (off with `wake: false`). */
+	useTasks(manager: TaskManager, options: Pick<TaskDeliveryOptions, "wake" | "onWake" | "windowMs"> = {}): () => void {
+		this.#delivery?.close();
+		const delivery = new TaskDelivery({ ...options, manager, events: () => this.log.all, liveRun: () => [...this.#activeRuns][0] });
+		this.#delivery = delivery;
+		return () => {
+			delivery.close();
+			if (this.#delivery === delivery) this.#delivery = undefined;
+		};
+	}
+
+	/** A summary carries the tasks as the model was last told of them —
+	 *  never the live journal (a compaction is not a delivery). */
+	#withTasks(summary: string): string {
+		const snapshot = this.#delivery?.snapshot(this.log.all) ?? "";
+		return snapshot === "" ? summary : `${summary}\n\n${snapshot}`;
 	}
 
 	/** The conversation so far, as the model sees it. */
@@ -519,10 +547,11 @@ export class AgentSession {
 		// against an estimate). A checkpoint that fails it is discarded:
 		// nothing is appended, the run goes on as before, and the failure
 		// counts toward the breaker.
-		const fire: EventInput = { type: "summarized", coversToSeq: boundary, summary: result.text };
+		const text = this.#withTasks(result.text);
+		const fire: EventInput = { type: "summarized", coversToSeq: boundary, summary: text };
 		const pre = estimateTokens(projectMessages(events));
 		const post = estimateTokens(projectMessages([...events, { ...fire, seq: (events.at(-1)?.seq ?? -1) + 1 } as Event]));
-		const written = estimateTokens([{ role: "user", content: `${SUMMARY_FRAMING}\n\n${result.text}` }]);
+		const written = estimateTokens([{ role: "user", content: `${SUMMARY_FRAMING}\n\n${text}` }]);
 		const shrinks = pre - post >= written;
 		// Every in-run fire is recorded — its reason and path are what the
 		// measurement counts — and its usage when the provider reported one;
@@ -1007,7 +1036,7 @@ export class AgentSession {
 		// The post-call boundary check: an abort that landed while the
 		// adapter returned must NOT persist — "nothing happened".
 		if (options.signal !== undefined && options.signal.aborted) throw cancelled();
-		const full = this.log.append({ type: "summarized", coversToSeq: boundary, summary });
+		const full = this.log.append({ type: "summarized", coversToSeq: boundary, summary: this.#withTasks(summary) });
 		// The record rides the LAST recorded run's id — a summarized fact
 		// must never open a run of its own: the open-run gate keys on
 		// terminal-less runIds, and a "compact" runId would block the next

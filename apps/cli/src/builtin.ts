@@ -25,7 +25,7 @@ import createSkills from "@vincemakes/kiso-skills-ext";
 import createSubagent from "@vincemakes/kiso-subagent-ext";
 import createAsk, { type AskUI } from "@vincemakes/kiso-ask-ext";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
-import { getMode } from "./mode.js";
+import { getDontAsk } from "./mode.js";
 
 /**
  * 0.40.0 (the owner's dogfood): dontAsk never asks, so its tool table never
@@ -33,17 +33,18 @@ import { getMode } from "./mode.js";
  * that could only decline them. A LIVE gate, not a load-time one: the
  * registry reads an extension's tools on every request (registerLive) and
  * the run recomposes the tool table, snippet and guidelines included, so
- * entering dontAsk takes ask_user away from the next run and leaving it
- * brings ask_user back. In dontAsk the table is byte-identical to the pipe
- * path's; each switch in or out costs one prompt-cache break. The decline
- * path (trust-ui) stays for a turn already in flight when the mode changes.
+ * turning the switch on takes ask_user away from the next run and turning
+ * it off brings ask_user back — in every tier. With the switch on the
+ * table is byte-identical to the pipe path's; each flip costs one
+ * prompt-cache break. The decline path (trust-ui) stays for a turn already
+ * in flight when the switch flips.
  */
 export function offInDontAsk(ext: KisoExtension): KisoExtension {
 	const tools = ext.tools ?? [];
 	return {
 		...ext,
 		get tools() {
-			return getMode() === "dontAsk" ? [] : tools;
+			return getDontAsk() ? [] : tools;
 		},
 	};
 }
