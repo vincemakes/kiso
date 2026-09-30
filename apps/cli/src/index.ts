@@ -33,7 +33,7 @@ import { fileURLToPath } from "node:url";
 import { basename, join } from "node:path";
 import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
-import { listSessionSidecars, migrateSummaries, readProfile, summaryMigrationPending } from "@vincemakes/kiso-runtime/internal";
+import { listSessionSidecars, migrateSummaries, readProfile, readSessionName, summaryMigrationPending } from "@vincemakes/kiso-runtime/internal";
 import { skillMenuItems } from "./skill-invoke.js";
 import { canonicalPath, hasSession, locateSession, projectLayoutActive, sessionFolders, type SessionFolder, type SessionRoute } from "./projects.js";
 import { reverseMigration } from "./session-migration.js";
@@ -50,7 +50,7 @@ import { loadUserConfig, resolveAutoCompact } from "./config.js";
 import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
 import { tmuxMouseHint } from "./tmux-hint.js";
 import { resume } from "./resume.js";
-import { paintWindowTitle, setTitleState } from "./window-title.js";
+import { paintWindowTitle, setTitleName, setTitleState } from "./window-title.js";
 import { projectInstructions } from "./coding-prompt.js";
 import { openingFacts } from "./opening.js";
 import { resumeTail } from "./resume-tail.js";
@@ -1128,6 +1128,8 @@ async function chatLoop(
 		// lines above are here: this is the one step all three entry points
 		// share (first start, `/resume <id>`, a switch), so a tab can never
 		// be left naming the session the user just left.
+		// Graphite R3d: the session's own name, when the person gave it one
+		setTitleName(readSessionName(activeStoreDir, session.id));
 		paintWindowTitle(session.log.all);
 		const nav = {
 			// 0.40.0 dogfood: the ids only — agent.sessions() read every log whole

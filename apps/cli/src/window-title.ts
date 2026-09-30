@@ -114,7 +114,9 @@ export function titleText(state: TitleState, name: string | null, folder: string
  * The title of a session's log in a state, with no IO — the whole rule,
  * testable.
  */
-export function windowTitleText(events: readonly Event[], workspace: string, st: TitleState = "ready"): string {
+export function windowTitleText(events: readonly Event[], workspace: string, st: TitleState = "ready", named: string | null = null): string {
+	// Graphite R3d: a session the person named (`/name`) is called that
+	if (named !== null) return titleText(st, named, workspace);
 	// Filtered BEFORE the wrap, so the cost is one object per user turn
 	// rather than one per event — this is re-derived on every turn of a
 	// session whose log may hold thousands. `sessionTitle` filters again;
@@ -131,10 +133,18 @@ let shown: string | null = null;
 let state: TitleState = "ready";
 let lastEvents: readonly Event[] = [];
 let lastCwd: string | null = null;
+let lastName: string | null = null;
+
+/** Graphite R3d: the session's `/name` (null when unnamed) — set where the
+ *  session is bound and when `/name` changes it. */
+export function setTitleName(name: string | null): void {
+	lastName = name;
+	write();
+}
 
 function write(): void {
 	if (process.stdout.isTTY !== true || lastCwd === null) return;
-	const text = windowTitleText(lastEvents, basename(lastCwd) || lastCwd, state);
+	const text = windowTitleText(lastEvents, basename(lastCwd) || lastCwd, state, lastName);
 	if (text === shown) return;
 	shown = text;
 	process.stdout.write(`${OSC_TITLE_PREFIX}${text}${OSC_TITLE_SUFFIX}`);

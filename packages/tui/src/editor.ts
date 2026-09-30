@@ -144,6 +144,8 @@ export const MENU_ITEMS: readonly MenuItem[] = [
 	// never be re-wrapped in place (ADR-0046); this appends it re-folded.
 	{ name: "/rewrap", desc: "re-print the recent prose at the current width" },
 	{ name: "/status", desc: "show session id, event count, and context estimate" },
+	// Graphite R3d: the session's own name (the title, the /resume row)
+	{ name: "/name", desc: "name this session · /name shows it · /name - clears it" },
 	{ name: "/settings", desc: "show the settings in force, each value's source, and how to change it" },
 	// TUI2-R1 (E): the rent-ledger attribution — where the context went
 	{ name: "/context", desc: "show where the context went — the last request's rent ledger" },

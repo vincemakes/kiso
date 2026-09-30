@@ -144,6 +144,26 @@ export function readSummary(root: string, sessionId: string): import("./session-
 	return t !== undefined && typeof t.updatedAt === "number" ? (t as unknown as import("./session-summary.js").SessionSummary) : null;
 }
 
+/** Graphite R3d — the name the person gave the session (`/name`): the
+ *  sidecar's third tenant, beside `profile` and `summary`, carried
+ *  through their writes untouched as they are through its. Session
+ *  metadata, not an event (ADR-0051 §6's OUT class, the profile's own
+ *  footing): the derivation never reads it; the lists and the title do,
+ *  the derived title (`sessionTitle`) the fallback. Null when unnamed or
+ *  unreadable. */
+export function readSessionName(root: string, sessionId: string): string | null {
+	const n = currentTenants(root, sessionId).name;
+	return typeof n === "string" && n.trim() !== "" ? n : null;
+}
+
+/** Name the session, or clear its name (`null`). Atomic and fail-closed
+ *  like every tenant's write; the others' bytes ride through. */
+export function writeSessionName(root: string, sessionId: string, name: string | null): void {
+	const tenants = { ...currentTenants(root, sessionId) };
+	delete tenants.name;
+	writeTenants(root, sessionId, name === null ? tenants : { ...tenants, name });
+}
+
 function writeTenants(root: string, sessionId: string, tenants: Record<string, unknown>): void {
 	const path = profilePath(root, sessionId);
 	const tmpDir = mkdtempSync(join(root, ".meta-"));

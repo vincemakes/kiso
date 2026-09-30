@@ -38,5 +38,5 @@ export { BUILTIN_MANIFESTS, resolveContinuationScope, type ModelRef, type Provid
 export * from "./checkpoint.js";
 export * from "./request-budget.js";
 // 0.40.0: the listing reads the recorded workspace and profile name.
-export { readProfile, readSummary, writeSummary, type ExecutionProfile, type ProfileReadResult } from "./profile.js";
+export { readProfile, readSessionName, readSummary, writeSessionName, writeSummary, type ExecutionProfile, type ProfileReadResult } from "./profile.js";
 export { SUMMARY_MIGRATION_MARKER, listSessionSidecars, migrateSummaries, sessionSummary, summarizeEvents, summaryMigrationPending, type SessionListing, type SessionSummary } from "./session-summary.js";
