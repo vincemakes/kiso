@@ -334,8 +334,9 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			[
 				["▌ ", "go\r"],
 				["▸ full access", ""], // v3 idle state — the old name reads as the tier it names
-				// R3i phase 3: the denial is named on the stretch fold now.
-				["1 denied:", ""],
+				// (a "1 denied:" needle stood here: R13 retired the stretch fold
+				// that printed it, and the chain waited out its 40 s timeout on
+				// every run since, the assertions below passing on the tail)
 				["refused by safe-test", ""], // the EXTENSION's deny — bypass can't override it
 				["shell done", "exit\r"],
 			],
