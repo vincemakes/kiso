@@ -141,3 +141,32 @@ statements no longer describe the shipped system:
 Decision #1 (executionId identity; the (name, input) guard removed) and
 decision #2 (receipt repair) are untouched, and together they remain the
 exactly-once mechanism.
+
+## Amendment 1 (2026-09-29): streamed fragments are written ahead without their own sync
+
+Decision 5's "append is write-ahead (fsync before publish)" is narrowed
+to what correctness needs: **every correctness-bearing append is synced
+before it is published; a streamed fragment — `text_delta`, `thinking`,
+`tool_call_input_delta` — is written before it is published, without a
+sync of its own.** The next synced event flushes it: a call's deltas
+before its `tool_call_end`, a text's fragments before its `text_end` or
+the turn's `stop` (ADR-0052 Amendment 1).
+
+Why: one turn that streams a large tool argument writes tens of
+thousands of deltas, and a sync per delta cost minutes (3.48 ms per
+append against 0.03 ms without the sync, measured on macOS APFS).
+
+What holds unchanged:
+- A process crash (kill -9) loses nothing: a written fragment is in the
+  OS page cache, not the process (`store-fsync-classes.test.ts` kills a
+  writer mid-stream and reads every fragment back).
+- `load` stays strict. A partial final line is still the only damage
+  repaired automatically; mid-file garbage, non-record lines and seq
+  gaps still throw `StoreCorruptionError`.
+- No new promise about power loss. After an OS crash in the middle of a
+  stream, unsynced fragments may leave damage the strict load refuses —
+  the session reports corruption instead of guessing. That is an
+  availability cost in a rare case, never a correctness one. A recovery
+  that could accept such a tail needs a mechanism that proves where
+  durability ends (a durable watermark, framing, checksums); it is not
+  part of this amendment.
