@@ -177,3 +177,26 @@ describe("0.43.0: the client surfaces the transport's comments", () => {
 		expect(kinds).toContain("event");
 	});
 });
+
+describe("ADR-0057: steer", () => {
+	it("steer → { runId } while a run is live and the input lands in that run; ClientError `idle` when none is", async () => {
+		const { tool, release } = gatedTool("slow");
+		const h = await host({ script: callThen("slow"), tools: [tool as never] });
+		let idle: unknown;
+		try {
+			await h.session.steer("hello");
+		} catch (e) {
+			idle = e;
+		}
+		expect(idle).toBeInstanceOf(ClientError);
+		expect((idle as ClientError).code).toBe("idle");
+
+		const { runId } = await h.session.run("go");
+		expect(await h.session.steer("only the editor tests")).toEqual({ runId });
+		release();
+		for await (const _ of h.session.events({ until: terminal })) {
+			/* until the run's terminal */
+		}
+		expect(h.service.events("s").some((e) => e.type === "user_input" && e.content === "only the editor tests")).toBe(true);
+	});
+});

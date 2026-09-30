@@ -143,6 +143,19 @@ describe("D: byte-identical projection discipline", () => {
 		// and the id itself appears nowhere in the bytes a provider would see
 		expect(JSON.stringify(withField)).not.toContain("served-elsewhere");
 	});
+	it("⑦ ADR-0051 Amendment 8: a task notice's `via` projects to the SAME bytes as the notice without it", () => {
+		// the receipt lives in the log; not one byte of it may reach a request
+		const build = (withField: boolean) => {
+			const log = new EventLog();
+			log.append({ type: "user_input", content: "start the server", source: "user" });
+			const notice = '<kiso-task id="t1" status="exited" code="0"/>\nRuntime notice — not the user.';
+			const via = { kind: "tasks" as const, items: [{ taskId: "t1", transition: "exited" as const }] };
+			log.append(withField ? { type: "user_input", content: notice, source: "system", via } : { type: "user_input", content: notice, source: "system" });
+			return projectMessages(log.all);
+		};
+		expect(JSON.stringify(build(true)), "a tasks via leaked into the projection").toBe(JSON.stringify(build(false)));
+	});
+
 	it("⑥ 0.40.0: a user_input carrying `via` projects to the SAME bytes as one without it", () => {
 		// ADR-0051 §5 rule 1, R6 — the byte-discipline fixture for the
 		// optional field. `via` records HOW a person's turn was composed (a

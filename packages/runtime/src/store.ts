@@ -171,8 +171,9 @@ function contentText(content: unknown): string {
 
 export function sessionTitle(records: readonly StoreRecord[]): string {
 	const asked = records
-		.map((r) => r.event as { type: string; content?: unknown; via?: { line?: unknown } })
-		.filter((e) => e.type === "user_input")
+		.map((r) => r.event as { type: string; content?: unknown; via?: { kind?: unknown; line?: unknown } })
+		// ADR-0058: a task notice is the runtime's, never the person's words
+		.filter((e) => e.type === "user_input" && e.via?.kind !== "tasks")
 		// 0.40.0: a skill turn is named by what the person TYPED — its
 		// content is a SKILL.md body the person never wrote.
 		.map((e) => (typeof e.via?.line === "string" ? e.via.line : contentText(e.content)).trim())

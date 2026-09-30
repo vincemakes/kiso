@@ -37,9 +37,19 @@ function kisoHome() {
 	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
 }
 
-export default async function createSkillsExtension() {
-	const skillsDir = process.env.KISO_SKILLS_DIR ?? join(kisoHome(), "skills");
-	const { index, broken } = loadIndex(skillsDir);
+/**
+ * `options` are for a host; the CLI passes none.
+ * - `roots`: directories to scan, in order. Given, they replace the
+ *   default (KISO_SKILLS_DIR, else $KISO_HOME/skills); the env var is not read.
+ * - `include(entry)`: false drops the skill from the ONE active index that
+ *   the prompt, `read_skill`, the catalog and the count are all built
+ *   from, so no surface can offer a skill another one hides. `broken`
+ *   (installation diagnostics) is not filtered.
+ */
+export default async function createSkillsExtension(options = {}) {
+	const roots = options.roots ?? [process.env.KISO_SKILLS_DIR ?? join(kisoHome(), "skills")];
+	const { index: loaded, broken } = firstNameWins(roots.map((root) => loadIndex(root)));
+	const index = options.include === undefined ? loaded : loaded.filter((s) => options.include(entryOf(s)));
 	// finding #8: no persistent resources — SKILL.md files are read per call;
 	// nothing is spawned or connected — no dispose is needed, explicitly.
 	const catalog = skillsCatalog(index, broken);
@@ -137,13 +147,43 @@ function loadIndex(skillsDir) {
 	return { index, broken };
 }
 
+/** A name found twice resolves to its FIRST occurrence — root order, then
+ *  the directory sort within a root — and every later one is reported in
+ *  `broken`, never listed. `read_skill` always served the first; the index
+ *  used to list both, offering a skill nobody could load. Resolved before
+ *  a host's `include`, so a filter cannot change which one wins. */
+function firstNameWins(scans) {
+	const index = [];
+	const broken = [];
+	const winners = new Map();
+	scans.forEach((scan, root) => {
+		broken.push(...scan.broken);
+		for (const skill of scan.index) {
+			const first = winners.get(skill.name);
+			if (first === undefined) {
+				winners.set(skill.name, { skill, root });
+				index.push(skill);
+				continue;
+			}
+			const where = first.root === root ? first.skill.dir : `${first.skill.dir} in an earlier root`;
+			broken.push({ dir: skill.dir, reason: `duplicate name "${skill.name}" — already provided by ${where}` });
+		}
+	});
+	return { index, broken };
+}
+
+/** The published entry shape — the catalog's, and what `include` is shown. */
+function entryOf({ name, description, dir, path, userInvocable }) {
+	return { name, description, dir, path, userInvocable };
+}
+
 /** 0.40.0 — what the CLI reads to let a PERSON invoke a skill. `body` reads
  *  the file at call time (finding #8: nothing is held), strips the
  *  frontmatter, and refuses — never truncates — a body over the cap: a
  *  skill cut in half is a different instruction than the one written. */
 function skillsCatalog(index, broken) {
 	return {
-		entries: index.map(({ name, description, dir, path, userInvocable }) => ({ name, description, dir, path, userInvocable })),
+		entries: index.map(entryOf),
 		broken: broken.map(({ dir, reason }) => ({ dir, reason })),
 		body(name) {
 			const skill = index.find((s) => s.name === name);

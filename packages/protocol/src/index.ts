@@ -63,6 +63,13 @@ export interface RunRequest {
 	readonly resumeFirst?: boolean;
 }
 
+/** ADR-0057: a person's input for the live run, admitted at its next Safe
+ *  Admission boundary. */
+export interface SteerRequest {
+	readonly sessionId: string;
+	readonly input: WireInput;
+}
+
 export interface ResumeRequest {
 	readonly sessionId: string;
 }
@@ -97,6 +104,18 @@ export interface RunReply {
 	readonly runId: string;
 }
 
+export interface SteerReply {
+	readonly runId: string;
+}
+
+/** ADR-0057: the data of the non-durable `event: unadmitted` frame a stream
+ *  carries right after a run's terminal — input a steer handed the run that
+ *  it never admitted. The client starts a new run with it. */
+export interface UnadmittedFrameData {
+	readonly runId: string;
+	readonly items: readonly WireInput[];
+}
+
 export interface ApproveReply {
 	/** No run was live to consume the answer: the decision is durable, and
 	 *  a resume is what makes the run continue. */
@@ -126,7 +145,8 @@ export interface SessionState {
 
 // ---- errors, one shape -----------------------------------------------------------
 
-export type WireErrorCode = "in_flight" | "open_run" | "draining" | "not_found" | "bad_request" | "forbidden" | "internal";
+/** `idle` / `closed` (ADR-0057): a steer found no live run, or a run whose ingress had sealed. */
+export type WireErrorCode = "in_flight" | "open_run" | "draining" | "idle" | "closed" | "not_found" | "bad_request" | "forbidden" | "internal";
 
 export interface WireError {
 	readonly code: WireErrorCode;

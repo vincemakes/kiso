@@ -1,24 +1,18 @@
 /**
- * L2 — context-economy primitives, the MECHANICAL half.
+ * The token estimator: runtime context-accounting policy.
  *
- * The kernel's compaction policy is identity preservation, not summary
- * (the predecessor's ADR-0007): keep the message SHELL (id, role, position), replace
- * the content with a marker, zero LLM calls. A summary is a NEW message; it
- * never rewrites an old one. Messages are immutable (ADR-0002) — "clearing"
- * is append, not mutation.
+ * A stable, monotone chars/4 proxy for the size of a message list. The
+ * runtime's context policy, request budget, summary layer, context anchor
+ * and request trace read it; the kernel never did.
  *
- * ADR-0044 merged the classic auto-compaction (`config.compaction` +
- * `compacted` events) INTO the microcompact boundary: the loop no longer
- * produces `compacted` events (the boundary's projection derives the same
- * cleared view deterministically), and this module now holds only what the
- * live path shares. Old sessions' `compacted` events still replay verbatim
- * — see kernel/project.ts.
- *
- * The model-generated half of context economy (the /compact summary layer)
- * lives in kernel/summarize.ts.
+ * ADR-0043 Amendment 13: moved here unchanged from the core package
+ * (`kernel/compaction.ts`). Since ADR-0044 moved compaction into the
+ * microcompact boundary, that file held only this estimator, and nothing
+ * in core called it — so it left the counted kernel instead of the cap
+ * moving.
  */
 
-import type { ContentBlock, Message } from "../protocol/messages.js";
+import type { ContentBlock, Message } from "@vincemakes/kiso-core";
 
 /**
  * What a non-text block (an image) contributes. There is no character count
@@ -70,7 +64,8 @@ function textTokens(text: string): number {
  * purpose: context economy only needs a stable MONOTONE proxy, not an exact
  * count — the threshold absorbs the error (the predecessor's ADR-0007). The proxy's
  * three-word contract, and the pins that hold it, are
- * packages/core/tests/sc1b-estimator.test.ts.
+ * packages/core/tests/sc1b-estimator.test.ts (it stays with the
+ * kernel-loop cases it also pins).
  */
 export function estimateTokens(messages: readonly Message[]): number {
 	let total = 0;

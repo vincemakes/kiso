@@ -184,6 +184,11 @@ Configuration: `$KISO_MCP_CONFIG` (default `~/.kiso/mcp.json`):
   input schema passes through as-is. `mcp__status` (zero args) reports each
   server's connection state and errors — connection is a load-time fact
   and the CLI has no new UI for it, so the tool itself presents it.
+- **A host supplies its own servers** with `createMcpExtension({ servers })`,
+  the same map as `mcpServers` above. The file is not read, every entry is
+  checked as a file entry is, and the tool cache is not used: it is keyed
+  by server name alone, so a host's server and yours with the same name
+  would otherwise trade tool lists. The CLI passes no `servers`.
 - A server that fails to connect is a SOFT failure: its error lands in
   `mcp__status`, every other server keeps working. A missing config file
   means no servers (never an error); a broken config throws loudly at
@@ -333,6 +338,14 @@ description: a review checklist for pull requests
 - **Approval:** `read_skill` reads user-installed local docs — the
   safe-defaults example allows it (read_file trust); everything else
   about skills is plain file access governed by the existing policy.
+- **A name found twice** resolves to its first occurrence (root order,
+  then directory-name order within each root); the later one joins the
+  broken skills in the warning line instead of sitting in the index as a
+  skill `read_skill` could never serve.
+- **A host chooses the skills.** `createSkillsExtension({ roots, include })`:
+  `roots` replaces the default scan, in order; `include(entry)` filters
+  the one list that the index, `read_skill`, the catalog and the count
+  are built from. The CLI passes neither.
 
 ## Ask — the model puts a real choice to you
 
@@ -359,6 +372,10 @@ or multi select.
 - **A decline is an outcome, not silence.** The result names every
   question that went unanswered, options included — the model learns
   that you chose not to choose, which is different from not being asked.
+- **A host supplies its own panel.** `createAskExtension(ui)` takes the
+  bridge; `ui.ask(spec, signal, ctx)` receives `ctx = { sessionId, callId }`
+  from the tool context, so a host serving many sessions from one runtime
+  can route each question to the session that asked it.
 - **The answers are durable facts.** They ride the ordinary
   `tool_result` of an ordinary tool call, so **an answered question is
   never asked again — including across `kill -9`**. A question that was

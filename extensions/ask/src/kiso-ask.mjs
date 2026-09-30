@@ -98,9 +98,11 @@ function resultContent(result) {
 }
 
 /**
- * The factory. `ui` is the panel bridge: `{ ask(spec, signal) → Promise<
- * {answers:[…]} | {declined:[…]} > }`. The CLI builds it over the
- * editor's panel slot; a test can pass any object with that one method.
+ * The factory. `ui` is the panel bridge: `{ ask(spec, signal, ctx) →
+ * Promise< {answers:[…]} | {declined:[…]} > }`, where `ctx` is
+ * `{ sessionId, callId }` from the tool context. The CLI builds it over the
+ * editor's panel slot and ignores `ctx`; a test can pass any object with
+ * that one method.
  */
 export default async function createAskExtension(ui) {
 	// TTY gating by construction: no bridge, no tool. The extension still
@@ -144,7 +146,10 @@ export default async function createAskExtension(ui) {
 					// The schema already refused an empty list; this guard is
 					// for direct tool use (a test, a bridge under repair).
 					if (questions.length === 0) return { content: "ask_user: no questions", isError: true };
-					const result = await ui.ask({ questions }, ctx?.signal);
+					// The third argument tells a host WHICH session and call is asking: one
+					// runtime may serve many sessions, and a bridge built per runtime cannot
+					// know otherwise. Both are the tool context's own values, passed through.
+					const result = await ui.ask({ questions }, ctx?.signal, { sessionId: ctx?.sessionId, callId: ctx?.callId });
 					return { content: resultContent(result), isError: false };
 				},
 			},

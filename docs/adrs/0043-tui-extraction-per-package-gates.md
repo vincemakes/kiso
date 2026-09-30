@@ -483,3 +483,47 @@ argument exists).
 Ruling:
 - **core: 2,200, still HARD.** No move in either direction. The next
   crossing attaches its ledger first, as Amendment 11 requires.
+
+## Amendment 13 (2026-09-28): the token estimator leaves core — extraction, not a third cap move
+
+**Status.** Approved in an external review and ratified by the owner on
+2026-09-28, together with ADR-0057 (Safe Admission), whose kernel seam
+is the occasion. ADR-0057's text enters `docs/adrs/` with its
+implementation.
+
+**The occasion.** ADR-0057 needs an estimated 18–24 counted lines in the
+kernel; core stood at 2,198 / 2,200 (0.44.0). Amendment 11 requires a
+tenancy audit before any cap move. The audit finds that no cap move is
+needed.
+
+**The finding.** `packages/core/src/kernel/compaction.ts` (36 counted
+lines) held only `estimateTokens` and its helpers. Amendment 11
+classified the file **must**, as "the mechanical half of context
+economy"; since ADR-0044 moved compaction into the microcompact
+boundary, that half lives elsewhere, and the file's own header said it
+"now holds only what the live path shares". Nothing in
+`packages/core/src` called `estimateTokens`; the only reference was the
+re-export in `index.ts`. Its callers were all in the runtime
+(`session.ts`, `summarize.ts`, `request-budget.ts`, `context-anchor.ts`,
+`trace/manifest.ts`) and one bench script.
+
+**The move.** `estimateTokens` moved to `@vincemakes/kiso-runtime`
+(`packages/runtime/src/estimate-tokens.ts`), its code unchanged. Core
+recovered 37 counted lines (the file and its re-export): **2,198 →
+2,161**, 39 of headroom. The estimator's contract tests
+(`packages/core/tests/sc1b-estimator.test.ts`) stay in core, beside the
+kernel-loop cases they also pin, and import it from the runtime — the
+direction core's tests already used.
+
+**What this is not.** Not a change of the ruler — the file left the
+package, it was not excluded from the count; and not a relocation of
+correctness authority — the kernel never consulted the estimator.
+
+**The cost: a public API change.** `import { estimateTokens } from
+"@vincemakes/kiso-core"` breaks; it becomes an import from
+`@vincemakes/kiso-runtime`. The release notes say it in one line: the
+estimator is runtime context-accounting policy, not a kernel primitive.
+
+Ruling:
+- **core: 2,200, still HARD.** Unmoved. Extraction was the hatch, as
+  this ADR intends.

@@ -299,7 +299,7 @@ describe("hooks.onSettled", () => {
 		expect(settled).toEqual([]); // not before the terminal
 		release();
 		await handle.done;
-		expect(settled).toEqual([{ sessionId: "s", runId: handle.runId, outcome: "completed", uncertainRemaining: 0, highWater: service.highWater("s") }]);
+		expect(settled).toEqual([{ sessionId: "s", runId: handle.runId, outcome: "completed", uncertainRemaining: 0, highWater: service.highWater("s"), unadmitted: [] }]);
 		const other = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-server-B-")));
 		const mismatched: unknown[] = [];
 		const bad = createSessionService({ store, open: async () => createAgent({ model: "faux", store: other, tools: [], adapter: createFauxProvider(ONE_TURN) }), hooks: { onSettled: (s) => void mismatched.push(s) } });

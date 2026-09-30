@@ -145,7 +145,7 @@ describe("§8.7 — the live row", () => {
 	it("`working` the whole turn, with the elapsed, the output tokens and the rate", () => {
 		const since = Date.now() - 12_000;
 		const row = plain(workingRow("✦", since, 1_300, 48, 120, null));
-		expect(row).toMatch(/^✦ working 12s · ↓ 1\.3k · 48 tok\/s +esc stop · ⏎ queue · alt\+⏎ redirect$/);
+		expect(row).toMatch(/^✦ working 12s · ↓ 1\.3k · 48 tok\/s +esc stop · ⏎ steer · alt\+⏎ redirect$/);
 		expect(row).not.toContain("thinking");
 	});
 
@@ -160,28 +160,36 @@ describe("§8.7 — the live row", () => {
 	it("the keys give way from the right, whole; the facts are never cut before them", () => {
 		const facts = "✦ working 12s · ↓ 1.3k";
 		for (let W = 10; W <= 120; W += 1) {
-			const row = plain(liveRow(facts, ["esc stop · ⏎ queue · alt+⏎ redirect", "esc stop · ⏎ queue", "esc stop"], W));
+			const row = plain(liveRow(facts, ["esc stop · ⏎ steer · alt+⏎ redirect", "esc stop · ⏎ steer", "esc stop"], W));
 			expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
 			if (row.includes("esc")) expect(row.startsWith(facts), `W=${W}: ${row}`).toBe(true);
 			const keys = row.slice(facts.length).trim();
-			expect(["", "esc stop · ⏎ queue · alt+⏎ redirect", "esc stop · ⏎ queue", "esc stop"], `W=${W}: ${row}`).toContain(row.startsWith(facts) ? keys : "");
+			expect(["", "esc stop · ⏎ steer · alt+⏎ redirect", "esc stop · ⏎ steer", "esc stop"], `W=${W}: ${row}`).toContain(row.startsWith(facts) ? keys : "");
 		}
 	});
 });
 
-describe("§8.7 — a queued message is one row", () => {
-	it("the mark, the word, the text, the keys that edit it", () => {
+describe("§8.7 — a steer that has not landed is one row (the main-sync round, owner 2026-09-30)", () => {
+	// RE-DERIVED: the `◇ queued … after this turn · ↑ edit` row retired with
+	// main's queue (ADR-0057); a steer's row has no label word
+	it("the gold mark, the text at the content edge, what happens next and the key that takes it back", () => {
 		const [row] = pendingQueueRows(["tidy the imports"], 80).map(plain);
-		expect(row).toMatch(/^◇ queued {2}tidy the imports +after this turn · ↑ edit$/);
+		expect(row).toMatch(/^◇ tidy the imports +next step · ↑ takes back$/);
 		expect(row!.length).toBe(80);
+		expect(row).not.toContain("queued");
+	});
+
+	it("while an approval is open it lands after the approval", () => {
+		const [row] = pendingQueueRows(["tidy the imports"], 80, "approval").map(plain);
+		expect(row).toMatch(/^◇ tidy the imports +after the approval · ↑ takes back$/);
 	});
 
 	it("a long message elides before its keys go; a narrow row keeps the text", () => {
 		const long = "x".repeat(200);
 		const [wide] = pendingQueueRows([long], 80).map(plain);
 		expect(wide).toContain("…");
-		expect(wide!.endsWith("after this turn · ↑ edit")).toBe(true);
-		for (let W = 12; W <= 100; W += 1) for (const r of pendingQueueRows([long, "hi"], W)) expect(plain(r).length, `W=${W}`).toBeLessThanOrEqual(W);
+		expect(wide!.endsWith("next step · ↑ takes back")).toBe(true);
+		for (const waiting of ["step", "approval"] as const) for (let W = 12; W <= 100; W += 1) for (const r of pendingQueueRows([long, "hi"], W, waiting)) expect(plain(r).length, `W=${W}`).toBeLessThanOrEqual(W);
 	});
 });
 

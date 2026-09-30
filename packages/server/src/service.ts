@@ -1,7 +1,7 @@
 import type { ContentBlock, Event, MessageSource } from "@vincemakes/kiso-core";
 import type { Agent, ApprovalRequest, Run, Session, SessionStore } from "@vincemakes/kiso-runtime";
 import { openRunId } from "@vincemakes/kiso-runtime/internal";
-import { DrainingError, InFlightError, OpenRunError, StoreMismatchError } from "./errors.js";
+import { DrainingError, InFlightError, NotRunningError, OpenRunError, StoreMismatchError } from "./errors.js";
 import { executionDelta } from "./execution.js";
 import { type Listener, tail } from "./tail.js";
 
@@ -73,6 +73,9 @@ export interface SettledRun {
 	readonly uncertainRemaining: number;
 	/** The highest seq this run delivered. */
 	readonly highWater: number;
+	/** ADR-0057: input a steer handed this run that it never admitted — the
+	 *  run sealed first. The host's "what next" is usually a new run with it. */
+	readonly unadmitted: readonly (string | readonly ContentBlock[])[];
 }
 
 export interface RunHandle {
@@ -124,6 +127,8 @@ interface Held {
 	highWater: number;
 	/** Set once a settled run's terminal was not found on the service's store. */
 	mismatch: StoreMismatchError | null;
+	/** ADR-0057: what the latest run accepted and never admitted, keyed by its terminal. */
+	unadmitted: { readonly runId: string; readonly terminalSeq: number; readonly items: readonly (string | readonly ContentBlock[])[] } | null;
 }
 
 export class SessionService {
@@ -150,7 +155,7 @@ export class SessionService {
 		const opening = (async (): Promise<Held> => {
 			const agent = await this.#open(sessionId);
 			const session = await agent.session({ id: sessionId });
-			const held: Held = { id: sessionId, agent, session, listeners: new Set(), live: null, pumping: null, executing: 0, highWater: -1, mismatch: null };
+			const held: Held = { id: sessionId, agent, session, listeners: new Set(), live: null, pumping: null, executing: 0, highWater: -1, mismatch: null, unadmitted: null };
 			this.#held.set(sessionId, held);
 			return held;
 		})();
@@ -181,6 +186,9 @@ export class SessionService {
 		const pumping = (async (): Promise<void> => {
 			try {
 				for await (const event of run) {
+					// ADR-0057: the ingress sealed before the terminal was appended,
+					// so what never landed is known by the time it is delivered.
+					if (event.type === "terminal") held.unadmitted = { runId: run.runId, terminalSeq: event.seq, items: run.unadmitted() };
 					held.executing = Math.max(0, held.executing + executionDelta(event));
 					held.highWater = Math.max(held.highWater, event.seq);
 					for (const listener of [...held.listeners]) {
@@ -214,12 +222,32 @@ export class SessionService {
 					outcome: terminal !== undefined && terminal.type === "terminal" ? terminal.outcome.kind : "unknown",
 					uncertainRemaining: held.session.uncertainExecutions().length,
 					highWater: held.highWater,
+					unadmitted: run.unadmitted(),
 				});
 			}
 		})();
 		held.pumping = pumping;
 		void pumping.catch(() => {}); // a host that does not await `done` gets no unhandled rejection
 		return { runId: run.runId, done: pumping };
+	}
+
+	/** ADR-0057 — hand the session's live run a person's input; it is
+	 *  admitted at the run's next Safe Admission boundary. Refuses with
+	 *  `NotRunningError` when no run is live, and with the runtime's
+	 *  `RunClosedError` once the run's ingress has sealed — either way the
+	 *  host starts a new run with the input. */
+	steer(sessionId: string, input: string | readonly ContentBlock[]): { readonly runId: string } {
+		const live = this.#held.get(sessionId)?.live ?? null;
+		if (live === null) throw new NotRunningError(sessionId);
+		live.steer(input);
+		return { runId: live.runId };
+	}
+
+	/** ADR-0057 — what the run that ended at `terminalSeq` accepted and never
+	 *  admitted; null when nothing, or when that is not the latest terminal. */
+	unadmittedAt(sessionId: string, terminalSeq: number): { readonly runId: string; readonly items: readonly (string | readonly ContentBlock[])[] } | null {
+		const u = this.#held.get(sessionId)?.unadmitted ?? null;
+		return u !== null && u.terminalSeq === terminalSeq && u.items.length > 0 ? { runId: u.runId, items: u.items } : null;
 	}
 
 	/** Start a turn. Refuses with `InFlightError` (one run per session),

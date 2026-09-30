@@ -18,7 +18,7 @@ Agent                definition + session factory        packages/runtime
       |
 Session              durable conversation                packages/runtime
       |
-Run                  one user turn, write-ahead               packages/runtime
+Run                  one execution, write-ahead               packages/runtime
       |
 Kernel loop          model <-> tool cycle                packages/core
       |
@@ -163,13 +163,20 @@ seeded from disk, and:
 It must not decide: terminal presentation, provider wire formats, or
 whether a write is legal — the store adjudicates that.
 
-## 5. Run — one user turn
+## 5. Run — one foreground execution
 
-`Run` (`packages/runtime/src/run.ts`) is a single **user turn** as an
-async iterable of events: one input (or one resume) driven to its
-terminal, spanning as many model/tool cycles as the loop needs. It owns:
+`Run` (`packages/runtime/src/run.ts`) is one **foreground execution** as
+an async iterable of events: one input (or one resume) driven to exactly
+one terminal, spanning as many model/tool cycles as the loop needs, and
+admitting further input at Safe Admission boundaries (ADR-0057, which
+overturned this section's earlier "one user turn"). It owns:
 
 - the `runId` and the abort;
+- **the ephemeral ingress** (ADR-0057): `steer()` holds a person's input
+  in memory until the kernel admits it at a quiescent boundary; every
+  terminal seals it; `retract()` takes input back and `unadmitted()`
+  hands back what never landed. Nothing in it is durable — the admitted
+  `user_input` is;
 - once-only consumption;
 - **write-ahead persistence**: every event goes to the store before it is
   yielded — what a consumer sees is already on disk;
@@ -364,12 +371,12 @@ Stated plainly, so the map cannot be read as larger than the territory:
   the HTTP + SSE transport and the client exist since 0.41.0 as OPTIONAL
   packages above the runtime (§1b); the runtime itself knows nothing of
   them, and kiso-code does not use them.
-- **No mid-stream steering, no durable queue.** The RUNTIME has no
-  stream injection and no queued-input state class: input lands
-  between runs. The product shell composes both experiences from that
-  primitive — the CLI's redirect (KC2) is abort + the text as the
-  next turn, and its pending-turn queue (W22) is ephemeral process
-  state whose lines only ever become ordinary `user_input` events.
+- **No mid-stream injection, no durable queue.** Input may ARRIVE at any
+  time but is ADMITTED — appended as a `user_input` the next request
+  carries — only at a Safe Admission boundary (ADR-0057): the model's
+  stream is never cut for it, and no started effect is cancelled. The
+  ingress that holds arrived input is ephemeral state on the `Run`; a
+  crash before admission loses it, and there is no durable inbox.
 - **No second in-memory authority.** By design — see *State doctrine*.
 - **No OS sandbox.** Tools and extensions run with process privileges;
   isolation belongs to the host.

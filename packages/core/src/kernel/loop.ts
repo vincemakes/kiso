@@ -34,7 +34,7 @@
  */
 
 import { isAdapterEvent, type Adapter, type AbortSignalLike } from "../protocol/adapter.js";
-import type { Continuation, ContinuationEntry, ContinuationScope, ErrorCode, Event, StopReason, StructuredError, Terminal, ToolCallEnd } from "../protocol/events.js";
+import { isRuntimeInput, type Continuation, type ContinuationEntry, type ContinuationScope, type ErrorCode, type Event, type StopReason, type StructuredError, type Terminal, type ToolCallEnd, type UserInputVia } from "../protocol/events.js";
 import { ERROR_CODES } from "../protocol/error-codes.js";
 import type { ApprovalChain, ChainVerdict } from "../protocol/extension.js";
 import { EventLog } from "./event-log.js";
@@ -42,8 +42,11 @@ import type { EventInput } from "./event-log.js";
 import type {
 	AssistantBlock,
 	AssistantMessage,
+	ContentBlock,
 	Message,
+	MessageSource,
 	ToolResultMessage,
+	UserMessage,
 } from "../protocol/messages.js";
 import type { Tool, ToolContext, ToolResult } from "../tools/tool.js";
 import { ToolRegistry } from "../tools/registry.js";
@@ -56,6 +59,18 @@ import type { ToolTable } from "../tools/registry.js";
 
 /** Zero-dependency sleep: the kernel must not import host globals (ADR-0001). */
 declare function setTimeout(cb: () => void, ms: number): unknown;
+
+/**
+ * ADR-0057 (Safe Admission): input handed to a running run at a quiescent
+ * boundary. A "human" input passes onUserMessage once; a "runtime" input —
+ * a fact the runtime owes the model — never does.
+ */
+export interface AdmissionInput {
+	readonly kind: "human" | "runtime";
+	readonly content: string | readonly ContentBlock[];
+	readonly source?: MessageSource;
+	readonly via?: UserInputVia;
+}
 
 export interface LoopConfig {
 	readonly adapter: Adapter;
@@ -91,6 +106,14 @@ export interface LoopConfig {
 	 * run that gets nothing back then ends on that refusal.
 	 */
 	readonly compact?: (events: readonly Event[], messages: readonly Message[], why: "request" | "overflow") => Promise<readonly EventInput[]>;
+	/**
+	 * ADR-0057 (Safe Admission): the run's ingress. The kernel asks at the
+	 * three sites — "take", or "takeOrSeal" where the run would otherwise
+	 * end — and every terminal asks "seal" first. What it returns is
+	 * appended as `user_input`. Absent: nothing is admitted, and no request
+	 * byte changes.
+	 */
+	readonly admit?: (mode: "take" | "takeOrSeal" | "seal") => Promise<readonly AdmissionInput[]>;
 	readonly signal?: AbortSignalLike;
 	readonly temperature?: number;
 	readonly maxTokens?: number;
@@ -193,6 +216,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 
 	/** Yield a terminal: onStop (lifecycle) → event → onEvent (observer). */
 	const terminal = async (outcome: Terminal): Promise<Event> => {
+		await config.admit?.("seal"); // ADR-0057: the ingress closes before onStop can be awaited
 		if (hooks.onStop) await hooks.onStop(outcome.kind, {}).catch(() => {});
 		const full = log.append({ type: "terminal", outcome });
 		if (hooks.onEvent) await hooks.onEvent(full, {}).catch(() => {});
@@ -215,10 +239,39 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// every later turn of the run sees.
 	let messages = derive();
 	let vetoed = false;
+	// ADR-0057 §4 — the hook speaks ONCE per human input, the run's own or
+	// one admitted mid-run; its outcome is persisted at the input's
+	// position. Returns true for a veto.
+	async function* hook(seq: number, msg: UserMessage): AsyncGenerator<Event, boolean> {
+		const rewritten = await hooks.onUserMessage!(msg, {});
+		yield log.append({ type: "user_input_replaced", replaces: seq, content: rewritten?.content ?? null, ...(rewritten !== null && rewritten.source !== undefined ? { source: rewritten.source } : {}) });
+		messages = derive();
+		return rewritten === null;
+	}
+	// An input admitted mid-run follows a committed model turn of the same run
+	// (a stop after the last terminal); the run's own input — or a seeded
+	// history, which carries no stop — never does. A veto of the run's own
+	// input ends the run; a veto of an admitted one drops only that input.
+	const midRun = (seq: number): boolean => {
+		const after = [...log.all].reverse().find((e) => e.type === "terminal")?.seq ?? -1;
+		return log.all.some((e) => e.type === "stop" && e.seq > after && e.seq < seq);
+	};
+	/** ADR-0057 — admit what has arrived; returns how many inputs landed (a veto does not). */
+	async function* admit(mode: "take" | "takeOrSeal"): AsyncGenerator<Event, number> {
+		let landed = 0;
+		for (const input of (await config.admit?.(mode)) ?? []) {
+			const src = input.source !== undefined ? { source: input.source } : {};
+			yield* emit({ type: "user_input", content: input.content, ...src, ...(input.via !== undefined ? { via: input.via } : {}) });
+			messages = derive();
+			if (!(input.kind === "human" && hooks.onUserMessage && (yield* hook(log.lastSeq, { role: "user", content: input.content, ...src })))) landed += 1;
+		}
+		return landed;
+	}
 	if (hooks.onUserMessage && messages.length > 0) {
 		const last = messages.at(-1);
-		if (last?.role === "user") {
-			const inputEvent = [...log.all].reverse().find((e): e is Event & { type: "user_input" } => e.type === "user_input");
+		const inputEvent = [...log.all].reverse().find((e): e is Event & { type: "user_input" } => e.type === "user_input");
+		// ADR-0058 (3c): a wake run's first input is the runtime's — as at an admission site, no hook
+		if (last?.role === "user" && !isRuntimeInput(inputEvent)) {
 			// round 6: the hook runs AT MOST ONCE per input. A replacement that
 			// ALREADY exists (persisted before a crash, or before a resume)
 			// means the hook already spoke for this input — it must never
@@ -235,20 +288,11 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				// to stop).
 				if (replacement.content === null) vetoed = true;
 			}
-			if (replacement === undefined && inputEvent) {
-				const rewritten = await hooks.onUserMessage(last, {});
-				// round 1: the rewrite/veto is a NORMAL stream event — persisted by
-				// the harness and visible to consumers, never a hidden append.
-				const replaced = log.append({
-					type: "user_input_replaced",
-					replaces: inputEvent.seq,
-					content: rewritten?.content ?? null,
-					...(rewritten !== null && rewritten.source !== undefined ? { source: rewritten.source } : {}),
-				});
-				messages = derive();
-				yield replaced;
-				if (rewritten === null) vetoed = true; // round 3: a true veto ends the run
-			}
+			// round 1: the rewrite/veto is a NORMAL stream event — persisted by
+			// the harness and visible to consumers, never a hidden append.
+			// round 3: a true veto ends the run — unless the input was admitted
+			// mid-run (ADR-0057: a resume decides as the live path did).
+			if (replacement === undefined && inputEvent && (yield* hook(inputEvent.seq, last)) && !midRun(inputEvent.seq)) vetoed = true;
 		}
 	}
 	// round 3: a true veto ends the run — the provider is NEVER called, even
@@ -587,6 +631,11 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			yield await terminal({ kind: "aborted", by: "user" });
 			return;
 		}
+		// ADR-0057 site A: the turn head — quiescent, eligible (maxTurns wins),
+		// and BEFORE the END_TURN scan, which stops at an admitted input. The
+		// overflow retry is left alone (request mode only).
+		const requestMode = overflow === null;
+		if (requestMode && turns < maxTurns) yield* admit("take");
 		// 0.42.0: a settled result tagged END_TURN in the OPEN turn — after
 		// the most recent stop, user_input or terminal — completes the run
 		// instead of asking again. Read from the log at the HEAD of every
@@ -617,6 +666,8 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			overflow = null;
 			if (added.length > 0) messages = derive();
 		}
+		// ADR-0057 site C: what arrived during a request-mode compaction.
+		if (requestMode) yield* admit("take");
 
 		if (hooks.onPreLlm) await hooks.onPreLlm({ model: config.model, turns }, {});
 		if (aborted()) {
@@ -981,6 +1032,8 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				overflow = t.error;
 				continue;
 			}
+			// ADR-0057 site B: the run would end — take what arrived, or seal.
+			if (t.kind === "completed" && turns < maxTurns && (yield* admit("takeOrSeal")) > 0) continue;
 			yield await terminal(t);
 			return;
 		}

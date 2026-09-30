@@ -479,21 +479,26 @@ class UserMessage implements Component {
 }
 
 /**
- * Graphite §8.7 — a queued message is ONE row in the live zone:
+ * Graphite §8.7, the main-sync round (owner, 2026-09-30) — a STEER that
+ * has not landed is ONE row in the live zone:
  *
- *   ◇ queued  <the message's first line>        after this turn · ↑ edit
+ *   ◇ <the message's first line>                  next step · ↑ takes back
  *
- * The `◇` (a message the person sent that has not landed yet, §4) in the
- * mark column, the message cut to its room, the keys at the right; the
- * keys give way first when the row is short. (While Safe Admission is
- * ahead of us the queue stands; the row retires with it.)
+ * ADR-0057: Enter while a run works steers it — there is no queue on a
+ * terminal — and the steer lands inside the same run at its next quiet
+ * step, or after an open approval, which it never answers. The gold `◇`
+ * (a message the person sent that has not landed, §4) in the mark column
+ * and the text at the content edge; no label word (owner: the mark says
+ * it). The keys at the right say what happens next and give way first
+ * when the row is short. DECLARED REVERSAL of the `◇ queued … after this
+ * turn · ↑ edit` row, whose queue main retired in 0.45.0.
  */
-export function pendingQueueRows(lines: readonly string[], W: number): string[] {
+export function pendingQueueRows(lines: readonly string[], W: number, waiting: "step" | "approval" = "step"): string[] {
 	const p = palette();
 	const mark = p.goldMark === "" ? "\u25c7" : `${p.goldMark}\u25c7${p.fgEnd}`;
-	const keys = "after this turn \u00b7 \u2191 edit";
+	const keys = `${waiting === "approval" ? "after the approval" : "next step"} \u00b7 \u2191 takes back`;
 	return lines.map((line) => {
-		const lead = `${mark} ${p.dim}queued${p.reset}  `;
+		const lead = `${mark} `;
 		const leadW = visibleWidth(lead);
 		const text = escapeTerminal(line);
 		const withKeys = W - leadW - visibleWidth(keys) - 2;

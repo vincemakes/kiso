@@ -11,12 +11,15 @@
  * T-R2  a redirect mid-MODEL-turn: Run A's durable terminal is `aborted`,
  *       the correction lands as the next user_input, Run B completes, and
  *       the composer is empty again.
- * T-R5  the front-jump: with [A, B] already queued, the correction C runs
- *       BEFORE them and A, B keep their order behind it. The ↑/esc pop
- *       still works and a popped slot still never runs.
- * T-R6  the manual two-gesture path is unchanged: esc, then type, then
- *       Enter appends to the BACK of the queue — the front-jump belongs
- *       to the one gesture, and only to it.
+ * T-R5  ADR-0057: with steers [A, B] typed and not yet landed, the
+ *       redirect C aborts the run and the next turn is ONE message — C
+ *       first (it corrects them), then A, B. The ↑/esc pop takes a steer
+ *       back into the composer, and a popped steer never lands.
+ * T-R6  ADR-0057: esc is a stop, not a send — the steer that had not
+ *       landed returns to the composer, and Enter sends it as the next
+ *       turn.
+ * T-S1  ADR-0057: Enter while a run is live STEERS it — the line lands in
+ *       the SAME run (one terminal), after the running tool's receipt.
  *
  * PTY discipline (KC1): Enter is CR (\r), never LF — an LF inserts a
  * newline into the composer. Alt+Enter is ESC and CR in ONE write, which
@@ -193,69 +196,87 @@ describe("KC2 T-R2 — a redirect mid-run: Run A aborts, the correction becomes 
 	}, 180_000);
 });
 
-describe("KC2 T-R5 — the front-jump: the correction runs BEFORE the already-queued follow-ups", () => {
-	it("queued [alpha, beta] + redirect urgent → urgent, then alpha, then beta", () => {
+describe("KC2 T-R5 — the redirect carries the steers that had not landed (ADR-0057)", () => {
+	it("steers [alpha, beta] + redirect urgent → the run aborts, then ONE turn: urgent, alpha, beta", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r5-"));
 		const script = fauxScript(dir, [
 			busyTurn(10),
 			quickTurn("answered one"),
-			quickTurn("answered two"),
-			quickTurn("answered three"),
 		]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r5", [
 			["/mode to switch", "the original task\r", 2],
-			["working", "alpha\r", 4], // queues behind the running turn
-			["alpha", "beta\r", 5], // queues behind alpha
+			["working", "alpha\r", 4], // a steer — the tool is still running
+			["alpha", "beta\r", 5], // a second steer
 			["beta", "urgent", 6],
 			["urgent", ALT_ENTER, 7], // the one gesture
-		], 40, ["answered three"]);
+		], 40, ["answered one"]);
 
-		// the durable order IS the acceptance: current (aborted) → C → A → B
-		expect(userInputs(dirs.home, "kc2r5")).toEqual(["the original task", "urgent", "alpha", "beta"]);
+		// the durable order IS the acceptance: current (aborted) → ONE turn,
+		// the correction first; alpha and beta never landed in the aborted run
+		expect(userInputs(dirs.home, "kc2r5")).toEqual(["the original task", "urgent\n\nalpha\n\nbeta"]);
 		expect(terminals(dirs.home, "kc2r5")[0]).toBe("aborted");
 		const screen = Buffer.from(out, "hex").toString("utf8");
-		expect(screen).toContain("answered three"); // all three follow-ups really ran
+		expect(screen).toContain("answered one"); // the one next turn really ran
 	}, 180_000);
 
-	it("the ↑/esc pop still works — a popped slot never runs, and the survivors keep their order", () => {
+	it("↑ takes a steer back into the composer — it never lands on its own, and the redirect carries the rest", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r5b-"));
-		const script = fauxScript(dir, [busyTurn(10), quickTurn("answered one"), quickTurn("answered two")]);
+		const script = fauxScript(dir, [busyTurn(10), quickTurn("answered one")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r5b", [
 			["/mode to switch", "the original task\r", 2],
 			["working", "keeper\r", 4],
 			["keeper", "popme\r", 5],
-			["popme", "\x1b[A", 6], // ↑ pops "popme" back into the composer, cursor at the end
+			["popme", "\x1b[A", 6], // ↑ takes the steer "popme" back into the composer, cursor at the end
 			["popme", " and also this", 7], // the human keeps typing — the pop is an EDIT, not a resend
 			["and also this", ALT_ENTER, 8], // and redirects with the edited whole
-		], 40, ["answered two"]);
+		], 40, ["answered one"]);
 
 		const inputs = userInputs(dirs.home, "kc2r5b");
-		// "popme" NEVER ran as its own turn — it left the queue through the
-		// pop and came back as text the human was still writing.
+		// "popme" NEVER landed on its own — it left the run's ingress
+		// through the pop and came back as text the human was still writing.
 		expect(inputs).not.toContain("popme");
-		expect(inputs).toEqual(["the original task", "popme and also this", "keeper"]);
-		expect(Buffer.from(out, "hex").toString("utf8")).toContain("answered two");
+		expect(inputs).toEqual(["the original task", "popme and also this\n\nkeeper"]);
+		expect(Buffer.from(out, "hex").toString("utf8")).toContain("answered one");
 	}, 180_000);
 });
 
-describe("KC2 T-R6 — the manual two-gesture path is exactly what it was", () => {
-	it("esc, then type, then Enter appends to the BACK of the queue — no front-jump", () => {
+describe("KC2 T-R6 — esc is a stop, not a send (ADR-0057)", () => {
+	it("esc hands the steer that had not landed back to the composer; Enter sends it as the next turn", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r6-"));
-		const script = fauxScript(dir, [busyTurn(10), quickTurn("answered one"), quickTurn("answered two")]);
+		const script = fauxScript(dir, [busyTurn(10), quickTurn("answered one")]);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r6", [
 			["/mode to switch", "the original task\r", 2],
-			["working", "already queued\r", 4],
-			["already queued", "\x1b", 6], // the bare esc, alone in its write — the run aborts
-			["aborting", "typed after the abort\r", 8], // a separate, ordinary Enter
-		], 40, ["answered two"]);
+			["working", "not landed yet\r", 4], // a steer — the tool is still running
+			["not landed yet", "\x1b", 6], // the bare esc, alone in its write — the run aborts
+			["aborting", "\r", 8], // the steer is back in the composer: Enter sends it
+		], 40, ["answered one"]);
 
-		// the manual path keeps the queue's order: the abort does not reorder
-		// anything, and the new line goes to the BACK.
-		expect(userInputs(dirs.home, "kc2r6")).toEqual(["the original task", "already queued", "typed after the abort"]);
+		// the aborted run never admitted the steer; it came back and ran next
+		expect(userInputs(dirs.home, "kc2r6")).toEqual(["the original task", "not landed yet"]);
 		expect(terminals(dirs.home, "kc2r6")[0]).toBe("aborted");
-		expect(Buffer.from(out, "hex").toString("utf8")).toContain("answered two");
+		expect(Buffer.from(out, "hex").toString("utf8")).toContain("answered one");
+	}, 180_000);
+});
+
+describe("KC2 T-S1 — Enter while a run is live steers it (ADR-0057)", () => {
+	it("the line lands in the SAME run, after the running tool's receipt — one terminal", () => {
+		const { env, dirs } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-s1-"));
+		const script = fauxScript(dir, [busyTurn(4), quickTurn("steered answer")]);
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2s1", [
+			["/mode to switch", "search the whole tree\r", 2], // Graphite: the idle bar teaches /mode; the input carries no placeholder (§7.8)
+			["working", "only src/\r", 3], // a steer while the tool runs
+		], 30, ["steered answer"]);
+
+		const events = durableEvents(dirs.home, "kc2s1").map((r) => r.event);
+		expect(userInputs(dirs.home, "kc2s1")).toEqual(["search the whole tree", "only src/"]);
+		expect(terminals(dirs.home, "kc2s1")).toEqual(["completed"]);
+		const steerAt = events.findIndex((e) => e.type === "user_input" && e.content === "only src/");
+		const resultAt = events.findIndex((e) => e.type === "tool_result");
+		expect(steerAt).toBeGreaterThan(resultAt);
+		expect(Buffer.from(out, "hex").toString("utf8")).toContain("steered answer");
 	}, 180_000);
 });

@@ -8,7 +8,7 @@
  * timely isError.
  */
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -291,4 +291,101 @@ describe("0.1.26 (lazy connection): the tool cache — pre-ready calls wait, dis
 		}
 	}, 30_000);
 });
+});
+
+describe("a host supplies the servers — no config file, no shared tool cache", () => {
+	/** A temp KISO_HOME and a config FILE naming `fileServers`, so every test
+	 *  proves the host's map wins over what the file would have connected. */
+	function world(fileServers: Record<string, unknown>): { home: string; restore: () => void } {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mcp-host-"));
+		const home = join(dir, "home");
+		mkdirSync(home, { recursive: true });
+		const file = join(dir, "mcp.json");
+		writeFileSync(file, JSON.stringify({ mcpServers: fileServers }), "utf8");
+		process.env.KISO_HOME = home;
+		process.env.KISO_MCP_CONFIG = file;
+		return {
+			home,
+			restore: () => {
+				delete process.env.KISO_HOME;
+				delete process.env.KISO_MCP_CONFIG;
+			},
+		};
+	}
+
+	it("the supplied map replaces the config file: only the host's server connects", async () => {
+		const w = world({ other: fakeConfig() });
+		try {
+			const ext = await createMcpExtension({ servers: { fake: fakeConfig() } });
+			await settled(ext, "fake");
+			const names = ext.tools?.map((t) => t.name) ?? [];
+			expect(names).toContain("mcp__fake__echo");
+			expect(names.some((n) => n.startsWith("mcp__other__"))).toBe(false);
+			const status = await ext.tools!.find((t) => t.name === "mcp__status")!.execute({}, ctx);
+			expect(String(status.content)).not.toContain("other");
+		} finally {
+			w.restore();
+		}
+	}, 30_000);
+
+	it("a supplied entry is validated like a file entry, with the same message", async () => {
+		const w = world({});
+		try {
+			expect(() => createMcpExtension({ servers: { lonely: { args: [] } } as never })).toThrow('[mcp] server "lonely" needs a command (stdio) or a url');
+			expect(() => createMcpExtension({ servers: [fakeConfig()] as never })).toThrow("[mcp] options.servers must be an object map of server name to config");
+		} finally {
+			w.restore();
+		}
+	});
+
+	it("servers: {} is zero servers, not a fall-back to the file", async () => {
+		const w = world({ other: fakeConfig() });
+		try {
+			const ext = await createMcpExtension({ servers: {} });
+			expect(ext.tools?.map((t) => t.name)).toEqual([]);
+		} finally {
+			w.restore();
+		}
+	});
+
+	it("a disabled supplied server is not connected; its enabled neighbour is", async () => {
+		const w = world({});
+		try {
+			const ext = await createMcpExtension({ servers: { fake: fakeConfig(), off: { ...fakeConfig(), disabled: true } } });
+			await settled(ext, "fake");
+			const names = ext.tools?.map((t) => t.name) ?? [];
+			expect(names).toContain("mcp__fake__echo");
+			expect(names.some((n) => n.startsWith("mcp__off__"))).toBe(false);
+			const status = await ext.tools!.find((t) => t.name === "mcp__status")!.execute({}, ctx);
+			expect(String(status.content)).not.toContain("off");
+		} finally {
+			w.restore();
+		}
+	}, 30_000);
+
+	it("the tool cache is neither read nor written: a cached list for the same name never registers, and the file is untouched", async () => {
+		const w = world({});
+		const seeded = JSON.stringify({ fake: [{ name: "stale", description: "another configuration's tool", inputSchema: { type: "object", properties: {} } }] });
+		writeFileSync(join(w.home, "mcp-tools.json"), seeded, "utf8");
+		try {
+			const ext = await createMcpExtension({ servers: { fake: fakeConfig() } });
+			expect(ext.tools?.some((t) => t.name === "mcp__fake__stale")).toBe(false);
+			await settled(ext, "fake");
+			expect(ext.tools?.some((t) => t.name === "mcp__fake__stale")).toBe(false);
+			expect(readFileSync(join(w.home, "mcp-tools.json"), "utf8")).toBe(seeded);
+		} finally {
+			w.restore();
+		}
+	}, 30_000);
+
+	it("with no cache file present, a supplied server's connect does not create one", async () => {
+		const w = world({});
+		try {
+			const ext = await createMcpExtension({ servers: { fake: fakeConfig() } });
+			await settled(ext, "fake");
+			expect(existsSync(join(w.home, "mcp-tools.json"))).toBe(false);
+		} finally {
+			w.restore();
+		}
+	}, 30_000);
 });

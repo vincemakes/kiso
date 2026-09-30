@@ -7,5 +7,4 @@ export * from "./kernel/event-log.js";
 export * from "./kernel/hooks.js";
 export * from "./kernel/permission.js";
 export * from "./kernel/loop.js";
-export * from "./kernel/compaction.js";
 export * from "./kernel/project.js";

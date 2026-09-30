@@ -18,18 +18,20 @@ list of things the core deliberately refuses to own.
 > It has moved exactly twice, each by adjudicated amendment: 2,000 → 2,100
 > (Amendment 9, the F4 kernel round) and 2,100 → 2,200 (Amendment 10, the
 > MG-1 round — the frozen continuation shapes and their trust boundary are
-> kernel by definition).
+> kernel by definition). Extraction was last used by Amendment 13: the
+> token estimator, which the kernel never called, left core for the
+> runtime (2,198 → 2,161) instead of the cap moving a third time.
 
 ```
 $ npm run size
 
 core:
-  packages/core/src/kernel/loop.ts      897
-  packages/core/src/protocol/events.ts  490
-  packages/core/src/kernel/project.ts   356
+  packages/core/src/kernel/loop.ts      915
+  packages/core/src/protocol/events.ts  487
+  packages/core/src/kernel/project.ts   363
   ...
-  total                                2198  / 2200
-  ✓ 2 lines of headroom remaining.
+  total                                2192  / 2200
+  ✓ 8 lines of headroom remaining.
 
 cli:
   apps/cli/src/index.ts     981

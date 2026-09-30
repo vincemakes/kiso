@@ -86,7 +86,7 @@ class ConnectError extends Error {
 	}
 }
 
-interface McpServerConfig {
+export interface McpServerConfig {
 	readonly command?: string;
 	readonly args?: readonly string[];
 	readonly env?: Readonly<Record<string, string>>;
@@ -120,10 +120,19 @@ function kisoHome(): string {
  *  a standalone load declares none and gets exactly the pre-F7 behaviour. */
 export interface McpExtensionOptions {
 	readonly secretEnvNames?: readonly string[];
+	/** For a host: the servers, in the mcp.json `mcpServers` shape. Given
+	 *  (even `{}`), no config file is read and the tool cache is neither
+	 *  read nor written — the cache is keyed by server name alone, so a
+	 *  host's "github" and the person's "github" would trade tool lists.
+	 *  A supplied server's tools register when its connect settles. */
+	readonly servers?: Readonly<Record<string, McpServerConfig>>;
 }
 
 export default function createMcpExtension(opts: McpExtensionOptions = {}): KisoExtension {
-	const config = readConfig(process.env.KISO_MCP_CONFIG ?? join(kisoHome(), "mcp.json"));
+	const hostServers = opts.servers !== undefined;
+	const config: McpConfig = hostServers
+		? { mcpServers: checkServers(opts.servers, "options.servers must be an object map of server name to config") }
+		: readConfig(process.env.KISO_MCP_CONFIG ?? join(kisoHome(), "mcp.json"));
 	const status: ServerStatus[] = [];
 	// 0.1.26: the LIVE tools array — the cached tools register immediately;
 	// the background connects replace them with the fresh lists on settle.
@@ -134,7 +143,7 @@ export default function createMcpExtension(opts: McpExtensionOptions = {}): Kiso
 	// The tool cache: written after every successful connect, read at
 	// startup — the cached tools are callable while the connection is in
 	// flight (their execute waits for the connect).
-	const cache = readToolCache(kisoHome());
+	const cache = hostServers ? {} : readToolCache(kisoHome());
 
 	// diet A (0.1.47): with NO configured (enabled) server the extension
 	// exposes NO tools — not even mcp__status. An unconfigured extension
@@ -182,15 +191,17 @@ export default function createMcpExtension(opts: McpExtensionOptions = {}): Kiso
 					tools.push(...mapped);
 					// The cache stores the RAW server tool names — the
 					// mcp__<server>__ prefix is re-applied at the read.
-					writeToolCache(
-						kisoHome(),
-						name,
-						mapped.map((t) => ({
-							name: t.name.slice(`mcp__${name}__`.length),
-							description: t.description,
-							inputSchema: t.parameters,
-						})),
-					);
+					if (!hostServers) {
+						writeToolCache(
+							kisoHome(),
+							name,
+							mapped.map((t) => ({
+								name: t.name.slice(`mcp__${name}__`.length),
+								description: t.description,
+								inputSchema: t.parameters,
+							})),
+						);
+					}
 				},
 				(err: unknown) => {
 					const e = err as ConnectError;
@@ -309,7 +320,20 @@ function readConfig(path: string): McpConfig {
 		throw new Error(`[mcp] ${path} must be an object with an mcpServers map`);
 	}
 	const cfg = parsed as McpConfig;
-	for (const [name, server] of Object.entries(cfg.mcpServers ?? {})) {
+	checkEntries(cfg.mcpServers ?? {});
+	return cfg;
+}
+
+/** A host's map meets the file's checks: the type alone does not stop a
+ *  JavaScript caller, and a bad entry must fail as loudly either way. */
+function checkServers(servers: unknown, notAMap: string): Readonly<Record<string, McpServerConfig>> {
+	if (typeof servers !== "object" || servers === null || Array.isArray(servers)) throw new Error(`[mcp] ${notAMap}`);
+	checkEntries(servers as Readonly<Record<string, McpServerConfig>>);
+	return servers as Readonly<Record<string, McpServerConfig>>;
+}
+
+function checkEntries(servers: Readonly<Record<string, McpServerConfig>>): void {
+	for (const [name, server] of Object.entries(servers)) {
 		if (typeof server !== "object" || server === null || Array.isArray(server)) {
 			throw new Error(`[mcp] server "${name}" must be an object`);
 		}
@@ -317,7 +341,6 @@ function readConfig(path: string): McpConfig {
 			throw new Error(`[mcp] server "${name}" needs a command (stdio) or a url`);
 		}
 	}
-	return cfg;
 }
 
 /** The zero-arg status tool: connection state is runtime info and the CLI

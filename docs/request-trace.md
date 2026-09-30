@@ -123,7 +123,7 @@ schema. Each segment is a THIN pointer:
 |---|---|
 | `role` | `"system" \| "tools" \| "turn" \| "current_turn"` |
 | `seqRange` | `[firstSeq, lastSeq]` inclusive of the events that produced the segment; null for system/tools (not events) — and null for every turn when the message count and the log's visible boundaries diverge (an alignment surprise degrades ranges to null: honest thin pointers rather than wrong ones) |
-| `estTokens` | estimate (chars/4 per message shape — core's `estimateTokens`) |
+| `estTokens` | estimate (chars/4 per message shape — the runtime's `estimateTokens`) |
 | `freshness` | `"fresh" \| "cache_read" \| "cache_write"` — the last turn is `fresh`, everything before it `cache_read` |
 
 Turn boundaries are the log's visible `user_input` events: a **vetoed**

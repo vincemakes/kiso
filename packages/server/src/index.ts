@@ -9,7 +9,7 @@
 
 export { createSessionService, SessionService } from "./service.js";
 export type { AbortOutcome, DrainReport, OpenRun, RunHandle, RunOptions, SessionServiceOptions, SettledRun } from "./service.js";
-export { DrainingError, InFlightError, OpenRunError, StoreMismatchError } from "./errors.js";
+export { DrainingError, InFlightError, NotRunningError, OpenRunError, StoreMismatchError } from "./errors.js";
 export { EXECUTION_ENDED, executionDelta } from "./execution.js";
 export { tail } from "./tail.js";
 export { MAX_ARG_DEPTH, MAX_ARG_VALUE_CHARS, STRIPPED_ARG_KEYS, sanitizeToolArgs, toWireEvent } from "./wire.js";

@@ -2,15 +2,16 @@
  * v2c — the self-drawn editor through the CLI's topmost entry, on a REAL
  * PTY (24×80, TIOCSWINSZ): the Chinese-input cursor lands on the DISPLAY
  * width column (the drift root cure), the submitted line renders in the
- * scroll region EXACTLY once, a turn submitted while another runs queues
- * and executes next, Esc cancels a paused approval (the
+ * scroll region EXACTLY once, a line submitted while a run is live steers
+ * it (ADR-0057) and is answered next, Esc cancels a paused approval (the
  * conservative denial continues the run — the old abort is gone), and
  * exit turns bracketed paste off (?2004l) and resets the region (CSI r).
- * W22 adds the visibility invariant's e2e: queued turns pre-render ABOVE
- * the input row (Graphite §8.7: one `◇ queued` row each, with its keys),
- * ↑ pops the last one back into the editor and esc pops
- * one more, the popped turns NEVER execute, and a piped session shows no
- * chips (the pipe path has no raw keys).
+ * W22 adds the visibility invariant's e2e — since ADR-0057 the rows are
+ * steers that have not landed: they pre-render ABOVE the input row
+ * (Graphite §8.7, the main-sync round: one gold `◇` row each, with what
+ * happens next and its key), ↑ takes the last back into the editor and
+ * esc one more, a steer taken back NEVER lands, and a piped session shows
+ * no rows (the pipe path has no raw keys and keeps one turn per line).
  */
 
 import { execFileSync } from "node:child_process";
@@ -82,7 +83,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
 // Graphite §8.7 / §7.8 — the queue band's row and the composer's row, as
 // they reach the terminal on an unknown ground (the test PTY answers no
 // OSC 11, so the lead and the word carry no colour of the ground's).
-const QUEUED = (text: string): string => `\u25c7 \x1b[2mqueued\x1b[0m  ${text}`; // the mark in column 0 (R1f)
+const STEER = (text: string): string => `\u25c7 ${text}`; // the mark in column 0, the text at the content edge (the main-sync round)
 const COMPOSER = (text: string): string => `\x1b[0K${text}`; // §7.8 (R1f): no prompt glyph, the text at column 0
 
 describe("TUI v2c (real PTY, 24×80)", () => {
@@ -171,7 +172,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		expect(out).toContain("\x1b[r");
 	}, 90_000);
 
-	it("a turn submitted while another runs QUEUES and the next turn executes", () => {
+	it("a line submitted while a run is live STEERS it — the model's next request answers it (ADR-0057)", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v2c-"));
 		const script = join(dir, "faux.json");
@@ -186,16 +187,15 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				// Both lines land at the first prompt — the second submits
-				// while the first turn is queued/running.
+				// Both lines land at the first prompt — the second is a steer
+				// for the run the first one started.
 				["▌ ", "one\rtwo\r"],
 				["turn two done", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("turn one done"); // the FIRST turn completed (the queued turn followed)
-		expect(clean).toContain("turn one done");
-		expect(clean).toContain("turn two done"); // the queued turn EXECUTED
+		expect(clean).toContain("turn one done"); // the first request answered
+		expect(clean).toContain("turn two done"); // the steer was answered next
 	}, 90_000);
 
 	it("Esc cancels a paused approval — the conservative denial CONTINUES the run, the REPL survives", () => {
@@ -249,7 +249,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		expect(clean).toContain("the tour is done");
 	}, 90_000);
 
-	it("W22: queued turns pre-render as `◇ queued` rows above the input row — ↑ pops the last back into the editor, esc pops one more, the re-submit runs and the popped turns NEVER execute", () => {
+	it("W22 / ADR-0057: steers that have not landed pre-render as `◇` rows above the input row — ↑ takes the last back, esc one more, the re-submit is answered and a steer taken back NEVER lands", () => {
 		const { env } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v2c-"));
 		const script = join(dir, "faux.json");
@@ -267,16 +267,16 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				// "one" submits; "two" + "three" queue while turn one runs.
+				// "one" submits; "two" + "three" are steers while turn one runs.
 				["▌ ", "one\rtwo\rthree\r"],
-				// The third queued row's needle — ↑ pops the LAST queued line
-				// back into the editor (its row leaves the queue).
-				[QUEUED("three"), "\x1b[A"],
+				// The third steer's row — ↑ takes the LAST steer back into the
+				// editor (its row leaves).
+				[STEER("three"), "\x1b[A"],
 				// The popped line in the input row — esc pops ONE MORE
 				// ("two") and ends the pop-mode.
 				// Graphite §7.8: the composer's row opens with its `›` lead,
 				// so the needle is the row's erase-to-end, the lead, then the
-				// text. A queued row for the same word cannot collide: it
+				// text. A steer's row for the same word cannot collide: it
 				// opens with `◇`.
 				[COMPOSER("three"), "\x1b"],
 				// The esc-popped line — submit it: it runs as a fresh turn.
@@ -284,24 +284,25 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 				// MOVED (the boot-status class, TUI2-R2 ⑥): see above — the
 				// idle row is on screen from the first paint, so it can no
 				// longer stand in for "a turn ended". Here it mattered twice
-				// over: the early exit also let the queued turns drain, which
+				// over: the early exit also let the steers land, which
 				// is exactly what this case asserts must NOT happen.
 				["turn two done", "exit\r"],
 			],
 		);
-		// Graphite §8.7: each queued message is ONE row — the `◇`, the dim
-		// word, the text — with the key that edits it. DECLARED REMOVAL:
-		// the status hint's "+N queued" retires; every queued message is
-		// on screen as its own row (A8b's "…N more" row carries the rest).
-		expect(out).toContain(QUEUED("two"));
-		expect(out).toContain(QUEUED("three"));
-		expect(out).toContain("after this turn · ↑ edit");
-		expect(out).not.toContain("+2 queued");
+		// Graphite §8.7 (the main-sync round, owner 2026-09-30): each steer
+		// that has not landed is ONE row — the gold `◇` and the text, no
+		// label word — with what happens next and the key that takes it
+		// back. DECLARED: main's `+N steer` status hint is not drawn on a
+		// Graphite bar; the steers are on screen as their own rows.
+		expect(out).toContain(STEER("two"));
+		expect(out).toContain(STEER("three"));
+		expect(out).toContain("next step · ↑ takes back");
+		expect(out).not.toContain("+2 steer");
 		const clean = stripANSI(out);
 		expect(clean).toContain("turn one done");
 		// The resubmitted "two" ran as a fresh turn...
 		expect(clean).toContain("turn two done");
-		// ...but the popped "three" NEVER ran — its slot was cancelled.
+		// ...but "three", taken back, NEVER landed.
 		expect(clean).not.toContain("turn three done");
 	}, 90_000);
 

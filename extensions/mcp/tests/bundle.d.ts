@@ -5,6 +5,9 @@
  *  suffix families alone, exactly as before. Kept in step with the
  *  published surface in ../index.d.ts. */
 declare module "*.mjs" {
-	const factory: (opts?: { readonly secretEnvNames?: readonly string[] }) => Promise<import("@vincemakes/kiso-core").KisoExtension>;
+	const factory: (opts?: {
+		readonly secretEnvNames?: readonly string[];
+		readonly servers?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+	}) => Promise<import("@vincemakes/kiso-core").KisoExtension>;
 	export default factory;
 }

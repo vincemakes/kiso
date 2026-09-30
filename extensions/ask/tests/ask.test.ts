@@ -172,3 +172,35 @@ describe("T-Q2 — the TTY gate is STRUCTURAL: no bridge, no tool", () => {
 		}
 	});
 });
+
+describe("a host's bridge learns which session and which call is asking", () => {
+	/** A bridge that keeps every argument it was called with. */
+	function recording(): { ask: (...args: unknown[]) => Promise<unknown>; calls: unknown[][] } {
+		const calls: unknown[][] = [];
+		return {
+			calls,
+			ask: async (...args: unknown[]) => {
+				calls.push(args);
+				return { answers: [] };
+			},
+		};
+	}
+
+	it("ui.ask receives the context's sessionId and callId as its third argument, beside the signal", async () => {
+		const ui = recording();
+		const tool = await askTool(ui);
+		const signal = new AbortController().signal;
+		await tool!.execute({ questions: [ONE] }, { signal, sessionId: "s-1", callId: "call_7" });
+		expect(ui.calls).toHaveLength(1);
+		expect(ui.calls[0]![0]).toEqual({ questions: [ONE] });
+		expect(ui.calls[0]![1]).toBe(signal);
+		expect(ui.calls[0]![2]).toStrictEqual({ sessionId: "s-1", callId: "call_7" });
+	});
+
+	it("a context without them passes undefined for both, never a made-up id", async () => {
+		const ui = recording();
+		const tool = await askTool(ui);
+		await tool!.execute({ questions: [ONE] }, ctx);
+		expect(ui.calls[0]![2]).toStrictEqual({ sessionId: undefined, callId: undefined });
+	});
+});

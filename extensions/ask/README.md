@@ -19,6 +19,12 @@ The same artifact can be installed as a user-level extension (copy
 `dist/kiso-ask.mjs` into `~/.kiso/extensions/`), in which case the
 installing code supplies its own bridge.
 
+A host supplies the bridge the same way: `createAskExtension(ui)`, where
+`ui.ask(spec, signal, ctx)` answers the questions. `ctx` is
+`{ sessionId, callId }` from the tool context, so a host that serves many
+sessions from one runtime knows which session is asking and which call
+the answer belongs to.
+
 ## Durability
 
 No new mechanisms. The call is durable as its `tool_call_end`, the answers

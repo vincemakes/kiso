@@ -4,7 +4,7 @@
  * verbatim from session.ts.
  */
 
-import { denialResult, loop, validateArgs, type AbortSignalLike, type Adapter, type ApprovalChain, type ChainVerdict, type ContentBlock, type Event, type EventLog, type HookHost, type PermissionDecision, type ToolCallPayload, type ToolResult } from "@vincemakes/kiso-core";
+import { denialResult, loop, validateArgs, type AbortSignalLike, type AdmissionInput, type TaskDeliveryItem, type Adapter, type ApprovalChain, type ChainVerdict, type ContentBlock, type Event, type EventLog, type HookHost, type PermissionDecision, type ToolCallPayload, type ToolResult } from "@vincemakes/kiso-core";
 import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
 import { resolveReasoning, type WireReasoning } from "./provider/metadata.js";
@@ -19,9 +19,37 @@ import { runtimeVersion } from "./trace/writer.js";
 import { ResumeBlockedError, type AgentSession, type SessionConfig } from "./session.js";
 
 /**
- * A single turn. Async-iterable, so `for await (const ev of session.run(x))`
- * is the natural shape; the handle also carries the runId and the abort.
+ * ADR-0057: `run.steer()` after the run decided to end — its ingress is
+ * sealed. The host starts a new run with the input instead.
  */
+export class RunClosedError extends Error {
+	readonly runId: string;
+	constructor(runId: string) {
+		super(`run ${runId} has ended — start a new run with this input`);
+		this.name = "RunClosedError";
+		this.runId = runId;
+	}
+}
+
+/**
+ * A single foreground execution, from its input to one terminal (ADR-0057:
+ * it may admit further input at Safe Admission boundaries).
+ * Async-iterable, so `for await (const ev of session.run(x))` is the
+ * natural shape; the handle also carries the runId, the abort and the
+ * steer.
+ */
+/** ADR-0058 (3c): a task delivery handed to a run — one line per task
+ *  (the wire marking) and the transitions it carries (the receipt). */
+export interface TaskNotice {
+	readonly lines: readonly string[];
+	readonly items: readonly TaskDeliveryItem[];
+}
+
+/** The runtime's words, marked so the model never takes them for a person's. */
+export const NOTICE_FOOTER = "Runtime notice — not the user.";
+
+type Ingress = { readonly kind: "human"; readonly content: string | readonly ContentBlock[] } | { readonly kind: "runtime"; readonly notice: TaskNotice };
+
 export class Run implements AsyncIterable<Event> {
 	runId: string;
 	readonly #store: SessionStore;
@@ -40,6 +68,15 @@ export class Run implements AsyncIterable<Event> {
 	readonly #externalSignal: AbortSignalLike | undefined;
 	readonly #decisionIds: string[] = [];
 	#started = false;
+	// ADR-0057 — the ephemeral ingress: a person's input AND the runtime's
+	// task notices (ADR-0058 3c), ONE queue in arrival order, held in memory
+	// until an admission site takes it. The log owns what was admitted;
+	// nothing here is durable (a crash before admission loses it — a task
+	// notice is re-derived from the journal and the log's receipts).
+	readonly #ingress: Ingress[] = [];
+	readonly #unadmitted: (string | readonly ContentBlock[])[] = [];
+	readonly #unadmittedNotices: TaskNotice[] = [];
+	#sealed = false;
 
 	constructor(
 		store: SessionStore,
@@ -72,6 +109,90 @@ export class Run implements AsyncIterable<Event> {
 	/** Cancel the run: propagates to the adapter (SDK) and future executions. */
 	abort(): void {
 		this.#abort.abort();
+	}
+
+	/**
+	 * ADR-0057 — hand this run a person's input. It is admitted at the next
+	 * Safe Admission boundary (every started effect settled, no approval
+	 * open) as a user_input the model sees on its next request. Throws
+	 * {@link RunClosedError} once the run has decided to end.
+	 */
+	steer(content: string | readonly ContentBlock[]): void {
+		if (this.#sealed) throw new RunClosedError(this.runId);
+		this.#ingress.push({ kind: "human", content });
+	}
+
+	/** ADR-0058 (3c) — hand this run a task delivery. It is admitted at the
+	 *  next Safe Admission boundary, in arrival order with the person's
+	 *  steers, as a `source: "system"` user_input whose `via` is the receipt;
+	 *  it never passes onUserMessage. False once the run has decided to end
+	 *  — the caller keeps the notice for the next run or a wake. */
+	notify(notice: TaskNotice): boolean {
+		if (this.#sealed) return false;
+		this.#ingress.push({ kind: "runtime", notice });
+		return true;
+	}
+
+	/** ADR-0057 — take back the person's input that has not been admitted
+	 *  yet. A task notice is not the person's, and stays. */
+	retract(): readonly (string | readonly ContentBlock[])[] {
+		const taken: (string | readonly ContentBlock[])[] = [];
+		for (let i = this.#ingress.length - 1; i >= 0; i--) {
+			const entry = this.#ingress[i]!;
+			if (entry.kind === "human") {
+				taken.unshift(entry.content);
+				this.#ingress.splice(i, 1);
+			}
+		}
+		return taken;
+	}
+
+	/** ADR-0057 — the person's input that arrived but was not admitted when
+	 *  the run ended. */
+	unadmitted(): readonly (string | readonly ContentBlock[])[] {
+		return [...this.#unadmitted];
+	}
+
+	/** ADR-0058 (3c) — task notices still pending when the run ended: the
+	 *  delivery takes them back, never lost. */
+	unadmittedNotices(): readonly TaskNotice[] {
+		return [...this.#unadmittedNotices];
+	}
+
+	/** The kernel's `admit`: the ingress in arrival order, neighbours of one
+	 *  kind merged — a person's lines as ONE human input (a single line as
+	 *  itself, several as text blocks), task notices as ONE runtime input. */
+	async #admit(mode: "take" | "takeOrSeal" | "seal"): Promise<readonly AdmissionInput[]> {
+		if (mode !== "seal" && this.#ingress.length > 0) {
+			// group neighbours of one kind, in arrival order
+			const groups: ({ kind: "human"; contents: (string | readonly ContentBlock[])[] } | { kind: "runtime"; notices: TaskNotice[] })[] = [];
+			for (const entry of this.#ingress.splice(0)) {
+				const last = groups.at(-1);
+				if (entry.kind === "human") {
+					if (last?.kind === "human") last.contents.push(entry.content);
+					else groups.push({ kind: "human", contents: [entry.content] });
+				} else if (last?.kind === "runtime") last.notices.push(entry.notice);
+				else groups.push({ kind: "runtime", notices: [entry.notice] });
+			}
+			return groups.map((g): AdmissionInput => {
+				if (g.kind === "human") {
+					const content = g.contents.length === 1 ? g.contents[0]! : g.contents.flatMap((l): readonly ContentBlock[] => (typeof l === "string" ? [{ type: "text", text: l }] : l));
+					return { kind: "human", content, source: "user" };
+				}
+				const content = [...g.notices.flatMap((n) => n.lines), NOTICE_FOOTER].join("\n");
+				return { kind: "runtime", content, source: "system", via: { kind: "tasks", items: g.notices.flatMap((n) => n.items) } };
+			});
+		}
+		if (mode !== "take") this.#seal();
+		return [];
+	}
+
+	#seal(): void {
+		this.#sealed = true;
+		for (const entry of this.#ingress.splice(0)) {
+			if (entry.kind === "human") this.#unadmitted.push(entry.content);
+			else this.#unadmittedNotices.push(entry.notice);
+		}
 	}
 
 	async *[Symbol.asyncIterator](): AsyncIterator<Event> {
@@ -219,6 +340,9 @@ export class Run implements AsyncIterable<Event> {
 					// the human gave in the same instant as the abort is
 					// recorded, exactly once.
 					approvalVerdict: (decisionId: string) => this.#session.approvalVerdict(decisionId),
+					// ADR-0057: the ingress — the kernel admits at its three sites
+					// and seals at every terminal.
+					admit: (mode: "take" | "takeOrSeal" | "seal") => this.#admit(mode),
 				}) satisfies Parameters<typeof loop>[0];
 
 			const self = this;
@@ -348,6 +472,9 @@ export class Run implements AsyncIterable<Event> {
 			//    is the projection, not a second copy.
 			for await (const ev of runLoop()) yield ev;
 		} finally {
+			// ADR-0057: however the run ended — terminal, throw or abandoned —
+			// its ingress is closed; pending input is handed back.
+			this.#seal();
 			// round 5(P1-5): flush verdicts the consumer submitted before the
 			// generator was abandoned — an approve()/resolveUncertain() whose
 			// durable event the loop never got to persist must STILL land on

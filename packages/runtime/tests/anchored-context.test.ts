@@ -15,7 +15,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
-import { estimateTokens, type Event, type Usage } from "@vincemakes/kiso-core";
+import type { Event, Usage } from "@vincemakes/kiso-core";
+import { estimateTokens } from "../src/estimate-tokens.js";
 import { createAgent, SessionStore } from "../src/index.js";
 import { contextAnchor } from "../src/context-anchor.js";
 

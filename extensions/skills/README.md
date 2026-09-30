@@ -17,6 +17,17 @@ Skill directories: `~/.kiso/skills/<name>/SKILL.md` (or the project-level
 `.kiso/skills/` after the trust gate). No configuration file — the
 extension scans the skills dir at startup.
 
+A name found twice resolves to its first occurrence (root order, then
+directory-name order within each root); the later one is reported with
+the broken skills, never listed.
+
+A host passes options instead: `createSkillsExtension({ roots, include })`.
+`roots` replaces the default scan with the host's directories, in order.
+`include(entry)` decides which skills are active, and the model's index,
+`read_skill`, the catalog and the count are all built from that one
+filtered list, so a skill the host turned off cannot be loaded on
+request either.
+
 ## Invoking a skill yourself
 
 `/skill <name> [args]` sends a skill as your turn: its SKILL.md body, then
