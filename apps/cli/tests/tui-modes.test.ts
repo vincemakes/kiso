@@ -221,19 +221,19 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ ...env, KISO_FAUX_SCRIPT: script } as NodeJS.ProcessEnv,
 			[
 				["▌ ", "/mode\r"],
-				// the panel is up: take `bypass` by its digit. The ARROWS
+				// the panel is up: take `full access` by its digit. The ARROWS
 				// have their own case — a pty feed fires once on its needle,
 				// so a burst of them cannot prove a cursor walked.
 				// the needle is a NOTE, not the header: the header carries SGR
 				// between its words, and a pty driver scans the raw stream
 				// for a contiguous run (DC-25/DC-29, filed twice already).
-				["asks nothing: an ask is denied", "5\r"],
+				["never asks: what would ask is refused", "4\r"],
 				// and QUIT. Without it the driver waits out its whole
 				// timeout: `execFileSync` blocks the vitest worker for that
 				// long, and enough of those starve the reporter's RPC
 				// ("Timeout calling onTaskUpdate") — the same trap DC-34's
 				// file hit from the other direction.
-				["mode \u2192 bypass", "exit\r"],
+				["mode \u2192 full access", "exit\r"],
 			],
 			workdir,
 			{ session: "pick" },
@@ -243,7 +243,9 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		expect(plain, "bare /mode did not open a picker").toContain("mode — current: default");
 		// every tier is offered, each saying what it DOES — the notes are
 		// transcribed from decide(), so a drifting description is a bug
-		for (const tier of ["default", "accept-edits", "plan", "dontAsk", "bypass"]) expect(plain, `${tier} is not on the panel`).toContain(tier);
+		for (const tier of ["default", "accept edits", "plan", "full access"]) expect(plain, `${tier} is not on the panel`).toContain(tier);
+		// the switch is the panel's last row, naming its state
+		expect(plain, "the don't-ask row is missing").toContain("don't ask: off");
 		// 0.40.0: manual is still accepted, and no longer offered.
 		expect(plain, "manual is still offered").not.toContain(" manual ");
 		// Astra F4: the note now qualifies itself. Assert the WHOLE of it, so a
@@ -252,8 +254,9 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		// picker offers, and the tier that never asks.
 		expect(plain).toContain("read-only runs; the rest asks — a saved allow still allows");
 		expect(plain).toContain("read-only, edits run; rest asks — a saved allow still allows");
-		expect(plain).toContain("asks nothing: an ask is denied — a saved allow still allows");
+		expect(plain).toContain("never asks: what would ask is refused and the run goes on");
 		expect(plain).toContain("reads run; all else is denied — read-only, and a deny wins");
+		expect(plain).toContain("runs without asking — a user deny and the floor still win");
 		expect(plain).toContain("read-only"); // plan's note
 		// the row a human is looking at names the arrows, not only the
 		// digits — DC-30's lesson: a hint that omits the gesture is why
@@ -261,7 +264,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		// panel as "type the answer".
 		expect(plain, "the pick row does not name the arrows").toContain("↑↓ move");
 		// and choosing switched it — no word was typed
-		expect(plain, "the pick did not take effect").toContain("mode → bypass");
+		expect(plain, "the pick did not take effect").toContain("mode → full access");
 	}, 120_000);
 
 	it("DC-36: with no dock — a PIPE — /mode prints exactly what it always printed", () => {
@@ -276,12 +279,13 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		const piped = runCli(["chat", "modepipe"], { ...env, KISO_FAUX_SCRIPT: script }, { input: "/mode\nexit\n", timeout: 60_000 });
 		expect(piped.status).toBe(0);
 		expect(piped.stdout).toContain("mode default");
-		expect(piped.stdout).toContain("tiers: default accept-edits plan dontAsk bypass");
+		expect(piped.stdout).toContain("tiers: default accept-edits plan full-access");
+		expect(piped.stdout, "the switch is off, so the pipe says nothing about it").not.toContain("don't ask");
 		expect(piped.stdout, "a panel leaked onto a pipe").not.toContain("mode — current");
 		expect(piped.stdout, "pipes are byte-plain").not.toContain("\u001b[");
 	}, 120_000);
 
-	it("--mode bypass still loses to a user extension's deny (monotonicity)", () => {
+	it("--mode bypass (full-access's old name) still loses to a user extension's deny (monotonicity)", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-modes-"));
 		const workdir = join(dir, "work");
@@ -329,7 +333,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\r"],
-				["▸ bypass", ""], // v3 idle state under bypass
+				["▸ full access", ""], // v3 idle state — the old name reads as the tier it names
 				// R3i phase 3: the denial is named on the stretch fold now.
 				["1 denied:", ""],
 				["refused by safe-test", ""], // the EXTENSION's deny — bypass can't override it
@@ -339,7 +343,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ modeFlag: "bypass", session: "modes2" },
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("▸ bypass · /mode to switch");
+		expect(clean).toContain("▸ full access · /mode to switch");
 		expect(clean).toContain("[Permission denied]");
 		expect(clean).toContain("refused by safe-test");
 		// decidedBy names the extension, not the mode.
@@ -566,4 +570,103 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			reason: "plan mode: read-only",
 		});
 	}, 90_000);
+});
+
+describe("the don't-ask switch (real PTY, 24×80) — a second question beside the tier", () => {
+	it("full access with don't ask: a write runs unasked, ask_user is not offered, the floor still refuses, and the status row says both", () => {
+		const { env } = isolatedEnv();
+		const base = realpathSync(mkdtempSync(join(tmpdir(), "kiso-modes-")));
+		const workdir = join(base, "work");
+		mkdirSync(workdir, { recursive: true });
+		writeFileSync(join(workdir, "sentinel.txt"), "still here", "utf8");
+		const script = join(base, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{ events: [{ type: "tool_call_end", callId: "s1", name: "shell", input: { command: "touch made.txt" } }, { type: "stop", reason: "tool_use" }] },
+				{
+					events: [
+						{ type: "tool_call_end", callId: "q1", name: "ask_user", input: { questions: [{ question: "which bundler?", options: [{ label: "vite" }, { label: "esbuild" }] }] } },
+						{ type: "stop", reason: "tool_use" },
+					],
+				},
+				// the workspace root by its absolute path — the floor's, in every
+				// tier and with the switch on too
+				{ events: [{ type: "tool_call_end", callId: "f1", name: "shell", input: { command: `rm -rf ${workdir}` } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "text_delta", text: "fa done" }, { type: "stop", reason: "end_turn" }] },
+			]),
+			"utf8",
+		);
+		// NO answer is fed: a panel that opened would wait out the timeout.
+		const out = ptyRun(
+			{ ...env, KISO_FAUX_SCRIPT: script, KISO_DONT_ASK: "1" },
+			[
+				["▌ ", "go\r"],
+				["fa done", "exit\r"],
+			],
+			workdir,
+			{ modeFlag: "full-access", session: "modes-fa" },
+		);
+		const clean = stripANSI(out);
+		expect(clean).toContain("▸ full access · don't ask · /mode to switch");
+		expect(clean, "the run went on to its end").toContain("fa done");
+		const events = new SessionStore(join(env.KISO_HOME!, "sessions")).load("modes-fa").map((r) => r.event);
+		expect(events.filter((e) => e.type === "permission_requested"), "nothing was put to a person").toEqual([]);
+		const decided = decidedEvents(env, "modes-fa");
+		expect(decided.find((e) => e.callId === "s1")).toMatchObject({ decision: "approved", decidedBy: "mode:full-access" });
+		expect(existsSync(join(workdir, "made.txt")), "the write ran").toBe(true);
+		// ask_user was not in the table: the kernel refused an unknown tool
+		const q1 = events.find((e) => e.type === "tool_result" && (e as { callId: string }).callId === "q1") as { content: string } | undefined;
+		expect(String(q1?.content)).toBe("Unknown tool: ask_user");
+		// don't ask grants nothing: the floor's deny stands
+		expect(decided.find((e) => e.callId === "f1")).toMatchObject({ decision: "denied", decidedBy: "floor" });
+		expect(existsSync(join(workdir, "sentinel.txt")), "the refused command never ran").toBe(true);
+	}, 90_000);
+
+	it("the /mode panel's last row flips the switch and leaves the tier", () => {
+		const { env } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-modes-"));
+		const workdir = join(dir, "work");
+		mkdirSync(workdir, { recursive: true });
+		const script = join(dir, "faux.json");
+		writeFileSync(script, JSON.stringify([{ events: [{ type: "text_delta", text: "ok" }, { type: "stop", reason: "end_turn" }] }]), "utf8");
+		const out = ptyRun(
+			{ ...env, KISO_FAUX_SCRIPT: script } as NodeJS.ProcessEnv,
+			[
+				["▌ ", "/mode\r"],
+				["never asks: what would ask is refused", "5\r"],
+				["don't ask \u2192 on", "exit\r"],
+			],
+			workdir,
+			{ modeFlag: "plan", session: "pick-switch" },
+		);
+		const plain = stripANSI(out);
+		expect(plain).toContain("don't ask → on");
+		expect(plain, "the tier moved").not.toContain("mode → ");
+		expect(plain).toContain("▸ plan (read-only) · don't ask");
+	}, 120_000);
+
+	it("the old name: a switch that came with dontAsk leaves with it on shift+tab — and says so", () => {
+		const { env } = isolatedEnv();
+		const dir = mkdtempSync(join(tmpdir(), "kiso-modes-"));
+		const workdir = join(dir, "work");
+		mkdirSync(workdir, { recursive: true });
+		const script = join(dir, "faux.json");
+		writeFileSync(script, JSON.stringify([{ events: [{ type: "text_delta", text: "What would you like me to inspect?" }, { type: "stop", reason: "end_turn" }] }]), "utf8");
+		const out = ptyRun(
+			{ ...env, KISO_FAUX_SCRIPT: script } as NodeJS.ProcessEnv,
+			[
+				// the settled first turn is the REPL-ready anchor (R3a)
+				["▌ ", "hi\r"],
+				["What would you like me to inspect", "\x1b[Z"],
+				["don't ask \u2192 off", "exit\r"],
+			],
+			workdir,
+			{ envMode: "dontAsk", session: "old-name-leaves" },
+		);
+		const plain = stripANSI(out);
+		expect(plain).toContain("▸ default · don't ask");
+		expect(plain).toContain("mode → accept edits (shift+tab cycles)");
+		expect(plain).toContain("don't ask → off");
+	}, 120_000);
 });

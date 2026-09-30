@@ -79,6 +79,17 @@ describe("schema v1: parse + loud failure", () => {
 		expect(c.projectTrust).toBe("never");
 	});
 
+	it("the modes round: full-access and every old name parse as written; dontAsk is a boolean switch; the rest is loud", () => {
+		for (const mode of ["full-access", "accept-edits", "bypass", "dontAsk", "manual", "full access"]) expect(parseConfig(JSON.stringify({ mode }), "test").mode, mode).toBe(mode);
+		expect(parseConfig(JSON.stringify({ dontAsk: true }), "test").dontAsk).toBe(true);
+		expect(parseConfig(JSON.stringify({ dontAsk: false }), "test").dontAsk).toBe(false);
+		expect(() => parseConfig(JSON.stringify({ dontAsk: "yes" }), "test")).toThrow(/dontAsk — expected true or false/);
+		expect(() => parseConfig(JSON.stringify({ mode: "yolo" }), "test")).toThrow(/mode — expected one of .*full-access.*bypass, dontAsk/);
+		// either layer may set the switch — it only ever refuses more
+		expect(mergeConfigs({ dontAsk: true }, { dontAsk: false }).dontAsk).toBe(false);
+		expect(mergeConfigs({ dontAsk: true }, {}).dontAsk).toBe(true);
+	});
+
 	it("broken JSON fails LOUDLY with the source", () => {
 		expect(() => parseConfig("{not json", "~/.kiso/config.json")).toThrow(ConfigError);
 		expect(() => parseConfig("{not json", "~/.kiso/config.json")).toThrow(/~\/\.kiso\/config\.json/);

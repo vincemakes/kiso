@@ -41,7 +41,7 @@ import { learnedWindowFor } from "./learned-windows.js";
 import { lookupContextWindow, lookupModelMetadata, type ContextWindowSource } from "@vincemakes/kiso-runtime/internal";
 import { addDontAskAgainRule, askPanel, fixHintFor, pendingAsk, resolveUncertains } from "./trust-ui.js";
 import { FauxExhaustionError, failOnFauxExhaustion } from "./faux-glue.js";
-import { OFFERED_MODES, getMode, setMode } from "./mode.js";
+import { MODE_LABEL, OFFERED_MODES, getDontAsk, getMode, modeDisplay, setMode } from "./mode.js";
 
 /** B area: default context window for the ~ctx estimate (config overridable).
  *  CW-1 batch 2: 128,000, down from 200,000 — the figure a model nobody
@@ -1148,7 +1148,7 @@ export async function consumeRun(
 				// denied HERE, at the one place kiso asks, so every allow the
 				// chain gave still stands (a tier deny would outrank them). The
 				// reason is the tool result: the model sees why and goes on.
-				if (getMode() === "dontAsk") {
+				if (getDontAsk()) {
 					body.notice(`[dontAsk] ${escapeTerminal(name)} would ask — denied`);
 					await session.approve(decisionId, false, `dontAsk: ${name} needs a human's approval, and this session never asks — denied`);
 					break;
@@ -1595,7 +1595,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// exactly the pre-round row.
 		dock.setStatus(
 			idleStatus(
-				getMode() === "plan" ? "plan (read-only)" : getMode(),
+				modeDisplay(),
 				statusModelLabel(session),
 				displayCtxRatio(session),
 				{
@@ -1829,9 +1829,12 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// row repaints at once with a one-line notice.
 	input.onModeCycle?.(() => {
 		const next = OFFERED_MODES[(OFFERED_MODES.indexOf(getMode()) + 1) % OFFERED_MODES.length]!;
+		const wasOn = getDontAsk();
 		setMode(next);
 		paintIdle();
-		body.notice(`mode → ${next} (shift+tab cycles)`);
+		body.notice(`mode → ${MODE_LABEL[next]} (shift+tab cycles)`);
+		// the switch came with the old dontAsk tier, and left with it
+		if (getDontAsk() !== wasOn) body.notice("don't ask → off");
 	});
 
 	// Recovery first: a session with a dangling pause or uncertain
@@ -1854,7 +1857,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// before the run resumes: the run continues on the compacted projection.
 	const cold = !cancelled && process.stdin.isTTY ? coldResumeOffer(session) : null;
 	if (cold !== null) {
-		if (getMode() === "dontAsk") {
+		if (getDontAsk()) {
 			body.notice(`[dontAsk] ${coldResumeLine(cold.tokens, cold.minutes)} — compacting first`);
 			dispatch("/compact", dispatchCtx);
 		} else if ((await askPanel(input, coldResumeView(cold.tokens, cold.minutes))).action === "allow") {

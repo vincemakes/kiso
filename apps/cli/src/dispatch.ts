@@ -9,7 +9,7 @@ import { STATUS_GLYPHS, contextRows, contextUnavailableRows, displayVerb, escape
 import { newSessionId } from "./session-id.js";
 import { buildAdapter, lookupModelMetadata, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
-import { MODES, MODE_NOTE, OFFERED_MODES, getMode, setMode } from "./mode.js";
+import { DONT_ASK_NOTE, MODE_LABEL, MODE_NOTE, OFFERED_MODES, applyModeSetting, getDontAsk, getMode, modeDisplay, parseMode, setDontAsk, type ModeSetting } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { protectedBangReason, protectedShellVerdict } from "./protected-shell.js";
 import { agentBaseUrl, currentProfileName, setCurrentProfileName, currentModelName, agentModel, body, bodyLog, codingToolOptions, protectedFiles, kisoHome, configModels, dock, lastBinding, loadedSkillsCatalog, mergedConfig, readContextLedger, retryOnRow, sessionsDir, setAgentModel, setConfiguredWindow, setCurrentModelName, setModelChoice, setRetryShown, upstreamOf, VERSION, type LineInput , setLastBinding } from "./state.js";
@@ -553,7 +553,9 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					env: process.env,
 					...(settingsLayers.modeFlag !== undefined ? { modeFlag: settingsLayers.modeFlag } : {}),
 					...(settingsLayers.modelFlag !== undefined ? { modelFlag: settingsLayers.modelFlag } : {}),
+					dontAskFlag: settingsLayers.dontAskFlag,
 					mode: getMode(),
+					dontAsk: getDontAsk(),
 					model: { label: `${agentModel}${providerLabel(agentBaseUrl, upstreamOf(agentBaseUrl))}${profile === null ? "" : ` · profile ${profile}`}`, profile, switched: settingsLayers.modelSwitched },
 					ground: currentGround(),
 					floorOn,
@@ -608,32 +610,45 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// /mode <name> switches — the notice cell leaves the audit
 		// line in the body, the status bar repaints at once.
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
-			const m = MODES.find((x) => x === trimmed.slice(5).trim());
-			if (trimmed.slice(5).trim() === "") {
+			const arg = trimmed.slice(5).trim();
+			// a tier switch, old names included — and when the switch came
+			// with the old dontAsk tier and leaves with it, a line says so
+			const switchTier = (s: ModeSetting): void => {
+				const wasOn = getDontAsk();
+				applyModeSetting(s);
+				body.notice(`mode → ${MODE_LABEL[getMode()]}`);
+				if (getDontAsk() !== wasOn) body.notice(`don't ask → ${getDontAsk() ? "on" : "off"}`);
+				ctx.paintIdle();
+			};
+			if (arg === "") {
 				// DC-36 — BARE /mode PICKS, the way bare /model has since
-				// TUI2-R2 ④. The five tiers are a CLOSED set, which makes
-				// this the least defensible place in the product to have
-				// asked a human to type the answer: everything needed to
-				// make it a choice was on screen and only the choosing was
-				// missing.
+				// TUI2-R2 ④. The tiers are a CLOSED set, which makes this the
+				// least defensible place in the product to have asked a human
+				// to type the answer: everything needed to make it a choice
+				// was on screen and only the choosing was missing.
 				//
-				// The printed form survives VERBATIM wherever there is no
-				// panel to draw — a pipe, a dock-less TTY — because that is
-				// a machine-readable surface and this round moves no bytes
-				// on one. `/mode <name>` is untouched.
+				// The printed form survives wherever there is no panel to
+				// draw — a pipe, a dock-less TTY — because that is a
+				// machine-readable surface. `/mode <name>` is untouched.
 				if (dock.active && ctx.input.panelAsk !== undefined) {
 					const current = getMode();
 					const picked = await new Promise<PickResult | null>((resolve) => {
 						ctx.input.panelAsk!(
 							modePickView(
 								{
-									header: `mode — current: ${current}`,
-									options: OFFERED_MODES.map((name) => ({ label: name, note: [MODE_NOTE[name], ...(name === current ? ["current"] : [])].join(" · ") })),
+									header: `mode — current: ${modeDisplay()}`,
+									// the four tiers, then the don't-ask switch: a
+									// second question, so it sits under the ladder
+									// and its row names its state
+									options: [
+										...OFFERED_MODES.map((name) => ({ label: MODE_LABEL[name], note: [MODE_NOTE[name], ...(name === current ? ["current"] : [])].join(" · ") })),
+										{ label: `don't ask: ${getDontAsk() ? "on" : "off"}`, note: DONT_ASK_NOTE },
+									],
 									// MP-1 (0.40.7): the cursor opens on the tier in force
 									...(OFFERED_MODES.indexOf(current) >= 0 ? { initial: OFFERED_MODES.indexOf(current) } : {}),
 								},
 								// DC-12 (design §4): a panel WAITING ON A HUMAN says ❯.
-								ctx.isRunning() ? "❯ run paused" : `▸ ${current}`,
+								ctx.isRunning() ? "❯ run paused" : `▸ ${modeDisplay()}`,
 							),
 							(v) => resolve(v.action === "picked" ? v.result : null),
 						);
@@ -643,26 +658,51 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 						ctx.input.prompt();
 						return; // esc — nothing switched, nothing said
 					}
-					const chosen = "index" in picked ? OFFERED_MODES[picked.index] : MODES.find((x) => x === picked.custom.trim());
+					if ("index" in picked && picked.index === OFFERED_MODES.length) {
+						// the switch row flips the switch and leaves the tier
+						setDontAsk(!getDontAsk());
+						body.notice(`don't ask → ${getDontAsk() ? "on" : "off"}`);
+						ctx.paintIdle();
+						ctx.input.prompt();
+						return;
+					}
+					const chosen = "index" in picked ? (OFFERED_MODES[picked.index] === undefined ? undefined : { mode: OFFERED_MODES[picked.index]! }) : parseMode(picked.custom);
 					if (chosen === undefined) {
 						bodyLog(`no such mode: ${"index" in picked ? String(picked.index) : picked.custom.trim()}`);
 						bodyLog(`tiers: ${OFFERED_MODES.join(" ")}`);
 					} else {
-						setMode(chosen);
-						body.notice(`mode → ${chosen}`);
-						ctx.paintIdle();
+						switchTier(chosen);
 					}
 					ctx.input.prompt();
 					return;
 				}
 				bodyLog(`mode ${getMode()}`);
-				bodyLog(`tiers: ${OFFERED_MODES.join(" ")}`);
-			} else if (m === undefined) {
-				bodyLog(`no such mode: ${trimmed.slice(5).trim()}`);
+				if (getDontAsk()) bodyLog("don't ask on");
 				bodyLog(`tiers: ${OFFERED_MODES.join(" ")}`);
 			} else {
-				setMode(m);
-				body.notice(`mode → ${m}`);
+				const typed = parseMode(arg);
+				if (typed === undefined) {
+					bodyLog(`no such mode: ${arg}`);
+					bodyLog(`tiers: ${OFFERED_MODES.join(" ")}`);
+				} else {
+					switchTier(typed);
+				}
+			}
+			ctx.input.prompt();
+		});
+		return;
+	}
+	if (trimmed === "/dont-ask" || trimmed.startsWith("/dont-ask ")) {
+		// The don't-ask switch on its own — the tier stays. Bare flips it;
+		// `on` / `off` set it. A switch set here outlives tier changes.
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			const arg = trimmed.slice(9).trim();
+			const want = arg === "" ? !getDontAsk() : arg === "on" ? true : arg === "off" ? false : undefined;
+			if (want === undefined) {
+				bodyLog("usage: /dont-ask [on|off]");
+			} else {
+				setDontAsk(want);
+				body.notice(`don't ask → ${want ? "on" : "off"}`);
 				ctx.paintIdle();
 			}
 			ctx.input.prompt();
@@ -733,7 +773,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 							// DC-12 (design §4): a panel WAITING ON A HUMAN says ❯. The
 							// else-branch keeps ▸ — it names the current tier, which is
 							// what ▸ means everywhere else.
-							ctx.isRunning() ? "❯ run paused" : `▸ ${getMode()}`,
+							ctx.isRunning() ? "❯ run paused" : `▸ ${modeDisplay()}`,
 						),
 						(v) => {
 							// OR-7: the level rides beside the result, so a pick

@@ -60,8 +60,9 @@ describe("the floor on the real CLI, invoked as a delegate child is", () => {
 		expect(decided.find((e) => e.callId === "s1")).toMatchObject({ decision: "denied", decidedBy: "floor" });
 		expect(decided.find((e) => e.callId === "s1")?.reason).toContain("the workspace root");
 		expect(existsSync(join(workdir, "sentinel.txt")), "the refused command never ran").toBe(true);
-		// bypass stays bypass
-		expect(decided.find((e) => e.callId === "s2")).toMatchObject({ decision: "approved", decidedBy: "mode:bypass" });
+		// bypass stays bypass (a delegate child still passes the old name,
+		// KISO_MODE=bypass; the tier it names is full-access)
+		expect(decided.find((e) => e.callId === "s2")).toMatchObject({ decision: "approved", decidedBy: "mode:full-access" });
 		expect(existsSync(probe), "the ordinary rm -rf ran").toBe(false);
 		expect(r.stdout).toContain("floor done");
 	}, 90_000);
@@ -69,7 +70,7 @@ describe("the floor on the real CLI, invoked as a delegate child is", () => {
 	it("`\"floor\": \"off\"` in the USER config switches it off — and then bypass runs it", () => {
 		const { r, decided, workdir } = run({ floorOff: true });
 		expect(r.status, r.stderr).toBe(0);
-		expect(decided.find((e) => e.callId === "s1")).toMatchObject({ decision: "approved", decidedBy: "mode:bypass" });
+		expect(decided.find((e) => e.callId === "s1")).toMatchObject({ decision: "approved", decidedBy: "mode:full-access" });
 		expect(existsSync(workdir), "with the floor off the command ran").toBe(false);
 	}, 90_000);
 });
