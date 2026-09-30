@@ -598,25 +598,66 @@ export function foldWords(line: string, W: number): string[] {
 			out.push(para);
 			continue;
 		}
-		let rest = para;
+		// LINEAR (the thinking-freeze fix, 2026-09-30): the row's remainder is
+		// never re-measured or rebuilt as a string. It was — `visibleWidth` of
+		// the whole rest and a new rest string per row — which is O(n²/W) for
+		// one long paragraph, and a thinking block is ONE flattened paragraph
+		// re-folded every frame: 61 ms a render at 40k characters, long enough
+		// to starve the working row's timer (the twinkle froze while the model
+		// thought). The rows are byte for byte what they were: `rest` is the
+		// same `open` prefix + the same tail, read through a cursor.
 		// the spans open at the cut point, so each emitted row closes them
 		// and the next row reopens them — foldLine's own discipline, applied
 		// across the segments this function creates.
+		let pos = 0;
 		let open: string[] = [];
-		while (visibleWidth(rest) > W) {
+		while (widerFrom(para, pos, W)) {
 			// the widest prefix that fits, then back up to the last space in
 			// it — the SGR-aware cut keeps the spans intact
-			const head = widthCut(rest, W);
+			const pre = open.join("");
+			const head = headOf(pre, para, pos, W);
 			const at = head.lastIndexOf(" ");
 			if (at <= 0) break; // one long word (or no space at all) — hard-break it
 			const cut = head.slice(0, at);
 			out.push(`${cut}${open.length > 0 || /\x1b\[[0-9;]*m/.test(cut) ? "\x1b[0m" : ""}`);
 			open = spansOpenAfter(cut, open);
-			rest = `${open.join("")}${rest.slice(cut.length + 1)}`;
+			// the space the row broke at is consumed; the prefix was never in `para`
+			pos += at + 1 - pre.length;
 		}
-		out.push(...foldLine(rest, W));
+		out.push(...foldLine(`${open.join("")}${para.slice(pos)}`, W));
 	}
 	return out.length > 0 ? out : [""];
+}
+
+/** `visibleWidth(s.slice(from)) > W`, answered by reading at most the
+ *  first W + 1 visible cells (and the escapes among them) — never the
+ *  whole remainder. The same skip rule as visibleWidth. */
+function widerFrom(s: string, from: number, W: number): boolean {
+	let w = 0;
+	for (let i = from; i < s.length; ) {
+		if (s[i] === "\x1b") {
+			const m = /^\x1b\[[0-9;?]*[A-Za-z]/.exec(s.slice(i, i + 256));
+			i += m !== null ? m[0].length : 1;
+			continue;
+		}
+		// per UTF-16 unit, exactly as visibleWidth counts
+		w += displayWidth(s[i]!);
+		if (w > W) return true;
+		i += 1;
+	}
+	return false;
+}
+
+/** `widthCut(pre + s.slice(from), W)` without building the whole string:
+ *  widthCut stops within its first W cells, so a window of the tail is
+ *  enough — widened (doubling) only when the cut ran to the window's end
+ *  before the tail's (a run of zero-width code points). */
+function headOf(pre: string, s: string, from: number, W: number): string {
+	for (let span = 2 * W + 256; ; span *= 2) {
+		const probe = `${pre}${s.slice(from, from + span)}`;
+		const head = widthCut(probe, W);
+		if (head.length < probe.length || from + span >= s.length) return head;
+	}
 }
 
 export function gutterFold(gutter: string, line: string, W: number): string[] {
