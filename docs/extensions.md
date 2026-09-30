@@ -63,8 +63,11 @@ monotonicity as the approval chain and the veto short-circuit). The
 composition is deterministic — the same extension list always assembles
 the same prompt, byte for byte.
 
-A policy's `decide` returns `{ action: "allow" }`, `{ action: "deny",
-reason }`, or `{ action: "ask" }`. The chain runs **before** the human
+A policy's `decide(call, ctx)` sees `call = { name, input }` — the tool's
+name and parsed arguments, exactly those two keys — and the tool context
+`ctx`, whose `sessionId` and `callId` are the same on a fresh call and on
+the same call decided again after a crash. It returns `{ action: "allow" }`,
+`{ action: "deny", reason }`, or `{ action: "ask" }`. The chain runs **before** the human
 approval flow and composes across all loaded policies:
 
 - **deny > allow > ask** — any deny wins (the FIRST denial's reason reaches

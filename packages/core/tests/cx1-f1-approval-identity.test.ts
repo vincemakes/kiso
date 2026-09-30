@@ -53,7 +53,7 @@ function harness() {
 			},
 		}),
 	);
-	const approvalPolicy: { decide: (payload: { input: { target?: string }; callId?: string }) => Promise<ChainVerdict> } = {
+	const approvalPolicy: { decide: (payload: { input: { target?: string } }, ctx?: { callId?: string }) => Promise<ChainVerdict> } = {
 		decide: async (payload) => {
 			seen.push(String(payload.input.target));
 			return payload.input.target === "allowed"
@@ -198,8 +198,8 @@ describe("CX-1 F1 — a reused provider callId never inherits an earlier decisio
 		// PTY gate drives with plan → default; here the verdict flips by
 		// the callId so a inherited denial is observable as a missing call
 		const seenIds: string[] = [];
-		h.approvalPolicy.decide = async (payload) => {
-			seenIds.push(String(payload.callId));
+		h.approvalPolicy.decide = async (_payload, ctx) => {
+			seenIds.push(String(ctx?.callId)); // F3: the call's id rides in the context, on every path
 			return seenIds.length === 1
 				? { action: "deny", decidedBy: "policy", reason: "first time: no" }
 				: { action: "allow", decidedBy: "policy" };

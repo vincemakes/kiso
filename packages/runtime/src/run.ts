@@ -682,7 +682,7 @@ export class Run implements AsyncIterable<Event> {
 		try {
 			if (approvalChain !== undefined) {
 				const chainVerdict = await abortable(
-					Promise.resolve(approvalChain.decide(policyCall, { signal, sessionId: this.#session.id })),
+					Promise.resolve(approvalChain.decide(policyCall, { signal, sessionId: this.#session.id, callId: call.callId })),
 					signal,
 				);
 				if (chainVerdict === ABORTED) return;
